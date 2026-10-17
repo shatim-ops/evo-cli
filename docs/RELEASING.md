@@ -13,7 +13,7 @@
      `CLOUDRU_VM_VERSION=v1.0.0-rc.N` из `README.md`, `docs/install.md`,
      `docs/guide.md`: `install.sh` без версии ставит последний стабильный;
    - cloud-e2e на этом коммите зелёный (ru.AZ-2), `cleanup_only` — без остатков.
-1. `main` зелёный в CI (в том числе `TestCommandsDoc`: `docs/commands.md` совпадает с бинарём); локально `goreleaser check` и, по желанию,
+1. `main` зелёный в CI (в том числе `TestCommandsDoc` и `TestToolsDoc`: `docs/commands.md` и `docs/tools.md` совпадают с бинарём); локально `goreleaser check` и, по желанию,
    `goreleaser release --snapshot --clean --skip=sign` — в `dist/` 6 архивов (в каждом `evo` и alias `cloudru-vm` до v1.1) и `checksums.txt`.
 2. `git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3` — тег ставится на коммит в `main`.
    Если тег не запушить (облачная сессия пушит только свои ветки): Actions →
@@ -72,8 +72,11 @@ Registry Cloud.ru: `<реестр>/evo:<версия>`, для стабильн�
 после изменения команд, флагов или описаний инструментов:
 
 ```
-go test ./internal/cli -run TestCommandsDoc -update-docs
+go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc' -update-docs
 ```
+
+`docs/tools.md` (каталог инструментов MCP) генерируется так же, из реестра
+инструментов; оба теста идут в CI.
 
 `TestAuthDoc_ListsEveryEnvVar` падает, если код читает переменную окружения,
 не упомянутую в `docs/auth.md`.

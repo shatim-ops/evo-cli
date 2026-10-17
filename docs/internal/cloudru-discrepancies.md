@@ -16,7 +16,9 @@ Cloud.ru Evolution). Адресаты — продуктовые команды 
   и добавил CMP-15, CMP-16, BIL-6, K8S-10, NET-8…10, DB-9…19 и разделы
   Artifact Registry, Certificate Manager, Container Apps, Network Load Balancer.
   Повтор живого прогона — 17.10.2026, 15:07–19:15 UTC, только ru.AZ-2: K8S-11,
-  DB-20, DB-21, OPS-10.
+  DB-20, DB-21, OPS-10. cloud-e2e `dbaas_smoke` (минимальные PostgreSQL,
+  Kafka, Redis; 17.10, 20:12–22:50 UTC, ru.AZ-2) подтвердил DB-10, DB-11,
+  DB-12, DB-20, DB-21.
 - **Как получены факты:** GitHub Actions репозитория `shatim-ops/evo-cli`:
   `api-probe` (только GET и расчёт цены, в лог — коды HTTP, имена полей,
   счётчики) и `cloud-e2e` (создание и удаление ВМ и кластера Kubernetes,
@@ -53,7 +55,7 @@ API» — ответ неверен независимо от документа
 | [IAM и Organization](#iam-и-organization) | 4 | 4 | 0 | сервисный аккаунт проекта не может узнать свой проект: `GET /v3/projects` → 400 «user not found»; проект есть только в неописанном claim токена |
 | [Аудит-логирование](#аудит-логирование) | 2 | 2 | 0 | 401 вместо 403 при отсутствии доступа и 415 на лишний параметр |
 | [VPC, DNS, группы безопасности, SNAT](#vpc-dns-группы-безопасности-snat) | 10 | 8 | 2 | snake_case принимается при camelCase в спецификации — не ясно, гарантия ли это |
-| [DBaaS: Kafka, Redis, PostgreSQL](#dbaas-kafka-redis-postgresql) | 21 | 18 | 3 | Redis `replicas` в POST и в GET означает разное (DB-11): клиент, повторивший прочитанное значение, получает 400; Kafka в `DEPLOYING` не удалить — 500 (DB-17); PostgreSQL в `FAILED` через API не удалить вовсе (DB-21) |
+| [DBaaS: Kafka, Redis, PostgreSQL](#dbaas-kafka-redis-postgresql) | 21 | 19 | 2 | Redis `replicas` в POST и в GET означает разное (DB-11): клиент, повторивший прочитанное значение, получает 400; Kafka в `DEPLOYING` не удалить — 500 (DB-17); PostgreSQL в `FAILED` через API не удалить вовсе (DB-21) |
 | [Мониторинг](#мониторинг) | 1 | 1 | 0 | предел окна `export_metrics` — 24 ч, в документации его нет; единицы и формат ответа не описаны |
 | [Foundation Models](#foundation-models) | 1 | 1 | 0 | токен IAM отклоняется сообщением про API-ключ |
 | [Портал документации](#портал-документации) | 2 | 2 | 0 | ответ cloud.ru/docs зависит от User-Agent: без него — 403 |
@@ -62,7 +64,7 @@ API» — ответ неверен независимо от документа
 | [Container Apps](#container-apps) | 2 | 2 | 0 | HTTP 499 вместо 404/400 |
 | [Network Load Balancer](#network-load-balancer) | 2 | 2 | 0 | удаление используемой группы целей принимается |
 | Secret Manager | 0 | — | — | расхождений не найдено; вживую — создание, версии, чтение и удаление секрета (живой прогон 17.10) |
-| **Итого** | **88** | **80** | **8** | |
+| **Итого** | **88** | **81** | **7** | |
 
 Пять пунктов с наибольшим влиянием: [IMG-1](#img-1-часть-общего-каталога-недоступна-проекту-ошибка-выдаётся-как-image-not-found),
 [BIL-1](#bil-1-лицензия-образа-маркетплейса-в-расчёте-цены-всегда-0),
@@ -591,16 +593,16 @@ API» — ответ неверен независимо от документа
 - **Просим:** единый 409 «нельзя удалить во время создания».
 
 #### DB-20. PostgreSQL: срок создания не описан, кластер часами в `DEPLOYING`
-Нет в документации · гипотеза (повтор живого прогона 17.10, CRD-18; возможно, следствие срочных работ, OPS-10)
+Нет в документации · подтверждено вживую (повтор живого прогона 17.10, CRD-18; cloud-e2e `dbaas_smoke` 17.10; 2 из 2 вечерних прогонов, оба во время срочных работ в ru.AZ-1, OPS-10)
 - **Док:** страницы со сроком создания нет; в примере Terraform — `create = "60m"` ([cloudru_evolution_postgresql_cluster](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_postgresql_cluster)).
-- **Живое:** минимальный кластер STANDARD, 1 узел, без резервных копий, ru.AZ-2: около 2 ч 43 мин в `DEPLOYING` (17.10, 16:04 — около 18:47 UTC), затем `FAILED`; операция создания всё это время `done: false`. Утром тот же план — около 6,5 мин (OPS-9). `DELETE` в `DEPLOYING` → 400 FailedPrecondition (как DB-19). 1 из 2 прогонов.
-- **Проба:** повторить создание вне срочных работ; если срок снова выйдет за час, пункт подтверждается.
+- **Живое:** минимальный кластер STANDARD, 1 узел, без резервных копий, ru.AZ-2: около 2 ч 43 мин в `DEPLOYING` (17.10, 16:04 — около 18:47 UTC), затем `FAILED`; операция создания всё это время `done: false`. Утром тот же план — около 6,5 мин (OPS-9). `DELETE` в `DEPLOYING` → 400 FailedPrecondition (как DB-19). cloud-e2e `dbaas_smoke` 17.10 (тот же минимальный план, ru.AZ-2): `DEPLOYING` 2 ч 38 мин (20:12 → 22:50 UTC), затем `FAILED`; `DELETE` весь срок → FailedPrecondition. Kafka и Redis в том же прогоне создались за 34 и 33 мин (DB-10, DB-12).
+- **Влияние:** клиент или IaC с таймаутом 60 мин (пример Terraform) получает ошибку, а кластер нельзя ни удалить, пока он создаётся, ни удалить через API после `FAILED` (DB-21) — остаётся только консоль.
 - **Просим:** указать типичный и предельный срок создания; описать, что делать с кластером, который не выходит из `DEPLOYING`.
 
 #### DB-21. PostgreSQL: кластер в `FAILED` не удалить через публичный API
 Ошибка API · подтверждено вживую (повтор живого прогона 17.10, CRD-19)
 - **Док:** правил удаления кластера в `FAILED` нет; ресурс Terraform не описывает `force`.
-- **Живое:** `DELETE /v1/clusters/{id}` кластера в `FAILED` → 500 «service with "FAILED" status may be delete only with force flag»; `DELETE …?force=true` → 415 invalid gRPC content-type (любой query на `DELETE` ломает шлюз); тело `{"force":true}` игнорируется — тот же 500 (17.10, после 18:47 UTC, 1 из 1). Удалить кластер можно только из консоли.
+- **Живое:** `DELETE /v1/clusters/{id}` кластера в `FAILED` → 500 «service with "FAILED" status may be delete only with force flag»; `DELETE …?force=true` → 415 invalid gRPC content-type (любой query на `DELETE` ломает шлюз); тело `{"force":true}` игнорируется — тот же 500 (17.10, после 18:47 UTC; повторно — cloud-e2e `dbaas_smoke` 17.10, 22:50 UTC: «service with "FAILED" status may be delete only with force flag»). Удалить кластер можно только из консоли.
 - **Влияние:** автоматизация и IaC не убирают упавший кластер; он остаётся в списке и, вероятно, в счёте (тарификацию `FAILED` не проверяли).
 - **Просим:** описать статусы и удаление `FAILED`; принять `force` в query или теле `DELETE` без 415; вместо 500 — 409/412.
 
