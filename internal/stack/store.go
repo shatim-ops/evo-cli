@@ -132,6 +132,12 @@ type VMSpec struct {
 	Name    string `json:"name"`
 	Private bool   `json:"private,omitempty"` // no public IP → regular interface (NLB target)
 	Flavor  string `json:"flavor,omitempty"`
+	// Image and Zone: a name or UUID each; stack_plan resolves them to
+	// UUIDs (default: the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION).
+	// Without them every stack with a VM failed on its vm step, after the
+	// earlier steps were created (release audit, L-36).
+	Image string `json:"image,omitempty"`
+	Zone  string `json:"zone,omitempty"`
 }
 
 type NLBSpec struct {
@@ -333,6 +339,9 @@ func (j *Job) redactSpent() {
 // jobIDRe matches the ids newID makes. The id comes from the caller (MCP
 // job_id) and becomes a file name: "../x" must not leave jobsDir.
 var jobIDRe = regexp.MustCompile(`^stk-[0-9a-f]{10}$`)
+
+// uuidRe matches a UUID (vm.image by id goes to provision as image_id).
+var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // LoadJob reads a job from disk.
 // LockJob takes the job's file lock, across processes: two MCP servers
@@ -570,6 +579,18 @@ func Plan(m Manifest) *Job {
 		}
 		if vm.Flavor != "" {
 			args["flavor"] = vm.Flavor
+		}
+		// image_id wins over the server's CLOUDRU_IMAGE_ID, image (a name)
+		// would not; region is the zone UUID provision takes.
+		if vm.Image != "" {
+			if uuidRe.MatchString(vm.Image) {
+				args["image_id"] = vm.Image
+			} else {
+				args["image"] = vm.Image
+			}
+		}
+		if vm.Zone != "" {
+			args["region"] = vm.Zone
 		}
 		// provision is synchronous (waits for active), returns vm_id. A
 		// failed answer may still have created the VM: it is looked up by

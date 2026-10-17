@@ -203,6 +203,9 @@ func (s *Registry) handleKafkaGet(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
 	}
+	if res := uuidArg("cluster_id", id, "kafka_list"); res != "" {
+		return res, true
+	}
 	cli, _, err := s.kafkaClientEng(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -258,9 +261,19 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 	if name == "" {
 		return usageResult(fmt.Errorf("'name' is required (2-63 chars)")), true
 	}
+	if b := pgInt(args, "brokers", 0); b < 0 {
+		return usageResult(fmt.Errorf("brokers %d: at least 1", b)), true
+	}
 	cli, eng, err := s.kafkaClientEng(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	existing, err := cli.ListClusters(ctx, kafkaQuery())
+	if err != nil {
+		return errResult(fmt.Errorf("check the name is free: list clusters: %w", err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult("kafka_create", "Kafka cluster", name, id, st, "kafka_get cluster_id="+id)
 	}
 
 	versionID := stringArg(args, "version_id")
@@ -285,15 +298,15 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(fmt.Errorf("list specifications: %w", err)), true
 	}
-	spec := findDbaasSpec(specs, stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0))
+	specArg, cpu, ram := stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0)
+	spec := findDbaasSpec(specs, specArg, cpu, ram)
 	if spec == nil {
 		menu, trunc := compactSpecs(specs, specMenuCap)
-		out := map[string]any{"status": "need_specification", "resolved_version_id": versionID, "availability_zone": zone,
-			"message": "kafka_create needs a specification: pass specification_id, or cpu+ram matching one of these.", "available_specifications": menu}
+		out := map[string]any{"resolved_version_id": versionID, "availability_zone": zone, "available_specifications": menu}
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
 		}
-		return toJSON(out), false
+		return needSpecResult("kafka_create", "kafka_specs", specArg, cpu, ram, out)
 	}
 	specID, _ := spec["id"].(string)
 
@@ -304,21 +317,22 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 	if storage == 0 {
 		storage = 40
 	}
-	brokers := pgInt(args, "brokers", 0)
-	if brokers == 0 {
-		brokers = int(toF(spec["min_brokers"]))
-	}
-	if brokers == 0 {
-		brokers = 1
+	brokers, brokersNote, err := kafkaBrokers(pgInt(args, "brokers", 0), spec)
+	if err != nil {
+		return usageResult(err), true
 	}
 
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
 		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gib": storage, "brokers": brokers, "subnet_id": subnetID,
 		"availability_zone": zone}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required",
+		out := map[string]any{"status": "confirmation_required",
 			"message":     "kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes). Get the user's approval, then call again with confirmed=true.",
-			"will_create": willCreate}), true
+			"will_create": willCreate}
+		if brokersNote != "" {
+			out["warning"] = brokersNote
+		}
+		return toJSON(out), true
 	}
 
 	body := map[string]any{
@@ -338,18 +352,45 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 		"created": willCreate, "note": "Async (~minutes). Poll kafka_operation(operation_id); then kafka_get for status READY + kafka_hosts."}), false
 }
 
+// kafkaBrokers is the broker count of kafka_create: the argument, else the
+// specification's min_brokers. The specification describes min_brokers and
+// max_brokers (openapi-kafka.yaml), but the live API lists specifications
+// without them, so the default was a silent 1 (release audit, L-33). One
+// broker is a working cluster (the audit's live run created one), with no
+// replication: without the argument the answer says so. The bounds are
+// checked when the specification has them. note is "" when nothing needs
+// saying.
+func kafkaBrokers(arg int, spec map[string]any) (brokers int, note string, err error) {
+	minB, maxB := int(toF(spec["min_brokers"])), int(toF(spec["max_brokers"]))
+	brokers = arg
+	if brokers == 0 {
+		brokers = minB
+	}
+	if brokers == 0 {
+		brokers = 1
+		note = "brokers: 1 (the specification gives no minimum): a single broker keeps one copy of each partition and stops on any broker failure. Pass brokers=3 for a replicated cluster."
+	}
+	if minB > 0 && brokers < minB {
+		return 0, "", fmt.Errorf("brokers %d: this specification takes at least %d", brokers, minB)
+	}
+	if maxB > 0 && brokers > maxB {
+		return 0, "", fmt.Errorf("brokers %d: this specification takes at most %d", brokers, maxB)
+	}
+	return brokers, note, nil
+}
+
 func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
 		return usageResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required",
-			"message": fmt.Sprintf("kafka_delete PERMANENTLY deletes Kafka cluster %s and its data. Confirm, then call again with confirmed=true.", id)}), true
-	}
 	cli, _, err := s.kafkaClientEng(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("kafka_delete PERMANENTLY deletes Kafka cluster %s and its data. Confirm, then call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {

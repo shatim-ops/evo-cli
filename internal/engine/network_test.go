@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -281,5 +284,40 @@ func TestResolveNetwork_SecurityGroupChoice(t *testing.T) {
 				t.Fatalf("group = %q, %v; want %s", n.SecurityGroupID, err, tc.want)
 			}
 		})
+	}
+}
+
+// Релизный аудит, A-001: группа из security_group: в .evo.yaml — та, что
+// deploy берёт для ВМ и портов compose (resolveNetwork), а не группа зоны по
+// умолчанию.
+func TestResolveNetwork_SecurityGroupFromProjectFile(t *testing.T) {
+	t.Setenv(config.EnvConfigDir, t.TempDir())
+	project := filepath.Join(t.TempDir(), config.ProjectFileName)
+	if err := os.WriteFile(project, []byte("security_group: web-sg\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := config.ResolveWithSources(config.Options{ProjectFile: project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloud := &mockCloudAPI{
+		listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
+			return []*provision.AvailabilityZone{{ID: "z2", Name: "ru.AZ-2"}}, nil
+		},
+		listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+			return []*provision.Subnet{{ID: "sn-2", Name: "Default_ru.AZ-2", AvailabilityZoneID: "z2"}}, nil
+		},
+		listSecurityGroupsFn: func(context.Context, string) ([]*provision.SecurityGroup, error) {
+			return []*provision.SecurityGroup{
+				{ID: "sg-ssh", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: "z2"},
+				{ID: "sg-web", Name: "web-sg", AvailabilityZoneID: "z2"},
+			}, nil
+		},
+	}
+	eng, _ := newTestEngine(t, cloud, newMockDeployer())
+	eng.Config.SecurityGroup = cfg.SecurityGroup
+	n, err := eng.resolveNetwork(context.Background(), "p", "z2")
+	if err != nil || n.SecurityGroupID != "sg-web" {
+		t.Fatalf("group = %q, %v; want sg-web from .evo.yaml", n.SecurityGroupID, err)
 	}
 }

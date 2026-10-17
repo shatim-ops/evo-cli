@@ -29,12 +29,8 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 evo version
 ```
 
-До выхода `v1.0.0` стабильного релиза нет и скрипт без версии останавливается
-с «стабильного релиза пока нет»: кандидат в релиз ставится с явной версией —
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | CLOUDRU_VM_VERSION=v1.0.0-rc.4 sh
-```
+Скрипт без версии ставит последний стабильный релиз; конкретная версия —
+`CLOUDRU_VM_VERSION=v1.0.0` (см. [install.md](docs/install.md)).
 
 `v1.0.0-rc.1` вышел до переименования: бинарь в нём называется `cloudru-vm`
 (`cloudru-vm version`), и скрипт ставит его под этим именем; `evo` — с
@@ -139,6 +135,7 @@ evo disk delete 1b2c… </dev/null; echo $?   # 3: без терминала и 
 | [docs/auth.md](docs/auth.md) | сервисный аккаунт и ключ, роли, профили, все переменные окружения, что хранится на диске, ротация ключа |
 | [docs/mcp.md](docs/mcp.md) | MCP по stdio и HTTP, конфиги Claude Code и Cursor, Docker-образ |
 | [docs/commands.md](docs/commands.md) | справка по всем командам |
+| [docs/tools.md](docs/tools.md) | каталог всех инструментов MCP и `evo tools`: группа, меняет ли, обязательные аргументы |
 | [docs/exit-codes.md](docs/exit-codes.md) | коды выхода и формат ошибок `--json` |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | типовые ошибки и что приложить к обращению |
 | [docs/RELEASING.md](docs/RELEASING.md) | для сопровождающих: выпуск релиза |

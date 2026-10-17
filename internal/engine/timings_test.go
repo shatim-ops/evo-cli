@@ -36,7 +36,7 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 		DockerPollInterval:  10 * time.Second,
 		DockerWaitTimeout:   10 * time.Minute,
 		DestroyPollInterval: 3 * time.Second,
-		DestroyPollTimeout:  30 * time.Second,
+		DestroyPollTimeout:  2 * time.Minute,
 
 		DeletableWaitTimeout:  10 * time.Minute,
 		DeletablePollInterval: 10 * time.Second,

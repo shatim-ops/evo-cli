@@ -83,12 +83,14 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	// image_metadata declares the fields a buyer fills in when creating a VM;
 	// accepted as a JSON array so the caller can pass the full field spec.
 	if raw, ok := args["image_metadata"]; ok && raw != nil {
+		// A malformed argument is the caller's (USAGE), not the API's
+		// (release audit, A-003).
 		blob, err := json.Marshal(raw)
 		if err != nil {
-			return errResult(fmt.Errorf("image_metadata: %w", err)), true
+			return usageResult(fmt.Errorf("image_metadata: %w", err)), true
 		}
 		if err := json.Unmarshal(blob, &req.ImageMetadata); err != nil {
-			return errResult(fmt.Errorf("image_metadata must be an array of field objects: %w", err)), true
+			return usageResult(fmt.Errorf("image_metadata must be an array of field objects: %w", err)), true
 		}
 	}
 

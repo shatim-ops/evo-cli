@@ -33,12 +33,14 @@ func listRaw(a *CloudRuAdapter, ctx context.Context, path, projectID string) ([]
 	return out, nil
 }
 
+// listProjectScoped lists a compute collection of the project. The API
+// requires project_id there: without one nothing is sent, and the caller
+// gets CONFIG_INVALID instead of the API's 422 (release audit, R-06).
 func listProjectScoped[T any](a *CloudRuAdapter, ctx context.Context, path, projectID string) ([]*T, error) {
-	q := url.Values{}
-	if projectID != "" {
-		q.Set("project_id", projectID)
+	if projectID == "" {
+		return nil, clierrors.ProjectRequired()
 	}
-	return listAll[T](a, ctx, path, q, true)
+	return listAll[T](a, ctx, path, url.Values{"project_id": {projectID}}, true)
 }
 
 // listAll walks a compute list by offset with limit=100 until total

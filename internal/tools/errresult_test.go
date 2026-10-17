@@ -23,7 +23,8 @@ func TestErrResult_ReasonAndHint(t *testing.T) {
 		// Context before the code stays, as in the CLI's own messages.
 		{fmt.Errorf("release floating IP: %w", clierrors.New(clierrors.CodeAuthFailed, "denied", "")),
 			"release floating IP: AUTH_FAILED: denied", "AUTH_FAILED", ""},
-		{errors.New("plain"), "plain", "API_ERROR", ""},
+		// Релизный аудит, A-003: ошибка без кода и без ответа API — USAGE.
+		{errors.New("plain"), "plain", "USAGE", ""},
 		{errors.New("disk d1 not found"), "disk d1 not found", "NOT_FOUND", ""},
 		// A code only in the text: moved to reason.
 		{errors.New("USAGE: 'disk_id' is required"), "'disk_id' is required", "USAGE", ""},
@@ -73,7 +74,9 @@ func TestErrAnswer_Fields(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["status"] != "timeout" || got["reason"] != clierrors.CodeAPIError || got["vm_id"] != "v1" {
+	// Ошибка о созданной ВМ (vm_id в ответе) — VM_PROVISION_FAILED, как у
+	// deploy_apply (релизный аудит, A-003; было API_ERROR).
+	if got["status"] != "timeout" || got["reason"] != clierrors.CodeVMProvisionFailed || got["vm_id"] != "v1" {
 		t.Errorf("timeout answer: %v", got)
 	}
 }

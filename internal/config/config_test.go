@@ -535,3 +535,28 @@ func TestResolve_ImageAndImageID(t *testing.T) {
 		t.Errorf("оба в одном файле: %v", err)
 	}
 }
+
+// Релизный аудит, A-001: security_group: из .evo.yaml доходит до настроек
+// (раньше ключ читался и молча отбрасывался — deploy открывал порты в группе
+// по умолчанию).
+func TestResolve_SecurityGroupFromProjectFile(t *testing.T) {
+	isolate(t)
+	project := filepath.Join(t.TempDir(), ".evo.yaml")
+	writeFile(t, project, "security_group: web-sg\n")
+	cfg, sources, err := ResolveWithSources(Options{ProjectFile: project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SecurityGroup != "web-sg" {
+		t.Errorf("security_group = %q, want web-sg", cfg.SecurityGroup)
+	}
+	found := false
+	for _, s := range sources {
+		if s.Key == "SecurityGroup" {
+			found = s.Origin == OriginProject && s.Value == "web-sg"
+		}
+	}
+	if !found {
+		t.Errorf("source of SecurityGroup: %v", sources)
+	}
+}

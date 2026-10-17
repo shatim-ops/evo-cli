@@ -159,7 +159,12 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	if err != nil {
 		// The VM can exist although the call failed (timeout, cancel, a
 		// lost answer): name it, so the caller records it, and a retry of
-		// the plan adopts it.
+		// the plan adopts it. Not after a refusal (4xx, a 409 for a name
+		// taken since the check above): then the VM by that name is
+		// another one (release audit, L-01).
+		if provision.CreateRejected(err) {
+			return nil, fmt.Errorf("create VM: %w", err)
+		}
 		if found := provision.FindCreatedVM(cloud, plan.ProjectID, plan.VM.Name, createStart); found != nil {
 			return &ApplyResult{
 					VMID: found.ID, Status: "interrupted",

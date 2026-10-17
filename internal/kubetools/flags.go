@@ -56,8 +56,10 @@ var connectionFlags = map[string]bool{
 }
 
 // CheckConnectionFlags refuses kubectl arguments that point the call at
-// another cluster or credentials than evo's kubeconfig. The words after "--"
-// are the command run in a pod (exec, debug, run), not kubectl flags.
+// another cluster or credentials than evo's kubeconfig, and --kuberc: a
+// preferences file may set flag defaults (release audit, R-05). The words
+// after "--" are the command run in a pod (exec, debug, run), not kubectl
+// flags.
 func CheckConnectionFlags(fields []string) error {
 	for _, f := range fields {
 		if f == "--" {
@@ -67,6 +69,9 @@ func CheckConnectionFlags(fields []string) error {
 			continue
 		}
 		for _, fl := range ParseFlags(f) {
+			if fl.Name == "kuberc" {
+				return fmt.Errorf("kubectl flag %s is not allowed: evo runs kubectl with KUBERC=off, so that a preferences file (aliases, flag defaults) cannot change its commands", f)
+			}
 			if connectionFlags[fl.Name] {
 				return fmt.Errorf("kubectl flag %s is not allowed: it replaces the cluster or credentials of the kubeconfig evo writes (the cluster's token would go elsewhere); the cluster is chosen by cluster_id", f)
 			}

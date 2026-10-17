@@ -132,6 +132,8 @@ func TestHTTP_Unauthorized(t *testing.T) {
 		"no header":   "",
 		"wrong token": "Bearer nope",
 		"basic":       "Basic " + testToken,
+		"no scheme":   testToken,
+		"bearerless":  "Bearer" + testToken,
 	} {
 		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/mcp", strings.NewReader(initBody))
 		if auth != "" {
@@ -147,6 +149,15 @@ func TestHTTP_Unauthorized(t *testing.T) {
 		}
 		if !strings.HasPrefix(resp.Header.Get("WWW-Authenticate"), "Bearer") {
 			t.Errorf("%s: WWW-Authenticate %q", name, resp.Header.Get("WWW-Authenticate"))
+		}
+	}
+
+	// Релизный аудит, R-08: схема в Authorization — без учёта регистра
+	// (RFC 9110 §11.1), токен сравнивается как прежде.
+	for _, auth := range []string{"bearer " + testToken, "BEARER " + testToken, "Bearer  " + testToken} {
+		resp := post(t, ts, initBody, map[string]string{"Authorization": auth})
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%q: status %d, want 200", strings.Fields(auth)[0], resp.StatusCode)
 		}
 	}
 

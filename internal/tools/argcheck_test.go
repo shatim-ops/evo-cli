@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -64,5 +65,64 @@ func TestSchemas_EnumsAreStrings(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// Релизный аудит, R-09/A-013: скаляр не того типа, что в схеме, — USAGE с
+// именем поля, а не молча «аргумента нет»: confirmed:"true" давал превью,
+// size_gb:"20" — «size_gb is required». Массивы и объекты не проверяются:
+// обработчики принимают их в нескольких видах.
+func TestCheckedArgs_ScalarTypes(t *testing.T) {
+	var got map[string]any
+	h := checkedArgs("disk_create", objSchema(map[string]any{
+		"name":      strProp("n"),
+		"size_gb":   intProp("s"),
+		"ratio":     map[string]any{"type": "number"},
+		"ports":     map[string]any{"type": "array", "items": map[string]any{"type": "integer"}},
+		"config":    map[string]any{"type": "object"},
+		"confirmed": confirmedProp(),
+	}), func(_ context.Context, args map[string]any) (string, bool) {
+		got = args
+		return "ok", false
+	})
+	for _, tc := range []struct {
+		args map[string]any
+		err  string
+	}{
+		{map[string]any{"confirmed": "true"}, "confirmed must be a boolean (true or false), got a string"},
+		{map[string]any{"size_gb": "20"}, "size_gb must be an integer, got a string"},
+		{map[string]any{"size_gb": 2.5}, "size_gb must be an integer, got a number 2.5"},
+		{map[string]any{"name": float64(7)}, "name must be a string, got a number 7"},
+		{map[string]any{"ratio": true}, "ratio must be a number, got a boolean true"},
+	} {
+		got = nil
+		text, isErr := h(context.Background(), tc.args)
+		if !isErr || got != nil || !strings.Contains(text, tc.err) || !strings.Contains(text, `"reason": "USAGE"`) {
+			t.Errorf("%v: %s", tc.args, text)
+		}
+	}
+	// Верные типы, null, целые Go (оркестратор стеков), json.Number,
+	// массив строкой и объект строкой — проходят как раньше.
+	for _, args := range []map[string]any{
+		{"name": "d1", "size_gb": float64(20), "ratio": 0.5, "confirmed": true},
+		{"size_gb": 20, "name": nil},
+		{"size_gb": json.Number("20")},
+		{"ports": "80,443", "config": `{"a":1}`},
+	} {
+		got = nil
+		if text, isErr := h(context.Background(), args); isErr || got == nil {
+			t.Errorf("%v: %s", args, text)
+		}
+	}
+}
+
+// Живой пример аудита: destroy {"name":"x","confirmed":"true"} молча давал
+// превью; теперь — USAGE, до обработчика и без движка.
+func TestRegistry_ConfirmedAsStringRefused(t *testing.T) {
+	r := New(func(map[string]any) (*engine.Engine, error) { t.Fatal("engine built"); return nil, nil })
+	tl, _ := r.Lookup("destroy")
+	text, isErr := tl.Handler(context.Background(), map[string]any{"name": "x", "confirmed": "true"})
+	if !isErr || !strings.Contains(text, `"reason": "USAGE"`) || !strings.Contains(text, "confirmed must be a boolean") {
+		t.Errorf("destroy confirmed=\"true\": %s", text)
 	}
 }

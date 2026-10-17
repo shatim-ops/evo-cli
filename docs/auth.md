@@ -199,7 +199,7 @@ profiles:
 
 | Переменная | Что задаёт | Флаг / ключ в `.evo.yaml` и профиле |
 |---|---|---|
-| `CLOUDRU_PROJECT_ID` | UUID проекта (обязателен для команд, создающих ресурсы) | `--project-id` / `project_id` |
+| `CLOUDRU_PROJECT_ID` | UUID проекта. Нужен и для чтений, и для создания ресурсов проекта (`vm list`, `vpc subnets`, `k8s list`, `pg list`, секреты, …): без него — `CONFIG_INVALID`, код `2`, запрос в облако не уходит. Без проекта работают каталоги (зоны, флейворы, образы, Marketplace, типы дисков), `org_projects`, `org_quotas`, `billing_*`, Object Storage и локальные `status`/`list` | `--project-id` / `project_id` |
 | `EVOLUTION_PROJECT_ID` | то же (имя AI Agents); `CLOUDRU_PROJECT_ID` важнее | — |
 | `CLOUDRU_REGION` | UUID зоны доступности (`evo list-zones`) | `--region` / `region` |
 | `CLOUDRU_IMAGE_ID` | UUID загрузочного образа для `deploy` (`evo image list`, `evo image get <имя>`) | `deploy --image-id` / `image_id` (по имени или UUID — `deploy --image` / `image:`) |

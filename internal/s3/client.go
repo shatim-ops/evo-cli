@@ -8,8 +8,10 @@ package s3
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -103,7 +105,7 @@ func (c *Client) ListObjects(ctx context.Context, bucket, prefix string, maxKeys
 	var out []Object
 	for obj := range c.mc.ListObjects(ctx, bucket, opts) {
 		if obj.Err != nil {
-			return nil, fmt.Errorf("list objects: %w", obj.Err)
+			return nil, notFound(fmt.Errorf("list objects: %w", obj.Err), bucket, prefix)
 		}
 		out = append(out, Object{Key: obj.Key, Size: obj.Size, LastModified: obj.LastModified.Format(time.RFC3339)})
 		if len(out) >= maxKeys {
@@ -132,25 +134,50 @@ func (e *TooLargeError) Error() string {
 func (c *Client) GetObject(ctx context.Context, bucket, key string, limit int64) ([]byte, error) {
 	obj, err := c.mc.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("get object: %w", err)
+		return nil, notFound(fmt.Errorf("get object: %w", err), bucket, key)
 	}
 	defer obj.Close()
 	var r io.Reader = obj
 	if limit > 0 {
 		// The size from the answer's headers, before any body is read.
-		if st, serr := obj.Stat(); serr == nil && st.Size > limit {
+		st, serr := obj.Stat()
+		var ce *clierrors.CLIError
+		if serr != nil {
+			if e := notFound(serr, bucket, key); errors.As(e, &ce) {
+				return nil, e
+			}
+		} else if st.Size > limit {
 			return nil, &TooLargeError{Size: st.Size, Limit: limit}
 		}
 		r = io.LimitReader(obj, limit+1)
 	}
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return nil, fmt.Errorf("read object %s/%s: %w", bucket, key, err)
+		return nil, notFound(fmt.Errorf("read object %s/%s: %w", bucket, key, err), bucket, key)
 	}
 	if limit > 0 && int64(len(data)) > limit {
 		return nil, &TooLargeError{Limit: limit}
 	}
 	return data, nil
+}
+
+// notFound gives a missing bucket or object its code: NOT_FOUND (exit 4),
+// not API_ERROR (release audit, L-15: s3_get of a missing object was rc 5).
+// Any other error is returned as it is.
+func notFound(err error, bucket, key string) error {
+	var resp minio.ErrorResponse
+	if !errors.As(err, &resp) {
+		return err
+	}
+	switch {
+	case resp.Code == "NoSuchBucket":
+		return clierrors.Wrap(clierrors.CodeNotFound, fmt.Sprintf("bucket %q not found", bucket),
+			"s3_buckets lists the buckets of these keys.", err)
+	case resp.Code == "NoSuchKey" || resp.StatusCode == http.StatusNotFound:
+		return clierrors.Wrap(clierrors.CodeNotFound, fmt.Sprintf("object %s/%s not found", bucket, key),
+			"s3_ls lists the objects of the bucket.", err)
+	}
+	return err
 }
 
 // PutObject uploads bytes to bucket/key.

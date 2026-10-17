@@ -97,12 +97,14 @@ func TestQA_StackGatedStepsAreConfirmed(t *testing.T) {
 // остаётся running. DNS без nlb ждёт несуществующий lb.
 func TestQA_StackPlanRejectsBrokenDependencies(t *testing.T) {
 	home := stackHome(t)
-	r := newTestServer()
+	// ВМ стека проверяется на плане (образ и зона, release audit L-36):
+	// нужен поддельный compute API.
+	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
 	for _, m := range []string{
 		`{"name":"a","postgres":{"name":"p"},"nlb":{"name":"lb","port":80,"target":"web"}}`,
-		`{"name":"b","vm":{"name":"v"},"nlb":{"name":"lb","port":80,"target":"lb"}}`,
+		`{"name":"b","vm":{"name":"v","image":"Ubuntu-24.04","zone":"ru.AZ-1"},"nlb":{"name":"lb","port":80,"target":"lb"}}`,
 		`{"name":"c","postgres":{"name":"p"},"nlb":{"name":"lb","port":80}}`,
-		`{"name":"d","vm":{"name":"v"},"dns":{"zone_id":"z","name":"www"}}`,
+		`{"name":"d","vm":{"name":"v","image":"Ubuntu-24.04","zone":"ru.AZ-1"},"dns":{"zone_id":"z","name":"www"}}`,
 	} {
 		var manifest map[string]any
 		_ = json.Unmarshal([]byte(m), &manifest)
@@ -116,7 +118,7 @@ func TestQA_StackPlanRejectsBrokenDependencies(t *testing.T) {
 	}
 
 	var manifest map[string]any
-	_ = json.Unmarshal([]byte(`{"name":"ok","vm":{"name":"v"},"nlb":{"name":"lb","port":80},"dns":{"zone_id":"z","name":"www"}}`), &manifest)
+	_ = json.Unmarshal([]byte(`{"name":"ok","vm":{"name":"v","image":"Ubuntu-24.04","zone":"ru.AZ-1"},"nlb":{"name":"lb","port":80},"dns":{"zone_id":"z","name":"www"}}`), &manifest)
 	if got := callTool(t, r.handleStackPlan, map[string]any{"manifest": manifest}); got["status"] != "planned" {
 		t.Errorf("valid stack: %v", got)
 	}

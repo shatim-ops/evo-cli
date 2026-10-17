@@ -102,6 +102,22 @@ func TestRun_UnknownSubcommandSuggests(t *testing.T) {
 	}
 }
 
+// Релизный аудит, L-13: неизвестная оболочка у completion — ошибка
+// использования (код 1), а не справка с кодом 0.
+func TestRun_CompletionUnknownShell(t *testing.T) {
+	setupCLI(t)
+	code, stdout, stderr := runCLI(t, "", "completion", "tcsh")
+	if code != clerrors.ExitGeneral || !strings.Contains(stderr, `unknown command "tcsh"`) || stdout != "" {
+		t.Errorf("completion tcsh: exit %d, stdout %.100q, stderr %q", code, stdout, stderr)
+	}
+	if code, stdout, _ := runCLI(t, "", "completion", "bash"); code != 0 || !strings.Contains(stdout, "bash completion") {
+		t.Errorf("completion bash: exit %d, %.100q", code, stdout)
+	}
+	if code, stdout, _ := runCLI(t, "", "completion"); code != 0 || !strings.Contains(stdout, "Available Commands") {
+		t.Errorf("completion: exit %d, %.100q", code, stdout)
+	}
+}
+
 // С --json ошибка использования — JSON в stderr, где бы ни стоял флаг:
 // cobra не успевает разобрать --json, если ошибка раньше него.
 func TestRun_UsageErrorIsJSONWhereverTheFlagIs(t *testing.T) {

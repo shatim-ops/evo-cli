@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -30,13 +31,18 @@ func (f fakeOrg) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func orgRegistry(t *testing.T, f fakeOrg) *Registry {
 	t.Helper()
+	return orgRegistryIn(t, f, addonProject)
+}
+
+func orgRegistryIn(t *testing.T, f fakeOrg, project string) *Registry {
+	t.Helper()
 	old := http.DefaultTransport
 	http.DefaultTransport = f
 	t.Cleanup(func() { http.DefaultTransport = old })
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
-			Config:  config.Config{ProjectID: addonProject, KeyID: "k", Secret: "s"},
+			Config:  config.Config{ProjectID: project, KeyID: "k", Secret: "s"},
 			Auth:    staticToken{},
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
@@ -60,6 +66,23 @@ func TestOrgProjects_ProjectLevelKeyIsNotAnError(t *testing.T) {
 	}
 	if _, ok := m["reason"]; ok {
 		t.Errorf("a reason in a non-error answer: %s", text)
+	}
+}
+
+// Релизный аудит, R-13: проекта нет — подсказка не говорит «ключ работает в
+// активном проекте», а говорит, где взять UUID и как его задать.
+func TestOrgProjects_NoActiveProjectHint(t *testing.T) {
+	r := orgRegistryIn(t, fakeOrg{400, `{"message":"user not found"}`}, "")
+	m, text, isErr := callNamed(t, r, "org_projects", nil)
+	if isErr || m["active"] != "" || m["hint"] != orgNoProjectHint {
+		t.Fatalf("answer %s", text)
+	}
+	if h, _ := m["hint"].(string); strings.Contains(h, "works in the active project") || !strings.Contains(h, "evo configure --project-id") {
+		t.Errorf("hint %q", h)
+	}
+	r = orgRegistry(t, fakeOrg{400, `{"message":"user not found"}`})
+	if m, _, _ := callNamed(t, r, "org_projects", nil); !strings.Contains(m["hint"].(string), "works in the active project") {
+		t.Errorf("with a project: %v", m["hint"])
 	}
 }
 

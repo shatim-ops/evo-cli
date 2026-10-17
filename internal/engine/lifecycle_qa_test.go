@@ -266,8 +266,8 @@ func TestDestroy_PollTimeoutDoesNotClaimDeleted(t *testing.T) {
 		return &provision.VM{ID: id, Status: "deleting"}, nil
 	}
 	eng.Timings.DestroyPollTimeout = 5 * fastTimings.DestroyPollInterval
-	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
-		t.Fatalf("Destroy: %v", err)
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); !stderrors.Is(err, ErrDeletionUnconfirmed) {
+		t.Fatalf("Destroy = %v, want the unconfirmed deletion", err)
 	}
 	if strings.Contains(out.String(), "VM deleted") {
 		t.Errorf("claims the VM is deleted after a timeout:\n%s", out.String())

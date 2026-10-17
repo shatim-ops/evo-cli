@@ -18,8 +18,8 @@
          "reads": ["id", "name", "state", "created_time", "availability_zone.id", "flavor.id", "image.id", "interfaces[].id", "interfaces[].name", "interfaces[].ip_address", "interfaces[].type", "interfaces[].primary", "interfaces[].state", "interfaces[].floating_ip.id", "interfaces[].floating_ip.ip_address", "interfaces[].floating_ip.state"],
          "enums": {"state": ["running", "creating", "error"], "interfaces[].state": ["created"], "interfaces[].type": ["regular", "direct_ip"]},
          "statuses": [404]},
-        {"method": "DELETE", "path": "/api/v1/vms/{vm_id}", "code": "internal/provision/discovery.go:115", "query": ["project_id"], "statuses": [404, 409, 422]},
-        {"method": "GET", "path": "/api/v1/vms", "code": "internal/provision/discovery.go:110", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
+        {"method": "DELETE", "path": "/api/v1/vms/{vm_id}", "code": "internal/provision/adapter.go:121", "query": ["project_id"], "statuses": [404, 409, 422]},
+        {"method": "GET", "path": "/api/v1/vms", "code": "internal/provision/discovery.go:112", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
          "reads": ["items[].id", "items[].name", "items[].state", "items[].created_time", "items[].availability_zone.id", "items[].availability_zone.name", "items[].flavor.id", "items[].image.id", "items[].interfaces[].type", "items[].interfaces[].ip_address", "items[].interfaces[].floating_ip.ip_address", "total"],
          "enums": {"items[].state": ["running", "creating", "error", "stopped"]},
          "accepted": {"read-unknown:items[].image.id": "общий декодер VM (VM.UnmarshalJSON) читает image.id; в элементе списка спецификация образа не даёт — у ВМ из списка image_id пуст"}},
@@ -40,23 +40,23 @@
          "enums": {"state": ["available", "in_use"]}, "statuses": [422]},
         {"method": "GET", "path": "/api/v1/floating-ips/{floating_ip_id}", "code": "internal/provision/adapter.go:295",
          "reads": ["id", "name", "ip_address", "state", "interface", "vm", "nat_gateway"], "enums": {"state": ["available", "in_use", "active"]}, "statuses": [404]},
-        {"method": "GET", "path": "/api/v1/floating-ips", "code": "internal/provision/discovery.go:224", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
+        {"method": "GET", "path": "/api/v1/floating-ips", "code": "internal/provision/discovery.go:226", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
          "reads": ["items[].id", "items[].name", "items[].ip_address", "items[].state", "items[].interface", "items[].vm", "items[].nat_gateway", "total"],
          "enums": {"items[].state": ["available", "in_use"]}},
-        {"method": "PUT", "path": "/api/v1/floating-ips/{floating_ip_id}", "code": "internal/provision/discovery.go:231", "query": ["project_id"],
+        {"method": "PUT", "path": "/api/v1/floating-ips/{floating_ip_id}", "code": "internal/provision/discovery.go:233", "query": ["project_id"],
          "_note": "name всегда непустой: живое API отклоняет пустое имя («Value should have at least 1 item»), вызывающие (engine/deploy.go, tools/tools_image.go) подставляют имя адреса или fip-<ВМ>; спецификация required не задаёт",
          "body": ["interface_id", "name"], "reads": ["id", "name", "ip_address", "state", "interface", "vm", "nat_gateway"], "statuses": [404, 422]},
-        {"method": "DELETE", "path": "/api/v1/floating-ips/{floating_ip_id}", "code": "internal/provision/discovery.go:255", "query": ["project_id"], "statuses": [404, 422]},
-        {"method": "POST", "path": "/api/v1/security-groups/{security_group_id}/rules", "code": "internal/provision/discovery.go:136", "query": ["project_id"],
+        {"method": "DELETE", "path": "/api/v1/floating-ips/{floating_ip_id}", "code": "internal/provision/discovery.go:257", "query": ["project_id"], "statuses": [404, 422]},
+        {"method": "POST", "path": "/api/v1/security-groups/{security_group_id}/rules", "code": "internal/provision/discovery.go:138", "query": ["project_id"],
          "body": ["direction", "ether_type", "ip_protocol", "port_range", "remote_ip_prefix", "description"], "reads": ["id", "direction", "ether_type", "ip_protocol", "port_range", "remote_ip_prefix", "state"],
          "enums": {"direction": ["ingress", "egress"], "ether_type": ["IPv4", "IPv6"], "ip_protocol": ["tcp", "udp", "icmp"], "state": ["deleting", "error", "error_creating", "error_deleting"]}},
-        {"method": "GET", "path": "/api/v1/security-groups/{security_group_id}/rules", "code": "internal/provision/discovery.go:168", "query": ["offset=0", "limit=100"], "paginates": true,
+        {"method": "GET", "path": "/api/v1/security-groups/{security_group_id}/rules", "code": "internal/provision/discovery.go:170", "query": ["offset=0", "limit=100"], "paginates": true,
          "reads": ["items[].id", "items[].direction", "items[].ether_type", "items[].ip_protocol", "items[].port_range", "items[].remote_ip_prefix", "items[].state", "total"]},
-        {"method": "DELETE", "path": "/api/v1/security-groups/{security_group_id}/rules/{security_group_rule_id}", "code": "internal/provision/discovery.go:194", "statuses": [404]},
-        {"method": "GET", "path": "/api/v1/disk-types", "code": "internal/provision/discovery.go:209", "query": ["project_id"], "reads": ["[].id", "[].name"]},
-        {"method": "GET", "path": "/api/v1/subnets", "code": "internal/provision/discovery.go:214", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
+        {"method": "DELETE", "path": "/api/v1/security-groups/{security_group_id}/rules/{security_group_rule_id}", "code": "internal/provision/discovery.go:196", "statuses": [404]},
+        {"method": "GET", "path": "/api/v1/disk-types", "code": "internal/provision/discovery.go:211", "query": ["project_id"], "reads": ["[].id", "[].name"]},
+        {"method": "GET", "path": "/api/v1/subnets", "code": "internal/provision/discovery.go:216", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
          "reads": ["items[].id", "items[].name", "items[].availability_zone.id", "items[].subnet_address", "items[].vpc_id", "items[].default", "items[].routed_network", "items[].dns_servers", "items[].default_gateway", "items[].state", "items[].type", "total"]},
-        {"method": "GET", "path": "/api/v1/security-groups", "code": "internal/provision/discovery.go:219", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
+        {"method": "GET", "path": "/api/v1/security-groups", "code": "internal/provision/discovery.go:221", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
          "reads": ["items[].id", "items[].name", "items[].availability_zone.id", "items[].default", "items[].rules", "total"]},
         {"method": "GET", "path": "/api/v1/disks", "code": "internal/provision/disk.go:26", "query": ["project_id", "limit=100", "offset=100"], "paginates": true,
          "reads": ["items[].id", "items[].name", "items[].size", "items[].state", "items[].bootable", "items[].disk_type.name", "items[].availability_zone.id", "items[].availability_zone.name", "items[].vms[].name", "total"],
@@ -83,16 +83,16 @@
       "name": "vpc",
       "spec": "vpc/openapi.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/vpcs", "code": "internal/vpc/client.go:122", "query": ["project_id"], "reads": ["vpcs[].id", "vpcs[].name", "vpcs[].default", "vpcs[].type"],
+        {"method": "GET", "path": "/v1/vpcs", "code": "internal/vpc/client.go:129", "query": ["project_id"], "reads": ["vpcs[].id", "vpcs[].name", "vpcs[].default", "vpcs[].type"],
          "accepted": {"query-required:projectId": "grpc-gateway принимает proto-имя project_id; код шлёт его — подтвердить вживую", "query-unknown:project_id": "см. projectId"}},
-        {"method": "GET", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:140", "reads": ["id", "name"]},
-        {"method": "POST", "path": "/v1/vpcs", "code": "internal/vpc/client.go:156", "body": ["projectId", "name", "description"], "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
-        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:161", "reads": ["id", "done"]},
-        {"method": "GET", "path": "/v1/vpcs/operations/{operationId}", "code": "internal/vpc/client.go:166", "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
-        {"method": "GET", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:184", "reads": ["routes[].id", "routes[].subnet", "routes[].status"]},
-        {"method": "POST", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:202",
+        {"method": "GET", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:147", "reads": ["id", "name"]},
+        {"method": "POST", "path": "/v1/vpcs", "code": "internal/vpc/client.go:163", "body": ["projectId", "name", "description"], "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
+        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:168", "reads": ["id", "done"]},
+        {"method": "GET", "path": "/v1/vpcs/operations/{operationId}", "code": "internal/vpc/client.go:173", "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
+        {"method": "GET", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:191", "reads": ["routes[].id", "routes[].subnet", "routes[].status"]},
+        {"method": "POST", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:209",
          "body": ["vpcId", "projectId", "subnet", "nextHop.virtualMachine.virtualMachine.id", "nextHop.virtualMachine.interface.id", "nextHop.vip.vips[].id", "nextHop.magicRouter.magicRouter.id", "nextHop.magicRouter.azName"], "reads": ["id", "done"]},
-        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}/routes/static/{staticRouteId}", "code": "internal/vpc/client.go:207", "reads": ["id", "done"]}
+        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}/routes/static/{staticRouteId}", "code": "internal/vpc/client.go:214", "reads": ["id", "done"]}
       ]
     },
     {
@@ -137,7 +137,7 @@
          "reads": ["id", "resource_id", "done", "error.message"]},
         {"method": "DELETE", "path": "/v2/networkLoadBalancers/{id}", "code": "internal/nlb/client.go:165", "reads": ["id", "done"]},
         {"method": "GET", "path": "/v2/targetGroups", "code": "internal/nlb/client.go:171", "query": ["project_id"], "reads": ["target_groups[].id", "target_groups[].name", "target_groups[].status", "target_groups[].vpc_id"]},
-        {"method": "GET", "path": "/v2/targetGroups/{id}", "code": "internal/nlb/client.go:175", "reads": ["id", "status"]},
+        {"method": "GET", "path": "/v2/targetGroups/{id}", "code": "internal/nlb/client.go:175", "reads": ["id", "status", "vpc_id", "target_vms[].zone_id", "target_vms[].zone_name"]},
         {"method": "POST", "path": "/v2/targetGroups", "code": "internal/nlb/client.go:179", "body": ["project_id", "name", "target_vm_specs[].id", "target_vm_specs[].interface_id"], "reads": ["id", "resource_id", "done"]},
         {"method": "DELETE", "path": "/v2/targetGroups/{id}", "code": "internal/nlb/client.go:183", "reads": ["id", "done"]},
         {"method": "GET", "path": "/v2/operations/{operation_id}", "code": "internal/nlb/client.go:193", "query": ["id"], "reads": ["id", "resource_id", "done", "error.code", "error.message"]}
@@ -222,7 +222,7 @@
         {"method": "GET", "path": "/v1/operations/{operation_id}", "code": "internal/dbaas/client.go:224", "reads": ["id", "resource_id", "done", "error.code", "error.message"]},
         {"method": "GET", "path": "/v1/versions", "code": "internal/dbaas/client.go:241", "query": ["product_type=kafka"], "reads": ["versions[].id", "versions[].name"]},
         {"method": "GET", "path": "/v1/specifications", "code": "internal/dbaas/client.go:255", "query": ["version_id", "availability_zone_id"],
-         "reads": ["specifications[].id", "specifications[].name", "specifications[].cpu", "specifications[].memory", "specifications[].min_storage_gigs"]}
+         "reads": ["specifications[].id", "specifications[].name", "specifications[].cpu", "specifications[].memory", "specifications[].min_storage_gigs", "specifications[].min_brokers", "specifications[].max_brokers"]}
       ]
     },
     {
@@ -295,9 +295,10 @@
         {"method": "POST", "path": "/v1/certificate/{certificateId}:renew", "code": "internal/certmanager/client.go:205", "body": [], "reads": ["id", "done"]},
         {"method": "DELETE", "path": "/v1/certificate/{id}", "code": "internal/certmanager/client.go:222", "query": ["force"]},
         {"method": "GET", "path": "/v1/certificate/{certificateId}:usage", "code": "internal/certmanager/client.go:231", "reads": ["usage"]},
-        {"method": "GET", "path": "/v1/certificate/{certificateId}/versions", "code": "internal/certmanager/client.go:244", "reads": ["versions"]},
-        {"method": "GET", "path": "/v1/certificate/{certificateId}/version/{versionId}:private_key", "code": "internal/certmanager/client.go:257", "reads": ["privateKey"]},
-        {"method": "GET", "path": "/v1/operation/{operationId}", "code": "internal/certmanager/client.go:271", "reads": ["id", "done", "error"]}
+        {"method": "GET", "path": "/v1/certificate/{certificateId}/versions", "code": "internal/certmanager/client.go:266", "query": ["pageSize=1000", "pageToken"], "paginates": true, "reads": ["versions", "nextPageToken"],
+         "_note": "pageSize в спецификации необязателен, живое API без него — 400 «PageSize: value must be inside range [1, 1000]» (release audit, L-17)"},
+        {"method": "GET", "path": "/v1/certificate/{certificateId}/version/{versionId}:private_key", "code": "internal/certmanager/client.go:289", "reads": ["privateKey"]},
+        {"method": "GET", "path": "/v1/operation/{operationId}", "code": "internal/certmanager/client.go:303", "reads": ["id", "done", "error"]}
       ]
     },
     {
@@ -321,7 +322,7 @@
       "name": "billing",
       "spec": "organization+iam/api.op_v1.v2.yaml",
       "requests": [
-        {"method": "GET", "path": "/v2/consumption", "code": "internal/billing/client.go:121", "query": ["agreement_id", "start_date", "end_date", "page_filter.page_size=1000", "page_filter.page_token"], "paginates": true,
+        {"method": "GET", "path": "/v2/consumption", "code": "internal/billing/client.go:131", "query": ["agreement_id", "start_date", "end_date", "page_filter.page_size=1000", "page_filter.page_token"], "paginates": true,
          "reads": ["consumptions[].amount", "consumptions[].amount_nds", "consumptions[].cost", "consumptions[].cost_nds", "consumptions[].servname", "consumptions[].servicename", "consumptions[].service", "consumptions[].resource_name", "consumptions[].resourcename", "next_page_token"]}
       ]
     },
@@ -329,7 +330,7 @@
       "name": "billing-balance",
       "spec": "billing/swagger.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/agreement/{agreement_id}", "code": "internal/billing/client.go:88", "reads": ["balance", "active"],
+        {"method": "GET", "path": "/v1/agreement/{agreement_id}", "code": "internal/billing/client.go:98", "reads": ["balance", "active"],
          "accepted": {"path-missing": "эндпоинт billing.api.cloud.ru/v1/agreement/{id} не опубликован ни в одной спецификации — вопрос к Cloud.ru"}}
       ]
     },
@@ -337,8 +338,8 @@
       "name": "organization",
       "spec": "organization+iam/api.op.v3.yaml",
       "requests": [
-        {"method": "GET", "path": "/v3/projects", "code": "internal/cli/configure.go:25", "reads": ["projects[].id", "projects[].name", "projects[].status", "projects[].organization_unit_id", "next_page_token"], "statuses": [400, 401, 403]},
-        {"method": "GET", "path": "/v3/quotas/usages", "code": "internal/tools/tools_admin.go:160", "query": ["page_size=200", "subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT", "subject_ids"],
+        {"method": "GET", "path": "/v3/projects", "code": "internal/cli/configure.go:26", "reads": ["projects[].id", "projects[].name", "projects[].status", "projects[].organization_unit_id", "next_page_token"], "statuses": [400, 401, 403]},
+        {"method": "GET", "path": "/v3/quotas/usages", "code": "internal/tools/tools_admin.go:173", "query": ["page_size=200", "subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT", "subject_ids"],
          "reads": ["usages[].resource_type_code", "usages[].individual_limit", "usages[].individual_usage"], "statuses": [403]}
       ]
     },

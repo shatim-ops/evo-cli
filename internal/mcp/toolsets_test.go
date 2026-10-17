@@ -39,9 +39,11 @@ func TestSetToolsets(t *testing.T) {
 		t.Errorf("tools/list advertises pg_list outside the toolsets")
 	}
 	resp = roundTrip(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pg_list","arguments":{}}}`)
-	res, _ := resp["result"].(map[string]any)
-	b, _ = json.Marshal(res)
-	if res["isError"] != true || !strings.Contains(string(b), "not in this server's --toolsets") {
+	// Вне --toolsets инструмента для клиента нет: -32602, как у
+	// неизвестного (релизный аудит, R-07).
+	rpcErr, _ := resp["error"].(map[string]any)
+	b, _ = json.Marshal(resp)
+	if rpcErr == nil || rpcErr["code"].(float64) != codeInvalidParams || !strings.Contains(string(b), "not in this server's --toolsets") {
 		t.Errorf("pg_list outside the toolsets: %s", b)
 	}
 

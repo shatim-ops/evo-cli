@@ -65,6 +65,10 @@ func TestQAr3_KubectlHTTPCheckSecretBypasses(t *testing.T) {
 		"get pods --client_key=/etc/x",
 		"debug pod/x --custom=/etc/x.json --image=busybox",
 		"logs pod/x -pf",
+		// Релизный аудит, R-05: --kuberc читает файл хоста (оракул путей)
+		// и применяет его алиасы и значения флагов.
+		"get pods --kuberc=/etc/passwd",
+		"get pods --kuberc /srv/shared/kuberc",
 	}
 	for _, c := range cases {
 		if err := kubectlHTTPCheck(strings.Fields(c), false); err == nil {

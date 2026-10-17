@@ -2,14 +2,16 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/certmanager"
 )
 
 // certClient builds an authenticated Certificate Manager client.
 func (s *Registry) certClient(ctx context.Context) (*certmanager.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +207,31 @@ func (s *Registry) handleCertPrivateKey(ctx context.Context, args map[string]any
 	if err != nil {
 		return errResult(err), true
 	}
+	pemKey(pk)
 	return toJSON(pk), false
+}
+
+// pemKey turns the privateKey of a GetPrivateKey answer into PEM text, as
+// the description promises: the API sends the PEM Base64-encoded (swagger:
+// «Приватный ключ PEM в декодированном Base64»), and the tool passed that
+// on (release audit, L-19). key_format says what privateKey holds: "pem",
+// or "base64" when the value does not decode to a PEM block (passed on as
+// the API sent it). Over HTTP the redaction of privateKey still applies.
+func pemKey(pk map[string]any) {
+	v, _ := pk["privateKey"].(string)
+	if v == "" {
+		return
+	}
+	if strings.HasPrefix(strings.TrimSpace(v), "-----BEGIN") {
+		pk["key_format"] = "pem"
+		return
+	}
+	if b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(v)); err == nil && strings.HasPrefix(strings.TrimSpace(string(b)), "-----BEGIN") {
+		pk["privateKey"] = string(b)
+		pk["key_format"] = "pem"
+		return
+	}
+	pk["key_format"] = "base64"
 }
 
 func (s *Registry) handleCertOperation(ctx context.Context, args map[string]any) (string, bool) {

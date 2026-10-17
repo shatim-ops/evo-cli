@@ -19,7 +19,7 @@ import (
 // and returns the decoded JSON. Used for the read-only IAM / Organization
 // admin endpoints (they share the same IAM bearer token).
 func (s *Registry) adminGET(ctx context.Context, rawurl string) (map[string]any, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -114,12 +114,19 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 		return errResult(orgHTTPError(he)), true
 	}
 	if errors.As(err, &he) {
+		active := s.projectID(ctx)
+		hint := "Not an error: the key works in the active project (whoami). Pass project_id where a tool takes one."
+		if active == "" {
+			// No active project: "the key works in the active project" was
+			// wrong exactly where it was shown (release audit, R-13).
+			hint = orgNoProjectHint
+		}
 		return toJSON(map[string]any{
 			"projects":    nil,
-			"active":      s.projectID(ctx),
+			"active":      active,
 			"note":        orgProjectsNote,
 			"http_status": he.Status,
-			"hint":        "Not an error: the key works in the active project (whoami). Pass project_id where a tool takes one.",
+			"hint":        hint,
 		}), false
 	}
 	if err != nil {
@@ -139,6 +146,12 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 	}
 	return toJSON(map[string]any{"projects": out}), false
 }
+
+// orgNoProjectHint is the hint of org_projects when the key cannot list
+// projects and none is configured (docs/auth.md, «UUID проекта»).
+const orgNoProjectHint = "No project is set, and this key cannot list projects (a service-account key never can). " +
+	"Take the project UUID from the Cloud.ru console (the project where the service account has its roles) and set it: " +
+	"evo configure --project-id <uuid>, CLOUDRU_PROJECT_ID, or project_id where a tool takes one."
 
 // orgHTTPError gives an answer of the Organization API its reason: 401 —
 // AUTH_FAILED, 429 — API_RATE_LIMITED, the rest — API_ERROR (not

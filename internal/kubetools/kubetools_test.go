@@ -17,8 +17,12 @@ func TestChildEnvDropsServerSecrets(t *testing.T) {
 		"MCP_BEARER_TOKEN=t",
 		"HOME=/home/u",
 		"HTTPS_PROXY=http://proxy:3128",
+		"KUBERC=/home/u/.kube/kuberc",
 	})
-	want := []string{"PATH=/usr/bin", "EVOLUTION_PROJECT_ID=p", "HOME=/home/u", "HTTPS_PROXY=http://proxy:3128"}
+	// KUBERC=off: ~/.kube/kuberc (алиасы, значения флагов по умолчанию) не
+	// меняет команды kubectl под evo; своё значение KUBERC не доходит
+	// (релизный аудит, R-05).
+	want := []string{"PATH=/usr/bin", "EVOLUTION_PROJECT_ID=p", "HOME=/home/u", "HTTPS_PROXY=http://proxy:3128", "KUBERC=off"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("childEnv = %v, want %v", got, want)
 	}

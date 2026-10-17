@@ -321,6 +321,11 @@ func TestSec_HTTPConcurrentToolCallsLimited(t *testing.T) {
 	if !strings.Contains(string(data), "server busy") {
 		t.Errorf("call over the limit: %s", data)
 	}
+	// Лимит — самого сервера, не Cloud.ru: SERVER_BUSY, а не
+	// API_RATE_LIMITED (релизный аудит, L-03).
+	if !strings.Contains(string(data), `\"reason\": \"SERVER_BUSY\"`) || strings.Contains(string(data), "API_RATE_LIMITED") {
+		t.Errorf("call over the limit: reason is not SERVER_BUSY: %s", data)
+	}
 	close(release)
 	done.Wait()
 

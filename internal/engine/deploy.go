@@ -520,6 +520,22 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 
 	createStart := time.Now()
 	vm, createErr := e.Cloud.CreateVM(ctx, req)
+	if createErr != nil && provision.CreateRejected(createErr) {
+		// The API refused the create: no VM came of it, and one found by
+		// the name is another (a 409 for a name already taken). It is not
+		// adopted or recorded over; the boot FIP is released (release
+		// audit, L-01).
+		e.releaseBootFIP(bootFIP, projectID)
+		if provision.IsNameTaken(createErr) {
+			return state.DeploymentRecord{}, clerrors.Wrap(clerrors.CodeConfigInvalid,
+				i18n.Tf("a VM named %s already exists in the project (Cloud.ru answered 409); nothing was created",
+					"ВМ с именем %s в проекте уже есть (Cloud.ru ответил 409); ничего не создано", vmName),
+				i18n.Tf("Check it with 'evo vm get %s'. If it is not this directory's deployment, delete it ('evo vm delete %s') or deploy from a directory with another name.",
+					"Проверьте её: 'evo vm get %s'. Если это не развёртывание этого каталога, удалите её ('evo vm delete %s') или разверните из каталога с другим именем.", vmName, vmName),
+				createErr)
+		}
+		return state.DeploymentRecord{}, createErr
+	}
 	if createErr != nil {
 		// The VM can exist although the call failed (timeout, Ctrl-C, a
 		// lost answer). Then it is billed and its FIP is attached: record
@@ -735,10 +751,11 @@ func statusText(s string) string {
 }
 
 // AssignFloatingIP creates a floating IP and attaches it to the VM's primary interface.
-// It polls until the floating IP is in_use or times out.
-func AssignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, projectID, azID string) (string, error) {
-	ip, _, err := assignFloatingIP(ctx, cloud, Timings{}.withDefaults(), nil, vmID, projectID, azID)
-	return ip, err
+// It polls until the floating IP is in_use or times out. The FIP ID is set
+// as soon as the FIP exists, even with an error: the caller records it, so
+// destroy releases it (release audit, R-02).
+func AssignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, projectID, azID string) (ip, fipID string, err error) {
+	return assignFloatingIP(ctx, cloud, Timings{}.withDefaults(), nil, vmID, projectID, azID)
 }
 
 // assignFloatingIP prints its progress: the waits add up to minutes.

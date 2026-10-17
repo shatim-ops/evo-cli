@@ -14,6 +14,10 @@ func TestCheckConnectionFlags(t *testing.T) {
 		{"get", "pods", "--client_key=/etc/key"},
 		{"get", "pods", "--kubeconfig", "/root/.kube/config"},
 		{"get", "pods", "--token=x"},
+		// Релизный аудит, R-05: файл настроек kubectl может задать флаги
+		// по умолчанию; evo запускает kubectl с KUBERC=off.
+		{"get", "pods", "--kuberc=/etc/shadow"},
+		{"get", "pods", "--kuberc", "/tmp/kuberc"},
 	} {
 		if CheckConnectionFlags(args) == nil {
 			t.Errorf("%v: не отклонено", args)

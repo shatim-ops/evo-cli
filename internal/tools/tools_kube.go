@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -160,6 +161,36 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 			return usageResult(fmt.Errorf("'%s' must not start with '-'", k)), true
 		}
 	}
+	// The action and its own arguments are checked before the confirmation
+	// gate and the kubeconfig: an unknown action used to fetch the
+	// kubeconfig (two POSTs to Cloud.ru) before it was refused (release
+	// audit, A-024).
+	release := stringArg(args, "release")
+	chart := stringArg(args, "chart")
+	switch action {
+	case "install", "upgrade":
+		if release == "" || chart == "" {
+			return usageResult(fmt.Errorf("install/upgrade need release and chart")), true
+		}
+	case "uninstall", "delete":
+		if release == "" {
+			return usageResult(fmt.Errorf("uninstall needs release")), true
+		}
+	case "status":
+		if release == "" {
+			return usageResult(fmt.Errorf("status needs release")), true
+		}
+	case "list":
+	default:
+		return usageResult(fmt.Errorf("unknown action %q (install|upgrade|uninstall|list|status)", action)), true
+	}
+	// helm itself refused a relative repo_url ("non-absolute URLs"), and
+	// that read as an API error (release audit, A-003).
+	if raw := stringArg(args, "repo_url"); raw != "" {
+		if u, err := url.Parse(raw); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "oci") {
+			return usageResult(fmt.Errorf("'repo_url' must be an absolute https://, http:// or oci:// URL, got %q", raw)), true
+		}
+	}
 	mutating := map[string]bool{"install": true, "upgrade": true, "uninstall": true, "delete": true}
 	if mutating[action] {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
@@ -173,8 +204,6 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	if err != nil {
 		return errResult(err), true
 	}
-	release := stringArg(args, "release")
-	chart := stringArg(args, "chart")
 	ns := stringArg(args, "namespace")
 
 	// Optionally register a chart repo first (repo_url + a repo name derived
@@ -195,9 +224,6 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	var hargs []string
 	switch action {
 	case "install", "upgrade":
-		if release == "" || chart == "" {
-			return usageResult(fmt.Errorf("install/upgrade need release and chart")), true
-		}
 		hargs = []string{"upgrade", "--install", release, chart}
 		if ns != "" {
 			hargs = append(hargs, "-n", ns, "--create-namespace")
@@ -232,9 +258,6 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 		}
 		hargs = append(hargs, "--wait", "--timeout", "8m")
 	case "uninstall", "delete":
-		if release == "" {
-			return usageResult(fmt.Errorf("uninstall needs release")), true
-		}
 		hargs = []string{"uninstall", release}
 		if ns != "" {
 			hargs = append(hargs, "-n", ns)
@@ -246,8 +269,6 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 		if ns != "" {
 			hargs = append(hargs, "-n", ns)
 		}
-	default:
-		return usageResult(fmt.Errorf("unknown action %q", action)), true
 	}
 
 	timeout := 120 * time.Second

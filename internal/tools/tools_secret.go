@@ -10,7 +10,7 @@ import (
 
 // secretClient builds an authenticated Secret Management client.
 func (s *Registry) secretClient(ctx context.Context) (*secret.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

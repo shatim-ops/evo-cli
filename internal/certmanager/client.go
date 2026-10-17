@@ -239,20 +239,52 @@ func (c *Client) Usage(ctx context.Context, id string) (map[string]any, error) {
 	return out, nil
 }
 
-// Versions lists a certificate's versions.
+// versionsPageSize is the pageSize of a versions request. The parameter is
+// optional in the swagger, but the API refuses a request without it: 400
+// "PageSize: value must be inside range [1, 1000]" — cert_versions failed on
+// every certificate (release audit, L-17). 1000 is the upper bound.
+const versionsPageSize = "1000"
+
+// maxVersionPages stops a pagination that never ends (a token repeated by
+// the server): 100 pages of 1000 versions is far beyond any certificate.
+const maxVersionPages = 100
+
+// Versions lists a certificate's versions, every page (nextPageToken), as
+// {"versions": [...]}.
 func (c *Client) Versions(ctx context.Context, id string) (map[string]any, error) {
-	data, status, err := c.do(ctx, http.MethodGet, certPath(id)+"/versions", nil, nil)
-	if err != nil {
-		return nil, err
+	all := []any{}
+	token := ""
+	for page := 0; ; page++ {
+		if page >= maxVersionPages {
+			return nil, fmt.Errorf("certmanager: versions of %s: more than %d pages", id, maxVersionPages)
+		}
+		q := url.Values{}
+		q.Set("pageSize", versionsPageSize)
+		if token != "" {
+			q.Set("pageToken", token)
+		}
+		data, status, err := c.do(ctx, http.MethodGet, certPath(id)+"/versions", q, nil)
+		if err != nil {
+			return nil, err
+		}
+		var out struct {
+			Versions      []any  `json:"versions"`
+			NextPageToken string `json:"nextPageToken"`
+		}
+		if err := c.decode(data, status, &out); err != nil {
+			return nil, err
+		}
+		all = append(all, out.Versions...)
+		if out.NextPageToken == "" || out.NextPageToken == token {
+			break
+		}
+		token = out.NextPageToken
 	}
-	var out map[string]any
-	if err := c.decode(data, status, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return map[string]any{"versions": all}, nil
 }
 
-// PrivateKey returns the decoded PEM private key for a version (0 = latest).
+// PrivateKey returns the private key of a version (0 = latest): privateKey
+// is the PEM Base64-encoded, as the API sends it.
 func (c *Client) PrivateKey(ctx context.Context, id string, versionID int64) (map[string]any, error) {
 	path := certPath(id) + "/version/" + fmt.Sprintf("%d", versionID) + ":private_key"
 	data, status, err := c.do(ctx, http.MethodGet, path, nil, nil)

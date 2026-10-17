@@ -156,12 +156,12 @@ func TestDestroyTargeted_AlreadyGoneCleansState(t *testing.T) {
 		t.Errorf("active deployment left: %+v", a)
 	}
 
-	// A VM this directory never recorded: still "no VM matching", and the
-	// cloud is not asked.
+	// A VM this directory never recorded: VM_NOT_FOUND (exit 4, as vm_get —
+	// release audit, A-004), and the cloud is not asked.
 	cloud = &goneCloud{}
 	r, _ = targetRegistry(t, cloud)
 	text, isErr = r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-other", "confirmed": true})
-	if !isErr || !strings.Contains(text, "no VM matching") || cloud.getCalls != 0 {
+	if !isErr || !strings.Contains(text, `"reason": "VM_NOT_FOUND"`) || !strings.Contains(text, "vm-other") || cloud.getCalls != 0 {
 		t.Errorf("unrecorded VM: answer %s, GET calls %d", text, cloud.getCalls)
 	}
 }

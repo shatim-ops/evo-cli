@@ -27,6 +27,7 @@ func TestExitCode(t *testing.T) {
 		{"confirmation required", cli(clierrors.CodeConfirmationRequired), 3},
 		{"not found", cli(clierrors.CodeVMNotFound), 4},
 		{"other object not found", cli(clierrors.CodeNotFound), 4},
+		{"MCP server busy", cli(clierrors.CodeServerBusy), 1},
 		{"api error", cli(clierrors.CodeAPIError), 5},
 		{"rate limited", cli(clierrors.CodeAPIRateLimited), 5},
 		{"api unreachable", cli(clierrors.CodeAPIUnreachable), 1},

@@ -22,6 +22,12 @@ const maxBreakdown = 12
 // agreement id comes from the env (CLOUDRU_AGREEMENT_ID), exported by the MCP
 // wrapper from .cloudru/credentials.json — same mechanism as project id.
 func (s *Registry) billingClient(ctx context.Context) (*billing.Client, error) {
+	agreement := os.Getenv("CLOUDRU_AGREEMENT_ID")
+	if agreement == "" {
+		// Before the token: nothing to ask the cloud without it (release
+		// audit, L-06).
+		return nil, billing.ErrNoAgreement()
+	}
 	eng, err := s.newEngine(nil)
 	if err != nil {
 		return nil, err
@@ -30,7 +36,6 @@ func (s *Registry) billingClient(ctx context.Context) (*billing.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	agreement := os.Getenv("CLOUDRU_AGREEMENT_ID")
 	return billing.New(tok.Value, agreement, "", ""), nil
 }
 

@@ -192,6 +192,10 @@ Object Storage, секреты.
 Как подключить скрипт — в справке подкоманды (bash, zsh, fish, powershell).
 ```
 
+```
+evo completion [flags]
+```
+
 ### Options
 
 ```
@@ -1582,13 +1586,13 @@ evo k8s create [flags]
       --flavor string          Control-plane flavor name.
   -h, --help                   Справка по create
       --kube-api-internet      Publish kube-apiserver to the internet. To turn off: --kube-api-internet=false (по умолчанию true)
-      --master-count int       1, 3 or 5.
+      --master-count int       1, 3 or 5 (default 1).
       --name string            Cluster name.
       --product string         What the cluster is for.
       --ram-gb int             Control-plane RAM GB.
-      --subnet-id string       Control-plane VIP subnet UUID.
+      --subnet-id string       Control-plane VIP subnet UUID, of the cluster's zone.
       --version string         Kubernetes version.
-      --zone string            Zone name.
+      --zone string            Zone name or UUID (as in k8s_plan).
 ```
 
 ### Options inherited from parent commands
@@ -2000,13 +2004,13 @@ evo k8s plan [flags]
       --flavor string          Control-plane flavor name (see k8s_options); overrides cpu/ram_gb.
   -h, --help                   Справка по plan
       --kube-api-internet      Publish kube-apiserver to the internet. To turn off: --kube-api-internet=false (по умолчанию true)
-      --master-count int       Control-plane node count: 1, 3 or 5 (default 1).
+      --master-count int       Control-plane node count: 1, 3 or 5 (default 1); any other value is refused.
       --name string            Cluster name (3-60; default k8s-<product>).
       --product string         What the cluster is for (used for the name).
       --ram-gb int             Control-plane RAM GB for auto flavor pick (default 4).
-      --subnet-id string       Subnet UUID for the control-plane private VIP (default: auto zone-matched).
+      --subnet-id string       Subnet UUID for the control-plane private VIP, of the cluster's zone (default: the zone's main subnet). A subnet of another zone is refused.
       --version string         Kubernetes version, e.g. v1.34.6 (default: newest STABLE; see k8s_options).
-      --zone string            Availability zone name, e.g. ru.AZ-2 (default from productConfiguration).
+      --zone string            Availability zone of the control plane, name or UUID, e.g. ru.AZ-2 (default: the zone of subnet_id, else the default of productConfiguration).
 ```
 
 ### Options inherited from parent commands
@@ -2434,7 +2438,7 @@ evo pg backups <cluster-id> [flags]
 Вызывает инструмент pg_create (подробнее: 'evo tools describe pg_create').
 Описание инструмента и его флагов — на английском, как в MCP:
 
-Create a Managed PostgreSQL cluster. Resolves version (default: latest), specification (by specification_id OR cpu+ram), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.
+Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2459,7 +2463,7 @@ evo pg create <name> [flags]
       --description string          Optional cluster description.
   -h, --help                        Справка по create
       --initial-database string     Name of the default database to create. Default 'defaultdb'.
-      --instances int               Number of nodes (1-2 standard, 1-3 business). Default 1.
+      --instances int               Number of nodes (1-2 standard, 1-3 business: checked against the spec's max_hosts). Default 1.
       --no-backup                   Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'.
       --ram int                     RAM in GB — used with cpu to auto-pick a specification.
       --specification-id string     Specification UUID (from pg_specs). Optional if cpu+ram given.
@@ -4236,7 +4240,7 @@ evo vm create <name> [flags]
 ```text
 Удалить ВМ и все данные на ней (безвозвратно).
 
-Удалить ВМ и все данные на ней безвозвратно. ВМ задаётся UUID или именем. Floating IP ВМ по умолчанию освобождается тоже; оставить адрес — --release-ip=false. Правила группы безопасности, которые evo открыл для ВМ ('evo deploy', 'evo vm create --port'), удаляются после неё, если порт не нужен другому развёртыванию из локального состояния; правило, которое удалить не удалось, попадает в отчёт, и следующее удаление попробует снова.
+Удалить ВМ и все данные на ней безвозвратно. ВМ задаётся UUID или именем; превью называет ВМ (id, имя, зону, состояние, адрес) и floating IP, который будет освобождён. Несуществующая ВМ — код 4 уже на превью; имя, которое носят несколько ВМ, — отказ со списком кандидатов: укажите UUID. Floating IP ВМ по умолчанию освобождается тоже; оставить адрес — --release-ip=false. Правила группы безопасности, которые evo открыл для ВМ ('evo deploy', 'evo vm create --port'), удаляются после неё, если порт не нужен другому развёртыванию из локального состояния; правило, которое удалить не удалось, попадает в отчёт, и следующее удаление попробует снова. Если Cloud.ru принял удаление, но ВМ осталась в списке, — код 5: floating IP, правила и запись остаются до повторного удаления.
 
 Вызывает инструмент destroy (подробнее: 'evo tools describe destroy').
 

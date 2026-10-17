@@ -266,8 +266,17 @@ func TestConfigure_RejectedKeyWritesNothing(t *testing.T) {
 	if code != clerrors.ExitAuth {
 		t.Fatalf("exit %d, want %d: %s", code, clerrors.ExitAuth, stderr)
 	}
+	// Релизный аудит, R-15: код ошибки — в reason, а не внутри текста
+	// («проверка ключа доступа: AUTH_FAILED: …»).
+	if strings.Contains(stderr, "AUTH_FAILED") || !strings.Contains(stderr, "401") {
+		t.Errorf("the message repeats the code or lost the cause: %s", stderr)
+	}
 	if _, err := os.Stat(config.CredentialsPath()); !os.IsNotExist(err) {
 		t.Error("rejected credentials were stored")
+	}
+	code, _, stderr = runCLI(t, fakeSecret+"\n", "--json", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "p")
+	if code != clerrors.ExitAuth || !strings.Contains(stderr, `"reason":"AUTH_FAILED"`) || strings.Contains(stderr, "AUTH_FAILED:") {
+		t.Errorf("--json: exit %d: %s", code, stderr)
 	}
 }
 
@@ -446,6 +455,46 @@ func TestDoctor(t *testing.T) {
 		if code, _, _ := runCLI(t, "", "doctor"); code != clerrors.ExitAuth {
 			t.Errorf("world-readable credentials.yaml: exit %d, want %d", code, clerrors.ExitAuth)
 		}
+	}
+}
+
+// Релизный аудит, R-06: без проекта doctor не «ок» с кодом 0 и не пишет
+// «project_id из default»: проверка project_id — ошибка, код 2, как у
+// команд, которым нужен проект. vm list без проекта — тоже код 2, и в
+// облако запрос не уходит.
+func TestDoctor_NoProjectIsAConfigError(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "")
+	code, stdout, _ := runCLI(t, "", "--json", "doctor")
+	if code != clerrors.ExitAuth {
+		t.Errorf("no project: exit %d, want %d\n%s", code, clerrors.ExitAuth, stdout)
+	}
+	var got struct {
+		OK     bool          `json:"ok"`
+		Checks []doctorCheck `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("not JSON: %q", stdout)
+	}
+	found := false
+	for _, c := range got.Checks {
+		switch c.Name {
+		case "config":
+			if strings.Contains(c.Detail, "project_id from") || !strings.Contains(c.Detail, "project_id not set") {
+				t.Errorf("config check: %q", c.Detail)
+			}
+		case "project_id":
+			found = c.Status == checkFail && strings.Contains(c.Detail, "evo configure --project-id")
+		}
+	}
+	if !found || got.OK {
+		t.Errorf("no failed project_id check: %+v", got)
+	}
+
+	newProcess()
+	code, _, stderr := runCLI(t, "", "--json", "vm", "list")
+	if code != clerrors.ExitAuth || !strings.Contains(stderr, `"reason":"CONFIG_INVALID"`) || !strings.Contains(stderr, "no project is set") {
+		t.Errorf("vm list without a project: exit %d: %s", code, stderr)
 	}
 }
 

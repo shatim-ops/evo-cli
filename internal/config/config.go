@@ -480,6 +480,9 @@ func applyProjectFile(cfg *Config, path string, origins map[string]string) error
 	}
 	mergeString(&cfg.ComposeFile, fileCfg.ComposeFile, "ComposeFile")
 	mergeString(&cfg.ProjectName, fileCfg.ProjectName, "ProjectName")
+	// security_group: was parsed and never merged: deploy opened the
+	// compose ports in the zone's default group (release audit, A-001).
+	mergeString(&cfg.SecurityGroup, strings.TrimSpace(fileCfg.SecurityGroup), "SecurityGroup")
 	if fileCfg.DiskSize != 0 {
 		cfg.DiskSize = fileCfg.DiskSize
 		origins["DiskSize"] = OriginProject
@@ -624,6 +627,7 @@ func buildSources(cfg *Config, origins map[string]string) []Source {
 		{"Timeout", cfg.Timeout},
 		{"ComposeFile", cfg.ComposeFile},
 		{"ProjectName", cfg.ProjectName},
+		{"SecurityGroup", cfg.SecurityGroup},
 		{"S3Endpoint", cfg.S3.Endpoint},
 		{"S3AccessKey", MaskKeyID(cfg.S3.AccessKey)},
 		{"S3SecretKey", maskSecret(cfg.S3.SecretKey)},

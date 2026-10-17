@@ -5,6 +5,12 @@
 # .github/scripts/redact_test.sh (job ci).
 s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g
 s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g
+# 32-значные hex-ID (реестры, ключи) и адреса ресурсов: реестр Artifact
+# Registry и endpoint кластера Kubernetes называют ресурс (release audit,
+# A-016).
+s/\b[0-9a-fA-F]{32}\b/<id>/g
+s/[A-Za-z0-9-]+\.cr\.cloud\.ru/<registry>.cr.cloud.ru/g
+s/[A-Za-z0-9.-]+\.mk8s\.[A-Za-z0-9.-]+/<host>/g
 # Список групп зоны: «несколько групп безопасности (a, b)».
 s/(безопасности) \([^)]*\)/\1 (<names>)/g
 # Стандартное имя целиком, до разделителя: «SSH-access_ru.AZ-1-web» — не оно.

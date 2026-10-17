@@ -552,16 +552,18 @@ func (s *Server) handleToolCall(ctx context.Context, req *rpcRequest) *rpcRespon
 		p.Arguments = map[string]any{}
 	}
 
+	// An unknown tool is a protocol error, -32602 (MCP 2025-06-18, Tools,
+	// Error Handling); so is a tool outside --toolsets: tools/list does not
+	// name it. Errors of a tool that ran stay results with isError
+	// (release audit, R-07).
 	if s.enabled != nil && !s.enabled[p.Name] {
 		if _, exists := s.handlers[p.Name]; exists {
-			return s.toolResult(req, "tool "+p.Name+" is not in this server's --toolsets", true)
+			return s.fail(req, codeInvalidParams, "Unknown tool: "+p.Name+" (not in this server's --toolsets)")
 		}
 	}
 	handler, ok := s.handlers[p.Name]
 	if !ok {
-		// Unknown tool is surfaced to the model as a tool error, not a
-		// protocol error, so it can recover.
-		return s.toolResult(req, "unknown tool: "+p.Name, true)
+		return s.fail(req, codeInvalidParams, "Unknown tool: "+p.Name)
 	}
 
 	text, isErr := callHandler(ctx, handler, p.Name, p.Arguments)

@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/monitoring"
 )
 
 // monitoringClient builds an authenticated Service Monitoring client.
 func (s *Registry) monitoringClient(ctx context.Context) (*monitoring.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -22,34 +24,50 @@ func (s *Registry) monitoringClient(ctx context.Context) (*monitoring.Client, er
 	return monitoring.New(tok.Value, eng.Config.ProjectID, ""), nil
 }
 
-// parseSince turns a "since" arg (e.g. "1h", "30m", "2d") into a duration.
-// Defaults to 1h when empty/invalid.
-func parseSince(arg string) time.Duration {
+// parseSince turns a "since" arg into a duration: a Go duration (30m, 1h,
+// 1h30m), whole days (1d), or a plain number of minutes; empty is 1h.
+// Anything else is an error: since=2d silently became 1h, as did any
+// value time.ParseDuration does not know (release audit, L-14).
+func parseSince(arg string) (time.Duration, error) {
+	arg = strings.TrimSpace(arg)
 	if arg == "" {
-		return time.Hour
+		return time.Hour, nil
 	}
 	if d, err := time.ParseDuration(arg); err == nil && d > 0 {
-		return d
+		return d, nil
+	}
+	if n, err := strconv.Atoi(strings.TrimSuffix(arg, "d")); err == nil && n > 0 && strings.HasSuffix(arg, "d") {
+		return time.Duration(n) * 24 * time.Hour, nil
 	}
 	// tolerate a plain number of minutes
 	if n, err := strconv.Atoi(arg); err == nil && n > 0 {
-		return time.Duration(n) * time.Minute
+		return time.Duration(n) * time.Minute, nil
 	}
-	return time.Hour
+	return 0, fmt.Errorf("since %q is not a duration: use 30m, 1h, 6h, 1d or a number of minutes", arg)
 }
+
+// metricsMaxWindow is the longest window export_metrics answers: since=48h
+// is a 400 "can't be longer than 24 hours" (release audit, L-14; the
+// description promised 7 days).
+const metricsMaxWindow = 24 * time.Hour
 
 func (s *Registry) handleMetricsHistory(ctx context.Context, args map[string]any) (string, bool) {
 	match := stringArg(args, "match")
 	if match == "" {
 		return usageResult(fmt.Errorf("'match' is required (a metric name / PromQL selector, e.g. cpu_usage)")), true
 	}
+	since, err := parseSince(stringArg(args, "since"))
+	if err != nil {
+		return usageResult(err), true
+	}
+	if since > metricsMaxWindow {
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			fmt.Sprintf("since %s: the monitoring API answers at most 24 hours back", since),
+			"Pass since=24h or less (e.g. 6h, 1d).")), true
+	}
 	cli, err := s.monitoringClient(ctx)
 	if err != nil {
 		return errResult(err), true
-	}
-	since := parseSince(stringArg(args, "since"))
-	if since > 7*24*time.Hour {
-		since = 7 * 24 * time.Hour // API cap
 	}
 	end := time.Now()
 	start := end.Add(-since)

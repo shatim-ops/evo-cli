@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -155,20 +157,82 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 		return errResult(fmt.Errorf("create disk: %w", err)), true
 	}
 	res := map[string]any{"status": "created", "disk": disk}
+	if attachTo == "" || vmID == "" {
+		return toJSON(res), false
+	}
 
-	// Auto-attach if requested.
-	if attachTo != "" && vmID != "" {
-		diskID, _ := disk["id"].(string)
-		if diskID == "" {
-			res["attach"] = "skipped: could not read new disk id from create response"
-		} else if at, e := eng.Cloud.AttachDisk(ctx, diskID, vmID, pid); e != nil {
-			res["attach"] = "FAILED: " + e.Error() + " — attach manually with disk_attach"
-		} else {
-			res["attach"] = at
-			res["note"] = "Disk created and attached. On the VM: partition/format the new device (e.g. mkfs.ext4 /dev/vdX) and mount it — attaching does NOT grow the existing filesystem."
+	// Auto-attach. A disk just created is "creating": attached at once,
+	// Cloud.ru answered 422 "Disk has no openstack_id" and the answer still
+	// said created (release audit, L-24). It is attached once available; a
+	// disk that does not get there or an attach that fails is a partial
+	// answer with the disk's ID, an error, and disk_attach to finish.
+	diskID, _ := disk["id"].(string)
+	res["disk_id"] = diskID
+	partial := func(err error) (string, bool) {
+		res["status"] = "partial"
+		return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
+			fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, diskID, attachTo, err),
+			fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available, or delete it with disk_delete.", diskID, attachTo), err), res), true
+	}
+	if diskID == "" {
+		return partial(fmt.Errorf("the create response has no disk id"))
+	}
+	if err := waitDiskAvailable(ctx, eng, diskID, pid); err != nil {
+		return partial(err)
+	}
+	at, err := eng.Cloud.AttachDisk(ctx, diskID, vmID, pid)
+	if err != nil {
+		return partial(fmt.Errorf("attach: %w", err))
+	}
+	res["attach"] = at
+	res["note"] = "Disk created and attached. On the VM: partition/format the new device (e.g. mkfs.ext4 /dev/vdX) and mount it — attaching does NOT grow the existing filesystem."
+	return toJSON(res), false
+}
+
+// diskReadyTimeout bounds the wait for a new disk to become available
+// before disk_create attaches it.
+const diskReadyTimeout = 2 * time.Minute
+
+// waitDiskAvailable polls disk_list until the disk is "available", at the
+// VM poll interval (Engine.Timings.VMPollInterval, 5 s by default), for at
+// most diskReadyTimeout (or Timings.VMPollTimeout when shorter). A disk in
+// an error state ends the wait at once.
+func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectID string) error {
+	every := 5 * time.Second
+	if eng.Timings.VMPollInterval > 0 {
+		every = eng.Timings.VMPollInterval
+	}
+	timeout := diskReadyTimeout
+	if t := eng.Timings.VMPollTimeout; t > 0 && t < timeout {
+		timeout = t
+	}
+	deadline := time.Now().Add(timeout)
+	last := "unknown"
+	for {
+		if disks, err := eng.Cloud.ListDisks(ctx, projectID); err == nil {
+			for _, d := range disks {
+				if id, _ := d["id"].(string); id != diskID {
+					continue
+				}
+				st, _ := d["state"].(string)
+				last = st
+				switch {
+				case st == "available":
+					return nil
+				case strings.HasPrefix(st, "error"):
+					return fmt.Errorf("the disk is in state %s", st)
+				}
+			}
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("the disk did not become available within %s (state %s)", timeout, last)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(every):
 		}
 	}
-	return toJSON(res), false
 }
 
 // handleDiskAttach attaches an existing disk to a VM.

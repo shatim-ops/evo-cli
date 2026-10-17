@@ -256,6 +256,15 @@ func newRootCmd() *cobra.Command {
 	applyExamples(cmd)
 	groupCommands(cmd)
 	localizeHelp(cmd)
+	// cobra adds completion on Execute, as a command without a run: it
+	// answered "completion tcsh" with its help and exit 0. As a group it
+	// refuses an unknown shell (USAGE, exit 1) (release audit, L-13).
+	cmd.InitDefaultCompletionCmd()
+	for _, c := range cmd.Commands() {
+		if c.Name() == "completion" {
+			asGroup(c)
+		}
+	}
 
 	return cmd
 }
