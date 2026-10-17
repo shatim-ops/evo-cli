@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // EngineFactory builds an *engine.Engine from a set of config overrides.
@@ -68,6 +69,9 @@ func New(factory EngineFactory) *Registry {
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
 		if h := r.handlers[t.Name]; h != nil {
+			if projectTools[t.Name] {
+				h = r.requireProject(h)
+			}
 			r.handlers[t.Name] = checkedArgs(t.Name, t.InputSchema, h)
 		}
 		t.Handler = r.handlers[t.Name]
@@ -202,6 +206,69 @@ func groupOf(name string) string {
 		}
 	}
 	return ""
+}
+
+// projectTools call a project-scoped API on every call: a list or a create
+// of the project (project_id in the query or the body, or the project in the
+// path: monitoring, audit), or resources addressed by name or path inside
+// the project (Container Apps, Secret Manager), and the mk8s catalogues
+// (projectId is required there). Without a project they
+// answer CONFIG_INVALID before any request (release audit, R-06): the API
+// said 422 "query.project_id: Field required", and that was API_ERROR,
+// exit 5. Tools addressing a resource by its id, catalogues (zones,
+// flavors, images, Marketplace, disk types), org_*, billing_*, Object
+// Storage and the local state work without one; a name a tool resolves
+// through a compute list hits the same check there (provision). The check
+// is engineFor's: the builders of the handlers' engines and clients use it.
+var projectTools = map[string]bool{
+	"vm_list": true, "list_subnets": true, "list_security_groups": true, "list_floating_ips": true,
+	"disk_list": true, "disk_create": true, "image_create": true, "snat_list": true, "snat_create": true,
+	"deploy_plan": true,
+	"vpc_list":    true, "vpc_create": true, "vpc_route_create": true,
+	"k8s_list": true, "k8s_plan": true, "k8s_create": true,
+	// mk8s catalogues take projectId too: GET /v3/addons without it is a
+	// live 400, the spec requires it on /v3/addons and productConfiguration
+	// (Cursor review of PR #89).
+	"k8s_options": true, "k8s_addons": true, "k8s_addon_versions": true, "k8s_add_addon": true,
+	"ca_list": true, "ca_get": true, "ca_deploy": true, "ca_delete": true, "ca_logs": true, "ca_start": true, "ca_stop": true,
+	"iam_service_accounts": true,
+	"pg_list":              true, "pg_create": true, "kafka_list": true, "kafka_create": true, "redis_list": true, "redis_create": true,
+	"lb_list": true, "lb_create": true, "tg_list": true, "tg_create": true,
+	"dns_zones": true, "dns_zone_create": true,
+	"secret_list": true, "secret_get": true, "secret_value": true, "secret_create": true, "secret_add_version": true, "secret_delete": true,
+	"ar_list": true, "ar_get": true, "ar_create": true, "ar_delete": true,
+	"metrics_history": true, "metrics_scrape": true, "audit_events": true,
+	"cert_list": true, "cert_issue_le": true, "cert_import": true,
+}
+
+// needsProject marks the context of a projectTools call that names no
+// project itself (project_id).
+type needsProject struct{}
+
+// requireProject marks the call: engineFor then refuses an engine without
+// a project. The check is where the handler builds its engine, so a
+// preview or an argument refused before any engine stays as it was.
+func (r *Registry) requireProject(next Handler) Handler {
+	return func(ctx context.Context, args map[string]any) (string, bool) {
+		if stringArg(args, "project_id") == "" {
+			ctx = context.WithValue(ctx, needsProject{}, true)
+		}
+		return next(ctx, args)
+	}
+}
+
+// engineFor builds the engine of a handler, as newEngine does; for a
+// projectTools call with no project configured it is CONFIG_INVALID
+// (errors.ProjectRequired), before any token or API request.
+func (r *Registry) engineFor(ctx context.Context, overrides map[string]any) (*engine.Engine, error) {
+	eng, err := r.newEngine(overrides)
+	if err != nil || eng == nil {
+		return eng, err
+	}
+	if marked, _ := ctx.Value(needsProject{}).(bool); marked && eng.Config.ProjectID == "" {
+		return nil, clierrors.ProjectRequired()
+	}
+	return eng, nil
 }
 
 // mutatingOverride corrects the rule "a tool is mutating when it takes

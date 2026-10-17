@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -84,14 +85,17 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 			return last, err
 		}
 		last = m
-		if opTerminal(m) || !time.Now().Before(deadline) {
+		if opTerminal(m) {
 			return m, nil
+		}
+		if !time.Now().Before(deadline) {
+			return stillRunning(m, waitSeconds), nil
 		}
 		if rem := time.Until(deadline); rem < delay {
 			delay = rem
 		}
 		if delay <= 0 {
-			return m, nil
+			return stillRunning(m, waitSeconds), nil
 		}
 		select {
 		case <-ctx.Done():
@@ -102,4 +106,16 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 			delay += delay / 2 // 2 → 3 → 4.5 → 6.75 → 10 → 15 → 15…
 		}
 	}
+}
+
+// stillRunning marks an operation the wait gave up on: done=false alone
+// read as an answer, not as "still going" (release audit re-run, N-08).
+func stillRunning(m map[string]any, waitSeconds int) map[string]any {
+	out := make(map[string]any, len(m)+2)
+	for k, v := range m {
+		out[k] = v
+	}
+	out["still_running"] = true
+	out["note"] = fmt.Sprintf("not done after waiting %d s; call again (wait_seconds) to keep waiting", waitSeconds)
+	return out
 }

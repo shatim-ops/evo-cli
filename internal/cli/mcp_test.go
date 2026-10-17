@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	stderrors "errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -101,5 +103,33 @@ func TestMCPFactory_AllowProjectCoversToolArguments(t *testing.T) {
 		if !isErr || !strings.Contains(text, "p-b") || !strings.Contains(text, "not allowed") {
 			t.Errorf("%s with project_id p-b = %s (error %v), want a refusal naming p-b", name, text, isErr)
 		}
+	}
+}
+
+// Финальный аудит, этап 1: stdout — канал JSON-RPC; строки хода движка
+// (освобождённый floating IP у destroy vm_id=, FIP после загрузки у
+// provision) шли туда. Движок фабрики MCP печатает в stderr.
+func TestMCPFactory_EngineDoesNotPrintToStdout(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "p-a")
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w // before the engine: a printer keeps the stdout it was made with
+	eng, err := mcpEngineFactory(nil)(nil)
+	if err != nil {
+		os.Stdout = old
+		t.Fatal(err)
+	}
+	eng.Printer.Step(1, 1, "release")
+	eng.Printer.StepDone("Floating IP 1.2.3.4 released")
+	eng.Printer.Warning("w")
+	os.Stdout = old
+	_ = w.Close()
+	out, _ := io.ReadAll(r)
+	if len(out) != 0 {
+		t.Errorf("engine printed to stdout: %q", out)
 	}
 }

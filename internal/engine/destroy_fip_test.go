@@ -143,7 +143,9 @@ func TestDestroy_FloatingIPReleaseFailureKeepsRecordForRetry(t *testing.T) {
 }
 
 // The deletion wait uses Engine.Timings: a VM that never disappears costs
-// DestroyPollTimeout, not 30 real seconds, and the FIP is still released.
+// DestroyPollTimeout, not minutes of real time. Unconfirmed, the destroy is
+// partial: an API_ERROR (exit 5), the FIP not released while the VM may
+// still hold it, the record kept as destroying (release audit, A-005).
 func TestDestroy_DeletionWaitUsesTimings(t *testing.T) {
 	eng, cloud, out := destroyFixture(t, runningRecord())
 	cloud.getVMFn = func(_ context.Context, id string) (*provision.VM, error) {
@@ -152,17 +154,22 @@ func TestDestroy_DeletionWaitUsesTimings(t *testing.T) {
 	eng.Timings.DestroyPollTimeout = 20 * time.Millisecond
 
 	start := time.Now()
-	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
-		t.Fatalf("Destroy: %v", err)
-	}
+	err := eng.Destroy(context.Background(), DestroyOptions{Force: true})
 	if d := time.Since(start); d > 2*time.Second {
 		t.Errorf("destroy took %s", d)
+	}
+	if !stderrors.Is(err, ErrDeletionUnconfirmed) || clerrors.ExitCode(err) != clerrors.ExitAPI ||
+		!strings.Contains(hintOf(err), "re-run 'evo destroy'") {
+		t.Fatalf("Destroy = %v (hint %q), want the unconfirmed deletion, exit 5", err, hintOf(err))
 	}
 	if !strings.Contains(out.String(), "Timeout waiting for VM deletion confirmation") {
 		t.Errorf("output:\n%s", out.String())
 	}
-	if len(cloud.deletedFIPs) != 1 {
-		t.Errorf("released FIPs = %v", cloud.deletedFIPs)
+	if len(cloud.deletedFIPs) != 0 {
+		t.Errorf("FIP released while the VM may still hold it: %v", cloud.deletedFIPs)
+	}
+	if a := readActive(t, eng.StateDir); a == nil || a.Status != "destroying" || a.FloatingIPID != "fip-9" {
+		t.Errorf("record = %+v, want it kept as destroying with its FIP", a)
 	}
 }
 

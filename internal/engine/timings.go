@@ -18,7 +18,7 @@ const (
 	dockerPollInterval    = 10 * time.Second
 	dockerWaitTimeout     = 10 * time.Minute // cloud-init: apt upgrade + get.docker.com
 	destroyPollInterval   = 3 * time.Second
-	destroyPollTimeout    = 30 * time.Second
+	destroyPollTimeout    = 2 * time.Minute  // unconfirmed is a partial destroy to re-run (release audit, A-005)
 	deletableWaitTimeout  = 10 * time.Minute // a VM still "creating" cannot be deleted yet
 	deletablePollInterval = 10 * time.Second
 	statusRefreshTimeout  = 8 * time.Second // status answers even when Cloud.ru does not

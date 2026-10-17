@@ -3,13 +3,15 @@ package tools
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/dns"
 )
 
 // dnsClient builds an authenticated Evolution DNS client (standalone → newEngine token).
 func (s *Registry) dnsClient(ctx context.Context) (*dns.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -203,13 +205,22 @@ func (s *Registry) handleDnsRecordGet(ctx context.Context, args map[string]any) 
 	return toJSON(m), false
 }
 
+// dnsRecordTypes are the record types dns_record_create takes, in the
+// spelling the API takes: lower case (swagger: "a, aaaa, srv, cname, mx, ns,
+// spf, txt, caa"). record_type=A was a 400 "invalid argument" (release
+// audit, L-16); the schema's enum matches any case and passes it on lower.
+var dnsRecordTypes = []string{"a", "aaaa", "cname", "mx", "ns", "spf", "txt", "caa", "srv"}
+
 func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]any) (string, bool) {
 	zoneID := stringArg(args, "zone_id")
 	name := stringArg(args, "name")
-	rtype := stringArg(args, "record_type")
+	rtype := strings.ToLower(stringArg(args, "record_type"))
 	vals := recordValues(args)
 	if zoneID == "" || name == "" || rtype == "" || len(vals) == 0 {
 		return usageResult(fmt.Errorf("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required")), true
+	}
+	if !slices.Contains(dnsRecordTypes, rtype) {
+		return usageResult(fmt.Errorf("record_type %q is not one of %s", stringArg(args, "record_type"), strings.Join(dnsRecordTypes, ", "))), true
 	}
 	ttl := pgInt(args, "ttl", 300)
 	vis := dnsVisibility(args)

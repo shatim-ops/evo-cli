@@ -154,7 +154,7 @@ func (c *Client) List(ctx context.Context) ([]map[string]any, error) {
 		Data []map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse containers: %w", err)
 	}
 	return r.Data, nil
 }
@@ -169,7 +169,7 @@ func (c *Client) Get(ctx context.Context, name string) (map[string]any, error) {
 	}
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse container: %w", err)
 	}
 	return m, nil
 }
@@ -187,7 +187,7 @@ func (c *Client) Create(ctx context.Context, req CreateContainerReq) (*Operation
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse operation: %w", err)
 	}
 	return &op, nil
 }
@@ -232,7 +232,7 @@ func (c *Client) Logs(ctx context.Context, name string, system bool) ([]map[stri
 		Data []map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse logs: %w", err)
 	}
 	return r.Data, nil
 }

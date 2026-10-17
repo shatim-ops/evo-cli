@@ -91,7 +91,9 @@ func TestTrees_ConfirmationAndUsage(t *testing.T) {
 		{[]string{"disk", "delete", "d-1"}, clerrors.ExitConfirmationRequired},
 		{[]string{"disk", "delete", "d-1", "--dry-run"}, clerrors.ExitOK},
 		{[]string{"disk", "delete", "d-1", "--yes"}, clerrors.ExitAuth}, // past the gate, no credentials
-		{[]string{"vm", "delete", "web"}, clerrors.ExitConfirmationRequired},
+		// The preview names the VM, so it looks it up first: no project, no
+		// question (release audit, R-04).
+		{[]string{"vm", "delete", "web"}, clerrors.ExitAuth},
 		{[]string{"s3", "bucket-create", "b1"}, clerrors.ExitConfirmationRequired},
 		{[]string{"disk", "create", "d1"}, clerrors.ExitGeneral},                   // --size-gb is required
 		{[]string{"disk", "create", "d1", "--size-gb", "x"}, clerrors.ExitGeneral}, // not an int

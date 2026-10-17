@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -116,15 +117,24 @@ func (s *Registry) handleSnatDelete(ctx context.Context, args map[string]any) (s
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (get it from snat_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("snat_delete removes SNAT gateway %s — nodes in that zone lose outbound internet. Confirm, then call again with confirmed=true.", id),
-		}), true
-	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("snat_delete removes SNAT gateway %s — nodes in that zone lose outbound internet. Confirm, then call again with confirmed=true.",
+			id, func() (map[string]any, error) {
+				gws, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+				if err != nil {
+					return nil, err
+				}
+				for _, gw := range gws {
+					if gid, _ := gw["id"].(string); gid == id {
+						return gw, nil
+					}
+				}
+				return nil, clierrors.New(clierrors.CodeNotFound, fmt.Sprintf("SNAT gateway %s not found in the project", id), "snat_list lists the project's gateways.")
+			})
 	}
 	if err := eng.Cloud.DeleteNATGateway(ctx, id, eng.Config.ProjectID); err != nil {
 		return errResult(fmt.Errorf("delete SNAT gateway: %w", err)), true

@@ -26,6 +26,10 @@ check "группа безопасности общая: другие ВМ в н
 check "ru.AZ-2 не предлагается первой: в ней нет подсети проекта; подсеть есть в ru.AZ-1" \
       "ru.AZ-2 не предлагается первой: в ней нет подсети проекта; подсеть есть в ru.AZ-1"
 check "ВМ 0b5e9a6c-1111-2222-3333-444455556666 (10.0.0.5)" "ВМ <id> (<ip>)"
+check "реестр 0b5e9a6c11112222333344445555666f готов" "реестр <id> готов"
+check "docker push myreg.cr.cloud.ru/app:1" "docker push <registry>.cr.cloud.ru/app:1"
+check "server: https://abc123.mk8s.ru-central-1.cloud.ru:6443" "server: https://<host>:6443"
+check "коммит 60f3e13f22e913240461e8839d99f634f2e69651" "коммит 60f3e13f22e913240461e8839d99f634f2e69651"
 # Имя в конце значения JSON: маска съедает и кавычку со скобкой, поэтому в
 # cloud-e2e сначала jq, потом redact.sed и обрезка (ревью Grok по #88).
 check '{"status":"error","error":"не найдена подсеть evo-e2e-net"}' '{"status":"error","error":"не найдена подсеть <name>'

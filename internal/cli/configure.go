@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -246,7 +247,7 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	provider := auth.NewIAMProvider(auth.Credentials{KeyID: keyID, Secret: secret}, httpClient, nil)
 	tok, err := provider.Token(ctx)
 	if err != nil {
-		return fmt.Errorf(i18n.T("checking the access key: %w", "проверка ключа доступа: %w"), err)
+		return keyCheckError(err)
 	}
 	_ = auth.FileCache{Path: config.TokenCachePath(name)}.Store(auth.CacheKey(auth.Credentials{KeyID: keyID, Secret: secret}), tok)
 
@@ -495,4 +496,16 @@ func yesNo(b bool) string {
 		return i18n.T("yes", "да")
 	}
 	return i18n.T("no", "нет")
+}
+
+// keyCheckError adds "checking the access key" to an IAM error. A CLIError
+// keeps its code and hint, and the code stays out of the text: the message
+// read "проверка ключа доступа: AUTH_FAILED: …" (release audit, R-15).
+func keyCheckError(err error) error {
+	prefix := i18n.T("checking the access key: ", "проверка ключа доступа: ")
+	var ce *clerrors.CLIError
+	if stderrors.As(err, &ce) {
+		return clerrors.Wrap(ce.Code, prefix+ce.Message, ce.Hint, err)
+	}
+	return fmt.Errorf("%s%w", prefix, err)
 }

@@ -186,13 +186,15 @@ func (h *HTTPHandler) serveMCP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// authorized checks the bearer token in constant time.
+// authorized checks the bearer token in constant time. The scheme is
+// case-insensitive: "bearer <token>" is as good as "Bearer <token>"
+// (RFC 9110 §11.1; release audit, R-08).
 func (h *HTTPHandler) authorized(r *http.Request) bool {
 	if h.opts.BearerToken == "" {
 		return true
 	}
-	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok {
+	scheme, got, ok := strings.Cut(strings.TrimSpace(r.Header.Get("Authorization")), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(strings.TrimSpace(got)), []byte(h.opts.BearerToken)) == 1
@@ -456,8 +458,11 @@ func (h *HTTPHandler) dispatch(ctx context.Context, scope string, req *rpcReques
 		if req.isNotification() {
 			return nil, false
 		}
-		return h.srv.toolResult(req, tools.ErrResult(clierrors.New(clierrors.CodeAPIRateLimited, fmt.Sprintf(
-			"server busy: %d tool calls are already running", httpMaxToolCalls), "Retry later")), true), false
+		// The limit is this server's, not Cloud.ru's: SERVER_BUSY, not
+		// API_RATE_LIMITED (release audit, L-03).
+		return h.srv.toolResult(req, tools.ErrResult(clierrors.New(clierrors.CodeServerBusy, fmt.Sprintf(
+			"server busy: %d tool calls are already running on this evo MCP server", httpMaxToolCalls),
+			"Retry when one of the running calls has finished; Cloud.ru was not asked")), true), false
 	}
 	if !req.isNotification() {
 		var call *inflightCall

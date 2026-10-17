@@ -59,6 +59,24 @@ IAM не принял пару Key ID / Key Secret:
 У compute API (ВМ, диски, `deploy`, `destroy`) тот же отказ приходит как
 `AUTH_FAILED: access denied (403)` с кодом `2`.
 
+### `CONFIG_INVALID` (код 2): «не задан проект (project_id)» (no project is set)
+
+Ключ задан, а проект — нет. Команды и инструменты, которые работают с
+ресурсами проекта (`vm list`, `deploy`, `k8s list`, `pg create`, плагины
+Kubernetes и др.), отказывают ещё до запроса в облако; `evo doctor` в этом
+случае тоже выходит с кодом 2. Каталоги работают и без проекта:
+`evo list-zones`, `evo image list`, `evo vm flavors`.
+
+UUID проекта — в консоли Cloud.ru, в сведениях о проекте
+([auth.md → UUID проекта](auth.md#4-uuid-проекта)). Задать его можно тремя
+способами:
+
+```sh
+evo configure --project-id <UUID>   # в профиль
+export CLOUDRU_PROJECT_ID=<UUID>    # на сеанс или в CI
+evo project use <UUID|имя>          # сменить проект текущего профиля
+```
+
 ### `configure` не показывает проекты: «Не удалось получить список проектов» (Could not list projects)
 
 Ожидаемо для сервисного аккаунта: Organization API не отдаёт ему список
@@ -118,6 +136,24 @@ evo deploy --region <UUID ru.AZ-2>   # или region: в .evo.yaml
 `evo vm delete <id>`: floating IP ВМ освобождается вместе с ней
 (`--release-ip=false` — оставить). Удалили в консоли — освободите IP
 сами: `evo vpc fip-release <IP>`.
+
+### `destroy`: «Cloud.ru принял удаление ВМ …, но … она всё ещё есть» (code 5, MCP `status: partial`)
+
+Удаление принято облаком, но за 2 минуты ВМ не исчезла из списка. Это не
+ошибка evo: Cloud.ru иногда удаляет ВМ дольше. Пока ВМ существует, она и её
+floating IP оплачиваются, поэтому не откладывайте повтор. Пока ВМ может существовать,
+evo не освобождает её floating IP и не закрывает порты, а запись в
+`.evo/state.json` остаётся со статусом `destroying` — не трогайте её.
+Проверьте ВМ (`evo vm get <id>`) и повторите `evo destroy` (у MCP —
+`destroy` с тем же `vm_id`, и с `release_ip=false`, если адрес нужно
+оставить): когда ВМ исчезнет, повтор освободит IP и закроет порты.
+
+### `vm create` / MCP `provision`: `status: partial`, «ВМ работает, публичный IP не привязан»
+
+ВМ создана и записана, но floating IP к ней не привязался (код 5, строки
+`SSH: ssh user@IP` в ответе нет). Привяжите адрес (`evo vpc fip-attach` /
+MCP `fip_attach`) или удалите ВМ (`evo destroy` / `vm delete`): созданный
+floating IP записан и освободится вместе с ней.
 
 ### `deploy`: «ВМ … не стала активной за 10m0s» (did not become active within)
 
@@ -265,8 +301,8 @@ compose-файла не изменился. Повторите с `evo deploy --
 - `S3 credentials not configured` (код 2) — задайте ключи Object Storage
   (`CLOUDRU_S3_ACCESS_KEY`, `CLOUDRU_S3_SECRET_KEY` или секция `s3` профиля,
   [auth.md](auth.md#ключи-object-storage-s3)).
-- `agreement_id not configured` — для инструментов биллинга задайте
-  `CLOUDRU_AGREEMENT_ID`.
+- `agreement_id not configured` (код 2, `reason: CONFIG_INVALID`) — для
+  инструментов биллинга задайте `CLOUDRU_AGREEMENT_ID`.
 
 ## Обращение в поддержку
 

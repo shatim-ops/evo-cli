@@ -6,7 +6,12 @@ name: cloud-e2e
 # Job readonly рядом проверяет чтения API и MCP, ничего не создавая. Job
 # os-smoke (вход os_smoke) создаёт ВМ из образов Astra Linux и РЕД ОС по
 # имени, заходит по SSH и удаляет их. Job k8s-smoke (вход k8s_smoke) —
-# кластер Managed Kubernetes с плагином, затем его удаление.
+# кластер Managed Kubernetes с плагином, затем его удаление. Job'ы dbaas-pg,
+# dbaas-kafka, dbaas-redis (вход dbaas_smoke) параллельно создают
+# минимальные кластеры PostgreSQL, Kafka и Redis (evo-e2e-pg, evo-e2e-kafka,
+# evo-e2e-redis), проверяют их и удаляют. Job cleanup (вход cleanup_only)
+# ничего не создаёт и удаляет остатки прошлых прогонов, в том числе эти
+# кластеры. Проект общий: трогаются только ресурсы с именами evo-e2e-*.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
 #   CLOUDRU_KEY_ID, CLOUDRU_SECRET — ключ тестового сервисного аккаунта
@@ -35,8 +40,12 @@ on:
         description: "Also run Managed Kubernetes live (billable, ~60 min): cluster → one-node pool → evo k8s kubectl → cert-manager install with evo k8s add-addon and its pods → delete"
         type: boolean
         default: false
+      dbaas_smoke:
+        description: "Also run DBaaS live (billable, up to ~3 h): creates and deletes minimal PostgreSQL, Kafka and Redis clusters evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis"
+        type: boolean
+        default: false
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; evo: rules for e2e ports 80/8080/8081/8082 when no evo-* VM is left)"
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis; evo: rules for e2e ports 80/8080/8081/8082 when no evo-* VM is left)"
         type: boolean
         default: false
   push:
@@ -84,6 +93,10 @@ jobs:
       - name: Чтения CLI, инструменты, MCP stdio и HTTP
         env:
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          # Ключ Object Storage (<tenant_id>:<Key ID>, docs/auth.md): без
+          # него s3_buckets — CONFIG_INVALID и только предупреждение.
+          CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
+          CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
         run: .github/scripts/cloud-readonly.sh
 
   e2e:
@@ -494,11 +507,14 @@ jobs:
   # удаляются, только когда в проекте нет ни одной ВМ с именем evo-*:
   # описание «evo: …» ставит любой evo deploy/vm create, и чужое правило
   # иначе не отличить. Допущение: проект тестовый, evo в нём запускает только
-  # e2e. ID и IP маскируются.
+  # e2e. Кластеры DBaaS — только evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis
+  # (проект общий: у внешнего аудитора — audit-*). ID и IP маскируются.
   cleanup:
     if: ${{ inputs.cleanup_only }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Кластер DBaaS, который ещё создаётся, Cloud.ru удалять отказывается:
+    # повтор до 120 мин и ожидание до 30 (dbaas-delete.sh) поверх ВМ и mk8s.
+    timeout-minutes: 240
     env:
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     defaults:
@@ -560,6 +576,21 @@ jobs:
           done
           echo "::error::кластеры evo-e2e-k8s не удалились за 30 минут"
           exit 1
+
+      # Три вида параллельно: подряд отказы «ещё создаётся» (до 120 мин на
+      # каждый) не уложились бы в таймаут job. Строки лога с префиксом вида,
+      # ::add-mask:: и ::error:: — без него.
+      - name: Кластеры DBaaS evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis
+        if: always()
+        run: |
+          pids=()
+          for k in pg kafka redis; do
+            LOG_PREFIX="[$k] " .github/scripts/dbaas-delete.sh "$k" "evo-e2e-$k" &
+            pids+=("$!")
+          done
+          rc=0
+          for p in "${pids[@]}"; do wait "$p" || rc=1; done
+          exit "$rc"
 
       - name: Floating IP fip-evo-e2e-*
         if: always()
@@ -801,3 +832,503 @@ jobs:
             [ $(( $(date +%s) - start )) -lt 1800 ] || { echo "::error::кластер $CLUSTER не удалился за 30 мин — удалите его в консоли Cloud.ru"; exit 1; }
             sleep 60
           done
+
+  # DBaaS вживую (вход dbaas_smoke): три job'а идут параллельно — PostgreSQL,
+  # Kafka, Redis. Каждый: зона открыта и кластера с нашим именем нет →
+  # минимальный кластер → второе создание с тем же именем отклонено (L-32) →
+  # кластер READY → проверки на живом кластере → удаление, всегда и по имени
+  # (.github/scripts/dbaas-delete.sh). Платно: Kafka создаётся 37–39 мин
+  # (реестр DB-10), PostgreSQL 17.10 почти 3 ч стоял в DEPLOYING (DB-20).
+  # ID маскируются, в лог — статусы, счётчики и reason, текст ошибок — через
+  # redact.sed.
+  dbaas-pg:
+    if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
+    runs-on: ubuntu-latest
+    # Создание до 60 мин, проверки до ~20, удаление: отказы «ещё создаётся»
+    # до 120 мин и ожидание до 30 — запас, чтобы job не оборвался до
+    # удаления кластера.
+    timeout-minutes: 300
+    env:
+      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      KIND: pg
+      CLUSTER: evo-e2e-pg
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Проверка входов
+        run: |
+          printf '%s' "$ZONE" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
+            { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      # Зона с enabled=false не принимает создание и удаление (17.10 Cloud.ru
+      # закрыл ru.AZ-1 на срочные работы, реестр OPS-10): кластер завис бы.
+      - name: Зона открыта, кластера evo-e2e-pg нет до прогона
+        run: |
+          z=$(evo tools call list_zones --json | jq -c --arg n "$ZONE" '[.zones[] | select(.name == $n)][0] // empty')
+          [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
+          [ "$(jq -r '.enabled' <<<"$z")" != false ] ||
+            { echo "::error::зона $ZONE закрыта (enabled=false): Cloud.ru в ней сейчас не создаёт и не удаляет ресурсы — запустите с другой зоной (вход zone)"; exit 1; }
+          echo "ZONE_ID=$(jq -r '.id' <<<"$z")" >> "$GITHUB_ENV"
+          n=$(evo tools call "${KIND}_list" --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
+          [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
+          echo "зона $ZONE открыта, кластера $CLUSTER нет"
+
+      # Самая дешёвая спецификация standard (pg_specs отдаёт дешёвые первыми),
+      # 1 узел; резервные копии остаются включёнными (по умолчанию): без них
+      # pg_backups отвечает 400 «backup disabled». pg_create без subnet_id
+      # берёт первую подсеть проекта в любой зоне, поэтому подсеть зоны ZONE
+      # выбирается здесь: Default_<зона>, иначе первая в зоне.
+      - name: pg_create (минимальный кластер)
+        run: |
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          spec=$(evo tools call pg_specs --json |
+            jq -c '[.specifications[]? | select(((.deployment_mode // "") | ascii_downcase) == "standard")][0] // .specifications[0] // empty')
+          [ -n "$spec" ] || { echo "::error::pg_specs: спецификаций нет"; exit 1; }
+          jq -c '{cpu, memory_gb, deployment_mode, min_storage_gb, max_hosts}' <<<"$spec"
+          spec_id=$(jq -r '.id' <<<"$spec")
+          subnet=$(evo tools call list_subnets --json | jq -r --arg z "$ZONE_ID" --arg n "$ZONE" '
+            [.subnets[]? | select(.availability_zone_id == $z or ((.availability_zone_id // "") == "" and ((.name // "") | contains($n))))]
+            | (map(select((.name // "") | startswith("Default_")))[0] // .[0]) | .id // empty')
+          [ -n "$subnet" ] || { echo "::error::нет подсети проекта в зоне $ZONE"; exit 1; }
+          echo "::add-mask::$spec_id"
+          echo "::add-mask::$subnet"
+          { echo "SPEC_ID=$spec_id"; echo "SUBNET_ID=$subnet"; } >> "$GITHUB_ENV"
+          set +e
+          evo --yes tools call pg_create --arg name="$CLUSTER" --arg specification_id="$spec_id" --arg subnet_id="$subnet" \
+            --json > "$RUNNER_TEMP/create.json" 2>/dev/null
+          rc=$?
+          set -e
+          id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json" 2>/dev/null || true)
+          op=$(jq -r '.operation_id // empty' "$RUNNER_TEMP/create.json" 2>/dev/null || true)
+          [ -z "$id" ] || echo "::add-mask::$id"
+          [ -z "$op" ] || echo "::add-mask::$op"
+          jq -c '{status, reason, cluster_id: ((.cluster_id // "") != ""), operation: ((.operation_id // "") != ""),
+            created: ((.created // {}) | {version, cpu, memory_gb, storage_gb, instances, deployment_mode, backup_enabled})}' \
+            "$RUNNER_TEMP/create.json" || true
+          if [ "$rc" != 0 ]; then
+            echo "pg_create: $(jq -r '.error // empty' "$RUNNER_TEMP/create.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "::error::pg_create: код $rc"
+            exit 1
+          fi
+          echo "OP_ID=$op" >> "$GITHUB_ENV"
+          # Без resource_id у операции cluster_id в ответе нет: ID — по имени.
+          for _ in $(seq 1 10); do
+            [ -z "$id" ] || break
+            sleep 30
+            id=$(evo tools call pg_list --json | jq -r --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n) | .id][0] // empty')
+            [ -z "$id" ] || echo "::add-mask::$id"
+          done
+          [ -n "$id" ] || { echo "::error::кластер $CLUSTER не появился в pg_list за 5 мин"; exit 1; }
+          echo "CLUSTER_ID=$id" >> "$GITHUB_ENV"
+
+      # Реестр L-32: второй кластер с тем же именем — второй счёт. Вызов без
+      # --yes: имя проверяется до подтверждения, а при регрессии ответом было
+      # бы confirmation_required (код 3) — второй платный кластер не
+      # создаётся. Аргументы те же, что у первого: иначе USAGE мог бы прийти
+      # за спецификацию, а не за имя; existing_id — наш кластер.
+      - name: Второй pg_create с тем же именем отклонён (L-32)
+        run: |
+          set +e
+          evo tools call pg_create --arg name="$CLUSTER" --arg specification_id="$SPEC_ID" --arg subnet_id="$SUBNET_ID" \
+            --json > "$RUNNER_TEMP/dup.json" 2>/dev/null
+          rc=$?
+          set -e
+          ex=$(jq -r '.existing_id // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null || true)
+          [ -z "$ex" ] || echo "::add-mask::$ex"
+          echo "повторный pg_create: код $rc, $(jq -c '{status, reason, existing_is_ours: (.existing_id == env.CLUSTER_ID)}' "$RUNNER_TEMP/dup.json" 2>/dev/null || echo '-')"
+          [ "$(jq -r '.reason // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null)" = USAGE ] && [ "$ex" = "$CLUSTER_ID" ] ||
+            { echo "::error::второй pg_create с именем $CLUSTER не отклонён как USAGE с ID нашего кластера (L-32)"; exit 1; }
+          n=$(evo tools call pg_list --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
+          echo "кластеров $CLUSTER в pg_list: $n"
+          [ "$n" = 1 ] || { echo "::error::кластеров $CLUSTER в pg_list: $n, ждали 1 (L-32)"; exit 1; }
+
+      - name: Кластер READY (до 60 мин)
+        run: |
+          start=$(date +%s)
+          while :; do
+            st=$(evo tools call "${KIND}_get" --arg cluster_id="$CLUSTER_ID" --json 2>/dev/null |
+              jq -r '(.status // .state // "?") | tostring | ascii_upcase') || st="?"
+            echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
+            # Точные статусы: подстрока *READY* совпала бы и с NOT_READY.
+            case "$st" in
+              READY|RUNNING) break ;;
+              *FAIL*|*ERROR*|*DELET*) echo "::error::кластер $CLUSTER: $st"; exit 1 ;;
+            esac
+            [ $(( $(date +%s) - start )) -lt 3600 ] || { echo "::error::кластер $CLUSTER не готов за 60 мин (реестр DB-20)"; exit 1; }
+            sleep 60
+          done
+
+      # Пароль — из букв и цифр с заглавной, строчной, цифрой и спецсимволом
+      # из разрешённых; маскируется до первого использования и идёт через
+      # --args-file, не в аргументах командной строки.
+      - name: Пользователь, база, резервные копии, операция, превью удаления
+        run: |
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          # call ИНСТРУМЕНТ АРГУМЕНТЫ... — ответ в $RUNNER_TEMP/r.json; ошибка —
+          # status, reason и текст через redact.sed, затем ::error:: и выход.
+          call() {
+            local t=$1 rc
+            shift
+            set +e
+            evo tools call "$t" "$@" --json > "$RUNNER_TEMP/r.json" 2>/dev/null
+            rc=$?
+            set -e
+            [ "$rc" = 0 ] && return 0
+            jq -c '{status, reason}' "$RUNNER_TEMP/r.json" 2>/dev/null || true
+            echo "$t: $(jq -r '.error // empty' "$RUNNER_TEMP/r.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "::error::$t: код $rc"
+            exit 1
+          }
+          # present ИНСТРУМЕНТ КЛЮЧ ИМЯ — ИМЯ появилось в списке за 5 мин.
+          present() {
+            for i in $(seq 1 10); do
+              call "$1" --arg cluster_id="$CLUSTER_ID"
+              if jq -e --arg k "$2" --arg n "$3" 'any(.[$k][]?; .name == $n)' "$RUNNER_TEMP/r.json" >/dev/null; then
+                echo "$1: всего $(jq --arg k "$2" '.[$k] | length' "$RUNNER_TEMP/r.json"), $3 есть"
+                return 0
+              fi
+              [ "$i" -lt 10 ] || { echo "::error::$3 нет в $1 за 5 мин"; exit 1; }
+              sleep 30
+            done
+          }
+          user=evo_e2e_user
+          db=evo_e2e_db
+          specials='!$%&()*+-,./:;<>=?@[]^_{|}#'
+          raw=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9')
+          pw="${raw:0:16}Q${specials:$((RANDOM % ${#specials})):1}z7"
+          echo "::add-mask::$pw"
+          umask 077
+          jq -n --arg c "$CLUSTER_ID" --arg n "$user" --arg p "$pw" '{cluster_id: $c, name: $n, password: $p}' > "$RUNNER_TEMP/user.json"
+          set +e
+          evo --yes tools call pg_user_create --args-file "$RUNNER_TEMP/user.json" --json > "$RUNNER_TEMP/r.json" 2>/dev/null
+          rc=$?
+          set -e
+          rm -f "$RUNNER_TEMP/user.json"
+          jq -c '{status, reason}' "$RUNNER_TEMP/r.json" || true
+          [ "$rc" = 0 ] || { echo "pg_user_create: $(jq -r '.error // empty' "$RUNNER_TEMP/r.json" 2>/dev/null | redact | cut -c1-300)"; echo "::error::pg_user_create: код $rc"; exit 1; }
+          present pg_users users "$user"
+
+          call pg_db_create --yes --arg cluster_id="$CLUSTER_ID" --arg name="$db" --arg owner="$user"
+          jq -c '{status}' "$RUNNER_TEMP/r.json"
+          present pg_databases databases "$db"
+
+          call pg_backups --arg cluster_id="$CLUSTER_ID"
+          echo "pg_backups: резервных копий $(jq '.backups // [] | length' "$RUNNER_TEMP/r.json")"
+
+          if [ -n "${OP_ID:-}" ]; then
+            call pg_operation --arg operation_id="$OP_ID" --arg wait_seconds=30
+            jq -c '{done, still_running, error: (.error != null)}' "$RUNNER_TEMP/r.json"
+            jq -e '.done == true or .still_running == true' "$RUNNER_TEMP/r.json" >/dev/null ||
+              { echo "::error::pg_operation: в ответе ни done, ни still_running"; exit 1; }
+          else
+            echo "::warning::pg_create не вернул operation_id — pg_operation не проверен"
+          fi
+
+          # Превью удаления (--dry-run: без подтверждения, ничего не удаляет)
+          # называет кластер (реестр R-04).
+          call pg_delete --dry-run --arg cluster_id="$CLUSTER_ID"
+          jq -c '{status, tool_status: .preview.details.status, target_name: .preview.details.target.name, target_status: .preview.details.target.status}' "$RUNNER_TEMP/r.json"
+          jq -e --arg n "$CLUSTER" '.preview.details.status == "confirmation_required" and .preview.details.target.name == $n' "$RUNNER_TEMP/r.json" >/dev/null ||
+            { echo "::error::превью pg_delete не называет кластер $CLUSTER"; exit 1; }
+
+      - name: Удаление кластера (всегда)
+        if: always()
+        run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
+
+  dbaas-kafka:
+    if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
+    runs-on: ubuntu-latest
+    # Создание до 75 мин (живое — 37–39, DB-10), проверки — минуты,
+    # удаление: отказы «ещё создаётся» до 120 мин и ожидание до 30.
+    timeout-minutes: 300
+    env:
+      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      KIND: kafka
+      CLUSTER: evo-e2e-kafka
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Проверка входов
+        run: |
+          printf '%s' "$ZONE" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
+            { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: Зона открыта, кластера evo-e2e-kafka нет до прогона
+        run: |
+          z=$(evo tools call list_zones --json | jq -c --arg n "$ZONE" '[.zones[] | select(.name == $n)][0] // empty')
+          [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
+          [ "$(jq -r '.enabled' <<<"$z")" != false ] ||
+            { echo "::error::зона $ZONE закрыта (enabled=false): Cloud.ru в ней сейчас не создаёт и не удаляет ресурсы — запустите с другой зоной (вход zone)"; exit 1; }
+          echo "ZONE_ID=$(jq -r '.id' <<<"$z")" >> "$GITHUB_ENV"
+          n=$(evo tools call "${KIND}_list" --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
+          [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
+          echo "зона $ZONE открыта, кластера $CLUSTER нет"
+
+      # --region: kafka_create берёт основную подсеть этой зоны и
+      # спецификацию этой зоны, по умолчанию — самую дешёвую; диск —
+      # минимум спецификации. Один брокер (без репликации) — минимальный
+      # живой кластер (L-33).
+      - name: kafka_create (1 брокер)
+        run: |
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          set +e
+          evo --yes --region "$ZONE_ID" tools call kafka_create --arg name="$CLUSTER" --arg brokers=1 \
+            --json > "$RUNNER_TEMP/create.json" 2>/dev/null
+          rc=$?
+          set -e
+          id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json" 2>/dev/null || true)
+          op=$(jq -r '.operation_id // empty' "$RUNNER_TEMP/create.json" 2>/dev/null || true)
+          [ -z "$id" ] || echo "::add-mask::$id"
+          [ -z "$op" ] || echo "::add-mask::$op"
+          jq -c '{status, reason, cluster_id: ((.cluster_id // "") != ""), operation: ((.operation_id // "") != ""),
+            created: ((.created // {}) | {cpu, memory_gb, storage_gib, brokers, availability_zone})}' \
+            "$RUNNER_TEMP/create.json" || true
+          if [ "$rc" != 0 ]; then
+            echo "kafka_create: $(jq -r '.error // empty' "$RUNNER_TEMP/create.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "::error::kafka_create: код $rc"
+            exit 1
+          fi
+          az=$(jq -r '.created.availability_zone // empty' "$RUNNER_TEMP/create.json")
+          [ "$az" = "$ZONE" ] || echo "::warning::kafka_create: зона кластера $az, а не $ZONE"
+          for _ in $(seq 1 10); do
+            [ -z "$id" ] || break
+            sleep 30
+            id=$(evo tools call kafka_list --json | jq -r --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n) | .id][0] // empty')
+            [ -z "$id" ] || echo "::add-mask::$id"
+          done
+          [ -n "$id" ] || { echo "::error::кластер $CLUSTER не появился в kafka_list за 5 мин"; exit 1; }
+          echo "CLUSTER_ID=$id" >> "$GITHUB_ENV"
+
+      # L-32 (как у PostgreSQL): без --yes, с теми же аргументами.
+      - name: Второй kafka_create с тем же именем отклонён (L-32)
+        run: |
+          set +e
+          evo --region "$ZONE_ID" tools call kafka_create --arg name="$CLUSTER" --arg brokers=1 \
+            --json > "$RUNNER_TEMP/dup.json" 2>/dev/null
+          rc=$?
+          set -e
+          ex=$(jq -r '.existing_id // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null || true)
+          [ -z "$ex" ] || echo "::add-mask::$ex"
+          echo "повторный kafka_create: код $rc, $(jq -c '{status, reason, existing_is_ours: (.existing_id == env.CLUSTER_ID)}' "$RUNNER_TEMP/dup.json" 2>/dev/null || echo '-')"
+          [ "$(jq -r '.reason // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null)" = USAGE ] && [ "$ex" = "$CLUSTER_ID" ] ||
+            { echo "::error::второй kafka_create с именем $CLUSTER не отклонён как USAGE с ID нашего кластера (L-32)"; exit 1; }
+          n=$(evo tools call kafka_list --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
+          echo "кластеров $CLUSTER в kafka_list: $n"
+          [ "$n" = 1 ] || { echo "::error::кластеров $CLUSTER в kafka_list: $n, ждали 1 (L-32)"; exit 1; }
+
+      - name: Кластер READY (до 75 мин)
+        run: |
+          start=$(date +%s)
+          while :; do
+            st=$(evo tools call "${KIND}_get" --arg cluster_id="$CLUSTER_ID" --json 2>/dev/null |
+              jq -r '(.status // .state // "?") | tostring | ascii_upcase') || st="?"
+            echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
+            case "$st" in
+              READY|RUNNING) break ;;
+              *FAIL*|*ERROR*|*DELET*) echo "::error::кластер $CLUSTER: $st"; exit 1 ;;
+            esac
+            [ $(( $(date +%s) - start )) -lt 4500 ] || { echo "::error::кластер $CLUSTER не готов за 75 мин"; exit 1; }
+            sleep 60
+          done
+
+      - name: kafka_get и превью удаления
+        run: |
+          evo tools call kafka_get --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/get.json" 2>/dev/null ||
+            { jq -c '{status, reason}' "$RUNNER_TEMP/get.json" 2>/dev/null || true; echo "::error::kafka_get"; exit 1; }
+          jq -c '{status, brokers, kafka_hosts: ((.kafka_hosts // []) | length)}' "$RUNNER_TEMP/get.json"
+          b=$(jq -r 'if (.brokers | type) == "number" then .brokers else empty end' "$RUNNER_TEMP/get.json")
+          if [ -z "$b" ]; then
+            echo "::warning::kafka_get: brokers — не число, число брокеров не сверено"
+          elif [ "$b" != 1 ]; then
+            echo "::error::kafka_get: брокеров $b, создавали 1"; exit 1
+          fi
+          evo --dry-run tools call kafka_delete --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/pv.json" 2>/dev/null ||
+            { jq -c '{status, reason}' "$RUNNER_TEMP/pv.json" 2>/dev/null || true; echo "::error::превью kafka_delete"; exit 1; }
+          jq -c '{status, tool_status: .preview.details.status, target_name: .preview.details.target.name, target_status: .preview.details.target.status}' "$RUNNER_TEMP/pv.json"
+          jq -e --arg n "$CLUSTER" '.preview.details.status == "confirmation_required" and .preview.details.target.name == $n' "$RUNNER_TEMP/pv.json" >/dev/null ||
+            { echo "::error::превью kafka_delete не называет кластер $CLUSTER"; exit 1; }
+
+      - name: Удаление кластера (всегда)
+        if: always()
+        run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
+
+  dbaas-redis:
+    if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
+    runs-on: ubuntu-latest
+    # Создание до 50 мин (живое — ~27, DB-12), удаление: отказы «ещё
+    # создаётся» до 120 мин и ожидание до 30.
+    timeout-minutes: 300
+    env:
+      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      KIND: redis
+      CLUSTER: evo-e2e-redis
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Проверка входов
+        run: |
+          printf '%s' "$ZONE" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
+            { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: Зона открыта, кластера evo-e2e-redis нет до прогона
+        run: |
+          z=$(evo tools call list_zones --json | jq -c --arg n "$ZONE" '[.zones[] | select(.name == $n)][0] // empty')
+          [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
+          [ "$(jq -r '.enabled' <<<"$z")" != false ] ||
+            { echo "::error::зона $ZONE закрыта (enabled=false): Cloud.ru в ней сейчас не создаёт и не удаляет ресурсы — запустите с другой зоной (вход zone)"; exit 1; }
+          echo "ZONE_ID=$(jq -r '.id' <<<"$z")" >> "$GITHUB_ENV"
+          n=$(evo tools call "${KIND}_list" --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
+          [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
+          echo "зона $ZONE открыта, кластера $CLUSTER нет"
+
+      # MASTER_REPLICA, 1 шард, replicas=2 — реплики без мастера, как в
+      # запросе API (реестр DB-11; 1 и 3 API отвергает); --region — основная
+      # подсеть и спецификации этой зоны, по умолчанию самая дешёвая.
+      - name: redis_create (MASTER_REPLICA, 1 шард)
+        run: |
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          set +e
+          evo --yes --region "$ZONE_ID" tools call redis_create --arg name="$CLUSTER" --arg type=MASTER_REPLICA \
+            --arg shards=1 --arg replicas=2 --json > "$RUNNER_TEMP/create.json" 2>/dev/null
+          rc=$?
+          set -e
+          id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json" 2>/dev/null || true)
+          op=$(jq -r '.operation_id // empty' "$RUNNER_TEMP/create.json" 2>/dev/null || true)
+          [ -z "$id" ] || echo "::add-mask::$id"
+          [ -z "$op" ] || echo "::add-mask::$op"
+          jq -c '{status, reason, cluster_id: ((.cluster_id // "") != ""), operation: ((.operation_id // "") != ""),
+            created: ((.created // {}) | {cpu, memory_gb, storage_gb, type, shards, replicas, hosts_per_shard, availability_zone})}' \
+            "$RUNNER_TEMP/create.json" || true
+          if [ "$rc" != 0 ]; then
+            echo "redis_create: $(jq -r '.error // empty' "$RUNNER_TEMP/create.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "::error::redis_create: код $rc"
+            exit 1
+          fi
+          az=$(jq -r '.created.availability_zone // empty' "$RUNNER_TEMP/create.json")
+          [ "$az" = "$ZONE" ] || echo "::warning::redis_create: зона кластера $az, а не $ZONE"
+          for _ in $(seq 1 10); do
+            [ -z "$id" ] || break
+            sleep 30
+            id=$(evo tools call redis_list --json | jq -r --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n) | .id][0] // empty')
+            [ -z "$id" ] || echo "::add-mask::$id"
+          done
+          [ -n "$id" ] || { echo "::error::кластер $CLUSTER не появился в redis_list за 5 мин"; exit 1; }
+          echo "CLUSTER_ID=$id" >> "$GITHUB_ENV"
+
+      # L-32 (как у PostgreSQL): без --yes, с теми же аргументами.
+      - name: Второй redis_create с тем же именем отклонён (L-32)
+        run: |
+          set +e
+          evo --region "$ZONE_ID" tools call redis_create --arg name="$CLUSTER" --arg type=MASTER_REPLICA \
+            --arg shards=1 --arg replicas=2 --json > "$RUNNER_TEMP/dup.json" 2>/dev/null
+          rc=$?
+          set -e
+          ex=$(jq -r '.existing_id // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null || true)
+          [ -z "$ex" ] || echo "::add-mask::$ex"
+          echo "повторный redis_create: код $rc, $(jq -c '{status, reason, existing_is_ours: (.existing_id == env.CLUSTER_ID)}' "$RUNNER_TEMP/dup.json" 2>/dev/null || echo '-')"
+          [ "$(jq -r '.reason // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null)" = USAGE ] && [ "$ex" = "$CLUSTER_ID" ] ||
+            { echo "::error::второй redis_create с именем $CLUSTER не отклонён как USAGE с ID нашего кластера (L-32)"; exit 1; }
+          n=$(evo tools call redis_list --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
+          echo "кластеров $CLUSTER в redis_list: $n"
+          [ "$n" = 1 ] || { echo "::error::кластеров $CLUSTER в redis_list: $n, ждали 1 (L-32)"; exit 1; }
+
+      - name: Кластер READY (до 50 мин)
+        run: |
+          start=$(date +%s)
+          while :; do
+            st=$(evo tools call "${KIND}_get" --arg cluster_id="$CLUSTER_ID" --json 2>/dev/null |
+              jq -r '(.status // .state // "?") | tostring | ascii_upcase') || st="?"
+            echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
+            case "$st" in
+              READY|RUNNING) break ;;
+              *FAIL*|*ERROR*|*DELET*) echo "::error::кластер $CLUSTER: $st"; exit 1 ;;
+            esac
+            [ $(( $(date +%s) - start )) -lt 3000 ] || { echo "::error::кластер $CLUSTER не готов за 50 мин"; exit 1; }
+            sleep 60
+          done
+
+      # replicas в GET — хосты шарда вместе с мастером (живое: 3 при
+      # replicas=2 в запросе, реестр DB-11): только печатается.
+      - name: redis_get и превью удаления
+        run: |
+          evo tools call redis_get --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/get.json" 2>/dev/null ||
+            { jq -c '{status, reason}' "$RUNNER_TEMP/get.json" 2>/dev/null || true; echo "::error::redis_get"; exit 1; }
+          jq -c '{status, type, shards, replicas, redis_hosts: ((.redis_hosts // []) | length)}' "$RUNNER_TEMP/get.json"
+          echo "replicas в redis_get: $(jq -r '.replicas // "-"' "$RUNNER_TEMP/get.json") (создан с replicas=2; GET считает хосты шарда с мастером — DB-11)"
+          [ "$(jq -r '.type // empty' "$RUNNER_TEMP/get.json")" = MASTER_REPLICA ] ||
+            { echo "::error::redis_get: type не MASTER_REPLICA"; exit 1; }
+          evo --dry-run tools call redis_delete --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/pv.json" 2>/dev/null ||
+            { jq -c '{status, reason}' "$RUNNER_TEMP/pv.json" 2>/dev/null || true; echo "::error::превью redis_delete"; exit 1; }
+          jq -c '{status, tool_status: .preview.details.status, target_name: .preview.details.target.name, target_status: .preview.details.target.status}' "$RUNNER_TEMP/pv.json"
+          jq -e --arg n "$CLUSTER" '.preview.details.status == "confirmation_required" and .preview.details.target.name == $n' "$RUNNER_TEMP/pv.json" >/dev/null ||
+            { echo "::error::превью redis_delete не называет кластер $CLUSTER"; exit 1; }
+
+      - name: Удаление кластера (всегда)
+        if: always()
+        run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"

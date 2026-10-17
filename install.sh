@@ -6,7 +6,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | sh
 #
 # Переменные окружения:
-#   CLOUDRU_VM_VERSION  тег релиза, например v1.0.0-rc.4 (по умолчанию —
+#   CLOUDRU_VM_VERSION  тег релиза, например v1.0.0 (по умолчанию —
 #                       последний стабильный; pre-release надо назвать явно)
 #   INSTALL_DIR         куда положить бинари (по умолчанию /usr/local/bin
 #                       для root, иначе ~/.local/bin)
@@ -75,7 +75,7 @@ latest_tag() {
 	tag=${url##*/}
 	case "$tag" in
 	v*) echo "$tag" ;;
-	*) die "стабильного релиза пока нет; задайте CLOUDRU_VM_VERSION, например v1.0.0-rc.4" ;;
+	*) die "стабильного релиза пока нет; задайте CLOUDRU_VM_VERSION, например v1.0.0" ;;
 	esac
 }
 

@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
@@ -92,6 +93,12 @@ func apiError(status int, body []byte) error {
 	msg := e.Message
 	if msg == "" {
 		msg = string(body)
+	}
+	if status == http.StatusNotFound {
+		// A VPC, route or operation that does not exist: NOT_FOUND (exit 4),
+		// not API_ERROR (release audit, L-15).
+		return clierrors.New(clierrors.CodeNotFound, fmt.Sprintf("vpc API %d: %s", status, msg),
+			"Check the id: vpc_list lists the VPCs, vpc_routes the routes of one.")
 	}
 	return fmt.Errorf("vpc API %d: %s", status, msg)
 }

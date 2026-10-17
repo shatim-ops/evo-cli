@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
@@ -80,10 +81,19 @@ func apiError(status int, body []byte) error {
 	return fmt.Errorf("billing API %d: %s", status, msg)
 }
 
+// ErrNoAgreement is the error of a billing call without an agreement id: a
+// configuration problem, not an API error — CONFIG_INVALID (exit 2) with the
+// variable to set; it was API_ERROR, exit 5 (release audit, L-06).
+func ErrNoAgreement() error {
+	return clierrors.New(clierrors.CodeConfigInvalid,
+		"agreement_id not configured (set CLOUDRU_AGREEMENT_ID)",
+		"Set CLOUDRU_AGREEMENT_ID to the billing agreement id in the environment of evo (or of the MCP server); see docs/auth.md.")
+}
+
 // Balance returns the raw agreement/balance object.
 func (c *Client) Balance(ctx context.Context) (map[string]any, error) {
 	if c.agreementID == "" {
-		return nil, fmt.Errorf("agreement_id not configured (set CLOUDRU_AGREEMENT_ID)")
+		return nil, ErrNoAgreement()
 	}
 	u := c.balanceBase + "/v1/agreement/" + url.PathEscape(c.agreementID)
 	data, status, err := c.get(ctx, u)
@@ -105,7 +115,7 @@ func (c *Client) Balance(ctx context.Context) (map[string]any, error) {
 // timestamps (e.g. 2026-07-01T00:00:00Z).
 func (c *Client) Consumption(ctx context.Context, startISO, endISO string) ([]map[string]any, error) {
 	if c.agreementID == "" {
-		return nil, fmt.Errorf("agreement_id not configured (set CLOUDRU_AGREEMENT_ID)")
+		return nil, ErrNoAgreement()
 	}
 	var all []map[string]any
 	pageToken := ""

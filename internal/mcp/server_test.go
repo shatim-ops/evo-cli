@@ -218,15 +218,17 @@ func TestMethodNotFound(t *testing.T) {
 	}
 }
 
-func TestUnknownToolIsToolError(t *testing.T) {
+// Релизный аудит, R-07: неизвестный инструмент — ошибка протокола -32602
+// (MCP 2025-06-18, Tools → Error Handling), а не результат с isError.
+func TestUnknownToolIsProtocolError(t *testing.T) {
 	s := newTestServer()
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"nope","arguments":{}}}`)
-	result, ok := resp["result"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected result (tool error), got %v", resp)
+	rpcErr, ok := resp["error"].(map[string]any)
+	if !ok || resp["result"] != nil {
+		t.Fatalf("expected a JSON-RPC error, got %v", resp)
 	}
-	if result["isError"] != true {
-		t.Errorf("unknown tool should set isError=true, got %v", result["isError"])
+	if rpcErr["code"].(float64) != codeInvalidParams || rpcErr["message"] != "Unknown tool: nope" {
+		t.Errorf("unknown tool: %v", rpcErr)
 	}
 }
 

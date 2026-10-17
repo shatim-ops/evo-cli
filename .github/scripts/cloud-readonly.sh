@@ -166,6 +166,31 @@ done
 echo "прошли $passed из $total"
 echo "| **инструменты только для чтения** | $passed / $total | |" >>"$summary"
 
+echo "== Превью удаления несуществующего ресурса"
+# Удаляющие инструменты без --yes (и никогда с ним: confirmed=true здесь не
+# передаётся) по случайному UUID: превью сначала ищет ресурс (GET, у SNAT —
+# список) и отказывает NOT_FOUND, код 4, до вопроса о подтверждении
+# (release audit, R-04). Код 3 (confirmation_required) — гейт спросил бы
+# согласие на удаление того, чего нет; код 0 — что-то «удалилось». NLB, VPC
+# и compute на отсутствующий id отвечают 404; 403 вместо 404 известен только
+# у Artifact Registry и Certificate Manager (реестр AR-2, CRT-2) — здесь он
+# лишь предупреждение (сервис может быть недоступен проекту).
+h=$(openssl rand -hex 16)
+nf="${h:0:8}-${h:8:4}-4${h:13:3}-8${h:17:3}-${h:20:12}"
+for t in lb_delete tg_delete vpc_delete snat_delete; do
+	run "$t" timeout 120 evo tools call "$t" --arg id="$nf" --json
+	case "$rc:${reason%%,*}" in
+	4:NOT_FOUND) ok "$t <нет такого> → NOT_FOUND" "код 4" ;;
+	0:* | 3:*) bad "$t <нет такого> → NOT_FOUND" "код $rc, reason $reason: превью не проверило, что ресурс есть" ;;
+	*:API_ERROR) if [[ $reason == *"HTTP 403"* ]]; then
+		warn "$t <нет такого> → NOT_FOUND" "код $rc, reason $reason"
+	else
+		bad "$t <нет такого> → NOT_FOUND" "код $rc, reason $reason"
+	fi ;;
+	*) bad "$t <нет такого> → NOT_FOUND" "код $rc, reason $reason" ;;
+	esac
+done
+
 echo "== MCP по stdio"
 init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"cloud-e2e","version":"1"}}}'
 ntools=$(evo tools list --json | j length)

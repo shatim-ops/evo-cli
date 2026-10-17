@@ -151,12 +151,21 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 				return ctx.Err()
 			}
 		}
-		if confirmed {
-			e.Printer.StepDone(i18n.T("VM deleted", "ВМ удалена"))
-		} else {
+		if !confirmed {
+			// Accepted but not confirmed: the VM may still exist, its FIP
+			// stays attached and its app may still serve. The record stays
+			// "destroying" with the FIP and the rules; nothing is released
+			// and destroy does not answer "destroyed" — a re-run finishes
+			// once the VM is gone (release audit, A-005, L-11).
 			e.Printer.StepDone(i18n.Tf("VM deletion requested (not confirmed within %s)",
 				"Удаление ВМ запрошено (подтверждения за %s не было)", t.DestroyPollTimeout))
+			stateFile.UpsertDeployment(*active)
+			if err := state.Write(statePath, stateFile); err != nil {
+				return err
+			}
+			return deletionUnconfirmed(active.VMID, t.DestroyPollTimeout)
 		}
+		e.Printer.StepDone(i18n.T("VM deleted", "ВМ удалена"))
 	}
 
 	// The VM is gone but its floating IP is billed until released. On failure
@@ -192,6 +201,23 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 	e.Printer.Success(i18n.T("Deployment destroyed successfully.", "Развёртывание удалено."))
 	return nil
+}
+
+// ErrDeletionUnconfirmed is the cause of the error destroy returns when
+// Cloud.ru accepted the delete but the VM was still there after the wait:
+// the MCP tool answers it as partial.
+var ErrDeletionUnconfirmed = stderrors.New("VM deletion not confirmed")
+
+// deletionUnconfirmed is that error: API_ERROR (exit 5) — the outcome is
+// Cloud.ru's, as for a VM that "cannot be deleted in its current state"
+// above; the record is kept and a re-run finishes.
+func deletionUnconfirmed(vmID string, waited time.Duration) error {
+	return clerrors.Wrap(clerrors.CodeAPIError,
+		i18n.Tf("Cloud.ru accepted the deletion of VM %s, but the VM is still there after %s; its floating IP and port rules are kept, and the deployment record stays (destroying)",
+			"Cloud.ru принял удаление ВМ %s, но через %s она всё ещё есть; её floating IP и правила портов оставлены, запись о развёртывании сохранена (destroying)", vmID, waited),
+		i18n.Tf("While the VM exists, it and its floating IP are billed. Check it with 'evo vm get %s' and re-run 'evo destroy': once the VM is gone it releases the floating IP and closes the ports.",
+			"Пока ВМ существует, она и её floating IP оплачиваются. Проверьте её: 'evo vm get %s' — и повторите 'evo destroy': когда ВМ не станет, он освободит floating IP и закроет порты.", vmID),
+		ErrDeletionUnconfirmed)
 }
 
 func noDeploymentToDestroy() string {

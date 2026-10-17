@@ -123,25 +123,8 @@ jobs:
       - name: smoke-тест по HTTP
         run: |
           docker run -d --name mcp -e MCP_BEARER_TOKEN=ci-token-0123456789 -p 8080:8080 evo:ci
-          for _ in $(seq 1 30); do curl -sf localhost:8080/healthz >/dev/null && break; sleep 1; done
-          curl -sf localhost:8080/healthz
-
-          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/mcp)
-          echo "без токена: $code"; [ "$code" = 401 ]
-
-          auth='Authorization: Bearer ci-token-0123456789'
-          v=$(curl -sf -H "$auth" -H 'Content-Type: application/json' \
-            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
-            localhost:8080/mcp | jq -r '[.result.protocolVersion, .result.serverInfo.name] | join(" ")')
-          echo "protocolVersion, serverInfo.name: $v"; [ "$v" = "2025-06-18 evo" ]
-
-          n=$(curl -sf -H "$auth" -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' localhost:8080/mcp | jq '.result.tools | length')
-          echo "tools/list: $n"; [ "$n" -gt 0 ]
-
-          # kubectl в образе нет: инструмент отвечает понятной ошибкой.
-          curl -sf -H "$auth" -H 'Content-Type: application/json' \
-            -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"k8s_kubectl","arguments":{"cluster_id":"x","args":"get pods"}}}' \
-            localhost:8080/mcp | jq -e '.result.isError and (.result.content[0].text | contains("not available in this mode"))'
+          # Тот же скрипт вызывает release.yml (релизный аудит, R-01).
+          .github/scripts/mcp-smoke.sh http://localhost:8080 ci-token-0123456789
 
           # HEALTHCHECK образа — тем же бинарём, без shell и curl.
           docker exec mcp /usr/local/bin/evo mcp healthcheck

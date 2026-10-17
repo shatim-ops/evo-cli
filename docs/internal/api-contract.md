@@ -646,6 +646,17 @@ snake_case, то есть Cloud.ru сами выбирают имена на у�
 
 ### Как запускать
 
+Локально скрипту нужен PyYAML (`python3 -m pip install pyyaml`; без него
+`scripts/api-contract-check.py` выходит с кодом 2 и сообщением «PyYAML is
+required»), CI ставит его сам:
+
+```sh
+python3 -m pip install pyyaml
+python3 scripts/api-contract-check.py --code-only      # опись против кода, без сети
+python3 scripts/cloudru-specs.py .cache/cloudru-specs  # скачать спецификации
+python3 scripts/api-contract-check.py --specs .cache/cloudru-specs
+```
+
 Workflow `api-contract.yml`:
 
 - `schedule: cron "0 6 * * 1"` (раз в неделю) + `workflow_dispatch` + на PR,

@@ -16,7 +16,9 @@ import (
 
 // Addons of Managed Kubernetes: k8s_addons (the catalogue), k8s_addon_versions
 // (the releases of one addon) and k8s_add_addon (install one into a
-// cluster). The catalogue is read-only and public; installing was
+// cluster). The catalogue is read-only, but the API reads it per project
+// (projectId is required: without a project these tools answer
+// CONFIG_INVALID before any request); installing was
 // live-verified with cert-manager (docs/internal/standalone/BACKLOG.md
 // [k8s-addons]).
 

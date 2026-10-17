@@ -45,6 +45,10 @@ var kubectlHTTPDeniedFlags = map[string]bool{
 	// create secret tls --cert/--key read a PEM pair from the host;
 	// debug --custom reads a container spec from a host file.
 	"cert": true, "key": true, "ca-cert": true, "custom": true,
+	// --kuberc reads a preferences file of the host: its errors tell
+	// whether a path exists, and its aliases and flag defaults would act
+	// on the call after this check (release audit, R-05).
+	"kuberc": true,
 }
 
 // kubectlHTTPVerbosityFlags raise client-go's log level: from -v=6 kubectl

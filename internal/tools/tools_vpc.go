@@ -9,7 +9,7 @@ import (
 
 // vpcClient builds an authenticated VPC client (standalone → newEngine token is enough).
 func (s *Registry) vpcClient(ctx context.Context) (*vpc.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -42,6 +42,9 @@ func (s *Registry) handleVpcGet(ctx context.Context, args map[string]any) (strin
 	id := stringArg(args, "id")
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from vpc_list)")), true
+	}
+	if res := uuidArg("id", id, "vpc_list"); res != "" {
+		return res, true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
@@ -87,12 +90,13 @@ func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (st
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from vpc_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first. Call again with confirmed=true.", id)}), true
-	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first. Call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) })
 	}
 	op, err := cli.DeleteVPC(ctx, id)
 	if err != nil {
@@ -136,6 +140,9 @@ func (s *Registry) handleVpcRoutes(ctx context.Context, args map[string]any) (st
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID == "" {
 		return usageResult(fmt.Errorf("'vpc_id' is required (from vpc_list)")), true
+	}
+	if res := uuidArg("vpc_id", vpcID, "vpc_list"); res != "" {
+		return res, true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {

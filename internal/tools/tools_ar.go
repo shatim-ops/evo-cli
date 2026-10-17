@@ -10,7 +10,7 @@ import (
 
 // arClient builds an authenticated Artifact Registry client.
 func (s *Registry) arClient(ctx context.Context) (*artifact.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +76,14 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(err), true
 	}
+	// A taken name made a second registry, rc 0 (release audit, L-18).
+	existing, err := cli.ListRegistries(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf("check the name is free: list registries: %w", err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult("ar_create", "registry", name, id, st, "ar_list")
+	}
 	body := map[string]any{
 		"projectId":    cli.ProjectID(),
 		"name":         name,
@@ -100,12 +108,13 @@ func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from ar_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("ar_delete PERMANENTLY deletes registry %s and its artifacts. Call again with confirmed=true.", id)}), true
-	}
 	cli, err := s.arClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("ar_delete PERMANENTLY deletes registry %s and its artifacts. Call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetRegistry(ctx, id) })
 	}
 	op, err := cli.DeleteRegistry(ctx, id)
 	if err != nil {

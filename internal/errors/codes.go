@@ -19,6 +19,9 @@ const (
 	CodeStateCorrupted    = "STATE_CORRUPTED"
 	CodeStateLocked       = "STATE_LOCKED" // another deploy/destroy holds the state lock; exit 1
 	CodeUnhealthy         = "UNHEALTHY"    // verify: a service did not answer; exit 1
+	// CodeServerBusy: evo mcp --http refused a tool call over its own limit
+	// of concurrent calls; Cloud.ru was not asked (release audit, L-03).
+	CodeServerBusy = "SERVER_BUSY" // exit 1
 
 	CodeConfirmationRequired = "CONFIRMATION_REQUIRED"
 	CodeUsage                = "USAGE"     // unknown command or flag, bad arguments
@@ -40,7 +43,7 @@ var knownCodes = map[string]bool{
 	CodeComposeInvalid: true, CodeComposeNotFound: true,
 	CodeConfigInvalid: true, CodeStateCorrupted: true, CodeStateLocked: true,
 	CodeUnhealthy: true, CodeConfirmationRequired: true, CodeUsage: true,
-	CodeNotFound: true,
+	CodeNotFound: true, CodeServerBusy: true,
 }
 
 // IsCode reports whether s is one of the codes above ("API_UNREACHABLE").

@@ -48,7 +48,6 @@ func TestToolError_SameAfterReasonContract(t *testing.T) {
 		stderrors.New("USAGE: vm_get requires vm_id or name"),
 		stderrors.New("disk abc not found"),
 		stderrors.New("HTTP: 502"),
-		stderrors.New("'disk_id' is required"),
 		stderrors.New("API_ERROR: quota exceeded"),
 	}
 	for _, lang := range []string{"ru", "en"} {
@@ -64,6 +63,28 @@ func TestToolError_SameAfterReasonContract(t *testing.T) {
 				t.Errorf("%s %v:\n before %+v exit %d\n after  %+v exit %d", lang, err,
 					*b, clerrors.ExitCode(before), *a, clerrors.ExitCode(after))
 			}
+		}
+	}
+}
+
+// Релизный аудит, A-003: ошибка без кода, которая не пришла из API (нет
+// HTTP-статуса, не сеть), — USAGE и код 1, а не API_ERROR и 5; ответ API
+// без кода — по статусу.
+func TestToolError_UncodedLocalErrorIsUsage(t *testing.T) {
+	for _, tt := range []struct {
+		err  error
+		code string
+		exit int
+	}{
+		{stderrors.New("'disk_id' is required"), clerrors.CodeUsage, clerrors.ExitGeneral},
+		{stderrors.New(`invalid job_id "../../etc/passwd" (want stk-<10 hex digits>, as stack_plan returns)`), clerrors.CodeUsage, clerrors.ExitGeneral},
+		{stderrors.New("vpc API 422: bad cidr"), clerrors.CodeAPIError, clerrors.ExitAPI},
+		{stderrors.New("dns API 404: zone"), clerrors.CodeNotFound, clerrors.ExitNotFound},
+	} {
+		err := toolError("x", tools.ErrResult(tt.err))
+		var ce *clerrors.CLIError
+		if !stderrors.As(err, &ce) || ce.Code != tt.code || clerrors.ExitCode(err) != tt.exit {
+			t.Errorf("%v: %v exit %d, want %s exit %d", tt.err, err, clerrors.ExitCode(err), tt.code, tt.exit)
 		}
 	}
 }

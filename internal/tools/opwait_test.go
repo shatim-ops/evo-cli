@@ -82,3 +82,19 @@ func TestWaitForOpJSON_ZeroWaitSingleFetch(t *testing.T) {
 		t.Errorf("zero wait must fetch exactly once, got %d", calls)
 	}
 }
+
+// Повторная приемка #90, N-08: ожидание истекло, операция не завершена —
+// ответ говорит «еще идет», а не только done=false.
+func TestWaitForOpJSON_DeadlineMarksStillRunning(t *testing.T) {
+	defer func(d time.Duration) { opWaitFirstDelay = d }(opWaitFirstDelay)
+	opWaitFirstDelay = 50 * time.Millisecond
+	m, err := waitForOpJSON(context.Background(), 1, func(ctx context.Context) (map[string]any, error) {
+		return map[string]any{"done": false}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m["still_running"] != true || m["done"] != false {
+		t.Errorf("deadline answer = %v, want done=false and still_running=true", m)
+	}
+}

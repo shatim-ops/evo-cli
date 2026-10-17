@@ -11,12 +11,13 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/mk8s"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // k8sClient builds an authenticated mk8s client and returns it together with
 // the service-account id (from the IAM token's `sub` claim) used as clusterSaId.
 func (s *Registry) k8sClient(ctx context.Context) (*mk8s.Client, string, string, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -116,7 +117,8 @@ func (s *Registry) handleK8sOptions(ctx context.Context, args map[string]any) (s
 	}), false
 }
 
-// resolveK8sPlan resolves the create parameters (version, flavor, subnet, SA).
+// resolveK8sPlan resolves the create parameters (version, flavor, zone,
+// subnet, SA) and returns them with the zone name.
 func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (mk8s.CreateClusterReq, string, []string, error) {
 	var warnings []string
 	cli, pid, saID, err := s.k8sClient(ctx)
@@ -176,46 +178,22 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (mk8
 	}
 	_ = bestName
 
-	// Master count: 1, 3 or 5.
+	// Master count: 1, 3 or 5 (checked by k8sArgsError before the gate).
 	masterCount := intArg(args, "master_count", 1)
-	if masterCount != 1 && masterCount != 3 && masterCount != 5 {
-		masterCount = 1
-		warnings = append(warnings, "master_count must be 1, 3 or 5 — defaulted to 1")
-	}
 
-	// Subnet for the control-plane private VIP: explicit, else resolve a
-	// zone-matched subnet from the compute API.
-	subnetID := stringArg(args, "subnet_id")
-	zoneName := firstNonEmptyStr(stringArg(args, "zone"), pc.DefaultZone)
-	if subnetID == "" {
-		eng, e := s.authedEngine(ctx, nil)
-		if e != nil {
-			return mk8s.CreateClusterReq{}, "", nil, e
-		}
-		// find zone uuid
-		zoneID := ""
-		if zs, ze := eng.Cloud.ListAvailabilityZones(ctx); ze == nil {
-			for _, z := range zs {
-				if z.Name == zoneName {
-					zoneID = z.ID
-					break
-				}
-			}
-		}
-		if subs, se := eng.Cloud.ListSubnets(ctx, pid); se == nil {
-			for _, sn := range subs {
-				if sn.AvailabilityZoneID == zoneID {
-					subnetID = sn.ID
-					break
-				}
-			}
-			if subnetID == "" && len(subs) > 0 {
-				subnetID = subs[0].ID
-			}
-		}
+	// Zone: the argument, else the zone of subnet_id, else the default of
+	// productConfiguration.
+	zoneArg := stringArg(args, "zone")
+	if zoneArg == "" && stringArg(args, "subnet_id") != "" {
+		zoneArg = s.subnetZoneID(ctx, pid, stringArg(args, "subnet_id"))
 	}
-	if subnetID == "" {
-		return mk8s.CreateClusterReq{}, "", nil, fmt.Errorf("no subnet found for the control-plane VIP; pass subnet_id")
+	zone, err := s.k8sZone(ctx, pc, zoneArg)
+	if err != nil {
+		return mk8s.CreateClusterReq{}, "", nil, err
+	}
+	subnetID, err := s.k8sVIPSubnet(ctx, pid, stringArg(args, "subnet_id"), zone)
+	if err != nil {
+		return mk8s.CreateClusterReq{}, "", nil, err
 	}
 
 	// Cluster service account: explicit, else the agent's own (token sub).
@@ -240,21 +218,29 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (mk8
 		ControlPlaneConfiguration: mk8s.ControlPlaneConfiguration{
 			Version:             version,
 			SizingConfiguration: mk8s.SizingConfiguration{MasterCount: masterCount, FlavorID: flavorID},
+			// Without zones the API puts the masters in its default zone
+			// (ru.AZ-2), away from the VIP subnet of another zone: the
+			// cluster's nodes stay NotReady (release audit, L-08).
+			Zones: []string{zone.mk8sID},
 		},
 		NetworkConfiguration:  mk8s.NetworkConfiguration{PrivateVipSubnetID: subnetID, KubeApiInternet: kubeApiInternet},
 		IdentityConfiguration: mk8s.IdentityConfiguration{ClusterSaID: clusterSaID},
 	}
-	return req, flavorName, warnings, nil
+	return req, zone.name, warnings, nil
 }
 
 // handleK8sPlan resolves and shows the cluster config without creating it.
 func (s *Registry) handleK8sPlan(ctx context.Context, args map[string]any) (string, bool) {
-	req, _, warnings, err := s.resolveK8sPlan(ctx, args)
+	if err := k8sArgsError(args); err != nil {
+		return errResult(err), true
+	}
+	req, zoneName, warnings, err := s.resolveK8sPlan(ctx, args)
 	if err != nil {
 		return errResult(err), true
 	}
 	return toJSON(map[string]any{
 		"name":              req.Name,
+		"zone":              zoneName,
 		"version":           req.ControlPlaneConfiguration.Version,
 		"master_count":      req.ControlPlaneConfiguration.SizingConfiguration.MasterCount,
 		"flavor_id":         req.ControlPlaneConfiguration.SizingConfiguration.FlavorID,
@@ -268,6 +254,9 @@ func (s *Registry) handleK8sPlan(ctx context.Context, args map[string]any) (stri
 
 // handleK8sCreate creates a cluster (gated on confirmation). Async.
 func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (string, bool) {
+	if err := k8sArgsError(args); err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
@@ -357,15 +346,13 @@ func (s *Registry) handleK8sDelete(ctx context.Context, args map[string]any) (st
 	if id == "" {
 		return usageResult(fmt.Errorf("cluster_id is required")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("k8s_delete permanently deletes cluster %s. Call again with confirmed=true after the user approves.", id),
-		}), true
-	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("k8s_delete permanently deletes cluster %s. Call again with confirmed=true after the user approves.",
+			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {
@@ -429,7 +416,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
 			"message": "k8s_add_nodepool creates billable worker nodes. Call again with confirmed=true after the user approves.",
-			"preview": k8sPreview(engine.ResourceK8sNodePool, stringArg(args, "name"), args),
+			"preview": k8sPreview(engine.ResourceK8sNodePool, nodePoolName(args), args),
 		}), true
 	}
 
@@ -469,58 +456,59 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		return errResult(fmt.Errorf("no matching node flavor (cpu>=%d ram>=%d); see k8s_options", cpu, ram)), true
 	}
 
-	// Nodes subnet + security group: explicit, else zone-matched from compute.
-	nodesSubnetID := stringArg(args, "nodes_subnet_id")
+	// Nodes subnet + security group: explicit, else from the cluster's zone.
+	// The zone was the product's default zone and the subnet fell back to
+	// the project's first subnet of any zone — the class of L-08 for worker
+	// nodes (release audit, L-08 follow-up).
+	zoneRef := stringArg(args, "zone")
+	if zoneRef == "" {
+		// Not the product's default zone when the cluster's is unreadable:
+		// that is how the pool would land away from the control plane.
+		zid, zerr := clusterZoneID(ctx, cli, clusterID)
+		if zerr != nil {
+			return errResult(fmt.Errorf("read the zone of cluster %s: %w (or pass zone)", clusterID, zerr)), true
+		}
+		if zid == "" {
+			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("cluster %s does not report its zone (controlPlane.zones is empty)", clusterID),
+				"Pass zone: the availability zone of the cluster's control plane (k8s_get).")), true
+		}
+		zoneRef = zid
+	}
+	zone, err := s.k8sZone(ctx, pc, zoneRef)
+	if err != nil {
+		return errResult(err), true
+	}
+	nodesSubnetID, err := s.k8sNodesSubnet(ctx, pid, stringArg(args, "nodes_subnet_id"), zone)
+	if err != nil {
+		return errResult(err), true
+	}
 	sgID := stringArg(args, "security_group_id")
-	zoneName := firstNonEmptyStr(stringArg(args, "zone"), pc.DefaultZone)
-	if nodesSubnetID == "" || sgID == "" {
+	if sgID == "" {
 		eng, e := s.authedEngine(ctx, nil)
 		if e != nil {
 			return errResult(e), true
 		}
-		zoneID := ""
-		if zs, ze := eng.Cloud.ListAvailabilityZones(ctx); ze == nil {
-			for _, z := range zs {
-				if z.Name == zoneName {
-					zoneID = z.ID
-					break
-				}
-			}
+		// No group found (or the list failed) sent the pool without
+		// securityGroupId — the spec takes that — while the description
+		// promises a zone-matched SSH-access group; provision refuses the
+		// same case (final audit, stage 2).
+		sgs, se := eng.Cloud.ListSecurityGroups(ctx, pid)
+		if se != nil {
+			return errResult(fmt.Errorf("list security groups: %w (or pass security_group_id)", se)), true
 		}
-		if nodesSubnetID == "" {
-			if subs, se := eng.Cloud.ListSubnets(ctx, pid); se == nil {
-				for _, sn := range subs {
-					if sn.AvailabilityZoneID == zoneID {
-						nodesSubnetID = sn.ID
-						break
-					}
-				}
-				if nodesSubnetID == "" && len(subs) > 0 {
-					nodesSubnetID = subs[0].ID
-				}
-			}
+		i := provision.PickSecurityGroup(sgs, zone.computeID, zone.name)
+		if i < 0 {
+			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("no security group of the project in zone %s for the node pool; nothing was created", zone.name),
+				"Pass security_group_id (list_security_groups), or create a group in this zone in the Cloud.ru console.")), true
 		}
-		if sgID == "" {
-			if sgs, se := eng.Cloud.ListSecurityGroups(ctx, pid); se == nil {
-				for _, g := range sgs {
-					if zoneName != "" && strings.Contains(g.Name, zoneName) {
-						sgID = g.ID
-						break
-					}
-				}
-			}
-		}
-	}
-	if nodesSubnetID == "" {
-		return errResult(fmt.Errorf("no nodes subnet found; pass nodes_subnet_id")), true
+		sgID = sgs[i].ID
 	}
 
 	count := intArg(args, "count", 2)
 	diskSize := intArg(args, "disk_gb", 20)
-	name := stringArg(args, "name")
-	if name == "" {
-		name = "nodepool-1"
-	}
+	name := nodePoolName(args)
 
 	req := mk8s.CreateNodePoolReq{
 		ClusterID:            clusterID,
@@ -539,6 +527,207 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		"operation_id": op.ID, "count": count, "flavor_id": flavorID,
 		"note": "Node pool is provisioning (async). Poll k8s_nodepools. NB: if Cloud.ru returns 503 'no healthy upstream' it's a transient backend outage — retry.",
 	}), false
+}
+
+// nodePoolName is the node pool's name: the argument, else nodepool-1.
+// The preview shows the same default the create uses; it showed an empty
+// name (release audit, L-10).
+func nodePoolName(args map[string]any) string {
+	return firstNonEmptyStr(stringArg(args, "name"), "nodepool-1")
+}
+
+// k8sArgsError checks the arguments of k8s_plan and k8s_create that need
+// no API, before the confirmation gate. master_count=2 used to become 1
+// with only a warning (release audit, L-27).
+func k8sArgsError(args map[string]any) error {
+	if _, ok := args["master_count"]; ok {
+		switch n := intArg(args, "master_count", 0); n {
+		case 1, 3, 5:
+		default:
+			return clierrors.New(clierrors.CodeUsage,
+				fmt.Sprintf("master_count must be 1, 3 or 5, got %v", args["master_count"]),
+				"1 — a zonal control plane; 3 or 5 — a highly available one.")
+		}
+	}
+	return nil
+}
+
+// k8sZoneRef is the zone of a new cluster: its name, the zone ID of the
+// compute API (subnets carry it) and the ID mk8s takes in zones.
+type k8sZoneRef struct {
+	name, computeID, mk8sID string
+}
+
+// k8sZone resolves the cluster's zone: the 'zone' argument (name or UUID),
+// else the default zone of productConfiguration. A zone neither the compute
+// API nor mk8s knows, or one mk8s does not offer, is USAGE (release audit,
+// L-08).
+func (s *Registry) k8sZone(ctx context.Context, pc *mk8s.ProductConfig, ref string) (k8sZoneRef, error) {
+	ref = firstNonEmptyStr(ref, pc.DefaultZone)
+	if ref == "" {
+		return k8sZoneRef{}, clierrors.New(clierrors.CodeUsage, "zone is required: productConfiguration names no default zone",
+			"Pass zone, e.g. ru.AZ-2 (k8s_options lists the zones).")
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return k8sZoneRef{}, err
+	}
+	czones, err := eng.Cloud.ListAvailabilityZones(ctx)
+	if err != nil {
+		return k8sZoneRef{}, fmt.Errorf("list availability zones: %w", err)
+	}
+	var z k8sZoneRef
+	for _, cz := range czones {
+		if cz.ID == ref || strings.EqualFold(cz.Name, ref) {
+			z.name, z.computeID = cz.Name, cz.ID
+			break
+		}
+	}
+	offered := make([]string, 0, len(pc.Zones))
+	for _, mz := range pc.Zones {
+		offered = append(offered, mz.Name)
+		if mz.ZoneID == ref || (mz.Name != "" && strings.EqualFold(mz.Name, firstNonEmptyStr(z.name, ref))) {
+			z.mk8sID = mz.ZoneID
+			z.name = firstNonEmptyStr(z.name, mz.Name)
+		}
+	}
+	// ref may be an mk8s zone ID (controlPlane.zones of a cluster): the
+	// compute zone is then found by the name mk8s gives it.
+	if z.computeID == "" && z.name != "" {
+		for _, cz := range czones {
+			if strings.EqualFold(cz.Name, z.name) {
+				z.computeID = cz.ID
+				break
+			}
+		}
+	}
+	hint := "k8s_options lists the zones of Managed Kubernetes."
+	if len(offered) > 0 {
+		hint = "Zones of Managed Kubernetes: " + strings.Join(offered, ", ") + " (k8s_options)."
+	}
+	switch {
+	case z.computeID == "" && z.mk8sID == "":
+		return k8sZoneRef{}, clierrors.New(clierrors.CodeUsage, fmt.Sprintf("availability zone %q not found", ref), hint)
+	case z.mk8sID == "" && len(pc.Zones) > 0:
+		return k8sZoneRef{}, clierrors.New(clierrors.CodeUsage,
+			fmt.Sprintf("zone %s is not offered for Managed Kubernetes", z.name), hint)
+	case z.mk8sID == "":
+		// The product lists no zones: the compute ID is sent as is. A wrong
+		// one is a 400 before anything is created, while no zones at all
+		// puts the masters in the API's default zone (L-08).
+		z.mk8sID = z.computeID
+	case z.computeID == "":
+		z.computeID = z.mk8sID
+	}
+	return z, nil
+}
+
+// subnetZoneID is the zone UUID of a project subnet, "" when unknown.
+func (s *Registry) subnetZoneID(ctx context.Context, pid, subnetID string) string {
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return ""
+	}
+	subs, err := eng.Cloud.ListSubnets(ctx, pid)
+	if err != nil {
+		return ""
+	}
+	for _, sn := range subs {
+		if sn.ID == subnetID {
+			return sn.AvailabilityZoneID
+		}
+	}
+	return ""
+}
+
+// k8sVIPSubnet is the subnet of the control-plane private VIP: subnet_id
+// as given, else the zone's main subnet (provision.PickSubnet, as deploy).
+// A subnet of another zone is CONFIG_INVALID: the masters went to one zone
+// and the VIP to another, and the cluster's nodes stayed NotReady; the
+// lookup used to fall back to the project's first subnet of any zone
+// (release audit, L-08).
+func (s *Registry) k8sVIPSubnet(ctx context.Context, pid, subnetID string, zone k8sZoneRef) (string, error) {
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	subs, err := eng.Cloud.ListSubnets(ctx, pid)
+	if err != nil {
+		return "", fmt.Errorf("list subnets: %w", err)
+	}
+	if subnetID != "" {
+		for _, sn := range subs {
+			if sn.ID != subnetID {
+				continue
+			}
+			if !provision.SubnetInZone(sn, zone.computeID, zone.name) {
+				return "", clierrors.New(clierrors.CodeConfigInvalid,
+					fmt.Sprintf("subnet %s is not in zone %s, where the control plane goes; nothing was created", subnetID, zone.name),
+					"Pass a subnet of that zone (vpc_subnets), or pass zone = the subnet's zone.")
+			}
+			return subnetID, nil
+		}
+		return "", clierrors.New(clierrors.CodeConfigInvalid, fmt.Sprintf("subnet %s is not in the project", subnetID),
+			"Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.")
+	}
+	if i := provision.PickSubnet(subs, zone.computeID, zone.name); i >= 0 {
+		return subs[i].ID, nil
+	}
+	return "", clierrors.New(clierrors.CodeConfigInvalid,
+		fmt.Sprintf("no subnet in zone %s for the control-plane VIP; nothing was created", zone.name),
+		"Create a subnet in that zone, pass subnet_id of one, or pick another zone (k8s_options).")
+}
+
+// clusterZoneID is the zone ID of the cluster's control plane
+// (controlPlane.zones[0] of GET /v3/clusters/{id}), "" when the cluster
+// does not list one.
+func clusterZoneID(ctx context.Context, cli *mk8s.Client, clusterID string) (string, error) {
+	m, err := cli.GetCluster(ctx, clusterID)
+	if err != nil {
+		return "", err
+	}
+	cp, _ := m["controlPlane"].(map[string]any)
+	zones, _ := cp["zones"].([]any)
+	if len(zones) == 0 {
+		return "", nil
+	}
+	z, _ := zones[0].(string)
+	return z, nil
+}
+
+// k8sNodesSubnet is the subnet of a node pool: nodes_subnet_id as given
+// (refused when it is in another zone than the pool's), else the zone's
+// main subnet; no subnet in the zone is CONFIG_INVALID instead of the
+// project's first subnet of any zone.
+func (s *Registry) k8sNodesSubnet(ctx context.Context, pid, subnetID string, zone k8sZoneRef) (string, error) {
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	subs, err := eng.Cloud.ListSubnets(ctx, pid)
+	if err != nil {
+		return "", fmt.Errorf("list subnets: %w", err)
+	}
+	if subnetID != "" {
+		for _, sn := range subs {
+			if sn.ID == subnetID {
+				if !provision.SubnetInZone(sn, zone.computeID, zone.name) {
+					return "", clierrors.New(clierrors.CodeConfigInvalid,
+						fmt.Sprintf("subnet %s is not in zone %s of the node pool; nothing was created", subnetID, zone.name),
+						"Pass a subnet of that zone (vpc_subnets), or pass zone = the subnet's zone.")
+				}
+				return subnetID, nil
+			}
+		}
+		return "", clierrors.New(clierrors.CodeConfigInvalid, fmt.Sprintf("subnet %s is not in the project", subnetID),
+			"Take a subnet ID from vpc_subnets, or omit nodes_subnet_id: the zone's main subnet is taken.")
+	}
+	if i := provision.PickSubnet(subs, zone.computeID, zone.name); i >= 0 {
+		return subs[i].ID, nil
+	}
+	return "", clierrors.New(clierrors.CodeConfigInvalid,
+		fmt.Sprintf("no subnet in zone %s for the node pool; nothing was created", zone.name),
+		"Create a subnet in that zone or pass nodes_subnet_id of one.")
 }
 
 func firstNonEmptyStr(vals ...string) string {

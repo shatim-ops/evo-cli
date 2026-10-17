@@ -13,6 +13,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -31,6 +32,12 @@ func (c *sgCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, er
 	return []*provision.VM{c.vm}, nil
 }
 func (*sgCloud) DeleteVMInProject(context.Context, string, string) error { return nil }
+
+// GetVM: the deleted VM is gone at once (destroy waits for that before it
+// closes the ports).
+func (*sgCloud) GetVM(context.Context, string) (*provision.VM, error) {
+	return nil, clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
+}
 func (*sgCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
 	return []*provision.SecurityGroup{{ID: "sg-1", Name: "SSH-access_ru.AZ-1"}}, nil
 }
@@ -199,4 +206,36 @@ func TestDestroyTargeted_StateNotWritable_Warns(t *testing.T) {
 // PriceCalculation: у подделки нет API цены — превью берёт оценку по карте.
 func (*sgCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
 	return nil, errNoPriceAPI
+}
+
+// Релизный аудит L-25: протокол вне tcp/udp отклоняется схемой, а открытый
+// tcp-порт не считается открытым для udp.
+type openPortsCloud struct {
+	sgCloud
+	added []provision.SGRule
+}
+
+func (c *openPortsCloud) AddSecurityGroupRule(_ context.Context, _, _ string, r provision.SGRule) (*provision.SGRule, error) {
+	c.added = append(c.added, r)
+	return &provision.SGRule{ID: "r-new"}, nil
+}
+
+func TestOpenPorts_ProtocolEnumAndPerProtocolSkip(t *testing.T) {
+	cloud := &openPortsCloud{sgCloud: sgCloud{rules: []*provision.SGRule{{ID: "r-80", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80"}}}}
+	reg := New(func(map[string]any) (*engine.Engine, error) {
+		return &engine.Engine{
+			Config: config.Config{ProjectID: "00000000-0000-0000-0000-000000000001"},
+			Auth:   staticToken{}, Cloud: cloud,
+			Printer:  output.NewWithWriter(&bytes.Buffer{}, output.ModeText, false),
+			StateDir: t.TempDir(),
+		}, nil
+	})
+	text, isErr := reg.handlers["open_ports"](context.Background(), map[string]any{"security_group": "sg-1", "ports": []any{float64(80)}, "protocol": "icmpx", "confirmed": true})
+	if !isErr || !strings.Contains(text, "USAGE") {
+		t.Fatalf("protocol icmpx accepted: %s", text)
+	}
+	text, isErr = reg.handlers["open_ports"](context.Background(), map[string]any{"security_group": "sg-1", "ports": []any{float64(80)}, "protocol": "udp", "confirmed": true})
+	if isErr || len(cloud.added) != 1 || cloud.added[0].IPProtocol != "udp" {
+		t.Fatalf("udp 80 with tcp 80 open: added %+v, answer %s", cloud.added, text)
+	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	clog "github.com/shatim-ops/evo-cli/internal/log"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
+	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
 // envBearerToken holds the token clients must present in HTTP mode. It is
@@ -219,6 +220,12 @@ func mcpEngineFactory(allowProjects []string) func(map[string]any) (*engine.Engi
 		if err != nil {
 			return nil, err
 		}
+		// stdout is the JSON-RPC channel in stdio mode: the engine's
+		// progress lines (a released floating IP, a FIP attached after
+		// boot) go to stderr, the server log, unless a tool captures them
+		// in its own buffer (deploy, logs, destroy). They went to stdout
+		// from destroy vm_id= and provision (final audit, stage 1).
+		eng.Printer = output.NewWithWriter(os.Stderr, output.ModeText, false)
 		if err := checkAllowedProject(allowProjects, eng.Config.ProjectID); err != nil {
 			return nil, err
 		}

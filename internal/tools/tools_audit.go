@@ -9,7 +9,7 @@ import (
 
 // auditClient builds an authenticated Audit Logging client.
 func (s *Registry) auditClient(ctx context.Context) (*audit.Client, error) {
-	eng, err := s.newEngine(nil)
+	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -21,12 +21,15 @@ func (s *Registry) auditClient(ctx context.Context) (*audit.Client, error) {
 }
 
 func (s *Registry) handleAuditEvents(ctx context.Context, args map[string]any) (string, bool) {
+	// Default window 1h; the API recommends short spans for chatty projects.
+	since, err := parseSince(stringArg(args, "since"))
+	if err != nil {
+		return usageResult(err), true
+	}
 	cli, err := s.auditClient(ctx)
 	if err != nil {
 		return errResult(err), true
 	}
-	// Default window 1h; the API recommends short spans for chatty projects.
-	since := parseSince(stringArg(args, "since"))
 	end := time.Now()
 	opts := audit.ListOptions{
 		Start:     end.Add(-since),

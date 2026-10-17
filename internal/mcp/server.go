@@ -3,8 +3,10 @@
 // stdio (newline-delimited JSON, Run) or over Streamable HTTP (http.go).
 //
 // IMPORTANT: in stdio mode stdout is reserved for the JSON-RPC channel. Nothing else may be
-// written to it or the protocol stream is corrupted. All engine output is
-// redirected to in-memory buffers (see internal/tools); diagnostics go to stderr.
+// written to it or the protocol stream is corrupted. The engine of every
+// tool call prints to stderr (internal/cli mcpEngineFactory); tools that
+// return the progress in their answer capture it in a buffer
+// (internal/tools); diagnostics go to stderr.
 package mcp
 
 import (
@@ -552,16 +554,18 @@ func (s *Server) handleToolCall(ctx context.Context, req *rpcRequest) *rpcRespon
 		p.Arguments = map[string]any{}
 	}
 
+	// An unknown tool is a protocol error, -32602 (MCP 2025-06-18, Tools,
+	// Error Handling); so is a tool outside --toolsets: tools/list does not
+	// name it. Errors of a tool that ran stay results with isError
+	// (release audit, R-07).
 	if s.enabled != nil && !s.enabled[p.Name] {
 		if _, exists := s.handlers[p.Name]; exists {
-			return s.toolResult(req, "tool "+p.Name+" is not in this server's --toolsets", true)
+			return s.fail(req, codeInvalidParams, "Unknown tool: "+p.Name+" (not in this server's --toolsets)")
 		}
 	}
 	handler, ok := s.handlers[p.Name]
 	if !ok {
-		// Unknown tool is surfaced to the model as a tool error, not a
-		// protocol error, so it can recover.
-		return s.toolResult(req, "unknown tool: "+p.Name, true)
+		return s.fail(req, codeInvalidParams, "Unknown tool: "+p.Name)
 	}
 
 	text, isErr := callHandler(ctx, handler, p.Name, p.Arguments)

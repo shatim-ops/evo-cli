@@ -245,7 +245,7 @@ running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пиш�
 | `secret list`, `get`, `value` | `secret_list`, `secret_get`, `secret_value` | нет | нет |
 | `secret create`, `add-version`, `delete` | `secret_create`, `secret_add_version`, `secret_delete` | да | нет |
 
-Всего 66 команд дерева. Из 147 инструментов 81 доступны в CLI только через
+Всего 72 команды дерева. Из 152 инструментов 80 доступны в CLI только через
 `evo tools call`: `deploy_plan`, `deploy_apply`, `open_ports`, `image_*`,
 `list_images`, `snat_*`, `kafka_*`, `redis_*`, `lb_*`, `tg_*`, `dns_*`, `ar_*`,
 `ca_*`, `cert_*`, `billing_*`, `metrics_*`, `audit_events`,
@@ -254,7 +254,7 @@ running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пиш�
 
 ## 4. Инструменты MCP
 
-147 инструментов, 64 изменяющих (`evo tools list --json`). Группа
+152 инструмента, 65 изменяющих (`evo tools list --json`; каталог — `docs/tools.md`). Группа
 назначается по имени (`tools/registry.go:133-201`), `mutating` — по наличию
 `confirmed` в схеме, кроме `cert_private_key` (`tools/registry.go:203-218`).
 Обработчики — `tools/tools.go:1214-1362`.

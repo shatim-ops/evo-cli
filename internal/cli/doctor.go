@@ -203,22 +203,31 @@ func fileChecks() []doctorCheck {
 
 // configChecks shows where the key settings come from.
 func configChecks(cfg config.Config, sources []config.Source) []doctorCheck {
+	// "project_id from default" read as if a default project existed: an
+	// unset project says so (release audit, R-06).
+	project := i18n.Tf("project_id from %s", "project_id из %s", sourceOrigin(sources, "ProjectID"))
+	if cfg.ProjectID == "" {
+		project = i18n.T("project_id not set", "project_id не задан")
+	}
 	checks := []doctorCheck{{
 		Name: "config", Status: checkOK,
-		Detail: i18n.Tf("profile %s; key_id from %s; project_id from %s", "профиль %s; key_id из %s; project_id из %s",
-			cfg.Profile, sourceOrigin(sources, "KeyID"), sourceOrigin(sources, "ProjectID")),
+		Detail: i18n.Tf("profile %s; key_id from %s; %s", "профиль %s; key_id из %s; %s",
+			cfg.Profile, sourceOrigin(sources, "KeyID"), project),
 	}}
 	// Without a key "ok config … key_id from default" above a failed
 	// credentials check read as a contradiction: say the key is missing.
 	if cfg.KeyID == "" || cfg.Secret == "" {
 		checks[0].Status = checkWarn
-		checks[0].Detail = i18n.Tf("profile %s; access key not set; project_id from %s",
-			"профиль %s; ключ доступа не задан; project_id из %s", cfg.Profile, sourceOrigin(sources, "ProjectID"))
+		checks[0].Detail = i18n.Tf("profile %s; access key not set; %s",
+			"профиль %s; ключ доступа не задан; %s", cfg.Profile, project)
 	}
+	// Without a project every project command (vm list, vpc subnets, …)
+	// fails with CONFIG_INVALID, exit 2: doctor fails the same way, not
+	// "ok" with exit 0 (release audit, R-06).
 	if cfg.ProjectID == "" {
-		checks = append(checks, doctorCheck{Name: "project_id", Status: checkWarn,
-			Detail: i18n.T("not set: run 'evo configure' or set CLOUDRU_PROJECT_ID",
-				"не задан: выполните 'evo configure' или задайте CLOUDRU_PROJECT_ID")})
+		ce := clerrors.ProjectRequired()
+		checks = append(checks, doctorCheck{Name: "project_id", Status: checkFail, auth: true,
+			Detail: i18n.T("not set: ", "не задан: ") + ce.Hint})
 	}
 	for _, w := range cfg.Warnings {
 		checks = append(checks, doctorCheck{Name: "config", Status: checkWarn, Detail: w})

@@ -55,6 +55,11 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	// key — fall back to a generated password.
 
 	// --- Zone ---
+	// The caller fills p.Zone from the call or the configured region; with
+	// neither the plan says which zone it took (release audit, A-002).
+	if p.Zone == "" {
+		warnings = append(warnings, "no zone given and no region configured: planning in ru.AZ-2 (pass zone, or set region in the profile or .evo.yaml)")
+	}
 	zoneInput := firstNonEmpty(p.Zone, "ru.AZ-2")
 	zone := provision.AvailabilityZone{ID: zoneInput, Name: zoneInput}
 	zones, zErr := cloud.ListAvailabilityZones(ctx)

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/postgresql"
 )
 
@@ -45,11 +47,19 @@ func compactSpecs(specs []map[string]any, cap int) ([]map[string]any, int) {
 		if name == nil {
 			name = s["name"] // Kafka/Redis specs use "name"
 		}
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"id": s["id"], "display_name": name,
 			"cpu": s["cpu"], "memory": s["memory"],
 			"deployment_mode": s["deployment_mode"], "min_storage_gb": minStorage,
-		})
+		}
+		// The limits a create is checked against, when the service lists
+		// them (PG max_hosts, Kafka min/max_brokers).
+		for _, k := range []string{"max_hosts", "min_brokers", "max_brokers"} {
+			if v, ok := s[k]; ok && v != nil {
+				row[k] = v
+			}
+		}
+		out = append(out, row)
 	}
 	return out, trunc
 }
@@ -133,6 +143,9 @@ func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string
 	}
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (get it from pg_list)")), true
+	}
+	if res := uuidArg("id", id, "pg_list"); res != "" {
+		return res, true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -277,14 +290,43 @@ func findSpec(specs []map[string]any, specID string, cpu, ram int) map[string]an
 	return nil
 }
 
+// pgMaxHosts is the most nodes a cluster of this specification takes: its
+// max_hosts, else by deployment_mode as the API documents instances
+// (openapi postgresql: "1-2 узла для standard, 1-3 узла для business").
+// pg_create instances=5 on a standard spec went through to the preview
+// (release audit, L-31). 0: not known, not checked.
+func pgMaxHosts(spec map[string]any) int {
+	if n := int(toF(spec["max_hosts"])); n > 0 {
+		return n
+	}
+	switch mode, _ := spec["deployment_mode"].(string); strings.ToLower(mode) {
+	case "standard":
+		return 2
+	case "business":
+		return 3
+	}
+	return 0
+}
+
 func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
 		return usageResult(fmt.Errorf("'name' is required")), true
 	}
+	instances := pgInt(args, "instances", 1)
+	if instances < 1 {
+		return usageResult(fmt.Errorf("instances %d: at least 1", instances)), true
+	}
 	cli, eng, err := s.pgClientEng(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	existing, err := cli.ListClusters(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf("check the name is free: list clusters: %w", err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult("pg_create", "PostgreSQL cluster", name, id, st, "pg_get id="+id)
 	}
 
 	// Resolve version (default: latest available).
@@ -302,7 +344,8 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(fmt.Errorf("list specifications: %w", err)), true
 	}
-	spec := findSpec(specs, stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0))
+	specArg, cpu, ram := stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0)
+	spec := findSpec(specs, specArg, cpu, ram)
 	if spec == nil {
 		// Not enough info to pick a spec — hand the agent a COMPACT, capped menu.
 		// Returning all 17 full spec objects overflows the agent trajectory
@@ -310,17 +353,18 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		// fields, cheapest-first, capped.
 		menu, trunc := compactSpecs(specs, specMenuCap)
 		out := map[string]any{
-			"status":                   "need_specification",
-			"message":                  "pg_create needs a specification: pass specification_id, or cpu+ram matching one of these.",
 			"resolved_version":         version,
 			"available_specifications": menu,
 		}
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
 		}
-		return toJSON(out), false
+		return needSpecResult("pg_create", "pg_specs", specArg, cpu, ram, out)
 	}
 	specID, _ := spec["id"].(string)
+	if maxHosts := pgMaxHosts(spec); maxHosts > 0 && instances > maxHosts {
+		return usageResult(fmt.Errorf("instances %d: specification %s (%v) takes 1-%d nodes", instances, specID, firstNonNil(spec["deployment_mode"], spec["display_name"]), maxHosts)), true
+	}
 
 	storageGB := pgInt(args, "storage_gb", 0)
 	if storageGB == 0 {
@@ -333,7 +377,6 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	if initialDB == "" {
 		initialDB = "defaultdb"
 	}
-	instances := pgInt(args, "instances", 1)
 
 	// Backup config. Backups CANNOT be enabled/disabled after creation (API rule),
 	// and without a backup spec the cluster reports "backup disabled" (manual
@@ -354,17 +397,13 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		backupSpec = map[string]any{"schedule": schedule, "retention_policy_days": retention}
 	}
 
-	// Resolve subnet (defines the AZ). Explicit subnet_id wins; else first project subnet.
-	subnetID := stringArg(args, "subnet_id")
-	if subnetID == "" {
-		subs, e := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
-		if e != nil {
-			return errResult(fmt.Errorf("resolve subnet: %w", e)), true
-		}
-		if len(subs) == 0 {
-			return errResult(fmt.Errorf("no subnets in project — pass subnet_id explicitly")), true
-		}
-		subnetID = subs[0].ID
+	// The subnet defines the zone: explicit subnet_id, else the configured
+	// region's, else a subnet of an open zone (ru.AZ-2 first) — as Kafka
+	// and Redis. It was the project's first subnet of any zone, a closed
+	// one included (final audit, N-06).
+	subnetID, _, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
+	if err != nil {
+		return errResult(err), true
 	}
 
 	willCreate := map[string]any{
@@ -377,6 +416,7 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		"storage_gb":       storageGB,
 		"instances":        instances,
 		"subnet_id":        subnetID,
+		"zone":             zone,
 		"initial_database": initialDB,
 		"backup_enabled":   backupEnabled,
 	}
@@ -409,12 +449,18 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(fmt.Errorf("create cluster: %w", err)), true
 	}
-	return toJSON(map[string]any{
+	out := map[string]any{
 		"status":       "creating",
 		"operation_id": op.ID,
 		"created":      willCreate,
 		"note":         "Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; then pg_list/pg_get for status READY.",
-	}), false
+	}
+	if op.ResourceID != "" {
+		out["cluster_id"] = op.ResourceID // release audit re-run, N-07
+	} else {
+		out["note"] = "Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; pg_list shows the cluster's id by its name, then pg_get for status READY."
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (string, bool) {
@@ -425,18 +471,28 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from pg_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups. Confirm, then call again with confirmed=true.", id),
-		}), true
-	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
 		return errResult(err), true
 	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups. Confirm, then call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
+	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {
+		msg := fmt.Sprintf("delete cluster: %v", err)
+		switch {
+		case strings.Contains(msg, "force flag"):
+			// A FAILED cluster: the public API takes no force (`?force=true`
+			// is 415 at the gateway, register CRD-19; release audit re-run,
+			// N-13).
+			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
+				"Cloud.ru deletes a FAILED cluster only with force, which its public API does not accept: delete it in the Cloud.ru console or ask support.")), true
+		case strings.Contains(msg, "FailedPrecondition"):
+			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
+				"The cluster is still being created (DEPLOYING): Cloud.ru deletes it through the API once it is READY. Check it with pg_get, then call pg_delete again; a cluster that ends FAILED is deleted only in the Cloud.ru console.")), true
+		}
 		return errResult(fmt.Errorf("delete cluster: %w", err)), true
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id) until done=true."}), false

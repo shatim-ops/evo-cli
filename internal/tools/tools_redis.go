@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/dbaas"
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -46,6 +47,9 @@ func (s *Registry) handleRedisGet(ctx context.Context, args map[string]any) (str
 	id := stringArg(args, "cluster_id")
 	if id == "" {
 		return usageResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
+	}
+	if res := uuidArg("cluster_id", id, "redis_list"); res != "" {
+		return res, true
 	}
 	cli, _, err := s.redisClientEng(ctx)
 	if err != nil {
@@ -102,9 +106,22 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	if name == "" {
 		return usageResult(fmt.Errorf("'name' is required")), true
 	}
+	// The shape first, before the cloud: type=FOO and shards=20 went through
+	// to the preview (release audit, L-35).
+	rtype, shards, replicas, err := redisShape(args)
+	if err != nil {
+		return usageResult(err), true
+	}
 	cli, eng, err := s.redisClientEng(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	existing, err := cli.ListClusters(ctx, url.Values{})
+	if err != nil {
+		return errResult(fmt.Errorf("check the name is free: list clusters: %w", err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult("redis_create", "Redis cluster", name, id, st, "redis_get cluster_id="+id)
 	}
 
 	versionID := stringArg(args, "version_id")
@@ -129,15 +146,15 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(fmt.Errorf("list specifications: %w", err)), true
 	}
-	spec := findDbaasSpec(specs, stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0))
+	specArg, cpu, ram := stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0)
+	spec := findDbaasSpec(specs, specArg, cpu, ram)
 	if spec == nil {
 		menu, trunc := compactSpecs(specs, specMenuCap)
-		out := map[string]any{"status": "need_specification", "resolved_version_id": versionID, "availability_zone": zone,
-			"message": "redis_create needs a specification: pass specification_id, or cpu+ram matching one of these.", "available_specifications": menu}
+		out := map[string]any{"resolved_version_id": versionID, "availability_zone": zone, "available_specifications": menu}
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
 		}
-		return toJSON(out), false
+		return needSpecResult("redis_create", "redis_specs", specArg, cpu, ram, out)
 	}
 	specID, _ := spec["id"].(string)
 
@@ -148,27 +165,12 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	if storage == 0 {
 		storage = 40
 	}
-	shards := pgInt(args, "shards", 1)
-	if shards < 1 {
-		shards = 1
-	}
-	// The API rejects STANDALONE ("shards must be range [1,8]" regardless of value)
-	// and requires exactly 3 replicas per shard for MASTER_REPLICA. Default to a
-	// working MASTER_REPLICA/3.
-	rtype := stringArg(args, "type")
-	if rtype == "" {
-		rtype = "MASTER_REPLICA"
-	}
-	replicas := pgInt(args, "replicas", 3)
-	if rtype == "MASTER_REPLICA" && replicas < 3 {
-		replicas = 3
-	}
 
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
-		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gb": storage, "shards": shards, "replicas": replicas, "type": rtype,
-		"subnet_id": subnetID, "availability_zone": zone}
+		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gb": storage, "shards": shards, "replicas": replicas,
+		"hosts_per_shard": replicas + 1, "type": rtype, "subnet_id": subnetID, "availability_zone": zone}
 	warn := ""
-	if rtype == "MASTER_REPLICA" {
+	if rtype == redisMasterReplica {
 		// Docs (Redis, «Создание кластера»): Master/Replica is a master and
 		// two replicas, Multi-AZ or Single-AZ. One subnet_id puts every host
 		// in its zone.
@@ -200,7 +202,49 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		return errResult(fmt.Errorf("create cluster: %w", err)), true
 	}
 	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
-		"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts."}), false
+		"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}), false
+}
+
+// Redis cluster types of the API (openapi-redis.yaml, type).
+const (
+	redisMasterReplica = "MASTER_REPLICA"
+	redisStandalone    = "STANDALONE"
+)
+
+// redisShape checks type, shards and replicas of redis_create. replicas is
+// what the create request takes: the replicas of a shard WITHOUT the master.
+// evo raised it to 3 for MASTER_REPLICA, and the API refused every cluster:
+// "replicas per shard must be in range [3:3], requested - 4"; replicas=1 is
+// "requested - 2", replicas=2 is created — and that cluster reads back from
+// GET with replicas: 3, the hosts of a shard (release audit, L-34). The docs
+// (Redis, «Создание кластера») make Master/Replica a master and two
+// replicas, so MASTER_REPLICA takes replicas=2, the default; STANDALONE has
+// no replicas. Shards: the API's range [1,8].
+func redisShape(args map[string]any) (rtype string, shards, replicas int, err error) {
+	rtype = strings.ToUpper(stringArg(args, "type"))
+	if rtype == "" {
+		rtype = redisMasterReplica
+	}
+	defReplicas := 2
+	switch rtype {
+	case redisMasterReplica:
+	case redisStandalone:
+		defReplicas = 0
+	default:
+		return "", 0, 0, fmt.Errorf("type %q is not one of %s, %s", stringArg(args, "type"), redisMasterReplica, redisStandalone)
+	}
+	shards = pgInt(args, "shards", 1)
+	if shards < 1 || shards > 8 {
+		return "", 0, 0, fmt.Errorf("shards %d is out of range: 1-8", shards)
+	}
+	replicas = pgInt(args, "replicas", defReplicas)
+	if replicas != defReplicas {
+		if rtype == redisMasterReplica {
+			return "", 0, 0, fmt.Errorf("replicas %d: MASTER_REPLICA takes replicas=2 (a master and two replicas per shard; replicas counts the replicas without the master — redis_get reports 3 hosts)", replicas)
+		}
+		return "", 0, 0, fmt.Errorf("replicas %d: a STANDALONE cluster has no replicas (replicas=0)", replicas)
+	}
+	return rtype, shards, replicas, nil
 }
 
 func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (string, bool) {
@@ -208,13 +252,13 @@ func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (
 	if id == "" {
 		return usageResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required",
-			"message": fmt.Sprintf("redis_delete PERMANENTLY deletes Redis cluster %s and its data. Confirm, then call again with confirmed=true.", id)}), true
-	}
 	cli, _, err := s.redisClientEng(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("redis_delete PERMANENTLY deletes Redis cluster %s and its data. Confirm, then call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {

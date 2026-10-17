@@ -8,6 +8,9 @@ import (
 	"sync"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/images"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 )
 
@@ -87,6 +90,10 @@ func (s *Registry) findIDByName(ctx context.Context, tool, field, name string, e
 	arr, _ := res[field].([]any)
 	for _, it := range arr {
 		if m, ok := it.(map[string]any); ok {
+			// A deleted namesake is not the step's resource (as takenName).
+			if st := strings.ToUpper(fmt.Sprint(m["status"])); strings.Contains(st, "DELETED") || strings.Contains(st, "ERASED") {
+				continue
+			}
 			if n, _ := m["name"].(string); n == name {
 				id, _ := m["id"].(string)
 				return id
@@ -94,6 +101,39 @@ func (s *Registry) findIDByName(ctx context.Context, tool, field, name string, e
 		}
 	}
 	return ""
+}
+
+// takenByName is the id of a live resource named as the step's, from its
+// list tool; an error when the list could not be read (then nothing is
+// known and nothing may be created yet).
+func (s *Registry) takenByName(ctx context.Context, st *stack.Step) (string, error) {
+	args := map[string]any{}
+	for k, v := range st.FindArgs {
+		args[k] = v
+	}
+	res, err := s.callTool(ctx, st.FindTool, args)
+	if err != nil {
+		return "", err
+	}
+	arr, ok := res[st.FindField].([]any)
+	if !ok {
+		return "", fmt.Errorf("%s answered without %q", st.FindTool, st.FindField)
+	}
+	for _, it := range arr {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		if n, _ := m["name"].(string); n != st.FindName {
+			continue
+		}
+		if status := strings.ToUpper(fmt.Sprint(m["status"])); strings.Contains(status, "DELETED") || strings.Contains(status, "ERASED") {
+			continue
+		}
+		id, _ := m["id"].(string)
+		return firstNonEmptyStr(id, st.FindName), nil
+	}
+	return "", nil
 }
 
 // vmClockSkew is how much earlier than the step's start a VM's creation time
@@ -288,6 +328,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				if !depsDone(st, job) {
 					continue
 				}
+				resumed := st.Interrupted
 				if st.Interrupted {
 					// The previous create was cut off and may have reached the
 					// cloud: adopt what it made instead of creating it twice.
@@ -311,6 +352,26 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						st.Detail = "adopted after an interrupted create"
 						progress = true
 						continue
+					}
+				}
+				if st.StartedAt.IsZero() && !resumed && st.Tool != "provision" && st.FindTool != "" && st.FindName != "" {
+					// Before the step's first create: a resource with its
+					// name now is not the job's. Without this, a retry after
+					// an attempt that failed before its create found it by
+					// name below and adopted it — stack_destroy would delete
+					// a user's cluster (final audit, stage 1). Whatever the
+					// name finds after this point the step made itself. A
+					// VM is matched by its creation time instead.
+					id, err := s.takenByName(ctx, st)
+					if err != nil {
+						st.Detail = "check the name is free: " + err.Error()
+						continue // pending: the next pass checks again
+					}
+					if id != "" {
+						st.Status = "error"
+						job.Error = fmt.Sprintf("%s: %q is already taken by an existing resource (%s) — rename it in the manifest, or remove the existing one", st.Key, st.FindName, id)
+						job.Status = "error"
+						return
 					}
 				}
 				if st.StartedAt.IsZero() {
@@ -340,6 +401,23 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						st.ResourceID = id
 						st.Status = "error"
 						job.Error = fmt.Sprintf("%s: %s (resource %s kept for stack_destroy)", st.Key, err.Error(), id)
+						job.Status = "error"
+						return
+					}
+					// The tool refused a name a resource already has
+					// (existing_id; release audit, L-32). Unless the step
+					// resumes after a cut-off create, that resource is not
+					// known to be the job's: adopting it by name below would
+					// hand it to stack_destroy. Only on the first try it was
+					// refused; a retry after an attempt that failed before
+					// its create adopted a user's cluster the same way
+					// (final audit, stage 1). An attempt whose create did go
+					// through with its answer lost leaves its resource
+					// named here, for the user to keep or delete.
+					if ex := firstStr(res, "existing_id"); ex != "" && !resumed {
+						st.Status = "error"
+						job.Error = fmt.Sprintf("%s: %s — rename it in the manifest, or remove the existing one (%s); "+
+							"if an earlier attempt of this step created it, delete it or keep it: the stack does not adopt it by name", st.Key, err.Error(), ex)
 						job.Status = "error"
 						return
 					}
@@ -441,6 +519,39 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	if err != nil {
 		return errResult(err), true
 	}
+	var vmNote map[string]any
+	if m.VM != nil {
+		if vmNote, err = s.normalizeStackVM(ctx, m.VM); err != nil {
+			return errResult(err), true
+		}
+	}
+	// Redis shape and Kafka brokers fail at plan time, like the VM: a stack
+	// with redis.replicas=3 (the old documented default) used to plan and
+	// then stop at the redis step with vpc, pg, kafka and k8s already live
+	// (Grok review of PR #89).
+	if r := m.Redis; r != nil {
+		ra := map[string]any{}
+		if r.Type != "" {
+			ra["type"] = r.Type
+		}
+		if r.Shards != 0 {
+			ra["shards"] = r.Shards
+		}
+		if r.Replicas != 0 {
+			ra["replicas"] = r.Replicas
+		}
+		if _, _, _, err := redisShape(ra); err != nil {
+			return usageResult(fmt.Errorf("manifest.redis: %w", err)), true
+		}
+	}
+	if m.Kafka != nil && m.Kafka.Brokers < 0 {
+		return usageResult(fmt.Errorf("manifest.kafka.brokers %d: must be 1 or more (or omitted)", m.Kafka.Brokers)), true
+	}
+	if m.K8s != nil && m.K8s.MasterCount != 0 {
+		if err := k8sArgsError(map[string]any{"master_count": m.K8s.MasterCount}); err != nil {
+			return errResult(err), true
+		}
+	}
 	job := stack.Plan(m)
 	if eng, e := s.newEngine(nil); e == nil && eng != nil {
 		job.ProjectID = eng.Config.ProjectID
@@ -466,6 +577,9 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	if len(s3Notes) > 0 {
 		out["s3"] = s3Notes
 	}
+	if vmNote != nil {
+		out["vm"] = vmNote
+	}
 	// Warn if a prior job for this stack name still holds resources — applying now
 	// would create duplicates (double billing). Point the user at stack_destroy.
 	if orphans := stack.FindResourcefulJobs(m.Name, job.ID); len(orphans) > 0 {
@@ -473,6 +587,62 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		out["existing_jobs"] = orphans
 	}
 	return toJSON(out), false
+}
+
+// normalizeStackVM resolves the image and the zone of the stack's VM at
+// plan time and writes their UUIDs into the manifest: vm.image (name or
+// UUID, as provision's image), else the server's CLOUDRU_IMAGE_ID; vm.zone
+// (name or UUID), else CLOUDRU_REGION. A missing, unknown or closed one is
+// refused here, before anything is created: the vm step used to fail
+// after the earlier steps were live (release audit, L-36). Returns what
+// the plan shows for the VM.
+func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[string]any, error) {
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("validate vm: %w", err)
+	}
+	imageRef := firstNonEmptyStr(vm.Image, eng.Config.ImageID, eng.Config.Image)
+	if imageRef == "" {
+		return nil, clierrors.New(clierrors.CodeUsage,
+			"manifest vm.image is required: the image of the VM, by name or UUID",
+			"Set vm.image, e.g. \"Ubuntu-24.04\" (image_list); the server has no CLOUDRU_IMAGE_ID (an image UUID) to default to.")
+	}
+	cat := images.Catalog{Cloud: eng.Cloud, ProjectID: eng.Config.ProjectID}
+	img, err := cat.Get(ctx, imageRef)
+	if err != nil {
+		return nil, fmt.Errorf("vm.image %q: %w", imageRef, err)
+	}
+	if img.NotInProject {
+		return nil, images.NotInProjectError(img.Name)
+	}
+
+	zoneRef := firstNonEmptyStr(vm.Zone, eng.Config.Region)
+	if zoneRef == "" {
+		return nil, clierrors.New(clierrors.CodeUsage,
+			"manifest vm.zone is required: the availability zone of the VM, by name or UUID",
+			"Set vm.zone, e.g. \"ru.AZ-1\" (list_zones); the server has no CLOUDRU_REGION (a zone UUID) to default to.")
+	}
+	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("validate vm.zone: list availability zones: %w", err)
+	}
+	var zone *provision.AvailabilityZone
+	for _, z := range zones {
+		if z.ID == zoneRef || strings.EqualFold(z.Name, zoneRef) {
+			zone = z
+			break
+		}
+	}
+	if zone == nil {
+		return nil, clierrors.New(clierrors.CodeUsage, fmt.Sprintf("vm.zone %q: availability zone not found", zoneRef),
+			"See list_zones (evo list-zones) for the zone names.")
+	}
+	if err := provision.ClosedZoneError(zones, zone.ID); err != nil {
+		return nil, err
+	}
+	vm.Image, vm.Zone = img.ID, zone.ID
+	return map[string]any{"image": firstNonEmptyStr(img.Name, img.ID), "image_id": img.ID,
+		"zone": firstNonEmptyStr(zone.Name, zone.ID)}, nil
 }
 
 // normalizeManifest validates a stack manifest and fills in safe defaults BEFORE
@@ -744,7 +914,39 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		return usageResult(fmt.Errorf("'job_id' is required")), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_destroy PERMANENTLY deletes all resources in this stack. Call again with confirmed=true."}), true
+		// The preview names what goes: each step's resource as the job
+		// knows it (release audit, R-04, re-run N-11).
+		job, err := stack.LoadJob(id)
+		if err != nil {
+			return errResult(err), true
+		}
+		// The confirmed call refuses a job of another project: the preview
+		// does so before the question (Cursor review of PR #89).
+		if err := s.checkJobProject(job); err != nil {
+			return errResult(err), true
+		}
+		var res []map[string]any
+		for _, st := range job.Steps {
+			rid := firstNonEmptyStr(job.Outputs[st.Key], st.ResourceID)
+			if rid == "" && !stepMayHaveCreated(st) {
+				continue
+			}
+			row := map[string]any{"step": st.Key, "status": st.Status}
+			if rid != "" {
+				row["id"] = rid
+			}
+			if st.FindName != "" {
+				row["name"] = st.FindName
+			}
+			res = append(res, row)
+		}
+		out := map[string]any{"status": "confirmation_required",
+			"message":   fmt.Sprintf("stack_destroy PERMANENTLY deletes the %d resource(s) of stack %s listed in resources. Call again with confirmed=true.", len(res), id),
+			"resources": res}
+		if len(res) == 0 {
+			out["message"] = fmt.Sprintf("stack %s has created nothing yet; stack_destroy only marks it destroyed. Call again with confirmed=true.", id)
+		}
+		return toJSON(out), true
 	}
 	unlock, err := s.lockJob(id)
 	if err != nil {
@@ -779,10 +981,13 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	// Reverse teardown of what was created. 404/not-found is idempotent success.
 	// The code (VM_NOT_FOUND, NOT_FOUND) is checked too: in the CLI the
 	// message is in the language of the CLI.
-	var deleted, failed []string
+	// deleting: async deletions the cloud accepted but has not finished
+	// (status "deleting" with an operation): Postgres takes ~5 min, so the
+	// answer must not read as if it were gone already (release audit, L-37).
+	var deleted, deleting, failed []string
 	del := func(label, tool string, dargs map[string]any) {
 		dargs["confirmed"] = true
-		if _, e := s.callTool(ctx, tool, dargs); e != nil {
+		if res, e := s.callTool(ctx, tool, dargs); e != nil {
 			msg := e.Error()
 			if strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") || strings.Contains(strings.ToLower(msg), "not found") {
 				deleted = append(deleted, label+" (already gone)")
@@ -791,6 +996,9 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 			}
 		} else {
 			deleted = append(deleted, label)
+			if st, _ := res["status"].(string); st == "deleting" {
+				deleting = append(deleting, label)
+			}
 		}
 	}
 	if id := job.Outputs["dns"]; id != "" {
@@ -847,5 +1055,10 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	if e := job.Save(); e != nil {
 		failed = append(failed, "persist job: "+e.Error())
 	}
-	return toJSON(map[string]any{"status": job.Status, "deleted": deleted, "failed": failed}), len(failed) > 0
+	out := map[string]any{"status": job.Status, "deleted": deleted, "failed": failed}
+	if len(deleting) > 0 {
+		out["deleting"] = deleting
+		out["note"] = "Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names."
+	}
+	return toJSON(out), len(failed) > 0
 }

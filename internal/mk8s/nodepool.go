@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -66,7 +67,7 @@ func (c *Client) CreateNodePool(ctx context.Context, req CreateNodePoolReq) (*Op
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse operation: %w", err)
 	}
 	return &op, nil
 }
@@ -101,7 +102,7 @@ func (c *Client) ListNodePools(ctx context.Context, clusterID string) ([]map[str
 			NextPageToken string           `json:"nextPageToken"`
 		}
 		if err := json.Unmarshal(data, &r); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse node pools: %w", err)
 		}
 		out = append(out, r.NodePools...)
 		if r.NextPageToken == "" || seen[r.NextPageToken] {

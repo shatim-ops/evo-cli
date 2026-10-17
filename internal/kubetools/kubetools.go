@@ -72,7 +72,9 @@ func run(ctx context.Context, kubeconfig, stdin string, timeout time.Duration, n
 	}
 	out, err := cmd.CombinedOutput()
 	if cctx.Err() == context.DeadlineExceeded {
-		return string(out), fmt.Errorf("%s timed out after %s", name, timeout)
+		// Wrapped: the tool answer reads it as the cluster not answering
+		// in time (API_UNREACHABLE), not as a refused call.
+		return string(out), fmt.Errorf("%s timed out after %s: %w", name, timeout, context.DeadlineExceeded)
 	}
 	return string(out), err
 }
@@ -81,16 +83,20 @@ func run(ctx context.Context, kubeconfig, stdin string, timeout time.Duration, n
 // their plugins) get the cluster token through KUBECONFIG and need neither
 // the Cloud.ru access key (CLOUDRU_*, or the EVOLUTION_SERVICE_ACCOUNT_KEY_*
 // of the AI Agents platform) nor the MCP bearer token.
+//
+// KUBERC=off turns off kubectl's preferences file (~/.kube/kuberc): its
+// aliases and flag defaults would change what evo's kubectl commands do,
+// after evo checked their arguments (release audit, R-05).
 func childEnv(env []string) []string {
-	out := make([]string, 0, len(env))
+	out := make([]string, 0, len(env)+1)
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(name, "CLOUDRU_") || strings.HasPrefix(name, "EVOLUTION_SERVICE_ACCOUNT_KEY_") || name == "MCP_BEARER_TOKEN" {
+		if strings.HasPrefix(name, "CLOUDRU_") || strings.HasPrefix(name, "EVOLUTION_SERVICE_ACCOUNT_KEY_") || name == "MCP_BEARER_TOKEN" || name == "KUBERC" {
 			continue
 		}
 		out = append(out, kv)
 	}
-	return out
+	return append(out, "KUBERC=off")
 }
 
 // Kubectl runs a kubectl command; stdin optional (for `apply -f -`).

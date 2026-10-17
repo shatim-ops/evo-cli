@@ -3,8 +3,11 @@ package tools
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/nlb"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -217,12 +220,13 @@ func (s *Registry) handleTgDelete(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from tg_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("tg_delete deletes target group %s. Call again with confirmed=true.", id)}), true
-	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("tg_delete deletes target group %s. Call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetTargetGroup(ctx, id) })
 	}
 	op, err := cli.DeleteTargetGroup(ctx, id)
 	if err != nil {
@@ -252,50 +256,40 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 
-	// VPC: explicit, else inherit from the target group (LB must share its VPC).
+	// VPC: explicit, else inherit from the target group (LB must share its
+	// VPC). The group's VMs also name the zone the balancer serves.
+	tg, e := cli.GetTargetGroup(ctx, tgID)
+	if e != nil {
+		return errResult(fmt.Errorf("read target group %s: %w", tgID, e)), true
+	}
+	tgVPC, _ := tg["vpc_id"].(string)
 	vpcID := stringArg(args, "vpc_id")
+	if vpcID != "" && tgVPC != "" && vpcID != tgVPC {
+		// The balancer shares its target group's VPC (release audit
+		// re-run, N-01).
+		return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+			fmt.Sprintf("target group %s is in VPC %s, not in vpc_id %s; nothing was created", tgID, tgVPC, vpcID),
+			"Omit vpc_id (the balancer takes its target group's VPC) or pass a target group of that VPC.")), true
+	}
 	if vpcID == "" {
-		tg, e := cli.GetTargetGroup(ctx, tgID)
-		if e != nil {
-			return errResult(fmt.Errorf("resolve vpc from target group: %w", e)), true
-		}
-		vpcID, _ = tg["vpc_id"].(string)
+		vpcID = tgVPC
 	}
 	if vpcID == "" {
 		return errResult(fmt.Errorf("could not resolve vpc_id — pass it explicitly")), true
 	}
-
-	// Subnet for the AZ spec (and internal address). Explicit, else first project subnet.
-	subnetID := stringArg(args, "subnet_id")
-	if subnetID == "" {
-		subs, e := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
-		if e != nil {
-			return errResult(fmt.Errorf("resolve subnet: %w", e)), true
-		}
-		if len(subs) == 0 {
-			return errResult(fmt.Errorf("no subnets in project — pass subnet_id explicitly")), true
-		}
-		subnetID = subs[0].ID
+	zone, subnetID, warnings, err := lbZoneAndSubnet(ctx, eng, args, tg, vpcID)
+	if err != nil {
+		return errResult(err), true
 	}
 
-	// AZ spec requires exactly one of {id, name} (nlb API 400 otherwise). Resolve
-	// the human zone name (e.g. "ru.AZ-2") from the configured region UUID — zone
-	// NAMES are the canonical cross-service identifier; fall back to the id.
+	// AZ spec requires exactly one of {id, name} (nlb API 400 otherwise);
+	// zone NAMES are the canonical cross-service identifier, the id when
+	// the name is unknown.
 	azSpec := map[string]any{"subnet_ids": []string{subnetID}}
-	region := eng.Config.Region
-	zoneName := ""
-	if zones, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
-		for _, z := range zones {
-			if z.ID == region {
-				zoneName = z.Name
-				break
-			}
-		}
-	}
-	if zoneName != "" {
-		azSpec["name"] = zoneName
-	} else if region != "" {
-		azSpec["id"] = region
+	if zone.Name != "" {
+		azSpec["name"] = zone.Name
+	} else {
+		azSpec["id"] = zone.ID
 	}
 
 	rule := map[string]any{
@@ -323,14 +317,18 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	willCreate := map[string]any{
 		"name": name, "vpc_id": vpcID, "target_group_id": tgID,
 		"listener": fmt.Sprintf("%d→%d", port, targetPort), "health_check_port": hcPort,
-		"subnet_id": subnetID, "external": external,
+		"subnet_id": subnetID, "zone": firstNonEmptyStr(zone.Name, zone.ID), "external": external,
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
+		out := map[string]any{
 			"status":      "confirmation_required",
 			"message":     "lb_create provisions a BILLABLE L4 load balancer (async). Get the user's approval, then call again with confirmed=true.",
 			"will_create": willCreate,
-		}), true
+		}
+		if len(warnings) > 0 {
+			out["warnings"] = warnings
+		}
+		return toJSON(out), true
 	}
 	op, err := cli.CreateNLB(ctx, body)
 	if err != nil {
@@ -339,17 +337,142 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": "Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING."}), false
 }
 
+// lbZoneAndSubnet picks the zone the balancer serves and its subnet there.
+// Zone: the 'zone' argument (name or UUID), else the zone of subnet_id,
+// else the zone of the target group's VMs, else the configured region; none
+// is USAGE before any create. Subnet: subnet_id as given (of that zone),
+// else the zone's main subnet of the balancer's VPC. Without a zone in the
+// configuration the request went with an empty availability_zone_specs[0]
+// (API 400), and the subnet was the project's first one, of any zone and
+// VPC (release audit, L-26).
+func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[string]any, vpcID string) (provision.AvailabilityZone, string, []string, error) {
+	var none provision.AvailabilityZone
+	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
+	if err != nil {
+		return none, "", nil, fmt.Errorf("list availability zones: %w", err)
+	}
+	subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
+	if err != nil {
+		return none, "", nil, fmt.Errorf("resolve subnet: %w", err)
+	}
+	find := func(ref string) *provision.AvailabilityZone {
+		for _, z := range zones {
+			if ref != "" && (z.ID == ref || strings.EqualFold(z.Name, ref)) {
+				return z
+			}
+		}
+		return nil
+	}
+	subnetID := stringArg(args, "subnet_id")
+	var subnet *provision.Subnet
+	if subnetID != "" {
+		for _, sn := range subs {
+			if sn.ID == subnetID {
+				subnet = sn
+			}
+		}
+		if subnet == nil {
+			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid, fmt.Sprintf("subnet %s is not in the project", subnetID),
+				"Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet of the balancer's VPC is taken.")
+		}
+	}
+
+	var warnings []string
+	var zone *provision.AvailabilityZone
+	from := ""
+	if ref := stringArg(args, "zone"); ref != "" {
+		if zone = find(ref); zone == nil {
+			return none, "", nil, clierrors.New(clierrors.CodeUsage, fmt.Sprintf("availability zone %q not found", ref),
+				"See list_zones (evo list-zones) for the zone names.")
+		}
+		from = "zone"
+	}
+	if zone == nil && subnet != nil && subnet.AvailabilityZoneID != "" {
+		zone, from = find(subnet.AvailabilityZoneID), "subnet_id"
+		if zone == nil {
+			zone = &provision.AvailabilityZone{ID: subnet.AvailabilityZoneID}
+		}
+	}
+	if zone == nil {
+		// The zones of the group's VMs (target_vms[].zone_name/zone_id).
+		var tzones []string
+		vms, _ := tg["target_vms"].([]any)
+		for _, v := range vms {
+			m, _ := v.(map[string]any)
+			ref := firstNonEmptyStr(stringArg(m, "zone_id"), stringArg(m, "zone_name"))
+			if ref == "" {
+				continue
+			}
+			z := find(ref)
+			if z == nil {
+				z = &provision.AvailabilityZone{ID: stringArg(m, "zone_id"), Name: stringArg(m, "zone_name")}
+			}
+			if zone == nil {
+				zone, from = z, "target group"
+			}
+			if n := firstNonEmptyStr(z.Name, z.ID); !slices.Contains(tzones, n) {
+				tzones = append(tzones, n)
+			}
+		}
+		if len(tzones) > 1 {
+			warnings = append(warnings, fmt.Sprintf("the target group's VMs are in zones %s; the balancer serves %s only (pass zone for another)",
+				strings.Join(tzones, ", "), tzones[0]))
+		}
+	}
+	if zone == nil && eng.Config.Region != "" {
+		zone, from = find(eng.Config.Region), "region"
+		if zone == nil {
+			zone = &provision.AvailabilityZone{ID: eng.Config.Region}
+		}
+	}
+	if zone == nil {
+		return none, "", nil, clierrors.New(clierrors.CodeUsage,
+			"cannot tell the balancer's availability zone: the target group names no zone of its VMs and no region is configured",
+			"Pass zone (name or UUID, see list_zones) or subnet_id.")
+	}
+
+	if subnet != nil {
+		// A subnet of another VPC went to the API as is and got a 400
+		// without the field (Grok review of PR #89, the class of L-26).
+		if subnet.VPCID != "" && vpcID != "" && subnet.VPCID != vpcID {
+			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("subnet %s is not in VPC %s of the balancer; nothing was created", subnetID, vpcID),
+				"Pass a subnet of that VPC (vpc_subnets), or omit subnet_id.")
+		}
+		if from != "subnet_id" && !provision.SubnetInZone(subnet, zone.ID, zone.Name) {
+			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
+				fmt.Sprintf("subnet %s is not in zone %s; nothing was created", subnetID, firstNonEmptyStr(zone.Name, zone.ID)),
+				"Pass a subnet of that zone (vpc_subnets), or omit subnet_id.")
+		}
+		return *zone, subnetID, warnings, nil
+	}
+	var inVPC []*provision.Subnet
+	for _, sn := range subs {
+		if sn.VPCID == "" || sn.VPCID == vpcID {
+			inVPC = append(inVPC, sn)
+		}
+	}
+	i := provision.PickSubnet(inVPC, zone.ID, zone.Name)
+	if i < 0 {
+		return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
+			fmt.Sprintf("no subnet of VPC %s in zone %s for the balancer; nothing was created", vpcID, firstNonEmptyStr(zone.Name, zone.ID)),
+			"Pass subnet_id of a subnet in that zone and VPC (vpc_subnets), or another zone.")
+	}
+	return *zone, inVPC[i].ID, warnings, nil
+}
+
 func (s *Registry) handleLbDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from lb_list)")), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("lb_delete deletes load balancer %s. Call again with confirmed=true.", id)}), true
-	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return deletePreview("lb_delete deletes load balancer %s. Call again with confirmed=true.",
+			id, func() (map[string]any, error) { return cli.GetNLB(ctx, id) })
 	}
 	op, err := cli.DeleteNLB(ctx, id)
 	if err != nil {

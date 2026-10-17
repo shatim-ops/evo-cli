@@ -4,9 +4,10 @@
 AI-агент (Claude Code, Cursor и любой другой MCP-клиент) получает ~150
 инструментов Cloud.ru — ВМ, диски, сети, DNS, балансировщики, Kubernetes,
 PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact Registry,
-мониторинг, биллинг, `deploy` docker-compose на ВМ. Список с описаниями и
-схемами аргументов — `evo tools list` и `evo tools describe <имя>`;
-любой инструмент можно вызвать и без агента: `evo tools call`.
+мониторинг, биллинг, `deploy` docker-compose на ВМ. Каталог всех
+инструментов по группам — [tools.md](tools.md); описания и схемы аргументов
+— `evo tools list` и `evo tools describe <имя>`; любой инструмент можно
+вызвать и без агента: `evo tools call`.
 
 Два транспорта:
 
@@ -65,7 +66,10 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 `--server`/`-s`, `--kubeconfig`, `--token`, `--username`, `--password`,
 `--client-certificate`, `--client-key`, `--certificate-authority`,
 `--insecure-skip-tls-verify`, `--tls-server-name`. С ними даже `get` отправил
-бы токен кластера на другой сервер. Кластер выбирает `cluster_id`.
+бы токен кластера на другой сервер. Кластер выбирает `cluster_id`. Отклоняется
+и `--kuberc`: evo запускает kubectl с `KUBERC=off`, чтобы файл настроек
+kubectl (`~/.kube/kuberc`: алиасы, значения флагов по умолчанию) не менял его
+команды.
 
 Сейчас ответ `confirmation_required` приходит с `isError: true` — клиенту
 стоит различать исход по полю `status`, а не по `isError`. Без исключений:
@@ -80,8 +84,14 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 - `reason` есть всегда — символьный код из [таблицы](exit-codes.md):
   `USAGE` (инструмент отверг аргументы, в облако ничего не ушло),
   `NOT_FOUND`, `AUTH_FAILED`, `API_UNREACHABLE`, `API_ERROR` и т. д. Ошибка
-  без своего кода получает `NOT_FOUND`, если в ответе сказано «not found»,
-  иначе `API_ERROR` — так же её понимает CLI (`evo tools call`, код выхода).
+  без своего кода получает причину по происхождению: ответ API — по
+  HTTP-статусу (`404` — `NOT_FOUND`, `429` — `API_RATE_LIMITED`, прочие —
+  `API_ERROR`), как и сбой операции облака и ошибка kubectl/helm от
+  кластера; нет связи или истёк срок — `API_UNREACHABLE`; нет `kubectl`/`helm`
+  — `CONFIG_INVALID`; ошибка о ВМ, которую создал `provision`, —
+  `VM_PROVISION_FAILED`; остальное — локальная ошибка, в облако ничего не
+  ушло: `NOT_FOUND`, если в ответе сказано «not found», иначе `USAGE`. Так же
+  её понимает CLI (`evo tools call`, код выхода).
 - `error` — только фраза, без префикса `КОД: `. Код остаётся внутри текста
   лишь после добавленного контекста (`create VM: API_ERROR: …`), как в
   сообщениях CLI. Решайте по `reason`, а не по тексту.
@@ -91,6 +101,10 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 нет в `inputSchema`, — `USAGE` со списком аргументов инструмента в `hint`
 (`confirmed` принимает любой инструмент); значение поля с `enum`
 сравнивается без учёта регистра (`Private` → `private`), чужое — `USAGE`.
+Скаляр не того типа, что в схеме (`"confirmed": "true"`, `"size_gb": "20"`,
+дробное число в целом поле), — тоже `USAGE` с именем поля: раньше такое
+значение молча считалось отсутствующим. Массивы и объекты по типу не
+сверяются (`ports` можно передать и строкой `"80,443"`).
 
 У части ошибок есть свои поля: `vm_id` у `provision`, когда ВМ уже создана
 (её надо удалить); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
@@ -98,8 +112,13 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 с теми же `reason` и `error`. Отказ политики HTTP (`secret_value`,
 `cert_private_key`, `k8s_kubeconfig` с токеном, путь вне рабочего каталога)
 — `USAGE`; нет `kubectl`/`helm` на сервере — `CONFIG_INVALID` с подсказкой;
-сервер занят — `API_RATE_LIMITED`. Ответ `confirmation_required` — не
-ошибка, поля `reason` у него нет.
+сервер занят (уже идут 32 вызова инструментов) — `SERVER_BUSY`: это лимит
+самого `evo mcp --http`, в Cloud.ru запрос не уходил, повторите позже. Ответ
+`confirmation_required` — не ошибка, поля `reason` у него нет.
+
+Неизвестный инструмент (и инструмент вне `--toolsets`) — ошибка протокола
+JSON-RPC `-32602` с сообщением `Unknown tool: <имя>`, как требует MCP
+2025-06-18, а не результат с `isError`.
 
 ## Цена
 
@@ -420,7 +439,9 @@ v1.1 работает через alias, но лучше заменить: `claud
 Рабочий каталог сервера — тот, в котором клиент его запускает (обычно корень
 проекта). Там же `deploy` и другие инструменты ведут `./.evo/` —
 состояние и SSH-ключ к созданным ВМ ([auth.md](auth.md#что-хранится-на-машине)).
-По stdio stdout занят протоколом; человекочитаемого вывода нет.
+По stdio stdout занят протоколом; человекочитаемого вывода нет: ход операций
+(освобождён floating IP, IP привязан после загрузки) и журнал вызовов сервер
+пишет в stderr.
 
 ## Streamable HTTP
 
@@ -451,7 +472,8 @@ evo mcp --http :8080
   одна строка — одно сообщение или батч, строка длиннее 16 МБ получает
   ошибку, а сервер продолжает работу.
 - Одновременно выполняется не больше 32 вызовов инструментов; следующий
-  сразу получает ошибку инструмента «server busy» — повторите позже.
+  сразу получает ошибку инструмента «server busy» (`reason: SERVER_BUSY`,
+  [exit-codes.md](exit-codes.md)) — повторите позже.
 - В stderr — одна строка на вызов инструмента: имя, статус, длительность;
   аргументы не пишутся. `--verbose` — подробнее.
 
@@ -557,7 +579,7 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
   `kustomize`; флаги, читающие или пишущие файлы хоста (`-f`, `-k`,
   `--kubeconfig`, `--from-file`, `--from-env-file`, `-o …-file=…`, `--cert`,
   `--key`, `--ca-cert` у `create secret tls`, `--custom` у `debug`,
-  `--log-file`, `--output-directory`, …), и флаги, отправляющие токен кластера
+  `--log-file`, `--output-directory`, `--kuberc`, …), и флаги, отправляющие токен кластера
   на другой сервер (`--server`, `--token`, `--insecure-skip-tls-verify`, …),
   в том числе через `_` вместо `-` (`--client_key`). Флаги подробного журнала
   `-v`, `--v`, `-v=N`, `-vN`, `--vmodule` тоже отклоняются: с `-v=8` kubectl
