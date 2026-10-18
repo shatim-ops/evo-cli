@@ -843,11 +843,11 @@ area_ca() {
 	must ca_deploy ca_deploy --arg name="$app" --arg image="$img" --arg port=8080 --arg max_instances=1 || return 1
 	ok ca_deploy "$(j -r .status)"
 	cov ca_deploy
-	# адрес приложения: строка со схемой или имя хоста *.cloud.ru (поле ответа
-	# API не описано: run 39160570296 строки https:// не нашёл)
 	app_url() {
 		evo tools call ca_get --arg name="$app" --json 2>/dev/null >"$tmp/caget" || return 0
-		jq -r '[.. | strings | select(test("^https?://[^/]+\\.") or test("^[a-z0-9-]+(\\.[a-z0-9-]+)+\\.(cloud\\.ru|ru)$"))][0] // empty | if . == "" then . elif test("^https?://") then . else "https://" + . end' "$tmp/caget"
+		# публичный адрес — configuration.ingress.publicUri (run 39164767739:
+		# первым в ответе идёт internalUri, снаружи недоступный)
+		jq -r '(.configuration.ingress.publicUri // empty) | if . == "" then . elif test("^https?://") then . else "https://" + . end' "$tmp/caget"
 	}
 	ca_shape() { jq -c '{keys: keys, status: (.status // .state // null), strings: [paths(strings) | map(tostring) | join(".")] | .[0:40]}' "$tmp/caget" 2>/dev/null | redact | cut -c1-600; }
 	app_up() {
