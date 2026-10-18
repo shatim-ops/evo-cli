@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 )
 
@@ -197,6 +198,43 @@ func TestQA_StackDestroyFailureKeepsJobVisible(t *testing.T) {
 	}
 	if orphans := stack.FindResourcefulJobs("f", ""); len(orphans) != 1 {
 		t.Errorf("the job still holding vpc-1 is hidden from stack_plan: %v (%s)", orphans, text)
+	}
+}
+
+// Живой прогон 18.10 (run 39167011818): первый stack_destroy — destroyed
+// (балансировщик и группа ещё удаляются), повторный, как советует note, —
+// destroy_failed навсегда: destroy уже удалённой ВМ отвечает VM_NOT_FOUND
+// «no VM … in project …; nothing was deleted», а «уже удалено» узнавалось
+// только по тексту (404, NOT_FOUND, not found). Код ответа — тоже признак.
+func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
+	stackHome(t)
+	r := newTestServer()
+	j := planJob(t, `{"name":"g","vm":{"name":"g-vm","private":true}}`)
+	for _, st := range j.Steps {
+		st.Status = "done"
+	}
+	j.Status = "destroyed"
+	j.Outputs["vm"] = "vm-1"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r.handlers["destroy"] = func(context.Context, map[string]any) (string, bool) {
+		return errResult(clerrors.New(clerrors.CodeVMNotFound,
+			"no VM vm-1 in project p; nothing was deleted", "List the project's VMs with vm_list (evo vm list).")), true
+	}
+	text, isErr := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	if isErr || !strings.Contains(text, `"destroyed"`) || !strings.Contains(text, "vm (already gone)") {
+		t.Fatalf("a VM that is already gone failed the teardown: %s", text)
+	}
+
+	// Другая ошибка шага vm (облако не ответило) — по-прежнему сбой: признак
+	// «уже удалено» — код ответа, а не любая ошибка destroy.
+	r.handlers["destroy"] = func(context.Context, map[string]any) (string, bool) {
+		return errResult(clerrors.New(clerrors.CodeAPIError, "destroy VM vm-1: API returned status 500", "")), true
+	}
+	text, isErr = r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	if !isErr || !strings.Contains(text, `"destroy_failed"`) {
+		t.Fatalf("a failed VM deletion was taken for a deleted VM: %s", text)
 	}
 }
 
