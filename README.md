@@ -224,9 +224,11 @@ mv .cloudru-vm .evo && mv .cloudru-vm.yaml .evo.yaml
 
 ## Поддержка
 
-Ошибки, идеи и неудобства — в [Issues](https://github.com/shatim-ops/evo-cli/issues/new/choose)
-этого репозитория, по форме: каждое issue разбирается, на каждое приходит
-ответ. Репозиторий публичный: в выводе замените ID проектов и ресурсов, IP,
+Ошибки CLI, идеи, неудобства и вопросы — в [Issues](https://github.com/shatim-ops/evo-cli/issues/new/choose)
+этого репозитория, по форме («Ошибка CLI», «Идея, неудобство или вопрос»,
+для участников догфуда — «Чек-ин»): каждое issue разбирается, на каждое
+приходит ответ. Нужен аккаунт GitHub, другого канала отзывов нет. Порядок
+догфуда — [docs/internal/dogfood-protocol.md](docs/internal/dogfood-protocol.md). Репозиторий публичный: в выводе замените ID проектов и ресурсов, IP,
 Key ID и имена ресурсов на `<uuid>`, `<ip>`, `<имя>`, ключи не вставляйте
 никогда. Приложите `evo version` и `evo doctor` — подробнее в
 [docs/troubleshooting.md](docs/troubleshooting.md#обращение-в-поддержку).

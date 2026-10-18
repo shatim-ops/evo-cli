@@ -1,0 +1,37 @@
+name: issue-labels
+
+# Метки отзыва по полям формы: область, ОС, «платформа», «деньги», «вопрос».
+# Текст issue — чужой: он только сравнивается с ответами форм в
+# .github/scripts/issue_labels.py, ничего из него не выполняется, ставятся
+# только метки из таблиц скрипта. Код скрипта — из ветки по умолчанию.
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-labels-${{ github.event.issue.number }}
+
+jobs:
+  label:
+    if: contains(github.event.issue.labels.*.name, 'отзыв')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Метки по полям формы
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.issue.body }}
+          LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+        run: python3 .github/scripts/issue_labels.py

@@ -1,0 +1,128 @@
+name: Чек-ин догфуда
+description: Раз в неделю и в конце волны, 3 минуты. Не ошибка и не идея — для них свои формы.
+title: "[чек-ин] "
+labels: ["чек-ин"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Первый чек-ин — в день получения ключа, после обязательного ядра (раздел 1 протокола). Дальше — по пятницам и в конце волны. На чек-ин не отвечают: из них собираются покрытие, расход и уборка волны. Ошибку отсюда заведите отдельным issue по форме «Ошибка CLI» и дайте ссылку.
+  - type: dropdown
+    id: period
+    attributes:
+      label: Период
+      options:
+        - Первый день (профиль и ядро)
+        - Неделя
+        - Итог волны
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Версия
+      description: Первая строка `evo version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: ОС
+      options:
+        - "macOS"
+        - "Windows"
+        - "Linux"
+        - "Windows + WSL"
+        - "Docker-образ evo"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Окружение
+      description: Оболочка, сеть (корпоративный прокси или нет), MCP-клиент и модель.
+      placeholder: PowerShell; без прокси; Claude Code + Opus
+    validations:
+      required: true
+  - type: checkboxes
+    id: areas
+    attributes:
+      label: Области
+      description: Что пробовали за период — и то, что сработало, тоже.
+      options:
+        - label: "Установка, configure, doctor"
+        - label: "Развёртывание compose (deploy, status, logs, destroy)"
+        - label: "ВМ и диски"
+        - label: "Образы и Marketplace"
+        - label: "Сеть: VPC, группы безопасности, floating IP, SNAT"
+        - label: "Балансировщик NLB"
+        - label: "DNS"
+        - label: "Kubernetes"
+        - label: "PostgreSQL"
+        - label: "Kafka и Redis"
+        - label: "Object Storage (S3)"
+        - label: "Секреты и сертификаты"
+        - label: "Container Apps и Artifact Registry"
+        - label: "Мониторинг, биллинг, аудит, IAM"
+        - label: "Стеки stack_*"
+        - label: "MCP-агент (Cursor, Claude Code и др.)"
+  - type: input
+    id: core_minutes
+    attributes:
+      label: Минут до первой команды
+      description: Только для первого дня — от скачивания до первого `evo vm list`.
+  - type: textarea
+    id: worked
+    attributes:
+      label: Что получилось
+  - type: textarea
+    id: unclear
+    attributes:
+      label: Что было непонятно или неудобно
+      description: Коротко; ошибки — ссылкой на issue.
+  - type: input
+    id: spend
+    attributes:
+      label: Расход за период, ₽
+      description: Из `evo tools call billing_consumption` или консоли «Контроль затрат». Если billing не ответил — так и напишите.
+    validations:
+      required: true
+  - type: dropdown
+    id: leftovers
+    attributes:
+      label: Остались ли ресурсы
+      options:
+        - Нет, всё убрано
+        - Да, работают намеренно
+        - Да, не удаляются (ID в отдельном issue)
+        - Не знаю
+    validations:
+      required: true
+  - type: dropdown
+    id: rating
+    attributes:
+      label: Оценка evo за период
+      options:
+        - "5"
+        - "4"
+        - "3"
+        - "2"
+        - "1"
+    validations:
+      required: true
+  - type: dropdown
+    id: continue
+    attributes:
+      label: Дальше
+      options:
+        - Продолжу
+        - Не продолжу
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Проверка
+      options:
+        - label: В тексте нет ключей, секретов, реальных ID, IP и имён ресурсов
+          required: true
