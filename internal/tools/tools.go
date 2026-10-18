@@ -922,7 +922,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zones",
-			Description: "List Evolution DNS zones in the project (both public and private), with id, name, type, valid, delegated. Read-only. dns.api.cloud.ru.",
+			Description: "List Evolution DNS zones in the project (both public and private), with id, name, domain, visibility, state (and confirm_state of a public zone), valid, delegated. Read-only. dns.api.cloud.ru.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{

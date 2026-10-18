@@ -91,7 +91,7 @@
 
 | Инструмент | Меняет | Обязательные аргументы | Описание |
 |---|---|---|---|
-| `dns_zones` | нет | — | List Evolution DNS zones in the project (both public and private), with id, name, type, valid, delegated. |
+| `dns_zones` | нет | — | List Evolution DNS zones in the project (both public and private), with id, name, domain, visibility, state (and confirm_state of a public zone), valid … |
 | `dns_zone_get` | нет | `id` | Get full details of one DNS zone by id (from dns_zones). |
 | `dns_zone_create` | да | `domain` | Create a DNS zone. |
 | `dns_zone_delete` | удаляет | `id` | Delete a DNS zone by id (from dns_zones) AND its records (async). |
