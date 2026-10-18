@@ -2,7 +2,8 @@ name: cloud-e2e
 
 # Сквозная проверка на настоящем Cloud.ru: init → deploy → verify → logs -f →
 # destroy → правило порта 80 удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
-# вручную или пушем в ветку e2e/** — и всегда удаляет за собой ресурсы.
+# вручную — Actions → cloud-e2e → Run workflow, ветка на выбор — и всегда
+# удаляет за собой ресурсы.
 # Job readonly рядом проверяет чтения API и MCP, ничего не создавая. Job
 # os-smoke (вход os_smoke) создаёт ВМ из образов Astra Linux и РЕД ОС по
 # имени, заходит по SSH и удаляет их. Job k8s-smoke (вход k8s_smoke) —
@@ -16,6 +17,12 @@ name: cloud-e2e
 # Секреты репозитория (Settings → Secrets and variables → Actions):
 #   CLOUDRU_KEY_ID, CLOUDRU_SECRET — ключ тестового сервисного аккаунта
 #   CLOUDRU_PROJECT_ID             — тестовый проект
+#
+# Ключи лежат в секретах окружения cloud-e2e (Settings → Environments), а не
+# репозитория: каждый job ниже объявляет environment: cloud-e2e, и окружение
+# требует одобрения владельца. Код из любой ветки получает ключ облака только
+# после его клика. Пуша в e2e/** как триггера больше нет: с ним код из ветки
+# запускался с ключом без чьего-либо решения.
 
 on:
   workflow_dispatch:
@@ -48,8 +55,6 @@ on:
         description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis; evo: rules for e2e ports 80/8080/8081/8082 when no evo-* VM is left)"
         type: boolean
         default: false
-  push:
-    branches: ["e2e/**"]
 
 concurrency:
   group: cloud-e2e
@@ -64,6 +69,7 @@ jobs:
   # --allow-project, 401 без токена). Идёт параллельно с e2e; в лог — только
   # имена, коды и счётчики (.github/scripts/cloud-readonly.sh).
   readonly:
+    environment: cloud-e2e
     if: ${{ !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -100,6 +106,7 @@ jobs:
         run: .github/scripts/cloud-readonly.sh
 
   e2e:
+    environment: cloud-e2e
     if: ${{ !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -314,6 +321,7 @@ jobs:
   # IP и ID ВМ в лог не попадают (маскируются), os-release — только ID и
   # версия.
   os-smoke:
+    environment: cloud-e2e
     if: ${{ inputs.os_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -510,6 +518,7 @@ jobs:
   # e2e. Кластеры DBaaS — только evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis
   # (проект общий: у внешнего аудитора — audit-*). ID и IP маскируются.
   cleanup:
+    environment: cloud-e2e
     if: ${{ inputs.cleanup_only }}
     runs-on: ubuntu-latest
     # Кластер DBaaS, который ещё создаётся, Cloud.ru удалять отказывается:
@@ -654,6 +663,7 @@ jobs:
   # кластера), только по входу k8s_smoke; кластер удаляется всегда, в том
   # числе по имени, если прогон потерял его ID. ID маскируются.
   k8s-smoke:
+    environment: cloud-e2e
     if: ${{ inputs.k8s_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     # Шаги ждут до 40 + 30 + 25 мин, удаление — до 30: запас, чтобы job не
@@ -842,6 +852,7 @@ jobs:
   # ID маскируются, в лог — статусы, счётчики и reason, текст ошибок — через
   # redact.sed.
   dbaas-pg:
+    environment: cloud-e2e
     if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     # Создание до 60 мин, проверки до ~20, удаление: отказы «ещё создаётся»
@@ -1058,6 +1069,7 @@ jobs:
         run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
 
   dbaas-kafka:
+    environment: cloud-e2e
     if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     # Создание до 75 мин (живое — 37–39, DB-10), проверки — минуты,
@@ -1197,6 +1209,7 @@ jobs:
         run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
 
   dbaas-redis:
+    environment: cloud-e2e
     if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-latest
     # Создание до 50 мин (живое — ~27, DB-12), удаление: отказы «ещё

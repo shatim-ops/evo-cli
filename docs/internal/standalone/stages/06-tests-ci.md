@@ -6,11 +6,11 @@
 ## Почему 91 с и 10 с
 
 - `internal/engine`: `vmPollInterval` 5 с, 12 итераций ожидания интерфейса
-  (мок без `State:"created"`, `engine_test.go:170-172`), `time.Sleep(2s)`
-  (`deploy.go:184`), реальный HTTP на `203.0.113.42:8080/5432` с таймаутом 10 с
-  на порт (`engine_test.go:183`).
+  (мок без `State:"created"`, `engine_test.go:174-176`), `time.Sleep(2s)`
+  (`deploy.go:188`), реальный HTTP на `203.0.113.42:8080/5432` с таймаутом 10 с
+  на порт (`engine_test.go:187`).
 - `internal/provision`: `initialBackoff = 1s` ×2 в `TestRetryOn429`, `TestServerError`.
-- `internal/verify`: `sleep 2s` в `verify_test.go:74`.
+- `internal/verify`: `sleep 2s` в `verify_test.go:78`.
 
 ## Задачи
 
