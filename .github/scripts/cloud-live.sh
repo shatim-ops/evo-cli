@@ -134,12 +134,11 @@ opwait() {
 zone_id() {
 	evo tools call list_zones --json | jq -r --arg n "$ZONE" '[.zones[]? | select(.name == $n) | .id][0] // empty'
 }
-# rand_secret — 24 случайных символа, буквы и цифры, сразу под маской.
+# rand_secret — 24 случайных символа, буквы и цифры, в $SECRET_VALUE, сразу
+# под маской (не через $(…): иначе ::add-mask:: попадёт в значение).
 rand_secret() {
-	local v
-	v=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | cut -c1-24)
-	mask "$v"
-	printf '%s' "$v"
+	SECRET_VALUE=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | cut -c1-24)
+	mask "$SECRET_VALUE"
 }
 sha() { printf '%s' "$1" | sha256sum | cut -c1-64; }
 # gone ВИД ПРЕФИКС — ресурсов вида с таким именем нет (для poll: список
@@ -276,28 +275,29 @@ sweep() {
 	[ "$left" = 0 ]
 }
 
-# iam_token — токен IAM по KEY_ID/SECRET (под маской) для прямых запросов.
+# iam_token — токен IAM по KEY_ID/SECRET в $TOKEN (под маской) для прямых
+# запросов. Не через $(…): ::add-mask:: должен уйти в stdout шага.
 iam_token() {
-	local t
+	TOKEN=
 	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] || return 1
-	t=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+	TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
 		curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
 		jq -r '.access_token // .accessToken // empty')
-	mask "$t"
-	printf '%s' "$t"
+	mask "$TOKEN"
+	[ -n "$TOKEN" ]
 }
 
 # probe_ar_pages — как отвечает GET /v1/registries постранично (только
 # чтение): по странице — HTTP, число реестров, длина токена, совпадает ли он
 # с прошлым, хэш первого id (повторяется ли страница). Без ID и имён.
 probe_ar_pages() {
-	local token tok="" prev="" i code n first q
-	token=$(iam_token) || { echo "probe ar: нет токена"; return 0; }
+	local tok="" prev="" i code n first q
+	iam_token || { echo "probe ar: нет токена"; return 0; }
 	for q in "" "&pageSize=100"; do
 		tok=""
 		prev=""
 		for i in 1 2 3 4 5; do
-			code=$(curl -sS -o "$tmp/arp" -w '%{http_code}' -H "Authorization: Bearer $token" \
+			code=$(curl -sS -o "$tmp/arp" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
 				"https://ar.api.cloud.ru/v1/registries?projectId=${PROJECT:-}$q${tok:+&pageToken=$tok}" || echo 000)
 			n=$(jq '(.registries // []) | length' "$tmp/arp" 2>/dev/null || echo "?")
 			first=$(jq -r '(.registries // [])[0].id // ""' "$tmp/arp" 2>/dev/null | sha256sum | cut -c1-8)
@@ -312,16 +312,15 @@ probe_ar_pages() {
 # Правило группы безопасности на порт RULE_PORT из RULE_CIDR (open_ports):
 # в evo нет удаления правила — DELETE в API, как шаг cleanup.
 delete_test_rules() {
-	local token sg r code n=0
+	local sg r code n=0
 	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] || { echo "::warning::нет KEY_ID/SECRET — правило $RULE_PORT не удалено"; return 1; }
 	evo tools call list_security_groups --arg rules=true --json >"$tmp/sg.json" || return 1
 	jq -r --arg pr "$RULE_PORT:$RULE_PORT" --arg c "$RULE_CIDR" '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and .port_range == $pr and .remote_ip_prefix == $c) | "\($g) \(.id)"' "$tmp/sg.json" >"$tmp/rules"
 	[ -s "$tmp/rules" ] || return 0
-	token=$(iam_token)
-	[ -n "$token" ] || { echo "::warning::нет токена — правило $RULE_PORT не удалено"; return 1; }
+	iam_token || { echo "::warning::нет токена — правило $RULE_PORT не удалено"; return 1; }
 	while read -r sg r; do
 		mask "$sg" "$r"
-		code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $token" \
+		code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
 			"https://compute.api.cloud.ru/api/v1/security-groups/$sg/rules/$r")
 		echo "правило $RULE_PORT: DELETE http=$code"
 		n=$((n + 1))
@@ -721,8 +720,10 @@ area_s3() {
 # Секреты (значения — только sha256) и сертификат: импорт, чтение, удаление.
 area_secrets() {
 	local path="$prefix/db" v1 v2 got cid crt key
-	v1=$(rand_secret)
-	v2=$(rand_secret)
+	rand_secret
+	v1=$SECRET_VALUE
+	rand_secret
+	v2=$SECRET_VALUE
 	umask 077
 	jq -n --arg p "$path" --arg v "$v1" '{path: $p, value: $v, description: "evo e2e live run"}' >"$tmp/s.json"
 	must secret_create secret_create --args-file "$tmp/s.json" || return 1
@@ -809,7 +810,13 @@ area_ca() {
 	must ca_deploy ca_deploy --arg name="$app" --arg image="$img" --arg port=8080 --arg max_instances=1 || return 1
 	ok ca_deploy "$(j -r .status)"
 	cov ca_deploy
-	app_url() { evo tools call ca_get --arg name="$app" --json 2>/dev/null | jq -r '[.. | strings | select(test("^https://"))][0] // empty'; }
+	# адрес приложения: строка со схемой или имя хоста *.cloud.ru (поле ответа
+	# API не описано: run 39160570296 строки https:// не нашёл)
+	app_url() {
+		evo tools call ca_get --arg name="$app" --json 2>/dev/null >"$tmp/caget" || return 0
+		jq -r '[.. | strings | select(test("^https?://[^/]+\\.") or test("^[a-z0-9-]+(\\.[a-z0-9-]+)+\\.(cloud\\.ru|ru)$"))][0] // empty | if . == "" then . elif test("^https?://") then . else "https://" + . end' "$tmp/caget"
+	}
+	ca_shape() { jq -c '{keys: keys, status: (.status // .state // null), strings: [paths(strings) | map(tostring) | join(".")] | .[0:40]}' "$tmp/caget" 2>/dev/null | redact | cut -c1-600; }
 	app_up() {
 		url=$(app_url)
 		[ -n "$url" ] || return 1
@@ -817,7 +824,7 @@ area_ca() {
 		code=$(curl -s -o "$tmp/page" -w '%{http_code}' --max-time 20 "$url" || echo 000)
 		[ "$code" = 200 ] && grep -qi nginx "$tmp/page"
 	}
-	if poll 900 20 app_up; then ok "ca_get URL и HTTP" "200, nginx"; else bad "ca_get URL и HTTP" "за 15 мин нет ответа 200 (код ${code:-нет URL})"; fi
+	if poll 900 20 app_up; then ok "ca_get URL и HTTP" "200, nginx"; else bad "ca_get URL и HTTP" "за 15 мин нет ответа 200 (код ${code:-нет URL}); ca_get: $(ca_shape)"; fi
 	must ca_logs ca_logs --arg name="$app" && ok ca_logs "строк $(j -r '(.logs // []) | length')"
 	must ca_stop ca_stop --arg name="$app" && { ok ca_stop "$(j -r .status)"; cov ca_stop; }
 	sleep 30
@@ -835,7 +842,8 @@ area_ca() {
 # Стек: ВМ без публичного IP, секрет, внутренний балансировщик.
 area_stack() {
 	local job st sv
-	sv=$(rand_secret)
+	rand_secret
+	sv=$SECRET_VALUE
 	umask 077
 	jq -n --arg n "$prefix" --arg i "$IMAGE" --arg z "$ZONE" --arg f "$FLAVOR" --arg s "$sv" '{manifest: {
 		name: $n,
