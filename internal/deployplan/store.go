@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package deployplan implements the two-phase deploy used by the MCP wizard:
 // Resolve() turns a request (auto or manual) into a fully-resolved, costed Plan
 // without creating anything, and ApplyWithTimeout() executes a previously-saved Plan.

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package bootstrap prepares a new VM over SSH: Docker with the compose
 // plugin for the deploy user. Cloud.ru renders cloud-init only from the
 // image's own user_data_template, so nothing here goes through cloud-init.

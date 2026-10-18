@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mk8s is a small client for the Cloud.ru Managed Kubernetes (Evolution)
 // v3 API (https://mk8s.api.cloud.ru). It is a gRPC-gateway REST API: project_id
 // goes in the query string, create/delete return an async Operation to poll.

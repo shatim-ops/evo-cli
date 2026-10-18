@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package monitoring is a client for the Cloud.ru Service Monitoring API
 // (https://monitoring.api.cloud.ru). IAM Bearer auth, role monaas.metrics.reader
 // or monaas.admin. Project-scoped in the PATH (…/v1/{projectId}/…), NOT a query.

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package s3 is a client for Cloud.ru Object Storage (S3-compatible, SigV4),
 // replacing the legacy python boto3 path in cloudru_api.py. Endpoint + keys
 // come from the env (CLOUDRU_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY / _REGION),

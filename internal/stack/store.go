@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stack is a crank-driven, disk-persisted orchestrator for multi-resource
 // Cloud.ru "stacks" (PG + VM + NLB + secrets + S3 in one declarative manifest).
 //

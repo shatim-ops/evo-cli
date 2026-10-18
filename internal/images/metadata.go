@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package images holds the rules for marketplace and OS images that every
 // VM-creating path shares. It prints nothing and knows nothing of cobra or
 // MCP: callers turn its results into previews, errors and requests.

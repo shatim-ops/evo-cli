@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package dns is a client for the Cloud.ru Evolution DNS API
 // (https://dns.api.cloud.ru, /v1). IAM Bearer auth. Zones are split into
 // publicZones/privateZones; records are TOP-LEVEL resources keyed by zone id:

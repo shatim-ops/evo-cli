@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package httpretry is an http.RoundTripper that repeats requests Cloud.ru
 // did not apply: a dropped connection on a read, 429, and 502/503/504 on a
 // read. The compute adapter keeps its own loop (internal/provision); the
@@ -9,6 +13,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
 const (
@@ -47,8 +53,35 @@ func (t *Transport) base() http.RoundTripper {
 
 func readMethod(m string) bool { return m == http.MethodGet || m == http.MethodHead }
 
+// UserAgent wraps base (nil: http.DefaultTransport) so that a request
+// without a User-Agent carries evo's (product.UserAgent). For the clients
+// that keep their own retry loop: the compute adapter and IAM.
+func UserAgent(base http.RoundTripper) http.RoundTripper { return uaTransport{base} }
+
+type uaTransport struct{ base http.RoundTripper }
+
+func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(withUserAgent(req))
+}
+
+// withUserAgent returns req with evo's User-Agent, or req itself when it
+// already has one. A RoundTripper must not change the caller's request.
+func withUserAgent(req *http.Request) *http.Request {
+	if req.Header.Get("User-Agent") != "" {
+		return req
+	}
+	r := req.Clone(req.Context())
+	r.Header.Set("User-Agent", product.UserAgent())
+	return r
+}
+
 // RoundTrip implements http.RoundTripper.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = withUserAgent(req)
 	backoff := t.Backoff
 	if backoff <= 0 {
 		backoff = time.Second

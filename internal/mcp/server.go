@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mcp implements a Model Context Protocol (MCP) server that exposes
 // evo operations as tools for AI agents. It speaks JSON-RPC 2.0 over
 // stdio (newline-delimited JSON, Run) or over Streamable HTTP (http.go).

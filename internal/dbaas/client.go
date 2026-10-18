@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package dbaas is a generic client for Cloud.ru Managed-Database services that
 // share the Evolution "dbaas/v1" shape — Kafka (kafka.api.cloud.ru) and Redis
 // (redis.api.cloud.ru), which mirror the PostgreSQL API. IAM Bearer auth,

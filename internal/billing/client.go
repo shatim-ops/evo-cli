@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package billing is a client for Cloud.ru billing/consumption (read-only).
 // Two different hosts: account balance lives on billing.api.cloud.ru
 // (GET /v1/agreement/{agreement_id}); usage/consumption lives on

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package sgrules opens a deployment's ports in its security group and
 // closes them again on destroy. The group is shared by every VM placed in
 // it, so a deployment records only the rules it created itself (by ID), and

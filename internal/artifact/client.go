@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package artifact is a client for the Cloud.ru Artifact Registry API
 // (https://ar.api.cloud.ru, /v1). IAM Bearer auth. Registries are
 // project-scoped via a projectId query (list/get/delete) or body field

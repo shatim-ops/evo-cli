@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package nlb is a client for the Cloud.ru Evolution Load Balancer API
 // (https://nlb.api.cloud.ru, /v2). IAM Bearer auth. Two resources:
 // networkLoadBalancers (L4 balancer) and targetGroups (VM targets). List is

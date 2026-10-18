@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package postgresql is a client for the Cloud.ru Managed PostgreSQL API
 // (https://postgresql.api.cloud.ru, /v1). IAM Bearer auth. Cluster list/create
 // is project-scoped via a `project_id` query/body field; per-cluster and

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 package cli
 
 import (
@@ -10,6 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/product"
+	"github.com/spf13/cobra"
 )
 
 // setBuildIdentity sets the build identity Main got from cmd/evo, with the
@@ -18,6 +23,7 @@ import (
 func setBuildIdentity(v, c, d string) {
 	info, _ := debug.ReadBuildInfo()
 	version, commit, date = resolveVersion(v, c, d, info)
+	product.SetVersion(version)
 }
 
 // resolveVersion keeps values set through -ldflags and replaces the defaults
@@ -52,6 +58,7 @@ func resolveVersion(v, c, d string, info *debug.BuildInfo) (string, string, stri
 // versionInfo is the payload of "evo version --json".
 type versionInfo struct {
 	Product string `json:"product"`
+	Author  string `json:"author"`
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
 	Date    string `json:"date"`
@@ -63,6 +70,7 @@ type versionInfo struct {
 func currentVersion() versionInfo {
 	return versionInfo{
 		Product: product.Name,
+		Author:  i18n.T(product.AuthorEN, product.Author),
 		Version: version,
 		Commit:  commit,
 		Date:    date,
@@ -77,8 +85,34 @@ func printVersion(w io.Writer, jsonMode bool, v versionInfo) error {
 	if jsonMode {
 		return output.NewWithWriter(w, output.ModeJSON, false).JSON(v)
 	}
-	_, err := fmt.Fprintf(w, i18n.T("%s (evo) %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
-		"%s (evo) %s\n  коммит:  %s\n  собран:  %s\n  go:      %s\n  os/arch: %s/%s\n"),
-		v.Product, v.Version, v.Commit, v.Date, v.Go, v.OS, v.Arch)
+	_, err := fmt.Fprintf(w, i18n.T("%s (evo) %s\n  author:  %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
+		"%s (evo) %s\n  автор:   %s\n  коммит:  %s\n  собран:  %s\n  go:      %s\n  os/arch: %s/%s\n"),
+		v.Product, v.Version, v.Author, v.Commit, v.Date, v.Go, v.OS, v.Arch)
 	return err
+}
+
+// newCrewCmd is the credits: hidden, a thank-you rather than a feature.
+func newCrewCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "crew",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		Short:  i18n.T("Who made evo", "Кто сделал evo"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, err := fmt.Fprint(cmd.OutOrStdout(), crewText())
+			return err
+		},
+	}
+}
+
+func crewText() string {
+	return i18n.Tf(`%s
+Made by %s.
+Thanks to everyone who tested it and sent the output of what broke.
+Feedback: %s
+`, `%s
+Придумал и собрал %s.
+Спасибо всем, кто тестировал и присылал вывод того, что сломалось.
+Обратная связь: %s
+`, product.Name, i18n.T(product.AuthorEN, product.Author), product.FeedbackContact)
 }

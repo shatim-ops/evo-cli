@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package containerapp is a small client for the Cloud.ru Container Apps API
 // (https://containers.api.cloud.ru, /v2/containers). Serverless containers
 // (Cloud-Run-like): projectId in query, IAM Bearer, create/delete are async.

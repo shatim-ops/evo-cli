@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 package cli
 
 import (
@@ -53,7 +57,7 @@ func TestResolveVersion_DevelAndNoInfoKeepDefaults(t *testing.T) {
 }
 
 var testVersion = versionInfo{
-	Product: product.Name, Version: "1.0.0-rc.1", Commit: "abc123", Date: "2026-10-14T12:00:00Z",
+	Product: product.Name, Author: product.AuthorEN, Version: "1.0.0-rc.1", Commit: "abc123", Date: "2026-10-14T12:00:00Z",
 	Go: "go1.26.9", OS: "linux", Arch: "amd64",
 }
 
@@ -80,7 +84,7 @@ func TestPrintVersion_JSON(t *testing.T) {
 		t.Fatalf("not one JSON object: %v: %q", err, buf.String())
 	}
 	want := map[string]string{
-		"product": "Cloud.ru Evolution CLI CREW edition", "version": "1.0.0-rc.1", "commit": "abc123", "date": "2026-10-14T12:00:00Z",
+		"product": "Cloud.ru Evolution CLI CREW edition", "author": "Timur Shakirbekov, Cloud.ru", "version": "1.0.0-rc.1", "commit": "abc123", "date": "2026-10-14T12:00:00Z",
 		"go": "go1.26.9", "os": "linux", "arch": "amd64",
 	}
 	for k, v := range want {
