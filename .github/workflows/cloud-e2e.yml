@@ -2,7 +2,8 @@ name: cloud-e2e
 
 # Сквозная проверка на настоящем Cloud.ru: init → deploy → verify → logs -f →
 # destroy → правило порта 80 удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
-# вручную (workflow_dispatch) — и всегда удаляет за собой ресурсы.
+# вручную — Actions → cloud-e2e → Run workflow, ветка на выбор — и всегда
+# удаляет за собой ресурсы.
 # Job readonly рядом проверяет чтения API и MCP, ничего не создавая. Job
 # os-smoke (вход os_smoke) создаёт ВМ из образов Astra Linux и РЕД ОС по
 # имени, заходит по SSH и удаляет их. Job k8s-smoke (вход k8s_smoke) —
