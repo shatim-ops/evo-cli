@@ -14,11 +14,24 @@ on:
 permissions: {}
 
 jobs:
+  # Одобрение владельца в окружении release: без него ничего не собирается
+  # и не подписывается — ни после tag.yml, ни после тега, запушенного
+  # напрямую. Окружение заведено в настройках (Required reviewers —
+  # владелец, Deployment branches and tags — только теги v*); без него
+  # GitHub создал бы его сам, без защиты.
+  approve:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: {}
+    steps:
+      - run: echo "выпуск ${GITHUB_REF_NAME} одобрен"
+
   # Тот же workflow, что на каждом push/PR: build, vet, gofmt, test -race на
   # трёх ОС, govulncheck, goreleaser check. Релиз не собирается, пока он
   # не зелёный.
   ci:
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: approve
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
