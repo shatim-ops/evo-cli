@@ -1,12 +1,46 @@
-name: Идея или неудобство
-description: Чего не хватает, что непонятно, что раздражает.
+name: Идея, неудобство или вопрос
+description: Чего не хватает, что непонятно, что раздражает, на что не нашли ответа в документации.
 title: "[идея] "
 labels: ["отзыв", "идея"]
 body:
   - type: markdown
     attributes:
       value: |
-        Репозиторий публичный: без ключей, реальных ID, IP и имён ресурсов.
+        Репозиторий публичный: без ключей, реальных ID, IP и имён ресурсов. Быстрый вопрос — в чат тестировщиков; сюда — то, чего нет в документации.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Что это
+      options:
+        - Идея
+        - Неудобство
+        - Вопрос, ответа на который нет в документации
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Область
+      options:
+        - "Установка, configure, doctor"
+        - "Развёртывание compose (deploy, status, logs, destroy)"
+        - "ВМ и диски"
+        - "Образы и Marketplace"
+        - "Сеть: VPC, группы безопасности, floating IP, SNAT"
+        - "Балансировщик NLB"
+        - "DNS"
+        - "Kubernetes"
+        - "PostgreSQL"
+        - "Kafka и Redis"
+        - "Object Storage (S3)"
+        - "Секреты и сертификаты"
+        - "Container Apps и Artifact Registry"
+        - "Мониторинг, биллинг, аудит, IAM"
+        - "Стеки stack_*"
+        - "MCP-агент (Cursor, Claude Code и др.)"
+        - "Другое"
+    validations:
+      required: true
   - type: textarea
     id: task
     attributes:

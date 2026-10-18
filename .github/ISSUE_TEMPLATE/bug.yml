@@ -1,20 +1,38 @@
-name: Ошибка evo
-description: Команда или инструмент MCP сработали не так, как ожидалось.
+name: Ошибка CLI
+description: Команда или инструмент MCP сработали не так, как ожидалось, или облако повело себя странно.
 title: "[bug] "
 labels: ["отзыв", "ошибка"]
 body:
   - type: markdown
     attributes:
       value: |
-        Репозиторий публичный. Перед отправкой замените в выводе ID проектов, ВМ и ресурсов, IP-адреса, Key ID, имена ваших ресурсов и доменов на `<uuid>`, `<ip>`, `<имя>`. Ключи и секреты не вставляйте никогда.
+        Репозиторий публичный. Перед отправкой замените в выводе ID проектов, ВМ и ресурсов, IP-адреса, Key ID, имена ваших ресурсов и доменов на `<uuid>`, `<ip>`, `<имя>`. Ключи и секреты не вставляйте никогда. Одна проблема — одно issue; если такое уже есть — комментарий к нему.
   - type: input
     id: version
     attributes:
       label: Версия
       description: Вывод `evo version` (первая строка).
-      placeholder: Cloud.ru Evolution CLI CREW edition (evo) 1.0.1
+      placeholder: Cloud.ru Evolution CLI CREW edition (evo) 1.0.4
     validations:
       required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: ОС
+      options:
+        - "macOS"
+        - "Windows"
+        - "Linux"
+        - "Windows + WSL"
+        - "Docker-образ evo"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Окружение
+      description: Оболочка, сеть (корпоративный прокси или нет), для MCP — клиент и модель.
+      placeholder: zsh; корпоративный прокси; Cursor + Claude Sonnet
   - type: dropdown
     id: surface
     attributes:
@@ -26,11 +44,68 @@ body:
         - Docker-образ
     validations:
       required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Область
+      description: Раздел протокола догфуда (docs/internal/dogfood-protocol.md).
+      options:
+        - "Установка, configure, doctor"
+        - "Развёртывание compose (deploy, status, logs, destroy)"
+        - "ВМ и диски"
+        - "Образы и Marketplace"
+        - "Сеть: VPC, группы безопасности, floating IP, SNAT"
+        - "Балансировщик NLB"
+        - "DNS"
+        - "Kubernetes"
+        - "PostgreSQL"
+        - "Kafka и Redis"
+        - "Object Storage (S3)"
+        - "Секреты и сертификаты"
+        - "Container Apps и Artifact Registry"
+        - "Мониторинг, биллинг, аудит, IAM"
+        - "Стеки stack_*"
+        - "MCP-агент (Cursor, Claude Code и др.)"
+        - "Другое"
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Где, по-вашему, проблема
+      description: «Платформа» — если ошибку вернул API Cloud.ru или так же ведёт себя консоль.
+      options:
+        - В CLI
+        - В платформе Cloud.ru
+        - Не знаю
+    validations:
+      required: true
+  - type: dropdown
+    id: money
+    attributes:
+      label: Ресурсы и деньги
+      description: Осталось ли в облаке что-то платное из-за этой ошибки. Проверьте `evo vm list`, `evo vpc fips`, `evo disk list`.
+      options:
+        - Ничего лишнего не создано
+        - Создан лишний ресурс (дубль)
+        - Ресурс остался после удаления или ошибки
+        - Не знаю
+    validations:
+      required: true
+  - type: dropdown
+    id: repro
+    attributes:
+      label: Повторяется
+      options:
+        - Всегда
+        - Иногда
+        - Один раз
+        - Не проверял
   - type: textarea
     id: command
     attributes:
       label: Команда или запрос агенту
-      description: Что именно запускали.
+      description: Что именно запускали или о чём просили агента.
       render: shell
     validations:
       required: true
@@ -52,7 +127,7 @@ body:
     id: doctor
     attributes:
       label: evo doctor
-      description: Вывод `evo doctor`. ID проекта и Key ID замените.
+      description: Вывод `evo doctor` (для CLI — обязательно). ID проекта замените.
       render: text
   - type: checkboxes
     id: privacy

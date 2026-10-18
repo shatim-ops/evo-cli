@@ -77,6 +77,11 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/redact_test.sh
 
+      # Метки отзывов по полям форм Issues: таблицы скрипта совпадают с формами.
+      - name: issue_labels.py на образцах форм
+        if: runner.os == 'Linux'
+        run: .github/scripts/issue_labels_test.sh
+
       # Не для галочки. 12.08.2026 здесь нашлись пять достижимых уязвимостей в
       # x/crypto/ssh — тем самым коде, которым движок ходит на ВМ, включая обход
       # физического подтверждения FIDO/U2F. Все пришли обновлением зависимости,
