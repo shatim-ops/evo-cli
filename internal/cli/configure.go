@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -23,6 +24,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/pager"
@@ -30,6 +32,11 @@ import (
 
 // orgProjectsURL lists the projects visible to the service account.
 var orgProjectsURL = "https://organization.api.cloud.ru/v3/projects"
+
+// orgClient repeats the project list GET on a dropped connection or a
+// 502/503/504, as the service clients do: one network blip made
+// 'evo project list' fail at once (cloud-e2e readonly, 18.10.2026).
+var orgClient = httpretry.NewClient(60 * time.Second)
 
 // Terminal access, replaceable in tests.
 var (
@@ -336,7 +343,7 @@ func listProjectsPage(ctx context.Context, token, pageToken string) ([]orgProjec
 		return nil, "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := httpClient.Do(req)
+	resp, err := orgClient.Do(req)
 	if err != nil {
 		return nil, "", clerrors.Wrap(clerrors.CodeAPIUnreachable, i18n.T("failed to reach the Organization API", "Organization API недоступен"),
 			i18n.T("Check your network connection, or pass --project-id", "Проверьте сеть или передайте --project-id"), err)

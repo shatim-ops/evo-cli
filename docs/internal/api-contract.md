@@ -266,7 +266,7 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
-| `GET /v3/projects` | `internal/cli/configure.go:28, :261-296`, `tools/tools_admin.go:89`, `whoami.go` | да | `page_size/page_token` есть, код читает первую страницу (размер по умолчанию не задокументирован); `status` enum `PROJECT_STATUS_ENABLED`; **400 для сервисного аккаунта не описан** (документированы 401/403/500) | из комментария: 400 «user not found» (14.10) | low (§5.11) |
+| `GET /v3/projects` | `internal/cli/configure.go:30, :261-296`, `tools/tools_admin.go:89`, `whoami.go` | да | `page_size/page_token` есть, код читает первую страницу (размер по умолчанию не задокументирован); `status` enum `PROJECT_STATUS_ENABLED`; **400 для сервисного аккаунта не описан** (документированы 401/403/500) | из комментария: 400 «user not found» (14.10) | low (§5.11) |
 | `GET /v3/quotas/usages?page_size=200&subject_type_codes&subject_ids` | `tools_admin.go:109-143` | да | нет; `individual_limit/usage` — строки (код отдаёт как есть); 403 для SA (из комментария) не описан | из комментария | — |
 
 ### 3.16 IAM — `iam.api.cloud.ru` (`iam-gw-public.yaml`)

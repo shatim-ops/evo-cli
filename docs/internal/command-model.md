@@ -189,7 +189,7 @@ running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пиш�
 
 | команда | облако: создаёт / читает / удаляет | state | гейт | проект | код |
 |---|---|---|---|---|---|
-| `configure` (+ `list`, `delete`) | читает: токен IAM, список проектов | нет; пишет профиль | нет | вводится | cli (`cli/configure.go:83`, `:245`, `:263`) |
+| `configure` (+ `list`, `delete`) | читает: токен IAM, список проектов | нет; пишет профиль | нет | вводится | cli (`cli/configure.go:90`, `:245`, `:263`) |
 | `whoami` | читает: токен IAM | нет | нет | конфиг | cli (`cli/whoami.go:18`) |
 | `doctor` | читает: доступность IAM/Compute, токен, видимость проектов | нет | нет | конфиг | cli (`cli/doctor.go:50-133`) |
 | `project list` | читает: проекты организации | нет | нет | конфиг | cli (`cli/project.go:36`) |

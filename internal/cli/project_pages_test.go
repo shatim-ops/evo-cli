@@ -9,7 +9,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // 'evo project list', configure and doctor read every page of
@@ -34,5 +38,35 @@ func TestListProjects_FollowsNextPage(t *testing.T) {
 	}
 	if len(got) != 2 || got[1].ID != "p2" {
 		t.Fatalf("projects = %+v", got)
+	}
+}
+
+// cloud-e2e readonly, 18.10.2026: one dropped connection made
+// 'evo project list' fail at once with API_UNREACHABLE. The GET is now
+// repeated, as the service clients repeat theirs.
+func TestListProjects_RetriesDroppedConnection(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				_ = conn.Close() // the connection drops before any answer
+			}
+			return
+		}
+		_, _ = io.WriteString(w, `{"projects":[{"id":"p1","name":"one"}]}`)
+	}))
+	defer srv.Close()
+	oldURL, oldClient := orgProjectsURL, orgClient
+	orgProjectsURL = srv.URL + "/v3/projects"
+	orgClient = &http.Client{Timeout: 5 * time.Second, Transport: &httpretry.Transport{Backoff: time.Millisecond}}
+	defer func() { orgProjectsURL, orgClient = oldURL, oldClient }()
+
+	got, err := listProjects(context.Background(), "tok")
+	if err != nil {
+		t.Fatalf("dropped connection not repeated: %v", err)
+	}
+	if len(got) != 1 || calls.Load() != 2 {
+		t.Fatalf("projects = %+v after %d calls", got, calls.Load())
 	}
 }
