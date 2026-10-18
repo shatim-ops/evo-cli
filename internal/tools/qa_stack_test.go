@@ -226,6 +226,16 @@ func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 	if isErr || !strings.Contains(text, `"destroyed"`) || !strings.Contains(text, "vm (already gone)") {
 		t.Fatalf("a VM that is already gone failed the teardown: %s", text)
 	}
+
+	// Другая ошибка шага vm (облако не ответило) — по-прежнему сбой: признак
+	// «уже удалено» — код ответа, а не любая ошибка destroy.
+	r.handlers["destroy"] = func(context.Context, map[string]any) (string, bool) {
+		return errResult(clerrors.New(clerrors.CodeAPIError, "destroy VM vm-1: API returned status 500", "")), true
+	}
+	text, isErr = r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	if !isErr || !strings.Contains(text, `"destroy_failed"`) {
+		t.Fatalf("a failed VM deletion was taken for a deleted VM: %s", text)
+	}
 }
 
 // job_id становится именем файла: "../x" читал JSON вне каталога заданий,
