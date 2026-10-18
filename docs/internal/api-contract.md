@@ -154,13 +154,13 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
-| `GET /v1/publicZones?project_id`, `/v1/privateZones` | `internal/dns/client.go:173-179` | да; **`projectId` required** | код шлёт `project_id`; пагинация не читается; `tools_dns.go:48-52` читает `valid`, `delegated` — **таких полей нет** (есть `state`, `confirmState`, `verificationToken`, `delegated`-подобного нет) → в `dns_zones` всегда `null` | из комментария: `project_id` → 200 | medium (§4.9, §4.10) |
+| `GET /v1/publicZones?project_id`, `/v1/privateZones` | `internal/dns/client.go:181-187` | да; **`projectId` required** | код шлёт `project_id`; пагинация не читается; `tools_dns.go:101-105` читает `valid`, `delegated` — **таких полей нет** (есть `state`, `confirmState`, `verificationToken`, `delegated`-подобного нет) → в `dns_zones` всегда `null` | из комментария: `project_id` → 200 | medium (§4.9, §4.10) |
 | `GET /v1/{public,private}Zones/{id}` | `:177` | да | нет | нет | — |
-| `POST /v1/{public,private}Zones` `{project_id, name, domain}` | `:182`, `tools_dns.go:94` | да; тело `projectId, name, domain` required | snake_case в теле (protojson принимает proto-имена); **Operation: код читает `resource_id`, спецификация — `resourceId`** → `op.ResourceID` пуст, id зоны приходится искать через `dns_zones` | нет | medium (§4.10) |
+| `POST /v1/{public,private}Zones` `{project_id, name, domain}` | `:190`, `tools_dns.go:152` | да; тело `projectId, name, domain` required | snake_case в теле (protojson принимает proto-имена); **Operation: код читает `resource_id`, спецификация — `resourceId`** → `op.ResourceID` пуст, id зоны приходится искать через `dns_zones` | нет | medium (§4.10) |
 | `DELETE /v1/{public,private}Zones/{id}` | `:187` | да | нет | нет | — |
 | `GET /v1/{public,private}RecordsSole?{public,private}_zone_id` | `:193-198`, `:69-74` | да; **`publicZoneId` required** | snake_case; пагинация не читается | из комментария (общее утверждение про snake_case) | medium |
 | `GET /v1/{public,private}RecordsSole/{id}` | `:200` | да | нет | нет | — |
-| `POST /v1/{public,private}RecordsSole` `{public_zone_id, name, type, values, ttl}` | `:207`, `tools_dns.go:230-236` | да; все пять required | snake_case; `resource_id` (см. выше) | нет | medium |
+| `POST /v1/{public,private}RecordsSole` `{public_zone_id, name, type, values, ttl}` | `:215`, `tools_dns.go:317-323` | да; все пять required | snake_case; `resource_id` (см. выше) | нет | medium |
 | `DELETE …RecordsSole/{id}` | `:213` | да | нет | нет | — |
 | `GET /v1/operations/{operationId}` | `:226` | да | `resource_id` vs `resourceId` | нет | medium |
 
@@ -426,9 +426,9 @@ not found», хотя консоль его показывает. Автопод
 
 ### 4.9 grpc-gateway сервисы: snake_case там, где контракт camelCase (medium)
 
-Код: `vpc/client.go:124`, `dns/client.go:73-78, :172`, `mk8s/client.go:54-55`
-шлют `project_id`, `public_zone_id`; тела DNS — `project_id` (`tools_dns.go:94,
-:226`). Спецификации VPC, DNS, mk8s: `projectId`, `publicZoneId` (required).
+Код: `vpc/client.go:124`, `dns/client.go:73-78, :180`, `mk8s/client.go:54-55`
+шлют `project_id`, `public_zone_id`; тела DNS — `project_id` (`tools_dns.go:152,
+:317`). Спецификации VPC, DNS, mk8s: `projectId`, `publicZoneId` (required).
 
 Почему работает: grpc-gateway v2 принимает для query и protojson для тела
 оба имени — proto (`project_id`) и JSON (`projectId`). Это свойство
@@ -442,7 +442,7 @@ snake_case, то есть Cloud.ru сами выбирают имена на у�
 
 ### 4.10 DNS: `resource_id` вместо `resourceId`, `valid`/`delegated` нет (medium)
 
-Код: `dns/client.go:51` (`json:"resource_id"`), `tools_dns.go:52`.
+Код: `dns/client.go:51` (`json:"resource_id"`), `tools_dns.go:104`.
 Спецификация: `Operation.resourceId`; у зоны `state`, `confirmState`,
 `verificationToken` (поля `valid`, `delegated` отсутствуют).
 

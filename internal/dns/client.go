@@ -127,6 +127,14 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	return data, resp.StatusCode, nil
 }
 
+// APIError is a non-2xx answer of the DNS API: its HTTP status and message.
+type APIError struct {
+	Status  int
+	Message string
+}
+
+func (e *APIError) Error() string { return fmt.Sprintf("dns API %d: %s", e.Status, e.Message) }
+
 func apiError(status int, body []byte) error {
 	var e struct {
 		Message string `json:"message"`
@@ -136,7 +144,7 @@ func apiError(status int, body []byte) error {
 	if msg == "" {
 		msg = string(body)
 	}
-	return fmt.Errorf("dns API %d: %s", status, msg)
+	return &APIError{Status: status, Message: msg}
 }
 
 // getList reads every page of a list: the answer carries nextPageToken

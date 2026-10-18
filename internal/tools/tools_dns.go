@@ -6,11 +6,14 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/dns"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // dnsClient builds an authenticated Evolution DNS client (standalone → newEngine token).
@@ -31,6 +34,55 @@ func dnsVisibility(args map[string]any) string {
 		return "private"
 	}
 	return "public"
+}
+
+// dnsZoneVisibility is the visibility of zone zoneID: type when given,
+// otherwise the list (public, then private) that holds the zone, as
+// dns_zones reads them. Without type the tools went to the public API,
+// and a private zone answered 403 there (live run 18.10: dns_zone_delete
+// left the zone). A zone in neither list is NOT_FOUND.
+func dnsZoneVisibility(ctx context.Context, cli *dns.Client, args map[string]any, zoneID string) (string, error) {
+	if stringArg(args, "type") != "" {
+		return dnsVisibility(args), nil
+	}
+	for _, vis := range []string{"public", "private"} {
+		zones, err := cli.ListZones(ctx, vis)
+		if err != nil {
+			return "", err
+		}
+		for _, z := range zones {
+			if fmt.Sprint(z["id"]) == zoneID {
+				return vis, nil
+			}
+		}
+	}
+	return "", clierrors.New(clierrors.CodeNotFound,
+		fmt.Sprintf("DNS zone %s is in neither the public nor the private zone list", zoneID),
+		"See dns_zones for the zone ids.")
+}
+
+// dnsRecordVisibility is the visibility of record recordID: type when
+// given, otherwise the API (public, then private) that answers its GET.
+// Only 403 and 404 mean "not in this API" (a foreign id gets 403, as
+// AR-2, CRT-2); any other error (401, 5xx, no connection) is returned as
+// is. Neither API has the record — NOT_FOUND.
+func dnsRecordVisibility(ctx context.Context, cli *dns.Client, args map[string]any, recordID string) (string, error) {
+	if stringArg(args, "type") != "" {
+		return dnsVisibility(args), nil
+	}
+	for _, vis := range []string{"public", "private"} {
+		_, err := cli.GetRecord(ctx, vis, recordID)
+		if err == nil {
+			return vis, nil
+		}
+		var ae *dns.APIError
+		if !errors.As(err, &ae) || (ae.Status != http.StatusForbidden && ae.Status != http.StatusNotFound) {
+			return "", err
+		}
+	}
+	return "", clierrors.New(clierrors.CodeNotFound,
+		fmt.Sprintf("DNS record %s is found in neither the public nor the private API", recordID),
+		"See dns_records (zone_id) for the record ids.")
 }
 
 // --- Zones ---
@@ -66,7 +118,11 @@ func (s *Registry) handleDnsZoneGet(ctx context.Context, args map[string]any) (s
 	if err != nil {
 		return errResult(err), true
 	}
-	m, err := cli.GetZone(ctx, dnsVisibility(args), id)
+	vis, err := dnsZoneVisibility(ctx, cli, args, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	m, err := cli.GetZone(ctx, vis, id)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -109,13 +165,16 @@ func (s *Registry) handleDnsZoneDelete(ctx context.Context, args map[string]any)
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from dns_zones)")), true
 	}
-	vis := dnsVisibility(args)
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("dns_zone_delete PERMANENTLY deletes %s zone %s and its records (async). Call again with confirmed=true.", vis, id)}), true
-	}
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	vis, err := dnsZoneVisibility(ctx, cli, args, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("dns_zone_delete PERMANENTLY deletes %s zone %s and its records (async). Call again with confirmed=true.", vis, id)}), true
 	}
 	op, err := cli.DeleteZone(ctx, vis, id)
 	if err != nil {
@@ -182,7 +241,11 @@ func (s *Registry) handleDnsRecords(ctx context.Context, args map[string]any) (s
 	if err != nil {
 		return errResult(err), true
 	}
-	items, err := cli.ListRecords(ctx, dnsVisibility(args), zoneID)
+	vis, err := dnsZoneVisibility(ctx, cli, args, zoneID)
+	if err != nil {
+		return errResult(err), true
+	}
+	items, err := cli.ListRecords(ctx, vis, zoneID)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -202,7 +265,11 @@ func (s *Registry) handleDnsRecordGet(ctx context.Context, args map[string]any) 
 	if err != nil {
 		return errResult(err), true
 	}
-	m, err := cli.GetRecord(ctx, dnsVisibility(args), id)
+	vis, err := dnsRecordVisibility(ctx, cli, args, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	m, err := cli.GetRecord(ctx, vis, id)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -227,14 +294,23 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 		return usageResult(fmt.Errorf("record_type %q is not one of %s", stringArg(args, "record_type"), strings.Join(dnsRecordTypes, ", "))), true
 	}
 	ttl := pgInt(args, "ttl", 300)
-	vis := dnsVisibility(args)
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		// the preview stays offline: without type the zone's visibility is
+		// looked up on the confirmed call
+		vis := dnsVisibility(args)
+		if stringArg(args, "type") == "" {
+			vis = "(public or private: found by id)"
+		}
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
-			"message": fmt.Sprintf("dns_record_create adds a %s %s-record %q → %v (ttl %d) in %s zone %s (async). Call again with confirmed=true.", vis, rtype, name, vals, ttl, vis, zoneID),
+			"message": fmt.Sprintf("dns_record_create adds a %s-record %q → %v (ttl %d) in %s zone %s (async). Call again with confirmed=true.", rtype, name, vals, ttl, vis, zoneID),
 		}), true
 	}
 	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	vis, err := dnsZoneVisibility(ctx, cli, args, zoneID)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -257,13 +333,16 @@ func (s *Registry) handleDnsRecordDelete(ctx context.Context, args map[string]an
 	if id == "" {
 		return usageResult(fmt.Errorf("'record_id' is required (from dns_records)")), true
 	}
-	vis := dnsVisibility(args)
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("dns_record_delete deletes %s record %s (async). Call again with confirmed=true.", vis, id)}), true
-	}
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	vis, err := dnsRecordVisibility(ctx, cli, args, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("dns_record_delete deletes %s record %s (async). Call again with confirmed=true.", vis, id)}), true
 	}
 	op, err := cli.DeleteRecord(ctx, vis, id)
 	if err != nil {
