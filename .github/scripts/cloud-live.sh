@@ -57,14 +57,17 @@ mask() {
 		[ -z "$v" ] || [ "$v" = null ] || echo "::add-mask::$v"
 	done
 }
-row() { # проверка | итог | подробности
-	printf '%-44s %-6s %s\n' "$1" "$2" "$3"
-	printf '| %s | %s | %s | %s |\n' "$area" "$1" "$2" "$3" >>"$summary"
+row() { # проверка | итог | подробности — всё через redact.sed: подробности
+	# берутся из ответов API (в них бывают ID, run 39167011818)
+	local d
+	d=$(printf '%s' "$3" | redact)
+	printf '%-44s %-6s %s\n' "$1" "$2" "$d"
+	printf '| %s | %s | %s | %s |\n' "$area" "$1" "$2" "$d" >>"$summary"
 }
 ok() { row "$1" ok "${2:-}"; }
 bad() {
 	row "$1" FAIL "${2:-}"
-	echo "::error::$area: $1 — ${2:-}"
+	echo "::error::$area: $1 — $(printf '%s' "${2:-}" | redact)"
 	failed=1
 }
 gap() { row "$1" "не покрыто" "${2:-}"; } # не проверено по причине вне evo
@@ -895,7 +898,7 @@ area_stack() {
 	while [ "$st" != "done" ] && [ "$st" != error ] && [ "$(date +%s)" -lt "$until" ]; do
 		tc stack_status --arg job_id="$job" --arg wait_seconds=240
 		st=$(j -r '.status // "?"')
-		echo "stack_status: $st, готово $(j -r '.done | length'), идёт $(j -r '.running | length'), ждёт $(j -r '.pending | length')"
+		echo "stack_status: $st, готово $(j -r '.done | length'), идёт $(j -r '.running | length'), ждёт $(j -r '.pending | length')" | redact
 	done
 	if [ "$st" = "done" ]; then ok "stack_apply → done" "шаги: $(j -r '.done | join(",")')"; else bad "stack_apply → done" "status $st: $(j -r '.error // empty' | redact | cut -c1-200)"; fi
 	# повторный apply готового стека ничего не создаёт
@@ -909,7 +912,7 @@ area_stack() {
 	st=$(j -r .status)
 	for _ in 1 2 3 4 5 6; do
 		[ "$st" = destroyed ] && [ "$(j -r '(.deleting // []) | length')" = 0 ] && break
-		echo "stack_destroy: $st, удалено $(j -c '.deleted // []'), удаляется $(j -c '.deleting // []'), не удалено $(j -c '[.failed[]? | if type == "object" then (.step // .key // .name) else . end]')"
+		echo "stack_destroy: $st, удалено $(j -c '.deleted // []'), удаляется $(j -c '.deleting // []'), не удалено $(j -c '[.failed[]? | if type == "object" then (.step // .key // .name) else . end]')" | redact
 		sleep 60
 		tc stack_destroy --arg job_id="$job"
 		st=$(j -r '.status // "?"')
