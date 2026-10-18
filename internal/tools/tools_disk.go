@@ -6,7 +6,9 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -258,10 +260,27 @@ func (s *Registry) handleDiskAttach(ctx context.Context, args map[string]any) (s
 		return errResult(err), true
 	}
 	r, err := eng.Cloud.AttachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
+	if err != nil && diskNotReady(err) {
+		// A disk just created is not attachable yet: 422 "Disk has no
+		// openstack_id" (CMP-15; live run 18.10 — disk_attach right after
+		// disk_create). Wait until it is available, as disk_create
+		// attach_to does (L-24), and attach once more.
+		if werr := waitDiskAvailable(ctx, eng, diskID, eng.Config.ProjectID); werr != nil {
+			return errResult(fmt.Errorf("attach disk: %w (waited for the new disk: %v)", err, werr)), true
+		}
+		r, err = eng.Cloud.AttachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
+	}
 	if err != nil {
 		return errResult(fmt.Errorf("attach disk: %w", err)), true
 	}
 	return toJSON(map[string]any{"status": "attached", "result": r}), false
+}
+
+// diskNotReady: the attach was refused because the disk is not ready yet
+// (422 "Disk has no openstack_id", CMP-15).
+func diskNotReady(err error) bool {
+	var se *provision.StatusError
+	return errors.As(err, &se) && se.Status == http.StatusUnprocessableEntity && strings.Contains(strings.ToLower(se.Body), "openstack_id")
 }
 
 // handleDiskDetach detaches a disk from a VM.
