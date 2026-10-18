@@ -13,6 +13,11 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 evo version
 ```
 
+Если скрипт напишет, что `~/.local/bin` нет в `PATH`, в zsh (macOS) добавьте
+его так: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc`.
+В примерах документации строки с `#` — пояснения; чтобы zsh не ругался на них
+при копировании, включите `setopt interactivecomments` (так же, через `~/.zshrc`).
+
 Скрипт:
 
 1. определяет ОС и архитектуру (`uname`);
@@ -50,7 +55,8 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 ## Linux и macOS вручную
 
 ```sh
-V=1.0.0; OS=linux; ARCH=amd64          # OS: linux | darwin; ARCH: amd64 | arm64
+# OS: linux | darwin; ARCH: amd64 | arm64
+V=1.0.0; OS=linux; ARCH=amd64
 base=https://github.com/shatim-ops/evo-cli/releases/download/v$V
 curl -fLO "$base/evo_${V}_${OS}_${ARCH}.tar.gz"
 curl -fLO "$base/checksums.txt"

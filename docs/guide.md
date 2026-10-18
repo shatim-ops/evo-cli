@@ -52,6 +52,12 @@ evo version
 скрипт подскажет строку для профиля оболочки. Без `CLOUDRU_VM_VERSION` ставится
 последний стабильный релиз.
 
+Строки, которые начинаются с `#`, — пояснения к командам. В zsh (оболочка по
+умолчанию на macOS) скопированный комментарий без настройки даёт ошибку
+«command not found: #»: включите комментарии один раз —
+`echo 'setopt interactivecomments' >> ~/.zshrc && source ~/.zshrc` — или
+копируйте только сами команды.
+
 **Windows:** установщика пока нет — скачайте zip из
 [релизов](https://github.com/shatim-ops/evo-cli/releases) и добавьте каталог в
 `Path`, по шагам — [install.md → Windows](install.md#windows).
@@ -73,8 +79,10 @@ evo configure
 Проверьте:
 
 ```sh
-evo whoami     # ключ принят, какой проект выбран и откуда он взят
-evo doctor     # файлы настроек и их права, доступность API, ключ
+# ключ принят, какой проект выбран и откуда он взят
+evo whoami
+# файлы настроек и их права, доступность API, ключ
+evo doctor
 ```
 
 `doctor` с кодом `0` — всё готово. Иначе он назовёт, что не так; типовые
@@ -91,16 +99,26 @@ evo doctor     # файлы настроек и их права, доступн�
 Чтение ничего не меняет и подтверждения не требует:
 
 ```sh
-evo vm list                 # ВМ проекта
-evo disk list               # диски
-evo vpc list                # сети; evo vpc --help — подсети, группы безопасности, floating IP
-evo k8s list                # кластеры Kubernetes
-evo k8s addons              # каталог плагинов Kubernetes (раздел 7)
-evo pg list                 # кластеры PostgreSQL
-evo s3 buckets              # бакеты Object Storage
-evo image list ubuntu       # образы ВМ: ОС и продукты маркетплейса (раздел 6)
-evo marketplace list        # витрина: образы и плагины одним списком (раздел 7)
-evo list-zones              # зоны доступности
+# ВМ проекта
+evo vm list
+# диски
+evo disk list
+# сети; evo vpc --help — подсети, группы безопасности, floating IP
+evo vpc list
+# кластеры Kubernetes
+evo k8s list
+# каталог плагинов Kubernetes (раздел 7)
+evo k8s addons
+# кластеры PostgreSQL
+evo pg list
+# бакеты Object Storage
+evo s3 buckets
+# образы ВМ: ОС и продукты маркетплейса (раздел 6)
+evo image list ubuntu
+# витрина: образы и плагины одним списком (раздел 7)
+evo marketplace list
+# зоны доступности
+evo list-zones
 ```
 
 Каждая команда понимает `--json` — для скриптов и `jq`:
@@ -112,9 +130,12 @@ evo vm list --json | jq -r '.vms[] | "\(.name)\t\(.state)"'
 Всё, что есть у MCP-сервера, доступно и из CLI:
 
 ```sh
-evo tools list                      # все инструменты с кратким описанием
-evo tools describe dns_zones        # аргументы инструмента
-evo tools call dns_zones            # вызвать
+# все инструменты с кратким описанием
+evo tools list
+# аргументы инструмента
+evo tools describe dns_zones
+# вызвать
+evo tools call dns_zones
 ```
 
 ## 5. Развернуть docker-compose-проект
@@ -122,9 +143,12 @@ evo tools call dns_zones            # вызвать
 В каталоге с `docker-compose.yml`:
 
 ```sh
-evo init               # создаёт .evo.yaml: зона, образ, размер ВМ
-evo deploy --dry-run   # превью: что будет создано, в каком проекте, сколько стоит; ничего не создаёт
-evo deploy             # покажет то же превью и спросит подтверждение
+# создаёт .evo.yaml: зона, образ, размер ВМ
+evo init
+# превью: что будет создано, в каком проекте, сколько стоит; ничего не создаёт
+evo deploy --dry-run
+# покажет то же превью и спросит подтверждение
+evo deploy
 ```
 
 `deploy` создаёт ВМ, публичный floating IP, открывает в группе безопасности
@@ -138,11 +162,16 @@ evo deploy             # покажет то же превью и спросит
 Дальше:
 
 ```sh
-evo status          # ВМ, IP, состояние по state и в облаке
-evo verify          # порты приложения отвечают снаружи
-evo logs -f         # логи контейнеров
-evo deploy          # после правки compose-файла: обновит ту же ВМ
-evo destroy         # удалить ВМ, освободить IP, закрыть открытые порты
+# ВМ, IP, состояние по state и в облаке
+evo status
+# порты приложения отвечают снаружи
+evo verify
+# логи контейнеров
+evo logs -f
+# после правки compose-файла: обновит ту же ВМ
+evo deploy
+# удалить ВМ, освободить IP, закрыть открытые порты
+evo destroy
 ```
 
 **Пока ВМ существует, она оплачивается.** Закончили — `evo destroy`.
@@ -195,9 +224,12 @@ evo destroy         # удалить ВМ, освободить IP, закрыт
 регистра:
 
 ```sh
-evo image list astra                       # имя, отображаемое имя, тип, зоны, минимальный диск
-evo image list --type public               # только ОС; --type private — образы проекта
-evo image get AstraLinuxSmolensk1.8.3KES   # карточка: минимум, зоны, поля образа и кто их заполнит
+# имя, отображаемое имя, тип, зоны, минимальный диск
+evo image list astra
+# только ОС; --type private — образы проекта
+evo image list --type public
+# карточка: минимум, зоны, поля образа и кто их заполнит
+evo image get AstraLinuxSmolensk1.8.3KES
 ```
 
 Образы, которые не готовы ни в одной зоне, список скрывает: в общем каталоге

@@ -110,8 +110,10 @@ printf '%s' "$CLOUDRU_SECRET" | evo configure \
 Проверка:
 
 ```sh
-evo whoami        # профиль, Key ID (маскирован), проект, срок токена; код 2 при отказе IAM
-evo doctor        # файлы и права, откуда взята каждая настройка, доступность API, kubectl/helm
+# профиль, Key ID (маскирован), проект, срок токена; код 2 при отказе IAM
+evo whoami
+# файлы и права, откуда взята каждая настройка, доступность API, kubectl/helm
+evo doctor
 ```
 
 ### Профили
@@ -120,11 +122,16 @@ evo doctor        # файлы и права, откуда взята кажда
 `default`.
 
 ```sh
-evo configure --profile staging        # создать/изменить профиль
-evo --profile staging vm list          # использовать разово
-export CLOUDRU_PROFILE=staging                # использовать в этой оболочке
-evo configure list                     # профили; активный помечен *
-evo configure delete staging           # удалить профиль и его кэш токена
+# создать/изменить профиль
+evo configure --profile staging
+# использовать разово
+evo --profile staging vm list
+# использовать в этой оболочке
+export CLOUDRU_PROFILE=staging
+# профили; активный помечен *
+evo configure list
+# удалить профиль и его кэш токена
+evo configure delete staging
 ```
 
 Имя профиля: латиница, цифры, `-`, `_`, `.`, до 64 символов. Профиль, названный

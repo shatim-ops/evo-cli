@@ -3,8 +3,10 @@
 Первое, что стоит запустить при любой проблеме:
 
 ```sh
-evo doctor      # конфиг, права файлов, откуда взята каждая настройка, IAM/Compute API, ключ, kubectl/helm
-evo whoami      # принимает ли IAM ключ, какой проект выбран
+# конфиг, права файлов, откуда взята каждая настройка, IAM/Compute API, ключ, kubectl/helm
+evo doctor
+# принимает ли IAM ключ, какой проект выбран
+evo whoami
 ```
 
 Коды выхода — в [exit-codes.md](exit-codes.md).
@@ -72,9 +74,12 @@ UUID проекта — в консоли Cloud.ru, в сведениях о п�
 способами:
 
 ```sh
-evo configure --project-id <UUID>   # в профиль
-export CLOUDRU_PROJECT_ID=<UUID>    # на сеанс или в CI
-evo project use <UUID|имя>          # сменить проект текущего профиля
+# в профиль
+evo configure --project-id <UUID>
+# на сеанс или в CI
+export CLOUDRU_PROJECT_ID=<UUID>
+# сменить проект текущего профиля
+evo project use <UUID|имя>
 ```
 
 ### `configure` не показывает проекты: «Не удалось получить список проектов» (Could not list projects)
@@ -118,8 +123,10 @@ evo project use <UUID|имя>          # сменить проект текущ�
 подсеть проекта; нет — создайте подсеть в этой зоне в консоли):
 
 ```sh
-evo list-zones                       # ID и имена зон
-evo deploy --region <UUID ru.AZ-2>   # или region: в .evo.yaml
+# ID и имена зон
+evo list-zones
+# или region: в .evo.yaml
+evo deploy --region <UUID ru.AZ-2>
 ```
 
 ВМ в ошибке удалите (`evo destroy` или `evo vm delete <id>`),

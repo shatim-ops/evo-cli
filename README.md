@@ -61,19 +61,36 @@ Windows: скачайте `evo_<версия>_windows_amd64.zip` (или `arm64`
 Нужен ключ доступа сервисного аккаунта (Key ID и Key Secret) и UUID проекта —
 как их получить, в [docs/auth.md](docs/auth.md).
 
-```sh
-evo configure          # ключ и проект → профиль "default"
-evo whoami             # ключ принят IAM, какой проект выбран
-evo doctor             # конфиг, права файлов, доступность API
-evo vm list            # ВМ проекта
+Строки, которые начинаются с `#`, — пояснения к командам. В zsh (оболочка по
+умолчанию на macOS) скопированный комментарий без настройки даёт ошибку
+«command not found: #»: включите комментарии один раз —
+`echo 'setopt interactivecomments' >> ~/.zshrc && source ~/.zshrc` — или
+копируйте только сами команды.
 
-cd my-app                     # каталог с docker-compose.yml
-evo init               # .evo.yaml: зона и образ из API
-evo deploy --dry-run   # что будет создано и сколько стоит; ничего не создаёт
-evo deploy             # ВМ + публичный IP + docker compose up -d
-evo verify             # порты приложения отвечают
-evo logs -f            # логи контейнеров
-evo destroy            # удалить ВМ и освободить IP
+```sh
+# ключ и проект → профиль "default"
+evo configure
+# ключ принят IAM, какой проект выбран
+evo whoami
+# конфиг, права файлов, доступность API
+evo doctor
+# ВМ проекта
+evo vm list
+
+# каталог с docker-compose.yml
+cd my-app
+# .evo.yaml: зона и образ из API
+evo init
+# что будет создано и сколько стоит; ничего не создаёт
+evo deploy --dry-run
+# ВМ + публичный IP + docker compose up -d
+evo deploy
+# порты приложения отвечают
+evo verify
+# логи контейнеров
+evo logs -f
+# удалить ВМ и освободить IP
+evo destroy
 ```
 
 Зону лучше выбрать явно (`evo list-zones` показывает, какие открыты для новых
