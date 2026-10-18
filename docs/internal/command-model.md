@@ -150,7 +150,7 @@ running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пиш�
    секреты оттуда не читаются (`config/config.go:352-402`);
 4. переменные `CLOUDRU_*` (`config/config.go:141-157`, `:187-201`);
 5. флаги: глобальные `--project-id`, `--region` (`cli/tools.go:729-745`) и
-   локальные флаги `deploy` с теми же именами (`cli/main.go:539-540`).
+   локальные флаги `deploy` с теми же именами (`cli/main.go:548-540`).
 
 Если `.evo.yaml` или `CLOUDRU_PROJECT_ID` заменяют проект профиля без флага,
 печатается предупреждение (`config/config.go:206-217`).
@@ -202,7 +202,7 @@ running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пиш�
 | `logs` | SSH на адрес из записи | читает; может создать SSH-ключ (`engine/logs.go:48`) | нет | — | engine |
 | `status` | ничего | читает | нет | — | engine (`engine/status.go:16`) |
 | `destroy` | удаляет: ВМ записи, её FIP, правила SG записи | пишет | да (`--yes` или `--force`) | запись, иначе конфиг | engine (`engine/destroy.go:30`) |
-| `list-zones` | читает: зоны | нет | нет | — | cli (`cli/main.go:724-768`) |
+| `list-zones` | читает: зоны | нет | нет | — | cli (`cli/main.go:733-768`) |
 | `list-images` | читает: общий каталог образов | нет | нет | — | engine (`engine/list_images.go:14-21`) |
 | `tools list` / `describe` | ничего | нет | нет | — | cli (`cli/tools.go:92`, `:157`) |
 | `tools call` | как вызываемый инструмент | как инструмент | да, если `mutating` | как инструмент | tools через `invokeTool` (`cli/tools.go:591-620`) |
@@ -405,14 +405,14 @@ deploy/vm/stack не пишет ни state, ни job.
 
 | ресурс | создаёт | удаляет | если удалить в консоли мимо evo |
 |---|---|---|---|
-| ВМ из state | `deploy`, `provision` (`vm create`), `deploy_apply`, шаг `vm` стека | `evo destroy`/MCP `destroy` (активная запись), `destroy vm_id`/`vm delete`, `stack_destroy` (через `destroy vm_id`) | `status`, MCP `status`/`list` показывают запись как была — они читают только state (`engine/status.go:16-58`, `tools/tools.go:1909-1935`). `logs` падает на SSH, `verify` — на проверке портов (код 1). `deploy` снова берёт запись, ждёт SSH и пишет `ssh_timeout`, новую ВМ не создаёт. `evo destroy` получает 404, пишет «ВМ уже удалена» и доочищает FIP и правила (`engine/destroy.go:94-98`; 404 → `VM_NOT_FOUND` в `provision/adapter.go:448-450`). `destroy vm_id` ищет ВМ в списке проекта, не находит и отвечает ошибкой; запись остаётся (`tools/tools.go:2003-2016`). |
+| ВМ из state | `deploy`, `provision` (`vm create`), `deploy_apply`, шаг `vm` стека | `evo destroy`/MCP `destroy` (активная запись), `destroy vm_id`/`vm delete`, `stack_destroy` (через `destroy vm_id`) | `status`, MCP `status`/`list` показывают запись как была — они читают только state (`engine/status.go:16-58`, `tools/tools.go:1909-1935`). `logs` падает на SSH, `verify` — на проверке портов (код 1). `deploy` снова берёт запись, ждёт SSH и пишет `ssh_timeout`, новую ВМ не создаёт. `evo destroy` получает 404, пишет «ВМ уже удалена» и доочищает FIP и правила (`engine/destroy.go:94-98`; 404 → `VM_NOT_FOUND` в `provision/adapter.go:466-450`). `destroy vm_id` ищет ВМ в списке проекта, не находит и отвечает ошибкой; запись остаётся (`tools/tools.go:2003-2016`). |
 | ВМ стека | `stack_apply` → `provision` | `stack_destroy` | `stack_destroy` получает от `destroy vm_id` «no VM matching …»; эта строка не содержит `404`/`NOT_FOUND`/`not found` (`tools/tools_stack.go:703-705`), поэтому job переходит в `destroy_failed` и останется в нём при повторах (проверено временным тестом с фейковым облаком). |
 | FIP | `deploy`, `provision`, `deploy_apply` | `destroy` (по `floating_ip_id`, иначе по адресу/имени), `release_floating_ip` (только свободный) | `destroy`: 404 при удалении FIP считается «уже освобождён» (`engine/destroy.go:288-292`). |
 | FIP после ошибок | boot FIP при неудачном CreateVM | освобождается сразу (`engine/deploy.go:531`, `tools/tools.go:1782`); при неудаче освобождения — предупреждение «удалите в консоли» (`engine/deploy.go:899-902`) | — |
 | правило SG (deploy, deploy_apply) | `sgrules.Open` | `destroy` после удаления ВМ; правило, нужное другой записи этого state, переходит к ней (`sgrules/sgrules.go:300-335`); неудачное удаление — запись `destroyed`, повтор `destroy` | 404 считается удалённым (`sgrules/sgrules.go:322-327`). |
 | правило SG без ID в ответе | `sgrules.Open` (`Untracked`) | никто; deploy предупреждает (`engine/network.go:119-123`) | — |
 | правило SG от `open_ports` | `open_ports` | никто | — |
-| SSH-ключ `.evo/id_ed25519` | `deploy` (после согласия), `logs`, `provision`, `deploy_plan`, `deploy_apply` (`cli/main.go:303-341`) | никто; `destroy` не трогает | — |
+| SSH-ключ `.evo/id_ed25519` | `deploy` (после согласия), `logs`, `provision`, `deploy_plan`, `deploy_apply` (`cli/main.go:312-341`) | никто; `destroy` не трогает | — |
 | `.evo/known_hosts` | `deploy_apply` | никто | — |
 | план `.evo/plans/<id>.json` | `deploy_plan` | `deploy_apply` при любом ответе Apply без ошибки, в том числе `error` и `timeout` (`tools/tools_deploy.go:220`); при ошибке остаётся для повтора. Просроченный план не удаляется (`deployplan/store.go:154-156`) | — |
 | job стека `~/.evo/stack-jobs/` | `stack_plan` | никто; `stack_destroy` ставит `destroyed`/`destroy_failed`, файл остаётся | — |
@@ -437,7 +437,7 @@ deploy/vm/stack не пишет ни state, ни job.
 
 Дублирующие команды:
 
-- `evo list-zones` (свой код, `cli/main.go:724-768`) и `evo vm zones`
+- `evo list-zones` (свой код, `cli/main.go:733-768`) и `evo vm zones`
   (инструмент `list_zones`, `tools/tools.go:2150-2166`).
 - `evo list-images` — только общий каталог (`engine/list_images.go:21`);
   инструмент `list_images` добавляет образы проекта (`tools/tools.go:2190-2199`).
@@ -460,12 +460,12 @@ deploy/vm/stack не пишет ни state, ни job.
 Флаги (флаг = имя аргумента инструмента, `_` → `-`, `cli/trees.go:186-192`):
 
 - `--force` значит разное: у `deploy` — развернуть заново без изменений
-  (`cli/main.go:543`), у `destroy` — то же, что `--yes` (`cli/main.go:634`,
+  (`cli/main.go:552`), у `destroy` — то же, что `--yes` (`cli/main.go:643`,
   `:636`), у `secret delete` — удалить используемый секрет.
 - `--non-interactive` есть у `deploy` и `init`, в деревьях его нет (там без
   терминала — код 3).
 - `deploy` объявляет свои `--project-id` и `--region` поверх глобальных
-  (`cli/main.go:539-540`).
+  (`cli/main.go:548-540`).
 - память: `--ram-gb` (`k8s plan/create/add-nodepool`), `--ram` (`pg create`);
 - диск: `--disk-size` (`vm create`), `--size-gb` (`disk create/resize`),
   `--disk-gb` (`k8s add-nodepool`), `--storage-gb` (`pg create`);

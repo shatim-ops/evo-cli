@@ -34,6 +34,7 @@ type CloudRuAdapter struct {
 	client    *http.Client
 	baseURL   string
 	token     string
+	tokenSrc  func(context.Context) (string, error)
 	mu        sync.RWMutex
 	flavors   []*Flavor
 	flavorExp time.Time
@@ -66,10 +67,27 @@ func (a *CloudRuAdapter) SetToken(token string) {
 	a.token = token
 }
 
-func (a *CloudRuAdapter) getToken() string {
+// SetTokenSource makes every request ask src for the token, with the token
+// from SetToken as the fallback when src fails. A token taken once at the
+// start of a command expired during a deploy that waited ten minutes for
+// its VM (Fable on r3a); the provider keeps the token and renews it five
+// minutes before it expires, so asking it per request costs nothing.
+func (a *CloudRuAdapter) SetTokenSource(src func(context.Context) (string, error)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.tokenSrc = src
+}
+
+func (a *CloudRuAdapter) getToken(ctx context.Context) string {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.token
+	src, tok := a.tokenSrc, a.token
+	a.mu.RUnlock()
+	if src != nil {
+		if t, err := src(ctx); err == nil && t != "" {
+			return t
+		}
+	}
+	return tok
 }
 
 // CreateVM creates a new virtual machine via POST /api/v1.1/vms.
@@ -390,7 +408,7 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to create HTTP request", "не удалось сформировать HTTP-запрос"), i18n.T("Check API configuration", "Проверьте настройки адреса API"), err)
 		}
 
-		req.Header.Set("Authorization", "Bearer "+a.getToken())
+		req.Header.Set("Authorization", "Bearer "+a.getToken(ctx))
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}

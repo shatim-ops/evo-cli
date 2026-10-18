@@ -47,8 +47,26 @@ jobs:
           grep -v '^\[ok' "$RUNNER_TEMP/coverage.txt" || true
           exit "${status:-0}"
 
+      # В PR спецификации берутся из кэша на сутки: сайт документации
+      # медленный и сбоит, и каждый push в PR качал их заново 4–12 минут.
+      # Изменения на стороне Cloud.ru ловит запуск по расписанию: он кэш
+      # не читает и всегда качает свежие.
+      - name: День для кэша спецификаций
+        id: day
+        if: github.event_name == 'pull_request'
+        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Кэш спецификаций (PR)
+        id: cache
+        if: github.event_name == 'pull_request'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/cloudru-specs
+          key: cloudru-specs-${{ hashFiles('scripts/cloudru-specs.py') }}-${{ steps.day.outputs.day }}
+
       - name: Спецификации Cloud.ru
         id: specs
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           # Сайт документации иногда рвёт соединение: до трёх попыток.
           for i in 1 2 3; do
