@@ -104,20 +104,20 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
-| `POST /api/v1.1/vms` (массив; `project_id, name, flavor_name, image_name, availability_zone_id, disks[], image_metadata, interfaces[]`) | `internal/provision/adapter.go:76-82`, `types.go:48-81` | да, `/api/v1.1/vms` | **`interfaces[].interface_security_enabled` нет в спецификации**, а у элемента `additionalProperties: false` → по спецификации запрос должен отвергаться 422; `new_external_ip` описан как boolean, вживую даёт 500 (не шлём); `disks[].size` ≤ 16384; ответ — массив (код разбирает) | из комментария: поле требуется, без него 500 (review-context) | high (§5.1) |
+| `POST /api/v1.1/vms` (массив; `project_id, name, flavor_name, image_name, availability_zone_id, disks[], image_metadata, interfaces[]`) | `internal/provision/adapter.go:94-82`, `types.go:48-81` | да, `/api/v1.1/vms` | **`interfaces[].interface_security_enabled` нет в спецификации**, а у элемента `additionalProperties: false` → по спецификации запрос должен отвергаться 422; `new_external_ip` описан как boolean, вживую даёт 500 (не шлём); `disks[].size` ≤ 16384; ответ — массив (код разбирает) | из комментария: поле требуется, без него 500 (review-context) | high (§5.1) |
 | ↳ ответ: читает `flavor_id, image_id, availability_zone_id, public_ip, floating_ip` | `types.go:9-21` | — | **таких полей нет**: в ответе вложенные `flavor{id,name,cpu,ram}`, `image{id,name}`, `availability_zone{id,name}`, `interfaces[].floating_ip{ip_address}`; `state` enum `running, stopped, error, error_creating, error_deleting, creating, starting, stopping, rebooting, deleting, updating` — код ждёт ещё `active` (нет в enum; безвредно) | из комментария: BACKLOG [04], `flavor_id` приходит пустым | medium (§4.4) |
-| `GET /api/v1/vms/{id}` | `adapter.go:108, :313` | да | нет: `interfaces[].{id,ip_address,type,primary,state,floating_ip{id,ip_address,state}}` описаны; enum `type` включает `regular, direct_ip` (+ `system, service, gateway, technical, magic_technical, fip`), `interfaces[].state=created` в enum | да (deploy ждёт `created`) | — |
-| `DELETE /api/v1/vms/{id}?project_id` | `adapter.go:124`, `discovery.go:72` | да | extra `?project_id`; ответы 204/404/**405 «есть связанные сущности»**/422 «нельзя удалить в текущем статусе»; код ждёт удаляемости на 409 и 422 (`engine/destroy.go:317`) — **409 не описан, 405 не обрабатывается** (упадёт с ошибкой, ВМ и FIP останутся); тело `delete_attachments{disk_ids, external_ips}` могло бы удалять FIP вместе с ВМ | из комментария: 409/422 при `creating` (cloud-e2e 15.10) | medium (§4.8) |
+| `GET /api/v1/vms/{id}` | `adapter.go:126, :313` | да | нет: `interfaces[].{id,ip_address,type,primary,state,floating_ip{id,ip_address,state}}` описаны; enum `type` включает `regular, direct_ip` (+ `system, service, gateway, technical, magic_technical, fip`), `interfaces[].state=created` в enum | да (deploy ждёт `created`) | — |
+| `DELETE /api/v1/vms/{id}?project_id` | `adapter.go:142`, `discovery.go:72` | да | extra `?project_id`; ответы 204/404/**405 «есть связанные сущности»**/422 «нельзя удалить в текущем статусе»; код ждёт удаляемости на 409 и 422 (`engine/destroy.go:317`) — **409 не описан, 405 не обрабатывается** (упадёт с ошибкой, ВМ и FIP останутся); тело `delete_attachments{disk_ids, external_ips}` могло бы удалять FIP вместе с ВМ | из комментария: 409/422 при `creating` (cloud-e2e 15.10) | medium (§4.8) |
 | `GET /api/v1/vms?project_id&limit=200` | `discovery.go:23-30, :63` | да; `project_id` **required** | **`limit` max 100**; читается одна страница, `total` игнорируется; порядок по умолчанию `created_time desc` (поэтому `FindCreatedVM` видит свежую ВМ на первой странице) | из комментария: без `project_id` пусто (QA H5) | high (§4.5) |
-| `GET /api/v1/vms` без `project_id` | `adapter.go:135` | `project_id` required → 422 | мёртвый код: вызовов нет, только в интерфейсе `api.go` | — | low |
-| `GET /api/v1/flavors` | `adapter.go:165` | да | без `limit` → **первые 50 из `total`**; `disk_gb` нет (omitempty, безвредно); есть фильтры `availability_zone_id, cpu, ram, free_tier` | нет | high (§4.7) |
-| `GET /api/v1/availability-zones` | `adapter.go:193` | да | ответ — массив (код разбирает оба вида) | да | — |
-| `GET /api/v1/images?limit=200[&project_id]` | `adapter.go:230, :234` | да | **`limit` max 100**; одна страница; читает `os` и `status` — **таких полей нет** (состояние — `availability_zones[].state`, тип — `type: public/private/marketplace`) → фильтр `deployableImages` по `status` (`engine/init.go:176`) не работает, колонка OS в `evo images` пуста | из комментария: образы проекта видны только с `project_id` | medium (§4.5, §4.6) |
-| `GET /api/v1/images/{id}` | `adapter.go:281` | да | `status`, `os` нет; `image_metadata[].is_required` нет (есть `mandatory_group`, `display_position`, `display_group`); поле `icon` — строка, про управляющие символы спецификация молчит | да (sanitize для `icon`) | low |
+| `GET /api/v1/vms` без `project_id` | `adapter.go:153` | `project_id` required → 422 | мёртвый код: вызовов нет, только в интерфейсе `api.go` | — | low |
+| `GET /api/v1/flavors` | `adapter.go:183` | да | без `limit` → **первые 50 из `total`**; `disk_gb` нет (omitempty, безвредно); есть фильтры `availability_zone_id, cpu, ram, free_tier` | нет | high (§4.7) |
+| `GET /api/v1/availability-zones` | `adapter.go:211` | да | ответ — массив (код разбирает оба вида) | да | — |
+| `GET /api/v1/images?limit=200[&project_id]` | `adapter.go:248, :234` | да | **`limit` max 100**; одна страница; читает `os` и `status` — **таких полей нет** (состояние — `availability_zones[].state`, тип — `type: public/private/marketplace`) → фильтр `deployableImages` по `status` (`engine/init.go:176`) не работает, колонка OS в `evo images` пуста | из комментария: образы проекта видны только с `project_id` | medium (§4.5, §4.6) |
+| `GET /api/v1/images/{id}` | `adapter.go:299` | да | `status`, `os` нет; `image_metadata[].is_required` нет (есть `mandatory_group`, `display_position`, `display_group`); поле `icon` — строка, про управляющие символы спецификация молчит | да (sanitize для `icon`) | low |
 | `POST /api/v1/images` | `image.go:88`, `:26-48` | да | `image_metadata[].field_type` **required** с enum `info, text, linux_login, plain_password, linux_password, email, public_key, hostname` — код шлёт с `omitempty`; `availability_zones[]` с `enabled`; 409 «образ уже существует» (код — общая ошибка) | из комментария: `id`/`is_required` отвергаются, `display_name`/`display_position` обязательны (совпадает) | low |
 | `DELETE /api/v1/images/{id}?project_id` | `image.go:106` | да | extra `?project_id`; 405/422 не различаются | нет | low |
-| `POST /api/v1/floating-ips` | `adapter.go:340`, `types.go:232` | да | нет; `interface_id` необязателен (вариант «свободный FIP»); enum `state`: `available, in_use, error, error_creating, error_deleting, creating, deleting, updating, attaching, detaching` | да | — |
-| `GET /api/v1/floating-ips/{id}` | `adapter.go:355` | да | код ждёт `active` (`engine/deploy.go:791, :856`) — **в enum нет**, есть `in_use`; безвредно | из комментария: «`in_use`/`active`» | low |
+| `POST /api/v1/floating-ips` | `adapter.go:358`, `types.go:232` | да | нет; `interface_id` необязателен (вариант «свободный FIP»); enum `state`: `available, in_use, error, error_creating, error_deleting, creating, deleting, updating, attaching, detaching` | да | — |
+| `GET /api/v1/floating-ips/{id}` | `adapter.go:373` | да | код ждёт `active` (`engine/deploy.go:791, :856`) — **в enum нет**, есть `in_use`; безвредно | из комментария: «`in_use`/`active`» | low |
 | `GET /api/v1/floating-ips?project_id&limit=200` | `discovery.go:177` | да; `project_id` required | **`limit` max 100**; одна страница; есть серверный фильтр `free=true` вместо клиентского `Available()` | нет | medium (§4.5) |
 | `PUT /api/v1/floating-ips/{id}?project_id` `{interface_id, name}` | `discovery.go:184` | да | extra `?project_id`; в теле есть и `detach`, `vm_id`; ответ 200 с объектом (код терпит пустой) | да (вариант B) | low |
 | `DELETE /api/v1/floating-ips/{id}?project_id` | `discovery.go:208` | да | extra `?project_id`; 422 «занят SNAT / привязан» | из комментария: привязанный не удаляется | low |
@@ -266,7 +266,7 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
-| `GET /v3/projects` | `internal/cli/configure.go:28, :261-296`, `tools/tools_admin.go:89`, `whoami.go` | да | `page_size/page_token` есть, код читает первую страницу (размер по умолчанию не задокументирован); `status` enum `PROJECT_STATUS_ENABLED`; **400 для сервисного аккаунта не описан** (документированы 401/403/500) | из комментария: 400 «user not found» (14.10) | low (§5.11) |
+| `GET /v3/projects` | `internal/cli/configure.go:30, :261-296`, `tools/tools_admin.go:89`, `whoami.go` | да | `page_size/page_token` есть, код читает первую страницу (размер по умолчанию не задокументирован); `status` enum `PROJECT_STATUS_ENABLED`; **400 для сервисного аккаунта не описан** (документированы 401/403/500) | из комментария: 400 «user not found» (14.10) | low (§5.11) |
 | `GET /v3/quotas/usages?page_size=200&subject_type_codes&subject_ids` | `tools_admin.go:109-143` | да | нет; `individual_limit/usage` — строки (код отдаёт как есть); 403 для SA (из комментария) не описан | из комментария | — |
 
 ### 3.16 IAM — `iam.api.cloud.ru` (`iam-gw-public.yaml`)
@@ -362,7 +362,7 @@ MCP) возвращает `count: 0, events: []` при любом окне — 
 ### 4.5 `limit=200` при максимуме 100 (high — поведение не определено)
 
 Код: `discovery.go:30` (`/vms`, `/subnets`, `/security-groups`, `/floating-ips`,
-`/disk-types`), `adapter.go:230, :234` (`/images`). Спецификация: `limit`
+`/disk-types`), `adapter.go:248, :234` (`/images`). Спецификация: `limit`
 integer, `default 50`, `maximum 100`; у `/disk-types` параметра `limit` нет.
 
 Путь к дефекту: два варианта, и спецификация не говорит, какой. Если сервер
@@ -397,7 +397,7 @@ integer, `default 50`, `maximum 100`; у `/disk-types` параметра `limit
 
 ### 4.7 Флейворы: только первые 50 (high)
 
-Код: `adapter.go:155-189` — `GET /api/v1/flavors` без `limit`/`offset`,
+Код: `adapter.go:173-189` — `GET /api/v1/flavors` без `limit`/`offset`,
 кэш на час. Спецификация: `default 50`, `max 100`, `total` в ответе; есть
 фильтры `availability_zone_id`, `cpu`, `ram`, `free_tier`, `is_spot`.
 
@@ -487,7 +487,7 @@ snake_case, то есть Cloud.ru сами выбирают имена на у�
 
 ### 4.13 Мелкое (low), одним PR
 
-- `adapter.go:135` `ListVMs` без `project_id` — удалить (мёртвый код; по
+- `adapter.go:153` `ListVMs` без `project_id` — удалить (мёртвый код; по
   спецификации всегда 422).
 - `image.go:59` `FieldType omitempty` → поле required с enum; при пустом —
   валидировать до запроса.
@@ -538,7 +538,7 @@ snake_case, то есть Cloud.ru сами выбирают имена на у�
    отразить.
 8. **Состояние FIP `active`** (review-context) — в enum только `in_use`.
    Встречается ли `active` в ответах сейчас?
-9. **5xx под параллельными GET** (`adapter.go:476-481`) — есть ли
+9. **5xx под параллельными GET** (`adapter.go:494-481`) — есть ли
    задокументированные лимиты RPS / `Retry-After` у compute?
 
 ### Organization / IAM

@@ -293,10 +293,19 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 		return nil, fmt.Errorf(i18n.T("get working directory: %w", "текущий каталог: %w"), err)
 	}
 
+	auth := tokenProvider(cfg)
+	cloud := provision.NewCloudRuAdapter(httpClient, "")
+	// Every compute request asks the provider for the token instead of
+	// using the one taken at the start: a long deploy outlived it (Fable
+	// on r3a). The provider renews it before it expires.
+	cloud.SetTokenSource(func(ctx context.Context) (string, error) {
+		tok, err := auth.Token(ctx)
+		return tok.Value, err
+	})
 	return &engine.Engine{
 		Config:   cfg,
-		Auth:     tokenProvider(cfg),
-		Cloud:    provision.NewCloudRuAdapter(httpClient, ""),
+		Auth:     auth,
+		Cloud:    cloud,
 		Deployer: deploy.NewSSHDeployer(),
 		Printer:  printer,
 		StateDir: cwd,
