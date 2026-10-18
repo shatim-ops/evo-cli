@@ -41,6 +41,36 @@ func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string
 	if !trustedOIDCURL(tokenURL) {
 		tokenURL = DefaultOIDCTokenURL
 	}
+	// The exchange is idempotent: a transport error or a 5xx (the IAM
+	// gateway answered 502 with an HTML page once in a live run, 18.10,
+	// between exchanges that passed) is retried, as the IAM token exchange
+	// is (internal/auth); a 4xx is final.
+	delay := oidcRetryDelay
+	for attempt := 1; ; attempt++ {
+		tok, retryable, err := fetchOIDCTokenOnce(ctx, tokenURL, keyID, secret)
+		if err == nil || !retryable || attempt == oidcAttempts || ctx.Err() != nil {
+			return tok, err
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", err
+		case <-timer.C:
+		}
+		delay *= 2
+	}
+}
+
+// oidcAttempts and oidcRetryDelay bound the retries of the token exchange;
+// tests shorten the delay.
+const oidcAttempts = 3
+
+var oidcRetryDelay = time.Second
+
+// fetchOIDCTokenOnce sends one token request and reports whether a failure
+// is worth retrying.
+func fetchOIDCTokenOnce(ctx context.Context, tokenURL, keyID, secret string) (tok string, retryable bool, err error) {
 	form := url.Values{
 		"grant_type":    {"client_credentials"},
 		"client_id":     {keyID},
@@ -48,32 +78,32 @@ func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := oidcClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", true, err
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("OIDC token HTTP %d: %s", resp.StatusCode, string(data[:min(len(data), 200)]))
+		return "", resp.StatusCode >= 500, fmt.Errorf("OIDC token HTTP %d: %s", resp.StatusCode, string(data[:min(len(data), 200)]))
 	}
 	var r struct {
 		IDToken     string `json:"id_token"`
 		AccessToken string `json:"access_token"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
-		return "", fmt.Errorf("parse oidc token: %w", err)
+		return "", false, fmt.Errorf("parse oidc token: %w", err)
 	}
 	if r.IDToken != "" {
-		return r.IDToken, nil
+		return r.IDToken, false, nil
 	}
 	if r.AccessToken != "" {
-		return r.AccessToken, nil
+		return r.AccessToken, false, nil
 	}
-	return "", fmt.Errorf("OIDC response had no id_token/access_token")
+	return "", false, fmt.Errorf("OIDC response had no id_token/access_token")
 }
 
 // trustedOIDCHosts are the IAM hosts the access key may be sent to (both

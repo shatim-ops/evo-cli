@@ -81,3 +81,47 @@ func TestFetchOIDCToken_RedirectDoesNotResendSecret(t *testing.T) {
 		t.Fatal("a redirect was taken for a token")
 	}
 }
+
+// statusTransport answers with the given statuses in turn, then 200.
+type statusTransport struct {
+	codes []int
+	calls int
+}
+
+func (s *statusTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.calls++
+	code, body := 200, `{"id_token":"t"}`
+	if s.calls <= len(s.codes) {
+		code, body = s.codes[s.calls-1], "<html>Bad Gateway</html>"
+	}
+	return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(body)),
+		Header: http.Header{}, Request: req}, nil
+}
+
+// Живой прогон 18.10: k8s_helm упал на «OIDC token HTTP 502: <html>…»,
+// хотя обмены до него в том же прогоне проходили. Обмен идемпотентен:
+// 5xx повторяется (до oidcAttempts раз), 4xx — сразу ошибка.
+func TestFetchOIDCToken_Retries5xx(t *testing.T) {
+	orig, origDelay := oidcClient, oidcRetryDelay
+	t.Cleanup(func() { oidcClient, oidcRetryDelay = orig, origDelay })
+	oidcRetryDelay = 0
+
+	for _, tc := range []struct {
+		codes []int
+		calls int
+		ok    bool
+	}{
+		{[]int{502}, 2, true},
+		{[]int{503, 504}, 3, true},
+		{[]int{502, 502, 502}, oidcAttempts, false},
+		{[]int{400}, 1, false},
+		{[]int{401}, 1, false},
+	} {
+		rt := &statusTransport{codes: tc.codes}
+		oidcClient = &http.Client{Transport: rt, CheckRedirect: orig.CheckRedirect}
+		tok, err := FetchOIDCToken(context.Background(), DefaultOIDCTokenURL, "k", "s")
+		if rt.calls != tc.calls || (err == nil) != tc.ok || (tc.ok && tok != "t") {
+			t.Errorf("%v: %d requests, token %q, err %v; want %d requests, ok=%v", tc.codes, rt.calls, tok, err, tc.calls, tc.ok)
+		}
+	}
+}
