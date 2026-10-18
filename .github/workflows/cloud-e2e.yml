@@ -392,7 +392,7 @@ jobs:
   # cloud-live.sh): ресурсы evo-e2e-<область>-<run>, удаление в том же job и
   # проверка, что ничего не осталось. Порты в общей группе зоны у областей
   # разные (net — 18085 только с тестового адреса 198.18.255.1/32, mcp —
-  # 8086), маршрут — тестовая сеть 198.18.255.0/24.
+  # 8086), маршрут — тестовые сети 198.18.255.0/24 или 10.255.255.0/24.
   live:
     needs: live-plan
     if: ${{ !inputs.cleanup_only && needs.live-plan.outputs.areas != '[]' }}
@@ -456,6 +456,8 @@ jobs:
         if: always()
         env:
           AREA: ${{ matrix.area }}
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
           CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
           CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
         run: |
@@ -777,7 +779,7 @@ jobs:
 
       # Ресурсы job live (cloud-live.sh): все виды, имена evo-e2e-*, включая
       # диски без ВМ и собственные образы; маршрут тестовой сети
-      # 198.18.255.0/24 и правило порта 18085 с 198.18.255.1/32.
+      # 198.18.255.0/24 и 10.255.255.0/24, правило порта 18085 с 198.18.255.1/32.
       - name: Ресурсы live evo-e2e-*
         if: always()
         env:

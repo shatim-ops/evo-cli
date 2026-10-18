@@ -42,8 +42,10 @@ failed=0
 covered=()
 
 # Тестовые сети и адреса: 198.18.0.0/15 — диапазон для тестов (RFC 2544),
-# в интернете не маршрутизируется. Маршрут и правило с ним никого не задевают.
-ROUTE_CIDR=198.18.255.0/24
+# в интернете не маршрутизируется; 10.255.255.0/24 — запасная частная сеть
+# для маршрута, если первую API не примет. Маршрут и правило никого не
+# задевают.
+ROUTE_CIDRS="198.18.255.0/24 10.255.255.0/24"
 RULE_CIDR=198.18.255.1/32
 RULE_PORT=18085
 MCP_PORT=8086
@@ -174,7 +176,7 @@ lst() {
 		out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") || return 1
 		for v in $(jq -r '.vpcs[]?.id' <<<"$out"); do
 			evo tools call vpc_routes --arg vpc_id="$v" --json 2>/dev/null |
-				jq -r --arg v "$v" --arg c "$ROUTE_CIDR" '.routes[]? | select(.subnet == $c) | "\($v) \(.id)\troute \(.subnet)"' || true
+				jq -r --arg v "$v" --arg c "$ROUTE_CIDRS" '($c | split(" ")) as $cs | .routes[]? | select(.subnet as $n | $cs | index($n)) | "\($v) \(.id)\troute \(.subnet)"' || true
 		done ;;
 	vpc) out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.vpcs[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
@@ -551,6 +553,40 @@ area_net() {
 		else bad tg_delete "$why"; fi
 	fi
 
+	# Маршрут в дефолтном VPC: next hop — интерфейс ВМ B, пока у неё нет
+	# публичного адреса. 18.10 (run 39152048559) — 400 InvalidArgument без
+	# поля: пробуем две тестовые сети и записываем ответ.
+	dvpc=$(evo tools call vpc_list --json | jq -r '[.vpcs[] | select(.default == true)][0].id // empty')
+	ifc=$(evo tools call vm_get --arg name="$b" --json | jq -r '([.interfaces[] | select(.primary == true)] + .interfaces)[0].id // empty')
+	mask "$dvpc" "$ifc"
+	local cidr rid routed=
+	if [ -z "$dvpc" ] || [ -z "$ifc" ]; then bad vpc_route_create "нет дефолтного VPC или интерфейса ВМ"; fi
+	for cidr in $ROUTE_CIDRS; do
+		[ -n "$dvpc" ] && [ -n "$ifc" ] || break
+		tc vpc_route_create --arg vpc_id="$dvpc" --arg subnet="$cidr" \
+			--arg next_hop_vm_id="$(evo tools call vm_get --arg name="$b" --json | jq -r .id)" --arg next_hop_interface_id="$ifc" --arg description="evo e2e live run"
+		if [ "$rc" != 0 ]; then
+			row "vpc_route_create $cidr" отказ "код $rc, $reason: $(printf '%s' "$why" | cut -c1-160)"
+			continue
+		fi
+		if opwait vpc "$(j -r .operation_id)" 600; then
+			ok "vpc_route_create $cidr" "операция done"
+			cov vpc_route_create
+			routed=$cidr
+			break
+		else bad "vpc_route_create $cidr" "$why"; fi
+	done
+	if [ -n "$routed" ]; then
+		rid=$(evo tools call vpc_routes --arg vpc_id="$dvpc" --json | jq -r --arg c "$routed" '[.routes[] | select(.subnet == $c)][0].id // empty')
+		mask "$rid"
+		if [ -n "$rid" ] && must vpc_route_delete vpc_route_delete --arg vpc_id="$dvpc" --arg route_id="$rid"; then
+			if opwait vpc "$(j -r .operation_id)" 600 && poll 300 15 gone route x; then
+				ok vpc_route_delete "маршрута нет"
+				cov vpc_route_delete
+			else bad vpc_route_delete "$why"; fi
+		elif [ -z "$rid" ]; then bad vpc_route_create "маршрута $routed нет в vpc_routes"; fi
+	fi
+
 	# FIP ВМ A → ВМ B.
 	if must fip_attach fip_attach --arg fip="$fip" --arg vm="$b"; then
 		if poll 180 10 sh -c "evo tools call vm_get --arg name='$b' --json | jq -e --arg ip '$fip_ip' '.public_ip == \$ip' >/dev/null"; then
@@ -563,36 +599,15 @@ area_net() {
 	sg=$(evo tools call list_security_groups --json | jq -r --arg z "$zid" --arg n "SSH-access_$ZONE" '([.security_groups[] | select(.name == $n)] + [.security_groups[] | select(.availability_zone_id == $z)])[0].id // empty')
 	mask "$sg"
 	if [ -n "$sg" ] && must open_ports open_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"; then
-		if [ "$(j -c '.opened // []')" = "[$RULE_PORT]" ]; then
+		# порты в ответе — строки ("18085")
+		if [ "$(j -c '(.opened // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ]; then
 			tc open_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"
-			if [ "$rc" = 0 ] && [ "$(j -c '.already_open // []')" = "[$RULE_PORT]" ]; then
+			if [ "$rc" = 0 ] && [ "$(j -c '(.already_open // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ]; then
 				ok open_ports "opened, повтор — already_open"
 				cov open_ports
 			else bad "open_ports повтор" "код $rc, already_open=$(j -c .already_open)"; fi
 		else bad open_ports "opened=$(j -c .opened), failed=$(j -c .failed)"; fi
 	fi
-
-	# Маршрут в VPC ВМ B (дефолтный VPC зоны): next hop — её интерфейс.
-	dvpc=$(evo tools call vpc_list --json | jq -r '[.vpcs[] | select(.default == true)][0].id // empty')
-	ifc=$(evo tools call vm_get --arg name="$b" --json | jq -r '([.interfaces[] | select(.primary == true)] + .interfaces)[0].id // empty')
-	mask "$dvpc" "$ifc"
-	if [ -n "$dvpc" ] && [ -n "$ifc" ] &&
-		must vpc_route_create vpc_route_create --arg vpc_id="$dvpc" --arg subnet="$ROUTE_CIDR" \
-			--arg next_hop_vm_id="$(evo tools call vm_get --arg name="$b" --json | jq -r .id)" --arg next_hop_interface_id="$ifc" --arg description="evo e2e live run"; then
-		if opwait vpc "$(j -r .operation_id)" 600; then
-			n=$(evo tools call vpc_routes --arg vpc_id="$dvpc" --json | jq --arg c "$ROUTE_CIDR" '[.routes[] | select(.subnet == $c)] | length')
-			if [ "$n" = 1 ]; then ok vpc_route_create "маршрут в vpc_routes"; cov vpc_route_create; else bad vpc_route_create "в vpc_routes $n маршрутов"; fi
-		else bad vpc_route_create "$why"; fi
-		local rid
-		rid=$(evo tools call vpc_routes --arg vpc_id="$dvpc" --json | jq -r --arg c "$ROUTE_CIDR" '[.routes[] | select(.subnet == $c)][0].id // empty')
-		mask "$rid"
-		if [ -n "$rid" ] && must vpc_route_delete vpc_route_delete --arg vpc_id="$dvpc" --arg route_id="$rid"; then
-			if opwait vpc "$(j -r .operation_id)" 600 && poll 300 15 gone route x; then
-				ok vpc_route_delete "маршрута нет"
-				cov vpc_route_delete
-			else bad vpc_route_delete "$why"; fi
-		fi
-	elif [ -z "$dvpc" ] || [ -z "$ifc" ]; then bad vpc_route_create "нет дефолтного VPC или интерфейса ВМ"; fi
 
 	# SNAT: только если в зоне шлюза нет (один на зону; чужой не трогаем).
 	n=$(evo tools call snat_list --json | jq --arg z "$zid" --arg n "$ZONE" '[.nat_gateways[]? | select(.availability_zone_id == $z or .availability_zone == $n)] | length')
@@ -601,9 +616,14 @@ area_net() {
 	elif must snat_create snat_create --arg name="$prefix-snat" --arg zone="$ZONE"; then
 		ok snat_create "$(j -r .status)"
 		cov snat_create
-		local sid
+		local sid sst
 		sid=$(lst snat "$prefix-snat" | cut -f1 | head -1)
 		mask "$sid"
+		# сразу после создания удаление — 422 nat_can_not_be_deleted_from_current_state
+		# (run 39152048559): ждём устойчивого статуса
+		snat_st() { sst=$(evo tools call snat_list --json | jq -r --arg id "$sid" '.nat_gateways[] | select(.id == $id) | .status'); case "$sst" in *creat* | *CREAT* | *pending* | *PENDING* | "") return 1 ;; esac; }
+		poll 600 15 snat_st || true
+		ok "SNAT после создания" "status $sst"
 		if [ -n "$sid" ] && must snat_delete snat_delete --arg id="$sid"; then
 			if poll 300 15 gone snat "$prefix-snat"; then ok snat_delete "шлюза нет в snat_list"; cov snat_delete; else bad snat_delete "шлюз в списке через 5 мин"; fi
 		fi
