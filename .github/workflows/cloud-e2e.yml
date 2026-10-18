@@ -109,8 +109,10 @@ jobs:
   readonly:
     # Только чтение: ключ сервисного аккаунта с правами наблюдателя из окружения
     # cloud-readonly, без одобрения — job идёт и в автономной работе.
+    # Окружение cloud-readonly открыто только для main: с другой ветки job
+    # не запускается (иначе прогон красный без единого шага).
     environment: cloud-readonly
-    if: ${{ !inputs.cleanup_only }}
+    if: ${{ !inputs.cleanup_only && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
