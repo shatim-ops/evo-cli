@@ -988,7 +988,7 @@ area_mcp() {
 	poll 20 1 curl -fs -o /dev/null http://127.0.0.1:18090/healthz || { bad "http: сервер" "не поднялся"; return 1; }
 	hpost() {
 		curl -s -D "$tmp/h" -o "$tmp/b" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-			-H "Authorization: Bearer $token" ${sess:+-H "Mcp-Session-Id: $sess"} --max-time 2400 -d "$1" http://127.0.0.1:18090/mcp >/dev/null || true
+			-H "Authorization: Bearer $token" ${sess:+-H "Mcp-Session-Id: $sess"} --max-time 2400 -w '%{http_code}' -d "$1" http://127.0.0.1:18090/mcp >"$tmp/hcode" || true
 		if grep -q '^data: ' "$tmp/b"; then sed -n 's/^data: //p' "$tmp/b"; else cat "$tmp/b"; fi
 	}
 	sess=
@@ -999,7 +999,7 @@ area_mcp() {
 		hpost "$(jq -cn --arg n "$1" --argjson a "$2" '{jsonrpc:"2.0", id:9, method:"tools/call", params:{name:$n, arguments:$a}}')" >"$tmp/res"
 		# поток SSE: до ответа (id 9) идут уведомления о ходе — берём ответ
 		jq -c 'select(.id == 9)' "$tmp/res" >"$tmp/res9" 2>/dev/null || : >"$tmp/res9"
-		echo "http $1: сообщений в ответе $(jq -s length "$tmp/res" 2>/dev/null || echo "?"), методы уведомлений $(jq -sc '[.[] | .method // empty] | unique' "$tmp/res" 2>/dev/null)"
+		echo "http $1: HTTP $(cat "$tmp/hcode" 2>/dev/null), сообщений в ответе $(jq -s length "$tmp/res" 2>/dev/null || echo "?"), методы уведомлений $(jq -sc '[.[] | .method // empty] | unique' "$tmp/res" 2>/dev/null), ключи ответа $(jq -c 'keys' "$tmp/res9" 2>/dev/null), ошибка JSON-RPC $(jq -c '.error // null | if . == null then null else {code, message: (.message | tostring | .[0:200])} end' "$tmp/res9" 2>/dev/null)" | redact
 		iserr=$(jq -r '.result.isError // "?"' "$tmp/res9" 2>/dev/null || echo "?")
 		jq -r '.result.content[0].text // empty' "$tmp/res9" >"$tmp/r.json" 2>/dev/null || : >"$tmp/r.json"
 	}
