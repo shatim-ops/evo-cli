@@ -138,10 +138,11 @@ func run(args []string) int {
 	}
 	if !commandStarted {
 		err = usageError(cmd, err)
-		// cobra stops at the first bad flag or command, so a --json after
-		// it is never parsed; the error must still be JSON.
-		flagJSON = flagJSON || jsonRequested(args)
 	}
+	// cobra stops at the first bad flag or command, and k8s kubectl passes
+	// what follows the cluster id to kubectl, refusing a --json there
+	// (break r3b, R3B-3): a --json it never parsed still makes the error JSON.
+	flagJSON = flagJSON || jsonRequested(args)
 	handleError(output.New(flagJSON, flagNoColor), err)
 	return clerrors.ExitCode(err)
 }

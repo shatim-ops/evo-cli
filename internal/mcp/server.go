@@ -24,6 +24,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/product"
 	"github.com/shatim-ops/evo-cli/internal/tools"
@@ -436,7 +437,10 @@ type incoming struct {
 // reports a non-empty JSON array (answered with an array).
 func decodeMessages(data []byte) (msgs []incoming, batch bool) {
 	data = bytes.TrimSpace(data)
-	if !json.Valid(data) {
+	// JSON-RPC text is UTF-8. encoding/json would put U+FFFD in place of
+	// a bad byte and the call would go to the cloud with another string
+	// (break r3b, R3B-4): such a line is not a message.
+	if !utf8.Valid(data) || !json.Valid(data) {
 		return []incoming{{bad: errorResponse(nullID, codeParseError, "parse error")}}, false
 	}
 	if data[0] != '[' {

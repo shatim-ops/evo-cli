@@ -13,9 +13,9 @@ import (
 // parses with jq. docs/install.md tells k8s kubectl to put evo flags before
 // the cluster id, and a flag after it is USAGE. The refusal is still an
 // error of a command whose argv contains --json, and jsonRequested sees
-// that flag. run applies it only while commandStarted is false; the kubectl
-// command has already started, so the refusal is plain text.
-func TestBreak_JSON_KubectlFlagAfterArgs(t *testing.T) {
+// that flag. run applied it only while commandStarted was false, so the
+// refusal of the started kubectl command was plain text (break r3b, R3B-3).
+func TestJSON_KubectlFlagAfterArgs(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

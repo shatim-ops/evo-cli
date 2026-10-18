@@ -18,11 +18,11 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
-// A byte that is not UTF-8 inside a JSON string is not a parse error:
-// encoding/json replaces it with U+FFFD and the tool runs. image_list then
-// searches the catalogue for that different query and answers success.
-// The request that left the process is not the request the client wrote.
-func TestBreak_UTF8_ReplacedQueryHitsCloud(t *testing.T) {
+// A byte that is not UTF-8 inside a JSON string was not a parse error:
+// encoding/json replaced it with U+FFFD and image_list searched for that
+// other query, answering success (break r3b, R3B-4). Now the line is a
+// parse error and nothing goes to the cloud.
+func TestUTF8_InvalidLineNotSent(t *testing.T) {
 	old := http.DefaultTransport
 	var urls []string
 	http.DefaultTransport = roundTripper(func(r *http.Request) (*http.Response, error) {

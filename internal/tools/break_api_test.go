@@ -12,14 +12,13 @@ import (
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
-// HTTP 200 with an HTML body (a gateway page) or an empty body is reported
-// as deleted or created. docs/exit-codes.md: an API answer is API_ERROR
-// (exit 5), not a success. errreason.go treats a gateway HTML page as an
-// API answer when the client tries to parse it.
-func TestBreak_API_HTML200ReportedSuccess(t *testing.T) {
+// An HTTP 200 with an HTML body (a gateway page) was reported as deleted,
+// created or ok (break r3b, R3B-1). docs/exit-codes.md: an API answer is
+// API_ERROR (exit 5); httpretry and the compute adapter read it as a 502.
+// An empty 200 stays a success: see contractAPIBreak.
+func TestAPI_HTML200IsAPIError(t *testing.T) {
 	for _, tc := range []struct{ name, kind string }{
 		{"image_delete", "html"},
-		{"image_delete", "empty"},
 		{"pg_db_create", "html"},
 		{"ca_start", "html"},
 	} {
@@ -39,10 +38,10 @@ func TestBreak_API_HTML200ReportedSuccess(t *testing.T) {
 	}
 }
 
-// The cloud answered, and the body is not JSON. The reason is USAGE, so the
-// CLI exits 1. docs/exit-codes.md: USAGE is a local refusal, nothing was
-// sent; an API answer is API_ERROR, exit 5.
-func TestBreak_API_UnparsedBodyIsUsage(t *testing.T) {
+// The cloud answered, and the body is not JSON: the reason was USAGE, exit 1
+// (break r3b, R3B-2). docs/exit-codes.md: USAGE is a local refusal, nothing
+// was sent; an API answer is API_ERROR, exit 5.
+func TestAPI_UnparsedBodyIsAPIError(t *testing.T) {
 	for _, tc := range []struct{ name, kind string }{
 		{"disk_resize", "html"},
 		{"disk_resize", "empty"},

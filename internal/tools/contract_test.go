@@ -440,7 +440,7 @@ func TestContract_APIStatusReason(t *testing.T) {
 				continue // тело scrape — текст Prometheus, не JSON API.
 			}
 			if contractAPIBreak[tl.Name+" "+kind] {
-				continue // падает в TestBreak_API_*, не в контракте.
+				continue // пустой 2xx — успех по построению, см. contractAPIBreak.
 			}
 			reached++
 			reason, _ := contractReason(text)
@@ -459,32 +459,24 @@ func TestContract_APIStatusReason(t *testing.T) {
 	}
 }
 
-// contractAPIBreak are tool/status pairs whose answer violates exit-codes.
-// They stay out of TestContract_APIStatusReason and fail in break_api_test.go.
+// contractAPIBreak are tool/status pairs left out of
+// TestContract_APIStatusReason by design (break r3b, R3B-1/R3B-2 fixed: an
+// HTML 2xx is a 502 in httpretry and the compute adapter, a cut answer is
+// API_ERROR). An empty 2xx stays a success: for a delete, start or stop it
+// is a valid HTTP answer, and S3 answers PUT, CreateBucket, DELETE and an
+// empty object without a body. These calls work live (run 18.10); reading
+// an empty answer as a failure would break them on a body nobody uses.
 var contractAPIBreak = map[string]bool{}
 
 func init() {
-	// 200 with HTML, or an empty 200, reported as deleted/created/ok.
 	for _, name := range []string{
 		"image_delete", "disk_delete", "k8s_delete", "ca_delete", "ca_start", "ca_stop",
 		"snat_delete", "pg_db_create", "pg_db_delete", "pg_user_create", "pg_user_delete",
 		"secret_create", "secret_add_version", "secret_delete", "cert_delete",
-		"s3_put", "s3_bucket_create",
+		"s3_put", "s3_bucket_create", "s3_rm", "s3_bucket_delete", "s3_get",
 	} {
-		contractAPIBreak[name+" html"] = true
 		contractAPIBreak[name+" empty"] = true
 	}
-	for _, name := range []string{"s3_rm", "s3_bucket_delete", "s3_buckets", "s3_ls"} {
-		contractAPIBreak[name+" html"] = true
-	}
-	// A 200 whose body is not JSON is classified USAGE (exit 1), as if the
-	// call had never reached the cloud. docs/exit-codes.md: USAGE is local.
-	for _, name := range []string{"disk_resize", "snat_create", "tg_list", "s3_get"} {
-		contractAPIBreak[name+" html"] = true
-		contractAPIBreak[name+" empty"] = true
-	}
-	contractAPIBreak["s3_ls empty"] = true
-	contractAPIBreak["s3_buckets empty"] = true
 }
 
 func contractReasonOK(kind string, reqs []string, text, reason string) bool {

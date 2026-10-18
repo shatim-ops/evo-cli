@@ -10,8 +10,10 @@ package httpretry
 
 import (
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/product"
@@ -65,7 +67,44 @@ func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	return base.RoundTrip(withUserAgent(req))
+	resp, err := base.RoundTrip(withUserAgent(req))
+	if err != nil {
+		return nil, err
+	}
+	return HTMLAsBadGateway(resp), nil
+}
+
+// HTMLAsBadGateway turns a 2xx answer with an HTML page into a 502: the
+// APIs of Cloud.ru answer JSON (S3 — XML), so an HTML page is a gateway's
+// or a proxy's, not the service's. Read as a success it reported a delete,
+// a create or a start that never happened (break r3b, R3B-1); every client
+// reports a 502 as an API error. The compute adapter, which may be given
+// any http.Client, applies it itself.
+func HTMLAsBadGateway(resp *http.Response) *http.Response {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return resp
+	}
+	mt, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if !strings.EqualFold(mt, "text/html") {
+		return resp
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
+	body := `{"message":"Cloud.ru answered an HTML page with HTTP ` + strconv.Itoa(resp.StatusCode) + ` instead of the API's answer"}`
+	h := resp.Header.Clone()
+	h.Set("Content-Type", "application/json")
+	h.Del("Content-Length")
+	return &http.Response{
+		Status:        "502 Bad Gateway",
+		StatusCode:    http.StatusBadGateway,
+		Proto:         resp.Proto,
+		ProtoMajor:    resp.ProtoMajor,
+		ProtoMinor:    resp.ProtoMinor,
+		Header:        h,
+		Body:          io.NopCloser(strings.NewReader(body)),
+		ContentLength: int64(len(body)),
+		Request:       resp.Request,
+	}
 }
 
 // withUserAgent returns req with evo's User-Agent, or req itself when it
@@ -110,7 +149,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 					resp.StatusCode == http.StatusServiceUnavailable ||
 					resp.StatusCode == http.StatusGatewayTimeout))
 			if !retry || last {
-				return resp, nil
+				return HTMLAsBadGateway(resp), nil
 			}
 			if d, ok := retryAfter(resp.Header.Get("Retry-After")); ok {
 				wait = d
