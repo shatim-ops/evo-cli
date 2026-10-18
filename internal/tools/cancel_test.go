@@ -337,3 +337,9 @@ func (*cancelCloud) PriceCalculation(context.Context, string, provision.PriceCal
 // errNoPriceAPI — ответ подделок на PriceCalculation: расчёт цены не
 // получен, превью и план показывают оценку по карте, как раньше.
 var errNoPriceAPI = errors.New("price-calculation: not in this fake")
+
+// ListFloatingIPs: provision first looks for a boot address left by an
+// earlier run; there is none.
+func (c *cancelCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return nil, nil
+}

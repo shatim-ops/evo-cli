@@ -1861,7 +1861,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	}
 
 	createStart := time.Now()
-	vm, err := eng.Cloud.CreateVM(ctx, req)
+	vm, err := provision.CreateVMChecked(ctx, eng.Cloud, req)
 	if err != nil && provision.CreateRejected(err) {
 		// The API refused the create: this call made no VM. A VM found by
 		// the name now is another one (a 409 for a name already taken) —

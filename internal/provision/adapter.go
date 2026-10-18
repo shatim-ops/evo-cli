@@ -93,7 +93,7 @@ func (a *CloudRuAdapter) CreateVM(ctx context.Context, req CreateVMRequest) (*VM
 
 	// Try array first, then single object.
 	var vms []VM
-	if err := json.Unmarshal(respBody, &vms); err == nil && len(vms) > 0 {
+	if err := json.Unmarshal(respBody, &vms); err == nil && len(vms) > 0 && vms[0].ID != "" {
 		return &vms[0], nil
 	}
 
