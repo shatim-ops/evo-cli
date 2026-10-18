@@ -460,7 +460,7 @@ jobs:
           CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
         run: |
           command -v evo >/dev/null || { echo "evo не собран — ресурсов не создавалось"; exit 0; }
-          .github/scripts/cloud-live.sh sweep "evo-e2e-$AREA-$(printf '%s' "$RUN" | tr -cd 'a-z0-9' | cut -c1-16)"
+          .github/scripts/cloud-live.sh sweep "evo-e2e-$AREA-$(printf '%s' "$RUN" | tr -cd 'a-z0-9' | cut -c1-16)" "$AREA"
 
   # Отечественные ОС по имени образа (шаг E, docs/internal/design-images.md):
   # init --image отказывает (Docker на них не ставится), vm create --image

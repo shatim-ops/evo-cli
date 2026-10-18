@@ -6,8 +6,9 @@
 # Живые прогоны изменяющих инструментов evo на настоящем Cloud.ru, по одной
 # области за вызов: cloud-live.sh ОБЛАСТЬ. Области: disk, net, dns, s3,
 # secrets, ca, stack, mcp — их вызывает job live в cloud-e2e.yml после evo
-# configure; sweep ПРЕФИКС — удалить ресурсы с именами ПРЕФИКС* всех видов
-# этого скрипта (job cleanup, префикс evo-e2e-).
+# configure; sweep ПРЕФИКС [ОБЛАСТЬ] — удалить ресурсы с именами ПРЕФИКС*
+# всех видов этого скрипта или только видов области (job cleanup, префикс
+# evo-e2e-; страховка job live).
 #
 # Каждая область создаёт ресурсы с именами evo-e2e-<область>-<run>, в конце
 # (trap EXIT, и после провала тоже) удаляет всё со своим префиксом и
@@ -214,6 +215,22 @@ del() {
 	esac
 }
 KINDS="ca ar lb tg vm snat fip disk image route vpc dns s3 secret cert"
+# area_kinds ОБЛАСТЬ — виды ресурсов, которые область создаёт: её уборка
+# читает только их (список одного вида бывает медленным: ar_list 18.10 —
+# ~9,5 мин). Маршрут тестовой сети — только у net.
+area_kinds() {
+	case "$1" in
+	disk) echo "vm fip disk image" ;;
+	net) echo "lb tg vm snat fip route vpc" ;;
+	dns) echo "dns" ;;
+	s3) echo "s3" ;;
+	secrets) echo "secret cert" ;;
+	ca) echo "ca ar" ;;
+	stack) echo "lb tg vm fip secret" ;;
+	mcp) echo "vm fip" ;;
+	*) echo "${KINDS/route /}" ;;
+	esac
+}
 # sweep ПРЕФИКС [ВИДЫ] — удалять ресурсы ПРЕФИКС* до 20 мин (удаления
 # асинхронны: балансировщик, ВМ, VPC), затем остаток — провал по каждому.
 sweep() {
@@ -292,9 +309,7 @@ finish() {
 	if [ "$area" != sweep ]; then
 		echo "== уборка $prefix*"
 		[ "$area" != net ] || delete_test_rules
-		# маршрут и правило — по тестовому CIDR, а не по имени: их убирает
-		# только net, иначе параллельный job удалил бы чужие посреди проверки
-		if [ "$area" = net ]; then sweep "$prefix" || failed=1; else sweep "$prefix" "${KINDS/route /}" || failed=1; fi
+		sweep "$prefix" "$(area_kinds "$area")" || failed=1
 		if [ "$area" = net ]; then
 			if poll 120 10 no_rules; then ok "правило $RULE_PORT удалено"; else bad "правило $RULE_PORT удалено" "осталось после уборки"; fi
 		fi
@@ -894,15 +909,15 @@ disk | net | dns | s3 | secrets | ca | stack | mcp)
 sweep)
 	area=sweep
 	p=${2:?нужен префикс, например evo-e2e-}
-	# маршрут и правило тестовой сети — общие для всех прогонов: их убирает
-	# только net и общая уборка (evo-e2e-), не страховка другой области
+	# sweep ПРЕФИКС [ОБЛАСТЬ]: с областью — только её виды; без — все.
+	# Маршрут и правило тестовой сети — общие для всех прогонов: их убирает
+	# только net и общая уборка (evo-e2e-), не страховка другой области.
+	if [ -n "${3:-}" ]; then kinds=$(area_kinds "$3"); else kinds=$KINDS; fi
 	case "$p" in
-	evo-e2e- | evo-e2e-net-*)
-		delete_test_rules || failed=1
-		sweep "$p" || failed=1
-		;;
-	*) sweep "$p" "${KINDS/route /}" || failed=1 ;;
+	evo-e2e- | evo-e2e-net-*) delete_test_rules || failed=1 ;;
+	*) kinds=${kinds/route /} ;;
 	esac
+	sweep "$p" "$kinds" || failed=1
 	;;
 *)
 	echo "::error::неизвестная область: $area"
