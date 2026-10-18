@@ -432,6 +432,33 @@ func TestAudit_DiskCreateAttachWaitsForAvailable(t *testing.T) {
 	}
 }
 
+// Живой прогон 18.10: disk_attach сразу после disk_create — 422 «Disk has
+// no openstack_id» (CMP-15), хотя протокол догфуда обещает, что evo ждёт.
+// disk_attach ждёт available, как disk_create attach_to (L-24), и
+// привязывает; диск, который так и не стал available, — ошибка с причиной.
+func TestDiskAttach_WaitsForNewDisk(t *testing.T) {
+	cloud := &diskCloud{readyAt: 3}
+	r, _ := fastRegistry(t, cloud, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
+	m, text, isErr := callNamed(t, r, "disk_attach", map[string]any{"disk_id": "d-1", "vm": "web", "confirmed": true})
+	if isErr || m["status"] != "attached" || !cloud.attached {
+		t.Fatalf("attached=%v after %d polls: %s", cloud.attached, cloud.lists, text)
+	}
+
+	stuck := &diskCloud{stuck: "creating"}
+	r, _ = fastRegistry(t, stuck, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
+	m, text, isErr = callNamed(t, r, "disk_attach", map[string]any{"disk_id": "d-1", "vm": "web", "confirmed": true})
+	if !isErr || stuck.attached || m["reason"] != "API_ERROR" || !strings.Contains(text, "did not become available") {
+		t.Fatalf("disk never available: %s", text)
+	}
+
+	// Другая ошибка привязки — без ожидания: список дисков не читается.
+	busy := &diskCloud{readyAt: 1, attachErr: clerrors.New(clerrors.CodeAPIError, "API returned status 422: busy", "")}
+	r, _ = fastRegistry(t, busy, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
+	if _, text, isErr := callNamed(t, r, "disk_attach", map[string]any{"disk_id": "d-1", "vm": "web", "confirmed": true}); !isErr || busy.lists != 0 {
+		t.Fatalf("other attach error waited (%d polls): %s", busy.lists, text)
+	}
+}
+
 // L-24: привязка не удалась (или диск не стал available) — partial с
 // ошибкой, disk_id в ответе, подсказка disk_attach.
 func TestAudit_DiskCreateAttachFailsIsPartial(t *testing.T) {

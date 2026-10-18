@@ -154,7 +154,7 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
-| `GET /v1/publicZones?project_id`, `/v1/privateZones` | `internal/dns/client.go:181-187` | да; **`projectId` required** | код шлёт `project_id`; пагинация не читается; `tools_dns.go:101-105` читает `valid`, `delegated` — **таких полей нет** (есть `state`, `confirmState`, `verificationToken`, `delegated`-подобного нет) → в `dns_zones` всегда `null` | из комментария: `project_id` → 200 | medium (§4.9, §4.10) |
+| `GET /v1/publicZones?project_id`, `/v1/privateZones` | `internal/dns/client.go:181-187` | да; **`projectId` required** | код шлёт `project_id`; пагинация не читается; `tools_dns.go:101-109` читает `valid`, `delegated` — **таких полей нет** (есть `state`, `confirmState`, `verificationToken`, `delegated`-подобного нет) → в `dns_zones` всегда `null`; `state` и `confirmState` отдаются с 18.10 (`state`, `confirm_state`) | из комментария: `project_id` → 200 | medium (§4.9, §4.10) |
 | `GET /v1/{public,private}Zones/{id}` | `:177` | да | нет | нет | — |
 | `POST /v1/{public,private}Zones` `{project_id, name, domain}` | `:190`, `tools_dns.go:152` | да; тело `projectId, name, domain` required | snake_case в теле (protojson принимает proto-имена); **Operation: код читает `resource_id`, спецификация — `resourceId`** → `op.ResourceID` пуст, id зоны приходится искать через `dns_zones` | нет | medium (§4.10) |
 | `DELETE /v1/{public,private}Zones/{id}` | `:187` | да | нет | нет | — |
