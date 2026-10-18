@@ -100,16 +100,21 @@ func TestDeploy_BootFIPFoundAfterCancel(t *testing.T) {
 // предупреждение с именем адреса.
 type lateBootFIPCloud struct {
 	cancelledBootFIPCloud
-	lists int
-	never bool
+	lists   int
+	never   bool
+	created bool
 }
 
 func (c *lateBootFIPCloud) CreateFloatingIP(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
 	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-late", Name: req.Name, IPAddress: "203.0.113.9", State: "available"})
+	c.created = true
 	c.cancel()
 	return nil, ctx.Err()
 }
 func (c *lateBootFIPCloud) ListFloatingIPs(ctx context.Context, _ string) ([]*provision.FloatingIP, error) {
+	if !c.created {
+		return nil, nil // the look for an address left by an earlier run
+	}
 	c.lists++
 	if ctx.Err() != nil {
 		return nil, ctx.Err()

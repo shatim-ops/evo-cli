@@ -13,8 +13,10 @@ package deployplan
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +25,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // planTTL bounds how long a plan_id stays valid between plan and apply.
@@ -116,6 +119,24 @@ func plansDir(stateDir string) (string, error) {
 		return "", err
 	}
 	return dir, nil
+}
+
+// LockApply takes the lock of applying a plan's VM (project and VM name),
+// across processes: two deploy_apply calls at once each saw the VM
+// without a floating IP and reserved one, leaving a second billed address
+// (break r3a R3A-3). The second call is refused at once instead of
+// waiting minutes; called again after the first ends, it adopts the VM.
+func LockApply(stateDir string, p *Plan) (unlock func(), err error) {
+	dir, err := plansDir(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256([]byte(p.ProjectID + "/" + p.VM.Name))
+	unlock, err = state.FileLock(filepath.Join(dir, "apply-"+hex.EncodeToString(sum[:8])+".lock"), 0)
+	if errors.Is(err, state.ErrFileLocked) {
+		return nil, fmt.Errorf("another deploy_apply for VM %q is running; wait for it to finish, then call deploy_apply again (the VM is adopted, not recreated)", p.VM.Name)
+	}
+	return unlock, err
 }
 
 // Save writes a plan to disk and returns its path.

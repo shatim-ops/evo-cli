@@ -277,3 +277,9 @@ func (*interruptCloud) PriceCalculation(context.Context, string, provision.Price
 // errNoPriceAPI — ответ подделок на PriceCalculation: расчёт цены не
 // получен, превью и план показывают оценку по карте, как раньше.
 var errNoPriceAPI = stderrors.New("price-calculation: not in this fake")
+
+// ListFloatingIPs: deploy first looks for a boot address left by an
+// earlier run; there is none.
+func (c *interruptCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return nil, nil
+}

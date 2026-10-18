@@ -531,17 +531,23 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	}
 
 	createStart := time.Now()
-	vm, createErr := e.Cloud.CreateVM(ctx, req)
+	vm, createErr := provision.CreateVMChecked(ctx, e.Cloud, req)
 	if createErr != nil && provision.CreateRejected(createErr) {
 		// The API refused the create: no VM came of it, and one found by
 		// the name is another (a 409 for a name already taken). It is not
 		// adopted or recorded over; the boot FIP is released (release
 		// audit, L-01).
-		_ = e.releaseBootFIP(bootFIP, projectID) // the warning is printed
+		relErr := e.releaseBootFIP(bootFIP, projectID) // the warning is printed
 		if provision.IsNameTaken(createErr) {
+			created := i18n.T("nothing was created", "ничего не создано")
+			if relErr != nil {
+				// Not "nothing": the address stays billed (break r3a R3A-2).
+				created = i18n.Tf("the VM was not created, but floating IP %s (%s) is left and billed: release it with 'evo vpc fip-release %s'; a later deploy of this directory reuses it",
+					"ВМ не создана, но floating IP %s (%s) остался и тарифицируется: освободите его ('evo vpc fip-release %s'); следующий deploy этого каталога использует его", bootFIP.IPAddress, bootFIP.ID, bootFIP.ID)
+			}
 			return state.DeploymentRecord{}, clerrors.Wrap(clerrors.CodeConfigInvalid,
-				i18n.Tf("a VM named %s already exists in the project (Cloud.ru answered 409); nothing was created",
-					"ВМ с именем %s в проекте уже есть (Cloud.ru ответил 409); ничего не создано", vmName),
+				i18n.Tf("a VM named %s already exists in the project (Cloud.ru answered 409); %s",
+					"ВМ с именем %s в проекте уже есть (Cloud.ru ответил 409); %s", vmName, created),
 				i18n.Tf("Check it with 'evo vm get %s'. If it is not this directory's deployment, delete it ('evo vm delete %s') or deploy from a directory with another name.",
 					"Проверьте её: 'evo vm get %s'. Если это не развёртывание этого каталога, удалите её ('evo vm delete %s') или разверните из каталога с другим именем.", vmName, vmName),
 				createErr)
@@ -689,6 +695,17 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		case <-pollTick:
 			updated, err := e.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
+				// An expired or refused key does not get better by waiting
+				// out the timeout: stop now with its code (exit 2). The VM
+				// is in the state already (break r3a R3A-4).
+				if r := clerrors.Reason(err); r == clerrors.CodeAuthExpired || r == clerrors.CodeAuthFailed {
+					return rec, clerrors.Wrap(r,
+						i18n.Tf("VM %s was created, but checking it failed: the key was refused (%v)",
+							"ВМ %s создана, но проверить её не удалось: ключ отклонён (%v)", vm.ID, err),
+						i18n.Tf("VM %s is billed and recorded in the state. Check the key ('evo whoami'), then run 'evo deploy' again to finish, or 'evo destroy' to delete it.",
+							"ВМ %s тарифицируется и записана в state. Проверьте ключ ('evo whoami') и повторите 'evo deploy', чтобы завершить, или удалите её: 'evo destroy'.", vm.ID),
+						err)
+				}
 				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
 				continue
 			}
@@ -921,6 +938,14 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 // a quota rejection: the IP would fail after boot too, and the VM would be
 // billed with no way in, so that is an error before anything is created.
 func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName string) (*provision.FloatingIP, error) {
+	// A free boot FIP of this VM name left by an earlier run (its release
+	// failed after a 409, break r3a R3A-2) is taken instead of a second
+	// billed address. A boot FIP name is unique to its VM name.
+	if f := e.leftBootFIP(ctx, projectID, vmName); f != nil {
+		e.Printer.StepDone(i18n.Tf("Reusing floating IP %s left by an earlier run",
+			"Использую floating IP %s, оставшийся от прошлого запуска", f.IPAddress))
+		return f, nil
+	}
 	name := provision.BootFIPName(vmName, time.Now())
 	fip, err := e.Cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
 		Name:               name,
@@ -955,6 +980,21 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 		return nil, nil
 	}
 	return fip, nil
+}
+
+// leftBootFIP finds a free boot FIP of vmName in the project, or nil. A
+// failed lookup is nil: a new address is made then, as before.
+func (e *Engine) leftBootFIP(ctx context.Context, projectID, vmName string) *provision.FloatingIP {
+	fips, err := e.Cloud.ListFloatingIPs(ctx, projectID)
+	if err != nil {
+		return nil
+	}
+	for _, f := range fips {
+		if f != nil && f.ID != "" && provision.IsBootFIPOf(f.Name, vmName) && f.Available() {
+			return f
+		}
+	}
+	return nil
 }
 
 // findBootFIP looks the boot FIP up by its unique name after a failed

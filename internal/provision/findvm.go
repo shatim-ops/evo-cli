@@ -11,6 +11,7 @@ import (
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // createdVMLookupTimeout bounds FindCreatedVM: it runs after a failed or
@@ -43,6 +44,23 @@ func FindCreatedVM(cloud CloudAPI, projectID, name string, since time.Time) *VM 
 		}
 	}
 	return nil
+}
+
+// CreateVMChecked is cloud.CreateVM whose success must name the VM. An
+// answer without an id (POST /vms answered [{}], break r3a R3A-1) is taken
+// as a lost answer, not a VM: the VM may exist, so the caller looks it up
+// by name (FindCreatedVM) instead of recording an empty id that neither
+// status nor destroy can follow.
+func CreateVMChecked(ctx context.Context, cloud CloudAPI, req CreateVMRequest) (*VM, error) {
+	vm, err := cloud.CreateVM(ctx, req)
+	if err == nil && (vm == nil || vm.ID == "") {
+		return nil, clierrors.New(clierrors.CodeAPIError,
+			i18n.T("Cloud.ru accepted the VM create, but the answer has no VM id",
+				"Cloud.ru принял создание ВМ, но в ответе нет её id"),
+			i18n.T("Check the VM list ('evo vm list'): the VM may have been created.",
+				"Проверьте список ВМ ('evo vm list'): ВМ могла быть создана."))
+	}
+	return vm, err
 }
 
 // CreateRejected reports whether a failed create was answered by the API

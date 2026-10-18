@@ -159,7 +159,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	}
 
 	createStart := time.Now()
-	vm, err := cloud.CreateVM(ctx, req)
+	vm, err := provision.CreateVMChecked(ctx, cloud, req)
 	if err != nil {
 		// The VM can exist although the call failed (timeout, cancel, a
 		// lost answer): name it, so the caller records it, and a retry of
@@ -254,7 +254,7 @@ poll:
 	// tool call stays well under the MCP timeout. ---
 	sshNote := ""
 	if ip != "" {
-		if waitForSSHPort(ctx, ip, sshPortWait) {
+		if waitForSSHPort(ctx, ip, SSHPortWait) {
 			sshNote = "SSH port 22 is open — connect now with the ssh command above."
 		} else {
 			sshNote = "VM is up but SSH port 22 was not reachable yet — wait ~1 min and retry the same ssh command. The VM is still booting; do NOT blame security groups, do NOT recreate the VM."
@@ -280,8 +280,9 @@ poll:
 	}, nil
 }
 
-// sshPortWait bounds the wait for port 22 after the VM runs (tests shorten it).
-var sshPortWait = 120 * time.Second
+// SSHPortWait bounds the wait for port 22 after the VM runs. Tests (here and
+// in the packages that drive deploy_apply) shorten it.
+var SSHPortWait = 120 * time.Second
 
 // waitForSSHPort polls TCP port 22 on ip until it accepts a connection or the
 // timeout elapses. Returns true if the port became reachable.

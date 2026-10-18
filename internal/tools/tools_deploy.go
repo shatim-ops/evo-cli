@@ -245,6 +245,11 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(err), true
 	}
+	unlock, err := deployplan.LockApply(eng.StateDir, plan)
+	if err != nil {
+		return errResult(err), true
+	}
+	defer unlock()
 	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.Timings.VMPollTimeout)
 	if err != nil {
 		// Interrupted after the VM was created: record it, so status and
