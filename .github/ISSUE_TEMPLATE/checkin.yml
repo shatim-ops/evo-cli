@@ -1,0 +1,147 @@
+name: Чек-ин догфуда
+description: Раз в неделю и в конце волны, 3 минуты — какие области трогали, сколько потратили, всё ли убрано. Не для ошибок.
+title: "[чек-ин] неделя "
+labels: ["чек-ин"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Чек-ин — для покрытия и бюджета волны, не для ошибок. Ошибку или неудобство заведите отдельно по форме «Ошибка evo» или «Идея или неудобство» и дайте ссылку ниже. На чек-ин разбор не отвечает: он собирает их в сводку раз в неделю. Области — как в протоколе догфуда (`docs/internal/dogfood-protocol.md`, раздел 2). Репозиторий публичный: без ключей, реальных ID, IP и имён ресурсов.
+  - type: dropdown
+    id: week
+    attributes:
+      label: Период
+      options:
+        - 1-я неделя
+        - 2-я неделя
+        - Итог волны
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: ОС и оболочка
+      options:
+        - macOS, zsh
+        - macOS, bash
+        - Windows, PowerShell
+        - Windows, WSL
+        - Linux, bash
+        - Linux, другая оболочка
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Агент через MCP
+      options:
+        - Не подключал
+        - Cursor
+        - Claude Code
+        - Cursor и Claude Code
+        - Другой
+    validations:
+      required: true
+  - type: dropdown
+    id: network
+    attributes:
+      label: Сеть
+      options:
+        - Корпоративная, с прокси
+        - Без прокси
+        - И та, и другая
+    validations:
+      required: true
+  - type: dropdown
+    id: areas
+    attributes:
+      label: Области, которые трогали за период
+      description: Всё, где запускали хотя бы одну команду или просили агента. Можно выбрать несколько.
+      multiple: true
+      options:
+        - "1. Ядро: установка, configure, doctor, MCP"
+        - "2.1 Compose на ВМ: deploy, status, logs, verify, destroy"
+        - "2.2 ВМ и диски"
+        - "2.3 Образы и Marketplace"
+        - "2.4 Сеть: VPC, группы безопасности, floating IP, SNAT"
+        - "2.5 Network Load Balancer"
+        - "2.6 DNS"
+        - "2.7 Managed Kubernetes"
+        - "2.8 PostgreSQL"
+        - "2.9 Kafka и Redis"
+        - "2.10 Object Storage"
+        - "2.11 Секреты и сертификаты"
+        - "2.12 Container Apps и Artifact Registry"
+        - "2.13 Мониторинг, биллинг, аудит, IAM"
+        - "2.14 Стеки stack_*"
+        - "2.15 MCP-агент как пользователь"
+    validations:
+      required: true
+  - type: textarea
+    id: skipped
+    attributes:
+      label: Что из своей раскладки не попробовали и почему
+      description: Например «2.7 — не успел», «2.8 — боюсь за бюджет», «2.5 — не понял, зачем».
+  - type: input
+    id: spend
+    attributes:
+      label: Расход за период, ₽
+      description: Из `evo tools call billing_consumption --arg start=<дата> --json` или консоли («Контроль затрат»). Если не знаете — напишите «не знаю» и почему.
+      placeholder: "350"
+    validations:
+      required: true
+  - type: dropdown
+    id: leftovers
+    attributes:
+      label: Остались ли ресурсы после уборки
+      description: Проверка по разделу 7 протокола — vm list, disk list, vpc fips, k8s list, pg list, kafka_list, redis_list.
+      options:
+        - Нет, всё убрано
+        - Да, удалил вручную в консоли (evo не смог)
+        - Да, остались сейчас
+        - Не проверял
+    validations:
+      required: true
+  - type: textarea
+    id: leftovers_detail
+    attributes:
+      label: Какие ресурсы остались или удалялись вручную
+      description: Тип и статус, без ID — например «кластер PostgreSQL в FAILED, удалил в консоли». Если evo должен был их удалить — заведите ещё и «Ошибку evo».
+  - type: textarea
+    id: issues
+    attributes:
+      label: Ваши issue за период
+      description: Ссылки или номера. Если не заводили — оставьте пустым.
+  - type: dropdown
+    id: score
+    attributes:
+      label: Оценка evo за период
+      description: 5 — пользовался бы в работе уже сейчас, 1 — не стал бы.
+      options:
+        - "5"
+        - "4"
+        - "3"
+        - "2"
+        - "1"
+    validations:
+      required: true
+  - type: input
+    id: impression
+    attributes:
+      label: Главное впечатление одной фразой
+  - type: dropdown
+    id: continue
+    attributes:
+      label: Следующая неделя
+      description: Для итога волны не заполняйте.
+      options:
+        - Продолжу в том же объёме
+        - Продолжу, но меньше
+        - Не продолжу
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Проверка
+      options:
+        - label: В тексте нет ключей, секретов, реальных ID, IP и имён ресурсов
+          required: true
