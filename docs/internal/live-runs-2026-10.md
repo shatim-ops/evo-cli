@@ -29,6 +29,9 @@
 | 1b | 39160570296 | stack, mcp, os_smoke, ca, s3, dns, secrets + e2e | см. таблицу; e2e — платформа (OPS-2c) | нет (по именам) |
 | cleanup | 39163067817 | `cleanup_only` | та же зона DNS 1a (NET-13) | зона 1a в «Удаляется» |
 | 1c | 39164767739 | disk, net, ca, dns + e2e | net, dns — ok; disk — D5; ca — тест (адрес); e2e — платформа (OPS-2) | нет |
+| 1d | 39167011818 | disk, stack, mcp, ca + e2e | ca, disk (кроме образа) — ok; stack — D6; логи удалены (ID ВМ в выводе скрипта) | нет |
+| 1e | 39169320594 | stack, mcp + e2e | stack, mcp stdio, e2e — ok; mcp HTTP — тест (разбор isError) | нет |
+| 2 | 39170448486 | k8s_smoke, mcp + e2e | k8s: create/nodepool/kubectl/apply — ok, helm — платформа (OIDC 502, OPS-4); e2e — платформа (OPS-1b) | нет |
 
 ## Результаты по областям
 
@@ -65,6 +68,13 @@
 | DNS | приватная зона (без `type` в `dns_zone_get` — #111), запись A, get, delete записи и зоны | ok | 39164767739 | операция создания зоны не done (NET-13) |
 | диски | `disk_attach` через 2 с после `disk_create` | дефект evo D5 | 39164767739 | 422 «no openstack_id» (CMP-15); исправлено #117 |
 | AR | проба `GET /v1/registries` | платформа | 39164767739 | без `pageSize` — пустые страницы с новым токеном бесконечно (AR-4) |
+| диски | attach (с #117) → resize подключённого (`in_use`, 10 → 20 ГБ) → detach → delete; выключение ВМ изнутри, отключение загрузочного | ok | 39167011818 | в 1a resize упал в переходном состоянии после attach |
+| образы | `image_create` из загрузочного диска | не покрыто: квота | 39167011818 | 422 `organization_quota_exceeded` (CMP-16); `image_delete` — тоже не покрыто |
+| CA / AR | ar_create → push → ca_deploy → HTTP 200 по `publicUri` → ca_logs → stop → start (снова 200) → delete → ar_delete | ok | 39167011818 | `ca_logs` — 0 строк после запросов |
+| стек | stack_destroy повторно, пока ресурсы удаляются | дефект evo D6 → ok | 39167011818, 39169320594 | `destroy_failed` при VM_NOT_FOUND; исправлено #118, вживую — destroyed |
+| MCP HTTP | provision (confirmed) → destroy name | ok | 39170448486 | HTTP 200, `result` без ошибки; «?» в 1b–1e — разбор скрипта (`false // "?"`) |
+| k8s | k8s_create → nodepool → kubectl → k8s_apply | ok | 39170448486 | |
+| k8s | k8s_helm install | платформа | 39170448486 | обмен токена OIDC — 502 (OPS-4); повтор в 2b |
 | ОС | os_smoke: Astra, РЕД ОС (отказ до создания, код 4), nginx-ubuntu (ВМ, SSH, порт) | ok | 39160570296 | |
 | deploy (e2e) | deploy compose | платформа | 39160570296 | apt-зеркало образа недоступно (OPS-2c), evo дал верный диагноз; уборка чистая |
 
@@ -75,6 +85,7 @@
 | D1 | высокая | Artifact Registry | `ar_list` не завершается (1000 страниц за ~10 мин), `ar_create` из-за этого отказывает до создания; на main видно и в readonly (код 124, warn) | #110 (влит) |
 | D2 | средняя | DNS | без `type` инструменты по зоне и записи шли в API публичных зон: приватная зона — 403, `dns_zone_delete` её не удалял, шаг `dns` стека с приватной зоной не работал | #111 (влит) |
 | D3 | низкая | DNS | `dns_zones` не показывал состояние зоны (`valid`/`delegated` в API нет): удаляемая зона выглядела живой | #114 (влит) |
+| D6 | средняя | стек | повторный `stack_destroy` (как советует его ответ) делал удалённый стек `destroy_failed`: `VM_NOT_FOUND` не считался «уже удалено» | #118 (влит) |
 | D5 | средняя | диски | `disk_attach` сразу после `disk_create` — 422 «no openstack_id» без ожидания (ждал только `disk_create attach_to`), хотя протокол обещает ожидание | #117 (влит) |
 | D4 | средняя | сертификаты | `cert_private_key` отдавал Base64 вместо PEM и без `key_format` (живой API — `private_key`) | #115 (влит) |
 
