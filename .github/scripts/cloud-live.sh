@@ -181,7 +181,9 @@ lst() {
 		jq -r --arg p "$p" '.vpcs[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	dns) out=$(evo tools call dns_zones --json 2>"$tmp/lst.err") &&
 		# id — «видимость id»: удаление зоны идёт в API её видимости
-		jq -r --arg p "$p" '.zones[]? | select(((.name // "") | startswith($p)) or ((.domain // "") | startswith($p))) | "\(.visibility // "public") \(.id)\t\(.domain // .name)"' <<<"$out" ;;
+		# зона, удаление которой платформа уже приняла (state …DELET…), — не
+		# остаток прогона, а ожидание облака: её показывает deleting_zones
+		jq -r --arg p "$p" '.zones[]? | select(((.name // "") | startswith($p)) or ((.domain // "") | startswith($p))) | select(((.state // "") | ascii_upcase | test("DELET")) | not) | "\(.visibility // "public") \(.id)\t\(.domain // .name)"' <<<"$out" ;;
 	s3) out=$(evo tools call s3_buckets --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.buckets[]? | select((.name // "") | startswith($p)) | "\(.name)\t\(.name)"' <<<"$out" ;;
 	secret) out=$(evo tools call secret_list --json 2>"$tmp/lst.err") &&
@@ -271,8 +273,21 @@ sweep() {
 			left=$((left + 1))
 		done <"$tmp/l"
 	done
+	case " $kinds " in *" dns "*) deleting_zones "$p" ;; esac
 	[ "$left" = 0 ] && echo "остатков $p* нет"
 	[ "$left" = 0 ]
+}
+
+# deleting_zones ПРЕФИКС — зоны ПРЕФИКС*, удаление которых принято, но не
+# завершено: предупреждение с состоянием (18.10 приватная зона висела в
+# «Удаляется» часами, а DELETE раз за разом принимался).
+deleting_zones() {
+	local out
+	out=$(evo tools call dns_zones --json 2>/dev/null) || return 0
+	jq -r --arg p "$1" '.zones[]? | select(((.domain // .name // "") | startswith($p)) and ((.state // "") | ascii_upcase | test("DELET"))) | "\(.domain // .name)\t\(.state)"' <<<"$out" |
+		while IFS=$'\t' read -r name st; do
+			echo "::warning::зона $name удаляется облаком ($st) — удаление принято, ждём платформу"
+		done
 }
 
 # iam_token — токен IAM по KEY_ID/SECRET в $TOKEN (под маской) для прямых
