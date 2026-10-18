@@ -15,8 +15,9 @@ name: api-probe
 # клиенту); образы проекта — только счётчики. И ещё текст ошибки API
 # (message, grpc-message) — до 160 символов, ID в нём замаскированы.
 #
-# Секреты — те же, что у cloud-e2e: CLOUDRU_KEY_ID, CLOUDRU_SECRET,
-# CLOUDRU_PROJECT_ID.
+# Только GET, ничего не создаёт. Ключ облака — секреты окружения cloud-e2e
+# (CLOUDRU_KEY_ID, CLOUDRU_SECRET, CLOUDRU_PROJECT_ID): запуск ждёт одобрения
+# владельца, как и cloud-e2e.
 
 on:
   workflow_dispatch:
