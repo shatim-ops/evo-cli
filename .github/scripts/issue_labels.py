@@ -13,6 +13,10 @@ Prefixed labels (area, OS) follow the body when it is edited. Flags
 (platform, money, question) are only added: the triage session may set
 them by hand, and an edit must not take them off.
 
+Check-ins (checkin.yml) get no labels here: the form sets "чек-ин", not
+"отзыв", so the workflow skips them, and their "Области" are counted by
+the triage summary, not labelled.
+
 Usage: issue_labels.py            reads NUMBER, BODY, LABELS (JSON list)
                                   from the environment and calls gh
        issue_labels.py --print    prints the labels for BODY on stdin
