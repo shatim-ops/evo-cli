@@ -15,9 +15,9 @@ name: api-probe
 # клиенту); образы проекта — только счётчики. И ещё текст ошибки API
 # (message, grpc-message) — до 160 символов, ID в нём замаскированы.
 #
-# Только GET, ничего не создаёт. Ключ облака — секреты окружения cloud-e2e
-# (CLOUDRU_KEY_ID, CLOUDRU_SECRET, CLOUDRU_PROJECT_ID): запуск ждёт одобрения
-# владельца, как и cloud-e2e.
+# Только GET, ничего не создаёт. Ключ облака — секреты окружения
+# cloud-readonly (CLOUDRU_KEY_ID, CLOUDRU_SECRET, CLOUDRU_PROJECT_ID): ключ
+# сервисного аккаунта с правами наблюдателя, запуск без одобрения.
 
 on:
   workflow_dispatch:
@@ -31,8 +31,8 @@ permissions:
 
 jobs:
   probe:
-    # Ключ облака — из окружения cloud-e2e, с одобрением владельца (см. cloud-e2e.yml).
-    environment: cloud-e2e
+    # Ключ только на чтение — из окружения cloud-readonly (см. cloud-e2e.yml).
+    environment: cloud-readonly
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

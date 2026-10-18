@@ -16,8 +16,10 @@
      Его job ждут одобрения владельца в окружении `cloud-e2e`: Actions → прогон →
      **Review deployments** → Approve. Ключи Cloud.ru (`CLOUDRU_KEY_ID`,
      `CLOUDRU_SECRET`, `CLOUDRU_PROJECT_ID`, `CLOUDRU_S3_*`) лежат только в
-     секретах окружения `cloud-e2e`; в секретах репозитория их быть не должно —
-     их видит любой workflow без `environment:`.
+     секретах окружений: `cloud-e2e` — ключ с правом изменений, с одобрением;
+     `cloud-readonly` — ключ наблюдателя для `api-probe` и job `readonly`, без
+     одобрения. В секретах репозитория их быть не должно — их видит любой
+     workflow без `environment:`.
 1. `main` зелёный в CI (в том числе `TestCommandsDoc` и `TestToolsDoc`: `docs/commands.md` и `docs/tools.md` совпадают с бинарём); локально `goreleaser check` и, по желанию,
    `goreleaser release --snapshot --clean --skip=sign` — в `dist/` 6 архивов (в каждом `evo` и alias `cloudru-vm` до v1.1) и `checksums.txt`.
 2. `git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3` — тег ставится на коммит в `main`.
