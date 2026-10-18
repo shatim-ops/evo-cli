@@ -178,7 +178,9 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		}
 	} else {
 		e.Printer.Step(3, totalSteps, i18n.T("Reusing existing VM...", "Используется существующая ВМ..."))
-		rec = *existing
+		// Records from before v1.0.1 have no names: they are looked up
+		// once and saved with the record.
+		rec = e.withNames(ctx, *existing, nil, true)
 		rec.ComposeHash = project.Hash
 		rec.ExposedPorts = project.Ports
 		rec.UpdatedAt = time.Now()
@@ -197,7 +199,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			stateFile.UpsertDeployment(rec)
 			_ = state.Write(statePath, stateFile)
 		}
-		e.Printer.StepDone(i18n.Tf("VM %s at %s", "ВМ %s, адрес %s", rec.VMID, rec.VMIP))
+		e.Printer.StepDone(i18n.Tf("VM %s at %s", "ВМ %s, адрес %s", vmText(&rec), rec.VMIP))
 	}
 
 	// Step 4: Deploy — SSH connect, upload, compose up.
@@ -323,11 +325,17 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	// --json: the result on stdout, as destroy and status give it (QA r4
 	// Q1: "evo deploy --yes --json > deploy.json" in docs/exit-codes.md).
 	if e.Printer.IsJSON() {
-		return e.Printer.JSON(map[string]any{
+		out := map[string]any{
 			"status": "deployed", "vm_id": rec.VMID, "vm_ip": rec.VMIP,
 			"project_id": e.projectOf(&rec), "region": rec.Region, "flavor": rec.VMFlavor,
 			"ports": rec.ExposedPorts, "verify": results,
-		})
+		}
+		for k, v := range map[string]string{"vm_name": rec.VMName, "zone_name": rec.ZoneName, "flavor_name": rec.FlavorName} {
+			if v != "" {
+				out[k] = v
+			}
+		}
+		return e.Printer.JSON(out)
 	}
 	e.Printer.Success(i18n.Tf("\nDeployment complete! VM IP: %s", "\nГотово! IP ВМ: %s", rec.VMIP))
 	return nil
@@ -560,14 +568,21 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		ProjectID:    projectID,
 		VMFlavor:     flavorName,
 		Region:       region,
+		VMName:       vmName,
+		ZoneName:     network.ZoneName,
+		FlavorName:   flavorAPIName,
 		SSHUser:      sshUser,
 		Status:       "creating",
 		ComposeHash:  project.Hash,
 		ExposedPorts: project.Ports,
 		// Saved now: a re-run after an interruption opens the ports here.
-		SecurityGroupID: network.SecurityGroupID,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
+		SecurityGroupID:   network.SecurityGroupID,
+		SecurityGroupName: network.SecurityGroup,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+	if vm.Name != "" {
+		rec.VMName = vm.Name
 	}
 	if bootFIP != nil {
 		// Recorded at once: destroy releases it even if deploy stops here.
@@ -679,7 +694,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			}
 			switch updated.Status {
 			case "active", "running":
-				e.Printer.StepDone(i18n.Tf("VM %s active (%s)", "ВМ %s активна (%s)", vm.ID, elapsedText(time.Since(pollStart))))
+				e.Printer.StepDone(i18n.Tf("VM %s active (%s)", "ВМ %s активна (%s)", vmText(&rec), elapsedText(time.Since(pollStart))))
 
 				// The floating (public) IP: attached at creation, or now.
 				var publicIP, fipID string

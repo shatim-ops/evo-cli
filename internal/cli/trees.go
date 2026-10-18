@@ -48,6 +48,10 @@ type treeCmd struct {
 	// (--meta admin_password=…) instead of one JSON object.
 	Pairs   map[string]bool
 	Columns []string // table columns for a list answer (default: picked from the rows)
+	// russian: the human table of a Russian tree (vm, disk) speaks
+	// Russian — column names, да/нет, the note under a list. Set from
+	// russianTrees; --json keeps the tool's answer.
+	russian bool
 	// Render shows the answer instead of the generic table (image list,
 	// image get); --json still prints the tool's answer as is.
 	Render func(p *output.Printer, w io.Writer, text string) error
@@ -70,7 +74,7 @@ var treeGroups = []treeGroup{
 			Pairs:  map[string]bool{"image_metadata": true}},
 		{Verb: "delete", Tool: "destroy", Args: []string{"vm_id|name"}},
 		{Verb: "zones", Tool: "list_zones"},
-		{Verb: "flavors", Tool: "list_flavors"},
+		{Verb: "flavors", Tool: "list_flavors", Columns: []string{"name", "vcpus", "ram_gb", "est_monthly_rub", "free_tier"}},
 	}},
 	{Name: "image", Short: "VM images: operating systems and Marketplace products", Cmds: []treeCmd{
 		{Verb: "list", Tool: "image_list", Args: []string{"query?"}, Render: renderImageList},
@@ -177,6 +181,7 @@ func newTreeCmds() []*cobra.Command {
 			if !ok {
 				panic("command tree: no tool " + c.Tool) // caught by TestTrees_MatchRegistry
 			}
+			c.russian = russianTrees[g.Name]
 			group.AddCommand(newTreeLeaf(c, t))
 		}
 		out = append(out, group)
@@ -375,7 +380,7 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		if c.Render != nil {
 			return c.Render(cmdPrinter(cmd), cmd.OutOrStdout(), text)
 		}
-		return renderAnswer(cmdPrinter(cmd), cmd.OutOrStdout(), text, c.Columns)
+		return renderAnswer(cmdPrinter(cmd), cmd.OutOrStdout(), text, tableView{Columns: c.Columns, Russian: c.russian})
 	}
 	return cmd
 }
@@ -618,18 +623,59 @@ func helpHint(cmd *cobra.Command) string {
 
 // --- answer formatting ---
 
+// tableView is how renderAnswer lays out a list: its columns and whether
+// the table is for a Russian tree.
+type tableView struct {
+	Columns []string
+	Russian bool
+}
+
+// ru: the table speaks Russian (a Russian tree, and the CLI in Russian).
+func (v tableView) ru() bool { return v.Russian && i18n.Lang() == i18n.RU }
+
+// header is the title of a column.
+func (v tableView) header(col string) string {
+	if h, ok := columnHeaderRU[col]; ok && v.ru() {
+		return h
+	}
+	return strings.ToUpper(col)
+}
+
+// cell is a table cell: a Russian table says да/нет, not true/false.
+func (v tableView) cell(x any, max int) string {
+	if b, ok := x.(bool); ok && v.ru() {
+		return yesNo(b)
+	}
+	return cell(x, max)
+}
+
+// note is a line under a list.
+func (v tableView) note(k string, x any) string {
+	if v.ru() {
+		if s, ok := x.(string); ok {
+			if ru, ok := listNoteRU[s]; ok {
+				return ru
+			}
+		}
+		if label, ok := noteLabelRU[k]; ok {
+			return fmt.Sprintf("%s: %v", label, x)
+		}
+	}
+	return fmt.Sprintf("%s: %v", k, x)
+}
+
 // renderAnswer shows a tool's JSON answer: a list as a table, an object as
 // FIELD/VALUE rows. Anything else is printed as is.
-func renderAnswer(p *output.Printer, w io.Writer, text string, columns []string) error {
+func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) error {
 	var v any
 	if err := json.Unmarshal([]byte(text), &v); err != nil {
 		fmt.Fprintln(w, text)
 		return nil
 	}
 	if rows, notes, ok := findList(v); ok {
-		renderList(p, w, rows, columns)
+		renderList(p, w, rows, view)
 		for _, k := range sortedKeys(notes) {
-			fmt.Fprintf(w, "%s: %v\n", k, notes[k])
+			fmt.Fprintln(w, view.note(k, notes[k]))
 		}
 		return nil
 	}
@@ -657,7 +703,7 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, columns []string)
 	rows := make([][]string, 0, len(keys))
 	for _, k := range keys {
 		if _, sec := sections[k]; !sec {
-			rows = append(rows, []string{k, cell(m[k], 0)})
+			rows = append(rows, []string{k, view.cell(m[k], 0)})
 		}
 	}
 	if len(rows) > 0 {
@@ -670,7 +716,7 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, columns []string)
 				fmt.Fprintln(w)
 			}
 			fmt.Fprintf(w, "%s:\n", strings.ToUpper(k))
-			renderList(p, w, a, nil)
+			renderList(p, w, a, tableView{Russian: view.Russian})
 			printed = true
 		}
 	}
@@ -719,7 +765,7 @@ var preferredColumns = []string{"id", "name", "path", "key", "status", "state", 
 
 const maxAutoColumns = 7
 
-func renderList(p *output.Printer, w io.Writer, rows []any, columns []string) {
+func renderList(p *output.Printer, w io.Writer, rows []any, view tableView) {
 	if len(rows) == 0 {
 		fmt.Fprintln(w, i18n.T("No items.", "Пусто."))
 		return
@@ -727,24 +773,25 @@ func renderList(p *output.Printer, w io.Writer, rows []any, columns []string) {
 	if _, isObj := rows[0].(map[string]any); !isObj {
 		out := make([][]string, len(rows))
 		for i, r := range rows {
-			out[i] = []string{cell(r, 0)}
+			out[i] = []string{view.cell(r, 0)}
 		}
 		p.Table([]string{i18n.T("VALUE", "ЗНАЧЕНИЕ")}, out)
 		return
 	}
+	columns := view.Columns
 	if len(columns) == 0 {
 		columns = autoColumns(rows)
 	}
 	headers := make([]string, len(columns))
 	for i, c := range columns {
-		headers[i] = strings.ToUpper(c)
+		headers[i] = view.header(c)
 	}
 	out := make([][]string, 0, len(rows))
 	for _, r := range rows {
 		m, _ := r.(map[string]any)
 		line := make([]string, len(columns))
 		for i, c := range columns {
-			line[i] = cell(m[c], 40)
+			line[i] = view.cell(m[c], 40)
 		}
 		out = append(out, line)
 	}

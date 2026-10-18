@@ -195,15 +195,25 @@ func TestRussian_Doctor(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	for _, want := range []string{"Статус", "Проверка", "Подробности", "ок ", "профиль default; key_id из profile; project_id из profile",
-		"доступен (HTTP ", "токен выдан, действует ещё "} {
+		"доступен (", " мс)", "токен выдан, действует ещё "} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("doctor lacks %q", want)
 		}
 	}
+	// The API root answers 404: «HTTP 404» read as an error to a person,
+	// so the code is only in --verbose and --json (v1.0.1).
+	if strings.Contains(stdout, "HTTP ") {
+		t.Errorf("the status code is shown without --verbose:\n%s", stdout)
+	}
+	newProcess()
+	_, stdout, _ = runCLI(t, "", "--verbose", "doctor")
+	if !strings.Contains(stdout, "доступен (HTTP ") {
+		t.Errorf("--verbose lacks the status code:\n%s", stdout)
+	}
 	// JSON keeps the stable statuses.
 	newProcess()
 	_, stdout, _ = runCLI(t, "", "--json", "doctor")
-	if !strings.Contains(stdout, `"status": "ok"`) {
+	if !strings.Contains(stdout, `"status": "ok"`) || !strings.Contains(stdout, `"http_status": `) {
 		t.Errorf("JSON statuses changed:\n%s", stdout)
 	}
 }

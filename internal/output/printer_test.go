@@ -3,7 +3,9 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -266,4 +268,44 @@ func TestIsJSON(t *testing.T) {
 	if p2.IsJSON() {
 		t.Error("expected IsJSON() to return false in text mode")
 	}
+}
+
+// TestTable_ColorAligned: with color on, the header columns start where the
+// row columns do (seen misaligned in 'evo doctor' and 'evo vm list' on a
+// color terminal: tabwriter counted the bold escapes as width).
+func TestTable_ColorAligned(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewWithWriter(&buf, ModeText, true)
+	p.Table([]string{"ID", "Имя", "Состояние", "Зона"}, [][]string{
+		{"a1b2c3d4-aaaa", "evo-web", "running", "ru.AZ-2"},
+		{"1", "x", "stopped", "ru.AZ-1"},
+	})
+	if !strings.Contains(buf.String(), colorBold) {
+		t.Fatalf("no bold header: %q", buf.String())
+	}
+	ansi := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	var want []int
+	for i, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		got := columnStarts(ansi.ReplaceAllString(line, ""))
+		if i == 0 {
+			want = got
+			continue
+		}
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("line %d starts columns at %v, the header at %v:\n%s", i, got, want, ansi.ReplaceAllString(buf.String(), ""))
+		}
+	}
+}
+
+// columnStarts is the rune offset of each space-separated cell of a line.
+func columnStarts(line string) []int {
+	var starts []int
+	prevSpace := true
+	for i, r := range []rune(line) {
+		if r != ' ' && prevSpace {
+			starts = append(starts, i)
+		}
+		prevSpace = r == ' '
+	}
+	return starts
 }

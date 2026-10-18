@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -178,7 +179,7 @@ func TestRenderAnswer(t *testing.T) {
 	render := func(text string, cols []string) string {
 		var buf bytes.Buffer
 		p := output.NewWithWriter(&buf, output.ModePlain, false)
-		if err := renderAnswer(p, &buf, text, cols); err != nil {
+		if err := renderAnswer(p, &buf, text, tableView{Columns: cols}); err != nil {
 			t.Fatal(err)
 		}
 		return buf.String()
@@ -278,7 +279,7 @@ func TestRenderAnswer_NotesAndSections(t *testing.T) {
 	render := func(text string) string {
 		var buf bytes.Buffer
 		p := output.NewWithWriter(&buf, output.ModePlain, false)
-		if err := renderAnswer(p, &buf, text, nil); err != nil {
+		if err := renderAnswer(p, &buf, text, tableView{}); err != nil {
 			t.Fatal(err)
 		}
 		return buf.String()
@@ -408,5 +409,51 @@ func TestTrees_BoolDefaultTrue(t *testing.T) {
 	out, _, code := execCLI(t, "vm", "delete", "--help")
 	if code != 0 || !strings.Contains(out, "--release-ip   Also release the VM's floating IP. To turn off: --release-ip=false (default true)\n") {
 		t.Errorf("exit %d:\n%s", code, out)
+	}
+}
+
+// The vm tree speaks Russian in its human tables: headers, да/нет and the
+// price note; flavors go name, vCPU, RAM, price, free tier. --json keeps
+// the tool's keys (first real run on macOS, v1.0.1).
+func TestRenderAnswer_RussianTree(t *testing.T) {
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	var flavors treeCmd
+	for _, g := range treeGroups {
+		for _, c := range g.Cmds {
+			if g.Name == "vm" && c.Verb == "flavors" {
+				flavors = c
+			}
+		}
+	}
+	text := `{"flavors":[{"name":"gen-1-1","vcpus":1,"ram_gb":1,"free_tier":false,"est_monthly_rub":512.3},` +
+		`{"name":"free-1-1","vcpus":1,"ram_gb":1,"free_tier":true,"est_monthly_rub":0}],` +
+		`"note":"est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price"}`
+	var buf bytes.Buffer
+	p := output.NewWithWriter(&buf, output.ModePlain, false)
+	if err := renderAnswer(p, &buf, text, tableView{Columns: flavors.Columns, Russian: russianTrees["vm"]}); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(buf.String(), "\n")
+	if h := strings.Join(strings.Fields(lines[0]), " "); h != "Имя vCPU RAM, ГБ ≈ руб./мес Бесплатный уровень" {
+		t.Errorf("header: %q", h)
+	}
+	if r := strings.Fields(lines[1]); strings.Join(r, " ") != "gen-1-1 1 1 512.3 нет" {
+		t.Errorf("row: %q", r)
+	}
+	if !strings.Contains(lines[2], "да") || strings.Contains(buf.String(), "true") || strings.Contains(buf.String(), "false") {
+		t.Errorf("booleans:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "оценка по тарифам, с диском SSD 10 ГБ; это не счёт") || strings.Contains(buf.String(), "est_monthly_rub") {
+		t.Errorf("note:\n%s", buf.String())
+	}
+
+	// Another tree keeps the keys of the tool.
+	buf.Reset()
+	if err := renderAnswer(p, &buf, `{"items":[{"id":"x","enabled":true}]}`, tableView{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(buf.String(), "ID") || !strings.Contains(buf.String(), "ENABLED") || !strings.Contains(buf.String(), "true") {
+		t.Errorf("non-Russian tree:\n%s", buf.String())
 	}
 }

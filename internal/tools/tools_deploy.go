@@ -367,6 +367,10 @@ func (s *Registry) handleListFlavors(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(err), true
 	}
+	// Small ones first, GPU last: the CLI table and an agent both pick
+	// from the top. A copy: the client may hand out a cached slice.
+	flavors = slices.Clone(flavors)
+	provision.SortFlavors(flavors)
 	out := make([]map[string]any, 0, len(flavors))
 	for _, f := range flavors {
 		est := pricing.EstimateFor(f.Name, f.VCPUs, f.RAMGB, 10, "SSD")

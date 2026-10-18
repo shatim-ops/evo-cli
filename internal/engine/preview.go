@@ -125,9 +125,9 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			ps = append(ps, fmt.Sprintf("%d/udp", p))
 		}
 		lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to 0.0.0.0/0 in security group %s (shared by every VM in it); "+
-			"destroy deletes the rules this deploy creates",
+			"ports already open there are left as they are, destroy deletes only the rules this deploy creates",
 			"%s открываются для 0.0.0.0/0 в группе безопасности %s (она общая для всех ВМ в ней); "+
-				"destroy удалит правила, которые создаст этот deploy",
+				"уже открытые остаются как есть, destroy удалит только правила, которые создаст этот deploy",
 			strings.Join(ps, ","), network.SecurityGroup))
 	}
 	lines = append(lines, vmCostLines(cost, vm.Flavor.VCPUs > 0)...)
@@ -238,22 +238,32 @@ func redeployPreview(rec *state.DeploymentRecord, project, from string) confirm.
 	}
 	if rec.SecurityGroupID != "" {
 		lines = append(lines, i18n.Tf("ports of the compose file not yet open are opened in security group %s"+
-			"; destroy deletes the rules deploy creates",
+			"; ports already open there are left as they are, destroy deletes only the rules deploy creates",
 			"ещё не открытые порты compose-файла открываются в группе безопасности %s"+
-				"; destroy удалит правила, которые создаст deploy", rec.SecurityGroupID))
+				"; уже открытые остаются как есть, destroy удалит только правила, которые создаст deploy", groupText(rec)))
+	}
+	summary := i18n.Tf("update VM %s", "обновить ВМ %s", vmText(rec))
+	if rec.VMIP != "" {
+		summary += ", " + rec.VMIP
 	}
 	return confirm.Preview{
 		Action:  "deploy",
-		Summary: i18n.Tf("update VM %s (%s)", "обновить ВМ %s (%s)", rec.VMID, rec.VMIP),
+		Summary: summary,
 		Lines:   lines,
 		Details: map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": creates},
 	}
+}
+
+// groupText is the security group of a deployment: its name and ID.
+func groupText(rec *state.DeploymentRecord) string {
+	return named(rec.SecurityGroupName, rec.SecurityGroupID)
 }
 
 // destroyResource is one entry of the destroy preview.
 type destroyResource struct {
 	Type    string `json:"type"`
 	ID      string `json:"id,omitempty"`
+	Name    string `json:"name,omitempty"`
 	Address string `json:"address,omitempty"`
 	Action  string `json:"action"`
 	Note    string `json:"note,omitempty"`
@@ -312,12 +322,12 @@ func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 // destroyPreview lists what destroy deletes and what it leaves behind.
 func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, project, from string) confirm.Preview {
 	res := []destroyResource{
-		{Type: "vm", ID: rec.VMID, Address: rec.VMIP, Action: "delete",
+		{Type: "vm", ID: rec.VMID, Name: rec.VMName, Address: rec.VMIP, Action: "delete",
 			Note: i18n.T("all data on its disks is lost", "все данные на её дисках будут потеряны")},
 	}
 	lines := []string{
 		previewLabel("project", "проект") + projectText(project, from),
-		i18n.Tf("delete VM %s and all data on its disks", "удалить ВМ %s и все данные на её дисках", rec.VMID),
+		i18n.Tf("delete VM %s and all data on its disks", "удалить ВМ %s и все данные на её дисках", vmText(rec)),
 	}
 	if rec.VMIP != "" || rec.FloatingIPID != "" {
 		// The public address of a deployed VM is a floating IP; destroy
@@ -328,12 +338,18 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 	ruleRes, ruleLines := rulePreview(sf, append([]string{rec.ID}, pending...))
 	res = append(res, ruleRes...)
 	lines = append(lines, ruleLines...)
+	for _, key := range rec.PortsAlreadyOpen {
+		note := i18n.T("not opened by this deploy", "открывался не этим deploy")
+		res = append(res, destroyResource{Type: "security_group_rule", Address: key, Action: "keep", Note: note})
+		lines = append(lines, i18n.Tf("keep port %s open in security group %s (%s)", "оставить порт %s открытым в группе безопасности %s (%s)",
+			sgrules.Label(key), groupText(rec), note))
+	}
 	res = append(res, destroyResource{Type: "state_record", ID: rec.ID, Action: "remove"})
 	lines = append(lines, i18n.T("remove the deployment from local state", "удалить запись о развёртывании из локального state"))
 
-	summary := i18n.T("destroy VM ", "удалить ВМ ") + rec.VMID
-	if rec.Region != "" {
-		summary += i18n.T(" in ", " в зоне ") + rec.Region
+	summary := i18n.T("destroy VM ", "удалить ВМ ") + vmText(rec)
+	if z := zoneText(rec.ZoneName, rec.Region); z != "" {
+		summary += i18n.T(" in ", " в зоне ") + z
 	}
 	return confirm.Preview{
 		Action:  "destroy",

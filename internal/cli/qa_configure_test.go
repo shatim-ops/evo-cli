@@ -25,7 +25,7 @@ func TestConfigure_ChecksTheSecretEvenWithACachedToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	fc.iamStatus = http.StatusUnauthorized
-	code, _, stderr := runCLI(t, "wrong-secret\n", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "p")
+	code, _, stderr := runCLI(t, "wrong-secret\n", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", manualProject)
 	if code != clerrors.ExitAuth {
 		t.Fatalf("exit %d, want 2: %s", code, stderr)
 	}
@@ -38,7 +38,7 @@ func TestConfigure_ChecksTheSecretEvenWithACachedToken(t *testing.T) {
 
 	// С верным секретом свежий токен ложится в кэш для следующих команд.
 	fc.iamStatus = 0
-	if code, _, stderr := runCLI(t, fakeSecret+"\n", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "p"); code != 0 {
+	if code, _, stderr := runCLI(t, fakeSecret+"\n", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", manualProject); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
 	if tok, ok := cache.Load(auth.CacheKey(auth.Credentials{KeyID: fakeKeyID, Secret: fakeSecret})); !ok || tok.Value == "cached" {

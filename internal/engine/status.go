@@ -1,12 +1,14 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	stderrors "errors"
 	"fmt"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -47,7 +49,14 @@ type DeploymentStatus struct {
 // the result, never returned: the local state is still worth showing.
 // Read-only — the state file is not touched.
 func (e *Engine) CheckCloud(ctx context.Context, rec *state.DeploymentRecord) CloudCheck {
-	notChecked := func(err error) CloudCheck {
+	c, _ := e.checkCloud(ctx, rec)
+	return c
+}
+
+// checkCloud is CheckCloud that also returns the VM the cloud gave (nil
+// when none): status takes its name from it.
+func (e *Engine) checkCloud(ctx context.Context, rec *state.DeploymentRecord) (CloudCheck, *provision.VM) {
+	notChecked := func(err error) (CloudCheck, *provision.VM) {
 		c := CloudCheck{Error: err.Error(), Reason: clerrors.CodeAPIError}
 		var ce *clerrors.CLIError
 		if stderrors.As(err, &ce) {
@@ -58,7 +67,7 @@ func (e *Engine) CheckCloud(ctx context.Context, rec *state.DeploymentRecord) Cl
 				c.Reason = ce.Code
 			}
 		}
-		return c
+		return c, nil
 	}
 	if rec.VMID == "" {
 		return notChecked(fmt.Errorf("%s", i18n.T("no VM ID in state", "в state нет ID ВМ")))
@@ -93,14 +102,14 @@ func (e *Engine) CheckCloud(ctx context.Context, rec *state.DeploymentRecord) Cl
 	if err != nil {
 		var ce *clerrors.CLIError
 		if stderrors.As(err, &ce) && ce.Code == clerrors.CodeVMNotFound {
-			return CloudCheck{Checked: true, NotFound: true}
+			return CloudCheck{Checked: true, NotFound: true}, nil
 		}
 		return notChecked(timedOut(err))
 	}
 	if vm == nil {
 		return notChecked(fmt.Errorf("%s", i18n.T("empty answer", "пустой ответ")))
 	}
-	return CloudCheck{Checked: true, State: vm.Status}
+	return CloudCheck{Checked: true, State: vm.Status}, vm
 }
 
 // Status displays the current deployment status: the local record and,
@@ -124,23 +133,34 @@ func (e *Engine) Status(ctx context.Context, opts StatusOptions) error {
 	}
 
 	var check CloudCheck
+	shown := *active
 	if !opts.NoRefresh {
-		check = e.CheckCloud(ctx, active)
+		var vm *provision.VM
+		check, vm = e.checkCloud(ctx, active)
+		// Names for the UUIDs of the record: the VM's from the GET just
+		// made, the zone's and flavor's from their lists — only when the
+		// cloud answered, so a status without network is not slowed twice.
+		if check.Checked {
+			shown = e.withNames(ctx, shown, vm, false)
+		}
 	}
 
 	if e.Printer.IsJSON() {
-		return e.Printer.JSON(DeploymentStatus{DeploymentRecord: *active, CloudCheck: check})
+		return e.Printer.JSON(DeploymentStatus{DeploymentRecord: shown, CloudCheck: check})
 	}
 
 	headers := []string{i18n.T("Property", "Параметр"), i18n.T("Value", "Значение")}
-	rows := [][]string{
-		{"ID", active.ID},
-		{i18n.T("VM ID", "ID ВМ"), active.VMID},
-		{i18n.T("VM IP", "IP ВМ"), active.VMIP},
-		{"Flavor", active.VMFlavor},
-		{i18n.T("Region", "Зона"), active.Region},
-		{i18n.T("Status", "Состояние"), active.Status},
+	rows := [][]string{{"ID", shown.ID}}
+	if shown.VMName != "" {
+		rows = append(rows, []string{i18n.T("VM name", "Имя ВМ"), shown.VMName})
 	}
+	rows = append(rows,
+		[]string{i18n.T("VM ID", "ID ВМ"), shown.VMID},
+		[]string{i18n.T("VM IP", "IP ВМ"), shown.VMIP},
+		[]string{"Flavor", recordFlavorText(&shown)},
+		[]string{i18n.T("Region", "Зона"), recordZoneText(&shown)},
+		[]string{i18n.T("Status", "Состояние"), shown.Status},
+	)
 	if !opts.NoRefresh {
 		rows = append(rows, []string{i18n.T("In the cloud", "В облаке"), cloudCell(check)})
 	}
@@ -201,7 +221,7 @@ func (e *Engine) List(ctx context.Context) error {
 			d.ID,
 			d.VMIP,
 			d.Status,
-			d.VMFlavor,
+			cmp.Or(d.FlavorName, d.VMFlavor),
 			d.CreatedAt.Format("2006-01-02 15:04"),
 		})
 	}

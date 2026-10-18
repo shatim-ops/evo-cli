@@ -289,6 +289,15 @@ func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp
 	if len(res.Opened) > 0 {
 		e.Printer.StepDone(i18n.Tf("Opened ports %s in the security group", "Открыты порты %s в группе безопасности", strings.Join(res.Opened, ",")))
 	}
+	// A port someone else's rule opens gets no rule from deploy and so
+	// none for destroy to delete: say so, it was silent (v1.0.1).
+	if theirs := res.NotOurs(rec); len(theirs) > 0 {
+		group := rec.SecurityGroupName
+		if group == "" {
+			group = sgID
+		}
+		e.Printer.StepDone(alreadyOpenText(theirs, group))
+	}
 	if len(res.Failed) > 0 {
 		e.Printer.Warning(i18n.Tf("Could not open ports %s — open them in the security group in the Cloud.ru console",
 			"Не удалось открыть порты %s — откройте их в группе безопасности в консоли Cloud.ru", strings.Join(res.Failed, ",")))
@@ -298,6 +307,16 @@ func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp
 			"Порты %s открыты, но API не вернул ID правил: destroy их не закроет — после destroy удалите эти правила в консоли Cloud.ru",
 			strings.Join(res.Untracked, ",")))
 	}
+}
+
+// alreadyOpenText is the deploy line about ports another rule opens.
+func alreadyOpenText(labels []string, group string) string {
+	if len(labels) == 1 {
+		return i18n.Tf("port %s is already open in group %s — no rule created, destroy will not touch it",
+			"порт %s уже открыт в группе %s — правило не создавалось, destroy его не тронет", labels[0], group)
+	}
+	return i18n.Tf("ports %s are already open in group %s — no rules created, destroy will not touch them",
+		"порты %s уже открыты в группе %s — правила не создавались, destroy их не тронет", strings.Join(labels, ","), group)
 }
 
 // flavorAPIName turns the flavor picked by sizing (an ID) or given by the
