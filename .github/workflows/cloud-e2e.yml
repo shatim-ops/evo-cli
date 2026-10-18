@@ -429,9 +429,11 @@ jobs:
           [ -n "$zone_id" ] && [ "$zone_id" != null ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
           set +e
           evo --json --yes vm create "$VM" --image "$IMAGE" --flavor "$FLAVOR" --region "$zone_id" \
-            --port "$PORT" > "$RUNNER_TEMP/vm.json"
+            --port "$PORT" > "$RUNNER_TEMP/vm.json" 2> "$RUNNER_TEMP/vm.err"
           rc=$?
           set -e
+          # превью и ход создания — через redact.sed (ID каталога и ресурсов)
+          sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" "$RUNNER_TEMP/vm.err" | cut -c1-400
           id=$(jq -r '.vm_id // empty' "$RUNNER_TEMP/vm.json")
           ip=$(jq -r '.vm_ip // empty' "$RUNNER_TEMP/vm.json")
           if [ -n "$id" ]; then echo "::add-mask::$id"; echo "VM_ID=$id" >> "$GITHUB_ENV"; fi
@@ -472,7 +474,9 @@ jobs:
         if: always() && env.VM_ID != ''
         working-directory: os-vm
         run: |
-          for _ in 1 2; do evo --yes vm delete "$VM_ID" && break; sleep 30; done
+          # вывод — через redact.sed: в нём ID floating IP (run 39160570296)
+          set -o pipefail
+          for _ in 1 2; do evo --yes vm delete "$VM_ID" 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" && break; sleep 30; done
 
       - name: Сирот нет (всегда)
         if: always()
