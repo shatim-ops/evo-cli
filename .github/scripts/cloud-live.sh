@@ -868,11 +868,16 @@ area_stack() {
 	st=$(j -r .status)
 	for _ in 1 2 3 4 5 6; do
 		[ "$st" = destroyed ] && [ "$(j -r '(.deleting // []) | length')" = 0 ] && break
+		echo "stack_destroy: $st, удалено $(j -c '.deleted // []'), удаляется $(j -c '.deleting // []'), не удалено $(j -c '[.failed[]? | if type == "object" then (.step // .key // .name) else . end]')"
 		sleep 60
 		tc stack_destroy --arg job_id="$job"
 		st=$(j -r '.status // "?"')
 	done
-	[ "$st" = destroyed ] && ok stack_destroy "удалено $(j -r '.deleted | length')" || bad stack_destroy "status $st, failed $(j -r '.failed | length')"
+	if [ "$st" = destroyed ]; then
+		ok stack_destroy "удалено $(j -r '.deleted | length')"
+	else
+		bad stack_destroy "status $st, удалено $(j -c '.deleted // []'), не удалено: $(j -c '[.failed[]? | if type == "object" then {step: (.step // .key // .name), error: ((.error // .reason // "") | tostring | .[0:200])} else . end]' | redact | cut -c1-500)"
+	fi
 	tc stack_status --arg job_id="$job"
 	[ "$(j -r .status)" = destroyed ] && ok "stack_status после destroy" destroyed || bad "stack_status после destroy" "$(j -r .status)"
 	# остатки (ВМ, балансировщик, группа, секрет) проверяет уборка по префиксу
