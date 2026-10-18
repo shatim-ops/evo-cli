@@ -6,7 +6,9 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -61,14 +63,21 @@ func dnsZoneVisibility(ctx context.Context, cli *dns.Client, args map[string]any
 
 // dnsRecordVisibility is the visibility of record recordID: type when
 // given, otherwise the API (public, then private) that answers its GET.
-// Neither answers — NOT_FOUND.
+// Only 403 and 404 mean "not in this API" (a foreign id gets 403, as
+// AR-2, CRT-2); any other error (401, 5xx, no connection) is returned as
+// is. Neither API has the record — NOT_FOUND.
 func dnsRecordVisibility(ctx context.Context, cli *dns.Client, args map[string]any, recordID string) (string, error) {
 	if stringArg(args, "type") != "" {
 		return dnsVisibility(args), nil
 	}
 	for _, vis := range []string{"public", "private"} {
-		if _, err := cli.GetRecord(ctx, vis, recordID); err == nil {
+		_, err := cli.GetRecord(ctx, vis, recordID)
+		if err == nil {
 			return vis, nil
+		}
+		var ae *dns.APIError
+		if !errors.As(err, &ae) || (ae.Status != http.StatusForbidden && ae.Status != http.StatusNotFound) {
+			return "", err
 		}
 	}
 	return "", clierrors.New(clierrors.CodeNotFound,

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -129,5 +130,43 @@ func TestDNS_ExplicitTypeKept(t *testing.T) {
 		if strings.HasSuffix(k, "/v1/publicZones") || strings.HasSuffix(k, "/v1/privateZones") {
 			t.Fatalf("при явном type прочитан список зон: %s", k)
 		}
+	}
+}
+
+// GET записи в публичном API — не 403/404 (сбой, ключ): это не «записи тут
+// нет». Ошибка возвращается как есть (статус в тексте), приватный API не
+// спрашивается, и это не NOT_FOUND (замечание ревью #111). 401 сервисного
+// API у инструментов — API_ERROR, как у всех (errreason.go).
+func TestDNS_RecordLookupKeepsOtherErrors(t *testing.T) {
+	for _, c := range []struct {
+		status int
+		want   string // reason
+	}{{http.StatusServiceUnavailable, "API_ERROR"}, {http.StatusUnauthorized, "API_ERROR"}} {
+		t.Run(http.StatusText(c.status), func(t *testing.T) {
+			f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Host != "dns.api.cloud.ru" {
+					return false
+				}
+				if strings.HasPrefix(r.URL.Path, "/v1/publicRecordsSole/") {
+					w.Header().Set("Retry-After", "0")
+					http.Error(w, `{"message":"boom"}`, c.status)
+					return true
+				}
+				return dnsVisFake().own(w, r)
+			}}
+			r := apiFakeRegistry(t, f)
+			m, text, isErr := callNamed(t, r, "dns_record_delete", map[string]any{"record_id": dnsPrivRec, "confirmed": true})
+			reason, _ := m["reason"].(string)
+			if !isErr || reason != c.want || !strings.Contains(text, "dns API "+strconv.Itoa(c.status)) {
+				t.Fatalf("публичный API %d: ждали reason %s…, ответ %s", c.status, c.want, text)
+			}
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			for _, k := range f.calls {
+				if strings.Contains(k, "/v1/privateRecordsSole") {
+					t.Fatalf("после %d в публичном API спрошен приватный: %s", c.status, k)
+				}
+			}
+		})
 	}
 }
