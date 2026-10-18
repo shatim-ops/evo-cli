@@ -4,7 +4,7 @@
 
 //go:build windows
 
-package state
+package config
 
 import (
 	"errors"
@@ -15,16 +15,20 @@ import (
 
 // LockFileEx locks belong to the handle, so a second open in the same
 // process is refused too.
-func lockFile(f *os.File) error {
+//
+// LockFile takes an exclusive OS lock of f without waiting: ErrLocked when
+// another holder has it. The lock goes away with the process.
+func LockFile(f *os.File) error {
 	ol := new(windows.Overlapped)
 	err := windows.LockFileEx(windows.Handle(f.Fd()),
 		windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, ol)
 	if errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
-		return errLocked
+		return ErrLocked
 	}
 	return err
 }
 
-func unlockFile(f *os.File) error {
+// UnlockFile releases LockFile's lock.
+func UnlockFile(f *os.File) error {
 	return windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, new(windows.Overlapped))
 }

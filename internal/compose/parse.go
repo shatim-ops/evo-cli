@@ -20,6 +20,14 @@ import (
 
 // Parse reads a docker-compose.yml file at path and returns a populated Project.
 func Parse(path string) (*Project, error) {
+	// A FIFO or a device would block ReadFile until someone writes to it,
+	// whatever the caller's context: an MCP deploy would hold its slot for
+	// good (R2-5). A symlink to a regular file is fine.
+	if st, err := os.Stat(path); err == nil && !st.Mode().IsRegular() {
+		return nil, clierr.New(clierr.CodeComposeInvalid,
+			i18n.Tf("%s is not a regular file", "%s — не обычный файл", path),
+			i18n.T("Point -f (compose_file) at a regular compose file.", "Укажите в -f (compose_file) обычный compose-файл."))
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

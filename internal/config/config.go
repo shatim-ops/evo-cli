@@ -371,6 +371,9 @@ func applyProfile(cfg *Config, name string, explicit bool, origins map[string]st
 	c, hasCreds := creds.Profiles[name]
 	if !hasSettings && !hasCreds {
 		if explicit {
+			if Dir() == "" {
+				return NoConfigDir()
+			}
 			return clerrors.New(clerrors.CodeConfigInvalid,
 				i18n.Tf("profile %q not found in %s", "профиль %q не найден в %s", name, Dir()),
 				i18n.Tf("Run 'evo configure --profile %s' to create it, or 'evo configure list' to see existing profiles",
@@ -444,6 +447,14 @@ var secretKeys = []string{"api_key", "key_id", "secret", "s3"}
 
 // applyProjectFile merges ./.evo.yaml.
 func applyProjectFile(cfg *Config, path string, origins map[string]string) error {
+	// The file comes with the project: a FIFO there would block every
+	// command run in the directory.
+	if st, err := os.Stat(path); err == nil && !st.Mode().IsRegular() {
+		return clerrors.New(clerrors.CodeConfigInvalid,
+			i18n.Tf("%s is not a regular file", "%s — не обычный файл", path),
+			i18n.T("Remove it (it may have come with the repository) and run the command again",
+				"Удалите его (он мог прийти вместе с репозиторием) и повторите команду"))
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

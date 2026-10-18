@@ -271,6 +271,12 @@ profiles:
 | Windows | `%AppData%\evo` | `%LocalAppData%\evo` |
 | с `CLOUDRU_CONFIG_DIR=D` | `D` | `D/cache` |
 
+Без `HOME` (в Windows — без `APPDATA`) и без `CLOUDRU_CONFIG_DIR` (бывает под
+systemd, launchd, в контейнере) каталога конфигурации нет: `evo configure`
+отказывает (`CONFIG_INVALID`), ключ берётся только из переменных окружения,
+токен не кэшируется, задания `stack_*` не сохраняются. Путь относительно
+текущего каталога evo не подставляет: там может быть репозиторий.
+
 Профили и проекты, созданные под старым именем `cloudru-vm` (каталог
 конфигурации `…/cloudru-vm`, `./.cloudru-vm/`, `./.cloudru-vm.yaml`), до v1.1
 читаются — как именно, в [README → «Переименование»](../README.md#переименование).

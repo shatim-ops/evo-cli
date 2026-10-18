@@ -190,6 +190,9 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	if err := config.ValidateProfileName(name); err != nil {
 		return err
 	}
+	if config.Dir() == "" {
+		return config.NoConfigDir()
+	}
 	prof, creds, _, err := config.LoadProfile(name)
 	if err != nil {
 		return err

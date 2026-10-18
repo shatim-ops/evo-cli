@@ -48,32 +48,38 @@ func TestSaveProfile_ConcurrentWritersKeepEveryProfile(t *testing.T) {
 			t.Errorf("profile %s lost: %+v %+v %v %v", name, p, c, ok, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(Dir(), lockName)); !os.IsNotExist(err) {
-		t.Errorf("lock file left behind: %v", err)
-	}
+	// The lock file stays, as state.lock does: the lock is the OS's, held
+	// on the open file, not the file's existence.
 }
 
-// Замок, брошенный упавшим процессом, не блокирует configure навсегда;
-// живой замок — ошибка конфигурации с подсказкой, а не вечное ожидание.
-func TestProfileLock_StaleAndBusy(t *testing.T) {
+// Файл замка, оставшийся от упавшего процесса (или от версии до v1.0.3),
+// configure не блокирует; живой замок — ошибка конфигурации с подсказкой,
+// а не вечное ожидание. Живой замок не отбирается, сколько бы ему ни было
+// лет (R2-4): замок — блокировка ОС, не возраст файла.
+func TestProfileLock_LeftoverAndBusy(t *testing.T) {
 	isolate(t)
-	oldWait, oldStale := lockWait, lockStale
-	lockWait, lockStale = 200*time.Millisecond, time.Minute
-	t.Cleanup(func() { lockWait, lockStale = oldWait, oldStale })
+	oldWait := lockWait
+	lockWait = 200 * time.Millisecond
+	t.Cleanup(func() { lockWait = oldWait })
 
 	lock := filepath.Join(Dir(), lockName)
 	writeFile(t, lock, "12345\n")
-	err := SaveProfile("default", Profile{}, Credentials{KeyID: "k", Secret: "s"})
-	if exitCode(err) != clerrors.ExitAuth || !strings.Contains(err.Error(), lock) {
-		t.Fatalf("busy lock: %v", err)
+	if err := SaveProfile("default", Profile{}, Credentials{KeyID: "k", Secret: "s"}); err != nil {
+		t.Fatalf("leftover lock file blocks configure: %v", err)
 	}
 
-	old := time.Now().Add(-2 * time.Minute)
+	unlock, err := lockProfiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	old := time.Now().Add(-time.Hour)
 	if err := os.Chtimes(lock, old, old); err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveProfile("default", Profile{}, Credentials{KeyID: "k", Secret: "s"}); err != nil {
-		t.Fatalf("stale lock not broken: %v", err)
+	err = SaveProfile("default", Profile{}, Credentials{KeyID: "k", Secret: "s"})
+	if exitCode(err) != clerrors.ExitAuth || !strings.Contains(err.Error(), lock) {
+		t.Fatalf("held lock: %v", err)
 	}
 }
 

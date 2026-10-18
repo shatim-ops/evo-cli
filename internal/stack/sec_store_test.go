@@ -36,7 +36,7 @@ func secJob(t *testing.T) *Job {
 
 func jobFile(t *testing.T, j *Job) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(jobsDir(), j.ID+".json"))
+	data, err := os.ReadFile(filepath.Join(mustJobsDir(t), j.ID+".json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,18 +114,50 @@ func TestJobSave_PrivateModes(t *testing.T) {
 	if err := j.Save(); err != nil {
 		t.Fatal(err)
 	}
-	st, err := os.Stat(jobsDir())
+	st, err := os.Stat(mustJobsDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m := st.Mode().Perm(); m&0o077 != 0 {
 		t.Fatalf("каталог stack-jobs с правами %04o: имена и манифесты видны другим", m)
 	}
-	fst, err := os.Stat(filepath.Join(jobsDir(), j.ID+".json"))
+	fst, err := os.Stat(filepath.Join(mustJobsDir(t), j.ID+".json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m := fst.Mode().Perm(); m != 0o600 {
 		t.Fatalf("job с правами %04o", m)
+	}
+}
+
+func mustJobsDir(t *testing.T) string {
+	t.Helper()
+	dir, err := jobsDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// R2-3, same class: without a home directory the jobs (which hold the
+// manifest's secret values) went to .evo/stack-jobs of the working
+// directory. Now Save refuses and nothing is written there.
+func TestJobs_NoHomeNeverRelative(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	if _, err := os.UserHomeDir(); err == nil {
+		t.Skip("this OS still has a home directory")
+	}
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	j := &Job{ID: "stk-0123456789"}
+	if err := j.Save(); err == nil {
+		t.Fatal("Save without a home directory succeeded")
+	}
+	if _, err := LoadJob(j.ID); err == nil {
+		t.Fatal("LoadJob without a home directory succeeded")
+	}
+	if entries, _ := os.ReadDir(cwd); len(entries) != 0 {
+		t.Errorf("files written into the working directory: %v", entries)
 	}
 }

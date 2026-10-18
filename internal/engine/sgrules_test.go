@@ -214,9 +214,12 @@ func TestDestroy_RuleDeleteFailureWarnsAndRetries(t *testing.T) {
 	}
 }
 
-// A rule another deployment in this state still needs is kept.
-func TestDestroy_KeepsRuleNeededByAnotherDeployment(t *testing.T) {
-	eng, cloud, out := destroyFixture(t, rulesRecord())
+// Another active deployment in this state shares the security group:
+// destroy without a VM refuses (R2-2) and deletes no rule. Each one goes by
+// its VM ID (MCP destroy vm_id), which keeps a rule the other still needs
+// (sgrules.Close, TestClose_KeepsRuleNeededByAnotherDeployment).
+func TestDestroy_SharedGroupWithAnotherDeploymentRefused(t *testing.T) {
+	eng, cloud, _ := destroyFixture(t, rulesRecord())
 	sf := readState(t, eng.StateDir)
 	sf.UpsertDeployment(state.DeploymentRecord{ID: "vm-2", VMID: "vm-2", Status: "running",
 		SecurityGroupID: "sg-1", SecurityGroupPorts: []string{"80/tcp"}, CreatedAt: time.Now()})
@@ -224,28 +227,17 @@ func TestDestroy_KeepsRuleNeededByAnotherDeployment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := eng.Destroy(context.Background(), DestroyOptions{DryRun: true}); err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		"keep the rule for port 80 in security group sg-1 (still needed by deployment vm-2)",
-		"delete the rule rule-53 opening port 53/udp in security group sg-1",
-		"the security group is shared",
-	} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("preview lacks %q:\n%s", want, out.String())
+	for _, opts := range []DestroyOptions{{DryRun: true}, {Force: true}} {
+		err := eng.Destroy(context.Background(), opts)
+		if clerrors.ExitCode(err) != clerrors.ExitAuth || !strings.Contains(err.Error(), "vm-2") {
+			t.Fatalf("%+v: want CONFIG_INVALID naming vm-2, got %v", opts, err)
 		}
 	}
-
-	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
-		t.Fatal(err)
+	if len(cloud.deletedRules) != 0 || len(cloud.deletedFIPs) != 0 {
+		t.Errorf("deleted rules %v, FIPs %v", cloud.deletedRules, cloud.deletedFIPs)
 	}
-	if strings.Join(cloud.deletedRules, ",") != "sg-1/rule-53" {
-		t.Errorf("deleted = %v", cloud.deletedRules)
-	}
-	vm2 := readState(t, eng.StateDir).FindDeployment("vm-2")
-	if vm2 == nil || len(vm2.OpenedRules) != 1 || vm2.OpenedRules[0].ID != "rule-80" {
-		t.Errorf("vm-2 = %+v", vm2)
+	if n := len(readState(t, eng.StateDir).ActiveDeployments()); n != 2 {
+		t.Errorf("active records = %d, want 2", n)
 	}
 }
 

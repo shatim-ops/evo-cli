@@ -27,6 +27,9 @@ func DefaultPath(root string) string {
 // Read reads the state file. Returns empty File (version=1) if file doesn't exist.
 // Returns CLIError(STATE_CORRUPTED) if JSON is invalid.
 func Read(path string) (*File, error) {
+	if err := checkPlace(path); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -82,6 +85,9 @@ func Read(path string) (*File, error) {
 // Creates parent directory if needed.
 func Write(path string, f *File) error {
 	dir := filepath.Dir(path)
+	if err := checkPlace(path); err != nil {
+		return err
+	}
 	if err := config.MkdirPrivate(dir); err != nil { // .evo/ also holds the SSH key
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,
@@ -148,6 +154,34 @@ func Write(path string, f *File) error {
 	return nil
 }
 
+// checkPlace refuses a state directory (.evo) that is a symlink or not a
+// directory, and a state file that is not a regular file. Such a link may
+// come with a cloned repository and point at another project's state:
+// destroy would then delete the VM recorded there. The SSH key in the same
+// directory is refused the same way (cli.ensureKeyDir). Nothing that does
+// not exist yet is refused: the first deploy creates both.
+func checkPlace(path string) error {
+	dir := filepath.Dir(path)
+	if st, err := os.Lstat(dir); err == nil && !st.IsDir() {
+		return clierr.New(clierr.CodeConfigInvalid,
+			i18n.Tf("%s is not a directory (a symlink?); refusing to keep the deployment state there",
+				"%s — не каталог (символическая ссылка?); хранить в нём состояние развёртывания нельзя", dir),
+			removeIt())
+	}
+	if st, err := os.Lstat(path); err == nil && !st.Mode().IsRegular() {
+		return clierr.New(clierr.CodeConfigInvalid,
+			i18n.Tf("%s is not a regular file (a symlink?); refusing to read the deployment state from it",
+				"%s — не обычный файл (символическая ссылка?); читать из него состояние развёртывания нельзя", path),
+			removeIt())
+	}
+	return nil
+}
+
+func removeIt() string {
+	return i18n.T("Remove it (it may have come with the repository) and run the command again",
+		"Удалите его (он мог прийти вместе с репозиторием) и повторите команду")
+}
+
 func stateDirFailed() string {
 	return i18n.T("failed to create state directory", "не удалось создать каталог состояния")
 }
@@ -182,6 +216,19 @@ func (f *File) ActiveDeployment() *DeploymentRecord {
 		}
 	}
 	return nil
+}
+
+// ActiveDeployments returns every deployment not destroyed, in file order.
+// A directory normally holds one; provision (evo vm create) adds a record of
+// its own VM next to a deploy's.
+func (f *File) ActiveDeployments() []*DeploymentRecord {
+	var out []*DeploymentRecord
+	for i := range f.Deployments {
+		if f.Deployments[i].Status != "destroyed" {
+			out = append(out, &f.Deployments[i])
+		}
+	}
+	return out
 }
 
 // UpsertDeployment adds or updates a deployment record by ID.

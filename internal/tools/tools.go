@@ -2045,7 +2045,7 @@ func (s *Registry) handleStatus(ctx context.Context, args map[string]any) (strin
 	if boolArg(args, "refresh", true) {
 		check = eng.CheckCloud(ctx, active)
 	}
-	return toJSON(engine.DeploymentStatus{DeploymentRecord: *active, CloudCheck: check}), false
+	return toJSON(engine.DeploymentStatus{DeploymentRecord: *active, CloudCheck: check, OtherActiveVMs: engine.OtherActiveVMs(sf)}), false
 }
 
 func (s *Registry) handleList(ctx context.Context, args map[string]any) (string, bool) {

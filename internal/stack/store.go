@@ -216,9 +216,15 @@ type Job struct {
 
 // --- Persistence ---
 
-func jobsDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(config.DataDir(home), "stack-jobs")
+// jobsDir is ~/.evo/stack-jobs. Without a home directory it is an error, not
+// a path relative to the working directory: job files hold the manifest's
+// secret values, and the working directory may be a repository.
+func jobsDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", fmt.Errorf("no home directory (HOME is not set) for the stack jobs (~/.evo/stack-jobs)")
+	}
+	return filepath.Join(config.DataDir(home), "stack-jobs"), nil
 }
 
 func newID() string {
@@ -241,7 +247,11 @@ type OrphanRef struct {
 // cluster; a fresh apply creates a second) — the caller surfaces these so the
 // the user can stack_destroy the old job first.
 func FindResourcefulJobs(name, excludeID string) []OrphanRef {
-	entries, err := os.ReadDir(jobsDir())
+	dir, err := jobsDir()
+	if err != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
@@ -275,7 +285,10 @@ func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 // temporary file and rename. Secret values and S3 object bodies that are
 // already in the cloud are dropped first (see redactSpent).
 func (j *Job) Save() error {
-	dir := jobsDir()
+	dir, err := jobsDir()
+	if err != nil {
+		return err
+	}
 	if err := config.MkdirPrivate(dir); err != nil { // job files hold secret values of the manifest
 		return err
 	}
@@ -355,7 +368,11 @@ func LockJob(id string, maxWait time.Duration) (unlock func(), err error) {
 	if !jobIDRe.MatchString(id) {
 		return nil, fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", id)
 	}
-	unlock, err = state.FileLock(filepath.Join(jobsDir(), id+".lock"), maxWait)
+	dir, err := jobsDir()
+	if err != nil {
+		return nil, err
+	}
+	unlock, err = state.FileLock(filepath.Join(dir, id+".lock"), maxWait)
 	if errors.Is(err, state.ErrFileLocked) {
 		return nil, fmt.Errorf("job %s is being changed by another evo process (another MCP server?); try again when it finishes", id)
 	}
@@ -369,7 +386,11 @@ func LoadJob(id string) (*Job, error) {
 	if !jobIDRe.MatchString(id) {
 		return nil, fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", id)
 	}
-	data, err := os.ReadFile(filepath.Join(jobsDir(), id+".json"))
+	dir, err := jobsDir()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(dir, id+".json"))
 	if err != nil {
 		return nil, fmt.Errorf("job %s not found: %w", id, err)
 	}
