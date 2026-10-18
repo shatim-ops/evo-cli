@@ -90,7 +90,7 @@ func TestDeploy_VMWaitLinesWithoutTTY(t *testing.T) {
 	if strings.ContainsAny(out, "\r\x1b") {
 		t.Errorf("control characters without a terminal: %q", out)
 	}
-	if !regexp.MustCompile(`(?m)^    VM \S+ active \(\d+s\)$`).MatchString(out) {
+	if !regexp.MustCompile(`(?m)^    VM \S+ (\(\S+\) )?active \(\d+s\)$`).MatchString(out) {
 		t.Errorf("no 'VM … active (<elapsed>)':\n%s", out)
 	}
 }

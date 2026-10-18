@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -155,26 +156,28 @@ func (p *Printer) Hint(msg string) {
 	}
 }
 
-// Table prints data as an aligned table.
+// Table prints data as an aligned table. The columns are laid out on the
+// plain text and the bold goes on the finished header line: tabwriter
+// counts escape bytes as width, so a bold header cell pushed its column
+// off the rows on a color terminal.
 func (p *Printer) Table(headers []string, rows [][]string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
-	tw := tabwriter.NewWriter(p.out, 0, 4, 2, ' ', 0)
-	if p.color {
-		colored := make([]string, len(headers))
-		for i, h := range headers {
-			colored[i] = colorBold + sanitizeCell(h) + colorReset
-		}
-		fmt.Fprintln(tw, strings.Join(colored, "\t"))
-	} else {
-		fmt.Fprintln(tw, strings.Join(sanitizeRow(headers), "\t"))
-	}
+	var buf bytes.Buffer
+	tw := tabwriter.NewWriter(&buf, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, strings.Join(sanitizeRow(headers), "\t"))
 	for _, row := range rows {
 		fmt.Fprintln(tw, strings.Join(sanitizeRow(row), "\t"))
 	}
 	tw.Flush()
+	out := buf.String()
+	if p.color {
+		head, rest, _ := strings.Cut(out, "\n")
+		out = colorBold + head + colorReset + "\n" + rest
+	}
+	fmt.Fprint(p.out, out)
 }
 
 func sanitizeRow(row []string) []string {

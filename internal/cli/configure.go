@@ -199,6 +199,11 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	if !con.interactive && !opts.secretStdin && opts.keyID == "" && opts.projectID == "" && opts.region == "" {
 		return errNeedKey()
 	}
+	// Before the key is asked for: a word typed for the project ID was
+	// saved and every later command failed on it (first real run, v1.0.1).
+	if opts.projectID != "" && !looksLikeUUID(opts.projectID) {
+		return errNotProjectUUID(opts.projectID)
+	}
 
 	// Key ID.
 	keyID := opts.keyID
@@ -344,13 +349,16 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 		if !con.interactive {
 			if current != "" {
 				// Re-running configure to rotate the key keeps the project.
-				printer.Warning(i18n.Tf("could not list projects (%v); keeping project %s",
-					"не удалось получить список проектов (%v); проект остаётся прежним: %s", err, current))
+				printer.Warning(i18n.Tf("%s; keeping project %s", "%s; проект остаётся прежним: %s", projectListText(err), current))
+				verboseCause(printer, err)
 				return current, nil
 			}
 			return "", err
 		}
-		fmt.Fprintf(con.out, i18n.T("Could not list projects (%v).\n", "Не удалось получить список проектов (%v).\n"), err)
+		fmt.Fprintln(con.out, projectListText(err)+i18n.T(
+			". Enter the project UUID: it is in the Cloud.ru console, in the project details.",
+			". Введите UUID проекта: он в консоли Cloud.ru, в сведениях о проекте."))
+		verboseCause(printer, err)
 		return askProjectID(ctx, con, current)
 	}
 
@@ -419,23 +427,63 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 	}
 }
 
+// projectListText says calmly why there is no project list. The key is
+// already checked by then: a refusal of the Organization API is how Cloud.ru
+// answers a project's service account (400 "user not found"), not a broken
+// key, and the raw error scared the first real user (v1.0.1). The error
+// itself is shown with --verbose.
+func projectListText(err error) string {
+	if clerrors.Reason(err) == clerrors.CodeAPIUnreachable {
+		return i18n.T("The project list could not be fetched: the Organization API is unreachable",
+			"Список проектов не получен: Organization API недоступен")
+	}
+	return i18n.T("The project list is not available to this key — this is how Cloud.ru answers a project's service account",
+		"Список проектов этому ключу недоступен — так Cloud.ru отвечает сервисным аккаунтам проекта")
+}
+
+// verboseCause prints the error behind a calm message with --verbose.
+func verboseCause(printer *output.Printer, err error) {
+	if flagVerbose {
+		printer.Hint(i18n.Tf("cause: %v", "причина: %v", err))
+	}
+}
+
+// errNotProjectUUID refuses a project ID that is not a UUID.
+func errNotProjectUUID(id string) error {
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("project ID %q is not a UUID", "ID проекта %q — не UUID", output.SanitizeCell(id)),
+		notProjectUUIDHint())
+}
+
+func notProjectUUIDHint() string {
+	return i18n.T("A project ID looks like 3f2a8c1e-0b6d-4c8e-9a1f-2d3c4b5a6978: find it in the Cloud.ru console, in the project details. 'evo project use' also takes a project name.",
+		"ID проекта выглядит так: 3f2a8c1e-0b6d-4c8e-9a1f-2d3c4b5a6978 — он в консоли Cloud.ru, в сведениях о проекте. 'evo project use' принимает и имя проекта.")
+}
+
+// askProjectID asks for the project UUID until it gets one; Enter keeps
+// the current project.
 func askProjectID(ctx context.Context, con *console, current string) (string, error) {
 	prompt := i18n.T("Project ID: ", "ID проекта: ")
 	if current != "" {
 		prompt = i18n.Tf("Project ID [%s]: ", "ID проекта [%s]: ", current)
 	}
-	id, err := con.ask(ctx, prompt)
-	if err != nil {
-		return "", fmt.Errorf(i18n.T("read project ID: %w", "чтение ID проекта: %w"), err)
+	for {
+		id, err := con.ask(ctx, prompt)
+		if err != nil {
+			return "", fmt.Errorf(i18n.T("read project ID: %w", "чтение ID проекта: %w"), err)
+		}
+		if id == "" {
+			id = current
+		}
+		if id == "" {
+			return "", clerrors.New(clerrors.CodeConfigInvalid, i18n.T("project ID is required", "нужен ID проекта"),
+				i18n.T("Find it in the Cloud.ru console, or pass --project-id", "Он есть в консоли Cloud.ru; можно передать --project-id"))
+		}
+		if id == current || looksLikeUUID(id) {
+			return id, nil
+		}
+		fmt.Fprintln(con.out, i18n.T("This is not a project UUID. ", "Это не UUID проекта. ")+notProjectUUIDHint())
 	}
-	if id == "" {
-		id = current
-	}
-	if id == "" {
-		return "", clerrors.New(clerrors.CodeConfigInvalid, i18n.T("project ID is required", "нужен ID проекта"),
-			i18n.T("Find it in the Cloud.ru console, or pass --project-id", "Он есть в консоли Cloud.ru; можно передать --project-id"))
-	}
-	return id, nil
 }
 
 func newConfigureListCmd() *cobra.Command {

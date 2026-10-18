@@ -53,11 +53,14 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 
 	e.Printer.Step(1, 3, i18n.T("Reading deployment info...", "Чтение сведений о развёртывании..."))
-	e.Printer.StepDone(i18n.Tf("VM %s (%s) in %s", "ВМ %s (%s), зона %s", active.VMID, active.VMIP, active.Region))
+	// The names, not only the UUIDs: with several VMs the person approving
+	// must see which one goes (first real run, v1.0.1).
+	shown := e.withNames(ctx, *active, nil, true)
+	e.Printer.StepDone(destroyTarget(&shown))
 
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
-	proceed, err := confirm.Ask(ctx, destroyPreview(active, stateFile, pending, e.projectOf(active), e.projectFrom(active)), e.confirmOptions(opts.Force, opts.DryRun, false))
+	proceed, err := confirm.Ask(ctx, destroyPreview(&shown, stateFile, pending, e.projectOf(active), e.projectFrom(active)), e.confirmOptions(opts.Force, opts.DryRun, false))
 	if err != nil {
 		return err
 	}
@@ -178,6 +181,10 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// delete is a warning, not a failed destroy: the record stays (as
 	// "destroyed") with the rule marked, and the next destroy retries.
 	rules := e.closeRules(ctx, stateFile, append([]string{active.ID}, pending...))
+	left := portLabels(active.PortsAlreadyOpen)
+	if len(left) > 0 {
+		e.Printer.StepDone(notOursText(left))
+	}
 	if fipErr != nil {
 		_ = state.Write(statePath, stateFile)
 		return fipErr
@@ -194,8 +201,14 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	if e.Printer.IsJSON() {
 		out := map[string]any{"status": "destroyed", "vm_id": vmID, "vm_ip": vmIP}
+		if shown.VMName != "" {
+			out["vm_name"] = shown.VMName
+		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
+		}
+		if len(left) > 0 {
+			out["ports_left_open"] = left
 		}
 		return e.Printer.JSON(out)
 	}
@@ -218,6 +231,36 @@ func deletionUnconfirmed(vmID string, waited time.Duration) error {
 		i18n.Tf("While the VM exists, it and its floating IP are billed. Check it with 'evo vm get %s' and re-run 'evo destroy': once the VM is gone it releases the floating IP and closes the ports.",
 			"Пока ВМ существует, она и её floating IP оплачиваются. Проверьте её: 'evo vm get %s' — и повторите 'evo destroy': когда ВМ не станет, он освободит floating IP и закроет порты.", vmID),
 		ErrDeletionUnconfirmed)
+}
+
+// destroyTarget is the first line of destroy: which VM, at what address,
+// in which zone.
+func destroyTarget(rec *state.DeploymentRecord) string {
+	s := i18n.T("VM ", "ВМ ") + vmText(rec)
+	if rec.VMIP != "" {
+		s += ", " + rec.VMIP
+	}
+	if z := zoneText(rec.ZoneName, rec.Region); z != "" {
+		s += i18n.T(", zone ", ", зона ") + z
+	}
+	return s
+}
+
+// portLabels turns state port keys into labels ("80/tcp" → "80").
+func portLabels(keys []string) []string {
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = sgrules.Label(k)
+	}
+	return out
+}
+
+// notOursText: destroy leaves the ports deploy found already open.
+func notOursText(labels []string) string {
+	if len(labels) == 1 {
+		return i18n.Tf("port %s was not opened by this deploy — left open", "порт %s открывался не этим deploy — оставлен", labels[0])
+	}
+	return i18n.Tf("ports %s were not opened by this deploy — left open", "порты %s открывались не этим deploy — оставлены", strings.Join(labels, ","))
 }
 
 func noDeploymentToDestroy() string {

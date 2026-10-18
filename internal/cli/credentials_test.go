@@ -22,6 +22,9 @@ import (
 const (
 	fakeKeyID  = "fake0000-key-id-0000-000000000001"
 	fakeSecret = "fake-secret-value"
+	// manualProject is a project UUID typed in or given with --project-id:
+	// configure takes nothing else (v1.0.1).
+	manualProject = "33333333-3333-3333-3333-333333333333"
 )
 
 type fakeCloud struct {
@@ -173,9 +176,9 @@ func TestConfigure_NonInteractivePicksTheOnlyProject(t *testing.T) {
 
 func TestConfigure_SeveralProjectsNeedProjectIDWithoutTTY(t *testing.T) {
 	fc := setupCLI(t)
-	fc.orgProject = `[{"id":"p-1","name":"one"},{"id":"p-2","name":"two"}]`
+	fc.orgProject = `[{"id":"p-1","name":"one"},{"id":"22222222-2222-2222-2222-222222222222","name":"two"}]`
 	code, _, stderr := runCLI(t, fakeSecret+"\n", "configure", "--key-id", fakeKeyID, "--secret-stdin")
-	if code != clerrors.ExitAuth || !strings.Contains(stderr, "--project-id") || !strings.Contains(stderr, "p-2") {
+	if code != clerrors.ExitAuth || !strings.Contains(stderr, "--project-id") || !strings.Contains(stderr, "22222222-2222-2222-2222-222222222222") {
 		t.Fatalf("exit %d, stderr %q", code, stderr)
 	}
 	if _, err := os.Stat(config.CredentialsPath()); !os.IsNotExist(err) {
@@ -183,7 +186,7 @@ func TestConfigure_SeveralProjectsNeedProjectIDWithoutTTY(t *testing.T) {
 	}
 
 	before := fc.orgCalls.Load()
-	code, _, stderr = runCLI(t, fakeSecret+"\n", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "p-2")
+	code, _, stderr = runCLI(t, fakeSecret+"\n", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "22222222-2222-2222-2222-222222222222")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
@@ -230,12 +233,26 @@ func TestConfigure_OrgForbiddenFallsBackToManualEntry(t *testing.T) {
 	stdinIsTerminal = func() bool { return true }
 	readPassword = func() ([]byte, error) { return []byte(fakeSecret), nil }
 
-	code, _, stderr := runCLI(t, fakeKeyID+"\nmanual-project\n", "configure")
+	// A word is not a project ID: asked again until a UUID comes (a
+	// user typed "evo configure" at the prompt and it was saved, v1.0.1).
+	code, _, stderr := runCLI(t, fakeKeyID+"\nevo configure\n"+manualProject+"\n", "configure")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
-	if prof, _, _, _ := config.LoadProfile("default"); prof.ProjectID != "manual-project" {
+	if prof, _, _, _ := config.LoadProfile("default"); prof.ProjectID != manualProject {
 		t.Errorf("got %q", prof.ProjectID)
+	}
+	if !strings.Contains(stderr, "This is not a project UUID") {
+		t.Errorf("no word on the bad ID:\n%s", stderr)
+	}
+	// A refused list is said calmly, the raw error only with --verbose.
+	if !strings.Contains(stderr, "The project list is not available to this key") || strings.Contains(stderr, "status 403") {
+		t.Errorf("project list message:\n%s", stderr)
+	}
+	newProcess()
+	_, _, stderr = runCLI(t, fakeKeyID+"\n"+manualProject+"\n", "--verbose", "configure")
+	if !strings.Contains(stderr, "cause: ") || !strings.Contains(stderr, "status 403") {
+		t.Errorf("--verbose lacks the cause:\n%s", stderr)
 	}
 }
 
@@ -262,7 +279,7 @@ func TestConfigure_ServiceAccountCannotListProjects(t *testing.T) {
 func TestConfigure_RejectedKeyWritesNothing(t *testing.T) {
 	fc := setupCLI(t)
 	fc.iamStatus = http.StatusUnauthorized
-	code, _, stderr := runCLI(t, fakeSecret+"\n", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "p")
+	code, _, stderr := runCLI(t, fakeSecret+"\n", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", manualProject)
 	if code != clerrors.ExitAuth {
 		t.Fatalf("exit %d, want %d: %s", code, clerrors.ExitAuth, stderr)
 	}
@@ -274,7 +291,7 @@ func TestConfigure_RejectedKeyWritesNothing(t *testing.T) {
 	if _, err := os.Stat(config.CredentialsPath()); !os.IsNotExist(err) {
 		t.Error("rejected credentials were stored")
 	}
-	code, _, stderr = runCLI(t, fakeSecret+"\n", "--json", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "p")
+	code, _, stderr = runCLI(t, fakeSecret+"\n", "--json", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", manualProject)
 	if code != clerrors.ExitAuth || !strings.Contains(stderr, `"reason":"AUTH_FAILED"`) || strings.Contains(stderr, "AUTH_FAILED:") {
 		t.Errorf("--json: exit %d: %s", code, stderr)
 	}
@@ -674,12 +691,12 @@ func TestConfigure_NothingGivenWithoutTTYFails(t *testing.T) {
 		t.Errorf("IAM called %d times for a configure with nothing to do", n)
 	}
 
-	code, _, stderr = runCLI(t, "", "configure", "--project-id", "p-new")
+	code, _, stderr = runCLI(t, "", "configure", "--project-id", manualProject)
 	if code != 0 {
 		t.Fatalf("--project-id alone: exit %d: %s", code, stderr)
 	}
 	prof, creds, _, _ := config.LoadProfile("default")
-	if prof.ProjectID != "p-new" || creds.KeyID != fakeKeyID || creds.Secret != fakeSecret {
+	if prof.ProjectID != manualProject || creds.KeyID != fakeKeyID || creds.Secret != fakeSecret {
 		t.Errorf("--project-id alone: got project %q key %q", prof.ProjectID, creds.KeyID)
 	}
 
@@ -689,5 +706,21 @@ func TestConfigure_NothingGivenWithoutTTYFails(t *testing.T) {
 	}
 	if prof, _, _, _ = config.LoadProfile("default"); prof.Region != "zone-1" {
 		t.Errorf("--region alone: got region %q", prof.Region)
+	}
+}
+
+// --project-id takes a UUID only: anything else is CONFIG_INVALID (exit 2)
+// before the key is checked, and nothing is written (v1.0.1).
+func TestConfigure_ProjectIDMustBeUUID(t *testing.T) {
+	fc := setupCLI(t)
+	code, _, stderr := runCLI(t, fakeSecret+"\n", "--json", "configure", "--key-id", fakeKeyID, "--secret-stdin", "--project-id", "evo configure")
+	if code != clerrors.ExitAuth || !strings.Contains(stderr, `"reason":"CONFIG_INVALID"`) || !strings.Contains(stderr, "console") {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	if fc.iamCalls.Load() != 0 {
+		t.Error("the key was checked for a bad project ID")
+	}
+	if _, err := os.Stat(config.CredentialsPath()); !os.IsNotExist(err) {
+		t.Error("credentials written although configure failed")
 	}
 }

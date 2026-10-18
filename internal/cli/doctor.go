@@ -39,6 +39,10 @@ type doctorCheck struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Detail string `json:"detail"`
+	// HTTPStatus is what a reachability probe got back. Not in the text
+	// (only with --verbose): the API root answers 404, which reads as an
+	// error to a person, while it proves the host is reachable.
+	HTTPStatus int `json:"http_status,omitempty"`
 	// auth marks a failure of configuration or credentials (exit code 2).
 	auth bool
 }
@@ -255,8 +259,20 @@ func probe(ctx context.Context, name, rawURL string) doctorCheck {
 		return doctorCheck{Name: name, Status: checkFail, Detail: i18n.Tf("%s unreachable: %v", "%s недоступен: %v", u.Host, err)}
 	}
 	resp.Body.Close()
-	return doctorCheck{Name: name, Status: checkOK,
-		Detail: i18n.Tf("%s reachable (HTTP %d, %s)", "%s доступен (HTTP %d, %s)", u.Host, resp.StatusCode, time.Since(start).Round(time.Millisecond))}
+	took := latencyText(time.Since(start))
+	detail := i18n.Tf("%s reachable (%s)", "%s доступен (%s)", u.Host, took)
+	if flagVerbose {
+		detail = i18n.Tf("%s reachable (HTTP %d, %s)", "%s доступен (HTTP %d, %s)", u.Host, resp.StatusCode, took)
+	}
+	return doctorCheck{Name: name, Status: checkOK, Detail: detail, HTTPStatus: resp.StatusCode}
+}
+
+// latencyText is a probe's time: "66ms", in Russian «66 мс».
+func latencyText(d time.Duration) string {
+	if d < time.Second {
+		return i18n.Tf("%dms", "%d мс", d.Milliseconds())
+	}
+	return i18n.Tf("%.1fs", "%.1f с", d.Seconds())
 }
 
 func errDetail(err error) string {

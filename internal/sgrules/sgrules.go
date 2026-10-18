@@ -14,6 +14,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -140,6 +141,9 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 			label := Label(key)
 			if existing[set.proto+" "+pr] {
 				res.AlreadyOpen = append(res.AlreadyOpen, label)
+				if !ownsPort(rec, key) {
+					addKey(&rec.PortsAlreadyOpen, key)
+				}
 				continue
 			}
 			existing[set.proto+" "+pr] = true
@@ -163,6 +167,7 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 			res.Opened = append(res.Opened, label)
 			if created != nil && created.ID != "" {
 				addRule(rec, state.SGRule{ID: created.ID, SecurityGroupID: sgID, Port: key})
+				dropKey(&rec.PortsAlreadyOpen, key)
 			} else {
 				lost = append(lost, pending{key, rule.Description, false})
 			}
@@ -201,18 +206,50 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 			}
 			before[found] = true
 			addRule(rec, state.SGRule{ID: found, SecurityGroupID: sgID, Port: l.key})
+			dropKey(&rec.PortsAlreadyOpen, l.key)
 		}
 	}
 	return res
 }
 
-func addPort(rec *state.DeploymentRecord, key string) {
-	for _, k := range rec.SecurityGroupPorts {
-		if k == key {
-			return
+func addPort(rec *state.DeploymentRecord, key string) { addKey(&rec.SecurityGroupPorts, key) }
+
+func addKey(keys *[]string, key string) {
+	if !slices.Contains(*keys, key) {
+		*keys = append(*keys, key)
+	}
+}
+
+func dropKey(keys *[]string, key string) {
+	*keys = slices.DeleteFunc(*keys, func(k string) bool { return k == key })
+	if len(*keys) == 0 {
+		*keys = nil
+	}
+}
+
+// ownsPort: a rule this deployment created opens port key.
+func ownsPort(rec *state.DeploymentRecord, key string) bool {
+	return slices.ContainsFunc(rec.OpenedRules, func(r state.SGRule) bool { return r.Port == key })
+}
+
+// KeyOf is the state key of a port label: "80" → "80/tcp".
+func KeyOf(label string) string {
+	if strings.Contains(label, "/") {
+		return label
+	}
+	return label + "/tcp"
+}
+
+// NotOurs are the labels of AlreadyOpen that rec has no rule for: another
+// rule opened them, and destroy leaves them.
+func (r OpenResult) NotOurs(rec *state.DeploymentRecord) []string {
+	var out []string
+	for _, l := range r.AlreadyOpen {
+		if !ownsPort(rec, KeyOf(l)) {
+			out = append(out, l)
 		}
 	}
-	rec.SecurityGroupPorts = append(rec.SecurityGroupPorts, key)
+	return out
 }
 
 func addRule(rec *state.DeploymentRecord, r state.SGRule) {

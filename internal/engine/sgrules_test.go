@@ -285,7 +285,7 @@ func TestDeployPreview_SaysDestroyClosesPorts(t *testing.T) {
 	if err := eng.Deploy(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr.String()+eng.Printer.Writer().(*bytes.Buffer).String(), "destroy deletes the rules this deploy creates") {
+	if !strings.Contains(stderr.String()+eng.Printer.Writer().(*bytes.Buffer).String(), "destroy deletes only the rules this deploy creates") {
 		t.Errorf("preview:\n%s", stderr.String())
 	}
 }

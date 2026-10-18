@@ -184,3 +184,37 @@ var flagShortRU = map[string]string{
 	"disk_detach.vm":        "ВМ, к которой подключён диск: имя или UUID",
 	"disk_resize.size_gb":   "Новый размер, ГБ: больше текущего, не больше 16384",
 }
+
+// russianTrees are the trees whose human tables speak Russian too: the
+// column names, да/нет for booleans and the note under a list (the README
+// promises the vm and disk trees in Russian). --json and MCP keep the
+// tool's keys and English notes.
+var russianTrees = map[string]bool{"vm": true, "disk": true}
+
+// columnHeaderRU is the Russian title of a column of those tables, by the
+// key of the tool's answer; a key without one is shown in capitals.
+var columnHeaderRU = map[string]string{
+	"id":              "ID",
+	"name":            "Имя",
+	"state":           "Состояние",
+	"status":          "Состояние",
+	"zone":            "Зона",
+	"created_time":    "Создана",
+	"vcpus":           "vCPU",
+	"ram_gb":          "RAM, ГБ",
+	"est_monthly_rub": "≈ руб./мес",
+	"free_tier":       "Бесплатный уровень",
+	"size_gb":         "Размер, ГБ",
+	"disk_type":       "Тип",
+	"attached_to":     "Подключён к",
+	"enabled":         "Открыта",
+}
+
+// listNoteRU is the Russian text of a note a tool puts under its list, by
+// its English text (the MCP answer keeps the English one).
+var listNoteRU = map[string]string{
+	"est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price": "Цена — оценка по тарифам, с диском SSD 10 ГБ; это не счёт.",
+}
+
+// noteLabelRU names the other notes under a list.
+var noteLabelRU = map[string]string{"note": "Примечание", "warning": "Предупреждение", "hint": "Подсказка"}
