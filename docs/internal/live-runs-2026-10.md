@@ -27,6 +27,8 @@
 | 1a | 39152048559 | disk, net, dns, s3, secrets, ca + штатные e2e | см. таблицу; e2e — ok | DNS-зона `evo-e2e-dns-…` (403 при удалении без `type=private` — тест) |
 | cleanup | 39158678958 | `cleanup_only` | остаток удалить не удалось | DNS-зона `evo-e2e-dns-…`: `DELETE` принят 25 раз, зона в списке; в консоли — «Удаляется» |
 | 1b | 39160570296 | stack, mcp, os_smoke, ca, s3, dns, secrets + e2e | см. таблицу; e2e — платформа (OPS-2c) | нет (по именам) |
+| cleanup | 39163067817 | `cleanup_only` | та же зона DNS 1a (NET-13) | зона 1a в «Удаляется» |
+| 1c | 39164767739 | disk, net, ca, dns + e2e | net, dns — ok; disk — D5; ca — тест (адрес); e2e — платформа (OPS-2) | нет |
 
 ## Результаты по областям
 
@@ -59,6 +61,10 @@
 | FIP | `release_floating_ip` занятого (отказ) и свободного | ok | 39160570296 | |
 | стек | stack_plan → stack_apply → stack_status (done, 4 шага) → повтор apply без дублей | ok | 39160570296 | |
 | стек | stack_destroy | вопрос | 39160570296 | `destroy_failed` (1 шаг), остатков по именам нет; повтор с выводом шага |
+| сеть | net целиком: VPC, provision (публичная, `no_public_ip`), `destroy release_ip=false`, TG/NLB, `vpc_route_create`/`delete`, `fip_attach`, `open_ports` (+ повтор `already_open`), `snat_create`/`delete`, destroy освобождает перепривязанный FIP | ok, 14 изменяющих | 39164767739 | маршрут в 198.18.255.0/24 — 400 (NET-12), в 10.255.255.0/24 — ok; SNAT удаляется через 10 мин (NET-11) |
+| DNS | приватная зона (без `type` в `dns_zone_get` — #111), запись A, get, delete записи и зоны | ok | 39164767739 | операция создания зоны не done (NET-13) |
+| диски | `disk_attach` через 2 с после `disk_create` | дефект evo D5 | 39164767739 | 422 «no openstack_id» (CMP-15); исправлено #117 |
+| AR | проба `GET /v1/registries` | платформа | 39164767739 | без `pageSize` — пустые страницы с новым токеном бесконечно (AR-4) |
 | ОС | os_smoke: Astra, РЕД ОС (отказ до создания, код 4), nginx-ubuntu (ВМ, SSH, порт) | ok | 39160570296 | |
 | deploy (e2e) | deploy compose | платформа | 39160570296 | apt-зеркало образа недоступно (OPS-2c), evo дал верный диагноз; уборка чистая |
 
@@ -69,6 +75,7 @@
 | D1 | высокая | Artifact Registry | `ar_list` не завершается (1000 страниц за ~10 мин), `ar_create` из-за этого отказывает до создания; на main видно и в readonly (код 124, warn) | #110 (влит) |
 | D2 | средняя | DNS | без `type` инструменты по зоне и записи шли в API публичных зон: приватная зона — 403, `dns_zone_delete` её не удалял, шаг `dns` стека с приватной зоной не работал | #111 (влит) |
 | D3 | низкая | DNS | `dns_zones` не показывал состояние зоны (`valid`/`delegated` в API нет): удаляемая зона выглядела живой | #114 (влит) |
+| D5 | средняя | диски | `disk_attach` сразу после `disk_create` — 422 «no openstack_id» без ожидания (ждал только `disk_create attach_to`), хотя протокол обещает ожидание | #117 (влит) |
 | D4 | средняя | сертификаты | `cert_private_key` отдавал Base64 вместо PEM и без `key_format` (живой API — `private_key`) | #115 (влит) |
 
 ## Покрытие
