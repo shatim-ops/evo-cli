@@ -246,12 +246,12 @@
       "name": "ar",
       "spec": "ar/openapi.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/registries", "code": "internal/artifact/client.go:138", "query": ["projectId", "pageToken"], "paginates": true,
+        {"method": "GET", "path": "/v1/registries", "code": "internal/artifact/client.go:145", "query": ["projectId", "pageToken"], "paginates": true,
          "reads": ["registries[].id", "registries[].name", "registries[].registryType", "registries[].status", "registries[].isPublic", "registries[].tariff", "nextPageToken"], "enums": {"registries[].status": ["ACTIVE", "CREATING"]}},
-        {"method": "GET", "path": "/v1/registries/{registryId}", "code": "internal/artifact/client.go:163", "query": ["projectId"], "reads": ["id", "status"]},
-        {"method": "POST", "path": "/v1/registries", "code": "internal/artifact/client.go:179", "body": ["projectId", "name", "registryType", "isPublic", "tariff"], "reads": ["id", "resourceId", "done"]},
-        {"method": "DELETE", "path": "/v1/registries/{registryId}", "code": "internal/artifact/client.go:184", "query": ["projectId"], "reads": ["id", "done"]},
-        {"method": "GET", "path": "/v1/operations/{operationId}", "code": "internal/artifact/client.go:189", "reads": ["id", "resourceId", "done", "error.code", "error.message"]}
+        {"method": "GET", "path": "/v1/registries/{registryId}", "code": "internal/artifact/client.go:195", "query": ["projectId"], "reads": ["id", "status"]},
+        {"method": "POST", "path": "/v1/registries", "code": "internal/artifact/client.go:211", "body": ["projectId", "name", "registryType", "isPublic", "tariff"], "reads": ["id", "resourceId", "done"]},
+        {"method": "DELETE", "path": "/v1/registries/{registryId}", "code": "internal/artifact/client.go:216", "query": ["projectId"], "reads": ["id", "done"]},
+        {"method": "GET", "path": "/v1/operations/{operationId}", "code": "internal/artifact/client.go:221", "reads": ["id", "resourceId", "done", "error.code", "error.message"]}
       ]
     },
     {
