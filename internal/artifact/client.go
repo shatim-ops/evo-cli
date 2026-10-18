@@ -128,8 +128,15 @@ func (c *Client) doOperation(ctx context.Context, method, path string, query url
 // (ar/openapi.yaml: nextPageToken in the answer, pageToken in the next
 // request). ar_create checks a name against it, so a page left unread
 // let a taken name through (#98).
+//
+// The live API answers a fresh nextPageToken on every page, the last one
+// included, so the token alone never ends the list: ar_list ran into
+// pager.MaxPages after ~10 minutes and ar_create could not check a name
+// (live run 18.10). A page that adds no registry not seen before ends the
+// list — an empty page, or the first page again when the token is ignored.
 func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 	var all []map[string]any
+	seen := map[string]bool{}
 	err := pager.All("artifact-registry: registries", func(token string) (string, error) {
 		q := c.projectQuery()
 		if token != "" {
@@ -149,13 +156,38 @@ func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 		if err := json.Unmarshal(data, &out); err != nil {
 			return "", fmt.Errorf("parse registries: %w", err)
 		}
-		all = append(all, out.Registries...)
+		added := 0
+		for _, r := range out.Registries {
+			key := registryKey(r)
+			if key != "" && seen[key] {
+				continue
+			}
+			if key != "" {
+				seen[key] = true
+			}
+			all = append(all, r)
+			added++
+		}
+		if added == 0 {
+			return "", nil
+		}
 		return out.NextPageToken, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return all, nil
+}
+
+// registryKey identifies a registry across pages: its id, or its name when
+// the id is missing.
+func registryKey(r map[string]any) string {
+	for _, k := range []string{"id", "name"} {
+		if v, ok := r[k].(string); ok && v != "" {
+			return k + ":" + v
+		}
+	}
+	return ""
 }
 
 // GetRegistry returns one registry by id.
