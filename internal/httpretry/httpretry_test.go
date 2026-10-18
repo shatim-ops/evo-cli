@@ -181,3 +181,32 @@ func TestRealServerRecovers(t *testing.T) {
 		t.Fatalf("status = %d calls = %d", resp.StatusCode, calls.Load())
 	}
 }
+
+// TestUserAgent: a request without a User-Agent gets evo's, on both the
+// retrying transport and the bare wrapper; one with its own keeps it.
+func TestUserAgent(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("User-Agent"))
+	}))
+	defer srv.Close()
+	for _, c := range []*http.Client{NewClient(5 * time.Second), {Transport: UserAgent(nil)}} {
+		resp, err := c.Get(srv.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
+		req.Header.Set("User-Agent", "mine")
+		if resp, err = c.Do(req); err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if req.Header.Get("User-Agent") != "mine" {
+			t.Error("the caller's request was changed")
+		}
+	}
+	if len(got) != 4 || !strings.HasPrefix(got[0], "evo/") || got[0] != got[2] || got[1] != "mine" || got[3] != "mine" {
+		t.Errorf("User-Agent seen: %q", got)
+	}
+}

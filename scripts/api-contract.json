@@ -357,7 +357,7 @@
       "name": "oidc",
       "spec": "organization+iam/iam-gw-public.yaml",
       "requests": [
-        {"method": "POST", "path": "/auth/system/openid/token", "code": "internal/mk8s/kubeconfig.go:22",
+        {"method": "POST", "path": "/auth/system/openid/token", "code": "internal/mk8s/kubeconfig.go:24",
          "_note": "https://id.cloud.ru (или auth.iam.cloud.ru из kubeconfig): обмен ключа сервисного аккаунта на JWT для kube-apiserver, как плагин cloudlogin; тело — application/x-www-form-urlencoded",
          "body": ["grant_type", "client_id", "client_secret"], "reads": ["id_token", "access_token"],
          "accepted": {"path-missing": "OIDC-эндпоинт id.cloud.ru/auth/system/openid/token не опубликован ни в одной спецификации Cloud.ru (iam-gw-public описывает только iam.api.cloud.ru) — вопрос к Cloud.ru"}}
