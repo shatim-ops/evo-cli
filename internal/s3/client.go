@@ -22,6 +22,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // Client wraps a minio S3 client.
@@ -67,6 +68,8 @@ func New(cfg Config) (*Client, error) {
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
 		Secure: secure,
 		Region: region,
+		// evo's User-Agent, and a 2xx HTML page (a gateway's) read as 502.
+		Transport: httpretry.UserAgent(nil),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("init S3 client: %w", err)

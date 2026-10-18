@@ -414,6 +414,9 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 		}
 
 		resp, err := a.client.Do(req)
+		if err == nil {
+			resp = httpretry.HTMLAsBadGateway(resp)
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("request cancelled", "запрос отменён"), hintCancelled(), err)

@@ -210,3 +210,26 @@ func TestUserAgent(t *testing.T) {
 		t.Errorf("User-Agent seen: %q", got)
 	}
 }
+
+// An HTML page with a 2xx is a gateway's, not the API's answer (break r3b,
+// R3B-1): the client sees a 502. JSON and XML pass as they are.
+func TestHTMLAsBadGateway(t *testing.T) {
+	for _, tc := range []struct {
+		ctype string
+		want  int
+	}{
+		{"text/html; charset=utf-8", http.StatusBadGateway},
+		{"application/json", http.StatusOK},
+		{"application/xml", http.StatusOK},
+		{"", http.StatusOK},
+	} {
+		resp := &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {tc.ctype}}, Body: io.NopCloser(strings.NewReader("<html></html>"))}
+		if got := HTMLAsBadGateway(resp).StatusCode; got != tc.want {
+			t.Errorf("%q: status %d, want %d", tc.ctype, got, tc.want)
+		}
+	}
+	notFound := &http.Response{StatusCode: 404, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(""))}
+	if got := HTMLAsBadGateway(notFound).StatusCode; got != 404 {
+		t.Errorf("a 404 HTML page became %d", got)
+	}
+}

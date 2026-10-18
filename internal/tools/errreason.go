@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -76,6 +77,13 @@ func uncodedReason(err error, fields map[string]any) string {
 	if (stderrors.As(err, &syntaxErr) || stderrors.As(err, &typeErr)) && parseAnswerRE.MatchString(answer) {
 		return clierrors.CodeAPIError
 	}
+	// An answer that ended before its JSON or XML did: an empty 200 to
+	// PUT /disks ("resize disk: EOF"), an empty S3 list. Tools read no
+	// local stream that could end this way, so the cloud answered wrong
+	// (break r3b, R3B-2).
+	if stderrors.Is(err, io.EOF) || stderrors.Is(err, io.ErrUnexpectedEOF) {
+		return clierrors.CodeAPIError
+	}
 	if _, ok := fields["vm_id"]; ok {
 		return clierrors.CodeVMProvisionFailed
 	}
@@ -92,7 +100,7 @@ var apiStatusRE = regexp.MustCompile(`\b(?:API|HTTP):? ([1-5][0-9]{2})\b|\b(?:AP
 
 // parseAnswerRE is how the service clients wrap a JSON error of the API's
 // answer: "parse <what>: …" (a local manifest says "invalid manifest").
-var parseAnswerRE = regexp.MustCompile(`\bparse [a-z ]+: `)
+var parseAnswerRE = regexp.MustCompile(`\bparse [a-z_ ]+: `)
 
 // operationFailedRE is an asynchronous operation the cloud reported failed.
 var operationFailedRE = regexp.MustCompile(`\boperation\b[^"]*\bfailed\b`)
