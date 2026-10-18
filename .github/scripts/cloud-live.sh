@@ -910,8 +910,10 @@ area_stack() {
 	must stack_destroy stack_destroy --arg job_id="$job" || return 1
 	cov stack_destroy
 	st=$(j -r .status)
+	local repeats=0
 	for _ in 1 2 3 4 5 6; do
 		[ "$st" = destroyed ] && [ "$(j -r '(.deleting // []) | length')" = 0 ] && break
+		repeats=$((repeats + 1))
 		echo "stack_destroy: $st, удалено $(j -c '.deleted // []'), удаляется $(j -c '.deleting // []'), не удалено $(j -c '[.failed[]? | if type == "object" then (.step // .key // .name) else . end]')" | redact
 		sleep 60
 		tc stack_destroy --arg job_id="$job"
@@ -919,6 +921,8 @@ area_stack() {
 	done
 	if [ "$st" = destroyed ]; then
 		ok stack_destroy "удалено $(j -r '.deleted | length')"
+		# повторный вызов, пока ресурсы удаляются, не должен ломать задание (D6, #118)
+		[ "$repeats" = 0 ] || ok "stack_destroy повторный ($repeats)" "destroyed: $(j -c '.deleted // []')"
 	else
 		bad stack_destroy "status $st, удалено $(j -c '.deleted // []'), не удалено: $(j -c '[.failed[]? | if type == "object" then {step: (.step // .key // .name), error: ((.error // .reason // "") | tostring | .[0:200])} else . end]' | redact | cut -c1-500)"
 	fi
@@ -1000,7 +1004,8 @@ area_mcp() {
 		# поток SSE: до ответа (id 9) идут уведомления о ходе — берём ответ
 		jq -c 'select(.id == 9)' "$tmp/res" >"$tmp/res9" 2>/dev/null || : >"$tmp/res9"
 		echo "http $1: HTTP $(cat "$tmp/hcode" 2>/dev/null), сообщений в ответе $(jq -s length "$tmp/res" 2>/dev/null || echo "?"), методы уведомлений $(jq -sc '[.[] | .method // empty] | unique' "$tmp/res" 2>/dev/null), ключи ответа $(jq -c 'keys' "$tmp/res9" 2>/dev/null), ошибка JSON-RPC $(jq -c '.error // null | if . == null then null else {code, message: (.message | tostring | .[0:200])} end' "$tmp/res9" 2>/dev/null)" | redact
-		iserr=$(jq -r '.result.isError // "?"' "$tmp/res9" 2>/dev/null || echo "?")
+		# не «.result.isError // "?"»: в jq // считает false пустым
+		iserr=$(jq -r 'if .result == null then "?" else (.result.isError == true | tostring) end' "$tmp/res9" 2>/dev/null || echo "?")
 		jq -r '.result.content[0].text // empty' "$tmp/res9" >"$tmp/r.json" 2>/dev/null || : >"$tmp/r.json"
 	}
 	local hvm="$prefix-http"
