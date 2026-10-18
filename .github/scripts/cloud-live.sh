@@ -309,6 +309,15 @@ probe_ar_pages() {
 	done
 }
 
+# probe_dns_op ID — сырой ответ GET /v1/operations/{id} DNS (только
+# чтение): ключи, done, поля состояния. Без ID и имён.
+probe_dns_op() {
+	local code
+	iam_token || { echo "probe dns: нет токена"; return 0; }
+	code=$(curl -sS -o "$tmp/dop" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://dns.api.cloud.ru/v1/operations/$1" || echo 000)
+	echo "probe dns operation: http $code, ключи $(jq -c 'keys' "$tmp/dop" 2>/dev/null), done $(jq -c '.done' "$tmp/dop" 2>/dev/null), состояние $(jq -c '{status, state, metadata: (.metadata | if type == "object" then keys else . end), error: (.error | if . == null then null else (tostring | .[0:120]) end)}' "$tmp/dop" 2>/dev/null | redact)"
+}
+
 # Правило группы безопасности на порт RULE_PORT из RULE_CIDR (open_ports):
 # в evo нет удаления правила — DELETE в API, как шаг cleanup.
 delete_test_rules() {
@@ -657,7 +666,10 @@ area_dns() {
 	cov dns_zone_create
 	# 18.10 (run 39152048559) операция создания приватной зоны не стала
 	# done за 10 мин, хотя зона появилась в списке: ждём зону в списке
-	if opwait dns "$op" 300; then ok "dns_operation создания" "done"; else row "dns_operation создания" "не done" "за 5 мин: $why"; fi
+	if opwait dns "$op" 300; then ok "dns_operation создания" "done"; else
+		row "dns_operation создания" "не done" "за 5 мин: $why"
+		probe_dns_op "$op"
+	fi
 	poll 300 15 sh -c "evo tools call dns_zones --json | jq -e --arg d '$domain' 'any(.zones[]; (.domain // .name) == \$d)' >/dev/null" || true
 	zid=$(lst dns "$prefix" | cut -f1 | head -1)
 	zid=${zid#* }
@@ -669,7 +681,11 @@ area_dns() {
 	row "dns_zone_get без type" "$([ "$rc" = 0 ] && echo ответ || echo отказ)" "код $rc, $reason"
 	must dns_record_create dns_record_create --arg zone_id="$zid" --arg type=private --arg name=www --arg record_type=A --arg value=198.18.255.10 --arg ttl=300 || return 1
 	cov dns_record_create
-	if opwait dns "$(j -r .operation_id)" 300; then ok "dns_operation записи" "done"; else row "dns_operation записи" "не done" "за 5 мин: $why"; fi
+	op=$(j -r .operation_id)
+	if opwait dns "$op" 300; then ok "dns_operation записи" "done"; else
+		row "dns_operation записи" "не done" "за 5 мин: $why"
+		probe_dns_op "$op"
+	fi
 	rec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json >"$tmp/recs" 2>/dev/null && jq -e '[.records[] | select((.name | startswith("www")) and ((.type // "") | ascii_downcase) == "a")] | length > 0' "$tmp/recs" >/dev/null; }
 	if poll 300 15 rec; then
 		rid=$(jq -r '[.records[] | select((.name | startswith("www")) and ((.type // "") | ascii_downcase) == "a")][0].id // empty' "$tmp/recs")
@@ -686,10 +702,12 @@ area_dns() {
 	if poll 300 15 norec; then ok dns_record_delete "записи нет"; cov dns_record_delete; else bad dns_record_delete "запись осталась через 5 мин"; fi
 	must dns_zone_delete dns_zone_delete --arg id="$zid" --arg type=private || return 1
 	opwait dns "$(j -r .operation_id)" 300 || true
-	if poll 600 15 gone dns "$prefix"; then
-		ok dns_zone_delete "зоны нет"
+	# приватная зона 18.10 удалялась ~11,5 мин (run 39160570296)
+	local t0=$SECONDS
+	if poll 1500 20 gone dns "$prefix"; then
+		ok dns_zone_delete "зоны нет через $(((SECONDS - t0) / 60)) мин"
 		cov dns_zone_delete
-	else bad dns_zone_delete "зона в списке через 10 мин"; fi
+	else bad dns_zone_delete "зона в списке через 25 мин: $(evo tools call dns_zones --json | jq -c --arg d "$domain" '[.zones[] | select((.domain // .name) == $d) | {state, visibility}]')"; fi
 }
 
 # Object Storage: бакет, объект, удаление.
