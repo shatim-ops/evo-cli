@@ -356,7 +356,7 @@ trap finish EXIT
 
 # ВМ, диски, образ из загрузочного диска.
 area_disk() {
-	local zid vm vm_ip user data boot img st
+	local zid vm vm_ip user data boot img st=
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/disk" && cd "$tmp/disk"
@@ -387,17 +387,35 @@ area_disk() {
 		return 1
 	fi
 
-	must disk_resize disk_resize --arg disk_id="$data" --arg size_gb=20 || return 1
-	if poll 180 10 disk_has '.disks[] | select(.id == $id) | .size_gb == 20'; then
-		ok disk_resize "10 → 20 ГБ"
-		cov disk_resize
-	else bad disk_resize "размер не 20 ГБ за 3 мин"; fi
+	# Состояние после подключения: resize в переходном состоянии — 422
+	# disk_can_not_be_changed_from_current_state (run 39152048559).
+	dstate() { evo tools call disk_list --json | jq -r --arg id "$data" '.disks[] | select(.id == $id) | .state'; }
+	settled() { st=$(dstate); case "$st" in attaching | detaching | extending | creating | "") return 1 ;; *) return 0 ;; esac; }
+	poll 300 10 settled || true
+	ok "состояние подключённого диска" "$st"
+	tc disk_resize --arg disk_id="$data" --arg size_gb=20
+	if [ "$rc" = 0 ]; then
+		if poll 180 10 disk_has '.disks[] | select(.id == $id) | .size_gb == 20'; then
+			ok "disk_resize подключённого" "10 → 20 ГБ (state $st)"
+			cov disk_resize
+		else bad "disk_resize подключённого" "размер не 20 ГБ за 3 мин"; fi
+	else
+		row "disk_resize подключённого" отказ "state $st: код $rc, $reason: $(printf '%s' "$why" | grep -oE '"code":"[a-z_]+"' | head -1)"
+	fi
 
 	must disk_detach disk_detach --arg disk_id="$data" --arg vm="$vm" || return 1
 	if poll 180 10 disk_has '.disks[] | select(.id == $id) | ((.attached_to // []) | length) == 0 and .state == "available"'; then
 		ok disk_detach "available"
 		cov disk_detach
 	else bad disk_detach "за 3 мин не available"; fi
+
+	if ! printf '%s\n' "${covered[@]}" | grep -qx disk_resize; then
+		must "disk_resize отключённого" disk_resize --arg disk_id="$data" --arg size_gb=20 || return 1
+		if poll 180 10 disk_has '.disks[] | select(.id == $id) | .size_gb == 20'; then
+			ok "disk_resize отключённого" "10 → 20 ГБ"
+			cov disk_resize
+		else bad "disk_resize отключённого" "размер не 20 ГБ за 3 мин"; fi
+	fi
 
 	must disk_delete disk_delete --arg disk_id="$data" || return 1
 	if poll 180 10 sh -c "! evo tools call disk_list --json | jq -e --arg id '$data' 'any(.disks[]; .id == \$id)' >/dev/null"; then
