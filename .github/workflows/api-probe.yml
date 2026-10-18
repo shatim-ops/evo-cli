@@ -96,6 +96,9 @@ jobs:
           probe image_zone_keys       "$C/images?limit=1" '[.[] | arrays | .[0].availability_zones[]? | keys] | first // null'
           probe fip_states            "$C/floating-ips?$P&limit=100" '[.[] | arrays | .[] | .state] | unique'
           probe vm_states             "$C/vms?$P&limit=100" '[.[] | arrays | .[] | .status // .state] | unique'
+          # R2-L1: FindCreatedVM полагается на «свежие первыми» (api-contract.md).
+          # shellcheck disable=SC2016 # $t — переменная jq, не оболочки
+          probe vms_order             "$C/vms?$P&limit=100" '[.[] | arrays | .[] | .created_time // .createdTime] as $t | {n: ($t | length), with_time: ([$t[] | select(. != null)] | length), newest_first: ($t == ($t | sort | reverse)), oldest_first: ($t == ($t | sort))}'
 
           echo "== группы безопасности: SSH и исходящий трафик (зона и признаки, без имён и ID)"
           # deploy ждёт SSH (tcp 22) и выход ВМ к метаданным и DHCP (документация
@@ -161,6 +164,30 @@ jobs:
           echo "== IAM и Organization"
           probe iam_service_accounts  "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId=$PROJECT" "$shape"
           probe org_projects          "https://organization.api.cloud.ru/v3/projects" "$shape"
+
+          # #98: evo просит следующую страницу сервисных аккаунтов параметром
+          # pageToken (спецификация), а ответ живого API — в snake_case (IAM-2).
+          # Какой параметр IAM принимает: вторая страница не должна повторять
+          # первую. В лог — только коды и да/нет, без ID и токена страницы.
+          echo "== IAM: параметр следующей страницы (#98)"
+          IAM="https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId=$PROJECT&pageSize=1"
+          first=$(curl -sS -H "Authorization: Bearer $TOKEN" "$IAM" || true)
+          tok=$(printf '%s' "$first" | jq -r '.next_page_token // .nextPageToken // empty' 2>/dev/null || true)
+          id1=$(printf '%s' "$first" | jq -r '(.service_accounts // .serviceAccounts // [])[0].id // empty' 2>/dev/null || true)
+          if [ -z "$tok" ]; then
+            echo "iam_next_page             нет токена следующей страницы (в проекте один сервисный аккаунт?) — не проверено"
+          else
+            echo "::add-mask::$tok"
+            for param in pageToken page_token; do
+              r=$(curl -sS -G -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "$IAM" --data-urlencode "$param=$tok" || true)
+              c=${r##*$'\n'}; b=${r%$'\n'*}
+              id2=$(printf '%s' "$b" | jq -r '(.service_accounts // .serviceAccounts // [])[0].id // empty' 2>/dev/null || true)
+              same=no; [ -n "$id2" ] && [ "$id2" = "$id1" ] && same=yes
+              printf 'iam_next_%-17s http=%s items=%s repeats_first_page=%s\n' "$param" "$c" \
+                "$(printf '%s' "$b" | jq -c '(.service_accounts // .serviceAccounts // []) | length' 2>/dev/null || echo '?')" "$same"
+            done
+          fi
+          unset first tok id1 id2
 
           # Каталог образов (docs/internal/design-images.md §7): типы, отечественные
           # ОС, поиск по name/display_name, поля продуктов, расчёт цены. Имена
