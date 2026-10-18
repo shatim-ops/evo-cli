@@ -149,41 +149,41 @@ gone() { [ -z "$(lst "$1" "$2")" ]; }
 lst() {
 	local kind=$1 p=$2 out
 	case "$kind" in
-	ca) out=$(evo tools call ca_list --json 2>/dev/null) &&
+	ca) out=$(evo tools call ca_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.containers[]? | select((.name // "") | startswith($p)) | "\(.name)\t\(.name)"' <<<"$out" ;;
-	ar) out=$(evo tools call ar_list --json 2>/dev/null) &&
+	ar) out=$(evo tools call ar_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.registries[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	lb) out=$(evo tools call lb_list --json 2>/dev/null) &&
+	lb) out=$(evo tools call lb_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.load_balancers[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	tg) out=$(evo tools call tg_list --json 2>/dev/null) &&
+	tg) out=$(evo tools call tg_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.target_groups[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	vm) out=$(evo tools call vm_list --json 2>/dev/null) &&
+	vm) out=$(evo tools call vm_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.vms[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	snat) out=$(evo tools call snat_list --json 2>/dev/null) &&
+	snat) out=$(evo tools call snat_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.nat_gateways[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	fip) out=$(evo tools call list_floating_ips --json 2>/dev/null) &&
+	fip) out=$(evo tools call list_floating_ips --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "fip-$p" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .state != "error_deleting") | "\(.id)\t\(.name)"' <<<"$out" ;;
-	disk) out=$(evo tools call disk_list --json 2>/dev/null) &&
+	disk) out=$(evo tools call disk_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.disks[]? | select(((.name // "") | startswith($p)) and (((.attached_to // []) | length) == 0)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	image) out=$(evo tools call image_list --arg type=private --json 2>/dev/null) &&
+	image) out=$(evo tools call image_list --arg type=private --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.images[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	route)
 		# маршруты без имени: свои — по тестовому CIDR, в любом VPC
 		local v
-		out=$(evo tools call vpc_list --json 2>/dev/null) || return 1
+		out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") || return 1
 		for v in $(jq -r '.vpcs[]?.id' <<<"$out"); do
 			evo tools call vpc_routes --arg vpc_id="$v" --json 2>/dev/null |
 				jq -r --arg v "$v" --arg c "$ROUTE_CIDR" '.routes[]? | select(.subnet == $c) | "\($v) \(.id)\troute \(.subnet)"' || true
 		done ;;
-	vpc) out=$(evo tools call vpc_list --json 2>/dev/null) &&
+	vpc) out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.vpcs[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	dns) out=$(evo tools call dns_zones --json 2>/dev/null) &&
+	dns) out=$(evo tools call dns_zones --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.zones[]? | select(((.name // "") | startswith($p)) or ((.domain // "") | startswith($p))) | "\(.id)\t\(.domain // .name)"' <<<"$out" ;;
-	s3) out=$(evo tools call s3_buckets --json 2>/dev/null) &&
+	s3) out=$(evo tools call s3_buckets --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.buckets[]? | select((.name // "") | startswith($p)) | "\(.name)\t\(.name)"' <<<"$out" ;;
-	secret) out=$(evo tools call secret_list --json 2>/dev/null) &&
+	secret) out=$(evo tools call secret_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.secrets[]? | select(((.path // .name // "") | startswith($p))) | "\(.path // .name)\t\(.path // .name)"' <<<"$out" ;;
-	cert) out=$(evo tools call cert_list --json 2>/dev/null) &&
+	cert) out=$(evo tools call cert_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.certificates[]? | select((.name // .displayName // "") | startswith($p)) | "\(.id)\t\(.name // .displayName)"' <<<"$out" ;;
 	*) return 1 ;;
 	esac
@@ -217,7 +217,7 @@ KINDS="ca ar lb tg vm snat fip disk image route vpc dns s3 secret cert"
 # sweep ПРЕФИКС [ВИДЫ] — удалять ресурсы ПРЕФИКС* до 20 мин (удаления
 # асинхронны: балансировщик, ВМ, VPC), затем остаток — провал по каждому.
 sweep() {
-	local p=$1 kinds=${2:-$KINDS} kind id name left until=$(($(date +%s) + 1200))
+	local p=$1 kinds=${2:-$KINDS} kind id name left t0 until=$(($(date +%s) + 1200))
 	case "$p" in evo-e2e-*) ;; *)
 		echo "::error::префикс $p не evo-e2e-*: такие ресурсы скрипт не трогает"
 		return 1 ;;
@@ -225,10 +225,12 @@ sweep() {
 	while :; do
 		left=0
 		for kind in $kinds; do
+			t0=$(date +%s)
 			lst "$kind" "$p" >"$tmp/l" 2>/dev/null || {
-				[ "$kind" = s3 ] || echo "$kind: список не прочитан"
+				echo "$kind: список не прочитан за $(($(date +%s) - t0)) с: $(jq -rR 'fromjson? | .error | "\(.reason): \(.message)"' "$tmp/lst.err" 2>/dev/null | head -1 | redact | cut -c1-240)"
 				continue
 			}
+			[ $(($(date +%s) - t0)) -lt 60 ] || echo "$kind: список читался $(($(date +%s) - t0)) с"
 			while IFS=$'\t' read -r id name; do
 				[ -n "$id" ] || continue
 				mask "$id" "${id%% *}" "${id#* }"
