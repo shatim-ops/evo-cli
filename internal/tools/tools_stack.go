@@ -984,7 +984,9 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	}
 	// Reverse teardown of what was created. 404/not-found is idempotent success.
 	// The code (VM_NOT_FOUND, NOT_FOUND) is checked too: in the CLI the
-	// message is in the language of the CLI.
+	// message is in the language of the CLI, and destroy of a VM already
+	// gone says "no VM … in project …; nothing was deleted" (live run 18.10:
+	// a second stack_destroy turned a destroyed job into destroy_failed).
 	// deleting: async deletions the cloud accepted but has not finished
 	// (status "deleting" with an operation): Postgres takes ~5 min, so the
 	// answer must not read as if it were gone already (release audit, L-37).
@@ -993,7 +995,9 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		dargs["confirmed"] = true
 		if res, e := s.callTool(ctx, tool, dargs); e != nil {
 			msg := e.Error()
-			if strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") || strings.Contains(strings.ToLower(msg), "not found") {
+			reason, _ := res["reason"].(string)
+			if reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound ||
+				strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") || strings.Contains(strings.ToLower(msg), "not found") {
 				deleted = append(deleted, label+" (already gone)")
 			} else {
 				failed = append(failed, label+": "+msg)
