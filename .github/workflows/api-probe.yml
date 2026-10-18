@@ -15,7 +15,8 @@ name: api-probe
 # клиенту); образы проекта — только счётчики. И ещё текст ошибки API
 # (message, grpc-message) — до 160 символов, ID в нём замаскированы.
 #
-# Только GET, ничего не создаёт. Ключ облака — секреты окружения
+# Ничего не создаёт: первый шаг — только GET; второй проверяет, что ключ не
+# может менять ресурсы (неполное тело, несуществующий ID). Ключ облака — секреты окружения
 # cloud-readonly (CLOUDRU_KEY_ID, CLOUDRU_SECRET, CLOUDRU_PROJECT_ID): ключ
 # сервисного аккаунта с правами наблюдателя, запуск без одобрения.
 
@@ -320,3 +321,49 @@ jobs:
             echo "nodepools_cluster: кластеров в проекте нет — запрос с clusterId пропущен"
           fi
           probeh nodepools_unknown_cluster    "$M/v3/nodePools?clusterId=00000000-0000-4000-8000-000000000000" "$nlist"
+
+      # Ключ cloud-readonly должен только читать: роль «Наблюдатель проекта»
+      # тянет за собой роли *.user сервисов, и что они разрешают, по
+      # документации не видно. Здесь — запросы на изменение, которые ничего
+      # не могут изменить: создание с заведомо неполным телом (без образа,
+      # flavor, зоны, имени) и удаление несуществующего ID. 403 — прав нет,
+      # как и должно быть; 400/404/422 — API проверил тело или ID раньше прав,
+      # вывод не сделать; 2xx — ключ может менять, шаг падает.
+      - name: Права ключа (изменения должны быть запрещены)
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PROJECT"
+          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token \
+              -H 'Content-Type: application/json' --data-binary @- |
+            jq -r '.access_token // .accessToken // empty')
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          NOID=00000000-0000-4000-8000-000000000000
+          bad=0 denied=0
+          try() {
+            local name=$1 method=$2 url=$3 body=${4:-} c
+            if [ -n "$body" ]; then
+              c=$(printf '%s' "$body" | curl -sS -o /dev/null -w '%{http_code}' -X "$method" \
+                -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- "$url" || echo 000)
+            else
+              c=$(curl -sS -o /dev/null -w '%{http_code}' -X "$method" -H "Authorization: Bearer $TOKEN" "$url" || echo 000)
+            fi
+            case $c in
+              401|403) verdict="запрещено"; denied=$((denied+1)) ;;
+              2??) verdict="РАЗРЕШЕНО"; bad=$((bad+1)) ;;
+              *) verdict="не определено (тело или ID проверены раньше прав)" ;;
+            esac
+            printf '%-24s %-6s http=%s %s\n' "$name" "$method" "$c" "$verdict"
+          }
+          try vm_create_incomplete   POST   "https://compute.api.cloud.ru/api/v1/vms" "$(jq -nc --arg p "$PROJECT" '{project_id:$p}')"
+          try k8s_create_incomplete  POST   "https://mk8s.api.cloud.ru/v3/clusters" "$(jq -nc --arg p "$PROJECT" '{projectId:$p}')"
+          try vpc_delete_noid        DELETE "https://vpc.api.cloud.ru/v1/vpcs/$NOID?project_id=$PROJECT"
+          try nlb_delete_noid        DELETE "https://nlb.api.cloud.ru/v2/networkLoadBalancers/$NOID?project_id=$PROJECT"
+          try vm_delete_noid         DELETE "https://compute.api.cloud.ru/api/v1/vms/$NOID"
+          echo "запрещено: $denied, разрешено: $bad"
+          [ "$bad" -eq 0 ] || { echo "::error::ключ cloud-readonly может изменять ресурсы — сузьте роли сервисного аккаунта"; exit 1; }
