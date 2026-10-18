@@ -154,7 +154,11 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
+<<<<<<< HEAD
 | `GET /v1/publicZones?project_id`, `/v1/privateZones` | `internal/dns/client.go:173-179` | да; **`projectId` required** | код шлёт `project_id`; пагинация не читается; `tools_dns.go:48-52` читает `valid`, `delegated` — **таких полей нет** (есть `state`, `confirmState`, `verificationToken`, `delegated`-подобного нет) → в `dns_zones` всегда `null` | из комментария: `project_id` → 200 | medium (§4.9, §4.10) |
+=======
+| `GET /v1/publicZones?project_id`, `/v1/privateZones` | `internal/dns/client.go:173-179` | да; **`projectId` required** | код шлёт `project_id`; пагинация не читается; `tools_dns.go:44-48` читает `valid`, `delegated` — **таких полей нет** (есть `state`, `confirmState`, `verificationToken`, `delegated`-подобного нет) → в `dns_zones` всегда `null` | из комментария: `project_id` → 200 | medium (§4.9, §4.10) |
+>>>>>>> origin/main
 | `GET /v1/{public,private}Zones/{id}` | `:177` | да | нет | нет | — |
 | `POST /v1/{public,private}Zones` `{project_id, name, domain}` | `:182`, `tools_dns.go:94` | да; тело `projectId, name, domain` required | snake_case в теле (protojson принимает proto-имена); **Operation: код читает `resource_id`, спецификация — `resourceId`** → `op.ResourceID` пуст, id зоны приходится искать через `dns_zones` | нет | medium (§4.10) |
 | `DELETE /v1/{public,private}Zones/{id}` | `:187` | да | нет | нет | — |
@@ -168,9 +172,15 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
+<<<<<<< HEAD
 | `GET /v2/networkLoadBalancers?project_id` | `internal/nlb/client.go:156`, `:101` | да; required | пагинация (`page_size/page_token`) не читается; `status` enum `NLB_STATUS_CREATING/ERROR_CREATING/RUNNING/UPDATING/…`; `external_address.ipv4` есть | нет | low |
 | `GET/POST/DELETE /v2/networkLoadBalancers[/{id}]` | `:156-165`, `tools_nlb.go:288-324` | да | тело create совпадает полностью (`rules[].health_check{port,timeout,interval,unhealthy_threshold,healthy_threshold,tcp{}}`, `availability_zone_specs[].subnet_ids`, `*_address_spec`) | нет | — |
 | `GET/POST/DELETE /v2/targetGroups[/{id}]` | `:170-183`, `tools_nlb.go:211` | да | `target_vm_specs[].{id, interface_id}` совпадает | нет | — |
+=======
+| `GET /v2/networkLoadBalancers?project_id` | `internal/nlb/client.go:156`, `:97` | да; required | пагинация (`page_size/page_token`) не читается; `status` enum `NLB_STATUS_CREATING/ERROR_CREATING/RUNNING/UPDATING/…`; `external_address.ipv4` есть | нет | low |
+| `GET/POST/DELETE /v2/networkLoadBalancers[/{id}]` | `:156-165`, `tools_nlb.go:284-320` | да | тело create совпадает полностью (`rules[].health_check{port,timeout,interval,unhealthy_threshold,healthy_threshold,tcp{}}`, `availability_zone_specs[].subnet_ids`, `*_address_spec`) | нет | — |
+| `GET/POST/DELETE /v2/targetGroups[/{id}]` | `:170-183`, `tools_nlb.go:207` | да | `target_vm_specs[].{id, interface_id}` совпадает | нет | — |
+>>>>>>> origin/main
 | `GET /v2/operations/{operation_id}?id=` | `:188-205` | да; **query `id` задокументирован** | нет — наблюдение из комментария («400 id: required» без query) подтверждено спецификацией | из комментария | — |
 
 ### 3.5 Managed Kubernetes — `mk8s.api.cloud.ru` (`mk8s/openapi-v3.yaml`, camelCase)
@@ -190,8 +200,13 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
+<<<<<<< HEAD
 | `GET /v1/clusters?project_id` | `internal/postgresql/client.go:173` | да (`project_id` optional) | пагинация не читается; `status` enum `PENDING/DEPLOYING/FAILED/UPDATING/READY/SUSPENDED/…`, stack ждёт `READY` (ок); fallback на `state` в `tools_pg.go:124` не нужен | нет | low |
 | `GET/POST/DELETE /v1/clusters[/{id}]` | `:174-186`, `tools_pg.go:394-406` | да | тело совпадает (`storage.pg_data_gb`, `subnet_ids[]`, `backup{schedule, retention_policy_days}`); `subnet_id` deprecated — код не шлёт (верно) | нет | — |
+=======
+| `GET /v1/clusters?project_id` | `internal/postgresql/client.go:173` | да (`project_id` optional) | пагинация не читается; `status` enum `PENDING/DEPLOYING/FAILED/UPDATING/READY/SUSPENDED/…`, stack ждёт `READY` (ок); fallback на `state` в `tools_pg.go:120` не нужен | нет | low |
+| `GET/POST/DELETE /v1/clusters[/{id}]` | `:174-186`, `tools_pg.go:390-402` | да | тело совпадает (`storage.pg_data_gb`, `subnet_ids[]`, `backup{schedule, retention_policy_days}`); `subnet_id` deprecated — код не шлёт (верно) | нет | — |
+>>>>>>> origin/main
 | `GET /v1/operations/{id}` | `:189` | да | `resource_id` совпадает | нет | — |
 | `GET /v1/versions`, `GET /v1/specifications?version_name` | `:207-218` | да | поля `display_name, cpu, memory, deployment_mode, flavor_type, min_storage_gb, max_hosts` есть | нет | — |
 | databases / users / backups (`GET/POST/DELETE`) | `:222-289`, `tools_pg.go:479, :540` | да | тела совпадают (`cluster_id` в теле required — шлём); `backups[].status` enum `BACKUP_STATUS_*` | нет | — |
@@ -201,9 +216,15 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
+<<<<<<< HEAD
 | `GET /v1/clusters?product_type=kafka&project_id&page_size=1000` | `internal/dbaas/client.go:157-167`, `tools_kafka.go:86` | да (kafka: `product_type` есть) | нет; `page_token` не читается; `status` enum как у PG | из комментария: Redis отвергает `page_size<=0` | low |
 | `POST /v1/clusters` (Kafka) | `tools_kafka.go:230-235` | да | **совпадает полностью**: все 10 required полей передаются | нет | — |
 | `POST /v1/clusters` (Redis) `{…, storage_gb, subnet_id, type}` | `tools_redis.go:184-195` | да | `storage_gb` и `subnet_id` помечены **deprecated** (актуальные `storage_gib`, `subnet_ids[]`); `type` enum `STANDALONE, MASTER_REPLICA` | из комментария: `subnet_ids[]` роняет бэкенд (деление на ноль), `STANDALONE` отвергается | medium (§4.11, §5.8) |
+=======
+| `GET /v1/clusters?product_type=kafka&project_id&page_size=1000` | `internal/dbaas/client.go:157-167`, `tools_kafka.go:82` | да (kafka: `product_type` есть) | нет; `page_token` не читается; `status` enum как у PG | из комментария: Redis отвергает `page_size<=0` | low |
+| `POST /v1/clusters` (Kafka) | `tools_kafka.go:226-231` | да | **совпадает полностью**: все 10 required полей передаются | нет | — |
+| `POST /v1/clusters` (Redis) `{…, storage_gb, subnet_id, type}` | `tools_redis.go:180-191` | да | `storage_gb` и `subnet_id` помечены **deprecated** (актуальные `storage_gib`, `subnet_ids[]`); `type` enum `STANDALONE, MASTER_REPLICA` | из комментария: `subnet_ids[]` роняет бэкенд (деление на ноль), `STANDALONE` отвергается | medium (§4.11, §5.8) |
+>>>>>>> origin/main
 | `GET /v1/versions[?product_type=kafka]`, `GET /v1/specifications?version_id&availability_zone_id` | `:199-215` | да | `availability_zone_id` **optional** в спецификации; код передаёт `Config.Region` (UUID зоны); kafka `min_storage_gigs` / redis `min_storage_gb` — код читает оба | из комментария: AZ обязателен вживую | low (§5.9) |
 | `GET /v1/operations/{id}` | `:182` | да | `resource_id` совпадает | нет | — |
 
@@ -253,29 +274,48 @@ medium — неверные/пустые данные в выводе, лишн�
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
+<<<<<<< HEAD
 | `GET /events/list/{projectId}?start&end&pageSize&nextPageToken` | `internal/audit/client.go:108-140`, `tools_audit.go:34-52` | да | **ответ — `logs[]`, код читает `events[]`** (терпит и голый массив); **размер страницы — `limit`, код шлёт `pageSize`** (игнорируется); `nextPageToken` совпадает; есть фильтры `eventType`, `eventSource`, `sort.*` | нет | critical, если живое API соответствует спецификации (§4.2) |
+=======
+| `GET /events/list/{projectId}?start&end&pageSize&nextPageToken` | `internal/audit/client.go:108-140`, `tools_audit.go:30-48` | да | **ответ — `logs[]`, код читает `events[]`** (терпит и голый массив); **размер страницы — `limit`, код шлёт `pageSize`** (игнорируется); `nextPageToken` совпадает; есть фильтры `eventType`, `eventSource`, `sort.*` | нет | critical, если живое API соответствует спецификации (§4.2) |
+>>>>>>> origin/main
 
 ### 3.14 Billing — `billing.api.cloud.ru`, `organization.api.cloud.ru`
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
+<<<<<<< HEAD
 | `GET https://billing.api.cloud.ru/v1/agreement/{agreement_id}` → `balance`, `active` | `internal/billing/client.go:88-105`, `tools_billing.go:226-233` | **нет** — хост `billing.api.cloud.ru` не описан ни в одной спецификации; документированные `GET /v1/agreements` (v1) и `GET /v3/agreements` (v3) на `organization.api.cloud.ru` отдают `id, credit_scheme, type, status` — без баланса | — | нет | high (§4.1) |
 | `GET https://organization.api.cloud.ru/v2/consumption?agreement_id&start_date&end_date&page_filter.page_size=1000&page_filter.page_token` | `client.go:106-143` | да (`api.op_v1.v2.yaml`, `billing/swagger*.yaml`) | нет — **полная пагинация по `next_page_token`**; `page_filter.page_size` required — шлём; поля `amount, amount_nds, cost, servname, resource_name` описаны; `cost_nds`, `servicename`, `service`, `resourcename` (fallback-имена в `tools_billing.go:104-109`) — нет | нет | — |
+=======
+| `GET https://billing.api.cloud.ru/v1/agreement/{agreement_id}` → `balance`, `active` | `internal/billing/client.go:88-105`, `tools_billing.go:222-229` | **нет** — хост `billing.api.cloud.ru` не описан ни в одной спецификации; документированные `GET /v1/agreements` (v1) и `GET /v3/agreements` (v3) на `organization.api.cloud.ru` отдают `id, credit_scheme, type, status` — без баланса | — | нет | high (§4.1) |
+| `GET https://organization.api.cloud.ru/v2/consumption?agreement_id&start_date&end_date&page_filter.page_size=1000&page_filter.page_token` | `client.go:106-143` | да (`api.op_v1.v2.yaml`, `billing/swagger*.yaml`) | нет — **полная пагинация по `next_page_token`**; `page_filter.page_size` required — шлём; поля `amount, amount_nds, cost, servname, resource_name` описаны; `cost_nds`, `servicename`, `service`, `resourcename` (fallback-имена в `tools_billing.go:100-105`) — нет | нет | — |
+>>>>>>> origin/main
 
 ### 3.15 Organization — `organization.api.cloud.ru` (`api.op.v3.yaml`)
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
+<<<<<<< HEAD
 | `GET /v3/projects` | `internal/cli/configure.go:28, :261-296`, `tools/tools_admin.go:89`, `whoami.go` | да | `page_size/page_token` есть, код читает первую страницу (размер по умолчанию не задокументирован); `status` enum `PROJECT_STATUS_ENABLED`; **400 для сервисного аккаунта не описан** (документированы 401/403/500) | из комментария: 400 «user not found» (14.10) | low (§5.11) |
 | `GET /v3/quotas/usages?page_size=200&subject_type_codes&subject_ids` | `tools_admin.go:109-143` | да | нет; `individual_limit/usage` — строки (код отдаёт как есть); 403 для SA (из комментария) не описан | из комментария | — |
+=======
+| `GET /v3/projects` | `internal/cli/configure.go:28, :261-296`, `tools/tools_admin.go:85`, `whoami.go` | да | `page_size/page_token` есть, код читает первую страницу (размер по умолчанию не задокументирован); `status` enum `PROJECT_STATUS_ENABLED`; **400 для сервисного аккаунта не описан** (документированы 401/403/500) | из комментария: 400 «user not found» (14.10) | low (§5.11) |
+| `GET /v3/quotas/usages?page_size=200&subject_type_codes&subject_ids` | `tools_admin.go:105-139` | да | нет; `individual_limit/usage` — строки (код отдаёт как есть); 403 для SA (из комментария) не описан | из комментария | — |
+>>>>>>> origin/main
 
 ### 3.16 IAM — `iam.api.cloud.ru` (`iam-gw-public.yaml`)
 
 | эндпоинт | файл:строка | в спецификации | расхождения | вживую | серьёзность |
 |---|---|---|---|---|---|
 | `POST /api/v1/auth/token` `{keyId, secret}` | `internal/auth/iam.go:21, :150-223` | да; тело совпадает | **ответ по спецификации `accessToken`, `expiresIn` (camelCase), код читает `access_token`, `expires_in`**. Раз e2e проходит, живой ответ содержит `access_token`; про `expires_in` данных нет — если его нет, `ExpiresAt = now` и токен обменивается заново при каждом вызове (`IsValid(5m)` всегда false) | из комментария: `access_token`, ~час (review-context) | high (§4.12) |
+<<<<<<< HEAD
 | `GET /api/v2/serviceAccounts?target.projectId` | `tools/tools_admin.go:68-85` | да | **ответ `serviceAccounts[]`, код читает `service_accounts`** → `iam_service_accounts` возвращает пустой список, если gateway не дублирует snake_case; `pageSize/pageToken` не читаются | нет | high (§4.12) |
 | `GET https://iam.api.cloud.ru/` (doctor) | `cli/doctor.go:209` | нет (не эндпоинт) | только достижимость | да | — |
+=======
+| `GET /api/v2/serviceAccounts?target.projectId` | `tools/tools_admin.go:64-81` | да | **ответ `serviceAccounts[]`, код читает `service_accounts`** → `iam_service_accounts` возвращает пустой список, если gateway не дублирует snake_case; `pageSize/pageToken` не читаются | нет | high (§4.12) |
+| `GET https://iam.api.cloud.ru/` (doctor) | `cli/doctor.go:205` | нет (не эндпоинт) | только достижимость | да | — |
+>>>>>>> origin/main
 
 ## 4. Расхождения, требующие правки
 
@@ -285,7 +325,11 @@ medium — неверные/пустые данные в выводе, лишн�
 ### 4.1 Баланс читается с недокументированного эндпоинта (high)
 
 Код: `internal/billing/client.go:92` — `GET billing.api.cloud.ru/v1/agreement/{id}`,
+<<<<<<< HEAD
 поля `balance`, `active` (`tools_billing.go:231-232`).
+=======
+поля `balance`, `active` (`tools_billing.go:227-228`).
+>>>>>>> origin/main
 
 Путь к дефекту: `billing_balance` и `finops_summary` (runway, daily burn)
 целиком зависят от эндпоинта, которого нет ни в одной опубликованной
