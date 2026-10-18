@@ -31,6 +31,14 @@
 - Дефекты evo: **7** (D1–D7), все исправлены и влиты, каждый с тестом на
   фейке API; D1–D6 подтверждены исправленными вживую, D7 — прогоном
   k8s-smoke без повторения сбоя.
+- Штатный `e2e` (deploy compose) за ночь, 10 прогонов с 18:00 до 23:50 UTC:
+  **5 ok**, **2** — apt-зеркало образа (`Failed to fetch https://repo.mng.sbercloud…`,
+  OPS-2; 19:57 и 20:50 UTC), **3** — SSH к новой ВМ не поднялся за 60
+  попыток (OPS-1b; 22:05, 22:30, 23:05 UTC). Сбои перемежаются с удачными;
+  в те же часы ВМ областей `mcp` (deploy по MCP), `disk` и `os_smoke` SSH и
+  Docker получали. evo в каждом случае назвал причину и удалил за собой всё
+  (проверка сирот — зелёная). Для догфуда: каждый второй `deploy` в ru.AZ-2
+  этой ночью требовал повтора по причине платформы.
 - Реестр расхождений: новые AR-4, CRT-4, NET-11, NET-12, NET-13; подтверждены
   CRT-3, CMP-15, CMP-16; наблюдения OPS-1b, OPS-2c, OPS-4.
 - Остатки: нет, кроме одной приватной DNS-зоны из прогона 1a, которая
@@ -51,7 +59,8 @@
 | 2 | 39170448486 | k8s_smoke, mcp + e2e | k8s до apply — ok, helm — OIDC 502 (OPS-4 → D7); e2e — OPS-1b | нет |
 | 2b | 39172091812 | k8s_smoke, mcp, stack + e2e | stack, mcp (stdio и HTTP) — ok; k8s — снова OIDC 502; e2e — OPS-1b | нет |
 | 2c | 39173624385 | k8s_smoke + e2e (код с D7) | ok целиком | нет |
-| 3 | 39175190124 | dbaas_smoke + e2e | PG — ok; Kafka, Redis — см. ниже; e2e — OPS-1b | см. ниже |
+| 3 | 39175190124 | dbaas_smoke + e2e | PG, Kafka, Redis — ok; e2e — OPS-1b | нет |
+| 4 | 39178022110 | secrets_smoke + e2e (код с D4) | ok | нет |
 
 ## Результаты по областям (итог по последнему прогону области)
 
@@ -64,8 +73,8 @@
 | FIP | release_floating_ip занятого (отказ) и свободного | ok | 39172091812 | |
 | DNS | приватная зона → zone_get (и без `type`, #111) → запись A → records/get → delete записи → delete зоны | ok | 39164767739 | операции приватной зоны не завершаются, удаление — от секунд до часов (NET-13) |
 | S3 | bucket_create → put → ls → get (sha256) → bucket_delete непустого (отказ) → rm → bucket_delete | ok | 39160570296 | в 1a — неверные ключи S3 окружения, владелец заменил |
-| секреты | secret_create → value (sha256) → add_version → value v2 → get → list → delete → value удалённого (NOT_FOUND) | ok | 39160570296 | значения в лог не попадают, сравнение по sha256 |
-| сертификаты | cert_import → get → versions → usage → cert_private_key → cert_delete; cert_renew и cert_issue_le — отказ без делегированной зоны | ok, кроме D4 | 39160570296 | D4 (`private_key` в Base64) — исправлено #115; живая проверка — финальный прогон secrets |
+| секреты | secret_create → value (sha256) → add_version → value v2 → get → list → delete → value удалённого (NOT_FOUND) | ok | 39178022110 | значения в лог не попадают, сравнение по sha256 |
+| сертификаты | cert_import → get → versions → usage → cert_private_key (ключ — пара сертификату) → cert_delete; cert_renew и cert_issue_le — отказ без делегированной зоны | ok | 39178022110 | D4 (`private_key` в Base64, 1b) подтверждён исправленным |
 | AR / CA | ar_create → docker push ключом SA → ca_deploy → HTTP 200 по `publicUri` → ca_logs → ca_stop → ca_start (снова 200) → ca_delete → ar_delete | ok | 39167011818 | D1 исправлен вживую; `ca_logs` — 0 строк после обслуженных запросов (под вопросом, не дефект без доказательства) |
 | стек | stack_plan → stack_apply (secret, private VM, TG, NLB) → stack_status → повтор apply без дублей → stack_destroy → повторный stack_destroy → stack_status destroyed | ok | 39172091812 | D6 подтверждён исправленным |
 | MCP stdio | deploy_plan → deploy_apply без confirmed (отказ, ВМ нет) → deploy_apply → deploy (та же ВМ) → status → logs → destroy без confirmed (превью называет ВМ) → destroy vm_id | ok | 39172091812 | |
@@ -73,8 +82,8 @@
 | ОС | os_smoke: Astra, РЕД ОС — отказ до создания (код 4); nginx-ubuntu — ВМ, SSH, порт | ok | 39160570296 | |
 | k8s | k8s_create → add-nodepool → kubectl → k8s_apply → k8s_kubectl delete → k8s_helm install/list/uninstall → k8s_add_addon cert-manager (поды Running) → k8s_delete | ok, 7 изменяющих | 39173624385 | в 2 и 2b — OIDC 502 (OPS-4), исправлено повтором D7 |
 | PostgreSQL | pg_create → второй pg_create с тем же именем (отказ) → READY → user_create, db_create → backups → operation → превью pg_delete → backup_create → db_delete → user_delete → pg_delete | ok, 7 изменяющих | 39175190124 | |
-| Kafka | kafka_create (1 брокер) → повтор имени (отказ) → READY → kafka_get → превью → kafka_delete | см. прогон 3 | 39175190124 | |
-| Redis | redis_create → повтор имени (отказ) → READY → redis_get → превью → redis_delete | см. прогон 3 | 39175190124 | |
+| Kafka | kafka_create (1 брокер) → повтор имени (отказ) → READY → kafka_get → превью → kafka_delete | ok | 39175190124 | |
+| Redis | redis_create (MASTER_REPLICA, 1 шард) → повтор имени (отказ) → READY → redis_get → превью → redis_delete | ok | 39175190124 | |
 
 ## Дефекты evo
 
