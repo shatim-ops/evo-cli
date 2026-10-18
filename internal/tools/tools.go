@@ -930,7 +930,7 @@ func (s *Registry) registerTools() {
 			Description: "Get full details of one DNS zone by id (from dns_zones). Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"id":   strProp("Zone UUID (from dns_zones). Required."),
-				"type": enumProp("Zone visibility: 'public' (default) or 'private' — must match the zone.", "public", "private"),
+				"type": enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 			}, "id"),
 		},
 		{
@@ -946,10 +946,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zone_delete",
-			Description: "Delete a DNS zone by id (from dns_zones) AND its records (async). type must match the zone (public|private). Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a DNS zone by id (from dns_zones) AND its records (async). type (public|private) is optional: evo finds it by the zone id. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("Zone UUID (from dns_zones). Required."),
-				"type":      enumProp("Zone visibility: 'public' (default) or 'private' — must match the zone.", "public", "private"),
+				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed": confirmedProp(),
 			}, "id"),
 		},
@@ -960,18 +960,18 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_records",
-			Description: "List resource records of a DNS zone (id, name, type, values, ttl). Read-only. Pass the zone's type (public|private).",
+			Description: "List resource records of a DNS zone (id, name, type, values, ttl). Read-only. type (public|private) is optional: evo finds it by id.",
 			InputSchema: objSchema(map[string]any{
 				"zone_id": strProp("Zone UUID (from dns_zones). Required."),
-				"type":    enumProp("Zone visibility: 'public' (default) or 'private' — must match the zone.", "public", "private"),
+				"type":    enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 			}, "zone_id"),
 		},
 		{
 			Name:        "dns_record_get",
-			Description: "Get one DNS record by id (from dns_records). Read-only. Pass the zone's type (public|private).",
+			Description: "Get one DNS record by id (from dns_records). Read-only. type (public|private) is optional: evo finds it by id.",
 			InputSchema: objSchema(map[string]any{
 				"record_id": strProp("Record UUID (from dns_records). Required."),
-				"type":      enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
+				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 			}, "record_id"),
 		},
 		{
@@ -984,7 +984,7 @@ func (s *Registry) registerTools() {
 				"value":       strProp("Single record value (e.g. an IP for A). Use this or 'values'."),
 				"values":      map[string]any{"type": "array", "description": "Multiple record values.", "items": map[string]any{"type": "string"}},
 				"ttl":         intProp("TTL seconds (default 300)."),
-				"type":        enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
+				"type":        enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed":   confirmedProp(),
 			}, "zone_id", "name", "record_type"),
 		},
@@ -993,7 +993,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete a DNS record by id (from dns_records) (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"record_id": strProp("Record UUID (from dns_records). Required."),
-				"type":      enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
+				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed": confirmedProp(),
 			}, "record_id"),
 		},
