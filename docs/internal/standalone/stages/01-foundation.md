@@ -23,7 +23,7 @@
 4. **`destroy` без TTY**: если stdin не терминал и нет `--force` → ошибка, код 3.
    Никогда не возвращать 0, если ничего не удалено.
 5. **Таймауты.** Один `*http.Client` с `Timeout: 60s` для IAM и compute
-   (`main.go` где создаются клиенты; `envvar.go:35`; `adapter.go:38`).
+   (`main.go` где создаются клиенты; `envvar.go:35`; `adapter.go:43`).
 6. **Контекст.** `signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)`
    в `main`, прокидывать во все команды; по отмене — код 130. На Windows
    `SIGTERM` не приходит — это нормально, `os.Interrupt` достаточно.
