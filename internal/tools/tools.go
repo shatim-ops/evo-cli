@@ -922,7 +922,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zones",
-			Description: "List Evolution DNS zones in the project (both public and private), with id, name, type, valid, delegated. Read-only. dns.api.cloud.ru.",
+			Description: "List Evolution DNS zones in the project (both public and private), with id, name, domain, visibility, state (and confirm_state of a public zone), valid, delegated. Read-only. dns.api.cloud.ru.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
@@ -1189,7 +1189,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_private_key",
-			Description: "Certificate Manager — return the SECRET private key for a version: privateKey is PEM text (-----BEGIN …), decoded from the API's Base64 (key_format: pem; base64 if the API's value is not a Base64 PEM). cert_import takes the key Base64-encoded. Gated: requires confirmed=true (returns plaintext key material).",
+			Description: "Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's Base64 (key_format: pem; base64 if the API's value is not a Base64 PEM). cert_import takes the key Base64-encoded. Gated: requires confirmed=true (returns plaintext key material).",
 			InputSchema: objSchema(map[string]any{
 				"certificate_id": strProp("Certificate id. Required."),
 				"version_id":     intProp("Version number; 0 or omitted = latest version."),

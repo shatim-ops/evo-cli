@@ -103,6 +103,10 @@ func (s *Registry) handleDnsZones(ctx context.Context, args map[string]any) (str
 				"id": z["id"], "name": firstNonNil(z["name"], z["domain"]),
 				"domain": z["domain"], "visibility": vis,
 				"valid": z["valid"], "delegated": z["delegated"],
+				// the zone's lifecycle state (dns/openapi.yaml: state; a public
+				// zone also has confirmState): without it a zone being deleted
+				// looked alive (live run 18.10: "Удаляется" in the console)
+				"state": z["state"], "confirm_state": z["confirmState"],
 			})
 		}
 	}

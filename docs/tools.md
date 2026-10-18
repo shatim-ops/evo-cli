@@ -59,7 +59,7 @@
 | `cert_delete` | удаляет | `id` | Certificate Manager — permanently delete a certificate. |
 | `cert_usage` | нет | `id` | Certificate Manager — list resources (load balancers/listeners) that USE a certificate. |
 | `cert_versions` | нет | `certificate_id` | Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry), all pages. |
-| `cert_private_key` | нет | `certificate_id` | Certificate Manager — return the SECRET private key for a version: privateKey is PEM text (-----BEGIN …), decoded from the API's Base64 (key_format: pem … |
+| `cert_private_key` | нет | `certificate_id` | Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's … |
 | `cert_operation` | нет | `operation_id` | Certificate Manager — poll an async operation (issue/renew) by id until done=true. |
 
 ## deploy
@@ -91,7 +91,7 @@
 
 | Инструмент | Меняет | Обязательные аргументы | Описание |
 |---|---|---|---|
-| `dns_zones` | нет | — | List Evolution DNS zones in the project (both public and private), with id, name, type, valid, delegated. |
+| `dns_zones` | нет | — | List Evolution DNS zones in the project (both public and private), with id, name, domain, visibility, state (and confirm_state of a public zone), valid … |
 | `dns_zone_get` | нет | `id` | Get full details of one DNS zone by id (from dns_zones). |
 | `dns_zone_create` | да | `domain` | Create a DNS zone. |
 | `dns_zone_delete` | удаляет | `id` | Delete a DNS zone by id (from dns_zones) AND its records (async). |
