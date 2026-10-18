@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://ar.api.cloud.ru"
@@ -123,22 +124,38 @@ func (c *Client) doOperation(ctx context.Context, method, path string, query url
 	return &op, nil
 }
 
-// ListRegistries lists registries in the project.
+// ListRegistries lists registries in the project, every page
+// (ar/openapi.yaml: nextPageToken in the answer, pageToken in the next
+// request). ar_create checks a name against it, so a page left unread
+// let a taken name through (#98).
 func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
-	data, status, err := c.do(ctx, http.MethodGet, "/v1/registries", c.projectQuery(), nil)
+	var all []map[string]any
+	err := pager.All("artifact-registry: registries", func(token string) (string, error) {
+		q := c.projectQuery()
+		if token != "" {
+			q.Set("pageToken", token)
+		}
+		data, status, err := c.do(ctx, http.MethodGet, "/v1/registries", q, nil)
+		if err != nil {
+			return "", err
+		}
+		if status < 200 || status >= 300 {
+			return "", apiError(status, data)
+		}
+		var out struct {
+			Registries    []map[string]any `json:"registries"`
+			NextPageToken string           `json:"nextPageToken"`
+		}
+		if err := json.Unmarshal(data, &out); err != nil {
+			return "", fmt.Errorf("parse registries: %w", err)
+		}
+		all = append(all, out.Registries...)
+		return out.NextPageToken, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if status < 200 || status >= 300 {
-		return nil, apiError(status, data)
-	}
-	var out struct {
-		Registries []map[string]any `json:"registries"`
-	}
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse registries: %w", err)
-	}
-	return out.Registries, nil
+	return all, nil
 }
 
 // GetRegistry returns one registry by id.

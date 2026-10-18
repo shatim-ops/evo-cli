@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://containers.api.cloud.ru"
@@ -146,21 +147,36 @@ type CreateContainerReq struct {
 
 // --- Operations ---
 
+// List returns the project's containers, every page (containers/openapi.yaml:
+// nextPageToken in the answer, pageToken in the next request).
 func (c *Client) List(ctx context.Context) ([]map[string]any, error) {
-	data, st, err := c.do(ctx, http.MethodGet, "/v2/containers", nil, nil)
+	var all []map[string]any
+	err := pager.All("container-apps: containers", func(token string) (string, error) {
+		var q url.Values
+		if token != "" {
+			q = url.Values{"pageToken": {token}}
+		}
+		data, st, err := c.do(ctx, http.MethodGet, "/v2/containers", q, nil)
+		if err != nil {
+			return "", err
+		}
+		if st != 200 {
+			return "", apiError(st, data)
+		}
+		var r struct {
+			Data          []map[string]any `json:"data"`
+			NextPageToken string           `json:"nextPageToken"`
+		}
+		if err := json.Unmarshal(data, &r); err != nil {
+			return "", fmt.Errorf("parse containers: %w", err)
+		}
+		all = append(all, r.Data...)
+		return r.NextPageToken, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if st != 200 {
-		return nil, apiError(st, data)
-	}
-	var r struct {
-		Data []map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, fmt.Errorf("parse containers: %w", err)
-	}
-	return r.Data, nil
+	return all, nil
 }
 
 func (c *Client) Get(ctx context.Context, name string) (map[string]any, error) {

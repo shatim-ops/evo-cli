@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // orgProjectsURL lists the projects visible to the service account.
@@ -304,16 +306,36 @@ type orgProject struct {
 	Status string `json:"status"`
 }
 
-// listProjects calls the Organization API with an IAM token.
+// listProjects calls the Organization API with an IAM token and reads
+// every page (#98): the answer carries next_page_token, the next request
+// sends page_token (api.op.v3.yaml).
 func listProjects(ctx context.Context, token string) ([]orgProject, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, orgProjectsURL, nil)
+	var all []orgProject
+	err := pager.All("organization: projects", func(pageToken string) (string, error) {
+		page, next, err := listProjectsPage(ctx, token, pageToken)
+		all = append(all, page...)
+		return next, err
+	})
 	if err != nil {
 		return nil, err
+	}
+	return all, nil
+}
+
+// listProjectsPage reads one page of the project list.
+func listProjectsPage(ctx context.Context, token, pageToken string) ([]orgProject, string, error) {
+	u := orgProjectsURL
+	if pageToken != "" {
+		u += "?page_token=" + url.QueryEscape(pageToken)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, clerrors.Wrap(clerrors.CodeAPIUnreachable, i18n.T("failed to reach the Organization API", "Organization API недоступен"),
+		return nil, "", clerrors.Wrap(clerrors.CodeAPIUnreachable, i18n.T("failed to reach the Organization API", "Organization API недоступен"),
 			i18n.T("Check your network connection, or pass --project-id", "Проверьте сеть или передайте --project-id"), err)
 	}
 	defer resp.Body.Close()
@@ -331,18 +353,19 @@ func listProjects(ctx context.Context, token string) ([]orgProject, error) {
 		}
 		// Observed 2026-10-14: for a service account the API answers
 		// 400 "(user_id) is invalid argument: user not found".
-		return nil, clerrors.New(code, msg,
+		return nil, "", clerrors.New(code, msg,
 			i18n.T("The Organization API may not list projects for this key; pass --project-id (find it in the Cloud.ru console)",
 				"Organization API может не отдавать список проектов для этого ключа; передайте --project-id (он есть в консоли Cloud.ru)"))
 	}
 	var body struct {
-		Projects []orgProject `json:"projects"`
+		Projects      []orgProject `json:"projects"`
+		NextPageToken string       `json:"next_page_token"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, clerrors.Wrap(clerrors.CodeAPIError, i18n.T("unexpected response from the Organization API", "неожиданный ответ Organization API"),
+		return nil, "", clerrors.Wrap(clerrors.CodeAPIError, i18n.T("unexpected response from the Organization API", "неожиданный ответ Organization API"),
 			i18n.T("Pass --project-id", "Передайте --project-id"), err)
 	}
-	return body.Projects, nil
+	return body.Projects, body.NextPageToken, nil
 }
 
 // chooseProject picks the project for the profile: the only one, the
