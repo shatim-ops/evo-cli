@@ -953,8 +953,11 @@ area_mcp() {
 	hpost '{"jsonrpc":"2.0","method":"notifications/initialized"}' >/dev/null
 	hcall() {
 		hpost "$(jq -cn --arg n "$1" --argjson a "$2" '{jsonrpc:"2.0", id:9, method:"tools/call", params:{name:$n, arguments:$a}}')" >"$tmp/res"
-		iserr=$(jq -r '.result.isError // "?"' "$tmp/res" 2>/dev/null || echo "?")
-		jq -r '.result.content[0].text // empty' "$tmp/res" >"$tmp/r.json" 2>/dev/null || : >"$tmp/r.json"
+		# поток SSE: до ответа (id 9) идут уведомления о ходе — берём ответ
+		jq -c 'select(.id == 9)' "$tmp/res" >"$tmp/res9" 2>/dev/null || : >"$tmp/res9"
+		echo "http $1: сообщений в ответе $(jq -s length "$tmp/res" 2>/dev/null || echo "?"), методы уведомлений $(jq -sc '[.[] | .method // empty] | unique' "$tmp/res" 2>/dev/null)"
+		iserr=$(jq -r '.result.isError // "?"' "$tmp/res9" 2>/dev/null || echo "?")
+		jq -r '.result.content[0].text // empty' "$tmp/res9" >"$tmp/r.json" 2>/dev/null || : >"$tmp/r.json"
 	}
 	local hvm="$prefix-http"
 	hcall provision "$(jq -cn --arg n "$hvm" --arg r "$zid" --arg i "$IMAGE" --arg f "$FLAVOR" '{name:$n, region:$r, image:$i, flavor:$f}')"
