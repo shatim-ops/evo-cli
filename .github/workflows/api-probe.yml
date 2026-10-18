@@ -328,7 +328,10 @@ jobs:
       # не могут изменить: создание с заведомо неполным телом или с
       # несуществующими flavor, образом и зоной, удаление несуществующего ID. 403 — прав нет,
       # как и должно быть; 400/404/422 — API проверил тело или ID раньше прав,
-      # вывод не сделать; 2xx — ключ может менять, шаг падает.
+      # вывод не сделать; 5xx — предупреждение: запрос, похоже, прошёл
+      # проверку прав; 2xx — ключ может менять, шаг падает. Имя в теле —
+      # evo-e2e-*, чтобы cleanup из cloud-e2e нашёл ресурс, если он всё же
+      # появится.
       - name: Права ключа (изменения должны быть запрещены)
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
@@ -356,6 +359,8 @@ jobs:
             case $c in
               401|403) verdict="запрещено"; denied=$((denied+1)) ;;
               2??) verdict="РАЗРЕШЕНО"; bad=$((bad+1)) ;;
+              5??) verdict="подозрение: ошибка сервиса после проверки прав?"
+                   echo "::warning::$name: http=$c вместо 403 — права ключа, возможно, шире чтения" ;;
               *) verdict="не определено (тело или ID проверены раньше прав)" ;;
             esac
             printf '%-24s %-6s http=%s %s\n' "$name" "$method" "$c" "$verdict"
@@ -364,7 +369,7 @@ jobs:
           # Тело по схеме, но flavor, образ, зона и тип диска — несуществующие
           # ID: создать нечего, зато схему API уже не отвергнет до проверки прав.
           try vm_create_fake_refs    POST   "https://compute.api.cloud.ru/api/v1/vms" "$(jq -nc --arg p "$PROJECT" --arg n "$NOID" \
-            '{project_id:$p, name:"evo-ro-probe", flavor_id:$n, image_id:$n, availability_zone_id:$n, disks:[{name:"evo-ro-probe", size:10, disk_type_id:$n}]}')"
+            '{project_id:$p, name:"evo-e2e-ro-probe", flavor_id:$n, image_id:$n, availability_zone_id:$n, disks:[{name:"evo-e2e-ro-probe", size:10, disk_type_id:$n}]}')"
           try k8s_create_incomplete  POST   "https://mk8s.api.cloud.ru/v3/clusters" "$(jq -nc --arg p "$PROJECT" '{projectId:$p}')"
           try vpc_delete_noid        DELETE "https://vpc.api.cloud.ru/v1/vpcs/$NOID?project_id=$PROJECT"
           try nlb_delete_noid        DELETE "https://nlb.api.cloud.ru/v2/networkLoadBalancers/$NOID?project_id=$PROJECT"
