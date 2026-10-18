@@ -59,7 +59,7 @@
 | `cert_delete` | удаляет | `id` | Certificate Manager — permanently delete a certificate. |
 | `cert_usage` | нет | `id` | Certificate Manager — list resources (load balancers/listeners) that USE a certificate. |
 | `cert_versions` | нет | `certificate_id` | Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry), all pages. |
-| `cert_private_key` | нет | `certificate_id` | Certificate Manager — return the SECRET private key for a version: privateKey is PEM text (-----BEGIN …), decoded from the API's Base64 (key_format: pem … |
+| `cert_private_key` | нет | `certificate_id` | Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's … |
 | `cert_operation` | нет | `operation_id` | Certificate Manager — poll an async operation (issue/renew) by id until done=true. |
 
 ## deploy
