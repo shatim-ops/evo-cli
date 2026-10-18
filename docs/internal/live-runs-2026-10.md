@@ -25,7 +25,8 @@
 |---|---|---|---|---|
 | 0 | 39150480619 | `cleanup_only`: остатки до старта, квоты | ok; квоты `org_quotas` — `unavailable` (у ключа нет области организации) | нет |
 | 1a | 39152048559 | disk, net, dns, s3, secrets, ca + штатные e2e | см. таблицу; e2e — ok | DNS-зона `evo-e2e-dns-…` (403 при удалении без `type=private` — тест) |
-| cleanup | 39158678958 | `cleanup_only` | идёт | — |
+| cleanup | 39158678958 | `cleanup_only` | остаток удалить не удалось | DNS-зона `evo-e2e-dns-…`: `DELETE` принят 25 раз, зона в списке; в консоли — «Удаляется» |
+| 1b | 39160570296 | stack, mcp, os_smoke, ca, s3, dns, secrets + e2e | см. таблицу; e2e — платформа (OPS-2c) | нет (по именам) |
 
 ## Результаты по областям
 
@@ -50,12 +51,25 @@
 | сертификаты | `cert_private_key` | вопрос | 39152048559 | ключ не совпал по sha256 PEM; повтор со сверкой по паре |
 | сертификаты | `cert_renew` (импортированный), `cert_issue_le` | платформа (ожидаемо) | 39152048559 | 400 «no delegated zones» (CRT-3) |
 | AR / CA | `ar_create` | дефект evo D1 | 39152048559 | `ar_list` — «more than 1000 pages» через ~10 мин; исправлено #110 |
+| AR / CA | `ar_create` → docker push → `ca_deploy` → `ca_logs` → `ca_stop` → `ca_start` → `ca_delete` → `ar_delete` | ok, кроме адреса | 39160570296 | D1 исправлен вживую; push ключом SA работает; `ca_get` за 15 мин не дал адреса `https://` — повтор с поиском имени хоста |
+| S3 | bucket_create → put → ls → get (sha256) → bucket_delete непустого (отказ) → rm → bucket_delete | ok | 39160570296 | новые ключи и транспорт #113 |
+| сертификаты | `cert_private_key` | дефект evo D4 | 39160570296 | живой ответ `private_key`, а не `privateKey` (CRT-4): ключ в Base64; исправлено #115 |
+| MCP stdio | deploy_plan → deploy_apply (без и с confirmed) → deploy → status → logs → destroy vm_id (превью и удаление) | ok | 39160570296 | та же ВМ, второй нет; правило порта закрыто |
+| MCP HTTP | provision без confirmed (отказ, ВМ нет) → provision → destroy name | тест | 39160570296 | ВМ создана и удалена; разбор потока SSE исправлен |
+| FIP | `release_floating_ip` занятого (отказ) и свободного | ok | 39160570296 | |
+| стек | stack_plan → stack_apply → stack_status (done, 4 шага) → повтор apply без дублей | ok | 39160570296 | |
+| стек | stack_destroy | вопрос | 39160570296 | `destroy_failed` (1 шаг), остатков по именам нет; повтор с выводом шага |
+| ОС | os_smoke: Astra, РЕД ОС (отказ до создания, код 4), nginx-ubuntu (ВМ, SSH, порт) | ok | 39160570296 | |
+| deploy (e2e) | deploy compose | платформа | 39160570296 | apt-зеркало образа недоступно (OPS-2c), evo дал верный диагноз; уборка чистая |
 
 ## Дефекты evo
 
 | ID | Серьёзность | Область | Суть | PR |
 |---|---|---|---|---|
 | D1 | высокая | Artifact Registry | `ar_list` не завершается (1000 страниц за ~10 мин), `ar_create` из-за этого отказывает до создания; на main видно и в readonly (код 124, warn) | #110 (влит) |
+| D2 | средняя | DNS | без `type` инструменты по зоне и записи шли в API публичных зон: приватная зона — 403, `dns_zone_delete` её не удалял, шаг `dns` стека с приватной зоной не работал | #111 (влит) |
+| D3 | низкая | DNS | `dns_zones` не показывал состояние зоны (`valid`/`delegated` в API нет): удаляемая зона выглядела живой | #114 (влит) |
+| D4 | средняя | сертификаты | `cert_private_key` отдавал Base64 вместо PEM и без `key_format` (живой API — `private_key`) | #115 (влит) |
 
 ## Покрытие
 

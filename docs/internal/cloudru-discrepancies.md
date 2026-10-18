@@ -20,7 +20,7 @@ Cloud.ru Evolution). Адресаты — продуктовые команды 
   Kafka, Redis; 17.10, 20:12–22:50 UTC, ru.AZ-2) подтвердил DB-10, DB-11,
   DB-12, DB-20, DB-21. Живые прогоны изменяющих инструментов 18.10.2026
   (cloud-e2e job `live`, ru.AZ-2, `docs/internal/live-runs-2026-10.md`):
-  новый NET-11, подтверждён CRT-3.
+  новые NET-11, CRT-4, наблюдение OPS-2c; подтверждён CRT-3.
 - **Как получены факты:** GitHub Actions репозитория `shatim-ops/evo-cli`:
   `api-probe` (только GET и расчёт цены, в лог — коды HTTP, имена полей,
   счётчики) и `cloud-e2e` (создание и удаление ВМ и кластера Kubernetes,
@@ -62,11 +62,11 @@ API» — ответ неверен независимо от документа
 | [Foundation Models](#foundation-models) | 1 | 1 | 0 | токен IAM отклоняется сообщением про API-ключ |
 | [Портал документации](#портал-документации) | 2 | 2 | 0 | ответ cloud.ru/docs зависит от User-Agent: без него — 403 |
 | [Artifact Registry](#artifact-registry) | 3 | 3 | 0 | имя реестра не уникально: второй `POST` с тем же именем создаёт дубль |
-| [Certificate Manager](#certificate-manager) | 3 | 3 | 0 | список версий сертификата без `pageSize` — 400, умолчания нет |
+| [Certificate Manager](#certificate-manager) | 4 | 4 | 0 | список версий сертификата без `pageSize` — 400, умолчания нет |
 | [Container Apps](#container-apps) | 2 | 2 | 0 | HTTP 499 вместо 404/400 |
 | [Network Load Balancer](#network-load-balancer) | 2 | 2 | 0 | удаление используемой группы целей принимается |
 | Secret Manager | 0 | — | — | расхождений не найдено; вживую — создание, версии, чтение и удаление секрета (живой прогон 17.10) |
-| **Итого** | **89** | **82** | **7** | |
+| **Итого** | **90** | **83** | **7** | |
 
 Пять пунктов с наибольшим влиянием: [IMG-1](#img-1-часть-общего-каталога-недоступна-проекту-ошибка-выдаётся-как-image-not-found),
 [BIL-1](#bil-1-лицензия-образа-маркетплейса-в-расчёте-цены-всегда-0),
@@ -661,6 +661,13 @@ API» — ответ неверен независимо от документа
 - **Просим:** машиночитаемый код в ответе (`ERROR_CODE_NOT_DELEGATED`).
 - **18.10:** подтверждено (живой прогон 18.10, run 39152048559): `cert_issue_le` → 400 «there are no delegated domain zones to issue certificate for domain …»; перевыпуск импортированного сертификата (`renew`) → тоже 400 «this cert contains domains which don't have delegated zones in evo dns» — о том, что перевыпуск бывает только у Let's Encrypt, ответ не говорит.
 
+#### CRT-4. Закрытый ключ версии: в спецификации `privateKey`, в ответе `private_key`
+Расхождение · подтверждено вживую (живой прогон 18.10, run 39160570296)
+- **Спека:** `specs/ccm.swagger.yaml`, `GET /v1/certificate/{certificateId}/version/{versionId}:private_key`: ответ — `privateKey` («Приватный ключ PEM в декодированном Base64»).
+- **Живое:** ответ — `{private_key, version}`; `private_key` — Base64 от PEM (2272 символа для ключа RSA 2048), поля `privateKey` нет (1 из 1).
+- **Влияние:** клиент по спецификации не находит ключ; evo до #115 отдавал его Base64 вместо PEM.
+- **Просим:** привести ответ или спецификацию к одному имени поля.
+
 ## Container Apps
 
 #### CAP-1. HTTP 499 вместо 404 и 400
@@ -748,6 +755,7 @@ API» — ответ неверен независимо от документа
 - **OPS-2. ru.AZ-2, 16.10 днём: apt-зеркало образа недоступно из ВМ.** Установка Docker не завершилась за 10 мин в 4 из 6 прогонов (по BACKLOG [e2e]: «прогоны 30, 33, 33-повтор, 34»; в журнале #35 — тот же исход, 12:53–13:10 UTC); диагностика: `W: Failed to fetch https://repo.mng.sbercloud…`. Код и образ одни и те же в зелёных и красных прогонах.
 - **OPS-2a. ru.AZ-2, 17.10 ночью: то же.** cloud-e2e на `7329642` (01:05–01:17 UTC): ВМ активна за 2 мин 30 с, SSH через 3 мин, установка Docker 12 попыток за 10 мин — `W: Failed to fetch https://repo.mng.sbercloud…`; уборка чистая.
 - **OPS-2b. 17.10 днём: то же в обеих зонах.** cloud-e2e в ru.AZ-2 на ветке релиза — два прогона подряд (05:37–05:52 и 05:59–06:14 UTC): `W: Failed to fetch https://repo.mng.sbercloud…`, Docker не установлен за 10 мин, уборка чистая; следующий прогон в 06:44 UTC прошёл. Живой прогон 17.10: зеркало образа Ubuntu 24.04 недоступно с новых ВМ в ru.AZ-2 утром и в ru.AZ-1 около 10:2x UTC.
+- **OPS-2c. ru.AZ-2, 18.10 вечером: то же, вперемешку с удачными.** cloud-e2e run 39160570296: в 19:52–19:56 UTC `deploy_apply` → `deploy` по MCP поставил Docker на новую ВМ, а в 19:57–20:07 UTC `evo deploy` job `e2e` — 12 попыток за 10 мин, `W: Failed to fetch https://repo.mng.sbercloud…`; в 18:00 UTC (run 39152048559) `e2e` прошёл. evo вывел диагноз «apt не скачивает пакеты с зеркала образа».
 - **OPS-1a. ru.AZ-2, 17.10 ночью: ВМ активна, SSH не поднимается.** cloud-e2e на ветке PR (01:21–01:47 UTC) и контрольный на `main` (01:48–02:08 UTC): ВМ активна за 2 мин 35 с, SSH не ответил ни на одну из 60 попыток; в 02:10–02:19 UTC тот же план на ветке прошёл целиком.
 - **OPS-3. ru.AZ-2, 15.10 утром: нет DNS внутри ВМ.** `Temporary failure in name resolution` для `ubuntu-mirror-1-deb.ar.cloud.ru`; SSH поднялся через 5,5 мин, во втором прогоне — не поднялся за 22 мин. Документация называет причину прямо — пустой `dns_servers` подсети ([troubleshooting](https://cloud.ru/docs/virtual-machines/ug/topics/troubleshooting__failure-name-resolution)); при удалении всех DNS-серверов Evolution DNS из VPC подсети теряют разрешение имён ([концепции DNS](https://cloud.ru/docs/evolution-dns/ug/topics/concepts__private)). Проба — P17; evo с ветки `tails` предупреждает о подсети без DNS до создания ВМ.
 - **OPS-4. ru.AZ-1, 15.10 вечером: ВМ не создаются.** #17 — 10 мин в `creating`; #18 — 19,5 мин в `creating`, затем `error_creating`; #21 — активна за 5 мин 20 с, SSH не поднялся за 15 мин. В ru.AZ-2 в то же время — зелёные #19, #20.
