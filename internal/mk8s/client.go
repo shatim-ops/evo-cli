@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://mk8s.api.cloud.ru"
@@ -189,22 +190,37 @@ type ProductConfig struct {
 
 // --- Operations ---
 
-// ListClusters returns all clusters in the project.
+// ListClusters returns all clusters in the project, every page
+// (openapi-v3.yaml of mk8s: nextPageToken in the answer, pageToken in the
+// next request).
 func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
-	data, st, err := c.do(ctx, http.MethodGet, "/v3/clusters", nil, nil)
+	var all []Cluster
+	err := pager.All("mk8s: clusters", func(token string) (string, error) {
+		var q url.Values
+		if token != "" {
+			q = url.Values{"pageToken": {token}}
+		}
+		data, st, err := c.do(ctx, http.MethodGet, "/v3/clusters", q, nil)
+		if err != nil {
+			return "", err
+		}
+		if st != 200 {
+			return "", apiError(st, data)
+		}
+		var r struct {
+			Clusters      []Cluster `json:"clusters"`
+			NextPageToken string    `json:"nextPageToken"`
+		}
+		if err := json.Unmarshal(data, &r); err != nil {
+			return "", fmt.Errorf("parse clusters: %w", err)
+		}
+		all = append(all, r.Clusters...)
+		return r.NextPageToken, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if st != 200 {
-		return nil, apiError(st, data)
-	}
-	var r struct {
-		Clusters []Cluster `json:"clusters"`
-	}
-	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, fmt.Errorf("parse clusters: %w", err)
-	}
-	return r.Clusters, nil
+	return all, nil
 }
 
 // GetCluster returns the raw cluster object by id.

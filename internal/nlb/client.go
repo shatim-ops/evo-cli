@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://nlb.api.cloud.ru"
@@ -98,25 +99,42 @@ func apiError(status int, body []byte) error {
 	return fmt.Errorf("nlb API %d: %s", status, msg)
 }
 
+// getList reads every page of a list (swagger.yaml of NLB: the answer
+// carries next_page_token, the next request sends it as page_token).
 func (c *Client) getList(ctx context.Context, path, field string) ([]map[string]any, error) {
-	q := url.Values{}
-	if c.projectID != "" {
-		q.Set("project_id", c.projectID)
-	}
-	data, status, err := c.do(ctx, http.MethodGet, path, q, nil)
+	var items []map[string]any
+	err := pager.All("nlb: "+field, func(token string) (string, error) {
+		q := url.Values{}
+		if c.projectID != "" {
+			q.Set("project_id", c.projectID)
+		}
+		if token != "" {
+			q.Set("page_token", token)
+		}
+		data, status, err := c.do(ctx, http.MethodGet, path, q, nil)
+		if err != nil {
+			return "", err
+		}
+		if status < 200 || status >= 300 {
+			return "", apiError(status, data)
+		}
+		var out map[string]json.RawMessage
+		if err := json.Unmarshal(data, &out); err != nil {
+			return "", fmt.Errorf("parse %s: %w", field, err)
+		}
+		var page []map[string]any
+		if raw, ok := out[field]; ok {
+			_ = json.Unmarshal(raw, &page)
+		}
+		items = append(items, page...)
+		var next string
+		if raw, ok := out["next_page_token"]; ok {
+			_ = json.Unmarshal(raw, &next)
+		}
+		return next, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	if status < 200 || status >= 300 {
-		return nil, apiError(status, data)
-	}
-	var out map[string]json.RawMessage
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", field, err)
-	}
-	var items []map[string]any
-	if raw, ok := out[field]; ok {
-		_ = json.Unmarshal(raw, &items)
 	}
 	return items, nil
 }

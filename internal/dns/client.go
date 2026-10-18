@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://dns.api.cloud.ru"
@@ -138,21 +139,43 @@ func apiError(status int, body []byte) error {
 	return fmt.Errorf("dns API %d: %s", status, msg)
 }
 
+// getList reads every page of a list: the answer carries nextPageToken
+// (dns/openapi.yaml), the next request sends it back as pageToken. A list
+// without that field is one page.
 func (c *Client) getList(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
-	data, status, err := c.do(ctx, http.MethodGet, path, query, nil)
+	var items []map[string]any
+	err := pager.All("dns: "+field, func(token string) (string, error) {
+		q := url.Values{}
+		for k, v := range query {
+			q[k] = v
+		}
+		if token != "" {
+			q.Set("pageToken", token)
+		}
+		data, status, err := c.do(ctx, http.MethodGet, path, q, nil)
+		if err != nil {
+			return "", err
+		}
+		if status < 200 || status >= 300 {
+			return "", apiError(status, data)
+		}
+		var out map[string]json.RawMessage
+		if err := json.Unmarshal(data, &out); err != nil {
+			return "", fmt.Errorf("parse %s: %w", field, err)
+		}
+		var page []map[string]any
+		if raw, ok := out[field]; ok {
+			_ = json.Unmarshal(raw, &page)
+		}
+		items = append(items, page...)
+		var next string
+		if raw, ok := out["nextPageToken"]; ok {
+			_ = json.Unmarshal(raw, &next)
+		}
+		return next, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	if status < 200 || status >= 300 {
-		return nil, apiError(status, data)
-	}
-	var out map[string]json.RawMessage
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", field, err)
-	}
-	var items []map[string]any
-	if raw, ok := out[field]; ok {
-		_ = json.Unmarshal(raw, &items)
 	}
 	return items, nil
 }

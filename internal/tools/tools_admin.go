@@ -17,6 +17,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // adminGET performs an authenticated GET against an absolute Cloud.ru API URL
@@ -76,14 +77,34 @@ func (s *Registry) projectID(ctx context.Context) string {
 // one). This is where a k8s cluster_sa_id can be discovered.
 func (s *Registry) handleIamServiceAccounts(ctx context.Context, args map[string]any) (string, bool) {
 	pid := firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx))
-	m, err := s.adminGET(ctx, "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId="+neturl.QueryEscape(pid))
+	// Every page (#98). The next page is asked for by pageToken, as
+	// iam-gw-public.yaml names it; the answer is read in both spellings
+	// (serviceAccounts/nextPageToken in the spec, service_accounts/
+	// next_page_token live, IAM-2). Only one spelling of the query is
+	// sent: a parameter the API does not know can fail the call (AUD-2).
+	var raw []any
+	err := pager.All("iam: service accounts", func(token string) (string, error) {
+		u := "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId=" + neturl.QueryEscape(pid)
+		if token != "" {
+			u += "&pageToken=" + neturl.QueryEscape(token)
+		}
+		m, err := s.adminGET(ctx, u)
+		if err != nil {
+			return "", err
+		}
+		page, _ := m["service_accounts"].([]any)
+		if page == nil {
+			page, _ = m["serviceAccounts"].([]any)
+		}
+		raw = append(raw, page...)
+		next, _ := m["next_page_token"].(string)
+		if next == "" {
+			next, _ = m["nextPageToken"].(string)
+		}
+		return next, nil
+	})
 	if err != nil {
 		return errResult(err), true
-	}
-	// serviceAccounts in the spec, service_accounts as read so far.
-	raw, _ := m["service_accounts"].([]any)
-	if raw == nil {
-		raw, _ = m["serviceAccounts"].([]any)
 	}
 	out := make([]map[string]any, 0, len(raw))
 	for _, x := range raw {
@@ -112,9 +133,28 @@ const orgProjectsNote = "unknown (the Organization API does not list projects fo
 // 400/403/404 are that case: a 401, a 429 or a 5xx is a failure of the
 // call (orgHTTPError), not a property of the key.
 func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (string, bool) {
-	m, err := s.adminGET(ctx, "https://organization.api.cloud.ru/v3/projects")
+	// Every page (#98): api.op.v3.yaml answers next_page_token and takes
+	// page_token. Only a refusal of the first page says the key cannot
+	// list projects; one of a later page is a failure of the call.
+	var raw []any
+	laterPage := false
+	err := pager.All("organization: projects", func(token string) (string, error) {
+		u := "https://organization.api.cloud.ru/v3/projects"
+		if token != "" {
+			u += "?page_token=" + neturl.QueryEscape(token)
+		}
+		m, err := s.adminGET(ctx, u)
+		if err != nil {
+			laterPage = token != ""
+			return "", err
+		}
+		page, _ := m["projects"].([]any)
+		raw = append(raw, page...)
+		next, _ := m["next_page_token"].(string)
+		return next, nil
+	})
 	var he *adminHTTPError
-	if errors.As(err, &he) && he.Status != http.StatusBadRequest && he.Status != http.StatusForbidden && he.Status != http.StatusNotFound {
+	if errors.As(err, &he) && (laterPage || he.Status != http.StatusBadRequest && he.Status != http.StatusForbidden && he.Status != http.StatusNotFound) {
 		return errResult(orgHTTPError(he)), true
 	}
 	if errors.As(err, &he) {
@@ -136,7 +176,6 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(err), true
 	}
-	raw, _ := m["projects"].([]any)
 	out := make([]map[string]any, 0, len(raw))
 	for _, x := range raw {
 		p, _ := x.(map[string]any)
@@ -178,7 +217,23 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 	if pid := stringArg(args, "project_id"); pid != "" {
 		url += "&subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT&subject_ids=" + neturl.QueryEscape(pid)
 	}
-	m, err := s.adminGET(ctx, url)
+	// Every page (#98): next_page_token in the answer, page_token in the
+	// next request (api.op.v3.yaml).
+	var raw []any
+	err := pager.All("organization: quota usages", func(token string) (string, error) {
+		u := url
+		if token != "" {
+			u += "&page_token=" + neturl.QueryEscape(token)
+		}
+		m, err := s.adminGET(ctx, u)
+		if err != nil {
+			return "", err
+		}
+		page, _ := m["usages"].([]any)
+		raw = append(raw, page...)
+		next, _ := m["next_page_token"].(string)
+		return next, nil
+	})
 	if err != nil {
 		// The org quota endpoint needs a customer/organization scope a service
 		// account typically lacks (403 "dont have permissions to customers").
@@ -195,7 +250,6 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 		}
 		return errResult(err), true
 	}
-	raw, _ := m["usages"].([]any)
 	out := make([]map[string]any, 0, len(raw))
 	for _, x := range raw {
 		u, _ := x.(map[string]any)

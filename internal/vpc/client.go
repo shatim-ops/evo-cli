@@ -22,6 +22,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://vpc.api.cloud.ru"
@@ -124,26 +125,55 @@ func (c *Client) doOperation(ctx context.Context, method, path string, body any)
 
 // --- VPCs ---
 
-// ListVPCs lists VPCs in the project.
+// ListVPCs lists VPCs in the project, every page (vpc/openapi.yaml: the
+// answer carries nextPageToken, the next request sends pageToken).
 func (c *Client) ListVPCs(ctx context.Context) ([]map[string]any, error) {
 	q := url.Values{}
 	if c.projectID != "" {
 		q.Set("project_id", c.projectID)
 	}
-	data, status, err := c.do(ctx, http.MethodGet, "/v1/vpcs", q, nil)
+	return c.listPages(ctx, "/v1/vpcs", q, "vpcs")
+}
+
+// listPages reads every page of a list whose items are in field.
+func (c *Client) listPages(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
+	var all []map[string]any
+	err := pager.All("vpc: "+field, func(token string) (string, error) {
+		q := url.Values{}
+		for k, v := range query {
+			q[k] = v
+		}
+		if token != "" {
+			q.Set("pageToken", token)
+		}
+		data, status, err := c.do(ctx, http.MethodGet, path, q, nil)
+		if err != nil {
+			return "", err
+		}
+		if status < 200 || status >= 300 {
+			return "", apiError(status, data)
+		}
+		var out map[string]json.RawMessage
+		if err := json.Unmarshal(data, &out); err != nil {
+			return "", fmt.Errorf("parse %s: %w", field, err)
+		}
+		var page []map[string]any
+		if raw, ok := out[field]; ok {
+			if err := json.Unmarshal(raw, &page); err != nil {
+				return "", fmt.Errorf("parse %s: %w", field, err)
+			}
+		}
+		all = append(all, page...)
+		var next string
+		if raw, ok := out["nextPageToken"]; ok {
+			_ = json.Unmarshal(raw, &next)
+		}
+		return next, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if status < 200 || status >= 300 {
-		return nil, apiError(status, data)
-	}
-	var out struct {
-		VPCs []map[string]any `json:"vpcs"`
-	}
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse vpcs: %w", err)
-	}
-	return out.VPCs, nil
+	return all, nil
 }
 
 // GetVPC returns one VPC by id.
@@ -190,22 +220,9 @@ func (c *Client) GetOperation(ctx context.Context, id string) (*Operation, error
 
 // --- Static routes ---
 
-// ListRoutes lists static routes of a VPC.
+// ListRoutes lists static routes of a VPC, every page.
 func (c *Client) ListRoutes(ctx context.Context, vpcID string) ([]map[string]any, error) {
-	data, status, err := c.do(ctx, http.MethodGet, "/v1/vpcs/"+url.PathEscape(vpcID)+"/routes/static", url.Values{}, nil)
-	if err != nil {
-		return nil, err
-	}
-	if status < 200 || status >= 300 {
-		return nil, apiError(status, data)
-	}
-	var out struct {
-		Routes []map[string]any `json:"routes"`
-	}
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse routes: %w", err)
-	}
-	return out.Routes, nil
+	return c.listPages(ctx, "/v1/vpcs/"+url.PathEscape(vpcID)+"/routes/static", url.Values{}, "routes")
 }
 
 // CreateRoute creates a static route (async). body: {vpcId, projectId, subnet, nextHop}.
