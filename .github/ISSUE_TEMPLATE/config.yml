@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Проблема самого облака Cloud.ru (не evo)
+    url: https://cloud.ru/support
+    about: Ресурс не создаётся и в консоли тоже, квоты, биллинг, недоступность зоны — в поддержку Cloud.ru. Если не уверены, где ошибка, заводите отчёт об ошибке здесь.
+  - name: Чат тестировщиков в Telegram
+    url: https://t.me/+SYvXziA4G9c1Y2Ni
+    about: Быстрые вопросы и обсуждение.

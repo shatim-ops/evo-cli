@@ -224,12 +224,14 @@ mv .cloudru-vm .evo && mv .cloudru-vm.yaml .evo.yaml
 
 ## Поддержка
 
-Обратная связь, вопросы и ошибки — в Telegram
-[@shatim](https://t.me/shatim) и в [чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni);
-ошибки можно завести и в [Issues](https://github.com/shatim-ops/evo-cli/issues)
-этого репозитория. Приложите вывод `evo doctor --json` и
-`evo version` (секретов в них нет) — подробнее в
+Ошибки, идеи и неудобства — в [Issues](https://github.com/shatim-ops/evo-cli/issues/new/choose)
+этого репозитория, по форме: каждое issue разбирается, на каждое приходит
+ответ. Репозиторий публичный: в выводе замените ID проектов и ресурсов, IP,
+Key ID и имена ресурсов на `<uuid>`, `<ip>`, `<имя>`, ключи не вставляйте
+никогда. Приложите `evo version` и `evo doctor` — подробнее в
 [docs/troubleshooting.md](docs/troubleshooting.md#обращение-в-поддержку).
+Быстрые вопросы — в Telegram [@shatim](https://t.me/shatim) и в
+[чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni).
 
 ## Сборка из исходников
 

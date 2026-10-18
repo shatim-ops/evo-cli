@@ -1,0 +1,26 @@
+name: Идея или неудобство
+description: Чего не хватает, что непонятно, что раздражает.
+title: "[идея] "
+labels: ["отзыв", "идея"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Репозиторий публичный: без ключей, реальных ID, IP и имён ресурсов.
+  - type: textarea
+    id: task
+    attributes:
+      label: Какую задачу решали
+      description: Что хотели сделать в облаке, с CLI или через агента.
+    validations:
+      required: true
+  - type: textarea
+    id: pain
+    attributes:
+      label: Что мешает сейчас
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Как было бы удобно
