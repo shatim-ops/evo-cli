@@ -273,6 +273,39 @@ sweep() {
 	[ "$left" = 0 ]
 }
 
+# iam_token — токен IAM по KEY_ID/SECRET (под маской) для прямых запросов.
+iam_token() {
+	local t
+	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] || return 1
+	t=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+		curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
+		jq -r '.access_token // .accessToken // empty')
+	mask "$t"
+	printf '%s' "$t"
+}
+
+# probe_ar_pages — как отвечает GET /v1/registries постранично (только
+# чтение): по странице — HTTP, число реестров, длина токена, совпадает ли он
+# с прошлым, хэш первого id (повторяется ли страница). Без ID и имён.
+probe_ar_pages() {
+	local token tok="" prev="" i code n first q
+	token=$(iam_token) || { echo "probe ar: нет токена"; return 0; }
+	for q in "" "&pageSize=100"; do
+		tok=""
+		prev=""
+		for i in 1 2 3 4 5; do
+			code=$(curl -sS -o "$tmp/arp" -w '%{http_code}' -H "Authorization: Bearer $token" \
+				"https://ar.api.cloud.ru/v1/registries?projectId=${PROJECT:-}$q${tok:+&pageToken=$tok}" || echo 000)
+			n=$(jq '(.registries // []) | length' "$tmp/arp" 2>/dev/null || echo "?")
+			first=$(jq -r '(.registries // [])[0].id // ""' "$tmp/arp" 2>/dev/null | sha256sum | cut -c1-8)
+			prev=$tok
+			tok=$(jq -r '.nextPageToken // .next_page_token // empty' "$tmp/arp" 2>/dev/null)
+			echo "probe ar${q:+ $q} стр.$i: http $code, реестров $n, ключи $(jq -c 'keys' "$tmp/arp" 2>/dev/null), токен ${#tok} симв., как прошлый: $([ -n "$tok" ] && [ "$tok" = "$prev" ] && echo да || echo нет), первый id #$first"
+			[ -n "$tok" ] || break
+		done
+	done
+}
+
 # Правило группы безопасности на порт RULE_PORT из RULE_CIDR (open_ports):
 # в evo нет удаления правила — DELETE в API, как шаг cleanup.
 delete_test_rules() {
@@ -281,11 +314,8 @@ delete_test_rules() {
 	evo tools call list_security_groups --arg rules=true --json >"$tmp/sg.json" || return 1
 	jq -r --arg pr "$RULE_PORT:$RULE_PORT" --arg c "$RULE_CIDR" '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and .port_range == $pr and .remote_ip_prefix == $c) | "\($g) \(.id)"' "$tmp/sg.json" >"$tmp/rules"
 	[ -s "$tmp/rules" ] || return 0
-	token=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-		curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
-		jq -r '.access_token // .accessToken // empty')
+	token=$(iam_token)
 	[ -n "$token" ] || { echo "::warning::нет токена — правило $RULE_PORT не удалено"; return 1; }
-	mask "$token"
 	while read -r sg r; do
 		mask "$sg" "$r"
 		code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $token" \
@@ -679,8 +709,13 @@ area_secrets() {
 	must cert_usage cert_usage --arg id="$cid" && ok cert_usage "прочитано"
 	tc cert_private_key --arg certificate_id="$cid"
 	if [ "$rc" = 0 ]; then
-		got=$(j -r '.privateKey // .private_key // empty' | openssl pkey 2>/dev/null | sha256sum | cut -c1-64)
-		[ "$got" = "$(openssl pkey <"$tmp/key.pem" | sha256sum | cut -c1-64)" ] && ok cert_private_key "ключ совпал (sha256)" || bad cert_private_key "ключ не совпал"
+		# сверка по открытому ключу: формат закрытого (PKCS#1/PKCS#8) не важен
+		got=$(j -r '.privateKey // .private_key // empty' | openssl pkey -pubout 2>/dev/null | sha256sum | cut -c1-64)
+		if [ "$got" = "$(openssl x509 -pubkey -noout <"$tmp/crt.pem" | sha256sum | cut -c1-64)" ]; then
+			ok cert_private_key "ключ — пара сертификату (sha256 открытого ключа)"
+		else
+			bad cert_private_key "ключ не пара сертификату: key_format $(j -r '.key_format // "-"'), ключи ответа $(j -c 'keys'), первая строка $(j -r '.privateKey // .private_key // ""' | head -1 | grep -oE '^-----BEGIN [A-Z ]+-----$' || echo '«не PEM»'), длина $(j -r '(.privateKey // .private_key // "") | length')"
+		fi
 	else bad cert_private_key "код $rc, $reason: $why"; fi
 	rm -f "$tmp/key.pem"
 	# cert_renew на импортированном: ждём отказ (перевыпуск — только Let's Encrypt)
@@ -698,6 +733,7 @@ area_secrets() {
 # Artifact Registry и Container Apps: реестр, push образа, приложение.
 area_ca() {
 	local reg="evo-e2e-ca-$RUN" rid host app="$prefix-app" url code img
+	probe_ar_pages
 	must ar_create ar_create --arg name="$reg" --arg registry_type=DOCKER || return 1
 	if opwait ar "$(j -r .operation_id)" 600; then ok ar_create "операция done"; cov ar_create; else bad ar_create "$why"; return 1; fi
 	rid=$(lst ar "$reg" | cut -f1 | head -1)
