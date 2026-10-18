@@ -66,14 +66,19 @@ def get(url, attempts=3):
 def spec_urls(start):
     slug = start.split("/")[2]
     link_re = re.compile(r'href="(/docs/' + re.escape(slug) + r'/[^"?#]*/topics/[^"?#]*api[^"?#]*)')
-    seen, queue, specs = set(), [start], set()
+    seen, queue, specs, failed = set(), [start], set(), []
     while queue and len(seen) < MAX_PAGES:
         page = queue.pop(0)
         if page in seen:
             continue
         seen.add(page)
         code, html = get(BASE + page)
+        if code == "404":
+            continue
         if code != "200":
+            # A page that did not load may hold the only link to a spec: the
+            # check would then report it missing from the code's point of view.
+            failed.append(page)
             continue
         for m in SPEC_RE.findall(html):
             specs.add(m if m.startswith("http") else BASE + m)
@@ -82,7 +87,7 @@ def spec_urls(start):
     by_name = {}
     for u in sorted(specs, key=lambda u: "/_downloads/" in u):
         by_name.setdefault(u.rsplit("/", 1)[1], u)
-    return sorted(by_name.values())
+    return sorted(by_name.values()), failed
 
 
 def describe(data):
@@ -113,9 +118,10 @@ def main():
     os.makedirs(out, exist_ok=True)
     manifest, missing = [], []
     for service, start in START_PAGES.items():
-        urls = spec_urls(start)
+        urls, failed = spec_urls(start)
         if not urls:
             missing.append(service)
+        missing.extend(f"{service}: page {p} did not load" for p in failed)
         for u in urls:
             d = os.path.join(out, service)
             os.makedirs(d, exist_ok=True)
