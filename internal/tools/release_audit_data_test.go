@@ -440,6 +440,13 @@ func TestCertPrivateKey_PEM(t *testing.T) {
 		if pk["privateKey"] != c.want || pk["key_format"] != c.format {
 			t.Errorf("%.20q: %v", c.in, pk)
 		}
+		// Живой API (18.10) называет поле private_key, а не privateKey из
+		// swagger: ключ уходил Base64 и без key_format.
+		live := map[string]any{"private_key": c.in, "version": map[string]any{"id": 1}}
+		pemKey(live)
+		if live["private_key"] != c.want || live["key_format"] != c.format {
+			t.Errorf("private_key %.20q: %v", c.in, live)
+		}
 	}
 }
 

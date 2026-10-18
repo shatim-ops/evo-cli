@@ -215,14 +215,22 @@ func (s *Registry) handleCertPrivateKey(ctx context.Context, args map[string]any
 	return toJSON(pk), false
 }
 
-// pemKey turns the privateKey of a GetPrivateKey answer into PEM text, as
+// pemKey turns the private key of a GetPrivateKey answer into PEM text, as
 // the description promises: the API sends the PEM Base64-encoded (swagger:
 // «Приватный ключ PEM в декодированном Base64»), and the tool passed that
-// on (release audit, L-19). key_format says what privateKey holds: "pem",
-// or "base64" when the value does not decode to a PEM block (passed on as
-// the API sent it). Over HTTP the redaction of privateKey still applies.
+// on (release audit, L-19). The swagger names the field privateKey, the
+// live API sends private_key (live run 18.10: the key came out as Base64,
+// key_format missing); the field the API sent is decoded in place.
+// key_format says what it holds: "pem", or "base64" when the value does
+// not decode to a PEM block (passed on as the API sent it). Over HTTP the
+// redaction of both names still applies.
 func pemKey(pk map[string]any) {
-	v, _ := pk["privateKey"].(string)
+	field := "privateKey"
+	v, _ := pk[field].(string)
+	if v == "" {
+		field = "private_key"
+		v, _ = pk[field].(string)
+	}
 	if v == "" {
 		return
 	}
@@ -231,7 +239,7 @@ func pemKey(pk map[string]any) {
 		return
 	}
 	if b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(v)); err == nil && strings.HasPrefix(strings.TrimSpace(string(b)), "-----BEGIN") {
-		pk["privateKey"] = string(b)
+		pk[field] = string(b)
 		pk["key_format"] = "pem"
 		return
 	}
