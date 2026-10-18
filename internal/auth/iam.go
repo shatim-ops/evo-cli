@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 package auth
 
 import (
@@ -9,6 +13,7 @@ import (
 	"time"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -71,7 +76,7 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 // hang forever on a stalled IAM connection. cache may be nil.
 func NewIAMProvider(creds Credentials, client *http.Client, cache TokenCache) *IAMProvider {
 	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+		client = &http.Client{Timeout: 60 * time.Second, Transport: httpretry.UserAgent(nil)}
 	}
 	return &IAMProvider{creds: creds, client: client, cache: cache, sleep: sleepCtx}
 }

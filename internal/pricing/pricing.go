@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package pricing prices a VM configuration for a preview.
 //
 // The price comes from the compute price-calculation API of Cloud.ru when it

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package secret is a client for the Cloud.ru Secret Management API v2
 // (https://secretmanager.api.cloud.ru, /v2). IAM Bearer auth. The v2 API is
 // project-scoped via a `projectId` query (camelCase — this gateway wants camel,

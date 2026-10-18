@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package marketplace is the read-only showcase of what Cloud.ru offers to
 // deploy: the VM images of the shared catalogue (operating systems and
 // Marketplace products) and the Managed Kubernetes addons, in one list.

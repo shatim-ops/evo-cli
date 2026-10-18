@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Command evo is the Cloud.ru infrastructure CLI and MCP server; the code is in internal/cli.
 package main
 

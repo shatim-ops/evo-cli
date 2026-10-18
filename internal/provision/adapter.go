@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 package provision
 
 import (
@@ -13,6 +17,7 @@ import (
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -43,7 +48,7 @@ type CloudRuAdapter struct {
 // If baseURL is empty, the default Cloud.ru compute endpoint is used.
 func NewCloudRuAdapter(client *http.Client, baseURL string) *CloudRuAdapter {
 	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+		client = &http.Client{Timeout: 60 * time.Second, Transport: httpretry.UserAgent(nil)}
 	}
 	if baseURL == "" {
 		baseURL = defaultBaseURL

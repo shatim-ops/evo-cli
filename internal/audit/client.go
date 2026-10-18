@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package audit is a client for the Cloud.ru Audit Logging API
 // (https://audit.api.cloud.ru). IAM Bearer auth. Project is in the PATH
 // (/events/list/{projectId}). Contract confirmed live — the API validated our

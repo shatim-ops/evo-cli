@@ -7,6 +7,11 @@
 
 ## [Не выпущено]
 
+### Изменено
+
+- Авторство: `evo version` называет автора (в `--json` — поле `author`), он же указан в `NOTICE` и в SPDX-заголовке каждого файла исходного кода.
+- Запросы к API Cloud.ru идут с заголовком `User-Agent: evo/<версия> (Cloud.ru Evolution CLI CREW edition; +https://github.com/shatim-ops/evo-cli)` вместо стандартного `Go-http-client`.
+
 ## [1.0.1] — 2026-10-18
 
 По первому прогону на macOS (zsh, цветной терминал).

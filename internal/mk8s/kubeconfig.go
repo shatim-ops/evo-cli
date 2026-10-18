@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 package mk8s
 
 import (
@@ -11,6 +15,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // DefaultOIDCTokenURL is the Cloud.ru IAM OIDC token endpoint the mk8s
@@ -20,7 +26,7 @@ const DefaultOIDCTokenURL = "https://id.cloud.ru/auth/system/openid/token"
 // oidcClient sends the token request; tests replace its transport. No
 // redirects: on 307/308 the client would POST the same body, with
 // client_secret, to wherever the Location points.
-var oidcClient = &http.Client{Timeout: 20 * time.Second, CheckRedirect: noRedirects}
+var oidcClient = &http.Client{Timeout: 20 * time.Second, CheckRedirect: noRedirects, Transport: httpretry.UserAgent(nil)}
 
 func noRedirects(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 

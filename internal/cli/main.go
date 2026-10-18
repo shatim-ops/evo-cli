@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 package cli
 
 import (
@@ -22,6 +26,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/product"
@@ -53,7 +58,7 @@ var (
 
 // httpClient is shared by the IAM and compute clients: one connection pool
 // and a timeout, so a stalled Cloud.ru endpoint cannot hang the CLI forever.
-var httpClient = &http.Client{Timeout: 60 * time.Second}
+var httpClient = &http.Client{Timeout: 60 * time.Second, Transport: httpretry.UserAgent(nil)}
 
 // commandStarted is set once cobra has parsed flags and arguments and is
 // about to run a command. An error before that is a usage error.
@@ -243,6 +248,7 @@ func newRootCmd() *cobra.Command {
 		newVerifyCmd(),
 		newInitCmd(),
 		newVersionCmd(),
+		newCrewCmd(),
 		newListZonesCmd(),
 		newListImagesCmd(),
 		newMCPCmd(),

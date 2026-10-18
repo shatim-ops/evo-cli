@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package certmanager is a client for the Cloud.ru Certificate Manager API
 // (https://certificatemanager.api.cloud.ru), built from the official swagger
 // (ccm.swagger.yaml). IAM Bearer auth, JSON. Project is a query param on List /

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package tools is the registry of evo operations: name, group,
 // description, JSON schema of the arguments, handler, and whether the
 // operation changes anything in the cloud.

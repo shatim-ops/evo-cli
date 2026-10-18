@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package kubetools runs kubectl/helm against a Managed Kubernetes cluster
 // using a kubeconfig passed in-memory (written to a private temp file for the
 // duration of the call). It is the workload-deploy layer of the engine: cluster

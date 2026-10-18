@@ -21,7 +21,7 @@ $CACHE/cloudru-vm/token-<profile>.json # кэш IAM-токена с exp         
 ## Задачи
 
 1. **Чтение кредов из файла реально работает.** Сейчас `KeyID`/`Secret` не
-   мержатся из файла/env (`internal/config/config.go:69-82,143-180`), а
+   мержатся из файла/env (`internal/config/config.go:73-86,143-180`), а
    `auth.EnvVarProvider` читает только `os.Getenv`. Сделать провайдер, который
    получает креды из разрешённого `config.Config`, а не из окружения напрямую.
 2. **Команды:**

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vpc is a client for the Cloud.ru Evolution VPC API
 // (https://vpc.api.cloud.ru, /v1). IAM Bearer auth. VPC list/get is
 // project-scoped via a project_id query; VPC & static-route create/delete are

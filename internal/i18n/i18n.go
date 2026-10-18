@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
 // Package i18n picks the language of the human-facing CLI text.
 //
 // The CLI speaks Russian by default; EVO_LANG=en (or en_US and the like)
