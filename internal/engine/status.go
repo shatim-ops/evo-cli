@@ -9,6 +9,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"strings"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -46,6 +47,20 @@ type CloudCheck struct {
 type DeploymentStatus struct {
 	state.DeploymentRecord
 	CloudCheck
+	// The VMs of the other active records of the directory, when there are
+	// several (provision next to a deploy): status shows the first.
+	OtherActiveVMs []string `json:"other_active_vm_ids,omitempty"`
+}
+
+// OtherActiveVMs is the VM IDs of the active records after the first.
+func OtherActiveVMs(sf *state.File) []string {
+	var ids []string
+	for i, rec := range sf.ActiveDeployments() {
+		if i > 0 {
+			ids = append(ids, rec.VMID)
+		}
+	}
+	return ids
 }
 
 // CheckCloud asks Cloud.ru for the record's VM: one GET /vms/{id}, at most
@@ -149,8 +164,9 @@ func (e *Engine) Status(ctx context.Context, opts StatusOptions) error {
 		}
 	}
 
+	others := OtherActiveVMs(stateFile)
 	if e.Printer.IsJSON() {
-		return e.Printer.JSON(DeploymentStatus{DeploymentRecord: shown, CloudCheck: check})
+		return e.Printer.JSON(DeploymentStatus{DeploymentRecord: shown, CloudCheck: check, OtherActiveVMs: others})
 	}
 
 	headers := []string{i18n.T("Property", "Параметр"), i18n.T("Value", "Значение")}
@@ -180,6 +196,11 @@ func (e *Engine) Status(ctx context.Context, opts StatusOptions) error {
 	}
 
 	e.Printer.Table(headers, rows)
+	if len(others) > 0 {
+		e.Printer.Warning(i18n.Tf("this directory has other active VMs too: %s; delete each with 'evo vm delete <VM ID>'",
+			"в этом каталоге есть и другие активные ВМ: %s; удаляйте каждую через 'evo vm delete <ID ВМ>'",
+			strings.Join(others, "; ")))
+	}
 	if check.NotFound {
 		e.Printer.Hint(i18n.T("The record is stale: the VM was deleted outside evo. 'evo destroy' removes it and releases its floating IP and port rules.",
 			"Запись устарела: ВМ удалили вне evo. 'evo destroy' уберёт запись и освободит её floating IP и правила портов."))

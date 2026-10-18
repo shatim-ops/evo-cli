@@ -56,6 +56,13 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		return nil
 	}
 
+	// Several active records (provision next to a deploy, R2-2): deleting the
+	// first and answering "destroyed" would leave the others billed while
+	// the person sees success. Each one goes by its own ID.
+	if all := stateFile.ActiveDeployments(); len(all) > 1 {
+		return severalDeployments(all)
+	}
+
 	e.Printer.Step(1, 3, i18n.T("Reading deployment info...", "Чтение сведений о развёртывании..."))
 	// The names, not only the UUIDs: with several VMs the person approving
 	// must see which one goes (first real run, v1.0.1).
@@ -239,6 +246,21 @@ func deletionUnconfirmed(vmID string, waited time.Duration) error {
 
 // destroyTarget is the first line of destroy: which VM, at what address,
 // in which zone.
+// severalDeployments refuses destroy without a VM when the directory holds
+// more than one active deployment, naming each VM.
+func severalDeployments(all []*state.DeploymentRecord) error {
+	vms := make([]string, len(all))
+	for i, rec := range all {
+		vms[i] = vmText(rec)
+	}
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("this directory has several active deployments (%d: %s); destroy without a VM would delete only the first",
+			"в этом каталоге несколько активных развёртываний (%d: %s); destroy без указания ВМ удалил бы только первое",
+			len(all), strings.Join(vms, "; ")),
+		i18n.T("Delete each VM by its ID: 'evo vm delete <VM ID>' (MCP: destroy with vm_id). Its record in the state is updated.",
+			"Удалите каждую ВМ по её ID: 'evo vm delete <ID ВМ>' (в MCP: destroy с vm_id). Её запись в состоянии обновится."))
+}
+
 func destroyTarget(rec *state.DeploymentRecord) string {
 	s := i18n.T("VM ", "ВМ ") + vmText(rec)
 	if rec.VMIP != "" {

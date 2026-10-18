@@ -82,10 +82,14 @@ func tokenProvider(cfg config.Config) *auth.IAMProvider {
 	if p, ok := providers[key]; ok {
 		return p
 	}
+	var cache auth.TokenCache // no cache directory (no HOME): every run asks IAM
+	if cachePath != "" {
+		cache = auth.FileCache{Path: cachePath}
+	}
 	p := auth.NewIAMProvider(
 		auth.Credentials{KeyID: cfg.KeyID, Secret: cfg.Secret},
 		httpClient,
-		auth.FileCache{Path: cachePath},
+		cache,
 	)
 	providers[key] = p
 	return p

@@ -15,8 +15,13 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// errLocked is what lockFile returns when another holder has the lock.
-var errLocked = errors.New("locked")
+// The OS file lock (flock, LockFileEx) lives in config, which locks the
+// profile files with it too.
+var (
+	errLocked  = config.ErrLocked
+	lockFile   = config.LockFile
+	unlockFile = config.UnlockFile
+)
 
 // Lock takes the exclusive lock of the state file at path for one command
 // that changes cloud resources (deploy, destroy). Each of them reads the
@@ -26,6 +31,9 @@ var errLocked = errors.New("locked")
 // away with the process, so a crash or kill -9 leaves nothing stale.
 func Lock(path string) (unlock func(), err error) {
 	dir := filepath.Dir(path)
+	if err := checkPlace(path); err != nil {
+		return nil, err
+	}
 	if err := config.MkdirPrivate(dir); err != nil { // .evo/ also holds the SSH key
 		return nil, clierr.Wrap(clierr.CodeStateCorrupted, stateDirFailed(), checkWritable(dir), err)
 	}

@@ -4,7 +4,7 @@
 
 //go:build linux || darwin || freebsd || openbsd || netbsd || dragonfly
 
-package state
+package config
 
 import (
 	"errors"
@@ -14,14 +14,18 @@ import (
 
 // flock locks belong to the open file, so a second open in the same
 // process (MCP over HTTP serves calls concurrently) is refused too.
-func lockFile(f *os.File) error {
+//
+// LockFile takes an exclusive OS lock of f without waiting: ErrLocked when
+// another holder has it. The lock goes away with the process.
+func LockFile(f *os.File) error {
 	err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
-		return errLocked
+		return ErrLocked
 	}
 	return err
 }
 
-func unlockFile(f *os.File) error {
+// UnlockFile releases LockFile's lock.
+func UnlockFile(f *os.File) error {
 	return syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 }

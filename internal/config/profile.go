@@ -5,6 +5,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -66,19 +67,40 @@ func Dir() string {
 	if d := os.Getenv(EnvConfigDir); d != "" {
 		return d
 	}
-	return filepath.Join(configBase(), appDir)
+	base := configBase()
+	if base == "" {
+		return ""
+	}
+	return filepath.Join(base, appDir)
 }
 
 // userConfigDir is os.UserConfigDir; tests point it at a temp dir.
 var userConfigDir = os.UserConfigDir
 
+// configBase is the user config directory, or "" when neither it nor the
+// home directory is known (no HOME under systemd, launchd, a container).
+// It never falls back to a path relative to the working directory: the
+// profiles hold the key, and the working directory may be a repository.
 func configBase() string {
 	base, err := userConfigDir()
 	if err != nil {
-		home, _ := os.UserHomeDir()
+		home, herr := os.UserHomeDir()
+		if herr != nil || home == "" {
+			return ""
+		}
 		base = filepath.Join(home, ".config")
 	}
 	return base
+}
+
+// NoConfigDir is the error of a command that has to read or write the
+// profiles when Dir is "".
+func NoConfigDir() error {
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("no directory for the profiles: neither %s nor HOME (on Windows APPDATA) is set",
+			"нет каталога для профилей: не заданы ни %s, ни HOME (в Windows — APPDATA)", EnvConfigDir),
+		i18n.Tf("Set %s to a private directory, or HOME; the key can also come from the environment (CLOUDRU_KEY_ID, CLOUDRU_SECRET)",
+			"Задайте %s (личный каталог) или HOME; ключ можно передать и переменными окружения (CLOUDRU_KEY_ID, CLOUDRU_SECRET)", EnvConfigDir))
 }
 
 // MigrateLegacyDir copies the profiles of the old binary, once: when
@@ -95,6 +117,9 @@ func MigrateLegacyDir() (string, error) {
 		return "", nil
 	}
 	base := configBase()
+	if base == "" {
+		return "", nil
+	}
 	dir := filepath.Join(base, appDir)
 	legacy := filepath.Join(base, LegacyAppName)
 	if exists(dir) || !exists(legacy) {
@@ -151,21 +176,33 @@ func CacheDir() string {
 	}
 	base, err := os.UserCacheDir()
 	if err != nil {
-		home, _ := os.UserHomeDir()
+		home, herr := os.UserHomeDir()
+		if herr != nil || home == "" {
+			return "" // as configBase: never relative to the working directory
+		}
 		base = filepath.Join(home, ".cache")
 	}
 	return filepath.Join(base, appDir)
 }
 
 // SettingsPath is the path of config.yaml.
-func SettingsPath() string { return filepath.Join(Dir(), settingsName) }
+func SettingsPath() string { return inDir(Dir(), settingsName) }
 
 // CredentialsPath is the path of credentials.yaml.
-func CredentialsPath() string { return filepath.Join(Dir(), credentialsName) }
+func CredentialsPath() string { return inDir(Dir(), credentialsName) }
 
 // TokenCachePath is the IAM token cache file of a profile.
+// It is "" when no cache directory is known: the token is then not cached.
 func TokenCachePath(profile string) string {
-	return filepath.Join(CacheDir(), "token-"+profile+".json")
+	return inDir(CacheDir(), "token-"+profile+".json")
+}
+
+// inDir joins dir and name, or is "" when dir is unknown.
+func inDir(dir, name string) string {
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, name)
 }
 
 var profileNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
@@ -190,6 +227,9 @@ func PermissionsEnforced() bool { return runtime.GOOS != "windows" }
 func LooseMode(m fs.FileMode) bool { return m.Perm()&0o077 != 0 }
 
 func readYAML(path string, v any) (exists bool, err error) {
+	if path == "" { // no config directory: no profiles
+		return false, nil
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -267,12 +307,13 @@ func LoadProfile(name string) (Profile, Credentials, bool, error) {
 // lockName is the lock file that serialises changes of the profile files.
 const lockName = ".lock"
 
-// Waiting for the lock: the holder only rewrites two small files, so a
-// lock older than lockStale was left by a process that died.
+// ErrLocked is what LockFile returns when another holder has the lock.
+var ErrLocked = errors.New("locked")
+
+// Waiting for the lock: the holder only rewrites two small files.
 var (
-	lockWait  = 10 * time.Second
-	lockStale = 30 * time.Second
-	lockPoll  = 20 * time.Millisecond
+	lockWait = 10 * time.Second
+	lockPoll = 20 * time.Millisecond
 )
 
 // lockProfiles takes the lock of Dir(). SaveProfile and DeleteProfile read
@@ -280,34 +321,40 @@ var (
 // 'configure' runs at once lose one of the profiles.
 func lockProfiles() (unlock func(), err error) {
 	dir := Dir()
+	if dir == "" {
+		return nil, NoConfigDir()
+	}
 	if err := MkdirPrivate(dir); err != nil {
 		return nil, fmt.Errorf("create %s: %w", dir, err)
 	}
+	// An OS file lock, not a file that exists while held: it goes away
+	// with the process, so there is no stale lock to guess about. Taking
+	// over a lock by its age gave it away from a live holder stopped for
+	// longer (R2-4).
 	path := filepath.Join(dir, lockName)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("lock %s: %w", path, err)
+	}
 	deadline := time.Now().Add(lockWait)
 	for {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		err := LockFile(f)
 		if err == nil {
-			fmt.Fprintf(f, "%d\n", os.Getpid())
-			f.Close()
-			return func() { os.Remove(path) }, nil
+			return func() {
+				_ = UnlockFile(f)
+				_ = f.Close()
+			}, nil
 		}
-		// Windows: a lock file the previous holder has just removed stays
-		// "delete pending" while anyone has it open, and opening it fails
-		// with ERROR_ACCESS_DENIED instead of "exists" — it is busy too.
-		busy := os.IsExist(err) || (runtime.GOOS == "windows" && os.IsPermission(err))
-		if !busy {
+		if !errors.Is(err, ErrLocked) {
+			_ = f.Close()
 			return nil, fmt.Errorf("lock %s: %w", path, err)
 		}
-		if st, serr := os.Stat(path); serr == nil && time.Since(st.ModTime()) > lockStale {
-			os.Remove(path)
-			continue
-		}
 		if time.Now().After(deadline) {
+			_ = f.Close()
 			return nil, clerrors.New(clerrors.CodeConfigInvalid,
 				i18n.Tf("profiles are locked by another %s process (%s)", "профили заблокированы другим процессом %s (%s)", AppName, path),
-				i18n.Tf("Wait for the other '%s configure' to finish; if none is running, delete the lock file",
-					"Дождитесь окончания другого '%s configure'; если он не запущен, удалите файл блокировки", AppName))
+				i18n.Tf("Wait for the other '%s configure' to finish: the lock is released when that process exits",
+					"Дождитесь окончания другого '%s configure': блокировка снимается, когда тот процесс завершится", AppName))
 		}
 		time.Sleep(lockPoll)
 	}
@@ -382,7 +429,9 @@ func DeleteProfile(name string) error {
 	if ValidateProfileName(name) != nil {
 		return nil
 	}
-	if err := os.Remove(TokenCachePath(name)); err != nil && !os.IsNotExist(err) {
+	if path := TokenCachePath(name); path == "" {
+		return nil
+	} else if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove token cache: %w", err)
 	}
 	return nil
@@ -431,6 +480,9 @@ func Profiles() ([]ProfileSummary, error) {
 
 // writeYAML replaces path atomically with mode 0600 in a 0700 directory.
 func writeYAML(path string, v any) error {
+	if path == "" {
+		return NoConfigDir()
+	}
 	data, err := yaml.Marshal(v)
 	if err != nil {
 		return err

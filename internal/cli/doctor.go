@@ -143,6 +143,9 @@ func runDoctor(ctx context.Context) []doctorCheck {
 func fileChecks() []doctorCheck {
 	var checks []doctorCheck
 	dir := config.Dir()
+	if dir == "" {
+		return append(checks, doctorCheck{Name: "config dir", Status: checkWarn, Detail: config.NoConfigDir().Error()})
+	}
 	st, err := os.Stat(dir)
 	switch {
 	case os.IsNotExist(err):
