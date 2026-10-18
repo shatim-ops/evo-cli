@@ -181,7 +181,8 @@ lst() {
 	vpc) out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.vpcs[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	dns) out=$(evo tools call dns_zones --json 2>"$tmp/lst.err") &&
-		jq -r --arg p "$p" '.zones[]? | select(((.name // "") | startswith($p)) or ((.domain // "") | startswith($p))) | "\(.id)\t\(.domain // .name)"' <<<"$out" ;;
+		# id — «видимость id»: удаление зоны идёт в API её видимости
+		jq -r --arg p "$p" '.zones[]? | select(((.name // "") | startswith($p)) or ((.domain // "") | startswith($p))) | "\(.visibility // "public") \(.id)\t\(.domain // .name)"' <<<"$out" ;;
 	s3) out=$(evo tools call s3_buckets --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.buckets[]? | select((.name // "") | startswith($p)) | "\(.name)\t\(.name)"' <<<"$out" ;;
 	secret) out=$(evo tools call secret_list --json 2>"$tmp/lst.err") &&
@@ -206,7 +207,7 @@ del() {
 	image) tc image_delete --arg image_id="$id" ;;
 	route) tc vpc_route_delete --arg vpc_id="${id%% *}" --arg route_id="${id#* }" ;;
 	vpc) tc vpc_delete --arg id="$id" ;;
-	dns) tc dns_zone_delete --arg id="$id" ;;
+	dns) tc dns_zone_delete --arg type="${id%% *}" --arg id="${id#* }" ;;
 	s3)
 		local k
 		evo tools call s3_ls --arg bucket="$id" --json 2>/dev/null | jq -r '.objects[]?.key' >"$tmp/keys" || true
@@ -648,36 +649,48 @@ area_net() {
 	fi
 }
 
-# DNS: приватная зона, запись A, удаление.
+# DNS: приватная зона, запись A, удаление. Каждый вызов по зоне — с
+# type=private: по умолчанию инструменты идут в API публичных зон.
 area_dns() {
-	local domain="$prefix.test." zid rid
+	local domain="$prefix.test." zid rid op
 	must dns_zone_create dns_zone_create --arg domain="$domain" --arg type=private --arg description="evo e2e live run" || return 1
-	if opwait dns "$(j -r .operation_id)" 600; then ok dns_zone_create "$(j -r '.done')"; cov dns_zone_create; else bad dns_zone_create "$why"; return 1; fi
+	op=$(j -r .operation_id)
+	cov dns_zone_create
+	# 18.10 (run 39152048559) операция создания приватной зоны не стала
+	# done за 10 мин, хотя зона появилась в списке: ждём зону в списке
+	if opwait dns "$op" 300; then ok "dns_operation создания" "done"; else row "dns_operation создания" "не done" "за 5 мин: $why"; fi
+	poll 300 15 sh -c "evo tools call dns_zones --json | jq -e --arg d '$domain' 'any(.zones[]; (.domain // .name) == \$d)' >/dev/null" || true
 	zid=$(lst dns "$prefix" | cut -f1 | head -1)
+	zid=${zid#* }
 	mask "$zid"
-	[ -n "$zid" ] || { bad dns_zones "зоны нет в списке"; return 1; }
-	must dns_zone_get dns_zone_get --arg id="$zid" && ok dns_zone_get "$(j -r '.visibility // .type // "?"')"
-	must dns_record_create dns_record_create --arg zone_id="$zid" --arg name=www --arg record_type=A --arg value=198.18.255.10 --arg ttl=300 || return 1
-	if opwait dns "$(j -r .operation_id)" 600; then cov dns_record_create; else bad dns_record_create "$why"; fi
-	tc dns_records --arg zone_id="$zid"
-	rid=$(j -r '[.records[] | select((.name | startswith("www")) and ((.type // "") | ascii_downcase) == "a")][0].id // empty')
-	mask "$rid"
-	if [ -n "$rid" ] && [ "$(j -c '[.records[] | select(.id == "'"$rid"'") | .values[]?] | index("198.18.255.10") != null')" = true ]; then
-		ok dns_record_create "запись A в dns_records"
-	else bad dns_record_create "записи нет в dns_records: $(j -c '[.records[] | {name, type}]' | cut -c1-200)"; fi
-	[ -n "$rid" ] || return 1
-	must dns_record_get dns_record_get --arg record_id="$rid" && ok dns_record_get "ttl $(j -r '.ttl // "?"')"
-	if must dns_record_delete dns_record_delete --arg record_id="$rid"; then
-		if opwait dns "$(j -r .operation_id)" 600 && ! evo tools call dns_records --arg zone_id="$zid" --json | jq -e --arg id "$rid" 'any(.records[]; .id == $id)' >/dev/null; then
-			ok dns_record_delete "записи нет"
-			cov dns_record_delete
-		else bad dns_record_delete "${why:-запись осталась}"; fi
+	[ -n "$zid" ] || { bad dns_zone_create "зоны нет в dns_zones"; return 1; }
+	ok dns_zone_create "зона в dns_zones: $(evo tools call dns_zones --json | jq -c --arg id "$zid" '.zones[] | select(.id == $id) | {visibility, valid, delegated}')"
+	must dns_zone_get dns_zone_get --arg id="$zid" --arg type=private && ok dns_zone_get "$(j -r '.visibility // .type // "прочитана"')"
+	tc dns_zone_get --arg id="$zid"
+	row "dns_zone_get без type" "$([ "$rc" = 0 ] && echo ответ || echo отказ)" "код $rc, $reason"
+	must dns_record_create dns_record_create --arg zone_id="$zid" --arg type=private --arg name=www --arg record_type=A --arg value=198.18.255.10 --arg ttl=300 || return 1
+	cov dns_record_create
+	if opwait dns "$(j -r .operation_id)" 300; then ok "dns_operation записи" "done"; else row "dns_operation записи" "не done" "за 5 мин: $why"; fi
+	rec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json >"$tmp/recs" 2>/dev/null && jq -e '[.records[] | select((.name | startswith("www")) and ((.type // "") | ascii_downcase) == "a")] | length > 0' "$tmp/recs" >/dev/null; }
+	if poll 300 15 rec; then
+		rid=$(jq -r '[.records[] | select((.name | startswith("www")) and ((.type // "") | ascii_downcase) == "a")][0].id // empty' "$tmp/recs")
+		mask "$rid"
+		ok dns_record_create "запись A в dns_records, значение $(jq -r --arg id "$rid" '.records[] | select(.id == $id) | .values | index("198.18.255.10") | if . == null then "другое" else "верное" end' "$tmp/recs")"
+	else
+		bad dns_record_create "записи нет в dns_records за 5 мин"
+		return 1
 	fi
-	must dns_zone_delete dns_zone_delete --arg id="$zid" || return 1
-	if opwait dns "$(j -r .operation_id)" 600 && poll 300 15 gone dns "$prefix"; then
+	must dns_record_get dns_record_get --arg record_id="$rid" --arg type=private && ok dns_record_get "ttl $(j -r '.ttl // "?"')"
+	must dns_record_delete dns_record_delete --arg record_id="$rid" --arg type=private || return 1
+	opwait dns "$(j -r .operation_id)" 300 || true
+	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" 'any(.records[]; .id == $id) | not' >/dev/null; }
+	if poll 300 15 norec; then ok dns_record_delete "записи нет"; cov dns_record_delete; else bad dns_record_delete "запись осталась через 5 мин"; fi
+	must dns_zone_delete dns_zone_delete --arg id="$zid" --arg type=private || return 1
+	opwait dns "$(j -r .operation_id)" 300 || true
+	if poll 600 15 gone dns "$prefix"; then
 		ok dns_zone_delete "зоны нет"
 		cov dns_zone_delete
-	else bad dns_zone_delete "${why:-зона осталась}"; fi
+	else bad dns_zone_delete "зона в списке через 10 мин"; fi
 }
 
 # Object Storage: бакет, объект, удаление.
