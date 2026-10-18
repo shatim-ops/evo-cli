@@ -30,6 +30,8 @@ permissions:
 
 jobs:
   probe:
+    # Ключ облака — из окружения cloud-e2e, с одобрением владельца (см. cloud-e2e.yml).
+    environment: cloud-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
