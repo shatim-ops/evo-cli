@@ -3,7 +3,8 @@ name: tag
 # Ставит тег релиза на коммит в main и запускает release.yml на нём —
 # для тех, кто не может запушить тег сам (облачные сессии пушат только
 # свои ветки). Тег от GITHUB_TOKEN не запускает workflow по push, поэтому
-# release.yml вызывается явно (workflow_dispatch от GITHUB_TOKEN разрешён).
+# release.yml вызывается явно (workflow_dispatch от GITHUB_TOKEN разрешён)
+# и ждёт одобрения владельца в окружении release.
 # Запуск: Actions → tag → Run workflow, или
 #   gh workflow run tag.yml -f tag=v1.2.3 -f sha=<полный SHA коммита в main>
 on:

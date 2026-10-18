@@ -27,7 +27,12 @@
    **tag** → Run workflow с `tag` и полным `sha` коммита в `main`
    (`gh workflow run tag.yml -f tag=v1.2.3 -f sha=…`). Он ставит тег и сам
    запускает `release.yml` на нём; identity подписи та же (`release.yml@refs/tags/…`).
-3. `release.yml` гоняет весь `ci.yml`, затем goreleaser: архивы, `checksums.txt`,
+   Тег может поставить и агент (через `tag.yml`), но выпуск ждёт владельца:
+   первый job `release.yml` — в окружении `release` (одобряет только владелец,
+   только для тегов `v*`). Actions → прогон release → **Review deployments** →
+   Approve. Отклонённый прогон оставляет тег без релиза; номер не
+   переиспользуется, следующий — X.Y.(Z+1).
+3. `release.yml` после одобрения гоняет весь `ci.yml`, затем goreleaser: архивы, `checksums.txt`,
    подписи cosign keyless (`*.sigstore.json`), GitHub Release. `-rc.N` публикуется как pre-release.
 4. Проверить подпись скачанного `checksums.txt` (пример для `v1.2.3`):
 
