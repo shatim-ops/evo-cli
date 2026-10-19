@@ -393,8 +393,9 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 			e.Printer.StepDone(i18n.Tf("Floating IP %s released", "Floating IP %s освобождён", fipLabel(rec.VMIP, fipID)))
 			return nil
 		}
+		// 404 — already released: NOT_FOUND (VM_NOT_FOUND before QA-10).
 		var cliErr *clerrors.CLIError
-		if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound {
+		if stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound) {
 			e.Printer.StepDone(i18n.T("Floating IP already released", "Floating IP уже освобождён"))
 			return nil
 		}

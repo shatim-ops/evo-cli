@@ -10,8 +10,75 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 )
+
+// QA-9: a server that ignores offset answers the first page again. The
+// walk stops on the page with no new id: 100 distinct VMs, not 300 with
+// duplicates.
+func TestCompute_ListIgnoresOffsetNoDuplicates(t *testing.T) {
+	calls := 0
+	srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var items []map[string]any
+		for i := range 100 {
+			items = append(items, map[string]any{"id": fmt.Sprintf("vm-%d", i), "name": fmt.Sprintf("n%d", i)})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "total": 300})
+	})
+	defer srv.Close()
+	vms, err := a.ListVMsInProject(context.Background(), "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, vm := range vms {
+		if seen[vm.ID] {
+			t.Fatalf("duplicate %s", vm.ID)
+		}
+		seen[vm.ID] = true
+	}
+	if len(vms) != 100 || calls != 2 {
+		t.Fatalf("vms = %d, requests = %d; want 100 and 2", len(vms), calls)
+	}
+}
+
+// QA-9: past listMaxPages the list is not complete — an error, not a list
+// cut short without a word.
+func TestCompute_ListPastMaxPagesFails(t *testing.T) {
+	var limits []string
+	a, done := pagedServer(t, "/api/v1/subnets", (listMaxPages+5)*listPageSize, &limits)
+	defer done()
+	l, err := a.ListSubnets(context.Background(), "p")
+	if err == nil || !strings.Contains(err.Error(), "/api/v1/subnets") {
+		t.Fatalf("subnets = %d, err = %v; want an incomplete-list error", len(l), err)
+	}
+	if len(limits) != listMaxPages {
+		t.Errorf("requests = %d, want %d", len(limits), listMaxPages)
+	}
+}
+
+// A list of exactly listMaxPages full pages is whole, and one of several
+// pages arrives without duplicates.
+func TestCompute_ListMaxPagesExactlyIsWhole(t *testing.T) {
+	for _, total := range []int{250, listMaxPages * listPageSize} {
+		var limits []string
+		a, done := pagedServer(t, "/api/v1/subnets", total, &limits)
+		l, err := a.ListSubnets(context.Background(), "p")
+		done()
+		if err != nil || len(l) != total {
+			t.Fatalf("total %d: subnets = %d, err = %v", total, len(l), err)
+		}
+		seen := map[string]bool{}
+		for _, s := range l {
+			if seen[s.ID] {
+				t.Fatalf("total %d: duplicate %s", total, s.ID)
+			}
+			seen[s.ID] = true
+		}
+	}
+}
 
 // pagedServer serves total items under path in documented pages (limit ≤
 // 100) and records every limit it was sent.

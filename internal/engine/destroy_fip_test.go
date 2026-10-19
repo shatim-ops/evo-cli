@@ -99,7 +99,7 @@ func TestDestroy_NoFloatingIPNothingToRelease(t *testing.T) {
 func TestDestroy_FloatingIPAlreadyGone(t *testing.T) {
 	eng, cloud, _ := destroyFixture(t, runningRecord())
 	cloud.deleteFloatingIPFn = func(context.Context, string, string) error {
-		return clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
+		return clerrors.New(clerrors.CodeNotFound, "resource not found", "")
 	}
 	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
 		t.Fatalf("Destroy: %v", err)

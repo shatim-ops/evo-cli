@@ -432,8 +432,8 @@ func (c Catalog) byID(ctx context.Context, id string) (*provision.ImageDetail, e
 	d, err := c.Cloud.GetImage(ctx, id)
 	if err != nil {
 		var ce *clierrors.CLIError
-		// The compute adapter answers a 404 with VM_NOT_FOUND, whatever
-		// the resource.
+		// The compute adapter answers a 404 on an image with NOT_FOUND
+		// (VM_NOT_FOUND before QA-10; a fake may still say so).
 		if stderrors.As(err, &ce) && (ce.Code == clierrors.CodeNotFound || ce.Code == clierrors.CodeVMNotFound) {
 			return nil, notFound(id)
 		}

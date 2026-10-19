@@ -74,7 +74,7 @@ func CreateRejected(err error) bool {
 		return true
 	}
 	var ce *clierrors.CLIError
-	return errors.As(err, &ce) && (ce.Code == clierrors.CodeAPIRateLimited || ce.Code == clierrors.CodeVMNotFound)
+	return errors.As(err, &ce) && (ce.Code == clierrors.CodeAPIRateLimited || ce.Code == clierrors.CodeVMNotFound || ce.Code == clierrors.CodeNotFound)
 }
 
 // IsNameTaken reports the 409 of a create whose name is already used in

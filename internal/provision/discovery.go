@@ -7,6 +7,7 @@ package provision
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -56,6 +57,7 @@ func listProjectScoped[T any](a *CloudRuAdapter, ctx context.Context, path, proj
 // no such parameters).
 func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged bool) ([]*T, error) {
 	var out []*T
+	seen := map[string]bool{}
 	offset := 0
 	for range listMaxPages {
 		pq := url.Values{}
@@ -84,7 +86,26 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 
 		var page paginatedResponse[T]
 		if err := json.Unmarshal(body, &page); err == nil && page.Items != nil {
+			// The ids of the page, to drop items already read: a server
+			// that ignores offset answers the first page again and again
+			// (QA-9: 300 items, 100 distinct).
+			var ids paginatedResponse[struct {
+				ID string `json:"id"`
+			}]
+			_ = json.Unmarshal(body, &ids)
+			fresh := false
 			for i := range page.Items {
+				id := ""
+				if i < len(ids.Items) {
+					id = ids.Items[i].ID
+				}
+				if id != "" {
+					if seen[id] {
+						continue
+					}
+					seen[id] = true
+				}
+				fresh = true
 				out = append(out, &page.Items[i])
 			}
 			offset += len(page.Items)
@@ -93,7 +114,8 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			if page.Total == 0 {
 				done = len(page.Items) < listPageSize
 			}
-			if !paged || len(page.Items) == 0 || done {
+			// A page with nothing new ends the walk too: offset is ignored.
+			if !paged || len(page.Items) == 0 || done || !fresh {
 				return out, nil
 			}
 			continue
@@ -107,7 +129,10 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 		}
 		return nil, clierrors.New(clierrors.CodeAPIError, i18n.Tf("failed to decode list response for %s", "не удалось разобрать список %s", path), hintUnexpectedFormatVerbose())
 	}
-	return out, nil
+	// Past listMaxPages the list is cut short: an error, as pager.All
+	// gives, not a partial list without a word (QA-9).
+	return nil, errors.New(i18n.Tf("%s: more than %d pages, the list is not complete",
+		"%s: больше %d страниц, список не полон", path, listMaxPages))
 }
 
 // ListVMsInProject lists VMs scoped to a project (the /vms endpoint requires
@@ -195,7 +220,7 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 
 // DeleteSecurityGroupRule deletes one rule via
 // DELETE /api/v1/security-groups/{id}/rules/{rule_id} (204; 404 when the
-// rule is gone, which the adapter reports as CodeVMNotFound).
+// rule is gone, which the adapter reports as CodeNotFound).
 func (a *CloudRuAdapter) DeleteSecurityGroupRule(ctx context.Context, sgID, ruleID string) error {
 	path := fmt.Sprintf("/api/v1/security-groups/%s/rules/%s", seg(sgID), seg(ruleID))
 	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)

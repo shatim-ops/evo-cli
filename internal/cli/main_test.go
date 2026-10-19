@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,6 +92,48 @@ func TestHandleError_InterruptedKeepsHint(t *testing.T) {
 	if !strings.Contains(buf.String(), `"code":130`) || !strings.Contains(buf.String(), "vm-1") ||
 		!strings.Contains(buf.String(), "destroy --yes") {
 		t.Errorf("interrupt must keep the VM hint: %q", buf.String())
+	}
+}
+
+// QA-16: Ctrl-C cuts off a request, which fails as API_UNREACHABLE with a
+// hint about the proxy and "interrupt signal received". The error is
+// "interrupted" (130, INTERRUPTED) without the network blamed, in both
+// languages and both formats.
+func TestHandleError_InterruptedNoNetworkHint(t *testing.T) {
+	defer i18n.SetLang(i18n.EN)
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		cut := stderrors.New("interrupt signal received")
+		inner := clerrors.Wrap(clerrors.CodeAPIUnreachable, i18n.T("failed to reach IAM endpoint", "IAM недоступен"),
+			clerrors.NetworkHint(&net.OpError{Op: "proxyconnect", Net: "tcp", Err: cut}, "check the network"), cut)
+		err := fmt.Errorf("%w: %w", context.Canceled, fmt.Errorf("vm_list: %w", inner))
+		want := i18n.T("interrupted", "прервано")
+
+		var buf bytes.Buffer
+		handleError(output.NewWithWriter(&buf, output.ModeJSON, false), err)
+		var got struct {
+			Error struct {
+				Code    int    `json:"code"`
+				Reason  string `json:"reason"`
+				Message string `json:"message"`
+				Hint    string `json:"hint"`
+			} `json:"error"`
+		}
+		if e := json.Unmarshal(buf.Bytes(), &got); e != nil {
+			t.Fatalf("%s: %v: %q", lang, e, buf.String())
+		}
+		if got.Error.Code != clerrors.ExitInterrupted || got.Error.Reason != clerrors.ReasonInterrupted ||
+			got.Error.Message != want || got.Error.Hint != "" {
+			t.Errorf("%s: %+v", lang, got.Error)
+		}
+
+		buf.Reset()
+		handleError(output.NewWithWriter(&buf, output.ModeText, false), err)
+		text := buf.String()
+		if !strings.Contains(text, want) || strings.Contains(text, "IAM") || strings.Contains(strings.ToLower(text), "proxy") ||
+			strings.Contains(text, "прокси") || strings.Contains(text, "interrupt signal") {
+			t.Errorf("%s: text %q", lang, text)
+		}
 	}
 }
 

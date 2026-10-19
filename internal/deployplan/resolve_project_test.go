@@ -70,6 +70,15 @@ func newProjectViewCloud() *projectViewCloud {
 	}
 }
 
+// QA-14: deploy_plan disk_gb=-5 is USAGE before any request, not 10 GB.
+func TestResolve_NegativeDiskRefused(t *testing.T) {
+	cloud := newProjectViewCloud()
+	plan, err := Resolve(context.Background(), cloud, "proj-1", Params{DiskGB: -5})
+	if plan != nil || clierrors.Reason(err) != clierrors.CodeUsage || len(cloud.projected) != 0 {
+		t.Fatalf("plan %v, err %v, image lookups %d", plan != nil, err, len(cloud.projected))
+	}
+}
+
 func TestResolve_ImageNotInProjectRefused(t *testing.T) {
 	for _, ref := range []string{"astra_1.8.1", pvAstra} {
 		cloud := newProjectViewCloud()

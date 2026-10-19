@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -475,7 +476,7 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 
 		case resp.StatusCode == http.StatusNotFound:
 			resp.Body.Close()
-			return nil, clierrors.New(clierrors.CodeVMNotFound, i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
+			return nil, clierrors.New(notFoundCode(path), i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
 				i18n.T("Verify the resource ID and API endpoint", "Проверьте ID ресурса и адрес API"))
 
 		case resp.StatusCode >= 500 && resp.StatusCode < 600 && method == http.MethodGet:
@@ -511,4 +512,20 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 	}
 
 	return nil, clierrors.New(clierrors.CodeAPIRateLimited, msgRateLimited(), hintRateLimited())
+}
+
+// notFoundCode is the code of a 404 on path: VM_NOT_FOUND for a VM
+// (/api/v1/vms, /api/v1.1/vms/{id}/…), NOT_FOUND for anything else — a
+// disk, a floating IP, a rule (QA-10: "delete disk: VM_NOT_FOUND"). Both
+// exit with 4.
+func notFoundCode(path string) string {
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+	// "/api/<version>/<collection>/…"
+	parts := strings.SplitN(strings.TrimPrefix(path, "/"), "/", 4)
+	if len(parts) >= 3 && parts[0] == "api" && parts[2] == "vms" {
+		return clierrors.CodeVMNotFound
+	}
+	return clierrors.CodeNotFound
 }

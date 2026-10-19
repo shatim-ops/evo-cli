@@ -249,6 +249,45 @@ func TestNotFound(t *testing.T) {
 	}
 }
 
+// QA-10: a 404 on a disk, a floating IP or a rule is NOT_FOUND, not
+// VM_NOT_FOUND ("delete disk: VM_NOT_FOUND"); a VM path keeps
+// VM_NOT_FOUND. Both exit with 4.
+func TestNotFound_CodeByPath(t *testing.T) {
+	srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotFound) })
+	defer srv.Close()
+	ctx := context.Background()
+	for name, tc := range map[string]struct {
+		call func() error
+		code string
+	}{
+		"delete disk": {func() error { return a.DeleteDisk(ctx, "d-1", "p") }, clierrors.CodeNotFound},
+		"delete fip":  {func() error { return a.DeleteFloatingIP(ctx, "f-1", "p") }, clierrors.CodeNotFound},
+		"delete rule": {func() error { return a.DeleteSecurityGroupRule(ctx, "sg", "r") }, clierrors.CodeNotFound},
+		"get vm":      {func() error { _, err := a.GetVMDetail(ctx, "vm-1"); return err }, clierrors.CodeVMNotFound},
+		"delete vm":   {func() error { return a.DeleteVMInProject(ctx, "vm-1", "p") }, clierrors.CodeVMNotFound},
+	} {
+		err := tc.call()
+		var ce *clierrors.CLIError
+		if !errors.As(err, &ce) || ce.Code != tc.code || clierrors.ExitCode(err) != clierrors.ExitNotFound {
+			t.Errorf("%s: err = %v, want %s (exit 4)", name, err, tc.code)
+		}
+	}
+	for path, want := range map[string]string{
+		"/api/v1/vms":                  clierrors.CodeVMNotFound,
+		"/api/v1/vms?project_id=p":     clierrors.CodeVMNotFound,
+		"/api/v1.1/vms":                clierrors.CodeVMNotFound,
+		"/api/v1/vms/x/interfaces":     clierrors.CodeVMNotFound,
+		"/api/v1/disks/x":              clierrors.CodeNotFound,
+		"/api/v1/disks/vms":            clierrors.CodeNotFound,
+		"/api/v1/floating-ips/x?vms=1": clierrors.CodeNotFound,
+		"/api/v1/images/x":             clierrors.CodeNotFound,
+	} {
+		if got := notFoundCode(path); got != want {
+			t.Errorf("notFoundCode(%q) = %s, want %s", path, got, want)
+		}
+	}
+}
+
 func TestServerError(t *testing.T) {
 	srv, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

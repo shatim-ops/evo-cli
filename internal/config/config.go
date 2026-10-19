@@ -8,6 +8,7 @@
 package config
 
 import (
+	stderrors "errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // Config holds all configuration values for evo.
@@ -203,7 +205,7 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		}
 		if err := setField(&cfg, m.field, val); err != nil {
 			return Config{}, nil, clerrors.Wrap(clerrors.CodeConfigInvalid,
-				i18n.Tf("env %s: %v", "переменная %s: %v", m.envVar, err),
+				i18n.Tf("env %s: %s", "переменная %s: %s", m.envVar, errText(err)),
 				i18n.T("Fix or unset the variable", "Исправьте или удалите переменную"), err)
 		}
 		origins[m.field] = OriginEnv
@@ -234,6 +236,12 @@ func resolve(opts Options) (Config, map[string]string, error) {
 	// Layer 4: CLI flags (highest precedence).
 	for key, val := range opts.Flags {
 		if err := setFieldAny(&cfg, key, val); err != nil {
+			// A refusal with its own code (USAGE: --disk-size -5) says
+			// what is wrong in the flag's own terms.
+			var ce *clerrors.CLIError
+			if stderrors.As(err, &ce) {
+				return Config{}, nil, err
+			}
 			return Config{}, nil, fmt.Errorf("flag %s: %w", key, err)
 		}
 		origins[key] = OriginFlag
@@ -498,6 +506,11 @@ func applyProjectFile(cfg *Config, path string, origins map[string]string) error
 	// security_group: was parsed and never merged: deploy opened the
 	// compose ports in the zone's default group (release audit, A-001).
 	mergeString(&cfg.SecurityGroup, strings.TrimSpace(fileCfg.SecurityGroup), "SecurityGroup")
+	if err := provision.CheckBootDiskGB(fileCfg.DiskSize); err != nil {
+		return clerrors.Wrap(clerrors.CodeConfigInvalid,
+			i18n.Tf("%s: disk_size must be a positive number of GB, not %d", "%s: disk_size — положительное число ГБ, а не %d", path, fileCfg.DiskSize),
+			i18n.T("Set disk_size to the size in GB, or remove it for the default.", "Задайте в disk_size размер в ГБ или удалите ключ: будет размер по умолчанию."), err)
+	}
 	if fileCfg.DiskSize != 0 {
 		cfg.DiskSize = fileCfg.DiskSize
 		origins["DiskSize"] = OriginProject
@@ -507,6 +520,16 @@ func applyProjectFile(cfg *Config, path string, origins map[string]string) error
 		origins["Timeout"] = OriginProject
 	}
 	return nil
+}
+
+// errText is the message of err without the code prefix a CLIError
+// carries ("USAGE: …").
+func errText(err error) string {
+	var ce *clerrors.CLIError
+	if stderrors.As(err, &ce) {
+		return ce.Message
+	}
+	return err.Error()
 }
 
 // setField sets a Config field from a string value (used for env vars).
@@ -538,6 +561,9 @@ func setFieldAny(cfg *Config, field string, val any) error {
 	case "DiskSize":
 		n, err := toInt(val)
 		if err != nil {
+			return err
+		}
+		if err := provision.CheckBootDiskGB(n); err != nil {
 			return err
 		}
 		cfg.DiskSize = n
