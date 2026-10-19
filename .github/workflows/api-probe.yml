@@ -6,14 +6,21 @@ name: api-probe
 # параметров camelCase/snake_case, вложенные поля зоны и IP, каталог образов,
 # расчёт цены, каталог плагинов mk8s, списки и спецификации Kafka/Redis,
 # группы узлов mk8s, диски evo без ВМ, признаки подсетей, SNAT-шлюзы и их
-# адреса, имена claims токена. Ничего не создаёт и не удаляет: всё —
-# GET, кроме POST price-calculation, который только считает стоимость.
+# адреса, имена claims токена; открытые вопросы реестра
+# (docs/internal/cloudru-discrepancies.md, «Что проверить пробой»: P13, P15,
+# P20, P23–P28) — потребление и договор, команда протокола догфуда
+# billing_consumption, версии сертификата, брокеры Kafka, предел размера
+# диска, расписание резервных копий PostgreSQL, параметр resource у токена
+# IAM. Ничего не создаёт и не удаляет: всё — GET, кроме POST
+# price-calculation, который только считает стоимость, и обмена ключа на
+# токен.
 #
 # Репозиторий публичный, лог виден всем: печатаются только коды HTTP, имена
 # полей, количества и признаки — никаких значений, ID, адресов и токенов. Исключение —
 # имена образов общего каталога Cloud.ru: они публичны (видны любому
 # клиенту); образы проекта — только счётчики. И ещё текст ошибки API
-# (message, grpc-message) — до 160 символов, ID в нём замаскированы.
+# (message, grpc-message) — до 160 символов, ID в нём замаскированы. Всё,
+# что печатают пробы, проходит через .github/scripts/redact.sed.
 #
 # Ничего не создаёт: первый шаг — только GET; второй проверяет, что ключ не
 # может менять ресурсы (неполное тело, несуществующий ID). Ключ облака — секреты окружения
@@ -35,8 +42,20 @@ jobs:
     # Ключ только на чтение — из окружения cloud-readonly (см. cloud-e2e.yml).
     environment: cloud-readonly
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
+      # Код нужен ради redact.sed и сборки evo: P23 проверяет команду
+      # протокола догфуда так, как её запускает участник.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+      - name: Сборка evo
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       - name: Проверки (только GET, только форма ответа)
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
@@ -64,7 +83,7 @@ jobs:
           # (только имена полей и числа).
           # Лог публичный: в тексте ошибок API могут быть ID и адреса —
           # всё, что печатают пробы, проходит через redact.
-          redact() { sed -E 's/[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}/<id>/g; s/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g'; }
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
           probe() {
             local name=$1 url=$2 filter=$3 r c b
             r=$(curl -sS -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "$url" || true)
@@ -348,6 +367,249 @@ jobs:
             echo "nodepools_cluster: кластеров в проекте нет — запрос с clusterId пропущен"
           fi
           probeh nodepools_unknown_cluster    "$M/v3/nodePools?clusterId=00000000-0000-4000-8000-000000000000" "$nlist"
+
+      # Открытые вопросы реестра (docs/internal/cloudru-discrepancies.md,
+      # «Что проверить пробой»): P13, P15, P20, P23–P28. Только чтение, кроме
+      # расчёта цены и обмена ключа на токен. В лог — коды HTTP, имена полей,
+      # счётчики, признаки «есть/нет поле»; сумм, ID и токенов нет. Упавшая
+      # проба печатает строку и не валит шаг.
+      - name: Открытые вопросы реестра (P13, P15, P20, P23–P28)
+        env:
+          # Конфигурация evo (ключ) — во временном каталоге раннера, не в checkout.
+          CLOUDRU_CONFIG_DIR: ${{ runner.temp }}/evo-config
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] ||
+            { echo "::error::нет секретов CLOUDRU_KEY_ID / CLOUDRU_SECRET / CLOUDRU_PROJECT_ID"; exit 1; }
+          echo "::add-mask::$PROJECT"
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token \
+              -H 'Content-Type: application/json' --data-binary @- |
+            jq -r '.access_token // .accessToken // empty' || true)
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          NOID=00000000-0000-4000-8000-000000000000
+          C=https://compute.api.cloud.ru/api/v1
+          P="project_id=$PROJECT"
+          O=https://organization.api.cloud.ru
+
+          # get URL — тело ответа, только для выбора ID (в лог не идёт).
+          get() { curl -sS -H "Authorization: Bearer $TOKEN" "$1" 2>/dev/null || true; }
+          # probeh NAME URL JQ — код HTTP, JQ по телу и заголовок grpc-message
+          # (до 160 символов); при обрыве (http=000) — начало ошибки curl.
+          probeh() {
+            local name=$1 url=$2 filter=$3 r c b h e g
+            h=$(mktemp); e=$(mktemp)
+            r=$(curl -sS -D "$h" -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "$url" 2>"$e" || true)
+            c=${r##*$'\n'}; b=${r%$'\n'*}
+            g=$(awk 'tolower($1) == "grpc-message:" { sub(/^[^:]*:[ ]*/, ""); sub(/\r$/, ""); print; exit }' "$h" || true)
+            [ "$c" != 000 ] || g=$(head -c 120 "$e" | tr '\n' ' ')
+            rm -f "$h" "$e"
+            printf '%-30s http=%s %s grpc=%.160s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c "$filter" 2>/dev/null || echo 'не JSON')" "${g:--}" | redact
+          }
+          em='message: ((.message // null) | if . == null then null else tostring | .[0:160] end)'
+
+          # BIL-5: спецификация «Контроль затрат» v2 — agreement_id и
+          # project_ids необязательны; потребление «по проекту» — роль
+          # platform.project.admin (api-ref_start). У ключа наблюдателя этой
+          # роли нет: 403 здесь ожидаем по документации и расхождением не
+          # является. amount/amount_nds — только «есть ли поле».
+          echo "== P20 (BIL-5): /v2/consumption по проекту без договора"
+          cs=$(date -u -d '-30 days' +%Y-%m-%dT00:00:00Z); ce=$(date -u +%Y-%m-%dT23:59:59Z)
+          # shellcheck disable=SC2016 # $c — переменная jq
+          cons='if type == "object" then (.consumptions // null) as $c | {top: keys,
+            n: ($c | if . == null then null else length end),
+            has_amount: ($c | if (. // []) == [] then null else any(.[]; has("amount")) end),
+            has_amount_nds: ($c | if (. // []) == [] then null else any(.[]; has("amount_nds")) end),
+            item: ($c | if (. // []) == [] then null else (.[0] | keys) end),
+            next: ((.next_page_token // "") != ""), '"$em"'} else {type: type} end'
+          probeh consumption_project      "$O/v2/consumption?project_ids=$PROJECT&start_date=$cs&end_date=$ce&page_filter.page_size=10" "$cons"
+          probeh consumption_no_filter    "$O/v2/consumption?start_date=$cs&end_date=$ce&page_filter.page_size=10" "$cons"
+
+          # BIL-4: договор — GET /v3/agreements?customer_ids=… (FAQ
+          # faq__api_id_agreement; «ID договора доступен только пользователям с
+          # ролями «Администратор организации» и «Администратор затрат»»),
+          # баланс — billing.api.cloud.ru (нет ни в одной спецификации).
+          # customer_id — из claim токена (P19), в лог не идёт.
+          echo "== P13 (BIL-4): договор и хост баланса"
+          p=$(printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
+          while [ $(( ${#p} % 4 )) -ne 0 ]; do p="$p="; done
+          cust=$(printf '%s' "$p" | base64 -d 2>/dev/null | jq -r '.customer_id // empty' 2>/dev/null || true)
+          unset p
+          [ -z "$cust" ] || echo "::add-mask::$cust"
+          # shellcheck disable=SC2016 # $a — переменная jq
+          agr='if type == "object" then (.agreements // null) as $a | {top: keys, n: ($a | if . == null then null else length end), item: ($a | if (. // []) == [] then null else (.[0] | keys) end), '"$em"'} else {type: type} end'
+          probeh agreements_v3_no_params  "$O/v3/agreements" "$agr"
+          agid=""
+          if [ -n "$cust" ]; then
+            probeh agreements_v3_customer "$O/v3/agreements?customer_ids=$cust" "$agr"
+            agid=$(get "$O/v3/agreements?customer_ids=$cust" | jq -r '(.agreements // [])[0] | (.id // .agreement_id // empty)' 2>/dev/null || true)
+          else
+            echo "agreements_v3_customer: в токене нет customer_id — запрос пропущен"
+          fi
+          B=https://billing.api.cloud.ru
+          probeh billing_root             "$B/" '{top: (if type == "object" then keys else type end)}'
+          probeh billing_agreement_noid   "$B/v1/agreement/$NOID" "if type == \"object\" then {top: keys, $em} else {type: type} end"
+          if [ -n "$agid" ]; then
+            echo "::add-mask::$agid"
+            # Баланс — только имена полей, без сумм.
+            probeh billing_agreement_own  "$B/v1/agreement/$agid" "if type == \"object\" then {top: keys, has_balance: has(\"balance\"), $em} else {type: type} end"
+            probeh consumption_agreement  "$O/v2/consumption?agreement_id=$agid&start_date=$cs&end_date=$ce&page_filter.page_size=10" "$cons"
+          else
+            echo "billing_agreement_own: ID договора ключу не виден — баланс и потребление по договору не проверены"
+          fi
+
+          # Протокол догфуда, §5: «evo tools call billing_consumption --arg
+          # start=<дата начала волны> --json» с ключом уровня проекта. evo
+          # берёт договор только из CLOUDRU_AGREEMENT_ID; без него — отказ
+          # CONFIG_INVALID до запроса к API. Проба показывает, что получит
+          # участник: код выхода, status, reason, текст ошибки (до 160
+          # символов), число строк и имена полей ответа — без сумм.
+          echo "== P23 (BIL-5, протокол догфуда §5): evo tools call billing_* без договора"
+          if command -v evo >/dev/null; then
+            printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null 2>&1 ||
+              echo "evo configure: ошибка — P23 покажет её же"
+            day=$(date -u -d yesterday +%F)
+            ee=$(mktemp)
+            for t in billing_consumption billing_balance; do
+              a=(); [ "$t" = billing_consumption ] && a=(--arg "start=$day")
+              out=$(env -u CLOUDRU_AGREEMENT_ID evo tools call "$t" "${a[@]}" --json 2>"$ee") && rc=0 || rc=$?
+              res=$(printf '%s' "$out" | jq -c 'if type == "object" then {status: (.status // null), reason: (.reason // null), error: ((.error // null) | if . == null then null else tostring | .[0:160] end), records: (.records // null), keys: keys} else {type: type} end' 2>/dev/null | head -1 || true)
+              # Ответ не JSON — начало stderr evo (до 160 символов).
+              [ -n "$res" ] || res="не JSON, stderr: $(head -c 160 "$ee" | tr '\n' ' ')"
+              printf 'evo_%-26s exit=%s %s\n' "$t" "$rc" "$res" | redact
+            done
+            rm -f "$ee"
+            unset out res
+          else
+            echo "evo не собран — P23 пропущена"
+          fi
+
+          # CRT-1: инструкция «Просмотреть версии» — «…/versions?page.limit=10»,
+          # «page.limit — … Максимальное значение — 1000, по умолчанию — 100»;
+          # спецификация ccm.swagger.yaml — pageSize/pageToken, необязательные.
+          # Вживую без pageSize — 400. Несуществующий ID — для каждого варианта
+          # параметров: что проверяется раньше, параметры или объект (CRT-2).
+          echo "== P24 (CRT-1): версии сертификата — page.limit (инструкция) против pageSize (спецификация)"
+          CM=https://certificatemanager.api.cloud.ru/v1/certificate
+          certs=$(get "$CM?projectId=$PROJECT")
+          echo "certificates: $(printf '%s' "$certs" | jq -c '{n: ((.certificates // null) | if . == null then null else length end)}' 2>/dev/null || echo 'не JSON')" | redact
+          cid=$(printf '%s' "$certs" | jq -r '(.certificates // [])[0].id // empty' 2>/dev/null || true)
+          unset certs
+          [ -z "$cid" ] || echo "::add-mask::$cid"
+          vers='if type == "object" then {top: keys, n: ((.versions // null) | if . == null then null else length end), next: ((.nextPageToken // .next_page_token // "") != ""), '"$em"'} else {type: type} end'
+          for kind in own noid; do
+            id=$cid; [ "$kind" = noid ] && id=$NOID
+            if [ -z "$id" ]; then echo "crt_own: нет сертификатов, пропуск"; continue; fi
+            for q in "" pageSize=10 page.limit=10 "page.limit=10&page.offset=0" "pageSize=10&bogus=1"; do
+              probeh "crt_${kind}_${q:-no_params}" "$CM/$id/versions${q:+?$q}" "$vers"
+            done
+          done
+
+          # DB-10: в спецификации paas-kafka у Specification есть min_brokers
+          # («Минимальное количество брокеров.») и max_brokers; живой прогон
+          # 17.10 их в ответе не нашёл. Запрос — как у evo: version_id и зона
+          # (ru.AZ-2). Числа брокеров не секретны — печатаем их.
+          echo "== P25 (DB-10): Kafka — min_brokers и max_brokers в спецификациях"
+          K=https://kafka.api.cloud.ru/v1
+          az=$(get "$C/availability-zones" | jq -r '[(.items? // .)[] | select(.name == "ru.AZ-2") | .id][0] // empty' 2>/dev/null || true)
+          if [ -z "$az" ]; then
+            echo "kafka_brokers: зона ru.AZ-2 не найдена — пропуск"
+          else
+            echo "::add-mask::$az"
+            # shellcheck disable=SC2016 # $s — переменная jq
+            brk='if type == "object" then (.specifications // []) as $s | {n: ($s | length), item: ($s | if . == [] then null else (.[0] | keys) end), with_min: ([$s[] | select(has("min_brokers"))] | length), with_max: ([$s[] | select(has("max_brokers"))] | length), min_brokers: ([$s[].min_brokers] | unique), max_brokers: ([$s[].max_brokers] | unique), '"$em"'} else {type: type} end'
+            # Имя версии («kafka 3.9.1») — публичный каталог продукта.
+            vl=$(get "$K/versions?product_type=kafka" | jq -r '(.versions // [])[:5][] | "\(.id) \((.name // "?") | tostring | gsub("[^A-Za-z0-9._-]"; "_"))"' 2>/dev/null || true)
+            [ -n "$vl" ] || echo "kafka_brokers: список версий не получен — пропуск"
+            while read -r vid vname; do
+              [ -n "$vid" ] || continue
+              echo "::add-mask::$vid"
+              probeh "kafka_brokers_$vname" "$K/specifications?version_id=$vid&availability_zone_id=$az" "$brk"
+            done <<< "$vl"
+          fi
+
+          # IAM и MCP: RFC 8707 (resource indicators) — попадает ли resource в
+          # aud токена. Документация Evolution (Аутентификация в API, Быстрый
+          # старт API) о resource и aud не говорит. Обмен — как у evo для mk8s
+          # (id.cloud.ru, client_credentials, internal/mk8s/kubeconfig.go) и как
+          # в «Быстром старте» (auth.iam.cloud.ru, access_key). Печатаются только
+          # код HTTP, поле error и claims aud и azp (ключ и проект — заменены);
+          # токен маскируется и не печатается.
+          echo "== P26 (MCP, RFC 8707): учитывает ли IAM параметр resource"
+          RES=https://mcp.example.invalid
+          # shellcheck disable=SC2016 # $k, $p, $r — переменные jq
+          jwt() {
+            local x; x=$(printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+')
+            while [ $(( ${#x} % 4 )) -ne 0 ]; do x="$x="; done
+            printf '%s' "$x" | base64 -d 2>/dev/null | jq -c --arg k "$KEY_ID" --arg p "$PROJECT" --arg r "$RES" \
+              'def m: if . == $k then "<key_id>" elif . == $p then "<project>" else . end;
+               {aud: (.aud | if type == "array" then map(m) else m end), azp: ((.azp // null) | m), aud_has_resource: ([.aud] | flatten | any(.[]; . == $r))}' 2>/dev/null || echo 'не JWT'
+          }
+          # shellcheck disable=SC2016 # $g, $k, $s, $r — переменные jq
+          oidc() {
+            local name=$1 url=$2 grant=$3 res=$4 r c b at it
+            r=$(jq -rn --arg g "$grant" --arg k "$KEY_ID" --arg s "$SECRET" --arg r "$res" \
+                '"grant_type=\($g|@uri)&client_id=\($k|@uri)&client_secret=\($s|@uri)" + (if $r == "" then "" else "&resource=\($r|@uri)" end)' |
+              curl -sS -X POST "$url" -H 'Content-Type: application/x-www-form-urlencoded' --data-binary @- -w '\n%{http_code}' 2>/dev/null || true)
+            c=${r##*$'\n'}; b=${r%$'\n'*}
+            at=$(printf '%s' "$b" | jq -r '.access_token // empty' 2>/dev/null || true)
+            it=$(printf '%s' "$b" | jq -r '.id_token // empty' 2>/dev/null || true)
+            [ -z "$at" ] || echo "::add-mask::$at"
+            [ -z "$it" ] || echo "::add-mask::$it"
+            printf '%-30s http=%s error=%s access=%s id=%s\n' "$name" "$c" \
+              "$(printf '%s' "$b" | jq -r '.error // "-"' 2>/dev/null | head -c 60 || echo 'не JSON')" \
+              "$(if [ -n "$at" ]; then jwt "$at"; else echo -; fi)" "$(if [ -n "$it" ]; then jwt "$it"; else echo -; fi)" | redact
+          }
+          oidc oidc_cc_no_resource https://id.cloud.ru/auth/system/openid/token client_credentials ""
+          oidc oidc_cc_resource    https://id.cloud.ru/auth/system/openid/token client_credentials "$RES"
+          oidc oidc_ak_no_resource https://auth.iam.cloud.ru/auth/system/openid/token access_key ""
+          oidc oidc_ak_resource    https://auth.iam.cloud.ru/auth/system/openid/token access_key "$RES"
+
+          # CMP-12: «Максимальный размер диска 16 ТБ» (Ограничения дисков),
+          # VM-spec — size maximum 16384; у типа диска в ответе GET /disk-types
+          # по спецификации есть max_size (maximum 16384). Имена типов дисков —
+          # публичный каталог. Расчёт цены: в схеме _DisksCount у size
+          # максимума нет, поэтому 200 там — не доказательство приёма диска.
+          echo "== P27, P15 (CMP-12): предел размера диска"
+          probeh disk_types_sizes "$C/disk-types?$P" '[(.items? // .)[] | {name, min_size, max_size, has_max: has("max_size")}]'
+          flavor=$(get "$C/flavors?limit=100" | jq -r '[.items[] | select((.gpu // 0) == 0)] | sort_by(.cpu, .ram) | .[0].id // empty' 2>/dev/null || true)
+          disk=$(get "$C/disk-types?$P" | jq -r '(.items? // .)[0].id // empty' 2>/dev/null || true)
+          [ -z "$flavor" ] || echo "::add-mask::$flavor"
+          [ -z "$disk" ] || echo "::add-mask::$disk"
+          if [ -n "$flavor" ] && [ -n "$disk" ]; then
+            echo "price_disk: тип диска — первый в списке disk_types_sizes"
+            for size in 16384 16385 65536 65537; do
+              r=$(jq -n --arg f "$flavor" --arg d "$disk" --argjson n "$size" '{total_count: 1, flavor_id: $f, disks: [{disk_type_id: $d, size: $n}]}' |
+                curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}' "$C/projects/$PROJECT/price-calculation" 2>/dev/null || true)
+              c=${r##*$'\n'}; b=${r%$'\n'*}
+              printf '%-30s http=%s %s\n' "price_disk_$size" "$c" "$(printf '%s' "$b" | jq -c 'if type == "array" then {errors: [.[] | {code: (.code // null), message: ((.message // .msg // null) | if . == null then null else tostring | .[0:160] end)}]} elif type == "object" then {keys: keys, total_positive: ((.total_price_month // 0) > 0), detail: (.detail | if type == "array" then [.[] | .msg? // .] elif . == null then null else (tostring | .[0:160]) end)} else {raw: (tostring | .[0:160])} end' 2>/dev/null || echo 'не JSON')" | redact
+            done
+          else
+            echo "price_disk: нет флейвора или типа диска — расчёт пропущен"
+          fi
+
+          # DB-6: инструкция «Политика резервного копирования» — пример
+          # «15 14 * * *»; спецификация BackupSpec.schedule — example
+          # «0 3 * * 0» и в описании «'15 14 ? * *'», «По умолчанию запускается
+          # каждое воскресенье в 03:00». Без создания кластера видно только,
+          # в каком виде API хранит расписание у уже существующих кластеров.
+          echo "== P28 (DB-6): расписание резервных копий у кластеров PostgreSQL проекта"
+          PG=https://postgresql.api.cloud.ru/v1
+          pgl=$(get "$PG/clusters?$P&page_size=100")
+          echo "pg_clusters: $(printf '%s' "$pgl" | jq -c '{n: ((.clusters // null) | if . == null then null else length end)}' 2>/dev/null || echo 'не JSON')" | redact
+          pids=$(printf '%s' "$pgl" | jq -r '(.clusters // [])[:5][] | .id // empty' 2>/dev/null || true)
+          unset pgl
+          [ -n "$pids" ] || echo "pg_backup_schedule: кластеров PostgreSQL в проекте нет, пропуск"
+          for id in $pids; do echo "::add-mask::$id"; done
+          # shellcheck disable=SC2016 # $s — переменная jq
+          for id in $pids; do
+            probeh pg_backup_schedule "$PG/clusters/$id" 'if type == "object" then (.backup.schedule? // null) as $s | {status: (.status // null), has_backup: has("backup"), schedule: $s, fields: ($s | if . == null then null else (split(" ") | map(select(. != "")) | length) end), has_q: ($s | if . == null then null else contains("?") end), retention_days: (.backup.retention_policy_days? // null)} else {type: type} end'
+          done
 
       # Ключ cloud-readonly должен только читать: роль «Наблюдатель проекта»
       # тянет за собой роли *.user сервисов, и что они разрешают, по

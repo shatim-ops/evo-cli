@@ -794,9 +794,11 @@ API» — ответ неверен независимо от документа
 
 ## Что проверить пробой
 
-Все пробы — только чтение (кроме P9: `POST price-calculation`, который
-ничего не создаёт). В лог — только коды HTTP, имена полей, числа и
-сообщения об ошибках, обрезанные до 160 символов; ID и IP — маскировать.
+Все пробы — только чтение (кроме P9, P15, P27: `POST price-calculation`,
+который ничего не создаёт, и P26: обмен ключа на токен). В лог — только коды
+HTTP, имена полей, числа и сообщения об ошибках, обрезанные до 160 символов;
+ID и IP — маскировать, суммы — только «есть ли поле»; весь вывод — через
+`.github/scripts/redact.sed`.
 `P` — ID проекта, `T` — токен IAM.
 
 | № | Запрос | Что печатать | Закрывает |
@@ -812,16 +814,22 @@ API» — ответ неверен независимо от документа
 | P9 | `price-calculation` с `image_id` образа `windows2022std-evo-kmsB` и без флейвора/дисков | `http`, значения `image`, `mkp_image`, `total_price_month` | BIL-1 (цены публичны) |
 | P10 | `GET compute/api/v1/nat-gateways?project_id=P` | `total`, `[.items[].availability_zone.name]` | K8S-3: SNAT в проекте отсутствует (выполнена 17.10: шлюзов 0) |
 | P11 | `GET mk8s/v3/addons?projectId=P&filter=` `isBillable%20%3D%20true`, `isBillable%3Dtrue`, `isBillable%3Dfalse` | `http`, число, имена плагинов | K8S-4 |
-| P13 | `GET organization.api.cloud.ru/v3/agreements`; `GET https://billing.api.cloud.ru/` | `http`, ключи (без значений) | BIL-4 |
+| P13 | `GET organization.api.cloud.ru/v3/agreements` без параметров и `?customer_ids=<customer_id из токена>`; `GET https://billing.api.cloud.ru/`, `…/v1/agreement/<несуществующий>`; если договор виден — `…/v1/agreement/<он>` и `/v2/consumption?agreement_id=…` | `http`, ключи, число договоров, есть ли поле `balance` (без значений), `.message[0:160]` (в api-probe: `agreements_v3_*`, `billing_*`, `consumption_agreement`) | BIL-4 |
 | P14 | `GET compute/api/v1/disks?project_id=P&limit=100` | по признакам `evo-…`, `…-boot`, `bootable`, подключён ли (`vms`), `state` — число дисков; число дисков `evo-…` без ВМ (в api-probe: `disks_by_attachment`, `disks_evo_detached`) | CMP-11 (выполнена 17.10: не подтвердилось) |
-| P15 | `POST …/price-calculation` с `disks:[{disk_type_id, size: 20000}]` | `http`, `.[0].message[0:160]` | CMP-12 (в api-probe пока нет) |
+| P15 | `POST …/price-calculation` с `disks:[{disk_type_id, size}]`, `size` = 16384, 16385, 65536, 65537 | `http`, `code`/`message`/`detail[].msg` до 160 символов, без цен (в api-probe: `price_disk_*`) | CMP-12 (у `size` в `_DisksCount` максимума нет — 200 не доказывает приём диска; главное — P27) |
 | P16 | `GET compute/api/v1/vms?project_id=P&limit=100` | число повторяющихся `name` (без имён) | CMP-13 (в api-probe пока нет) |
 | P17 | `GET compute/api/v1/subnets?project_id=P&limit=100` | по зонам: есть ли поля `default`, `routed_network`, `dns_servers`, их значения, число DNS-серверов, `type`, `state`, имя начинается с `Default` (в api-probe: `subnet_flags`) | NET-5, OPS-3 (выполнена 17.10) |
 | P18 | `GET compute/api/v1/floating-ips?project_id=P&limit=100`; `GET …/nat-gateways?project_id=P` | `{state, nat: (.nat_gateway != null), iface, vm}` с числом; шлюзы по зонам, типы, состояния (в api-probe: `fip_nat_flags`, `nat_by_zone`) | NET-6, K8S-3 (17.10: шлюзов нет — для NET-6 нужен проект со шлюзом) |
 | P19 | payload токена `POST /api/v1/auth/token` (декодировать, не печатать) | имена claims, совпадает ли `project_id` с проектом, есть ли `customer_id`, `exp - iat` (в api-probe: `token_claims`) | IAM-4, IAM-3 (выполнена 17.10) |
-| P20 | `GET organization.api.cloud.ru/v2/consumption?project_ids=P&start_date=…&end_date=…&page_filter.page_size=10` | `http`, ключи, `.message[0:160]` | BIL-5 (в api-probe пока нет) |
+| P20 | `GET organization.api.cloud.ru/v2/consumption?project_ids=P&start_date=…&end_date=…&page_filter.page_size=10` (30 дней) и то же без `project_ids` | `http`, ключи, число строк, есть ли поля `amount`/`amount_nds`, имена полей строки, `.message[0:160]` (в api-probe: `consumption_project`, `consumption_no_filter`) | BIL-5 |
 | P21 | `GET mk8s/v3/productConfiguration?projectId=P` | `.channels[] \| {channel, availableVersions}`; `.flavors[] \| {cpu, ram, oversubscription, purpose}` | порядок версий и назначение флейворов (сверка k8s, 16.10) |
 | P22 | `GET mk8s/v3/clusterAddons?clusterId=<живой кластер k8s-smoke>` | имена плагинов CNI (`cilium`, `calico`, `tigera-operator`), `status` | K8S-6 |
+| P23 | `evo tools call billing_consumption --arg start=<вчера> --json` и `billing_balance` без `CLOUDRU_AGREEMENT_ID` (команда протокола догфуда, §5) | код выхода, `status`, `reason`, `error[0:160]`, число строк, имена полей ответа — без сумм (в api-probe: `evo_billing_*`) | BIL-5, `docs/internal/dogfood-protocol.md` §5 |
+| P24 | `GET certificatemanager…/v1/certificate/{id}/versions`: без параметров, `pageSize=10`, `page.limit=10`, `page.limit=10&page.offset=0`, `pageSize=10&bogus=1`; для первого сертификата проекта и для несуществующего ID | `http`, ключи, число версий, `grpc-message[0:160]`; нет сертификатов — «пропуск» (в api-probe: `crt_own_*`, `crt_noid_*`) | CRT-1 (и CRT-2: что проверяется раньше — параметры или объект) |
+| P25 | `GET kafka…/v1/specifications?version_id=<каждая из /v1/versions, до 5>&availability_zone_id=<ru.AZ-2>` | число спецификаций, ключи первой, у скольких есть `min_brokers`/`max_brokers`, их значения (в api-probe: `kafka_brokers_<версия>`) | DB-10 |
+| P26 | `POST id.cloud.ru/auth/system/openid/token` (`client_credentials`, как evo для mk8s) и `auth.iam.cloud.ru/…/token` (`access_key`, как в «Быстром старте» API) — с `resource=https://mcp.example.invalid` и без | `http`, поле `error`; из payload `access_token`/`id_token` — `aud`, `azp` (ключ и проект заменены), попал ли `resource` в `aud`; токен маскируется (в api-probe: `oidc_*`) | пункта нет: поддержка RFC 8707 для авторизации MCP |
+| P27 | `GET compute/api/v1/disk-types?project_id=P` | по типам: `name`, `min_size`, `max_size`, есть ли `max_size` (в api-probe: `disk_types_sizes`) | CMP-12 |
+| P28 | `GET postgresql…/v1/clusters?project_id=P` → `GET …/v1/clusters/{id}` (до 5) | `status`, `backup.schedule` (cron, не секрет), число полей, есть ли `?`, `retention_policy_days`; кластеров нет — «пропуск» (в api-probe: `pg_backup_schedule`) | DB-6 (только формат, в котором API хранит расписание; приём формата проверяется лишь созданием) |
 
 ## Источники
 
