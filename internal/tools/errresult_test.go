@@ -5,9 +5,14 @@
 package tools
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -48,6 +53,41 @@ func TestErrResult_ReasonAndHint(t *testing.T) {
 		if _, ok := got["hint"]; !ok && tt.hint != "" || ok && tt.hint == "" {
 			t.Errorf("%v: hint present = %v", tt.err, ok)
 		}
+	}
+}
+
+// QA «путь новичка»: ответ сервиса (не compute) 401/403 и сбой сети без
+// своей подсказки получают её: 401 — про ключ, 403 — про роль сервисного
+// аккаунта, сеть — про сертификат или прокси. reason (и код выхода) — как
+// раньше: API_ERROR и API_UNREACHABLE.
+func TestErrResult_HintOfAnUncodedError(t *testing.T) {
+	old := clierrors.ProxyFunc
+	clierrors.ProxyFunc = func(*http.Request) (*url.URL, error) { return nil, nil }
+	t.Cleanup(func() { clierrors.ProxyFunc = old })
+	cert := fmt.Errorf("mk8s request failed: %w", &url.Error{Op: "Get", URL: "https://mk8s.api.cloud.ru/v3/clusters",
+		Err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}})
+	for _, tt := range []struct {
+		err          error
+		reason, hint string
+	}{
+		{errors.New("mk8s API 401: unauthenticated"), clierrors.CodeAPIError, clierrors.TokenRejectedHint()},
+		{errors.New("dns API 403: forbidden"), clierrors.CodeAPIError, clierrors.NoRoleHint()},
+		{errors.New("postgresql API 422: bad"), clierrors.CodeAPIError, ""},
+		{cert, clierrors.CodeAPIUnreachable, clierrors.NetworkHint(cert, "")},
+		// A hint of its own wins (audit, billing).
+		{clierrors.New(clierrors.CodeAPIError, "audit API 403: no access", "ask support"), clierrors.CodeAPIError, "ask support"},
+	} {
+		var got map[string]any
+		if err := json.Unmarshal([]byte(errResult(tt.err)), &got); err != nil {
+			t.Fatal(err)
+		}
+		hint, _ := got["hint"].(string)
+		if got["reason"] != tt.reason || hint != tt.hint {
+			t.Errorf("%v: %v", tt.err, got)
+		}
+	}
+	if h := clierrors.NetworkHint(cert, ""); !strings.Contains(h, "SSL_CERT_FILE") {
+		t.Errorf("certificate hint %q", h)
 	}
 }
 

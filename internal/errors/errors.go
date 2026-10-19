@@ -4,7 +4,10 @@
 
 package errors
 
-import "fmt"
+import (
+	stderrors "errors"
+	"fmt"
+)
 
 // CLIError is a structured error carrying a machine-readable code,
 // a human-readable message, an actionable hint, and an optional wrapped cause.
@@ -52,4 +55,17 @@ func (e *CLIError) Is(target error) bool {
 		return false
 	}
 	return e.Code == t.Code
+}
+
+// Prefix puts context in front of the message of err ("list zones: ") and
+// keeps the code and the hint of its CLIError. fmt.Errorf("list zones: %w",
+// err) kept them too, but put the code into the text: «список зон:
+// AUTH_EXPIRED: API Cloud.ru отклонил токен (401)». An error without a
+// CLIError is wrapped as fmt.Errorf would.
+func Prefix(prefix string, err error) error {
+	var ce *CLIError
+	if stderrors.As(err, &ce) {
+		return Wrap(ce.Code, prefix+ce.Message, ce.Hint, err)
+	}
+	return fmt.Errorf("%s%w", prefix, err)
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/minio/minio-go/v7"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -91,6 +92,26 @@ func uncodedReason(err error, fields map[string]any) string {
 		return clierrors.CodeNotFound
 	}
 	return clierrors.CodeUsage
+}
+
+// uncodedHint is the hint of an error answer that has none: the service
+// clients (vpc aside, which is compute) return plain errors, and a 401, a
+// 403 or a network failure reached the person as "mk8s API 403: …" or a Go
+// transport error without a word on what to fix. The exit code stays the
+// reason's (403 from these services is API_ERROR, docs/exit-codes.md).
+func uncodedHint(err error, reason string) string {
+	switch reason {
+	case clierrors.CodeAPIUnreachable:
+		return clierrors.NetworkHint(err, i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите"))
+	case clierrors.CodeAPIError:
+		switch apiStatus(err) {
+		case http.StatusUnauthorized:
+			return clierrors.TokenRejectedHint()
+		case http.StatusForbidden:
+			return clierrors.NoRoleHint()
+		}
+	}
+	return ""
 }
 
 // apiStatusRE finds the HTTP status in the message of a service client's

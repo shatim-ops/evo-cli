@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
@@ -27,7 +28,8 @@ const (
 )
 
 // Transport repeats a request on:
-//   - a transport error (connection reset, EOF) — GET and HEAD only: a POST,
+//   - a transport error (connection reset, EOF; not a certificate the system
+//     does not trust) — GET and HEAD only: a POST,
 //     PUT, PATCH or DELETE may have reached the server, and a repeated DELETE
 //     answers 404, which the service clients report as an error;
 //   - 429 — any method whose body can be replayed: the server refused it;
@@ -140,7 +142,8 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp, err := t.base().RoundTrip(r)
 		last := attempt == MaxRetries || req.Context().Err() != nil
 		if err != nil {
-			if last || !readMethod(req.Method) || !replayable {
+			// A certificate the system does not trust stays untrusted.
+			if last || !readMethod(req.Method) || !replayable || clerrors.TLSUntrusted(err) {
 				return nil, err
 			}
 		} else {

@@ -144,7 +144,7 @@ func fileChecks() []doctorCheck {
 	var checks []doctorCheck
 	dir := config.Dir()
 	if dir == "" {
-		return append(checks, doctorCheck{Name: "config dir", Status: checkWarn, Detail: config.NoConfigDir().Error()})
+		return append(checks, doctorCheck{Name: "config dir", Status: checkWarn, Detail: errDetail(config.NoConfigDir())})
 	}
 	st, err := os.Stat(dir)
 	switch {
@@ -154,6 +154,11 @@ func fileChecks() []doctorCheck {
 				" не существует; выполните 'evo configure' (или используйте переменные окружения)")})
 	case err != nil:
 		return append(checks, doctorCheck{Name: "config dir", Status: checkFail, Detail: err.Error(), auth: true})
+	case !st.IsDir():
+		// CLOUDRU_CONFIG_DIR set to a file (config.yaml itself): the checks
+		// of the files below would only say "not a directory" twice.
+		return append(checks, doctorCheck{Name: "config dir", Status: checkFail, auth: true,
+			Detail: errDetail(config.NotADirectory(dir))})
 	case config.PermissionsEnforced() && config.LooseMode(st.Mode()):
 		checks = append(checks, doctorCheck{Name: "config dir", Status: checkWarn,
 			Detail: i18n.Tf("%s has mode %04o; run: chmod 700 %s", "у %s права %04o; выполните: chmod 700 %s", dir, st.Mode().Perm(), dir)})
@@ -263,7 +268,12 @@ func probe(ctx context.Context, name, rawURL string) doctorCheck {
 	start := time.Now()
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return doctorCheck{Name: name, Status: checkFail, Detail: i18n.Tf("%s unreachable: %v", "%s недоступен: %v", u.Host, err)}
+		detail := i18n.Tf("%s unreachable: %v", "%s недоступен: %v", u.Host, err)
+		if hint := clerrors.NetworkHint(err, ""); hint != "" {
+			// The hint names the cause itself (the certificate, the proxy).
+			detail = i18n.Tf("%s unreachable: %s", "%s недоступен: %s", u.Host, hint)
+		}
+		return doctorCheck{Name: name, Status: checkFail, Detail: detail}
 	}
 	resp.Body.Close()
 	took := latencyText(time.Since(start))

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
@@ -83,8 +84,8 @@ Key ID (маскированный), проект и срок действия �
 				tok.ExpiresAt.Local().Format("2006-01-02 15:04:05 MST"),
 				tok.TTL().Truncate(time.Minute), tokenSourceText(tokenSource))
 			if cfg.ProjectID == "" {
-				printer.Hint(i18n.T("Set a project with 'evo configure' or CLOUDRU_PROJECT_ID.",
-					"Задайте проект: 'evo configure' или CLOUDRU_PROJECT_ID."))
+				// The hint of the commands that refuse without a project.
+				printer.Hint(clerrors.ProjectRequired().Hint)
 			}
 			if scopeErr == nil && len(visible) > 1 {
 				printer.Warning(manyProjectsWarning(len(visible)))

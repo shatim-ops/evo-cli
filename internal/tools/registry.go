@@ -263,13 +263,22 @@ func (r *Registry) requireProject(next Handler) Handler {
 
 // engineFor builds the engine of a handler, as newEngine does; for a
 // projectTools call with no project configured it is CONFIG_INVALID
-// (errors.ProjectRequired), before any token or API request.
+// (errors.ProjectRequired), before any token or API request. With no key
+// either, the missing key is reported first (AUTH_REQUIRED, the same exit
+// code 2): it is the first step of a new setup, and 'evo configure' sets
+// both, while the project hint alone led to a second refusal.
 func (r *Registry) engineFor(ctx context.Context, overrides map[string]any) (*engine.Engine, error) {
 	eng, err := r.newEngine(overrides)
 	if err != nil || eng == nil {
 		return eng, err
 	}
 	if marked, _ := ctx.Value(needsProject{}).(bool); marked && eng.Config.ProjectID == "" {
+		if (eng.Config.KeyID == "" || eng.Config.Secret == "") && eng.Auth != nil {
+			// Without a key the IAM provider refuses at once, with no request.
+			if _, err := eng.Auth.Token(ctx); err != nil {
+				return nil, err
+			}
+		}
 		return nil, clierrors.ProjectRequired()
 	}
 	return eng, nil
