@@ -30,9 +30,9 @@ func TestAdapterErrors_Russian(t *testing.T) {
 		{
 			status: http.StatusForbidden, code: clierrors.CodeAuthFailed,
 			msgRU:  "доступ запрещён (403): GET /api/v1/availability-zones: {\"code\":\"forbidden\"}",
-			hintRU: "У сервисного аккаунта нет роли для этой операции в проекте.",
+			hintRU: "Ключ принят, но у сервисного аккаунта нет роли для этой операции в проекте (или project_id — чужой проект). Выдайте роль в консоли Cloud.ru: «Пользователи» → «Сервисные аккаунты» → аккаунт; какие роли нужны — docs/auth.md, раздел «Роли».",
 			msgEN:  "access denied (403) for GET /api/v1/availability-zones: {\"code\":\"forbidden\"}",
-			hintEN: "The service account lacks a role for this operation in the project.",
+			hintEN: "The key is valid, but the service account lacks a role for this operation in the project (or project_id is another project). Grant it in the Cloud.ru console: Users → Service accounts → the account; which roles: docs/auth.md, «Роли».",
 			call: func(a *CloudRuAdapter) error {
 				_, err := a.ListAvailabilityZones(context.Background())
 				return err
@@ -63,9 +63,9 @@ func TestAdapterErrors_Russian(t *testing.T) {
 		{
 			status: http.StatusUnauthorized, code: clierrors.CodeAuthExpired,
 			msgRU:  "API Cloud.ru отклонил токен (401)",
-			hintRU: "Проверьте ключ доступа командой 'evo doctor' или заново выполните 'evo configure'.",
+			hintRU: "Ключ мог быть удалён или истечь, а сервисный аккаунт — выключен. Проверьте ключ доступа командой 'evo doctor' или заново выполните 'evo configure'.",
 			msgEN:  "Cloud.ru API rejected the token (401)",
-			hintEN: "Check the access key with 'evo doctor', or run 'evo configure' again.",
+			hintEN: "The key may have been deleted or expired, or the service account disabled. Check the access key with 'evo doctor', or run 'evo configure' again.",
 			call: func(a *CloudRuAdapter) error {
 				_, err := a.GetVM(context.Background(), "vm-1")
 				return err

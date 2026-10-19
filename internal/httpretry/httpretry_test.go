@@ -6,10 +6,15 @@ package httpretry
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -71,6 +76,51 @@ func TestTransportErrorNotRetriedOnWrites(t *testing.T) {
 		if f.calls.Load() != 1 {
 			t.Fatalf("%s: calls = %d, want 1", m, f.calls.Load())
 		}
+	}
+}
+
+// A certificate the system does not trust (a corporate proxy that inspects
+// HTTPS) stays untrusted: no three more attempts with 1+2+4 s of waiting.
+func TestUntrustedCertificateNotRetried(t *testing.T) {
+	f := &flaky{n: 100, err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}}
+	if _, err := do(t, f, http.MethodGet, ""); err == nil {
+		t.Fatal("want the certificate error")
+	}
+	if got := f.calls.Load(); got != 1 {
+		t.Fatalf("calls = %d, want 1", got)
+	}
+}
+
+// Every client of evo goes through http.DefaultTransport (the service
+// clients through Transport and UserAgent with a nil base, verify through
+// its Clone), which takes HTTPS_PROXY, HTTP_PROXY and NO_PROXY from the
+// environment. A transport built by hand has no Proxy unless it sets one:
+// it would bypass the corporate proxy, and the person would see a timeout.
+func TestNoHandBuiltTransport(t *testing.T) {
+	root := filepath.Join("..", "..")
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && strings.HasPrefix(d.Name(), ".") && path != root {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			if strings.Contains(line, "http.Transport{") && !strings.Contains(line, "Proxy:") {
+				t.Errorf("%s:%d: an http.Transport without Proxy (clone http.DefaultTransport instead): %s", path, i+1, strings.TrimSpace(line))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

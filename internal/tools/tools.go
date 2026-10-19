@@ -2919,6 +2919,11 @@ func errAnswer(err error, fields map[string]any) string {
 		reason = uncodedReason(err, res)
 	}
 	res["reason"] = reason
+	if _, ok := res["hint"]; !ok {
+		if h := uncodedHint(err, reason); h != "" {
+			res["hint"] = h
+		}
+	}
 	return toJSON(res)
 }
 

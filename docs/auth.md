@@ -65,7 +65,8 @@ Secret, тот же обмен), но для скриптов, CI и MCP-сер�
 
 Что видно в ошибках: `403` при обмене ключа — `AUTH_FAILED`, код выхода `2`;
 `403` от compute API (ВМ, диски, `deploy`) — `AUTH_FAILED`, код `2`; от других
-сервисов (vpc, dns, …) — код `5` с текстом ответа Cloud.ru.
+сервисов (vpc, dns, …) — код `5` с текстом ответа Cloud.ru. Подсказка у обоих
+говорит, что ключ принят, а роли нет, и где её выдать; `401` — про сам ключ.
 Подробнее — [troubleshooting.md](troubleshooting.md#403-forbidden-от-сервиса-код-5).
 
 Organization API (`organization.api.cloud.ru/v3/projects`) **не отдаёт

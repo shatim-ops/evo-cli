@@ -426,7 +426,10 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			// DELETE answers 404, which callers read as "already gone";
 			// POST/PUT are not: the server may have applied them.
 			idempotent := method == http.MethodGet || method == http.MethodDelete
-			if idempotent && attempt < maxRetries {
+			// An untrusted certificate stays untrusted: no retry, and the
+			// request never left, whatever its method.
+			untrusted := clierrors.TLSUntrusted(err)
+			if idempotent && !untrusted && attempt < maxRetries {
 				select {
 				case <-ctx.Done():
 					return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, msgCancelledBackoff(), hintCancelled(), ctx.Err())
@@ -435,8 +438,8 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 				backoff *= backoffMultiplier
 				continue
 			}
-			hint := i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите")
-			if !idempotent {
+			hint := clierrors.NetworkHint(err, i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите"))
+			if !idempotent && !untrusted {
 				hint = i18n.T("The request may have reached Cloud.ru before the connection broke: check the Cloud.ru console for a resource it created before retrying.",
 					"Запрос мог дойти до Cloud.ru до обрыва соединения: прежде чем повторять, проверьте в консоли Cloud.ru, не создан ли ресурс.")
 			}
@@ -465,12 +468,10 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			cause := &StatusError{Status: resp.StatusCode, Body: string(respBody)}
 			if resp.StatusCode == http.StatusUnauthorized {
 				return nil, clierrors.Wrap(clierrors.CodeAuthExpired, i18n.T("Cloud.ru API rejected the token (401)", "API Cloud.ru отклонил токен (401)"),
-					i18n.T("Check the access key with 'evo doctor', or run 'evo configure' again.",
-						"Проверьте ключ доступа командой 'evo doctor' или заново выполните 'evo configure'."), cause)
+					clierrors.TokenRejectedHint(), cause)
 			}
 			return nil, clierrors.Wrap(clierrors.CodeAuthFailed, i18n.Tf("access denied (403) for %s %s: %s", "доступ запрещён (403): %s %s: %s", method, path, respBody),
-				i18n.T("The service account lacks a role for this operation in the project.",
-					"У сервисного аккаунта нет роли для этой операции в проекте."), cause)
+				clierrors.NoRoleHint(), cause)
 
 		case resp.StatusCode == http.StatusNotFound:
 			resp.Body.Close()

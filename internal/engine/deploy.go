@@ -394,19 +394,18 @@ func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project 
 func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile *state.File, statePath string, project *compose.Project, region string) (state.DeploymentRecord, error) {
 	e.Printer.Step(3, totalSteps, i18n.T("Provisioning VM...", "Создание ВМ..."))
 
+	// The project before anything is asked of the cloud: the hint of every
+	// other command (evo project use, --project-id), not only the variable.
+	projectID := e.Config.ProjectID
+	if projectID == "" {
+		return state.DeploymentRecord{}, clerrors.ProjectRequired()
+	}
+
 	// The flavor: given, or picked for the workload (ListFlavors needs the
 	// token of step 1). "Recommended flavor" belongs to this step.
 	flavorName, err := e.resolveFlavor(ctx, opts, project)
 	if err != nil {
 		return state.DeploymentRecord{}, err
-	}
-
-	projectID := e.Config.ProjectID
-	if projectID == "" {
-		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
-			i18n.T("CLOUDRU_PROJECT_ID is required", "не задан CLOUDRU_PROJECT_ID"),
-			i18n.T("Set CLOUDRU_PROJECT_ID environment variable or project_id in config file. Find it at https://console.cloud.ru",
-				"Задайте переменную CLOUDRU_PROJECT_ID или project_id в файле настроек ('evo configure'). ID проекта — в https://console.cloud.ru"))
 	}
 
 	projectName := e.Config.ProjectName

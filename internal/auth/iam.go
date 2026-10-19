@@ -182,10 +182,13 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
-		return Token{}, true, clerrors.Wrap(
+		// The hint names the cause a person can fix: a certificate the
+		// system does not trust (a corporate proxy), the proxy itself, DNS.
+		// A certificate check that failed is not repeated.
+		return Token{}, !clerrors.TLSUntrusted(err), clerrors.Wrap(
 			clerrors.CodeAPIUnreachable,
 			i18n.T("failed to reach IAM endpoint", "IAM недоступен"),
-			i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите"),
+			clerrors.NetworkHint(err, i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите")),
 			err,
 		)
 	}
@@ -195,8 +198,8 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 		return Token{}, false, clerrors.New(
 			clerrors.CodeAuthFailed,
 			i18n.Tf("IAM rejected the credentials (status %d)", "IAM отклонил ключ доступа (статус %d)", resp.StatusCode),
-			i18n.T("Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET",
-				"Проверьте Key ID и секрет: 'evo configure' или CLOUDRU_KEY_ID / CLOUDRU_SECRET"),
+			i18n.T("Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET. If they are right, the key may have been deleted or expired, or the service account disabled: create a new key in the console (Users → Service accounts).",
+				"Проверьте Key ID и секрет: 'evo configure' или CLOUDRU_KEY_ID / CLOUDRU_SECRET. Если они верны, ключ мог быть удалён или истечь, а сервисный аккаунт — выключен: создайте новый ключ в консоли («Пользователи» → «Сервисные аккаунты»)."),
 		)
 	}
 	if resp.StatusCode != http.StatusOK {

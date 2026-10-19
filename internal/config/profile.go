@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -101,6 +102,20 @@ func NoConfigDir() error {
 			"нет каталога для профилей: не заданы ни %s, ни HOME (в Windows — APPDATA)", EnvConfigDir),
 		i18n.Tf("Set %s to a private directory, or HOME; the key can also come from the environment (CLOUDRU_KEY_ID, CLOUDRU_SECRET)",
 			"Задайте %s (личный каталог) или HOME; ключ можно передать и переменными окружения (CLOUDRU_KEY_ID, CLOUDRU_SECRET)", EnvConfigDir))
+}
+
+// NotADirectory is the error of a configuration directory that is a file:
+// CLOUDRU_CONFIG_DIR set to config.yaml itself, say. Reading the profiles
+// said "open …/config.yaml: not a directory" and asked to check the file
+// permissions.
+func NotADirectory(dir string) error {
+	hint := i18n.Tf("Remove the file %s or set %s to a directory", "Удалите файл %s или задайте в %s каталог", dir, EnvConfigDir)
+	if os.Getenv(EnvConfigDir) != "" {
+		hint = i18n.Tf("%s names the directory of the profiles, not a file: set it to a directory (config.yaml and credentials.yaml go inside)",
+			"%s задаёт каталог профилей, а не файл: укажите в нём каталог (config.yaml и credentials.yaml лежат внутри)", EnvConfigDir)
+	}
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("%s is a file, not a directory", "%s — файл, а не каталог", dir), hint)
 }
 
 // MigrateLegacyDir copies the profiles of the old binary, once: when
@@ -235,7 +250,25 @@ func readYAML(path string, v any) (exists bool, err error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
-		return false, clerrors.Wrap(clerrors.CodeConfigInvalid, i18n.T("reading ", "чтение ")+path+": "+err.Error(),
+		if errors.Is(err, syscall.ENOTDIR) {
+			// The nearest ancestor that exists is the file in the way.
+			dir := filepath.Dir(path)
+			for _, serr := os.Stat(dir); serr != nil && filepath.Dir(dir) != dir; _, serr = os.Stat(dir) {
+				dir = filepath.Dir(dir)
+			}
+			return false, NotADirectory(dir)
+		}
+		// The text of the system without "open <path>:", which repeated
+		// the path; a missing permission in the language of the CLI.
+		cause := err.Error()
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			cause = pe.Err.Error()
+		}
+		if errors.Is(err, fs.ErrPermission) {
+			cause = i18n.T("permission denied", "нет прав на чтение")
+		}
+		return false, clerrors.Wrap(clerrors.CodeConfigInvalid, i18n.T("reading ", "чтение ")+path+": "+cause,
 			i18n.T("Check the file permissions", "Проверьте права на файл"), err)
 	}
 	if err := yaml.Unmarshal(data, v); err != nil {

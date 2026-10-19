@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	stderrors "errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -346,7 +345,7 @@ func listProjectsPage(ctx context.Context, token, pageToken string) ([]orgProjec
 	resp, err := orgClient.Do(req)
 	if err != nil {
 		return nil, "", clerrors.Wrap(clerrors.CodeAPIUnreachable, i18n.T("failed to reach the Organization API", "Organization API недоступен"),
-			i18n.T("Check your network connection, or pass --project-id", "Проверьте сеть или передайте --project-id"), err)
+			clerrors.NetworkHint(err, i18n.T("Check your network connection, or pass --project-id", "Проверьте сеть или передайте --project-id")), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -587,10 +586,5 @@ func yesNo(b bool) string {
 // keeps its code and hint, and the code stays out of the text: the message
 // read "проверка ключа доступа: AUTH_FAILED: …" (release audit, R-15).
 func keyCheckError(err error) error {
-	prefix := i18n.T("checking the access key: ", "проверка ключа доступа: ")
-	var ce *clerrors.CLIError
-	if stderrors.As(err, &ce) {
-		return clerrors.Wrap(ce.Code, prefix+ce.Message, ce.Hint, err)
-	}
-	return fmt.Errorf("%s%w", prefix, err)
+	return clerrors.Prefix(i18n.T("checking the access key: ", "проверка ключа доступа: "), err)
 }

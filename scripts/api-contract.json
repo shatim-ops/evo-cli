@@ -338,7 +338,7 @@
       "name": "organization",
       "spec": "organization+iam/api.op.v3.yaml",
       "requests": [
-        {"method": "GET", "path": "/v3/projects", "code": "internal/cli/configure.go:34", "query": ["page_token"], "paginates": true, "reads": ["projects[].id", "projects[].name", "projects[].status", "projects[].organization_unit_id", "next_page_token"], "statuses": [400, 401, 403]},
+        {"method": "GET", "path": "/v3/projects", "code": "internal/cli/configure.go:33", "query": ["page_token"], "paginates": true, "reads": ["projects[].id", "projects[].name", "projects[].status", "projects[].organization_unit_id", "next_page_token"], "statuses": [400, 401, 403]},
         {"method": "GET", "path": "/v3/quotas/usages", "code": "internal/tools/tools_admin.go:216", "query": ["page_size=200", "subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT", "subject_ids", "page_token"], "paginates": true,
          "reads": ["usages[].resource_type_code", "usages[].individual_limit", "usages[].individual_usage", "next_page_token"], "statuses": [403]}
       ]

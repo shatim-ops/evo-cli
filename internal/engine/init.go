@@ -60,7 +60,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 
 	zones, err := e.Cloud.ListAvailabilityZones(ctx)
 	if err != nil {
-		return fmt.Errorf(i18n.T("list zones: %w", "список зон: %w"), err)
+		return clerrors.Prefix(i18n.T("list zones: ", "список зон: "), err)
 	}
 	if len(zones) == 0 {
 		return clerrors.New(clerrors.CodeAPIError, i18n.T("the API returned no availability zones", "API не вернул ни одной зоны доступности"),
@@ -78,7 +78,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	if image == nil {
 		list, err := e.Cloud.ListImages(ctx)
 		if err != nil {
-			return fmt.Errorf(i18n.T("list images: %w", "список образов: %w"), err)
+			return clerrors.Prefix(i18n.T("list images: ", "список образов: "), err)
 		}
 		candidates = deployableImages(list)
 		if len(candidates) == 0 {

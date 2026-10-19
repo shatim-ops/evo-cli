@@ -6,9 +6,11 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -140,5 +142,32 @@ func TestIAMProvider_RetryStopsOnCancel(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Errorf("calls after cancel = %d, want 1", calls.Load())
+	}
+}
+
+// A certificate the system does not trust (a corporate proxy that inspects
+// HTTPS) is not repeated, and the hint says what to do about it instead of
+// "check your network connection".
+func TestIAMProvider_UntrustedCertificateIsNotRetried(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("the request passed the certificate check")
+	}))
+	defer srv.Close()
+	old := IAMEndpoint
+	IAMEndpoint = srv.URL
+	defer func() { IAMEndpoint = old }()
+	// The default roots, as evo's own client has: the test server's are unknown.
+	client := &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
+	p := NewIAMProvider(Credentials{KeyID: "k", Secret: "s"}, client, nil)
+	var delays []time.Duration
+	p.sleep = recordSleep(&delays)
+
+	_, err := p.Token(context.Background())
+	var ce *clerrors.CLIError
+	if !errors.As(err, &ce) || ce.Code != clerrors.CodeAPIUnreachable || !strings.Contains(ce.Hint, "SSL_CERT_FILE") {
+		t.Fatalf("err %v", err)
+	}
+	if len(delays) != 0 || p.Exchanges() != 1 {
+		t.Errorf("retried: %d exchanges, delays %v", p.Exchanges(), delays)
 	}
 }
