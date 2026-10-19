@@ -113,6 +113,31 @@ def describe(data):
     }
 
 
+def contract_specs():
+    """Spec files (service/file) scripts/api-contract.json checks against."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api-contract.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return []
+    found = set()
+
+    def walk(v):
+        if isinstance(v, dict):
+            spec = v.get("spec")
+            if isinstance(spec, str) and "/" in spec:
+                found.add(spec)
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+
+    walk(data)
+    return sorted(found)
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else ".cache/cloudru-specs"
     os.makedirs(out, exist_ok=True)
@@ -136,6 +161,14 @@ def main():
             entry.update(describe(data))
             manifest.append(entry)
             print(f"{service:20} {entry['file']:50} {entry.get('paths', '?'):>4} paths")
+    # A spec page that loads but lists fewer links (seen 19.10.2026: the
+    # administration page without api.op_v1.v2.yaml) would leave a spec the
+    # contract check needs silently absent: count it as missing, so the
+    # workflow retries the download instead of failing the check.
+    got = {e["file"] for e in manifest}
+    for need in contract_specs():
+        if need not in got:
+            missing.append(f"{need}: needed by scripts/api-contract.json, not found on the API pages")
     with open(os.path.join(out, "manifest.json"), "w") as f:
         json.dump({"source": BASE + "/docs", "specs": manifest, "missing": missing},
                   f, indent=1, ensure_ascii=False)
