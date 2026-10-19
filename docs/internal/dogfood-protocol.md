@@ -154,7 +154,7 @@ r1, r2, r3-A и обновления токена (#100, #102, #105, #106; evo 1
 
 - **Команды:** `tools call metrics_history|metrics_scrape`, `billing_balance|consumption|finops`, `audit_events`, `iam_service_accounts`, `org_projects|org_quotas`; `evo project list|use`.
 - **Попробуйте:** `billing_consumption` с датой начала волны — ваш расход; `metrics_history` по своей ВМ; `audit_events` за сегодня; `org_quotas`.
-- **Известное:** `billing_*` держится на неопубликованном хосте (BIL-5), в CI не работал — ответ с вашим ключом важен сам по себе; `audit_events` — 401 вместо 403, если аудит не включён (AUD-1); `metrics_history` — окно не больше 24 ч (MON-1); ключ уровня проекта не видит список проектов (IAM-3), `evo project list` объясняет это, код 0.
+- **Известное:** `billing_*` держится на неопубликованном хосте (BIL-5), в CI не работал — ответ с вашим ключом важен сам по себе; `audit_events` — 401 вместо 403, если аудит не включён (AUD-1); `metrics_history` — окно не больше 24 ч (лимит сервиса, есть в документации); ключ уровня проекта не видит список проектов (IAM-3), `evo project list` объясняет это, код 0.
 - **Деньги:** 0.
 
 ### 2.14 Стеки `stack_*`
