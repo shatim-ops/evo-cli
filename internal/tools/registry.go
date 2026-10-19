@@ -284,12 +284,22 @@ func (r *Registry) engineFor(ctx context.Context, overrides map[string]any) (*en
 	return eng, nil
 }
 
-// mutatingOverride corrects the rule "a tool is mutating when it takes
-// confirmed": cert_private_key asks for consent because it reveals a secret,
-// not because it changes anything.
-var mutatingOverride = map[string]bool{
-	"cert_private_key": false,
+// sensitiveTools reveal a secret in plaintext (a decrypted secret value, a
+// private key). They take confirmed, so the agent asks the person first, but
+// they change nothing, so the rule "a tool is mutating when it takes
+// confirmed" does not apply: they are not Mutating (no destructiveHint, no
+// mutating label in the CLI). They are not marked readOnlyHint either: a
+// client may auto-approve read-only tools, and the plaintext would then land
+// in the agent's context (and its logs) without the person seeing the call
+// (security audit 19.10, SEC-4).
+var sensitiveTools = map[string]bool{
+	"cert_private_key": true,
+	"secret_value":     true,
 }
+
+// IsSensitive reports whether a tool reveals a secret and asks for consent
+// although it changes nothing (sensitiveTools).
+func IsSensitive(t Tool) bool { return sensitiveTools[t.Name] }
 
 // destructiveTools are the mutating tools, besides *_delete, that may delete
 // or overwrite data: they get destructiveHint in MCP, so a client asks the
@@ -316,8 +326,8 @@ func IsDestructive(t Tool) bool {
 
 // isMutating reports whether the tool changes state in the cloud.
 func isMutating(t Tool) bool {
-	if v, ok := mutatingOverride[t.Name]; ok {
-		return v
+	if sensitiveTools[t.Name] {
+		return false
 	}
 	props, _ := t.InputSchema["properties"].(map[string]any)
 	_, gated := props["confirmed"]

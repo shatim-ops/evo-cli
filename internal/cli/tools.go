@@ -200,6 +200,8 @@ func newToolsDescribeCmd() *cobra.Command {
 			fmt.Fprintf(w, i18n.T("%s (group %s", "%s (группа %s"), t.Name, t.Group)
 			if t.Mutating {
 				fmt.Fprint(w, i18n.T(", mutating: asks for confirmation", ", меняет ресурсы: спрашивает подтверждение"))
+			} else if tools.IsSensitive(t) {
+				fmt.Fprint(w, i18n.T(", reveals a secret: asks for confirmation", ", показывает секрет: спрашивает подтверждение"))
 			}
 			fmt.Fprintf(w, ")\n\n%s\n\n", t.Description)
 			params := schemaParams(t)

@@ -61,9 +61,24 @@ var readOnlySubcommands = map[string]map[string]bool{
 	"auth":    {"can-i": true, "whoami": true},
 }
 
+// kubectlHostFlags make even a read verb reach beyond the cluster, so a
+// call with them needs confirmed=true like a mutation (security audit 19.10,
+// SEC-4): -f/--filename and -k/--kustomize read a local path or fetch any
+// URL ("get -f https://…" sends a request wherever the arguments say, "get
+// -f /etc/…" prints the file in its error), --output-directory
+// (cluster-info dump) writes files on the host. Names are as
+// kubetools.ParseFlags gives them, so -f x, -fx, -f=x and --filename=x are
+// all caught.
+var kubectlHostFlags = map[string]bool{
+	"f": true, "filename": true, "k": true, "kustomize": true, "output-directory": true,
+}
+
 // kubectlReadOnly reports whether kubectl args (verb first) only read.
 func kubectlReadOnly(fields []string) bool {
 	if len(fields) == 0 || !readOnlyKubectl[fields[0]] {
+		return false
+	}
+	if kubectlReachesHost(fields[0], fields[1:]) {
 		return false
 	}
 	subs, ok := readOnlySubcommands[fields[0]]
@@ -71,6 +86,29 @@ func kubectlReadOnly(fields []string) bool {
 		return true
 	}
 	return len(fields) > 1 && subs[fields[1]]
+}
+
+// kubectlReachesHost reports whether the arguments of verb carry one of
+// kubectlHostFlags. The words after "--" are not kubectl flags. "logs -f"
+// is --follow (logs has no --filename), not a file.
+func kubectlReachesHost(verb string, args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if !strings.HasPrefix(a, "-") || a == "-" {
+			continue
+		}
+		for _, fl := range kubetools.ParseFlags(a) {
+			if fl.Name == "f" && (verb == "logs" || verb == "log") {
+				continue
+			}
+			if kubectlHostFlags[fl.Name] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // handleK8sKubectl runs ANY kubectl command against a cluster (uses an

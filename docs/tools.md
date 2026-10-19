@@ -8,7 +8,9 @@
 `evo tools call`. Здесь — первая фраза описания; полное описание и схема
 аргументов — `evo tools describe <имя>`. «Меняет»: «да» — инструмент
 создаёт или меняет ресурсы и без `confirmed=true` (в CLI — `--yes`)
-только показывает превью; «удаляет» — может удалить или перезаписать данные.
+только показывает превью; «удаляет» — может удалить или перезаписать данные;
+«нет, секрет» — ничего не меняет, но показывает секрет открытым текстом и
+тоже требует `confirmed=true` (`--yes`).
 Группы — для `evo mcp --toolsets` и `evo tools list --group`.
 
 ## ar
@@ -59,7 +61,7 @@
 | `cert_delete` | удаляет | `id` | Certificate Manager — permanently delete a certificate. |
 | `cert_usage` | нет | `id` | Certificate Manager — list resources (load balancers/listeners) that USE a certificate. |
 | `cert_versions` | нет | `certificate_id` | Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry), all pages. |
-| `cert_private_key` | нет | `certificate_id` | Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's … |
+| `cert_private_key` | нет, секрет | `certificate_id` | Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's … |
 | `cert_operation` | нет | `operation_id` | Certificate Manager — poll an async operation (issue/renew) by id until done=true. |
 
 ## deploy
@@ -228,7 +230,7 @@
 |---|---|---|---|
 | `secret_list` | нет | — | List secrets in the project (id, name, path, description) from Cloud.ru Secret Management. |
 | `secret_get` | нет | `path` | Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key. |
-| `secret_value` | нет | `path` | Retrieve the DECRYPTED value of a secret by path. |
+| `secret_value` | нет, секрет | `path` | Retrieve the DECRYPTED value of a secret by path. |
 | `secret_create` | да | `path`, `value` | Store a new secret at a path (value is Base64-encoded internally; never echoed back). |
 | `secret_add_version` | да | `path`, `value` | Add a new value version to an existing secret (rotation). |
 | `secret_delete` | удаляет | `path` | Delete a secret by path AND all its versions. |

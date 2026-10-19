@@ -195,8 +195,8 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport boo
 	}
 	i18n.SetLang(i18n.EN)
 	logger := clog.New(cmd.ErrOrStderr(), flagVerbose)
-	if token != "" && len(token) < 16 {
-		logger.Warn(envBearerToken + " is shorter than 16 characters; use a long random token")
+	if w := bearerTokenWarning(token); w != "" {
+		logger.Warn(w)
 	}
 	if len(allowProjects) == 0 {
 		logger.Warn("no --allow-project: a client can pass project_id to deploy/provision and work in any project the key sees; " +
@@ -264,6 +264,20 @@ func runMCPStdio(ctx context.Context, srv *mcp.Server) error {
 	// returns once it has wound down (the call records what it created),
 	// at most a few seconds later. The end of stdin cancels nothing.
 	return srv.RunContext(ctx, os.Stdin, os.Stdout)
+}
+
+// minBearerTokenLen is the token length below which the HTTP server warns
+// (it still starts): 32 random characters, as "openssl rand -hex 32" gives
+// 64 (security audit 19.10, SEC-9; was 16).
+const minBearerTokenLen = 32
+
+// bearerTokenWarning is the startup warning about a short bearer token, ""
+// when there is none (no token with --auth none, or a long enough one).
+func bearerTokenWarning(token string) string {
+	if token == "" || len(token) >= minBearerTokenLen {
+		return ""
+	}
+	return fmt.Sprintf("%s is shorter than %d characters; use a long random token, e.g. openssl rand -hex 32", envBearerToken, minBearerTokenLen)
 }
 
 // httpAuthToken validates the --http/--auth combination and returns the

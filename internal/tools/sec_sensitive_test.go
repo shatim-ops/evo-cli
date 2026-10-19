@@ -1,0 +1,76 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
+package tools
+
+import (
+	"encoding/base64"
+	"net/http"
+	"strings"
+	"testing"
+)
+
+// SEC-4: secret_value отдаёт расшифрованный секрет только с confirmed=true —
+// как cert_private_key; без него — confirmation_required и ни одного
+// запроса в облако.
+func TestSensitiveTools_NeedConfirmed(t *testing.T) {
+	for _, c := range []struct {
+		tool string
+		args map[string]any
+	}{
+		{"secret_value", map[string]any{"path": "app/db"}},
+		{"cert_private_key", map[string]any{"certificate_id": "00000000-0000-0000-0000-000000000001"}},
+	} {
+		f := &apiFake{}
+		r := apiFakeRegistry(t, f)
+		for _, confirmed := range []any{nil, false} {
+			args := map[string]any{}
+			for k, v := range c.args {
+				args[k] = v
+			}
+			if confirmed != nil {
+				args["confirmed"] = confirmed
+			}
+			m, text, isErr := callNamed(t, r, c.tool, args)
+			if !isErr || m["status"] != "confirmation_required" || !strings.Contains(text, "confirmed=true") {
+				t.Errorf("%s confirmed=%v: %s", c.tool, confirmed, text)
+			}
+		}
+		if n := f.count(); n != 0 {
+			t.Errorf("%s: %d requests before consent", c.tool, n)
+		}
+	}
+}
+
+func TestSecretValue_ConfirmedReturnsValue(t *testing.T) {
+	f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+		if !strings.HasPrefix(r.URL.Path, "/v2/version/") {
+			return false
+		}
+		_, _ = w.Write([]byte(`{"payload":"` + base64.StdEncoding.EncodeToString([]byte("fake-value")) + `"}`))
+		return true
+	}}
+	r := apiFakeRegistry(t, f)
+	m, text, isErr := callNamed(t, r, "secret_value", map[string]any{"path": "app/db", "confirmed": true})
+	if isErr || m["value"] != "fake-value" || m["path"] != "app/db" {
+		t.Fatalf("secret_value confirmed=true: %s", text)
+	}
+}
+
+// SEC-4: инструменты, чей ответ несёт написанное рабочей нагрузкой (логи,
+// вывод kubectl, заметки helm, объекты S3), предупреждают агента, что это
+// недоверенные данные. Остальные описания этой фразы не несут.
+func TestUntrustedOutputNote(t *testing.T) {
+	want := map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_helm": true}
+	for _, tl := range New(nil).Tools() {
+		has := strings.HasSuffix(tl.Description, " "+untrustedOutputNote)
+		if has != want[tl.Name] {
+			t.Errorf("%s: note=%v, want %v", tl.Name, has, want[tl.Name])
+		}
+		delete(want, tl.Name)
+	}
+	for name := range want {
+		t.Errorf("%s: no such tool", name)
+	}
+}

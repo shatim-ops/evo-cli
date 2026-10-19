@@ -64,6 +64,12 @@ func (s *Registry) handleSecretValue(ctx context.Context, args map[string]any) (
 	if path == "" {
 		return usageResult(fmt.Errorf("'path' is required (from secret_list)")), true
 	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status":  "confirmation_required",
+			"message": "secret_value returns the DECRYPTED secret in plaintext. Only fetch it with the user's explicit approval; call again with confirmed=true.",
+		}), true
+	}
 	cli, err := s.secretClient(ctx)
 	if err != nil {
 		return errResult(err), true

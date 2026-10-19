@@ -764,12 +764,12 @@ area_secrets() {
 	jq -n --arg p "$path" --arg v "$v1" '{path: $p, value: $v, description: "evo e2e live run"}' >"$tmp/s.json"
 	must secret_create secret_create --args-file "$tmp/s.json" || return 1
 	[ "$(j -r '.secret | tostring | contains("'"$v1"'")')" = false ] && ok secret_create "значение в ответе не вернулось" && cov secret_create || bad secret_create "значение в ответе"
-	got=$(evo tools call secret_value --arg path="$path" --json 2>/dev/null | jq -r '.value // empty')
+	got=$(evo --yes tools call secret_value --arg path="$path" --json 2>/dev/null | jq -r '.value // empty')
 	[ "$(sha "$got")" = "$(sha "$v1")" ] && ok secret_value "v1 совпало (sha256)" || bad secret_value "v1 не совпало"
 	jq -n --arg p "$path" --arg v "$v2" '{path: $p, value: $v}' >"$tmp/s.json"
 	must secret_add_version secret_add_version --args-file "$tmp/s.json" || return 1
 	rm -f "$tmp/s.json"
-	got=$(evo tools call secret_value --arg path="$path" --json 2>/dev/null | jq -r '.value // empty')
+	got=$(evo --yes tools call secret_value --arg path="$path" --json 2>/dev/null | jq -r '.value // empty')
 	[ "$(sha "$got")" = "$(sha "$v2")" ] && ok secret_add_version "последняя версия — v2 (sha256)" && cov secret_add_version || bad secret_add_version "последняя версия не v2"
 	must secret_get secret_get --arg path="$path" && ok secret_get "метаданные прочитаны"
 	[ -n "$(lst secret "$path")" ] && ok secret_list "путь в списке" || bad secret_list "пути нет в secret_list"

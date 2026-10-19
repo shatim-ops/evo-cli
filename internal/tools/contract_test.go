@@ -276,8 +276,8 @@ func TestContract_EmptyRequiredIsUsage(t *testing.T) {
 // Bad confirmed values are USAGE before the handler (docs/mcp.md: a scalar
 // of the wrong type is USAGE). Absent and null confirmed do not write.
 // k8s_kubectl without a writing verb is a read and is not in this loop's
-// "delete" arguments. cert_private_key is not Mutating: it asks consent
-// because it reveals a secret (mutatingOverride).
+// "delete" arguments. cert_private_key and secret_value are not Mutating:
+// they ask consent because they reveal a secret (sensitiveTools).
 func TestContract_GateNoWrite(t *testing.T) {
 	rt := &contractRT{kind: "500"}
 	reg := contractReg(t, rt)
@@ -356,9 +356,9 @@ func TestContract_GatePreviewDoesNotWrite(t *testing.T) {
 }
 
 // required ⊂ properties; every property has a type the checker understands;
-// confirmed is on every mutating tool. The one read-only tool with confirmed
-// is cert_private_key: mutatingOverride, it reveals a secret
-// (internal/tools/registry.go). Annotations are TestToolsList_Annotations.
+// confirmed is on every mutating tool. The only non-mutating tools with
+// confirmed are sensitiveTools (cert_private_key, secret_value): they reveal
+// a secret (internal/tools/registry.go). Annotations are TestToolsList_Annotations.
 func TestContract_Schema(t *testing.T) {
 	reg := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
 	known := map[string]bool{"string": true, "integer": true, "number": true, "boolean": true, "array": true, "object": true}
@@ -387,8 +387,11 @@ func TestContract_Schema(t *testing.T) {
 		if tl.Mutating && !has {
 			t.Errorf("%s: mutating without confirmed", tl.Name)
 		}
-		if !tl.Mutating && has && tl.Name != "cert_private_key" {
+		if !tl.Mutating && has && !IsSensitive(tl) {
 			t.Errorf("%s: read-only tool has confirmed", tl.Name)
+		}
+		if IsSensitive(tl) && (!has || tl.Mutating) {
+			t.Errorf("%s: sensitive tool must take confirmed and not be mutating", tl.Name)
 		}
 	}
 }

@@ -76,6 +76,7 @@ func TestRegistry_Mutating(t *testing.T) {
 		"deploy":           true,
 		"s3_bucket_create": true,
 		"cert_private_key": false,
+		"secret_value":     false,
 		"list_zones":       false,
 		"vm_get":           false,
 		"pg_list":          false,

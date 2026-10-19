@@ -195,6 +195,9 @@ MCP-сервер (`evo mcp`) всегда отвечает по-английск
 MCP-сервер держит ту же границу: изменяющий инструмент без `confirmed=true`
 возвращает `status: confirmation_required` и превью, действие выполняется
 только повторным вызовом с `confirmed=true` — после согласия человека.
+Так же спрашивают подтверждение команды, которые ничего не меняют, но
+показывают секрет открытым текстом: `evo secret value` и `evo tools call
+cert_private_key` (MCP `secret_value`, `cert_private_key`).
 
 ```sh
 evo disk delete 1b2c… --dry-run   # что будет удалено

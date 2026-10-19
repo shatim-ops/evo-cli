@@ -301,9 +301,9 @@ deploy/vm/stack не пишет ни state, ни job.
 - vm, image, vpc, disk: списки и `*_get`, `list_*`;
 - k8s: `k8s_list/get/options/plan/kubeconfig/nodepools`;
 - pg, kafka, redis, nlb, dns, ar, ca, cert, secret: `*_list`, `*_get`,
-  `*_versions`, `*_specs`, `*_operation` (опрос операции), `secret_value`,
-  `cert_private_key` (раскрывает ключ, поэтому под `confirmed`, но не
-  `mutating`), `ca_logs`;
+  `*_versions`, `*_specs`, `*_operation` (опрос операции), `secret_value`
+  и `cert_private_key` (раскрывают секрет, поэтому под `confirmed`, но не
+  `mutating`, и без `readOnlyHint` — `sensitiveTools`, SEC-4), `ca_logs`;
 - billing, monitoring, audit, iam, org, s3 (`s3_buckets/ls/get`): чтения;
 - stack: `stack_plan` пишет job в `planned`; `stack_status` двигает job,
   только если он уже `running` (`tools/tools_stack.go:571-591`).

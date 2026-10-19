@@ -43,7 +43,9 @@ func genToolsDoc() []byte {
 `+"`evo tools call`"+`. Здесь — первая фраза описания; полное описание и схема
 аргументов — `+"`evo tools describe <имя>`"+`. «Меняет»: «да» — инструмент
 создаёт или меняет ресурсы и без `+"`confirmed=true`"+` (в CLI — `+"`--yes`"+`)
-только показывает превью; «удаляет» — может удалить или перезаписать данные.
+только показывает превью; «удаляет» — может удалить или перезаписать данные;
+«нет, секрет» — ничего не меняет, но показывает секрет открытым текстом и
+тоже требует `+"`confirmed=true`"+` (`+"`--yes`"+`).
 Группы — для `+"`evo mcp --toolsets`"+` и `+"`evo tools list --group`"+`.
 
 `, toolsRegenerateHint, len(reg.Tools()))
@@ -60,6 +62,8 @@ func genToolsDoc() []byte {
 				changes = "удаляет"
 			case t.Mutating:
 				changes = "да"
+			case tools.IsSensitive(t):
+				changes = "нет, секрет"
 			}
 			req := "—"
 			if names := requiredArgs(t); len(names) > 0 {
