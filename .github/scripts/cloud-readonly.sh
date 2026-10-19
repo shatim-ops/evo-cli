@@ -290,6 +290,6 @@ else
 fi
 
 # Журнал сервера: одна строка на вызов, аргументы — никогда.
-if grep -q 'cluster_id\|{{.data}}' "$tmp/http-a.log"; then bad "http: журнал без аргументов" "аргументы в stderr сервера"; else ok "http: журнал без аргументов" "строк: $(wc -l <"$tmp/http-a.log")"; fi
+if grep -q 'cluster_id\|{{.data}}' "$tmp/http-a.log"; then bad "http: журнал без аргументов" "аргументы в stderr сервера"; else ok "http: журнал без аргументов" "строк: $(wc -l <"$tmp/http-a.log" | tr -d ' ')"; fi
 
 exit "$failed"
