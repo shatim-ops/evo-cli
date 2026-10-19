@@ -416,6 +416,9 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	if clusterID == "" {
 		return usageResult(fmt.Errorf("cluster_id is required")), true
 	}
+	if err := nodePoolArgsError(args); err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",
@@ -540,6 +543,22 @@ func nodePoolName(args map[string]any) string {
 	return firstNonEmptyStr(stringArg(args, "name"), "nodepool-1")
 }
 
+// nodePoolArgsError checks the sizes of k8s_add_nodepool before the
+// preview: count 0, disk_gb 5 or cpu -1 made a preview, then the API
+// refused it with exit 5 (QA 20.10, QA-7). disk_gb is at least 10, as the
+// schema says.
+func nodePoolArgsError(args map[string]any) error {
+	for _, c := range []struct {
+		key string
+		min int
+	}{{"count", 1}, {"cpu", 1}, {"ram_gb", 1}, {"disk_gb", 10}} {
+		if err := minIntArg(args, c.key, c.min, "See the defaults in the tool's description (count 2, cpu 2, ram_gb 4, disk_gb 20)."); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // k8sArgsError checks the arguments of k8s_plan and k8s_create that need
 // no API, before the confirmation gate. master_count=2 used to become 1
 // with only a warning (release audit, L-27).
@@ -553,7 +572,9 @@ func k8sArgsError(args map[string]any) error {
 				"1 — a zonal control plane; 3 or 5 — a highly available one.")
 		}
 	}
-	return nil
+	// The name the cluster gets, by the rule of the mk8s specification
+	// (QA-15): the API refused it only after the plan.
+	return k8sClusterName(firstNonEmptyStr(stringArg(args, "name"), "k8s-"+firstNonEmptyStr(stringArg(args, "product"), "cluster")))
 }
 
 // k8sZoneRef is the zone of a new cluster: its name, the zone ID of the

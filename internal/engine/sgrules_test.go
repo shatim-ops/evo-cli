@@ -245,7 +245,7 @@ func TestDestroy_SharedGroupWithAnotherDeploymentRefused(t *testing.T) {
 func TestDestroy_RuleAlreadyGone(t *testing.T) {
 	eng, cloud, _ := destroyFixture(t, rulesRecord())
 	cloud.deleteRuleFn = func(context.Context, string, string) error {
-		return clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
+		return clerrors.New(clerrors.CodeNotFound, "resource not found", "")
 	}
 	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
 		t.Fatal(err)

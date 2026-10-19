@@ -77,7 +77,9 @@ j() { jq "$@" "$tmp/r.json" 2>/dev/null || true; }
 
 # tc ИНСТРУМЕНТ АРГУМЕНТЫ... — evo --yes tools call … --json: ответ в
 # $tmp/r.json, код в $rc, reason в $reason, текст ошибки (замаскированный,
-# до 300 символов) в $why.
+# до 300 символов) в $why. При ошибке инструмента stdout пуст (QA-12): reason
+# и текст — из {"error":…} в stderr; ответ без поля error (stack_destroy с
+# failed) там целиком, в .error.message.
 tc() {
 	local name=$1 httpst
 	shift
@@ -85,8 +87,8 @@ tc() {
 	evo --yes tools call "$name" "$@" --json >"$tmp/r.json" 2>"$tmp/err"
 	rc=$?
 	set -e
-	reason=$(j -r '.reason? // empty' | head -1)
-	[ -n "$reason" ] || reason=$(jq -rR 'fromjson? | .error.reason? // empty' "$tmp/err" 2>/dev/null | head -1)
+	reason=$(jq -rR 'fromjson? | .error.reason? // empty' "$tmp/err" 2>/dev/null | head -1)
+	[ -n "$reason" ] || reason=$(j -r '.reason? // empty' | head -1)
 	[ -n "$reason" ] || reason=-
 	why=$( (j -r '.error? // .message? // empty' | head -c 2000; jq -rR 'fromjson? | .error.message? // empty' "$tmp/err" 2>/dev/null | head -c 2000) | tr '\n' ' ' | redact | cut -c1-300)
 	httpst=$(printf '%s' "$why" | grep -oE '(HTTP|status|статус|API)[ :]*[45][0-9]{2}' | grep -oE '[45][0-9]{2}' | head -1 || true)
@@ -923,7 +925,7 @@ area_stack() {
 	for _ in 1 2 3 4 5 6; do
 		[ "$st" = destroyed ] && [ "$(j -r '(.deleting // []) | length')" = 0 ] && break
 		repeats=$((repeats + 1))
-		echo "stack_destroy: $st, удалено $(j -c '.deleted // []'), удаляется $(j -c '.deleting // []'), не удалено $(j -c '[.failed[]? | if type == "object" then (.step // .key // .name) else . end]')" | redact
+		echo "stack_destroy: $st, удалено $(j -c '.deleted // []'), удаляется $(j -c '.deleting // []'), не удалено $(j -c '[.failed[]? | if type == "object" then (.step // .key // .name) else . end]')${why:+; код $rc: $why}" | redact
 		sleep 60
 		tc stack_destroy --arg job_id="$job"
 		st=$(j -r '.status // "?"')
@@ -933,7 +935,7 @@ area_stack() {
 		# повторный вызов, пока ресурсы удаляются, не должен ломать задание (D6, #118)
 		[ "$repeats" = 0 ] || ok "stack_destroy повторный ($repeats)" "destroyed: $(j -c '.deleted // []')"
 	else
-		bad stack_destroy "status $st, удалено $(j -c '.deleted // []'), не удалено: $(j -c '[.failed[]? | if type == "object" then {step: (.step // .key // .name), error: ((.error // .reason // "") | tostring | .[0:200])} else . end]' | redact | cut -c1-500)"
+		bad stack_destroy "status $st, удалено $(j -c '.deleted // []'), не удалено: $(j -c '[.failed[]? | if type == "object" then {step: (.step // .key // .name), error: ((.error // .reason // "") | tostring | .[0:200])} else . end]' | redact | cut -c1-500)${why:+; код $rc: $why}"
 	fi
 	tc stack_status --arg job_id="$job"
 	[ "$(j -r .status)" = destroyed ] && ok "stack_status после destroy" destroyed || bad "stack_status после destroy" "$(j -r .status)"

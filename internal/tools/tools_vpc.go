@@ -68,6 +68,9 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 	if name == "" {
 		return usageResult(fmt.Errorf("'name' is required")), true
 	}
+	if err := plainName("VPC", "name", name); err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",

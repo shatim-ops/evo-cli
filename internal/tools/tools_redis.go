@@ -125,7 +125,7 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		return errResult(fmt.Errorf("check the name is free: list clusters: %w", err)), true
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult("redis_create", "Redis cluster", name, id, st, "redis_get cluster_id="+id)
+		return nameTakenResult("Redis cluster", name, id, st, "redis_get cluster_id="+id)
 	}
 
 	versionID := stringArg(args, "version_id")
@@ -158,7 +158,7 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
 		}
-		return needSpecResult("redis_create", "redis_specs", specArg, cpu, ram, out)
+		return needSpecResult("redis_specs", specArg, cpu, ram, out)
 	}
 	specID, _ := spec["id"].(string)
 

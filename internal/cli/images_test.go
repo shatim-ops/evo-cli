@@ -79,7 +79,7 @@ func (c imageCloud) GetImage(_ context.Context, id string) (*provision.ImageDeta
 			return &provision.ImageDetail{ID: id, Name: img.Name, DisplayName: img.DisplayName, Type: img.Type, AvailZones: img.AvailZones}, nil
 		}
 	}
-	return nil, clerrors.New(clerrors.CodeVMNotFound, "resource not found: GET /api/v1/images/"+id, "")
+	return nil, clerrors.New(clerrors.CodeNotFound, "resource not found: GET /api/v1/images/"+id, "")
 }
 
 func azs(states ...string) []provision.ImageAvailZone {

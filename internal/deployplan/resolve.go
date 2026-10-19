@@ -53,6 +53,9 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if projectID == "" {
 		return nil, fmt.Errorf("project_id is required")
 	}
+	if err := provision.CheckBootDiskGB(p.DiskGB); err != nil {
+		return nil, err
+	}
 	var warnings []string
 	// The SSH public key to inject (if any) is decided by the caller (the MCP
 	// handler defaults it to the agent's deploy key). p.SSHKey == "" means no

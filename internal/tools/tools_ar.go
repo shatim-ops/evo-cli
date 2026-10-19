@@ -86,7 +86,7 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 		return errResult(fmt.Errorf("check the name is free: list registries: %w", err)), true
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult("ar_create", "registry", name, id, st, "ar_list")
+		return nameTakenResult("registry", name, id, st, "ar_list")
 	}
 	body := map[string]any{
 		"projectId":    cli.ProjectID(),

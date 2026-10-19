@@ -23,6 +23,13 @@ type LogsOptions struct {
 
 // Logs retrieves container logs from the deployed VM.
 func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
+	// --tail -5 printed the whole log, as 0 does (QA 20.10, QA-14).
+	if opts.Tail < 0 {
+		return clerrors.New(clerrors.CodeUsage,
+			i18n.Tf("tail must be 0 or more, got %d", "tail должен быть 0 или больше, передано %d", opts.Tail),
+			i18n.T("tail is the number of last lines; 0 shows the whole log.",
+				"tail — число последних строк; 0 — весь журнал."))
+	}
 	statePath := state.DefaultPath(e.StateDir)
 	stateFile, err := state.Read(statePath)
 	if err != nil {

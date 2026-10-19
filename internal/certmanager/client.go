@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://certificatemanager.api.cloud.ru"
@@ -257,11 +258,9 @@ const maxVersionPages = 100
 // {"versions": [...]}.
 func (c *Client) Versions(ctx context.Context, id string) (map[string]any, error) {
 	all := []any{}
-	token := ""
-	for page := 0; ; page++ {
-		if page >= maxVersionPages {
-			return nil, fmt.Errorf("certmanager: versions of %s: more than %d pages", id, maxVersionPages)
-		}
+	// Every token seen stops the read, not only the last one: A→B→A made
+	// maxVersionPages requests (QA 20.10, QA-2).
+	more, err := pager.Upto(maxVersionPages, func(token string) (string, error) {
 		q := url.Values{}
 		q.Set("pageSize", versionsPageSize)
 		if token != "" {
@@ -269,20 +268,23 @@ func (c *Client) Versions(ctx context.Context, id string) (map[string]any, error
 		}
 		data, status, err := c.do(ctx, http.MethodGet, certPath(id)+"/versions", q, nil)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		var out struct {
 			Versions      []any  `json:"versions"`
 			NextPageToken string `json:"nextPageToken"`
 		}
 		if err := c.decode(data, status, &out); err != nil {
-			return nil, err
+			return "", err
 		}
 		all = append(all, out.Versions...)
-		if out.NextPageToken == "" || out.NextPageToken == token {
-			break
-		}
-		token = out.NextPageToken
+		return out.NextPageToken, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if more {
+		return nil, fmt.Errorf("certmanager: versions of %s: more than %d pages", id, maxVersionPages)
 	}
 	return map[string]any{"versions": all}, nil
 }

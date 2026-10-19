@@ -136,6 +136,14 @@ func run(args []string) int {
 	if cmd == nil {
 		cmd = rootCmd
 	}
+	if !commandStarted && cmd == rootCmd {
+		// "evo --bogus vm list": cobra strips a flag it does not know as
+		// if it took a value, loses "vm" and answers "unknown command
+		// "list"" (QA-17). The unknown flag is the error.
+		if ferr := leadingUnknownFlag(rootCmd, args); ferr != nil {
+			err = ferr
+		}
+	}
 	if !commandStarted {
 		err = usageError(cmd, err)
 	}
@@ -145,6 +153,53 @@ func run(args []string) int {
 	flagJSON = flagJSON || jsonRequested(args)
 	handleError(output.New(flagJSON, flagNoColor), err)
 	return clerrors.ExitCode(err)
+}
+
+// leadingUnknownFlag returns the error pflag gives for the first flag
+// before the command name that the root does not know, or nil. Cobra finds
+// the command with the root's flags stripped, and a flag it does not know is
+// taken to have a value: the next argument, the command name, went with it.
+func leadingUnknownFlag(root *cobra.Command, args []string) error {
+	root.InitDefaultHelpFlag()
+	root.InitDefaultVersionFlag()
+	local, persistent := root.Flags(), root.PersistentFlags()
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" || a == "-" || !strings.HasPrefix(a, "-") {
+			return nil
+		}
+		if strings.HasPrefix(a, "--") {
+			name, _, inline := strings.Cut(a[2:], "=")
+			f := local.Lookup(name)
+			if f == nil {
+				f = persistent.Lookup(name)
+			}
+			if f == nil {
+				return fmt.Errorf("unknown flag: --%s", name)
+			}
+			if !inline && f.NoOptDefVal == "" {
+				i++ // its value
+			}
+			continue
+		}
+		// -yv: shorthands; one with a value takes the rest or the next.
+		for j := 1; j < len(a); j++ {
+			f := local.ShorthandLookup(a[j : j+1])
+			if f == nil {
+				f = persistent.ShorthandLookup(a[j : j+1])
+			}
+			if f == nil {
+				return fmt.Errorf("unknown shorthand flag: %q in %s", a[j], a)
+			}
+			if f.NoOptDefVal == "" {
+				if j == len(a)-1 {
+					i++
+				}
+				break
+			}
+		}
+	}
+	return nil
 }
 
 // jsonRequested reports whether the command line asks for --json, looking
@@ -494,7 +549,10 @@ func handleError(p *output.Printer, err error) {
 	switch {
 	case code == clerrors.ExitInterrupted:
 		message = i18n.T("interrupted", "прервано")
-		if stderrors.As(err, &cliErr) {
+		// A request the interruption cut off fails as API_UNREACHABLE
+		// ("IAM unreachable", a hint about the proxy and "interrupt signal
+		// received"): that is Ctrl-C, not the network (QA-16).
+		if stderrors.As(err, &cliErr) && cliErr.Code != clerrors.CodeAPIUnreachable {
 			// e.g. deploy: which VM was left running and how to delete it.
 			message += ": " + cliErr.Message
 			hint = cliErr.Hint

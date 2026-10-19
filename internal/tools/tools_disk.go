@@ -84,8 +84,16 @@ func (s *Registry) handleDiskList(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	sizeGB := intArg(args, "size_gb", 0)
-	if name == "" || sizeGB <= 0 {
-		return usageResult(fmt.Errorf("'name' and 'size_gb' (>0) are required")), true
+	// One message per argument: "'name' and 'size_gb' (>0) are required"
+	// named the name that was given (QA 20.10, QA-13).
+	if name == "" {
+		return usageResult(fmt.Errorf("'name' is required")), true
+	}
+	if _, ok := args["size_gb"]; !ok {
+		return usageResult(fmt.Errorf("'size_gb' is required")), true
+	}
+	if sizeGB <= 0 {
+		return usageResult(fmt.Errorf("size_gb must be greater than 0, got %d", sizeGB)), true
 	}
 	if err := provision.ValidName("disk", name); err != nil {
 		return errResult(err), true
@@ -313,8 +321,14 @@ func (s *Registry) handleDiskDetach(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (string, bool) {
 	diskID := stringArg(args, "disk_id")
 	sizeGB := intArg(args, "size_gb", 0)
-	if diskID == "" || sizeGB <= 0 {
-		return usageResult(fmt.Errorf("'disk_id' and 'size_gb' (>0, larger than current) are required")), true
+	if diskID == "" {
+		return usageResult(fmt.Errorf("'disk_id' is required")), true
+	}
+	if _, ok := args["size_gb"]; !ok {
+		return usageResult(fmt.Errorf("'size_gb' is required (the new size, larger than the current one)")), true
+	}
+	if sizeGB <= 0 {
+		return usageResult(fmt.Errorf("size_gb must be greater than 0, got %d", sizeGB)), true
 	}
 	if sizeGB > provision.MaxDiskGB {
 		return usageResult(fmt.Errorf("size_gb %d is over the disk maximum of %d GB", sizeGB, provision.MaxDiskGB)), true

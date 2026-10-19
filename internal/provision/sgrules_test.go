@@ -122,7 +122,7 @@ func TestDeleteSecurityGroupRule_Errors(t *testing.T) {
 	for _, tc := range []struct {
 		status int
 		code   string
-	}{{http.StatusNotFound, clierrors.CodeVMNotFound}, {http.StatusUnprocessableEntity, clierrors.CodeAPIError}} {
+	}{{http.StatusNotFound, clierrors.CodeNotFound}, {http.StatusUnprocessableEntity, clierrors.CodeAPIError}} {
 		srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(tc.status) })
 		err := a.DeleteSecurityGroupRule(context.Background(), "sg-1", "rule-7")
 		srv.Close()

@@ -384,7 +384,8 @@ func Close(ctx context.Context, cloud provision.CloudAPI, sf *state.File, recID 
 		}
 		err := cloud.DeleteSecurityGroupRule(ctx, r.SecurityGroupID, r.ID)
 		var cliErr *clerrors.CLIError
-		if err == nil || (stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound) {
+		// 404 — the rule is gone: NOT_FOUND (VM_NOT_FOUND before QA-10).
+		if err == nil || (stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound)) {
 			res.Closed = append(res.Closed, label)
 			continue
 		}

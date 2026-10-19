@@ -374,7 +374,10 @@ func runToolsCall(cmd *cobra.Command, name, argsFile, argsJSON string, argPairs 
 		}
 	}
 	text, err := invokeTool(cmd.Context(), cmd, t, callArgs, false)
-	if text != "" {
+	// With --json a tool error goes to stderr only, as {"error":…}, and
+	// stdout stays empty, as in the command trees: pg_get without an id
+	// printed its error body to stdout too, ar_get did not (QA-12).
+	if text != "" && (err == nil || !flagJSON) {
 		fmt.Fprintln(cmd.OutOrStdout(), text)
 	}
 	return err

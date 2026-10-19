@@ -89,7 +89,7 @@ func (c *fakeCloud) GetImage(_ context.Context, id string) (*provision.ImageDeta
 			return &provision.ImageDetail{ID: img.ID, Name: img.Name, DisplayName: img.DisplayName, Type: img.Type, AvailZones: img.AvailZones}, nil
 		}
 	}
-	return nil, clierrors.New(clierrors.CodeVMNotFound, "resource not found: GET /api/v1/images/"+id, "")
+	return nil, clierrors.New(clierrors.CodeNotFound, "resource not found: GET /api/v1/images/"+id, "")
 }
 
 const (

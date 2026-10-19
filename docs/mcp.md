@@ -83,7 +83,7 @@ kubectl (`~/.kube/kuberc`: алиасы, значения флагов по ум
 
 Ошибка инструмента — `{"status":"error","reason":"…","error":"…","hint":"…"}`
 с `isError: true`, например
-`{"status":"error","reason":"USAGE","error":"vm_get requires vm_id or name"}`:
+`{"status":"error","reason":"USAGE","error":"vm_id or name is required"}`:
 
 - `reason` есть всегда — символьный код из [таблицы](exit-codes.md):
   `USAGE` (инструмент отверг аргументы, в облако ничего не ушло),

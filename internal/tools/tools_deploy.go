@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -45,6 +46,11 @@ func (s *Registry) authedEngine(ctx context.Context, overrides map[string]any) (
 // from that plan's parameters and overlays only the provided fields (a patch),
 // so the user can tweak one value without restating everything.
 func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (string, bool) {
+	// The ports first, before the cloud: the rule of open_ports (QA-3).
+	ports, err := portsArg("ports", args["ports"])
+	if err != nil {
+		return errResult(err), true
+	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return errResult(err), true
@@ -80,7 +86,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		params.ExternalIP = v
 	}
 	if _, ok := args["ports"]; ok {
-		params.Ports = parseInts(args["ports"])
+		params.Ports = ports
 	}
 	if _, ok := args["image_metadata"]; ok {
 		meta, err := metadataArg(args, "image_metadata")
@@ -473,7 +479,10 @@ func (s *Registry) handleListSecurityGroups(ctx context.Context, args map[string
 // handleOpenPorts adds ingress rules for the given ports to a security group.
 func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (string, bool) {
 	sgRef := stringArg(args, "security_group")
-	ports := parseInts(args["ports"])
+	ports, err := portsArg("ports", args["ports"])
+	if err != nil {
+		return errResult(err), true
+	}
 	if sgRef == "" || len(ports) == 0 {
 		return usageResult(fmt.Errorf("security_group and ports are required")), true
 	}
@@ -525,6 +534,10 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 	}
 
 	var opened, skipped, failed []string
+	// Why each port failed: the answer said status ok with failed ports and
+	// no reason, exit 0, when every rule was refused (QA 20.10, QA-3).
+	failures := map[string]string{}
+	var firstErr error
 	for _, p := range ports {
 		pr := fmt.Sprintf("%d:%d", p, p)
 		if existing[proto+" "+pr] {
@@ -541,11 +554,15 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 		}
 		if _, e := eng.Cloud.AddSecurityGroupRule(ctx, target.ID, eng.Config.ProjectID, rule); e != nil {
 			failed = append(failed, strconv.Itoa(p))
+			failures[strconv.Itoa(p)] = e.Error()
+			if firstErr == nil {
+				firstErr = fmt.Errorf("open port %d: %w", p, e)
+			}
 		} else {
 			opened = append(opened, strconv.Itoa(p))
 		}
 	}
-	return toJSON(map[string]any{
+	res := map[string]any{
 		"status":         "ok",
 		"security_group": target.Name,
 		"protocol":       proto,
@@ -553,37 +570,21 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 		"opened":         opened,
 		"already_open":   skipped,
 		"failed":         failed,
-	}), false
-}
-
-// parseInts extracts a []int from a JSON array of numbers, a []int, or a
-// comma-separated string.
-func parseInts(v any) []int {
-	var out []int
-	switch t := v.(type) {
-	case []any:
-		for _, e := range t {
-			switch n := e.(type) {
-			case float64:
-				out = append(out, int(n))
-			case int:
-				out = append(out, n)
-			case string:
-				if x, err := strconv.Atoi(strings.TrimSpace(n)); err == nil {
-					out = append(out, x)
-				}
-			}
-		}
-	case []int:
-		out = t
-	case string:
-		for _, part := range strings.Split(t, ",") {
-			if x, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
-				out = append(out, x)
-			}
-		}
 	}
-	return out
+	if firstErr == nil {
+		return toJSON(res), false
+	}
+	res["failures"] = failures
+	if len(opened) == 0 {
+		// Nothing opened: an error, its reason from the first refusal (an
+		// API status: API_ERROR, AUTH_FAILED, ...).
+		res["status"] = "error"
+		return errAnswer(firstErr, res), true
+	}
+	// Some opened, some not: partial, as disk_create and destroy say it;
+	// the reason is the first refusal's.
+	res["status"] = "partial"
+	return errAnswer(fmt.Errorf("opened %s, not opened %s: %w", strings.Join(opened, ","), strings.Join(failed, ","), firstErr), res), true
 }
 
 // handleReleaseFloatingIP deletes a floating IP, refusing if it's in use.
@@ -592,6 +593,15 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	ip := stringArg(args, "ip_address")
 	if id == "" && ip == "" {
 		return usageResult(fmt.Errorf("provide either 'id' or 'ip_address'")), true
+	}
+	if id != "" && ip != "" {
+		// Both: the id was taken and the address dropped without a word —
+		// `evo vpc fip-release <id> --ip-address X` released the id's
+		// address (QA 20.10, QA-8).
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			i18n.T("pass id or ip_address, not both", "укажите id или ip_address, не оба"),
+			i18n.T("The id comes from list_floating_ips; ip_address finds the floating IP by its address.",
+				"id — из list_floating_ips; по ip_address floating IP ищется по адресу."))), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -633,19 +643,21 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 
 	// A SNAT gateway's address goes with the gateway: the API refuses to
 	// release it alone (422 floating_ip_address_is_used_by_nat_gateway).
+	// A refusal is local, nothing was released: USAGE (exit 1) with the
+	// reason; it had no reason and the CLI exited 5, API_ERROR (QA-6).
 	if onNAT {
-		return toJSON(map[string]any{
-			"status":  "refused",
-			"message": fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (snat_delete); not released", fipIP, fipID),
-		}), true
+		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (snat_delete); not released", fipIP, fipID)
+		return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
+			"Delete the SNAT gateway with snat_delete: its floating IP goes with it."),
+			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true
 	}
 
 	// Safety: never release an IP that is attached to a VM.
 	if state == "in_use" {
-		return toJSON(map[string]any{
-			"status":  "refused",
-			"message": fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it or destroy the VM first; not released", fipIP, fipID),
-		}), true
+		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it or destroy the VM first; not released", fipIP, fipID)
+		return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
+			"Detach it from the VM, or delete the VM (destroy), then release it."),
+			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true
 	}
 
 	if err := eng.Cloud.DeleteFloatingIP(ctx, fipID, projectID); err != nil {

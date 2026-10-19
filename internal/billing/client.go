@@ -26,6 +26,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // Documentation pages the hints point to.
@@ -184,8 +185,14 @@ func (c *Client) Consumption(ctx context.Context, startISO, endISO string) ([]ma
 		return nil, ErrNoAgreement()
 	}
 	var all []map[string]any
-	pageToken := ""
-	for {
+	// Every page through internal/pager, with a bound: a server that sent
+	// the same next_page_token again looped forever and grew the list until
+	// the process ran out of memory (QA 20.10, QA-2). A repeated token is an
+	// error here, not the end of the list: the sum of a list read twice or
+	// cut short is a wrong amount of money.
+	sent := map[string]bool{}
+	more, err := pager.Upto(pager.MaxPages, func(pageToken string) (string, error) {
+		sent[pageToken] = true
 		q := url.Values{}
 		if c.agreementID != "" {
 			q.Set("agreement_id", c.agreementID)
@@ -202,23 +209,35 @@ func (c *Client) Consumption(ctx context.Context, startISO, endISO string) ([]ma
 		u := c.consumptionBase + "/v2/consumption?" + q.Encode()
 		data, status, err := c.get(ctx, u)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		if status < 200 || status >= 300 {
-			return nil, c.consumptionError(status, data)
+			return "", c.consumptionError(status, data)
 		}
 		var out struct {
 			Consumptions  []map[string]any `json:"consumptions"`
 			NextPageToken string           `json:"next_page_token"`
 		}
 		if err := json.Unmarshal(data, &out); err != nil {
-			return nil, fmt.Errorf("parse consumption: %w", err)
+			return "", fmt.Errorf("parse consumption: %w", err)
 		}
 		all = append(all, out.Consumptions...)
-		if out.NextPageToken == "" {
-			break
+		if out.NextPageToken != "" && sent[out.NextPageToken] {
+			return "", clierrors.New(clierrors.CodeAPIError,
+				i18n.Tf("billing API: consumption: the answer repeats page token %q: the list never ends, the sums would be wrong",
+					"billing API: потребление: ответ повторяет токен страницы %q: список не кончается, суммы были бы неверны", out.NextPageToken),
+				i18n.T("Cloud.ru answered a broken page sequence; retry later, or read a shorter period.",
+					"Cloud.ru вернул сломанную последовательность страниц; повторите позже или запросите период короче."))
 		}
-		pageToken = out.NextPageToken
+		return out.NextPageToken, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if more {
+		return nil, clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("billing API: consumption: more than %d pages, the list is not complete", "billing API: потребление: больше %d страниц, список неполный", pager.MaxPages),
+			i18n.T("Read a shorter period (start, end).", "Запросите период короче (start, end)."))
 	}
 	return all, nil
 }

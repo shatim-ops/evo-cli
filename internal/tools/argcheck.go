@@ -48,7 +48,7 @@ func checkedArgs(name string, schema map[string]any, next Handler) Handler {
 				takes = strings.Join(known, ", ")
 			}
 			return errResult(clierrors.New(clierrors.CodeUsage,
-				fmt.Sprintf("%s: unknown argument(s) %s", name, strings.Join(unknown, ", ")),
+				fmt.Sprintf("unknown argument(s) %s", strings.Join(unknown, ", ")),
 				fmt.Sprintf("%s takes: %s.", name, takes))), true
 		}
 		for k, v := range args {
@@ -56,7 +56,7 @@ func checkedArgs(name string, schema map[string]any, next Handler) Handler {
 			typ, _ := p["type"].(string)
 			if v != nil && !scalarOfType(typ, v) {
 				return errResult(clierrors.New(clierrors.CodeUsage,
-					fmt.Sprintf("%s: %s must be %s, got %s", name, k, typeName(typ), describeValue(v)),
+					fmt.Sprintf("%s must be %s, got %s", k, typeName(typ), describeValue(v)),
 					fmt.Sprintf("Pass %s as a JSON %s (see the tool's inputSchema).", k, typ))), true
 			}
 		}
@@ -78,7 +78,7 @@ func checkedArgs(name string, schema map[string]any, next Handler) Handler {
 			}
 			if canon == "" {
 				return errResult(clierrors.New(clierrors.CodeUsage,
-					fmt.Sprintf("%s: %s %q is not one of %s", name, k, s, strings.Join(allowed, ", ")),
+					fmt.Sprintf("%s %q is not one of %s", k, s, strings.Join(allowed, ", ")),
 					fmt.Sprintf("Pass %s as one of: %s.", k, strings.Join(allowed, ", ")))), true
 			}
 			args[k] = canon

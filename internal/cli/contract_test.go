@@ -67,7 +67,7 @@ func TestContract_ArgForms(t *testing.T) {
 	if err != nil || args["values"] != "a=b" {
 		t.Fatalf("values=a=b: %v %#v", err, args)
 	}
-	if _, err := buildToolArgs(open, "", "", []string{"security_group=a=b"}); err != nil {
+	if _, err := buildToolArgs(open, "", "", []string{"security_group=a=b", "ports=80"}); err != nil {
 		t.Fatalf("value may contain '=': %v", err)
 	}
 	// A repeated --arg: the later one wins (tools call help).

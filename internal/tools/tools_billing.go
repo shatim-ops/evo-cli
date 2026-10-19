@@ -123,6 +123,11 @@ func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string
 	if end == "" {
 		end = start
 	}
+	// Dates YYYY-MM-DD, end not before start: "2026-13-45", "yesterday" and
+	// a timestamp went to the API and the answer was a total of 0 (QA-5).
+	if _, _, err := periodArgs(start, end); err != nil {
+		return errResult(err), true
+	}
 	cli, err := s.billingClient(ctx, args)
 	if err != nil {
 		return errResult(err), true
@@ -230,30 +235,28 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	const layout = "2006-01-02"
 	now := time.Now().UTC()
 	today := now.Format(layout)
-	days := pgInt(args, "days", 30)
-	if days <= 0 {
-		days = 30
+	// days -1 became 30, a reversed period counted as one day (QA-5, QA-14).
+	if err := minIntArg(args, "days", 1, "days is the length of the window ending at end; the default is 30."); err != nil {
+		return errResult(err), true
 	}
+	days := pgInt(args, "days", 30)
 	end := stringArg(args, "end")
 	if end == "" {
 		end = today
 	}
-	endT, err := time.Parse(layout, end)
+	endT, err := dateArg("end", end)
 	if err != nil {
-		return usageResult(fmt.Errorf("invalid end date %q (want YYYY-MM-DD)", end)), true
+		return errResult(err), true
 	}
 	start := stringArg(args, "start")
 	if start == "" {
 		start = endT.AddDate(0, 0, -(days - 1)).Format(layout)
 	}
-	startT, err := time.Parse(layout, start)
+	startT, endT, err := periodArgs(start, end)
 	if err != nil {
-		return usageResult(fmt.Errorf("invalid start date %q (want YYYY-MM-DD)", start)), true
+		return errResult(err), true
 	}
 	periodDays := int(endT.Sub(startT).Hours()/24) + 1
-	if periodDays <= 0 {
-		periodDays = 1
-	}
 
 	cli, err := s.billingClient(ctx, args)
 	if err != nil {

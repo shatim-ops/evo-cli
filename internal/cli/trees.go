@@ -48,6 +48,11 @@ type treeCmd struct {
 	Tool   string
 	Args   []string
 	Rename map[string]string // tool argument → flag name, when the default clashes or reads badly
+	// Omit are tool arguments that get no flag: an alias of a positional
+	// argument (pg get <cluster-id> beside the tool's id). With both, the
+	// flag won and the positional was lost: `pg delete A --id B` deleted B
+	// (QA 20.10, QA-1).
+	Omit map[string]bool
 	// Pairs are object arguments given as a repeatable key=value flag
 	// (--meta admin_password=…) instead of one JSON object.
 	Pairs   map[string]bool
@@ -130,11 +135,11 @@ var treeGroups = []treeGroup{
 	}},
 	{Name: "pg", Short: "Managed PostgreSQL clusters, databases, users, backups", Cmds: []treeCmd{
 		{Verb: "list", Tool: "pg_list"},
-		{Verb: "get", Tool: "pg_get", Args: []string{"cluster_id"}},
+		{Verb: "get", Tool: "pg_get", Args: []string{"cluster_id"}, Omit: map[string]bool{"id": true}},
 		{Verb: "versions", Tool: "pg_versions"},
 		{Verb: "specs", Tool: "pg_specs"},
 		{Verb: "create", Tool: "pg_create", Args: []string{"name"}},
-		{Verb: "delete", Tool: "pg_delete", Args: []string{"cluster_id"}},
+		{Verb: "delete", Tool: "pg_delete", Args: []string{"cluster_id"}, Omit: map[string]bool{"id": true}},
 		{Verb: "operation", Tool: "pg_operation", Args: []string{"operation_id"}},
 		{Verb: "databases", Tool: "pg_databases", Args: []string{"cluster_id"}},
 		{Verb: "db-create", Tool: "pg_db_create", Args: []string{"cluster_id", "name"}},
@@ -235,7 +240,7 @@ func (c treeCmd) flagArgs(t tools.Tool) []param {
 	}
 	var out []param
 	for _, p := range schemaParams(t) {
-		if pos[p.Name] || (rootArgs[p.Name] && c.Rename[p.Name] == "") {
+		if pos[p.Name] || c.Omit[p.Name] || (rootArgs[p.Name] && c.Rename[p.Name] == "") {
 			continue
 		}
 		out = append(out, p)

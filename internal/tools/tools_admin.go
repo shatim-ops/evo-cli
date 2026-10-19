@@ -241,10 +241,13 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 		// "unavailable" so it doesn't read as a hard error on an early turn.
 		low := strings.ToLower(err.Error())
 		if strings.Contains(low, "403") || strings.Contains(low, "permission") {
+			// reason is a code, as everywhere else; the phrase is the note
+			// (QA 20.10, QA-6).
 			return toJSON(map[string]any{
 				"status":       "unavailable",
 				"quota_usages": []any{},
-				"reason":       "this service account lacks customer/organization quota scope; quota usages are not readable with the current credentials",
+				"reason":       clierrors.CodeAPIError,
+				"note":         "this service account lacks customer/organization quota scope; quota usages are not readable with the current credentials",
 				"detail":       err.Error(),
 			}), false
 		}

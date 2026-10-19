@@ -34,7 +34,7 @@ func imageCatalogCloud(images ...*provision.ImageDetail) *mockCloudAPI {
 			if d, ok := byID[id]; ok {
 				return d, nil
 			}
-			return nil, clerrors.New(clerrors.CodeVMNotFound, "not found", "")
+			return nil, clerrors.New(clerrors.CodeNotFound, "not found", "")
 		},
 	}
 }

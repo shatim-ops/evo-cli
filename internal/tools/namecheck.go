@@ -39,12 +39,12 @@ func takenName(items []map[string]any, name string) (id, status string, ok bool)
 // nameTakenResult is the answer of a create tool whose name is in use: USAGE
 // (the call is wrong, nothing was sent to create anything) with the existing
 // id in existing_id, so a stack step knows the resource is not its own.
-func nameTakenResult(tool, kind, name, id, status, getHint string) (string, bool) {
+func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 	if status == "" {
 		status = "unknown"
 	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
-		fmt.Sprintf("%s: a %s named %q already exists (id %s, status %s); a second one would be billed separately", tool, kind, name, id, status),
+		fmt.Sprintf("a %s named %q already exists (id %s, status %s); a second one would be billed separately", kind, name, id, status),
 		fmt.Sprintf("Use the existing one (%s), or pick another name.", getHint)),
 		map[string]any{"existing_id": id}), true
 }
@@ -66,13 +66,13 @@ func uuidArg(arg, id, from string) string {
 // choose from. It was status need_specification with rc 0, even with --yes:
 // a create that created nothing read as success (release audit, L-30).
 // fields carries the menu and what was resolved (version, zone).
-func needSpecResult(tool, specsTool, specID string, cpu, ram int, fields map[string]any) (string, bool) {
-	msg := tool + " needs a specification: pass specification_id, or cpu+ram matching one of available_specifications"
+func needSpecResult(specsTool, specID string, cpu, ram int, fields map[string]any) (string, bool) {
+	msg := "a specification is needed: pass specification_id, or cpu+ram matching one of available_specifications"
 	switch {
 	case specID != "":
-		msg = fmt.Sprintf("%s: specification_id %q is not one of available_specifications", tool, specID)
+		msg = fmt.Sprintf("specification_id %q is not one of available_specifications", specID)
 	case cpu > 0 && ram > 0:
-		msg = fmt.Sprintf("%s: no specification with cpu=%d and ram=%d; pick one of available_specifications", tool, cpu, ram)
+		msg = fmt.Sprintf("no specification with cpu=%d and ram=%d; pick one of available_specifications", cpu, ram)
 	}
 	fields["status"] = "need_specification"
 	return errAnswer(clierrors.New(clierrors.CodeUsage, msg,

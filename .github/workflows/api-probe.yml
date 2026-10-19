@@ -481,6 +481,8 @@ jobs:
               a=(); [ "$t" = billing_consumption ] && a=(--arg "start=$day")
               out=$(env -u CLOUDRU_AGREEMENT_ID evo tools call "$t" "${a[@]}" --json 2>"$ee") && rc=0 || rc=$?
               res=$(printf '%s' "$out" | jq -c 'if type == "object" then {status: (.status // null), reason: (.reason // null), error: ((.error // null) | if . == null then null else tostring | .[0:160] end), records: (.records // null), keys: keys} else {type: type} end' 2>/dev/null | head -1 || true)
+              # Ошибка инструмента с --json — только в stderr (stdout пуст, QA-12).
+              [ -n "$res" ] || res=$(jq -cR 'fromjson? | select(.error) | .error | {code, reason, message: ((.message // "") | tostring | .[0:160])}' "$ee" 2>/dev/null | head -1 || true)
               # Ответ не JSON — начало stderr evo (до 160 символов).
               [ -n "$res" ] || res="не JSON, stderr: $(head -c 160 "$ee" | tr '\n' ' ')"
               printf 'evo_%-26s exit=%s %s\n' "$t" "$rc" "$res" | redact
