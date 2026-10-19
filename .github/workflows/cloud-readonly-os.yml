@@ -1,0 +1,62 @@
+name: cloud-readonly-os
+
+# Чтения на живом Cloud.ru из Windows и macOS — тот же
+# .github/scripts/cloud-readonly.sh, что job readonly в cloud-e2e (там —
+# Linux): пути профиля, права файла ключа (ACL на Windows), корневые
+# сертификаты ОС, MCP по stdio и HTTP. Ничего не создаёт. Окружение
+# cloud-readonly — ключ наблюдателя, открыто только для main, без одобрения.
+# Своя группа concurrency: не ждёт cloud-e2e, который ждёт одобрения.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-readonly-os
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  readonly:
+    environment: cloud-readonly
+    if: ${{ github.ref == 'refs/heads/main' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    env:
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Сборка
+        # evo.exe на Windows: без расширения bash его не запустит.
+        run: go build -o "$RUNNER_TEMP/evo$(go env GOEXE)" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: Чтения CLI, инструменты, MCP stdio и HTTP
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
+          CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
+        run: .github/scripts/cloud-readonly.sh

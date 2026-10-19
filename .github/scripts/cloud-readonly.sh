@@ -2,7 +2,8 @@
 # Проверки на настоящем Cloud.ru без платных ресурсов: только чтения API
 # через CLI, все инструменты только для чтения без обязательных аргументов,
 # MCP по stdio и по HTTP (гейт подтверждения, --allow-project, отказ без
-# токена). Запускается job'ом readonly в cloud-e2e.yml после evo configure.
+# токена). Запускается job'ом readonly в cloud-e2e.yml (Linux) и в
+# cloud-readonly-os.yml (Windows, macOS) после evo configure.
 #
 # Репозиторий публичный, лог — тоже: печатаются только имена, коды выхода,
 # reason и счётчики, ни одного ответа API целиком. PROJECT (секрет) GitHub
@@ -13,6 +14,20 @@
 set -euo pipefail
 
 : "${PROJECT:?нужен PROJECT — UUID тестового проекта}"
+# На macOS нет timeout из coreutils; на Windows в PATH бывает timeout.exe
+# системы с другим синтаксисом. Тогда — тот же предел через perl (он есть
+# и на macOS, и в Git для Windows).
+if ! timeout 5 true 2>/dev/null; then
+	timeout() {
+		local limit=$1
+		shift
+		perl -e 'alarm shift; exec @ARGV or die "exec: $!"' "$limit" "$@"
+	}
+fi
+# jq для Windows пишет CRLF: \r в именах инструментов и в сравнениях.
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*) jq() { command jq -b "$@"; } ;;
+esac
 tmp=$(mktemp -d)
 trap 'kill $(jobs -p) 2>/dev/null || true; rm -rf "$tmp"' EXIT
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}

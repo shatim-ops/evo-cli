@@ -17,8 +17,8 @@
      **Review deployments** → Approve. Ключи Cloud.ru (`CLOUDRU_KEY_ID`,
      `CLOUDRU_SECRET`, `CLOUDRU_PROJECT_ID`, `CLOUDRU_S3_*`) лежат только в
      секретах окружений: `cloud-e2e` — ключ с правом изменений, с одобрением;
-     `cloud-readonly` — ключ наблюдателя для `api-probe` и job `readonly`, без
-     одобрения. В секретах репозитория их быть не должно — их видит любой
+     `cloud-readonly` — ключ наблюдателя для `api-probe`, job `readonly` и
+     `cloud-readonly-os` (те же чтения на Windows и macOS), без одобрения. В секретах репозитория их быть не должно — их видит любой
      workflow без `environment:`.
 1. `main` зелёный в CI (в том числе `TestCommandsDoc` и `TestToolsDoc`: `docs/commands.md` и `docs/tools.md` совпадают с бинарём); локально `goreleaser check` и, по желанию,
    `goreleaser release --snapshot --clean --skip=sign` — в `dist/` 6 архивов (в каждом `evo` и alias `cloudru-vm` до v1.1) и `checksums.txt`.
