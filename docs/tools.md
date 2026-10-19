@@ -32,7 +32,7 @@
 | Инструмент | Меняет | Обязательные аргументы | Описание |
 |---|---|---|---|
 | `billing_balance` | нет | — | Account balance for the billing agreement (RUB, active flag, raw agreement object). |
-| `billing_consumption` | нет | `start` | Usage/consumption cost for a date range, aggregated by service (total, total_with_nds, records, by_service breakdown sorted by cost). |
+| `billing_consumption` | нет | `start` | Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. |
 | `billing_finops` | нет | — | FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in … |
 
 ## ca

@@ -373,8 +373,16 @@ compose-файла не изменился. Повторите с `evo deploy --
 - `S3 credentials not configured` (код 2) — задайте ключи Object Storage
   (`CLOUDRU_S3_ACCESS_KEY`, `CLOUDRU_S3_SECRET_KEY` или секция `s3` профиля,
   [auth.md](auth.md#ключи-object-storage-s3)).
-- `agreement_id not configured` (код 2, `reason: CONFIG_INVALID`) — для
-  инструментов биллинга задайте `CLOUDRU_AGREEMENT_ID`.
+- Биллинг (`billing_*`), код 2, `reason: CONFIG_INVALID`: «не задан ни
+  проект, ни договор» — задайте проект (`CLOUDRU_PROJECT_ID`, аргумент
+  `project_id`), чтобы считать расход проекта, или `CLOUDRU_AGREEMENT_ID`
+  для всего договора; «для баланса нужен договор» — `billing_balance`
+  работает только с `CLOUDRU_AGREEMENT_ID`, баланса по проекту в API нет.
+- Биллинг, код 5, «нет доступа к потреблению проекта» (HTTP 403) — у
+  сервисного аккаунта нет роли администратора проекта
+  (`platform.project.admin`); по договору нужны роли администратора
+  организации или администратора затрат
+  ([документация](https://cloud.ru/docs/billing/ug/topics/api-ref_start)).
 
 ## Обращение в поддержку
 

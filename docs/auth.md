@@ -206,7 +206,7 @@ profiles:
 
 | Переменная | Что задаёт | Флаг / ключ в `.evo.yaml` и профиле |
 |---|---|---|
-| `CLOUDRU_PROJECT_ID` | UUID проекта. Нужен и для чтений, и для создания ресурсов проекта (`vm list`, `vpc subnets`, `k8s list`, `pg list`, секреты, …): без него — `CONFIG_INVALID`, код `2`, запрос в облако не уходит. Без проекта работают каталоги (зоны, флейворы, образы, Marketplace, типы дисков), `org_projects`, `org_quotas`, `billing_*`, Object Storage и локальные `status`/`list` | `--project-id` / `project_id` |
+| `CLOUDRU_PROJECT_ID` | UUID проекта. Нужен и для чтений, и для создания ресурсов проекта (`vm list`, `vpc subnets`, `k8s list`, `pg list`, секреты, …): без него — `CONFIG_INVALID`, код `2`, запрос в облако не уходит. Без проекта работают каталоги (зоны, флейворы, образы, Marketplace, типы дисков), `org_projects`, `org_quotas`, `billing_*` с договором (`CLOUDRU_AGREEMENT_ID`), Object Storage и локальные `status`/`list` | `--project-id` / `project_id` |
 | `EVOLUTION_PROJECT_ID` | то же (имя AI Agents); `CLOUDRU_PROJECT_ID` важнее | — |
 | `CLOUDRU_REGION` | UUID зоны доступности (`evo list-zones`) | `--region` / `region` |
 | `CLOUDRU_IMAGE_ID` | UUID загрузочного образа для `deploy` (`evo image list`, `evo image get <имя>`) | `deploy --image-id` / `image_id` (по имени или UUID — `deploy --image` / `image:`) |
@@ -215,7 +215,7 @@ profiles:
 | `CLOUDRU_COMPOSE_FILE` | путь к compose-файлу (по умолчанию `docker-compose.yml`) | `deploy -f` / `compose_file` |
 | `CLOUDRU_PROJECT_NAME` | имя развёртывания (по умолчанию — имя текущего каталога) | `project_name` |
 | `CLOUDRU_TIMEOUT` | сколько секунд `deploy` ждёт, пока ВМ станет активной (по умолчанию 600) | `timeout` |
-| `CLOUDRU_AGREEMENT_ID` | номер договора для инструментов биллинга (`billing_*`), если договоров несколько | — |
+| `CLOUDRU_AGREEMENT_ID` | ID договора для инструментов биллинга (`billing_*`): расход и баланс всего договора. Его видят только администратор организации и администратор затрат ([где найти](https://cloud.ru/docs/billing/ug/topics/faq__api_id_agreement)). Без него `billing_consumption` и `billing_finops` считают расход проекта (`CLOUDRU_PROJECT_ID` или аргумент `project_id`; роль ключа — администратор проекта, `platform.project.admin`, [документация](https://cloud.ru/docs/billing/ug/topics/api-ref_start)), а `billing_balance` отказывает: баланса по проекту в API нет | — |
 
 ### Object Storage (S3)
 

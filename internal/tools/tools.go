@@ -1080,25 +1080,27 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_balance",
-			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway.",
+			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
 			Name:        "billing_consumption",
-			Description: "Usage/consumption cost for a date range, aggregated by service (total, total_with_nds, records, by_service breakdown sorted by cost). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Use for FinOps/cost analysis.",
+			Description: "Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. Aggregated by service: total (excluding VAT, sum of amount), total_with_nds (including VAT, sum of amount_nds), records, by_service sorted by cost (excluding VAT). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). Use for FinOps/cost analysis.",
 			InputSchema: objSchema(map[string]any{
-				"start": strProp("Start date YYYY-MM-DD. Required."),
-				"end":   strProp("End date YYYY-MM-DD (default = start)."),
+				"start":      strProp("Start date YYYY-MM-DD. Required."),
+				"end":        strProp("End date YYYY-MM-DD (default = start)."),
+				"project_id": strProp("Project UUID to read the consumption of (default: the current project when CLOUDRU_AGREEMENT_ID is not set; with it, the whole agreement)."),
 			}, "start"),
 		},
 		{
 			Name:        "billing_finops",
-			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks.",
+			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Costs exclude VAT (amount). Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks.",
 			InputSchema: objSchema(map[string]any{
-				"start":  strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
-				"end":    strProp("End date YYYY-MM-DD. Optional; default = today."),
-				"days":   intProp("Window length if start omitted (default 30)."),
-				"budget": intProp("Monthly budget in RUB → projected-monthly threshold check (optional)."),
+				"start":      strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
+				"end":        strProp("End date YYYY-MM-DD. Optional; default = today."),
+				"days":       intProp("Window length if start omitted (default 30)."),
+				"budget":     intProp("Monthly budget in RUB → projected-monthly threshold check (optional)."),
+				"project_id": strProp("Project UUID (default: the current project when CLOUDRU_AGREEMENT_ID is not set; with it, the whole agreement)."),
 			}),
 		},
 		{
