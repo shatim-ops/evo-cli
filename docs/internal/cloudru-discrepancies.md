@@ -23,6 +23,11 @@ Cloud.ru Evolution). Адресаты — продуктовые команды 
   новые NET-11…13, CRT-4, AR-4, наблюдения OPS-1b, OPS-2c, OPS-4;
   подтверждены CRT-3, CMP-15, CMP-16. Сверка 19.10: MON-1 снят — ссылался на
   справку продукта платформы VMware, в документации Evolution всё описано.
+  В тот же день все пункты сверены с документацией Evolution (только платформа
+  Evolution, включая свёрнутые блоки и вкладки API страниц, Terraform Evolution
+  и спецификации): сняты также NET-8 и DB-15; переклассифицированы CMP-6,
+  CMP-13, CMP-15, CMP-16, IAM-4, NET-9, NET-12, CRT-1; уточнены формулировки,
+  ссылки и цитаты ещё 56 пунктов (у DB-9, DB-10, CRT-3, NLB-2 — и класс).
 - **Как получены факты:** GitHub Actions репозитория `shatim-ops/evo-cli`:
   `api-probe` (только GET и расчёт цены, в лог — коды HTTP, имена полей,
   счётчики) и `cloud-e2e` (создание и удаление ВМ и кластера Kubernetes,
@@ -54,21 +59,21 @@ API» — ответ неверен независимо от документа
 |---|---|---|---|---|
 | [Образы и Маркетплейс](#образы-и-маркетплейс) | 5 | 5 | 0 | 23 из 86 образов общего каталога, включая все отечественные ОС, проекту недоступны; создание ВМ — 422 «Image … not found» |
 | [Биллинг, расчёт цены](#биллинг-и-расчёт-цены) | 6 | 4 | 2 | `price-calculation` даёт 0 за лицензию у всех образов маркетплейса, хотя у Windows Server на карточке 1 006 ₽/мес |
-| [Compute (ВМ)](#compute-вм) | 15 | 14 | 1 | обязательное поле интерфейса `interface_security_enabled` отсутствует в спецификации с `additionalProperties: false` |
+| [Compute (ВМ)](#compute-вм) | 15 | 14 | 1 | обязательное поле интерфейса `interface_security_enabled` есть в примерах запроса документации, но отсутствует в спецификации с `additionalProperties: false` |
 | [Managed Kubernetes](#managed-kubernetes) | 11 | 11 | 0 | `addonNamespace` релиза плагина повторяет `addonVersion`; без `zones` плоскость управления встаёт не в зоне подсети VIP (K8S-10) |
-| [IAM и Organization](#iam-и-organization) | 4 | 4 | 0 | сервисный аккаунт проекта не может узнать свой проект: `GET /v3/projects` → 400 «user not found»; проект есть только в неописанном claim токена |
+| [IAM и Organization](#iam-и-organization) | 4 | 4 | 0 | сервисный аккаунт проекта не может узнать свой проект: `GET /v3/projects` → 400 «user not found»; проект есть только в claim токена, описанном лишь на странице Impersonate |
 | [Аудит-логирование](#аудит-логирование) | 2 | 2 | 0 | 401 вместо 403 при отсутствии доступа и 415 на лишний параметр |
-| [VPC, DNS, группы безопасности, SNAT](#vpc-dns-группы-безопасности-snat) | 13 | 11 | 2 | snake_case принимается при camelCase в спецификации — не ясно, гарантия ли это |
-| [DBaaS: Kafka, Redis, PostgreSQL](#dbaas-kafka-redis-postgresql) | 21 | 19 | 2 | Redis `replicas` в POST и в GET означает разное (DB-11): клиент, повторивший прочитанное значение, получает 400; Kafka в `DEPLOYING` не удалить — 500 (DB-17); PostgreSQL в `FAILED` через API не удалить вовсе (DB-21) |
+| [VPC, DNS, группы безопасности, SNAT](#vpc-dns-группы-безопасности-snat) | 12 | 10 | 2 | snake_case принимается при camelCase в спецификации — не ясно, гарантия ли это |
+| [DBaaS: Kafka, Redis, PostgreSQL](#dbaas-kafka-redis-postgresql) | 20 | 18 | 2 | Redis `replicas` в POST и в GET означает разное (DB-11): клиент, повторивший прочитанное значение, получает 400; Kafka в `DEPLOYING` не удалить — 500 (DB-17); PostgreSQL в `FAILED` через API не удалить вовсе (DB-21) |
 | Мониторинг | 0 | — | — | расхождений нет: MON-1 снят 19.10 — предел 24 ч, миллисекунды и формат ответа описаны в документации Evolution ([снятые вопросы](#снятые-вопросы)) |
 | [Foundation Models](#foundation-models) | 1 | 1 | 0 | токен IAM отклоняется сообщением про API-ключ |
 | [Портал документации](#портал-документации) | 2 | 2 | 0 | ответ cloud.ru/docs зависит от User-Agent: без него — 403 |
 | [Artifact Registry](#artifact-registry) | 4 | 4 | 0 | имя реестра не уникально: второй `POST` с тем же именем создаёт дубль; список без `pageSize` бесконечен (AR-4) |
-| [Certificate Manager](#certificate-manager) | 4 | 4 | 0 | список версий сертификата без `pageSize` — 400, умолчания нет |
+| [Certificate Manager](#certificate-manager) | 4 | 4 | 0 | список версий сертификата без `pageSize` — 400, хотя инструкция обещает умолчание 100 |
 | [Container Apps](#container-apps) | 2 | 2 | 0 | HTTP 499 вместо 404/400 |
-| [Network Load Balancer](#network-load-balancer) | 2 | 2 | 0 | удаление используемой группы целей принимается |
+| [Network Load Balancer](#network-load-balancer) | 2 | 2 | 0 | удаление используемой группы целей принимается; каскад описан только для единственной группы |
 | Secret Manager | 0 | — | — | расхождений не найдено; вживую — создание, версии, чтение и удаление секрета (живой прогон 17.10) |
-| **Итого** | **92** | **85** | **7** | |
+| **Итого** | **90** | **83** | **7** | |
 
 Пять пунктов с наибольшим влиянием: [IMG-1](#img-1-часть-общего-каталога-недоступна-проекту-ошибка-выдаётся-как-image-not-found),
 [BIL-1](#bil-1-лицензия-образа-маркетплейса-в-расчёте-цены-всегда-0),
@@ -84,32 +89,34 @@ API» — ответ неверен независимо от документа
 
 #### IMG-1. Часть общего каталога недоступна проекту, ошибка выдаётся как «Image not found»
 Нет в документации + ошибка API · подтверждено вживую
-- **Док:** [Образы Маркетплейса](https://cloud.ru/docs/images/ug/topics/concepts__marketplace-images): «Нужный образ можно выбрать при создании виртуальной машины». Об условиях доступности образа проекту — ни слова; в `VM-spec` у `GET /api/v1/images` параметр `project_id` описан только как фильтр.
+- **Док:** [Образы Маркетплейса](https://cloud.ru/docs/images/ug/topics/concepts__marketplace-images): «Нужный образ можно выбрать при создании виртуальной машины». [Быстрый старт Образов](https://cloud.ru/docs/images/ug/topics/quickstart) говорит лишь, что видны образы, «которые подключены и созданы в вашем проекте»; как образ общего каталога подключается к проекту, не описано.
+- **Спека:** в `VM-spec` у `GET /api/v1/images` `project_id` описан только как фильтр; есть фильтр `enabled`, но признака доступности в ответе нет. В 422 у `POST /api/v1.1/vms` случай «образ не найден» не перечислен; код в схеме `ImageNotFoundExceptionSchema` — `image_not_found`, вживую — `wrong_image`.
 - **Живое:** api-probe #8 (16.10, 17:25 UTC): `GET /api/v1/images` без `project_id` — 86 общих образов; с `project_id` — 63 общих + собственные. Не видны 23, в том числе все Astra Linux (`AstraLinuxSmolensk1.8.3KES`, `astra_1.8.1`, `astra-voronej` …), Альт (`alt_8_sp_9`, `alt_10.2.1` …), РЕД ОС (`redos-8.0`, `redos_7.3_image`, `REDOS7.3-sert`), `SberlinuxOSServe9.1`, а также образы типа `public`: `Windows_11_vdi`, `Ubuntu_24_04_Desktop`, `vyos`, `pt-ngfw-vm-1.11.1`. `GET /images?project_id=…&name=AstraLinuxSmolensk1.8.3KES` → 200, `total=0`.
 - **Живое (создание):** cloud-e2e #31, job `os-smoke` (16.10, 11:52 UTC): `POST /api/v1.1/vms` с `AstraLinuxSmolensk1.8.3KES` и `redos_7.3_image` → 422 `[{"message":"Image with this id is not found","code":"wrong_image"}]`, хотя образ есть в каталоге.
 - **Влияние:** ВМ на отечественных ОС через API не создаётся, а текст ошибки указывает не на причину (доступ), а на опечатку. Автоматизация не может отличить «нет образа» от «образ не подключён».
 - **Просим:** описать, что делает образ общего каталога доступным проекту (подключение продукта, лицензия, роль, регион); отдельный код ошибки (например, `image_not_available_for_project`); признак доступности в ответе `GET /images`.
-- **Доп. (гипотеза):** «сервисы могут не отображаться, если у организации не заключён договор или оферта для доступа к Маркетплейсу» ([showcase-empty](https://cloud.ru/docs/marketplace/ug/topics/troubleshooting__showcase-empty)); подключение не проходит при нулевом балансе ([connect-error](https://cloud.ru/docs/marketplace/ug/topics/troubleshooting__connect-error)).
+- **Доп. (гипотеза):** «Сервисы могут не отображаться, если в профиле выбрана организация, у которой не заключен договор или оферта для доступа к Маркетплейсу» ([showcase-empty](https://cloud.ru/docs/marketplace/ug/topics/troubleshooting__showcase-empty)); подключение не проходит при нулевом балансе ([connect-error](https://cloud.ru/docs/marketplace/ug/topics/troubleshooting__connect-error)).
 
 #### IMG-2. «Маркетплейс — только Linux и бесплатно», а в каталоге Windows Server с платной лицензией
 Расхождение · подтверждено вживую
-- **Док:** [Образы Маркетплейса](https://cloud.ru/docs/images/ug/topics/concepts__marketplace-images): «Маркетплейс включает образы на основе ОС Linux…», «Образы из Маркетплейса распространяются бесплатно. Оплачивается только используемая инфраструктура». [Тарификация образов](https://cloud.ru/docs/images/ug/topics/pricing): «Сервис предоставляется бесплатно».
+- **Док:** [Образы Маркетплейса](https://cloud.ru/docs/images/ug/topics/concepts__marketplace-images): «Маркетплейс включает образы на основе ОС Linux…», «Образы из Маркетплейса распространяются бесплатно. Оплачивается только используемая инфраструктура». Остальная документация Evolution говорит другое: [FAQ по Windows](https://cloud.ru/docs/virtual-machines/ug/topics/faq__vm-windows) — «Образы с ОС Windows доступны в Маркетплейсе»; [возможности Маркетплейса](https://cloud.ru/docs/marketplace/ug/topics/overview__features) — «Сервисы предоставляются платно и бесплатно», цена — в карточке, раздел «Выбор подключения» ([бонусы](https://cloud.ru/docs/marketplace/ug/topics/troubleshooting__payment-bonuses)). [Тарификация образов](https://cloud.ru/docs/images/ug/topics/pricing) («Сервис предоставляется бесплатно в составе облака Evolution») — о сервисе «Образы», не о лицензиях.
 - **Живое:** api-probe #8: в `type=marketplace` 60 образов, среди них `windows2019std-evo-kmsB`, `windows2019dc-evo-kmsB`, `windows2022std-evo-kmsB`, `windows2022dc-evo-kmsB`, лицензируемые Astra Linux KES и РЕД ОС KES. Карточка [Windows Server Standard 2022](https://cloud.ru/marketplace/products/ms-std-22) (16.10): «1 006 ₽ в месяц», «Независимо от даты запуска продукта оплачивается месяц его использования».
-- **Влияние:** пользователь, прочитавший документацию образов, не ожидает платы за лицензию.
-- **Просим:** привести страницу «Образы Маркетплейса» и «Тарификация» в соответствие каталогу; указать, какие образы платные и как начисляется лицензия.
+- **Влияние:** пользователь, прочитавший страницу «Образы Маркетплейса», не ожидает платы за лицензию.
+- **Просим:** привести страницу «Образы Маркетплейса» в соответствие каталогу и документации Маркетплейса; указать, какие образы платные и как начисляется лицензия.
 
 #### IMG-3. Публичный каталог содержит тестовые и сломанные образы
 Расхождение · подтверждено вживую
 - **Док:** [Публичные образы](https://cloud.ru/docs/images/ug/topics/concepts__public-images): Ubuntu 24.04/22.04/20.04, Debian 12/11, CentOS 9, Fedora 41.
 - **Живое:** api-probe #8: `type=public` — 26 образов, в том числе `ubuntu-test2204`, `test-fix-ostrov`, `ostrov-fix`, `img-nester-3110-test-1`, `nester0807`, `debian-11_error`, `osbc_111p66_b3`, `Win25Std-INC-16033`; в маркетплейсе — образ с именем `null` и `alt-test`. `enabled=true` оставляет 78 из 86.
 - **Влияние:** образы видны всем клиентам; поиск по подстроке (`name=ubuntu` → 17) выдаёт тестовые образы рядом с рабочими.
-- **Просим:** убрать тестовые образы из общего каталога или скрыть их флагом; обновить список на странице публичных образов (GPU-, NVLINK-, desktop-варианты в документации не упомянуты).
+- **Просим:** убрать тестовые образы из общего каталога или скрыть их флагом; обновить список на странице публичных образов (GPU-, NVLINK-, desktop-вариантов в нём нет; GPU-образы упомянуты только в [инструкции по ВМ с GPU](https://cloud.ru/docs/virtual-machines/ug/topics/guides__create-vm-gpu), без перечня).
 
 #### IMG-4. Метаданные образов: тип `flag` вне enum, разнобой `mandatory_group`, пароль без `sensitive`
 Расхождение · подтверждено вживую
-- **Спека:** `VM-spec`, `MetaType`: `info, text, linux_login, plain_password, linux_password, email, public_key, hostname`. `sensitive`: «Если указано `true`, значение поля используется однократно при создании ВМ и не сохраняется в ее свойствах».
+- **Спека:** `VM-spec`, `MetaType` (enum запроса создания `ImageMetadataCreateRequest`; в ответе `GET /images/{id}` `field_type` — свободная строка): `info, text, linux_login, plain_password, linux_password, email, public_key, hostname`. `sensitive`: «Если указано `true`, значение поля используется однократно при создании ВМ и не сохраняется в ее свойствах».
+- **Док:** [Создать пользовательский образ](https://cloud.ru/docs/images/ug/topics/guides__create-image) описывает тип вне `MetaType`: «Логическое значение — поле со значениями Включено и Выключено» (вероятно, `flag`); о приватном поле: «Опцию нельзя отключить для полей с типом Пароль для Linux, Незашифрованный пароль, Публичный ключ».
 - **Живое:** api-probe #8, `GET /api/v1/images/{id}` для всех 60 образов маркетплейса: `field_type: "flag"` у `guest_agent_ready`/`vmm_enabled` (в enum нет); `mandatory_group` бывает `"authentication"`, `" authentication"`, `"Метод аутентификации"`, `" Да"`, `""`, `null`; у Windows-образов поля `linux_login`/`linux_password`, у `windows2019std-evo-kmsB` — `plain_password`; у `ngfw` и `platform-v-pangolin-se-demo` `linux_password` с `sensitive: false`.
-- **Влияние:** клиент не может надёжно определить обязательные поля и сгруппировать их; пароль ВМ из двух образов по спецификации сохраняется в её свойствах.
+- **Влияние:** клиент не может надёжно определить обязательные поля и сгруппировать их; пароль ВМ из двух образов по спецификации сохраняется в её свойствах, хотя по документации приватность пароля не отключается.
 - **Просим:** добавить `flag` в `MetaType` (или привести данные к enum); нормализовать `mandatory_group`; проверить `sensitive` у паролей в каталоге.
 
 #### IMG-5. Нет признака семейства и версии ОС
@@ -144,10 +151,10 @@ API» — ответ неверен независимо от документа
 
 #### BIL-4. Баланс договора — с недокументированного хоста
 Нет в документации · гипотеза
-- **Док/спеки:** хост `billing.api.cloud.ru` не упомянут ни в одной спецификации реестра и ни на одной странице документации (поиск по 1600 страницам, 16.10); `GET /v1/agreements` и `/v3/agreements` (`organization.api.cloud.ru`) баланса не отдают. В `/v2/consumption` есть и `amount`, и `cost` — что из них к оплате и с НДС ли, не сказано.
+- **Док/спеки:** хост `billing.api.cloud.ru` не упомянут ни в одной спецификации реестра и ни на одной странице документации (поиск по 1600 страницам, 16.10); `GET /v1/agreements` и `/v3/agreements` (`organization.api.cloud.ru`) баланса не отдают. Поля `/v2/consumption` описаны в спецификации «Контроль затрат»: `amount` — «Стоимость потребления без НДС», `amount_nds` — «Стоимость потребления с НДС», `cost` — «Тариф потребления облачного сервиса без НДС».
 - **Живое:** `billing_balance`/`billing_finops` в cloud-e2e `readonly` (#23–#48) — ошибка; причина (нет `agreement_id` в CI или ответ API) не установлена.
 - **Влияние:** расчёт «на сколько хватит баланса» держится на неопубликованном контракте.
-- **Просим:** опубликовать эндпоинт баланса или назвать официальный; описать `amount`/`cost`/`amount_nds`. Проба — P13.
+- **Просим:** опубликовать эндпоинт баланса или назвать официальный. Проба — P13.
 - **Доп. (документация):** документированный способ получить договор — `GET organization.api.cloud.ru/v3/agreements?customer_ids=…` и только для ролей «Администратор организации» и «Администратор затрат» ([FAQ](https://cloud.ru/docs/billing/ug/topics/faq__api_id_agreement), [роли](https://cloud.ru/docs/billing/ug/topics/concepts_billing_role)); баланс по API не описан нигде. См. BIL-5.
 
 #### BIL-5. Потребление по проекту без договора
@@ -156,11 +163,12 @@ API» — ответ неверен независимо от документа
 - **Живое:** не проверено.
 - **Влияние:** ключ уровня проекта не может получить ID договора; если потребление без него не отдаётся, расходы проекта по API недоступны.
 - **Просим:** подтвердить запрос по `project_ids` без договора. Проба — P20.
+- **Оговорка:** по сути документация обещает, что запрос по проекту без договора работает; пункт — проверка этого обещания, а не пробел в описании.
 
 #### BIL-6. Месяц в `price-calculation` — 732 часа, в примерах документации — 720
 Расхождение · подтверждено вживую (живой прогон 17.10, CRD-02)
-- **Док:** примеры стоимости в [тарифах публичных IP](https://cloud.ru/docs/public-ip/ug/topics/pricing) и [дисков](https://cloud.ru/docs/disks/ug/topics/pricing) — за 30 дней (720 ч).
-- **Живое:** `price-calculation` с `period: month` считает 732 ч: FIP 0,204 ₽/ч → 149,33 ₽; SSD 0,0156 ₽/ч·ГБ × 11 ГБ → 125,61 ₽ (ru.AZ-1 и ru.AZ-2, стабильно).
+- **Док:** примеры стоимости в [тарифах публичных IP](https://cloud.ru/docs/public-ip/ug/topics/pricing), [дисков](https://cloud.ru/docs/disks/ug/topics/pricing) и [ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/pricing) — за 30 дней («2 592 000 (30 дней)», 720 ч); сам месяц не определён нигде. **Спека:** `total_price_month` — «Итоговая сумма за месяц», без числа часов.
+- **Живое:** `total_price_month` в ответе `price-calculation` посчитан за 732 ч: FIP 0,204 ₽/ч → 149,33 ₽; SSD 0,0156 ₽/ч·ГБ × 11 ГБ → 125,61 ₽ (ru.AZ-1 и ru.AZ-2, стабильно).
 - **Влияние:** месячная цена из API на 1,7 % выше расчёта по документации; клиент, сверяющий одно с другим, видит расхождение.
 - **Просим:** указать в API-справке, сколько часов в «месяце», или выровнять примеры.
 
@@ -168,15 +176,15 @@ API» — ответ неверен независимо от документа
 
 #### CMP-1. `interface_security_enabled` обязательно, но его нет в спецификации
 Расхождение · подтверждено вживую
-- **Спека:** `VM-spec`, `VmCreateInterfaceSection` (`POST /api/v1.1/vms`): `type, subnet_id, security_groups, security_group_names, new_external_ip, attach_external_ip_id/name, ip_address`; `additionalProperties: false`.
+- **Спека:** `VM-spec`, `VmCreateInterfaceSection` (`POST /api/v1.1/vms`): `type, subnet_id, subnet_name, security_groups, security_group_names, new_external_ip, attach_external_ip_id/name, ip_address`; `additionalProperties: false`.
 - **Живое:** без `interface_security_enabled: true` создание ВМ — 500 (разбор отказов cloud-e2e 14–15.10, `.github/review-context/cloudru-api.md`); с полем все e2e 15–16.10 создают ВМ. Поле приходит в `GET /api/v1/vms` у интерфейса (api-probe #8).
 - **Влияние:** клиент, сгенерированный по спецификации, ВМ не создаст; строгий валидатор отбросит рабочий запрос.
 - **Просим:** добавить поле в схему (тип, умолчание) или не требовать его; отсутствие поля — 422 с именем поля, а не 500.
-- **Доп. (документация):** Terraform документирует `interface_security_enabled` у интерфейса ([compute_interface](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_compute_interface)), спецификация compute — нет.
+- **Доп. (документация):** поле есть в официальных примерах запроса: [Создать ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/guides__create-vm), вкладка REST API — `"interfaces": [ { "type": "regular", "subnet_name": …, "interface_security_enabled": true, … } ]`, и [Добавить интерфейс](https://cloud.ru/docs/virtual-machines/ug/topics/guides__add-network-interface); Terraform тоже документирует его у интерфейса ([compute_interface](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_compute_interface)). Спецификация compute — нет.
 
 #### CMP-2. `new_external_ip: true` → 500 `ExternalNetNotFound`
 Ошибка API · подтверждено вживую
-- **Спека:** `new_external_ip` — «Если выбрано `true`, интерфейсу будет назначен новый публичный IP-адрес»; `ExternalNetNotFoundOnServerExceptionSchema` описан как ответ 500 без условий.
+- **Спека:** `new_external_ip` — «Если выбрано `true`, интерфейсу будет назначен новый публичный IP-адрес»; `ExternalNetNotFoundOnServerExceptionSchema` описан как ответ 500 без условий. **Док:** официальный пример тела в [Создать ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/guides__create-vm), вкладка REST API, — с `"new_external_ip": true`.
 - **Живое:** 500 `ExternalNetNotFound` (cloud-e2e 14–15.10, review-context); рабочий путь — заранее созданный FIP и `attach_external_ip_id`.
 - **Влияние:** документированный способ получить ВМ с публичным IP не работает; 500 провоцирует повторы.
 - **Просим:** назвать предусловие (сеть с внешним доступом?) и отвечать 422; либо починить.
@@ -201,19 +209,20 @@ API» — ответ неверен независимо от документа
 - **Влияние:** низкое; клиенты по спецификации эти данные не видят (например, образ ВМ — только через отдельный запрос).
 - **Просим:** описать поля или убрать их из ответа.
 
-#### CMP-6. `image_metadata`: флаги образа нельзя отправлять, спецификация молчит
-Нет в документации · подтверждено вживую
-- **Спека:** `image_metadata` в `POST /api/v1.1/vms` — объект без перечня ключей.
+#### CMP-6. `image_metadata`: флаги образа нельзя отправлять, а пример документации их передаёт
+Расхождение · подтверждено вживую
+- **Спека:** `image_metadata` в `POST /api/v1.1/vms` — ключи — `name` полей из `GET /images/{id}` («Список полей метаданных можно получить, выполнив запрос GET /api/v1/images/{image_id}»); отказ без обязательных полей описан (422 «Обязательные для выбранного образа метаданные отсутствуют»). Не описано, какие поля (`info`) только читаются, что пустое значение и лишний ключ дают 500, что без `linux_password` ВМ не выходит из `creating`; `vmm_enabled` и `guest_agent_ready` в спецификации нет.
+- **Док:** пример тела `POST /vms/{id}/rebuild` в [Переустановить ОС](https://cloud.ru/docs/virtual-machines/ug/topics/guides__reinstall-os), вкладка REST API: `"image_metadata": { "name": …, "hostname": …, "guest_agent_ready": true, "linux_password": … }`. Rebuild вживую не проверялся.
 - **Живое:** отправка `vmm_enabled`, `guest_agent_ready` или любого поля с пустым значением — 500; без обязательных полей — `image_metadata_fields_missing`; без `linux_password` ВМ не выходит из `creating` (review-context, cloud-e2e 14–15.10).
 - **Влияние:** клиент, честно заполняющий все поля образа, получает 500.
-- **Просим:** описать, какие поля метаданных вводит пользователь, какие только читаются; на лишние — 422.
+- **Просим:** описать, какие поля метаданных вводит пользователь, какие только читаются; на лишние — 422; поправить пример rebuild или принимать `guest_agent_ready`.
 
 #### CMP-7. `DELETE /vms/{id}` отвечает 409 для ВМ в `creating`
 Расхождение · подтверждено вживую
 - **Спека:** `DELETE /api/v1/vms/{id}`: 204, 404, 405 «есть связанные сущности», 422 «нельзя удалить в текущем статусе»; 409 нет.
 - **Живое:** cloud-e2e 15.10: удаление ВМ в `creating` — 409 и 422 в разных попытках.
 - **Влияние:** клиент, обрабатывающий только описанные коды, считает 409 фатальной ошибкой и оставляет платную ВМ.
-- **Просим:** один код для «нельзя удалить сейчас» и описание в спецификации; уточнить, удаляет ли `delete_attachments.external_ips` FIP вместе с ВМ.
+- **Просим:** один код для «нельзя удалить сейчас» и описание в спецификации. (Удаление FIP вместе с ВМ спецификация обещает: `external_ips` — «Идентификаторы публичных IP-адресов, которые удаляются вместе с виртуальной машиной»; вживую не проверялось.)
 
 #### CMP-8. Фильтр `name` у образов ищет подстроку без учёта регистра
 Нет в документации · подтверждено вживую
@@ -232,44 +241,45 @@ API» — ответ неверен независимо от документа
 #### CMP-10. `VmState`: `rebuilding` есть в описании, но не в enum
 Расхождение спецификации с самой собой · подтверждено (текст спецификации)
 - **Спека:** `VM-spec`, `VmState`: в описании поля статус `rebuilding` есть, в `enum` — нет.
-- **Живое:** вживую не встречался.
-- **Влияние:** низкое; строгий клиент по enum отвергнет ответ с этим статусом.
+- **Живое:** вживую не встречался, но официальный пример ответа `POST /api/v1/vms/<vm_id>/rebuild` в [Переустановить ОС](https://cloud.ru/docs/virtual-machines/ug/topics/guides__reinstall-os) (вкладка REST API) содержит `"state": "rebuilding"`.
+- **Влияние:** строгий клиент по enum отвергнет ответ на документированную операцию переустановки ОС.
 - **Просим:** добавить значение в enum или убрать из описания.
 
 #### CMP-12. Максимальный размер диска: 16384 ГБ или 65536
 Расхождение · гипотеза
-- **Док/Спека:** [Ограничения дисков](https://cloud.ru/docs/disks/ug/topics/overview__limitations) — до 16 ТБ; `VM-spec` — `size: maximum 16384` (`PublicDiskCreateRequest`, `PublicDiskUpdateRequest`, `VmCreateNewDiskItem`).
+- **Док/Спека:** [Ограничения дисков](https://cloud.ru/docs/disks/ug/topics/overview__limitations) — до 16 ТБ, [ограничения ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/overview__limitations) — «Размер диска 16 ТБ»; `VM-spec` — `size: maximum 16384` (`PublicDiskCreateRequest`, `PublicDiskUpdateRequest`, `VmCreateNewDiskItem`).
 - **Живое:** в review-context evo со времён первых прогонов записано «до 65536 ГБ» (источник не сохранён; evo с ветки `tails` проверяет 16384).
 - **Просим:** подтвердить предел; если API принимает больше — отразить в спецификации. Проба — P15.
 
 #### CMP-13. Две ВМ с одним именем в проекте: 409, которого нет в спецификации
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-01)
-- **Док:** [Создать ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/guides__create-vm): в проекте не может быть двух ВМ с одним именем. **Спека:** у `POST /api/v1.1/vms` ответы 201, 401, 403, 404, 422, 500; 409 нет.
+Расхождение (спецификация) · подтверждено вживую (живой прогон 17.10, CRD-01)
+- **Док:** [Создать ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/guides__create-vm): «в одном проекте технически не может быть виртуальных машин с одинаковым названием». **Спека:** уникальность в проекте описана (`GET /api/v1/projects/{project_id}/validate_name` — «Проверка имени сущности в проекте», `vm` в `EntityTypeWithUniqueNameWithinProject`), но у `POST /api/v1.1/vms` ответы 201, 401, 403, 404, 422, 500; 409 нет.
 - **Живое:** вторая ВМ с тем же именем → 409 `vm_with_this_data_already_exists` (поле `name`), ru.AZ-2, 2 из 2.
 - **Влияние:** клиент по спецификации не ждёт 409 и может принять его за «ВМ создана, ответ потерян» — evo до v1.0 так и делал, из-за чего ошибочно подхватывал чужую ВМ.
-- **Просим:** описать 409 и уникальность имени ВМ в проекте (или в зоне — уточнить область).
+- **Просим:** добавить 409 `vm_with_this_data_already_exists` в ответы `POST /api/v1.1/vms`.
 
 #### CMP-14. Выключенная зона: ВМ — 422 «Availability zone with this id is not found», а floating IP создаётся
 Работает не так · подтверждено (cloud-e2e и api-probe 17.10.2026)
-- **Спека:** `PublicAvailabilityZoneResponse.enabled` — «включена ли зона доступности»; что выключенная зона не принимает ресурсы и каким кодом отвечает создание, не сказано.
-- **Живое:** `GET /api/v1/availability-zones` в ночь на 17.10 отдавал у ru.AZ-1 `enabled: false` (днём 16.10 cloud-e2e в ru.AZ-1 проходил; к 02:57 UTC 17.10 зона снова `enabled: true`, cloud-e2e в ней прошёл целиком в 02:37–02:48 UTC). Зона закрывалась на время; причину и срок API не сообщает. В этой зоне `POST /floating-ips` создал адрес, а `POST /vms` ответил 422 `wrong_az` «Availability zone with this id is not found», хотя зона есть в списке и ID взят из него.
+- **Спека:** `PublicAvailabilityZoneResponse.enabled` — «включена ли зона доступности» (Terraform: «Флаг указывающий, доступна ли зона для использования»); в 422 у `POST /api/v1.1/vms` и `POST /api/v1/floating-ips` есть «Изменения в указанной зоне доступности запрещены.», но связь с `enabled: false` не указана, а сообщение схемы `wrong_az` — «Availability zone with this id is not found».
+- **Живое:** `GET /api/v1/availability-zones` в ночь на 17.10 отдавал у ru.AZ-1 `enabled: false` (днём 16.10 cloud-e2e в ru.AZ-1 проходил; к 02:57 UTC 17.10 зона снова `enabled: true`, cloud-e2e в ней прошёл целиком в 02:37–02:48 UTC). Зона закрывалась на время; причину и срок API не сообщает. В этой зоне `POST /floating-ips` создал адрес (вопреки 422 спецификации), а `POST /vms` ответил 422 `wrong_az` «Availability zone with this id is not found», хотя зона есть в списке и ID взят из него.
 - **Влияние:** сообщение говорит «зоны нет» вместо «зона выключена». Клиент, не читающий `enabled`, успевает создать платный floating IP и только потом получает отказ (evo до v1.0 так и делал; теперь отказывает до создания).
 - **Просим:** для выключенной зоны отдельный код и текст («зона временно не принимает новые ресурсы») и одинаковый отказ у всех ресурсов, включая floating IP; описать `enabled` у зоны как «не принимает новые ресурсы».
 
 #### CMP-15. Диск нельзя подключить сразу после создания: 422 «Disk has no openstack_id»
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-10)
-- **Спека:** `VM-spec`, диски и `POST /disks/{id}/attach`: с какого состояния диск можно подключать, не сказано.
-- **Живое:** подключение сразу после `POST /disks` → 422 «Disk has no openstack_id»; через несколько секунд то же подключение проходит (ru.AZ-1).
-- **Влияние:** ошибка с внутренним термином; клиент не знает, что нужно ждать и чего.
-- **Просим:** описать состояние готовности диска к подключению; ошибку без внутренних терминов (например, `disk_not_ready`).
+Ошибка API (текст ошибки) · подтверждено вживую (живой прогон 17.10, CRD-10)
+- **Док:** [Подключить диск](https://cloud.ru/docs/disks/ug/topics/guides__attach-disk): «Убедитесь, что статус диска — «Доступен». Этот статус означает, что диск создан и не подключен ни к одной ВМ»; [Создать диск](https://cloud.ru/docs/disks/ug/topics/guides__create-disk): статус «Создается», затем «Доступен». **Спека:** `VM-spec`, 422 у `POST /disks/{id}/attach` — «Невозможно подключить диск с текущим статусом.»; в `DiskState` есть `creating` и `available`. Отказ сразу после создания ожидаем; неверен текст.
+- **Живое:** подключение сразу после `POST /disks` → 422 «Disk has no openstack_id»; через несколько секунд то же подключение проходит (ru.AZ-1). Статус диска в момент отказа не записан.
+- **Влияние:** ошибка с внутренним термином вместо описанного «Невозможно подключить диск с текущим статусом»; клиент не понимает, что нужно дождаться «Доступен».
+- **Просим:** ошибку без внутренних терминов, как в спецификации (например, `disk_not_ready`).
 - **18.10:** подтверждено (живой прогон 18.10, run 39164767739, ru.AZ-2): `POST /disks/{id}/attach` через 2 с после создания → 422 `[{"message":"Disk has no openstack_id","code":"disk has no openstack_id"}]`; в run 39152048559 тот же сценарий прошёл — исход зависит от того, успел ли диск подготовиться. evo ждёт готовности и в `disk_attach` (#117).
 
-#### CMP-16. Квота на пользовательские образы — у организации, в справке её нет
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-11)
-- **Спека:** `VM-spec`, `POST /images`: квота не упомянута.
+#### CMP-16. Квота на пользовательские образы (организации, 2 шт.) не отражена в спецификации
+Расхождение (спецификация) · подтверждено вживую (живой прогон 17.10, CRD-11)
+- **Док:** [ограничения «Образов»](https://cloud.ru/docs/images/ug/topics/overview__limitations): «Пользовательские образы» — «2 шт.», «Количество пользовательских образов в рамках организации»; [квоты Evolution](https://cloud.ru/docs/evolution/overview/topics/quotas): «Ресурсы, предоставленные в рамках квот, выделяются на организацию и расходуются на все проекты в этой организации».
+- **Спека:** `VM-spec`, `POST /images`: квота не упомянута; 422 — только «проект/зона не найдены», в enum `OrganizationLimitTypeName` образов нет.
 - **Живое:** 422 `organization_quota_exceeded` «Organization quota for compute.image.custome exceeded» (опечатка `custome`); квота организации, не проекта (ru.AZ-1, стабильно).
-- **Влияние:** проект без собственных образов не может создать образ из-за образов других проектов организации; причину не найти в документации.
-- **Просим:** описать квоту и её область; исправить имя квоты в тексте ошибки.
+- **Влияние:** проект без собственных образов не может создать образ из-за образов других проектов организации; клиент по спецификации этот отказ не ждёт.
+- **Просим:** 422 `organization_quota_exceeded` в ответах `POST /images`, тип квоты в `OrganizationLimitTypeName`; исправить имя квоты (`custome`) в тексте ошибки.
 - **18.10:** подтверждено (живой прогон 18.10, run 39167011818, ru.AZ-2): тот же 422 `organization_quota_exceeded` с той же опечаткой на `POST /images` из отключённого загрузочного диска; `image_create`/`image_delete` в живых прогонах не покрыты из-за этой квоты тестовой организации.
 
 ## Managed Kubernetes
@@ -288,11 +298,11 @@ API» — ответ неверен независимо от документа
 - **Живое:** v3-запрос с `RESOLVE_CONFLICTS_MODE_NONE` устанавливает cert-manager 1.21.1, поды Ready менее чем за минуту (k8s-smoke #46, #48); без `resolveMode` — 400 `resolveMode: must be specified` (k8s-smoke 16.10).
 - **Влияние:** по инструкции пишут код на устаревший API, с другими именами полей и с OVERWRITE (откатывает пользовательские изменения) в примере.
 - **Просим:** перевести инструкцию на v3; согласовать описание режимов; в примере — NONE.
-- **Доп. (документация):** [информация о плагине](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__addons__get-info) тоже описывает v2 (`GET /v2/clusters/{id}/addons`, поля `addonId`, `addonName`, `addedAt`, `history`), а у `ClusterAddon` v3 поля `id`, `name`, `createdAt`.
+- **Доп. (документация):** [информация о плагине](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__addons__get-info) тоже описывает v2 (`GET /v2/clusters/{id}/addons`, поля `addonId`, `addonName`, `addedAt`, `history`), а у `ClusterAddon` v3 поля `id`, `name`, `createdAt`. На v2 и остальные страницы плагинов: список (`/v2/addons`), обновление, удаление.
 
 #### K8S-3. Плагины ставятся без SNAT-шлюза — это не описано
 Нет в документации · подтверждено вживую
-- **Док:** [Ограничения](https://cloud.ru/docs/kubernetes-evolution/ug/topics/overview__limitations): «Для доступа кластера и его подов в интернет необходимо создать SNAT-шлюз в той же зоне доступности, что и узлы».
+- **Док:** [Ограничения](https://cloud.ru/docs/kubernetes-evolution/ug/topics/overview__limitations): «Для доступа кластера и его подов в интернет необходимо создать SNAT-шлюз в той же зоне доступности, что и узлы»; [FAQ](https://cloud.ru/docs/kubernetes-evolution/ug/topics/faq__cluster__networkcluster): «По умолчанию у кластера и его подов нет доступа в интернет. Чтобы предоставить такой доступ, создайте публичный SNAT-шлюз…». Откуда берутся образы плагинов, не сказано.
 - **Живое:** k8s-smoke #46 (17:23–17:44 UTC) и #48 (21:20–21:39 UTC), ru.AZ-2: в проекте без SNAT-шлюза поды cert-manager 1.21.1 `Running/Ready` через ~35 с после установки, `ImagePullBackOff` нет. Версии плагинов с суффиксом `-sbc.N` — вероятно, образы из внутреннего реестра.
 - **Живое (SNAT):** api-probe 17.10 00:05 UTC: `GET /api/v1/nat-gateways?project_id=…` — `total = 0`, SNAT-шлюзов в проекте нет ни в одной зоне. При этом k8s-smoke 16.10 (runs 38938926565, 38968614060, 38974115318) ставил cert-manager, и поды становились Ready: образы плагина скачивались без SNAT.
 - **Влияние:** пользователь создаёт платный SNAT-шлюз «для плагинов», хотя он не нужен; или не понимает, почему его собственные образы не тянутся, а плагины — да.
@@ -314,7 +324,7 @@ API» — ответ неверен независимо от документа
 
 #### K8S-6. `networkPlugin` обязателен в спецификации, а кластер создаётся без него
 Расхождение · подтверждено вживую
-- **Спека:** `mk8s-spec`, `NetworkConfigurationRequest.required: [networkPlugin, privateVipSubnetId]`. **Док:** [Создать кластер](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__create): CNI (Cilium или Calico) после установки удалить нельзя.
+- **Спека:** `mk8s-spec`, `NetworkConfigurationRequest.required: [networkPlugin, privateVipSubnetId]`; Terraform `network_configuration` — `network_plugin` Required ([mk8s_cluster](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_mk8s_cluster)). **Док:** [Создать кластер](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__create): CNI (Cilium или Calico) после установки удалить нельзя; [FAQ](https://cloud.ru/docs/kubernetes-evolution/ug/topics/faq__general__network-security): «Установка CNI-плагина обязательна. При создании кластера необходимо выбрать Calico или Cilium.» При этом пример тела `POST /v3/clusters` на странице «Создать кластер» (вкладка API) сам без `networkPlugin`: `"networkConfiguration": {servicesSubnetCidr, podsSubnetCidr, kubeApiInternet, privateVipSubnetId}` — документация ведёт к запросу, который сервер принимает с неописанным CNI. Умолчание CNI нигде не описано.
 - **Живое:** k8s-smoke #46 и #48 (16.10): `POST /v3/clusters` с `networkConfiguration` без `networkPlugin` → кластер `RUNNING`. Какой CNI получил кластер, не установлено.
 - **Влияние:** необратимый выбор CNI делает сервер молча; клиент по спецификации не знает умолчания.
 - **Просим:** описать умолчание или отвечать 400. Проба — P22 (на живом кластере, только чтение).
@@ -335,24 +345,24 @@ API» — ответ неверен независимо от документа
 
 #### K8S-9. `GET /v3/nodePools` без `clusterId` → 500 вместо 400
 Ошибка API · подтверждено вживую
-- **Спека:** `mk8s-spec`, `NodePoolService_List`: `clusterId` — `required: true`; ошибки — `rpcStatus`. Соседний `GET /v3/clusterAddons` без `clusterId` отвечает 400.
+- **Спека:** `mk8s-spec`, `NodePoolService_List`: `clusterId` — `required: true`; ошибочные ответы не описаны (только 200). Соседний `GET /v3/clusterAddons` без `clusterId` отвечает 400.
 - **Живое:** api-probe 17.10 00:05 UTC: `GET /v3/nodePools` без параметров и с одним `projectId` → 500, `{code, details, message}`, `message: "internal error during the request handling"`; с несуществующим `clusterId` → 404 «resource not found». В cloud-e2e `readonly` #23 этот же запрос давал API_ERROR у `k8s_nodepools`.
 - **Влияние:** пропущенный обязательный параметр выглядит как сбой сервера: клиент повторяет запрос, вместо того чтобы показать ошибку вызова.
 - **Просим:** 400 `InvalidArgument` с именем параметра, как у `clusterAddons`.
 
 #### K8S-10. Без `zones` плоскость управления создаётся не в зоне подсети VIP
 Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-03)
-- **Спека:** `kubernetes-evolution…/openapi.yaml`, `ControlPlaneRequest.zones` — «для зонального кластера указывается одна зона»; поле необязательное, умолчание не описано.
+- **Спека:** `mk8s-spec` (`openapi-v3.yaml`), `ControlPlaneRequest.zones` — «Для зонального кластера указывается идентификатор одной зоны, для регионального — три и более»; поле необязательное, умолчание не описано (в Terraform `zones` тоже Optional без умолчания). **Док:** пример `POST /v3/clusters` в [Создать кластер](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__create) не передаёт `zones` — по инструкции получается именно этот сценарий.
 - **Живое:** без `zones` плоскость управления создаётся в ru.AZ-2, даже когда подсеть VIP из ru.AZ-1; узел такого кластера `NotReady` (NetworkPlugin). Кластер с совпадающими зоной и подсетью (ru.AZ-2) — узел `Ready`. По одному прогону каждого варианта.
 - **Влияние:** кластер создаётся и оплачивается, но рабочие узлы не поднимаются; ошибки нет.
 - **Просим:** описать умолчание `zones`; отклонять (400) запрос, где зона и подсеть VIP не совпадают.
 
 #### K8S-11. Создание кластера дольше заявленных 5–10 минут
 Расхождение (документация) · подтверждено вживую (повтор живого прогона 17.10, CRD-17)
-- **Док:** [Создать кластер](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__create) и [быстрый старт](https://cloud.ru/docs/kubernetes-evolution/ug/topics/quickstart): «Создание кластера занимает 5–10 минут».
+- **Док:** [Создать кластер](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__create) и [быстрый старт](https://cloud.ru/docs/kubernetes-evolution/ug/topics/quickstart): «Создание кластера занимает 5–10 минут»; там же и в [Создать группу узлов](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__node-pool__create): «Группа узлов будет создана в течение 2–3 минут»; [Удалить кластер](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__delete): «Кластер будет удален в течение 2–3 минут».
 - **Живое:** 1 мастер gen-2-4, v1.36.3, ru.AZ-2: `PROVISIONING` → `RUNNING` за 18–19 мин (17.10, 15:28–15:46 UTC); утром того же дня — около 9 мин, 16.10 — 7 и 9 мин (OPS-5). Группа из одного узла — около 5 мин, удаление кластера — около 4,5 мин. За пределом 1 прогон из 2 за 17.10; вечером в ru.AZ-1 шли срочные работы (OPS-10).
 - **Влияние:** клиенты и автоматизация с таймаутом 10–15 мин считают создание неудачным.
-- **Просим:** «обычно 5–10 минут, до 20 минут» или срок по нагрузке.
+- **Просим:** «обычно 5–10 минут, до 20 минут» или срок по нагрузке; так же — для группы узлов и удаления.
 
 ## IAM и Organization
 
@@ -362,7 +372,7 @@ API» — ответ неверен независимо от документа
 - **Живое:** api-probe #1 (15.10), #8 (16.10) и 17.10 00:05 UTC: 200, ключи `access_token, expires_in (число), id_token, not_before, refresh_expires_in, refresh_token, scopes, token_type`.
 - **Влияние:** клиент по спецификации не находит токен — самая первая операция любой интеграции.
 - **Просим:** исправить спецификацию (или ответ) и зафиксировать написание.
-- **Доп. (документация):** страница [Аутентификация в API](https://cloud.ru/docs/console_api/ug/topics/guides__auth_api) велит брать `access_token` (как живое API) — документация расходится со спецификацией.
+- **Доп. (документация):** страница [Аутентификация в API](https://cloud.ru/docs/console_api/ug/topics/guides__auth_api) приводит полный пример ответа в snake_case и велит брать `access_token` — документация совпадает с живым API, ошибается спецификация.
 
 #### IAM-2. Список сервисных аккаунтов — snake_case, в спецификации camelCase
 Расхождение · подтверждено вживую
@@ -378,14 +388,14 @@ API» — ответ неверен независимо от документа
 - **Влияние:** CLI и агенты не могут предложить проект ключа — UUID вводится вручную; 400 похож на ошибку клиента.
 - **Просим:** назвать официальный способ узнать проект(ы) SA (например, `GET /api/v2/serviceAccounts/{id}`); для SA — 200 со своим проектом или 403 с понятной причиной; описать в спецификации. Пробы — P7, P8.
 - **Доп. (документация):** официальный путь к проекту SA — `GET /api/v2/serviceAccounts/{id}`, поле `target` (схема `iamv2ServiceAccount`), и, возможно, claim `project_id` токена (IAM-4, проба P19).
-- **Доп. (17.10):** api-probe 17.10 00:05 UTC: в токене ключа уровня проекта есть claim `project_id`, и он совпадает с проектом ключа (IAM-4). Проект узнаётся без Organization API, но по недокументированному claim; просьба описать официальный способ остаётся.
+- **Доп. (17.10):** api-probe 17.10 00:05 UTC: в токене ключа уровня проекта есть claim `project_id`, и он совпадает с проектом ключа (IAM-4). Проект узнаётся без Organization API, но по claim, описанному лишь косвенно — на странице Impersonate как поле «обычного токена сервисного аккаунта» (IAM-4); просьба описать официальный способ остаётся.
 
-#### IAM-4. В токене SA есть claim `project_id`, но состав claims не описан
-Нет в документации · подтверждено вживую
-- **Док:** [Токен для имперсонации](https://cloud.ru/docs/administration/ug/topics/guides__service-account-impersonation_token): в примере декодированного токена — `sub`, `sub_type`, `customer_id`, `project_id`. Для токена `POST /api/v1/auth/token` (ключ доступа) состав claims не описан.
+#### IAM-4. В токене SA есть claim `project_id`, но полный состав claims не описан
+Нет в документации (частично) · подтверждено вживую
+- **Док:** [Impersonate](https://cloud.ru/docs/administration/ug/topics/concepts__service-account-impersonation): «Токен доступа, полученный через impersonate, содержит те же поля, что и обычный токен сервисного аккаунта»: `sub`, `sub_type`, `customer_id`, «project_id — идентификатор проекта, если сервисный аккаунт создан в проекте»; то же в примере [токена для имперсонации](https://cloud.ru/docs/administration/ug/topics/guides__service-account-impersonation_token). [Аутентификация в API](https://cloud.ru/docs/console_api/ug/topics/guides__auth_api): «Срок жизни токена — 1 час». Полный состав claims токена `POST /api/v1/auth/token` и его стабильность не описаны.
 - **Живое:** api-probe 17.10 00:05 UTC (payload декодирован в прогоне, значения не печатались): claims `aud, auth_time, azp, customer_id, email, exp, iat, iss, jti, nbf, nonce, preferred_username, project_id, resource_access, scope, sub, sub_id, sub_type, typ`; `project_id` совпадает с проектом, на который выпущен ключ; `customer_id` есть; `exp − iat` = 3600 с.
-- **Влияние:** проект ключа можно узнать без Organization API (обход IAM-3), но клиент опирается на неописанный формат: при смене состава claims обход сломается без предупреждения.
-- **Просим:** описать claims токена ключа доступа и гарантировать `project_id` для ключей уровня проекта (и что в нём у ключа уровня организации).
+- **Влияние:** проект ключа можно узнать без Organization API (обход IAM-3), но клиент опирается на формат, описанный только на странице Impersonate: при смене состава claims обход сломается без предупреждения.
+- **Просим:** описать claims токена ключа доступа на странице аутентификации и гарантировать `project_id` для ключей уровня проекта (у SA вне проекта `project_id` по документации не ожидается).
 
 ## Аудит-логирование
 
@@ -419,18 +429,18 @@ API» — ответ неверен независимо от документа
 - **Живое:** api-probe #8: в тестовом проекте группа с этим шаблоном имени есть во всех трёх зонах; в ответе есть поле `default`. api-probe 17.10 00:05 UTC (P3, без имён и ID): в каждой из трёх зон ровно одна группа с `default=true`, и её имя — `SSH-access_<зона>`; у остальных групп `default=false`. Все группы проекта разрешают входящий tcp/22 с 0.0.0.0/0 и исходящий трафик в интернет и к сервису метаданных. Создаётся ли такая группа в каждом новом проекте — не проверено (проект один).
 - **Влияние:** низкое; автоматизация, ищущая «группу по умолчанию» по имени, ломается после переименования (документация переименование разрешает).
 - **Просим:** уточнить в документации «проект/организация»; сослаться на поле `default` как на признак. Проба — P3.
-- **Доп. (спецификация, 16.10):** у `POST /api/v1.1/vms` есть 422 «Не удалось найти группу безопасности по умолчанию»; вместе с полем `default` в ответе это значит, что признак группы по умолчанию живёт в проекте, а не в организации.
+- **Доп. (спецификация, 16.10):** у `POST /api/v1.1/vms` есть 422 «Не удалось найти группу безопасности по умолчанию»; вместе с полем `default` в ответе это значит, что признак группы по умолчанию живёт в проекте, а не в организации. Туториал [Связать VPC в двух проектах](https://cloud.ru/docs/evolution-vpc/ug/topics/tutorials__link-vpcs-in-two-projects) использует группу `SSH-access_ru.AZ-1` в каждом из двух проектов.
 
 #### NET-3. SNAT: «ровно одно из `availability_zone_id` / `availability_zone_name`»
 Расхождение · подтверждено вживую
-- **Спека:** `VM-spec`, `POST /api/v1/nat-gateways`: оба поля необязательны, `oneOf` нет.
+- **Спека:** `VM-spec`, `POST /api/v1/nat-gateways`: оба поля необязательны, `oneOf` нет. Для `PublicVmCreateRequest` та же спецификация правило пишет («Обязательно укажите один из параметров: `availability_zone_id` или `availability_zone_name`. Нельзя указывать оба…»), для SNAT его пишет Terraform ([compute_nat_gateway](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_compute_nat_gateway): «Нужно заполнить одно из значений - id, name.»).
 - **Живое:** валидатор отвергает запрос без обоих и с обоими полями (review-context, 14–15.10).
 - **Влияние:** низкое; ошибка только на этапе отладки.
 - **Просим:** отразить в спецификации (`oneOf` или текст).
 
 #### NET-4. cloud-init в публичных образах: «не поддерживается» и «для всех типов»
 Документация противоречит себе · гипотеза (поведение)
-- **Док:** FAQ [образов](https://cloud.ru/docs/images/ug/topics/faq__cloud-init) и [ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/faq__vm-cloud-init): в публичных образах пользовательский cloud-init «не поддерживается»; [release notes ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/overview__release-notes), 09.2026: скрипт «доступен для всех типов образов». **Спека:** у `POST /api/v1.1/vms` есть поле `cloud_init`; Terraform документирует `cloud_init_userdata` ([compute_vm](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_compute_vm)).
+- **Док:** [FAQ образов](https://cloud.ru/docs/images/ug/topics/faq__cloud-init): «Настройка конфигурации cloud-init в публичных образах не поддерживается»; [FAQ ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/faq__vm-cloud-init): «Настройка скрипта cloud-init поддерживается при развертывании виртуальной машины из пользовательского образа». Против них — [release notes ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/overview__release-notes), 09.2026: «Теперь скрипт доступен для всех типов образов», и [Создать ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/guides__create-vm): опция «Скрипт cloud_init» без ограничения по типу образа. **Спека:** у `POST /api/v1.1/vms` есть поле `cloud_init`; Terraform документирует `cloud_init_userdata` ([compute_vm](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_compute_vm)).
 - **Живое:** не проверено; проверяется только созданием ВМ (`cloud_init` с `runcmd: [touch /var/tmp/evo-ci]`, проверка по SSH).
 - **Влияние:** установка ПО при первой загрузке без SSH — неясно, доступна ли.
 - **Просим:** привести FAQ и release notes к одному ответу.
@@ -440,61 +450,54 @@ API» — ответ неверен независимо от документа
 - **Док:** [Подсеть](https://cloud.ru/docs/subnets/ug/topics/concepts__subnet) и [Сеть ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/concepts__network): в проекте автоматически создаётся одна подсеть `Default_ru.AZ-1` в зоне ru.AZ-1; [FAQ](https://cloud.ru/docs/subnets/ug/topics/faq__default-subnet): основную подсеть можно назначить в каждой зоне. «Если квота на VPC исчерпана, VPC-сеть Default не будет создаваться» ([ограничения VPC](https://cloud.ru/docs/evolution-vpc/ug/topics/overview__limitations)).
 - **Живое:** api-probe #8: у подсетей приходят `default`, `routed_network`, `dns_servers`; по зонам не разобрано. api-probe 17.10 00:05 UTC (P17): в ru.AZ-1 и в ru.AZ-2 — по одной подсети с `default=true`, `routed_network=true`, двумя `dns_servers`, `type: regular`, `state: created`, имя начинается с `Default`; в ru.AZ-3 подсетей нет. Признак основной подсети в API есть и стоит в двух зонах, хотя документация описывает одну `Default_ru.AZ-1`; создана ли подсеть ru.AZ-2 автоматически или вручную, по API не видно.
 - **Влияние:** инструменты, выбирающие зону по умолчанию (evo `init` выбирал ru.AZ-2), отправляют нового пользователя туда, где подсети нет.
-- **Просим:** описать, где появляется подсеть по умолчанию и как её найти через API (`default`). Проба — P17.
+- **Просим:** описать, где появляется подсеть по умолчанию и как её найти через API: поле `default` в спецификации есть («Признак основной подсети»), в руководстве — нет. Проба — P17.
 
 #### NET-6. Как адрес SNAT-шлюза выглядит в списке публичных IP
 Нет в документации · гипотеза
-- **Док:** [Создать шлюз](https://cloud.ru/docs/gateways/ug/topics/guides__create-gw): «При создании шлюзу назначается публичный IP-адрес»; [FAQ](https://cloud.ru/docs/public-ip/ug/topics/faq__deallocate-ip-unavailable): освободить его отдельно нельзя. **Спека:** `PublicFloatingIpResponse.nat_gateway`; у DELETE — 422 `floating_ip_address_is_used_by_nat_gateway`.
+- **Док:** [Создать шлюз](https://cloud.ru/docs/gateways/ug/topics/guides__create-gw): «При создании шлюзу назначается публичный IP-адрес»; [FAQ](https://cloud.ru/docs/public-ip/ug/topics/faq__deallocate-ip-unavailable): освободить его отдельно нельзя. Вид в консоли описан: «В поле Ресурс должна быть отметка «SNAT-шлюз»» ([FAQ шлюзов](https://cloud.ru/docs/gateways/ug/topics/faq__gateway-ip)). **Спека:** `PublicFloatingIpResponse.nat_gateway` (`{id, name, state}`); у DELETE — 422 `floating_ip_address_is_used_by_nat_gateway`. Какие `state`, `interface`, `vm` у такого адреса в `GET /floating-ips`, не описано.
 - **Живое:** api-probe 17.10 00:05 UTC (P18): ключ `nat_gateway` в ответе `GET /floating-ips` есть у каждого адреса (у адресов ВМ — `null`); SNAT-шлюзов в проекте нет (`total = 0`, K8S-3), поэтому какие `state`, `interface`, `vm` у адреса шлюза — по-прежнему не проверено.
 - **Влияние:** клиент, считающий свободным IP без интерфейса, может предложить адрес шлюза для ВМ или для удаления (evo с ветки `tails` читает `nat_gateway`).
-- **Просим:** описать состояние такого IP. Проба — P18.
+- **Просим:** описать состояние такого IP в API. Проба — P18.
 
 #### NET-7. Floating IP после удаления зависает в `error_deleting`, повторное удаление — 422
 Работает не так · подтверждено (cloud-e2e и api-probe 17.10.2026)
-- **Спека:** `error_deleting` — «ошибка удаления»; что делать с адресом в этом состоянии и тарифицируется ли он, не сказано.
+- **Спека:** `error_deleting` — «ошибка удаления»; что делать с адресом в этом состоянии, не сказано; в 422 у `DELETE /api/v1/floating-ips/{id}` отказа `floating_ip_can_not_be_deleted_from_current_state` нет. **Док:** тарификация — общим правилом: «Публичный IP-адрес считается арендованным все время, пока он существует в проекте» ([тарификация](https://cloud.ru/docs/public-ip/ug/topics/pricing)); про `error_deleting` отдельно не сказано.
 - **Живое:** floating IP, созданный в выключенной зоне ru.AZ-1 (CMP-14), удалили сразу после отказа в создании ВМ: `DELETE` принят без ошибки, адрес перешёл в `error_deleting`. Повторный `DELETE` через 5 минут — 422 `floating_ip_can_not_be_deleted_from_current_state`. Адрес не привязан ни к интерфейсу, ни к ВМ. К 02:57 UTC (≈2,5 ч) адрес из списка пропал сам — платформа дочистила его без нашего участия.
 - **Влияние:** через API адрес не убрать; пользователь видит лишний адрес в проекте и не знает, платит ли за него. Без привязки адрес выглядит свободным (evo до v1.0 так и показывал `available: true`; теперь — нет).
-- **Просим:** описать выход из `error_deleting` (судя по 17.10 — платформа повторяет сама; за какое время) и тарификацию в этом состоянии; разрешить повторный `DELETE`.
+- **Просим:** описать выход из `error_deleting` (судя по 17.10 — платформа повторяет сама; за какое время) и подтвердить тарификацию в этом состоянии; разрешить повторный `DELETE`, а 422 из-за состояния описать в спецификации.
 
-#### NET-8. Адрес удалённого floating IP через минуты выдаётся другой ВМ
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-12)
-- **Док:** страницы [публичных IP](https://cloud.ru/docs/public-ip/ug/topics/pricing) и `/api/v1/floating-ips` в `VM-spec` — о переиспользовании адресов ничего.
-- **Живое:** после удаления FIP тот же адрес через минуты получила другая ВМ (ru.AZ-1, 2 из 2).
-- **Влияние:** DNS-записи и белые списки на старый адрес начинают вести на чужой ресурс.
-- **Просим:** предупредить в документации, что адреса переиспользуются.
-
-#### NET-9. DNS: тип записи принимается только в нижнем регистре
-Расхождение · подтверждено вживую (живой прогон 17.10, CRD-07)
-- **Док:** [Типы записей](https://cloud.ru/docs/evolution-dns/ug/topics/concepts__record-types) — заглавными: «A», «AAAA», «CNAME»…
+#### NET-9. DNS: неверный тип записи — 400 `invalid argument` без имени поля
+Ошибка API · подтверждено вживую (живой прогон 17.10, CRD-07)
+- **Спека:** [`evolution-dns/openapi.yaml`](https://cloud.ru/docs/api/specs/evolution-dns/ug/_specs/openapi.yaml), `type` записи: «Возможные значения: a, aaaa, srv, cname, mx, ns, spf, txt, caa, gslb_a, gslb_aaaa.» — нижний регистр в API-справке задан; так же в Terraform ([dns_private_zone](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_dns_private_zone)). Заглавные «A», «AAAA», «CNAME» — только в [Типах записей](https://cloud.ru/docs/evolution-dns/ug/topics/concepts__record-types) (нотация консоли и RFC).
 - **Живое:** `POST` записи с `type: "A"` → 400 `invalid argument`; принимается только `"a"`. Неизвестный тип — тот же 400 без имени поля (ru.AZ-1, приватная зона, стабильно).
-- **Влияние:** запрос, составленный по документации, отвергается без указания причины.
-- **Просим:** принимать `type` без учёта регистра или указать нижний регистр в API-справке; называть поле в тексте ошибки.
+- **Влияние:** запрос с типом, записанным как на странице «Типы записей», отвергается без указания поля и причины.
+- **Просим:** называть поле и допустимые значения в тексте ошибки; по желанию — принимать `type` без учёта регистра.
 
 #### NET-10. Новый VPC получил UUID только что удалённого
 Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-08)
-- **Спека:** `evolution-vpc…/openapi.yaml`: ID — UUID; переиспользуются ли они, не сказано.
+- **Спека:** [`evolution-vpc/openapi.yaml`](https://cloud.ru/docs/api/specs/evolution-vpc/ug/_specs/openapi.yaml): `Vpc.id` — «Уникальный идентификатор VPC.» (string, пример — UUID); переиспользование не описано и противоречит слову «уникальный».
 - **Живое:** VPC, созданный после удаления предыдущего, получил тот же UUID (1 из 1).
 - **Влияние:** клиенты и журналы, которые считают UUID уникальным во времени (кэши, аудит, state), путают старый и новый объект.
 - **Просим:** описать, переиспользуются ли ID; если да — это стоит исправить.
 
 #### NET-11. SNAT-шлюз сразу после создания не удаляется — 422
 Нет в документации · подтверждено вживую (живой прогон 18.10, run 39152048559)
-- **Спека:** `VM-spec`, `DELETE /nat-gateways/{id}`: ответ 422 и состояния шлюза, из которых удаление запрещено, не описаны (страница документации о состояниях шлюза 18.10 не найдена).
+- **Спека:** `VM-spec`, `DELETE /nat-gateways/{id}`: 422 «Не удалось удалить SNAT-шлюз с текущим статусом» и enum `NATGatewayState` (`created, error, error_creating, error_deleting, creating, deleting, updating`) есть, но не сказано, из каких состояний удаление разрешено. В руководстве шлюзов статусы не описаны (Terraform: только «Статус SNAT-шлюза.»).
 - **Живое:** `POST /nat-gateways` принят, через 2 с `DELETE` → 422 `nat_can_not_be_deleted_from_current_state` «NAT Gateway can not be deleted from current state»; через ~10 мин тот же `DELETE` принят (1 из 1).
 - **Влияние:** клиент, который откатывает неудачную операцию сразу, получает отказ и должен сам ждать неописанного состояния.
-- **Просим:** описать состояния шлюза и переходы; на 422 — `Retry-After` или статус в теле.
+- **Просим:** описать, из каких состояний шлюз удаляется, и переходы; на 422 — `Retry-After` или статус в теле.
 - **18.10, повтор:** run 39164767739 — `DELETE` через 10 мин после создания принят, шлюз исчез из списка через 18 с; `state` в списке всё это время — `created`, то есть по списку нельзя понять, когда удаление станет возможным.
 
 #### NET-12. Статический маршрут в сеть 198.18.0.0/15 — 400 `InvalidArgument` без поля
-Нет в документации · подтверждено вживую (живой прогон 18.10, runs 39152048559, 39164767739)
-- **Спека:** `evolution-vpc…/openapi.yaml`, `POST /v1/vpcs/{vpcId}/routes/static`: `subnet` — CIDR назначения; ограничения на диапазон не описаны.
+Ошибка API · подтверждено вживую (живой прогон 18.10, runs 39152048559, 39164767739)
+- **Док:** [ограничения VPC](https://cloud.ru/docs/evolution-vpc/ug/topics/overview__limitations): «Допустимо самостоятельное создание пользовательских маршрутов, если их адреса назначения принадлежат одному из диапазонов RFC1918: 10.0.0.0/8; 172.16.0.0/12; 192.168.0.0/16» — 198.18.0.0/15 вне их, отказ ожидаем. **Спека:** [`evolution-vpc/openapi.yaml`](https://cloud.ru/docs/api/specs/evolution-vpc/ug/_specs/openapi.yaml), `POST /v1/vpcs/{vpcId}/routes/static`: `subnet` — «Адрес назначения.»; ограничения RFC1918 нет.
 - **Живое:** `subnet: 198.18.255.0/24` (тестовый диапазон RFC 2544), next hop — интерфейс ВМ того же VPC → 400 `InvalidArgument` без имени поля (2 из 2); тот же запрос с `10.255.255.0/24` → принят, операция done, маршрут удалён (1 из 1).
 - **Влияние:** клиент не узнаёт, что не так: поле и причина в ответе не названы (тот же приём — CAP-2).
-- **Просим:** описать допустимые диапазоны назначения; 400 с полем и причиной.
+- **Просим:** 400 с полем и причиной; ограничение RFC1918 — в спецификацию.
 
 #### NET-13. Приватная зона DNS: операция создания не завершается, удаление — от секунд до часов
 Ошибка API · подтверждено вживую (живой прогон 18.10, runs 39152048559, 39160570296, 39164767739)
-- **Спека:** `dns/openapi.yaml`: создание и удаление зоны асинхронны (операция `{id, resourceId, done, …}`); сроки не описаны.
+- **Спека:** [`evolution-dns/openapi.yaml`](https://cloud.ru/docs/api/specs/evolution-dns/ug/_specs/openapi.yaml): создание и удаление зоны асинхронны (операция `{id, resourceId, done, …}`); сроки не описаны. [Ошибка удаления приватной зоны](https://cloud.ru/docs/evolution-dns/ug/topics/troubleshooting__error-delete-private-zone) — только о связях с DNS-сервером, не о зависании в «Удаляется».
 - **Живое:** операция создания приватной зоны — `done: false` через 5 и через 10 мин (3 из 3), хотя зона уже есть в списке и в неё добавляются записи; операция записи — `done` за 2 мин (1 из 2) или не за 5 мин (1 из 2). Удаление приватной зоны — 20 с (1 из 3), ~11,5 мин (1 из 3) и в одном случае ~6 ч: `DELETE` принят 50 раз, зона в списке, в консоли — «Удаляется»; ушла после очередного `DELETE` в 23:55 UTC (run 39178722237) (1 из 3).
 - **Влияние:** по операции нельзя узнать, готова ли зона; удаление может висеть часами без ошибки, при этом зона занимает имя.
 - **Просим:** завершать операцию с готовностью ресурса; описать сроки; зону в «Удаляется» дольше часа — расследовать (поддержка).
@@ -503,7 +506,7 @@ API» — ответ неверен независимо от документа
 
 #### DB-1. Kafka/Redis: у `page_size` есть максимум, которого нет в спецификации
 Нет в документации + ошибка API · подтверждено вживую
-- **Спека:** `paas-kafka/…/openapi-kafka.yaml`, `redis/…/openapi-redis.yaml`: `GET /v1/clusters` — `project_id`, `page_size` (строка int64), `page_token`, у Kafka `product_type`; все необязательные, диапазон `page_size` не указан.
+- **Спека:** [`openapi-kafka.yaml`](https://cloud.ru/docs/api/specs/paas-kafka/ug/_specs/openapi-kafka.yaml), [`openapi-redis.yaml`](https://cloud.ru/docs/api/specs/redis/ug/_specs/openapi-redis.yaml): `GET /v1/clusters` — `project_id`, `page_size` (строка int64), `page_token`, у Kafka `product_type`; все необязательные, диапазон `page_size` не указан. У PostgreSQL того же DBaaS предел описан: «Значение по умолчанию — 100. Максимальное значение — 1000.»
 - **Живое:** cloud-e2e `readonly` #23 … #48 (16.10, последний 21:20 UTC): `kafka_list`, `redis_list`, `kafka_specs`, `redis_specs` — ошибка API, `kafka_versions`/`redis_versions` того же хоста — 200. Запрос: `?product_type=kafka&project_id=…&page_size=1000`. Код HTTP в лог не попал.
 - **Живое (проба):** api-probe 17.10 00:05 UTC (P4), Kafka и Redis одинаково: `page_size=1000` → 500, тело пустое, `grpc-message`: «rpc error: code = Internal desc = rpc error: code = Unavailable desc = rpc error: code = InvalidArgument desc = invalid ListWithCursorRequest.PageSize: value mu…» (обрезано пробой на 160 символах); `page_size=100` и `=10` → 200. Предел где-то между 100 и 1000; ошибку валидации сервис отдаёт как 500 (DB-7).
 - **Причина отказов `readonly`:** списки — `page_size=1000`, спецификации — запрос без зоны (DB-2). Гипотеза о недостающей сервисной роли опровергнута (см. «Снятые вопросы»); исправление evo (`page_size=100` с чтением по `next_page_token`, зона в запросе спецификаций) подтверждено.
@@ -512,74 +515,75 @@ API» — ответ неверен независимо от документа
 
 #### DB-2. `GET /v1/specifications` требует `availability_zone_id`, помеченный необязательным
 Расхождение · подтверждено вживую
-- **Спека:** `availability_zone_id` — необязательный.
+- **Спека:** `availability_zone_id` — необязательный (Kafka и Redis). **Док:** Terraform для Redis помечает `availability_zone_id` и `version_id` как Required ([redis_specification_collection](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/data-sources/cloudru_evolution_redis_specification_collection)) — расходится со спецификацией; для Kafka — Optional ([kafka_specification_collection](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/data-sources/cloudru_evolution_kafka_specification_collection)).
 - **Живое:** api-probe 17.10 00:05 UTC (P5): с `version_id`, без зоны — Kafka и Redis 400, тело пустое, `grpc-message`: «list flavors … InvalidArgument desc = invalid ListFlavorsRequest.AvailabilityZoneId: value must be a valid UUID»; с `availability_zone_id` (ru.AZ-2) — 200, у Kafka 10 спецификаций, у Redis 11. Раньше было только наблюдение из кода клиента.
 - **Влияние:** клиент по спецификации не получает ни одной спецификации, а значит и не создаёт кластер.
 - **Просим:** пометить параметр обязательным (или вернуть спецификации всех зон без него).
 
 #### DB-3. Redis: `STANDALONE` и `subnet_ids[]` не работают
 Расхождение · подтверждено вживую (до 15.10)
-- **Спека:** `type` enum `STANDALONE, MASTER_REPLICA`; `subnet_id` и `storage_gb` — deprecated, актуальные `subnet_ids[]`, `storage_gib`.
+- **Спека:** `type` enum `STANDALONE, MASTER_REPLICA`; `subnet_id` и `storage_gb` — deprecated, актуальные `subnet_ids[]`, `storage_gib`. **Док:** [создание кластера](https://cloud.ru/docs/redis/ug/topics/guides__cluster-creation): «Master/Replica — отказоустойчивый кластер высокой доступности из мастера и двух реплик», «Standalone — одноузловой кластер без репликации»; [быстрый старт](https://cloud.ru/docs/redis/ug/topics/quickstart) строится на Standalone. Пример [Terraform](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_redis_cluster): «Варианты значений параметра type: STANDALONE, CLUSTER» — `CLUSTER` в enum спецификации нет.
 - **Живое:** review-context и комментарии клиента (создание кластеров до 15.10, номер прогона не сохранён): `STANDALONE` отвергается; `MASTER_REPLICA` — «ровно 3 реплики на шард»; `subnet_ids[]` роняет бэкенд (деление на ноль), работает только deprecated `subnet_id`. Уточнение живого прогона 17.10: «3» — это хосты на шард, а в `POST` поле `replicas` должно быть 2 (реплики без мастера) — см. DB-11.
 - **Влияние:** по спецификации Redis не создать; deprecated-поле — единственный рабочий путь.
-- **Просим:** починить `subnet_ids[]` до удаления `subnet_id`; описать ограничения `type`. Повтор требует создания кластера — пробой не проверяется.
+- **Просим:** починить `subnet_ids[]` до удаления `subnet_id`; принимать Standalone, как обещает документация, или убрать его из документации; согласовать значения `type` в Terraform и спецификации. Повтор требует создания кластера — пробой не проверяется.
 
 #### DB-4. Ошибки с пустым телом и причиной в заголовке `grpc-message`
 Расхождение · подтверждено вживую (Kafka, Redis)
-- **Спека:** тело ошибки — `rpcStatus` (`code, message, details`).
+- **Спека:** тело ошибки — `google.rpc.Status` (`code, message, details`); о `grpc-message` документация не упоминает.
 - **Живое:** клиенты PostgreSQL и Kafka/Redis разбирают `grpc-message`, потому что тело приходило пустым (например, «backup disabled»); дата не сохранена. api-probe 17.10 00:05 UTC: все ошибки Kafka и Redis в пробе — 400 и 500 из DB-1, DB-2, DB-7, DB-8 — пришли с пустым телом, причина была только в `grpc-message`. mk8s на том же стеке отдаёт тело `{code, details, message}` (K8S-9).
 - **Влияние:** клиент по спецификации показывает «ошибка 500» без причины.
 - **Просим:** причину в теле по спецификации.
 
 #### DB-5. PostgreSQL: подключение «из той же подсети» или «из той же VPC»
 Документация противоречит себе · гипотеза
-- **Док:** [Подключиться к базе](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__databases__connecting-to-database): ВМ «в одном проекте и в одной подсети»; [FAQ](https://cloud.ru/docs/paas-postgresql/ug/topics/faq__connecting-from-local-machine): «в одном проекте и в одной VPC».
+- **Док:** [Подключиться к базе](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__databases__connecting-to-database): ВМ «в одном проекте и в одной подсети»; [FAQ](https://cloud.ru/docs/paas-postgresql/ug/topics/faq__connecting-from-local-machine): «в одном проекте и в одной VPC». Ещё два варианта: [быстрый старт](https://cloud.ru/docs/paas-postgresql/ug/topics/quickstart) — «в той же приватной подсети», [troubleshooting](https://cloud.ru/docs/paas-postgresql/ug/topics/troubleshooting__vm-connection) — «в том же проекте и в той же VPC».
 - **Живое:** не проверено (нужна ВМ в другой подсети той же VPC).
 - **Влияние:** пользователь создаёт лишние ВМ или подсети.
 - **Просим:** одна формулировка.
 
 #### DB-6. PostgreSQL: формат cron резервного копирования
 Расхождение документации и спецификации · гипотеза
-- **Док:** [Политика резервного копирования](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__backups__backup-policy): пример `15 14 * * *`. **Спека:** `paas-postgresql/…/openapi-postgresql.yaml`, `BackupSpec`: пример `15 14 ? * *` (синтаксис Quartz).
+- **Док:** [Политика резервного копирования](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__backups__backup-policy): пример `15 14 * * *`. **Спека:** [`openapi-postgresql.yaml`](https://cloud.ru/docs/api/specs/paas-postgresql/ug/_specs/openapi-postgresql.yaml), `BackupSpec.schedule` противоречит сама себе: `example: 0 3 * * 0`, а в описании «выражение '15 14 ? * *' будет запускать задачу каждый день в 14:15» (5 полей, `?` в поле дня месяца); в [Terraform](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_postgresql_cluster) — то же.
 - **Живое:** не проверено (нужно создание кластера).
 - **Влияние:** расписание, скопированное из консоли, может быть отвергнуто API или наоборот.
 - **Просим:** назвать формат в спецификации.
 
 #### DB-7. Kafka/Redis: ошибка валидации запроса возвращается как 500
 Ошибка API · подтверждено вживую
-- **Спека:** у `GET /v1/clusters` и `GET /v1/specifications` ошибки описаны как `rpcStatus` без разделения кодов; 500 по смыслу — сбой сервера.
+- **Спека:** у `GET /v1/clusters` и `GET /v1/specifications` ошибки описаны как `google.rpc.Status` (только `default`) без разделения кодов; 500 по смыслу — сбой сервера.
 - **Живое:** api-probe 17.10 00:05 UTC: 500 при `InvalidArgument` внутри — `page_size=1000` у Kafka и Redis (DB-1, gRPC-цепочка `Internal → Unavailable → InvalidArgument`); Redis `GET /v1/clusters` без `page_size` — «failed to validate list clusters request: page_size should be greater than 0» (DB-8); Redis `GET /v1/specifications` с зоной, без `version_id` — «failed to get redis options by versionID: … InvalidArgument desc = invalid ListOptionsByVersionIDRequest.VersionId…». У Kafka тот же запрос без `version_id` — 400 («invalid ListOptionsByVersionIDRequest.VersionId: value must be a valid UUID»): одна ошибка вызова у двух сервисов отдаётся разными кодами.
 - **Влияние:** клиенты и прокси повторяют 500 как временный сбой; ошибка в параметрах выглядит как авария сервиса.
 - **Просим:** `InvalidArgument` → 400 на всех слоях; один код для одной ошибки у Kafka и Redis.
 
 #### DB-8. Redis: без `page_size` список кластеров не отдаётся, хотя параметр необязательный
 Расхождение · подтверждено вживую
-- **Спека:** `redis/…/openapi-redis.yaml`, `GET /v1/clusters`: `page_size` необязательный, значение по умолчанию не указано.
+- **Спека:** [`openapi-redis.yaml`](https://cloud.ru/docs/api/specs/redis/ug/_specs/openapi-redis.yaml), `GET /v1/clusters`: `page_size` необязательный, значение по умолчанию не указано.
 - **Живое:** api-probe 17.10 00:05 UTC: Redis без `page_size` → 500, тело пустое, `grpc-message`: «failed to validate list clusters request: page_size should be greater than 0»; Kafka тот же запрос без `page_size` → 200.
 - **Влияние:** самый простой запрос по спецификации — список без параметров страницы — у Redis падает с 500.
 - **Просим:** значение по умолчанию (как у Kafka) или `required` в спецификации и 400.
 
-#### DB-9. PostgreSQL: политика пароля пользователя не описана, ошибка URL-кодирована
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-13)
-- **Док:** [Terraform: `cloudru_evolution_postgresql_user`](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_postgresql_user) — «password (String) Пароль.», без требований.
+#### DB-9. PostgreSQL: политики пароля нет в спецификации и Terraform, ошибка URL-кодирована
+Нет в документации (спецификация, Terraform) + ошибка API · подтверждено вживую (живой прогон 17.10, CRD-13)
+- **Док:** политика описана в руководстве — свёрнутый блок «Требования к паролю» в [Создать пользователя](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__users__creating-user): «Длина — от 8 до 64 символов. Только латиница в буквенной части: минимум одна заглавная и одна строчная буква. Как минимум одна цифра. Как минимум один специальный символ…» — и совпадает с живой ошибкой. В спецификации и в [Terraform: `cloudru_evolution_postgresql_user`](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_postgresql_user) — только «Пароль.», без требований.
 - **Живое:** создание пользователя → 400 «validate password: length must be between 8 and 64 characters… at least one uppercase Latin letter… at least one special character from !$%25&()*+-,./:;<>=?@[\]^_{|}#»; текст в URL-кодировке (`%25` вместо `%`, `%0A` вместо перевода строки). ru.AZ-1, 2 из 2.
-- **Просим:** описать политику пароля; ошибку отдавать без URL-кодирования.
+- **Просим:** описать политику пароля в спецификации и Terraform; ошибку отдавать без URL-кодирования.
 
-#### DB-10. Kafka: срок создания и минимум брокеров не указаны
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-14)
-- **Док:** [Terraform: `cloudru_evolution_kafka_cluster`](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_kafka_cluster) — в примере `brokers = 3`; срок создания и минимум не названы.
+#### DB-10. Kafka: срок создания не указан, `min_brokers` нет в живом ответе
+Нет в документации + расхождение · подтверждено вживую (живой прогон 17.10, CRD-14)
+- **Док:** минимум брокеров описан: [режимы хостов](https://cloud.ru/docs/paas-kafka/ug/topics/concepts__hosts-types) — «1 или 3 хоста для Single-AZ», в выделенном режиме «Брокеры — минимум 3 хоста»; в [спецификации](https://cloud.ru/docs/api/specs/paas-kafka/ug/_specs/openapi-kafka.yaml) у `Specification` есть `min_brokers` («Минимальное количество брокеров.») и `max_brokers`, в Terraform — тоже. Срок создания не назван нигде; в примере [Terraform: `cloudru_evolution_kafka_cluster`](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_kafka_cluster) — `brokers = 3`, `create = "60m"`.
 - **Живое:** кластер на 1 брокер (2 vCPU / 4 ГБ, 40 GiB) создавался 37–39 мин (2 кластера, 11:28 → 12:05 и → 12:07 UTC, ru.AZ-2); в `GET /v1/specifications` поля минимального числа брокеров нет. cloud-e2e `dbaas_smoke` 17.10: 1 брокер, `DEPLOYING` → `READY` за 34 мин (20:12 → 20:46 UTC), удаление 8 мин.
-- **Просим:** указать типичный срок создания и минимум брокеров (в спецификации и в документации).
+- **Просим:** указать типичный срок создания; отдавать `min_brokers`/`max_brokers` в ответе, как в спецификации.
 
 #### DB-11. Redis: `replicas` в POST — реплики без мастера, в GET — число хостов
 Расхождение + ошибка API · подтверждено вживую (живой прогон 17.10, CRD-15)
-- **Док/Спека:** [Terraform: `cloudru_evolution_redis_cluster`](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_redis_cluster) — «replicas (Number) Количество реплик.»; [`openapi-redis.yaml`](https://cloud.ru/docs/api/specs/redis/ug/_specs/openapi-redis.yaml) — «Количество реплик», example 2; диапазон и связь с `type` не описаны.
+- **Док/Спека:** [Terraform: `cloudru_evolution_redis_cluster`](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_redis_cluster) — «replicas (Number) Количество реплик.»; [`openapi-redis.yaml`](https://cloud.ru/docs/api/specs/redis/ug/_specs/openapi-redis.yaml) — «Количество реплик», example 2; диапазон не описан. [Создание кластера](https://cloud.ru/docs/redis/ug/topics/guides__cluster-creation): Master/Replica — «из мастера и двух реплик», что согласуется с `replicas=2` в `POST`.
 - **Живое:** `POST /v1/clusters`, `type: MASTER_REPLICA`, `shards: 1`: `replicas=1` → 400 «replicas per shard must be in range [3:3], requested - 2»; `replicas=3` → «… requested - 4»; `replicas=2` → 200 (ru.AZ-2, 3 из 3). Тело ответа пустое, причина только в заголовке `grpc-message` (DB-4). Кластер, созданный с `replicas: 2`, в `GET /v1/clusters/{id}` и в списке отдаётся с `replicas: 3` (12:40 UTC; повторно — cloud-e2e `dbaas_smoke` 17.10, 20:46 UTC).
 - **Влияние:** клиент, повторяющий в `POST` прочитанное из `GET` значение, получает 400; текст ошибки говорит о хостах, а поле — о репликах. evo до v1.0 из-за этого вообще не создавал Redis.
 - **Просим:** одно значение поля в `POST` и `GET`; описать, что для `MASTER_REPLICA` `replicas` = 2 (3 хоста на шард); ошибку — в терминах поля и в теле.
 
 #### DB-12. Redis: срок создания и удаления не указан
 Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-16)
+- **Док:** сроков нет; в примере [Terraform](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_redis_cluster) — `create = "60m"`, `delete = "20m"`.
 - **Живое:** `MASTER_REPLICA`, 1 шард, 3 хоста 2 vCPU / 4 ГБ: `DEPLOYING` → `READY` ~27 мин (12:40 → 13:07 UTC), удаление ~7,5 мин (ru.AZ-2); cloud-e2e `dbaas_smoke` 17.10: 33 мин (20:12 → 20:46 UTC), удаление 10 мин. 2 из 2.
 - **Просим:** указать типичные сроки создания и удаления.
 
@@ -594,11 +598,6 @@ API» — ответ неверен независимо от документа
 - **Живое:** дубль пользователя → 400, дубль базы → 409 AlreadyExists; удаление несуществующего пользователя → 500 Internal, несуществующей базы → 404 (по 1 разу).
 - **Просим:** единообразно 409 для дублей и 404 для отсутствующих.
 
-#### DB-15. PostgreSQL: удаление пользователя-владельца молча переназначает базу на `dbadmin`
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-B11)
-- **Живое:** удаление пользователя, владеющего базой, проходит; владельцем базы становится `dbadmin` (1 из 1). В документации (Terraform) поведение не описано.
-- **Просим:** описать переназначение владельца либо отказывать (409).
-
 #### DB-16. PostgreSQL: внутренняя цепочка вызовов в текстах ошибок, коды не по смыслу
 Ошибка API · подтверждено вживую (живой прогон 17.10, CRD-B12)
 - **Живое:** «invoke postgresSIM.CreateUser: rpc error … at \"pg-cl-<id>\" namespace …», «code = Unavailable desc = … code = InvalidArgument» — ошибка валидации id выдаётся как Unavailable; «backup disabled» — FailedPrecondition, отдаётся как 400 (стабильно). Связано с DB-4 и DB-7.
@@ -606,12 +605,12 @@ API» — ответ неверен независимо от документа
 
 #### DB-17. Kafka: кластер в `DEPLOYING` не удаляется — 500
 Ошибка API · подтверждено вживую (живой прогон 17.10, CRD-B13)
-- **Живое:** `DELETE` кластера в `DEPLOYING` → 500 «call to paas engine [DeleteEvolutionKafka] failed: … failed to get delete meta» (4 из 4); повторный `DELETE` во время удаления → 500 FailedPrecondition. Создание при этом идёт 37–39 мин (DB-10), всё это время ошибочно созданный кластер, вероятно, оплачивается (тарификацию кластера в `DEPLOYING` прогон не проверял).
+- **Живое:** `DELETE` кластера в `DEPLOYING` → 500 «call to paas engine [DeleteEvolutionKafka] failed: … failed to get delete meta» (4 из 4); повторный `DELETE` во время удаления → 500 FailedPrecondition. Создание при этом идёт 37–39 мин (DB-10), всё это время ошибочно созданный кластер, вероятно, оплачивается (тарификацию кластера в `DEPLOYING` прогон не проверял; [статусы](https://cloud.ru/docs/paas-kafka/ug/topics/concepts__cluster-statuses) говорят только «Тарификация кластера прекращается с момента перехода в статус «Удаляется»»).
 - **Просим:** 409 «нельзя удалить во время создания» или отмена создания; один код с Redis (DB-19).
 
 #### DB-18. Kafka: имя кластера не уникально, `subnet_ids` в ответе пуст
 Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-B14)
-- **Живое:** повторное создание с тем же именем проходит — два кластера с одним именем; `GET` готового кластера, созданного с явной подсетью, отдаёт `subnet_ids: []` (1 из 1).
+- **Живое:** повторное создание с тем же именем проходит — два кластера с одним именем; `GET` готового кластера, созданного с явной подсетью, отдаёт `subnet_ids: []` (1 из 1). Об уникальности имени [создание кластера](https://cloud.ru/docs/paas-kafka/ug/topics/guides__cluster-creation) не говорит; в схеме `Cluster` спецификации полей подсети нет вовсе.
 - **Влияние:** повтор после таймаута создаёт второй платный кластер (см. DB-17 — удалить его до готовности нельзя).
 - **Просим:** 409 на дубль имени (или описать неуникальность); `subnet_ids` с фактической подсетью.
 
@@ -622,14 +621,14 @@ API» — ответ неверен независимо от документа
 
 #### DB-20. PostgreSQL: срок создания не описан, кластер часами в `DEPLOYING`
 Нет в документации · подтверждено вживую (повтор живого прогона 17.10, CRD-18; cloud-e2e `dbaas_smoke` 17.10; 2 из 2 вечерних прогонов, оба во время срочных работ в ru.AZ-1, OPS-10)
-- **Док:** страницы со сроком создания нет; в примере Terraform — `create = "60m"` ([cloudru_evolution_postgresql_cluster](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_postgresql_cluster)).
+- **Док:** страницы со сроком создания нет; в примере Terraform — `create = "60m"` ([cloudru_evolution_postgresql_cluster](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_postgresql_cluster)). Для статуса «Ошибка» [статусы](https://cloud.ru/docs/paas-postgresql/ug/topics/concepts__cluster-statuses) советуют только обратиться в поддержку; зависание в «Создается» не описано.
 - **Живое:** минимальный кластер STANDARD, 1 узел, без резервных копий, ru.AZ-2: около 2 ч 43 мин в `DEPLOYING` (17.10, 16:04 — около 18:47 UTC), затем `FAILED`; операция создания всё это время `done: false`. Утром тот же план — около 6,5 мин (OPS-9). `DELETE` в `DEPLOYING` → 400 FailedPrecondition (как DB-19). cloud-e2e `dbaas_smoke` 17.10 (тот же минимальный план, ru.AZ-2): `DEPLOYING` 2 ч 38 мин (20:12 → 22:50 UTC), затем `FAILED`; `DELETE` весь срок → FailedPrecondition. Kafka и Redis в том же прогоне создались за 34 и 33 мин (DB-10, DB-12).
 - **Влияние:** клиент или IaC с таймаутом 60 мин (пример Terraform) получает ошибку, а кластер нельзя ни удалить, пока он создаётся, ни удалить через API после `FAILED` (DB-21) — остаётся только консоль.
 - **Просим:** указать типичный и предельный срок создания; описать, что делать с кластером, который не выходит из `DEPLOYING`.
 
 #### DB-21. PostgreSQL: кластер в `FAILED` не удалить через публичный API
 Ошибка API · подтверждено вживую (повтор живого прогона 17.10, CRD-19)
-- **Док:** правил удаления кластера в `FAILED` нет; ресурс Terraform не описывает `force`.
+- **Док:** [статусы](https://cloud.ru/docs/paas-postgresql/ug/topics/concepts__cluster-statuses): «Статус «Ошибка» означает, что кластер не может продолжать работу. В этом случае рекомендуем обратиться в техническую поддержку»; удаление `FAILED` и `force` не описаны ни в [руководстве](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__deleting-cluster), ни в спецификации (`DELETE /v1/clusters/{cluster_id}` — только `cluster_id`), ни в Terraform.
 - **Живое:** `DELETE /v1/clusters/{id}` кластера в `FAILED` → 500 «service with "FAILED" status may be delete only with force flag»; `DELETE …?force=true` → 415 invalid gRPC content-type (любой query на `DELETE` ломает шлюз); тело `{"force":true}` игнорируется — тот же 500 (17.10, после 18:47 UTC; повторно — cloud-e2e `dbaas_smoke` 17.10, 22:50 UTC: «service with "FAILED" status may be delete only with force flag»). Удалить кластер можно только из консоли.
 - **Влияние:** автоматизация и IaC не убирают упавший кластер; он остаётся в списке и, вероятно, в счёте (тарификацию `FAILED` не проверяли).
 - **Просим:** описать статусы и удаление `FAILED`; принять `force` в query или теле `DELETE` без 415; вместо 500 — 409/412.
@@ -638,7 +637,7 @@ API» — ответ неверен независимо от документа
 
 #### AR-1. Имя реестра не уникально, хотя документация говорит обратное
 Расхождение · подтверждено вживую (живой прогон 17.10, CRD-04)
-- **Док:** [Реестр](https://cloud.ru/docs/artifact-registry-evolution/ug/topics/concepts__registry): «registry_name — это уникальное название реестра в рамках пространства имен».
+- **Док:** [Реестр](https://cloud.ru/docs/artifact-registry-evolution/ug/topics/concepts__registry): «registry_name — это уникальное название реестра в рамках пространства имен»; то же в [«Что нового»](https://cloud.ru/docs/artifact-registry-evolution/ug/topics/overview__release-notes). Оговорка: URI реестров разных форматов различаются (`<registry_name>.cr.cloud.ru` у Docker, `<registry_name>-npm.ar.cloud.ru` у NPM), а что такое «пространство имен», не сказано.
 - **Живое:** второй `POST` с тем же именем (DOCKER при существующем NPM) → успех; в списке два реестра с одним именем (1 из 1).
 - **Просим:** уточнить область уникальности; на дубль — 409.
 
@@ -654,19 +653,20 @@ API» — ответ неверен независимо от документа
 
 #### AR-4. Список реестров без `pageSize` бесконечен: пустые страницы с новым `nextPageToken`
 Ошибка API · подтверждено вживую (живой прогон 18.10, runs 39152048559, 39164767739)
-- **Спека:** `ar/openapi.yaml`, `GET /v1/registries`: ответ `{registries, nextPageToken}`, запрос `pageToken`; умолчание `pageSize` и признак последней страницы не описаны.
+- **Спека:** [`artifact-registry-evolution/openapi.yaml`](https://cloud.ru/docs/api/specs/artifact-registry-evolution/ug/_specs/openapi.yaml), `GET /v1/registries`: ответ `{registries, nextPageToken}`, запрос `pageToken`; умолчание `pageSize` и признак последней страницы не описаны.
 - **Живое:** без `pageSize` — 200, `registries: []` и новый непустой `nextPageToken` (116 символов) на каждой странице: 5 из 5 страниц пробы, клиент по токену прошёл 1000 страниц за ~10 мин; с `pageSize=100` — 200, тот же пустой список и пустой `nextPageToken` (1 из 1). Реестров в проекте в момент пробы не было.
 - **Влияние:** клиент, который листает по `nextPageToken`, как велит спецификация, не заканчивает список; evo до #110 падал по пределу 1000 страниц, `ar_create` не мог проверить имя.
 - **Просим:** пустой `nextPageToken` на последней странице при любом `pageSize`; описать умолчание `pageSize`.
 
 ## Certificate Manager
 
-В копии документации на 17.10 страниц API Certificate Manager нет; пункты ниже — поведение без описания.
+Справочник API есть ([API Certificate Manager](https://cloud.ru/docs/certificate-manager/ug/topics/api-ref), [спецификация](https://cloud.ru/docs/api/specs/certificate-manager/ug/_specs/ccm.swagger.yaml)); коды ошибок в нём не описаны — у методов только «200».
 
 #### CRT-1. Список версий сертификата без `pageSize` — 400, умолчания нет
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-B1)
-- **Живое:** `GET …/certificates/{id}/versions` без `pageSize` → 400 `invalid ListVersionsRequest.PageSize: value must be inside range [1, 1000]` (стабильно). evo до v1.0 из-за этого не показывал версии вовсе.
-- **Просим:** умолчание `pageSize` или явная пометка «обязателен».
+Расхождение · подтверждено вживую (живой прогон 17.10, CRD-B1)
+- **Док:** [Просмотреть версии](https://cloud.ru/docs/certificate-manager/ug/topics/guides_version_all_view), вкладка API: `…/versions?page.limit=10`, «page.limit — допустимое количество записей в одном запросе. Максимальное значение — 1000, по умолчанию — 100». **Спека:** `GET /v1/certificate/{certificateId}/versions` — другие параметры, `pageSize`/`pageToken`, необязательные, без умолчания.
+- **Живое:** `GET …/certificates/{id}/versions` без `pageSize` → 400 `invalid ListVersionsRequest.PageSize: value must be inside range [1, 1000]` (стабильно) — вопреки «по умолчанию — 100»; предел 1000 совпадает. evo до v1.0 из-за этого не показывал версии вовсе. Принимает ли API `page.limit`, прогон не проверял.
+- **Просим:** согласовать имена параметров и умолчание в инструкции, спецификации и API; умолчание `pageSize` или явная пометка «обязателен».
 
 #### CRT-2. Несуществующий сертификат — 403 `permission denied`, операция — 404
 Ошибка API · подтверждено вживую (живой прогон 17.10, CRD-B2)
@@ -674,14 +674,15 @@ API» — ответ неверен независимо от документа
 - **Просим:** 404.
 
 #### CRT-3. Выпуск Let's Encrypt без делегированной зоны — 400 без машинного кода
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-B3)
+Нет в документации (формат ответа) · подтверждено вживую (живой прогон 17.10, CRD-B3)
+- **Док:** предусловие описано: «Подтверждение и делегирование домена в Evolution DNS — обязательное условие выпуска сертификата в Let's Encrypt» ([выпустить сертификат](https://cloud.ru/docs/certificate-manager/ug/topics/guides_certificate_create)); код `ERROR_CODE_NOT_DELEGATED` — «Некоторые домены не имеют делегированных зон в Evolution DNS» — в спецификации описан только как код версии. Ответ 400 и его формат не описаны. Там же: «Renew запускает процесс обновления сертификата Let's Encrypt».
 - **Живое:** выпуск без делегированной зоны → 400 «there are no delegated domain zones…» без кода в ответе; в объекте сертификата код есть (`error_code`) (1 из 1).
 - **Просим:** машиночитаемый код в ответе (`ERROR_CODE_NOT_DELEGATED`).
-- **18.10:** подтверждено (живой прогон 18.10, run 39152048559): `cert_issue_le` → 400 «there are no delegated domain zones to issue certificate for domain …»; перевыпуск импортированного сертификата (`renew`) → тоже 400 «this cert contains domains which don't have delegated zones in evo dns» — о том, что перевыпуск бывает только у Let's Encrypt, ответ не говорит.
+- **18.10:** подтверждено (живой прогон 18.10, run 39152048559): `cert_issue_le` → 400 «there are no delegated domain zones to issue certificate for domain …»; перевыпуск импортированного сертификата (`renew`) → тоже 400 «this cert contains domains which don't have delegated zones in evo dns» — спецификация относит Renew к Let's Encrypt, а ответ 400 этого не сообщает.
 
 #### CRT-4. Закрытый ключ версии: в спецификации `privateKey`, в ответе `private_key`
 Расхождение · подтверждено вживую (живой прогон 18.10, run 39160570296)
-- **Спека:** `specs/ccm.swagger.yaml`, `GET /v1/certificate/{certificateId}/version/{versionId}:private_key`: ответ — `privateKey` («Приватный ключ PEM в декодированном Base64»).
+- **Спека:** [`ccm.swagger.yaml`](https://cloud.ru/docs/api/specs/certificate-manager/ug/_specs/ccm.swagger.yaml), `GET /v1/certificate/{certificateId}/version/{versionId}:private_key`: ответ — `privateKey` («Приватный ключ PEM в декодированном Base64»). Примеры ответов в инструкциях Evolution — в snake_case (`certificate_id`, `server_certificate`).
 - **Живое:** ответ — `{private_key, version}`; `private_key` — Base64 от PEM (2272 символа для ключа RSA 2048), поля `privateKey` нет (1 из 1).
 - **Влияние:** клиент по спецификации не находит ключ; evo до #115 отдавал его Base64 вместо PEM.
 - **Просим:** привести ответ или спецификацию к одному имени поля.
@@ -690,35 +691,36 @@ API» — ответ неверен независимо от документа
 
 #### CAP-1. HTTP 499 вместо 404 и 400
 Ошибка API · подтверждено вживую (живой прогон 17.10, CRD-B4)
-- **Док:** страницы сервиса есть, API-справки с кодами ответов нет.
+- **Док:** справочник API есть ([API Container Apps](https://cloud.ru/docs/container-apps-evolution/ug/topics/api-ref), [спецификация](https://cloud.ru/docs/api/specs/container-apps-evolution/ug/_specs/openapi.yaml)), но у всех методов только ответ «200»; коды ошибок, 404 и 499 не описаны.
 - **Живое:** get, logs, stop, start и delete по несуществующему имени → 499 «Serverless with name is not found»; создание с образом из несуществующего реестра → 499 «Container image is invalid» (6 из 6). В nginx 499 означает «клиент закрыл соединение» — прокси и клиенты считают это обрывом и повторяют.
 - **Просим:** 404 / 400.
 
 #### CAP-2. Ошибки создания — 400 «Invalid argument» без имени поля
 Ошибка API · подтверждено вживую (живой прогон 17.10, CRD-B9)
-- **Док:** [Создать контейнер](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__container-domain-create): зарезервированы порты 8008, 8012, 8013, 8112, 8022, 9090, 9091 и 1–1024 — само ограничение API совпадает.
+- **Док:** [Добавить пользовательский домен](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__container-domain-create) (пример API): «Порты 8008, 8012, 8013, 8112, 8022, 9090, 9091 и порты от 1 до 1024 зарезервированы» — само ограничение API совпадает.
 - **Живое:** некорректное имя (подчёркивание, заглавные), зарезервированный порт 9090, `minInstanceCount` > `maxInstanceCount` → 400 «Invalid argument» без поля и причины (3 из 3).
 - **Просим:** 400 с именем поля и причиной.
 
 ## Network Load Balancer
 
-В копии документации на 17.10 страниц API NLB нет; пункты ниже — поведение без описания.
+Справочник API есть ([API NLB](https://cloud.ru/docs/nlb/ug/topics/api-ref), [спецификация](https://cloud.ru/docs/api/specs/nlb/ug/_specs/swagger.yaml); добавлен в октябре 2025, по «Что нового»); коды ошибок в нём не описаны — только `default: rpcStatus`.
 
 #### NLB-1. Дубль имени балансировщика — 409 с текстом про группу целей
 Ошибка API · подтверждено вживую (живой прогон 17.10, CRD-B6)
 - **Живое:** второй балансировщик с тем же именем → 409 «target group already exists» (1 из 1).
-- **Просим:** текст про балансировщик.
+- **Просим:** текст про балансировщик. Уникальность имени балансировщика не описана (у группы целей — «Название целевой группы, уникальное в пределах проекта»).
 
 #### NLB-2. Удаление группы целей, которую использует балансировщик, принимается
-Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-B7)
-- **Живое:** `DELETE` группы целей работающего балансировщика → принято (`deleting`) (1 из 1).
-- **Просим:** 409/422 «используется» либо описанное каскадное поведение.
+Нет в документации (частично) · подтверждено вживую (живой прогон 17.10, CRD-B7)
+- **Док:** каскад описан только для единственной группы: «При удалении единственной целевой группы также удаляется сам балансировщик» ([удалить группу целей](https://cloud.ru/docs/nlb/ug/topics/guides__delete-tg)). Для группы, которая стоит в нескольких правилах или балансировщиках, и в спецификации (`DELETE /v2/targetGroups/{id}`) поведение не описано.
+- **Живое:** `DELETE` группы целей работающего балансировщика → принято (`deleting`) (1 из 1). Сколько групп было у балансировщика и удалился ли он сам, из записи прогона не видно.
+- **Просим:** 409/422 «используется» либо описанное каскадное поведение для общей группы и в спецификации.
 
 ## Foundation Models
 
 #### FM-1. Токен IAM отклоняется сообщением «invalid api key secret»
 Нет в документации · подтверждено вживую (до 15.10)
-- **Док:** [Аутентификация](https://cloud.ru/docs/foundation-models/ug/topics/api-ref__authentication) — только API-ключ.
+- **Док:** [Аутентификация](https://cloud.ru/docs/foundation-models/ug/topics/api-ref__authentication) — только API-ключ («Сгенерируйте API-ключ»), токен IAM не упоминается. **Спека:** [`openapi__foundation-models.yaml`](https://cloud.ru/docs/api/specs/foundation-models/ug/_specs/openapi__foundation-models.yaml) — `BearerAuth: scheme: bearer, bearerFormat: JWT`: формат JWT указывает на токен IAM, а не на API-ключ; ответа 401 нет (есть 400, 404, 422, 500).
 - **Живое:** `GET /v1/models` принимает и токен IAM, и API-ключ; `POST /v1/chat/completions` с токеном IAM — 400 `invalid api key secret` (review-context).
 - **Влияние:** неочевидно, что токен IAM не годится, — сообщение говорит о неверном ключе.
 - **Просим:** 401 с текстом «нужен API-ключ»; одинаковое поведение у всех методов.
@@ -736,9 +738,9 @@ API» — ответ неверен независимо от документа
 - **Переменные окружения ключа:** MCP-гайд Container Apps — `CLOUDRU_KEY_ID`/`CLOUDRU_KEY_SECRET`/`CLOUDRU_PROJECT_ID` ([guides__mcp-server](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__mcp-server)); kubeconfig mk8s — `CLOUDRU_KEY_ID`/`CLOUDRU_SECRET_ID` ([подключение к кластеру](https://cloud.ru/docs/kubernetes-evolution/ug/topics/guides__cluster__connect)); SOPS/KMS — `CLOUDRU_ACCESS_KEY_ID`/`CLOUDRU_ACCESS_KEY_SECRET` ([tutorials_sops](https://cloud.ru/docs/kms/ug/topics/tutorials_sops)); AI Agents — `EVOLUTION_SERVICE_ACCOUNT_KEY_ID`/`_SECRET`, `EVOLUTION_PROJECT_ID` ([переменные MCP-сервера](https://cloud.ru/docs/ai-agents/ug/topics/concepts__variables-mcp-server)).
 - **Роли AI Agents:** `ai-agents.mcp-servers.admin` и `ai-agents.mcp_server.invoker`, `ai-agents.prompt.admin` и `ai-agents.prompts.user` ([доступ](https://cloud.ru/docs/ai-agents/ug/topics/access)).
 - **Квота AI Agents:** «RAM 20 ГБ» ([ограничения](https://cloud.ru/docs/ai-agents/ug/topics/overview__limitations)) и «Объём VRAM 20 ГБ» ([квоты Evolution](https://cloud.ru/docs/evolution/overview/topics/quotas)).
-- **Аудит:** логи проекта видят администратор и пользователь проекта ([роли](https://cloud.ru/docs/audit-logging/ug/topics/roles), [FAQ](https://cloud.ru/docs/audit-logging/ug/topics/faq__general__logs-access)) — и «доступ только администратору организации», «обратитесь в поддержку» ([краткие логи](https://cloud.ru/docs/audit-logging/ug/topics/guides__logs__get-short-logs)); см. AUD-1.
-- **Прочее:** MCP-гайд Container Apps просит роль «Администратор пользователей» (`platform.project.iam-admin`) для создания контейнеров; траблшутинг Terraform на 401 советует «проверить API-ключ», хотя провайдер работает на ключе доступа ([troubleshooting](https://cloud.ru/docs/terraform-evolution/ug/topics/troubleshooting/troubleshooting)); сервисные аккаунты «создаются в рамках проектов» ([service_accounts](https://cloud.ru/docs/console_api/ug/topics/guides__service_accounts)) и бывают уровня «Организация» ([создание SA](https://cloud.ru/docs/console_api/ug/topics/guides__service_accounts_create)).
-- **Порты Container Apps:** [дополнительные порты](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__additionalports) резервируют 8008, 8012, 8013, 8112, 8022, 9090, 9091, 9092 и 1–1024; [создать контейнер](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__container-domain-create) — тот же список без 9092 (см. CAP-2). Отказывает ли API на 9092, прогон не проверял: evo отказывает до запроса.
+- **Аудит:** логи проекта видят администратор и пользователь проекта ([роли](https://cloud.ru/docs/audit-logging/ug/topics/roles), [FAQ](https://cloud.ru/docs/audit-logging/ug/topics/faq__general__logs-access)); краткие логи организации — «только администратору организации» ([краткие логи](https://cloud.ru/docs/audit-logging/ug/topics/guides__logs__get-short-logs)), что с FAQ согласуется. Противоречит ролям проекта примечание на страницах получения логов ([полных](https://cloud.ru/docs/audit-logging/ug/topics/guides__logs__get-logs) и кратких): «Доступ к функциональности ограничен. Чтобы получать аудит-логи, обратитесь в техническую поддержку»; см. AUD-1.
+- **Прочее:** MCP-гайд Container Apps просит роль «Администратор пользователей» (`platform.project.iam-admin` — наше сопоставление, на странице идентификатора нет) для создания контейнеров; траблшутинг Terraform на 401 советует «проверить API-ключ», хотя провайдер работает на ключе доступа ([troubleshooting](https://cloud.ru/docs/terraform-evolution/ug/topics/troubleshooting/troubleshooting)); сервисные аккаунты «создаются в рамках проектов» ([service_accounts](https://cloud.ru/docs/console_api/ug/topics/guides__service_accounts)) и бывают уровня «Организация» ([создание SA](https://cloud.ru/docs/console_api/ug/topics/guides__service_accounts_create)).
+- **Порты Container Apps:** [дополнительные порты](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__additionalports) резервируют 8008, 8012, 8013, 8112, 8022, 9090, 9091, 9092 и 1–1024; [добавить пользовательский домен](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__container-domain-create) и [удалить домен](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__container-domain-delete) — тот же список без 9092 (см. CAP-2). Отказывает ли API на 9092, прогон не проверял: evo отказывает до запроса.
 - **Влияние:** пользователь копирует блок `env` или роль из одной страницы и получает отказ в другом инструменте.
 - **Просим:** одно имя переменных и ролей на платформе; согласовать страницы.
 
@@ -765,6 +767,8 @@ API» — ответ неверен независимо от документа
 | DB-1: спискам Kafka/Redis нужна сервисная роль `dbaas.*.instance.list` | тот же ключ получает 200 при `page_size=100`; причина отказов — `page_size=1000` (DB-1) и запрос спецификаций без зоны (DB-2) | api-probe 17.10 00:05 UTC (P4, P5) |
 | Kafka: `clusters` и `specifications` требуют `product_type=kafka` | без него оба отвечают 200 (спецификации — с зоной) | api-probe 17.10 00:05 UTC (`kafka_list_noproduct`, `kafka_specs_az`) |
 | MON-1: у `export_metrics` не описаны предел окна, единицы `start`/`end` и формат ответа | описаны в документации Evolution: предел «Временной диапазон … `start` и `end` — 24 часа» — [ограничения сервиса](https://cloud.ru/docs/service-monitoring/ug/topics/overview__limitations?source-platform=Evolution); Unix timestamp в миллисекундах и ответ «каждому временному ряду — отдельная строка» — [история метрик](https://cloud.ru/docs/service-monitoring/ug/topics/guides__metrics__get__history?source-platform=Evolution). Пункт ссылался на справку другого продукта — «Расширенный мониторинг виртуального ЦОД» платформы VMware (`cloud.ru/docs/monitoring/…`). Остаётся мелочь спецификации: ответ в `openapi-v3.yaml` описан как `string` | сверка документации 19.10 (замечание коллег); живой прогон 17.10 — 400 на окне 48 ч, как в документации |
+| NET-8: адрес удалённого floating IP через минуты выдаётся другой ВМ — о переиспользовании адресов документация молчит | предупреждение есть в документации Evolution: «Нет гарантии, что вы сможете арендовать этот адрес снова. В дальнейшем этот адрес сможет получить другой клиент Cloud.ru» — [ограничения публичных IP](https://cloud.ru/docs/public-ip/ug/topics/overview__limitations), [освободить адрес](https://cloud.ru/docs/public-ip/ug/topics/guides__deallocate-ip). Пункт ссылался на тарификацию, где этого нет. Срок возврата в пул не описан — OPS-11 | сверка документации 19.10; живой прогон 17.10 (CRD-12), 2 из 2 |
+| DB-15: удаление пользователя-владельца PostgreSQL молча переназначает базу на `dbadmin` | описано в документации Evolution: «При удалении другого пользователя владельцем всех его объектов СУБД (баз данных, таблиц, представлений, функций и т. д.) становится dbadmin. Данные в этих объектах сохраняются» — [удалить пользователя](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__users__deleting-user). В Terraform `postgresql_user` не упомянуто | сверка документации 19.10; живой прогон 17.10 (CRD-B11), 1 из 1 |
 
 ## Эксплуатационные наблюдения
 
@@ -786,6 +790,7 @@ API» — ответ неверен независимо от документа
 - **OPS-8. Artifact Registry: загрузка образа не завершается.** 17.10 10:55 и 11:05 UTC (живой прогон): вход по ключу доступа прошёл, слои (`PATCH`) приняты с 202, финальный `PUT …/blobs/uploads/<id>?digest=…` с пустым телом не получил ответа ни за 4,5, ни за 6 мин (2 из 2); тегов в репозитории нет. Из-за этого не проверен живой деплой Container Apps.
 - **OPS-9. Сроки DBaaS 17.10** (живой прогон, ru.AZ-2): PostgreSQL — создание ~6,5 мин, удаление ~3 мин (11:12–11:25 UTC); Kafka и Redis — DB-10, DB-12.
 - **OPS-10. ru.AZ-1, 17.10 вечером: срочные работы, зона закрыта.** Около 15:10 UTC зона в списке зон стала `enabled=false` (поле описано в спецификации compute), утром в ней создавались ресурсы. В консоли — «Срочные технические работы в AZ-1: create/delete unavailable, running services unaffected». В то же время в ru.AZ-2 кластер PostgreSQL почти 3 ч простоял в `DEPLOYING` и упал (DB-20, DB-21), кластер mk8s создавался 18–19 мин (K8S-11). Связь с работами в AZ-1 не подтверждена: это гипотеза.
+- **OPS-11. Floating IP: адрес удалённого через минуты выдаётся другой ВМ** (живой прогон 17.10, CRD-12, ru.AZ-1, 2 из 2). Переиспользование адресов документация описывает (см. «Снятые вопросы», NET-8), сроки возврата в пул — нет; DNS-записи и белые списки на старый адрес быстро начинают вести на чужой ресурс.
 
 ## Что проверить пробой
 
