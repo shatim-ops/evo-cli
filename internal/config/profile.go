@@ -247,16 +247,22 @@ func readYAML(path string, v any) (exists bool, err error) {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		if errors.Is(err, syscall.ENOTDIR) {
-			// The nearest ancestor that exists is the file in the way.
+		if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
+			// A file in the way of the path: ENOTDIR on Linux and macOS,
+			// "path not found" on Windows. The nearest ancestor that
+			// exists tells which.
 			dir := filepath.Dir(path)
-			for _, serr := os.Stat(dir); serr != nil && filepath.Dir(dir) != dir; _, serr = os.Stat(dir) {
+			fi, serr := os.Stat(dir)
+			for serr != nil && filepath.Dir(dir) != dir {
 				dir = filepath.Dir(dir)
+				fi, serr = os.Stat(dir)
 			}
-			return false, NotADirectory(dir)
+			if serr == nil && !fi.IsDir() {
+				return false, NotADirectory(dir)
+			}
+			if os.IsNotExist(err) {
+				return false, nil
+			}
 		}
 		// The text of the system without "open <path>:", which repeated
 		// the path; a missing permission in the language of the CLI.
