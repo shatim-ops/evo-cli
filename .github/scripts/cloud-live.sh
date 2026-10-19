@@ -820,7 +820,7 @@ area_secrets() {
 
 # Artifact Registry и Container Apps: реестр, push образа, приложение.
 area_ca() {
-	local reg="evo-e2e-ca-$RUN" rid host app="$prefix-app" url code img
+	local reg="evo-e2e-ca-$RUN" rid host app="$prefix-app" url code img n
 	probe_ar_pages
 	must ar_create ar_create --arg name="$reg" --arg registry_type=DOCKER || return 1
 	if opwait ar "$(j -r .operation_id)" 600; then ok ar_create "операция done"; cov ar_create; else bad ar_create "$why"; return 1; fi
@@ -861,7 +861,16 @@ area_ca() {
 		[ "$code" = 200 ] && grep -qi nginx "$tmp/page"
 	}
 	if poll 900 20 app_up; then ok "ca_get URL и HTTP" "200, nginx"; else bad "ca_get URL и HTTP" "за 15 мин нет ответа 200 (код ${code:-нет URL}); ca_get: $(ca_shape)"; fi
-	must ca_logs ca_logs --arg name="$app" && ok ca_logs "строк $(j -r '(.logs // []) | length')"
+	# 18.10: 0 строк сразу после обслуженных запросов; задержка поставки
+	# логов не описана — пустой ответ повторяем через минуту
+	must ca_logs ca_logs --arg name="$app" && {
+		n=$(j -r '(.logs // []) | length')
+		if [ "$n" = 0 ]; then
+			sleep 60
+			must ca_logs ca_logs --arg name="$app" && n="0, через 60 с $(j -r '(.logs // []) | length')"
+		fi
+		ok ca_logs "строк $n$(j -r 'if .truncated then ", truncated" else "" end')"
+	}
 	must ca_stop ca_stop --arg name="$app" && { ok ca_stop "$(j -r .status)"; cov ca_stop; }
 	sleep 30
 	must ca_start ca_start --arg name="$app" && {

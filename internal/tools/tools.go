@@ -498,7 +498,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ca_logs",
-			Description: "Get recent logs of a Container App (last 100 lines). Set system=true for platform/system events. Read-only.",
+			Description: "Get recent logs of a Container App: the last 100 lines by time, oldest first (app logs are the container's stdout/stderr). Set system=true for platform/system events. Read-only.",
 			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "system": boolProp("System logs instead of app logs.")}, "name"),
 		},
 		{
