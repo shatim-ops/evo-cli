@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/secret"
 )
@@ -91,6 +92,14 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 	value := stringArg(args, "value")
 	if path == "" || value == "" {
 		return usageResult(fmt.Errorf("'path' and 'value' are required")), true
+	}
+	// The secret's name is the last part of the path: "folder/" names none
+	// (QA-15).
+	if err := plainName("secret", "path", path); err != nil {
+		return errResult(err), true
+	}
+	if err := plainName("secret", "name", path[strings.LastIndex(path, "/")+1:]); err != nil {
+		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

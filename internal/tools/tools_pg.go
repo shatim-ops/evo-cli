@@ -141,9 +141,11 @@ func (s *Registry) handlePgList(ctx context.Context, args map[string]any) (strin
 }
 
 func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string, bool) {
-	id := stringArg(args, "id")
-	if id == "" {
-		id = stringArg(args, "cluster_id") // accept both, for consistency with pg_* sub-resource tools
+	// id or its alias cluster_id, as the pg_* sub-resource tools name it;
+	// both and different is USAGE (QA-1).
+	id, err := aliasArg(args, "id", "cluster_id")
+	if err != nil {
+		return errResult(err), true
 	}
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (get it from pg_list)")), true
@@ -321,6 +323,21 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	if instances < 1 {
 		return usageResult(fmt.Errorf("instances %d: at least 1", instances)), true
 	}
+	if err := plainName("PostgreSQL cluster", "name", name); err != nil {
+		return errResult(err), true
+	}
+	// Sizes before the cloud: storage_gb 0 or -5 and a retention of 0 or
+	// 90 days made a preview, then the API refused it (QA 20.10, QA-7).
+	if err := minIntArg(args, "storage_gb", 1, "Omit storage_gb for the specification's minimum."); err != nil {
+		return errResult(err), true
+	}
+	if _, ok := args["backup_retention_days"]; ok && args["backup_retention_days"] != nil {
+		if d := pgInt(args, "backup_retention_days", 14); d < 1 || d > 30 {
+			return errResult(clierrors.New(clierrors.CodeUsage,
+				fmt.Sprintf("backup_retention_days %d is out of range 1-30", d),
+				"Automatic backups are kept 1 to 30 days; the default is 14.")), true
+		}
+	}
 	cli, eng, err := s.pgClientEng(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -330,7 +347,7 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		return errResult(fmt.Errorf("check the name is free: list clusters: %w", err)), true
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult("pg_create", "PostgreSQL cluster", name, id, st, "pg_get id="+id)
+		return nameTakenResult("PostgreSQL cluster", name, id, st, "pg_get id="+id)
 	}
 
 	// Resolve version (default: latest available).
@@ -363,7 +380,7 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
 		}
-		return needSpecResult("pg_create", "pg_specs", specArg, cpu, ram, out)
+		return needSpecResult("pg_specs", specArg, cpu, ram, out)
 	}
 	specID, _ := spec["id"].(string)
 	if maxHosts := pgMaxHosts(spec); maxHosts > 0 && instances > maxHosts {
@@ -468,9 +485,10 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 }
 
 func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (string, bool) {
-	id := stringArg(args, "id")
-	if id == "" {
-		id = stringArg(args, "cluster_id") // accept both, for consistency with pg_* sub-resource tools
+	// Both and different deleted the cluster of id (QA-1).
+	id, err := aliasArg(args, "id", "cluster_id")
+	if err != nil {
+		return errResult(err), true
 	}
 	if id == "" {
 		return usageResult(fmt.Errorf("'id' is required (from pg_list)")), true

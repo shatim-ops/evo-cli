@@ -75,7 +75,7 @@
 | `destroy` | удаляет | — | Permanently delete a VM and all data on it (irreversible). |
 | `deploy_plan` | нет | — | STEP 1 of the deploy wizard (read-only, creates nothing). |
 | `deploy_apply` | да | `plan_id` | STEP 2 of the deploy wizard. |
-| `open_ports` | да | `security_group` | Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). |
+| `open_ports` | да | `security_group`, `ports` | Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). |
 
 ## disk
 
@@ -100,7 +100,7 @@
 | `dns_operation` | нет | `operation_id` | Poll a DNS async operation by id (from dns_zone_create/delete, dns_record_create/delete). |
 | `dns_records` | нет | `zone_id` | List resource records of a DNS zone (id, name, type, values, ttl). |
 | `dns_record_get` | нет | `record_id` | Get one DNS record by id (from dns_records). |
-| `dns_record_create` | да | `zone_id`, `name`, `record_type` | Add a DNS record to a zone (async). |
+| `dns_record_create` | да | `zone_id`, `name`, `record_type`, `value` или `values` | Add a DNS record to a zone (async). |
 | `dns_record_delete` | удаляет | `record_id` | Delete a DNS record by id (from dns_records) (async). |
 
 ## iam
@@ -117,7 +117,7 @@
 | `marketplace_list` | нет | — | Read-only showcase of what Cloud.ru offers to deploy, in one list: VM images of the shared catalogue (OS images and Cloud.ru Marketplace products; the … |
 | `list_images` | нет | — | List available Cloud.ru VM boot images (UUID + name). |
 | `image_create` | да | `name`, `disk_id` | Create a reusable VM image FROM A BOOTABLE DISK — the final step of producing a distributable image (e.g. |
-| `image_get` | нет | — | Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with … |
+| `image_get` | нет | `image` или `image_id` | Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with … |
 | `image_delete` | удаляет | `image_id` | Delete a VM image. |
 
 ## k8s
@@ -168,7 +168,7 @@
 | `lb_operation` | нет | `operation_id` | Poll a Load Balancer async operation by id (from lb_create/lb_delete/tg_create/tg_delete). |
 | `tg_list` | нет | — | List Load Balancer target groups in the project (id, name, status, vpc). |
 | `tg_get` | нет | `id` | Get details of one target group by id (from tg_list): member VMs, vpc, status. |
-| `tg_create` | да | `name` | Create a target group (the set of VMs a load balancer distributes traffic to). |
+| `tg_create` | да | `name`, `vm_id` или `targets` | Create a target group (the set of VMs a load balancer distributes traffic to). |
 | `tg_delete` | удаляет | `id` | Delete a target group by id (from tg_list). |
 | `lb_create` | да | `name`, `target_group_id`, `port` | Create an L4 load balancer fronting a target group. |
 | `lb_delete` | удаляет | `id` | Delete a load balancer by id (from lb_list). |
@@ -185,11 +185,11 @@
 | Инструмент | Меняет | Обязательные аргументы | Описание |
 |---|---|---|---|
 | `pg_list` | нет | — | List Managed PostgreSQL clusters in the project (id, name, status, version, health). |
-| `pg_get` | нет | — | Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status. |
+| `pg_get` | нет | `id` или `cluster_id` | Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status. |
 | `pg_versions` | нет | — | List available Managed PostgreSQL versions (e.g. |
 | `pg_specs` | нет | — | List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard\|business, min_storage_gb) for a version. |
 | `pg_create` | да | `name` | Create a Managed PostgreSQL cluster. |
-| `pg_delete` | удаляет | — | Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). |
+| `pg_delete` | удаляет | `id` или `cluster_id` | Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). |
 | `pg_operation` | нет | `operation_id` | Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). |
 | `pg_databases` | нет | `cluster_id` | List databases in a PostgreSQL cluster (name, owner, size). |
 | `pg_db_create` | да | `cluster_id`, `name`, `owner` | Create a database in a PostgreSQL cluster. |
@@ -240,8 +240,8 @@
 | Инструмент | Меняет | Обязательные аргументы | Описание |
 |---|---|---|---|
 | `snat_list` | нет | — | List SNAT gateways in the project. |
-| `snat_create` | да | — | Create a public SNAT gateway: outbound internet for every ROUTED subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out … |
-| `snat_delete` | удаляет | — | Delete a SNAT gateway by id (from snat_list). |
+| `snat_create` | да | `name` | Create a public SNAT gateway: outbound internet for every ROUTED subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out … |
+| `snat_delete` | удаляет | `id` | Delete a SNAT gateway by id (from snat_list). |
 
 ## stack
 
@@ -257,7 +257,7 @@
 | Инструмент | Меняет | Обязательные аргументы | Описание |
 |---|---|---|---|
 | `provision` | да | — | Provision a bare Cloud.ru VM. |
-| `vm_get` | нет | — | Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. |
+| `vm_get` | нет | `vm_id` или `name` | Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. |
 | `vm_list` | нет | — | List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. |
 | `list_zones` | нет | — | List available Cloud.ru availability zones (UUID + name). |
 | `list_flavors` | нет | — | List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each. |
@@ -270,12 +270,12 @@
 | `list_subnets` | нет | — | List Cloud.ru subnets (UUID, name, availability zone). |
 | `list_security_groups` | нет | — | List Cloud.ru security groups (UUID, name, availability zone). |
 | `list_floating_ips` | нет | — | List Cloud.ru floating IPs (address, state, whether available to attach). |
-| `release_floating_ip` | удаляет | — | Release (delete) a floating IP, freeing it from the project. |
+| `release_floating_ip` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. |
 | `vpc_list` | нет | — | List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). |
 | `vpc_get` | нет | `id` | Get full details of one VPC by id (from vpc_list). |
 | `vpc_create` | да | `name` | Create a new VPC (virtual private cloud) (async). |
 | `vpc_delete` | удаляет | `id` | Delete a VPC by id (from vpc_list) (async). |
 | `vpc_operation` | нет | `operation_id` | Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). |
 | `vpc_routes` | нет | `vpc_id` | List static routes of a VPC (id, subnet, next_hop_type, status). |
-| `vpc_route_create` | да | `vpc_id`, `subnet` | Add a static route to a VPC (async). |
+| `vpc_route_create` | да | `vpc_id`, `subnet`, `next_hop_vip_id` или `next_hop_vm_id` или `next_hop_magic_router_id` | Add a static route to a VPC (async). |
 | `vpc_route_delete` | удаляет | `vpc_id`, `route_id` | Delete a static route from a VPC by id (from vpc_routes) (async). |

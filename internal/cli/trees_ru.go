@@ -447,8 +447,6 @@ var flagShortRU = map[string]string{
 	"k8s_helm.values":  "Содержимое values.yaml (необязательно)",
 	"k8s_helm.version": "Версия чарта (необязательно; по умолчанию — последняя)",
 
-	"pg_get.id":        "UUID кластера — то же, что аргумент <cluster-id> (список: evo pg list)",
-	"pg_delete.id":     "UUID кластера — то же, что аргумент <cluster-id> (список: evo pg list)",
 	"pg_specs.version": "Версия продукта, например 17: только конфигурации этой версии (необязательно)",
 	"pg_create.backup_retention_days": "Срок хранения автоматических резервных копий, дней (по умолчанию 14, " +
 		"не больше 30)",

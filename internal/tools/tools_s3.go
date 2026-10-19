@@ -151,6 +151,10 @@ func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any
 	if bucket == "" {
 		return usageResult(fmt.Errorf("'bucket' is required (the new bucket name)")), true
 	}
+	// The rule the schema states, before the preview (QA-15).
+	if err := bucketName(bucket); err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",

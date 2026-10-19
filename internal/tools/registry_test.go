@@ -145,7 +145,7 @@ func TestRegistry_WrapReachesInProcessCalls(t *testing.T) {
 func TestUsageResult_MarksArgumentErrors(t *testing.T) {
 	r := newTestServer()
 	text, isErr := r.handlers["vm_get"](context.Background(), map[string]any{})
-	if !isErr || !strings.Contains(text, `"reason": "USAGE"`) || !strings.Contains(text, `"error": "vm_get requires vm_id or name"`) {
+	if !isErr || !strings.Contains(text, `"reason": "USAGE"`) || !strings.Contains(text, `"error": "vm_id or name is required"`) {
 		t.Fatalf("vm_get without arguments: %s", text)
 	}
 }

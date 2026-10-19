@@ -2627,8 +2627,7 @@ evo pg delete <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help        Справка по delete
-      --id string   UUID кластера — то же, что аргумент <cluster-id> (список: evo pg list)
+  -h, --help   Справка по delete
 ```
 
 ### Options inherited from parent commands
@@ -2669,8 +2668,7 @@ evo pg get <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help        Справка по get
-      --id string   UUID кластера — то же, что аргумент <cluster-id> (список: evo pg list)
+  -h, --help   Справка по get
 ```
 
 ### Options inherited from parent commands

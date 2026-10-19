@@ -285,13 +285,13 @@ func TestDiskCreatePreview_Russian(t *testing.T) {
 func TestK8sCreatePreview_NoPrice(t *testing.T) {
 	russian(t)
 	withPreviewCloud(t)
-	_, errOut, code := execCLI(t, "k8s", "create", "--name", "k1", "--zone", "ru.AZ-1", "--master-count", "3", "--kube-api-internet=false")
+	_, errOut, code := execCLI(t, "k8s", "create", "--name", "k-1", "--zone", "ru.AZ-1", "--master-count", "3", "--kube-api-internet=false")
 	if code != clerrors.ExitConfirmationRequired {
 		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
 	}
 	assertHas(t, errOut, []string{
-		"План: создать кластер Kubernetes k1 в зоне ru.AZ-1\n",
-		"  Будет создано: кластер Managed Kubernetes k1\n",
+		"План: создать кластер Kubernetes k-1 в зоне ru.AZ-1\n",
+		"  Будет создано: кластер Managed Kubernetes k-1\n",
 		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
 		"  зона:       ru.AZ-1\n",
 		"  мастеров:   3\n",

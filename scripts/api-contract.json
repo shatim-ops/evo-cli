@@ -288,17 +288,17 @@
       "name": "certificatemanager",
       "spec": "certificatemanager/ccm.swagger.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/certificate", "code": "internal/certmanager/client.go:147", "query": ["projectId", "name", "type", "dnsName", "commonName", "state"], "reads": ["certificates[].name"]},
-        {"method": "GET", "path": "/v1/certificate/{id}", "code": "internal/certmanager/client.go:162", "reads": ["id", "name", "type", "status", "errorCode", "expiresAt"]},
-        {"method": "POST", "path": "/v1/certificate:issue_lenc_cert", "code": "internal/certmanager/client.go:181", "body": ["projectId", "name", "dnsNames", "description"], "reads": ["id", "done"]},
-        {"method": "POST", "path": "/v1/certificate", "code": "internal/certmanager/client.go:196", "body": ["projectId", "name", "serverCertificate", "privateKey", "intermediateCertificate"], "reads": ["id", "name"]},
-        {"method": "POST", "path": "/v1/certificate/{certificateId}:renew", "code": "internal/certmanager/client.go:209", "body": [], "reads": ["id", "done"]},
-        {"method": "DELETE", "path": "/v1/certificate/{id}", "code": "internal/certmanager/client.go:226", "query": ["force"]},
-        {"method": "GET", "path": "/v1/certificate/{certificateId}:usage", "code": "internal/certmanager/client.go:235", "reads": ["usage"]},
-        {"method": "GET", "path": "/v1/certificate/{certificateId}/versions", "code": "internal/certmanager/client.go:270", "query": ["pageSize=1000", "pageToken"], "paginates": true, "reads": ["versions", "nextPageToken"],
+        {"method": "GET", "path": "/v1/certificate", "code": "internal/certmanager/client.go:148", "query": ["projectId", "name", "type", "dnsName", "commonName", "state"], "reads": ["certificates[].name"]},
+        {"method": "GET", "path": "/v1/certificate/{id}", "code": "internal/certmanager/client.go:163", "reads": ["id", "name", "type", "status", "errorCode", "expiresAt"]},
+        {"method": "POST", "path": "/v1/certificate:issue_lenc_cert", "code": "internal/certmanager/client.go:182", "body": ["projectId", "name", "dnsNames", "description"], "reads": ["id", "done"]},
+        {"method": "POST", "path": "/v1/certificate", "code": "internal/certmanager/client.go:197", "body": ["projectId", "name", "serverCertificate", "privateKey", "intermediateCertificate"], "reads": ["id", "name"]},
+        {"method": "POST", "path": "/v1/certificate/{certificateId}:renew", "code": "internal/certmanager/client.go:210", "body": [], "reads": ["id", "done"]},
+        {"method": "DELETE", "path": "/v1/certificate/{id}", "code": "internal/certmanager/client.go:227", "query": ["force"]},
+        {"method": "GET", "path": "/v1/certificate/{certificateId}:usage", "code": "internal/certmanager/client.go:236", "reads": ["usage"]},
+        {"method": "GET", "path": "/v1/certificate/{certificateId}/versions", "code": "internal/certmanager/client.go:269", "query": ["pageSize=1000", "pageToken"], "paginates": true, "reads": ["versions", "nextPageToken"],
          "_note": "pageSize в спецификации необязателен, живое API без него — 400 «PageSize: value must be inside range [1, 1000]» (release audit, L-17)"},
-        {"method": "GET", "path": "/v1/certificate/{certificateId}/version/{versionId}:private_key", "code": "internal/certmanager/client.go:293", "reads": ["privateKey"]},
-        {"method": "GET", "path": "/v1/operation/{operationId}", "code": "internal/certmanager/client.go:307", "reads": ["id", "done", "error"]}
+        {"method": "GET", "path": "/v1/certificate/{certificateId}/version/{versionId}:private_key", "code": "internal/certmanager/client.go:295", "reads": ["privateKey"]},
+        {"method": "GET", "path": "/v1/operation/{operationId}", "code": "internal/certmanager/client.go:309", "reads": ["id", "done", "error"]}
       ]
     },
     {
@@ -322,7 +322,7 @@
       "name": "billing",
       "spec": "organization+iam/api.op_v1.v2.yaml",
       "requests": [
-        {"method": "GET", "path": "/v2/consumption", "code": "internal/billing/client.go:202", "query": ["agreement_id", "project_ids", "start_date", "end_date", "page_filter.page_size=1000", "page_filter.page_token"], "paginates": true,
+        {"method": "GET", "path": "/v2/consumption", "code": "internal/billing/client.go:209", "query": ["agreement_id", "project_ids", "start_date", "end_date", "page_filter.page_size=1000", "page_filter.page_token"], "paginates": true,
          "reads": ["consumptions[].amount", "consumptions[].amount_nds", "consumptions[].servname", "consumptions[].servicename", "consumptions[].service", "consumptions[].resource_name", "consumptions[].resourcename", "next_page_token"], "statuses": [403]}
       ]
     },
@@ -330,7 +330,7 @@
       "name": "billing-balance",
       "spec": "billing/swagger.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/agreement/{agreement_id}", "code": "internal/billing/client.go:162", "reads": ["balance", "active"],
+        {"method": "GET", "path": "/v1/agreement/{agreement_id}", "code": "internal/billing/client.go:163", "reads": ["balance", "active"],
          "accepted": {"path-missing": "эндпоинт billing.api.cloud.ru/v1/agreement/{id} не опубликован ни в одной спецификации — вопрос к Cloud.ru"}}
       ]
     },

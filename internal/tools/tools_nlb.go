@@ -248,6 +248,13 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	if name == "" || tgID == "" || port == 0 {
 		return usageResult(fmt.Errorf("'name', 'target_group_id' and 'port' are required")), true
 	}
+	// Ports 1-65535 before the cloud: 70000 made a preview, then the API
+	// refused it with exit 5 (QA 20.10, QA-7).
+	for _, k := range []string{"port", "target_port", "hc_port"} {
+		if err := portArg(args, k); err != nil {
+			return errResult(err), true
+		}
+	}
 	targetPort := pgInt(args, "target_port", port)
 	hcPort := pgInt(args, "hc_port", targetPort)
 	external := true

@@ -69,7 +69,11 @@
 - Частичный результат создания — `5` (`API_ERROR`, `status: partial`):
   `provision`, если ВМ работает, а floating IP не привязался (в ответе нет
   строки SSH); `disk_create attach_to=…`, если диск создан, но не привязан
-  (`disk_id` в ответе, подсказка `disk_attach`). Повтор `provision` с
+  (`disk_id` в ответе, подсказка `disk_attach`); `open_ports`, если открылась
+  только часть портов (`failures` — причина по каждому; не открылся ни один —
+  ошибка с причиной первого отказа API). `release_floating_ip` не
+  освобождает адрес, занятый ВМ или SNAT-шлюзом, — `1` (`USAGE`,
+  `status: refused`). Повтор `provision` с
   занятым именем (409) — `1` (`USAGE`), у `deploy` — `2`
   (`CONFIG_INVALID`); чужая ВМ не подхватывается, floating IP повтора
   освобождается.

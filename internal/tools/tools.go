@@ -94,7 +94,7 @@ func (s *Registry) registerTools() {
 			Name:        "vm_get",
 			Description: "Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. Use this whenever you need a VM's IP — e.g. to wire a private service endpoint into a config or secret after creating the VM. Unlike 'list'/'status' (which read local state and omit the private IP), this calls the live API. Never shell out to curl/ssh to discover a VM's IP — use this tool.",
 			InputSchema: objSchema(map[string]any{
-				"vm_id": strProp("VM UUID (from a stack output, deploy_apply/provision result, or list)."),
+				"vm_id": strProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required."),
 				"name":  strProp("VM name (alternative to vm_id)."),
 			}),
 		},
@@ -186,7 +186,7 @@ func (s *Registry) registerTools() {
 				"An image the project cannot use comes with available_in_project=false, a note and no create. " +
 				"The icon and the cloud-init user_data_template only with full=true. Read-only. Also the way to poll an image build until ready=true.",
 			InputSchema: objSchema(map[string]any{
-				"image":    strProp("Image name, display name or UUID (from image_list)."),
+				"image":    strProp("Image name, display name or UUID (from image_list). image or image_id is required."),
 				"image_id": strProp("Image UUID (from image_list); 'image' takes a name as well."),
 				"full":     boolProp("Also return the SVG icon and the cloud-init user_data_template (large)."),
 			}),
@@ -267,7 +267,7 @@ func (s *Registry) registerTools() {
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
 				"cidr":           strProp("Source CIDR (default 0.0.0.0/0 = anywhere)."),
 				"confirmed":      confirmedProp(),
-			}, "security_group"),
+			}, "security_group", "ports"),
 		},
 		{
 			Name:        "k8s_list",
@@ -319,7 +319,7 @@ func (s *Registry) registerTools() {
 			Description: "Get the kubeconfig for a Managed Kubernetes cluster. By DEFAULT it embeds a static bearer token so kubectl/helm work as-is (the raw Cloud.ru kubeconfig needs a 'cloudlogin' exec-plugin that isn't installed → kubectl would fail 'executable cloudlogin not found'). Token TTL ~1h. Pass embed_token=false for the raw exec-plugin kubeconfig.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":  strProp("Cluster UUID."),
-				"network":     strProp("NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default)."),
+				"network":     enumProp("NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default).", "NETWORK_TYPE_PUBLIC", "NETWORK_TYPE_PRIVATE"),
 				"embed_token": boolPropTrue("Embed a static bearer token so kubectl works without the cloudlogin plugin (default true)."),
 			}, "cluster_id"),
 		},
@@ -536,8 +536,8 @@ func (s *Registry) registerTools() {
 			Name:        "release_floating_ip",
 			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: snat_delete). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":         strProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required."),
-				"ip_address": strProp("Floating IP address, e.g. '203.0.113.11' (alternative to id)."),
+				"id":         strProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required, not both."),
+				"ip_address": strProp("Floating IP address, e.g. '203.0.113.11' (alternative to id; not with it)."),
 				"confirmed":  confirmedProp(),
 			}),
 		},
@@ -554,7 +554,7 @@ func (s *Registry) registerTools() {
 				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-2'). Optional; resolved to a UUID. Defaults to the configured region."),
 				"availability_zone_id": strProp("Availability-zone UUID (alternative to 'zone')."),
 				"confirmed":            confirmedProp(),
-			}),
+			}, "name"),
 		},
 		{
 			Name:        "snat_delete",
@@ -562,7 +562,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"id":        strProp("SNAT gateway UUID (from snat_list). Required."),
 				"confirmed": confirmedProp(),
-			}),
+			}, "id"),
 		},
 		{
 			Name:        "pg_list",
@@ -833,7 +833,7 @@ func (s *Registry) registerTools() {
 			Description: "Create a target group (the set of VMs a load balancer distributes traffic to). Provide targets as just vm_id (single) or a 'targets' array of {id}. The VM's network interface is AUTO-RESOLVED — you do NOT need interface_id (only pass it to override). Targets must be private VPC-subnet VMs (provision with no_public_ip). Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":         strProp("Target group name (unique in project). Required."),
-				"vm_id":        strProp("VM UUID for a single target. The interface is auto-resolved."),
+				"vm_id":        strProp("VM UUID for a single target. The interface is auto-resolved. vm_id or targets is required."),
 				"interface_id": strProp("Optional: network interface UUID (auto-resolved from the VM if omitted)."),
 				"targets":      map[string]any{"type": "array", "description": "Multiple targets: array of {id} (interface_id optional, auto-resolved).", "items": map[string]any{"type": "object"}},
 				"confirmed":    confirmedProp(),
@@ -1063,12 +1063,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ar_create",
-			Description: "Create an Artifact Registry registry (async); refuses a name an existing registry has (ar_list). registry_type=DOCKER (default), DEBIAN, RPM, GENERIC or PYPI. Mutation (BILLABLE): requires confirmed=true after the user approves. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
+			Description: "Create an Artifact Registry registry (async); refuses a name an existing registry has (ar_list). registry_type=DOCKER (default), DEBIAN, RPM, GENERIC, PYPI or NPM. Mutation (BILLABLE): requires confirmed=true after the user approves. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("Registry name. Required."),
-				"registry_type": strProp("Registry type: DOCKER (default), DEBIAN, RPM, GENERIC, PYPI."),
+				"registry_type": enumProp("Registry type: DOCKER (default), DEBIAN, RPM, GENERIC, PYPI, NPM.", "DOCKER", "DEBIAN", "RPM", "GENERIC", "PYPI", "NPM"),
 				"public":        boolProp("Make the registry public (default false)."),
-				"tariff":        strProp("Tariff: BASIC (default) or PREMIUM."),
+				"tariff":        enumProp("Tariff: BASIC (default) or PREMIUM.", "BASIC", "PREMIUM"),
 				"confirmed":     confirmedProp(),
 			}, "name"),
 		},
@@ -1462,6 +1462,10 @@ func (s *Registry) registerTools() {
 // --- handlers ---
 
 func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (string, bool) {
+	// disk_size -5 became 10 GB without a word (QA-14).
+	if err := minIntArg(args, "disk_size", 0, "Omit disk_size for 10 GB, raised to the image's min_disk."); err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		will := withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
 			firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
@@ -1562,6 +1566,10 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// included.
 	if stringArg(args, "image") != "" && stringArg(args, "image_id") != "" {
 		return usageResult(fmt.Errorf("pass image or image_id, not both")), true
+	}
+	// disk_size -5 became 10 GB in the preview and the VM (QA-14).
+	if err := minIntArg(args, "disk_size", 0, "Omit disk_size for 10 GB, raised to the image's min_disk."); err != nil {
+		return errResult(err), true
 	}
 	metaValues, err := metadataArg(args, "image_metadata")
 	if err != nil {
@@ -2316,12 +2324,13 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		if engine.IsNotDeletableYet(err) {
 			// A VM still being created cannot be deleted yet; say when to
 			// come back instead of a bare API error (QA H1/H4).
-			return toJSON(map[string]any{
-				"status": "not_deletable_yet",
-				"vm_id":  target.ID,
-				"message": fmt.Sprintf("VM %s is still being created or changing state, so Cloud.ru refuses to delete it now. "+
-					"Call destroy with vm_id %s again in a minute or two; nothing was deleted.", target.ID, target.ID),
-			}), true
+			// Cloud.ru answered the delete with a refusal: API_ERROR, as
+			// docs/exit-codes.md has it; the answer had no reason (QA-6).
+			msg := fmt.Sprintf("VM %s is still being created or changing state, so Cloud.ru refuses to delete it now. "+
+				"Call destroy with vm_id %s again in a minute or two; nothing was deleted.", target.ID, target.ID)
+			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError, msg,
+				fmt.Sprintf("Wait until vm_get shows the VM running or stopped, then call destroy vm_id=%s again.", target.ID), err),
+				map[string]any{"status": "not_deletable_yet", "vm_id": target.ID, "message": msg}), true
 		}
 		return errResult(fmt.Errorf("delete VM: %w", err)), true
 	} else if !eng.WaitVMGone(ctx, target.ID) {

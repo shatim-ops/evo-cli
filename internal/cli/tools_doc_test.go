@@ -65,9 +65,17 @@ func genToolsDoc() []byte {
 			case tools.IsSensitive(t):
 				changes = "нет, секрет"
 			}
+			var reqs []string
+			for _, n := range requiredArgs(t) {
+				reqs = append(reqs, "`"+n+"`")
+			}
+			// One of a set (vm_get: vm_id or name): "`vm_id` или `name`".
+			for _, set := range t.RequiredOneOf {
+				reqs = append(reqs, "`"+strings.Join(set, "` или `")+"`")
+			}
 			req := "—"
-			if names := requiredArgs(t); len(names) > 0 {
-				req = "`" + strings.Join(names, "`, `") + "`"
+			if len(reqs) > 0 {
+				req = strings.Join(reqs, ", ")
 			}
 			fmt.Fprintf(&buf, "| `%s` | %s | %s | %s |\n", t.Name, changes, req, firstSentence(t.Description))
 		}

@@ -44,7 +44,10 @@ type Tool struct {
 	Mutating    bool           `json:"mutating"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
-	Handler     Handler        `json:"-"`
+	// RequiredOneOf are argument sets one argument of each the call must
+	// have, beside the schema's "required" (see requiredOneOf).
+	RequiredOneOf [][]string `json:"-"`
+	Handler       Handler    `json:"-"`
 }
 
 // OpWaitMaxSeconds is the longest wait_seconds the *_operation tools honour.
@@ -72,6 +75,7 @@ func New(factory EngineFactory) *Registry {
 		t := &r.tools[i]
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
+		t.RequiredOneOf = requiredOneOf[t.Name]
 		if h := r.handlers[t.Name]; h != nil {
 			if projectTools[t.Name] {
 				h = r.requireProject(h)
@@ -123,6 +127,29 @@ func ErrResult(err error) string { return errResult(err) }
 
 // BoolArg reads a boolean argument, def when it is absent.
 func BoolArg(args map[string]any, key string, def bool) bool { return boolArg(args, key, def) }
+
+// requiredOneOf names the tools that need one argument of a set, which
+// "required" cannot say: each set is the arguments one of which the call
+// must have (vm_get: vm_id or name). The handler answers USAGE without
+// one.
+//
+// The input schema does not carry this as a top-level anyOf (QA 20.10,
+// QA-4): the Anthropic API refuses a tool whose input_schema has anyOf,
+// oneOf or allOf at the top level (400 «input_schema does not support
+// oneOf, allOf, or anyOf at the top level»), and an MCP client hands it
+// the schema as it is — one such tool fails every request of the session.
+// The property descriptions say it instead; Tool.RequiredOneOf carries
+// it to docs/tools.md and the empty-arguments test.
+var requiredOneOf = map[string][][]string{
+	"pg_get":              {{"id", "cluster_id"}},
+	"pg_delete":           {{"id", "cluster_id"}},
+	"vm_get":              {{"vm_id", "name"}},
+	"image_get":           {{"image", "image_id"}},
+	"release_floating_ip": {{"id", "ip_address"}},
+	"tg_create":           {{"vm_id", "targets"}},
+	"dns_record_create":   {{"value", "values"}},
+	"vpc_route_create":    {{"next_hop_vip_id", "next_hop_vm_id", "next_hop_magic_router_id"}},
+}
 
 // Groups returns the group names in alphabetical order.
 func Groups() []string {

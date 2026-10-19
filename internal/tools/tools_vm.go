@@ -31,7 +31,7 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 		ref = stringArg(args, "name")
 	}
 	if ref == "" {
-		return usageResult(fmt.Errorf("vm_get requires vm_id or name")), true
+		return usageResult(fmt.Errorf("vm_id or name is required")), true
 	}
 
 	eng, err := s.authedEngine(ctx, nil)

@@ -321,7 +321,7 @@ func TestStack_TakenNameIsNotAdopted(t *testing.T) {
 	r := newTestServer()
 	j := planJob(t, `{"name":"s","kafka":{"name":"k"}}`)
 	r.handlers["kafka_create"] = func(context.Context, map[string]any) (string, bool) {
-		return nameTakenResult("kafka_create", "Kafka cluster", "k", "foreign", "READY", "kafka_get cluster_id=foreign")
+		return nameTakenResult("Kafka cluster", "k", "foreign", "READY", "kafka_get cluster_id=foreign")
 	}
 	r.handlers["kafka_list"] = fakeOK(map[string]any{"clusters": []any{map[string]any{"id": "foreign", "name": "k", "status": "READY"}}})
 	r.handlers["kafka_get"] = fakeOK(map[string]any{"status": "READY"})
@@ -353,7 +353,7 @@ func TestStack_TakenNameOnRetryIsNotAdopted(t *testing.T) {
 		if calls == 1 {
 			return errResult(fmt.Errorf("check the name is free: list clusters: API 503: unavailable")), true
 		}
-		return nameTakenResult("kafka_create", "Kafka cluster", "k", "foreign", "READY", "kafka_get cluster_id=foreign")
+		return nameTakenResult("Kafka cluster", "k", "foreign", "READY", "kafka_get cluster_id=foreign")
 	}
 	r.handlers["kafka_list"] = fakeOK(map[string]any{"clusters": []any{map[string]any{"id": "foreign", "name": "k", "status": "READY"}}})
 	r.handlers["kafka_get"] = fakeOK(map[string]any{"status": "READY"})

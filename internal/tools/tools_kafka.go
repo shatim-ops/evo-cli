@@ -291,7 +291,7 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 		return errResult(fmt.Errorf("check the name is free: list clusters: %w", err)), true
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult("kafka_create", "Kafka cluster", name, id, st, "kafka_get cluster_id="+id)
+		return nameTakenResult("Kafka cluster", name, id, st, "kafka_get cluster_id="+id)
 	}
 
 	versionID := stringArg(args, "version_id")
@@ -324,7 +324,7 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
 		}
-		return needSpecResult("kafka_create", "kafka_specs", specArg, cpu, ram, out)
+		return needSpecResult("kafka_specs", specArg, cpu, ram, out)
 	}
 	specID, _ := spec["id"].(string)
 
