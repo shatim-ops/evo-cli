@@ -307,9 +307,9 @@ pass show opensearch | evo vm create dash-2 --image OpensearchDashboards \
 добавляет об этом строку «лицензия» (раздел 8).
 
 `deploy` (docker compose) — только для образов Ubuntu и Debian: Docker
-ставится скриптом get.docker.com, который не поддерживает Astra Linux, Альт
-и РЕД ОС. На таких образах `deploy` (и `evo init --image`) отказывает до
-создания ВМ — для них есть `evo vm create`. Образ для `deploy` задаётся в
+ставится из apt-репозитория Docker (download.docker.com), а для Astra Linux,
+Альт и РЕД ОС Docker пакетов не выпускает. На таких образах `deploy` (и
+`evo init --image`) отказывает до создания ВМ — для них есть `evo vm create`. Образ для `deploy` задаётся в
 `.evo.yaml` именем или UUID (`image: Ubuntu-24.04` или `image_id: <UUID>`;
 `evo init --image debian-12` пишет имя так, как в каталоге), флагом
 `evo deploy --image`; значения обязательных полей образа — в

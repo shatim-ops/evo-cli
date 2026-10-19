@@ -34,11 +34,12 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 		FIPLookupInterval:  2 * time.Second,
 		FIPPollInterval:    5 * time.Second,
 		SSHRetryInterval:   5 * time.Second,
+		SSHSlowNote:        5 * time.Minute,
 		SettleDelay:        2 * time.Second,
 		VerifyTimeout:      10 * time.Second,
 
 		DockerPollInterval:  10 * time.Second,
-		DockerWaitTimeout:   10 * time.Minute,
+		DockerWaitTimeout:   15 * time.Minute,
 		DestroyPollInterval: 3 * time.Second,
 		DestroyPollTimeout:  2 * time.Minute,
 

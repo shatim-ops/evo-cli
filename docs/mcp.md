@@ -303,9 +303,9 @@ not available to the project») до резервирования floating IP и
 `provision` и `deploy` проверяют это в вызове с `confirmed=true` (превью без
 подтверждения в облако не ходит), `deploy_plan` — при построении плана.
 `deploy` на Astra Linux, Альт и РЕД ОС отказывает до создания ВМ и тогда,
-когда образ доступен: Docker ставится через get.docker.com, который их не
-поддерживает; `deploy_plan` с `compose_file` на таком образе плана не
-строит (`USAGE`), без `compose_file` — строит обычную ВМ. `deploy_plan` тоже
+когда образ доступен: Docker не выпускает для них пакетов; `deploy_plan` с
+`compose_file` на таком образе плана не строит (`USAGE`), без
+`compose_file` — строит обычную ВМ. `deploy_plan` тоже
 принимает `image_metadata` и без обязательных полей не строит план; значения хранятся
 в локальном файле плана (`.evo/plans`, права `0600`) до `deploy_apply`.
 

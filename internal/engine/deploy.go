@@ -10,6 +10,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -217,7 +218,13 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 
 	maxRetries := sshMaxRetries
-	if !isNewDeploy {
+	switch {
+	case isNewDeploy:
+	case rec.SSHHostKeyFingerprint == "":
+		// Never reached over SSH (an earlier run timed out, or a VM made by
+		// vm create): it may be booting again after a reboot from the console.
+		maxRetries = sshMaxRetries / 2
+	default:
 		maxRetries = 12 // existing VM should be ready quickly
 	}
 
@@ -416,9 +423,9 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		return state.DeploymentRecord{}, err
 	}
 	imageID := imgDetail.ID
-	// Docker goes on through get.docker.com, which knows no domestic
-	// distributions: refuse before the VM is billed, not after an SSH
-	// session fails on it.
+	// Docker publishes no packages for the domestic distributions (evo
+	// installs it from Docker's repository): refuse before the VM is
+	// billed, not after an SSH session fails on it.
 	if family := images.NoDockerFamily(imgDetail.Name, imgDetail.DisplayName, imgDetail.OS); family != "" {
 		return state.DeploymentRecord{}, images.NoDockerError(clerrors.CodeConfigInvalid, imgDetail.Name, family)
 	}
@@ -1165,7 +1172,9 @@ func needsFloatingIP(rec *state.DeploymentRecord) bool {
 // waitForSSH retries SSH connection until the VM is reachable.
 func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, maxRetries int) error {
 	var lastErr error
+	t := e.timings()
 	start, lastReport := time.Now(), time.Now()
+	noted := false
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		err := e.Deployer.Connect(ctx, ip, 22, user, e.SSHKeyPEM, knownHostKey)
 		if err == nil {
@@ -1179,6 +1188,15 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 				ip, time.Since(start).Round(time.Second), errLine(err)))
 			lastReport = time.Now()
 		}
+		// Past the usual few minutes, say once why deploy still waits and
+		// what that may mean (cloud-e2e 16-18.10.2026, register OPS-1).
+		if !noted && time.Since(start) >= t.SSHSlowNote {
+			e.Printer.Warning(i18n.Tf("SSH on %s does not answer yet. A new VM usually answers within 2-5 minutes; on Cloud.ru its first boot "+
+				"sometimes does not bring the network up, and then SSH never answers. evo keeps trying (%d attempts in all).",
+				"SSH на %s пока не отвечает. Новая ВМ обычно отвечает за 2–5 минут; на Cloud.ru первая загрузка иногда "+
+					"не поднимает сеть, и тогда SSH не ответит вовсе. evo продолжает попытки (всего %d).", ip, maxRetries))
+			noted = true
+		}
 
 		// Don't retry on auth failures or host key mismatches.
 		if cliErr, ok := err.(*clerrors.CLIError); ok {
@@ -1190,20 +1208,62 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(e.timings().SSHRetryInterval):
+		case <-time.After(t.SSHRetryInterval):
 		}
+	}
+	// evo does not reboot or recreate the VM by itself: both are the
+	// user's call (a reboot interrupts whatever the VM is doing, a new VM
+	// is billed). The hint says how.
+	hint := i18n.T("What to do: run 'evo deploy' again in a few minutes (it reuses this VM). If SSH still does not answer, "+
+		"reboot the VM in the Cloud.ru console (Virtual machines, the VM's menu, Reboot; evo has no reboot command) and run 'evo deploy' again, "+
+		"or look at its boot log in the serial console. Otherwise run 'evo destroy' and deploy again, in another zone if it repeats: "+
+		"on Cloud.ru a VM sometimes boots without network (no DNS inside the VM, the image's apt mirror unreachable) while the next one is fine. "+
+		"If it repeats in one zone, check the subnet's DNS in the Cloud.ru console.",
+		"Что делать: через несколько минут повторите 'evo deploy' (он возьмёт эту же ВМ). Если SSH так и не ответит, "+
+			"перезагрузите ВМ в консоли Cloud.ru (Виртуальные машины, меню ВМ, «Перезагрузить»; своей команды перезагрузки в evo нет) "+
+			"и снова выполните 'evo deploy' или посмотрите журнал загрузки в серийной консоли. Иначе — 'evo destroy' и deploy заново, "+
+			"при повторе в другой зоне: на Cloud.ru ВМ иногда загружается без сети (нет DNS внутри ВМ, недоступно apt-зеркало образа), "+
+			"а следующая — нормально. Если повторяется в одной зоне, проверьте DNS подсети в консоли Cloud.ru.")
+	if d := sshDiagnosis(lastErr, ip); d != "" {
+		hint = d + "\n" + hint
 	}
 	return clerrors.Wrap(clerrors.CodeSSHTimeout,
 		i18n.Tf("SSH connection failed after %d attempts", "не удалось подключиться по SSH за %d попыток", maxRetries),
-		i18n.T("VM may still be booting: try 'evo deploy' again in a few minutes. If it stays unreachable, its first boot "+
-			"probably could not reach the network (seen on Cloud.ru: no DNS inside the VM, the image's apt mirror unreachable), "+
-			"so sshd never started: check the subnet's DNS in the Cloud.ru console, or 'evo destroy' and deploy again, "+
-			"in another zone if it repeats.",
-			"ВМ может ещё загружаться: повторите 'evo deploy' через несколько минут. Если она так и не станет доступной, "+
-				"вероятно, при первой загрузке у неё не было сети (на Cloud.ru встречалось: нет DNS внутри ВМ, недоступно "+
-				"apt-зеркало образа), и sshd не запустился: проверьте DNS подсети в консоли Cloud.ru или выполните "+
-				"'evo destroy' и разверните заново — если повторится, в другой зоне."),
-		lastErr)
+		hint, lastErr)
+}
+
+// sshDiagnosis names what the last failed connection says about port 22
+// of the VM, or "" when it says nothing definite.
+func sshDiagnosis(err error, ip string) string {
+	if err == nil {
+		return ""
+	}
+	var netErr net.Error
+	if stderrors.As(err, &netErr) && netErr.Timeout() {
+		return i18n.Tf("Diagnosis: port 22 of %s does not answer at all (the connection times out): the VM's network did not come up on boot, "+
+			"or the packets are dropped on the way, by a firewall or VPN on your side (check: nc -vz %s 22, from another network too) or by the VM's security group.",
+			"Диагноз: порт 22 адреса %s не отвечает совсем (подключение — по таймауту): сеть ВМ не поднялась при загрузке "+
+				"или пакеты отбрасываются по пути — межсетевым экраном или VPN на вашей стороне (проверка: nc -vz %s 22, в том числе из другой сети) или группой безопасности ВМ.",
+			ip, ip)
+	}
+	// The cause is in the wrapped errors: CLIError.Error() is only the
+	// code and message.
+	var msgs []string
+	for e := err; e != nil; e = stderrors.Unwrap(e) {
+		msgs = append(msgs, strings.ToLower(e.Error()))
+	}
+	all := strings.Join(msgs, "\n")
+	switch {
+	case strings.Contains(all, "connection refused") || strings.Contains(all, "actively refused"): // Windows: "…actively refused it"
+		return i18n.Tf("Diagnosis: %s answers, but nothing listens on port 22 (connection refused): the VM is up and sshd has not started; "+
+			"its first boot (cloud-init) is stuck or still running.",
+			"Диагноз: %s отвечает, но порт 22 никто не слушает (connection refused): ВМ работает, а sshd не запущен — "+
+				"первая загрузка (cloud-init) зависла или ещё идёт.", ip)
+	case strings.Contains(all, "eof") || strings.Contains(all, "connection reset") || strings.Contains(all, "handshake"):
+		return i18n.Tf("Diagnosis: sshd on %s accepts connections and drops them before login (EOF, connection reset): it is still starting, or the first boot is stuck.",
+			"Диагноз: sshd на %s принимает подключение и обрывает его до входа (EOF, connection reset): он ещё запускается или первая загрузка зависла.", ip)
+	}
+	return ""
 }
 
 // prepareDocker makes Docker with the compose plugin usable by user on the
@@ -1277,9 +1337,9 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		}
 	}
 
-	hint := i18n.T("Check that the VM resolves names (the subnet's DNS) and reaches its apt mirror and get.docker.com, "+
+	hint := i18n.T("Check that the VM resolves names (the subnet's DNS) and reaches its apt mirror (or the official mirror of the distribution) and download.docker.com, "+
 		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" in the install output means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project; if it repeats, destroy and deploy in another zone.",
-		"Проверьте, что ВМ разрешает имена (DNS подсети) и достаёт до своего apt-зеркала и get.docker.com, "+
+		"Проверьте, что ВМ разрешает имена (DNS подсети) и достаёт до своего apt-зеркала (или официального зеркала дистрибутива) и download.docker.com, "+
 			"затем повторите 'evo deploy'. \"Temporary failure in name resolution\" в выводе установки означает, что внутри ВМ нет DNS: "+
 			"это проблема сети зоны или подсети, а не compose-проекта; если повторится, удалите ВМ (destroy) и разверните в другой зоне.")
 	// What the output says outright comes first: an apt mirror that does
@@ -1321,9 +1381,23 @@ func installDiagnosis(out string) string {
 	case strings.Contains(out, "Temporary failure in name resolution") || strings.Contains(out, "Could not resolve"):
 		return i18n.T("Diagnosis: the VM does not resolve names (no DNS inside the VM) — a network problem of the zone or subnet.",
 			"Диагноз: ВМ не разрешает имена (внутри ВМ нет DNS) — проблема сети зоны или подсети.")
+	case strings.Contains(out, bootstrap.FallbackFailedLine):
+		return i18n.T("Diagnosis: apt failed both with the image's mirror and with the official mirror of the distribution (archive.ubuntu.com, deb.debian.org) — "+
+			"most likely the VM does not reach the internet: check the outbound rules of its security group and the subnet in the Cloud.ru console, "+
+			"or destroy and deploy in another zone. Not a problem of the compose project.",
+			"Диагноз: apt не справился ни с зеркалом образа, ни с официальным зеркалом дистрибутива (archive.ubuntu.com, deb.debian.org) — "+
+				"скорее всего, у ВМ нет выхода в интернет: проверьте исходящие правила её группы безопасности и подсеть в консоли Cloud.ru "+
+				"или удалите ВМ и разверните в другой зоне. Дело не в compose-проекте.")
+	case strings.Contains(out, bootstrap.DockerRepoFailedLine):
+		return i18n.T("Diagnosis: apt failed on Docker's repository download.docker.com while the distribution's packages download: "+
+			"it does not answer from the VM, or its signature does not verify (apt's lines above say which) — re-run 'evo deploy' later. Not a problem of the compose project.",
+			"Диагноз: apt не справился с репозиторием Docker download.docker.com, хотя пакеты дистрибутива скачиваются: "+
+				"он не отвечает с ВМ или его подпись не сходится (что именно — в строках apt выше) — повторите 'evo deploy' позже. Дело не в compose-проекте.")
 	case strings.Contains(out, "Failed to fetch"):
-		return i18n.T("Diagnosis: apt cannot download packages from the image's mirror (\"Failed to fetch\") — the mirror or the way to it is down, not the compose project; re-run 'evo deploy' later or deploy in another zone.",
-			"Диагноз: apt не скачивает пакеты с зеркала образа («Failed to fetch») — недоступно зеркало или путь к нему, а не compose-проект; повторите 'evo deploy' позже или разверните в другой зоне.")
+		return i18n.T("Diagnosis: apt cannot download packages from the image's mirror (\"Failed to fetch\") — the mirror or the way to it is down, not the compose project. "+
+			"evo then installs from the official mirror of the distribution, and a re-run goes there at once: re-run 'evo deploy', or deploy in another zone.",
+			"Диагноз: apt не скачивает пакеты с зеркала образа («Failed to fetch») — недоступно зеркало или путь к нему, а не compose-проект. "+
+				"Тогда evo ставит пакеты с официального зеркала дистрибутива, и повтор сразу идёт туда: повторите 'evo deploy' или разверните в другой зоне.")
 	}
 	return ""
 }
