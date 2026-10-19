@@ -84,6 +84,7 @@ func localizeHelp(root *cobra.Command) {
 	for _, c := range root.Commands() {
 		switch c.Name() {
 		case "help":
+			c.Use = "help [команда]"
 			c.Short = "Справка по любой команде"
 			c.Long = "Справка по любой команде: " + root.Name() + " help [команда]."
 		case "completion":

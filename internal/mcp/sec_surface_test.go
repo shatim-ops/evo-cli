@@ -166,6 +166,16 @@ func TestSec_KubectlHTTPArgs(t *testing.T) {
 		"get cm,secrets -o yaml",
 		"get --raw /api/v1/namespaces/default/secrets",
 		"create token default",
+		// A flag before the command: kubectl reads "get" as the value of
+		// -n and runs cp, proxy, kustomize (security audit 19.10, SEC-1).
+		"-n get cp get/pod:/x /home/u/.bashrc",
+		"-n get proxy --address=0.0.0.0 --port=8001",
+		"--namespace get kustomize /",
+		"--context=x get pods",
+		"-- get pods",
+		// A flag value before the subcommand.
+		"create -n default token sa",
+		"apply -n default view-last-applied secret/x",
 	}
 	for _, a := range denied {
 		if err := kubectlHTTPCheck(strings.Fields(a), false); err == nil {

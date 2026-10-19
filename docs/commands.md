@@ -6,9 +6,9 @@
 
 То же самое печатает `evo <команда> --help`; с `EVO_LANG=en` справка
 английская (решение D6, пересмотр). Заголовки разделов (Synopsis, Options)
-ставит генератор cobra/doc. В деревьях `vm` и `disk` описания команд и флаги
-русские; в остальных деревьях они пока на английском, как в MCP. Подробнее — в
-[README](../README.md) и соседних файлах `docs/`.
+ставит генератор cobra/doc. Описания команд и флаги всех деревьев — русские;
+английскими остаются описания инструментов MCP (`evo tools describe`): их читает
+агент. Подробнее — в [README](../README.md) и соседних файлах `docs/`.
 
 ## Содержание
 
@@ -1104,10 +1104,9 @@ evo image [flags]
 ```text
 Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ.
 
-Вызывает инструмент image_get (подробнее: 'evo tools describe image_get').
-Описание инструмента и его флагов — на английском, как в MCP:
+Образ ВМ по имени, отображаемому имени или UUID. Поиск — как в 'evo image list': точное имя, точное отображаемое имя, затем единственное совпадение по подстроке; при нескольких совпадениях — ошибка со списком кандидатов. Показывает, готов ли образ и в каких зонах, и поля метаданных образа с тем, кто заполнит каждое: evo (SSH-ключ, имя ВМ, логин, случайный пароль), значение по умолчанию, пользователь (обязательное поле, которое evo заполнить не может: задаётся через --meta команды 'evo vm create') или никто. В конце — команда создания ВМ из образа. Образ, недоступный проекту, показывается с пояснением и без команды создания. Значок и шаблон cloud-init (user_data_template) — только с --full. Только чтение. Так же следят за сборкой образа: повторяйте команду, пока образ не станет готов.
 
-Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with candidates[]). Returns the image, ready and zones_ready, and fields[]: each image_metadata field with filled_by — evo (SSH key, VM name, login, random password), default, user (mandatory, evo cannot fill it) or none — plus create{cli, tool, args}. An image the project cannot use comes with available_in_project=false, a note and no create. The icon and the cloud-init user_data_template only with full=true. Read-only. Also the way to poll an image build until ready=true.
+Вызывает инструмент image_get (подробнее: 'evo tools describe image_get').
 ```
 
 ```
@@ -1124,7 +1123,7 @@ evo image get <image-id|image> [flags]
 ### Options
 
 ```
-      --full   Also return the SVG icon and the cloud-init user_data_template (large).
+      --full   Вывести и значок SVG, и шаблон cloud-init user_data_template (большой объём)
   -h, --help   Справка по get
 ```
 
@@ -1154,10 +1153,9 @@ evo image get <image-id|image> [flags]
 ```text
 Поиск образов: ОС (public), маркетплейс (marketplace), образы проекта (private).
 
-Вызывает инструмент image_list (подробнее: 'evo tools describe image_list').
-Описание инструмента и его флагов — на английском, как в MCP:
+Поиск по каталогу образов ВМ: образы ОС (тип public), продукты Маркетплейса Cloud.ru (marketplace) и собственные образы проекта (private). Запрос ищет подстроку в имени или отображаемом имени без учёта регистра. Образы, не готовые ни в одной зоне, и образы общего каталога, недоступные проекту, скрыты; --all показывает и их (недоступные — с пометкой). В строке — id, имя, отображаемое имя, тип, зоны, где образ готов, и минимальный размер диска; образы ОС идут первыми. Только чтение. Какие поля нужны ВМ из образа — 'evo image get <образ>'; имя или id образа передаётся в --image или --image-id команды 'evo vm create'.
 
-Search the VM image catalogue: OS images (type public), Cloud.ru Marketplace products (marketplace) and the project's own images (private). query matches a substring of the name or display_name, case-insensitive. Images ready in no zone and images of the shared catalogue the project cannot use are hidden unless all=true (then the latter carry available_in_project=false; hidden_not_in_project counts the hidden ones). Compact rows {id, name, display_name, type, zones_ready, min_disk_gb}, public first; total counts the matches before hiding. Next: image_get for the fields a VM from the image needs; the id goes to provision or deploy as image_id.
+Вызывает инструмент image_list (подробнее: 'evo tools describe image_list').
 ```
 
 ```
@@ -1175,10 +1173,10 @@ evo image list [query] [flags]
 ### Options
 
 ```
-      --all           Also show catalogue images ready in no zone and those the project cannot use (hidden by default: the shared catalogue carries test and broken images, and images a VM of this project cannot be created from — these come with available_in_project=false).
+      --all           Показать и образы, скрытые по умолчанию: не готовые ни в одной зоне и недоступные проекту (общий каталог содержит тестовые и неисправные образы и образы, из которых ВМ этого проекта не создать)
   -h, --help          Справка по list
-      --type string   Only this type: public (OS images), marketplace (products of the Cloud.ru Marketplace) or private (images of the project). Default: all three.
-      --zone string   Only images ready in this availability zone: name ('ru.AZ-1', 'AZ-1') or UUID.
+      --type string   Только этот тип: public (образы ОС), marketplace (продукты Маркетплейса Cloud.ru) или private (образы проекта). По умолчанию — все три
+      --zone string   Только образы, готовые в этой зоне доступности: имя (ru.AZ-1, AZ-1) или UUID
 ```
 
 ### Options inherited from parent commands
@@ -1311,10 +1309,11 @@ evo k8s [flags]
 ```text
 Установить плагин в кластер (асинхронно; версия по умолчанию — последняя активная).
 
-Вызывает инструмент k8s_add_addon (подробнее: 'evo tools describe k8s_add_addon').
-Описание инструмента и его флагов — на английском, как в MCP:
+Установить версию плагина Managed Kubernetes в кластер. Превью показывает выбранную версию (по умолчанию — новейшая ACTIVE), namespace, требования версии и проверки кластера: версию Kubernetes и группы узлов против требований плагина. Что определить не удалось, перечислено в not_checked; явное несоответствие — отказ до установки.
 
-Install a Managed Kubernetes addon release into a cluster. REQUIRES confirmed=true after the user approves. Without it only reads and returns a preview: the version picked (default: newest ACTIVE), namespace, the release's requirements and the cluster checks (Kubernetes version against kube_versions, node pools against ready_workers; what cannot be determined is listed in not_checked, a certain mismatch refuses with USAGE). Async: answers status installing with operation_id / cluster_addon_id; readiness: k8s_kubectl args="get pods -n <namespace>" (or -A) until the addon's pods are Running and Ready (pods of a Job, e.g. cert-manager-startupapicheck, end Completed). Pods stuck in ImagePullBackOff may mean the cluster has no internet egress: Cloud.ru needs a public SNAT gateway in the nodes' zone for the cluster and pods to reach the internet. resolve_mode OVERWRITE may replace objects already in the cluster.
+Операция асинхронная: ответ — состояние installing с operation_id и cluster_addon_id. Готовность — 'evo k8s kubectl <cluster-id> get pods -n <namespace>' (или -A): поды плагина должны стать Running и Ready (поды заданий Job, например cert-manager-startupapicheck, завершаются в Completed). Поды в ImagePullBackOff могут означать, что у кластера нет выхода в интернет: в Cloud.ru для этого нужен публичный SNAT-шлюз в зоне узлов ('evo tools call snat_create'). --resolve-mode OVERWRITE может заменить объекты, уже созданные в кластере.
+
+Вызывает инструмент k8s_add_addon (подробнее: 'evo tools describe k8s_add_addon').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -1333,10 +1332,10 @@ evo k8s add-addon <cluster-id> <name> [flags]
 ### Options
 
 ```
-      --config string         A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}}, {{clusterName}}, {{productInstanceID}}, {{nodeCIDR}} and {{serviceCIDR}} in it. Default: the API reuses the addon's last configuration in the cluster (the addon's defaults on a first install).
+      --config string         Файл со значением ('-' — из stdin до EOF: на терминале — Ctrl-D). Настройки плагина по схеме его версии (evo k8s addon-versions <плагин> --full): объект JSON или строка с объектом JSON. Cloud.ru подставляет в них {{clusterID}}, {{clusterName}}, {{productInstanceID}}, {{nodeCIDR}} и {{serviceCIDR}}. По умолчанию облако берёт последние настройки плагина в кластере (при первой установке — настройки по умолчанию)
   -h, --help                  Справка по add-addon
-      --resolve-mode string   What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE.
-      --version string        Release version: the app version from k8s_addon_versions. The API installs by app version and picks the addon_version itself, so an addon_version is accepted only when it is the newest of its app version. Default: newest ACTIVE.
+      --resolve-mode string   Что делать с объектами плагина, уже созданными в кластере вручную: NONE — оставить (установка тогда может не пройти), OVERWRITE — сбросить к рекомендуемым значениям. По умолчанию NONE
+      --version string        Версия приложения из evo k8s addon-versions. Облако устанавливает плагин по версии приложения и само выбирает addon_version, поэтому addon_version принимается, только если она новейшая для своей версии приложения. По умолчанию — новейшая ACTIVE
 ```
 
 ### Options inherited from parent commands
@@ -1365,10 +1364,9 @@ evo k8s add-addon <cluster-id> <name> [flags]
 ```text
 Добавить группу рабочих узлов (платно, асинхронно).
 
-Вызывает инструмент k8s_add_nodepool (подробнее: 'evo tools describe k8s_add_nodepool').
-Описание инструмента и его флагов — на английском, как в MCP:
+Добавить в кластер Managed Kubernetes группу рабочих узлов — на них запускаются поды; в новом кластере рабочих узлов нет. Группа узлов платная. Операция асинхронная. Flavor (по --cpu и --ram-gb или по имени), подсеть узлов и группу безопасности evo подбирает сам. Сервис групп узлов Cloud.ru иногда отвечает 503 'no healthy upstream' — это временный сбой: повторите команду.
 
-Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has none). REQUIRES confirmed=true after the user approves (billable). Async. Auto-resolves flavor (cpu/ram or name), nodes subnet and security group. NB: Cloud.ru's node-pool backend occasionally returns 503 'no healthy upstream' (transient outage) — just retry.
+Вызывает инструмент k8s_add_nodepool (подробнее: 'evo tools describe k8s_add_nodepool').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -1380,16 +1378,16 @@ evo k8s add-nodepool <cluster-id> [flags]
 ### Options
 
 ```
-      --count int                  Number of worker nodes (fixed scale, default 2).
-      --cpu int                    Node vCPUs for auto flavor (default 2).
-      --disk-gb int                Node disk GB, min 10 (default 20).
-      --flavor string              Node flavor name (see k8s_options); overrides cpu/ram_gb.
+      --count int                  Число рабочих узлов, постоянное (по умолчанию 2)
+      --cpu int                    vCPU узла для автоподбора flavor (по умолчанию 2)
+      --disk-gb int                Диск узла, ГБ, не меньше 10 (по умолчанию 20)
+      --flavor string              Flavor узлов (список: evo k8s options); заменяет --cpu и --ram-gb
   -h, --help                       Справка по add-nodepool
-      --name string                Node pool name, 4-60 (default nodepool-1).
-      --nodes-subnet-id string     Subnet UUID for worker nodes (default auto zone-matched).
-      --ram-gb int                 Node RAM GB for auto flavor (default 4).
-      --security-group-id string   Security group UUID for nodes (default auto zone-matched SSH-access).
-      --zone string                Zone name (default: the zone of the cluster's control plane; refused when the cluster does not report it).
+      --name string                Имя группы узлов, 4–60 символов (по умолчанию nodepool-1)
+      --nodes-subnet-id string     UUID подсети рабочих узлов (по умолчанию — подходящая подсеть зоны)
+      --ram-gb int                 RAM узла, ГБ, для автоподбора flavor (по умолчанию 4)
+      --security-group-id string   UUID группы безопасности узлов (по умолчанию — группа зоны с доступом по SSH)
+      --zone string                Зона (по умолчанию — зона мастер-узлов кластера; если кластер её не сообщает — отказ)
 ```
 
 ### Options inherited from parent commands
@@ -1418,10 +1416,9 @@ evo k8s add-nodepool <cluster-id> [flags]
 ```text
 Версии плагина: режим поддержки, требования к кластеру, схема настроек.
 
-Вызывает инструмент k8s_addon_versions (подробнее: 'evo tools describe k8s_addon_versions').
-Описание инструмента и его флагов — на английском, как в MCP:
+Версии (релизы) плагина Managed Kubernetes, новые первыми: версия приложения (её принимает 'evo k8s add-addon --version') и addon_version, режим поддержки (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), диапазон версий Kubernetes, которому должен соответствовать кластер, сколько нужно готовых рабочих узлов, namespace, есть ли JSON Schema настроек и её размер. Отмечена версия, которую 'evo k8s add-addon' берёт по умолчанию, — новейшая ACTIVE. Сама схема (до ~94 КБ) — только с --full. Только чтение.
 
-List the releases of one Managed Kubernetes addon, newest first: version (appVersion, what k8s_add_addon takes), addon_version, mode (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), kube_versions (semver range the cluster must satisfy), ready_workers (ready worker nodes needed), namespace, has_schema and schema_bytes of the configuration JSON Schema, latest (the release k8s_add_addon picks by default: newest ACTIVE). Read-only. The schema itself (up to ~94 KB) only with full=true.
+Вызывает инструмент k8s_addon_versions (подробнее: 'evo tools describe k8s_addon_versions').
 ```
 
 ```
@@ -1438,7 +1435,7 @@ evo k8s addon-versions <name> [flags]
 ### Options
 
 ```
-      --full   Include configuration_schema of every release (large; default false).
+      --full   Вывести и схему настроек (configuration_schema) каждой версии (большой объём)
   -h, --help   Справка по addon-versions
 ```
 
@@ -1468,10 +1465,9 @@ evo k8s addon-versions <name> [flags]
 ```text
 Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность.
 
-Вызывает инструмент k8s_addons (подробнее: 'evo tools describe k8s_addons').
-Описание инструмента и его флагов — на английском, как в MCP:
+Поиск по каталогу плагинов Managed Kubernetes — плагинов, собранных Cloud.ru: ingress, cert-manager, мониторинг, драйверы CSI и другие. В строке — имя, отображаемое имя, категории, платность и команда установки; категории — слова консоли (например, «Сети», «Безопасность», «Мониторинг»), в ответе перечислены все. Только чтение. Версии и требования плагина — 'evo k8s addon-versions <плагин>', установка — 'evo k8s add-addon'.
 
-Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). Read-only. Compact rows {name, display_name, categories, billable, deploy_with}; categories are Russian words of the console (e.g. 'Сети', 'Безопасность', 'Мониторинг'), the answer lists them all. Next: k8s_addon_versions for versions and requirements, k8s_add_addon to install.
+Вызывает инструмент k8s_addons (подробнее: 'evo tools describe k8s_addons').
 ```
 
 ```
@@ -1489,8 +1485,8 @@ evo k8s addons [query] [flags]
 ### Options
 
 ```
-      --billable          true: only billable addons; false: only free ones. Default: both.
-      --category string   Only addons of this category, exact and case-insensitive (see 'categories' in the answer).
+      --billable          true — только платные плагины, false — только бесплатные. По умолчанию — все
+      --category string   Только плагины этой категории: точное совпадение без учёта регистра (категории перечислены в ответе)
   -h, --help              Справка по addons
 ```
 
@@ -1520,10 +1516,9 @@ evo k8s addons [query] [flags]
 ```text
 Применить манифест Kubernetes (как kubectl apply -f -).
 
-Вызывает инструмент k8s_apply (подробнее: 'evo tools describe k8s_apply').
-Описание инструмента и его флагов — на английском, как в MCP:
+Применить манифест Kubernetes (YAML или JSON, можно несколько документов) к кластеру — как 'kubectl apply -f -'. Для развёртывания и обновления рабочих нагрузок: Deployment, StatefulSet, Service, ServiceMonitor и других. Новому кластеру нужен выход в интернет, чтобы скачивать публичные образы (SNAT-шлюз: 'evo tools call snat_create'), а CRD (например, ServiceMonitor) должны существовать до объектов, которые их используют.
 
-Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.
+Вызывает инструмент k8s_apply (подробнее: 'evo tools describe k8s_apply').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -1536,8 +1531,8 @@ evo k8s apply <cluster-id> [flags]
 
 ```
   -h, --help               Справка по apply
-      --manifest string    The manifest YAML/JSON to apply (multi-doc allowed).
-      --namespace string   Namespace to apply into (optional; manifests may set their own).
+      --manifest string    Манифест YAML или JSON (можно несколько документов)
+      --namespace string   Namespace, в который применить манифест (необязательно; манифест может задать свой)
 ```
 
 ### Options inherited from parent commands
@@ -1566,10 +1561,9 @@ evo k8s apply <cluster-id> [flags]
 ```text
 Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут).
 
-Вызывает инструмент k8s_create (подробнее: 'evo tools describe k8s_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Шаг 2: создать кластер Managed Kubernetes по расчёту 'evo k8s plan' — с теми же флагами. Кластер платный. Операция асинхронная: ответ содержит cluster_id и operation_id, кластер создаётся около 10 минут (по документации — 5–10); состояние — 'evo k8s get <cluster-id>'.
 
-STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in about 10 min (5-10 per the docs; poll k8s_get). Accepts the same args as k8s_plan.
+Вызывает инструмент k8s_create (подробнее: 'evo tools describe k8s_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -1581,18 +1575,18 @@ evo k8s create [flags]
 ### Options
 
 ```
-      --cluster-sa-id string   Cluster service-account UUID.
-      --cpu int                Control-plane vCPUs.
-      --flavor string          Control-plane flavor name.
+      --cluster-sa-id string   UUID сервисного аккаунта кластера (как в evo k8s plan)
+      --cpu int                vCPU мастер-узла (как в evo k8s plan)
+      --flavor string          Flavor мастер-узлов (как в evo k8s plan)
   -h, --help                   Справка по create
-      --kube-api-internet      Publish kube-apiserver to the internet. To turn off: --kube-api-internet=false (по умолчанию true)
-      --master-count int       1, 3 or 5 (default 1).
-      --name string            Cluster name.
-      --product string         What the cluster is for.
-      --ram-gb int             Control-plane RAM GB.
-      --subnet-id string       Control-plane VIP subnet UUID, of the cluster's zone.
-      --version string         Kubernetes version.
-      --zone string            Zone name or UUID (as in k8s_plan).
+      --kube-api-internet      Опубликовать kube-apiserver в интернет. Выключить: --kube-api-internet=false (по умолчанию true)
+      --master-count int       Число мастер-узлов: 1, 3 или 5 (по умолчанию 1)
+      --name string            Имя кластера (как в evo k8s plan)
+      --product string         Назначение кластера (как в evo k8s plan)
+      --ram-gb int             RAM мастер-узла, ГБ (как в evo k8s plan)
+      --subnet-id string       UUID подсети для VIP мастер-узлов, в зоне кластера (как в evo k8s plan)
+      --version string         Версия Kubernetes (как в evo k8s plan)
+      --zone string            Зона: имя или UUID (как в evo k8s plan)
 ```
 
 ### Options inherited from parent commands
@@ -1621,10 +1615,9 @@ evo k8s create [flags]
 ```text
 Удалить кластер Managed Kubernetes (асинхронно).
 
-Вызывает инструмент k8s_delete (подробнее: 'evo tools describe k8s_delete').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить кластер Managed Kubernetes безвозвратно. Операция асинхронная.
 
-Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the user approves. Async.
+Вызывает инструмент k8s_delete (подробнее: 'evo tools describe k8s_delete').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -1665,10 +1658,9 @@ evo k8s delete <cluster-id> [flags]
 ```text
 Кластер Managed Kubernetes по ID.
 
-Вызывает инструмент k8s_get (подробнее: 'evo tools describe k8s_get').
-Описание инструмента и его флагов — на английском, как в MCP:
+Все сведения о кластере Managed Kubernetes по id, в том числе состояние. Только чтение.
 
-Get a Managed Kubernetes cluster by id (full details incl. status). Read-only.
+Вызывает инструмент k8s_get (подробнее: 'evo tools describe k8s_get').
 ```
 
 ```
@@ -1707,10 +1699,9 @@ Helm в кластере: install, upgrade, uninstall, list, status
 ```text
 Helm в кластере: install, upgrade, uninstall, list, status.
 
-Вызывает инструмент k8s_helm (подробнее: 'evo tools describe k8s_helm').
-Описание инструмента и его флагов — на английском, как в MCP:
+Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. install и upgrade идемпотентны (helm upgrade --install --wait). --repo-url сначала добавляет репозиторий чартов. Значения — --values (содержимое values.yaml) и --set (ключ=значение). Изменяющие действия — с подтверждением. Подходит для типовых продуктов (например, kube-prometheus-stack, базы данных). Узлам нужен выход в интернет, чтобы скачать образы чарта (SNAT-шлюз: 'evo tools call snat_create'); размер группы узлов подбирайте под чарт: стекам мониторинга нужны узлы от 8 ГБ.
 
-Drive Helm on a cluster: action=install|upgrade|uninstall|list|status. install/upgrade are idempotent (helm upgrade --install --wait). Optionally add a chart repo via repo_url. Pass values (inline YAML) and/or set (array of key=value). Mutating actions require confirmed=true. Ideal for standard products (e.g. kube-prometheus-stack, databases). NB: nodes need egress (snat_create) to pull chart images; size the node pool for the chart (monitoring stacks want ≥8GB nodes).
+Вызывает инструмент k8s_helm (подробнее: 'evo tools describe k8s_helm').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -1722,14 +1713,14 @@ evo k8s helm <cluster-id> <action> [flags]
 ### Options
 
 ```
-      --chart string       Chart ref, e.g. 'prometheus-community/kube-prometheus-stack' (install/upgrade).
+      --chart string       Чарт, например prometheus-community/kube-prometheus-stack (для install и upgrade)
   -h, --help               Справка по helm
-      --namespace string   Target namespace (created on install/upgrade).
-      --release string     Helm release name (install/upgrade/uninstall/status).
-      --repo-url string    Chart repo URL to add+update first; repo name taken from the chart's '<repo>/' prefix.
-      --set stringArray    Array of 'key=value' Helm --set overrides (optional). (repeatable, or comma-separated)
-      --values string      Inline values.yaml content (optional).
-      --version string     Chart version (optional; default latest).
+      --namespace string   Namespace (создаётся при install и upgrade)
+      --release string     Имя релиза Helm (для install, upgrade, uninstall и status)
+      --repo-url string    URL репозитория чартов: сначала добавить и обновить его; имя репозитория — из префикса <repo>/ в --chart
+      --set stringArray    Значение Helm, как в helm --set: ключ=значение (необязательно) (флаг повторяется или значения через запятую)
+      --values string      Содержимое values.yaml (необязательно)
+      --version string     Версия чарта (необязательно; по умолчанию — последняя)
 ```
 
 ### Options inherited from parent commands
@@ -1758,10 +1749,9 @@ kubeconfig кластера (по умолчанию со встроенным �
 ```text
 kubeconfig кластера (по умолчанию со встроенным токеном примерно на час).
 
-Вызывает инструмент k8s_kubeconfig (подробнее: 'evo tools describe k8s_kubeconfig').
-Описание инструмента и его флагов — на английском, как в MCP:
+kubeconfig кластера Managed Kubernetes. По умолчанию в него встроен статический токен, и kubectl и helm работают сразу: исходный kubeconfig Cloud.ru требует exec-плагин cloudlogin, без него kubectl завершается ошибкой 'executable cloudlogin not found'. Токен действует около часа. Исходный kubeconfig с exec-плагином — --embed-token=false.
 
-Get the kubeconfig for a Managed Kubernetes cluster. By DEFAULT it embeds a static bearer token so kubectl/helm work as-is (the raw Cloud.ru kubeconfig needs a 'cloudlogin' exec-plugin that isn't installed → kubectl would fail 'executable cloudlogin not found'). Token TTL ~1h. Pass embed_token=false for the raw exec-plugin kubeconfig.
+Вызывает инструмент k8s_kubeconfig (подробнее: 'evo tools describe k8s_kubeconfig').
 ```
 
 ```
@@ -1778,9 +1768,9 @@ evo k8s kubeconfig <cluster-id> [flags]
 ### Options
 
 ```
-      --embed-token      Embed a static bearer token so kubectl works without the cloudlogin plugin. To turn off: --embed-token=false (по умолчанию true)
+      --embed-token      Встроить статический токен, чтобы kubectl работал без плагина cloudlogin. Выключить: --embed-token=false (по умолчанию true)
   -h, --help             Справка по kubeconfig
-      --network string   NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default).
+      --network string   Адрес API кластера: NETWORK_TYPE_PUBLIC или NETWORK_TYPE_PRIVATE (по умолчанию — как настроено в кластере)
 ```
 
 ### Options inherited from parent commands
@@ -1809,10 +1799,9 @@ evo k8s kubeconfig <cluster-id> [flags]
 ```text
 Команда kubectl в кластере (изменяющие — с подтверждением).
 
-Вызывает инструмент k8s_kubectl (подробнее: 'evo tools describe k8s_kubectl').
-Описание инструмента и его флагов — на английском, как в MCP:
+Любая команда kubectl в кластере; токен встраивается сам, плагин cloudlogin не нужен. Читающие команды (get, describe, logs, top, events, rollout status, explain и другие) выполняются сразу, изменяющие (create, delete, patch, scale, label, rollout restart, exec, cordon и другие) — с подтверждением. Подходит для всего, чего нет в 'evo k8s helm' и 'evo k8s apply'. Примеры аргументов: 'get pods -A', '-n db logs deploy/postgres', 'create secret generic s --from-literal=k=v'.
 
-Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true. General escape hatch for whatever a product needs beyond helm/apply. Example args: "get pods -A", "-n db logs deploy/postgres", "create secret generic s --from-literal=k=v".
+Вызывает инструмент k8s_kubectl (подробнее: 'evo tools describe k8s_kubectl').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 Флаги evo (--json, --yes, --dry-run, --profile) ставятся перед аргументами: всё после первого аргумента передаётся инструменту как есть.
@@ -1854,10 +1843,9 @@ evo k8s kubectl <cluster-id> <args>... [flags]
 ```text
 Кластеры Managed Kubernetes проекта.
 
-Вызывает инструмент k8s_list (подробнее: 'evo tools describe k8s_list').
-Описание инструмента и его флагов — на английском, как в MCP:
+Кластеры Managed Kubernetes проекта: id, имя, состояние. Только чтение.
 
-List Managed Kubernetes (mk8s) clusters in the project (id, name, status). Read-only.
+Вызывает инструмент k8s_list (подробнее: 'evo tools describe k8s_list').
 ```
 
 ```
@@ -1902,10 +1890,9 @@ evo k8s list [flags]
 ```text
 Группы узлов кластера.
 
-Вызывает инструмент k8s_nodepools (подробнее: 'evo tools describe k8s_nodepools').
-Описание инструмента и его флагов — на английском, как в MCP:
+Группы узлов кластера Managed Kubernetes: имя, состояние, сколько узлов задано и сколько готово. Только чтение. Списка по всем кластерам в API нет: id кластера — в 'evo k8s list'.
 
-List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only. The API has no list across clusters: get cluster_id from k8s_list.
+Вызывает инструмент k8s_nodepools (подробнее: 'evo tools describe k8s_nodepools').
 ```
 
 ```
@@ -1944,10 +1931,9 @@ evo k8s nodepools <cluster-id> [flags]
 ```text
 Версии Kubernetes, flavor узлов и зоны для кластеров.
 
-Вызывает инструмент k8s_options (подробнее: 'evo tools describe k8s_options').
-Описание инструмента и его флагов — на английском, как в MCP:
+Доступные версии Kubernetes (по каналам выпуска), flavor узлов и зоны для кластеров Managed Kubernetes. Только чтение. Нужны, чтобы задать флаги 'evo k8s plan' вручную.
 
-List available Kubernetes versions (by release channel), node flavors and zones for mk8s. Read-only. Use before k8s_plan in manual mode.
+Вызывает инструмент k8s_options (подробнее: 'evo tools describe k8s_options').
 ```
 
 ```
@@ -1986,10 +1972,9 @@ evo k8s options [flags]
 ```text
 Шаг 1: рассчитать конфигурацию кластера, ничего не создавая.
 
-Вызывает инструмент k8s_plan (подробнее: 'evo tools describe k8s_plan').
-Описание инструмента и его флагов — на английском, как в MCP:
+Шаг 1 создания кластера Managed Kubernetes: рассчитать конфигурацию — версию Kubernetes, flavor и число мастер-узлов, подсеть, сервисный аккаунт, — ничего не создавая. Что не задано флагами, evo подбирает сам. Проверьте расчёт и создайте кластер командой 'evo k8s create' с теми же флагами.
 
-STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. Show it to the user, then call k8s_create with the same args + confirmed=true.
+Вызывает инструмент k8s_plan (подробнее: 'evo tools describe k8s_plan').
 ```
 
 ```
@@ -1999,18 +1984,18 @@ evo k8s plan [flags]
 ### Options
 
 ```
-      --cluster-sa-id string   Cluster service-account UUID (default: the agent's own service account).
-      --cpu int                Control-plane vCPUs for auto flavor pick (default 2).
-      --flavor string          Control-plane flavor name (see k8s_options); overrides cpu/ram_gb.
+      --cluster-sa-id string   UUID сервисного аккаунта кластера (по умолчанию — сервисный аккаунт ключа доступа evo)
+      --cpu int                vCPU мастер-узла для автоподбора flavor (по умолчанию 2)
+      --flavor string          Flavor мастер-узлов (список: evo k8s options); заменяет --cpu и --ram-gb
   -h, --help                   Справка по plan
-      --kube-api-internet      Publish kube-apiserver to the internet. To turn off: --kube-api-internet=false (по умолчанию true)
-      --master-count int       Control-plane node count: 1, 3 or 5 (default 1); any other value is refused.
-      --name string            Cluster name (3-60; default k8s-<product>).
-      --product string         What the cluster is for (used for the name).
-      --ram-gb int             Control-plane RAM GB for auto flavor pick (default 4).
-      --subnet-id string       Subnet UUID for the control-plane private VIP, of the cluster's zone (default: the zone's main subnet). A subnet of another zone is refused.
-      --version string         Kubernetes version, e.g. v1.34.6 (default: newest STABLE; see k8s_options).
-      --zone string            Availability zone of the control plane, name or UUID, e.g. ru.AZ-2 (default: the zone of subnet_id, else the default of productConfiguration).
+      --kube-api-internet      Опубликовать kube-apiserver в интернет. Выключить: --kube-api-internet=false (по умолчанию true)
+      --master-count int       Число мастер-узлов: 1, 3 или 5 (по умолчанию 1); другие значения отклоняются
+      --name string            Имя кластера, 3–60 символов (по умолчанию k8s-<значение --product>)
+      --product string         Назначение кластера (используется в имени)
+      --ram-gb int             RAM мастер-узла, ГБ, для автоподбора flavor (по умолчанию 4)
+      --subnet-id string       UUID подсети для приватного VIP мастер-узлов, в зоне кластера (по умолчанию — основная подсеть зоны). Подсеть другой зоны отклоняется
+      --version string         Версия Kubernetes, например v1.34.6 (по умолчанию — новейшая STABLE; список: evo k8s options)
+      --zone string            Зона доступности мастер-узлов: имя или UUID, например ru.AZ-2 (по умолчанию — зона --subnet-id, иначе зона по умолчанию сервиса)
 ```
 
 ### Options inherited from parent commands
@@ -2160,10 +2145,13 @@ evo marketplace [flags]
 ```text
 Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания.
 
-Вызывает инструмент marketplace_list (подробнее: 'evo tools describe marketplace_list').
-Описание инструмента и его флагов — на английском, как в MCP:
+Витрина того, что Cloud.ru предлагает развернуть, одним списком: образы ВМ общего каталога (образы ОС и продукты Маркетплейса Cloud.ru; собственные образы проекта не входят) и плагины Managed Kubernetes. Только чтение.
 
-Read-only showcase of what Cloud.ru offers to deploy, in one list: VM images of the shared catalogue (OS images and Cloud.ru Marketplace products; the project's own images are not included) and Managed Kubernetes addons. Changes nothing. kind: vm-os (type public, or a marketplace image whose name or display name starts with an OS family word: Ubuntu, Debian, CentOS, Rocky, Alma, Fedora, openSUSE, Astra, Alt/Альт, RED OS/РЕД ОС, SberLinux, ROSA/РОСА, Windows — a heuristic, the catalogue has no such field), vm-app (any other marketplace image, e.g. nginx-ubuntu-22.04), k8s-addon. query matches a substring of the name or display_name (addons: the description too), case-insensitive. Images the project cannot use and images ready in no zone are hidden unless all=true (counted in hidden_not_in_project, hidden_not_ready). Rows {kind, name, display_name, id (images), billable (addons only: whether an image or its licence is paid is not known — the price calculation gives 0 for every image), available_in_project (images, when checked against the catalogue as the project sees it), ready=false (an image ready in no zone, with all=true), deploy{cli, tool, args}}: deploy is provision with args.image (the name, or the UUID when names repeat) or, for an addon, k8s_add_addon with args.name (plus cluster_id; k8s_addon_versions shows its versions); an image not available to the project has no deploy. Sorted by kind, then display name; counts{vm-os, vm-app, k8s-addon} are the rows shown per kind, total the matches before hiding. If one catalogue cannot be read, the other is still answered, with warnings[]; an error only when none is read.
+Вид (--kind): vm-os — образ ОС (тип public или образ маркетплейса, имя которого начинается с названия семейства ОС: Ubuntu, Debian, CentOS, Rocky, Alma, Fedora, openSUSE, Astra, Alt/Альт, RED OS/РЕД ОС, SberLinux, ROSA/РОСА, Windows; это эвристика — в каталоге такого поля нет), vm-app — любой другой образ маркетплейса (например, nginx-ubuntu-22.04), k8s-addon — плагин Kubernetes. Запрос ищет подстроку в имени или отображаемом имени (у плагинов — и в описании) без учёта регистра. Образы, недоступные проекту, и образы, не готовые ни в одной зоне, скрыты; --all показывает и их.
+
+У каждой строки — команда развёртывания: для образа — 'evo vm create <имя-ВМ> --image <образ>' (по имени, а при повторяющихся именах — по UUID), для плагина — 'evo k8s add-addon <cluster-id> <плагин>' (версии плагина — 'evo k8s addon-versions <плагин>'); у образа, недоступного проекту, команды нет. Платность известна только у плагинов: платный ли образ или его лицензия, неизвестно — расчёт цены даёт 0 для любого образа. Порядок — по виду, затем по отображаемому имени. Если один каталог прочитать не удалось, список строится по другому с предупреждением; ошибка — только если не прочитан ни один.
+
+Вызывает инструмент marketplace_list (подробнее: 'evo tools describe marketplace_list').
 ```
 
 ```
@@ -2173,9 +2161,9 @@ evo marketplace list [query] [flags]
 ### Options
 
 ```
-      --all           Also show the images hidden by default: those the project cannot use (available_in_project=false, no deploy) and those ready in no zone (ready=false).
+      --all           Показать и образы, скрытые по умолчанию: недоступные проекту (без команды развёртывания) и не готовые ни в одной зоне
   -h, --help          Справка по list
-      --kind string   Only this kind: vm-os (OS images), vm-app (Marketplace products on a VM) or k8s-addon (Managed Kubernetes addons). Default: all three; a VM kind does not read the addon catalogue and k8s-addon not the image one.
+      --kind string   Только этот вид: vm-os (образы ОС), vm-app (продукты Маркетплейса на ВМ) или k8s-addon (плагины Managed Kubernetes). По умолчанию — все три; для видов ВМ каталог плагинов не читается, для k8s-addon — каталог образов
 ```
 
 ### Options inherited from parent commands
@@ -2349,10 +2337,9 @@ evo pg [flags]
 ```text
 Создать резервную копию вручную (асинхронно).
 
-Вызывает инструмент pg_backup_create (подробнее: 'evo tools describe pg_backup_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Запустить резервное копирование кластера PostgreSQL вручную. Операция асинхронная: ход — 'evo pg operation <operation-id>'.
 
-Start a manual backup of a PostgreSQL cluster (async). Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент pg_backup_create (подробнее: 'evo tools describe pg_backup_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2393,10 +2380,9 @@ evo pg backup-create <cluster-id> <name> [flags]
 ```text
 Резервные копии кластера.
 
-Вызывает инструмент pg_backups (подробнее: 'evo tools describe pg_backups').
-Описание инструмента и его флагов — на английском, как в MCP:
+Резервные копии кластера PostgreSQL: имя, состояние, размер, время создания. Только чтение.
 
-List backups of a PostgreSQL cluster (name, status, size, timestamps). Read-only.
+Вызывает инструмент pg_backups (подробнее: 'evo tools describe pg_backups').
 ```
 
 ```
@@ -2435,10 +2421,9 @@ evo pg backups <cluster-id> [flags]
 ```text
 Создать кластер PostgreSQL (платно, асинхронно).
 
-Вызывает инструмент pg_create (подробнее: 'evo tools describe pg_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Создать кластер Managed PostgreSQL. Имя, которое уже носит кластер проекта ('evo pg list'), отклоняется. evo подбирает версию (по умолчанию — последняя), конфигурацию (по --specification-id или по --cpu и --ram; если подходящей нет — ошибка со списком конфигураций), хранилище (по умолчанию — минимум конфигурации) и подсеть (по умолчанию — первая подсеть проекта). Кластер платный. Операция асинхронная и занимает несколько минут: ход — 'evo pg operation <operation-id>'.
 
-Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.
+Вызывает инструмент pg_create (подробнее: 'evo tools describe pg_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2457,19 +2442,19 @@ evo pg create <name> [flags]
 ### Options
 
 ```
-      --backup-retention-days int   Retention for automatic backups in days (default 14, max 30).
-      --backup-schedule string      CRON schedule for automatic backups (default '0 3 * * 0' = weekly Sun 03:00; min once per 6h).
-      --cpu int                     vCPU count — used to auto-pick a specification when specification_id is omitted.
-      --description string          Optional cluster description.
+      --backup-retention-days int   Срок хранения автоматических резервных копий, дней (по умолчанию 14, не больше 30)
+      --backup-schedule string      Расписание автоматических резервных копий в формате CRON (по умолчанию '0 3 * * 0' — по воскресеньям в 03:00; не чаще раза в 6 часов)
+      --cpu int                     Число vCPU — для автоподбора конфигурации, если --specification-id не задан
+      --description string          Описание кластера (необязательно)
   -h, --help                        Справка по create
-      --initial-database string     Name of the default database to create. Default 'defaultdb'.
-      --instances int               Number of nodes (1-2 standard, 1-3 business: checked against the spec's max_hosts). Default 1.
-      --no-backup                   Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'.
-      --ram int                     RAM in GB — used with cpu to auto-pick a specification.
-      --specification-id string     Specification UUID (from pg_specs). Optional if cpu+ram given.
-      --storage-gb int              Main data disk size in GB. Optional; default = specification minimum.
-      --subnet-id string            Subnet UUID (defines the AZ). Optional; default = first project subnet.
-      --version string              PostgreSQL version (from pg_versions). Optional; default = latest.
+      --initial-database string     Имя базы данных, которая создаётся вместе с кластером (по умолчанию defaultdb)
+      --instances int               Число узлов: 1–2 для standard, 1–3 для business (проверяется по конфигурации). По умолчанию 1
+      --no-backup                   Без автоматических резервных копий. По умолчанию они включены, и после создания кластера это не изменить; кластер без резервных копий отклоняет evo pg backup-create и evo pg backups с ошибкой 'backup disabled'
+      --ram int                     RAM, ГБ — вместе с --cpu для автоподбора конфигурации
+      --specification-id string     UUID конфигурации (список: evo pg specs). Необязателен, если заданы --cpu и --ram
+      --storage-gb int              Размер основного диска данных, ГБ (по умолчанию — минимум конфигурации)
+      --subnet-id string            UUID подсети, определяет зону доступности (по умолчанию — первая подсеть проекта)
+      --version string              Версия PostgreSQL (список: evo pg versions; по умолчанию — последняя)
 ```
 
 ### Options inherited from parent commands
@@ -2498,10 +2483,9 @@ evo pg create <name> [flags]
 ```text
 Базы данных кластера.
 
-Вызывает инструмент pg_databases (подробнее: 'evo tools describe pg_databases').
-Описание инструмента и его флагов — на английском, как в MCP:
+Базы данных кластера PostgreSQL: имя, владелец, размер. Только чтение.
 
-List databases in a PostgreSQL cluster (name, owner, size). Read-only.
+Вызывает инструмент pg_databases (подробнее: 'evo tools describe pg_databases').
 ```
 
 ```
@@ -2540,10 +2524,9 @@ evo pg databases <cluster-id> [flags]
 ```text
 Создать базу данных.
 
-Вызывает инструмент pg_db_create (подробнее: 'evo tools describe pg_db_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Создать базу данных в кластере PostgreSQL. Владелец — --owner (пользователи кластера: 'evo pg users <cluster-id>').
 
-Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент pg_db_create (подробнее: 'evo tools describe pg_db_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2556,9 +2539,9 @@ evo pg db-create <cluster-id> <name> [flags]
 
 ```
   -h, --help                Справка по db-create
-      --lc-collate string   Collation locale (optional, default C).
-      --lc-ctype string     Character-set locale (optional, default C).
-      --owner string        Owning user (from pg_users). Required.
+      --lc-collate string   Локаль сортировки (необязательно, по умолчанию C)
+      --lc-ctype string     Локаль набора символов (необязательно, по умолчанию C)
+      --owner string        Пользователь-владелец (список: evo pg users), обязательный
 ```
 
 ### Options inherited from parent commands
@@ -2587,10 +2570,9 @@ evo pg db-create <cluster-id> <name> [flags]
 ```text
 Удалить базу данных.
 
-Вызывает инструмент pg_db_delete (подробнее: 'evo tools describe pg_db_delete').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить базу данных кластера PostgreSQL вместе с её данными.
 
-Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент pg_db_delete (подробнее: 'evo tools describe pg_db_delete').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2631,10 +2613,9 @@ evo pg db-delete <cluster-id> <name> [flags]
 ```text
 Удалить кластер PostgreSQL вместе с данными и всеми резервными копиями (асинхронно).
 
-Вызывает инструмент pg_delete (подробнее: 'evo tools describe pg_delete').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить кластер Managed PostgreSQL по id (список: 'evo pg list') вместе с данными и всеми резервными копиями — восстановить их нельзя. Операция асинхронная.
 
-Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). Mutation (async): requires confirmed=true after the user approves.
+Вызывает инструмент pg_delete (подробнее: 'evo tools describe pg_delete').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2647,7 +2628,7 @@ evo pg delete <cluster-id> [flags]
 
 ```
   -h, --help        Справка по delete
-      --id string   Cluster UUID (from pg_list). Required (alias: cluster_id).
+      --id string   UUID кластера — то же, что аргумент <cluster-id> (список: evo pg list)
 ```
 
 ### Options inherited from parent commands
@@ -2676,10 +2657,9 @@ evo pg delete <cluster-id> [flags]
 ```text
 Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние.
 
-Вызывает инструмент pg_get (подробнее: 'evo tools describe pg_get').
-Описание инструмента и его флагов — на английском, как в MCP:
+Все сведения о кластере Managed PostgreSQL по id (список: 'evo pg list'): версия, узлы, хранилище, строка подключения, подсети, состояние. Только чтение.
 
-Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status. Read-only.
+Вызывает инструмент pg_get (подробнее: 'evo tools describe pg_get').
 ```
 
 ```
@@ -2690,7 +2670,7 @@ evo pg get <cluster-id> [flags]
 
 ```
   -h, --help        Справка по get
-      --id string   PostgreSQL cluster UUID (from pg_list). Required (alias: cluster_id).
+      --id string   UUID кластера — то же, что аргумент <cluster-id> (список: evo pg list)
 ```
 
 ### Options inherited from parent commands
@@ -2719,10 +2699,9 @@ evo pg get <cluster-id> [flags]
 ```text
 Кластеры Managed PostgreSQL проекта.
 
-Вызывает инструмент pg_list (подробнее: 'evo tools describe pg_list').
-Описание инструмента и его флагов — на английском, как в MCP:
+Кластеры Managed PostgreSQL проекта: id, имя, состояние, версия, работоспособность. Только чтение.
 
-List Managed PostgreSQL clusters in the project (id, name, status, version, health). Read-only. Managed PostgreSQL is Cloud.ru's managed database service (postgresql.api.cloud.ru).
+Вызывает инструмент pg_list (подробнее: 'evo tools describe pg_list').
 ```
 
 ```
@@ -2767,10 +2746,9 @@ evo pg list [flags]
 ```text
 Состояние асинхронной операции PostgreSQL.
 
-Вызывает инструмент pg_operation (подробнее: 'evo tools describe pg_operation').
-Описание инструмента и его флагов — на английском, как в MCP:
+Состояние асинхронной операции Managed PostgreSQL по id — его возвращают 'evo pg create', 'evo pg delete' и 'evo pg backup-create': done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
 
-Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). Returns {done, error}. Read-only.
+Вызывает инструмент pg_operation (подробнее: 'evo tools describe pg_operation').
 ```
 
 ```
@@ -2781,7 +2759,7 @@ evo pg operation <operation-id> [flags]
 
 ```
   -h, --help               Справка по operation
-      --wait-seconds int   Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of the agent re-checking every few seconds. Omit for a single instant check.
+      --wait-seconds int   Ждать итогового состояния до N секунд (не больше 300), опрашивая операцию с нарастающим интервалом. Без флага — одна проверка
 ```
 
 ### Options inherited from parent commands
@@ -2810,10 +2788,9 @@ evo pg operation <operation-id> [flags]
 ```text
 Конфигурации кластера PostgreSQL для версии: CPU, память, минимальный объём.
 
-Вызывает инструмент pg_specs (подробнее: 'evo tools describe pg_specs').
-Описание инструмента и его флагов — на английском, как в MCP:
+Конфигурации кластера Managed PostgreSQL для версии: id, CPU, память (ГБ), режим развёртывания (standard или business), минимальный объём хранилища. id конфигурации передаётся в --specification-id команды 'evo pg create'. Только чтение.
 
-List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard|business, min_storage_gb) for a version. Read-only. Use to choose specification_id for pg_create.
+Вызывает инструмент pg_specs (подробнее: 'evo tools describe pg_specs').
 ```
 
 ```
@@ -2824,7 +2801,7 @@ evo pg specs [flags]
 
 ```
   -h, --help             Справка по specs
-      --version string   Product version (e.g. '17'); optional — filters specs to that version.
+      --version string   Версия продукта, например 17: только конфигурации этой версии (необязательно)
 ```
 
 ### Options inherited from parent commands
@@ -2853,10 +2830,9 @@ evo pg specs [flags]
 ```text
 Создать пользователя (пароль не выводится).
 
-Вызывает инструмент pg_user_create (подробнее: 'evo tools describe pg_user_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Создать пользователя в кластере PostgreSQL. Пароль в ответе не выводится.
 
-Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The password is never echoed back.
+Вызывает инструмент pg_user_create (подробнее: 'evo tools describe pg_user_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2869,7 +2845,7 @@ evo pg user-create <cluster-id> <name> [flags]
 
 ```
   -h, --help              Справка по user-create
-      --password string   User password. Required.
+      --password string   Пароль пользователя (обязательный)
 ```
 
 ### Options inherited from parent commands
@@ -2898,10 +2874,9 @@ evo pg user-create <cluster-id> <name> [flags]
 ```text
 Удалить пользователя.
 
-Вызывает инструмент pg_user_delete (подробнее: 'evo tools describe pg_user_delete').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить пользователя кластера PostgreSQL.
 
-Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент pg_user_delete (подробнее: 'evo tools describe pg_user_delete').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -2942,10 +2917,9 @@ evo pg user-delete <cluster-id> <name> [flags]
 ```text
 Пользователи кластера и их роли.
 
-Вызывает инструмент pg_users (подробнее: 'evo tools describe pg_users').
-Описание инструмента и его флагов — на английском, как в MCP:
+Пользователи кластера PostgreSQL и выданные им роли. Только чтение.
 
-List users of a PostgreSQL cluster (name, granted roles). Read-only.
+Вызывает инструмент pg_users (подробнее: 'evo tools describe pg_users').
 ```
 
 ```
@@ -2984,10 +2958,9 @@ evo pg users <cluster-id> [flags]
 ```text
 Доступные версии PostgreSQL.
 
-Вызывает инструмент pg_versions (подробнее: 'evo tools describe pg_versions').
-Описание инструмента и его флагов — на английском, как в MCP:
+Доступные версии Managed PostgreSQL (например, 15, 16, 17). Версия передаётся в --version команды 'evo pg create'. Только чтение.
 
-List available Managed PostgreSQL versions (e.g. 15/16/17). Read-only. Use before pg_create.
+Вызывает инструмент pg_versions (подробнее: 'evo tools describe pg_versions').
 ```
 
 ```
@@ -3185,10 +3158,9 @@ evo s3 [flags]
 ```text
 Создать бакет.
 
-Вызывает инструмент s3_bucket_create (подробнее: 'evo tools describe s3_bucket_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Создать бакет Object Storage — например, перед 'evo s3 put', которому нужен существующий бакет. Повторное создание своего бакета ошибкой не считается.
 
-Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент s3_bucket_create (подробнее: 'evo tools describe s3_bucket_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3201,7 +3173,7 @@ evo s3 bucket-create <bucket> [flags]
 
 ```
   -h, --help               Справка по bucket-create
-      --s3-region string   Region: only ru-central-1 is accepted (the API answers 'unexpected region' otherwise). Optional; default: the configured S3 region.
+      --s3-region string   Регион: принимается только ru-central-1 (иначе облако отвечает 'unexpected region'). По умолчанию — регион S3 из настроек
 ```
 
 ### Options inherited from parent commands
@@ -3230,10 +3202,9 @@ evo s3 bucket-create <bucket> [flags]
 ```text
 Удалить пустой бакет.
 
-Вызывает инструмент s3_bucket_delete (подробнее: 'evo tools describe s3_bucket_delete').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить пустой бакет. Объекты из бакета сначала удалите: 'evo s3 rm'.
 
-Delete an EMPTY S3 bucket. Destructive mutation: requires confirmed=true after the user approves.
+Вызывает инструмент s3_bucket_delete (подробнее: 'evo tools describe s3_bucket_delete').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3274,10 +3245,9 @@ evo s3 bucket-delete <bucket> [flags]
 ```text
 Бакеты Object Storage.
 
-Вызывает инструмент s3_buckets (подробнее: 'evo tools describe s3_buckets').
-Описание инструмента и его флагов — на английском, как в MCP:
+Бакеты Object Storage (S3-совместимое хранилище s3.cloud.ru). Только чтение.
 
-List Object Storage (S3) buckets. Read-only. s3.cloud.ru (S3-compatible).
+Вызывает инструмент s3_buckets (подробнее: 'evo tools describe s3_buckets').
 ```
 
 ```
@@ -3322,10 +3292,9 @@ evo s3 buckets [flags]
 ```text
 Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль).
 
-Вызывает инструмент s3_get (подробнее: 'evo tools describe s3_get').
-Описание инструмента и его флагов — на английском, как в MCP:
+Скачать объект до 10 МиБ; больший объект отклоняется — используйте S3-клиент или консоль. Небольшой текст в UTF-8 выводится как есть, остальное — в base64. Только чтение.
 
-Download an S3 object up to 10 MiB (a larger one is refused with USAGE: use an S3 client or the console). Returns text inline (utf-8) when small & valid, else base64. Read-only.
+Вызывает инструмент s3_get (подробнее: 'evo tools describe s3_get').
 ```
 
 ```
@@ -3364,10 +3333,9 @@ evo s3 get <bucket> <key> [flags]
 ```text
 Объекты бакета: ключ, размер, время изменения.
 
-Вызывает инструмент s3_ls (подробнее: 'evo tools describe s3_ls').
-Описание инструмента и его флагов — на английском, как в MCP:
+Объекты бакета: ключ, размер, время изменения. Только чтение.
 
-List objects in an S3 bucket (key, size, last_modified). Read-only.
+Вызывает инструмент s3_ls (подробнее: 'evo tools describe s3_ls').
 ```
 
 ```
@@ -3385,8 +3353,8 @@ evo s3 ls <bucket> [flags]
 
 ```
   -h, --help            Справка по ls
-      --max-keys int    Max objects to return (default 1000).
-      --prefix string   Key prefix filter (optional).
+      --max-keys int    Наибольшее число объектов в ответе (по умолчанию 1000)
+      --prefix string   Только ключи с этим префиксом (необязательно)
 ```
 
 ### Options inherited from parent commands
@@ -3415,10 +3383,9 @@ evo s3 ls <bucket> [flags]
 ```text
 Загрузить объект (существующий ключ перезаписывается).
 
-Вызывает инструмент s3_put (подробнее: 'evo tools describe s3_put').
-Описание инструмента и его флагов — на английском, как в MCP:
+Загрузить объект: текст — через --content, двоичные данные — через --content-base64. Объект с тем же ключом перезаписывается. Бакет должен существовать: 'evo s3 bucket-create'.
 
-Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves.
+Вызывает инструмент s3_put (подробнее: 'evo tools describe s3_put').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3430,9 +3397,9 @@ evo s3 put <bucket> <key> [flags]
 ### Options
 
 ```
-      --content string          Inline text content to upload.
-      --content-base64 string   Base64-encoded binary content (alternative to content).
-      --content-type string     MIME type (default application/octet-stream).
+      --content string          Текст для загрузки
+      --content-base64 string   Двоичные данные в base64 (вместо --content)
+      --content-type string     MIME-тип (по умолчанию application/octet-stream)
   -h, --help                    Справка по put
 ```
 
@@ -3462,10 +3429,9 @@ evo s3 put <bucket> <key> [flags]
 ```text
 Удалить объект.
 
-Вызывает инструмент s3_rm (подробнее: 'evo tools describe s3_rm').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить объект из бакета безвозвратно.
 
-Delete an S3 object. Destructive mutation: requires confirmed=true after the user approves.
+Вызывает инструмент s3_rm (подробнее: 'evo tools describe s3_rm').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3543,10 +3509,9 @@ evo secret [flags]
 ```text
 Добавить новую версию значения секрета (ротация).
 
-Вызывает инструмент secret_add_version (подробнее: 'evo tools describe secret_add_version').
-Описание инструмента и его флагов — на английском, как в MCP:
+Добавить новую версию значения существующего секрета (ротация).
 
-Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент secret_add_version (подробнее: 'evo tools describe secret_add_version').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3559,7 +3524,7 @@ evo secret add-version <path> [flags]
 
 ```
   -h, --help           Справка по add-version
-      --value string   New secret value (plaintext). Required.
+      --value string   Новое значение секрета открытым текстом (обязательный)
 ```
 
 ### Options inherited from parent commands
@@ -3588,10 +3553,9 @@ evo secret add-version <path> [flags]
 ```text
 Создать секрет.
 
-Вызывает инструмент secret_create (подробнее: 'evo tools describe secret_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Создать секрет по пути; путь вида папка/имя кладёт секрет в папку. Значение хранится зашифрованным и в ответе не выводится.
 
-Store a new secret at a path (value is Base64-encoded internally; never echoed back). Path 'folder/name' places it in a folder. Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент secret_create (подробнее: 'evo tools describe secret_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3603,10 +3567,10 @@ evo secret create <path> [flags]
 ### Options
 
 ```
-      --description string   Optional description.
+      --description string   Описание (необязательно)
   -h, --help                 Справка по create
-      --kms-key-id string    Optional KMS key id for encryption.
-      --value string         Secret value (plaintext; stored encrypted). Required.
+      --kms-key-id string    id ключа KMS для шифрования (необязательно)
+      --value string         Значение секрета открытым текстом; хранится зашифрованным (обязательный)
 ```
 
 ### Options inherited from parent commands
@@ -3635,10 +3599,9 @@ evo secret create <path> [flags]
 ```text
 Удалить секрет со всеми версиями.
 
-Вызывает инструмент secret_delete (подробнее: 'evo tools describe secret_delete').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить секрет по пути вместе со всеми версиями. По умолчанию удаляется и секрет с активными версиями; с --force=false облако отказывает в удалении такого секрета.
 
-Delete a secret by path AND all its versions. force defaults to true (a secret with active versions is deleted too); force=false lets the API refuse such a secret. Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент secret_delete (подробнее: 'evo tools describe secret_delete').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -3650,7 +3613,7 @@ evo secret delete <path> [flags]
 ### Options
 
 ```
-      --force   Delete the secret even if it has active versions. To turn off: --force=false (по умолчанию true)
+      --force   Удалить секрет, даже если у него есть активные версии. Выключить: --force=false (по умолчанию true)
   -h, --help    Справка по delete
 ```
 
@@ -3680,10 +3643,9 @@ evo secret delete <path> [flags]
 ```text
 Метаданные секрета: папка, метки, версии, ключ KMS (без значения).
 
-Вызывает инструмент secret_get (подробнее: 'evo tools describe secret_get').
-Описание инструмента и его флагов — на английском, как в MCP:
+Метаданные секрета по пути (список: 'evo secret list'): папка, метки, версии, ключ KMS. Только чтение; значение не выводится.
 
-Get one secret's metadata by path (from secret_list): folder, labels, versions, KMS key. Read-only — does NOT return the value.
+Вызывает инструмент secret_get (подробнее: 'evo tools describe secret_get').
 ```
 
 ```
@@ -3722,10 +3684,9 @@ evo secret get <path> [flags]
 ```text
 Секреты проекта (без значений).
 
-Вызывает инструмент secret_list (подробнее: 'evo tools describe secret_list').
-Описание инструмента и его флагов — на английском, как в MCP:
+Секреты проекта в Secret Manager Cloud.ru: id, имя, путь, описание. Только чтение; значения не выводятся — значение секрета показывает 'evo secret value <путь>'.
 
-List secrets in the project (id, name, path, description) from Cloud.ru Secret Management. Read-only — does NOT return values. secretmanager.api.cloud.ru (v2).
+Вызывает инструмент secret_list (подробнее: 'evo tools describe secret_list').
 ```
 
 ```
@@ -3764,10 +3725,9 @@ evo secret list [flags]
 ```text
 Расшифрованное значение секрета.
 
-Вызывает инструмент secret_value (подробнее: 'evo tools describe secret_value').
-Описание инструмента и его флагов — на английском, как в MCP:
+Расшифрованное значение секрета по пути — открытым текстом. Не сохраняйте его в журналы и файлы. Только чтение.
 
-Retrieve the DECRYPTED value of a secret by path. Sensitive — returns the plaintext value; never store it in logs or files. Read-only.
+Вызывает инструмент secret_value (подробнее: 'evo tools describe secret_value').
 ```
 
 ```
@@ -3778,7 +3738,7 @@ evo secret value <path> [flags]
 
 ```
   -h, --help          Справка по value
-      --version int   Specific version number (default: latest).
+      --version int   Номер версии (по умолчанию — последняя)
 ```
 
 ### Options inherited from parent commands
@@ -4514,10 +4474,9 @@ evo vpc [flags]
 ```text
 Создать VPC (асинхронно).
 
-Вызывает инструмент vpc_create (подробнее: 'evo tools describe vpc_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Создать VPC (виртуальное частное облако). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
-Create a new VPC (virtual private cloud) (async). Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент vpc_create (подробнее: 'evo tools describe vpc_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -4529,7 +4488,7 @@ evo vpc create <name> [flags]
 ### Options
 
 ```
-      --description string   Optional description.
+      --description string   Описание VPC (необязательно)
   -h, --help                 Справка по create
 ```
 
@@ -4559,10 +4518,9 @@ evo vpc create <name> [flags]
 ```text
 Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы).
 
-Вызывает инструмент vpc_delete (подробнее: 'evo tools describe vpc_delete').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить VPC по id (список: 'evo vpc list'). Сначала удалите его подсети и другие ресурсы. Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
-Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент vpc_delete (подробнее: 'evo tools describe vpc_delete').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -4603,10 +4561,9 @@ evo vpc delete <id> [flags]
 ```text
 Привязать свободный floating IP к основному интерфейсу ВМ.
 
-Вызывает инструмент fip_attach (подробнее: 'evo tools describe fip_attach').
-Описание инструмента и его флагов — на английском, как в MCP:
+Привязать существующий свободный публичный IP (floating IP) к основному интерфейсу ВМ: ВМ получает внешний адрес. Нужно, когда у ВМ нет публичного IP — например, создание ВМ из большого собственного образа завершилось раньше, чем облако назначило адрес. Свободный адрес — в 'evo vpc fips'.
 
-Bind an existing FREE floating IP to a VM's primary interface, giving it a public address. Use when a VM has no public_ip — e.g. provisioning from a large custom image outran the wizard's wait and it returned before assigning one. Pick a free address from list_floating_ips. Mutation: requires confirmed=true.
+Вызывает инструмент fip_attach (подробнее: 'evo tools describe fip_attach').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -4619,7 +4576,7 @@ evo vpc fip-attach <fip> [flags]
 
 ```
   -h, --help        Справка по fip-attach
-      --vm string   VM name or UUID to attach it to.
+      --vm string   ВМ, к которой привязать адрес: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -4648,10 +4605,9 @@ evo vpc fip-attach <fip> [flags]
 ```text
 Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается).
 
-Вызывает инструмент release_floating_ip (подробнее: 'evo tools describe release_floating_ip').
-Описание инструмента и его флагов — на английском, как в MCP:
+Освободить (удалить) публичный IP: адрес уходит из проекта. Адрес задаётся аргументом <id> или флагом --ip-address. Адрес, занятый ВМ, не освобождается: сначала отвяжите его или удалите ВМ ('evo vm delete'). Адрес SNAT-шлюза тоже не освобождается: он удаляется вместе со шлюзом ('evo tools call snat_delete').
 
-Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: snat_delete). Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент release_floating_ip (подробнее: 'evo tools describe release_floating_ip').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -4664,7 +4620,7 @@ evo vpc fip-release [id] [flags]
 
 ```
   -h, --help                Справка по fip-release
-      --ip-address string   Floating IP address, e.g. '203.0.113.11' (alternative to id).
+      --ip-address string   Публичный IP-адрес, например 203.0.113.11 (вместо аргумента <id>)
 ```
 
 ### Options inherited from parent commands
@@ -4693,10 +4649,9 @@ Floating IP: адрес, состояние, свободен ли
 ```text
 Floating IP: адрес, состояние, свободен ли.
 
-Вызывает инструмент list_floating_ips (подробнее: 'evo tools describe list_floating_ips').
-Описание инструмента и его флагов — на английском, как в MCP:
+Публичные IP-адреса (floating IP) проекта: адрес, состояние, свободен ли адрес для привязки. Только чтение.
 
-List Cloud.ru floating IPs (address, state, whether available to attach). Read-only.
+Вызывает инструмент list_floating_ips (подробнее: 'evo tools describe list_floating_ips').
 ```
 
 ```
@@ -4735,10 +4690,9 @@ VPC по ID: все сведения
 ```text
 VPC по ID: все сведения.
 
-Вызывает инструмент vpc_get (подробнее: 'evo tools describe vpc_get').
-Описание инструмента и его флагов — на английском, как в MCP:
+Все сведения об одном VPC по id (список: 'evo vpc list'). Только чтение.
 
-Get full details of one VPC by id (from vpc_list). Read-only.
+Вызывает инструмент vpc_get (подробнее: 'evo tools describe vpc_get').
 ```
 
 ```
@@ -4777,10 +4731,9 @@ evo vpc get <id> [flags]
 ```text
 Список VPC проекта.
 
-Вызывает инструмент vpc_list (подробнее: 'evo tools describe vpc_list').
-Описание инструмента и его флагов — на английском, как в MCP:
+VPC (виртуальные частные облака) проекта: id, имя, признак VPC по умолчанию, тип. Только чтение.
 
-List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). Read-only. vpc.api.cloud.ru.
+Вызывает инструмент vpc_list (подробнее: 'evo tools describe vpc_list').
 ```
 
 ```
@@ -4819,10 +4772,9 @@ evo vpc list [flags]
 ```text
 Состояние асинхронной операции VPC.
 
-Вызывает инструмент vpc_operation (подробнее: 'evo tools describe vpc_operation').
-Описание инструмента и его флагов — на английском, как в MCP:
+Состояние асинхронной операции VPC по id — его возвращают 'evo vpc create', 'evo vpc delete', 'evo vpc route-create' и 'evo vpc route-delete': done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
 
-Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). Returns {done, error}. Read-only.
+Вызывает инструмент vpc_operation (подробнее: 'evo tools describe vpc_operation').
 ```
 
 ```
@@ -4833,7 +4785,7 @@ evo vpc operation <operation-id> [flags]
 
 ```
   -h, --help               Справка по operation
-      --wait-seconds int   Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.
+      --wait-seconds int   Ждать итогового состояния до N секунд (не больше 300), опрашивая операцию с нарастающим интервалом. Без флага — одна проверка
 ```
 
 ### Options inherited from parent commands
@@ -4862,10 +4814,9 @@ evo vpc operation <operation-id> [flags]
 ```text
 Добавить статический маршрут в VPC (асинхронно).
 
-Вызывает инструмент vpc_route_create (подробнее: 'evo tools describe vpc_route_create').
-Описание инструмента и его флагов — на английском, как в MCP:
+Добавить статический маршрут в VPC. Назначение — CIDR (--subnet); следующий узел — интерфейс ВМ (--next-hop-vm-id и --next-hop-interface-id), виртуальный IP (--next-hop-vip-id) или Magic Router (--next-hop-magic-router-id и --next-hop-az). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
-Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az). Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент vpc_route_create (подробнее: 'evo tools describe vpc_route_create').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -4877,14 +4828,14 @@ evo vpc route-create <vpc-id> [flags]
 ### Options
 
 ```
-      --description string                Optional route description.
+      --description string                Описание маршрута (необязательно)
   -h, --help                              Справка по route-create
-      --next-hop-az string                Availability zone name (e.g. 'ru.AZ-1') for a Magic-Router next hop.
-      --next-hop-interface-id string      VM network interface UUID.
-      --next-hop-magic-router-id string   Magic Router UUID for a Magic-Router next hop (with next_hop_az).
-      --next-hop-vip-id string            Virtual IP UUID for a VIP next hop.
-      --next-hop-vm-id string             VM UUID for a VM-interface next hop (with next_hop_interface_id).
-      --subnet string                     Destination CIDR, e.g. '192.168.0.0/24'. Required.
+      --next-hop-az string                Зона доступности (например, ru.AZ-1) для следующего узла Magic Router
+      --next-hop-interface-id string      UUID сетевого интерфейса ВМ (вместе с --next-hop-vm-id)
+      --next-hop-magic-router-id string   UUID Magic Router — следующего узла (вместе с --next-hop-az)
+      --next-hop-vip-id string            UUID виртуального IP — следующего узла
+      --next-hop-vm-id string             UUID ВМ, интерфейс которой — следующий узел (вместе с --next-hop-interface-id)
+      --subnet string                     CIDR назначения, например 192.168.0.0/24 (обязательный)
 ```
 
 ### Options inherited from parent commands
@@ -4913,10 +4864,9 @@ evo vpc route-create <vpc-id> [flags]
 ```text
 Удалить статический маршрут из VPC (асинхронно).
 
-Вызывает инструмент vpc_route_delete (подробнее: 'evo tools describe vpc_route_delete').
-Описание инструмента и его флагов — на английском, как в MCP:
+Удалить статический маршрут из VPC по id маршрута (список: 'evo vpc routes <vpc-id>'). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
-Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the user approves.
+Вызывает инструмент vpc_route_delete (подробнее: 'evo tools describe vpc_route_delete').
 
 Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
 ```
@@ -4957,10 +4907,9 @@ evo vpc route-delete <vpc-id> <route-id> [flags]
 ```text
 Статические маршруты VPC.
 
-Вызывает инструмент vpc_routes (подробнее: 'evo tools describe vpc_routes').
-Описание инструмента и его флагов — на английском, как в MCP:
+Статические маршруты VPC: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. Только чтение.
 
-List static routes of a VPC (id, subnet, next_hop_type, status). Read-only.
+Вызывает инструмент vpc_routes (подробнее: 'evo tools describe vpc_routes').
 ```
 
 ```
@@ -4999,10 +4948,9 @@ evo vpc routes <vpc-id> [flags]
 ```text
 Группы безопасности (с --rules — вместе с правилами).
 
-Вызывает инструмент list_security_groups (подробнее: 'evo tools describe list_security_groups').
-Описание инструмента и его флагов — на английском, как в MCP:
+Группы безопасности проекта: UUID, имя, зона доступности. С --rules — вместе с правилами каждой группы: id, направление, протокол, диапазон портов, источник, описание, состояние. Только чтение.
 
-List Cloud.ru security groups (UUID, name, availability zone). Read-only. With rules=true each group carries its rules (id, direction, protocol, port range, source, description, state).
+Вызывает инструмент list_security_groups (подробнее: 'evo tools describe list_security_groups').
 ```
 
 ```
@@ -5013,7 +4961,7 @@ evo vpc security-groups [flags]
 
 ```
   -h, --help    Справка по security-groups
-      --rules   Also list each group's rules (one more API call per group).
+      --rules   Вывести и правила каждой группы (по одному запросу к API на группу)
 ```
 
 ### Options inherited from parent commands
@@ -5042,10 +4990,9 @@ evo vpc security-groups [flags]
 ```text
 Подсети: UUID, имя, зона доступности.
 
-Вызывает инструмент list_subnets (подробнее: 'evo tools describe list_subnets').
-Описание инструмента и его флагов — на английском, как в MCP:
+Подсети проекта: UUID, имя, зона доступности. UUID подсети передаётся в --subnet-id, например 'evo vm create --subnet-id <UUID>'. Только чтение.
 
-List Cloud.ru subnets (UUID, name, availability zone). Read-only.
+Вызывает инструмент list_subnets (подробнее: 'evo tools describe list_subnets').
 ```
 
 ```

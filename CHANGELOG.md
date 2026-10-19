@@ -7,10 +7,15 @@
 
 ## [Не выпущено]
 
+### Безопасность
+
+- MCP по HTTP: `k8s_kubectl` с флагом перед командой (`-n get cp …`) проходил проверку как `get`, а kubectl читал `get` как значение `-n` и выполнял `cp`, `proxy` или `kustomize` на хосте сервера (аудит безопасности 19.10, SEC-1). Теперь по HTTP команда kubectl должна идти первой; `create … token` и `apply … view-last-applied secret` отклоняются и с флагами перед подкомандой. Режим stdio не изменился.
+
 ### Изменено
 
 - `deploy` ставит Docker на Ubuntu и Debian из apt-репозитория Docker (`download.docker.com`) с ключом подписи, встроенным в evo, а не скриптом `curl https://get.docker.com | sh`. Набор пакетов тот же: `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin`. На других ОС (CentOS, Fedora) — `get.docker.com`, как раньше.
 - Ожидание установки Docker на ВМ — до 15 минут вместо 10: в него теперь входит переход на запасное зеркало.
+- Справка деревьев `image`, `marketplace`, `vpc`, `k8s`, `pg`, `s3` и `secret` — по-русски, как у `vm` и `disk`: подробное описание каждой команды (59 команд) и все флаги (98) вместо английского описания инструмента MCP. Тексты написаны для CLI: подтверждение — вопрос или `--yes`, другие инструменты названы командами (`evo k8s options`, `evo tools call snat_create`). `evo help` в русской справке показывает `help [команда]`, а не `help [command]`. Английская справка (`EVO_LANG=en`), MCP и `evo tools describe` не изменились.
 
 ### Исправлено
 

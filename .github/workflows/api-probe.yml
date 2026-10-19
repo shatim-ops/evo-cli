@@ -416,8 +416,8 @@ jobs:
           # BIL-5: спецификация «Контроль затрат» v2 — agreement_id и
           # project_ids необязательны; потребление «по проекту» — роль
           # platform.project.admin (api-ref_start). У ключа наблюдателя этой
-          # роли нет: 403 здесь ожидаем по документации и расхождением не
-          # является. amount/amount_nds — только «есть ли поле».
+          # роли нет, но 19.10 он получил 200 — реестр v2, BIL-7.
+          # amount/amount_nds — только «есть ли поле».
           echo "== P20 (BIL-5): /v2/consumption по проекту без договора"
           cs=$(date -u -d '-30 days' +%Y-%m-%dT00:00:00Z); ce=$(date -u +%Y-%m-%dT23:59:59Z)
           # shellcheck disable=SC2016 # $c — переменная jq
