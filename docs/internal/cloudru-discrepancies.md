@@ -28,6 +28,9 @@ Cloud.ru Evolution). Адресаты — продуктовые команды 
   и спецификации): сняты также NET-8 и DB-15; переклассифицированы CMP-6,
   CMP-13, CMP-15, CMP-16, IAM-4, NET-9, NET-12, CRT-1; уточнены формулировки,
   ссылки и цитаты ещё 56 пунктов (у DB-9, DB-10, CRT-3, NLB-2 — и класс).
+  Пробы открытых вопросов — api-probe 19.10, 21:07 UTC: подтверждены BIL-5
+  (теперь — расхождение спецификации) и CRT-1 (пример инструкции — 415),
+  снят CMP-12, уточнены BIL-4, DB-10; новые IAM-5, IMG-6, CMP-17, CAP-3.
 - **Как получены факты:** GitHub Actions репозитория `shatim-ops/evo-cli`:
   `api-probe` (только GET и расчёт цены, в лог — коды HTTP, имена полей,
   счётчики) и `cloud-e2e` (создание и удаление ВМ и кластера Kubernetes,
@@ -57,11 +60,11 @@ API» — ответ неверен независимо от документа
 
 | Команда | Пунктов | Подтверждено | Гипотез | Главная проблема |
 |---|---|---|---|---|
-| [Образы и Маркетплейс](#образы-и-маркетплейс) | 5 | 5 | 0 | 23 из 86 образов общего каталога, включая все отечественные ОС, проекту недоступны; создание ВМ — 422 «Image … not found» |
-| [Биллинг, расчёт цены](#биллинг-и-расчёт-цены) | 6 | 4 | 2 | `price-calculation` даёт 0 за лицензию у всех образов маркетплейса, хотя у Windows Server на карточке 1 006 ₽/мес |
-| [Compute (ВМ)](#compute-вм) | 15 | 14 | 1 | обязательное поле интерфейса `interface_security_enabled` есть в примерах запроса документации, но отсутствует в спецификации с `additionalProperties: false` |
+| [Образы и Маркетплейс](#образы-и-маркетплейс) | 6 | 6 | 0 | 23 из 86 образов общего каталога, включая все отечественные ОС, проекту недоступны; создание ВМ — 422 «Image … not found» |
+| [Биллинг, расчёт цены](#биллинг-и-расчёт-цены) | 6 | 5 | 1 | `price-calculation` даёт 0 за лицензию у всех образов маркетплейса, хотя у Windows Server на карточке 1 006 ₽/мес |
+| [Compute (ВМ)](#compute-вм) | 15 | 15 | 0 | обязательное поле интерфейса `interface_security_enabled` есть в примерах запроса документации, но отсутствует в спецификации с `additionalProperties: false` |
 | [Managed Kubernetes](#managed-kubernetes) | 11 | 11 | 0 | `addonNamespace` релиза плагина повторяет `addonVersion`; без `zones` плоскость управления встаёт не в зоне подсети VIP (K8S-10) |
-| [IAM и Organization](#iam-и-organization) | 4 | 4 | 0 | сервисный аккаунт проекта не может узнать свой проект: `GET /v3/projects` → 400 «user not found»; проект есть только в claim токена, описанном лишь на странице Impersonate |
+| [IAM и Organization](#iam-и-organization) | 5 | 5 | 0 | сервисный аккаунт проекта не может узнать свой проект: `GET /v3/projects` → 400 «user not found»; проект есть только в claim токена, описанном лишь на странице Impersonate |
 | [Аудит-логирование](#аудит-логирование) | 2 | 2 | 0 | 401 вместо 403 при отсутствии доступа и 415 на лишний параметр |
 | [VPC, DNS, группы безопасности, SNAT](#vpc-dns-группы-безопасности-snat) | 12 | 10 | 2 | snake_case принимается при camelCase в спецификации — не ясно, гарантия ли это |
 | [DBaaS: Kafka, Redis, PostgreSQL](#dbaas-kafka-redis-postgresql) | 20 | 18 | 2 | Redis `replicas` в POST и в GET означает разное (DB-11): клиент, повторивший прочитанное значение, получает 400; Kafka в `DEPLOYING` не удалить — 500 (DB-17); PostgreSQL в `FAILED` через API не удалить вовсе (DB-21) |
@@ -70,10 +73,10 @@ API» — ответ неверен независимо от документа
 | [Портал документации](#портал-документации) | 2 | 2 | 0 | ответ cloud.ru/docs зависит от User-Agent: без него — 403 |
 | [Artifact Registry](#artifact-registry) | 4 | 4 | 0 | имя реестра не уникально: второй `POST` с тем же именем создаёт дубль; список без `pageSize` бесконечен (AR-4) |
 | [Certificate Manager](#certificate-manager) | 4 | 4 | 0 | список версий сертификата без `pageSize` — 400, хотя инструкция обещает умолчание 100 |
-| [Container Apps](#container-apps) | 2 | 2 | 0 | HTTP 499 вместо 404/400 |
+| [Container Apps](#container-apps) | 3 | 2 | 1 | HTTP 499 вместо 404/400 |
 | [Network Load Balancer](#network-load-balancer) | 2 | 2 | 0 | удаление используемой группы целей принимается; каскад описан только для единственной группы |
 | Secret Manager | 0 | — | — | расхождений не найдено; вживую — создание, версии, чтение и удаление секрета (живой прогон 17.10) |
-| **Итого** | **90** | **83** | **7** | |
+| **Итого** | **93** | **87** | **6** | |
 
 Пять пунктов с наибольшим влиянием: [IMG-1](#img-1-часть-общего-каталога-недоступна-проекту-ошибка-выдаётся-как-image-not-found),
 [BIL-1](#bil-1-лицензия-образа-маркетплейса-в-расчёте-цены-всегда-0),
@@ -126,6 +129,13 @@ API» — ответ неверен независимо от документа
 - **Влияние:** «последняя Astra Linux» или «последняя Ubuntu LTS» автоматически не выбрать; выбор по подстроке имени ломается при каждом новом образе.
 - **Просим:** поля `os_family`, `os_version` (или метки) в `GET /images`.
 
+#### IMG-6. Образы переключают apt на зеркало платформы при первой загрузке — не описано
+Нет в документации · подтверждено вживую (cloud-e2e 16–18.10, OPS-2…2c)
+- **Док:** [Шаблон конфигурации cloud-init](https://cloud.ru/docs/images/ug/topics/concepts__cloud-init) — в примере только `package_update: true`, `package_upgrade: true`; на страницах [Публичные образы](https://cloud.ru/docs/images/ug/topics/concepts__public-images), [Как настроить скрипт cloud-init для публичного образа?](https://cloud.ru/docs/images/ug/topics/faq__cloud-init) и [Решение проблем](https://cloud.ru/docs/virtual-machines/ug/topics/troubleshooting) нет слов «apt», «зеркало», «mirror» (проверено 19.10 с учётом свёрнутых блоков).
+- **Живое:** образы Ubuntu и Debian при первой загрузке (bootcmd `configure-apt-mirrors` шаблона образа, маркер `/var/lib/cloud/instance/sem/configure-apt-mirrors`) переключают apt на `repo.mng.sbercloud…`; с новой ВМ это зеркало часто не отвечает: `W: Failed to fetch https://repo.mng.sbercloud…`, установка Docker не завершается (OPS-2, 2a, 2b, 2c — обе зоны, 16–18.10). `apt-get update` при этом выходит с кодом 0.
+- **Влияние:** любой установщик первой загрузки (cloud-init `packages`, Ansible, скрипты) падает, а пользователь не знает, что apt смотрит не на официальное зеркало, и не знает, можно ли его сменить. evo с #126 при сбое зеркала образа ставит пакеты с официального зеркала дистрибутива по HTTPS и Docker из `download.docker.com`, не меняя apt-источники образа.
+- **Просим:** описать зеркало (адрес, когда образ на него переключается, поддерживается ли возврат к официальным зеркалам); доступность зеркала из новых ВМ — эксплуатации (OPS-2).
+
 ## Биллинг и расчёт цены
 
 #### BIL-1. Лицензия образа маркетплейса в расчёте цены всегда 0
@@ -156,14 +166,14 @@ API» — ответ неверен независимо от документа
 - **Влияние:** расчёт «на сколько хватит баланса» держится на неопубликованном контракте.
 - **Просим:** опубликовать эндпоинт баланса или назвать официальный. Проба — P13.
 - **Доп. (документация):** документированный способ получить договор — `GET organization.api.cloud.ru/v3/agreements?customer_ids=…` и только для ролей «Администратор организации» и «Администратор затрат» ([FAQ](https://cloud.ru/docs/billing/ug/topics/faq__api_id_agreement), [роли](https://cloud.ru/docs/billing/ug/topics/concepts_billing_role)); баланс по API не описан нигде. См. BIL-5.
+- **Доп. (api-probe 19.10, run 39324107414, P13):** ключ уровня проекта: `GET /v3/agreements` без параметров и с `customer_ids` → 403 «dont have permissions to customers», `GET billing.api.cloud.ru/v1/agreement/<несуществующий>` → 403 «permission denied to agreement», корень `billing.api.cloud.ru` → 404. Это согласуется с документацией (договор видят только администраторы организации и затрат). Баланс по существующему договору не проверен: ключу его ID не виден. Пункт остаётся гипотезой до прогона ключом администратора затрат.
 
-#### BIL-5. Потребление по проекту без договора
-Нет в документации · гипотеза
-- **Док:** спецификация «Контроль затрат» v2: в `/v2/consumption` `agreement_id` необязателен, есть `project_ids`; [Начало работы с API](https://cloud.ru/docs/billing/ug/topics/api-ref_start): `platform.project.admin` может запрашивать потребление «по проекту». [FAQ](https://cloud.ru/docs/billing/ug/topics/faq__api_id_agreement): ID договора видят только «Администратор организации» и «Администратор затрат».
-- **Живое:** не проверено.
-- **Влияние:** ключ уровня проекта не может получить ID договора; если потребление без него не отдаётся, расходы проекта по API недоступны.
-- **Просим:** подтвердить запрос по `project_ids` без договора. Проба — P20.
-- **Оговорка:** по сути документация обещает, что запрос по проекту без договора работает; пункт — проверка этого обещания, а не пробел в описании.
+#### BIL-5. Потребление по проекту без договора: работает, но спецификация не говорит, что нужен один из фильтров
+Расхождение (спецификация) · подтверждено вживую (api-probe 19.10, P20)
+- **Док:** спецификация «Контроль затрат» v2: в `GET /v2/consumption` и `agreement_id`, и `project_ids` — `required: false` («Фильтр по идентификаторам проектов.»); [Начало работы с API](https://cloud.ru/docs/billing/ug/topics/api-ref_start): «администратор проекта (platform.project.admin) — для запроса данных потребления по проекту». [FAQ](https://cloud.ru/docs/billing/ug/topics/faq__api_id_agreement): ID договора видят только «Администратор организации» и «Администратор затрат».
+- **Живое:** api-probe 19.10, 21:07 UTC, ключ уровня проекта: `?project_ids=P&start_date=…&end_date=…&page_filter.page_size=10` → 200, 10 строк и `next_page_token`; у строки поля `amount`, `amount_nds`, `cost`, `encode_id`, `id`, `is_delete`, `platform`, `product_instance_id`, `resource_id`, `resource_name`, `servname`, `sku`, `unit`, `updated_dt`, `usedate`, `usefact`. Тот же запрос без `project_ids` и без `agreement_id` → 400 «rpc error: code = InvalidArgument desc = Either agreement_id or project_ids must be provided».
+- **Влияние:** обещание документации выполняется: ключ проекта видит расход проекта без договора (evo с #126 так и делает). Клиент по спецификации не знает, что один из двух фильтров обязателен, и узнаёт это из 400.
+- **Просим:** указать в спецификации, что нужен `agreement_id` или `project_ids`; описать `is_delete` (учитывать ли такие строки в сумме).
 
 #### BIL-6. Месяц в `price-calculation` — 732 часа, в примерах документации — 720
 Расхождение · подтверждено вживую (живой прогон 17.10, CRD-02)
@@ -245,12 +255,6 @@ API» — ответ неверен независимо от документа
 - **Влияние:** строгий клиент по enum отвергнет ответ на документированную операцию переустановки ОС.
 - **Просим:** добавить значение в enum или убрать из описания.
 
-#### CMP-12. Максимальный размер диска: 16384 ГБ или 65536
-Расхождение · гипотеза
-- **Док/Спека:** [Ограничения дисков](https://cloud.ru/docs/disks/ug/topics/overview__limitations) — до 16 ТБ, [ограничения ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/overview__limitations) — «Размер диска 16 ТБ»; `VM-spec` — `size: maximum 16384` (`PublicDiskCreateRequest`, `PublicDiskUpdateRequest`, `VmCreateNewDiskItem`).
-- **Живое:** в review-context evo со времён первых прогонов записано «до 65536 ГБ» (источник не сохранён; evo с ветки `tails` проверяет 16384).
-- **Просим:** подтвердить предел; если API принимает больше — отразить в спецификации. Проба — P15.
-
 #### CMP-13. Две ВМ с одним именем в проекте: 409, которого нет в спецификации
 Расхождение (спецификация) · подтверждено вживую (живой прогон 17.10, CRD-01)
 - **Док:** [Создать ВМ](https://cloud.ru/docs/virtual-machines/ug/topics/guides__create-vm): «в одном проекте технически не может быть виртуальных машин с одинаковым названием». **Спека:** уникальность в проекте описана (`GET /api/v1/projects/{project_id}/validate_name` — «Проверка имени сущности в проекте», `vm` в `EntityTypeWithUniqueNameWithinProject`), но у `POST /api/v1.1/vms` ответы 201, 401, 403, 404, 422, 500; 409 нет.
@@ -281,6 +285,13 @@ API» — ответ неверен независимо от документа
 - **Влияние:** проект без собственных образов не может создать образ из-за образов других проектов организации; клиент по спецификации этот отказ не ждёт.
 - **Просим:** 422 `organization_quota_exceeded` в ответах `POST /images`, тип квоты в `OrganizationLimitTypeName`; исправить имя квоты (`custome`) в тексте ошибки.
 - **18.10:** подтверждено (живой прогон 18.10, run 39167011818, ru.AZ-2): тот же 422 `organization_quota_exceeded` с той же опечаткой на `POST /images` из отключённого загрузочного диска; `image_create`/`image_delete` в живых прогонах не покрыты из-за этой квоты тестовой организации.
+
+#### CMP-17. Когда ВМ доступна по SSH после «Запущена» — не описано
+Нет в документации · подтверждено вживую (cloud-e2e 16–18.10, OPS-1, 1a, 1b)
+- **Док:** [Подключиться к виртуальной машине по SSH](https://cloud.ru/docs/virtual-machines/ug/topics/guides__ssh-connection): «Убедитесь, что: Статус виртуальной машины — «Запущена». Виртуальной машине назначен публичный IP-адрес. Подключение к виртуальной машине по SSH разрешено в группах безопасности». В [Решении проблем](https://cloud.ru/docs/virtual-machines/ug/topics/troubleshooting) — Permission denied, ключ, REMOTE HOST IDENTIFICATION, Temporary failure in name resolution, доступ после прямого IP, интерфейс DOWN; случая «ВМ запущена, порт 22 не отвечает» нет. Срок готовности SSH после «Запущена» не назван нигде.
+- **Живое:** ВМ `active` за ~2,5 мин, SSH не ответил ни на одну из 60 попыток за ~14 мин (OPS-1: 16.10, 2 прогона; OPS-1a: 17.10; OPS-1b: 18.10, 3 из 10 прогонов, ru.AZ-2). В удачных прогонах SSH отвечает через 2–5 мин после `active`.
+- **Влияние:** клиент не может отличить «ещё загружается» от «не загрузится никогда»; ВМ оплачивается. evo с #126 говорит, что было с портом 22 (таймаут, refused, EOF), и предлагает [перезагрузку из консоли](https://cloud.ru/docs/virtual-machines/ug/topics/guides__restart) и [серийную консоль](https://cloud.ru/docs/virtual-machines/ug/topics/guides__console); помогает ли перезагрузка при OPS-1b, пока не проверено.
+- **Просим:** назвать типичный срок готовности SSH и добавить в «Решение проблем» случай «ВМ запущена, SSH не отвечает» (серийная консоль, перезагрузка); сам сбой — эксплуатации (OPS-1).
 
 ## Managed Kubernetes
 
@@ -396,6 +407,13 @@ API» — ответ неверен независимо от документа
 - **Живое:** api-probe 17.10 00:05 UTC (payload декодирован в прогоне, значения не печатались): claims `aud, auth_time, azp, customer_id, email, exp, iat, iss, jti, nbf, nonce, preferred_username, project_id, resource_access, scope, sub, sub_id, sub_type, typ`; `project_id` совпадает с проектом, на который выпущен ключ; `customer_id` есть; `exp − iat` = 3600 с.
 - **Влияние:** проект ключа можно узнать без Organization API (обход IAM-3), но клиент опирается на формат, описанный только на странице Impersonate: при смене состава claims обход сломается без предупреждения.
 - **Просим:** описать claims токена ключа доступа на странице аутентификации и гарантировать `project_id` для ключей уровня проекта (у SA вне проекта `project_id` по документации не ожидается).
+
+#### IAM-5. Параметр `resource` (RFC 8707) при выдаче токена молча игнорируется
+Нет в документации · подтверждено вживую (api-probe 19.10, P26)
+- **Док:** ни документация, ни discovery `id.cloud.ru/auth/system/.well-known/openid-configuration` не говорят, поддерживаются ли индикаторы ресурса (RFC 8707): `resource` не упомянут. Для Cloud.ru это не нарушение собственной документации; пункт — про пробел, важный для публичного MCP-сервера.
+- **Живое:** api-probe 19.10, 21:07 UTC: `POST id.cloud.ru/auth/system/openid/token` (`client_credentials`) и `auth.iam`-обмен `access_key` — с `resource` и без: все четыре → 200, без `invalid_target`; в access- и id-токене `aud = ["iam"]` во всех случаях, `resource` в `aud` не попадает.
+- **Влияние:** токен нельзя привязать к получателю. [Спецификация авторизации MCP](https://modelcontextprotocol.io/specification/draft/basic/authorization) требует, чтобы клиент передавал `resource`, а сервер проверял, что токен выпущен для него: токен, выпущенный для MCP-сервера Cloud.ru, будет действовать во всём API. Для evo в режиме stdio не важно; для публичного MCP — блокер вместе с отсутствием регистрации клиентов (`registration_endpoint` в discovery нет).
+- **Просим:** поддержать `resource` (аудитория токена) или явно написать, что параметр не поддерживается.
 
 ## Аудит-логирование
 
@@ -547,6 +565,7 @@ API» — ответ неверен независимо от документа
 - **Живое:** не проверено (нужно создание кластера).
 - **Влияние:** расписание, скопированное из консоли, может быть отвергнуто API или наоборот.
 - **Просим:** назвать формат в спецификации.
+- **Доп. (api-probe 19.10, run 39324107414, P28):** кластеров PostgreSQL в тестовом проекте нет — формат `backup.schedule` в ответе не проверен; нужен прогон с кластером (cloud-e2e `dbaas_smoke`).
 
 #### DB-7. Kafka/Redis: ошибка валидации запроса возвращается как 500
 Ошибка API · подтверждено вживую
@@ -568,11 +587,12 @@ API» — ответ неверен независимо от документа
 - **Живое:** создание пользователя → 400 «validate password: length must be between 8 and 64 characters… at least one uppercase Latin letter… at least one special character from !$%25&()*+-,./:;<>=?@[\]^_{|}#»; текст в URL-кодировке (`%25` вместо `%`, `%0A` вместо перевода строки). ru.AZ-1, 2 из 2.
 - **Просим:** описать политику пароля в спецификации и Terraform; ошибку отдавать без URL-кодирования.
 
-#### DB-10. Kafka: срок создания не указан, `min_brokers` нет в живом ответе
-Нет в документации + расхождение · подтверждено вживую (живой прогон 17.10, CRD-14)
+#### DB-10. Kafka: срок создания не указан (`min_brokers` в ответе — есть с 19.10)
+Нет в документации · подтверждено вживую (живой прогон 17.10, CRD-14)
 - **Док:** минимум брокеров описан: [режимы хостов](https://cloud.ru/docs/paas-kafka/ug/topics/concepts__hosts-types) — «1 или 3 хоста для Single-AZ», в выделенном режиме «Брокеры — минимум 3 хоста»; в [спецификации](https://cloud.ru/docs/api/specs/paas-kafka/ug/_specs/openapi-kafka.yaml) у `Specification` есть `min_brokers` («Минимальное количество брокеров.») и `max_brokers`, в Terraform — тоже. Срок создания не назван нигде; в примере [Terraform: `cloudru_evolution_kafka_cluster`](https://cloud.ru/docs/terraform-evolution/ug/topics/reference/resources/cloudru_evolution_kafka_cluster) — `brokers = 3`, `create = "60m"`.
 - **Живое:** кластер на 1 брокер (2 vCPU / 4 ГБ, 40 GiB) создавался 37–39 мин (2 кластера, 11:28 → 12:05 и → 12:07 UTC, ru.AZ-2); в `GET /v1/specifications` поля минимального числа брокеров нет. cloud-e2e `dbaas_smoke` 17.10: 1 брокер, `DEPLOYING` → `READY` за 34 мин (20:12 → 20:46 UTC), удаление 8 мин.
 - **Просим:** указать типичный срок создания; отдавать `min_brokers`/`max_brokers` в ответе, как в спецификации.
+- **Доп. (api-probe 19.10, run 39324107414, P25):** `GET /v1/specifications?version_id=<4.2.0>&availability_zone_id=<ru.AZ-2>` → 200, у всех 10 спецификаций есть `min_brokers` (1) и `max_brokers` (10). Вторая часть пункта (поля нет в ответе) больше не воспроизводится — возможно, исправлено; остаётся срок создания.
 
 #### DB-11. Redis: `replicas` в POST — реплики без мастера, в GET — число хостов
 Расхождение + ошибка API · подтверждено вживую (живой прогон 17.10, CRD-15)
@@ -667,6 +687,7 @@ API» — ответ неверен независимо от документа
 - **Док:** [Просмотреть версии](https://cloud.ru/docs/certificate-manager/ug/topics/guides_version_all_view), вкладка API: `…/versions?page.limit=10`, «page.limit — допустимое количество записей в одном запросе. Максимальное значение — 1000, по умолчанию — 100». **Спека:** `GET /v1/certificate/{certificateId}/versions` — другие параметры, `pageSize`/`pageToken`, необязательные, без умолчания.
 - **Живое:** `GET …/certificates/{id}/versions` без `pageSize` → 400 `invalid ListVersionsRequest.PageSize: value must be inside range [1, 1000]` (стабильно) — вопреки «по умолчанию — 100»; предел 1000 совпадает. evo до v1.0 из-за этого не показывал версии вовсе. Принимает ли API `page.limit`, прогон не проверял.
 - **Просим:** согласовать имена параметров и умолчание в инструкции, спецификации и API; умолчание `pageSize` или явная пометка «обязателен».
+- **Доп. (api-probe 19.10, run 39324107414, P24):** сертификатов в проекте нет, запросы шли к несуществующему ID: без параметров → 400 (то же сообщение), `pageSize=10` → 403 «permission denied» (CRT-2), `page.limit=10` и `page.limit=10&page.offset=0` → 415 «invalid gRPC request content-type», контрольный `pageSize=10&bogus=1` → тоже 415. Неизвестный параметр отвергается раньше проверки доступа (как AUD-2), значит пример инструкции с `page.limit` не работает ни для какого сертификата.
 
 #### CRT-2. Несуществующий сертификат — 403 `permission denied`, операция — 404
 Ошибка API · подтверждено вживую (живой прогон 17.10, CRD-B2)
@@ -700,6 +721,12 @@ API» — ответ неверен независимо от документа
 - **Док:** [Добавить пользовательский домен](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__container-domain-create) (пример API): «Порты 8008, 8012, 8013, 8112, 8022, 9090, 9091 и порты от 1 до 1024 зарезервированы» — само ограничение API совпадает.
 - **Живое:** некорректное имя (подчёркивание, заглавные), зарезервированный порт 9090, `minInstanceCount` > `maxInstanceCount` → 400 «Invalid argument» без поля и причины (3 из 3).
 - **Просим:** 400 с именем поля и причиной.
+
+#### CAP-3. Логи контейнера: порядок, размер страницы и `total` в API не описаны
+Нет в документации · гипотеза (поведение API — проба cloud-e2e `ca_smoke`)
+- **Спека:** [`openapi.yaml`](https://cloud.ru/docs/api/specs/container-apps-evolution/ug/_specs/openapi.yaml): `GET /v2/containers/{name}/logs` — `pageSize` («Количество логов, которое вернется в ответе на запрос»), `pageToken`, `filter` (без описания); умолчание `pageSize` и порядок строк не указаны. `ListContainerLogsResponse.total` описан как «Общее число контейнеров.» — для ответа с логами это, по-видимому, ошибка копирования. `GET …/systemLogs` — без пагинации, с параметром `serverlessId` без описания. **Док:** [Логирование](https://cloud.ru/docs/container-apps-evolution/ug/topics/concepts__logging) описывает только консоль: системные логи «в хронологическом порядке, начиная с самого позднего», «Отображаются последние 1000 записей».
+- **Живое:** cloud-e2e 18.10: `ca_logs` вернул 0 строк у работающего контейнера; причина не установлена (гипотезы: без `pageSize` первая страница пуста; задержка доставки; `loggingService`). evo с #124 читает логи по страницам с `pageSize=100` и сортирует по `timestamp` сам.
+- **Просим:** указать умолчание `pageSize`, порядок строк, смысл `total`, назначение `serverlessId` и `filter`.
 
 ## Network Load Balancer
 
@@ -768,6 +795,7 @@ API» — ответ неверен независимо от документа
 | Kafka: `clusters` и `specifications` требуют `product_type=kafka` | без него оба отвечают 200 (спецификации — с зоной) | api-probe 17.10 00:05 UTC (`kafka_list_noproduct`, `kafka_specs_az`) |
 | MON-1: у `export_metrics` не описаны предел окна, единицы `start`/`end` и формат ответа | описаны в документации Evolution: предел «Временной диапазон … `start` и `end` — 24 часа» — [ограничения сервиса](https://cloud.ru/docs/service-monitoring/ug/topics/overview__limitations?source-platform=Evolution); Unix timestamp в миллисекундах и ответ «каждому временному ряду — отдельная строка» — [история метрик](https://cloud.ru/docs/service-monitoring/ug/topics/guides__metrics__get__history?source-platform=Evolution). Пункт ссылался на справку другого продукта — «Расширенный мониторинг виртуального ЦОД» платформы VMware (`cloud.ru/docs/monitoring/…`). Остаётся мелочь спецификации: ответ в `openapi-v3.yaml` описан как `string` | сверка документации 19.10 (замечание коллег); живой прогон 17.10 — 400 на окне 48 ч, как в документации |
 | NET-8: адрес удалённого floating IP через минуты выдаётся другой ВМ — о переиспользовании адресов документация молчит | предупреждение есть в документации Evolution: «Нет гарантии, что вы сможете арендовать этот адрес снова. В дальнейшем этот адрес сможет получить другой клиент Cloud.ru» — [ограничения публичных IP](https://cloud.ru/docs/public-ip/ug/topics/overview__limitations), [освободить адрес](https://cloud.ru/docs/public-ip/ug/topics/guides__deallocate-ip). Пункт ссылался на тарификацию, где этого нет. Срок возврата в пул не описан — OPS-11 | сверка документации 19.10; живой прогон 17.10 (CRD-12), 2 из 2 |
+| CMP-12: предел размера диска — 16384 ГБ (документация, спецификация) или 65536 (старая запись evo) | 16384, как в документации: `GET /disk-types` — `max_size: 16384` у SSD и HDD; `price-calculation` с 16385, 65536, 65537 → 422 `wrong_disk_size` «Disk size must be between disk_type min and max sizes», с 16384 → 200 | api-probe 19.10 (P15, P27) |
 | DB-15: удаление пользователя-владельца PostgreSQL молча переназначает базу на `dbadmin` | описано в документации Evolution: «При удалении другого пользователя владельцем всех его объектов СУБД (баз данных, таблиц, представлений, функций и т. д.) становится dbadmin. Данные в этих объектах сохраняются» — [удалить пользователя](https://cloud.ru/docs/paas-postgresql/ug/topics/guides__users__deleting-user). В Terraform `postgresql_user` не упомянуто | сверка документации 19.10; живой прогон 17.10 (CRD-B11), 1 из 1 |
 
 ## Эксплуатационные наблюдения
@@ -814,22 +842,22 @@ ID и IP — маскировать, суммы — только «есть ли
 | P9 | `price-calculation` с `image_id` образа `windows2022std-evo-kmsB` и без флейвора/дисков | `http`, значения `image`, `mkp_image`, `total_price_month` | BIL-1 (цены публичны) |
 | P10 | `GET compute/api/v1/nat-gateways?project_id=P` | `total`, `[.items[].availability_zone.name]` | K8S-3: SNAT в проекте отсутствует (выполнена 17.10: шлюзов 0) |
 | P11 | `GET mk8s/v3/addons?projectId=P&filter=` `isBillable%20%3D%20true`, `isBillable%3Dtrue`, `isBillable%3Dfalse` | `http`, число, имена плагинов | K8S-4 |
-| P13 | `GET organization.api.cloud.ru/v3/agreements` без параметров и `?customer_ids=<customer_id из токена>`; `GET https://billing.api.cloud.ru/`, `…/v1/agreement/<несуществующий>`; если договор виден — `…/v1/agreement/<он>` и `/v2/consumption?agreement_id=…` | `http`, ключи, число договоров, есть ли поле `balance` (без значений), `.message[0:160]` (в api-probe: `agreements_v3_*`, `billing_*`, `consumption_agreement`) | BIL-4 |
+| P13 | `GET organization.api.cloud.ru/v3/agreements` без параметров и `?customer_ids=<customer_id из токена>`; `GET https://billing.api.cloud.ru/`, `…/v1/agreement/<несуществующий>`; если договор виден — `…/v1/agreement/<он>` и `/v2/consumption?agreement_id=…` | `http`, ключи, число договоров, есть ли поле `balance` (без значений), `.message[0:160]` (в api-probe: `agreements_v3_*`, `billing_*`, `consumption_agreement`) | BIL-4 (выполнена 19.10: 403 на договоры и баланс, см. BIL-4) |
 | P14 | `GET compute/api/v1/disks?project_id=P&limit=100` | по признакам `evo-…`, `…-boot`, `bootable`, подключён ли (`vms`), `state` — число дисков; число дисков `evo-…` без ВМ (в api-probe: `disks_by_attachment`, `disks_evo_detached`) | CMP-11 (выполнена 17.10: не подтвердилось) |
-| P15 | `POST …/price-calculation` с `disks:[{disk_type_id, size}]`, `size` = 16384, 16385, 65536, 65537 | `http`, `code`/`message`/`detail[].msg` до 160 символов, без цен (в api-probe: `price_disk_*`) | CMP-12 (у `size` в `_DisksCount` максимума нет — 200 не доказывает приём диска; главное — P27) |
+| P15 | `POST …/price-calculation` с `disks:[{disk_type_id, size}]`, `size` = 16384, 16385, 65536, 65537 | `http`, `code`/`message`/`detail[].msg` до 160 символов, без цен (в api-probe: `price_disk_*`) | CMP-12 (у `size` в `_DisksCount` максимума нет — 200 не доказывает приём диска; главное — P27) (выполнена 19.10: 16385+ → 422, CMP-12 снят) |
 | P16 | `GET compute/api/v1/vms?project_id=P&limit=100` | число повторяющихся `name` (без имён) | CMP-13 (в api-probe пока нет) |
 | P17 | `GET compute/api/v1/subnets?project_id=P&limit=100` | по зонам: есть ли поля `default`, `routed_network`, `dns_servers`, их значения, число DNS-серверов, `type`, `state`, имя начинается с `Default` (в api-probe: `subnet_flags`) | NET-5, OPS-3 (выполнена 17.10) |
 | P18 | `GET compute/api/v1/floating-ips?project_id=P&limit=100`; `GET …/nat-gateways?project_id=P` | `{state, nat: (.nat_gateway != null), iface, vm}` с числом; шлюзы по зонам, типы, состояния (в api-probe: `fip_nat_flags`, `nat_by_zone`) | NET-6, K8S-3 (17.10: шлюзов нет — для NET-6 нужен проект со шлюзом) |
 | P19 | payload токена `POST /api/v1/auth/token` (декодировать, не печатать) | имена claims, совпадает ли `project_id` с проектом, есть ли `customer_id`, `exp - iat` (в api-probe: `token_claims`) | IAM-4, IAM-3 (выполнена 17.10) |
-| P20 | `GET organization.api.cloud.ru/v2/consumption?project_ids=P&start_date=…&end_date=…&page_filter.page_size=10` (30 дней) и то же без `project_ids` | `http`, ключи, число строк, есть ли поля `amount`/`amount_nds`, имена полей строки, `.message[0:160]` (в api-probe: `consumption_project`, `consumption_no_filter`) | BIL-5 |
+| P20 | `GET organization.api.cloud.ru/v2/consumption?project_ids=P&start_date=…&end_date=…&page_filter.page_size=10` (30 дней) и то же без `project_ids` | `http`, ключи, число строк, есть ли поля `amount`/`amount_nds`, имена полей строки, `.message[0:160]` (в api-probe: `consumption_project`, `consumption_no_filter`) | BIL-5 (выполнена 19.10: 200 по проекту, без фильтров 400, см. BIL-5) |
 | P21 | `GET mk8s/v3/productConfiguration?projectId=P` | `.channels[] \| {channel, availableVersions}`; `.flavors[] \| {cpu, ram, oversubscription, purpose}` | порядок версий и назначение флейворов (сверка k8s, 16.10) |
 | P22 | `GET mk8s/v3/clusterAddons?clusterId=<живой кластер k8s-smoke>` | имена плагинов CNI (`cilium`, `calico`, `tigera-operator`), `status` | K8S-6 |
-| P23 | `evo tools call billing_consumption --arg start=<вчера> --json` и `billing_balance` без `CLOUDRU_AGREEMENT_ID` (команда протокола догфуда, §5) | код выхода, `status`, `reason`, `error[0:160]`, число строк, имена полей ответа — без сумм (в api-probe: `evo_billing_*`) | BIL-5, `docs/internal/dogfood-protocol.md` §5 |
-| P24 | `GET certificatemanager…/v1/certificate/{id}/versions`: без параметров, `pageSize=10`, `page.limit=10`, `page.limit=10&page.offset=0`, `pageSize=10&bogus=1`; для первого сертификата проекта и для несуществующего ID | `http`, ключи, число версий, `grpc-message[0:160]`; нет сертификатов — «пропуск» (в api-probe: `crt_own_*`, `crt_noid_*`) | CRT-1 (и CRT-2: что проверяется раньше — параметры или объект) |
-| P25 | `GET kafka…/v1/specifications?version_id=<каждая из /v1/versions, до 5>&availability_zone_id=<ru.AZ-2>` | число спецификаций, ключи первой, у скольких есть `min_brokers`/`max_brokers`, их значения (в api-probe: `kafka_brokers_<версия>`) | DB-10 |
-| P26 | `POST id.cloud.ru/auth/system/openid/token` (`client_credentials`, как evo для mk8s) и `auth.iam.cloud.ru/…/token` (`access_key`, как в «Быстром старте» API) — с `resource=https://mcp.example.invalid` и без | `http`, поле `error`; из payload `access_token`/`id_token` — `aud`, `azp` (ключ и проект заменены), попал ли `resource` в `aud`; токен маскируется (в api-probe: `oidc_*`) | пункта нет: поддержка RFC 8707 для авторизации MCP |
-| P27 | `GET compute/api/v1/disk-types?project_id=P` | по типам: `name`, `min_size`, `max_size`, есть ли `max_size` (в api-probe: `disk_types_sizes`) | CMP-12 |
-| P28 | `GET postgresql…/v1/clusters?project_id=P` → `GET …/v1/clusters/{id}` (до 5) | `status`, `backup.schedule` (cron, не секрет), число полей, есть ли `?`, `retention_policy_days`; кластеров нет — «пропуск» (в api-probe: `pg_backup_schedule`) | DB-6 (только формат, в котором API хранит расписание; приём формата проверяется лишь созданием) |
+| P23 | `evo tools call billing_consumption --arg start=<вчера> --json` и `billing_balance` без `CLOUDRU_AGREEMENT_ID` (команда протокола догфуда, §5) | код выхода, `status`, `reason`, `error[0:160]`, число строк, имена полей ответа — без сумм (в api-probe: `evo_billing_*`) | BIL-5, `docs/internal/dogfood-protocol.md` §5 (выполнена 19.10: exit 2 — дефект evo, исправлен в #126) |
+| P24 | `GET certificatemanager…/v1/certificate/{id}/versions`: без параметров, `pageSize=10`, `page.limit=10`, `page.limit=10&page.offset=0`, `pageSize=10&bogus=1`; для первого сертификата проекта и для несуществующего ID | `http`, ключи, число версий, `grpc-message[0:160]`; нет сертификатов — «пропуск» (в api-probe: `crt_own_*`, `crt_noid_*`) | CRT-1 (и CRT-2: что проверяется раньше — параметры или объект) (выполнена 19.10 на несуществующем ID: `page.limit` → 415, см. CRT-1) |
+| P25 | `GET kafka…/v1/specifications?version_id=<каждая из /v1/versions, до 5>&availability_zone_id=<ru.AZ-2>` | число спецификаций, ключи первой, у скольких есть `min_brokers`/`max_brokers`, их значения (в api-probe: `kafka_brokers_<версия>`) | DB-10 (выполнена 19.10: `min_brokers`/`max_brokers` есть, см. DB-10) |
+| P26 | `POST id.cloud.ru/auth/system/openid/token` (`client_credentials`, как evo для mk8s) и `auth.iam.cloud.ru/…/token` (`access_key`, как в «Быстром старте» API) — с `resource=https://mcp.example.invalid` и без | `http`, поле `error`; из payload `access_token`/`id_token` — `aud`, `azp` (ключ и проект заменены), попал ли `resource` в `aud`; токен маскируется (в api-probe: `oidc_*`) | пункта нет: поддержка RFC 8707 для авторизации MCP (выполнена 19.10: `resource` игнорируется, см. IAM-5) |
+| P27 | `GET compute/api/v1/disk-types?project_id=P` | по типам: `name`, `min_size`, `max_size`, есть ли `max_size` (в api-probe: `disk_types_sizes`) | CMP-12 (выполнена 19.10: `max_size` 16384, CMP-12 снят) |
+| P28 | `GET postgresql…/v1/clusters?project_id=P` → `GET …/v1/clusters/{id}` (до 5) | `status`, `backup.schedule` (cron, не секрет), число полей, есть ли `?`, `retention_policy_days`; кластеров нет — «пропуск» (в api-probe: `pg_backup_schedule`) | DB-6 (только формат, в котором API хранит расписание; приём формата проверяется лишь созданием) (выполнена 19.10: кластеров нет, не проверено) |
 
 ## Источники
 
