@@ -17,10 +17,31 @@ import (
 //go:embed install.sh
 var installScript string
 
+// dockerKey is Docker's apt signing key, as download.docker.com/linux/ubuntu/gpg
+// serves it (the same file for Debian). Embedded, so the VM does not take
+// the key from the network it installs from; install_test.go checks its
+// fingerprint.
+//
+//go:embed docker.asc
+var dockerKey string
+
+// Lines the install script prints when apt fails, for the caller's diagnosis.
+const (
+	// FallbackFailedLine: neither the image's apt mirror nor the
+	// distribution's official mirror answered.
+	FallbackFailedLine = "evo: the official mirror failed too"
+	// DockerRepoFailedLine: the distribution's packages came, Docker's
+	// repository did not (no answer, or a signature that does not verify).
+	DockerRepoFailedLine = "evo: apt failed on Docker's repository (download.docker.com)"
+)
+
 // InstallScript returns the shell script that installs Docker with the
 // compose plugin, adds user to the docker group and gives it /opt/app.
 // CRLF from a Windows checkout would break the script on the VM.
-func InstallScript() string { return strings.ReplaceAll(installScript, "\r\n", "\n") }
+func InstallScript() string {
+	key := strings.ReplaceAll(dockerKey, "\r\n", "\n")
+	return strings.Replace(strings.ReplaceAll(installScript, "\r\n", "\n"), "@DOCKER_KEY@\n", key, 1)
+}
 
 // InstallCommand returns a remote command that runs InstallScript as root for
 // user. The script goes through a temporary file, not `sh -s`: commands

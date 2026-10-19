@@ -322,15 +322,15 @@
       "name": "billing",
       "spec": "organization+iam/api.op_v1.v2.yaml",
       "requests": [
-        {"method": "GET", "path": "/v2/consumption", "code": "internal/billing/client.go:135", "query": ["agreement_id", "start_date", "end_date", "page_filter.page_size=1000", "page_filter.page_token"], "paginates": true,
-         "reads": ["consumptions[].amount", "consumptions[].amount_nds", "consumptions[].cost", "consumptions[].cost_nds", "consumptions[].servname", "consumptions[].servicename", "consumptions[].service", "consumptions[].resource_name", "consumptions[].resourcename", "next_page_token"]}
+        {"method": "GET", "path": "/v2/consumption", "code": "internal/billing/client.go:202", "query": ["agreement_id", "project_ids", "start_date", "end_date", "page_filter.page_size=1000", "page_filter.page_token"], "paginates": true,
+         "reads": ["consumptions[].amount", "consumptions[].amount_nds", "consumptions[].servname", "consumptions[].servicename", "consumptions[].service", "consumptions[].resource_name", "consumptions[].resourcename", "next_page_token"], "statuses": [403]}
       ]
     },
     {
       "name": "billing-balance",
       "spec": "billing/swagger.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/agreement/{agreement_id}", "code": "internal/billing/client.go:102", "reads": ["balance", "active"],
+        {"method": "GET", "path": "/v1/agreement/{agreement_id}", "code": "internal/billing/client.go:162", "reads": ["balance", "active"],
          "accepted": {"path-missing": "эндпоинт billing.api.cloud.ru/v1/agreement/{id} не опубликован ни в одной спецификации — вопрос к Cloud.ru"}}
       ]
     },
@@ -368,7 +368,9 @@
     "_comment": "Пути, которые код собирает так, что сверка покрытия (api-contract-check.py, code_sites) не может сопоставить их с описью сама. ignore — литерал не является запросом к API; expand — шаблон, сегмент которого выбирается во время работы: каждый из путей to должен быть в описи. file — glob пути файла, path — путь, как его печатает проверка ({} на месте параметра), method — если правило только для одного метода.",
     "ignore": [
       {"file": "internal/tools/tools_k8s_addons.go", "path": "/docs/kubernetes-evolution/ug/topics/overview__limitations", "reason": "ссылка на документацию cloud.ru в тексте подсказки, не запрос"},
-      {"file": "internal/tools/tools_ca.go", "path": "/docs/container-apps-evolution/ug/topics/concepts__logging", "reason": "ссылка на документацию cloud.ru в подсказке ca_logs, не запрос"}
+      {"file": "internal/tools/tools_ca.go", "path": "/docs/container-apps-evolution/ug/topics/concepts__logging", "reason": "ссылка на документацию cloud.ru в подсказке ca_logs, не запрос"},
+      {"file": "internal/billing/client.go", "path": "/docs/billing/ug/topics/api-ref_start", "reason": "ссылка на документацию cloud.ru (роли для потребления) в подсказке billing_*, не запрос"},
+      {"file": "internal/billing/client.go", "path": "/docs/billing/ug/topics/faq__api_id_agreement", "reason": "ссылка на документацию cloud.ru (кто видит ID договора) в подсказке billing_*, не запрос"}
     ],
     "expand": [
       {"file": "internal/dns/client.go", "path": "/v1/{}", "to": ["/v1/publicZones", "/v1/privateZones", "/v1/publicRecordsSole", "/v1/privateRecordsSole"],

@@ -11,9 +11,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// noDockerOS are the OS families get.docker.com does not install Docker on
-// (it knows Ubuntu, Debian, CentOS, Fedora, RHEL…), by a word of the image
-// name, display name or os field. The domestic distributions are real VM
+// noDockerOS are the OS families Docker publishes no packages for (deploy
+// installs Docker from Docker's apt repository on Ubuntu and Debian and
+// through get.docker.com elsewhere), by a word of the image name, display
+// name or os field. The domestic distributions are real VM
 // targets, so only deploy refuses them; evo vm create takes them.
 var noDockerOS = []struct {
 	family string
@@ -43,8 +44,8 @@ func NoDockerFamily(fields ...string) string {
 // for an argument.
 func NoDockerError(code, image, family string) error {
 	return clierrors.New(code,
-		i18n.Tf("deploy does not support image %q: Docker's install script (get.docker.com) does not work on %s",
-			"deploy не работает с образом %q: скрипт установки Docker (get.docker.com) не поддерживает %s", image, family),
+		i18n.Tf("deploy does not support image %q: Docker publishes no packages for %s (download.docker.com, get.docker.com)",
+			"deploy не работает с образом %q: Docker не выпускает пакеты для %s (download.docker.com, get.docker.com)", image, family),
 		i18n.T("Take an Ubuntu or Debian image for deploy (evo image list ubuntu), or create a plain VM from this image: evo vm create <name> --image <image>.",
 			"Для deploy возьмите образ Ubuntu или Debian (evo image list ubuntu), а ВМ из этого образа создайте без deploy: evo vm create <имя> --image <образ>."))
 }

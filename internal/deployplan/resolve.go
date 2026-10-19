@@ -98,9 +98,9 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if err != nil {
 		return nil, err
 	}
-	// A compose deploy installs Docker through get.docker.com, which knows
-	// no domestic distributions: no plan, so deploy_apply does not bill a
-	// VM Docker cannot go on (as for a missing metadata field).
+	// Docker publishes no packages for the domestic distributions: a
+	// compose deploy gets no plan, so deploy_apply does not bill a VM Docker
+	// cannot go on (as for a missing metadata field).
 	if p.ComposeFile != "" {
 		if family := images.NoDockerFamily(image.Name, image.DisplayName, image.OS); family != "" {
 			return nil, images.NoDockerError(clierrors.CodeUsage, image.Name, family)

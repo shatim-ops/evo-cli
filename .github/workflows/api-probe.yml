@@ -464,9 +464,11 @@ jobs:
           fi
 
           # Протокол догфуда, §5: «evo tools call billing_consumption --arg
-          # start=<дата начала волны> --json» с ключом уровня проекта. evo
-          # берёт договор только из CLOUDRU_AGREEMENT_ID; без него — отказ
-          # CONFIG_INVALID до запроса к API. Проба показывает, что получит
+          # start=<дата начала волны> --json» с ключом уровня проекта. Без
+          # CLOUDRU_AGREEMENT_ID evo считает расход по проекту (project_ids,
+          # scope=project), 403 — API_ERROR с ролью platform.project.admin;
+          # billing_balance без договора — CONFIG_INVALID до запроса к API
+          # (баланса по проекту нет). Проба показывает, что получит
           # участник: код выхода, status, reason, текст ошибки (до 160
           # символов), число строк и имена полей ответа — без сумм.
           echo "== P23 (BIL-5, протокол догфуда §5): evo tools call billing_* без договора"

@@ -519,22 +519,30 @@ func TestS3Get_MissingIsNotFound(t *testing.T) {
 }
 
 // L-06: billing_* без CLOUDRU_AGREEMENT_ID — CONFIG_INVALID с именем
-// переменной, до движка и токена.
+// переменной, до токена. Потребление без договора идёт по проекту
+// (BIL-5), так что CONFIG_INVALID — когда нет и проекта; баланс по
+// проекту API не даёт — без договора отказ, до движка.
 func TestBilling_NoAgreementIsConfigInvalid(t *testing.T) {
 	t.Setenv("CLOUDRU_AGREEMENT_ID", "")
-	r := newTestServer()
+	m, text, isErr := callNamed(t, newTestServer(), "billing_balance", nil)
+	if hint, _ := m["hint"].(string); !isErr || m["reason"] != "CONFIG_INVALID" || !strings.Contains(hint, "CLOUDRU_AGREEMENT_ID") {
+		t.Errorf("billing_balance: %s", text)
+	}
+	r, calls := billingRegistry(t, "", 200, `{}`)
 	for _, c := range []struct {
 		tool string
 		args map[string]any
 	}{
-		{"billing_balance", nil},
 		{"billing_consumption", map[string]any{"start": "2026-10-01"}},
 		{"billing_finops", map[string]any{"start": "2026-10-01", "end": "2026-10-02"}},
 	} {
 		m, text, isErr := callNamed(t, r, c.tool, c.args)
 		hint, _ := m["hint"].(string)
-		if !isErr || m["reason"] != "CONFIG_INVALID" || !strings.Contains(hint, "CLOUDRU_AGREEMENT_ID") {
+		if !isErr || m["reason"] != "CONFIG_INVALID" || !strings.Contains(hint, "CLOUDRU_AGREEMENT_ID") || !strings.Contains(hint, "CLOUDRU_PROJECT_ID") {
 			t.Errorf("%s: %s", c.tool, text)
 		}
+	}
+	if len(*calls) != 0 {
+		t.Errorf("requests without a filter: %v", *calls)
 	}
 }

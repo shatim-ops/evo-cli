@@ -25,26 +25,52 @@ const maxBreakdown = 12
 // billingClient builds an authenticated billing/consumption client. The
 // agreement id comes from the env (CLOUDRU_AGREEMENT_ID), exported by the MCP
 // wrapper from .cloudru/credentials.json — same mechanism as project id.
-func (s *Registry) billingClient(ctx context.Context) (*billing.Client, error) {
+// Consumption is filtered by the project of the argument project_id, or, with
+// no agreement, of the configuration: a key of a project administrator
+// reads the consumption of its project without the agreement id, which it
+// cannot see (api-ref_start; register BIL-5). Neither — CONFIG_INVALID
+// before the token (release audit, L-06).
+func (s *Registry) billingClient(ctx context.Context, args map[string]any) (*billing.Client, error) {
 	agreement := os.Getenv("CLOUDRU_AGREEMENT_ID")
-	if agreement == "" {
-		// Before the token: nothing to ask the cloud without it (release
-		// audit, L-06).
-		return nil, billing.ErrNoAgreement()
-	}
+	project := stringArg(args, "project_id")
 	eng, err := s.newEngine(nil)
 	if err != nil {
 		return nil, err
+	}
+	if agreement == "" && project == "" {
+		project = eng.Config.ProjectID
+	}
+	if agreement == "" && project == "" {
+		return nil, billing.ErrNoAgreement()
 	}
 	tok, err := eng.Auth.Token(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return billing.New(tok.Value, agreement, "", ""), nil
+	return billing.New(tok.Value, agreement, "", "").WithProject(project), nil
+}
+
+// billingScope says which filter the consumption was read by: "agreement"
+// (the whole agreement) or "project" (the project, within the agreement if
+// one is set too), with the ids.
+func billingScope(out map[string]any, cli *billing.Client) {
+	out["scope"] = "agreement"
+	if cli.ProjectID() != "" {
+		out["scope"] = "project"
+		out["project_id"] = cli.ProjectID()
+	}
+	if cli.AgreementID() != "" {
+		out["agreement_id"] = cli.AgreementID()
+	}
 }
 
 func (s *Registry) handleBillingBalance(ctx context.Context, args map[string]any) (string, bool) {
-	cli, err := s.billingClient(ctx)
+	// The balance belongs to the agreement: no API gives it by project.
+	// Before the engine and the token, as before (L-06).
+	if os.Getenv("CLOUDRU_AGREEMENT_ID") == "" {
+		return errResult(billing.ErrBalanceNoAgreement()), true
+	}
+	cli, err := s.billingClient(ctx, nil)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -55,9 +81,12 @@ func (s *Registry) handleBillingBalance(ctx context.Context, args map[string]any
 	return toJSON(data), false
 }
 
-// billNum pulls a numeric value from an item, trying several field names
-// (the consumption schema labels cost as "amount" on some tenants, "cost" on
-// others — accept both rather than silently summing zeros).
+// billNum pulls a numeric value from an item, trying several field names,
+// a number or a string. Consumption rows are read by the spec «Контроль
+// затрат» v2: amount — «Стоимость потребления без НДС», amount_nds — «с
+// НДС», cost — «Тариф потребления облачного сервиса без НДС», the price of a
+// unit, not of the row: never a fallback for amount (a row of zero amount
+// may omit the field, and its tariff would be summed instead).
 func billNum(item map[string]any, keys ...string) float64 {
 	for _, k := range keys {
 		v, ok := item[k]
@@ -94,7 +123,7 @@ func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string
 	if end == "" {
 		end = start
 	}
-	cli, err := s.billingClient(ctx)
+	cli, err := s.billingClient(ctx, args)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -106,8 +135,8 @@ func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string
 	var total, totalNDS float64
 	bySvc := map[string]float64{}
 	for _, it := range items {
-		amt := billNum(it, "amount", "cost")
-		amtNDS := billNum(it, "amount_nds", "cost_nds")
+		amt := billNum(it, "amount")
+		amtNDS := billNum(it, "amount_nds")
 		total += amt
 		totalNDS += amtNDS
 		key := billStr(it, "servname", "servicename", "service")
@@ -145,7 +174,9 @@ func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string
 		"total_with_nds": totalNDS,
 		"records":        len(items),
 		"by_service":     breakdown,
+		"vat":            consumptionVAT,
 	}
+	billingScope(out, cli)
 	if svcTrunc > 0 {
 		out["by_service_truncated"] = svcTrunc
 	}
@@ -163,14 +194,22 @@ func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string
 	return toJSON(out), false
 }
 
-// aggregateConsumption sums line-item cost (using `cost`, falling back to
-// `amount`) grouped by service+resource. Cost field = `cost` (line cost), NOT
-// `amount` (per-unit price) — matching the ported finops_report.py.
+// consumptionVAT says which sums of the answer include VAT.
+var consumptionVAT = map[string]string{
+	"total":          "excluding VAT: sum of amount",
+	"total_with_nds": "including VAT: sum of amount_nds",
+	"by_service":     "excluding VAT: amount",
+}
+
+// aggregateConsumption sums the cost of the rows, `amount` (excluding VAT),
+// grouped by service+resource. It summed `cost` first, as the ported
+// finops_report.py did; the spec calls `cost` the tariff of the service, the
+// price of a unit, and `amount` the cost of the row.
 func aggregateConsumption(items []map[string]any) (float64, map[string]float64) {
 	total := 0.0
 	bySvc := map[string]float64{}
 	for _, it := range items {
-		c := billNum(it, "cost", "amount")
+		c := billNum(it, "amount")
 		total += c
 		key := billStr(it, "servname", "servicename", "service")
 		if rn := billStr(it, "resource_name", "resourcename"); rn != "" {
@@ -216,7 +255,7 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 		periodDays = 1
 	}
 
-	cli, err := s.billingClient(ctx)
+	cli, err := s.billingClient(ctx, args)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -230,14 +269,17 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 
 	// Balance: billing.api.cloud.ru/v1/agreement is in none of Cloud.ru's
 	// published specs (api-contract §4.1). If it fails, the cost part of the
-	// summary still stands: the balance is "unknown", not an error.
+	// summary still stands: the balance is "unknown", not an error. Without
+	// an agreement (consumption by project) there is no balance to ask for.
 	bal, balErr := cli.Balance(ctx)
 	balance := billNum(bal, "balance")
 	active, _ := bal["active"].(bool)
 
 	daily := total / float64(periodDays)
+	// The balance is the agreement's: against the burn of one project
+	// (project_id with an agreement) the runway would be too long.
 	var runway float64
-	if daily > 0 && balErr == nil {
+	if daily > 0 && balErr == nil && cli.ProjectID() == "" {
 		runway = balance / daily
 	}
 
@@ -305,9 +347,15 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 		"anomalies":   anomalies,
 		"line_items":  len(cons),
 	}
+	billingScope(out, cli)
+	out["vat"] = map[string]string{"total_cost": "excluding VAT: sum of amount", "by_service": "excluding VAT: amount"}
 	if balErr != nil {
 		out["balance"], out["active"] = nil, nil
-		out["balance_error"] = "balance unavailable (undocumented billing endpoint): " + balErr.Error()
+		if cli.AgreementID() == "" {
+			out["balance_error"] = "balance unavailable: it needs the billing agreement (CLOUDRU_AGREEMENT_ID), the API has no balance by project"
+		} else {
+			out["balance_error"] = "balance unavailable (undocumented billing endpoint): " + balErr.Error()
+		}
 	}
 	if svcTrunc > 0 {
 		out["by_service_truncated"] = svcTrunc
@@ -321,6 +369,9 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	} else {
 		out["runway_days"] = nil
 		out["projected_zero_date"] = nil
+		if balErr == nil && cli.ProjectID() != "" {
+			out["runway_note"] = "runway not computed: the balance is the agreement's, the costs are the project's"
+		}
 	}
 	if budget := billNum(args, "budget"); budget > 0 {
 		proj := daily * 30

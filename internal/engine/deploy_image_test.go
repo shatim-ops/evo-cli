@@ -90,7 +90,7 @@ func TestDeploy_RefusesOSWithoutDockerBeforeCreating(t *testing.T) {
 			err := eng.Deploy(context.Background(), opts)
 			var ce *clerrors.CLIError
 			if !asCLI(err, &ce) || ce.Code != clerrors.CodeConfigInvalid ||
-				!strings.Contains(ce.Message, "(get.docker.com) не поддерживает "+tc.family) ||
+				!strings.Contains(ce.Message, "Docker не выпускает пакеты для "+tc.family) ||
 				!strings.Contains(ce.Hint, "Ubuntu или Debian") || !strings.Contains(ce.Hint, "evo vm create") {
 				t.Fatalf("ошибка: %v (%+v)", err, ce)
 			}

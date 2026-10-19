@@ -53,7 +53,7 @@ func TestResolve_NoDockerOSWithComposeNoPlan(t *testing.T) {
 	plan, err := Resolve(context.Background(), cloud, "proj-1", Params{Name: "web", Image: "astra_1.8.1", ComposeFile: "services: {}"})
 	ce, ok := err.(*clierrors.CLIError)
 	if plan != nil || !ok || ce.Code != clierrors.CodeUsage || !strings.Contains(ce.Message, "astra_1.8.1") ||
-		!strings.Contains(ce.Message, "get.docker.com") || !strings.Contains(ce.Message, "Astra Linux") {
+		!strings.Contains(ce.Message, "download.docker.com") || !strings.Contains(ce.Message, "Astra Linux") {
 		t.Fatalf("ошибка: %#v", err)
 	}
 	plan, err = Resolve(context.Background(), cloud, "proj-1", Params{Name: "web", Image: "astra_1.8.1"})

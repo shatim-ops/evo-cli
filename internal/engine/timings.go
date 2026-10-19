@@ -20,7 +20,8 @@ const (
 	verifySettleDelay     = 2 * time.Second
 	verifyTimeout         = 10 * time.Second
 	dockerPollInterval    = 10 * time.Second
-	dockerWaitTimeout     = 10 * time.Minute // cloud-init: apt upgrade + get.docker.com
+	dockerWaitTimeout     = 15 * time.Minute // cloud-init, then the image mirror and, when it fails, the official one
+	sshSlowNote           = 5 * time.Minute  // a new VM usually answers SSH in 2-5 minutes
 	destroyPollInterval   = 3 * time.Second
 	destroyPollTimeout    = 2 * time.Minute  // unconfirmed is a partial destroy to re-run (release audit, A-005)
 	deletableWaitTimeout  = 10 * time.Minute // a VM still "creating" cannot be deleted yet
@@ -44,6 +45,7 @@ type Timings struct {
 	FIPLookupInterval  time.Duration // between lookups of a boot FIP after Ctrl-C
 	FIPPollInterval    time.Duration // waiting for the floating IP to become in_use
 	SSHRetryInterval   time.Duration // between SSH connect attempts
+	SSHSlowNote        time.Duration // without SSH this long, deploy says once why it still waits
 	SettleDelay        time.Duration // pause before health checks after compose up
 	VerifyTimeout      time.Duration // per-port HTTP probe timeout
 
@@ -73,6 +75,7 @@ func (t Timings) withDefaults() Timings {
 	def(&t.FIPLookupInterval, fipLookupInterval)
 	def(&t.FIPPollInterval, fipPollInterval)
 	def(&t.SSHRetryInterval, sshRetryInterval)
+	def(&t.SSHSlowNote, sshSlowNote)
 	def(&t.SettleDelay, verifySettleDelay)
 	def(&t.VerifyTimeout, verifyTimeout)
 	def(&t.DockerPollInterval, dockerPollInterval)
