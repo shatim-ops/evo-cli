@@ -43,7 +43,7 @@
 | `ca_get` | нет | `name` | Get a Container App by name — full details incl. |
 | `ca_deploy` | да | `name`, `image` | Deploy (create+run) a Container App from a container image — serverless, scales to zero when idle. |
 | `ca_delete` | удаляет | `name` | Delete a Container App by name. |
-| `ca_logs` | нет | `name` | Get recent logs of a Container App (last 100 lines). |
+| `ca_logs` | нет | `name` | Get recent logs of a Container App: the last 100 lines by time, oldest first (app logs are the container's stdout/stderr). |
 | `ca_start` | да | `name` | Start a stopped Container App (it is billed while running). |
 | `ca_stop` | да | `name` | Stop a running Container App (it stops serving requests). |
 

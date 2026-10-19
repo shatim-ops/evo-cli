@@ -258,16 +258,16 @@
       "name": "containers",
       "spec": "containers/openapi.yaml",
       "requests": [
-        {"method": "GET", "path": "/v2/containers", "code": "internal/containerapp/client.go:159", "query": ["projectId", "pageToken"], "paginates": true, "reads": ["data[].id", "data[].name", "data[].status", "nextPageToken"]},
-        {"method": "GET", "path": "/v2/containers/{name}", "code": "internal/containerapp/client.go:183", "query": ["projectId"], "reads": ["id", "name", "status", "configuration.ingress.publicUri"]},
-        {"method": "POST", "path": "/v2/containers", "code": "internal/containerapp/client.go:201", "query": ["projectId"],
+        {"method": "GET", "path": "/v2/containers", "code": "internal/containerapp/client.go:160", "query": ["projectId", "pageToken"], "paginates": true, "reads": ["data[].id", "data[].name", "data[].status", "nextPageToken"]},
+        {"method": "GET", "path": "/v2/containers/{name}", "code": "internal/containerapp/client.go:184", "query": ["projectId"], "reads": ["id", "name", "status", "configuration.ingress.publicUri"]},
+        {"method": "POST", "path": "/v2/containers", "code": "internal/containerapp/client.go:202", "query": ["projectId"],
          "body": ["projectId", "name", "description", "configuration.ingress.publiclyAccessible", "configuration.privileged", "template.protocol", "template.timeout", "template.idleTimeout", "template.scaling.minInstanceCount", "template.scaling.maxInstanceCount", "template.containers[].name", "template.containers[].image", "template.containers[].resources.cpu", "template.containers[].resources.memory", "template.containers[].containerPort", "template.containers[].env[].name", "template.containers[].env[].value", "template.containers[].env[].type", "template.containers[].command", "template.containers[].args"],
          "reads": ["id", "resourceId", "done"], "accepted": {"query-unknown:projectId": "do() добавляет projectId ко всем запросам"}},
-        {"method": "DELETE", "path": "/v2/containers/{name}", "code": "internal/containerapp/client.go:216", "query": ["projectId"], "reads": ["id", "done"]},
-        {"method": "POST", "path": "/v2/containers/{name}:start", "code": "internal/containerapp/client.go:229", "query": ["projectId"], "body": [], "reads": ["id", "done"], "accepted": {"query-unknown:projectId": "см. POST /v2/containers"}},
-        {"method": "POST", "path": "/v2/containers/{name}:stop", "code": "internal/containerapp/client.go:229", "query": ["projectId"], "body": [], "reads": ["id", "done"], "accepted": {"query-unknown:projectId": "см. POST /v2/containers"}},
-        {"method": "GET", "path": "/v2/containers/{name}/logs", "code": "internal/containerapp/client.go:240", "query": ["projectId"], "reads": ["data"]},
-        {"method": "GET", "path": "/v2/containers/{name}/systemLogs", "code": "internal/containerapp/client.go:242", "query": ["projectId"], "reads": ["data"]}
+        {"method": "DELETE", "path": "/v2/containers/{name}", "code": "internal/containerapp/client.go:217", "query": ["projectId"], "reads": ["id", "done"]},
+        {"method": "POST", "path": "/v2/containers/{name}:start", "code": "internal/containerapp/client.go:230", "query": ["projectId"], "body": [], "reads": ["id", "done"], "accepted": {"query-unknown:projectId": "см. POST /v2/containers"}},
+        {"method": "POST", "path": "/v2/containers/{name}:stop", "code": "internal/containerapp/client.go:230", "query": ["projectId"], "body": [], "reads": ["id", "done"], "accepted": {"query-unknown:projectId": "см. POST /v2/containers"}},
+        {"method": "GET", "path": "/v2/containers/{name}/logs", "code": "internal/containerapp/client.go:278", "query": ["projectId", "pageSize=100", "pageToken"], "paginates": true, "reads": ["data[].timestamp", "nextPageToken"]},
+        {"method": "GET", "path": "/v2/containers/{name}/systemLogs", "code": "internal/containerapp/client.go:272", "query": ["projectId"], "reads": ["data[].lastTimestamp", "data[].firstTimestamp"]}
       ]
     },
     {
@@ -367,7 +367,8 @@
   "code_coverage": {
     "_comment": "Пути, которые код собирает так, что сверка покрытия (api-contract-check.py, code_sites) не может сопоставить их с описью сама. ignore — литерал не является запросом к API; expand — шаблон, сегмент которого выбирается во время работы: каждый из путей to должен быть в описи. file — glob пути файла, path — путь, как его печатает проверка ({} на месте параметра), method — если правило только для одного метода.",
     "ignore": [
-      {"file": "internal/tools/tools_k8s_addons.go", "path": "/docs/kubernetes-evolution/ug/topics/overview__limitations", "reason": "ссылка на документацию cloud.ru в тексте подсказки, не запрос"}
+      {"file": "internal/tools/tools_k8s_addons.go", "path": "/docs/kubernetes-evolution/ug/topics/overview__limitations", "reason": "ссылка на документацию cloud.ru в тексте подсказки, не запрос"},
+      {"file": "internal/tools/tools_ca.go", "path": "/docs/container-apps-evolution/ug/topics/concepts__logging", "reason": "ссылка на документацию cloud.ru в подсказке ca_logs, не запрос"}
     ],
     "expand": [
       {"file": "internal/dns/client.go", "path": "/v1/{}", "to": ["/v1/publicZones", "/v1/privateZones", "/v1/publicRecordsSole", "/v1/privateRecordsSole"],

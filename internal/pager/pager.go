@@ -21,18 +21,32 @@ const MaxPages = 1000
 // returns the next-page token. what names the list in the error past
 // MaxPages.
 func All(what string, fetch func(token string) (next string, err error)) error {
+	more, err := Upto(MaxPages, fetch)
+	if err != nil {
+		return err
+	}
+	if more {
+		return fmt.Errorf("%s: more than %d pages, the list is not complete", what, MaxPages)
+	}
+	return nil
+}
+
+// Upto reads pages as All does, but at most max of them. more reports that
+// max pages were read and the last one still named a new token: the caller
+// decides whether a cut list is an error.
+func Upto(max int, fetch func(token string) (next string, err error)) (more bool, err error) {
 	seen := map[string]bool{}
 	token := ""
-	for page := 0; page < MaxPages; page++ {
+	for page := 0; page < max; page++ {
 		next, err := fetch(token)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if next == "" || seen[next] {
-			return nil
+			return false, nil
 		}
 		seen[next] = true
 		token = next
 	}
-	return fmt.Errorf("%s: more than %d pages, the list is not complete", what, MaxPages)
+	return true, nil
 }

@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -236,23 +237,131 @@ func (c *Client) StartStop(ctx context.Context, name, action string) error {
 	return nil
 }
 
-func (c *Client) Logs(ctx context.Context, name string, system bool) ([]map[string]any, error) {
-	p := "/v2/containers/" + url.PathEscape(name) + "/logs"
+// logsPageSize is the pageSize of an app logs request. The specification
+// names the parameter but not its default nor the order of lines, and
+// other Cloud.ru lists without pageSize answer an empty page with a new
+// token (register AR-4) or 400 (certificate versions).
+const logsPageSize = "100"
+
+// logsMaxPages bounds the read of one app log: 50 pages of 100 lines.
+// The console shows the last 1000 records (concepts__logging).
+const logsMaxPages = 50
+
+// LogsResult is the tail of a container's log.
+type LogsResult struct {
+	// Lines are the newest lines by time, oldest first.
+	Lines []map[string]any
+	// Read is how many lines the API returned in all pages.
+	Read int
+	// Cut reports that logsMaxPages pages were read and the API still
+	// named a next page: older or newer lines (the order of the API is not
+	// described) may be missing.
+	Cut bool
+}
+
+// Logs returns the last tail lines of a container's log by time. App logs
+// (GET /v2/containers/{name}/logs) are read page by page: nextPageToken in
+// the answer, pageToken and pageSize in the request. The read ends on an
+// empty page or a page already seen (a token the API ignores), as
+// artifact.ListRegistries does. System logs (/systemLogs) have no
+// pagination in the specification: one request.
+func (c *Client) Logs(ctx context.Context, name string, system bool, tail int) (*LogsResult, error) {
+	var all []map[string]any
+	res := &LogsResult{}
 	if system {
-		p = "/v2/containers/" + url.PathEscape(name) + "/systemLogs"
+		data, err := c.logsPage(ctx, "/v2/containers/"+url.PathEscape(name)+"/systemLogs", nil)
+		if err != nil {
+			return nil, err
+		}
+		all = data.Data
+	} else {
+		p := "/v2/containers/" + url.PathEscape(name) + "/logs"
+		seen := map[string]bool{}
+		more, err := pager.Upto(logsMaxPages, func(token string) (string, error) {
+			q := url.Values{"pageSize": {logsPageSize}}
+			if token != "" {
+				q.Set("pageToken", token)
+			}
+			page, err := c.logsPage(ctx, p, q)
+			if err != nil {
+				return "", err
+			}
+			if len(page.Data) == 0 || seen[page.raw] {
+				return "", nil
+			}
+			seen[page.raw] = true
+			all = append(all, page.Data...)
+			return page.NextPageToken, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		res.Cut = more
 	}
-	data, st, err := c.do(ctx, http.MethodGet, p, nil, nil)
+	res.Read = len(all)
+	res.Lines = lastByTime(all, tail, system)
+	return res, nil
+}
+
+type logsPage struct {
+	Data          []map[string]any `json:"data"`
+	NextPageToken string           `json:"nextPageToken"`
+	raw           string           // data as answered: a repeated page ends the read
+}
+
+func (c *Client) logsPage(ctx context.Context, path string, q url.Values) (*logsPage, error) {
+	data, st, err := c.do(ctx, http.MethodGet, path, q, nil)
 	if err != nil {
 		return nil, err
 	}
 	if st != 200 {
 		return nil, apiError(st, data)
 	}
-	var r struct {
-		Data []map[string]any `json:"data"`
-	}
+	var r logsPage
 	if err := json.Unmarshal(data, &r); err != nil {
 		return nil, fmt.Errorf("parse logs: %w", err)
 	}
-	return r.Data, nil
+	if b, err := json.Marshal(r.Data); err == nil {
+		r.raw = string(b)
+	}
+	return &r, nil
+}
+
+// lastByTime sorts lines oldest first and keeps the last tail of them. The
+// time is timestamp (ContainerLog), for system logs lastTimestamp, else
+// firstTimestamp (ContainerSystemLog). Lines without a time that parses
+// sort first and keep the order of the API between them; tail <= 0 keeps
+// all.
+func lastByTime(lines []map[string]any, tail int, system bool) []map[string]any {
+	keys := []string{"timestamp"}
+	if system {
+		keys = []string{"lastTimestamp", "firstTimestamp"}
+	}
+	at := func(m map[string]any) time.Time {
+		for _, k := range keys {
+			if s, ok := m[k].(string); ok {
+				if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+					return t
+				}
+			}
+		}
+		return time.Time{}
+	}
+	type line struct {
+		t time.Time
+		m map[string]any
+	}
+	ls := make([]line, len(lines))
+	for i, m := range lines {
+		ls[i] = line{at(m), m}
+	}
+	slices.SortStableFunc(ls, func(a, b line) int { return a.t.Compare(b.t) })
+	if tail > 0 && len(ls) > tail {
+		ls = ls[len(ls)-tail:]
+	}
+	out := make([]map[string]any, len(ls))
+	for i, l := range ls {
+		out[i] = l.m
+	}
+	return out
 }

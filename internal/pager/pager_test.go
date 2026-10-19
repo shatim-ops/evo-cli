@@ -80,3 +80,23 @@ func TestAll_FetchErrorStops(t *testing.T) {
 		t.Fatalf("err = %v, calls = %d", err, calls)
 	}
 }
+
+func TestUpto_ReportsMore(t *testing.T) {
+	calls := 0
+	more, err := Upto(3, func(string) (string, error) {
+		calls++
+		return strconv.Itoa(calls), nil // a new token every time
+	})
+	if err != nil || !more || calls != 3 {
+		t.Fatalf("more = %v, err = %v, calls = %d", more, err, calls)
+	}
+	more, err = Upto(3, func(token string) (string, error) {
+		if token == "" {
+			return "a", nil
+		}
+		return "", nil
+	})
+	if err != nil || more {
+		t.Fatalf("complete list: more = %v, err = %v", more, err)
+	}
+}

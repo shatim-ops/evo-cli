@@ -239,14 +239,34 @@ func (s *Registry) handleCaLogs(ctx context.Context, args map[string]any) (strin
 	if err != nil {
 		return errResult(err), true
 	}
-	logs, err := cli.Logs(ctx, name, system)
+	res, err := cli.Logs(ctx, name, system, caLogsTail)
 	if err != nil {
 		return errResult(err), true
 	}
-	if len(logs) > 100 {
-		logs = logs[len(logs)-100:]
+	return toJSON(caLogsOutput(res, system)), false
+}
+
+// caLogsTail is how many lines ca_logs answers: the newest by time.
+const caLogsTail = 100
+
+// caLogsDoc is the Evolution page on Container Apps logs.
+const caLogsDoc = "https://cloud.ru/docs/container-apps-evolution/ug/topics/concepts__logging"
+
+// caLogsOutput is the answer of ca_logs: the lines, and a note when there
+// are none or the read was cut, so that an empty list does not read as
+// "the app writes nothing" without a word.
+func caLogsOutput(res *containerapp.LogsResult, system bool) map[string]any {
+	out := map[string]any{"logs": res.Lines}
+	switch {
+	case res.Cut:
+		out["truncated"] = true
+		out["note"] = fmt.Sprintf("Read %d lines and the API still names a next page; it does not document the order of pages, so the newest lines may be missing. The console shows the full log: Container Apps → <app> → Logs (%s).", res.Read, caLogsDoc)
+	case len(res.Lines) == 0 && system:
+		out["note"] = "No system events for this container app. App logs (stdout/stderr): ca_logs without system."
+	case len(res.Lines) == 0:
+		out["note"] = fmt.Sprintf("No app log lines. App logs are what the container writes to stdout and stderr (%s); logs of the \"Request logging\" option go to the Logging service, not here. The delivery delay of logs is not documented: if the app has just served requests, call ca_logs again in a minute. system=true shows platform events (start, scaling, errors).", caLogsDoc)
 	}
-	return toJSON(map[string]any{"logs": logs}), false
+	return out
 }
 
 func (s *Registry) handleCaStartStop(ctx context.Context, args map[string]any, action string) (string, bool) {
