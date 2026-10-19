@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -63,6 +64,12 @@ var kubectlHTTPVerbosityFlags = map[string]bool{"v": true, "vmodule": true}
 // kubectlHTTPCheck validates k8s_kubectl arguments for the HTTP transport.
 // allowSecrets also permits commands that print credentials.
 func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
+	// The command comes first. This check does not know which flags take a
+	// value, kubectl does: in "-n get cp …" it reads "get" as the namespace
+	// and runs cp (security audit 19.10, SEC-1).
+	if len(fields) > 0 && strings.HasPrefix(fields[0], "-") {
+		return fmt.Errorf("k8s_kubectl over HTTP: put the kubectl command first, flags after it (got %q first)", fields[0])
+	}
 	verb := ""
 	var resources, outputs []string
 	template, list := false, false
@@ -133,7 +140,9 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 	if allowSecrets {
 		return nil
 	}
-	if verb == "create" && len(resources) > 0 && resources[0] == "token" {
+	// Not resources[0]: a flag value before the subcommand ("create -n
+	// default token sa") lands in resources too (SEC-1).
+	if verb == "create" && slices.Contains(resources, "token") {
 		return fmt.Errorf("k8s_kubectl create token is disabled over HTTP: it mints a credential; start the server with --allow-secret-export to enable it")
 	}
 	if !namesSecrets(resources) {
@@ -155,7 +164,7 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 		// annotate --list shows the last-applied-configuration annotation,
 		// which holds the data of a Secret created with apply.
 		return fmt.Errorf("k8s_kubectl %s secret with --list is disabled over HTTP: %s", verb, hint)
-	case verb == "apply" && len(resources) > 0 && resources[0] == "view-last-applied":
+	case verb == "apply" && slices.Contains(resources, "view-last-applied"):
 		// Prints the same annotation, as YAML by default.
 		return fmt.Errorf("k8s_kubectl apply view-last-applied secret is disabled over HTTP: %s", hint)
 	}
