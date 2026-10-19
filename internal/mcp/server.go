@@ -90,8 +90,16 @@ type Annotations struct {
 }
 
 // annotations derives the hints from the registry: a read is read-only and
-// idempotent, a mutation is destructive by tools.IsDestructive.
+// idempotent, a mutation is destructive by tools.IsDestructive. A tool that
+// reveals a secret (tools.IsSensitive: secret_value, cert_private_key) is
+// not read-only, so the client asks the person before the call; it changes
+// nothing, so it is idempotent and says destructiveHint false (the default
+// of a tool that is not read-only is true).
 func annotations(t tools.Tool) Annotations {
+	if tools.IsSensitive(t) {
+		d := false
+		return Annotations{DestructiveHint: &d, IdempotentHint: true}
+	}
 	a := Annotations{ReadOnlyHint: !t.Mutating, IdempotentHint: !t.Mutating}
 	if t.Mutating {
 		d := tools.IsDestructive(t)

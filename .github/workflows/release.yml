@@ -91,13 +91,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      AR_REGISTRY: ${{ secrets.CLOUDRU_AR_REGISTRY }}
-      AR_KEY_ID: ${{ secrets.CLOUDRU_AR_KEY_ID }}
-      AR_SECRET: ${{ secrets.CLOUDRU_AR_SECRET }}
+    # Ключ Artifact Registry — только в env шагов, которым он нужен (проверка
+    # и push), а не всей job: сборка и smoke-тест запускают код образа, и
+    # переменные job были бы видны им (аудит безопасности 19.10, SEC-5).
     steps:
       - name: секреты Artifact Registry
         id: ar
+        env:
+          AR_REGISTRY: ${{ secrets.CLOUDRU_AR_REGISTRY }}
+          AR_KEY_ID: ${{ secrets.CLOUDRU_AR_KEY_ID }}
+          AR_SECRET: ${{ secrets.CLOUDRU_AR_SECRET }}
         run: |
           if [ -z "$AR_REGISTRY" ] || [ -z "$AR_KEY_ID" ] || [ -z "$AR_SECRET" ]; then
             echo "::notice title=Образ не опубликован::не заданы секреты CLOUDRU_AR_REGISTRY, CLOUDRU_AR_KEY_ID, CLOUDRU_AR_SECRET"
@@ -152,6 +155,8 @@ jobs:
           HOST: ${{ steps.ar.outputs.host }}
           VERSION: ${{ steps.ar.outputs.version }}
           LATEST: ${{ steps.ar.outputs.latest }}
+          AR_KEY_ID: ${{ secrets.CLOUDRU_AR_KEY_ID }}
+          AR_SECRET: ${{ secrets.CLOUDRU_AR_SECRET }}
         run: |
           echo "$AR_SECRET" | docker login "$HOST" -u "$AR_KEY_ID" --password-stdin
           docker push "$HOST/evo:$VERSION"

@@ -270,6 +270,8 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	long := t.Description + "\n\nRuns the " + t.Name + " tool (see 'evo tools describe " + t.Name + "')."
 	if t.Mutating {
 		long += "\nAsks for confirmation: a prompt on a terminal, --yes to confirm in advance, --dry-run to see the preview only."
+	} else if tools.IsSensitive(t) {
+		long += "\nReveals a secret, so it asks for confirmation: a prompt on a terminal, --yes to confirm in advance."
 	}
 	if i18n.Lang() == i18n.RU {
 		if ru, ok := toolShortRU[t.Name]; ok {
@@ -284,6 +286,8 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		}
 		if t.Mutating {
 			long += "\n\nСпрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью."
+		} else if tools.IsSensitive(t) {
+			long += "\n\nПоказывает секрет, поэтому спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее."
 		}
 	}
 

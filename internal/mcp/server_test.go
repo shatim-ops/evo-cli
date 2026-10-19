@@ -154,14 +154,23 @@ func TestToolsList(t *testing.T) {
 
 // Every tool carries MCP annotations: readOnlyHint is the opposite of
 // Mutating, every *_delete and the listed destroying tools are destructive,
-// a read is idempotent and never destructive.
+// a read is idempotent and never destructive. A tool revealing a secret
+// (secret_value, cert_private_key) is not read-only, so the client asks the
+// person, and says it destroys nothing (SEC-4).
 func TestToolsList_Annotations(t *testing.T) {
 	s := newTestServer()
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	listed := resp["result"].(map[string]any)["tools"].([]any)
 	mutating := map[string]bool{}
+	sensitive := map[string]bool{}
 	for _, tl := range tools.New(nil).Tools() {
 		mutating[tl.Name] = tl.Mutating
+		sensitive[tl.Name] = tools.IsSensitive(tl)
+	}
+	for _, name := range []string{"secret_value", "cert_private_key"} {
+		if !sensitive[name] || mutating[name] {
+			t.Errorf("%s: sensitive=%v mutating=%v, want a sensitive read", name, sensitive[name], mutating[name])
+		}
 	}
 	destructive := map[string]bool{"destroy": true, "stack_destroy": true, "release_floating_ip": true,
 		"s3_rm": true, "s3_put": true, "k8s_kubectl": true, "k8s_apply": true, "k8s_helm": true, "k8s_add_addon": true}
@@ -181,6 +190,12 @@ func TestToolsList_Annotations(t *testing.T) {
 				return v
 			}
 			return def
+		}
+		if sensitive[name] {
+			if a["readOnlyHint"] == true || a["destructiveHint"] != false || a["idempotentHint"] != true {
+				t.Errorf("%s: annotations %v, want readOnlyHint absent, destructiveHint false, idempotentHint true", name, a)
+			}
+			continue
 		}
 		if hint("readOnlyHint", false) != !mutating[name] {
 			t.Errorf("%s: readOnlyHint=%v, Mutating=%v", name, a["readOnlyHint"], mutating[name])

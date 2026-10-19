@@ -137,3 +137,27 @@ func TestMCPFactory_EngineDoesNotPrintToStdout(t *testing.T) {
 		t.Errorf("engine printed to stdout: %q", out)
 	}
 }
+
+// SEC-9: предупреждение о коротком токене — до 32 символов (было 16);
+// сервер всё равно запускается.
+func TestBearerTokenWarning(t *testing.T) {
+	for _, c := range []struct {
+		token string
+		warn  bool
+	}{
+		{"", false},
+		{"short", true},
+		{strings.Repeat("x", 16), true},
+		{strings.Repeat("x", 31), true},
+		{strings.Repeat("x", 32), false},
+		{strings.Repeat("x", 64), false},
+	} {
+		w := bearerTokenWarning(c.token)
+		if (w != "") != c.warn {
+			t.Errorf("len %d: warning %q, want warn=%v", len(c.token), w, c.warn)
+		}
+		if c.warn && (!strings.Contains(w, "32") || !strings.Contains(w, "MCP_BEARER_TOKEN")) {
+			t.Errorf("len %d: %q", len(c.token), w)
+		}
+	}
+}

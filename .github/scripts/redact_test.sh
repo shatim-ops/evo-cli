@@ -30,6 +30,39 @@ check "реестр 0b5e9a6c11112222333344445555666f готов" "реестр <
 check "docker push myreg.cr.cloud.ru/app:1" "docker push <registry>.cr.cloud.ru/app:1"
 check "server: https://abc123.mk8s.ru-central-1.cloud.ru:6443" "server: https://<host>:6443"
 check "коммит 60f3e13f22e913240461e8839d99f634f2e69651" "коммит 60f3e13f22e913240461e8839d99f634f2e69651"
+# SEC-6: IPv6. Маскируется адрес с «::» или из трёх групп и больше с буквой
+# a-f; время и таймстемпы GitHub остаются.
+check "адрес 2001:db8::1 открыт" "адрес <ipv6> открыт"
+check "listen [::1]:8080" "listen [<ipv6>]:8080"
+check "fe80::a1b2:3c4d%eth0 up" "<ipv6>%eth0 up"
+check "подсеть 2001:db8::/32" "подсеть <name>"
+check "сеть 2001:db8::/32 и 2001:db8:abcd::/48" "сеть <ipv6>/32 и <ipv6>/48"
+check "ВМ 2001:db8:0:0:1:2:3:4 и 2001:0db8:85a3:0000:0000:8a2e:0370:7334" "ВМ <ipv6> и <ipv6>"
+check "dial tcp [2001:db8:1:2::5]:443: i/o timeout" "dial tcp [<ipv6>]:443: i/o timeout"
+check "21:07:13 шаг 3 из 5" "21:07:13 шаг 3 из 5"
+check "2026-10-19T21:07:13.4332220Z ##[group]Run evo deploy" "2026-10-19T21:07:13.4332220Z ##[group]Run evo deploy"
+check "длилось 01:02:03, до 12:30" "длилось 01:02:03, до 12:30"
+check "std::string, Foo::Bar" "std::string, Foo::Bar"
+# Две группы или группы без букв a-f — не IPv6: «ab:cd», «1:2:3», порт.
+check "метка ab:cd, версия 1:2:3, порт 10:22" "метка ab:cd, версия 1:2:3, порт 10:22"
+check "::notice title=x::готово" "::notice title=x::готово"
+# 32-значный ID, приклеенный через «_», и UUID с хвостом.
+check "registry reg_0b5e9a6c11112222333344445555666f created" "registry reg_<id> created"
+check "файл 0b5e9a6c11112222333344445555666f_key.pem" "файл <id>_key.pem"
+check "x_0b5e9a6c11112222333344445555666f_y" "x_<id>_y"
+check "диск 0b5e9a6c-1111-2222-3333-444455556666abc и disk_0b5e9a6c-1111-2222-3333-444455556666_boot" \
+      "диск <id> и disk_<id>_boot"
+# Поддомены cloud.ru — имена ресурсов; публичные хосты API и входа остаются.
+check "GET https://evo-e2e-bucket.s3.cloud.ru/key" "GET https://<bucket>.s3.cloud.ru/key"
+check "endpoint https://s3.cloud.ru, region ru-central-1" "endpoint https://s3.cloud.ru, region ru-central-1"
+check "app https://my-app-1a2b.containers.cloud.ru готово" "app https://<host>.cloud.ru готово"
+check "db pg-123.private.cloud.ru:5432" "db <host>.cloud.ru:5432"
+check "POST https://compute.api.cloud.ru/api/v1/vms и https://foundation-models.api.cloud.ru/v1" \
+      "POST https://compute.api.cloud.ru/api/v1/vms и https://foundation-models.api.cloud.ru/v1"
+check "токен https://iam.api.cloud.ru/api/v1/auth/token, https://id.cloud.ru/auth, https://auth.iam.cloud.ru/auth/system/openid/token" \
+      "токен https://iam.api.cloud.ru/api/v1/auth/token, https://id.cloud.ru/auth, https://auth.iam.cloud.ru/auth/system/openid/token"
+check "ключ — https://console.cloud.ru, документация https://cloud.ru/docs" "ключ — https://console.cloud.ru, документация https://cloud.ru/docs"
+check "хост x.compute.api.cloud.ru" "хост <host>.cloud.ru"
 # Имя в конце значения JSON: маска съедает и кавычку со скобкой, поэтому в
 # cloud-e2e сначала jq, потом redact.sed и обрезка (ревью Grok по #88).
 check '{"status":"error","error":"не найдена подсеть evo-e2e-net"}' '{"status":"error","error":"не найдена подсеть <name>'

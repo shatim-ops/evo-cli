@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -70,6 +72,24 @@ func isPublicKeyLine(line string) bool {
 		}
 	}
 	return false
+}
+
+// describeUserKeys is what deploy_plan shows of the keys deploy_apply will
+// append: type, SHA256 fingerprint and comment of each. The file may have
+// come with a repository someone else wrote (a template with .evo/ in
+// it): the user approving the plan sees whose keys get a login on the VM
+// (security audit 19.10, follow-up of SEC-2).
+func describeUserKeys(keys []string) []map[string]string {
+	out := make([]map[string]string, 0, len(keys))
+	for _, k := range keys {
+		pub, comment, _, _, err := ssh.ParseAuthorizedKey([]byte(k))
+		if err != nil {
+			out = append(out, map[string]string{"error": "not a valid public key: " + strings.Fields(k)[0]})
+			continue
+		}
+		out = append(out, map[string]string{"type": pub.Type(), "fingerprint": ssh.FingerprintSHA256(pub), "comment": comment})
+	}
+	return out
 }
 
 // appendUserKeys SSHes into the freshly created VM with the agent's deploy

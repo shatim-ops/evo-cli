@@ -343,14 +343,17 @@ func loadOrGenerateSSHKey(projectDir string) (privPEM []byte, pubKey string, err
 	ignoreInGit(keyDir)
 
 	// Try loading existing key pair.
-	privPEM, errPriv := readKeyFile(privPath)
-	pubBytes, errPub := readKeyFile(pubPath)
+	privPEM, privMode, errPriv := readKeyFile(privPath)
+	pubBytes, _, errPub := readKeyFile(pubPath)
 	for _, e := range []error{errPriv, errPub} {
 		if e != nil && !os.IsNotExist(e) {
 			return nil, "", e
 		}
 	}
 	if errPriv == nil && errPub == nil && len(privPEM) > 0 && len(pubBytes) > 0 {
+		if err := checkPrivateKeyMode(privPath, privMode); err != nil {
+			return nil, "", err
+		}
 		return privPEM, string(pubBytes), nil
 	}
 
@@ -407,7 +410,8 @@ func ensureKeyDir(dir string) error {
 
 // sshKeyWarnings reports a key directory or private key other users can
 // reach. Only Windows ACLs are checked: on Unix ensureKeyDir makes the
-// directory 0700 and the key is written 0600.
+// directory 0700, the key is written 0600 and a looser existing key is
+// refused (checkPrivateKeyMode).
 func sshKeyWarnings(projectDir string) []string {
 	keyDir := config.DataDir(projectDir)
 	var out []string
@@ -434,20 +438,44 @@ func ignoreInGit(dir string) {
 	_ = f.Close()
 }
 
-// readKeyFile reads a key file that must be a regular file, not a symlink.
-func readKeyFile(path string) ([]byte, error) {
+// readKeyFile reads a key file that must be a regular file, not a symlink,
+// and returns its mode for checkPrivateKeyMode.
+func readKeyFile(path string) ([]byte, os.FileMode, error) {
 	st, err := os.Lstat(path)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if !st.Mode().IsRegular() {
-		return nil, clerrors.New(clerrors.CodeConfigInvalid,
+		return nil, 0, clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.Tf("%s is not a regular file (a symlink?); refusing to use it as the SSH key",
 				"%s — не обычный файл (символическая ссылка?); как SSH-ключ он не используется", path),
 			i18n.T("Remove it (it may have come with the repository) and run the command again: a new key is created",
 				"Удалите его (он мог прийти вместе с репозиторием) и повторите команду: будет создан новый ключ"))
 	}
-	return os.ReadFile(path)
+	data, err := os.ReadFile(path)
+	return data, st.Mode(), err
+}
+
+// checkPrivateKeyMode refuses, as OpenSSH does ("UNPROTECTED PRIVATE KEY
+// FILE"), a private key that group or others can access. evo writes the key
+// 0600, so a looser one did not come from evo: most likely it was committed
+// to a template repository and arrived with the clone (0644), and using it
+// would put the template author's public key into the new VM's
+// authorized_keys. Windows has no such mode bits: there the ACL is reported
+// by sshKeyWarnings. Every path to the deploy key, CLI and MCP alike
+// (deploy, deploy_plan, deploy_apply, logs), loads it through the engine's
+// SSHKeyLoader, that is through loadOrGenerateSSHKey.
+func checkPrivateKeyMode(path string, mode os.FileMode) error {
+	if !config.PermissionsEnforced() || !config.LooseMode(mode) {
+		return nil
+	}
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("UNPROTECTED PRIVATE KEY FILE: %s has permissions %04o and is accessible by group or others; refusing to use it",
+			"НЕЗАЩИЩЁННЫЙ ЗАКРЫТЫЙ КЛЮЧ: у %s права %04o, он доступен группе или другим пользователям; использовать его нельзя",
+			path, mode.Perm()),
+		i18n.Tf("evo creates the key with mode 0600, so this one may have come with the repository: remove %s and run the command again (a new key is created). If the key is your own, run: chmod 600 %s",
+			"evo создаёт ключ с правами 0600, поэтому этот мог прийти вместе с репозиторием: удалите %s и повторите команду (будет создан новый ключ). Если ключ ваш, выполните: chmod 600 %s",
+			filepath.Dir(path), path))
 }
 
 // projectConfigPath is the project file with per-project overrides. User

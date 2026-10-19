@@ -264,7 +264,9 @@ var toolLongRU = map[string]string{
 		"узлов ('evo tools call snat_create'). --resolve-mode OVERWRITE может заменить объекты, уже созданные в кластере.",
 	"k8s_kubectl": "Любая команда kubectl в кластере; токен встраивается сам, плагин cloudlogin не нужен. Читающие " +
 		"команды (get, describe, logs, top, events, rollout status, explain и другие) выполняются сразу, изменяющие " +
-		"(create, delete, patch, scale, label, rollout restart, exec, cordon и другие) — с подтверждением. Подходит " +
+		"(create, delete, patch, scale, label, rollout restart, exec, cordon и другие) — с подтверждением; с " +
+		"подтверждением и любая команда с -f/--filename, -k/--kustomize или --output-directory: она читает файлы " +
+		"или любой URL либо пишет на хост (-f у logs — это --follow). Подходит " +
 		"для всего, чего нет в 'evo k8s helm' и 'evo k8s apply'. Примеры аргументов: 'get pods -A', " +
 		"'-n db logs deploy/postgres', 'create secret generic s --from-literal=k=v'.",
 	"k8s_apply": "Применить манифест Kubernetes (YAML или JSON, можно несколько документов) к кластеру — как " +
@@ -323,7 +325,7 @@ var toolLongRU = map[string]string{
 	"secret_get": "Метаданные секрета по пути (список: 'evo secret list'): папка, метки, версии, ключ KMS. Только чтение; " +
 		"значение не выводится.",
 	"secret_value": "Расшифрованное значение секрета по пути — открытым текстом. Не сохраняйте его в журналы и файлы. " +
-		"Только чтение.",
+		"Ничего не меняет.",
 	"secret_create": "Создать секрет по пути; путь вида папка/имя кладёт секрет в папку. Значение хранится " +
 		"зашифрованным и в ответе не выводится.",
 	"secret_add_version": "Добавить новую версию значения существующего секрета (ротация).",

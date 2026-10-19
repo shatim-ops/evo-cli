@@ -1799,7 +1799,7 @@ evo k8s kubeconfig <cluster-id> [flags]
 ```text
 Команда kubectl в кластере (изменяющие — с подтверждением).
 
-Любая команда kubectl в кластере; токен встраивается сам, плагин cloudlogin не нужен. Читающие команды (get, describe, logs, top, events, rollout status, explain и другие) выполняются сразу, изменяющие (create, delete, patch, scale, label, rollout restart, exec, cordon и другие) — с подтверждением. Подходит для всего, чего нет в 'evo k8s helm' и 'evo k8s apply'. Примеры аргументов: 'get pods -A', '-n db logs deploy/postgres', 'create secret generic s --from-literal=k=v'.
+Любая команда kubectl в кластере; токен встраивается сам, плагин cloudlogin не нужен. Читающие команды (get, describe, logs, top, events, rollout status, explain и другие) выполняются сразу, изменяющие (create, delete, patch, scale, label, rollout restart, exec, cordon и другие) — с подтверждением; с подтверждением и любая команда с -f/--filename, -k/--kustomize или --output-directory: она читает файлы или любой URL либо пишет на хост (-f у logs — это --follow). Подходит для всего, чего нет в 'evo k8s helm' и 'evo k8s apply'. Примеры аргументов: 'get pods -A', '-n db logs deploy/postgres', 'create secret generic s --from-literal=k=v'.
 
 Вызывает инструмент k8s_kubectl (подробнее: 'evo tools describe k8s_kubectl').
 
@@ -3725,9 +3725,11 @@ evo secret list [flags]
 ```text
 Расшифрованное значение секрета.
 
-Расшифрованное значение секрета по пути — открытым текстом. Не сохраняйте его в журналы и файлы. Только чтение.
+Расшифрованное значение секрета по пути — открытым текстом. Не сохраняйте его в журналы и файлы. Ничего не меняет.
 
 Вызывает инструмент secret_value (подробнее: 'evo tools describe secret_value').
+
+Показывает секрет, поэтому спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее.
 ```
 
 ```
