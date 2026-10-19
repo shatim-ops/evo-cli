@@ -10,9 +10,13 @@ name: cloud-e2e
 # кластер Managed Kubernetes с плагином, затем его удаление. Job'ы dbaas-pg,
 # dbaas-kafka, dbaas-redis (вход dbaas_smoke) параллельно создают
 # минимальные кластеры PostgreSQL, Kafka и Redis (evo-e2e-pg, evo-e2e-kafka,
-# evo-e2e-redis), проверяют их и удаляют. Job cleanup (вход cleanup_only)
-# ничего не создаёт и удаляет остатки прошлых прогонов, в том числе эти
-# кластеры. Проект общий: трогаются только ресурсы с именами evo-e2e-*.
+# evo-e2e-redis), проверяют их и удаляют. Job live (входы disk_smoke,
+# net_smoke, dns_smoke, s3_smoke, secrets_smoke, ca_smoke, stack_smoke,
+# mcp_smoke) — по job на область, параллельно: изменяющие инструменты вживую
+# с удалением за собой (.github/scripts/cloud-live.sh). Job cleanup (вход
+# cleanup_only) ничего не создаёт и удаляет остатки прошлых прогонов, в том
+# числе эти кластеры и ресурсы live. Проект общий: трогаются только ресурсы с
+# именами evo-e2e-*.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
 #   CLOUDRU_KEY_ID, CLOUDRU_SECRET — ключ тестового сервисного аккаунта
@@ -53,8 +57,40 @@ on:
         description: "Also run DBaaS live (billable, up to ~3 h): creates and deletes minimal PostgreSQL, Kafka and Redis clusters evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis"
         type: boolean
         default: false
+      disk_smoke:
+        description: "Live: VM via provision, disk create/attach/resize/detach/delete, image from the boot disk (image_create/image_delete), destroy (~30 min)"
+        type: boolean
+        default: false
+      net_smoke:
+        description: "Live: VPC create/delete, private VM behind a target group and load balancer, floating IP kept and re-attached, open_ports, VPC route, SNAT if the zone has none (~40 min)"
+        type: boolean
+        default: false
+      dns_smoke:
+        description: "Live: private DNS zone, A record, delete (~5 min)"
+        type: boolean
+        default: false
+      s3_smoke:
+        description: "Live: S3 bucket, put/ls/get/rm, bucket delete (~3 min)"
+        type: boolean
+        default: false
+      secrets_smoke:
+        description: "Live: secret create/add-version/value (sha256 only)/delete; self-signed certificate import/delete, cert_renew and cert_issue_le refusals (~5 min)"
+        type: boolean
+        default: false
+      ca_smoke:
+        description: "Live: Artifact Registry create, docker push, Container App deploy/HTTP/logs/stop/start/delete, registry delete (~25 min)"
+        type: boolean
+        default: false
+      stack_smoke:
+        description: "Live: stack_plan → stack_apply (private VM, secret, internal NLB) → stack_status → stack_destroy (~25 min)"
+        type: boolean
+        default: false
+      mcp_smoke:
+        description: "Live: MCP stdio deploy_plan → deploy_apply → deploy → destroy vm_id; MCP HTTP provision → destroy; release_floating_ip (~30 min)"
+        type: boolean
+        default: false
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis; evo: rules for e2e ports 80/8080/8081/8082 when no evo-* VM is left)"
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 when no evo-* VM is left) and print project quotas"
         type: boolean
         default: false
 
@@ -73,8 +109,10 @@ jobs:
   readonly:
     # Только чтение: ключ сервисного аккаунта с правами наблюдателя из окружения
     # cloud-readonly, без одобрения — job идёт и в автономной работе.
+    # Окружение cloud-readonly открыто только для main: с другой ветки job
+    # не запускается (иначе прогон красный без единого шага).
     environment: cloud-readonly
-    if: ${{ !inputs.cleanup_only }}
+    if: ${{ !inputs.cleanup_only && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -319,6 +357,113 @@ jobs:
           echo "::error::после destroy в группе deploy осталось правило «evo:» для порта 80"
           exit 1
 
+  # Области live, выбранные входами, — матрица job live. Без секретов и
+  # окружения: только разбор входов.
+  live-plan:
+    if: ${{ !inputs.cleanup_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      areas: ${{ steps.areas.outputs.areas }}
+    steps:
+      - id: areas
+        env:
+          DISK: ${{ inputs.disk_smoke }}
+          NET: ${{ inputs.net_smoke }}
+          DNS: ${{ inputs.dns_smoke }}
+          S3: ${{ inputs.s3_smoke }}
+          SECRETS: ${{ inputs.secrets_smoke }}
+          CA: ${{ inputs.ca_smoke }}
+          STACK: ${{ inputs.stack_smoke }}
+          MCP: ${{ inputs.mcp_smoke }}
+        run: |
+          a=()
+          [ "$DISK" != true ] || a+=(disk)
+          [ "$NET" != true ] || a+=(net)
+          [ "$DNS" != true ] || a+=(dns)
+          [ "$S3" != true ] || a+=(s3)
+          [ "$SECRETS" != true ] || a+=(secrets)
+          [ "$CA" != true ] || a+=(ca)
+          [ "$STACK" != true ] || a+=(stack)
+          [ "$MCP" != true ] || a+=(mcp)
+          echo "areas=$(printf '%s\n' "${a[@]}" | jq -Rnc '[inputs | select(. != "")]')" >> "$GITHUB_OUTPUT"
+
+  # Изменяющие инструменты вживую, по области на job (.github/scripts/
+  # cloud-live.sh): ресурсы evo-e2e-<область>-<run>, удаление в том же job и
+  # проверка, что ничего не осталось. Порты в общей группе зоны у областей
+  # разные (net — 18085 только с тестового адреса 198.18.255.1/32, mcp —
+  # 8086), маршрут — тестовые сети 198.18.255.0/24 или 10.255.255.0/24.
+  live:
+    needs: live-plan
+    if: ${{ !inputs.cleanup_only && needs.live-plan.outputs.areas != '[]' }}
+    environment: cloud-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        area: ${{ fromJSON(needs.live-plan.outputs.areas) }}
+    env:
+      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      FLAVOR: ${{ inputs.flavor || 'lowcost10-2-4' }}
+      IMAGE: ${{ inputs.image || 'ubuntu-22.04' }}
+      CLOUDRU_TIMEOUT: ${{ inputs.timeout || '1200' }}
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+      RUN: ${{ github.run_id }}${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: go.sum
+
+      - name: Проверка входов
+        run: |
+          for v in "$ZONE" "$FLAVOR" "$IMAGE"; do
+            printf '%s' "$v" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
+              { echo "::error::недопустимое значение входа: $v"; exit 1; }
+          done
+          printf '%s' "$CLOUDRU_TIMEOUT" | grep -Eq '^[0-9]{2,5}$' ||
+            { echo "::error::timeout — число секунд"; exit 1; }
+
+      - name: Сборка
+        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      # Скрипт сам удаляет свои ресурсы (trap EXIT) и проверяет остатки.
+      - name: Область ${{ matrix.area }}
+        env:
+          AREA: ${{ matrix.area }}
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
+          CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
+        run: .github/scripts/cloud-live.sh "$AREA"
+
+      # Страховка, если скрипт оборвался до своей уборки (таймаут шага).
+      - name: Остатков области нет (всегда)
+        if: always()
+        env:
+          AREA: ${{ matrix.area }}
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
+          CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
+        run: |
+          command -v evo >/dev/null || { echo "evo не собран — ресурсов не создавалось"; exit 0; }
+          .github/scripts/cloud-live.sh sweep "evo-e2e-$AREA-$(printf '%s' "$RUN" | tr -cd 'a-z0-9' | cut -c1-16)" "$AREA"
+
   # Отечественные ОС по имени образа (шаг E, docs/internal/design-images.md):
   # init --image отказывает (Docker на них не ставится), vm create --image
   # создаёт ВМ, к ней заходит SSH, порт 8080 открыт и после удаления закрыт.
@@ -558,6 +703,16 @@ jobs:
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
           printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
 
+      # Квоты проекта перед прогонами live: код ресурса, лимит, использование
+      # (только числа). Ключу без области организации — status unavailable.
+      - name: Квоты проекта (только чтение)
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          out=$(evo tools call org_quotas --arg project_id="$PROJECT" --json 2>/dev/null) || { echo "::warning::org_quotas не прочитан"; exit 0; }
+          jq -r '"status: \(.status // "ok")", (.quota_usages[]? | "\(.resource)\t\(.limit)\t\(.usage)")' <<<"$out" | sed -E -f .github/scripts/redact.sed | head -80
+          echo "ВМ в проекте: $(evo tools call vm_list --json | jq '.vms | length'), floating IP: $(evo tools call list_floating_ips --json | jq '.floating_ips | length')"
+
       - name: ВМ evo-e2e-*
         run: |
           redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
@@ -626,6 +781,18 @@ jobs:
           [ "$stuck" = 0 ] || echo "::warning::FIP fip-evo-e2e-* в error_deleting ($stuck): через API не удаляется — уберите в консоли Cloud.ru или через поддержку"
           [ "$left" = 0 ] || { echo "::error::остались FIP fip-evo-e2e-*"; exit 1; }
 
+      # Ресурсы job live (cloud-live.sh): все виды, имена evo-e2e-*, включая
+      # диски без ВМ и собственные образы; маршрут тестовой сети
+      # 198.18.255.0/24 и 10.255.255.0/24, правило порта 18085 с 198.18.255.1/32.
+      - name: Ресурсы live evo-e2e-*
+        if: always()
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
+          CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
+        run: .github/scripts/cloud-live.sh sweep evo-e2e-
+
       # Диски evo-* без ВМ (загрузочные после destroy, реестр CMP-11):
       # только список, ничего не удаляется и не валит job — чей диск,
       # решает человек.
@@ -651,8 +818,8 @@ jobs:
           n=$(evo tools call vm_list --json | jq '[.vms[]? | select((.name // "") | startswith("evo-"))] | length')
           [ "$n" = 0 ] || { echo "::error::в проекте есть ВМ evo-* ($n) — правила «evo:» не трогаю"; exit 1; }
           evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg.json"
-          rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080" or .port_range == "8081:8081" or .port_range == "8082:8082") and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range)"' "$RUNNER_TEMP/sg.json")
-          [ -n "$rules" ] || { echo "правил «evo:» для 80/8080/8081/8082 нет"; exit 0; }
+          rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080" or .port_range == "8081:8081" or .port_range == "8082:8082" or .port_range == "8086:8086") and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range)"' "$RUNNER_TEMP/sg.json")
+          [ -n "$rules" ] || { echo "правил «evo:» для 80/8080/8081/8082/8086 нет"; exit 0; }
           TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
             curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
             jq -r '.access_token // .accessToken // empty')
@@ -783,6 +950,49 @@ jobs:
           rows=$(evo k8s kubectl "$CLUSTER_ID" get nodes --no-headers | grep -c .)
           echo "evo k8s kubectl get nodes: строк $rows"
           [ "$rows" -ge 1 ] || { echo "::error::evo k8s kubectl без --json не вывел узлы"; exit 1; }
+
+      # k8s_apply и k8s_helm без образов: ConfigMap манифестом и локальный
+      # чарт из одного ConfigMap — выход в интернет кластеру не нужен (SNAT
+      # для них не создаётся). helm и kubectl на раннере предустановлены.
+      - name: evo k8s apply и helm install/uninstall вживую
+        run: |
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          # tool ИНСТРУМЕНТ АРГУМЕНТЫ... — ответ в $RUNNER_TEMP/t.json; не 0 — ::error:: и выход
+          tool() {
+            local t=$1 rc
+            shift
+            set +e
+            evo --yes tools call "$t" --arg cluster_id="$CLUSTER_ID" "$@" --json > "$RUNNER_TEMP/t.json" 2>/dev/null
+            rc=$?
+            set -e
+            [ "$rc" = 0 ] && return 0
+            jq -c '{status, reason, stage}' "$RUNNER_TEMP/t.json" 2>/dev/null || true
+            echo "$t: $(jq -r '.error // .output // empty' "$RUNNER_TEMP/t.json" 2>/dev/null | redact | tail -c 300 | tr '\n' ' ')"
+            echo "::error::$t: код $rc"
+            exit 1
+          }
+          cm_value() { # ИМЯ — значение data.k ConfigMap в default
+            evo --json k8s kubectl "$CLUSTER_ID" get configmap "$1" -n default -o json 2>/dev/null |
+              jq -r .output | sed -n '/^{/,$p' | jq -r '.data.k // empty' 2>/dev/null || true
+          }
+          tool k8s_apply --arg manifest="$(printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: evo-e2e-cm\n  namespace: default\ndata:\n  k: applied\n')"
+          jq -c '{status}' "$RUNNER_TEMP/t.json"
+          [ "$(cm_value evo-e2e-cm)" = applied ] || { echo "::error::k8s_apply: ConfigMap не появился"; exit 1; }
+          echo "k8s_apply: ConfigMap создан"
+          tool k8s_kubectl --arg args='delete configmap evo-e2e-cm -n default'
+          mkdir -p "$RUNNER_TEMP/chart/templates"
+          printf 'apiVersion: v2\nname: evo-e2e\nversion: 0.1.0\n' > "$RUNNER_TEMP/chart/Chart.yaml"
+          printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: evo-e2e-helm\ndata:\n  k: {{ .Values.k | quote }}\n' > "$RUNNER_TEMP/chart/templates/cm.yaml"
+          printf 'k: helm\n' > "$RUNNER_TEMP/chart/values.yaml"
+          tool k8s_helm --arg action=install --arg release=evo-e2e --arg chart="$RUNNER_TEMP/chart" --arg namespace=default
+          jq -c '{status, action}' "$RUNNER_TEMP/t.json"
+          [ "$(cm_value evo-e2e-helm)" = helm ] || { echo "::error::k8s_helm install: ConfigMap релиза не появился"; exit 1; }
+          tool k8s_helm --arg action=list
+          jq -r .output "$RUNNER_TEMP/t.json" | grep -q evo-e2e || { echo "::error::k8s_helm list: релиза нет"; exit 1; }
+          tool k8s_helm --arg action=uninstall --arg release=evo-e2e --arg namespace=default
+          jq -c '{status, action}' "$RUNNER_TEMP/t.json"
+          [ -z "$(cm_value evo-e2e-helm)" ] || { echo "::error::k8s_helm uninstall: ConfigMap релиза остался"; exit 1; }
+          echo "k8s_helm: install → list → uninstall"
 
       # Поды плагина: Ready=True у подов без владельца Job (поды Job,
       # например cert-manager-startupapicheck, не учитываются).
@@ -1071,6 +1281,50 @@ jobs:
           jq -c '{status, tool_status: .preview.details.status, target_name: .preview.details.target.name, target_status: .preview.details.target.status}' "$RUNNER_TEMP/r.json"
           jq -e --arg n "$CLUSTER" '.preview.details.status == "confirmation_required" and .preview.details.target.name == $n' "$RUNNER_TEMP/r.json" >/dev/null ||
             { echo "::error::превью pg_delete не называет кластер $CLUSTER"; exit 1; }
+
+      # Резервная копия, затем удаление базы и пользователя (владелец базы —
+      # он же: сначала база, иначе база переходит к dbadmin, реестр DB-15).
+      - name: pg_backup_create, pg_db_delete, pg_user_delete
+        run: |
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          call() {
+            local t=$1 rc
+            shift
+            set +e
+            evo --yes tools call "$t" "$@" --json > "$RUNNER_TEMP/r.json" 2>/dev/null
+            rc=$?
+            set -e
+            [ "$rc" = 0 ] && return 0
+            jq -c '{status, reason}' "$RUNNER_TEMP/r.json" 2>/dev/null || true
+            echo "$t: $(jq -r '.error // empty' "$RUNNER_TEMP/r.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "::error::$t: код $rc"
+            exit 1
+          }
+          has() { # ИНСТРУМЕНТ КЛЮЧ ИМЯ — ИМЯ есть в списке
+            evo tools call "$1" --arg cluster_id="$CLUSTER_ID" --json 2>/dev/null | jq -e --arg k "$2" --arg n "$3" 'any(.[$k][]?; .name == $n)' >/dev/null
+          }
+          call pg_backup_create --arg cluster_id="$CLUSTER_ID" --arg name=evo-e2e-backup
+          jq -c '{status}' "$RUNNER_TEMP/r.json"
+          op=$(jq -r '.operation_id // empty' "$RUNNER_TEMP/r.json")
+          if [ -n "$op" ]; then
+            echo "::add-mask::$op"
+            for _ in $(seq 1 10); do
+              call pg_operation --arg operation_id="$op" --arg wait_seconds=60
+              [ "$(jq -r .done "$RUNNER_TEMP/r.json")" = true ] && break
+            done
+            jq -c '{done, error: (.error != null)}' "$RUNNER_TEMP/r.json"
+            jq -e '.done == true and .error == null' "$RUNNER_TEMP/r.json" >/dev/null || { echo "::error::резервная копия не завершилась за 10 мин"; exit 1; }
+          fi
+          call pg_backups --arg cluster_id="$CLUSTER_ID"
+          echo "pg_backups: резервных копий $(jq '.backups // [] | length' "$RUNNER_TEMP/r.json")"
+          jq -e '(.backups // []) | length > 0' "$RUNNER_TEMP/r.json" >/dev/null || { echo "::error::pg_backups: копии нет после pg_backup_create"; exit 1; }
+          call pg_db_delete --arg cluster_id="$CLUSTER_ID" --arg name=evo_e2e_db
+          jq -c '{status}' "$RUNNER_TEMP/r.json"
+          for i in $(seq 1 10); do has pg_databases databases evo_e2e_db || break; [ "$i" -lt 10 ] || { echo "::error::база осталась через 5 мин"; exit 1; }; sleep 30; done
+          call pg_user_delete --arg cluster_id="$CLUSTER_ID" --arg name=evo_e2e_user
+          jq -c '{status}' "$RUNNER_TEMP/r.json"
+          for i in $(seq 1 10); do has pg_users users evo_e2e_user || break; [ "$i" -lt 10 ] || { echo "::error::пользователь остался через 5 мин"; exit 1; }; sleep 30; done
+          echo "резервная копия, удаление базы и пользователя — ok"
 
       - name: Удаление кластера (всегда)
         if: always()
