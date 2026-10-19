@@ -73,18 +73,25 @@ func TestRussian_TreeHelp(t *testing.T) {
 		!strings.Contains(stdout, "--release-ip   Освободить и floating IP ВМ. Выключить: --release-ip=false (по умолчанию true)\n") {
 		t.Errorf("exit %d:\n%s", code, stdout)
 	}
-	// The other trees: Russian summary first, the tool's English description after it.
+	// The other trees are Russian throughout too: no English description
+	// of the tool, no English flag.
 	code, stdout, _ = runCLI(t, "", "vpc", "delete", "--help")
-	if code != 0 || !strings.HasPrefix(stdout, toolShortRU["vpc_delete"]+".\n\nВызывает инструмент vpc_delete") ||
-		!strings.Contains(stdout, "на английском, как в MCP") {
+	if code != 0 || !strings.HasPrefix(stdout, toolShortRU["vpc_delete"]+".\n\n"+toolLongRU["vpc_delete"]+"\n\nВызывает инструмент vpc_delete") ||
+		strings.Contains(stdout, "на английском") || strings.Contains(stdout, "Delete a VPC") {
+		t.Errorf("exit %d:\n%s", code, stdout)
+	}
+	code, stdout, _ = runCLI(t, "", "k8s", "kubeconfig", "--help")
+	if code != 0 || strings.Contains(stdout, "Embed a static bearer token") ||
+		!strings.Contains(stdout, "Встроить статический токен, чтобы kubectl работал без плагина cloudlogin. Выключить: --embed-token=false (по умолчанию true)\n") {
 		t.Errorf("exit %d:\n%s", code, stdout)
 	}
 }
 
-// The trees vm and disk are Russian throughout: every command has a long
-// help in toolLongRU, every flag a text in flagShortRU. The texts speak of
-// the CLI: no confirmed=true (the CLI asks or takes --yes), no tool names
-// (evo image list, not image_list). No entry is left without a flag.
+// Every tree is Russian throughout: every command has a long help in
+// toolLongRU, every flag a text in flagShortRU. The texts speak of the CLI:
+// no confirmed=true (the CLI asks or takes --yes), no tool names (evo image
+// list, not image_list) except as 'evo tools call <tool>' for a tool without
+// a command. No entry is left without a flag.
 func TestTrees_RussianFlags(t *testing.T) {
 	reg := newRegistry()
 	toolNames := map[string]bool{}
@@ -98,6 +105,7 @@ func TestTrees_RussianFlags(t *testing.T) {
 		if strings.Contains(s, "confirmed") {
 			t.Errorf("%s mentions confirmed: %q", key, s)
 		}
+		s = toolsCallRE.ReplaceAllString(s, "evo tools call")
 		for _, w := range strings.FieldsFunc(s, func(r rune) bool { return r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
 			if toolNames[w] {
 				t.Errorf("%s names the tool %s instead of its command: %q", key, w, s)
@@ -106,9 +114,6 @@ func TestTrees_RussianFlags(t *testing.T) {
 	}
 	usedLong, usedFlag := map[string]bool{}, map[string]bool{}
 	for _, g := range treeGroups {
-		if g.Name != "vm" && g.Name != "disk" {
-			continue
-		}
 		for _, c := range g.Cmds {
 			tl, _ := reg.Lookup(c.Tool)
 			if s := toolLongRU[c.Tool]; s == "" {
@@ -130,12 +135,12 @@ func TestTrees_RussianFlags(t *testing.T) {
 	}
 	for k := range toolLongRU {
 		if !usedLong[k] {
-			t.Errorf("toolLongRU: %s is no command of vm or disk", k)
+			t.Errorf("toolLongRU: %s is no tree command", k)
 		}
 	}
 	for k := range flagShortRU {
 		if !usedFlag[k] {
-			t.Errorf("flagShortRU: %s is no flag of vm or disk", k)
+			t.Errorf("flagShortRU: %s is no flag of a tree command", k)
 		}
 	}
 }
