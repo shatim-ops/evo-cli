@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -35,7 +36,8 @@ func TestCommandExamples_AreValid(t *testing.T) {
 // ("group verb"): each has an example, and parity_newcmds_test.go runs it
 // against its tool.
 var (
-	parityTrees = map[string]bool{"dns": true, "cert": true, "lb": true, "tg": true, "snat": true}
+	parityTrees = map[string]bool{"dns": true, "cert": true, "lb": true, "tg": true, "snat": true,
+		"kafka": true, "redis": true, "ar": true, "ca": true}
 	parityVerbs = map[string]bool{}
 )
 
@@ -61,8 +63,13 @@ func TestCommandExamples_NewCommands(t *testing.T) {
 	}
 }
 
+// examplePlaceholder is a value to fill in, <cluster-id>: its ">" is no
+// redirection, and the flags after it are checked too.
+var examplePlaceholder = regexp.MustCompile(`<[A-Za-z0-9_.-]+>`)
+
 func checkExampleLine(t *testing.T, root *cobra.Command, line string) {
 	t.Helper()
+	line = examplePlaceholder.ReplaceAllString(line, "VALUE")
 	// Only the evo part of a pipeline or a chain: "evo deploy --yes && evo verify".
 	for _, part := range strings.FieldsFunc(line, func(r rune) bool { return r == '|' || r == '&' || r == '>' }) {
 		f := strings.Fields(part)

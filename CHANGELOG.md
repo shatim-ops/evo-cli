@@ -15,6 +15,11 @@
   - `evo lb` — `list`, `get`, `create`, `delete`, `operation` и `evo tg` — `list`, `get`, `create`, `delete` (`lb_*`, `tg_*`; для `evo mcp --toolsets` группа по-прежнему `nlb`);
   - `evo snat` — `list`, `create`, `delete` (`snat_*`).
 
+  В группе «Управляемые сервисы»:
+  - `evo kafka` и `evo redis` — `list`, `get`, `versions`, `specs`, `create`, `delete`, `operation` (`kafka_*`, `redis_*`); у `operation` — `--wait-seconds`;
+  - `evo ar` — `list`, `get`, `create`, `delete`, `operation` (`ar_*`);
+  - `evo ca` — `list`, `get`, `deploy`, `delete`, `logs`, `start`, `stop` (`ca_*`); переменные окружения `evo ca deploy` — `--env ИМЯ=значение` (флаг повторяется; `ИМЯ=@файл` и `ИМЯ=-` читают значение из файла и stdin, как `--meta` у `evo vm create`); `evo ca logs` печатает строки журнала целиком, с временем, а не таблицей.
+
 ### Безопасность
 
 - MCP с `--allow-project`: `billing_consumption` и `billing_finops` с аргументом `project_id` читали расход любого проекта, который видит ключ, в обход списка. Теперь проект аргумента проверяется так же, как у `deploy` и `provision`: не из списка — `CONFIG_INVALID`. Исключения по-прежнему только `org_quotas` и `iam_service_accounts` (`docs/mcp.md`).

@@ -2,26 +2,26 @@
 
 <!-- Сгенерировано: go run ./docs/internal/cli-mcp-parity/inventory/main.go > docs/internal/cli-mcp-parity/inventory.md. Руками не править. -->
 
-Инструментов в реестре: 152 (изменяющих: 65). Команд дерева: 103. Команд в docs/commands.md: 144 (+3 скрытых).
+Инструментов в реестре: 152 (изменяющих: 65). Команд дерева: 129. Команд в docs/commands.md: 174 (+3 скрытых).
 
 ## 1. Инструменты по способу вызова из CLI
 
 | Способ | Инструментов | из них изменяющих |
 |---|---|---|
-| дерево | 103 | 48 |
+| дерево | 129 | 58 |
 | движок | 5 | 1 |
-| tools call | 44 | 16 |
+| tools call | 18 | 6 |
 
-«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`. «движок» и «tools call» вместе — временный список `tools.CLIPending` (49): тест TestParity_CommandsAndTools не даёт ему устареть, PR 3 и 5 плана его опустошают.
+«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`. «движок» и «tools call» вместе — временный список `tools.CLIPending` (23): тест TestParity_CommandsAndTools не даёт ему устареть, PR 3 и 5 плана его опустошают.
 
 ### По группам
 
 | Группа | Всего | дерево | движок | tools call | RU-справка (short/long) |
 |---|---|---|---|---|---|
-| ar | 5 | 0 | 0 | 5 | 5/5 |
+| ar | 5 | 5 | 0 | 0 | 5/5 |
 | audit | 1 | 0 | 0 | 1 | 1/1 |
 | billing | 3 | 0 | 0 | 3 | 3/3 |
-| ca | 7 | 0 | 0 | 7 | 7/7 |
+| ca | 7 | 7 | 0 | 0 | 7/7 |
 | cert | 10 | 10 | 0 | 0 | 10/10 |
 | deploy | 8 | 1 | 3 | 4 | 8/8 |
 | disk | 7 | 7 | 0 | 0 | 7/7 |
@@ -29,12 +29,12 @@
 | iam | 1 | 0 | 0 | 1 | 1/1 |
 | image | 6 | 3 | 1 | 2 | 6/6 |
 | k8s | 15 | 15 | 0 | 0 | 15/15 |
-| kafka | 7 | 0 | 0 | 7 | 7/7 |
+| kafka | 7 | 7 | 0 | 0 | 7/7 |
 | monitoring | 2 | 0 | 0 | 2 | 2/2 |
 | nlb | 9 | 9 | 0 | 0 | 9/9 |
 | org | 2 | 0 | 1 | 1 | 2/2 |
 | pg | 15 | 15 | 0 | 0 | 15/15 |
-| redis | 7 | 0 | 0 | 7 | 7/7 |
+| redis | 7 | 7 | 0 | 0 | 7/7 |
 | s3 | 7 | 7 | 0 | 0 | 7/7 |
 | secret | 6 | 6 | 0 | 0 | 6/6 |
 | snat | 3 | 3 | 0 | 0 | 3/3 |
@@ -46,22 +46,22 @@
 
 | Группа | Инструмент | Меняет | Способ | Команда CLI | RU short/long |
 |---|---|---|---|---|---|
-| ar | `ar_create` | да | tools call | `evo tools call ar_create` | да/да |
-| ar | `ar_delete` | да | tools call | `evo tools call ar_delete` | да/да |
-| ar | `ar_get` | нет | tools call | `evo tools call ar_get` | да/да |
-| ar | `ar_list` | нет | tools call | `evo tools call ar_list` | да/да |
-| ar | `ar_operation` | нет | tools call | `evo tools call ar_operation` | да/да |
+| ar | `ar_create` | да | дерево | `evo ar create` | да/да |
+| ar | `ar_delete` | да | дерево | `evo ar delete` | да/да |
+| ar | `ar_get` | нет | дерево | `evo ar get` | да/да |
+| ar | `ar_list` | нет | дерево | `evo ar list` | да/да |
+| ar | `ar_operation` | нет | дерево | `evo ar operation` | да/да |
 | audit | `audit_events` | нет | tools call | `evo tools call audit_events` | да/да |
 | billing | `billing_balance` | нет | tools call | `evo tools call billing_balance` | да/да |
 | billing | `billing_consumption` | нет | tools call | `evo tools call billing_consumption` | да/да |
 | billing | `billing_finops` | нет | tools call | `evo tools call billing_finops` | да/да |
-| ca | `ca_delete` | да | tools call | `evo tools call ca_delete` | да/да |
-| ca | `ca_deploy` | да | tools call | `evo tools call ca_deploy` | да/да |
-| ca | `ca_get` | нет | tools call | `evo tools call ca_get` | да/да |
-| ca | `ca_list` | нет | tools call | `evo tools call ca_list` | да/да |
-| ca | `ca_logs` | нет | tools call | `evo tools call ca_logs` | да/да |
-| ca | `ca_start` | да | tools call | `evo tools call ca_start` | да/да |
-| ca | `ca_stop` | да | tools call | `evo tools call ca_stop` | да/да |
+| ca | `ca_delete` | да | дерево | `evo ca delete` | да/да |
+| ca | `ca_deploy` | да | дерево | `evo ca deploy` | да/да |
+| ca | `ca_get` | нет | дерево | `evo ca get` | да/да |
+| ca | `ca_list` | нет | дерево | `evo ca list` | да/да |
+| ca | `ca_logs` | нет | дерево | `evo ca logs` | да/да |
+| ca | `ca_start` | да | дерево | `evo ca start` | да/да |
+| ca | `ca_stop` | да | дерево | `evo ca stop` | да/да |
 | cert | `cert_delete` | да | дерево | `evo cert delete` | да/да |
 | cert | `cert_get` | нет | дерево | `evo cert get` | да/да |
 | cert | `cert_import` | да | дерево | `evo cert import` | да/да |
@@ -118,13 +118,13 @@
 | k8s | `k8s_nodepools` | нет | дерево | `evo k8s nodepools` | да/да |
 | k8s | `k8s_options` | нет | дерево | `evo k8s options` | да/да |
 | k8s | `k8s_plan` | нет | дерево | `evo k8s plan` | да/да |
-| kafka | `kafka_create` | да | tools call | `evo tools call kafka_create` | да/да |
-| kafka | `kafka_delete` | да | tools call | `evo tools call kafka_delete` | да/да |
-| kafka | `kafka_get` | нет | tools call | `evo tools call kafka_get` | да/да |
-| kafka | `kafka_list` | нет | tools call | `evo tools call kafka_list` | да/да |
-| kafka | `kafka_operation` | нет | tools call | `evo tools call kafka_operation` | да/да |
-| kafka | `kafka_specs` | нет | tools call | `evo tools call kafka_specs` | да/да |
-| kafka | `kafka_versions` | нет | tools call | `evo tools call kafka_versions` | да/да |
+| kafka | `kafka_create` | да | дерево | `evo kafka create` | да/да |
+| kafka | `kafka_delete` | да | дерево | `evo kafka delete` | да/да |
+| kafka | `kafka_get` | нет | дерево | `evo kafka get` | да/да |
+| kafka | `kafka_list` | нет | дерево | `evo kafka list` | да/да |
+| kafka | `kafka_operation` | нет | дерево | `evo kafka operation` | да/да |
+| kafka | `kafka_specs` | нет | дерево | `evo kafka specs` | да/да |
+| kafka | `kafka_versions` | нет | дерево | `evo kafka versions` | да/да |
 | monitoring | `metrics_history` | нет | tools call | `evo tools call metrics_history` | да/да |
 | monitoring | `metrics_scrape` | нет | tools call | `evo tools call metrics_scrape` | да/да |
 | nlb | `lb_create` | да | дерево | `evo lb create` | да/да |
@@ -153,13 +153,13 @@
 | pg | `pg_user_delete` | да | дерево | `evo pg user-delete` | да/да |
 | pg | `pg_users` | нет | дерево | `evo pg users` | да/да |
 | pg | `pg_versions` | нет | дерево | `evo pg versions` | да/да |
-| redis | `redis_create` | да | tools call | `evo tools call redis_create` | да/да |
-| redis | `redis_delete` | да | tools call | `evo tools call redis_delete` | да/да |
-| redis | `redis_get` | нет | tools call | `evo tools call redis_get` | да/да |
-| redis | `redis_list` | нет | tools call | `evo tools call redis_list` | да/да |
-| redis | `redis_operation` | нет | tools call | `evo tools call redis_operation` | да/да |
-| redis | `redis_specs` | нет | tools call | `evo tools call redis_specs` | да/да |
-| redis | `redis_versions` | нет | tools call | `evo tools call redis_versions` | да/да |
+| redis | `redis_create` | да | дерево | `evo redis create` | да/да |
+| redis | `redis_delete` | да | дерево | `evo redis delete` | да/да |
+| redis | `redis_get` | нет | дерево | `evo redis get` | да/да |
+| redis | `redis_list` | нет | дерево | `evo redis list` | да/да |
+| redis | `redis_operation` | нет | дерево | `evo redis operation` | да/да |
+| redis | `redis_specs` | нет | дерево | `evo redis specs` | да/да |
+| redis | `redis_versions` | нет | дерево | `evo redis versions` | да/да |
 | s3 | `s3_bucket_create` | да | дерево | `evo s3 bucket-create` | да/да |
 | s3 | `s3_bucket_delete` | да | дерево | `evo s3 bucket-delete` | да/да |
 | s3 | `s3_buckets` | нет | дерево | `evo s3 buckets` | да/да |
@@ -205,6 +205,18 @@
 
 | Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/Raw/Render |
 |---|---|---|---|---|---|---|
+| `evo ar create` | `ar_create` | name | — | — | confirmed | — |
+| `evo ar delete` | `ar_delete` | id | — | — | confirmed | — |
+| `evo ar get` | `ar_get` | id | — | — | — | — |
+| `evo ar list` | `ar_list` | — | — | — | — | — |
+| `evo ar operation` | `ar_operation` | operation_id | — | — | — | — |
+| `evo ca delete` | `ca_delete` | name | — | — | confirmed | — |
+| `evo ca deploy` | `ca_deploy` | name | — | — | confirmed | pairs:env |
+| `evo ca get` | `ca_get` | name | — | — | — | — |
+| `evo ca list` | `ca_list` | — | — | — | — | — |
+| `evo ca logs` | `ca_logs` | name | — | — | — | render |
+| `evo ca start` | `ca_start` | name | — | — | confirmed | — |
+| `evo ca stop` | `ca_stop` | name | — | — | confirmed | — |
 | `evo cert delete` | `cert_delete` | id | — | — | confirmed | — |
 | `evo cert get` | `cert_get` | id | — | — | — | — |
 | `evo cert import` | `cert_import` | name | — | — | confirmed | — |
@@ -248,6 +260,13 @@
 | `evo k8s nodepools` | `k8s_nodepools` | cluster_id | — | — | — | — |
 | `evo k8s options` | `k8s_options` | — | — | — | — | — |
 | `evo k8s plan` | `k8s_plan` | — | — | — | — | — |
+| `evo kafka create` | `kafka_create` | name | — | — | confirmed | — |
+| `evo kafka delete` | `kafka_delete` | cluster_id | — | — | confirmed | — |
+| `evo kafka get` | `kafka_get` | cluster_id | — | — | — | — |
+| `evo kafka list` | `kafka_list` | — | — | — | — | — |
+| `evo kafka operation` | `kafka_operation` | operation_id | — | — | — | — |
+| `evo kafka specs` | `kafka_specs` | — | — | — | — | — |
+| `evo kafka versions` | `kafka_versions` | — | — | — | — | — |
 | `evo lb create` | `lb_create` | name | — | — | confirmed | — |
 | `evo lb delete` | `lb_delete` | id | — | — | confirmed | — |
 | `evo lb get` | `lb_get` | id | — | — | — | — |
@@ -269,6 +288,13 @@
 | `evo pg user-delete` | `pg_user_delete` | cluster_id name | — | — | confirmed | — |
 | `evo pg users` | `pg_users` | cluster_id | — | — | — | — |
 | `evo pg versions` | `pg_versions` | — | — | — | — | — |
+| `evo redis create` | `redis_create` | name | — | — | confirmed | — |
+| `evo redis delete` | `redis_delete` | cluster_id | — | — | confirmed | — |
+| `evo redis get` | `redis_get` | cluster_id | — | — | — | — |
+| `evo redis list` | `redis_list` | — | — | — | — | — |
+| `evo redis operation` | `redis_operation` | operation_id | — | — | — | — |
+| `evo redis specs` | `redis_specs` | — | — | — | — | — |
+| `evo redis versions` | `redis_versions` | — | — | — | — | — |
 | `evo s3 bucket-create` | `s3_bucket_create` | bucket | region→--s3-region | — | confirmed | — |
 | `evo s3 bucket-delete` | `s3_bucket_delete` | bucket | — | — | confirmed | — |
 | `evo s3 buckets` | `s3_buckets` | — | — | — | — | — |
@@ -348,7 +374,7 @@
 
 Ожидаемый набор флагов выводится из схемы по правилам trees.go (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с docs/commands.md. Пусто — расхождений нет.
 
-Расхождений нет: флаги всех 103 команд деревьев выведены из схемы.
+Расхождений нет: флаги всех 129 команд деревьев выведены из схемы.
 
 ## 5. Русская справка
 
@@ -357,5 +383,5 @@
 | краткое описание инструмента (ShortRU) | 152 | 152 инструментов |
 | подробное описание инструмента (DescriptionRU) | 152 | 152 инструментов |
 | описания аргументов (ArgDescriptionsRU) | 444 | 444 аргументов |
-| из них флаги команд деревьев | 154 | 154 флагов |
+| из них флаги команд деревьев | 194 | 194 флагов |
 | описания инструментов в MCP | 0 | 152 (всегда английские) |

@@ -190,6 +190,40 @@ var cliSpecs = map[string]CLISpec{
 	"snat_list":   {Group: "snat", Verb: "list", Columns: []string{"id", "name", "status", "availability_zone", "nat_type"}},
 	"snat_create": {Group: "snat", Verb: "create", Args: []string{"name"}},
 	"snat_delete": {Group: "snat", Verb: "delete", Args: []string{"id"}},
+
+	// kafka
+	"kafka_list":      {Group: "kafka", Verb: "list"},
+	"kafka_get":       {Group: "kafka", Verb: "get", Args: []string{"cluster_id"}},
+	"kafka_versions":  {Group: "kafka", Verb: "versions"},
+	"kafka_specs":     {Group: "kafka", Verb: "specs"},
+	"kafka_create":    {Group: "kafka", Verb: "create", Args: []string{"name"}},
+	"kafka_delete":    {Group: "kafka", Verb: "delete", Args: []string{"cluster_id"}},
+	"kafka_operation": {Group: "kafka", Verb: "operation", Args: []string{"operation_id"}},
+
+	// redis
+	"redis_list":      {Group: "redis", Verb: "list"},
+	"redis_get":       {Group: "redis", Verb: "get", Args: []string{"cluster_id"}},
+	"redis_versions":  {Group: "redis", Verb: "versions"},
+	"redis_specs":     {Group: "redis", Verb: "specs"},
+	"redis_create":    {Group: "redis", Verb: "create", Args: []string{"name"}},
+	"redis_delete":    {Group: "redis", Verb: "delete", Args: []string{"cluster_id"}},
+	"redis_operation": {Group: "redis", Verb: "operation", Args: []string{"operation_id"}},
+
+	// ar
+	"ar_list":      {Group: "ar", Verb: "list"},
+	"ar_get":       {Group: "ar", Verb: "get", Args: []string{"id"}},
+	"ar_create":    {Group: "ar", Verb: "create", Args: []string{"name"}},
+	"ar_delete":    {Group: "ar", Verb: "delete", Args: []string{"id"}},
+	"ar_operation": {Group: "ar", Verb: "operation", Args: []string{"operation_id"}},
+
+	// ca
+	"ca_list":   {Group: "ca", Verb: "list"},
+	"ca_get":    {Group: "ca", Verb: "get", Args: []string{"name"}},
+	"ca_deploy": {Group: "ca", Verb: "deploy", Args: []string{"name"}, Pairs: map[string]bool{"env": true}},
+	"ca_delete": {Group: "ca", Verb: "delete", Args: []string{"name"}},
+	"ca_logs":   {Group: "ca", Verb: "logs", Args: []string{"name"}, Render: "log-lines"},
+	"ca_start":  {Group: "ca", Verb: "start", Args: []string{"name"}},
+	"ca_stop":   {Group: "ca", Verb: "stop", Args: []string{"name"}},
 }
 
 // CLIPending are the tools without a command of their own yet, with the
@@ -200,15 +234,6 @@ var cliSpecs = map[string]CLISpec{
 // fail on a tool that is neither here nor in cliSpecs, and on one that is in
 // both. Delete it once it is empty.
 var CLIPending = map[string]string{
-	// PR 3b: kafka, redis, ar, ca.
-	"kafka_list": "PR 3b", "kafka_get": "PR 3b", "kafka_create": "PR 3b", "kafka_delete": "PR 3b",
-	"kafka_operation": "PR 3b", "kafka_versions": "PR 3b", "kafka_specs": "PR 3b",
-	"redis_list": "PR 3b", "redis_get": "PR 3b", "redis_create": "PR 3b", "redis_delete": "PR 3b",
-	"redis_operation": "PR 3b", "redis_versions": "PR 3b", "redis_specs": "PR 3b",
-	"ar_list": "PR 3b", "ar_get": "PR 3b", "ar_create": "PR 3b", "ar_delete": "PR 3b", "ar_operation": "PR 3b",
-	"ca_list": "PR 3b", "ca_get": "PR 3b", "ca_deploy": "PR 3b", "ca_delete": "PR 3b", "ca_logs": "PR 3b",
-	"ca_start": "PR 3b", "ca_stop": "PR 3b",
-
 	// PR 3c: billing, audit, org, iam, metrics, stack, image, vpc open-ports,
 	// deploy plan/apply/list.
 	"billing_balance": "PR 3c", "billing_consumption": "PR 3c", "billing_finops": "PR 3c",
