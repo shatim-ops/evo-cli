@@ -28,62 +28,9 @@ import (
 // exit code with --json (a mutating one with --yes, so that it runs past the
 // gate). The previews of every command and tool that asks for consent are
 // TestContract_PreviewParity (contract_preview_test.go, REQ-6), on a fake
-// answer per API; the sweep of every answer with a fake per API is PR 6
-// (REQ-8), this is the smoke test of the new commands.
-
-// parityArgsOf are the arguments a new command gets in these tests beyond
-// its required ones: a required one-of pair (dns record-create: --value or
-// --values), a value the tool checks before the cloud.
-var parityArgsOf = map[string]map[string]any{
-	"dns_record_create": {"value": "203.0.113.10"},
-	"dns_zone_delete":   {"type": "public"},
-	"dns_record_delete": {"type": "public"},
-	"tg_create":         {"vm_id": parityVM},
-	"lb_create":         {"vpc_id": parityVM, "zone": pvZone},
-	"snat_create":       {"availability_zone_id": pvZone},
-	"stack_apply":       {"job_id": "stk-0123456789"},
-	"stack_status":      {"job_id": "stk-0123456789"},
-	"stack_destroy":     {"job_id": "stk-0123456789"},
-	// project_id is a filter of these tools, given with --project-id of
-	// the command (TestTreeArgs_ProjectIDFilter).
-	"org_quotas":           {"project_id": pvProject},
-	"iam_service_accounts": {"project_id": pvProject},
-	"billing_consumption":  {"project_id": pvProject},
-}
-
-// parityValue is a value of argument p for these tests: an enum's first
-// value, a UUID for an id, a name otherwise.
-func parityValue(t tools.Tool, p param) any {
-	props, _ := t.InputSchema["properties"].(map[string]any)
-	prop, _ := props[p.Name].(map[string]any)
-	switch enum := prop["enum"].(type) {
-	case []any:
-		if len(enum) > 0 {
-			return enum[0]
-		}
-	case []string:
-		if len(enum) > 0 {
-			return enum[0]
-		}
-	}
-	switch p.Type {
-	case "integer", "number":
-		return float64(80)
-	case "boolean":
-		return true
-	case "array":
-		if p.ItemType == "integer" {
-			return []any{float64(80)}
-		}
-		return []any{"example.com"}
-	case "object":
-		return map[string]any{"name": "web"}
-	}
-	if p.Name == "id" || strings.HasSuffix(p.Name, "_id") {
-		return parityVM
-	}
-	return "web"
-}
+// answer per API; the answers of every command against its tool, on a fake
+// per API, are TestParity_JSONEqualsTool (REQ-8). The arguments are those of
+// parityArgs, the one table of the three.
 
 // parityCommand is one new command with its arguments: as the tree takes
 // them and as 'evo tools call' does.
@@ -108,14 +55,9 @@ func newParityCommands(t *testing.T) []parityCommand {
 				continue
 			}
 			tl, _ := reg.Lookup(c.Tool)
-			args := map[string]any{}
-			for _, p := range schemaParams(tl) {
-				if p.Required {
-					args[p.Name] = parityValue(tl, p)
-				}
-			}
-			for k, v := range parityArgsOf[c.Tool] {
-				args[k] = v
+			args, ok := parityArgs[c.Tool]
+			if !ok {
+				t.Fatalf("%s: no entry in parityArgs", c.Tool)
 			}
 			out = append(out, parityCommandOf(t, g, c, tl, args))
 		}
@@ -282,13 +224,16 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 		newProcess()
 		callCode, callOut, callErr := runCLI(t, "", append([]string{"tools", "call", c.tool}, extra...)...)
 		why := ""
+		compat, isCompat := jsonAliasCompat["evo "+strings.Join(c.line, " ")]
 		switch {
 		case cmdCode != callCode:
 			why = fmt.Sprintf("exit %d ≠ %d", cmdCode, callCode)
 		case jsonImpure(cmdOut, cmdErr) != "":
 			why = jsonImpure(cmdOut, cmdErr)
-		case c.compat != "":
-			why = c.check(cmdOut, cmdErr, callOut)
+		case cmdOut != callOut && isCompat && compat.check != nil:
+			if why = compat.check(cmdOut, cmdErr, callOut); why == "" {
+				t.Logf("evo %s: %s", strings.Join(c.line, " "), compat.reason)
+			}
 		case cmdOut != callOut:
 			why = "stdout differs"
 		default:
@@ -298,9 +243,6 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 			bad = append(bad, fmt.Sprintf("evo %s ≠ evo tools call %s: %s\n  cmd: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
 				strings.Join(line, " "), c.tool, why, cmdCode, clipLine(cmdOut), clipLine(cmdErr), callCode, clipLine(callOut), clipLine(callErr)))
 			continue
-		}
-		if c.compat != "" {
-			t.Logf("evo %s: %s", strings.Join(c.line, " "), c.compat)
 		}
 		engine++
 	}
@@ -325,42 +267,22 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 // engineParity are the engine commands (engineCommands, spec REQ-4) and
 // evo vm zones, the command of list_zones, against 'evo tools call' of their
 // tools on the empty cloud: the same exit code, stdout and error (see
-// sameEngineError). compat says why a command's --json is not the tool's
-// answer as is, and check what it is instead: the forms v1.0 gave, kept
-// until v2.0 (spec.md §4) or until PR 6 (REQ-8) brings the two together.
+// sameEngineError). A command whose --json is not the tool's answer as is
+// is in jsonAliasCompat (parity_json_test.go), with the reason and the form
+// it gives instead: the closed list of REQ-8.
 var engineParity = []struct {
-	line   []string
-	tool   string
-	yes    bool
-	compat string
-	check  func(cmdOut, cmdErr, callOut string) string
+	line []string
+	tool string
+	yes  bool
 }{
 	{line: []string{"deploy"}, tool: "deploy", yes: true},
 	{line: []string{"status"}, tool: "status"},
 	{line: []string{"logs"}, tool: "logs"},
-	{line: []string{"destroy"}, tool: "destroy", yes: true,
-		compat: "без развёртывания печатает status none, как с v1.0, а инструмент — status ok с log; сводится в PR 6 (REQ-8)",
-		check: func(cmdOut, _, callOut string) string {
-			var cmd, call map[string]any
-			_ = json.Unmarshal([]byte(cmdOut), &cmd)
-			_ = json.Unmarshal([]byte(callOut), &call)
-			if cmd["status"] != "none" || call["status"] != "ok" || !strings.Contains(fmt.Sprint(call["log"]), fmt.Sprint(cmd["message"])) {
-				return "not the answers of no deployment"
-			}
-			return ""
-		}},
+	{line: []string{"destroy"}, tool: "destroy", yes: true},
 	{line: []string{"vm", "zones"}, tool: "list_zones"},
-	{line: []string{"list-zones"}, tool: "list_zones",
-		compat: "скрытый алиас evo vm zones: --json — массив zones из ответа инструмента, до v2.0 (spec.md §4)",
-		check: func(cmdOut, cmdErr, callOut string) string {
-			return arrayOfAnswer(cmdOut, cmdErr, callOut, "zones", "evo list-zones is deprecated")
-		}},
+	{line: []string{"list-zones"}, tool: "list_zones"},
 	{line: []string{"project", "list"}, tool: "org_projects"},
-	{line: []string{"list-images"}, tool: "list_images",
-		compat: "устаревшая команда list_images: --json — массив images из ответа инструмента, пустой — без вывода, до v2.0",
-		check: func(cmdOut, cmdErr, callOut string) string {
-			return arrayOfAnswer(cmdOut, cmdErr, callOut, "images", "evo list-images is deprecated")
-		}},
+	{line: []string{"list-images"}, tool: "list_images"},
 }
 
 // arrayOfAnswer checks the --json of a legacy alias: the list key of the

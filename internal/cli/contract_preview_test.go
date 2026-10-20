@@ -53,8 +53,9 @@ func (parityCloud) GetImage(_ context.Context, id string) (*provision.ImageDetai
 // — is one preview on the four surfaces (spec REQ-6): its command with
 // --dry-run --json (preview.details), 'evo tools call' with --dry-run
 // --json, MCP over stdio and MCP over HTTP. The cases come from the
-// registry; the arguments of each are parityArgs, and a gated tool without
-// an entry there fails the test, as does one whose preview any surface
+// registry; the arguments of each are parityArgs (the table of
+// TestParity_JSONEqualsTool too), and a gated tool without an entry there
+// fails the test, as does one whose preview any surface
 // refuses. The one difference allowed is H7 of the closed list of
 // the HTTP mode (docs/mcp.md): credential fields masked, and named in
 // "redacted". deploy is checked in both states of the directory: no
@@ -87,8 +88,8 @@ func TestContract_PreviewParity(t *testing.T) {
 		cases = append(cases, previewCase{name: tl.Name, tool: tl, args: args, setup: paritySetup[tl.Name]})
 	}
 	for name := range parityArgs {
-		if tl, ok := reg.Lookup(name); !ok || !tl.Mutating && !tools.IsSensitive(tl) {
-			bad = append(bad, name+": in parityArgs, but not a tool that asks for consent")
+		if _, ok := reg.Lookup(name); !ok {
+			bad = append(bad, name+": in parityArgs, but no tool")
 		}
 	}
 	if dep, ok := reg.Lookup("deploy"); ok {

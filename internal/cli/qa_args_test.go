@@ -6,6 +6,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -42,7 +43,6 @@ func TestBuildToolArgs_JSONIsCheckedAgainstSchema(t *testing.T) {
 		{disk, `{"name":"d","size_gb":50.5}`, "size_gb"},
 		{disk, `{"name":"d","size_gb":50,"atach_to":"web"}`, "atach_to"},
 		{disk, `{"name":7,"size_gb":50}`, "name"},
-		{ports, `{"security_group":"sg","ports":"80"}`, "ports"},
 		{ports, `{"security_group":"sg","ports":[80,"x"]}`, "ports"},
 	}
 	for _, c := range bad {
@@ -50,6 +50,12 @@ func TestBuildToolArgs_JSONIsCheckedAgainstSchema(t *testing.T) {
 		if clerrors.ExitCode(err) != clerrors.ExitGeneral || err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s %s: err %v, want a usage error naming %q", c.tool.Name, c.json, err, c.want)
 		}
+	}
+	// An array may come as a string, as MCP takes it ("80,443": the tool's
+	// own check, tools.CheckArgs, docs/mcp.md); its items, when it is a
+	// JSON array, the CLI checks as it always did (checkItems).
+	if args, err := buildToolArgs(ports, "", `{"security_group":"sg","ports":"80"}`, nil); err != nil || args["ports"] != "80" {
+		t.Errorf(`ports "80": %v %v`, args, err)
 	}
 
 	// Валидное проходит как есть; null — то же, что отсутствие.
@@ -154,10 +160,34 @@ func FuzzCoerceArg(f *testing.F) {
 		if _, merr := json.Marshal(v); merr != nil {
 			t.Fatalf("coerceArg(%s/%s, %q) = %#v: not JSON-encodable: %v", typ, itemType, value, v, merr)
 		}
-		if cerr := checkArgType(p, v); cerr != nil {
+		if cerr := matchesSchema(p, v); cerr != nil {
 			t.Fatalf("coerceArg(%s/%s, %q) = %#v does not match the schema: %v", typ, itemType, value, v, cerr)
 		}
 	})
+}
+
+// matchesSchema: v passes the tool's check of an argument of p's type
+// (tools.CheckArgs), and is the form coerceArg gives: an array is a JSON
+// array of items of p's item type, an object a JSON object.
+func matchesSchema(p param, v any) error {
+	one := tools.Tool{Name: "fuzz", InputSchema: map[string]any{"type": "object",
+		"properties": map[string]any{"v": map[string]any{"type": p.Type}}}}
+	if err := tools.CheckArgs(one, map[string]any{"v": v}); err != nil {
+		return err
+	}
+	switch p.Type {
+	case "array":
+		a, ok := v.([]any)
+		if !ok {
+			return fmt.Errorf("%T is not a JSON array", v)
+		}
+		return checkItems(p, a)
+	case "object":
+		if _, ok := v.(map[string]any); !ok {
+			return fmt.Errorf("%T is not a JSON object", v)
+		}
+	}
+	return nil
 }
 
 // FuzzBuildToolArgs: --arg/--args-json любой формы дают либо аргументы по
@@ -190,17 +220,20 @@ func FuzzBuildToolArgs(f *testing.F) {
 		if _, ok := args["confirmed"]; ok {
 			t.Fatal("confirmed passed through")
 		}
+		// What passes is what the tool's own check passes (MCP's rule),
+		// with the items of each JSON array of the item type (checkItems).
+		if err := tools.CheckArgs(tl, args); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
 		params := map[string]param{}
 		for _, p := range schemaParams(tl) {
 			params[p.Name] = p
 		}
 		for k, v := range args {
-			p, ok := params[k]
-			if !ok {
-				t.Fatalf("argument %q is not in the schema of %s", k, name)
-			}
-			if err := checkArgType(p, v); err != nil {
-				t.Fatalf("argument %q: %v", k, err)
+			if items, ok := v.([]any); ok {
+				if err := checkItems(params[k], items); err != nil {
+					t.Fatalf("argument %q: %v", k, err)
+				}
 			}
 		}
 		if _, err := json.Marshal(args); err != nil {

@@ -380,6 +380,12 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		// The tool's own check of the arguments (tools.CheckArgs, spec.md
+		// REQ-8), before the preview: its refusal is the one the tool
+		// gives, as every refusal of a tool is shown.
+		if err := tools.CheckArgs(t, callArgs); err != nil {
+			return toolError(t.Name, tools.ErrResult(err))
+		}
 		text, err := invokeTool(cmd.Context(), cmd, t, callArgs, true)
 		if flagJSON {
 			// On a tool error the text is the tool's error body: the error
