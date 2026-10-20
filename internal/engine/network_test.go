@@ -33,7 +33,7 @@ func TestDeploy_CreateRequestUsesNamesAndZoneNetwork(t *testing.T) {
 		},
 		listSecurityGroupsFn: func(context.Context, string) ([]*provision.SecurityGroup, error) {
 			return []*provision.SecurityGroup{
-				{ID: "sg-other", Name: "inspector-fileserver-sg"},
+				{ID: "sg-other", Name: "other-team-sg"},
 				{ID: "sg-2", Name: "SSH-access_ru.AZ-2"},
 				{ID: "sg-1", Name: "SSH-access_ru.AZ-1", Rules: []provision.SGRule{{Direction: "ingress", PortRange: "5432:5432"}}},
 			}, nil
@@ -232,7 +232,7 @@ func TestResolveNetwork_SecurityGroupChoice(t *testing.T) {
 		return []*provision.Subnet{{ID: "sn-2", Name: "Default_ru.AZ-2", AvailabilityZoneID: "z2"}}, nil
 	}
 	groups := []*provision.SecurityGroup{
-		{ID: "sg-other", Name: "inspector-fileserver-sg", AvailabilityZoneID: "z2"},
+		{ID: "sg-other", Name: "other-team-sg", AvailabilityZoneID: "z2"},
 		{ID: "sg-def", Name: "Default_ru.AZ-2", AvailabilityZoneID: "z2"},
 		{ID: "sg-ssh", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: "z2"},
 		{ID: "sg-az1", Name: "Default_ru.AZ-1", AvailabilityZoneID: "z1"},
@@ -246,7 +246,7 @@ func TestResolveNetwork_SecurityGroupChoice(t *testing.T) {
 		{"Default зоны, а не первая по порядку", "", groups, "sg-def", false},
 		// Группа зоны по умолчанию у Cloud.ru — SSH-access_<зона> (документация
 		// «Группы безопасности»), а не чужая группа, первая по алфавиту:
-		// 16.10.2026 deploy открывал порты в inspector-fileserver-sg.
+		// 16.10.2026 deploy открывал порты в other-team-sg.
 		{"SSH-access_<зона> — группа по умолчанию", "", []*provision.SecurityGroup{groups[2], groups[0]}, "sg-ssh", false},
 		// Признак default из API сильнее имён.
 		{"признак default из API", "", []*provision.SecurityGroup{

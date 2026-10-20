@@ -492,8 +492,8 @@ func errNotProjectUUID(id string) error {
 }
 
 func notProjectUUIDHint() string {
-	return i18n.T("A project ID looks like 3f2a8c1e-0b6d-4c8e-9a1f-2d3c4b5a6978: find it in the Cloud.ru console, in the project details. 'evo project use' also takes a project name.",
-		"ID проекта выглядит так: 3f2a8c1e-0b6d-4c8e-9a1f-2d3c4b5a6978 — он в консоли Cloud.ru, в сведениях о проекте. 'evo project use' принимает и имя проекта.")
+	return i18n.T("A project ID looks like 00000000-0000-4000-8000-000000000001: find it in the Cloud.ru console, in the project details. 'evo project use' also takes a project name.",
+		"ID проекта выглядит так: 00000000-0000-4000-8000-000000000001 — он в консоли Cloud.ru, в сведениях о проекте. 'evo project use' принимает и имя проекта.")
 }
 
 // askProjectID asks for the project UUID until it gets one; Enter keeps
