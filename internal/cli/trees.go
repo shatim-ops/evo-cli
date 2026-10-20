@@ -27,9 +27,11 @@ import (
 // command, which of its arguments are positional, and how the answer is
 // shown. Every other argument of the tool becomes a flag with the type from
 // its schema. The cobra layer only parses flags into map[string]any, calls
-// the tool and formats the answer. The presentation stays here: the summary
-// of each tree, the Russian help (trees_ru.go) and the views a CLISpec names
-// by Render.
+// the tool and formats the answer. The help of a command is the tool's
+// description, English or Russian (Tool.ShortRU, DescriptionRU,
+// ArgDescriptionsRU). The presentation stays here: the summary of each tree
+// (in Russian: trees_ru.go), the Russian tables and the views a CLISpec
+// names by Render.
 
 // treeGroup is one top-level command.
 type treeGroup struct {
@@ -231,12 +233,12 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		long += "\nReveals a secret, so it asks for confirmation: a prompt on a terminal, --yes to confirm in advance."
 	}
 	if i18n.Lang() == i18n.RU {
-		if ru, ok := toolShortRU[t.Name]; ok {
-			short = ru
+		if t.ShortRU != "" {
+			short = t.ShortRU
 		}
 		runs := "Вызывает инструмент " + t.Name + " (подробнее: 'evo tools describe " + t.Name + "')."
-		if ru, ok := toolLongRU[t.Name]; ok {
-			long = short + ".\n\n" + ru + "\n\n" + runs
+		if t.DescriptionRU != "" {
+			long = short + ".\n\n" + t.DescriptionRU + "\n\n" + runs
 		} else {
 			long = short + ".\n\n" + runs + "\n" +
 				"Описание инструмента и его флагов — на английском, как в MCP:\n\n" + t.Description
@@ -355,12 +357,12 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 // adds its own "(default true)" to the help of a flag that defaults to true.
 var defaultTrueRE = regexp.MustCompile(` ?\(default:? true\)`)
 
-// flagDesc is the help of the flag for argument p: the Russian text from
-// flagShortRU when the CLI speaks Russian and the map has one (ru is then
+// flagDesc is the help of the flag for argument p: the tool's Russian text
+// of the argument when the CLI speaks Russian and there is one (ru is then
 // true), the schema's English description otherwise.
 func flagDesc(t tools.Tool, p param) (desc string, ru bool) {
 	if i18n.Lang() == i18n.RU {
-		if s, ok := flagShortRU[t.Name+"."+p.Name]; ok {
+		if s := t.ArgDescriptionsRU[p.Name]; s != "" {
 			return s, true
 		}
 	}

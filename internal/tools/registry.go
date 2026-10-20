@@ -47,6 +47,13 @@ type Tool struct {
 	Mutating    bool           `json:"mutating"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
+	// ShortRU, DescriptionRU and ArgDescriptionsRU describe the tool and
+	// its arguments in Russian, for the CLI (toolsRU): ShortRU is the
+	// summary, DescriptionRU the rest. Description and the schema stay the
+	// English text MCP sends.
+	ShortRU           string            `json:"-"`
+	DescriptionRU     string            `json:"-"`
+	ArgDescriptionsRU map[string]string `json:"-"`
 	// RequiredOneOf are argument sets one argument of each the call must
 	// have, beside the schema's "required" (see requiredOneOf).
 	RequiredOneOf [][]string `json:"-"`
@@ -83,6 +90,9 @@ func New(factory EngineFactory) *Registry {
 		t.Mutating = isMutating(*t)
 		t.RequiredOneOf = requiredOneOf[t.Name]
 		t.CLI = cliSpecs[t.Name]
+		ru := toolsRU[t.Name]
+		t.ShortRU, t.DescriptionRU = ru.Short, ru.Long
+		t.ArgDescriptionsRU = argDescriptionsRU(*t, ru.Args)
 		if h := r.handlers[t.Name]; h != nil {
 			if projectTools[t.Name] {
 				h = r.requireProject(h)

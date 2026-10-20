@@ -22,8 +22,8 @@
 //     список tools.CLIPending — инструменты, у которых команды пока нет;
 //   - rootArgs (аргументы, которые подаются корневыми флагами): AST-разбор
 //     internal/cli/trees.go;
-//   - русская справка деревьев: ключи карт toolShortRU, toolLongRU,
-//     flagShortRU в internal/cli/trees_ru.go;
+//   - русские описания: Tool.ShortRU, Tool.DescriptionRU и
+//     Tool.ArgDescriptionsRU реестра (internal/tools/descriptions_ru.go);
 //   - фактический набор команд и флагов бинаря: docs/commands.md (его CI
 //     сверяет с бинарём тестом TestCommandsDoc).
 //
@@ -117,8 +117,7 @@ func main() {
 	reg := tools.New(nil)
 	check(parseRootArgs(root + "/internal/cli/trees.go"))
 	cmds := treeCmds(reg)
-	ruShort, ruLong, ruFlags, err := parseRU(root + "/internal/cli/trees_ru.go")
-	check(err)
+	ruShort, ruLong, ruFlags := russianTexts(reg)
 	docCmds, docFlags, err := parseCommandsDoc(root + "/docs/commands.md")
 	check(err)
 
@@ -373,7 +372,7 @@ func main() {
 			}
 		}
 	}
-	nShort, nLong := 0, 0
+	nShort, nLong, nArgs, argsRU := 0, 0, 0, 0
 	for _, t := range reg.Tools() {
 		if ruShort[t.Name] {
 			nShort++
@@ -381,12 +380,19 @@ func main() {
 		if ruLong[t.Name] {
 			nLong++
 		}
+		for name := range schemaProps(t) {
+			nArgs++
+			if ruFlags[t.Name+"."+name] {
+				argsRU++
+			}
+		}
 	}
 	fmt.Fprintf(w, "| Что | Есть по-русски | Всего |\n|---|---|---|\n")
-	fmt.Fprintf(w, "| краткое описание инструмента (toolShortRU) | %d | %d инструментов |\n", nShort, len(reg.Tools()))
-	fmt.Fprintf(w, "| подробная справка инструмента (toolLongRU) | %d | %d инструментов |\n", nLong, len(reg.Tools()))
-	fmt.Fprintf(w, "| описания флагов команд деревьев (flagShortRU) | %d | %d флагов |\n", flagsRU, flagsTree)
-	fmt.Fprintf(w, "| описания инструментов в MCP и `evo tools describe` | 0 | %d (всегда английские) |\n", len(reg.Tools()))
+	fmt.Fprintf(w, "| краткое описание инструмента (ShortRU) | %d | %d инструментов |\n", nShort, len(reg.Tools()))
+	fmt.Fprintf(w, "| подробное описание инструмента (DescriptionRU) | %d | %d инструментов |\n", nLong, len(reg.Tools()))
+	fmt.Fprintf(w, "| описания аргументов (ArgDescriptionsRU) | %d | %d аргументов |\n", argsRU, nArgs)
+	fmt.Fprintf(w, "| из них флаги команд деревьев | %d | %d флагов |\n", flagsRU, flagsTree)
+	fmt.Fprintf(w, "| описания инструментов в MCP | 0 | %d (всегда английские) |\n", len(reg.Tools()))
 }
 
 func countMut(reg *tools.Registry) int {
@@ -524,37 +530,20 @@ func lit(e ast.Expr) string {
 	return ""
 }
 
-// --- AST: ключи карт русской справки ---
+// --- русские описания реестра ---
 
-func parseRU(path string) (short, long, flags map[string]bool, err error) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, 0)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	keys := func(name string) map[string]bool {
-		m := map[string]bool{}
-		for _, decl := range f.Decls {
-			gd, ok := decl.(*ast.GenDecl)
-			if !ok || gd.Tok != token.VAR {
-				continue
-			}
-			for _, spec := range gd.Specs {
-				vs := spec.(*ast.ValueSpec)
-				for i, n := range vs.Names {
-					if n.Name != name || i >= len(vs.Values) {
-						continue
-					}
-					cl, _ := vs.Values[i].(*ast.CompositeLit)
-					for _, e := range cl.Elts {
-						m[lit(e.(*ast.KeyValueExpr).Key)] = true
-					}
-				}
-			}
+// russianTexts — у каких инструментов есть русские краткое и подробное
+// описание и у каких аргументов ("инструмент.аргумент") — русский текст.
+func russianTexts(reg *tools.Registry) (short, long, args map[string]bool) {
+	short, long, args = map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, t := range reg.Tools() {
+		short[t.Name] = t.ShortRU != ""
+		long[t.Name] = t.DescriptionRU != ""
+		for name, s := range t.ArgDescriptionsRU {
+			args[t.Name+"."+name] = s != ""
 		}
-		return m
 	}
-	return keys("toolShortRU"), keys("toolLongRU"), keys("flagShortRU"), nil
+	return short, long, args
 }
 
 // --- docs/commands.md: команды и их локальные флаги ---
