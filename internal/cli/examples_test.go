@@ -30,6 +30,37 @@ func TestCommandExamples_AreValid(t *testing.T) {
 	}
 }
 
+// parityTrees are the trees the CLI ↔ MCP parity plan added (spec.md
+// REQ-3, PR 3), parityVerbs the commands it added to the trees of v1.1
+// ("group verb"): each has an example, and parity_newcmds_test.go runs it
+// against its tool.
+var (
+	parityTrees = map[string]bool{"dns": true, "cert": true, "lb": true, "tg": true, "snat": true}
+	parityVerbs = map[string]bool{}
+)
+
+// Every command the parity plan added has an example in its --help
+// (spec.md REQ-3): the commands of its trees and those it added to the
+// trees of v1.1.
+func TestCommandExamples_NewCommands(t *testing.T) {
+	n := 0
+	for _, g := range allTreeGroups() {
+		for _, c := range g.Cmds {
+			if !parityTrees[g.Name] && !parityVerbs[g.Name+" "+c.Verb] {
+				continue
+			}
+			n++
+			path := "evo " + g.Name + " " + c.Verb
+			if strings.TrimSpace(commandExamples[path]) == "" {
+				t.Errorf("%s (%s): no example in commandExamples", path, c.Tool)
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatal("no command of the parity trees")
+	}
+}
+
 func checkExampleLine(t *testing.T, root *cobra.Command, line string) {
 	t.Helper()
 	// Only the evo part of a pipeline or a chain: "evo deploy --yes && evo verify".

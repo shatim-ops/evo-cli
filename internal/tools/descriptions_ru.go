@@ -357,7 +357,7 @@ var toolsRU = map[string]toolRU{
 		Long: "Освободить (удалить) публичный IP: адрес уходит из проекта. Адрес задаётся аргументом <id> " +
 			"или флагом --ip-address. Адрес, занятый ВМ, не освобождается: сначала отвяжите его или удалите ВМ " +
 			"('evo vm delete'). Адрес SNAT-шлюза тоже не освобождается: он удаляется вместе со шлюзом " +
-			"('evo tools call snat_delete').",
+			"('evo snat delete').",
 		Args: map[string]string{
 			"id":         "UUID floating IP (список: evo vpc fips). Нужен id или ip_address, не оба",
 			"ip_address": "Публичный IP-адрес, например 203.0.113.11 (вместо аргумента <id>)",
@@ -491,7 +491,7 @@ var toolsRU = map[string]toolRU{
 		Long: "Применить манифест Kubernetes (YAML или JSON, можно несколько документов) к кластеру — как " +
 			"'kubectl apply -f -'. Для развёртывания и обновления рабочих нагрузок: Deployment, StatefulSet, Service, " +
 			"ServiceMonitor и других. Новому кластеру нужен выход в интернет, чтобы скачивать публичные образы " +
-			"(SNAT-шлюз: 'evo tools call snat_create'), а CRD (например, ServiceMonitor) должны существовать до объектов, " +
+			"(SNAT-шлюз: 'evo snat create'), а CRD (например, ServiceMonitor) должны существовать до объектов, " +
 			"которые их используют.",
 		Args: map[string]string{
 			"cluster_id": "UUID кластера",
@@ -505,7 +505,7 @@ var toolsRU = map[string]toolRU{
 			"идемпотентны (helm upgrade --install --wait). --repo-url сначала добавляет репозиторий чартов. Значения — " +
 			"--values (содержимое values.yaml) и --set (ключ=значение). Изменяющие действия — с подтверждением. Подходит " +
 			"для типовых продуктов (например, kube-prometheus-stack, базы данных). Узлам нужен выход в интернет, чтобы " +
-			"скачать образы чарта (SNAT-шлюз: 'evo tools call snat_create'); размер группы узлов подбирайте под чарт: " +
+			"скачать образы чарта (SNAT-шлюз: 'evo snat create'); размер группы узлов подбирайте под чарт: " +
 			"стекам мониторинга нужны узлы от 8 ГБ.",
 		Args: map[string]string{
 			"action":     "install, upgrade, uninstall, list или status",
@@ -558,7 +558,7 @@ var toolsRU = map[string]toolRU{
 			"'evo k8s kubectl <cluster-id> get pods -n <namespace>' (или -A): поды плагина должны стать Running и Ready " +
 			"(поды заданий Job, например cert-manager-startupapicheck, завершаются в Completed). Поды в ImagePullBackOff " +
 			"могут означать, что у кластера нет выхода в интернет: в Cloud.ru для этого нужен публичный SNAT-шлюз в зоне " +
-			"узлов ('evo tools call snat_create'). --resolve-mode OVERWRITE может заменить объекты, уже созданные в кластере.",
+			"узлов ('evo snat create'). --resolve-mode OVERWRITE может заменить объекты, уже созданные в кластере.",
 		Args: map[string]string{
 			"cluster_id": "UUID кластера (список: evo k8s list)",
 			"config": "Настройки плагина по схеме его версии (evo k8s addon-versions <плагин> --full): объект " +
@@ -833,8 +833,7 @@ var toolsRU = map[string]toolRU{
 		},
 	},
 
-	// Without a command yet (CLIPending), by the PR that gives them one.
-	// PR 3a: dns
+	// dns
 	"dns_zones": {
 		Short: "Зоны DNS проекта: публичные и приватные",
 		Long: "Зоны Evolution DNS проекта, публичные и приватные: id, имя, домен, видимость, состояние (у " +
@@ -842,9 +841,9 @@ var toolsRU = map[string]toolRU{
 	},
 	"dns_zone_get": {
 		Short: "Зона DNS по ID: все сведения",
-		Long:  "Все сведения об одной зоне DNS по id (список: 'evo tools call dns_zones'). Только чтение.",
+		Long:  "Все сведения об одной зоне DNS по id (список: 'evo dns zones'). Только чтение.",
 		Args: map[string]string{
-			"id":   "UUID зоны (список: evo tools call dns_zones), обязательный",
+			"id":   "UUID зоны (список: evo dns zones), обязательный",
 			"type": "Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id",
 		},
 	},
@@ -862,11 +861,11 @@ var toolsRU = map[string]toolRU{
 	},
 	"dns_zone_delete": {
 		Short: "Удалить зону DNS вместе с её записями (асинхронно)",
-		Long: "Удалить зону DNS по id (список: 'evo tools call dns_zones') вместе с её записями. Операция " +
+		Long: "Удалить зону DNS по id (список: 'evo dns zones') вместе с её записями. Операция " +
 			"асинхронная. Видимость зоны (--type public или private) указывать не обязательно: evo определяет её " +
 			"по id зоны.",
 		Args: map[string]string{
-			"id":   "UUID зоны (список: evo tools call dns_zones), обязательный",
+			"id":   "UUID зоны (список: evo dns zones), обязательный",
 			"type": "Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id",
 		},
 	},
@@ -887,21 +886,21 @@ var toolsRU = map[string]toolRU{
 			"public или private) указывать не обязательно: evo определяет её по id.",
 		Args: map[string]string{
 			"type":    "Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id",
-			"zone_id": "UUID зоны (список: evo tools call dns_zones), обязательный",
+			"zone_id": "UUID зоны (список: evo dns zones), обязательный",
 		},
 	},
 	"dns_record_get": {
 		Short: "Запись DNS по ID",
-		Long: "Одна запись DNS по id (список: 'evo tools call dns_records'). Только чтение. Видимость зоны (--type " +
+		Long: "Одна запись DNS по id (список: 'evo dns records <zone-id>'). Только чтение. Видимость зоны (--type " +
 			"public или private) указывать не обязательно: evo определяет её по id.",
 		Args: map[string]string{
-			"record_id": "UUID записи (список: evo tools call dns_records), обязательный",
+			"record_id": "UUID записи (список: evo dns records <zone-id>), обязательный",
 			"type":      "Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id",
 		},
 	},
 	"dns_record_create": {
 		Short: "Добавить запись DNS в зону (асинхронно)",
-		Long:  "Добавить запись DNS в зону. Операция асинхронная: ход — 'evo tools call dns_operation'.",
+		Long:  "Добавить запись DNS в зону. Операция асинхронная: ход — 'evo dns operation <operation-id>'.",
 		Args: map[string]string{
 			"name": "Имя записи (хост), например www или @ (обязательный)",
 			"record_type": "Тип записи: a, aaaa, cname, mx, ns, spf, txt, caa, srv (в любом регистре; отправляется строчными, " +
@@ -910,19 +909,19 @@ var toolsRU = map[string]toolRU{
 			"type":    "Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id",
 			"value":   "Одно значение записи (например, IP для записи A). Задаётся --value или --values, не оба",
 			"values":  "Несколько значений записи",
-			"zone_id": "UUID зоны (список: evo tools call dns_zones), обязательный",
+			"zone_id": "UUID зоны (список: evo dns zones), обязательный",
 		},
 	},
 	"dns_record_delete": {
 		Short: "Удалить запись DNS (асинхронно)",
-		Long:  "Удалить запись DNS по id (список: 'evo tools call dns_records'). Операция асинхронная.",
+		Long:  "Удалить запись DNS по id (список: 'evo dns records <zone-id>'). Операция асинхронная.",
 		Args: map[string]string{
-			"record_id": "UUID записи (список: evo tools call dns_records), обязательный",
+			"record_id": "UUID записи (список: evo dns records <zone-id>), обязательный",
 			"type":      "Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id",
 		},
 	},
 
-	// PR 3a: cert
+	// cert
 	"cert_list": {
 		Short: "TLS-сертификаты проекта в Certificate Manager",
 		Long: "TLS-сертификаты проекта в Certificate Manager; отбор — по имени, DNS-имени, common name, типу и " +
@@ -949,7 +948,7 @@ var toolsRU = map[string]toolRU{
 		Long: "Выпустить бесплатный TLS-сертификат Let's Encrypt для одного или нескольких доменов. Так включают " +
 			"HTTPS на сайте (например, shkrbkv.ru): выпуск, затем привязка к обработчику балансировщика. Зоны " +
 			"доменов должны быть заранее делегированы в Evolution DNS, иначе — ошибка ERROR_CODE_NOT_DELEGATED. " +
-			"Операция асинхронная: ответ содержит id операции, ход — 'evo tools call cert_operation' (до " +
+			"Операция асинхронная: ответ содержит id операции, ход — 'evo cert operation <operation-id>' (до " +
 			"done=true).",
 		Args: map[string]string{
 			"description": "Описание (необязательно)",
@@ -973,7 +972,7 @@ var toolsRU = map[string]toolRU{
 	"cert_renew": {
 		Short: "Перевыпустить сертификат Let's Encrypt (асинхронно)",
 		Long: "Запустить перевыпуск сертификата Let's Encrypt. Операция асинхронная: ответ содержит id операции, " +
-			"ход — 'evo tools call cert_operation'.",
+			"ход — 'evo cert operation <operation-id>'.",
 		Args: map[string]string{
 			"certificate_id": "id сертификата (обязательный)",
 		},
@@ -1007,7 +1006,7 @@ var toolsRU = map[string]toolRU{
 		Short: "Закрытый ключ версии сертификата — открытым текстом",
 		Long: "СЕКРЕТНЫЙ закрытый ключ версии сертификата. privateKey (в живом API — private_key) — текст PEM " +
 			"(-----BEGIN …), раскодированный из Base64 ответа API (key_format: pem; base64 — если значение API " +
-			"не PEM в Base64). 'evo tools call cert_import' принимает ключ в Base64.",
+			"не PEM в Base64). 'evo cert import' принимает ключ в Base64.",
 		Args: map[string]string{
 			"certificate_id": "id сертификата (обязательный)",
 			"confirmed": "Ответ содержит закрытый ключ открытым текстом. Должно быть true; ставится только после согласия " +
@@ -1027,7 +1026,7 @@ var toolsRU = map[string]toolRU{
 		},
 	},
 
-	// PR 3a: lb, tg
+	// lb, tg
 	"lb_list": {
 		Short: "Балансировщики нагрузки проекта (L4)",
 		Long: "Балансировщики нагрузки Evolution (L4, сетевые) проекта: id, имя, состояние, VPC, внешний IP. " +
@@ -1035,10 +1034,10 @@ var toolsRU = map[string]toolRU{
 	},
 	"lb_get": {
 		Short: "Балансировщик по ID: правила, обработчики, адреса, зоны",
-		Long: "Все сведения об одном балансировщике по id (список: 'evo tools call lb_list'): правила, " +
+		Long: "Все сведения об одном балансировщике по id (список: 'evo lb list'): правила, " +
 			"обработчики, адреса, зоны доступности, состояние. Только чтение.",
 		Args: map[string]string{
-			"id": "UUID балансировщика (список: evo tools call lb_list), обязательный",
+			"id": "UUID балансировщика (список: evo lb list), обязательный",
 		},
 	},
 	"lb_operation": {
@@ -1058,10 +1057,10 @@ var toolsRU = map[string]toolRU{
 	},
 	"tg_get": {
 		Short: "Группа целей по ID: ВМ, VPC, состояние",
-		Long: "Сведения об одной группе целей по id (список: 'evo tools call tg_list'): ВМ-участники, VPC, " +
+		Long: "Сведения об одной группе целей по id (список: 'evo tg list'): ВМ-участники, VPC, " +
 			"состояние. Только чтение.",
 		Args: map[string]string{
-			"id": "UUID группы целей (список: evo tools call tg_list), обязательный",
+			"id": "UUID группы целей (список: evo tg list), обязательный",
 		},
 	},
 	"tg_create": {
@@ -1079,7 +1078,7 @@ var toolsRU = map[string]toolRU{
 	},
 	"tg_delete": {
 		Short: "Удалить группу целей (асинхронно)",
-		Long:  "Удалить группу целей по id (список: 'evo tools call tg_list'). Операция асинхронная.",
+		Long:  "Удалить группу целей по id (список: 'evo tg list'). Операция асинхронная.",
 		Args: map[string]string{
 			"id": "UUID группы целей (обязательный)",
 		},
@@ -1090,14 +1089,14 @@ var toolsRU = map[string]toolRU{
 			"(--zone, иначе зона --subnet-id, иначе зона ВМ группы целей, иначе зона из настроек; без зоны — " +
 			"отказ) и подсеть (основная подсеть зоны в этом VPC) и создаёт правило с обработчиком (--port → " +
 			"--target-port) и проверкой состояния по TCP. По умолчанию балансировщик получает публичный IP " +
-			"(--external). Балансировщик платный. Операция асинхронная: ход — 'evo tools call lb_operation'.",
+			"(--external). Балансировщик платный. Операция асинхронная: ход — 'evo lb operation <operation-id>'.",
 		Args: map[string]string{
 			"external":  "Выделить публичный IP; без него балансировщик только внутренний.",
 			"hc_port":   "Порт проверки состояния (по умолчанию — --target-port)",
 			"name":      "Имя балансировщика (обязательный)",
 			"port":      "Порт обработчика, на который балансировщик принимает трафик (обязательный)",
 			"subnet_id": "UUID подсети в зоне балансировщика (по умолчанию — основная подсеть зоны в VPC балансировщика)",
-			"target_group_id": "UUID группы целей, на которую балансировщик распределяет трафик (список: evo tools call tg_list), " +
+			"target_group_id": "UUID группы целей, на которую балансировщик распределяет трафик (список: evo tg list), " +
 				"обязательный",
 			"target_port": "Порт на целях, куда перенаправляется трафик (по умолчанию — --port)",
 			"vpc_id":      "UUID VPC (по умолчанию — VPC группы целей)",
@@ -1107,13 +1106,13 @@ var toolsRU = map[string]toolRU{
 	},
 	"lb_delete": {
 		Short: "Удалить балансировщик (асинхронно)",
-		Long:  "Удалить балансировщик по id (список: 'evo tools call lb_list'). Операция асинхронная.",
+		Long:  "Удалить балансировщик по id (список: 'evo lb list'). Операция асинхронная.",
 		Args: map[string]string{
 			"id": "UUID балансировщика (обязательный)",
 		},
 	},
 
-	// PR 3a: snat
+	// snat
 	"snat_list": {
 		Short: "SNAT-шлюзы проекта",
 		Long: "SNAT-шлюзы проекта. SNAT-шлюз даёт узлам в приватных подсетях (например, рабочим узлам Managed " +
@@ -1139,13 +1138,14 @@ var toolsRU = map[string]toolRU{
 	},
 	"snat_delete": {
 		Short: "Удалить SNAT-шлюз (узлы зоны теряют исходящий интернет)",
-		Long: "Удалить SNAT-шлюз по id (список: 'evo tools call snat_list'). Узлы в этой зоне теряют исходящий " +
+		Long: "Удалить SNAT-шлюз по id (список: 'evo snat list'). Узлы в этой зоне теряют исходящий " +
 			"доступ в интернет.",
 		Args: map[string]string{
-			"id": "UUID SNAT-шлюза (список: evo tools call snat_list), обязательный",
+			"id": "UUID SNAT-шлюза (список: evo snat list), обязательный",
 		},
 	},
 
+	// Without a command yet (CLIPending), by the PR that gives them one.
 	// PR 3b: kafka
 	"kafka_list": {
 		Short: "Кластеры Managed Kafka проекта",

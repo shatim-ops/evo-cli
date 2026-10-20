@@ -7,6 +7,14 @@
 
 ## [Не выпущено]
 
+### Добавлено
+
+- Команды для инструментов, которые из CLI были доступны только через `evo tools call` (паритет CLI ↔ MCP). Команда — по префиксу имени инструмента (`dns_zone_create` → `evo dns zone-create`); флаги выведены из схемы инструмента, идентификатор ресурса — аргументом; справка и таблицы — по-русски; `--json` печатает ответ инструмента как есть; изменяющие команды спрашивают подтверждение (вопрос на терминале, `--yes`, `--dry-run`), как остальные деревья. `evo tools call` и `--arg` работают как раньше. В корневой справке — группа «Сетевые сервисы»:
+  - `evo dns` — `zones`, `zone-get`, `zone-create`, `zone-delete`, `records`, `record-get`, `record-create`, `record-delete`, `operation` (инструменты `dns_*`);
+  - `evo cert` — `list`, `get`, `issue-le`, `import`, `renew`, `delete`, `usage`, `versions`, `private-key`, `operation` (`cert_*`); `private-key` показывает закрытый ключ и поэтому спрашивает подтверждение, как `evo secret value`;
+  - `evo lb` — `list`, `get`, `create`, `delete`, `operation` и `evo tg` — `list`, `get`, `create`, `delete` (`lb_*`, `tg_*`; для `evo mcp --toolsets` группа по-прежнему `nlb`);
+  - `evo snat` — `list`, `create`, `delete` (`snat_*`).
+
 ### Безопасность
 
 - MCP с `--allow-project`: `billing_consumption` и `billing_finops` с аргументом `project_id` читали расход любого проекта, который видит ключ, в обход списка. Теперь проект аргумента проверяется так же, как у `deploy` и `provision`: не из списка — `CONFIG_INVALID`. Исключения по-прежнему только `org_quotas` и `iam_service_accounts` (`docs/mcp.md`).

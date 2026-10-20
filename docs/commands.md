@@ -13,6 +13,17 @@
 ## Содержание
 
 - [evo](#evo)
+  - [evo cert](#evo-cert)
+    - [evo cert delete](#evo-cert-delete)
+    - [evo cert get](#evo-cert-get)
+    - [evo cert import](#evo-cert-import)
+    - [evo cert issue-le](#evo-cert-issue-le)
+    - [evo cert list](#evo-cert-list)
+    - [evo cert operation](#evo-cert-operation)
+    - [evo cert private-key](#evo-cert-private-key)
+    - [evo cert renew](#evo-cert-renew)
+    - [evo cert usage](#evo-cert-usage)
+    - [evo cert versions](#evo-cert-versions)
   - [evo completion](#evo-completion)
     - [evo completion bash](#evo-completion-bash)
     - [evo completion fish](#evo-completion-fish)
@@ -31,6 +42,16 @@
     - [evo disk list](#evo-disk-list)
     - [evo disk resize](#evo-disk-resize)
     - [evo disk types](#evo-disk-types)
+  - [evo dns](#evo-dns)
+    - [evo dns operation](#evo-dns-operation)
+    - [evo dns record-create](#evo-dns-record-create)
+    - [evo dns record-delete](#evo-dns-record-delete)
+    - [evo dns record-get](#evo-dns-record-get)
+    - [evo dns records](#evo-dns-records)
+    - [evo dns zone-create](#evo-dns-zone-create)
+    - [evo dns zone-delete](#evo-dns-zone-delete)
+    - [evo dns zone-get](#evo-dns-zone-get)
+    - [evo dns zones](#evo-dns-zones)
   - [evo doctor](#evo-doctor)
   - [evo image](#evo-image)
     - [evo image get](#evo-image-get)
@@ -52,6 +73,12 @@
     - [evo k8s nodepools](#evo-k8s-nodepools)
     - [evo k8s options](#evo-k8s-options)
     - [evo k8s plan](#evo-k8s-plan)
+  - [evo lb](#evo-lb)
+    - [evo lb create](#evo-lb-create)
+    - [evo lb delete](#evo-lb-delete)
+    - [evo lb get](#evo-lb-get)
+    - [evo lb list](#evo-lb-list)
+    - [evo lb operation](#evo-lb-operation)
   - [evo list-zones](#evo-list-zones)
   - [evo logs](#evo-logs)
   - [evo marketplace](#evo-marketplace)
@@ -91,7 +118,16 @@
     - [evo secret get](#evo-secret-get)
     - [evo secret list](#evo-secret-list)
     - [evo secret value](#evo-secret-value)
+  - [evo snat](#evo-snat)
+    - [evo snat create](#evo-snat-create)
+    - [evo snat delete](#evo-snat-delete)
+    - [evo snat list](#evo-snat-list)
   - [evo status](#evo-status)
+  - [evo tg](#evo-tg)
+    - [evo tg create](#evo-tg-create)
+    - [evo tg delete](#evo-tg-delete)
+    - [evo tg get](#evo-tg-get)
+    - [evo tg list](#evo-tg-list)
   - [evo tools](#evo-tools)
     - [evo tools call](#evo-tools-call)
     - [evo tools describe](#evo-tools-describe)
@@ -156,15 +192,18 @@ Object Storage, секреты.
 
 ### SEE ALSO
 
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
 * [evo completion](#evo-completion)	 - Скрипт автодополнения для оболочки
 * [evo configure](#evo-configure)	 - Ключ доступа и проект по умолчанию для профиля
 * [evo deploy](#evo-deploy)	 - Развернуть docker-compose проект на ВМ Cloud.ru
 * [evo destroy](#evo-destroy)	 - Удалить развёрнутую ВМ и связанные ресурсы
 * [evo disk](#evo-disk)	 - Диски
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
 * [evo doctor](#evo-doctor)	 - Проверить настройки, ключ доступа и связь с API
 * [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
 * [evo init](#evo-init)	 - Создать .evo.yaml с зоной и образом из API Cloud.ru
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+* [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
 * [evo list-zones](#evo-list-zones)	 - Список зон доступности
 * [evo logs](#evo-logs)	 - Журналы контейнеров на развёрнутой ВМ
 * [evo marketplace](#evo-marketplace)	 - Витрина: образы ВМ и плагины Kubernetes с командой развёртывания каждого
@@ -173,13 +212,559 @@ Object Storage, секреты.
 * [evo project](#evo-project)	 - Проекты, которые видит ключ, и проект профиля
 * [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 * [evo secret](#evo-secret)	 - Secret Manager: секреты
+* [evo snat](#evo-snat)	 - SNAT-шлюзы: исходящий интернет для приватных подсетей
 * [evo status](#evo-status)	 - Состояние текущего развёртывания
+* [evo tg](#evo-tg)	 - Группы целей балансировщиков
 * [evo tools](#evo-tools)	 - Список, описание и вызов инструментов evo (тех же, что у MCP-сервера)
 * [evo verify](#evo-verify)	 - Проверить, отвечает ли приложение (код 1 — не отвечает, 4 — ничего не развёрнуто)
 * [evo version](#evo-version)	 - Версия, коммит, дата сборки, версия Go и платформа
 * [evo vm](#evo-vm)	 - Виртуальные машины
 * [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 * [evo whoami](#evo-whoami)	 - Активный профиль и проверка его ключа
+
+## evo cert
+
+Certificate Manager: TLS-сертификаты
+
+```
+evo cert [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по cert
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo cert delete](#evo-cert-delete)	 - Удалить сертификат (безвозвратно)
+* [evo cert get](#evo-cert-get)	 - Сертификат по ID: метаданные, основная версия, срок действия, состояние
+* [evo cert import](#evo-cert-import)	 - Загрузить в Certificate Manager свой сертификат и закрытый ключ
+* [evo cert issue-le](#evo-cert-issue-le)	 - Выпустить бесплатный сертификат Let's Encrypt (асинхронно)
+* [evo cert list](#evo-cert-list)	 - TLS-сертификаты проекта в Certificate Manager
+* [evo cert operation](#evo-cert-operation)	 - Состояние асинхронной операции Certificate Manager
+* [evo cert private-key](#evo-cert-private-key)	 - Закрытый ключ версии сертификата — открытым текстом
+* [evo cert renew](#evo-cert-renew)	 - Перевыпустить сертификат Let's Encrypt (асинхронно)
+* [evo cert usage](#evo-cert-usage)	 - Ресурсы, которые используют сертификат
+* [evo cert versions](#evo-cert-versions)	 - Версии сертификата
+
+## evo cert delete
+
+Удалить сертификат (безвозвратно)
+
+### Synopsis
+
+```text
+Удалить сертификат (безвозвратно).
+
+Удалить сертификат безвозвратно. Если он привязан к балансировщику, удаление может сломать HTTPS; удалить всё равно — --force.
+
+Вызывает инструмент cert_delete (подробнее: 'evo tools describe cert_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo cert delete <id> [flags]
+```
+
+### Examples
+
+```
+  evo cert delete <certificate-id> --dry-run
+  evo cert delete <certificate-id> --force --yes
+```
+
+### Options
+
+```
+      --force   Удалить, даже если сертификат используют другие сервисы (по умолчанию false)
+  -h, --help    Справка по delete
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cert get
+
+Сертификат по ID: метаданные, основная версия, срок действия, состояние
+
+### Synopsis
+
+```text
+Сертификат по ID: метаданные, основная версия, срок действия, состояние.
+
+Один сертификат Certificate Manager по id: метаданные, основная версия, срок действия, состояние. Только чтение.
+
+Вызывает инструмент cert_get (подробнее: 'evo tools describe cert_get').
+```
+
+```
+evo cert get <id> [flags]
+```
+
+### Examples
+
+```
+  evo cert get <certificate-id>
+  evo cert get <certificate-id> --json
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cert import
+
+Загрузить в Certificate Manager свой сертификат и закрытый ключ
+
+### Synopsis
+
+```text
+Загрузить в Certificate Manager свой сертификат и закрытый ключ.
+
+Импортировать в Certificate Manager собственный сертификат пользователя (bring-your-own). Сертификат (--server-certificate) и закрытый ключ (--private-key) передаются как PEM в кодировке Base64.
+
+Вызывает инструмент cert_import (подробнее: 'evo tools describe cert_import').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo cert import <name> [flags]
+```
+
+### Examples
+
+```
+  evo cert import my-cert --server-certificate "$(base64 < cert.pem | tr -d '\n')" --private-key "$(base64 < key.pem | tr -d '\n')" --dry-run
+```
+
+### Options
+
+```
+      --description string                Описание (необязательно)
+  -h, --help                              Справка по import
+      --intermediate-certificate string   Цепочка промежуточных сертификатов, PEM в Base64 (необязательно)
+      --private-key string                Закрытый ключ, PEM в Base64 (обязательный)
+      --server-certificate string         Сертификат (открытая часть), PEM в Base64 (обязательный)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cert issue-le
+
+Выпустить бесплатный сертификат Let's Encrypt (асинхронно)
+
+### Synopsis
+
+```text
+Выпустить бесплатный сертификат Let's Encrypt (асинхронно).
+
+Выпустить бесплатный TLS-сертификат Let's Encrypt для одного или нескольких доменов. Так включают HTTPS на сайте (например, shkrbkv.ru): выпуск, затем привязка к обработчику балансировщика. Зоны доменов должны быть заранее делегированы в Evolution DNS, иначе — ошибка ERROR_CODE_NOT_DELEGATED. Операция асинхронная: ответ содержит id операции, ход — 'evo cert operation <operation-id>' (до done=true).
+
+Вызывает инструмент cert_issue_le (подробнее: 'evo tools describe cert_issue_le').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo cert issue-le <name> [flags]
+```
+
+### Examples
+
+```
+  evo cert issue-le site --dns-names example.com,www.example.com --dry-run
+  evo cert issue-le site --dns-names example.com --yes
+```
+
+### Options
+
+```
+      --description string      Описание (необязательно)
+      --dns-names stringArray   Домены для CN и SAN, например shkrbkv.ru и www.shkrbkv.ru (обязательный) (флаг повторяется или значения через запятую)
+  -h, --help                    Справка по issue-le
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cert list
+
+TLS-сертификаты проекта в Certificate Manager
+
+### Synopsis
+
+```text
+TLS-сертификаты проекта в Certificate Manager.
+
+TLS-сертификаты проекта в Certificate Manager; отбор — по имени, DNS-имени, common name, типу и состоянию. Только чтение. Так находят сертификат для HTTPS-балансировщика или сайта.
+
+Вызывает инструмент cert_list (подробнее: 'evo tools describe cert_list').
+```
+
+```
+evo cert list [flags]
+```
+
+### Examples
+
+```
+  evo cert list
+  evo cert list --dns-name example.com
+  evo cert list --state CERTIFICATE_STATE_EXPIRED --json
+```
+
+### Options
+
+```
+      --common-name string   Часть common name (CN) для отбора (необязательно)
+      --dns-name string      Одно из DNS-имён сертификата, например shkrbkv.ru (необязательно)
+  -h, --help                 Справка по list
+      --name string          Имя сертификата или его часть (необязательно)
+      --state string         CERTIFICATE_STATE_ACTIVE или CERTIFICATE_STATE_EXPIRED (необязательно)
+      --type string          CERTIFICATE_TYPE_IMPORTED, CERTIFICATE_TYPE_SELF_SIGNED или CERTIFICATE_TYPE_LETS_ENCRYPT (необязательно)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cert operation
+
+Состояние асинхронной операции Certificate Manager
+
+### Synopsis
+
+```text
+Состояние асинхронной операции Certificate Manager.
+
+Состояние асинхронной операции Certificate Manager (выпуск или перевыпуск сертификата) по id: опрашивайте, пока не станет done=true. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
+
+Вызывает инструмент cert_operation (подробнее: 'evo tools describe cert_operation').
+```
+
+```
+evo cert operation <operation-id> [flags]
+```
+
+### Examples
+
+```
+  evo cert operation <operation-id>
+  evo cert operation <operation-id> --wait-seconds 300
+```
+
+### Options
+
+```
+  -h, --help               Справка по operation
+      --wait-seconds int   Ждать итогового состояния до N секунд (не больше 300), опрашивая операцию с нарастающим интервалом. Без флага — одна проверка
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cert private-key
+
+Закрытый ключ версии сертификата — открытым текстом
+
+### Synopsis
+
+```text
+Закрытый ключ версии сертификата — открытым текстом.
+
+СЕКРЕТНЫЙ закрытый ключ версии сертификата. privateKey (в живом API — private_key) — текст PEM (-----BEGIN …), раскодированный из Base64 ответа API (key_format: pem; base64 — если значение API не PEM в Base64). 'evo cert import' принимает ключ в Base64.
+
+Вызывает инструмент cert_private_key (подробнее: 'evo tools describe cert_private_key').
+
+Показывает секрет, поэтому спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее.
+```
+
+```
+evo cert private-key <certificate-id> [flags]
+```
+
+### Examples
+
+```
+  evo cert private-key <certificate-id>
+  evo cert private-key <certificate-id> --version-id 2 --yes --json > key.json
+```
+
+### Options
+
+```
+  -h, --help             Справка по private-key
+      --version-id int   Номер версии; 0 или без значения — последняя версия
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cert renew
+
+Перевыпустить сертификат Let's Encrypt (асинхронно)
+
+### Synopsis
+
+```text
+Перевыпустить сертификат Let's Encrypt (асинхронно).
+
+Запустить перевыпуск сертификата Let's Encrypt. Операция асинхронная: ответ содержит id операции, ход — 'evo cert operation <operation-id>'.
+
+Вызывает инструмент cert_renew (подробнее: 'evo tools describe cert_renew').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo cert renew <certificate-id> [flags]
+```
+
+### Examples
+
+```
+  evo cert renew <certificate-id> --dry-run
+  evo cert renew <certificate-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по renew
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cert usage
+
+Ресурсы, которые используют сертификат
+
+### Synopsis
+
+```text
+Ресурсы, которые используют сертификат.
+
+Ресурсы (балансировщики и их обработчики), которые используют сертификат. Проверяйте перед удалением сертификата. Только чтение.
+
+Вызывает инструмент cert_usage (подробнее: 'evo tools describe cert_usage').
+```
+
+```
+evo cert usage <id> [flags]
+```
+
+### Examples
+
+```
+  evo cert usage <certificate-id>
+```
+
+### Options
+
+```
+  -h, --help   Справка по usage
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cert versions
+
+Версии сертификата
+
+### Synopsis
+
+```text
+Версии сертификата.
+
+Версии сертификата: id, CN, DNS-имена, состояние, срок действия — со всех страниц списка. Только чтение.
+
+Вызывает инструмент cert_versions (подробнее: 'evo tools describe cert_versions').
+```
+
+```
+evo cert versions <certificate-id> [flags]
+```
+
+### Examples
+
+```
+  evo cert versions <certificate-id>
+  evo cert versions <certificate-id> --json
+```
+
+### Options
+
+```
+  -h, --help   Справка по versions
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
 
 ## evo completion
 
@@ -1013,6 +1598,501 @@ evo disk types [flags]
 
 * [evo disk](#evo-disk)	 - Диски
 
+## evo dns
+
+Evolution DNS: зоны и записи
+
+```
+evo dns [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по dns
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo dns operation](#evo-dns-operation)	 - Состояние асинхронной операции DNS
+* [evo dns record-create](#evo-dns-record-create)	 - Добавить запись DNS в зону (асинхронно)
+* [evo dns record-delete](#evo-dns-record-delete)	 - Удалить запись DNS (асинхронно)
+* [evo dns record-get](#evo-dns-record-get)	 - Запись DNS по ID
+* [evo dns records](#evo-dns-records)	 - Записи зоны DNS
+* [evo dns zone-create](#evo-dns-zone-create)	 - Создать зону DNS: публичную или приватную
+* [evo dns zone-delete](#evo-dns-zone-delete)	 - Удалить зону DNS вместе с её записями (асинхронно)
+* [evo dns zone-get](#evo-dns-zone-get)	 - Зона DNS по ID: все сведения
+* [evo dns zones](#evo-dns-zones)	 - Зоны DNS проекта: публичные и приватные
+
+## evo dns operation
+
+Состояние асинхронной операции DNS
+
+### Synopsis
+
+```text
+Состояние асинхронной операции DNS.
+
+Состояние асинхронной операции DNS по id — его возвращают создание и удаление зон и записей DNS: done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
+
+Вызывает инструмент dns_operation (подробнее: 'evo tools describe dns_operation').
+```
+
+```
+evo dns operation <operation-id> [flags]
+```
+
+### Examples
+
+```
+  evo dns operation <operation-id>
+  evo dns operation <operation-id> --wait-seconds 120
+```
+
+### Options
+
+```
+  -h, --help               Справка по operation
+      --wait-seconds int   Ждать итогового состояния до N секунд (не больше 300), опрашивая операцию с нарастающим интервалом. Без флага — одна проверка
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
+
+## evo dns record-create
+
+Добавить запись DNS в зону (асинхронно)
+
+### Synopsis
+
+```text
+Добавить запись DNS в зону (асинхронно).
+
+Добавить запись DNS в зону. Операция асинхронная: ход — 'evo dns operation <operation-id>'.
+
+Вызывает инструмент dns_record_create (подробнее: 'evo tools describe dns_record_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo dns record-create <zone-id> <name> [flags]
+```
+
+### Examples
+
+```
+  evo dns record-create <zone-id> www --record-type a --value 203.0.113.10 --dry-run
+  evo dns record-create <zone-id> api --record-type a --values 203.0.113.10,203.0.113.11 --ttl 60 --yes
+```
+
+### Options
+
+```
+  -h, --help                 Справка по record-create
+      --record-type string   Тип записи: a, aaaa, cname, mx, ns, spf, txt, caa, srv (в любом регистре; отправляется строчными, как принимает API), обязательный
+      --ttl int              TTL, секунд (по умолчанию 300)
+      --type string          Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
+      --value string         Одно значение записи (например, IP для записи A). Задаётся --value или --values, не оба
+      --values stringArray   Несколько значений записи (флаг повторяется или значения через запятую)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
+
+## evo dns record-delete
+
+Удалить запись DNS (асинхронно)
+
+### Synopsis
+
+```text
+Удалить запись DNS (асинхронно).
+
+Удалить запись DNS по id (список: 'evo dns records <zone-id>'). Операция асинхронная.
+
+Вызывает инструмент dns_record_delete (подробнее: 'evo tools describe dns_record_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo dns record-delete <record-id> [flags]
+```
+
+### Examples
+
+```
+  evo dns record-delete <record-id> --dry-run
+  evo dns record-delete <record-id> --yes
+```
+
+### Options
+
+```
+  -h, --help          Справка по record-delete
+      --type string   Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
+
+## evo dns record-get
+
+Запись DNS по ID
+
+### Synopsis
+
+```text
+Запись DNS по ID.
+
+Одна запись DNS по id (список: 'evo dns records <zone-id>'). Только чтение. Видимость зоны (--type public или private) указывать не обязательно: evo определяет её по id.
+
+Вызывает инструмент dns_record_get (подробнее: 'evo tools describe dns_record_get').
+```
+
+```
+evo dns record-get <record-id> [flags]
+```
+
+### Examples
+
+```
+  evo dns record-get <record-id>
+  evo dns record-get <record-id> --json
+```
+
+### Options
+
+```
+  -h, --help          Справка по record-get
+      --type string   Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
+
+## evo dns records
+
+Записи зоны DNS
+
+### Synopsis
+
+```text
+Записи зоны DNS.
+
+Ресурсные записи зоны DNS: id, имя, тип, значения, ttl. Только чтение. Видимость зоны (--type public или private) указывать не обязательно: evo определяет её по id.
+
+Вызывает инструмент dns_records (подробнее: 'evo tools describe dns_records').
+```
+
+```
+evo dns records <zone-id> [flags]
+```
+
+### Examples
+
+```
+  evo dns records <zone-id>
+  evo dns records <zone-id> --json | jq -r '.records[] | "\(.name)\t\(.type)"'
+```
+
+### Options
+
+```
+  -h, --help          Справка по records
+      --type string   Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
+
+## evo dns zone-create
+
+Создать зону DNS: публичную или приватную
+
+### Synopsis
+
+```text
+Создать зону DNS: публичную или приватную.
+
+Создать зону DNS: --type public (по умолчанию) или private. Публичная зона обслуживает запросы только после подтверждения владения доменом через делегирование (в ответе — проверочная запись); приватная зона — внутренняя.
+
+Вызывает инструмент dns_zone_create (подробнее: 'evo tools describe dns_zone_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo dns zone-create <domain> [flags]
+```
+
+### Examples
+
+```
+  evo dns zone-create example.com --dry-run
+  evo dns zone-create example.com --yes
+  evo dns zone-create corp.internal --type private --yes
+```
+
+### Options
+
+```
+      --description string   Описание зоны (необязательно)
+  -h, --help                 Справка по zone-create
+      --name string          Отображаемое имя зоны (по умолчанию — домен)
+      --type string          Видимость зоны: public (по умолчанию) или private
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
+
+## evo dns zone-delete
+
+Удалить зону DNS вместе с её записями (асинхронно)
+
+### Synopsis
+
+```text
+Удалить зону DNS вместе с её записями (асинхронно).
+
+Удалить зону DNS по id (список: 'evo dns zones') вместе с её записями. Операция асинхронная. Видимость зоны (--type public или private) указывать не обязательно: evo определяет её по id зоны.
+
+Вызывает инструмент dns_zone_delete (подробнее: 'evo tools describe dns_zone_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo dns zone-delete <id> [flags]
+```
+
+### Examples
+
+```
+  evo dns zone-delete <zone-id> --dry-run
+  evo dns zone-delete <zone-id>
+```
+
+### Options
+
+```
+  -h, --help          Справка по zone-delete
+      --type string   Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
+
+## evo dns zone-get
+
+Зона DNS по ID: все сведения
+
+### Synopsis
+
+```text
+Зона DNS по ID: все сведения.
+
+Все сведения об одной зоне DNS по id (список: 'evo dns zones'). Только чтение.
+
+Вызывает инструмент dns_zone_get (подробнее: 'evo tools describe dns_zone_get').
+```
+
+```
+evo dns zone-get <id> [flags]
+```
+
+### Examples
+
+```
+  evo dns zone-get <zone-id>
+  evo dns zone-get <zone-id> --json
+```
+
+### Options
+
+```
+  -h, --help          Справка по zone-get
+      --type string   Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
+
+## evo dns zones
+
+Зоны DNS проекта: публичные и приватные
+
+### Synopsis
+
+```text
+Зоны DNS проекта: публичные и приватные.
+
+Зоны Evolution DNS проекта, публичные и приватные: id, имя, домен, видимость, состояние (у публичной зоны — и confirm_state), valid, delegated. Только чтение.
+
+Вызывает инструмент dns_zones (подробнее: 'evo tools describe dns_zones').
+```
+
+```
+evo dns zones [flags]
+```
+
+### Examples
+
+```
+  evo dns zones
+  evo dns zones --json | jq -r '.zones[] | "\(.id)\t\(.domain)"'
+```
+
+### Options
+
+```
+  -h, --help   Справка по zones
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
+
 ## evo doctor
 
 Проверить настройки, ключ доступа и связь с API
@@ -1311,7 +2391,7 @@ evo k8s [flags]
 
 Установить версию плагина Managed Kubernetes в кластер. Превью показывает выбранную версию (по умолчанию — новейшая ACTIVE), namespace, требования версии и проверки кластера: версию Kubernetes и группы узлов против требований плагина. Что определить не удалось, перечислено в not_checked; явное несоответствие — отказ до установки.
 
-Операция асинхронная: ответ — состояние installing с operation_id и cluster_addon_id. Готовность — 'evo k8s kubectl <cluster-id> get pods -n <namespace>' (или -A): поды плагина должны стать Running и Ready (поды заданий Job, например cert-manager-startupapicheck, завершаются в Completed). Поды в ImagePullBackOff могут означать, что у кластера нет выхода в интернет: в Cloud.ru для этого нужен публичный SNAT-шлюз в зоне узлов ('evo tools call snat_create'). --resolve-mode OVERWRITE может заменить объекты, уже созданные в кластере.
+Операция асинхронная: ответ — состояние installing с operation_id и cluster_addon_id. Готовность — 'evo k8s kubectl <cluster-id> get pods -n <namespace>' (или -A): поды плагина должны стать Running и Ready (поды заданий Job, например cert-manager-startupapicheck, завершаются в Completed). Поды в ImagePullBackOff могут означать, что у кластера нет выхода в интернет: в Cloud.ru для этого нужен публичный SNAT-шлюз в зоне узлов ('evo snat create'). --resolve-mode OVERWRITE может заменить объекты, уже созданные в кластере.
 
 Вызывает инструмент k8s_add_addon (подробнее: 'evo tools describe k8s_add_addon').
 
@@ -1516,7 +2596,7 @@ evo k8s addons [query] [flags]
 ```text
 Применить манифест Kubernetes (как kubectl apply -f -).
 
-Применить манифест Kubernetes (YAML или JSON, можно несколько документов) к кластеру — как 'kubectl apply -f -'. Для развёртывания и обновления рабочих нагрузок: Deployment, StatefulSet, Service, ServiceMonitor и других. Новому кластеру нужен выход в интернет, чтобы скачивать публичные образы (SNAT-шлюз: 'evo tools call snat_create'), а CRD (например, ServiceMonitor) должны существовать до объектов, которые их используют.
+Применить манифест Kubernetes (YAML или JSON, можно несколько документов) к кластеру — как 'kubectl apply -f -'. Для развёртывания и обновления рабочих нагрузок: Deployment, StatefulSet, Service, ServiceMonitor и других. Новому кластеру нужен выход в интернет, чтобы скачивать публичные образы (SNAT-шлюз: 'evo snat create'), а CRD (например, ServiceMonitor) должны существовать до объектов, которые их используют.
 
 Вызывает инструмент k8s_apply (подробнее: 'evo tools describe k8s_apply').
 
@@ -1699,7 +2779,7 @@ Helm в кластере: install, upgrade, uninstall, list, status
 ```text
 Helm в кластере: install, upgrade, uninstall, list, status.
 
-Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. install и upgrade идемпотентны (helm upgrade --install --wait). --repo-url сначала добавляет репозиторий чартов. Значения — --values (содержимое values.yaml) и --set (ключ=значение). Изменяющие действия — с подтверждением. Подходит для типовых продуктов (например, kube-prometheus-stack, базы данных). Узлам нужен выход в интернет, чтобы скачать образы чарта (SNAT-шлюз: 'evo tools call snat_create'); размер группы узлов подбирайте под чарт: стекам мониторинга нужны узлы от 8 ГБ.
+Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. install и upgrade идемпотентны (helm upgrade --install --wait). --repo-url сначала добавляет репозиторий чартов. Значения — --values (содержимое values.yaml) и --set (ключ=значение). Изменяющие действия — с подтверждением. Подходит для типовых продуктов (например, kube-prometheus-stack, базы данных). Узлам нужен выход в интернет, чтобы скачать образы чарта (SNAT-шлюз: 'evo snat create'); размер группы узлов подбирайте под чарт: стекам мониторинга нужны узлы от 8 ГБ.
 
 Вызывает инструмент k8s_helm (подробнее: 'evo tools describe k8s_helm').
 
@@ -2014,6 +3094,296 @@ evo k8s plan [flags]
 ### SEE ALSO
 
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
+## evo lb
+
+Балансировщики нагрузки (L4)
+
+```
+evo lb [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по lb
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo lb create](#evo-lb-create)	 - Создать балансировщик L4 перед группой целей (платно, асинхронно)
+* [evo lb delete](#evo-lb-delete)	 - Удалить балансировщик (асинхронно)
+* [evo lb get](#evo-lb-get)	 - Балансировщик по ID: правила, обработчики, адреса, зоны
+* [evo lb list](#evo-lb-list)	 - Балансировщики нагрузки проекта (L4)
+* [evo lb operation](#evo-lb-operation)	 - Состояние асинхронной операции балансировщика
+
+## evo lb create
+
+Создать балансировщик L4 перед группой целей (платно, асинхронно)
+
+### Synopsis
+
+```text
+Создать балансировщик L4 перед группой целей (платно, асинхронно).
+
+Создать балансировщик нагрузки L4 перед группой целей. evo определяет VPC (по группе целей), зону (--zone, иначе зона --subnet-id, иначе зона ВМ группы целей, иначе зона из настроек; без зоны — отказ) и подсеть (основная подсеть зоны в этом VPC) и создаёт правило с обработчиком (--port → --target-port) и проверкой состояния по TCP. По умолчанию балансировщик получает публичный IP (--external). Балансировщик платный. Операция асинхронная: ход — 'evo lb operation <operation-id>'.
+
+Вызывает инструмент lb_create (подробнее: 'evo tools describe lb_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo lb create <name> [flags]
+```
+
+### Examples
+
+```
+  evo lb create web-lb --target-group-id <tg-id> --port 80 --dry-run
+  evo lb create web-lb --target-group-id <tg-id> --port 443 --target-port 8443 --yes
+  evo lb create db-lb --target-group-id <tg-id> --port 5432 --external=false --yes
+```
+
+### Options
+
+```
+      --external                 Выделить публичный IP; без него балансировщик только внутренний. Выключить: --external=false (по умолчанию true)
+      --hc-port int              Порт проверки состояния (по умолчанию — --target-port)
+  -h, --help                     Справка по create
+      --port int                 Порт обработчика, на который балансировщик принимает трафик (обязательный)
+      --subnet-id string         UUID подсети в зоне балансировщика (по умолчанию — основная подсеть зоны в VPC балансировщика)
+      --target-group-id string   UUID группы целей, на которую балансировщик распределяет трафик (список: evo tg list), обязательный
+      --target-port int          Порт на целях, куда перенаправляется трафик (по умолчанию — --port)
+      --vpc-id string            UUID VPC (по умолчанию — VPC группы целей)
+      --zone string              Зона доступности, которую обслуживает балансировщик: имя или UUID (список: evo vm zones). По умолчанию — зона --subnet-id, иначе зона ВМ группы целей, иначе зона из настроек
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
+
+## evo lb delete
+
+Удалить балансировщик (асинхронно)
+
+### Synopsis
+
+```text
+Удалить балансировщик (асинхронно).
+
+Удалить балансировщик по id (список: 'evo lb list'). Операция асинхронная.
+
+Вызывает инструмент lb_delete (подробнее: 'evo tools describe lb_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo lb delete <id> [flags]
+```
+
+### Examples
+
+```
+  evo lb delete <lb-id> --dry-run
+  evo lb delete <lb-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по delete
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
+
+## evo lb get
+
+Балансировщик по ID: правила, обработчики, адреса, зоны
+
+### Synopsis
+
+```text
+Балансировщик по ID: правила, обработчики, адреса, зоны.
+
+Все сведения об одном балансировщике по id (список: 'evo lb list'): правила, обработчики, адреса, зоны доступности, состояние. Только чтение.
+
+Вызывает инструмент lb_get (подробнее: 'evo tools describe lb_get').
+```
+
+```
+evo lb get <id> [flags]
+```
+
+### Examples
+
+```
+  evo lb get <lb-id>
+  evo lb get <lb-id> --json
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
+
+## evo lb list
+
+Балансировщики нагрузки проекта (L4)
+
+### Synopsis
+
+```text
+Балансировщики нагрузки проекта (L4).
+
+Балансировщики нагрузки Evolution (L4, сетевые) проекта: id, имя, состояние, VPC, внешний IP. Только чтение.
+
+Вызывает инструмент lb_list (подробнее: 'evo tools describe lb_list').
+```
+
+```
+evo lb list [flags]
+```
+
+### Examples
+
+```
+  evo lb list
+  evo lb list --json | jq -r '.load_balancers[] | "\(.id)\t\(.name)"'
+```
+
+### Options
+
+```
+  -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
+
+## evo lb operation
+
+Состояние асинхронной операции балансировщика
+
+### Synopsis
+
+```text
+Состояние асинхронной операции балансировщика.
+
+Состояние асинхронной операции балансировщика по id — его возвращают создание и удаление балансировщиков и групп целей: done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
+
+Вызывает инструмент lb_operation (подробнее: 'evo tools describe lb_operation').
+```
+
+```
+evo lb operation <operation-id> [flags]
+```
+
+### Examples
+
+```
+  evo lb operation <operation-id>
+  evo lb operation <operation-id> --wait-seconds 300
+```
+
+### Options
+
+```
+  -h, --help               Справка по operation
+      --wait-seconds int   Ждать итогового состояния до N секунд (не больше 300), опрашивая операцию с нарастающим интервалом. Без флага — одна проверка
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
 
 ## evo list-zones
 
@@ -3758,6 +5128,192 @@ evo secret value <path> [flags]
 
 * [evo secret](#evo-secret)	 - Secret Manager: секреты
 
+## evo snat
+
+SNAT-шлюзы: исходящий интернет для приватных подсетей
+
+```
+evo snat [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по snat
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo snat create](#evo-snat-create)	 - Создать публичный SNAT-шлюз: исходящий интернет для подсетей зоны (платно)
+* [evo snat delete](#evo-snat-delete)	 - Удалить SNAT-шлюз (узлы зоны теряют исходящий интернет)
+* [evo snat list](#evo-snat-list)	 - SNAT-шлюзы проекта
+
+## evo snat create
+
+Создать публичный SNAT-шлюз: исходящий интернет для подсетей зоны (платно)
+
+### Synopsis
+
+```text
+Создать публичный SNAT-шлюз: исходящий интернет для подсетей зоны (платно).
+
+Создать публичный SNAT-шлюз: исходящий доступ в интернет для каждой МАРШРУТИЗИРУЕМОЙ подсети его зоны (изолированная подсеть не обслуживается; ВМ с собственным публичным IP выходит в интернет напрямую). Один шлюз на зону; он получает публичный IP, который учитывается в квоте публичных IP и освобождается только вместе со шлюзом. Зона — из настроек; другая — --zone (имя) или --availability-zone-id. Шлюз платный.
+
+'evo k8s create' шлюз не создаёт: кластер Managed Kubernetes поднимается без исходящего доступа. Если нагрузкам нужно скачивать публичные образы, создайте шлюз в зоне узлов кластера.
+
+Вызывает инструмент snat_create (подробнее: 'evo tools describe snat_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo snat create <name> [flags]
+```
+
+### Examples
+
+```
+  evo snat create nat-az2 --zone ru.AZ-2 --dry-run
+  evo snat create nat-az2 --zone ru.AZ-2 --yes
+```
+
+### Options
+
+```
+      --availability-zone-id string   UUID зоны доступности (вместо --zone)
+  -h, --help                          Справка по create
+      --zone string                   ИМЯ зоны доступности, например ru.AZ-2 (необязательно; evo находит её UUID). По умолчанию — зона из настроек
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo snat](#evo-snat)	 - SNAT-шлюзы: исходящий интернет для приватных подсетей
+
+## evo snat delete
+
+Удалить SNAT-шлюз (узлы зоны теряют исходящий интернет)
+
+### Synopsis
+
+```text
+Удалить SNAT-шлюз (узлы зоны теряют исходящий интернет).
+
+Удалить SNAT-шлюз по id (список: 'evo snat list'). Узлы в этой зоне теряют исходящий доступ в интернет.
+
+Вызывает инструмент snat_delete (подробнее: 'evo tools describe snat_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo snat delete <id> [flags]
+```
+
+### Examples
+
+```
+  evo snat delete <snat-id> --dry-run
+  evo snat delete <snat-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по delete
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo snat](#evo-snat)	 - SNAT-шлюзы: исходящий интернет для приватных подсетей
+
+## evo snat list
+
+SNAT-шлюзы проекта
+
+### Synopsis
+
+```text
+SNAT-шлюзы проекта.
+
+SNAT-шлюзы проекта. SNAT-шлюз даёт узлам в приватных подсетях (например, рабочим узлам Managed Kubernetes) ИСХОДЯЩИЙ доступ в интернет: он нужен, чтобы скачивать публичные образы контейнеров (docker.io и другие) и пакеты apt или обращаться к внешним API. Это не то же, что --kube-api-internet кластера: тот открывает входящий доступ к API-серверу. Только чтение.
+
+Вызывает инструмент snat_list (подробнее: 'evo tools describe snat_list').
+```
+
+```
+evo snat list [flags]
+```
+
+### Examples
+
+```
+  evo snat list
+  evo snat list --json
+```
+
+### Options
+
+```
+  -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo snat](#evo-snat)	 - SNAT-шлюзы: исходящий интернет для приватных подсетей
+
 ## evo status
 
 Состояние текущего развёртывания
@@ -3811,6 +5367,239 @@ evo status [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+
+## evo tg
+
+Группы целей балансировщиков
+
+```
+evo tg [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по tg
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo tg create](#evo-tg-create)	 - Создать группу целей балансировщика (асинхронно)
+* [evo tg delete](#evo-tg-delete)	 - Удалить группу целей (асинхронно)
+* [evo tg get](#evo-tg-get)	 - Группа целей по ID: ВМ, VPC, состояние
+* [evo tg list](#evo-tg-list)	 - Группы целей балансировщиков проекта
+
+## evo tg create
+
+Создать группу целей балансировщика (асинхронно)
+
+### Synopsis
+
+```text
+Создать группу целей балансировщика (асинхронно).
+
+Создать группу целей — набор ВМ, между которыми балансировщик распределяет трафик. Цель — одна ВМ (--vm-id) или несколько (--targets, массив {id}). Сетевой интерфейс ВМ evo находит сам: --interface-id нужен, только чтобы задать другой. Цели — приватные ВМ в подсети VPC (создаются с 'evo vm create --no-public-ip'). Операция асинхронная.
+
+Вызывает инструмент tg_create (подробнее: 'evo tools describe tg_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo tg create <name> [flags]
+```
+
+### Examples
+
+```
+  evo tg create web-tg --vm-id <vm-id> --dry-run
+  evo tg create web-tg --targets '{"id":"<vm-id-1>"}' --targets '{"id":"<vm-id-2>"}' --yes
+```
+
+### Options
+
+```
+  -h, --help                  Справка по create
+      --interface-id string   UUID сетевого интерфейса (необязательно; по умолчанию evo берёт интерфейс ВМ)
+      --targets stringArray   Несколько целей: массив {id} (interface_id необязателен, evo находит его сам) (флаг повторяется или значения через запятую)
+      --vm-id string          UUID ВМ — единственной цели; интерфейс evo находит сам. Задаётся --vm-id или --targets, не оба
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo tg](#evo-tg)	 - Группы целей балансировщиков
+
+## evo tg delete
+
+Удалить группу целей (асинхронно)
+
+### Synopsis
+
+```text
+Удалить группу целей (асинхронно).
+
+Удалить группу целей по id (список: 'evo tg list'). Операция асинхронная.
+
+Вызывает инструмент tg_delete (подробнее: 'evo tools describe tg_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo tg delete <id> [flags]
+```
+
+### Examples
+
+```
+  evo tg delete <tg-id> --dry-run
+  evo tg delete <tg-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по delete
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo tg](#evo-tg)	 - Группы целей балансировщиков
+
+## evo tg get
+
+Группа целей по ID: ВМ, VPC, состояние
+
+### Synopsis
+
+```text
+Группа целей по ID: ВМ, VPC, состояние.
+
+Сведения об одной группе целей по id (список: 'evo tg list'): ВМ-участники, VPC, состояние. Только чтение.
+
+Вызывает инструмент tg_get (подробнее: 'evo tools describe tg_get').
+```
+
+```
+evo tg get <id> [flags]
+```
+
+### Examples
+
+```
+  evo tg get <tg-id>
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo tg](#evo-tg)	 - Группы целей балансировщиков
+
+## evo tg list
+
+Группы целей балансировщиков проекта
+
+### Synopsis
+
+```text
+Группы целей балансировщиков проекта.
+
+Группы целей балансировщиков нагрузки проекта: id, имя, состояние, VPC. Только чтение.
+
+Вызывает инструмент tg_list (подробнее: 'evo tools describe tg_list').
+```
+
+```
+evo tg list [flags]
+```
+
+### Examples
+
+```
+  evo tg list
+  evo tg list --json | jq -r '.target_groups[] | "\(.id)\t\(.name)"'
+```
+
+### Options
+
+```
+  -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo tg](#evo-tg)	 - Группы целей балансировщиков
 
 ## evo tools
 
@@ -4606,7 +6395,7 @@ evo vpc fip-attach <fip> [flags]
 ```text
 Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается).
 
-Освободить (удалить) публичный IP: адрес уходит из проекта. Адрес задаётся аргументом <id> или флагом --ip-address. Адрес, занятый ВМ, не освобождается: сначала отвяжите его или удалите ВМ ('evo vm delete'). Адрес SNAT-шлюза тоже не освобождается: он удаляется вместе со шлюзом ('evo tools call snat_delete').
+Освободить (удалить) публичный IP: адрес уходит из проекта. Адрес задаётся аргументом <id> или флагом --ip-address. Адрес, занятый ВМ, не освобождается: сначала отвяжите его или удалите ВМ ('evo vm delete'). Адрес SNAT-шлюза тоже не освобождается: он удаляется вместе со шлюзом ('evo snat delete').
 
 Вызывает инструмент release_floating_ip (подробнее: 'evo tools describe release_floating_ip').
 

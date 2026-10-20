@@ -150,6 +150,46 @@ var cliSpecs = map[string]CLISpec{
 	"secret_create":      {Group: "secret", Verb: "create", Args: []string{"path"}},
 	"secret_add_version": {Group: "secret", Verb: "add-version", Args: []string{"path"}},
 	"secret_delete":      {Group: "secret", Verb: "delete", Args: []string{"path"}},
+
+	// dns
+	"dns_zones":         {Group: "dns", Verb: "zones", Columns: []string{"id", "name", "domain", "visibility", "state", "delegated"}},
+	"dns_zone_get":      {Group: "dns", Verb: "zone-get", Args: []string{"id"}},
+	"dns_zone_create":   {Group: "dns", Verb: "zone-create", Args: []string{"domain"}},
+	"dns_zone_delete":   {Group: "dns", Verb: "zone-delete", Args: []string{"id"}},
+	"dns_records":       {Group: "dns", Verb: "records", Args: []string{"zone_id"}},
+	"dns_record_get":    {Group: "dns", Verb: "record-get", Args: []string{"record_id"}},
+	"dns_record_create": {Group: "dns", Verb: "record-create", Args: []string{"zone_id", "name"}},
+	"dns_record_delete": {Group: "dns", Verb: "record-delete", Args: []string{"record_id"}},
+	"dns_operation":     {Group: "dns", Verb: "operation", Args: []string{"operation_id"}},
+
+	// cert
+	"cert_list":        {Group: "cert", Verb: "list"},
+	"cert_get":         {Group: "cert", Verb: "get", Args: []string{"id"}},
+	"cert_issue_le":    {Group: "cert", Verb: "issue-le", Args: []string{"name"}},
+	"cert_import":      {Group: "cert", Verb: "import", Args: []string{"name"}},
+	"cert_renew":       {Group: "cert", Verb: "renew", Args: []string{"certificate_id"}},
+	"cert_delete":      {Group: "cert", Verb: "delete", Args: []string{"id"}},
+	"cert_usage":       {Group: "cert", Verb: "usage", Args: []string{"id"}},
+	"cert_versions":    {Group: "cert", Verb: "versions", Args: []string{"certificate_id"}},
+	"cert_private_key": {Group: "cert", Verb: "private-key", Args: []string{"certificate_id"}},
+	"cert_operation":   {Group: "cert", Verb: "operation", Args: []string{"operation_id"}},
+
+	// lb, tg: the command is the prefix of the tool's name, not its group
+	// (nlb, which --toolsets keeps): owner's decision Q4.
+	"lb_list":      {Group: "lb", Verb: "list"},
+	"lb_get":       {Group: "lb", Verb: "get", Args: []string{"id"}},
+	"lb_create":    {Group: "lb", Verb: "create", Args: []string{"name"}},
+	"lb_delete":    {Group: "lb", Verb: "delete", Args: []string{"id"}},
+	"lb_operation": {Group: "lb", Verb: "operation", Args: []string{"operation_id"}},
+	"tg_list":      {Group: "tg", Verb: "list"},
+	"tg_get":       {Group: "tg", Verb: "get", Args: []string{"id"}},
+	"tg_create":    {Group: "tg", Verb: "create", Args: []string{"name"}},
+	"tg_delete":    {Group: "tg", Verb: "delete", Args: []string{"id"}},
+
+	// snat
+	"snat_list":   {Group: "snat", Verb: "list", Columns: []string{"id", "name", "status", "availability_zone", "nat_type"}},
+	"snat_create": {Group: "snat", Verb: "create", Args: []string{"name"}},
+	"snat_delete": {Group: "snat", Verb: "delete", Args: []string{"id"}},
 }
 
 // CLIPending are the tools without a command of their own yet, with the
@@ -160,17 +200,6 @@ var cliSpecs = map[string]CLISpec{
 // fail on a tool that is neither here nor in cliSpecs, and on one that is in
 // both. Delete it once it is empty.
 var CLIPending = map[string]string{
-	// PR 3a: dns, cert, lb/tg, snat.
-	"dns_zones": "PR 3a", "dns_zone_get": "PR 3a", "dns_zone_create": "PR 3a", "dns_zone_delete": "PR 3a",
-	"dns_records": "PR 3a", "dns_record_get": "PR 3a", "dns_record_create": "PR 3a", "dns_record_delete": "PR 3a",
-	"dns_operation": "PR 3a",
-	"cert_list":     "PR 3a", "cert_get": "PR 3a", "cert_issue_le": "PR 3a", "cert_import": "PR 3a", "cert_delete": "PR 3a",
-	"cert_private_key": "PR 3a", "cert_renew": "PR 3a", "cert_usage": "PR 3a", "cert_versions": "PR 3a",
-	"cert_operation": "PR 3a",
-	"lb_list":        "PR 3a", "lb_get": "PR 3a", "lb_create": "PR 3a", "lb_delete": "PR 3a", "lb_operation": "PR 3a",
-	"tg_list": "PR 3a", "tg_get": "PR 3a", "tg_create": "PR 3a", "tg_delete": "PR 3a",
-	"snat_list": "PR 3a", "snat_create": "PR 3a", "snat_delete": "PR 3a",
-
 	// PR 3b: kafka, redis, ar, ca.
 	"kafka_list": "PR 3b", "kafka_get": "PR 3b", "kafka_create": "PR 3b", "kafka_delete": "PR 3b",
 	"kafka_operation": "PR 3b", "kafka_versions": "PR 3b", "kafka_specs": "PR 3b",

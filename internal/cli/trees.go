@@ -22,8 +22,8 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
-// The command trees (vm, image, marketplace, disk, vpc, k8s, pg, s3, secret)
-// are built from the registry: each tool's CLISpec (internal/tools) names its
+// The command trees (vm, image, disk, vpc, k8s, pg, s3, dns, lb and the
+// rest) are built from the registry: each tool's CLISpec (internal/tools) names its
 // command, which of its arguments are positional, and how the answer is
 // shown. Every other argument of the tool becomes a flag with the type from
 // its schema. The cobra layer only parses flags into map[string]any, calls
@@ -45,10 +45,13 @@ type treeGroup struct {
 type treeCmd struct {
 	tools.CLISpec
 	Tool string
-	// russian: the human table of a Russian tree (vm, disk) speaks
-	// Russian — column names, да/нет, the note under a list. Set from
-	// russianTrees; --json keeps the tool's answer.
+	// russian: the human table of a Russian tree (vm, disk, dns, …)
+	// speaks Russian — column names, да/нет, the note under a list. Set
+	// from russianTrees; --json keeps the tool's answer.
 	russian bool
+	// headers are the Russian column titles the tree has beyond
+	// columnHeaderRU (treeHeadersRU).
+	headers map[string]string
 	// render is the view CLISpec.Render names (treeRenders).
 	render renderFunc
 }
@@ -79,6 +82,11 @@ var treeGroupShort = map[string]string{
 	"pg":          "Managed PostgreSQL clusters, databases, users, backups",
 	"s3":          "Object Storage: buckets and objects",
 	"secret":      "Secret Manager",
+	"dns":         "Evolution DNS: zones and records",
+	"cert":        "Certificate Manager: TLS certificates",
+	"lb":          "Network load balancers (L4)",
+	"tg":          "Target groups of the load balancers",
+	"snat":        "SNAT gateways: outbound internet for private subnets",
 }
 
 // treeGroupsOf groups the commands of reg's tools by CLISpec.Group, sorted
@@ -91,7 +99,7 @@ func treeGroupsOf(reg *tools.Registry) []treeGroup {
 		if t.CLI.Verb == "" {
 			continue
 		}
-		c := treeCmd{CLISpec: t.CLI, Tool: t.Name, russian: russianTrees[t.CLI.Group]}
+		c := treeCmd{CLISpec: t.CLI, Tool: t.Name, russian: russianTrees[t.CLI.Group], headers: treeHeadersRU(t.CLI.Group)}
 		if t.CLI.Render != "" {
 			c.render = treeRenders[t.CLI.Render]
 			if c.render == nil {
@@ -348,7 +356,7 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		if c.render != nil {
 			return c.render(cmdPrinter(cmd), cmd.OutOrStdout(), text)
 		}
-		return renderAnswer(cmdPrinter(cmd), cmd.OutOrStdout(), text, tableView{Columns: c.Columns, Russian: c.russian})
+		return renderAnswer(cmdPrinter(cmd), cmd.OutOrStdout(), text, tableView{Columns: c.Columns, Russian: c.russian, Headers: c.headers})
 	}
 	return cmd
 }
@@ -591,11 +599,13 @@ func helpHint(cmd *cobra.Command) string {
 
 // --- answer formatting ---
 
-// tableView is how renderAnswer lays out a list: its columns and whether
-// the table is for a Russian tree.
+// tableView is how renderAnswer lays out a list: its columns, whether the
+// table is for a Russian tree, and the Russian column titles of that tree
+// beyond columnHeaderRU.
 type tableView struct {
 	Columns []string
 	Russian bool
+	Headers map[string]string
 }
 
 // ru: the table speaks Russian (a Russian tree, and the CLI in Russian).
@@ -603,8 +613,13 @@ func (v tableView) ru() bool { return v.Russian && i18n.Lang() == i18n.RU }
 
 // header is the title of a column.
 func (v tableView) header(col string) string {
-	if h, ok := columnHeaderRU[col]; ok && v.ru() {
-		return h
+	if v.ru() {
+		if h, ok := v.Headers[col]; ok {
+			return h
+		}
+		if h, ok := columnHeaderRU[col]; ok {
+			return h
+		}
 	}
 	return strings.ToUpper(col)
 }
@@ -684,7 +699,7 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 				fmt.Fprintln(w)
 			}
 			fmt.Fprintf(w, "%s:\n", strings.ToUpper(k))
-			renderList(p, w, a, tableView{Russian: view.Russian})
+			renderList(p, w, a, tableView{Russian: view.Russian, Headers: view.Headers})
 			printed = true
 		}
 	}
