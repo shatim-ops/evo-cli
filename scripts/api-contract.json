@@ -248,10 +248,10 @@
       "requests": [
         {"method": "GET", "path": "/v1/registries", "code": "internal/artifact/client.go:147", "query": ["projectId", "pageToken"], "paginates": true,
          "reads": ["registries[].id", "registries[].name", "registries[].registryType", "registries[].status", "registries[].isPublic", "registries[].tariff", "nextPageToken"], "enums": {"registries[].status": ["ACTIVE", "CREATING"]}},
-        {"method": "GET", "path": "/v1/registries/{registryId}", "code": "internal/artifact/client.go:200", "query": ["projectId"], "reads": ["id", "status"]},
-        {"method": "POST", "path": "/v1/registries", "code": "internal/artifact/client.go:216", "body": ["projectId", "name", "registryType", "isPublic", "tariff"], "reads": ["id", "resourceId", "done"]},
-        {"method": "DELETE", "path": "/v1/registries/{registryId}", "code": "internal/artifact/client.go:221", "query": ["projectId"], "reads": ["id", "done"]},
-        {"method": "GET", "path": "/v1/operations/{operationId}", "code": "internal/artifact/client.go:226", "reads": ["id", "resourceId", "done", "error.code", "error.message"]}
+        {"method": "GET", "path": "/v1/registries/{registryId}", "code": "internal/artifact/client.go:205", "query": ["projectId"], "reads": ["id", "status"]},
+        {"method": "POST", "path": "/v1/registries", "code": "internal/artifact/client.go:221", "body": ["projectId", "name", "registryType", "isPublic", "tariff"], "reads": ["id", "resourceId", "done"]},
+        {"method": "DELETE", "path": "/v1/registries/{registryId}", "code": "internal/artifact/client.go:226", "query": ["projectId"], "reads": ["id", "done"]},
+        {"method": "GET", "path": "/v1/operations/{operationId}", "code": "internal/artifact/client.go:231", "reads": ["id", "resourceId", "done", "error.code", "error.message"]}
       ]
     },
     {

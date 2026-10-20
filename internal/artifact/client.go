@@ -173,8 +173,13 @@ func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 		if len(out.Registries) == 0 {
 			return "", nil
 		}
+		// The live API answers the page after the last one with the same
+		// registries and a new token (cloud-e2e 20.10, run 39376577446:
+		// one registry in the project, page 2 repeats it). With no total in
+		// the answer a repeated page is the end here, not an incomplete list
+		// (break r4 made it an error and ar_delete lost its registry).
 		if added == 0 {
-			return "", pager.NoNewItems(len(all), -1)
+			return "", nil
 		}
 		return out.NextPageToken, nil
 	})

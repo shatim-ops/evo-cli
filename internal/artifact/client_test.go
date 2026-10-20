@@ -6,14 +6,11 @@ package artifact
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
-
-	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // The live API answers a fresh nextPageToken on every page (live run
@@ -50,7 +47,9 @@ func TestListRegistries_EndlessTokenOnLastPage(t *testing.T) {
 // The token ignored: the first page again is not the end of the list but
 // a list whose end is not known — an error after two requests (break r4;
 // it was the end of the list before).
-func TestListRegistries_TokenIgnoredIsError(t *testing.T) {
+// The live API repeats the registries on the next page with a new token
+// (cloud-e2e 20.10): the repeated page ends the list, each registry once.
+func TestListRegistries_TokenIgnored(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := calls.Add(1)
@@ -59,11 +58,13 @@ func TestListRegistries_TokenIgnoredIsError(t *testing.T) {
 	defer srv.Close()
 
 	got, err := New("tok", "proj", srv.URL).ListRegistries(context.Background())
-	var ce *clierrors.CLIError
-	if !errors.As(err, &ce) || ce.Code != clierrors.CodeAPIError {
-		t.Fatalf("registries = %v, err = %v; want an incomplete-list error", got, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("registries = %v, want each once", got)
 	}
 	if c := calls.Load(); c != 2 {
-		t.Fatalf("%d requests, want 2", c)
+		t.Fatalf("%d requests, want 2: the repeated page ends the list", c)
 	}
 }

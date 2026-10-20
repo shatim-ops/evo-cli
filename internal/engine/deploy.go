@@ -1265,6 +1265,18 @@ func sshDiagnosis(err error, ip string) string {
 	return ""
 }
 
+// installNotes are the lines the install script says about itself ("evo:
+// …"), at most five, in order.
+func installNotes(out string) []string {
+	var notes []string
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); strings.HasPrefix(l, "evo: ") && len(notes) < 5 {
+			notes = append(notes, l)
+		}
+	}
+	return notes
+}
+
 // prepareDocker makes Docker with the compose plugin usable by user on the
 // VM. Cloud.ru renders cloud-init only from the image's own template, so the
 // install runs over SSH (internal/bootstrap); on a VM that already has
@@ -1301,6 +1313,13 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 				_, err = e.Deployer.Exec(ctx, dockerReadyCmd)
 			}
 			if err == nil {
+				// What the install did on the way ("evo: switching apt to
+				// the official mirror…"): a successful install printed
+				// nothing, and a run could not tell the image's mirror from
+				// the fallback (cloud-e2e 20.10, register v2 IMG-6).
+				for _, l := range installNotes(out.String()) {
+					e.Printer.StepDone(l)
+				}
 				return nil
 			}
 		}
