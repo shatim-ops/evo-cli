@@ -204,6 +204,9 @@ var parityArgs = map[string]map[string]any{
 	"iam_service_accounts": {"project_id": pvProject},
 	"metrics_history":      {"match": "up"},
 	"metrics_scrape":       {},
+	// auth
+	"whoami": {},
+	"doctor": {},
 }
 
 // paritySetup prepares what a preview reads from disk; it returns the

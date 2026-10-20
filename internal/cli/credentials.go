@@ -17,32 +17,23 @@ import (
 // resolveConfig resolves the configuration for the selected profile and
 // prints its warnings (deprecated variables, loose file modes) to stderr.
 func resolveConfig(p *output.Printer, flags map[string]any) (config.Config, error) {
-	cfg, _, err := resolveConfigWithSources(p, flags)
-	return cfg, err
+	cfg, err := configOf(flags)
+	if err != nil {
+		return config.Config{}, err
+	}
+	printWarnings(p, cfg.Warnings)
+	return cfg, nil
 }
 
-// resolveConfigWithSources is resolveConfig that also reports where each
-// value came from.
-func resolveConfigWithSources(p *output.Printer, flags map[string]any) (config.Config, []config.Source, error) {
-	cfg, sources, err := config.ResolveWithSources(config.Options{
+// configOf resolves the configuration for the selected profile: the
+// profile, ./.evo.yaml, the environment and flags.
+func configOf(flags map[string]any) (config.Config, error) {
+	cfg, _, err := config.ResolveWithSources(config.Options{
 		Profile:     flagProfile,
 		ProjectFile: projectConfigPath(),
 		Flags:       flags,
 	})
-	if err != nil {
-		return config.Config{}, nil, err
-	}
-	printWarnings(p, cfg.Warnings)
-	return cfg, sources, nil
-}
-
-func sourceOrigin(sources []config.Source, key string) string {
-	for _, s := range sources {
-		if s.Key == key {
-			return s.Origin
-		}
-	}
-	return config.OriginDefault
+	return cfg, err
 }
 
 var (

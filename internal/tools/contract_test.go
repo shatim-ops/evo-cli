@@ -455,6 +455,9 @@ func TestContract_APIStatusReason(t *testing.T) {
 			if tl.Name == "org_quotas" && kind == "403" && strings.Contains(text, "quota") {
 				continue // нет права на квоты организации: ответ без isError, причина текстом.
 			}
+			if (tl.Name == "whoami" || tl.Name == "doctor") && !isErr {
+				continue // whoami: без списка проектов число неизвестно, поля visible_projects нет; doctor: любой ответ API — проверка (хост доступен, key scope — skip), а не ошибка вызова.
+			}
 			if tl.Name == "metrics_scrape" && (kind == "html" || kind == "empty") {
 				continue // тело scrape — текст Prometheus, не JSON API.
 			}

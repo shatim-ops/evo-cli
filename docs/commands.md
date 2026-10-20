@@ -3289,8 +3289,6 @@ evo dns zones [flags]
 
 ## evo doctor
 
-> Локальная команда: проверки файлов настроек, прав, PATH и связи с машины оператора; до PR 9 (REQ-11) — станет инструментом doctor.
-
 Проверить настройки, ключ доступа и связь с API
 
 ### Synopsis
@@ -8408,7 +8406,7 @@ evo tools list [flags]
 ### Options
 
 ```
-      --group string   Только эта группа (ar, audit, billing, ca, cert, deploy, disk, dns, iam, image, k8s, kafka, monitoring, nlb, org, pg, redis, s3, secret, snat, stack, vm, vpc)
+      --group string   Только эта группа (ar, audit, auth, billing, ca, cert, deploy, disk, dns, iam, image, k8s, kafka, monitoring, nlb, org, pg, redis, s3, secret, snat, stack, vm, vpc)
   -h, --help           Справка по list
 ```
 
@@ -9508,8 +9506,6 @@ evo vpc subnets [flags]
 * [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo whoami
-
-> Локальная команда: профиль, маскированный Key ID, проект и срок токена с машины оператора; до PR 9 (REQ-11) — станет инструментом whoami.
 
 Активный профиль и проверка его ключа
 

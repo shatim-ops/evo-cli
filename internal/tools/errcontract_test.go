@@ -7,10 +7,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
@@ -19,10 +22,16 @@ import (
 // an engine factory that fails: every error answer has a reason (a code of
 // internal/errors) and an error that does not start with "CODE: ", and a
 // CLIError of the factory brings its code and hint (ревью r5 M5). Nothing
-// reaches the network: the factory gives no engine.
+// reaches the network: the factory gives no engine, and doctor, which
+// probes IAM and Compute without one, probes a local server.
 func TestErrorContract_EveryTool(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("HOME", t.TempDir())
+	api := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(api.Close)
+	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
+	auth.IAMEndpoint, ComputeBaseURL = api.URL+"/token", api.URL
+	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
 	authErr := clierrors.New(clierrors.CodeAuthRequired, "no access key", "Run 'evo configure'")
 	for _, f := range []struct {
 		name    string

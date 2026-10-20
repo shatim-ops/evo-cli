@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,7 +77,7 @@ var jsonAliasCompat = map[string]jsonCompat{
 				return "", false // no answer of the Organization API: the tool's error
 			case code != 0:
 				return fmt.Sprintf("exit %d, not 0", code), true
-			case cmd["projects"] != nil || cmd["active"] != pvProject || cmd["note"] != scopeText(nil, errors.New(msg)):
+			case cmd["projects"] != nil || cmd["active"] != pvProject || cmd["note"] != tools.ScopeText(0, false):
 				return "not the note with the active project", true
 			}
 			return "", true
@@ -118,6 +117,35 @@ var jsonAliasCompat = map[string]jsonCompat{
 				return fmt.Sprintf("status %v is not the VM or the no-deployment of the tool's log", cmd["status"])
 			}
 			return ""
+		}},
+	"evo doctor": {
+		reason: "проверки машины, где запущена команда, — версия evo, файлы настроек и их права, kubectl и helm в PATH — часть ответа только в CLI " +
+			"(tools.Caller.Doctor): по MCP это были бы пути и программы сервера (REQ-11). Не прошли только проверки связи — код 1 и reason ERROR, " +
+			"как с v1.0, у инструмента API_UNREACHABLE (тот же код 1): вопрос владельцу",
+		check: func(cmdOut, _, text string) string {
+			var tool struct {
+				Checks []tools.DoctorCheck `json:"checks"`
+				OK     bool                `json:"ok"`
+			}
+			if err := json.Unmarshal([]byte(text), &tool); err != nil {
+				return "the tool's answer is not doctor's"
+			}
+			// The CLI's part is the same on this machine; the probes take
+			// their own time in each run.
+			want := sameVolatile(toJSONText(map[string]any{"checks": doctorLocal(tool.Checks), "ok": tool.OK}))
+			if got := sameVolatile(cmdOut); !reflect.DeepEqual(parseObject(got), parseObject(want)) {
+				return "not the tool's checks with the CLI's around them: " + jsonDiff(got, want)
+			}
+			return ""
+		},
+		onError: func(code int, _, cmdErr, text string) (string, bool) {
+			if parseObject(text)["reason"] != clerrors.CodeAPIUnreachable {
+				return "", false // the configuration or the key: the tool's error
+			}
+			if env, _ := errorEnvelope(cmdErr); code != clerrors.ExitGeneral || env.Reason != clerrors.ReasonGeneral {
+				return fmt.Sprintf("exit %d, reason %s, not 1 and ERROR", code, env.Reason), true
+			}
+			return "", true
 		}},
 }
 
@@ -291,11 +319,13 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 
 // planID is the id deploy_plan gives each plan: two calls make two plans;
 // stamp is a time of the call (expires_at of a plan); fipName is a name of
-// a floating IP, which provision.BootFIPName ends with the time of the call.
+// a floating IP, which provision.BootFIPName ends with the time of the call;
+// latency is how long a probe of doctor took.
 var (
 	planID  = regexp.MustCompile(`plan-[0-9a-f]{12,}`)
 	stamp   = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)`)
 	fipName = regexp.MustCompile(`fip-[0-9a-z.-]+`)
+	latency = regexp.MustCompile(`reachable \(\d+(\.\d)?m?s\)`)
 )
 
 // sameVolatile reads the ids and the times each call makes anew as one.
@@ -310,7 +340,8 @@ func sameVolatile(s string) string {
 		}
 		return name
 	})
-	return stamp.ReplaceAllString(s, "<time>")
+	s = stamp.ReplaceAllString(s, "<time>")
+	return latency.ReplaceAllString(s, "reachable (<latency>)")
 }
 
 func TestParity_JSONEqualsTool(t *testing.T) {

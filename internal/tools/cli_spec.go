@@ -248,15 +248,17 @@ var cliSpecs = map[string]CLISpec{
 	"stack_status":  {Group: "stack", Verb: "status", Args: []string{"job_id"}},
 	"stack_destroy": {Group: "stack", Verb: "destroy", Args: []string{"job_id"}},
 
-	// The engine commands (spec REQ-4): commands of v1.0 that keep their
-	// help and flags and call these tools; internal/cli builds them by
-	// hand (engineCommands), the trees do not. evo list-images is the
+	// The engine commands (spec REQ-4, REQ-11): commands of v1.0 that keep
+	// their help and flags and call these tools; internal/cli builds them
+	// by hand (engineCommands), the trees do not. evo list-images is the
 	// command of list_images: hidden and deprecated (evo image list) until
 	// v2.0.
 	"deploy":      {Verb: "deploy"},
 	"status":      {Verb: "status"},
 	"logs":        {Verb: "logs"},
 	"list_images": {Verb: "list-images"},
+	"whoami":      {Verb: "whoami"},
+	"doctor":      {Verb: "doctor"},
 	// The deploy wizard and the records: subcommands of the engine command
 	// evo deploy, which is a command with an action of its own and a group
 	// at once (spec.md R7): 'evo deploy' deploys, 'evo deploy plan' plans.

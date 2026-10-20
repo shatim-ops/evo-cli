@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (152) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo (154) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -31,6 +31,13 @@
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
 | `audit_events` | `evo audit events` | нет | — | Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource … | Журнал аудита проекта: кто, что и когда сделал |
+
+## auth
+
+| Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
+|---|---|---|---|---|---|
+| `whoami` | `evo whoami` | нет | — | Show whom the tools work as: the profile, the access key ID (masked), where the key and the project come from (profile, env, project file, flag), the project … | Активный профиль и проверка его ключа |
+| `doctor` | `evo doctor` | нет | — | Check the setup the tools use: the configuration (profile, where the key and the project come from, its warnings), whether the IAM and Compute APIs are … | Проверить настройки, ключ доступа и связь с API |
 
 ## billing
 

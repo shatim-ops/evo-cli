@@ -23,12 +23,13 @@ import (
 )
 
 // The engine commands — evo deploy, status, logs, destroy, list-zones,
-// list-images, project list — predate the registry. They keep the help and
-// the flags they had, and they call their tools (spec REQ-4): the work,
-// the checks, the preview and the answer are the tool's, as MCP gets them.
-// What a command adds is how it shows them (tools.Caller): the engine's
-// steps and prompts as they happen, the consent at the engine's gate, the
-// table of status, the error as the engine gave it.
+// list-images, project list, whoami, doctor — predate the registry. They
+// keep the help and the flags they had, and they call their tools (spec
+// REQ-4, REQ-11): the work, the checks, the preview and the answer are the
+// tool's, as MCP gets them. What a command adds is how it shows them
+// (tools.Caller): the engine's steps and prompts as they happen, the
+// consent at the engine's gate, the table of status, the error as the
+// engine gave it, doctor's checks of this machine.
 
 // engineCommand is one engine command: the tool it calls, the tool argument
 // each of its flags gives (Flags), the flags that give none (CLIOnly) and
@@ -66,6 +67,8 @@ var engineCommands = []engineCommand{
 	{Path: "evo list-images", Tool: "list_images"},
 	{Path: "evo project list", Tool: "org_projects",
 		Alias: "алиас evo org projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка, как с v1.0"},
+	{Path: "evo whoami", Tool: "whoami"},
+	{Path: "evo doctor", Tool: "doctor"},
 }
 
 // engineToolAt is the tool of the engine command at path, "" if none.
@@ -519,7 +522,7 @@ func newProjectListCmd() *cobra.Command {
 				if cerr != nil {
 					return cerr
 				}
-				text = toJSONText(map[string]any{"projects": nil, "active": cfg.ProjectID, "note": scopeText(nil, c.Err)})
+				text = toJSONText(map[string]any{"projects": nil, "active": cfg.ProjectID, "note": tools.ScopeText(0, false)})
 			case !isCLIError(c.Err):
 				// No answer (the network): the tool's error, with its code.
 				return toolError("org_projects", text)

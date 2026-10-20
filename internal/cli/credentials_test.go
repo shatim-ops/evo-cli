@@ -88,15 +88,15 @@ func setupCLI(t *testing.T) *fakeCloud {
 	}))
 	t.Cleanup(srv.Close)
 
-	oldIAM, oldOrg, oldCompute := auth.IAMEndpoint, orgProjectsURL, computeBaseURL
-	auth.IAMEndpoint, orgProjectsURL, computeBaseURL = srv.URL+"/iam/token", srv.URL+"/org/v3/projects", srv.URL
+	oldIAM, oldOrg, oldCompute := auth.IAMEndpoint, orgProjectsURL, tools.ComputeBaseURL
+	auth.IAMEndpoint, orgProjectsURL, tools.ComputeBaseURL = srv.URL+"/iam/token", srv.URL+"/org/v3/projects", srv.URL
 	// evo project list calls org_projects (spec REQ-4): the same endpoint.
 	oldToolOrg := tools.OrgProjectsURL
 	tools.OrgProjectsURL = orgProjectsURL
 	oldTTY, oldPass := stdinIsTerminal, readPassword
 	stdinIsTerminal = func() bool { return false }
 	t.Cleanup(func() {
-		auth.IAMEndpoint, orgProjectsURL, computeBaseURL = oldIAM, oldOrg, oldCompute
+		auth.IAMEndpoint, orgProjectsURL, tools.ComputeBaseURL = oldIAM, oldOrg, oldCompute
 		tools.OrgProjectsURL = oldToolOrg
 		stdinIsTerminal, readPassword = oldTTY, oldPass
 	})
@@ -438,11 +438,11 @@ func TestDoctor(t *testing.T) {
 	}
 	// Without a key the config line is not "ok": it says the key is missing.
 	var noKey struct {
-		Checks []doctorCheck `json:"checks"`
+		Checks []tools.DoctorCheck `json:"checks"`
 	}
 	_ = json.Unmarshal([]byte(stdout), &noKey)
 	for _, c := range noKey.Checks {
-		if c.Name == "config" && (c.Status != checkWarn || !strings.Contains(c.Detail, "access key not set")) {
+		if c.Name == "config" && (c.Status != tools.CheckWarn || !strings.Contains(c.Detail, "access key not set")) {
 			t.Errorf("no credentials: config check %q %q, want a warning about the key", c.Status, c.Detail)
 		}
 	}
@@ -454,8 +454,8 @@ func TestDoctor(t *testing.T) {
 		t.Fatalf("exit %d: %s\n%s", code, stdout, stderr)
 	}
 	var got struct {
-		OK     bool          `json:"ok"`
-		Checks []doctorCheck `json:"checks"`
+		OK     bool                `json:"ok"`
+		Checks []tools.DoctorCheck `json:"checks"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("not JSON: %q", stdout)
@@ -465,11 +465,11 @@ func TestDoctor(t *testing.T) {
 		status[c.Name] = c.Status
 	}
 	for _, name := range []string{"version", "config", "credentials", "IAM API", "Compute API", "credentials.yaml"} {
-		if status[name] != checkOK {
+		if status[name] != tools.CheckOK {
 			t.Errorf("check %q = %q, want ok (all: %v)", name, status[name], got.Checks)
 		}
 	}
-	if s := status["kubectl"]; s != checkOK && s != checkWarn {
+	if s := status["kubectl"]; s != tools.CheckOK && s != tools.CheckWarn {
 		t.Errorf("kubectl check = %q", s)
 	}
 
@@ -496,8 +496,8 @@ func TestDoctor_NoProjectIsAConfigError(t *testing.T) {
 		t.Errorf("no project: exit %d, want %d\n%s", code, clerrors.ExitAuth, stdout)
 	}
 	var got struct {
-		OK     bool          `json:"ok"`
-		Checks []doctorCheck `json:"checks"`
+		OK     bool                `json:"ok"`
+		Checks []tools.DoctorCheck `json:"checks"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("not JSON: %q", stdout)
@@ -510,7 +510,7 @@ func TestDoctor_NoProjectIsAConfigError(t *testing.T) {
 				t.Errorf("config check: %q", c.Detail)
 			}
 		case "project_id":
-			found = c.Status == checkFail && strings.Contains(c.Detail, "evo configure --project-id")
+			found = c.Status == tools.CheckFail && strings.Contains(c.Detail, "evo configure --project-id")
 		}
 	}
 	if !found || got.OK {
@@ -527,7 +527,7 @@ func TestDoctor_NoProjectIsAConfigError(t *testing.T) {
 func TestDoctor_UnreachableAPIIsExitOne(t *testing.T) {
 	setupCLI(t)
 	saveProfile(t, "default", "p-1")
-	computeBaseURL = "http://127.0.0.1:1" // nothing listens on port 1
+	tools.ComputeBaseURL = "http://127.0.0.1:1" // nothing listens on port 1
 	code, stdout, _ := runCLI(t, "", "doctor")
 	if code != clerrors.ExitGeneral || !strings.Contains(stdout, "unreachable") {
 		t.Errorf("exit %d:\n%s", code, stdout)
