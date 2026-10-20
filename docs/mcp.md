@@ -5,9 +5,10 @@ AI-агент (Claude Code, Cursor и любой другой MCP-клиент) 
 инструментов Cloud.ru — ВМ, диски, сети, DNS, балансировщики, Kubernetes,
 PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact Registry,
 мониторинг, биллинг, `deploy` docker-compose на ВМ. Каталог всех
-инструментов по группам — [tools.md](tools.md); описания и схемы аргументов
-— `evo tools list` и `evo tools describe <имя>`; любой инструмент можно
-вызвать и без агента: `evo tools call`.
+инструментов по группам, с командой CLI каждого, — [tools.md](tools.md);
+описания и схемы аргументов — `evo tools list` и `evo tools describe <имя>`;
+любой инструмент можно вызвать и без агента: своей командой или
+`evo tools call`.
 
 Два транспорта:
 

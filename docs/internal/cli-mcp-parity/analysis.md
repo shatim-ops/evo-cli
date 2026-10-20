@@ -11,8 +11,10 @@
 Всё ниже выведено из кода, тестов и запуска бинаря без облака
 (`HTTPS_PROXY=http://127.0.0.1:9`, пустой `CLOUDRU_CONFIG_DIR`). Каждая
 запись помечена: **факт** (код или тест) или **гипотеза** (вывод по
-коду, вживую не воспроизведено). Таблицы инвентаризации генерирует
-[inventory/main.go](inventory/main.go) в [inventory.md](inventory.md).
+коду, вживую не воспроизведено). Цифры анализа — на момент до PR 1;
+текущие таблицы инвентаризации — в [inventory.md](inventory.md), их
+генерирует тест `TestParityInventory` (`internal/cli/inventory_test.go`,
+REQ-10; до PR 8 — скрипт `inventory/main.go`, удалён).
 
 Содержание:
 
@@ -133,20 +135,21 @@
 
 ## 3. Инвентаризация
 
-Полные таблицы — [inventory.md](inventory.md); регенерация:
+Полные таблицы — [inventory.md](inventory.md); регенерация (с PR 8,
+REQ-10; CI сверяет файл с кодом):
 
 ```
-go run ./docs/internal/cli-mcp-parity/inventory/main.go > docs/internal/cli-mcp-parity/inventory.md
+go test ./internal/cli -run TestParityInventory -update-docs
 ```
 
-Скрипт берёт реестр из `internal/tools`, деревья — из `CLISpec`
-инструментов реестра (до PR 1 — AST-разбором литерала `treeGroups` в
-`cli/trees.go`), набор команд и флагов бинаря —
-из `docs/commands.md` (его сверяет с бинарём `TestCommandsDoc`), русскую
-справку — из ключей карт `cli/trees_ru.go`. Единственная ручная часть —
-классификация 25 команд без команды дерева (`localCommands` в скрипте);
-скрипт падает, если в `docs/commands.md` есть команда, которой нет ни в
-деревьях, ни в этой таблице.
+Таблицы ниже — снимок анализа, до PR 1. Тогда их печатал скрипт
+`inventory/main.go` (удалён в PR 8): реестр из `internal/tools`, деревья —
+AST-разбором литерала `treeGroups` в `cli/trees.go`, набор команд и флагов
+бинаря — из `docs/commands.md`, русскую справку — из ключей карт
+`cli/trees_ru.go`; единственной ручной частью была классификация 25 команд
+без команды дерева. Сейчас тест берёт реестр, дерево cobra самого бинаря и
+закрытые списки тестов паритета (`localCommands`, `engineCommands` и
+другие) — ручных таблиц в нём нет.
 
 ### 3.1. Инструменты по способу вызова
 

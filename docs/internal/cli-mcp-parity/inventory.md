@@ -1,8 +1,13 @@
 # Инвентаризация CLI ↔ MCP
 
-<!-- Сгенерировано: go run ./docs/internal/cli-mcp-parity/inventory/main.go > docs/internal/cli-mcp-parity/inventory.md. Руками не править. -->
+<!-- Файл сгенерирован тестом TestParityInventory (internal/cli/inventory_test.go)
+     из реестра инструментов, дерева команд и списков тестов паритета. Руками не править:
+     go test ./internal/cli -run TestParityInventory -update-docs
+     Все три сгенерированных документа (docs/commands.md, docs/tools.md, этот):
+     go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc|TestParityInventory' -update-docs
+     CI сверяет файл с кодом. -->
 
-Инструментов в реестре: 152 (изменяющих: 65). Команд дерева: 152. Команд в docs/commands.md: 198 (+4 скрытых).
+Инструментов в реестре: 152 (изменяющих: 65). Команд из `CLISpec`: 152. Команд в бинаре вместе с корнем `evo`: 203 — в docs/commands.md 198, скрытых 4, прочих 1 (`evo help`).
 
 ## 1. Инструменты по способу вызова из CLI
 
@@ -12,7 +17,7 @@
 | движок | 4 | 1 |
 | tools call | 0 | 0 |
 
-«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `status`, `logs`, `list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>` (после PR 5 плана таких нет). Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в engineCommands.
+«дерево» — своя команда, построенная из `CLISpec` инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `evo status`, `evo logs`, `evo list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`. Таких нет: временный список «без команды» из PR 1 опустошён (PR 3), у каждого инструмента — своя команда, и TestParity_CommandsAndTools не даёт добавить инструмент без неё. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в `engineCommands`.
 
 ### По группам
 
@@ -201,7 +206,7 @@
 
 ## 3. Команда CLI → инструмент
 
-Команды деревьев (из `CLISpec`): позиционные аргументы, переименования и поля схемы без флага.
+Команды из `CLISpec`: позиционные аргументы, переименования и поля схемы без флага.
 
 | Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/Raw/Render |
 |---|---|---|---|---|---|---|
@@ -358,40 +363,49 @@
 | `evo vpc security-groups` | `list_security_groups` | — | — | — | — | — |
 | `evo vpc subnets` | `list_subnets` | — | — | — | — | — |
 
-Команды вне деревьев (из docs/commands.md и скрытые):
+Команды без своего `CLISpec`: алиасы (`engineCommands`) и команды без инструмента — закрытый список `localCommands` (internal/cli/local_commands.go; в docs/commands.md — пометка «Локальная команда»). Группы деревьев (`evo vm`, `evo dns`, …) сюда не входят.
 
-| Команда | Вид | Инструмент по смыслу | Почему |
-|---|---|---|---|
-| `evo` | group | — | корень |
-| `evo completion` | local | — | скрипт автодополнения оболочки; к облаку не обращается |
-| `evo completion bash` | local | — | то же |
-| `evo completion fish` | local | — | то же |
-| `evo completion powershell` | local | — | то же |
-| `evo completion zsh` | local | — | то же |
-| `evo configure` | local | — | пишет ключ в профиль на диске сервера/машины; MCP-клиент ключей не передаёт по контракту (docs/mcp.md) |
-| `evo configure delete` | local | — | удаляет профиль с диска |
-| `evo configure list` | local | — | читает профили с диска |
-| `evo crew` | hidden | — | титры |
-| `evo destroy` | alias | `destroy` | команда движка: destroy без vm_id и name — ВМ развёртывания каталога; с vm_id|name — команда дерева vm delete |
-| `evo doctor` | local | — | диагностика машины: файлы настроек, права, PATH; часть (связь с API, ключ) могла бы быть инструментом |
-| `evo init` | local | — | пишет .evo.yaml в текущий каталог после интерактивного выбора; инструмента нет |
-| `evo list-zones` | hidden | `list_zones` | скрытый устаревший алиас evo vm zones: вызывает list_zones, --json — массив зон до v2.0 |
-| `evo mcp` | meta | — | сам сервер MCP |
-| `evo mcp healthcheck` | hidden | — | HEALTHCHECK Docker-образа |
-| `evo project` | group | — | группа |
-| `evo project list` | alias | `org_projects` | алиас evo org projects: вызывает org_projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка |
-| `evo project use` | local | — | пишет проект в профиль на диске |
-| `evo tools` | meta | — | группа |
-| `evo tools call` | meta | — | универсальный вызов любого инструмента |
-| `evo tools describe` | meta | — | описание инструмента (англ.) |
-| `evo tools list` | meta | — | список инструментов |
-| `evo verify` | local | — | TCP/HTTP-проверки портов развёрнутого приложения с машины оператора; инструмента нет |
-| `evo version` | local | — | версия бинаря; MCP отдаёт её в initialize.serverInfo |
-| `evo whoami` | local | — | профиль, маскированный Key ID, проект, срок токена; инструмента нет |
+| Команда | Вид | Инструмент | В docs/commands.md | Почему |
+|---|---|---|---|---|
+| `evo completion` | локальная | — | да | скрипты автодополнения оболочки; к облаку не обращается |
+| `evo completion bash` | локальная | — | да | скрипт автодополнения bash |
+| `evo completion fish` | локальная | — | да | скрипт автодополнения fish |
+| `evo completion powershell` | локальная | — | да | скрипт автодополнения PowerShell |
+| `evo completion zsh` | локальная | — | да | скрипт автодополнения zsh |
+| `evo configure` | локальная | — | да | пишет ключ доступа в профиль на диске той машины, где стоит evo; MCP-клиент ключей не передаёт по контракту (docs/mcp.md) |
+| `evo configure delete` | локальная | — | да | удаляет профиль с диска |
+| `evo configure list` | локальная | — | да | читает профили с диска |
+| `evo crew` | локальная | — | нет, скрыта | титры |
+| `evo destroy` | алиас | `destroy` | да | удаляет ВМ развёртывания этого каталога (destroy без vm_id и name); ВМ по ID или имени удаляет evo vm delete |
+| `evo doctor` | локальная | — | да | проверки файлов настроек, прав, PATH и связи с машины оператора; до PR 9 (REQ-11) — станет инструментом doctor |
+| `evo help` | локальная | — | нет, справка cobra | справка cobra |
+| `evo init` | локальная | — | да | интерактивно выбирает зону и образ и пишет .evo.yaml в текущий каталог |
+| `evo list-zones` | алиас | `list_zones` | нет, скрыта | скрытый устаревший алиас evo vm zones: его --json — массив зон, а не ответ инструмента; удаляется в v2.0 |
+| `evo mcp` | локальная | — | да | сам сервер MCP |
+| `evo mcp healthcheck` | локальная | — | нет, скрыта | проверка живости сервера MCP (HEALTHCHECK Docker-образа) |
+| `evo project` | локальная | — | да | группа: project use — локальная, project list — команда org_projects |
+| `evo project list` | алиас | `org_projects` | да | алиас evo org projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка, как с v1.0 |
+| `evo project use` | локальная | — | да | пишет проект в профиль на диске |
+| `evo tools` | локальная | — | да | доступ к реестру инструментов |
+| `evo tools call` | локальная | — | да | универсальный вызов любого инструмента |
+| `evo tools describe` | локальная | — | да | описание и схема инструмента |
+| `evo tools list` | локальная | — | да | список инструментов реестра |
+| `evo verify` | локальная | — | да | TCP/HTTP-проверки портов развёрнутого приложения с машины оператора: с хоста сервера MCP результат был бы другим |
+| `evo version` | локальная | — | да | версия бинаря; MCP отдаёт её в initialize.serverInfo |
+| `evo whoami` | локальная | — | да | профиль, маскированный Key ID, проект и срок токена с машины оператора; до PR 9 (REQ-11) — станет инструментом whoami |
+
+Скрытые команды (работают, в справке и docs/commands.md их нет):
+
+| Команда | Что это | Статус |
+|---|---|---|
+| `evo crew` | команда без инструмента (`localCommands`) | служебная |
+| `evo list-images` | команда инструмента `list_images` | устарела: удаляется в v2.0, используйте `evo image list` |
+| `evo list-zones` | алиас инструмента `list_zones` | устарела: удаляется в v2.0, используйте `evo vm zones` |
+| `evo mcp healthcheck` | команда без инструмента (`localCommands`) | служебная |
 
 ## 4. Флаги команд деревьев против схемы инструмента
 
-Ожидаемый набор флагов выводится из схемы по правилам trees.go (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с docs/commands.md. Пусто — расхождений нет.
+Ожидаемый набор флагов выводится из схемы (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с флагами команды в дереве cobra. Пусто — расхождений нет.
 
 Расхождений нет: флаги всех 148 команд деревьев выведены из схемы; флаги 4 команд движка сверяет со схемой TestParity_EngineCommands.
 
@@ -404,3 +418,36 @@
 | описания аргументов (ArgDescriptionsRU) | 444 | 444 аргументов |
 | из них флаги команд деревьев | 239 | 239 флагов |
 | описания инструментов в MCP | 0 | 152 (всегда английские) |
+
+## 6. Исключения из паритета
+
+Закрытые списки тестов паритета: запись без причины или без команды роняет тест. Пустой список — исключений нет.
+
+**Инструменты без команды (`CLISpec.None`)**: нет.
+
+**Команды с английской справкой (`russianHelpExceptions`)**: нет.
+
+**`--json` команды не равен ответу инструмента (`jsonAliasCompat`, TestParity_JSONEqualsTool)**:
+
+| Команда | Почему |
+|---|---|
+| `evo deploy` | итог движка, как с v1.0: status deployed/unchanged, vm_id, vm_ip, vm_name, zone_name, flavor, ports, verify…; инструмент — status ok, deployment (запись state) и log. Ключ status есть у обоих с разными значениями — свести без потери нельзя (в 1.2 ломается только Q1): вопрос владельцу |
+| `evo destroy` | итог движка, как с v1.0: status destroyed с vm_id, vm_ip, vm_name, без развёртывания — status none с message; инструмент — status ok и log. Ключ status есть у обоих с разными значениями — свести без потери нельзя: вопрос владельцу |
+| `evo list-images` | скрытая устаревшая команда list_images (evo image list): --json — массив images из ответа инструмента, пустой — без вывода, как с v1.0; до v2.0 |
+| `evo list-zones` | скрытый устаревший алиас evo vm zones: --json — массив zones из ответа инструмента, как с v1.0; до v2.0 (spec.md §4) |
+| `evo project list` | алиас evo org projects: ответ Organization API с ошибкой (и 5xx) — пометка note и активный проект, код 0, как с v1.0 (QA r3 C3); инструмент так делает только для 400, 403 и 404; до v2.0 (engineCommands) |
+
+**Ответ — текст, а не JSON (`textAnswer`)**:
+
+| Инструмент | Почему |
+|---|---|
+| `logs` | ответ — текст журнала (решение владельца Q7, единственное исключение C4) |
+
+**Функции internal/cli, которым ещё можно звать движок напрямую (`engineCallsAllowed`)**:
+
+| Функция | Почему |
+|---|---|
+| `chooseProject` | evo configure: выбор проекта при записи профиля |
+| `keyScopeCheck` | evo doctor: до PR 9 (REQ-11), станет инструментом doctor |
+| `newWhoamiCmd` | evo whoami: до PR 9 (REQ-11), станет инструментом whoami |
+| `resolveProjectArg` | evo project use: проект по имени |

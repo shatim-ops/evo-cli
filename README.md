@@ -244,8 +244,8 @@ evo disk delete 1b2c… </dev/null; echo $?   # 3: без терминала и 
 | [docs/install.md](docs/install.md) | установка на Linux, macOS, Windows; проверка подписи; kubectl/helm |
 | [docs/auth.md](docs/auth.md) | сервисный аккаунт и ключ, роли, профили, все переменные окружения, что хранится на диске, ротация ключа |
 | [docs/mcp.md](docs/mcp.md) | MCP по stdio и HTTP, конфиги Claude Code и Cursor, Docker-образ |
-| [docs/commands.md](docs/commands.md) | справка по всем командам |
-| [docs/tools.md](docs/tools.md) | каталог всех инструментов MCP и `evo tools`: группа, меняет ли, обязательные аргументы |
+| [docs/commands.md](docs/commands.md) | справка по всем командам; у команд без инструмента MCP — пометка «Локальная команда» с причиной |
+| [docs/tools.md](docs/tools.md) | каталог всех инструментов MCP и `evo tools`: группа, команда CLI, меняет ли, обязательные аргументы, описание по-английски и по-русски |
 | [docs/exit-codes.md](docs/exit-codes.md) | коды выхода и формат ошибок `--json` |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | типовые ошибки и что приложить к обращению |
 | [docs/RELEASING.md](docs/RELEASING.md) | для сопровождающих: выпуск релиза |
@@ -274,9 +274,10 @@ gofmt -l . && go vet ./... && go test -race ./... && govulncheck ./...
 в несколько раз: без неё race-рантайм ждёт секунду на выходе каждого пакета.
 CI гоняет то же на Linux, macOS и Windows
 (`.github/workflows/ci.yml`). После изменения команд, флагов или инструментов
-обновите справку: `go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc' -update-docs`
-(`docs/commands.md` и `docs/tools.md` генерируются, CI проверяет, что они
-актуальны).
+обновите справку: `go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc|TestParityInventory' -update-docs`
+(`docs/commands.md`, `docs/tools.md` и инвентаризация паритета CLI ↔ MCP
+`docs/internal/cli-mcp-parity/inventory.md` генерируются, CI проверяет, что
+они актуальны).
 Внутренние планы и история проекта — `docs/internal/`.
 
 ## Лицензия

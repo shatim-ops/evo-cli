@@ -30,7 +30,18 @@ import (
 // generated from the command tree, and docs/auth.md has to name every
 // environment variable the code reads.
 
-var updateDocs = flag.Bool("update-docs", false, "rewrite docs/commands.md from the command tree")
+// -update-docs rewrites the generated files instead of comparing them:
+// docs/commands.md (TestCommandsDoc), docs/tools.md (TestToolsDoc) and
+// docs/internal/cli-mcp-parity/inventory.md (TestParityInventory).
+var updateDocs = flag.Bool("update-docs", false, "rewrite docs/commands.md, docs/tools.md and the parity inventory from the code")
+
+// deprecatedCommands are the commands kept until v2.0, with what replaces
+// them. Both are hidden, so docs/commands.md has no section for them; were
+// one shown, its section would carry the note. The inventory lists them.
+var deprecatedCommands = map[string]string{
+	"evo list-zones":  "удаляется в v2.0, используйте `evo vm zones`",
+	"evo list-images": "удаляется в v2.0, используйте `evo image list`",
+}
 
 const (
 	repoRoot        = "../.."
@@ -49,7 +60,10 @@ const commandsDocHeader = `# Справка по командам
 английская (решение D6, пересмотр). Заголовки разделов (Synopsis, Options)
 ставит генератор cobra/doc. Описания команд, флагов и инструментов
 (` + "`evo tools describe`" + `) — русские; в MCP описания инструментов английские: их читает
-агент. Подробнее — в [README](../README.md) и соседних файлах ` + "`docs/`" + `.
+агент. Почти каждая команда — команда инструмента MCP с тем же действием
+([tools.md](tools.md)); пометка «Локальная команда» под заголовком — у команд
+без инструмента, с причиной. Подробнее — в [README](../README.md) и соседних
+файлах ` + "`docs/`" + `.
 
 `
 
@@ -96,15 +110,36 @@ func genCommandsDocIn(lang string) ([]byte, error) {
 	link := func(name string) string {
 		return "#" + anchor(strings.ReplaceAll(strings.TrimSuffix(name, ".md"), "_", " "))
 	}
+	local := map[string]string{}
+	for _, lc := range localCommands {
+		local[lc.Path] = lc.Reason
+	}
 	for _, c := range cmds {
 		c.DisableAutoGenTag = true
 		if c.Long != "" {
 			// Help text is laid out for a terminal: keep it as is.
 			c.Long = "```text\n" + strings.TrimRight(c.Long, "\n") + "\n```"
 		}
-		if err := doc.GenMarkdownCustom(c, &buf, link); err != nil {
+		var sec bytes.Buffer
+		if err := doc.GenMarkdownCustom(c, &sec, link); err != nil {
 			return nil, err
 		}
+		// A note under the heading: a command that calls no tool, with the
+		// reason (localCommands, spec REQ-10), and a command kept until
+		// v2.0. The reasons are Russian, as the file is.
+		var notes []string
+		if reason, ok := local[c.CommandPath()]; ok && lang == i18n.RU {
+			notes = append(notes, "> Локальная команда: "+reason+".")
+		}
+		if why, ok := deprecatedCommands[c.CommandPath()]; ok && lang == i18n.RU {
+			notes = append(notes, "> Устаревшая команда: "+why+".")
+		}
+		heading, rest, _ := strings.Cut(sec.String(), "\n\n")
+		buf.WriteString(heading + "\n\n")
+		if len(notes) > 0 {
+			buf.WriteString(strings.Join(notes, "\n>\n") + "\n\n")
+		}
+		buf.WriteString(rest)
 	}
 	// cobra/doc prints the flags without the help template: translate the
 	// pflag defaults the same way --help does.
@@ -163,8 +198,32 @@ func TestCommandsDoc_CoversEveryCommand(t *testing.T) {
 			t.Errorf("no section for %q", path)
 		}
 	}
-	if bytes.Contains(data, []byte("## evo mcp healthcheck")) {
-		t.Error("hidden command mcp healthcheck is documented")
+	for _, hidden := range []string{"evo mcp healthcheck", "evo crew", "evo list-zones", "evo list-images"} {
+		if bytes.Contains(data, []byte("\n## "+hidden+"\n")) {
+			t.Errorf("hidden command %s is documented", hidden)
+		}
+	}
+	// Every command that calls no tool says so, with the reason.
+	for _, lc := range localCommands {
+		if bytes.Contains(data, []byte("\n## "+lc.Path+"\n")) &&
+			!bytes.Contains(data, []byte("\n## "+lc.Path+"\n\n> Локальная команда: "+lc.Reason+".\n")) {
+			t.Errorf("%s: no note «Локальная команда» under its heading", lc.Path)
+		}
+	}
+}
+
+// deprecatedCommands names commands there are, each hidden.
+func TestDeprecatedCommands(t *testing.T) {
+	root := newRootCmd()
+	for path := range deprecatedCommands {
+		c, _, err := root.Find(strings.Fields(path)[1:])
+		if err != nil || c.CommandPath() != path {
+			t.Errorf("deprecatedCommands: no command %s", path)
+			continue
+		}
+		if !c.Hidden {
+			t.Errorf("%s: deprecated, but shown in the help", path)
+		}
 	}
 }
 
