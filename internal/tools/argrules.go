@@ -25,17 +25,19 @@ import (
 // aliasArg reads an argument that has an alias (pg_get id / cluster_id).
 // Both given and different was the id silently: `evo pg delete A --id B`
 // deleted B (QA-1). Given is as in oneOfArgs: " " and the alias was the
-// alias, and pg_delete sent DELETE for it (break r4, R4-11).
+// alias, and pg_delete sent DELETE for it (break r4, R4-11). A value of
+// only spaces is named first: id=" " cluster_id=a is "empty value id",
+// not "id and cluster_id disagree" (release audit, REL-10).
 func aliasArg(args map[string]any, name, alias string) (string, error) {
+	if err := blankArgs(args, name, alias); err != nil {
+		return "", err
+	}
 	rv, ra := stringArg(args, name), stringArg(args, alias)
 	v, a := strings.TrimSpace(rv), strings.TrimSpace(ra)
 	if rv != "" && ra != "" && v != a {
 		return "", clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("%s and %s disagree (%q, %q)", "%s и %s расходятся (%q, %q)", name, alias, rv, ra),
 			i18n.Tf("Pass one of them: %s is an alias of %s.", "Укажите один из них: %s — другое имя %s.", alias, name))
-	}
-	if err := blankArgs(args, name, alias); err != nil {
-		return "", err
 	}
 	return firstNonEmptyStr(v, a), nil
 }

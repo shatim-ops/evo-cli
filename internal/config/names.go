@@ -14,9 +14,8 @@ import (
 )
 
 // Names of the tool and of what it keeps on disk. The tool used to be
-// called cloudru-vm; the legacy names are still read for one minor release
-// (until v1.1), so a project or a profile made by the old binary keeps
-// working.
+// called cloudru-vm; the legacy names are still read until
+// v2.0, so a project or a profile made by the old binary keeps working.
 const (
 	// AppName is the name of the binary, of the MCP server and of the
 	// directories below.
@@ -105,8 +104,8 @@ func DataDir(root string) string {
 		return dir
 	}
 	if !exists(dir) {
-		warnOnce(i18n.Tf("using the legacy directory %s; rename it to %s when no older %s works in this directory (support ends in v1.1)",
-			"используется старый каталог %s; переименуйте его в %s, когда в этом каталоге не будет работать старый %s (поддержка — до v1.1)",
+		warnOnce(i18n.Tf("using the legacy directory %s; rename it to %s when no older %s works in this directory (support ends in v2.0)",
+			"используется старый каталог %s; переименуйте его в %s, когда в этом каталоге не будет работать старый %s (поддержка — до v2.0)",
 			legacy, DataDirName, LegacyAppName))
 		return legacy
 	}
@@ -144,7 +143,7 @@ func ProjectFile(dir string) string {
 		}
 		return path
 	}
-	warnOnce(i18n.Tf("reading the legacy %s; rename it to %s (support ends in v1.1)",
-		"читается старый %s; переименуйте его в %s (поддержка — до v1.1)", abs(legacy), ProjectFileName))
+	warnOnce(i18n.Tf("reading the legacy %s; rename it to %s (support ends in v2.0)",
+		"читается старый %s; переименуйте его в %s (поддержка — до v2.0)", abs(legacy), ProjectFileName))
 	return legacy
 }

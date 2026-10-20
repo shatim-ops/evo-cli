@@ -175,10 +175,41 @@ func targetSpecs(args map[string]any) []map[string]any {
 	return specs
 }
 
+// tgTargetArgs checks the targets of tg_create before the cloud: vm_id or
+// targets, not both (the description offers one or the other; both were
+// merged without a word), and no id of only spaces — " " was sent as a VM
+// id, and an id of "" in targets was dropped (release audit, REL-11).
+func tgTargetArgs(args map[string]any) error {
+	if err := blankArgs(args, "vm_id", "interface_id"); err != nil {
+		return err
+	}
+	raw, _ := args["targets"].([]any)
+	if len(raw) > 0 && stringArg(args, "vm_id") != "" {
+		return clierrors.New(clierrors.CodeUsage,
+			i18n.T("pass vm_id or targets, not both", "укажите vm_id или targets, не оба"),
+			i18n.T("vm_id is one target; targets is an array of {id[, interface_id]} for several.",
+				"vm_id — одна цель; targets — массив {id[, interface_id]} для нескольких."))
+	}
+	for i, t := range raw {
+		m, _ := t.(map[string]any)
+		for _, k := range []string{"id", "interface_id"} {
+			if v, _ := m[k].(string); v != "" && strings.TrimSpace(v) == "" {
+				return clierrors.New(clierrors.CodeUsage,
+					i18n.Tf("empty value of targets[%d].%s: it is only spaces", "пустое значение targets[%d].%s: в нём только пробелы", i, k),
+					i18n.T("Pass the VM UUID in id (from vm_list).", "Передайте в id UUID ВМ (из vm_list)."))
+			}
+		}
+	}
+	return nil
+}
+
 func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
 		return usageT("'name' is required", "нужен 'name'"), true
+	}
+	if err := tgTargetArgs(args); err != nil {
+		return errResult(err), true
 	}
 	specs := targetSpecs(args)
 	if len(specs) == 0 {

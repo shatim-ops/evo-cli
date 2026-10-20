@@ -24,7 +24,8 @@ import (
 
 // kubectlHTTPVerbs are the built-in kubectl commands allowed over HTTP.
 // Left out: plugin lookups (any other word), cp (host files), port-forward
-// and proxy (listeners on the host), edit (runs an editor on the host),
+// and proxy (listeners on the host), edit (runs an editor on the host;
+// so do "apply edit-last-applied" and "create --edit", refused below),
 // kustomize (host directory), attach (needs a terminal), completion, plugin.
 var kubectlHTTPVerbs = map[string]bool{
 	"get": true, "describe": true, "logs": true, "log": true, "top": true,
@@ -103,6 +104,11 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 			if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
 				return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", f)
 			}
+			if name == "edit" {
+				// create --edit opens the object in an editor on the host
+				// before creating it (REL-5).
+				return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: it runs an editor on the MCP server's host", f)
+			}
 			if kubectlHTTPVerbosityFlags[name] {
 				return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: at higher verbosity kubectl logs API responses, Secret data included, into the output", f)
 			}
@@ -136,6 +142,12 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 	}
 	if !kubectlHTTPVerbs[verb] {
 		return fmt.Errorf("k8s_kubectl over HTTP: %q is not a built-in kubectl command allowed in this mode (plugins, cp, port-forward, proxy, edit and kustomize run on the MCP server's host); put the command first, flags after it", verb)
+	}
+	// "apply edit-last-applied" opens an editor on the host, as edit does
+	// (release audit, REL-5). Any position: a flag value before it lands
+	// in resources too.
+	if verb == "apply" && slices.Contains(resources, "edit-last-applied") {
+		return fmt.Errorf("k8s_kubectl apply edit-last-applied is not allowed over HTTP: it runs an editor on the MCP server's host, as edit does; use apply set-last-applied or k8s_apply")
 	}
 	if allowSecrets {
 		return nil

@@ -384,7 +384,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_kubectl",
-			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true, and so does any verb with -f/--filename, -k/--kustomize or --output-directory (they read local files or any URL, or write on the host). General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\". " + untrustedOutputNote,
+			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\". " + untrustedOutputNote,
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"args":       strProp("kubectl arguments as a single string, e.g. \"get pods -A -o wide\"."),
@@ -833,7 +833,7 @@ func (s *Registry) registerTools() {
 			Description: "Create a target group (the set of VMs a load balancer distributes traffic to). Provide targets as just vm_id (single) or a 'targets' array of {id}. The VM's network interface is AUTO-RESOLVED — you do NOT need interface_id (only pass it to override). Targets must be private VPC-subnet VMs (provision with no_public_ip). Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":         strProp("Target group name (unique in project). Required."),
-				"vm_id":        strProp("VM UUID for a single target. The interface is auto-resolved. vm_id or targets is required."),
+				"vm_id":        strProp("VM UUID for a single target. The interface is auto-resolved. vm_id or targets is required, not both."),
 				"interface_id": strProp("Optional: network interface UUID (auto-resolved from the VM if omitted)."),
 				"targets":      map[string]any{"type": "array", "description": "Multiple targets: array of {id} (interface_id optional, auto-resolved).", "items": map[string]any{"type": "object"}},
 				"confirmed":    confirmedProp(),
@@ -987,7 +987,7 @@ func (s *Registry) registerTools() {
 				"zone_id":     strProp("Zone UUID (from dns_zones). Required."),
 				"name":        strProp("Record name/host (e.g. 'www' or '@'). Required."),
 				"record_type": enumProp("Record type: a, aaaa, cname, mx, ns, spf, txt, caa, srv (any case; sent lower-case, as the API takes it). Required.", dnsRecordTypes...),
-				"value":       strProp("Single record value (e.g. an IP for A). Use this or 'values'."),
+				"value":       strProp("Single record value (e.g. an IP for A). Use this or 'values', not both."),
 				"values":      map[string]any{"type": "array", "description": "Multiple record values.", "items": map[string]any{"type": "string"}},
 				"ttl":         intProp("TTL seconds (default 300)."),
 				"type":        enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
@@ -1105,7 +1105,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
 				"end":        strProp("End date YYYY-MM-DD. Optional; default = today."),
-				"days":       intProp("Window length if start omitted (default 30)."),
+				"days":       intProp("Window length in days if start omitted: 1-366 (default 30)."),
 				"budget":     intProp("Monthly budget in RUB → projected-monthly threshold check (optional)."),
 				"project_id": strProp("Project UUID (default: the current project when CLOUDRU_AGREEMENT_ID is not set; with it, the whole agreement)."),
 			}),

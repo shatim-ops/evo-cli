@@ -142,20 +142,22 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 // a shorter list: evo deletes what is left over and counts from it
 // (break r4, R4-2…R4-5).
 //
-// With a total: offset at the total ends the list; an empty page or a page
-// of items already read before it is an error (the server ignores the
-// offset, QA-9: 300 items, 100 distinct). Without one: an empty page or a
-// page shorter than pageSize ends it, a page of items already read is an
-// error.
+// With a total: a page of items already read is an error (the server
+// ignores the offset, QA-9: 300 items, 100 distinct) — checked before the
+// offset reaches the total, or such a server with total=2*pageSize would
+// give half the list as the whole one (REL-2); offset at the total ends
+// the list; an empty page before it is an error. Without one: an empty
+// page or a page shorter than pageSize ends it, a page of items already
+// read is an error.
 func offsetPageEnd(items, fresh, read, offset, total, pageSize int) (bool, error) {
 	if total > 0 {
 		switch {
+		case items > 0 && fresh == 0:
+			return false, pager.NoNewItems(read, total)
 		case offset >= total:
 			return true, nil
 		case items == 0:
 			return false, pager.EmptyPage(read, total)
-		case fresh == 0:
-			return false, pager.NoNewItems(read, total)
 		}
 		return false, nil
 	}

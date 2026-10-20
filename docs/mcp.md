@@ -401,7 +401,7 @@ claude mcp add --transport stdio --scope project evo -- evo mcp
 ```
 
 Сервер, добавленный под старым именем (`… cloudru-vm -- cloudru-vm mcp`), до
-v1.1 работает через alias, но лучше заменить: `claude mcp remove cloudru-vm`
+v2.0 работает через alias, но лучше заменить: `claude mcp remove cloudru-vm`
 и команда выше. Имена инструментов не менялись.
 
 или файл `.mcp.json` в корне проекта:
@@ -585,8 +585,9 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
   (с учётом символических ссылок).
 - `k8s_kubectl`: только встроенные команды kubectl, первым словом
   (`get`, `describe`, `logs`, `apply`, `exec`, `scale`, …). Не выполняются
-  плагины `kubectl-*` из `PATH` сервера, `cp`, `port-forward`, `proxy`, `edit`,
-  `kustomize`; флаги, читающие или пишущие файлы хоста (`-f`, `-k`,
+  плагины `kubectl-*` из `PATH` сервера, `cp`, `port-forward`, `proxy`, `edit`
+  и другие команды с редактором на хосте (`apply edit-last-applied`,
+  `create --edit`), `kustomize`; флаги, читающие или пишущие файлы хоста (`-f`, `-k`,
   `--kubeconfig`, `--from-file`, `--from-env-file`, `-o …-file=…`, `--cert`,
   `--key`, `--ca-cert` у `create secret tls`, `--custom` у `debug`,
   `--log-file`, `--output-directory`, `--kuberc`, …), и флаги, отправляющие токен кластера
@@ -612,12 +613,15 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
   `kubectl` у себя или используйте stdio-сервер на машине с `kubectl`.
 
 По stdio сервер — процесс самого пользователя, и этих ограничений нет. Одно
-есть и там: `k8s_kubectl` с `-f`/`--filename`, `-k`/`--kustomize` или
-`--output-directory` (в любом написании: `-f x`, `-fx`, `-f=x`,
-`--filename=x`) требует `confirmed=true` даже у глаголов чтения. `get -f
-https://…` отправляет запрос на любой адрес, `get -f <файл>` печатает файл в
-ошибке, `cluster-info dump --output-directory` пишет файлы на хост. У `logs`
-`-f` — это `--follow`, он подтверждения не требует.
+есть и там: `k8s_kubectl` с `-f`/`--filename`, `-k`/`--kustomize`,
+`--output-directory`, `--cache-dir` или форматом вывода из файла
+(`-o go-template-file=…`, `jsonpath-file=…`, `custom-columns-file=…`) — в
+любом написании: `-f x`, `-fx`, `-f=x`, `--filename=x`, `-o x`, `-ox`,
+`--output=x` — требует `confirmed=true` даже у глаголов чтения. `get -f
+https://…` отправляет запрос на любой адрес, `get -f <файл>` и
+`-o jsonpath-file=<файл>` читают файл хоста, `cluster-info dump
+--output-directory` и `--cache-dir` пишут файлы на хост. У `logs` `-f` — это
+`--follow`, он подтверждения не требует.
 
 **Данные из облака — недоверенные.** Логи контейнеров (`logs`, `ca_logs`),
 вывод `k8s_kubectl` и `k8s_helm` (логи подов, ConfigMap, заметки чарта) и
@@ -660,6 +664,6 @@ docker logs -f evo
 живёт в `/home/nonroot` контейнера и пропадает вместе с ним. Если сервер будет
 создавать ВМ, подключите том: `-v evo-data:/home/nonroot` — иначе после
 пересоздания контейнера к этим ВМ не будет SSH-доступа. Том от образа
-`cloudru-vm` подходит как есть: старый `.cloudru-vm/` в нём читается до v1.1.
+`cloudru-vm` подходит как есть: старый `.cloudru-vm/` в нём читается до v2.0.
 
 Без `MCP_BEARER_TOKEN` контейнер завершается с кодом `2`.

@@ -37,7 +37,7 @@ MCP; Marketplace — не цель (DECISIONS D3). Любой вызов
 5. **Цепочка поставки.** `install.sh`, goreleaser, cosign keyless, workflows
    GitHub Actions: `permissions`, pinning, инъекции через `inputs`.
 6. **Корректность и совместимость:** коды выхода, `--json`, alias `cloudru-vm`
-   и старые пути конфигов до v1.1.
+   и старые пути конфигов до v2.0.
 
 ## Правила API Cloud.ru для сверки кода
 1. **Аутентификация и токены.**

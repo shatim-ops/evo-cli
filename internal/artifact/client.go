@@ -132,10 +132,12 @@ func (c *Client) doOperation(ctx context.Context, method, path string, query url
 // The live API answers a fresh nextPageToken on every page, the last one
 // included, so the token alone never ends the list: ar_list ran into
 // pager.MaxPages after ~10 minutes and ar_create could not check a name
-// (live run 18.10). An empty page ends the list (register AR-4). A page of
-// registries all read before — the token ignored — is an error: where the
-// list ends is not known, and ar_create would miss a taken name (break r4:
-// it ended the list before).
+// (live run 18.10). An empty page ends the list (register AR-4), and so does
+// a page of registries all read before: the live API answers the page after
+// the last one with the same registries and a new token (cloud-e2e 20.10).
+// The answer has no total to tell such a page from a token the server
+// ignored; a repeated token is still an error (pager.All), and evo sends no
+// pageSize, so the pages are of the server's size.
 func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 	var all []map[string]any
 	seen := map[string]bool{}

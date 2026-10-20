@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/billing"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -231,6 +232,9 @@ func aggregateConsumption(items []map[string]any) (float64, map[string]float64) 
 // handleBillingFinops ports finops_report.py: INFORM (cost allocation by service,
 // anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate,
 // balance runway in days, projected zero date, optional budget check). Read-only.
+// maxFinopsDays bounds the window of billing_finops: a leap year.
+const maxFinopsDays = 366
+
 func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any) (string, bool) {
 	const layout = "2006-01-02"
 	now := time.Now().UTC()
@@ -240,6 +244,15 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 		return errResult(err), true
 	}
 	days := pgInt(args, "days", 30)
+	// At most a year: the report also reads the period before, and days of
+	// 10^9 went into the date arithmetic as they were (release audit,
+	// REL-15).
+	if days > maxFinopsDays {
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("days must be at most %d, got %d", "days должен быть не больше %d, передано %d", maxFinopsDays, days),
+			i18n.Tf("The report covers at most a year (%d days); for a longer one pass start and end for each year.",
+				"Отчёт строится не больше чем за год (%d дней); для более долгого периода передайте start и end по годам.", maxFinopsDays))), true
+	}
 	end := stringArg(args, "end")
 	if end == "" {
 		end = today

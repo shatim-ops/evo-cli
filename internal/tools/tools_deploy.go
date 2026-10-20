@@ -51,6 +51,13 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	if err != nil {
 		return errResult(err), true
 	}
+	// A negative disk_gb is the caller's, not the cloud's: USAGE before the
+	// token, not an IAM or network error first (release audit, REL-9).
+	if _, ok := args["disk_gb"]; ok {
+		if err := provision.CheckBootDiskGB(intArg(args, "disk_gb", 0)); err != nil {
+			return errResult(err), true
+		}
+	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return errResult(err), true

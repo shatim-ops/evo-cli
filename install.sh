@@ -1,5 +1,5 @@
 #!/bin/sh
-# Установка evo из GitHub Releases (Linux, macOS). До v1.1 рядом ставится
+# Установка evo из GitHub Releases (Linux, macOS). До v2.0 рядом ставится
 # alias cloudru-vm (тот же бинарь под старым именем): скрипты и настройки
 # MCP со старым именем продолжают работать и получают ту же версию.
 #
@@ -22,7 +22,7 @@ REPO="shatim-ops/evo-cli"
 # Имя репозитория до 15.10.2026: им подписаны v1.0.0-rc.1 и rc.2.
 LEGACY_REPO="shatim-ops/cloudru-vm-cli"
 BINARY="evo"
-# Убрать в v1.1 вместе с alias в .goreleaser.yaml.
+# Убрать в v2.0 вместе с alias в .goreleaser.yaml.
 LEGACY_ALIAS="cloudru-vm"
 
 say() { printf '%s\n' "$*" >&2; }
@@ -183,7 +183,7 @@ main() {
 
 	main_bin=${bins%% *}
 	if [ "$main_bin" = "$BINARY" ]; then
-		say "Установлено: $dir/$BINARY (и alias $dir/$LEGACY_ALIAS до v1.1)"
+		say "Установлено: $dir/$BINARY (и alias $dir/$LEGACY_ALIAS до v2.0)"
 	else
 		say "Установлено: $dir/$LEGACY_ALIAS"
 	fi

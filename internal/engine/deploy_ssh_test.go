@@ -14,6 +14,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/bootstrap"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -145,9 +146,32 @@ func TestInstallDiagnosis_FallbackAndDockerRepo(t *testing.T) {
 			"Diagnosis: the image's apt mirror does not work, and the VM has no keyring"},
 		{bootstrap.UnsupportedOSLine + " (CentOS, RHEL, Fedora, Rocky Linux, AlmaLinux), not on alpine",
 			"Diagnosis: the VM's OS is neither Ubuntu nor Debian nor an RPM-based distribution"},
+		// REL-7: the image, not the network.
+		{bootstrap.NoCodenameLine + ": cannot pick Docker's repository",
+			"Diagnosis: /etc/os-release of the image names no release (VERSION_CODENAME)"},
+		{bootstrap.CurlMissingLine + ": cannot run get.docker.com on centos",
+			"Diagnosis: the image has no curl"},
+		{bootstrap.DockerNoReleaseLine + " ubuntu oracular (download.docker.com: no Release file)\n" +
+			"E: The repository 'https://download.docker.com/linux/ubuntu oracular Release' does not have a Release file.",
+			"Diagnosis: Docker publishes no packages for this release of the distribution"},
 	} {
 		if got := installDiagnosis(tc.out); !strings.HasPrefix(got, tc.want) {
 			t.Errorf("installDiagnosis(%q) = %q, want prefix %q", tc.out, got, tc.want)
+		}
+	}
+}
+
+// REL-7: диагнозы отказов «навсегда» — и по-русски.
+func TestInstallDiagnosis_PermanentRussian(t *testing.T) {
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	for out, want := range map[string]string{
+		bootstrap.NoCodenameLine + ": cannot pick Docker's repository":      "Диагноз: в /etc/os-release образа не указан выпуск",
+		bootstrap.CurlMissingLine + ": cannot run get.docker.com on centos": "Диагноз: в образе нет curl",
+		bootstrap.DockerNoReleaseLine + " ubuntu oracular":                  "Диагноз: Docker не выпускает пакетов для этого выпуска",
+	} {
+		if got := installDiagnosis(out); !strings.HasPrefix(got, want) {
+			t.Errorf("installDiagnosis(%q) = %q, want prefix %q", out, got, want)
 		}
 	}
 }

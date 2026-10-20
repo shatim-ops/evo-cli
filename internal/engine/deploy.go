@@ -143,6 +143,21 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		}
 	}
 
+	// A new VM needs the project, and that is a setting to fix, not a cloud
+	// answer: refuse before the key is exchanged for a token, as every
+	// other project command does (tools engineFor) — behind a dead proxy
+	// the exchange gave API_UNREACHABLE (exit 1) instead (release audit,
+	// REL-8). With no key either, the key is named first (AUTH_REQUIRED):
+	// the provider refuses it with no request.
+	if isNewDeploy && e.Config.ProjectID == "" {
+		if (e.Config.KeyID == "" || e.Config.Secret == "") && e.Auth != nil {
+			if _, err := e.Auth.Token(ctx); err != nil {
+				return err
+			}
+		}
+		return clerrors.ProjectRequired()
+	}
+
 	// Step 1: Auth (must happen before any API calls).
 	e.Printer.Step(1, totalSteps, i18n.T("Authenticating...", "Аутентификация..."))
 	tok, err := e.Auth.Token(ctx)
@@ -1422,6 +1437,21 @@ func installDiagnosis(out string) string {
 			"evo installs Docker only there, and another attempt would not help. Delete the VM ('evo destroy') and deploy from an Ubuntu or Debian image (--image).",
 			"Диагноз: на ВМ не Ubuntu, не Debian и не RPM-дистрибутив (CentOS, RHEL, Fedora, Rocky Linux, AlmaLinux): "+
 				"evo ставит Docker только на них, и повтор не поможет. Удалите ВМ ('evo destroy') и разверните из образа Ubuntu или Debian (--image).")
+	case strings.Contains(out, bootstrap.NoCodenameLine):
+		return i18n.T("Diagnosis: /etc/os-release of the image names no release (VERSION_CODENAME), so evo cannot pick Docker's repository for it, "+
+			"and another attempt would not help. Delete the VM ('evo destroy') and deploy from a standard Ubuntu or Debian image (--image).",
+			"Диагноз: в /etc/os-release образа не указан выпуск (VERSION_CODENAME), и evo не может выбрать для него репозиторий Docker; "+
+				"повтор не поможет. Удалите ВМ ('evo destroy') и разверните из стандартного образа Ubuntu или Debian (--image).")
+	case strings.Contains(out, bootstrap.CurlMissingLine):
+		return i18n.T("Diagnosis: the image has no curl, and evo installs Docker on RPM-based distributions with get.docker.com; another attempt would not help. "+
+			"Deploy from an image with curl, or from Ubuntu or Debian (--image).",
+			"Диагноз: в образе нет curl, а на RPM-дистрибутивах evo ставит Docker через get.docker.com; повтор не поможет. "+
+				"Разверните из образа с curl или из Ubuntu либо Debian (--image).")
+	case strings.Contains(out, bootstrap.DockerNoReleaseLine):
+		return i18n.T("Diagnosis: Docker publishes no packages for this release of the distribution (download.docker.com has no Release file for its codename), "+
+			"and another attempt would not help. Delete the VM ('evo destroy') and deploy from a release Docker supports, such as a current Ubuntu LTS or Debian stable (--image).",
+			"Диагноз: Docker не выпускает пакетов для этого выпуска дистрибутива (у download.docker.com нет файла Release для его кодового имени), "+
+				"и повтор не поможет. Удалите ВМ ('evo destroy') и разверните из выпуска, который Docker поддерживает, например текущей Ubuntu LTS или Debian stable (--image).")
 	case strings.Contains(out, "Temporary failure in name resolution") || strings.Contains(out, "Could not resolve"):
 		return i18n.T("Diagnosis: the VM does not resolve names (no DNS inside the VM) — a network problem of the zone or subnet.",
 			"Диагноз: ВМ не разрешает имена (внутри ВМ нет DNS) — проблема сети зоны или подсети.")
