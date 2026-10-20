@@ -74,3 +74,34 @@ func TestDeployPlan_NoUserKeys(t *testing.T) {
 		t.Errorf("план без файла ключей: %s", text)
 	}
 }
+
+// Строки, которые на ВМ не уйдут, план показывает с error и без их текста
+// (break r4, R4-10): раньше они пропадали молча, и файл только из таких
+// строк выглядел как отсутствующий.
+func TestDeployPlan_ShowsRejectedUserKeyLines(t *testing.T) {
+	r, dir := planRegistry(t, config.Config{Region: planZoneAZ2, Flavor: "auto"})
+	keyDir := config.DataDir(dir)
+	if err := os.MkdirAll(keyDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := "-----BEGIN OPENSSH PRIVATE KEY-----\nc2VjcmV0LWtleS1ib2R5\n-----END OPENSSH PRIVATE KEY-----\n"
+	if err := os.WriteFile(filepath.Join(keyDir, userKeysFile), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr := r.handlers["deploy_plan"](context.Background(), map[string]any{"name": "web"})
+	if isErr {
+		t.Fatalf("deploy_plan: %s", text)
+	}
+	var view struct {
+		Keys []map[string]string `json:"user_ssh_keys"`
+	}
+	if err := json.Unmarshal([]byte(text), &view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Keys) != 1 || !strings.Contains(view.Keys[0]["error"], "PRIVATE key") {
+		t.Errorf("user_ssh_keys = %v", view.Keys)
+	}
+	if strings.Contains(text, "c2VjcmV0") {
+		t.Errorf("the private key is in the plan: %s", text)
+	}
+}

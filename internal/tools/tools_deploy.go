@@ -140,8 +140,8 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	// deploy_apply appends these to authorized_keys of the VM: the user
 	// approves them with the plan.
 	if params.SSHKey == eng.SSHPubKey {
-		if keys, keysFile := loadUserKeys(eng.StateDir); len(keys) > 0 {
-			view["user_ssh_keys"] = describeUserKeys(keys)
+		if keys, rejected, keysFile := loadUserKeyLines(eng.StateDir); len(keys)+len(rejected) > 0 {
+			view["user_ssh_keys"] = describeUserKeys(keys, rejected)
 			view["user_ssh_keys_file"] = filepath.Join(filepath.Base(config.DataDir(eng.StateDir)), keysFile)
 			view["next"] = "Show this plan, its monthly cost and the user_ssh_keys to the user: those keys get an SSH login on the VM, and the file may have come with a repository someone else wrote. On explicit approval, call deploy_apply with this plan_id and confirmed=true."
 		}
@@ -247,8 +247,9 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	confirmed, _ := args["confirmed"].(bool)
 	if !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "deploy_apply requires confirmed=true. Obtain the user's explicit approval of the plan and its cost first, then call again with confirmed=true.",
+			"status": "confirmation_required",
+			"message": i18n.T("deploy_apply requires confirmed=true. Obtain the user's explicit approval of the plan and its cost first, then call again with confirmed=true.",
+				"deploy_apply требует confirmed=true. Сначала получите явное согласие пользователя с планом и его ценой, затем вызовите снова с confirmed=true."),
 		}), true
 	}
 
@@ -488,8 +489,9 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("open_ports would open %v on security group %q (shared per zone — affects every VM in it). Get the user's approval, then call again with confirmed=true.", ports, sgRef),
+			"status": "confirmation_required",
+			"message": i18n.Tf("open_ports would open %v on security group %q (shared per zone — affects every VM in it). Get the user's approval, then call again with confirmed=true.",
+				"open_ports откроет %v в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней). Получите согласие пользователя, затем вызовите снова с confirmed=true.", ports, sgRef),
 		}), true
 	}
 
@@ -560,6 +562,8 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 			}
 		} else {
 			opened = append(opened, strconv.Itoa(p))
+			// Open now: the port is not opened a second time (R4-19).
+			existing[proto+" "+pr] = true
 		}
 	}
 	res := map[string]any{
@@ -589,24 +593,31 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 
 // handleReleaseFloatingIP deletes a floating IP, refusing if it's in use.
 func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]any) (string, bool) {
-	id := stringArg(args, "id")
-	ip := stringArg(args, "ip_address")
-	if id == "" && ip == "" {
-		return usageT("provide either 'id' or 'ip_address'", "укажите 'id' или 'ip_address'"), true
+	// Both: the id was taken and the address dropped without a word —
+	// `evo vpc fip-release <id> --ip-address X` released the id's address
+	// (QA 20.10, QA-8). One of only spaces is USAGE too, as in vm_get
+	// (break r4, R4-11): id=" " alone went on to the lookup.
+	ref, key, err := oneOfArgs(args, clierrors.New(clierrors.CodeUsage,
+		i18n.T("pass id or ip_address, not both", "укажите id или ip_address, не оба"),
+		i18n.T("The id comes from list_floating_ips; ip_address finds the floating IP by its address.",
+			"id — из list_floating_ips; по ip_address floating IP ищется по адресу.")), "id", "ip_address")
+	if err != nil {
+		return errResult(err), true
 	}
-	if id != "" && ip != "" {
-		// Both: the id was taken and the address dropped without a word —
-		// `evo vpc fip-release <id> --ip-address X` released the id's
-		// address (QA 20.10, QA-8).
-		return errResult(clierrors.New(clierrors.CodeUsage,
-			i18n.T("pass id or ip_address, not both", "укажите id или ip_address, не оба"),
-			i18n.T("The id comes from list_floating_ips; ip_address finds the floating IP by its address.",
-				"id — из list_floating_ips; по ip_address floating IP ищется по адресу."))), true
+	var id, ip string
+	switch key {
+	case "id":
+		id = ref
+	case "ip_address":
+		ip = ref
+	default:
+		return usageT("provide either 'id' or 'ip_address'", "укажите 'id' или 'ip_address'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "release_floating_ip requires confirmed=true. Get the user's approval to release this IP first, then call again with confirmed=true.",
+			"status": "confirmation_required",
+			"message": i18n.T("release_floating_ip requires confirmed=true. Get the user's approval to release this IP first, then call again with confirmed=true.",
+				"release_floating_ip требует confirmed=true. Сначала получите согласие пользователя на освобождение этого адреса, затем вызовите снова с confirmed=true."),
 		}), true
 	}
 

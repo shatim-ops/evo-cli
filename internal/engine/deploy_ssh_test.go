@@ -139,6 +139,12 @@ func TestInstallDiagnosis_FallbackAndDockerRepo(t *testing.T) {
 		// no DNS explains every failed fetch: it comes first
 		{"W: Failed to fetch https://repo.mirror.example.test/  Temporary failure resolving 'repo.mirror.example.test'\n" +
 			"Temporary failure in name resolution\n" + bootstrap.FallbackFailedLine, "Diagnosis: the VM does not resolve names"},
+		// break r4: R4-15, R4-17
+		{"W: Failed to fetch https://repo.mirror.example.test/ubuntu/dists/jammy/InRelease\n" +
+			bootstrap.NoKeyringLine + " (https://archive.ubuntu.com/ubuntu), and the image's apt mirror does not work",
+			"Diagnosis: the image's apt mirror does not work, and the VM has no keyring"},
+		{bootstrap.UnsupportedOSLine + " (CentOS, RHEL, Fedora, Rocky Linux, AlmaLinux), not on alpine",
+			"Diagnosis: the VM's OS is neither Ubuntu nor Debian nor an RPM-based distribution"},
 	} {
 		if got := installDiagnosis(tc.out); !strings.HasPrefix(got, tc.want) {
 			t.Errorf("installDiagnosis(%q) = %q, want prefix %q", tc.out, got, tc.want)

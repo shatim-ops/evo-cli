@@ -277,6 +277,12 @@ func (c *Client) Logs(ctx context.Context, name string, system bool, tail int) (
 	} else {
 		p := "/v2/containers/" + url.PathEscape(name) + "/logs"
 		seen := map[string]bool{}
+		// StopOnRepeat: a log is a tail, not a list of resources, and the
+		// read ends on an empty page or one already seen by decision of
+		// #124 (CHANGELOG, ca_logs; register CAP-3: the order, the page
+		// size and the end of the logs are not described). A cut read is
+		// reported as truncated, nothing is deleted or counted from it.
+		// The other lists treat a repeated token as an error (R4-6).
 		more, err := pager.Upto(logsMaxPages, func(token string) (string, error) {
 			q := url.Values{"pageSize": {logsPageSize}}
 			if token != "" {
@@ -292,7 +298,7 @@ func (c *Client) Logs(ctx context.Context, name string, system bool, tail int) (
 			seen[page.raw] = true
 			all = append(all, page.Data...)
 			return page.NextPageToken, nil
-		})
+		}, pager.StopOnRepeat)
 		if err != nil {
 			return nil, err
 		}

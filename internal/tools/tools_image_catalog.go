@@ -193,22 +193,28 @@ func imageErrResult(err error) string {
 	return toJSON(m)
 }
 
+// imageRefNotBoth is the refusal of a call with both image and image_id
+// (image_get, provision, deploy).
+func imageRefNotBoth() error {
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.T("pass image or image_id, not both", "укажите image или image_id, не оба"),
+		i18n.T("image takes a name or a UUID; image_id is the same as image with a UUID.",
+			"image — имя или UUID образа; image_id — то же, что image с UUID."))
+}
+
 // handleImageGet returns one image by name or UUID: a card with what evo
 // fills in its metadata fields and what the person must, and the command
 // that creates a VM from it. The icon, the cloud-init template and the raw
 // metadata fields only with full=true: they are kilobytes of an agent's
 // context.
 func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (string, bool) {
-	imageArg, imageIDArg := strings.TrimSpace(stringArg(args, "image")), strings.TrimSpace(stringArg(args, "image_id"))
-	if imageArg != "" && imageIDArg != "" {
-		// Both: the image was taken and image_id dropped without a word
-		// (QA 20.10, QA-11).
-		return errResult(clierrors.New(clierrors.CodeUsage,
-			i18n.T("pass image or image_id, not both", "укажите image или image_id, не оба"),
-			i18n.T("image takes a name or a UUID; image_id is the same as image with a UUID.",
-				"image — имя или UUID образа; image_id — то же, что image с UUID."))), true
+	// Both: the image was taken and image_id dropped without a word (QA
+	// 20.10, QA-11); one of only spaces was dropped as well (break r4,
+	// R4-11).
+	ref, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id")
+	if err != nil {
+		return errResult(err), true
 	}
-	ref := firstNonEmptyStr(imageArg, imageIDArg)
 	if ref == "" {
 		return usageT("'image' (name or UUID) or 'image_id' is required", "нужен 'image' (имя или UUID) или 'image_id'"), true
 	}

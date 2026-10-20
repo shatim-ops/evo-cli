@@ -250,16 +250,18 @@ func (c *Client) Usage(ctx context.Context, id string) (map[string]any, error) {
 // every certificate (release audit, L-17). 1000 is the upper bound.
 const versionsPageSize = "1000"
 
-// maxVersionPages stops a pagination that never ends (a token repeated by
-// the server): 100 pages of 1000 versions is far beyond any certificate.
+// maxVersionPages stops a pagination that never ends: 100 pages of 1000
+// versions is far beyond any certificate.
 const maxVersionPages = 100
 
 // Versions lists a certificate's versions, every page (nextPageToken), as
-// {"versions": [...]}.
+// {"versions": [...]}. A version is in the answer once. A token already
+// followed (A→B→A), a page of versions already read and more than
+// maxVersionPages pages are errors: the list is not complete (QA 20.10,
+// QA-2; break r4, R4-7 — a cycle was a success with the version twice).
 func (c *Client) Versions(ctx context.Context, id string) (map[string]any, error) {
 	all := []any{}
-	// Every token seen stops the read, not only the last one: A→B→A made
-	// maxVersionPages requests (QA 20.10, QA-2).
+	seen := map[string]bool{}
 	more, err := pager.Upto(maxVersionPages, func(token string) (string, error) {
 		q := url.Values{}
 		q.Set("pageSize", versionsPageSize)
@@ -277,16 +279,39 @@ func (c *Client) Versions(ctx context.Context, id string) (map[string]any, error
 		if err := c.decode(data, status, &out); err != nil {
 			return "", err
 		}
-		all = append(all, out.Versions...)
+		fresh := 0
+		for _, v := range out.Versions {
+			if key := versionKey(v); key != "" {
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+			}
+			all = append(all, v)
+			fresh++
+		}
+		if len(out.Versions) > 0 && fresh == 0 {
+			return "", pager.NoNewItems(len(all), -1)
+		}
 		return out.NextPageToken, nil
 	})
+	what := "certmanager: versions of " + id
 	if err != nil {
-		return nil, err
+		return nil, pager.Named(what, err)
 	}
 	if more {
-		return nil, fmt.Errorf("certmanager: versions of %s: more than %d pages", id, maxVersionPages)
+		return nil, pager.Named(what, pager.TooManyPages(maxVersionPages))
 	}
 	return map[string]any{"versions": all}, nil
+}
+
+// versionKey identifies a version across pages: its id, "" without one.
+func versionKey(v any) string {
+	m, ok := v.(map[string]any)
+	if !ok || m["id"] == nil {
+		return ""
+	}
+	return fmt.Sprint(m["id"])
 }
 
 // PrivateKey returns the private key of a version (0 = latest): privateKey

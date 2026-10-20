@@ -6,7 +6,6 @@ package tools
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -28,18 +27,23 @@ import (
 //   - a floating_ip (when present on a regular interface) is its PUBLIC address.
 //
 // Read-only; touches eng.Cloud, so it uses authedEngine.
+// vmRefNotBoth is the refusal of a call with both vm_id and name (vm_get,
+// destroy).
+func vmRefNotBoth() error {
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.T("pass vm_id or name, not both", "укажите vm_id или name, не оба"),
+		i18n.T("vm_id is the VM's UUID; name finds the VM by its name.",
+			"vm_id — UUID ВМ; по name ВМ ищется по имени."))
+}
+
 func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string, bool) {
-	vmIDArg, nameArg := strings.TrimSpace(stringArg(args, "vm_id")), strings.TrimSpace(stringArg(args, "name"))
-	if vmIDArg != "" && nameArg != "" {
-		// Both: the vm_id was taken and the name dropped without a word
-		// (QA 20.10, QA-11), as release_floating_ip did with id and
-		// ip_address.
-		return errResult(clierrors.New(clierrors.CodeUsage,
-			i18n.T("pass vm_id or name, not both", "укажите vm_id или name, не оба"),
-			i18n.T("vm_id is the VM's UUID; name finds the VM by its name.",
-				"vm_id — UUID ВМ; по name ВМ ищется по имени."))), true
+	// Both: the vm_id was taken and the name dropped without a word (QA
+	// 20.10, QA-11), as release_floating_ip did with id and ip_address; one
+	// of only spaces was dropped as well (break r4, R4-11).
+	ref, _, err := oneOfArgs(args, vmRefNotBoth(), "vm_id", "name")
+	if err != nil {
+		return errResult(err), true
 	}
-	ref := firstNonEmptyStr(vmIDArg, nameArg)
 	if ref == "" {
 		return usageT("vm_id or name is required", "нужен vm_id или name"), true
 	}

@@ -216,12 +216,24 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 					continue
 				}
 				reason, _ := m["reason"].(string)
-				if reason != clerrors.CodeUsage && reason != clerrors.CodeConfigInvalid && reason != clerrors.CodeNotFound {
+				var fields map[string]string
+				switch {
+				case m["status"] == "confirmation_required":
+					// The question before a change: its message and
+					// warning are in the CLI's language too (break r4,
+					// R4-20: «provision creates a billable VM…» in ru).
+					reason = "confirmation_required"
+					msg, _ := m["message"].(string)
+					warn, _ := m["warning"].(string)
+					fields = map[string]string{"message": msg, "warning": warn}
+				case reason == clerrors.CodeUsage || reason == clerrors.CodeConfigInvalid || reason == clerrors.CodeNotFound:
+					msg, _ := m["error"].(string)
+					hint, _ := m["hint"].(string)
+					fields = map[string]string{"error": msg, "hint": hint}
+				default:
 					continue
 				}
-				msg, _ := m["error"].(string)
-				hint, _ := m["hint"].(string)
-				for field, s := range map[string]string{"error": msg, "hint": hint} {
+				for field, s := range fields {
 					what := ""
 					if lang == i18n.RU {
 						what = englishPhrase(s)

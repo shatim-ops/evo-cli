@@ -90,14 +90,31 @@ func TestListSecurityGroupRules_BoundedWalk(t *testing.T) {
 	calls := 0
 	srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "x"}}, "total": 1 << 30})
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": fmt.Sprintf("x%d", calls)}}, "total": 1 << 30})
 	})
 	defer srv.Close()
-	if _, err := a.ListSecurityGroupRules(context.Background(), "sg-1"); err != nil {
-		t.Fatal(err)
+	// The total is never reached: the list is not complete, an error after
+	// sgRulesMaxPages requests (break r4, R4-5: it was nil and the rules
+	// read so far).
+	var ce *clierrors.CLIError
+	if rules, err := a.ListSecurityGroupRules(context.Background(), "sg-1"); !errors.As(err, &ce) || ce.Code != clierrors.CodeAPIError {
+		t.Fatalf("rules = %d, err = %v; want an incomplete-list error", len(rules), err)
 	}
-	if calls > sgRulesMaxPages {
-		t.Errorf("%d requests", calls)
+	if calls != sgRulesMaxPages {
+		t.Errorf("%d requests, want %d", calls, sgRulesMaxPages)
+	}
+}
+
+// A page of rules already read (offset ignored) is an error, not the end.
+func TestListSecurityGroupRules_OffsetIgnoredIsError(t *testing.T) {
+	calls := 0
+	srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "x"}}, "total": 3})
+	})
+	defer srv.Close()
+	if rules, err := a.ListSecurityGroupRules(context.Background(), "sg-1"); err == nil || calls != 2 {
+		t.Fatalf("rules = %d, err = %v, requests = %d", len(rules), err, calls)
 	}
 }
 

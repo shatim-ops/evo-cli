@@ -73,8 +73,9 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 	public, _ := args["public"].(bool)
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("ar_create makes a BILLABLE %s registry %q (public=%v). Call again with confirmed=true after the user approves.", regType, name, public),
+			"status": "confirmation_required",
+			"message": i18n.Tf("ar_create makes a BILLABLE %s registry %q (public=%v). Call again with confirmed=true after the user approves.",
+				"ar_create создаёт ПЛАТНЫЙ реестр %s %q (public=%v). Получив согласие пользователя, вызовите снова с confirmed=true.", regType, name, public),
 		}), true
 	}
 	cli, err := s.arClient(ctx)
@@ -119,6 +120,7 @@ func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (str
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return deletePreview("ar_delete PERMANENTLY deletes registry %s and its artifacts. Call again with confirmed=true.",
+			"ar_delete БЕЗВОЗВРАТНО удаляет реестр %s и его артефакты. Вызовите снова с confirmed=true.",
 			id, func() (map[string]any, error) { return cli.GetRegistry(ctx, id) })
 	}
 	op, err := cli.DeleteRegistry(ctx, id)

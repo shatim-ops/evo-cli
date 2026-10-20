@@ -742,7 +742,8 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 		return usageT("'job_id' is required (from stack_plan)", "нужен 'job_id' (из stack_plan)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_apply provisions BILLABLE resources. Call again with confirmed=true after the user approved."}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.T("stack_apply provisions BILLABLE resources. Call again with confirmed=true after the user approved.",
+			"stack_apply создаёт ПЛАТНЫЕ ресурсы. Получив согласие пользователя, вызовите снова с confirmed=true.")}), true
 	}
 	unlock, err := s.lockJob(id)
 	if err != nil {
@@ -946,10 +947,12 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 			res = append(res, row)
 		}
 		out := map[string]any{"status": "confirmation_required",
-			"message":   fmt.Sprintf("stack_destroy PERMANENTLY deletes the %d resource(s) of stack %s listed in resources. Call again with confirmed=true.", len(res), id),
+			"message": i18n.Tf("stack_destroy PERMANENTLY deletes the %d resource(s) of stack %s listed in resources. Call again with confirmed=true.",
+				"stack_destroy БЕЗВОЗВРАТНО удаляет ресурсы стека (%d) %s, перечисленные в resources. Вызовите снова с confirmed=true.", len(res), id),
 			"resources": res}
 		if len(res) == 0 {
-			out["message"] = fmt.Sprintf("stack %s has created nothing yet; stack_destroy only marks it destroyed. Call again with confirmed=true.", id)
+			out["message"] = i18n.Tf("stack %s has created nothing yet; stack_destroy only marks it destroyed. Call again with confirmed=true.",
+				"стек %s ещё ничего не создал; stack_destroy только отметит его удалённым. Вызовите снова с confirmed=true.", id)
 		}
 		return toJSON(out), true
 	}

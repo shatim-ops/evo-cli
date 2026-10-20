@@ -81,13 +81,15 @@ func TestListAddons_Paged(t *testing.T) {
 	}
 }
 
-// Сервер, который отдаёт один и тот же токен, не зацикливает клиент.
-func TestListAddons_RepeatedTokenStops(t *testing.T) {
+// Сервер, который отдаёт один и тот же токен, не зацикливает клиент: два
+// запроса и ошибка «список не полон» (break r4, R4-6; раньше повтор молча
+// заканчивал список).
+func TestListAddons_RepeatedTokenIsError(t *testing.T) {
 	cli, rec := newAddonAPI(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"addons":[{"name":"a"}],"nextPageToken":"same"}`)
 	})
-	if _, err := cli.ListAddons(context.Background()); err != nil {
-		t.Fatal(err)
+	if _, err := cli.ListAddons(context.Background()); err == nil || !strings.Contains(err.Error(), `"same"`) {
+		t.Fatalf("err = %v", err)
 	}
 	if n := len(rec.reqs); n != 2 {
 		t.Errorf("%d requests, want 2 (stop at the repeated token)", n)

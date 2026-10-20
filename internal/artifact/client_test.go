@@ -6,11 +6,14 @@ package artifact
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // The live API answers a fresh nextPageToken on every page (live run
@@ -44,7 +47,10 @@ func TestListRegistries_EndlessTokenOnLastPage(t *testing.T) {
 	}
 }
 
-func TestListRegistries_TokenIgnored(t *testing.T) {
+// The token ignored: the first page again is not the end of the list but
+// a list whose end is not known — an error after two requests (break r4;
+// it was the end of the list before).
+func TestListRegistries_TokenIgnoredIsError(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := calls.Add(1)
@@ -53,13 +59,11 @@ func TestListRegistries_TokenIgnored(t *testing.T) {
 	defer srv.Close()
 
 	got, err := New("tok", "proj", srv.URL).ListRegistries(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("registries = %v, want each once", got)
+	var ce *clierrors.CLIError
+	if !errors.As(err, &ce) || ce.Code != clierrors.CodeAPIError {
+		t.Fatalf("registries = %v, err = %v; want an incomplete-list error", got, err)
 	}
 	if c := calls.Load(); c != 2 {
-		t.Fatalf("%d requests, want 2: the repeated first page ends the list", c)
+		t.Fatalf("%d requests, want 2", c)
 	}
 }

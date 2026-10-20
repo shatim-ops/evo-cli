@@ -33,7 +33,19 @@ const (
 	// DockerRepoFailedLine: the distribution's packages came, Docker's
 	// repository did not (no answer, or a signature that does not verify).
 	DockerRepoFailedLine = "evo: apt failed on Docker's repository (download.docker.com)"
+	// NoKeyringLine: the image's mirror failed, and the distribution's
+	// keyring that would verify the official mirror is not on the VM.
+	NoKeyringLine = "evo: no keyring of the distribution: cannot verify the official mirror"
+	// UnsupportedOSLine: neither Ubuntu or Debian nor an RPM-based
+	// distribution get.docker.com serves.
+	UnsupportedOSLine = "evo: Docker install is supported on Ubuntu, Debian and RPM-based distributions"
 )
+
+// Permanent reports whether the install output shows a refusal that
+// another attempt on the same VM would repeat: the caller stops retrying.
+func Permanent(out string) bool {
+	return strings.Contains(out, NoKeyringLine) || strings.Contains(out, UnsupportedOSLine)
+}
 
 // InstallScript returns the shell script that installs Docker with the
 // compose plugin, adds user to the docker group and gives it /opt/app.

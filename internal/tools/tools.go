@@ -1466,6 +1466,11 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 	if err := minIntArg(args, "disk_size", 0, diskSizeHint()); err != nil {
 		return errResult(err), true
 	}
+	// image and image_id, or one of only spaces: refused before the
+	// preview (break r4, R4-11).
+	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		will := withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
 			firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
@@ -1473,13 +1478,11 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			will["image"] = v
 		}
 		return toJSON(map[string]any{
-			"status":      "confirmation_required",
-			"message":     "deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
+			"status": "confirmation_required",
+			"message": i18n.T("deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
+				"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). Превью с ценой — deploy_plan. Получите согласие пользователя, затем вызовите снова с confirmed=true."),
 			"will_deploy": will,
 		}), true
-	}
-	if stringArg(args, "image") != "" && stringArg(args, "image_id") != "" {
-		return usageT("pass image or image_id, not both", "укажите image или image_id, не оба"), true
 	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
@@ -1563,9 +1566,10 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}
 	}
 	// The call's own mistakes are refused before anything, the preview
-	// included.
-	if stringArg(args, "image") != "" && stringArg(args, "image_id") != "" {
-		return usageT("pass image or image_id, not both", "укажите image или image_id, не оба"), true
+	// included: image and image_id, or one of only spaces (break r4,
+	// R4-11).
+	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
+		return errResult(err), true
 	}
 	// disk_size -5 became 10 GB in the preview and the VM (QA-14).
 	if err := minIntArg(args, "disk_size", 0, diskSizeHint()); err != nil {
@@ -1599,8 +1603,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}
 		will["public_ip"] = !noPublicIP
 		return toJSON(map[string]any{
-			"status":      "confirmation_required",
-			"message":     "provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors. Get the user's approval, then call again with confirmed=true.",
+			"status": "confirmation_required",
+			"message": i18n.T("provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors. Get the user's approval, then call again with confirmed=true.",
+				"provision создаёт платную ВМ (и публичный floating IP, если не задано no_public_ip=true). Превью с ценой — deploy_plan или list_flavors. Получите согласие пользователя, затем вызовите снова с confirmed=true."),
 			"will_create": will,
 			"preview":     preview,
 		}), true
@@ -2097,20 +2102,27 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 }
 
 func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (string, bool) {
-	// Targeted delete: a specific VM by id or name (e.g. an orphan).
-	if vmID := stringArg(args, "vm_id"); vmID != "" {
-		return s.destroyTargeted(ctx, args, vmID, "")
+	// Targeted delete: a specific VM by id or name (e.g. an orphan). Both,
+	// or one of only spaces, is USAGE before the cloud: vm_id was taken
+	// and the name dropped without a word, as vm_get did (break r4, R4-11).
+	ref, key, err := oneOfArgs(args, vmRefNotBoth(), "vm_id", "name")
+	if err != nil {
+		return errResult(err), true
 	}
-	if name := stringArg(args, "name"); name != "" {
-		return s.destroyTargeted(ctx, args, "", name)
+	switch key {
+	case "vm_id":
+		return s.destroyTargeted(ctx, args, ref, "")
+	case "name":
+		return s.destroyTargeted(ctx, args, "", ref)
 	}
 
 	// Default: delete the current local deployment. Destructive and previously
 	// ungated — now requires the same explicit confirmation as targeted deletes.
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":     "confirmation_required",
-			"message":    "destroy permanently deletes the current deployment VM and all its data (irreversible). Get the user's approval, then call again with confirmed=true.",
+			"status": "confirmation_required",
+			"message": i18n.T("destroy permanently deletes the current deployment VM and all its data (irreversible). Get the user's approval, then call again with confirmed=true.",
+				"destroy безвозвратно удаляет ВМ текущего развёртывания и все её данные. Получите согласие пользователя, затем вызовите снова с confirmed=true."),
 			"project_id": s.deploymentProject(),
 		}), true
 	}
@@ -2460,13 +2472,17 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 		label = target.Name + " (" + target.ID + ")"
 	}
 	if z := vmZone(target); z != "" {
-		label += " in zone " + z
+		label += i18n.T(" in zone ", " в зоне ") + z
 	}
-	msg := fmt.Sprintf("destroy permanently deletes VM %s and all data on its disks (irreversible). "+
-		"Get the user's approval, then call again with confirmed=true.", label)
+	msg := i18n.Tf("destroy permanently deletes VM %s and all data on its disks (irreversible). "+
+		"Get the user's approval, then call again with confirmed=true.",
+		"destroy безвозвратно удаляет ВМ %s и все данные на её дисках. "+
+			"Получите согласие пользователя, затем вызовите снова с confirmed=true.", label)
 	if alreadyGone {
-		msg = fmt.Sprintf("VM %s is recorded here but is no longer in the cloud: destroy cleans up its local record and releases what is listed below. "+
-			"Get the user's approval, then call again with confirmed=true.", target.ID)
+		msg = i18n.Tf("VM %s is recorded here but is no longer in the cloud: destroy cleans up its local record and releases what is listed below. "+
+			"Get the user's approval, then call again with confirmed=true.",
+			"ВМ %s записана здесь, но в облаке её уже нет: destroy удаляет её локальную запись и освобождает перечисленное ниже. "+
+				"Получите согласие пользователя, затем вызовите снова с confirmed=true.", target.ID)
 	}
 	fip := "none: no floating IP of this VM is known"
 	switch {

@@ -95,8 +95,10 @@ func TestQAr3_KubectlHTTPCheckSecretBypasses(t *testing.T) {
 		"get secret x -o=name",
 		"get secrets -o wide",
 		"get secrets -A --show-labels",
-		"describe secret x",
-		"describe secrets",
+		// describe secret — отказ (break r4, R4-1): печатает
+		// last-applied-configuration с данными Secret.
+		"describe pod x",
+		"describe configmap x",
 		"label secret x a=b",
 		"create secret generic s --from-literal=a=b",
 		"create secret generic s --from-literal=a=b --dry-run=client -o name",
@@ -121,6 +123,7 @@ func TestQAr3_KubectlHTTPCheckSecretBypasses(t *testing.T) {
 		"label secret x a=b -o yaml --dry-run=server",
 		"annotate secret x --list",
 		"set env deploy/x --list --resolve",
+		"describe secret x",
 	} {
 		if err := kubectlHTTPCheck(strings.Fields(c), true); err != nil {
 			t.Errorf("%q with --allow-secret-export refused: %v", c, err)

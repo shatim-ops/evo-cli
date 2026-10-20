@@ -188,11 +188,9 @@ func (c *Client) Consumption(ctx context.Context, startISO, endISO string) ([]ma
 	// Every page through internal/pager, with a bound: a server that sent
 	// the same next_page_token again looped forever and grew the list until
 	// the process ran out of memory (QA 20.10, QA-2). A repeated token is an
-	// error here, not the end of the list: the sum of a list read twice or
-	// cut short is a wrong amount of money.
-	sent := map[string]bool{}
+	// error (pager.RepeatedToken), not the end of the list: the sum of a
+	// list read twice or cut short is a wrong amount of money.
 	more, err := pager.Upto(pager.MaxPages, func(pageToken string) (string, error) {
-		sent[pageToken] = true
 		q := url.Values{}
 		if c.agreementID != "" {
 			q.Set("agreement_id", c.agreementID)
@@ -222,22 +220,16 @@ func (c *Client) Consumption(ctx context.Context, startISO, endISO string) ([]ma
 			return "", fmt.Errorf("parse consumption: %w", err)
 		}
 		all = append(all, out.Consumptions...)
-		if out.NextPageToken != "" && sent[out.NextPageToken] {
-			return "", clierrors.New(clierrors.CodeAPIError,
-				i18n.Tf("billing API: consumption: the answer repeats page token %q: the list never ends, the sums would be wrong",
-					"billing API: потребление: ответ повторяет токен страницы %q: список не кончается, суммы были бы неверны", out.NextPageToken),
-				i18n.T("Cloud.ru answered a broken page sequence; retry later, or read a shorter period.",
-					"Cloud.ru вернул сломанную последовательность страниц; повторите позже или запросите период короче."))
-		}
 		return out.NextPageToken, nil
 	})
+	what := i18n.T("billing API: consumption", "billing API: потребление")
 	if err != nil {
-		return nil, err
+		return nil, pager.Named(what, err)
 	}
 	if more {
-		return nil, clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("billing API: consumption: more than %d pages, the list is not complete", "billing API: потребление: больше %d страниц, список неполный", pager.MaxPages),
-			i18n.T("Read a shorter period (start, end).", "Запросите период короче (start, end)."))
+		e := pager.TooManyPages(pager.MaxPages)
+		e.Hint = i18n.T("Read a shorter period (start, end).", "Запросите период короче (start, end).")
+		return nil, pager.Named(what, e)
 	}
 	return all, nil
 }

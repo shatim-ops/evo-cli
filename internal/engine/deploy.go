@@ -1284,6 +1284,10 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	// usually cut by the deadline with a line or two printed, and an
 	// earlier one holds the apt or DNS error (cloud-e2e 16.10.2026).
 	var lastOut, failOut string
+	// permanent: the install refused in a way another attempt repeats
+	// (an unsupported OS, no keyring for the official mirror): no retries
+	// until the deadline (break r4, R4-15, R4-17).
+	permanent := false
 	for attempt := 1; ; attempt++ {
 		var out bytes.Buffer
 		attemptCtx, cancel := context.WithDeadline(ctx, deadline)
@@ -1307,6 +1311,10 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 			return err
 		}
 		lastErr, lastOut = err, out.String()
+		if bootstrap.Permanent(lastOut) {
+			permanent = true
+			break
+		}
 		if !time.Now().Before(deadline) {
 			break
 		}
@@ -1334,6 +1342,19 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 				return err
 			}
 		}
+	}
+
+	if permanent {
+		hint := installDiagnosis(lastOut)
+		if tail := lastLines(lastOut, 15); tail != "" {
+			hint = i18n.T("Last output of the Docker install:\n", "Последние строки установки Docker:\n") + tail + "\n" + hint
+		}
+		// The image, not the network: another attempt answers the same, and
+		// the way out is another image, as for the domestic distributions
+		// refused before the VM is made (CONFIG_INVALID). SSH worked.
+		return clerrors.Wrap(clerrors.CodeConfigInvalid,
+			i18n.Tf("Docker cannot be installed on VM %s", "Docker на ВМ %s не установить", ip),
+			hint, lastErr)
 	}
 
 	hint := i18n.T("Check that the VM resolves names (the subnet's DNS) and reaches its apt mirror (or the official mirror of the distribution) and download.docker.com, "+
@@ -1377,9 +1398,23 @@ func errLine(err error) string {
 // outright, or "".
 func installDiagnosis(out string) string {
 	switch {
+	case strings.Contains(out, bootstrap.UnsupportedOSLine):
+		return i18n.T("Diagnosis: the VM's OS is neither Ubuntu nor Debian nor an RPM-based distribution (CentOS, RHEL, Fedora, Rocky Linux, AlmaLinux): "+
+			"evo installs Docker only there, and another attempt would not help. Delete the VM ('evo destroy') and deploy from an Ubuntu or Debian image (--image).",
+			"Диагноз: на ВМ не Ubuntu, не Debian и не RPM-дистрибутив (CentOS, RHEL, Fedora, Rocky Linux, AlmaLinux): "+
+				"evo ставит Docker только на них, и повтор не поможет. Удалите ВМ ('evo destroy') и разверните из образа Ubuntu или Debian (--image).")
 	case strings.Contains(out, "Temporary failure in name resolution") || strings.Contains(out, "Could not resolve"):
 		return i18n.T("Diagnosis: the VM does not resolve names (no DNS inside the VM) — a network problem of the zone or subnet.",
 			"Диагноз: ВМ не разрешает имена (внутри ВМ нет DNS) — проблема сети зоны или подсети.")
+	case strings.Contains(out, bootstrap.NoKeyringLine):
+		return i18n.T("Diagnosis: the image's apt mirror does not work, and the VM has no keyring of the distribution "+
+			"(/usr/share/keyrings/ubuntu-archive-keyring.gpg or debian-archive-keyring.gpg) to verify the official mirror with: "+
+			"evo does not install from a mirror it cannot verify. Deploy from a standard Ubuntu or Debian image (it has the keyring), "+
+			"or restore the package ubuntu-keyring / debian-archive-keyring on the VM and re-run 'evo deploy'. Not a problem of the compose project.",
+			"Диагноз: apt-зеркало образа не работает, а на ВМ нет keyring дистрибутива "+
+				"(/usr/share/keyrings/ubuntu-archive-keyring.gpg или debian-archive-keyring.gpg), чтобы проверить официальное зеркало: "+
+				"с зеркала, которое нечем проверить, evo не ставит. Разверните из стандартного образа Ubuntu или Debian (в нём keyring есть) "+
+				"или верните на ВМ пакет ubuntu-keyring / debian-archive-keyring и повторите 'evo deploy'. Дело не в compose-проекте.")
 	case strings.Contains(out, bootstrap.FallbackFailedLine):
 		return i18n.T("Diagnosis: apt failed both with the image's mirror and with the official mirror of the distribution (archive.ubuntu.com, deb.debian.org) — "+
 			"most likely the VM does not reach the internet: check the outbound rules of its security group and the subnet in the Cloud.ru console, "+
