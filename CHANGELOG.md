@@ -20,6 +20,18 @@
   - `evo ar` — `list`, `get`, `create`, `delete`, `operation` (`ar_*`);
   - `evo ca` — `list`, `get`, `deploy`, `delete`, `logs`, `start`, `stop` (`ca_*`); переменные окружения `evo ca deploy` — `--env ИМЯ=значение` (флаг повторяется; `ИМЯ=@файл` и `ИМЯ=-` читают значение из файла и stdin, как `--meta` у `evo vm create`); `evo ca logs` печатает строки журнала целиком, с временем, а не таблицей.
 
+  В группе «Затраты, аудит и мониторинг»:
+  - `evo billing` — `balance`, `consumption`, `finops` (`billing_*`);
+  - `evo audit events` (`audit_events`), `evo org quotas` (`org_quotas`), `evo iam service-accounts` (`iam_service_accounts`); у `billing consumption`, `billing finops`, `org quotas` и `iam service-accounts` флаг `--project-id` — аргумент `project_id` инструмента: чей расход, квоты или сервисные аккаунты прочитать (`evo org quotas --project-id <UUID>` ограничивает квоты проектом, как `org_quotas` с `project_id`);
+  - `evo metrics history <метрика>` и `evo metrics scrape [селектор]` (`metrics_*`; для `--toolsets` группа по-прежнему `monitoring`); `scrape` печатает текст Prometheus как есть.
+
+  В «Ресурсах проекта»:
+  - `evo stack` — `plan --manifest <файл>` (манифест JSON из файла, `-` — из stdin), `apply`, `status`, `destroy` (`stack_*`);
+  - `evo image create` и `evo image delete` (`image_create`, `image_delete`);
+  - `evo vpc open-ports <группа> --port 80 --port 443` (`open_ports`).
+
+  Пока без своей команды — инструменты команд движка: `deploy_plan`, `deploy_apply` и `list` станут `evo deploy plan`, `apply` и `list`, `org_projects` — `evo org projects` (`evo project list`), когда `evo deploy`, `status`, `logs`, `project list` и `list-images` перейдут на инструменты; до тех пор — `evo tools call`.
+
 ### Безопасность
 
 - MCP с `--allow-project`: `billing_consumption` и `billing_finops` с аргументом `project_id` читали расход любого проекта, который видит ключ, в обход списка. Теперь проект аргумента проверяется так же, как у `deploy` и `provision`: не из списка — `CONFIG_INVALID`. Исключения по-прежнему только `org_quotas` и `iam_service_accounts` (`docs/mcp.md`).

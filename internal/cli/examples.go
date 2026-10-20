@@ -205,7 +205,46 @@ var commandExamples = map[string]string{
   evo ca logs my-app --system
   evo ca logs my-app --json`,
 	"evo ca start": `  evo ca start my-app --yes`,
-	"evo ca stop":  `  evo ca stop my-app --yes`,
+
+	// billing, audit, org, iam, metrics
+	"evo billing balance": `  CLOUDRU_AGREEMENT_ID=<agreement-id> evo billing balance
+  evo billing balance --json`,
+	"evo billing consumption": `  evo billing consumption --start 2026-10-01 --end 2026-10-19
+  evo billing consumption --start 2026-10-01 --project-id <UUID> --json | jq '.by_service'`,
+	"evo billing finops": `  evo billing finops
+  evo billing finops --days 7 --budget 50000
+  evo billing finops --json`,
+	"evo audit events": `  evo audit events
+  evo audit events --since 30m
+  evo audit events --since 1d --page-size 500 --json | jq -r '.next_page_token'`,
+	"evo org quotas": `  evo org quotas
+  evo org quotas --project-id <UUID> --json`,
+	"evo iam service-accounts": `  evo iam service-accounts
+  evo iam service-accounts --json | jq -r '.service_accounts[] | "\(.id)\t\(.name)"'`,
+	"evo metrics history": `  evo metrics history cpu_usage
+  evo metrics history node_load1 --since 6h --json`,
+	"evo metrics scrape": `  evo metrics scrape
+  evo metrics scrape '{__name__=~"cpu.*"}' | grep -v '^#'`,
+
+	// stack
+	"evo stack plan": `  evo stack plan --manifest stack.json
+  evo stack plan --manifest stack.json --json | jq -r '.job_id'`,
+	"evo stack apply": `  evo stack apply <job-id> --dry-run
+  evo stack apply <job-id> --yes`,
+	"evo stack status": `  evo stack status <job-id>
+  evo stack status <job-id> --wait-seconds 240 --json`,
+	"evo stack destroy": `  evo stack destroy <job-id> --dry-run
+  evo stack destroy <job-id> --yes`,
+
+	// image, vpc
+	"evo image create": `  evo image create my-product-1.0 --disk-id <disk-id> --dry-run
+  evo image create my-product-1.0 --disk-id <disk-id> --display-name 'My product 1.0' --min-disk 20 --yes`,
+	"evo image delete": `  evo image delete <image-id> --dry-run
+  evo image delete <image-id> --yes`,
+	"evo vpc open-ports": `  evo vpc open-ports SSH-access_ru.AZ-2 --port 80 --port 443 --dry-run
+  evo vpc open-ports SSH-access_ru.AZ-2 --port 80,443 --yes
+  evo vpc open-ports <security-group-id> --port 53 --protocol udp --cidr 10.0.0.0/8 --yes`,
+	"evo ca stop": `  evo ca stop my-app --yes`,
 }
 
 // applyExamples sets commandExamples on the tree under root.

@@ -2,43 +2,43 @@
 
 <!-- Сгенерировано: go run ./docs/internal/cli-mcp-parity/inventory/main.go > docs/internal/cli-mcp-parity/inventory.md. Руками не править. -->
 
-Инструментов в реестре: 152 (изменяющих: 65). Команд дерева: 129. Команд в docs/commands.md: 174 (+3 скрытых).
+Инструментов в реестре: 152 (изменяющих: 65). Команд дерева: 144. Команд в docs/commands.md: 195 (+3 скрытых).
 
 ## 1. Инструменты по способу вызова из CLI
 
 | Способ | Инструментов | из них изменяющих |
 |---|---|---|
-| дерево | 129 | 58 |
+| дерево | 144 | 63 |
 | движок | 5 | 1 |
-| tools call | 18 | 6 |
+| tools call | 3 | 1 |
 
-«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`. «движок» и «tools call» вместе — временный список `tools.CLIPending` (23): тест TestParity_CommandsAndTools не даёт ему устареть, PR 3 и 5 плана его опустошают.
+«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`. «движок» и «tools call» вместе — временный список `tools.CLIPending` (8): тест TestParity_CommandsAndTools не даёт ему устареть, PR 3 и 5 плана его опустошают.
 
 ### По группам
 
 | Группа | Всего | дерево | движок | tools call | RU-справка (short/long) |
 |---|---|---|---|---|---|
 | ar | 5 | 5 | 0 | 0 | 5/5 |
-| audit | 1 | 0 | 0 | 1 | 1/1 |
-| billing | 3 | 0 | 0 | 3 | 3/3 |
+| audit | 1 | 1 | 0 | 0 | 1/1 |
+| billing | 3 | 3 | 0 | 0 | 3/3 |
 | ca | 7 | 7 | 0 | 0 | 7/7 |
 | cert | 10 | 10 | 0 | 0 | 10/10 |
-| deploy | 8 | 1 | 3 | 4 | 8/8 |
+| deploy | 8 | 2 | 3 | 3 | 8/8 |
 | disk | 7 | 7 | 0 | 0 | 7/7 |
 | dns | 9 | 9 | 0 | 0 | 9/9 |
-| iam | 1 | 0 | 0 | 1 | 1/1 |
-| image | 6 | 3 | 1 | 2 | 6/6 |
+| iam | 1 | 1 | 0 | 0 | 1/1 |
+| image | 6 | 5 | 1 | 0 | 6/6 |
 | k8s | 15 | 15 | 0 | 0 | 15/15 |
 | kafka | 7 | 7 | 0 | 0 | 7/7 |
-| monitoring | 2 | 0 | 0 | 2 | 2/2 |
+| monitoring | 2 | 2 | 0 | 0 | 2/2 |
 | nlb | 9 | 9 | 0 | 0 | 9/9 |
-| org | 2 | 0 | 1 | 1 | 2/2 |
+| org | 2 | 1 | 1 | 0 | 2/2 |
 | pg | 15 | 15 | 0 | 0 | 15/15 |
 | redis | 7 | 7 | 0 | 0 | 7/7 |
 | s3 | 7 | 7 | 0 | 0 | 7/7 |
 | secret | 6 | 6 | 0 | 0 | 6/6 |
 | snat | 3 | 3 | 0 | 0 | 3/3 |
-| stack | 4 | 0 | 0 | 4 | 4/4 |
+| stack | 4 | 4 | 0 | 0 | 4/4 |
 | vm | 5 | 5 | 0 | 0 | 5/5 |
 | vpc | 13 | 13 | 0 | 0 | 13/13 |
 
@@ -51,10 +51,10 @@
 | ar | `ar_get` | нет | дерево | `evo ar get` | да/да |
 | ar | `ar_list` | нет | дерево | `evo ar list` | да/да |
 | ar | `ar_operation` | нет | дерево | `evo ar operation` | да/да |
-| audit | `audit_events` | нет | tools call | `evo tools call audit_events` | да/да |
-| billing | `billing_balance` | нет | tools call | `evo tools call billing_balance` | да/да |
-| billing | `billing_consumption` | нет | tools call | `evo tools call billing_consumption` | да/да |
-| billing | `billing_finops` | нет | tools call | `evo tools call billing_finops` | да/да |
+| audit | `audit_events` | нет | дерево | `evo audit events` | да/да |
+| billing | `billing_balance` | нет | дерево | `evo billing balance` | да/да |
+| billing | `billing_consumption` | нет | дерево | `evo billing consumption` | да/да |
+| billing | `billing_finops` | нет | дерево | `evo billing finops` | да/да |
 | ca | `ca_delete` | да | дерево | `evo ca delete` | да/да |
 | ca | `ca_deploy` | да | дерево | `evo ca deploy` | да/да |
 | ca | `ca_get` | нет | дерево | `evo ca get` | да/да |
@@ -78,7 +78,7 @@
 | deploy | `destroy` | да | дерево | `evo vm delete`, `evo destroy` (движок) | да/да |
 | deploy | `list` | нет | tools call | `evo tools call list` | да/да |
 | deploy | `logs` | нет | движок | `evo logs` (свой код), иначе `evo tools call logs` | да/да |
-| deploy | `open_ports` | да | tools call | `evo tools call open_ports` | да/да |
+| deploy | `open_ports` | да | дерево | `evo vpc open-ports` | да/да |
 | deploy | `status` | нет | движок | `evo status` (свой код), иначе `evo tools call status` | да/да |
 | disk | `disk_attach` | да | дерево | `evo disk attach` | да/да |
 | disk | `disk_create` | да | дерево | `evo disk create` | да/да |
@@ -96,9 +96,9 @@
 | dns | `dns_zone_delete` | да | дерево | `evo dns zone-delete` | да/да |
 | dns | `dns_zone_get` | нет | дерево | `evo dns zone-get` | да/да |
 | dns | `dns_zones` | нет | дерево | `evo dns zones` | да/да |
-| iam | `iam_service_accounts` | нет | tools call | `evo tools call iam_service_accounts` | да/да |
-| image | `image_create` | да | tools call | `evo tools call image_create` | да/да |
-| image | `image_delete` | да | tools call | `evo tools call image_delete` | да/да |
+| iam | `iam_service_accounts` | нет | дерево | `evo iam service-accounts` | да/да |
+| image | `image_create` | да | дерево | `evo image create` | да/да |
+| image | `image_delete` | да | дерево | `evo image delete` | да/да |
 | image | `image_get` | нет | дерево | `evo image get` | да/да |
 | image | `image_list` | нет | дерево | `evo image list` | да/да |
 | image | `list_images` | нет | движок | `evo list-images` (свой код), иначе `evo tools call list_images` | да/да |
@@ -125,8 +125,8 @@
 | kafka | `kafka_operation` | нет | дерево | `evo kafka operation` | да/да |
 | kafka | `kafka_specs` | нет | дерево | `evo kafka specs` | да/да |
 | kafka | `kafka_versions` | нет | дерево | `evo kafka versions` | да/да |
-| monitoring | `metrics_history` | нет | tools call | `evo tools call metrics_history` | да/да |
-| monitoring | `metrics_scrape` | нет | tools call | `evo tools call metrics_scrape` | да/да |
+| monitoring | `metrics_history` | нет | дерево | `evo metrics history` | да/да |
+| monitoring | `metrics_scrape` | нет | дерево | `evo metrics scrape` | да/да |
 | nlb | `lb_create` | да | дерево | `evo lb create` | да/да |
 | nlb | `lb_delete` | да | дерево | `evo lb delete` | да/да |
 | nlb | `lb_get` | нет | дерево | `evo lb get` | да/да |
@@ -137,7 +137,7 @@
 | nlb | `tg_get` | нет | дерево | `evo tg get` | да/да |
 | nlb | `tg_list` | нет | дерево | `evo tg list` | да/да |
 | org | `org_projects` | нет | движок | `evo project list` (свой код), иначе `evo tools call org_projects` | да/да |
-| org | `org_quotas` | нет | tools call | `evo tools call org_quotas` | да/да |
+| org | `org_quotas` | нет | дерево | `evo org quotas` | да/да |
 | pg | `pg_backup_create` | да | дерево | `evo pg backup-create` | да/да |
 | pg | `pg_backups` | нет | дерево | `evo pg backups` | да/да |
 | pg | `pg_create` | да | дерево | `evo pg create` | да/да |
@@ -176,10 +176,10 @@
 | snat | `snat_create` | да | дерево | `evo snat create` | да/да |
 | snat | `snat_delete` | да | дерево | `evo snat delete` | да/да |
 | snat | `snat_list` | нет | дерево | `evo snat list` | да/да |
-| stack | `stack_apply` | да | tools call | `evo tools call stack_apply` | да/да |
-| stack | `stack_destroy` | да | tools call | `evo tools call stack_destroy` | да/да |
-| stack | `stack_plan` | нет | tools call | `evo tools call stack_plan` | да/да |
-| stack | `stack_status` | нет | tools call | `evo tools call stack_status` | да/да |
+| stack | `stack_apply` | да | дерево | `evo stack apply` | да/да |
+| stack | `stack_destroy` | да | дерево | `evo stack destroy` | да/да |
+| stack | `stack_plan` | нет | дерево | `evo stack plan` | да/да |
+| stack | `stack_status` | нет | дерево | `evo stack status` | да/да |
 | vm | `list_flavors` | нет | дерево | `evo vm flavors` | да/да |
 | vm | `list_zones` | нет | дерево | `evo vm zones`, `evo list-zones` (движок) | да/да |
 | vm | `provision` | да | дерево | `evo vm create` | да/да |
@@ -210,6 +210,10 @@
 | `evo ar get` | `ar_get` | id | — | — | — | — |
 | `evo ar list` | `ar_list` | — | — | — | — | — |
 | `evo ar operation` | `ar_operation` | operation_id | — | — | — | — |
+| `evo audit events` | `audit_events` | — | — | — | — | — |
+| `evo billing balance` | `billing_balance` | — | — | — | — | — |
+| `evo billing consumption` | `billing_consumption` | — | project_id→--project-id | — | — | — |
+| `evo billing finops` | `billing_finops` | — | project_id→--project-id | — | — | — |
 | `evo ca delete` | `ca_delete` | name | — | — | confirmed | — |
 | `evo ca deploy` | `ca_deploy` | name | — | — | confirmed | pairs:env |
 | `evo ca get` | `ca_get` | name | — | — | — | — |
@@ -243,6 +247,9 @@
 | `evo dns zone-delete` | `dns_zone_delete` | id | — | — | confirmed | — |
 | `evo dns zone-get` | `dns_zone_get` | id | — | — | — | — |
 | `evo dns zones` | `dns_zones` | — | — | — | — | — |
+| `evo iam service-accounts` | `iam_service_accounts` | — | project_id→--project-id | — | — | — |
+| `evo image create` | `image_create` | name | — | — | confirmed | — |
+| `evo image delete` | `image_delete` | image_id | — | — | confirmed | — |
 | `evo image get` | `image_get` | image_id\|image | — | — | — | render |
 | `evo image list` | `image_list` | query? | — | — | — | render |
 | `evo k8s add-addon` | `k8s_add_addon` | cluster_id name | — | — | confirmed | file:config |
@@ -273,6 +280,9 @@
 | `evo lb list` | `lb_list` | — | — | — | — | — |
 | `evo lb operation` | `lb_operation` | operation_id | — | — | — | — |
 | `evo marketplace list` | `marketplace_list` | query? | — | — | — | render |
+| `evo metrics history` | `metrics_history` | match | — | — | — | — |
+| `evo metrics scrape` | `metrics_scrape` | match? | — | — | — | render |
+| `evo org quotas` | `org_quotas` | — | project_id→--project-id | — | — | — |
 | `evo pg backup-create` | `pg_backup_create` | cluster_id name | — | — | confirmed | — |
 | `evo pg backups` | `pg_backups` | cluster_id | — | — | — | — |
 | `evo pg create` | `pg_create` | name | — | — | confirmed | — |
@@ -311,6 +321,10 @@
 | `evo snat create` | `snat_create` | name | — | — | confirmed | — |
 | `evo snat delete` | `snat_delete` | id | — | — | confirmed | — |
 | `evo snat list` | `snat_list` | — | — | — | — | — |
+| `evo stack apply` | `stack_apply` | job_id | — | — | confirmed | — |
+| `evo stack destroy` | `stack_destroy` | job_id | — | — | confirmed | — |
+| `evo stack plan` | `stack_plan` | — | — | — | — | file:manifest |
+| `evo stack status` | `stack_status` | job_id | — | — | — | — |
 | `evo tg create` | `tg_create` | name | — | — | confirmed | — |
 | `evo tg delete` | `tg_delete` | id | — | — | confirmed | — |
 | `evo tg get` | `tg_get` | id | — | — | — | — |
@@ -328,6 +342,7 @@
 | `evo vpc fips` | `list_floating_ips` | — | — | — | — | — |
 | `evo vpc get` | `vpc_get` | id | — | — | — | — |
 | `evo vpc list` | `vpc_list` | — | — | — | — | — |
+| `evo vpc open-ports` | `open_ports` | security_group | ports→--port | — | confirmed | — |
 | `evo vpc operation` | `vpc_operation` | operation_id | — | — | — | — |
 | `evo vpc route-create` | `vpc_route_create` | vpc_id | — | — | confirmed | — |
 | `evo vpc route-delete` | `vpc_route_delete` | vpc_id route_id | — | — | confirmed | — |
@@ -374,7 +389,7 @@
 
 Ожидаемый набор флагов выводится из схемы по правилам trees.go (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с docs/commands.md. Пусто — расхождений нет.
 
-Расхождений нет: флаги всех 129 команд деревьев выведены из схемы.
+Расхождений нет: флаги всех 144 команд деревьев выведены из схемы.
 
 ## 5. Русская справка
 
@@ -383,5 +398,5 @@
 | краткое описание инструмента (ShortRU) | 152 | 152 инструментов |
 | подробное описание инструмента (DescriptionRU) | 152 | 152 инструментов |
 | описания аргументов (ArgDescriptionsRU) | 444 | 444 аргументов |
-| из них флаги команд деревьев | 194 | 194 флагов |
+| из них флаги команд деревьев | 222 | 222 флагов |
 | описания инструментов в MCP | 0 | 152 (всегда английские) |

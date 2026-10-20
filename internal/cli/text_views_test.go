@@ -48,3 +48,29 @@ func TestRenderLogLines(t *testing.T) {
 		t.Errorf("not a log: %q", got)
 	}
 }
+
+// evo metrics scrape prints the Prometheus text as it is, line by line, for
+// grep: not one FIELD/VALUE cell with the newlines gone.
+func TestRenderExposition(t *testing.T) {
+	if _, c, _ := findLeaf(t, "metrics", "scrape"); c.render == nil {
+		t.Fatal("metrics scrape has no text view")
+	}
+	render := func(text string) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := renderExposition(output.NewWithWriter(&buf, output.ModePlain, false), &buf, text); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	got := render(`{"project":"p","match":"{}","format":"prometheus-text","exposition":"# TYPE cpu gauge\ncpu{vm=\"a\"} 0.5\ncpu{vm=\"b\u001b\"} 1\n"}`)
+	if want := "# TYPE cpu gauge\ncpu{vm=\"a\"} 0.5\ncpu{vm=\"b?\"} 1\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got := render(`{"exposition":""}`); got != "No metrics.\n" {
+		t.Errorf("empty: %q", got)
+	}
+	if got := render(`{"error":"x"}`); got != `{"error":"x"}`+"\n" {
+		t.Errorf("not an exposition: %q", got)
+	}
+}

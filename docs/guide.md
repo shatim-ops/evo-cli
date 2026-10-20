@@ -109,8 +109,14 @@ evo vpc list
 evo k8s list
 # каталог плагинов Kubernetes (раздел 7)
 evo k8s addons
-# кластеры PostgreSQL
+# кластеры PostgreSQL, Kafka, Redis
 evo pg list
+evo kafka list
+evo redis list
+# зоны DNS, балансировщики, сертификаты
+evo dns zones
+evo lb list
+evo cert list
 # бакеты Object Storage
 evo s3 buckets
 # образы ВМ: ОС и продукты маркетплейса (раздел 6)
@@ -127,7 +133,10 @@ evo list-zones
 evo vm list --json | jq -r '.vms[] | "\(.name)\t\(.state)"'
 ```
 
-Всё, что есть у MCP-сервера, доступно и из CLI:
+Всё, что есть у MCP-сервера, доступно и из CLI: у каждого инструмента —
+своя команда, по префиксу его имени (`dns_zones` — `evo dns zones`,
+`kafka_create` — `evo kafka create`, `stack_plan` — `evo stack plan`), а
+`evo tools` вызывает инструмент по имени, как агент:
 
 ```sh
 # все инструменты с кратким описанием

@@ -8,6 +8,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -39,6 +42,14 @@ var parityArgsOf = map[string]map[string]any{
 	"tg_create":         {"vm_id": parityVM},
 	"lb_create":         {"vpc_id": parityVM, "zone": pvZone},
 	"snat_create":       {"availability_zone_id": pvZone},
+	"stack_apply":       {"job_id": "stk-0123456789"},
+	"stack_status":      {"job_id": "stk-0123456789"},
+	"stack_destroy":     {"job_id": "stk-0123456789"},
+	// project_id is a filter of these tools, given with --project-id of
+	// the command (TestTreeArgs_ProjectIDFilter).
+	"org_quotas":           {"project_id": pvProject},
+	"iam_service_accounts": {"project_id": pvProject},
+	"billing_consumption":  {"project_id": pvProject},
 }
 
 // parityValue is a value of argument p for these tests: an enum's first
@@ -46,8 +57,15 @@ var parityArgsOf = map[string]map[string]any{
 func parityValue(t tools.Tool, p param) any {
 	props, _ := t.InputSchema["properties"].(map[string]any)
 	prop, _ := props[p.Name].(map[string]any)
-	if enum, ok := prop["enum"].([]any); ok && len(enum) > 0 {
-		return enum[0]
+	switch enum := prop["enum"].(type) {
+	case []any:
+		if len(enum) > 0 {
+			return enum[0]
+		}
+	case []string:
+		if len(enum) > 0 {
+			return enum[0]
+		}
 	}
 	switch p.Type {
 	case "integer", "number":
@@ -122,7 +140,16 @@ func newParityCommands(t *testing.T) []parityCommand {
 				if _, ok := params[k]; !ok {
 					t.Fatalf("%s: argument %s is neither positional nor a flag", pc.path, k)
 				}
-				pc.tree = append(pc.tree, "--"+c.flagName(k)+"="+flagText(pc.args[k]))
+				value := flagText(pc.args[k])
+				if c.Files[k] {
+					// The flag names a file that holds the value.
+					path := filepath.Join(t.TempDir(), k+".json")
+					if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					value = path
+				}
+				pc.tree = append(pc.tree, "--"+c.flagName(k)+"="+value)
 			}
 			pc.call = []string{"tools", "call", c.Tool}
 			for _, k := range sortedKeys(pc.args) {
@@ -152,6 +179,13 @@ func flagText(v any) string {
 	}
 	return fmt.Sprint(v)
 }
+
+// stackJobID is the id stack_plan gives each plan it makes: two calls make
+// two plans.
+var stackJobID = regexp.MustCompile(`stk-[0-9a-f]{10}`)
+
+// sameJobID reads every stack job id as one.
+func sameJobID(s string) string { return stackJobID.ReplaceAllString(s, "stk-<id>") }
 
 // withEmptyCloud: a key and a project, a token without IAM, and every API
 // answering 200 with an empty list.
@@ -197,6 +231,7 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 		treeCode, treeOut, treeErr := runCLI(t, "", append(append([]string{}, pc.tree...), extra...)...)
 		newProcess()
 		callCode, callOut, callErr := runCLI(t, "", append(append([]string{}, pc.call...), extra...)...)
+		treeOut, callOut = sameJobID(treeOut), sameJobID(callOut)
 		if treeCode != callCode || treeOut != callOut || treeErr != callErr {
 			bad = append(bad, fmt.Sprintf("evo %s ≠ evo tools call %s:\n  tree: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
 				strings.Join(pc.tree, " "), strings.Join(pc.call[2:], " "),
@@ -324,5 +359,47 @@ func TestRenderAnswer_NewRussianTrees(t *testing.T) {
 	lines = render("vm", "zones", `{"zones":[{"id":"z-1","name":"ru.AZ-1","enabled":true,"default":true}]}`)
 	if h := strings.Join(strings.Fields(lines[0]), " "); h != "ID Имя DEFAULT Открыта" {
 		t.Errorf("vm zones header: %q", h)
+	}
+	// iam: "enabled" is a service account that is on, not an open zone.
+	lines = render("iam", "service-accounts", `{"service_accounts":[{"id":"sa-1","name":"ci","enabled":true}]}`)
+	if h := strings.Join(strings.Fields(lines[0]), " "); h != "ID Имя Включён" {
+		t.Errorf("iam service-accounts header: %q", h)
+	}
+}
+
+// project_id of org quotas, iam service-accounts and billing is a filter of
+// what the tool reads: --project-id of the command passes it to the tool,
+// before the command name too (cobra parses every flag with the command's
+// set, where its own --project-id shadows the root one).
+func TestTreeArgs_ProjectIDFilter(t *testing.T) {
+	for _, path := range [][]string{
+		{"org", "quotas"}, {"iam", "service-accounts"}, {"billing", "consumption"}, {"billing", "finops"},
+	} {
+		for _, argv := range [][]string{
+			append(append([]string{}, path...), "--project-id", pvProject),
+			append([]string{"--project-id", pvProject}, path...),
+		} {
+			cmd, rest, err := newRootCmd().Find(argv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cmd.ParseFlags(rest); err != nil {
+				t.Fatal(err)
+			}
+			_, c, tl := findLeaf(t, path[0], path[1])
+			if c.flagName("project_id") != "project-id" {
+				t.Fatalf("%v: project_id has the flag --%s", path, c.flagName("project_id"))
+			}
+			got, err := treeArgs(cmd, c, tl, parsePositionals(c.Args), c.flagArgs(tl), cmd.Flags().Args())
+			if err != nil && !strings.Contains(err.Error(), "--start") { // billing consumption: --start is required
+				t.Fatal(err)
+			}
+			if err == nil && got["project_id"] != pvProject {
+				t.Errorf("evo %s: project_id %v, want %s", strings.Join(argv, " "), got["project_id"], pvProject)
+			}
+			if flagProjectID != "" {
+				t.Errorf("evo %s: the root --project-id is set too (%q)", strings.Join(argv, " "), flagProjectID)
+			}
+		}
 	}
 }
