@@ -280,13 +280,7 @@ func withJSONWorld(t *testing.T) (parityWorld, *jsonFake) {
 	// kubectl and helm get a kubeconfig whose token evo mints from the key.
 	t.Setenv("CLOUDRU_KEY_ID", "00000000000000000000000000000000")
 	t.Setenv("CLOUDRU_SECRET", "00000000000000000000000000000000")
-	dir := t.TempDir()
-	for _, name := range []string{"kubectl", "helm"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\necho ok\n"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	putFakeKube(t, "echo ok")
 	oldWait := deployplan.SSHPortWait
 	deployplan.SSHPortWait = 0 // no TCP to the fake address
 	t.Cleanup(func() { deployplan.SSHPortWait = oldWait })

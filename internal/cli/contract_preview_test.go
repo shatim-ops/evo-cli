@@ -13,8 +13,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -479,13 +481,32 @@ func httpDisabled() map[string]bool {
 // preview. The previews never run them.
 func fakeKubeBinaries(t *testing.T) {
 	t.Helper()
+	putFakeKube(t, "exit 1")
+}
+
+// putFakeKube puts kubectl and helm that run the shell line body first on
+// PATH. On Windows they are .bat files: exec.LookPath finds a name there
+// only with an extension of PATHEXT, and would find the kubectl of the CI
+// runner instead, which waits on a cluster that is not there.
+func putFakeKube(t *testing.T, body string) {
+	t.Helper()
 	dir := t.TempDir()
 	for _, name := range []string{"kubectl", "helm"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		file, script := name, "#!/bin/sh\n"+body+"\n"
+		if runtime.GOOS == "windows" {
+			file, script = name+".bat", "@"+body+"\r\n"
+		}
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(script), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// A test that ran a real kubectl would wait on a cluster, not fail.
+	for _, name := range []string{"kubectl", "helm"} {
+		if p, err := exec.LookPath(name); err != nil || filepath.Dir(p) != dir {
+			t.Fatalf("fake %s is not first on PATH: %q, %v", name, p, err)
+		}
+	}
 }
 
 // parityWorld is the directory of the parity tests: the working directory
