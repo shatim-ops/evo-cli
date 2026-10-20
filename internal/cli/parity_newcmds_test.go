@@ -11,13 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
-	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -27,10 +25,10 @@ import (
 // list: for each command, the same arguments given as positionals and flags
 // and given to 'evo tools call' with --arg give the same stdout, stderr and
 // exit code with --json (a mutating one with --yes, so that it runs past the
-// gate); the preview of a mutating command (--dry-run --json) is the
-// tool's preview by 'evo tools call' and by MCP stdio. The full sweep of
-// the registry with a fake answer per API is PR 4 and PR 6 (REQ-6, REQ-8);
-// this is the smoke test of the new commands.
+// gate). The previews of every command and tool that asks for consent are
+// TestContract_PreviewParity (contract_preview_test.go, REQ-6), on a fake
+// answer per API; the sweep of every answer with a fake per API is PR 6
+// (REQ-8), this is the smoke test of the new commands.
 
 // parityArgsOf are the arguments a new command gets in these tests beyond
 // its required ones: a required one-of pair (dns record-create: --value or
@@ -106,62 +104,86 @@ func newParityCommands(t *testing.T) []parityCommand {
 				continue
 			}
 			tl, _ := reg.Lookup(c.Tool)
-			pc := parityCommand{path: g.Name + " " + c.Verb, tool: tl, args: map[string]any{}}
+			args := map[string]any{}
 			for _, p := range schemaParams(tl) {
 				if p.Required {
-					pc.args[p.Name] = parityValue(tl, p)
+					args[p.Name] = parityValue(tl, p)
 				}
 			}
 			for k, v := range parityArgsOf[c.Tool] {
-				pc.args[k] = v
+				args[k] = v
 			}
-			pc.tree = []string{g.Name, c.Verb}
-			used := map[string]bool{}
-			for _, pos := range parsePositionals(c.Args) {
-				v, ok := pc.args[pos.names[0]]
-				if !ok && len(pos.names) == 2 {
-					v, ok = pc.args[pos.names[1]]
-					used[pos.names[1]] = true
-				}
-				used[pos.names[0]] = true
-				if !ok {
-					continue // an optional positional
-				}
-				pc.tree = append(pc.tree, fmt.Sprint(v))
-			}
-			params := map[string]param{}
-			for _, p := range c.flagArgs(tl) {
-				params[p.Name] = p
-			}
-			for _, k := range sortedKeys(pc.args) {
-				if used[k] {
-					continue
-				}
-				if _, ok := params[k]; !ok {
-					t.Fatalf("%s: argument %s is neither positional nor a flag", pc.path, k)
-				}
-				value := flagText(pc.args[k])
-				if c.Files[k] {
-					// The flag names a file that holds the value.
-					path := filepath.Join(t.TempDir(), k+".json")
-					if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
-						t.Fatal(err)
-					}
-					value = path
-				}
-				pc.tree = append(pc.tree, "--"+c.flagName(k)+"="+value)
-			}
-			pc.call = []string{"tools", "call", c.Tool}
-			for _, k := range sortedKeys(pc.args) {
-				pc.call = append(pc.call, "--arg", k+"="+flagText(pc.args[k]))
-			}
-			out = append(out, pc)
+			out = append(out, parityCommandOf(t, g, c, tl, args))
 		}
 	}
 	if len(out) == 0 {
 		t.Fatal("no new commands")
 	}
 	return out
+}
+
+// parityCommandOf is command c of tree g with the arguments args: as the
+// tree takes them (positionals, then flags in key order) and as 'evo tools
+// call' does (--arg each). A tool without a command (tools.CLIPending) has
+// only the call: g and c are zero then.
+func parityCommandOf(t *testing.T, g treeGroup, c treeCmd, tl tools.Tool, args map[string]any) parityCommand {
+	t.Helper()
+	pc := parityCommand{path: strings.TrimSpace(g.Name + " " + c.Verb), tool: tl, args: args}
+	pc.call = []string{"tools", "call", tl.Name}
+	for _, k := range sortedKeys(args) {
+		pc.call = append(pc.call, "--arg", k+"="+flagText(args[k]))
+	}
+	if c.Verb == "" {
+		pc.path = "tools call " + tl.Name
+		return pc
+	}
+	if g.Name != "" {
+		pc.tree = append(pc.tree, g.Name)
+	}
+	pc.tree = append(pc.tree, c.Verb)
+	used := map[string]bool{}
+	for _, pos := range parsePositionals(c.Args) {
+		v, ok := args[pos.names[0]]
+		if !ok && len(pos.names) == 2 {
+			v, ok = args[pos.names[1]]
+			used[pos.names[1]] = true
+		}
+		used[pos.names[0]] = true
+		if !ok {
+			continue // an optional positional
+		}
+		pc.tree = append(pc.tree, fmt.Sprint(v))
+	}
+	params := map[string]param{}
+	for _, p := range c.flagArgs(tl) {
+		params[p.Name] = p
+	}
+	for _, k := range sortedKeys(args) {
+		if used[k] {
+			continue
+		}
+		if _, ok := params[k]; !ok {
+			t.Fatalf("%s: argument %s is neither positional nor a flag", pc.path, k)
+		}
+		if m, ok := args[k].(map[string]any); ok && c.Pairs[k] {
+			// A repeatable key=value flag (--meta k=v).
+			for _, mk := range sortedKeys(m) {
+				pc.tree = append(pc.tree, "--"+c.flagName(k)+"="+mk+"="+fmt.Sprint(m[mk]))
+			}
+			continue
+		}
+		value := flagText(args[k])
+		if c.Files[k] {
+			// The flag names a file that holds the value.
+			path := filepath.Join(t.TempDir(), k+".json")
+			if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			value = path
+		}
+		pc.tree = append(pc.tree, "--"+c.flagName(k)+"="+value)
+	}
+	return pc
 }
 
 // flagText is a value as a flag or --arg takes it.
@@ -245,59 +267,6 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 		ok++
 	}
 	t.Logf("new commands with the JSON of their tool: %d", ok)
-	if len(bad) > 0 {
-		t.Fatal(strings.Join(bad, "\n"))
-	}
-}
-
-func TestContract_PreviewParityNewCommands(t *testing.T) {
-	withEmptyCloud(t)
-	stdio := mcp.New(emptyCloudEngine, "test")
-	var bad, refused []string
-	previews := map[string]int{} // tree → commands whose previews are equal
-	for _, pc := range newParityCommands(t) {
-		if !pc.tool.Mutating && !tools.IsSensitive(pc.tool) {
-			continue
-		}
-		tree := strings.Fields(pc.path)[0]
-		if _, ok := previews[tree]; !ok {
-			previews[tree] = 0
-		}
-		newProcess()
-		treeCode, treeOut, treeErr := runCLI(t, "", append(append([]string{}, pc.tree...), "--dry-run", "--json")...)
-		newProcess()
-		callCode, callOut, callErr := runCLI(t, "", append(append([]string{}, pc.call...), "--dry-run", "--json")...)
-		if treeCode != callCode || treeOut != callOut || treeErr != callErr {
-			bad = append(bad, fmt.Sprintf("evo %s --dry-run ≠ evo tools call %s --dry-run:\n  tree: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
-				strings.Join(pc.tree, " "), strings.Join(pc.call[2:], " "),
-				treeCode, clipLine(treeOut), clipLine(treeErr), callCode, clipLine(callOut), clipLine(callErr)))
-			continue
-		}
-		details, ok := dryRunDetails(treeOut)
-		if !ok {
-			// The tool refused before its preview, the same way on both
-			// surfaces: its preview reads the cloud, and the empty cloud has
-			// nothing to read (PR 4 gives each API its fake answers).
-			refused = append(refused, pc.path+": exit "+fmt.Sprint(treeCode)+" "+clipLine(treeErr))
-			continue
-		}
-		got := map[string]map[string]any{"cli": details, "stdio": stdioDetails(t, stdio, pc.tool.Name, pc.args)}
-		if why := parityDiff(pc.path, got); why != "" {
-			bad = append(bad, why)
-			continue
-		}
-		previews[tree]++
-	}
-	keys := make([]string, 0, len(previews))
-	for tree, n := range previews {
-		keys = append(keys, fmt.Sprintf("%s=%d", tree, n))
-		if n == 0 {
-			bad = append(bad, tree+": no command whose preview is compared on the three surfaces")
-		}
-	}
-	sort.Strings(keys)
-	t.Logf("previews equal on the command, tools call and stdio: %s", strings.Join(keys, " "))
-	t.Logf("refused before the preview, the same on the command and tools call:\n  %s", strings.Join(refused, "\n  "))
 	if len(bad) > 0 {
 		t.Fatal(strings.Join(bad, "\n"))
 	}
