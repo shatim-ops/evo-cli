@@ -132,8 +132,10 @@ func (c *Client) doOperation(ctx context.Context, method, path string, query url
 // The live API answers a fresh nextPageToken on every page, the last one
 // included, so the token alone never ends the list: ar_list ran into
 // pager.MaxPages after ~10 minutes and ar_create could not check a name
-// (live run 18.10). A page that adds no registry not seen before ends the
-// list — an empty page, or the first page again when the token is ignored.
+// (live run 18.10). An empty page ends the list (register AR-4). A page of
+// registries all read before — the token ignored — is an error: where the
+// list ends is not known, and ar_create would miss a taken name (break r4:
+// it ended the list before).
 func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 	var all []map[string]any
 	seen := map[string]bool{}
@@ -168,8 +170,11 @@ func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 			all = append(all, r)
 			added++
 		}
-		if added == 0 {
+		if len(out.Registries) == 0 {
 			return "", nil
+		}
+		if added == 0 {
+			return "", pager.NoNewItems(len(all), -1)
 		}
 		return out.NextPageToken, nil
 	})

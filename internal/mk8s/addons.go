@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // Addons (plugins) of Managed Kubernetes: the shared catalogue, the releases
@@ -144,35 +146,42 @@ func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRele
 }
 
 // pages GETs path page by page; page decodes one body and returns the next
-// page token ("" ends). A token seen twice ends it too.
+// page token ("" ends). A token already followed and more than
+// maxAddonPages pages are errors, not the end of the list: the list is not
+// complete (break r4, R4-6; both ended the list without a word before).
 func (c *Client) pages(ctx context.Context, path string, extra url.Values, page func([]byte) (string, error)) error {
-	seen := map[string]bool{}
-	token := ""
-	for i := 0; i < maxAddonPages; i++ {
+	return c.walk(ctx, path, func() url.Values {
 		q := c.projectQuery()
 		for k, v := range extra {
 			q[k] = v
 		}
+		return q
+	}, page)
+}
+
+// walk is pages with the query of each request from query (pageSize and
+// pageToken are added).
+func (c *Client) walk(ctx context.Context, path string, query func() url.Values, page func([]byte) (string, error)) error {
+	more, err := pager.Upto(maxAddonPages, func(token string) (string, error) {
+		q := query()
 		q.Set("pageSize", strconv.Itoa(addonPageSize))
 		if token != "" {
 			q.Set("pageToken", token)
 		}
 		data, st, err := c.do(ctx, http.MethodGet, path, q, nil)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if st != 200 {
-			return apiError(st, data)
+			return "", apiError(st, data)
 		}
-		next, err := page(data)
-		if err != nil {
-			return err
-		}
-		if next == "" || seen[next] {
-			return nil
-		}
-		seen[next] = true
-		token = next
+		return page(data)
+	})
+	if err != nil {
+		return pager.Named("mk8s: "+path, err)
+	}
+	if more {
+		return pager.Named("mk8s: "+path, pager.TooManyPages(maxAddonPages))
 	}
 	return nil
 }

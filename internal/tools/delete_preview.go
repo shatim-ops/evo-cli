@@ -7,14 +7,17 @@ package tools
 import (
 	"fmt"
 	"strings"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // deletePreview is the confirmation answer of a *_delete tool: one GET of
 // the resource names what goes — its name and status next to the ID the
 // caller passed — and an ID that is not there is that GET's error instead
-// of a question (release audit, R-04). message has one %s: the resource
-// as "name (id)".
-func deletePreview(message, id string, get func() (map[string]any, error)) (string, bool) {
+// of a question (release audit, R-04). The message, in English (en) and
+// Russian (ru) for the CLI's language, has one %s: the resource as
+// "name (id)".
+func deletePreview(en, ru, id string, get func() (map[string]any, error)) (string, bool) {
 	m, err := get()
 	if err != nil {
 		return errResult(err), true
@@ -30,7 +33,7 @@ func deletePreview(message, id string, get func() (map[string]any, error)) (stri
 	}
 	out := map[string]any{
 		"status":  "confirmation_required",
-		"message": fmt.Sprintf(message, label),
+		"message": i18n.Tf(en, ru, label),
 		"target":  map[string]any{"id": id, "name": name, "status": status},
 	}
 	// Cloud.ru refuses to delete a DBaaS cluster that is still being
@@ -38,7 +41,8 @@ func deletePreview(message, id string, get func() (map[string]any, error)) (stri
 	// before the confirmation, not after (release audit re-run, N-09).
 	switch strings.ToUpper(status) {
 	case "DEPLOYING", "CREATING", "PROVISIONING":
-		out["warning"] = fmt.Sprintf("it is still being created (%s): Cloud.ru refuses the delete until it is ready", status)
+		out["warning"] = i18n.Tf("it is still being created (%s): Cloud.ru refuses the delete until it is ready",
+			"он ещё создаётся (%s): Cloud.ru не удалит его, пока он не будет готов", status)
 	}
 	return toJSON(out), true
 }

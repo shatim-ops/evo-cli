@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/vpc"
 )
@@ -75,8 +76,9 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("vpc_create creates a new VPC %q (async). Call again with confirmed=true after the user approves.", name),
+			"status": "confirmation_required",
+			"message": i18n.Tf("vpc_create creates a new VPC %q (async). Call again with confirmed=true after the user approves.",
+				"vpc_create создаёт новый VPC %q (асинхронно). Получив согласие пользователя, вызовите снова с confirmed=true.", name),
 		}), true
 	}
 	cli, err := s.vpcClient(ctx)
@@ -105,6 +107,7 @@ func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (st
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return deletePreview("vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first. Call again with confirmed=true.",
+			"vpc_delete удаляет VPC %s (асинхронно). Сначала нужно удалить его подсети и ресурсы. Вызовите снова с confirmed=true.",
 			id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) })
 	}
 	op, err := cli.DeleteVPC(ctx, id)
@@ -169,23 +172,32 @@ func (s *Registry) handleVpcRoutes(ctx context.Context, args map[string]any) (st
 }
 
 // routeNextHop builds the nextHop object from vm_id+interface_id, vip_id, or magic_router_id.
+// Two next hops given, or one of only spaces, is USAGE: the first of vm,
+// vip and magic router was taken and the others dropped without a word
+// (break r4, R4-11, as vm_get).
 func routeNextHop(args map[string]any) (map[string]any, error) {
-	if vm := stringArg(args, "next_hop_vm_id"); vm != "" {
+	ref, key, err := oneOfArgs(args, clierrors.New(clierrors.CodeUsage,
+		i18n.T("pass one next hop: next_hop_vm_id, next_hop_vip_id or next_hop_magic_router_id",
+			"укажите один следующий узел: next_hop_vm_id, next_hop_vip_id или next_hop_magic_router_id"), ""),
+		"next_hop_vm_id", "next_hop_vip_id", "next_hop_magic_router_id")
+	if err != nil {
+		return nil, err
+	}
+	switch key {
+	case "next_hop_vm_id":
 		iface := stringArg(args, "next_hop_interface_id")
 		if iface == "" {
 			return nil, errors.New(i18n.T("next_hop_interface_id is required with next_hop_vm_id", "с next_hop_vm_id нужен next_hop_interface_id"))
 		}
 		return map[string]any{"virtualMachine": map[string]any{
-			"virtualMachine": map[string]any{"id": vm},
+			"virtualMachine": map[string]any{"id": ref},
 			"interface":      map[string]any{"id": iface},
 		}}, nil
-	}
-	if vip := stringArg(args, "next_hop_vip_id"); vip != "" {
-		return map[string]any{"vip": map[string]any{"vips": []map[string]any{{"id": vip}}}}, nil
-	}
-	if mr := stringArg(args, "next_hop_magic_router_id"); mr != "" {
+	case "next_hop_vip_id":
+		return map[string]any{"vip": map[string]any{"vips": []map[string]any{{"id": ref}}}}, nil
+	case "next_hop_magic_router_id":
 		return map[string]any{"magicRouter": map[string]any{
-			"magicRouter": map[string]any{"id": mr},
+			"magicRouter": map[string]any{"id": ref},
 			"azName":      stringArg(args, "next_hop_az"),
 		}}, nil
 	}
@@ -204,8 +216,9 @@ func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("vpc_route_create adds a static route %s in VPC %s (async). Call again with confirmed=true.", subnet, vpcID),
+			"status": "confirmation_required",
+			"message": i18n.Tf("vpc_route_create adds a static route %s in VPC %s (async). Call again with confirmed=true.",
+				"vpc_route_create добавляет статический маршрут %s в VPC %s (асинхронно). Вызовите снова с confirmed=true.", subnet, vpcID),
 		}), true
 	}
 	cli, err := s.vpcClient(ctx)
@@ -230,7 +243,8 @@ func (s *Registry) handleVpcRouteDelete(ctx context.Context, args map[string]any
 		return usageT("'vpc_id' and 'route_id' (from vpc_routes) are required", "нужны 'vpc_id' и 'route_id' (из vpc_routes)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("vpc_route_delete removes static route %s from VPC %s (async). Call again with confirmed=true.", routeID, vpcID)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("vpc_route_delete removes static route %s from VPC %s (async). Call again with confirmed=true.",
+			"vpc_route_delete удаляет статический маршрут %s из VPC %s (асинхронно). Вызовите снова с confirmed=true.", routeID, vpcID)}), true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {

@@ -79,6 +79,13 @@ func fullArgs(tl Tool) map[string]any {
 	}
 	delete(args, "project_id")
 	delete(args, "image_metadata") // an array of field objects
+	// One argument of each "one of" set: two of them is USAGE before the
+	// project check (vpc_route_create next hops, break r4 R4-11).
+	for _, set := range tl.RequiredOneOf {
+		for _, k := range set[1:] {
+			delete(args, k)
+		}
+	}
 	if _, ok := args["name"]; ok {
 		args["name"] = "app1" // a name the API takes, not a UUID
 	}

@@ -87,8 +87,9 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "snat_create makes a billable SNAT gateway. Get the user's approval, then call again with confirmed=true.",
+			"status": "confirmation_required",
+			"message": i18n.T("snat_create makes a billable SNAT gateway. Get the user's approval, then call again with confirmed=true.",
+				"snat_create создаёт платный шлюз SNAT. Получите согласие пользователя, затем вызовите снова с confirmed=true."),
 			"will_create": map[string]any{
 				"name":                 name,
 				"nat_type":             provision.NATTypePublicSNAT,
@@ -129,6 +130,7 @@ func (s *Registry) handleSnatDelete(ctx context.Context, args map[string]any) (s
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return deletePreview("snat_delete removes SNAT gateway %s — nodes in that zone lose outbound internet. Confirm, then call again with confirmed=true.",
+			"snat_delete удаляет шлюз SNAT %s — узлы в этой зоне потеряют исходящий доступ в интернет. Подтвердите, затем вызовите снова с confirmed=true.",
 			id, func() (map[string]any, error) {
 				gws, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
 				if err != nil {

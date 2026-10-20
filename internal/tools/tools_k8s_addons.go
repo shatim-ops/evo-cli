@@ -518,7 +518,8 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		out := map[string]any{
 			"status": "confirmation_required",
-			"message": fmt.Sprintf("k8s_add_addon installs %s %s into cluster %s (%s). Show the preview to the user; call again with the same args + confirmed=true after approval.",
+			"message": i18n.Tf("k8s_add_addon installs %s %s into cluster %s (%s). Show the preview to the user; call again with the same args + confirmed=true after approval.",
+				"k8s_add_addon устанавливает %s %s в кластер %s (%s). Покажите превью пользователю; получив согласие, вызовите снова с теми же аргументами и confirmed=true.",
 				plan.addon.Name, r.AppVersion, clusterID, addonNamespaceText(r.AddonNamespace)),
 			"preview":      plan.preview(clusterID, resolveMode, configKeys),
 			"version_from": versionFrom,
@@ -585,9 +586,9 @@ const snatDocURL = "https://cloud.ru/docs/kubernetes-evolution/ug/topics/overvie
 // "the addon's default namespace", not a guess.
 func addonNamespaceText(ns string) string {
 	if ns == "" {
-		return "the addon's default namespace"
+		return i18n.T("the addon's default namespace", "пространство имён плагина по умолчанию")
 	}
-	return "namespace " + ns
+	return i18n.T("namespace ", "пространство имён ") + ns
 }
 
 // releasesOf is the releases of one appVersion, in the order of rels

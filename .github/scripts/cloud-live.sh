@@ -147,8 +147,13 @@ rand_secret() {
 }
 sha() { printf '%s' "$1" | sha256sum | cut -c1-64; }
 # gone ВИД ПРЕФИКС — ресурсов вида с таким именем нет (для poll: список
-# читается заново на каждой попытке).
-gone() { [ -z "$(lst "$1" "$2")" ]; }
+# читается заново на каждой попытке). Список не прочитан (в том числе
+# «список не полон» — API_ERROR) — не «нет»: код 1, poll ждёт дальше.
+gone() {
+	local o
+	o=$(lst "$1" "$2") || return 1
+	[ -z "$o" ]
+}
 
 # --- Поиск и удаление ресурсов по префиксу имени ---------------------------
 # lst ВИД ПРЕФИКС — строки «id<TAB>имя» ресурсов вида с именем ПРЕФИКС*.
@@ -176,11 +181,12 @@ lst() {
 		jq -r --arg p "$p" '.images[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	route)
 		# маршруты без имени: свои — по тестовому CIDR, в любом VPC
-		local v
+		local v r
 		out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") || return 1
 		for v in $(jq -r '.vpcs[]?.id' <<<"$out"); do
-			evo tools call vpc_routes --arg vpc_id="$v" --json 2>/dev/null |
-				jq -r --arg v "$v" --arg c "$ROUTE_CIDRS" '($c | split(" ")) as $cs | .routes[]? | select(.subnet as $n | $cs | index($n)) | "\($v) \(.id)\troute \(.subnet)"' || true
+			# маршруты VPC не прочитаны — список не прочитан, не «маршрутов нет»
+			r=$(evo tools call vpc_routes --arg vpc_id="$v" --json 2>"$tmp/lst.err") || return 1
+			jq -r --arg v "$v" --arg c "$ROUTE_CIDRS" '($c | split(" ")) as $cs | .routes[]? | select(.subnet as $n | $cs | index($n)) | "\($v) \(.id)\troute \(.subnet)"' <<<"$r"
 		done ;;
 	vpc) out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.vpcs[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
@@ -271,7 +277,13 @@ sweep() {
 	done
 	left=0
 	for kind in $kinds; do
-		lst "$kind" "$p" >"$tmp/l" 2>/dev/null || continue
+		# Список не прочитан (сбой или «список не полон») — остатки этого
+		# вида не проверены: провал, а не «остатков нет».
+		lst "$kind" "$p" >"$tmp/l" 2>/dev/null || {
+			echo "::error::$kind: список не прочитан — остатки $p* не проверены: $(jq -rR 'fromjson? | .error | "\(.reason): \(.message)"' "$tmp/lst.err" 2>/dev/null | head -1 | redact | cut -c1-240)"
+			left=$((left + 1))
+			continue
+		}
 		while IFS=$'\t' read -r _ name; do
 			[ -n "$name" ] || continue
 			echo "::error::после прогона остался $kind $name — удалите его в консоли Cloud.ru"
@@ -449,7 +461,9 @@ area_disk() {
 	fi
 
 	must disk_delete disk_delete --arg disk_id="$data" || return 1
-	if poll 180 10 sh -c "! evo tools call disk_list --json | jq -e --arg id '$data' 'any(.disks[]; .id == \$id)' >/dev/null"; then
+	# «нет в списке» — только по прочитанному списку: ошибка disk_list
+	# (в том числе «список не полон») — не «диска нет»
+	if poll 180 10 sh -c "evo tools call disk_list --json | jq -e --arg id '$data' '(.disks | type) == \"array\" and (any(.disks[]; .id == \$id) | not)' >/dev/null"; then
 		ok disk_delete "диска нет в disk_list"
 		cov disk_delete
 	else bad disk_delete "диск в disk_list через 3 мин"; fi
@@ -489,7 +503,7 @@ area_disk() {
 	if poll 1800 30 img_ready; then ok "image_get ready" "образ готов"; else bad "image_get ready" "за 30 мин не ready: $(evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -c '.zone_states // {}')"; fi
 
 	must image_delete image_delete --arg image_id="$img" || return 1
-	if poll 300 15 sh -c "! evo tools call image_list --arg type=private --json | jq -e --arg id '$img' 'any(.images[]?; .id == \$id)' >/dev/null"; then
+	if poll 300 15 sh -c "evo tools call image_list --arg type=private --json | jq -e --arg id '$img' '(.images | type) == \"array\" and (any(.images[]; .id == \$id) | not)' >/dev/null"; then
 		ok image_delete "образа нет в image_list"
 		cov image_delete
 	else bad image_delete "образ в image_list через 5 мин"; fi
@@ -660,7 +674,7 @@ area_net() {
 
 	# destroy ВМ B освобождает и чужой ей по происхождению FIP.
 	must "destroy ВМ B" destroy --arg name="$b" || return 1
-	if poll 300 15 sh -c "! evo tools call list_floating_ips --json | jq -e --arg id '$fip' 'any(.floating_ips[]; .id == \$id and .state != \"error_deleting\")' >/dev/null"; then
+	if poll 300 15 sh -c "evo tools call list_floating_ips --json | jq -e --arg id '$fip' '(.floating_ips | type) == \"array\" and (any(.floating_ips[]; .id == \$id and .state != \"error_deleting\") | not)' >/dev/null"; then
 		ok "destroy освобождает привязанный FIP" "адреса нет"
 		rm -f "$tmp/fip_id"
 	else

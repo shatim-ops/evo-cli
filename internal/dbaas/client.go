@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // Client talks to a Managed-DB v1 API (Kafka/Redis).
@@ -166,12 +167,12 @@ const maxListPages = 50
 
 // ListClusters lists clusters, following next_page_token. extra carries
 // per-service query params (Kafka needs product_type=kafka; both take
-// project_id — added here).
+// project_id — added here). A token already followed and more than
+// maxListPages pages are errors: the list is not complete (break r4, R4-8;
+// the cut list was a success).
 func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[string]any, error) {
 	var all []map[string]any
-	seen := map[string]bool{}
-	token := ""
-	for i := 0; i < maxListPages; i++ {
+	more, err := pager.Upto(maxListPages, func(token string) (string, error) {
 		q := url.Values{}
 		for k, v := range extra {
 			q[k] = v
@@ -185,24 +186,26 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 		}
 		data, status, err := c.do(ctx, http.MethodGet, "/v1/clusters", q, nil)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		if status < 200 || status >= 300 {
-			return nil, apiError(status, data)
+			return "", apiError(status, data)
 		}
 		var page struct {
 			Clusters      []map[string]any `json:"clusters"`
 			NextPageToken string           `json:"next_page_token"`
 		}
 		if err := json.Unmarshal(data, &page); err != nil {
-			return nil, fmt.Errorf("parse clusters: %w", err)
+			return "", fmt.Errorf("parse clusters: %w", err)
 		}
 		all = append(all, page.Clusters...)
-		if page.NextPageToken == "" || seen[page.NextPageToken] {
-			break
-		}
-		seen[page.NextPageToken] = true
-		token = page.NextPageToken
+		return page.NextPageToken, nil
+	})
+	if err != nil {
+		return nil, pager.Named("dbaas: clusters", err)
+	}
+	if more {
+		return nil, pager.Named("dbaas: clusters", pager.TooManyPages(maxListPages))
 	}
 	return all, nil
 }

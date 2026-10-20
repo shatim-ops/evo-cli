@@ -157,8 +157,9 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "disk_create makes a billable disk. Approve, then call again with confirmed=true.",
+			"status": "confirmation_required",
+			"message": i18n.T("disk_create makes a billable disk. Approve, then call again with confirmed=true.",
+				"disk_create создаёт платный диск. Получите согласие, затем вызовите снова с confirmed=true."),
 			"will_create": map[string]any{
 				"name": name, "size_gb": sizeGB, "disk_type": firstNonEmptyStr(req.DiskTypeName, req.DiskTypeID),
 				"zone_id": zoneID, "attach_to": attachTo,
@@ -258,7 +259,8 @@ func (s *Registry) handleDiskAttach(ctx context.Context, args map[string]any) (s
 		return usageT("'disk_id' and 'vm' are required", "нужны 'disk_id' и 'vm'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": "disk_attach changes a VM. Approve, then confirmed=true."}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.T("disk_attach changes a VM. Approve, then confirmed=true.",
+			"disk_attach меняет ВМ. Получите согласие, затем вызовите снова с confirmed=true.")}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -300,7 +302,8 @@ func (s *Registry) handleDiskDetach(ctx context.Context, args map[string]any) (s
 		return usageT("'disk_id' and 'vm' are required", "нужны 'disk_id' и 'vm'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": "disk_detach changes a VM. Approve, then confirmed=true."}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.T("disk_detach changes a VM. Approve, then confirmed=true.",
+			"disk_detach меняет ВМ. Получите согласие, затем вызовите снова с confirmed=true.")}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -336,8 +339,9 @@ func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (s
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("disk_resize grows disk %s to %d GB (grow only; billable). Approve, then confirmed=true. NB: after resize you must grow the partition+filesystem on the VM (e.g. growpart + resize2fs). Free-tier disks are rejected by the API.", diskID, sizeGB),
+			"status": "confirmation_required",
+			"message": i18n.Tf("disk_resize grows disk %s to %d GB (grow only; billable). Approve, then confirmed=true. NB: after resize you must grow the partition+filesystem on the VM (e.g. growpart + resize2fs). Free-tier disks are rejected by the API.",
+				"disk_resize увеличит диск %s до %d ГБ (только увеличение; платно). Получите согласие, затем вызовите снова с confirmed=true. После этого раздел и файловую систему на ВМ нужно расширить (например, growpart и resize2fs). Диски бесплатного тарифа API не увеличивает.", diskID, sizeGB),
 			"preview": engine.CreatePreview{Resource: engine.ResourceDiskResize, Name: diskID,
 				Disk: &deployplan.DiskSpec{SizeGB: sizeGB}, CostNote: "not estimated: evo has no rate card for this resource"},
 		}), true
@@ -363,7 +367,8 @@ func (s *Registry) handleDiskDelete(ctx context.Context, args map[string]any) (s
 		return usageT("'disk_id' is required", "нужен 'disk_id'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("disk_delete permanently destroys disk %s and its data. Approve, then confirmed=true.", diskID)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("disk_delete permanently destroys disk %s and its data. Approve, then confirmed=true.",
+			"disk_delete безвозвратно удаляет диск %s и его данные. Получите согласие, затем вызовите снова с confirmed=true.", diskID)}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {

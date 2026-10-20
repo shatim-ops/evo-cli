@@ -347,7 +347,8 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 		"availability_zone": zone}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		out := map[string]any{"status": "confirmation_required",
-			"message":     "kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes). Get the user's approval, then call again with confirmed=true.",
+			"message": i18n.T("kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes). Get the user's approval, then call again with confirmed=true.",
+				"kafka_create создаёт ПЛАТНЫЙ кластер Managed Kafka (асинхронно, несколько минут). Получите согласие пользователя, затем вызовите снова с confirmed=true."),
 			"will_create": willCreate}
 		if brokersNote != "" {
 			out["warning"] = brokersNote
@@ -410,6 +411,7 @@ func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return deletePreview("kafka_delete PERMANENTLY deletes Kafka cluster %s and its data. Confirm, then call again with confirmed=true.",
+			"kafka_delete БЕЗВОЗВРАТНО удаляет кластер Kafka %s и его данные. Подтвердите, затем вызовите снова с confirmed=true.",
 			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)

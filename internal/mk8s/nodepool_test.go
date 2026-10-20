@@ -25,7 +25,7 @@ func TestListNodePools_ClusterRequiredAndPaged(t *testing.T) {
 		case "":
 			_, _ = io.WriteString(w, `{"nodePools":[{"id":"np1","name":"a"}],"nextPageToken":"p2"}`)
 		case "p2":
-			_, _ = io.WriteString(w, `{"nodePools":[{"id":"np2","name":"b"}],"nextPageToken":"p2"}`)
+			_, _ = io.WriteString(w, `{"nodePools":[{"id":"np2","name":"b"}],"nextPageToken":""}`)
 		default:
 			http.Error(w, `{"message":"bad token"}`, 400)
 		}
@@ -35,7 +35,7 @@ func TestListNodePools_ClusterRequiredAndPaged(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(nps) != 2 {
-		t.Fatalf("node pools %d, want 2 (two pages; a repeated token ends the loop)", len(nps))
+		t.Fatalf("node pools %d, want 2 (two pages)", len(nps))
 	}
 	if got := len(rec.reqs); got != 2 {
 		t.Errorf("requests %d, want 2", got)
@@ -46,5 +46,19 @@ func TestListNodePools_ClusterRequiredAndPaged(t *testing.T) {
 	}
 	if got := len(rec.reqs); got != 2 {
 		t.Errorf("an empty cluster ID sent a request (%d total)", got)
+	}
+}
+
+// Повтор токена — список не полон: ошибка, а не конец списка (break r4,
+// R4-6; раньше повтор молча заканчивал список).
+func TestListNodePools_RepeatedTokenIsError(t *testing.T) {
+	cli, rec := newAddonAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"nodePools":[{"id":"np1"}],"nextPageToken":"p2"}`)
+	})
+	if nps, err := cli.ListNodePools(context.Background(), "00000000-0000-0000-0000-0000000000c1"); err == nil {
+		t.Fatalf("repeated token: %d node pools and no error", len(nps))
+	}
+	if got := len(rec.reqs); got != 2 {
+		t.Errorf("requests %d, want 2", got)
 	}
 }

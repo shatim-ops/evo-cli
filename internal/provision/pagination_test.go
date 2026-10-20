@@ -7,40 +7,71 @@ package provision
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
+
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // QA-9: a server that ignores offset answers the first page again. The
-// walk stops on the page with no new id: 100 distinct VMs, not 300 with
-// duplicates.
-func TestCompute_ListIgnoresOffsetNoDuplicates(t *testing.T) {
-	calls := 0
-	srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		var items []map[string]any
-		for i := range 100 {
-			items = append(items, map[string]any{"id": fmt.Sprintf("vm-%d", i), "name": fmt.Sprintf("n%d", i)})
+// walk stops on the page with no new id after two requests — and that is
+// an error, the list is not complete: 100 distinct VMs of total 300 were a
+// success before, and destroy and cleanup decided from them (break r4,
+// R4-3). The same without a total: after a full page, a page of VMs
+// already read is an error too.
+func TestCompute_ListIgnoresOffsetIsError(t *testing.T) {
+	for _, total := range []int{300, 0} {
+		calls := 0
+		srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			var items []map[string]any
+			for i := range 100 {
+				items = append(items, map[string]any{"id": fmt.Sprintf("vm-%d", i), "name": fmt.Sprintf("n%d", i)})
+			}
+			body := map[string]any{"items": items}
+			if total > 0 {
+				body["total"] = total
+			}
+			_ = json.NewEncoder(w).Encode(body)
+		})
+		vms, err := a.ListVMsInProject(context.Background(), "p")
+		srv.Close()
+		var ce *clierrors.CLIError
+		if !errors.As(err, &ce) || ce.Code != clierrors.CodeAPIError || !strings.Contains(err.Error(), "/api/v1/vms") {
+			t.Fatalf("total %d: vms = %d, err = %v; want an incomplete-list error", total, len(vms), err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "total": 300})
-	})
-	defer srv.Close()
-	vms, err := a.ListVMsInProject(context.Background(), "p")
-	if err != nil {
-		t.Fatal(err)
-	}
-	seen := map[string]bool{}
-	for _, vm := range vms {
-		if seen[vm.ID] {
-			t.Fatalf("duplicate %s", vm.ID)
+		if calls != 2 {
+			t.Fatalf("total %d: requests = %d, want 2", total, calls)
 		}
-		seen[vm.ID] = true
 	}
-	if len(vms) != 100 || calls != 2 {
-		t.Fatalf("vms = %d, requests = %d; want 100 and 2", len(vms), calls)
+}
+
+// Without a total, an empty page or a short page is the end of the list,
+// not an error.
+func TestCompute_ListWithoutTotalEnds(t *testing.T) {
+	for _, last := range []int{0, 7} {
+		calls := 0
+		srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			n := listPageSize
+			if calls == 2 {
+				n = last
+			}
+			items := []map[string]any{}
+			for i := range n {
+				items = append(items, map[string]any{"id": fmt.Sprintf("vm-%d-%d", calls, i)})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
+		})
+		vms, err := a.ListVMsInProject(context.Background(), "p")
+		srv.Close()
+		if err != nil || len(vms) != listPageSize+last || calls != 2 {
+			t.Fatalf("last page %d: vms = %d, requests = %d, err = %v", last, len(vms), calls, err)
+		}
 	}
 }
 

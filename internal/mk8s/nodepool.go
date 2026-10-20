@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 )
 
 // --- Node pool types (v3) ---
@@ -85,35 +84,23 @@ func (c *Client) ListNodePools(ctx context.Context, clusterID string) ([]map[str
 		return nil, errors.New("mk8s: node pools need a cluster ID")
 	}
 	var out []map[string]any
-	seen := map[string]bool{}
-	token := ""
-	for i := 0; i < maxAddonPages; i++ {
-		q := url.Values{}
-		q.Set("clusterId", clusterID)
-		q.Set("pageSize", strconv.Itoa(addonPageSize))
-		if token != "" {
-			q.Set("pageToken", token)
-		}
-		data, st, err := c.do(ctx, http.MethodGet, "/v3/nodePools", q, nil)
-		if err != nil {
-			return nil, err
-		}
-		if st != 200 {
-			return nil, apiError(st, data)
-		}
+	// Only clusterId, no projectId: the request as the live API answered
+	// it (api-probe 17.10). A repeated token and more than maxAddonPages
+	// pages are errors (c.walk).
+	query := func() url.Values { return url.Values{"clusterId": {clusterID}} }
+	err := c.walk(ctx, "/v3/nodePools", query, func(data []byte) (string, error) {
 		var r struct {
 			NodePools     []map[string]any `json:"nodePools"`
 			NextPageToken string           `json:"nextPageToken"`
 		}
 		if err := json.Unmarshal(data, &r); err != nil {
-			return nil, fmt.Errorf("parse node pools: %w", err)
+			return "", fmt.Errorf("parse node pools: %w", err)
 		}
 		out = append(out, r.NodePools...)
-		if r.NextPageToken == "" || seen[r.NextPageToken] {
-			break
-		}
-		seen[r.NextPageToken] = true
-		token = r.NextPageToken
+		return r.NextPageToken, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }

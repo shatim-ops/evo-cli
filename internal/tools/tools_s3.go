@@ -110,8 +110,9 @@ func (s *Registry) handleS3Put(ctx context.Context, args map[string]any) (string
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("s3_put will upload %d bytes to s3://%s/%s, overwriting the object if it exists. Call again with confirmed=true after the user approves.", len(data), bucket, key),
+			"status": "confirmation_required",
+			"message": i18n.Tf("s3_put will upload %d bytes to s3://%s/%s, overwriting the object if it exists. Call again with confirmed=true after the user approves.",
+				"s3_put загрузит %d байт в s3://%s/%s и перезапишет объект, если он есть. Получив согласие пользователя, вызовите снова с confirmed=true.", len(data), bucket, key),
 		}), true
 	}
 	cli, err := s.s3Client()
@@ -133,8 +134,9 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("s3_rm permanently deletes s3://%s/%s. Call again with confirmed=true after the user approves.", bucket, key),
+			"status": "confirmation_required",
+			"message": i18n.Tf("s3_rm permanently deletes s3://%s/%s. Call again with confirmed=true after the user approves.",
+				"s3_rm безвозвратно удаляет s3://%s/%s. Получив согласие пользователя, вызовите снова с confirmed=true.", bucket, key),
 		}), true
 	}
 	cli, err := s.s3Client()
@@ -158,8 +160,9 @@ func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("s3_bucket_create creates bucket %q (billable storage). Call again with confirmed=true after the user approves.", bucket),
+			"status": "confirmation_required",
+			"message": i18n.Tf("s3_bucket_create creates bucket %q (billable storage). Call again with confirmed=true after the user approves.",
+				"s3_bucket_create создаёт бакет %q (хранение платное). Получив согласие пользователя, вызовите снова с confirmed=true.", bucket),
 			"preview": s3BucketPreview(bucket, stringArg(args, "region")),
 		}), true
 	}
@@ -180,8 +183,9 @@ func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("s3_bucket_delete permanently deletes bucket %q (it must be EMPTY). Call again with confirmed=true after the user approves.", bucket),
+			"status": "confirmation_required",
+			"message": i18n.Tf("s3_bucket_delete permanently deletes bucket %q (it must be EMPTY). Call again with confirmed=true after the user approves.",
+				"s3_bucket_delete безвозвратно удаляет бакет %q (он должен быть ПУСТЫМ). Получив согласие пользователя, вызовите снова с confirmed=true.", bucket),
 		}), true
 	}
 	cli, err := s.s3Client()

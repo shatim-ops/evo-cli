@@ -7,7 +7,6 @@ package provision
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // listPageSize is the documented maximum of limit on compute lists
@@ -93,7 +93,7 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 				ID string `json:"id"`
 			}]
 			_ = json.Unmarshal(body, &ids)
-			fresh := false
+			fresh := 0
 			for i := range page.Items {
 				id := ""
 				if i < len(ids.Items) {
@@ -105,17 +105,18 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 					}
 					seen[id] = true
 				}
-				fresh = true
+				fresh++
 				out = append(out, &page.Items[i])
 			}
 			offset += len(page.Items)
-			// Без total (спецификация его обещает) — до неполной страницы.
-			done := offset >= page.Total
-			if page.Total == 0 {
-				done = len(page.Items) < listPageSize
+			if !paged {
+				return out, nil
 			}
-			// A page with nothing new ends the walk too: offset is ignored.
-			if !paged || len(page.Items) == 0 || done || !fresh {
+			done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, page.Total, listPageSize)
+			if err != nil {
+				return nil, pager.Named(path, err)
+			}
+			if done {
 				return out, nil
 			}
 			continue
@@ -131,8 +132,40 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 	}
 	// Past listMaxPages the list is cut short: an error, as pager.All
 	// gives, not a partial list without a word (QA-9).
-	return nil, errors.New(i18n.Tf("%s: more than %d pages, the list is not complete",
-		"%s: больше %d страниц, список не полон", path, listMaxPages))
+	return nil, pager.Named(path, pager.TooManyPages(listMaxPages))
+}
+
+// offsetPageEnd decides after a page of an offset walk whether the list is
+// read: items is the size of the page, fresh how many of them were not read
+// before, read how many the list has now, offset the next offset, total the
+// answer's total (0: not given). A list read only in part is an error, not
+// a shorter list: evo deletes what is left over and counts from it
+// (break r4, R4-2…R4-5).
+//
+// With a total: offset at the total ends the list; an empty page or a page
+// of items already read before it is an error (the server ignores the
+// offset, QA-9: 300 items, 100 distinct). Without one: an empty page or a
+// page shorter than pageSize ends it, a page of items already read is an
+// error.
+func offsetPageEnd(items, fresh, read, offset, total, pageSize int) (bool, error) {
+	if total > 0 {
+		switch {
+		case offset >= total:
+			return true, nil
+		case items == 0:
+			return false, pager.EmptyPage(read, total)
+		case fresh == 0:
+			return false, pager.NoNewItems(read, total)
+		}
+		return false, nil
+	}
+	switch {
+	case items == 0:
+		return true, nil
+	case fresh == 0:
+		return false, pager.NoNewItems(read, -1)
+	}
+	return items < pageSize, nil
 }
 
 // ListVMsInProject lists VMs scoped to a project (the /vms endpoint requires
@@ -191,12 +224,18 @@ const (
 
 // ListSecurityGroupRules lists a group's rules via
 // GET /api/v1/security-groups/{id}/rules, following offset pages. The group
-// list (GET /api/v1/security-groups) carries only rule counts.
+// list (GET /api/v1/security-groups) carries only rule counts. The walk
+// ends as listAll's does (offsetPageEnd); past sgRulesMaxPages, on an empty
+// page before the total or on a page of rules already read the list is not
+// complete — an error: deploy and destroy decide from it which rule to add
+// or delete (break r4, R4-4, R4-5).
 func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string) ([]*SGRule, error) {
 	var out []*SGRule
+	seen := map[string]bool{}
 	offset := 0
+	base := fmt.Sprintf("/api/v1/security-groups/%s/rules", seg(sgID))
 	for range sgRulesMaxPages {
-		path := fmt.Sprintf("/api/v1/security-groups/%s/rules?offset=%d&limit=%d", seg(sgID), offset, sgRulesPageSize)
+		path := fmt.Sprintf("%s?offset=%d&limit=%d", base, offset, sgRulesPageSize)
 		resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
 		if err != nil {
 			return nil, err
@@ -207,15 +246,27 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 		if err != nil {
 			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode security group rules", "не удалось разобрать правила группы безопасности"), hintUnexpectedFormatVerbose(), err)
 		}
+		fresh := 0
 		for i := range page.Items {
+			if id := page.Items[i].ID; id != "" {
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+			}
+			fresh++
 			out = append(out, &page.Items[i])
 		}
 		offset += len(page.Items)
-		if len(page.Items) == 0 || offset >= page.Total {
+		done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, page.Total, sgRulesPageSize)
+		if err != nil {
+			return nil, pager.Named(base, err)
+		}
+		if done {
 			return out, nil
 		}
 	}
-	return out, nil
+	return nil, pager.Named(base, pager.TooManyPages(sgRulesMaxPages))
 }
 
 // DeleteSecurityGroupRule deletes one rule via

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/secret"
 )
 
@@ -67,8 +68,9 @@ func (s *Registry) handleSecretValue(ctx context.Context, args map[string]any) (
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": "secret_value returns the DECRYPTED secret in plaintext. Only fetch it with the user's explicit approval; call again with confirmed=true.",
+			"status": "confirmation_required",
+			"message": i18n.T("secret_value returns the DECRYPTED secret in plaintext. Only fetch it with the user's explicit approval; call again with confirmed=true.",
+				"secret_value возвращает РАСШИФРОВАННЫЙ секрет открытым текстом. Запрашивайте его только с явного согласия пользователя; вызовите снова с confirmed=true."),
 		}), true
 	}
 	cli, err := s.secretClient(ctx)
@@ -103,8 +105,9 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("secret_create stores a new secret at %q. Call again with confirmed=true. (The value is never echoed back.)", path),
+			"status": "confirmation_required",
+			"message": i18n.Tf("secret_create stores a new secret at %q. Call again with confirmed=true. (The value is never echoed back.)",
+				"secret_create сохраняет новый секрет по пути %q. Вызовите снова с confirmed=true. (Значение в ответе не возвращается.)", path),
 		}), true
 	}
 	cli, err := s.secretClient(ctx)
@@ -140,7 +143,8 @@ func (s *Registry) handleSecretAddVersion(ctx context.Context, args map[string]a
 		return usageT("'path' and 'value' are required", "нужны 'path' и 'value'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("secret_add_version adds a new value version to secret %q (the previous version stays until disabled). Call again with confirmed=true.", path)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("secret_add_version adds a new value version to secret %q (the previous version stays until disabled). Call again with confirmed=true.",
+			"secret_add_version добавляет новую версию значения секрета %q (предыдущая действует, пока её не отключат). Вызовите снова с confirmed=true.", path)}), true
 	}
 	cli, err := s.secretClient(ctx)
 	if err != nil {
@@ -164,7 +168,8 @@ func (s *Registry) handleSecretDelete(ctx context.Context, args map[string]any) 
 		return usageT("'path' is required (from secret_list)", "нужен 'path' (из secret_list)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("secret_delete PERMANENTLY deletes secret %q and all its versions. Call again with confirmed=true.", path)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("secret_delete PERMANENTLY deletes secret %q and all its versions. Call again with confirmed=true.",
+			"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q и все его версии. Вызовите снова с confirmed=true.", path)}), true
 	}
 	cli, err := s.secretClient(ctx)
 	if err != nil {

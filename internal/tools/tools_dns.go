@@ -142,8 +142,9 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 	vis := dnsVisibility(args)
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("dns_zone_create creates a %s DNS zone for %q (async). A public zone needs domain-ownership delegation to serve traffic. Call again with confirmed=true.", vis, domain),
+			"status": "confirmation_required",
+			"message": i18n.Tf("dns_zone_create creates a %s DNS zone for %q (async). A public zone needs domain-ownership delegation to serve traffic. Call again with confirmed=true.",
+				"dns_zone_create создаёт зону DNS (%s) для %q (асинхронно). Публичная зона обслуживает запросы только после делегирования домена. Вызовите снова с confirmed=true.", vis, domain),
 		}), true
 	}
 	cli, err := s.dnsClient(ctx)
@@ -179,7 +180,8 @@ func (s *Registry) handleDnsZoneDelete(ctx context.Context, args map[string]any)
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("dns_zone_delete PERMANENTLY deletes %s zone %s and its records (async). Call again with confirmed=true.", vis, id)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("dns_zone_delete PERMANENTLY deletes %s zone %s and its records (async). Call again with confirmed=true.",
+			"dns_zone_delete БЕЗВОЗВРАТНО удаляет зону (%s) %s и её записи (асинхронно). Вызовите снова с confirmed=true.", vis, id)}), true
 	}
 	op, err := cli.DeleteZone(ctx, vis, id)
 	if err != nil {
@@ -304,11 +306,12 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 		// looked up on the confirmed call
 		vis := dnsVisibility(args)
 		if stringArg(args, "type") == "" {
-			vis = "(public or private: found by id)"
+			vis = i18n.T("(public or private: found by id)", "публичную или приватную — найдём по id")
 		}
 		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": fmt.Sprintf("dns_record_create adds a %s-record %q → %v (ttl %d) in %s zone %s (async). Call again with confirmed=true.", rtype, name, vals, ttl, vis, zoneID),
+			"status": "confirmation_required",
+			"message": i18n.Tf("dns_record_create adds a %s-record %q → %v (ttl %d) in %s zone %s (async). Call again with confirmed=true.",
+				"dns_record_create добавляет запись %s %q → %v (ttl %d) в зону (%s) %s (асинхронно). Вызовите снова с confirmed=true.", rtype, name, vals, ttl, vis, zoneID),
 		}), true
 	}
 	cli, err := s.dnsClient(ctx)
@@ -347,7 +350,8 @@ func (s *Registry) handleDnsRecordDelete(ctx context.Context, args map[string]an
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("dns_record_delete deletes %s record %s (async). Call again with confirmed=true.", vis, id)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("dns_record_delete deletes %s record %s (async). Call again with confirmed=true.",
+			"dns_record_delete удаляет запись (%s) %s (асинхронно). Вызовите снова с confirmed=true.", vis, id)}), true
 	}
 	op, err := cli.DeleteRecord(ctx, vis, id)
 	if err != nil {

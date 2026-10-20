@@ -55,16 +55,17 @@ func TestVersions_PageSizeAndPages(t *testing.T) {
 	}
 }
 
-// Сервер, повторяющий тот же токен, не зацикливает клиент.
-func TestVersions_RepeatedTokenStops(t *testing.T) {
+// Сервер, повторяющий тот же токен, не зацикливает клиент: два запроса и
+// ошибка «список не полон» (break r4, R4-7; раньше — успех).
+func TestVersions_RepeatedTokenIsError(t *testing.T) {
 	n := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n++
-		_, _ = io.WriteString(w, `{"versions":[{"id":"1"}],"nextPageToken":"same"}`)
+		_, _ = io.WriteString(w, `{"versions":[{"id":"`+string(rune('0'+n))+`"}],"nextPageToken":"same"}`)
 	}))
 	defer srv.Close()
 	out, err := New("tok", "p", srv.URL).Versions(context.Background(), "c-1")
-	if err != nil || n != 2 {
+	if err == nil || n != 2 {
 		t.Fatalf("requests %d, err %v, out %v", n, err, out)
 	}
 }

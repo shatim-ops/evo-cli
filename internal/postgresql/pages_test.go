@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -49,9 +50,10 @@ func TestListClusters_FollowsNextPage(t *testing.T) {
 	}
 }
 
-// A server that keeps answering a token already followed ends the read
-// instead of looping forever.
-func TestListClusters_StopsOnRepeatedToken(t *testing.T) {
+// A server that keeps answering a token already followed does not loop
+// forever: the read stops after two requests with an error, the list is
+// not complete (break r4, R4-6; it was a success with the clusters read).
+func TestListClusters_RepeatedTokenIsError(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -59,11 +61,11 @@ func TestListClusters_StopsOnRepeatedToken(t *testing.T) {
 	}))
 	defer srv.Close()
 	got, err := New("t", "proj", srv.URL).ListClusters(context.Background())
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.Contains(err.Error(), `"same-token"`) || !strings.Contains(err.Error(), "postgresql: ") {
+		t.Fatalf("clusters = %d, err = %v", len(got), err)
 	}
-	if calls.Load() != 2 || len(got) != 2 {
-		t.Fatalf("calls = %d, clusters = %d; want 2 and 2", calls.Load(), len(got))
+	if calls.Load() != 2 {
+		t.Fatalf("calls = %d, want 2", calls.Load())
 	}
 }
 

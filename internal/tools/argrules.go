@@ -24,15 +24,60 @@ import (
 
 // aliasArg reads an argument that has an alias (pg_get id / cluster_id).
 // Both given and different was the id silently: `evo pg delete A --id B`
-// deleted B (QA-1).
+// deleted B (QA-1). Given is as in oneOfArgs: " " and the alias was the
+// alias, and pg_delete sent DELETE for it (break r4, R4-11).
 func aliasArg(args map[string]any, name, alias string) (string, error) {
-	v, a := strings.TrimSpace(stringArg(args, name)), strings.TrimSpace(stringArg(args, alias))
-	if v != "" && a != "" && v != a {
+	rv, ra := stringArg(args, name), stringArg(args, alias)
+	v, a := strings.TrimSpace(rv), strings.TrimSpace(ra)
+	if rv != "" && ra != "" && v != a {
 		return "", clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("%s and %s disagree (%q, %q)", "%s и %s расходятся (%q, %q)", name, alias, v, a),
+			i18n.Tf("%s and %s disagree (%q, %q)", "%s и %s расходятся (%q, %q)", name, alias, rv, ra),
 			i18n.Tf("Pass one of them: %s is an alias of %s.", "Укажите один из них: %s — другое имя %s.", alias, name))
 	}
+	if err := blankArgs(args, name, alias); err != nil {
+		return "", err
+	}
 	return firstNonEmptyStr(v, a), nil
+}
+
+// oneOfArgs reads the arguments of which a call passes one (vm_get vm_id
+// or name, image_get image or image_id, release_floating_ip id or
+// ip_address): the value of the one given, trimmed, and its key. An
+// argument is given when its key holds a string that is not empty; an
+// absent key, null and "" are not given. Two given is notBoth, whatever
+// they hold; a given value of only spaces is USAGE "empty value <arg>".
+// " " was trimmed away and the other argument taken without a word
+// (break r4, R4-11). None given is "", "", nil: the caller says what is
+// required.
+func oneOfArgs(args map[string]any, notBoth error, keys ...string) (value, key string, err error) {
+	for _, k := range keys {
+		if stringArg(args, k) == "" {
+			continue
+		}
+		if key != "" {
+			return "", "", notBoth
+		}
+		key = k
+	}
+	if err := blankArgs(args, keys...); err != nil {
+		return "", "", err
+	}
+	if key == "" {
+		return "", "", nil
+	}
+	return strings.TrimSpace(stringArg(args, key)), key, nil
+}
+
+// blankArgs refuses a given argument of only spaces: "empty value <arg>".
+func blankArgs(args map[string]any, keys ...string) error {
+	for _, k := range keys {
+		if v := stringArg(args, k); v != "" && strings.TrimSpace(v) == "" {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("empty value of %s: it is only spaces", "пустое значение %s: в нём только пробелы", k),
+				i18n.Tf("Pass a value or leave %s out.", "Передайте значение или не передавайте %s вовсе.", k))
+		}
+	}
+	return nil
 }
 
 // portsArg reads a list of ports: a JSON array of integers (or of strings
@@ -40,7 +85,7 @@ func aliasArg(args map[string]any, name, alias string) (string, error) {
 // whole number, or a port outside 1-65535, is USAGE naming the element:
 // "8000-8010" was dropped without a word, 0 and 70000 went to the API
 // (QA-3). A range is not taken: a security group rule of open_ports and
-// deploy_apply opens one port.
+// deploy_apply opens one port. A port given twice is kept once.
 func portsArg(arg string, v any) ([]int, error) {
 	var elems []any
 	switch t := v.(type) {
@@ -62,6 +107,7 @@ func portsArg(arg string, v any) ([]int, error) {
 		return nil, badPortsArg(arg, v)
 	}
 	out := make([]int, 0, len(elems))
+	seen := map[int]bool{}
 	for _, e := range elems {
 		n, ok := 0, false
 		switch x := e.(type) {
@@ -84,6 +130,12 @@ func portsArg(arg string, v any) ([]int, error) {
 				i18n.Tf("%s: port %d is out of range 1-65535", "%s: порт %d вне диапазона 1–65535", arg, n),
 				i18n.T("A port is a whole number 1-65535, e.g. [80, 443].", "Порт — целое число 1–65535, например [80, 443]."))
 		}
+		// A port listed twice is one port: [22, 22] made two rules
+		// (break r4, R4-19). The order of the first mention stays.
+		if seen[n] {
+			continue
+		}
+		seen[n] = true
 		out = append(out, n)
 	}
 	return out, nil
