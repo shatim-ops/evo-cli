@@ -66,8 +66,10 @@ func TestRussian_TreeHelp(t *testing.T) {
 		t.Errorf("exit %d:\n%s", code, stdout)
 	}
 	// A leaf of vm or disk is Russian throughout: summary, long help, flags.
+	reg := newRegistry()
+	destroy, _ := reg.Lookup("destroy")
 	code, stdout, _ = runCLI(t, "", "vm", "delete", "--help")
-	if code != 0 || !strings.HasPrefix(stdout, toolShortRU["destroy"]+".\n\n"+toolLongRU["destroy"]+"\n\nВызывает инструмент destroy") ||
+	if code != 0 || !strings.HasPrefix(stdout, destroy.ShortRU+".\n\n"+destroy.DescriptionRU+"\n\nВызывает инструмент destroy") ||
 		strings.Contains(stdout, "Permanently delete a VM") || strings.Contains(stdout, "confirmed") ||
 		!strings.Contains(stdout, "Спрашивает подтверждение") ||
 		!strings.Contains(stdout, "--release-ip   Освободить и floating IP ВМ. Выключить: --release-ip=false (по умолчанию true)\n") {
@@ -75,8 +77,9 @@ func TestRussian_TreeHelp(t *testing.T) {
 	}
 	// The other trees are Russian throughout too: no English description
 	// of the tool, no English flag.
+	vpcDelete, _ := reg.Lookup("vpc_delete")
 	code, stdout, _ = runCLI(t, "", "vpc", "delete", "--help")
-	if code != 0 || !strings.HasPrefix(stdout, toolShortRU["vpc_delete"]+".\n\n"+toolLongRU["vpc_delete"]+"\n\nВызывает инструмент vpc_delete") ||
+	if code != 0 || !strings.HasPrefix(stdout, vpcDelete.ShortRU+".\n\n"+vpcDelete.DescriptionRU+"\n\nВызывает инструмент vpc_delete") ||
 		strings.Contains(stdout, "на английском") || strings.Contains(stdout, "Delete a VPC") {
 		t.Errorf("exit %d:\n%s", code, stdout)
 	}
@@ -87,11 +90,13 @@ func TestRussian_TreeHelp(t *testing.T) {
 	}
 }
 
-// Every tree is Russian throughout: every command has a long help in
-// toolLongRU, every flag a text in flagShortRU. The texts speak of the CLI:
-// no confirmed=true (the CLI asks or takes --yes), no tool names (evo image
-// list, not image_list) except as 'evo tools call <tool>' for a tool without
-// a command. No entry is left without a flag.
+// Every tree is Russian throughout: every command has a Russian long help
+// (Tool.DescriptionRU), every flag a Russian text (Tool.ArgDescriptionsRU).
+// The texts speak of the CLI: no confirmed=true (the CLI asks or takes
+// --yes), no tool names (evo image list, not image_list) except as
+// 'evo tools call <tool>' for a tool without a command. That every argument
+// of every tool has its Russian text, and no text names an argument the tool
+// does not have, is TestRegistry_DescriptionsBothLanguages (internal/tools).
 func TestTrees_RussianFlags(t *testing.T) {
 	reg := newRegistry()
 	toolNames := map[string]bool{}
@@ -112,50 +117,39 @@ func TestTrees_RussianFlags(t *testing.T) {
 			}
 		}
 	}
-	usedLong, usedFlag := map[string]bool{}, map[string]bool{}
 	for _, g := range allTreeGroups() {
 		for _, c := range g.Cmds {
 			tl, _ := reg.Lookup(c.Tool)
-			if s := toolLongRU[c.Tool]; s == "" {
-				t.Errorf("%s %s: no Russian long help for %s in toolLongRU", g.Name, c.Verb, c.Tool)
+			if s := tl.DescriptionRU; s == "" {
+				t.Errorf("%s %s: no Russian long help for %s (DescriptionRU)", g.Name, c.Verb, c.Tool)
 			} else {
 				mcpOnly(c.Tool, s)
 			}
-			usedLong[c.Tool] = true
 			for _, p := range c.flagArgs(tl) {
 				key := c.Tool + "." + p.Name
-				usedFlag[key] = true
-				if s := flagShortRU[key]; s == "" {
-					t.Errorf("%s %s --%s: no Russian help for %s in flagShortRU", g.Name, c.Verb, c.flagName(p.Name), key)
+				if s := tl.ArgDescriptionsRU[p.Name]; s == "" {
+					t.Errorf("%s %s --%s: no Russian help for %s (ArgDescriptionsRU)", g.Name, c.Verb, c.flagName(p.Name), key)
 				} else {
 					mcpOnly(key, s)
 				}
 			}
 		}
 	}
-	for k := range toolLongRU {
-		if !usedLong[k] {
-			t.Errorf("toolLongRU: %s is no tree command", k)
-		}
-	}
-	for k := range flagShortRU {
-		if !usedFlag[k] {
-			t.Errorf("flagShortRU: %s is no flag of a tree command", k)
-		}
-	}
 }
 
 // Every tree command has a Russian summary: a new tool in a tree must get one.
 func TestTrees_RussianShorts(t *testing.T) {
+	reg := newRegistry()
 	for _, g := range allTreeGroups() {
 		if treeGroupShortRU[g.Name] == "" {
 			t.Errorf("tree %s: no Russian summary in treeGroupShortRU", g.Name)
 		}
 		for _, c := range g.Cmds {
-			ru := toolShortRU[c.Tool]
+			tl, _ := reg.Lookup(c.Tool)
+			ru := tl.ShortRU
 			switch {
 			case ru == "":
-				t.Errorf("%s %s: no Russian summary for tool %s in toolShortRU", g.Name, c.Verb, c.Tool)
+				t.Errorf("%s %s: no Russian summary for tool %s (ShortRU)", g.Name, c.Verb, c.Tool)
 			case strings.HasSuffix(ru, "."):
 				t.Errorf("%s: a summary does not end with a period: %q", c.Tool, ru)
 			}

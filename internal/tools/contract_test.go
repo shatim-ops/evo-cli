@@ -34,6 +34,8 @@ type contractRT struct {
 	mu   sync.Mutex
 	reqs []string
 	kind string
+	// body replaces the answer of kind "200" when set.
+	body string
 }
 
 func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -42,7 +44,7 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	c.mu.Lock()
 	c.reqs = append(c.reqs, r.Method+" "+r.URL.Host+r.URL.Path)
-	kind := c.kind
+	kind, override := c.kind, c.body
 	c.mu.Unlock()
 	if kind == "conn" {
 		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
@@ -63,6 +65,9 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		if code == 200 {
 			body = `{"items":[],"total":0,"id":"` + contractID + `","name":"web","done":true,"status":"ACTIVE"}`
+			if override != "" {
+				body = override
+			}
 		}
 	}
 	return &http.Response{

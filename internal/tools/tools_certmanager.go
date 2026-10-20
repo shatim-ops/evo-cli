@@ -69,8 +69,8 @@ func (s *Registry) handleCertIssueLE(ctx context.Context, args map[string]any) (
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.Tf("cert_issue_le will request a Let's Encrypt certificate %q for %v (the domains must be delegated to Evolution DNS). Call again with confirmed=true after the user approves.",
-				"cert_issue_le запросит сертификат Let's Encrypt %q для %v (домены должны быть делегированы в Evolution DNS). Получив согласие пользователя, вызовите снова с confirmed=true.", name, dnsNames),
+			"message": i18n.Tf("cert_issue_le will request a Let's Encrypt certificate %q for %v (the domains must be delegated to Evolution DNS).",
+				"cert_issue_le запросит сертификат Let's Encrypt %q для %v (домены должны быть делегированы в Evolution DNS).", name, dnsNames),
 		}), true
 	}
 	cli, err := s.certClient(ctx)
@@ -95,8 +95,8 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.Tf("cert_import will upload certificate %q and its private key to Certificate Manager. Call again with confirmed=true after the user approves.",
-				"cert_import загрузит сертификат %q и его закрытый ключ в Certificate Manager. Получив согласие пользователя, вызовите снова с confirmed=true.", name),
+			"message": i18n.Tf("cert_import will upload certificate %q and its private key to Certificate Manager.",
+				"cert_import загрузит сертификат %q и его закрытый ключ в Certificate Manager.", name),
 		}), true
 	}
 	cli, err := s.certClient(ctx)
@@ -125,8 +125,8 @@ func (s *Registry) handleCertRenew(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.Tf("cert_renew will trigger Let's Encrypt renewal of certificate %q. Call again with confirmed=true after the user approves.",
-				"cert_renew запустит перевыпуск Let's Encrypt для сертификата %q. Получив согласие пользователя, вызовите снова с confirmed=true.", id),
+			"message": i18n.Tf("cert_renew will trigger Let's Encrypt renewal of certificate %q.",
+				"cert_renew запустит перевыпуск Let's Encrypt для сертификата %q.", id),
 		}), true
 	}
 	cli, err := s.certClient(ctx)
@@ -148,8 +148,8 @@ func (s *Registry) handleCertDelete(ctx context.Context, args map[string]any) (s
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.Tf("cert_delete permanently deletes certificate %q. If it is bound to a load balancer/listener, deletion can break HTTPS. Get the user's approval, then call again with confirmed=true (add force=true to delete despite active usage).",
-				"cert_delete безвозвратно удаляет сертификат %q. Если он привязан к балансировщику или обработчику, удаление может сломать HTTPS. Получите согласие пользователя, затем вызовите снова с confirmed=true (force=true — удалить, хотя сертификат используется).", id),
+			"message": i18n.Tf("cert_delete permanently deletes certificate %q. If it is bound to a load balancer/listener, deletion can break HTTPS. (force=true deletes it despite active usage.)",
+				"cert_delete безвозвратно удаляет сертификат %q. Если он привязан к балансировщику или обработчику, удаление может сломать HTTPS. (force=true — удалить, хотя сертификат используется.)", id),
 		}), true
 	}
 	cli, err := s.certClient(ctx)
@@ -203,8 +203,8 @@ func (s *Registry) handleCertPrivateKey(ctx context.Context, args map[string]any
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("cert_private_key returns the SECRET private key in plaintext. Only fetch it with the user's explicit approval; call again with confirmed=true.",
-				"cert_private_key возвращает СЕКРЕТНЫЙ закрытый ключ открытым текстом. Запрашивайте его только с явного согласия пользователя; вызовите снова с confirmed=true."),
+			"message": i18n.T("cert_private_key returns the SECRET private key in plaintext.",
+				"cert_private_key возвращает СЕКРЕТНЫЙ закрытый ключ открытым текстом."),
 		}), true
 	}
 	cli, err := s.certClient(ctx)

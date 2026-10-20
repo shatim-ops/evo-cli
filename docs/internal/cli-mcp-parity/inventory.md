@@ -18,27 +18,27 @@
 
 | Группа | Всего | дерево | движок | tools call | RU-справка (short/long) |
 |---|---|---|---|---|---|
-| ar | 5 | 0 | 0 | 5 | 0/0 |
-| audit | 1 | 0 | 0 | 1 | 0/0 |
-| billing | 3 | 0 | 0 | 3 | 0/0 |
-| ca | 7 | 0 | 0 | 7 | 0/0 |
-| cert | 10 | 0 | 0 | 10 | 0/0 |
-| deploy | 8 | 1 | 3 | 4 | 1/1 |
+| ar | 5 | 0 | 0 | 5 | 5/5 |
+| audit | 1 | 0 | 0 | 1 | 1/1 |
+| billing | 3 | 0 | 0 | 3 | 3/3 |
+| ca | 7 | 0 | 0 | 7 | 7/7 |
+| cert | 10 | 0 | 0 | 10 | 10/10 |
+| deploy | 8 | 1 | 3 | 4 | 8/8 |
 | disk | 7 | 7 | 0 | 0 | 7/7 |
-| dns | 9 | 0 | 0 | 9 | 0/0 |
-| iam | 1 | 0 | 0 | 1 | 0/0 |
-| image | 6 | 3 | 1 | 2 | 3/3 |
+| dns | 9 | 0 | 0 | 9 | 9/9 |
+| iam | 1 | 0 | 0 | 1 | 1/1 |
+| image | 6 | 3 | 1 | 2 | 6/6 |
 | k8s | 15 | 15 | 0 | 0 | 15/15 |
-| kafka | 7 | 0 | 0 | 7 | 0/0 |
-| monitoring | 2 | 0 | 0 | 2 | 0/0 |
-| nlb | 9 | 0 | 0 | 9 | 0/0 |
-| org | 2 | 0 | 1 | 1 | 0/0 |
+| kafka | 7 | 0 | 0 | 7 | 7/7 |
+| monitoring | 2 | 0 | 0 | 2 | 2/2 |
+| nlb | 9 | 0 | 0 | 9 | 9/9 |
+| org | 2 | 0 | 1 | 1 | 2/2 |
 | pg | 15 | 15 | 0 | 0 | 15/15 |
-| redis | 7 | 0 | 0 | 7 | 0/0 |
+| redis | 7 | 0 | 0 | 7 | 7/7 |
 | s3 | 7 | 7 | 0 | 0 | 7/7 |
 | secret | 6 | 6 | 0 | 0 | 6/6 |
-| snat | 3 | 0 | 0 | 3 | 0/0 |
-| stack | 4 | 0 | 0 | 4 | 0/0 |
+| snat | 3 | 0 | 0 | 3 | 3/3 |
+| stack | 4 | 0 | 0 | 4 | 4/4 |
 | vm | 5 | 5 | 0 | 0 | 5/5 |
 | vpc | 13 | 13 | 0 | 0 | 13/13 |
 
@@ -46,40 +46,40 @@
 
 | Группа | Инструмент | Меняет | Способ | Команда CLI | RU short/long |
 |---|---|---|---|---|---|
-| ar | `ar_create` | да | tools call | `evo tools call ar_create` | нет/нет |
-| ar | `ar_delete` | да | tools call | `evo tools call ar_delete` | нет/нет |
-| ar | `ar_get` | нет | tools call | `evo tools call ar_get` | нет/нет |
-| ar | `ar_list` | нет | tools call | `evo tools call ar_list` | нет/нет |
-| ar | `ar_operation` | нет | tools call | `evo tools call ar_operation` | нет/нет |
-| audit | `audit_events` | нет | tools call | `evo tools call audit_events` | нет/нет |
-| billing | `billing_balance` | нет | tools call | `evo tools call billing_balance` | нет/нет |
-| billing | `billing_consumption` | нет | tools call | `evo tools call billing_consumption` | нет/нет |
-| billing | `billing_finops` | нет | tools call | `evo tools call billing_finops` | нет/нет |
-| ca | `ca_delete` | да | tools call | `evo tools call ca_delete` | нет/нет |
-| ca | `ca_deploy` | да | tools call | `evo tools call ca_deploy` | нет/нет |
-| ca | `ca_get` | нет | tools call | `evo tools call ca_get` | нет/нет |
-| ca | `ca_list` | нет | tools call | `evo tools call ca_list` | нет/нет |
-| ca | `ca_logs` | нет | tools call | `evo tools call ca_logs` | нет/нет |
-| ca | `ca_start` | да | tools call | `evo tools call ca_start` | нет/нет |
-| ca | `ca_stop` | да | tools call | `evo tools call ca_stop` | нет/нет |
-| cert | `cert_delete` | да | tools call | `evo tools call cert_delete` | нет/нет |
-| cert | `cert_get` | нет | tools call | `evo tools call cert_get` | нет/нет |
-| cert | `cert_import` | да | tools call | `evo tools call cert_import` | нет/нет |
-| cert | `cert_issue_le` | да | tools call | `evo tools call cert_issue_le` | нет/нет |
-| cert | `cert_list` | нет | tools call | `evo tools call cert_list` | нет/нет |
-| cert | `cert_operation` | нет | tools call | `evo tools call cert_operation` | нет/нет |
-| cert | `cert_private_key` | нет | tools call | `evo tools call cert_private_key` | нет/нет |
-| cert | `cert_renew` | да | tools call | `evo tools call cert_renew` | нет/нет |
-| cert | `cert_usage` | нет | tools call | `evo tools call cert_usage` | нет/нет |
-| cert | `cert_versions` | нет | tools call | `evo tools call cert_versions` | нет/нет |
-| deploy | `deploy` | да | движок | `evo deploy` (свой код), иначе `evo tools call deploy` | нет/нет |
-| deploy | `deploy_apply` | да | tools call | `evo tools call deploy_apply` | нет/нет |
-| deploy | `deploy_plan` | нет | tools call | `evo tools call deploy_plan` | нет/нет |
+| ar | `ar_create` | да | tools call | `evo tools call ar_create` | да/да |
+| ar | `ar_delete` | да | tools call | `evo tools call ar_delete` | да/да |
+| ar | `ar_get` | нет | tools call | `evo tools call ar_get` | да/да |
+| ar | `ar_list` | нет | tools call | `evo tools call ar_list` | да/да |
+| ar | `ar_operation` | нет | tools call | `evo tools call ar_operation` | да/да |
+| audit | `audit_events` | нет | tools call | `evo tools call audit_events` | да/да |
+| billing | `billing_balance` | нет | tools call | `evo tools call billing_balance` | да/да |
+| billing | `billing_consumption` | нет | tools call | `evo tools call billing_consumption` | да/да |
+| billing | `billing_finops` | нет | tools call | `evo tools call billing_finops` | да/да |
+| ca | `ca_delete` | да | tools call | `evo tools call ca_delete` | да/да |
+| ca | `ca_deploy` | да | tools call | `evo tools call ca_deploy` | да/да |
+| ca | `ca_get` | нет | tools call | `evo tools call ca_get` | да/да |
+| ca | `ca_list` | нет | tools call | `evo tools call ca_list` | да/да |
+| ca | `ca_logs` | нет | tools call | `evo tools call ca_logs` | да/да |
+| ca | `ca_start` | да | tools call | `evo tools call ca_start` | да/да |
+| ca | `ca_stop` | да | tools call | `evo tools call ca_stop` | да/да |
+| cert | `cert_delete` | да | tools call | `evo tools call cert_delete` | да/да |
+| cert | `cert_get` | нет | tools call | `evo tools call cert_get` | да/да |
+| cert | `cert_import` | да | tools call | `evo tools call cert_import` | да/да |
+| cert | `cert_issue_le` | да | tools call | `evo tools call cert_issue_le` | да/да |
+| cert | `cert_list` | нет | tools call | `evo tools call cert_list` | да/да |
+| cert | `cert_operation` | нет | tools call | `evo tools call cert_operation` | да/да |
+| cert | `cert_private_key` | нет | tools call | `evo tools call cert_private_key` | да/да |
+| cert | `cert_renew` | да | tools call | `evo tools call cert_renew` | да/да |
+| cert | `cert_usage` | нет | tools call | `evo tools call cert_usage` | да/да |
+| cert | `cert_versions` | нет | tools call | `evo tools call cert_versions` | да/да |
+| deploy | `deploy` | да | движок | `evo deploy` (свой код), иначе `evo tools call deploy` | да/да |
+| deploy | `deploy_apply` | да | tools call | `evo tools call deploy_apply` | да/да |
+| deploy | `deploy_plan` | нет | tools call | `evo tools call deploy_plan` | да/да |
 | deploy | `destroy` | да | дерево | `evo vm delete`, `evo destroy` (движок) | да/да |
-| deploy | `list` | нет | tools call | `evo tools call list` | нет/нет |
-| deploy | `logs` | нет | движок | `evo logs` (свой код), иначе `evo tools call logs` | нет/нет |
-| deploy | `open_ports` | да | tools call | `evo tools call open_ports` | нет/нет |
-| deploy | `status` | нет | движок | `evo status` (свой код), иначе `evo tools call status` | нет/нет |
+| deploy | `list` | нет | tools call | `evo tools call list` | да/да |
+| deploy | `logs` | нет | движок | `evo logs` (свой код), иначе `evo tools call logs` | да/да |
+| deploy | `open_ports` | да | tools call | `evo tools call open_ports` | да/да |
+| deploy | `status` | нет | движок | `evo status` (свой код), иначе `evo tools call status` | да/да |
 | disk | `disk_attach` | да | дерево | `evo disk attach` | да/да |
 | disk | `disk_create` | да | дерево | `evo disk create` | да/да |
 | disk | `disk_delete` | да | дерево | `evo disk delete` | да/да |
@@ -87,21 +87,21 @@
 | disk | `disk_list` | нет | дерево | `evo disk list` | да/да |
 | disk | `disk_resize` | да | дерево | `evo disk resize` | да/да |
 | disk | `list_disk_types` | нет | дерево | `evo disk types` | да/да |
-| dns | `dns_operation` | нет | tools call | `evo tools call dns_operation` | нет/нет |
-| dns | `dns_record_create` | да | tools call | `evo tools call dns_record_create` | нет/нет |
-| dns | `dns_record_delete` | да | tools call | `evo tools call dns_record_delete` | нет/нет |
-| dns | `dns_record_get` | нет | tools call | `evo tools call dns_record_get` | нет/нет |
-| dns | `dns_records` | нет | tools call | `evo tools call dns_records` | нет/нет |
-| dns | `dns_zone_create` | да | tools call | `evo tools call dns_zone_create` | нет/нет |
-| dns | `dns_zone_delete` | да | tools call | `evo tools call dns_zone_delete` | нет/нет |
-| dns | `dns_zone_get` | нет | tools call | `evo tools call dns_zone_get` | нет/нет |
-| dns | `dns_zones` | нет | tools call | `evo tools call dns_zones` | нет/нет |
-| iam | `iam_service_accounts` | нет | tools call | `evo tools call iam_service_accounts` | нет/нет |
-| image | `image_create` | да | tools call | `evo tools call image_create` | нет/нет |
-| image | `image_delete` | да | tools call | `evo tools call image_delete` | нет/нет |
+| dns | `dns_operation` | нет | tools call | `evo tools call dns_operation` | да/да |
+| dns | `dns_record_create` | да | tools call | `evo tools call dns_record_create` | да/да |
+| dns | `dns_record_delete` | да | tools call | `evo tools call dns_record_delete` | да/да |
+| dns | `dns_record_get` | нет | tools call | `evo tools call dns_record_get` | да/да |
+| dns | `dns_records` | нет | tools call | `evo tools call dns_records` | да/да |
+| dns | `dns_zone_create` | да | tools call | `evo tools call dns_zone_create` | да/да |
+| dns | `dns_zone_delete` | да | tools call | `evo tools call dns_zone_delete` | да/да |
+| dns | `dns_zone_get` | нет | tools call | `evo tools call dns_zone_get` | да/да |
+| dns | `dns_zones` | нет | tools call | `evo tools call dns_zones` | да/да |
+| iam | `iam_service_accounts` | нет | tools call | `evo tools call iam_service_accounts` | да/да |
+| image | `image_create` | да | tools call | `evo tools call image_create` | да/да |
+| image | `image_delete` | да | tools call | `evo tools call image_delete` | да/да |
 | image | `image_get` | нет | дерево | `evo image get` | да/да |
 | image | `image_list` | нет | дерево | `evo image list` | да/да |
-| image | `list_images` | нет | движок | `evo list-images` (свой код), иначе `evo tools call list_images` | нет/нет |
+| image | `list_images` | нет | движок | `evo list-images` (свой код), иначе `evo tools call list_images` | да/да |
 | image | `marketplace_list` | нет | дерево | `evo marketplace list` | да/да |
 | k8s | `k8s_add_addon` | да | дерево | `evo k8s add-addon` | да/да |
 | k8s | `k8s_add_nodepool` | да | дерево | `evo k8s add-nodepool` | да/да |
@@ -118,26 +118,26 @@
 | k8s | `k8s_nodepools` | нет | дерево | `evo k8s nodepools` | да/да |
 | k8s | `k8s_options` | нет | дерево | `evo k8s options` | да/да |
 | k8s | `k8s_plan` | нет | дерево | `evo k8s plan` | да/да |
-| kafka | `kafka_create` | да | tools call | `evo tools call kafka_create` | нет/нет |
-| kafka | `kafka_delete` | да | tools call | `evo tools call kafka_delete` | нет/нет |
-| kafka | `kafka_get` | нет | tools call | `evo tools call kafka_get` | нет/нет |
-| kafka | `kafka_list` | нет | tools call | `evo tools call kafka_list` | нет/нет |
-| kafka | `kafka_operation` | нет | tools call | `evo tools call kafka_operation` | нет/нет |
-| kafka | `kafka_specs` | нет | tools call | `evo tools call kafka_specs` | нет/нет |
-| kafka | `kafka_versions` | нет | tools call | `evo tools call kafka_versions` | нет/нет |
-| monitoring | `metrics_history` | нет | tools call | `evo tools call metrics_history` | нет/нет |
-| monitoring | `metrics_scrape` | нет | tools call | `evo tools call metrics_scrape` | нет/нет |
-| nlb | `lb_create` | да | tools call | `evo tools call lb_create` | нет/нет |
-| nlb | `lb_delete` | да | tools call | `evo tools call lb_delete` | нет/нет |
-| nlb | `lb_get` | нет | tools call | `evo tools call lb_get` | нет/нет |
-| nlb | `lb_list` | нет | tools call | `evo tools call lb_list` | нет/нет |
-| nlb | `lb_operation` | нет | tools call | `evo tools call lb_operation` | нет/нет |
-| nlb | `tg_create` | да | tools call | `evo tools call tg_create` | нет/нет |
-| nlb | `tg_delete` | да | tools call | `evo tools call tg_delete` | нет/нет |
-| nlb | `tg_get` | нет | tools call | `evo tools call tg_get` | нет/нет |
-| nlb | `tg_list` | нет | tools call | `evo tools call tg_list` | нет/нет |
-| org | `org_projects` | нет | движок | `evo project list` (свой код), иначе `evo tools call org_projects` | нет/нет |
-| org | `org_quotas` | нет | tools call | `evo tools call org_quotas` | нет/нет |
+| kafka | `kafka_create` | да | tools call | `evo tools call kafka_create` | да/да |
+| kafka | `kafka_delete` | да | tools call | `evo tools call kafka_delete` | да/да |
+| kafka | `kafka_get` | нет | tools call | `evo tools call kafka_get` | да/да |
+| kafka | `kafka_list` | нет | tools call | `evo tools call kafka_list` | да/да |
+| kafka | `kafka_operation` | нет | tools call | `evo tools call kafka_operation` | да/да |
+| kafka | `kafka_specs` | нет | tools call | `evo tools call kafka_specs` | да/да |
+| kafka | `kafka_versions` | нет | tools call | `evo tools call kafka_versions` | да/да |
+| monitoring | `metrics_history` | нет | tools call | `evo tools call metrics_history` | да/да |
+| monitoring | `metrics_scrape` | нет | tools call | `evo tools call metrics_scrape` | да/да |
+| nlb | `lb_create` | да | tools call | `evo tools call lb_create` | да/да |
+| nlb | `lb_delete` | да | tools call | `evo tools call lb_delete` | да/да |
+| nlb | `lb_get` | нет | tools call | `evo tools call lb_get` | да/да |
+| nlb | `lb_list` | нет | tools call | `evo tools call lb_list` | да/да |
+| nlb | `lb_operation` | нет | tools call | `evo tools call lb_operation` | да/да |
+| nlb | `tg_create` | да | tools call | `evo tools call tg_create` | да/да |
+| nlb | `tg_delete` | да | tools call | `evo tools call tg_delete` | да/да |
+| nlb | `tg_get` | нет | tools call | `evo tools call tg_get` | да/да |
+| nlb | `tg_list` | нет | tools call | `evo tools call tg_list` | да/да |
+| org | `org_projects` | нет | движок | `evo project list` (свой код), иначе `evo tools call org_projects` | да/да |
+| org | `org_quotas` | нет | tools call | `evo tools call org_quotas` | да/да |
 | pg | `pg_backup_create` | да | дерево | `evo pg backup-create` | да/да |
 | pg | `pg_backups` | нет | дерево | `evo pg backups` | да/да |
 | pg | `pg_create` | да | дерево | `evo pg create` | да/да |
@@ -153,13 +153,13 @@
 | pg | `pg_user_delete` | да | дерево | `evo pg user-delete` | да/да |
 | pg | `pg_users` | нет | дерево | `evo pg users` | да/да |
 | pg | `pg_versions` | нет | дерево | `evo pg versions` | да/да |
-| redis | `redis_create` | да | tools call | `evo tools call redis_create` | нет/нет |
-| redis | `redis_delete` | да | tools call | `evo tools call redis_delete` | нет/нет |
-| redis | `redis_get` | нет | tools call | `evo tools call redis_get` | нет/нет |
-| redis | `redis_list` | нет | tools call | `evo tools call redis_list` | нет/нет |
-| redis | `redis_operation` | нет | tools call | `evo tools call redis_operation` | нет/нет |
-| redis | `redis_specs` | нет | tools call | `evo tools call redis_specs` | нет/нет |
-| redis | `redis_versions` | нет | tools call | `evo tools call redis_versions` | нет/нет |
+| redis | `redis_create` | да | tools call | `evo tools call redis_create` | да/да |
+| redis | `redis_delete` | да | tools call | `evo tools call redis_delete` | да/да |
+| redis | `redis_get` | нет | tools call | `evo tools call redis_get` | да/да |
+| redis | `redis_list` | нет | tools call | `evo tools call redis_list` | да/да |
+| redis | `redis_operation` | нет | tools call | `evo tools call redis_operation` | да/да |
+| redis | `redis_specs` | нет | tools call | `evo tools call redis_specs` | да/да |
+| redis | `redis_versions` | нет | tools call | `evo tools call redis_versions` | да/да |
 | s3 | `s3_bucket_create` | да | дерево | `evo s3 bucket-create` | да/да |
 | s3 | `s3_bucket_delete` | да | дерево | `evo s3 bucket-delete` | да/да |
 | s3 | `s3_buckets` | нет | дерево | `evo s3 buckets` | да/да |
@@ -173,13 +173,13 @@
 | secret | `secret_get` | нет | дерево | `evo secret get` | да/да |
 | secret | `secret_list` | нет | дерево | `evo secret list` | да/да |
 | secret | `secret_value` | нет | дерево | `evo secret value` | да/да |
-| snat | `snat_create` | да | tools call | `evo tools call snat_create` | нет/нет |
-| snat | `snat_delete` | да | tools call | `evo tools call snat_delete` | нет/нет |
-| snat | `snat_list` | нет | tools call | `evo tools call snat_list` | нет/нет |
-| stack | `stack_apply` | да | tools call | `evo tools call stack_apply` | нет/нет |
-| stack | `stack_destroy` | да | tools call | `evo tools call stack_destroy` | нет/нет |
-| stack | `stack_plan` | нет | tools call | `evo tools call stack_plan` | нет/нет |
-| stack | `stack_status` | нет | tools call | `evo tools call stack_status` | нет/нет |
+| snat | `snat_create` | да | tools call | `evo tools call snat_create` | да/да |
+| snat | `snat_delete` | да | tools call | `evo tools call snat_delete` | да/да |
+| snat | `snat_list` | нет | tools call | `evo tools call snat_list` | да/да |
+| stack | `stack_apply` | да | tools call | `evo tools call stack_apply` | да/да |
+| stack | `stack_destroy` | да | tools call | `evo tools call stack_destroy` | да/да |
+| stack | `stack_plan` | нет | tools call | `evo tools call stack_plan` | да/да |
+| stack | `stack_status` | нет | tools call | `evo tools call stack_status` | да/да |
 | vm | `list_flavors` | нет | дерево | `evo vm flavors` | да/да |
 | vm | `list_zones` | нет | дерево | `evo vm zones`, `evo list-zones` (движок) | да/да |
 | vm | `provision` | да | дерево | `evo vm create` | да/да |
@@ -323,7 +323,8 @@
 
 | Что | Есть по-русски | Всего |
 |---|---|---|
-| краткое описание инструмента (toolShortRU) | 72 | 152 инструментов |
-| подробная справка инструмента (toolLongRU) | 72 | 152 инструментов |
-| описания флагов команд деревьев (flagShortRU) | 112 | 112 флагов |
-| описания инструментов в MCP и `evo tools describe` | 0 | 152 (всегда английские) |
+| краткое описание инструмента (ShortRU) | 152 | 152 инструментов |
+| подробное описание инструмента (DescriptionRU) | 152 | 152 инструментов |
+| описания аргументов (ArgDescriptionsRU) | 444 | 444 аргументов |
+| из них флаги команд деревьев | 112 | 112 флагов |
+| описания инструментов в MCP | 0 | 152 (всегда английские) |

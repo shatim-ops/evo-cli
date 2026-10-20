@@ -160,8 +160,8 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return toJSON(map[string]any{
 				"status": "confirmation_required",
-				"message": i18n.Tf("kubectl %q changes the cluster. Get the user's approval, then call again with confirmed=true. (Read-only verbs run without confirmation.)",
-					"kubectl %q меняет кластер. Получите согласие пользователя, затем вызовите снова с confirmed=true. (Команды чтения выполняются без подтверждения.)", verb),
+				"message": i18n.Tf("kubectl %q changes the cluster. (Read-only verbs run without confirmation.)",
+					"kubectl %q меняет кластер. (Команды чтения выполняются без подтверждения.)", verb),
 			}), true
 		}
 	}
@@ -191,8 +191,8 @@ func (s *Registry) handleK8sApply(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("k8s_apply changes the cluster. Get the user's approval, then call again with confirmed=true.",
-				"k8s_apply меняет кластер. Получите согласие пользователя, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("k8s_apply changes the cluster.",
+				"k8s_apply меняет кластер."),
 		}), true
 	}
 	kc, err := s.kubeconfigForCluster(ctx, clusterID)
@@ -263,8 +263,8 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return toJSON(map[string]any{
 				"status": "confirmation_required",
-				"message": i18n.Tf("helm %s changes the cluster (billable workloads). Get the user's approval, then call again with confirmed=true.",
-					"helm %s меняет кластер (платные нагрузки). Получите согласие пользователя, затем вызовите снова с confirmed=true.", action),
+				"message": i18n.Tf("helm %s changes the cluster (billable workloads).",
+					"helm %s меняет кластер (платные нагрузки).", action),
 			}), true
 		}
 	}

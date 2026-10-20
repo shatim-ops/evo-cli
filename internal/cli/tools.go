@@ -76,7 +76,8 @@ advance, --dry-run to see the preview only; without a terminal and without
 Инструменты, которые создают платные ресурсы или удаляют данные, спрашивают
 подтверждение так же, как остальные команды: вопрос на терминале, --yes —
 согласие заранее, --dry-run — только превью; без терминала и без --yes вызов
-завершается с кодом 3. Описания и ответы инструментов — на английском, как в MCP.`),
+завершается с кодом 3. Описания инструментов — по-русски (с EVO_LANG=en — по-английски,
+как их видит агент в MCP); ответы инструментов — на английском, как в MCP.`),
 	})
 	cmd.AddCommand(newToolsListCmd(), newToolsDescribeCmd(), newToolsCallCmd())
 	return cmd
@@ -91,6 +92,9 @@ type toolInfo struct {
 	Mutating    bool           `json:"mutating"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema,omitempty"`
+	// line is the 'tools list' table's description (toolSummary); not
+	// in the JSON.
+	line string
 }
 
 func newToolsListCmd() *cobra.Command {
@@ -111,7 +115,8 @@ func newToolsListCmd() *cobra.Command {
 				if group != "" && t.Group != group {
 					continue
 				}
-				list = append(list, toolInfo{Name: t.Name, Group: t.Group, Mutating: t.Mutating, Description: t.Description})
+				list = append(list, toolInfo{Name: t.Name, Group: t.Group, Mutating: t.Mutating, Description: t.Description,
+					line: toolSummary(t)})
 			}
 			// Registration order scatters a group over the list; by group,
 			// then by name, a group reads as one block.
@@ -126,7 +131,7 @@ func newToolsListCmd() *cobra.Command {
 			}
 			rows := make([][]string, len(list))
 			for i, t := range list {
-				rows[i] = []string{t.Name, t.Group, yesNo(t.Mutating), summary(t.Description, 80)}
+				rows[i] = []string{t.Name, t.Group, yesNo(t.Mutating), t.line}
 			}
 			p.Table([]string{i18n.T("NAME", "ИМЯ"), i18n.T("GROUP", "ГРУППА"), i18n.T("MUTATING", "МЕНЯЕТ"),
 				i18n.T("DESCRIPTION", "ОПИСАНИЕ")}, rows)
@@ -178,6 +183,26 @@ func summary(s string, max int) string {
 	return s
 }
 
+// toolDescription is the tool's description in the language of the CLI:
+// the English one (as MCP sends it), or the Russian summary and the rest of
+// the Russian description. --json keeps the English one: it is the tool's
+// definition, as the agent gets it.
+func toolDescription(t tools.Tool) string {
+	if i18n.Lang() == i18n.RU && t.ShortRU != "" && t.DescriptionRU != "" {
+		return t.ShortRU + ".\n\n" + t.DescriptionRU
+	}
+	return t.Description
+}
+
+// toolSummary is the line of a tool in 'tools list': the first sentence of
+// its description in the language of the CLI.
+func toolSummary(t tools.Tool) string {
+	if i18n.Lang() == i18n.RU && t.ShortRU != "" {
+		return summary(t.ShortRU, 80)
+	}
+	return summary(t.Description, 80)
+}
+
 // --- tools describe ---
 
 func newToolsDescribeCmd() *cobra.Command {
@@ -203,7 +228,7 @@ func newToolsDescribeCmd() *cobra.Command {
 			} else if tools.IsSensitive(t) {
 				fmt.Fprint(w, i18n.T(", reveals a secret: asks for confirmation", ", показывает секрет: спрашивает подтверждение"))
 			}
-			fmt.Fprintf(w, ")\n\n%s\n\n", t.Description)
+			fmt.Fprintf(w, ")\n\n%s\n\n", toolDescription(t))
 			params := schemaParams(t)
 			if len(params) == 0 {
 				fmt.Fprintln(w, i18n.T("No arguments.", "Аргументов нет."))
@@ -216,7 +241,8 @@ func newToolsDescribeCmd() *cobra.Command {
 				if a.Required {
 					req = i18n.T("required", "обязателен")
 				}
-				rows[i] = []string{a.Name, a.Type, req, a.Description}
+				desc, _ := flagDesc(t, a)
+				rows[i] = []string{a.Name, a.Type, req, desc}
 			}
 			p.Table([]string{i18n.T("NAME", "ИМЯ"), i18n.T("TYPE", "ТИП"), i18n.T("REQUIRED", "ОБЯЗАТЕЛЬНЫЙ"),
 				i18n.T("DESCRIPTION", "ОПИСАНИЕ")}, rows)

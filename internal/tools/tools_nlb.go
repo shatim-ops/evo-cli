@@ -240,8 +240,8 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.Tf("tg_create creates target group %q with %d target(s). Call again with confirmed=true.",
-				"tg_create создаёт группу целей %q (целей: %d). Вызовите снова с confirmed=true.", name, len(specs)),
+			"message": i18n.Tf("tg_create creates target group %q with %d target(s).",
+				"tg_create создаёт группу целей %q (целей: %d).", name, len(specs)),
 			"targets": specs,
 		}), true
 	}
@@ -263,8 +263,8 @@ func (s *Registry) handleTgDelete(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("tg_delete deletes target group %s. Call again with confirmed=true.",
-			"tg_delete удаляет группу целей %s. Вызовите снова с confirmed=true.",
+		return deletePreview("tg_delete deletes target group %s.",
+			"tg_delete удаляет группу целей %s.",
 			id, func() (map[string]any, error) { return cli.GetTargetGroup(ctx, id) })
 	}
 	op, err := cli.DeleteTargetGroup(ctx, id)
@@ -368,8 +368,8 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		out := map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("lb_create provisions a BILLABLE L4 load balancer (async). Get the user's approval, then call again with confirmed=true.",
-				"lb_create создаёт ПЛАТНЫЙ балансировщик L4 (асинхронно). Получите согласие пользователя, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("lb_create provisions a BILLABLE L4 load balancer (async).",
+				"lb_create создаёт ПЛАТНЫЙ балансировщик L4 (асинхронно)."),
 			"will_create": willCreate,
 		}
 		if len(warnings) > 0 {
@@ -518,8 +518,8 @@ func (s *Registry) handleLbDelete(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("lb_delete deletes load balancer %s. Call again with confirmed=true.",
-			"lb_delete удаляет балансировщик %s. Вызовите снова с confirmed=true.",
+		return deletePreview("lb_delete deletes load balancer %s.",
+			"lb_delete удаляет балансировщик %s.",
 			id, func() (map[string]any, error) { return cli.GetNLB(ctx, id) })
 	}
 	op, err := cli.DeleteNLB(ctx, id)

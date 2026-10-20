@@ -255,8 +255,8 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	if !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("deploy_apply requires confirmed=true. Obtain the user's explicit approval of the plan and its cost first, then call again with confirmed=true.",
-				"deploy_apply требует confirmed=true. Сначала получите явное согласие пользователя с планом и его ценой, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("deploy_apply executes the plan: it creates the plan's VM (billable; the plan shows the cost).",
+				"deploy_apply выполнит план: создаст ВМ из плана (платно; цена — в плане)."),
 		}), true
 	}
 
@@ -497,8 +497,8 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.Tf("open_ports would open %v on security group %q (shared per zone — affects every VM in it). Get the user's approval, then call again with confirmed=true.",
-				"open_ports откроет %v в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней). Получите согласие пользователя, затем вызовите снова с confirmed=true.", ports, sgRef),
+			"message": i18n.Tf("open_ports would open %v on security group %q (shared per zone — affects every VM in it).",
+				"open_ports откроет %v в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней).", ports, sgRef),
 		}), true
 	}
 
@@ -623,8 +623,8 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("release_floating_ip requires confirmed=true. Get the user's approval to release this IP first, then call again with confirmed=true.",
-				"release_floating_ip требует confirmed=true. Сначала получите согласие пользователя на освобождение этого адреса, затем вызовите снова с confirmed=true."),
+			"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
+				"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
 		}), true
 	}
 
