@@ -94,14 +94,20 @@ func TestMCPFactory_AllowProjectCoversToolArguments(t *testing.T) {
 	setupCLI(t)
 	saveProfile(t, "default", "p-a")
 	reg := tools.New(mcpEngineFactory([]string{"p-a"}))
-	for _, name := range []string{"provision", "deploy"} {
+	for _, name := range []string{"provision", "deploy", "billing_consumption", "billing_finops"} {
 		tl, ok := reg.Lookup(name)
 		if !ok {
 			t.Fatalf("no tool %s", name)
 		}
 		args := map[string]any{"project_id": "p-b", "confirmed": true}
-		if name == "provision" {
+		switch name {
+		case "provision":
 			args["name"] = "x"
+		case "billing_consumption":
+			// billing_*: the consumption of another project was read with
+			// --allow-project p-a (architecture review 20.10).
+			args["start"] = "2026-10-01"
+			args["end"] = "2026-10-02"
 		}
 		text, isErr := tl.Handler(context.Background(), args)
 		if !isErr || !strings.Contains(text, "p-b") || !strings.Contains(text, "not allowed") {

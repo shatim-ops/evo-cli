@@ -34,7 +34,17 @@ const maxBreakdown = 12
 func (s *Registry) billingClient(ctx context.Context, args map[string]any) (*billing.Client, error) {
 	agreement := os.Getenv("CLOUDRU_AGREEMENT_ID")
 	project := stringArg(args, "project_id")
-	eng, err := s.newEngine(nil)
+	// The project of the argument goes through the engine factory as the
+	// ProjectID override, as deploy's and provision's do: mcp
+	// --allow-project checks it there. Passed to the API directly, it read
+	// the consumption of any project the key sees (architecture review
+	// 20.10; docs/mcp.md names only org_quotas and iam_service_accounts as
+	// reads of other projects).
+	var overrides map[string]any
+	if project != "" {
+		overrides = map[string]any{"ProjectID": project}
+	}
+	eng, err := s.newEngine(overrides)
 	if err != nil {
 		return nil, err
 	}
