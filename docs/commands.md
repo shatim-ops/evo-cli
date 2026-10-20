@@ -13,6 +13,20 @@
 ## Содержание
 
 - [evo](#evo)
+  - [evo ar](#evo-ar)
+    - [evo ar create](#evo-ar-create)
+    - [evo ar delete](#evo-ar-delete)
+    - [evo ar get](#evo-ar-get)
+    - [evo ar list](#evo-ar-list)
+    - [evo ar operation](#evo-ar-operation)
+  - [evo ca](#evo-ca)
+    - [evo ca delete](#evo-ca-delete)
+    - [evo ca deploy](#evo-ca-deploy)
+    - [evo ca get](#evo-ca-get)
+    - [evo ca list](#evo-ca-list)
+    - [evo ca logs](#evo-ca-logs)
+    - [evo ca start](#evo-ca-start)
+    - [evo ca stop](#evo-ca-stop)
   - [evo cert](#evo-cert)
     - [evo cert delete](#evo-cert-delete)
     - [evo cert get](#evo-cert-get)
@@ -73,6 +87,14 @@
     - [evo k8s nodepools](#evo-k8s-nodepools)
     - [evo k8s options](#evo-k8s-options)
     - [evo k8s plan](#evo-k8s-plan)
+  - [evo kafka](#evo-kafka)
+    - [evo kafka create](#evo-kafka-create)
+    - [evo kafka delete](#evo-kafka-delete)
+    - [evo kafka get](#evo-kafka-get)
+    - [evo kafka list](#evo-kafka-list)
+    - [evo kafka operation](#evo-kafka-operation)
+    - [evo kafka specs](#evo-kafka-specs)
+    - [evo kafka versions](#evo-kafka-versions)
   - [evo lb](#evo-lb)
     - [evo lb create](#evo-lb-create)
     - [evo lb delete](#evo-lb-delete)
@@ -103,6 +125,14 @@
   - [evo project](#evo-project)
     - [evo project list](#evo-project-list)
     - [evo project use](#evo-project-use)
+  - [evo redis](#evo-redis)
+    - [evo redis create](#evo-redis-create)
+    - [evo redis delete](#evo-redis-delete)
+    - [evo redis get](#evo-redis-get)
+    - [evo redis list](#evo-redis-list)
+    - [evo redis operation](#evo-redis-operation)
+    - [evo redis specs](#evo-redis-specs)
+    - [evo redis versions](#evo-redis-versions)
   - [evo s3](#evo-s3)
     - [evo s3 bucket-create](#evo-s3-bucket-create)
     - [evo s3 bucket-delete](#evo-s3-bucket-delete)
@@ -192,6 +222,8 @@ Object Storage, секреты.
 
 ### SEE ALSO
 
+* [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
+* [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
 * [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
 * [evo completion](#evo-completion)	 - Скрипт автодополнения для оболочки
 * [evo configure](#evo-configure)	 - Ключ доступа и проект по умолчанию для профиля
@@ -203,6 +235,7 @@ Object Storage, секреты.
 * [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
 * [evo init](#evo-init)	 - Создать .evo.yaml с зоной и образом из API Cloud.ru
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+* [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
 * [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
 * [evo list-zones](#evo-list-zones)	 - Список зон доступности
 * [evo logs](#evo-logs)	 - Журналы контейнеров на развёрнутой ВМ
@@ -210,6 +243,7 @@ Object Storage, секреты.
 * [evo mcp](#evo-mcp)	 - MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)
 * [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 * [evo project](#evo-project)	 - Проекты, которые видит ключ, и проект профиля
+* [evo redis](#evo-redis)	 - Кластеры Managed Redis
 * [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 * [evo secret](#evo-secret)	 - Secret Manager: секреты
 * [evo snat](#evo-snat)	 - SNAT-шлюзы: исходящий интернет для приватных подсетей
@@ -221,6 +255,682 @@ Object Storage, секреты.
 * [evo vm](#evo-vm)	 - Виртуальные машины
 * [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 * [evo whoami](#evo-whoami)	 - Активный профиль и проверка его ключа
+
+## evo ar
+
+Artifact Registry: реестры образов и пакетов
+
+```
+evo ar [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по ar
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo ar create](#evo-ar-create)	 - Создать реестр Artifact Registry (платно, асинхронно)
+* [evo ar delete](#evo-ar-delete)	 - Удалить реестр вместе с артефактами (асинхронно)
+* [evo ar get](#evo-ar-get)	 - Реестр Artifact Registry по ID: все сведения
+* [evo ar list](#evo-ar-list)	 - Реестры Artifact Registry проекта
+* [evo ar operation](#evo-ar-operation)	 - Состояние асинхронной операции Artifact Registry
+
+## evo ar create
+
+Создать реестр Artifact Registry (платно, асинхронно)
+
+### Synopsis
+
+```text
+Создать реестр Artifact Registry (платно, асинхронно).
+
+Создать реестр Artifact Registry; имя, которое уже носит реестр проекта ('evo ar list'), отклоняется. Тип (--registry-type): DOCKER (по умолчанию), DEBIAN, RPM, GENERIC, PYPI или NPM. Реестр платный. Операция асинхронная: ход — 'evo ar operation <operation-id>'; затем образы загружают через docker login в <registry>.cr.cloud.ru.
+
+Вызывает инструмент ar_create (подробнее: 'evo tools describe ar_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo ar create <name> [flags]
+```
+
+### Examples
+
+```
+  evo ar create images --dry-run
+  evo ar create images --registry-type DOCKER --yes
+```
+
+### Options
+
+```
+  -h, --help                   Справка по create
+      --public                 Сделать реестр публичным (по умолчанию false)
+      --registry-type string   Тип реестра: DOCKER (по умолчанию), DEBIAN, RPM, GENERIC, PYPI, NPM
+      --tariff string          Тариф: BASIC (по умолчанию) или PREMIUM
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
+
+## evo ar delete
+
+Удалить реестр вместе с артефактами (асинхронно)
+
+### Synopsis
+
+```text
+Удалить реестр вместе с артефактами (асинхронно).
+
+Удалить реестр Artifact Registry по id (список: 'evo ar list') вместе с его артефактами. Операция асинхронная.
+
+Вызывает инструмент ar_delete (подробнее: 'evo tools describe ar_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo ar delete <id> [flags]
+```
+
+### Examples
+
+```
+  evo ar delete <registry-id> --dry-run
+  evo ar delete <registry-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по delete
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
+
+## evo ar get
+
+Реестр Artifact Registry по ID: все сведения
+
+### Synopsis
+
+```text
+Реестр Artifact Registry по ID: все сведения.
+
+Все сведения об одном реестре Artifact Registry по id (список: 'evo ar list'). Только чтение.
+
+Вызывает инструмент ar_get (подробнее: 'evo tools describe ar_get').
+```
+
+```
+evo ar get <id> [flags]
+```
+
+### Examples
+
+```
+  evo ar get <registry-id>
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
+
+## evo ar list
+
+Реестры Artifact Registry проекта
+
+### Synopsis
+
+```text
+Реестры Artifact Registry проекта.
+
+Реестры Artifact Registry проекта: id, имя, тип, состояние, публичный ли, тариф. Только чтение. Реестр хранит образы Docker и чарты Helm — источник образов для Container Apps и Managed Kubernetes там, где docker.io не подходит.
+
+Вызывает инструмент ar_list (подробнее: 'evo tools describe ar_list').
+```
+
+```
+evo ar list [flags]
+```
+
+### Examples
+
+```
+  evo ar list
+  evo ar list --json | jq -r '.registries[] | "\(.id)\t\(.name)"'
+```
+
+### Options
+
+```
+  -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
+
+## evo ar operation
+
+Состояние асинхронной операции Artifact Registry
+
+### Synopsis
+
+```text
+Состояние асинхронной операции Artifact Registry.
+
+Состояние асинхронной операции Artifact Registry по id — его возвращают создание и удаление реестра: done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
+
+Вызывает инструмент ar_operation (подробнее: 'evo tools describe ar_operation').
+```
+
+```
+evo ar operation <operation-id> [flags]
+```
+
+### Examples
+
+```
+  evo ar operation <operation-id>
+  evo ar operation <operation-id> --wait-seconds 120
+```
+
+### Options
+
+```
+  -h, --help               Справка по operation
+      --wait-seconds int   Ждать итогового состояния до N секунд (не больше 300), опрашивая операцию с нарастающим интервалом. Без флага — одна проверка
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
+
+## evo ca
+
+Container Apps: бессерверные контейнеры
+
+```
+evo ca [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по ca
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo ca delete](#evo-ca-delete)	 - Удалить приложение Container Apps (асинхронно)
+* [evo ca deploy](#evo-ca-deploy)	 - Развернуть приложение Container Apps из образа контейнера (асинхронно)
+* [evo ca get](#evo-ca-get)	 - Приложение Container Apps по имени: состояние, публичный URL
+* [evo ca list](#evo-ca-list)	 - Приложения Container Apps проекта
+* [evo ca logs](#evo-ca-logs)	 - Последние журналы приложения Container Apps
+* [evo ca start](#evo-ca-start)	 - Запустить остановленное приложение Container Apps
+* [evo ca stop](#evo-ca-stop)	 - Остановить приложение Container Apps
+
+## evo ca delete
+
+Удалить приложение Container Apps (асинхронно)
+
+### Synopsis
+
+```text
+Удалить приложение Container Apps (асинхронно).
+
+Удалить приложение Container Apps по имени. Операция асинхронная.
+
+Вызывает инструмент ca_delete (подробнее: 'evo tools describe ca_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo ca delete <name> [flags]
+```
+
+### Examples
+
+```
+  evo ca delete my-app --dry-run
+  evo ca delete my-app --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по delete
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
+
+## evo ca deploy
+
+Развернуть приложение Container Apps из образа контейнера (асинхронно)
+
+### Synopsis
+
+```text
+Развернуть приложение Container Apps из образа контейнера (асинхронно).
+
+Развернуть (создать и запустить) приложение Container Apps из образа контейнера — бессерверно, без нагрузки приложение масштабируется до нуля. Превью (will_create) перечисляет все настройки, в том числе работает ли контейнер от root. Имя, порт и число экземпляров проверяются до подтверждения. Операция асинхронная: ответ содержит operation_id; состояние и публичный URL — 'evo ca get <name>'. Подходит для веб-сервисов и API без состояния, когда не нужна своя ВМ.
+
+Вызывает инструмент ca_deploy (подробнее: 'evo tools describe ca_deploy').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo ca deploy <name> [flags]
+```
+
+### Examples
+
+```
+  evo ca deploy my-app --image myregistry.cr.cloud.ru/my-app:1.0 --dry-run
+  evo ca deploy my-app --image myregistry.cr.cloud.ru/my-app:1.0 --port 8080 --env LOG_LEVEL=info --yes
+  evo ca deploy worker --image myregistry.cr.cloud.ru/worker:1.0 --public=false --env API_TOKEN=@./api.token --yes
+```
+
+### Options
+
+```
+      --cpu string           Запрос CPU, например 0.1 или 1 (по умолчанию 0.1)
+      --description string   Описание (необязательно)
+      --env stringArray      Переменные окружения: объект имя→значение (поле=значение, флаг повторяется; значение может содержать '='. поле=- читает значение из stdin (не больше одного поля), поле=@файл — из файла без завершающего перевода строки: так пароль не попадает в командную строку и историю оболочки)
+  -h, --help                 Справка по deploy
+      --image string         URI образа контейнера из Artifact Registry этого проекта (или публичного реестра другого проекта), linux/amd64, например <registry>.cr.cloud.ru/<repository>:<tag>. Приложение должно слушать 0.0.0.0:$PORT
+      --max-instances int    Наибольшее число экземпляров (по умолчанию 1, не меньше 1)
+      --memory string        Запрос памяти, например 256Mi или 1Gi (по умолчанию 256Mi)
+      --min-instances int    Наименьшее число экземпляров (по умолчанию 0 — масштабирование до нуля); не больше --max-instances
+      --port int             Порт контейнера, который слушает приложение (по умолчанию 8080). Порты, занятые платформой, отклоняются: 1–1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092
+      --privileged           Запустить контейнер в привилегированном режиме, от root (по умолчанию false: от UID 1000). Только для образов, которым нужен root; превью об этом сообщает
+      --public               Открыть публичный URL. Выключить: --public=false (по умолчанию true)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
+
+## evo ca get
+
+Приложение Container Apps по имени: состояние, публичный URL
+
+### Synopsis
+
+```text
+Приложение Container Apps по имени: состояние, публичный URL.
+
+Все сведения о приложении Container Apps по имени, в том числе состояние и публичный URL. Только чтение.
+
+Вызывает инструмент ca_get (подробнее: 'evo tools describe ca_get').
+```
+
+```
+evo ca get <name> [flags]
+```
+
+### Examples
+
+```
+  evo ca get my-app
+  evo ca get my-app --json
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
+
+## evo ca list
+
+Приложения Container Apps проекта
+
+### Synopsis
+
+```text
+Приложения Container Apps проекта.
+
+Приложения Container Apps (бессерверные контейнеры) проекта: имя, состояние. Только чтение.
+
+Вызывает инструмент ca_list (подробнее: 'evo tools describe ca_list').
+```
+
+```
+evo ca list [flags]
+```
+
+### Examples
+
+```
+  evo ca list
+  evo ca list --json
+```
+
+### Options
+
+```
+  -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
+
+## evo ca logs
+
+Последние журналы приложения Container Apps
+
+### Synopsis
+
+```text
+Последние журналы приложения Container Apps.
+
+Последние журналы приложения Container Apps: 100 последних строк по времени, старые первыми (журналы приложения — stdout и stderr контейнера). С --system — события платформы. Только чтение.
+
+Вызывает инструмент ca_logs (подробнее: 'evo tools describe ca_logs').
+```
+
+```
+evo ca logs <name> [flags]
+```
+
+### Examples
+
+```
+  evo ca logs my-app
+  evo ca logs my-app --system
+  evo ca logs my-app --json
+```
+
+### Options
+
+```
+  -h, --help     Справка по logs
+      --system   Системные журналы вместо журналов приложения
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
+
+## evo ca start
+
+Запустить остановленное приложение Container Apps
+
+### Synopsis
+
+```text
+Запустить остановленное приложение Container Apps.
+
+Запустить остановленное приложение Container Apps; пока оно работает, оно оплачивается.
+
+Вызывает инструмент ca_start (подробнее: 'evo tools describe ca_start').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo ca start <name> [flags]
+```
+
+### Examples
+
+```
+  evo ca start my-app --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по start
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
+
+## evo ca stop
+
+Остановить приложение Container Apps
+
+### Synopsis
+
+```text
+Остановить приложение Container Apps.
+
+Остановить работающее приложение Container Apps: оно перестаёт обслуживать запросы.
+
+Вызывает инструмент ca_stop (подробнее: 'evo tools describe ca_stop').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo ca stop <name> [flags]
+```
+
+### Examples
+
+```
+  evo ca stop my-app --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по stop
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
 
 ## evo cert
 
@@ -3095,6 +3805,395 @@ evo k8s plan [flags]
 
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
+## evo kafka
+
+Кластеры Managed Kafka
+
+```
+evo kafka [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по kafka
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo kafka create](#evo-kafka-create)	 - Создать кластер Managed Kafka (платно, асинхронно)
+* [evo kafka delete](#evo-kafka-delete)	 - Удалить кластер Kafka вместе с данными (асинхронно)
+* [evo kafka get](#evo-kafka-get)	 - Кластер Kafka по ID: состояние, адреса, брокеры, версия
+* [evo kafka list](#evo-kafka-list)	 - Кластеры Managed Kafka проекта
+* [evo kafka operation](#evo-kafka-operation)	 - Состояние асинхронной операции Kafka
+* [evo kafka specs](#evo-kafka-specs)	 - Конфигурации кластера Kafka для версии: CPU, память, хранилище, брокеры
+* [evo kafka versions](#evo-kafka-versions)	 - Доступные версии Managed Kafka
+
+## evo kafka create
+
+Создать кластер Managed Kafka (платно, асинхронно)
+
+### Synopsis
+
+```text
+Создать кластер Managed Kafka (платно, асинхронно).
+
+Создать кластер Managed Kafka. Имя, которое уже носит кластер проекта ('evo kafka list'), отклоняется. evo подбирает версию (последнюю), подсеть (основную подсеть зоны из настроек, иначе первой зоны, где она есть, начиная с ru.AZ-2) и по ней — зону кластера, конфигурацию этой зоны (по --specification-id или по --cpu и --ram; если подходящей нет — ошибка со списком конфигураций), хранилище (минимум конфигурации) и число брокеров (min_brokers конфигурации; живой API его не сообщает, тогда 1 — без репликации). Кластер платный. Операция асинхронная: ход — 'evo kafka operation <operation-id>'.
+
+Вызывает инструмент kafka_create (подробнее: 'evo tools describe kafka_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo kafka create <name> [flags]
+```
+
+### Examples
+
+```
+  evo kafka create events --dry-run
+  evo kafka create events --cpu 2 --ram 8 --brokers 3 --yes
+```
+
+### Options
+
+```
+      --brokers int               Число брокеров. По умолчанию — min_brokers конфигурации, иначе 1 (один брокер — без репликации; для реплицируемого кластера — 3). Проверяется по min_brokers и max_brokers конфигурации, если они есть
+      --cpu int                   Число vCPU — для автоподбора конфигурации, если --specification-id не задан
+      --description string        Описание (необязательно)
+  -h, --help                      Справка по create
+      --ram int                   RAM, ГБ — вместе с --cpu
+      --specification-id string   UUID конфигурации (список: evo kafka specs). Необязателен, если заданы --cpu и --ram
+      --storage-gib int           Размер диска, ГиБ (по умолчанию — минимум конфигурации)
+      --subnet-id string          UUID подсети (список: evo vpc subnets). По умолчанию — основная подсеть зоны из настроек. Кластер создаётся в зоне подсети
+      --ui-enabled                Включить Kafka UI (по умолчанию false)
+      --version-id string         UUID версии Kafka (список: evo kafka versions). По умолчанию — последняя
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
+
+## evo kafka delete
+
+Удалить кластер Kafka вместе с данными (асинхронно)
+
+### Synopsis
+
+```text
+Удалить кластер Kafka вместе с данными (асинхронно).
+
+Удалить кластер Managed Kafka по id вместе с данными. Операция асинхронная.
+
+Вызывает инструмент kafka_delete (подробнее: 'evo tools describe kafka_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo kafka delete <cluster-id> [flags]
+```
+
+### Examples
+
+```
+  evo kafka delete <cluster-id> --dry-run
+  evo kafka delete <cluster-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по delete
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
+
+## evo kafka get
+
+Кластер Kafka по ID: состояние, адреса, брокеры, версия
+
+### Synopsis
+
+```text
+Кластер Kafka по ID: состояние, адреса, брокеры, версия.
+
+Кластер Managed Kafka по id: состояние, адреса (kafka_hosts), брокеры, версия. Только чтение.
+
+Вызывает инструмент kafka_get (подробнее: 'evo tools describe kafka_get').
+```
+
+```
+evo kafka get <cluster-id> [flags]
+```
+
+### Examples
+
+```
+  evo kafka get <cluster-id>
+  evo kafka get <cluster-id> --json
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
+
+## evo kafka list
+
+Кластеры Managed Kafka проекта
+
+### Synopsis
+
+```text
+Кластеры Managed Kafka проекта.
+
+Кластеры Managed Kafka: id, имя, состояние, брокеры, версия. Только чтение.
+
+Вызывает инструмент kafka_list (подробнее: 'evo tools describe kafka_list').
+```
+
+```
+evo kafka list [flags]
+```
+
+### Examples
+
+```
+  evo kafka list
+  evo kafka list --json | jq -r '.clusters[] | "\(.id)\t\(.name)\t\(.status)"'
+```
+
+### Options
+
+```
+  -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
+
+## evo kafka operation
+
+Состояние асинхронной операции Kafka
+
+### Synopsis
+
+```text
+Состояние асинхронной операции Kafka.
+
+Состояние асинхронной операции Managed Kafka по id — его возвращают создание и удаление кластера: done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
+
+Вызывает инструмент kafka_operation (подробнее: 'evo tools describe kafka_operation').
+```
+
+```
+evo kafka operation <operation-id> [flags]
+```
+
+### Examples
+
+```
+  evo kafka operation <operation-id>
+  evo kafka operation <operation-id> --wait-seconds 300
+```
+
+### Options
+
+```
+  -h, --help               Справка по operation
+      --wait-seconds int   Ждать итогового состояния до N секунд (не больше 300), опрашивая операцию с нарастающим интервалом. Без флага — одна проверка
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
+
+## evo kafka specs
+
+Конфигурации кластера Kafka для версии: CPU, память, хранилище, брокеры
+
+### Synopsis
+
+```text
+Конфигурации кластера Kafka для версии: CPU, память, хранилище, брокеры.
+
+Конфигурации кластера Managed Kafka для версии: id, CPU, память (ГБ), минимальный объём хранилища, наименьшее и наибольшее число брокеров. Только чтение. id конфигурации выбирают для создания кластера ('evo kafka create').
+
+Вызывает инструмент kafka_specs (подробнее: 'evo tools describe kafka_specs').
+```
+
+```
+evo kafka specs [flags]
+```
+
+### Examples
+
+```
+  evo kafka specs
+  evo kafka specs --version-id <version-id> --zone ru.AZ-2
+```
+
+### Options
+
+```
+  -h, --help                Справка по specs
+      --version-id string   UUID версии (список: evo kafka versions); необязательно — по умолчанию последняя
+      --zone string         Зона доступности: имя (ru.AZ-2) или UUID; необязательно — по умолчанию зона из настроек, иначе ru.AZ-2. API нужна зона
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
+
+## evo kafka versions
+
+Доступные версии Managed Kafka
+
+### Synopsis
+
+```text
+Доступные версии Managed Kafka.
+
+Доступные версии Managed Kafka: id и имя. Только чтение. Нужны перед созданием кластера ('evo kafka create').
+
+Вызывает инструмент kafka_versions (подробнее: 'evo tools describe kafka_versions').
+```
+
+```
+evo kafka versions [flags]
+```
+
+### Examples
+
+```
+  evo kafka versions
+```
+
+### Options
+
+```
+  -h, --help   Справка по versions
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
+
 ## evo lb
 
 Балансировщики нагрузки (L4)
@@ -4478,6 +5577,398 @@ evo project use <UUID|имя> [flags]
 ### SEE ALSO
 
 * [evo project](#evo-project)	 - Проекты, которые видит ключ, и проект профиля
+
+## evo redis
+
+Кластеры Managed Redis
+
+```
+evo redis [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по redis
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo redis create](#evo-redis-create)	 - Создать кластер Managed Redis (платно, асинхронно)
+* [evo redis delete](#evo-redis-delete)	 - Удалить кластер Redis вместе с данными (асинхронно)
+* [evo redis get](#evo-redis-get)	 - Кластер Redis по ID: состояние, адреса, тип, шарды, реплики
+* [evo redis list](#evo-redis-list)	 - Кластеры Managed Redis проекта
+* [evo redis operation](#evo-redis-operation)	 - Состояние асинхронной операции Redis
+* [evo redis specs](#evo-redis-specs)	 - Конфигурации кластера Redis для версии: CPU, память, режим, хранилище
+* [evo redis versions](#evo-redis-versions)	 - Доступные версии Managed Redis
+
+## evo redis create
+
+Создать кластер Managed Redis (платно, асинхронно)
+
+### Synopsis
+
+```text
+Создать кластер Managed Redis (платно, асинхронно).
+
+Создать кластер Managed Redis. Имя, которое уже носит кластер проекта ('evo redis list'), отклоняется. evo подбирает версию (последнюю), подсеть (как для Kafka) и по ней — зону кластера, конфигурацию этой зоны (по --specification-id или по --cpu и --ram; если подходящей нет — ошибка со списком конфигураций). Тип MASTER_REPLICA (по умолчанию): в каждом шарде мастер и две реплики, все в зоне подсети — Single-AZ; API до сих пор отклонял STANDALONE.
+
+--replicas здесь — реплики БЕЗ мастера (поле replicas запроса на создание, 2), а сведения о кластере ('evo redis get <cluster-id>', 'evo redis list') показывают replicas как число узлов в шарде вместе с мастером (3). Кластер платный. Операция асинхронная: ход — 'evo redis operation <operation-id>'.
+
+Вызывает инструмент redis_create (подробнее: 'evo tools describe redis_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo redis create <name> [flags]
+```
+
+### Examples
+
+```
+  evo redis create cache --dry-run
+  evo redis create cache --cpu 2 --ram 4 --yes
+```
+
+### Options
+
+```
+      --cpu int                   Число vCPU — для автоподбора конфигурации, если --specification-id не задан
+      --description string        Описание (необязательно)
+  -h, --help                      Справка по create
+      --ram int                   RAM, ГБ — вместе с --cpu
+      --replicas int              Реплики в шарде БЕЗ мастера — поле replicas запроса на создание. Для MASTER_REPLICA — 2 (по умолчанию: мастер и две реплики, всего 3 узла — это число сведения о кластере показывают как replicas); для STANDALONE — 0
+      --shards int                Число шардов, 1–8 (по умолчанию 1)
+      --specification-id string   UUID конфигурации (список: evo redis specs). Необязателен, если заданы --cpu и --ram
+      --storage-gb int            Размер диска, ГБ (по умолчанию — минимум конфигурации)
+      --subnet-id string          UUID подсети (список: evo vpc subnets). По умолчанию — основная подсеть зоны из настроек. Кластер создаётся в зоне подсети
+      --type string               MASTER_REPLICA (по умолчанию) или STANDALONE (API пока его отклоняет)
+      --version-id string         UUID версии Redis (список: evo redis versions). По умолчанию — последняя
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo redis](#evo-redis)	 - Кластеры Managed Redis
+
+## evo redis delete
+
+Удалить кластер Redis вместе с данными (асинхронно)
+
+### Synopsis
+
+```text
+Удалить кластер Redis вместе с данными (асинхронно).
+
+Удалить кластер Managed Redis по id вместе с данными. Операция асинхронная.
+
+Вызывает инструмент redis_delete (подробнее: 'evo tools describe redis_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo redis delete <cluster-id> [flags]
+```
+
+### Examples
+
+```
+  evo redis delete <cluster-id> --dry-run
+  evo redis delete <cluster-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по delete
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo redis](#evo-redis)	 - Кластеры Managed Redis
+
+## evo redis get
+
+Кластер Redis по ID: состояние, адреса, тип, шарды, реплики
+
+### Synopsis
+
+```text
+Кластер Redis по ID: состояние, адреса, тип, шарды, реплики.
+
+Кластер Managed Redis по id: состояние, адреса (redis_hosts), тип, шарды, реплики. Только чтение.
+
+Вызывает инструмент redis_get (подробнее: 'evo tools describe redis_get').
+```
+
+```
+evo redis get <cluster-id> [flags]
+```
+
+### Examples
+
+```
+  evo redis get <cluster-id>
+  evo redis get <cluster-id> --json
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo redis](#evo-redis)	 - Кластеры Managed Redis
+
+## evo redis list
+
+Кластеры Managed Redis проекта
+
+### Synopsis
+
+```text
+Кластеры Managed Redis проекта.
+
+Кластеры Managed Redis: id, имя, состояние, тип, шарды, реплики. Только чтение.
+
+Вызывает инструмент redis_list (подробнее: 'evo tools describe redis_list').
+```
+
+```
+evo redis list [flags]
+```
+
+### Examples
+
+```
+  evo redis list
+  evo redis list --json | jq -r '.clusters[] | "\(.id)\t\(.name)\t\(.status)"'
+```
+
+### Options
+
+```
+  -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo redis](#evo-redis)	 - Кластеры Managed Redis
+
+## evo redis operation
+
+Состояние асинхронной операции Redis
+
+### Synopsis
+
+```text
+Состояние асинхронной операции Redis.
+
+Состояние асинхронной операции Managed Redis по id — его возвращают создание и удаление кластера: done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
+
+Вызывает инструмент redis_operation (подробнее: 'evo tools describe redis_operation').
+```
+
+```
+evo redis operation <operation-id> [flags]
+```
+
+### Examples
+
+```
+  evo redis operation <operation-id>
+  evo redis operation <operation-id> --wait-seconds 300
+```
+
+### Options
+
+```
+  -h, --help               Справка по operation
+      --wait-seconds int   Ждать итогового состояния до N секунд (не больше 300), опрашивая операцию с нарастающим интервалом. Без флага — одна проверка
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo redis](#evo-redis)	 - Кластеры Managed Redis
+
+## evo redis specs
+
+Конфигурации кластера Redis для версии: CPU, память, режим, хранилище
+
+### Synopsis
+
+```text
+Конфигурации кластера Redis для версии: CPU, память, режим, хранилище.
+
+Конфигурации кластера Managed Redis для версии: id, CPU, память (ГБ), режим развёртывания, минимальный объём хранилища. Только чтение. id конфигурации выбирают для создания кластера ('evo redis create').
+
+Вызывает инструмент redis_specs (подробнее: 'evo tools describe redis_specs').
+```
+
+```
+evo redis specs [flags]
+```
+
+### Examples
+
+```
+  evo redis specs
+  evo redis specs --version-id <version-id> --zone ru.AZ-2
+```
+
+### Options
+
+```
+  -h, --help                Справка по specs
+      --version-id string   UUID версии (список: evo redis versions); необязательно — по умолчанию последняя
+      --zone string         Зона доступности: имя (ru.AZ-2) или UUID; необязательно — по умолчанию зона из настроек, иначе ru.AZ-2. API нужна зона
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo redis](#evo-redis)	 - Кластеры Managed Redis
+
+## evo redis versions
+
+Доступные версии Managed Redis
+
+### Synopsis
+
+```text
+Доступные версии Managed Redis.
+
+Доступные версии Managed Redis: id и имя. Только чтение. Нужны перед созданием кластера ('evo redis create').
+
+Вызывает инструмент redis_versions (подробнее: 'evo tools describe redis_versions').
+```
+
+```
+evo redis versions [flags]
+```
+
+### Examples
+
+```
+  evo redis versions
+```
+
+### Options
+
+```
+  -h, --help   Справка по versions
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo redis](#evo-redis)	 - Кластеры Managed Redis
 
 ## evo s3
 

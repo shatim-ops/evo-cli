@@ -1145,8 +1145,7 @@ var toolsRU = map[string]toolRU{
 		},
 	},
 
-	// Without a command yet (CLIPending), by the PR that gives them one.
-	// PR 3b: kafka
+	// kafka
 	"kafka_list": {
 		Short: "Кластеры Managed Kafka проекта",
 		Long:  "Кластеры Managed Kafka: id, имя, состояние, брокеры, версия. Только чтение.",
@@ -1155,21 +1154,21 @@ var toolsRU = map[string]toolRU{
 		Short: "Кластер Kafka по ID: состояние, адреса, брокеры, версия",
 		Long:  "Кластер Managed Kafka по id: состояние, адреса (kafka_hosts), брокеры, версия. Только чтение.",
 		Args: map[string]string{
-			"cluster_id": "UUID кластера (список: evo tools call kafka_list), обязательный",
+			"cluster_id": "UUID кластера (список: evo kafka list), обязательный",
 		},
 	},
 	"kafka_versions": {
 		Short: "Доступные версии Managed Kafka",
 		Long: "Доступные версии Managed Kafka: id и имя. Только чтение. Нужны перед созданием кластера " +
-			"('evo tools call kafka_create').",
+			"('evo kafka create').",
 	},
 	"kafka_specs": {
 		Short: "Конфигурации кластера Kafka для версии: CPU, память, хранилище, брокеры",
 		Long: "Конфигурации кластера Managed Kafka для версии: id, CPU, память (ГБ), минимальный объём хранилища, " +
 			"наименьшее и наибольшее число брокеров. Только чтение. id конфигурации выбирают для создания " +
-			"кластера ('evo tools call kafka_create').",
+			"кластера ('evo kafka create').",
 		Args: map[string]string{
-			"version_id": "UUID версии (список: evo tools call kafka_versions); необязательно — по умолчанию последняя",
+			"version_id": "UUID версии (список: evo kafka versions); необязательно — по умолчанию последняя",
 			"zone": "Зона доступности: имя (ru.AZ-2) или UUID; необязательно — по умолчанию зона из настроек, иначе " +
 				"ru.AZ-2. API нужна зона",
 		},
@@ -1177,12 +1176,12 @@ var toolsRU = map[string]toolRU{
 	"kafka_create": {
 		Short: "Создать кластер Managed Kafka (платно, асинхронно)",
 		Long: "Создать кластер Managed Kafka. Имя, которое уже носит кластер проекта " +
-			"('evo tools call kafka_list'), отклоняется. evo подбирает версию (последнюю), подсеть (основную " +
+			"('evo kafka list'), отклоняется. evo подбирает версию (последнюю), подсеть (основную " +
 			"подсеть зоны из настроек, иначе первой зоны, где она есть, начиная с ru.AZ-2) и по ней — зону " +
 			"кластера, конфигурацию этой зоны (по --specification-id или по --cpu и --ram; если подходящей нет — " +
 			"ошибка со списком конфигураций), хранилище (минимум конфигурации) и число брокеров (min_brokers " +
 			"конфигурации; живой API его не сообщает, тогда 1 — без репликации). Кластер платный. Операция " +
-			"асинхронная: ход — 'evo tools call kafka_operation'.",
+			"асинхронная: ход — 'evo kafka operation <operation-id>'.",
 		Args: map[string]string{
 			"brokers": "Число брокеров. По умолчанию — min_brokers конфигурации, иначе 1 (один брокер — без репликации; для " +
 				"реплицируемого кластера — 3). Проверяется по min_brokers и max_brokers конфигурации, если они есть",
@@ -1190,19 +1189,19 @@ var toolsRU = map[string]toolRU{
 			"description":      "Описание (необязательно)",
 			"name":             "Имя кластера, 2–63 символа (обязательный)",
 			"ram":              "RAM, ГБ — вместе с --cpu",
-			"specification_id": "UUID конфигурации (список: evo tools call kafka_specs). Необязателен, если заданы --cpu и --ram",
+			"specification_id": "UUID конфигурации (список: evo kafka specs). Необязателен, если заданы --cpu и --ram",
 			"storage_gib":      "Размер диска, ГиБ (по умолчанию — минимум конфигурации)",
 			"subnet_id": "UUID подсети (список: evo vpc subnets). По умолчанию — основная подсеть зоны из настроек. Кластер " +
 				"создаётся в зоне подсети",
 			"ui_enabled": "Включить Kafka UI (по умолчанию false)",
-			"version_id": "UUID версии Kafka (список: evo tools call kafka_versions). По умолчанию — последняя",
+			"version_id": "UUID версии Kafka (список: evo kafka versions). По умолчанию — последняя",
 		},
 	},
 	"kafka_delete": {
 		Short: "Удалить кластер Kafka вместе с данными (асинхронно)",
 		Long:  "Удалить кластер Managed Kafka по id вместе с данными. Операция асинхронная.",
 		Args: map[string]string{
-			"cluster_id": "UUID кластера (список: evo tools call kafka_list), обязательный",
+			"cluster_id": "UUID кластера (список: evo kafka list), обязательный",
 		},
 	},
 	"kafka_operation": {
@@ -1217,7 +1216,7 @@ var toolsRU = map[string]toolRU{
 		},
 	},
 
-	// PR 3b: redis
+	// redis
 	"redis_list": {
 		Short: "Кластеры Managed Redis проекта",
 		Long:  "Кластеры Managed Redis: id, имя, состояние, тип, шарды, реплики. Только чтение.",
@@ -1226,21 +1225,21 @@ var toolsRU = map[string]toolRU{
 		Short: "Кластер Redis по ID: состояние, адреса, тип, шарды, реплики",
 		Long:  "Кластер Managed Redis по id: состояние, адреса (redis_hosts), тип, шарды, реплики. Только чтение.",
 		Args: map[string]string{
-			"cluster_id": "UUID кластера (список: evo tools call redis_list), обязательный",
+			"cluster_id": "UUID кластера (список: evo redis list), обязательный",
 		},
 	},
 	"redis_versions": {
 		Short: "Доступные версии Managed Redis",
 		Long: "Доступные версии Managed Redis: id и имя. Только чтение. Нужны перед созданием кластера " +
-			"('evo tools call redis_create').",
+			"('evo redis create').",
 	},
 	"redis_specs": {
 		Short: "Конфигурации кластера Redis для версии: CPU, память, режим, хранилище",
 		Long: "Конфигурации кластера Managed Redis для версии: id, CPU, память (ГБ), режим развёртывания, " +
 			"минимальный объём хранилища. Только чтение. id конфигурации выбирают для создания кластера " +
-			"('evo tools call redis_create').",
+			"('evo redis create').",
 		Args: map[string]string{
-			"version_id": "UUID версии (список: evo tools call redis_versions); необязательно — по умолчанию последняя",
+			"version_id": "UUID версии (список: evo redis versions); необязательно — по умолчанию последняя",
 			"zone": "Зона доступности: имя (ru.AZ-2) или UUID; необязательно — по умолчанию зона из настроек, иначе " +
 				"ru.AZ-2. API нужна зона",
 		},
@@ -1248,15 +1247,15 @@ var toolsRU = map[string]toolRU{
 	"redis_create": {
 		Short: "Создать кластер Managed Redis (платно, асинхронно)",
 		Long: "Создать кластер Managed Redis. Имя, которое уже носит кластер проекта " +
-			"('evo tools call redis_list'), отклоняется. evo подбирает версию (последнюю), подсеть (как для " +
+			"('evo redis list'), отклоняется. evo подбирает версию (последнюю), подсеть (как для " +
 			"Kafka) и по ней — зону кластера, конфигурацию этой зоны (по --specification-id или по --cpu и " +
 			"--ram; если подходящей нет — ошибка со списком конфигураций). Тип MASTER_REPLICA (по умолчанию): в " +
 			"каждом шарде мастер и две реплики, все в зоне подсети — Single-AZ; API до сих пор отклонял " +
 			"STANDALONE.\n\n" +
 			"--replicas здесь — реплики БЕЗ мастера (поле replicas запроса на создание, 2), а сведения о " +
-			"кластере ('evo tools call redis_get', 'evo tools call redis_list') показывают replicas как число " +
+			"кластере ('evo redis get <cluster-id>', 'evo redis list') показывают replicas как число " +
 			"узлов в шарде вместе с мастером (3). Кластер платный. Операция асинхронная: ход — " +
-			"'evo tools call redis_operation'.",
+			"'evo redis operation <operation-id>'.",
 		Args: map[string]string{
 			"cpu":         "Число vCPU — для автоподбора конфигурации, если --specification-id не задан",
 			"description": "Описание (необязательно)",
@@ -1266,19 +1265,19 @@ var toolsRU = map[string]toolRU{
 				"умолчанию: мастер и две реплики, всего 3 узла — это число сведения о кластере показывают как " +
 				"replicas); для STANDALONE — 0",
 			"shards":           "Число шардов, 1–8 (по умолчанию 1)",
-			"specification_id": "UUID конфигурации (список: evo tools call redis_specs). Необязателен, если заданы --cpu и --ram",
+			"specification_id": "UUID конфигурации (список: evo redis specs). Необязателен, если заданы --cpu и --ram",
 			"storage_gb":       "Размер диска, ГБ (по умолчанию — минимум конфигурации)",
 			"subnet_id": "UUID подсети (список: evo vpc subnets). По умолчанию — основная подсеть зоны из настроек. Кластер " +
 				"создаётся в зоне подсети",
 			"type":       "MASTER_REPLICA (по умолчанию) или STANDALONE (API пока его отклоняет)",
-			"version_id": "UUID версии Redis (список: evo tools call redis_versions). По умолчанию — последняя",
+			"version_id": "UUID версии Redis (список: evo redis versions). По умолчанию — последняя",
 		},
 	},
 	"redis_delete": {
 		Short: "Удалить кластер Redis вместе с данными (асинхронно)",
 		Long:  "Удалить кластер Managed Redis по id вместе с данными. Операция асинхронная.",
 		Args: map[string]string{
-			"cluster_id": "UUID кластера (список: evo tools call redis_list), обязательный",
+			"cluster_id": "UUID кластера (список: evo redis list), обязательный",
 		},
 	},
 	"redis_operation": {
@@ -1293,7 +1292,7 @@ var toolsRU = map[string]toolRU{
 		},
 	},
 
-	// PR 3b: ar
+	// ar
 	"ar_list": {
 		Short: "Реестры Artifact Registry проекта",
 		Long: "Реестры Artifact Registry проекта: id, имя, тип, состояние, публичный ли, тариф. Только чтение. " +
@@ -1302,17 +1301,17 @@ var toolsRU = map[string]toolRU{
 	},
 	"ar_get": {
 		Short: "Реестр Artifact Registry по ID: все сведения",
-		Long: "Все сведения об одном реестре Artifact Registry по id (список: 'evo tools call ar_list'). Только " +
+		Long: "Все сведения об одном реестре Artifact Registry по id (список: 'evo ar list'). Только " +
 			"чтение.",
 		Args: map[string]string{
-			"id": "UUID реестра (список: evo tools call ar_list), обязательный",
+			"id": "UUID реестра (список: evo ar list), обязательный",
 		},
 	},
 	"ar_create": {
 		Short: "Создать реестр Artifact Registry (платно, асинхронно)",
-		Long: "Создать реестр Artifact Registry; имя, которое уже носит реестр проекта ('evo tools call ar_list'), " +
+		Long: "Создать реестр Artifact Registry; имя, которое уже носит реестр проекта ('evo ar list'), " +
 			"отклоняется. Тип (--registry-type): DOCKER (по умолчанию), DEBIAN, RPM, GENERIC, PYPI или NPM. " +
-			"Реестр платный. Операция асинхронная: ход — 'evo tools call ar_operation'; затем образы загружают " +
+			"Реестр платный. Операция асинхронная: ход — 'evo ar operation <operation-id>'; затем образы загружают " +
 			"через docker login в <registry>.cr.cloud.ru.",
 		Args: map[string]string{
 			"name":          "Имя реестра (обязательный)",
@@ -1323,10 +1322,10 @@ var toolsRU = map[string]toolRU{
 	},
 	"ar_delete": {
 		Short: "Удалить реестр вместе с артефактами (асинхронно)",
-		Long: "Удалить реестр Artifact Registry по id (список: 'evo tools call ar_list') вместе с его артефактами. " +
+		Long: "Удалить реестр Artifact Registry по id (список: 'evo ar list') вместе с его артефактами. " +
 			"Операция асинхронная.",
 		Args: map[string]string{
-			"id": "UUID реестра (список: evo tools call ar_list), обязательный",
+			"id": "UUID реестра (список: evo ar list), обязательный",
 		},
 	},
 	"ar_operation": {
@@ -1341,7 +1340,7 @@ var toolsRU = map[string]toolRU{
 		},
 	},
 
-	// PR 3b: ca
+	// ca
 	"ca_list": {
 		Short: "Приложения Container Apps проекта",
 		Long:  "Приложения Container Apps (бессерверные контейнеры) проекта: имя, состояние. Только чтение.",
@@ -1360,7 +1359,7 @@ var toolsRU = map[string]toolRU{
 			"нагрузки приложение масштабируется до нуля. Превью (will_create) перечисляет все настройки, в том " +
 			"числе работает ли контейнер от root. Имя, порт и число экземпляров проверяются до подтверждения. " +
 			"Операция асинхронная: ответ содержит operation_id; состояние и публичный URL — " +
-			"'evo tools call ca_get'. Подходит для веб-сервисов и API без состояния, когда не нужна своя ВМ.",
+			"'evo ca get <name>'. Подходит для веб-сервисов и API без состояния, когда не нужна своя ВМ.",
 		Args: map[string]string{
 			"cpu":         "Запрос CPU, например 0.1 или 1 (по умолчанию 0.1)",
 			"description": "Описание (необязательно)",
@@ -1410,6 +1409,7 @@ var toolsRU = map[string]toolRU{
 		},
 	},
 
+	// Without a command yet (CLIPending), by the PR that gives them one.
 	// PR 3c: billing
 	"billing_balance": {
 		Short: "Баланс по договору: сумма в рублях, признак активности",

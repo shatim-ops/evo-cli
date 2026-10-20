@@ -149,6 +149,63 @@ var commandExamples = map[string]string{
   evo snat create nat-az2 --zone ru.AZ-2 --yes`,
 	"evo snat delete": `  evo snat delete <snat-id> --dry-run
   evo snat delete <snat-id> --yes`,
+
+	// kafka
+	"evo kafka list": `  evo kafka list
+  evo kafka list --json | jq -r '.clusters[] | "\(.id)\t\(.name)\t\(.status)"'`,
+	"evo kafka get": `  evo kafka get <cluster-id>
+  evo kafka get <cluster-id> --json`,
+	"evo kafka versions": `  evo kafka versions`,
+	"evo kafka specs": `  evo kafka specs
+  evo kafka specs --version-id <version-id> --zone ru.AZ-2`,
+	"evo kafka create": `  evo kafka create events --dry-run
+  evo kafka create events --cpu 2 --ram 8 --brokers 3 --yes`,
+	"evo kafka delete": `  evo kafka delete <cluster-id> --dry-run
+  evo kafka delete <cluster-id> --yes`,
+	"evo kafka operation": `  evo kafka operation <operation-id>
+  evo kafka operation <operation-id> --wait-seconds 300`,
+
+	// redis
+	"evo redis list": `  evo redis list
+  evo redis list --json | jq -r '.clusters[] | "\(.id)\t\(.name)\t\(.status)"'`,
+	"evo redis get": `  evo redis get <cluster-id>
+  evo redis get <cluster-id> --json`,
+	"evo redis versions": `  evo redis versions`,
+	"evo redis specs": `  evo redis specs
+  evo redis specs --version-id <version-id> --zone ru.AZ-2`,
+	"evo redis create": `  evo redis create cache --dry-run
+  evo redis create cache --cpu 2 --ram 4 --yes`,
+	"evo redis delete": `  evo redis delete <cluster-id> --dry-run
+  evo redis delete <cluster-id> --yes`,
+	"evo redis operation": `  evo redis operation <operation-id>
+  evo redis operation <operation-id> --wait-seconds 300`,
+
+	// ar
+	"evo ar list": `  evo ar list
+  evo ar list --json | jq -r '.registries[] | "\(.id)\t\(.name)"'`,
+	"evo ar get": `  evo ar get <registry-id>`,
+	"evo ar create": `  evo ar create images --dry-run
+  evo ar create images --registry-type DOCKER --yes`,
+	"evo ar delete": `  evo ar delete <registry-id> --dry-run
+  evo ar delete <registry-id> --yes`,
+	"evo ar operation": `  evo ar operation <operation-id>
+  evo ar operation <operation-id> --wait-seconds 120`,
+
+	// ca
+	"evo ca list": `  evo ca list
+  evo ca list --json`,
+	"evo ca get": `  evo ca get my-app
+  evo ca get my-app --json`,
+	"evo ca deploy": `  evo ca deploy my-app --image myregistry.cr.cloud.ru/my-app:1.0 --dry-run
+  evo ca deploy my-app --image myregistry.cr.cloud.ru/my-app:1.0 --port 8080 --env LOG_LEVEL=info --yes
+  evo ca deploy worker --image myregistry.cr.cloud.ru/worker:1.0 --public=false --env API_TOKEN=@./api.token --yes`,
+	"evo ca delete": `  evo ca delete my-app --dry-run
+  evo ca delete my-app --yes`,
+	"evo ca logs": `  evo ca logs my-app
+  evo ca logs my-app --system
+  evo ca logs my-app --json`,
+	"evo ca start": `  evo ca start my-app --yes`,
+	"evo ca stop":  `  evo ca stop my-app --yes`,
 }
 
 // applyExamples sets commandExamples on the tree under root.

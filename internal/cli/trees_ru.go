@@ -30,6 +30,10 @@ var treeGroupShortRU = map[string]string{
 	"lb":          "Балансировщики нагрузки (L4)",
 	"tg":          "Группы целей балансировщиков",
 	"snat":        "SNAT-шлюзы: исходящий интернет для приватных подсетей",
+	"kafka":       "Кластеры Managed Kafka",
+	"redis":       "Кластеры Managed Redis",
+	"ar":          "Artifact Registry: реестры образов и пакетов",
+	"ca":          "Container Apps: бессерверные контейнеры",
 }
 
 // russianTrees are the trees whose human tables speak Russian too: the
@@ -39,7 +43,8 @@ var treeGroupShortRU = map[string]string{
 // between (image, vpc, k8s, pg, s3, secret) keep their tables as they are.
 // --json and MCP keep the tool's keys and English notes.
 var russianTrees = map[string]bool{"vm": true, "disk": true,
-	"dns": true, "cert": true, "lb": true, "tg": true, "snat": true}
+	"dns": true, "cert": true, "lb": true, "tg": true, "snat": true,
+	"kafka": true, "redis": true, "ar": true, "ca": true}
 
 // legacyRussianTrees are the Russian trees of v1.1: their tables take the
 // titles from columnHeaderRU alone, so that a title added for a newer tree
@@ -62,6 +67,18 @@ var moreColumnHeaderRU = map[string]string{
 	"nat_type":             "Тип NAT",
 	"availability_zone":    "Зона",
 	"availability_zone_id": "ID зоны",
+	"version":              "Версия",
+	"brokers":              "Брокеры",
+	"health":               "Работоспособность",
+	"shards":               "Шарды",
+	"replicas":             "Реплики",
+	"public":               "Публичный",
+	"tariff":               "Тариф",
+	"display_name":         "Имя",
+	"cpu":                  "vCPU",
+	"memory":               "RAM, ГБ",
+	"deployment_mode":      "Режим",
+	"min_storage_gb":       "Хранилище от, ГБ",
 }
 
 // treeColumnHeaderRU are the titles a tree gives a column its own way.
