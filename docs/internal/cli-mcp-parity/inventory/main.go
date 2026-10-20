@@ -20,6 +20,10 @@
 //   - деревья команд: CLISpec инструментов реестра (Tool.CLI: группа, глагол,
 //     позиционные аргументы, Rename/Omit/Pairs/Files/Raw/Render) и временный
 //     список tools.CLIPending — инструменты, у которых команды пока нет;
+//   - команды движка (evo deploy, status, logs, list-images: своя справка и
+//     флаги с v1.0, вызывают инструмент; spec.md REQ-4) — таблица
+//     engineBuilt, повторяющая engineCommands из internal/cli
+//     (TestParity_EngineCommands сверяет ту с деревом и схемами);
 //   - rootArgs (аргументы, которые подаются корневыми флагами): AST-разбор
 //     internal/cli/trees.go;
 //   - русские описания: Tool.ShortRU, Tool.DescriptionRU и
@@ -55,7 +59,16 @@ type treeCmd struct {
 	Omit, Pairs       map[string]bool
 	Files             map[string]bool
 	Render, Raw       bool
+	// Engine: команда движка — своя справка и флаги, вызывает инструмент.
+	Engine bool
 }
+
+// path — путь команды: "evo vm list", "evo deploy" (Group "").
+func (c treeCmd) path() string { return strings.Join(strings.Fields("evo "+c.Group+" "+c.Verb), " ") }
+
+// engineBuilt — команды движка, которые сами — команды своих инструментов
+// (CLISpec называет их путь), как в engineCommands из internal/cli.
+var engineBuilt = map[string]bool{"evo deploy": true, "evo status": true, "evo logs": true, "evo list-images": true}
 
 // rootArgs повторяет internal/cli/trees.go: аргументы инструмента, которые
 // подаются корневыми флагами (--project-id, --region) и согласием (--yes).
@@ -65,7 +78,7 @@ var rootArgs = map[string]bool{}
 // localCommand — команда CLI без своей команды дерева: путь движка к тому же
 // инструменту, локальная команда без инструмента или мета-команда.
 type localCommand struct {
-	Kind   string // engine | local | meta | group | hidden
+	Kind   string // alias | local | meta | group | hidden
 	Tool   string // инструмент, которому команда соответствует по смыслу ("" — нет)
 	Reason string
 }
@@ -83,17 +96,13 @@ var localCommands = map[string]localCommand{
 	"evo configure":             {Kind: "local", Reason: "пишет ключ в профиль на диске сервера/машины; MCP-клиент ключей не передаёт по контракту (docs/mcp.md)"},
 	"evo configure delete":      {Kind: "local", Reason: "удаляет профиль с диска"},
 	"evo configure list":        {Kind: "local", Reason: "читает профили с диска"},
-	"evo deploy":                {Kind: "engine", Tool: "deploy", Reason: "свой код cobra → engine.Deploy; инструмент deploy — тот же engine.Deploy с NonInteractive+Yes"},
-	"evo destroy":               {Kind: "engine", Tool: "destroy", Reason: "свой код → engine.Destroy (запись state); инструмент destroy без аргументов — тот же путь; с vm_id|name — команда дерева vm delete"},
+	"evo destroy":               {Kind: "alias", Tool: "destroy", Reason: "команда движка: destroy без vm_id и name — ВМ развёртывания каталога; с vm_id|name — команда дерева vm delete"},
 	"evo doctor":                {Kind: "local", Reason: "диагностика машины: файлы настроек, права, PATH; часть (связь с API, ключ) могла бы быть инструментом"},
 	"evo init":                  {Kind: "local", Reason: "пишет .evo.yaml в текущий каталог после интерактивного выбора; инструмента нет"},
-	"evo list-zones":            {Kind: "engine", Tool: "list_zones", Reason: "свой код → Cloud.ListAvailabilityZones; дубль evo vm zones с другим форматом --json"},
-	"evo logs":                  {Kind: "engine", Tool: "logs", Reason: "свой код → engine.Logs; у инструмента нет follow"},
 	"evo mcp":                   {Kind: "meta", Reason: "сам сервер MCP"},
 	"evo project":               {Kind: "group", Reason: "группа"},
-	"evo project list":          {Kind: "local", Tool: "org_projects", Reason: "свой код listProjects (configure.go) → Organization API; по смыслу = org_projects, формат ответа другой"},
+	"evo project list":          {Kind: "alias", Tool: "org_projects", Reason: "алиас evo org projects: вызывает org_projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка"},
 	"evo project use":           {Kind: "local", Reason: "пишет проект в профиль на диске"},
-	"evo status":                {Kind: "engine", Tool: "status", Reason: "свой код → engine.Status; инструмент status читает state и CheckCloud сам, без withNames"},
 	"evo tools":                 {Kind: "meta", Reason: "группа"},
 	"evo tools call":            {Kind: "meta", Reason: "универсальный вызов любого инструмента"},
 	"evo tools describe":        {Kind: "meta", Reason: "описание инструмента (англ.)"},
@@ -102,12 +111,12 @@ var localCommands = map[string]localCommand{
 	"evo version":               {Kind: "local", Reason: "версия бинаря; MCP отдаёт её в initialize.serverInfo"},
 	"evo whoami":                {Kind: "local", Reason: "профиль, маскированный Key ID, проект, срок токена; инструмента нет"},
 	// Скрытые команды (в docs/commands.md их нет): учтены для полноты.
-	"evo list-images":     {Kind: "hidden", Tool: "list_images", Reason: "устаревшая, скрытая; свой код engine.ListImages (общий каталог), инструмент list_images добавляет образы проекта"},
+	"evo list-zones":      {Kind: "hidden", Tool: "list_zones", Reason: "скрытый устаревший алиас evo vm zones: вызывает list_zones, --json — массив зон до v2.0"},
 	"evo crew":            {Kind: "hidden", Reason: "титры"},
 	"evo mcp healthcheck": {Kind: "hidden", Reason: "HEALTHCHECK Docker-образа"},
 }
 
-var hiddenCommands = []string{"evo list-images", "evo crew", "evo mcp healthcheck"}
+var hiddenCommands = []string{"evo list-images", "evo list-zones", "evo crew", "evo mcp healthcheck"}
 
 func main() {
 	root := "."
@@ -125,7 +134,7 @@ func main() {
 	byPath := map[string]treeCmd{}
 	for _, c := range cmds {
 		byTool[c.Tool] = append(byTool[c.Tool], c)
-		byPath["evo "+c.Group+" "+c.Verb] = c
+		byPath[c.path()] = c
 	}
 	engineTool := map[string][]string{}
 	for path, lc := range localCommands {
@@ -139,6 +148,11 @@ func main() {
 
 	// Проверки полноты ручной таблицы.
 	var problems []string
+	for path := range engineBuilt {
+		if _, ok := byPath[path]; !ok {
+			problems = append(problems, "engineBuilt называет команду, которой нет в CLISpec реестра: "+path)
+		}
+	}
 	for _, path := range docCmds {
 		if _, tree := byPath[path]; tree {
 			continue
@@ -188,11 +202,14 @@ func main() {
 			kind = "дерево"
 			var ps []string
 			for _, c := range byTool[t.Name] {
-				ps = append(ps, "`evo "+c.Group+" "+c.Verb+"`")
+				if c.Engine {
+					kind = "движок"
+				}
+				ps = append(ps, "`"+c.path()+"`")
 			}
 			if len(engineTool[t.Name]) > 0 {
 				for _, p := range engineTool[t.Name] {
-					ps = append(ps, "`"+p+"` (движок)")
+					ps = append(ps, "`"+p+"` (алиас)")
 				}
 			}
 			path = strings.Join(ps, ", ")
@@ -229,7 +246,7 @@ func main() {
 	for _, k := range []string{"дерево", "движок", "tools call"} {
 		fmt.Fprintf(w, "| %s | %d | %d |\n", k, kinds[k], kindMut[k])
 	}
-	fmt.Fprintf(w, "\n«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`. «движок» и «tools call» вместе — временный список `tools.CLIPending` (%d): тест TestParity_CommandsAndTools не даёт ему устареть, PR 3 и 5 плана его опустошают.\n\n", len(tools.CLIPending))
+	fmt.Fprintf(w, "\n«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `status`, `logs`, `list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`: временный список `tools.CLIPending` (%d), который PR 5 плана опустошает. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в engineCommands.\n\n", len(tools.CLIPending))
 	fmt.Fprintf(w, "### По группам\n\n| Группа | Всего | дерево | движок | tools call | RU-справка (short/long) |\n|---|---|---|---|---|---|\n")
 	for _, g := range tools.Groups() {
 		gk := groupKind[g]
@@ -289,7 +306,7 @@ func main() {
 			extra = append(extra, "render")
 		}
 		sort.Strings(extra)
-		fmt.Fprintf(w, "| `evo %s %s` | `%s` | %s | %s | %s | %s | %s |\n", c.Group, c.Verb, c.Tool,
+		fmt.Fprintf(w, "| `%s` | `%s` | %s | %s | %s | %s | %s |\n", c.path(), c.Tool,
 			dash(strings.ReplaceAll(strings.Join(c.Args, " "), "|", `\|`)), dash(strings.Join(renames, ", ")), dash(strings.Join(omitted, ", ")), dash(strings.Join(viaRoot, ", ")), dash(strings.Join(extra, ", ")))
 	}
 
@@ -306,8 +323,12 @@ func main() {
 
 	// --- Сверка флагов деревьев со схемой ---
 	fmt.Fprintf(w, "\n## 4. Флаги команд деревьев против схемы инструмента\n\nОжидаемый набор флагов выводится из схемы по правилам trees.go (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с docs/commands.md. Пусто — расхождений нет.\n\n")
-	drift := 0
+	drift, engine := 0, 0
 	for _, c := range cmds {
+		if c.Engine {
+			engine++ // флаги — engineCommands, их сверяет TestParity_EngineCommands
+			continue
+		}
 		t, _ := reg.Lookup(c.Tool)
 		want := map[string]bool{}
 		pos := map[string]bool{}
@@ -327,7 +348,7 @@ func main() {
 			}
 			want[f] = true
 		}
-		got := docFlags["evo "+c.Group+" "+c.Verb]
+		got := docFlags[c.path()]
 		var missing, extra []string
 		for f := range want {
 			if !got[f] {
@@ -343,17 +364,20 @@ func main() {
 			drift++
 			sort.Strings(missing)
 			sort.Strings(extra)
-			fmt.Fprintf(w, "- `evo %s %s`: нет флага для %s; флаг без поля схемы %s\n", c.Group, c.Verb, dash(strings.Join(missing, ", ")), dash(strings.Join(extra, ", ")))
+			fmt.Fprintf(w, "- `%s`: нет флага для %s; флаг без поля схемы %s\n", c.path(), dash(strings.Join(missing, ", ")), dash(strings.Join(extra, ", ")))
 		}
 	}
 	if drift == 0 {
-		fmt.Fprintf(w, "Расхождений нет: флаги всех %d команд деревьев выведены из схемы.\n", len(cmds))
+		fmt.Fprintf(w, "Расхождений нет: флаги всех %d команд деревьев выведены из схемы; флаги %d команд движка сверяет со схемой TestParity_EngineCommands.\n", len(cmds)-engine, engine)
 	}
 
 	// --- RU-покрытие флагов ---
 	fmt.Fprintf(w, "\n## 5. Русская справка\n\n")
 	flagsTree, flagsRU := 0, 0
 	for _, c := range cmds {
+		if c.Engine {
+			continue
+		}
 		t, _ := reg.Lookup(c.Tool)
 		pos := map[string]bool{}
 		for _, a := range c.Args {
@@ -460,6 +484,7 @@ func treeCmds(reg *tools.Registry) []treeCmd {
 		c := treeCmd{Group: spec.Group, Verb: spec.Verb, Tool: t.Name, Args: spec.Args,
 			Rename: map[string]string{}, Omit: map[string]bool{}, Pairs: map[string]bool{}, Files: map[string]bool{},
 			Render: spec.Render != "", Raw: spec.Raw}
+		c.Engine = engineBuilt[c.path()]
 		for k, v := range spec.Rename {
 			c.Rename[k] = v
 		}

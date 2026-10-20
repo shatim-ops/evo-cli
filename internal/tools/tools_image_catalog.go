@@ -288,17 +288,17 @@ func metaFlags(fields []string) string {
 func (s *Registry) handleListImages(ctx context.Context, args map[string]any) (string, bool) {
 	eng, err := s.newEngine(nil)
 	if err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
 	tok, err := eng.Auth.Token(ctx)
 	if err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
 	eng.Cloud.SetToken(tok.Value)
 
 	images, err := eng.Cloud.ListImages(ctx)
 	if err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
 	// The shared catalogue does not contain images built inside the project, so
 	// they are fetched separately and merged — otherwise a freshly built image

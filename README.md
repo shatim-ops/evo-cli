@@ -137,7 +137,7 @@ evo logs -f
 evo destroy
 ```
 
-Зону лучше выбрать явно (`evo list-zones` показывает, какие открыты для новых
+Зону лучше выбрать явно (`evo vm zones` показывает, какие открыты для новых
 ресурсов): подробности и другие известные ограничения — в
 [docs/troubleshooting.md](docs/troubleshooting.md).
 

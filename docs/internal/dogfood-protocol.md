@@ -63,7 +63,7 @@ evo 1.0.4). Формат волны — свободное тестирован�
 | 3. Ключ и проект | `evo configure` (интерактивно: Key ID, секрет, UUID проекта) | профиль `default`, файлы `0600` в `~/.config/evo` (macOS `~/Library/Application Support/evo`, Windows `%APPDATA%\evo`); ID проекта принимается только как UUID | `docs/auth.md` |
 | 4. Проверка ключа | `evo whoami` | профиль, маскированный Key ID, проект, `token_source` | `docs/auth.md` |
 | 5. Окружение | `evo doctor` и `evo doctor --json` | таблица проверок: конфиг, права файлов, IAM, Compute API, kubectl/helm; код 0. За корпоративным прокси — зафиксировать, что прошло и что нет | `docs/troubleshooting.md` |
-| 6. Первое чтение | `evo vm list`, `evo list-zones`, `evo vm flavors` | таблицы; `list-zones` показывает, какие зоны принимают новые ресурсы | README |
+| 6. Первое чтение | `evo vm list`, `evo vm zones`, `evo vm flavors` | таблицы; `vm zones` показывает, какие зоны принимают новые ресурсы (`evo list-zones` — скрытый устаревший алиас: тот же список и предупреждение) | README |
 | 7. MCP | Cursor: `~/.cursor/mcp.json` → `{"mcpServers":{"evo":{"command":"evo","args":["mcp"]}}}`. Claude Code: `claude mcp add --transport stdio --scope project evo -- evo mcp` | агент видит 152 инструмента; просьба «покажи мои ВМ» → `vm_list`; просьба «создай ВМ» → превью с ценой и вопрос, без создания | `docs/mcp.md` |
 | 8. Отказ без согласия | `evo vm create t1 </dev/null; echo $?` | превью в stderr, ничего не создано, код `3` | `docs/exit-codes.md` |
 
@@ -183,7 +183,7 @@ evo 1.0.4). Формат волны — свободное тестирован�
 
 ### 2.13 Мониторинг, биллинг, аудит, IAM и организация (только чтение)
 
-- **Команды:** `evo metrics history|scrape`, `evo billing balance|consumption|finops`, `evo audit events`, `evo iam service-accounts`, `evo org quotas`; `evo project list|use` (`org_projects`). MCP: `metrics_*`, `billing_*`, `audit_events`, `iam_service_accounts`, `org_projects`, `org_quotas`.
+- **Команды:** `evo metrics history|scrape`, `evo billing balance|consumption|finops`, `evo audit events`, `evo iam service-accounts`, `evo org projects|quotas`; `evo project list|use` (`project list` — алиас `evo org projects`, инструмент `org_projects`). MCP: `metrics_*`, `billing_*`, `audit_events`, `iam_service_accounts`, `org_projects`, `org_quotas`.
 - **Попробуйте:** `evo billing consumption --start <дата начала волны>` — ваш расход; `evo metrics history <метрика>` по своей ВМ; `evo audit events --since 1d`; `evo org quotas`.
 - **Известное:** расход проекта без договора работает (BIL-5, проверено 19.10: 485 строк за 30 дней); вживую его отдаёт и ключ с ролью «Наблюдатель проекта», хотя документация называет только администратора проекта (BIL-7) — сообщите, какая роль у вашего ключа и ответил ли `billing_consumption`; баланс договора ключу проекта недоступен (BIL-4); `audit_events` — 401 вместо 403, если аудит не включён (AUD-1); `metrics_history` — окно не больше 24 ч (лимит сервиса, есть в документации); ключ уровня проекта не видит список проектов (IAM-3), `evo project list` объясняет это, код 0.
 - **Деньги:** 0.
@@ -234,7 +234,7 @@ evo 1.0.4). Формат волны — свободное тестирован�
 | Отмена вызова в MCP-клиенте | попросить агента создать ВМ, во время вызова нажать «Stop»/отменить в клиенте | что видит агент; осталась ли ВМ; виден ли её id в `evo vm list`; делает ли клиент повторный вызов сам | `evo vm list`, лог клиента |
 | Неверный ключ | `CLOUDRU_KEY_ID=x CLOUDRU_SECRET=y evo vm list` | код 2, `AUTH_FAILED`, подсказка | — |
 | Половина пары из окружения | только `CLOUDRU_SECRET=…` | код 2, `AUTH_REQUIRED` (так задумано, `docs/troubleshooting.md`) | — |
-| Несуществующая зона | `.evo.yaml` с `region: ru.AZ-9` или `--zone` у `k8s plan` | `CONFIG_INVALID` до создания; закрытая зона — отказ с текстом «не принимает новые ресурсы» | `evo list-zones` |
+| Несуществующая зона | `.evo.yaml` с `region: ru.AZ-9` или `--zone` у `k8s plan` | `CONFIG_INVALID` до создания; закрытая зона — отказ с текстом «не принимает новые ресурсы» | `evo vm zones` |
 | Занятое имя | второй `vm create web`, `pg create` с именем живого кластера | отказ без создания (ВМ — код 2 у `deploy`, 1 у `provision`; кластер — `USAGE`) | списки |
 | Повтор после сбоя | после любой ошибки `deploy` или `provision` — та же команда ещё раз | вторая ВМ и второй адрес не появляются; `status` показывает одну запись | `evo vm list`, `evo vpc fips` |
 | Долгая операция и токен | `evo whoami`, затем через 55 мин `evo deploy` | команда доходит до конца, не падает на `AUTH_EXPIRED` посреди ожидания (исправлено в 1.0.4; на 1.0.3 — известная ошибка) | — |

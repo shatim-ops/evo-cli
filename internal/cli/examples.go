@@ -217,6 +217,8 @@ var commandExamples = map[string]string{
 	"evo audit events": `  evo audit events
   evo audit events --since 30m
   evo audit events --since 1d --page-size 500 --json | jq -r '.next_page_token'`,
+	"evo org projects": `  evo org projects
+  evo org projects --json | jq -r '.projects[].id'`,
 	"evo org quotas": `  evo org quotas
   evo org quotas --project-id <UUID> --json`,
 	"evo iam service-accounts": `  evo iam service-accounts

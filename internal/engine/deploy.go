@@ -118,7 +118,12 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		for _, w := range project.Warnings {
 			e.Printer.Warning(w)
 		}
-		_, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing)), e.confirmOptions(false, true, false))
+		p := redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing))
+		if opts.Gate != nil {
+			_, err := opts.Gate(ctx, &p)
+			return err
+		}
+		_, err := confirm.Ask(ctx, p, e.confirmOptions(false, true, false))
 		return err
 	}
 	// Updating an existing VM creates nothing billable and is not gated —
@@ -126,7 +131,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	// FIP that failed before): then deploy makes a billed floating IP, and
 	// that needs consent as a new VM does (release QA, B-lifecycle 1).
 	if !isNewDeploy && needsFloatingIP(existing) {
-		proceed, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing)), e.confirmOptions(opts.Yes, false, opts.NonInteractive))
+		proceed, err := e.redeployGate(ctx, opts, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing)))
 		if err != nil {
 			return err
 		}
@@ -367,6 +372,15 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	return nil
 }
 
+// redeployGate asks for consent to update the existing VM (p): through
+// opts.Gate, else confirm.Ask.
+func (e *Engine) redeployGate(ctx context.Context, opts DeployOptions, p confirm.Preview) (bool, error) {
+	if opts.Gate != nil {
+		return opts.Gate(ctx, &p)
+	}
+	return confirm.Ask(ctx, p, e.confirmOptions(opts.Yes, false, opts.NonInteractive))
+}
+
 // resolveFlavor determines the VM flavor via auto-sizing or explicit selection.
 func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project *compose.Project) (string, error) {
 	flavor := opts.Flavor
@@ -524,7 +538,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 
 	// The VM is billed from this call on: show what will be created and what
 	// it costs, and get consent (or stop here on --dry-run).
-	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, diskType.ID, network, project.Ports, project.UDPPorts), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+	var proceed bool
+	if opts.Gate != nil {
+		proceed, err = opts.Gate(ctx, nil)
+	} else {
+		proceed, err = confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, diskType.ID, network, project.Ports, project.UDPPorts), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+	}
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}

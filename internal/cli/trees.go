@@ -70,6 +70,7 @@ var treeRenders = map[string]renderFunc{
 	"addon-versions":   renderAddonVersions,
 	"log-lines":        renderLogLines,
 	"exposition":       renderExposition,
+	"project-list":     renderProjectList,
 }
 
 // treeGroupShort is the English summary of each tree (treeGroupShortRU is
@@ -95,7 +96,7 @@ var treeGroupShort = map[string]string{
 	"ca":          "Container Apps: serverless containers",
 	"billing":     "Billing: balance, consumption, FinOps report",
 	"audit":       "Audit Logging: who did what in the project",
-	"org":         "Organization: quotas",
+	"org":         "Organization: projects and quotas",
 	"iam":         "IAM: service accounts",
 	"metrics":     "Service Monitoring: metrics",
 	"stack":       "Stacks: several resources from one manifest",
@@ -103,13 +104,17 @@ var treeGroupShort = map[string]string{
 
 // treeGroupsOf groups the commands of reg's tools by CLISpec.Group, sorted
 // by group and verb (cobra lists them so anyway). Tools without a command
-// (CLIPending, None) are left out. A group "" holds the commands at the
-// root.
+// (CLIPending, None) are left out, and so are the engine commands, which
+// internal/cli builds by hand (engineCommands). A group "" holds the
+// commands at the root.
 func treeGroupsOf(reg *tools.Registry) []treeGroup {
 	byGroup := map[string][]treeCmd{}
 	for _, t := range reg.Tools() {
 		if t.CLI.Verb == "" {
 			continue
+		}
+		if _, ok := engineCommandOf(t.Name); ok {
+			continue // built by hand (engine_commands.go)
 		}
 		c := treeCmd{CLISpec: t.CLI, Tool: t.Name, russian: russianTrees[t.CLI.Group], headers: treeHeadersRU(t.CLI.Group)}
 		if t.CLI.Render != "" {

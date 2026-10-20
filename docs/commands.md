@@ -111,7 +111,6 @@
     - [evo lb get](#evo-lb-get)
     - [evo lb list](#evo-lb-list)
     - [evo lb operation](#evo-lb-operation)
-  - [evo list-zones](#evo-list-zones)
   - [evo logs](#evo-logs)
   - [evo marketplace](#evo-marketplace)
     - [evo marketplace list](#evo-marketplace-list)
@@ -120,6 +119,7 @@
     - [evo metrics history](#evo-metrics-history)
     - [evo metrics scrape](#evo-metrics-scrape)
   - [evo org](#evo-org)
+    - [evo org projects](#evo-org-projects)
     - [evo org quotas](#evo-org-quotas)
   - [evo pg](#evo-pg)
     - [evo pg backup-create](#evo-pg-backup-create)
@@ -261,12 +261,11 @@ Object Storage, секреты.
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 * [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
 * [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
-* [evo list-zones](#evo-list-zones)	 - Список зон доступности
 * [evo logs](#evo-logs)	 - Журналы контейнеров на развёрнутой ВМ
 * [evo marketplace](#evo-marketplace)	 - Витрина: образы ВМ и плагины Kubernetes с командой развёртывания каждого
 * [evo mcp](#evo-mcp)	 - MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)
 * [evo metrics](#evo-metrics)	 - Service Monitoring: метрики
-* [evo org](#evo-org)	 - Организация: квоты
+* [evo org](#evo-org)	 - Организация: проекты и квоты
 * [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 * [evo project](#evo-project)	 - Проекты, которые видит ключ, и проект профиля
 * [evo redis](#evo-redis)	 - Кластеры Managed Redis
@@ -4973,53 +4972,6 @@ evo lb operation <operation-id> [flags]
 
 * [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
 
-## evo list-zones
-
-Список зон доступности
-
-### Synopsis
-
-```text
-Список зон доступности из API Cloud.ru.
-
-ID зоны передаётся в deploy флагом --region или переменной CLOUDRU_REGION.
-Для машинного разбора — --json.
-```
-
-```
-evo list-zones [flags]
-```
-
-### Examples
-
-```
-  evo list-zones
-  evo list-zones --json
-```
-
-### Options
-
-```
-  -h, --help   Справка по list-zones
-```
-
-### Options inherited from parent commands
-
-```
-      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
-      --json                Вывод в формате JSON
-      --no-color            Без цвета
-      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
-      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
-      --verbose             Подробный журнал
-  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
-```
-
-### SEE ALSO
-
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
-
 ## evo logs
 
 Журналы контейнеров на развёрнутой ВМ
@@ -5372,7 +5324,7 @@ evo metrics scrape [match] [flags]
 
 ## evo org
 
-Организация: квоты
+Организация: проекты и квоты
 
 ```
 evo org [flags]
@@ -5400,7 +5352,56 @@ evo org [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo org projects](#evo-org-projects)	 - Проекты Cloud.ru, которые видит ключ доступа
 * [evo org quotas](#evo-org-quotas)	 - Квоты: ресурс, лимит, текущее использование
+
+## evo org projects
+
+Проекты Cloud.ru, которые видит ключ доступа
+
+### Synopsis
+
+```text
+Проекты Cloud.ru, которые видит ключ доступа.
+
+Проекты Cloud.ru, которые видит ключ доступа: id, имя, состояние, подразделение организации, — и активный проект (active). Только чтение. Если Organization API не показывает ключу ни одного проекта (сервисный аккаунт уровня проекта), это не ошибка: в ответе projects: null, активный проект и примечание.
+
+Вызывает инструмент org_projects (подробнее: 'evo tools describe org_projects').
+```
+
+```
+evo org projects [flags]
+```
+
+### Examples
+
+```
+  evo org projects
+  evo org projects --json | jq -r '.projects[].id'
+```
+
+### Options
+
+```
+  -h, --help   Справка по projects
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo org](#evo-org)	 - Организация: проекты и квоты
 
 ## evo org quotas
 
@@ -5448,7 +5449,7 @@ evo org quotas [flags]
 
 ### SEE ALSO
 
-* [evo org](#evo-org)	 - Организация: квоты
+* [evo org](#evo-org)	 - Организация: проекты и квоты
 
 ## evo pg
 

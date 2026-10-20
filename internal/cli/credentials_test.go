@@ -20,6 +20,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // All credentials below are fake; the Cloud.ru endpoints are httptest servers.
@@ -89,10 +90,14 @@ func setupCLI(t *testing.T) *fakeCloud {
 
 	oldIAM, oldOrg, oldCompute := auth.IAMEndpoint, orgProjectsURL, computeBaseURL
 	auth.IAMEndpoint, orgProjectsURL, computeBaseURL = srv.URL+"/iam/token", srv.URL+"/org/v3/projects", srv.URL
+	// evo project list calls org_projects (spec REQ-4): the same endpoint.
+	oldToolOrg := tools.OrgProjectsURL
+	tools.OrgProjectsURL = orgProjectsURL
 	oldTTY, oldPass := stdinIsTerminal, readPassword
 	stdinIsTerminal = func() bool { return false }
 	t.Cleanup(func() {
 		auth.IAMEndpoint, orgProjectsURL, computeBaseURL = oldIAM, oldOrg, oldCompute
+		tools.OrgProjectsURL = oldToolOrg
 		stdinIsTerminal, readPassword = oldTTY, oldPass
 	})
 	newProcess()

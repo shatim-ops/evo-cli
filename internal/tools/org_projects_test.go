@@ -65,7 +65,7 @@ func TestOrgProjects_ProjectLevelKeyIsNotAnError(t *testing.T) {
 	if v, ok := m["projects"]; !ok || v != nil {
 		t.Errorf("projects = %v, want null", v)
 	}
-	if m["active"] != addonProject || m["note"] != orgProjectsNote || m["http_status"] != float64(400) {
+	if m["active"] != addonProject || m["note"] != orgProjectsNote() || m["http_status"] != float64(400) {
 		t.Errorf("answer %s", text)
 	}
 	if _, ok := m["reason"]; ok {
@@ -114,7 +114,7 @@ func TestOrgProjects_FailuresAreErrors(t *testing.T) {
 		r := orgRegistry(t, fakeOrg{status, `{"message":"user not found"}`})
 		m, text, isErr := callNamed(t, r, "org_projects", nil)
 		if want == "" {
-			if isErr || m["note"] != orgProjectsNote {
+			if isErr || m["note"] != orgProjectsNote() {
 				t.Errorf("%d: %s", status, text)
 			}
 			continue

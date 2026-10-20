@@ -11,6 +11,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -48,6 +49,12 @@ type DeployOptions struct {
 	NonInteractive bool // never prompt; creating a VM then needs Yes
 	Yes            bool // consent to create the VM given in advance (--yes)
 	DryRun         bool // show what would be created and its cost, then stop
+	// Gate, when set, asks for consent where Deploy would call confirm.Ask
+	// with its own preview: the deploy tool sets it for 'evo deploy', which
+	// shows the preview of the tool's answer (spec REQ-4, REQ-6). redeploy
+	// is the engine's words for an update of the existing VM, nil for a new
+	// VM, whose preview the tool makes itself.
+	Gate func(ctx context.Context, redeploy *confirm.Preview) (bool, error)
 }
 
 // EnsureSSHKey fills SSHKeyPEM/SSHPubKey from SSHKeyLoader unless they are
