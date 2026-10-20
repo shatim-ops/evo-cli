@@ -43,6 +43,13 @@ type CLISpec struct {
 	// ("-": stdin), read and checked against the argument's type:
 	// k8s add-addon --config settings.json.
 	Files map[string]bool
+	// SecretFiles are string arguments that hold a secret (a password, a
+	// private key). Beside the flag of the value, which keeps its meaning,
+	// the trees add --<flag>-file: a file holding the value ("-": stdin, on
+	// a terminal a prompt without echo), its trailing newline trimmed, so
+	// that the secret stays out of argv and the shell history. The tool
+	// gets the same argument either way; one of the two flags, not both.
+	SecretFiles map[string]bool
 	// Columns are the table columns of a list answer (default: picked from
 	// the rows).
 	Columns []string
@@ -130,7 +137,7 @@ var cliSpecs = map[string]CLISpec{
 	"pg_db_create":     {Group: "pg", Verb: "db-create", Args: []string{"cluster_id", "name"}},
 	"pg_db_delete":     {Group: "pg", Verb: "db-delete", Args: []string{"cluster_id", "name"}},
 	"pg_users":         {Group: "pg", Verb: "users", Args: []string{"cluster_id"}},
-	"pg_user_create":   {Group: "pg", Verb: "user-create", Args: []string{"cluster_id", "name"}},
+	"pg_user_create":   {Group: "pg", Verb: "user-create", Args: []string{"cluster_id", "name"}, SecretFiles: map[string]bool{"password": true}},
 	"pg_user_delete":   {Group: "pg", Verb: "user-delete", Args: []string{"cluster_id", "name"}},
 	"pg_backups":       {Group: "pg", Verb: "backups", Args: []string{"cluster_id"}},
 	"pg_backup_create": {Group: "pg", Verb: "backup-create", Args: []string{"cluster_id", "name"}},
@@ -148,8 +155,8 @@ var cliSpecs = map[string]CLISpec{
 	"secret_list":        {Group: "secret", Verb: "list"},
 	"secret_get":         {Group: "secret", Verb: "get", Args: []string{"path"}},
 	"secret_value":       {Group: "secret", Verb: "value", Args: []string{"path"}},
-	"secret_create":      {Group: "secret", Verb: "create", Args: []string{"path"}},
-	"secret_add_version": {Group: "secret", Verb: "add-version", Args: []string{"path"}},
+	"secret_create":      {Group: "secret", Verb: "create", Args: []string{"path"}, SecretFiles: map[string]bool{"value": true}},
+	"secret_add_version": {Group: "secret", Verb: "add-version", Args: []string{"path"}, SecretFiles: map[string]bool{"value": true}},
 	"secret_delete":      {Group: "secret", Verb: "delete", Args: []string{"path"}},
 
 	// dns
@@ -167,7 +174,7 @@ var cliSpecs = map[string]CLISpec{
 	"cert_list":        {Group: "cert", Verb: "list"},
 	"cert_get":         {Group: "cert", Verb: "get", Args: []string{"id"}},
 	"cert_issue_le":    {Group: "cert", Verb: "issue-le", Args: []string{"name"}},
-	"cert_import":      {Group: "cert", Verb: "import", Args: []string{"name"}},
+	"cert_import":      {Group: "cert", Verb: "import", Args: []string{"name"}, SecretFiles: map[string]bool{"private_key": true}},
 	"cert_renew":       {Group: "cert", Verb: "renew", Args: []string{"certificate_id"}},
 	"cert_delete":      {Group: "cert", Verb: "delete", Args: []string{"id"}},
 	"cert_usage":       {Group: "cert", Verb: "usage", Args: []string{"id"}},

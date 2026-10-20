@@ -83,6 +83,9 @@ var commandExamples = map[string]string{
 	"evo pg list": `  evo pg list`,
 	"evo pg create": `  evo pg create app-db --dry-run
   evo pg create app-db --cpu 2 --ram 4`,
+	"evo pg user-create": `  evo pg user-create <cluster-id> app --password-file ./app.pass --dry-run`,
+	"evo secret create": `  evo secret create app/db --value-file ./db.pass --dry-run
+  pass show app/db | evo secret create app/db --value-file - --yes`,
 	"evo s3 buckets": `  evo s3 buckets`,
 	"evo s3 ls": `  evo s3 ls my-bucket
   evo s3 ls my-bucket --prefix backups/`,
@@ -116,7 +119,7 @@ var commandExamples = map[string]string{
   evo cert get <certificate-id> --json`,
 	"evo cert issue-le": `  evo cert issue-le site --dns-names example.com,www.example.com --dry-run
   evo cert issue-le site --dns-names example.com --yes`,
-	"evo cert import": `  evo cert import my-cert --server-certificate "$(base64 < cert.pem | tr -d '\n')" --private-key "$(base64 < key.pem | tr -d '\n')" --dry-run`,
+	"evo cert import": `  base64 < key.pem | tr -d '\n' | evo cert import my-cert --server-certificate "$(base64 < cert.pem | tr -d '\n')" --private-key-file - --dry-run`,
 	"evo cert renew": `  evo cert renew <certificate-id> --dry-run
   evo cert renew <certificate-id> --yes`,
 	"evo cert delete": `  evo cert delete <certificate-id> --dry-run

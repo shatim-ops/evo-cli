@@ -49,6 +49,7 @@ func TestRegistry_EveryToolHasCLISpec(t *testing.T) {
 				t.Errorf("%s (evo %s): %s %q is not an argument of the schema", tl.Name, path, what, name)
 			}
 		}
+		positional := map[string]bool{}
 		for i, a := range spec.Args {
 			rest := strings.HasSuffix(a, "...")
 			if rest && i != len(spec.Args)-1 {
@@ -61,6 +62,7 @@ func TestRegistry_EveryToolHasCLISpec(t *testing.T) {
 			}
 			for _, n := range names {
 				isArg("positional", n)
+				positional[n] = true
 			}
 		}
 		for n := range spec.Rename {
@@ -74,6 +76,17 @@ func TestRegistry_EveryToolHasCLISpec(t *testing.T) {
 		}
 		for n := range spec.Files {
 			isArg("Files key", n)
+		}
+		// A secret has its value flag and the flag of its file: a string
+		// argument with a flag of its own.
+		for n := range spec.SecretFiles {
+			isArg("SecretFiles key", n)
+			if p, _ := props[n].(map[string]any); p != nil && p["type"] != "string" {
+				t.Errorf("%s (evo %s): SecretFiles key %q is a %v, not a string", tl.Name, path, n, p["type"])
+			}
+			if positional[n] || spec.Omit[n] || spec.Pairs[n] || spec.Files[n] {
+				t.Errorf("%s (evo %s): SecretFiles key %q is positional, in Omit, Pairs or Files: it needs a flag of its own", tl.Name, path, n)
+			}
 		}
 	}
 	for name := range cliSpecs {

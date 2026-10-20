@@ -314,6 +314,10 @@ pass show opensearch | evo vm create dash-2 --image OpensearchDashboards \
   --meta opensearch_host=10.0.0.5 --meta opensearch_password=- --yes
 ```
 
+Так же — у секретов других команд: `evo secret create` и `add-version`
+(`--value-file`), `evo pg user-create` (`--password-file`), `evo cert import`
+(`--private-key-file`) берут значение из файла, `-` — из stdin.
+
 `--port` открывает входящие порты для `0.0.0.0/0` в группе безопасности ВМ
 после её загрузки: `80`, `8080/tcp`, `53/udp`, можно через запятую. Группа
 общая для всех ВМ в ней; `evo vm delete` (`destroy`) закрывает правила,

@@ -211,7 +211,7 @@
 
 Команды из `CLISpec`: позиционные аргументы, переименования и поля схемы без флага.
 
-| Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/Raw/Render |
+| Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/SecretFiles/Raw/Render |
 |---|---|---|---|---|---|---|
 | `evo deploy` | `deploy` | — | — | — | confirmed, project_id, region | — |
 | `evo doctor` | `doctor` | — | — | — | — | — |
@@ -237,7 +237,7 @@
 | `evo ca stop` | `ca_stop` | name | — | — | confirmed | — |
 | `evo cert delete` | `cert_delete` | id | — | — | confirmed | — |
 | `evo cert get` | `cert_get` | id | — | — | — | — |
-| `evo cert import` | `cert_import` | name | — | — | confirmed | — |
+| `evo cert import` | `cert_import` | name | — | — | confirmed | secret-file:private_key |
 | `evo cert issue-le` | `cert_issue_le` | name | — | — | confirmed | — |
 | `evo cert list` | `cert_list` | — | — | — | — | — |
 | `evo cert operation` | `cert_operation` | operation_id | — | — | — | — |
@@ -312,7 +312,7 @@
 | `evo pg list` | `pg_list` | — | — | — | — | — |
 | `evo pg operation` | `pg_operation` | operation_id | — | — | — | — |
 | `evo pg specs` | `pg_specs` | — | — | — | — | — |
-| `evo pg user-create` | `pg_user_create` | cluster_id name | — | — | confirmed | — |
+| `evo pg user-create` | `pg_user_create` | cluster_id name | — | — | confirmed | secret-file:password |
 | `evo pg user-delete` | `pg_user_delete` | cluster_id name | — | — | confirmed | — |
 | `evo pg users` | `pg_users` | cluster_id | — | — | — | — |
 | `evo pg versions` | `pg_versions` | — | — | — | — | — |
@@ -330,8 +330,8 @@
 | `evo s3 ls` | `s3_ls` | bucket | — | — | — | — |
 | `evo s3 put` | `s3_put` | bucket key | — | — | confirmed | — |
 | `evo s3 rm` | `s3_rm` | bucket key | — | — | confirmed | — |
-| `evo secret add-version` | `secret_add_version` | path | — | — | confirmed | — |
-| `evo secret create` | `secret_create` | path | — | — | confirmed | — |
+| `evo secret add-version` | `secret_add_version` | path | — | — | confirmed | secret-file:value |
+| `evo secret create` | `secret_create` | path | — | — | confirmed | secret-file:value |
 | `evo secret delete` | `secret_delete` | path | — | — | confirmed | — |
 | `evo secret get` | `secret_get` | path | — | — | — | — |
 | `evo secret list` | `secret_list` | — | — | — | — | — |
@@ -419,7 +419,7 @@
 | краткое описание инструмента (ShortRU) | 154 | 154 инструментов |
 | подробное описание инструмента (DescriptionRU) | 154 | 154 инструментов |
 | описания аргументов (ArgDescriptionsRU) | 444 | 444 аргументов |
-| из них флаги команд деревьев | 239 | 239 флагов |
+| из них флаги команд деревьев | 243 | 243 флагов |
 | описания инструментов в MCP | 0 | 154 (всегда английские) |
 
 ## 6. Исключения из паритета

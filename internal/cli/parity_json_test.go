@@ -162,6 +162,7 @@ type jsonCase struct {
 	tool  tools.Tool
 	line  []string       // the command line without --json --yes; nil: built from args when the case runs
 	args  map[string]any // the tool's arguments for the same input
+	stdin string         // what the command reads on stdin (a secret given by --<flag>-file -)
 	setup func(t *testing.T, w parityWorld) (map[string]any, func())
 }
 
@@ -296,7 +297,7 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 	}
 	reset()
 	newProcess()
-	r.code, r.out, r.errOut = runCLI(t, "", append([]string{"--json", "--yes"}, line...)...)
+	r.code, r.out, r.errOut = runCLI(t, c.stdin, append([]string{"--json", "--yes"}, line...)...)
 	r.cliWrites = takeWrites()
 	done()
 	_ = os.Remove(state.DefaultPath(w.dir))
