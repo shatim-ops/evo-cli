@@ -139,8 +139,9 @@
 go run ./docs/internal/cli-mcp-parity/inventory/main.go > docs/internal/cli-mcp-parity/inventory.md
 ```
 
-Скрипт берёт реестр из `internal/tools`, деревья — AST-разбором
-литерала `treeGroups` в `cli/trees.go`, набор команд и флагов бинаря —
+Скрипт берёт реестр из `internal/tools`, деревья — из `CLISpec`
+инструментов реестра (до PR 1 — AST-разбором литерала `treeGroups` в
+`cli/trees.go`), набор команд и флагов бинаря —
 из `docs/commands.md` (его сверяет с бинарём `TestCommandsDoc`), русскую
 справку — из ключей карт `cli/trees_ru.go`. Единственная ручная часть —
 классификация 25 команд без команды дерева (`localCommands` в скрипте);

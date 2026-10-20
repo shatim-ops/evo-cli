@@ -17,8 +17,11 @@
 // — ошибка):
 //
 //   - реестр инструментов: internal/tools (tools.New(nil) — без облака);
-//   - деревья команд: AST-разбор литерала treeGroups в internal/cli/trees.go
-//     (имена, позиционные аргументы, Rename/Omit/Pairs/Files/Raw/Render);
+//   - деревья команд: CLISpec инструментов реестра (Tool.CLI: группа, глагол,
+//     позиционные аргументы, Rename/Omit/Pairs/Files/Raw/Render) и временный
+//     список tools.CLIPending — инструменты, у которых команды пока нет;
+//   - rootArgs (аргументы, которые подаются корневыми флагами): AST-разбор
+//     internal/cli/trees.go;
 //   - русская справка деревьев: ключи карт toolShortRU, toolLongRU,
 //     flagShortRU в internal/cli/trees_ru.go;
 //   - фактический набор команд и флагов бинаря: docs/commands.md (его CI
@@ -44,7 +47,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
-// treeCmd — то, что скрипт вычитывает из литерала treeCmd в trees.go.
+// treeCmd — команда дерева, как её описывает CLISpec инструмента.
 type treeCmd struct {
 	Group, Verb, Tool string
 	Args              []string
@@ -112,8 +115,8 @@ func main() {
 		root = os.Args[1]
 	}
 	reg := tools.New(nil)
-	cmds, err := parseTrees(root + "/internal/cli/trees.go")
-	check(err)
+	check(parseRootArgs(root + "/internal/cli/trees.go"))
+	cmds := treeCmds(reg)
 	ruShort, ruLong, ruFlags, err := parseRU(root + "/internal/cli/trees_ru.go")
 	check(err)
 	docCmds, docFlags, err := parseCommandsDoc(root + "/docs/commands.md")
@@ -227,7 +230,7 @@ func main() {
 	for _, k := range []string{"дерево", "движок", "tools call"} {
 		fmt.Fprintf(w, "| %s | %d | %d |\n", k, kinds[k], kindMut[k])
 	}
-	fmt.Fprintf(w, "\n«дерево» — своя команда из treeGroups; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`.\n\n")
+	fmt.Fprintf(w, "\n«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`. «движок» и «tools call» вместе — временный список `tools.CLIPending` (%d): тест TestParity_CommandsAndTools не даёт ему устареть, PR 3 и 5 плана его опустошают.\n\n", len(tools.CLIPending))
 	fmt.Fprintf(w, "### По группам\n\n| Группа | Всего | дерево | движок | tools call | RU-справка (short/long) |\n|---|---|---|---|---|---|\n")
 	for _, g := range tools.Groups() {
 		gk := groupKind[g]
@@ -254,7 +257,7 @@ func main() {
 		fmt.Fprintf(w, "| %s | `%s` | %s | %s | %s | %s/%s |\n", r.t.Group, r.t.Name, yn(r.t.Mutating), r.kind, r.path, yn(ruShort[r.t.Name]), yn(ruLong[r.t.Name]))
 	}
 
-	fmt.Fprintf(w, "\n## 3. Команда CLI → инструмент\n\nКоманды деревьев (из `treeGroups`): позиционные аргументы, переименования и поля схемы без флага.\n\n| Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/Raw/Render |\n|---|---|---|---|---|---|---|\n")
+	fmt.Fprintf(w, "\n## 3. Команда CLI → инструмент\n\nКоманды деревьев (из `CLISpec`): позиционные аргументы, переименования и поля схемы без флага.\n\n| Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/Raw/Render |\n|---|---|---|---|---|---|---|\n")
 	for _, c := range cmds {
 		t, _ := reg.Lookup(c.Tool)
 		props := schemaProps(t)
@@ -438,16 +441,49 @@ func check(err error) {
 	}
 }
 
-// --- AST: treeGroups и rootArgs из trees.go ---
+// --- Деревья: CLISpec реестра; rootArgs: AST trees.go ---
 
-func parseTrees(path string) ([]treeCmd, error) {
+// treeCmds — команды деревьев из CLISpec инструментов, по группе и глаголу.
+func treeCmds(reg *tools.Registry) []treeCmd {
+	var out []treeCmd
+	for _, t := range reg.Tools() {
+		spec := t.CLI
+		if spec.Verb == "" {
+			continue
+		}
+		c := treeCmd{Group: spec.Group, Verb: spec.Verb, Tool: t.Name, Args: spec.Args,
+			Rename: map[string]string{}, Omit: map[string]bool{}, Pairs: map[string]bool{}, Files: map[string]bool{},
+			Render: spec.Render != "", Raw: spec.Raw}
+		for k, v := range spec.Rename {
+			c.Rename[k] = v
+		}
+		for k, v := range spec.Omit {
+			c.Omit[k] = v
+		}
+		for k, v := range spec.Pairs {
+			c.Pairs[k] = v
+		}
+		for k, v := range spec.Files {
+			c.Files[k] = v
+		}
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Group != out[j].Group {
+			return out[i].Group < out[j].Group
+		}
+		return out[i].Verb < out[j].Verb
+	})
+	return out
+}
+
+// parseRootArgs читает литерал rootArgs из trees.go.
+func parseRootArgs(path string) error {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var out []treeCmd
-	var found bool
 	for _, decl := range f.Decls {
 		gd, ok := decl.(*ast.GenDecl)
 		if !ok || gd.Tok != token.VAR {
@@ -456,85 +492,21 @@ func parseTrees(path string) ([]treeCmd, error) {
 		for _, spec := range gd.Specs {
 			vs := spec.(*ast.ValueSpec)
 			for i, name := range vs.Names {
-				if i >= len(vs.Values) {
+				if i >= len(vs.Values) || name.Name != "rootArgs" {
 					continue
 				}
-				switch name.Name {
-				case "rootArgs":
-					cl, _ := vs.Values[i].(*ast.CompositeLit)
-					for _, e := range cl.Elts {
-						kv := e.(*ast.KeyValueExpr)
-						rootArgs[lit(kv.Key)] = true
-					}
-				case "treeGroups":
-					found = true
-					groups, _ := vs.Values[i].(*ast.CompositeLit)
-					for _, g := range groups.Elts {
-						gl := g.(*ast.CompositeLit)
-						var gname string
-						var cmdsLit *ast.CompositeLit
-						for _, e := range gl.Elts {
-							kv := e.(*ast.KeyValueExpr)
-							switch lit(kv.Key) {
-							case "Name":
-								gname = lit(kv.Value)
-							case "Cmds":
-								cmdsLit = kv.Value.(*ast.CompositeLit)
-							}
-						}
-						for _, c := range cmdsLit.Elts {
-							out = append(out, parseCmd(gname, c.(*ast.CompositeLit)))
-						}
-					}
+				cl, _ := vs.Values[i].(*ast.CompositeLit)
+				for _, e := range cl.Elts {
+					kv := e.(*ast.KeyValueExpr)
+					rootArgs[lit(kv.Key)] = true
 				}
 			}
 		}
 	}
-	if !found {
-		return nil, fmt.Errorf("%s: treeGroups not found", path)
+	if len(rootArgs) == 0 {
+		return fmt.Errorf("%s: rootArgs not found", path)
 	}
-	return out, nil
-}
-
-func parseCmd(group string, cl *ast.CompositeLit) treeCmd {
-	c := treeCmd{Group: group, Rename: map[string]string{}, Omit: map[string]bool{}, Pairs: map[string]bool{}, Files: map[string]bool{}}
-	for _, e := range cl.Elts {
-		kv := e.(*ast.KeyValueExpr)
-		switch lit(kv.Key) {
-		case "Verb":
-			c.Verb = lit(kv.Value)
-		case "Tool":
-			c.Tool = lit(kv.Value)
-		case "Args":
-			for _, a := range kv.Value.(*ast.CompositeLit).Elts {
-				c.Args = append(c.Args, lit(a))
-			}
-		case "Rename":
-			for _, a := range kv.Value.(*ast.CompositeLit).Elts {
-				p := a.(*ast.KeyValueExpr)
-				c.Rename[lit(p.Key)] = lit(p.Value)
-			}
-		case "Omit", "Pairs", "Files":
-			m := map[string]bool{}
-			for _, a := range kv.Value.(*ast.CompositeLit).Elts {
-				p := a.(*ast.KeyValueExpr)
-				m[lit(p.Key)] = lit(p.Value) == "true"
-			}
-			switch lit(kv.Key) {
-			case "Omit":
-				c.Omit = m
-			case "Pairs":
-				c.Pairs = m
-			case "Files":
-				c.Files = m
-			}
-		case "Raw":
-			c.Raw = lit(kv.Value) == "true"
-		case "Render":
-			c.Render = true
-		}
-	}
-	return c
+	return nil
 }
 
 // lit — строковый литерал, идентификатор или bool как текст.

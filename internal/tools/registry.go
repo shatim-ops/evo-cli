@@ -6,10 +6,13 @@
 // description, JSON schema of the arguments, handler, and whether the
 // operation changes anything in the cloud.
 //
-// The registry does not know about transports. The MCP server
-// (internal/mcp) and the CLI ('evo tools …' and the command trees)
-// are two clients of the same handlers: arguments come in as
-// map[string]any, the result goes out as a JSON string plus an isError flag.
+// The registry does not know about the MCP transports (stdio, HTTP); how a
+// tool is presented in the CLI (its command, positional arguments, flags,
+// table: CLISpec) is part of the tool's description, like its schema. The
+// MCP server (internal/mcp) and the CLI ('evo tools …' and the command
+// trees built from CLISpec) are two clients of the same handlers: arguments
+// come in as map[string]any, the result goes out as a JSON string plus an
+// isError flag.
 //
 // Handlers never write to stdout: engine output is redirected to in-memory
 // buffers, because for MCP stdout is the protocol channel.
@@ -47,7 +50,10 @@ type Tool struct {
 	// RequiredOneOf are argument sets one argument of each the call must
 	// have, beside the schema's "required" (see requiredOneOf).
 	RequiredOneOf [][]string `json:"-"`
-	Handler       Handler    `json:"-"`
+	// CLI is the tool's command in the CLI (cliSpecs); zero for a tool in
+	// CLIPending.
+	CLI     CLISpec `json:"-"`
+	Handler Handler `json:"-"`
 }
 
 // OpWaitMaxSeconds is the longest wait_seconds the *_operation tools honour.
@@ -76,6 +82,7 @@ func New(factory EngineFactory) *Registry {
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
 		t.RequiredOneOf = requiredOneOf[t.Name]
+		t.CLI = cliSpecs[t.Name]
 		if h := r.handlers[t.Name]; h != nil {
 			if projectTools[t.Name] {
 				h = r.requireProject(h)

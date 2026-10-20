@@ -133,7 +133,7 @@ func TestContract_TreeJSONPurity(t *testing.T) {
 	installContractTransport(t, 401, `{"error":"refused"}`)
 	var bad []string
 	n := 0
-	for _, g := range treeGroups {
+	for _, g := range allTreeGroups() {
 		if !contractTree(g.Name) {
 			continue
 		}

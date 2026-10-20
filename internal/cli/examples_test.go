@@ -65,7 +65,7 @@ func checkExampleLine(t *testing.T, root *cobra.Command, line string) {
 // tree's columns name them (they are the keys of vm_list answers).
 func TestCommandExamples_JQFieldsExist(t *testing.T) {
 	cols := map[string]bool{}
-	for _, g := range treeGroups {
+	for _, g := range allTreeGroups() {
 		for _, c := range g.Cmds {
 			if g.Name == "vm" && c.Verb == "list" {
 				for _, col := range c.Columns {

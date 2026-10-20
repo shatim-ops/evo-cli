@@ -12,7 +12,7 @@
 | движок | 5 | 1 |
 | tools call | 75 | 30 |
 
-«дерево» — своя команда из treeGroups; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`.
+«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`. «движок» и «tools call» вместе — временный список `tools.CLIPending` (80): тест TestParity_CommandsAndTools не даёт ему устареть, PR 3 и 5 плана его опустошают.
 
 ### По группам
 
@@ -201,82 +201,82 @@
 
 ## 3. Команда CLI → инструмент
 
-Команды деревьев (из `treeGroups`): позиционные аргументы, переименования и поля схемы без флага.
+Команды деревьев (из `CLISpec`): позиционные аргументы, переименования и поля схемы без флага.
 
 | Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/Raw/Render |
 |---|---|---|---|---|---|---|
-| `evo vm list` | `vm_list` | — | — | — | — | — |
-| `evo vm get` | `vm_get` | vm_id\|name | — | — | — | — |
-| `evo vm create` | `provision` | name | image_metadata→--meta, ports→--port | — | confirmed, project_id, region | pairs:image_metadata |
-| `evo vm delete` | `destroy` | vm_id\|name | — | — | confirmed | — |
-| `evo vm zones` | `list_zones` | — | — | — | — | — |
-| `evo vm flavors` | `list_flavors` | — | — | — | — | — |
-| `evo image list` | `image_list` | query? | — | — | — | render |
-| `evo image get` | `image_get` | image_id\|image | — | — | — | render |
-| `evo marketplace list` | `marketplace_list` | query? | — | — | — | render |
-| `evo disk list` | `disk_list` | — | — | — | — | — |
-| `evo disk types` | `list_disk_types` | — | — | — | — | — |
-| `evo disk create` | `disk_create` | name | — | — | confirmed | — |
 | `evo disk attach` | `disk_attach` | disk_id | — | — | confirmed | — |
-| `evo disk detach` | `disk_detach` | disk_id | — | — | confirmed | — |
-| `evo disk resize` | `disk_resize` | disk_id | — | — | confirmed | — |
+| `evo disk create` | `disk_create` | name | — | — | confirmed | — |
 | `evo disk delete` | `disk_delete` | disk_id | — | — | confirmed | — |
-| `evo vpc list` | `vpc_list` | — | — | — | — | — |
-| `evo vpc get` | `vpc_get` | id | — | — | — | — |
-| `evo vpc create` | `vpc_create` | name | — | — | confirmed | — |
-| `evo vpc delete` | `vpc_delete` | id | — | — | confirmed | — |
-| `evo vpc operation` | `vpc_operation` | operation_id | — | — | — | — |
-| `evo vpc routes` | `vpc_routes` | vpc_id | — | — | — | — |
-| `evo vpc route-create` | `vpc_route_create` | vpc_id | — | — | confirmed | — |
-| `evo vpc route-delete` | `vpc_route_delete` | vpc_id route_id | — | — | confirmed | — |
-| `evo vpc subnets` | `list_subnets` | — | — | — | — | — |
-| `evo vpc security-groups` | `list_security_groups` | — | — | — | — | — |
-| `evo vpc fips` | `list_floating_ips` | — | — | — | — | — |
-| `evo vpc fip-attach` | `fip_attach` | fip | — | — | confirmed | — |
-| `evo vpc fip-release` | `release_floating_ip` | id? | — | — | confirmed | — |
-| `evo k8s list` | `k8s_list` | — | — | — | — | — |
-| `evo k8s get` | `k8s_get` | cluster_id | — | — | — | — |
-| `evo k8s options` | `k8s_options` | — | — | — | — | — |
-| `evo k8s plan` | `k8s_plan` | — | — | — | — | — |
+| `evo disk detach` | `disk_detach` | disk_id | — | — | confirmed | — |
+| `evo disk list` | `disk_list` | — | — | — | — | — |
+| `evo disk resize` | `disk_resize` | disk_id | — | — | confirmed | — |
+| `evo disk types` | `list_disk_types` | — | — | — | — | — |
+| `evo image get` | `image_get` | image_id\|image | — | — | — | render |
+| `evo image list` | `image_list` | query? | — | — | — | render |
+| `evo k8s add-addon` | `k8s_add_addon` | cluster_id name | — | — | confirmed | file:config |
+| `evo k8s add-nodepool` | `k8s_add_nodepool` | cluster_id | — | — | confirmed | — |
+| `evo k8s addon-versions` | `k8s_addon_versions` | name | — | — | — | render |
+| `evo k8s addons` | `k8s_addons` | query? | — | — | — | render |
+| `evo k8s apply` | `k8s_apply` | cluster_id | — | — | confirmed | raw |
 | `evo k8s create` | `k8s_create` | — | — | — | confirmed | — |
 | `evo k8s delete` | `k8s_delete` | cluster_id | — | — | confirmed | — |
-| `evo k8s kubeconfig` | `k8s_kubeconfig` | cluster_id | — | — | — | — |
-| `evo k8s nodepools` | `k8s_nodepools` | cluster_id | — | — | — | — |
-| `evo k8s add-nodepool` | `k8s_add_nodepool` | cluster_id | — | — | confirmed | — |
-| `evo k8s addons` | `k8s_addons` | query? | — | — | — | render |
-| `evo k8s addon-versions` | `k8s_addon_versions` | name | — | — | — | render |
-| `evo k8s add-addon` | `k8s_add_addon` | cluster_id name | — | — | confirmed | file:config |
-| `evo k8s kubectl` | `k8s_kubectl` | cluster_id args... | — | — | confirmed | raw |
-| `evo k8s apply` | `k8s_apply` | cluster_id | — | — | confirmed | raw |
+| `evo k8s get` | `k8s_get` | cluster_id | — | — | — | — |
 | `evo k8s helm` | `k8s_helm` | cluster_id action | — | — | confirmed | raw |
-| `evo pg list` | `pg_list` | — | — | — | — | — |
-| `evo pg get` | `pg_get` | cluster_id | — | id | — | — |
-| `evo pg versions` | `pg_versions` | — | — | — | — | — |
-| `evo pg specs` | `pg_specs` | — | — | — | — | — |
+| `evo k8s kubeconfig` | `k8s_kubeconfig` | cluster_id | — | — | — | — |
+| `evo k8s kubectl` | `k8s_kubectl` | cluster_id args... | — | — | confirmed | raw |
+| `evo k8s list` | `k8s_list` | — | — | — | — | — |
+| `evo k8s nodepools` | `k8s_nodepools` | cluster_id | — | — | — | — |
+| `evo k8s options` | `k8s_options` | — | — | — | — | — |
+| `evo k8s plan` | `k8s_plan` | — | — | — | — | — |
+| `evo marketplace list` | `marketplace_list` | query? | — | — | — | render |
+| `evo pg backup-create` | `pg_backup_create` | cluster_id name | — | — | confirmed | — |
+| `evo pg backups` | `pg_backups` | cluster_id | — | — | — | — |
 | `evo pg create` | `pg_create` | name | — | — | confirmed | — |
-| `evo pg delete` | `pg_delete` | cluster_id | — | id | confirmed | — |
-| `evo pg operation` | `pg_operation` | operation_id | — | — | — | — |
 | `evo pg databases` | `pg_databases` | cluster_id | — | — | — | — |
 | `evo pg db-create` | `pg_db_create` | cluster_id name | — | — | confirmed | — |
 | `evo pg db-delete` | `pg_db_delete` | cluster_id name | — | — | confirmed | — |
-| `evo pg users` | `pg_users` | cluster_id | — | — | — | — |
+| `evo pg delete` | `pg_delete` | cluster_id | — | id | confirmed | — |
+| `evo pg get` | `pg_get` | cluster_id | — | id | — | — |
+| `evo pg list` | `pg_list` | — | — | — | — | — |
+| `evo pg operation` | `pg_operation` | operation_id | — | — | — | — |
+| `evo pg specs` | `pg_specs` | — | — | — | — | — |
 | `evo pg user-create` | `pg_user_create` | cluster_id name | — | — | confirmed | — |
 | `evo pg user-delete` | `pg_user_delete` | cluster_id name | — | — | confirmed | — |
-| `evo pg backups` | `pg_backups` | cluster_id | — | — | — | — |
-| `evo pg backup-create` | `pg_backup_create` | cluster_id name | — | — | confirmed | — |
-| `evo s3 buckets` | `s3_buckets` | — | — | — | — | — |
-| `evo s3 ls` | `s3_ls` | bucket | — | — | — | — |
-| `evo s3 get` | `s3_get` | bucket key | — | — | — | — |
-| `evo s3 put` | `s3_put` | bucket key | — | — | confirmed | — |
-| `evo s3 rm` | `s3_rm` | bucket key | — | — | confirmed | — |
+| `evo pg users` | `pg_users` | cluster_id | — | — | — | — |
+| `evo pg versions` | `pg_versions` | — | — | — | — | — |
 | `evo s3 bucket-create` | `s3_bucket_create` | bucket | region→--s3-region | — | confirmed | — |
 | `evo s3 bucket-delete` | `s3_bucket_delete` | bucket | — | — | confirmed | — |
-| `evo secret list` | `secret_list` | — | — | — | — | — |
-| `evo secret get` | `secret_get` | path | — | — | — | — |
-| `evo secret value` | `secret_value` | path | — | — | confirmed | — |
-| `evo secret create` | `secret_create` | path | — | — | confirmed | — |
+| `evo s3 buckets` | `s3_buckets` | — | — | — | — | — |
+| `evo s3 get` | `s3_get` | bucket key | — | — | — | — |
+| `evo s3 ls` | `s3_ls` | bucket | — | — | — | — |
+| `evo s3 put` | `s3_put` | bucket key | — | — | confirmed | — |
+| `evo s3 rm` | `s3_rm` | bucket key | — | — | confirmed | — |
 | `evo secret add-version` | `secret_add_version` | path | — | — | confirmed | — |
+| `evo secret create` | `secret_create` | path | — | — | confirmed | — |
 | `evo secret delete` | `secret_delete` | path | — | — | confirmed | — |
+| `evo secret get` | `secret_get` | path | — | — | — | — |
+| `evo secret list` | `secret_list` | — | — | — | — | — |
+| `evo secret value` | `secret_value` | path | — | — | confirmed | — |
+| `evo vm create` | `provision` | name | image_metadata→--meta, ports→--port | — | confirmed, project_id, region | pairs:image_metadata |
+| `evo vm delete` | `destroy` | vm_id\|name | — | — | confirmed | — |
+| `evo vm flavors` | `list_flavors` | — | — | — | — | — |
+| `evo vm get` | `vm_get` | vm_id\|name | — | — | — | — |
+| `evo vm list` | `vm_list` | — | — | — | — | — |
+| `evo vm zones` | `list_zones` | — | — | — | — | — |
+| `evo vpc create` | `vpc_create` | name | — | — | confirmed | — |
+| `evo vpc delete` | `vpc_delete` | id | — | — | confirmed | — |
+| `evo vpc fip-attach` | `fip_attach` | fip | — | — | confirmed | — |
+| `evo vpc fip-release` | `release_floating_ip` | id? | — | — | confirmed | — |
+| `evo vpc fips` | `list_floating_ips` | — | — | — | — | — |
+| `evo vpc get` | `vpc_get` | id | — | — | — | — |
+| `evo vpc list` | `vpc_list` | — | — | — | — | — |
+| `evo vpc operation` | `vpc_operation` | operation_id | — | — | — | — |
+| `evo vpc route-create` | `vpc_route_create` | vpc_id | — | — | confirmed | — |
+| `evo vpc route-delete` | `vpc_route_delete` | vpc_id route_id | — | — | confirmed | — |
+| `evo vpc routes` | `vpc_routes` | vpc_id | — | — | — | — |
+| `evo vpc security-groups` | `list_security_groups` | — | — | — | — | — |
+| `evo vpc subnets` | `list_subnets` | — | — | — | — | — |
 
 Команды вне деревьев (из docs/commands.md и скрытые):
 

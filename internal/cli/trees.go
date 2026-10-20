@@ -22,11 +22,14 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
-// The command trees (vm, image, marketplace, disk, vpc, k8s, pg, s3, secret) are data: each
-// command names a registry tool, which of its arguments are positional, and
-// how the answer is shown. Every other argument of the tool becomes a flag
-// with the type from its schema. The cobra layer only parses flags into
-// map[string]any, calls the tool and formats the answer.
+// The command trees (vm, image, marketplace, disk, vpc, k8s, pg, s3, secret)
+// are built from the registry: each tool's CLISpec (internal/tools) names its
+// command, which of its arguments are positional, and how the answer is
+// shown. Every other argument of the tool becomes a flag with the type from
+// its schema. The cobra layer only parses flags into map[string]any, calls
+// the tool and formats the answer. The presentation stays here: the summary
+// of each tree, the Russian help (trees_ru.go) and the views a CLISpec names
+// by Render.
 
 // treeGroup is one top-level command.
 type treeGroup struct {
@@ -35,165 +38,114 @@ type treeGroup struct {
 	Cmds  []treeCmd
 }
 
-// treeCmd is one command of a tree.
-//
-// Args lists the positional arguments as tool argument names:
-//
-//	"disk_id"     required
-//	"id?"         optional
-//	"args..."     the rest of the command line, joined with spaces
-//	"vm_id|name"  required; goes to vm_id when it is a UUID, to name otherwise
+// treeCmd is one command of a tree: the tool's CLISpec, and what the CLI
+// adds to it.
 type treeCmd struct {
-	Verb   string
-	Tool   string
-	Args   []string
-	Rename map[string]string // tool argument → flag name, when the default clashes or reads badly
-	// Omit are tool arguments that get no flag: an alias of a positional
-	// argument (pg get <cluster-id> beside the tool's id). With both, the
-	// flag won and the positional was lost: `pg delete A --id B` deleted B
-	// (QA 20.10, QA-1).
-	Omit map[string]bool
-	// Pairs are object arguments given as a repeatable key=value flag
-	// (--meta admin_password=…) instead of one JSON object.
-	Pairs   map[string]bool
-	Columns []string // table columns for a list answer (default: picked from the rows)
+	tools.CLISpec
+	Tool string
 	// russian: the human table of a Russian tree (vm, disk) speaks
 	// Russian — column names, да/нет, the note under a list. Set from
 	// russianTrees; --json keeps the tool's answer.
 	russian bool
-	// Render shows the answer instead of the generic table (image list,
-	// image get); --json still prints the tool's answer as is.
-	Render func(p *output.Printer, w io.Writer, text string) error
-	// Raw prints the answer's "output" (what kubectl or helm printed) as
-	// is, not as a FIELD/VALUE table; on a tool error it goes to stderr
-	// before the error.
-	Raw bool
-	// Files are tool arguments whose flag names a file holding the value
-	// ("-": stdin), read and checked against the argument's type:
-	// k8s add-addon --config settings.json.
-	Files map[string]bool
+	// render is the view CLISpec.Render names (treeRenders).
+	render renderFunc
 }
 
-var treeGroups = []treeGroup{
-	{Name: "vm", Short: "Virtual machines", Cmds: []treeCmd{
-		{Verb: "list", Tool: "vm_list", Columns: []string{"id", "name", "state", "zone", "created_time"}},
-		{Verb: "get", Tool: "vm_get", Args: []string{"vm_id|name"}},
-		{Verb: "create", Tool: "provision", Args: []string{"name"},
-			Rename: map[string]string{"image_metadata": "meta", "ports": "port"},
-			Pairs:  map[string]bool{"image_metadata": true}},
-		{Verb: "delete", Tool: "destroy", Args: []string{"vm_id|name"}},
-		{Verb: "zones", Tool: "list_zones"},
-		{Verb: "flavors", Tool: "list_flavors", Columns: []string{"name", "vcpus", "ram_gb", "est_monthly_rub", "free_tier"}},
-	}},
-	{Name: "image", Short: "VM images: operating systems and Marketplace products", Cmds: []treeCmd{
-		{Verb: "list", Tool: "image_list", Args: []string{"query?"}, Render: renderImageList},
-		{Verb: "get", Tool: "image_get", Args: []string{"image_id|image"}, Render: renderImageCard},
-	}},
-	{Name: "marketplace", Short: "Showcase: VM images and Kubernetes addons, with the command that deploys each", Cmds: []treeCmd{
-		{Verb: "list", Tool: "marketplace_list", Args: []string{"query?"}, Render: renderMarketplaceList},
-	}},
-	{Name: "disk", Short: "Disks", Cmds: []treeCmd{
-		{Verb: "list", Tool: "disk_list", Columns: []string{"id", "name", "size_gb", "state", "disk_type", "zone", "attached_to"}},
-		{Verb: "types", Tool: "list_disk_types"},
-		{Verb: "create", Tool: "disk_create", Args: []string{"name"}},
-		{Verb: "attach", Tool: "disk_attach", Args: []string{"disk_id"}},
-		{Verb: "detach", Tool: "disk_detach", Args: []string{"disk_id"}},
-		{Verb: "resize", Tool: "disk_resize", Args: []string{"disk_id"}},
-		{Verb: "delete", Tool: "disk_delete", Args: []string{"disk_id"}},
-	}},
-	{Name: "vpc", Short: "Networks: VPCs, routes, subnets, security groups, floating IPs", Cmds: []treeCmd{
-		{Verb: "list", Tool: "vpc_list"},
-		{Verb: "get", Tool: "vpc_get", Args: []string{"id"}},
-		{Verb: "create", Tool: "vpc_create", Args: []string{"name"}},
-		{Verb: "delete", Tool: "vpc_delete", Args: []string{"id"}},
-		{Verb: "operation", Tool: "vpc_operation", Args: []string{"operation_id"}},
-		{Verb: "routes", Tool: "vpc_routes", Args: []string{"vpc_id"}},
-		{Verb: "route-create", Tool: "vpc_route_create", Args: []string{"vpc_id"}},
-		{Verb: "route-delete", Tool: "vpc_route_delete", Args: []string{"vpc_id", "route_id"}},
-		{Verb: "subnets", Tool: "list_subnets"},
-		{Verb: "security-groups", Tool: "list_security_groups"},
-		{Verb: "fips", Tool: "list_floating_ips"},
-		{Verb: "fip-attach", Tool: "fip_attach", Args: []string{"fip"}},
-		{Verb: "fip-release", Tool: "release_floating_ip", Args: []string{"id?"}},
-	}},
-	{Name: "k8s", Short: "Managed Kubernetes clusters", Cmds: []treeCmd{
-		{Verb: "list", Tool: "k8s_list"},
-		{Verb: "get", Tool: "k8s_get", Args: []string{"cluster_id"}},
-		{Verb: "options", Tool: "k8s_options"},
-		{Verb: "plan", Tool: "k8s_plan"},
-		{Verb: "create", Tool: "k8s_create"},
-		{Verb: "delete", Tool: "k8s_delete", Args: []string{"cluster_id"}},
-		{Verb: "kubeconfig", Tool: "k8s_kubeconfig", Args: []string{"cluster_id"}},
-		{Verb: "nodepools", Tool: "k8s_nodepools", Args: []string{"cluster_id"}},
-		{Verb: "add-nodepool", Tool: "k8s_add_nodepool", Args: []string{"cluster_id"}},
-		{Verb: "addons", Tool: "k8s_addons", Args: []string{"query?"}, Render: renderAddonList},
-		{Verb: "addon-versions", Tool: "k8s_addon_versions", Args: []string{"name"}, Render: renderAddonVersions},
-		{Verb: "add-addon", Tool: "k8s_add_addon", Args: []string{"cluster_id", "name"}, Files: map[string]bool{"config": true}},
-		{Verb: "kubectl", Tool: "k8s_kubectl", Args: []string{"cluster_id", "args..."}, Raw: true},
-		{Verb: "apply", Tool: "k8s_apply", Args: []string{"cluster_id"}, Raw: true},
-		{Verb: "helm", Tool: "k8s_helm", Args: []string{"cluster_id", "action"}, Raw: true},
-	}},
-	{Name: "pg", Short: "Managed PostgreSQL clusters, databases, users, backups", Cmds: []treeCmd{
-		{Verb: "list", Tool: "pg_list"},
-		{Verb: "get", Tool: "pg_get", Args: []string{"cluster_id"}, Omit: map[string]bool{"id": true}},
-		{Verb: "versions", Tool: "pg_versions"},
-		{Verb: "specs", Tool: "pg_specs"},
-		{Verb: "create", Tool: "pg_create", Args: []string{"name"}},
-		{Verb: "delete", Tool: "pg_delete", Args: []string{"cluster_id"}, Omit: map[string]bool{"id": true}},
-		{Verb: "operation", Tool: "pg_operation", Args: []string{"operation_id"}},
-		{Verb: "databases", Tool: "pg_databases", Args: []string{"cluster_id"}},
-		{Verb: "db-create", Tool: "pg_db_create", Args: []string{"cluster_id", "name"}},
-		{Verb: "db-delete", Tool: "pg_db_delete", Args: []string{"cluster_id", "name"}},
-		{Verb: "users", Tool: "pg_users", Args: []string{"cluster_id"}},
-		{Verb: "user-create", Tool: "pg_user_create", Args: []string{"cluster_id", "name"}},
-		{Verb: "user-delete", Tool: "pg_user_delete", Args: []string{"cluster_id", "name"}},
-		{Verb: "backups", Tool: "pg_backups", Args: []string{"cluster_id"}},
-		{Verb: "backup-create", Tool: "pg_backup_create", Args: []string{"cluster_id", "name"}},
-	}},
-	{Name: "s3", Short: "Object Storage: buckets and objects", Cmds: []treeCmd{
-		{Verb: "buckets", Tool: "s3_buckets"},
-		{Verb: "ls", Tool: "s3_ls", Args: []string{"bucket"}},
-		{Verb: "get", Tool: "s3_get", Args: []string{"bucket", "key"}},
-		{Verb: "put", Tool: "s3_put", Args: []string{"bucket", "key"}},
-		{Verb: "rm", Tool: "s3_rm", Args: []string{"bucket", "key"}},
-		{Verb: "bucket-create", Tool: "s3_bucket_create", Args: []string{"bucket"},
-			Rename: map[string]string{"region": "s3-region"}},
-		{Verb: "bucket-delete", Tool: "s3_bucket_delete", Args: []string{"bucket"}},
-	}},
-	{Name: "secret", Short: "Secret Manager", Cmds: []treeCmd{
-		{Verb: "list", Tool: "secret_list"},
-		{Verb: "get", Tool: "secret_get", Args: []string{"path"}},
-		{Verb: "value", Tool: "secret_value", Args: []string{"path"}},
-		{Verb: "create", Tool: "secret_create", Args: []string{"path"}},
-		{Verb: "add-version", Tool: "secret_add_version", Args: []string{"path"}},
-		{Verb: "delete", Tool: "secret_delete", Args: []string{"path"}},
-	}},
+// renderFunc shows a tool's answer instead of the generic table.
+type renderFunc func(p *output.Printer, w io.Writer, text string) error
+
+// treeRenders is the closed set of views a CLISpec.Render may name (image
+// list, image get, the Marketplace showcase, k8s addons); --json still
+// prints the tool's answer as is.
+var treeRenders = map[string]renderFunc{
+	"image-list":       renderImageList,
+	"image-card":       renderImageCard,
+	"marketplace-list": renderMarketplaceList,
+	"addon-list":       renderAddonList,
+	"addon-versions":   renderAddonVersions,
 }
+
+// treeGroupShort is the English summary of each tree (treeGroupShortRU is
+// the Russian one). A CLISpec group without one fails TestTrees_BuildAndHelp.
+var treeGroupShort = map[string]string{
+	"vm":          "Virtual machines",
+	"image":       "VM images: operating systems and Marketplace products",
+	"marketplace": "Showcase: VM images and Kubernetes addons, with the command that deploys each",
+	"disk":        "Disks",
+	"vpc":         "Networks: VPCs, routes, subnets, security groups, floating IPs",
+	"k8s":         "Managed Kubernetes clusters",
+	"pg":          "Managed PostgreSQL clusters, databases, users, backups",
+	"s3":          "Object Storage: buckets and objects",
+	"secret":      "Secret Manager",
+}
+
+// treeGroupsOf groups the commands of reg's tools by CLISpec.Group, sorted
+// by group and verb (cobra lists them so anyway). Tools without a command
+// (CLIPending, None) are left out. A group "" holds the commands at the
+// root.
+func treeGroupsOf(reg *tools.Registry) []treeGroup {
+	byGroup := map[string][]treeCmd{}
+	for _, t := range reg.Tools() {
+		if t.CLI.Verb == "" {
+			continue
+		}
+		c := treeCmd{CLISpec: t.CLI, Tool: t.Name, russian: russianTrees[t.CLI.Group]}
+		if t.CLI.Render != "" {
+			c.render = treeRenders[t.CLI.Render]
+			if c.render == nil {
+				panic("command tree: " + t.Name + ": no view " + t.CLI.Render) // caught by TestParity_CommandsAndTools
+			}
+		}
+		byGroup[t.CLI.Group] = append(byGroup[t.CLI.Group], c)
+	}
+	out := make([]treeGroup, 0, len(byGroup))
+	for name, cmds := range byGroup {
+		sort.Slice(cmds, func(i, j int) bool { return cmds[i].Verb < cmds[j].Verb })
+		g := treeGroup{Name: name, Cmds: cmds}
+		if name != "" {
+			short, ok := treeGroupShort[name]
+			if !ok {
+				panic("command tree: no summary for group " + name) // caught by TestTrees_BuildAndHelp
+			}
+			g.Short = short
+			if ru, ok := treeGroupShortRU[name]; ok {
+				g.Short = i18n.T(short, ru)
+			}
+		}
+		out = append(out, g)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// toolAnnotation marks a command built from a tool's CLISpec with the
+// tool's name (TestParity_CommandsAndTools reads it).
+const toolAnnotation = "evo.tool"
 
 // rootArgs are tool arguments served by root flags (--project-id,
 // --region) through the engine configuration, and confirmed, which is
 // given with --yes or at the prompt.
 var rootArgs = map[string]bool{"project_id": true, "region": true, "confirmed": true}
 
-// newTreeCmds builds the command trees from treeGroups.
+// newTreeCmds builds the command trees from the registry's CLISpecs.
 func newTreeCmds() []*cobra.Command {
 	reg := newRegistry()
 	var out []*cobra.Command
-	for _, g := range treeGroups {
-		short := g.Short
-		if ru, ok := treeGroupShortRU[g.Name]; ok {
-			short = i18n.T(g.Short, ru)
+	for _, g := range treeGroupsOf(reg) {
+		var parent *cobra.Command
+		if g.Name != "" {
+			parent = asGroup(&cobra.Command{Use: g.Name, Short: g.Short})
+			out = append(out, parent)
 		}
-		group := asGroup(&cobra.Command{Use: g.Name, Short: short})
 		for _, c := range g.Cmds {
-			t, ok := reg.Lookup(c.Tool)
-			if !ok {
-				panic("command tree: no tool " + c.Tool) // caught by TestTrees_MatchRegistry
+			t, _ := reg.Lookup(c.Tool)
+			leaf := newTreeLeaf(c, t)
+			if parent == nil {
+				out = append(out, leaf)
+				continue
 			}
-			c.russian = russianTrees[g.Name]
-			group.AddCommand(newTreeLeaf(c, t))
+			parent.AddCommand(leaf)
 		}
-		out = append(out, group)
 	}
 	return out
 }
@@ -297,9 +249,10 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:   strings.Join(use, " "),
-		Short: short,
-		Long:  long,
+		Use:         strings.Join(use, " "),
+		Short:       short,
+		Long:        long,
+		Annotations: map[string]string{toolAnnotation: t.Name},
 		Args: func(cmd *cobra.Command, args []string) error {
 			if maxArgs == 0 && len(args) > 0 {
 				return fmt.Errorf(i18n.T("%s takes no arguments, got %q", "%s не принимает аргументов, передано %q"), cmd.CommandPath(), args[0])
@@ -390,8 +343,8 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		if err != nil || text == "" {
 			return err
 		}
-		if c.Render != nil {
-			return c.Render(cmdPrinter(cmd), cmd.OutOrStdout(), text)
+		if c.render != nil {
+			return c.render(cmdPrinter(cmd), cmd.OutOrStdout(), text)
 		}
 		return renderAnswer(cmdPrinter(cmd), cmd.OutOrStdout(), text, tableView{Columns: c.Columns, Russian: c.russian})
 	}
