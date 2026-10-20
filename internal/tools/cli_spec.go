@@ -224,32 +224,59 @@ var cliSpecs = map[string]CLISpec{
 	"ca_logs":   {Group: "ca", Verb: "logs", Args: []string{"name"}, Render: "log-lines"},
 	"ca_start":  {Group: "ca", Verb: "start", Args: []string{"name"}},
 	"ca_stop":   {Group: "ca", Verb: "stop", Args: []string{"name"}},
+
+	// billing, audit, org, iam. project_id of these tools is a filter of
+	// what is read, not the project of the configuration: its flag is
+	// --project-id of the command, which shadows the root one (as deploy's
+	// does), so that 'evo org quotas --project-id X' passes X to the tool.
+	"billing_balance":      {Group: "billing", Verb: "balance"},
+	"billing_consumption":  {Group: "billing", Verb: "consumption", Rename: map[string]string{"project_id": "project-id"}},
+	"billing_finops":       {Group: "billing", Verb: "finops", Rename: map[string]string{"project_id": "project-id"}},
+	"audit_events":         {Group: "audit", Verb: "events"},
+	"org_quotas":           {Group: "org", Verb: "quotas", Rename: map[string]string{"project_id": "project-id"}},
+	"iam_service_accounts": {Group: "iam", Verb: "service-accounts", Rename: map[string]string{"project_id": "project-id"}},
+
+	// metrics: the command is the prefix of the tool's name, not its group
+	// (monitoring, which --toolsets keeps): owner's decision Q4.
+	"metrics_history": {Group: "metrics", Verb: "history", Args: []string{"match"}},
+	"metrics_scrape":  {Group: "metrics", Verb: "scrape", Args: []string{"match?"}, Render: "exposition"},
+
+	// stack
+	"stack_plan":    {Group: "stack", Verb: "plan", Files: map[string]bool{"manifest": true}},
+	"stack_apply":   {Group: "stack", Verb: "apply", Args: []string{"job_id"}},
+	"stack_status":  {Group: "stack", Verb: "status", Args: []string{"job_id"}},
+	"stack_destroy": {Group: "stack", Verb: "destroy", Args: []string{"job_id"}},
+
+	// image, vpc: commands added to the trees of v1.1.
+	"image_create": {Group: "image", Verb: "create", Args: []string{"name"}},
+	"image_delete": {Group: "image", Verb: "delete", Args: []string{"image_id"}},
+	"open_ports":   {Group: "vpc", Verb: "open-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
 }
 
 // CLIPending are the tools without a command of their own yet, with the
 // PR of the parity plan (docs/internal/cli-mcp-parity/spec.md §5) that
 // gives them one; until then they are reached with 'evo tools call', and
-// five of them through an engine command with its own code. The list only
-// shrinks: TestRegistry_EveryToolHasCLISpec and TestParity_CommandsAndTools
-// fail on a tool that is neither here nor in cliSpecs, and on one that is in
-// both. Delete it once it is empty.
+// five of them through an engine command with its own code. They all wait
+// for PR 5, which turns the engine commands into commands of their tools
+// (REQ-4): the commands of these tools belong to an engine command (evo
+// deploy plan, evo org projects as evo project list), so they come with it.
+// The list only shrinks: TestRegistry_EveryToolHasCLISpec and
+// TestParity_CommandsAndTools fail on a tool that is neither here nor in
+// cliSpecs, and on one that is in both. Delete it once it is empty.
 var CLIPending = map[string]string{
-	// PR 3c: billing, audit, org, iam, metrics, stack, image, vpc open-ports,
-	// deploy plan/apply/list.
-	"billing_balance": "PR 3c", "billing_consumption": "PR 3c", "billing_finops": "PR 3c",
-	"audit_events": "PR 3c",
-	"org_quotas":   "PR 3c", "iam_service_accounts": "PR 3c",
-	"metrics_history": "PR 3c", "metrics_scrape": "PR 3c",
-	"stack_plan": "PR 3c", "stack_apply": "PR 3c", "stack_status": "PR 3c", "stack_destroy": "PR 3c",
-	"image_create": "PR 3c", "image_delete": "PR 3c",
-	"open_ports":  "PR 3c",
-	"deploy_plan": "PR 3c", "deploy_apply": "PR 3c", "list": "PR 3c",
-
-	// PR 5: the engine commands with their own code (evo deploy, status,
-	// logs, project list, list-images) become commands of these tools.
+	// The engine commands with their own code (evo deploy, status, logs,
+	// project list, list-images) become commands of these tools.
 	"deploy":       "PR 5: evo deploy (engine.Deploy)",
 	"status":       "PR 5: evo status (engine.Status)",
 	"logs":         "PR 5: evo logs (engine.Logs)",
 	"org_projects": "PR 5: evo project list (listProjects)",
 	"list_images":  "PR 5: evo list-images (engine.ListImages)",
+
+	// evo deploy plan, evo deploy apply, evo deploy list: subcommands of
+	// the engine command evo deploy, which becomes a group with an action
+	// of its own in PR 5 (spec.md R7). Before it, they would change
+	// evo deploy --help, and the trees would build a second root deploy.
+	"deploy_plan":  "PR 5: evo deploy plan (evo deploy — engine command)",
+	"deploy_apply": "PR 5: evo deploy apply (evo deploy — engine command)",
+	"list":         "PR 5: evo deploy list (evo deploy — engine command)",
 }

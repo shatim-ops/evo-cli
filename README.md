@@ -42,16 +42,16 @@ Docker с ключом, встроенным в evo, а при недоступ�
 |---|---|---|
 | compose-проект на ВМ | `evo deploy`, `status`, `logs`, `verify`, `destroy` | работает; только Ubuntu и Debian, на ВМ уезжает один `docker-compose.yml` (без `build:` и `.env`) |
 | ВМ и диски | `evo vm`, `evo disk` | работает: создание, удаление, подключение, расширение и отключение дисков |
-| образы и маркетплейс | `evo image`, `evo marketplace` | поиск и ВМ из образа работают; Astra Linux, Альт и РЕД ОС тестовому проекту недоступны, evo отказывает до создания. Свой образ из диска (`image_create`) вживую не проверен — квота организации |
-| сеть | `evo vpc`, `tools call lb_* / tg_* / snat_*` | работает: VPC, подсети, группы безопасности и порты, floating IP, маршруты, SNAT, балансировщик NLB |
-| DNS | `tools call dns_*` | работает (вживую проверены приватные зоны); операции с зоной платформа выполняет от секунд до нескольких часов |
+| образы и маркетплейс | `evo image`, `evo marketplace` | поиск и ВМ из образа работают; Astra Linux, Альт и РЕД ОС тестовому проекту недоступны, evo отказывает до создания. Свой образ из диска (`evo image create`) вживую не проверен — квота организации |
+| сеть | `evo vpc`, `evo lb`, `evo tg`, `evo snat` | работает: VPC, подсети, группы безопасности и порты, floating IP, маршруты, SNAT, балансировщик NLB |
+| DNS | `evo dns` | работает (вживую проверены приватные зоны); операции с зоной платформа выполняет от секунд до нескольких часов |
 | Kubernetes | `evo k8s` | работает: кластер, пулы узлов, плагины, kubeconfig, `kubectl`, `helm` |
-| PostgreSQL, Kafka, Redis | `evo pg`, `tools call kafka_* / redis_*` | работает: кластеры, базы и пользователи PostgreSQL, бэкапы |
+| PostgreSQL, Kafka, Redis | `evo pg`, `evo kafka`, `evo redis` | работает: кластеры, базы и пользователи PostgreSQL, бэкапы |
 | Object Storage | `evo s3` | работает; нужны отдельные ключи S3 ([auth.md](docs/auth.md)) |
-| секреты и сертификаты | `evo secret`, `tools call cert_*` | работает; выпуск Let's Encrypt (`cert_issue_le`) нужен делегированной публичной зоне — вживую не проверен |
-| Container Apps, Artifact Registry | `tools call ca_* / ar_*` | работает: реестр, `docker push`, приложение, логи, остановка и запуск |
-| стеки | `tools call stack_*` | работает: план, применение, статус, удаление |
-| мониторинг, биллинг, аудит, IAM | `tools call metrics_* / billing_* / audit_events …` | только чтение; `billing_*` может не отвечать — тогда консоль, «Контроль затрат» |
+| секреты и сертификаты | `evo secret`, `evo cert` | работает; выпуск Let's Encrypt (`evo cert issue-le`) нужен делегированной публичной зоне — вживую не проверен |
+| Container Apps, Artifact Registry | `evo ca`, `evo ar` | работает: реестр, `docker push`, приложение, логи, остановка и запуск |
+| стеки | `evo stack` | работает: план, применение, статус, удаление |
+| мониторинг, биллинг, аудит, IAM | `evo metrics`, `evo billing`, `evo audit`, `evo iam`, `evo org` | только чтение; `evo billing` может не отвечать — тогда консоль, «Контроль затрат» |
 | AI-агент | `evo mcp` (stdio и HTTP) | работает: те же 152 инструмента, создание и удаление — только после согласия |
 
 **Чего ждать от платформы.** `evo deploy` иногда падает не по вине evo:
@@ -165,14 +165,18 @@ HTTP-режим, Docker-образ, отбор групп инструменто
 
 | Команда | Что делает |
 |---|---|
-| `vm`, `disk`, `vpc` | ВМ, диски, сети, подсети, группы безопасности, floating IP |
-| `image` | образы ВМ: ОС и продукты маркетплейса — поиск по имени, карточка с UUID |
+| `vm`, `disk`, `vpc` | ВМ, диски, сети, подсети, группы безопасности и порты (`vpc open-ports`), floating IP |
+| `image` | образы ВМ: ОС и продукты маркетплейса — поиск по имени, карточка с UUID; свой образ из диска (`image create`) |
 | `marketplace` | витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания каждого (только чтение) |
 | `k8s` | кластеры Managed Kubernetes, node pool'ы, плагины (каталог, версии, установка), kubeconfig, `kubectl`/`helm` |
-| `pg` | кластеры PostgreSQL, базы, пользователи, бэкапы |
+| `pg`, `kafka`, `redis` | кластеры PostgreSQL (базы, пользователи, бэкапы), Kafka и Redis |
 | `s3` | бакеты и объекты Object Storage |
-| `secret` | Secret Manager |
-| `tools list` / `describe` / `call` | любой из 152 инструментов MCP-сервера, включая DNS, балансировщики, Kafka, Redis, Artifact Registry, сертификаты, мониторинг, биллинг |
+| `secret`, `cert` | Secret Manager; TLS-сертификаты Certificate Manager, в том числе Let's Encrypt |
+| `dns`, `lb`, `tg`, `snat` | зоны и записи DNS, балансировщики нагрузки и их группы целей, SNAT-шлюзы |
+| `ar`, `ca` | реестры Artifact Registry; приложения Container Apps |
+| `stack` | стек ресурсов по одному манифесту: план с ценой, применение, ход, удаление |
+| `billing`, `audit`, `metrics`, `iam`, `org` | баланс, потребление и FinOps; журнал аудита; метрики мониторинга; сервисные аккаунты; квоты (только чтение) |
+| `tools list` / `describe` / `call` | любой из 152 инструментов MCP-сервера по имени, с аргументами `--arg` |
 | `deploy`, `status`, `logs`, `verify`, `destroy` | сценарий «compose → ВМ» |
 | `configure`, `whoami`, `doctor` | профили, проверка ключа и окружения |
 | `mcp` | MCP-сервер для агентов |
@@ -200,7 +204,8 @@ MCP-сервер (`evo mcp`) всегда отвечает по-английск
 ## Подтверждения
 
 Команды, которые создают платные ресурсы или удаляют данные (`deploy`,
-`destroy`, `vm create`, `disk delete`, `tools call` изменяющих инструментов…),
+`destroy`, `vm create`, `disk delete`, `dns zone-delete`, `tools call`
+изменяющих инструментов…),
 сначала показывают, что произойдёт. В терминале спрашивают подтверждение
 (`y` или `д` — да, Enter — нет); `--yes`
 (`-y`) — согласие заранее; `--dry-run` — только превью, код выхода `0`. Без
@@ -210,8 +215,8 @@ MCP-сервер держит ту же границу: изменяющий и�
 возвращает `status: confirmation_required` и превью, действие выполняется
 только повторным вызовом с `confirmed=true` — после согласия человека.
 Так же спрашивают подтверждение команды, которые ничего не меняют, но
-показывают секрет открытым текстом: `evo secret value` и `evo tools call
-cert_private_key` (MCP `secret_value`, `cert_private_key`).
+показывают секрет открытым текстом: `evo secret value` и `evo cert
+private-key` (MCP `secret_value`, `cert_private_key`).
 
 ```sh
 evo disk delete 1b2c… --dry-run   # что будет удалено

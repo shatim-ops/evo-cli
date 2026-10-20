@@ -60,8 +60,8 @@ type treeCmd struct {
 type renderFunc func(p *output.Printer, w io.Writer, text string) error
 
 // treeRenders is the closed set of views a CLISpec.Render may name (image
-// list, image get, the Marketplace showcase, k8s addons, ca logs); --json
-// still prints the tool's answer as is.
+// list, image get, the Marketplace showcase, k8s addons, ca logs, metrics
+// scrape); --json still prints the tool's answer as is.
 var treeRenders = map[string]renderFunc{
 	"image-list":       renderImageList,
 	"image-card":       renderImageCard,
@@ -69,6 +69,7 @@ var treeRenders = map[string]renderFunc{
 	"addon-list":       renderAddonList,
 	"addon-versions":   renderAddonVersions,
 	"log-lines":        renderLogLines,
+	"exposition":       renderExposition,
 }
 
 // treeGroupShort is the English summary of each tree (treeGroupShortRU is
@@ -92,6 +93,12 @@ var treeGroupShort = map[string]string{
 	"redis":       "Managed Redis clusters",
 	"ar":          "Artifact Registry: registries of images and packages",
 	"ca":          "Container Apps: serverless containers",
+	"billing":     "Billing: balance, consumption, FinOps report",
+	"audit":       "Audit Logging: who did what in the project",
+	"org":         "Organization: quotas",
+	"iam":         "IAM: service accounts",
+	"metrics":     "Service Monitoring: metrics",
+	"stack":       "Stacks: several resources from one manifest",
 }
 
 // treeGroupsOf groups the commands of reg's tools by CLISpec.Group, sorted

@@ -8,16 +8,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
-// 'evo ca logs' prints the lines of a ca_logs answer as a log: one line per
-// entry, its time and message, oldest first, as the tool orders them — not
-// a table that cuts every message to 40 characters. The note of the answer
-// (a cut read, no lines yet) goes under the lines. --json prints the tool's
-// answer as it is.
+// Two answers are text, not a table: 'evo ca logs' prints the lines of a
+// ca_logs answer as a log — one line per entry, its time and message,
+// oldest first, as the tool orders them, not a table that cuts every
+// message to 40 characters; the note of the answer (a cut read, no lines
+// yet) goes under the lines. 'evo metrics scrape' prints the Prometheus
+// text of metrics_scrape as it is, for grep. --json prints the tools'
+// answers as they are. A control character from the cloud does not reach
+// the terminal.
 
 type logLinesAnswer struct {
 	Logs []map[string]any `json:"logs"`
@@ -60,4 +64,24 @@ func logLine(e map[string]any) string {
 		}
 	}
 	return msg
+}
+
+// renderExposition prints the "exposition" of a metrics_scrape answer: the
+// Prometheus text, line by line.
+func renderExposition(_ *output.Printer, w io.Writer, text string) error {
+	var a struct {
+		Exposition *string `json:"exposition"`
+	}
+	if err := json.Unmarshal([]byte(text), &a); err != nil || a.Exposition == nil {
+		fmt.Fprintln(w, text)
+		return nil
+	}
+	if strings.TrimSpace(*a.Exposition) == "" {
+		fmt.Fprintln(w, i18n.T("No metrics.", "Метрик нет."))
+		return nil
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(*a.Exposition, "\n"), "\n") {
+		fmt.Fprintln(w, output.SanitizeCell(line))
+	}
+	return nil
 }

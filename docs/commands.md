@@ -19,6 +19,12 @@
     - [evo ar get](#evo-ar-get)
     - [evo ar list](#evo-ar-list)
     - [evo ar operation](#evo-ar-operation)
+  - [evo audit](#evo-audit)
+    - [evo audit events](#evo-audit-events)
+  - [evo billing](#evo-billing)
+    - [evo billing balance](#evo-billing-balance)
+    - [evo billing consumption](#evo-billing-consumption)
+    - [evo billing finops](#evo-billing-finops)
   - [evo ca](#evo-ca)
     - [evo ca delete](#evo-ca-delete)
     - [evo ca deploy](#evo-ca-deploy)
@@ -67,7 +73,11 @@
     - [evo dns zone-get](#evo-dns-zone-get)
     - [evo dns zones](#evo-dns-zones)
   - [evo doctor](#evo-doctor)
+  - [evo iam](#evo-iam)
+    - [evo iam service-accounts](#evo-iam-service-accounts)
   - [evo image](#evo-image)
+    - [evo image create](#evo-image-create)
+    - [evo image delete](#evo-image-delete)
     - [evo image get](#evo-image-get)
     - [evo image list](#evo-image-list)
   - [evo init](#evo-init)
@@ -106,6 +116,11 @@
   - [evo marketplace](#evo-marketplace)
     - [evo marketplace list](#evo-marketplace-list)
   - [evo mcp](#evo-mcp)
+  - [evo metrics](#evo-metrics)
+    - [evo metrics history](#evo-metrics-history)
+    - [evo metrics scrape](#evo-metrics-scrape)
+  - [evo org](#evo-org)
+    - [evo org quotas](#evo-org-quotas)
   - [evo pg](#evo-pg)
     - [evo pg backup-create](#evo-pg-backup-create)
     - [evo pg backups](#evo-pg-backups)
@@ -152,6 +167,11 @@
     - [evo snat create](#evo-snat-create)
     - [evo snat delete](#evo-snat-delete)
     - [evo snat list](#evo-snat-list)
+  - [evo stack](#evo-stack)
+    - [evo stack apply](#evo-stack-apply)
+    - [evo stack destroy](#evo-stack-destroy)
+    - [evo stack plan](#evo-stack-plan)
+    - [evo stack status](#evo-stack-status)
   - [evo status](#evo-status)
   - [evo tg](#evo-tg)
     - [evo tg create](#evo-tg-create)
@@ -179,6 +199,7 @@
     - [evo vpc fips](#evo-vpc-fips)
     - [evo vpc get](#evo-vpc-get)
     - [evo vpc list](#evo-vpc-list)
+    - [evo vpc open-ports](#evo-vpc-open-ports)
     - [evo vpc operation](#evo-vpc-operation)
     - [evo vpc route-create](#evo-vpc-route-create)
     - [evo vpc route-delete](#evo-vpc-route-delete)
@@ -223,6 +244,8 @@ Object Storage, секреты.
 ### SEE ALSO
 
 * [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
+* [evo audit](#evo-audit)	 - Журнал аудита: кто что сделал в проекте
+* [evo billing](#evo-billing)	 - Биллинг: баланс, потребление, отчёт FinOps
 * [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
 * [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
 * [evo completion](#evo-completion)	 - Скрипт автодополнения для оболочки
@@ -232,6 +255,7 @@ Object Storage, секреты.
 * [evo disk](#evo-disk)	 - Диски
 * [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
 * [evo doctor](#evo-doctor)	 - Проверить настройки, ключ доступа и связь с API
+* [evo iam](#evo-iam)	 - IAM: сервисные аккаунты
 * [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
 * [evo init](#evo-init)	 - Создать .evo.yaml с зоной и образом из API Cloud.ru
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
@@ -241,12 +265,15 @@ Object Storage, секреты.
 * [evo logs](#evo-logs)	 - Журналы контейнеров на развёрнутой ВМ
 * [evo marketplace](#evo-marketplace)	 - Витрина: образы ВМ и плагины Kubernetes с командой развёртывания каждого
 * [evo mcp](#evo-mcp)	 - MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)
+* [evo metrics](#evo-metrics)	 - Service Monitoring: метрики
+* [evo org](#evo-org)	 - Организация: квоты
 * [evo pg](#evo-pg)	 - Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии
 * [evo project](#evo-project)	 - Проекты, которые видит ключ, и проект профиля
 * [evo redis](#evo-redis)	 - Кластеры Managed Redis
 * [evo s3](#evo-s3)	 - Object Storage: бакеты и объекты
 * [evo secret](#evo-secret)	 - Secret Manager: секреты
 * [evo snat](#evo-snat)	 - SNAT-шлюзы: исходящий интернет для приватных подсетей
+* [evo stack](#evo-stack)	 - Стеки: несколько ресурсов по одному манифесту
 * [evo status](#evo-status)	 - Состояние текущего развёртывания
 * [evo tg](#evo-tg)	 - Группы целей балансировщиков
 * [evo tools](#evo-tools)	 - Список, описание и вызов инструментов evo (тех же, что у MCP-сервера)
@@ -538,6 +565,275 @@ evo ar operation <operation-id> [flags]
 ### SEE ALSO
 
 * [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
+
+## evo audit
+
+Журнал аудита: кто что сделал в проекте
+
+```
+evo audit [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по audit
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo audit events](#evo-audit-events)	 - Журнал аудита проекта: кто, что и когда сделал
+
+## evo audit events
+
+Журнал аудита проекта: кто, что и когда сделал
+
+### Synopsis
+
+```text
+Журнал аудита проекта: кто, что и когда сделал.
+
+Audit Logging — кто что сделал в проекте (только чтение): события управления (создание, удаление и изменение ВМ, баз данных, Kubernetes, S3, IAM и другого) с исполнителем, действием, ресурсом и временем. Отвечает на вопросы «что произошло на стенде», «кто удалил X», «что недавно менялось». Постранично: next_page_token. Доступ к журналам аудита включает поддержка Cloud.ru; до этого API отвечает 401, и ответ сообщает, что аудит для проекта не включён.
+
+Вызывает инструмент audit_events (подробнее: 'evo tools describe audit_events').
+```
+
+```
+evo audit events [flags]
+```
+
+### Examples
+
+```
+  evo audit events
+  evo audit events --since 30m
+  evo audit events --since 1d --page-size 500 --json | jq -r '.next_page_token'
+```
+
+### Options
+
+```
+  -h, --help                Справка по events
+      --page-size int       Наибольшее число событий на странице (по умолчанию 100, не больше 500)
+      --page-token string   Токен продолжения — next_page_token предыдущего ответа (необязательно)
+      --since string        Окно назад от текущего момента: 30m, 1h, 3h, 1d или число минут строкой, например "90" (по умолчанию 1h; лучше короче — для активных проектов API рекомендует не больше 30 минут)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo audit](#evo-audit)	 - Журнал аудита: кто что сделал в проекте
+
+## evo billing
+
+Биллинг: баланс, потребление, отчёт FinOps
+
+```
+evo billing [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по billing
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo billing balance](#evo-billing-balance)	 - Баланс по договору: сумма в рублях, признак активности
+* [evo billing consumption](#evo-billing-consumption)	 - Стоимость потребления за период по сервисам: по договору или по проекту
+* [evo billing finops](#evo-billing-finops)	 - Отчёт FinOps: распределение затрат, аномалии, темп расходов, запас баланса
+
+## evo billing balance
+
+Баланс по договору: сумма в рублях, признак активности
+
+### Synopsis
+
+```text
+Баланс по договору: сумма в рублях, признак активности.
+
+Баланс счёта по договору: сумма в рублях, признак активности и исходный объект договора. Только чтение. Нужен CLOUDRU_AGREEMENT_ID: баланс принадлежит договору, по проекту его не даёт ни один API; id договора видят только администраторы организации и администраторы затрат. Запрос идёт к billing.api.cloud.ru/v1/agreement/{agreement_id}; этого метода нет в опубликованных спецификациях API Cloud.ru, поэтому он работает по возможности и может измениться без предупреждения. Так проверяют, на сколько ещё хватит баланса.
+
+Вызывает инструмент billing_balance (подробнее: 'evo tools describe billing_balance').
+```
+
+```
+evo billing balance [flags]
+```
+
+### Examples
+
+```
+  CLOUDRU_AGREEMENT_ID=<agreement-id> evo billing balance
+  evo billing balance --json
+```
+
+### Options
+
+```
+  -h, --help   Справка по balance
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo billing](#evo-billing)	 - Биллинг: баланс, потребление, отчёт FinOps
+
+## evo billing consumption
+
+Стоимость потребления за период по сервисам: по договору или по проекту
+
+### Synopsis
+
+```text
+Стоимость потребления за период по сервисам: по договору или по проекту.
+
+Стоимость потребления за период — по договору (CLOUDRU_AGREEMENT_ID) или, без него, по проекту; поле scope в ответе говорит, по чему. Сводка по сервисам: total (без НДС, сумма amount), total_with_nds (с НДС, сумма amount_nds), records, by_service — по убыванию стоимости (без НДС). Только чтение. Роли: для договора — администратор организации или администратор затрат; для проекта — администратор проекта (platform.project.admin). Для FinOps и анализа затрат.
+
+Вызывает инструмент billing_consumption (подробнее: 'evo tools describe billing_consumption').
+```
+
+```
+evo billing consumption [flags]
+```
+
+### Examples
+
+```
+  evo billing consumption --start 2026-10-01 --end 2026-10-19
+  evo billing consumption --start 2026-10-01 --project-id <UUID> --json | jq '.by_service'
+```
+
+### Options
+
+```
+      --end string          Дата окончания, ГГГГ-ММ-ДД (по умолчанию — дата начала)
+  -h, --help                Справка по consumption
+      --project-id string   UUID проекта, чьё потребление прочитать (по умолчанию — текущий проект, если CLOUDRU_AGREEMENT_ID не задан; с ним — весь договор)
+      --start string        Дата начала, ГГГГ-ММ-ДД (обязательный)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json             Вывод в формате JSON
+      --no-color         Без цвета
+      --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose          Подробный журнал
+  -y, --yes              Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo billing](#evo-billing)	 - Биллинг: баланс, потребление, отчёт FinOps
+
+## evo billing finops
+
+Отчёт FinOps: распределение затрат, аномалии, темп расходов, запас баланса
+
+### Synopsis
+
+```text
+Отчёт FinOps: распределение затрат, аномалии, темп расходов, запас баланса.
+
+Отчёт FinOps (только чтение). INFORM — распределение затрат по сервисам и аномалии относительно предыдущего периода той же длины; QUANTIFY — дневной темп расходов, на сколько дней хватит баланса, прогнозная дата нулевого баланса и, если задан бюджет, его проверка. Затраты без НДС (amount). Отбор — как у 'evo billing consumption'; без CLOUDRU_AGREEMENT_ID баланс и запас неизвестны. Перенесён из finops_report.py. Для анализа затрат, предупреждений о запасе и проверки бюджета.
+
+Вызывает инструмент billing_finops (подробнее: 'evo tools describe billing_finops').
+```
+
+```
+evo billing finops [flags]
+```
+
+### Examples
+
+```
+  evo billing finops
+  evo billing finops --days 7 --budget 50000
+  evo billing finops --json
+```
+
+### Options
+
+```
+      --budget int          Месячный бюджет, руб.: прогноз расходов за месяц сравнивается с ним (необязательно)
+      --days int            Длина окна в днях, если дата начала не задана: 1–366 (по умолчанию 30)
+      --end string          Дата окончания, ГГГГ-ММ-ДД (по умолчанию — сегодня)
+  -h, --help                Справка по finops
+      --project-id string   UUID проекта (по умолчанию — текущий проект, если CLOUDRU_AGREEMENT_ID не задан; с ним — весь договор)
+      --start string        Дата начала, ГГГГ-ММ-ДД (по умолчанию — за --days дней по дату окончания включительно)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json             Вывод в формате JSON
+      --no-color         Без цвета
+      --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose          Подробный журнал
+  -y, --yes              Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo billing](#evo-billing)	 - Биллинг: баланс, потребление, отчёт FinOps
 
 ## evo ca
 
@@ -2852,6 +3148,86 @@ evo doctor [flags]
 
 * [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
+## evo iam
+
+IAM: сервисные аккаунты
+
+```
+evo iam [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по iam
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo iam service-accounts](#evo-iam-service-accounts)	 - Сервисные аккаунты IAM проекта
+
+## evo iam service-accounts
+
+Сервисные аккаунты IAM проекта
+
+### Synopsis
+
+```text
+Сервисные аккаунты IAM проекта.
+
+Сервисные аккаунты IAM проекта: id, имя, email, тип, включён ли. Только чтение. Так находят UUID сервисного аккаунта кластера (--cluster-sa-id команды 'evo k8s create') или проверяют сервисные аккаунты.
+
+Вызывает инструмент iam_service_accounts (подробнее: 'evo tools describe iam_service_accounts').
+```
+
+```
+evo iam service-accounts [flags]
+```
+
+### Examples
+
+```
+  evo iam service-accounts
+  evo iam service-accounts --json | jq -r '.service_accounts[] | "\(.id)\t\(.name)"'
+```
+
+### Options
+
+```
+  -h, --help                Справка по service-accounts
+      --project-id string   UUID проекта (по умолчанию — текущий проект)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json             Вывод в формате JSON
+      --no-color         Без цвета
+      --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose          Подробный журнал
+  -y, --yes              Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo iam](#evo-iam)	 - IAM: сервисные аккаунты
+
 ## evo image
 
 Образы ВМ: операционные системы и продукты маркетплейса
@@ -2882,8 +3258,121 @@ evo image [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo image create](#evo-image-create)	 - Создать образ ВМ из загрузочного диска (платно, асинхронно)
+* [evo image delete](#evo-image-delete)	 - Удалить образ ВМ
 * [evo image get](#evo-image-get)	 - Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ
 * [evo image list](#evo-image-list)	 - Поиск образов: ОС (public), маркетплейс (marketplace), образы проекта (private)
+
+## evo image create
+
+Создать образ ВМ из загрузочного диска (платно, асинхронно)
+
+### Synopsis
+
+```text
+Создать образ ВМ из загрузочного диска (платно, асинхронно).
+
+Создать многоразовый образ ВМ ИЗ ЗАГРУЗОЧНОГО ДИСКА — последний шаг подготовки распространяемого образа (например, продукта Маркетплейса): создайте ВМ, установите продукт, очистите систему, остановите ВМ и снимите образ с её загрузочного диска. Диск должен быть загрузочным И отключённым: выключите ВМ, отключите загрузочный диск ('evo disk detach') и дождитесь состояния available в 'evo disk list'. Остановить ВМ недостаточно: пока диск подключён, API отвечает invalid_disk_state_to_create_image.
+
+Для образа Маркетплейса передайте и --user-data-template (шаблон cloud-init на Jinja), и --image-metadata с объявлением каждой {{ var }} шаблона: так SSH-ключ или пароль покупателя попадает в гостевую систему. Сборка асинхронная (около 0,7 ГБ в минуту): повторяйте 'evo image get', пока образ не станет готов (ready=true). Хранение образа платное.
+
+Вызывает инструмент image_create (подробнее: 'evo tools describe image_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo image create <name> [flags]
+```
+
+### Examples
+
+```
+  evo image create my-product-1.0 --disk-id <disk-id> --dry-run
+  evo image create my-product-1.0 --disk-id <disk-id> --display-name 'My product 1.0' --min-disk 20 --yes
+```
+
+### Options
+
+```
+      --description string           Описание в свободной форме, НЕ БОЛЬШЕ 255 символов (длиннее API отклоняет с too_long). Достаточно продукта, закреплённой версии и digest; юридические оговорки — в карточке Маркетплейса, а не здесь
+      --disk-id string               UUID загрузочного диска-источника (список: evo disk list)
+      --display-name string          Понятное имя, которое показывает консоль
+  -h, --help                         Справка по create
+      --image-metadata stringArray   Поля, которые заполняет покупатель; они подставляются в --user-data-template, и каждая {{ var }} шаблона должна быть объявлена здесь. Элемент: {name, display_name, display_position, field_type, default_value, sensitive, mandatory_group} — display_name и display_position ОБЯЗАТЕЛЬНЫ, а 'id' и 'is_required' отклоняются (схема записи отличается от того, что показывает evo image get). field_type — типизированные значения платформы (public_key, linux_password, linux_login, hostname, flag); public_key и linux_password поместите в одну mandatory_group ('authentication'), чтобы доступ давало любое из них (флаг повторяется или значения через запятую)
+      --min-cpu int                  Наименьшее число vCPU, с которым ВМ загрузится из образа
+      --min-disk int                 Наименьший загрузочный диск, ГБ — не меньше размера образа, иначе ВМ из него не создать
+      --min-ram int                  Наименьший объём RAM, ГБ
+      --user-data-template string    Шаблон cloud-init (Jinja), который подставляется при создании ВМ из образа. Обязателен для образов Маркетплейса
+      --zone string                  Зона доступности, в которой собирать образ: имя или UUID. По умолчанию — зона из настроек, а если она не задана — зона диска-источника. Должна совпадать с зоной диска
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
+
+## evo image delete
+
+Удалить образ ВМ
+
+### Synopsis
+
+```text
+Удалить образ ВМ.
+
+Удалить образ ВМ. Работающие ВМ продолжают работать, но новую ВМ из образа уже не создать.
+
+Вызывает инструмент image_delete (подробнее: 'evo tools describe image_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo image delete <image-id> [flags]
+```
+
+### Examples
+
+```
+  evo image delete <image-id> --dry-run
+  evo image delete <image-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по delete
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
 
 ## evo image get
 
@@ -4750,6 +5239,216 @@ evo mcp [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+
+## evo metrics
+
+Service Monitoring: метрики
+
+```
+evo metrics [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по metrics
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo metrics history](#evo-metrics-history)	 - История метрики за недавний период (Service Monitoring)
+* [evo metrics scrape](#evo-metrics-scrape)	 - Текущие значения метрик в текстовом формате Prometheus
+
+## evo metrics history
+
+История метрики за недавний период (Service Monitoring)
+
+### Synopsis
+
+```text
+История метрики за недавний период (Service Monitoring).
+
+Service Monitoring: история метрики за недавний период (только чтение). Чтобы понять, здоров ли сервис и как загружен CPU, история метрики полезнее, чем повторные 'evo vm get' и 'evo k8s get'. Возвращает временные ряды: метки метрики, значения, отметки времени. Данные есть, только если в проекте подключён тенант мониторинга; иначе API отвечает 'tenant not found'.
+
+Вызывает инструмент metrics_history (подробнее: 'evo tools describe metrics_history').
+```
+
+```
+evo metrics history <match> [flags]
+```
+
+### Examples
+
+```
+  evo metrics history cpu_usage
+  evo metrics history node_load1 --since 6h --json
+```
+
+### Options
+
+```
+  -h, --help           Справка по history
+      --since string   Окно назад от текущего момента: 30m, 1h, 6h, 1d или число минут строкой, например "90" (по умолчанию 1h; не больше 24h — ограничение API, большее отклоняется)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo metrics](#evo-metrics)	 - Service Monitoring: метрики
+
+## evo metrics scrape
+
+Текущие значения метрик в текстовом формате Prometheus
+
+### Synopsis
+
+```text
+Текущие значения метрик в текстовом формате Prometheus.
+
+Service Monitoring: текущие значения метрик в текстовом формате экспозиции Prometheus — снимок всех или отобранных метрик на этот момент (только чтение). Отбор — аргумент [match]; без него — все метрики.
+
+Вызывает инструмент metrics_scrape (подробнее: 'evo tools describe metrics_scrape').
+```
+
+```
+evo metrics scrape [match] [flags]
+```
+
+### Examples
+
+```
+  evo metrics scrape
+  evo metrics scrape '{__name__=~"cpu.*"}' | grep -v '^#'
+```
+
+### Options
+
+```
+  -h, --help   Справка по scrape
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo metrics](#evo-metrics)	 - Service Monitoring: метрики
+
+## evo org
+
+Организация: квоты
+
+```
+evo org [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по org
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo org quotas](#evo-org-quotas)	 - Квоты: ресурс, лимит, текущее использование
+
+## evo org quotas
+
+Квоты: ресурс, лимит, текущее использование
+
+### Synopsis
+
+```text
+Квоты: ресурс, лимит, текущее использование.
+
+Использование квот: ресурс, лимит, текущее использование — для планирования мощностей. Только чтение. Можно ограничить одним проектом (--project-id). Ответ может быть неполным, если у сервисного аккаунта недостаточно прав.
+
+Вызывает инструмент org_quotas (подробнее: 'evo tools describe org_quotas').
+```
+
+```
+evo org quotas [flags]
+```
+
+### Examples
+
+```
+  evo org quotas
+  evo org quotas --project-id <UUID> --json
+```
+
+### Options
+
+```
+  -h, --help                Справка по quotas
+      --project-id string   UUID проекта, которым ограничить квоты (необязательно)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json             Вывод в формате JSON
+      --no-color         Без цвета
+      --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose          Подробный журнал
+  -y, --yes              Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo org](#evo-org)	 - Организация: квоты
 
 ## evo pg
 
@@ -6805,6 +7504,243 @@ evo snat list [flags]
 
 * [evo snat](#evo-snat)	 - SNAT-шлюзы: исходящий интернет для приватных подсетей
 
+## evo stack
+
+Стеки: несколько ресурсов по одному манифесту
+
+```
+evo stack [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по stack
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo stack apply](#evo-stack-apply)	 - Создать ресурсы спланированного стека (платно)
+* [evo stack destroy](#evo-stack-destroy)	 - Удалить все ресурсы стека (безвозвратно)
+* [evo stack plan](#evo-stack-plan)	 - Спланировать стек ресурсов по одному манифесту (ничего не создаёт)
+* [evo stack status](#evo-stack-status)	 - Ход развёртывания стека
+
+## evo stack apply
+
+Создать ресурсы спланированного стека (платно)
+
+### Synopsis
+
+```text
+Создать ресурсы спланированного стека (платно).
+
+Применить спланированный стек (из 'evo stack plan'). Ресурсы платные. Вызов запускает готовые шаги и возвращает краткое состояние; он может идти минутами: шаг ВМ ждёт, пока ВМ станет активной (вживую — около 3 минут), а асинхронные ресурсы (PostgreSQL, Kafka, Redis, Kubernetes, балансировщик) только запускаются. Затем опрашивайте 'evo stack status <job-id>' с этим job_id, пока status не станет done. Управлять ресурсами по отдельности не нужно.
+
+Вызывает инструмент stack_apply (подробнее: 'evo tools describe stack_apply').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo stack apply <job-id> [flags]
+```
+
+### Examples
+
+```
+  evo stack apply <job-id> --dry-run
+  evo stack apply <job-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по apply
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo stack](#evo-stack)	 - Стеки: несколько ресурсов по одному манифесту
+
+## evo stack destroy
+
+Удалить все ресурсы стека (безвозвратно)
+
+### Synopsis
+
+```text
+Удалить все ресурсы стека (безвозвратно).
+
+Удалить все ресурсы стека — в обратном порядке, идемпотентно. status=destroyed значит, что каждое удаление принято: ВМ, секреты и объекты S3 удалены, а асинхронные ресурсы из списка deleting (PostgreSQL, Kafka, Redis, Kubernetes, балансировщик и другие) облако удаляет ещё несколько минут (PostgreSQL вживую — около 5 минут); проверьте их через 'evo pg list', 'evo k8s list' и подобные команды.
+
+Вызывает инструмент stack_destroy (подробнее: 'evo tools describe stack_destroy').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo stack destroy <job-id> [flags]
+```
+
+### Examples
+
+```
+  evo stack destroy <job-id> --dry-run
+  evo stack destroy <job-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по destroy
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo stack](#evo-stack)	 - Стеки: несколько ресурсов по одному манифесту
+
+## evo stack plan
+
+Спланировать стек ресурсов по одному манифесту (ничего не создаёт)
+
+### Synopsis
+
+```text
+Спланировать стек ресурсов по одному манифесту (ничего не создаёт).
+
+Спланировать стек из нескольких ресурсов по ОДНОМУ декларативному манифесту. Для развёртывания из нескольких сервисов используйте стек, а не создавайте кластер PostgreSQL, кластер Kubernetes, ВМ, группу целей и остальное по одному: всю цепочку выполняет evo. Возвращает job_id и оценку стоимости по тарифам; стек создаёт 'evo stack apply <job-id>'. Только чтение: ничего не создаёт.
+
+manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]}.
+
+vm.image (имя или UUID, поиск: 'evo image list') и vm.zone (имя вида ru.AZ-1 или UUID, список: 'evo vm zones') по умолчанию берутся из CLOUDRU_IMAGE_ID и CLOUDRU_REGION сервера; план находит оба и отказывает стеку с ВМ, если чего-то из них нет или оно неизвестно, — до создания чего-либо. (Container Apps пока нет: нужен образ из реестра.)
+
+Вызывает инструмент stack_plan (подробнее: 'evo tools describe stack_plan').
+```
+
+```
+evo stack plan [flags]
+```
+
+### Examples
+
+```
+  evo stack plan --manifest stack.json
+  evo stack plan --manifest stack.json --json | jq -r '.job_id'
+```
+
+### Options
+
+```
+  -h, --help              Справка по plan
+      --manifest string   Файл со значением ('-' — из stdin до EOF: на терминале — Ctrl-D). Декларативное описание стека (формат — в описании)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo stack](#evo-stack)	 - Стеки: несколько ресурсов по одному манифесту
+
+## evo stack status
+
+Ход развёртывания стека
+
+### Synopsis
+
+```text
+Ход развёртывания стека.
+
+Ход развёртывания стека, кратко: status, done[], running[], pending[], outputs{postgres, vm, tg, lb, …; lb_external_ip — когда у балансировщика появился публичный адрес}. Для задания, запущенного 'evo stack apply <job-id>', каждый вызов продвигает развёртывание И ждёт внутри (до --wait-seconds), так что на долгое развёртывание хватает нескольких вызовов. Спланированное, но не запущенное задание только показывается и никогда не запускается. Повторяйте, пока status не станет done (тогда читайте outputs; lb_external_ip есть только у балансировщика с публичным адресом) или error. Задание хранится на диске: состояние можно запросить снова по job_id в любой момент.
+
+Вызывает инструмент stack_status (подробнее: 'evo tools describe stack_status').
+```
+
+```
+evo stack status <job-id> [flags]
+```
+
+### Examples
+
+```
+  evo stack status <job-id>
+  evo stack status <job-id> --wait-seconds 240 --json
+```
+
+### Options
+
+```
+  -h, --help               Справка по status
+      --wait-seconds int   Сколько секунд этот вызов может ждать, продвигая развёртывание (по умолчанию 90, не больше 240). Чем больше, тем меньше вызовов для долгого развёртывания
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo stack](#evo-stack)	 - Стеки: несколько ресурсов по одному манифесту
+
 ## evo status
 
 Состояние текущего развёртывания
@@ -7739,6 +8675,7 @@ evo vpc [flags]
 * [evo vpc fips](#evo-vpc-fips)	 - Floating IP: адрес, состояние, свободен ли
 * [evo vpc get](#evo-vpc-get)	 - VPC по ID: все сведения
 * [evo vpc list](#evo-vpc-list)	 - Список VPC проекта
+* [evo vpc open-ports](#evo-vpc-open-ports)	 - Открыть входящие порты в группе безопасности
 * [evo vpc operation](#evo-vpc-operation)	 - Состояние асинхронной операции VPC
 * [evo vpc route-create](#evo-vpc-route-create)	 - Добавить статический маршрут в VPC (асинхронно)
 * [evo vpc route-delete](#evo-vpc-route-delete)	 - Удалить статический маршрут из VPC (асинхронно)
@@ -8025,6 +8962,60 @@ evo vpc list [flags]
 
 ```
   -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+
+## evo vpc open-ports
+
+Открыть входящие порты в группе безопасности
+
+### Synopsis
+
+```text
+Открыть входящие порты в группе безопасности.
+
+Открыть входящие порты в группе безопасности Cloud.ru: добавить правила ingress, по умолчанию tcp из 0.0.0.0/0. Так делают сервис доступным (например, 80 и 443 для веб-сервера). Группа — аргумент <security-group> (имя или UUID). Уже открытые порты пропускаются. Группы безопасности общие для зоны доступности: открытый порт затрагивает каждую ВМ в этой группе.
+
+Вызывает инструмент open_ports (подробнее: 'evo tools describe open_ports').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vpc open-ports <security-group> [flags]
+```
+
+### Examples
+
+```
+  evo vpc open-ports SSH-access_ru.AZ-2 --port 80 --port 443 --dry-run
+  evo vpc open-ports SSH-access_ru.AZ-2 --port 80,443 --yes
+  evo vpc open-ports <security-group-id> --port 53 --protocol udp --cidr 10.0.0.0/8 --yes
+```
+
+### Options
+
+```
+      --cidr string        CIDR источника (по умолчанию 0.0.0.0/0 — откуда угодно)
+  -h, --help               Справка по open-ports
+      --port stringArray   Порты, которые открыть, например 80,443 (флаг повторяется или значения через запятую)
+      --protocol string    Протокол: tcp (по умолчанию) или udp
 ```
 
 ### Options inherited from parent commands

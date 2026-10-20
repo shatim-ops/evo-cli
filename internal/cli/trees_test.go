@@ -71,7 +71,8 @@ func TestTrees_MatchRegistry(t *testing.T) {
 			})
 		}
 	}
-	for _, g := range []string{"vm", "disk", "vpc", "k8s", "pg", "s3", "secret", "dns", "cert", "nlb", "snat", "kafka", "redis", "ar", "ca"} {
+	for _, g := range []string{"vm", "disk", "vpc", "k8s", "pg", "s3", "secret", "dns", "cert", "nlb", "snat", "kafka", "redis", "ar", "ca",
+		"billing", "audit", "iam", "monitoring", "stack"} {
 		for _, tl := range reg.Tools() {
 			if tl.Group == g && !covered[tl.Name] {
 				t.Errorf("tool %s (group %s) has no command in the tree", tl.Name, g)

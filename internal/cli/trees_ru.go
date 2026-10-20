@@ -34,17 +34,25 @@ var treeGroupShortRU = map[string]string{
 	"redis":       "Кластеры Managed Redis",
 	"ar":          "Artifact Registry: реестры образов и пакетов",
 	"ca":          "Container Apps: бессерверные контейнеры",
+	"billing":     "Биллинг: баланс, потребление, отчёт FinOps",
+	"audit":       "Журнал аудита: кто что сделал в проекте",
+	"org":         "Организация: квоты",
+	"iam":         "IAM: сервисные аккаунты",
+	"metrics":     "Service Monitoring: метрики",
+	"stack":       "Стеки: несколько ресурсов по одному манифесту",
 }
 
 // russianTrees are the trees whose human tables speak Russian too: the
 // column names, да/нет for booleans and the note under a list (the README
 // promises the vm and disk trees in Russian; every tree that came after
 // them speaks Russian from the start, PAR-16). The trees of v1.1 in
-// between (image, vpc, k8s, pg, s3, secret) keep their tables as they are.
+// between (image, vpc, k8s, pg, s3, secret) keep their tables as they are,
+// the commands added to them too (image create, vpc open-ports).
 // --json and MCP keep the tool's keys and English notes.
 var russianTrees = map[string]bool{"vm": true, "disk": true,
 	"dns": true, "cert": true, "lb": true, "tg": true, "snat": true,
-	"kafka": true, "redis": true, "ar": true, "ca": true}
+	"kafka": true, "redis": true, "ar": true, "ca": true,
+	"billing": true, "audit": true, "org": true, "iam": true, "metrics": true, "stack": true}
 
 // legacyRussianTrees are the Russian trees of v1.1: their tables take the
 // titles from columnHeaderRU alone, so that a title added for a newer tree
@@ -79,10 +87,18 @@ var moreColumnHeaderRU = map[string]string{
 	"memory":               "RAM, ГБ",
 	"deployment_mode":      "Режим",
 	"min_storage_gb":       "Хранилище от, ГБ",
+	"service":              "Сервис",
+	"cost":                 "Стоимость",
+	"resource":             "Ресурс",
+	"limit":                "Лимит",
+	"usage":                "Использовано",
+	"email":                "Email",
 }
 
 // treeColumnHeaderRU are the titles a tree gives a column its own way.
-var treeColumnHeaderRU = map[string]map[string]string{}
+var treeColumnHeaderRU = map[string]map[string]string{
+	"iam": {"enabled": "Включён"}, // columnHeaderRU: a zone is "Открыта"
+}
 
 // treeHeadersRU are the Russian column titles a newer Russian tree has
 // beyond columnHeaderRU; nil for the other trees.

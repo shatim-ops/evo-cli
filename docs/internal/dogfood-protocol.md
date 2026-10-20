@@ -102,34 +102,34 @@ evo 1.0.4). Формат волны — свободное тестирован�
 - **Попробуйте:** (1) `evo image list ubuntu` — несколько совпадений; `evo image get ubuntu-22.04` — карточка с полями. (2) ВМ из продукта маркетплейса (`lemp`, `gitlab` и т. п.): превью должно сказать «лицензии в цене нет». (3) `evo image get` для Astra Linux — карточка с пометкой «недоступен проекту».
 - **Чего ждать:** поиск по подстроке, регистр не важен; `image get` образа, недоступного проекту, — код 0 с пометкой, `vm create` из него — код 4 до создания.
 - **Известное:** 23 из 86 образов общего каталога проекту недоступны, включая все отечественные ОС (IMG-1); в каталоге тестовые образы рядом с рабочими (IMG-3); цена лицензии маркетплейса в API расчёта всегда 0 (BIL-1) — у Windows Server по карточке 1 006 ₽/мес, которых в превью нет; `lamp` давал 500 в расчёте цены (BIL-3).
-- **Деньги:** ⚠ образы с лицензией (Windows Server, часть продуктов): лицензия не видна в превью; тарифицируется ли лицензия почасово или помесячно — не проверено (допущение: почасово). Берите образ с лицензией только если готовы проверить счёт в консоли на следующий день. Собственный образ (`image_create`) — хранение, квота организации (CMP-16). Один проход без лицензий — до 10 ₽.
+- **Деньги:** ⚠ образы с лицензией (Windows Server, часть продуктов): лицензия не видна в превью; тарифицируется ли лицензия почасово или помесячно — не проверено (допущение: почасово). Берите образ с лицензией только если готовы проверить счёт в консоли на следующий день. Собственный образ (`evo image create`) — хранение, квота организации (CMP-16). Один проход без лицензий — до 10 ₽.
 - **Уборка:** `evo vm list`; `image_list` собственных образов → `image_delete`.
 
 ### 2.4 Сеть: VPC, подсети, группы безопасности, floating IP, маршруты, SNAT
 
-- **Команды:** `evo vpc list|get|create|delete|subnets|security-groups|fips|fip-attach|fip-release|routes|route-create|route-delete|operation`. MCP: `vpc_*`, `list_subnets`, `list_security_groups`, `list_floating_ips`, `fip_attach`, `release_floating_ip`, `open_ports`, `snat_list|create|delete`.
-- **Попробуйте:** (1) `evo vpc security-groups` с правилами до и после `deploy`: правила `evo: port 80` появились и исчезли. (2) `evo vpc fips` — свободный адрес → `fip-attach` к своей ВМ → `fip-release` после удаления ВМ. (3) Агенту: «открой порт 443 для моей ВМ» → `open_ports` с превью «группа общая на зону».
+- **Команды:** `evo vpc list|get|create|delete|subnets|security-groups|fips|fip-attach|fip-release|routes|route-create|route-delete|operation|open-ports`, `evo snat list|create|delete`. MCP: `vpc_*`, `list_subnets`, `list_security_groups`, `list_floating_ips`, `fip_attach`, `release_floating_ip`, `open_ports`, `snat_list|create|delete`.
+- **Попробуйте:** (1) `evo vpc security-groups` с правилами до и после `deploy`: правила `evo: port 80` появились и исчезли. (2) `evo vpc fips` — свободный адрес → `fip-attach` к своей ВМ → `fip-release` после удаления ВМ. (3) `evo vpc open-ports <группа> --port 443 --dry-run` — превью «группа общая на зону»; агенту: «открой порт 443 для моей ВМ» → `open_ports` с тем же превью.
 - **Чего ждать:** `release_floating_ip` отказывает, если адрес занят ВМ или шлюзом; `open_ports` пропускает уже открытые порты.
 - **Известное:** группы безопасности общие на зону — правило затрагивает все ВМ группы; floating IP после удаления может зависнуть в `error_deleting` (NET-7) и через минуты достаться другой ВМ (NET-8); VPC после удаления может получить тот же UUID (NET-10); `new_external_ip` в API даёт 500, evo создаёт адрес заранее (CMP-2).
 - **Деньги:** публичный IP 0,204 ₽/ч пока существует в проекте, даже не привязанный (cloud.ru/docs/public-ip). ⚠ SNAT-шлюз: один на зону, занимает публичный IP и квоту; цена шлюза в документации не найдена (допущение: не меньше IP). Для плагинов Kubernetes SNAT не нужен (K8S-3). Один проход — до 10 ₽.
-- **Уборка:** `evo vpc fips` — ни одного адреса без ВМ; `snat_list` пуст; созданные VPC удалены.
+- **Уборка:** `evo vpc fips` — ни одного адреса без ВМ; `evo snat list` пуст; созданные VPC удалены.
 
 ### 2.5 Network Load Balancer
 
-- **Команды:** только через `evo tools call`: `lb_list|get|create|delete|operation`, `tg_list|get|create|delete`.
-- **Попробуйте:** ВМ без публичного IP (`provision` с `no_public_ip`) → `tg_create` с её `vm_id` → `lb_create` → `lb_get` → `lb_delete` → `tg_delete`.
-- **Чего ждать:** асинхронно, `lb_operation`; цели — только частные ВМ VPC.
+- **Команды:** `evo lb list|get|create|delete|operation`, `evo tg list|get|create|delete`. MCP: `lb_*`, `tg_*`.
+- **Попробуйте:** ВМ без публичного IP (`evo vm create <имя> --no-public-ip`) → `evo tg create <имя> --vm-id <ID ВМ>` → `evo lb create <имя> --target-group-id <ID группы> --port 80` → `evo lb get` → `evo lb delete` → `evo tg delete`.
+- **Чего ждать:** асинхронно, `evo lb operation <ID операции>`; цели — только частные ВМ VPC.
 - **Известное:** удаление используемой группы целей принимается (NLB-2); второй балансировщик с тем же именем — 409 с текстом про группу целей (NLB-1).
 - **Деньги:** 0,4 ₽/ч за единицу + 0,24 ₽/ч публичный IP + трафик 1,5/3 ₽/ГБ (cloud.ru/docs/nlb). Один проход — до 5 ₽ плюс ВМ.
-- **Уборка:** `lb_list`, `tg_list`, `evo vpc fips`.
+- **Уборка:** `evo lb list`, `evo tg list`, `evo vpc fips`.
 
 ### 2.6 DNS
 
-- **Команды:** `tools call dns_zones|dns_zone_get|dns_zone_create|dns_zone_delete|dns_records|dns_record_get|dns_record_create|dns_record_delete|dns_operation`.
-- **Попробуйте:** приватная зона `df-<логин>.test.` → A-запись на адрес ВМ → `dns_records` → удалить запись и зону.
+- **Команды:** `evo dns zones|zone-get|zone-create|zone-delete|records|record-get|record-create|record-delete|operation`. MCP: `dns_*`.
+- **Попробуйте:** приватная зона `evo dns zone-create df-<логин>.test. --type private` → A-запись на адрес ВМ (`evo dns record-create <ID зоны> www --record-type a --value <IP>`) → `evo dns records <ID зоны>` → удалить запись и зону.
 - **Известное:** тип записи только в нижнем регистре (`a`, NET-9) — evo нормализует; публичная зона требует делегирования домена.
 - **Деньги:** цена зоны в документации на 18.10 не прочитана (допущение: единицы рублей в месяц). Один проход — до 5 ₽.
-- **Уборка:** `dns_zones` без зон `df-*`.
+- **Уборка:** `evo dns zones` без зон `df-*`.
 
 ### 2.7 Managed Kubernetes ⚠
 
@@ -151,12 +151,12 @@ evo 1.0.4). Формат волны — свободное тестирован�
 
 ### 2.9 DBaaS: Kafka и Redis ⚠
 
-- **Команды:** только `evo tools call`: `kafka_list|get|versions|specs|create|delete|operation`, `redis_*` (те же).
-- **Попробуйте:** `kafka_specs` → `kafka_create` с 1 брокером → `kafka_operation` до `READY` → `kafka_get` → `kafka_delete`. То же для Redis (`MASTER_REPLICA`, 1 шард).
+- **Команды:** `evo kafka list|get|versions|specs|create|delete|operation`, `evo redis` (те же). MCP: `kafka_*`, `redis_*`.
+- **Попробуйте:** `evo kafka specs` → `evo kafka create df-kafka --brokers 1` → `evo kafka operation <ID операции>` до `READY` → `evo kafka get` → `evo kafka delete`. То же для Redis (`evo redis create`, `MASTER_REPLICA`, 1 шард).
 - **Чего ждать:** Kafka с 1 брокером — 34–39 мин создания, 8 мин удаления (DB-10); Redis — 27–33 мин, удаление 7,5–10 мин (DB-12).
 - **Известное:** **Kafka в `DEPLOYING` не удаляется — 500 (DB-17), повтор создания с тем же именем создаёт второй кластер на стороне API (DB-18; evo проверяет имя до создания).** Redis `replicas` в POST и GET означают разное (DB-11), evo это скрывает; `STANDALONE` API отвергает; спецификации без зоны — 400 (DB-2).
 - **Деньги:** Kafka 1,49 ₽/vCPU·ч, 0,40 ₽/ГБ·ч, 0,017 ₽/ГБ·ч SSD (cloud.ru/docs/paas-kafka, с НДС): 1 брокер 2 vCPU/4 ГБ/40 ГБ ≈ 5,3 ₽/ч. Redis 1,46/0,4/0,01 (cloud.ru/docs/redis): 3 хоста 2 vCPU/4 ГБ ≈ 14 ₽/ч ≈ 335 ₽/сутки. Тарифицируется ли `DEPLOYING` — не проверено (допущение: да). Один проход обоих — до 60 ₽.
-- **Уборка:** `kafka_list`, `redis_list` пусты; зависший кластер — консоль и отчёт.
+- **Уборка:** `evo kafka list`, `evo redis list` пусты; зависший кластер — консоль и отчёт.
 
 ### 2.10 Object Storage
 
@@ -167,34 +167,34 @@ evo 1.0.4). Формат волны — свободное тестирован�
 
 ### 2.11 Секреты и сертификаты
 
-- **Команды:** `evo secret list|get|value|create|add-version|delete`; `tools call cert_list|get|issue_le|import|renew|delete|usage|versions|private_key|operation`.
-- **Попробуйте:** секрет → вторая версия → `value` → удалить. Сертификат Let's Encrypt — только при делегированной публичной DNS-зоне (CRT-3), иначе `cert_import` самоподписанного.
-- **Чего ждать:** `evo secret value` и `secret_value` отдают значение только после подтверждения (с 1.1.0; без терминала и без `--yes` — код 3), `cert_private_key` — тоже; по HTTP-MCP оба отключены (`docs/mcp.md`); несуществующий сертификат — 403, не 404 (CRT-2).
+- **Команды:** `evo secret list|get|value|create|add-version|delete`; `evo cert list|get|issue-le|import|renew|delete|usage|versions|private-key|operation`. MCP: `secret_*`, `cert_*`.
+- **Попробуйте:** секрет → вторая версия → `value` → удалить. Сертификат Let's Encrypt — только при делегированной публичной DNS-зоне (CRT-3), иначе `evo cert import` самоподписанного.
+- **Чего ждать:** `evo secret value` и `secret_value` отдают значение только после подтверждения (с 1.1.0; без терминала и без `--yes` — код 3), `evo cert private-key` и `cert_private_key` — тоже; по HTTP-MCP оба отключены (`docs/mcp.md`); несуществующий сертификат — 403, не 404 (CRT-2).
 - **Деньги:** Let's Encrypt бесплатно (описание `cert_issue_le`); цены Secret Manager и импорта на 18.10 не прочитаны (допущение: единицы рублей). Один проход — до 5 ₽.
-- **Уборка:** `evo secret list`, `cert_list`.
+- **Уборка:** `evo secret list`, `evo cert list`.
 
 ### 2.12 Container Apps и Artifact Registry
 
-- **Команды:** `tools call ca_list|get|deploy|delete|logs|start|stop`; `ar_list|get|create|delete|operation`.
-- **Попробуйте:** `ca_deploy` публичного образа (`nginx`) → `ca_get` с URL → `ca_logs` → `ca_stop`/`ca_start` → `ca_delete`. `ar_create` → push образа своим Docker → `ar_get` → `ar_delete`.
+- **Команды:** `evo ca list|get|deploy|delete|logs|start|stop`; `evo ar list|get|create|delete|operation`. MCP: `ca_*`, `ar_*`.
+- **Попробуйте:** `evo ca deploy df-app --image <образ>` публичного образа (`nginx`) → `evo ca get df-app` с URL → `evo ca logs df-app` → `evo ca stop`/`start` → `evo ca delete`. `evo ar create` → push образа своим Docker → `evo ar get` → `evo ar delete`.
 - **Известное:** несуществующее приложение — HTTP 499 (CA-1); невалидное имя/порт 9090 — 400 без поля (CA-2); `ca_logs` — последние 100 строк по времени из всех страниц (до 50 по 100 строк); порядок страниц API и задержка поставки логов не описаны — пустой ответ или `truncated` сверяйте с логами в консоли ([break-98] L-1); push в Artifact Registry зависал на финальном `PUT` (OPS-8); реестр с тем же именем создаётся дважды на стороне API (AR-1), evo проверяет имя; операция удаления дольше 300 с `done=false` (AR-3); на запрос следующей страницы список реестров повторяет уже прочитанные — с 1.1.0 evo считает это концом списка (AR-4 в реестре v2): если `ar_list` не видит реестр, который есть в консоли, — issue.
 - **Деньги:** тарифы Container Apps и Artifact Registry на 18.10 не прочитаны; приложение масштабируется в ноль (описание `ca_deploy`) — допущение: единицы рублей за проход. Остановленное приложение (`ca_stop`) не обслуживает запросы.
-- **Уборка:** `ca_list`, `ar_list` пусты.
+- **Уборка:** `evo ca list`, `evo ar list` пусты.
 
 ### 2.13 Мониторинг, биллинг, аудит, IAM и организация (только чтение)
 
-- **Команды:** `tools call metrics_history|metrics_scrape`, `billing_balance|consumption|finops`, `audit_events`, `iam_service_accounts`, `org_projects|org_quotas`; `evo project list|use`.
-- **Попробуйте:** `billing_consumption` с датой начала волны — ваш расход; `metrics_history` по своей ВМ; `audit_events` за сегодня; `org_quotas`.
+- **Команды:** `evo metrics history|scrape`, `evo billing balance|consumption|finops`, `evo audit events`, `evo iam service-accounts`, `evo org quotas`; `evo project list|use` (`org_projects`). MCP: `metrics_*`, `billing_*`, `audit_events`, `iam_service_accounts`, `org_projects`, `org_quotas`.
+- **Попробуйте:** `evo billing consumption --start <дата начала волны>` — ваш расход; `evo metrics history <метрика>` по своей ВМ; `evo audit events --since 1d`; `evo org quotas`.
 - **Известное:** расход проекта без договора работает (BIL-5, проверено 19.10: 485 строк за 30 дней); вживую его отдаёт и ключ с ролью «Наблюдатель проекта», хотя документация называет только администратора проекта (BIL-7) — сообщите, какая роль у вашего ключа и ответил ли `billing_consumption`; баланс договора ключу проекта недоступен (BIL-4); `audit_events` — 401 вместо 403, если аудит не включён (AUD-1); `metrics_history` — окно не больше 24 ч (лимит сервиса, есть в документации); ключ уровня проекта не видит список проектов (IAM-3), `evo project list` объясняет это, код 0.
 - **Деньги:** 0.
 
 ### 2.14 Стеки `stack_*`
 
-- **Команды:** только MCP/`tools call`: `stack_plan` (манифест: ВМ, секреты, SNAT…) → `stack_apply` (повторные вызовы продвигают) → `stack_status` → `stack_destroy`.
+- **Команды:** `evo stack plan --manifest <файл>` (манифест: ВМ, секреты, SNAT…) → `evo stack apply <job-id>` → `evo stack status <job-id>` (повторные вызовы продвигают) → `evo stack destroy <job-id>`. MCP: `stack_*`.
 - **Попробуйте:** через агента: «подними ВМ с секретом для пароля БД одним стеком», затем «удали стек».
 - **Известное:** `stack_apply` на job в `error` продолжает оставшиеся шаги (BACKLOG [qa-mcp]); job-файлы в `~/.evo/stack-jobs`.
 - **Деньги:** по составу стека, обычно как 2.1. Один проход — до 20 ₽.
-- **Уборка:** `stack_status` → `destroyed`; затем `evo vm list`, `evo vpc fips`, `evo secret list`.
+- **Уборка:** `evo stack status <job-id>` → `destroyed`; затем `evo vm list`, `evo vpc fips`, `evo secret list`.
 
 ### 2.15 MCP-агент как пользователь всего этого
 
@@ -244,7 +244,7 @@ evo 1.0.4). Формат волны — свободное тестирован�
 
 ## 5. Бюджет
 
-Как следить: `evo tools call billing_consumption --arg start=<дата начала волны> --arg end=<сегодня> --json` раз в день; смотрите `total_with_nds` (с НДС; `total` — без НДС). Договор (`CLOUDRU_AGREEMENT_ID`) не нужен: без него evo считает расход проекта из конфигурации (в ответе `scope: project`), по документации ключу нужна роль администратора проекта (`platform.project.admin`, [документация](https://cloud.ru/docs/billing/ug/topics/api-ref_start)), вживую хватает и «Наблюдателя проекта» (BIL-7). Ответ 403 (код 5, «нет доступа к потреблению проекта») — у ключа нет этой роли; другой отказ `billing_*` — сам по себе отзыв; в обоих случаях — консоль → «Контроль затрат». Стоп-правила: при 2 000 ₽ — не создавать новых кластеров; при 3 000 ₽ — только чтение и уборка; при превышении 4 000 ₽ — написать владельцу, ничего не удалять «в панике» (сначала `evo vm list`, `evo k8s list`, `evo pg list`, `kafka_list`, `redis_list`, `evo vpc fips`).
+Как следить: `evo billing consumption --start <дата начала волны> --end <сегодня> --json` раз в день; смотрите `total_with_nds` (с НДС; `total` — без НДС). Договор (`CLOUDRU_AGREEMENT_ID`) не нужен: без него evo считает расход проекта из конфигурации (в ответе `scope: project`), по документации ключу нужна роль администратора проекта (`platform.project.admin`, [документация](https://cloud.ru/docs/billing/ug/topics/api-ref_start)), вживую хватает и «Наблюдателя проекта» (BIL-7). Ответ 403 (код 5, «нет доступа к потреблению проекта») — у ключа нет этой роли; другой отказ `billing_*` — сам по себе отзыв; в обоих случаях — консоль → «Контроль затрат». Стоп-правила: при 2 000 ₽ — не создавать новых кластеров; при 3 000 ₽ — только чтение и уборка; при превышении 4 000 ₽ — написать владельцу, ничего не удалять «в панике» (сначала `evo vm list`, `evo k8s list`, `evo pg list`, `evo kafka list`, `evo redis list`, `evo vpc fips`).
 
 Раз в неделю (по пятницам) и в конце волны — чек-ин: форма «Чек-ин догфуда» в Issues, 3 минуты: области за неделю, расход, остались ли ресурсы, оценка. Это не отзыв, на него не отвечают; из чек-инов собирается покрытие и бюджет волны (раздел 8).
 
@@ -311,13 +311,13 @@ evo 1.0.4). Формат волны — свободное тестирован�
 
 Чек-лист участника (по каждому проекту, где работал):
 
-1. В каждом каталоге с `.evo/`: `evo status` → «нет развёртывания», иначе `evo destroy`; `stack_status` → `destroyed`.
+1. В каждом каталоге с `.evo/`: `evo status` → «нет развёртывания», иначе `evo destroy`; `evo stack status <job-id>` → `destroyed`.
 2. `evo vm list` — пусто (или только чужое, если проект общий: смотреть префикс `df-<логин>-`).
 3. `evo disk list` — нет дисков без ВМ (CMP-11: оплачиваются).
-4. `evo vpc fips` — нет адресов без ВМ; `snat_list` — пусто; VPC и маршруты, созданные вами, удалены.
-5. `evo k8s list`, `evo pg list`, `kafka_list`, `redis_list` — пусто. Кластер в `FAILED`/`DEPLOYING`, который не удаляется, — удалить в консоли и указать ID в отчёте.
-6. `lb_list`, `tg_list`, `dns_zones`, `ca_list`, `ar_list`, `cert_list`, `evo secret list`, `evo s3 buckets` — без ваших ресурсов; собственные образы (`image_list`) удалены.
-7. Итоговый чек-ин («Период: Итог волны»): расход за всю волну из `billing_consumption` и ответ «Остались ли ресурсы».
+4. `evo vpc fips` — нет адресов без ВМ; `evo snat list` — пусто; VPC и маршруты, созданные вами, удалены.
+5. `evo k8s list`, `evo pg list`, `evo kafka list`, `evo redis list` — пусто. Кластер в `FAILED`/`DEPLOYING`, который не удаляется, — удалить в консоли и указать ID в отчёте.
+6. `evo lb list`, `evo tg list`, `evo dns zones`, `evo ca list`, `evo ar list`, `evo cert list`, `evo secret list`, `evo s3 buckets` — без ваших ресурсов; собственные образы (`evo image list --type private`) удалены.
+7. Итоговый чек-ин («Период: Итог волны»): расход за всю волну из `evo billing consumption` и ответ «Остались ли ресурсы».
 8. Локально: `evo configure delete <профиль>` при желании; `.evo/` в проектах можно оставить.
 
 Сверка владельцем после всех: те же списки по каждому тестовому проекту
