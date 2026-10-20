@@ -33,11 +33,13 @@ const (
 )
 
 // CreatePreview is what a tool that creates a billable resource is about to
-// do, as resolved values. The tool puts it into its confirmation_required
-// answer as "preview" (English, for agents as well); the CLI completes it
-// with lookups (CompletePreview) and shows it (ShowCreatePreview) in the
-// lines of the deploy preview. Values that are not known are left out
-// rather than filled with a placeholder.
+// do, as resolved values. The tool completes it with lookups
+// (CompletePreview) and puts it into its confirmation_required answer as
+// "preview" (English, for agents as well): every surface — the command,
+// 'evo tools call', MCP — gets the same preview, and the CLI only shows it
+// (ShowCreatePreview) in the lines of the deploy preview (spec REQ-7).
+// Values that are not known are left out rather than filled with a
+// placeholder.
 type CreatePreview struct {
 	// Resource is what is created: vm, disk, disk_resize, pg_cluster,
 	// k8s_cluster, k8s_nodepool, k8s_addon or s3_bucket.
@@ -61,8 +63,8 @@ type CreatePreview struct {
 	// CostNote says where Cost comes from (the price-calculation API, or
 	// the rate card: an estimate), or why there is none.
 	CostNote string `json:"cost_note,omitempty"`
-	// NetworkCheck: what the CLI found wrong with the VM's subnet and
-	// security group (CompletePreview); the MCP preview stays offline.
+	// NetworkCheck: what the preview found wrong with the VM's subnet and
+	// security group (CompletePreview).
 	NetworkCheck *NetworkCheck `json:"network_check,omitempty"`
 }
 
@@ -157,15 +159,25 @@ const previewLookupTimeout = 20 * time.Second
 // price (ревью Fable, A7).
 const networkCheckTimeout = 5 * time.Second
 
-// CompletePreview fills what a tool leaves out of its preview so as not to
-// reach the cloud (the MCP preview of provision never does): the configured
-// project, zone names, the flavor auto picks with its size, the image name
-// and the boot disk it needs, then the price — of a VM from the
-// price-calculation API when it answers, else the rate card. Lookups are
+// CompletePreview fills what a tool's preview cannot know from the call and
+// the configuration alone, with reads only (the tool calls it before it
+// answers confirmation_required, spec REQ-7): the configured project, zone
+// names, the flavor auto picks with its size, the image name and the boot
+// disk it needs, then the price — of a VM from the price-calculation API
+// when it answers (within 5 s, as deploy_plan), else the rate card with
+// the API's error (price_api_error). Lookups are
 // best effort: what cannot be read stays as it is. The one error is a
 // refusal: the VM's image is in the catalogue but the project cannot use it
 // (images.NotInProjectError) — the call would be refused after consent.
 func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
+	return e.completePreview(ctx, p, nil, true)
+}
+
+// completePreview is CompletePreview with the flavor pick of the call:
+// pick chooses the flavor from the catalogue (nil: PickVMFlavor with the
+// flavor of the preview, as provision does); network adds the check of the
+// subnet and the security group provision would take.
+func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick func([]*provision.Flavor) (string, error), network bool) error {
 	if p.ProjectID == "" && p.Resource != ResourceS3Bucket && !contains(p.Missing, "project_id") {
 		p.ProjectID, p.ProjectFrom = e.Config.ProjectID, e.Config.ProjectOrigin
 		if p.ProjectID == "" {
@@ -208,8 +220,13 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 		return nil
 	}
 	vm := p.VM
+	if pick == nil {
+		pick = func(flavors []*provision.Flavor) (string, error) {
+			return PickVMFlavor(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name))
+		}
+	}
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
-		if id, err := PickVMFlavor(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name)); err == nil {
+		if id, err := pick(flavors); err == nil {
 			for _, f := range flavors {
 				if f.ID == id {
 					vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB, FreeTier: f.FreeTier}
@@ -249,6 +266,9 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 	}
 	p.priceFromAPI(ctx, e.Cloud, marketplace)
 	priced = true
+	if !network {
+		return nil
+	}
 	nctx, ncancel := context.WithTimeout(parent, networkCheckTimeout)
 	defer ncancel()
 	p.NetworkCheck = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)

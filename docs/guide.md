@@ -445,8 +445,8 @@ ROSA/РОСА, Windows), иначе `vm-app`: `AstraLinuxSmolensk1.8.3KES` — �
 
 ### Цена в превью
 
-Превью `vm create`, `deploy` и `deploy --dry-run` (и MCP `deploy_plan`)
-спрашивают цену у API расчёта цены Cloud.ru
+Превью `vm create`, `deploy` и `deploy --dry-run` (и MCP `deploy_plan`,
+`provision`, `deploy`) спрашивают цену у API расчёта цены Cloud.ru
 (`POST /api/v1/projects/{project_id}/price-calculation`). Это только расчёт:
 ничего не создаётся и не резервируется. Цена — за ВМ (flavor), загрузочный
 диск и floating IP, за месяц и за час:

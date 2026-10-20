@@ -159,11 +159,15 @@ func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		preview, err := s.completePreview(ctx, nil, s3BucketPreview(bucket, stringArg(args, "region")))
+		if err != nil {
+			return errResult(err), true
+		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.Tf("s3_bucket_create creates bucket %q (billable storage).",
 				"s3_bucket_create создаёт бакет %q (хранение платное).", bucket),
-			"preview": s3BucketPreview(bucket, stringArg(args, "region")),
+			"preview": preview,
 		}), true
 	}
 	cli, err := s.s3Client()

@@ -16,8 +16,9 @@ import (
 
 // The confirmation_required answer of provision carries a structured
 // preview with the resolved configuration (ревью r5 U2), built from one
-// engine without a token: the cloud is not reached (Cloud is nil here, a
-// call would panic). The existing fields stay.
+// engine. That engine has no credentials and no cloud (Cloud is nil here, a
+// call would panic): the reads of the preview (spec REQ-7) are skipped, and
+// what needs them stays unknown. The existing fields stay.
 func TestProvisionPreview_ResolvedFromConfig(t *testing.T) {
 	const id = "00000000-0000-0000-0000-000000000001"
 	engines := 0

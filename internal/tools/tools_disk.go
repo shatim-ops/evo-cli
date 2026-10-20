@@ -156,6 +156,10 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	}
 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		preview, err := s.completePreview(ctx, eng, diskCreatePreview(eng, req, attachTo, stringArg(args, "zone")))
+		if err != nil {
+			return errResult(err), true
+		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.T("disk_create makes a billable disk.",
@@ -164,7 +168,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 				"name": name, "size_gb": sizeGB, "disk_type": firstNonEmptyStr(req.DiskTypeName, req.DiskTypeID),
 				"zone_id": zoneID, "attach_to": attachTo,
 			},
-			"preview": diskCreatePreview(eng, req, attachTo, stringArg(args, "zone")),
+			"preview": preview,
 		}), true
 	}
 
@@ -338,12 +342,16 @@ func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (s
 		return usageT("size_gb %d is over the disk maximum of %d GB", "size_gb %d больше предельного размера диска %d ГБ", sizeGB, provision.MaxDiskGB), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		preview, err := s.completePreview(ctx, nil, engine.CreatePreview{Resource: engine.ResourceDiskResize, Name: diskID,
+			Disk: &deployplan.DiskSpec{SizeGB: sizeGB}, CostNote: "not estimated: evo has no rate card for this resource"})
+		if err != nil {
+			return errResult(err), true
+		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.Tf("disk_resize grows disk %s to %d GB (grow only; billable). NB: after resize you must grow the partition+filesystem on the VM (e.g. growpart + resize2fs). Free-tier disks are rejected by the API.",
 				"disk_resize увеличит диск %s до %d ГБ (только увеличение; платно). После этого раздел и файловую систему на ВМ нужно расширить (например, growpart и resize2fs). Диски бесплатного тарифа API не увеличивает.", diskID, sizeGB),
-			"preview": engine.CreatePreview{Resource: engine.ResourceDiskResize, Name: diskID,
-				Disk: &deployplan.DiskSpec{SizeGB: sizeGB}, CostNote: "not estimated: evo has no rate card for this resource"},
+			"preview": preview,
 		}), true
 	}
 	eng, err := s.authedEngine(ctx, nil)

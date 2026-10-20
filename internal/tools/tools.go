@@ -1471,19 +1471,6 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
 		return errResult(err), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		will := withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
-			firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
-		if v := stringArg(args, "image"); v != "" {
-			will["image"] = v
-		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan.",
-				"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). Превью с ценой — deploy_plan."),
-			"will_deploy": will,
-		}), true
-	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
 		"compose_file": "ComposeFile",
@@ -1497,6 +1484,32 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 		if v, ok := args[arg]; ok && v != nil && v != "" {
 			overrides[field] = v
 		}
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		will := withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
+			firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
+		if v := stringArg(args, "image"); v != "" {
+			will["image"] = v
+		}
+		answer := map[string]any{
+			"status": "confirmation_required",
+			"message": i18n.T("deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). preview has the new VM and its monthly cost.",
+				"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). В preview — новая ВМ и её цена в месяц."),
+			"will_deploy": will,
+		}
+		// The VM deploy would create, with the reads of provision's
+		// preview (spec REQ-7); none when the directory has a deployment:
+		// deploy updates its VM then.
+		if eng, err := s.newEngine(overrides); err == nil && eng != nil {
+			p, err := eng.DeployPreview(ctx)
+			if err != nil {
+				return errResult(err), true
+			}
+			if p != nil {
+				answer["preview"] = p
+			}
+		}
+		return toJSON(answer), true
 	}
 
 	eng, err := s.newEngine(overrides)
@@ -1585,10 +1598,18 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		noPublicIP, _ := args["no_public_ip"].(bool)
-		// One engine, no token: the configuration names the project, the
-		// zone and the image; the preview does not reach the cloud.
+		// The configuration names the project, the zone and the image;
+		// the reads of the preview (flavor, zone and image names, the
+		// price) complete it, and create nothing (spec REQ-7). Without an
+		// engine there is nothing to read with.
 		eng, _ := s.newEngine(overrides)
 		preview := provisionPreview(eng, args)
+		if eng != nil {
+			var err error
+			if preview, err = s.completePreview(ctx, eng, preview); err != nil {
+				return errResult(err), true
+			}
+		}
 		will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
 			firstNonEmptyStr(stringArg(args, "project_id"), preview.ProjectID))
 		if v := stringArg(args, "image"); v != "" {
@@ -1604,8 +1625,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		will["public_ip"] = !noPublicIP
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors.",
-				"provision создаёт платную ВМ (и публичный floating IP, если не задано no_public_ip=true). Превью с ценой — deploy_plan или list_flavors."),
+			"message": i18n.T("provision creates a billable VM (and a public floating IP unless no_public_ip=true). preview has the VM and its monthly cost.",
+				"provision создаёт платную ВМ (и публичный floating IP, если не задано no_public_ip=true). В preview — ВМ и её цена в месяц."),
 			"will_create": will,
 			"preview":     preview,
 		}), true
@@ -2982,8 +3003,8 @@ var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[
 
 // provisionPreview is what provision would create, from the call and the
 // configuration only: the zone, image and flavor as configured (names,
-// the flavor auto picks and the price need the cloud; the CLI adds them).
-// eng may be nil when the configuration cannot be built.
+// the flavor auto picks and the price need the cloud: completePreview adds
+// them). eng may be nil when the configuration cannot be built.
 func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePreview {
 	noPublicIP, _ := args["no_public_ip"].(bool)
 	public := !noPublicIP
@@ -3035,4 +3056,29 @@ func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePrev
 	}
 	p.Price()
 	return p
+}
+
+// completePreview completes the preview of a tool before it answers
+// confirmation_required (spec REQ-7, owner's decision Q6): with reads only
+// (engine.CompletePreview), the configured project, zone names and, for a
+// VM, the flavor, the image, the boot disk it needs, the price (the
+// price-calculation API, else the rate card with price_api_error) and the
+// network check. The CLI did this itself before it showed the preview, so
+// an agent saw less than the command did; now the command only shows what
+// the tool answers. eng is the engine the tool has already built, nil for
+// the one of the configuration (the CLI's was). Best effort: without an
+// engine the preview stays as it is, and without credentials or a cloud
+// nothing is read. The error is a refusal the reads found (a VM image the
+// project cannot use): the call would be refused after consent.
+func (s *Registry) completePreview(ctx context.Context, eng *engine.Engine, p engine.CreatePreview) (engine.CreatePreview, error) {
+	if eng == nil {
+		var err error
+		if eng, err = s.newEngine(nil); err != nil || eng == nil {
+			return p, nil
+		}
+	}
+	if err := eng.CompletePreview(ctx, &p); err != nil {
+		return engine.CreatePreview{}, err
+	}
+	return p, nil
 }

@@ -264,12 +264,16 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sCluster,
+			firstNonEmptyStr(stringArg(args, "name"), "k8s-"+firstNonEmptyStr(stringArg(args, "product"), "cluster")), args))
+		if err != nil {
+			return errResult(err), true
+		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.T("k8s_create builds a real (billable) Kubernetes cluster.",
 				"k8s_create создаёт настоящий (платный) кластер Kubernetes."),
-			"preview": k8sPreview(engine.ResourceK8sCluster,
-				firstNonEmptyStr(stringArg(args, "name"), "k8s-"+firstNonEmptyStr(stringArg(args, "product"), "cluster")), args),
+			"preview": preview,
 		}), true
 	}
 	req, _, _, err := s.resolveK8sPlan(ctx, args)
@@ -424,11 +428,15 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sNodePool, nodePoolName(args), args))
+		if err != nil {
+			return errResult(err), true
+		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.T("k8s_add_nodepool creates billable worker nodes.",
 				"k8s_add_nodepool создаёт платные рабочие узлы."),
-			"preview": k8sPreview(engine.ResourceK8sNodePool, nodePoolName(args), args),
+			"preview": preview,
 		}), true
 	}
 
