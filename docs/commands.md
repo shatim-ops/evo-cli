@@ -2187,7 +2187,7 @@ evo deploy [flags]
   -h, --help                  Справка по deploy
       --image string          Загрузочный образ: имя из 'evo image list' или UUID (Ubuntu или Debian)
       --image-id string       UUID загрузочного образа
-      --non-interactive       Никогда не спрашивать; тогда для создания ВМ нужен --yes
+      --non-interactive       Никогда не спрашивать; тогда и для создания ВМ, и для обновления ВМ развёртывания нужен --yes
       --project-id string     UUID проекта Cloud.ru
       --region string         UUID зоны доступности
 ```

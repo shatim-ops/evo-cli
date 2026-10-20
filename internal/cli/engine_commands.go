@@ -208,8 +208,8 @@ compose file changed (with --force, even if it did not).`, `Развернуть
 	cmd.Flags().IntVar(&diskSize, "disk-size", 0, i18n.T("Boot disk size in GB (default: 10)", "Размер загрузочного диска, ГБ (по умолчанию 10)"))
 	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Force redeploy even if compose hash unchanged",
 		"Развернуть заново, даже если compose-файл не изменился"))
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Never prompt; creating a VM then requires --yes",
-		"Никогда не спрашивать; тогда для создания ВМ нужен --yes"))
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Never prompt; creating a VM, and updating the VM of an existing deployment, then requires --yes",
+		"Никогда не спрашивать; тогда и для создания ВМ, и для обновления ВМ развёртывания нужен --yes"))
 
 	// evo deploy is an action and the group of the deploy wizard (plan,
 	// apply, list: the trees add them) at once (spec.md R7): an argument

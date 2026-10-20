@@ -5,6 +5,8 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -20,6 +22,9 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -286,8 +291,9 @@ func TestEngineCommands_DeployGroupR7(t *testing.T) {
 // as MCP deploy does — without a terminal and without --yes it is exit 3
 // and nothing is done (it was exit 0 and an update); --dry-run and --json
 // show the tool's answer (update, vm_id, compose_changed, no price); --yes
-// goes on. The same compose file running there asks nothing, on every
-// surface: there is nothing to do.
+// goes on. The same compose file running there: evo deploy asks nothing
+// (nothing to do), MCP and evo tools call ask as in v1.1 and say
+// unchanged: true (bringing them together waits for v2.0).
 func TestEngineCommands_RepeatedDeployGate(t *testing.T) {
 	w := withParityWorld(t)
 	srv := parityServers(t)
@@ -363,10 +369,11 @@ func TestEngineCommands_RepeatedDeployGate(t *testing.T) {
 	}
 	newProcess()
 	code, stdout, _ = runCLI(t, "", "tools", "call", "deploy", "--json")
-	if code != 0 || !strings.Contains(stdout, `"status": "unchanged"`) {
-		t.Errorf("unchanged evo tools call deploy: exit %d\n%s", code, stdout)
+	if code != 3 || !strings.Contains(stdout, `"unchanged": true`) {
+		t.Errorf("unchanged evo tools call deploy: exit %d, want 3 as in v1.1\n%s", code, stdout)
 	}
-	if got := stdioDetails(t, srv.stdio, "deploy", map[string]any{}); got["status"] != "unchanged" || got["vm_id"] != parityVM {
+	if got := stdioDetails(t, srv.stdio, "deploy", map[string]any{}); got["status"] != "confirmation_required" || got["unchanged"] != true ||
+		got["compose_changed"] != false || got["vm_id"] != parityVM {
 		t.Errorf("unchanged MCP deploy: %v", got)
 	}
 	// --force redeploys the same file: asked again.
@@ -374,5 +381,129 @@ func TestEngineCommands_RepeatedDeployGate(t *testing.T) {
 	code, _, stderr = runCLI(t, "", "deploy", "--force")
 	if code != 3 || !strings.Contains(stderr, "redeployed because of --force") {
 		t.Errorf("evo deploy --force on the same file: exit %d\n%s", code, stderr)
+	}
+}
+
+// evo deploy --dry-run --json before a new VM: its details are the deploy
+// tool's answer (spec REQ-4, REQ-6), and that answer still has every key
+// the details had in v1.1 — the preview the engine makes itself, which is
+// that of v1.1 (Gate nil) — so a script reading .preview.details.cost or
+// .subnet_id goes on working (deprecated keys, removed in v2.0: preview).
+// Only keys are added.
+func TestDeployDryRunKeepsV11Keys(t *testing.T) {
+	w := withParityWorld(t)
+	writeFile(t, filepath.Join(w.dir, "docker-compose.yml"), "services:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"80:80\"\n")
+	eng, err := toolEngine(map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	eng.Printer = output.NewWithWriters(&out, &errOut, output.ModeJSON, false)
+	if err := eng.Deploy(context.Background(), engine.DeployOptions{ComposeFile: eng.Config.ComposeFile, Flavor: eng.Config.Flavor,
+		Region: eng.Config.Region, DryRun: true}); err != nil {
+		t.Fatalf("v1.1 preview: %v\n%s", err, errOut.String())
+	}
+	v11, ok := dryRunDetails(out.String())
+	if !ok {
+		t.Fatalf("v1.1 preview: no details:\n%s", out.String())
+	}
+	newProcess()
+	code, stdout, stderr := runCLI(t, "", "deploy", "--dry-run", "--json")
+	now, ok := dryRunDetails(stdout)
+	if code != 0 || !ok {
+		t.Fatalf("evo deploy --dry-run --json: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	have := keyPaths("", now)
+	var missing []string
+	for p := range keyPaths("", v11) {
+		if !have[p] {
+			missing = append(missing, p)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		t.Errorf("keys of v1.1 missing from the details: %v\nv1.1: %v\nnow: %v", missing, v11, now)
+	}
+	for _, k := range []string{"project_id", "project_from", "subnet_id", "security_group", "floating_ip", "open_ports", "open_udp_ports"} {
+		if !reflect.DeepEqual(v11[k], now[k]) {
+			t.Errorf("%s: %v in v1.1, %v now", k, v11[k], now[k])
+		}
+	}
+	if mcp := stdioDetails(t, parityServers(t).stdio, "deploy", map[string]any{}); !reflect.DeepEqual(now, mcp) {
+		t.Errorf("details ≠ MCP deploy: %s", valueDiff(now, mcp))
+	}
+}
+
+// keyPaths are the paths of every key in v ("cost.total_monthly_rub",
+// "vm.flavor.name"; "[]" for the elements of a list).
+func keyPaths(prefix string, v any) map[string]bool {
+	out := map[string]bool{}
+	switch x := v.(type) {
+	case map[string]any:
+		for k, e := range x {
+			p := k
+			if prefix != "" {
+				p = prefix + "." + k
+			}
+			out[p] = true
+			for q := range keyPaths(p, e) {
+				out[q] = true
+			}
+		}
+	case []any:
+		for _, e := range x {
+			for q := range keyPaths(prefix+"[]", e) {
+				out[q] = true
+			}
+		}
+	}
+	return out
+}
+
+// listImagesCloud: the shared catalogue has A and B, the project B (seen
+// twice) and its own C.
+type listImagesCloud struct{ previewCloud }
+
+var listImagesShared = []*provision.Image{
+	{ID: "00000000-0000-0000-0000-0000000000a0", Name: "Ubuntu-24.04", DisplayName: "Ubuntu 24.04", Type: "public", Public: true, MinDisk: 10, OS: "linux",
+		AvailZones: []provision.ImageAvailZone{{AvailabilityZoneID: pvZone, AvailabilityZoneName: "ru.AZ-1", State: "ready", Size: 3, Uploaded: true}}},
+	{ID: "00000000-0000-0000-0000-0000000000b0", Name: "Debian-12", Type: "public", Status: "active"},
+}
+
+func (listImagesCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
+	return listImagesShared, nil
+}
+
+func (listImagesCloud) ListImagesInProject(context.Context, string) ([]*provision.Image, error) {
+	return []*provision.Image{listImagesShared[1], {ID: "00000000-0000-0000-0000-0000000000c0", Name: "my-app", Type: "private", ProjectID: pvProject}}, nil
+}
+
+// evo list-images (deprecated) calls list_images, which adds the
+// project's own images: --json is the array it always was — the shared
+// images first, each as before and in the same order — with the project's
+// images after them (an addition only).
+func TestEngineCommands_ListImagesOnlyAdds(t *testing.T) {
+	withCloud(t, listImagesCloud{})
+	code, stdout, stderr := runCLI(t, "", "list-images", "--json")
+	if code != 0 || !strings.Contains(stderr, "deprecated") {
+		t.Fatalf("evo list-images --json: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	var v11 bytes.Buffer
+	// What v1.1 printed: engine.ListImages, Printer.JSON of the shared list.
+	_ = output.NewWithWriter(&v11, output.ModeJSON, false).JSON(listImagesShared)
+	var old, got []json.RawMessage
+	if err := json.Unmarshal(v11.Bytes(), &old); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || len(got) != 3 {
+		t.Fatalf("not an array of 3 images: %s", stdout)
+	}
+	for i := range old {
+		if string(got[i]) != string(old[i]) {
+			t.Errorf("image %d changed:\n%s\nwas\n%s", i, got[i], old[i])
+		}
+	}
+	if !strings.Contains(string(got[2]), `"name": "my-app"`) {
+		t.Errorf("the project's image is not last: %s", got[2])
 	}
 }
