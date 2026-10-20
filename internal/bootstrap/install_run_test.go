@@ -47,6 +47,12 @@ case " $* " in
 		echo "E: Could not get lock /var/lib/apt/lists/lock. It is held by process 1234 (apt-get)"
 		exit 100
 		;;
+	dockernorelease)
+		echo "Err:5 https://download.docker.com/linux/ubuntu jammy Release"
+		echo "  404  Not Found [IP: 192.0.2.1 443]"
+		echo "E: The repository 'https://download.docker.com/linux/ubuntu jammy Release' does not have a Release file."
+		exit 100
+		;;
 	esac
 	exit 0
 	;;
@@ -418,5 +424,62 @@ func TestInstallRun_OtherDistributionUsesGetDocker(t *testing.T) {
 	}
 	if len(r.called("apt-get")) > 0 || r.exists("etc/apt/sources.list.d/docker.list") {
 		t.Errorf("apt on CentOS: %q", r.calls)
+	}
+}
+
+// REL-7: у Docker нет пакетов для кодового имени образа (нет файла
+// Release): отказ, который повтор не исправит, — Permanent, без запасного
+// зеркала (другое зеркало Ubuntu ответит так же).
+func TestInstallRun_DockerRepoNoReleaseIsPermanent(t *testing.T) {
+	r := runInstall(t, vm{osRelease: ubuntu2204, files: cloudruUbuntu, env: map[string]string{"STUB_IMAGE": "dockernorelease"}})
+	if r.ok {
+		t.Fatalf("install succeeded:\n%s", r.out)
+	}
+	if !strings.Contains(r.out, DockerNoReleaseLine+" ubuntu jammy") {
+		t.Errorf("output lacks %q:\n%s", DockerNoReleaseLine, r.out)
+	}
+	if strings.Contains(r.out, DockerRepoFailedLine) {
+		t.Errorf("a missing Release file reported as a repository that does not answer:\n%s", r.out)
+	}
+	if !Permanent(r.out) {
+		t.Errorf("not permanent:\n%s", r.out)
+	}
+	if r.exists("var/lib/evo/apt-fallback") {
+		t.Error("fallback for a release Docker does not build")
+	}
+}
+
+// REL-7: Ubuntu без VERSION_CODENAME в /etc/os-release — репозиторий
+// Docker не выбрать; отказ сразу и Permanent.
+func TestInstallRun_NoCodenameIsPermanent(t *testing.T) {
+	r := runInstall(t, vm{osRelease: "NAME=\"Ubuntu\"\nID=ubuntu\nVERSION_ID=\"22.04\"\n", files: cloudruUbuntu})
+	if r.ok {
+		t.Fatalf("install succeeded:\n%s", r.out)
+	}
+	if !strings.Contains(r.out, NoCodenameLine) || !Permanent(r.out) {
+		t.Errorf("want %q and a permanent refusal:\n%s", NoCodenameLine, r.out)
+	}
+	if len(r.called("apt-get")) > 0 {
+		t.Errorf("apt without a codename: %q", r.calls)
+	}
+}
+
+// REL-7: строки, которые скрипт печатает при отказах «навсегда», совпадают
+// с константами Permanent (curl нет — на машине теста curl есть, поэтому
+// сверяется текст скрипта), а временные сбои Permanent не считает.
+func TestPermanent_Lines(t *testing.T) {
+	script := InstallScript()
+	for _, l := range []string{NoKeyringLine, UnsupportedOSLine, NoCodenameLine, CurlMissingLine, DockerNoReleaseLine} {
+		if !strings.Contains(script, `say "`+strings.TrimPrefix(l, "evo: ")) {
+			t.Errorf("install.sh does not print %q", l)
+		}
+		if !Permanent("x\n" + l + " …\n") {
+			t.Errorf("Permanent(%q) = false", l)
+		}
+	}
+	for _, l := range []string{FallbackFailedLine, DockerRepoFailedLine + ": no answer", "W: Failed to fetch https://repo.example.test"} {
+		if Permanent(l) {
+			t.Errorf("Permanent(%q) = true for a failure another attempt may fix", l)
+		}
 	}
 }

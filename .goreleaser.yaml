@@ -9,7 +9,7 @@ version: 2
 project_name: evo
 
 # Один и тот же main собирается дважды: evo и alias cloudru-vm на один
-# минорный релиз (удаляется в v1.1). Бинарь узнаёт alias по имени файла
+# переходный период (удаляется в v2.0). Бинарь узнаёт alias по имени файла
 # (os.Args[0]) и печатает в stderr строку о переименовании. Две сборки, а не
 # symlink в архиве: в zip для Windows symlink нет, а копия под другим именем
 # работает на всех шести платформах одинаково.
@@ -33,7 +33,7 @@ builds:
     # Время файлов = время коммита: одна и та же ревизия даёт те же байты.
     mod_timestamp: &mod_timestamp "{{ .CommitTimestamp }}"
 
-  # alias: тот же код, другое имя файла. Убрать в v1.1 вместе с install.sh.
+  # alias: тот же код, другое имя файла. Убрать в v2.0 вместе с install.sh.
   - id: cloudru-vm-alias
     main: ./cmd/evo
     binary: cloudru-vm
@@ -57,13 +57,19 @@ archives:
       - LICENSE*
       - NOTICE*
       - README.md
+      # CHANGELOG — с разделом «Миграция» версии; на него ссылается guide.md.
+      - CHANGELOG.md
       # README ссылается на docs/*.md — в распакованном архиве они должны
-      # быть рядом. Внутренние документы (docs/internal, RELEASING) — нет.
+      # быть рядом (и те, на которые ссылаются они сами: rename.md).
+      # Внутренние документы (docs/internal, RELEASING) — нет.
       - docs/auth.md
       - docs/commands.md
       - docs/exit-codes.md
+      - docs/guide.md
       - docs/install.md
       - docs/mcp.md
+      - docs/rename.md
+      - docs/tools.md
       - docs/troubleshooting.md
 
 checksum:

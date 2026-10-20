@@ -39,12 +39,30 @@ const (
 	// UnsupportedOSLine: neither Ubuntu or Debian nor an RPM-based
 	// distribution get.docker.com serves.
 	UnsupportedOSLine = "evo: Docker install is supported on Ubuntu, Debian and RPM-based distributions"
+	// NoCodenameLine: /etc/os-release of an Ubuntu or Debian image names
+	// no release, so Docker's repository cannot be picked.
+	NoCodenameLine = "evo: no VERSION_CODENAME in /etc/os-release"
+	// CurlMissingLine: an RPM-based image without curl to fetch
+	// get.docker.com.
+	CurlMissingLine = "evo: curl is missing"
+	// DockerNoReleaseLine: Docker's repository has no Release file for the
+	// image's codename — Docker builds no packages for that release.
+	DockerNoReleaseLine = "evo: Docker's repository has no packages for"
 )
+
+// permanentLines are the refusals that another attempt on the same VM
+// would repeat: they come from the image, not from the network.
+var permanentLines = []string{NoKeyringLine, UnsupportedOSLine, NoCodenameLine, CurlMissingLine, DockerNoReleaseLine}
 
 // Permanent reports whether the install output shows a refusal that
 // another attempt on the same VM would repeat: the caller stops retrying.
 func Permanent(out string) bool {
-	return strings.Contains(out, NoKeyringLine) || strings.Contains(out, UnsupportedOSLine)
+	for _, l := range permanentLines {
+		if strings.Contains(out, l) {
+			return true
+		}
+	}
+	return false
 }
 
 // InstallScript returns the shell script that installs Docker with the

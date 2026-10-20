@@ -31,8 +31,9 @@ docker_list="$root/etc/apt/sources.list.d/docker.list"
 mirror_marker="$root/var/lib/cloud/instance/sem/configure-apt-mirrors"
 docker_pkgs="docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
 # How long to wait for first-boot cloud-init, in seconds. Past it the install
-# goes on: apt waits for its lock itself (DPkg::Lock::Timeout).
-cloud_init_wait=600
+# goes on: apt waits for its lock itself (DPkg::Lock::Timeout). 300 s of
+# evo's 15 minutes for the whole Docker install (release audit, REL-6).
+cloud_init_wait=300
 
 # Short network timeouts: a mirror that does not answer fails in seconds,
 # not after apt's two minutes per connection. Each apt-get also has a time
@@ -165,7 +166,12 @@ fallback_failed() {
 
 apt_failed() {
 	if docker_repo_failed; then
-		if grep -E '^(W|E):' "$apt_log" | grep 'download\.docker\.com' | grep -qE 'GPG error|is not signed'; then
+		# No Release file for the codename: Docker does not build packages
+		# for this release (a new or an unusual one). Another attempt or
+		# mirror answers the same (release audit, REL-7).
+		if grep -E '^(W|E):' "$apt_log" | grep 'download\.docker\.com' | grep -q 'does not have a Release file'; then
+			say "Docker's repository has no packages for $os_id $codename (download.docker.com: no Release file)"
+		elif grep -E '^(W|E):' "$apt_log" | grep 'download\.docker\.com' | grep -qE 'GPG error|is not signed'; then
 			say "apt failed on Docker's repository (download.docker.com): its signature does not verify"
 		else
 			say "apt failed on Docker's repository (download.docker.com): no answer"

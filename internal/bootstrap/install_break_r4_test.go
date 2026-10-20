@@ -269,7 +269,7 @@ case " $* " in
 esac
 `)
 	// Общая заглушка timeout предел не соблюдает (на macOS нет timeout(1)),
-	// а 600 с в тесте не ждать: здесь предел для cloud-init «истекает»
+	// а 300 с в тесте не ждать: здесь предел для cloud-init «истекает»
 	// сразу — код 124, как у настоящего timeout. Если скрипт зовёт
 	// cloud-init status без timeout, заглушка cloud-init висит 30 с.
 	body["timeout"] = `echo "timeout $*" >>"$EVO_ROOT/calls"
@@ -303,10 +303,10 @@ shift; exec "$@"
 		t.Fatalf("install failed after the cloud-init limit: %v\n%s", err, out)
 	}
 	calls, _ := os.ReadFile(filepath.Join(root, "calls"))
-	if !strings.Contains(string(calls), "timeout 600 cloud-init status --wait") || !strings.Contains(string(calls), "apt-get") {
-		t.Errorf("want cloud-init waited for 600s and the install going on:\n%s", calls)
+	if !strings.Contains(string(calls), "timeout 300 cloud-init status --wait") || !strings.Contains(string(calls), "apt-get") {
+		t.Errorf("want cloud-init waited for 300s and the install going on:\n%s", calls)
 	}
-	if !strings.Contains(string(out), "cloud-init is still running after 600s") {
+	if !strings.Contains(string(out), "cloud-init is still running after 300s") {
 		t.Errorf("no note about the limit:\n%s", out)
 	}
 }

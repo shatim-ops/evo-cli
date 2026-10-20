@@ -72,8 +72,15 @@ var readOnlySubcommands = map[string]map[string]bool{
 // (cluster-info dump) writes files on the host. Names are as
 // kubetools.ParseFlags gives them, so -f x, -fx, -f=x and --filename=x are
 // all caught.
+//
+// Also --cache-dir (the discovery cache is written there), any flag whose
+// name has "file" or ends in "-dir" (--profile, --profile-output: a
+// profile written on the host), and an output format read from a host file
+// (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…, in any
+// form: -o x, -ox, -o=x, --output=x, --output x) (release audit, REL-4).
 var kubectlHostFlags = map[string]bool{
 	"f": true, "filename": true, "k": true, "kustomize": true, "output-directory": true,
+	"cache-dir": true,
 }
 
 // kubectlReadOnly reports whether kubectl args (verb first) only read.
@@ -95,7 +102,8 @@ func kubectlReadOnly(fields []string) bool {
 // kubectlHostFlags. The words after "--" are not kubectl flags. "logs -f"
 // is --follow (logs has no --filename), not a file.
 func kubectlReachesHost(verb string, args []string) bool {
-	for _, a := range args {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		if a == "--" {
 			return false
 		}
@@ -106,8 +114,18 @@ func kubectlReachesHost(verb string, args []string) bool {
 			if fl.Name == "f" && (verb == "logs" || verb == "log") {
 				continue
 			}
-			if kubectlHostFlags[fl.Name] {
+			if kubectlHostFlags[fl.Name] || strings.Contains(fl.Name, "file") || strings.HasSuffix(fl.Name, "-dir") {
 				return true
+			}
+			if fl.Name == "o" || fl.Name == "output" {
+				val := fl.Val
+				if !fl.HasVal && i+1 < len(args) {
+					i++
+					val = args[i]
+				}
+				if strings.Contains(strings.ToLower(val), "file") {
+					return true
+				}
 			}
 		}
 	}

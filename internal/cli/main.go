@@ -67,7 +67,7 @@ var commandStarted bool
 // Main runs the CLI with the build identity of the calling command and
 // exits. The code lives here, not in cmd/evo, so that the legacy build path
 // cmd/cloudru-vm ("go build ./cmd/cloudru-vm" in existing scripts) builds
-// the same program until v1.1.
+// the same program until v2.0.
 func Main(buildVersion, buildCommit, buildDate string) {
 	setBuildIdentity(buildVersion, buildCommit, buildDate)
 	if isLegacyAlias(os.Args[0]) {
@@ -77,9 +77,9 @@ func Main(buildVersion, buildCommit, buildDate string) {
 }
 
 // aliasNotice is printed when the binary runs under its legacy name: the
-// release archives ship a copy named after the legacy alias for one minor
-// release, so scripts and MCP configs written for the old name keep working.
-const aliasNotice = config.LegacyAppName + " переименован в " + config.AppName + ", alias будет удалён в v1.1"
+// release archives ship a copy named after the legacy alias until
+// v2.0, so scripts and MCP configs written for the old name keep working.
+const aliasNotice = config.LegacyAppName + " переименован в " + config.AppName + ", alias будет удалён в v2.0"
 
 // isLegacyAlias reports whether argv0 is the legacy alias binary:
 // cloudru-vm (legacy name), or cloudru-vm.exe on Windows.
@@ -125,6 +125,12 @@ func run(args []string) int {
 	}
 	rootCmd := newRootCmd()
 	rootCmd.SetArgs(args)
+	if mcpCommand(rootCmd, args) {
+		// evo mcp answers in English (docs/auth.md), and cobra parses its
+		// flags before runMCP sets the language: "--auth" without a value
+		// was refused in the CLI's language (release audit, REL-12).
+		i18n.SetLang(i18n.EN)
+	}
 	cmd, err := rootCmd.ExecuteContextC(ctx)
 	if err == nil {
 		return clerrors.ExitOK
@@ -153,6 +159,25 @@ func run(args []string) int {
 	flagJSON = flagJSON || jsonRequested(args)
 	handleError(output.New(flagJSON, flagNoColor), err)
 	return clerrors.ExitCode(err)
+}
+
+// mcpCommand reports whether args run the server, "evo mcp …", and not
+// its help: the help of evo mcp stays in the CLI's language, as every
+// command's help.
+func mcpCommand(root *cobra.Command, args []string) bool {
+	c, _, err := root.Find(args)
+	if err != nil || c.Name() != "mcp" || c.Parent() != root {
+		return false
+	}
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		if a == "-h" || a == "--help" || strings.HasPrefix(a, "--help=") {
+			return false
+		}
+	}
+	return true
 }
 
 // leadingUnknownFlag returns the error pflag gives for the first flag

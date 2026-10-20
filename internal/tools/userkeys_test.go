@@ -149,7 +149,7 @@ func TestShellQuoteMCP(t *testing.T) {
 	}
 }
 
-// Until v1.1 the pre-v1.0 file name is still read, so keys set up for the
+// Until v2.0 the pre-v1.0 file name is still read, so keys set up for the
 // old engine keep reaching new VMs; the new name wins when both exist.
 func TestLoadUserKeys_LegacyFile(t *testing.T) {
 	dir := t.TempDir()

@@ -224,6 +224,31 @@ func (s *Registry) handleDnsOperation(ctx context.Context, args map[string]any) 
 // --- Records ---
 
 // recordValues collects values from a `values` array and/or a single `value`.
+// recordValueArgs checks the values of dns_record_create before the
+// preview: value or values, not both (the description offers one or the
+// other; both were merged without a word), and no value of only spaces —
+// " " went to the API as the record's value (release audit, REL-11).
+func recordValueArgs(args map[string]any) error {
+	if err := blankArgs(args, "value"); err != nil {
+		return err
+	}
+	raw, _ := args["values"].([]any)
+	if len(raw) > 0 && stringArg(args, "value") != "" {
+		return clierrors.New(clierrors.CodeUsage,
+			i18n.T("pass value or values, not both", "укажите value или values, не оба"),
+			i18n.T("value is one record value; values is an array for several.",
+				"value — одно значение записи; values — массив для нескольких."))
+	}
+	for i, v := range raw {
+		if s, _ := v.(string); s != "" && strings.TrimSpace(s) == "" {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("empty value of values[%d]: it is only spaces", "пустое значение values[%d]: в нём только пробелы", i),
+				i18n.T("Pass the record values, or leave out the empty ones.", "Передайте значения записи или уберите пустые."))
+		}
+	}
+	return nil
+}
+
 func recordValues(args map[string]any) []string {
 	var vals []string
 	if raw, ok := args["values"].([]any); ok {
@@ -293,6 +318,9 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 	zoneID := stringArg(args, "zone_id")
 	name := stringArg(args, "name")
 	rtype := strings.ToLower(stringArg(args, "record_type"))
+	if err := recordValueArgs(args); err != nil {
+		return errResult(err), true
+	}
 	vals := recordValues(args)
 	if zoneID == "" || name == "" || rtype == "" || len(vals) == 0 {
 		return usageT("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required", "нужны 'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) и 'value' или 'values'"), true

@@ -107,14 +107,13 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          case "$AR_REGISTRY" in
-            *.*) host="$AR_REGISTRY" ;;
-            *)   host="$AR_REGISTRY.cr.cloud.ru" ;;
-          esac
+          # Хост реестра (производное от секрета) в $GITHUB_OUTPUT не
+          # пишется: Actions не передаёт выход, похожий на секрет, а в
+          # выходах шага его видят все следующие шаги и логи. Хост
+          # вычисляет из секрета сам шаг push (release audit, REL-18).
           version="${GITHUB_REF_NAME#v}"
           {
             echo "enabled=true"
-            echo "host=$host"
             echo "version=$version"
             # -rc.N и прочие pre-release не двигают latest.
             case "$version" in *-*) echo "latest=false" ;; *) echo "latest=true" ;; esac
@@ -126,10 +125,12 @@ jobs:
           # Токен GITHUB_TOKEN не остаётся в .git/config для следующих шагов.
           persist-credentials: false
 
+      # Сборка и smoke-тест — под локальным именем: им не нужен ни ключ, ни
+      # адрес реестра; хост к образу добавляет шаг push.
       - name: docker build
         if: steps.ar.outputs.enabled == 'true'
         env:
-          IMAGE: ${{ steps.ar.outputs.host }}/evo
+          IMAGE: evo-release
           VERSION: ${{ steps.ar.outputs.version }}
         run: |
           docker build -t "$IMAGE:$VERSION" \
@@ -140,7 +141,7 @@ jobs:
       - name: smoke-тест
         if: steps.ar.outputs.enabled == 'true'
         env:
-          IMAGE: ${{ steps.ar.outputs.host }}/evo
+          IMAGE: evo-release
           VERSION: ${{ steps.ar.outputs.version }}
         run: |
           docker run -d --name mcp -e MCP_BEARER_TOKEN=release-smoke-0123456789 -p 8080:8080 "$IMAGE:$VERSION"
@@ -152,13 +153,18 @@ jobs:
       - name: docker push
         if: steps.ar.outputs.enabled == 'true'
         env:
-          HOST: ${{ steps.ar.outputs.host }}
+          AR_REGISTRY: ${{ secrets.CLOUDRU_AR_REGISTRY }}
           VERSION: ${{ steps.ar.outputs.version }}
           LATEST: ${{ steps.ar.outputs.latest }}
           AR_KEY_ID: ${{ secrets.CLOUDRU_AR_KEY_ID }}
           AR_SECRET: ${{ secrets.CLOUDRU_AR_SECRET }}
         run: |
+          case "$AR_REGISTRY" in
+            *.*) HOST="$AR_REGISTRY" ;;
+            *)   HOST="$AR_REGISTRY.cr.cloud.ru" ;;
+          esac
           echo "$AR_SECRET" | docker login "$HOST" -u "$AR_KEY_ID" --password-stdin
+          docker tag "evo-release:$VERSION" "$HOST/evo:$VERSION"
           docker push "$HOST/evo:$VERSION"
           if [ "$LATEST" = true ]; then
             docker tag "$HOST/evo:$VERSION" "$HOST/evo:latest"

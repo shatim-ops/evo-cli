@@ -37,7 +37,7 @@ func TestIsLegacyAlias(t *testing.T) {
 }
 
 func TestAliasNotice(t *testing.T) {
-	want := "cloudru-vm переименован в evo, alias будет удалён в v1.1"
+	want := "cloudru-vm переименован в evo, alias будет удалён в v2.0"
 	if aliasNotice != want {
 		t.Fatalf("aliasNotice = %q", aliasNotice)
 	}

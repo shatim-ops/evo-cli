@@ -32,7 +32,7 @@ import (
 const userKeysFile = "user_authorized_keys"
 
 // legacyUserKeysFile is the file's name before v1.0; it is read when the new
-// one is absent, until v1.1 (BACKLOG [10]).
+// one is absent, until v2.0 (BACKLOG [10]).
 const legacyUserKeysFile = "captain_authorized_keys"
 
 // loadUserKeys returns the user public keys configured for auto-append and

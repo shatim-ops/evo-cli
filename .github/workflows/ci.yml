@@ -68,9 +68,11 @@ jobs:
           version: v2.18.3
           args: check
 
-      - name: shellcheck install.sh
+      # install.sh — установщик evo; internal/bootstrap/install.sh ставит Docker
+      # на ВМ (release audit, REL-13); скрипты CI — .github/scripts.
+      - name: shellcheck
         if: runner.os == 'Linux'
-        run: shellcheck install.sh
+        run: shellcheck install.sh internal/bootstrap/install.sh .github/scripts/*.sh
 
       # Маска публичных логов cloud-e2e: имена групп и подсетей тестового проекта.
       - name: redact.sed на образцах вывода evo

@@ -265,7 +265,8 @@ var toolLongRU = map[string]string{
 	"k8s_kubectl": "Любая команда kubectl в кластере; токен встраивается сам, плагин cloudlogin не нужен. Читающие " +
 		"команды (get, describe, logs, top, events, rollout status, explain и другие) выполняются сразу, изменяющие " +
 		"(create, delete, patch, scale, label, rollout restart, exec, cordon и другие) — с подтверждением; с " +
-		"подтверждением и любая команда с -f/--filename, -k/--kustomize или --output-directory: она читает файлы " +
+		"подтверждением и любая команда с -f/--filename, -k/--kustomize, --output-directory, --cache-dir или " +
+		"форматом вывода из файла (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): она читает файлы " +
 		"или любой URL либо пишет на хост (-f у logs — это --follow). Подходит " +
 		"для всего, чего нет в 'evo k8s helm' и 'evo k8s apply'. Примеры аргументов: 'get pods -A', " +
 		"'-n db logs deploy/postgres', 'create secret generic s --from-literal=k=v'.",
