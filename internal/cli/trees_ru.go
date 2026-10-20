@@ -25,13 +25,63 @@ var treeGroupShortRU = map[string]string{
 	"pg":          "Managed PostgreSQL: кластеры, базы данных, пользователи, резервные копии",
 	"s3":          "Object Storage: бакеты и объекты",
 	"secret":      "Secret Manager: секреты",
+	"dns":         "Evolution DNS: зоны и записи",
+	"cert":        "Certificate Manager: TLS-сертификаты",
+	"lb":          "Балансировщики нагрузки (L4)",
+	"tg":          "Группы целей балансировщиков",
+	"snat":        "SNAT-шлюзы: исходящий интернет для приватных подсетей",
 }
 
 // russianTrees are the trees whose human tables speak Russian too: the
 // column names, да/нет for booleans and the note under a list (the README
-// promises the vm and disk trees in Russian). --json and MCP keep the
-// tool's keys and English notes.
-var russianTrees = map[string]bool{"vm": true, "disk": true}
+// promises the vm and disk trees in Russian; every tree that came after
+// them speaks Russian from the start, PAR-16). The trees of v1.1 in
+// between (image, vpc, k8s, pg, s3, secret) keep their tables as they are.
+// --json and MCP keep the tool's keys and English notes.
+var russianTrees = map[string]bool{"vm": true, "disk": true,
+	"dns": true, "cert": true, "lb": true, "tg": true, "snat": true}
+
+// legacyRussianTrees are the Russian trees of v1.1: their tables take the
+// titles from columnHeaderRU alone, so that a title added for a newer tree
+// does not change them (a vm zones row has "default").
+var legacyRussianTrees = map[string]bool{"vm": true, "disk": true}
+
+// moreColumnHeaderRU are the Russian titles of the columns of the newer
+// Russian trees beyond columnHeaderRU; treeColumnHeaderRU, by tree, goes
+// before both where a key means something else in that tree.
+var moreColumnHeaderRU = map[string]string{
+	"domain":               "Домен",
+	"visibility":           "Видимость",
+	"delegated":            "Делегирована",
+	"valid":                "Корректна",
+	"confirm_state":        "Подтверждение",
+	"type":                 "Тип",
+	"values":               "Значения",
+	"ttl":                  "TTL",
+	"vpc_id":               "VPC",
+	"nat_type":             "Тип NAT",
+	"availability_zone":    "Зона",
+	"availability_zone_id": "ID зоны",
+}
+
+// treeColumnHeaderRU are the titles a tree gives a column its own way.
+var treeColumnHeaderRU = map[string]map[string]string{}
+
+// treeHeadersRU are the Russian column titles a newer Russian tree has
+// beyond columnHeaderRU; nil for the other trees.
+func treeHeadersRU(group string) map[string]string {
+	if !russianTrees[group] || legacyRussianTrees[group] {
+		return nil
+	}
+	out := make(map[string]string, len(moreColumnHeaderRU))
+	for k, v := range moreColumnHeaderRU {
+		out[k] = v
+	}
+	for k, v := range treeColumnHeaderRU[group] {
+		out[k] = v
+	}
+	return out
+}
 
 // columnHeaderRU is the Russian title of a column of those tables, by the
 // key of the tool's answer; a key without one is shown in capitals.

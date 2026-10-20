@@ -119,7 +119,8 @@ func TestContract_YesDryRunIsDryRun(t *testing.T) {
 	}
 }
 
-// Every tree command of vm, image, disk, vpc, k8s, pg, s3, secret with --json:
+// Every tree command of vm, image, disk, vpc, k8s, pg, s3, secret and of the
+// trees the parity plan added (parityTrees) with --json:
 // stdout is empty or one JSON document, stderr is only JSON lines.
 // Error path: no key, and any HTTP answer is an immediate 401 JSON body.
 func TestContract_TreeJSONPurity(t *testing.T) {
@@ -172,7 +173,7 @@ func contractTree(name string) bool {
 	case "vm", "image", "disk", "vpc", "k8s", "pg", "s3", "secret":
 		return true
 	}
-	return false
+	return parityTrees[name]
 }
 
 func jsonImpure(stdout, stderr string) string {

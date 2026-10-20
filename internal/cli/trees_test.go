@@ -71,7 +71,7 @@ func TestTrees_MatchRegistry(t *testing.T) {
 			})
 		}
 	}
-	for _, g := range []string{"vm", "disk", "vpc", "k8s", "pg", "s3", "secret"} {
+	for _, g := range []string{"vm", "disk", "vpc", "k8s", "pg", "s3", "secret", "dns", "cert", "nlb", "snat"} {
 		for _, tl := range reg.Tools() {
 			if tl.Group == g && !covered[tl.Name] {
 				t.Errorf("tool %s (group %s) has no command in the tree", tl.Name, g)
@@ -362,6 +362,7 @@ func TestTrees_BoolDefaultTrue(t *testing.T) {
 		"k8s create --kube-api-internet": true,
 		"k8s kubeconfig --embed-token":   true,
 		"secret delete --force":          true,
+		"lb create --external":           true,
 	}
 	reg := tools.New(nil)
 	for _, g := range allTreeGroups() {

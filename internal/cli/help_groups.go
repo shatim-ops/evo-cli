@@ -32,6 +32,8 @@ var commandGroups = []struct {
 		[]string{"init", "deploy", "status", "logs", "verify", "destroy"}},
 	{"resources", "Project resources:", "Ресурсы проекта:",
 		[]string{"vm", "image", "marketplace", "disk", "vpc", "k8s", "pg", "s3", "secret", "list-zones"}},
+	{"network", "Network services:", "Сетевые сервисы:",
+		[]string{"dns", "cert", "lb", "tg", "snat"}},
 	{"setup", "Setup:", "Настройка:",
 		[]string{"configure", "project", "whoami", "doctor", "version", "completion", "help"}},
 	{"agents", "For AI agents:", "Для ИИ-агентов:",
