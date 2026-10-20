@@ -87,6 +87,18 @@ func TestSec_CredentialFieldsMaskedOverHTTP(t *testing.T) {
 	if text, _ := call(s, "audit_events", nil); !strings.Contains(text, "keep-me") {
 		t.Errorf("page token masked: %s", text)
 	}
+	// REQ-9: the masked result names what was masked (redacted), and only
+	// a masked one does.
+	for name, want := range map[string][]string{
+		"deploy_apply": {"password"},
+		"redis_get":    {"endpoint.secret_key", "password", "users[].Password"},
+		"audit_events": nil,
+	} {
+		text, _ := call(s, name, nil)
+		if got := redactedOf(t, text); fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s: redacted %v, want %v: %s", name, got, want, text)
+		}
+	}
 	if text, _ := call(s, "deploy_apply", nil); !strings.Contains(text, "ssh user1@1.2.3.4") {
 		t.Errorf("non-secret fields lost: %s", text)
 	}

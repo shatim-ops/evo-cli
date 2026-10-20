@@ -11,6 +11,10 @@
 
 - MCP с `--allow-project`: `billing_consumption` и `billing_finops` с аргументом `project_id` читали расход любого проекта, который видит ключ, в обход списка. Теперь проект аргумента проверяется так же, как у `deploy` и `provision`: не из списка — `CONFIG_INVALID`. Исключения по-прежнему только `org_quotas` и `iam_service_accounts` (`docs/mcp.md`).
 
+### Изменено
+
+- MCP по HTTP без `--allow-secret-export`: ответ, в котором замаскированы учётные данные, получает поле `redacted` — пути замаскированных полей (имена, не значения), например `"redacted": ["users[].password"]`. Поле добавляется, ничего не переименовывая; ответ без замаскированного — тот же, что по stdio. Правило маскирования — «корень где угодно в имени минус закрытый перечень не-секретов» (docs/mcp.md): поле с `password`, `passwd`, `secret`, `private_key`, `api_key`, `access_token`, `refresh_token`, `id_token`, `bearer_token` в любом месте имени (или ровно `token`) маскируется, кроме оканчивающихся `_id`, `_at`, `_expires_at`, `_policy`, `_algorithm`, `_type`, `_name`, `_version`, `_enabled`, `_set` и других из перечня, `next_page_token`, `page_token` и метаданных Secret Manager под `secret`/`secrets` в ответах `secret_*`. Так `password_expires_at`, `private_key_id`, `secret_key_id` приходят как есть; `accessToken` и `idToken` в camelCase теперь маскируются, а под полем-секретом с массивом или объектом (`"passwords": ["a", "b"]`) — все строки внутри. Все различия HTTP-режима со stdio сведены в закрытый перечень H1–H9 (docs/mcp.md, «Ограничения HTTP-режима»).
+
 ### Исправлено
 
 - README: при сбое `evo deploy` созданная ВМ не удаляется сама, а остаётся и тарифицируется — README обещал обратное. Теперь там сказано, что делать: повторить `evo deploy` или удалить ВМ `evo destroy`.

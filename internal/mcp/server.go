@@ -121,6 +121,10 @@ type Server struct {
 	// tool (the default).
 	listed  []Tool
 	enabled map[string]bool
+
+	// httpApplied records the HTTP restrictions applied to the handlers,
+	// as "ID tool" (restrict), for the closed-list test.
+	httpApplied []string
 }
 
 // New creates an MCP server. factory builds engines per tool call (so each call
