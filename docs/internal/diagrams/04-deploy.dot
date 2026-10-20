@@ -1,0 +1,29 @@
+// Сценарий evo deploy (compose → ВМ) и граница согласия. CLI и MCP (deploy_plan/deploy_apply) идут через один движок.
+digraph deploy {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, nodesep=0.3, ranksep=0.45, pad=0.3, newrank=true];
+  node  [fontname="Helvetica", fontsize=10.5, shape=box, style="rounded,filled", margin="0.12,0.06", penwidth=1.1, class="domain", fillcolor="#EAF6EE", color="#2E8B57"];
+  edge  [fontname="Helvetica", fontsize=9.5, color="#5B6B7A", fontcolor="#3B4650", penwidth=1.1, arrowsize=0.7];
+
+  init   [label=<<B>evo init</B><BR/><FONT POINT-SIZE="9">.evo.yaml: зона и образ<BR/>из API</FONT>>];
+  resolve[label=<<B>Resolve</B><BR/><FONT POINT-SIZE="9">sizer: flavor по compose,<BR/>порты → SG, подсеть</FONT>>];
+  prev   [class="core", fillcolor="#FFF4D6", color="#B7860B", label=<<B>Превью и цена</B><BR/><FONT POINT-SIZE="9">price-calculation API,<BR/>иначе оценка; без лицензии образа</FONT>>];
+  ok     [class="core", fillcolor="#FFF4D6", color="#B7860B", shape=diamond, style="filled", margin="0.04,0.04", label=<<B>Согласие?</B>>];
+  stop   [class="guard", fillcolor="#FDECEA", color="#C0392B", label=<<B>Ничего не создано</B><BR/><FONT POINT-SIZE="9">CLI: код 3 · --dry-run: код 0<BR/>MCP: confirmation_required</FONT>>];
+  prov   [class="client", fillcolor="#EEF1F4", color="#5B6B7A", label=<<B>Compute API</B><BR/><FONT POINT-SIZE="9">ВМ + диск + floating IP + SG,<BR/>ожидание асинхронных операций</FONT>>];
+  st     [class="store", shape=cylinder, fillcolor="#FBEFE8", color="#B5653A", label=<<B>.evo/state.json</B><BR/><FONT POINT-SIZE="9">+ lock; повтор продолжает<BR/>с той же ВМ</FONT>>];
+  ssh    [label=<<B>SSH :22</B><BR/><FONT POINT-SIZE="9">ключ ~/.evo/id_ed25519,<BR/>ждать готовности ВМ</FONT>>];
+  boot   [label=<<B>bootstrap</B><BR/><FONT POINT-SIZE="9">Docker из apt Docker,<BR/>запасное зеркало ОС</FONT>>];
+  up     [label=<<B>compose up -d</B><BR/><FONT POINT-SIZE="9">уезжает один<BR/>docker-compose.yml</FONT>>];
+  ver    [label=<<B>verify</B><BR/><FONT POINT-SIZE="9">HTTP-проверка<BR/>портов приложения</FONT>>];
+  fail   [class="guard", fillcolor="#FDECEA", color="#C0392B", label=<<B>Сбой SSH или зеркала</B><BR/><FONT POINT-SIZE="9">ВМ остаётся и тарифицируется:<BR/>повторить deploy или destroy</FONT>>];
+
+  init -> resolve -> prev -> ok;
+  ok -> stop [label="нет / нет TTY"];
+  ok -> prov [label="y/д · --yes ·\nconfirmed=true"];
+  prov -> st [label="записать"];
+  prov -> ssh -> boot -> up -> ver;
+  ssh -> fail [style=dashed, label="таймаут"];
+  boot -> fail [style=dashed];
+  { rank=same; prov; st; }
+  { rank=same; ssh; fail; }
+}

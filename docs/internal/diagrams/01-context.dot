@@ -1,0 +1,63 @@
+// evo CLI + MCP — контекст (C4 L1). Источник: код main@39b67e9, README, docs/mcp.md.
+digraph context {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, nodesep=0.35, ranksep=0.9, pad=0.3, compound=true, newrank=true];
+  node  [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled", margin="0.18,0.08", penwidth=1.2];
+  edge  [fontname="Helvetica", fontsize=9.5, color="#5B6B7A", fontcolor="#3B4650", penwidth=1.1, arrowsize=0.7];
+
+  subgraph cluster_who {
+    label="Кто вызывает"; class="zone"; style="rounded,dashed"; color="#B9B2C9"; fontcolor="#5A5070";
+    human [class="actor", fillcolor="#F3EEF9", color="#6B4FA0", label=<<B>Инженер в терминале</B><BR/><FONT POINT-SIZE="9.5">RU-справка, превью, y/д</FONT>>];
+    ci    [class="actor", fillcolor="#F3EEF9", color="#6B4FA0", label=<<B>Скрипты и CI</B><BR/><FONT POINT-SIZE="9.5">--json, --yes, коды выхода</FONT>>];
+    agent [class="actor", fillcolor="#F3EEF9", color="#6B4FA0", label=<<B>AI-агент локально</B><BR/><FONT POINT-SIZE="9.5">Claude Code, Cursor</FONT>>];
+    ragent[class="actor", fillcolor="#F3EEF9", color="#6B4FA0", label=<<B>Удалённый MCP-клиент</B><BR/><FONT POINT-SIZE="9.5">агент команды, n8n</FONT>>];
+    factory[class="actor", fillcolor="#F3EEF9", color="#6B4FA0", label=<<B>Сборщик внутренней системы</B><BR/><FONT POINT-SIZE="9.5">image-factory mcpcall, код 3</FONT>>];
+  }
+
+  subgraph cluster_evo {
+    label="evo — один статический Go-бинарь (Linux / macOS / Windows, Docker distroless)"; class="evo"; style="rounded,filled"; fillcolor="#F4F8FD"; color="#2F6DB5"; fontcolor="#1D4E89";
+    cli [class="surface", fillcolor="#E6F0FB", color="#2F6DB5", label=<<B>CLI</B><BR/><FONT POINT-SIZE="9.5">evo vm / k8s / pg / deploy …<BR/>evo tools call &lt;любой из 152&gt;</FONT>>];
+    mcp [class="surface", fillcolor="#E6F0FB", color="#2F6DB5", label=<<B>MCP-сервер</B><BR/><FONT POINT-SIZE="9.5">evo mcp: stdio | Streamable HTTP<BR/>те же 152 инструмента</FONT>>];
+    reg [class="core", fillcolor="#FFF4D6", color="#B7860B", label=<<B>Реестр инструментов + согласие</B><BR/><FONT POINT-SIZE="9.5">23 группы · 65 изменяющих<BR/>превью → confirmed / --yes</FONT>>];
+    cli -> reg; mcp -> reg;
+  }
+
+  subgraph cluster_local {
+    label="Машина, где запущен evo"; class="zone"; style="rounded,dashed"; color="#C9B7A8"; fontcolor="#7A5A44";
+    cfg  [class="store", shape=cylinder, fillcolor="#FBEFE8", color="#B5653A", label=<<B>~/.config/evo</B><BR/><FONT POINT-SIZE="9">config.yaml · credentials.yaml<BR/>кэш IAM-токена (0600)</FONT>>];
+    data [class="store", shape=cylinder, fillcolor="#FBEFE8", color="#B5653A", label=<<B>~/.evo и ./.evo</B><BR/><FONT POINT-SIZE="9">state.json · plans/ · stack-jobs/<BR/>SSH-ключ · pricing.json</FONT>>];
+    kbin [class="ext", fillcolor="#FFFFFF", color="#8A8F96", style="rounded,filled,dashed", label=<<B>kubectl, helm</B><BR/><FONT POINT-SIZE="9">внешние бинари</FONT>>];
+  }
+
+  subgraph cluster_cloud {
+    label="Cloud.ru Evolution"; class="cloud"; style="rounded,filled"; fillcolor="#F1FAFB"; color="#1F7A8C"; fontcolor="#145866";
+    iam  [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>IAM</B><BR/><FONT POINT-SIZE="9">iam.api.cloud.ru<BR/>Key ID + Secret → токен</FONT>>];
+    up   [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>Публичные API продуктов</B><BR/><FONT POINT-SIZE="9">compute, vpc, nlb, dns, mk8s, postgresql,<BR/>kafka, redis, secretmanager, certificatemanager,<BR/>containers, ar, monitoring, audit, organization</FONT>>];
+    s3   [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>Object Storage</B><BR/><FONT POINT-SIZE="9">s3.cloud.ru, свои S3-ключи</FONT>>];
+    bill [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>Биллинг</B><BR/><FONT POINT-SIZE="9">billing.api · только чтение</FONT>>];
+    vm   [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>ВМ, созданная deploy</B><BR/><FONT POINT-SIZE="9">Ubuntu/Debian, docker compose</FONT>>];
+    k8s  [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>API кластера MK8s</B><BR/><FONT POINT-SIZE="9">kubeconfig, exec-auth id.cloud.ru</FONT>>];
+  }
+
+  subgraph cluster_third {
+    label="Третьи стороны"; class="zone"; style="rounded,dashed"; color="#B8BCC2"; fontcolor="#5B6B7A";
+    docker [class="ext", fillcolor="#FFFFFF", color="#8A8F96", style="rounded,filled,dashed", label=<<B>download.docker.com</B><BR/><FONT POINT-SIZE="9">apt, ключ встроен в evo;<BR/>запасное — зеркало дистрибутива</FONT>>];
+  }
+
+  human -> cli [label="команды"];
+  ci -> cli [label="--json, код 3 = нужно согласие"];
+  agent -> mcp [label="stdio JSON-RPC"];
+  ragent -> mcp [label="HTTP + Bearer, --allow-project"];
+  factory -> mcp [label="MCP"];
+
+  reg -> cfg  [label="ключ, профиль", dir=both, arrowtail=none];
+  reg -> data [label="состояние, планы"];
+  reg -> kbin [label="exec"];
+
+  reg -> iam  [label="получить токен"];
+  reg -> up   [label="REST + Bearer, User-Agent evo/…"];
+  reg -> s3   [label="S3 API (minio-go)"];
+  reg -> bill [label="billing_*"];
+  reg -> vm   [label="SSH :22"];
+  kbin -> k8s [label="kubectl / helm"];
+  vm -> docker [label="apt install docker"];
+}

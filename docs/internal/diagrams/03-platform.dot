@@ -1,0 +1,57 @@
+// evo в модели Облачной Платформы Cloud.ru (скилл arch-skill/cloudru-platform-integration).
+// Какие слои Service Controller продукта evo достигает, а какие закрыты по дизайну.
+digraph platform {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, nodesep=0.35, ranksep=0.6, pad=0.3, compound=true, newrank=true];
+  node  [fontname="Helvetica", fontsize=10.5, shape=box, style="rounded,filled", margin="0.14,0.07", penwidth=1.1];
+  edge  [fontname="Helvetica", fontsize=9.5, color="#5B6B7A", fontcolor="#3B4650", penwidth=1.1, arrowsize=0.7];
+
+  subgraph cluster_clients {
+    label="Потребители"; class="zone"; style="rounded,dashed"; color="#B9B2C9"; fontcolor="#5A5070";
+    evo [class="surface", fillcolor="#E6F0FB", color="#2F6DB5", label=<<B>evo CLI + MCP</B><BR/><FONT POINT-SIZE="9">субъект = сервисный аккаунт<BR/>(Key ID + Secret), project_id</FONT>>];
+    lk  [class="actor", fillcolor="#F3EEF9", color="#6B4FA0", label=<<B>ЛК console.cloud.ru</B><BR/><FONT POINT-SIZE="9">cookie → токен на шлюзе</FONT>>];
+    adm [class="actor", fillcolor="#F3EEF9", color="#6B4FA0", label=<<B>Админ-консоль ОП</B><BR/><FONT POINT-SIZE="9">сервис-менеджер, поддержка</FONT>>];
+  }
+
+  subgraph cluster_core {
+    label="Ядро платформы"; class="cloud"; style="rounded,filled"; fillcolor="#F1FAFB"; color="#1F7A8C"; fontcolor="#145866";
+    iam   [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>IAM</B><BR/><FONT POINT-SIZE="9">токен SA живёт 1 ч;<BR/>Evaluate(subject, resource, action)</FONT>>];
+    gw    [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>Шлюз u-api</B><BR/><FONT POINT-SIZE="9">console.cloud.ru/u-api/&lt;product&gt;<BR/>Istio ingress → Service Entry</FONT>>];
+    wf    [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>Workflow и коннекторы</B><BR/><FONT POINT-SIZE="9">platform-mgmt-sa,<BR/>роль platform.&lt;product&gt;.mgmt</FONT>>];
+    cat   [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>Каталог · SKU · договоры</B><BR/><FONT POINT-SIZE="9">resource_spec_code, тарифные планы,<BR/>оферта = предоплата → Suspend</FONT>>];
+    preb  [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>Предбиллинг → биллинг</B><BR/><FONT POINT-SIZE="9">агрегация, округление, sdr-файлы,<BR/>Onyma</FONT>>];
+    billapi [class="cloudnode", fillcolor="#E3F4F7", color="#1F7A8C", label=<<B>billing.api · organization.api</B><BR/><FONT POINT-SIZE="9">баланс, потребление</FONT>>];
+  }
+
+  subgraph cluster_sc {
+    label="Service Controller продукта (свой K8s), ~15 публичных API"; class="sczone"; style="rounded,filled"; fillcolor="#F6F8FA"; color="#5B6B7A"; fontcolor="#3B4650";
+    upl  [class="reach", fillcolor="#DFF3E6", color="#2E8B57", penwidth=1.6, label=<<B>User Plane API</B><BR/><FONT POINT-SIZE="9">публичный REST &lt;product&gt;.api.cloud.ru<BR/>методы верхнего уровня по project_id</FONT>>];
+    mgmt [class="blocked", fillcolor="#FDECEA", color="#C0392B", label=<<B>Management API</B><BR/><FONT POINT-SIZE="9">gRPC, без интернета:<BR/>Activate · Suspend · Resume · Delete</FONT>>];
+    admin[class="blocked", fillcolor="#FDECEA", color="#C0392B", label=<<B>Admin API</B>>];
+    integ[class="blocked", fillcolor="#FDECEA", color="#C0392B", label=<<B>Internal Integration API</B><BR/><FONT POINT-SIZE="9">для соседних продуктов</FONT>>];
+    meter[class="client", fillcolor="#EEF1F4", color="#5B6B7A", label=<<B>Usage / Metering</B><BR/><FONT POINT-SIZE="9">PAYA события · PAYG time-series,<BR/>gRPC, обычно раз в 5 мин</FONT>>];
+  }
+
+  evo -> iam  [label="POST /auth/token"];
+  evo -> upl  [label="REST + Bearer, напрямую\n[гипотеза скилла, разд. 13]", color="#2E8B57", fontcolor="#1F6640", penwidth=1.8];
+  lk  -> gw   [label="фронт"];
+  gw  -> upl  [label="/u-api/svp/x → /x"];
+  upl -> iam  [label="Evaluate на каждый вызов", style=dashed];
+  wf  -> mgmt [label="жизненный цикл\nproduct_instance"];
+  adm -> admin;
+  adm -> wf   [label="Delete, Activate", style=dashed];
+  lk  -> wf   [label="подключить продукт", style=dashed];
+  cat -> wf   [style=dashed, xlabel="баланс < 0"];
+  meter -> preb [label="потребление"];
+  cat -> preb [label="правила тарификации", style=dashed];
+  preb -> billapi;
+  evo -> billapi [label="billing_*: только чтение", style=dashed];
+  upl -> meter [arrowhead=none, style=dotted];
+
+  { rank=same; lk; adm; evo; }
+  { rank=same; gw; iam; wf; cat; }
+  gw -> iam -> wf -> cat [style=invis];
+  { rank=same; preb; billapi; }
+  { rank=same; upl; mgmt; admin; integ; meter; }
+  evo -> mgmt  [label="недоступно: активация продукта\nв проекте из evo невозможна", color="#C0392B", fontcolor="#A93226", style=dashed, arrowhead=tee];
+  evo -> integ [color="#C0392B", style=dashed, arrowhead=tee];
+}
