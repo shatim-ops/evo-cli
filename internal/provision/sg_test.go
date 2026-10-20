@@ -21,7 +21,7 @@ func TestIsDefaultGroup(t *testing.T) {
 	}
 	for name, want := range map[string]bool{
 		"SSH-access_ru.AZ-2": true, "ssh-access_ru.az-2": true, "Default_ru.AZ-2": true, "default": true,
-		"SSH-access_ru.AZ-1": false, "DefaultWeb": false, "inspector-fileserver-sg": false, "ssh-access": false,
+		"SSH-access_ru.AZ-1": false, "DefaultWeb": false, "other-team-sg": false, "ssh-access": false,
 	} {
 		if got := IsDefaultGroup(&SecurityGroup{Name: name}, "ru.AZ-2"); got != want {
 			t.Errorf("%q: %v, want %v", name, got, want)
@@ -34,7 +34,7 @@ func TestIsDefaultGroup(t *testing.T) {
 
 func TestPickSecurityGroup(t *testing.T) {
 	sgs := []*SecurityGroup{
-		{ID: "a", Name: "inspector-fileserver-sg", AvailabilityZoneID: "z2"},
+		{ID: "a", Name: "other-team-sg", AvailabilityZoneID: "z2"},
 		{ID: "b", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: "z2"},
 		{ID: "c", Name: "SSH-access_ru.AZ-1", AvailabilityZoneID: "z1"},
 	}

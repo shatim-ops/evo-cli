@@ -28,7 +28,7 @@
    существующих 19 групп в `internal/mcp/tools.go`.
 5. **`confirmation_required` в MCP** возвращается с `isError=true`
    (`tools.go:~1814`). Обсудить: по спецификации MCP это не ошибка. Поменять
-   на `isError=false` **только** если клиент `image-factory/go/cmd/mcpcall`
+   на `isError=false` **только** если внутренний MCP-клиент сборочной системы
    (код возврата 3) различает по `status`, а не по `isError` — проверить
    текст README и, если сомнение, оставить и записать в BACKLOG.
 

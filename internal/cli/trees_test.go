@@ -159,7 +159,7 @@ func TestTreeArgs(t *testing.T) {
 	if got := parse("vm", "get", "web"); got["name"] != "web" || got["vm_id"] != nil {
 		t.Errorf("vm get by name: %v", got)
 	}
-	id := "85d1a925-d7a3-408f-b57a-234378f26186"
+	id := "00000000-0000-4000-8000-0000000000a1"
 	if got := parse("vm", "get", id); got["vm_id"] != id {
 		t.Errorf("vm get by id: %v", got)
 	}
