@@ -5,7 +5,9 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	stderrors "errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -89,6 +91,78 @@ func TestContract_ArgForms(t *testing.T) {
 	if err != nil || args["name"] != "from-arg" || args["size_gb"] != float64(10) {
 		t.Fatalf("json+arg: %v %#v", err, args)
 	}
+
+	// One check of the arguments for the CLI and MCP (tools.CheckArgs,
+	// spec.md REQ-8): what 'evo tools call' refuses, the tool's handler
+	// refuses with the same message, before it does anything.
+	zone, ok := reg.Lookup("dns_zone_create")
+	if !ok {
+		t.Fatal("dns_zone_create")
+	}
+	for _, c := range []struct {
+		tool tools.Tool
+		json string
+		// sameText: the CLI gives the tool's message; an unknown name
+		// it gives in its own words (the arguments the tool takes), with
+		// the same reason and code.
+		sameText bool
+	}{
+		{disk, `{"name":"web","size_gb":"10"}`, true},
+		{disk, `{"name":"web","size_gb":10.5}`, true},
+		{disk, `{"name":7,"size_gb":10}`, true},
+		{zone, `{"domain":"example.com","type":"internal"}`, true},
+		{open, `{"security_group":"web","ports":[80],"wait":true}`, false},
+	} {
+		var mcpArgs map[string]any
+		if err := json.Unmarshal([]byte(c.json), &mcpArgs); err != nil {
+			t.Fatal(err)
+		}
+		want := tools.CheckArgs(c.tool, mcpArgs)
+		text, isErr := c.tool.Handler(context.Background(), mcpArgs)
+		_, got := buildToolArgs(c.tool, "", c.json, nil)
+		switch {
+		case want == nil || clerrors.ExitCode(want) != clerrors.ExitGeneral:
+			t.Errorf("%s %s: the tool's check: %v", c.tool.Name, c.json, want)
+		case !isErr || !strings.Contains(text, `"reason": "USAGE"`) || !strings.Contains(text, jsonQuote(messageOf(want))):
+			t.Errorf("%s %s: the handler: %s, want the refusal %q", c.tool.Name, c.json, text, want)
+		case got == nil || clerrors.ExitCode(got) != clerrors.ExitGeneral:
+			t.Errorf("%s %s: evo tools call: %v, want a usage error", c.tool.Name, c.json, got)
+		case c.sameText && messageOf(got) != messageOf(want):
+			t.Errorf("%s %s: evo tools call: %v, want %v", c.tool.Name, c.json, got, want)
+		}
+	}
+	// What MCP takes, 'evo tools call' takes: an array as a string
+	// ("80,443", docs/mcp.md), an enum value in any case (in the schema's
+	// spelling to the tool).
+	if args, err := buildToolArgs(open, "", `{"security_group":"web","ports":"80,443"}`, nil); err != nil || args["ports"] != "80,443" {
+		t.Errorf(`ports "80,443": %v %#v`, err, args)
+	}
+	if args, err := buildToolArgs(zone, "", "", []string{"domain=example.com", "type=PRIVATE"}); err != nil || args["type"] != "private" {
+		t.Errorf("type=PRIVATE: %v %#v", err, args)
+	}
+	// A command of the trees refuses as its tool does: the reason and the
+	// message of the handler, the exit code of USAGE.
+	withEmptyCloud(t)
+	code, _, errOut := runCLI(t, "", "--json", "dns", "zone-create", "example.com", "--type", "internal")
+	env, ok := errorEnvelope(errOut)
+	if code != clerrors.ExitGeneral || !ok || env.Reason != "USAGE" || !strings.Contains(errOut, `type \"internal\" is not one of public, private`) {
+		t.Errorf("evo dns zone-create --type internal: exit %d %s", code, errOut)
+	}
+}
+
+// messageOf is the message of a CLIError, without its code.
+func messageOf(err error) string {
+	var ce *clerrors.CLIError
+	if stderrors.As(err, &ce) {
+		return ce.Message
+	}
+	return err.Error()
+}
+
+// jsonQuote is s as it appears inside a JSON string.
+func jsonQuote(s string) string {
+	b, _ := json.Marshal(s)
+	return strings.Trim(string(b), `"`)
 }
 
 func TestContract_ConfirmedIsNotAnArg(t *testing.T) {

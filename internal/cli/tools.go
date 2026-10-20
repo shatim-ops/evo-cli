@@ -7,6 +7,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"math"
 	"os"
@@ -354,8 +355,9 @@ const toolsCallHelpRU = `Вызвать инструмент и напечата
 Аргументы берутся из --args-file, затем из --args-json, затем из --arg
 (более поздние перекрывают ранние). Значения --arg приводятся к типам схемы
 инструмента: integer, number и boolean разбираются; array — список через
-запятую (или массив JSON); object — JSON. Имена и типы из JSON тоже
-сверяются со схемой; null означает «не задан».
+запятую (или массив JSON); object — JSON. Имена и типы из JSON
+сверяются со схемой так же, как в MCP (массив можно передать и строкой
+через запятую); null означает «не задан».
 
   evo tools call list_zones
   evo tools call vm_get --arg name=web
@@ -373,7 +375,8 @@ Arguments come from --args-file, then --args-json, then --arg (later ones
 win). --arg values are converted by the tool's schema: integer, number and
 boolean are parsed; an array is a comma-separated list (or a JSON array);
 an object is JSON. Names and types from the JSON sources are checked
-against the schema too; null means "not given".
+against the schema as MCP checks them (an array may also be a
+comma-separated string); null means "not given".
 
   evo tools call list_zones
   evo tools call vm_get --arg name=web
@@ -431,9 +434,8 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 	for _, p := range schemaParams(t) {
 		params[p.Name] = p
 	}
-	// JSON arguments get the same checks as --arg: a misspelt name or a
-	// string where the schema wants a number would otherwise reach the
-	// handler, which silently takes its default.
+	// A misspelt name in JSON is refused as one of --arg is; its types are
+	// checked below, by the tool's own check.
 	for name, v := range args {
 		if name == "confirmed" {
 			continue // refused below with a hint
@@ -442,13 +444,8 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 			delete(args, name) // null: as if not given
 			continue
 		}
-		p, known := params[name]
-		if !known {
+		if _, known := params[name]; !known {
 			return nil, unknownArgError(t, name)
-		}
-		if err := checkArgType(p, v); err != nil {
-			return nil, clerrors.New(clerrors.CodeUsage, i18n.Tf("argument %s: %v", "аргумент %s: %v", name, err),
-				describeHint(t.Name))
 		}
 	}
 	for _, pair := range pairs {
@@ -470,6 +467,21 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 		return nil, clerrors.New(clerrors.CodeUsage, i18n.T("confirmed is not an argument here", "confirmed здесь не аргумент"),
 			i18n.T("Confirm with --yes or at the prompt; --dry-run shows the preview only.",
 				"Подтвердите флагом --yes или ответом на вопрос; --dry-run покажет только превью."))
+	}
+	// The types of the arguments and the enum values: the check every call
+	// of the tool makes, MCP included (tools.CheckArgs, spec.md REQ-8) — a
+	// string where the schema wants a number would otherwise reach the
+	// handler, which silently takes its default; a string for an array is
+	// the form MCP takes ("80,443").
+	if err := tools.CheckArgs(t, args); err != nil {
+		return nil, err
+	}
+	for name, v := range args {
+		if items, ok := v.([]any); ok {
+			if err := checkItems(params[name], items); err != nil {
+				return nil, clerrors.New(clerrors.CodeUsage, i18n.Tf("argument %s: %v", "аргумент %s: %v", name, err), describeHint(t.Name))
+			}
+		}
 	}
 	var missing []string
 	for _, p := range schemaParams(t) {
@@ -544,7 +556,7 @@ func coerceArg(p param, value string) (any, error) {
 			if err := json.Unmarshal([]byte(value), &a); err != nil {
 				return nil, fmt.Errorf(i18n.T("not a JSON array: %v", "не массив JSON: %v"), err)
 			}
-			if err := checkArgType(p, a); err != nil {
+			if err := checkItems(p, a); err != nil {
 				return nil, err
 			}
 			return a, nil
@@ -580,51 +592,41 @@ func coerceArg(p param, value string) (any, error) {
 	return value, nil
 }
 
-// checkArgType checks a decoded JSON value against the schema type of p.
-// An untyped parameter takes anything.
-func checkArgType(p param, v any) error {
-	ok := true
-	switch p.Type {
-	case "integer":
-		f, isNum := v.(float64)
-		ok = isNum && f == math.Trunc(f) && !math.IsInf(f, 0)
-	case "number":
-		f, isNum := v.(float64)
-		ok = isNum && !math.IsNaN(f) && !math.IsInf(f, 0)
-	case "boolean":
-		_, ok = v.(bool)
-	case "string":
-		_, ok = v.(string)
-	case "object":
-		_, ok = v.(map[string]any)
-	case "array":
-		a, isArr := v.([]any)
-		if !isArr {
-			ok = false
-			break
-		}
-		for i, item := range a {
-			if err := checkArgType(param{Type: p.ItemType}, item); err != nil {
-				return fmt.Errorf(i18n.T("item %d: %v", "элемент %d: %v"), i, err)
-			}
-		}
+// checkItems checks the items of a JSON array against the item type of p
+// by the rule of the tool's own check for a scalar (tools.CheckArgs):
+// ports=[80,"x"] is refused as ports=80,x is, and so is ports [80,"x"] in
+// --args-json, as the CLI always did. It is the one check the CLI makes
+// beyond the tool's: MCP leaves the items to the handler (docs/mcp.md:
+// "arrays are not checked by type"), which refuses a port "x" but drops a
+// domain 1 of cert_issue_le dns_names silently. Checking the items in
+// tools.CheckArgs would refuse over MCP what MCP takes in 1.1 — a question
+// to the owner (report of PR 6, spec.md REQ-8); until then the CLI keeps
+// its check, and nothing the CLI took is refused.
+func checkItems(p param, items []any) error {
+	if p.ItemType == "" {
+		return nil
 	}
-	if !ok {
-		b, _ := json.Marshal(v)
-		return fmt.Errorf(i18n.T("want %s, got %s", "нужен %s, передано %s"), article(p.Type), summary(string(b), 40))
+	for i, v := range items {
+		name := fmt.Sprintf("%s[%d]", p.Name, i)
+		// The tool's check takes any array or object (above); an item of
+		// an array of objects is an object, as the CLI always required.
+		_, isObject := v.(map[string]any)
+		_, isArray := v.([]any)
+		if p.ItemType == "object" && !isObject || p.ItemType == "array" && !isArray {
+			b, _ := json.Marshal(v)
+			return fmt.Errorf(i18n.T("%s must be a JSON %s, got %s", "%s должен быть JSON %s, получено: %s"), name, p.ItemType, summary(string(b), 40))
+		}
+		item := tools.Tool{Name: p.Name, InputSchema: map[string]any{"type": "object",
+			"properties": map[string]any{name: map[string]any{"type": p.ItemType}}}}
+		if err := tools.CheckArgs(item, map[string]any{name: v}); err != nil {
+			var ce *clerrors.CLIError
+			if stderrors.As(err, &ce) {
+				return stderrors.New(ce.Message)
+			}
+			return err
+		}
 	}
 	return nil
-}
-
-func article(typ string) string {
-	if i18n.Lang() == i18n.RU {
-		return typ
-	}
-	switch typ {
-	case "integer", "array", "object":
-		return "an " + typ
-	}
-	return "a " + typ
 }
 
 // applyWait sets wait_seconds to the longest wait the tool allows, unless

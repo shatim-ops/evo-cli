@@ -15,77 +15,94 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// checkedArgs refuses, before the handler, an argument the tool's schema
-// does not declare, a scalar of another JSON type than the schema's (a
-// handler read it as absent: confirmed:"true" made a preview, size_gb:"20"
-// answered "size_gb is required" — release audit, R-09, A-013), and an
-// enum value outside the schema's list (matched
-// case-insensitively and passed on in the schema's spelling). Unknown
-// arguments were silently ignored: destroy {"vm": "orphan-1"} — the name
-// disk_attach uses — fell through to "delete the current deployment"
-// (release QA, D-mcp 4); dns_zone_create {"type": "Private"} made a public
-// zone (D-mcp 7). confirmed is taken by every tool.
+// checkedArgs refuses, before the handler, the arguments CheckArgs refuses.
 func checkedArgs(name string, schema map[string]any, next Handler) Handler {
-	props, _ := schema["properties"].(map[string]any)
 	return func(ctx context.Context, args map[string]any) (string, bool) {
-		var unknown []string
-		for k := range args {
-			// confirmed on a read-only tool is harmless: agents send it
-			// after an approval they got for another call.
-			if _, ok := props[k]; !ok && k != "confirmed" {
-				unknown = append(unknown, k)
-			}
-		}
-		if len(unknown) > 0 {
-			sort.Strings(unknown)
-			known := make([]string, 0, len(props))
-			for k := range props {
-				known = append(known, k)
-			}
-			sort.Strings(known)
-			hint := i18n.Tf("%s takes: no arguments.", "%s не принимает аргументов.", name)
-			if len(known) > 0 {
-				hint = i18n.Tf("%s takes: %s.", "Аргументы %s: %s.", name, strings.Join(known, ", "))
-			}
-			return errResult(clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("unknown argument(s) %s", "неизвестные аргументы: %s", strings.Join(unknown, ", ")),
-				hint)), true
-		}
-		for k, v := range args {
-			p, _ := props[k].(map[string]any)
-			typ, _ := p["type"].(string)
-			if v != nil && !scalarOfType(typ, v) {
-				return errResult(clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("%s must be %s, got %s", "%s должен быть %s, получено: %s", k, typeName(typ), describeValue(v)),
-					i18n.Tf("Pass %s as a JSON %s (see the tool's inputSchema).",
-						"Передайте %s как JSON %s (см. inputSchema инструмента).", k, typ))), true
-			}
-		}
-		for k, v := range args {
-			p, _ := props[k].(map[string]any)
-			enum, _ := p["enum"].([]any)
-			s, isStr := v.(string)
-			if len(enum) == 0 || !isStr || s == "" {
-				continue
-			}
-			canon := ""
-			var allowed []string
-			for _, e := range enum {
-				es, _ := e.(string)
-				allowed = append(allowed, es)
-				if strings.EqualFold(es, s) {
-					canon = es
-				}
-			}
-			if canon == "" {
-				return errResult(clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("%s %q is not one of %s", "%s %q не входит в список: %s", k, s, strings.Join(allowed, ", ")),
-					i18n.Tf("Pass %s as one of: %s.", "Допустимые значения %s: %s.", k, strings.Join(allowed, ", ")))), true
-			}
-			args[k] = canon
+		if err := checkArgs(name, schema, args); err != nil {
+			return errResult(err), true
 		}
 		return next(ctx, args)
 	}
+}
+
+// CheckArgs checks args against the schema of tool t, as every call of the
+// tool does before its handler: the one check of the arguments of a tool,
+// for MCP, 'evo tools call' and the commands of the CLI alike (spec.md
+// REQ-8). It refuses an argument the schema does not declare, a scalar of
+// another JSON type than the schema's (a handler read it as absent:
+// confirmed:"true" made a preview, size_gb:"20" answered "size_gb is
+// required" — release audit, R-09, A-013), and an enum value outside the
+// schema's list (matched case-insensitively; args gets it in the schema's
+// spelling). Unknown arguments were silently ignored: destroy
+// {"vm": "orphan-1"} — the name disk_attach uses — fell through to "delete
+// the current deployment" (release QA, D-mcp 4); dns_zone_create
+// {"type": "Private"} made a public zone (D-mcp 7). confirmed is taken by
+// every tool. Arrays and objects are not checked by type (docs/mcp.md): a
+// handler takes them in more than one form ("80,443" for ports). The error
+// is USAGE, naming the argument.
+func CheckArgs(t Tool, args map[string]any) error {
+	return checkArgs(t.Name, t.InputSchema, args)
+}
+
+func checkArgs(name string, schema map[string]any, args map[string]any) error {
+	props, _ := schema["properties"].(map[string]any)
+	var unknown []string
+	for k := range args {
+		// confirmed on a read-only tool is harmless: agents send it
+		// after an approval they got for another call.
+		if _, ok := props[k]; !ok && k != "confirmed" {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		known := make([]string, 0, len(props))
+		for k := range props {
+			known = append(known, k)
+		}
+		sort.Strings(known)
+		hint := i18n.Tf("%s takes: no arguments.", "%s не принимает аргументов.", name)
+		if len(known) > 0 {
+			hint = i18n.Tf("%s takes: %s.", "Аргументы %s: %s.", name, strings.Join(known, ", "))
+		}
+		return clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("unknown argument(s) %s", "неизвестные аргументы: %s", strings.Join(unknown, ", ")),
+			hint)
+	}
+	for k, v := range args {
+		p, _ := props[k].(map[string]any)
+		typ, _ := p["type"].(string)
+		if v != nil && !scalarOfType(typ, v) {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("%s must be %s, got %s", "%s должен быть %s, получено: %s", k, typeName(typ), describeValue(v)),
+				i18n.Tf("Pass %s as a JSON %s (see the tool's inputSchema).",
+					"Передайте %s как JSON %s (см. inputSchema инструмента).", k, typ))
+		}
+	}
+	for k, v := range args {
+		p, _ := props[k].(map[string]any)
+		enum, _ := p["enum"].([]any)
+		s, isStr := v.(string)
+		if len(enum) == 0 || !isStr || s == "" {
+			continue
+		}
+		canon := ""
+		var allowed []string
+		for _, e := range enum {
+			es, _ := e.(string)
+			allowed = append(allowed, es)
+			if strings.EqualFold(es, s) {
+				canon = es
+			}
+		}
+		if canon == "" {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("%s %q is not one of %s", "%s %q не входит в список: %s", k, s, strings.Join(allowed, ", ")),
+				i18n.Tf("Pass %s as one of: %s.", "Допустимые значения %s: %s.", k, strings.Join(allowed, ", ")))
+		}
+		args[k] = canon
+	}
+	return nil
 }
 
 // scalarOfType reports whether v fits a scalar schema type: boolean,

@@ -1073,5 +1073,16 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		out["deleting"] = deleting
 		out["note"] = "Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names."
 	}
+	if len(failed) > 0 {
+		// Every error answer has a reason (docs/mcp.md «Ошибки»). This one
+		// is the reason the CLI has given the answer since it had none
+		// (toolError in internal/cli): NOT_FOUND when it says something
+		// was not found, else API_ERROR — the same code and exit code
+		// (spec.md REQ-8, TestParity_ErrorReasonEqualsTool).
+		out["reason"] = clierrors.CodeAPIError
+		if low := strings.ToLower(toJSON(out)); strings.Contains(low, "not found") || strings.Contains(low, "не найден") {
+			out["reason"] = clierrors.CodeNotFound
+		}
+	}
 	return toJSON(out), len(failed) > 0
 }
