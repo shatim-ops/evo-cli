@@ -69,7 +69,7 @@ IAM не принял пару Key ID / Key Secret:
 ресурсами проекта (`vm list`, `deploy`, `k8s list`, `pg create`, плагины
 Kubernetes и др.), отказывают ещё до запроса в облако; `evo doctor` в этом
 случае тоже выходит с кодом 2. Каталоги работают и без проекта:
-`evo list-zones`, `evo image list`, `evo vm flavors`.
+`evo vm zones`, `evo image list`, `evo vm flavors`.
 
 UUID проекта — в консоли Cloud.ru, в сведениях о проекте
 ([auth.md → UUID проекта](auth.md#4-uuid-проекта)). Задать его можно тремя
@@ -132,7 +132,7 @@ ID проекта — только UUID (вида `00000000-0000-4000-8000-00000
 
 ```sh
 # ID и имена зон
-evo list-zones
+evo vm zones
 # или region: в .evo.yaml
 evo deploy --region <UUID ru.AZ-2>
 ```
@@ -315,7 +315,7 @@ VPN часто его закрывают — запустите с другой 
    команды перезагрузки в evo нет, и сам evo ВМ не перезагружает и не
    пересоздаёт.
 3. `evo destroy` и `deploy` заново, при повторе — в другой зоне
-   (`evo deploy --region …`, список — `evo list-zones`): на практике так
+   (`evo deploy --region …`, список — `evo vm zones`): на практике так
    вели себя ВМ одной зоны, а в соседней тот же сценарий проходил целиком.
    Если повторяется в одной зоне — проверьте DNS подсети в консоли Cloud.ru.
 

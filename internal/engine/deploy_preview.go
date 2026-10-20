@@ -8,11 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sizer"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -110,5 +112,62 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 	if err := e.completePreview(ctx, p, pick, false); err != nil {
 		return nil, err
 	}
+	e.previewNetwork(ctx, p)
 	return p, nil
+}
+
+// previewNetwork adds to a deploy preview the subnet and the security group
+// the new VM is plugged into, and the id of its disk type: what the preview
+// of evo deploy named before the command called its tool (v1.1). Reads
+// only, best effort and bounded: a choice that fails here fails deploy at
+// its own step, with the warnings deploy prints there (not here: the
+// preview has no output of its own).
+func (e *Engine) previewNetwork(ctx context.Context, p *CreatePreview) {
+	if p.VM == nil || p.ProjectID == "" || p.VM.Zone.ID == "" || e.Auth == nil || e.Cloud == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, networkCheckTimeout)
+	defer cancel()
+	tok, err := e.Auth.Token(ctx)
+	if err != nil {
+		return
+	}
+	e.Cloud.SetToken(tok.Value)
+	quiet := *e
+	quiet.Printer = output.NewWithWriter(io.Discard, output.ModeJSON, false)
+	if n, err := quiet.resolveNetwork(ctx, p.ProjectID, p.VM.Zone.ID); err == nil {
+		p.SubnetID, p.SubnetName = n.SubnetID, n.SubnetName
+		p.SecurityGroup = &NetworkRef{ID: n.SecurityGroupID, Name: n.SecurityGroup}
+	}
+	if dt, err := quiet.resolveDiskType(ctx, p.ProjectID, defaultDiskTypeName); err == nil {
+		p.VM.Disk.TypeID = dt.ID
+	}
+}
+
+// DeployDetailsV11 are the details 'evo deploy --dry-run --json' gave for a
+// new VM in v1.1, made from the deploy tool's preview p: the deploy tool
+// keeps them in its answer beside preview, so the command's details — the
+// tool's answer — still have every key they had. Deprecated, removed in
+// v2.0: use preview (preview.cost, preview.vm, …).
+func (e *Engine) DeployDetailsV11(p *CreatePreview) map[string]any {
+	var tcp, udp []int
+	if project, err := compose.Parse(e.Config.ComposeFile); err == nil {
+		tcp, udp = project.Ports, project.UDPPorts
+	}
+	sg := map[string]string{"id": "", "name": ""}
+	if p.SecurityGroup != nil {
+		sg = map[string]string{"id": p.SecurityGroup.ID, "name": p.SecurityGroup.Name}
+	}
+	return map[string]any{
+		"project_id":     p.ProjectID,
+		"project_from":   p.ProjectFrom,
+		"vm":             p.VM,
+		"floating_ip":    true,
+		"subnet_id":      p.SubnetID,
+		"security_group": sg,
+		"open_ports":     tcp,
+		"open_udp_ports": udp,
+		"cost":           p.Cost,
+		"cost_note":      p.CostNote,
+	}
 }

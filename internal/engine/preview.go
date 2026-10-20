@@ -225,18 +225,37 @@ func apiCostLine(cost pricing.Estimate) string {
 	return line + ", " + costNoteFor(cost)
 }
 
-// redeployPreview describes an update of an already running VM.
-func redeployPreview(rec *state.DeploymentRecord, project, from string) confirm.Preview {
+// redeployCreates are the billable resources an update of rec makes.
+func redeployCreates(rec *state.DeploymentRecord) []string {
+	if needsFloatingIP(rec) {
+		return []string{"floating_ip"}
+	}
+	return []string{}
+}
+
+// redeployPreview describes an update of an already running VM;
+// composeChanged: the compose file is not the deployed one — else the
+// update is --force, or (force false) the retry of a deploy that did not
+// finish.
+func redeployPreview(rec *state.DeploymentRecord, project, from string, composeChanged, force bool) confirm.Preview {
 	lines := []string{
 		previewLabel("project", "проект") + projectText(project, from),
 		i18n.T("upload the compose file to the existing VM and run 'docker compose up -d'",
 			"загрузить compose-файл на существующую ВМ и выполнить 'docker compose up -d'"),
 	}
-	creates := []string{}
-	if needsFloatingIP(rec) {
+	switch {
+	case composeChanged:
+	case force:
+		lines = append(lines, i18n.T("the compose file has not changed: redeployed because of --force",
+			"compose-файл не изменился: развёртывание заново из-за --force"))
+	default:
+		lines = append(lines, i18n.Tf("the compose file has not changed: the last deploy did not finish (%s), this one retries it",
+			"compose-файл не изменился: прошлый deploy не завершился (%s), этот повторяет его", rec.Status))
+	}
+	creates := redeployCreates(rec)
+	if len(creates) > 0 {
 		lines = append(lines, i18n.T("the VM has no public IP: a floating IP is created and attached to it (billed); destroy releases it",
 			"у ВМ нет внешнего IP: будет создан и привязан floating IP (тарифицируется); destroy его освободит"))
-		creates = append(creates, "floating_ip")
 	} else {
 		lines = append(lines, i18n.T("no new resources are created", "новые ресурсы не создаются"))
 	}
@@ -254,7 +273,8 @@ func redeployPreview(rec *state.DeploymentRecord, project, from string) confirm.
 		Action:  "deploy",
 		Summary: summary,
 		Lines:   lines,
-		Details: map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": creates},
+		Details: map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": creates,
+			"update": true, "compose_changed": composeChanged},
 	}
 }
 

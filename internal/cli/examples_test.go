@@ -39,7 +39,8 @@ var (
 	parityTrees = map[string]bool{"dns": true, "cert": true, "lb": true, "tg": true, "snat": true,
 		"kafka": true, "redis": true, "ar": true, "ca": true,
 		"billing": true, "audit": true, "org": true, "iam": true, "metrics": true, "stack": true}
-	parityVerbs = map[string]bool{"image create": true, "image delete": true, "vpc open-ports": true}
+	parityVerbs = map[string]bool{"image create": true, "image delete": true, "vpc open-ports": true,
+		"deploy plan": true, "deploy apply": true, "deploy list": true}
 )
 
 // Every command the parity plan added has an example in its --help

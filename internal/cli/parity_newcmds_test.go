@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -92,6 +93,9 @@ type parityCommand struct {
 	args map[string]any
 	tree []string
 	call []string
+	// engine: tree is an engine command (engineCommands), which shows the
+	// engine's work and asks at the engine's gate.
+	engine bool
 }
 
 func newParityCommands(t *testing.T) []parityCommand {
@@ -124,8 +128,8 @@ func newParityCommands(t *testing.T) []parityCommand {
 
 // parityCommandOf is command c of tree g with the arguments args: as the
 // tree takes them (positionals, then flags in key order) and as 'evo tools
-// call' does (--arg each). A tool without a command (tools.CLIPending) has
-// only the call: g and c are zero then.
+// call' does (--arg each). With g and c zero (a tool without a command of
+// the trees) there is only the call.
 func parityCommandOf(t *testing.T, g treeGroup, c treeCmd, tl tools.Tool, args map[string]any) parityCommand {
 	t.Helper()
 	pc := parityCommand{path: strings.TrimSpace(g.Name + " " + c.Verb), tool: tl, args: args}
@@ -266,10 +270,166 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 		}
 		ok++
 	}
-	t.Logf("new commands with the JSON of their tool: %d", ok)
+	engine := 0
+	for _, c := range engineParity {
+		extra := []string{"--json"}
+		if c.yes {
+			extra = append(extra, "--yes")
+		}
+		line := append(append([]string{}, c.line...), extra...)
+		newProcess()
+		cmdCode, cmdOut, cmdErr := runCLI(t, "", line...)
+		newProcess()
+		callCode, callOut, callErr := runCLI(t, "", append([]string{"tools", "call", c.tool}, extra...)...)
+		why := ""
+		switch {
+		case cmdCode != callCode:
+			why = fmt.Sprintf("exit %d ≠ %d", cmdCode, callCode)
+		case jsonImpure(cmdOut, cmdErr) != "":
+			why = jsonImpure(cmdOut, cmdErr)
+		case c.compat != "":
+			why = c.check(cmdOut, cmdErr, callOut)
+		case cmdOut != callOut:
+			why = "stdout differs"
+		default:
+			why = sameEngineError(c.tool, cmdErr, callErr)
+		}
+		if why != "" {
+			bad = append(bad, fmt.Sprintf("evo %s ≠ evo tools call %s: %s\n  cmd: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
+				strings.Join(line, " "), c.tool, why, cmdCode, clipLine(cmdOut), clipLine(cmdErr), callCode, clipLine(callOut), clipLine(callErr)))
+			continue
+		}
+		if c.compat != "" {
+			t.Logf("evo %s: %s", strings.Join(c.line, " "), c.compat)
+		}
+		engine++
+	}
+	if engine != len(engineParity) {
+		t.Errorf("engine commands with the JSON of their tool: %d of %d", engine, len(engineParity))
+	}
+	tested := map[string]bool{}
+	for _, c := range engineParity {
+		tested["evo "+strings.Join(c.line, " ")] = true
+	}
+	for _, ec := range engineCommands {
+		if !tested[ec.Path] {
+			t.Errorf("%s: not in engineParity", ec.Path)
+		}
+	}
+	t.Logf("new commands with the JSON of their tool: %d; engine commands: %d", ok, engine)
 	if len(bad) > 0 {
 		t.Fatal(strings.Join(bad, "\n"))
 	}
+}
+
+// engineParity are the engine commands (engineCommands, spec REQ-4) and
+// evo vm zones, the command of list_zones, against 'evo tools call' of their
+// tools on the empty cloud: the same exit code, stdout and error (see
+// sameEngineError). compat says why a command's --json is not the tool's
+// answer as is, and check what it is instead: the forms v1.0 gave, kept
+// until v2.0 (spec.md §4) or until PR 6 (REQ-8) brings the two together.
+var engineParity = []struct {
+	line   []string
+	tool   string
+	yes    bool
+	compat string
+	check  func(cmdOut, cmdErr, callOut string) string
+}{
+	{line: []string{"deploy"}, tool: "deploy", yes: true},
+	{line: []string{"status"}, tool: "status"},
+	{line: []string{"logs"}, tool: "logs"},
+	{line: []string{"destroy"}, tool: "destroy", yes: true,
+		compat: "без развёртывания печатает status none, как с v1.0, а инструмент — status ok с log; сводится в PR 6 (REQ-8)",
+		check: func(cmdOut, _, callOut string) string {
+			var cmd, call map[string]any
+			_ = json.Unmarshal([]byte(cmdOut), &cmd)
+			_ = json.Unmarshal([]byte(callOut), &call)
+			if cmd["status"] != "none" || call["status"] != "ok" || !strings.Contains(fmt.Sprint(call["log"]), fmt.Sprint(cmd["message"])) {
+				return "not the answers of no deployment"
+			}
+			return ""
+		}},
+	{line: []string{"vm", "zones"}, tool: "list_zones"},
+	{line: []string{"list-zones"}, tool: "list_zones",
+		compat: "скрытый алиас evo vm zones: --json — массив zones из ответа инструмента, до v2.0 (spec.md §4)",
+		check: func(cmdOut, cmdErr, callOut string) string {
+			return arrayOfAnswer(cmdOut, cmdErr, callOut, "zones", "evo list-zones is deprecated")
+		}},
+	{line: []string{"project", "list"}, tool: "org_projects"},
+	{line: []string{"list-images"}, tool: "list_images",
+		compat: "устаревшая команда list_images: --json — массив images из ответа инструмента, пустой — без вывода, до v2.0",
+		check: func(cmdOut, cmdErr, callOut string) string {
+			return arrayOfAnswer(cmdOut, cmdErr, callOut, "images", "evo list-images is deprecated")
+		}},
+}
+
+// arrayOfAnswer checks the --json of a legacy alias: the list key of the
+// tool's answer as a bare array (nothing when it is empty), and the warning
+// that the alias is deprecated.
+func arrayOfAnswer(cmdOut, cmdErr, callOut, key, warning string) string {
+	var call map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(callOut), &call); err != nil {
+		return "the tool's answer is not an object"
+	}
+	var list []any
+	_ = json.Unmarshal(call[key], &list)
+	if !strings.Contains(cmdErr, warning) {
+		return "no deprecation warning"
+	}
+	if strings.TrimSpace(cmdOut) == "" && len(list) == 0 && key == "images" {
+		return ""
+	}
+	var got []any
+	if err := json.Unmarshal([]byte(cmdOut), &got); err != nil || !reflect.DeepEqual(got, list) && !(len(got) == 0 && len(list) == 0) {
+		return "stdout is not the array " + key + " of the tool's answer"
+	}
+	return ""
+}
+
+// sameEngineError: the command and 'evo tools call' fail alike — the same
+// code, reason and hint — and the message of the command is the tool's
+// without "<tool>: ": an engine command prints the engine's error as it
+// did before it called its tool. The tool-level consent of 'evo tools call'
+// ({"status":"confirmed"} before the call) is not the engine command's: it
+// asks at the engine's gate, which an error before it never reaches.
+func sameEngineError(tool, cmdErr, callErr string) string {
+	last := func(stderr string) (e struct {
+		Code    int    `json:"code"`
+		Reason  string `json:"reason"`
+		Message string `json:"message"`
+		Hint    string `json:"hint"`
+	}, ok bool) {
+		for _, line := range strings.Split(stderr, "\n") {
+			var env struct {
+				Error *struct {
+					Code    int    `json:"code"`
+					Reason  string `json:"reason"`
+					Message string `json:"message"`
+					Hint    string `json:"hint"`
+				} `json:"error"`
+			}
+			if json.Unmarshal([]byte(line), &env) == nil && env.Error != nil {
+				e, ok = *env.Error, true
+			}
+		}
+		return e, ok
+	}
+	ce, cok := last(cmdErr)
+	te, tok := last(callErr)
+	switch {
+	case cok != tok:
+		return "one of them failed"
+	case !cok:
+		if cmdErr != callErr {
+			return "stderr differs"
+		}
+		return ""
+	case ce.Code != te.Code || ce.Reason != te.Reason || ce.Hint != te.Hint:
+		return fmt.Sprintf("error %d %s %q ≠ %d %s %q", ce.Code, ce.Reason, ce.Hint, te.Code, te.Reason, te.Hint)
+	case tool+": "+ce.Message != te.Message:
+		return fmt.Sprintf("message %q ≠ %q", ce.Message, te.Message)
+	}
+	return ""
 }
 
 // dryRunDetails is preview.details of a dry_run envelope.

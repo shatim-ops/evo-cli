@@ -43,6 +43,13 @@ var commandExamples = map[string]string{
 	"evo mcp": `  evo mcp
   claude mcp add --transport stdio --scope project evo -- evo mcp
   MCP_BEARER_TOKEN="$(openssl rand -hex 32)" evo mcp --http :8080 --allow-project <UUID>`,
+	"evo deploy plan": `  evo deploy plan --product web --cpu 2 --ram-gb 4 --port 80
+  evo deploy plan --mode manual --flavor lowcost10-2-4 --zone ru.AZ-2 --image Ubuntu-24.04 --json
+  evo deploy plan --base-plan-id <plan-id> --disk-gb 20`,
+	"evo deploy apply": `  evo deploy apply <plan-id> --dry-run
+  evo deploy apply <plan-id> --yes`,
+	"evo deploy list": `  evo deploy list
+  evo deploy list --json | jq -r '.deployments[] | "\(.vm_ip)\t\(.status)"'`,
 	"evo vm list": `  evo vm list
   evo vm list --json | jq -r '.vms[] | "\(.name)\t\(.state)"'
   evo --project-id <UUID> vm list`,
@@ -217,6 +224,8 @@ var commandExamples = map[string]string{
 	"evo audit events": `  evo audit events
   evo audit events --since 30m
   evo audit events --since 1d --page-size 500 --json | jq -r '.next_page_token'`,
+	"evo org projects": `  evo org projects
+  evo org projects --json | jq -r '.projects[].id'`,
 	"evo org quotas": `  evo org quotas
   evo org quotas --project-id <UUID> --json`,
 	"evo iam service-accounts": `  evo iam service-accounts

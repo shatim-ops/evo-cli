@@ -47,13 +47,17 @@ type CreatePreview struct {
 	Name     string `json:"name,omitempty"`
 	// ProjectFrom is where the project comes from: profile, project, env,
 	// flag (the configuration's origins) or argument (the call's own).
-	ProjectID   string               `json:"project_id,omitempty"`
-	ProjectFrom string               `json:"project_from,omitempty"`
-	Zone        *deployplan.RefSpec  `json:"zone,omitempty"` // of a resource other than a VM
-	VM          *deployplan.VMSpec   `json:"vm,omitempty"`
-	PublicIP    *bool                `json:"public_ip,omitempty"`
-	SubnetID    string               `json:"subnet_id,omitempty"`
-	Disk        *deployplan.DiskSpec `json:"disk,omitempty"` // of disk and disk_resize
+	ProjectID   string              `json:"project_id,omitempty"`
+	ProjectFrom string              `json:"project_from,omitempty"`
+	Zone        *deployplan.RefSpec `json:"zone,omitempty"` // of a resource other than a VM
+	VM          *deployplan.VMSpec  `json:"vm,omitempty"`
+	PublicIP    *bool               `json:"public_ip,omitempty"`
+	SubnetID    string              `json:"subnet_id,omitempty"`
+	// SubnetName and SecurityGroup: the network deploy plugs its new VM
+	// into (DeployPreview), as the preview of evo deploy named it.
+	SubnetName    string               `json:"subnet_name,omitempty"`
+	SecurityGroup *NetworkRef          `json:"security_group,omitempty"`
+	Disk          *deployplan.DiskSpec `json:"disk,omitempty"` // of disk and disk_resize
 	// Params are the other key parameters, in the order they are shown.
 	Params []PreviewParam `json:"params,omitempty"`
 	// Missing names the required values that are not set (project_id,
@@ -66,6 +70,12 @@ type CreatePreview struct {
 	// NetworkCheck: what the preview found wrong with the VM's subnet and
 	// security group (CompletePreview).
 	NetworkCheck *NetworkCheck `json:"network_check,omitempty"`
+}
+
+// NetworkRef is a security group of a preview, by id and name.
+type NetworkRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // PreviewParam is one key parameter of a CreatePreview.
@@ -391,7 +401,12 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 		if vm.Disk.SizeGB > 0 {
 			lines = append(lines, bootDiskLine(vm.Disk.SizeGB))
 		}
-		if p.SubnetID != "" {
+		switch {
+		case p.SecurityGroup != nil:
+			// deploy: the network it resolved, as its preview said it.
+			lines = append(lines, previewLabel("network", "сеть")+i18n.Tf("subnet %s, security group %s", "подсеть %s, группа безопасности %s",
+				firstNonEmpty(p.SubnetName, p.SubnetID), firstNonEmpty(p.SecurityGroup.Name, p.SecurityGroup.ID)))
+		case p.SubnetID != "":
 			lines = append(lines, previewLabel("network", "сеть")+i18n.Tf("subnet %s", "подсеть %s", p.SubnetID))
 		}
 		if p.PublicIP != nil {

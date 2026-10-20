@@ -39,6 +39,15 @@ func (parityCloud) ListFloatingIPs(context.Context, string) ([]*provision.Floati
 	return nil, nil
 }
 
+// GetImage: the image of previewCloud with the login and key fields evo
+// deploy fills before it asks (it refuses an image without a login).
+func (parityCloud) GetImage(_ context.Context, id string) (*provision.ImageDetail, error) {
+	return &provision.ImageDetail{ID: id, Name: "Ubuntu 22.04", MinDisk: 20, MetadataFields: []provision.ImageMetadataField{
+		{Name: "name", FieldType: "linux_login", DefaultValue: "user1", MandatoryGroup: "name"},
+		{Name: "public_key", FieldType: "public_key", MandatoryGroup: "authentication"},
+	}}, nil
+}
+
 // TestContract_PreviewParity: the preview of every tool that asks for
 // consent — Mutating, and the two that reveal a secret (tools.IsSensitive)
 // — is one preview on the four surfaces (spec REQ-6): its command with
@@ -46,14 +55,17 @@ func (parityCloud) ListFloatingIPs(context.Context, string) ([]*provision.Floati
 // --json, MCP over stdio and MCP over HTTP. The cases come from the
 // registry; the arguments of each are parityArgs, and a gated tool without
 // an entry there fails the test, as does one whose preview any surface
-// refuses. A tool without a command yet (tools.CLIPending) has the three
-// other surfaces. The one difference allowed is H7 of the closed list of
+// refuses. The one difference allowed is H7 of the closed list of
 // the HTTP mode (docs/mcp.md): credential fields masked, and named in
 // "redacted". deploy is checked in both states of the directory: no
 // deployment (the preview prices a new VM) and a recorded one (it updates
-// that VM). The command and 'evo tools call' print the same envelope, except
-// for a preview the CLI shows in the words of deploy (a tool's "preview"
-// object: summary and lines differ, the details do not).
+// that VM); destroy both by vm_id (evo vm delete) and of the recorded
+// deployment (evo destroy). The engine commands (evo deploy, evo destroy,
+// engineCommands) ask at the engine's gate, after its checks, with the
+// tool's answer as the details (spec REQ-4). The command and 'evo tools
+// call' print the same envelope, except for a preview the CLI shows in its
+// own words (a tool's "preview" object, or the engine's lines of an engine
+// command: summary and lines differ, the details do not).
 func TestContract_PreviewParity(t *testing.T) {
 	world := withParityWorld(t)
 	fakeKubeBinaries(t)
@@ -83,6 +95,16 @@ func TestContract_PreviewParity(t *testing.T) {
 		cases = append(cases, previewCase{name: "deploy (deployment recorded)", tool: dep,
 			args: parityArgs["deploy"], setup: recordDeployment})
 	}
+	if d, ok := reg.Lookup("destroy"); ok {
+		cases = append(cases, previewCase{name: "destroy (deployment recorded)", tool: d,
+			args: map[string]any{}, setup: recordDeployment})
+	}
+	// The command line of each case that is an engine command.
+	engineTree := map[string][]string{
+		"deploy":                        {"deploy"},
+		"deploy (deployment recorded)":  {"deploy"},
+		"destroy (deployment recorded)": {"destroy"},
+	}
 
 	counts := map[string]int{}
 	masked := map[string]string{} // case → the fields H7 masks over HTTP
@@ -101,6 +123,9 @@ func TestContract_PreviewParity(t *testing.T) {
 		}
 		cmd := commands[c.tool.Name]
 		pc := parityCommandOf(t, cmd.group, cmd.cmd, c.tool, args)
+		if line, ok := engineTree[c.name]; ok {
+			pc.tree, pc.engine = line, true
+		}
 		world.rt.takeWrites()
 		why := comparePreviews(t, c.name, pc, srv, masked)
 		teardown()
@@ -252,6 +277,16 @@ func comparePreviews(t *testing.T, name string, pc parityCommand, srv parityMCP,
 		}
 		got["cli"] = tree
 		_, structured := call["preview"]
+		if pc.engine {
+			// An engine command prints the engine's steps and warnings as
+			// it always did (JSON lines with --json) and shows the preview
+			// in the engine's words: the code and the details are the
+			// tool's.
+			if why := jsonImpure("", treeErr); why != "" {
+				lines = append(lines, fmt.Sprintf("%s: evo %s --dry-run --json: %s", name, strings.Join(pc.tree, " "), why))
+			}
+			treeErr, callErr, structured = "", "", true
+		}
 		if treeCode != callCode || treeErr != callErr || !structured && treeOut != callOut {
 			lines = append(lines, fmt.Sprintf("%s: evo %s ≠ evo %s (--dry-run --json):\n  tree: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
 				name, strings.Join(pc.tree, " "), strings.Join(pc.call, " "),

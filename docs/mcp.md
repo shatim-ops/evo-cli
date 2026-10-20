@@ -137,8 +137,21 @@ cannot be blank`), — оценка по встроенной таблице т�
 причиной в `price_api_error`. Превью `provision` и `deploy` для этого только
 читают облако — каталог flavor, зону, образ, цену — и ничего не создают; в
 `preview` — имена зоны, flavor и образа, как в превью `evo vm create`. Превью
-`deploy` с новой ВМ — только для каталога без развёртывания: если оно есть,
-`deploy` обновляет его ВМ, и `preview` нет.
+`deploy` с новой ВМ (`update: false`) — только для каталога без развёртывания:
+если оно есть, `deploy` обновляет его ВМ, и вместо `preview` в ответе
+`update: true`, `vm_id`, `vm_ip`, `compose_changed` и `creates` (floating IP —
+только для ВМ без внешнего адреса); обновление тоже требует `confirmed=true`,
+как и `evo deploy` в CLI. Если в каталоге работает тот же compose-файл и
+`force` не задан, делать нечего: превью, как в 1.1, просит `confirmed=true`
+и говорит `unchanged: true`, а вызов с `confirmed=true` ничего не меняет
+(`evo deploy` в этом случае ничего не спрашивает; свести их — значит
+сменить код выхода, это ждёт v2.0).
+
+Для новой ВМ в ответе остаются и прежние ключи превью `evo deploy` 1.1 —
+`cost`, `cost_note`, `vm`, `project_id`, `project_from`, `floating_ip`,
+`subnet_id`, `security_group`, `open_ports`, `open_udp_ports` (копии того,
+что в `preview`). **Устарели, удаляются в v2.0: используйте `preview`**
+(`preview.cost`, `preview.vm`, `preview.subnet_id`, `preview.security_group`).
 
 Поля `cost` (суммы в рублях):
 

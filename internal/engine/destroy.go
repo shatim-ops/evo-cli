@@ -24,6 +24,41 @@ import (
 type DestroyOptions struct {
 	Force  bool // skip confirmation prompt (--force / --yes)
 	DryRun bool // show what would be deleted and stop
+	// Gate, when set, asks for consent to the preview instead of
+	// confirm.Ask: the destroy tool sets it for 'evo destroy', which shows
+	// the preview with the tool's answer as its details (spec REQ-4).
+	Gate func(ctx context.Context, p confirm.Preview) (bool, error)
+}
+
+// gate asks for consent to p: through opts.Gate, else confirm.Ask.
+func (e *Engine) destroyGate(ctx context.Context, opts DestroyOptions, p confirm.Preview) (bool, error) {
+	if opts.Gate != nil {
+		return opts.Gate(ctx, p)
+	}
+	return confirm.Ask(ctx, p, e.confirmOptions(opts.Force, opts.DryRun, false))
+}
+
+// DestroyPreview is the preview destroy asks consent to, in the directory
+// as it is: the VM of the deployment (named after the cloud's lists), its
+// floating IP and port rules, or the port rules an earlier destroy left.
+// False when destroy would ask nothing: no deployment, or several (it
+// refuses then). Reads only; the destroy tool answers it without
+// confirmed=true.
+func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool) {
+	sf, err := state.Read(state.DefaultPath(e.StateDir))
+	if err != nil {
+		return confirm.Preview{}, false
+	}
+	pending := sgrules.Pending(sf)
+	active := sf.ActiveDeployment()
+	switch {
+	case active == nil && len(pending) > 0:
+		return pendingRulesPreview(sf, pending), true
+	case active == nil || len(sf.ActiveDeployments()) > 1:
+		return confirm.Preview{}, false
+	}
+	shown := e.withNames(ctx, *active, nil, true)
+	return destroyPreview(&shown, sf, pending, e.projectOf(active), e.projectFrom(active)), true
 }
 
 // Destroy tears down the active deployment.
@@ -71,7 +106,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
-	proceed, err := confirm.Ask(ctx, destroyPreview(&shown, stateFile, pending, e.projectOf(active), e.projectFrom(active)), e.confirmOptions(opts.Force, opts.DryRun, false))
+	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, e.projectOf(active), e.projectFrom(active)))
 	if err != nil {
 		return err
 	}
@@ -318,7 +353,7 @@ func (e *Engine) closeRules(ctx context.Context, sf *state.File, ids []string) s
 // finishPendingRules is destroy with no active deployment, only rules left
 // by an earlier destroy.
 func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, statePath string, sf *state.File, pending []string) error {
-	proceed, err := confirm.Ask(ctx, pendingRulesPreview(sf, pending), e.confirmOptions(opts.Force, opts.DryRun, false))
+	proceed, err := e.destroyGate(ctx, opts, pendingRulesPreview(sf, pending))
 	if err != nil {
 		return err
 	}

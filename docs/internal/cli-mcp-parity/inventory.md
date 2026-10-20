@@ -2,17 +2,17 @@
 
 <!-- Сгенерировано: go run ./docs/internal/cli-mcp-parity/inventory/main.go > docs/internal/cli-mcp-parity/inventory.md. Руками не править. -->
 
-Инструментов в реестре: 152 (изменяющих: 65). Команд дерева: 144. Команд в docs/commands.md: 195 (+3 скрытых).
+Инструментов в реестре: 152 (изменяющих: 65). Команд дерева: 152. Команд в docs/commands.md: 198 (+4 скрытых).
 
 ## 1. Инструменты по способу вызова из CLI
 
 | Способ | Инструментов | из них изменяющих |
 |---|---|---|
-| дерево | 144 | 63 |
-| движок | 5 | 1 |
-| tools call | 3 | 1 |
+| дерево | 148 | 64 |
+| движок | 4 | 1 |
+| tools call | 0 | 0 |
 
-«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда верхнего уровня со своим кодом cobra, которая делает то же через engine, а не через реестр; «tools call» — доступен из CLI только как `evo tools call <имя>`. «движок» и «tools call» вместе — временный список `tools.CLIPending` (8): тест TestParity_CommandsAndTools не даёт ему устареть, PR 3 и 5 плана его опустошают.
+«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `status`, `logs`, `list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>` (после PR 5 плана таких нет). Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в engineCommands.
 
 ### По группам
 
@@ -23,7 +23,7 @@
 | billing | 3 | 3 | 0 | 0 | 3/3 |
 | ca | 7 | 7 | 0 | 0 | 7/7 |
 | cert | 10 | 10 | 0 | 0 | 10/10 |
-| deploy | 8 | 2 | 3 | 3 | 8/8 |
+| deploy | 8 | 5 | 3 | 0 | 8/8 |
 | disk | 7 | 7 | 0 | 0 | 7/7 |
 | dns | 9 | 9 | 0 | 0 | 9/9 |
 | iam | 1 | 1 | 0 | 0 | 1/1 |
@@ -32,7 +32,7 @@
 | kafka | 7 | 7 | 0 | 0 | 7/7 |
 | monitoring | 2 | 2 | 0 | 0 | 2/2 |
 | nlb | 9 | 9 | 0 | 0 | 9/9 |
-| org | 2 | 1 | 1 | 0 | 2/2 |
+| org | 2 | 2 | 0 | 0 | 2/2 |
 | pg | 15 | 15 | 0 | 0 | 15/15 |
 | redis | 7 | 7 | 0 | 0 | 7/7 |
 | s3 | 7 | 7 | 0 | 0 | 7/7 |
@@ -72,14 +72,14 @@
 | cert | `cert_renew` | да | дерево | `evo cert renew` | да/да |
 | cert | `cert_usage` | нет | дерево | `evo cert usage` | да/да |
 | cert | `cert_versions` | нет | дерево | `evo cert versions` | да/да |
-| deploy | `deploy` | да | движок | `evo deploy` (свой код), иначе `evo tools call deploy` | да/да |
-| deploy | `deploy_apply` | да | tools call | `evo tools call deploy_apply` | да/да |
-| deploy | `deploy_plan` | нет | tools call | `evo tools call deploy_plan` | да/да |
-| deploy | `destroy` | да | дерево | `evo vm delete`, `evo destroy` (движок) | да/да |
-| deploy | `list` | нет | tools call | `evo tools call list` | да/да |
-| deploy | `logs` | нет | движок | `evo logs` (свой код), иначе `evo tools call logs` | да/да |
+| deploy | `deploy` | да | движок | `evo deploy` | да/да |
+| deploy | `deploy_apply` | да | дерево | `evo deploy apply` | да/да |
+| deploy | `deploy_plan` | нет | дерево | `evo deploy plan` | да/да |
+| deploy | `destroy` | да | дерево | `evo vm delete`, `evo destroy` (алиас) | да/да |
+| deploy | `list` | нет | дерево | `evo deploy list` | да/да |
+| deploy | `logs` | нет | движок | `evo logs` | да/да |
 | deploy | `open_ports` | да | дерево | `evo vpc open-ports` | да/да |
-| deploy | `status` | нет | движок | `evo status` (свой код), иначе `evo tools call status` | да/да |
+| deploy | `status` | нет | движок | `evo status` | да/да |
 | disk | `disk_attach` | да | дерево | `evo disk attach` | да/да |
 | disk | `disk_create` | да | дерево | `evo disk create` | да/да |
 | disk | `disk_delete` | да | дерево | `evo disk delete` | да/да |
@@ -101,7 +101,7 @@
 | image | `image_delete` | да | дерево | `evo image delete` | да/да |
 | image | `image_get` | нет | дерево | `evo image get` | да/да |
 | image | `image_list` | нет | дерево | `evo image list` | да/да |
-| image | `list_images` | нет | движок | `evo list-images` (свой код), иначе `evo tools call list_images` | да/да |
+| image | `list_images` | нет | движок | `evo list-images` | да/да |
 | image | `marketplace_list` | нет | дерево | `evo marketplace list` | да/да |
 | k8s | `k8s_add_addon` | да | дерево | `evo k8s add-addon` | да/да |
 | k8s | `k8s_add_nodepool` | да | дерево | `evo k8s add-nodepool` | да/да |
@@ -136,7 +136,7 @@
 | nlb | `tg_delete` | да | дерево | `evo tg delete` | да/да |
 | nlb | `tg_get` | нет | дерево | `evo tg get` | да/да |
 | nlb | `tg_list` | нет | дерево | `evo tg list` | да/да |
-| org | `org_projects` | нет | движок | `evo project list` (свой код), иначе `evo tools call org_projects` | да/да |
+| org | `org_projects` | нет | дерево | `evo org projects`, `evo project list` (алиас) | да/да |
 | org | `org_quotas` | нет | дерево | `evo org quotas` | да/да |
 | pg | `pg_backup_create` | да | дерево | `evo pg backup-create` | да/да |
 | pg | `pg_backups` | нет | дерево | `evo pg backups` | да/да |
@@ -181,7 +181,7 @@
 | stack | `stack_plan` | нет | дерево | `evo stack plan` | да/да |
 | stack | `stack_status` | нет | дерево | `evo stack status` | да/да |
 | vm | `list_flavors` | нет | дерево | `evo vm flavors` | да/да |
-| vm | `list_zones` | нет | дерево | `evo vm zones`, `evo list-zones` (движок) | да/да |
+| vm | `list_zones` | нет | дерево | `evo vm zones`, `evo list-zones` (алиас) | да/да |
 | vm | `provision` | да | дерево | `evo vm create` | да/да |
 | vm | `vm_get` | нет | дерево | `evo vm get` | да/да |
 | vm | `vm_list` | нет | дерево | `evo vm list` | да/да |
@@ -205,6 +205,10 @@
 
 | Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/Raw/Render |
 |---|---|---|---|---|---|---|
+| `evo deploy` | `deploy` | — | — | — | confirmed, project_id, region | — |
+| `evo list-images` | `list_images` | — | — | — | — | — |
+| `evo logs` | `logs` | — | — | — | — | — |
+| `evo status` | `status` | — | — | — | — | — |
 | `evo ar create` | `ar_create` | name | — | — | confirmed | — |
 | `evo ar delete` | `ar_delete` | id | — | — | confirmed | — |
 | `evo ar get` | `ar_get` | id | — | — | — | — |
@@ -231,6 +235,9 @@
 | `evo cert renew` | `cert_renew` | certificate_id | — | — | confirmed | — |
 | `evo cert usage` | `cert_usage` | id | — | — | — | — |
 | `evo cert versions` | `cert_versions` | certificate_id | — | — | — | — |
+| `evo deploy apply` | `deploy_apply` | plan_id | — | — | confirmed | — |
+| `evo deploy list` | `list` | — | — | — | — | — |
+| `evo deploy plan` | `deploy_plan` | — | image_metadata→--meta, ports→--port | — | — | pairs:image_metadata |
 | `evo disk attach` | `disk_attach` | disk_id | — | — | confirmed | — |
 | `evo disk create` | `disk_create` | name | — | — | confirmed | — |
 | `evo disk delete` | `disk_delete` | disk_id | — | — | confirmed | — |
@@ -282,6 +289,7 @@
 | `evo marketplace list` | `marketplace_list` | query? | — | — | — | render |
 | `evo metrics history` | `metrics_history` | match | — | — | — | — |
 | `evo metrics scrape` | `metrics_scrape` | match? | — | — | — | render |
+| `evo org projects` | `org_projects` | — | — | — | — | render |
 | `evo org quotas` | `org_quotas` | — | project_id→--project-id | — | — | — |
 | `evo pg backup-create` | `pg_backup_create` | cluster_id name | — | — | confirmed | — |
 | `evo pg backups` | `pg_backups` | cluster_id | — | — | — | — |
@@ -364,19 +372,15 @@
 | `evo configure delete` | local | — | удаляет профиль с диска |
 | `evo configure list` | local | — | читает профили с диска |
 | `evo crew` | hidden | — | титры |
-| `evo deploy` | engine | `deploy` | свой код cobra → engine.Deploy; инструмент deploy — тот же engine.Deploy с NonInteractive+Yes |
-| `evo destroy` | engine | `destroy` | свой код → engine.Destroy (запись state); инструмент destroy без аргументов — тот же путь; с vm_id|name — команда дерева vm delete |
+| `evo destroy` | alias | `destroy` | команда движка: destroy без vm_id и name — ВМ развёртывания каталога; с vm_id|name — команда дерева vm delete |
 | `evo doctor` | local | — | диагностика машины: файлы настроек, права, PATH; часть (связь с API, ключ) могла бы быть инструментом |
 | `evo init` | local | — | пишет .evo.yaml в текущий каталог после интерактивного выбора; инструмента нет |
-| `evo list-images` | hidden | `list_images` | устаревшая, скрытая; свой код engine.ListImages (общий каталог), инструмент list_images добавляет образы проекта |
-| `evo list-zones` | engine | `list_zones` | свой код → Cloud.ListAvailabilityZones; дубль evo vm zones с другим форматом --json |
-| `evo logs` | engine | `logs` | свой код → engine.Logs; у инструмента нет follow |
+| `evo list-zones` | hidden | `list_zones` | скрытый устаревший алиас evo vm zones: вызывает list_zones, --json — массив зон до v2.0 |
 | `evo mcp` | meta | — | сам сервер MCP |
 | `evo mcp healthcheck` | hidden | — | HEALTHCHECK Docker-образа |
 | `evo project` | group | — | группа |
-| `evo project list` | local | `org_projects` | свой код listProjects (configure.go) → Organization API; по смыслу = org_projects, формат ответа другой |
+| `evo project list` | alias | `org_projects` | алиас evo org projects: вызывает org_projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка |
 | `evo project use` | local | — | пишет проект в профиль на диске |
-| `evo status` | engine | `status` | свой код → engine.Status; инструмент status читает state и CheckCloud сам, без withNames |
 | `evo tools` | meta | — | группа |
 | `evo tools call` | meta | — | универсальный вызов любого инструмента |
 | `evo tools describe` | meta | — | описание инструмента (англ.) |
@@ -389,7 +393,7 @@
 
 Ожидаемый набор флагов выводится из схемы по правилам trees.go (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с docs/commands.md. Пусто — расхождений нет.
 
-Расхождений нет: флаги всех 144 команд деревьев выведены из схемы.
+Расхождений нет: флаги всех 148 команд деревьев выведены из схемы; флаги 4 команд движка сверяет со схемой TestParity_EngineCommands.
 
 ## 5. Русская справка
 
@@ -398,5 +402,5 @@
 | краткое описание инструмента (ShortRU) | 152 | 152 инструментов |
 | подробное описание инструмента (DescriptionRU) | 152 | 152 инструментов |
 | описания аргументов (ArgDescriptionsRU) | 444 | 444 аргументов |
-| из них флаги команд деревьев | 222 | 222 флагов |
+| из них флаги команд деревьев | 239 | 239 флагов |
 | описания инструментов в MCP | 0 | 152 (всегда английские) |

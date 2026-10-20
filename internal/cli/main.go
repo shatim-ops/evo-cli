@@ -258,18 +258,23 @@ func usageError(cmd *cobra.Command, err error) error {
 // group's help and exit 0, and a script takes the typo for success.
 func asGroup(cmd *cobra.Command) *cobra.Command {
 	cmd.SuggestionsMinimumDistance = 2 // cobra's default, set only for the root
-	cmd.Args = func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			return nil
-		}
-		msg := i18n.Tf("unknown command %q for %q", "неизвестная команда %q для %q", args[0], cmd.CommandPath())
-		if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
-			msg += i18n.T("; did you mean ", "; может быть, ") + strings.Join(s, ", ") + "?"
-		}
-		return stderrors.New(msg)
-	}
+	cmd.Args = unknownSubcommand
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
 	return cmd
+}
+
+// unknownSubcommand is the Args of a command with subcommands: an argument
+// that is none of them is "unknown command", with the subcommands it may
+// have meant.
+func unknownSubcommand(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	msg := i18n.Tf("unknown command %q for %q", "неизвестная команда %q для %q", args[0], cmd.CommandPath())
+	if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
+		msg += i18n.T("; did you mean ", "; может быть, ") + strings.Join(s, ", ") + "?"
+	}
+	return stderrors.New(msg)
 }
 
 func newRootCmd() *cobra.Command {
@@ -339,7 +344,7 @@ func newRootCmd() *cobra.Command {
 		newDoctorCmd(),
 		newToolsCmd(),
 	)
-	cmd.AddCommand(newTreeCmds()...)
+	cmd.AddCommand(newTreeCmds(cmd)...)
 	applyExamples(cmd)
 	groupCommands(cmd)
 	localizeHelp(cmd)
@@ -637,246 +642,6 @@ func handleError(p *output.Printer, err error) {
 	}
 }
 
-// --- deploy ---
-
-func newDeployCmd() *cobra.Command {
-	var (
-		composeFile    string
-		flavor         string
-		region         string
-		projectID      string
-		imageID        string
-		image          string
-		diskSize       int
-		force          bool
-		nonInteractive bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "deploy",
-		Args:  cobra.NoArgs,
-		Short: i18n.T("Deploy a docker-compose project to a Cloud.ru VM", "Развернуть docker-compose проект на ВМ Cloud.ru"),
-		Long: i18n.T(`Deploy a docker-compose project to a Cloud.ru VM.
-
-The first run creates a VM with a floating IP, opens the compose file's ports
-in the zone's security group, installs Docker, uploads the compose file and
-runs 'docker compose up -d'. Before the VM is created it shows a preview with
-the price (the Cloud.ru price calculation, else evo's estimate) and asks for
-confirmation: a question on the terminal, --yes to agree in advance,
---dry-run for the preview only. A repeated run updates the same VM if the
-compose file changed (with --force, even if it did not).`, `Развернуть docker-compose проект на ВМ Cloud.ru.
-
-Первый запуск создаёт ВМ с floating IP, открывает порты из compose-файла в
-группе безопасности зоны, ставит Docker, загружает compose-файл и выполняет
-'docker compose up -d'. Перед созданием ВМ показывается превью с ценой
-(расчёт Cloud.ru, иначе оценка evo) и запрашивается подтверждение: вопрос на
-терминале, --yes — согласие заранее, --dry-run — только превью. Повторный
-запуск обновляет ту же ВМ, если compose-файл изменился (с --force — и без
-изменений).`),
-		Example: i18n.T(`  evo deploy --dry-run
-  evo deploy --yes
-  evo deploy -f compose.prod.yml --flavor lowcost10-2-4`, `  evo deploy --dry-run
-  evo deploy --yes
-  evo deploy -f compose.prod.yml --flavor lowcost10-2-4`),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			flags := map[string]any{}
-			if cmd.Flags().Changed("compose-file") {
-				flags["ComposeFile"] = composeFile
-			}
-			if cmd.Flags().Changed("flavor") {
-				flags["Flavor"] = flavor
-			}
-			if cmd.Flags().Changed("region") {
-				flags["Region"] = region
-			}
-			if cmd.Flags().Changed("project-id") {
-				flags["ProjectID"] = projectID
-			}
-			if cmd.Flags().Changed("image-id") && cmd.Flags().Changed("image") {
-				return clerrors.New(clerrors.CodeUsage,
-					i18n.T("--image and --image-id name the same thing", "--image и --image-id задают одно и то же"),
-					i18n.T("Keep one: --image takes a name or a UUID.", "Оставьте один: --image принимает имя или UUID."))
-			}
-			if cmd.Flags().Changed("image-id") {
-				flags["ImageID"] = imageID
-			}
-			if cmd.Flags().Changed("image") {
-				flags["Image"] = image
-			}
-			if cmd.Flags().Changed("disk-size") {
-				flags["DiskSize"] = diskSize
-			}
-
-			eng, err := buildEngine(flags)
-			if err != nil {
-				return err
-			}
-
-			opts := engine.DeployOptions{
-				ComposeFile:    eng.Config.ComposeFile,
-				Flavor:         eng.Config.Flavor,
-				Region:         eng.Config.Region,
-				Force:          force,
-				NonInteractive: nonInteractive,
-				Yes:            flagYes,
-				DryRun:         flagDryRun,
-			}
-
-			if err := eng.Deploy(cmd.Context(), opts); err != nil {
-				return err
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVarP(&composeFile, "compose-file", "f", "", i18n.T("Path to docker-compose file (default: docker-compose.yml)",
-		"Путь к compose-файлу (по умолчанию docker-compose.yml)"))
-	cmd.Flags().StringVar(&flavor, "flavor", "", i18n.T("VM flavor (default: auto)", "Flavor ВМ (по умолчанию auto — подбор по сервисам)"))
-	cmd.Flags().StringVar(&region, "region", "", i18n.T("Availability zone UUID", "UUID зоны доступности"))
-	cmd.Flags().StringVar(&projectID, "project-id", "", i18n.T("Cloud.ru project UUID", "UUID проекта Cloud.ru"))
-	cmd.Flags().StringVar(&imageID, "image-id", "", i18n.T("Boot image UUID", "UUID загрузочного образа"))
-	cmd.Flags().StringVar(&image, "image", "", i18n.T("Boot image: a name from 'evo image list' or a UUID (Ubuntu or Debian)",
-		"Загрузочный образ: имя из 'evo image list' или UUID (Ubuntu или Debian)"))
-	cmd.Flags().IntVar(&diskSize, "disk-size", 0, i18n.T("Boot disk size in GB (default: 10)", "Размер загрузочного диска, ГБ (по умолчанию 10)"))
-	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Force redeploy even if compose hash unchanged",
-		"Развернуть заново, даже если compose-файл не изменился"))
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Never prompt; creating a VM then requires --yes",
-		"Никогда не спрашивать; тогда для создания ВМ нужен --yes"))
-
-	return cmd
-}
-
-// --- status ---
-
-func newStatusCmd() *cobra.Command {
-	var noRefresh bool
-	cmd := &cobra.Command{
-		Use:   "status",
-		Args:  cobra.NoArgs,
-		Short: i18n.T("Show current deployment status", "Состояние текущего развёртывания"),
-		Long: i18n.T(`Show this directory's deployment from the local state, and the VM's live
-state from one request to Cloud.ru (at most 8 s). A VM deleted outside evo
-(in the console) shows as not found in the cloud: 'evo destroy' removes its
-record. If the cloud cannot be asked (no key, network, API error), status
-still shows the local state and says why the cloud was not checked. status
-never changes the state.
-
---no-refresh: the local state only, no request. With --json the answer adds
-cloud_checked, cloud_state, not_found_in_cloud, cloud_error and cloud_reason.`,
-			`Показать развёртывание этого каталога по локальному state и живое состояние
-ВМ — одним запросом к Cloud.ru (не дольше 8 с). ВМ, удалённая вне evo (в
-консоли), показывается как не найденная в облаке: 'evo destroy' уберёт её
-запись. Если облако спросить не удалось (нет ключа, сети, ошибка API),
-status всё равно показывает локальное состояние и пишет, почему облако не
-проверено. state команда не меняет.
-
---no-refresh — только локальный state, без запроса. С --json в ответе
-добавляются cloud_checked, cloud_state, not_found_in_cloud, cloud_error и
-cloud_reason.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			eng, err := buildEngine(map[string]any{})
-			if err != nil {
-				return err
-			}
-			return eng.Status(cmd.Context(), engine.StatusOptions{NoRefresh: noRefresh})
-		},
-	}
-	cmd.Flags().BoolVar(&noRefresh, "no-refresh", false, i18n.T("Local state only: do not ask Cloud.ru for the VM's live state",
-		"Только локальный state: не спрашивать Cloud.ru о живом состоянии ВМ"))
-	return cmd
-}
-
-// --- logs ---
-
-func newLogsCmd() *cobra.Command {
-	var (
-		service string
-		tail    int
-		follow  bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "logs",
-		Args:  cobra.NoArgs,
-		Short: i18n.T("View container logs from the deployed VM", "Журналы контейнеров на развёрнутой ВМ"),
-		Example: i18n.T(`  evo logs
-  evo logs -s web -n 50
-  evo logs -f`, `  evo logs
-  evo logs -s web -n 50
-  evo logs -f`),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			eng, err := buildEngine(map[string]any{})
-			if err != nil {
-				return err
-			}
-
-			opts := engine.LogsOptions{
-				Service: service,
-				Tail:    tail,
-				Follow:  follow,
-			}
-
-			if err := eng.Logs(cmd.Context(), opts); err != nil {
-				return err
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVarP(&service, "service", "s", "", i18n.T("Filter logs by service name", "Только журнал этого сервиса"))
-	cmd.Flags().IntVarP(&tail, "tail", "n", 100, i18n.T("Number of lines to show (0 = all)", "Сколько последних строк показать (0 — все)"))
-	cmd.Flags().BoolVarP(&follow, "follow", "f", false, i18n.T("Follow log output", "Следить за журналом (до Ctrl-C)"))
-
-	return cmd
-}
-
-// --- destroy ---
-
-func newDestroyCmd() *cobra.Command {
-	var force bool
-
-	cmd := &cobra.Command{
-		Use:   "destroy",
-		Args:  cobra.NoArgs,
-		Short: i18n.T("Delete the deployed VM and clean up resources", "Удалить развёрнутую ВМ и связанные ресурсы"),
-		Long: i18n.T(`Delete this directory's deployment VM, release its floating IP and
-remove the security group rules deploy created.
-
-Before deleting it shows a preview and asks for confirmation: a question on
-the terminal, --yes to agree in advance, --dry-run for the preview only. Data
-on the VM's disks is lost.`, `Удалить ВМ развёртывания из этого каталога, освободить её floating IP и
-удалить правила группы безопасности, которые создал deploy.
-
-Перед удалением показывается превью и запрашивается подтверждение: вопрос на
-терминале, --yes — согласие заранее, --dry-run — только превью.
-Данные на дисках ВМ теряются.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if force {
-				cmdPrinter(cmd).Warning(i18n.T("destroy --force is deprecated: use --yes",
-					"destroy --force устарел: используйте --yes"))
-			}
-			eng, err := buildEngine(map[string]any{})
-			if err != nil {
-				return err
-			}
-
-			opts := engine.DestroyOptions{Force: force || flagYes, DryRun: flagDryRun}
-			if err := eng.Destroy(cmd.Context(), opts); err != nil {
-				return err
-			}
-			return nil
-		},
-	}
-
-	// --force meant the same as --yes here, while deploy --force redeploys
-	// an unchanged project: one word, two meanings. It keeps working for old
-	// scripts, hidden from help, with a warning.
-	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Deprecated: use --yes", "Устарел: используйте --yes"))
-	_ = cmd.Flags().MarkHidden("force")
-
-	return cmd
-}
-
 // --- verify ---
 
 func newVerifyCmd() *cobra.Command {
@@ -979,94 +744,6 @@ func newVersionCmd() *cobra.Command {
 			"Версия, коммит, дата сборки, версия Go и платформа"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return printVersion(cmd.OutOrStdout(), flagJSON, currentVersion())
-		},
-	}
-}
-
-// --- list-zones ---
-
-func newListZonesCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "list-zones",
-		Args:  cobra.NoArgs,
-		Short: i18n.T("List available availability zones", "Список зон доступности"),
-		Long: i18n.T(`List availability zones from the Cloud.ru API.
-
-Use the zone ID as the --region flag or CLOUDRU_REGION env var for deploy.
-Use --json for machine-readable output.`, `Список зон доступности из API Cloud.ru.
-
-ID зоны передаётся в deploy флагом --region или переменной CLOUDRU_REGION.
-Для машинного разбора — --json.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			eng, err := buildEngine(map[string]any{})
-			if err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-
-			tok, err := eng.Auth.Token(ctx)
-			if err != nil {
-				return err
-			}
-			eng.Cloud.SetToken(tok.Value)
-
-			zones, err := eng.Cloud.ListAvailabilityZones(ctx)
-			if err != nil {
-				return err
-			}
-
-			if eng.Printer.IsJSON() {
-				return eng.Printer.JSON(zones)
-			}
-
-			headers := []string{"ID", i18n.T("Name", "Имя"), i18n.T("New resources", "Новые ресурсы")}
-			rows := make([][]string, len(zones))
-			for i, z := range zones {
-				state := i18n.T("open", "открыта")
-				if z.Closed() {
-					state = i18n.T("closed (enabled=false)", "закрыта (enabled=false)")
-				}
-				rows[i] = []string{z.ID, z.Name, state}
-			}
-			eng.Printer.Table(headers, rows)
-			return nil
-		},
-	}
-}
-
-// --- list-images ---
-
-// list-images is the old form of 'evo image list' (review r5 U6): hidden,
-// kept working, with a one-line hint.
-func newListImagesCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "list-images",
-		Hidden: true,
-		Args:   cobra.NoArgs,
-		Short:  i18n.T("List available VM boot images", "Список загрузочных образов ВМ"),
-		Long: i18n.T(`List boot images from the Cloud.ru API.
-
-Use the image ID as the --image-id flag or CLOUDRU_IMAGE_ID env var for deploy.
-deploy installs Docker on Ubuntu and Debian images (e.g. Ubuntu-24.04).
-Use --json for machine-readable output.`, `Список загрузочных образов из API Cloud.ru.
-
-ID образа передаётся в deploy флагом --image-id или переменной CLOUDRU_IMAGE_ID.
-deploy ставит Docker на образы Ubuntu и Debian (например, Ubuntu-24.04).
-Для машинного разбора — --json.`),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmdPrinter(cmd).Warning(i18n.T("evo list-images is deprecated: use 'evo image list [query]'",
-				"evo list-images устарела: используйте 'evo image list [запрос]'"))
-			eng, err := toolEngine(map[string]any{})
-			if err != nil {
-				return err
-			}
-			eng.Printer = cmdPrinter(cmd)
-
-			if err := eng.ListImages(cmd.Context()); err != nil {
-				return err
-			}
-			return nil
 		},
 	}
 }

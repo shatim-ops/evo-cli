@@ -50,7 +50,7 @@ func argDescriptionsRU(t Tool, ru map[string]string) map[string]string {
 }
 
 // toolsRU are the Russian descriptions of the tools, by tool name, grouped
-// as the commands are (cliSpecs, then CLIPending). New sets Tool.ShortRU,
+// as the commands are (cliSpecs). New sets Tool.ShortRU,
 // Tool.DescriptionRU and Tool.ArgDescriptionsRU from it.
 var toolsRU = map[string]toolRU{
 	// vm
@@ -1627,8 +1627,7 @@ var toolsRU = map[string]toolRU{
 		},
 	},
 
-	// Without a command yet (CLIPending), by the PR that gives them one.
-	// PR 5: evo deploy plan, apply, list
+	// evo deploy plan, apply, list
 	"deploy_plan": {
 		Short: "Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая",
 		Long: "Шаг 1 мастера развёртывания (только чтение, ничего не создаёт). Подбирает полную конфигурацию ВМ — " +
@@ -1637,7 +1636,7 @@ var toolsRU = map[string]toolRU{
 			"не учитывается никогда). В режиме auto передайте требования продукта (--cpu, --ram-gb, --disk-gb из " +
 			"его README), остальное заполнят значения по умолчанию; в режиме manual — явный выбор (--flavor, " +
 			"--zone, --image, --disk-type). Проверьте план и цену, затем выполните план: " +
-			"'evo tools call deploy_apply' с этим plan_id.",
+			"'evo deploy apply <plan-id>'.",
 		Args: map[string]string{
 			"base_plan_id": "Необязательно: прежний plan_id, который нужно ИЗМЕНИТЬ. Берутся параметры того плана, поверх — " +
 				"только переданные здесь поля (например, одно --disk-gb); возвращается новый plan_id. Так меняют " +
@@ -1671,12 +1670,12 @@ var toolsRU = map[string]toolRU{
 	},
 	"deploy_apply": {
 		Short: "Шаг 2 мастера развёртывания: выполнить рассчитанный план",
-		Long: "Шаг 2 мастера развёртывания: выполнить план, который вернул 'evo tools call deploy_plan'. " +
+		Long: "Шаг 2 мастера развёртывания: выполнить план, который вернул 'evo deploy plan'. " +
 			"Выполняйте его только после того, как план и его цена одобрены. Идемпотентно: если ВМ с именем из " +
 			"плана уже есть, она подхватывается, а не создаётся вторая. Возвращает vm_id, public_ip, ssh и (один " +
 			"раз) сгенерированный пароль.",
 		Args: map[string]string{
-			"plan_id": "plan_id, который вернул evo tools call deploy_plan (обязательный)",
+			"plan_id": "plan_id, который вернул evo deploy plan (обязательный)",
 		},
 	},
 	"list": {
@@ -1685,7 +1684,8 @@ var toolsRU = map[string]toolRU{
 			"локальное состояние, без обращений к API.",
 	},
 
-	// PR 5: the engine commands
+	// The engine commands (evo deploy, status, logs, list-images; evo org
+	// projects)
 	"deploy": {
 		Short: "Развернуть локальный проект docker-compose на ВМ Cloud.ru",
 		Long: "Развернуть локальный проект docker-compose на ВМ Cloud.ru: создать ВМ (размер подбирается сам), " +
@@ -1693,7 +1693,8 @@ var toolsRU = map[string]toolRU{
 			"Существующая ВМ используется снова, а развёртывание без изменений пропускается, если не задан " +
 			"--force. Нужен ключ доступа Cloud.ru (профиль из 'evo configure' или CLOUDRU_KEY_ID и " +
 			"CLOUDRU_SECRET), а проект, зона и образ — из переменных окружения, настроек или аргументов. Платно, " +
-			"если создаётся ВМ.",
+			"если создаётся ВМ. Подтверждение нужно и для новой ВМ, и для обновления существующей; если работает " +
+			"тот же compose-файл и --force не задан, делать нечего: в превью unchanged: true, вызов с подтверждением ничего не изменит.",
 		Args: map[string]string{
 			"compose_file": "Путь к файлу docker-compose (по умолчанию docker-compose.yml)",
 			"disk_size":    "Размер загрузочного диска, ГБ (по умолчанию 10, но не меньше минимума образа)",
@@ -1713,7 +1714,7 @@ var toolsRU = map[string]toolRU{
 			"состояние ВМ (один GET, не дольше 8 с) и добавляет cloud_checked, cloud_state, " +
 			"not_found_in_cloud=true (ВМ удалили в обход evo: запись убирает 'evo destroy') и cloud_error с " +
 			"cloud_reason (почему облако не проверено — фраза и код ошибки; локальное состояние возвращается и " +
-			"тогда).",
+			"тогда). Если облако ответило, vm_name, zone_name и flavor_name называют ВМ, её зону и flavor.",
 		Args: map[string]string{
 			"refresh": "Спросить у облака живое состояние ВМ; без этого — только локальное состояние, без обращения к API.",
 		},
@@ -1728,7 +1729,8 @@ var toolsRU = map[string]toolRU{
 	},
 	"org_projects": {
 		Short: "Проекты Cloud.ru, которые видит ключ доступа",
-		Long: "Проекты Cloud.ru, которые видит ключ доступа: id, имя, состояние, подразделение организации. Только " +
+		Long: "Проекты Cloud.ru, которые видит ключ доступа: id, имя, состояние, подразделение организации, — и " +
+			"активный проект (active). Только " +
 			"чтение. Если Organization API не показывает ключу ни одного проекта (сервисный аккаунт уровня " +
 			"проекта), это не ошибка: в ответе projects: null, активный проект и примечание.",
 	},

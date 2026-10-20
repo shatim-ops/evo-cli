@@ -57,8 +57,7 @@ type Tool struct {
 	// RequiredOneOf are argument sets one argument of each the call must
 	// have, beside the schema's "required" (see requiredOneOf).
 	RequiredOneOf [][]string `json:"-"`
-	// CLI is the tool's command in the CLI (cliSpecs); zero for a tool in
-	// CLIPending.
+	// CLI is the tool's command in the CLI (cliSpecs).
 	CLI     CLISpec `json:"-"`
 	Handler Handler `json:"-"`
 }

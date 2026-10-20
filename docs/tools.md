@@ -177,7 +177,7 @@
 
 | Инструмент | Меняет | Обязательные аргументы | Описание |
 |---|---|---|---|
-| `org_projects` | нет | — | List Cloud.ru projects visible to the caller (id, name, status, org unit). |
+| `org_projects` | нет | — | List Cloud.ru projects visible to the caller (id, name, status, org unit) and the active project (active). |
 | `org_quotas` | нет | — | List quota usages (resource, limit, current usage) — for capacity planning. |
 
 ## pg

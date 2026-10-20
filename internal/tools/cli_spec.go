@@ -11,9 +11,10 @@ package tools
 // REQ-1). Every other argument of the schema becomes a flag with the type
 // from the schema.
 //
-// A tool has a Verb (its command), or None (no command, with the reason),
-// or is in CLIPending (no command yet); TestRegistry_EveryToolHasCLISpec
-// keeps it so.
+// A tool has a Verb (its command) or None (no command, with the reason);
+// TestRegistry_EveryToolHasCLISpec keeps it so. Every tool has a command
+// (the parity plan, docs/internal/cli-mcp-parity/spec.md, gave the last
+// ones theirs in PR 5).
 type CLISpec struct {
 	// Group is the top-level command ("vm"); "" puts the command at the
 	// root (status, deploy).
@@ -247,36 +248,27 @@ var cliSpecs = map[string]CLISpec{
 	"stack_status":  {Group: "stack", Verb: "status", Args: []string{"job_id"}},
 	"stack_destroy": {Group: "stack", Verb: "destroy", Args: []string{"job_id"}},
 
+	// The engine commands (spec REQ-4): commands of v1.0 that keep their
+	// help and flags and call these tools; internal/cli builds them by
+	// hand (engineCommands), the trees do not. evo list-images is the
+	// command of list_images: hidden and deprecated (evo image list) until
+	// v2.0.
+	"deploy":      {Verb: "deploy"},
+	"status":      {Verb: "status"},
+	"logs":        {Verb: "logs"},
+	"list_images": {Verb: "list-images"},
+	// The deploy wizard and the records: subcommands of the engine command
+	// evo deploy, which is a command with an action of its own and a group
+	// at once (spec.md R7): 'evo deploy' deploys, 'evo deploy plan' plans.
+	// The trees add them to evo deploy instead of a second root deploy.
+	"deploy_plan":  {Group: "deploy", Verb: "plan", Rename: map[string]string{"image_metadata": "meta", "ports": "port"}, Pairs: map[string]bool{"image_metadata": true}},
+	"deploy_apply": {Group: "deploy", Verb: "apply", Args: []string{"plan_id"}},
+	"list":         {Group: "deploy", Verb: "list", Columns: []string{"id", "vm_name", "vm_ip", "status", "flavor_name", "created_at"}},
+	// org projects; evo project list is its alias (internal/cli).
+	"org_projects": {Group: "org", Verb: "projects", Render: "project-list"},
+
 	// image, vpc: commands added to the trees of v1.1.
 	"image_create": {Group: "image", Verb: "create", Args: []string{"name"}},
 	"image_delete": {Group: "image", Verb: "delete", Args: []string{"image_id"}},
 	"open_ports":   {Group: "vpc", Verb: "open-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
-}
-
-// CLIPending are the tools without a command of their own yet, with the
-// PR of the parity plan (docs/internal/cli-mcp-parity/spec.md §5) that
-// gives them one; until then they are reached with 'evo tools call', and
-// five of them through an engine command with its own code. They all wait
-// for PR 5, which turns the engine commands into commands of their tools
-// (REQ-4): the commands of these tools belong to an engine command (evo
-// deploy plan, evo org projects as evo project list), so they come with it.
-// The list only shrinks: TestRegistry_EveryToolHasCLISpec and
-// TestParity_CommandsAndTools fail on a tool that is neither here nor in
-// cliSpecs, and on one that is in both. Delete it once it is empty.
-var CLIPending = map[string]string{
-	// The engine commands with their own code (evo deploy, status, logs,
-	// project list, list-images) become commands of these tools.
-	"deploy":       "PR 5: evo deploy (engine.Deploy)",
-	"status":       "PR 5: evo status (engine.Status)",
-	"logs":         "PR 5: evo logs (engine.Logs)",
-	"org_projects": "PR 5: evo project list (listProjects)",
-	"list_images":  "PR 5: evo list-images (engine.ListImages)",
-
-	// evo deploy plan, evo deploy apply, evo deploy list: subcommands of
-	// the engine command evo deploy, which becomes a group with an action
-	// of its own in PR 5 (spec.md R7). Before it, they would change
-	// evo deploy --help, and the trees would build a second root deploy.
-	"deploy_plan":  "PR 5: evo deploy plan (evo deploy — engine command)",
-	"deploy_apply": "PR 5: evo deploy apply (evo deploy — engine command)",
-	"list":         "PR 5: evo deploy list (evo deploy — engine command)",
 }

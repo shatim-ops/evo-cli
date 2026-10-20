@@ -112,26 +112,27 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		e.Printer.Hint(i18n.T("Use --force to redeploy anyway.", "Развернуть заново всё равно: --force."))
 		return nil
 	}
-	if !isNewDeploy && opts.DryRun {
-		// --dry-run must not touch the VM. It stops before step 2, which
-		// prints the compose warnings: print them here.
-		for _, w := range project.Warnings {
-			e.Printer.Warning(w)
+	// Updating the VM of an existing deployment needs consent as creating
+	// one does: it replaces what runs there, maybe in production, and the
+	// MCP deploy always asked for it (owner's decision Q1, spec REQ-12: one
+	// gate for both surfaces). Before v1.2 only a VM without a public IP
+	// was gated here, for the billed floating IP deploy makes for it
+	// (release QA, B-lifecycle 1); the preview still says so.
+	if !isNewDeploy {
+		if opts.DryRun {
+			// --dry-run must not touch the VM. It stops before step 2,
+			// which prints the compose warnings: print them here.
+			for _, w := range project.Warnings {
+				e.Printer.Warning(w)
+			}
 		}
-		_, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing)), e.confirmOptions(false, true, false))
-		return err
-	}
-	// Updating an existing VM creates nothing billable and is not gated —
-	// unless it has no public IP (a private VM of provision or a stack, a
-	// FIP that failed before): then deploy makes a billed floating IP, and
-	// that needs consent as a new VM does (release QA, B-lifecycle 1).
-	if !isNewDeploy && needsFloatingIP(existing) {
-		proceed, err := confirm.Ask(ctx, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing)), e.confirmOptions(opts.Yes, false, opts.NonInteractive))
+		proceed, err := e.redeployGate(ctx, opts, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing),
+			existing.ComposeHash != project.Hash, opts.Force))
 		if err != nil {
 			return err
 		}
 		if !proceed {
-			return nil
+			return nil // --dry-run
 		}
 	}
 
@@ -367,6 +368,57 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	return nil
 }
 
+// redeployGate asks for consent to update the existing VM (p): through
+// opts.Gate, else confirm.Ask (--dry-run: the preview only).
+func (e *Engine) redeployGate(ctx context.Context, opts DeployOptions, p confirm.Preview) (bool, error) {
+	if opts.Gate != nil {
+		return opts.Gate(ctx, &p)
+	}
+	return confirm.Ask(ctx, p, e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+}
+
+// DeployUpdate is what deploy does in a directory that already has a
+// deployment: it updates that deployment's VM, after consent (spec REQ-12),
+// or does nothing when the same compose file runs there.
+type DeployUpdate struct {
+	// Deployment is the record deploy updates.
+	Deployment state.DeploymentRecord
+	// ProjectID is the project of its VM.
+	ProjectID string
+	// ComposeChanged: the compose file is not the one deployed; nil when
+	// it cannot be read (deploy stops on it then).
+	ComposeChanged *bool
+	// Unchanged: the same compose file is running there and force is off —
+	// deploy has nothing to do, and asks nothing.
+	Unchanged bool
+	// Creates are the billable resources the update makes: a floating IP
+	// for a VM that has no public address.
+	Creates []string
+}
+
+// DeployUpdateOf is what deploy would do with the deployment of this
+// directory (force: redeploy an unchanged compose file), nil when there is
+// none — or the state cannot be read: deploy creates a VM or stops then.
+// Reads the state and the compose file only; the deploy tool answers it
+// without confirmed=true.
+func (e *Engine) DeployUpdateOf(force bool) *DeployUpdate {
+	sf, err := state.Read(state.DefaultPath(e.StateDir))
+	if err != nil || sf.ActiveDeployment() == nil {
+		return nil
+	}
+	existing := sf.ActiveDeployment()
+	u := &DeployUpdate{Deployment: *existing, ProjectID: e.projectOf(existing), Creates: redeployCreates(existing)}
+	if project, err := compose.Parse(e.Config.ComposeFile); err == nil {
+		changed := existing.ComposeHash != project.Hash
+		u.ComposeChanged = &changed
+		// As Deploy skips it: a record of another project is refused
+		// before, so it is not "unchanged".
+		otherProject := existing.ProjectID != "" && e.Config.ProjectID != "" && existing.ProjectID != e.Config.ProjectID
+		u.Unchanged = !changed && existing.Status == "running" && !force && !otherProject
+	}
+	return u
+}
+
 // resolveFlavor determines the VM flavor via auto-sizing or explicit selection.
 func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project *compose.Project) (string, error) {
 	flavor := opts.Flavor
@@ -524,7 +576,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 
 	// The VM is billed from this call on: show what will be created and what
 	// it costs, and get consent (or stop here on --dry-run).
-	proceed, err := confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, diskType.ID, network, project.Ports, project.UDPPorts), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+	var proceed bool
+	if opts.Gate != nil {
+		proceed, err = opts.Gate(ctx, nil)
+	} else {
+		proceed, err = confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, diskType.ID, network, project.Ports, project.UDPPorts), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+	}
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}

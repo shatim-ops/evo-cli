@@ -5,7 +5,6 @@
 package cli
 
 import (
-	"errors"
 	"os"
 	"strings"
 
@@ -31,64 +30,6 @@ func newProjectCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newProjectListCmd(), newProjectUseCmd())
 	return cmd
-}
-
-func newProjectListCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: i18n.T("List the projects the key sees (* — the active one)", "Проекты, которые видит ключ (* — активный)"),
-		Example: `  evo project list
-  evo project list --json | jq -r '.projects[].id'`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			printer := output.New(flagJSON, flagNoColor)
-			cfg, err := resolveConfig(printer, scopeOverrides())
-			if err != nil {
-				return err
-			}
-			tok, err := tokenProvider(cfg).Token(cmd.Context())
-			if err != nil {
-				return err
-			}
-			projects, err := listProjects(cmd.Context(), tok.Value)
-			if err != nil {
-				// The key works (a token was issued) but the Organization
-				// API does not list its projects — a project-level service
-				// account (400, 14.10.2026). Not a failure: say so and show
-				// the active project, as whoami does (QA r3 C3).
-				var ce *clerrors.CLIError
-				if errors.As(err, &ce) && ce.Code == clerrors.CodeAPIUnreachable {
-					return err
-				}
-				note := scopeText(nil, err)
-				if printer.IsJSON() {
-					return printer.JSON(map[string]any{"projects": nil, "active": cfg.ProjectID, "note": note})
-				}
-				printer.Warning(i18n.Tf("project list: %s", "список проектов: %s", note))
-				if cfg.ProjectID != "" {
-					printer.Success(i18n.Tf("Active project: %s", "Активный проект: %s", cfg.ProjectID))
-				}
-				return nil
-			}
-			if printer.IsJSON() {
-				return printer.JSON(map[string]any{"projects": projects, "active": cfg.ProjectID})
-			}
-			if len(projects) == 0 {
-				printer.Success(i18n.T("The key sees no projects.", "Ключ не видит ни одного проекта."))
-				return nil
-			}
-			rows := make([][]string, len(projects))
-			for i, p := range projects {
-				id := p.ID
-				if id == cfg.ProjectID {
-					id += " *"
-				}
-				rows[i] = []string{id, p.Name, p.Status}
-			}
-			printer.Table([]string{"ID", i18n.T("Name", "Имя"), i18n.T("Status", "Статус")}, rows)
-			return nil
-		},
-	}
 }
 
 func newProjectUseCmd() *cobra.Command {

@@ -141,7 +141,9 @@ func TestTrees_RussianFlags(t *testing.T) {
 func TestTrees_RussianShorts(t *testing.T) {
 	reg := newRegistry()
 	for _, g := range allTreeGroups() {
-		if treeGroupShortRU[g.Name] == "" {
+		// evo deploy: the commands of the deploy wizard are under the
+		// engine command, whose summary is its own.
+		if treeGroupShortRU[g.Name] == "" && engineToolAt("evo "+g.Name) == "" {
 			t.Errorf("tree %s: no Russian summary in treeGroupShortRU", g.Name)
 		}
 		for _, c := range g.Cmds {

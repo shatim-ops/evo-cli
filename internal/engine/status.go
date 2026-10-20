@@ -13,6 +13,7 @@ import (
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -143,11 +144,11 @@ func (e *Engine) Status(ctx context.Context, opts StatusOptions) error {
 	active := stateFile.ActiveDeployment()
 	if active == nil {
 		if e.Printer.IsJSON() {
-			// The same answer as the MCP status tool: --json must print JSON.
-			return e.Printer.JSON(map[string]any{"status": "none", "message": i18n.T("No active deployment.", "Активного развёртывания нет.")})
+			// The answer of the MCP status tool, which prints it: --json
+			// must print JSON.
+			return e.Printer.JSON(map[string]any{"status": "none", "message": noActiveDeployment()})
 		}
-		e.Printer.Success(i18n.T("No active deployment.", "Активного развёртывания нет."))
-		e.Printer.Hint(i18n.T("Run 'evo deploy' to create one.", "Создать: 'evo deploy'."))
+		ShowNoDeployment(e.Printer)
 		return nil
 	}
 
@@ -164,11 +165,31 @@ func (e *Engine) Status(ctx context.Context, opts StatusOptions) error {
 		}
 	}
 
-	others := OtherActiveVMs(stateFile)
+	st := DeploymentStatus{DeploymentRecord: shown, CloudCheck: check, OtherActiveVMs: OtherActiveVMs(stateFile)}
 	if e.Printer.IsJSON() {
-		return e.Printer.JSON(DeploymentStatus{DeploymentRecord: shown, CloudCheck: check, OtherActiveVMs: others})
+		return e.Printer.JSON(st)
 	}
+	ShowStatus(e.Printer, st, !opts.NoRefresh)
+	return nil
+}
 
+func noActiveDeployment() string {
+	return i18n.T("No active deployment.", "Активного развёртывания нет.")
+}
+
+// ShowNoDeployment is status of a directory without a deployment, as a
+// person reads it.
+func ShowNoDeployment(p *output.Printer) {
+	p.Success(noActiveDeployment())
+	p.Hint(i18n.T("Run 'evo deploy' to create one.", "Создать: 'evo deploy'."))
+}
+
+// ShowStatus is the status answer as a person reads it: a table of the
+// record, with the VM's state in the cloud when it was asked for
+// (refreshed). 'evo status' shows the answer of the status tool so.
+func ShowStatus(p *output.Printer, st DeploymentStatus, refreshed bool) {
+	shown, others, check := st.DeploymentRecord, st.OtherActiveVMs, st.CloudCheck
+	active := &shown
 	headers := []string{i18n.T("Property", "Параметр"), i18n.T("Value", "Значение")}
 	rows := [][]string{{"ID", shown.ID}}
 	if shown.VMName != "" {
@@ -181,7 +202,7 @@ func (e *Engine) Status(ctx context.Context, opts StatusOptions) error {
 		[]string{i18n.T("Region", "Зона"), recordZoneText(&shown)},
 		[]string{i18n.T("Status", "Состояние"), shown.Status},
 	)
-	if !opts.NoRefresh {
+	if refreshed {
 		rows = append(rows, []string{i18n.T("In the cloud", "В облаке"), cloudCell(check)})
 	}
 	rows = append(rows,
@@ -195,17 +216,16 @@ func (e *Engine) Status(ctx context.Context, opts StatusOptions) error {
 		rows = append(rows, []string{i18n.T("Exposed Ports", "Открытые порты"), ports})
 	}
 
-	e.Printer.Table(headers, rows)
+	p.Table(headers, rows)
 	if len(others) > 0 {
-		e.Printer.Warning(i18n.Tf("this directory has other active VMs too: %s; delete each with 'evo vm delete <VM ID>'",
+		p.Warning(i18n.Tf("this directory has other active VMs too: %s; delete each with 'evo vm delete <VM ID>'",
 			"в этом каталоге есть и другие активные ВМ: %s; удаляйте каждую через 'evo vm delete <ID ВМ>'",
 			strings.Join(others, "; ")))
 	}
 	if check.NotFound {
-		e.Printer.Hint(i18n.T("The record is stale: the VM was deleted outside evo. 'evo destroy' removes it and releases its floating IP and port rules.",
+		p.Hint(i18n.T("The record is stale: the VM was deleted outside evo. 'evo destroy' removes it and releases its floating IP and port rules.",
 			"Запись устарела: ВМ удалили вне evo. 'evo destroy' уберёт запись и освободит её floating IP и правила портов."))
 	}
-	return nil
 }
 
 // cloudCell is the "In the cloud" row of status.

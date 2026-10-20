@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -40,7 +41,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires a Cloud.ru access key (a profile from 'evo configure', or CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves; without it returns a preview only.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires a Cloud.ru access key (a profile from 'evo configure', or CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves, for a new VM and for an update of the existing one alike; without it returns a preview only (update: true with vm_id and compose_changed for an update). With the same compose file already running and force unset there is nothing to do: the preview says unchanged: true, and the confirmed call changes nothing.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
 				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
@@ -80,7 +81,7 @@ func (s *Registry) registerTools() {
 			Name: "status",
 			Description: "Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports, from the local state. " +
 				"Read-only. By default it also asks the cloud for the VM's live state (one GET, at most 8 s) and adds cloud_checked, cloud_state, " +
-				"not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record) and cloud_error with cloud_reason (why the cloud was not checked, as a phrase and an error code; the local state is still returned).",
+				"not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record) and cloud_error with cloud_reason (why the cloud was not checked, as a phrase and an error code; the local state is still returned). When the cloud answered, vm_name, zone_name and flavor_name name the VM, its zone and its flavor.",
 			InputSchema: objSchema(map[string]any{
 				"refresh": boolPropTrue("Ask the cloud for the VM's live state (default: true). false: local state only, no API call."),
 			}),
@@ -524,7 +525,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "org_projects",
-			Description: "List Cloud.ru projects visible to the caller (id, name, status, org unit). Read-only. A key the Organization API lists no projects for (a project-level service account) is not an error: the answer is projects: null, the active project and a note.",
+			Description: "List Cloud.ru projects visible to the caller (id, name, status, org unit) and the active project (active). Read-only. A key the Organization API lists no projects for (a project-level service account) is not an error: the answer is projects: null, the active project and a note.",
 			InputSchema: objSchema(nil),
 		},
 		{
@@ -1464,12 +1465,12 @@ func (s *Registry) registerTools() {
 func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (string, bool) {
 	// disk_size -5 became 10 GB without a word (QA-14).
 	if err := minIntArg(args, "disk_size", 0, diskSizeHint()); err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
 	// image and image_id, or one of only spaces: refused before the
 	// preview (break r4, R4-11).
 	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
@@ -1485,31 +1486,19 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			overrides[field] = v
 		}
 	}
+	if c := live(ctx); c != nil {
+		return s.deployLive(ctx, args, overrides, c)
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		will := withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
-			firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
-		if v := stringArg(args, "image"); v != "" {
-			will["image"] = v
+		eng, err := s.newEngine(overrides)
+		if err != nil {
+			eng = nil
 		}
-		answer := map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). preview has the new VM and its monthly cost.",
-				"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). В preview — новая ВМ и её цена в месяц."),
-			"will_deploy": will,
+		answer, err := s.deployAnswer(ctx, args, eng)
+		if err != nil {
+			return errResult(err), true
 		}
-		// The VM deploy would create, with the reads of provision's
-		// preview (spec REQ-7); none when the directory has a deployment:
-		// deploy updates its VM then.
-		if eng, err := s.newEngine(overrides); err == nil && eng != nil {
-			p, err := eng.DeployPreview(ctx)
-			if err != nil {
-				return errResult(err), true
-			}
-			if p != nil {
-				answer["preview"] = p
-			}
-		}
-		return toJSON(answer), true
+		return answer, true
 	}
 
 	eng, err := s.newEngine(overrides)
@@ -1542,6 +1531,109 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 	}
 	result["status"] = "ok"
 	return toJSON(result), false
+}
+
+// deployAnswer is the answer of deploy without confirmed=true: what it is
+// asked to do and either the VM it would create with its monthly cost
+// (preview, update: false), or the VM of the directory's deployment it
+// would update (update: true, vm_id, vm_ip, compose_changed, creates; no
+// price: nothing new is billed but the floating IP of a VM without one).
+// Both need consent (owner's decision Q1, spec REQ-12).
+// The same compose file running there asks for consent as in v1.1, and
+// says it (unchanged: true): the confirmed call changes nothing. evo
+// deploy asks nothing then; bringing the two together would change an
+// exit code, which waits for v2.0. eng is the engine of the call, nil when none
+// could be built (nothing is read then). An error is a refusal the reads
+// found.
+func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *engine.Engine) (string, error) {
+	will := withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
+		firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
+	if v := stringArg(args, "image"); v != "" {
+		will["image"] = v
+	}
+	answer := map[string]any{
+		"status": "confirmation_required",
+		"message": i18n.T("deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). preview has the new VM and its monthly cost.",
+			"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). В preview — новая ВМ и её цена в месяц."),
+		"will_deploy": will,
+	}
+	if eng == nil {
+		return toJSON(answer), nil
+	}
+	force, _ := args["force"].(bool)
+	if u := eng.DeployUpdateOf(force); u != nil {
+		rec := u.Deployment
+		answer["message"] = i18n.Tf("deploy updates VM %s of this directory's deployment: it uploads the compose file and runs 'docker compose up -d' there (no new VM; a floating IP only for a VM without a public IP, see creates).",
+			"deploy обновляет ВМ %s развёртывания этого каталога: загружает на неё compose-файл и выполняет 'docker compose up -d' (новой ВМ нет; floating IP — только для ВМ без внешнего IP, см. creates).",
+			firstNonEmptyStr(rec.VMName, rec.VMID))
+		answer["update"] = true
+		answer["vm_id"] = rec.VMID
+		answer["vm_ip"] = rec.VMIP
+		if rec.VMName != "" {
+			answer["vm_name"] = rec.VMName
+		}
+		answer["project_id"] = u.ProjectID
+		answer["creates"] = u.Creates
+		if u.ComposeChanged != nil {
+			answer["compose_changed"] = *u.ComposeChanged
+		}
+		if u.Unchanged {
+			answer["unchanged"] = true
+			answer["message"] = i18n.Tf("The same compose file is already running on VM %s: deploy has nothing to do, and called with confirmed=true it changes nothing. force=true redeploys anyway.",
+				"На ВМ %s уже работает тот же compose-файл: deploy делать нечего, вызов с confirmed=true ничего не изменит. force=true — развернуть заново.",
+				firstNonEmptyStr(rec.VMName, rec.VMID))
+		}
+		return toJSON(answer), nil
+	}
+	// The VM deploy would create, with the reads of provision's preview
+	// (spec REQ-7).
+	answer["update"] = false
+	p, err := eng.DeployPreview(ctx)
+	if err != nil {
+		return "", err
+	}
+	if p != nil {
+		answer["preview"] = p
+		// The keys the details of 'evo deploy --dry-run --json' had in
+		// v1.1 (cost, vm, subnet_id, security_group, open_ports, …): kept
+		// beside preview, so the command still finds them (its details
+		// are this answer). Deprecated, removed in v2.0: use preview.
+		for k, v := range eng.DeployDetailsV11(p) {
+			answer[k] = v
+		}
+	}
+	return toJSON(answer), nil
+}
+
+// deployLive is 'evo deploy': the engine shows its steps, its prompts and
+// its result, and asks at its gate — after the checks it makes before
+// asking — with deployAnswer as the preview (Caller).
+func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]any, c *Caller) (string, bool) {
+	eng, err := s.newEngine(overrides)
+	if err != nil {
+		return failed(ctx, err, nil), true
+	}
+	eng.Printer = c.Printer
+	force, _ := args["force"].(bool)
+	err = eng.Deploy(ctx, engine.DeployOptions{
+		ComposeFile:    eng.Config.ComposeFile,
+		Flavor:         eng.Config.Flavor,
+		Region:         eng.Config.Region,
+		Force:          force,
+		NonInteractive: c.NonInteractive,
+		DryRun:         c.DryRun,
+		Gate: func(ctx context.Context, redeploy *confirm.Preview) (bool, error) {
+			answer, err := s.deployAnswer(ctx, args, eng)
+			if err != nil {
+				return false, err
+			}
+			return c.Gate(ctx, answer, redeploy)
+		},
+	})
+	if err != nil {
+		return failed(ctx, err, nil), true
+	}
+	return toJSON(map[string]any{"status": "ok"}), false
 }
 
 // subnetNamesOtherZone: a subnet the API gave without its zone whose name
@@ -2071,24 +2163,21 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	}
 }
 
+// handleStatus is the answer of 'evo status --json', which it prints: the
+// local record, what the cloud said about its VM and, when the cloud
+// answered, the names of the VM, its zone and its flavor (spec REQ-4: the
+// command adds nothing of its own).
 func (s *Registry) handleStatus(ctx context.Context, args map[string]any) (string, bool) {
 	eng, err := s.newEngine(nil)
 	if err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
-	sf, err := state.Read(state.DefaultPath(eng.StateDir))
-	if err != nil {
-		return errResult(err), true
+	var buf bytes.Buffer
+	eng.Printer = output.NewWithWriter(&buf, output.ModeJSON, false)
+	if err := eng.Status(ctx, engine.StatusOptions{NoRefresh: !boolArg(args, "refresh", true)}); err != nil {
+		return failed(ctx, err, nil), true
 	}
-	active := sf.ActiveDeployment()
-	if active == nil {
-		return toJSON(map[string]any{"status": "none", "message": "No active deployment."}), false
-	}
-	var check engine.CloudCheck
-	if boolArg(args, "refresh", true) {
-		check = eng.CheckCloud(ctx, active)
-	}
-	return toJSON(engine.DeploymentStatus{DeploymentRecord: *active, CloudCheck: check, OtherActiveVMs: engine.OtherActiveVMs(sf)}), false
+	return strings.TrimSuffix(buf.String(), "\n"), false
 }
 
 func (s *Registry) handleList(ctx context.Context, args map[string]any) (string, bool) {
@@ -2106,7 +2195,7 @@ func (s *Registry) handleList(ctx context.Context, args map[string]any) (string,
 func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string, bool) {
 	eng, err := s.newEngine(nil)
 	if err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
 	var buf bytes.Buffer
 	eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
@@ -2116,8 +2205,14 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 		Tail:    intArg(args, "tail", 100),
 		Follow:  false,
 	}
+	// evo logs: the log goes to the terminal as it comes, and -f follows
+	// it (CLI only: MCP has no stream).
+	if c := callerOf(ctx); c != nil && c.Printer != nil {
+		eng.Printer = c.Printer
+		opts.Follow = c.Follow
+	}
 	if err := eng.Logs(ctx, opts); err != nil {
-		return errAnswer(err, logField(buf.String())), true
+		return failed(ctx, err, logField(buf.String())), true
 	}
 	return buf.String(), false
 }
@@ -2139,13 +2234,18 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 
 	// Default: delete the current local deployment. Destructive and previously
 	// ungated — now requires the same explicit confirmation as targeted deletes.
+	if c := live(ctx); c != nil {
+		return s.destroyLive(ctx, c)
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("destroy permanently deletes the current deployment VM and all its data (irreversible).",
-				"destroy безвозвратно удаляет ВМ текущего развёртывания и все её данные."),
-			"project_id": s.deploymentProject(),
-		}), true
+		// What 'evo destroy' lists before it asks (spec REQ-4): the VM by
+		// name, its floating IP, the port rules and the record.
+		if eng, err := s.newEngine(nil); err == nil && eng != nil {
+			if p, ok := eng.DestroyPreview(ctx); ok {
+				return destroyAnswer(p, s.deploymentProject()), true
+			}
+		}
+		return destroyAnswer(confirm.Preview{}, s.deploymentProject()), true
 	}
 	eng, err := s.newEngine(nil)
 	if err != nil {
@@ -2164,6 +2264,52 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 		return errAnswer(err, fields), true
 	}
 	return toJSON(map[string]any{"status": "ok", "log": buf.String()}), false
+}
+
+// destroyAnswer is the answer of destroy without confirmed=true for the
+// current deployment: what it deletes and keeps, as the preview p of
+// 'evo destroy' lists it (its details: the project and where it comes
+// from, and the resources — the VM, its floating IP, the port rules, the
+// record); a zero p when there is nothing to list.
+func destroyAnswer(p confirm.Preview, project string) string {
+	answer := map[string]any{
+		"status": "confirmation_required",
+		"message": i18n.T("destroy permanently deletes the current deployment VM and all its data (irreversible).",
+			"destroy безвозвратно удаляет ВМ текущего развёртывания и все её данные."),
+		"project_id": project,
+	}
+	details, _ := p.Details.(map[string]any)
+	if _, vm := details["project_id"]; details != nil && !vm {
+		// Only the rules an earlier destroy left: no VM.
+		answer["message"] = i18n.T("destroy deletes the security group rules an earlier destroy left.",
+			"destroy удаляет правила группы безопасности, оставшиеся от прошлого destroy.")
+	}
+	for k, v := range details {
+		answer[k] = v
+	}
+	return toJSON(answer)
+}
+
+// destroyLive is 'evo destroy': the engine shows its steps and asks at its
+// gate, with destroyAnswer as the preview (Caller).
+func (s *Registry) destroyLive(ctx context.Context, c *Caller) (string, bool) {
+	eng, err := s.newEngine(nil)
+	if err != nil {
+		return failed(ctx, err, nil), true
+	}
+	eng.Printer = c.Printer
+	err = eng.Destroy(ctx, engine.DestroyOptions{DryRun: c.DryRun,
+		Gate: func(ctx context.Context, p confirm.Preview) (bool, error) {
+			return c.Gate(ctx, destroyAnswer(p, s.deploymentProject()), &p)
+		}})
+	if err != nil {
+		fields := map[string]any{}
+		if stderrors.Is(err, engine.ErrDeletionUnconfirmed) {
+			fields["status"] = "partial"
+		}
+		return failed(ctx, err, fields), true
+	}
+	return toJSON(map[string]any{"status": "ok"}), false
 }
 
 // logField is the "log" of an error answer: none when nothing was logged —
@@ -2651,17 +2797,17 @@ func recordedVM(statePath, vmID string) (bool, string) {
 func (s *Registry) handleListZones(ctx context.Context, args map[string]any) (string, bool) {
 	eng, err := s.newEngine(nil)
 	if err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
 	tok, err := eng.Auth.Token(ctx)
 	if err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
 	eng.Cloud.SetToken(tok.Value)
 
 	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
 	if err != nil {
-		return errResult(err), true
+		return failed(ctx, err, nil), true
 	}
 	return toJSON(map[string]any{"zones": zones}), false
 }

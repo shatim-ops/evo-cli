@@ -36,7 +36,7 @@ var treeGroupShortRU = map[string]string{
 	"ca":          "Container Apps: бессерверные контейнеры",
 	"billing":     "Биллинг: баланс, потребление, отчёт FinOps",
 	"audit":       "Журнал аудита: кто что сделал в проекте",
-	"org":         "Организация: квоты",
+	"org":         "Организация: проекты и квоты",
 	"iam":         "IAM: сервисные аккаунты",
 	"metrics":     "Service Monitoring: метрики",
 	"stack":       "Стеки: несколько ресурсов по одному манифесту",
@@ -52,7 +52,8 @@ var treeGroupShortRU = map[string]string{
 var russianTrees = map[string]bool{"vm": true, "disk": true,
 	"dns": true, "cert": true, "lb": true, "tg": true, "snat": true,
 	"kafka": true, "redis": true, "ar": true, "ca": true,
-	"billing": true, "audit": true, "org": true, "iam": true, "metrics": true, "stack": true}
+	"billing": true, "audit": true, "org": true, "iam": true, "metrics": true, "stack": true,
+	"deploy": true}
 
 // legacyRussianTrees are the Russian trees of v1.1: their tables take the
 // titles from columnHeaderRU alone, so that a title added for a newer tree
@@ -93,6 +94,10 @@ var moreColumnHeaderRU = map[string]string{
 	"limit":                "Лимит",
 	"usage":                "Использовано",
 	"email":                "Email",
+	"vm_name":              "Имя ВМ",
+	"vm_ip":                "IP ВМ",
+	"flavor_name":          "Flavor",
+	"created_at":           "Создано",
 }
 
 // treeColumnHeaderRU are the titles a tree gives a column its own way.
