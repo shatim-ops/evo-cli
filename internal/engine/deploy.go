@@ -1349,7 +1349,10 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		if tail := lastLines(lastOut, 15); tail != "" {
 			hint = i18n.T("Last output of the Docker install:\n", "Последние строки установки Docker:\n") + tail + "\n" + hint
 		}
-		return clerrors.Wrap(clerrors.CodeSSHTimeout,
+		// The image, not the network: another attempt answers the same, and
+		// the way out is another image, as for the domestic distributions
+		// refused before the VM is made (CONFIG_INVALID). SSH worked.
+		return clerrors.Wrap(clerrors.CodeConfigInvalid,
 			i18n.Tf("Docker cannot be installed on VM %s", "Docker на ВМ %s не установить", ip),
 			hint, lastErr)
 	}

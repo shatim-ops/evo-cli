@@ -388,8 +388,8 @@ func TestDeploy_DockerPermanentRefusalNotRetried(t *testing.T) {
 		start := time.Now()
 		err := eng.Deploy(context.Background(), newDeployOpts(t, dir))
 		var cliErr *clerrors.CLIError
-		if !stderrors.As(err, &cliErr) || cliErr.Code != clerrors.CodeSSHTimeout {
-			t.Fatalf("err = %v, want SSH_TIMEOUT", err)
+		if !stderrors.As(err, &cliErr) || cliErr.Code != clerrors.CodeConfigInvalid {
+			t.Fatalf("err = %v, want CONFIG_INVALID", err)
 		}
 		if n := attempts.Load(); n != 1 || time.Since(start) > 30*time.Second {
 			t.Errorf("%d install attempts in %s, want one", n, time.Since(start))

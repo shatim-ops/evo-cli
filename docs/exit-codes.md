@@ -46,6 +46,10 @@
   (`image_metadata`) или незаполненное обязательное поле — `1` (`USAGE`); у
   `deploy` то же из `image_metadata:` в `.evo.yaml` — `2`
   (`CONFIG_INVALID`). Отказ всегда до создания ВМ и floating IP.
+- `deploy`, когда скрипт установки на ВМ отказал сразу (ОС не Ubuntu, Debian
+  и не RPM-дистрибутив; нет keyring дистрибутива для запасного зеркала apt), —
+  `2` (`CONFIG_INVALID`) без повторов до срока ожидания Docker; ВМ остаётся,
+  удалите её `evo destroy`.
 - `deploy` на образе Astra Linux, Альт или РЕД ОС — `2` (`CONFIG_INVALID`,
   до создания ВМ; `evo init --image` с таким образом — `1`, `USAGE`).
   `image` и `image_id` в одном слое настроек — `2` (`CONFIG_INVALID`).
