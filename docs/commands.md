@@ -53,6 +53,9 @@
     - [evo configure delete](#evo-configure-delete)
     - [evo configure list](#evo-configure-list)
   - [evo deploy](#evo-deploy)
+    - [evo deploy apply](#evo-deploy-apply)
+    - [evo deploy list](#evo-deploy-list)
+    - [evo deploy plan](#evo-deploy-plan)
   - [evo destroy](#evo-destroy)
   - [evo disk](#evo-disk)
     - [evo disk attach](#evo-disk-attach)
@@ -2203,6 +2206,173 @@ evo deploy [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo deploy apply](#evo-deploy-apply)	 - Шаг 2 мастера развёртывания: выполнить рассчитанный план
+* [evo deploy list](#evo-deploy-list)	 - Локальные записи развёртываний этого проекта
+* [evo deploy plan](#evo-deploy-plan)	 - Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая
+
+## evo deploy apply
+
+Шаг 2 мастера развёртывания: выполнить рассчитанный план
+
+### Synopsis
+
+```text
+Шаг 2 мастера развёртывания: выполнить рассчитанный план.
+
+Шаг 2 мастера развёртывания: выполнить план, который вернул 'evo deploy plan'. Выполняйте его только после того, как план и его цена одобрены. Идемпотентно: если ВМ с именем из плана уже есть, она подхватывается, а не создаётся вторая. Возвращает vm_id, public_ip, ssh и (один раз) сгенерированный пароль.
+
+Вызывает инструмент deploy_apply (подробнее: 'evo tools describe deploy_apply').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo deploy apply <plan-id> [flags]
+```
+
+### Examples
+
+```
+  evo deploy apply <plan-id> --dry-run
+  evo deploy apply <plan-id> --yes
+```
+
+### Options
+
+```
+  -h, --help   Справка по apply
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo deploy](#evo-deploy)	 - Развернуть docker-compose проект на ВМ Cloud.ru
+
+## evo deploy list
+
+Локальные записи развёртываний этого проекта
+
+### Synopsis
+
+```text
+Локальные записи развёртываний этого проекта.
+
+Все записанные развёртывания этого проекта: IP ВМ, состояние, flavor, время создания. Читает локальное состояние, без обращений к API.
+
+Вызывает инструмент list (подробнее: 'evo tools describe list').
+```
+
+```
+evo deploy list [flags]
+```
+
+### Examples
+
+```
+  evo deploy list
+  evo deploy list --json | jq -r '.deployments[] | "\(.vm_ip)\t\(.status)"'
+```
+
+### Options
+
+```
+  -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo deploy](#evo-deploy)	 - Развернуть docker-compose проект на ВМ Cloud.ru
+
+## evo deploy plan
+
+Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая
+
+### Synopsis
+
+```text
+Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая.
+
+Шаг 1 мастера развёртывания (только чтение, ничего не создаёт). Подбирает полную конфигурацию ВМ — flavor, образ, зону, диск, сеть, SSH — и возвращает её вместе с ЦЕНОЙ ЗА МЕСЯЦ и plan_id (cost.source: API расчёта цен Cloud.ru или оценка по тарифам, если API цены не дал; лицензия образа не учитывается никогда). В режиме auto передайте требования продукта (--cpu, --ram-gb, --disk-gb из его README), остальное заполнят значения по умолчанию; в режиме manual — явный выбор (--flavor, --zone, --image, --disk-type). Проверьте план и цену, затем выполните план: 'evo deploy apply <plan-id>'.
+
+Вызывает инструмент deploy_plan (подробнее: 'evo tools describe deploy_plan').
+```
+
+```
+evo deploy plan [flags]
+```
+
+### Examples
+
+```
+  evo deploy plan --product web --cpu 2 --ram-gb 4 --port 80
+  evo deploy plan --mode manual --flavor lowcost10-2-4 --zone ru.AZ-2 --image Ubuntu-24.04 --json
+  evo deploy plan --base-plan-id <plan-id> --disk-gb 20
+```
+
+### Options
+
+```
+      --base-plan-id string   Необязательно: прежний plan_id, который нужно ИЗМЕНИТЬ. Берутся параметры того плана, поверх — только переданные здесь поля (например, одно --disk-gb); возвращается новый plan_id. Так меняют одно значение, не повторяя остальные
+      --compose-file string   Путь к docker-compose.yml, если это развёртывание compose (задаёт compose_required). С ним образ Astra Linux, Альт или РЕД ОС отклоняется (USAGE, плана нет): установочный скрипт Docker их не поддерживает
+      --cpu int               Нужное число vCPU (автоподбор выберет самый маленький подходящий flavor)
+      --disk-gb int           Размер загрузочного диска, ГБ (по умолчанию 10)
+      --disk-type string      manual: имя типа диска, например SSD (список: evo disk types)
+      --external-ip           Подключить публичный floating IP (по умолчанию true)
+      --flavor string         manual: точное имя flavor (список: evo vm flavors). По умолчанию — flavor из настроек (профиль, .evo.yaml, CLOUDRU_FLAVOR), если не заданы --cpu и --ram-gb, иначе — автоподбор
+  -h, --help                  Справка по plan
+      --image string          manual: имя или UUID образа (поиск: evo image list). По умолчанию — образ из настроек (image или image_id: профиль, .evo.yaml), иначе Ubuntu 24.04
+      --login string          Пользователь для входа на ВМ (по умолчанию user1)
+      --meta stringArray      Значения полей метаданных образа по имени — обязательные поля, которые evo не заполняет сам (evo image get <образ>). Без них план отклоняется. Хранятся в локальном файле плана до его выполнения (поле=значение, флаг повторяется; значение может содержать '='. поле=- читает значение из stdin (не больше одного поля), поле=@файл — из файла без завершающего перевода строки: так пароль не попадает в командную строку и историю оболочки)
+      --mode string           auto (значения по умолчанию и требования) или manual (явный выбор). По умолчанию auto
+      --name string           Имя ВМ (по умолчанию <product>-<время>)
+      --port stringArray      Порты продукта, которые открыть в группе безопасности ВМ (например, 80,443 для веб-сервера — из README). Выполнение плана открывает их само; evo vm delete удаляет созданные им правила (флаг повторяется или значения через запятую)
+      --product string        Имя разворачиваемого продукта или приложения (для имени ВМ и отчётов)
+      --ram-gb int            Нужный объём RAM, ГБ (автоподбор)
+      --ssh-key string        Полный открытый SSH-ключ для ВМ (например, 'ssh-ed25519 AAAA... user'). Без него на ВМ попадает ключ развёртывания evo из рабочего каталога (.evo/id_ed25519.pub), чтобы evo мог зайти по SSH; ключ пользователя добавьте в authorized_keys потом
+      --zone string           manual: зона доступности, имя или UUID (список: evo vm zones). По умолчанию — зона из настроек (профиль, .evo.yaml, CLOUDRU_REGION), иначе ru.AZ-2
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo deploy](#evo-deploy)	 - Развернуть docker-compose проект на ВМ Cloud.ru
 
 ## evo destroy
 

@@ -1627,8 +1627,7 @@ var toolsRU = map[string]toolRU{
 		},
 	},
 
-	// Without a command yet (CLIPending), by the PR that gives them one.
-	// PR 5: evo deploy plan, apply, list
+	// evo deploy plan, apply, list
 	"deploy_plan": {
 		Short: "Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая",
 		Long: "Шаг 1 мастера развёртывания (только чтение, ничего не создаёт). Подбирает полную конфигурацию ВМ — " +
@@ -1637,7 +1636,7 @@ var toolsRU = map[string]toolRU{
 			"не учитывается никогда). В режиме auto передайте требования продукта (--cpu, --ram-gb, --disk-gb из " +
 			"его README), остальное заполнят значения по умолчанию; в режиме manual — явный выбор (--flavor, " +
 			"--zone, --image, --disk-type). Проверьте план и цену, затем выполните план: " +
-			"'evo tools call deploy_apply' с этим plan_id.",
+			"'evo deploy apply <plan-id>'.",
 		Args: map[string]string{
 			"base_plan_id": "Необязательно: прежний plan_id, который нужно ИЗМЕНИТЬ. Берутся параметры того плана, поверх — " +
 				"только переданные здесь поля (например, одно --disk-gb); возвращается новый plan_id. Так меняют " +
@@ -1671,12 +1670,12 @@ var toolsRU = map[string]toolRU{
 	},
 	"deploy_apply": {
 		Short: "Шаг 2 мастера развёртывания: выполнить рассчитанный план",
-		Long: "Шаг 2 мастера развёртывания: выполнить план, который вернул 'evo tools call deploy_plan'. " +
+		Long: "Шаг 2 мастера развёртывания: выполнить план, который вернул 'evo deploy plan'. " +
 			"Выполняйте его только после того, как план и его цена одобрены. Идемпотентно: если ВМ с именем из " +
 			"плана уже есть, она подхватывается, а не создаётся вторая. Возвращает vm_id, public_ip, ssh и (один " +
 			"раз) сгенерированный пароль.",
 		Args: map[string]string{
-			"plan_id": "plan_id, который вернул evo tools call deploy_plan (обязательный)",
+			"plan_id": "plan_id, который вернул evo deploy plan (обязательный)",
 		},
 	},
 	"list": {
@@ -1685,7 +1684,8 @@ var toolsRU = map[string]toolRU{
 			"локальное состояние, без обращений к API.",
 	},
 
-	// PR 5: the engine commands
+	// The engine commands (evo deploy, status, logs, list-images; evo org
+	// projects)
 	"deploy": {
 		Short: "Развернуть локальный проект docker-compose на ВМ Cloud.ru",
 		Long: "Развернуть локальный проект docker-compose на ВМ Cloud.ru: создать ВМ (размер подбирается сам), " +

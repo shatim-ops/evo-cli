@@ -256,6 +256,13 @@ var cliSpecs = map[string]CLISpec{
 	"status":      {Verb: "status"},
 	"logs":        {Verb: "logs"},
 	"list_images": {Verb: "list-images"},
+	// The deploy wizard and the records: subcommands of the engine command
+	// evo deploy, which is a command with an action of its own and a group
+	// at once (spec.md R7): 'evo deploy' deploys, 'evo deploy plan' plans.
+	// The trees add them to evo deploy instead of a second root deploy.
+	"deploy_plan":  {Group: "deploy", Verb: "plan", Rename: map[string]string{"image_metadata": "meta", "ports": "port"}, Pairs: map[string]bool{"image_metadata": true}},
+	"deploy_apply": {Group: "deploy", Verb: "apply", Args: []string{"plan_id"}},
+	"list":         {Group: "deploy", Verb: "list", Columns: []string{"id", "vm_name", "vm_ip", "status", "flavor_name", "created_at"}},
 	// org projects; evo project list is its alias (internal/cli).
 	"org_projects": {Group: "org", Verb: "projects", Render: "project-list"},
 
@@ -271,12 +278,4 @@ var cliSpecs = map[string]CLISpec{
 // list only shrinks: TestRegistry_EveryToolHasCLISpec and
 // TestParity_CommandsAndTools fail on a tool that is neither here nor in
 // cliSpecs, and on one that is in both. Delete it once it is empty.
-var CLIPending = map[string]string{
-	// evo deploy plan, evo deploy apply, evo deploy list: subcommands of
-	// the engine command evo deploy, which becomes a group with an action
-	// of its own (spec.md R7). Before it, the trees would build a second
-	// root deploy.
-	"deploy_plan":  "PR 5: evo deploy plan (evo deploy — engine command)",
-	"deploy_apply": "PR 5: evo deploy apply (evo deploy — engine command)",
-	"list":         "PR 5: evo deploy list (evo deploy — engine command)",
-}
+var CLIPending = map[string]string{}

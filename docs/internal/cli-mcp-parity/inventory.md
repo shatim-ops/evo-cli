@@ -2,17 +2,17 @@
 
 <!-- Сгенерировано: go run ./docs/internal/cli-mcp-parity/inventory/main.go > docs/internal/cli-mcp-parity/inventory.md. Руками не править. -->
 
-Инструментов в реестре: 152 (изменяющих: 65). Команд дерева: 149. Команд в docs/commands.md: 195 (+4 скрытых).
+Инструментов в реестре: 152 (изменяющих: 65). Команд дерева: 152. Команд в docs/commands.md: 198 (+4 скрытых).
 
 ## 1. Инструменты по способу вызова из CLI
 
 | Способ | Инструментов | из них изменяющих |
 |---|---|---|
-| дерево | 145 | 63 |
+| дерево | 148 | 64 |
 | движок | 4 | 1 |
-| tools call | 3 | 1 |
+| tools call | 0 | 0 |
 
-«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `status`, `logs`, `list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`: временный список `tools.CLIPending` (3), который PR 5 плана опустошает. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в engineCommands.
+«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `status`, `logs`, `list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`: временный список `tools.CLIPending` (0), который PR 5 плана опустошает. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в engineCommands.
 
 ### По группам
 
@@ -23,7 +23,7 @@
 | billing | 3 | 3 | 0 | 0 | 3/3 |
 | ca | 7 | 7 | 0 | 0 | 7/7 |
 | cert | 10 | 10 | 0 | 0 | 10/10 |
-| deploy | 8 | 2 | 3 | 3 | 8/8 |
+| deploy | 8 | 5 | 3 | 0 | 8/8 |
 | disk | 7 | 7 | 0 | 0 | 7/7 |
 | dns | 9 | 9 | 0 | 0 | 9/9 |
 | iam | 1 | 1 | 0 | 0 | 1/1 |
@@ -73,10 +73,10 @@
 | cert | `cert_usage` | нет | дерево | `evo cert usage` | да/да |
 | cert | `cert_versions` | нет | дерево | `evo cert versions` | да/да |
 | deploy | `deploy` | да | движок | `evo deploy` | да/да |
-| deploy | `deploy_apply` | да | tools call | `evo tools call deploy_apply` | да/да |
-| deploy | `deploy_plan` | нет | tools call | `evo tools call deploy_plan` | да/да |
+| deploy | `deploy_apply` | да | дерево | `evo deploy apply` | да/да |
+| deploy | `deploy_plan` | нет | дерево | `evo deploy plan` | да/да |
 | deploy | `destroy` | да | дерево | `evo vm delete`, `evo destroy` (алиас) | да/да |
-| deploy | `list` | нет | tools call | `evo tools call list` | да/да |
+| deploy | `list` | нет | дерево | `evo deploy list` | да/да |
 | deploy | `logs` | нет | движок | `evo logs` | да/да |
 | deploy | `open_ports` | да | дерево | `evo vpc open-ports` | да/да |
 | deploy | `status` | нет | движок | `evo status` | да/да |
@@ -235,6 +235,9 @@
 | `evo cert renew` | `cert_renew` | certificate_id | — | — | confirmed | — |
 | `evo cert usage` | `cert_usage` | id | — | — | — | — |
 | `evo cert versions` | `cert_versions` | certificate_id | — | — | — | — |
+| `evo deploy apply` | `deploy_apply` | plan_id | — | — | confirmed | — |
+| `evo deploy list` | `list` | — | — | — | — | — |
+| `evo deploy plan` | `deploy_plan` | — | image_metadata→--meta, ports→--port | — | — | pairs:image_metadata |
 | `evo disk attach` | `disk_attach` | disk_id | — | — | confirmed | — |
 | `evo disk create` | `disk_create` | name | — | — | confirmed | — |
 | `evo disk delete` | `disk_delete` | disk_id | — | — | confirmed | — |
@@ -390,7 +393,7 @@
 
 Ожидаемый набор флагов выводится из схемы по правилам trees.go (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с docs/commands.md. Пусто — расхождений нет.
 
-Расхождений нет: флаги всех 145 команд деревьев выведены из схемы; флаги 4 команд движка сверяет со схемой TestParity_EngineCommands.
+Расхождений нет: флаги всех 148 команд деревьев выведены из схемы; флаги 4 команд движка сверяет со схемой TestParity_EngineCommands.
 
 ## 5. Русская справка
 
@@ -399,5 +402,5 @@
 | краткое описание инструмента (ShortRU) | 152 | 152 инструментов |
 | подробное описание инструмента (DescriptionRU) | 152 | 152 инструментов |
 | описания аргументов (ArgDescriptionsRU) | 444 | 444 аргументов |
-| из них флаги команд деревьев | 222 | 222 флагов |
+| из них флаги команд деревьев | 239 | 239 флагов |
 | описания инструментов в MCP | 0 | 152 (всегда английские) |

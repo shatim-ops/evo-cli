@@ -129,7 +129,12 @@ func treeGroupsOf(reg *tools.Registry) []treeGroup {
 	for name, cmds := range byGroup {
 		sort.Slice(cmds, func(i, j int) bool { return cmds[i].Verb < cmds[j].Verb })
 		g := treeGroup{Name: name, Cmds: cmds}
-		if name != "" {
+		switch {
+		case name == "":
+		case engineToolAt("evo "+name) != "":
+			// The commands of an engine command (evo deploy plan): its
+			// help is its own.
+		default:
 			short, ok := treeGroupShort[name]
 			if !ok {
 				panic("command tree: no summary for group " + name) // caught by TestTrees_BuildAndHelp
@@ -154,15 +159,22 @@ const toolAnnotation = "evo.tool"
 // given with --yes or at the prompt.
 var rootArgs = map[string]bool{"project_id": true, "region": true, "confirmed": true}
 
-// newTreeCmds builds the command trees from the registry's CLISpecs.
-func newTreeCmds() []*cobra.Command {
+// newTreeCmds builds the command trees from the registry's CLISpecs. A
+// group that is an engine command of root (evo deploy) gets the commands
+// of its tools as subcommands, beside its own action (spec.md R7): no
+// second root command of that name.
+func newTreeCmds(root *cobra.Command) []*cobra.Command {
 	reg := newRegistry()
 	var out []*cobra.Command
 	for _, g := range treeGroupsOf(reg) {
 		var parent *cobra.Command
 		if g.Name != "" {
-			parent = asGroup(&cobra.Command{Use: g.Name, Short: g.Short})
-			out = append(out, parent)
+			if engine := engineCommandIn(root, g.Name); engine != nil {
+				parent = engine
+			} else {
+				parent = asGroup(&cobra.Command{Use: g.Name, Short: g.Short})
+				out = append(out, parent)
+			}
 		}
 		for _, c := range g.Cmds {
 			t, _ := reg.Lookup(c.Tool)
@@ -175,6 +187,21 @@ func newTreeCmds() []*cobra.Command {
 		}
 	}
 	return out
+}
+
+// engineCommandIn is the engine command of root named name, nil if none.
+func engineCommandIn(root *cobra.Command, name string) *cobra.Command {
+	if root == nil {
+		return nil
+	}
+	for _, c := range root.Commands() {
+		if c.Name() == name && c.Annotations[toolAnnotation] != "" {
+			if _, ok := engineCommandOf(c.Annotations[toolAnnotation]); ok {
+				return c
+			}
+		}
+	}
+	return nil
 }
 
 // positional is one parsed entry of treeCmd.Args.

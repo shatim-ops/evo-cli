@@ -68,6 +68,16 @@ var engineCommands = []engineCommand{
 		Alias: "алиас evo org projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка, как с v1.0"},
 }
 
+// engineToolAt is the tool of the engine command at path, "" if none.
+func engineToolAt(path string) string {
+	for _, c := range engineCommands {
+		if c.Path == path && c.Alias == "" {
+			return c.Tool
+		}
+	}
+	return ""
+}
+
 // engineCommandOf is the engine command that is the tool's own command
 // (no alias), if there is one: the trees do not build it from the schema.
 func engineCommandOf(tool string) (engineCommand, bool) {
@@ -148,7 +158,6 @@ func newDeployCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "deploy",
-		Args:  cobra.NoArgs,
 		Short: i18n.T("Deploy a docker-compose project to a Cloud.ru VM", "Развернуть docker-compose проект на ВМ Cloud.ru"),
 		Long: i18n.T(`Deploy a docker-compose project to a Cloud.ru VM.
 
@@ -201,6 +210,13 @@ compose file changed (with --force, even if it did not).`, `Развернуть
 		"Развернуть заново, даже если compose-файл не изменился"))
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Never prompt; creating a VM then requires --yes",
 		"Никогда не спрашивать; тогда для создания ВМ нужен --yes"))
+
+	// evo deploy is an action and the group of the deploy wizard (plan,
+	// apply, list: the trees add them) at once (spec.md R7): an argument
+	// that is no subcommand ('evo deploy pln') is "unknown command", as it
+	// was with cobra.NoArgs, now with a suggestion.
+	cmd.SuggestionsMinimumDistance = 2
+	cmd.Args = unknownSubcommand
 
 	return engineCmd(cmd, "deploy")
 }

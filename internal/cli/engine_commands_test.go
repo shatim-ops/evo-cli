@@ -236,3 +236,42 @@ func TestEngineCommands_StatusIsTheTool(t *testing.T) {
 		t.Errorf("evo status --no-refresh asked the cloud: exit %d\n%s", code, out)
 	}
 }
+
+// evo deploy is an action and the group of the deploy wizard at once
+// (spec.md R7): 'evo deploy' still deploys (here: no compose file), its
+// subcommands are plan, apply and list, and a word that is none of them is
+// "unknown command" (exit 1, USAGE), as it was with cobra.NoArgs, now with
+// a suggestion.
+func TestEngineCommands_DeployGroupR7(t *testing.T) {
+	setupCLI(t)
+	t.Setenv("EVO_LANG", "en")
+	code, _, stderr := runCLI(t, "", "--json", "deploy", "--dry-run")
+	if c, reason, _ := cliJSONError(t, stderr); code != 1 || c != 1 || reason != "COMPOSE_NOT_FOUND" {
+		t.Errorf("evo deploy --dry-run without a compose file: exit %d, %s", code, stderr)
+	}
+	for _, typo := range []string{"pln", "aply", "lst", "status"} {
+		newProcess()
+		code, _, stderr := runCLI(t, "", "--json", "deploy", typo)
+		c, reason, msg := cliJSONError(t, stderr)
+		if code != 1 || c != 1 || reason != "USAGE" || !strings.Contains(msg, `unknown command "`+typo+`" for "evo deploy"`) {
+			t.Errorf("evo deploy %s: exit %d, %s", typo, code, stderr)
+		}
+	}
+	newProcess()
+	if _, _, stderr := runCLI(t, "", "deploy", "pln"); !strings.Contains(stderr, "did you mean plan?") {
+		t.Errorf("evo deploy pln: no suggestion: %s", stderr)
+	}
+	newProcess()
+	code, stdout, _ := runCLI(t, "", "deploy", "--help")
+	for _, want := range []string{"evo deploy [flags]", "evo deploy [command]", "  apply ", "  list ", "  plan ", "--compose-file", "--non-interactive"} {
+		if code != 0 || !strings.Contains(stdout, want) {
+			t.Errorf("evo deploy --help: exit %d, no %q:\n%s", code, want, stdout)
+		}
+	}
+	for _, verb := range []string{"plan", "apply", "list"} {
+		newProcess()
+		if code, stdout, _ := runCLI(t, "", "deploy", verb, "--help"); code != 0 || !strings.Contains(stdout, "evo deploy "+verb) {
+			t.Errorf("evo deploy %s --help: exit %d\n%s", verb, code, stdout)
+		}
+	}
+}

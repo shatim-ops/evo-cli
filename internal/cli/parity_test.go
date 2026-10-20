@@ -105,7 +105,18 @@ func TestParity_CommandsAndTools(t *testing.T) {
 					t.Errorf("%s calls the tool %s, but is listed as a command without one (localCommands/pendingCommands): drop the entry", path, name)
 				}
 				if sub.HasSubCommands() {
-					t.Errorf("%s: a tool's command has subcommands", path)
+					// evo deploy: an engine command with the commands of
+					// other tools under it (spec.md R7); each of them is a
+					// tool's command too.
+					if _, engine := engineCommandOf(name); !engine || aliases[path] != "" {
+						t.Errorf("%s: a tool's command has subcommands", path)
+					}
+					for _, c := range sub.Commands() {
+						if _, ok := c.Annotations[toolAnnotation]; !ok && c.Name() != "help" {
+							t.Errorf("%s: a subcommand of the engine command %s calls no tool", c.CommandPath(), path)
+						}
+					}
+					walk(sub)
 				}
 				continue
 			}

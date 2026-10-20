@@ -258,18 +258,23 @@ func usageError(cmd *cobra.Command, err error) error {
 // group's help and exit 0, and a script takes the typo for success.
 func asGroup(cmd *cobra.Command) *cobra.Command {
 	cmd.SuggestionsMinimumDistance = 2 // cobra's default, set only for the root
-	cmd.Args = func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			return nil
-		}
-		msg := i18n.Tf("unknown command %q for %q", "неизвестная команда %q для %q", args[0], cmd.CommandPath())
-		if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
-			msg += i18n.T("; did you mean ", "; может быть, ") + strings.Join(s, ", ") + "?"
-		}
-		return stderrors.New(msg)
-	}
+	cmd.Args = unknownSubcommand
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error { return cmd.Help() }
 	return cmd
+}
+
+// unknownSubcommand is the Args of a command with subcommands: an argument
+// that is none of them is "unknown command", with the subcommands it may
+// have meant.
+func unknownSubcommand(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	msg := i18n.Tf("unknown command %q for %q", "неизвестная команда %q для %q", args[0], cmd.CommandPath())
+	if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
+		msg += i18n.T("; did you mean ", "; может быть, ") + strings.Join(s, ", ") + "?"
+	}
+	return stderrors.New(msg)
 }
 
 func newRootCmd() *cobra.Command {
@@ -339,7 +344,7 @@ func newRootCmd() *cobra.Command {
 		newDoctorCmd(),
 		newToolsCmd(),
 	)
-	cmd.AddCommand(newTreeCmds()...)
+	cmd.AddCommand(newTreeCmds(cmd)...)
 	applyExamples(cmd)
 	groupCommands(cmd)
 	localizeHelp(cmd)
