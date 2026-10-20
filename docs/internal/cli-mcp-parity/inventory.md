@@ -7,17 +7,17 @@
      go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc|TestParityInventory' -update-docs
      CI сверяет файл с кодом. -->
 
-Инструментов в реестре: 152 (изменяющих: 65). Команд из `CLISpec`: 152. Команд в бинаре вместе с корнем `evo`: 203 — в docs/commands.md 198, скрытых 4, прочих 1 (`evo help`).
+Инструментов в реестре: 154 (изменяющих: 65). Команд из `CLISpec`: 154. Команд в бинаре вместе с корнем `evo`: 203 — в docs/commands.md 198, скрытых 4, прочих 1 (`evo help`).
 
 ## 1. Инструменты по способу вызова из CLI
 
 | Способ | Инструментов | из них изменяющих |
 |---|---|---|
 | дерево | 148 | 64 |
-| движок | 4 | 1 |
+| движок | 6 | 1 |
 | tools call | 0 | 0 |
 
-«дерево» — своя команда, построенная из `CLISpec` инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `evo status`, `evo logs`, `evo list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`. Таких нет: временный список «без команды» из PR 1 опустошён (PR 3), у каждого инструмента — своя команда, и TestParity_CommandsAndTools не даёт добавить инструмент без неё. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в `engineCommands`.
+«дерево» — своя команда, построенная из `CLISpec` инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `evo status`, `evo logs`, `evo list-images`, `evo whoami`, `evo doctor`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`. Таких нет: временный список «без команды» из PR 1 опустошён (PR 3), у каждого инструмента — своя команда, и TestParity_CommandsAndTools не даёт добавить инструмент без неё. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в `engineCommands`.
 
 ### По группам
 
@@ -25,6 +25,7 @@
 |---|---|---|---|---|---|
 | ar | 5 | 5 | 0 | 0 | 5/5 |
 | audit | 1 | 1 | 0 | 0 | 1/1 |
+| auth | 2 | 0 | 2 | 0 | 2/2 |
 | billing | 3 | 3 | 0 | 0 | 3/3 |
 | ca | 7 | 7 | 0 | 0 | 7/7 |
 | cert | 10 | 10 | 0 | 0 | 10/10 |
@@ -57,6 +58,8 @@
 | ar | `ar_list` | нет | дерево | `evo ar list` | да/да |
 | ar | `ar_operation` | нет | дерево | `evo ar operation` | да/да |
 | audit | `audit_events` | нет | дерево | `evo audit events` | да/да |
+| auth | `doctor` | нет | движок | `evo doctor` | да/да |
+| auth | `whoami` | нет | движок | `evo whoami` | да/да |
 | billing | `billing_balance` | нет | дерево | `evo billing balance` | да/да |
 | billing | `billing_consumption` | нет | дерево | `evo billing consumption` | да/да |
 | billing | `billing_finops` | нет | дерево | `evo billing finops` | да/да |
@@ -211,9 +214,11 @@
 | Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/Raw/Render |
 |---|---|---|---|---|---|---|
 | `evo deploy` | `deploy` | — | — | — | confirmed, project_id, region | — |
+| `evo doctor` | `doctor` | — | — | — | — | — |
 | `evo list-images` | `list_images` | — | — | — | — | — |
 | `evo logs` | `logs` | — | — | — | — | — |
 | `evo status` | `status` | — | — | — | — | — |
+| `evo whoami` | `whoami` | — | — | — | — | — |
 | `evo ar create` | `ar_create` | name | — | — | confirmed | — |
 | `evo ar delete` | `ar_delete` | id | — | — | confirmed | — |
 | `evo ar get` | `ar_get` | id | — | — | — | — |
@@ -377,7 +382,6 @@
 | `evo configure list` | локальная | — | да | читает профили с диска |
 | `evo crew` | локальная | — | нет, скрыта | титры |
 | `evo destroy` | алиас | `destroy` | да | удаляет ВМ развёртывания этого каталога (destroy без vm_id и name); ВМ по ID или имени удаляет evo vm delete |
-| `evo doctor` | локальная | — | да | проверки файлов настроек, прав, PATH и связи с машины оператора; до PR 9 (REQ-11) — станет инструментом doctor |
 | `evo help` | локальная | — | нет, справка cobra | справка cobra |
 | `evo init` | локальная | — | да | интерактивно выбирает зону и образ и пишет .evo.yaml в текущий каталог |
 | `evo list-zones` | алиас | `list_zones` | нет, скрыта | скрытый устаревший алиас evo vm zones: его --json — массив зон, а не ответ инструмента; удаляется в v2.0 |
@@ -392,7 +396,6 @@
 | `evo tools list` | локальная | — | да | список инструментов реестра |
 | `evo verify` | локальная | — | да | TCP/HTTP-проверки портов развёрнутого приложения с машины оператора: с хоста сервера MCP результат был бы другим |
 | `evo version` | локальная | — | да | версия бинаря; MCP отдаёт её в initialize.serverInfo |
-| `evo whoami` | локальная | — | да | профиль, маскированный Key ID, проект и срок токена с машины оператора; до PR 9 (REQ-11) — станет инструментом whoami |
 
 Скрытые команды (работают, в справке и docs/commands.md их нет):
 
@@ -407,17 +410,17 @@
 
 Ожидаемый набор флагов выводится из схемы (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с флагами команды в дереве cobra. Пусто — расхождений нет.
 
-Расхождений нет: флаги всех 148 команд деревьев выведены из схемы; флаги 4 команд движка сверяет со схемой TestParity_EngineCommands.
+Расхождений нет: флаги всех 148 команд деревьев выведены из схемы; флаги 6 команд движка сверяет со схемой TestParity_EngineCommands.
 
 ## 5. Русская справка
 
 | Что | Есть по-русски | Всего |
 |---|---|---|
-| краткое описание инструмента (ShortRU) | 152 | 152 инструментов |
-| подробное описание инструмента (DescriptionRU) | 152 | 152 инструментов |
+| краткое описание инструмента (ShortRU) | 154 | 154 инструментов |
+| подробное описание инструмента (DescriptionRU) | 154 | 154 инструментов |
 | описания аргументов (ArgDescriptionsRU) | 444 | 444 аргументов |
 | из них флаги команд деревьев | 239 | 239 флагов |
-| описания инструментов в MCP | 0 | 152 (всегда английские) |
+| описания инструментов в MCP | 0 | 154 (всегда английские) |
 
 ## 6. Исключения из паритета
 
@@ -433,6 +436,7 @@
 |---|---|
 | `evo deploy` | итог движка, как с v1.0: status deployed/unchanged, vm_id, vm_ip, vm_name, zone_name, flavor, ports, verify…; инструмент — status ok, deployment (запись state) и log. Ключ status есть у обоих с разными значениями — свести без потери нельзя (в 1.2 ломается только Q1): вопрос владельцу |
 | `evo destroy` | итог движка, как с v1.0: status destroyed с vm_id, vm_ip, vm_name, без развёртывания — status none с message; инструмент — status ok и log. Ключ status есть у обоих с разными значениями — свести без потери нельзя: вопрос владельцу |
+| `evo doctor` | проверки машины, где запущена команда, — версия evo, файлы настроек и их права, kubectl и helm в PATH — часть ответа только в CLI (tools.Caller.Doctor): по MCP это были бы пути и программы сервера (REQ-11). Не прошли только проверки связи — код 1 и reason ERROR, как с v1.0, у инструмента API_UNREACHABLE (тот же код 1): вопрос владельцу |
 | `evo list-images` | скрытая устаревшая команда list_images (evo image list): --json — массив images из ответа инструмента, пустой — без вывода, как с v1.0; до v2.0 |
 | `evo list-zones` | скрытый устаревший алиас evo vm zones: --json — массив zones из ответа инструмента, как с v1.0; до v2.0 (spec.md §4) |
 | `evo project list` | алиас evo org projects: ответ Organization API с ошибкой (и 5xx) — пометка note и активный проект, код 0, как с v1.0 (QA r3 C3); инструмент так делает только для 400, 403 и 404; до v2.0 (engineCommands) |
@@ -448,6 +452,4 @@
 | Функция | Почему |
 |---|---|
 | `chooseProject` | evo configure: выбор проекта при записи профиля |
-| `keyScopeCheck` | evo doctor: до PR 9 (REQ-11), станет инструментом doctor |
-| `newWhoamiCmd` | evo whoami: до PR 9 (REQ-11), станет инструментом whoami |
 | `resolveProjectArg` | evo project use: проект по имени |

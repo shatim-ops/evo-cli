@@ -283,6 +283,8 @@ var engineParity = []struct {
 	{line: []string{"list-zones"}, tool: "list_zones"},
 	{line: []string{"project", "list"}, tool: "org_projects"},
 	{line: []string{"list-images"}, tool: "list_images"},
+	{line: []string{"whoami"}, tool: "whoami"},
+	{line: []string{"doctor"}, tool: "doctor"},
 }
 
 // arrayOfAnswer checks the --json of a legacy alias: the list key of the

@@ -42,8 +42,8 @@ func TestRegistry_OneHandlerPerTool(t *testing.T) {
 			t.Errorf("handler %q has no tool definition", name)
 		}
 	}
-	if len(r.Tools()) != 152 {
-		t.Errorf("registry has %d tools, want 152 (146 + vm_list + image_list + k8s_addons, k8s_addon_versions, k8s_add_addon + marketplace_list)", len(r.Tools()))
+	if len(r.Tools()) != 154 {
+		t.Errorf("registry has %d tools, want 154 (146 + vm_list + image_list + k8s_addons, k8s_addon_versions, k8s_add_addon + marketplace_list + whoami, doctor)", len(r.Tools()))
 	}
 }
 
@@ -52,8 +52,8 @@ func TestRegistry_EveryToolHasAKnownGroup(t *testing.T) {
 	for _, g := range Groups() {
 		known[g] = true
 	}
-	if len(known) != 23 {
-		t.Errorf("%d groups, want 23: %v", len(known), Groups())
+	if len(known) != 24 {
+		t.Errorf("%d groups, want 24: %v", len(known), Groups())
 	}
 	used := map[string]bool{}
 	for _, tl := range newTestServer().Tools() {

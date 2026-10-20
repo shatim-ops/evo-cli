@@ -31,6 +31,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/product"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // Build identity, passed to Main by cmd/evo (and the legacy cmd/cloudru-vm),
@@ -363,15 +364,21 @@ func newRootCmd() *cobra.Command {
 
 // buildEngine constructs the Engine from config and global flags.
 func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
+	// doctor shows the configuration's warnings as its checks.
+	shown, _ := flagOverrides[tools.WarningsShown].(bool)
+	delete(flagOverrides, tools.WarningsShown)
 	flagOverrides["JSON"] = flagJSON
 	flagOverrides["Verbose"] = flagVerbose
 	flagOverrides["NoColor"] = flagNoColor
 	applyScopeFlags(flagOverrides)
 
 	printer := output.New(flagJSON, flagNoColor)
-	cfg, err := resolveConfig(printer, flagOverrides)
+	cfg, err := configOf(flagOverrides)
 	if err != nil {
 		return nil, err
+	}
+	if !shown {
+		printWarnings(printer, cfg.Warnings)
 	}
 
 	cwd, err := os.Getwd()

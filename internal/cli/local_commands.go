@@ -35,9 +35,5 @@ var localCommands = []localCommand{
 	{"evo tools describe", "описание и схема инструмента"},
 	{"evo tools call", "универсальный вызов любого инструмента"},
 	{"evo crew", "титры"},
-	// Until PR 9 (spec.md REQ-11, owner's decision Q2): they become the
-	// tools whoami and doctor.
-	{"evo whoami", "профиль, маскированный Key ID, проект и срок токена с машины оператора; до PR 9 (REQ-11) — станет инструментом whoami"},
-	{"evo doctor", "проверки файлов настроек, прав, PATH и связи с машины оператора; до PR 9 (REQ-11) — станет инструментом doctor"},
 	{"evo help", "справка cobra"},
 }

@@ -34,6 +34,10 @@ type Config struct {
 	// CLOUDRU_KEY_ID / CLOUDRU_SECRET (CLOUDRU_KEY_SECRET, EVOLUTION_*):
 	// evo doctor shows them, so it is clear which key went to IAM.
 	KeyEnv string `yaml:"-" json:"-"`
+	// KeyOrigin is where the key came from: OriginProfile, OriginEnv with
+	// KeyEnv in parentheses when it is set, OriginDefault without a key
+	// (whoami and doctor name it).
+	KeyOrigin string `yaml:"-" json:"-"`
 
 	// Deploy
 	ProjectID string `yaml:"project_id" json:"project_id"` // required UUID
@@ -94,7 +98,7 @@ const (
 	OriginFlag    = "flag"
 )
 
-// Source tracks where a config value came from (for the doctor command).
+// Source tracks where a config value came from.
 // Secret values are masked.
 type Source struct {
 	Key    string
@@ -247,6 +251,7 @@ func resolve(opts Options) (Config, map[string]string, error) {
 		origins[key] = OriginFlag
 	}
 	cfg.ProjectOrigin = origins["ProjectID"]
+	cfg.KeyOrigin = keyOrigin(origins["KeyID"], cfg.KeyEnv)
 	warnAgentProject(&cfg, origins)
 	if err := pickImage(&cfg, origins); err != nil {
 		return Config{}, nil, err
@@ -677,13 +682,24 @@ func buildSources(cfg *Config, origins map[string]string) []Source {
 	sources := make([]Source, 0, len(fields))
 	for _, f := range fields {
 		origin := origins[f.key]
-		if origin == "" {
+		switch {
+		case f.key == "KeyID" || f.key == "Secret":
+			origin = cfg.KeyOrigin
+		case origin == "":
 			origin = OriginDefault
-		}
-		if (f.key == "KeyID" || f.key == "Secret") && origin == OriginEnv && cfg.KeyEnv != "" {
-			origin += " (" + cfg.KeyEnv + ")"
 		}
 		sources = append(sources, Source{Key: f.key, Value: f.val, Origin: origin})
 	}
 	return sources
+}
+
+// keyOrigin is Config.KeyOrigin for the origin of the key and KeyEnv.
+func keyOrigin(origin, keyEnv string) string {
+	switch {
+	case origin == "":
+		return OriginDefault
+	case origin == OriginEnv && keyEnv != "":
+		return origin + " (" + keyEnv + ")"
+	}
+	return origin
 }

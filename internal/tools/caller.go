@@ -14,7 +14,7 @@ import (
 
 // Caller is a command of the CLI that calls an engine tool in its own
 // process: evo deploy, destroy, logs, status, list-zones, list-images and
-// project list (internal/cli, spec REQ-4). The tool answers it as it
+// project list (internal/cli, spec REQ-4), whoami and doctor (REQ-11). The tool answers it as it
 // answers MCP — the same arguments, the same checks, the same answer; the
 // Caller changes only how the work is shown and how consent is asked, as
 // these commands showed and asked before they called the tool:
@@ -48,6 +48,15 @@ type Caller struct {
 	// Follow is logs --follow: MCP has no stream, so the tool has no such
 	// argument (CLI only).
 	Follow bool
+	// Verbose is --verbose: doctor's probes name the HTTP status they got
+	// (the API root answers 404, which reads as an error without it).
+	Verbose bool
+	// Doctor is the CLI's part of doctor's answer (CLI only): the checks of
+	// the machine the command runs on — the binary, the config files and
+	// their modes, kubectl and helm in PATH — around the tool's own, which
+	// MCP gets: Doctor(own) is every check, in the order the command shows
+	// them. Over MCP they would be the server's paths and programs.
+	Doctor func(own []DoctorCheck) []DoctorCheck
 	// Err is set to the error of an error answer.
 	Err error
 }

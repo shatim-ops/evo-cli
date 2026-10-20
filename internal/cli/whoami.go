@@ -5,19 +5,20 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 func newWhoamiCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "whoami",
 		Short: i18n.T("Show the active profile and check its credentials", "Активный профиль и проверка его ключа"),
 		Long: i18n.T(`Exchange the access key of the active profile for an IAM token and show
@@ -33,66 +34,63 @@ Key ID (маскированный), проект и срок действия �
 выхода 2 — ключа нет или IAM его отклонил.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			printer := output.New(flagJSON, flagNoColor)
-			cfg, sources, err := resolveConfigWithSources(printer, scopeOverrides())
+			text, err := callEngineTool(cmd, "whoami", map[string]any{}, &tools.Caller{})
 			if err != nil {
 				return err
 			}
-			provider := tokenProvider(cfg)
-			before := provider.Exchanges()
-			tok, err := provider.Token(cmd.Context())
-			if err != nil {
-				return err
+			p := cmdPrinter(cmd)
+			if p.IsJSON() {
+				fmt.Fprintln(cmd.OutOrStdout(), text)
+				return nil
 			}
-			tokenSource := "cache"
-			if provider.Exchanges() != before {
-				tokenSource = "iam"
-			}
-			origin := sourceOrigin(sources, "KeyID")
-			projectOrigin := sourceOrigin(sources, "ProjectID")
-			visible, scopeErr := listProjects(cmd.Context(), tok.Value)
-
-			if printer.IsJSON() {
-				out := map[string]any{
-					"profile":           cfg.Profile,
-					"key_id":            config.MaskKeyID(cfg.KeyID),
-					"credentials_from":  origin,
-					"project_id":        cfg.ProjectID,
-					"project_from":      projectOrigin,
-					"token_expires_at":  tok.ExpiresAt.UTC().Format(time.RFC3339),
-					"token_ttl_seconds": int(tok.TTL().Seconds()),
-					"token_source":      tokenSource,
-				}
-				if scopeErr == nil {
-					out["visible_projects"] = len(visible)
-				}
-				return printer.JSON(out)
-			}
-			project := cfg.ProjectID
-			if project == "" {
-				project = notSet()
-			}
-			w := printer.Writer()
-			fmt.Fprintf(w, i18n.T("Profile:     %s\n", "Профиль:     %s\n"), cfg.Profile)
-			fmt.Fprintf(w, i18n.T("Key ID:      %s (from %s)\n", "Key ID:      %s (источник: %s)\n"), config.MaskKeyID(cfg.KeyID), origin)
-			if cfg.ProjectID != "" {
-				project += i18n.T(" (from ", " (источник: ") + projectOrigin + ")"
-			}
-			fmt.Fprintf(w, i18n.T("Project ID:  %s\n", "Проект:      %s\n"), project)
-			fmt.Fprintf(w, i18n.T("Projects:    %s\n", "Проекты:     %s\n"), scopeText(visible, scopeErr))
-			fmt.Fprintf(w, i18n.T("Token:       valid until %s (%s left, %s)\n", "Токен:       действует до %s (осталось %s, %s)\n"),
-				tok.ExpiresAt.Local().Format("2006-01-02 15:04:05 MST"),
-				tok.TTL().Truncate(time.Minute), tokenSourceText(tokenSource))
-			if cfg.ProjectID == "" {
-				// The hint of the commands that refuse without a project.
-				printer.Hint(clerrors.ProjectRequired().Hint)
-			}
-			if scopeErr == nil && len(visible) > 1 {
-				printer.Warning(manyProjectsWarning(len(visible)))
-			}
-			return nil
+			return showWhoami(p, text)
 		},
 	}
+	return engineCmd(cmd, "whoami")
+}
+
+// showWhoami is the answer of the whoami tool as 'evo whoami' shows it.
+func showWhoami(p *output.Printer, text string) error {
+	var a struct {
+		Profile         string    `json:"profile"`
+		KeyID           string    `json:"key_id"`
+		CredentialsFrom string    `json:"credentials_from"`
+		ProjectID       string    `json:"project_id"`
+		ProjectFrom     string    `json:"project_from"`
+		TokenExpiresAt  time.Time `json:"token_expires_at"`
+		TokenTTLSeconds int       `json:"token_ttl_seconds"`
+		TokenSource     string    `json:"token_source"`
+		VisibleProjects *int      `json:"visible_projects"`
+	}
+	if err := json.Unmarshal([]byte(text), &a); err != nil {
+		return err
+	}
+	scope := tools.ScopeText(0, false)
+	if a.VisibleProjects != nil {
+		scope = tools.ScopeText(*a.VisibleProjects, true)
+	}
+	project := a.ProjectID
+	if project == "" {
+		project = notSet()
+	} else {
+		project += i18n.T(" (from ", " (источник: ") + a.ProjectFrom + ")"
+	}
+	w := p.Writer()
+	fmt.Fprintf(w, i18n.T("Profile:     %s\n", "Профиль:     %s\n"), a.Profile)
+	fmt.Fprintf(w, i18n.T("Key ID:      %s (from %s)\n", "Key ID:      %s (источник: %s)\n"), a.KeyID, a.CredentialsFrom)
+	fmt.Fprintf(w, i18n.T("Project ID:  %s\n", "Проект:      %s\n"), project)
+	fmt.Fprintf(w, i18n.T("Projects:    %s\n", "Проекты:     %s\n"), scope)
+	fmt.Fprintf(w, i18n.T("Token:       valid until %s (%s left, %s)\n", "Токен:       действует до %s (осталось %s, %s)\n"),
+		a.TokenExpiresAt.Local().Format("2006-01-02 15:04:05 MST"),
+		(time.Duration(a.TokenTTLSeconds) * time.Second).Truncate(time.Minute), tokenSourceText(a.TokenSource))
+	if a.ProjectID == "" {
+		// The hint of the commands that refuse without a project.
+		p.Hint(clerrors.ProjectRequired().Hint)
+	}
+	if a.VisibleProjects != nil && *a.VisibleProjects > 1 {
+		p.Warning(tools.ManyProjectsWarning(*a.VisibleProjects))
+	}
+	return nil
 }
 
 func tokenSourceText(s string) string {
@@ -104,28 +102,3 @@ func tokenSourceText(s string) string {
 
 // notSet stands for an empty project ID.
 func notSet() string { return i18n.T("(not set)", "(не задан)") }
-
-// scopeText says how many projects the key sees. The Organization API does
-// not list projects for every key (a service account gets 400 "user not
-// found", 14.10.2026): then the scope is unknown, which is not an error.
-func scopeText(visible []orgProject, err error) string {
-	if err != nil {
-		return i18n.T("unknown (the Organization API does not list projects for this key)",
-			"неизвестно (Organization API не отдаёт список проектов для этого ключа)")
-	}
-	if len(visible) == 1 {
-		return i18n.T("1 visible to the key", "ключ видит 1 проект")
-	}
-	n := len(visible)
-	return i18n.Tf("%d visible to the key", "ключ видит %d "+i18n.Plural(n, "проект", "проекта", "проектов"), n)
-}
-
-// manyProjectsWarning explains what a key that sees several projects means:
-// every command works in the project above, and an MCP server with this key
-// can be told to work in any of them (QA P5).
-func manyProjectsWarning(n int) string {
-	return i18n.Tf("the key sees %d projects (organization-level access): commands work in the project above "+
-		"unless --project-id says otherwise; limit a shared 'evo mcp --http' server with --allow-project",
-		"ключ видит %d "+i18n.Plural(n, "проект", "проекта", "проектов")+" (доступ уровня организации): команды работают "+
-			"в проекте выше, если --project-id не задаёт другой; общий сервер 'evo mcp --http' ограничьте флагом --allow-project", n)
-}

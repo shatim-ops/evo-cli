@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
-	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -29,7 +29,12 @@ func (s *Registry) adminGET(ctx context.Context, rawurl string) (map[string]any,
 	if err != nil {
 		return nil, err
 	}
-	tok, err := eng.Auth.Token(ctx)
+	return tokenGET(ctx, eng.Auth, rawurl)
+}
+
+// tokenGET is adminGET with the token of tp.
+func tokenGET(ctx context.Context, tp auth.TokenProvider, rawurl string) (map[string]any, error) {
+	tok, err := tp.Token(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -125,14 +130,6 @@ func (s *Registry) handleIamServiceAccounts(ctx context.Context, args map[string
 // for the tests of the CLI, whose 'evo project list' calls org_projects).
 var OrgProjectsURL = "https://organization.api.cloud.ru/v3/projects"
 
-// orgProjectsNote is the note of org_projects when the Organization API
-// refuses the list: the same case and wording as 'evo project list', in
-// the language of the CLI (English over MCP).
-func orgProjectsNote() string {
-	return i18n.T("unknown (the Organization API does not list projects for this key)",
-		"неизвестно (Organization API не отдаёт список проектов для этого ключа)")
-}
-
 // handleOrgProjects lists projects the caller can see. A key the
 // Organization API does not list projects for (a project-level service
 // account: 400 "user not found", 14.10.2026) is not a failure — the key
@@ -142,31 +139,18 @@ func orgProjectsNote() string {
 // 400/403/404 are that case: a 401, a 429 or a 5xx is a failure of the
 // call (orgHTTPError), not a property of the key.
 func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (string, bool) {
-	// Every page (#98): api.op.v3.yaml answers next_page_token and takes
-	// page_token. Only a refusal of the first page says the key cannot
-	// list projects; one of a later page is a failure of the call.
-	var raw []any
-	laterPage := false
-	err := pager.All("organization: projects", func(token string) (string, error) {
-		u := OrgProjectsURL
-		if token != "" {
-			u += "?page_token=" + neturl.QueryEscape(token)
-		}
-		m, err := s.adminGET(ctx, u)
-		if err != nil {
-			laterPage = token != ""
-			return "", err
-		}
-		page, _ := m["projects"].([]any)
-		raw = append(raw, page...)
-		next, _ := m["next_page_token"].(string)
-		return next, nil
-	})
+	eng, err := s.engineFor(ctx, nil)
+	if err != nil {
+		return failed(ctx, err, nil), true
+	}
+	// Only a refusal of the first page says the key cannot list projects;
+	// one of a later page is a failure of the call.
+	raw, laterPage, err := orgProjectPages(ctx, eng.Auth)
 	var he *adminHTTPError
 	if errors.As(err, &he) && (laterPage || he.Status != http.StatusBadRequest && he.Status != http.StatusForbidden && he.Status != http.StatusNotFound) {
 		return failed(ctx, orgHTTPError(he), nil), true
 	}
-	active := s.projectID(ctx)
+	active := eng.Config.ProjectID
 	if errors.As(err, &he) {
 		hint := "Not an error: the key works in the active project (whoami). Pass project_id where a tool takes one."
 		if active == "" {
@@ -177,7 +161,7 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 		return toJSON(map[string]any{
 			"projects":    nil,
 			"active":      active,
-			"note":        orgProjectsNote(),
+			"note":        ScopeText(0, false),
 			"http_status": he.Status,
 			"hint":        hint,
 		}), false
@@ -199,6 +183,29 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 	// active: the project commands work in, as 'evo project list' marks
 	// it (spec REQ-4).
 	return toJSON(map[string]any{"projects": out, "active": active}), false
+}
+
+// orgProjectPages reads every page of the project list of the Organization
+// API with the token of tp (#98): api.op.v3.yaml answers next_page_token
+// and takes page_token. laterPage: err is the failure of a page after the
+// first.
+func orgProjectPages(ctx context.Context, tp auth.TokenProvider) (raw []any, laterPage bool, err error) {
+	err = pager.All("organization: projects", func(token string) (string, error) {
+		u := OrgProjectsURL
+		if token != "" {
+			u += "?page_token=" + neturl.QueryEscape(token)
+		}
+		m, err := tokenGET(ctx, tp, u)
+		if err != nil {
+			laterPage = token != ""
+			return "", err
+		}
+		page, _ := m["projects"].([]any)
+		raw = append(raw, page...)
+		next, _ := m["next_page_token"].(string)
+		return next, nil
+	})
+	return raw, laterPage, err
 }
 
 // orgNoProjectHint is the hint of org_projects when the key cannot list

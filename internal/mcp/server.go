@@ -156,7 +156,7 @@ func (s *Server) ListTools() []Tool {
 
 // SetToolsets limits tools/list and tools/call to the tools of the named
 // groups (tools.Groups(): deploy, vm, vpc, k8s, …); "all" or no group keeps
-// every tool. The point is the agent's context: 152 tools are ~100 KB of
+// every tool. The point is the agent's context: 154 tools are ~100 KB of
 // tools/list in every session, deploy+vm+vpc are 26 (review r5 M3, as
 // GitHub's MCP server --toolsets). It is not a permission boundary:
 // stack_apply still drives the tools of other groups in-process, and the

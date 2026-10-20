@@ -30,8 +30,14 @@ import (
 
 // EngineFactory builds an *engine.Engine from a set of config overrides.
 // Overrides use the same field names as config flags (e.g. "ComposeFile",
-// "Region", "ProjectID"). A nil or empty map yields the default config.
+// "Region", "ProjectID"), and WarningsShown. A nil or empty map yields the
+// default config.
 type EngineFactory func(overrides map[string]any) (*engine.Engine, error)
+
+// WarningsShown (true) is the override of a tool whose answer shows the
+// configuration's warnings (Config.Warnings: doctor's checks): the factory
+// does not print them as well. It is no config field.
+const WarningsShown = "WarningsShown"
 
 // Handler executes a single tool call. It returns the textual (JSON) result
 // and a flag telling whether the result is a tool-level error.
@@ -214,6 +220,9 @@ var groupByName = map[string]string{
 	"iam_service_accounts": "iam",
 	"org_projects":         "org",
 	"org_quotas":           "org",
+
+	"whoami": "auth",
+	"doctor": "auth",
 }
 
 // groupPrefixes assigns the rest by name prefix.

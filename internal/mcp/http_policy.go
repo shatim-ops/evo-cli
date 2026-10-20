@@ -73,6 +73,9 @@ var HTTPRestrictions = []Restriction{
 	{ID: "H9", StdioToo: true,
 		Where: "internal/cli/mcp.go", Symbol: "checkAllowedProject",
 		Summary: "--allow-project: a call in another project gets CONFIG_INVALID"},
+	{ID: "H10", Tools: []string{"doctor"},
+		Where: "internal/mcp/http_policy.go", Symbol: "doctor is disabled over HTTP",
+		Summary: "disabled: its checks name the server's files and network (paths in the configuration's warnings, addresses in network errors)"},
 }
 
 // restriction returns the entry of HTTPRestrictions with the given ID.
@@ -98,7 +101,8 @@ func (s *Server) restrict(id, tool string, wrap func(next tools.Handler) tools.H
 }
 
 // restrictForHTTP adjusts tool handlers for the HTTP transport, as
-// HTTPRestrictions lists (H1–H7; H8 is in the HTTP handler, H9 in the CLI).
+// HTTPRestrictions lists (H1–H7, H10; H8 is in the HTTP handler, H9 in the
+// CLI).
 // The tool set and schemas stay the same; some calls answer with an error
 // instead, and without allowSecretExport credential fields are masked.
 //
@@ -152,6 +156,18 @@ func (s *Server) restrictForHTTP(allowSecretExport bool) {
 				return refused(err), true
 			}
 			return next(ctx, args)
+		}
+	})
+
+	// H10: doctor checks the server itself, and its checks name the
+	// server's files (the configuration's warnings: credentials.yaml,
+	// .evo.yaml) and network (a resolver's or a proxy's address in a
+	// network error). whoami names neither.
+	s.restrict("H10", "doctor", func(tools.Handler) tools.Handler {
+		return func(context.Context, map[string]any) (string, bool) {
+			return refused(fmt.Errorf(
+				"doctor is disabled over HTTP: its checks name the server's files and network. " +
+					"Call whoami for the key and the project; the server's operator runs 'evo doctor' on the server")), true
 		}
 	})
 

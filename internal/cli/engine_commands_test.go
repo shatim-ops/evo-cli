@@ -31,12 +31,11 @@ import (
 
 // engineCallsAllowed are the functions of internal/cli that may still call
 // listProjects, with the reason: the commands that keep it (spec REQ-4:
-// configure and project use) and those that become tools in PR 9 (REQ-11).
+// configure and project use). whoami and doctor count the projects in
+// their tools (REQ-11).
 var engineCallsAllowed = map[string]string{
 	"chooseProject":     "evo configure: выбор проекта при записи профиля",
 	"resolveProjectArg": "evo project use: проект по имени",
-	"newWhoamiCmd":      "evo whoami: до PR 9 (REQ-11), станет инструментом whoami",
-	"keyScopeCheck":     "evo doctor: до PR 9 (REQ-11), станет инструментом doctor",
 }
 
 // engineMethods are the engine calls the commands of internal/cli made
@@ -505,5 +504,32 @@ func TestEngineCommands_ListImagesOnlyAdds(t *testing.T) {
 	}
 	if !strings.Contains(string(got[2]), `"name": "my-app"`) {
 		t.Errorf("the project's image is not last: %s", got[2])
+	}
+}
+
+// whoami and doctor over HTTP (spec REQ-11, HTTPRestrictions H10): whoami
+// answers as over stdio, the key ID masked and no path of the server in
+// it; doctor is refused, since its checks name the server's files and
+// network.
+func TestEngineCommands_WhoamiDoctorOverHTTP(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	srv := parityServers(t)
+	stdio, overHTTP := stdioDetails(t, srv.stdio, "whoami", map[string]any{}), httpDetails(t, srv.http, "whoami", map[string]any{})
+	for _, k := range []string{"token_expires_at", "token_ttl_seconds"} { // the time of each call
+		delete(stdio, k)
+		delete(overHTTP, k)
+	}
+	if !reflect.DeepEqual(stdio, overHTTP) || overHTTP["key_id"] != "0000****0000" {
+		t.Errorf("whoami over HTTP ≠ stdio, or the key ID is not masked: %s", valueDiff(stdio, overHTTP))
+	}
+	if b, _ := json.Marshal(overHTTP); strings.Contains(string(b), w.dir) || strings.Contains(string(b), "00000000000000000000000000000000") {
+		t.Errorf("whoami over HTTP names a path or the key ID: %s", b)
+	}
+	got := httpDetails(t, srv.http, "doctor", map[string]any{})
+	if msg, _ := got["error"].(string); got["reason"] != "USAGE" || !strings.Contains(msg, "doctor is disabled over HTTP") || got["checks"] != nil {
+		t.Errorf("doctor over HTTP: %v", got)
+	}
+	if got := stdioDetails(t, srv.stdio, "doctor", map[string]any{}); got["ok"] != true || got["checks"] == nil {
+		t.Errorf("doctor over stdio: %v", got)
 	}
 }
