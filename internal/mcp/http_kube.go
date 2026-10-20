@@ -150,7 +150,8 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 	}
 	// Any verb that names a Secret may print it: get, but also
 	// "label/patch/apply … secret x -o yaml --dry-run=server". Only the
-	// table (no -o, -o wide) and -o name leave the data out.
+	// table (no -o, -o wide) and -o name leave the data out, and describe
+	// does not (see below).
 	const hint = "it prints the secret data; start the server with --allow-secret-export to enable it"
 	for _, o := range outputs {
 		if o != "" && o != "name" && o != "wide" {
@@ -167,6 +168,11 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 	case verb == "apply" && slices.Contains(resources, "view-last-applied"):
 		// Prints the same annotation, as YAML by default.
 		return fmt.Errorf("k8s_kubectl apply view-last-applied secret is disabled over HTTP: %s", hint)
+	case verb == "describe":
+		// describe leaves the values out of Data but prints every
+		// annotation in full, last-applied-configuration included (break
+		// r4, R4-1). The table of get does not print annotations.
+		return fmt.Errorf("k8s_kubectl describe secret is disabled over HTTP: it prints the annotations, and last-applied-configuration holds the secret data; use get secret (the table or -o name), or start the server with --allow-secret-export to enable it")
 	}
 	return nil
 }

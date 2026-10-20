@@ -565,11 +565,12 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
   `-o yaml|json|jsonpath…|go-template…|custom-columns…` в любом написании
   (`-oyaml`, `-o=yaml`, `--output yaml`, `-Aoyaml`), `--template` (без `-o`
   это `go-template`), `--list` (`annotate --list` показывает
-  `last-applied-configuration` с данными) и `apply view-last-applied`. Так
-  закрыто и `label secret x a=b -o yaml --dry-run=server`: объект не меняется,
-  но печатается целиком. `get secrets`, `get secret x -o name`,
-  `describe secret` (без значений), `create secret generic … --from-literal`
-  работают.
+  `last-applied-configuration` с данными), `apply view-last-applied` и
+  `describe` (значения `Data` он не печатает, но печатает все аннотации, и
+  `last-applied-configuration` секрета, созданного через `apply`, содержит
+  его данные). Так закрыто и `label secret x a=b -o yaml --dry-run=server`:
+  объект не меняется, но печатается целиком. `get secrets`, `get secret x`,
+  `get secret x -o name`, `create secret generic … --from-literal` работают.
 - В ответах остальных инструментов значения полей с паролями, ключами и
   токенами (`password`, `secret_key`, `private_key`, `token`, …) заменяются на
   `[redacted over HTTP: …]`. Так, `deploy_apply` не возвращает

@@ -20,6 +20,10 @@ func TestBreakR4_R4_1_DescribeSecretNeedsExport(t *testing.T) {
 		"describe secrets",
 		"describe secret/x",
 		"describe secrets/db",
+		"describe cm,secret",
+		"describe Secret.v1 x",
+		"describe secret x -n db",
+		"describe -n db secret x",
 	} {
 		if err := kubectlHTTPCheck(strings.Fields(c), false); err == nil {
 			t.Errorf("%q is allowed over HTTP without --allow-secret-export", c)

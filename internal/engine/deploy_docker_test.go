@@ -357,3 +357,46 @@ func TestEnsureSSHKey_LoadsOnceAndOnlyWhenMissing(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// A refusal the next attempt would repeat (an unsupported OS, no keyring
+// for the official mirror) ends the install at once, with the diagnosis,
+// instead of retrying until the deadline (break r4, R4-15, R4-17).
+func TestDeploy_DockerPermanentRefusalNotRetried(t *testing.T) {
+	for _, line := range []string{
+		bootstrap.UnsupportedOSLine + " (CentOS, RHEL, Fedora, Rocky Linux, AlmaLinux), not on alpine",
+		bootstrap.NoKeyringLine + " (https://archive.ubuntu.com/ubuntu), and the image's apt mirror does not work",
+	} {
+		dep := newMockDeployer()
+		var attempts atomic.Int32
+		dep.streamOut = func(cmd string) string {
+			if !strings.Contains(cmd, "base64 -d") {
+				return ""
+			}
+			attempts.Add(1)
+			return line + "\n"
+		}
+		dep.streamHook = func(_ context.Context, cmd string) error {
+			if strings.Contains(cmd, "base64 -d") {
+				return stderrors.New("Process exited with status 1")
+			}
+			return nil
+		}
+		eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+		eng.Timings.DockerWaitTimeout = time.Minute
+		eng.Timings.DockerPollInterval = time.Millisecond
+
+		start := time.Now()
+		err := eng.Deploy(context.Background(), newDeployOpts(t, dir))
+		var cliErr *clerrors.CLIError
+		if !stderrors.As(err, &cliErr) || cliErr.Code != clerrors.CodeSSHTimeout {
+			t.Fatalf("err = %v, want SSH_TIMEOUT", err)
+		}
+		if n := attempts.Load(); n != 1 || time.Since(start) > 30*time.Second {
+			t.Errorf("%d install attempts in %s, want one", n, time.Since(start))
+		}
+		if !strings.Contains(cliErr.Message, "Docker cannot be installed on VM") ||
+			!strings.Contains(cliErr.Hint, "Diagnosis:") || !strings.Contains(cliErr.Hint, line) {
+			t.Errorf("message %q, hint:\n%s", cliErr.Message, cliErr.Hint)
+		}
+	}
+}

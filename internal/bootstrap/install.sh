@@ -12,7 +12,9 @@
 # Failed to fetch https://repo.mng.sbercloud..."): then this install alone
 # goes to the distribution's official mirror over HTTPS. The image's own apt
 # sources are not changed, and apt checks the signatures of every source.
-# Other distributions get Docker from get.docker.com, as before.
+# RPM-based distributions (CentOS, RHEL, Fedora, Rocky, AlmaLinux and those
+# like RHEL or Fedora) get Docker from get.docker.com, as before; any other
+# is refused (break r4, R4-17).
 set -eu
 user="$1"
 # EVO_ROOT stands for / in install_test.go; sudo does not pass it, so on a
@@ -28,6 +30,9 @@ docker_list="$root/etc/apt/sources.list.d/docker.list"
 # The image template's bootcmd "configure-apt-mirrors" writes this on success.
 mirror_marker="$root/var/lib/cloud/instance/sem/configure-apt-mirrors"
 docker_pkgs="docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+# How long to wait for first-boot cloud-init, in seconds. Past it the install
+# goes on: apt waits for its lock itself (DPkg::Lock::Timeout).
+cloud_init_wait=600
 
 # Short network timeouts: a mirror that does not answer fails in seconds,
 # not after apt's two minutes per connection. Each apt-get also has a time
@@ -38,6 +43,16 @@ dpkg_opts="-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold
 apt_src="" # empty: the image's own sources; set by use_fallback
 
 say() { echo "evo: $*"; }
+
+# fresh_file PATH: before the script writes PATH, a symlink or a hard link
+# there is removed, not written through: the target may be the image's own
+# sources.list (break r4, R4-16), and the image's apt sources are never
+# changed. A directory there stops the script (rm fails).
+fresh_file() {
+	if [ -e "$1" ] || [ -L "$1" ]; then
+		rm -f "$1"
+	fi
+}
 
 # apt_get LIMIT ARGS... runs apt-get with the timeouts and the current
 # sources for at most LIMIT seconds; the output goes to $apt_log.
@@ -88,7 +103,7 @@ first_file() {
 # use_fallback points apt at the official mirror of the distribution and
 # Docker's repository, for the rest of this install and for evo's next
 # attempts (the marker). Signatures are checked against the distribution's
-# keyring, as for the image's sources.
+# keyring (signed-by); without the keyring file the fallback is refused.
 use_fallback() {
 	case "$os_id" in
 	ubuntu)
@@ -112,18 +127,26 @@ use_fallback() {
 		keyring=$(first_file "$root/usr/share/keyrings/debian-archive-keyring.gpg" "$root/usr/share/keyrings/debian-archive-keyring.pgp")
 		;;
 	esac
-	# Without the keyring file apt checks against its trusted keys, as it
-	# does for the image's sources: never an unsigned source.
-	signed=""
-	if [ -n "$keyring" ]; then
-		signed="[signed-by=$keyring] "
+	# Without signed-by apt would still check signatures, against every key
+	# it trusts (the image may have added its own): a weaker binding than
+	# the distribution's keyring for a mirror the image did not choose. Not
+	# taken (break r4, R4-15).
+	if [ -z "$keyring" ]; then
+		say "no keyring of the distribution: cannot verify the official mirror ($base), and the image's apt mirror does not work"
+		if [ -f "$apt_log" ]; then
+			apt_errors
+		fi
+		exit 1
 	fi
+	signed="[signed-by=$keyring] "
 	mkdir -p "$fallback_dir/sources.list.d"
+	fresh_file "$fallback_dir/sources.list"
 	{
 		echo "deb $signed$base $codename $components"
 		echo "deb $signed$base $codename-updates $components"
 		echo "deb $signed$security $codename-security $components"
 	} >"$fallback_dir/sources.list"
+	fresh_file "$fallback_dir/sources.list.d/docker.list"
 	cp "$docker_list" "$fallback_dir/sources.list.d/docker.list"
 	apt_src="-o Dir::Etc::SourceList=$fallback_dir/sources.list -o Dir::Etc::SourceParts=$fallback_dir/sources.list.d"
 	: >"$fallback_marker"
@@ -171,10 +194,12 @@ install_docker_apt() {
 	# The same paths as get.docker.com, so a repository it set up earlier is
 	# replaced, not doubled with another signed-by.
 	install -d -m 0755 "$root/etc/apt/keyrings" "$root/etc/apt/sources.list.d"
+	fresh_file "$docker_key"
 	cat >"$docker_key" <<'EOF'
 @DOCKER_KEY@
 EOF
 	chmod 0644 "$docker_key"
+	fresh_file "$docker_list"
 	echo "deb [arch=$arch signed-by=$docker_key] https://download.docker.com/linux/$os_id $codename stable" >"$docker_list"
 	# An earlier attempt cut by the deadline may have stopped dpkg midway.
 	DEBIAN_FRONTEND=noninteractive dpkg --configure -a >/dev/null 2>&1 || true
@@ -226,15 +251,33 @@ EOF
 	fi
 }
 
+# rpm_based: get.docker.com installs Docker on these (SEC-8: without
+# checking a signature evo holds); other distributions are refused.
+rpm_based() {
+	case "$os_id" in
+	centos | rhel | fedora | rocky | almalinux) return 0 ;;
+	esac
+	case " $os_like " in
+	*" rhel "* | *" fedora "*) return 0 ;;
+	esac
+	return 1
+}
+
 # First-boot cloud-init holds the apt lock (the platform template runs
-# package_update). Its exit code is not trusted: warnings give 2.
+# package_update). Its exit code is not trusted: warnings give 2. A
+# cloud-init that never finishes does not hold the install (break r4,
+# R4-18): past the limit it goes on.
 if command -v cloud-init >/dev/null 2>&1; then
-	cloud-init status --wait >/dev/null 2>&1 || true
+	ci_rc=0
+	timeout "$cloud_init_wait" cloud-init status --wait >/dev/null 2>&1 || ci_rc=$?
+	if [ "$ci_rc" = 124 ]; then
+		say "cloud-init is still running after ${cloud_init_wait}s; going on without it"
+	fi
 fi
 
 if ! docker compose version >/dev/null 2>&1; then
 	mkdir -p "$evo_dir" "$root/etc/docker"
-	if [ ! -f "$root/etc/docker/daemon.json" ]; then
+	if [ ! -e "$root/etc/docker/daemon.json" ] && [ ! -L "$root/etc/docker/daemon.json" ]; then
 		cat >"$root/etc/docker/daemon.json" <<'EOF'
 {
   "log-driver": "json-file",
@@ -244,11 +287,17 @@ EOF
 	fi
 	# shellcheck source=/dev/null
 	os_id=$(. "$root/etc/os-release" && echo "${ID:-}")
+	# shellcheck source=/dev/null
+	os_like=$(. "$root/etc/os-release" && echo "${ID_LIKE:-}")
 	case "$os_id" in
 	ubuntu | debian)
 		install_docker_apt
 		;;
 	*)
+		if ! rpm_based; then
+			say "Docker install is supported on Ubuntu, Debian and RPM-based distributions (CentOS, RHEL, Fedora, Rocky Linux, AlmaLinux), not on ${os_id:-this distribution}"
+			exit 1
+		fi
 		if ! command -v curl >/dev/null 2>&1; then
 			say "curl is missing: cannot run get.docker.com on $os_id"
 			exit 1

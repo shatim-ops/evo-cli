@@ -36,38 +36,76 @@ const userKeysFile = "user_authorized_keys"
 const legacyUserKeysFile = "captain_authorized_keys"
 
 // loadUserKeys returns the user public keys configured for auto-append and
-// the name of the file they came from.
+// the name of the file they came from. Lines that are not authorized_keys
+// entries are left out; deploy_plan shows them (loadUserKeyLines).
 func loadUserKeys(stateDir string) ([]string, string) {
+	keys, _, name := loadUserKeyLines(stateDir)
+	return keys, name
+}
+
+// rejectedKeyLine is a line of the keys file that is not sent to the VM.
+type rejectedKeyLine struct {
+	first, last int    // line numbers, 1-based
+	why         string // without the line's text: it may be a private key
+}
+
+// loadUserKeyLines reads the keys file: the authorized_keys entries, with
+// their options (command="…", from="…", no-agent-forwarding), as
+// ssh.ParseAuthorizedKey accepts them, and the lines it does not accept.
+// A pasted private key or arbitrary text must never reach a VM's
+// authorized_keys; until break r4 (R4-10) such lines, and option-prefixed
+// keys with them, were dropped without a word.
+func loadUserKeyLines(stateDir string) (keys []string, rejected []rejectedKeyLine, name string) {
 	dir := config.DataDir(stateDir)
-	name := userKeysFile
+	name = userKeysFile
 	raw, err := os.ReadFile(filepath.Join(dir, name))
 	if os.IsNotExist(err) {
 		name = legacyUserKeysFile
 		raw, err = os.ReadFile(filepath.Join(dir, name))
 	}
 	if err != nil {
-		return nil, userKeysFile
+		return nil, nil, userKeysFile
 	}
-	var keys []string
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
+	lines := strings.Split(string(raw), "\n")
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		// Only authorized_keys-format PUBLIC keys. A pasted private key or
-		// arbitrary text must never reach a VM's authorized_keys.
-		if !isPublicKeyLine(line) {
+		if strings.HasPrefix(line, "-----BEGIN") {
+			// A PEM block: one entry for the whole block, up to its END line.
+			r := rejectedKeyLine{first: i + 1, last: i + 1, why: "not a public key"}
+			if strings.Contains(line, "PRIVATE KEY") {
+				r.why = "a PRIVATE key: remove it from the file and keep it secret"
+			}
+			for j := i + 1; j < len(lines); j++ {
+				if strings.HasPrefix(strings.TrimSpace(lines[j]), "-----END") {
+					r.last, i = j+1, j
+					break
+				}
+			}
+			rejected = append(rejected, r)
+			continue
+		}
+		if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line)); err != nil {
+			why := "not an authorized_keys entry"
+			if t := strings.Fields(line)[0]; knownKeyType(t) {
+				why = "not a valid " + t + " public key"
+			}
+			rejected = append(rejected, rejectedKeyLine{first: i + 1, last: i + 1, why: why})
 			continue
 		}
 		keys = append(keys, line)
 	}
-	return keys, name
+	return keys, rejected, name
 }
 
-// isPublicKeyLine reports whether line looks like an authorized_keys entry.
-func isPublicKeyLine(line string) bool {
-	for _, prefix := range []string{"ssh-ed25519 ", "ssh-rsa ", "ecdsa-sha2-", "sk-ssh-ed25519@", "sk-ecdsa-sha2-"} {
-		if strings.HasPrefix(line, prefix) {
+// knownKeyType reports whether word names an SSH public key algorithm, so
+// that an error may quote it: any other first word may be a piece of a
+// secret pasted by mistake.
+func knownKeyType(word string) bool {
+	for _, prefix := range []string{"ssh-ed25519", "ssh-rsa", "ssh-dss", "ecdsa-sha2-", "sk-ssh-ed25519@", "sk-ecdsa-sha2-"} {
+		if strings.HasPrefix(word, prefix) {
 			return true
 		}
 	}
@@ -75,19 +113,31 @@ func isPublicKeyLine(line string) bool {
 }
 
 // describeUserKeys is what deploy_plan shows of the keys deploy_apply will
-// append: type, SHA256 fingerprint and comment of each. The file may have
-// come with a repository someone else wrote (a template with .evo/ in
-// it): the user approving the plan sees whose keys get a login on the VM
-// (security audit 19.10, follow-up of SEC-2).
-func describeUserKeys(keys []string) []map[string]string {
-	out := make([]map[string]string, 0, len(keys))
+// append: type, SHA256 fingerprint, comment and options (command="…" runs
+// instead of the login shell) of each, then the lines it will not send, with
+// error. The file may have come with a repository someone else wrote (a
+// template with .evo/ in it): the user approving the plan sees whose keys
+// get a login on the VM (security audit 19.10, follow-up of SEC-2).
+func describeUserKeys(keys []string, rejected []rejectedKeyLine) []map[string]any {
+	out := make([]map[string]any, 0, len(keys)+len(rejected))
 	for _, k := range keys {
-		pub, comment, _, _, err := ssh.ParseAuthorizedKey([]byte(k))
-		if err != nil {
-			out = append(out, map[string]string{"error": "not a valid public key: " + strings.Fields(k)[0]})
+		pub, comment, options, _, err := ssh.ParseAuthorizedKey([]byte(k))
+		if err != nil { // loadUserKeyLines parsed it already
+			out = append(out, map[string]any{"error": "not an authorized_keys entry; not sent to the VM"})
 			continue
 		}
-		out = append(out, map[string]string{"type": pub.Type(), "fingerprint": ssh.FingerprintSHA256(pub), "comment": comment})
+		e := map[string]any{"type": pub.Type(), "fingerprint": ssh.FingerprintSHA256(pub), "comment": comment}
+		if len(options) > 0 {
+			e["options"] = options
+		}
+		out = append(out, e)
+	}
+	for _, r := range rejected {
+		where := fmt.Sprintf("line %d", r.first)
+		if r.last > r.first {
+			where = fmt.Sprintf("lines %d-%d", r.first, r.last)
+		}
+		out = append(out, map[string]any{"error": where + ": " + r.why + "; not sent to the VM"})
 	}
 	return out
 }
@@ -102,12 +152,7 @@ func appendUserKeys(ctx context.Context, host, login string, agentKeyPEM []byte,
 		return "", nil
 	}
 
-	var script strings.Builder
-	script.WriteString("mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys")
-	for _, k := range keys {
-		q := shellQuoteMCP(k)
-		script.WriteString(fmt.Sprintf(" && { grep -qxF %s ~/.ssh/authorized_keys || echo %s >> ~/.ssh/authorized_keys; }", q, q))
-	}
+	script := userKeysScript(keys)
 
 	var lastErr error
 	for attempt := 0; attempt < 4; attempt++ {
@@ -123,7 +168,7 @@ func appendUserKeys(ctx context.Context, host, login string, agentKeyPEM []byte,
 			lastErr = err
 			continue
 		}
-		_, err := d.Exec(ctx, script.String())
+		_, err := d.Exec(ctx, script)
 		_ = d.Close()
 		if err != nil {
 			lastErr = err
@@ -132,6 +177,20 @@ func appendUserKeys(ctx context.Context, host, login string, agentKeyPEM []byte,
 		return d.HostKeyLine(), nil
 	}
 	return "", lastErr
+}
+
+// userKeysScript is the shell command that appends keys to
+// ~/.ssh/authorized_keys, each once.
+func userKeysScript(keys []string) string {
+	var script strings.Builder
+	script.WriteString("mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys")
+	for _, k := range keys {
+		// "--" and printf: an entry with options may start with any word,
+		// even one that looks like a flag of grep or echo.
+		q := shellQuoteMCP(k)
+		script.WriteString(fmt.Sprintf(" && { grep -qxF -- %s ~/.ssh/authorized_keys || printf '%%s\\n' %s >> ~/.ssh/authorized_keys; }", q, q))
+	}
+	return script.String()
 }
 
 // knownHostsFile is the project's own known_hosts, next to the deploy key:

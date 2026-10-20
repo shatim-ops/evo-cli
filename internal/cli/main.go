@@ -386,7 +386,7 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 // (the directory itself, or a key file pointing at ~/.ssh/authorized_keys or
 // a file another user owns) is refused instead of followed: writing through
 // it would overwrite that file with our key, or hand the private key to the
-// owner of the target.
+// owner of the target. So is a key file with more than one hard link.
 func loadOrGenerateSSHKey(projectDir string) (privPEM []byte, pubKey string, err error) {
 	keyDir := config.DataDir(projectDir)
 	privPath := filepath.Join(keyDir, "id_ed25519")
@@ -493,8 +493,8 @@ func ignoreInGit(dir string) {
 	_ = f.Close()
 }
 
-// readKeyFile reads a key file that must be a regular file, not a symlink,
-// and returns its mode for checkPrivateKeyMode.
+// readKeyFile reads a key file that must be a regular file with one link,
+// not a symlink or a hard link, and returns its mode for checkPrivateKeyMode.
 func readKeyFile(path string) ([]byte, os.FileMode, error) {
 	st, err := os.Lstat(path)
 	if err != nil {
@@ -507,8 +507,36 @@ func readKeyFile(path string) ([]byte, os.FileMode, error) {
 			i18n.T("Remove it (it may have come with the repository) and run the command again: a new key is created",
 				"Удалите его (он мог прийти вместе с репозиторием) и повторите команду: будет создан новый ключ"))
 	}
-	data, err := os.ReadFile(path)
-	return data, st.Mode(), err
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = f.Close() }()
+	fst, err := f.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+	if !os.SameFile(st, fst) {
+		// Replaced between Lstat and Open: the file opened is not the one
+		// checked above.
+		return nil, 0, clerrors.New(clerrors.CodeConfigInvalid,
+			i18n.Tf("%s changed while it was being read; refusing to use it as the SSH key",
+				"%s изменился во время чтения; как SSH-ключ он не используется", path),
+			i18n.T("Run the command again", "Повторите команду"))
+	}
+	// A hard link is a regular file for Lstat, yet the same data is reachable
+	// by another path, which may be another user's file or someone else's key
+	// planted next to the project (break r4, R4-9). evo writes the key with
+	// rename, one link only.
+	if n := linkCount(f, fst); n > 1 {
+		return nil, 0, clerrors.New(clerrors.CodeConfigInvalid,
+			i18n.Tf("%s has %d hard links: the same file is reachable by another path; refusing to use it as the SSH key",
+				"у %s несколько жёстких ссылок (%d): тот же файл доступен по другому пути; как SSH-ключ он не используется", path, n),
+			i18n.T("Remove it (it may have come from someone else) and run the command again: a new key is created. To reuse your own key, copy it (cp) instead of linking it",
+				"Удалите его (он мог появиться не от вас) и повторите команду: будет создан новый ключ. Чтобы взять свой ключ, скопируйте его (cp), а не ссылайтесь на него"))
+	}
+	data, err := io.ReadAll(f)
+	return data, fst.Mode(), err
 }
 
 // checkPrivateKeyMode refuses, as OpenSSH does ("UNPROTECTED PRIVATE KEY

@@ -63,6 +63,28 @@ check "токен https://iam.api.cloud.ru/api/v1/auth/token, https://id.cloud.r
       "токен https://iam.api.cloud.ru/api/v1/auth/token, https://id.cloud.ru/auth, https://auth.iam.cloud.ru/auth/system/openid/token"
 check "ключ — https://console.cloud.ru, документация https://cloud.ru/docs" "ключ — https://console.cloud.ru, документация https://cloud.ru/docs"
 check "хост x.compute.api.cloud.ru" "хост <host>.cloud.ru"
+# Break r4 (R4-13): полная форма IPv6 без букв, хосты в другом регистре,
+# «_» в имени бакета, hex-токены длиннее 32 цифр.
+check "addr 2001:0:0:0:0:0:0:1 end" "addr <ipv6> end"
+check "dial tcp [2001:0:0:0:0:0:0:1]:443" "dial tcp [<ipv6>]:443"
+check "app MyApp.Containers.Cloud.RU ready" "app <host>.cloud.ru ready"
+check "bucket my_bucket.s3.cloud.ru" "bucket <bucket>.s3.cloud.ru"
+check "GET https://My-Bucket.S3.Cloud.Ru/key" "GET https://<bucket>.s3.cloud.ru/key"
+check "docker push MyReg.CR.cloud.ru/app:1" "docker push <registry>.cr.cloud.ru/app:1"
+check "host evil_console.cloud.ru и x_s3.cloud.ru" "host <host>.cloud.ru и <host>.cloud.ru"
+check "token 0000000000000000000000000000000000000000000000000000000000000000" "token <id>"
+check "Bearer 0b5e9a6c11112222333344445555666f0b5e9a6c11112222333344445555666f end" "Bearer <id> end"
+check "ключ 0b5e9a6c11112222333344445555666f0 и key_0b5e9a6c11112222333344445555666f0b5e9a6c11112222333344445555666f" \
+      "ключ <id> и key_<id>"
+# Не задевается: хэш коммита (40 цифр), короткий хэш, версия, время.
+check "сборка 60f3e13 из 60f3e13f22e913240461e8839d99f634f2e69651, evo 1.4.2, 21:07:13" \
+      "сборка 60f3e13 из 60f3e13f22e913240461e8839d99f634f2e69651, evo 1.4.2, 21:07:13"
+check "2026-10-19T21:07:13.4332220Z 0b5e9a6c111122223333444455556" "2026-10-19T21:07:13.4332220Z 0b5e9a6c111122223333444455556"
+# R4-14: публичный хост в другом регистре остаётся.
+check "via Console.cloud.ru ok" "via Console.cloud.ru ok"
+check "via S3.cloud.ru ok" "via S3.cloud.ru ok"
+check "via IAM.API.cloud.ru ok" "via IAM.API.cloud.ru ok"
+check "via Auth.IAM.cloud.ru ok, https://ID.Cloud.RU/auth" "via Auth.IAM.cloud.ru ok, https://ID.Cloud.RU/auth"
 # Имя в конце значения JSON: маска съедает и кавычку со скобкой, поэтому в
 # cloud-e2e сначала jq, потом redact.sed и обрезка (ревью Grok по #88).
 check '{"status":"error","error":"не найдена подсеть evo-e2e-net"}' '{"status":"error","error":"не найдена подсеть <name>'

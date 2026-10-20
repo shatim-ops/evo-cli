@@ -140,8 +140,8 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	// deploy_apply appends these to authorized_keys of the VM: the user
 	// approves them with the plan.
 	if params.SSHKey == eng.SSHPubKey {
-		if keys, keysFile := loadUserKeys(eng.StateDir); len(keys) > 0 {
-			view["user_ssh_keys"] = describeUserKeys(keys)
+		if keys, rejected, keysFile := loadUserKeyLines(eng.StateDir); len(keys)+len(rejected) > 0 {
+			view["user_ssh_keys"] = describeUserKeys(keys, rejected)
 			view["user_ssh_keys_file"] = filepath.Join(filepath.Base(config.DataDir(eng.StateDir)), keysFile)
 			view["next"] = "Show this plan, its monthly cost and the user_ssh_keys to the user: those keys get an SSH login on the VM, and the file may have come with a repository someone else wrote. On explicit approval, call deploy_apply with this plan_id and confirmed=true."
 		}

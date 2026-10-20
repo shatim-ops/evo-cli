@@ -167,11 +167,14 @@ k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl
 видят другие проекты. Без флага сервер в режиме HTTP предупреждает при
 запуске. Для общего сервера лучше ключ уровня проекта.`
 
-// runMCP validates the transport flags and serves. From the moment it
-// serves, the process speaks English: the engine's progress captured into
-// tool results (deploy's "log") and the server's log are read by agents
-// and operators, not by the person at the terminal.
+// runMCP validates the transport flags and serves. The process speaks
+// English from its first check: the engine's progress captured into tool
+// results (deploy's "log") and the server's log are read by agents and
+// operators, not by the person at the terminal, and a refusal to start is
+// read in the same log (docs/auth.md: evo mcp always answers in English;
+// break r4, R4-12).
 func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport bool, allowProjects, toolsets []string) error {
+	i18n.SetLang(i18n.EN)
 	srv := mcp.New(mcpEngineFactory(allowProjects), version)
 	if err := srv.SetToolsets(toolsets); err != nil {
 		return clerrors.Wrap(clerrors.CodeUsage, i18n.Tf("--toolsets: %v", "--toolsets: %v", err),
@@ -185,7 +188,6 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport boo
 					"--auth и --allow-secret-export действуют только для транспорта HTTP"),
 				i18n.T("Add --http ADDR, e.g. --http 127.0.0.1:8080", "Добавьте --http ADDR, например --http 127.0.0.1:8080"))
 		}
-		i18n.SetLang(i18n.EN)
 		return runMCPStdio(cmd.Context(), srv)
 	}
 
@@ -193,7 +195,6 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport boo
 	if err != nil {
 		return err
 	}
-	i18n.SetLang(i18n.EN)
 	logger := clog.New(cmd.ErrOrStderr(), flagVerbose)
 	if w := bearerTokenWarning(token); w != "" {
 		logger.Warn(w)

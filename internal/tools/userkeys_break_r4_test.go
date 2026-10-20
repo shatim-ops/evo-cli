@@ -46,8 +46,13 @@ func TestBreakR4_R4_10_OptionAuthorizedKeyKept(t *testing.T) {
 	if name != userKeysFile || len(keys) != 1 || keys[0] != line {
 		t.Fatalf("loadUserKeys = %q %q, want the option-prefixed line", name, keys)
 	}
-	shown := describeUserKeys(keys)
-	if len(shown) != 1 || shown[0]["error"] != "" || shown[0]["fingerprint"] == "" {
+	// describeUserKeys принимает и отвергнутые строки: план показывает их
+	// с error (R4-10); здесь их нет. Опции видны до подтверждения.
+	shown := describeUserKeys(keys, nil)
+	if len(shown) != 1 || shown[0]["error"] != nil || shown[0]["fingerprint"] == "" {
 		t.Fatalf("describeUserKeys = %v", shown)
+	}
+	if opts, _ := shown[0]["options"].([]string); len(opts) != 2 || opts[0] != `command="echo hi"` || opts[1] != "no-agent-forwarding" {
+		t.Errorf("options = %#v", shown[0]["options"])
 	}
 }

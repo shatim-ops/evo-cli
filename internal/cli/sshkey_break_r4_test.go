@@ -5,19 +5,19 @@
 package cli
 
 import (
+	stderrors "errors"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
+
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // Жёсткая ссылка — обычный файл, Lstat её не отличает от ключа evo.
 // Содержимое при этом доступно по другому пути: чужой ключ из репозитория
 // принимается так же, как раньше принималась символическая ссылка.
 func TestBreakR4_R4_9_HardlinkDeployKeyRefused(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("жёсткие ссылки здесь не проверяются")
-	}
 	dir := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "planted")
 	const planted = "PLANTED-PRIVATE-KEY\n"
@@ -39,5 +39,30 @@ func TestBreakR4_R4_9_HardlinkDeployKeyRefused(t *testing.T) {
 	pem, _, err := loadOrGenerateSSHKey(dir)
 	if err == nil {
 		t.Fatalf("hardlinked private key was accepted (%d bytes)", len(pem))
+	}
+	var ce *clerrors.CLIError
+	if !stderrors.As(err, &ce) || ce.Code != clerrors.CodeConfigInvalid || !strings.Contains(err.Error(), "hard link") {
+		t.Errorf("want CONFIG_INVALID about hard links, got %v", err)
+	}
+	// Отказ ничего не трогает: файл вне каталога цел.
+	if b, _ := os.ReadFile(outside); string(b) != planted {
+		t.Errorf("linked file changed: %q", b)
+	}
+}
+
+// Ключ evo (одна ссылка) по-прежнему читается, и повторная загрузка
+// возвращает тот же ключ.
+func TestSSHKey_SingleLinkKeyLoads(t *testing.T) {
+	dir := t.TempDir()
+	pem1, pub1, err := loadOrGenerateSSHKey(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pem2, pub2, err := loadOrGenerateSSHKey(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(pem1) != string(pem2) || pub1 != pub2 {
+		t.Error("key regenerated on second load")
 	}
 }

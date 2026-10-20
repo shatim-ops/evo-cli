@@ -46,6 +46,8 @@ func TestInstallScript_InstallsDockerAndPreparesUser(t *testing.T) {
 		// what the caller's diagnosis looks for
 		FallbackFailedLine,
 		DockerRepoFailedLine,
+		NoKeyringLine,
+		UnsupportedOSLine,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("install script lacks %q", want)

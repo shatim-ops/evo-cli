@@ -176,6 +176,8 @@ func TestSec_KubectlHTTPArgs(t *testing.T) {
 		// A flag value before the subcommand.
 		"create -n default token sa",
 		"apply -n default view-last-applied secret/x",
+		// describe prints last-applied-configuration (break r4, R4-1).
+		"describe secret db",
 	}
 	for _, a := range denied {
 		if err := kubectlHTTPCheck(strings.Fields(a), false); err == nil {
@@ -187,7 +189,7 @@ func TestSec_KubectlHTTPArgs(t *testing.T) {
 		"get pods -n kube-system -o wide",
 		"get secrets",
 		"get secret db -o name",
-		"describe secret db",
+		"describe pod db",
 		"logs deploy/x -c app --tail 50",
 		"rollout status deploy/x",
 		"exec pod-0 -- cat -f /x",
