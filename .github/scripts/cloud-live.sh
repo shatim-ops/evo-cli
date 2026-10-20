@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Проверки вызываются косвенно (poll, must, cov): shellcheck до 0.11 считает
+# их тела недостижимыми (SC2317, info) — ложное срабатывание.
+# shellcheck disable=SC2317
 # SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
 # SPDX-FileContributor: Тимур Шакирбеков
 # SPDX-License-Identifier: Apache-2.0
