@@ -19,11 +19,13 @@ func FuzzRedactSecrets(f *testing.F) {
 		`[1,"x",{"token":"t","id":"i"}]`,
 		`not json`,
 		`{"password":1,"secret":null}`,
+		`{"accessToken":"a","password_expires_at":"2026","redacted":["x"]}`,
+		`{"passwords":["a","b"],"secret_old":{"v":"c","n":[1,"d"]},"password_expires_at_raw":"e"}`,
 	} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
-		out := redactSecrets(in)
+		out := redactSecrets("", in)
 		if !json.Valid([]byte(in)) {
 			if out != in {
 				t.Fatalf("non-JSON changed: %q -> %q", in, out)
@@ -35,13 +37,38 @@ func FuzzRedactSecrets(f *testing.F) {
 		}
 		var v any
 		_ = json.Unmarshal([]byte(out), &v)
+		// A masked object says so in redacted.
+		if m, ok := v.(map[string]any); ok && out != in {
+			if _, ok := m["redacted"].([]any); !ok {
+				t.Fatalf("%q masked without redacted: %q", in, out)
+			}
+		}
+		// Under a credential key no string survives, however deep.
+		var allMasked func(string, any)
+		allMasked = func(k string, x any) {
+			switch t2 := x.(type) {
+			case string:
+				if t2 != "" && t2 != redacted {
+					t.Fatalf("%q kept %s: %q", in, k, t2)
+				}
+			case map[string]any:
+				for _, y := range t2 {
+					allMasked(k, y)
+				}
+			case []any:
+				for _, y := range t2 {
+					allMasked(k, y)
+				}
+			}
+		}
 		var walk func(any)
 		walk = func(x any) {
 			switch t2 := x.(type) {
 			case map[string]any:
 				for k, y := range t2 {
-					if s, ok := y.(string); ok && s != "" && s != redacted && secretKey(k) {
-						t.Fatalf("%q kept %s=%q", in, k, s)
+					if secretKey(k) {
+						allMasked(k, y)
+						continue
 					}
 					walk(y)
 				}
