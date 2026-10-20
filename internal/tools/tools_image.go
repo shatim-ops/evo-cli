@@ -116,8 +116,8 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("image_create makes a billable image from a disk. Approve, then call again with confirmed=true.",
-				"image_create создаёт платный образ из диска. Получите согласие, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("image_create makes a billable image from a disk.",
+				"image_create создаёт платный образ из диска."),
 			"will_create": map[string]any{
 				"name": name, "from_disk": diskID,
 				"zone":    firstNonEmptyStr(zoneRef, "not given: configured region, else the source disk's zone"),
@@ -177,8 +177,8 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("fip_attach gives the VM a public address. Approve, then call again with confirmed=true.",
-				"fip_attach даёт ВМ публичный адрес. Получите согласие, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("fip_attach gives the VM a public address.",
+				"fip_attach даёт ВМ публичный адрес."),
 			"will_attach": map[string]any{"fip": fipRef, "vm": vmRef},
 		}), true
 	}
@@ -265,8 +265,8 @@ func (s *Registry) handleImageDelete(ctx context.Context, args map[string]any) (
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("image_delete permanently removes the image. VMs already running keep working, but no new VM can be created from it. Approve, then confirmed=true.",
-				"image_delete безвозвратно удаляет образ. Уже работающие ВМ продолжат работать, но новую ВМ из него не создать. Получите согласие, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("image_delete permanently removes the image. VMs already running keep working, but no new VM can be created from it.",
+				"image_delete безвозвратно удаляет образ. Уже работающие ВМ продолжат работать, но новую ВМ из него не создать."),
 			"will_delete": map[string]any{"image_id": imageID},
 		}), true
 	}

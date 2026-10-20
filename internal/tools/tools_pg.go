@@ -445,8 +445,8 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("pg_create provisions a BILLABLE Managed PostgreSQL cluster (~minutes). Get the user's approval, then call again with confirmed=true.",
-				"pg_create создаёт ПЛАТНЫЙ кластер Managed PostgreSQL (несколько минут). Получите согласие пользователя, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("pg_create provisions a BILLABLE Managed PostgreSQL cluster (~minutes).",
+				"pg_create создаёт ПЛАТНЫЙ кластер Managed PostgreSQL (несколько минут)."),
 			"will_create": willCreate,
 			"preview":     pgCreatePreview(eng.Config, willCreate),
 		}), true
@@ -500,8 +500,8 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups. Confirm, then call again with confirmed=true.",
-			"pg_delete БЕЗВОЗВРАТНО удаляет кластер PostgreSQL %s, его базы данных и все резервные копии. Подтвердите, затем вызовите снова с confirmed=true.",
+		return deletePreview("pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups.",
+			"pg_delete БЕЗВОЗВРАТНО удаляет кластер PostgreSQL %s, его базы данных и все резервные копии.",
 			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
@@ -549,8 +549,8 @@ func (s *Registry) handlePgDbCreate(ctx context.Context, args map[string]any) (s
 		return usageT("'cluster_id', 'name' and 'owner' are required", "нужны 'cluster_id', 'name' и 'owner'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_db_create creates database %q (owner %q) in cluster %s. Call again with confirmed=true.",
-			"pg_db_create создаёт базу данных %q (владелец %q) в кластере %s. Вызовите снова с confirmed=true.", name, owner, cid)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_db_create creates database %q (owner %q) in cluster %s.",
+			"pg_db_create создаёт базу данных %q (владелец %q) в кластере %s.", name, owner, cid)}), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -577,8 +577,8 @@ func (s *Registry) handlePgDbDelete(ctx context.Context, args map[string]any) (s
 		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_db_delete PERMANENTLY drops database %q in cluster %s. Call again with confirmed=true.",
-			"pg_db_delete БЕЗВОЗВРАТНО удаляет базу данных %q в кластере %s. Вызовите снова с confirmed=true.", name, cid)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_db_delete PERMANENTLY drops database %q in cluster %s.",
+			"pg_db_delete БЕЗВОЗВРАТНО удаляет базу данных %q в кластере %s.", name, cid)}), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -616,8 +616,8 @@ func (s *Registry) handlePgUserCreate(ctx context.Context, args map[string]any) 
 		return usageT("'cluster_id', 'name' and 'password' are required", "нужны 'cluster_id', 'name' и 'password'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_user_create creates user %q in cluster %s. Call again with confirmed=true.",
-			"pg_user_create создаёт пользователя %q в кластере %s. Вызовите снова с confirmed=true.", name, cid)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_user_create creates user %q in cluster %s.",
+			"pg_user_create создаёт пользователя %q в кластере %s.", name, cid)}), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -639,8 +639,8 @@ func (s *Registry) handlePgUserDelete(ctx context.Context, args map[string]any) 
 		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_user_delete PERMANENTLY deletes user %q in cluster %s. Call again with confirmed=true.",
-			"pg_user_delete БЕЗВОЗВРАТНО удаляет пользователя %q в кластере %s. Вызовите снова с confirmed=true.", name, cid)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_user_delete PERMANENTLY deletes user %q in cluster %s.",
+			"pg_user_delete БЕЗВОЗВРАТНО удаляет пользователя %q в кластере %s.", name, cid)}), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -677,8 +677,8 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_backup_create starts a manual backup %q of cluster %s. Call again with confirmed=true.",
-			"pg_backup_create запускает ручное резервное копирование %q кластера %s. Вызовите снова с confirmed=true.", name, cid)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_backup_create starts a manual backup %q of cluster %s.",
+			"pg_backup_create запускает ручное резервное копирование %q кластера %s.", name, cid)}), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {

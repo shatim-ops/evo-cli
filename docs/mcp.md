@@ -32,14 +32,16 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 `confirmed=true` ничего не делает и возвращает превью:
 
 ```json
-{"status": "confirmation_required", "message": "deploy creates a billable VM … call again with confirmed=true.", "will_deploy": {…}}
+{"status": "confirmation_required", "message": "deploy creates a billable VM with a public floating IP …", "approval": "Stop here. Show this preview to the user … Call again with confirmed=true only after the user approved …", "will_deploy": {…}}
 ```
 
 Поле `status` одинаково у всех инструментов; остальные поля превью (что
-будет создано или удалено) у каждого свои. Сервер добавляет к каждому такому
-ответу поле `approval` — одну и ту же для всех инструментов инструкцию
-агенту: показать превью человеку и ставить `confirmed=true` только после его
-согласия.
+будет создано или удалено) у каждого свои. `message` описывает действие и
+не говорит, как дать согласие: сервер добавляет к каждому такому ответу поле
+`approval` — одну и ту же для всех инструментов инструкцию агенту: показать
+превью человеку и ставить `confirmed=true` только после его согласия. (До
+v1.2 `message` заканчивался ещё и фразой «call again with confirmed=true»;
+CLI показывает тот же `message` и вместо неё подсказывает `--yes`.)
 
 Агент должен показать превью человеку и, получив согласие, вызвать тот же
 инструмент с теми же аргументами и `"confirmed": true`. Граница проходит в

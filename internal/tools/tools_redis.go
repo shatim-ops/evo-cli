@@ -184,8 +184,8 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		out := map[string]any{"status": "confirmation_required",
-			"message": i18n.T("redis_create provisions a BILLABLE Managed Redis cluster (async, ~minutes). Get the user's approval, then call again with confirmed=true.",
-				"redis_create создаёт ПЛАТНЫЙ кластер Managed Redis (асинхронно, несколько минут). Получите согласие пользователя, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("redis_create provisions a BILLABLE Managed Redis cluster (async, ~minutes).",
+				"redis_create создаёт ПЛАТНЫЙ кластер Managed Redis (асинхронно, несколько минут)."),
 			"will_create": willCreate}
 		if warn != "" {
 			out["warning"] = warn
@@ -264,8 +264,8 @@ func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("redis_delete PERMANENTLY deletes Redis cluster %s and its data. Confirm, then call again with confirmed=true.",
-			"redis_delete БЕЗВОЗВРАТНО удаляет кластер Redis %s и его данные. Подтвердите, затем вызовите снова с confirmed=true.",
+		return deletePreview("redis_delete PERMANENTLY deletes Redis cluster %s and its data.",
+			"redis_delete БЕЗВОЗВРАТНО удаляет кластер Redis %s и его данные.",
 			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)

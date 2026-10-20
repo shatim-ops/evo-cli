@@ -1479,8 +1479,8 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan. Get the user's approval, then call again with confirmed=true.",
-				"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). Превью с ценой — deploy_plan. Получите согласие пользователя, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). For a costed preview use deploy_plan.",
+				"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). Превью с ценой — deploy_plan."),
 			"will_deploy": will,
 		}), true
 	}
@@ -1604,8 +1604,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		will["public_ip"] = !noPublicIP
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors. Get the user's approval, then call again with confirmed=true.",
-				"provision создаёт платную ВМ (и публичный floating IP, если не задано no_public_ip=true). Превью с ценой — deploy_plan или list_flavors. Получите согласие пользователя, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("provision creates a billable VM (and a public floating IP unless no_public_ip=true). For a costed preview use deploy_plan or list_flavors.",
+				"provision создаёт платную ВМ (и публичный floating IP, если не задано no_public_ip=true). Превью с ценой — deploy_plan или list_flavors."),
 			"will_create": will,
 			"preview":     preview,
 		}), true
@@ -2121,8 +2121,8 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("destroy permanently deletes the current deployment VM and all its data (irreversible). Get the user's approval, then call again with confirmed=true.",
-				"destroy безвозвратно удаляет ВМ текущего развёртывания и все её данные. Получите согласие пользователя, затем вызовите снова с confirmed=true."),
+			"message": i18n.T("destroy permanently deletes the current deployment VM and all its data (irreversible).",
+				"destroy безвозвратно удаляет ВМ текущего развёртывания и все её данные."),
 			"project_id": s.deploymentProject(),
 		}), true
 	}

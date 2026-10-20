@@ -181,11 +181,11 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 	}
 	name := req.Name
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		msg := i18n.Tf("ca_deploy will create+run container app %q from image %q (billable). Call again with confirmed=true after the user approves.",
-			"ca_deploy создаст и запустит приложение %q из образа %q (платно). Получив согласие пользователя, вызовите снова с confirmed=true.", name, req.Template.Containers[0].Image)
+		msg := i18n.Tf("ca_deploy will create+run container app %q from image %q (billable).",
+			"ca_deploy создаст и запустит приложение %q из образа %q (платно).", name, req.Template.Containers[0].Image)
 		if req.Configuration.Privileged {
-			msg = i18n.Tf("ca_deploy will create+run container app %q from image %q in PRIVILEGED mode: the container runs as root (billable). Call again with confirmed=true after the user approves.",
-				"ca_deploy создаст и запустит приложение %q из образа %q в ПРИВИЛЕГИРОВАННОМ режиме: контейнер работает от root (платно). Получив согласие пользователя, вызовите снова с confirmed=true.", name, req.Template.Containers[0].Image)
+			msg = i18n.Tf("ca_deploy will create+run container app %q from image %q in PRIVILEGED mode: the container runs as root (billable).",
+				"ca_deploy создаст и запустит приложение %q из образа %q в ПРИВИЛЕГИРОВАННОМ режиме: контейнер работает от root (платно).", name, req.Template.Containers[0].Image)
 		}
 		return toJSON(map[string]any{
 			"status":      "confirmation_required",
@@ -218,8 +218,8 @@ func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.Tf("ca_delete permanently deletes container app %q. Call again with confirmed=true after the user approves.",
-				"ca_delete безвозвратно удаляет приложение %q. Получив согласие пользователя, вызовите снова с confirmed=true.", name),
+			"message": i18n.Tf("ca_delete permanently deletes container app %q.",
+				"ca_delete безвозвратно удаляет приложение %q.", name),
 		}), true
 	}
 	cli, err := s.caClient(ctx)
@@ -279,11 +279,11 @@ func (s *Registry) handleCaStartStop(ctx context.Context, args map[string]any, a
 		return usageT("name is required", "нужен name"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		msg := i18n.Tf("ca_start will start container app %q (it is billed while running). Call again with confirmed=true after the user approves.",
-			"ca_start запустит приложение %q (пока оно работает, оно оплачивается). Получив согласие пользователя, вызовите снова с confirmed=true.", name)
+		msg := i18n.Tf("ca_start will start container app %q (it is billed while running).",
+			"ca_start запустит приложение %q (пока оно работает, оно оплачивается).", name)
 		if action == "stop" {
-			msg = i18n.Tf("ca_stop will stop container app %q (it stops serving requests). Call again with confirmed=true after the user approves.",
-				"ca_stop остановит приложение %q (оно перестанет обслуживать запросы). Получив согласие пользователя, вызовите снова с confirmed=true.", name)
+			msg = i18n.Tf("ca_stop will stop container app %q (it stops serving requests).",
+				"ca_stop остановит приложение %q (оно перестанет обслуживать запросы).", name)
 		}
 		return toJSON(map[string]any{
 			"status":  "confirmation_required",

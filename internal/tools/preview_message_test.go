@@ -1,0 +1,183 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
+package tools
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
+)
+
+// gatedPreviewArgs adjusts contractArgs so the call gets past the checks
+// before the gate: the type sweep fills every argument, and some pairs
+// exclude each other (image and image_id) or need a valid value
+// (master_count).
+var gatedPreviewArgs = map[string]func(a map[string]any){
+	"deploy":              func(a map[string]any) { delete(a, "image") },
+	"provision":           func(a map[string]any) { delete(a, "image") },
+	"destroy":             func(a map[string]any) { delete(a, "vm_id"); delete(a, "name") }, // the current deployment
+	"image_create":        func(a map[string]any) { delete(a, "image_metadata") },
+	"k8s_create":          func(a map[string]any) { a["master_count"] = float64(1) },
+	"disk_create":         func(a map[string]any) { delete(a, "attach_to") },
+	"release_floating_ip": func(a map[string]any) { delete(a, "ip_address") },
+	"tg_create":           func(a map[string]any) { delete(a, "targets") },
+	"vpc_route_create": func(a map[string]any) {
+		delete(a, "next_hop_vip_id")
+		delete(a, "next_hop_magic_router_id")
+		delete(a, "next_hop_az")
+	},
+	"dns_record_create": func(a map[string]any) { delete(a, "values") },
+	"cert_issue_le":     func(a map[string]any) { a["dns_names"] = []any{"web.example.com"} },
+	"lb_create":         func(a map[string]any) { a["zone"] = contractID; delete(a, "subnet_id") },
+}
+
+// gatedPreviewBody is the 200 answer of the cloud for the tools whose
+// preview finds its argument in a list (snat_delete: the gateway; lb_create:
+// the zone).
+const gatedPreviewBody = `{"items":[{"id":"` + contractID + `","name":"web","status":"ACTIVE"}],` +
+	`"total":1,"id":"` + contractID + `","name":"web","done":true,"status":"ACTIVE"}`
+
+// gatedPreviewFixtures drive the tools whose preview needs answers of their
+// own API that the generic sweep has not (the addon catalogue, the DBaaS
+// specifications): each builds its registry on its fake (which takes
+// http.DefaultTransport) and returns the tool's answer.
+var gatedPreviewFixtures = map[string]func(t *testing.T) string{
+	"k8s_add_addon": func(t *testing.T) string {
+		f := &fakeMK8s{pools: `{"nodePools":[{"clusterId":"` + addonCluster + `","scalePolicy":{"fixedScale":{"count":2}}}]}`}
+		_, text, _ := callNamed(t, addonRegistry(t, f), "k8s_add_addon", map[string]any{"cluster_id": addonCluster, "name": "cert-manager"})
+		return text
+	},
+	"kafka_create": func(t *testing.T) string {
+		_, text, _ := callNamed(t, dbaasRegistry(t, &fakeDbaas{}, ""), "kafka_create", map[string]any{"name": "c1", "cpu": 2, "ram": 4})
+		return text
+	},
+	"redis_create": func(t *testing.T) string {
+		_, text, _ := callNamed(t, dbaasRegistry(t, &fakeDbaas{}, ""), "redis_create", map[string]any{"name": "c1", "cpu": 2, "ram": 4})
+		return text
+	},
+	"pg_create": func(t *testing.T) string {
+		f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+			if r.URL.Host != "postgresql.api.cloud.ru" {
+				return false
+			}
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/v1/clusters":
+				_, _ = io.WriteString(w, `{"clusters":[]}`)
+			case r.Method == http.MethodGet && r.URL.Path == "/v1/versions":
+				_, _ = io.WriteString(w, `{"versions":[{"id":"v17","name":"17"}]}`)
+			case r.Method == http.MethodGet && r.URL.Path == "/v1/specifications":
+				_, _ = io.WriteString(w, `{"specifications":[{"id":"std","display_name":"std","cpu":2,"memory":4,"deployment_mode":"STANDARD","min_storage_gb":20,"max_hosts":2}]}`)
+			default:
+				http.Error(w, `{"message":"no such path"}`, 404)
+			}
+			return true
+		}}
+		_, text, _ := callNamed(t, apiFakeRegistry(t, f), "pg_create", map[string]any{"name": "web", "specification_id": "std"})
+		return text
+	},
+}
+
+// The message of a preview (status confirmation_required) describes the
+// action; it does not tell the caller to call again with confirmed=true. The
+// instruction is the transport's: MCP adds "approval", the CLI says --yes
+// (docs/internal/cli-mcp-parity/spec.md, REQ-5; analysis.md PAR-15). Every
+// tool that asks for consent (Mutating, and the two that reveal a secret) is
+// driven to its preview, in English and in Russian; a tool not driven there
+// fails the test, so a new gated tool needs its case here.
+func TestContract_PreviewMessageHasNoConfirmedHint(t *testing.T) {
+	prev := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(prev) })
+
+	rt := &contractRT{kind: "200"}
+	reg := contractReg(t, rt)
+	stackHome(t)
+	planned := planJob(t, `{"name":"s","vpc":{"name":"v"}}`)
+	built := planJob(t, `{"name":"b","vpc":{"name":"v"}}`)
+	built.Steps[0].ResourceID = contractID
+	if err := built.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	var gated []Tool
+	for _, tl := range reg.Tools() {
+		if tl.Mutating || IsSensitive(tl) {
+			gated = append(gated, tl)
+		}
+	}
+	reached := map[string]map[string]int{i18n.EN: {}, i18n.RU: {}}
+	check := func(lang, name, text string) {
+		t.Helper()
+		var m map[string]any
+		if json.Unmarshal([]byte(text), &m) != nil || m["status"] != "confirmation_required" {
+			return
+		}
+		reached[lang][name]++
+		msg, _ := m["message"].(string)
+		if msg == "" {
+			t.Errorf("%s %s: a preview without a message: %.200s", lang, name, text)
+		}
+		if strings.Contains(strings.ToLower(msg), "confirmed") {
+			t.Errorf("%s %s: the preview message tells to call again with confirmed: %q", lang, name, msg)
+		}
+	}
+	last := map[string]string{}
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		for _, tl := range gated {
+			if gatedPreviewFixtures[tl.Name] != nil {
+				continue
+			}
+			args := contractArgs(tl)
+			if fix := gatedPreviewArgs[tl.Name]; fix != nil {
+				fix(args)
+			}
+			rt.body = ""
+			switch tl.Name {
+			case "snat_delete", "lb_create":
+				rt.body = gatedPreviewBody
+			case "stack_destroy":
+				// Both previews: a stack that holds a resource, and one
+				// that has created nothing.
+				args["job_id"] = built.ID
+				text, _, _ := contractCall(tl, args, time.Second)
+				check(lang, tl.Name, text)
+				args["job_id"] = planned.ID
+			}
+			text, _, pan := contractCall(tl, args, time.Second)
+			if pan != "" {
+				t.Errorf("%s %s: panic", lang, tl.Name)
+			}
+			check(lang, tl.Name, text)
+			last[lang+" "+tl.Name] = text
+		}
+		rt.body = ""
+	}
+	// The fixtures take http.DefaultTransport: after the sweep.
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		for name, run := range gatedPreviewFixtures {
+			text := run(t)
+			check(lang, name, text)
+			last[lang+" "+name] = text
+		}
+	}
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		for _, tl := range gated {
+			if reached[lang][tl.Name] == 0 {
+				t.Errorf("%s %s: not driven to its preview (give it a case: gatedPreviewArgs or gatedPreviewFixtures): %.300s",
+					lang, tl.Name, last[lang+" "+tl.Name])
+			}
+		}
+		t.Logf("%s: %d of %d gated tools reached their preview", lang, len(reached[lang]), len(gated))
+	}
+	if len(gated) < 60 {
+		t.Fatalf("gated tools: %d", len(gated))
+	}
+}

@@ -13,7 +13,9 @@ import (
 
 // SEC-4: secret_value отдаёт расшифрованный секрет только с confirmed=true —
 // как cert_private_key; без него — confirmation_required и ни одного
-// запроса в облако.
+// запроса в облако. message говорит, что будет раскрыто (открытый текст);
+// как дать согласие, говорит транспорт: MCP — approval, CLI — --yes
+// (REQ-5), поэтому confirmed в message нет.
 func TestSensitiveTools_NeedConfirmed(t *testing.T) {
 	for _, c := range []struct {
 		tool string
@@ -33,7 +35,8 @@ func TestSensitiveTools_NeedConfirmed(t *testing.T) {
 				args["confirmed"] = confirmed
 			}
 			m, text, isErr := callNamed(t, r, c.tool, args)
-			if !isErr || m["status"] != "confirmation_required" || !strings.Contains(text, "confirmed=true") {
+			msg, _ := m["message"].(string)
+			if !isErr || m["status"] != "confirmation_required" || !strings.Contains(msg, "plaintext") || strings.Contains(msg, "confirmed") {
 				t.Errorf("%s confirmed=%v: %s", c.tool, confirmed, text)
 			}
 		}

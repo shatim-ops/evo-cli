@@ -266,8 +266,8 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("k8s_create builds a real (billable) Kubernetes cluster. Show the k8s_plan to the user; call again with confirmed=true after approval.",
-				"k8s_create создаёт настоящий (платный) кластер Kubernetes. Покажите пользователю k8s_plan; получив согласие, вызовите снова с confirmed=true."),
+			"message": i18n.T("k8s_create builds a real (billable) Kubernetes cluster.",
+				"k8s_create создаёт настоящий (платный) кластер Kubernetes."),
 			"preview": k8sPreview(engine.ResourceK8sCluster,
 				firstNonEmptyStr(stringArg(args, "name"), "k8s-"+firstNonEmptyStr(stringArg(args, "product"), "cluster")), args),
 		}), true
@@ -358,8 +358,8 @@ func (s *Registry) handleK8sDelete(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("k8s_delete permanently deletes cluster %s. Call again with confirmed=true after the user approves.",
-			"k8s_delete безвозвратно удаляет кластер %s. Получив согласие пользователя, вызовите снова с confirmed=true.",
+		return deletePreview("k8s_delete permanently deletes cluster %s.",
+			"k8s_delete безвозвратно удаляет кластер %s.",
 			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
@@ -426,8 +426,8 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.T("k8s_add_nodepool creates billable worker nodes. Call again with confirmed=true after the user approves.",
-				"k8s_add_nodepool создаёт платные рабочие узлы. Получив согласие пользователя, вызовите снова с confirmed=true."),
+			"message": i18n.T("k8s_add_nodepool creates billable worker nodes.",
+				"k8s_add_nodepool создаёт платные рабочие узлы."),
 			"preview": k8sPreview(engine.ResourceK8sNodePool, nodePoolName(args), args),
 		}), true
 	}

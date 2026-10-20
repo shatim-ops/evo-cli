@@ -77,8 +77,8 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.Tf("vpc_create creates a new VPC %q (async). Call again with confirmed=true after the user approves.",
-				"vpc_create создаёт новый VPC %q (асинхронно). Получив согласие пользователя, вызовите снова с confirmed=true.", name),
+			"message": i18n.Tf("vpc_create creates a new VPC %q (async).",
+				"vpc_create создаёт новый VPC %q (асинхронно).", name),
 		}), true
 	}
 	cli, err := s.vpcClient(ctx)
@@ -106,8 +106,8 @@ func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first. Call again with confirmed=true.",
-			"vpc_delete удаляет VPC %s (асинхронно). Сначала нужно удалить его подсети и ресурсы. Вызовите снова с confirmed=true.",
+		return deletePreview("vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first.",
+			"vpc_delete удаляет VPC %s (асинхронно). Сначала нужно удалить его подсети и ресурсы.",
 			id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) })
 	}
 	op, err := cli.DeleteVPC(ctx, id)
@@ -217,8 +217,8 @@ func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
-			"message": i18n.Tf("vpc_route_create adds a static route %s in VPC %s (async). Call again with confirmed=true.",
-				"vpc_route_create добавляет статический маршрут %s в VPC %s (асинхронно). Вызовите снова с confirmed=true.", subnet, vpcID),
+			"message": i18n.Tf("vpc_route_create adds a static route %s in VPC %s (async).",
+				"vpc_route_create добавляет статический маршрут %s в VPC %s (асинхронно).", subnet, vpcID),
 		}), true
 	}
 	cli, err := s.vpcClient(ctx)
@@ -243,8 +243,8 @@ func (s *Registry) handleVpcRouteDelete(ctx context.Context, args map[string]any
 		return usageT("'vpc_id' and 'route_id' (from vpc_routes) are required", "нужны 'vpc_id' и 'route_id' (из vpc_routes)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("vpc_route_delete removes static route %s from VPC %s (async). Call again with confirmed=true.",
-			"vpc_route_delete удаляет статический маршрут %s из VPC %s (асинхронно). Вызовите снова с confirmed=true.", routeID, vpcID)}), true
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("vpc_route_delete removes static route %s from VPC %s (async).",
+			"vpc_route_delete удаляет статический маршрут %s из VPC %s (асинхронно).", routeID, vpcID)}), true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {

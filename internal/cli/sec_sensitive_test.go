@@ -22,11 +22,14 @@ func TestSecretValue_AsksForConfirmation(t *testing.T) {
 		{"tools", "call", "cert_private_key", "--arg", "certificate_id=00000000-0000-0000-0000-000000000001"},
 	} {
 		_, errOut, code := execCLI(t, args...)
-		if code != clerrors.ExitConfirmationRequired || !strings.Contains(errOut, "confirmed=true") {
+		// Согласие в CLI — --yes (подсказка ошибки; в --json — поле hint
+		// ниже); confirmed=true — слово MCP, в CLI его нет (REQ-5, PAR-15).
+		if code != clerrors.ExitConfirmationRequired || strings.Contains(errOut, "confirmed") {
 			t.Errorf("%v без --yes: exit %d, want 3 (%s)", args, code, errOut)
 		}
 		out, _, code := execCLI(t, append(args, "--json")...)
-		if code != clerrors.ExitConfirmationRequired || !strings.Contains(out, `"confirmation_required"`) {
+		if code != clerrors.ExitConfirmationRequired || !strings.Contains(out, `"confirmation_required"`) ||
+			!strings.Contains(out, `"hint": "Re-run with --yes`) || strings.Contains(out, "confirmed") {
 			t.Errorf("%v --json: exit %d, out %q", args, code, out)
 		}
 		out, errOut, code = execCLI(t, append(args, "--yes")...)
