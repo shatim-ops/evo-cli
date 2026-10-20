@@ -113,7 +113,7 @@ func TestTrees_RussianFlags(t *testing.T) {
 		}
 	}
 	usedLong, usedFlag := map[string]bool{}, map[string]bool{}
-	for _, g := range treeGroups {
+	for _, g := range allTreeGroups() {
 		for _, c := range g.Cmds {
 			tl, _ := reg.Lookup(c.Tool)
 			if s := toolLongRU[c.Tool]; s == "" {
@@ -147,7 +147,7 @@ func TestTrees_RussianFlags(t *testing.T) {
 
 // Every tree command has a Russian summary: a new tool in a tree must get one.
 func TestTrees_RussianShorts(t *testing.T) {
-	for _, g := range treeGroups {
+	for _, g := range allTreeGroups() {
 		if treeGroupShortRU[g.Name] == "" {
 			t.Errorf("tree %s: no Russian summary in treeGroupShortRU", g.Name)
 		}

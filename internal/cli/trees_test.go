@@ -18,6 +18,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
+// allTreeGroups are the command trees the CLI builds from the registry's
+// CLISpecs.
+func allTreeGroups() []treeGroup { return treeGroupsOf(tools.New(nil)) }
+
 // The trees must not drift from the registry: every command names an
 // existing tool, its positional arguments are arguments of that tool, every
 // required argument is reachable, and every tool of the tree groups has a
@@ -25,7 +29,7 @@ import (
 func TestTrees_MatchRegistry(t *testing.T) {
 	reg := tools.New(nil)
 	covered := map[string]bool{}
-	for _, g := range treeGroups {
+	for _, g := range allTreeGroups() {
 		verbs := map[string]bool{}
 		for _, c := range g.Cmds {
 			t.Run(g.Name+" "+c.Verb, func(t *testing.T) {
@@ -79,7 +83,7 @@ func TestTrees_MatchRegistry(t *testing.T) {
 // Building the root command defines every flag: a clash with a root flag
 // panics here rather than for a user.
 func TestTrees_BuildAndHelp(t *testing.T) {
-	for _, g := range treeGroups {
+	for _, g := range allTreeGroups() {
 		for _, c := range g.Cmds {
 			if _, _, code := execCLI(t, g.Name, c.Verb, "--help"); code != 0 {
 				t.Errorf("%s %s --help: exit %d", g.Name, c.Verb, code)
@@ -125,7 +129,7 @@ func findLeaf(t *testing.T, group, verb string) (*cobra.Command, treeCmd, tools.
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, g := range treeGroups {
+	for _, g := range allTreeGroups() {
 		for _, c := range g.Cmds {
 			if g.Name == group && c.Verb == verb {
 				tl, _ := tools.New(nil).Lookup(c.Tool)
@@ -360,7 +364,7 @@ func TestTrees_BoolDefaultTrue(t *testing.T) {
 		"secret delete --force":          true,
 	}
 	reg := tools.New(nil)
-	for _, g := range treeGroups {
+	for _, g := range allTreeGroups() {
 		for _, c := range g.Cmds {
 			tl, _ := reg.Lookup(c.Tool)
 			cmd, _, _ := findLeaf(t, g.Name, c.Verb)
@@ -423,7 +427,7 @@ func TestRenderAnswer_RussianTree(t *testing.T) {
 	i18n.SetLang(i18n.RU)
 	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
 	var flavors treeCmd
-	for _, g := range treeGroups {
+	for _, g := range allTreeGroups() {
 		for _, c := range g.Cmds {
 			if g.Name == "vm" && c.Verb == "flavors" {
 				flavors = c
