@@ -128,14 +128,17 @@ JSON-RPC `-32602` с сообщением `Unknown tool: <имя>`, как тр�
 
 ## Цена
 
-Цену ВМ возвращает `deploy_plan` в поле `cost`. Она берётся из API расчёта
+Цену ВМ возвращает `deploy_plan` в поле `cost`, а превью `provision` и
+`deploy` без `confirmed` — в `preview.cost`. Она берётся из API расчёта
 цены Cloud.ru (`POST /api/v1/projects/{project_id}/price-calculation`: только
 расчёт, ничего не создаёт) с тайм-аутом 5 с; если API не ответил, вернул
 ошибку или отказал (два образа Astra Linux отвечают `422 sku_identifier
-cannot be blank`), — оценка по встроенной таблице тарифов, как раньше.
-Превью `provision` и `deploy` без `confirmed` в облако не ходят: в
-`preview.cost` `provision` — по-прежнему оценка (или её нет, если размер
-flavor неизвестен), за ценой из API — `deploy_plan`.
+cannot be blank`), — оценка по встроенной таблице тарифов, как раньше, с
+причиной в `price_api_error`. Превью `provision` и `deploy` для этого только
+читают облако — каталог flavor, зону, образ, цену — и ничего не создают; в
+`preview` — имена зоны, flavor и образа, как в превью `evo vm create`. Превью
+`deploy` с новой ВМ — только для каталога без развёртывания: если оно есть,
+`deploy` обновляет его ВМ, и `preview` нет.
 
 Поля `cost` (суммы в рублях):
 

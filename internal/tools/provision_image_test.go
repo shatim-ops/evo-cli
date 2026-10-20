@@ -40,6 +40,15 @@ func (c *productCloud) CreateVM(ctx context.Context, req provision.CreateVMReque
 	return c.cancelCloud.CreateVM(ctx, req)
 }
 
+// The reads of the preview (spec REQ-7) that cancelCloud has not: the
+// project's own images and the disk types are not in this fake.
+func (*productCloud) ListImagesInProject(context.Context, string) ([]*provision.Image, error) {
+	return nil, errNoPriceAPI
+}
+func (*productCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
+	return nil, errNoPriceAPI
+}
+
 func TestProvision_MissingFieldRefusedBeforeAnyMutation(t *testing.T) {
 	cloud := &productCloud{cancelCloud: cancelCloud{cancel: func() {}}}
 	r, _ := cancelRegistry(t, cloud)
@@ -97,13 +106,18 @@ func TestProvision_ArgumentRefusals(t *testing.T) {
 }
 
 // Превью без подтверждения: образ по имени, порты и имена полей (не
-// значения) — без обращения к облаку.
+// значения). Облако превью только читает (решение владельца Q6, spec
+// REQ-7): ни одной записи.
 func TestProvision_PreviewEchoesImagePortsFieldNames(t *testing.T) {
-	r, _ := cancelRegistry(t, &productCloud{})
+	cloud := &productCloud{}
+	r, _ := cancelRegistry(t, cloud)
 	text, _ := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "image": "Product 1",
 		"ports": []any{80.0, "53/udp"}, "image_metadata": map[string]any{"admin_email": "secret@example.test"}})
 	if strings.Contains(text, "secret@example.test") {
 		t.Errorf("значение поля в превью: %s", text)
+	}
+	if len(cloud.mutations) > 0 || cloud.creates > 0 {
+		t.Errorf("превью изменило облако: %v, creates %d", cloud.mutations, cloud.creates)
 	}
 	var res struct {
 		Status     string         `json:"status"`

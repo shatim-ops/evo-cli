@@ -49,6 +49,19 @@ const gatedPreviewBody = `{"items":[{"id":"` + contractID + `","name":"web","sta
 // specifications): each builds its registry on its fake (which takes
 // http.DefaultTransport) and returns the tool's answer.
 var gatedPreviewFixtures = map[string]func(t *testing.T) string{
+	// The preview of a new VM reads the flavors, the image and the price
+	// (spec REQ-7): on the generic answers the image is not the project's,
+	// and the preview refuses it, as provision would after consent.
+	"provision": func(t *testing.T) string {
+		r, _ := cancelRegistry(t, &productCloud{})
+		_, text, _ := callNamed(t, r, "provision", map[string]any{"name": "web"})
+		return text
+	},
+	"deploy": func(t *testing.T) string {
+		r, _ := cancelRegistry(t, &productCloud{})
+		_, text, _ := callNamed(t, r, "deploy", map[string]any{})
+		return text
+	},
 	"k8s_add_addon": func(t *testing.T) string {
 		f := &fakeMK8s{pools: `{"nodePools":[{"clusterId":"` + addonCluster + `","scalePolicy":{"fixedScale":{"count":2}}}]}`}
 		_, text, _ := callNamed(t, addonRegistry(t, f), "k8s_add_addon", map[string]any{"cluster_id": addonCluster, "name": "cert-manager"})

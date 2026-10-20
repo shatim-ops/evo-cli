@@ -33,18 +33,22 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		tool string
 		args map[string]any
 		want string // what the preview must name
-		// resolvesProject: the preview builds an engine once, without a
-		// token, only to name the project the VM goes to (QA P6).
-		resolvesProject bool
+		// engines: how many engines one preview builds. The previews of a
+		// VM name the project it goes to (QA P6) and complete what they
+		// create with reads (owner's decision Q6, spec REQ-7): provision
+		// with the engine of its call; deploy with one for the project and
+		// one for the new VM. With no engine (here) nothing is read; the
+		// previews write nothing (TestContract_GatePreviewDoesNotWrite).
+		engines int
 	}{
-		{"deploy", map[string]any{"flavor": "lowcost10-2-4"}, "lowcost10-2-4", true},
-		{"provision", map[string]any{"name": "vm-a", "no_public_ip": true}, "vm-a", true},
-		{"ca_start", map[string]any{"name": "app-1"}, "app-1", false},
-		{"ca_stop", map[string]any{"name": "app-1"}, "app-1", false},
-		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", false},
-		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo", false},
-		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1", false},
-		{"s3_put", map[string]any{"bucket": "b", "key": "k.txt", "content": "hello"}, "s3://b/k.txt", false},
+		{"deploy", map[string]any{"flavor": "lowcost10-2-4"}, "lowcost10-2-4", 2},
+		{"provision", map[string]any{"name": "vm-a", "no_public_ip": true}, "vm-a", 1},
+		{"ca_start", map[string]any{"name": "app-1"}, "app-1", 0},
+		{"ca_stop", map[string]any{"name": "app-1"}, "app-1", 0},
+		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", 0},
+		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo", 0},
+		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1", 0},
+		{"s3_put", map[string]any{"bucket": "b", "key": "k.txt", "content": "hello"}, "s3://b/k.txt", 0},
 	}
 	for _, c := range cases {
 		t.Run(c.tool, func(t *testing.T) {
@@ -67,10 +71,10 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 				t.Errorf("preview does not name %q: %s", c.want, out)
 			}
 			// Two calls above (h and callTool).
-			if want := map[bool]int{false: 0, true: 2}[c.resolvesProject]; engines != want {
-				t.Fatalf("preview built an engine %d times, want %d: it must not reach the cloud", engines, want)
+			if want := 2 * c.engines; engines != want {
+				t.Fatalf("preview built an engine %d times, want %d", engines, want)
 			}
-			if c.resolvesProject && !strings.Contains(out, "project_id") {
+			if c.engines > 0 && !strings.Contains(out, "project_id") {
 				t.Errorf("preview does not name the project: %s", out)
 			}
 

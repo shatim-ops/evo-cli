@@ -665,11 +665,7 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 	if resp := parseObject(text); resp["status"] == "confirmation_required" {
 		preview := toolPreview(t.Name, resp)
 		if human {
-			p, ok, err := createPreview(ctx, t.Name, resp)
-			if err != nil {
-				return "", err
-			}
-			if ok {
+			if p, ok := createPreview(t.Name, resp); ok {
 				preview = p
 			}
 		}
@@ -722,37 +718,33 @@ func toolPreview(name string, resp map[string]any) confirm.Preview {
 }
 
 // createPreview is the human preview of a billable tool: the "preview"
-// object of its answer, completed with what the tool leaves to the CLI
-// (zone names, the flavor, the image, the price). --json gets the same
-// answer with the completed object. The error is a refusal the lookups
-// found (an image the project cannot use): it stops the call before the
-// question.
-func createPreview(ctx context.Context, name string, resp map[string]any) (confirm.Preview, bool, error) {
+// object of its answer, shown in the words of deploy. The tool has
+// completed it (zone names, the flavor, the image, the price: spec REQ-7);
+// the CLI only shows it, so the command, 'evo tools call' and MCP give one
+// preview. --json gets the same answer with the object as the tool gave it.
+func createPreview(name string, resp map[string]any) (confirm.Preview, bool) {
 	raw, ok := resp["preview"]
 	if !ok {
-		return confirm.Preview{}, false, nil
+		return confirm.Preview{}, false
 	}
 	b, err := json.Marshal(raw)
 	if err != nil {
-		return confirm.Preview{}, false, nil
+		return confirm.Preview{}, false
 	}
 	var cp engine.CreatePreview
 	if json.Unmarshal(b, &cp) != nil || cp.Resource == "" {
-		return confirm.Preview{}, false, nil
-	}
-	if eng, err := toolEngine(map[string]any{}); err == nil && eng != nil {
-		if err := eng.CompletePreview(ctx, &cp); err != nil {
-			return confirm.Preview{}, false, err
-		}
+		return confirm.Preview{}, false
 	}
 	p := engine.ShowCreatePreview(name, cp)
 	details := make(map[string]any, len(resp))
 	for k, v := range resp {
 		details[k] = v
 	}
+	// The object as the tool's struct orders it, as before (the JSON of the
+	// command keeps its key order).
 	details["preview"] = cp
 	p.Details = details
-	return p, true, nil
+	return p, true
 }
 
 func callSummary(tool string) string { return i18n.T("call ", "вызвать ") + tool }

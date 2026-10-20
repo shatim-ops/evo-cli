@@ -102,6 +102,30 @@ func TestProvision_ImageNotInProjectRefusedBeforeAnyMutation(t *testing.T) {
 	}
 }
 
+// Превью provision и deploy читают образ (spec REQ-7): недоступный проекту
+// образ — отказ NOT_FOUND уже на превью, как у evo vm create, до вопроса
+// и без изменений в облаке; раньше отказ приходил после согласия.
+func TestPreview_ImageNotInProjectRefused(t *testing.T) {
+	for tool, args := range map[string]map[string]any{
+		"provision": {"name": "web", "image": "ubuntu"},
+		"deploy":    {"image": "ubuntu"},
+	} {
+		t.Run(tool, func(t *testing.T) {
+			cloud := &hiddenImageCloud{cancelCloud: cancelCloud{cancel: func() {}}}
+			r := imageRegistry(t, cloud)
+			res, text, isErr := callNamed(t, r, tool, args)
+			msg, _ := res["error"].(string)
+			if !isErr || res["status"] == "confirmation_required" || res["reason"] != "NOT_FOUND" ||
+				!strings.Contains(msg, "not available to the project") {
+				t.Fatalf("ответ: %s", text)
+			}
+			if len(cloud.mutations) > 0 {
+				t.Errorf("превью изменило облако: %v", cloud.mutations)
+			}
+		})
+	}
+}
+
 // noGroupCloud — ВМ создаётся и сразу активна, групп безопасности в
 // проекте нет; правило порта не должно создаваться (встроенный nil
 // CloudAPI уронит тест на AddSecurityGroupRule).

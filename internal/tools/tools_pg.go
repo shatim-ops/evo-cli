@@ -443,12 +443,16 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		"backup_enabled":   backupEnabled,
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		preview, err := s.completePreview(ctx, eng, pgCreatePreview(eng.Config, willCreate))
+		if err != nil {
+			return errResult(err), true
+		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.T("pg_create provisions a BILLABLE Managed PostgreSQL cluster (~minutes).",
 				"pg_create создаёт ПЛАТНЫЙ кластер Managed PostgreSQL (несколько минут)."),
 			"will_create": willCreate,
-			"preview":     pgCreatePreview(eng.Config, willCreate),
+			"preview":     preview,
 		}), true
 	}
 

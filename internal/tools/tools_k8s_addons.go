@@ -516,12 +516,16 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 	}
 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		preview, err := s.completePreview(ctx, nil, plan.preview(clusterID, resolveMode, configKeys))
+		if err != nil {
+			return errResult(err), true
+		}
 		out := map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.Tf("k8s_add_addon installs %s %s into cluster %s (%s).",
 				"k8s_add_addon устанавливает %s %s в кластер %s (%s).",
 				plan.addon.Name, r.AppVersion, clusterID, addonNamespaceText(r.AddonNamespace)),
-			"preview":      plan.preview(clusterID, resolveMode, configKeys),
+			"preview":      preview,
 			"version_from": versionFrom,
 			"requirements": requirements,
 		}

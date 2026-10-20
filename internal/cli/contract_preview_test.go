@@ -8,18 +8,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 const parityVM = "00000000-0000-4000-8000-000000000001"
@@ -36,116 +39,431 @@ func (parityCloud) ListFloatingIPs(context.Context, string) ([]*provision.Floati
 	return nil, nil
 }
 
+// TestContract_PreviewParity: the preview of every tool that asks for
+// consent — Mutating, and the two that reveal a secret (tools.IsSensitive)
+// — is one preview on the four surfaces (spec REQ-6): its command with
+// --dry-run --json (preview.details), 'evo tools call' with --dry-run
+// --json, MCP over stdio and MCP over HTTP. The cases come from the
+// registry; the arguments of each are parityArgs, and a gated tool without
+// an entry there fails the test, as does one whose preview any surface
+// refuses. A tool without a command yet (tools.CLIPending) has the three
+// other surfaces. The one difference allowed is H7 of the closed list of
+// the HTTP mode (docs/mcp.md): credential fields masked, and named in
+// "redacted". deploy is checked in both states of the directory: no
+// deployment (the preview prices a new VM) and a recorded one (it updates
+// that VM). The command and 'evo tools call' print the same envelope, except
+// for a preview the CLI shows in the words of deploy (a tool's "preview"
+// object: summary and lines differ, the details do not).
 func TestContract_PreviewParity(t *testing.T) {
-	withParityWorld(t)
+	world := withParityWorld(t)
+	fakeKubeBinaries(t)
+	srv := parityServers(t)
+
+	reg := tools.New(nil)
+	commands := commandsByTool()
+	var cases []previewCase
+	var bad []string
+	for _, tl := range reg.Tools() {
+		if !tl.Mutating && !tools.IsSensitive(tl) {
+			continue
+		}
+		args, ok := parityArgs[tl.Name]
+		if !ok {
+			bad = append(bad, tl.Name+": asks for consent and has no entry in parityArgs")
+			continue
+		}
+		cases = append(cases, previewCase{name: tl.Name, tool: tl, args: args, setup: paritySetup[tl.Name]})
+	}
+	for name := range parityArgs {
+		if tl, ok := reg.Lookup(name); !ok || !tl.Mutating && !tools.IsSensitive(tl) {
+			bad = append(bad, name+": in parityArgs, but not a tool that asks for consent")
+		}
+	}
+	if dep, ok := reg.Lookup("deploy"); ok {
+		cases = append(cases, previewCase{name: "deploy (deployment recorded)", tool: dep,
+			args: parityArgs["deploy"], setup: recordDeployment})
+	}
+
+	counts := map[string]int{}
+	masked := map[string]string{} // case → the fields H7 masks over HTTP
+	for _, c := range cases {
+		args := make(map[string]any, len(c.args))
+		for k, v := range c.args {
+			args[k] = v
+		}
+		teardown := func() {}
+		if c.setup != nil {
+			extra, done := c.setup(t, world)
+			for k, v := range extra {
+				args[k] = v
+			}
+			teardown = done
+		}
+		cmd := commands[c.tool.Name]
+		pc := parityCommandOf(t, cmd.group, cmd.cmd, c.tool, args)
+		world.rt.takeWrites()
+		why := comparePreviews(t, c.name, pc, srv, masked)
+		teardown()
+		if w := world.rt.takeWrites(); len(w) > 0 {
+			bad = append(bad, c.name+": the preview wrote to the cloud: "+strings.Join(w, ", "))
+		}
+		if why != "" {
+			bad = append(bad, why)
+			continue
+		}
+		if c.name != c.tool.Name {
+			continue // a second state of a tool already counted
+		}
+		switch {
+		case tools.IsSensitive(c.tool):
+			counts["sensitive"]++
+		case pc.tree == nil:
+			counts["mutating, no command yet (tools call)"]++
+		default:
+			counts["mutating with a command"]++
+		}
+	}
+	keys := make([]string, 0, len(counts))
+	total := 0
+	for k, n := range counts {
+		keys = append(keys, fmt.Sprintf("%s: %d", k, n))
+		total += n
+	}
+	sort.Strings(keys)
+	t.Logf("previews equal on every surface: %d (%s)", total, strings.Join(keys, "; "))
+	names := make([]string, 0, len(masked))
+	for name := range masked {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		t.Logf("H7 over HTTP: %s masks %s", name, masked[name])
+	}
+	if len(bad) > 0 {
+		t.Fatal(strings.Join(bad, "\n"))
+	}
+}
+
+// The previews of provision and deploy carry the price and the names of
+// the zone, the flavor and the image, read by the tool (spec REQ-7, owner's
+// decision Q6): an agent approves a billable VM with the price the command
+// shows, and 'evo vm create web --dry-run --json' gives what MCP gives,
+// cost included. The fake has no price-calculation API: the estimate of
+// the rate card with price_api_error, as deploy_plan gives it. In a
+// directory that has a deployment, deploy updates its VM: no new VM, no
+// preview of one.
+func TestContract_PreviewPriceInTool(t *testing.T) {
+	w := withParityWorld(t)
+	srv := parityServers(t)
+	writeFile(t, filepath.Join(w.dir, "docker-compose.yml"), "services:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"80:80\"\n")
+	for _, c := range []struct {
+		tool, name, flavor string
+		args               map[string]any
+	}{
+		{"provision", "web", "lowcost10-2-4", map[string]any{"name": "web"}},
+		{"deploy", "evo-", "free-tier1", map[string]any{}}, // evo-<directory>, as evo deploy names it
+	} {
+		got := stdioDetails(t, srv.stdio, c.tool, c.args)
+		var p engine.CreatePreview
+		b, _ := json.Marshal(got["preview"])
+		if err := json.Unmarshal(b, &p); err != nil || p.VM == nil {
+			t.Fatalf("%s: no VM preview: %v", c.tool, got)
+		}
+		vm := p.VM
+		if !strings.HasPrefix(p.Name, c.name) || vm.Zone.Name != "ru.AZ-1" || vm.Flavor.Name != c.flavor || vm.Flavor.VCPUs == 0 ||
+			vm.Image.Name != "Ubuntu 22.04" || vm.Disk.SizeGB != 20 {
+			t.Errorf("%s: names and sizes not read: %s", c.tool, b)
+		}
+		if p.Cost == nil || p.Cost.TotalMonthlyRub <= 0 || p.Cost.PriceAPIError == "" || p.CostNote != "evo rate-card estimate, not a bill" {
+			t.Errorf("%s: not the rate-card estimate with price_api_error: %s", c.tool, b)
+		}
+	}
+
+	newProcess()
+	code, out, errOut := runCLI(t, "", "vm", "create", "web", "--dry-run", "--json")
+	cli, ok := dryRunDetails(out)
+	if code != 0 || !ok {
+		t.Fatalf("evo vm create web --dry-run --json: exit %d %s %s", code, out, errOut)
+	}
+	if mcpPreview := stdioDetails(t, srv.stdio, "provision", map[string]any{"name": "web"}); !reflect.DeepEqual(cli, mcpPreview) {
+		t.Errorf("evo vm create ≠ MCP provision: %s", valueDiff(cli, mcpPreview))
+	}
+
+	_, done := recordDeployment(t, w)
+	defer done()
+	if got := stdioDetails(t, srv.stdio, "deploy", map[string]any{}); got["status"] != "confirmation_required" || got["preview"] != nil {
+		t.Errorf("deploy over a recorded deployment: %v", got)
+	}
+}
+
+// unmaskHTTP takes back only what H7 masked and "redacted" names: no
+// preview of the registry echoes a credential today, so the comparison of
+// a masked answer is checked here.
+func TestUnmaskHTTP(t *testing.T) {
+	const mask = "[redacted over HTTP: start the server with --allow-secret-export]"
+	stdio := map[string]any{"status": "confirmation_required", "user": map[string]any{"name": "app", "password": "p"},
+		"users": []any{map[string]any{"password": "a"}, map[string]any{"password": "b"}}}
+	h := map[string]any{"status": "confirmation_required", "user": map[string]any{"name": "app", "password": mask},
+		"users":    []any{map[string]any{"password": mask}, map[string]any{"password": mask}},
+		"redacted": []any{"user.password", "users[].password"}}
+	got, why := unmaskHTTP(h, stdio)
+	if why != "" || !reflect.DeepEqual(got, stdio) {
+		t.Errorf("unmasked %v (%s), want %v", got, why, stdio)
+	}
+	// A field named but not masked, or masked but not named, is a difference.
+	h["redacted"] = []any{"user.name"}
+	if _, why := unmaskHTTP(h, stdio); why == "" {
+		t.Error("user.name is named in redacted but not masked: no difference reported")
+	}
+	h["redacted"] = []any{"user.password"}
+	if got, _ := unmaskHTTP(h, stdio); reflect.DeepEqual(got, stdio) {
+		t.Error("users[].password is masked but not named: the answers compare equal")
+	}
+}
+
+type previewCase struct {
+	name  string
+	tool  tools.Tool
+	args  map[string]any
+	setup func(t *testing.T, w parityWorld) (map[string]any, func())
+}
+
+// comparePreviews runs one case on the four surfaces and says what differs
+// ("" when nothing does).
+func comparePreviews(t *testing.T, name string, pc parityCommand, srv parityMCP, masked map[string]string) string {
+	t.Helper()
+	got := map[string]map[string]any{}
+	var lines []string
+	newProcess()
+	callCode, callOut, callErr := runCLI(t, "", append([]string{"--dry-run", "--json"}, pc.call...)...)
+	call, ok := dryRunDetails(callOut)
+	if !ok {
+		return fmt.Sprintf("%s: evo %s --dry-run --json gave no preview: exit %d out=%s err=%s",
+			name, strings.Join(pc.call, " "), callCode, clipLine(callOut), clipLine(callErr))
+	}
+	got["tools"] = call
+	if pc.tree != nil {
+		newProcess()
+		treeCode, treeOut, treeErr := runCLI(t, "", append([]string{"--dry-run", "--json"}, pc.tree...)...)
+		tree, ok := dryRunDetails(treeOut)
+		if !ok {
+			return fmt.Sprintf("%s: evo %s --dry-run --json gave no preview: exit %d out=%s err=%s",
+				name, strings.Join(pc.tree, " "), treeCode, clipLine(treeOut), clipLine(treeErr))
+		}
+		got["cli"] = tree
+		_, structured := call["preview"]
+		if treeCode != callCode || treeErr != callErr || !structured && treeOut != callOut {
+			lines = append(lines, fmt.Sprintf("%s: evo %s ≠ evo %s (--dry-run --json):\n  tree: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
+				name, strings.Join(pc.tree, " "), strings.Join(pc.call, " "),
+				treeCode, clipLine(treeOut), clipLine(treeErr), callCode, clipLine(callOut), clipLine(callErr)))
+		}
+	}
+	got["stdio"] = stdioDetails(t, srv.stdio, pc.tool.Name, pc.args)
+	got["http --allow-secret-export"] = httpDetails(t, srv.export, pc.tool.Name, pc.args)
+	h := httpDetails(t, srv.http, pc.tool.Name, pc.args)
+	if httpDisabled()[pc.tool.Name] {
+		// H5: disabled over HTTP, before its preview.
+		if msg, _ := h["error"].(string); h["status"] != "error" || !strings.Contains(msg, "is disabled over HTTP") {
+			lines = append(lines, name+": http: not the refusal of H5: "+clipLine(fmt.Sprint(h)))
+		}
+	} else {
+		if r, ok := h["redacted"]; ok {
+			masked[name] = fmt.Sprint(r)
+		}
+		h, why := unmaskHTTP(h, got["stdio"])
+		if why != "" {
+			lines = append(lines, name+": http: "+why)
+		}
+		got["http"] = h
+	}
+	if why := parityDiff(name, got); why != "" {
+		lines = append(lines, why)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// unmaskHTTP is the HTTP answer as stdio gives it, where H7 is the
+// difference: each field "redacted" names is masked over HTTP (and only
+// those), and takes the stdio value back; "redacted" itself goes.
+func unmaskHTTP(h, stdio map[string]any) (map[string]any, string) {
+	raw, ok := h["redacted"]
+	if !ok {
+		return h, ""
+	}
+	out := deepCopy(h).(map[string]any)
+	delete(out, "redacted")
+	list, _ := raw.([]any)
+	if len(list) == 0 {
+		return out, fmt.Sprintf("redacted is %v, not a list of fields", raw)
+	}
+	var bad []string
+	for _, p := range list {
+		path, _ := p.(string)
+		if why := restoreAt(out, stdio, strings.Split(path, ".")); why != "" {
+			bad = append(bad, path+": "+why)
+		}
+	}
+	return out, strings.Join(bad, "; ")
+}
+
+// restoreAt puts the stdio value back at the path (a "[]" suffix: each
+// element of a list) after checking that HTTP masked it there.
+func restoreAt(h, s any, path []string) string {
+	key, each := strings.CutSuffix(path[0], "[]")
+	hm, ok1 := h.(map[string]any)
+	sm, ok2 := s.(map[string]any)
+	if !ok1 || !ok2 {
+		return "not an object on both transports"
+	}
+	if each {
+		ha, ok1 := hm[key].([]any)
+		sa, ok2 := sm[key].([]any)
+		if !ok1 || !ok2 || len(ha) != len(sa) {
+			return "not the same list on both transports"
+		}
+		for i := range ha {
+			if len(path) == 1 {
+				if !masked(ha[i]) {
+					return "an element is not masked"
+				}
+				ha[i] = sa[i]
+				continue
+			}
+			if why := restoreAt(ha[i], sa[i], path[1:]); why != "" {
+				return why
+			}
+		}
+		return ""
+	}
+	if len(path) > 1 {
+		return restoreAt(hm[key], sm[key], path[1:])
+	}
+	if !masked(hm[key]) {
+		return "named in redacted, but not masked"
+	}
+	hm[key] = deepCopy(sm[key])
+	return ""
+}
+
+// masked: every string in v is the mask of the HTTP mode.
+func masked(v any) bool {
+	switch x := v.(type) {
+	case string:
+		return strings.HasPrefix(x, "[redacted over HTTP")
+	case []any:
+		for _, e := range x {
+			if !masked(e) {
+				return false
+			}
+		}
+		return len(x) > 0
+	case map[string]any:
+		for _, e := range x {
+			if !masked(e) {
+				return false
+			}
+		}
+		return len(x) > 0
+	}
+	return false
+}
+
+func deepCopy(v any) any {
+	b, _ := json.Marshal(v)
+	var out any
+	_ = json.Unmarshal(b, &out)
+	return out
+}
+
+// treeCommand is the command of a tool in the trees.
+type treeCommand struct {
+	group treeGroup
+	cmd   treeCmd
+}
+
+// commandsByTool are the commands of the trees by tool name.
+func commandsByTool() map[string]treeCommand {
+	out := map[string]treeCommand{}
+	for _, g := range allTreeGroups() {
+		for _, c := range g.Cmds {
+			out[c.Tool] = treeCommand{group: g, cmd: c}
+		}
+	}
+	return out
+}
+
+// parityMCP are the MCP servers of the parity tests, on the engines of the
+// tools (toolEngine: the fake cloud of the world): over stdio, over HTTP as
+// it starts by default, and over HTTP with --allow-secret-export (no H5,
+// H6, H7: the answers as over stdio).
+type parityMCP struct {
+	stdio        *mcp.Server
+	http, export *httptest.Server
+}
+
+func parityServers(t *testing.T) parityMCP {
+	t.Helper()
 	factory := func(o map[string]any) (*engine.Engine, error) {
 		if o == nil {
 			o = map[string]any{}
 		}
-		e, err := buildEngine(o)
-		if err != nil {
-			return nil, err
-		}
-		e.Auth, e.Cloud = previewToken{}, parityCloud{}
-		return e, nil
+		return toolEngine(o)
 	}
-	stdio := mcp.New(factory, "test")
-	hs := mcp.New(factory, "test")
-	h := mcp.NewHTTPHandler(hs, mcp.HTTPOptions{BearerToken: "parity-token"})
-	ts := httptest.NewServer(h)
-	t.Cleanup(func() {
-		h.Close()
-		ts.Close()
-	})
+	serve := func(opts mcp.HTTPOptions) *httptest.Server {
+		opts.BearerToken = "parity-token"
+		h := mcp.NewHTTPHandler(mcp.New(factory, "test"), opts)
+		ts := httptest.NewServer(h)
+		t.Cleanup(func() {
+			h.Close()
+			ts.Close()
+		})
+		return ts
+	}
+	return parityMCP{stdio: mcp.New(factory, "test"), http: serve(mcp.HTTPOptions{}),
+		export: serve(mcp.HTTPOptions{AllowSecretExport: true})}
+}
 
-	cases := []parityCase{
-		{
-			name: "vm create",
-			tree: []string{"vm", "create", "web"},
-			call: []string{"tools", "call", "provision", "--arg", "name=web"},
-			tool: "provision", args: map[string]any{"name": "web"},
-		},
-		{
-			name: "disk delete",
-			tree: []string{"disk", "delete", parityVM},
-			call: []string{"tools", "call", "disk_delete", "--arg", "disk_id=" + parityVM},
-			tool: "disk_delete", args: map[string]any{"disk_id": parityVM},
-		},
-		{
-			name: "destroy",
-			tree: []string{"vm", "delete", parityVM},
-			call: []string{"tools", "call", "destroy", "--arg", "vm_id=" + parityVM},
-			tool: "destroy", args: map[string]any{"vm_id": parityVM},
-		},
-		{
-			// open_ports has no tree command. The CLI surface is tools call.
-			name: "open_ports",
-			call: []string{"tools", "call", "open_ports", "--arg", "security_group=web", "--arg", "ports=80,443"},
-			tool: "open_ports", args: map[string]any{"security_group": "web", "ports": []any{float64(80), float64(443)}},
-		},
-		{
-			name: "k8s_add_addon",
-			tree: []string{"k8s", "add-addon", addonClusterID, "cert-manager"},
-			call: []string{"tools", "call", "k8s_add_addon", "--arg", "cluster_id=" + addonClusterID, "--arg", "name=cert-manager"},
-			tool: "k8s_add_addon", args: map[string]any{"cluster_id": addonClusterID, "name": "cert-manager"},
-		},
-		{
-			name: "pg_create",
-			tree: []string{"pg", "create", "web", "--specification-id", "std"},
-			call: []string{"tools", "call", "pg_create", "--arg", "name=web", "--arg", "specification_id=std"},
-			tool: "pg_create", args: map[string]any{"name": "web", "specification_id": "std"},
-		},
-	}
-	// The tree completes a CreatePreview (zone, flavor, price, project) before
-	// printing it. tools call and both MCP transports return the tool's own
-	// answer. docs/internal/standalone/BACKLOG.md [03]: the MCP provision
-	// preview has no price because the gate does not call the cloud; the
-	// price section of the same file says evo vm create (CLI) does estimate.
-	// Those two commands are compared tools ≡ stdio ≡ http, and the tree is
-	// only checked to still be a dry_run. Every other command compares all
-	// four surfaces.
-	completedByTree := map[string]bool{"vm create": true, "k8s_add_addon": true}
-	var bad []string
-	for _, c := range cases {
-		got := map[string]map[string]any{}
-		take := func(label string, args []string) {
-			m, why := dryDetails(t, args...)
-			if why != "" {
-				bad = append(bad, c.name+" "+label+": "+why)
-				return
-			}
-			got[label] = m
-		}
-		if c.tree != nil {
-			take("cli", c.tree)
-		}
-		take("tools", c.call)
-		got["stdio"] = stdioDetails(t, stdio, c.tool, c.args)
-		got["http"] = httpDetails(t, ts, c.tool, c.args)
-		agent := map[string]map[string]any{"tools": got["tools"], "stdio": got["stdio"], "http": got["http"]}
-		if why := parityDiff(c.name, agent); why != "" {
-			bad = append(bad, why)
-		}
-		if c.tree != nil && !completedByTree[c.name] {
-			if why := parityDiff(c.name, map[string]map[string]any{"cli": got["cli"], "tools": got["tools"]}); why != "" {
-				bad = append(bad, why)
+// httpDisabled are the tools the HTTP mode disables without
+// --allow-secret-export (H5 of mcp.HTTPRestrictions): they answer a refusal
+// there instead of their preview.
+func httpDisabled() map[string]bool {
+	out := map[string]bool{}
+	for _, r := range mcp.HTTPRestrictions {
+		if r.ID == "H5" {
+			for _, name := range r.Tools {
+				out[name] = true
 			}
 		}
 	}
-	if len(bad) > 0 {
-		t.Fatalf("%s", strings.Join(bad, "\n"))
+	return out
+}
+
+// fakeKubeBinaries puts kubectl and helm on PATH: over HTTP, k8s_kubectl,
+// k8s_apply and k8s_helm refuse when the server has none (H1), before the
+// preview. The previews never run them.
+func fakeKubeBinaries(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range []string{"kubectl", "helm"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-type parityCase struct {
-	name string
-	tree []string
-	call []string
-	tool string
-	args map[string]any
+// parityWorld is the directory of the parity tests: the working directory
+// (the state of deploy), HOME and the configuration; rt is the fake of
+// every API, which also counts the writes that reach it.
+type parityWorld struct {
+	dir string
+	rt  *parityRT
 }
 
-func withParityWorld(t *testing.T) {
+// withParityWorld: a project, a zone and an image configured, a token
+// without IAM, the reads of the previews answered by previewCloud and the
+// rest of the compute API, and every other API, by parityRT.
+func withParityWorld(t *testing.T) parityWorld {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -155,10 +473,14 @@ func withParityWorld(t *testing.T) {
 	t.Setenv("CLOUDRU_REGION", pvZone)
 	t.Setenv("CLOUDRU_IMAGE_ID", pvImage)
 	t.Setenv("CLOUDRU_FLAVOR", "")
+	t.Setenv("CLOUDRU_DISK_SIZE", "")
 	t.Setenv("EVO_LANG", "en")
-	api := &addonAPI{}
+	t.Chdir(home)
+	rt := &parityRT{addon: &addonAPI{}}
 	oldRT := http.DefaultTransport
-	http.DefaultTransport = parityRT{addon: api}
+	http.DefaultTransport = rt
+	compute := provision.NewCloudRuAdapter(&http.Client{Transport: rt}, "")
+	compute.SetToken("fake-token")
 	old := toolEngine
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
 		if o == nil {
@@ -168,55 +490,11 @@ func withParityWorld(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		e.Auth, e.Cloud = previewToken{}, parityCloud{}
+		e.Auth, e.Cloud = previewToken{}, parityCloud{previewCloud{CloudAPI: compute}}
 		return e, nil
 	}
 	t.Cleanup(func() { toolEngine, http.DefaultTransport = old, oldRT })
-}
-
-type parityRT struct{ addon *addonAPI }
-
-func (p parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
-	switch r.URL.Host {
-	case "mk8s.api.cloud.ru":
-		return p.addon.RoundTrip(r)
-	case "postgresql.api.cloud.ru":
-		return pgParity(r)
-	default:
-		w := httptest.NewRecorder()
-		_, _ = io.WriteString(w, `{"items":[],"total":0}`)
-		return w.Result(), nil
-	}
-}
-
-func pgParity(r *http.Request) (*http.Response, error) {
-	w := httptest.NewRecorder()
-	switch {
-	case r.URL.Path == "/v1/clusters":
-		_, _ = io.WriteString(w, `{"clusters":[]}`)
-	case r.URL.Path == "/v1/versions":
-		_, _ = io.WriteString(w, `{"versions":[{"id":"v17","name":"17"}]}`)
-	case r.URL.Path == "/v1/specifications":
-		_, _ = io.WriteString(w, `{"specifications":[{"id":"std","display_name":"std","cpu":2,"memory":4,"deployment_mode":"STANDARD","min_storage_gb":20,"max_hosts":2}]}`)
-	default:
-		http.Error(w, `{"message":"no such path"}`, 404)
-	}
-	return w.Result(), nil
-}
-
-func dryDetails(t *testing.T, args ...string) (map[string]any, string) {
-	t.Helper()
-	out, errOut, code := execCLI(t, append(args, "--dry-run", "--json")...)
-	var env struct {
-		Status  string `json:"status"`
-		Preview struct {
-			Details map[string]any `json:"details"`
-		} `json:"preview"`
-	}
-	if json.Unmarshal([]byte(out), &env) != nil || env.Status != "dry_run" || env.Preview.Details == nil {
-		return nil, "exit " + strconv.Itoa(code) + " out=" + clipLine(out) + " err=" + clipLine(errOut)
-	}
-	return env.Preview.Details, ""
+	return parityWorld{dir: home, rt: rt}
 }
 
 func stdioDetails(t *testing.T, s *mcp.Server, name string, args map[string]any) map[string]any {
