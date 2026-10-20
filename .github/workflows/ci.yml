@@ -53,17 +53,6 @@ jobs:
             echo "не отформатировано:"; echo "$unformatted"; exit 1
           fi
 
-      # Сгенерированные документы совпадают с кодом (spec REQ-10):
-      # docs/commands.md — с деревом команд, docs/tools.md — с реестром,
-      # инвентаризация паритета — с реестром, деревом и списками тестов.
-      # Те же тесты сверяют файлы и в go test ниже на всех ОС; здесь файлы
-      # регенерируются, и провал показывает разницу.
-      - name: документация из кода
-        if: runner.os == 'Linux'
-        run: |
-          go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc|TestParityInventory' -update-docs -count=1
-          git diff --exit-code -- docs/commands.md docs/tools.md docs/internal/cli-mcp-parity/inventory.md
-
       # The race runtime sleeps 1 s at every test binary's exit
       # (atexit_sleep_ms=1000): with ~40 packages that is most of the wall time.
       - run: go test -race -count=1 ./...

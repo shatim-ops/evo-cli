@@ -36,8 +36,8 @@ import (
 var updateDocs = flag.Bool("update-docs", false, "rewrite docs/commands.md, docs/tools.md and the parity inventory from the code")
 
 // deprecatedCommands are the commands kept until v2.0, with what replaces
-// them. Both are hidden, so docs/commands.md has no section for them; were
-// one shown, its section would carry the note. The inventory lists them.
+// them. They are hidden, so docs/commands.md has no section for them; the
+// parity inventory lists them.
 var deprecatedCommands = map[string]string{
 	"evo list-zones":  "удаляется в v2.0, используйте `evo vm zones`",
 	"evo list-images": "удаляется в v2.0, используйте `evo image list`",
@@ -124,20 +124,13 @@ func genCommandsDocIn(lang string) ([]byte, error) {
 		if err := doc.GenMarkdownCustom(c, &sec, link); err != nil {
 			return nil, err
 		}
-		// A note under the heading: a command that calls no tool, with the
-		// reason (localCommands, spec REQ-10), and a command kept until
-		// v2.0. The reasons are Russian, as the file is.
-		var notes []string
-		if reason, ok := local[c.CommandPath()]; ok && lang == i18n.RU {
-			notes = append(notes, "> Локальная команда: "+reason+".")
-		}
-		if why, ok := deprecatedCommands[c.CommandPath()]; ok && lang == i18n.RU {
-			notes = append(notes, "> Устаревшая команда: "+why+".")
-		}
+		// A command that calls no tool says so under its heading, with the
+		// reason (localCommands, spec REQ-10). The reasons are Russian, as
+		// the file is.
 		heading, rest, _ := strings.Cut(sec.String(), "\n\n")
 		buf.WriteString(heading + "\n\n")
-		if len(notes) > 0 {
-			buf.WriteString(strings.Join(notes, "\n>\n") + "\n\n")
+		if reason, ok := local[c.CommandPath()]; ok && lang == i18n.RU {
+			buf.WriteString("> Локальная команда: " + reason + ".\n\n")
 		}
 		buf.WriteString(rest)
 	}
