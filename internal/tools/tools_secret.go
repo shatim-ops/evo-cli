@@ -45,7 +45,7 @@ func (s *Registry) handleSecretList(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleSecretGet(ctx context.Context, args map[string]any) (string, bool) {
 	path := stringArg(args, "path")
 	if path == "" {
-		return usageResult(fmt.Errorf("'path' is required (from secret_list)")), true
+		return usageT("'path' is required (from secret_list)", "нужен 'path' (из secret_list)"), true
 	}
 	cli, err := s.secretClient(ctx)
 	if err != nil {
@@ -63,7 +63,7 @@ func (s *Registry) handleSecretGet(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleSecretValue(ctx context.Context, args map[string]any) (string, bool) {
 	path := stringArg(args, "path")
 	if path == "" {
-		return usageResult(fmt.Errorf("'path' is required (from secret_list)")), true
+		return usageT("'path' is required (from secret_list)", "нужен 'path' (из secret_list)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -91,7 +91,7 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 	path := stringArg(args, "path")
 	value := stringArg(args, "value")
 	if path == "" || value == "" {
-		return usageResult(fmt.Errorf("'path' and 'value' are required")), true
+		return usageT("'path' and 'value' are required", "нужны 'path' и 'value'"), true
 	}
 	// The secret's name is the last part of the path: "folder/" names none
 	// (QA-15).
@@ -137,7 +137,7 @@ func (s *Registry) handleSecretAddVersion(ctx context.Context, args map[string]a
 	path := stringArg(args, "path")
 	value := stringArg(args, "value")
 	if path == "" || value == "" {
-		return usageResult(fmt.Errorf("'path' and 'value' are required")), true
+		return usageT("'path' and 'value' are required", "нужны 'path' и 'value'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("secret_add_version adds a new value version to secret %q (the previous version stays until disabled). Call again with confirmed=true.", path)}), true
@@ -161,7 +161,7 @@ func (s *Registry) handleSecretAddVersion(ctx context.Context, args map[string]a
 func (s *Registry) handleSecretDelete(ctx context.Context, args map[string]any) (string, bool) {
 	path := stringArg(args, "path")
 	if path == "" {
-		return usageResult(fmt.Errorf("'path' is required (from secret_list)")), true
+		return usageT("'path' is required (from secret_list)", "нужен 'path' (из secret_list)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("secret_delete PERMANENTLY deletes secret %q and all its versions. Call again with confirmed=true.", path)}), true

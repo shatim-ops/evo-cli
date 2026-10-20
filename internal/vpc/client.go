@@ -22,6 +22,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -103,7 +104,7 @@ func apiError(status int, body []byte) error {
 		// A VPC, route or operation that does not exist: NOT_FOUND (exit 4),
 		// not API_ERROR (release audit, L-15).
 		return clierrors.New(clierrors.CodeNotFound, fmt.Sprintf("vpc API %d: %s", status, msg),
-			"Check the id: vpc_list lists the VPCs, vpc_routes the routes of one.")
+			i18n.T("Check the id: vpc_list lists the VPCs, vpc_routes the routes of one.", "Проверьте id: VPC — в выводе vpc_list, маршруты VPC — в выводе vpc_routes."))
 	}
 	return fmt.Errorf("vpc API %d: %s", status, msg)
 }

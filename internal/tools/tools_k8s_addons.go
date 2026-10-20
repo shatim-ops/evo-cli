@@ -162,7 +162,7 @@ func releaseRow(r mk8s.AddonRelease, latest, full bool) map[string]any {
 func (s *Registry) handleK8sAddonVersions(ctx context.Context, args map[string]any) (string, bool) {
 	name := strings.TrimSpace(stringArg(args, "name"))
 	if name == "" {
-		return usageResult(fmt.Errorf("name is required (an addon name from k8s_addons)")), true
+		return usageT("name is required (an addon name from k8s_addons)", "нужен name — имя плагина из k8s_addons"), true
 	}
 	full := boolArg(args, "full", false)
 	cli, _, _, err := s.k8sClient(ctx)
@@ -215,10 +215,10 @@ func addonConfig(v any) (string, []string, error) {
 			return "", nil, nil
 		}
 		if err := json.Unmarshal([]byte(x), &obj); err != nil || obj == nil {
-			return "", nil, fmt.Errorf("config must be a JSON object (or a string holding one): %v", firstErr(err, "not an object"))
+			return "", nil, fmt.Errorf(i18n.T("config must be a JSON object (or a string holding one): %v", "config должен быть объектом JSON (или строкой с ним): %v"), firstErr(err, i18n.T("not an object", "не объект")))
 		}
 	default:
-		return "", nil, fmt.Errorf("config must be a JSON object (or a string holding one), got %T", v)
+		return "", nil, fmt.Errorf(i18n.T("config must be a JSON object (or a string holding one), got %T", "config должен быть объектом JSON (или строкой с ним), передано %T"), v)
 	}
 	b, err := json.Marshal(obj)
 	if err != nil {
@@ -484,7 +484,7 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 	clusterID := strings.TrimSpace(stringArg(args, "cluster_id"))
 	name := strings.TrimSpace(stringArg(args, "name"))
 	if clusterID == "" || name == "" {
-		return usageResult(fmt.Errorf("cluster_id and name are required")), true
+		return usageT("cluster_id and name are required", "нужны cluster_id и name"), true
 	}
 	config, configKeys, err := addonConfig(args["config"])
 	if err != nil {

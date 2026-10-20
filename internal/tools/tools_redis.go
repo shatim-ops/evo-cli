@@ -6,12 +6,14 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/dbaas"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 const redisHost = "https://redis.api.cloud.ru"
@@ -50,7 +52,7 @@ func (s *Registry) handleRedisList(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleRedisGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
+		return usageT("'cluster_id' is required (from redis_list)", "нужен 'cluster_id' (из redis_list)"), true
 	}
 	if res := uuidArg("cluster_id", id, "redis_list"); res != "" {
 		return res, true
@@ -108,7 +110,7 @@ func (s *Registry) handleRedisSpecs(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("'name' is required")), true
+		return usageT("'name' is required", "нужен 'name'"), true
 	}
 	// The shape first, before the cloud: type=FOO and shards=20 went through
 	// to the preview (release audit, L-35).
@@ -122,10 +124,10 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	}
 	existing, err := cli.ListClusters(ctx, url.Values{})
 	if err != nil {
-		return errResult(fmt.Errorf("check the name is free: list clusters: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)), true
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult("Redis cluster", name, id, st, "redis_get cluster_id="+id)
+		return nameTakenResult(i18n.T("Redis cluster", "кластер Redis"), name, id, st, "redis_get cluster_id="+id)
 	}
 
 	versionID := stringArg(args, "version_id")
@@ -135,7 +137,7 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 			return errResult(fmt.Errorf("list versions: %w", e)), true
 		}
 		if len(vers) == 0 {
-			return errResult(fmt.Errorf("no redis versions available")), true
+			return errResult(errors.New(i18n.T("no redis versions available", "нет доступных версий Redis"))), true
 		}
 		versionID, _ = vers[len(vers)-1]["id"].(string)
 	}
@@ -235,18 +237,18 @@ func redisShape(args map[string]any) (rtype string, shards, replicas int, err er
 	case redisStandalone:
 		defReplicas = 0
 	default:
-		return "", 0, 0, fmt.Errorf("type %q is not one of %s, %s", stringArg(args, "type"), redisMasterReplica, redisStandalone)
+		return "", 0, 0, fmt.Errorf(i18n.T("type %q is not one of %s, %s", "type %q не входит в список: %s, %s"), stringArg(args, "type"), redisMasterReplica, redisStandalone)
 	}
 	shards = pgInt(args, "shards", 1)
 	if shards < 1 || shards > 8 {
-		return "", 0, 0, fmt.Errorf("shards %d is out of range: 1-8", shards)
+		return "", 0, 0, fmt.Errorf(i18n.T("shards %d is out of range: 1-8", "shards %d вне диапазона 1–8"), shards)
 	}
 	replicas = pgInt(args, "replicas", defReplicas)
 	if replicas != defReplicas {
 		if rtype == redisMasterReplica {
-			return "", 0, 0, fmt.Errorf("replicas %d: MASTER_REPLICA takes replicas=2 (a master and two replicas per shard; replicas counts the replicas without the master — redis_get reports 3 hosts)", replicas)
+			return "", 0, 0, fmt.Errorf(i18n.T("replicas %d: MASTER_REPLICA takes replicas=2 (a master and two replicas per shard; replicas counts the replicas without the master — redis_get reports 3 hosts)", "replicas %d: для MASTER_REPLICA нужно replicas=2 (мастер и две реплики на шард; replicas считает реплики без мастера — redis_get покажет 3 хоста)"), replicas)
 		}
-		return "", 0, 0, fmt.Errorf("replicas %d: a STANDALONE cluster has no replicas (replicas=0)", replicas)
+		return "", 0, 0, fmt.Errorf(i18n.T("replicas %d: a STANDALONE cluster has no replicas (replicas=0)", "replicas %d: у кластера STANDALONE нет реплик (replicas=0)"), replicas)
 	}
 	return rtype, shards, replicas, nil
 }
@@ -254,7 +256,7 @@ func redisShape(args map[string]any) (rtype string, shards, replicas int, err er
 func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'cluster_id' is required (from redis_list)")), true
+		return usageT("'cluster_id' is required (from redis_list)", "нужен 'cluster_id' (из redis_list)"), true
 	}
 	cli, _, err := s.redisClientEng(ctx)
 	if err != nil {
@@ -274,7 +276,7 @@ func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (
 func (s *Registry) handleRedisOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'operation_id' is required")), true
+		return usageT("'operation_id' is required", "нужен 'operation_id'"), true
 	}
 	cli, _, err := s.redisClientEng(ctx)
 	if err != nil {

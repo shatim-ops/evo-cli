@@ -780,7 +780,7 @@ func toolError(name, text string) error {
 	}
 	if code == "" {
 		code = clerrors.CodeAPIError
-		if strings.Contains(strings.ToLower(text), "not found") {
+		if low := strings.ToLower(text); strings.Contains(low, "not found") || strings.Contains(low, "не найден") {
 			code = clerrors.CodeNotFound
 		}
 	}

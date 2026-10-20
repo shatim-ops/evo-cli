@@ -6,8 +6,11 @@ package tools
 
 import (
 	"context"
-	"fmt"
+	"strings"
 	"time"
+
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // handleVMGet returns LIVE details for a single VM (by vm_id or name): its
@@ -26,12 +29,19 @@ import (
 //
 // Read-only; touches eng.Cloud, so it uses authedEngine.
 func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string, bool) {
-	ref := stringArg(args, "vm_id")
-	if ref == "" {
-		ref = stringArg(args, "name")
+	vmIDArg, nameArg := strings.TrimSpace(stringArg(args, "vm_id")), strings.TrimSpace(stringArg(args, "name"))
+	if vmIDArg != "" && nameArg != "" {
+		// Both: the vm_id was taken and the name dropped without a word
+		// (QA 20.10, QA-11), as release_floating_ip did with id and
+		// ip_address.
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			i18n.T("pass vm_id or name, not both", "укажите vm_id или name, не оба"),
+			i18n.T("vm_id is the VM's UUID; name finds the VM by its name.",
+				"vm_id — UUID ВМ; по name ВМ ищется по имени."))), true
 	}
+	ref := firstNonEmptyStr(vmIDArg, nameArg)
 	if ref == "" {
-		return usageResult(fmt.Errorf("vm_id or name is required")), true
+		return usageT("vm_id or name is required", "нужен vm_id или name"), true
 	}
 
 	eng, err := s.authedEngine(ctx, nil)

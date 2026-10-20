@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/artifact"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // arClient builds an authenticated Artifact Registry client.
@@ -47,7 +48,7 @@ func (s *Registry) handleArList(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleArGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (from ar_list)")), true
+		return usageT("'id' is required (from ar_list)", "нужен 'id' (из ar_list)"), true
 	}
 	cli, err := s.arClient(ctx)
 	if err != nil {
@@ -63,7 +64,7 @@ func (s *Registry) handleArGet(ctx context.Context, args map[string]any) (string
 func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("'name' is required")), true
+		return usageT("'name' is required", "нужен 'name'"), true
 	}
 	regType := strings.ToUpper(stringArg(args, "registry_type"))
 	if regType == "" {
@@ -83,10 +84,10 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 	// A taken name made a second registry, rc 0 (release audit, L-18).
 	existing, err := cli.ListRegistries(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf("check the name is free: list registries: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list registries: %w", "проверка, что имя свободно: список реестров: %w"), err)), true
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult("registry", name, id, st, "ar_list")
+		return nameTakenResult(i18n.T("registry", "реестр"), name, id, st, "ar_list")
 	}
 	body := map[string]any{
 		"projectId":    cli.ProjectID(),
@@ -110,7 +111,7 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (from ar_list)")), true
+		return usageT("'id' is required (from ar_list)", "нужен 'id' (из ar_list)"), true
 	}
 	cli, err := s.arClient(ctx)
 	if err != nil {
@@ -130,7 +131,7 @@ func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleArOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'operation_id' is required")), true
+		return usageT("'operation_id' is required", "нужен 'operation_id'"), true
 	}
 	cli, err := s.arClient(ctx)
 	if err != nil {

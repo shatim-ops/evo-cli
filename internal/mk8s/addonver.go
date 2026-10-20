@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Versions of addon releases and the cluster requirements they carry.
@@ -340,5 +342,5 @@ func ResolveModeValue(m string) (string, error) {
 			return "RESOLVE_CONFLICTS_MODE_" + m, nil
 		}
 	}
-	return "", fmt.Errorf("resolve_mode must be one of %s, got %q", strings.Join(ResolveModes, ", "), m)
+	return "", fmt.Errorf(i18n.T("resolve_mode must be one of %s, got %q", "resolve_mode должен быть одним из: %s, передано %q"), strings.Join(ResolveModes, ", "), m)
 }

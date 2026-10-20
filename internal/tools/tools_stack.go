@@ -13,6 +13,7 @@ import (
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
@@ -506,15 +507,15 @@ func firstStr(m map[string]any, keys ...string) string {
 func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (string, bool) {
 	raw, ok := args["manifest"]
 	if !ok {
-		return usageResult(fmt.Errorf("'manifest' is required (object describing the stack)")), true
+		return usageT("'manifest' is required (object describing the stack)", "нужен 'manifest' — объект с описанием стека"), true
 	}
 	b, _ := json.Marshal(raw)
 	var m stack.Manifest
 	if err := json.Unmarshal(b, &m); err != nil {
-		return errResult(fmt.Errorf("invalid manifest: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("invalid manifest: %w", "неверный манифест: %w"), err)), true
 	}
 	if m.Name == "" {
-		return usageResult(fmt.Errorf("manifest.name is required")), true
+		return usageT("manifest.name is required", "нужен manifest.name"), true
 	}
 	// Validate + normalize the manifest BEFORE planning, so a malformed field
 	// fails fast at plan time (nothing created) instead of wedging the stack in
@@ -549,7 +550,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		}
 	}
 	if m.Kafka != nil && m.Kafka.Brokers < 0 {
-		return usageResult(fmt.Errorf("manifest.kafka.brokers %d: must be 1 or more (or omitted)", m.Kafka.Brokers)), true
+		return usageT("manifest.kafka.brokers %d: must be 1 or more (or omitted)", "manifest.kafka.brokers %d: нужно 1 или больше (или не указывать)", m.Kafka.Brokers), true
 	}
 	if m.K8s != nil && m.K8s.MasterCount != 0 {
 		if err := k8sArgsError(map[string]any{"master_count": m.K8s.MasterCount}); err != nil {
@@ -561,7 +562,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		job.ProjectID = eng.Config.ProjectID
 	}
 	if err := job.CheckDeps(); err != nil {
-		return errResult(fmt.Errorf("invalid manifest: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("invalid manifest: %w", "неверный манифест: %w"), err)), true
 	}
 	if err := job.Save(); err != nil {
 		return errResult(fmt.Errorf("persist plan: %w", err)), true
@@ -608,8 +609,8 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 	imageRef := firstNonEmptyStr(vm.Image, eng.Config.ImageID, eng.Config.Image)
 	if imageRef == "" {
 		return nil, clierrors.New(clierrors.CodeUsage,
-			"manifest vm.image is required: the image of the VM, by name or UUID",
-			"Set vm.image, e.g. \"Ubuntu-24.04\" (image_list); the server has no CLOUDRU_IMAGE_ID (an image UUID) to default to.")
+			i18n.T("manifest vm.image is required: the image of the VM, by name or UUID", "в манифесте нужен vm.image — образ ВМ, имя или UUID"),
+			i18n.T("Set vm.image, e.g. \"Ubuntu-24.04\" (image_list); the server has no CLOUDRU_IMAGE_ID (an image UUID) to default to.", "Задайте vm.image, например \"Ubuntu-24.04\" (image_list): у сервера не задан CLOUDRU_IMAGE_ID (UUID образа по умолчанию)."))
 	}
 	cat := images.Catalog{Cloud: eng.Cloud, ProjectID: eng.Config.ProjectID}
 	img, err := cat.Get(ctx, imageRef)
@@ -623,8 +624,8 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 	zoneRef := firstNonEmptyStr(vm.Zone, eng.Config.Region)
 	if zoneRef == "" {
 		return nil, clierrors.New(clierrors.CodeUsage,
-			"manifest vm.zone is required: the availability zone of the VM, by name or UUID",
-			"Set vm.zone, e.g. \"ru.AZ-1\" (list_zones); the server has no CLOUDRU_REGION (a zone UUID) to default to.")
+			i18n.T("manifest vm.zone is required: the availability zone of the VM, by name or UUID", "в манифесте нужен vm.zone — зона доступности ВМ, имя или UUID"),
+			i18n.T("Set vm.zone, e.g. \"ru.AZ-1\" (list_zones); the server has no CLOUDRU_REGION (a zone UUID) to default to.", "Задайте vm.zone, например \"ru.AZ-1\" (list_zones): у сервера не задан CLOUDRU_REGION (UUID зоны по умолчанию)."))
 	}
 	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
 	if err != nil {
@@ -638,8 +639,8 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 		}
 	}
 	if zone == nil {
-		return nil, clierrors.New(clierrors.CodeUsage, fmt.Sprintf("vm.zone %q: availability zone not found", zoneRef),
-			"See list_zones (evo list-zones) for the zone names.")
+		return nil, clierrors.New(clierrors.CodeUsage, i18n.Tf("vm.zone %q: availability zone not found", "vm.zone %q: зона доступности не найдена", zoneRef),
+			i18n.T("See list_zones (evo list-zones) for the zone names.", "Имена зон — в выводе list_zones (evo list-zones)."))
 	}
 	if err := provision.ClosedZoneError(zones, zone.ID); err != nil {
 		return nil, err
@@ -682,7 +683,7 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 			names = append(names, f.Name)
 		}
 		if !found {
-			return nil, fmt.Errorf("vm.flavor %q does not exist in this project. Pick a real one (see list_flavors) — available: %s", m.VM.Flavor, strings.Join(names[:min(len(names), 14)], ", "))
+			return nil, fmt.Errorf(i18n.T("vm.flavor %q does not exist in this project. Pick a real one (see list_flavors) — available: %s", "vm.flavor %q в проекте нет. Выберите существующую конфигурацию (см. list_flavors) — доступны: %s"), m.VM.Flavor, strings.Join(names[:min(len(names), 14)], ", "))
 		}
 	}
 
@@ -715,7 +716,7 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 	notes := make([]string, 0, len(m.S3))
 	for i := range m.S3 {
 		if m.S3[i].Key == "" {
-			return nil, fmt.Errorf("s3[%d].key is required (the object path inside the bucket, e.g. \"config/app.yaml\")", i)
+			return nil, fmt.Errorf(i18n.T("s3[%d].key is required (the object path inside the bucket, e.g. \"config/app.yaml\")", "нужен s3[%d].key — путь объекта в бакете, например \"config/app.yaml\""), i)
 		}
 		if m.S3[i].Bucket == "" {
 			if err := fetch(); err != nil {
@@ -723,11 +724,11 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 			}
 			switch len(buckets) {
 			case 0:
-				return nil, fmt.Errorf("s3[%d].bucket is empty and this project has no S3 bucket — create one (s3_buckets to check) or set s3[%d].bucket", i, i)
+				return nil, fmt.Errorf(i18n.T("s3[%d].bucket is empty and this project has no S3 bucket — create one (s3_buckets to check) or set s3[%d].bucket", "s3[%d].bucket пуст, а в проекте нет бакета S3 — создайте бакет (проверка — s3_buckets) или задайте s3[%d].bucket"), i, i)
 			case 1:
 				m.S3[i].Bucket = buckets[0]
 			default:
-				return nil, fmt.Errorf("s3[%d].bucket is empty and this project has %d buckets %v — set s3[%d].bucket explicitly", i, len(buckets), buckets, i)
+				return nil, fmt.Errorf(i18n.T("s3[%d].bucket is empty and this project has %d buckets %v — set s3[%d].bucket explicitly", "s3[%d].bucket пуст, а в проекте %d бакетов %v — задайте s3[%d].bucket"), i, len(buckets), buckets, i)
 			}
 		}
 		notes = append(notes, fmt.Sprintf("%s/%s", m.S3[i].Bucket, m.S3[i].Key))
@@ -738,7 +739,7 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'job_id' is required (from stack_plan)")), true
+		return usageT("'job_id' is required (from stack_plan)", "нужен 'job_id' (из stack_plan)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "stack_apply provisions BILLABLE resources. Call again with confirmed=true after the user approved."}), true
@@ -758,7 +759,7 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	if job.Status == "destroyed" || job.Status == "destroy_failed" {
 		// Its steps are all "done" from the first apply: advancing would
 		// report status=done for resources that no longer exist.
-		return errResult(fmt.Errorf("job %s is %s: its resources were torn down; run stack_plan again for a new deploy", id, job.Status)), true
+		return errResult(fmt.Errorf(i18n.T("job %s is %s: its resources were torn down; run stack_plan again for a new deploy", "задание %s в состоянии %s: его ресурсы удалены; для нового развёртывания снова выполните stack_plan"), id, job.Status)), true
 	}
 	s.advance(ctx, job)
 	if e := job.Save(); e != nil {
@@ -812,7 +813,7 @@ func (s *Registry) checkJobProject(job *stack.Job) error {
 	if eng == nil || eng.Config.ProjectID == job.ProjectID {
 		return nil
 	}
-	return fmt.Errorf("job %s was planned in project %s, but this server works in project %s: its tools would act on the wrong project. Restart the MCP server with --project-id %s (or CLOUDRU_PROJECT_ID)",
+	return fmt.Errorf(i18n.T("job %s was planned in project %s, but this server works in project %s: its tools would act on the wrong project. Restart the MCP server with --project-id %s (or CLOUDRU_PROJECT_ID)", "задание %s запланировано в проекте %s, а сервер работает в проекте %s: его инструменты действовали бы не в том проекте. Перезапустите MCP-сервер с --project-id %s (или CLOUDRU_PROJECT_ID)"),
 		job.ID, job.ProjectID, eng.Config.ProjectID, job.ProjectID)
 }
 
@@ -850,7 +851,7 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'job_id' is required")), true
+		return usageT("'job_id' is required", "нужен 'job_id'"), true
 	}
 	// Absorb SOME waiting inside the call (crank every few seconds up to a small
 	// budget) so the agent doesn't poll in a tight loop — but keep the budget SHORT.
@@ -915,7 +916,7 @@ func stepMayHaveCreated(st *stack.Step) bool {
 func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'job_id' is required")), true
+		return usageT("'job_id' is required", "нужен 'job_id'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		// The preview names what goes: each step's resource as the job
@@ -997,7 +998,8 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 			msg := e.Error()
 			reason, _ := res["reason"].(string)
 			if reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound ||
-				strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") || strings.Contains(strings.ToLower(msg), "not found") {
+				strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") ||
+				strings.Contains(strings.ToLower(msg), "not found") || strings.Contains(msg, "не найден") {
 				deleted = append(deleted, label+" (already gone)")
 			} else {
 				failed = append(failed, label+": "+msg)

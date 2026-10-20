@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -391,8 +392,13 @@ func LoadJob(id string) (*Job, error) {
 		return nil, err
 	}
 	data, err := os.ReadFile(filepath.Join(dir, id+".json"))
+	if os.IsNotExist(err) {
+		// Without the text of the system: on Windows it is English in a
+		// Russian message ("The system cannot find the file specified").
+		return nil, &jobNotFoundError{id: id, err: err}
+	}
 	if err != nil {
-		return nil, fmt.Errorf("job %s not found: %w", id, err)
+		return nil, fmt.Errorf(i18n.T("job %s not found: %w", "задание %s не найдено: %w"), id, err)
 	}
 	var j Job
 	if err := json.Unmarshal(data, &j); err != nil {
@@ -845,3 +851,17 @@ func (j *Job) Compact() map[string]any {
 	}
 	return out
 }
+
+// jobNotFoundError is a job file that does not exist. The file error stays
+// reachable through Unwrap.
+type jobNotFoundError struct {
+	id  string
+	err error
+}
+
+func (e *jobNotFoundError) Error() string {
+	return fmt.Sprintf(i18n.T("job %s not found in ~/.evo/stack-jobs (stack_plan returns the job_id)",
+		"задание %s не найдено в ~/.evo/stack-jobs (job_id возвращает stack_plan)"), e.id)
+}
+
+func (e *jobNotFoundError) Unwrap() error { return e.err }

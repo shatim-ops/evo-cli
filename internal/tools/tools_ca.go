@@ -13,6 +13,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/containerapp"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // caClient builds an authenticated Container Apps client.
@@ -47,7 +48,7 @@ func (s *Registry) handleCaList(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleCaGet(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("name is required")), true
+		return usageT("name is required", "нужен name"), true
 	}
 	cli, err := s.caClient(ctx)
 	if err != nil {
@@ -78,12 +79,12 @@ func caDeployReq(args map[string]any) (containerapp.CreateContainerReq, error) {
 	name := stringArg(args, "name")
 	image := stringArg(args, "image")
 	if name == "" || image == "" {
-		return containerapp.CreateContainerReq{}, clierrors.New(clierrors.CodeUsage, "name and image are required", "")
+		return containerapp.CreateContainerReq{}, clierrors.New(clierrors.CodeUsage, i18n.T("name and image are required", "нужны name и image"), "")
 	}
 	if !caNameRe.MatchString(name) {
 		return containerapp.CreateContainerReq{}, clierrors.New(clierrors.CodeUsage,
-			fmt.Sprintf("name %q is not an RFC 1123 label", name),
-			"Lowercase letters, digits and '-', 1-63 characters, starting and ending with a letter or digit, e.g. my-app.")
+			i18n.Tf("name %q is not an RFC 1123 label", "имя %q не по RFC 1123", name),
+			i18n.T("Lowercase letters, digits and '-', 1-63 characters, starting and ending with a letter or digit, e.g. my-app.", "Строчные латинские буквы, цифры и '-', 1–63 символа, в начале и в конце — буква или цифра, например my-app."))
 	}
 	cpu := firstNonEmptyStr(stringArg(args, "cpu"), "0.1")
 	memory := firstNonEmptyStr(stringArg(args, "memory"), "256Mi")
@@ -91,13 +92,13 @@ func caDeployReq(args map[string]any) (containerapp.CreateContainerReq, error) {
 	switch {
 	case port < 1 || port > 65535:
 		return containerapp.CreateContainerReq{}, clierrors.New(clierrors.CodeUsage,
-			fmt.Sprintf("port %d is out of range 1-65535", port), "The default is 8080.")
+			i18n.Tf("port %d is out of range 1-65535", "порт %d вне диапазона 1–65535", port), i18n.T("The default is 8080.", "По умолчанию 8080."))
 	case port <= 1024 || slices.Contains(caReservedPorts, port):
 		// Ports up to 1024 used to switch the container to privileged mode
 		// (root) without a word in the preview; the platform reserves them.
 		return containerapp.CreateContainerReq{}, clierrors.New(clierrors.CodeUsage,
-			fmt.Sprintf("port %d is reserved by Container Apps", port),
-			"Reserved: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092. Pick another one, e.g. 8080 (the default); the app must listen on 0.0.0.0:$PORT.")
+			i18n.Tf("port %d is reserved by Container Apps", "порт %d занят Container Apps", port),
+			i18n.T("Reserved: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092. Pick another one, e.g. 8080 (the default); the app must listen on 0.0.0.0:$PORT.", "Заняты: 1–1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092. Выберите другой, например 8080 (по умолчанию); приложение должно слушать 0.0.0.0:$PORT."))
 	}
 	public := true
 	if v, ok := args["public"].(bool); ok {
@@ -108,8 +109,8 @@ func caDeployReq(args map[string]any) (containerapp.CreateContainerReq, error) {
 	maxI := intArg(args, "max_instances", 1)
 	if minI < 0 || maxI < 1 || minI > maxI {
 		return containerapp.CreateContainerReq{}, clierrors.New(clierrors.CodeUsage,
-			fmt.Sprintf("min_instances %d and max_instances %d: need 0 <= min_instances <= max_instances and max_instances >= 1", minI, maxI),
-			"The defaults are 0 (scale to zero) and 1.")
+			i18n.Tf("min_instances %d and max_instances %d: need 0 <= min_instances <= max_instances and max_instances >= 1", "min_instances %d и max_instances %d: нужно 0 <= min_instances <= max_instances и max_instances >= 1", minI, maxI),
+			i18n.T("The defaults are 0 (scale to zero) and 1.", "По умолчанию 0 (масштабирование до нуля) и 1."))
 	}
 
 	var env []containerapp.Env
@@ -210,7 +211,7 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("name is required")), true
+		return usageT("name is required", "нужен name"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -232,7 +233,7 @@ func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleCaLogs(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("name is required")), true
+		return usageT("name is required", "нужен name"), true
 	}
 	system, _ := args["system"].(bool)
 	cli, err := s.caClient(ctx)
@@ -272,7 +273,7 @@ func caLogsOutput(res *containerapp.LogsResult, system bool) map[string]any {
 func (s *Registry) handleCaStartStop(ctx context.Context, args map[string]any, action string) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("name is required")), true
+		return usageT("name is required", "нужен name"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		effect := "it is billed while running"

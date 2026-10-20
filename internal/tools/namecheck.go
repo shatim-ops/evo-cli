@@ -5,10 +5,10 @@
 package tools
 
 import (
-	"fmt"
 	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // takenName finds a listed resource (cluster, registry) named name that is
@@ -44,8 +44,8 @@ func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 		status = "unknown"
 	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
-		fmt.Sprintf("a %s named %q already exists (id %s, status %s); a second one would be billed separately", kind, name, id, status),
-		fmt.Sprintf("Use the existing one (%s), or pick another name.", getHint)),
+		i18n.Tf("a %s named %q already exists (id %s, status %s); a second one would be billed separately", "%s с именем %q уже есть (id %s, статус %s); второй оплачивался бы отдельно", kind, name, id, status),
+		i18n.Tf("Use the existing one (%s), or pick another name.", "Используйте существующий (%s) или выберите другое имя.", getHint)),
 		map[string]any{"existing_id": id}), true
 }
 
@@ -57,8 +57,8 @@ func uuidArg(arg, id, from string) string {
 		return ""
 	}
 	return errResult(clierrors.New(clierrors.CodeUsage,
-		fmt.Sprintf("'%s' must be a UUID, got %q", arg, id),
-		fmt.Sprintf("Take the id from %s.", from)))
+		i18n.Tf("'%s' must be a UUID, got %q", "'%s' должен быть UUID, передано %q", arg, id),
+		i18n.Tf("Take the id from %s.", "id — в выводе %s.", from)))
 }
 
 // needSpecResult is the answer of pg_create, kafka_create and redis_create
@@ -67,14 +67,18 @@ func uuidArg(arg, id, from string) string {
 // a create that created nothing read as success (release audit, L-30).
 // fields carries the menu and what was resolved (version, zone).
 func needSpecResult(specsTool, specID string, cpu, ram int, fields map[string]any) (string, bool) {
-	msg := "a specification is needed: pass specification_id, or cpu+ram matching one of available_specifications"
+	msg := i18n.T("a specification is needed: pass specification_id, or cpu+ram matching one of available_specifications",
+		"нужна конфигурация: укажите specification_id или cpu+ram одной из available_specifications")
 	switch {
 	case specID != "":
-		msg = fmt.Sprintf("specification_id %q is not one of available_specifications", specID)
+		msg = i18n.Tf("specification_id %q is not one of available_specifications",
+			"specification_id %q нет среди available_specifications", specID)
 	case cpu > 0 && ram > 0:
-		msg = fmt.Sprintf("no specification with cpu=%d and ram=%d; pick one of available_specifications", cpu, ram)
+		msg = i18n.Tf("no specification with cpu=%d and ram=%d; pick one of available_specifications",
+			"нет конфигурации с cpu=%d и ram=%d; выберите одну из available_specifications", cpu, ram)
 	}
 	fields["status"] = "need_specification"
 	return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
-		fmt.Sprintf("Pass specification_id (or cpu+ram) of one of available_specifications; %s lists them all.", specsTool)), fields), true
+		i18n.Tf("Pass specification_id (or cpu+ram) of one of available_specifications; %s lists them all.",
+			"Укажите specification_id (или cpu+ram) одной из available_specifications; полный список — %s.", specsTool)), fields), true
 }

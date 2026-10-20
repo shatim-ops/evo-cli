@@ -6,6 +6,7 @@ package deployplan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -182,7 +184,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		name = sanitizeName(base) + "-" + time.Now().Format("20060102-1504")
 	}
 	// A name the compute API rejects: no plan (release QA, B-lifecycle).
-	if err := provision.ValidName("VM", name); err != nil {
+	if err := provision.ValidName(i18n.T("VM", "ВМ"), name); err != nil {
 		return nil, err
 	}
 
@@ -258,7 +260,7 @@ func selectFlavor(flavors []*provision.Flavor, p Params) (provision.Flavor, []st
 		if f := byName(p.Flavor); f != nil {
 			return *f, warnings, nil
 		}
-		return provision.Flavor{}, warnings, fmt.Errorf("flavor %q not found (use the list_flavors tool to see options)", p.Flavor)
+		return provision.Flavor{}, warnings, fmt.Errorf(i18n.T("flavor %q not found (use the list_flavors tool to see options)", "конфигурация %q не найдена (варианты — в выводе инструмента list_flavors)"), p.Flavor)
 	}
 
 	// Auto-size from requirements.
@@ -300,7 +302,7 @@ func selectFlavor(flavors []*provision.Flavor, p Params) (provision.Flavor, []st
 	if fallback != nil {
 		return *fallback, warnings, nil
 	}
-	return provision.Flavor{}, warnings, fmt.Errorf("no usable flavor available")
+	return provision.Flavor{}, warnings, errors.New(i18n.T("no usable flavor available", "нет подходящей конфигурации ВМ"))
 }
 
 // selectImage resolves an image by name or UUID (or default Ubuntu 24.04 non-GPU).
@@ -352,7 +354,8 @@ func pickImage(ctx context.Context, cloud provision.CloudAPI, projectID, want st
 			}
 		}
 		return provision.Image{}, false, fmt.Errorf(
-			"image %q not found in the shared catalogue or in project %s (use the list_images tool to see options)",
+			i18n.T("image %q not found in the shared catalogue or in project %s (use the list_images tool to see options)",
+				"образ %q не найден ни в общем каталоге, ни в проекте %s (варианты — в выводе инструмента list_images)"),
 			want, projectID)
 	}
 	// Default: prefer ubuntu 24.04 non-gpu.

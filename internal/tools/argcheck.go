@@ -7,12 +7,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math"
 	"sort"
 	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // checkedArgs refuses, before the handler, an argument the tool's schema
@@ -43,21 +43,22 @@ func checkedArgs(name string, schema map[string]any, next Handler) Handler {
 				known = append(known, k)
 			}
 			sort.Strings(known)
-			takes := "no arguments"
+			hint := i18n.Tf("%s takes: no arguments.", "%s не принимает аргументов.", name)
 			if len(known) > 0 {
-				takes = strings.Join(known, ", ")
+				hint = i18n.Tf("%s takes: %s.", "Аргументы %s: %s.", name, strings.Join(known, ", "))
 			}
 			return errResult(clierrors.New(clierrors.CodeUsage,
-				fmt.Sprintf("unknown argument(s) %s", strings.Join(unknown, ", ")),
-				fmt.Sprintf("%s takes: %s.", name, takes))), true
+				i18n.Tf("unknown argument(s) %s", "неизвестные аргументы: %s", strings.Join(unknown, ", ")),
+				hint)), true
 		}
 		for k, v := range args {
 			p, _ := props[k].(map[string]any)
 			typ, _ := p["type"].(string)
 			if v != nil && !scalarOfType(typ, v) {
 				return errResult(clierrors.New(clierrors.CodeUsage,
-					fmt.Sprintf("%s must be %s, got %s", k, typeName(typ), describeValue(v)),
-					fmt.Sprintf("Pass %s as a JSON %s (see the tool's inputSchema).", k, typ))), true
+					i18n.Tf("%s must be %s, got %s", "%s должен быть %s, получено: %s", k, typeName(typ), describeValue(v)),
+					i18n.Tf("Pass %s as a JSON %s (see the tool's inputSchema).",
+						"Передайте %s как JSON %s (см. inputSchema инструмента).", k, typ))), true
 			}
 		}
 		for k, v := range args {
@@ -78,8 +79,8 @@ func checkedArgs(name string, schema map[string]any, next Handler) Handler {
 			}
 			if canon == "" {
 				return errResult(clierrors.New(clierrors.CodeUsage,
-					fmt.Sprintf("%s %q is not one of %s", k, s, strings.Join(allowed, ", ")),
-					fmt.Sprintf("Pass %s as one of: %s.", k, strings.Join(allowed, ", ")))), true
+					i18n.Tf("%s %q is not one of %s", "%s %q не входит в список: %s", k, s, strings.Join(allowed, ", ")),
+					i18n.Tf("Pass %s as one of: %s.", "Допустимые значения %s: %s.", k, strings.Join(allowed, ", ")))), true
 			}
 			args[k] = canon
 		}
@@ -125,9 +126,13 @@ func scalarOfType(typ string, v any) bool {
 func typeName(typ string) string {
 	switch typ {
 	case "integer":
-		return "an integer"
+		return i18n.T("an integer", "целым числом")
+	case "number":
+		return i18n.T("a number", "числом")
+	case "string":
+		return i18n.T("a string", "строкой")
 	case "boolean":
-		return "a boolean (true or false)"
+		return i18n.T("a boolean (true or false)", "логическим значением (true или false)")
 	}
 	return "a " + typ
 }
@@ -139,16 +144,16 @@ func describeValue(v any) string {
 	if len(s) > 40 {
 		s = s[:40] + "…"
 	}
-	kind := "a number"
+	kind := i18n.T("a number", "число")
 	switch v.(type) {
 	case string:
-		kind = "a string"
+		kind = i18n.T("a string", "строка")
 	case bool:
-		kind = "a boolean"
+		kind = i18n.T("a boolean", "логическое значение")
 	case []any:
-		kind = "an array"
+		kind = i18n.T("an array", "массив")
 	case map[string]any:
-		kind = "an object"
+		kind = i18n.T("an object", "объект")
 	}
 	return kind + " " + s
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/monitoring"
 )
 
@@ -47,7 +48,7 @@ func parseSince(arg string) (time.Duration, error) {
 	if n, err := strconv.Atoi(arg); err == nil && n > 0 {
 		return time.Duration(n) * time.Minute, nil
 	}
-	return 0, fmt.Errorf("since %q is not a duration: use 30m, 1h, 6h, 1d or a number of minutes", arg)
+	return 0, fmt.Errorf(i18n.T("since %q is not a duration: use 30m, 1h, 6h, 1d or a number of minutes", "since %q — не длительность: укажите 30m, 1h, 6h, 1d или число минут"), arg)
 }
 
 // metricsMaxWindow is the longest window export_metrics answers: since=48h
@@ -58,7 +59,7 @@ const metricsMaxWindow = 24 * time.Hour
 func (s *Registry) handleMetricsHistory(ctx context.Context, args map[string]any) (string, bool) {
 	match := stringArg(args, "match")
 	if match == "" {
-		return usageResult(fmt.Errorf("'match' is required (a metric name / PromQL selector, e.g. cpu_usage)")), true
+		return usageT("'match' is required (a metric name / PromQL selector, e.g. cpu_usage)", "нужен 'match' — имя метрики или селектор PromQL, например cpu_usage"), true
 	}
 	since, err := parseSince(stringArg(args, "since"))
 	if err != nil {
@@ -66,8 +67,8 @@ func (s *Registry) handleMetricsHistory(ctx context.Context, args map[string]any
 	}
 	if since > metricsMaxWindow {
 		return errResult(clierrors.New(clierrors.CodeUsage,
-			fmt.Sprintf("since %s: the monitoring API answers at most 24 hours back", since),
-			"Pass since=24h or less (e.g. 6h, 1d).")), true
+			i18n.Tf("since %s: the monitoring API answers at most 24 hours back", "since %s: API мониторинга отвечает не дальше чем на 24 часа назад", since),
+			i18n.T("Pass since=24h or less (e.g. 6h, 1d).", "Передайте since=24h или меньше (например 6h, 1d)."))), true
 	}
 	cli, err := s.monitoringClient(ctx)
 	if err != nil {

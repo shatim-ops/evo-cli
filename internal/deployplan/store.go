@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -166,7 +167,7 @@ func validPlanID(id string) bool {
 // Load reads a plan by id, enforcing the TTL.
 func Load(stateDir, planID string) (*Plan, error) {
 	if !validPlanID(planID) {
-		return nil, fmt.Errorf("plan %q not found: a plan_id looks like plan-0123456789ab (run deploy_plan to get one)", planID)
+		return nil, fmt.Errorf(i18n.T("plan %q not found: a plan_id looks like plan-0123456789ab (run deploy_plan to get one)", "план %q не найден: plan_id выглядит как plan-0123456789ab (его выдаёт deploy_plan)"), planID)
 	}
 	dir, err := plansDir(stateDir)
 	if err != nil {
@@ -174,7 +175,7 @@ func Load(stateDir, planID string) (*Plan, error) {
 	}
 	data, err := os.ReadFile(filepath.Join(dir, planID+".json"))
 	if err != nil {
-		return nil, fmt.Errorf("plan %q not found (it may have expired; run deploy_plan again)", planID)
+		return nil, fmt.Errorf(i18n.T("plan %q not found (it may have expired; run deploy_plan again)", "план %q не найден (возможно, истёк срок; снова выполните deploy_plan)"), planID)
 	}
 	var p Plan
 	if err := json.Unmarshal(data, &p); err != nil {

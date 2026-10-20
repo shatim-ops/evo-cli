@@ -7,6 +7,7 @@ package mk8s
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // DefaultOIDCTokenURL is the Cloud.ru IAM OIDC token endpoint the mk8s
@@ -103,7 +105,7 @@ func fetchOIDCTokenOnce(ctx context.Context, tokenURL, keyID, secret string) (to
 	if r.AccessToken != "" {
 		return r.AccessToken, false, nil
 	}
-	return "", false, fmt.Errorf("OIDC response had no id_token/access_token")
+	return "", false, errors.New(i18n.T("OIDC response had no id_token/access_token", "в ответе OIDC нет id_token или access_token"))
 }
 
 // trustedOIDCHosts are the IAM hosts the access key may be sent to (both

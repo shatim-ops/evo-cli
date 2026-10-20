@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -119,7 +118,7 @@ func (z *zoneNamer) zoneID(ref string) (string, error) {
 func (s *Registry) handleImageList(ctx context.Context, args map[string]any) (string, bool) {
 	f := images.Filter{Type: strings.ToLower(strings.TrimSpace(stringArg(args, "type"))), All: boolArg(args, "all", false)}
 	if !images.ValidType(f.Type) {
-		return usageResult(fmt.Errorf("'type' must be one of %s, got %q", strings.Join(images.Types, ", "), f.Type)), true
+		return usageT("'type' must be one of %s, got %q", "'type' должен быть одним из: %s, передано %q", strings.Join(images.Types, ", "), f.Type), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -200,12 +199,18 @@ func imageErrResult(err error) string {
 // metadata fields only with full=true: they are kilobytes of an agent's
 // context.
 func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (string, bool) {
-	ref := strings.TrimSpace(stringArg(args, "image"))
-	if ref == "" {
-		ref = strings.TrimSpace(stringArg(args, "image_id"))
+	imageArg, imageIDArg := strings.TrimSpace(stringArg(args, "image")), strings.TrimSpace(stringArg(args, "image_id"))
+	if imageArg != "" && imageIDArg != "" {
+		// Both: the image was taken and image_id dropped without a word
+		// (QA 20.10, QA-11).
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			i18n.T("pass image or image_id, not both", "укажите image или image_id, не оба"),
+			i18n.T("image takes a name or a UUID; image_id is the same as image with a UUID.",
+				"image — имя или UUID образа; image_id — то же, что image с UUID."))), true
 	}
+	ref := firstNonEmptyStr(imageArg, imageIDArg)
 	if ref == "" {
-		return usageResult(fmt.Errorf("'image' (name or UUID) or 'image_id' is required")), true
+		return usageT("'image' (name or UUID) or 'image_id' is required", "нужен 'image' (имя или UUID) или 'image_id'"), true
 	}
 	full := boolArg(args, "full", false)
 	eng, err := s.authedEngine(ctx, nil)

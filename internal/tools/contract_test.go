@@ -94,6 +94,13 @@ func contractWrites(reqs []string) int {
 
 func contractReg(t *testing.T, rt *contractRT) *Registry {
 	t.Helper()
+	return contractRegCfg(t, rt, nil)
+}
+
+// contractRegCfg is contractReg with the configuration changed by edit
+// (nil keeps it).
+func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Registry {
+	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -124,12 +131,16 @@ func contractReg(t *testing.T, rt *contractRT) *Registry {
 	cloud.SetToken("a.eyJzdWIiOiJ4In0.c")
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
+		cfg := config.Config{
+			ProjectID: contractID, Region: contractID, ImageID: contractID,
+			KeyID: "k", Secret: "s",
+			S3: config.S3Config{Endpoint: s3.URL, AccessKey: "a", SecretKey: "b"},
+		}
+		if edit != nil {
+			edit(&cfg)
+		}
 		return &engine.Engine{
-			Config: config.Config{
-				ProjectID: contractID, Region: contractID, ImageID: contractID,
-				KeyID: "k", Secret: "s",
-				S3: config.S3Config{Endpoint: s3.URL, AccessKey: "a", SecretKey: "b"},
-			},
+			Config:   cfg,
 			Auth:     staticToken{},
 			Cloud:    cloud,
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),

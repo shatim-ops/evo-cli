@@ -6,13 +6,13 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sort"
 	"strconv"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/billing"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // maxBreakdown caps how many service line-items a billing tool returns. A tenant
@@ -117,7 +117,7 @@ func billStr(item map[string]any, keys ...string) string {
 func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string]any) (string, bool) {
 	start := stringArg(args, "start")
 	if start == "" {
-		return usageResult(fmt.Errorf("'start' is required (YYYY-MM-DD)")), true
+		return usageT("'start' is required (YYYY-MM-DD)", "нужен 'start' (ГГГГ-ММ-ДД)"), true
 	}
 	end := stringArg(args, "end")
 	if end == "" {
@@ -236,7 +236,7 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	now := time.Now().UTC()
 	today := now.Format(layout)
 	// days -1 became 30, a reversed period counted as one day (QA-5, QA-14).
-	if err := minIntArg(args, "days", 1, "days is the length of the window ending at end; the default is 30."); err != nil {
+	if err := minIntArg(args, "days", 1, i18n.T("days is the length of the window ending at end; the default is 30.", "days — длина периода, который заканчивается в end; по умолчанию 30.")); err != nil {
 		return errResult(err), true
 	}
 	days := pgInt(args, "days", 30)

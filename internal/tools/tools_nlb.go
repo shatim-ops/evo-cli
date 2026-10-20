@@ -6,12 +6,14 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/nlb"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -79,7 +81,7 @@ func (s *Registry) handleLbList(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleLbGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (from lb_list)")), true
+		return usageT("'id' is required (from lb_list)", "нужен 'id' (из lb_list)"), true
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
@@ -95,7 +97,7 @@ func (s *Registry) handleLbGet(ctx context.Context, args map[string]any) (string
 func (s *Registry) handleLbOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'operation_id' is required")), true
+		return usageT("'operation_id' is required", "нужен 'operation_id'"), true
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
@@ -142,7 +144,7 @@ func (s *Registry) handleTgList(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleTgGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (from tg_list)")), true
+		return usageT("'id' is required (from tg_list)", "нужен 'id' (из tg_list)"), true
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
@@ -176,11 +178,11 @@ func targetSpecs(args map[string]any) []map[string]any {
 func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("'name' is required")), true
+		return usageT("'name' is required", "нужен 'name'"), true
 	}
 	specs := targetSpecs(args)
 	if len(specs) == 0 {
-		return usageResult(fmt.Errorf("provide targets (array of {id[, interface_id]}) or vm_id")), true
+		return usageT("provide targets (array of {id[, interface_id]}) or vm_id", "укажите targets (массив {id[, interface_id]}) или vm_id"), true
 	}
 	cli, eng, err := s.nlbClientEng(ctx)
 	if err != nil {
@@ -199,7 +201,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 			}
 			ifid := pickVMInterface(det)
 			if ifid == "" {
-				return errResult(fmt.Errorf("vm %s has no usable network interface (NLB targets need a private VPC-subnet VM — provision with no_public_ip)", vmid)), true
+				return errResult(fmt.Errorf(i18n.T("vm %s has no usable network interface (NLB targets need a private VPC-subnet VM — provision with no_public_ip)", "у ВМ %s нет подходящего сетевого интерфейса (цель балансировщика — ВМ в подсети VPC без публичного IP: provision с no_public_ip)"), vmid)), true
 			}
 			specs[i]["interface_id"] = ifid
 		}
@@ -214,7 +216,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "target_vm_specs": specs}
 	op, err := cli.CreateTargetGroup(ctx, body)
 	if err != nil {
-		return errResult(fmt.Errorf("create target group: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err)), true
 	}
 	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll lb_operation(operation_id) until done=true; then tg_list for the id."}), false
 }
@@ -222,7 +224,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleTgDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (from tg_list)")), true
+		return usageT("'id' is required (from tg_list)", "нужен 'id' (из tg_list)"), true
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
@@ -234,7 +236,7 @@ func (s *Registry) handleTgDelete(ctx context.Context, args map[string]any) (str
 	}
 	op, err := cli.DeleteTargetGroup(ctx, id)
 	if err != nil {
-		return errResult(fmt.Errorf("delete target group: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("delete target group: %w", "удаление целевой группы: %w"), err)), true
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 }
@@ -246,7 +248,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	tgID := stringArg(args, "target_group_id")
 	port := pgInt(args, "port", 0)
 	if name == "" || tgID == "" || port == 0 {
-		return usageResult(fmt.Errorf("'name', 'target_group_id' and 'port' are required")), true
+		return usageT("'name', 'target_group_id' and 'port' are required", "нужны 'name', 'target_group_id' и 'port'"), true
 	}
 	// Ports 1-65535 before the cloud: 70000 made a preview, then the API
 	// refused it with exit 5 (QA 20.10, QA-7).
@@ -271,7 +273,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	// VPC). The group's VMs also name the zone the balancer serves.
 	tg, e := cli.GetTargetGroup(ctx, tgID)
 	if e != nil {
-		return errResult(fmt.Errorf("read target group %s: %w", tgID, e)), true
+		return errResult(fmt.Errorf(i18n.T("read target group %s: %w", "чтение целевой группы %s: %w"), tgID, e)), true
 	}
 	tgVPC, _ := tg["vpc_id"].(string)
 	vpcID := stringArg(args, "vpc_id")
@@ -279,14 +281,14 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 		// The balancer shares its target group's VPC (release audit
 		// re-run, N-01).
 		return errResult(clierrors.New(clierrors.CodeConfigInvalid,
-			fmt.Sprintf("target group %s is in VPC %s, not in vpc_id %s; nothing was created", tgID, tgVPC, vpcID),
-			"Omit vpc_id (the balancer takes its target group's VPC) or pass a target group of that VPC.")), true
+			i18n.Tf("target group %s is in VPC %s, not in vpc_id %s; nothing was created", "целевая группа %s в VPC %s, а не в vpc_id %s; ничего не создано", tgID, tgVPC, vpcID),
+			i18n.T("Omit vpc_id (the balancer takes its target group's VPC) or pass a target group of that VPC.", "Не указывайте vpc_id (балансировщик возьмёт VPC целевой группы) или передайте целевую группу этой VPC."))), true
 	}
 	if vpcID == "" {
 		vpcID = tgVPC
 	}
 	if vpcID == "" {
-		return errResult(fmt.Errorf("could not resolve vpc_id — pass it explicitly")), true
+		return errResult(errors.New(i18n.T("could not resolve vpc_id — pass it explicitly", "не удалось определить vpc_id — передайте его"))), true
 	}
 	zone, subnetID, warnings, err := lbZoneAndSubnet(ctx, eng, args, tg, vpcID)
 	if err != nil {
@@ -360,7 +362,7 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	var none provision.AvailabilityZone
 	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
 	if err != nil {
-		return none, "", nil, fmt.Errorf("list availability zones: %w", err)
+		return none, "", nil, fmt.Errorf(i18n.T("list availability zones: %w", "список зон доступности: %w"), err)
 	}
 	subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
 	if err != nil {
@@ -383,8 +385,8 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 			}
 		}
 		if subnet == nil {
-			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid, fmt.Sprintf("subnet %s is not in the project", subnetID),
-				"Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet of the balancer's VPC is taken.")
+			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
+				i18n.T("Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet of the balancer's VPC is taken.", "Возьмите ID подсети из vpc_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны в VPC балансировщика."))
 		}
 	}
 
@@ -393,8 +395,8 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	from := ""
 	if ref := stringArg(args, "zone"); ref != "" {
 		if zone = find(ref); zone == nil {
-			return none, "", nil, clierrors.New(clierrors.CodeUsage, fmt.Sprintf("availability zone %q not found", ref),
-				"See list_zones (evo list-zones) for the zone names.")
+			return none, "", nil, clierrors.New(clierrors.CodeUsage, i18n.Tf("availability zone %q not found", "зона доступности %q не найдена", ref),
+				i18n.T("See list_zones (evo list-zones) for the zone names.", "Имена зон — в выводе list_zones (evo list-zones)."))
 		}
 		from = "zone"
 	}
@@ -438,8 +440,8 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	}
 	if zone == nil {
 		return none, "", nil, clierrors.New(clierrors.CodeUsage,
-			"cannot tell the balancer's availability zone: the target group names no zone of its VMs and no region is configured",
-			"Pass zone (name or UUID, see list_zones) or subnet_id.")
+			i18n.T("cannot tell the balancer's availability zone: the target group names no zone of its VMs and no region is configured", "зона доступности балансировщика неизвестна: в целевой группе нет зоны её ВМ, и region не задан"),
+			i18n.T("Pass zone (name or UUID, see list_zones) or subnet_id.", "Передайте zone (имя или UUID, см. list_zones) или subnet_id."))
 	}
 
 	if subnet != nil {
@@ -447,13 +449,13 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 		// without the field (Grok review of PR #89, the class of L-26).
 		if subnet.VPCID != "" && vpcID != "" && subnet.VPCID != vpcID {
 			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
-				fmt.Sprintf("subnet %s is not in VPC %s of the balancer; nothing was created", subnetID, vpcID),
-				"Pass a subnet of that VPC (vpc_subnets), or omit subnet_id.")
+				i18n.Tf("subnet %s is not in VPC %s of the balancer; nothing was created", "подсеть %s не в VPC %s балансировщика; ничего не создано", subnetID, vpcID),
+				i18n.T("Pass a subnet of that VPC (vpc_subnets), or omit subnet_id.", "Передайте подсеть этой VPC (vpc_subnets) или не указывайте subnet_id."))
 		}
 		if from != "subnet_id" && !provision.SubnetInZone(subnet, zone.ID, zone.Name) {
 			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
-				fmt.Sprintf("subnet %s is not in zone %s; nothing was created", subnetID, firstNonEmptyStr(zone.Name, zone.ID)),
-				"Pass a subnet of that zone (vpc_subnets), or omit subnet_id.")
+				i18n.Tf("subnet %s is not in zone %s; nothing was created", "подсеть %s не в зоне %s; ничего не создано", subnetID, firstNonEmptyStr(zone.Name, zone.ID)),
+				i18n.T("Pass a subnet of that zone (vpc_subnets), or omit subnet_id.", "Передайте подсеть этой зоны (vpc_subnets) или не указывайте subnet_id."))
 		}
 		return *zone, subnetID, warnings, nil
 	}
@@ -466,8 +468,8 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	i := provision.PickSubnet(inVPC, zone.ID, zone.Name)
 	if i < 0 {
 		return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
-			fmt.Sprintf("no subnet of VPC %s in zone %s for the balancer; nothing was created", vpcID, firstNonEmptyStr(zone.Name, zone.ID)),
-			"Pass subnet_id of a subnet in that zone and VPC (vpc_subnets), or another zone.")
+			i18n.Tf("no subnet of VPC %s in zone %s for the balancer; nothing was created", "в зоне %s нет подсети VPC %s для балансировщика; ничего не создано", vpcID, firstNonEmptyStr(zone.Name, zone.ID)),
+			i18n.T("Pass subnet_id of a subnet in that zone and VPC (vpc_subnets), or another zone.", "Передайте subnet_id подсети этой зоны и VPC (vpc_subnets) или выберите другую зону."))
 	}
 	return *zone, inVPC[i].ID, warnings, nil
 }
@@ -475,7 +477,7 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 func (s *Registry) handleLbDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (from lb_list)")), true
+		return usageT("'id' is required (from lb_list)", "нужен 'id' (из lb_list)"), true
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
@@ -487,7 +489,7 @@ func (s *Registry) handleLbDelete(ctx context.Context, args map[string]any) (str
 	}
 	op, err := cli.DeleteNLB(ctx, id)
 	if err != nil {
-		return errResult(fmt.Errorf("delete load balancer: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("delete load balancer: %w", "удаление балансировщика: %w"), err)), true
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 }

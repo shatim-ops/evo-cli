@@ -14,6 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/postgresql"
 )
 
@@ -148,7 +149,7 @@ func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string
 		return errResult(err), true
 	}
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (get it from pg_list)")), true
+		return usageT("'id' is required (get it from pg_list)", "нужен 'id' (из pg_list)"), true
 	}
 	if res := uuidArg("id", id, "pg_list"); res != "" {
 		return res, true
@@ -231,7 +232,7 @@ func (s *Registry) handlePgSpecs(ctx context.Context, args map[string]any) (stri
 func (s *Registry) handlePgOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'operation_id' is required")), true
+		return usageT("'operation_id' is required", "нужен 'operation_id'"), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -317,25 +318,25 @@ func pgMaxHosts(spec map[string]any) int {
 func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("'name' is required")), true
+		return usageT("'name' is required", "нужен 'name'"), true
 	}
 	instances := pgInt(args, "instances", 1)
 	if instances < 1 {
-		return usageResult(fmt.Errorf("instances %d: at least 1", instances)), true
+		return usageT("instances %d: at least 1", "instances %d: нужен хотя бы 1", instances), true
 	}
 	if err := plainName("PostgreSQL cluster", "name", name); err != nil {
 		return errResult(err), true
 	}
 	// Sizes before the cloud: storage_gb 0 or -5 and a retention of 0 or
 	// 90 days made a preview, then the API refused it (QA 20.10, QA-7).
-	if err := minIntArg(args, "storage_gb", 1, "Omit storage_gb for the specification's minimum."); err != nil {
+	if err := minIntArg(args, "storage_gb", 1, i18n.T("Omit storage_gb for the specification's minimum.", "Без storage_gb — минимум конфигурации.")); err != nil {
 		return errResult(err), true
 	}
 	if _, ok := args["backup_retention_days"]; ok && args["backup_retention_days"] != nil {
 		if d := pgInt(args, "backup_retention_days", 14); d < 1 || d > 30 {
 			return errResult(clierrors.New(clierrors.CodeUsage,
-				fmt.Sprintf("backup_retention_days %d is out of range 1-30", d),
-				"Automatic backups are kept 1 to 30 days; the default is 14.")), true
+				i18n.Tf("backup_retention_days %d is out of range 1-30", "backup_retention_days %d вне диапазона 1–30", d),
+				i18n.T("Automatic backups are kept 1 to 30 days; the default is 14.", "Автоматические резервные копии хранятся от 1 до 30 дней; по умолчанию 14."))), true
 		}
 	}
 	cli, eng, err := s.pgClientEng(ctx)
@@ -344,10 +345,10 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	}
 	existing, err := cli.ListClusters(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf("check the name is free: list clusters: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)), true
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult("PostgreSQL cluster", name, id, st, "pg_get id="+id)
+		return nameTakenResult(i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, id, st, "pg_get id="+id)
 	}
 
 	// Resolve version (default: latest available).
@@ -491,7 +492,7 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (from pg_list)")), true
+		return usageT("'id' is required (from pg_list)", "нужен 'id' (из pg_list)"), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -510,10 +511,10 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 			// is 415 at the gateway, register CRD-19; release audit re-run,
 			// N-13).
 			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
-				"Cloud.ru deletes a FAILED cluster only with force, which its public API does not accept: delete it in the Cloud.ru console or ask support.")), true
+				i18n.T("Cloud.ru deletes a FAILED cluster only with force, which its public API does not accept: delete it in the Cloud.ru console or ask support.", "Кластер в FAILED Cloud.ru удаляет только с force, а публичный API его не принимает: удалите кластер в консоли Cloud.ru или обратитесь в поддержку."))), true
 		case strings.Contains(msg, "FailedPrecondition"):
 			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
-				"The cluster is still being created (DEPLOYING): Cloud.ru deletes it through the API once it is READY. Check it with pg_get, then call pg_delete again; a cluster that ends FAILED is deleted only in the Cloud.ru console.")), true
+				i18n.T("The cluster is still being created (DEPLOYING): Cloud.ru deletes it through the API once it is READY. Check it with pg_get, then call pg_delete again; a cluster that ends FAILED is deleted only in the Cloud.ru console.", "Кластер ещё создаётся (DEPLOYING): через API Cloud.ru удалит его, когда он станет READY. Проверьте его через pg_get и повторите pg_delete; кластер, оказавшийся в FAILED, удаляется только в консоли Cloud.ru."))), true
 		}
 		return errResult(fmt.Errorf("delete cluster: %w", err)), true
 	}
@@ -525,7 +526,7 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 func (s *Registry) handlePgDatabases(ctx context.Context, args map[string]any) (string, bool) {
 	cid := stringArg(args, "cluster_id")
 	if cid == "" {
-		return usageResult(fmt.Errorf("'cluster_id' is required")), true
+		return usageT("'cluster_id' is required", "нужен 'cluster_id'"), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -543,7 +544,7 @@ func (s *Registry) handlePgDbCreate(ctx context.Context, args map[string]any) (s
 	name := stringArg(args, "name")
 	owner := stringArg(args, "owner")
 	if cid == "" || name == "" || owner == "" {
-		return usageResult(fmt.Errorf("'cluster_id', 'name' and 'owner' are required")), true
+		return usageT("'cluster_id', 'name' and 'owner' are required", "нужны 'cluster_id', 'name' и 'owner'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_db_create creates database %q (owner %q) in cluster %s. Call again with confirmed=true.", name, owner, cid)}), true
@@ -570,7 +571,7 @@ func (s *Registry) handlePgDbDelete(ctx context.Context, args map[string]any) (s
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	if cid == "" || name == "" {
-		return usageResult(fmt.Errorf("'cluster_id' and 'name' are required")), true
+		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_db_delete PERMANENTLY drops database %q in cluster %s. Call again with confirmed=true.", name, cid)}), true
@@ -590,7 +591,7 @@ func (s *Registry) handlePgDbDelete(ctx context.Context, args map[string]any) (s
 func (s *Registry) handlePgUsers(ctx context.Context, args map[string]any) (string, bool) {
 	cid := stringArg(args, "cluster_id")
 	if cid == "" {
-		return usageResult(fmt.Errorf("'cluster_id' is required")), true
+		return usageT("'cluster_id' is required", "нужен 'cluster_id'"), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -608,7 +609,7 @@ func (s *Registry) handlePgUserCreate(ctx context.Context, args map[string]any) 
 	name := stringArg(args, "name")
 	password := stringArg(args, "password")
 	if cid == "" || name == "" || password == "" {
-		return usageResult(fmt.Errorf("'cluster_id', 'name' and 'password' are required")), true
+		return usageT("'cluster_id', 'name' and 'password' are required", "нужны 'cluster_id', 'name' и 'password'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_user_create creates user %q in cluster %s. Call again with confirmed=true.", name, cid)}), true
@@ -630,7 +631,7 @@ func (s *Registry) handlePgUserDelete(ctx context.Context, args map[string]any) 
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	if cid == "" || name == "" {
-		return usageResult(fmt.Errorf("'cluster_id' and 'name' are required")), true
+		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_user_delete PERMANENTLY deletes user %q in cluster %s. Call again with confirmed=true.", name, cid)}), true
@@ -650,7 +651,7 @@ func (s *Registry) handlePgUserDelete(ctx context.Context, args map[string]any) 
 func (s *Registry) handlePgBackups(ctx context.Context, args map[string]any) (string, bool) {
 	cid := stringArg(args, "cluster_id")
 	if cid == "" {
-		return usageResult(fmt.Errorf("'cluster_id' is required")), true
+		return usageT("'cluster_id' is required", "нужен 'cluster_id'"), true
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
@@ -667,7 +668,7 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	if cid == "" || name == "" {
-		return usageResult(fmt.Errorf("'cluster_id' and 'name' are required")), true
+		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("pg_backup_create starts a manual backup %q of cluster %s. Call again with confirmed=true.", name, cid)}), true

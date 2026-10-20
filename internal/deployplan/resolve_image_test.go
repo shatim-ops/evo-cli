@@ -96,7 +96,9 @@ func TestОтказВПравахНеМешаетОтвету(t *testing.T) {
 	if err == nil {
 		t.Fatal("ожидалась ошибка «образ не найден»")
 	}
-	if !strings.Contains(err.Error(), "not found") {
+	// Тесты пакета идут на языке по умолчанию (EVO_LANG): «не найден» или
+	// «not found».
+	if msg := err.Error(); !strings.Contains(msg, "not found") && !strings.Contains(msg, "не найден") {
 		t.Errorf("ошибка про другое: %v", err)
 	}
 }
