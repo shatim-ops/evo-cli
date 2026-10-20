@@ -128,8 +128,8 @@ func newParityCommands(t *testing.T) []parityCommand {
 
 // parityCommandOf is command c of tree g with the arguments args: as the
 // tree takes them (positionals, then flags in key order) and as 'evo tools
-// call' does (--arg each). A tool without a command (tools.CLIPending) has
-// only the call: g and c are zero then.
+// call' does (--arg each). With g and c zero (a tool without a command of
+// the trees) there is only the call.
 func parityCommandOf(t *testing.T, g treeGroup, c treeCmd, tl tools.Tool, args map[string]any) parityCommand {
 	t.Helper()
 	pc := parityCommand{path: strings.TrimSpace(g.Name + " " + c.Verb), tool: tl, args: args}

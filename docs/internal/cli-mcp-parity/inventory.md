@@ -12,7 +12,7 @@
 | движок | 4 | 1 |
 | tools call | 0 | 0 |
 
-«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `status`, `logs`, `list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`: временный список `tools.CLIPending` (0), который PR 5 плана опустошает. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в engineCommands.
+«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `status`, `logs`, `list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>` (после PR 5 плана таких нет). Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в engineCommands.
 
 ### По группам
 

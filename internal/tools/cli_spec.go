@@ -11,9 +11,10 @@ package tools
 // REQ-1). Every other argument of the schema becomes a flag with the type
 // from the schema.
 //
-// A tool has a Verb (its command), or None (no command, with the reason),
-// or is in CLIPending (no command yet); TestRegistry_EveryToolHasCLISpec
-// keeps it so.
+// A tool has a Verb (its command) or None (no command, with the reason);
+// TestRegistry_EveryToolHasCLISpec keeps it so. Every tool has a command
+// (the parity plan, docs/internal/cli-mcp-parity/spec.md, gave the last
+// ones theirs in PR 5).
 type CLISpec struct {
 	// Group is the top-level command ("vm"); "" puts the command at the
 	// root (status, deploy).
@@ -271,11 +272,3 @@ var cliSpecs = map[string]CLISpec{
 	"image_delete": {Group: "image", Verb: "delete", Args: []string{"image_id"}},
 	"open_ports":   {Group: "vpc", Verb: "open-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
 }
-
-// CLIPending are the tools without a command of their own yet, with the
-// PR of the parity plan (docs/internal/cli-mcp-parity/spec.md §5) that
-// gives them one; until then they are reached with 'evo tools call'. The
-// list only shrinks: TestRegistry_EveryToolHasCLISpec and
-// TestParity_CommandsAndTools fail on a tool that is neither here nor in
-// cliSpecs, and on one that is in both. Delete it once it is empty.
-var CLIPending = map[string]string{}

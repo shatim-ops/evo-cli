@@ -41,7 +41,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires a Cloud.ru access key (a profile from 'evo configure', or CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves; without it returns a preview only.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires a Cloud.ru access key (a profile from 'evo configure', or CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves, for a new VM and for an update of the existing one alike; without it returns a preview only (update: true with vm_id and compose_changed for an update). With the same compose file already running and force unset it answers status unchanged: nothing to do, no confirmation needed.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
 				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
@@ -1494,11 +1494,11 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 		if err != nil {
 			eng = nil
 		}
-		answer, err := s.deployAnswer(ctx, args, eng)
+		answer, gated, err := s.deployAnswer(ctx, args, eng)
 		if err != nil {
 			return errResult(err), true
 		}
-		return answer, true
+		return answer, gated
 	}
 
 	eng, err := s.newEngine(overrides)
@@ -1534,11 +1534,16 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 }
 
 // deployAnswer is the answer of deploy without confirmed=true: what it is
-// asked to do and, in a directory with no deployment yet, the VM it would
-// create with its monthly cost (preview). eng is the engine of the call,
-// nil when none could be built (nothing is read then). An error is a
-// refusal the reads found.
-func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *engine.Engine) (string, error) {
+// asked to do and either the VM it would create with its monthly cost
+// (preview, update: false), or the VM of the directory's deployment it
+// would update (update: true, vm_id, vm_ip, compose_changed, creates; no
+// price: nothing new is billed but the floating IP of a VM without one).
+// Both need consent (owner's decision Q1, spec REQ-12): gated is true.
+// The same compose file running there needs nothing: the answer is
+// "unchanged", not gated. eng is the engine of the call, nil when none
+// could be built (nothing is read then). An error is a refusal the reads
+// found.
+func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *engine.Engine) (answerText string, gated bool, err error) {
 	will := withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
 		firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
 	if v := stringArg(args, "image"); v != "" {
@@ -1550,19 +1555,44 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 			"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). В preview — новая ВМ и её цена в месяц."),
 		"will_deploy": will,
 	}
-	// The VM deploy would create, with the reads of provision's preview
-	// (spec REQ-7); none when the directory has a deployment: deploy
-	// updates its VM then.
-	if eng != nil {
-		p, err := eng.DeployPreview(ctx)
-		if err != nil {
-			return "", err
-		}
-		if p != nil {
-			answer["preview"] = p
-		}
+	if eng == nil {
+		return toJSON(answer), true, nil
 	}
-	return toJSON(answer), nil
+	force, _ := args["force"].(bool)
+	if u := eng.DeployUpdateOf(force); u != nil {
+		rec := u.Deployment
+		if u.Unchanged {
+			return toJSON(map[string]any{"status": "unchanged", "vm_id": rec.VMID, "vm_ip": rec.VMIP,
+				"message": i18n.T("No changes detected in compose file (hash unchanged): nothing to deploy. force=true redeploys anyway.",
+					"Compose-файл не изменился (хеш тот же), развёртывать нечего. force=true — развернуть заново.")}), false, nil
+		}
+		answer["message"] = i18n.Tf("deploy updates VM %s of this directory's deployment: it uploads the compose file and runs 'docker compose up -d' there (no new VM; a floating IP only for a VM without a public IP, see creates).",
+			"deploy обновляет ВМ %s развёртывания этого каталога: загружает на неё compose-файл и выполняет 'docker compose up -d' (новой ВМ нет; floating IP — только для ВМ без внешнего IP, см. creates).",
+			firstNonEmptyStr(rec.VMName, rec.VMID))
+		answer["update"] = true
+		answer["vm_id"] = rec.VMID
+		answer["vm_ip"] = rec.VMIP
+		if rec.VMName != "" {
+			answer["vm_name"] = rec.VMName
+		}
+		answer["project_id"] = u.ProjectID
+		answer["creates"] = u.Creates
+		if u.ComposeChanged != nil {
+			answer["compose_changed"] = *u.ComposeChanged
+		}
+		return toJSON(answer), true, nil
+	}
+	// The VM deploy would create, with the reads of provision's preview
+	// (spec REQ-7).
+	answer["update"] = false
+	p, err := eng.DeployPreview(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	if p != nil {
+		answer["preview"] = p
+	}
+	return toJSON(answer), true, nil
 }
 
 // deployLive is 'evo deploy': the engine shows its steps, its prompts and
@@ -1583,7 +1613,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 		NonInteractive: c.NonInteractive,
 		DryRun:         c.DryRun,
 		Gate: func(ctx context.Context, redeploy *confirm.Preview) (bool, error) {
-			answer, err := s.deployAnswer(ctx, args, eng)
+			answer, _, err := s.deployAnswer(ctx, args, eng)
 			if err != nil {
 				return false, err
 			}

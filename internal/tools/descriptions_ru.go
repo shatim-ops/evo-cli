@@ -50,7 +50,7 @@ func argDescriptionsRU(t Tool, ru map[string]string) map[string]string {
 }
 
 // toolsRU are the Russian descriptions of the tools, by tool name, grouped
-// as the commands are (cliSpecs, then CLIPending). New sets Tool.ShortRU,
+// as the commands are (cliSpecs). New sets Tool.ShortRU,
 // Tool.DescriptionRU and Tool.ArgDescriptionsRU from it.
 var toolsRU = map[string]toolRU{
 	// vm
@@ -1693,7 +1693,8 @@ var toolsRU = map[string]toolRU{
 			"Существующая ВМ используется снова, а развёртывание без изменений пропускается, если не задан " +
 			"--force. Нужен ключ доступа Cloud.ru (профиль из 'evo configure' или CLOUDRU_KEY_ID и " +
 			"CLOUDRU_SECRET), а проект, зона и образ — из переменных окружения, настроек или аргументов. Платно, " +
-			"если создаётся ВМ.",
+			"если создаётся ВМ. Подтверждение нужно и для новой ВМ, и для обновления существующей; если работает " +
+			"тот же compose-файл и --force не задан, делать нечего: ответ status unchanged, без подтверждения.",
 		Args: map[string]string{
 			"compose_file": "Путь к файлу docker-compose (по умолчанию docker-compose.yml)",
 			"disk_size":    "Размер загрузочного диска, ГБ (по умолчанию 10, но не меньше минимума образа)",

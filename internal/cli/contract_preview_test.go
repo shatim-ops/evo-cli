@@ -55,8 +55,7 @@ func (parityCloud) GetImage(_ context.Context, id string) (*provision.ImageDetai
 // --json, MCP over stdio and MCP over HTTP. The cases come from the
 // registry; the arguments of each are parityArgs, and a gated tool without
 // an entry there fails the test, as does one whose preview any surface
-// refuses. A tool without a command yet (tools.CLIPending) has the three
-// other surfaces. The one difference allowed is H7 of the closed list of
+// refuses. The one difference allowed is H7 of the closed list of
 // the HTTP mode (docs/mcp.md): credential fields masked, and named in
 // "redacted". deploy is checked in both states of the directory: no
 // deployment (the preview prices a new VM) and a recorded one (it updates

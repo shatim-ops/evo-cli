@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// Every tool says how the CLI shows it: a command (Group+Verb), no command
-// with a reason (None), or not yet (CLIPending), exactly one of the three.
+// Every tool says how the CLI shows it: a command (Group+Verb) or no
+// command with a reason (None), exactly one of the two.
 // A command is unique, and every name it uses is an argument of the tool's
 // schema (docs/internal/cli-mcp-parity/spec.md, REQ-1).
 func TestRegistry_EveryToolHasCLISpec(t *testing.T) {
@@ -19,34 +19,12 @@ func TestRegistry_EveryToolHasCLISpec(t *testing.T) {
 	described := 0
 	for _, tl := range r.Tools() {
 		spec := tl.CLI
-		_, pending := CLIPending[tl.Name]
-		kinds := 0
-		if spec.Verb != "" {
-			kinds++
-		}
-		if spec.None != "" {
-			kinds++
-		}
-		if pending {
-			kinds++
-		}
 		switch {
-		case kinds == 0:
-			t.Errorf("%s: no CLISpec (cliSpecs), no None reason and not in CLIPending: give it a command", tl.Name)
+		case spec.Verb == "" && spec.None == "":
+			t.Errorf("%s: no CLISpec (cliSpecs) and no None reason: give it a command", tl.Name)
 			continue
-		case kinds > 1:
-			t.Errorf("%s: more than one of a command (%q %q), None (%q) and CLIPending (%v); a tool with a command leaves CLIPending",
-				tl.Name, spec.Group, spec.Verb, spec.None, pending)
-			continue
-		}
-		if pending {
-			if strings.TrimSpace(CLIPending[tl.Name]) == "" {
-				t.Errorf("%s: CLIPending without the PR that gives it a command", tl.Name)
-			}
-			if spec.Group != "" || len(spec.Args) > 0 || len(spec.Rename) > 0 || len(spec.Omit) > 0 || len(spec.Pairs) > 0 ||
-				len(spec.Files) > 0 || len(spec.Columns) > 0 || spec.Render != "" || spec.Raw {
-				t.Errorf("%s: pending, but has a partial CLISpec %+v", tl.Name, spec)
-			}
+		case spec.Verb != "" && spec.None != "":
+			t.Errorf("%s: both a command (%q %q) and None (%q)", tl.Name, spec.Group, spec.Verb, spec.None)
 			continue
 		}
 		if spec.None != "" {
@@ -103,12 +81,7 @@ func TestRegistry_EveryToolHasCLISpec(t *testing.T) {
 			t.Errorf("cliSpecs: no tool %s", name)
 		}
 	}
-	for name := range CLIPending {
-		if _, ok := r.Lookup(name); !ok {
-			t.Errorf("CLIPending: no tool %s", name)
-		}
-	}
-	if described+len(CLIPending) != len(r.Tools()) {
-		t.Errorf("%d tools with a command + %d pending != %d tools", described, len(CLIPending), len(r.Tools()))
+	if described != len(r.Tools()) {
+		t.Errorf("%d tools with a command != %d tools", described, len(r.Tools()))
 	}
 }

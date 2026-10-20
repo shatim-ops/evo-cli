@@ -104,7 +104,7 @@ var treeGroupShort = map[string]string{
 
 // treeGroupsOf groups the commands of reg's tools by CLISpec.Group, sorted
 // by group and verb (cobra lists them so anyway). Tools without a command
-// (CLIPending, None) are left out, and so are the engine commands, which
+// (None) are left out, and so are the engine commands, which
 // internal/cli builds by hand (engineCommands). A group "" holds the
 // commands at the root.
 func treeGroupsOf(reg *tools.Registry) []treeGroup {

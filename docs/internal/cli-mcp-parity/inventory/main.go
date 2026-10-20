@@ -18,8 +18,7 @@
 //
 //   - реестр инструментов: internal/tools (tools.New(nil) — без облака);
 //   - деревья команд: CLISpec инструментов реестра (Tool.CLI: группа, глагол,
-//     позиционные аргументы, Rename/Omit/Pairs/Files/Raw/Render) и временный
-//     список tools.CLIPending — инструменты, у которых команды пока нет;
+//     позиционные аргументы, Rename/Omit/Pairs/Files/Raw/Render);
 //   - команды движка (evo deploy, status, logs, list-images: своя справка и
 //     флаги с v1.0, вызывают инструмент; spec.md REQ-4) — таблица
 //     engineBuilt, повторяющая engineCommands из internal/cli
@@ -246,7 +245,7 @@ func main() {
 	for _, k := range []string{"дерево", "движок", "tools call"} {
 		fmt.Fprintf(w, "| %s | %d | %d |\n", k, kinds[k], kindMut[k])
 	}
-	fmt.Fprintf(w, "\n«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `status`, `logs`, `list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`: временный список `tools.CLIPending` (%d), который PR 5 плана опустошает. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в engineCommands.\n\n", len(tools.CLIPending))
+	fmt.Fprintf(w, "\n«дерево» — своя команда, построенная из CLISpec инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `status`, `logs`, `list-images`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>` (после PR 5 плана таких нет). Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в engineCommands.\n\n")
 	fmt.Fprintf(w, "### По группам\n\n| Группа | Всего | дерево | движок | tools call | RU-справка (short/long) |\n|---|---|---|---|---|---|\n")
 	for _, g := range tools.Groups() {
 		gk := groupKind[g]

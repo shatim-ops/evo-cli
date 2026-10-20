@@ -5,17 +5,22 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/spf13/pflag"
 
+	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -273,5 +278,101 @@ func TestEngineCommands_DeployGroupR7(t *testing.T) {
 		if code, stdout, _ := runCLI(t, "", "deploy", verb, "--help"); code != 0 || !strings.Contains(stdout, "evo deploy "+verb) {
 			t.Errorf("evo deploy %s --help: exit %d\n%s", verb, code, stdout)
 		}
+	}
+}
+
+// One gate for deploy (owner's decision Q1, spec REQ-12): a repeated
+// evo deploy that would update the VM of the deployment asks for consent,
+// as MCP deploy does — without a terminal and without --yes it is exit 3
+// and nothing is done (it was exit 0 and an update); --dry-run and --json
+// show the tool's answer (update, vm_id, compose_changed, no price); --yes
+// goes on. The same compose file running there asks nothing, on every
+// surface: there is nothing to do.
+func TestEngineCommands_RepeatedDeployGate(t *testing.T) {
+	w := withParityWorld(t)
+	srv := parityServers(t)
+	_, done := recordDeployment(t, w) // compose hash "0000": the file changed
+	defer done()
+	recordIs := func(t *testing.T, hash string) {
+		t.Helper()
+		sf, err := state.Read(state.DefaultPath(w.dir))
+		if a := sf.ActiveDeployment(); err != nil || a == nil || a.ComposeHash != hash || a.Status != "running" {
+			t.Fatalf("the record changed: %+v (%v)", a, err)
+		}
+	}
+
+	newProcess()
+	code, stdout, stderr := runCLI(t, "", "deploy")
+	if code != 3 || !strings.Contains(stderr, "About to update VM evo-web") || !strings.Contains(stderr, "--yes") || strings.Contains(stdout, "[4/5]") {
+		t.Fatalf("evo deploy without --yes and a terminal: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	recordIs(t, "0000")
+
+	newProcess()
+	code, stdout, stderr = runCLI(t, "", "deploy", "--json")
+	var env struct {
+		Status  string `json:"status"`
+		Preview struct {
+			Details map[string]any `json:"details"`
+		} `json:"preview"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &env); err != nil || code != 3 || env.Status != "confirmation_required" {
+		t.Fatalf("evo deploy --json: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	d := env.Preview.Details
+	if d["update"] != true || d["vm_id"] != parityVM || d["compose_changed"] != true || d["preview"] != nil || d["status"] != "confirmation_required" {
+		t.Errorf("details are not the update the tool answers: %v", d)
+	}
+	if c, reason, _ := cliJSONError(t, stderr); c != 3 || reason != "CONFIRMATION_REQUIRED" {
+		t.Errorf("evo deploy --json: error %d %s", c, reason)
+	}
+	recordIs(t, "0000")
+
+	newProcess()
+	code, stdout, _ = runCLI(t, "", "deploy", "--dry-run", "--json")
+	cli, ok := dryRunDetails(stdout)
+	if code != 0 || !ok {
+		t.Fatalf("evo deploy --dry-run --json: exit %d\n%s", code, stdout)
+	}
+	if mcp := stdioDetails(t, srv.stdio, "deploy", map[string]any{}); !reflect.DeepEqual(cli, mcp) {
+		t.Errorf("evo deploy --dry-run ≠ MCP deploy: %s", valueDiff(cli, mcp))
+	}
+	recordIs(t, "0000")
+
+	newProcess()
+	code, stdout, stderr = runCLI(t, "", "deploy", "--yes")
+	if code == 3 || !strings.Contains(stderr, "Confirmed: update VM evo-web") || !strings.Contains(stdout, "[4/5]") {
+		t.Fatalf("evo deploy --yes did not go past the gate: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+
+	// The same compose file, running: nothing to do, nothing asked.
+	compose, err := os.ReadFile(filepath.Join(w.dir, "docker-compose.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf, _ := state.Read(state.DefaultPath(w.dir))
+	rec := sf.ActiveDeployment()
+	rec.ComposeHash, rec.Status = fmt.Sprintf("%x", sha256.Sum256(compose)), "running"
+	sf.UpsertDeployment(*rec)
+	if err := state.Write(state.DefaultPath(w.dir), sf); err != nil {
+		t.Fatal(err)
+	}
+	newProcess()
+	if code, stdout, stderr := runCLI(t, "", "deploy"); code != 0 || !strings.Contains(stdout, "No changes detected") {
+		t.Errorf("unchanged evo deploy: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	newProcess()
+	code, stdout, _ = runCLI(t, "", "tools", "call", "deploy", "--json")
+	if code != 0 || !strings.Contains(stdout, `"status": "unchanged"`) {
+		t.Errorf("unchanged evo tools call deploy: exit %d\n%s", code, stdout)
+	}
+	if got := stdioDetails(t, srv.stdio, "deploy", map[string]any{}); got["status"] != "unchanged" || got["vm_id"] != parityVM {
+		t.Errorf("unchanged MCP deploy: %v", got)
+	}
+	// --force redeploys the same file: asked again.
+	newProcess()
+	code, _, stderr = runCLI(t, "", "deploy", "--force")
+	if code != 3 || !strings.Contains(stderr, "redeployed because of --force") {
+		t.Errorf("evo deploy --force on the same file: exit %d\n%s", code, stderr)
 	}
 }
