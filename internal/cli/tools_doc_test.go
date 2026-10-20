@@ -23,9 +23,10 @@ const (
 	toolsRegenerateHint = "go test ./internal/cli -run TestToolsDoc -update-docs"
 )
 
-// genToolsDoc renders the registry: per group, every tool with whether it
-// changes anything, its required arguments and the first sentence of its
-// description (the MCP description, in English).
+// genToolsDoc renders the registry: per group, every tool with its command
+// (CLISpec), whether it changes anything, its required arguments, the
+// first sentence of its description (the MCP description, in English) and
+// its Russian summary (ShortRU).
 func genToolsDoc() []byte {
 	reg := newRegistry()
 	byGroup := map[string][]tools.Tool{}
@@ -40,8 +41,11 @@ func genToolsDoc() []byte {
      CI сверяет файл с реестром (TestToolsDoc). -->
 
 Инструменты evo (%d) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
-`+"`evo tools call`"+`. Здесь — первая фраза описания; полное описание и схема
-аргументов — `+"`evo tools describe <имя>`"+`. «Меняет»: «да» — инструмент
+`+"`evo tools call`"+`. «Команда CLI» — команда инструмента в evo
+([commands.md](commands.md)). «Описание» — первая фраза английского описания,
+которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
+команды. Полное описание и схема аргументов — `+"`evo tools describe <имя>`"+`
+(с `+"`EVO_LANG=en`"+` — по-английски). «Меняет»: «да» — инструмент
 создаёт или меняет ресурсы и без `+"`confirmed=true`"+` (в CLI — `+"`--yes`"+`)
 только показывает превью; «удаляет» — может удалить или перезаписать данные;
 «нет, секрет» — ничего не меняет, но показывает секрет открытым текстом и
@@ -54,7 +58,7 @@ func genToolsDoc() []byte {
 		if len(list) == 0 {
 			continue
 		}
-		fmt.Fprintf(&buf, "## %s\n\n| Инструмент | Меняет | Обязательные аргументы | Описание |\n|---|---|---|---|\n", g)
+		fmt.Fprintf(&buf, "## %s\n\n| Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |\n|---|---|---|---|---|---|\n", g)
 		for _, t := range list {
 			changes := "нет"
 			switch {
@@ -77,11 +81,42 @@ func genToolsDoc() []byte {
 			if len(reqs) > 0 {
 				req = strings.Join(reqs, ", ")
 			}
-			fmt.Fprintf(&buf, "| `%s` | %s | %s | %s |\n", t.Name, changes, req, firstSentence(t.Description))
+			fmt.Fprintf(&buf, "| `%s` | %s | %s | %s | %s | %s |\n", t.Name, toolCommandCell(t), changes, req,
+				firstSentence(t.Description), russianSummary(t))
 		}
 		buf.WriteString("\n")
 	}
 	return append(bytes.TrimRight(buf.Bytes(), "\n"), '\n')
+}
+
+// toolCommandPath is the command CLISpec gives the tool ("evo vm create";
+// Group "": a command at the root), "" for a tool without one.
+func toolCommandPath(t tools.Tool) string {
+	if t.CLI.Verb == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields("evo "+t.CLI.Group+" "+t.CLI.Verb), " ")
+}
+
+// toolCommandCell is the tool's command for a table cell; a tool without
+// one is called with 'evo tools call'.
+func toolCommandCell(t tools.Tool) string {
+	if p := toolCommandPath(t); p != "" {
+		return "`" + p + "`"
+	}
+	return "`evo tools call " + t.Name + "`"
+}
+
+// russianSummary is the Russian summary of the tool (ShortRU; else the
+// first sentence of DescriptionRU), for a table cell.
+func russianSummary(t tools.Tool) string {
+	if t.ShortRU != "" {
+		return strings.ReplaceAll(strings.Join(strings.Fields(t.ShortRU), " "), "|", `\|`)
+	}
+	if t.DescriptionRU != "" {
+		return firstSentence(t.DescriptionRU)
+	}
+	return "—"
 }
 
 // requiredArgs lists the "required" of the tool's input schema.

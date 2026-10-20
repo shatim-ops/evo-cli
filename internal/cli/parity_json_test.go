@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -289,15 +290,27 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 }
 
 // planID is the id deploy_plan gives each plan: two calls make two plans;
-// stamp is a time of the call (expires_at of a plan).
+// stamp is a time of the call (expires_at of a plan); fipName is a name of
+// a floating IP, which provision.BootFIPName ends with the time of the call.
 var (
-	planID = regexp.MustCompile(`plan-[0-9a-f]{12,}`)
-	stamp  = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)`)
+	planID  = regexp.MustCompile(`plan-[0-9a-f]{12,}`)
+	stamp   = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)`)
+	fipName = regexp.MustCompile(`fip-[0-9a-z.-]+`)
 )
 
 // sameVolatile reads the ids and the times each call makes anew as one.
 func sameVolatile(s string) string {
-	return stamp.ReplaceAllString(planID.ReplaceAllString(sameJobID(s), "plan-<id>"), "<time>")
+	s = planID.ReplaceAllString(sameJobID(s), "plan-<id>")
+	// A command and its tool a second apart name the floating IP of a new
+	// VM differently: only the time differs.
+	s = fipName.ReplaceAllStringFunc(s, func(name string) string {
+		i := strings.LastIndex(name, "-")
+		if vm := strings.TrimPrefix(name[:i], "fip-"); provision.IsBootFIPOf(name, vm) {
+			return name[:i+1] + "<time>"
+		}
+		return name
+	})
+	return stamp.ReplaceAllString(s, "<time>")
 }
 
 func TestParity_JSONEqualsTool(t *testing.T) {
