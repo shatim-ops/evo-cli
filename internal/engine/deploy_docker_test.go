@@ -400,3 +400,17 @@ func TestDeploy_DockerPermanentRefusalNotRetried(t *testing.T) {
 		}
 	}
 }
+
+// A successful install shows what it did on the way: the switch to the
+// official apt mirror was invisible (cloud-e2e 20.10, register v2 IMG-6).
+func TestInstallNotes(t *testing.T) {
+	out := "Hit:1 http://x jammy InRelease\nevo: switching apt to the official mirror for this install: https://archive.ubuntu.com/ubuntu (the image's apt sources stay as they are)\n" +
+		"Reading package lists...\n  evo: re-running the image's apt mirror setup (cloud-init bootcmd)\n"
+	got := installNotes(out)
+	if len(got) != 2 || !strings.HasPrefix(got[0], "evo: switching apt") || !strings.HasPrefix(got[1], "evo: re-running") {
+		t.Errorf("installNotes = %q", got)
+	}
+	if n := installNotes(strings.Repeat("evo: x\n", 9)); len(n) != 5 {
+		t.Errorf("%d notes, want at most 5", len(n))
+	}
+}
