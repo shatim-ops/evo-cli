@@ -17,7 +17,9 @@
   04:23–04:41 UTC (run 39329694100, ru.AZ-2, ключ окружения `cloud-e2e` с
   правом изменений): job `e2e` (deploy ВМ `ubuntu-22.04`) и `live (ca)`
   (Artifact Registry и Container Apps); все созданные ресурсы удалены, остатков
-  нет.
+  нет. Ещё два cloud-e2e 20.10: 07:33 UTC (run 39376577446, ru.AZ-2) и
+  08:08 UTC (run 39390972444, ru.AZ-1) — deploy, Container Apps и Artifact
+  Registry прошли; остатки убраны (в первом — отдельной уборкой).
 - **Документация:** только страницы с заголовком платформы Evolution, с учётом
   свёрнутых блоков и вкладок API; спецификации — со страниц справочников API.
 - **Что не публикуется:** ID проектов, ресурсов, договоров и ключей, IP, имена
@@ -118,13 +120,14 @@
 установки Docker deploy не дошёл (SSH, CMP-17), а `ca_logs` теперь всегда
 задаёт `pageSize`.
 
-- **IMG-6. Образы переключают apt на зеркало платформы при первой загрузке — не описано.** Шаблон [cloud-init](https://cloud.ru/docs/images/ug/topics/concepts__cloud-init) содержит только `package_update: true`, `package_upgrade: true`. На страницах [Публичные образы](https://cloud.ru/docs/images/ug/topics/concepts__public-images), [FAQ cloud-init](https://cloud.ru/docs/images/ug/topics/faq__cloud-init) и [Решение проблем](https://cloud.ru/docs/virtual-machines/ug/topics/troubleshooting) нет ни «apt», ни «зеркало», ни «mirror». А образы Ubuntu и Debian шагом bootcmd `configure-apt-mirrors` переключают apt на `repo.mng.sbercloud…`, и с новой ВМ это зеркало часто не отвечает (OPS-2…2c v1). При этом `apt-get update` выходит с кодом 0. Что проверить: строку переключения на официальное зеркало в выводе `deploy` (evo с #126) и состав apt-источников образа на ВМ. 20.10: не проверено — ВМ не ответила по SSH.
+- **IMG-6. Образы переключают apt на зеркало платформы при первой загрузке — не описано.** Шаблон [cloud-init](https://cloud.ru/docs/images/ug/topics/concepts__cloud-init) содержит только `package_update: true`, `package_upgrade: true`. На страницах [Публичные образы](https://cloud.ru/docs/images/ug/topics/concepts__public-images), [FAQ cloud-init](https://cloud.ru/docs/images/ug/topics/faq__cloud-init) и [Решение проблем](https://cloud.ru/docs/virtual-machines/ug/topics/troubleshooting) нет ни «apt», ни «зеркало», ни «mirror». А образы Ubuntu и Debian шагом bootcmd `configure-apt-mirrors` переключают apt на `repo.mng.sbercloud…`, и с новой ВМ это зеркало часто не отвечает (OPS-2…2c v1). При этом `apt-get update` выходит с кодом 0. Что проверить: строку переключения на официальное зеркало в выводе `deploy` (evo с #126) и состав apt-источников образа на ВМ. 20.10, 04:24 UTC: не проверено — ВМ не ответила по SSH. 20.10, 07:33 UTC (ru.AZ-2) и 08:08 UTC (ru.AZ-1, run 39390972444, evo с #135 печатает шаги установки): Docker встал с зеркала образа, переключения не было — зеркало в эти часы отвечало. Пункт остаётся кандидатом: пробел в документации есть, живого сбоя зеркала после #126 не наблюдалось.
 - **CAP-3. Логи контейнера: порядок, размер страницы и `total` в API не описаны.** В спецификации Container Apps ([`openapi.yaml`](https://cloud.ru/docs/api/specs/container-apps-evolution/ug/_specs/openapi.yaml)) у `GET /v2/containers/{name}/logs` не указаны умолчание `pageSize` и порядок строк, а `filter` дан без описания. `ListContainerLogsResponse.total` описан как «Общее число контейнеров.». У `…/systemLogs` нет пагинации, а `serverlessId` дан без описания. [Логирование](https://cloud.ru/docs/container-apps-evolution/ug/topics/concepts__logging) описывает только консоль: системные логи «в хронологическом порядке, начиная с самого позднего», «Отображаются последние 1000 записей». 18.10 `ca_logs` без `pageSize` вернул 0 строк у работающего контейнера; 20.10 evo (с #124: страницы по `pageSize=100`) получил 47 строк. Это согласуется с гипотезой «без `pageSize` первая страница пуста», но прямо не проверено. Что проверить: пробой — тот же контейнер без `pageSize` и с ним; порядок строк и `total`.
 
 ## Эксплуатационные наблюдения
 
 Не расхождения документации; адресаты — эксплуатация Compute и сети.
 
+- **OPS-12. 20.10, 07:33 и 08:08 UTC: первая попытка установки Docker на новой ВМ падает на apt.** ru.AZ-2: «E: Unable to lock directory /var/lib/apt/lists/», затем «Couldn't find any package by regex 'containerd.io'»; ru.AZ-1: «Couldn't find any package by regex 'containerd.io'». Следующая попытка evo (через 10–40 с) ставит Docker; итог — около минуты. Похоже на параллельный apt первой загрузки (cloud-init или apt-daily) уже после `cloud-init status --wait`; не установлено. ВМ в ru.AZ-1 активна за 4 мин 50 с (в ru.AZ-2 — 1 мин 25 с).
 - **OPS-1c. ru.AZ-2, 20.10, 04:24 UTC: ВМ активна, SSH не поднимается.** cloud-e2e run 39329694100, job `e2e`: ВМ `active` за 1 мин 25 с, 60 попыток SSH за 14 мин — таймаут TCP на порту 22. Продолжение OPS-1…1b v1; подробности — CMP-17. ВМ, floating IP и правила удалены destroy, дисков без ВМ не осталось.
 
 ## Что проверить следующими прогонами
