@@ -95,7 +95,7 @@ func (s *Registry) handleMarketplaceList(ctx context.Context, args map[string]an
 		All:   boolArg(args, "all", false),
 	}
 	if !marketplace.ValidKind(opt.Kind) {
-		return usageResult(fmt.Errorf("'kind' must be one of %s, got %q", strings.Join(marketplace.Kinds, ", "), opt.Kind)), true
+		return usageT("'kind' must be one of %s, got %q", "'kind' должен быть одним из: %s, передано %q", strings.Join(marketplace.Kinds, ", "), opt.Kind), true
 	}
 	eng, err := s.newEngine(nil)
 	if err != nil {

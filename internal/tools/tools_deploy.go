@@ -242,7 +242,7 @@ const stateLockWait = 2 * time.Minute
 func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (string, bool) {
 	planID := stringArg(args, "plan_id")
 	if planID == "" {
-		return usageResult(fmt.Errorf("plan_id is required")), true
+		return usageT("plan_id is required", "нужен plan_id"), true
 	}
 	confirmed, _ := args["confirmed"].(bool)
 	if !confirmed {
@@ -298,8 +298,8 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	case "error":
 		deployplan.Delete(eng.StateDir, planID)
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
-			fmt.Sprintf("VM %s is in an error state: %s", res.VMID, res.Note),
-			fmt.Sprintf("Delete it with destroy (vm_id %s), then run deploy_plan again (in another zone if it repeats).", res.VMID)),
+			i18n.Tf("VM %s is in an error state: %s", "ВМ %s в состоянии ошибки: %s", res.VMID, res.Note),
+			i18n.Tf("Delete it with destroy (vm_id %s), then run deploy_plan again (in another zone if it repeats).", "Удалите её через destroy (vm_id %s) и снова выполните deploy_plan (при повторе — в другой зоне).", res.VMID)),
 			map[string]any{"vm_id": res.VMID}), true
 	case "timeout":
 		// The password is made for this create and kept nowhere: the retry
@@ -311,7 +311,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 			hint += " The VM password is in this answer only: give it to the user now, the retry does not show it."
 		}
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
-			fmt.Sprintf("VM %s is not running yet: %s", res.VMID, res.Note), hint), fields), true
+			i18n.Tf("VM %s is not running yet: %s", "ВМ %s ещё не запущена: %s", res.VMID, res.Note), hint), fields), true
 	default:
 		// An adopted VM that is stopped (or stopping, shut off, …) does not
 		// start by itself: retrying the plan would answer the same.
@@ -484,7 +484,7 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	if sgRef == "" || len(ports) == 0 {
-		return usageResult(fmt.Errorf("security_group and ports are required")), true
+		return usageT("security_group and ports are required", "нужны security_group и ports"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -518,7 +518,7 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 		}
 	}
 	if target == nil {
-		return errResult(fmt.Errorf("security group %q not found", sgRef)), true
+		return errResult(fmt.Errorf(i18n.T("security group %q not found", "группа безопасности %q не найдена"), sgRef)), true
 	}
 
 	// The group list carries no rules: read them, as deploy does.
@@ -592,7 +592,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	id := stringArg(args, "id")
 	ip := stringArg(args, "ip_address")
 	if id == "" && ip == "" {
-		return usageResult(fmt.Errorf("provide either 'id' or 'ip_address'")), true
+		return usageT("provide either 'id' or 'ip_address'", "укажите 'id' или 'ip_address'"), true
 	}
 	if id != "" && ip != "" {
 		// Both: the id was taken and the address dropped without a word —
@@ -622,7 +622,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	if id != "" {
 		f, e := eng.Cloud.GetFloatingIP(ctx, id)
 		if e != nil {
-			return errResult(fmt.Errorf("floating IP %q not found: %w", id, e)), true
+			return errResult(fmt.Errorf(i18n.T("floating IP %q not found: %w", "floating IP %q не найден: %w"), id, e)), true
 		}
 		fipID, fipIP, state, onNAT = id, f.IPAddress, f.State, f.OnNATGateway()
 	} else {
@@ -637,7 +637,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 			}
 		}
 		if fipID == "" {
-			return errResult(fmt.Errorf("no floating IP with address %q in this project", ip)), true
+			return errResult(fmt.Errorf(i18n.T("no floating IP with address %q in this project", "в проекте нет floating IP с адресом %q"), ip)), true
 		}
 	}
 
@@ -648,7 +648,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	if onNAT {
 		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (snat_delete); not released", fipIP, fipID)
 		return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
-			"Delete the SNAT gateway with snat_delete: its floating IP goes with it."),
+			i18n.T("Delete the SNAT gateway with snat_delete: its floating IP goes with it.", "Удалите SNAT-шлюз через snat_delete: его floating IP освободится вместе с ним.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true
 	}
 
@@ -656,7 +656,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	if state == "in_use" {
 		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it or destroy the VM first; not released", fipIP, fipID)
 		return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
-			"Detach it from the VM, or delete the VM (destroy), then release it."),
+			i18n.T("Detach it from the VM, or delete the VM (destroy), then release it.", "Отвяжите его от ВМ или удалите ВМ (destroy), затем освободите.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true
 	}
 

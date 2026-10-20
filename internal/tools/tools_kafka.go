@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/dbaas"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -86,7 +88,7 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 	}
 	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
 	if err != nil {
-		return "", "", fmt.Errorf("list availability zones: %w", err)
+		return "", "", fmt.Errorf(i18n.T("list availability zones: %w", "список зон доступности: %w"), err)
 	}
 	if ref != "" {
 		for _, z := range zones {
@@ -94,12 +96,12 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 				return z.ID, z.Name, nil
 			}
 		}
-		return "", "", clierrors.New(clierrors.CodeUsage, fmt.Sprintf("availability zone %q not found", ref),
-			"See list_zones (evo list-zones) for the zone names.")
+		return "", "", clierrors.New(clierrors.CodeUsage, i18n.Tf("availability zone %q not found", "зона доступности %q не найдена", ref),
+			i18n.T("See list_zones (evo list-zones) for the zone names.", "Имена зон — в выводе list_zones (evo list-zones)."))
 	}
 	zones = engine.PreferredZoneFirst(zones)
 	if len(zones) == 0 || zones[0].ID == "" {
-		return "", "", fmt.Errorf("no availability zones listed: pass 'zone'")
+		return "", "", errors.New(i18n.T("no availability zones listed: pass 'zone'", "список зон доступности пуст: передайте 'zone'"))
 	}
 	return zones[0].ID, zones[0].Name, nil
 }
@@ -130,7 +132,7 @@ func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, 
 	subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
 	if err != nil || len(subs) == 0 {
 		if subnetArg == "" {
-			return "", "", "", fmt.Errorf("resolve subnet: no subnet of the project could be read; pass subnet_id explicitly")
+			return "", "", "", errors.New(i18n.T("resolve subnet: no subnet of the project could be read; pass subnet_id explicitly", "выбор подсети: не прочитано ни одной подсети проекта; передайте subnet_id"))
 		}
 		subs = nil
 	}
@@ -162,8 +164,8 @@ func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, 
 		if i := provision.PickSubnet(subs, zid, shown); i >= 0 && provision.SubnetInZone(subs[i], zid, shown) {
 			return subs[i].ID, zid, shown, nil
 		}
-		return "", "", "", clierrors.New(clierrors.CodeUsage, fmt.Sprintf("no subnet of the project in zone %s", shown),
-			"Pass subnet_id, or create a subnet in this zone in the Cloud.ru console.")
+		return "", "", "", clierrors.New(clierrors.CodeUsage, i18n.Tf("no subnet of the project in zone %s", "в зоне %s нет подсети проекта", shown),
+			i18n.T("Pass subnet_id, or create a subnet in this zone in the Cloud.ru console.", "Передайте subnet_id или создайте подсеть в этой зоне в консоли Cloud.ru."))
 	default:
 		for _, z := range engine.PreferredZoneFirst(provision.OpenZones(zones)) {
 			if i := provision.PickSubnet(subs, z.ID, z.Name); i >= 0 && provision.SubnetInZone(subs[i], z.ID, z.Name) {
@@ -219,7 +221,7 @@ func (s *Registry) handleKafkaList(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleKafkaGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
+		return usageT("'cluster_id' is required (from kafka_list)", "нужен 'cluster_id' (из kafka_list)"), true
 	}
 	if res := uuidArg("cluster_id", id, "kafka_list"); res != "" {
 		return res, true
@@ -277,10 +279,10 @@ func (s *Registry) handleKafkaSpecs(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("'name' is required (2-63 chars)")), true
+		return usageT("'name' is required (2-63 chars)", "нужен 'name' (2–63 символа)"), true
 	}
 	if b := pgInt(args, "brokers", 0); b < 0 {
-		return usageResult(fmt.Errorf("brokers %d: at least 1", b)), true
+		return usageT("brokers %d: at least 1", "brokers %d: нужен хотя бы 1", b), true
 	}
 	cli, eng, err := s.kafkaClientEng(ctx)
 	if err != nil {
@@ -288,10 +290,10 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 	}
 	existing, err := cli.ListClusters(ctx, kafkaQuery())
 	if err != nil {
-		return errResult(fmt.Errorf("check the name is free: list clusters: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)), true
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult("Kafka cluster", name, id, st, "kafka_get cluster_id="+id)
+		return nameTakenResult(i18n.T("Kafka cluster", "кластер Kafka"), name, id, st, "kafka_get cluster_id="+id)
 	}
 
 	versionID := stringArg(args, "version_id")
@@ -301,7 +303,7 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 			return errResult(fmt.Errorf("list versions: %w", e)), true
 		}
 		if len(vers) == 0 {
-			return errResult(fmt.Errorf("no kafka versions available")), true
+			return errResult(errors.New(i18n.T("no kafka versions available", "нет доступных версий Kafka"))), true
 		}
 		versionID, _ = vers[len(vers)-1]["id"].(string)
 	}
@@ -389,10 +391,10 @@ func kafkaBrokers(arg int, spec map[string]any) (brokers int, note string, err e
 		note = "brokers: 1 (the specification gives no minimum): a single broker keeps one copy of each partition and stops on any broker failure. Pass brokers=3 for a replicated cluster."
 	}
 	if minB > 0 && brokers < minB {
-		return 0, "", fmt.Errorf("brokers %d: this specification takes at least %d", brokers, minB)
+		return 0, "", fmt.Errorf(i18n.T("brokers %d: this specification takes at least %d", "brokers %d: для этой конфигурации нужно не меньше %d"), brokers, minB)
 	}
 	if maxB > 0 && brokers > maxB {
-		return 0, "", fmt.Errorf("brokers %d: this specification takes at most %d", brokers, maxB)
+		return 0, "", fmt.Errorf(i18n.T("brokers %d: this specification takes at most %d", "brokers %d: для этой конфигурации можно не больше %d"), brokers, maxB)
 	}
 	return brokers, note, nil
 }
@@ -400,7 +402,7 @@ func kafkaBrokers(arg int, spec map[string]any) (brokers int, note string, err e
 func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'cluster_id' is required (from kafka_list)")), true
+		return usageT("'cluster_id' is required (from kafka_list)", "нужен 'cluster_id' (из kafka_list)"), true
 	}
 	cli, _, err := s.kafkaClientEng(ctx)
 	if err != nil {
@@ -420,7 +422,7 @@ func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (
 func (s *Registry) handleKafkaOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'operation_id' is required")), true
+		return usageT("'operation_id' is required", "нужен 'operation_id'"), true
 	}
 	cli, _, err := s.kafkaClientEng(ctx)
 	if err != nil {

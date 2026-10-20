@@ -6,9 +6,11 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -34,13 +36,13 @@ func (s *Registry) resolveSnatZone(ctx context.Context, args map[string]any) (st
 				return z.ID, nil
 			}
 		}
-		return "", fmt.Errorf("availability zone %q not found", name)
+		return "", fmt.Errorf(i18n.T("availability zone %q not found", "зона доступности %q не найдена"), name)
 	}
 	// Default: the configured region (CLOUDRU_REGION = the AZ UUID).
 	if eng.Config.Region != "" {
 		return eng.Config.Region, nil
 	}
-	return "", fmt.Errorf("no zone: pass 'zone' (name) or 'availability_zone_id', or set the region")
+	return "", errors.New(i18n.T("no zone: pass 'zone' (name) or 'availability_zone_id', or set the region", "зона не задана: передайте 'zone' (имя) или 'availability_zone_id' либо задайте region"))
 }
 
 // handleSnatList lists SNAT gateways (outbound-internet egress for private
@@ -73,9 +75,9 @@ func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("'name' is required")), true
+		return usageT("'name' is required", "нужен 'name'"), true
 	}
-	if err := provision.ValidName("SNAT gateway", name); err != nil {
+	if err := provision.ValidName(i18n.T("SNAT gateway", "SNAT-шлюза"), name); err != nil {
 		return errResult(err), true
 	}
 	zoneID, err := s.resolveSnatZone(ctx, args)
@@ -119,7 +121,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleSnatDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (get it from snat_list)")), true
+		return usageT("'id' is required (get it from snat_list)", "нужен 'id' (из snat_list)"), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -137,7 +139,7 @@ func (s *Registry) handleSnatDelete(ctx context.Context, args map[string]any) (s
 						return gw, nil
 					}
 				}
-				return nil, clierrors.New(clierrors.CodeNotFound, fmt.Sprintf("SNAT gateway %s not found in the project", id), "snat_list lists the project's gateways.")
+				return nil, clierrors.New(clierrors.CodeNotFound, i18n.Tf("SNAT gateway %s not found in the project", "SNAT-шлюз %s в проекте не найден", id), i18n.T("snat_list lists the project's gateways.", "Шлюзы проекта — в выводе snat_list."))
 			})
 	}
 	if err := eng.Cloud.DeleteNATGateway(ctx, id, eng.Config.ProjectID); err != nil {

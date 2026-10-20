@@ -40,11 +40,11 @@ import (
 //   - kubectl/helm not installed — CONFIG_INVALID;
 //   - an error about a VM provision created (vm_id in the answer) —
 //     VM_PROVISION_FAILED, as deploy_apply says it;
-//   - else the error is local: "not found" in the answer — NOT_FOUND
-//     (a plan, a job), anything else — USAGE (exit 1).
+//   - else the error is local: "not found" ("не найден" in Russian) in the
+//     answer — NOT_FOUND (a plan, a job), anything else — USAGE (exit 1).
 func uncodedReason(err error, fields map[string]any) string {
 	answer := strings.ToLower(toJSON(fields) + " " + err.Error())
-	notFound := strings.Contains(answer, "not found")
+	notFound := strings.Contains(answer, "not found") || strings.Contains(answer, "не найден")
 	if st := apiStatus(err); st != 0 {
 		switch {
 		case st == http.StatusNotFound || notFound:

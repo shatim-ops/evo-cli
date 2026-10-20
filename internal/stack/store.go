@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -392,7 +393,7 @@ func LoadJob(id string) (*Job, error) {
 	}
 	data, err := os.ReadFile(filepath.Join(dir, id+".json"))
 	if err != nil {
-		return nil, fmt.Errorf("job %s not found: %w", id, err)
+		return nil, fmt.Errorf(i18n.T("job %s not found: %w", "задание %s не найдено: %w"), id, err)
 	}
 	var j Job
 	if err := json.Unmarshal(data, &j); err != nil {

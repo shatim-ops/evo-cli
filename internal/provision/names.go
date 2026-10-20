@@ -7,13 +7,13 @@ package provision
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // MaxNameLen is the longest name of a VM, a disk or a floating IP
@@ -34,8 +34,9 @@ func ValidName(kind, name string) error {
 		return nil
 	}
 	return clierrors.New(clierrors.CodeUsage,
-		fmt.Sprintf("%s name %q is not accepted by Cloud.ru", kind, name),
-		fmt.Sprintf("Use 1-%d characters: a Latin letter first, then Latin letters, digits, '.', '-', '_'.", MaxNameLen))
+		i18n.Tf("%s name %q is not accepted by Cloud.ru", "Cloud.ru не примет имя %s %q", kind, name),
+		i18n.Tf("Use 1-%d characters: a Latin letter first, then Latin letters, digits, '.', '-', '_'.",
+			"Допустимо 1–%d символов: первая — латинская буква, дальше латинские буквы, цифры, '.', '-', '_'.", MaxNameLen))
 }
 
 // FitName is base+suffix within MaxNameLen: a long base is cut and gets a

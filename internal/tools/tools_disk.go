@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -38,7 +39,7 @@ func (s *Registry) resolveVM(ctx context.Context, ref, projectID string) (string
 			return v.ID, v.ZoneID(), nil
 		}
 	}
-	return "", "", fmt.Errorf("VM %q not found", ref)
+	return "", "", fmt.Errorf(i18n.T("VM %q not found", "ВМ %q не найдена"), ref)
 }
 
 // handleDiskList lists disks (block storage) with a compact projection.
@@ -87,19 +88,19 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	// One message per argument: "'name' and 'size_gb' (>0) are required"
 	// named the name that was given (QA 20.10, QA-13).
 	if name == "" {
-		return usageResult(fmt.Errorf("'name' is required")), true
+		return usageT("'name' is required", "нужен 'name'"), true
 	}
 	if _, ok := args["size_gb"]; !ok {
-		return usageResult(fmt.Errorf("'size_gb' is required")), true
+		return usageT("'size_gb' is required", "нужен 'size_gb'"), true
 	}
 	if sizeGB <= 0 {
-		return usageResult(fmt.Errorf("size_gb must be greater than 0, got %d", sizeGB)), true
+		return usageT("size_gb must be greater than 0, got %d", "size_gb должен быть больше 0, передано %d", sizeGB), true
 	}
-	if err := provision.ValidName("disk", name); err != nil {
+	if err := provision.ValidName(i18n.T("disk", "диска"), name); err != nil {
 		return errResult(err), true
 	}
 	if sizeGB > provision.MaxDiskGB {
-		return usageResult(fmt.Errorf("size_gb %d is over the disk maximum of %d GB", sizeGB, provision.MaxDiskGB)), true
+		return usageT("size_gb %d is over the disk maximum of %d GB", "size_gb %d больше предельного размера диска %d ГБ", sizeGB, provision.MaxDiskGB), true
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -128,7 +129,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 			}
 		}
 		if zoneID == "" {
-			return errResult(fmt.Errorf("zone %q not found", z)), true
+			return errResult(fmt.Errorf(i18n.T("zone %q not found", "зона %q не найдена"), z)), true
 		}
 	} else {
 		zoneID = eng.Config.Region
@@ -254,7 +255,7 @@ func (s *Registry) handleDiskAttach(ctx context.Context, args map[string]any) (s
 	diskID := stringArg(args, "disk_id")
 	vmRef := stringArg(args, "vm")
 	if diskID == "" || vmRef == "" {
-		return usageResult(fmt.Errorf("'disk_id' and 'vm' are required")), true
+		return usageT("'disk_id' and 'vm' are required", "нужны 'disk_id' и 'vm'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "disk_attach changes a VM. Approve, then confirmed=true."}), true
@@ -296,7 +297,7 @@ func (s *Registry) handleDiskDetach(ctx context.Context, args map[string]any) (s
 	diskID := stringArg(args, "disk_id")
 	vmRef := stringArg(args, "vm")
 	if diskID == "" || vmRef == "" {
-		return usageResult(fmt.Errorf("'disk_id' and 'vm' are required")), true
+		return usageT("'disk_id' and 'vm' are required", "нужны 'disk_id' и 'vm'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": "disk_detach changes a VM. Approve, then confirmed=true."}), true
@@ -322,16 +323,16 @@ func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (s
 	diskID := stringArg(args, "disk_id")
 	sizeGB := intArg(args, "size_gb", 0)
 	if diskID == "" {
-		return usageResult(fmt.Errorf("'disk_id' is required")), true
+		return usageT("'disk_id' is required", "нужен 'disk_id'"), true
 	}
 	if _, ok := args["size_gb"]; !ok {
-		return usageResult(fmt.Errorf("'size_gb' is required (the new size, larger than the current one)")), true
+		return usageT("'size_gb' is required (the new size, larger than the current one)", "нужен 'size_gb' — новый размер, больше текущего"), true
 	}
 	if sizeGB <= 0 {
-		return usageResult(fmt.Errorf("size_gb must be greater than 0, got %d", sizeGB)), true
+		return usageT("size_gb must be greater than 0, got %d", "size_gb должен быть больше 0, передано %d", sizeGB), true
 	}
 	if sizeGB > provision.MaxDiskGB {
-		return usageResult(fmt.Errorf("size_gb %d is over the disk maximum of %d GB", sizeGB, provision.MaxDiskGB)), true
+		return usageT("size_gb %d is over the disk maximum of %d GB", "size_gb %d больше предельного размера диска %d ГБ", sizeGB, provision.MaxDiskGB), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -359,7 +360,7 @@ func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleDiskDelete(ctx context.Context, args map[string]any) (string, bool) {
 	diskID := stringArg(args, "disk_id")
 	if diskID == "" {
-		return usageResult(fmt.Errorf("'disk_id' is required")), true
+		return usageT("'disk_id' is required", "нужен 'disk_id'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("disk_delete permanently destroys disk %s and its data. Approve, then confirmed=true.", diskID)}), true

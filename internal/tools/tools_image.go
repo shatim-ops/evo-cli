@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -35,7 +36,7 @@ func (s *Registry) resolveZoneID(ctx context.Context, ref, fallback string) (str
 			return z.ID, nil
 		}
 	}
-	return "", fmt.Errorf("zone %q not found", ref)
+	return "", fmt.Errorf(i18n.T("zone %q not found", "зона %q не найдена"), ref)
 }
 
 // zoneOfDisk returns the availability zone UUID the given disk lives in.
@@ -53,9 +54,9 @@ func (s *Registry) zoneOfDisk(ctx context.Context, eng *engine.Engine, diskID st
 				return zid, nil
 			}
 		}
-		return "", fmt.Errorf("disk %s reports no availability zone; pass 'zone' explicitly", diskID)
+		return "", fmt.Errorf(i18n.T("disk %s reports no availability zone; pass 'zone' explicitly", "у диска %s не указана зона доступности; передайте 'zone'"), diskID)
 	}
-	return "", fmt.Errorf("disk %s not found in project %s", diskID, eng.Config.ProjectID)
+	return "", fmt.Errorf(i18n.T("disk %s not found in project %s", "диск %s не найден в проекте %s"), diskID, eng.Config.ProjectID)
 }
 
 // handleImageCreate builds a VM image from a bootable disk — the last step of
@@ -68,15 +69,15 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	name := stringArg(args, "name")
 	diskID := stringArg(args, "disk_id")
 	if name == "" || diskID == "" {
-		return usageResult(fmt.Errorf("'name' and 'disk_id' are required")), true
+		return usageT("'name' and 'disk_id' are required", "нужны 'name' и 'disk_id'"), true
 	}
-	if err := provision.ValidName("image", name); err != nil {
+	if err := provision.ValidName(i18n.T("image", "образа"), name); err != nil {
 		return errResult(err), true
 	}
 	// A negative minimum made a preview, then the API refused it (QA 20.10,
 	// QA-7); 0 is "no minimum".
 	for _, k := range []string{"min_cpu", "min_ram", "min_disk"} {
-		if err := minIntArg(args, k, 0, "0 (the default) sets no minimum."); err != nil {
+		if err := minIntArg(args, k, 0, i18n.T("0 (the default) sets no minimum.", "0 (по умолчанию) — без минимума.")); err != nil {
 			return errResult(err), true
 		}
 	}
@@ -101,7 +102,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 			return usageResult(fmt.Errorf("image_metadata: %w", err)), true
 		}
 		if err := json.Unmarshal(blob, &req.ImageMetadata); err != nil {
-			return usageResult(fmt.Errorf("image_metadata must be an array of field objects: %w", err)), true
+			return usageResult(fmt.Errorf(i18n.T("image_metadata must be an array of field objects: %w", "image_metadata должен быть массивом объектов полей: %w"), err)), true
 		}
 	}
 
@@ -170,7 +171,7 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 	fipRef := stringArg(args, "fip")
 	vmRef := stringArg(args, "vm")
 	if fipRef == "" || vmRef == "" {
-		return usageResult(fmt.Errorf("'fip' (address or UUID) and 'vm' (name or UUID) are required")), true
+		return usageT("'fip' (address or UUID) and 'vm' (name or UUID) are required", "нужны 'fip' (адрес или UUID) и 'vm' (имя или UUID)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -188,20 +189,20 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 	// Resolve the floating IP by address or UUID, and refuse one already in use.
 	fips, err := eng.Cloud.ListFloatingIPs(ctx, pid)
 	if err != nil {
-		return errResult(fmt.Errorf("list floating ips: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("list floating ips: %w", "список floating IP: %w"), err)), true
 	}
 	fipID, fipName := "", ""
 	for _, f := range fips {
 		if f.ID == fipRef || f.IPAddress == fipRef {
 			if f.OnNATGateway() {
-				return errResult(fmt.Errorf("floating IP %q belongs to a SNAT gateway and cannot be attached to a VM", fipRef)), true
+				return errResult(fmt.Errorf(i18n.T("floating IP %q belongs to a SNAT gateway and cannot be attached to a VM", "floating IP %q принадлежит SNAT-шлюзу, к ВМ его не привязать"), fipRef)), true
 			}
 			fipID, fipName = f.ID, f.Name
 			break
 		}
 	}
 	if fipID == "" {
-		return errResult(fmt.Errorf("floating IP %q not found", fipRef)), true
+		return errResult(fmt.Errorf(i18n.T("floating IP %q not found", "floating IP %q не найден"), fipRef)), true
 	}
 
 	// Find the VM's primary interface — that is what the address binds to.
@@ -224,7 +225,7 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 		ifaceID = detail.Interfaces[0].ID
 	}
 	if ifaceID == "" {
-		return errResult(fmt.Errorf("VM %s has no interface to attach to", vmRef)), true
+		return errResult(fmt.Errorf(i18n.T("VM %s has no interface to attach to", "у ВМ %s нет интерфейса для привязки"), vmRef)), true
 	}
 
 	// The API rejects an empty name ("Value should have at least 1 item"), so
@@ -257,7 +258,7 @@ func zoneStates(img *provision.ImageDetail) map[string]string {
 func (s *Registry) handleImageDelete(ctx context.Context, args map[string]any) (string, bool) {
 	imageID := stringArg(args, "image_id")
 	if imageID == "" {
-		return usageResult(fmt.Errorf("'image_id' is required")), true
+		return usageT("'image_id' is required", "нужен 'image_id'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

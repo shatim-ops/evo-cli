@@ -7,12 +7,14 @@ package tools
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/kubetools"
 	"github.com/shatim-ops/evo-cli/internal/mk8s"
 )
@@ -34,11 +36,12 @@ func (s *Registry) kubeconfigForCluster(ctx context.Context, clusterID string) (
 	}
 	keyID, secret := s.accessKey()
 	if keyID == "" || secret == "" {
-		return "", fmt.Errorf("no Cloud.ru access key configured (evo configure, or CLOUDRU_KEY_ID/CLOUDRU_SECRET) — cannot mint a kube token")
+		return "", errors.New(i18n.T("no Cloud.ru access key configured (evo configure, or CLOUDRU_KEY_ID/CLOUDRU_SECRET) — cannot mint a kube token",
+			"не задан ключ доступа Cloud.ru (evo configure или CLOUDRU_KEY_ID/CLOUDRU_SECRET): токен для кластера не получить"))
 	}
 	tok, err := mk8s.FetchOIDCToken(ctx, mk8s.OIDCURLFromKubeconfig(plain), keyID, secret)
 	if err != nil {
-		return "", fmt.Errorf("kube token exchange: %w", err)
+		return "", fmt.Errorf(i18n.T("kube token exchange: %w", "получение токена кластера: %w"), err)
 	}
 	return mk8s.EmbedToken(plain, tok)
 }
@@ -119,11 +122,11 @@ func kubectlReachesHost(verb string, args []string) bool {
 func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (string, bool) {
 	clusterID := stringArg(args, "cluster_id")
 	if clusterID == "" {
-		return usageResult(fmt.Errorf("cluster_id is required")), true
+		return usageT("cluster_id is required", "нужен cluster_id"), true
 	}
 	raw := stringArg(args, "args")
 	if raw == "" {
-		return usageResult(fmt.Errorf("'args' is required, e.g. \"get pods -A\"")), true
+		return usageT("'args' is required, e.g. \"get pods -A\"", "нужен 'args', например \"get pods -A\""), true
 	}
 	fields := strings.Fields(raw)
 	verb := ""
@@ -159,12 +162,12 @@ func (s *Registry) handleK8sApply(ctx context.Context, args map[string]any) (str
 	clusterID := stringArg(args, "cluster_id")
 	manifest := stringArg(args, "manifest")
 	if clusterID == "" || manifest == "" {
-		return usageResult(fmt.Errorf("cluster_id and manifest are required")), true
+		return usageT("cluster_id and manifest are required", "нужны cluster_id и manifest"), true
 	}
 	// namespace goes to kubectl as an argument: a value starting with '-'
 	// would be read as another flag (as for k8s_helm).
 	if strings.HasPrefix(stringArg(args, "namespace"), "-") {
-		return usageResult(fmt.Errorf("'namespace' must not start with '-'")), true
+		return usageT("'namespace' must not start with '-'", "'namespace' не может начинаться с '-'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -193,14 +196,15 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	clusterID := stringArg(args, "cluster_id")
 	action := strings.ToLower(stringArg(args, "action"))
 	if clusterID == "" || action == "" {
-		return usageResult(fmt.Errorf("cluster_id and action are required (install|upgrade|uninstall|list|status)")), true
+		return usageT("cluster_id and action are required (install|upgrade|uninstall|list|status)",
+			"нужны cluster_id и action (install|upgrade|uninstall|list|status)"), true
 	}
 	// release and chart go to helm as positional arguments: a value starting
 	// with '-' would be parsed as a flag (--post-renderer runs a program on
 	// the server's host).
 	for _, k := range []string{"release", "chart", "namespace", "version"} {
 		if strings.HasPrefix(stringArg(args, k), "-") {
-			return usageResult(fmt.Errorf("'%s' must not start with '-'", k)), true
+			return usageT("'%s' must not start with '-'", "'%s' не может начинаться с '-'", k), true
 		}
 	}
 	// The action and its own arguments are checked before the confirmation
@@ -212,25 +216,26 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	switch action {
 	case "install", "upgrade":
 		if release == "" || chart == "" {
-			return usageResult(fmt.Errorf("install/upgrade need release and chart")), true
+			return usageT("install/upgrade need release and chart", "для install и upgrade нужны release и chart"), true
 		}
 	case "uninstall", "delete":
 		if release == "" {
-			return usageResult(fmt.Errorf("uninstall needs release")), true
+			return usageT("uninstall needs release", "для uninstall нужен release"), true
 		}
 	case "status":
 		if release == "" {
-			return usageResult(fmt.Errorf("status needs release")), true
+			return usageT("status needs release", "для status нужен release"), true
 		}
 	case "list":
 	default:
-		return usageResult(fmt.Errorf("unknown action %q (install|upgrade|uninstall|list|status)", action)), true
+		return usageT("unknown action %q (install|upgrade|uninstall|list|status)", "неизвестное действие %q (install|upgrade|uninstall|list|status)", action), true
 	}
 	// helm itself refused a relative repo_url ("non-absolute URLs"), and
 	// that read as an API error (release audit, A-003).
 	if raw := stringArg(args, "repo_url"); raw != "" {
 		if u, err := url.Parse(raw); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "oci") {
-			return usageResult(fmt.Errorf("'repo_url' must be an absolute https://, http:// or oci:// URL, got %q", raw)), true
+			return usageT("'repo_url' must be an absolute https://, http:// or oci:// URL, got %q",
+				"'repo_url' должен быть абсолютным URL https://, http:// или oci://, передано %q", raw), true
 		}
 	}
 	mutating := map[string]bool{"install": true, "upgrade": true, "uninstall": true, "delete": true}

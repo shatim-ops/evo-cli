@@ -6,8 +6,10 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/vpc"
 )
 
@@ -45,7 +47,7 @@ func (s *Registry) handleVpcList(ctx context.Context, args map[string]any) (stri
 func (s *Registry) handleVpcGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (from vpc_list)")), true
+		return usageT("'id' is required (from vpc_list)", "нужен 'id' (из vpc_list)"), true
 	}
 	if res := uuidArg("id", id, "vpc_list"); res != "" {
 		return res, true
@@ -66,7 +68,7 @@ func (s *Registry) handleVpcGet(ctx context.Context, args map[string]any) (strin
 func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageResult(fmt.Errorf("'name' is required")), true
+		return usageT("'name' is required", "нужен 'name'"), true
 	}
 	if err := plainName("VPC", "name", name); err != nil {
 		return errResult(err), true
@@ -95,7 +97,7 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required (from vpc_list)")), true
+		return usageT("'id' is required (from vpc_list)", "нужен 'id' (из vpc_list)"), true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
@@ -115,7 +117,7 @@ func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleVpcOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'operation_id' is required")), true
+		return usageT("'operation_id' is required", "нужен 'operation_id'"), true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
@@ -146,7 +148,7 @@ func (s *Registry) handleVpcOperation(ctx context.Context, args map[string]any) 
 func (s *Registry) handleVpcRoutes(ctx context.Context, args map[string]any) (string, bool) {
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID == "" {
-		return usageResult(fmt.Errorf("'vpc_id' is required (from vpc_list)")), true
+		return usageT("'vpc_id' is required (from vpc_list)", "нужен 'vpc_id' (из vpc_list)"), true
 	}
 	if res := uuidArg("vpc_id", vpcID, "vpc_list"); res != "" {
 		return res, true
@@ -171,7 +173,7 @@ func routeNextHop(args map[string]any) (map[string]any, error) {
 	if vm := stringArg(args, "next_hop_vm_id"); vm != "" {
 		iface := stringArg(args, "next_hop_interface_id")
 		if iface == "" {
-			return nil, fmt.Errorf("next_hop_interface_id is required with next_hop_vm_id")
+			return nil, errors.New(i18n.T("next_hop_interface_id is required with next_hop_vm_id", "с next_hop_vm_id нужен next_hop_interface_id"))
 		}
 		return map[string]any{"virtualMachine": map[string]any{
 			"virtualMachine": map[string]any{"id": vm},
@@ -187,14 +189,14 @@ func routeNextHop(args map[string]any) (map[string]any, error) {
 			"azName":      stringArg(args, "next_hop_az"),
 		}}, nil
 	}
-	return nil, fmt.Errorf("a next hop is required: next_hop_vm_id+next_hop_interface_id, or next_hop_vip_id, or next_hop_magic_router_id+next_hop_az")
+	return nil, errors.New(i18n.T("a next hop is required: next_hop_vm_id+next_hop_interface_id, or next_hop_vip_id, or next_hop_magic_router_id+next_hop_az", "нужен следующий узел: next_hop_vm_id+next_hop_interface_id, next_hop_vip_id или next_hop_magic_router_id+next_hop_az"))
 }
 
 func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any) (string, bool) {
 	vpcID := stringArg(args, "vpc_id")
 	subnet := stringArg(args, "subnet")
 	if vpcID == "" || subnet == "" {
-		return usageResult(fmt.Errorf("'vpc_id' and 'subnet' (destination CIDR, e.g. 192.168.0.0/24) are required")), true
+		return usageT("'vpc_id' and 'subnet' (destination CIDR, e.g. 192.168.0.0/24) are required", "нужны 'vpc_id' и 'subnet' (CIDR назначения, например 192.168.0.0/24)"), true
 	}
 	nextHop, err := routeNextHop(args)
 	if err != nil {
@@ -225,7 +227,7 @@ func (s *Registry) handleVpcRouteDelete(ctx context.Context, args map[string]any
 	vpcID := stringArg(args, "vpc_id")
 	routeID := stringArg(args, "route_id")
 	if vpcID == "" || routeID == "" {
-		return usageResult(fmt.Errorf("'vpc_id' and 'route_id' (from vpc_routes) are required")), true
+		return usageT("'vpc_id' and 'route_id' (from vpc_routes) are required", "нужны 'vpc_id' и 'route_id' (из vpc_routes)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": fmt.Sprintf("vpc_route_delete removes static route %s from VPC %s (async). Call again with confirmed=true.", routeID, vpcID)}), true

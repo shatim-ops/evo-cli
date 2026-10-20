@@ -13,6 +13,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/s3"
 )
 
@@ -41,7 +42,7 @@ func (s *Registry) handleS3Buckets(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleS3Ls(ctx context.Context, args map[string]any) (string, bool) {
 	bucket := stringArg(args, "bucket")
 	if bucket == "" {
-		return usageResult(fmt.Errorf("'bucket' is required")), true
+		return usageT("'bucket' is required", "нужен 'bucket'"), true
 	}
 	cli, err := s.s3Client()
 	if err != nil {
@@ -62,7 +63,7 @@ func (s *Registry) handleS3Get(ctx context.Context, args map[string]any) (string
 	bucket := stringArg(args, "bucket")
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
-		return usageResult(fmt.Errorf("'bucket' and 'key' are required")), true
+		return usageT("'bucket' and 'key' are required", "нужны 'bucket' и 'key'"), true
 	}
 	cli, err := s.s3Client()
 	if err != nil {
@@ -72,8 +73,8 @@ func (s *Registry) handleS3Get(ctx context.Context, args map[string]any) (string
 	var tl *s3.TooLargeError
 	if errors.As(err, &tl) {
 		return errResult(clierrors.New(clierrors.CodeUsage,
-			fmt.Sprintf("%s/%s: %v — s3_get returns objects up to %d MiB inline", bucket, key, err, s3GetMaxBytes>>20),
-			"Download it with an S3 client (aws s3 cp, rclone; endpoint https://s3.cloud.ru, the same keys) or in the Cloud.ru console; s3_ls shows the sizes.")), true
+			i18n.Tf("%s/%s: %v — s3_get returns objects up to %d MiB inline", "%s/%s: %v — s3_get возвращает объекты до %d МиБ", bucket, key, err, s3GetMaxBytes>>20),
+			i18n.T("Download it with an S3 client (aws s3 cp, rclone; endpoint https://s3.cloud.ru, the same keys) or in the Cloud.ru console; s3_ls shows the sizes.", "Скачайте объект клиентом S3 (aws s3 cp, rclone; endpoint https://s3.cloud.ru, те же ключи) или в консоли Cloud.ru; размеры — в выводе s3_ls."))), true
 	}
 	if err != nil {
 		return errResult(err), true
@@ -94,14 +95,14 @@ func (s *Registry) handleS3Put(ctx context.Context, args map[string]any) (string
 	bucket := stringArg(args, "bucket")
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
-		return usageResult(fmt.Errorf("'bucket' and 'key' are required")), true
+		return usageT("'bucket' and 'key' are required", "нужны 'bucket' и 'key'"), true
 	}
 	// Body from inline text (content) or base64 (content_base64).
 	var data []byte
 	if b64 := stringArg(args, "content_base64"); b64 != "" {
 		d, err := base64.StdEncoding.DecodeString(b64)
 		if err != nil {
-			return errResult(fmt.Errorf("invalid content_base64: %w", err)), true
+			return errResult(fmt.Errorf(i18n.T("invalid content_base64: %w", "content_base64 — не base64: %w"), err)), true
 		}
 		data = d
 	} else {
@@ -128,7 +129,7 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 	bucket := stringArg(args, "bucket")
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
-		return usageResult(fmt.Errorf("'bucket' and 'key' are required")), true
+		return usageT("'bucket' and 'key' are required", "нужны 'bucket' и 'key'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -149,7 +150,7 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any) (string, bool) {
 	bucket := stringArg(args, "bucket")
 	if bucket == "" {
-		return usageResult(fmt.Errorf("'bucket' is required (the new bucket name)")), true
+		return usageT("'bucket' is required (the new bucket name)", "нужен 'bucket' — имя нового бакета"), true
 	}
 	// The rule the schema states, before the preview (QA-15).
 	if err := bucketName(bucket); err != nil {
@@ -175,7 +176,7 @@ func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any
 func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any) (string, bool) {
 	bucket := stringArg(args, "bucket")
 	if bucket == "" {
-		return usageResult(fmt.Errorf("'bucket' is required")), true
+		return usageT("'bucket' is required", "нужен 'bucket'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

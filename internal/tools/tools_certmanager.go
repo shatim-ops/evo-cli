@@ -47,7 +47,7 @@ func (s *Registry) handleCertList(ctx context.Context, args map[string]any) (str
 func (s *Registry) handleCertGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required")), true
+		return usageT("'id' is required", "нужен 'id'"), true
 	}
 	cli, err := s.certClient(ctx)
 	if err != nil {
@@ -64,7 +64,7 @@ func (s *Registry) handleCertIssueLE(ctx context.Context, args map[string]any) (
 	name := stringArg(args, "name")
 	dnsNames := stringSliceArg(args, "dns_names")
 	if name == "" || len(dnsNames) == 0 {
-		return usageResult(fmt.Errorf("'name' and 'dns_names' (non-empty) are required")), true
+		return usageT("'name' and 'dns_names' (non-empty) are required", "нужны 'name' и непустой 'dns_names'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -89,7 +89,7 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 	server := stringArg(args, "server_certificate")
 	key := stringArg(args, "private_key")
 	if name == "" || server == "" || key == "" {
-		return usageResult(fmt.Errorf("'name', 'server_certificate' (base64 PEM) and 'private_key' (base64 PEM) are required")), true
+		return usageT("'name', 'server_certificate' (base64 PEM) and 'private_key' (base64 PEM) are required", "нужны 'name', 'server_certificate' (PEM в base64) и 'private_key' (PEM в base64)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -118,7 +118,7 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleCertRenew(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "certificate_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'certificate_id' is required")), true
+		return usageT("'certificate_id' is required", "нужен 'certificate_id'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -140,7 +140,7 @@ func (s *Registry) handleCertRenew(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleCertDelete(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required")), true
+		return usageT("'id' is required", "нужен 'id'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -162,7 +162,7 @@ func (s *Registry) handleCertDelete(ctx context.Context, args map[string]any) (s
 func (s *Registry) handleCertUsage(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'id' is required")), true
+		return usageT("'id' is required", "нужен 'id'"), true
 	}
 	cli, err := s.certClient(ctx)
 	if err != nil {
@@ -178,7 +178,7 @@ func (s *Registry) handleCertUsage(ctx context.Context, args map[string]any) (st
 func (s *Registry) handleCertVersions(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "certificate_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'certificate_id' is required")), true
+		return usageT("'certificate_id' is required", "нужен 'certificate_id'"), true
 	}
 	cli, err := s.certClient(ctx)
 	if err != nil {
@@ -194,7 +194,7 @@ func (s *Registry) handleCertVersions(ctx context.Context, args map[string]any) 
 func (s *Registry) handleCertPrivateKey(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "certificate_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'certificate_id' is required")), true
+		return usageT("'certificate_id' is required", "нужен 'certificate_id'"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -249,7 +249,7 @@ func pemKey(pk map[string]any) {
 func (s *Registry) handleCertOperation(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "operation_id")
 	if id == "" {
-		return usageResult(fmt.Errorf("'operation_id' is required")), true
+		return usageT("'operation_id' is required", "нужен 'operation_id'"), true
 	}
 	cli, err := s.certClient(ctx)
 	if err != nil {

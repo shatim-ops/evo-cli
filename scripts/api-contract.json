@@ -83,16 +83,16 @@
       "name": "vpc",
       "spec": "vpc/openapi.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/vpcs", "code": "internal/vpc/client.go:135", "query": ["project_id", "pageToken"], "paginates": true, "reads": ["vpcs[].id", "vpcs[].name", "vpcs[].default", "vpcs[].type", "nextPageToken"],
+        {"method": "GET", "path": "/v1/vpcs", "code": "internal/vpc/client.go:136", "query": ["project_id", "pageToken"], "paginates": true, "reads": ["vpcs[].id", "vpcs[].name", "vpcs[].default", "vpcs[].type", "nextPageToken"],
          "accepted": {"query-required:projectId": "grpc-gateway принимает proto-имя project_id; код шлёт его — подтвердить вживую", "query-unknown:project_id": "см. projectId"}},
-        {"method": "GET", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:181", "reads": ["id", "name"]},
-        {"method": "POST", "path": "/v1/vpcs", "code": "internal/vpc/client.go:197", "body": ["projectId", "name", "description"], "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
-        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:202", "reads": ["id", "done"]},
-        {"method": "GET", "path": "/v1/vpcs/operations/{operationId}", "code": "internal/vpc/client.go:207", "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
-        {"method": "GET", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:225", "query": ["pageToken"], "paginates": true, "reads": ["routes[].id", "routes[].subnet", "routes[].status", "nextPageToken"]},
-        {"method": "POST", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:230",
+        {"method": "GET", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:182", "reads": ["id", "name"]},
+        {"method": "POST", "path": "/v1/vpcs", "code": "internal/vpc/client.go:198", "body": ["projectId", "name", "description"], "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
+        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:203", "reads": ["id", "done"]},
+        {"method": "GET", "path": "/v1/vpcs/operations/{operationId}", "code": "internal/vpc/client.go:208", "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
+        {"method": "GET", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:226", "query": ["pageToken"], "paginates": true, "reads": ["routes[].id", "routes[].subnet", "routes[].status", "nextPageToken"]},
+        {"method": "POST", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:231",
          "body": ["vpcId", "projectId", "subnet", "nextHop.virtualMachine.virtualMachine.id", "nextHop.virtualMachine.interface.id", "nextHop.vip.vips[].id", "nextHop.magicRouter.magicRouter.id", "nextHop.magicRouter.azName"], "reads": ["id", "done"]},
-        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}/routes/static/{staticRouteId}", "code": "internal/vpc/client.go:235", "reads": ["id", "done"]}
+        {"method": "DELETE", "path": "/v1/vpcs/{vpcId}/routes/static/{staticRouteId}", "code": "internal/vpc/client.go:236", "reads": ["id", "done"]}
       ]
     },
     {
@@ -357,7 +357,7 @@
       "name": "oidc",
       "spec": "organization+iam/iam-gw-public.yaml",
       "requests": [
-        {"method": "POST", "path": "/auth/system/openid/token", "code": "internal/mk8s/kubeconfig.go:24",
+        {"method": "POST", "path": "/auth/system/openid/token", "code": "internal/mk8s/kubeconfig.go:26",
          "_note": "https://id.cloud.ru (или auth.iam.cloud.ru из kubeconfig): обмен ключа сервисного аккаунта на JWT для kube-apiserver, как плагин cloudlogin; тело — application/x-www-form-urlencoded",
          "body": ["grant_type", "client_id", "client_secret"], "reads": ["id_token", "access_token"],
          "accepted": {"path-missing": "OIDC-эндпоинт id.cloud.ru/auth/system/openid/token не опубликован ни в одной спецификации Cloud.ru (iam-gw-public описывает только iam.api.cloud.ru) — вопрос к Cloud.ru"}}

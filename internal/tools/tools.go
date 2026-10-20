@@ -1463,7 +1463,7 @@ func (s *Registry) registerTools() {
 
 func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (string, bool) {
 	// disk_size -5 became 10 GB without a word (QA-14).
-	if err := minIntArg(args, "disk_size", 0, "Omit disk_size for 10 GB, raised to the image's min_disk."); err != nil {
+	if err := minIntArg(args, "disk_size", 0, diskSizeHint()); err != nil {
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
@@ -1479,7 +1479,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 		}), true
 	}
 	if stringArg(args, "image") != "" && stringArg(args, "image_id") != "" {
-		return usageResult(fmt.Errorf("pass image or image_id, not both")), true
+		return usageT("pass image or image_id, not both", "укажите image или image_id, не оба"), true
 	}
 	overrides := map[string]any{}
 	for arg, field := range map[string]string{
@@ -1545,7 +1545,7 @@ func subnetNamesOtherZone(s *provision.Subnet, zoneID string, zones []*provision
 
 func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
 	if name := stringArg(args, "name"); name != "" {
-		if err := provision.ValidName("VM", name); err != nil {
+		if err := provision.ValidName(i18n.T("VM", "ВМ"), name); err != nil {
 			return errResult(err), true
 		}
 	}
@@ -1565,10 +1565,10 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// The call's own mistakes are refused before anything, the preview
 	// included.
 	if stringArg(args, "image") != "" && stringArg(args, "image_id") != "" {
-		return usageResult(fmt.Errorf("pass image or image_id, not both")), true
+		return usageT("pass image or image_id, not both", "укажите image или image_id, не оба"), true
 	}
 	// disk_size -5 became 10 GB in the preview and the VM (QA-14).
-	if err := minIntArg(args, "disk_size", 0, "Omit disk_size for 10 GB, raised to the image's min_disk."); err != nil {
+	if err := minIntArg(args, "disk_size", 0, diskSizeHint()); err != nil {
 		return errResult(err), true
 	}
 	metaValues, err := metadataArg(args, "image_metadata")
@@ -1624,12 +1624,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	}
 
 	if eng.ImageRef() == "" {
-		return usageResult(fmt.Errorf("image (name or UUID) or image_id (UUID) is required; the server has no CLOUDRU_IMAGE_ID (an image UUID) to default to")), true
+		return usageT("image (name or UUID) or image_id (UUID) is required; the server has no CLOUDRU_IMAGE_ID (an image UUID) to default to", "нужен image (имя или UUID) или image_id (UUID): у сервера не задан CLOUDRU_IMAGE_ID (UUID образа по умолчанию)"), true
 	}
 
 	region := eng.Config.Region
 	if region == "" {
-		return usageResult(fmt.Errorf("region (availability zone UUID, see list_zones) is required; the server has no CLOUDRU_REGION to default to")), true
+		return usageT("region (availability zone UUID, see list_zones) is required; the server has no CLOUDRU_REGION to default to", "нужен region (UUID зоны доступности, см. list_zones): у сервера не задан CLOUDRU_REGION"), true
 	}
 
 	vmName := stringArg(args, "name")
@@ -1736,13 +1736,13 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		// the VM from booting while it and its boot FIP are billed.
 		if subnet == nil {
 			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
-				fmt.Sprintf("subnet %s is not in the project", subnetID),
-				"Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.")), true
+				i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
+				i18n.T("Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из vpc_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))), true
 		}
 		if subnet.AvailabilityZoneID != "" && subnet.AvailabilityZoneID != region || subnetNamesOtherZone(subnet, region, zones) {
 			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
-				fmt.Sprintf("subnet %s is not in zone %s", subnet.Name, firstNonEmptyStr(zoneName, region)),
-				"Take a subnet of this zone (vpc_subnets), or omit subnet_id: the zone's main subnet is taken.")), true
+				i18n.Tf("subnet %s is not in zone %s", "подсеть %s не в зоне %s", subnet.Name, firstNonEmptyStr(zoneName, region)),
+				i18n.T("Take a subnet of this zone (vpc_subnets), or omit subnet_id: the zone's main subnet is taken.", "Возьмите подсеть этой зоны (vpc_subnets) или не указывайте subnet_id: возьмётся основная подсеть зоны."))), true
 		}
 	} else if i := provision.PickSubnet(subnets, region, zoneName); i >= 0 {
 		subnet = subnets[i]
@@ -1887,8 +1887,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		fipErr := eng.ReleaseBootFIP(bootFIP, projectID)
 		if provision.IsNameTaken(err) {
 			return fipLeftAnswer(clierrors.Wrap(clierrors.CodeUsage,
-				fmt.Sprintf("a VM named %s already exists in this project (Cloud.ru answered 409); no VM was created", vmName),
-				fmt.Sprintf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.", vmName, vmName), err), bootFIP, fipErr), true
+				i18n.Tf("a VM named %s already exists in this project (Cloud.ru answered 409); no VM was created", "ВМ с именем %s в проекте уже есть (Cloud.ru ответил 409); ВМ не создана", vmName),
+				i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.", "Проверьте эту ВМ через vm_get %s (или vm_list); укажите другое имя или удалите её через destroy name=%s.", vmName, vmName), err), bootFIP, fipErr), true
 		}
 		return fipLeftAnswer(fmt.Errorf("create VM: %w", err), bootFIP, fipErr), true
 	}
@@ -2159,8 +2159,10 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	projectID := eng.Config.ProjectID
 	if projectID == "" {
 		return errResult(clierrors.New(clierrors.CodeConfigInvalid,
-			"no project is set, so the VM to delete cannot be looked up; nothing was deleted",
-			"Set the project: 'evo project use <id>', CLOUDRU_PROJECT_ID or project_id in .evo.yaml (the projects: list_projects).")), true
+			i18n.T("no project is set, so the VM to delete cannot be looked up; nothing was deleted",
+				"не задан проект: удаляемую ВМ не найти, ничего не удалено"),
+			i18n.T("Set the project: 'evo project use <id>', CLOUDRU_PROJECT_ID or project_id in .evo.yaml (the projects: list_projects).",
+				"Задайте проект: 'evo project use <id>', CLOUDRU_PROJECT_ID или project_id в .evo.yaml (проекты — list_projects)."))), true
 	}
 	tok, err := eng.Auth.Token(ctx)
 	if err != nil {
@@ -2193,8 +2195,8 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			ids = append(ids, fmt.Sprintf("%s (zone %s)", v.ID, firstNonEmptyStr(vmZone(v), "unknown")))
 		}
 		return errAnswer(clierrors.New(clierrors.CodeUsage,
-			fmt.Sprintf("%d VMs in this project are named %s: %s; nothing was deleted", len(byName), name, strings.Join(ids, ", ")),
-			"Pass the VM to delete by vm_id (evo vm delete <vm_id>)."),
+			i18n.Tf("%d VMs in this project are named %s: %s; nothing was deleted", "в проекте %d ВМ с именем %s: %s; ничего не удалено", len(byName), name, strings.Join(ids, ", ")),
+			i18n.T("Pass the VM to delete by vm_id (evo vm delete <vm_id>).", "Укажите удаляемую ВМ по vm_id (evo vm delete <vm_id>).")),
 			map[string]any{"candidates": cands}), true
 	}
 	if target == nil && len(byName) == 1 {
@@ -2215,8 +2217,8 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		// its 404 does not prove the VM is gone (ревью Fable на #81).
 		if recorded && recProject != "" && recProject != projectID {
 			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
-				fmt.Sprintf("VM %s is recorded for another project than the active one; nothing was deleted and its record is kept", vmID),
-				"Switch to the record's project ('evo project use <id>' or CLOUDRU_PROJECT_ID) and call destroy again.")), true
+				i18n.Tf("VM %s is recorded for another project than the active one; nothing was deleted and its record is kept", "ВМ %s записана для другого проекта, не для активного; ничего не удалено, запись сохранена", vmID),
+				i18n.T("Switch to the record's project ('evo project use <id>' or CLOUDRU_PROJECT_ID) and call destroy again.", "Переключитесь на проект записи ('evo project use <id>' или CLOUDRU_PROJECT_ID) и повторите destroy."))), true
 		}
 		if recorded {
 			_, gerr := eng.Cloud.GetVM(ctx, vmID)
@@ -2233,8 +2235,8 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		if target == nil {
 			// VM_NOT_FOUND, exit 4 as vm_get (A-004).
 			return errResult(clierrors.New(clierrors.CodeVMNotFound,
-				fmt.Sprintf("no VM %s in project %s; nothing was deleted", firstNonEmptyStr(vmID, name), projectID),
-				"List the project's VMs with vm_list (evo vm list).")), true
+				i18n.Tf("no VM %s in project %s; nothing was deleted", "ВМ %s в проекте %s нет; ничего не удалено", firstNonEmptyStr(vmID, name), projectID),
+				i18n.T("List the project's VMs with vm_list (evo vm list).", "ВМ проекта — в выводе vm_list (evo vm list)."))), true
 		}
 	}
 
@@ -2757,7 +2759,7 @@ func metadataArg(args map[string]any, key string) (map[string]string, error) {
 	}
 	m, ok := raw.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("%s must be an object of field name → value", key)
+		return nil, stderrors.New(i18n.Tf("%s must be an object of field name → value", "%s — должен быть объект «имя поля → значение»", key))
 	}
 	out := make(map[string]string, len(m))
 	for k, v := range m {
@@ -2767,7 +2769,7 @@ func metadataArg(args map[string]any, key string) (map[string]string, error) {
 		case float64, bool, json.Number:
 			out[k] = fmt.Sprint(x)
 		default:
-			return nil, fmt.Errorf("%s.%s must be a string", key, k)
+			return nil, stderrors.New(i18n.Tf("%s.%s must be a string", "%s.%s должен быть строкой", key, k))
 		}
 	}
 	return out, nil
@@ -2888,6 +2890,18 @@ func toJSON(v any) string {
 // itself is wrong, not the cloud.
 func usageResult(err error) string {
 	return errResult(clierrors.Wrap(clierrors.CodeUsage, err.Error(), "", err))
+}
+
+// usageT is usageResult of a message in the CLI's language: i18n.Tf of en
+// and ru with args.
+func usageT(en, ru string, args ...any) string {
+	return errResult(clierrors.New(clierrors.CodeUsage, i18n.Tf(en, ru, args...), ""))
+}
+
+// diskSizeHint is the hint of a negative disk_size (deploy, provision).
+func diskSizeHint() string {
+	return i18n.T("Omit disk_size for 10 GB, raised to the image's min_disk.",
+		"Без disk_size диск — 10 ГБ, но не меньше min_disk образа.")
 }
 
 // errResult formats an error as a JSON tool result (see errAnswer).

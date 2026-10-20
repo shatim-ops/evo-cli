@@ -23,6 +23,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Client wraps a minio S3 client.
@@ -46,7 +47,7 @@ func New(cfg Config) (*Client, error) {
 		// A configuration problem, not an API error: exit 2, like a missing
 		// Cloud.ru key.
 		return nil, clierrors.New(clierrors.CodeConfigInvalid,
-			"S3 credentials not configured (set CLOUDRU_S3_ACCESS_KEY / CLOUDRU_S3_SECRET_KEY, or the s3 section of the profile)", "")
+			i18n.T("S3 credentials not configured (set CLOUDRU_S3_ACCESS_KEY / CLOUDRU_S3_SECRET_KEY, or the s3 section of the profile)", "не заданы ключи S3 (CLOUDRU_S3_ACCESS_KEY / CLOUDRU_S3_SECRET_KEY или раздел s3 профиля)"), "")
 	}
 	endpoint := cfg.Endpoint
 	if endpoint == "" {
@@ -87,7 +88,7 @@ type Bucket struct {
 func (c *Client) ListBuckets(ctx context.Context) ([]Bucket, error) {
 	bs, err := c.mc.ListBuckets(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list buckets: %w", err)
+		return nil, fmt.Errorf(i18n.T("list buckets: %w", "список бакетов: %w"), err)
 	}
 	out := make([]Bucket, 0, len(bs))
 	for _, b := range bs {
@@ -112,7 +113,7 @@ func (c *Client) ListObjects(ctx context.Context, bucket, prefix string, maxKeys
 	var out []Object
 	for obj := range c.mc.ListObjects(ctx, bucket, opts) {
 		if obj.Err != nil {
-			return nil, notFound(fmt.Errorf("list objects: %w", obj.Err), bucket, prefix)
+			return nil, notFound(fmt.Errorf(i18n.T("list objects: %w", "список объектов: %w"), obj.Err), bucket, prefix)
 		}
 		out = append(out, Object{Key: obj.Key, Size: obj.Size, LastModified: obj.LastModified.Format(time.RFC3339)})
 		if len(out) >= maxKeys {
@@ -160,7 +161,7 @@ func (c *Client) GetObject(ctx context.Context, bucket, key string, limit int64)
 	}
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return nil, notFound(fmt.Errorf("read object %s/%s: %w", bucket, key, err), bucket, key)
+		return nil, notFound(fmt.Errorf(i18n.T("read object %s/%s: %w", "чтение объекта %s/%s: %w"), bucket, key, err), bucket, key)
 	}
 	if limit > 0 && int64(len(data)) > limit {
 		return nil, &TooLargeError{Limit: limit}
@@ -178,11 +179,11 @@ func notFound(err error, bucket, key string) error {
 	}
 	switch {
 	case resp.Code == "NoSuchBucket":
-		return clierrors.Wrap(clierrors.CodeNotFound, fmt.Sprintf("bucket %q not found", bucket),
-			"s3_buckets lists the buckets of these keys.", err)
+		return clierrors.Wrap(clierrors.CodeNotFound, i18n.Tf("bucket %q not found", "бакет %q не найден", bucket),
+			i18n.T("s3_buckets lists the buckets of these keys.", "Бакеты этих ключей — в выводе s3_buckets."), err)
 	case resp.Code == "NoSuchKey" || resp.StatusCode == http.StatusNotFound:
-		return clierrors.Wrap(clierrors.CodeNotFound, fmt.Sprintf("object %s/%s not found", bucket, key),
-			"s3_ls lists the objects of the bucket.", err)
+		return clierrors.Wrap(clierrors.CodeNotFound, i18n.Tf("object %s/%s not found", "объект %s/%s не найден", bucket, key),
+			i18n.T("s3_ls lists the objects of the bucket.", "Объекты бакета — в выводе s3_ls."), err)
 	}
 	return err
 }
@@ -194,7 +195,7 @@ func (c *Client) PutObject(ctx context.Context, bucket, key string, data []byte,
 	}
 	info, err := c.mc.PutObject(ctx, bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: contentType})
 	if err != nil {
-		return 0, fmt.Errorf("put object: %w", err)
+		return 0, fmt.Errorf(i18n.T("put object: %w", "загрузка объекта: %w"), err)
 	}
 	return info.Size, nil
 }
@@ -202,7 +203,7 @@ func (c *Client) PutObject(ctx context.Context, bucket, key string, data []byte,
 // RemoveObject deletes bucket/key.
 func (c *Client) RemoveObject(ctx context.Context, bucket, key string) error {
 	if err := c.mc.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{}); err != nil {
-		return fmt.Errorf("remove object: %w", err)
+		return fmt.Errorf(i18n.T("remove object: %w", "удаление объекта: %w"), err)
 	}
 	return nil
 }
@@ -218,7 +219,7 @@ func (c *Client) MakeBucket(ctx context.Context, bucket, region string) error {
 		if errEx == nil && exists {
 			return nil
 		}
-		return fmt.Errorf("create bucket: %w", err)
+		return fmt.Errorf(i18n.T("create bucket: %w", "создание бакета: %w"), err)
 	}
 	return nil
 }
@@ -226,7 +227,7 @@ func (c *Client) MakeBucket(ctx context.Context, bucket, region string) error {
 // RemoveBucket deletes an EMPTY bucket.
 func (c *Client) RemoveBucket(ctx context.Context, bucket string) error {
 	if err := c.mc.RemoveBucket(ctx, bucket); err != nil {
-		return fmt.Errorf("remove bucket: %w", err)
+		return fmt.Errorf(i18n.T("remove bucket: %w", "удаление бакета: %w"), err)
 	}
 	return nil
 }
