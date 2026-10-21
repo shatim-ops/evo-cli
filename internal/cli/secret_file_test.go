@@ -19,7 +19,9 @@ import (
 
 // The secrets of the trees (CLISpec.SecretFiles, owner's decision Q10):
 // --<flag>-file gives the tool the argument --<flag> gives, from a file or
-// from stdin, its trailing newline trimmed; one of the two flags, not both;
+// from stdin (a pipe or a terminal), the same bytes the tool (MCP) gets —
+// a leading BOM and one trailing newline trimmed, spaces kept (secretText);
+// one of the two flags, not both;
 // and the secret is printed nowhere: not in the answer, the preview or an
 // error.
 
@@ -58,8 +60,16 @@ func secretFileCmds(t *testing.T) []secretFileCmd {
 
 func TestSecretFiles_SameArgumentAsValueFlag(t *testing.T) {
 	w, fake := withJSONWorld(t)
+	oldTTY, oldPass, oldSave := stdinIsTerminal, readPassword, saveTerminal
+	t.Cleanup(func() { stdinIsTerminal, readPassword, saveTerminal = oldTTY, oldPass, oldSave })
+	saveTerminal = func() func() { return func() {} }
 	for _, sc := range secretFileCmds(t) {
-		secret, _ := parityArgs[sc.tool.Name][sc.arg].(string)
+		plain, _ := parityArgs[sc.tool.Name][sc.arg].(string)
+		// Spaces around the secret are part of it, whichever way it comes:
+		// the tool (MCP) gets them, and so must every command line (B12-6).
+		secret := "  " + plain + " "
+		args := copyArgs(parityArgs[sc.tool.Name])
+		args[sc.arg] = secret
 		file := func(content string) string {
 			path := filepath.Join(t.TempDir(), "secret")
 			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -67,16 +77,26 @@ func TestSecretFiles_SameArgumentAsValueFlag(t *testing.T) {
 			}
 			return path
 		}
+		fileFlag := "--" + secretFileFlag(sc.flag)
 		for _, v := range []struct {
-			name, path, stdin string
+			name  string
+			flags []string
+			stdin string
+			tty   bool // stdin is a terminal: the line typed without echo
 		}{
-			{"file", file(secret + "\n"), ""},
-			{"file with CRLF", file(secret + "\r\n"), ""},
-			{"stdin", "-", secret + "\n"},
+			{"literal --" + sc.flag, []string{"--" + sc.flag, secret}, "", false},
+			{"file", []string{fileFlag, file(secret + "\n")}, "", false},
+			{"file with CRLF", []string{fileFlag, file(secret + "\r\n")}, "", false},
+			{"file with a BOM", []string{fileFlag, file(utf8BOM + secret + "\r\n")}, "", false}, // B12-7
+			{"stdin", []string{fileFlag, "-"}, secret + "\n", false},
+			{"stdin with a BOM", []string{fileFlag, "-"}, utf8BOM + secret + "\n", false},
+			{"terminal", []string{fileFlag, "-"}, "", true},
 		} {
-			name := "evo " + strings.Join(sc.rest[:2], " ") + " --" + secretFileFlag(sc.flag) + " (" + v.name + ")"
-			line := append(append([]string{}, sc.rest...), "--"+secretFileFlag(sc.flag), v.path)
-			r := runJSONCase(t, jsonCase{path: name, tool: sc.tool, line: line, args: parityArgs[sc.tool.Name],
+			name := "evo " + strings.Join(sc.rest[:2], " ") + " " + v.flags[0] + " (" + v.name + ")"
+			line := append(append([]string{}, sc.rest...), v.flags...)
+			stdinIsTerminal = func() bool { return v.tty }
+			readPassword = func() ([]byte, error) { return []byte(secret), nil }
+			r := runJSONCase(t, jsonCase{path: name, tool: sc.tool, line: line, args: args,
 				stdin: v.stdin, setup: paritySetup[sc.tool.Name]}, w, fake)
 			switch {
 			case r.isErr || r.code != 0:
@@ -87,10 +107,11 @@ func TestSecretFiles_SameArgumentAsValueFlag(t *testing.T) {
 				t.Errorf("%s: the command and the tool with --%s write other things:\n  command: %s\n  tool:    %s",
 					name, sc.flag, strings.Join(r.cliWrites, " | "), strings.Join(r.toolWrites, " | "))
 			}
-			if strings.Contains(r.out+r.errOut, secret) {
+			if strings.Contains(r.out+r.errOut, plain) {
 				t.Errorf("%s: the secret is printed:\n%s\n%s", name, r.out, r.errOut)
 			}
 		}
+		stdinIsTerminal = func() bool { return false }
 
 		// The preview: --dry-run, and --json without --yes.
 		path := file(secret)
@@ -115,6 +136,10 @@ func TestSecretFiles_Refusals(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nosuch.pass")
 	empty := filepath.Join(t.TempDir(), "empty.pass") // printf '\n' > empty.pass
 	if err := os.WriteFile(empty, []byte("\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bomOnly := filepath.Join(t.TempDir(), "bom.pass") // an editor's "empty" UTF-8 file
+	if err := os.WriteFile(bomOnly, []byte(utf8BOM+"\r\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	argsOf := func(group, verb string, argv ...string) (map[string]any, error) {
@@ -145,6 +170,8 @@ func TestSecretFiles_Refusals(t *testing.T) {
 		// audit, REL12-9).
 		{"empty file", "secret", "create", []string{"app/db", "--value-file", empty},
 			"--value-file " + empty + ": the file is empty", ""},
+		{"a BOM and a newline", "secret", "create", []string{"app/db", "--value-file", bomOnly},
+			"--value-file " + bomOnly + ": the file is empty", ""},
 		{"empty stdin", "pg", "user-create", []string{"c-1", "app", "--password-file", "-"},
 			"--password-file -: stdin is empty", ""},
 	} {

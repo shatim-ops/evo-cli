@@ -668,17 +668,20 @@ type secretRef struct {
 	hint   string // the hint when the file was not read
 }
 
-// read reads the value, one trailing newline trimmed. On a terminal, stdin
+// read reads the value: the text, through secretText. On a terminal, stdin
 // is one line, not echoed, after the prompt — not a silent wait for Ctrl-D
 // with the secret on the screen; otherwise it is read until EOF. No value
-// (nothing left after the trim) is an error: an empty file or stdin is a
+// (nothing left after secretText) is an error: an empty file or stdin is a
 // mistake (a file not yet written, a pipe that failed), not a secret, and
 // would otherwise reach the handler as no value at all (Fable audit,
 // REL12-9); an empty value on purpose is given literally (--meta k=).
 func (r secretRef) read(ctx context.Context, stdin io.Reader, prompt io.Writer) (string, error) {
-	v, err := r.readRaw(ctx, stdin, prompt)
-	if err != nil || v != "" {
-		return v, err
+	text, err := r.readRaw(ctx, stdin, prompt)
+	if err != nil {
+		return "", err
+	}
+	if v := secretText(text); v != "" {
+		return v, nil
 	}
 	if r.stdin {
 		return "", clerrors.New(clerrors.CodeUsage, i18n.Tf("%s: stdin is empty", "%s: stdin пуст", r.given), "")
@@ -686,7 +689,8 @@ func (r secretRef) read(ctx context.Context, stdin io.Reader, prompt io.Writer) 
 	return "", clerrors.New(clerrors.CodeUsage, i18n.Tf("%s: the file is empty", "%s: файл пуст", r.given), "")
 }
 
-// readRaw is read without the check for no value.
+// readRaw is the text as the file, the pipe or the terminal gave it, not
+// yet normalised: the one normalisation of all three is secretText, in read.
 func (r secretRef) readRaw(ctx context.Context, stdin io.Reader, prompt io.Writer) (string, error) {
 	if !r.stdin {
 		b, err := os.ReadFile(r.path)
@@ -694,7 +698,7 @@ func (r secretRef) readRaw(ctx context.Context, stdin io.Reader, prompt io.Write
 			return "", clerrors.New(clerrors.CodeUsage,
 				i18n.Tf("%s: the file was not read: %v", "%s: файл не прочитан: %v", r.given, err), r.hint)
 		}
-		return trimNewline(string(b)), nil
+		return string(b), nil
 	}
 	if f, ok := stdin.(*os.File); ok && f == os.Stdin && stdinIsTerminal() {
 		if ctx == nil {
@@ -707,7 +711,21 @@ func (r secretRef) readRaw(ctx context.Context, stdin io.Reader, prompt io.Write
 		return "", clerrors.New(clerrors.CodeUsage,
 			i18n.Tf("%s: stdin was not read: %v", "%s: stdin не прочитан: %v", r.given, err), "")
 	}
-	return trimNewline(string(b)), nil
+	return string(b), nil
+}
+
+// utf8BOM is the byte order mark some Windows editors and PowerShell 5
+// (Out-File -Encoding utf8) put at the start of a UTF-8 file. It marks the
+// encoding, it is not text: no secret starts with it.
+const utf8BOM = "\uFEFF"
+
+// secretText is the value a secretRef gives for its text, the same from a
+// file, a pipe or a terminal: a leading UTF-8 BOM and one trailing newline
+// dropped (B12-7), nothing else — spaces around a password are part of it,
+// as in the literal flag (B12-6). On a terminal the newline is already
+// gone: ReadPassword stops at it.
+func secretText(s string) string {
+	return trimNewline(strings.TrimPrefix(s, utf8BOM))
 }
 
 // trimNewline drops one trailing newline ("\n" or "\r\n"): the one an

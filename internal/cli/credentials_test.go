@@ -236,6 +236,36 @@ func TestConfigure_Interactive(t *testing.T) {
 	}
 }
 
+// configure trims what is pasted at its prompts — the key ID, the secret,
+// the project UUID — and the --secret-stdin line: an access key has no
+// spaces, a paste often brings some. The secret flags of the trees keep
+// them (B12-6); askSecret leaves the choice to its caller.
+func TestConfigure_TrimsPastedKey(t *testing.T) {
+	fc := setupCLI(t)
+	fc.orgStatus = http.StatusForbidden
+	stdinIsTerminal = func() bool { return true }
+	readPassword = func() ([]byte, error) { return []byte(" \t" + fakeSecret + "  "), nil }
+
+	code, _, stderr := runCLI(t, "  "+fakeKeyID+"\t\n  "+manualProject+"  \n", "configure")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	prof, creds, _, _ := config.LoadProfile("default")
+	if creds.KeyID != fakeKeyID || creds.Secret != fakeSecret || prof.ProjectID != manualProject {
+		t.Errorf("stored untrimmed: key ID %q, secret trimmed %v, project %q", creds.KeyID, creds.Secret == fakeSecret, prof.ProjectID)
+	}
+
+	stdinIsTerminal = func() bool { return false }
+	code, _, stderr = runCLI(t, "  "+fakeSecret+" \r\n", "--profile", "ci", "configure",
+		"--key-id", fakeKeyID, "--secret-stdin", "--project-id", manualProject)
+	if code != 0 {
+		t.Fatalf("--secret-stdin: exit %d: %s", code, stderr)
+	}
+	if _, creds, _, _ := config.LoadProfile("ci"); creds.Secret != fakeSecret {
+		t.Error("--secret-stdin: the secret is stored untrimmed")
+	}
+}
+
 func TestConfigure_OrgForbiddenFallsBackToManualEntry(t *testing.T) {
 	fc := setupCLI(t)
 	fc.orgStatus = http.StatusForbidden

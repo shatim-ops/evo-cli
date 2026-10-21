@@ -162,6 +162,10 @@ func (c *console) ask(ctx context.Context, prompt string) (string, error) {
 	return c.readLine(ctx)
 }
 
+// askSecret reads one line without echo and returns it as typed (without
+// the Enter that ends it): how to normalise it is the caller's choice.
+// configure trims the spaces a pasted key brings; a secret flag keeps
+// them, as its file does (secretText).
 func (c *console) askSecret(ctx context.Context, prompt string) (string, error) {
 	fmt.Fprint(c.out, prompt)
 	restore := saveTerminal()
@@ -181,7 +185,7 @@ func (c *console) askSecret(ctx context.Context, prompt string) (string, error) 
 		if r.err != nil {
 			return "", r.err
 		}
-		return strings.TrimSpace(string(r.b)), nil
+		return string(r.b), nil
 	case <-ctx.Done():
 		// ReadPassword turned echo off and will never restore it: the
 		// process exits first.
@@ -254,6 +258,9 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 		if secret, err = con.askSecret(ctx, prompt); err != nil {
 			return fmt.Errorf(i18n.T("read secret: %w", "чтение секрета: %w"), err)
 		}
+		// Trimmed as readLine trims the key ID and --secret-stdin: an
+		// access key has no spaces, a paste often brings some.
+		secret = strings.TrimSpace(secret)
 	}
 	if secret == "" && keyID == creds.KeyID {
 		secret = creds.Secret
