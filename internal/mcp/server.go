@@ -122,8 +122,12 @@ type Server struct {
 	listed  []Tool
 	enabled map[string]bool
 
-	// readOnly: SetReadOnly was called.
+	// readOnly: SetReadOnly was called. gated holds, per tool, the handler
+	// under its H11 gate: a restriction applied after SetReadOnly (those of
+	// the transport, NewHTTPHandler) wraps it, not the gate, so the gate
+	// stays the outermost layer (wrapHandler).
 	readOnly bool
+	gated    map[string]*tools.Handler
 
 	// httpApplied records the restrictions of HTTPRestrictions applied to
 	// the handlers (over HTTP and by --read-only), as "ID tool" (restrict),

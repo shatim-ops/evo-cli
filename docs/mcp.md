@@ -295,7 +295,10 @@ evo mcp --http 127.0.0.1:8080 --read-only    # HTTP
 - `k8s_kubectl` и `k8s_helm` остаются ради чтений: `get`, `describe`, `logs`,
   `rollout status`, `helm list` и `status` работают как без флага. Команда,
   которой нужно согласие (`delete`, `apply`, `exec`, `rollout restart`, любой
-  глагол с `-f`/`-k`, `helm install|upgrade|uninstall`), — та же ошибка.
+  глагол с `-f`/`-k`, кроме `logs -f` — это `--follow`, `helm
+  install|upgrade|uninstall`), — та же ошибка. Она приходит раньше всех
+  проверок аргументов, по HTTP — тоже: отклонённый вызов не проверяет файлы
+  хоста (H2) и не разрешает адрес `repo_url` (H4).
 - Секреты не уходят с сервера и по stdio — по тем же правилам, что по HTTP
   без `--allow-secret-export` (H3, H6, H7): `k8s_kubeconfig` — только с
   `embed_token=false`; `k8s_kubectl config …`, `get --raw`, Secret не
@@ -397,8 +400,12 @@ evo mcp --http 127.0.0.1:8080 --auth bearer --read-only --toolsets vm,vpc,disk,i
 что `evo whoami` и `evo doctor`, у которых они и вызываются.
 
 - `whoami` — профиль (`profile`), Key ID — маскированный, как в CLI
-  (`key_id`: первые и последние четыре символа), откуда взяты ключ и проект
-  (`credentials_from`, `project_from`: `profile`, `env`, `project`, `flag`,
+  (`key_id`: первые и последние четыре символа), откуда взят ключ
+  (`credentials_from`: `profile`; `env` — `CLOUDRU_KEY_ID` и
+  `CLOUDRU_SECRET` или `CLOUDRU_API_KEY`; `env (CLOUDRU_KEY_ID,
+  CLOUDRU_KEY_SECRET)`; `env (EVOLUTION_SERVICE_ACCOUNT_KEY_ID,
+  EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET)` — ключ сервисного аккаунта AI
+  Agents) и проект (`project_from`: `profile`, `env`, `project`, `flag`,
   `default`), проект (`project_id`), срок токена IAM (`token_expires_at`,
   `token_ttl_seconds`), из кэша он или выдан сейчас (`token_source`: `cache`
   или `iam`) и сколько проектов видит ключ (`visible_projects`; поля нет,
@@ -680,8 +687,13 @@ evo mcp --http :8080 --allow-project <UUID-1> --allow-project <UUID-2>
 `org_quotas` и `iam_service_accounts` с аргументом `project_id`: при
 разрешённом проекте сервера они читают и другие проекты организации. Без флага сервер работает как раньше
 (`billing_*` без `project_id` с договором — весь договор, как в CLI),
-но при старте в HTTP-режиме пишет предупреждение. Для общего сервера надёжнее
-ключ уровня проекта: тогда ограничение даёт сам Cloud.ru. Превью
+но при старте в HTTP-режиме пишет предупреждение. Флаг — не граница
+проектов: инструменты, которые адресуют ресурс по id (PostgreSQL, Kafka,
+Redis, NLB и целевые группы, VPC, DNS, Cert Manager, `vm_get`, `image_get`,
+плавающий IP по id, `*_operation`), проект в запрос не передают, и доступ к
+ресурсу чужого проекта по его id определяет роль ключа, а не флаг. Границу
+даёт сам Cloud.ru: для общего сервера нужен ключ сервисного аккаунта с ролью
+только в разрешённых проектах. Превью
 подтверждения `deploy`, `provision` и `destroy` называет проект
 (`project_id`), в котором будет выполнен вызов.
 
@@ -736,15 +748,15 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
 |---|---|---|---|
 | H1 | ошибка `CONFIG_INVALID`, если на сервере нет `kubectl` / `helm` (в Docker-образе их нет) | `k8s_kubectl`, `k8s_apply`, `k8s_helm` | всегда |
 | H2 | `compose_file` — только внутри рабочего каталога сервера | `deploy` | всегда |
-| H3 | команда kubectl — первым словом; без файлов, плагинов, редактора и подробного журнала хоста, без отправки токена на другой сервер; Secret — только таблицей или `-o name` | `k8s_kubectl` | всегда; про Secret — без `--allow-secret-export`; с `--read-only` — и по stdio |
+| H3 | команда kubectl — первым словом; без файлов, плагинов, редактора и подробного журнала хоста, без отправки токена на другой сервер; Secret — только таблицей или `-o name`; env подов (`get pod -o yaml`, `describe pod`, ConfigMap) печатается как есть | `k8s_kubectl` | всегда; про Secret — без `--allow-secret-export`; с `--read-only` — и по stdio |
 | H4 | только удалённые чарты на публичных `https://` / `oci://` | `k8s_helm` | всегда |
 | H5 | инструмент отключён: возвращает секрет открытым текстом | `secret_value`, `cert_private_key` | без `--allow-secret-export` |
 | H6 | отключены `embed_token=true` и `config …`: возвращают токен кластера | `k8s_kubeconfig`, `k8s_kubectl` | без `--allow-secret-export`; с `--read-only` — и по stdio |
-| H7 | значения полей с корнем из `HTTPSecretFields` (кроме `HTTPNonSecretFields`) заменены, ответ получает поле `redacted` | все инструменты | без `--allow-secret-export`; с `--read-only` — и по stdio |
+| H7 | значения полей с корнем из `HTTPSecretFields` (кроме `HTTPNonSecretFields`) заменены, как и `value` пары `name`/`value` или `key`/`value` с таким именем (env контейнера в `ca_get`); ответ получает поле `redacted` | все инструменты | без `--allow-secret-export`; с `--read-only` — и по stdio |
 | H8 | не больше 32 вызовов инструментов одновременно, следующий — `SERVER_BUSY` | все инструменты | всегда |
-| H9 | `--allow-project`: вызов в проекте не из списка — `CONFIG_INVALID`; чтение шире проекта без `project_id` — только проект сервера: `billing_consumption` и `billing_finops` — расход проекта в договоре (`scope: project`), `org_projects` — только он (флаг работает и по stdio) | `deploy`, `provision`, `billing_consumption`, `billing_finops`, `org_projects` и все, что работают в проекте | с флагом |
+| H9 | `--allow-project`: вызов в проекте не из списка — `CONFIG_INVALID`; чтение шире проекта без `project_id` — только проект сервера: `billing_consumption` и `billing_finops` — расход проекта в договоре (`scope: project`), `org_projects` — только он (флаг работает и по stdio); инструменты, которые адресуют ресурс по id, проект в запрос не передают — доступ к чужому проекту по id определяет роль ключа, а не флаг | `deploy`, `provision`, `billing_consumption`, `billing_finops`, `org_projects` и все, что работают в проекте | с флагом |
 | H10 | инструмент отключён: его проверки называют файлы и сеть сервера | `doctor` | всегда |
-| H11 | `--read-only`: вызов, которому нужно согласие (`confirmed=true`), — `USAGE` с `confirmed` и без; инструментов, которым согласие нужно всегда, нет в `tools/list` (флаг работает и по stdio) | все инструменты | с флагом |
+| H11 | `--read-only`: вызов, которому нужно согласие (`confirmed=true`), — `USAGE` с `confirmed` и без, раньше всех проверок, по HTTP — и раньше H1, H2, H4, H10; инструментов, которым согласие нужно всегда, нет в `tools/list` (флаг работает и по stdio) | все инструменты | с флагом |
 
 Механика самого транспорта (токен, `Origin`, размер тела и батча, сессии) —
 в разделе [Streamable HTTP](#streamable-http): она не меняет ответы
@@ -780,6 +792,9 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
   его данные). Так закрыто и `label secret x a=b -o yaml --dry-run=server`:
   объект не меняется, но печатается целиком. `get secrets`, `get secret x`,
   `get secret x -o name`, `create secret generic … --from-literal` работают.
+  Вывод kubectl — текст, и H7 его не маскирует: `get pod -o yaml`,
+  `describe pod` и ConfigMap печатают env подов как есть, поэтому пароль
+  кладите в Secret, а не в `env` или ConfigMap.
 - В ответах всех инструментов значения полей-учётных данных заменяются на
   `[redacted over HTTP: …]`. Так, `deploy_apply` не возвращает
   сгенерированный пароль ВМ (вход — по SSH-ключу сервера), а `pg_get`,
@@ -803,9 +818,20 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
     `"passwords": ["a", "b"]` → оба значения скрыты, в `redacted` —
     `passwords[]`. `true`/`false` не меняются: это признак (пароль задан),
     а не учётные данные.
-  - Строка в любом другом месте ответа, равная замаскированному значению,
-    тоже маскируется и попадает в `redacted`: секрет не уходит, даже если
-    облако повторило его под нейтральным ключом.
+  - Пара «имя — значение» — объект с полем `value` и строкой в `name` или
+    `key` — проверяется по имени, как поле: если имя по тем же правилам —
+    учётные данные (корень, не исключение), маскируется `value`. Так env
+    контейнера в `ca_get` и `ca_list` (`{"name": "DB_PASSWORD", "value": …}`
+    → в `redacted` — `template.containers[].env[].value`), параметры превью
+    и метаданные объекта облака (`{"key": …, "value": …}`);
+    `{"name": "LOG_LEVEL", "value": "debug"}` не меняется.
+  - Повтор значения длиной от 8 символов — строка в любом другом месте
+    ответа, равная замаскированному значению, — тоже маскируется и попадает
+    в `redacted`: секрет не уходит, даже если облако повторило его под
+    нейтральным ключом. Короче 8 символов значение маскируется только под
+    своим ключом: такие значения (`ok`, `true`, `debug`) встречаются и в
+    несвязанных полях — `"password": "ok"` не скрывает `"status": "ok"`, — а
+    8 символов — самый короткий пароль, который принимают обычные политики.
   - Не маскируется поле из закрытого перечня `HTTPNonSecretFields`.
     Окончание (с `_` в начале) срабатывает, только если имя оканчивается
     этими словами на границе слова (разделитель или заглавная буква):

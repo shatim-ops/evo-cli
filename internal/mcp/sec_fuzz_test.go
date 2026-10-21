@@ -22,6 +22,7 @@ func FuzzRedactSecrets(f *testing.F) {
 		`{"accessToken":"a","password_expires_at":"2026","redacted":["x"]}`,
 		`{"passwords":["a","b"],"secret_old":{"v":"c","n":[1,"d"]},"password_expires_at_raw":"e"}`,
 		`{"private.key":"k","redacted":["k"],"user":{"api key":7,"redacted":["7"]}}`,
+		`{"env":[{"name":"DB_PASSWORD","value":"S3cret-long"},{"name":"LOG_LEVEL","value":"debug"}],"meta":[{"key":"token","value":7}]}`,
 	} {
 		f.Add(s)
 	}
@@ -69,6 +70,13 @@ func FuzzRedactSecrets(f *testing.F) {
 		walk = func(x any) {
 			switch t2 := x.(type) {
 			case map[string]any:
+				// A name/value pair named as a credential key: the
+				// value is masked as one.
+				for _, f := range pairNames {
+					if name, ok := t2[f].(string); ok && secretKey(name) {
+						allMasked(name, t2[pairValue])
+					}
+				}
 				for k, y := range t2 {
 					if secretKey(k) {
 						allMasked(k, y)

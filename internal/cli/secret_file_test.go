@@ -113,9 +113,14 @@ func TestSecretFiles_Refusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	missing := filepath.Join(t.TempDir(), "nosuch.pass")
+	empty := filepath.Join(t.TempDir(), "empty.pass") // printf '\n' > empty.pass
+	if err := os.WriteFile(empty, []byte("\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	argsOf := func(group, verb string, argv ...string) (map[string]any, error) {
 		t.Helper()
 		cmd, c, tl := findLeaf(t, group, verb)
+		cmd.SetIn(strings.NewReader("\r\n"))
 		if err := cmd.ParseFlags(argv); err != nil {
 			t.Fatal(err)
 		}
@@ -136,6 +141,12 @@ func TestSecretFiles_Refusals(t *testing.T) {
 			"--private-key or --private-key-file", ""},
 		{"no file", "secret", "create", []string{"app/db", "--value-file", missing},
 			"--value-file " + missing + ": the file was not read: ", ""},
+		// No value: a file or stdin with nothing but a newline (Fable
+		// audit, REL12-9).
+		{"empty file", "secret", "create", []string{"app/db", "--value-file", empty},
+			"--value-file " + empty + ": the file is empty", ""},
+		{"empty stdin", "pg", "user-create", []string{"c-1", "app", "--password-file", "-"},
+			"--password-file -: stdin is empty", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := argsOf(tc.group, tc.verb, tc.argv...)
@@ -161,6 +172,10 @@ func TestSecretFiles_Refusals(t *testing.T) {
 	_, errOut, code = execCLI(t, "pg", "user-create", "c-1", "app")
 	if code != clerrors.ExitGeneral || !strings.Contains(errOut, "не заданы обязательные флаги: --password или --password-file") {
 		t.Errorf("neither: exit %d:\n%s", code, errOut)
+	}
+	_, errOut, code = execCLI(t, "secret", "create", "app/db", "--value-file", empty)
+	if code != clerrors.ExitGeneral || !strings.Contains(errOut, "--value-file "+empty+": файл пуст") {
+		t.Errorf("empty file: exit %d:\n%s", code, errOut)
 	}
 }
 

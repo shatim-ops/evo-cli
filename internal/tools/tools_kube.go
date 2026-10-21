@@ -117,7 +117,7 @@ func kubectlReachesHost(verb string, args []string) bool {
 			continue
 		}
 		for _, fl := range kubetools.ParseFlags(a) {
-			if fl.Name == "f" && (verb == "logs" || verb == "log") {
+			if fl.Follows(verb) {
 				continue
 			}
 			if kubectlHostFlags[fl.Name] || strings.Contains(fl.Name, "file") || strings.HasSuffix(fl.Name, "-dir") {

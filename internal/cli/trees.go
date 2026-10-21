@@ -670,8 +670,24 @@ type secretRef struct {
 
 // read reads the value, one trailing newline trimmed. On a terminal, stdin
 // is one line, not echoed, after the prompt — not a silent wait for Ctrl-D
-// with the secret on the screen; otherwise it is read until EOF.
+// with the secret on the screen; otherwise it is read until EOF. No value
+// (nothing left after the trim) is an error: an empty file or stdin is a
+// mistake (a file not yet written, a pipe that failed), not a secret, and
+// would otherwise reach the handler as no value at all (Fable audit,
+// REL12-9); an empty value on purpose is given literally (--meta k=).
 func (r secretRef) read(ctx context.Context, stdin io.Reader, prompt io.Writer) (string, error) {
+	v, err := r.readRaw(ctx, stdin, prompt)
+	if err != nil || v != "" {
+		return v, err
+	}
+	if r.stdin {
+		return "", clerrors.New(clerrors.CodeUsage, i18n.Tf("%s: stdin is empty", "%s: stdin пуст", r.given), "")
+	}
+	return "", clerrors.New(clerrors.CodeUsage, i18n.Tf("%s: the file is empty", "%s: файл пуст", r.given), "")
+}
+
+// readRaw is read without the check for no value.
+func (r secretRef) readRaw(ctx context.Context, stdin io.Reader, prompt io.Writer) (string, error) {
 	if !r.stdin {
 		b, err := os.ReadFile(r.path)
 		if err != nil {

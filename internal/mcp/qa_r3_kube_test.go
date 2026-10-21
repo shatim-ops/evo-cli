@@ -68,7 +68,9 @@ func TestQAr3_KubectlHTTPCheckSecretBypasses(t *testing.T) {
 		"create configmap c --from_file=/etc/passwd",
 		"get pods --client_key=/etc/x",
 		"debug pod/x --custom=/etc/x.json --image=busybox",
-		"logs pod/x -pf",
+		// -f in a cluster of shorthands; of logs it is --follow (Fable
+		// audit, REL12-6, allowed below).
+		"get pod/x -pf",
 		// Релизный аудит, R-05: --kuberc читает файл хоста (оракул путей)
 		// и применяет его алиасы и значения флагов.
 		"get pods --kuberc=/etc/passwd",
@@ -107,6 +109,7 @@ func TestQAr3_KubectlHTTPCheckSecretBypasses(t *testing.T) {
 		"annotate pod x --list",
 		"set env deploy/x --list",
 		"logs pod/x -p",
+		"logs pod/x -pf",
 		"exec pod-0 -- kubectl get secret x -o yaml -v=9",
 		"run t --image=busybox --restart=Never -- sh -c echo",
 	}

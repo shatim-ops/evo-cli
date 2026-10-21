@@ -41,6 +41,10 @@ func TestVMCreate_MetaFromStdinAndFile(t *testing.T) {
 
 func TestVMCreate_MetaFromStdinAndFileRefusals(t *testing.T) {
 	russian(t)
+	empty := filepath.Join(t.TempDir(), "empty.pass")
+	if err := os.WriteFile(empty, []byte("\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for name, tc := range map[string]struct {
 		args []string
 		want []string
@@ -49,6 +53,10 @@ func TestVMCreate_MetaFromStdinAndFileRefusals(t *testing.T) {
 			[]string{"оба читают stdin", "stdin читает только одно поле", "=@<файл>"}},
 		"нет файла": {[]string{"--meta", "opensearch_host=h", "--meta", "opensearch_password=@./nosuch.pass"},
 			[]string{"opensearch_password=@./nosuch.pass: файл не прочитан", "начинается с @, — имя файла"}},
+		// No value in the file (Fable audit, REL12-9); a literal empty
+		// one is "opensearch_password=".
+		"пустой файл": {[]string{"--meta", "opensearch_host=h", "--meta", "opensearch_password=@" + empty},
+			[]string{"opensearch_password=@" + empty + ": файл пуст"}},
 		"нет «=»": {[]string{"--meta", "opensearch_host"},
 			[]string{"admin_password=@./admin.pass", "admin_password=-"}},
 	} {

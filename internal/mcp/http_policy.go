@@ -134,7 +134,8 @@ func (s *Server) restrict(id, tool string, wrap func(next tools.Handler) tools.H
 // restrictForHTTP adjusts tool handlers for the HTTP transport, as
 // HTTPRestrictions lists (H1–H7, H10; H8 is in the HTTP handler, H9 in the
 // CLI). A --read-only server has its H3, H6 and H7 already (SetReadOnly)
-// and exports no secret, so H5 would refuse nothing H11 lets through.
+// and exports no secret, so H5 would refuse nothing H11 lets through; the
+// wraps here go under its H11 gate (wrapHandler).
 // The tool set and schemas stay the same; some calls answer with an error
 // instead, and without allowSecretExport credential fields are masked.
 //
@@ -286,8 +287,14 @@ func refused(err error) string {
 
 // wrapHandler wraps a tool's handler in the registry, so the policy also
 // holds for in-process calls (stack_apply drives other tools), and mirrors
-// the result into the tools/call dispatch table.
+// the result into the tools/call dispatch table. Under the H11 gate of a
+// --read-only server (Server.gated) it wraps the handler the gate calls,
+// and the gate stays the outermost layer.
 func (s *Server) wrapHandler(name string, wrap func(next tools.Handler) tools.Handler) {
+	if inner, ok := s.gated[name]; ok {
+		*inner = wrap(*inner)
+		return
+	}
 	if !s.reg.Wrap(name, wrap) {
 		return
 	}
