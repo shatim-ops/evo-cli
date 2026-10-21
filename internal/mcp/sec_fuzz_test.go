@@ -6,6 +6,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -23,6 +24,10 @@ func FuzzRedactSecrets(f *testing.F) {
 		`{"passwords":["a","b"],"secret_old":{"v":"c","n":[1,"d"]},"password_expires_at_raw":"e"}`,
 		`{"private.key":"k","redacted":["k"],"user":{"api key":7,"redacted":["7"]}}`,
 		`{"env":[{"name":"DB_PASSWORD","value":"S3cret-long"},{"name":"LOG_LEVEL","value":"debug"}],"meta":[{"key":"token","value":7}]}`,
+		`{"env":[{"Name":"DB_PASSWORD","Value":"S3cret-long","value":"S3cret-2"},{"KEY":"api_key","VALUE":7}]}`,
+		`{"password":"S3cret-long","user_data":"{\"admin_password\":\"x\",\"note\":\"S3cret-long\",\"inner\":\"[{\\\"token\\\":1}]\"}"}`,
+		`{"password":123456789,"copies":123456789,"label":"123456789","pin":12,"n":12}`,
+		`{"data":{"tls.key":"k","tls.crt":"c","id_rsa":"r","id_rsa.pub":"p","ID_ED25519":"e"}}`,
 	} {
 		f.Add(s)
 	}
@@ -69,12 +74,26 @@ func FuzzRedactSecrets(f *testing.F) {
 		var walk func(any)
 		walk = func(x any) {
 			switch t2 := x.(type) {
+			case string:
+				// A string that is a JSON object or array is part of
+				// the result (B12-3).
+				var inner any
+				if json.Unmarshal([]byte(t2), &inner) == nil {
+					switch inner.(type) {
+					case map[string]any, []any:
+						walk(inner)
+					}
+				}
 			case map[string]any:
-				// A name/value pair named as a credential key: the
-				// value is masked as one.
-				for _, f := range pairNames {
-					if name, ok := t2[f].(string); ok && secretKey(name) {
-						allMasked(name, t2[pairValue])
+				// A name/value pair named as a credential key, its
+				// fields in any case (B12-2): the value is masked as one.
+				for f, n := range t2 {
+					if name, ok := n.(string); ok && slices.Contains(pairNames, normKey(f)) && secretKey(name) {
+						for k, y := range t2 {
+							if normKey(k) == pairValue {
+								allMasked(name, y)
+							}
+						}
 					}
 				}
 				for k, y := range t2 {
@@ -89,6 +108,11 @@ func FuzzRedactSecrets(f *testing.F) {
 					walk(y)
 				}
 			}
+		}
+		// The masking's own redacted lists paths, and a path is a key's
+		// name, not a value: it is not looked into.
+		if m, ok := v.(map[string]any); ok && out != in {
+			delete(m, "redacted")
 		}
 		walk(v)
 	})
