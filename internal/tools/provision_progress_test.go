@@ -7,6 +7,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"regexp"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 
 // progressCloud answers the polls of the new VM with states in turn (the
 // last one then forever); onPoll runs at every poll (a Ctrl-C mid-wait).
+// fields are the metadata fields of its image (none by default).
 type progressCloud struct {
 	cancelCloud
 	mu       sync.Mutex
@@ -34,6 +36,11 @@ type progressCloud struct {
 	polls    int
 	onPoll   func(n int)
 	rulesAdd int
+	fields   []provision.ImageMetadataField
+}
+
+func (c *progressCloud) GetImage(context.Context, string) (*provision.ImageDetail, error) {
+	return &provision.ImageDetail{ID: "img-1", Name: "ubuntu", MetadataFields: c.fields}, nil
 }
 
 func (c *progressCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
@@ -71,6 +78,14 @@ func provisionRun(t *testing.T, ctx context.Context, cloud *progressCloud, watch
 	args map[string]any) (string, bool, string, string) {
 	t.Helper()
 	dir := t.TempDir()
+	text, isErr, seen := provisionRunIn(t, ctx, dir, cloud, watched, mode, timeout, args)
+	return text, isErr, seen, dir
+}
+
+// provisionRunIn is provisionRun in the project directory dir.
+func provisionRunIn(t *testing.T, ctx context.Context, dir string, cloud *progressCloud, watched bool, mode output.Mode, timeout time.Duration,
+	args map[string]any) (string, bool, string) {
+	t.Helper()
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
@@ -94,7 +109,7 @@ func provisionRun(t *testing.T, ctx context.Context, cloud *progressCloud, watch
 		call[k] = v
 	}
 	text, isErr := r.handlers["provision"](ctx, call)
-	return text, isErr, seen.String(), dir
+	return text, isErr, seen.String()
 }
 
 // Без терминала: этапы по порядку, отдельными строками, без \r; итог —
@@ -208,12 +223,22 @@ func TestProvisionProgress_LiveLineClosedOnEveryExit(t *testing.T) {
 			if quiet != "" {
 				t.Errorf("MCP printed progress: %q", quiet)
 			}
-			if mcp != text || mcpErr != isErr {
+			if mcp = inDir(mcp, mcpDir, dir); mcp != text || mcpErr != isErr {
 				t.Errorf("the answer differs from MCP's:\nCLI %s\nMCP %s", text, mcp)
 			}
 			stateHasVM(t, mcpDir, "vm-made")
 		})
 	}
+}
+
+// inDir puts the project directory dir in place of other in an answer
+// (state_dir): two runs compared have a directory each.
+func inDir(text, other, dir string) string {
+	q := func(s string) string {
+		b, _ := json.Marshal(s)
+		return string(b[1 : len(b)-1])
+	}
+	return strings.ReplaceAll(text, q(other), q(dir))
 }
 
 // --json: the progress printer is quiet (no line, no erase), as deploy's.

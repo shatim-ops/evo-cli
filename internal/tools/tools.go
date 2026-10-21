@@ -56,10 +56,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "provision",
-			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. A subnet and a security group are attached automatically. " +
-				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works, Astra Linux, Alt and RED OS included; a shared-catalogue image the project cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
-				"evo fills the image's metadata fields (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else the call is refused before anything is created. " +
+			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. A subnet and a security group are attached. " +
+				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works (Astra Linux, Alt, RED OS too); one it cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
+				"evo fills image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else refused before anything is created. " +
 				"No image or zone: refused before the preview ('missing' names it). " +
+				"Returns ssh (deploy-key login), password (generated; this answer only), state_dir (key, state). " +
 				"For docker-compose use 'deploy'.",
 			InputSchema: objSchema(map[string]any{
 				"name":       strProp("VM name (e.g. 'hermes-agent')."),
@@ -1827,12 +1828,19 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// status flags vmm_enabled / guest_agent_ready are never sent.
 	// Explicit values (image_metadata, --meta) win; a mandatory field nobody
 	// filled refuses the call here, before the boot FIP and the VM.
+	// password is the one evo generates for the image's password fields
+	// (none when image_metadata gives one): kept nowhere, it goes out once,
+	// in the answer — before, it was lost (dogfood 1.2.1).
+	var password string
 	imgMeta, filled, err := images.FillMetadata(imgDetail.MetadataFields, images.Inputs{
-		PublicKey:   strings.TrimSpace(eng.SSHPubKey),
-		Hostname:    vmName,
-		Login:       "user1",
-		GenPassword: func() string { return genPassword(16) },
-		Values:      metaValues,
+		PublicKey: strings.TrimSpace(eng.SSHPubKey),
+		Hostname:  vmName,
+		Login:     "user1",
+		GenPassword: func() string {
+			password = genPassword(16)
+			return password
+		},
+		Values: metaValues,
 	})
 	if err != nil {
 		return errResult(err), true
@@ -2093,8 +2101,14 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
 			pp.Hint(vmLeftNote(vm.ID, "") + i18n.T("; to wait longer next time: CLOUDRU_TIMEOUT (seconds)", "; ждать дольше: CLOUDRU_TIMEOUT (в секундах)"))
+			fields := map[string]any{"status": "timeout", "vm_id": vm.ID}
+			// The VM may still come up, with this password only (as
+			// deploy_apply's timeout).
+			if password != "" {
+				fields["password"] = password
+			}
 			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s); to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
-				map[string]any{"status": "timeout", "vm_id": vm.ID}), true
+				fields), true
 		case <-wait.C():
 			wait.Show()
 		case <-ticker.C:
@@ -2146,7 +2160,17 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 						map[string]any{"vm_id": vm.ID, "vm_ip": publicIP}), true
 				}
 
-				msg := fmt.Sprintf("VM %s is active at %s. SSH: ssh %s@%s", vm.ID, publicIP, sshUser, publicIP)
+				// The VM got the agent's deploy key: the ssh command
+				// uses it and the project's known_hosts, as deploy_apply's
+				// (deployKeySSH). With a key of the caller's, or none,
+				// plain ssh is theirs to make work.
+				deployKey := publicIP != "" && filled.KeyUsed
+				sshCmd := fmt.Sprintf("ssh %s@%s", sshUser, publicIP)
+				sshWarning := ""
+				if deployKey {
+					sshCmd, sshWarning = deployKeySSH(eng.StateDir, sshUser, publicIP, "")
+				}
+				msg := fmt.Sprintf("VM %s is active at %s. SSH: %s%s", vm.ID, publicIP, sshCmd, sshWarning)
 				if noPublicIP {
 					msg = fmt.Sprintf("VM %s is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC.", vm.ID)
 				}
@@ -2159,7 +2183,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					"flavor":   flavorID,
 					"region":   region,
 					"disk_gb":  diskSize,
-					"message":  msg,
+					// The deploy key and the state of the VM: status and
+					// destroy find it only from the directory evo ran in.
+					"state_dir": config.DataDir(eng.StateDir),
+				}
+				if deployKey {
+					res["ssh"] = sshCmd
 				}
 				if len(netWarnings) > 0 {
 					res["warnings"] = netWarnings
@@ -2168,8 +2197,13 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					res["ports"] = opened
 				}
 				if portsNote != "" {
-					res["message"] = msg + " Ports: " + portsNote + "."
+					msg += " Ports: " + portsNote + "."
 				}
+				if password != "" {
+					res["password"] = password
+					msg += passwordOnce
+				}
+				res["message"] = msg
 				if diskNote != "" {
 					res["warning"] = diskNote
 				}
@@ -2184,7 +2218,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					}
 					res["warning"] = note
 				}
-				pp.Success(vmReadyText(vmName, firstNonEmptyStr(zoneName, region), publicIP, sshUser, time.Since(started)))
+				pp.Success(vmReadyText(vmName, firstNonEmptyStr(zoneName, region), publicIP, sshCmd, time.Since(started)))
 				return toJSON(res), false
 			}
 			wait.State(updated.Status)
@@ -2225,15 +2259,19 @@ func vmLeftNote(vmID, failed string) string {
 }
 
 // vmReadyText is the last line of evo vm create: the VM, its zone, its
-// address, how long it took and how to log in.
-func vmReadyText(name, zone, ip, sshUser string, took time.Duration) string {
+// address, how long it took and how to log in (ssh, the answer's command).
+func vmReadyText(name, zone, ip, ssh string, took time.Duration) string {
 	if ip == "" {
 		return i18n.Tf("VM %s is ready: zone %s, no public IP, %s.", "ВМ %s готова: зона %s, без внешнего IP, %s.",
 			name, zone, engine.ElapsedText(took))
 	}
-	return i18n.Tf("VM %s is ready: zone %s, IP %s, %s. SSH: ssh %s@%s", "ВМ %s готова: зона %s, IP %s, %s. SSH: ssh %s@%s",
-		name, zone, ip, engine.ElapsedText(took), sshUser, ip)
+	return i18n.Tf("VM %s is ready: zone %s, IP %s, %s. SSH: %s", "ВМ %s готова: зона %s, IP %s, %s. SSH: %s",
+		name, zone, ip, engine.ElapsedText(took), ssh)
 }
+
+// passwordOnce is the sentence of a provision answer that carries the
+// password evo generated for the image: no copy of it is kept.
+const passwordOnce = " The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
 
 // handleStatus is the answer of 'evo status --json', which it prints: the
 // local record, what the cloud said about its VM and, when the cloud
@@ -2844,6 +2882,9 @@ func provisionNoPublicIP(res map[string]any, vmID, fipID string, fipErr error) s
 	res["vm_ip"] = ""
 	res["floating_ip_id"] = fipID
 	res["message"] = fmt.Sprintf("VM %s is active and billed, but it has no public IP: attaching one failed, so it cannot be reached by SSH from outside.%s", vmID, fipNote)
+	if _, ok := res["password"]; ok {
+		res["message"] = res["message"].(string) + passwordOnce
+	}
 	return errAnswer(clierrors.Wrap(code,
 		fmt.Sprintf("VM %s is active, but its public IP was not attached (%v)", vmID, fipErr),
 		fmt.Sprintf("Attach a free address with fip_attach (vm %s; addresses from list_floating_ips), or delete the VM with destroy vm_id=%s.", vmID, vmID),

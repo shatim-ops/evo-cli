@@ -44,7 +44,7 @@ type SecretField struct {
 // masked; on a shared server a leak costs more than a mask too many, so the
 // exceptions are a closed list of their own (HTTPNonSecretFields).
 var HTTPSecretFields = []SecretField{
-	{Name: "password", Where: "deploy_apply (the generated VM password, shown once); users and clusters from pg_*, redis_*, kafka_* if the API sends them; image metadata (admin_password, linux_password)"},
+	{Name: "password", Where: "deploy_apply and provision (the generated VM password, shown once); users and clusters from pg_*, redis_*, kafka_* if the API sends them; image metadata (admin_password, linux_password)"},
 	{Name: "passwd", Where: "the same, spelled passwd"},
 	{Name: "secret", Where: "an access key's secret, a shared secret in a cloud object"},
 	{Name: "client_secret", Where: "the OIDC client secret (mk8s token exchange)"},

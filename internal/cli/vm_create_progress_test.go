@@ -23,8 +23,10 @@ var vmCreateArgs = []string{"vm", "create", "web", "--image", "opensearchdashboa
 	"--no-public-ip", "--port", "80"}
 
 // toolAnswer is provision's answer to the same arguments, called as MCP
-// calls it (no Caller).
-func toolAnswer(t *testing.T) string {
+// calls it (no Caller). Every create makes a password of its own: the
+// answer gets the one of the command's create (the first), so that the
+// two compare byte for byte.
+func toolAnswer(t *testing.T, cloud *vmCreateCloud) string {
 	t.Helper()
 	tl, _ := newRegistry().Lookup("provision")
 	text, isErr := tl.Handler(context.Background(), map[string]any{"name": "web", "image": "opensearchdashboards",
@@ -32,18 +34,22 @@ func toolAnswer(t *testing.T) string {
 	if isErr {
 		t.Fatalf("tool: %s", text)
 	}
-	return text
+	first, last := cloud.creates[0].ImageMetadata["linux_password"], cloud.creates[len(cloud.creates)-1].ImageMetadata["linux_password"]
+	if first == "" || !strings.Contains(text, last) {
+		t.Fatalf("no generated password in the tool's answer (%q, %q):\n%s", first, last, text)
+	}
+	return strings.Replace(text, last, first, 1)
 }
 
 func TestVMCreate_JSONStdoutIsToolAnswerProgressNowhere(t *testing.T) {
 	russian(t)
 	setupCLI(t)
-	withVMCreateCloud(t)
+	cloud := withVMCreateCloud(t)
 	code, out, errOut := runCLI(t, "", append([]string{"--json", "--yes"}, vmCreateArgs...)...)
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s\n%s", code, out, errOut)
 	}
-	if want := toolAnswer(t) + "\n"; out != want {
+	if want := toolAnswer(t, cloud) + "\n"; out != want {
 		t.Errorf("stdout is not the tool's answer:\n got %q\nwant %q", out, want)
 	}
 	// --json: no progress at all, as deploy --json; stderr holds JSON lines
@@ -61,7 +67,7 @@ func TestVMCreate_JSONStdoutIsToolAnswerProgressNowhere(t *testing.T) {
 func TestVMCreate_TextStagesOnStderrTableOnStdout(t *testing.T) {
 	russian(t)
 	setupCLI(t)
-	withVMCreateCloud(t)
+	cloud := withVMCreateCloud(t)
 	code, out, errOut := runCLI(t, "", append([]string{"--yes"}, vmCreateArgs...)...)
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s\n%s", code, out, errOut)
@@ -76,7 +82,7 @@ func TestVMCreate_TextStagesOnStderrTableOnStdout(t *testing.T) {
 		}
 	}
 	var want, discard bytes.Buffer
-	if err := c.show(output.NewWithWriters(&want, &discard, output.ModePlain, false), &want, toolAnswer(t)); err != nil {
+	if err := c.show(output.NewWithWriters(&want, &discard, output.ModePlain, false), &want, toolAnswer(t, cloud)); err != nil {
 		t.Fatal(err)
 	}
 	if out != want.String() {
