@@ -43,6 +43,7 @@ bad() {
 	failed=1
 }
 warn() { row "$1" warn "${2:-}"; }
+skip() { row "$1" skip "${2:-}"; }
 # j — jq для подстановок: ответ не JSON (или пустой) не обрывает скрипт.
 j() { jq "$@" 2>/dev/null || true; }
 
@@ -262,6 +263,61 @@ if [ "$n" = "$ntools" ]; then ok "http: tools/list" "инструментов: $
 
 call 18080 "$sa" vm_list '{}' >"$tmp/r"
 if [ "$(j '.result.isError' "$tmp/r")" = false ]; then ok "http: vm_list в разрешённом проекте" ""; else bad "http: vm_list в разрешённом проекте" "$(j -r '.result.content[0].text | fromjson? | .reason // "-"' "$tmp/r")"; fi
+
+# Свой ресурс по id на сервере с --allow-project (REL12-3): перед вызовом
+# сервер читает ресурс и сравнивает его проект (поле project_id или
+# projectId ответа API) со списком флага. Имена полей взяты из
+# спецификаций; если живой ответ их не содержит, *_get своего ресурса
+# получит отказ («names no project») — здесь, а не у пользователя. Берётся
+# первый ресурс из *_list проекта; пустой список — skip. Печатаются только
+# имена инструментов и reason, ни одного id.
+treason() { j -r '.result.content[0].text | fromjson? | .reason // "-"' "$tmp/r"; }
+# firstid [ПОЛЕ] — поле (по умолчанию id) первого элемента первого
+# непустого массива в ответе инструмента.
+# shellcheck disable=SC2016 # $f — переменная jq, не shell
+firstid() { j -r --arg f "${1:-id}" '.result.content[0].text | fromjson? | [.[]? | arrays | .[]? | objects | .[$f]? // empty | strings] | first // empty' "$tmp/r"; }
+# owned ИНСТРУМЕНТ АРГУМЕНТ ID [ЛИШНЕЕ] — вызов *_get своего ресурса.
+owned() {
+	call 18080 "$sa" "$1" "{\"$2\":\"$3\"${4:-}}" >"$tmp/r"
+	if [ "$(j '.result.isError' "$tmp/r")" = false ]; then
+		ok "http: $1 своего ресурса" "проект ресурса разрешён"
+	else
+		bad "http: $1 своего ресурса" "reason $(treason)"
+	fi
+}
+# listed СПИСОК АРГУМЕНТЫ — первый id из списка в $rid; пустой — skip,
+# список недоступен (сервиса нет в проекте) — warn.
+listed() {
+	rid=
+	call 18080 "$sa" "$1" "$2" >"$tmp/r"
+	if [ "$(j '.result.isError' "$tmp/r")" != false ]; then
+		warn "http: $1 → *_get своего ресурса" "$1: reason $(treason)"
+		return 1
+	fi
+	rid=$(firstid)
+	if [ -z "$rid" ]; then
+		skip "http: $1 → *_get своего ресурса" "skip (no resources)"
+		return 1
+	fi
+}
+for pair in pg_list:pg_get:id k8s_list:k8s_get:cluster_id vpc_list:vpc_get:id cert_list:cert_get:id lb_list:lb_get:id tg_list:tg_get:id; do
+	IFS=: read -r list get arg <<<"$pair"
+	if listed "$list" '{}'; then owned "$get" "$arg" "$rid"; fi
+done
+# Образ по UUID: свой (private) — проверка поля project_id; без своих —
+# первый из каталога (ветка общего образа).
+call 18080 "$sa" image_list '{"type":"private"}' >"$tmp/r"
+rid=$(firstid)
+if [ -n "$rid" ] || listed image_list '{}'; then owned image_get image_id "$rid"; fi
+# Зона DNS и её запись: видимость — из dns_zones.
+if listed dns_zones '{}'; then
+	zone=$rid
+	vis=$(firstid visibility)
+	owned dns_zone_get id "$zone" ",\"type\":\"$vis\""
+	if listed dns_records "{\"zone_id\":\"$zone\",\"type\":\"$vis\"}"; then
+		owned dns_record_get record_id "$rid" ",\"type\":\"$vis\""
+	fi
+fi
 
 call 18080 "$sa" k8s_kubeconfig '{"cluster_id":"00000000-0000-4000-8000-000000000000"}' >"$tmp/r"
 if [ "$(j '.result.isError' "$tmp/r")" = true ] && jq -r '.result.content[0].text' "$tmp/r" | grep -qi 'allow-secret-export'; then

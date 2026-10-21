@@ -837,6 +837,17 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 		if err := s.checkJobProject(job); err != nil {
 			return nil, err
 		}
+		// The operations of a job of the server's project (checkJobProject)
+		// were started by evo's own create calls there, maybe before this
+		// server did: a bound registry polls them as its own
+		// (kindOperation). A job without a project proves nothing.
+		if s.projectBound && job.ProjectID != "" {
+			for _, st := range job.Steps {
+				if st.OpID != "" && st.PollTool != "" {
+					s.ops.remember(groupOf(st.PollTool), st.OpID)
+				}
+			}
+		}
 		s.advance(ctx, job)
 		if e := job.Save(); e != nil {
 			return nil, fmt.Errorf("persist job: %w", e)
