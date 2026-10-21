@@ -158,46 +158,13 @@ func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string
 		return errResult(err), true
 	}
 
-	var total, totalNDS float64
-	bySvc := map[string]float64{}
-	for _, it := range items {
-		amt := billNum(it, "amount")
-		amtNDS := billNum(it, "amount_nds")
-		total += amt
-		totalNDS += amtNDS
-		key := billStr(it, "servname", "servicename", "service")
-		if rn := billStr(it, "resource_name", "resourcename"); rn != "" {
-			key = key + " " + rn
-		}
-		if key == "" {
-			key = "Unknown"
-		}
-		bySvc[key] += amt
-	}
-
-	// Sort service breakdown by cost descending.
-	type svcCost struct {
-		Service string  `json:"service"`
-		Cost    float64 `json:"cost"`
-	}
-	breakdown := make([]svcCost, 0, len(bySvc))
-	for k, v := range bySvc {
-		breakdown = append(breakdown, svcCost{Service: k, Cost: v})
-	}
-	sort.Slice(breakdown, func(i, j int) bool { return breakdown[i].Cost > breakdown[j].Cost })
-
-	// Cap the breakdown so a 30+-service array can't overflow the agent's
-	// trajectory (OpenClaw trajectory-array-size-limit → non_deliverable turn).
-	svcTrunc := 0
-	if len(breakdown) > maxBreakdown {
-		svcTrunc = len(breakdown) - maxBreakdown
-		breakdown = breakdown[:maxBreakdown]
-	}
+	total, bySvc := aggregateConsumption(items)
+	breakdown, svcTrunc := serviceBreakdown(bySvc)
 	out := map[string]any{
 		"period":         map[string]string{"start": start, "end": end},
 		"currency":       "RUB",
-		"total":          total,
-		"total_with_nds": totalNDS,
+		"total":          total.cost,
+		"total_with_nds": total.withNDS,
 		"records":        len(items),
 		"by_service":     breakdown,
 		"vat":            consumptionVAT,
@@ -208,7 +175,7 @@ func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string
 	}
 	// When totals are zero but items exist, surface a sample item's keys so the
 	// operator can see which field names the tenant actually uses (no guessing).
-	if total == 0 && len(items) > 0 {
+	if total.cost == 0 && len(items) > 0 {
 		keys := make([]string, 0, len(items[0]))
 		for k := range items[0] {
 			keys = append(keys, k)
@@ -222,21 +189,28 @@ func (s *Registry) handleBillingConsumption(ctx context.Context, args map[string
 
 // consumptionVAT says which sums of the answer include VAT.
 var consumptionVAT = map[string]string{
-	"total":          "excluding VAT: sum of amount",
-	"total_with_nds": "including VAT: sum of amount_nds",
-	"by_service":     "excluding VAT: amount",
+	"total":                    "excluding VAT: sum of amount",
+	"total_with_nds":           "including VAT: sum of amount_nds",
+	"by_service":               "excluding VAT: amount",
+	"by_service.cost_with_nds": "including VAT: amount_nds",
 }
 
-// aggregateConsumption sums the cost of the rows, `amount` (excluding VAT),
-// grouped by service+resource. It summed `cost` first, as the ported
-// finops_report.py did; the spec calls `cost` the tariff of the service, the
-// price of a unit, and `amount` the cost of the row.
-func aggregateConsumption(items []map[string]any) (float64, map[string]float64) {
-	total := 0.0
-	bySvc := map[string]float64{}
+// billSum is a sum of consumption rows: cost excluding VAT (amount) and
+// including it (amount_nds).
+type billSum struct{ cost, withNDS float64 }
+
+// aggregateConsumption sums the cost of the rows, `amount` (excluding VAT)
+// and `amount_nds` (including it), in total and grouped by
+// service+resource. It summed `cost` first, as the ported finops_report.py
+// did; the spec calls `cost` the tariff of the service, the price of a unit,
+// and `amount` the cost of the row.
+func aggregateConsumption(items []map[string]any) (billSum, map[string]billSum) {
+	var total billSum
+	bySvc := map[string]billSum{}
 	for _, it := range items {
-		c := billNum(it, "amount")
-		total += c
+		row := billSum{billNum(it, "amount"), billNum(it, "amount_nds")}
+		total.cost += row.cost
+		total.withNDS += row.withNDS
 		key := billStr(it, "servname", "servicename", "service")
 		if rn := billStr(it, "resource_name", "resourcename"); rn != "" {
 			key = key + " " + rn
@@ -244,9 +218,36 @@ func aggregateConsumption(items []map[string]any) (float64, map[string]float64) 
 		if key == "" {
 			key = "Unknown"
 		}
-		bySvc[key] += c
+		s := bySvc[key]
+		s.cost += row.cost
+		s.withNDS += row.withNDS
+		bySvc[key] = s
 	}
 	return total, bySvc
+}
+
+// svcCost is a row of by_service: the cost of a service+resource over the
+// period, excluding VAT (cost) and including it (cost_with_nds).
+type svcCost struct {
+	Service     string  `json:"service"`
+	Cost        float64 `json:"cost"`
+	CostWithNDS float64 `json:"cost_with_nds"`
+}
+
+// serviceBreakdown is by_service: the services by cost excluding VAT,
+// descending, at most maxBreakdown, and how many were cut off. The cap keeps
+// a 30+-service array from overflowing the agent's trajectory (OpenClaw
+// trajectory-array-size-limit → non_deliverable turn).
+func serviceBreakdown(bySvc map[string]billSum) ([]svcCost, int) {
+	breakdown := make([]svcCost, 0, len(bySvc))
+	for k, v := range bySvc {
+		breakdown = append(breakdown, svcCost{Service: k, Cost: v.cost, CostWithNDS: v.withNDS})
+	}
+	sort.Slice(breakdown, func(i, j int) bool { return breakdown[i].Cost > breakdown[j].Cost })
+	if len(breakdown) > maxBreakdown {
+		return breakdown[:maxBreakdown], len(breakdown) - maxBreakdown
+	}
+	return breakdown, 0
 }
 
 // handleBillingFinops ports finops_report.py: INFORM (cost allocation by service,
@@ -311,7 +312,7 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	balance := billNum(bal, "balance")
 	active, _ := bal["active"].(bool)
 
-	daily := total / float64(periodDays)
+	daily := total.cost / float64(periodDays)
 	// The balance is the agreement's: against the burn of one project
 	// (project_id with an agreement) the runway would be too long.
 	var runway float64
@@ -330,42 +331,32 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	}
 	_, bySvcPrev := aggregateConsumption(prevCons)
 
+	// The growth is found by the sums excluding VAT, as before; each row
+	// carries the sums including VAT too.
 	type anomaly struct {
-		Service  string   `json:"service"`
-		Prev     float64  `json:"prev"`
-		Now      float64  `json:"now"`
-		DeltaPct *float64 `json:"delta_pct"`
+		Service     string   `json:"service"`
+		Prev        float64  `json:"prev"`
+		Now         float64  `json:"now"`
+		DeltaPct    *float64 `json:"delta_pct"`
+		PrevWithNDS float64  `json:"prev_with_nds"`
+		NowWithNDS  float64  `json:"now_with_nds"`
 	}
 	var anomalies []anomaly
-	for svc, c := range bySvc {
-		p := bySvcPrev[svc]
+	for svc, cur := range bySvc {
+		c, p := cur.cost, bySvcPrev[svc].cost
 		if p > 0 && c > p*1.5 && (c-p) > 1 {
 			d := (c - p) / p * 100
-			anomalies = append(anomalies, anomaly{Service: svc, Prev: p, Now: c, DeltaPct: &d})
+			anomalies = append(anomalies, anomaly{Service: svc, Prev: p, Now: c, DeltaPct: &d, PrevWithNDS: bySvcPrev[svc].withNDS, NowWithNDS: cur.withNDS})
 		} else if p == 0 && c > 1 {
-			anomalies = append(anomalies, anomaly{Service: svc, Prev: 0, Now: c, DeltaPct: nil})
+			anomalies = append(anomalies, anomaly{Service: svc, Prev: 0, Now: c, DeltaPct: nil, PrevWithNDS: bySvcPrev[svc].withNDS, NowWithNDS: cur.withNDS})
 		}
 	}
 	sort.Slice(anomalies, func(i, j int) bool { return anomalies[i].Now > anomalies[j].Now })
 
-	// Service breakdown sorted desc.
-	type svcCost struct {
-		Service string  `json:"service"`
-		Cost    float64 `json:"cost"`
-	}
-	breakdown := make([]svcCost, 0, len(bySvc))
-	for k, v := range bySvc {
-		breakdown = append(breakdown, svcCost{Service: k, Cost: v})
-	}
-	sort.Slice(breakdown, func(i, j int) bool { return breakdown[i].Cost > breakdown[j].Cost })
-
-	// Cap arrays so a 30+-service breakdown / long anomaly list can't overflow
-	// the agent trajectory (trajectory-array-size-limit → non-deliverable turn).
-	svcTrunc, anomTrunc := 0, 0
-	if len(breakdown) > maxBreakdown {
-		svcTrunc = len(breakdown) - maxBreakdown
-		breakdown = breakdown[:maxBreakdown]
-	}
+	breakdown, svcTrunc := serviceBreakdown(bySvc)
+	// Cap the anomalies as by_service: a long list can't overflow the agent
+	// trajectory (trajectory-array-size-limit → non-deliverable turn).
+	anomTrunc := 0
 	if len(anomalies) > maxBreakdown {
 		anomTrunc = len(anomalies) - maxBreakdown
 		anomalies = anomalies[:maxBreakdown]
@@ -377,14 +368,27 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 		"currency":    "RUB",
 		"balance":     balance,
 		"active":      active,
-		"total_cost":  total,
+		"total_cost":  total.cost,
 		"daily_burn":  daily,
-		"by_service":  breakdown,
-		"anomalies":   anomalies,
-		"line_items":  len(cons),
+		// The sums including VAT (owner's decision 21.10); the runway and
+		// the budget stay on the sums excluding it until a live probe tells
+		// whether the balance is charged with VAT.
+		"total_cost_with_nds": total.withNDS,
+		"daily_burn_with_nds": total.withNDS / float64(periodDays),
+		"by_service":          breakdown,
+		"anomalies":           anomalies,
+		"line_items":          len(cons),
 	}
 	billingScope(out, cli)
-	out["vat"] = map[string]string{"total_cost": "excluding VAT: sum of amount", "by_service": "excluding VAT: amount"}
+	out["vat"] = map[string]string{
+		"total_cost":               "excluding VAT: sum of amount",
+		"by_service":               "excluding VAT: amount",
+		"total_cost_with_nds":      "including VAT: sum of amount_nds",
+		"daily_burn_with_nds":      "including VAT: total_cost_with_nds per day",
+		"by_service.cost_with_nds": "including VAT: amount_nds",
+		"anomalies.now_with_nds":   "including VAT: amount_nds; the growth is found by the sums excluding VAT",
+		"anomalies.prev_with_nds":  "including VAT: amount_nds of the previous period",
+	}
 	if balErr != nil {
 		out["balance"], out["active"] = nil, nil
 		if cli.AgreementID() == "" {

@@ -58,7 +58,7 @@ type renderFunc func(p *output.Printer, w io.Writer, text string) error
 
 // treeRenders is the closed set of views a CLISpec.Render may name (vm
 // create, image list, image get, the Marketplace showcase, k8s addons, ca
-// logs, metrics scrape); --json still prints the tool's answer as is.
+// logs, metrics scrape, org projects, the billing reports); --json still prints the tool's answer as is.
 var treeRenders = map[string]renderFunc{
 	"vm-created":       renderVMCreated,
 	"image-list":       renderImageList,
@@ -69,6 +69,9 @@ var treeRenders = map[string]renderFunc{
 	"log-lines":        renderLogLines,
 	"exposition":       renderExposition,
 	"project-list":     renderProjectList,
+	"billing-balance":  renderBillingBalance,
+	"billing-usage":    renderBillingConsumption,
+	"billing-finops":   renderBillingFinops,
 }
 
 // treeGroupShort is the English summary of each tree (treeGroupShortRU is

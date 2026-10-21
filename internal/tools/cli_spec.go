@@ -237,9 +237,9 @@ var cliSpecs = map[string]CLISpec{
 	// what is read, not the project of the configuration: its flag is
 	// --project-id of the command, which shadows the root one (as deploy's
 	// does), so that 'evo org quotas --project-id X' passes X to the tool.
-	"billing_balance":      {Group: "billing", Verb: "balance"},
-	"billing_consumption":  {Group: "billing", Verb: "consumption", Rename: map[string]string{"project_id": "project-id"}},
-	"billing_finops":       {Group: "billing", Verb: "finops", Rename: map[string]string{"project_id": "project-id"}},
+	"billing_balance":      {Group: "billing", Verb: "balance", Render: "billing-balance"},
+	"billing_consumption":  {Group: "billing", Verb: "consumption", Rename: map[string]string{"project_id": "project-id"}, Render: "billing-usage"},
+	"billing_finops":       {Group: "billing", Verb: "finops", Rename: map[string]string{"project_id": "project-id"}, Render: "billing-finops"},
 	"audit_events":         {Group: "audit", Verb: "events"},
 	"org_quotas":           {Group: "org", Verb: "quotas", Rename: map[string]string{"project_id": "project-id"}},
 	"iam_service_accounts": {Group: "iam", Verb: "service-accounts", Rename: map[string]string{"project_id": "project-id"}},
