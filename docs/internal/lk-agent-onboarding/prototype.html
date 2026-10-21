@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Агенты в ЛК Cloud.ru — прототип</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Токены — Snack UIKit (@snack-uikit/figma-tokens 19.0.5, тема brand). */
+:root{
+  --p-bg:#f1f9f4; --p-bg1:#f5fdf8; --p-decor:#caeadb; --p-decor-h:#b3deca; --p-text:#1b5840; --p-text-s:#358561; --p-accent:#389f74; --p-accent-h:#37946e; --p-on:#fbfffc;
+  --n-bg:#eeeff3; --n-bg1:#fdfdfd; --n-bg2:#ffffff; --n-decor:#dde0ea; --n-decor-h:#cfd2dc; --n-decor-a:#b6bac7; --n-text:#41424e; --n-text-s:#6d707f; --n-text-l:#8b8e9b; --n-text-d:#aaaebd;
+  --v-bg:#f9f5ff; --v-decor:#e6dcf3; --v-decor-h:#e1d0f7; --v-text:#59446a; --v-text-s:#8c639b; --v-accent:#aa6cc1; --v-accent-h:#9a66ae; --v-on:#fdfdfd;
+  --b-bg:#eef8ff; --b-decor:#d6e2f4; --b-text:#2b537e; --b-accent:#5388d1;
+  --r-bg:#fdf1ef; --r-decor:#fdd6cd; --r-text:#7a2d2d; --r-text-s:#ae514c; --r-accent:#cb3f3e;
+  --g-bg:#f1fbee; --g-decor:#d2ead0; --g-text:#3d6035; --g-accent:#57b762;
+  --y-bg:#fef7e1; --y-decor:#f0dfb1; --y-text:#815f19;
+  --o-accent:#fb8e42;
+  --page:#f4f5f8; --hero:#3a3b45; --code-bg:#24242e; --code-text:#e6e8ef;
+  --sh1:0 0 4px 0 #0000000a,0 2px 4px 0 #0000000a; --sh3:0 0 8px 0 #00000014,0 8px 16px 0 #00000014; --sh5:0 0 16px 0 #00000014,0 24px 16px 0 #00000014;
+  --font:"SB Sans Interface","Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"SB Sans Mono","JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+:root[data-theme="dark"]{
+  --p-bg:#1b2422; --p-bg1:#1b2924; --p-decor:#184a37; --p-decor-h:#1b5840; --p-text:#e4f3eb; --p-text-s:#84c4a5; --p-accent:#6aaf90; --p-accent-h:#389f74; --p-on:#1b2924;
+  --n-bg:#1c1c24; --n-bg1:#242430; --n-bg2:#2a2a36; --n-decor:#393a46; --n-decor-h:#41424e; --n-decor-a:#565866; --n-text:#e6e8ef; --n-text-s:#aaaebd; --n-text-l:#8b8e9b; --n-text-d:#656774;
+  --v-bg:#231e2c; --v-decor:#4c3d5f; --v-decor-h:#59446a; --v-text:#f4effd; --v-text-s:#c5a5e4; --v-accent:#b68bd5; --v-accent-h:#aa6cc1; --v-on:#2b2535;
+  --b-bg:#1e222b; --b-decor:#25466b; --b-text:#e6f0fd; --b-accent:#749eda;
+  --r-bg:#292020; --r-decor:#6a2729; --r-text:#fee8e3; --r-text-s:#ee9285; --r-accent:#e7756a;
+  --g-bg:#1e211e; --g-decor:#37502e; --g-text:#e3f6e1; --g-accent:#69b56f;
+  --y-bg:#29221c; --y-decor:#71521a; --y-text:#fcf0cc;
+  --page:#1c1c24; --hero:#2f303b; --code-bg:#15151c;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--n-text);font:13px/18px var(--font);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:var(--p-text-s);text-decoration:none}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.mono{font-family:var(--mono)}
+
+/* ---------- панель прототипа (не часть ЛК) ---------- */
+.pbar{position:sticky;top:0;z-index:50;height:44px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#15151c;color:#e6e8ef;font-size:12px}
+.pbar b{font-weight:600;white-space:nowrap}
+.pbar .sep{width:1px;height:20px;background:#393a46}
+.pbar select,.pbar button{background:#2a2a36;border:1px solid #393a46;color:#e6e8ef;border-radius:4px;height:28px;padding:0 8px;font-size:12px}
+.pbar select{max-width:340px}
+.pbar button.on{background:var(--o-accent);border-color:var(--o-accent);color:#2a1a0c}
+.pbar .grow{flex:1}
+.pbar .hint{color:#8b8e9b;white-space:nowrap}
+@media (max-width:900px){.pbar .hint,.pbar .lbl{display:none}}
+
+/* ---------- каркас ЛК ---------- */
+.shell{display:flex;min-height:calc(100vh - 44px)}
+.lk{flex:1;min-width:0;position:relative}
+.notes{width:340px;flex:none;background:var(--n-bg2);border-left:1px solid var(--n-decor);padding:16px 16px 40px;position:sticky;top:44px;height:calc(100vh - 44px);overflow:auto}
+body.no-anno .notes,body.no-anno .mk{display:none}
+.hdr{height:40px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--n-bg2);border-bottom:1px solid var(--n-decor);position:relative;z-index:5}
+.hdr .ib{width:28px;height:28px;display:grid;place-items:center;border-radius:4px;border:0;background:transparent;color:var(--n-text-s);position:relative}
+.hdr .ib:hover{background:var(--n-bg)}
+.logo{width:20px;height:20px;border-radius:5px;background:var(--p-accent);display:grid;place-items:center}
+.logo i{width:8px;height:12px;border:2.5px solid #fff;border-right:0;border-radius:6px 0 0 6px;display:block}
+.prj{display:flex;align-items:center;gap:18px;padding:0 8px;height:32px;border-radius:4px;border:0;background:transparent;text-align:left}
+.prj:hover{background:var(--n-bg)}
+.prj small{display:block;color:var(--n-text-l);font-size:10px;line-height:12px}
+.prj span{font-size:12px;line-height:14px}
+.vsep{width:1px;height:24px;background:var(--n-decor)}
+.hdr .plat{font-size:12px;color:var(--n-text-s)}
+.hdr .right{margin-left:auto;display:flex;align-items:center;gap:4px}
+.bal{font-size:12px;color:var(--n-text-s);margin-right:2px}
+.bchip{font-size:10px;line-height:14px;padding:1px 5px;border-radius:4px;background:var(--g-bg);color:var(--g-text);border:1px solid var(--g-decor);margin-right:6px}
+.dot99{position:absolute;top:0;right:-4px;font-size:8px;line-height:11px;padding:0 3px;border-radius:6px;background:var(--g-accent);color:#fff}
+.ava{width:22px;height:22px;border-radius:50%;background:#f3c9c4;color:#7a2d2d;font-size:9px;font-weight:600;display:grid;place-items:center;margin-left:4px}
+.agent-pill{display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:13px;border:1px solid var(--v-decor);background:var(--v-bg);color:var(--v-text);font-size:12px;margin-right:6px}
+.agent-pill:hover{border-color:var(--v-accent)}
+.agent-pill .live{width:7px;height:7px;border-radius:50%;background:var(--g-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--g-accent) 25%,transparent)}
+.giga-fab{position:fixed;right:22px;bottom:18px;width:40px;height:40px;border-radius:50%;background:conic-gradient(from 200deg,#2fb873,#21a0d2,#2fb873);box-shadow:var(--sh3);display:grid;place-items:center;z-index:20;border:0}
+body:not(.no-anno) .giga-fab{right:362px}
+.giga-fab i{width:18px;height:18px;border-radius:50%;border:3px solid #fff;border-left-color:transparent;display:block}
+
+.page{max-width:1010px;margin:0 auto;padding:16px 20px 80px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:12px;align-items:start}
+@media (max-width:860px){.cols{grid-template-columns:1fr}}
+.stack{display:flex;flex-direction:column;gap:12px}
+
+.card{background:var(--n-bg2);border-radius:8px;box-shadow:var(--sh1);padding:14px 14px;position:relative}
+.ch{display:flex;align-items:center;gap:8px;margin-bottom:12px;min-height:28px}
+.ch h3{margin:0;font-size:14px;line-height:20px;font-weight:600;color:var(--n-text)}
+.ch .chev{color:var(--n-text-l)}
+.ch .end{margin-left:auto;display:flex;gap:8px;align-items:center}
+.muted{color:var(--n-text-s)}
+.light{color:var(--n-text-l)}
+.small{font-size:11px;line-height:14px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 10px;border-radius:4px;border:1px solid transparent;font-size:12px;font-weight:500;white-space:nowrap;background:transparent}
+.btn-p{background:var(--p-accent);color:var(--p-on)}
+.btn-p:hover{background:var(--p-accent-h)}
+.btn-o{border-color:var(--n-decor);background:var(--n-bg2);color:var(--n-text)}
+.btn-o:hover{border-color:var(--n-decor-a)}
+.btn-po{border-color:var(--p-decor);color:var(--p-text-s);background:var(--n-bg2)}
+.btn-v{background:var(--v-accent);color:var(--v-on)}
+.btn-v:hover{background:var(--v-accent-h)}
+.btn-vo{border-color:var(--v-decor);color:var(--v-text);background:var(--v-bg)}
+.btn-vo:hover{border-color:var(--v-accent)}
+.btn-l{height:36px;padding:0 14px;font-size:13px}
+.btn-w{width:100%}
+.lnk{border:0;background:none;padding:0;color:var(--p-text-s);font-size:12px}
+.lnk-v{border:0;background:none;padding:0;color:var(--v-text-s);font-size:12px;font-weight:500}
+
+.badge{display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:3px;font-size:10px;line-height:16px;font-weight:500;white-space:nowrap}
+.b-v{background:var(--v-decor);color:var(--v-text)}
+.b-b{background:var(--b-accent);color:#fff}
+.b-g{background:var(--g-bg);color:var(--g-text);border:1px solid var(--g-decor)}
+.b-new{background:var(--v-accent);color:var(--v-on)}
+.b-pre{background:var(--b-bg);color:var(--b-text);border:1px solid var(--b-decor)}
+.b-n{background:var(--n-bg);color:var(--n-text-s)}
+.b-r{background:var(--r-bg);color:var(--r-text-s);border:1px solid var(--r-decor)}
+.b-y{background:var(--y-bg);color:var(--y-text);border:1px solid var(--y-decor)}
+
+.seg{display:inline-flex;background:var(--n-bg);border-radius:4px;padding:2px;gap:2px}
+.seg button{border:0;background:transparent;height:22px;padding:0 10px;border-radius:3px;font-size:11px;color:var(--n-text-s)}
+.seg button.on{background:var(--n-bg2);color:var(--n-text);box-shadow:var(--sh1);font-weight:500}
+.seg.full{display:flex}
+.seg.full button{flex:1;height:auto;min-height:22px;padding:3px 6px;line-height:14px}
+.seg.v button.on{color:var(--v-text)}
+
+.inp{display:flex;align-items:center;gap:8px;height:30px;border:1px solid var(--n-decor);border-radius:4px;padding:0 8px;background:var(--n-bg2);color:var(--n-text-l);font-size:12px}
+.inp.focus{border-color:var(--p-accent);box-shadow:0 0 0 3px var(--p-bg)}
+.kbd{font-size:10px;line-height:14px;padding:0 4px;border:1px solid var(--n-decor);border-radius:3px;color:var(--n-text-l);background:var(--n-bg1)}
+
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.tile{background:var(--n-bg);border-radius:4px;padding:10px;min-height:62px;font-size:11px;line-height:14px;color:var(--n-text);display:flex;flex-direction:column;gap:8px;border:1px solid transparent;text-align:left}
+.tile:hover{border-color:var(--n-decor-h)}
+.tile .i{color:var(--n-text-s)}
+.tile.v{background:var(--v-bg)}
+.tile.v .i{color:var(--v-accent)}
+.tile.v:hover{border-color:var(--v-decor-h)}
+
+.svc{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 12px}
+.svc a{display:flex;align-items:center;gap:8px;height:24px;color:var(--n-text);font-size:12px}
+.svc a .i{color:var(--n-text-s)}
+
+.hero{background:var(--hero);border-radius:8px 8px 0 0;color:#fff;padding:14px;position:relative;overflow:hidden;min-height:60px}
+.hero h2{margin:0 0 3px;font-size:17px;line-height:22px;font-weight:600}
+.hero .sub{font-size:10px;letter-spacing:.02em;opacity:.8;text-transform:uppercase}
+.hero .grid-deco{position:absolute;inset:0 0 0 auto;width:52%;background-image:linear-gradient(#ffffff14 1px,transparent 1px),linear-gradient(90deg,#ffffff14 1px,transparent 1px);background-size:14px 14px;mask-image:linear-gradient(90deg,transparent,#000 40%,#000 70%,transparent)}
+.hero .btn{position:absolute;right:12px;top:12px;background:transparent;color:#fff;border-color:#ffffff40}
+.qlinks{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--n-bg2);padding:6px;border-radius:0 0 8px 8px;box-shadow:var(--sh1)}
+.qlinks a{display:flex;align-items:center;gap:8px;height:28px;padding:0 6px;color:var(--n-text);font-size:12px;border-radius:4px}
+.qlinks a:hover{background:var(--n-bg)}
+.qlinks a .chev{margin-left:auto;color:var(--n-text-l)}
+
+.vmtile{background:var(--n-bg);border-radius:6px;padding:10px;width:150px}
+.spark{height:22px;width:100%}
+.bucket{background:var(--n-bg);border-radius:6px;padding:8px 10px;width:150px;font-size:11px}
+
+.bars{display:flex;align-items:flex-end;gap:4px;height:96px;padding:8px 8px 0 36px;border:1px solid var(--n-decor);border-radius:6px;position:relative}
+.bars i{flex:1;background:#a43ea0;border-radius:2px 2px 0 0;display:block}
+.bars i.s{background:#e267b7}
+
+.promo{background:#2f3039;color:#fff;border-radius:8px;padding:12px;font-size:12px;line-height:16px;font-weight:500;min-height:58px;position:relative;overflow:hidden}
+.promo:after{content:"";position:absolute;right:-12px;top:-6px;width:70px;height:70px;background:linear-gradient(135deg,#57b762,#c8f05a);transform:rotate(28deg);border-radius:6px;opacity:.9}
+.bigsum{font-size:20px;line-height:26px;font-weight:600;color:var(--n-text);display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.center{text-align:center}
+.okico{width:26px;height:26px;border-radius:50%;background:var(--g-bg);color:var(--g-accent);display:grid;place-items:center;margin:4px auto 8px;border:1px solid var(--g-decor)}
+
+/* аннотации */
+.mk{position:absolute;z-index:6;width:20px;height:20px;border-radius:50%;background:var(--o-accent);color:#2a1a0c;font:600 11px/20px var(--font);text-align:center;box-shadow:0 0 0 3px #fb8e4240;cursor:pointer;border:0;padding:0}
+.mk.static{position:static;display:inline-block;flex:none}
+.notes h4{margin:0 0 2px;font-size:15px;line-height:20px;font-weight:600}
+.notes .scr{color:var(--n-text-l);font-size:11px;margin-bottom:14px}
+.note{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--n-decor)}
+.note.hl{background:#fb8e4214;margin:0 -16px;padding:10px 16px}
+.note b{display:block;font-size:13px;line-height:18px;margin-bottom:4px;font-weight:600}
+.note p{margin:0 0 6px;color:var(--n-text-s);font-size:12px;line-height:17px}
+.note .job{font-size:12px;line-height:17px;color:var(--n-text);background:var(--n-bg);border-radius:4px;padding:6px 8px;margin-bottom:6px}
+.note .job em{font-style:normal;color:var(--n-text-l);font-size:10px;text-transform:uppercase;letter-spacing:.04em;display:block}
+.note .tag{font-size:10px;color:var(--n-text-l);text-transform:uppercase;letter-spacing:.04em}
+
+/* агентный слой */
+.ag-mark{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:5px;background:var(--v-bg);color:var(--v-accent);border:1px solid var(--v-decor)}
+.ag-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:6px}
+.ag{display:flex;align-items:center;gap:8px;height:40px;padding:0 8px;border-radius:6px;border:1px solid var(--n-decor);background:var(--n-bg2);text-align:left;font-size:12px;line-height:14px}
+.ag:hover{border-color:var(--v-decor-h)}
+.ag.on{border-color:var(--v-accent);box-shadow:0 0 0 3px var(--v-bg)}
+.ag .mono-ico{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;font-size:10px;font-weight:700;color:#fff;flex:none}
+.ag small{display:block;font-size:10px;color:var(--n-text-l)}
+.codebox{background:var(--code-bg);color:var(--code-text);border-radius:6px;padding:10px 12px;font:12px/18px var(--mono);white-space:pre-wrap;word-break:break-word;position:relative}
+.codebox.prose{font:12.5px/19px var(--font)}
+.codebox .c{color:#8b8e9b}
+.codebox .k{color:#b3deca}
+.codebox .v{color:#e1d0f7}
+.codebox.clip{max-height:92px;overflow:hidden}
+.codebox.clip:after{content:"";position:absolute;left:0;right:0;bottom:0;height:34px;background:linear-gradient(transparent,var(--code-bg));border-radius:0 0 6px 6px}
+.copyrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.radio-card{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--n-decor);border-radius:6px;background:var(--n-bg2);text-align:left;width:100%}
+.radio-card.on{border-color:var(--v-accent);background:var(--v-bg)}
+.radio-card .r{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--n-decor-a);margin-top:2px;flex:none}
+.radio-card.on .r{border:4px solid var(--v-accent)}
+.radio-card b{display:block;font-size:12px;font-weight:600;line-height:16px}
+.radio-card span{font-size:11px;line-height:15px;color:var(--n-text-s)}
+.wait{display:flex;gap:10px;align-items:center;padding:10px;border-radius:6px;background:var(--v-bg);border:1px dashed var(--v-decor-h);color:var(--v-text);font-size:12px}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--v-decor);border-top-color:var(--v-accent);animation:sp 0.9s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+.chat{background:var(--code-bg);border-radius:6px;padding:10px 12px;font:11.5px/17px var(--mono);color:var(--code-text);min-height:118px;white-space:pre-wrap}
+.chat .u{color:#e1d0f7}
+.chat .a{color:#b3deca}
+.chat .t{color:#8b8e9b}
+.caret{display:inline-block;width:6px;height:12px;background:#e1d0f7;vertical-align:-2px;animation:bl 1s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+.prompt-chip{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--v-decor);background:var(--v-bg);color:var(--v-text);font-size:12px;line-height:16px;text-align:left}
+.prompt-chip:hover{border-color:var(--v-accent)}
+.prompt-chip .i{color:var(--v-accent)}
+.prompt-chip .end{margin-left:auto;color:var(--v-text-s);font-size:11px;white-space:nowrap}
+
+/* мега-меню */
+.dim{position:absolute;inset:0;background:#1c1c2466;z-index:8}
+.mega{position:absolute;left:0;top:0;bottom:0;z-index:9;display:flex;background:var(--n-bg1);box-shadow:var(--sh5);min-height:100%}
+.mega .left{width:180px;padding:8px;border-right:1px solid var(--n-decor);display:flex;flex-direction:column;gap:2px;font-size:12px}
+.mega .left a{display:flex;align-items:center;gap:8px;color:var(--n-text);height:26px;padding:0 6px;border-radius:4px}
+.mega .left a:hover{background:var(--n-bg)}
+.mega .platsel{display:flex;align-items:center;gap:8px;padding:6px;border:1px solid var(--n-decor);border-radius:6px;background:var(--n-bg2);margin-bottom:8px}
+.mega .platsel small{display:block;font-size:10px;color:var(--n-text-l);line-height:12px}
+.mega .main{width:600px;padding:8px;display:flex;flex-direction:column;gap:8px;background:var(--n-bg)}
+.msec{background:var(--n-bg2);border-radius:6px;padding:10px 12px;position:relative;border:1px solid transparent}
+.msec h5{margin:0 0 8px;font-size:12px;font-weight:600}
+.msec.hl{border-color:var(--v-decor-h);background:var(--v-bg)}
+.mpromo{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mpromo div{background:var(--n-bg2);border-radius:6px;padding:8px 10px;font-size:11px;line-height:14px;color:var(--n-text-s);position:relative}
+.mpromo b{display:block;color:var(--n-text);font-weight:500;font-size:12px;margin-bottom:2px}
+
+/* формы и таблицы */
+.crumbs{font-size:11px;color:var(--n-text-l);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+.ptitle{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.ptitle h1{margin:0;font-size:20px;line-height:28px;font-weight:600}
+.ptitle .end{margin-left:auto;display:flex;gap:8px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11px;color:var(--n-text-s);margin-bottom:4px}
+.field input[type=text],.field input[type=number],.field select{width:100%;height:32px;border:1px solid var(--n-decor);border-radius:4px;padding:0 8px;background:var(--n-bg2);color:var(--n-text);font:inherit}
+.field input:focus,.field select:focus{outline:none;border-color:var(--p-accent)}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.opt{border:1px solid var(--n-decor);border-radius:6px;padding:8px 10px;background:var(--n-bg2);text-align:left;font-size:12px;line-height:16px}
+.opt small{display:block;color:var(--n-text-l);font-size:11px}
+.opt.on{border-color:var(--p-accent);background:var(--p-bg1);box-shadow:0 0 0 3px var(--p-bg)}
+.chk{display:flex;gap:8px;align-items:center;font-size:12px;border:0;background:none;padding:0}
+.chk i{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--n-decor-a);display:grid;place-items:center}
+.chk.on i{background:var(--p-accent);border-color:var(--p-accent)}
+.chk.on i:after{content:"";width:6px;height:3px;border:2px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.ports{display:flex;gap:6px;flex-wrap:wrap}
+.port{height:26px;padding:0 10px;border-radius:13px;border:1px solid var(--n-decor);background:var(--n-bg2);font-size:12px}
+.port.on{border-color:var(--p-accent);background:var(--p-bg);color:var(--p-text)}
+.formcols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:12px;align-items:start}
+@media (max-width:900px){.formcols{grid-template-columns:1fr}}
+.sticky{position:sticky;top:60px}
+.sumrow{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--n-text-s)}
+.sumrow b{color:var(--n-text);font-weight:500}
+.total{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--n-decor);margin-top:8px;padding-top:10px}
+.total b{font-size:18px;font-weight:600}
+.eq{border-top:1px solid var(--n-decor);margin-top:14px;padding-top:12px}
+table.t{width:100%;border-collapse:collapse;font-size:12px}
+table.t th{text-align:left;font-weight:500;color:var(--n-text-l);font-size:11px;padding:8px;border-bottom:1px solid var(--n-decor);white-space:nowrap}
+table.t td{padding:9px 8px;border-bottom:1px solid var(--n-decor);vertical-align:middle}
+.tabs{display:flex;gap:18px;border-bottom:1px solid var(--n-decor);margin-bottom:14px}
+.tabs button{border:0;background:none;padding:8px 0;font-size:13px;color:var(--n-text-s);border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:6px}
+.tabs button.on{color:var(--n-text);border-color:var(--p-accent);font-weight:500}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:6px;font-size:12px;line-height:17px}
+.alert.r{background:var(--r-bg);border:1px solid var(--r-decor);color:var(--r-text)}
+.alert.i{background:var(--b-bg);border:1px solid var(--b-decor);color:var(--b-text)}
+.alert .end{margin-left:auto;display:flex;gap:6px;flex:none}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:12px}
+.kv dt{color:var(--n-text-l)}
+.kv dd{margin:0}
+.tl{display:flex;flex-direction:column}
+.tl div{display:grid;grid-template-columns:44px 1fr;gap:8px;padding:7px 0;border-bottom:1px dashed var(--n-decor);font-size:12px;line-height:16px}
+.tl time{color:var(--n-text-l);font-size:11px}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:28px 10px 8px}
+.empty .ill{width:64px;height:64px;border-radius:14px;background:var(--n-bg);display:grid;place-items:center;color:var(--n-text-l);margin-bottom:12px}
+.ways{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px;width:100%;text-align:left}
+@media (max-width:760px){.ways,.opts,.tiles,.svc,.qlinks{grid-template-columns:1fr}}
+.way{border:1px solid var(--n-decor);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--n-bg2);position:relative}
+.way.v{border-color:var(--v-decor-h);background:var(--v-bg)}
+.way h4{margin:0;font-size:13px;font-weight:600}
+.way p{margin:0;font-size:12px;line-height:16px;color:var(--n-text-s)}
+.way .ex{font:12px/17px var(--font);background:var(--n-bg2);border:1px solid var(--v-decor);border-radius:4px;padding:6px 8px;color:var(--v-text)}
+.way .ex.n{font:11.5px/16px var(--mono);border-color:var(--n-decor);color:var(--n-text);background:var(--n-bg1)}
+.way .btn{margin-top:auto;align-self:flex-start}
+.consent{max-width:600px;margin:10px auto 0}
+.code-big{font:600 26px/32px var(--mono);letter-spacing:.12em;color:var(--v-text);background:var(--v-bg);border:1px solid var(--v-decor);border-radius:8px;padding:10px 16px;text-align:center}
+.mkt-hero{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center}
+@media (max-width:760px){.mkt-hero{grid-template-columns:1fr}}
+.pcards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:760px){.pcards{grid-template-columns:1fr}}
+.pcard{border:1px solid var(--n-decor);border-radius:8px;padding:12px;background:var(--n-bg2);display:flex;flex-direction:column;gap:8px}
+.pcard .top{display:flex;gap:10px;align-items:center}
+.pcard .lg{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-weight:700;color:#fff;font-size:12px}
+.pcard p{margin:0;font-size:12px;line-height:16px;color:var(--n-text-s)}
+.pcard .meta{display:flex;gap:6px;flex-wrap:wrap}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.chipf{height:28px;padding:0 12px;border-radius:14px;border:1px solid var(--n-decor);background:var(--n-bg2);font-size:12px;display:inline-flex;align-items:center;gap:6px}
+.chipf.on{background:var(--n-text);color:var(--n-bg2);border-color:var(--n-text)}
+.chipf.v{border-color:var(--v-decor-h);color:var(--v-text);background:var(--v-bg)}
+.chipf.v.on{background:var(--v-accent);color:var(--v-on);border-color:var(--v-accent)}
+
+/* концепция */
+.doc{max-width:1060px;margin:0 auto;padding:28px 24px 80px}
+.doc h1{font-size:28px;line-height:36px;margin:0 0 6px;font-weight:600;letter-spacing:-.3px}
+.doc h2{font-size:18px;line-height:24px;margin:34px 0 12px;font-weight:600}
+.doc .lead{font-size:15px;line-height:23px;color:var(--n-text-s);max-width:780px;margin:0}
+.thesis{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch;margin-top:22px}
+@media (max-width:760px){.thesis{grid-template-columns:1fr}}
+.th{border-radius:10px;padding:16px;background:var(--n-bg2);box-shadow:var(--sh1)}
+.th h3{margin:6px 0 6px;font-size:15px}
+.th p{margin:0;font-size:13px;line-height:19px;color:var(--n-text-s)}
+.th.v{background:var(--v-bg);box-shadow:none;border:1px solid var(--v-decor)}
+.th .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n-text-l)}
+.plus{display:grid;place-items:center;font-size:22px;color:var(--n-text-l)}
+.princ{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:860px){.princ{grid-template-columns:1fr}}
+.pr{background:var(--n-bg2);border-radius:8px;padding:14px;box-shadow:var(--sh1)}
+.pr b{display:block;font-size:13px;margin-bottom:4px}
+.pr p{margin:0;font-size:12px;line-height:17px;color:var(--n-text-s)}
+.pr .num{font:600 11px var(--mono);color:var(--v-accent)}
+.cjm{display:grid;grid-template-columns:repeat(5,1fr);gap:0;background:var(--n-bg2);border-radius:8px;box-shadow:var(--sh1);overflow:hidden}
+@media (max-width:860px){.cjm{grid-template-columns:1fr}}
+.cjm>div{padding:12px;border-right:1px solid var(--n-decor);font-size:12px;line-height:16px}
+.cjm>div:last-child{border-right:0}
+.cjm b{display:block;font-size:12px;margin-bottom:4px}
+.cjm .who{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--v-text-s);margin-bottom:4px}
+.cjm span{color:var(--n-text-s)}
+.dt{width:100%;border-collapse:collapse;background:var(--n-bg2);border-radius:8px;box-shadow:var(--sh1);overflow:hidden;font-size:12px;line-height:17px}
+.dt th{text-align:left;font-weight:500;color:var(--n-text-l);font-size:11px;padding:9px 10px;border-bottom:1px solid var(--n-decor);background:var(--n-bg1)}
+.dt td{padding:9px 10px;border-bottom:1px solid var(--n-decor);vertical-align:top}
+.dt tr:last-child td{border-bottom:0}
+.dt .go{border:0;background:none;color:var(--p-text-s);padding:0;font-size:12px;text-align:left}
+.prio{display:inline-block;font:600 10px/16px var(--mono);padding:0 5px;border-radius:3px}
+.p0{background:var(--v-accent);color:#fff}.p1{background:var(--v-decor);color:var(--v-text)}.p2{background:var(--n-bg);color:var(--n-text-s)}
+.caveat{background:var(--y-bg);border:1px solid var(--y-decor);color:var(--y-text);border-radius:8px;padding:12px 14px;font-size:12px;line-height:18px}
+.caveat ul{margin:4px 0 0;padding-left:18px}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;background:#2a2a36;color:#fff;padding:9px 14px;border-radius:6px;font-size:12px;box-shadow:var(--sh3);transition:.2s;z-index:60;display:flex;gap:8px;align-items:center}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.drawer{position:absolute;top:0;right:0;bottom:0;width:440px;max-width:100%;background:var(--n-bg2);box-shadow:var(--sh5);z-index:9;padding:16px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="pbar">
+  <b>Прототип · агенты в ЛК Cloud.ru</b>
+  <span class="sep"></span>
+  <span class="lbl hint">Экран</span>
+  <select id="scrSel" aria-label="Экран"></select>
+  <button id="prev" aria-label="Предыдущий экран">←</button>
+  <button id="next" aria-label="Следующий экран">→</button>
+  <span class="grow"></span>
+  <span class="hint">демо-данные · каркас по скриншотам ЛК</span>
+  <button id="connTgl" title="Показать состояние «агент подключён»">Агент: не подключён</button>
+  <button id="annoTgl" class="on">Аннотации</button>
+  <button id="themeTgl">Тема</button>
+</div>
+<div class="shell">
+  <div class="lk" id="lk"></div>
+  <aside class="notes" id="notes"></aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- иконки ---------- */
+const P={
+grid:'<circle cx="5" cy="5" r="1.2"/><circle cx="12" cy="5" r="1.2"/><circle cx="19" cy="5" r="1.2"/><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/><circle cx="5" cy="19" r="1.2"/><circle cx="12" cy="19" r="1.2"/><circle cx="19" cy="19" r="1.2"/>',
+chev:'<path d="m9 6 6 6-6 6"/>',down:'<path d="m6 9 6 6 6-6"/>',
+wallet:'<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/>',
+org:'<path d="M4 20V8l8-4 8 4v12"/><path d="M9 20v-5h6v5M8 11h.01M12 11h.01M16 11h.01"/>',
+help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
+bell:'<path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+gauge:'<path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/>',
+chart:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15v-3M12 15V9M16 15v-5"/>',
+folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+plus:'<path d="M12 5v14M5 12h14"/>',
+vm:'<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12 4 7.5M12 12l8-4.5M12 12v9"/>',
+disk:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M8 8h.01M8 16h.01"/>',
+cfg:'<path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="9" r="2"/><circle cx="12" cy="15" r="2"/><circle cx="18" cy="8" r="2"/>',
+pg:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>',
+bucket:'<path d="M4 7h16l-2 13H6z"/><ellipse cx="12" cy="7" rx="8" ry="2.5"/>',
+k8s:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+apps:'<path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19 10a4 4 0 0 1-1 8z"/>',
+rag:'<path d="M4 20h16M6 20V10M12 20V4M18 20v-7"/>',
+search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+spark:'<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+bot:'<rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 16h5"/>',
+term:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/>',
+check:'<path d="m5 12 5 5 9-10"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',
+arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+shield:'<path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/>',
+eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+key:'<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
+clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+alert:'<path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17h.01"/>',
+store:'<path d="M4 9h16l-1-5H5zM5 9v11h14V9M9 20v-6h6v6"/>',
+book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/>',
+headset:'<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1"/><rect x="17" y="14" width="4" height="6" rx="1"/>',
+status:'<path d="M5 20a9 9 0 1 1 14 0"/><path d="M12 12v.01"/>',
+iam:'<circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0 1 12 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3 6"/>',
+ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/>',
+plug:'<path d="M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0zM12 18v3"/>',
+filter:'<path d="M4 6h16M7 12h10M10 18h4"/>',
+star:'<path d="m12 4 2.5 5 5.5.8-4 3.9.9 5.5L12 16.6 7.1 19.2 8 13.7 4 9.8 9.5 9z"/>',
+};
+const ic=(n,s)=>`<svg class="i" viewBox="0 0 24 24"${s?` style="width:${s}px;height:${s}px"`:''}>${P[n]||''}</svg>`;
+
+/* ---------- данные ---------- */
+const AGENTS=[
+ {id:'cursor',name:'Cursor',mono:'Cu',c:'#2b2b33'},
+ {id:'claude',name:'Claude Code',mono:'CC',c:'#c96a43'},
+ {id:'giga',name:'GigaCode',mono:'GC',c:'#21a038'},
+ {id:'codex',name:'Codex CLI',mono:'Cx',c:'#4a4a55'},
+ {id:'vscode',name:'VS Code',mono:'VS',c:'#3277c8'},
+ {id:'aia',name:'AI Agents',sub:'Cloud.ru',mono:'AI',c:'#aa6cc1'},
+ {id:'other',name:'Другой',sub:'MCP-клиент',mono:'···',c:'#787b8a'},
+];
+const S={screen:0,anno:true,connected:false,agent:'cursor',access:'ro',copied:false,aiMode:'giga',consent:'ask',term:'30',
+ vm:{name:'web-1',zone:'ru.AZ-1',image:'Ubuntu 24.04',flavor:'lowcost10-2-4',disk:20,pub:true,ports:['80','443']},eqTab:'prompt',mktCat:'mcp',drawer:false};
+const agent=()=>AGENTS.find(a=>a.id===S.agent);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function promptText(){
+  const a=agent(), ro=S.access==='ro';
+  return `Подключи этого агента к моему облаку Cloud.ru.
+1. Установи evo CLI и MCP-сервер Cloud.ru по инструкции https://cloud.ru/agents (сверь подпись релиза).
+2. Подключи MCP-сервер в ${a.id==='other'?'своём клиенте':a.name}: evo mcp${ro?' --read-only':''}.
+3. Запусти вход и покажи мне ссылку и код — я подтвержу доступ в личном кабинете console.cloud.ru.
+4. Когда доступ появится, коротко расскажи, что есть в проекте «Shopfront».
+Права: ${ro?'только чтение':'чтение и изменения — перед каждым платным или необратимым действием покажи превью и дождись моего «да»'}.
+Доступ к облаку запрашивай только через console.cloud.ru.`;
+}
+function manualText(){
+  const ro=S.access==='ro'?' "--read-only"':'';
+  const inst='<span class="c"># 1. evo CLI</span>\ncurl -fsSL https://cloud.ru/agents/install.sh | sh\n\n';
+  if(S.agent==='claude') return inst+`<span class="c"># 2. MCP в Claude Code</span>\nclaude mcp add evo -- evo mcp${S.access==='ro'?' --read-only':''}\n\n<span class="c"># 3. вход</span>\nevo login`;
+  if(S.agent==='aia') return `<span class="c"># AI Agents (Cloud.ru): установка не нужна</span>\nНастройки агента → Инструменты → MCP-сервер Cloud.ru\n<span class="c"># доступ выдаётся тем же экраном подтверждения</span>`;
+  const path=S.agent==='cursor'?'~/.cursor/mcp.json':'mcp.json вашего клиента';
+  return inst+`<span class="c"># 2. MCP: ${path}</span>\n{ <span class="k">"mcpServers"</span>: { <span class="k">"evo"</span>: {\n    <span class="k">"command"</span>: <span class="v">"evo"</span>, <span class="k">"args"</span>: [<span class="v">"mcp"</span>${ro?`, <span class="v">"--read-only"</span>`:''}] } } }\n\n<span class="c"># 3. вход</span>\nevo login`;
+}
+
+/* ---------- общие куски ЛК ---------- */
+function header(){
+  const a=agent();
+  const pill=S.connected
+    ? `<button class="agent-pill" data-go="8" title="Подключённые агенты"><span class="live"></span>${esc(a.name)} · ${S.access==='ro'?'чтение':'чтение и изменения'}</button>`
+    : `<button class="agent-pill" data-act="openDrawer">${ic('bot',14)}Подключить агента</button>`;
+  return `<div class="hdr">
+    <button class="ib" data-go="3" title="Все сервисы">${ic('grid')}</button>
+    <span class="logo"><i></i></span>
+    <button class="prj"><span><span>Shopfront</span><small>Проект</small></span>${ic('down',12)}</button>
+    <span class="vsep"></span><span class="plat">Evolution</span>
+    <div class="right" style="position:relative">
+      <span style="position:relative">${pill}${S.screen===1?'<i class="mk" data-n="1" style="top:-8px;left:-10px">1</i>':''}</span>
+      <span class="bal">12 480,00 ₽</span><span class="bchip">5 000 Б</span>
+      <button class="ib">${ic('wallet')}</button><button class="ib">${ic('org')}</button><button class="ib">${ic('help')}</button>
+      <button class="ib">${ic('bell')}<span class="dot99">12</span></button>
+      <span class="ava">АС</span>
+    </div></div>`;
+}
+const mk=(n,style)=>`<i class="mk" data-n="${n}" style="${style||'top:-8px;right:-8px'}">${n}</i>`;
+const fab=`<button class="giga-fab" title="Гига-помощник"><i></i></button>`;
+
+/* блок AI на дашборде: режим Гига-помощника (как сейчас) или «В моём агенте» */
+function aiBlock(){
+  const giga=S.aiMode==='giga';
+  const head=`<div class="ch"><span style="width:16px;height:16px;border-radius:50%;background:conic-gradient(#2fb873,#21a0d2,#2fb873)"></span>
+    <h3>${giga?'Управляйте облаком через Гига-помощника':'Управляйте облаком из своего AI-агента'}</h3>
+    <div class="end" style="position:relative"><div class="seg v"><button class="${giga?'on':''}" data-act="aiMode" data-v="giga">В консоли</button><button class="${giga?'':'on'}" data-act="aiMode" data-v="agent">${ic('bot',12)} В моём агенте</button></div>
+    ${S.screen===1?mk(2,'top:-10px;right:-10px'):''}</div></div>`;
+  if(giga) return `<div class="card">${head}
+    <div class="inp" style="margin-bottom:8px"><span class="kbd">Opt + G</span>, чтобы создать ресурс или задать вопрос<span style="margin-left:auto">${ic('arrow',14)}</span></div>
+    <div class="seg full" style="margin-bottom:6px"><button class="on">Виртуальные машины и диски</button><button>Хранение и бакеты</button><button>Сети и безопасность</button><button>Мониторинг и анализ расходов</button></div>
+    <div class="tiles"><button class="tile">${ic('vm',18)}Разверни<br>виртуальную машину</button><button class="tile">${ic('disk',18)}Добавь SSD<br>или HDD диски</button><button class="tile">${ic('cfg',18)}Измени<br>конфигурацию ВМ</button></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--n-decor);position:relative">
+      <span class="ag-mark">${ic('bot',13)}</span>
+      <span class="small muted">Пишете код в Cursor, Claude Code или GigaCode? Те же действия — прямо из вашего агента.</span>
+      <button class="lnk-v" data-act="aiMode" data-v="agent" style="margin-left:auto;white-space:nowrap">Подключить агента →</button>
+      ${S.screen===1?mk(3,'top:2px;right:-30px'):''}
+    </div></div>`;
+  return `<div class="card">${head}${connectUI('inline')}</div>`;
+}
+
+/* единый компонент подключения: на дашборде, в выезжающей панели, из меню и форм */
+function connectUI(where){
+  const ro=S.access==='ro', s2=S.screen===2;
+  if(S.connected) return `<div class="alert i" style="margin-bottom:10px">${ic('check')}<div><b>${esc(agent().name)} подключён к проекту Shopfront</b><br>Права: ${ro?'только чтение':'чтение и изменения'} · до 20.11.2026</div><div class="end"><button class="btn btn-o" data-go="8">Управлять</button></div></div>
+     <div class="small light" style="margin-bottom:6px">Что попросить агента</div>${promptChips(['Разверни мой docker-compose на новой ВМ','Найди неиспользуемые ресурсы и посчитай экономию','Почему vm-712c44 не отвечает на 80 порту?'])}`;
+  return `
+  <div style="position:relative;margin-bottom:12px">
+    <div class="small light" style="margin-bottom:6px">1 · Ваш агент</div>
+    <div class="ag-tiles">${AGENTS.map(a=>`<button class="ag ${a.id===S.agent?'on':''}" data-act="agent" data-v="${a.id}"><span class="mono-ico" style="background:${a.c}">${a.mono}</span><span>${a.name}${a.sub?`<small>${a.sub}</small>`:''}</span></button>`).join('')}</div>
+    ${s2?mk(1,'top:-6px;right:-8px'):''}
+  </div>
+  <div style="position:relative;margin-bottom:12px">
+    <div class="small light" style="margin-bottom:6px">2 · Что агент сможет в проекте Shopfront</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <button class="radio-card ${ro?'on':''}" data-act="access" data-v="ro"><i class="r"></i><div><b>Только смотреть <span class="badge b-v">рекомендуем</span></b><span>Ресурсы, метрики, логи, расходы. Ничего не создаёт и не удаляет.</span></div></button>
+      <button class="radio-card ${ro?'':'on'}" data-act="access" data-v="rw"><i class="r"></i><div><b>Смотреть и менять</b><span>Создание и изменение — только после вашего «да» на превью с ценой.</span></div></button>
+    </div>
+    ${s2?mk(2,'top:-6px;right:-8px'):''}
+  </div>
+  <div style="position:relative">
+    <div class="small light" style="margin-bottom:6px">3 · Вставьте этот промпт агенту — остальное он сделает сам</div>
+    <div class="codebox prose clip">${esc(promptText())}</div>
+    ${s2?mk(3,'top:16px;right:-8px'):''}
+    <div class="copyrow" style="margin-top:8px">
+      <button class="btn btn-v btn-l" data-act="copy">${ic('copy',14)} Скопировать промпт для ${esc(agent().name)}</button>
+      <button class="lnk" data-act="manual">Установить вручную</button>
+      <span class="small light" style="margin-left:auto">~1 минута</span>
+    </div>
+    <div id="manual" style="display:none;margin-top:8px"><div class="codebox">${manualText()}</div></div>
+  </div>
+  ${S.copied?`<div class="wait" style="margin-top:10px;position:relative"><span class="spin"></span><div><b>Ждём агента.</b> Он установит evo, подключит MCP и пришлёт ссылку с кодом — откройте её, чтобы подтвердить доступ.</div><button class="btn btn-vo" data-go="7" style="margin-left:auto">Демо: открыть ссылку</button>${s2?mk(4,'top:-8px;right:-8px'):''}</div>`:''}
+  ${where==='inline'?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--n-decor);position:relative"><div class="small light" style="margin-bottom:6px">После подключения можно попросить</div><div class="tiles">
+     <div class="tile v">${ic('term',18)}Разверни мой<br>docker-compose на ВМ</div><div class="tile v">${ic('search',18)}Найди неиспользуемые<br>ресурсы</div><div class="tile v">${ic('alert',18)}Почему сервис<br>не отвечает?</div></div>${s2?mk(5,'top:4px;right:-8px'):''}</div>`:''}`;
+}
+function promptChips(arr){return `<div style="display:flex;flex-direction:column;gap:6px">${arr.map(t=>`<button class="prompt-chip" data-act="copyText" data-t="${esc(t)}">${ic('bot',14)}${esc(t)}<span class="end">${ic('copy',12)} промпт</span></button>`).join('')}</div>`;}
+
+/* ---------- экраны ---------- */
+function dashboard(){
+  return `<div class="page"><div class="cols"><div class="stack">
+   <div><div class="hero"><div class="grid-deco"></div><h2>Платформа Cloud.ru Evolution</h2><div class="sub">${ic('org',10)} Анна Смирнова • Администратор организации</div><button class="btn">Настроить дашборд ${ic('cfg',13)}</button></div>
+   <div class="qlinks"><a>${ic('user',15)}Пользователи организации<span class="chev">${ic('chev',13)}</span></a><a>${ic('gauge',15)}Квоты<span class="chev">${ic('chev',13)}</span></a><a>${ic('chart',15)}Мониторинг<span class="chev">${ic('chev',13)}</span></a></div></div>
+   <div class="card" style="display:flex;align-items:center;gap:10px"><span style="width:26px;height:26px;border-radius:4px;background:var(--n-bg);display:grid;place-items:center;color:var(--n-text-s)">${ic('folder',15)}</span>
+     <div><div><span class="muted">Проект:</span> <b style="font-weight:600">Shopfront</b> <span class="badge b-v">Администратор проекта</span></div><div class="small light">ID проекта ${ic('copy',11)}</div></div>
+     <button class="btn btn-p" style="margin-left:auto">Создать ресурс ${ic('plus',13)}</button></div>
+   ${aiBlock()}
+   <div class="card"><div class="ch">${ic('k8s')}<h3>Сервисы</h3><div class="end"><div class="seg"><button class="on">Избранные</button><button>Недавние</button><button>Все</button></div></div></div>
+     <div class="inp" style="margin-bottom:10px">${ic('search',14)}Поиск по сервисам</div>
+     <div class="svc"><a>${ic('vm')}Виртуальные машины</a><a>${ic('pg')}Managed PostgreSQL®</a><a>${ic('bucket')}Object Storage</a><a>${ic('k8s')}Managed Kubernetes</a><a>${ic('apps')}Container Apps</a><a>${ic('rag')}Managed RAG</a></div></div>
+   <div class="card"><div class="ch">${ic('vm')}<h3>Виртуальные машины</h3><span class="chev">${ic('chev',13)}</span><div class="end"><button class="btn btn-o" data-go="5">Создать ВМ ${ic('plus',13)}</button></div></div>
+     <div style="display:flex;gap:6px;margin-bottom:10px"><span style="width:26px;height:26px;border-radius:4px;border:1px solid var(--n-decor);display:grid;place-items:center"><span style="width:14px;height:14px;border-radius:50%;background:conic-gradient(#2fb873,#21a0d2,#2fb873)"></span></span><button class="btn btn-o">Найди неиспользуемые ресурсы</button></div>
+     <button class="vmtile" data-go="6" style="border:0;text-align:left"><span class="badge b-g">● Запущена</span><div style="margin:6px 0 4px;font-weight:600">vm-712c44 <span class="badge b-b">Free tier</span></div><div class="small light">Публичный IP</div><div style="font-size:12px">95.174.10.25</div><div class="small light" style="margin-top:4px">Утилизация vCPU, сутки</div><svg class="spark" viewBox="0 0 130 22"><path d="M0 16 L10 15 L18 17 L26 12 L32 16 L40 14 L48 9 L54 15 L64 13 L72 16 L80 11 L88 15 L96 14 L104 8 L112 15 L120 13 L130 14" fill="none" stroke="var(--p-accent)" stroke-width="1.2"/></svg></button></div>
+   <div class="card"><div class="ch">${ic('bucket')}<h3>Object Storage</h3><span class="chev">${ic('chev',13)}</span><div class="end"><button class="btn btn-o">Создать бакет ${ic('plus',13)}</button></div></div>
+     <div style="display:flex;gap:8px"><div class="bucket"><b style="font-weight:500">shop-media</b><div class="light">Класс хранения</div>Стандартный</div><div class="bucket"><b style="font-weight:500">bucket-f89a57</b><div class="light">Класс хранения</div>Стандартный</div></div></div>
+   <div class="card"><div class="ch">${ic('chart')}<h3>Потребление в организации</h3><span class="chev">${ic('chev',13)}</span></div>
+     <div class="bars"><i style="height:80%"></i><i style="height:66%"></i><i style="height:70%"></i><i style="height:82%"></i><i class="s" style="height:8%"></i><i class="s" style="height:12%"></i><i class="s" style="height:5%"></i></div></div>
+  </div>
+  <div class="stack">
+   <div class="promo">20 000 бонусов<br>для юрлиц и ИП</div>
+   <div class="card"><div class="ch">${ic('wallet')}<h3>Баланс</h3><span class="end chev">${ic('chev',13)}</span></div><div class="bigsum">12 480,00 ₽ <span class="bchip">5 000 Б</span></div>
+     <button class="btn btn-po btn-w" style="margin-bottom:6px">Пополнить баланс ${ic('plus',13)}</button><button class="btn btn-o btn-w">Ввести промокод</button></div>
+   <div class="card"><div class="ch">${ic('headset')}<h3>Поддержка</h3><span class="end chev">${ic('chev',13)}</span></div><div class="okico">${ic('check',14)}</div><div class="center muted small" style="margin-bottom:10px">Новых обращений нет</div><button class="btn btn-o btn-w">Создать обращение</button></div>
+   <div class="card"><div class="ch">${ic('status')}<h3>Статус работы сервисов</h3><span class="end chev">${ic('chev',13)}</span></div><div class="okico">${ic('chart',14)}</div><div class="center muted small" style="margin-bottom:10px">Все сервисы работают<br>в штатном режиме</div><button class="btn btn-o btn-w">Актуальные работы</button></div>
+  </div></div></div>`;
+}
+
+function megaMenu(){
+  const sec=(t,items,extra='')=>`<div class="msec ${extra}"><h5>${t}</h5><div class="svc">${items.map(x=>`<a>${ic(x[1]||'vm')}${x[0]}${x[2]?` <span class="badge ${x[2]==='Новое'?'b-new':'b-pre'}">${x[2]}</span>`:''}</a>`).join('')}</div></div>`;
+  return `<div class="dim" data-go="1"></div><div class="mega">
+   <div class="left"><div class="platsel"><span class="logo" style="background:var(--n-text-s)"><i></i></span><div><small>Облачные платформы</small>Evolution</div>${ic('down',12)}</div>
+    ${['Избранное','AI Factory','Инфраструктура','Сеть','Хранение данных','Контейнеры','Разработка','Брокеры сообщений','Базы данных','Платформа данных','Управление'].map(x=>`<a>${x}</a>`).join('')}
+    <div style="flex:1;min-height:30px"></div>
+    <a>${ic('chart',14)}Мониторинг</a><a>${ic('wallet',14)}Контроль затрат</a><a>${ic('org',14)}Администрирование</a><a>${ic('user',14)}Пользователи</a><a data-go="8">${ic('iam',14)}IAM</a><a>${ic('headset',14)}Поддержка</a><a>${ic('book',14)}Документация</a>
+   </div>
+   <div class="main">
+    <div style="position:relative"><div class="inp focus" style="height:34px">${ic('search',14)}<span style="color:var(--n-text)">mcp</span><span class="caret" style="background:var(--p-accent)"></span><span style="margin-left:auto">${ic('filter',14)}</span></div>${mk(1,'top:-8px;right:-8px')}</div>
+    <div class="msec hl" style="position:relative"><h5>Найдено по «mcp»</h5>
+      <div style="display:flex;flex-direction:column;gap:4px">
+       <a class="prompt-chip" data-act="openDrawer">${ic('bot',14)}<span><b style="font-weight:600">Подключить своего AI-агента</b> · Cursor, Claude Code, GigaCode…</span><span class="end">действие</span></a>
+       <a class="prompt-chip" data-act="openDrawer" style="background:var(--n-bg2)">${ic('term',14)}<span>Cloud.ru для агентов — evo CLI и MCP-сервер</span><span class="end">Разработка</span></a>
+       <a class="prompt-chip" data-go="9" style="background:var(--n-bg2)">${ic('store',14)}<span>MCP-серверы партнёров</span><span class="end">Маркетплейс</span></a>
+       <a class="prompt-chip" style="background:var(--n-bg2)">${ic('spark',14)}<span>AI Agents — MCP-инструменты для агентов на Cloud.ru</span><span class="end">AI Factory</span></a>
+      </div>${mk(2,'top:-8px;right:-8px')}</div>
+    <div class="mpromo"><div>Реферальная программа <span class="badge b-g" style="float:right">20%</span><b></b>Зарабатывайте до 20% на рекомендациях сервисов Cloud.ru</div><div style="position:relative"><b>Маркетплейс</b>Для разработки, анализа данных и других задач. <span style="color:var(--v-text-s)">Новое: MCP-серверы для агентов</span>${mk(3,'top:-8px;right:-8px')}</div></div>
+    ${sec('AI Factory',[['AI Agents','spark'],['Foundation Models','spark'],['ML Inference','spark'],['Notebooks','book'],['ML Finetuning','spark'],['Managed RAG','rag']])}
+    ${sec('Инфраструктура',[['Управление ПО','cfg','Preview'],['VDI','vm','Preview'],['Виртуальные машины','vm'],['Группы размещения','vm'],['Образы','disk'],['SSH-ключи','key']])}
+    <div style="position:relative">${sec('Разработка',[['API gateway','plug','Preview'],['Repo','folder'],['Workflow Studio','cfg'],['evo CLI и MCP','term','Новое']],'hl')}${mk(4,'top:-8px;right:-8px')}</div>
+    ${sec('Управление',[['Certificate Manager','shield','Preview'],['История задач','clock'],['Теги','filter'],['Key Management','key'],['Secret Management','key']])}
+   </div></div>`;
+}
+
+function drawer(){
+  if(!S.drawer) return '';
+  return `<div class="dim" data-act="closeDrawer"></div><div class="drawer"><div class="ch"><span class="ag-mark">${ic('bot',13)}</span><h3>Подключить AI-агента</h3><div class="end"><button class="btn" data-act="closeDrawer">${ic('x')}</button></div></div>
+    <p class="small muted" style="margin:-4px 0 14px">Тот же компонент, что в блоке на главной: открывается из шапки, поиска, меню, форм и Маркетплейса — с контекстом места.</p>${connectUI('drawer')}</div>`;
+}
+
+function vmEmpty(){
+  return `<div class="page" style="max-width:1010px"><div class="crumbs">Инфраструктура ${ic('chev',11)} Виртуальные машины</div>
+  <div class="ptitle"><h1>Виртуальные машины</h1><span class="badge b-n">Проект: Демо</span><div class="end"><button class="btn btn-p" data-go="5">Создать ВМ ${ic('plus',13)}</button></div></div>
+  <div class="card"><div class="empty"><div class="ill">${ic('vm',30)}</div><h3 style="margin:0 0 4px;font-size:16px">В проекте пока нет виртуальных машин</h3><div class="muted" style="max-width:460px">Создайте первую ВМ — способом, который вам удобнее. Все три дают одинаковый результат.</div>
+   <div class="ways">
+    <div class="way"><h4>${ic('vm')} В консоли</h4><p>Пошаговая форма: образ, конфигурация, сеть. Цена видна до создания.</p><button class="btn btn-p" data-go="5">Создать ВМ</button></div>
+    <div class="way v" style="position:relative">${mk(1)}<h4 style="color:var(--v-text)">${ic('bot')} Попросите своего агента</h4><p>Опишите задачу словами — агент подберёт образ и конфигурацию и покажет превью с ценой.</p><div class="ex">«Подними ВМ под мой docker-compose из этого репозитория и открой 80 порт»</div><button class="btn btn-vo" data-act="openDrawer">${S.connected?'Скопировать промпт':'Подключить агента'}</button></div>
+    <div class="way" style="position:relative">${mk(2)}<h4>${ic('term')} Командой или кодом</h4><p>Для скриптов и CI — evo CLI или Terraform.</p><div class="ex n">evo vm create web-1 --image Ubuntu-24.04</div><button class="btn btn-o" data-act="copyText" data-t="evo vm create web-1 --image Ubuntu-24.04">Скопировать</button></div>
+   </div></div></div></div>`;
+}
+
+function vmPrompt(){
+  const v=S.vm, f={'lowcost10-2-4':'2 vCPU / 4 ГБ','gen-4-8':'4 vCPU / 8 ГБ','gen-8-16':'8 vCPU / 16 ГБ'}[v.flavor];
+  const ports=v.ports.length?`, открой порт${v.ports.length>1?'ы':''} ${v.ports.join(', ')}`:'';
+  return `Создай в проекте «Shopfront» ВМ «${v.name}» в зоне ${v.zone}: ${v.image}, ${f} (${v.flavor}), диск ${v.disk} ГБ, ${v.pub?'с публичным IP':'без публичного IP'}${ports}. Перед созданием покажи превью с ценой и дождись моего подтверждения.`;
+}
+function vmCmd(){
+  const v=S.vm;
+  return `evo vm create ${v.name} \\\n  --image ${v.image.replace(/ /g,'-')} \\\n  --flavor ${v.flavor} \\\n  --disk-size ${v.disk}`+(v.pub?'':' \\\n  --no-public-ip')+v.ports.map(p=>` \\\n  --port ${p}`).join('');
+}
+function price(){const b={'lowcost10-2-4':1290,'gen-4-8':3480,'gen-8-16':6950}[S.vm.flavor];return b+S.vm.disk*9+(S.vm.pub?190:0);}
+function vmCreate(){
+  const v=S.vm, opt=(id,t,s)=>`<button class="opt ${v.flavor===id?'on':''}" data-act="vmf" data-k="flavor" data-v="${id}">${t}<small>${s}</small></button>`;
+  return `<div class="page" style="max-width:1100px"><div class="crumbs">Инфраструктура ${ic('chev',11)} Виртуальные машины ${ic('chev',11)} Создание</div>
+  <div class="ptitle"><h1>Создание виртуальной машины</h1></div>
+  <div class="formcols"><div class="card">
+    <div class="field"><label>Название</label><input type="text" data-in="name" value="${esc(v.name)}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+     <div class="field"><label>Зона доступности</label><select data-in="zone">${['ru.AZ-1','ru.AZ-2','ru.AZ-3'].map(z=>`<option ${z===v.zone?'selected':''}>${z}</option>`).join('')}</select></div>
+     <div class="field"><label>Образ</label><select data-in="image">${['Ubuntu 24.04','Astra Linux SE 1.8','РЕД ОС 8','Альт 11'].map(z=>`<option ${z===v.image?'selected':''}>${z}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label>Конфигурация</label><div class="opts">${opt('lowcost10-2-4','2 vCPU · 4 ГБ','lowcost10-2-4')}${opt('gen-4-8','4 vCPU · 8 ГБ','gen-4-8')}${opt('gen-8-16','8 vCPU · 16 ГБ','gen-8-16')}</div></div>
+    <div class="field"><label>Загрузочный диск, ГБ</label><input type="number" data-in="disk" min="10" max="1000" value="${v.disk}"></div>
+    <div class="field"><label>Сеть</label><button class="chk ${v.pub?'on':''}" data-act="vmpub"><i></i>Публичный IP-адрес</button></div>
+    <div class="field" style="margin-bottom:0"><label>Открыть входящие порты</label><div class="ports">${['22','80','443','8080'].map(p=>`<button class="port ${v.ports.includes(p)?'on':''}" data-act="vmport" data-v="${p}">${p}</button>`).join('')}</div></div>
+  </div>
+  <div class="card sticky"><div class="ch"><h3>Итого</h3></div>
+    <div class="sumrow"><span>Конфигурация</span><b>${v.flavor}</b></div><div class="sumrow"><span>Диск</span><b>${v.disk} ГБ</b></div><div class="sumrow"><span>Публичный IP</span><b>${v.pub?'да':'нет'}</b></div>
+    <div class="total"><span class="muted">в месяц, примерно</span><b>${price().toLocaleString('ru-RU')} ₽</b></div>
+    <button class="btn btn-p btn-l btn-w" style="margin-top:12px" data-go="6">Создать</button>
+    <div class="eq" id="eq" style="position:relative">${mk(1,'top:4px;right:-8px')}
+     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="ag-mark">${ic('bot',13)}</span><b style="font-size:12px;font-weight:600">Повторить без консоли</b></div>
+     <div class="seg full" style="margin-bottom:8px;position:relative"><button class="${S.eqTab==='prompt'?'on':''}" data-act="eq" data-v="prompt">Промпт для агента</button><button class="${S.eqTab==='cli'?'on':''}" data-act="eq" data-v="cli">evo CLI</button><button class="${S.eqTab==='tf'?'on':''}" data-act="eq" data-v="tf">Terraform</button>${mk(2,'top:-8px;right:-8px')}</div>
+     <div class="codebox ${S.eqTab==='prompt'?'prose':''}" id="eqBox" style="font-size:11.5px;line-height:17px">${esc(S.eqTab==='prompt'?vmPrompt():S.eqTab==='cli'?vmCmd():'resource "cloudru_evolution_compute" "'+v.name+'" {\n  # тот же набор параметров\n}')}</div>
+     <div class="copyrow" style="margin-top:8px"><button class="btn btn-vo" data-act="copyEq">${ic('copy',13)} Скопировать</button>${S.connected?'<span class="small light">агент подключён</span>':'<button class="lnk-v" data-act="openDrawer">Подключить агента</button>'}</div>
+     <div class="small light" style="margin-top:6px">Обновляется по мере заполнения формы</div>
+    </div>
+  </div></div></div>`;
+}
+
+function vmCard(){
+  return `<div class="page" style="max-width:1060px"><div class="crumbs">Инфраструктура ${ic('chev',11)} Виртуальные машины ${ic('chev',11)} vm-712c44</div>
+  <div class="ptitle"><h1>vm-712c44</h1><span class="badge b-g">● Запущена</span><span class="badge b-b">Free tier</span><div class="end"><button class="btn btn-o">Перезагрузить</button><button class="btn btn-o">Остановить</button><button class="btn btn-o">···</button></div></div>
+  <div class="tabs"><button class="on">Обзор</button><button>Мониторинг</button><button>Диски</button><button>Сеть</button><button>Журнал событий</button></div>
+  <div class="alert r" style="margin-bottom:12px;position:relative">${ic('alert')}<div><b>Порт 80 не отвечает на проверку доступности</b><br>Последний успешный ответ — 14 минут назад. Группа безопасности: default-ru.AZ-1.</div><div class="end"><button class="btn btn-o">Открыть группу</button><button class="btn btn-vo" data-act="copyText" data-t="Разберись, почему ВМ vm-712c44 (проект Shopfront, 95.174.10.25) не отвечает на 80 порту: проверь группу безопасности, статус контейнеров и логи за последние 30 минут. Ничего не меняй без моего подтверждения.">${ic('bot',13)} Разобрать с агентом</button></div>${mk(2)}</div>
+  <div class="cols" style="grid-template-columns:minmax(0,1fr) 320px"><div class="stack">
+   <div class="card"><div class="ch"><h3>Параметры</h3></div><dl class="kv"><dt>Зона</dt><dd>ru.AZ-1</dd><dt>Образ</dt><dd>Ubuntu 24.04</dd><dt>Конфигурация</dt><dd>free-tier · 2 vCPU · 4 ГБ</dd><dt>Публичный IP</dt><dd>95.174.10.25</dd><dt>Создана</dt><dd>14.10.2026, 11:20</dd></dl></div>
+   <div class="card"><div class="ch"><h3>Утилизация vCPU</h3><div class="end"><div class="seg"><button>1 ч</button><button class="on">Сутки</button><button>Неделя</button></div></div></div><svg viewBox="0 0 600 90" style="width:100%;height:90px"><path d="M0 70 L40 66 L70 72 L100 50 L130 68 L170 60 L200 38 L230 64 L270 55 L300 70 L340 46 L370 63 L410 58 L440 30 L470 64 L520 55 L600 60" fill="none" stroke="var(--p-accent)" stroke-width="1.5"/></svg></div>
+  </div><div class="stack">
+   <div class="card" style="position:relative">${mk(1)}<div class="ch"><span class="ag-mark">${ic('bot',13)}</span><h3>Попросить агента</h3></div>
+    ${promptChips(['Разверни на vm-712c44 мой docker-compose','Сделай снапшот диска перед обновлением','Посчитай, хватит ли этой ВМ под 2× нагрузку'])}
+    ${S.connected?'':'<div class="small light" style="margin-top:8px">Промпт уже содержит ID ВМ и проект. <button class="lnk-v" data-act="openDrawer">Подключить агента</button></div>'}</div>
+   <div class="card" style="position:relative">${mk(3)}<div class="ch"><h3>Действия агентов с ВМ</h3></div>
+    ${S.connected?`<div class="tl"><div><time>12:14</time><span><b style="font-weight:500">${esc(agent().name)}</b> прочитал журнал событий</span></div><div><time>12:13</time><span><b style="font-weight:500">${esc(agent().name)}</b> проверил группу безопасности</span></div><div><time>12:10</time><span><b style="font-weight:500">${esc(agent().name)}</b> получил параметры ВМ</span></div></div><a class="small" data-go="8" style="display:block;margin-top:8px">Весь журнал в IAM → Агенты</a>`
+     :'<div class="small muted">Пока ни один агент не работал с этой ВМ. Здесь будет видно, что и когда агент читал или менял.</div>'}
+   </div>
+  </div></div></div>`;
+}
+
+function consent(){
+  const a=agent(), ro=S.access==='ro';
+  if(S.consent==='done') return `<div class="page"><div class="consent card" style="padding:24px;text-align:center;position:relative">${mk(4)}
+    <div class="okico" style="width:44px;height:44px">${ic('check',22)}</div><h1 style="font-size:20px;margin:6px 0 4px">${esc(a.name)} подключён</h1>
+    <div class="muted" style="margin-bottom:16px">Вернитесь к агенту — он уже видит проект Shopfront и продолжит с того места, где остановился.</div>
+    <div style="text-align:left;max-width:440px;margin:0 auto 16px"><div class="small light" style="margin-bottom:6px">С чего начать</div>${promptChips(['Расскажи, что есть в проекте и сколько это стоит в месяц','Найди ресурсы, которые простаивают','Проверь, всё ли в порядке с vm-712c44'])}</div>
+    <div class="copyrow" style="justify-content:center"><button class="btn btn-o" data-go="1">На главную</button><button class="btn btn-o" data-go="8">Управлять агентами</button></div></div></div>`;
+  return `<div class="page"><div class="consent">
+   <div class="crumbs">IAM ${ic('chev',11)} Агенты ${ic('chev',11)} Подключение</div>
+   <div class="card" style="padding:20px">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px"><span class="mono-ico" style="width:32px;height:32px;border-radius:8px;background:${a.c};color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px">${a.mono}</span><div><h1 style="margin:0;font-size:18px;line-height:24px">${esc(a.name)} просит доступ к Cloud.ru</h1><div class="small light">MacBook-Pro-Anna · evo 1.4 · запрос 12:04 · Москва</div></div></div>
+    <div style="position:relative;margin-bottom:16px">${mk(1)}<div class="small light" style="margin-bottom:6px">Сверьте код: тот же код показывает ваш агент</div><div class="code-big">KXRT–4821</div><div class="small light" style="margin-top:6px">Не совпадает или вы не запускали агента — нажмите «Отклонить».</div></div>
+    <div style="position:relative">${mk(2)}
+    <div class="field"><label>Проект</label><select><option>Shopfront</option><option>Демо</option><option>Сайт</option></select></div>
+    <div class="field"><label>Права</label><div style="display:grid;gap:6px">
+      <button class="radio-card ${ro?'on':''}" data-act="access" data-v="ro"><i class="r"></i><div><b>Только смотреть <span class="badge b-v">рекомендуем</span></b><span>Ресурсы, метрики, логи, расходы. Агент ничего не создаёт и не удаляет.</span></div></button>
+      <button class="radio-card ${ro?'':'on'}" data-act="access" data-v="rw"><i class="r"></i><div><b>Смотреть и менять</b><span>Платные и необратимые действия — только после вашего подтверждения в агенте.</span></div></button></div></div>
+    <div class="field"><label>Срок доступа</label><div class="seg">${[['30','30 дней'],['90','90 дней'],['365','1 год']].map(x=>`<button class="${S.term===x[0]?'on':''}" data-act="term" data-v="${x[0]}">${x[1]}</button>`).join('')}</div></div></div>
+    <div class="alert i" style="position:relative;margin-bottom:16px">${mk(3)}${ic('shield')}<div>Будет создан отдельный сервисный аккаунт <span class="mono">agent-${a.id}-macbook</span> с ролью «${ro?'Наблюдатель':'Пользователь'} проекта». Это не ваш личный доступ. Отозвать можно в любой момент: IAM → Агенты.</div></div>
+    <div class="copyrow"><button class="btn btn-p btn-l" data-act="allow">Разрешить доступ</button><button class="btn btn-o btn-l" data-go="1">Отклонить</button></div>
+   </div></div></div>`;
+}
+
+function iamAgents(){
+  const a=agent(), rows=[
+   S.connected?[a.name,a.c,a.mono,'MacBook-Pro-Anna','Shopfront',S.access==='ro'?'Только чтение':'Чтение и изменения','до 20.11.2026','2 мин назад',false]:null,
+   ['Claude Code','#c96a43','CC','ci-runner-03','Демо','Чтение и изменения','до 19.01.2027','вчера, 18:40',false],
+   ['GigaCode','#21a038','GC','ws-dev-12','Сайт','Только чтение','истёк 01.10.2026','—',true]].filter(Boolean);
+  return `<div class="page" style="max-width:1100px"><div class="crumbs">Управление ${ic('chev',11)} IAM</div>
+  <div class="ptitle"><h1>IAM</h1><div class="end"><button class="btn btn-v" data-act="openDrawer">${ic('bot',13)} Подключить агента</button></div></div>
+  <div class="tabs" style="position:relative"><button>Пользователи</button><button>Сервисные аккаунты</button><button>Роли</button><button class="on">${ic('bot',14)} Агенты <span class="badge b-new">Новое</span></button><span style="position:relative">${mk(1,'top:4px;left:4px')}</span></div>
+  <div class="cols" style="grid-template-columns:minmax(0,1fr) 300px"><div class="card" style="padding:4px 4px 8px;position:relative">${mk(2)}
+   <table class="t"><thead><tr><th>Агент</th><th>Устройство</th><th>Проект</th><th>Права</th><th>Срок</th><th>Активность</th><th></th></tr></thead><tbody>
+   ${rows.map(r=>`<tr style="${r[8]?'opacity:.6':''}"><td><div style="display:flex;gap:8px;align-items:center"><span class="mono-ico" style="width:22px;height:22px;border-radius:5px;background:${r[1]};color:#fff;display:grid;place-items:center;font-size:9px;font-weight:700">${r[2]}</span>${esc(r[0])}</div></td><td class="muted">${r[3]}</td><td>${r[4]}</td><td><span class="badge ${r[5].startsWith('Только')?'b-v':'b-y'}">${r[5]}</span></td><td class="${r[8]?'':'muted'}">${r[8]?'<span class="badge b-r">истёк</span>':r[6]}</td><td class="muted">${r[7]}</td><td>${r[8]?'<button class="btn btn-o">Продлить</button>':'<button class="btn btn-o">Отозвать</button>'}</td></tr>`).join('')}
+   </tbody></table>
+   ${S.connected?'':`<div class="small muted" style="padding:10px 8px 0">Подключите агента, чтобы увидеть его здесь: <button class="lnk" data-go="2">открыть подключение</button> или переключатель «Агент» в панели прототипа.</div>`}
+  </div>
+  <div class="card" style="position:relative">${mk(3)}<div class="ch"><h3>Журнал действий агентов</h3></div><div class="tl">
+   ${S.connected?`<div><time>12:14</time><span><b style="font-weight:500">${esc(a.name)}</b> · vm_get vm-712c44<br><span class="small light">чтение</span></span></div>`:''}
+   <div><time>18:40</time><span><b style="font-weight:500">Claude Code</b> · vm_create web-2<br><span class="badge b-g">подтверждено: А. Смирнова</span></span></div>
+   <div><time>18:39</time><span><b style="font-weight:500">Claude Code</b> · превью vm_create, 1 480 ₽/мес<br><span class="small light">ожидало подтверждения 42 с</span></span></div>
+   <div><time>18:31</time><span><b style="font-weight:500">Claude Code</b> · s3_list shop-media<br><span class="small light">чтение</span></span></div>
+   <div><time>17:02</time><span><b style="font-weight:500">Claude Code</b> · disk_delete tmp-1<br><span class="badge b-r">отклонено человеком</span></span></div>
+  </div><button class="btn btn-o btn-w" style="margin-top:10px">Выгрузить для аудита</button></div></div></div>`;
+}
+
+function marketplace(){
+  const cat=S.mktCat;
+  const partners=[['Service Desk','#5388d1','SD','Заявки, SLA и база знаний: агент создаёт и закрывает тикеты.','24 инструмента'],['CRM-платформа','#fb8e42','CR','Сделки, контакты и воронки — в контексте агента продаж.','31 инструмент'],['Векторная БД','#57b762','VD','Поиск и запись эмбеддингов для RAG-агентов.','12 инструментов'],['Мониторинг и алерты','#cb3f3e','MA','Инциденты, дежурства и графики для SRE-агента.','18 инструментов'],['Платёжный шлюз','#2b537e','PG','Счета, возвраты и сверка платежей.','15 инструментов'],['ЭДО','#8c639b','ЭД','Отправка и подписание документов по запросу агента.','9 инструментов']];
+  return `<div class="page" style="max-width:1100px"><div class="crumbs">Маркетплейс</div>
+  <div class="ptitle"><h1>Маркетплейс</h1><div class="end"><div class="inp" style="width:260px">${ic('search',14)}Поиск по продуктам</div></div></div>
+  <div class="chips" style="position:relative"><span class="chipf">Все</span><span class="chipf v ${cat==='mcp'?'on':''}">${ic('bot',13)} Для AI-агентов (MCP) <span class="badge b-new" style="background:#fff3;color:inherit">Новое</span></span><span class="chipf">Разработка</span><span class="chipf">Аналитика</span><span class="chipf">Безопасность</span><span class="chipf">Бизнес-приложения</span><span style="position:relative">${mk(1,'top:-2px;left:2px')}</span></div>
+  <div class="card" style="margin-bottom:12px;padding:18px;position:relative">${mk(2)}<div class="mkt-hero"><div>
+    <span class="badge b-v">От Cloud.ru</span><h2 style="margin:8px 0 6px;font-size:20px;line-height:26px">Cloud.ru MCP — облако внутри вашего агента</h2>
+    <p class="muted" style="margin:0 0 12px">~150 инструментов: ВМ, Kubernetes, сети, базы данных, Object Storage, мониторинг, расходы и деплой docker-compose. Бесплатно — платите только за ресурсы.</p>
+    <div class="copyrow"><button class="btn btn-v btn-l" data-act="openDrawer">${ic('plug',14)} Подключить к агенту</button><button class="btn btn-o btn-l">Документация</button></div></div>
+    <div class="chat"><span class="u">› какие ресурсы в Shopfront простаивают?</span>\n<span class="t">  ⋯ evo · vm_list, disk_list, billing_usage</span>\n<span class="a">  2 диска без ВМ и 1 остановленная ВМ —\n  ~2 300 ₽/мес. Удалить? (покажу превью)</span>\n<span class="u">› да, диски удали</span><span class="caret"></span></div></div></div>
+  <div class="ch" style="margin-top:4px"><h3>MCP-серверы партнёров</h3><span class="small light">подключаются тем же сценарием, доступ — через IAM Cloud.ru</span><span style="position:relative;margin-left:8px">${mk(3,'top:-10px;left:0')}</span><div class="end"><button class="btn btn-o">Стать партнёром ${ic('arrow',13)}</button></div></div>
+  <div class="pcards">${partners.map(p=>`<div class="pcard"><div class="top"><span class="lg" style="background:${p[1]}">${p[2]}</span><div><b style="font-weight:600">${p[0]}</b><div class="small light">Партнёр · пример</div></div></div><p>${p[3]}</p><div class="meta"><span class="badge b-n">${p[4]}</span><span class="badge b-g">Только чтение доступно</span></div><button class="btn btn-vo" data-act="openDrawer" style="align-self:flex-start">${ic('plug',13)} Подключить к агенту</button></div>`).join('')}</div>
+  </div>`;
+}
+
+function concept(){
+  const row=(go,place,job,moment,mech,p)=>`<tr><td><button class="go" data-go="${go}">${place} →</button></td><td>${job}</td><td>${moment}</td><td>${mech}</td><td><span class="prio p${p}">P${p}</span></td></tr>`;
+  return `<div class="doc">
+  <div class="small light" style="text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Концепция · для обсуждения</div>
+  <h1>Облако внутри вашего агента</h1>
+  <p class="lead">Куда и как встроить в личный кабинет Cloud.ru подключение своего AI-агента — evo CLI и MCP-сервера. Не баннеры, а продолжение того, что человек уже делает в ЛК.</p>
+  <div class="thesis">
+   <div class="th"><div class="lbl">Уже есть</div><h3>Гига-помощник — AI внутри консоли</h3><p>Для тех, кто пришёл в ЛК: спросить, создать ресурс, найти неиспользуемое.</p></div>
+   <div class="plus">+</div>
+   <div class="th v"><div class="lbl" style="color:var(--v-text-s)">Добавляем</div><h3 style="color:var(--v-text)">evo + MCP — облако внутри вашего агента</h3><p>Для тех, кто работает в Cursor, Claude Code, GigaCode: облако приходит туда, где пишут код и думают.</p></div>
+  </div>
+  <p class="small muted" style="margin-top:10px">Ключевое решение: показываем их как пару — один переключатель «В консоли / В моём агенте» в существующем блоке на главной. Не конкурируем с Гига-помощником за внимание, а закрываем вторую половину сценариев.</p>
+
+  <h2>Принципы</h2>
+  <div class="princ">
+   <div class="pr"><span class="num">01</span><b>Эквивалент, а не реклама</b><p>В момент, когда человек делает работу руками, показываем, как ту же работу сделает агент — с его же параметрами. Прецедент: «Equivalent code» в Google Cloud Console.</p></div>
+   <div class="pr"><span class="num">02</span><b>Один компонент подключения</b><p>Шапка, поиск, меню, формы, Маркетплейс ведут в одно и то же окно, но с контекстом места: проект, ресурс, задача.</p></div>
+   <div class="pr"><span class="num">03</span><b>Безопасно по умолчанию</b><p>«Только смотреть» по умолчанию, отдельный сервисный аккаунт, срок жизни, сверка кода. Для enterprise контроль — это и есть фича.</p></div>
+   <div class="pr"><span class="num">04</span><b>Ценность с первой фразы</b><p>Промпт уже знает проект и сразу даёт результат («что у меня в проекте и сколько стоит»), а не «hello world». Слово MCP — на втором уровне.</p></div>
+   <div class="pr"><span class="num">05</span><b>Агент видим в ЛК</b><p>После подключения точка входа становится статусом в шапке, а действия агента — частью карточек ресурсов и журнала в IAM.</p></div>
+   <div class="pr"><span class="num">06</span><b>Единый визуальный код</b><p>Всё агентное — фиолетовое (violet из Snack UIKit) с иконкой агента. Узнаётся на любом экране и не спорит с зелёным брендом.</p></div>
+  </div>
+
+  <h2>Аудитория и джобы</h2>
+  <table class="dt"><thead><tr><th style="width:20%">Сегмент</th><th style="width:44%">Главная джоба</th><th>Желаемые результаты (минимизировать / увеличить)</th></tr></thead><tbody>
+   <tr><td><b>Разработчик с AI-IDE</b></td><td>Когда я пишу код с агентом, хочу поднять и поменять окружение, не выходя из IDE, чтобы не терять поток.</td><td>− время от идеи до работающего стенда<br>− переключения между IDE и консолью</td></tr>
+   <tr><td><b>DevOps / SRE</b></td><td>Когда что-то сломалось или надо повторить настройку, хочу быстро найти причину и воспроизвести действия кодом.</td><td>− время диагностики инцидента<br>− ручные шаги, которые нельзя повторить</td></tr>
+   <tr><td><b>AI-инженер</b></td><td>Когда я строю агента, хочу дать ему инструменты облака и бизнес-систем, чтобы он делал реальную работу.</td><td>− время на интеграции<br>+ число доступных инструментов</td></tr>
+   <tr><td><b>Тимлид / ИБ (согласует)</b></td><td>Когда команда подключает агентов, хочу понимать, что им разрешено и что они сделали, чтобы спокойно разрешить.</td><td>− риск необратимых действий без ведома<br>+ прозрачность для аудита</td></tr>
+  </tbody></table>
+
+  <h2>Точки встраивания</h2>
+  <table class="dt"><thead><tr><th>Место в ЛК</th><th>Джоба</th><th>Момент</th><th>Механика</th><th>Приоритет</th></tr></thead><tbody>
+   ${row(1,'Главная: блок AI','Разработчик','Зашёл в ЛК, видит Гига-помощника','Переключатель «В консоли / В моём агенте» + строка-подсказка',0)}
+   ${row(2,'Компонент подключения','Все','Решил подключить','Агент → права → промпт; ожидание агента',0)}
+   ${row(5,'Форма создания ВМ','Разработчик, DevOps','Заполнил форму, готов нажать «Создать»','«Повторить без консоли»: промпт / evo / Terraform вживую',0)}
+   ${row(7,'Подтверждение доступа','ИБ, все','Агент прислал ссылку','Сверка кода, проект, права, срок',0)}
+   ${row(8,'IAM → Агенты','ИБ, тимлид','Нужно понять и ограничить','Реестр агентов, отзыв, журнал действий',0)}
+   ${row(6,'Карточка ресурса','SRE','Ошибка или день-2 задача','«Разобрать с агентом», промпты с ID ресурса',1)}
+   ${row(4,'Пустой список','Новичок, разработчик','Пришёл создать первый ресурс','Три равных способа: консоль, агент, код',1)}
+   ${row(3,'Меню и поиск','Опытный','Печатает «mcp», «агент», «cli»','Действие в выдаче + пункт в «Разработке»',1)}
+   ${row(9,'Маркетплейс','AI-инженер, партнёры','Ищет интеграции','Категория «Для AI-агентов (MCP)»',2)}
+  </tbody></table>
+  <p class="small muted" style="margin-top:8px">Сознательно не делаем: промо-карусель в правой колонке, pop-up при входе, отдельный пункт в каждом сервисе. Аудитория опытная — баннерная слепота и раздражение дороже охвата.</p>
+
+  <h2>Путь пользователя</h2>
+  <div class="cjm">
+   <div><div class="who">ЛК</div><b>Выбирает агента и копирует промпт</b><span>Права «только смотреть» уже выбраны.</span></div>
+   <div><div class="who">Агент</div><b>Ставит evo и MCP</b><span>Сверяет подпись, подключает сервер, запускает вход.</span></div>
+   <div><div class="who">ЛК</div><b>Подтверждает доступ</b><span>Сверка кода, проект, права, срок — отдельный сервисный аккаунт.</span></div>
+   <div><div class="who">Агент</div><b>Сразу приносит пользу</b><span>«В проекте 3 ресурса, ~4 800 ₽/мес; 1 диск простаивает».</span></div>
+   <div><div class="who">ЛК</div><b>Агент виден</b><span>Статус в шапке, действия в карточках, журнал в IAM.</span></div>
+  </div>
+
+  <h2>Допущения прототипа</h2>
+  <div class="caveat"><ul>
+   <li>Главная и меню сервисов — по скриншотам ЛК; страницы ВМ, IAM и Маркетплейса — реконструкция, их надо сверить с реальными.</li>
+   <li>Токены — Snack UIKit (@snack-uikit/figma-tokens 19.0.5); шрифт SB Sans Interface заменён на Inter, если не установлен.</li>
+   <li>Все имена, суммы, IP и партнёры вымышлены. Логотипы агентов — заглушки-монограммы.</li>
+   <li>Команды <span class="mono">evo login</span>, адрес cloud.ru/agents, вкладка «Агенты» в IAM и категория в Маркетплейсе — предложения, не существующие функции.</li>
+  </ul></div>
+  <div class="copyrow" style="margin-top:20px"><button class="btn btn-p btn-l" data-go="1">Смотреть прототип ${ic('arrow',14)}</button><span class="small light">Стрелки ← → в панели сверху или клавиатура</span></div>
+  </div>`;
+}
+
+/* ---------- аннотации ---------- */
+const N={
+1:[
+ {t:'Точка входа в шапке, которая становится статусом',job:'Когда я работаю в IDE с агентом, хочу подключить облако за минуту, чтобы не переключаться между окнами.',p:'Тихая, но постоянная кнопка рядом с балансом. После подключения превращается в индикатор «Cursor · чтение»: точка входа становится точкой контроля. Переключатель «Агент» в панели прототипа показывает оба состояния.'},
+ {t:'Пара с Гига-помощником, а не конкурент',job:'Когда я в консоли — спрошу Гигу; когда в IDE — хочу то же самое у своего агента.',p:'Не добавляем новый блок на перегруженную главную, а даём существующему блоку второй режим: «В консоли / В моём агенте». Гига-помощник остаётся режимом по умолчанию — его метрики не страдают.'},
+ {t:'Строка-мост внизу блока',p:'Для тех, кто не заметит переключатель: одна строка на языке аудитории («Пишете код в Cursor…?»), а не «Подключите MCP». Ведёт в тот же режим.'},
+ {t:'Чего здесь нет',p:'Нет промо в правой колонке и pop-up при входе. Правая колонка уже занята бонусами и балансом; агентная аудитория — опытные пользователи, им нужен инструмент, а не реклама.'}],
+2:[
+ {t:'Сначала — какой у вас агент',job:'Хочу инструкцию именно для моего инструмента, а не общую.',p:'Монограммы-заглушки; порядок — по данным использования (гипотеза: Cursor, Claude Code, GigaCode). AI Agents от Cloud.ru — в том же ряду: замыкаем экосистему.'},
+ {t:'«Только смотреть» по умолчанию',job:'Тимлид / ИБ: хочу разрешить агенту смотреть, но не трогать, пока не доверяю.',p:'Первый опыт без риска — меньше возражений ИБ, больше подключений в enterprise. Режим изменений описан через превью и подтверждение — так работает сам evo MCP.'},
+ {t:'Промпт вместо инструкции',p:'Человек копирует одно действие — агент сам ставит evo, подключает MCP и запускает вход. Промпт персонализирован: проект, права и первая полезная задача. Ручная установка свёрнута для тех, кто не доверяет «агент сам скачает».'},
+ {t:'Окно ждёт агента',p:'После копирования блок не «закрывается молча»: показывает, что будет дальше (ссылка и код от агента). Петля замкнута, человек не теряется между окнами.'},
+ {t:'Обещание результата',p:'Под компонентом — задачи на языке пользователя. Продаём результат («разверни, найди, почему не отвечает»), а не технологию.'}],
+3:[
+ {t:'Поиск — главный вход для опытных',job:'Опытный пользователь не ищет глазами, он печатает.',p:'По запросам «mcp», «агент», «cli», «terraform», «api» первой строкой — действие «Подключить своего AI-агента».'},
+ {t:'Сквозная выдача',p:'В одной выдаче — подключение, сам продукт, MCP партнёров в Маркетплейсе и AI Agents из AI Factory. Пользователь видит всю агентную экосистему Cloud.ru.'},
+ {t:'Плитка Маркетплейса',p:'Существующая плитка получает строку «Новое: MCP-серверы для агентов» — бесплатный трафик в новую категорию.'},
+ {t:'evo CLI и MCP — продукт в каталоге',p:'Отдельный пункт в «Разработке» рядом с API gateway и Repo: CLI и MCP — такой же продукт платформы, у него есть своё место в навигации.'}],
+4:[
+ {t:'Пустое состояние — момент максимального намерения',job:'Когда я пришёл создать первый ресурс, хочу сделать это самым быстрым для меня способом.',p:'Три равных способа. Агента не навязываем, а делаем штатным способом наравне с консолью и кодом. Пример — на языке задачи, а не инструмента.'},
+ {t:'Код для тех, кто автоматизирует',p:'evo и Terraform рядом — для DevOps это сигнал «здесь всё воспроизводимо».'}],
+5:[
+ {t:'«Повторить без консоли» — главный aha-момент',job:'Когда я один раз настроил ресурс руками, хочу повторить это без кликов — в другом проекте, в CI или через агента.',p:'Промпт и команда evo собираются из полей формы вживую. Человек видит, что агент сделает то же, что он сейчас кликает, — и в следующий раз попросит агента. Прецедент: «Equivalent code» в Google Cloud Console.'},
+ {t:'Три формата — три сегмента',p:'Промпт — разработчику с агентом, evo — DevOps, Terraform — платформенной команде. Один блок закрывает всех. Блок стоит в панели «Итого», рядом с ценой и кнопкой «Создать», — там, где принимается решение.'}],
+6:[
+ {t:'День 2: агент в эксплуатации',job:'Когда ресурс уже работает, хочу быстро делать рутину: деплой, снапшоты, оценку нагрузки.',p:'Промпты с ID ВМ и проектом — копируются в один клик. Основная экономия времени у агента не в создании ресурсов, а в эксплуатации.'},
+ {t:'«Разобрать с агентом» в момент боли',job:'SRE: когда что-то сломалось, хочу быстро найти причину.',p:'Кнопка прямо в алерте. Промпт уже содержит ресурс, IP, текст ошибки и ограничение «ничего не меняй без подтверждения».'},
+ {t:'Прозрачность',p:'Что агент делал с этим ресурсом — видно в карточке. Снимает страх «что он там творит» и подкрепляет доверие.'}],
+7:[
+ {t:'Сверка кода — защита от фишинга',p:'Подтверждаем только тот запрос, который человек видит у своего агента. Это главный барьер против «чужого промпта» со ссылкой на поддельный сайт.'},
+ {t:'Человек сам выбирает объём доступа',job:'ИБ: хочу, чтобы агент получал ровно столько, сколько разрешили.',p:'Проект, права и срок — на одном экране, по умолчанию самые безопасные. Переключите права: компонент на главной и этот экран синхронизированы.'},
+ {t:'Честно о том, что создаётся',p:'Отдельный сервисный аккаунт с понятным именем, а не личный ключ пользователя. Сразу сказано, где отозвать.'},
+ {t:'Не тупик, а продолжение',p:'После «Разрешить» — «вернитесь к агенту» и первые задачи. Состояние «агент подключён» включается во всём прототипе.'}],
+8:[
+ {t:'Агенты — новый тип субъекта доступа',p:'Вкладка рядом с пользователями и сервисными аккаунтами. У агентов свой жизненный цикл: устройство, срок, активность — им нужен свой реестр.'},
+ {t:'Отозвать за одно действие',job:'ИБ: если что-то пошло не так, хочу отключить агента сразу.',p:'Срок жизни по умолчанию, истёкшие видны, продление — явное действие.'},
+ {t:'Журнал с меткой «подтверждено человеком»',job:'Хочу доказать, что агент действовал в рамках, — для аудита и для себя.',p:'Видно, кто подтвердил платное действие и что было отклонено. Это аргумент, с которым ИБ разрешает агентов, а не запрещает их.'}],
+9:[
+ {t:'Маркетплейс — каталог инструментов для агентов',p:'Новая категория «Для AI-агентов (MCP)». Cloud.ru MCP — первый, эталонный продукт категории.'},
+ {t:'Показываем, а не описываем',p:'Живой фрагмент диалога: вопрос про простаивающие ресурсы → ответ с экономией в рублях → превью перед удалением. Ценность и безопасность в одном кадре.'},
+ {t:'Партнёрские MCP — тем же сценарием',job:'ISV: хочу, чтобы мой продукт был доступен агентам клиентов Cloud.ru.',p:'Тот же компонент подключения и тот же IAM: единый UX для клиента, новый канал дистрибуции для партнёра. Листинг, модерация и монетизация — через Partner Platform (отдельная проработка). Гипотеза: ранний вход задаёт стандарт агентной дистрибуции на рынке РФ.'}],
+};
+
+/* ---------- маршрутизация ---------- */
+const SCREENS=[
+ {t:'0 · Концепция',r:concept},
+ {t:'1 · Главная: блок AI и шапка',r:()=>{S.aiMode=S.aiMode||'giga';return dashboard();}},
+ {t:'2 · Главная: «В моём агенте»',r:()=>dashboard()},
+ {t:'3 · Меню сервисов и поиск',r:()=>dashboard()+megaMenu()},
+ {t:'4 · ВМ: пустой проект',r:vmEmpty},
+ {t:'5 · Создание ВМ: «Повторить без консоли»',r:vmCreate},
+ {t:'6 · Карточка ВМ: день 2',r:vmCard},
+ {t:'7 · Подтверждение доступа агента',r:consent},
+ {t:'8 · IAM → Агенты',r:iamAgents},
+ {t:'9 · Маркетплейс: MCP-серверы',r:marketplace},
+];
+const sel=document.getElementById('scrSel');
+SCREENS.forEach((s,i)=>sel.insertAdjacentHTML('beforeend',`<option value="${i}">${s.t}</option>`));
+
+function go(i){
+  i=Math.max(0,Math.min(SCREENS.length-1,i));
+  if(i===1) S.aiMode='giga';
+  if(i===2) S.aiMode='agent';
+  if(i===7 && S.screen!==7) S.consent=S.connected?'done':'ask';
+  S.screen=i; S.drawer=false; render(); window.scrollTo(0,0);
+}
+function render(){
+  const lk=document.getElementById('lk');
+  const scr=SCREENS[S.screen];
+  lk.innerHTML=(S.screen===0?'':header())+scr.r()+drawer()+(S.screen===0?'':fab);
+  sel.value=S.screen;
+  document.getElementById('connTgl').textContent='Агент: '+(S.connected?'подключён':'не подключён');
+  document.getElementById('connTgl').classList.toggle('on',S.connected);
+  const notes=N[S.screen];
+  document.getElementById('notes').innerHTML=S.screen===0
+    ? `<h4>Как смотреть</h4><div class="scr">Панель «Почему так» объясняет решения на каждом экране</div>
+       <div class="note"><span class="mk static">1</span><div><p>Оранжевые номера на экране — решения. Клик по номеру подсвечивает пояснение здесь.</p></div></div>
+       <div class="note"><span class="mk static">⇄</span><div><p>«Агент: не подключён / подключён» в панели сверху переключает весь ЛК между состояниями до и после подключения.</p></div></div>
+       <div class="note"><span class="mk static">◐</span><div><p>Кнопка «Аннотации» прячет номера и эту панель — для показа «чистого» интерфейса.</p></div></div>
+       <div class="note"><span class="mk static">→</span><div><p>Рекомендуемый маршрут для показа: 1 → 2 → «Скопировать промпт» → 7 → «Разрешить» → 6 → 8 → 5 → 9.</p></div></div>`
+    : `<h4>Почему так</h4><div class="scr">${scr.t}</div>`+(notes||[]).map((n,i)=>`<div class="note" id="note${i+1}"><span class="mk static">${i+1}</span><div><b>${n.t}</b>${n.job?`<div class="job"><em>Джоба</em>${n.job}</div>`:''}<p>${n.p}</p></div></div>`).join('');
+}
+function toast(t){const el=document.getElementById('toast');el.innerHTML=ic('check',14)+t;el.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove('show'),1800);}
+function copy(t){try{navigator.clipboard&&navigator.clipboard.writeText(t).catch(()=>{})}catch(e){} }
+
+document.addEventListener('click',e=>{
+  const mkEl=e.target.closest('.mk:not(.static)');
+  if(mkEl){const n=document.getElementById('note'+mkEl.dataset.n);document.querySelectorAll('.note.hl').forEach(x=>x.classList.remove('hl'));if(n){n.classList.add('hl');n.scrollIntoView({block:'nearest',behavior:'smooth'});}return;}
+  const g=e.target.closest('[data-go]'); if(g){go(+g.dataset.go);return;}
+  const a=e.target.closest('[data-act]'); if(!a) return;
+  const v=a.dataset.v;
+  switch(a.dataset.act){
+   case 'aiMode': S.aiMode=v; if(S.screen===1&&v==='agent'){go(2);return;} if(S.screen===2&&v==='giga'){go(1);return;} break;
+   case 'agent': S.agent=v; S.copied=false; break;
+   case 'access': S.access=v; break;
+   case 'term': S.term=v; break;
+   case 'copy': copy(promptText()); S.copied=true; toast('Промпт скопирован — вставьте его агенту'); break;
+   case 'manual': {const m=document.getElementById('manual'); if(m) m.style.display=m.style.display==='none'?'block':'none'; return;}
+   case 'copyText': copy(a.dataset.t); toast('Промпт скопирован'); return;
+   case 'openDrawer': if(S.screen===1||S.screen===2){go(2);return;} S.drawer=true; break;
+   case 'closeDrawer': S.drawer=false; break;
+   case 'allow': S.consent='done'; S.connected=true; S.copied=false; toast('Доступ выдан · агент подключён'); break;
+   case 'eq': S.eqTab=v; break;
+   case 'copyEq': copy(document.getElementById('eqBox').textContent); toast('Скопировано'); return;
+   case 'vmf': S.vm[a.dataset.k]=v; break;
+   case 'vmpub': S.vm.pub=!S.vm.pub; break;
+   case 'vmport': S.vm.ports=S.vm.ports.includes(v)?S.vm.ports.filter(p=>p!==v):[...S.vm.ports,v].sort((x,y)=>x-y); break;
+  }
+  render();
+});
+document.addEventListener('input',e=>{
+  const k=e.target.dataset.in; if(!k) return;
+  S.vm[k]=k==='disk'?Math.max(10,+e.target.value||10):e.target.value;
+  const box=document.getElementById('eqBox'); if(box) box.textContent=S.eqTab==='prompt'?vmPrompt():S.eqTab==='cli'?vmCmd():box.textContent;
+  const tot=document.querySelector('.total b'); if(tot) tot.textContent=price().toLocaleString('ru-RU')+' ₽';
+});
+document.addEventListener('change',e=>{ if(e.target.dataset.in) render(); });
+document.addEventListener('keydown',e=>{ if(e.target.matches('input,select,textarea')) return; if(e.key==='ArrowRight') go(S.screen+1); if(e.key==='ArrowLeft') go(S.screen-1); });
+sel.onchange=()=>go(+sel.value);
+document.getElementById('prev').onclick=()=>go(S.screen-1);
+document.getElementById('next').onclick=()=>go(S.screen+1);
+document.getElementById('connTgl').onclick=()=>{S.connected=!S.connected;S.copied=false;if(S.screen===7)S.consent=S.connected?'done':'ask';render();};
+document.getElementById('annoTgl').onclick=e=>{S.anno=!S.anno;document.body.classList.toggle('no-anno',!S.anno);e.target.classList.toggle('on',S.anno);};
+document.getElementById('themeTgl').onclick=()=>{const r=document.documentElement;r.dataset.theme=r.dataset.theme==='dark'?'light':'dark';};
+render();
+</script>
+</body>
+</html>
