@@ -35,7 +35,9 @@ func (s *Registry) callTool(ctx context.Context, name string, args map[string]an
 	if !ok {
 		return nil, fmt.Errorf("unknown tool %q", name)
 	}
-	text, isErr := h(ctx, args)
+	// The step is not the CLI command's call (Caller): its progress and
+	// its error are the outer tool's to show.
+	text, isErr := h(WithCaller(ctx, nil), args)
 	var out map[string]any
 	if e := json.Unmarshal([]byte(text), &out); e != nil {
 		return nil, fmt.Errorf("%s: unparseable result: %s", name, text)

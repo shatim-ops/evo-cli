@@ -194,11 +194,14 @@ evo не освобождает её floating IP и не закрывает по
 MCP `fip_attach`) или удалите ВМ (`evo destroy` / `vm delete`): созданный
 floating IP записан и освободится вместе с ней.
 
-### `deploy`: «ВМ … не стала активной за 10m0s» (did not become active within)
+### `deploy`, `vm create`: «ВМ … не стала активной за 25m0s» (did not become active within)
 
 Новая ВМ создаётся несколько минут; 15.10.2026 в ru.AZ-1 это занимало около
-5 минут, иногда дольше. `deploy` ждёт 10 минут (`CLOUDRU_TIMEOUT`, секунды);
-ВМ к этому моменту уже записана в state, так что `evo destroy` её удалит.
+5 минут, в октябре 2026 там же — до 20 минут. `deploy`, `vm create` и MCP
+`provision` ждут 25 минут (`CLOUDRU_TIMEOUT`, секунды). ВМ после этого
+продолжает создаваться и оплачивается; она уже записана в state, так что
+`evo destroy` (или `evo vm delete <id>`) её удалит. Проверить её —
+`evo vm get <id>`; ждать дольше — задайте `CLOUDRU_TIMEOUT`.
 
 ### Порты в группе безопасности после `destroy`
 

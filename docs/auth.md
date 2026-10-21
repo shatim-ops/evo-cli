@@ -233,7 +233,7 @@ profiles:
 | `CLOUDRU_DISK_SIZE` | размер загрузочного диска, ГБ (по умолчанию 10) | `deploy --disk-size` / `disk_size` |
 | `CLOUDRU_COMPOSE_FILE` | путь к compose-файлу (по умолчанию `docker-compose.yml`) | `deploy -f` / `compose_file` |
 | `CLOUDRU_PROJECT_NAME` | имя развёртывания (по умолчанию — имя текущего каталога) | `project_name` |
-| `CLOUDRU_TIMEOUT` | сколько секунд `deploy` ждёт, пока ВМ станет активной (по умолчанию 600) | `timeout` |
+| `CLOUDRU_TIMEOUT` | сколько секунд `deploy`, `vm create` и MCP `provision` ждут, пока ВМ станет активной (по умолчанию 1500 — 25 минут) | `timeout` |
 | `CLOUDRU_AGREEMENT_ID` | ID договора для инструментов биллинга (`billing_*`): расход и баланс всего договора. Его видят только администратор организации и администратор затрат ([где найти](https://cloud.ru/docs/billing/ug/topics/faq__api_id_agreement)). Без него `billing_consumption` и `billing_finops` считают расход проекта (`CLOUDRU_PROJECT_ID` или аргумент `project_id`; роль ключа — администратор проекта, `platform.project.admin`, [документация](https://cloud.ru/docs/billing/ug/topics/api-ref_start)), а `billing_balance` отказывает: баланса по проекту в API нет | — |
 
 ### Object Storage (S3)

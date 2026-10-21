@@ -51,7 +51,7 @@ func exitCode(err error) int { return clerrors.ExitCode(err) }
 
 func TestDefaults(t *testing.T) {
 	cfg := Defaults()
-	if cfg.Region != "" || cfg.Flavor != "auto" || cfg.Timeout != 600 ||
+	if cfg.Region != "" || cfg.Flavor != "auto" || cfg.Timeout != DefaultTimeout ||
 		cfg.ComposeFile != "docker-compose.yml" || cfg.DiskSize != 10 {
 		t.Errorf("unexpected defaults: %+v", cfg)
 	}
@@ -92,7 +92,7 @@ func TestResolve_Precedence(t *testing.T) {
 		"Region":    {"az-project", OriginProject},
 		"Flavor":    {"flavor-env", OriginEnv},
 		"ImageID":   {"img-flag", OriginFlag},
-		"Timeout":   {"600", OriginDefault},
+		"Timeout":   {"1500", OriginDefault},
 		"DiskSize":  {"20", OriginProfile},
 		"KeyID":     {"fake****ault", OriginProfile},
 	}

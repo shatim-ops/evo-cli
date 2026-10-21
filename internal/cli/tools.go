@@ -653,6 +653,9 @@ func applyWait(t tools.Tool, args map[string]any) error {
 // tool in the words of deploy; 'evo tools call' shows the answer as is.
 // hints word a refusal for the caller (toolError).
 func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[string]any, human bool, hints toolHints) (string, error) {
+	// The stages of a long call go to stderr as it works (evo vm create:
+	// the wait for the VM); stdout gets only the tool's answer, unchanged.
+	ctx = tools.WithCaller(ctx, &tools.Caller{Progress: cmdPrinter(cmd).OnStderr()})
 	opts := confirm.Options{Yes: flagYes, DryRun: flagDryRun, JSON: flagJSON,
 		Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr()}
 

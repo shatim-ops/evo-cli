@@ -1763,6 +1763,20 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}), true
 	}
 
+	vmName := stringArg(args, "name")
+	if vmName == "" {
+		vmName = "evo-" + fmt.Sprintf("%d", time.Now().Unix())
+	}
+	// The person at the CLI sees the stages as they go (Caller.Progress),
+	// the engine's own lines among them, on stderr: a VM takes minutes.
+	// MCP has the answer only, as before.
+	pp, watched := progressOf(ctx)
+	if watched {
+		eng.Printer = pp
+	}
+	started := time.Now()
+	pp.Step(0, 0, i18n.Tf("Creating VM %s…", "Создаю ВМ %s…", vmName))
+
 	// Auth
 	tok, err := eng.Auth.Token(ctx)
 	if err != nil {
@@ -1779,11 +1793,6 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	region := eng.Config.Region
-
-	vmName := stringArg(args, "name")
-	if vmName == "" {
-		vmName = "evo-" + fmt.Sprintf("%d", time.Now().Unix())
-	}
 
 	// Resolve flavor: name -> UUID, "auto" -> smallest lowcost, UUID passthrough.
 	// Free-tier is limited to 1 VM (usually already in use), so auto skips it.
@@ -1900,6 +1909,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// Groups only in other zones, none at all or an unreadable list:
 	// refused, as deploy — a VM without a group is billed and unreachable.
 	var sgIDs []string
+	sgName := ""
 	sgs, sgErr := eng.Cloud.ListSecurityGroups(ctx, projectID)
 	if sgErr != nil {
 		return errResult(fmt.Errorf("list security groups: %w", sgErr)), true
@@ -1910,7 +1920,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 			return errResult(engine.NoSecurityGroupError(zoneName, region)), true
 		}
 		chosen := sgs[i]
-		sgIDs = []string{chosen.ID}
+		sgIDs, sgName = []string{chosen.ID}, chosen.Name
 		// What a new VM needs from its group (ingress TCP 22, system
 		// egress): in the answer, the VM is created either way.
 		if rules, re := provision.GroupRules(ctx, eng.Cloud, chosen); re == nil {
@@ -1972,6 +1982,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}
 		if bootFIP != nil {
 			req.Interfaces[0].AttachExternalIPID = bootFIP.ID
+			pp.StepDone(i18n.Tf("Floating IP %s reserved", "Зарезервирован floating IP %s", bootFIP.IPAddress))
 		}
 	}
 	fipID := ""
@@ -2026,7 +2037,11 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		if provision.IsNameTaken(err) {
 			return fipLeftAnswer(clierrors.Wrap(clierrors.CodeUsage,
 				i18n.Tf("a VM named %s already exists in this project (Cloud.ru answered 409); no VM was created", "ВМ с именем %s в проекте уже есть (Cloud.ru ответил 409); ВМ не создана", vmName),
-				i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.", "Проверьте эту ВМ через vm_get %s (или vm_list); укажите другое имя или удалите её через destroy name=%s.", vmName, vmName), err), bootFIP, fipErr), true
+				// The Russian hint is the CLI's (MCP speaks English, D6): a
+				// repeat after Ctrl-C lands here, and the VM is the one the
+				// interrupted run is still creating.
+				i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.",
+					"Проверьте её: evo vm get %s — если это ВМ прерванного запуска, она ещё создаётся; иначе укажите другое имя или удалите её: evo vm delete %s.", vmName, vmName), err), bootFIP, fipErr), true
 		}
 		return fipLeftAnswer(fmt.Errorf("create VM: %w", err), bootFIP, fipErr), true
 	}
@@ -2035,6 +2050,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		// lost answer): then it is billed and holds the FIP — record it.
 		if found := provision.FindCreatedVM(eng.Cloud, projectID, vmName, createStart); found != nil {
 			serr := saveState(found.ID, "creating", "")
+			pp.Hint(vmLeftNote(found.ID, ""))
 			return errAnswer(fmt.Errorf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
 				"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
 				map[string]any{"vm_id": found.ID}), true
@@ -2045,23 +2061,21 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// below (kill, OOM) must not leave the VM and its boot FIP billed with no
 	// record (QA r3 R5). The later saves update it.
 	_ = saveState(vm.ID, "creating", "")
+	pp.StepDone(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", vmName, vm.ID))
 
 	// interrupted answers a cancelled call (client gone, notifications/
 	// cancelled, server stopping): the VM exists and is billed, so the
 	// answer names it, and the state has it.
 	interrupted := func(publicIP string) (string, bool) {
 		serr := saveState(vm.ID, "creating", publicIP)
+		pp.Hint(vmLeftNote(vm.ID, ""))
 		return errAnswer(fmt.Errorf("VM %s was created, but provision was interrupted (%v); it is still running and recorded in the state — "+
 			"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, ctx.Err(), vm.ID, notInState(vm.ID, serr)),
 			map[string]any{"vm_id": vm.ID}), true
 	}
 
-	// Poll until active: 10 minutes, as the CLI deploy (a new VM took ~5 in
-	// ru.AZ-1 on 15.10.2026).
-	pollTimeout := 10 * time.Minute
-	if eng.Timings.VMPollTimeout > 0 {
-		pollTimeout = eng.Timings.VMPollTimeout // CLOUDRU_TIMEOUT, as in the CLI deploy
-	}
+	// Poll until active, as long as deploy waits (CLOUDRU_TIMEOUT).
+	pollTimeout := eng.VMPollTimeout()
 	deadline := time.After(pollTimeout)
 	pollEvery := 5 * time.Second
 	if eng.Timings.VMPollInterval > 0 {
@@ -2069,20 +2083,27 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	}
 	ticker := time.NewTicker(pollEvery)
 	defer ticker.Stop()
+	// The wait in deploy's words; closed on every way out.
+	wait := eng.VMWaitLine(pp)
+	defer wait.Done()
 
 	for {
 		select {
 		case <-deadline:
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
-			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
+			pp.Hint(vmLeftNote(vm.ID, "") + i18n.T("; to wait longer next time: CLOUDRU_TIMEOUT (seconds)", "; ждать дольше: CLOUDRU_TIMEOUT (в секундах)"))
+			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s); to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
 				map[string]any{"status": "timeout", "vm_id": vm.ID}), true
+		case <-wait.C():
+			wait.Show()
 		case <-ticker.C:
 			updated, err := eng.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
 				continue
 			}
 			if updated.Status == "active" || updated.Status == "running" {
+				pp.StepDone(i18n.Tf("VM %s active (%s)", "ВМ %s активна (%s)", vmName, engine.ElapsedText(wait.Elapsed())))
 				// Assign a floating (public) IP unless a private VM was requested.
 				publicIP := ""
 				// fipErr: the public IP is not on the VM. The answer is then
@@ -2105,6 +2126,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				if fipErr != nil {
 					publicIP = ""
 				}
+				if publicIP != "" {
+					pp.StepDone(i18n.Tf("Public IP: %s", "Внешний IP: %s", publicIP))
+				}
 				// The ports asked for, in the VM's group: the same code as
 				// deploy, the rules recorded for destroy.
 				var opened *sgrules.OpenResult
@@ -2115,6 +2139,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 						func(label string) string { return "evo: port " + label }, &ports)
 					opened = &res
 					portsNote = res.Note()
+					engine.ShowOpenedPorts(pp, res, &ports, firstNonEmptyStr(sgName, sgIDs[0]))
 				}
 				if serr := saveState(vm.ID, "running", publicIP); serr != nil {
 					return errAnswer(fmt.Errorf("VM %s is active at %s and billed.%s", vm.ID, firstNonEmptyStr(publicIP, "no public address"), notInState(vm.ID, serr)),
@@ -2159,8 +2184,10 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					}
 					res["warning"] = note
 				}
+				pp.Success(vmReadyText(vmName, firstNonEmptyStr(zoneName, region), publicIP, sshUser, time.Since(started)))
 				return toJSON(res), false
 			}
+			wait.State(updated.Status)
 			if provision.VMFailed(updated.Status) {
 				// Billed with its boot FIP: record both so destroy finds
 				// them, and say so (QA H3).
@@ -2169,6 +2196,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					ip = bootFIP.IPAddress
 				}
 				serr := saveState(vm.ID, "error", ip)
+				pp.Hint(vmLeftNote(vm.ID, updated.Status))
 				fipNote := ""
 				if fipID != "" {
 					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; destroy releases it.", ip)
@@ -2181,6 +2209,30 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 			return interrupted("")
 		}
 	}
+}
+
+// vmLeftNote is the next step for the person at the CLI (Caller.Progress)
+// after a create that stopped with its VM in the cloud — Ctrl-C, the wait
+// ran out, a failed state: the VM stays, billed, until it is deleted.
+// failed is the state of a VM that failed, "" for one still being created.
+func vmLeftNote(vmID, failed string) string {
+	if failed != "" {
+		return i18n.Tf("VM %[1]s is in state %[2]s and is billed; check it: evo vm get %[1]s; delete it: evo vm delete %[1]s",
+			"ВМ %[1]s в состоянии %[2]s и оплачивается; проверить: evo vm get %[1]s; удалить: evo vm delete %[1]s", vmID, failed)
+	}
+	return i18n.Tf("VM %[1]s is still being created and is billed; check it: evo vm get %[1]s; delete it: evo vm delete %[1]s",
+		"ВМ %[1]s продолжает создаваться и оплачивается; проверить: evo vm get %[1]s; удалить: evo vm delete %[1]s", vmID)
+}
+
+// vmReadyText is the last line of evo vm create: the VM, its zone, its
+// address, how long it took and how to log in.
+func vmReadyText(name, zone, ip, sshUser string, took time.Duration) string {
+	if ip == "" {
+		return i18n.Tf("VM %s is ready: zone %s, no public IP, %s.", "ВМ %s готова: зона %s, без внешнего IP, %s.",
+			name, zone, engine.ElapsedText(took))
+	}
+	return i18n.Tf("VM %s is ready: zone %s, IP %s, %s. SSH: ssh %s@%s", "ВМ %s готова: зона %s, IP %s, %s. SSH: ssh %s@%s",
+		name, zone, ip, engine.ElapsedText(took), sshUser, ip)
 }
 
 // handleStatus is the answer of 'evo status --json', which it prints: the
