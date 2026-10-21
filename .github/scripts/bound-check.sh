@@ -10,11 +10,16 @@
 # пуст (cloud-readonly.sh находит пустые списки), поэтому проверка идёт
 # внутри живых сценариев, сразу после создания ресурса.
 #
-# bound_check ИНСТРУМЕНТ АРГУМЕНТЫ_JSON ПОДПИСЬ — два вызова одного *_get:
+# bound_check ИНСТРУМЕНТ АРГУМЕНТЫ_JSON ПОДПИСЬ [own] — два вызова одного *_get:
 #   - на «своём» сервере (--allow-project "$PROJECT") — ответ без ошибки;
 #   - на «чужом» (проект сервера и --allow-project — проект, которого ключ
 #     не видит: клиент сервера одного проекта называет id ресурса другого) —
 #     isError, reason NOT_FOUND, в тексте нет проекта.
+#   own — только первый: у вида, который сервер сверяет по списку своего
+#     проекта (ВМ, Kafka, Redis, DNS) или пускает в любой проект (публичный
+#     образ), «чужой» проект 000…0 проверял бы ответ API на список
+#     несуществующего проекта, а не evo; этот путь закрывают юнит-тесты
+#     (TestProjectBound_ForeignResourceRefused).
 #
 # Два способа вызова:
 #   . bound-check.sh — из сценария (cloud-live.sh): отчёт — его ok/bad/row,
@@ -166,9 +171,9 @@ bound_call() {
 	[ -n "$bound_msg" ] || bound_msg="HTTP $(cat "$bound_tmp/code"), ответа инструмента нет"
 }
 
-# bound_check ИНСТРУМЕНТ АРГУМЕНТЫ_JSON ПОДПИСЬ — см. шапку.
+# bound_check ИНСТРУМЕНТ АРГУМЕНТЫ_JSON ПОДПИСЬ [own] — см. шапку.
 bound_check() {
-	local tool=$1 args=$2 label=$3
+	local tool=$1 args=$2 label=$3 only=${4:-}
 	[ -n "$bound_state" ] || bound_start || true
 	if [ "$bound_state" != up ]; then
 		bad "$label" "серверы --allow-project не поднялись: $bound_why"
@@ -184,6 +189,10 @@ bound_check() {
 	else
 		bad "$label: свой проект" "isError $bound_err, reason $bound_reason: $bound_msg"
 	fi
+	if [ "$only" = own ]; then
+		row "$label: чужой проект" skip "вид по списку проекта или публичный: юнит-тест"
+		return 0
+	fi
 	bound_call "$((BOUND_PORT + 1))" "$bound_sess_foreign" "$tool" "$args"
 	if [ "$bound_err" != true ] || [ "$bound_reason" != NOT_FOUND ]; then
 		bad "$label: чужой проект" "ждали NOT_FOUND; isError $bound_err, reason $bound_reason: $bound_msg"
@@ -197,8 +206,8 @@ bound_check() {
 # Шаг job'а: bound-check.sh ИНСТРУМЕНТ АРГУМЕНТЫ_JSON ПОДПИСЬ.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 	set -euo pipefail
-	[ "$#" = 3 ] || {
-		echo "вызов: bound-check.sh ИНСТРУМЕНТ АРГУМЕНТЫ_JSON ПОДПИСЬ" >&2
+	[ "$#" = 3 ] || [ "$#" = 4 ] || {
+		echo "вызов: bound-check.sh ИНСТРУМЕНТ АРГУМЕНТЫ_JSON ПОДПИСЬ [own]" >&2
 		exit 2
 	}
 	failed=0
@@ -210,6 +219,6 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 		echo "| Проверка | Итог | Подробности |"
 		echo "|---|---|---|"
 	} >>"${GITHUB_STEP_SUMMARY:-/dev/null}"
-	bound_check "$1" "$2" "$3"
+	bound_check "$@"
 	exit "$failed"
 fi

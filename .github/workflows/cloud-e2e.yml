@@ -1471,7 +1471,7 @@ jobs:
         env:
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
         run: |
-          .github/scripts/bound-check.sh kafka_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: kafka_get"
+          .github/scripts/bound-check.sh kafka_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: kafka_get" own
 
       - name: kafka_get и превью удаления
         run: |
@@ -1618,7 +1618,7 @@ jobs:
         env:
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
         run: |
-          .github/scripts/bound-check.sh redis_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: redis_get"
+          .github/scripts/bound-check.sh redis_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: redis_get" own
 
       # replicas в GET — хосты шарда вместе с мастером (живое: 3 при
       # replicas=2 в запросе, реестр DB-11): только печатается.

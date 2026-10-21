@@ -512,7 +512,7 @@ area_disk() {
 	[ -n "$img" ] || { bad image_create "нет id образа"; return 1; }
 	img_ready() { evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -e '.ready == true' >/dev/null; }
 	if poll 1800 30 img_ready; then ok "image_get ready" "образ готов"; else bad "image_get ready" "за 30 мин не ready: $(evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -c '.zone_states // {}')"; fi
-	bound_check image_get "$(jq -cn --arg i "$img" '{image_id: $i}')" "allow-project: image_get"
+	bound_check image_get "$(jq -cn --arg i "$img" '{image_id: $i}')" "allow-project: image_get" own
 
 	must image_delete image_delete --arg image_id="$img" || return 1
 	if poll 300 15 sh -c "evo tools call image_list --arg type=private --json | jq -e --arg id '$img' '(.images | type) == \"array\" and (any(.images[]; .id == \$id) | not)' >/dev/null"; then
@@ -726,7 +726,7 @@ area_dns() {
 	[ -n "$zid" ] || { bad dns_zone_create "зоны нет в dns_zones"; return 1; }
 	ok dns_zone_create "зона в dns_zones: $(evo tools call dns_zones --json | jq -c --arg id "$zid" '.zones[] | select(.id == $id) | {visibility, valid, delegated}')"
 	must dns_zone_get dns_zone_get --arg id="$zid" --arg type=private && ok dns_zone_get "$(j -r '.visibility // .type // "прочитана"')"
-	bound_check dns_zone_get "$(jq -cn --arg i "$zid" '{id: $i, type: "private"}')" "allow-project: dns_zone_get"
+	bound_check dns_zone_get "$(jq -cn --arg i "$zid" '{id: $i, type: "private"}')" "allow-project: dns_zone_get" own
 	tc dns_zone_get --arg id="$zid"
 	row "dns_zone_get без type" "$([ "$rc" = 0 ] && echo ответ || echo отказ)" "код $rc, $reason"
 	must dns_record_create dns_record_create --arg zone_id="$zid" --arg type=private --arg name=www --arg record_type=A --arg value=198.18.255.10 --arg ttl=300 || return 1
@@ -746,7 +746,7 @@ area_dns() {
 		return 1
 	fi
 	must dns_record_get dns_record_get --arg record_id="$rid" --arg type=private && ok dns_record_get "ttl $(j -r '.ttl // "?"')"
-	bound_check dns_record_get "$(jq -cn --arg i "$rid" '{record_id: $i, type: "private"}')" "allow-project: dns_record_get"
+	bound_check dns_record_get "$(jq -cn --arg i "$rid" '{record_id: $i, type: "private"}')" "allow-project: dns_record_get" own
 	must dns_record_delete dns_record_delete --arg record_id="$rid" --arg type=private || return 1
 	opwait dns "$(j -r .operation_id)" 300 || true
 	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" 'any(.records[]; .id == $id) | not' >/dev/null; }
@@ -1017,7 +1017,7 @@ area_mcp() {
 		if poll 300 10 sh -c "curl -fsS --max-time 10 'http://$ip:$MCP_PORT/' | grep -qi nginx"; then ok "stdio deploy" "HTTP $MCP_PORT: nginx"; else bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин"; fi
 		[ "$(lst vm "$vm" | wc -l)" = 1 ] && ok "deploy после deploy_apply" "та же ВМ, второй нет" || bad "deploy после deploy_apply" "ВМ с именем $vm: $(lst vm "$vm" | wc -l); всего ВМ $prefix*: $(lst vm "$prefix" | wc -l)"
 	else bad "stdio deploy" "$(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"; fi
-	bound_check vm_get "$(jq -cn --arg v "$vid" '{vm_id: $v}')" "allow-project: vm_get"
+	bound_check vm_get "$(jq -cn --arg v "$vid" '{vm_id: $v}')" "allow-project: vm_get" own
 	stdio status '{}'
 	[ "$iserr" = false ] && ok "stdio status" "$(j -r '.status // .health // "?"')" || bad "stdio status" "isError"
 	stdio logs '{"tail":20}'
