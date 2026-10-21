@@ -4,14 +4,18 @@
 
 package engine
 
-import "time"
+import (
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/config"
+)
 
 // Production waits used by Deploy and Destroy. Engine.Timings overrides them per field.
 const (
 	vmPollInterval        = 5 * time.Second
-	vmPollTimeout         = 10 * time.Minute // 15.10.2026: ru.AZ-1 took 4m57s, another VM over 5m
-	vmProgressInterval    = 30 * time.Second // a "waiting for the VM" line without a terminal
-	vmLiveRefresh         = time.Second      // the timer of that line on a terminal
+	vmPollTimeout         = config.DefaultTimeout * time.Second // CLOUDRU_TIMEOUT's default (25 min)
+	vmProgressInterval    = 30 * time.Second                    // a "waiting for the VM" line without a terminal
+	vmLiveRefresh         = time.Second                         // the timer of that line on a terminal
 	ifacePollInterval     = 5 * time.Second
 	fipRetryInterval      = 10 * time.Second
 	fipLookupInterval     = 2 * time.Second // after Ctrl-C: short, before a second Ctrl-C
@@ -91,6 +95,11 @@ func (t Timings) withDefaults() Timings {
 func (e *Engine) timings() Timings {
 	return e.Timings.withDefaults()
 }
+
+// VMPollTimeout is how long a new VM is waited for to become active:
+// Timings.VMPollTimeout (CLOUDRU_TIMEOUT), else the default of every
+// surface (config.DefaultTimeout). deploy and provision both wait this long.
+func (e *Engine) VMPollTimeout() time.Duration { return e.timings().VMPollTimeout }
 
 // newPollTicker is time.NewTicker that also ticks at once: the first check
 // of a VM that is already active (or already gone) should not wait a full

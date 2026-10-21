@@ -145,14 +145,14 @@ func TestDeploy_VMWaitJSONClean(t *testing.T) {
 func TestElapsedText(t *testing.T) {
 	defer i18n.SetLang(i18n.Lang())
 	i18n.SetLang(i18n.EN)
-	if got := elapsedText(80*time.Second + 400*time.Millisecond); got != "1m20s" {
+	if got := ElapsedText(80*time.Second + 400*time.Millisecond); got != "1m20s" {
 		t.Errorf("en: %q", got)
 	}
 	i18n.SetLang(i18n.RU)
-	if got := elapsedText(80 * time.Second); got != "1м20с" {
+	if got := ElapsedText(80 * time.Second); got != "1м20с" {
 		t.Errorf("ru: %q", got)
 	}
-	if got := elapsedText(time.Hour + 2*time.Minute); got != "1ч2м0с" {
+	if got := ElapsedText(time.Hour + 2*time.Minute); got != "1ч2м0с" {
 		t.Errorf("ru, hours: %q", got)
 	}
 }

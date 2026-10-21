@@ -121,12 +121,19 @@ type Options struct {
 	Flags map[string]any
 }
 
+// DefaultTimeout is how many seconds deploy, evo vm create and MCP
+// provision wait for a new VM to become active, unless CLOUDRU_TIMEOUT or
+// timeout says otherwise: one value for every surface. A VM in ru.AZ-1
+// stayed "creating" for about 20 minutes; the wait shows its progress, so a
+// long one does not look like a hang.
+const DefaultTimeout = 25 * 60
+
 // Defaults returns a Config with sensible default values.
 func Defaults() Config {
 	return Config{
 		Flavor:      "auto",
 		DiskSize:    10,
-		Timeout:     600,
+		Timeout:     DefaultTimeout,
 		ComposeFile: "docker-compose.yml",
 	}
 }

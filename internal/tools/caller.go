@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	stderrors "errors"
+	"io"
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -29,11 +30,22 @@ import (
 //     that the command prints the message, the hint and the cause it
 //     printed before.
 //
+// Every other command of the CLI — the command trees and 'evo tools call'
+// — calls its tool with a Caller that has only Progress: the stages of a
+// long call, shown as it works, while the answer stays the one MCP gets.
+//
 // Only internal/cli makes a Caller: an MCP call has none, and a tool
-// called without one gates on confirmed=true as always.
+// called without one gates on confirmed=true as always. A tool that calls
+// another one (callTool: the steps of a stack) calls it without one: the
+// person ran the outer tool, not its steps.
 type Caller struct {
 	// Printer receives the engine's output; nil keeps it in the answer.
 	Printer *output.Printer
+	// Progress shows the stages of a long call to the person while it
+	// works (evo vm create: the floating IP, the request, the wait for the
+	// VM, its address), on stderr: unlike Printer, nothing leaves the
+	// answer, which stays the one MCP gets. nil shows nothing.
+	Progress *output.Printer
 	// Gate asks for consent to what answer — the tool's answer without
 	// confirmed=true — describes: a prompt, --yes or --dry-run. human is
 	// the engine's own words for it (destroy, an update by deploy), nil
@@ -72,6 +84,19 @@ func WithCaller(ctx context.Context, c *Caller) context.Context {
 func callerOf(ctx context.Context) *Caller {
 	c, _ := ctx.Value(callerKey{}).(*Caller)
 	return c
+}
+
+// silent is the progress printer of a call nobody watches: it shows
+// nothing.
+var silent = output.NewWithWriter(io.Discard, output.ModeJSON, false)
+
+// progressOf is the printer of the call's progress (Caller.Progress), and
+// whether someone watches it; a printer that shows nothing for MCP.
+func progressOf(ctx context.Context) (*output.Printer, bool) {
+	if c := callerOf(ctx); c != nil && c.Progress != nil {
+		return c.Progress, true
+	}
+	return silent, false
 }
 
 // live is the Caller of a call the engine shows and gates itself, nil
