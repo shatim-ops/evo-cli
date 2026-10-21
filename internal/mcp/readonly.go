@@ -22,9 +22,11 @@ import (
 //     with USAGE before its handler, confirmed or not — no engine, no
 //     preview, no request — and so are the calls the stack tools make
 //     in-process; stack_status reports a running stack instead of
-//     advancing it (tools.Registry.SetReadOnly). tools/list leaves out the
-//     tools every call of which needs consent (tools.AlwaysNeedsConsent);
-//     k8s_kubectl and k8s_helm stay for their reads.
+//     advancing it, and deploy_plan shows its plan without writing the
+//     deploy key or the plan, so with no plan_id
+//     (tools.Registry.SetReadOnly). tools/list leaves out the tools every
+//     call of which needs consent (tools.AlwaysNeedsConsent); k8s_kubectl
+//     and k8s_helm stay for their reads.
 //   - H3, H6, H7 hold on stdio too, as over HTTP without
 //     --allow-secret-export: no kubectl command that prints a credential,
 //     no cluster token, credential fields masked (readOnlyWording).

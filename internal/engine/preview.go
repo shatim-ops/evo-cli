@@ -396,8 +396,12 @@ func projectText(id, from string) string {
 	return id
 }
 
-// Origins of the project in a preview, besides the config ones.
-const originRecord = "record"
+// Origins of the project in a preview, besides the config ones: the state
+// record of a deployment, and the saved plan deploy_apply executes.
+const (
+	originRecord = "record"
+	originPlan   = "plan"
+)
 
 func originLabel(from string) string {
 	switch from {
@@ -411,6 +415,8 @@ func originLabel(from string) string {
 		return i18n.T("from --project-id", "из --project-id")
 	case originRecord:
 		return i18n.T("where the deployment was created", "где создано развёртывание")
+	case originPlan:
+		return i18n.T("from the plan", "из плана")
 	}
 	return ""
 }

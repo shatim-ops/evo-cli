@@ -83,7 +83,8 @@ type Registry struct {
 	jobMu    sync.Mutex
 	jobLocks map[string]*sync.Mutex
 
-	// readOnly: SetReadOnly was called; stack_status advances no stack.
+	// readOnly: SetReadOnly was called; stack_status advances no stack,
+	// deploy_plan writes no deploy key and no plan.
 	readOnly bool
 	// projectBound: SetProjectBound was called; a read that names no
 	// project reads the configuration's project, not the agreement or the
@@ -153,10 +154,12 @@ func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
 
 // SetReadOnly makes the registry act on no consent given before: a running
 // stack is reported by stack_status, not advanced, since its steps would
-// create resources on the consent stack_apply was given. evo mcp
-// --read-only sets it, and refuses every call that needs consent
-// (NeedsConsent) itself (internal/mcp, H11). Call it before the registry
-// serves calls.
+// create resources on the consent stack_apply was given. Nor does it
+// prepare a call it will not make: deploy_plan shows the plan without
+// creating the deploy key or saving the plan, so it hands out no plan_id
+// (break 1.2, B12-9). evo mcp --read-only sets it, and refuses every call
+// that needs consent (NeedsConsent) itself (internal/mcp, H11). Call it
+// before the registry serves calls.
 func (r *Registry) SetReadOnly() { r.readOnly = true }
 
 // SetProjectBound binds the registry to the project of its engines'

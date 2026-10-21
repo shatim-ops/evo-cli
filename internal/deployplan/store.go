@@ -113,9 +113,14 @@ func newPlanID() string {
 	return "plan-" + hex.EncodeToString(b)
 }
 
+// plansPath is the directory plans are stored in.
+func plansPath(stateDir string) string {
+	return filepath.Join(config.DataDir(stateDir), "plans")
+}
+
 // plansDir returns the directory plans are stored in, creating it.
 func plansDir(stateDir string) (string, error) {
-	dir := filepath.Join(config.DataDir(stateDir), "plans")
+	dir := plansPath(stateDir)
 	if err := config.MkdirPrivate(dir); err != nil {
 		return "", err
 	}
@@ -164,16 +169,14 @@ func validPlanID(id string) bool {
 	return err == nil
 }
 
-// Load reads a plan by id, enforcing the TTL.
+// Load reads a plan by id, enforcing the TTL. It only reads: deploy_apply
+// loads the plan for its preview before consent (B12-8), and a read-only
+// server reads a base_plan_id, so no directory is made here.
 func Load(stateDir, planID string) (*Plan, error) {
 	if !validPlanID(planID) {
 		return nil, fmt.Errorf(i18n.T("plan %q not found: a plan_id looks like plan-0123456789ab (run deploy_plan to get one)", "план %q не найден: plan_id выглядит как plan-0123456789ab (его выдаёт deploy_plan)"), planID)
 	}
-	dir, err := plansDir(stateDir)
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(filepath.Join(dir, planID+".json"))
+	data, err := os.ReadFile(filepath.Join(plansPath(stateDir), planID+".json"))
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("plan %q not found (it may have expired; run deploy_plan again)", "план %q не найден (возможно, истёк срок; снова выполните deploy_plan)"), planID)
 	}

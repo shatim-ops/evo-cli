@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -302,6 +304,55 @@ func TestK8sCreatePreview_NoPrice(t *testing.T) {
 	if strings.Contains(errOut, "k8s_plan") || strings.Contains(errOut, "billable") {
 		t.Errorf("the tool's text left in the preview:\n%s", errOut)
 	}
+}
+
+// noCloud is a cloud evo must not touch: every method, SetToken included,
+// hits the nil interface.
+type noCloud struct{ provision.CloudAPI }
+
+// evo deploy apply asks with its saved plan (break 1.2, B12-8): the VM, the
+// project and the monthly price deploy_plan quoted, read from the plan file
+// alone — no token is set and no request is made before consent.
+func TestDeployApplyPreview_ShowsThePlan(t *testing.T) {
+	russian(t)
+	dir := t.TempDir()
+	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ProjectID: pvProject, ExpiresAt: time.Now().Add(time.Hour),
+		VM: deployplan.VMSpec{Name: "web",
+			Flavor: deployplan.FlavorSpec{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4},
+			Image:  deployplan.RefSpec{ID: pvImage, Name: "Ubuntu 22.04"},
+			Zone:   deployplan.RefSpec{ID: pvZone, Name: "ru.AZ-1"},
+			Disk:   deployplan.DiskSpec{SizeGB: 20, Type: "SSD"}},
+		Network: deployplan.NetworkSpec{FloatingIP: true},
+		Ports:   []int{80, 443},
+		Cost:    pricing.Estimate{Currency: "RUB", ComputeMonthlyRub: 1000, DiskMonthlyRub: 234.5, TotalMonthlyRub: 1234.5, Source: "estimate: rate-card"}}
+	if err := deployplan.Save(dir, plan); err != nil {
+		t.Fatal(err)
+	}
+	old := toolEngine
+	toolEngine = func(o map[string]any) (*engine.Engine, error) {
+		e, err := buildEngine(o)
+		if err != nil {
+			return nil, err
+		}
+		e.StateDir, e.Auth, e.Cloud = dir, previewToken{}, noCloud{}
+		return e, nil
+	}
+	t.Cleanup(func() { toolEngine = old })
+	_, errOut, code := execCLI(t, "deploy", "apply", plan.PlanID)
+	if code != clerrors.ExitConfirmationRequired {
+		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
+	}
+	t.Logf("\n%s", errOut)
+	assertHas(t, errOut, []string{
+		"План: создать ВМ web (lowcost10-2-4) в зоне ru.AZ-1\n",
+		"  Будет создано: ВМ web, загрузочный диск 20 ГБ, floating IP\n",
+		"  проект:     " + pvProject + " (из плана)\n",
+		"  flavor:     lowcost10-2-4 (2 vCPU, 4 ГБ RAM)\n",
+		"  образ:      Ubuntu 22.04 (" + pvImage + ")\n",
+		"  порты:      80,443 открываются для 0.0.0.0/0",
+		"  цена:       ~1234.50 RUB в месяц (вычисления 1000.00 + диск 234.50), оценка по тарифной карте evo, а не счёт\n",
+	})
+	assertNoJargon(t, errOut)
 }
 
 // 'evo tools call' keeps the tool's answer as is (English, as in MCP).
