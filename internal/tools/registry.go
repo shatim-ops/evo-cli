@@ -85,6 +85,10 @@ type Registry struct {
 
 	// readOnly: SetReadOnly was called; stack_status advances no stack.
 	readOnly bool
+	// projectBound: SetProjectBound was called; a read that names no
+	// project reads the configuration's project, not the agreement or the
+	// organization.
+	projectBound bool
 }
 
 // New builds the registry. factory is called by handlers that need an
@@ -154,6 +158,19 @@ func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
 // (NeedsConsent) itself (internal/mcp, H11). Call it before the registry
 // serves calls.
 func (r *Registry) SetReadOnly() { r.readOnly = true }
+
+// SetProjectBound binds the registry to the project of its engines'
+// configuration: a read that names no project_id and would read more than
+// a project otherwise reads that project only — billing_consumption and
+// billing_finops the consumption of the project, not of the whole billing
+// agreement (billingClient); org_projects lists that project, not the
+// organization's. A call in another project is the factory's to refuse.
+// evo mcp --allow-project sets it (H9), where the factory admits allowed
+// projects only; org_quotas and iam_service_accounts with project_id stay
+// the documented reads of other projects. Without it the CLI and MCP read
+// as documented: the agreement, the organization. Call it before the
+// registry serves calls.
+func (r *Registry) SetProjectBound() { r.projectBound = true }
 
 // ErrResult formats an error as a JSON tool result, as the handlers do.
 func ErrResult(err error) string { return errResult(err) }

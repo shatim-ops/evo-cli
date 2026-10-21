@@ -21,9 +21,9 @@ const redacted = "[redacted over HTTP: start the server with --allow-secret-expo
 const redactedField = "redacted"
 
 // SecretField is a root of a credential field name, masked in tool results
-// over HTTP without --allow-secret-export (H7). The match ignores case, "_"
-// and "-": password, Password and PASSWORD are one root, as are private_key
-// and privateKey.
+// over HTTP without --allow-secret-export (H7). The match ignores case and
+// the word separators (keySep): password, Password and PASSWORD are one
+// root, as are private_key, private.key and privateKey.
 type SecretField struct {
 	// Name is the root, as docs/mcp.md names it.
 	Name string
@@ -63,10 +63,11 @@ type NonSecretField struct {
 	// Name is the key or, with Suffix, the key's last words, as docs/mcp.md
 	// names it ("_expires_at").
 	Name string
-	// Suffix: the key ends in these words, at a word boundary ("_", "-" or
-	// a capital letter): password_expires_at and passwordExpiresAt, not
-	// password_expires_at_raw and not passwordexpiresat. Otherwise the whole
-	// key, compared without case, "_" and "-".
+	// Suffix: the key ends in these words, at a word boundary (a separator
+	// of keySep or a capital letter): password_expires_at and
+	// passwordExpiresAt, not password_expires_at_raw and not
+	// passwordexpiresat. Otherwise the whole key, compared without case and
+	// separators.
 	Suffix bool
 	// Tools limits the entry to these tools' results; nil: every tool.
 	// Container: the key is not a credential while it holds an object or a
@@ -108,13 +109,23 @@ var HTTPNonSecretFields = []NonSecretField{
 // "secrets".
 var secretManagerTools = []string{"secret_list", "secret_get", "secret_create", "secret_add_version", "secret_delete"}
 
-// normKey lowercases a key and drops "_" and "-".
+// keySep reports whether r separates the words of a key: "_", "-", "." and
+// a space (private_key, private-key, private.key, "private key"; Cursor
+// review 21.10, RP-4).
+func keySep(r rune) bool { return r == '_' || r == '-' || r == '.' || r == ' ' }
+
+// normKey lowercases a key and drops its separators (keySep).
 func normKey(k string) string {
-	return strings.NewReplacer("_", "", "-", "").Replace(strings.ToLower(k))
+	return strings.Map(func(r rune) rune {
+		if keySep(r) {
+			return -1
+		}
+		return unicode.ToLower(r)
+	}, k)
 }
 
-// keyWords splits a key into lowercase words at "_", "-" and a capital
-// letter after a lowercase one or a digit: passwordExpiresAt and
+// keyWords splits a key into lowercase words at a separator (keySep) and a
+// capital letter after a lowercase one or a digit: passwordExpiresAt and
 // password_expires_at are both password, expires, at.
 func keyWords(k string) []string {
 	var words []string
@@ -128,7 +139,7 @@ func keyWords(k string) []string {
 	}
 	for _, r := range k {
 		switch {
-		case r == '_' || r == '-':
+		case keySep(r):
 			flush()
 		case unicode.IsUpper(r) && (unicode.IsLower(prev) || unicode.IsDigit(prev)):
 			flush()
@@ -196,9 +207,12 @@ func hasRoot(k string) bool {
 }
 
 // redactSecrets masks the credentials anywhere in a JSON result of tool: a
-// non-empty string under a credential key, and every string inside a list or
-// an object under one (passwords: ["a", "b"]). When the result is an
-// object, it lists the masked fields in its "redacted" field (sorted, array
+// non-empty string or a number under a credential key, and every one inside
+// a list or an object under one (passwords: ["a", "b"]); true and false stay,
+// as a flag (password set or not) is no credential. A string anywhere else
+// equal to a masked value is masked too, so no value is left under a key
+// without a root (Cursor review 21.10, RP-2, RP-3). When the result is an
+// object, its "redacted" field lists the masked paths (sorted, array
 // elements as "[]": "users[].password"). Text that is not JSON is returned
 // as is, and so is a result with nothing to mask. w gives the mask.
 func redactSecrets(tool, text string, w wording) string {
@@ -211,13 +225,14 @@ func redactSecrets(tool, text string, w wording) string {
 	if _, err := dec.Token(); err != io.EOF {
 		return text // not a single JSON value
 	}
-	paths := map[string]bool{}
-	redactValue(tool, v, "", paths, w.mask)
-	if len(paths) == 0 {
+	m := masking{tool: tool, mask: w.mask, paths: map[string]bool{}, values: map[string]bool{}}
+	m.walk(v, "")
+	if len(m.paths) == 0 {
 		return text
 	}
-	if m, ok := v.(map[string]any); ok {
-		m[redactedField] = redactedList(m[redactedField], paths)
+	v = m.echoes(v, "")
+	if obj, ok := v.(map[string]any); ok {
+		obj[redactedField] = m.list()
 	}
 	out, err := json.MarshalIndent(v, "", "  ") // as the tools write results
 	if err != nil {
@@ -226,65 +241,103 @@ func redactSecrets(tool, text string, w wording) string {
 	return string(out)
 }
 
-// redactedList merges the masked paths with a "redacted" list the result
-// already has (a tool answer that embeds another tool's masked answer, as
-// stack_apply's in-process calls do). Any other value of the field is
-// replaced.
-func redactedList(prev any, paths map[string]bool) []string {
-	if list, ok := prev.([]any); ok {
-		for _, x := range list {
-			if s, ok := x.(string); ok {
-				paths[s] = true
-			}
+// masking is one result's redaction: the mask, the paths of the masked
+// fields and the values they held (for echoes).
+type masking struct {
+	tool, mask string
+	paths      map[string]bool
+	values     map[string]bool
+}
+
+// list is the "redacted" field of a masked object: the masked paths. The
+// field is the masking's: one the result already had is replaced, not
+// merged — its strings are the tool's, not paths masking found, and a
+// secret value in them left the host (RP-2). Paths inside the replaced
+// field are not listed, as it is gone.
+func (m *masking) list() []string {
+	out := make([]string, 0, len(m.paths))
+	for p := range m.paths {
+		if p == redactedField || strings.HasPrefix(p, redactedField+".") || strings.HasPrefix(p, redactedField+"[]") {
+			continue
 		}
-	}
-	out := make([]string, 0, len(paths))
-	for p := range paths {
 		out = append(out, p)
 	}
 	slices.Sort(out)
 	return out
 }
 
-// redactValue masks in place and records the path of each masked field.
-func redactValue(tool string, v any, path string, paths map[string]bool, mask string) {
+// walk masks in place the value of every credential key in v (all).
+func (m *masking) walk(v any, path string) {
 	switch t := v.(type) {
 	case map[string]any:
 		for k, x := range t {
-			p := k
-			if path != "" {
-				p = path + "." + k
-			}
-			if hasRoot(k) && !nonSecret(tool, k, x) {
-				t[k] = maskAll(x, p, paths, mask)
+			p := keyPath(path, k)
+			if hasRoot(k) && !nonSecret(m.tool, k, x) {
+				t[k] = m.all(x, p)
 				continue
 			}
-			redactValue(tool, x, p, paths, mask)
+			m.walk(x, p)
 		}
 	case []any:
 		for _, x := range t {
-			redactValue(tool, x, path+"[]", paths, mask)
+			m.walk(x, path+"[]")
 		}
 	}
 }
 
-// maskAll replaces every non-empty string in v, the value of a credential
-// key, with mask.
-func maskAll(v any, path string, paths map[string]bool, mask string) any {
+// all replaces every non-empty string and every number in v, the value of
+// a credential key, with the mask, and records the path and the value.
+func (m *masking) all(v any, path string) any {
 	switch t := v.(type) {
 	case string:
 		if t != "" {
-			paths[path] = true
-			return mask
+			return m.masked(t, path)
 		}
+	case json.Number:
+		return m.masked(t.String(), path)
 	case map[string]any:
 		for k, x := range t {
-			t[k] = maskAll(x, path+"."+k, paths, mask)
+			t[k] = m.all(x, keyPath(path, k))
 		}
 	case []any:
 		for i, x := range t {
-			t[i] = maskAll(x, path+"[]", paths, mask)
+			t[i] = m.all(x, path+"[]")
 		}
 	}
 	return v
+}
+
+// masked records a masked value and its path, and returns the mask.
+func (m *masking) masked(value, path string) string {
+	m.paths[path] = true
+	m.values[value] = true
+	return m.mask
+}
+
+// echoes masks, after walk, every string in v equal to a masked value: a
+// secret repeated under a key without a root.
+func (m *masking) echoes(v any, path string) any {
+	switch t := v.(type) {
+	case string:
+		if m.values[t] {
+			return m.masked(t, path)
+		}
+	case map[string]any:
+		for k, x := range t {
+			t[k] = m.echoes(x, keyPath(path, k))
+		}
+	case []any:
+		for i, x := range t {
+			t[i] = m.echoes(x, path+"[]")
+		}
+	}
+	return v
+}
+
+// keyPath is the path of key k of the object at path ("" — the result).
+func keyPath(path, k string) string {
+	if path == "" {
+		return k
+	}
+	return path + "." + k
 }

@@ -21,6 +21,7 @@ func FuzzRedactSecrets(f *testing.F) {
 		`{"password":1,"secret":null}`,
 		`{"accessToken":"a","password_expires_at":"2026","redacted":["x"]}`,
 		`{"passwords":["a","b"],"secret_old":{"v":"c","n":[1,"d"]},"password_expires_at_raw":"e"}`,
+		`{"private.key":"k","redacted":["k"],"user":{"api key":7,"redacted":["7"]}}`,
 	} {
 		f.Add(s)
 	}
@@ -43,7 +44,8 @@ func FuzzRedactSecrets(f *testing.F) {
 				t.Fatalf("%q masked without redacted: %q", in, out)
 			}
 		}
-		// Under a credential key no string survives, however deep.
+		// Under a credential key no string or number survives, however
+		// deep.
 		var allMasked func(string, any)
 		allMasked = func(k string, x any) {
 			switch t2 := x.(type) {
@@ -51,6 +53,8 @@ func FuzzRedactSecrets(f *testing.F) {
 				if t2 != "" && t2 != redacted {
 					t.Fatalf("%q kept %s: %q", in, k, t2)
 				}
+			case float64:
+				t.Fatalf("%q kept %s: %v", in, k, t2)
 			case map[string]any:
 				for _, y := range t2 {
 					allMasked(k, y)

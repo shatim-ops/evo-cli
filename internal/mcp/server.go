@@ -150,6 +150,11 @@ func New(factory EngineFactory, version string) *Server {
 	return s
 }
 
+// SetProjectBound binds the tools to the project of the server's
+// configuration (evo mcp --allow-project, H9; tools.Registry.SetProjectBound),
+// on either transport. Call it before the server serves.
+func (s *Server) SetProjectBound() { s.reg.SetProjectBound() }
+
 // ListTools returns the advertised tool definitions.
 func (s *Server) ListTools() []Tool {
 	if s.listed != nil {
