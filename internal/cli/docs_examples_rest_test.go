@@ -258,10 +258,7 @@ func jsonBodies(text string) []string {
 		rest = rest[end+3:]
 	}
 	// One-line configs live in prose and backticks.
-	for _, m := range regexp.MustCompile(`\{[^{}]*"mcpServers"\s*:\s*\{.*?\}\s*\}`).FindAllString(text, -1) {
-		out = append(out, m)
-	}
-	return out
+	return append(out, regexp.MustCompile(`\{[^{}]*"mcpServers"\s*:\s*\{.*?\}\s*\}`).FindAllString(text, -1)...)
 }
 
 func inlineMCPArgs(text string) [][]string {
