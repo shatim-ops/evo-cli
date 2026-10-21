@@ -38,6 +38,7 @@ var docExampleSkip = []struct {
 }{
 	{"README.md", "evo <команда> --help", "шаблон справки: на месте команды стоит плейсхолдер, не имя"},
 	{"docs/guide.md", "evo <команда> --help", "шаблон справки: на месте команды стоит плейсхолдер, не имя"},
+	{"docs/troubleshooting.md", "evo vm create my-vm ru.AZ-2", "пример ошибки: зона без флага — лишний аргумент, текст рядом описывает отказ"},
 }
 
 // TestDocsExamples_CommandLines checks every `evo …` in fenced shell blocks
