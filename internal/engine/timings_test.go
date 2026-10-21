@@ -27,7 +27,7 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 	got := Timings{}.withDefaults()
 	want := Timings{
 		VMPollInterval:     5 * time.Second,
-		VMPollTimeout:      10 * time.Minute,
+		VMPollTimeout:      25 * time.Minute, // owner, 10.2026: a VM stayed "creating" ~20 min in ru.AZ-1
 		VMProgressInterval: 30 * time.Second,
 		IfacePollInterval:  5 * time.Second,
 		FIPRetryInterval:   10 * time.Second,

@@ -102,6 +102,9 @@ func kubectlCheck(fields []string, allowSecrets bool, w wording) error {
 		}
 		for _, fl := range kubetools.ParseFlags(f) {
 			name, val := fl.Name, fl.Val
+			if fl.Follows(verb) {
+				continue // logs -f is --follow, not a file
+			}
 			if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
 				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, f)
 			}

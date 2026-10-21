@@ -29,7 +29,8 @@ const (
 )
 
 // vmCreateCloud — каталог плюс то, что нужно provision. Любая мутация
-// записывается: тесты отказов проверяют, что их не было.
+// записывается: тесты отказов проверяют, что их не было. fip — адрес,
+// который резервируется до создания ВМ (nil — резервирование отказывает).
 type vmCreateCloud struct {
 	imageCloud
 	mu        sync.Mutex
@@ -37,6 +38,7 @@ type vmCreateCloud struct {
 	fips      int
 	rules     []provision.SGRule
 	mutations []string
+	fip       *provision.FloatingIP
 }
 
 func (c *vmCreateCloud) note(m string) {
@@ -62,7 +64,19 @@ func (c *vmCreateCloud) CreateFloatingIP(context.Context, provision.CreateFloati
 	c.mu.Lock()
 	c.fips++
 	c.mu.Unlock()
+	if c.fip != nil {
+		fip := *c.fip
+		return &fip, nil
+	}
 	return nil, clerrors.New(clerrors.CodeAPIError, "not in this test", "")
+}
+func (*vmCreateCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return nil, nil
+}
+func (c *vmCreateCloud) GetFloatingIP(context.Context, string) (*provision.FloatingIP, error) {
+	fip := *c.fip
+	fip.State = "in_use"
+	return &fip, nil
 }
 func (c *vmCreateCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
 	c.note("CreateVM")

@@ -137,7 +137,8 @@ var OrgProjectsURL = "https://organization.api.cloud.ru/v3/projects"
 // is then projects: null, the active project and a note, not an error
 // (it was NOT_FOUND, exit 4, from "user not found" in the message). Only
 // 400/403/404 are that case: a 401, a 429 or a 5xx is a failure of the
-// call (orgHTTPError), not a property of the key.
+// call (orgHTTPError), not a property of the key. A project-bound registry
+// (SetProjectBound) lists the active project only.
 func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (string, bool) {
 	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
@@ -172,7 +173,9 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 	out := make([]map[string]any, 0, len(raw))
 	for _, x := range raw {
 		p, _ := x.(map[string]any)
-		if p == nil {
+		// Bound to its project (SetProjectBound), the registry names no
+		// other project of the organization.
+		if p == nil || s.projectBound && p["id"] != active {
 			continue
 		}
 		out = append(out, map[string]any{

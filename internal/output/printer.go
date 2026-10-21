@@ -35,6 +35,9 @@ type Printer struct {
 	// errColor is decided by errOut: "2>err.log" on a terminal must not
 	// write escape codes into the file.
 	errColor bool
+	// errLive: errOut is a terminal and the mode is not --json, so a
+	// printer onto it (OnStderr) can redraw a progress line.
+	errLive bool
 	// progressLen is the width of the progress line on the terminal
 	// (Progress), 0 when there is none.
 	progressLen int
@@ -48,12 +51,37 @@ func New(jsonMode bool, noColor bool) *Printer {
 	} else if !IsTTY(int(os.Stdout.Fd())) {
 		mode = ModePlain
 	}
+	errLive := mode != ModeJSON && IsTTY(int(os.Stderr.Fd()))
 	return &Printer{
 		out:      os.Stdout,
 		errOut:   os.Stderr,
 		mode:     mode,
 		color:    ColorEnabled(noColor) && mode == ModeText,
-		errColor: colorAllowed(noColor) && mode != ModeJSON && IsTTY(int(os.Stderr.Fd())),
+		errColor: colorAllowed(noColor) && errLive,
+		errLive:  errLive,
+	}
+}
+
+// OnStderr is a printer with p's settings that writes everything — steps,
+// progress, results — to p's error writer: the progress of a call whose
+// stdout carries only its answer (evo vm create). Its progress line is
+// redrawn when that writer is a terminal (on Windows too), and line mode
+// is used otherwise, whatever stdout is; --json keeps it as quiet as p.
+func (p *Printer) OnStderr() *Printer {
+	mode := p.mode
+	if mode != ModeJSON {
+		mode = ModePlain
+		if p.errLive {
+			mode = ModeText
+		}
+	}
+	return &Printer{
+		out:      p.errOut,
+		errOut:   p.errOut,
+		mode:     mode,
+		color:    p.errColor && mode == ModeText,
+		errColor: p.errColor,
+		errLive:  p.errLive,
 	}
 }
 
@@ -80,13 +108,17 @@ func NewWithWriters(out, errOut io.Writer, mode Mode, color bool) *Printer {
 	}
 }
 
-// Step prints a step indicator: "==> [1/5] Message..."
+// Step prints a step indicator: "==> [1/5] Message...". A command of one
+// step (total 0) has no counter: "==> Message...".
 func (p *Printer) Step(n, total int, msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
 	prefix := fmt.Sprintf("==> [%d/%d] %s", n, total, msg)
+	if total == 0 {
+		prefix = "==> " + msg
+	}
 	if p.color {
 		fmt.Fprintf(p.out, "%s%s%s%s\n", colorBold, colorBlue, prefix, colorReset)
 	} else {

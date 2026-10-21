@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,11 +23,14 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/pager"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // orgProjectsURL lists the projects visible to the service account.
@@ -57,7 +61,13 @@ const configureHelp = `Store a service account access key and a default project 
 
 Interactively asks for the key ID and the secret (not echoed), checks them
 against Cloud.ru IAM, then lists the projects the key can see and lets you
-pick one (a single project is picked automatically).
+pick one (a single project is picked automatically), then the availability
+zone for new VMs among the zones that take new resources (ru.AZ-2 offered
+first; Enter keeps the zone shown). If the zone list cannot be read, the
+step is skipped: set the zone later with --region.
+
+--region sets the zone without the question: a name (ru.AZ-2) or a UUID;
+the profile stores the UUID.
 
 Non-interactive (CI, scripts) — the secret is read from stdin, never from a flag:
   printf '%s' "$SECRET" | evo configure --key-id KEY_ID --secret-stdin --project-id PROJECT_ID
@@ -75,7 +85,13 @@ const configureHelpRU = `Сохранить ключ доступа сервис
 
 В интерактивном режиме спрашивает Key ID и секрет (секрет не отображается),
 проверяет их в IAM Cloud.ru, затем показывает проекты, которые видит ключ, и
-предлагает выбрать один (единственный проект выбирается сам).
+предлагает выбрать один (единственный проект выбирается сам), затем — зону
+доступности для новых ВМ из зон, которые принимают новые ресурсы (первой
+предлагается ru.AZ-2; Enter оставляет показанную зону). Если список зон не
+получен, шаг пропускается: зону можно задать позже флагом --region.
+
+--region задаёт зону без вопроса: имя (ru.AZ-2) или UUID; в профиль
+записывается UUID.
 
 Без вопросов (CI, скрипты) — секрет читается из stdin, никогда из флага:
   printf '%s' "$SECRET" | evo configure --key-id KEY_ID --secret-stdin --project-id PROJECT_ID
@@ -93,7 +109,7 @@ func newConfigureCmd() *cobra.Command {
 	var opts configureOptions
 	cmd := &cobra.Command{
 		Use:   "configure",
-		Short: i18n.T("Set up credentials and the default project for a profile", "Ключ доступа и проект по умолчанию для профиля"),
+		Short: i18n.T("Set up credentials, the default project and zone for a profile", "Ключ доступа, проект и зона по умолчанию для профиля"),
 		Long:  i18n.T(configureHelp, configureHelpRU),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -107,8 +123,8 @@ func newConfigureCmd() *cobra.Command {
 		"Прочитать секрет из первой строки stdin (без вопросов)"))
 	cmd.Flags().StringVar(&opts.projectID, "project-id", "", i18n.T("Cloud.ru project UUID (skips the project list)",
 		"UUID проекта Cloud.ru (без выбора из списка)"))
-	cmd.Flags().StringVar(&opts.region, "region", "", i18n.T("Default availability zone UUID for the profile",
-		"UUID зоны доступности по умолчанию для профиля"))
+	cmd.Flags().StringVar(&opts.region, "region", "", i18n.T("Default availability zone for the profile: a name (ru.AZ-2) or a UUID; the UUID is stored",
+		"Зона доступности по умолчанию для профиля: имя (ru.AZ-2) или UUID; сохраняется UUID"))
 
 	cmd.AddCommand(newConfigureListCmd(), newConfigureDeleteCmd())
 	return cmd
@@ -162,6 +178,10 @@ func (c *console) ask(ctx context.Context, prompt string) (string, error) {
 	return c.readLine(ctx)
 }
 
+// askSecret reads one line without echo and returns it as typed (without
+// the Enter that ends it): how to normalise it is the caller's choice.
+// configure trims the spaces a pasted key brings; a secret flag keeps
+// them, as its file does (secretText).
 func (c *console) askSecret(ctx context.Context, prompt string) (string, error) {
 	fmt.Fprint(c.out, prompt)
 	restore := saveTerminal()
@@ -181,7 +201,7 @@ func (c *console) askSecret(ctx context.Context, prompt string) (string, error) 
 		if r.err != nil {
 			return "", r.err
 		}
-		return strings.TrimSpace(string(r.b)), nil
+		return string(r.b), nil
 	case <-ctx.Done():
 		// ReadPassword turned echo off and will never restore it: the
 		// process exits first.
@@ -254,6 +274,9 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 		if secret, err = con.askSecret(ctx, prompt); err != nil {
 			return fmt.Errorf(i18n.T("read secret: %w", "чтение секрета: %w"), err)
 		}
+		// Trimmed as readLine trims the key ID and --secret-stdin: an
+		// access key has no spaces, a paste often brings some.
+		secret = strings.TrimSpace(secret)
 	}
 	if secret == "" && keyID == creds.KeyID {
 		secret = creds.Secret
@@ -279,8 +302,8 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	}
 
 	prof.ProjectID = projectID
-	if opts.region != "" {
-		prof.Region = opts.region
+	if prof.Region, err = configureRegion(ctx, opts.region, prof.Region, zoneEngine(provider, projectID, printer), con); err != nil {
+		return err
 	}
 	creds.KeyID, creds.Secret = keyID, secret
 	if err := config.SaveProfile(name, prof, creds); err != nil {
@@ -494,6 +517,124 @@ func errNotProjectUUID(id string) error {
 func notProjectUUIDHint() string {
 	return i18n.T("A project ID looks like 00000000-0000-4000-8000-000000000001: find it in the Cloud.ru console, in the project details. 'evo project use' also takes a project name.",
 		"ID проекта выглядит так: 00000000-0000-4000-8000-000000000001 — он в консоли Cloud.ru, в сведениях о проекте. 'evo project use' принимает и имя проекта.")
+}
+
+// zoneLookupTimeout bounds the reads of the zone step of configure (the
+// zone list, the project's subnets): a slow API must not hold the setup.
+const zoneLookupTimeout = 20 * time.Second
+
+// zoneEngine is the engine of the zone step: the key configure has just
+// checked (its IAM provider keeps the token) and the project chosen. The
+// profile is not saved yet, so the engine of the configuration
+// (toolEngine) would have neither.
+func zoneEngine(provider auth.TokenProvider, projectID string, printer *output.Printer) *engine.Engine {
+	cloud := provision.NewCloudRuAdapter(httpClient, tools.ComputeBaseURL)
+	cloud.SetTokenSource(func(ctx context.Context) (string, error) {
+		tok, err := provider.Token(ctx)
+		return tok.Value, err
+	})
+	return &engine.Engine{Config: config.Config{ProjectID: projectID}, Auth: provider, Cloud: cloud, Printer: printer}
+}
+
+// configureZones lists the zones with the tool of 'evo vm zones'
+// (list_zones: a command calls its tool, spec REQ-4) on the engine of the
+// zone step, within zoneLookupTimeout.
+func configureZones(ctx context.Context, eng *engine.Engine) ([]*provision.AvailabilityZone, error) {
+	ctx, cancel := context.WithTimeout(ctx, zoneLookupTimeout)
+	defer cancel()
+	t, ok := tools.New(func(map[string]any) (*engine.Engine, error) { return eng, nil }).Lookup("list_zones")
+	if !ok {
+		return nil, stderrors.New("no tool list_zones")
+	}
+	text, isErr := t.Handler(ctx, map[string]any{})
+	if isErr {
+		return nil, toolError(t.Name, text, toolHints{})
+	}
+	var answer struct {
+		Zones []*provision.AvailabilityZone `json:"zones"`
+	}
+	if err := json.Unmarshal([]byte(text), &answer); err != nil {
+		return nil, err
+	}
+	return answer.Zones, nil
+}
+
+// configureRegion is the zone the profile keeps, by its UUID: --region, a
+// name (ru.AZ-2) resolved by the zone list as evo vm create resolves it
+// (provision.ResolveZone), a UUID as given without a read, as before; on a
+// terminal without --region, the zone the person picks (askZone); else the
+// current one. Non-interactive configure without --region does not touch
+// the zone.
+func configureRegion(ctx context.Context, flag, current string, eng *engine.Engine, con *console) (string, error) {
+	switch {
+	case flag != "" && looksLikeUUID(flag):
+		return flag, nil
+	case flag != "":
+		zones, err := configureZones(ctx, eng)
+		if err != nil {
+			return "", clerrors.Prefix(i18n.Tf("--region %s: list zones: ", "--region %s: список зон: ", output.SanitizeCell(flag)), err)
+		}
+		z, err := provision.ResolveZone(zones, flag)
+		if err != nil {
+			return "", err
+		}
+		return z.ID, nil
+	case con.interactive:
+		return askZone(ctx, eng, current, con)
+	}
+	return current, nil
+}
+
+// askZone asks for the zone of new VMs among the zones evo init offers
+// (engine.ZoneChoices: open for new resources, a zone with a subnet of the
+// project first, ru.AZ-2 among them). Enter takes the current zone, else
+// the first offered: the placement is shown and confirmed, never picked
+// silently (owner's decision, dogfood 1.2.0: a profile without a zone made
+// the help's 'evo vm create' fail). A zone list that cannot be read (the
+// network, the key's role) skips the step with one line on how to set the
+// zone later: the key and the project are saved all the same.
+func askZone(ctx context.Context, eng *engine.Engine, current string, con *console) (string, error) {
+	zones, err := configureZones(ctx, eng)
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	if err != nil || len(zones) == 0 {
+		fmt.Fprintln(con.out, i18n.T("The zone list could not be read; set the zone later: evo configure --region <zone> (a name such as ru.AZ-2, or a UUID).",
+			"Список зон не получен; зону можно задать позже: evo configure --region <зона> (имя, например ru.AZ-2, или UUID)."))
+		if err != nil {
+			verboseCause(eng.Printer, err)
+		}
+		return current, nil
+	}
+	lctx, cancel := context.WithTimeout(ctx, zoneLookupTimeout)
+	zones = eng.ZoneChoices(lctx, zones)
+	cancel()
+	def := 1
+	fmt.Fprintln(con.out, i18n.T("Availability zones for new VMs:", "Зоны доступности для новых ВМ:"))
+	for i, z := range zones {
+		mark := " "
+		if z.ID == current {
+			mark, def = "*", i+1
+		}
+		fmt.Fprintf(con.out, " %s%2d) %s  %s\n", mark, i+1, z.Name, z.ID)
+	}
+	prompt := i18n.Tf("Choose a zone (number, name or ID) [%d]: ", "Выберите зону (номер, имя или ID) [%d]: ", def)
+	for {
+		ans, err := con.ask(ctx, prompt)
+		if err != nil {
+			return "", fmt.Errorf(i18n.T("read zone: %w", "чтение зоны: %w"), err)
+		}
+		if ans == "" {
+			return zones[def-1].ID, nil
+		}
+		if n, err := strconv.Atoi(ans); err == nil && n >= 1 && n <= len(zones) {
+			return zones[n-1].ID, nil
+		}
+		if z, err := provision.ResolveZone(zones, ans); err == nil {
+			return z.ID, nil
+		}
+		fmt.Fprintln(con.out, i18n.T("Not in the list, try again.", "Такого нет в списке, попробуйте ещё раз."))
+	}
 }
 
 // askProjectID asks for the project UUID until it gets one; Enter keeps

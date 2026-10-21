@@ -3,6 +3,8 @@
 Сюда исполнитель этапов записывает найденное вне своего scope. Формат:
 `- [этап-источник] что · где (file:line) · почему не сейчас`.
 
+План версий после 1.2.0 (1.2.1, 1.3, 1.4) — [../release-plan.md](../release-plan.md).
+
 Известное на старте (из аудита 2026-10-14):
 
 - [audit] OS keyring (Keychain / Credential Manager / Secret Service) · internal/auth · файл 0600 достаточен для v1.0; **v1.1** (заглушка `KeyringProvider` удалена на этапе 2)

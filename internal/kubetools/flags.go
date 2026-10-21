@@ -22,6 +22,12 @@ type Flag struct {
 	HasVal    bool
 }
 
+// Follows reports whether the flag is -f of logs (log): --follow there, as
+// logs has no --filename; elsewhere -f names a file or a URL.
+func (fl Flag) Follows(verb string) bool {
+	return fl.Name == "f" && (verb == "logs" || verb == "log")
+}
+
 // ParseFlags splits a flag argument the way kubectl's flag parser does.
 // Names are as kubectl sees them after turning "_" into "-" (kubectl
 // accepts --client_key for --client-key).

@@ -22,15 +22,21 @@ import (
 //     with USAGE before its handler, confirmed or not — no engine, no
 //     preview, no request — and so are the calls the stack tools make
 //     in-process; stack_status reports a running stack instead of
-//     advancing it (tools.Registry.SetReadOnly). tools/list leaves out the
-//     tools every call of which needs consent (tools.AlwaysNeedsConsent);
-//     k8s_kubectl and k8s_helm stay for their reads.
+//     advancing it, and deploy_plan shows its plan without writing the
+//     deploy key or the plan, so with no plan_id
+//     (tools.Registry.SetReadOnly). tools/list leaves out the tools every
+//     call of which needs consent (tools.AlwaysNeedsConsent); k8s_kubectl
+//     and k8s_helm stay for their reads.
 //   - H3, H6, H7 hold on stdio too, as over HTTP without
 //     --allow-secret-export: no kubectl command that prints a credential,
 //     no cluster token, credential fields masked (readOnlyWording).
 //
-// Call it before the server serves; over HTTP the restrictions of the
-// transport come on top (NewHTTPHandler).
+// Call it before the server serves. H11 is the outermost layer of every
+// handler, on either transport: a call that needs consent is refused as
+// such, before the checks of its arguments — over HTTP too, where the
+// restrictions of the transport (NewHTTPHandler) come later and go under
+// it (wrapHandler), so a refused call reaches no host file (H2) and no
+// resolver (H4).
 func (s *Server) SetReadOnly() {
 	if s.readOnly {
 		return
@@ -39,15 +45,16 @@ func (s *Server) SetReadOnly() {
 	s.reg.SetReadOnly()
 	s.restrictKubectl(false, readOnlyWording)
 	s.restrictSecrets(readOnlyWording)
-	// Last, so the outermost: a call that needs consent is refused as
-	// such, before the checks of its arguments.
+	s.gated = map[string]*tools.Handler{}
 	for _, t := range s.reg.Tools() {
 		s.restrict("H11", t.Name, func(next tools.Handler) tools.Handler {
+			inner := &next
+			s.gated[t.Name] = inner
 			return func(ctx context.Context, args map[string]any) (string, bool) {
 				if tools.NeedsConsent(t, args) {
 					return readOnlyRefusal(t.Name), true
 				}
-				return next(ctx, args)
+				return (*inner)(ctx, args)
 			}
 		})
 	}

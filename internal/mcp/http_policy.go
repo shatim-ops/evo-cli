@@ -78,7 +78,7 @@ var HTTPRestrictions = []Restriction{
 		Summary: "at most 32 tool calls at once; the next one gets SERVER_BUSY"},
 	{ID: "H9", StdioToo: true,
 		Where: "internal/cli/mcp.go", Symbol: "checkAllowedProject",
-		Summary: "--allow-project: a call in another project gets CONFIG_INVALID"},
+		Summary: "--allow-project: a call in another project gets CONFIG_INVALID; a resource named by id that is not in an allowed project gets NOT_FOUND, as one that is gone, naming no project, and an operation the server did not start CONFIG_INVALID (both before the handler); a read wider than a project with no project_id (billing_consumption, billing_finops, org_projects) reads the server's project only (tools.Registry.SetProjectBound)"},
 	{ID: "H10", Tools: []string{"doctor"},
 		Where: "internal/mcp/http_policy.go", Symbol: "doctor is disabled over HTTP",
 		Summary: "disabled: its checks name the server's files and network (paths in the configuration's warnings, addresses in network errors)"},
@@ -134,7 +134,8 @@ func (s *Server) restrict(id, tool string, wrap func(next tools.Handler) tools.H
 // restrictForHTTP adjusts tool handlers for the HTTP transport, as
 // HTTPRestrictions lists (H1–H7, H10; H8 is in the HTTP handler, H9 in the
 // CLI). A --read-only server has its H3, H6 and H7 already (SetReadOnly)
-// and exports no secret, so H5 would refuse nothing H11 lets through.
+// and exports no secret, so H5 would refuse nothing H11 lets through; the
+// wraps here go under its H11 gate (wrapHandler).
 // The tool set and schemas stay the same; some calls answer with an error
 // instead, and without allowSecretExport credential fields are masked.
 //
@@ -286,8 +287,14 @@ func refused(err error) string {
 
 // wrapHandler wraps a tool's handler in the registry, so the policy also
 // holds for in-process calls (stack_apply drives other tools), and mirrors
-// the result into the tools/call dispatch table.
+// the result into the tools/call dispatch table. Under the H11 gate of a
+// --read-only server (Server.gated) it wraps the handler the gate calls,
+// and the gate stays the outermost layer.
 func (s *Server) wrapHandler(name string, wrap func(next tools.Handler) tools.Handler) {
+	if inner, ok := s.gated[name]; ok {
+		*inner = wrap(*inner)
+		return
+	}
 	if !s.reg.Wrap(name, wrap) {
 		return
 	}

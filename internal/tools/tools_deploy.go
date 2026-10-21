@@ -26,6 +26,19 @@ import (
 // authedEngine builds an engine and sets a fresh bearer token on its cloud
 // client, so any handler can make Cloud.ru API calls.
 func (s *Registry) authedEngine(ctx context.Context, overrides map[string]any) (*engine.Engine, error) {
+	eng, err := s.localEngine(ctx, overrides)
+	if err != nil {
+		return nil, err
+	}
+	if err := authorize(ctx, eng); err != nil {
+		return nil, err
+	}
+	return eng, nil
+}
+
+// localEngine builds an engine for a handler that reads the local state
+// before it talks to the cloud (deploy_apply's plan): no token yet.
+func (s *Registry) localEngine(ctx context.Context, overrides map[string]any) (*engine.Engine, error) {
 	eng, err := s.engineFor(ctx, overrides)
 	if err != nil {
 		return nil, err
@@ -33,12 +46,17 @@ func (s *Registry) authedEngine(ctx context.Context, overrides map[string]any) (
 	if eng == nil {
 		return nil, fmt.Errorf("engine unavailable")
 	}
+	return eng, nil
+}
+
+// authorize sets a fresh bearer token on the engine's cloud client.
+func authorize(ctx context.Context, eng *engine.Engine) error {
 	tok, err := eng.Auth.Token(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	eng.Cloud.SetToken(tok.Value)
-	return eng, nil
+	return nil
 }
 
 // handleDeployPlan resolves a plan (read-only) and returns it with a cost
@@ -107,7 +125,15 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	// software (the image is pubkey-only; password SSH is disabled). The
 	// the user's own key is added to authorized_keys post-install (see SKILL).
 	// An explicit ssh_key arg overrides this.
-	if params.SSHKey == "" {
+	//
+	// A read-only server writes nothing for a plan nobody may apply there
+	// (B12-9): it makes no key (the plan is for the deploy key all the
+	// same, KeyLater) and saves no plan, so it hands out no plan_id.
+	deployKey := params.SSHKey == ""
+	switch {
+	case deployKey && s.readOnly:
+		params.KeyLater = true
+	case deployKey:
 		if err := eng.EnsureSSHKey(); err != nil {
 			return errResult(err), true
 		}
@@ -126,14 +152,9 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	// the defaults filled in: "cpu: 4" on top of a configured flavor must
 	// size anew.
 	plan.SourceParams = params
-	if err := deployplan.Save(eng.StateDir, plan); err != nil {
-		return errResult(err), true
-	}
 
 	// Compact, user-facing view (omit internal fields like meta_fields/public_key).
 	view := map[string]any{
-		"plan_id":          plan.PlanID,
-		"expires_at":       plan.ExpiresAt,
 		"product":          plan.Product,
 		"mode":             plan.Mode,
 		"vm":               plan.VM,
@@ -146,13 +167,24 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	}
 	// deploy_apply appends these to authorized_keys of the VM: the user
 	// approves them with the plan.
-	if params.SSHKey == eng.SSHPubKey {
+	if deployKey || params.SSHKey == eng.SSHPubKey {
 		if keys, rejected, keysFile := loadUserKeyLines(eng.StateDir); len(keys)+len(rejected) > 0 {
 			view["user_ssh_keys"] = describeUserKeys(keys, rejected)
 			view["user_ssh_keys_file"] = filepath.Join(filepath.Base(config.DataDir(eng.StateDir)), keysFile)
 			view["next"] = "Show this plan, its monthly cost and the user_ssh_keys to the user: those keys get an SSH login on the VM, and the file may have come with a repository someone else wrote. On explicit approval, call deploy_apply with this plan_id and confirmed=true."
 		}
 	}
+	if s.readOnly {
+		view["note"] = "Not saved: this server runs with --read-only, so the plan has no plan_id and deploy_apply is refused here; " +
+			"a server without --read-only makes the plan again with deploy_plan and applies it."
+		view["next"] = "Show this plan and its monthly cost to the user; creating the VM needs a server without --read-only."
+		return toJSON(view), false
+	}
+	if err := deployplan.Save(eng.StateDir, plan); err != nil {
+		return errResult(err), true
+	}
+	view["plan_id"] = plan.PlanID
+	view["expires_at"] = plan.ExpiresAt
 	return toJSON(view), false
 }
 
@@ -251,16 +283,12 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	if planID == "" {
 		return usageT("plan_id is required", "нужен plan_id"), true
 	}
-	confirmed, _ := args["confirmed"].(bool)
-	if !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("deploy_apply executes the plan: it creates the plan's VM (billable; the plan shows the cost).",
-				"deploy_apply выполнит план: создаст ВМ из плана (платно; цена — в плане)."),
-		}), true
-	}
-
-	eng, err := s.authedEngine(ctx, nil)
+	// The plan before the gate, from the local file only (no token, no
+	// request): the preview is what the user approves — the VM, the project
+	// and the price deploy_plan quoted — not a pointer to an earlier answer
+	// (break 1.2, B12-8). A plan_id that is malformed, unknown or expired is
+	// refused here, confirmed or not: there is nothing to approve.
+	eng, err := s.localEngine(ctx, nil)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -268,12 +296,26 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(err), true
 	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status": "confirmation_required",
+			"message": i18n.Tf("deploy_apply executes plan %s: it creates VM %s (billable). preview has the VM and the monthly cost deploy_plan quoted for it.",
+				"deploy_apply выполнит план %s: создаст ВМ %s (платно). В preview — ВМ и цена в месяц, которую назвал deploy_plan.", plan.PlanID, plan.VM.Name),
+			"plan_id":    plan.PlanID,
+			"expires_at": plan.ExpiresAt,
+			"preview":    engine.PlanPreview(plan),
+		}), true
+	}
+
+	if err := authorize(ctx, eng); err != nil {
+		return errResult(err), true
+	}
 	unlock, err := deployplan.LockApply(eng.StateDir, plan)
 	if err != nil {
 		return errResult(err), true
 	}
 	defer unlock()
-	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.Timings.VMPollTimeout)
+	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.VMPollTimeout())
 	if err != nil {
 		// Interrupted after the VM was created: record it, so status and
 		// destroy see it; the plan stays for a retry, which adopts the VM.
@@ -333,15 +375,13 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		return errResult(err), true
 	}
 	// If we injected the agent's own deploy key, hand back an ssh command that
-	// uses it. The host key is checked against the project's known_hosts:
+	// uses it (deployKeySSH, as provision does). The host key is checked
+	// against the project's known_hosts:
 	// pinned from the first connection when we make one (user keys), else
 	// recorded by the first ssh (accept-new). The entry of an earlier VM on
 	// the same reused IP is dropped first, so the new VM is not refused.
 	if res.PublicIP != "" && plan.PublicKey == eng.SSHPubKey {
 		dataDir := config.DataDir(eng.StateDir)
-		keyPath := filepath.Join(dataDir, "id_ed25519")
-		knownHosts := filepath.Join(dataDir, knownHostsFile)
-		res.SSH = fmt.Sprintf("ssh -i %s -o UserKnownHostsFile=%s -o StrictHostKeyChecking=accept-new %s@%s", keyPath, knownHosts, plan.SSH.Login, res.PublicIP)
 		note := "Connect with the ssh command above (agent deploy key)."
 		hostKey := ""
 		if keys, keysFile := loadUserKeys(eng.StateDir); len(keys) > 0 {
@@ -355,11 +395,9 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		} else {
 			note += " No " + filepath.Base(dataDir) + "/" + userKeysFile + " configured — to give the user SSH access, append their public key to ~/.ssh/authorized_keys on the VM after install."
 		}
-		if err := pinHostKey(knownHosts, res.PublicIP, hostKey); err != nil {
-			// Without the file the ssh command still works (accept-new
-			// creates it); a stale entry would make it refuse the new VM.
-			note += fmt.Sprintf(" WARNING: could not update %s (%v); if ssh reports a changed host key, remove the line for %s from it.", knownHosts, err, res.PublicIP)
-		}
+		ssh, warning := deployKeySSH(eng.StateDir, plan.SSH.Login, res.PublicIP, hostKey)
+		res.SSH = ssh
+		note += warning
 		if res.Note == "" {
 			res.Note = note
 		} else {

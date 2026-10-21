@@ -115,8 +115,10 @@ Projects: deploy and provision accept a project_id argument, so with a key
 that sees several projects (an organization-level key) any client of the
 server can work in any of them. --allow-project limits the tools to the
 listed projects (repeat the flag or separate with commas): a call in any other
-project, the server's own included, fails. The read-only org_quotas and
-iam_service_accounts still read other projects. Without the flag the server
+project, the server's own included, fails, and so does a call on a resource
+the tool names by id (a cluster, a VM, a DNS zone) outside those projects.
+The read-only org_quotas and iam_service_accounts still read other
+projects. Without the flag the server
 warns at start in HTTP mode. Prefer a project-level key for a shared server.
 
 Read-only: --read-only makes no call that needs the user's consent
@@ -175,7 +177,9 @@ k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl
 сервера может работать в любом из них. --allow-project ограничивает
 инструменты перечисленными проектами (флаг повторяется или через запятую):
 вызов в любом другом проекте, в том числе в проекте самого сервера,
-отклоняется. org_quotas и iam_service_accounts только читают и по-прежнему
+отклоняется, как и вызов с ресурсом, который инструмент называет по id
+(кластер, ВМ, зона DNS), не из этих проектов. org_quotas и
+iam_service_accounts только читают и по-прежнему
 видят другие проекты. Без флага сервер в режиме HTTP предупреждает при
 запуске. Для общего сервера лучше ключ уровня проекта.
 
@@ -202,7 +206,7 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, re
 				"--read-only не отдаёт секреты: с --allow-secret-export он несовместим"),
 			i18n.T("Drop one of the two flags.", "Уберите один из двух флагов."))
 	}
-	srv := mcp.New(mcpEngineFactory(allowProjects), version)
+	srv := newMCPServer(allowProjects)
 	if err := srv.SetToolsets(toolsets); err != nil {
 		return clerrors.Wrap(clerrors.CodeUsage, i18n.Tf("--toolsets: %v", "--toolsets: %v", err),
 			i18n.T("Groups are listed by 'evo tools list'.", "Группы — в выводе 'evo tools list'."), err)
@@ -238,6 +242,18 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, re
 		AllowSecretExport: allowSecretExport,
 		Logger:            logger.Logger,
 	}, nil)
+}
+
+// newMCPServer is the server of evo mcp on the projects of --allow-project
+// (none: any project the key sees). With the flag the tools are bound to
+// the server's project (H9): a read that names no project reads that
+// project, not the whole billing agreement or organization.
+func newMCPServer(allowProjects []string) *mcp.Server {
+	srv := mcp.New(mcpEngineFactory(allowProjects), version)
+	if len(allowProjects) > 0 {
+		srv.SetProjectBound()
+	}
+	return srv
 }
 
 // mcpEngineFactory builds the engine of every tool call. Tools that take a
@@ -280,13 +296,14 @@ func checkAllowedProject(allowed []string, project string) error {
 			return nil
 		}
 	}
-	shown := project
-	if shown == "" {
+	list := strings.Join(allowed, ",")
+	shown, hint := project, fmt.Sprintf("The server runs with --allow-project %s; ask its operator to add the project.", list)
+	if project == "" {
 		shown = "(not set)"
+		hint = fmt.Sprintf("The server has no project of its own: pass project_id (one of %s) where the tool takes one.", list)
 	}
 	return clerrors.New(clerrors.CodeConfigInvalid,
-		fmt.Sprintf("project %s is not allowed on this server", shown),
-		fmt.Sprintf("The server runs with --allow-project %s; ask its operator to add the project.", strings.Join(allowed, ",")))
+		fmt.Sprintf("project %s is not allowed on this server", shown), hint)
 }
 
 // runMCPStdio serves the stdio transport.

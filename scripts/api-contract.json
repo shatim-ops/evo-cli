@@ -338,8 +338,8 @@
       "name": "organization",
       "spec": "organization+iam/api.op.v3.yaml",
       "requests": [
-        {"method": "GET", "path": "/v3/projects", "code": "internal/cli/configure.go:33", "query": ["page_token"], "paginates": true, "reads": ["projects[].id", "projects[].name", "projects[].status", "projects[].organization_unit_id", "next_page_token"], "statuses": [400, 401, 403]},
-        {"method": "GET", "path": "/v3/quotas/usages", "code": "internal/tools/tools_admin.go:216", "query": ["page_size=200", "subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT", "subject_ids", "page_token"], "paginates": true,
+        {"method": "GET", "path": "/v3/projects", "code": "internal/cli/configure.go:37", "query": ["page_token"], "paginates": true, "reads": ["projects[].id", "projects[].name", "projects[].status", "projects[].organization_unit_id", "next_page_token"], "statuses": [400, 401, 403]},
+        {"method": "GET", "path": "/v3/quotas/usages", "code": "internal/tools/tools_admin.go:237", "query": ["page_size=200", "subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT", "subject_ids", "page_token"], "paginates": true,
          "reads": ["usages[].resource_type_code", "usages[].individual_limit", "usages[].individual_usage", "next_page_token"], "statuses": [403]}
       ]
     },
@@ -349,7 +349,7 @@
       "requests": [
         {"method": "POST", "path": "/api/v1/auth/token", "code": "internal/auth/iam.go:25", "body": ["keyId", "secret"], "reads": ["access_token", "expires_in"], "statuses": [401, 403],
          "accepted": {"read-unknown:access_token": "живое API отвечает snake_case (api-probe 15.10.2026, docs/internal/api-contract.md §7); код читает оба написания", "read-unknown:expires_in": "живое API отвечает snake_case (api-probe 15.10.2026, docs/internal/api-contract.md §7); код читает оба написания"}},
-        {"method": "GET", "path": "/api/v2/serviceAccounts", "code": "internal/tools/tools_admin.go:87", "query": ["target.projectId", "pageToken"], "paginates": true, "reads": ["service_accounts[].id", "service_accounts[].name", "service_accounts[].email", "service_accounts[].type", "service_accounts[].enabled", "nextPageToken", "next_page_token"],
+        {"method": "GET", "path": "/api/v2/serviceAccounts", "code": "internal/tools/tools_admin.go:93", "query": ["target.projectId", "pageToken"], "paginates": true, "reads": ["service_accounts[].id", "service_accounts[].name", "service_accounts[].email", "service_accounts[].type", "service_accounts[].enabled", "nextPageToken", "next_page_token"],
          "accepted": {"read-unknown:next_page_token": "живое API отвечает snake_case (реестр расхождений, IAM-2); код читает оба написания, nextPageToken и next_page_token", "read-unknown:service_accounts[].id": "живое API отвечает snake_case (api-probe 15.10.2026, docs/internal/api-contract.md §7); код читает оба написания", "read-unknown:service_accounts[].name": "живое API отвечает snake_case (api-probe 15.10.2026, docs/internal/api-contract.md §7); код читает оба написания", "read-unknown:service_accounts[].email": "живое API отвечает snake_case (api-probe 15.10.2026, docs/internal/api-contract.md §7); код читает оба написания", "read-unknown:service_accounts[].type": "живое API отвечает snake_case (api-probe 15.10.2026, docs/internal/api-contract.md §7); код читает оба написания", "read-unknown:service_accounts[].enabled": "живое API отвечает snake_case (api-probe 15.10.2026, docs/internal/api-contract.md §7); код читает оба написания"}}
       ]
     },

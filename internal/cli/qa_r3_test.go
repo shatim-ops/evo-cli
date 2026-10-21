@@ -17,7 +17,7 @@ import (
 
 // C2: ответ инструмента с кодом, у которого exit 1, сохраняет код и reason.
 func TestQAr3_ToolErrorKeepsAPIUnreachable(t *testing.T) {
-	err := toolError("vm_list", `{"error":"API_UNREACHABLE: IAM unreachable","status":"error"}`)
+	err := toolError("vm_list", `{"error":"API_UNREACHABLE: IAM unreachable","status":"error"}`, callHints("vm_list"))
 	var ce *clerrors.CLIError
 	if !errors.As(err, &ce) {
 		t.Fatalf("not a CLIError: %v", err)
@@ -33,7 +33,7 @@ func TestToolError_KeepsCodeAndHint_Russian(t *testing.T) {
 	defer i18n.SetLang(i18n.Lang())
 	i18n.SetLang("ru")
 	text := `{"status":"error","error":"API_UNREACHABLE: IAM недоступен","reason":"API_UNREACHABLE","hint":"Проверьте подключение к сети и повторите"}`
-	err := toolError("vm_list", text)
+	err := toolError("vm_list", text, callHints("vm_list"))
 	var ce *clerrors.CLIError
 	if !errors.As(err, &ce) {
 		t.Fatalf("not a CLIError: %v", err)
@@ -62,7 +62,7 @@ func TestToolError_HintOfTheTool(t *testing.T) {
 		{`{"error":"HTTP: 500"}`, clerrors.CodeAPIError, ""},
 	} {
 		var ce *clerrors.CLIError
-		if !errors.As(toolError("x", tt.text), &ce) || ce.Code != tt.code || ce.Hint != tt.hint {
+		if !errors.As(toolError("x", tt.text, callHints("x")), &ce) || ce.Code != tt.code || ce.Hint != tt.hint {
 			t.Errorf("%s: got %+v, want %s %q", tt.text, ce, tt.code, tt.hint)
 		}
 	}

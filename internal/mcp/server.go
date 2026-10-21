@@ -121,8 +121,12 @@ type Server struct {
 	listed  []Tool
 	enabled map[string]bool
 
-	// readOnly: SetReadOnly was called.
+	// readOnly: SetReadOnly was called. gated holds, per tool, the handler
+	// under its H11 gate: a restriction applied after SetReadOnly (those of
+	// the transport, NewHTTPHandler) wraps it, not the gate, so the gate
+	// stays the outermost layer (wrapHandler).
 	readOnly bool
+	gated    map[string]*tools.Handler
 
 	// httpApplied records the restrictions of HTTPRestrictions applied to
 	// the handlers (over HTTP and by --read-only), as "ID tool" (restrict),
@@ -148,6 +152,11 @@ func New(factory EngineFactory, version string) *Server {
 	}
 	return s
 }
+
+// SetProjectBound binds the tools to the project of the server's
+// configuration (evo mcp --allow-project, H9; tools.Registry.SetProjectBound),
+// on either transport. Call it before the server serves.
+func (s *Server) SetProjectBound() { s.reg.SetProjectBound() }
 
 // ListTools returns the advertised tool definitions.
 func (s *Server) ListTools() []Tool {

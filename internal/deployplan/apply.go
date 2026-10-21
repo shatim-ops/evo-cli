@@ -13,15 +13,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // DefaultPollTimeout is how long Apply waits for the VM to run when the
-// caller sets nothing: the same 10 minutes as the CLI deploy (a new VM in
-// ru.AZ-1 took about 5, 15.10.2026).
-const DefaultPollTimeout = 10 * time.Minute
+// caller sets nothing: the wait of deploy and provision
+// (config.DefaultTimeout).
+const DefaultPollTimeout = config.DefaultTimeout * time.Second
 
 // pollInterval is how often ApplyWithTimeout asks for the VM state (a variable for tests).
 var pollInterval = 10 * time.Second

@@ -63,14 +63,16 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "provision",
-			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. A subnet and a security group are attached automatically. " +
-				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works, Astra Linux, Alt and RED OS included; a shared-catalogue image the project cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
-				"evo fills the image's metadata fields (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else the call is refused before anything is created. " +
+			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. A subnet and a security group are attached. " +
+				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works (Astra Linux, Alt, RED OS too); one it cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
+				"evo fills image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else refused before anything is created. " +
+				"No image or zone: refused before the preview ('missing' names it). " +
+				"Returns ssh (deploy-key login), password (generated; this answer only), state_dir (key, state). " +
 				"For docker-compose use 'deploy'.",
 			InputSchema: objSchema(map[string]any{
 				"name":       strProp("VM name (e.g. 'hermes-agent')."),
 				"flavor":     strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
-				"region":     strProp("Availability zone UUID (see list_zones)."),
+				"region":     strProp("Availability zone: a name such as 'ru.AZ-2' or a UUID (see list_zones). Default: the server's CLOUDRU_REGION."),
 				"project_id": strProp("Cloud.ru project UUID."),
 				"image":      strProp("Boot image by exact name, display name or UUID (see image_list, image_get), e.g. 'Ubuntu-24.04'. Use it or image_id, not both."),
 				"image_id":   strProp("Boot image UUID (see image_list, image_get)."),
@@ -1717,19 +1719,35 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	if err != nil {
 		return errResult(err), true
 	}
+	// The engine of the preview and of the call alike: a configuration
+	// that cannot be built, or that names no project (engineFor), no image
+	// or no zone (provisionInputError), fails the call whatever the person
+	// answers, so the preview refuses it instead of asking for consent
+	// (dogfood 1.2.0), and so does a call with confirmed=true.
+	eng, err := s.engineFor(ctx, overrides)
+	if err == nil && eng == nil {
+		err = stderrors.New("engine unavailable")
+	}
+	if err != nil {
+		return errResult(err), true
+	}
+	if arg, err := provisionInputError(eng); err != nil {
+		return errAnswer(err, map[string]any{"missing": []string{arg}}), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		noPublicIP, _ := args["no_public_ip"].(bool)
 		// The configuration names the project, the zone and the image;
 		// the reads of the preview (flavor, zone and image names, the
-		// price) complete it, and create nothing (spec REQ-7). Without an
-		// engine there is nothing to read with.
-		eng, _ := s.newEngine(overrides)
-		preview := provisionPreview(eng, args)
-		if eng != nil {
-			var err error
-			if preview, err = s.completePreview(ctx, eng, preview); err != nil {
-				return errResult(err), true
-			}
+		// price) complete it, and create nothing (spec REQ-7).
+		zctx, cancel := context.WithTimeout(ctx, engine.PreviewLookupTimeout)
+		zone, _, err := resolveVMZone(zctx, eng)
+		cancel()
+		if err != nil {
+			return errResult(err), true
+		}
+		preview := provisionPreview(eng.Config, zone, args)
+		if preview, err = s.completePreview(ctx, eng, preview); err != nil {
+			return errResult(err), true
 		}
 		will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
 			firstNonEmptyStr(stringArg(args, "project_id"), preview.ProjectID))
@@ -1753,10 +1771,19 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}), true
 	}
 
-	eng, err := s.newEngine(overrides)
-	if err != nil {
-		return errResult(err), true
+	vmName := stringArg(args, "name")
+	if vmName == "" {
+		vmName = "evo-" + fmt.Sprintf("%d", time.Now().Unix())
 	}
+	// The person at the CLI sees the stages as they go (Caller.Progress),
+	// the engine's own lines among them, on stderr: a VM takes minutes.
+	// MCP has the answer only, as before.
+	pp, watched := progressOf(ctx)
+	if watched {
+		eng.Printer = pp
+	}
+	started := time.Now()
+	pp.Step(0, 0, i18n.Tf("Creating VM %s…", "Создаю ВМ %s…", vmName))
 
 	// Auth
 	tok, err := eng.Auth.Token(ctx)
@@ -1766,23 +1793,14 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	eng.Cloud.SetToken(tok.Value)
 
 	projectID := eng.Config.ProjectID
-	if projectID == "" {
-		return errResult(clierrors.ProjectRequired()), true // release audit, R-06
+	// The zone by its UUID, a name resolved (resolveVMZone), before
+	// anything else is read; the list also names the zone for the network
+	// below.
+	zone, zones, err := resolveVMZone(ctx, eng)
+	if err != nil {
+		return errResult(err), true
 	}
-
-	if eng.ImageRef() == "" {
-		return usageT("image (name or UUID) or image_id (UUID) is required; the server has no CLOUDRU_IMAGE_ID (an image UUID) to default to", "нужен image (имя или UUID) или image_id (UUID): у сервера не задан CLOUDRU_IMAGE_ID (UUID образа по умолчанию)"), true
-	}
-
 	region := eng.Config.Region
-	if region == "" {
-		return usageT("region (availability zone UUID, see list_zones) is required; the server has no CLOUDRU_REGION to default to", "нужен region (UUID зоны доступности, см. list_zones): у сервера не задан CLOUDRU_REGION"), true
-	}
-
-	vmName := stringArg(args, "name")
-	if vmName == "" {
-		vmName = "evo-" + fmt.Sprintf("%d", time.Now().Unix())
-	}
 
 	// Resolve flavor: name -> UUID, "auto" -> smallest lowcost, UUID passthrough.
 	// Free-tier is limited to 1 VM (usually already in use), so auto skips it.
@@ -1817,12 +1835,19 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// status flags vmm_enabled / guest_agent_ready are never sent.
 	// Explicit values (image_metadata, --meta) win; a mandatory field nobody
 	// filled refuses the call here, before the boot FIP and the VM.
+	// password is the one evo generates for the image's password fields
+	// (none when image_metadata gives one): kept nowhere, it goes out once,
+	// in the answer — before, it was lost (dogfood 1.2.1).
+	var password string
 	imgMeta, filled, err := images.FillMetadata(imgDetail.MetadataFields, images.Inputs{
-		PublicKey:   strings.TrimSpace(eng.SSHPubKey),
-		Hostname:    vmName,
-		Login:       "user1",
-		GenPassword: func() string { return genPassword(16) },
-		Values:      metaValues,
+		PublicKey: strings.TrimSpace(eng.SSHPubKey),
+		Hostname:  vmName,
+		Login:     "user1",
+		GenPassword: func() string {
+			password = genPassword(16)
+			return password
+		},
+		Values: metaValues,
 	})
 	if err != nil {
 		return errResult(err), true
@@ -1846,21 +1871,11 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// the VM are billed, so a zone without them is refused here, before
 	// anything is created — CONFIG_INVALID, as deploy.
 	zoneName := ""
-	var zones []*provision.AvailabilityZone
-	if zs, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
-		zones = zs
-		for _, z := range zones {
-			if z.ID == region {
-				zoneName = z.Name
-				break
-			}
-		}
-		if err := provision.ZoneRefError(zones, region); err != nil {
-			return errResult(err), true
-		}
-		if err := provision.ClosedZoneError(zones, region); err != nil {
-			return errResult(err), true
-		}
+	if zone != nil {
+		zoneName = zone.Name
+	}
+	if err := provision.ClosedZoneError(zones, region); err != nil {
+		return errResult(err), true
 	}
 	subnets, err := eng.Cloud.ListSubnets(ctx, projectID)
 	if err != nil {
@@ -1909,6 +1924,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// Groups only in other zones, none at all or an unreadable list:
 	// refused, as deploy — a VM without a group is billed and unreachable.
 	var sgIDs []string
+	sgName := ""
 	sgs, sgErr := eng.Cloud.ListSecurityGroups(ctx, projectID)
 	if sgErr != nil {
 		return errResult(fmt.Errorf("list security groups: %w", sgErr)), true
@@ -1919,7 +1935,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 			return errResult(engine.NoSecurityGroupError(zoneName, region)), true
 		}
 		chosen := sgs[i]
-		sgIDs = []string{chosen.ID}
+		sgIDs, sgName = []string{chosen.ID}, chosen.Name
 		// What a new VM needs from its group (ingress TCP 22, system
 		// egress): in the answer, the VM is created either way.
 		if rules, re := provision.GroupRules(ctx, eng.Cloud, chosen); re == nil {
@@ -1981,6 +1997,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}
 		if bootFIP != nil {
 			req.Interfaces[0].AttachExternalIPID = bootFIP.ID
+			pp.StepDone(i18n.Tf("Floating IP %s reserved", "Зарезервирован floating IP %s", bootFIP.IPAddress))
 		}
 	}
 	fipID := ""
@@ -2035,7 +2052,11 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		if provision.IsNameTaken(err) {
 			return fipLeftAnswer(clierrors.Wrap(clierrors.CodeUsage,
 				i18n.Tf("a VM named %s already exists in this project (Cloud.ru answered 409); no VM was created", "ВМ с именем %s в проекте уже есть (Cloud.ru ответил 409); ВМ не создана", vmName),
-				i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.", "Проверьте эту ВМ через vm_get %s (или vm_list); укажите другое имя или удалите её через destroy name=%s.", vmName, vmName), err), bootFIP, fipErr), true
+				// The Russian hint is the CLI's (MCP speaks English, D6): a
+				// repeat after Ctrl-C lands here, and the VM is the one the
+				// interrupted run is still creating.
+				i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.",
+					"Проверьте её: evo vm get %s — если это ВМ прерванного запуска, она ещё создаётся; иначе укажите другое имя или удалите её: evo vm delete %s.", vmName, vmName), err), bootFIP, fipErr), true
 		}
 		return fipLeftAnswer(fmt.Errorf("create VM: %w", err), bootFIP, fipErr), true
 	}
@@ -2044,6 +2065,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		// lost answer): then it is billed and holds the FIP — record it.
 		if found := provision.FindCreatedVM(eng.Cloud, projectID, vmName, createStart); found != nil {
 			serr := saveState(found.ID, "creating", "")
+			pp.Hint(vmLeftNote(found.ID, ""))
 			return errAnswer(fmt.Errorf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
 				"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
 				map[string]any{"vm_id": found.ID}), true
@@ -2054,23 +2076,21 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// below (kill, OOM) must not leave the VM and its boot FIP billed with no
 	// record (QA r3 R5). The later saves update it.
 	_ = saveState(vm.ID, "creating", "")
+	pp.StepDone(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", vmName, vm.ID))
 
 	// interrupted answers a cancelled call (client gone, notifications/
 	// cancelled, server stopping): the VM exists and is billed, so the
 	// answer names it, and the state has it.
 	interrupted := func(publicIP string) (string, bool) {
 		serr := saveState(vm.ID, "creating", publicIP)
+		pp.Hint(vmLeftNote(vm.ID, ""))
 		return errAnswer(fmt.Errorf("VM %s was created, but provision was interrupted (%v); it is still running and recorded in the state — "+
 			"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, ctx.Err(), vm.ID, notInState(vm.ID, serr)),
 			map[string]any{"vm_id": vm.ID}), true
 	}
 
-	// Poll until active: 10 minutes, as the CLI deploy (a new VM took ~5 in
-	// ru.AZ-1 on 15.10.2026).
-	pollTimeout := 10 * time.Minute
-	if eng.Timings.VMPollTimeout > 0 {
-		pollTimeout = eng.Timings.VMPollTimeout // CLOUDRU_TIMEOUT, as in the CLI deploy
-	}
+	// Poll until active, as long as deploy waits (CLOUDRU_TIMEOUT).
+	pollTimeout := eng.VMPollTimeout()
 	deadline := time.After(pollTimeout)
 	pollEvery := 5 * time.Second
 	if eng.Timings.VMPollInterval > 0 {
@@ -2078,20 +2098,33 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	}
 	ticker := time.NewTicker(pollEvery)
 	defer ticker.Stop()
+	// The wait in deploy's words; closed on every way out.
+	wait := eng.VMWaitLine(pp)
+	defer wait.Done()
 
 	for {
 		select {
 		case <-deadline:
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
-			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
-				map[string]any{"status": "timeout", "vm_id": vm.ID}), true
+			pp.Hint(vmLeftNote(vm.ID, "") + i18n.T("; to wait longer next time: CLOUDRU_TIMEOUT (seconds)", "; ждать дольше: CLOUDRU_TIMEOUT (в секундах)"))
+			fields := map[string]any{"status": "timeout", "vm_id": vm.ID}
+			// The VM may still come up, with this password only (as
+			// deploy_apply's timeout).
+			if password != "" {
+				fields["password"] = password
+			}
+			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s); to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
+				fields), true
+		case <-wait.C():
+			wait.Show()
 		case <-ticker.C:
 			updated, err := eng.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
 				continue
 			}
 			if updated.Status == "active" || updated.Status == "running" {
+				pp.StepDone(i18n.Tf("VM %s active (%s)", "ВМ %s активна (%s)", vmName, engine.ElapsedText(wait.Elapsed())))
 				// Assign a floating (public) IP unless a private VM was requested.
 				publicIP := ""
 				// fipErr: the public IP is not on the VM. The answer is then
@@ -2114,6 +2147,9 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				if fipErr != nil {
 					publicIP = ""
 				}
+				if publicIP != "" {
+					pp.StepDone(i18n.Tf("Public IP: %s", "Внешний IP: %s", publicIP))
+				}
 				// The ports asked for, in the VM's group: the same code as
 				// deploy, the rules recorded for destroy.
 				var opened *sgrules.OpenResult
@@ -2124,13 +2160,24 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 						func(label string) string { return "evo: port " + label }, &ports)
 					opened = &res
 					portsNote = res.Note()
+					engine.ShowOpenedPorts(pp, res, &ports, firstNonEmptyStr(sgName, sgIDs[0]))
 				}
 				if serr := saveState(vm.ID, "running", publicIP); serr != nil {
 					return errAnswer(fmt.Errorf("VM %s is active at %s and billed.%s", vm.ID, firstNonEmptyStr(publicIP, "no public address"), notInState(vm.ID, serr)),
 						map[string]any{"vm_id": vm.ID, "vm_ip": publicIP}), true
 				}
 
-				msg := fmt.Sprintf("VM %s is active at %s. SSH: ssh %s@%s", vm.ID, publicIP, sshUser, publicIP)
+				// The VM got the agent's deploy key: the ssh command
+				// uses it and the project's known_hosts, as deploy_apply's
+				// (deployKeySSH). With a key of the caller's, or none,
+				// plain ssh is theirs to make work.
+				deployKey := publicIP != "" && filled.KeyUsed
+				sshCmd := fmt.Sprintf("ssh %s@%s", sshUser, publicIP)
+				sshWarning := ""
+				if deployKey {
+					sshCmd, sshWarning = deployKeySSH(eng.StateDir, sshUser, publicIP, "")
+				}
+				msg := fmt.Sprintf("VM %s is active at %s. SSH: %s%s", vm.ID, publicIP, sshCmd, sshWarning)
 				if noPublicIP {
 					msg = fmt.Sprintf("VM %s is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC.", vm.ID)
 				}
@@ -2143,7 +2190,12 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					"flavor":   flavorID,
 					"region":   region,
 					"disk_gb":  diskSize,
-					"message":  msg,
+					// The deploy key and the state of the VM: status and
+					// destroy find it only from the directory evo ran in.
+					"state_dir": config.DataDir(eng.StateDir),
+				}
+				if deployKey {
+					res["ssh"] = sshCmd
 				}
 				if len(netWarnings) > 0 {
 					res["warnings"] = netWarnings
@@ -2152,8 +2204,13 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					res["ports"] = opened
 				}
 				if portsNote != "" {
-					res["message"] = msg + " Ports: " + portsNote + "."
+					msg += " Ports: " + portsNote + "."
 				}
+				if password != "" {
+					res["password"] = password
+					msg += passwordOnce
+				}
+				res["message"] = msg
 				if diskNote != "" {
 					res["warning"] = diskNote
 				}
@@ -2168,8 +2225,10 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					}
 					res["warning"] = note
 				}
+				pp.Success(vmReadyText(vmName, firstNonEmptyStr(zoneName, region), publicIP, sshCmd, time.Since(started)))
 				return toJSON(res), false
 			}
+			wait.State(updated.Status)
 			if provision.VMFailed(updated.Status) {
 				// Billed with its boot FIP: record both so destroy finds
 				// them, and say so (QA H3).
@@ -2178,6 +2237,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 					ip = bootFIP.IPAddress
 				}
 				serr := saveState(vm.ID, "error", ip)
+				pp.Hint(vmLeftNote(vm.ID, updated.Status))
 				fipNote := ""
 				if fipID != "" {
 					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; destroy releases it.", ip)
@@ -2191,6 +2251,34 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}
 	}
 }
+
+// vmLeftNote is the next step for the person at the CLI (Caller.Progress)
+// after a create that stopped with its VM in the cloud — Ctrl-C, the wait
+// ran out, a failed state: the VM stays, billed, until it is deleted.
+// failed is the state of a VM that failed, "" for one still being created.
+func vmLeftNote(vmID, failed string) string {
+	if failed != "" {
+		return i18n.Tf("VM %[1]s is in state %[2]s and is billed; check it: evo vm get %[1]s; delete it: evo vm delete %[1]s",
+			"ВМ %[1]s в состоянии %[2]s и оплачивается; проверить: evo vm get %[1]s; удалить: evo vm delete %[1]s", vmID, failed)
+	}
+	return i18n.Tf("VM %[1]s is still being created and is billed; check it: evo vm get %[1]s; delete it: evo vm delete %[1]s",
+		"ВМ %[1]s продолжает создаваться и оплачивается; проверить: evo vm get %[1]s; удалить: evo vm delete %[1]s", vmID)
+}
+
+// vmReadyText is the last line of evo vm create: the VM, its zone, its
+// address, how long it took and how to log in (ssh, the answer's command).
+func vmReadyText(name, zone, ip, ssh string, took time.Duration) string {
+	if ip == "" {
+		return i18n.Tf("VM %s is ready: zone %s, no public IP, %s.", "ВМ %s готова: зона %s, без внешнего IP, %s.",
+			name, zone, engine.ElapsedText(took))
+	}
+	return i18n.Tf("VM %s is ready: zone %s, IP %s, %s. SSH: %s", "ВМ %s готова: зона %s, IP %s, %s. SSH: %s",
+		name, zone, ip, engine.ElapsedText(took), ssh)
+}
+
+// passwordOnce is the sentence of a provision answer that carries the
+// password evo generated for the image: no copy of it is kept.
+const passwordOnce = " The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
 
 // handleStatus is the answer of 'evo status --json', which it prints: the
 // local record, what the cloud said about its VM and, when the cloud
@@ -2801,6 +2889,9 @@ func provisionNoPublicIP(res map[string]any, vmID, fipID string, fipErr error) s
 	res["vm_ip"] = ""
 	res["floating_ip_id"] = fipID
 	res["message"] = fmt.Sprintf("VM %s is active and billed, but it has no public IP: attaching one failed, so it cannot be reached by SSH from outside.%s", vmID, fipNote)
+	if _, ok := res["password"]; ok {
+		res["message"] = res["message"].(string) + passwordOnce
+	}
 	return errAnswer(clierrors.Wrap(code,
 		fmt.Sprintf("VM %s is active, but its public IP was not attached (%v)", vmID, fipErr),
 		fmt.Sprintf("Attach a free address with fip_attach (vm %s; addresses from list_floating_ips), or delete the VM with destroy vm_id=%s.", vmID, vmID),
@@ -3177,18 +3268,15 @@ func isUUID(s string) bool {
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // provisionPreview is what provision would create, from the call and the
-// configuration only: the zone, image and flavor as configured (names,
-// the flavor auto picks and the price need the cloud: completePreview adds
-// them). eng may be nil when the configuration cannot be built.
-func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePreview {
+// configuration only: the zone (zone: the listed zone of cfg.Region, nil
+// when not listed), image and flavor as configured (the image name, the
+// flavor auto picks and the price need the cloud: completePreview adds
+// them).
+func provisionPreview(cfg config.Config, zone *provision.AvailabilityZone, args map[string]any) engine.CreatePreview {
 	noPublicIP, _ := args["no_public_ip"].(bool)
 	public := !noPublicIP
 	p := engine.CreatePreview{Resource: engine.ResourceVM, Name: stringArg(args, "name"),
 		PublicIP: &public, SubnetID: stringArg(args, "subnet_id")}
-	var cfg config.Config
-	if eng != nil {
-		cfg = eng.Config
-	}
 	p.ProjectID, p.ProjectFrom = cfg.ProjectID, cfg.ProjectOrigin
 	if v := stringArg(args, "project_id"); v != "" {
 		p.ProjectID, p.ProjectFrom = v, "argument"
@@ -3197,6 +3285,9 @@ func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePrev
 		Zone:  deployplan.RefSpec{ID: cfg.Region},
 		Image: deployplan.RefSpec{ID: cfg.ImageID},
 		Disk:  deployplan.DiskSpec{Type: "SSD"}}
+	if zone != nil {
+		vm.Zone.Name = zone.Name
+	}
 	if ref := stringArg(args, "image"); ref != "" || (cfg.ImageID == "" && cfg.Image != "") {
 		// By name: the CLI resolves it for the preview, the call when it runs.
 		ref = firstNonEmptyStr(ref, cfg.Image)
@@ -3217,12 +3308,6 @@ func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePrev
 	// the image, as provision itself does.
 	vm.Disk.SizeGB, _ = provision.BootDiskGB(cfg.DiskSize, 0)
 	p.VM = &vm
-	image := firstNonEmptyStr(vm.Image.ID, vm.Image.Name)
-	for _, m := range []struct{ name, val string }{{"project_id", p.ProjectID}, {"image_id", image}, {"region", cfg.Region}} {
-		if m.val == "" {
-			p.Missing = append(p.Missing, m.name)
-		}
-	}
 	if tcp, udp, err := sgrules.ParsePorts(portSpecs(args["ports"])); err == nil && len(tcp)+len(udp) > 0 {
 		p.Add("ports", strings.Join(portLabels(tcp, udp), ","))
 	}
@@ -3256,4 +3341,72 @@ func (s *Registry) completePreview(ctx context.Context, eng *engine.Engine, p en
 		return engine.CreatePreview{}, err
 	}
 	return p, nil
+}
+
+// provisionInputError is the refusal of a provision that names no image or
+// no zone, with the argument the call lacks; nil when both are set. The
+// VM cannot be created whatever the person answers, so the preview refuses
+// it before it asks for consent, as the call with confirmed=true does — the
+// one check of both (dogfood 1.2.0: the preview said «не задано: зона»,
+// asked «Продолжить?», and the call failed after «y»). The project is
+// checked before, by engineFor (ProjectRequired). The zone, like the
+// project, is configuration (CONFIG_INVALID): the profile keeps it (evo
+// configure --region); the image is the call's own (USAGE, as it was). The
+// hint names the arguments and the server's settings, for an agent; the
+// CLI names its own flags instead, from the argument (toolError).
+func provisionInputError(eng *engine.Engine) (arg string, err error) {
+	switch {
+	case eng.ImageRef() == "":
+		return "image", clierrors.New(clierrors.CodeUsage,
+			i18n.T("no image is set (image or image_id)", "не задан образ (image или image_id)"),
+			i18n.T("Pass image: a name such as Ubuntu-24.04 or a UUID (image_list), or image_id; the server has no CLOUDRU_IMAGE_ID to default to.",
+				"Передайте image — имя (например, Ubuntu-24.04) или UUID (image_list) — или image_id: у сервера не задан CLOUDRU_IMAGE_ID."))
+	case eng.Config.Region == "":
+		return "region", clierrors.New(clierrors.CodeConfigInvalid,
+			i18n.T("no availability zone is set (region)", "не задана зона доступности (region)"),
+			i18n.T("Pass region: a zone name such as ru.AZ-2 or its UUID (list_zones); the server has no CLOUDRU_REGION to default to.",
+				"Передайте region — имя зоны (например, ru.AZ-2) или её UUID (list_zones): у сервера не задан CLOUDRU_REGION."))
+	}
+	return "", nil
+}
+
+// resolveVMZone resolves the zone of a new VM — eng.Config.Region: the region
+// argument, else CLOUDRU_REGION or the profile — to the UUID of the listed
+// zone by provision.ResolveZone, the rule of stacks and evo configure, in
+// place, and returns that zone (nil when not listed) and the list. A name
+// needs the list: unread, or naming no listed zone, it is refused before
+// anything is created. A UUID stays as given when the list is unread or
+// does not have it, as before (the create call answers for it).
+func resolveVMZone(ctx context.Context, eng *engine.Engine) (*provision.AvailabilityZone, []*provision.AvailabilityZone, error) {
+	ref := eng.Config.Region
+	zones, err := listZones(ctx, eng)
+	if err != nil {
+		if isUUID(ref) {
+			return nil, nil, nil
+		}
+		return nil, nil, clierrors.Prefix(i18n.Tf("availability zone %q: list zones: ", "зона доступности %q: список зон: ", ref), err)
+	}
+	zone, err := provision.ResolveZone(zones, ref)
+	if err != nil {
+		if isUUID(ref) || len(zones) == 0 {
+			return nil, zones, nil
+		}
+		return nil, zones, err
+	}
+	eng.Config.Region = zone.ID
+	return zone, zones, nil
+}
+
+// listZones reads the zone list with the engine's token; an engine without
+// credentials or a cloud reads nothing.
+func listZones(ctx context.Context, eng *engine.Engine) ([]*provision.AvailabilityZone, error) {
+	if eng.Auth == nil || eng.Cloud == nil {
+		return nil, stderrors.New(i18n.T("no cloud to read the zones from", "нет облака, чтобы прочитать зоны"))
+	}
+	tok, err := eng.Auth.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	eng.Cloud.SetToken(tok.Value)
+	return eng.Cloud.ListAvailabilityZones(ctx)
 }

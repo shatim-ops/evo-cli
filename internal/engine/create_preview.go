@@ -46,7 +46,8 @@ type CreatePreview struct {
 	Resource string `json:"resource"`
 	Name     string `json:"name,omitempty"`
 	// ProjectFrom is where the project comes from: profile, project, env,
-	// flag (the configuration's origins) or argument (the call's own).
+	// flag (the configuration's origins), argument (the call's own), record
+	// (a deployment's state record) or plan (the saved plan of deploy_apply).
 	ProjectID   string              `json:"project_id,omitempty"`
 	ProjectFrom string              `json:"project_from,omitempty"`
 	Zone        *deployplan.RefSpec `json:"zone,omitempty"` // of a resource other than a VM
@@ -160,9 +161,10 @@ func (p *CreatePreview) priceFromAPI(ctx context.Context, cloud provision.CloudA
 	}
 }
 
-// previewLookupTimeout bounds the lookups of CompletePreview: a slow API
-// must not hold the question back for long.
-const previewLookupTimeout = 20 * time.Second
+// PreviewLookupTimeout bounds the lookups of a preview (CompletePreview,
+// the zone of provision's preview): a slow API must not hold the question
+// back for long.
+const PreviewLookupTimeout = 20 * time.Second
 
 // networkCheckTimeout bounds the network check of the preview on its own,
 // after the price: a slow rules list must not leave the preview without a
@@ -209,7 +211,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		return nil
 	}
 	parent := ctx
-	ctx, cancel := context.WithTimeout(ctx, previewLookupTimeout)
+	ctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
 	defer cancel()
 	tok, err := e.Auth.Token(ctx)
 	if err != nil {

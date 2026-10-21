@@ -35,7 +35,9 @@ func (s *Registry) callTool(ctx context.Context, name string, args map[string]an
 	if !ok {
 		return nil, fmt.Errorf("unknown tool %q", name)
 	}
-	text, isErr := h(ctx, args)
+	// The step is not the CLI command's call (Caller): its progress and
+	// its error are the outer tool's to show.
+	text, isErr := h(WithCaller(ctx, nil), args)
 	var out map[string]any
 	if e := json.Unmarshal([]byte(text), &out); e != nil {
 		return nil, fmt.Errorf("%s: unparseable result: %s", name, text)
@@ -631,16 +633,9 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 	if err != nil {
 		return nil, fmt.Errorf("validate vm.zone: list availability zones: %w", err)
 	}
-	var zone *provision.AvailabilityZone
-	for _, z := range zones {
-		if z.ID == zoneRef || strings.EqualFold(z.Name, zoneRef) {
-			zone = z
-			break
-		}
-	}
-	if zone == nil {
-		return nil, clierrors.New(clierrors.CodeUsage, i18n.Tf("vm.zone %q: availability zone not found", "vm.zone %q: зона доступности не найдена", zoneRef),
-			i18n.T("See list_zones (evo list-zones) for the zone names.", "Имена зон — в выводе list_zones (evo list-zones)."))
+	zone, err := provision.ResolveZone(zones, zoneRef)
+	if err != nil {
+		return nil, clierrors.Prefix("vm.zone: ", err)
 	}
 	if err := provision.ClosedZoneError(zones, zone.ID); err != nil {
 		return nil, err
@@ -841,6 +836,17 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 	if job.Status == "running" && !s.readOnly {
 		if err := s.checkJobProject(job); err != nil {
 			return nil, err
+		}
+		// The operations of a job of the server's project (checkJobProject)
+		// were started by evo's own create calls there, maybe before this
+		// server did: a bound registry polls them as its own
+		// (kindOperation). A job without a project proves nothing.
+		if s.projectBound && job.ProjectID != "" {
+			for _, st := range job.Steps {
+				if st.OpID != "" && st.PollTool != "" {
+					s.ops.remember(groupOf(st.PollTool), st.OpID)
+				}
+			}
 		}
 		s.advance(ctx, job)
 		if e := job.Save(); e != nil {

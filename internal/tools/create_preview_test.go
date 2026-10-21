@@ -11,6 +11,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -59,19 +60,21 @@ func TestProvisionPreview_ResolvedFromConfig(t *testing.T) {
 	}
 }
 
-// Without a configuration the preview names what is missing instead of a
-// placeholder.
-func TestProvisionPreview_Missing(t *testing.T) {
+// Without a configuration there is no preview: a call without a project
+// cannot create a VM, so it is refused before consent is asked for, as the
+// call with confirmed=true is (ProjectRequired, from engineFor). The zone
+// and the image: TestProvision_NoZoneOrImageRefusedBeforePreview.
+func TestProvisionPreview_NoProjectRefused(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) { return &engine.Engine{}, nil })
-	text, _ := r.handlers["provision"](context.Background(), map[string]any{"name": "web"})
-	var resp struct {
-		Preview engine.CreatePreview `json:"preview"`
-	}
-	if err := json.Unmarshal([]byte(text), &resp); err != nil {
-		t.Fatal(err)
-	}
-	if got := resp.Preview.Missing; len(got) != 3 || got[0] != "project_id" || got[1] != "image_id" || got[2] != "region" {
-		t.Fatalf("missing %v: %s", got, text)
+	for _, confirmed := range []bool{false, true} {
+		text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": confirmed})
+		var resp map[string]any
+		if err := json.Unmarshal([]byte(text), &resp); err != nil {
+			t.Fatal(err)
+		}
+		if want := clierrors.ProjectRequired(); !isErr || resp["reason"] != clierrors.CodeConfigInvalid || resp["error"] != want.Message {
+			t.Errorf("confirmed=%v: %s", confirmed, text)
+		}
 	}
 }
 

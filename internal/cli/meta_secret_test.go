@@ -41,6 +41,10 @@ func TestVMCreate_MetaFromStdinAndFile(t *testing.T) {
 
 func TestVMCreate_MetaFromStdinAndFileRefusals(t *testing.T) {
 	russian(t)
+	empty := filepath.Join(t.TempDir(), "empty.pass")
+	if err := os.WriteFile(empty, []byte("\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for name, tc := range map[string]struct {
 		args []string
 		want []string
@@ -49,6 +53,10 @@ func TestVMCreate_MetaFromStdinAndFileRefusals(t *testing.T) {
 			[]string{"оба читают stdin", "stdin читает только одно поле", "=@<файл>"}},
 		"нет файла": {[]string{"--meta", "opensearch_host=h", "--meta", "opensearch_password=@./nosuch.pass"},
 			[]string{"opensearch_password=@./nosuch.pass: файл не прочитан", "начинается с @, — имя файла"}},
+		// No value in the file (Fable audit, REL12-9); a literal empty
+		// one is "opensearch_password=".
+		"пустой файл": {[]string{"--meta", "opensearch_host=h", "--meta", "opensearch_password=@" + empty},
+			[]string{"opensearch_password=@" + empty + ": файл пуст"}},
 		"нет «=»": {[]string{"--meta", "opensearch_host"},
 			[]string{"admin_password=@./admin.pass", "admin_password=-"}},
 	} {
@@ -76,6 +84,20 @@ func TestVMCreate_MetaFromStdinAndFileRefusals(t *testing.T) {
 func TestTrimNewline(t *testing.T) {
 	for in, want := range map[string]string{"a\n": "a", "a\r\n": "a", "a\n\n": "a\n", "a": "a", "a\r": "a\r", "": ""} {
 		if got := trimNewline(in); got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
+		}
+	}
+}
+
+// secretText: BOM в начале и один перевод строки в конце уходят, пробелы
+// вокруг пароля и BOM не в начале — часть значения (B12-6, B12-7).
+func TestSecretText(t *testing.T) {
+	for in, want := range map[string]string{
+		utf8BOM + "a\n": "a", utf8BOM + "a\r\n": "a", utf8BOM + "\n": "", utf8BOM: "",
+		"  a  \n": "  a  ", "\ta\t": "\ta\t", "a" + utf8BOM: "a" + utf8BOM,
+		utf8BOM + utf8BOM + "a": utf8BOM + "a", "a\n\n": "a\n",
+	} {
+		if got := secretText(in); got != want {
 			t.Errorf("%q → %q, want %q", in, got, want)
 		}
 	}

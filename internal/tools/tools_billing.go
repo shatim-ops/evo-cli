@@ -30,7 +30,8 @@ const maxBreakdown = 12
 // no agreement, of the configuration: a key of a project administrator
 // reads the consumption of its project without the agreement id, which it
 // cannot see (api-ref_start; register BIL-5). Neither — CONFIG_INVALID
-// before the token (release audit, L-06).
+// before the token (release audit, L-06). On a project-bound registry the
+// configuration's project filters the consumption with an agreement too.
 func (s *Registry) billingClient(ctx context.Context, args map[string]any) (*billing.Client, error) {
 	agreement := os.Getenv("CLOUDRU_AGREEMENT_ID")
 	project := stringArg(args, "project_id")
@@ -44,11 +45,20 @@ func (s *Registry) billingClient(ctx context.Context, args map[string]any) (*bil
 	if project != "" {
 		overrides = map[string]any{"ProjectID": project}
 	}
-	eng, err := s.newEngine(overrides)
+	// Bound to its project (SetProjectBound: evo mcp --allow-project), the
+	// registry reads the agreement only within the configuration's project:
+	// the whole agreement holds the rows of the other projects (Cursor
+	// review 21.10, RP-1). No project configured — CONFIG_INVALID
+	// (engineFor), not the whole agreement.
+	bound := project == "" && s.projectBound
+	if bound {
+		ctx = context.WithValue(ctx, needsProject{}, true)
+	}
+	eng, err := s.engineFor(ctx, overrides)
 	if err != nil {
 		return nil, err
 	}
-	if agreement == "" && project == "" {
+	if project == "" && (agreement == "" || bound) {
 		project = eng.Config.ProjectID
 	}
 	if agreement == "" && project == "" {
