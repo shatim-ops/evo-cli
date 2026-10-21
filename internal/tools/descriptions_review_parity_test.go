@@ -13,17 +13,19 @@ import (
 // TestReviewParity_RP_5_UnrecordedEnglishDescriptions: MCP tools/list
 // English descriptions may differ from v1.1.0 only where CHANGELOG records
 // a description change. deploy, status and org_projects grew sentences that
-// v1.1.0 did not have: the unreleased section must have a bullet about the
-// descriptions that names each of them.
+// v1.1.0 did not have: a section newer than 1.1.0 (unreleased or a later
+// version) must have a bullet about the descriptions that names each of them.
 func TestReviewParity_RP_5_UnrecordedEnglishDescriptions(t *testing.T) {
 	b, err := os.ReadFile("../../CHANGELOG.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, unreleased, _ := strings.Cut(string(b), "## [Не выпущено]")
-	unreleased, _, _ = strings.Cut(unreleased, "\n## [")
+	since, _, ok := strings.Cut(string(b), "\n## [1.1.0]")
+	if !ok {
+		t.Fatal("CHANGELOG has no 1.1.0 section")
+	}
 	var bullets []string
-	for _, item := range strings.Split(unreleased, "\n- ") {
+	for _, item := range strings.Split(since, "\n- ") {
 		if strings.HasPrefix(item, "Описания инструментов MCP") {
 			bullets = append(bullets, item)
 		}
@@ -47,7 +49,7 @@ func TestReviewParity_RP_5_UnrecordedEnglishDescriptions(t *testing.T) {
 			t.Fatalf("no tool %s", c.name)
 		}
 		if strings.Contains(tl.Description, c.phrase) && !recorded(c.name) {
-			t.Errorf("%s description differs from v1.1.0 (contains %q); no CHANGELOG bullet «Описания инструментов MCP …» of the unreleased section names `%s`",
+			t.Errorf("%s description differs from v1.1.0 (contains %q); no CHANGELOG bullet «Описания инструментов MCP …» after 1.1.0 names `%s`",
 				c.name, c.phrase, c.name)
 		}
 	}
