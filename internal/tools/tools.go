@@ -3327,6 +3327,7 @@ func (s *Registry) completePreview(ctx context.Context, eng *engine.Engine, p en
 	if eng == nil {
 		var err error
 		if eng, err = s.newEngine(nil); err != nil || eng == nil {
+			p.Price()
 			return p, nil
 		}
 	}

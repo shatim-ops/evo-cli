@@ -696,7 +696,7 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 }
 
 // pgCreatePreview is the preview of pg_create: the cluster as resolved.
-// evo has no rate card for Managed PostgreSQL, so there is no price.
+// evo has no rate card for Managed PostgreSQL: the preview links its tariff (Price).
 func pgCreatePreview(cfg config.Config, will map[string]any) engine.CreatePreview {
 	name, _ := will["name"].(string)
 	p := engine.CreatePreview{Resource: engine.ResourcePGCluster, Name: name,
