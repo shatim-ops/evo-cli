@@ -103,8 +103,16 @@ func TestConfigure_InteractiveZoneListFails(t *testing.T) {
 	if prof.Region != "" || prof.ProjectID == "" || creds.Secret != fakeSecret {
 		t.Errorf("profile: %+v", prof)
 	}
+	// The API's 404 stays out of the answer; the profile's path is left
+	// out of the search, as its random temp name may hold "404".
+	var said []string
+	for _, line := range strings.Split(stderr, "\n") {
+		if !strings.HasPrefix(line, "Configuring profile") {
+			said = append(said, line)
+		}
+	}
 	if fc.zoneCalls.Load() == 0 || !strings.Contains(stderr, "The zone list could not be read; set the zone later: evo configure --region <zone>") ||
-		strings.Contains(stderr, "404") {
+		strings.Contains(strings.Join(said, "\n"), "404") {
 		t.Errorf("skip line:\n%s", stderr)
 	}
 }
