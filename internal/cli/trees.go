@@ -349,6 +349,16 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 					"так пароль не попадает в командную строку и историю оболочки)"))
 			continue
 		}
+		if c.SecretFiles[p.Name] {
+			file := secretFileFlag(name)
+			// The pair is one argument: the file flag points at the value
+			// flag instead of repeating its description (and its
+			// "required"), and the value flag names the safer way.
+			cmd.Flags().String(file, "", note("--"+name+" from a file, its trailing newline trimmed ('-' reads stdin: until EOF, or one line without echo on a terminal), instead of --"+name,
+				"--"+name+" из файла без завершающего перевода строки ('-' — из stdin: до EOF, на терминале — строка без эха), вместо --"+name))
+			desc = strings.TrimSuffix(desc, ".") + note(". Or --"+file+", safer: the value stays out of the command line and the shell history",
+				". Или --"+file+" — безопаснее: значение не попадёт в командную строку и историю оболочки")
+		}
 		if c.Files[p.Name] {
 			cmd.Flags().String(name, "", note("A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). ", "Файл со значением ('-' — из stdin до EOF: на терминале — Ctrl-D). ")+desc)
 			continue
@@ -507,6 +517,14 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 	}
 	for _, p := range flagArgs {
 		name := c.flagName(p.Name)
+		if c.SecretFiles[p.Name] && cmd.Flags().Changed(secretFileFlag(name)) {
+			v, err := secretFileArg(cmd, name)
+			if err != nil {
+				return nil, err
+			}
+			out[p.Name] = v
+			continue
+		}
 		if !cmd.Flags().Changed(name) {
 			continue
 		}
@@ -548,7 +566,11 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 	var missing []string
 	for _, p := range schemaParams(t) {
 		if _, ok := out[p.Name]; p.Required && !ok {
-			missing = append(missing, "--"+c.flagName(p.Name))
+			flag := "--" + c.flagName(p.Name)
+			if c.SecretFiles[p.Name] {
+				flag = i18n.Tf("%s or --%s", "%s или --%s", flag, secretFileFlag(c.flagName(p.Name)))
+			}
+			missing = append(missing, flag)
 		}
 	}
 	if len(missing) > 0 {
@@ -561,10 +583,9 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 
 // pairsArg turns repeated key=value flags into an object. The value is
 // everything after the first "=", so it may contain "=" itself. A value
-// that is "-" is read from stdin (one key at most), "@path" from a file;
-// a trailing newline is trimmed from both. A secret given so stays out of
-// argv and the shell history; a literal value that starts with "@" (or is
-// "-") goes through a file.
+// that is "-" is read from stdin (one key at most), "@path" from a file
+// (secretRef). A secret given so stays out of argv and the shell history;
+// a literal value that starts with "@" (or is "-") goes through a file.
 func pairsArg(ctx context.Context, stdin io.Reader, prompt io.Writer, flag string, vals []string) (map[string]any, error) {
 	out := make(map[string]any, len(vals))
 	fromStdin := ""
@@ -581,6 +602,7 @@ func pairsArg(ctx context.Context, stdin io.Reader, prompt io.Writer, flag strin
 			return nil, clerrors.New(clerrors.CodeUsage,
 				i18n.Tf("--%s %s is given twice", "--%s %s задан дважды", flag, k), "")
 		}
+		var ref secretRef
 		switch {
 		case val == "-":
 			if fromStdin != "" {
@@ -590,40 +612,80 @@ func pairsArg(ctx context.Context, stdin io.Reader, prompt io.Writer, flag strin
 						"stdin читает только одно поле; остальные — из файлов: --%s %s=@<файл>.", flag, k))
 			}
 			fromStdin = k
-			if f, ok := stdin.(*os.File); ok && f == os.Stdin && stdinIsTerminal() {
-				// A terminal: one line, not echoed, with a prompt — not a
-				// silent wait for Ctrl-D with the password on the screen.
-				if ctx == nil {
-					ctx = context.Background()
-				}
-				v, err := newConsole(os.Stdin, prompt, true).askSecret(ctx,
-					i18n.Tf("Value of %s (not echoed): ", "Значение поля %s (не отображается): ", k))
-				if err != nil {
-					return nil, err
-				}
-				val = v
-				break
-			}
-			b, err := io.ReadAll(stdin)
-			if err != nil {
-				return nil, clerrors.New(clerrors.CodeUsage,
-					i18n.Tf("--%s %s=-: stdin was not read: %v", "--%s %s=-: stdin не прочитан: %v", flag, k, err), "")
-			}
-			val = trimNewline(string(b))
+			ref = secretRef{stdin: true, given: fmt.Sprintf("--%s %s=-", flag, k),
+				prompt: i18n.Tf("Value of %s (not echoed): ", "Значение поля %s (не отображается): ", k)}
 		case strings.HasPrefix(val, "@"):
-			path := val[1:]
-			b, err := os.ReadFile(path)
-			if err != nil {
-				return nil, clerrors.New(clerrors.CodeUsage,
-					i18n.Tf("--%s %s=@%s: the file was not read: %v", "--%s %s=@%s: файл не прочитан: %v", flag, k, path, err),
-					i18n.T("A value that starts with @ is a file name; a literal one goes through a file too.",
-						"Значение, которое начинается с @, — имя файла; такое значение буквально тоже передаётся через файл."))
-			}
-			val = trimNewline(string(b))
+			ref = secretRef{path: val[1:], given: fmt.Sprintf("--%s %s=%s", flag, k, val),
+				hint: i18n.T("A value that starts with @ is a file name; a literal one goes through a file too.",
+					"Значение, которое начинается с @, — имя файла; такое значение буквально тоже передаётся через файл.")}
+		default:
+			out[k] = val
+			continue
+		}
+		val, err := ref.read(ctx, stdin, prompt)
+		if err != nil {
+			return nil, err
 		}
 		out[k] = val
 	}
 	return out, nil
+}
+
+// secretFileFlag is the flag that names the file of a SecretFiles
+// argument whose value flag is flag: --password-file beside --password.
+func secretFileFlag(flag string) string { return flag + "-file" }
+
+// secretFileArg is the value of a SecretFiles argument given by
+// --<flag>-file: the file it names, or stdin for "-". The value flag
+// beside it is refused: one value, from one place.
+func secretFileArg(cmd *cobra.Command, flag string) (string, error) {
+	file := secretFileFlag(flag)
+	if cmd.Flags().Changed(flag) {
+		return "", clerrors.New(clerrors.CodeUsage,
+			i18n.Tf("--%s and --%s are both given", "заданы оба флага: --%s и --%s", flag, file),
+			i18n.Tf("Give the value once: --%s reads it from a file or stdin ('-'), out of the command line.",
+				"Значение задаётся один раз: --%s читает его из файла или stdin ('-'), вне командной строки.", file))
+	}
+	path := cmd.Flags().Lookup(file).Value.String()
+	ref := secretRef{stdin: path == "-", path: path, given: "--" + file + " " + path,
+		prompt: i18n.Tf("Value of --%s (not echoed): ", "Значение --%s (не отображается): ", flag)}
+	return ref.read(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr())
+}
+
+// secretRef is a value given out of the command line, so that a secret
+// stays out of argv and the shell history: stdin, or a file.
+type secretRef struct {
+	stdin  bool   // read stdin; the file path otherwise
+	path   string // the file
+	prompt string // asked when stdin is a terminal
+	given  string // how the command line named the value, for the errors
+	hint   string // the hint when the file was not read
+}
+
+// read reads the value, one trailing newline trimmed. On a terminal, stdin
+// is one line, not echoed, after the prompt — not a silent wait for Ctrl-D
+// with the secret on the screen; otherwise it is read until EOF.
+func (r secretRef) read(ctx context.Context, stdin io.Reader, prompt io.Writer) (string, error) {
+	if !r.stdin {
+		b, err := os.ReadFile(r.path)
+		if err != nil {
+			return "", clerrors.New(clerrors.CodeUsage,
+				i18n.Tf("%s: the file was not read: %v", "%s: файл не прочитан: %v", r.given, err), r.hint)
+		}
+		return trimNewline(string(b)), nil
+	}
+	if f, ok := stdin.(*os.File); ok && f == os.Stdin && stdinIsTerminal() {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		return newConsole(os.Stdin, prompt, true).askSecret(ctx, r.prompt)
+	}
+	b, err := io.ReadAll(stdin)
+	if err != nil {
+		return "", clerrors.New(clerrors.CodeUsage,
+			i18n.Tf("%s: stdin was not read: %v", "%s: stdin не прочитан: %v", r.given, err), "")
+	}
+	return trimNewline(string(b)), nil
 }
 
 // trimNewline drops one trailing newline ("\n" or "\r\n"): the one an

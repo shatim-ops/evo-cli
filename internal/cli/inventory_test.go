@@ -105,7 +105,8 @@ func positionalNames(args []string) map[string]bool {
 
 // wantFlags are the flags the trees give the tool's arguments: every schema
 // argument that is not positional, not omitted and not served by the root
-// (rootArgs), snake_case → kebab-case or as Rename says. Written here
+// (rootArgs), snake_case → kebab-case or as Rename says, and the
+// --<flag>-file of a SecretFiles argument beside its flag. Written here
 // again, not taken from trees.go, so that the inventory checks the trees.
 func wantFlags(c specCmd, t tools.Tool) map[string]string {
 	pos := positionalNames(c.Args)
@@ -119,6 +120,9 @@ func wantFlags(c specCmd, t tools.Tool) map[string]string {
 			f = r
 		}
 		want[f] = name
+		if c.SecretFiles[name] {
+			want[f+"-file"] = name // the same argument, from a file
+		}
 	}
 	return want
 }
@@ -266,7 +270,7 @@ func genInventory() []byte {
 
 	// --- 3. Command → tool ---
 	fmt.Fprintf(&w, "\n## 3. Команда CLI → инструмент\n\nКоманды из `CLISpec`: позиционные аргументы, переименования и поля схемы без флага.\n\n"+
-		"| Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/Raw/Render |\n|---|---|---|---|---|---|---|\n")
+		"| Команда | Инструмент | Позиционные | Rename (аргумент→флаг) | Без флага (Omit) | Через корень | Pairs/Files/SecretFiles/Raw/Render |\n|---|---|---|---|---|---|---|\n")
 	for _, c := range specs {
 		t, _ := reg.Lookup(c.Tool)
 		var omitted, viaRoot []string
@@ -290,6 +294,9 @@ func genInventory() []byte {
 		}
 		for k := range c.Files {
 			extra = append(extra, "file:"+k)
+		}
+		for k := range c.SecretFiles {
+			extra = append(extra, "secret-file:"+k)
 		}
 		if c.Raw {
 			extra = append(extra, "raw")

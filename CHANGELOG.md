@@ -46,6 +46,8 @@
 
 - MCP: инструменты `whoami` и `doctor` (только чтение, группа `auth` для `--toolsets`) — то же, что `evo whoami` и `evo doctor`, теперь их команды (паритет CLI ↔ MCP, REQ-11). `whoami`: профиль, маскированный Key ID, откуда взяты ключ и проект, проект, срок токена IAM и сколько проектов видит ключ. `doctor`: настройки, доступность IAM и Compute API, ключ и его проекты; не прошла проверка — ошибка с теми же `checks` (`CONFIG_INVALID` или `API_UNREACHABLE`). Файлы настроек, их права и `kubectl`/`helm` в `PATH` проверяет только `evo doctor`. По HTTP `doctor` отключён: его проверки называют файлы и сеть сервера (`docs/mcp.md`, H10). Вывод, `--json` и коды выхода `evo whoami` и `evo doctor` не изменились.
 
+- Секрет — из файла или stdin, а не из командной строки, где он виден в списке процессов и остаётся в истории оболочки (решение владельца Q10): `evo cert import --private-key-file`, `evo secret create --value-file`, `evo secret add-version --value-file`, `evo pg user-create --password-file`. Флаг называет файл со значением, `-` — stdin (на терминале — строка без эха, иначе — до EOF); завершающий перевод строки (`\n` или `\r\n`) отрезается. Задаётся один из пары: оба сразу — ошибка использования (код 1). `--private-key`, `--value` и `--password` работают как раньше; инструменты MCP и их аргументы не изменились.
+
 ### Безопасность
 
 - MCP с `--allow-project`: `billing_consumption` и `billing_finops` с аргументом `project_id` читали расход любого проекта, который видит ключ, в обход списка. Теперь проект аргумента проверяется так же, как у `deploy` и `provision`: не из списка — `CONFIG_INVALID`. Исключения по-прежнему только `org_quotas` и `iam_service_accounts` (`docs/mcp.md`).

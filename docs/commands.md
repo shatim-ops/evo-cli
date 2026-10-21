@@ -1396,7 +1396,7 @@ evo cert import <name> [flags]
 ### Examples
 
 ```
-  evo cert import my-cert --server-certificate "$(base64 < cert.pem | tr -d '\n')" --private-key "$(base64 < key.pem | tr -d '\n')" --dry-run
+  base64 < key.pem | tr -d '\n' | evo cert import my-cert --server-certificate "$(base64 < cert.pem | tr -d '\n')" --private-key-file - --dry-run
 ```
 
 ### Options
@@ -1405,7 +1405,8 @@ evo cert import <name> [flags]
       --description string                Описание (необязательно)
   -h, --help                              Справка по import
       --intermediate-certificate string   Цепочка промежуточных сертификатов, PEM в Base64 (необязательно)
-      --private-key string                Закрытый ключ, PEM в Base64 (обязательный)
+      --private-key string                Закрытый ключ, PEM в Base64 (обязательный). Или --private-key-file — безопаснее: значение не попадёт в командную строку и историю оболочки
+      --private-key-file string           --private-key из файла без завершающего перевода строки ('-' — из stdin: до EOF, на терминале — строка без эха), вместо --private-key
       --server-certificate string         Сертификат (открытая часть), PEM в Base64 (обязательный)
 ```
 
@@ -6201,11 +6202,18 @@ evo pg specs [flags]
 evo pg user-create <cluster-id> <name> [flags]
 ```
 
+### Examples
+
+```
+  evo pg user-create <cluster-id> app --password-file ./app.pass --dry-run
+```
+
 ### Options
 
 ```
-  -h, --help              Справка по user-create
-      --password string   Пароль пользователя (обязательный)
+  -h, --help                   Справка по user-create
+      --password string        Пароль пользователя (обязательный). Или --password-file — безопаснее: значение не попадёт в командную строку и историю оболочки
+      --password-file string   --password из файла без завершающего перевода строки ('-' — из stdin: до EOF, на терминале — строка без эха), вместо --password
 ```
 
 ### Options inherited from parent commands
@@ -7279,8 +7287,9 @@ evo secret add-version <path> [flags]
 ### Options
 
 ```
-  -h, --help           Справка по add-version
-      --value string   Новое значение секрета открытым текстом (обязательный)
+  -h, --help                Справка по add-version
+      --value string        Новое значение секрета открытым текстом (обязательный). Или --value-file — безопаснее: значение не попадёт в командную строку и историю оболочки
+      --value-file string   --value из файла без завершающего перевода строки ('-' — из stdin: до EOF, на терминале — строка без эха), вместо --value
 ```
 
 ### Options inherited from parent commands
@@ -7320,13 +7329,21 @@ evo secret add-version <path> [flags]
 evo secret create <path> [flags]
 ```
 
+### Examples
+
+```
+  evo secret create app/db --value-file ./db.pass --dry-run
+  pass show app/db | evo secret create app/db --value-file - --yes
+```
+
 ### Options
 
 ```
       --description string   Описание (необязательно)
   -h, --help                 Справка по create
       --kms-key-id string    id ключа KMS для шифрования (необязательно)
-      --value string         Значение секрета открытым текстом; хранится зашифрованным (обязательный)
+      --value string         Значение секрета открытым текстом; хранится зашифрованным (обязательный). Или --value-file — безопаснее: значение не попадёт в командную строку и историю оболочки
+      --value-file string    --value из файла без завершающего перевода строки ('-' — из stdin: до EOF, на терминале — строка без эха), вместо --value
 ```
 
 ### Options inherited from parent commands
