@@ -1110,7 +1110,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_balance",
-			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway.",
+			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{

@@ -85,7 +85,29 @@ func billingScope(out map[string]any, cli *billing.Client) {
 	}
 }
 
+// balanceRefused is why the registry gives no balance of the agreement, nil
+// when it may. Bound to its project (SetProjectBound: evo mcp
+// --allow-project, H9), it gives none: the balance is the money of the
+// whole agreement, wider than the server's project, and no API gives one
+// by project (dogfood №5). billing_balance refuses with it, billing_finops
+// reports the balance unknown; neither asks for it.
+func (s *Registry) balanceRefused() error {
+	if !s.projectBound {
+		return nil
+	}
+	return clierrors.New(clierrors.CodeConfigInvalid,
+		i18n.T("the balance of the billing agreement is not available on a server bound to its project (--allow-project): it is the money of the whole agreement, wider than the project",
+			"баланс договора недоступен на сервере, привязанном к проекту (--allow-project): это деньги всего договора, шире проекта"),
+		i18n.T("The costs of the project: billing_consumption or billing_finops. The balance: evo billing balance with a key of the agreement, outside this server.",
+			"Расход проекта — billing_consumption или billing_finops. Баланс — evo billing balance с ключом договора, вне этого сервера."))
+}
+
 func (s *Registry) handleBillingBalance(ctx context.Context, args map[string]any) (string, bool) {
+	// First the server's policy: with no agreement set, its hint would only
+	// lead to this refusal.
+	if err := s.balanceRefused(); err != nil {
+		return errResult(err), true
+	}
 	// The balance belongs to the agreement: no API gives it by project.
 	// Before the engine and the token, as before (L-06).
 	if os.Getenv("CLOUDRU_AGREEMENT_ID") == "" {
@@ -307,7 +329,11 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	// published specs (api-contract §4.1). If it fails, the cost part of the
 	// summary still stands: the balance is "unknown", not an error. Without
 	// an agreement (consumption by project) there is no balance to ask for.
-	bal, balErr := cli.Balance(ctx)
+	var bal map[string]any
+	balErr := s.balanceRefused()
+	if balErr == nil {
+		bal, balErr = cli.Balance(ctx)
+	}
 	balance := billNum(bal, "balance")
 	active, _ := bal["active"].(bool)
 
@@ -387,9 +413,12 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	out["vat"] = map[string]string{"total_cost": "excluding VAT: sum of amount", "by_service": "excluding VAT: amount"}
 	if balErr != nil {
 		out["balance"], out["active"] = nil, nil
-		if cli.AgreementID() == "" {
+		switch {
+		case s.balanceRefused() != nil:
+			out["balance_error"] = "balance not shown: the server is bound to its project (--allow-project), the balance is the whole agreement's"
+		case cli.AgreementID() == "":
 			out["balance_error"] = "balance unavailable: it needs the billing agreement (CLOUDRU_AGREEMENT_ID), the API has no balance by project"
-		} else {
+		default:
 			out["balance_error"] = "balance unavailable (undocumented billing endpoint): " + balErr.Error()
 		}
 	}
