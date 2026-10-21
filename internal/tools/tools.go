@@ -2078,6 +2078,18 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	_ = saveState(vm.ID, "creating", "")
 	pp.StepDone(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", vmName, vm.ID))
 
+	// leftFields are the fields of an answer that leaves the VM coming up
+	// without the call (timeout, cancel): the VM, and the password evo
+	// generated for it, as the VM may still come up with this password only
+	// (as deploy_apply's timeout; Fable audit 1.2.1, FB121-1).
+	leftFields := func(fields map[string]any) map[string]any {
+		fields["vm_id"] = vm.ID
+		if password != "" {
+			fields["password"] = password
+		}
+		return fields
+	}
+
 	// interrupted answers a cancelled call (client gone, notifications/
 	// cancelled, server stopping): the VM exists and is billed, so the
 	// answer names it, and the state has it.
@@ -2086,7 +2098,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		pp.Hint(vmLeftNote(vm.ID, ""))
 		return errAnswer(fmt.Errorf("VM %s was created, but provision was interrupted (%v); it is still running and recorded in the state — "+
 			"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, ctx.Err(), vm.ID, notInState(vm.ID, serr)),
-			map[string]any{"vm_id": vm.ID}), true
+			leftFields(map[string]any{})), true
 	}
 
 	// Poll until active, as long as deploy waits (CLOUDRU_TIMEOUT).
@@ -2108,14 +2120,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
 			pp.Hint(vmLeftNote(vm.ID, "") + i18n.T("; to wait longer next time: CLOUDRU_TIMEOUT (seconds)", "; ждать дольше: CLOUDRU_TIMEOUT (в секундах)"))
-			fields := map[string]any{"status": "timeout", "vm_id": vm.ID}
-			// The VM may still come up, with this password only (as
-			// deploy_apply's timeout).
-			if password != "" {
-				fields["password"] = password
-			}
 			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s); to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
-				fields), true
+				leftFields(map[string]any{"status": "timeout"})), true
 		case <-wait.C():
 			wait.Show()
 		case <-ticker.C:
@@ -3334,6 +3340,7 @@ func (s *Registry) completePreview(ctx context.Context, eng *engine.Engine, p en
 	if eng == nil {
 		var err error
 		if eng, err = s.newEngine(nil); err != nil || eng == nil {
+			p.Price()
 			return p, nil
 		}
 	}

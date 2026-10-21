@@ -133,6 +133,8 @@ JSON-RPC `-32602` с сообщением `Unknown tool: <имя>`, как тр�
 
 ## Цена
 
+Превью ресурса, цену которого evo не рассчитывает (кластеры Managed Kubernetes и PostgreSQL, группы узлов, бакеты, расширение диска), не оставляет агента без цены и без источника: `preview.cost` нет, `preview.cost_note` говорит, что ресурс платный, а `preview.tariff_url` — публичный тариф Cloud.ru (`https://cloud.ru/documents/tariffs/evolution/managed-kubernetes` и т. п.). У плагина кластера своей цены нет: он работает на узлах кластера (с 1.2.1).
+
 Цену ВМ возвращает `deploy_plan` в поле `cost`, а превью `provision` и
 `deploy` без `confirmed` — в `preview.cost`. Она берётся из API расчёта
 цены Cloud.ru (`POST /api/v1/projects/{project_id}/price-calculation`: только
@@ -516,8 +518,9 @@ evo его не хранит (пароль из `image_metadata` не возвр
 Linux, Альт и РЕД ОС. Образ, недоступный проекту, `provision`, `deploy` и
 `deploy_plan` отклоняют с `NOT_FOUND` («… is in the Cloud.ru catalogue but
 not available to the project») до резервирования floating IP и создания ВМ;
-`provision` и `deploy` проверяют это в вызове с `confirmed=true` (превью без
-подтверждения в облако не ходит), `deploy_plan` — при построении плана.
+`provision` и `deploy` проверяют это уже на превью, без `confirmed=true`
+(превью читает каталог и отвечает `NOT_FOUND`, ничего не создавая),
+`deploy_plan` — при построении плана.
 `deploy` на Astra Linux, Альт и РЕД ОС отказывает до создания ВМ и тогда,
 когда образ доступен: Docker не выпускает для них пакетов; `deploy_plan` с
 `compose_file` на таком образе плана не строит (`USAGE`), без
