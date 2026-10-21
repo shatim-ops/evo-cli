@@ -920,6 +920,14 @@ jobs:
             sleep 60
           done
 
+      # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
+      # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
+      - name: k8s_get через evo mcp --allow-project
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          .github/scripts/bound-check.sh k8s_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: k8s_get"
+
       - name: Пул из одного узла, готов (до 30 мин)
         run: |
           evo --json --yes k8s add-nodepool "$CLUSTER_ID" --name np-e2e --count 1 | jq -c '{status, count}'
@@ -1209,6 +1217,14 @@ jobs:
             sleep 60
           done
 
+      # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
+      # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
+      - name: pg_get через evo mcp --allow-project
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          .github/scripts/bound-check.sh pg_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: pg_get"
+
       # Пароль — из букв и цифр с заглавной, строчной, цифрой и спецсимволом
       # из разрешённых; маскируется до первого использования и идёт через
       # --args-file, не в аргументах командной строки.
@@ -1449,6 +1465,14 @@ jobs:
             sleep 60
           done
 
+      # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
+      # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
+      - name: kafka_get через evo mcp --allow-project
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          .github/scripts/bound-check.sh kafka_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: kafka_get" own
+
       - name: kafka_get и превью удаления
         run: |
           evo tools call kafka_get --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/get.json" 2>/dev/null ||
@@ -1587,6 +1611,14 @@ jobs:
             [ $(( $(date +%s) - start )) -lt 3000 ] || { echo "::error::кластер $CLUSTER не готов за 50 мин"; exit 1; }
             sleep 60
           done
+
+      # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
+      # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
+      - name: redis_get через evo mcp --allow-project
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          .github/scripts/bound-check.sh redis_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: redis_get" own
 
       # replicas в GET — хосты шарда вместе с мастером (живое: 3 при
       # replicas=2 в запросе, реестр DB-11): только печатается.
