@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -27,24 +26,6 @@ import (
 // the invoice (owner's decision 21.10). The runway and the budget are on
 // the sums excluding VAT, as the tool computes them, and say so. --json
 // prints the tool's answer as is, at full precision.
-
-// cardLine is a line of a card: its label and value.
-type cardLine struct{ k, v string }
-
-// printCard prints the lines as "label: value" with the values aligned;
-// a line with no value is left out.
-func printCard(w io.Writer, lines []cardLine) {
-	width := 0
-	for _, l := range lines {
-		width = max(width, utf8.RuneCountInString(l.k))
-	}
-	for _, l := range lines {
-		if l.v == "" {
-			continue
-		}
-		fmt.Fprintf(w, "%s:%s %s\n", l.k, strings.Repeat(" ", width-utf8.RuneCountInString(l.k)), output.SanitizeCell(l.v))
-	}
-}
 
 // rub is a sum in whole rubles with a digit separator and ₽: "14 998 ₽"
 // ("14,998 ₽" in English); a sum under a ruble is "< 1 ₽", not a zero.

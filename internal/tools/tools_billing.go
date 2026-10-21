@@ -386,7 +386,8 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 		"total_cost_with_nds":      "including VAT: sum of amount_nds",
 		"daily_burn_with_nds":      "including VAT: total_cost_with_nds per day",
 		"by_service.cost_with_nds": "including VAT: amount_nds",
-		"anomalies.now_with_nds":   "including VAT: amount_nds (prev_with_nds: of the previous period); the growth is found by the sums excluding VAT",
+		"anomalies.now_with_nds":   "including VAT: amount_nds; the growth is found by the sums excluding VAT",
+		"anomalies.prev_with_nds":  "including VAT: amount_nds of the previous period",
 	}
 	if balErr != nil {
 		out["balance"], out["active"] = nil, nil

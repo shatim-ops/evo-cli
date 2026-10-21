@@ -290,7 +290,7 @@ func TestBilling_SumsWithVAT(t *testing.T) {
 		t.Errorf("new service: %s", text)
 	}
 	vat, _ = m["vat"].(map[string]any)
-	for _, k := range []string{"total_cost_with_nds", "daily_burn_with_nds", "by_service.cost_with_nds", "anomalies.now_with_nds"} {
+	for _, k := range []string{"total_cost_with_nds", "daily_burn_with_nds", "by_service.cost_with_nds", "anomalies.now_with_nds", "anomalies.prev_with_nds"} {
 		if s, _ := vat[k].(string); !strings.Contains(s, "including VAT") {
 			t.Errorf("vat %s: %s", k, text)
 		}
