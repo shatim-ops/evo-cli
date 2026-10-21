@@ -56,6 +56,13 @@ var HTTPSecretFields = []SecretField{
 	{Name: "id_token", Where: "OIDC ID tokens (the mk8s cluster token)"},
 	{Name: "bearer_token", Where: "bearer tokens"},
 	{Name: "token", Exact: true, Where: "a bearer token under its bare name (a kubeconfig user's token); page and verification tokens are not credentials"},
+	{Name: "tls.key", Exact: true, Where: "the private key of a kubernetes.io/tls Secret's data; tls.crt is the certificate and stays"},
+	{Name: "id_rsa", Exact: true, Where: "an SSH private key under the name of its file (the identity files ssh(1) reads by default) in a Secret's data or a cloud object; id_rsa.pub is the public key and stays"},
+	{Name: "id_dsa", Exact: true, Where: "the same, for a DSA key"},
+	{Name: "id_ecdsa", Exact: true, Where: "the same, for an ECDSA key"},
+	{Name: "id_ecdsa_sk", Exact: true, Where: "the same, for an ECDSA security key"},
+	{Name: "id_ed25519", Exact: true, Where: "the same, for an Ed25519 key"},
+	{Name: "id_ed25519_sk", Exact: true, Where: "the same, for an Ed25519 security key"},
 }
 
 // NonSecretField is one entry of the closed list of keys that hold a root of
@@ -213,6 +220,9 @@ func hasRoot(k string) bool {
 // spec), the parameters of a create preview, the metadata of a cloud
 // object ({"key": …, "value": …}). The name is the value's key: a
 // credential name makes the value a credential (Fable audit, REL12-2).
+// The fields are compared as keys are (normKey), so a Go API's
+// {"Name": …, "Value": …} is the same pair (B12-2); both are written
+// normalised.
 var pairNames = []string{"name", "key"}
 
 // pairValue is the field that holds the value of a name/value pair.
@@ -231,24 +241,21 @@ const minEchoLen = 8
 // a list or an object under one (passwords: ["a", "b"]); true and false stay,
 // as a flag (password set or not) is no credential. The value of a
 // name/value pair whose name is a credential key (pairNames) is masked the
-// same way. A string anywhere else equal to a masked value of minEchoLen
-// characters or more is masked too, so no value is left under a key
-// without a root (Cursor review 21.10, RP-2, RP-3). When the result is an
-// object, its "redacted" field lists the masked paths (sorted, array
-// elements as "[]": "users[].password"). Text that is not JSON is returned
-// as is, and so is a result with nothing to mask. w gives the mask.
+// same way. A string that is itself a JSON object or array (nested) is
+// masked as a part of the result. A string or a number anywhere else equal
+// to a masked value of minEchoLen characters or more is masked too, so no
+// value is left under a key without a root (Cursor review 21.10, RP-2,
+// RP-3; B12-4). When the result is an object, its "redacted" field lists
+// the masked paths (sorted, array elements as "[]": "users[].password").
+// Text that is not JSON is returned as is, and so is a result with nothing
+// to mask. w gives the mask.
 func redactSecrets(tool, text string, w wording) string {
-	dec := json.NewDecoder(strings.NewReader(text))
-	dec.UseNumber() // keep large IDs and amounts as the tool wrote them
-	var v any
-	if dec.Decode(&v) != nil {
+	v, ok := jsonValue(text)
+	if !ok {
 		return text
 	}
-	if _, err := dec.Token(); err != io.EOF {
-		return text // not a single JSON value
-	}
 	m := masking{tool: tool, mask: w.mask, paths: map[string]bool{}, values: map[string]bool{}}
-	m.walk(v, "")
+	v = m.walk(v, "")
 	if len(m.paths) == 0 {
 		return text
 	}
@@ -263,12 +270,76 @@ func redactSecrets(tool, text string, w wording) string {
 	return string(out)
 }
 
+// jsonValue decodes text that is a single JSON value, numbers as
+// json.Number (large IDs and amounts as the tool wrote them).
+func jsonValue(text string) (any, bool) {
+	dec := json.NewDecoder(strings.NewReader(text))
+	dec.UseNumber()
+	var v any
+	if dec.Decode(&v) != nil {
+		return nil, false
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, false // not a single JSON value
+	}
+	return v, true
+}
+
 // masking is one result's redaction: the mask, the paths of the masked
-// fields and the values they held (for echoes).
+// fields, the values they held (for echoes) and the number of masks put
+// (for nested).
 type masking struct {
 	tool, mask string
 	paths      map[string]bool
 	values     map[string]bool
+	count      int
+}
+
+// nested is a string of a result that is itself a JSON object or array: a
+// VM's user_data, an annotation (last-applied-configuration), a setting
+// that holds JSON. Masking walks the JSON inside as a part of the result,
+// its paths going on from the string's ("user_data.admin_password"), and
+// writes it back as a string (MarshalJSON): as it was if nothing in it is
+// masked (B12-3). Only JSON is looked into: base64 is not decoded.
+type nested struct {
+	text    string
+	v       any
+	changed bool
+}
+
+// nestedJSON returns s as nested if it is a JSON object or array.
+func nestedJSON(s string) (*nested, bool) {
+	// A first character other than { or [ is no object or array: most
+	// strings stop here, before a decoder.
+	if t := strings.TrimLeft(s, " \t\r\n"); t == "" || t[0] != '{' && t[0] != '[' {
+		return nil, false
+	}
+	v, ok := jsonValue(s)
+	if !ok {
+		return nil, false
+	}
+	return &nested{text: s, v: v}, true
+}
+
+// MarshalJSON writes n back as a string: the one it was, or its JSON with
+// the masks if a mask was put in it.
+func (n *nested) MarshalJSON() ([]byte, error) {
+	if !n.changed {
+		return json.Marshal(n.text)
+	}
+	b, err := json.Marshal(n.v)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(string(b))
+}
+
+// into runs a pass of masking (walk, echoes) over the JSON inside n and
+// notes whether the pass put a mask there.
+func (m *masking) into(n *nested, pass func(any) any) {
+	before := m.count
+	n.v = pass(n.v)
+	n.changed = n.changed || m.count > before
 }
 
 // list is the "redacted" field of a masked object: the masked paths. The
@@ -288,13 +359,19 @@ func (m *masking) list() []string {
 	return out
 }
 
-// walk masks in place the value of every credential key in v, and of every
-// name/value pair named so (all).
-func (m *masking) walk(v any, path string) {
+// walk masks the value of every credential key in v, and of every
+// name/value pair named so (all), in place and inside a string that is
+// JSON (nested), and returns v.
+func (m *masking) walk(v any, path string) any {
 	switch t := v.(type) {
+	case string:
+		if n, ok := nestedJSON(t); ok {
+			m.into(n, func(x any) any { return m.walk(x, path) })
+			return n
+		}
 	case map[string]any:
-		if m.secretPair(t) {
-			t[pairValue] = m.all(t[pairValue], keyPath(path, pairValue))
+		for _, k := range m.secretPair(t) {
+			t[k] = m.all(t[k], keyPath(path, k))
 		}
 		for k, x := range t {
 			p := keyPath(path, k)
@@ -302,29 +379,40 @@ func (m *masking) walk(v any, path string) {
 				t[k] = m.all(x, p)
 				continue
 			}
-			m.walk(x, p)
+			t[k] = m.walk(x, p)
 		}
 	case []any:
-		for _, x := range t {
-			m.walk(x, path+"[]")
+		for i, x := range t {
+			t[i] = m.walk(x, path+"[]")
 		}
 	}
+	return v
 }
 
-// secretPair reports whether object o is a name/value pair (pairNames)
-// whose name is a credential key by the rules of a key: a root of
-// HTTPSecretFields, not excepted by HTTPNonSecretFields.
-func (m *masking) secretPair(o map[string]any) bool {
-	v, ok := o[pairValue]
-	if !ok {
-		return false
-	}
-	for _, f := range pairNames {
-		if name, ok := o[f].(string); ok && hasRoot(name) && !nonSecret(m.tool, name, v) {
-			return true
+// secretPair returns the value fields (pairValue) of object o if it is a
+// name/value pair (pairNames) whose name is a credential key by the rules
+// of a key: a root of HTTPSecretFields, not excepted by
+// HTTPNonSecretFields. The fields are matched by normKey; an object with
+// both value and Value has both masked.
+func (m *masking) secretPair(o map[string]any) []string {
+	var names, values []string
+	for k, x := range o {
+		switch n := normKey(k); {
+		case n == pairValue:
+			values = append(values, k)
+		case slices.Contains(pairNames, n):
+			if name, ok := x.(string); ok {
+				names = append(names, name)
+			}
 		}
 	}
-	return false
+	var out []string
+	for _, k := range values {
+		if slices.ContainsFunc(names, func(name string) bool { return hasRoot(name) && !nonSecret(m.tool, name, o[k]) }) {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // all replaces every non-empty string and every number in v, the value of
@@ -352,6 +440,7 @@ func (m *masking) all(v any, path string) any {
 // masked records a masked value and its path, and returns the mask. echoes
 // looks only for a value of minEchoLen characters or more.
 func (m *masking) masked(value, path string) string {
+	m.count++
 	m.paths[path] = true
 	if utf8.RuneCountInString(value) >= minEchoLen {
 		m.values[value] = true
@@ -359,14 +448,26 @@ func (m *masking) masked(value, path string) string {
 	return m.mask
 }
 
-// echoes masks, after walk, every string in v equal to a recorded masked
-// value (masked): a secret repeated under a key without a root.
+// echoes masks, after walk, every string and number in v whose text is a
+// recorded masked value (masked): a secret repeated under a key without a
+// root, in the result or inside a string that is JSON (nested). A number is
+// compared as the tool wrote it, so the password 123456789 masks the
+// string "123456789" too, and the other way round (B12-4).
 func (m *masking) echoes(v any, path string) any {
 	switch t := v.(type) {
 	case string:
 		if m.values[t] {
 			return m.masked(t, path)
 		}
+	case json.Number:
+		if m.values[t.String()] {
+			return m.masked(t.String(), path)
+		}
+	case *nested:
+		if m.values[t.text] {
+			return m.masked(t.text, path)
+		}
+		m.into(t, func(x any) any { return m.echoes(x, path) })
 	case map[string]any:
 		for k, x := range t {
 			t[k] = m.echoes(x, keyPath(path, k))
