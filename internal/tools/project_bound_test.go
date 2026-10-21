@@ -34,6 +34,8 @@ const (
 	resMine    = "00000000-0000-4000-8000-00000000f0a1"
 	resOther   = "00000000-0000-4000-8000-00000000f0c1"
 	resForeign = "00000000-0000-4000-8000-00000000f0b1"
+	// resGone is in no project: GET by its id is a 404.
+	resGone = "00000000-0000-4000-8000-00000000f0d1"
 )
 
 // idLike reports an argument that names a resource by id: *_id, *_ids,
@@ -160,6 +162,10 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if strings.Contains(r.URL.Path, resGone) {
+		http.Error(w, `{"message":"not found"}`, http.StatusNotFound)
+		return
+	}
 	// A list: the resource of the project the query names.
 	q := r.URL.Query()
 	p := q.Get("project_id")
@@ -264,29 +270,42 @@ func callOwned(t *testing.T, r *Registry, name string, args map[string]any, conf
 }
 
 // A resource of a project outside --allow-project, named by id: every
-// tool refuses with the H9 refusal (CONFIG_INVALID) before its handler —
-// the confirmed delete, change or create sends nothing, the read returns
-// nothing of the resource; only the check's own reads reach the cloud.
+// tool refuses before its handler — the confirmed delete, change or create
+// sends nothing, the read returns nothing of the resource; only the
+// check's own reads reach the cloud. The answer is NOT_FOUND and the same
+// as for a resource that is gone (resGone): a client probing ids learns
+// neither that it exists nor whose it is, and a repeated delete stays
+// NOT_FOUND. An operation this server did not start is CONFIG_INVALID,
+// before any request.
 func TestProjectBound_ForeignResourceRefused(t *testing.T) {
 	stackHome(t)
 	for _, c := range ownerCases(t) {
-		f := &ownerFake{}
-		r := ownerRegistry(t, f, true, ownProject, ownOther)
-		id := resForeign
-		if c.arg.kind == kindOperation {
-			id = opForeign
-		}
-		m, text, isErr := callOwned(t, r, c.tool, c.args(id), true)
-		if !isErr || m["reason"] != clierrors.CodeConfigInvalid || !strings.Contains(text, id) {
-			t.Errorf("%s %s=%s: %s, want CONFIG_INVALID naming %s", c.tool, c.arg.name, id, text, id)
-		}
-		if strings.Contains(text, "res-b1") || strings.Contains(text, zoneForeign) {
-			t.Errorf("%s: the answer shows the foreign resource: %s", c.tool, text)
-		}
-		for _, q := range f.log() {
-			if !strings.HasPrefix(q, "GET ") {
-				t.Errorf("%s %s=%s sent %s", c.tool, c.arg.name, id, q)
+		answers := map[string]string{}
+		for _, id := range []string{resForeign, resGone} {
+			f := &ownerFake{}
+			r := ownerRegistry(t, f, true, ownProject, ownOther)
+			want := clierrors.CodeNotFound
+			if c.arg.kind == kindOperation {
+				id, want = opForeign, clierrors.CodeConfigInvalid
 			}
+			m, text, isErr := callOwned(t, r, c.tool, c.args(id), true)
+			if !isErr || m["reason"] != want || !strings.Contains(text, id) {
+				t.Errorf("%s %s=%s: %s, want %s naming %s", c.tool, c.arg.name, id, text, want, id)
+			}
+			for _, leak := range []string{"res-b1", zoneForeign, ownForeign} {
+				if strings.Contains(text, leak) {
+					t.Errorf("%s %s=%s: the answer shows %s: %s", c.tool, c.arg.name, id, leak, text)
+				}
+			}
+			for _, q := range f.log() {
+				if !strings.HasPrefix(q, "GET ") {
+					t.Errorf("%s %s=%s sent %s", c.tool, c.arg.name, id, q)
+				}
+			}
+			answers[id] = strings.ReplaceAll(text, id, "<id>")
+		}
+		if c.arg.kind != kindOperation && answers[resForeign] != answers[resGone] {
+			t.Errorf("%s %s: a foreign resource answers\n%s\na gone one\n%s", c.tool, c.arg.name, answers[resForeign], answers[resGone])
 		}
 	}
 }
@@ -453,5 +472,32 @@ func TestProjectBound_NoProjectInAnswerRefused(t *testing.T) {
 	var ce *clierrors.CLIError
 	if !stderrors.As(err, &ce) || ce.Code != clierrors.CodeConfigInvalid {
 		t.Errorf("admit without a project: %v, want CONFIG_INVALID", err)
+	}
+}
+
+// stack_destroy of a job whose resources are outside the server's projects
+// (another project's or gone): each delete answers NOT_FOUND, which the
+// teardown counts as already gone, and nothing is deleted.
+func TestProjectBound_StackDestroyTakesItAsGone(t *testing.T) {
+	stackHome(t)
+	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
+	j.ProjectID = ownProject
+	j.Outputs["postgres"] = resForeign
+	j.Outputs["kafka"] = resGone
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	f := &ownerFake{}
+	r := ownerRegistry(t, f, true, ownProject)
+	m, text, _ := callOwned(t, r, "stack_destroy", map[string]any{"job_id": j.ID}, true)
+	deleted, _ := m["deleted"].([]any)
+	if m["status"] != "destroyed" || !slices.Contains(deleted, any("postgres (already gone)")) ||
+		!slices.Contains(deleted, any("kafka (already gone)")) {
+		t.Errorf("stack_destroy: %s, want both steps already gone", text)
+	}
+	for _, q := range f.log() {
+		if !strings.HasPrefix(q, "GET ") {
+			t.Errorf("stack_destroy sent %s", q)
+		}
 	}
 }

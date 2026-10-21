@@ -7,7 +7,9 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -288,9 +290,13 @@ func (c *ownerCall) engine(ctx context.Context) (*engine.Engine, error) {
 }
 
 // admit refuses a resource whose project is not allowed: the factory
-// decides, as for project_id (checkAllowedProject), and its refusal is the
-// answer, prefixed with the resource. A resource whose answer names no
-// project is refused too: unknown is not allowed.
+// decides, as for project_id (checkAllowedProject). Its refusal is answered
+// as notInProject — NOT_FOUND, naming no project — so that a resource of
+// another project reads as one that is gone: a client probing ids learns
+// neither that it exists nor whose it is, and an agent that takes
+// NOT_FOUND for "already deleted" stays right. A resource whose answer
+// names no project is refused too, as CONFIG_INVALID: unknown is not
+// allowed, and not absent either.
 func (c *ownerCall) admit(k *ownerKind, id, project string) error {
 	if project == "" {
 		return clierrors.New(clierrors.CodeConfigInvalid,
@@ -300,18 +306,31 @@ func (c *ownerCall) admit(k *ownerKind, id, project string) error {
 				"Попросите оператора сервера проверить ресурс в консоли Cloud.ru."))
 	}
 	if _, err := c.r.newEngine(map[string]any{"ProjectID": project}); err != nil {
-		return clierrors.Prefix(i18n.Tf("%s %s is in project %s: ", "ресурс «%s» %s — в проекте %s: ", k.what, id, project), err)
+		return notInProject(k, id)
 	}
 	return nil
 }
 
-// notInProject is the refusal of a resource the project's list does not
-// hold: of another project, or gone.
-func notInProject(k *ownerKind, id, project string) error {
-	return clierrors.New(clierrors.CodeConfigInvalid,
-		i18n.Tf("%s %s is not found in project %s, the project this --allow-project server works in; nothing was done",
-			"ресурс «%s» %s не найден в проекте %s, в котором работает сервер с --allow-project; ничего не сделано", k.what, id, project),
+// notInProject is the refusal of a resource outside the server's projects:
+// of another project, or gone — one answer for both, NOT_FOUND as the API
+// gives for one that is gone, naming no project.
+func notInProject(k *ownerKind, id string) error {
+	return clierrors.New(clierrors.CodeNotFound,
+		i18n.Tf("%s %s is not found in the projects of this server (--allow-project); nothing was done",
+			"%s %s не найден в проектах этого сервера (--allow-project); ничего не сделано", k.what, id),
 		i18n.Tf("Take the id from %s.", "id — в выводе %s.", k.listTool))
+}
+
+// gone is the error of a read by id in a check: a resource the API does
+// not have is notInProject, the answer of one of another project, so the
+// two read alike; any other error is as it is.
+func gone(k *ownerKind, id string, err error) error {
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) && (ce.Code == clierrors.CodeNotFound || ce.Code == clierrors.CodeVMNotFound) ||
+		apiStatus(err) == http.StatusNotFound {
+		return notInProject(k, id)
+	}
+	return err
 }
 
 // projectField is the project of a resource as the API gives it:
@@ -330,7 +349,7 @@ func byProjectField(what, listTool string, get func(ctx context.Context, c *owne
 	return &ownerKind{what: what, listTool: listTool, check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
 		m, err := get(ctx, c, id)
 		if err != nil {
-			return err
+			return gone(k, id, err)
 		}
 		return c.admit(k, id, projectField(m))
 	}}
@@ -339,9 +358,9 @@ func byProjectField(what, listTool string, get func(ctx context.Context, c *owne
 // inProjectList is a kind whose answer by id names no project: the list of
 // the call's project (admitted by the factory when its engine was built)
 // must hold the id.
-func inProjectList(what, listTool string, list func(ctx context.Context, c *ownerCall) (ids []string, project string, err error)) *ownerKind {
+func inProjectList(what, listTool string, list func(ctx context.Context, c *ownerCall) ([]string, error)) *ownerKind {
 	return &ownerKind{what: what, listTool: listTool, check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
-		ids, project, err := list(ctx, c)
+		ids, err := list(ctx, c)
 		if err != nil {
 			return err
 		}
@@ -350,7 +369,7 @@ func inProjectList(what, listTool string, list func(ctx context.Context, c *owne
 				return nil
 			}
 		}
-		return notInProject(k, id, project)
+		return notInProject(k, id)
 	}}
 }
 
@@ -358,14 +377,13 @@ func inProjectList(what, listTool string, list func(ctx context.Context, c *owne
 // the Compute API's answer by id names no project the code reads
 // (GET /vms/{id}, /floating-ips/{id}), and DELETE, PUT and POST by id take
 // no project_id (the one evo sends is not in compute/openapi-v3.yaml).
-func computeList(list func(ctx context.Context, eng *engine.Engine) ([]string, error)) func(context.Context, *ownerCall) ([]string, string, error) {
-	return func(ctx context.Context, c *ownerCall) ([]string, string, error) {
+func computeList(list func(ctx context.Context, eng *engine.Engine) ([]string, error)) func(context.Context, *ownerCall) ([]string, error) {
+	return func(ctx context.Context, c *ownerCall) ([]string, error) {
 		eng, err := c.engine(ctx)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
-		ids, err := list(ctx, eng)
-		return ids, eng.Config.ProjectID, err
+		return list(ctx, eng)
 	}
 }
 
@@ -424,21 +442,21 @@ var (
 
 	// Kafka and Redis answer a cluster without its project
 	// (openapi-kafka.yaml, openapi-redis.yaml): the list of the project.
-	kindKafka = inProjectList("Kafka cluster", "kafka_list", func(ctx context.Context, c *ownerCall) ([]string, string, error) {
+	kindKafka = inProjectList("Kafka cluster", "kafka_list", func(ctx context.Context, c *ownerCall) ([]string, error) {
 		cli, _, err := c.r.kafkaClientEng(ctx)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		items, err := cli.ListClusters(ctx, kafkaQuery())
-		return mapIDs(items), cli.ProjectID(), err
+		return mapIDs(items), err
 	})
-	kindRedis = inProjectList("Redis cluster", "redis_list", func(ctx context.Context, c *ownerCall) ([]string, string, error) {
+	kindRedis = inProjectList("Redis cluster", "redis_list", func(ctx context.Context, c *ownerCall) ([]string, error) {
 		cli, _, err := c.r.redisClientEng(ctx)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		items, err := cli.ListClusters(ctx, url.Values{})
-		return mapIDs(items), cli.ProjectID(), err
+		return mapIDs(items), err
 	})
 
 	// A DNS zone: the project's public and private zones, as
@@ -454,11 +472,11 @@ var (
 		}
 		vis, err := dnsRecordVisibility(ctx, cli, c.args, id)
 		if err != nil {
-			return err
+			return gone(k, id, err)
 		}
 		m, err := cli.GetRecord(ctx, vis, id)
 		if err != nil {
-			return err
+			return gone(k, id, err)
 		}
 		zone := ""
 		for _, f := range []string{"publicZoneId", "public_zone_id", "privateZoneId", "private_zone_id"} {
@@ -470,12 +488,12 @@ var (
 		if zone == "" {
 			return c.admit(k, id, "")
 		}
-		zones, project, err := dnsZoneIDs(ctx, c)
+		zones, err := dnsZoneIDs(ctx, c)
 		if err != nil {
 			return err
 		}
 		if !slices.Contains(zones, zone) {
-			return notInProject(k, id, project)
+			return notInProject(k, id)
 		}
 		return nil
 	}}
@@ -539,7 +557,7 @@ var (
 		id := strings.TrimSpace(ref)
 		d, err := eng.Cloud.GetImage(ctx, id)
 		if err != nil {
-			return err
+			return gone(k, id, err)
 		}
 		switch {
 		case d.Public || d.Type == provision.ImageTypePublic || d.Type == provision.ImageTypeMarketplace:
@@ -556,7 +574,7 @@ var (
 				return nil
 			}
 		}
-		return notInProject(k, id, eng.Config.ProjectID)
+		return notInProject(k, id)
 	}}
 
 	// An operation names no project, and once its resource is deleted
@@ -577,22 +595,22 @@ var (
 
 // dnsZoneIDs are the project's public and private DNS zones, as
 // dnsZoneVisibility looks a zone up.
-func dnsZoneIDs(ctx context.Context, c *ownerCall) ([]string, string, error) {
+func dnsZoneIDs(ctx context.Context, c *ownerCall) ([]string, error) {
 	cli, err := c.r.dnsClient(ctx)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	var ids []string
 	for _, vis := range []string{"public", "private"} {
 		zones, err := cli.ListZones(ctx, vis)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 		for _, z := range zones {
 			ids = append(ids, fmt.Sprint(z["id"]))
 		}
 	}
-	return ids, cli.ProjectID(), nil
+	return ids, nil
 }
 
 // operationSet is the operations a bound registry started, by group.

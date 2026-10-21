@@ -7,7 +7,6 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	stderrors "errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,10 +17,11 @@ import (
 )
 
 // Fictitious PostgreSQL clusters of the --allow-project tests: one in the
-// allowed project, one in another.
+// allowed project, one in another, one in none (404).
 const (
 	clusterAllowed = "00000000-0000-4000-8000-0000000000c1"
 	clusterOther   = "00000000-0000-4000-8000-0000000000c2"
+	clusterGone    = "00000000-0000-4000-8000-0000000000c3"
 )
 
 // pgTrip is the Managed PostgreSQL API of the test: a cluster by id names
@@ -80,41 +80,48 @@ func installPGTrip(t *testing.T) *pgTrip {
 // REL12-3: with --allow-project a tool that names a resource by id acted
 // on the resource of any project the key sees — pg_get read and pg_delete
 // deleted a cluster of another project, their requests carry no project.
-// Now the cluster's project is checked first, over stdio and HTTP: another
-// project is the H9 refusal (CONFIG_INVALID, the hint of
-// checkAllowedProject), and the delete is not sent; a cluster of the
-// allowed project works as before.
+// Now the cluster's project is checked first, over stdio and HTTP: a
+// cluster of another project is answered as one that is gone — NOT_FOUND,
+// the same text, no project named — and the delete is not sent; a cluster
+// of the allowed project works as before.
 func TestAllowProject_ResourceByIDOfAnotherProject(t *testing.T) {
 	setupCLI(t)
 	saveProfile(t, "default", allowedProject)
 	trip := installPGTrip(t)
 	allowed := []string{allowedProject}
-	var h9 *clerrors.CLIError
-	if !stderrors.As(checkAllowedProject(allowed, otherProject), &h9) {
-		t.Fatal("checkAllowedProject: no CLIError")
-	}
 	for transport, call := range mcpTransports(t, allowed) {
 		for _, c := range []struct {
-			tool string
-			args map[string]any
+			tool, arg string
+			args      map[string]any
 		}{
-			{"pg_get", map[string]any{"id": clusterOther}},
-			{"pg_delete", map[string]any{"id": clusterOther, "confirmed": true}},
-			{"pg_databases", map[string]any{"cluster_id": clusterOther}},
+			{"pg_get", "id", map[string]any{}},
+			{"pg_delete", "id", map[string]any{"confirmed": true}},
+			{"pg_databases", "cluster_id", map[string]any{}},
 		} {
-			trip.take()
-			a := call(c.tool, c.args)
-			obj := parseObject(a.text)
-			msg, _ := obj["error"].(string)
-			if !a.isErr || obj["reason"] != h9.Code || obj["hint"] != h9.Hint ||
-				!strings.Contains(msg, clusterOther) || !strings.Contains(msg, h9.Message) {
-				t.Errorf("%s %s: %s, want %s %q with the hint of H9", transport, c.tool, a.text, h9.Code, h9.Message)
+			answers := map[string]string{}
+			for _, id := range []string{clusterOther, clusterGone} {
+				args := map[string]any{c.arg: id}
+				for k, v := range c.args {
+					args[k] = v
+				}
+				trip.take()
+				a := call(c.tool, args)
+				obj := parseObject(a.text)
+				msg, _ := obj["error"].(string)
+				if !a.isErr || obj["reason"] != clerrors.CodeNotFound || obj["hint"] != "Take the id from pg_list." ||
+					!strings.Contains(msg, id) || !strings.Contains(msg, "not found in the projects of this server (--allow-project)") {
+					t.Errorf("%s %s %s: %s, want NOT_FOUND «not found in the projects of this server»", transport, c.tool, id, a.text)
+				}
+				if strings.Contains(a.text, "pg-c2") || strings.Contains(a.text, otherProject) {
+					t.Errorf("%s %s: the answer shows the cluster or its project: %s", transport, c.tool, a.text)
+				}
+				if got := trip.take(); len(got) != 1 || got[0] != "GET /v1/clusters/"+id {
+					t.Errorf("%s %s: requests %v, want only the check's GET", transport, c.tool, got)
+				}
+				answers[id] = strings.ReplaceAll(a.text, id, "<id>")
 			}
-			if strings.Contains(a.text, "pg-c2") {
-				t.Errorf("%s %s: the answer shows the cluster: %s", transport, c.tool, a.text)
-			}
-			if got := trip.take(); len(got) != 1 || got[0] != "GET /v1/clusters/"+clusterOther {
-				t.Errorf("%s %s: requests %v, want only the check's GET", transport, c.tool, got)
+			if answers[clusterOther] != answers[clusterGone] {
+				t.Errorf("%s %s: another project's cluster answers %s, a gone one %s", transport, c.tool, answers[clusterOther], answers[clusterGone])
 			}
 		}
 		// An operation this server did not start.
