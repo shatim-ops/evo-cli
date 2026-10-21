@@ -351,10 +351,13 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		}
 		if c.SecretFiles[p.Name] {
 			file := secretFileFlag(name)
-			cmd.Flags().String(file, "", note("A file with the value, its trailing newline trimmed ('-' reads stdin: until EOF, or one line without echo on a terminal). ",
-				"Файл со значением без завершающего перевода строки ('-' — из stdin: до EOF, на терминале — строка без эха). ")+desc)
-			desc = strings.TrimSuffix(desc, ".") + note(". Safer: --"+file+" keeps it out of the command line and the shell history.",
-				". Безопаснее --"+file+": значение не попадёт в командную строку и историю оболочки")
+			// The pair is one argument: the file flag points at the value
+			// flag instead of repeating its description (and its
+			// "required"), and the value flag names the safer way.
+			cmd.Flags().String(file, "", note("--"+name+" from a file, its trailing newline trimmed ('-' reads stdin: until EOF, or one line without echo on a terminal), instead of --"+name,
+				"--"+name+" из файла без завершающего перевода строки ('-' — из stdin: до EOF, на терминале — строка без эха), вместо --"+name))
+			desc = strings.TrimSuffix(desc, ".") + note(". Or --"+file+", safer: the value stays out of the command line and the shell history",
+				". Или --"+file+" — безопаснее: значение не попадёт в командную строку и историю оболочки")
 		}
 		if c.Files[p.Name] {
 			cmd.Flags().String(name, "", note("A file with the value ('-' reads stdin until EOF: Ctrl-D on a terminal). ", "Файл со значением ('-' — из stdin до EOF: на терминале — Ctrl-D). ")+desc)

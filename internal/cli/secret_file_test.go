@@ -167,16 +167,16 @@ func TestSecretFiles_Refusals(t *testing.T) {
 // The help names the file flag beside the value flag, in both languages.
 func TestSecretFiles_Help(t *testing.T) {
 	out, _, code := execCLI(t, "pg", "user-create", "--help")
-	for _, want := range []string{"--password string", "User password. Required. Safer: --password-file keeps it out of the command line and the shell history.",
-		"--password-file string", "A file with the value, its trailing newline trimmed ('-' reads stdin"} {
+	for _, want := range []string{"--password string", "User password. Required. Or --password-file, safer: the value stays out of the command line and the shell history",
+		"--password-file string", "--password from a file, its trailing newline trimmed ('-' reads stdin", "instead of --password"} {
 		if code != 0 || !strings.Contains(out, want) {
 			t.Errorf("exit %d, no %q in:\n%s", code, want, out)
 		}
 	}
 	russian(t)
 	out, _, code = execCLI(t, "cert", "import", "--help")
-	for _, want := range []string{"(обязательный). Безопаснее --private-key-file: значение не попадёт в командную строку и историю оболочки",
-		"--private-key-file string", "Файл со значением без завершающего перевода строки ('-' — из stdin"} {
+	for _, want := range []string{"(обязательный). Или --private-key-file — безопаснее: значение не попадёт в командную строку и историю оболочки",
+		"--private-key-file string", "--private-key из файла без завершающего перевода строки ('-' — из stdin", "вместо --private-key"} {
 		if code != 0 || !strings.Contains(out, want) {
 			t.Errorf("exit %d, no %q in:\n%s", code, want, out)
 		}
