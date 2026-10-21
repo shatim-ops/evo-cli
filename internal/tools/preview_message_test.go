@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -60,6 +61,17 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	"deploy": func(t *testing.T) string {
 		r, _ := cancelRegistry(t, &productCloud{})
 		_, text, _ := callNamed(t, r, "deploy", map[string]any{})
+		return text
+	},
+	// The preview of deploy_apply is its saved plan (B12-8): a plan_id
+	// with no plan file is refused before the gate.
+	"deploy_apply": func(t *testing.T) string {
+		r, dir := faultToolsRegistry(t, &faultCloud{})
+		plan := faultPlan()
+		if err := deployplan.Save(dir, plan); err != nil {
+			t.Fatal(err)
+		}
+		_, text, _ := callNamed(t, r, "deploy_apply", map[string]any{"plan_id": plan.PlanID})
 		return text
 	},
 	"k8s_add_addon": func(t *testing.T) string {

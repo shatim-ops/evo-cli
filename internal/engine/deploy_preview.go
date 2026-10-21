@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sizer"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -114,6 +115,35 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 	}
 	e.previewNetwork(ctx, p)
 	return p, nil
+}
+
+// PlanPreview is the preview of deploy_apply: the VM of a saved plan as
+// deploy_plan resolved and priced it — its name, the project, the zone,
+// the flavor, the image, the boot disk, the subnet, the floating IP, the
+// ports and the monthly price the plan was quoted. It is made from the plan
+// alone, with no lookup and no new quote: the user approves the plan
+// deploy_apply executes, at the price deploy_plan showed (break 1.2,
+// B12-8). The security group stays out, as in deploy_plan's answer: the
+// plan keeps its id only, and a name-less group would be a placeholder.
+func PlanPreview(plan *deployplan.Plan) *CreatePreview {
+	vm := plan.VM
+	public := plan.Network.FloatingIP
+	cost := plan.Cost
+	p := &CreatePreview{Resource: ResourceVM, Name: vm.Name,
+		ProjectID: plan.ProjectID, ProjectFrom: originPlan, VM: &vm, PublicIP: &public,
+		SubnetID: plan.Network.SubnetID, Cost: &cost, CostNote: costNote}
+	if cost.Source == pricing.SourceAPI {
+		p.CostNote = apiCostNote
+	}
+	if len(plan.Ports) > 0 {
+		ports := make([]string, len(plan.Ports))
+		for i, port := range plan.Ports {
+			ports[i] = fmt.Sprint(port)
+		}
+		p.Add("ports", strings.Join(ports, ","))
+	}
+	p.Add("product", plan.Product)
+	return p
 }
 
 // previewNetwork adds to a deploy preview the subnet and the security group

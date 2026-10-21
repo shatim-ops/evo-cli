@@ -46,7 +46,8 @@ type CreatePreview struct {
 	Resource string `json:"resource"`
 	Name     string `json:"name,omitempty"`
 	// ProjectFrom is where the project comes from: profile, project, env,
-	// flag (the configuration's origins) or argument (the call's own).
+	// flag (the configuration's origins), argument (the call's own), record
+	// (a deployment's state record) or plan (the saved plan of deploy_apply).
 	ProjectID   string              `json:"project_id,omitempty"`
 	ProjectFrom string              `json:"project_from,omitempty"`
 	Zone        *deployplan.RefSpec `json:"zone,omitempty"` // of a resource other than a VM

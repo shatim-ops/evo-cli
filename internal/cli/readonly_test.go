@@ -133,6 +133,38 @@ var stackID = regexp.MustCompile(`stk-[0-9a-f]{6,}`)
 // sameVolatile, and the id of a planned stack.
 func roSame(s string) string { return stackID.ReplaceAllString(sameVolatile(s), "stk-…") }
 
+// roUnsavedPlan is the deploy_plan answer of a --read-only server (ro) and
+// of one without the flag (plain), each without what saving the plan adds
+// (break 1.2, B12-9): the read-only plan is the same plan, priced the same,
+// with no plan_id or expires_at (no plan file, no deploy key is written)
+// and a note that says why; next tells the user so. why says what is not.
+func roUnsavedPlan(ro, plain string) (string, string, string) {
+	r, p := parseObject(ro), parseObject(plain)
+	if r == nil || p == nil {
+		return ro, plain, ""
+	}
+	var why []string
+	if _, ok := r["plan_id"]; ok {
+		why = append(why, "the read-only plan has a plan_id")
+	}
+	if _, ok := r["expires_at"]; ok {
+		why = append(why, "the read-only plan has expires_at")
+	}
+	if note, _ := r["note"].(string); !strings.Contains(note, "--read-only") {
+		why = append(why, "no note of --read-only")
+	}
+	if id, _ := p["plan_id"].(string); id == "" {
+		why = append(why, "the plan without --read-only has no plan_id: the case proves nothing")
+	}
+	for _, k := range []string{"plan_id", "expires_at", "note", "next"} {
+		delete(r, k)
+		delete(p, k)
+	}
+	rb, _ := json.Marshal(r)
+	pb, _ := json.Marshal(p)
+	return string(rb), string(pb), strings.Join(why, "; ")
+}
+
 // roRefused reports whether a answers the refusal of H11.
 func roRefused(a roAnswer) bool {
 	obj := parseObject(a.text)
@@ -341,6 +373,12 @@ func roCase(t *testing.T, srv roServers, w parityWorld, tl tools.Tool, args map[
 				b, _ := json.Marshal(unmasked)
 				p, _ := json.Marshal(parseObject(plain.text))
 				a.text, want = string(b), string(p)
+			}
+			if tl.Name == "deploy_plan" {
+				var why string
+				if a.text, want, why = roUnsavedPlan(a.text, want); why != "" {
+					bad = append(bad, tl.Name+" over "+surface+": "+why)
+				}
 			}
 			if roSame(a.text) != roSame(want) || a.isErr != plain.isErr {
 				bad = append(bad, fmt.Sprintf("%s over %s: a read answers otherwise with --read-only:\n  ro:    %s\n  plain: %s", tl.Name, surface, clipLine(a.text), clipLine(want)))

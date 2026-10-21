@@ -43,6 +43,11 @@ type Params struct {
 	DiskType string
 	Login    string
 	SSHKey   string // explicit public key (full "ssh-ed25519 AAAA... comment")
+	// KeyLater: with no SSHKey, the plan is for the agent's deploy key all
+	// the same, which is not made for it (a read-only server shows the plan
+	// and neither makes the key nor saves the plan, B12-9): the key fields
+	// count as filled, as images.Inputs.KeyLater has it. Never saved.
+	KeyLater bool `json:"-"`
 	// Meta are explicit values of the image's metadata fields
 	// (image_metadata): the mandatory ones evo cannot fill. They are kept
 	// in the plan file (0600, next to the deploy key) until apply.
@@ -385,13 +390,14 @@ func pickImage(ctx context.Context, cloud provision.CloudAPI, projectID, want st
 //     was found for — no plan is made.
 func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostname string, p Params) (fields []string, static map[string]string, login, keyName string, readErr, refuse error) {
 	login = firstNonEmpty(p.Login, "user1")
+	withKey := p.SSHKey != "" || p.KeyLater
 
 	detail, err := cloud.GetImage(ctx, imageID)
 	if err != nil {
 		// Fallback for Ubuntu-style images if the template can't be read.
 		fields := []string{"name", "hostname", "linux_password"}
 		key := "generated-password"
-		if p.SSHKey != "" {
+		if withKey {
 			fields = append(fields, "public_key")
 			key = "user-key"
 		}
@@ -405,6 +411,7 @@ func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostn
 	static, filled, err := images.FillMetadata(detail.MetadataFields, images.Inputs{
 		PublicKey: p.SSHKey, // empty: no key field is sent (an empty public_key triggers a 500)
 		Hostname:  hostname,
+		KeyLater:  p.KeyLater,
 		Login:     login,
 		Values:    p.Meta,
 	})
@@ -417,7 +424,7 @@ func resolveAccess(ctx context.Context, cloud provision.CloudAPI, imageID, hostn
 	}
 
 	keyName = "generated-password"
-	if p.SSHKey != "" {
+	if withKey {
 		keyName = "ssh-key (deploy)"
 	} else if len(filled.PasswordFields) == 0 {
 		keyName = "image-default"
