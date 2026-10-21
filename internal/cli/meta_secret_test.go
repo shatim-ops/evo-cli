@@ -89,6 +89,20 @@ func TestTrimNewline(t *testing.T) {
 	}
 }
 
+// secretText: BOM в начале и один перевод строки в конце уходят, пробелы
+// вокруг пароля и BOM не в начале — часть значения (B12-6, B12-7).
+func TestSecretText(t *testing.T) {
+	for in, want := range map[string]string{
+		utf8BOM + "a\n": "a", utf8BOM + "a\r\n": "a", utf8BOM + "\n": "", utf8BOM: "",
+		"  a  \n": "  a  ", "\ta\t": "\ta\t", "a" + utf8BOM: "a" + utf8BOM,
+		utf8BOM + utf8BOM + "a": utf8BOM + "a", "a\n\n": "a\n",
+	} {
+		if got := secretText(in); got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
+		}
+	}
+}
+
 // --meta поле=- в терминале: значение читается одной строкой без эха и с
 // подсказкой, а не молчаливым ожиданием Ctrl-D с паролем на экране (ревью
 // на #77).
