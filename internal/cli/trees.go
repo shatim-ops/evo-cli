@@ -45,10 +45,6 @@ type treeGroup struct {
 type treeCmd struct {
 	tools.CLISpec
 	Tool string
-	// russian: the cells and notes of the human table speak Russian too —
-	// да/нет, the note under a list (russianTrees); --json keeps the tool's
-	// answer.
-	russian bool
 	// headers are the Russian column titles of the tree (treeHeadersRU).
 	headers map[string]string
 	// render is the view CLISpec.Render names (treeRenders).
@@ -120,7 +116,7 @@ func treeGroupsOf(reg *tools.Registry) []treeGroup {
 		if _, ok := headers[g]; !ok {
 			headers[g] = treeHeadersRU(g)
 		}
-		c := treeCmd{CLISpec: t.CLI, Tool: t.Name, russian: russianTrees[g], headers: headers[g]}
+		c := treeCmd{CLISpec: t.CLI, Tool: t.Name, headers: headers[g]}
 		if t.CLI.Render != "" {
 			c.render = treeRenders[t.CLI.Render]
 			if c.render == nil {
@@ -428,7 +424,7 @@ func (c treeCmd) show(p *output.Printer, w io.Writer, text string) error {
 	if c.render != nil {
 		return c.render(p, w, text)
 	}
-	return renderAnswer(p, w, text, tableView{Columns: c.Columns, Russian: c.russian, Headers: c.headers})
+	return renderAnswer(p, w, text, tableView{Columns: c.Columns, Headers: c.headers})
 }
 
 // defaultTrueRE is the "(default: true)" of a schema description: pflag
@@ -721,19 +717,18 @@ func helpHint(cmd *cobra.Command) string {
 
 // --- answer formatting ---
 
-// tableView is how renderAnswer lays out a list: its columns, the Russian
-// titles of the columns, and whether its cells and notes speak Russian too.
+// tableView is how renderAnswer lays out a list: its columns and the
+// Russian titles of the columns. A table speaks the CLI's language: in
+// Russian its titles, да/нет and the notes under a list are Russian; --json
+// and MCP keep the tool's answer.
 type tableView struct {
 	Columns []string
-	// Russian: booleans are да/нет and the notes under a list Russian (a
-	// tree of russianTrees).
-	Russian bool
 	// Headers are the Russian column titles by key (treeHeadersRU).
 	Headers map[string]string
 }
 
-// ru: the cells and notes speak Russian (Russian, and the CLI in Russian).
-func (v tableView) ru() bool { return v.Russian && i18n.Lang() == i18n.RU }
+// ru: the CLI speaks Russian.
+func (v tableView) ru() bool { return i18n.Lang() == i18n.RU }
 
 // header is the title of a column: its Russian title when the CLI speaks
 // Russian and Headers has one, the key in capitals otherwise.
@@ -821,7 +816,7 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 				fmt.Fprintln(w)
 			}
 			fmt.Fprintf(w, "%s:\n", strings.ToUpper(k))
-			renderList(p, w, a, tableView{Russian: view.Russian, Headers: view.Headers})
+			renderList(p, w, a, tableView{Headers: view.Headers})
 			printed = true
 		}
 	}

@@ -44,20 +44,13 @@ var treeGroupShortRU = map[string]string{
 	"stack":       "Стеки: несколько ресурсов по одному манифесту",
 }
 
-// Every tree titles the columns of its human tables in Russian when the CLI
-// speaks Russian (treeHeadersRU); --json and MCP keep the tool's keys.
-// russianTrees are the trees whose tables speak Russian beyond the titles:
-// да/нет for booleans and the note under a list (the README promises the vm
-// and disk trees in Russian; every tree that came after them speaks Russian
-// from the start, PAR-16). The trees of v1.1 in between (image, vpc, k8s,
-// pg, s3, secret) got the Russian titles only (owner's decision Q11): their
-// cells and notes are as in 1.1, the commands added to them too (image
-// create, vpc open-ports). MCP keeps the English notes.
-var russianTrees = map[string]bool{"vm": true, "disk": true,
-	"dns": true, "cert": true, "lb": true, "tg": true, "snat": true,
-	"kafka": true, "redis": true, "ar": true, "ca": true,
-	"billing": true, "audit": true, "org": true, "iam": true, "metrics": true, "stack": true,
-	"deploy": true}
+// Every tree speaks Russian in its human tables when the CLI does: the
+// column titles (treeHeadersRU), да/нет for booleans and the notes under a
+// list (tableView). The README promised the vm and disk trees in Russian,
+// every tree after them spoke Russian from the start (PAR-16), and the
+// trees of v1.1 in between (image, vpc, k8s, pg, s3, secret) followed in
+// 1.2 (owner's decision Q11). --json and MCP keep the tool's keys and
+// English notes.
 
 // legacyRussianTrees are the trees whose tables were Russian in v1.1: they
 // take the titles from columnHeaderRU alone, so that a title added for
