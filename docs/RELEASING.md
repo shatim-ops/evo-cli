@@ -46,6 +46,7 @@ stderr, если это не оставляет дефект открытым.
 | 1.2.0 | повторный `evo deploy`, который обновляет существующую ВМ, без терминала и без `--yes` — код 3, а не 0 | дыра в согласии, расхождение с MCP `deploy`; условия 1–5; DECISIONS D13, `docs/internal/cli-mcp-parity/spec.md` §8 Q1 |
 | 1.2.0 | MCP `provision` и `deploy` (и `evo tools call` с ними) отклоняют образ, который есть в каталоге, но недоступен проекту, уже на превью — `NOT_FOUND`, в `evo tools call` код 4, а не 3 | отказ приходил после согласия, расхождение с превью `evo vm create`; условия 1–5; DECISIONS D13, `docs/internal/cli-mcp-parity/spec.md` §8 Q13 |
 | 1.2.1 | `evo vm create`, `evo tools call provision` и MCP `provision` без зоны, образа или проекта отказывают до превью: без зоны — `CONFIG_INVALID`, код 2 (было 3 без `--yes`, 1 с ним), без образа — `USAGE`, код 1 (было 3 без `--yes`), без проекта — `CONFIG_INVALID`, код 2 (было 3 без `--yes`); в MCP — ошибка вместо `confirmation_required` | согласие спрашивалось на вызов, который не мог пройти (догфуд 1.2.0); условия 1–5; DECISIONS D15 |
+| 1.2.2 | MCP-сервер с `--allow-project`: `billing_balance` — `CONFIG_INVALID` вместо баланса договора, в `billing_finops` баланс `null` | раскрытие баланса всей организации серверу, ограниченному проектом (догфуд №5); условия 1–5; DECISIONS D18 |
 
 0. Стабильный релиз — до тега отдельным PR в `main`:
    - `CHANGELOG.md`: «[Не выпущено]» → «[X.Y.Z] — ГГГГ-ММ-ДД» (дата тега)
