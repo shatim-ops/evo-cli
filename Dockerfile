@@ -8,13 +8,13 @@
 # k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой «недоступно в этом режиме».
 
 # Та же версия Go, что в ci.yml и release.yml; поднимать вместе.
-ARG GO_VERSION=1.26.9
+ARG GO_VERSION=1.26.10
 
 # Базовые образы закреплены по digest (индекс всех платформ): тег можно
 # переписать в реестре, digest — нет. Поднимая GO_VERSION, обновите и digest
 # (это делает Dependabot):
 #   docker buildx imagetools inspect golang:<версия> --format '{{.Manifest.Digest}}'
-FROM golang:${GO_VERSION}@sha256:37cfcca63222ec499bec5e8ad7aad52dbf7529db36d5812b8eae2f0621aa92d6 AS build
+FROM golang:${GO_VERSION}@sha256:5c3f3f28a273c9b61698b2d34f18375929790ab1f1d3835d032d21e2b31eae0c AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
