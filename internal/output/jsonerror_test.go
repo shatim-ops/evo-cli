@@ -13,7 +13,7 @@ func TestJSONError_GoesToErrWriter(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	p := NewWithWriters(&stdout, &stderr, ModeJSON, false)
 
-	if err := p.JSONError(2, "AUTH_REQUIRED", "credentials not set", "set CLOUDRU_KEY_ID"); err != nil {
+	if err := p.JSONError(2, "AUTH_REQUIRED", "credentials not set", "set CLOUDRU_KEY_ID", nil); err != nil {
 		t.Fatal(err)
 	}
 	if stdout.Len() != 0 {
@@ -30,7 +30,7 @@ func TestJSONError_NoHintOmitted(t *testing.T) {
 	var stderr bytes.Buffer
 	p := NewWithWriters(&bytes.Buffer{}, &stderr, ModeJSON, false)
 
-	if err := p.JSONError(4, "NOT_FOUND", "dns_zones: not found", ""); err != nil {
+	if err := p.JSONError(4, "NOT_FOUND", "dns_zones: not found", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	want := `{"error":{"code":4,"reason":"NOT_FOUND","message":"dns_zones: not found"}}` + "\n"

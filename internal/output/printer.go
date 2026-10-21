@@ -283,17 +283,20 @@ type ErrorBody struct {
 	Message string `json:"message"`
 	// Hint is left out when the error has none, not printed as "".
 	Hint string `json:"hint,omitempty"`
+	// Details are the fields of a tool's error answer beyond the error
+	// (clerrors.CLIError.Details); left out when there are none.
+	Details map[string]any `json:"details,omitempty"`
 }
 
 // JSONError writes
-// {"error": {"code": N, "reason": "...", "message": "...", "hint": "..."}}
+// {"error": {"code": N, "reason": "...", "message": "...", "hint": "...", "details": {...}}}
 // to the error writer. code is the process exit code, reason the symbolic
-// code of the error; without a hint the "hint" key is left out.
-func (p *Printer) JSONError(code int, reason, message, hint string) error {
+// code of the error; without a hint or details their keys are left out.
+func (p *Printer) JSONError(code int, reason, message, hint string, details map[string]any) error {
 	enc := json.NewEncoder(p.errOut)
 	return enc.Encode(struct {
 		Error ErrorBody `json:"error"`
-	}{ErrorBody{Code: code, Reason: reason, Message: message, Hint: hint}})
+	}{ErrorBody{Code: code, Reason: reason, Message: message, Hint: hint, Details: details}})
 }
 
 func warningPrefix() string { return i18n.T("Warning: ", "Предупреждение: ") }

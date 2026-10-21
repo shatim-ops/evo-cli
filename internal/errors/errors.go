@@ -16,6 +16,10 @@ type CLIError struct {
 	Message string
 	Hint    string
 	Err     error // wrapped original error
+	// Details are the fields of a tool's error answer beyond the error
+	// itself (vm_id, existing_id, a generated password): the CLI's --json
+	// error carries them as the MCP answer does.
+	Details map[string]any
 }
 
 // New creates a CLIError without a wrapped cause.
