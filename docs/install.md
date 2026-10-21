@@ -182,5 +182,5 @@ git clone https://github.com/shatim-ops/evo-cli && cd evo-cli
 go build -o bin/evo ./cmd/evo
 ```
 
-Нужен Go версии из `go.mod` (CI собирает на Go 1.26.9). `evo version`
+Нужен Go версии из `go.mod` (CI собирает на Go 1.26.10). `evo version`
 у такой сборки показывает версию модуля и коммит из данных VCS.

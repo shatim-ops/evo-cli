@@ -192,7 +192,7 @@ func TestSec_KubectlHTTPArgs(t *testing.T) {
 		"describe secret db",
 	}
 	for _, a := range denied {
-		if err := kubectlHTTPCheck(strings.Fields(a), false); err == nil {
+		if err := kubectlCheck(strings.Fields(a), false, httpWording); err == nil {
 			t.Errorf("allowed over HTTP: kubectl %s", a)
 		}
 	}
@@ -210,15 +210,15 @@ func TestSec_KubectlHTTPArgs(t *testing.T) {
 		"get pods -o yaml",
 	}
 	for _, a := range allowed {
-		if err := kubectlHTTPCheck(strings.Fields(a), false); err != nil {
+		if err := kubectlCheck(strings.Fields(a), false, httpWording); err != nil {
 			t.Errorf("kubectl %s refused: %v", a, err)
 		}
 	}
 	// --allow-secret-export opens secret reads, not host access.
-	if err := kubectlHTTPCheck(strings.Fields("get secret db -o yaml"), true); err != nil {
+	if err := kubectlCheck(strings.Fields("get secret db -o yaml"), true, httpWording); err != nil {
 		t.Errorf("--allow-secret-export: %v", err)
 	}
-	if err := kubectlHTTPCheck(strings.Fields("get pods --kubeconfig=/x"), true); err == nil {
+	if err := kubectlCheck(strings.Fields("get pods --kubeconfig=/x"), true, httpWording); err == nil {
 		t.Error("--allow-secret-export opened --kubeconfig")
 	}
 }

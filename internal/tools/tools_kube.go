@@ -98,6 +98,12 @@ func kubectlReadOnly(fields []string) bool {
 	return len(fields) > 1 && subs[fields[1]]
 }
 
+// kubectlNeedsConsent reports whether a k8s_kubectl call needs
+// confirmed=true: its command is not a read (kubectlReadOnly).
+func kubectlNeedsConsent(args map[string]any) bool {
+	return !kubectlReadOnly(strings.Fields(stringArg(args, "args")))
+}
+
 // kubectlReachesHost reports whether the arguments of verb carry one of
 // kubectlHostFlags. The words after "--" are not kubectl flags. "logs -f"
 // is --follow (logs has no --filename), not a file.
@@ -156,7 +162,7 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 	if err := kubetools.CheckConnectionFlags(fields); err != nil {
 		return usageResult(err), true
 	}
-	if !kubectlReadOnly(fields) {
+	if kubectlNeedsConsent(args) {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return toJSON(map[string]any{
 				"status": "confirmation_required",
@@ -210,6 +216,15 @@ func (s *Registry) handleK8sApply(ctx context.Context, args map[string]any) (str
 	return toJSON(map[string]any{"status": "applied", "output": out}), false
 }
 
+// helmMutatingActions are the k8s_helm actions that change the cluster.
+var helmMutatingActions = map[string]bool{"install": true, "upgrade": true, "uninstall": true, "delete": true}
+
+// helmNeedsConsent reports whether a k8s_helm call needs confirmed=true:
+// its action changes the cluster.
+func helmNeedsConsent(args map[string]any) bool {
+	return helmMutatingActions[strings.ToLower(stringArg(args, "action"))]
+}
+
 // handleK8sHelm drives helm (install/upgrade/uninstall/list/status). Mutating
 // actions (install/upgrade/uninstall) need confirmed=true.
 func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (string, bool) {
@@ -258,8 +273,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 				"'repo_url' должен быть абсолютным URL https://, http:// или oci://, передано %q", raw), true
 		}
 	}
-	mutating := map[string]bool{"install": true, "upgrade": true, "uninstall": true, "delete": true}
-	if mutating[action] {
+	if helmNeedsConsent(args) {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return toJSON(map[string]any{
 				"status": "confirmation_required",

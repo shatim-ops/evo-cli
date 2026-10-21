@@ -116,14 +116,18 @@ type Server struct {
 	reg      *tools.Registry
 	inflight inflight // running tool calls, for cancellation
 
-	// listed and enabled are the --toolsets view: tools/list advertises
-	// listed and tools/call accepts only enabled. nil enabled means every
-	// tool (the default).
+	// enabled is the --toolsets view: tools/call accepts only these tools;
+	// nil means every tool (the default). listed is what tools/list
+	// advertises when it is not every tool (relist).
 	listed  []Tool
 	enabled map[string]bool
 
-	// httpApplied records the HTTP restrictions applied to the handlers,
-	// as "ID tool" (restrict), for the closed-list test.
+	// readOnly: SetReadOnly was called.
+	readOnly bool
+
+	// httpApplied records the restrictions of HTTPRestrictions applied to
+	// the handlers (over HTTP and by --read-only), as "ID tool" (restrict),
+	// for the closed-list test.
 	httpApplied []string
 }
 
@@ -148,19 +152,36 @@ func New(factory EngineFactory, version string) *Server {
 
 // ListTools returns the advertised tool definitions.
 func (s *Server) ListTools() []Tool {
-	if s.enabled != nil {
+	if s.listed != nil {
 		return s.listed
 	}
 	return s.tools
 }
 
+// relist sets what tools/list advertises: the tools of --toolsets, less
+// those --read-only refuses every call of (tools.AlwaysNeedsConsent). nil
+// listed is every tool.
+func (s *Server) relist() {
+	s.listed = nil
+	if s.enabled == nil && !s.readOnly {
+		return
+	}
+	s.listed = []Tool{}
+	for i, t := range s.reg.Tools() {
+		if (s.enabled != nil && !s.enabled[t.Name]) || (s.readOnly && tools.AlwaysNeedsConsent(t)) {
+			continue
+		}
+		s.listed = append(s.listed, s.tools[i])
+	}
+}
+
 // SetToolsets limits tools/list and tools/call to the tools of the named
 // groups (tools.Groups(): deploy, vm, vpc, k8s, …); "all" or no group keeps
-// every tool. The point is the agent's context: 154 tools are ~100 KB of
+// every tool. The point is the agent's context: 154 tools are ~110 KB of
 // tools/list in every session, deploy+vm+vpc are 26 (review r5 M3, as
 // GitHub's MCP server --toolsets). It is not a permission boundary:
 // stack_apply still drives the tools of other groups in-process, and the
-// HTTP policy and --allow-project hold either way.
+// HTTP policy, --allow-project and --read-only hold either way.
 func (s *Server) SetToolsets(groups []string) error {
 	known := map[string]bool{}
 	for _, g := range tools.Groups() {
@@ -172,7 +193,8 @@ func (s *Server) SetToolsets(groups []string) error {
 		switch {
 		case g == "":
 		case g == "all":
-			s.listed, s.enabled = nil, nil
+			s.enabled = nil
+			s.relist()
 			return nil
 		case !known[g]:
 			return fmt.Errorf("unknown toolset %q; known: all, %s", g, strings.Join(tools.Groups(), ", "))
@@ -180,21 +202,16 @@ func (s *Server) SetToolsets(groups []string) error {
 			want[g] = true
 		}
 	}
-	if len(want) == 0 {
-		s.listed, s.enabled = nil, nil
-		return nil
-	}
-	s.listed, s.enabled = nil, map[string]bool{}
-	for _, t := range s.reg.Tools() {
-		if want[t.Group] {
-			s.enabled[t.Name] = true
+	s.enabled = nil
+	if len(want) > 0 {
+		s.enabled = map[string]bool{}
+		for _, t := range s.reg.Tools() {
+			if want[t.Group] {
+				s.enabled[t.Name] = true
+			}
 		}
 	}
-	for _, t := range s.tools {
-		if s.enabled[t.Name] {
-			s.listed = append(s.listed, t)
-		}
-	}
+	s.relist()
 	return nil
 }
 

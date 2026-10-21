@@ -56,10 +56,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "provision",
-			Description: "Provision a bare Cloud.ru VM. By default assigns a public floating IP. Set no_public_ip=true for a PRIVATE VM (subnet-only, interface type 'regular') — reachable only inside the VPC and the valid target type for a load balancer. Attaches a subnet + security group automatically (required — omitting the interface 500s). " +
-				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works, Astra Linux, Alt and RED OS included; an image of the shared catalogue the project cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
-				"evo fills the image's metadata fields itself (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else the call is refused before anything is created. " +
-				"ports opens inbound rules in the VM's security group after boot (destroy closes them). For docker-compose deployments, use 'deploy' instead. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only.",
+			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. A subnet and a security group are attached automatically. " +
+				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works, Astra Linux, Alt and RED OS included; a shared-catalogue image the project cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
+				"evo fills the image's metadata fields (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else the call is refused before anything is created. " +
+				"For docker-compose use 'deploy'.",
 			InputSchema: objSchema(map[string]any{
 				"name":       strProp("VM name (e.g. 'hermes-agent')."),
 				"flavor":     strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
@@ -164,9 +164,9 @@ func (s *Registry) registerTools() {
 				"image_metadata": map[string]any{
 					"type":  "array",
 					"items": map[string]any{"type": "object"},
-					"description": "Fields the buyer fills in, substituted into user_data_template. Every {{ var }} in the template must be declared here. " +
-						"Each entry: {name, display_name, display_position, field_type, default_value, sensitive, mandatory_group} — display_name and display_position are REQUIRED, and 'id'/'is_required' are rejected (the write schema differs from what image_get returns). " +
-						"field_type uses the platform's typed values (public_key, linux_password, linux_login, hostname, flag); put public_key and linux_password in the same mandatory_group ('authentication') so either satisfies access.",
+					"description": "Fields the buyer fills in, substituted into user_data_template; declare every {{ var }} the template uses. " +
+						"Entry: {name, display_name, display_position, field_type, default_value, sensitive, mandatory_group}; display_name and display_position are REQUIRED, 'id'/'is_required' are rejected (the write schema differs from image_get's). " +
+						"field_type: public_key, linux_password, linux_login, hostname, flag; put public_key and linux_password in one mandatory_group ('authentication') so either gives access.",
 				},
 				"confirmed": confirmedProp(),
 			}, "name", "disk_id"),
@@ -1293,7 +1293,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_plan",
-			Description: "Plan a multi-resource STACK from ONE declarative manifest. Use this for ANY multi-service deploy instead of calling pg_create/k8s_create/provision/tg_create/… yourself — the engine runs the whole chain server-side so your context stays small. Returns a job_id AND a rate-card cost estimate (show it to the user, get explicit approval, THEN stack_apply). Read-only (creates nothing). manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]}. vm.image (name or UUID, see image_list) and vm.zone (name like ru.AZ-1 or UUID, see list_zones) default to the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION; stack_plan resolves both and refuses a stack with a VM when either is missing or unknown, before anything is created. (container-apps: not yet — needs a registry image.)",
+			Description: "Plan a multi-resource STACK from ONE declarative manifest. Read-only (creates nothing): returns a job_id and a rate-card cost estimate — show it to the user, get explicit approval, THEN stack_apply. Use it for ANY multi-service deploy instead of calling pg_create, provision, … yourself: the engine runs the chain server-side. manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]}. vm.image and vm.zone (name or UUID) default to the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION; a stack with a VM is refused when either is missing or unknown.",
 			InputSchema: objSchema(map[string]any{
 				"manifest": map[string]any{"type": "object", "description": "Declarative stack spec (see description)."},
 			}, "manifest"),

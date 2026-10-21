@@ -22,7 +22,7 @@ func TestKubectlHTTP_EditorSubcommandsRefused(t *testing.T) {
 			"create deployment web --image=nginx --edit=true",
 			"edit deploy/web",
 		} {
-			if err := kubectlHTTPCheck(strings.Fields(c), allow); err == nil {
+			if err := kubectlCheck(strings.Fields(c), allow, httpWording); err == nil {
 				t.Errorf("%q (allow-secret-export=%v) is allowed over HTTP", c, allow)
 			}
 		}
@@ -33,7 +33,7 @@ func TestKubectlHTTP_EditorSubcommandsRefused(t *testing.T) {
 		"apply view-last-applied deploy/web",
 		"create deployment web --image=nginx",
 	} {
-		if err := kubectlHTTPCheck(strings.Fields(c), false); err != nil {
+		if err := kubectlCheck(strings.Fields(c), false, httpWording); err != nil {
 			t.Errorf("%q: %v", c, err)
 		}
 	}

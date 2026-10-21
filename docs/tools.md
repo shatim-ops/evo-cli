@@ -124,7 +124,7 @@
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
 | `image_list` | `evo image list` | нет | — | Search the VM image catalogue: OS images (type public), Cloud.ru Marketplace products (marketplace) and the project's own images (private). | Поиск образов: ОС (public), маркетплейс (marketplace), образы проекта (private) |
-| `marketplace_list` | `evo marketplace list` | нет | — | Read-only showcase of what Cloud.ru offers to deploy, in one list: VM images of the shared catalogue (OS images and Cloud.ru Marketplace products; the … | Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания |
+| `marketplace_list` | `evo marketplace list` | нет | — | Read-only: what Cloud.ru offers to deploy, in one list: shared-catalogue VM images (OS images and Marketplace products, not the project's own) and Managed … | Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания |
 | `list_images` | `evo list-images` | нет | — | List available Cloud.ru VM boot images (UUID + name). | Загрузочные образы ВМ (UUID и имя) |
 | `image_create` | `evo image create` | да | `name`, `disk_id` | Create a reusable VM image FROM A BOOTABLE DISK — the final step of producing a distributable image (e.g. | Создать образ ВМ из загрузочного диска (платно, асинхронно) |
 | `image_get` | `evo image get` | нет | `image` или `image_id` | Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with … | Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ |

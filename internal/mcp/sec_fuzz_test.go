@@ -25,7 +25,7 @@ func FuzzRedactSecrets(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
-		out := redactSecrets("", in)
+		out := redactSecrets("", in, httpWording)
 		if !json.Valid([]byte(in)) {
 			if out != in {
 				t.Fatalf("non-JSON changed: %q -> %q", in, out)
@@ -82,7 +82,7 @@ func FuzzRedactSecrets(f *testing.F) {
 	})
 }
 
-// kubectlHTTPCheck never lets a host-credential flag through, whatever
+// kubectlCheck never lets a host-credential flag through, whatever
 // surrounds it, as long as it comes before "--".
 func FuzzKubectlHTTPCheck(f *testing.F) {
 	for _, s := range []string{
@@ -96,7 +96,7 @@ func FuzzKubectlHTTPCheck(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, args string, allow bool) {
 		fields := strings.Fields(args)
-		err := kubectlHTTPCheck(fields, allow)
+		err := kubectlCheck(fields, allow, httpWording)
 		for _, fl := range fields {
 			if fl == "--" {
 				break

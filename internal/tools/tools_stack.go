@@ -824,7 +824,8 @@ const jobLockWait = time.Minute
 
 // crankJob loads the job and, while it is in progress, advances and saves
 // it, all under the job's lock. Only a "running" job moves: stack_apply with
-// confirmed=true sets it. A "planned" job is shown, never advanced —
+// confirmed=true sets it, and a read-only registry (SetReadOnly) advances
+// none. A "planned" job is shown, never advanced —
 // stack_status is a read-only poll, and advancing a planned job would create
 // every billable step without the user's approval (QA 15.10.2026, C1).
 func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) {
@@ -837,7 +838,7 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 	if err != nil {
 		return nil, err
 	}
-	if job.Status == "running" {
+	if job.Status == "running" && !s.readOnly {
 		if err := s.checkJobProject(job); err != nil {
 			return nil, err
 		}
@@ -885,6 +886,12 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 		}
 		if job.Status != "running" {
 			return toJSON(job.Compact()), false // terminal (done/error)
+		}
+		if s.readOnly {
+			out := job.Compact()
+			out["note"] = "Not advanced: this server runs with --read-only and acts on no consent, the one stack_apply was given included. " +
+				"The cloud goes on with the steps already started; a server without --read-only advances the job when it polls it."
+			return toJSON(out), false
 		}
 		rem := time.Until(deadline)
 		if rem <= 0 {

@@ -75,7 +75,7 @@ func TestQAr3_KubectlHTTPCheckSecretBypasses(t *testing.T) {
 		"get pods --kuberc /srv/shared/kuberc",
 	}
 	for _, c := range cases {
-		if err := kubectlHTTPCheck(strings.Fields(c), false); err == nil {
+		if err := kubectlCheck(strings.Fields(c), false, httpWording); err == nil {
 			t.Errorf("%q: allowed over HTTP, must be refused", c)
 		}
 	}
@@ -111,7 +111,7 @@ func TestQAr3_KubectlHTTPCheckSecretBypasses(t *testing.T) {
 		"run t --image=busybox --restart=Never -- sh -c echo",
 	}
 	for _, c := range allowed {
-		if err := kubectlHTTPCheck(strings.Fields(c), false); err != nil {
+		if err := kubectlCheck(strings.Fields(c), false, httpWording); err != nil {
 			t.Errorf("%q refused over HTTP: %v", c, err)
 		}
 	}
@@ -125,7 +125,7 @@ func TestQAr3_KubectlHTTPCheckSecretBypasses(t *testing.T) {
 		"set env deploy/x --list --resolve",
 		"describe secret x",
 	} {
-		if err := kubectlHTTPCheck(strings.Fields(c), true); err != nil {
+		if err := kubectlCheck(strings.Fields(c), true, httpWording); err != nil {
 			t.Errorf("%q with --allow-secret-export refused: %v", c, err)
 		}
 	}
@@ -134,7 +134,7 @@ func TestQAr3_KubectlHTTPCheckSecretBypasses(t *testing.T) {
 		"get secret x -o name -v=8",
 		"get pods --vmodule=*=8",
 	} {
-		if err := kubectlHTTPCheck(strings.Fields(c), true); err == nil {
+		if err := kubectlCheck(strings.Fields(c), true, httpWording); err == nil {
 			t.Errorf("%q: --allow-secret-export opened it", c)
 		}
 	}
