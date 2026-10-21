@@ -82,6 +82,9 @@ type Registry struct {
 	// jobLocks serialize the stack tools per job_id (see lockJob).
 	jobMu    sync.Mutex
 	jobLocks map[string]*sync.Mutex
+
+	// readOnly: SetReadOnly was called; stack_status advances no stack.
+	readOnly bool
 }
 
 // New builds the registry. factory is called by handlers that need an
@@ -143,6 +146,14 @@ func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
 	}
 	return true
 }
+
+// SetReadOnly makes the registry act on no consent given before: a running
+// stack is reported by stack_status, not advanced, since its steps would
+// create resources on the consent stack_apply was given. evo mcp
+// --read-only sets it, and refuses every call that needs consent
+// (NeedsConsent) itself (internal/mcp, H11). Call it before the registry
+// serves calls.
+func (r *Registry) SetReadOnly() { r.readOnly = true }
 
 // ErrResult formats an error as a JSON tool result, as the handlers do.
 func ErrResult(err error) string { return errResult(err) }
@@ -378,10 +389,47 @@ func IsDestructive(t Tool) bool {
 
 // isMutating reports whether the tool changes state in the cloud.
 func isMutating(t Tool) bool {
-	if sensitiveTools[t.Name] {
-		return false
-	}
+	return takesConsent(t) && !sensitiveTools[t.Name]
+}
+
+// takesConsent reports whether some call of the tool needs the person's
+// consent: its schema has confirmed. Those are the mutating tools and
+// sensitiveTools; the schema is where the agent learns it, so it is where
+// the registry reads it too.
+func takesConsent(t Tool) bool {
 	props, _ := t.InputSchema["properties"].(map[string]any)
 	_, gated := props["confirmed"]
 	return gated
+}
+
+// partialConsent are the tools that take confirmed but need it only for
+// some calls, by the rule their handler gates on: k8s_kubectl for a
+// command that is not a read (kubectlNeedsConsent), k8s_helm for install,
+// upgrade and uninstall (helmNeedsConsent). Every call of any other tool
+// that takes confirmed needs it.
+var partialConsent = map[string]func(args map[string]any) bool{
+	"k8s_kubectl": kubectlNeedsConsent,
+	"k8s_helm":    helmNeedsConsent,
+}
+
+// NeedsConsent reports whether this call of t needs confirmed=true: the
+// call changes the cloud or reveals a secret, and the handler answers
+// confirmation_required without it. This is the one decision behind the
+// gates of the handlers and evo mcp --read-only, which refuses such a
+// call whether confirmed is set or not.
+func NeedsConsent(t Tool, args map[string]any) bool {
+	if !takesConsent(t) {
+		return false
+	}
+	if needs, partial := partialConsent[t.Name]; partial {
+		return needs(args)
+	}
+	return true
+}
+
+// AlwaysNeedsConsent reports whether every call of t needs confirmed=true
+// (NeedsConsent whatever the arguments).
+func AlwaysNeedsConsent(t Tool) bool {
+	_, partial := partialConsent[t.Name]
+	return takesConsent(t) && !partial
 }

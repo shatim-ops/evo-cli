@@ -383,11 +383,12 @@ func restoreAt(h, s any, path []string) string {
 	return ""
 }
 
-// masked: every string in v is the mask of the HTTP mode.
+// masked: every string in v is the mask of H7: over HTTP or on a
+// --read-only server.
 func masked(v any) bool {
 	switch x := v.(type) {
 	case string:
-		return strings.HasPrefix(x, "[redacted over HTTP")
+		return strings.HasPrefix(x, "[redacted over HTTP") || x == "[redacted on this --read-only server]"
 	case []any:
 		for _, e := range x {
 			if !masked(e) {

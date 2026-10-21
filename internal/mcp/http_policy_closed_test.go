@@ -27,11 +27,24 @@ func secretKey(k string) bool {
 	return hasRoot(k) && !nonSecret("", k, nil)
 }
 
-// restrictionsFor expands HTTPRestrictions into "ID tool" for one mode.
-func restrictionsFor(s *Server, allowSecretExport bool) []string {
+// restrictionsFor expands HTTPRestrictions into "ID tool" for one setup:
+// over HTTP or stdio, with or without --allow-secret-export and
+// --read-only. A server setting (StdioToo) wraps handlers only with
+// --read-only (H11); --read-only applies its entries (ReadOnlyToo) on
+// either transport and leaves H5 to H11.
+func restrictionsFor(s *Server, http, allowSecretExport, readOnly bool) []string {
 	var out []string
 	for _, r := range HTTPRestrictions {
-		if r.UnlessSecretExport && allowSecretExport {
+		on := false
+		switch {
+		case r.StdioToo:
+			on = readOnly
+		case readOnly && r.ReadOnlyToo:
+			on = true
+		case http:
+			on = !r.UnlessSecretExport || !allowSecretExport && !readOnly
+		}
+		if !on {
 			continue
 		}
 		names := r.Tools
@@ -94,16 +107,25 @@ func TestHTTPPolicy_ClosedList(t *testing.T) {
 	}
 
 	// The handlers: exactly the listed wraps are applied, and no other tool's
-	// handler changes, over the whole HTTP setup (NewHTTPHandler).
-	for _, allow := range []bool{false, true} {
+	// handler changes, over the whole HTTP setup (NewHTTPHandler), and with
+	// --read-only (SetReadOnly) on either transport.
+	for _, setup := range []struct{ http, allow, readOnly bool }{
+		{true, false, false}, {true, true, false}, {false, false, true}, {true, false, true},
+	} {
+		name := fmt.Sprintf("http=%v allow-secret-export=%v read-only=%v", setup.http, setup.allow, setup.readOnly)
 		s := newTestServer()
 		before := handlerPointers(s)
-		h := NewHTTPHandler(s, HTTPOptions{AllowSecretExport: allow})
-		h.Close()
+		if setup.readOnly {
+			s.SetReadOnly()
+		}
+		if setup.http {
+			h := NewHTTPHandler(s, HTTPOptions{AllowSecretExport: setup.allow})
+			h.Close()
+		}
 		got := slices.Clone(s.httpApplied)
 		slices.Sort(got)
-		if want := restrictionsFor(s, allow); !slices.Equal(got, want) {
-			t.Errorf("allow-secret-export=%v: applied\n%v\nwant\n%v", allow, got, want)
+		if want := restrictionsFor(s, setup.http, setup.allow, setup.readOnly); !slices.Equal(got, want) {
+			t.Errorf("%s: applied\n%v\nwant\n%v", name, got, want)
 		}
 		wrapped := map[string]bool{}
 		for _, a := range got {
@@ -111,9 +133,9 @@ func TestHTTPPolicy_ClosedList(t *testing.T) {
 			wrapped[tool] = true
 		}
 		after := handlerPointers(s)
-		for name, p := range before {
-			if changed := after[name] != p; changed != wrapped[name] {
-				t.Errorf("allow-secret-export=%v: %s handler changed=%v, listed=%v", allow, name, changed, wrapped[name])
+		for tool, p := range before {
+			if changed := after[tool] != p; changed != wrapped[tool] {
+				t.Errorf("%s: %s handler changed=%v, listed=%v", name, tool, changed, wrapped[tool])
 			}
 		}
 	}
@@ -152,7 +174,7 @@ func TestHTTPPolicy_ClosedList(t *testing.T) {
 				case *ast.Ident:
 					name = f.Name
 				}
-				allowed := map[string]string{"wrapHandler": "restrict", "Wrap": "wrapHandler", "redactSecrets": "restrictForHTTP"}
+				allowed := map[string]string{"wrapHandler": "restrict", "Wrap": "wrapHandler", "redactSecrets": "restrictSecrets"}
 				if in, ok := allowed[name]; ok && fn.Name.Name != in {
 					t.Errorf("%s: %s calls %s; only %s may (HTTPRestrictions)", fset.Position(c.Pos()), fn.Name.Name, name, in)
 				}
@@ -360,7 +382,7 @@ func TestSec_KnownSecretFieldsMasked(t *testing.T) {
 
 	// Lists and objects under a credential key: every string inside.
 	unknown := `{"passwords":["S3cret-a","S3cret-b"],"secret_old":{"v":"S3cret-c","n":[1,"S3cret-d"],"updated_at":"S3cret-e"},"private_key_2":"S3cret-f","count":2}`
-	got := redactSecrets("kafka_get", unknown)
+	got := redactSecrets("kafka_get", unknown, httpWording)
 	if strings.Contains(got, "S3cret") {
 		t.Errorf("unknown credential fields leak: %s", got)
 	}
@@ -440,20 +462,20 @@ func TestSec_NonSecretFieldsKept(t *testing.T) {
 	// Secret Manager answers metadata under secret / secrets: kept for its
 	// tools, masked for any other tool (whose object might hold a value).
 	list := `{"secrets":[{"id":"1","name":"db","path":"app/db","description":"d"}]}`
-	if got := redactSecrets("secret_list", list); got != list {
+	if got := redactSecrets("secret_list", list, httpWording); got != list {
 		t.Errorf("secret_list metadata masked: %s", got)
 	}
 	created := `{"secret":{"id":"1","path":"app/db"},"status":"created"}`
-	if got := redactSecrets("secret_create", created); got != created {
+	if got := redactSecrets("secret_create", created, httpWording); got != created {
 		t.Errorf("secret_create metadata masked: %s", got)
 	}
-	if got := redactSecrets("secret_create", `{"secret":"S3cret-x"}`); strings.Contains(got, "S3cret") {
+	if got := redactSecrets("secret_create", `{"secret":"S3cret-x"}`, httpWording); strings.Contains(got, "S3cret") {
 		t.Errorf("a string under secret is a credential even for secret_create: %s", got)
 	}
-	if got := redactSecrets("secret_list", `{"secrets":["S3cret-y"]}`); strings.Contains(got, "S3cret") {
+	if got := redactSecrets("secret_list", `{"secrets":["S3cret-y"]}`, httpWording); strings.Contains(got, "S3cret") {
 		t.Errorf("strings under secrets are credentials: %s", got)
 	}
-	if got := redactSecrets("kafka_get", `{"secret":{"value":"S3cret-z"}}`); strings.Contains(got, "S3cret") {
+	if got := redactSecrets("kafka_get", `{"secret":{"value":"S3cret-z"}}`, httpWording); strings.Contains(got, "S3cret") {
 		t.Errorf("the Secret Manager exception holds outside its tools: %s", got)
 	}
 	const kubeconfig = `{"auth":"cloudlogin exec-plugin (must be installed)","kubeconfig":"apiVersion: v1\nusers:\n- name: u\n  user:\n    exec:\n      command: cloudlogin\n"}`

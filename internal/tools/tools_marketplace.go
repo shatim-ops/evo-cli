@@ -19,12 +19,11 @@ import (
 // in the trees (provision with image, k8s_add_addon with name): no unified
 // install tool (PR #65).
 
-const marketplaceListDescription = "Read-only showcase of what Cloud.ru offers to deploy, in one list: VM images of the shared catalogue (OS images and Cloud.ru Marketplace products; the project's own images are not included) and Managed Kubernetes addons. Changes nothing. " +
-	"kind: vm-os (type public, or a marketplace image whose name or display name starts with an OS family word: Ubuntu, Debian, CentOS, Rocky, Alma, Fedora, openSUSE, Astra, Alt/Альт, RED OS/РЕД ОС, SberLinux, ROSA/РОСА, Windows — a heuristic, the catalogue has no such field), vm-app (any other marketplace image, e.g. nginx-ubuntu-22.04), k8s-addon. " +
-	"query matches a substring of the name or display_name (addons: the description too), case-insensitive. Images the project cannot use and images ready in no zone are hidden unless all=true (counted in hidden_not_in_project, hidden_not_ready). " +
-	"Rows {kind, name, display_name, id (images), billable (addons only: whether an image or its licence is paid is not known — the price calculation gives 0 for every image), available_in_project (images, when checked against the catalogue as the project sees it), ready=false (an image ready in no zone, with all=true), deploy{cli, tool, args}}: deploy is provision with args.image (the name, or the UUID when names repeat) or, for an addon, k8s_add_addon with args.name (plus cluster_id; k8s_addon_versions shows its versions); an image not available to the project has no deploy. " +
-	"Sorted by kind, then display name; counts{vm-os, vm-app, k8s-addon} are the rows shown per kind, total the matches before hiding. " +
-	"If one catalogue cannot be read, the other is still answered, with warnings[]; an error only when none is read."
+const marketplaceListDescription = "Read-only: what Cloud.ru offers to deploy, in one list: shared-catalogue VM images (OS images and Marketplace products, not the project's own) and Managed Kubernetes addons. " +
+	"kind: vm-os (public images and marketplace images named after an OS family, e.g. Ubuntu, Astra, RED OS — a heuristic), vm-app (other marketplace images), k8s-addon. " +
+	"Images the project cannot use or ready in no zone are hidden unless all=true (hidden_not_in_project, hidden_not_ready). " +
+	"Rows {kind, name, display_name, id, billable (addons only; an image's price is unknown), available_in_project, ready, deploy{cli, tool, args}}: deploy is provision with args.image, or k8s_add_addon with args.name (plus cluster_id; versions: k8s_addon_versions); no deploy for an image the project cannot use. " +
+	"counts: rows per kind; total: matches before hiding. If one catalogue cannot be read, the other is answered with warnings[]."
 
 func marketplaceListSchema() map[string]any {
 	kind := strProp("Only this kind: vm-os (OS images), vm-app (Marketplace products on a VM) or k8s-addon (Managed Kubernetes addons). Default: all three; a VM kind does not read the addon catalogue and k8s-addon not the image one.")

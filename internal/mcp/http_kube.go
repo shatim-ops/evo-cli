@@ -62,14 +62,15 @@ var kubectlHTTPDeniedFlags = map[string]bool{
 // to stderr, which reaches the caller with the output.
 var kubectlHTTPVerbosityFlags = map[string]bool{"v": true, "vmodule": true}
 
-// kubectlHTTPCheck validates k8s_kubectl arguments for the HTTP transport.
+// kubectlCheck validates k8s_kubectl arguments for the HTTP transport, and
+// on a --read-only server for either transport (H3); w words the refusals.
 // allowSecrets also permits commands that print credentials.
-func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
+func kubectlCheck(fields []string, allowSecrets bool, w wording) error {
 	// The command comes first. This check does not know which flags take a
 	// value, kubectl does: in "-n get cp …" it reads "get" as the namespace
 	// and runs cp (security audit 19.10, SEC-1).
 	if len(fields) > 0 && strings.HasPrefix(fields[0], "-") {
-		return fmt.Errorf("k8s_kubectl over HTTP: put the kubectl command first, flags after it (got %q first)", fields[0])
+		return fmt.Errorf("k8s_kubectl %s: put the kubectl command first, flags after it (got %q first)", w.where, fields[0])
 	}
 	verb := ""
 	var resources, outputs []string
@@ -102,15 +103,15 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 		for _, fl := range kubetools.ParseFlags(f) {
 			name, val := fl.Name, fl.Val
 			if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
-				return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", f)
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, f)
 			}
 			if name == "edit" {
 				// create --edit opens the object in an editor on the host
 				// before creating it (REL-5).
-				return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: it runs an editor on the MCP server's host", f)
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it runs an editor on the MCP server's host", w.where, f)
 			}
 			if kubectlHTTPVerbosityFlags[name] {
-				return fmt.Errorf("k8s_kubectl over HTTP: flag %s is not allowed: at higher verbosity kubectl logs API responses, Secret data included, into the output", f)
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: at higher verbosity kubectl logs API responses, Secret data included, into the output", w.where, f)
 			}
 			switch name {
 			case "o", "output":
@@ -119,7 +120,7 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 					val = fields[i]
 				}
 				if strings.Contains(val, "file") {
-					return fmt.Errorf("k8s_kubectl over HTTP: output %q reads a file on the MCP server", val)
+					return fmt.Errorf("k8s_kubectl %s: output %q reads a file on the MCP server", w.where, val)
 				}
 				outputs = append(outputs, val)
 			case "template", "go-template":
@@ -128,11 +129,11 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 				list = true
 			case "raw":
 				if !allowSecrets {
-					return fmt.Errorf("k8s_kubectl over HTTP: --raw is disabled (it can read Secret objects); start the server with --allow-secret-export to enable it")
+					return fmt.Errorf("k8s_kubectl %s: --raw is disabled (it can read Secret objects); %s to enable it", w.where, w.restart)
 				}
 			case "resolve":
 				if !allowSecrets {
-					return fmt.Errorf("k8s_kubectl over HTTP: --resolve is disabled (set env --list --resolve prints values from Secrets); start the server with --allow-secret-export to enable it")
+					return fmt.Errorf("k8s_kubectl %s: --resolve is disabled (set env --list --resolve prints values from Secrets); %s to enable it", w.where, w.restart)
 				}
 			}
 		}
@@ -141,13 +142,13 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 		return nil // the handler itself asks for args
 	}
 	if !kubectlHTTPVerbs[verb] {
-		return fmt.Errorf("k8s_kubectl over HTTP: %q is not a built-in kubectl command allowed in this mode (plugins, cp, port-forward, proxy, edit and kustomize run on the MCP server's host); put the command first, flags after it", verb)
+		return fmt.Errorf("k8s_kubectl %s: %q is not a built-in kubectl command allowed in this mode (plugins, cp, port-forward, proxy, edit and kustomize run on the MCP server's host); put the command first, flags after it", w.where, verb)
 	}
 	// "apply edit-last-applied" opens an editor on the host, as edit does
 	// (release audit, REL-5). Any position: a flag value before it lands
 	// in resources too.
 	if verb == "apply" && slices.Contains(resources, "edit-last-applied") {
-		return fmt.Errorf("k8s_kubectl apply edit-last-applied is not allowed over HTTP: it runs an editor on the MCP server's host, as edit does; use apply set-last-applied or k8s_apply")
+		return fmt.Errorf("k8s_kubectl apply edit-last-applied is not allowed %s: it runs an editor on the MCP server's host, as edit does; use apply set-last-applied or k8s_apply", w.where)
 	}
 	if allowSecrets {
 		return nil
@@ -155,7 +156,7 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 	// Not resources[0]: a flag value before the subcommand ("create -n
 	// default token sa") lands in resources too (SEC-1).
 	if verb == "create" && slices.Contains(resources, "token") {
-		return fmt.Errorf("k8s_kubectl create token is disabled over HTTP: it mints a credential; start the server with --allow-secret-export to enable it")
+		return fmt.Errorf("k8s_kubectl create token is disabled %s: it mints a credential; %s to enable it", w.where, w.restart)
 	}
 	if !namesSecrets(resources) {
 		return nil
@@ -164,27 +165,27 @@ func kubectlHTTPCheck(fields []string, allowSecrets bool) error {
 	// "label/patch/apply … secret x -o yaml --dry-run=server". Only the
 	// table (no -o, -o wide) and -o name leave the data out, and describe
 	// does not (see below).
-	const hint = "it prints the secret data; start the server with --allow-secret-export to enable it"
+	hint := "it prints the secret data; " + w.restart + " to enable it"
 	for _, o := range outputs {
 		if o != "" && o != "name" && o != "wide" {
-			return fmt.Errorf("k8s_kubectl %s secret with -o %s is disabled over HTTP: %s", verb, o, hint)
+			return fmt.Errorf("k8s_kubectl %s secret with -o %s is disabled %s: %s", verb, o, w.where, hint)
 		}
 	}
 	switch {
 	case template:
-		return fmt.Errorf("k8s_kubectl %s secret with --template is disabled over HTTP: %s", verb, hint)
+		return fmt.Errorf("k8s_kubectl %s secret with --template is disabled %s: %s", verb, w.where, hint)
 	case list:
 		// annotate --list shows the last-applied-configuration annotation,
 		// which holds the data of a Secret created with apply.
-		return fmt.Errorf("k8s_kubectl %s secret with --list is disabled over HTTP: %s", verb, hint)
+		return fmt.Errorf("k8s_kubectl %s secret with --list is disabled %s: %s", verb, w.where, hint)
 	case verb == "apply" && slices.Contains(resources, "view-last-applied"):
 		// Prints the same annotation, as YAML by default.
-		return fmt.Errorf("k8s_kubectl apply view-last-applied secret is disabled over HTTP: %s", hint)
+		return fmt.Errorf("k8s_kubectl apply view-last-applied secret is disabled %s: %s", w.where, hint)
 	case verb == "describe":
 		// describe leaves the values out of Data but prints every
 		// annotation in full, last-applied-configuration included (break
 		// r4, R4-1). The table of get does not print annotations.
-		return fmt.Errorf("k8s_kubectl describe secret is disabled over HTTP: it prints the annotations, and last-applied-configuration holds the secret data; use get secret (the table or -o name), or start the server with --allow-secret-export to enable it")
+		return fmt.Errorf("k8s_kubectl describe secret is disabled %s: it prints the annotations, and last-applied-configuration holds the secret data; use get secret (the table or -o name), or %s to enable it", w.where, w.restart)
 	}
 	return nil
 }

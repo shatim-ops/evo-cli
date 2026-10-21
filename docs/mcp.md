@@ -51,7 +51,8 @@ CLI показывает тот же `message` и вместо неё подск
 повторить вызов с `confirmed=true`, не спросив человека. Поэтому для
 изменяющих инструментов включайте в MCP-клиенте подтверждение каждого вызова
 человеком, а по HTTP отдавайте только те инструменты, которые агенту можно
-вызывать без присмотра. Поле `mutating` в `evo tools list --json` показывает,
+вызывать без присмотра; агенту, чьи вызовы никто не подтверждает, — сервер с
+[`--read-only`](#только-чтение---read-only). Поле `mutating` в `evo tools list --json` показывает,
 какие инструменты так устроены. В `tools/list` то же видно по стандартным
 аннотациям MCP: `readOnlyHint: true` у чтений, `destructiveHint: true` у
 удалений (`*_delete`, `destroy`, `stack_destroy`, `s3_rm`,
@@ -250,12 +251,12 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 
 ## Только нужные группы инструментов
 
-По умолчанию сервер предлагает агенту все 154 инструмента. Это около 100 КБ
+По умолчанию сервер предлагает агенту все 154 инструмента. Это около 110 КБ
 `tools/list`, и агент читает их в каждой сессии. Если нужен только deploy и
 работа с ВМ и сетью, оставьте эти группы:
 
 ```sh
-evo mcp --toolsets deploy,vm,vpc     # 26 инструментов, ~18 КБ
+evo mcp --toolsets deploy,vm,vpc     # 26 инструментов, ~22 КБ
 ```
 
 Группы перечислены в столбце ГРУППА вывода `evo tools list`: deploy, vm,
@@ -266,7 +267,128 @@ disk, image, vpc, k8s, pg, s3, secret, stack и другие. `--toolsets all` �
 Флаг экономит контекст агента, но прав не ограничивает: если в наборе есть
 группа `stack`, `stack_apply` сам вызывает инструменты других групп (без
 `stack` в `--toolsets` он агенту недоступен). Права ограничивают
-`--allow-project`, ограничения HTTP-режима и роли сервисного аккаунта.
+`--read-only`, `--allow-project`, ограничения HTTP-режима и роли сервисного
+аккаунта.
+
+## Только чтение: `--read-only`
+
+```sh
+evo mcp --read-only                          # stdio
+evo mcp --http 127.0.0.1:8080 --read-only    # HTTP
+```
+
+С флагом сервер не выполняет ни одного вызова, которому нужно согласие
+человека (`confirmed=true`), — ни с `confirmed`, ни без, — и не отдаёт
+секреты. Это граница прав на стороне сервера, в отличие от `--toolsets` и от
+гейта `confirmed`, который агент без присмотра проходит сам
+([ниже](#автономный-агент-только-на-чтение)).
+
+- Инструменты, которым согласие нужно при каждом вызове, — все изменяющие,
+  `secret_value` и `cert_private_key` — в `tools/list` не попадают: из 154
+  остаются 89 (~52 КБ). Вызов такого инструмента по имени — ошибка `USAGE`
+  до превью и до облака: `deploy is refused:
+  this server runs with --read-only, and the call needs the user's consent
+  (confirmed=true), as it changes the cloud or reveals a secret; a read-only
+  server makes no such call, confirmed or not`, в `hint` — `Calls that only
+  read work as usual. A change needs a server without --read-only: ask its
+  operator.`
+- `k8s_kubectl` и `k8s_helm` остаются ради чтений: `get`, `describe`, `logs`,
+  `rollout status`, `helm list` и `status` работают как без флага. Команда,
+  которой нужно согласие (`delete`, `apply`, `exec`, `rollout restart`, любой
+  глагол с `-f`/`-k`, `helm install|upgrade|uninstall`), — та же ошибка.
+- Секреты не уходят с сервера и по stdio — по тем же правилам, что по HTTP
+  без `--allow-secret-export` (H3, H6, H7): `k8s_kubeconfig` — только с
+  `embed_token=false`; `k8s_kubectl config …`, `get --raw`, Secret не
+  таблицей и не `-o name`, `-v` отклоняются (`USAGE`, «… on this --read-only
+  server …»); поля-учётные данные в ответах заменены на
+  `[redacted on this --read-only server]`, а ответ получает поле `redacted`.
+- `stack_status` показывает запущенный стек, но не продвигает его: следующие
+  шаги создали бы ресурсы по согласию, которое получил `stack_apply`. В ответе
+  — `note`; продвинет стек сервер без флага.
+- С `--toolsets` — пересечение, с `--allow-project` и `--http` флаг работает
+  как обычно; с `--allow-secret-export` он несовместим (ошибка с кодом 1).
+
+Нужно ли вызову согласие, решает одна функция — `tools.NeedsConsent`
+(`internal/tools/registry.go`): по ней работают гейты инструментов и
+`--read-only`. Согласие нужно инструменту, у которого в схеме есть
+`confirmed`, при каждом вызове; у `k8s_kubectl` и `k8s_helm` — по правилу их
+гейта. Тест проходит весь реестр: каждый инструмент либо скрыт и его вызов
+ничего не пишет в облако, либо отвечает как без флага.
+
+## Автономный агент только на чтение
+
+Агент, чьи вызовы никто не подтверждает (например, ГигаАгент в Cloud.ru — на
+ВМ, в Container Apps или в AI Agents), ставит `confirmed=true` сам: модель
+читает в схеме, что без него действие не выполнится. Такие клиенты не
+показывают человеку аннотации `readOnlyHint` / `destructiveHint` и не
+спрашивают согласия (elicitation), так что гейт инструмента такого агента не
+останавливает. Подключайте его к серверу с `--read-only`.
+
+stdio — `mcp.json` агента (формат `mcpServers` у большинства клиентов общий):
+
+```json
+{
+  "mcpServers": {
+    "evo": {
+      "command": "evo",
+      "args": ["mcp", "--read-only", "--toolsets", "vm,vpc,disk,image"],
+      "env": {
+        "CLOUDRU_KEY_ID": "<key-id>",
+        "CLOUDRU_SECRET": "<key-secret>",
+        "CLOUDRU_PROJECT_ID": "<project-uuid>"
+      }
+    }
+  }
+}
+```
+
+Ключ — в `env` или в профиле: `evo configure` один раз под тем пользователем,
+от имени которого агент запускает `evo` (тогда `env` не нужен). На
+переменные окружения самого агента не рассчитывайте: по stdio клиент может
+запустить `evo` с урезанным окружением, и ключ до него не дойдёт. Ключ в `env`
+лежит в файле открытым текстом — права `0600`; лучше ключ сервисного аккаунта
+с минимальными ролями в одном проекте: роль — вторая граница, уже на стороне
+Cloud.ru.
+
+HTTP — сервер отдельно, агент подключается по адресу:
+
+```sh
+export MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
+evo mcp --http 127.0.0.1:8080 --auth bearer --read-only --toolsets vm,vpc,disk,image
+```
+
+```json
+{
+  "mcpServers": {
+    "evo": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/mcp",
+      "headers": {"Authorization": "Bearer <MCP_BEARER_TOKEN>"}
+    }
+  }
+}
+```
+
+Поле транспорта у клиентов называется по-разному (`"type": "http"`,
+`transport`) — см. документацию клиента. Ответ `401` значит, что клиент не
+прислал `Authorization: Bearer …` или прислал не тот токен, что в
+`MCP_BEARER_TOKEN` сервера (сравнивается вся строка: лишний пробел или
+перевод строки — другой токен). Наружу сервер публикуйте только за TLS
+([Streamable HTTP](#streamable-http)).
+
+**`--toolsets` обязателен.** Без него агент получает все инструменты (с
+`--read-only` — 89, ~52 КБ схем; без него — 154, ~110 КБ) в каждой сессии, а у
+части API моделей предел — 128 инструментов в запросе: клиент такой сервер не
+подключит или обрежет список. Оставьте группы задачи: `vm,vpc,disk,image` —
+17 инструментов на чтение, ~9 КБ.
+
+**Тайм-аут вызова.** Часть инструментов ждёт внутри вызова: `*_operation` с
+`wait_seconds` (до 300 с), `stack_status` (до 20 с за вызов), `k8s_kubectl`
+(до 90 с). Клиенты нередко прерывают вызов через 60 с — увеличьте тайм-аут в
+настройках клиента (у некоторых это переменная окружения
+`MCP_TOOL_TIMEOUT_SEC`). С `--read-only` долгих изменяющих инструментов
+(`deploy`, `provision`, `stack_apply`) нет, а ожидание операций и статусов
+остаётся.
 
 ## Диагностика: whoami и doctor
 
@@ -606,14 +728,15 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
 |---|---|---|---|
 | H1 | ошибка `CONFIG_INVALID`, если на сервере нет `kubectl` / `helm` (в Docker-образе их нет) | `k8s_kubectl`, `k8s_apply`, `k8s_helm` | всегда |
 | H2 | `compose_file` — только внутри рабочего каталога сервера | `deploy` | всегда |
-| H3 | команда kubectl — первым словом; без файлов, плагинов, редактора и подробного журнала хоста, без отправки токена на другой сервер; Secret — только таблицей или `-o name` | `k8s_kubectl` | всегда; про Secret — без `--allow-secret-export` |
+| H3 | команда kubectl — первым словом; без файлов, плагинов, редактора и подробного журнала хоста, без отправки токена на другой сервер; Secret — только таблицей или `-o name` | `k8s_kubectl` | всегда; про Secret — без `--allow-secret-export`; с `--read-only` — и по stdio |
 | H4 | только удалённые чарты на публичных `https://` / `oci://` | `k8s_helm` | всегда |
 | H5 | инструмент отключён: возвращает секрет открытым текстом | `secret_value`, `cert_private_key` | без `--allow-secret-export` |
-| H6 | отключены `embed_token=true` и `config …`: возвращают токен кластера | `k8s_kubeconfig`, `k8s_kubectl` | без `--allow-secret-export` |
-| H7 | значения полей с корнем из `HTTPSecretFields` (кроме `HTTPNonSecretFields`) заменены, ответ получает поле `redacted` | все инструменты | без `--allow-secret-export` |
+| H6 | отключены `embed_token=true` и `config …`: возвращают токен кластера | `k8s_kubeconfig`, `k8s_kubectl` | без `--allow-secret-export`; с `--read-only` — и по stdio |
+| H7 | значения полей с корнем из `HTTPSecretFields` (кроме `HTTPNonSecretFields`) заменены, ответ получает поле `redacted` | все инструменты | без `--allow-secret-export`; с `--read-only` — и по stdio |
 | H8 | не больше 32 вызовов инструментов одновременно, следующий — `SERVER_BUSY` | все инструменты | всегда |
 | H9 | `--allow-project`: вызов в проекте не из списка — `CONFIG_INVALID` (флаг работает и по stdio) | `deploy`, `provision` и все, что работают в проекте | с флагом |
 | H10 | инструмент отключён: его проверки называют файлы и сеть сервера | `doctor` | всегда |
+| H11 | `--read-only`: вызов, которому нужно согласие (`confirmed=true`), — `USAGE` с `confirmed` и без; инструментов, которым согласие нужно всегда, нет в `tools/list` (флаг работает и по stdio) | все инструменты | с флагом |
 
 Механика самого транспорта (токен, `Origin`, размер тела и батча, сессии) —
 в разделе [Streamable HTTP](#streamable-http): она не меняет ответы

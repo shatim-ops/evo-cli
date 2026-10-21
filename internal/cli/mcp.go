@@ -40,6 +40,7 @@ func newMCPCmd() *cobra.Command {
 		httpAddr          string
 		authMode          string
 		allowSecretExport bool
+		readOnly          bool
 		allowProjects     []string
 		toolsets          []string
 	)
@@ -50,7 +51,7 @@ func newMCPCmd() *cobra.Command {
 		Long: i18n.T(mcpHelpEN, mcpHelpRU),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMCP(cmd, httpAddr, authMode, allowSecretExport, allowProjects, toolsets)
+			return runMCP(cmd, httpAddr, authMode, allowSecretExport, readOnly, allowProjects, toolsets)
 		},
 	}
 	cmd.Flags().StringVar(&httpAddr, "http", "", i18n.T("Serve MCP over Streamable HTTP on this address (e.g. :8080) instead of stdio",
@@ -61,6 +62,8 @@ func newMCPCmd() *cobra.Command {
 		"Разрешить вызовы инструментов только в этих проектах Cloud.ru (UUID; флаг повторяется или через запятую). По умолчанию — любой проект, который видит ключ"))
 	cmd.Flags().BoolVar(&allowSecretExport, "allow-secret-export", false, i18n.T("HTTP mode: allow k8s_kubeconfig with an embedded token, cert_private_key, secret_value and unmasked credentials in results",
 		"Режим HTTP: разрешить k8s_kubeconfig со встроенным токеном, cert_private_key, secret_value и немаскированные учётные данные в ответах"))
+	cmd.Flags().BoolVar(&readOnly, "read-only", false, i18n.T("Make no call that needs the user's consent (changes in the cloud, secrets) and hand out no secret, on either transport: a permission boundary for an agent nobody watches",
+		"Не выполнять вызовы, которым нужно согласие человека (изменения в облаке, секреты), и не отдавать секреты — в любом транспорте: граница прав для агента без присмотра"))
 	cmd.Flags().StringSliceVar(&toolsets, "toolsets", nil, i18n.T("Advertise only these tool groups (comma-separated, e.g. deploy,vm,vpc; see 'evo tools list'). Default: all. Saves the agent's context; not a permission boundary",
 		"Показывать агенту только эти группы инструментов (через запятую, например deploy,vm,vpc; группы — в 'evo tools list'). По умолчанию все. Экономит контекст агента; это не ограничение прав"))
 	cmd.AddCommand(newMCPHealthcheckCmd())
@@ -114,7 +117,16 @@ server can work in any of them. --allow-project limits the tools to the
 listed projects (repeat the flag or separate with commas): a call in any other
 project, the server's own included, fails. The read-only org_quotas and
 iam_service_accounts still read other projects. Without the flag the server
-warns at start in HTTP mode. Prefer a project-level key for a shared server.`
+warns at start in HTTP mode. Prefer a project-level key for a shared server.
+
+Read-only: --read-only makes no call that needs the user's consent
+(confirmed=true: a change in the cloud, secret_value, cert_private_key) and
+hands out no secret (no cluster token, no Secret data from kubectl,
+credential fields masked), over stdio and HTTP alike. Tools every call of
+which needs consent are left out of tools/list; k8s_kubectl and k8s_helm
+keep their reads. Use it for an agent nobody watches: such an agent sets
+confirmed=true itself, so the gate of a tool does not stop it, and
+--toolsets limits only what it is shown.`
 
 const mcpHelpRU = `Запустить evo как сервер Model Context Protocol.
 
@@ -165,7 +177,16 @@ k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl
 вызов в любом другом проекте, в том числе в проекте самого сервера,
 отклоняется. org_quotas и iam_service_accounts только читают и по-прежнему
 видят другие проекты. Без флага сервер в режиме HTTP предупреждает при
-запуске. Для общего сервера лучше ключ уровня проекта.`
+запуске. Для общего сервера лучше ключ уровня проекта.
+
+Только чтение: с --read-only сервер не выполняет ни одного вызова, которому
+нужно согласие (confirmed=true: изменение в облаке, secret_value,
+cert_private_key), и не отдаёт секреты (ни токена кластера, ни данных Secret
+из kubectl, учётные данные в ответах маскируются) — и по stdio, и по HTTP.
+Инструментов, которым согласие нужно всегда, нет в tools/list; у k8s_kubectl
+и k8s_helm остаются чтения. Это режим для агента без присмотра: такой агент
+сам ставит confirmed=true, и гейт инструмента его не остановит, а --toolsets
+ограничивает только то, что ему показано.`
 
 // runMCP validates the transport flags and serves. The process speaks
 // English from its first check: the engine's progress captured into tool
@@ -173,12 +194,21 @@ k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl
 // operators, not by the person at the terminal, and a refusal to start is
 // read in the same log (docs/auth.md: evo mcp always answers in English;
 // break r4, R4-12).
-func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport bool, allowProjects, toolsets []string) error {
+func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, readOnly bool, allowProjects, toolsets []string) error {
 	i18n.SetLang(i18n.EN)
+	if readOnly && allowSecretExport {
+		return clerrors.New(clerrors.CodeUsage,
+			i18n.T("--read-only hands out no secret: it does not go with --allow-secret-export",
+				"--read-only не отдаёт секреты: с --allow-secret-export он несовместим"),
+			i18n.T("Drop one of the two flags.", "Уберите один из двух флагов."))
+	}
 	srv := mcp.New(mcpEngineFactory(allowProjects), version)
 	if err := srv.SetToolsets(toolsets); err != nil {
 		return clerrors.Wrap(clerrors.CodeUsage, i18n.Tf("--toolsets: %v", "--toolsets: %v", err),
 			i18n.T("Groups are listed by 'evo tools list'.", "Группы — в выводе 'evo tools list'."), err)
+	}
+	if readOnly {
+		srv.SetReadOnly()
 	}
 
 	if httpAddr == "" {

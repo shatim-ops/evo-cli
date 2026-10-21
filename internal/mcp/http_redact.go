@@ -12,7 +12,8 @@ import (
 	"unicode"
 )
 
-// redacted replaces a credential in a tool result over HTTP.
+// redacted replaces a credential in a tool result over HTTP (httpWording);
+// a --read-only server has its own (readOnlyWording).
 const redacted = "[redacted over HTTP: start the server with --allow-secret-export]"
 
 // redactedField is the field a masked result gets: the paths of the masked
@@ -199,8 +200,8 @@ func hasRoot(k string) bool {
 // an object under one (passwords: ["a", "b"]). When the result is an
 // object, it lists the masked fields in its "redacted" field (sorted, array
 // elements as "[]": "users[].password"). Text that is not JSON is returned
-// as is, and so is a result with nothing to mask.
-func redactSecrets(tool, text string) string {
+// as is, and so is a result with nothing to mask. w gives the mask.
+func redactSecrets(tool, text string, w wording) string {
 	dec := json.NewDecoder(strings.NewReader(text))
 	dec.UseNumber() // keep large IDs and amounts as the tool wrote them
 	var v any
@@ -211,7 +212,7 @@ func redactSecrets(tool, text string) string {
 		return text // not a single JSON value
 	}
 	paths := map[string]bool{}
-	redactValue(tool, v, "", paths)
+	redactValue(tool, v, "", paths, w.mask)
 	if len(paths) == 0 {
 		return text
 	}
@@ -246,7 +247,7 @@ func redactedList(prev any, paths map[string]bool) []string {
 }
 
 // redactValue masks in place and records the path of each masked field.
-func redactValue(tool string, v any, path string, paths map[string]bool) {
+func redactValue(tool string, v any, path string, paths map[string]bool, mask string) {
 	switch t := v.(type) {
 	case map[string]any:
 		for k, x := range t {
@@ -255,33 +256,34 @@ func redactValue(tool string, v any, path string, paths map[string]bool) {
 				p = path + "." + k
 			}
 			if hasRoot(k) && !nonSecret(tool, k, x) {
-				t[k] = maskAll(x, p, paths)
+				t[k] = maskAll(x, p, paths, mask)
 				continue
 			}
-			redactValue(tool, x, p, paths)
+			redactValue(tool, x, p, paths, mask)
 		}
 	case []any:
 		for _, x := range t {
-			redactValue(tool, x, path+"[]", paths)
+			redactValue(tool, x, path+"[]", paths, mask)
 		}
 	}
 }
 
-// maskAll masks every non-empty string in v, the value of a credential key.
-func maskAll(v any, path string, paths map[string]bool) any {
+// maskAll replaces every non-empty string in v, the value of a credential
+// key, with mask.
+func maskAll(v any, path string, paths map[string]bool, mask string) any {
 	switch t := v.(type) {
 	case string:
 		if t != "" {
 			paths[path] = true
-			return redacted
+			return mask
 		}
 	case map[string]any:
 		for k, x := range t {
-			t[k] = maskAll(x, path+"."+k, paths)
+			t[k] = maskAll(x, path+"."+k, paths, mask)
 		}
 	case []any:
 		for i, x := range t {
-			t[i] = maskAll(x, path+"[]", paths)
+			t[i] = maskAll(x, path+"[]", paths, mask)
 		}
 	}
 	return v
