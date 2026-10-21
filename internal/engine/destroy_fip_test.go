@@ -157,10 +157,14 @@ func TestDestroy_DeletionWaitUsesTimings(t *testing.T) {
 	}
 	eng.Timings.DestroyPollTimeout = 20 * time.Millisecond
 
+	// The bound is the production default, not a fixed number of seconds: a
+	// loaded CI runner (Windows, -race, packages in parallel) can stretch
+	// 20 ms well past any small bound, while a wait that ignored Timings
+	// takes the whole default.
 	start := time.Now()
 	err := eng.Destroy(context.Background(), DestroyOptions{Force: true})
-	if d := time.Since(start); d > 2*time.Second {
-		t.Errorf("destroy took %s", d)
+	if d := time.Since(start); d >= destroyPollTimeout/2 {
+		t.Errorf("destroy took %s: the deletion wait ignored Engine.Timings (default %s)", d, destroyPollTimeout)
 	}
 	if !stderrors.Is(err, ErrDeletionUnconfirmed) || clerrors.ExitCode(err) != clerrors.ExitAPI ||
 		!strings.Contains(hintOf(err), "re-run 'evo destroy'") {
