@@ -402,7 +402,7 @@ func runToolsCall(cmd *cobra.Command, name, argsFile, argsJSON string, argPairs 
 			return err
 		}
 	}
-	text, err := invokeTool(cmd.Context(), cmd, t, callArgs, false)
+	text, err := invokeTool(cmd.Context(), cmd, t, callArgs, false, callHints(t.Name))
 	// With --json a tool error goes to stderr only, as {"error":…}, and
 	// stdout stays empty, as in the command trees: pg_get without an id
 	// printed its error body to stdout too, ar_get did not (QA-12).
@@ -651,7 +651,8 @@ func applyWait(t tools.Tool, args map[string]any) error {
 // stopped at a --dry-run preview) and an error carrying the exit code.
 // human (the command trees) shows the structured preview of a billable
 // tool in the words of deploy; 'evo tools call' shows the answer as is.
-func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[string]any, human bool) (string, error) {
+// hints word a refusal for the caller (toolError).
+func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[string]any, human bool, hints toolHints) (string, error) {
 	opts := confirm.Options{Yes: flagYes, DryRun: flagDryRun, JSON: flagJSON,
 		Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr()}
 
@@ -683,7 +684,7 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 		text, isErr = t.Handler(ctx, confirmed)
 	}
 	if isErr {
-		return text, toolError(t.Name, text)
+		return text, toolError(t.Name, text, hints)
 	}
 	return text, nil
 }
@@ -772,13 +773,76 @@ func argLines(m map[string]any) []string {
 	return lines
 }
 
+// toolHints are the CLI's words for a refused call of a tool, by what
+// called it. 'evo tools call' passes the tool's arguments (--arg), so the
+// tool's own hint fits them, and a USAGE refusal without one points to
+// 'evo tools describe'. A command passes its flags: a USAGE refusal points
+// to its help, and an input the call lacks — the "missing" of the answer,
+// by argument — is named by the command's flag. 'evo vm create' without a
+// zone was sent to 'evo tools describe provision' and told about the MCP
+// server's CLOUDRU_REGION (dogfood 1.2.0). The reason and the exit code
+// are the tool's either way: only the hint is the surface's.
+type toolHints struct {
+	// usage is the hint of a USAGE refusal that has none of its own.
+	usage string
+	// flag is the command's flag for a tool argument ("--region"); nil
+	// keeps the tool's hint.
+	flag func(arg string) string
+}
+
+// callHints are the hints of 'evo tools call <tool>'.
+func callHints(tool string) toolHints {
+	return toolHints{usage: argsHint("evo tools describe " + tool)}
+}
+
+// commandHints are the hints of the command cmd; flag names its flag for a
+// tool argument (nil: the tool's hint stays).
+func commandHints(cmd *cobra.Command, flag func(arg string) string) toolHints {
+	return toolHints{usage: argsHint(cmd.CommandPath() + " --help"), flag: flag}
+}
+
+func argsHint(help string) string {
+	return i18n.Tf("Check the arguments: '%s'.", "Проверьте аргументы: '%s'.", help)
+}
+
+// missingInputHints are the CLI's hints for an input a call lacks, by the
+// tool argument, with the command's flag for it: what the tool's hint says
+// to an agent (the argument, the server's settings), in the CLI's terms.
+var missingInputHints = map[string]func(flag string) string{
+	"region": func(flag string) string {
+		return i18n.Tf("Pass %s (list: evo vm zones), or keep a zone in the profile: evo configure --region <zone>.",
+			"Задайте %s (список: evo vm zones) или evo configure --region <зона>.", flag)
+	},
+	"image": func(flag string) string {
+		return i18n.Tf("Pass %[1]s (list: evo image list), e.g. %[1]s Ubuntu-24.04.",
+			"Задайте %[1]s (список: evo image list), например %[1]s Ubuntu-24.04.", flag)
+	},
+}
+
+// missingInputHint is the CLI's hint for the first input of missing (the
+// "missing" of an answer) it has one for, "" otherwise.
+func missingInputHint(missing any, h toolHints) string {
+	if h.flag == nil {
+		return ""
+	}
+	args, _ := missing.([]any)
+	for _, a := range args {
+		name, _ := a.(string)
+		if hint, ok := missingInputHints[name]; ok {
+			return hint("--" + h.flag(name))
+		}
+	}
+	return ""
+}
+
 // toolError maps a tool's error answer to a CLIError, as the same failure
 // of any other command would be: the code ("reason" of the answer, else the
 // "API_UNREACHABLE: …" prefix of its message) keeps its exit code — 1 for
 // API_UNREACHABLE, 2 for credentials, 4 for not found — and the hint of the
-// answer is kept. An answer without a code gives 4 when it says something
-// was not found, and API_ERROR (5) otherwise.
-func toolError(name, text string) error {
+// answer is kept, unless the CLI names the input the call lacks in its own
+// terms (toolHints). An answer without a code gives 4 when it says
+// something was not found, and API_ERROR (5) otherwise.
+func toolError(name, text string, h toolHints) error {
 	msg := text
 	var reason, hint string
 	if m := parseObject(text); m != nil {
@@ -790,6 +854,9 @@ func toolError(name, text string) error {
 		}
 		reason, _ = m["reason"].(string)
 		hint, _ = m["hint"].(string)
+		if cli := missingInputHint(m["missing"], h); cli != "" {
+			hint = cli
+		}
 	}
 	code := ""
 	if clerrors.IsCode(reason) {
@@ -807,7 +874,7 @@ func toolError(name, text string) error {
 	if hint == "" {
 		switch {
 		case code == clerrors.CodeUsage: // the tool refused its arguments; nothing reached the cloud
-			hint = i18n.T("Check the arguments: 'evo tools describe ", "Проверьте аргументы: 'evo tools describe ") + name + "'."
+			hint = h.usage
 		case code == clerrors.CodeConfigInvalid: // the message names what to set
 		case clerrors.ExitCode(clerrors.New(code, "", "")) == clerrors.ExitAuth:
 			hint = i18n.T("Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.",

@@ -35,14 +35,17 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		want string // what the preview must name
 		// engines: how many engines one preview builds. The previews of a
 		// VM name the project it goes to (QA P6) and complete what they
-		// create with reads (owner's decision Q6, spec REQ-7): provision
-		// with the engine of its call; deploy with one for the project and
-		// one for the new VM. With no engine (here) nothing is read; the
-		// previews write nothing (TestContract_GatePreviewDoesNotWrite).
+		// create with reads (owner's decision Q6, spec REQ-7): deploy with
+		// one engine for the project and one for the new VM. With no
+		// engine (here) nothing is read; the previews write nothing
+		// (TestContract_GatePreviewDoesNotWrite). provision is not here:
+		// without a configuration that names the project, the image and
+		// the zone it refuses before its preview (internal/tools,
+		// TestProvision_NoZoneOrImageRefusedBeforePreview); with one its
+		// preview comes first (TestProvision_ZoneByName).
 		engines int
 	}{
 		{"deploy", map[string]any{"flavor": "lowcost10-2-4"}, "lowcost10-2-4", 2},
-		{"provision", map[string]any{"name": "vm-a", "no_public_ip": true}, "vm-a", 1},
 		{"ca_start", map[string]any{"name": "app-1"}, "app-1", 0},
 		{"ca_stop", map[string]any{"name": "app-1"}, "app-1", 0},
 		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", 0},

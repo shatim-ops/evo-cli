@@ -59,11 +59,12 @@ func (s *Registry) registerTools() {
 			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. A subnet and a security group are attached automatically. " +
 				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works, Astra Linux, Alt and RED OS included; a shared-catalogue image the project cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
 				"evo fills the image's metadata fields (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else the call is refused before anything is created. " +
+				"No image or zone: refused before the preview ('missing' names it). " +
 				"For docker-compose use 'deploy'.",
 			InputSchema: objSchema(map[string]any{
 				"name":       strProp("VM name (e.g. 'hermes-agent')."),
 				"flavor":     strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
-				"region":     strProp("Availability zone UUID (see list_zones)."),
+				"region":     strProp("Availability zone: a name such as 'ru.AZ-2' or a UUID (see list_zones). Default: the server's CLOUDRU_REGION."),
 				"project_id": strProp("Cloud.ru project UUID."),
 				"image":      strProp("Boot image by exact name, display name or UUID (see image_list, image_get), e.g. 'Ubuntu-24.04'. Use it or image_id, not both."),
 				"image_id":   strProp("Boot image UUID (see image_list, image_get)."),
@@ -1710,19 +1711,35 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	if err != nil {
 		return errResult(err), true
 	}
+	// The engine of the preview and of the call alike: a configuration
+	// that cannot be built, or that names no project (engineFor), no image
+	// or no zone (provisionInputError), fails the call whatever the person
+	// answers, so the preview refuses it instead of asking for consent
+	// (dogfood 1.2.0), and so does a call with confirmed=true.
+	eng, err := s.engineFor(ctx, overrides)
+	if err == nil && eng == nil {
+		err = stderrors.New("engine unavailable")
+	}
+	if err != nil {
+		return errResult(err), true
+	}
+	if arg, err := provisionInputError(eng); err != nil {
+		return errAnswer(err, map[string]any{"missing": []string{arg}}), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		noPublicIP, _ := args["no_public_ip"].(bool)
 		// The configuration names the project, the zone and the image;
 		// the reads of the preview (flavor, zone and image names, the
-		// price) complete it, and create nothing (spec REQ-7). Without an
-		// engine there is nothing to read with.
-		eng, _ := s.newEngine(overrides)
-		preview := provisionPreview(eng, args)
-		if eng != nil {
-			var err error
-			if preview, err = s.completePreview(ctx, eng, preview); err != nil {
-				return errResult(err), true
-			}
+		// price) complete it, and create nothing (spec REQ-7).
+		zctx, cancel := context.WithTimeout(ctx, engine.PreviewLookupTimeout)
+		zone, _, err := resolveVMZone(zctx, eng)
+		cancel()
+		if err != nil {
+			return errResult(err), true
+		}
+		preview := provisionPreview(eng.Config, zone, args)
+		if preview, err = s.completePreview(ctx, eng, preview); err != nil {
+			return errResult(err), true
 		}
 		will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
 			firstNonEmptyStr(stringArg(args, "project_id"), preview.ProjectID))
@@ -1746,11 +1763,6 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		}), true
 	}
 
-	eng, err := s.newEngine(overrides)
-	if err != nil {
-		return errResult(err), true
-	}
-
 	// Auth
 	tok, err := eng.Auth.Token(ctx)
 	if err != nil {
@@ -1759,18 +1771,14 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	eng.Cloud.SetToken(tok.Value)
 
 	projectID := eng.Config.ProjectID
-	if projectID == "" {
-		return errResult(clierrors.ProjectRequired()), true // release audit, R-06
+	// The zone by its UUID, a name resolved (resolveVMZone), before
+	// anything else is read; the list also names the zone for the network
+	// below.
+	zone, zones, err := resolveVMZone(ctx, eng)
+	if err != nil {
+		return errResult(err), true
 	}
-
-	if eng.ImageRef() == "" {
-		return usageT("image (name or UUID) or image_id (UUID) is required; the server has no CLOUDRU_IMAGE_ID (an image UUID) to default to", "нужен image (имя или UUID) или image_id (UUID): у сервера не задан CLOUDRU_IMAGE_ID (UUID образа по умолчанию)"), true
-	}
-
 	region := eng.Config.Region
-	if region == "" {
-		return usageT("region (availability zone UUID, see list_zones) is required; the server has no CLOUDRU_REGION to default to", "нужен region (UUID зоны доступности, см. list_zones): у сервера не задан CLOUDRU_REGION"), true
-	}
 
 	vmName := stringArg(args, "name")
 	if vmName == "" {
@@ -1839,21 +1847,11 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// the VM are billed, so a zone without them is refused here, before
 	// anything is created — CONFIG_INVALID, as deploy.
 	zoneName := ""
-	var zones []*provision.AvailabilityZone
-	if zs, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
-		zones = zs
-		for _, z := range zones {
-			if z.ID == region {
-				zoneName = z.Name
-				break
-			}
-		}
-		if err := provision.ZoneRefError(zones, region); err != nil {
-			return errResult(err), true
-		}
-		if err := provision.ClosedZoneError(zones, region); err != nil {
-			return errResult(err), true
-		}
+	if zone != nil {
+		zoneName = zone.Name
+	}
+	if err := provision.ClosedZoneError(zones, region); err != nil {
+		return errResult(err), true
 	}
 	subnets, err := eng.Cloud.ListSubnets(ctx, projectID)
 	if err != nil {
@@ -3170,18 +3168,15 @@ func isUUID(s string) bool {
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // provisionPreview is what provision would create, from the call and the
-// configuration only: the zone, image and flavor as configured (names,
-// the flavor auto picks and the price need the cloud: completePreview adds
-// them). eng may be nil when the configuration cannot be built.
-func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePreview {
+// configuration only: the zone (zone: the listed zone of cfg.Region, nil
+// when not listed), image and flavor as configured (the image name, the
+// flavor auto picks and the price need the cloud: completePreview adds
+// them).
+func provisionPreview(cfg config.Config, zone *provision.AvailabilityZone, args map[string]any) engine.CreatePreview {
 	noPublicIP, _ := args["no_public_ip"].(bool)
 	public := !noPublicIP
 	p := engine.CreatePreview{Resource: engine.ResourceVM, Name: stringArg(args, "name"),
 		PublicIP: &public, SubnetID: stringArg(args, "subnet_id")}
-	var cfg config.Config
-	if eng != nil {
-		cfg = eng.Config
-	}
 	p.ProjectID, p.ProjectFrom = cfg.ProjectID, cfg.ProjectOrigin
 	if v := stringArg(args, "project_id"); v != "" {
 		p.ProjectID, p.ProjectFrom = v, "argument"
@@ -3190,6 +3185,9 @@ func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePrev
 		Zone:  deployplan.RefSpec{ID: cfg.Region},
 		Image: deployplan.RefSpec{ID: cfg.ImageID},
 		Disk:  deployplan.DiskSpec{Type: "SSD"}}
+	if zone != nil {
+		vm.Zone.Name = zone.Name
+	}
 	if ref := stringArg(args, "image"); ref != "" || (cfg.ImageID == "" && cfg.Image != "") {
 		// By name: the CLI resolves it for the preview, the call when it runs.
 		ref = firstNonEmptyStr(ref, cfg.Image)
@@ -3210,12 +3208,6 @@ func provisionPreview(eng *engine.Engine, args map[string]any) engine.CreatePrev
 	// the image, as provision itself does.
 	vm.Disk.SizeGB, _ = provision.BootDiskGB(cfg.DiskSize, 0)
 	p.VM = &vm
-	image := firstNonEmptyStr(vm.Image.ID, vm.Image.Name)
-	for _, m := range []struct{ name, val string }{{"project_id", p.ProjectID}, {"image_id", image}, {"region", cfg.Region}} {
-		if m.val == "" {
-			p.Missing = append(p.Missing, m.name)
-		}
-	}
 	if tcp, udp, err := sgrules.ParsePorts(portSpecs(args["ports"])); err == nil && len(tcp)+len(udp) > 0 {
 		p.Add("ports", strings.Join(portLabels(tcp, udp), ","))
 	}
@@ -3249,4 +3241,72 @@ func (s *Registry) completePreview(ctx context.Context, eng *engine.Engine, p en
 		return engine.CreatePreview{}, err
 	}
 	return p, nil
+}
+
+// provisionInputError is the refusal of a provision that names no image or
+// no zone, with the argument the call lacks; nil when both are set. The
+// VM cannot be created whatever the person answers, so the preview refuses
+// it before it asks for consent, as the call with confirmed=true does — the
+// one check of both (dogfood 1.2.0: the preview said «не задано: зона»,
+// asked «Продолжить?», and the call failed after «y»). The project is
+// checked before, by engineFor (ProjectRequired). The zone, like the
+// project, is configuration (CONFIG_INVALID): the profile keeps it (evo
+// configure --region); the image is the call's own (USAGE, as it was). The
+// hint names the arguments and the server's settings, for an agent; the
+// CLI names its own flags instead, from the argument (toolError).
+func provisionInputError(eng *engine.Engine) (arg string, err error) {
+	switch {
+	case eng.ImageRef() == "":
+		return "image", clierrors.New(clierrors.CodeUsage,
+			i18n.T("no image is set (image or image_id)", "не задан образ (image или image_id)"),
+			i18n.T("Pass image: a name such as Ubuntu-24.04 or a UUID (image_list), or image_id; the server has no CLOUDRU_IMAGE_ID to default to.",
+				"Передайте image — имя (например, Ubuntu-24.04) или UUID (image_list) — или image_id: у сервера не задан CLOUDRU_IMAGE_ID."))
+	case eng.Config.Region == "":
+		return "region", clierrors.New(clierrors.CodeConfigInvalid,
+			i18n.T("no availability zone is set (region)", "не задана зона доступности (region)"),
+			i18n.T("Pass region: a zone name such as ru.AZ-2 or its UUID (list_zones); the server has no CLOUDRU_REGION to default to.",
+				"Передайте region — имя зоны (например, ru.AZ-2) или её UUID (list_zones): у сервера не задан CLOUDRU_REGION."))
+	}
+	return "", nil
+}
+
+// resolveVMZone resolves the zone of a new VM — eng.Config.Region: the region
+// argument, else CLOUDRU_REGION or the profile — to the UUID of the listed
+// zone by provision.ResolveZone, the rule of stacks and evo configure, in
+// place, and returns that zone (nil when not listed) and the list. A name
+// needs the list: unread, or naming no listed zone, it is refused before
+// anything is created. A UUID stays as given when the list is unread or
+// does not have it, as before (the create call answers for it).
+func resolveVMZone(ctx context.Context, eng *engine.Engine) (*provision.AvailabilityZone, []*provision.AvailabilityZone, error) {
+	ref := eng.Config.Region
+	zones, err := listZones(ctx, eng)
+	if err != nil {
+		if isUUID(ref) {
+			return nil, nil, nil
+		}
+		return nil, nil, clierrors.Prefix(i18n.Tf("availability zone %q: list zones: ", "зона доступности %q: список зон: ", ref), err)
+	}
+	zone, err := provision.ResolveZone(zones, ref)
+	if err != nil {
+		if isUUID(ref) || len(zones) == 0 {
+			return nil, zones, nil
+		}
+		return nil, zones, err
+	}
+	eng.Config.Region = zone.ID
+	return zone, zones, nil
+}
+
+// listZones reads the zone list with the engine's token; an engine without
+// credentials or a cloud reads nothing.
+func listZones(ctx context.Context, eng *engine.Engine) ([]*provision.AvailabilityZone, error) {
+	if eng.Auth == nil || eng.Cloud == nil {
+		return nil, stderrors.New(i18n.T("no cloud to read the zones from", "нет облака, чтобы прочитать зоны"))
+	}
+	tok, err := eng.Auth.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	eng.Cloud.SetToken(tok.Value)
+	return eng.Cloud.ListAvailabilityZones(ctx)
 }

@@ -7,11 +7,13 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -312,8 +314,16 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 				return fmt.Errorf(i18n.T("%s takes no arguments, got %q", "%s не принимает аргументов, передано %q"), cmd.CommandPath(), args[0])
 			}
 			if len(args) < minArgs || (maxArgs >= 0 && len(args) > maxArgs) {
-				return fmt.Errorf(i18n.T("%s: want %s, got %d argument(s)", "%s: нужно %s, передано аргументов: %d"),
+				msg := fmt.Sprintf(i18n.T("%s: want %s, got %d argument(s)", "%s: нужно %s, передано аргументов: %d"),
 					cmd.CommandPath(), strings.Join(use[1:], " "), len(args))
+				if maxArgs >= 0 && len(args) > maxArgs {
+					// A value whose flag was left out reads as one more
+					// argument: name them (dogfood 1.2.0, a zone after the
+					// name without --region).
+					msg += i18n.Tf("; extra arguments: %s — a flag left out?", "; лишние аргументы: %s — пропущен флаг?",
+						extraArgs(args[maxArgs:]))
+				}
+				return stderrors.New(msg)
 			}
 			return nil
 		},
@@ -393,10 +403,11 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		// The tool's own check of the arguments (tools.CheckArgs, spec.md
 		// REQ-8), before the preview: its refusal is the one the tool
 		// gives, as every refusal of a tool is shown.
+		hints := commandHints(cmd, c.flagName)
 		if err := tools.CheckArgs(t, callArgs); err != nil {
-			return toolError(t.Name, tools.ErrResult(err))
+			return toolError(t.Name, tools.ErrResult(err), hints)
 		}
-		text, err := invokeTool(cmd.Context(), cmd, t, callArgs, true)
+		text, err := invokeTool(cmd.Context(), cmd, t, callArgs, true, hints)
 		if flagJSON {
 			// On a tool error the text is the tool's error body: the error
 			// itself goes to stderr as {"error":…}, so stdout stays empty
@@ -743,6 +754,19 @@ func readArgFile(cmd *cobra.Command, path string) ([]byte, error) {
 		return io.ReadAll(cmd.InOrStdin())
 	}
 	return os.ReadFile(path)
+}
+
+// extraArgs lists the arguments a command does not take, quoted, a long
+// one cut short.
+func extraArgs(args []string) string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		if r := []rune(a); len(r) > 24 {
+			a = string(r[:23]) + "…"
+		}
+		out[i] = strconv.Quote(a)
+	}
+	return strings.Join(out, ", ")
 }
 
 func helpHint(cmd *cobra.Command) string {

@@ -86,6 +86,11 @@ func fullArgs(tl Tool) map[string]any {
 			delete(args, k)
 		}
 	}
+	// image and image_id exclude each other (provision): USAGE before the
+	// project check too.
+	if _, ok := args["image_id"]; ok {
+		delete(args, "image")
+	}
 	if _, ok := args["name"]; ok {
 		args["name"] = "app1" // a name the API takes, not a UUID
 	}

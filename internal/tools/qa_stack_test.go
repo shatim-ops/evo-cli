@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 )
@@ -79,7 +81,12 @@ func TestQA_StackGatedStepsAreConfirmed(t *testing.T) {
 		t.Fatal(err)
 	}
 	var gotVM, gotS3 map[string]any
-	inner := r.handlers["provision"]
+	// The gate of provision, on a configuration it can create a VM with
+	// (without one it refuses before the gate).
+	const id = "00000000-0000-4000-8000-000000000001"
+	inner := New(func(map[string]any) (*engine.Engine, error) {
+		return &engine.Engine{Config: config.Config{ProjectID: id, Region: id, ImageID: id}}, nil
+	}).handlers["provision"]
 	r.handlers["provision"] = func(ctx context.Context, a map[string]any) (string, bool) {
 		gotVM = a
 		if text, isErr := inner(ctx, map[string]any{"name": a["name"]}); !strings.Contains(text, "confirmation_required") || !isErr {

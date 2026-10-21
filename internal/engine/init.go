@@ -91,16 +91,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 
 	interactive := !opts.NonInteractive && confirm.StdinIsTTY()
 
-	if open := provision.OpenZones(zones); len(open) < len(zones) {
-		for _, z := range zones {
-			if z.Closed() {
-				e.Printer.Warning(i18n.Tf("zone %s is closed for new resources (enabled=false in the zone list) and is not offered",
-					"зона %s закрыта для новых ресурсов (в списке зон enabled=false) и не предлагается", z.Name))
-			}
-		}
-		zones = open
-	}
-	zones = e.initZones(ctx, zones)
+	zones = e.ZoneChoices(ctx, zones)
 	zoneNames := make([]string, len(zones))
 	for i, z := range zones {
 		zoneNames[i] = z.Name
@@ -167,6 +158,24 @@ func PreferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.Availa
 	return zones
 }
 
+// ZoneChoices are the zones offered for new VMs, best first — by evo init
+// and by evo configure, which ask for the zone the same way: the zones that
+// take new resources (a closed one is named in a warning), then in the
+// order of initZones (a zone with a subnet of the project first, ru.AZ-2
+// among them).
+func (e *Engine) ZoneChoices(ctx context.Context, zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
+	if open := provision.OpenZones(zones); len(open) < len(zones) {
+		for _, z := range zones {
+			if z.Closed() {
+				e.Printer.Warning(i18n.Tf("zone %s is closed for new resources (enabled=false in the zone list) and is not offered",
+					"зона %s закрыта для новых ресурсов (в списке зон enabled=false) и не предлагается", z.Name))
+			}
+		}
+		zones = open
+	}
+	return e.initZones(ctx, zones)
+}
+
 // initZones orders the zones for init: first a zone where the project has
 // a subnet — deploy cannot plug a VM in elsewhere, and a new project has
 // one only in ru.AZ-1 (docs, «Подсети»: Default_ru.AZ-1 is created
@@ -205,8 +214,8 @@ func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZ
 	switch {
 	case len(zones) == 0:
 	case rank(zones[0]) == 3:
-		e.Printer.Warning(i18n.T("the project has no subnet in any zone: deploy cannot plug a VM in. Create a subnet in the Cloud.ru console (Network → Subnets), then run 'evo init' again",
-			"в проекте нет подсети ни в одной зоне: deploy не сможет подключить ВМ к сети. Создайте подсеть в консоли Cloud.ru (Сеть → Подсети) и повторите 'evo init'"))
+		e.Printer.Warning(i18n.T("the project has no subnet in any zone: a new VM cannot be plugged in. Create a subnet in the Cloud.ru console (Network → Subnets), then choose the zone again",
+			"в проекте нет подсети ни в одной зоне: новую ВМ не подключить к сети. Создайте подсеть в консоли Cloud.ru (Сеть → Подсети) и выберите зону снова"))
 	case zones[0].Name != preferredZone:
 		for _, z := range zones {
 			if z.Name == preferredZone {

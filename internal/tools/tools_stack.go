@@ -631,16 +631,9 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 	if err != nil {
 		return nil, fmt.Errorf("validate vm.zone: list availability zones: %w", err)
 	}
-	var zone *provision.AvailabilityZone
-	for _, z := range zones {
-		if z.ID == zoneRef || strings.EqualFold(z.Name, zoneRef) {
-			zone = z
-			break
-		}
-	}
-	if zone == nil {
-		return nil, clierrors.New(clierrors.CodeUsage, i18n.Tf("vm.zone %q: availability zone not found", "vm.zone %q: зона доступности не найдена", zoneRef),
-			i18n.T("See list_zones (evo list-zones) for the zone names.", "Имена зон — в выводе list_zones (evo list-zones)."))
+	zone, err := provision.ResolveZone(zones, zoneRef)
+	if err != nil {
+		return nil, clierrors.Prefix("vm.zone: ", err)
 	}
 	if err := provision.ClosedZoneError(zones, zone.ID); err != nil {
 		return nil, err

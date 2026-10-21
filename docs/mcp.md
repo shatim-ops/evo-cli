@@ -117,7 +117,8 @@ kubectl (`~/.kube/kuberc`: алиасы, значения флагов по ум
 схемы элементы массива JSON (`[80,"x"]` для `ports` — `USAGE`).
 
 У части ошибок есть свои поля: `vm_id` у `provision`, когда ВМ уже создана
-(её надо удалить); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
+(её надо удалить); `missing` у `provision` без образа или зоны — имя
+аргумента (`["image"]`, `["region"]`); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
 `k8s_helm`. `provision`, не дождавшийся ВМ, отвечает `"status":"timeout"`
 с теми же `reason` и `error`. Отказ политики HTTP (`secret_value`,
 `cert_private_key`, `k8s_kubeconfig` с токеном, путь вне рабочего каталога)
@@ -475,6 +476,15 @@ evo сверяет каждый поиск с каталогом проекта 
 имя или UUID (разрешается так же, как в `image_get`: неоднозначно — `USAGE`
 с кандидатами в сообщении, не найдено — `NOT_FOUND`), или по-старому как
 `image_id` (UUID); оба сразу — `USAGE`.
+
+Зона `provision` — аргумент `region` или `CLOUDRU_REGION` сервера: имя
+(`ru.AZ-2`, в любом регистре) или UUID, по тому же правилу, что `vm.zone`
+стека; неизвестное имя — `USAGE` со списком зон. Без образа (`image`,
+`image_id`, `CLOUDRU_IMAGE_ID`) или без зоны вызов не может пройти и
+отказывает сразу, до превью и без `confirmation_required`: без образа —
+`USAGE`, без зоны — `CONFIG_INVALID`, без проекта — `CONFIG_INVALID`, так же
+и с `confirmed=true` (с 1.2.1; раньше превью называло их в `preview.missing`,
+а отказ приходил после согласия). `deploy` по-прежнему ждёт UUID зоны.
 
 `provision` дополнительно принимает:
 
