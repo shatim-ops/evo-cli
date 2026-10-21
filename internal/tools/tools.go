@@ -3373,7 +3373,9 @@ func provisionInputError(eng *engine.Engine) (arg string, err error) {
 // resolveVMZone resolves the zone of a new VM — eng.Config.Region: the region
 // argument, else CLOUDRU_REGION or the profile — to the UUID of the listed
 // zone by engine.ResolveZoneRef, the rule of evo deploy, in place, and
-// returns that zone (nil when not listed) and the list.
+// returns that zone and the list. The zone is nil, with no error, for a
+// UUID the list lacks or could not be read for: the create call answers
+// for it.
 func resolveVMZone(ctx context.Context, eng *engine.Engine) (*provision.AvailabilityZone, []*provision.AvailabilityZone, error) {
 	zones, err := listZones(ctx, eng)
 	zone, err := engine.ResolveZoneRef(zones, err, eng.Config.Region)
