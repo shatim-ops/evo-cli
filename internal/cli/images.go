@@ -186,15 +186,14 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 		return nil
 	}
 	img := a.Image
-	type kv struct{ k, v string }
-	lines := []kv{
+	lines := []cardLine{
 		{i18n.T("Name", "Имя"), img.Name},
 		{i18n.T("Display name", "Отображаемое имя"), img.DisplayName},
 		{i18n.T("Type", "Тип"), img.Type},
 		{"UUID", img.ID},
 	}
 	if d := strings.TrimSpace(img.Description); d != "" {
-		lines = append(lines, kv{i18n.T("Description", "Описание"), clip(d, 200)})
+		lines = append(lines, cardLine{i18n.T("Description", "Описание"), clip(d, 200)})
 	}
 	var min []string
 	if img.MinCPU > 0 {
@@ -209,7 +208,7 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 	if len(min) == 0 {
 		min = []string{i18n.T("not stated", "не указан")}
 	}
-	lines = append(lines, kv{i18n.T("Minimum", "Минимум"), strings.Join(min, ", ")})
+	lines = append(lines, cardLine{i18n.T("Minimum", "Минимум"), strings.Join(min, ", ")})
 
 	zones := i18n.T("ready in no zone", "не готов ни в одной зоне")
 	if len(a.ZonesReady) > 0 {
@@ -230,22 +229,12 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 	if len(other) > 0 {
 		zones += "; " + strings.Join(other, ", ")
 	}
-	lines = append(lines, kv{i18n.T("Zones", "Зоны"), zones})
+	lines = append(lines, cardLine{i18n.T("Zones", "Зоны"), zones})
 	unavailable := a.AvailableInProject != nil && !*a.AvailableInProject
 	if unavailable {
-		lines = append(lines, kv{i18n.T("Project", "Проект"), i18n.T("NOT available: a VM cannot be created from it", "НЕ доступен: ВМ из него не создать")})
+		lines = append(lines, cardLine{i18n.T("Project", "Проект"), i18n.T("NOT available: a VM cannot be created from it", "НЕ доступен: ВМ из него не создать")})
 	}
-
-	width := 0
-	for _, l := range lines {
-		width = max(width, utf8.RuneCountInString(l.k))
-	}
-	for _, l := range lines {
-		if l.v == "" {
-			continue
-		}
-		fmt.Fprintf(w, "%s:%s %s\n", l.k, strings.Repeat(" ", width-utf8.RuneCountInString(l.k)), output.SanitizeCell(l.v))
-	}
+	printCard(w, lines)
 
 	fmt.Fprintln(w)
 	if len(a.Fields) == 0 {
