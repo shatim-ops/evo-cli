@@ -848,10 +848,12 @@ func missingInputHint(missing any, h toolHints) string {
 func toolError(name, text string, h toolHints) error {
 	msg := text
 	var reason, hint string
+	var details map[string]any
 	if m := parseObject(text); m != nil {
+		msgKey := ""
 		for _, k := range []string{"error", "message"} {
 			if s, ok := m[k].(string); ok && s != "" {
-				msg = s
+				msg, msgKey = s, k
 				break
 			}
 		}
@@ -860,6 +862,7 @@ func toolError(name, text string, h toolHints) error {
 		if cli := missingInputHint(m["missing"], h); cli != "" {
 			hint = cli
 		}
+		details = answerDetails(m, msgKey)
 	}
 	code := ""
 	if clerrors.IsCode(reason) {
@@ -884,7 +887,27 @@ func toolError(name, text string, h toolHints) error {
 				"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET.")
 		}
 	}
-	return clerrors.New(code, name+": "+msg, hint)
+	ce := clerrors.New(code, name+": "+msg, hint)
+	ce.Details = details
+	return ce
+}
+
+// answerDetails are the fields of a tool's error answer m beyond the error
+// itself — the status "error", the message (msgKey), reason and hint — or
+// nil when there are none.
+func answerDetails(m map[string]any, msgKey string) map[string]any {
+	var details map[string]any
+	for k, v := range m {
+		switch {
+		case k == msgKey, k == "reason", k == "hint", k == "status" && v == "error":
+			continue
+		}
+		if details == nil {
+			details = map[string]any{}
+		}
+		details[k] = v
+	}
+	return details
 }
 
 // Root flags that pick the project and the zone for every command that
