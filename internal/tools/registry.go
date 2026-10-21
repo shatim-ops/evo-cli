@@ -171,7 +171,8 @@ func (r *Registry) SetReadOnly() { r.readOnly = true }
 // configuration: a read that names no project_id and would read more than
 // a project otherwise reads that project only — billing_consumption and
 // billing_finops the consumption of the project, not of the whole billing
-// agreement (billingClient); org_projects lists that project, not the
+// agreement (billingClient), and the balance of the agreement is not given
+// (balanceRefused); org_projects lists that project, not the
 // organization's. A call in another project is the factory's to refuse,
 // and so is a resource a tool names by id (idArgs): before the handler,
 // the registry finds the resource's project and asks the factory for an

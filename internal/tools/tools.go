@@ -1110,12 +1110,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_balance",
-			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway.",
+			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
 			Name:        "billing_consumption",
-			Description: "Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. Aggregated by service: total (excluding VAT, sum of amount), total_with_nds (including VAT, sum of amount_nds), records, by_service sorted by cost (excluding VAT). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). Use for FinOps/cost analysis.",
+			Description: "Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. Aggregated by service: total (excluding VAT, sum of amount), total_with_nds (including VAT, sum of amount_nds), records, by_service sorted by cost (excluding VAT) with cost_with_nds (including VAT). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). Use for FinOps/cost analysis.",
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Required."),
 				"end":        strProp("End date YYYY-MM-DD (default = start)."),
@@ -1124,7 +1124,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_finops",
-			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Costs exclude VAT (amount). Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks.",
+			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Costs exclude VAT (amount); total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it (amount_nds); runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks.",
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
 				"end":        strProp("End date YYYY-MM-DD. Optional; default = today."),
