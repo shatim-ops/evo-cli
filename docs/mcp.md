@@ -499,6 +499,19 @@ evo сверяет каждый поиск с каталогом проекта 
   общая для всех ВМ в ней), в ответе — `ports{opened, already_open, failed}`;
   `destroy` закрывает созданные правила.
 
+Ответ `provision` (с 1.2.1, поля только добавились): `ssh` — команда входа
+с ключом развёртывания и `known_hosts` проекта, как у `deploy_apply`
+(`ssh -i <каталог>/.evo/id_ed25519 -o UserKnownHostsFile=<каталог>/.evo/known_hosts
+-o StrictHostKeyChecking=accept-new user1@<IP>`; есть, если у ВМ внешний IP
+и она получила ключ развёртывания, а не ключ из `image_metadata`); запись
+прежней ВМ на том же IP из `known_hosts` удаляется. `message` называет ту же
+команду. `password` — пароль, который evo сгенерировал для образа, один раз:
+evo его не хранит (пароль из `image_metadata` не возвращается); он же — в
+ответе `"status":"timeout"`. По HTTP без `--allow-secret-export` `password`
+маскируется (H7). `state_dir` — каталог `.evo` сервера с ключом и state:
+`status` и `destroy` берут запись ВМ оттуда. Пути в `ssh` и `state_dir` —
+пути на машине сервера, как в `ssh` у `deploy_apply`.
+
 `provision` создаёт ВМ из любого доступного проекту образа, включая Astra
 Linux, Альт и РЕД ОС. Образ, недоступный проекту, `provision`, `deploy` и
 `deploy_plan` отклоняют с `NOT_FOUND` («… is in the Cloud.ru catalogue but
@@ -867,7 +880,7 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
   `describe pod` и ConfigMap печатают env подов как есть, поэтому пароль
   кладите в Secret, а не в `env` или ConfigMap.
 - В ответах всех инструментов значения полей-учётных данных заменяются на
-  `[redacted over HTTP: …]`. Так, `deploy_apply` не возвращает
+  `[redacted over HTTP: …]`. Так, `deploy_apply` и `provision` не возвращают
   сгенерированный пароль ВМ (вход — по SSH-ключу сервера), а `pg_get`,
   `redis_get`, `kafka_get` и другие `*_get` — паролей, если облако их пришлёт.
   Правило: **корень где угодно в имени поля минус закрытый перечень

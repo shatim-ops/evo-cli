@@ -347,7 +347,7 @@
 | `evo tg delete` | `tg_delete` | id | — | — | confirmed | — |
 | `evo tg get` | `tg_get` | id | — | — | — | — |
 | `evo tg list` | `tg_list` | — | — | — | — | — |
-| `evo vm create` | `provision` | name | image_metadata→--meta, ports→--port | — | confirmed, project_id, region | pairs:image_metadata |
+| `evo vm create` | `provision` | name | image_metadata→--meta, ports→--port | — | confirmed, project_id, region | pairs:image_metadata, render |
 | `evo vm delete` | `destroy` | vm_id\|name | — | — | confirmed | — |
 | `evo vm flavors` | `list_flavors` | — | — | — | — | — |
 | `evo vm get` | `vm_get` | vm_id\|name | — | — | — | — |

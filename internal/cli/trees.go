@@ -56,10 +56,11 @@ type treeCmd struct {
 // renderFunc shows a tool's answer instead of the generic table.
 type renderFunc func(p *output.Printer, w io.Writer, text string) error
 
-// treeRenders is the closed set of views a CLISpec.Render may name (image
-// list, image get, the Marketplace showcase, k8s addons, ca logs, metrics
-// scrape); --json still prints the tool's answer as is.
+// treeRenders is the closed set of views a CLISpec.Render may name (vm
+// create, image list, image get, the Marketplace showcase, k8s addons, ca
+// logs, metrics scrape); --json still prints the tool's answer as is.
 var treeRenders = map[string]renderFunc{
+	"vm-created":       renderVMCreated,
 	"image-list":       renderImageList,
 	"image-card":       renderImageCard,
 	"marketplace-list": renderMarketplaceList,
