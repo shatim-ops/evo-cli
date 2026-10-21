@@ -779,7 +779,7 @@ func firstNonEmptyStr(vals ...string) string {
 
 // k8sPreview is the preview of k8s_create and k8s_add_nodepool: the
 // arguments as given (the rest is resolved at creation; k8s_plan shows it).
-// evo has no rate card for Managed Kubernetes, so there is no price.
+// evo has no rate card for Managed Kubernetes: the preview links its tariff (Price).
 func k8sPreview(resource, name string, args map[string]any) engine.CreatePreview {
 	p := engine.CreatePreview{Resource: resource, Name: name}
 	if z := stringArg(args, "zone"); z != "" {

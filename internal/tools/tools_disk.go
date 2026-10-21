@@ -343,7 +343,7 @@ func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (s
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		preview, err := s.completePreview(ctx, nil, engine.CreatePreview{Resource: engine.ResourceDiskResize, Name: diskID,
-			Disk: &deployplan.DiskSpec{SizeGB: sizeGB}, CostNote: "not estimated: evo has no rate card for this resource"})
+			Disk: &deployplan.DiskSpec{SizeGB: sizeGB}})
 		if err != nil {
 			return errResult(err), true
 		}

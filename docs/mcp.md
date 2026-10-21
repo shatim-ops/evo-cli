@@ -133,6 +133,8 @@ JSON-RPC `-32602` с сообщением `Unknown tool: <имя>`, как тр�
 
 ## Цена
 
+Превью ресурса, цену которого evo не рассчитывает (кластеры Managed Kubernetes и PostgreSQL, группы узлов, бакеты, расширение диска), не оставляет агента без цены и без источника: `preview.cost` нет, `preview.cost_note` говорит, что ресурс платный, а `preview.tariff_url` — публичный тариф Cloud.ru (`https://cloud.ru/documents/tariffs/evolution/managed-kubernetes` и т. п.). У плагина кластера своей цены нет: он работает на узлах кластера (с 1.2.1).
+
 Цену ВМ возвращает `deploy_plan` в поле `cost`, а превью `provision` и
 `deploy` без `confirmed` — в `preview.cost`. Она берётся из API расчёта
 цены Cloud.ru (`POST /api/v1/projects/{project_id}/price-calculation`: только

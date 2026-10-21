@@ -285,7 +285,8 @@ func TestDiskCreatePreview_Russian(t *testing.T) {
 }
 
 // A billable command without a rate card: header, project, zone and the
-// key parameters, and a word that there is no price.
+// key parameters, and that the cluster is paid, with its tariff — not a
+// line that reads as «free» (dogfood 1.2.1).
 func TestK8sCreatePreview_NoPrice(t *testing.T) {
 	russian(t)
 	withPreviewCloud(t)
@@ -300,7 +301,7 @@ func TestK8sCreatePreview_NoPrice(t *testing.T) {
 		"  зона:       ru.AZ-1\n",
 		"  мастеров:   3\n",
 		"  API извне:  нет\n",
-		"  цена:       не оценивается: у evo нет тарифа для этого ресурса\n",
+		"  цена:       evo её не рассчитывает, ресурс платный: тариф https://cloud.ru/documents/tariffs/evolution/managed-kubernetes\n",
 	})
 	assertNoJargon(t, errOut)
 	if strings.Contains(errOut, "k8s_plan") || strings.Contains(errOut, "billable") {
