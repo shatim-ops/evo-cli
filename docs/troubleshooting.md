@@ -144,8 +144,8 @@ evo configure --region ru.AZ-2
 «лишние аргументы: "ru.AZ-2" — пропущен флаг?», код 1. Неизвестное имя зоны —
 `USAGE` (код 1) со списком зон. Без образа — `USAGE` (код 1): «не задан образ»,
 передайте `--image` (список — `evo image list`). Зону по имени понимают
-`evo vm create`, `evo configure --region`, MCP `provision` и стеки;
-`evo deploy --region` по-прежнему ждёт UUID и на имя отвечает подсказкой с ним.
+`evo vm create`, `evo configure --region`, `evo deploy --region`, MCP
+`provision`, `deploy` и стеки.
 
 ### ВМ уходит в `error` / `error_creating`
 
@@ -158,7 +158,7 @@ evo configure --region ru.AZ-2
 # ID и имена зон
 evo vm zones
 # или region: в .evo.yaml
-evo deploy --region <UUID ru.AZ-2>
+evo deploy --region ru.AZ-2
 ```
 
 ВМ в ошибке удалите (`evo destroy` или `evo vm delete <id>`),
