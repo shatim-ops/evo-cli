@@ -309,7 +309,7 @@ func TestSec_RedactedListsMaskedFields(t *testing.T) {
 	want := map[string][]string{
 		"pg_users":     {"cluster.admin.rootPassword", "users[].password"},
 		"cert_get":     {"privateKeyPem"},
-		"stack_status": {"earlier.token", "vm.password"},
+		"stack_status": {"vm.password"}, // the tool's own redacted is replaced, not merged (RP-2)
 	}
 	for name, paths := range want {
 		text, _ := call(s, name, nil)
@@ -380,8 +380,9 @@ func TestSec_KnownSecretFieldsMasked(t *testing.T) {
 		}
 	}
 
-	// Lists and objects under a credential key: every string inside.
-	unknown := `{"passwords":["S3cret-a","S3cret-b"],"secret_old":{"v":"S3cret-c","n":[1,"S3cret-d"],"updated_at":"S3cret-e"},"private_key_2":"S3cret-f","count":2}`
+	// Lists and objects under a credential key: every string and number
+	// inside (Cursor review 21.10, RP-3).
+	unknown := `{"passwords":["S3cret-a","S3cret-b"],"secret_old":{"v":"S3cret-c","n":[1000000004,"S3cret-d"],"updated_at":"S3cret-e"},"private_key_2":"S3cret-f","count":2}`
 	got := redactSecrets("kafka_get", unknown, httpWording)
 	if strings.Contains(got, "S3cret") {
 		t.Errorf("unknown credential fields leak: %s", got)
@@ -389,8 +390,8 @@ func TestSec_KnownSecretFieldsMasked(t *testing.T) {
 	if want := []string{"passwords[]", "private_key_2", "secret_old.n[]", "secret_old.updated_at", "secret_old.v"}; !slices.Equal(redactedOf(t, got), want) {
 		t.Errorf("redacted %v, want %v", redactedOf(t, got), want)
 	}
-	if !strings.Contains(got, `"count": 2`) || !strings.Contains(got, `1,`) {
-		t.Errorf("numbers lost: %s", got)
+	if strings.Contains(got, "1000000004") || !strings.Contains(got, `"count": 2`) {
+		t.Errorf("a number under a credential key is masked, one under another key is not: %s", got)
 	}
 
 	// Results as the tools build them (internal/tools), and cloud objects

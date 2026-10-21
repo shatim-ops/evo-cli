@@ -202,7 +202,7 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, re
 				"--read-only не отдаёт секреты: с --allow-secret-export он несовместим"),
 			i18n.T("Drop one of the two flags.", "Уберите один из двух флагов."))
 	}
-	srv := mcp.New(mcpEngineFactory(allowProjects), version)
+	srv := newMCPServer(allowProjects)
 	if err := srv.SetToolsets(toolsets); err != nil {
 		return clerrors.Wrap(clerrors.CodeUsage, i18n.Tf("--toolsets: %v", "--toolsets: %v", err),
 			i18n.T("Groups are listed by 'evo tools list'.", "Группы — в выводе 'evo tools list'."), err)
@@ -238,6 +238,18 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, re
 		AllowSecretExport: allowSecretExport,
 		Logger:            logger.Logger,
 	}, nil)
+}
+
+// newMCPServer is the server of evo mcp on the projects of --allow-project
+// (none: any project the key sees). With the flag the tools are bound to
+// the server's project (H9): a read that names no project reads that
+// project, not the whole billing agreement or organization.
+func newMCPServer(allowProjects []string) *mcp.Server {
+	srv := mcp.New(mcpEngineFactory(allowProjects), version)
+	if len(allowProjects) > 0 {
+		srv.SetProjectBound()
+	}
+	return srv
 }
 
 // mcpEngineFactory builds the engine of every tool call. Tools that take a
@@ -280,13 +292,14 @@ func checkAllowedProject(allowed []string, project string) error {
 			return nil
 		}
 	}
-	shown := project
-	if shown == "" {
+	list := strings.Join(allowed, ",")
+	shown, hint := project, fmt.Sprintf("The server runs with --allow-project %s; ask its operator to add the project.", list)
+	if project == "" {
 		shown = "(not set)"
+		hint = fmt.Sprintf("The server has no project of its own: pass project_id (one of %s) where the tool takes one.", list)
 	}
 	return clerrors.New(clerrors.CodeConfigInvalid,
-		fmt.Sprintf("project %s is not allowed on this server", shown),
-		fmt.Sprintf("The server runs with --allow-project %s; ask its operator to add the project.", strings.Join(allowed, ",")))
+		fmt.Sprintf("project %s is not allowed on this server", shown), hint)
 }
 
 // runMCPStdio serves the stdio transport.

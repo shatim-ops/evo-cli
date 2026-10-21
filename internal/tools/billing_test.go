@@ -183,3 +183,48 @@ func TestBillingFinops_ByProjectBalanceUnknown(t *testing.T) {
 		t.Errorf("balance_error %q", be)
 	}
 }
+
+// A project-bound registry (evo mcp --allow-project) reads the agreement
+// only within the configuration's project: both filters, scope project.
+// billing_finops reads the period and the one before the same way.
+func TestBilling_ProjectBoundReadsItsProject(t *testing.T) {
+	t.Setenv("CLOUDRU_AGREEMENT_ID", "agr-1")
+	r, calls := billingRegistry(t, addonProject, 200, billingRows)
+	r.SetProjectBound()
+	for _, c := range []struct {
+		name     string
+		requests int
+	}{{"billing_consumption", 1}, {"billing_finops", 2}} {
+		before := len(*calls)
+		m, text, isErr := callNamed(t, r, c.name, map[string]any{"start": "2026-10-01", "end": "2026-10-02"})
+		if isErr || len(*calls)-before != c.requests {
+			t.Fatalf("%s: answer %s, queries %v", c.name, text, (*calls)[before:])
+		}
+		for _, q := range (*calls)[before:] {
+			if q.Get("agreement_id") != "agr-1" || q.Get("project_ids") != addonProject {
+				t.Errorf("%s: query %v, want agreement_id and project_ids", c.name, q)
+			}
+		}
+		if m["scope"] != "project" || m["project_id"] != addonProject || m["agreement_id"] != "agr-1" {
+			t.Errorf("%s: answer %s", c.name, text)
+		}
+	}
+}
+
+// Bound, with no project configured: CONFIG_INVALID naming project_id,
+// before any request — not the whole agreement.
+func TestBilling_ProjectBoundWithoutProject(t *testing.T) {
+	t.Setenv("CLOUDRU_AGREEMENT_ID", "agr-1")
+	r, calls := billingRegistry(t, "", 200, billingRows)
+	r.SetProjectBound()
+	for _, name := range []string{"billing_consumption", "billing_finops"} {
+		m, text, isErr := callNamed(t, r, name, map[string]any{"start": "2026-10-01"})
+		msg, _ := m["error"].(string)
+		if !isErr || m["reason"] != "CONFIG_INVALID" || !strings.Contains(msg, "project_id") {
+			t.Errorf("%s: answer %s", name, text)
+		}
+	}
+	if len(*calls) != 0 {
+		t.Errorf("queries %v, want none", *calls)
+	}
+}

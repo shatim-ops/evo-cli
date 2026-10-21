@@ -466,21 +466,22 @@ func TestRenderAnswer_RussianTree(t *testing.T) {
 		t.Errorf("note:\n%s", buf.String())
 	}
 
-	// A table without Russian titles keeps the keys of the tool.
+	// A table without Russian titles keeps the keys of the tool, in
+	// capitals; its booleans are да/нет, as in every Russian table.
 	buf.Reset()
 	if err := renderAnswer(p, &buf, `{"items":[{"id":"x","enabled":true}]}`, tableView{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(buf.String(), "ID") || !strings.Contains(buf.String(), "ENABLED") || !strings.Contains(buf.String(), "true") {
+	if !strings.HasPrefix(buf.String(), "ID") || !strings.Contains(buf.String(), "ENABLED") || !strings.Contains(buf.String(), "да") {
 		t.Errorf("table without titles:\n%s", buf.String())
 	}
 }
 
 // The tables of the trees of v1.1 (image, vpc, k8s, pg, s3, secret) title
 // their columns in Russian when the CLI speaks Russian, from the titles of
-// the other trees (owner's decision Q11); the cells stay as the tool gives
-// them (true, not да). In English a generic table is the one without
-// Russian titles, byte for byte, and every tree has its titles.
+// the other trees, and say да/нет (owner's decision Q11). In English a
+// generic table is the one without Russian titles, byte for byte, and every
+// tree has its titles.
 func TestRenderAnswer_TreesOfV11(t *testing.T) {
 	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
 	show := func(c treeCmd, text string, view *tableView) string {
@@ -507,9 +508,9 @@ func TestRenderAnswer_TreesOfV11(t *testing.T) {
 		{"image", "list", `{"images":[{"id":"i-1","name":"ubuntu-22.04","display_name":"Ubuntu 22.04","type":"os","zones_ready":["ru.AZ-1"],"min_disk_gb":10}],"shown":1,"total":1}`,
 			"ИМЯ ОТОБРАЖАЕМОЕ ИМЯ ТИП ЗОНЫ МИН. ДИСК", "NAME DISPLAY NAME TYPE ZONES MIN DISK", ""},
 		{"vpc", "list", `{"vpcs":[{"id":"vpc-1","name":"main","default":true,"type":"standard"}]}`,
-			"ID Имя По умолчанию Тип", "ID NAME DEFAULT TYPE", "vpc-1 main true standard"},
+			"ID Имя По умолчанию Тип", "ID NAME DEFAULT TYPE", "vpc-1 main да standard"},
 		{"vpc", "fips", `{"floating_ips":[{"id":"f-1","name":"fip","ip_address":"192.0.2.10","state":"DOWN","available":true,"nat_gateway":false}]}`,
-			"ID Имя Состояние Свободен IP-адрес На NAT-шлюзе", "ID NAME STATE AVAILABLE IP_ADDRESS NAT_GATEWAY", "f-1 fip DOWN true 192.0.2.10 false"},
+			"ID Имя Состояние Свободен IP-адрес На NAT-шлюзе", "ID NAME STATE AVAILABLE IP_ADDRESS NAT_GATEWAY", "f-1 fip DOWN да 192.0.2.10 нет"},
 		{"k8s", "nodepools", `{"node_pools":[{"id":"np-1","name":"workers","status":"RUNNING","version":"1.30","desired":3,"flavor":"gen-2-4"}]}`,
 			"ID Имя Состояние Версия Узлов Flavor", "ID NAME STATUS VERSION DESIRED FLAVOR", "np-1 workers RUNNING 1.30 3 gen-2-4"},
 		{"pg", "list", `{"clusters":[{"id":"pg-1","name":"db","status":"RUNNING","version":"16","health":"HEALTHY"}]}`,
