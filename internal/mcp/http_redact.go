@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // redacted replaces a credential in a tool result over HTTP (httpWording);
@@ -206,11 +207,32 @@ func hasRoot(k string) bool {
 	return false
 }
 
+// pairNames are the fields that name the value of a name/value pair, the
+// form in which a cloud object carries a list of settings: the env of a
+// container ({"name": "DB_PASSWORD", "value": …}: ca_get, ca_list, a pod
+// spec), the parameters of a create preview, the metadata of a cloud
+// object ({"key": …, "value": …}). The name is the value's key: a
+// credential name makes the value a credential (Fable audit, REL12-2).
+var pairNames = []string{"name", "key"}
+
+// pairValue is the field that holds the value of a name/value pair.
+const pairValue = "value"
+
+// minEchoLen is the length, in characters, from which echoes looks for a
+// masked value elsewhere in the result. A shorter value is a common word
+// ("ok", "true", "debug", "admin") that unrelated fields hold too; it is
+// still masked under its own key. Eight is the shortest password the usual
+// policies accept (NIST SP 800-63B for a password a person chooses), and a
+// generated password, a key or a token is longer (Fable audit, REL12-10).
+const minEchoLen = 8
+
 // redactSecrets masks the credentials anywhere in a JSON result of tool: a
 // non-empty string or a number under a credential key, and every one inside
 // a list or an object under one (passwords: ["a", "b"]); true and false stay,
-// as a flag (password set or not) is no credential. A string anywhere else
-// equal to a masked value is masked too, so no value is left under a key
+// as a flag (password set or not) is no credential. The value of a
+// name/value pair whose name is a credential key (pairNames) is masked the
+// same way. A string anywhere else equal to a masked value of minEchoLen
+// characters or more is masked too, so no value is left under a key
 // without a root (Cursor review 21.10, RP-2, RP-3). When the result is an
 // object, its "redacted" field lists the masked paths (sorted, array
 // elements as "[]": "users[].password"). Text that is not JSON is returned
@@ -266,10 +288,14 @@ func (m *masking) list() []string {
 	return out
 }
 
-// walk masks in place the value of every credential key in v (all).
+// walk masks in place the value of every credential key in v, and of every
+// name/value pair named so (all).
 func (m *masking) walk(v any, path string) {
 	switch t := v.(type) {
 	case map[string]any:
+		if m.secretPair(t) {
+			t[pairValue] = m.all(t[pairValue], keyPath(path, pairValue))
+		}
 		for k, x := range t {
 			p := keyPath(path, k)
 			if hasRoot(k) && !nonSecret(m.tool, k, x) {
@@ -283,6 +309,22 @@ func (m *masking) walk(v any, path string) {
 			m.walk(x, path+"[]")
 		}
 	}
+}
+
+// secretPair reports whether object o is a name/value pair (pairNames)
+// whose name is a credential key by the rules of a key: a root of
+// HTTPSecretFields, not excepted by HTTPNonSecretFields.
+func (m *masking) secretPair(o map[string]any) bool {
+	v, ok := o[pairValue]
+	if !ok {
+		return false
+	}
+	for _, f := range pairNames {
+		if name, ok := o[f].(string); ok && hasRoot(name) && !nonSecret(m.tool, name, v) {
+			return true
+		}
+	}
+	return false
 }
 
 // all replaces every non-empty string and every number in v, the value of
@@ -307,15 +349,18 @@ func (m *masking) all(v any, path string) any {
 	return v
 }
 
-// masked records a masked value and its path, and returns the mask.
+// masked records a masked value and its path, and returns the mask. echoes
+// looks only for a value of minEchoLen characters or more.
 func (m *masking) masked(value, path string) string {
 	m.paths[path] = true
-	m.values[value] = true
+	if utf8.RuneCountInString(value) >= minEchoLen {
+		m.values[value] = true
+	}
 	return m.mask
 }
 
-// echoes masks, after walk, every string in v equal to a masked value: a
-// secret repeated under a key without a root.
+// echoes masks, after walk, every string in v equal to a recorded masked
+// value (masked): a secret repeated under a key without a root.
 func (m *masking) echoes(v any, path string) any {
 	switch t := v.(type) {
 	case string:

@@ -14,7 +14,7 @@ ARG GO_VERSION=1.26.10
 # переписать в реестре, digest — нет. Поднимая GO_VERSION, обновите и digest
 # (это делает Dependabot):
 #   docker buildx imagetools inspect golang:<версия> --format '{{.Manifest.Digest}}'
-FROM golang:${GO_VERSION}@sha256:5c3f3f28a273c9b61698b2d34f18375929790ab1f1d3835d032d21e2b31eae0c AS build
+FROM golang:${GO_VERSION}@sha256:fb456410ab4c979617acaf28c46b2b9fe60b11bcc3dc8ceea0eaeb3e7cd0f8a8 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
