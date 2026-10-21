@@ -22,6 +22,20 @@ import (
 // CLISpecs.
 func allTreeGroups() []treeGroup { return treeGroupsOf(tools.New(nil)) }
 
+// treeCmdOf is the command verb of the tree group.
+func treeCmdOf(t *testing.T, group, verb string) treeCmd {
+	t.Helper()
+	for _, g := range allTreeGroups() {
+		for _, c := range g.Cmds {
+			if g.Name == group && c.Verb == verb {
+				return c
+			}
+		}
+	}
+	t.Fatalf("no %s %s", group, verb)
+	return treeCmd{}
+}
+
 // The trees must not drift from the registry: every command names an
 // existing tool, its positional arguments are arguments of that tool, every
 // required argument is reachable, and every tool of the tree groups has a
@@ -429,20 +443,13 @@ func TestTrees_BoolDefaultTrue(t *testing.T) {
 func TestRenderAnswer_RussianTree(t *testing.T) {
 	i18n.SetLang(i18n.RU)
 	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
-	var flavors treeCmd
-	for _, g := range allTreeGroups() {
-		for _, c := range g.Cmds {
-			if g.Name == "vm" && c.Verb == "flavors" {
-				flavors = c
-			}
-		}
-	}
+	flavors := treeCmdOf(t, "vm", "flavors")
 	text := `{"flavors":[{"name":"gen-1-1","vcpus":1,"ram_gb":1,"free_tier":false,"est_monthly_rub":512.3},` +
 		`{"name":"free-1-1","vcpus":1,"ram_gb":1,"free_tier":true,"est_monthly_rub":0}],` +
 		`"note":"est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price"}`
 	var buf bytes.Buffer
 	p := output.NewWithWriter(&buf, output.ModePlain, false)
-	if err := renderAnswer(p, &buf, text, tableView{Columns: flavors.Columns, Russian: russianTrees["vm"]}); err != nil {
+	if err := flavors.show(p, &buf, text); err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(buf.String(), "\n")
@@ -459,12 +466,84 @@ func TestRenderAnswer_RussianTree(t *testing.T) {
 		t.Errorf("note:\n%s", buf.String())
 	}
 
-	// Another tree keeps the keys of the tool.
+	// A table without Russian titles keeps the keys of the tool.
 	buf.Reset()
 	if err := renderAnswer(p, &buf, `{"items":[{"id":"x","enabled":true}]}`, tableView{}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(buf.String(), "ID") || !strings.Contains(buf.String(), "ENABLED") || !strings.Contains(buf.String(), "true") {
-		t.Errorf("non-Russian tree:\n%s", buf.String())
+		t.Errorf("table without titles:\n%s", buf.String())
+	}
+}
+
+// The tables of the trees of v1.1 (image, vpc, k8s, pg, s3, secret) title
+// their columns in Russian when the CLI speaks Russian, from the titles of
+// the other trees (owner's decision Q11); the cells stay as the tool gives
+// them (true, not да). In English a generic table is the one without
+// Russian titles, byte for byte, and every tree has its titles.
+func TestRenderAnswer_TreesOfV11(t *testing.T) {
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	show := func(c treeCmd, text string, view *tableView) string {
+		t.Helper()
+		var buf bytes.Buffer
+		p := output.NewWithWriter(&buf, output.ModePlain, false)
+		var err error
+		if view != nil {
+			err = renderAnswer(p, &buf, text, *view)
+		} else {
+			err = c.show(p, &buf, text)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	line := func(out string, i int) string { return strings.Join(strings.Fields(strings.Split(out, "\n")[i]), " ") }
+	for _, tc := range []struct {
+		group, verb, text string
+		ru, en            string // the titles
+		row               string // the first row in Russian; "" when it is not checked
+	}{
+		{"image", "list", `{"images":[{"id":"i-1","name":"ubuntu-22.04","display_name":"Ubuntu 22.04","type":"os","zones_ready":["ru.AZ-1"],"min_disk_gb":10}],"shown":1,"total":1}`,
+			"ИМЯ ОТОБРАЖАЕМОЕ ИМЯ ТИП ЗОНЫ МИН. ДИСК", "NAME DISPLAY NAME TYPE ZONES MIN DISK", ""},
+		{"vpc", "list", `{"vpcs":[{"id":"vpc-1","name":"main","default":true,"type":"standard"}]}`,
+			"ID Имя По умолчанию Тип", "ID NAME DEFAULT TYPE", "vpc-1 main true standard"},
+		{"vpc", "fips", `{"floating_ips":[{"id":"f-1","name":"fip","ip_address":"192.0.2.10","state":"DOWN","available":true,"nat_gateway":false}]}`,
+			"ID Имя Состояние Свободен IP-адрес На NAT-шлюзе", "ID NAME STATE AVAILABLE IP_ADDRESS NAT_GATEWAY", "f-1 fip DOWN true 192.0.2.10 false"},
+		{"k8s", "nodepools", `{"node_pools":[{"id":"np-1","name":"workers","status":"RUNNING","version":"1.30","desired":3,"flavor":"gen-2-4"}]}`,
+			"ID Имя Состояние Версия Узлов Flavor", "ID NAME STATUS VERSION DESIRED FLAVOR", "np-1 workers RUNNING 1.30 3 gen-2-4"},
+		{"pg", "list", `{"clusters":[{"id":"pg-1","name":"db","status":"RUNNING","version":"16","health":"HEALTHY"}]}`,
+			"ID Имя Состояние Версия Работоспособность", "ID NAME STATUS VERSION HEALTH", "pg-1 db RUNNING 16 HEALTHY"},
+		{"s3", "buckets", `{"buckets":[{"name":"assets","created":"2026-01-02T03:04:05Z"}]}`,
+			"Имя Создан", "NAME CREATED", "assets 2026-01-02T03:04:05Z"},
+		{"secret", "list", `{"secrets":[{"id":"s-1","name":"db","path":"app/db","description":"password of the app"}]}`,
+			"ID Имя Путь Описание", "ID NAME PATH DESCRIPTION", "s-1 db app/db password of the app"},
+	} {
+		c := treeCmdOf(t, tc.group, tc.verb)
+		i18n.SetLang(i18n.RU)
+		ru := show(c, tc.text, nil)
+		if h := line(ru, 0); h != tc.ru {
+			t.Errorf("%s %s in Russian: titles %q, want %q", tc.group, tc.verb, h, tc.ru)
+		}
+		if r := line(ru, 1); tc.row != "" && r != tc.row {
+			t.Errorf("%s %s in Russian: row %q, want %q", tc.group, tc.verb, r, tc.row)
+		}
+		i18n.SetLang(i18n.EN)
+		en := show(c, tc.text, nil)
+		if h := line(en, 0); h != tc.en {
+			t.Errorf("%s %s in English: titles %q, want %q", tc.group, tc.verb, h, tc.en)
+		}
+		if c.render == nil {
+			if plain := show(c, tc.text, &tableView{Columns: c.Columns}); en != plain {
+				t.Errorf("%s %s in English is not the table without titles:\n%s\nwant:\n%s", tc.group, tc.verb, en, plain)
+			}
+		}
+	}
+	for _, g := range allTreeGroups() {
+		for _, c := range g.Cmds {
+			if c.headers == nil {
+				t.Errorf("%s %s: no Russian titles (treeHeadersRU)", g.Name, c.Verb)
+			}
+		}
 	}
 }

@@ -378,20 +378,10 @@ func TestRenderAnswer_NewRussianTrees(t *testing.T) {
 	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
 	render := func(group, verb, text string) []string {
 		t.Helper()
-		var c treeCmd
-		for _, g := range allTreeGroups() {
-			for _, cmd := range g.Cmds {
-				if g.Name == group && cmd.Verb == verb {
-					c = cmd
-				}
-			}
-		}
-		if c.Tool == "" {
-			t.Fatalf("no %s %s", group, verb)
-		}
+		c := treeCmdOf(t, group, verb)
 		var buf bytes.Buffer
 		p := output.NewWithWriter(&buf, output.ModePlain, false)
-		if err := renderAnswer(p, &buf, text, tableView{Columns: c.Columns, Russian: c.russian, Headers: c.headers}); err != nil {
+		if err := c.show(p, &buf, text); err != nil {
 			t.Fatal(err)
 		}
 		return strings.Split(buf.String(), "\n")

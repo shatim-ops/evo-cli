@@ -45,12 +45,11 @@ type treeGroup struct {
 type treeCmd struct {
 	tools.CLISpec
 	Tool string
-	// russian: the human table of a Russian tree (vm, disk, dns, …)
-	// speaks Russian — column names, да/нет, the note under a list. Set
-	// from russianTrees; --json keeps the tool's answer.
+	// russian: the cells and notes of the human table speak Russian too —
+	// да/нет, the note under a list (russianTrees); --json keeps the tool's
+	// answer.
 	russian bool
-	// headers are the Russian column titles the tree has beyond
-	// columnHeaderRU (treeHeadersRU).
+	// headers are the Russian column titles of the tree (treeHeadersRU).
 	headers map[string]string
 	// render is the view CLISpec.Render names (treeRenders).
 	render renderFunc
@@ -109,6 +108,7 @@ var treeGroupShort = map[string]string{
 // commands at the root.
 func treeGroupsOf(reg *tools.Registry) []treeGroup {
 	byGroup := map[string][]treeCmd{}
+	headers := map[string]map[string]string{} // treeHeadersRU, once per group
 	for _, t := range reg.Tools() {
 		if t.CLI.Verb == "" {
 			continue
@@ -116,7 +116,11 @@ func treeGroupsOf(reg *tools.Registry) []treeGroup {
 		if _, ok := engineCommandOf(t.Name); ok {
 			continue // built by hand (engine_commands.go)
 		}
-		c := treeCmd{CLISpec: t.CLI, Tool: t.Name, russian: russianTrees[t.CLI.Group], headers: treeHeadersRU(t.CLI.Group)}
+		g := t.CLI.Group
+		if _, ok := headers[g]; !ok {
+			headers[g] = treeHeadersRU(g)
+		}
+		c := treeCmd{CLISpec: t.CLI, Tool: t.Name, russian: russianTrees[g], headers: headers[g]}
 		if t.CLI.Render != "" {
 			c.render = treeRenders[t.CLI.Render]
 			if c.render == nil {
@@ -413,12 +417,18 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		if err != nil || text == "" {
 			return err
 		}
-		if c.render != nil {
-			return c.render(cmdPrinter(cmd), cmd.OutOrStdout(), text)
-		}
-		return renderAnswer(cmdPrinter(cmd), cmd.OutOrStdout(), text, tableView{Columns: c.Columns, Russian: c.russian, Headers: c.headers})
+		return c.show(cmdPrinter(cmd), cmd.OutOrStdout(), text)
 	}
 	return cmd
+}
+
+// show prints the command's answer for a human: the view CLISpec.Render
+// names, or the generic table.
+func (c treeCmd) show(p *output.Printer, w io.Writer, text string) error {
+	if c.render != nil {
+		return c.render(p, w, text)
+	}
+	return renderAnswer(p, w, text, tableView{Columns: c.Columns, Russian: c.russian, Headers: c.headers})
 }
 
 // defaultTrueRE is the "(default: true)" of a schema description: pflag
@@ -711,25 +721,25 @@ func helpHint(cmd *cobra.Command) string {
 
 // --- answer formatting ---
 
-// tableView is how renderAnswer lays out a list: its columns, whether the
-// table is for a Russian tree, and the Russian column titles of that tree
-// beyond columnHeaderRU.
+// tableView is how renderAnswer lays out a list: its columns, the Russian
+// titles of the columns, and whether its cells and notes speak Russian too.
 type tableView struct {
 	Columns []string
+	// Russian: booleans are да/нет and the notes under a list Russian (a
+	// tree of russianTrees).
 	Russian bool
+	// Headers are the Russian column titles by key (treeHeadersRU).
 	Headers map[string]string
 }
 
-// ru: the table speaks Russian (a Russian tree, and the CLI in Russian).
+// ru: the cells and notes speak Russian (Russian, and the CLI in Russian).
 func (v tableView) ru() bool { return v.Russian && i18n.Lang() == i18n.RU }
 
-// header is the title of a column.
+// header is the title of a column: its Russian title when the CLI speaks
+// Russian and Headers has one, the key in capitals otherwise.
 func (v tableView) header(col string) string {
-	if v.ru() {
+	if i18n.Lang() == i18n.RU {
 		if h, ok := v.Headers[col]; ok {
-			return h
-		}
-		if h, ok := columnHeaderRU[col]; ok {
 			return h
 		}
 	}
