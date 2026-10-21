@@ -321,12 +321,15 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 // planID is the id deploy_plan gives each plan: two calls make two plans;
 // stamp is a time of the call (expires_at of a plan); fipName is a name of
 // a floating IP, which provision.BootFIPName ends with the time of the call;
-// latency is how long a probe of doctor took.
+// latency is how long a probe of doctor took; tokenTTL is how long the
+// token of doctor and whoami is valid yet, which the time between two calls
+// changes.
 var (
-	planID  = regexp.MustCompile(`plan-[0-9a-f]{12,}`)
-	stamp   = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)`)
-	fipName = regexp.MustCompile(`fip-[0-9a-z.-]+`)
-	latency = regexp.MustCompile(`reachable \(\d+(\.\d)?m?s\)`)
+	planID   = regexp.MustCompile(`plan-[0-9a-f]{12,}`)
+	stamp    = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)`)
+	fipName  = regexp.MustCompile(`fip-[0-9a-z.-]+`)
+	latency  = regexp.MustCompile(`reachable \(\d+(\.\d)?m?s\)`)
+	tokenTTL = regexp.MustCompile(`(valid for |действует ещё |"token_ttl_seconds": ?)((\d+h)?\d+m\d+s|\d+)`)
 )
 
 // sameVolatile reads the ids and the times each call makes anew as one.
@@ -342,6 +345,7 @@ func sameVolatile(s string) string {
 		return name
 	})
 	s = stamp.ReplaceAllString(s, "<time>")
+	s = tokenTTL.ReplaceAllString(s, "${1}0")
 	return latency.ReplaceAllString(s, "reachable (<latency>)")
 }
 
