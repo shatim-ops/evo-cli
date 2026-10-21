@@ -75,6 +75,10 @@ bad() {
 }
 gap() { row "$1" "не покрыто" "${2:-}"; } # не проверено по причине вне evo
 cov() { covered+=("$@"); }                  # изменяющий инструмент прошёл
+# bound_check — проект ресурса на серверах с --allow-project (REL12-3) сразу
+# после создания ресурса; серверы останавливает finish.
+# shellcheck source-path=SCRIPTDIR source=bound-check.sh
+. "$here/bound-check.sh"
 # j — jq по ответу последнего вызова; ответ не JSON не обрывает скрипт.
 j() { jq "$@" "$tmp/r.json" 2>/dev/null || true; }
 
@@ -382,6 +386,7 @@ prefix="evo-e2e-$area-$RUN"
 finish() {
 	local rc_in=$?
 	set +e
+	bound_stop
 	if [ "$area" != sweep ]; then
 		echo "== уборка $prefix*"
 		[ "$area" != net ] || delete_test_rules
@@ -421,6 +426,9 @@ area_disk() {
 	[ -n "$data" ] || { bad disk_create "нет id диска"; return 1; }
 	ok disk_create "$(j -r .status)"
 	cov disk_create
+	# Диск по id читать нечем (disk_get нет), а disk_* по id — изменяющие:
+	# проект диска сверяется по списку проекта, как у ВМ (vm_get, область mcp).
+	row "allow-project: диск" skip "нет чтения диска по id; проверка по списку — как у vm_get (область mcp)"
 
 	must disk_attach disk_attach --arg disk_id="$data" --arg vm="$vm" || return 1
 	# disk_has ФИЛЬТР — jq -e по disk_list, $id — диск данных, $vm — имя ВМ.
@@ -504,6 +512,7 @@ area_disk() {
 	[ -n "$img" ] || { bad image_create "нет id образа"; return 1; }
 	img_ready() { evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -e '.ready == true' >/dev/null; }
 	if poll 1800 30 img_ready; then ok "image_get ready" "образ готов"; else bad "image_get ready" "за 30 мин не ready: $(evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -c '.zone_states // {}')"; fi
+	bound_check image_get "$(jq -cn --arg i "$img" '{image_id: $i}')" "allow-project: image_get"
 
 	must image_delete image_delete --arg image_id="$img" || return 1
 	if poll 300 15 sh -c "evo tools call image_list --arg type=private --json | jq -e --arg id '$img' '(.images | type) == \"array\" and (any(.images[]; .id == \$id) | not)' >/dev/null"; then
@@ -532,6 +541,7 @@ area_net() {
 		ok vpc_create "операция done"
 		cov vpc_create
 		if [ -n "$vpc" ] && must vpc_get vpc_get --arg id="$vpc"; then ok vpc_get "$(j -r '.name == "'"$prefix-vpc"'"')"; fi
+		[ -z "$vpc" ] || bound_check vpc_get "$(jq -cn --arg i "$vpc" '{id: $i}')" "allow-project: vpc_get"
 		if [ -n "$vpc" ] && must vpc_delete vpc_delete --arg id="$vpc"; then
 			if opwait vpc "$(j -r .operation_id)" 600 && poll 300 15 gone vpc "$prefix-vpc"; then
 				ok vpc_delete "VPC нет в vpc_list"
@@ -571,6 +581,7 @@ area_net() {
 		mask "$tg"
 		ok tg_create "операция done"
 		cov tg_create
+		[ -z "$tg" ] || bound_check tg_get "$(jq -cn --arg i "$tg" '{id: $i}')" "allow-project: tg_get"
 	else
 		bad tg_create "$why"
 		return 1
@@ -584,6 +595,7 @@ area_net() {
 		mask "$(j -r '.external_address.ipv4 // empty')"
 		ok lb_create "status $(j -r '.status // "?"'), публичный IP: $(j -r 'if .external_address.ipv4 then "есть" else "нет" end')"
 		cov lb_create
+		[ -z "$lb" ] || bound_check lb_get "$(jq -cn --arg i "$lb" '{id: $i}')" "allow-project: lb_get"
 	else bad lb_create "$why"; fi
 	lb=${lb:-$(lst lb "$prefix-lb" | cut -f1 | head -1)}
 	if [ -n "$lb" ] && must lb_delete lb_delete --arg id="$lb"; then
@@ -714,6 +726,7 @@ area_dns() {
 	[ -n "$zid" ] || { bad dns_zone_create "зоны нет в dns_zones"; return 1; }
 	ok dns_zone_create "зона в dns_zones: $(evo tools call dns_zones --json | jq -c --arg id "$zid" '.zones[] | select(.id == $id) | {visibility, valid, delegated}')"
 	must dns_zone_get dns_zone_get --arg id="$zid" --arg type=private && ok dns_zone_get "$(j -r '.visibility // .type // "прочитана"')"
+	bound_check dns_zone_get "$(jq -cn --arg i "$zid" '{id: $i, type: "private"}')" "allow-project: dns_zone_get"
 	tc dns_zone_get --arg id="$zid"
 	row "dns_zone_get без type" "$([ "$rc" = 0 ] && echo ответ || echo отказ)" "код $rc, $reason"
 	must dns_record_create dns_record_create --arg zone_id="$zid" --arg type=private --arg name=www --arg record_type=A --arg value=198.18.255.10 --arg ttl=300 || return 1
@@ -733,6 +746,7 @@ area_dns() {
 		return 1
 	fi
 	must dns_record_get dns_record_get --arg record_id="$rid" --arg type=private && ok dns_record_get "ttl $(j -r '.ttl // "?"')"
+	bound_check dns_record_get "$(jq -cn --arg i "$rid" '{record_id: $i, type: "private"}')" "allow-project: dns_record_get"
 	must dns_record_delete dns_record_delete --arg record_id="$rid" --arg type=private || return 1
 	opwait dns "$(j -r .operation_id)" 300 || true
 	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" 'any(.records[]; .id == $id) | not' >/dev/null; }
@@ -812,6 +826,7 @@ area_secrets() {
 	ok cert_import "$(j -r .status)"
 	cov cert_import
 	must cert_get cert_get --arg id="$cid" && ok cert_get "status $(j -r '.status // "?"')"
+	bound_check cert_get "$(jq -cn --arg i "$cid" '{id: $i}')" "allow-project: cert_get"
 	must cert_versions cert_versions --arg certificate_id="$cid" && ok cert_versions "версий $(j -r '(.versions // []) | length')"
 	must cert_usage cert_usage --arg id="$cid" && ok cert_usage "прочитано"
 	tc cert_private_key --arg certificate_id="$cid"
@@ -1002,6 +1017,7 @@ area_mcp() {
 		if poll 300 10 sh -c "curl -fsS --max-time 10 'http://$ip:$MCP_PORT/' | grep -qi nginx"; then ok "stdio deploy" "HTTP $MCP_PORT: nginx"; else bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин"; fi
 		[ "$(lst vm "$vm" | wc -l)" = 1 ] && ok "deploy после deploy_apply" "та же ВМ, второй нет" || bad "deploy после deploy_apply" "ВМ с именем $vm: $(lst vm "$vm" | wc -l); всего ВМ $prefix*: $(lst vm "$prefix" | wc -l)"
 	else bad "stdio deploy" "$(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"; fi
+	bound_check vm_get "$(jq -cn --arg v "$vid" '{vm_id: $v}')" "allow-project: vm_get"
 	stdio status '{}'
 	[ "$iserr" = false ] && ok "stdio status" "$(j -r '.status // .health // "?"')" || bad "stdio status" "isError"
 	stdio logs '{"tail":20}'
