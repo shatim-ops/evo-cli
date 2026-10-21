@@ -711,13 +711,19 @@ func TestK8s_NotesInCLIWords(t *testing.T) {
 	f := &raAPI{}
 	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
 	calls := []struct {
-		tool string
-		args map[string]any
-		ru   []string
+		tool   string
+		args   map[string]any
+		en, ru []string
 	}{
-		{"k8s_plan", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1"}, []string{"evo k8s create", "--yes", "evo k8s get", "evo k8s add-nodepool"}},
-		{"k8s_create", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "confirmed": true}, []string{"evo k8s get cl-1", "evo k8s kubeconfig cl-1"}},
-		{"k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "security_group_id": "sg-1", "confirmed": true}, []string{"evo k8s nodepools cl-1"}},
+		{"k8s_plan", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1"},
+			[]string{"k8s_create", "confirmed=true", "k8s_get", "k8s_add_nodepool"},
+			[]string{"evo k8s create", "--yes", "evo k8s get", "evo k8s add-nodepool"}},
+		{"k8s_create", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "confirmed": true},
+			[]string{"k8s_get", "k8s_kubeconfig"},
+			[]string{"evo k8s get cl-1", "evo k8s kubeconfig cl-1"}},
+		{"k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "security_group_id": "sg-1", "confirmed": true},
+			[]string{"k8s_nodepools"},
+			[]string{"evo k8s nodepools cl-1"}},
 	}
 	notes := func() []string {
 		var out []string
@@ -732,8 +738,10 @@ func TestK8s_NotesInCLIWords(t *testing.T) {
 		return out
 	}
 	for i, note := range notes() {
-		if !strings.Contains(note, calls[i].tool[:3]+"_") {
-			t.Errorf("%s: the agent's note names no tool: %q", calls[i].tool, note)
+		for _, want := range calls[i].en {
+			if !strings.Contains(note, want) {
+				t.Errorf("%s: no %q in the agent's note %q", calls[i].tool, want, note)
+			}
 		}
 	}
 	i18n.SetLang(i18n.RU)
