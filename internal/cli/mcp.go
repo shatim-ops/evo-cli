@@ -115,8 +115,10 @@ Projects: deploy and provision accept a project_id argument, so with a key
 that sees several projects (an organization-level key) any client of the
 server can work in any of them. --allow-project limits the tools to the
 listed projects (repeat the flag or separate with commas): a call in any other
-project, the server's own included, fails. The read-only org_quotas and
-iam_service_accounts still read other projects. Without the flag the server
+project, the server's own included, fails, and so does a call on a resource
+the tool names by id (a cluster, a VM, a DNS zone) outside those projects.
+The read-only org_quotas and iam_service_accounts still read other
+projects. Without the flag the server
 warns at start in HTTP mode. Prefer a project-level key for a shared server.
 
 Read-only: --read-only makes no call that needs the user's consent
@@ -175,7 +177,9 @@ k8s_kubectl/k8s_apply/k8s_helm отвечают ошибкой, если kubectl
 сервера может работать в любом из них. --allow-project ограничивает
 инструменты перечисленными проектами (флаг повторяется или через запятую):
 вызов в любом другом проекте, в том числе в проекте самого сервера,
-отклоняется. org_quotas и iam_service_accounts только читают и по-прежнему
+отклоняется, как и вызов с ресурсом, который инструмент называет по id
+(кластер, ВМ, зона DNS), не из этих проектов. org_quotas и
+iam_service_accounts только читают и по-прежнему
 видят другие проекты. Без флага сервер в режиме HTTP предупреждает при
 запуске. Для общего сервера лучше ключ уровня проекта.
 
