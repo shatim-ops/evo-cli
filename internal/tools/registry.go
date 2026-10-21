@@ -310,8 +310,8 @@ func groupOf(name string) string {
 var projectTools = map[string]bool{
 	"vm_list": true, "list_subnets": true, "list_security_groups": true, "list_floating_ips": true,
 	"disk_list": true, "disk_create": true, "image_create": true, "snat_list": true, "snat_create": true,
-	"deploy_plan": true,
-	"vpc_list":    true, "vpc_create": true, "vpc_route_create": true,
+	"deploy_plan": true, "provision": true,
+	"vpc_list": true, "vpc_create": true, "vpc_route_create": true,
 	"k8s_list": true, "k8s_plan": true, "k8s_create": true,
 	// mk8s catalogues take projectId too: GET /v3/addons without it is a
 	// live 400, the spec requires it on /v3/addons and productConfiguration

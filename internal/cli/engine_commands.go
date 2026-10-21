@@ -117,7 +117,7 @@ func callEngineTool(cmd *cobra.Command, tool string, args map[string]any, c *too
 	if c.Err != nil {
 		return text, c.Err
 	}
-	return text, toolError(tool, text)
+	return text, toolError(tool, text, commandHints(cmd, nil))
 }
 
 // engineGate is the consent of an engine command (tools.Caller.Gate): the
@@ -525,7 +525,7 @@ func newProjectListCmd() *cobra.Command {
 				text = toJSONText(map[string]any{"projects": nil, "active": cfg.ProjectID, "note": tools.ScopeText(0, false)})
 			case !isCLIError(c.Err):
 				// No answer (the network): the tool's error, with its code.
-				return toolError("org_projects", text)
+				return toolError("org_projects", text, commandHints(cmd, nil))
 			default:
 				return err
 			}

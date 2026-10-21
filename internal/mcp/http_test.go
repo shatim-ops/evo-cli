@@ -196,7 +196,7 @@ func TestHTTP_ToolsCallJSONAndSSE(t *testing.T) {
 		KeepAlive:   time.Millisecond,
 	})
 	// A gated mutation answers with a preview without touching the cloud.
-	call := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"provision","arguments":{"name":"vm-sentinel-arg"}}}`
+	call := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"ca_start","arguments":{"name":"app-sentinel-arg"}}}`
 
 	resp := post(t, ts, call, nil)
 	var r struct {
@@ -226,10 +226,10 @@ func TestHTTP_ToolsCallJSONAndSSE(t *testing.T) {
 
 	// One line per call: tool name, status, duration; never the arguments.
 	out := logs.String()
-	if strings.Count(out, "tool=provision") != 2 || !strings.Contains(out, "status=error") || !strings.Contains(out, "duration_ms=") {
+	if strings.Count(out, "tool=ca_start") != 2 || !strings.Contains(out, "status=error") || !strings.Contains(out, "duration_ms=") {
 		t.Errorf("tool call log: %s", out)
 	}
-	if strings.Contains(out, "vm-sentinel-arg") {
+	if strings.Contains(out, "app-sentinel-arg") {
 		t.Errorf("arguments leaked into the log: %s", out)
 	}
 }

@@ -202,7 +202,7 @@ func TestToolsCall_ToolErrorExitCodes(t *testing.T) {
 		`{"error":"CONFIG_INVALID: S3 credentials not configured"}`: clerrors.ExitAuth,
 		`not json`: clerrors.ExitAPI,
 	} {
-		if got := clerrors.ExitCode(toolError("x", text)); got != want {
+		if got := clerrors.ExitCode(toolError("x", text, callHints("x"))); got != want {
 			t.Errorf("%s: exit %d, want %d", text, got, want)
 		}
 	}
@@ -292,7 +292,7 @@ func TestApplyWait(t *testing.T) {
 func TestToolError_JSONWithoutHint(t *testing.T) {
 	var buf bytes.Buffer
 	handleError(output.NewWithWriter(&buf, output.ModeJSON, false),
-		toolError("dns_zones", `{"status":"error","error":"zone not found"}`))
+		toolError("dns_zones", `{"status":"error","error":"zone not found"}`, callHints("dns_zones")))
 	want := `{"error":{"code":4,"reason":"NOT_FOUND","message":"dns_zones: zone not found"}}` + "\n"
 	if buf.String() != want {
 		t.Errorf("got %q, want %q", buf.String(), want)

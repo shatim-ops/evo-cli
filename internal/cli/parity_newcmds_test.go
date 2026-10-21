@@ -148,6 +148,18 @@ func flagText(v any) string {
 	return fmt.Sprint(v)
 }
 
+// errHint is the hint of an error on stderr: the one part of a refusal a
+// surface words for itself (toolHints) — a command names its help and its
+// flags, 'evo tools call' the tool's describe and arguments.
+var errHint = regexp.MustCompile(`,"hint":"(?:[^"\\]|\\.)*"`)
+
+// sameRefusal: the same stderr, the words of the hints aside; a hint on
+// one side has one on the other.
+func sameRefusal(treeErr, callErr string) bool {
+	return errHint.ReplaceAllString(treeErr, "") == errHint.ReplaceAllString(callErr, "") &&
+		len(errHint.FindAllString(treeErr, -1)) == len(errHint.FindAllString(callErr, -1))
+}
+
 // stackJobID is the id stack_plan gives each plan it makes: two calls make
 // two plans.
 var stackJobID = regexp.MustCompile(`stk-[0-9a-f]{10}`)
@@ -200,7 +212,7 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 		newProcess()
 		callCode, callOut, callErr := runCLI(t, "", append(append([]string{}, pc.call...), extra...)...)
 		treeOut, callOut = sameVolatile(treeOut), sameVolatile(callOut)
-		if treeCode != callCode || treeOut != callOut || treeErr != callErr {
+		if treeCode != callCode || treeOut != callOut || !sameRefusal(treeErr, callErr) {
 			bad = append(bad, fmt.Sprintf("evo %s ≠ evo tools call %s:\n  tree: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
 				strings.Join(pc.tree, " "), strings.Join(pc.call[2:], " "),
 				treeCode, clipLine(treeOut), clipLine(treeErr), callCode, clipLine(callOut), clipLine(callErr)))

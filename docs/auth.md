@@ -91,11 +91,26 @@ Key ID: 7b1e…
 Секрет:                                   ← не отображается
 Список проектов этому ключу недоступен — так Cloud.ru отвечает сервисным аккаунтам проекта. Введите UUID проекта: он в консоли Cloud.ru, в сведениях о проекте.
 ID проекта: 3f2a8c1e-…
+Зоны доступности для новых ВМ:
+   1) ru.AZ-2  9c4d…
+   2) ru.AZ-1  1a7e…
+Выберите зону (номер, имя или ID) [1]:
 Профиль "default" сохранён в /home/me/.config/evo
 ```
 
 `configure` сначала обменивает ключ на токен — неверный ключ не сохранится.
 Повторный запуск показывает текущие значения в скобках; Enter их оставляет.
+
+После проекта `configure` спрашивает зону доступности — в ней `evo vm create`
+создаёт ВМ, если `--region` не передан. Зоны те же, что в `evo vm zones`, и
+предлагаются, как в `evo init`: только открытые для новых ресурсов, первой —
+зона с подсетью проекта (ru.AZ-2, если подсеть есть и в ней). Сам evo зону не
+выбирает: Enter берёт показанную по умолчанию. Ответ — номер, имя зоны или её
+UUID; в профиль записывается UUID. Если список зон не получен (сеть, роль
+ключа), шаг пропускается одной строкой, ключ и проект сохраняются; зону
+можно задать позже — `evo configure --region <зона>`. Профиль без зоны
+(например, созданный до 1.2.1) работает, но `evo vm create` без `--region`
+отказывает до вопроса о согласии ([troubleshooting.md](troubleshooting.md#config_invalid-код-2-не-задана-зона-доступности-region-no-availability-zone-is-set)).
 
 Без терминала (CI, скрипты). Секрет — только через stdin, не флагом: флаг
 виден в `ps` и истории оболочки.
@@ -106,7 +121,10 @@ printf '%s' "$CLOUDRU_SECRET" | evo configure \
 ```
 
 Флаги: `--key-id`, `--secret-stdin`, `--project-id` (пропускает список
-проектов), `--region` (зона по умолчанию для профиля).
+проектов), `--region` (зона по умолчанию для профиля, без вопроса: имя,
+например `ru.AZ-2`, или UUID; имя evo находит в списке зон, в профиль
+записывается UUID; неизвестное имя — `USAGE`, код 1, со списком зон). Без
+терминала зону спрашивать некому: без `--region` она не меняется.
 
 Проверка:
 
@@ -209,7 +227,7 @@ profiles:
 |---|---|---|
 | `CLOUDRU_PROJECT_ID` | UUID проекта. Нужен и для чтений, и для создания ресурсов проекта (`vm list`, `vpc subnets`, `k8s list`, `pg list`, секреты, …): без него — `CONFIG_INVALID`, код `2`, запрос в облако не уходит. Без проекта работают каталоги (зоны, флейворы, образы, Marketplace, типы дисков), `org_projects`, `org_quotas`, `billing_*` с договором (`CLOUDRU_AGREEMENT_ID`), Object Storage и локальные `status`/`list` | `--project-id` / `project_id` |
 | `EVOLUTION_PROJECT_ID` | то же (имя AI Agents); `CLOUDRU_PROJECT_ID` важнее | — |
-| `CLOUDRU_REGION` | UUID зоны доступности (`evo vm zones`) | `--region` / `region` |
+| `CLOUDRU_REGION` | зона доступности (`evo vm zones`): UUID; `evo vm create`, MCP `provision` и стеки понимают и имя (`ru.AZ-2`), `evo deploy` — только UUID | `--region` / `region` |
 | `CLOUDRU_IMAGE_ID` | UUID загрузочного образа для `deploy` (`evo image list`, `evo image get <имя>`) | `deploy --image-id` / `image_id` (по имени или UUID — `deploy --image` / `image:`) |
 | `CLOUDRU_FLAVOR` | конфигурация ВМ, например `lowcost10-2-4`; `auto` — подобрать (по умолчанию) | `deploy --flavor` / `flavor` |
 | `CLOUDRU_DISK_SIZE` | размер загрузочного диска, ГБ (по умолчанию 10) | `deploy --disk-size` / `disk_size` |
