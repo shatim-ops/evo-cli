@@ -22,7 +22,6 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -183,30 +182,19 @@ func (s *Server) relist() {
 // stack_apply still drives the tools of other groups in-process, and the
 // HTTP policy, --allow-project and --read-only hold either way.
 func (s *Server) SetToolsets(groups []string) error {
-	known := map[string]bool{}
-	for _, g := range tools.Groups() {
-		known[g] = true
-	}
-	want := map[string]bool{}
-	for _, g := range groups {
-		g = strings.ToLower(strings.TrimSpace(g))
-		switch {
-		case g == "":
-		case g == "all":
-			s.enabled = nil
-			s.relist()
-			return nil
-		case !known[g]:
-			return fmt.Errorf("unknown toolset %q; known: all, %s", g, strings.Join(tools.Groups(), ", "))
-		default:
-			want[g] = true
-		}
+	want, err := tools.ParseToolsets(groups)
+	if err != nil {
+		return err
 	}
 	s.enabled = nil
 	if len(want) > 0 {
+		in := map[string]bool{}
+		for _, g := range want {
+			in[g] = true
+		}
 		s.enabled = map[string]bool{}
 		for _, t := range s.reg.Tools() {
-			if want[t.Group] {
+			if in[t.Group] {
 				s.enabled[t.Name] = true
 			}
 		}

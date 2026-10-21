@@ -562,6 +562,34 @@ not available to the project») до резервирования floating IP и
 evo configure      # один раз: ключ и проект в профиль
 ```
 
+### Одной командой: `evo agent setup`
+
+```sh
+evo agent setup --client claude-code --dry-run   # только diff
+evo agent setup --client claude-code             # diff, вопрос, запись
+```
+
+Команда добавляет сервер `evo` в файл настроек клиента — `claude-code`
+(`.mcp.json`), `cursor` (`.cursor/mcp.json`), `vscode` (`.vscode/mcp.json`),
+`gemini` (`.gemini/settings.json`), `codex` (`.codex/config.toml`); с
+`--scope user` — в файл пользователя (`~/.claude.json`, `~/.cursor/mcp.json`
+и т. д.). Файл дополняется, а не перезаписывается: другие серверы, ключи,
+порядок, отступы и комментарии остаются. Перед записью — diff и вопрос; без
+терминала нужен `--yes` (иначе код `3`), `--dry-run` только печатает diff.
+Другая запись `evo` в файле заменяется только с `--force` (иначе код `1`),
+битый файл не трогается (код `2`, с номером строки). Ключ Cloud.ru в файл не
+пишется — сервер берёт его из профиля; без ключа команда отвечает кодом `2`.
+
+По умолчанию агент видит группы `deploy,vm,vpc,disk,image`, другие —
+`--toolsets` ([ниже](#только-нужные-группы-инструментов)). `--http URL` —
+запись для запущенного HTTP-сервера: токен — ссылкой на `$MCP_BEARER_TOKEN`,
+не значением. Для `gigaagent` и любого другого клиента команда печатает
+запись (`--print json` или `--print toml`) и ничего не пишет; у `gigaagent`
+по умолчанию `--read-only` ([ниже](#автономный-агент-только-на-чтение)).
+`--skill` дополнительно кладёт правила работы с evo для агента —
+`.claude/skills/evo/SKILL.md` или раздел `AGENTS.md`; их же печатает
+`evo agent skill`, текст — [agent-skill.md](agent-skill.md).
+
 ### Claude Code
 
 ```sh

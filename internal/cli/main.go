@@ -344,6 +344,7 @@ func newRootCmd() *cobra.Command {
 		newWhoamiCmd(),
 		newDoctorCmd(),
 		newToolsCmd(),
+		newAgentCmd(),
 	)
 	cmd.AddCommand(newTreeCmds(cmd)...)
 	applyExamples(cmd)

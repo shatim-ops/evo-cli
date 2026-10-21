@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "evo": {
+      "command": "evo",
+      "args": ["mcp"],
+      "env": {"CLOUDRU_PROFILE": "staging"}
+    }
+  }
+}

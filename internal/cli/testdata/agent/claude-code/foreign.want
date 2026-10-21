@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {"LOG_LEVEL": "info"}
+    },
+    "docs": {"type": "http", "url": "https://docs.example.com/mcp"},
+    "evo": {
+      "command": "evo",
+      "args": [
+        "mcp",
+        "--toolsets",
+        "deploy,vm,vpc,disk,image"
+      ]
+    }
+  }
+}

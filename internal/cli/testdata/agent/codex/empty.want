@@ -1,0 +1,3 @@
+[mcp_servers.evo]
+command = "evo"
+args = ["mcp", "--toolsets", "deploy,vm,vpc,disk,image"]

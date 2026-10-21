@@ -20,6 +20,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -199,6 +200,32 @@ func Groups() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// ParseToolsets reads a --toolsets list (evo mcp, evo agent setup): the
+// groups it names, lower-cased, without repeats, in the order given; nil
+// for every group ("all", or no group named). An unknown group is an error.
+func ParseToolsets(groups []string) ([]string, error) {
+	known := map[string]bool{}
+	for _, g := range Groups() {
+		known[g] = true
+	}
+	var want []string
+	seen := map[string]bool{}
+	for _, g := range groups {
+		g = strings.ToLower(strings.TrimSpace(g))
+		switch {
+		case g == "", seen[g]:
+		case g == "all":
+			return nil, nil
+		case !known[g]:
+			return nil, fmt.Errorf("unknown toolset %q; known: all, %s", g, strings.Join(Groups(), ", "))
+		default:
+			seen[g] = true
+			want = append(want, g)
+		}
+	}
+	return want, nil
 }
 
 // groupByName assigns tools whose name does not start with their group.

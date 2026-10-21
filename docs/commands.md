@@ -16,6 +16,9 @@
 ## Содержание
 
 - [evo](#evo)
+  - [evo agent](#evo-agent)
+    - [evo agent setup](#evo-agent-setup)
+    - [evo agent skill](#evo-agent-skill)
   - [evo ar](#evo-ar)
     - [evo ar create](#evo-ar-create)
     - [evo ar delete](#evo-ar-delete)
@@ -249,6 +252,7 @@ Object Storage, секреты.
 
 ### SEE ALSO
 
+* [evo agent](#evo-agent)	 - Подключить evo к ИИ-агенту: MCP-клиент и правила для агента
 * [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
 * [evo audit](#evo-audit)	 - Журнал аудита: кто что сделал в проекте
 * [evo billing](#evo-billing)	 - Биллинг: баланс, потребление, отчёт FinOps
@@ -287,6 +291,178 @@ Object Storage, секреты.
 * [evo vm](#evo-vm)	 - Виртуальные машины
 * [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 * [evo whoami](#evo-whoami)	 - Активный профиль и проверка его ключа
+
+## evo agent
+
+> Локальная команда: группа: agent setup и agent skill — локальные.
+
+Подключить evo к ИИ-агенту: MCP-клиент и правила для агента
+
+```
+evo agent [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по agent
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo agent setup](#evo-agent-setup)	 - Добавить MCP-сервер evo в настройки MCP-клиента
+* [evo agent skill](#evo-agent-skill)	 - Правила работы с evo для ИИ-агента (SKILL.md)
+
+## evo agent setup
+
+> Локальная команда: пишет настройки MCP-клиента (и правила для агента) в файлы на машине пользователя: у сервера MCP такого действия по природе нет.
+
+Добавить MCP-сервер evo в настройки MCP-клиента
+
+### Synopsis
+
+```text
+Добавить MCP-сервер evo в файл настроек MCP-клиента.
+
+Файл дополняется, а не перезаписывается: другие серверы и ключи остаются как
+были. Перед записью команда показывает diff и спрашивает; без терминала нужен
+--yes (иначе код выхода 3), --dry-run только показывает diff. Запись evo,
+которая отличается от этой, заменяется только с --force (иначе код 1); битый
+файл не трогается (код 2, с номером строки). Запись атомарная и сохраняет права
+файла; новый файл — с правами 0600. Ключ Cloud.ru в файл не пишется: сервер
+берёт его из профиля 'evo configure' (код 2, если ключа нет совсем).
+
+Клиенты и их файлы (--scope project — по умолчанию; --scope user):
+  claude-code  .mcp.json              ~/.claude.json
+  cursor       .cursor/mcp.json       ~/.cursor/mcp.json
+  vscode       .vscode/mcp.json       <каталог настроек>/Code/User/mcp.json
+  gemini       .gemini/settings.json  ~/.gemini/settings.json
+  codex        .codex/config.toml     ~/.codex/config.toml
+  gigaagent    печатается: mcp.json агента — на его машине
+Другой клиент: --print json или --print toml печатает запись и ничего не пишет.
+
+Агент видит группы deploy,vm,vpc,disk,image,
+если --toolsets не задаёт другие (all — все группы).
+--read-only (у gigaagent — по умолчанию): сервер отклоняет любые изменения и
+секреты — для агента без присмотра. --http URL подключает клиент к запущенному
+серверу 'evo mcp --http'; в файле — ссылка на $MCP_BEARER_TOKEN, а не сам токен.
+
+--skill дополнительно записывает правила работы с evo для агента ('evo agent
+skill'): .claude/skills/evo/SKILL.md для claude-code, раздел AGENTS.md
+(GEMINI.md для gemini) для остальных.
+```
+
+```
+evo agent setup --client <client> [flags]
+```
+
+### Examples
+
+```
+  evo agent setup --client claude-code --dry-run
+  evo agent setup --client cursor --scope user --yes
+  evo agent setup --client codex --toolsets deploy,vm,vpc,k8s
+  evo agent setup --client claude-code --skill
+  evo agent setup --client gigaagent
+  evo agent setup --client vscode --http http://127.0.0.1:8080/mcp
+```
+
+### Options
+
+```
+      --client string      MCP-клиент: claude-code, codex, cursor, gemini, gigaagent, vscode
+      --force              Заменить запись evo, которая отличается от этой
+  -h, --help               Справка по setup
+      --http string        Подключаться к запущенному серверу 'evo mcp --http' по этому адресу, а не запускать evo (например, http://127.0.0.1:8080/mcp)
+      --print string       Напечатать запись в формате json или toml и ничего не записывать (для клиента не из списка)
+      --read-only          Запускать сервер с --read-only: без изменений в облаке и без секретов (у gigaagent — по умолчанию)
+      --scope string       Чьи настройки: project (текущий каталог) или user (домашний каталог) (по умолчанию "project")
+      --skill              Записать и правила работы с evo для агента (SKILL.md или раздел AGENTS.md)
+      --toolsets strings   Группы инструментов, которые видит агент (через запятую; all — все; группы — в 'evo tools list') (по умолчанию [deploy,vm,vpc,disk,image])
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo agent](#evo-agent)	 - Подключить evo к ИИ-агенту: MCP-клиент и правила для агента
+
+## evo agent skill
+
+> Локальная команда: печатает правила работы с evo для агента (docs/agent-skill.md), собранные из реестра; к облаку не обращается.
+
+Правила работы с evo для ИИ-агента (SKILL.md)
+
+### Synopsis
+
+```text
+Печатает правила работы с evo для ИИ-агента в виде SKILL.md: всегда --json,
+что значат код выхода 3 и поле approval, --dry-run перед изменением, какие
+ответы — текст или недоверенные данные, группы инструментов. Правила
+собираются из реестра инструментов этого бинаря; docs/agent-skill.md — тот же
+текст. Текст английский: его читает агент. С --json: {"skill": "<текст>"}.
+
+'evo agent setup --skill' кладёт их туда, где их читает клиент.
+```
+
+```
+evo agent skill [flags]
+```
+
+### Examples
+
+```
+  evo agent skill
+  evo agent skill > AGENTS.md
+```
+
+### Options
+
+```
+  -h, --help   Справка по skill
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo agent](#evo-agent)	 - Подключить evo к ИИ-агенту: MCP-клиент и правила для агента
 
 ## evo ar
 

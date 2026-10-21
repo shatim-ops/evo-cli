@@ -91,6 +91,18 @@ func (p *IAMProvider) Exchanges() int {
 	return p.exchanges
 }
 
+// ErrNoCredentials is the error of a command that needs the Cloud.ru key
+// and finds none: no profile from 'evo configure' and nothing in the
+// environment (exit code 2).
+func ErrNoCredentials() error {
+	return clerrors.New(
+		clerrors.CodeAuthRequired,
+		i18n.T("Cloud.ru credentials not set", "не задан ключ доступа Cloud.ru"),
+		i18n.T("Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET (create an access key for a service account at https://console.cloud.ru)",
+			"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET (ключ доступа сервисного аккаунта создаётся в https://console.cloud.ru)"),
+	)
+}
+
 // Token returns a valid IAM token. Refreshes if cached token has < 5min TTL.
 // Pre-flight check: rejects if resulting token TTL < 10min (QCSD #1).
 func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
@@ -98,12 +110,7 @@ func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
 	defer p.mu.Unlock()
 
 	if p.creds.KeyID == "" || p.creds.Secret == "" {
-		return Token{}, clerrors.New(
-			clerrors.CodeAuthRequired,
-			i18n.T("Cloud.ru credentials not set", "не задан ключ доступа Cloud.ru"),
-			i18n.T("Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET (create an access key for a service account at https://console.cloud.ru)",
-				"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET (ключ доступа сервисного аккаунта создаётся в https://console.cloud.ru)"),
-		)
+		return Token{}, ErrNoCredentials()
 	}
 
 	if p.cached != nil && p.cached.IsValid(refreshTTL) {

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "evo": {
+      "command": "evo",
+      "args": [
+        "mcp",
+        "--toolsets",
+        "deploy,vm,vpc,disk,image"
+      ]
+    },
+    "fs": {"command": "mcp-fs"}
+  }
+}

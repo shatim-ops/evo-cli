@@ -1,0 +1,16 @@
+{
+    "mcpServers": {
+        "playwright": {
+            "command": "npx",
+            "args": ["@playwright/mcp@latest"]
+        },
+        "evo": {
+            "command": "evo",
+            "args": [
+                "mcp",
+                "--toolsets",
+                "deploy,vm,vpc,disk,image"
+            ]
+        }
+    }
+}

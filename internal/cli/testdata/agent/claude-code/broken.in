@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "github": {"command": "npx"}
+    "docs": {"url": "https://docs.example.com/mcp"}
+  }
+}
