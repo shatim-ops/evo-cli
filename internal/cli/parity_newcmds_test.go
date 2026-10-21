@@ -199,7 +199,7 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 		treeCode, treeOut, treeErr := runCLI(t, "", append(append([]string{}, pc.tree...), extra...)...)
 		newProcess()
 		callCode, callOut, callErr := runCLI(t, "", append(append([]string{}, pc.call...), extra...)...)
-		treeOut, callOut = sameJobID(treeOut), sameJobID(callOut)
+		treeOut, callOut = sameVolatile(treeOut), sameVolatile(callOut)
 		if treeCode != callCode || treeOut != callOut || treeErr != callErr {
 			bad = append(bad, fmt.Sprintf("evo %s ≠ evo tools call %s:\n  tree: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
 				strings.Join(pc.tree, " "), strings.Join(pc.call[2:], " "),
@@ -223,6 +223,9 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 		cmdCode, cmdOut, cmdErr := runCLI(t, "", line...)
 		newProcess()
 		callCode, callOut, callErr := runCLI(t, "", append([]string{"tools", "call", c.tool}, extra...)...)
+		// Two processes a second apart: token expiry, plan ids and times
+		// differ (whoami on a slow Windows runner, CI on #161).
+		cmdOut, callOut = sameVolatile(cmdOut), sameVolatile(callOut)
 		why := ""
 		compat, isCompat := jsonAliasCompat["evo "+strings.Join(c.line, " ")]
 		switch {
