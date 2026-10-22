@@ -20,11 +20,13 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/verify"
 )
 
 const parityVM = "00000000-0000-4000-8000-000000000001"
@@ -549,10 +551,38 @@ func withParityWorld(t *testing.T) parityWorld {
 			return nil, err
 		}
 		e.Auth, e.Cloud = previewToken{}, parityCloud{previewCloud{CloudAPI: compute}}
+		// No host is reached: SSH and the health checks of deploy are fakes,
+		// as the cloud is (TestParityWorlds_NoProductionWaits).
+		e.Deployer = parityDeployer{}
+		e.Probe = healthyProbe
+		e.Timings = parityTimings
 		return e, nil
 	}
 	t.Cleanup(func() { toolEngine, http.DefaultTransport = old, oldRT })
 	return parityWorld{dir: home, rt: rt}
+}
+
+// healthyProbe answers every port of deploy's health check healthy.
+func healthyProbe(_ context.Context, _ string, ports []int, _ time.Duration) []verify.ProbeResult {
+	out := make([]verify.ProbeResult, len(ports))
+	for i, port := range ports {
+		out[i] = verify.ProbeResult{Port: port, StatusCode: 200, Healthy: true, Protocol: "http"}
+	}
+	return out
+}
+
+// parityTimings are the waits of the parity worlds' engines: every field
+// set, since a zero one is the production wait, which the fakes answering
+// at once only turn into sleep (TestParityWorlds_NoProductionWaits).
+var parityTimings = engine.Timings{
+	VMPollInterval: time.Millisecond, VMPollTimeout: time.Second, VMProgressInterval: time.Second,
+	IfacePollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond, FIPLookupInterval: time.Millisecond,
+	FIPPollInterval: time.Millisecond, SSHRetryInterval: time.Millisecond, SSHSlowNote: time.Second,
+	SettleDelay: time.Millisecond, VerifyTimeout: 50 * time.Millisecond,
+	DockerPollInterval: time.Millisecond, DockerWaitTimeout: time.Second,
+	DestroyPollInterval: time.Millisecond, DestroyPollTimeout: time.Second,
+	DeletableWaitTimeout: time.Second, DeletablePollInterval: time.Millisecond,
+	StatusRefreshTimeout: time.Second,
 }
 
 func stdioDetails(t *testing.T, s *mcp.Server, name string, args map[string]any) map[string]any {
