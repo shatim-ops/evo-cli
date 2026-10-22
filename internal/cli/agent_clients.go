@@ -29,7 +29,7 @@ const (
 	scopeUser    agentScope = "user"
 )
 
-// defaultScope is the scope without --scope (В-1, D20): the project, so
+// defaultScope is the scope without --scope (В-1, D22): the project, so
 // what is connected is in sight and nothing lives globally. A client may
 // name another (agentClient.scope), and one without a file of its scope
 // uses the one it has.
@@ -169,7 +169,7 @@ var agentClients = []agentClient{
 			scopeProject: {clientFile{inWorkDir, "AGENTS.md"}, false},
 			scopeUser:    {clientFile{inHome, ".codex/AGENTS.md"}, false},
 		},
-		// Codex reads .codex/config.toml of a trusted project only (D20).
+		// Codex reads .codex/config.toml of a trusted project only (D22).
 		scope:  scopeUser,
 		urlKey: "url", tokenEnvKey: "bearer_token_env_var",
 		noteEN: "Codex reads .codex/config.toml of a project only when the project is trusted; --scope project writes that file.",

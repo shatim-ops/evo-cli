@@ -628,7 +628,7 @@ func TestAgentSetup_ByteOrderMark(t *testing.T) {
 }
 
 // Without --scope a client gets the file it reads by default: the
-// project's (D20), except Codex, which reads .codex/config.toml of a
+// project's (D22), except Codex, which reads .codex/config.toml of a
 // trusted project only, so its default is the user's file.
 func TestAgentSetup_DefaultScope(t *testing.T) {
 	for client, want := range map[string]agentScope{"claude-code": scopeProject, "cursor": scopeProject, "vscode": scopeProject, "gemini": scopeProject, "codex": scopeUser} {
