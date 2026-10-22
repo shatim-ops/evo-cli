@@ -44,7 +44,8 @@ type CloudRuAdapter struct {
 }
 
 // NewCloudRuAdapter creates a new adapter. If client is nil, a client with a
-// 60s timeout is used (http.DefaultClient has none).
+// 60s timeout is used (http.DefaultClient has none); the timeout covers all
+// attempts of a request together, as httpretry's does.
 // If baseURL is empty, the default Cloud.ru compute endpoint is used.
 func NewCloudRuAdapter(client *http.Client, baseURL string) *CloudRuAdapter {
 	if client == nil {
@@ -430,7 +431,6 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 		}
 		return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("cannot reach Cloud.ru API", "API Cloud.ru недоступен"), hint, err)
 	}
-	resp = httpretry.HTMLAsBadGateway(resp)
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:

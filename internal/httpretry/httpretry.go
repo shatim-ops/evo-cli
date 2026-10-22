@@ -96,8 +96,8 @@ func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // APIs of Cloud.ru answer JSON (S3 — XML), so an HTML page is a gateway's
 // or a proxy's, not the service's. Read as a success it reported a delete,
 // a create or a start that never happened (break r3b, R3B-1); every client
-// reports a 502 as an API error. The compute adapter, which may be given
-// any http.Client, applies it itself.
+// reports a 502 as an API error. Transport applies it to every answer it
+// returns.
 func HTMLAsBadGateway(resp *http.Response) *http.Response {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return resp
