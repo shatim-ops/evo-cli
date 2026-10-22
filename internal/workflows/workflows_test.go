@@ -181,6 +181,39 @@ func TestWorkflows_CIShufflesOnMain(t *testing.T) {
 	t.Error("ci: go test -race without -shuffle")
 }
 
+// Every PR gets its change class and the checklist of checks beyond CI in
+// the run's summary, and the classifier's tables are tested on sample
+// paths (process audit 1.2.1, PR 8). The job holds the PR's code, so it
+// writes nothing to the repository: no labels, no permissions of its own.
+func TestWorkflows_CIClassifiesPRs(t *testing.T) {
+	w := readWorkflows(t)["ci.yml"]
+	var classify, tested bool
+	for name, j := range w.Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, ".github/scripts/classify_test.sh") {
+				tested = true
+			}
+			if strings.Contains(s.Run, ".github/scripts/classify.sh") &&
+				strings.Contains(s.Run, ".github/scripts/classify_summary.sh") &&
+				strings.Contains(s.Run, "$GITHUB_STEP_SUMMARY") {
+				classify = true
+				if !strings.Contains(j.If, "pull_request") {
+					t.Errorf("ci: job %s classifies outside pull_request (if: %q)", name, j.If)
+				}
+				if j.Permissions != nil {
+					t.Errorf("ci: job %s declares permissions %v; it runs the PR's code", name, j.Permissions)
+				}
+			}
+		}
+	}
+	if !classify {
+		t.Error("ci: no job writes the PR's class and checklist to the summary")
+	}
+	if !tested {
+		t.Error("ci: classify_test.sh is not run")
+	}
+}
+
 // ci lints the workflows (actionlint, with shellcheck of each run script)
 // and fails on code unreachable from main (deadcode): checks of the cycle
 // of CLAUDE.md §4 that lived only in sessions (process audit 1.2.1, PR 7).
