@@ -1,31 +1,41 @@
 name: qwen-review
 
-# Ревью PR моделью Qwen из Cloud.ru Foundation Models по команде
-# `/qwen review` в комментарии к PR. Запустить может только владелец
-# репозитория: у job есть секрет CLOUDRU_FM_API_KEY. issue_comment всегда
-# работает на ветке по умолчанию, поэтому скрипт и review-guide берутся из
-# main; PR читается только как данные (git diff), его код не выполняется.
-# Модель получает текст и возвращает текст — никаких инструментов и токенов.
+# Ревью PR моделью Qwen из Cloud.ru Foundation Models: само при открытии PR
+# и при выходе из черновика (часть цикла каждой правки, CLAUDE.md §4), и
+# повтором по команде `/qwen review` в комментарии к PR. У job есть секрет
+# CLOUDRU_FM_API_KEY, поэтому код PR не выполняется: pull_request_target и
+# issue_comment работают на ветке по умолчанию — скрипт и review-guide
+# берутся из main, а PR читается только как данные (git diff). Не
+# pull_request: там скрипт был бы из ветки PR, и PR мог бы его подменить и
+# вынести ключ. Только PR веток этого репозитория (не форков); команду
+# пишет только владелец. Модель получает текст и возвращает текст — никаких
+# инструментов и токенов. Инвариант — internal/workflows.
 #
 # Секрет: CLOUDRU_FM_API_KEY. Переменные (необязательно): QWEN_MODEL — id
 # модели, FM_BASE_URL — OpenAI-совместимый адрес Foundation Models.
 
 on:
+  pull_request_target:
+    types: [opened, ready_for_review]
   issue_comment:
     types: [created]
 
 permissions: {}
 
 concurrency:
-  group: qwen-review-${{ github.event.issue.number }}
+  group: qwen-review-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   review:
     if: >-
-      github.event.issue.pull_request &&
-      github.event.comment.author_association == 'OWNER' &&
-      startsWith(github.event.comment.body, '/qwen review')
+      (github.event_name == 'pull_request_target' &&
+       !github.event.pull_request.draft &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       github.event.comment.author_association == 'OWNER' &&
+       startsWith(github.event.comment.body, '/qwen review'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -42,7 +52,7 @@ jobs:
           FM_API_KEY: ${{ secrets.CLOUDRU_FM_API_KEY }}
           FM_BASE_URL: ${{ vars.FM_BASE_URL || 'https://foundation-models.api.cloud.ru/v1' }}
           MODEL: ${{ vars.QWEN_MODEL || 'Qwen/Qwen3.5-397B-A17B' }}
-          PR: ${{ github.event.issue.number }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
           COMMENT_ID: ${{ github.event.comment.id }}
           REPO: ${{ github.repository }}
         run: .github/scripts/qwen-review.sh
