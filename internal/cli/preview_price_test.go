@@ -45,9 +45,7 @@ var noPriceInPreview = map[string]string{
 	"stack_destroy": priceNoNewResource, "tg_delete": priceNoNewResource, "vpc_delete": priceNoNewResource,
 	"vpc_route_delete": priceNoNewResource,
 
-	"ar_create": priceKnownGap, "ca_deploy": priceKnownGap, "image_create": priceKnownGap,
-	"kafka_create": priceKnownGap, "lb_create": priceKnownGap, "redis_create": priceKnownGap,
-	"snat_create": priceKnownGap,
+	"image_create": priceKnownGap,
 
 	"dns_zone_create": priceToConfirm, "pg_backup_create": priceToConfirm, "s3_put": priceToConfirm,
 	"secret_create": priceToConfirm, "stack_apply": priceToConfirm, "tg_create": priceToConfirm,

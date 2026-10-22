@@ -186,7 +186,9 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		out := map[string]any{"status": "confirmation_required",
 			"message": i18n.T("redis_create provisions a BILLABLE Managed Redis cluster (async, ~minutes).",
 				"redis_create создаёт ПЛАТНЫЙ кластер Managed Redis (асинхронно, несколько минут)."),
-			"will_create": willCreate}
+			"will_create": willCreate,
+			"preview": willPreview(engine.ResourceRedis, name, zone, willCreate,
+				[]string{"version_id", "type", "cpu", "memory_gb", "storage_gb", "shards", "hosts_per_shard", "subnet_id"}, warn)}
 		if warn != "" {
 			out["warning"] = warn
 		}

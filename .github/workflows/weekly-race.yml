@@ -46,27 +46,13 @@ jobs:
         env:
           GORACE: atexit_sleep_ms=0
 
-  # Красное — в issue: недельный прогон никто не смотрит, пока он не придёт
-  # сам. Кода репозитория здесь нет — только gh с правом на issues.
+  # Красное — в issue (weekly-issue.yml).
   report:
     needs: race
     if: failure()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       issues: write
-    steps:
-      - name: issue о красном прогоне
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          title="weekly-race: нестабильный тест на main"
-          body="Прогон $URL: go test -race -count=3 -shuffle=on упал. Зерно -shuffle — в логе job; -shuffle=<зерно> повторяет порядок. Чинится в тот же день, без карантина (аудит процессов 1.2.1, П2)."
-          n=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
-          if [ -n "$n" ]; then
-            gh issue comment "$n" --body "$body"
-          else
-            gh issue create --title "$title" --body "$body"
-          fi
+    uses: ./.github/workflows/weekly-issue.yml
+    with:
+      title: "weekly-race: нестабильный тест на main"
+      what: "go test -race -count=3 -shuffle=on упал. Зерно -shuffle — в логе job; -shuffle=<зерно> повторяет порядок."
