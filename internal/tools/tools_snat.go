@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -86,15 +87,17 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	}
 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		will := map[string]any{
+			"name":                 name,
+			"nat_type":             provision.NATTypePublicSNAT,
+			"availability_zone_id": zoneID,
+		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.T("snat_create makes a billable SNAT gateway.",
 				"snat_create создаёт платный шлюз SNAT."),
-			"will_create": map[string]any{
-				"name":                 name,
-				"nat_type":             provision.NATTypePublicSNAT,
-				"availability_zone_id": zoneID,
-			},
+			"will_create": will,
+			"preview":     willPreview(engine.ResourceSNAT, name, "", will, []string{"nat_type", "availability_zone_id"}),
 		}), true
 	}
 

@@ -347,7 +347,9 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 		out := map[string]any{"status": "confirmation_required",
 			"message": i18n.T("kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes).",
 				"kafka_create создаёт ПЛАТНЫЙ кластер Managed Kafka (асинхронно, несколько минут)."),
-			"will_create": willCreate}
+			"will_create": willCreate,
+			"preview": willPreview(engine.ResourceKafka, name, zone, willCreate,
+				[]string{"version_id", "cpu", "memory_gb", "storage_gib", "brokers", "subnet_id"}, brokersNote)}
 		if brokersNote != "" {
 			out["warning"] = brokersNote
 		}

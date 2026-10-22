@@ -11,6 +11,10 @@
 
 - `SECURITY.md`: как сообщить об уязвимости — приватным отчётом GitHub, что писать и чего не вставлять (ключи, ID проектов), что считается уязвимостью evo, а что — платформы. Ссылка — в README, раздел «Поддержка».
 
+### Исправлено
+
+- Превью `evo ar create`, `evo ca deploy`, `evo kafka create`, `evo redis create`, `evo lb create` и `evo snat create` (MCP `ar_create`, `ca_deploy`, `kafka_create`, `redis_create`, `lb_create`, `snat_create`) называет тариф ресурса: строка «цена: evo её не рассчитывает, ресурс платный: тариф …», в ответе инструмента — объект `preview` с `tariff_url` и `cost_note`, как у кластеров Kubernetes и PostgreSQL с 1.2.1. Раньше согласие на платный ресурс спрашивалось без цены и без ссылки на неё. Предупреждения инструмента (контейнер от root, один брокер Kafka, все хосты Redis в одной зоне) — строками «внимание» превью CLI и в `preview.warnings`; поля `message`, `will_create`, `warning`, `warnings` ответа не изменились.
+
 ## [1.2.2] — 2026-10-22
 
 ### Миграция
