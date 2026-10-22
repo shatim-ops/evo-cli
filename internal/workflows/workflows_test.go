@@ -370,3 +370,74 @@ func runsStep(w workflow, cmd string) bool {
 	}
 	return false
 }
+
+// A release proves where it came from (process audit 1.2.1, 6.4; owner's
+// decision В8): every archive has an SBOM listed in the signed
+// checksums.txt, every file in checksums.txt has a provenance attestation
+// of release.yml, and the MCP image pushed to the registry is signed by
+// digest with cosign keyless. syft comes from go install at a fixed
+// version, checked against the Go checksum database, not from one more
+// action in the jobs that may mint the workflow's OIDC token.
+func TestWorkflows_ReleaseSupplyChain(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".goreleaser.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gr struct {
+		SBOMs []struct {
+			Artifacts string `yaml:"artifacts"`
+		} `yaml:"sboms"`
+	}
+	if err := yaml.Unmarshal(b, &gr); err != nil {
+		t.Fatal(err)
+	}
+	if len(gr.SBOMs) != 1 || gr.SBOMs[0].Artifacts != "archive" {
+		t.Errorf(".goreleaser.yaml: sboms %+v, want one entry for archive", gr.SBOMs)
+	}
+
+	w, ok := readWorkflows(t)["release.yml"]
+	if !ok {
+		t.Fatal("no release.yml")
+	}
+	perms := func(job string) map[string]any {
+		p, _ := w.Jobs[job].Permissions.(map[string]any)
+		return p
+	}
+	steps := func(job, uses string) []map[string]any {
+		var out []map[string]any
+		for _, s := range w.Jobs[job].Steps {
+			if strings.HasPrefix(s.Uses, uses+"@") {
+				out = append(out, s.With)
+			}
+		}
+		return out
+	}
+	runs := func(job, cmd string) bool {
+		for _, s := range w.Jobs[job].Steps {
+			if strings.Contains(s.Run, cmd) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if p := perms("goreleaser"); p["attestations"] != "write" || p["id-token"] != "write" {
+		t.Errorf("release.yml goreleaser: permissions %v, want attestations and id-token: write", p)
+	}
+	if !runs("goreleaser", "go install github.com/anchore/syft/cmd/syft@v") {
+		t.Error("release.yml goreleaser: syft is not installed with go install at a fixed version")
+	}
+	if a := steps("goreleaser", "actions/attest-build-provenance"); len(a) != 1 || a[0]["subject-checksums"] != "dist/checksums.txt" {
+		t.Errorf("release.yml goreleaser: attest-build-provenance %v, want one step with subject-checksums: dist/checksums.txt", a)
+	}
+
+	if p := perms("image"); p["id-token"] != "write" || p["contents"] != "read" || len(p) != 2 {
+		t.Errorf("release.yml image: permissions %v, want contents: read and id-token: write only", p)
+	}
+	if len(steps("image", "sigstore/cosign-installer")) != 1 {
+		t.Error("release.yml image: cosign is not installed")
+	}
+	if !runs("image", `cosign sign --yes "$DIGEST_REF"`) {
+		t.Error("release.yml image: the pushed image is not signed by digest")
+	}
+}

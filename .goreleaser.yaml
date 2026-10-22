@@ -76,6 +76,13 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# SBOM каждого архива (SPDX JSON, syft): evo_1.3.0_linux_amd64.tar.gz.sbom.json.
+# Файлы SBOM входят в checksums.txt, поэтому их покрывает его подпись и
+# attestation происхождения (release.yml). syft ставится в release.yml;
+# локально без него — goreleaser release --snapshot --clean --skip=sign,sbom.
+sboms:
+  - artifacts: archive
+
 # Keyless: сертификат выдаёт Fulcio на OIDC-токен GitHub Actions, запись
 # ложится в Rekor. Ключей хранить не нужно; проверка — по identity workflow
 # (команда в docs/RELEASING.md). Бандл .sigstore.json содержит подпись,
