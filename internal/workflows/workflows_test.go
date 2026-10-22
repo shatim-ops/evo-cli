@@ -231,3 +231,53 @@ func TestWorkflows_CILintsWorkflowsAndDeadCode(t *testing.T) {
 		}
 	}
 }
+
+// cloud-e2e runs from main every week (process audit 1.2.1, PR 9; owner's
+// decision В4): on Monday the cheap set — the main e2e run with dns, s3
+// and secrets — and on Saturday cleanup_only. The weekly workflow only
+// dispatches cloud-e2e.yml with explicit inputs, so the run logic and the
+// owner's approval in the cloud-e2e environment stay in one place; it holds
+// no key and may do nothing but start a workflow.
+func TestWorkflows_CloudE2EWeekly(t *testing.T) {
+	w, ok := readWorkflows(t)["cloud-e2e-weekly.yml"]
+	if !ok {
+		t.Fatal("no cloud-e2e-weekly.yml")
+	}
+	if s, _ := w.On["schedule"].([]any); len(s) != 2 {
+		t.Errorf("cloud-e2e-weekly: schedule %v, want the Monday set and the Saturday cleanup", w.On["schedule"])
+	}
+	runs := ""
+	for name, j := range w.Jobs {
+		if !strings.Contains(j.If, "refs/heads/main") {
+			t.Errorf("cloud-e2e-weekly: job %s runs off main (if: %q)", name, j.If)
+		}
+		if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["actions"] != "write" {
+			t.Errorf("cloud-e2e-weekly: job %s permissions %v, want actions: write only", name, j.Permissions)
+		}
+		for _, s := range j.Steps {
+			runs += s.Run + "\n"
+		}
+	}
+	for _, want := range []string{
+		"gh workflow run cloud-e2e.yml --repo \"$GITHUB_REPOSITORY\" --ref main",
+		"-f cleanup_only=true",
+		"-f dns_smoke=true -f s3_smoke=true -f secrets_smoke=true",
+	} {
+		if !strings.Contains(runs, want) {
+			t.Errorf("cloud-e2e-weekly: no %q", want)
+		}
+	}
+}
+
+// cloud-e2e started from a PR's branch with no area chosen checks the cheap
+// areas the branch touches (classify.sh, owner's decision В5) instead of
+// none: the owner's one click covers what the PR's checklist asks for.
+func TestWorkflows_CloudE2EAreasFromBranch(t *testing.T) {
+	w := readWorkflows(t)["cloud-e2e.yml"]
+	for _, s := range w.Jobs["live-plan"].Steps {
+		if strings.Contains(s.Run, "git diff --name-only origin/main...HEAD | .github/scripts/classify.sh") {
+			return
+		}
+	}
+	t.Error("cloud-e2e: live-plan does not take areas from the branch's paths")
+}
