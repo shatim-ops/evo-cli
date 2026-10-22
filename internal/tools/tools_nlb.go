@@ -371,6 +371,8 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 			"message": i18n.T("lb_create provisions a BILLABLE L4 load balancer (async).",
 				"lb_create создаёт ПЛАТНЫЙ балансировщик L4 (асинхронно)."),
 			"will_create": willCreate,
+			"preview": willPreview(engine.ResourceLB, name, firstNonEmptyStr(zone.Name, zone.ID), willCreate,
+				[]string{"listener", "health_check_port", "external", "subnet_id"}, warnings...),
 		}
 		if len(warnings) > 0 {
 			out["warnings"] = warnings

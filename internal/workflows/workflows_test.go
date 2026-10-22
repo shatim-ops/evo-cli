@@ -26,6 +26,7 @@ type workflow struct {
 	Jobs map[string]struct {
 		If          string `yaml:"if"`
 		Permissions any    `yaml:"permissions"`
+		Uses        string `yaml:"uses"`
 		Steps       []struct {
 			Uses string         `yaml:"uses"`
 			Run  string         `yaml:"run"`
@@ -285,38 +286,87 @@ func TestWorkflows_CloudE2EAreasFromBranch(t *testing.T) {
 // Every week main's tests run three times in a random order under -race on
 // the three OSes, and a red run opens an issue (process audit 1.2.1, PR 10):
 // a race or an order dependency that shows once in a few runs is caught
-// there. The job that writes the issue checks out no code.
+// there.
 func TestWorkflows_WeeklyRace(t *testing.T) {
-	w, ok := readWorkflows(t)["weekly-race.yml"]
+	w := weeklyWorkflow(t, "weekly-race.yml")
+	if !runsStep(w, "go test -race -count=3 -shuffle=on ./...") {
+		t.Error("weekly-race: no go test -race -count=3 -shuffle=on")
+	}
+}
+
+// Every week each Fuzz* target of the repository fuzzes main for five
+// minutes (process audit 1.2.1, second wave): the target list comes from
+// go test -list, so a new target joins without an edit here.
+func TestWorkflows_WeeklyFuzz(t *testing.T) {
+	w := weeklyWorkflow(t, "weekly-fuzz.yml")
+	for _, want := range []string{"go test -list '^Fuzz' ./...", `go test -run '^$' -fuzz "^${NAME}\$" -fuzztime=5m`} {
+		if !runsStep(w, want) {
+			t.Errorf("weekly-fuzz: no step runs %s", want)
+		}
+	}
+}
+
+// A red weekly run reaches people as an issue, one per kind, written by one
+// workflow that checks out no code and may do nothing but write issues.
+func TestWorkflows_WeeklyIssue(t *testing.T) {
+	w, ok := readWorkflows(t)["weekly-issue.yml"]
 	if !ok {
-		t.Fatal("no weekly-race.yml")
+		t.Fatal("no weekly-issue.yml")
 	}
-	if _, ok := w.On["schedule"]; !ok {
-		t.Error("weekly-race: no schedule")
+	if _, ok := w.On["workflow_call"]; !ok || len(w.On) != 1 {
+		t.Errorf("weekly-issue: triggers %v, want workflow_call only", w.On)
 	}
-	var race, report bool
 	for name, j := range w.Jobs {
+		if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["issues"] != "write" {
+			t.Errorf("weekly-issue: job %s permissions %v, want issues: write only", name, j.Permissions)
+		}
 		for _, s := range j.Steps {
-			if strings.Contains(s.Run, "go test -race -count=3 -shuffle=on ./...") {
-				race = true
-			}
-			if strings.Contains(s.Run, "gh issue create") {
-				report = true
-				if j.If != "failure()" {
-					t.Errorf("weekly-race: job %s reports on %q, want failure()", name, j.If)
-				}
-				if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["issues"] != "write" {
-					t.Errorf("weekly-race: job %s permissions %v, want issues: write only", name, j.Permissions)
-				}
-				for _, s := range j.Steps {
-					if strings.HasPrefix(s.Uses, "actions/checkout@") {
-						t.Errorf("weekly-race: job %s checks out code with a write token", name)
-					}
-				}
+			if strings.HasPrefix(s.Uses, "actions/checkout@") {
+				t.Errorf("weekly-issue: job %s checks out code with a write token", name)
 			}
 		}
 	}
-	if !race || !report {
-		t.Errorf("weekly-race: race run %v, issue on red %v; want both", race, report)
+	if !runsStep(w, "gh issue create") {
+		t.Error("weekly-issue: no gh issue create")
 	}
+}
+
+// weeklyWorkflow is a scheduled workflow whose red run calls weekly-issue.yml.
+func weeklyWorkflow(t *testing.T, file string) workflow {
+	t.Helper()
+	w, ok := readWorkflows(t)[file]
+	if !ok {
+		t.Fatalf("no %s", file)
+	}
+	if _, ok := w.On["schedule"]; !ok {
+		t.Errorf("%s: no schedule", file)
+	}
+	reports := false
+	for name, j := range w.Jobs {
+		if j.Uses != "./.github/workflows/weekly-issue.yml" {
+			continue
+		}
+		reports = true
+		if j.If != "failure()" {
+			t.Errorf("%s: job %s reports on %q, want failure()", file, name, j.If)
+		}
+		if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["issues"] != "write" {
+			t.Errorf("%s: job %s permissions %v, want issues: write only", file, name, j.Permissions)
+		}
+	}
+	if !reports {
+		t.Errorf("%s: a red run opens no issue (weekly-issue.yml)", file)
+	}
+	return w
+}
+
+func runsStep(w workflow, cmd string) bool {
+	for _, j := range w.Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, cmd) {
+				return true
+			}
+		}
+	}
+	return false
 }

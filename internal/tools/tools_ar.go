@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/artifact"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -76,6 +77,9 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 			"status": "confirmation_required",
 			"message": i18n.Tf("ar_create makes a BILLABLE %s registry %q (public=%v).",
 				"ar_create создаёт ПЛАТНЫЙ реестр %s %q (public=%v).", regType, name, public),
+			"preview": willPreview(engine.ResourceARRegistry, name, "",
+				map[string]any{"registry_type": regType, "public": public, "tariff": strings.ToUpper(stringArg(args, "tariff"))},
+				[]string{"registry_type", "public", "tariff"}),
 		}), true
 	}
 	cli, err := s.arClient(ctx)

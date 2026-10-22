@@ -1,0 +1,43 @@
+name: weekly-issue
+
+# Красный еженедельный прогон — в issue: его никто не смотрит, пока он не
+# придёт сам. Вызывают weekly-race и weekly-fuzz; открытый issue с тем же
+# заголовком получает комментарий, а не дубль. Кода репозитория здесь нет —
+# только gh с правом на issues.
+
+on:
+  workflow_call:
+    inputs:
+      title:
+        description: "Issue title, one per kind of red run"
+        type: string
+        required: true
+      what:
+        description: "What failed and how to repeat it"
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: issue о красном прогоне
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: ${{ inputs.title }}
+          WHAT: ${{ inputs.what }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="Прогон $URL: $WHAT Чинится в тот же день, без карантина (аудит процессов 1.2.1, П2)."
+          n=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi
