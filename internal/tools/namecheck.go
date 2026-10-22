@@ -78,7 +78,7 @@ func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]an
 		return errResult(createErr), true
 	}
 	return toJSON(map[string]any{"status": "creating", idField: id, "resource_status": status, "created": created,
-		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s) и оплачивается", kind, name, id),
+		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s) и оплачивается", kind, name, id, status),
 		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}), false
 }
 

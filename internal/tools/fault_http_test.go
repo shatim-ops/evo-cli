@@ -230,3 +230,15 @@ func TestLostCreate_NoIDIsAPIError(t *testing.T) {
 		t.Errorf("reason %v, want API_ERROR: %s", m["reason"], text)
 	}
 }
+
+// A resource found after a lost create may already have failed: the
+// warning says its status, not only "creating" (Qwen review of #218).
+func TestLostCreate_FoundSaysItsStatus(t *testing.T) {
+	failed := func(context.Context) ([]map[string]any, error) {
+		return []map[string]any{{"id": "c-1", "name": "evo-k", "status": "FAILED"}}, nil
+	}
+	text, isErr := lostCreate(context.Background(), failed, "Kafka cluster", "cluster_id", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: lost"))
+	if isErr || !strings.Contains(text, "c-1") || !strings.Contains(text, "status FAILED") {
+		t.Errorf("answer %s: want c-1 and its status FAILED", text)
+	}
+}
