@@ -380,7 +380,10 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			}
 		}
 	}
-	return "", "", "could not attach a floating IP (" + e.Error() + ") — the VM was created without a public IP; attach one via the console"
+	// The FIP may still exist on the VM, unseen: a second one attached by
+	// hand would be billed too. deploy_apply again adopts the VM with the
+	// address it has.
+	return "", "", "could not attach a floating IP (" + e.Error() + ") — the VM has no public IP evo could confirm; run deploy_apply again with the same plan: it adopts the VM and the floating IP already on it, or attaches a new one"
 }
 
 // joinNotes concatenates non-empty notes with "; ".

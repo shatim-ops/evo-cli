@@ -6,6 +6,7 @@ package deployplan
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -67,6 +68,24 @@ func TestQAr3_Apply_LostFIPCreateFoundByName(t *testing.T) {
 	}
 	if res.FloatingIPID != "fip-made" || res.PublicIP != "203.0.113.7" {
 		t.Fatalf("result %+v; want fip-made found by name, never the user's fip-user", res)
+	}
+}
+
+// unlistedFIPCloud: the create answer is lost and the list fails too.
+type unlistedFIPCloud struct{ lostFIPCloud }
+
+func (c *unlistedFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return nil, context.DeadlineExceeded
+}
+
+// Qwen review of #211: with the create answer lost and the list failed,
+// the floating IP may exist on the VM. The note sends the user to
+// deploy_apply again, which adopts the VM with the address on it, never
+// to the console, where a second billed address would be attached.
+func TestApply_LostFIPUnlistedRetryNotConsole(t *testing.T) {
+	_, _, note := ensureFloatingIP(context.Background(), &unlistedFIPCloud{}, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
+	if !strings.Contains(note, "deploy_apply again") || strings.Contains(note, "console") {
+		t.Fatalf("note %q: want deploy_apply again, not the console", note)
 	}
 }
 
