@@ -4,6 +4,8 @@
 > обратной связи: в Telegram [@shatim](https://t.me/shatim) и в
 > [чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni).
 
+Уязвимость — не в Issues, а приватным отчётом: [SECURITY.md](SECURITY.md).
+
 Командная строка и MCP-сервер для [Cloud.ru Evolution](https://cloud.ru):
 виртуальные машины, диски, сети и балансировщики, DNS, Managed Kubernetes,
 PostgreSQL, Kafka, Redis, Object Storage, секреты и сертификаты, Container
