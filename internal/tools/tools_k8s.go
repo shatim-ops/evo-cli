@@ -215,10 +215,7 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8s
 		return k8sPlan{}, errors.New(i18n.T("could not resolve cluster service account id; pass cluster_sa_id", "не удалось определить ID сервисного аккаунта кластера; передайте cluster_sa_id"))
 	}
 
-	name := stringArg(args, "name")
-	if name == "" {
-		name = "k8s-" + firstNonEmptyStr(stringArg(args, "product"), "cluster")
-	}
+	name := k8sClusterNameArg(args)
 
 	kubeApiInternet := true
 	if v, ok := args["kube_api_internet"].(bool); ok {
@@ -275,9 +272,26 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 	if err := k8sArgsError(args); err != nil {
 		return errResult(err), true
 	}
+	// A second cluster of the same name is a second bill: refused before
+	// the consent, as every other create (DECISIONS D21).
+	name := k8sClusterNameArg(args)
+	cli, _, _, err := s.k8sClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	clusters, err := cli.ListClusters(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)), true
+	}
+	listed := make([]map[string]any, 0, len(clusters))
+	for _, c := range clusters {
+		listed = append(listed, map[string]any{"id": c.ID, "name": c.Name, "status": c.Status})
+	}
+	if id, st, ok := takenName(listed, name); ok {
+		return nameTakenResult(i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, id, st, "k8s_get cluster_id="+id)
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sCluster,
-			firstNonEmptyStr(stringArg(args, "name"), "k8s-"+firstNonEmptyStr(stringArg(args, "product"), "cluster")), args))
+		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sCluster, name, args))
 		if err != nil {
 			return errResult(err), true
 		}
@@ -293,10 +307,6 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	req := plan.req
-	cli, _, _, err := s.k8sClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
 	op, err := cli.CreateCluster(ctx, req)
 	if err != nil {
 		return errResult(err), true
@@ -602,7 +612,13 @@ func k8sArgsError(args map[string]any) error {
 	}
 	// The name the cluster gets, by the rule of the mk8s specification
 	// (QA-15): the API refused it only after the plan.
-	return k8sClusterName(firstNonEmptyStr(stringArg(args, "name"), "k8s-"+firstNonEmptyStr(stringArg(args, "product"), "cluster")))
+	return k8sClusterName(k8sClusterNameArg(args))
+}
+
+// k8sClusterNameArg is the name a new cluster gets: the argument, else
+// k8s-<product>.
+func k8sClusterNameArg(args map[string]any) string {
+	return firstNonEmptyStr(stringArg(args, "name"), "k8s-"+firstNonEmptyStr(stringArg(args, "product"), "cluster"))
 }
 
 // k8sZoneRef is the zone of a new cluster: its name, the zone ID of the

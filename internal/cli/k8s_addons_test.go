@@ -46,6 +46,8 @@ func (a *addonAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		_, _ = io.WriteString(w, `{"releases":[
 			{"addonVersion":"1.0.0","appVersion":"v1.13.0","addonNamespace":"cert-manager","mode":"SUPPORT_MODE_END_OF_SUPPORT","requirements":{"kubeVersions":">=1.25.0-0"}},
 			{"addonVersion":"1.1.0","appVersion":"v1.14.0","addonNamespace":"cert-manager","configurationSchema":"{\"type\":\"object\",\"properties\":{\"replicas\":{\"type\":\"integer\"}}}","mode":"SUPPORT_MODE_ACTIVE","requirements":{"kubeVersions":">=1.26.0-0","readyWorkers":1}}]}`)
+	case r.URL.Path == "/v3/clusters" && r.Method == http.MethodGet:
+		_, _ = io.WriteString(w, `{"clusters":[]}`)
 	case r.URL.Path == "/v3/clusters/"+addonClusterID:
 		_, _ = io.WriteString(w, `{"id":"`+addonClusterID+`","name":"k8s-dev","version":"v1.31.4"}`)
 	case r.URL.Path == "/v3/nodePools":
