@@ -21,8 +21,9 @@ const (
 	// the gap of dogfood №4 that 1.2.1 closed for Kubernetes, PostgreSQL,
 	// buckets and node pools. Each goes with tariff_url in 1.2.3.
 	priceKnownGap = "known gap: billable, no tariff_url yet (release-plan, 1.2.3)"
-	// Whether Cloud.ru bills it is not settled; the owner decides before
-	// the preview of such a tool changes.
+	// Whether Cloud.ru bills it is not settled; the owner decides by the
+	// start of 1.3, else it counts as billable and gets tariff_url
+	// (owner's decision 22.10, release-plan).
 	priceToConfirm = "to confirm: is it billable"
 )
 
