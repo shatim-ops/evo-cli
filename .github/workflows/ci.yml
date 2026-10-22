@@ -95,6 +95,11 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/redact_test.sh
 
+      # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
+      - name: classify.sh на образцах путей
+        if: runner.os == 'Linux'
+        run: .github/scripts/classify_test.sh
+
       # Метки отзывов по полям форм Issues: таблицы скрипта совпадают с формами.
       - name: issue_labels.py на образцах форм
         if: runner.os == 'Linux'
@@ -118,6 +123,33 @@ jobs:
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
           "$(go env GOPATH)/bin/staticcheck" ./...
+
+  # Класс изменения PR по путям и чек-лист проверок сверх CI в summary
+  # прогона (аудит процессов 1.2.1, П5 и PR 8): политика, секреты,
+  # транспорт, ломающее и области cloud-e2e до и после слияния (В5).
+  # Ничего не блокирует и ничего не пишет в PR: меток нет, потому что право
+  # записи в job, где лежит код PR, давать нельзя.
+  classify:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Нужна база PR, чтобы взять diff base...head.
+          fetch-depth: 0
+
+      # SHA базы — не текст события, но идёт через env, как всё из события.
+      # «Миграция» — новая строка с этим словом в CHANGELOG.md (ломающее).
+      - name: классы по путям
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          MIGRATION=0
+          if git diff "$BASE...HEAD" -- CHANGELOG.md | grep -q '^+.*Миграция'; then MIGRATION=1; fi
+          git diff --name-only "$BASE...HEAD" | MIGRATION=$MIGRATION .github/scripts/classify.sh |
+            .github/scripts/classify_summary.sh >> "$GITHUB_STEP_SUMMARY"
 
   # Образ MCP-сервера для Marketplace: сборка и smoke-тест по HTTP. Кредов
   # Cloud.ru не нужно: initialize и tools/list в облако не ходят.
