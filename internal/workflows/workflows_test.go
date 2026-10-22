@@ -213,3 +213,21 @@ func TestWorkflows_CIClassifiesPRs(t *testing.T) {
 		t.Error("ci: classify_test.sh is not run")
 	}
 }
+
+// ci lints the workflows (actionlint, with shellcheck of each run script)
+// and fails on code unreachable from main (deadcode): checks of the cycle
+// of CLAUDE.md §4 that lived only in sessions (process audit 1.2.1, PR 7).
+func TestWorkflows_CILintsWorkflowsAndDeadCode(t *testing.T) {
+	w := readWorkflows(t)["ci.yml"]
+	runs := ""
+	for _, j := range w.Jobs {
+		for _, s := range j.Steps {
+			runs += s.Run + "\n"
+		}
+	}
+	for _, tool := range []string{"rhysd/actionlint/cmd/actionlint@", "golang.org/x/tools/cmd/deadcode@"} {
+		if !strings.Contains(runs, tool) {
+			t.Errorf("ci: no step installs %s", tool)
+		}
+	}
+}

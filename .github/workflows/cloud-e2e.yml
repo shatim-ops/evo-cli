@@ -346,10 +346,12 @@ jobs:
         if: always() && env.SG_ID != ''
         working-directory: e2e-app
         run: |
+          # $sg is jq's variable (--arg sg), not the shell's.
+          # shellcheck disable=SC2016
           rule80='[.security_groups[] | select(.id==$sg) | .rules[]? | select(.direction=="ingress" and .port_range=="80:80" and ((.description // "") | startswith("evo:") or startswith("cloudru-vm:")))] | length'
           had=$(jq --arg sg "$SG_ID" "$rule80" "$RUNNER_TEMP/sg-before.json")
           if [ "$had" != 0 ]; then echo "правило для 80 было в группе до deploy — destroy его не удаляет, проверка пропущена"; exit 0; fi
-          for i in 1 2 3 4 5 6; do
+          for _ in 1 2 3 4 5 6; do
             left=$(evo tools call list_security_groups --arg rules=true --json | jq --arg sg "$SG_ID" "$rule80")
             [ "$left" = 0 ] && { echo "правило для 80 удалено"; exit 0; }
             sleep 10
