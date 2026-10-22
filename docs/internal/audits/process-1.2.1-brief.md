@@ -29,20 +29,51 @@ PR с тестом, который падает без правки (§4 `CLAUDE
 | В6: secret scanning, push protection, required checks | вне кода | включить до PR 2, чтобы required checks совпали с именами job |
 | В9: Fable полный на minor/major, дельта на patch | PR 6 | да |
 
+## Цикл одного PR (учтён в оценках ниже)
+
+Каждый PR проходит полный цикл §4 `CLAUDE.md`, не только написание кода:
+
+1. тест, падающий без правки → gofmt, vet, staticcheck, `go test -race` локально;
+2. PR → ревью Qwen: до PR 2 запускает владелец комментарием `/qwen review`,
+   после PR 2 — автоматически при открытии; 5–15 мин ожидания;
+3. разбор каждой находки Qwen в ответном комментарии: исправлено или
+   опровергнуто с обоснованием; при исправлении — повторный push и CI;
+4. CI на трёх ОС (10 мин до PR 1, 2–3 мин после);
+5. squash-merge по полному SHA — релизная сессия.
+
+Цена цикла сверх кода: 20–40 мин Claude на PR (ожидание Qwen и разбор),
+один комментарий владельца на PR до автоматизации. Поэтому автозапуск Qwen
+идёт вторым PR, а не седьмым: он убирает ручной шаг у восьми следующих.
+
+## Распределение по агентам
+
+| Агент | Берёт | Почему |
+|---|---|---|
+| Claude (сессия разработки) | PR 1, 3, 4, 5, 8, 9; вторая волна П4, П5-2, П9 | нужен контекст фейков, реестра и инвариантов; правки тестов и движка |
+| Cursor (по брифу) | PR 6 (документы процесса, архив `standalone/*`), PR 7 (`actionlint`, `deadcode`), PR 10 (еженедельный `-race -count=3 -shuffle`); после PR 6 — проверка «документация против бинаря» (бриф 2А) | самостоятельные задачи с ясным критерием приёмки, без контекста кода; независимый взгляд на документы |
+| Grok (бриф-атака) | после В3 и PR 9: может ли workflow с ветки `claude/*` вынести ключ наблюдателя из `cloud-readonly` (инъекция через `inputs`, `pull_request_target`, логи); после PR 8: подмена классов через пути и названия файлов; перед 1.3: наборы инструментов и режим без удалений | это и есть новые поверхности атаки, которые создаёт первая волна |
+| Qwen | каждый PR | как сейчас; для PR по YAML workflow — приоритет 5 `review-guide` (permissions, pinning, инъекции) |
+| Fable | дельта-аудит 1.2.2 по чек-листу; полный аудит 1.3 | решение В9 |
+
+Правило разбора: находки Qwen по PR Cursor разбирает Cursor в том же PR;
+находки Grok — issue с меткой `безопасность`, разбирает Claude.
+
 ## Порядок PR (первая волна, 1.2.2 → до 1.3)
 
-| # | PR | Что | Тест-ограничитель | Труд |
+| # | PR | Что | Тест-ограничитель | Труд (код + цикл ревью) |
 |---|---|---|---|---|
 | 1 | `ci: тестовые Timings в фабрике CLI-тестов` | `runCLI` получает `engine.Timings` (как `fastTimings` в `engine_test.go:393`); `TestEngineCommands_RepeatedDeployGate` с 450 с до секунд | прогон `go test ./internal/cli` < 60 с локально (проверка руками, не тестом) | 1 ч |
-| 2 | `ci: триггеры и concurrency` | `push: branches: [main]`, `pull_request`, `workflow_call`; `concurrency` с отменой на не-`main`; `-count=1` только на `main`/теге | — | 1 ч |
-| 3 | `ci: actionlint и deadcode` | два шага на Linux; deadcode — отчёт, не провал, пока не очищено | — | 0,5 ч |
+| 2 | `ci: qwen-review на opened/ready_for_review` | только PR из этого репозитория; `/qwen review` остаётся для повтора | — | 0,5 ч |
+| 3 | `ci: триггеры и concurrency` | `push: branches: [main]`, `pull_request`, `workflow_call`; `concurrency` с отменой на не-`main`; `-count=1` только на `main`/теге | — | 1 ч |
 | 4 | `test: мета-тест порогов времени и -shuffle` | `TestNoWallClockAssertions`; `-shuffle=on` на `main` | сам тест | 2 ч |
 | 5 | `test: инварианты` (3 PR) | ссылки `D\d+` ↔ `DECISIONS.md` (и записать D17); бюджет `tools/list` в байтах; цена или `tariff_url` у каждого `Mutating` превью | сами тесты; могут упасть на текущем коде — тогда находка в план | 5–7 ч |
-| 6 | `docs: процесс` | `SECURITY.md`; ритм аудитов и автозапуск Qwen в `CLAUDE.md` §4 и `review-guide`; `RELEASING.md`: откат без удаления тега, `release-1.x` при первой ломающей правке 2.0; шаблон 4 метрик в `handoff/README.md`; `standalone/{00-audit,FINAL_AUDIT,KICKOFF,stages,01-plan}` → `archive/` | `TestDocsExamples_Links` | 3 ч |
-| 7 | `ci: qwen-review на opened/ready_for_review` | только PR из этого репозитория; `/qwen review` остаётся для повтора | — | 0,5 ч |
+| 6 | `docs: процесс` (Cursor) | `SECURITY.md`; ритм аудитов и автозапуск Qwen в `CLAUDE.md` §4 и `review-guide`; `RELEASING.md`: откат без удаления тега, `release-1.x` при первой ломающей правке 2.0; шаблон 4 метрик в `handoff/README.md`; `standalone/{00-audit,FINAL_AUDIT,KICKOFF,stages,01-plan}` → `archive/` | `TestDocsExamples_Links` | 3 ч |
+| 7 | `ci: actionlint и deadcode` (Cursor) | два шага на Linux; deadcode — отчёт, не провал, пока не очищено | — | 0,5 ч |
 | 8 | `ci: classify` | job по путям → классы в outputs, метки PR, чек-лист в summary; `contract` и fuzz-набор по классу | — | 1 день |
 | 9 | `ci: расписание cloud-e2e` | понедельник: e2e + dns + secrets + s3 из `main` с одобрением; суббота: `cleanup_only`; `live-plan` берёт области из путей, если входы пусты | — | 2 ч |
-| 10 | `ci: еженедельный -race -count=3 -shuffle на трёх ОС` | детектор flaky, результат — issue | — | 0,5 ч |
+| 10 | `ci: еженедельный -race -count=3 -shuffle на трёх ОС` (Cursor) | детектор flaky, результат — issue | — | 0,5 ч |
+
+Труд первой волны: Claude ≈ 2 дня кода + ≈ 4 ч циклов ревью; Cursor — три PR по брифам; владелец — два комментария `/qwen review` (PR 1 и 2), настройки GitHub, одобрения.
 
 После PR 1–3 — короткая запись в `release-plan.md` (раздел 1.2.2 или 1.3), чтобы
 релизная сессия видела, что внедрено.
