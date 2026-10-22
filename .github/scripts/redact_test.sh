@@ -88,5 +88,16 @@ check "via Auth.IAM.cloud.ru ok, https://ID.Cloud.RU/auth" "via Auth.IAM.cloud.r
 # Имя в конце значения JSON: маска съедает и кавычку со скобкой, поэтому в
 # cloud-e2e сначала jq, потом redact.sed и обрезка (ревью Grok по #88).
 check '{"status":"error","error":"не найдена подсеть evo-e2e-net"}' '{"status":"error","error":"не найдена подсеть <name>'
+# FB122-1 (дельта-аудит Fable 1.2.2): пароль ВМ в конверте ошибки --json
+# (details.password, с 1.2.2) и строкой «Пароль ВМ: …» после ошибки — в
+# публичный лог не попадает; соседние поля и текст остаются.
+check '    "password": "aB3#x-Yz9!kq",' '    "password":"<password>",'
+check '{"error":{"code":5,"details":{"vm_id":"web","password":"aB3#x-Yz9!kq"}}}' '{"error":{"code":5,"details":{"vm_id":"web","password":"<password>"}}}'
+check '{"admin_password":"p\"q","x":1}' '{"admin_password":"<password>","x":1}'
+check "Пароль ВМ: aB3#x-Yz9!kq (записан только здесь — сохраните: evo его не хранит)" \
+      "Пароль ВМ: <password> (записан только здесь — сохраните: evo его не хранит)"
+check "VM password: aB3#x-Yz9!kq (shown only here — save it: evo keeps no copy)" \
+      "VM password: <password> (shown only here — save it: evo keeps no copy)"
+check "password_required: true, пароль задаётся --password-file" "password_required: true, пароль задаётся --password-file"
 [ "$fail" = 0 ] && echo "redact.sed: все образцы замаскированы верно"
 exit "$fail"
