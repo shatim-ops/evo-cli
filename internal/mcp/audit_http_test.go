@@ -17,7 +17,7 @@ func TestAudit_HTTPBodySizeLimited(t *testing.T) {
 	ts, _ := newHTTPTest(t, HTTPOptions{BearerToken: testToken})
 
 	// The HTTP limit is 4 MiB, below the 16 MiB stdio line (owner's
-	// decision В13): 32 calls at once then hold at most 128 MiB of bodies.
+	// decision, D22): 32 calls at once then hold at most 128 MiB of bodies.
 	// A literal, not httpMaxBody, so that raising the constant fails here.
 	const limit = 4 << 20
 	if httpMaxBody >= maxMessageSize {
