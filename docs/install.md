@@ -33,14 +33,14 @@ evo version
 
 | Переменная | Что задаёт | По умолчанию |
 |---|---|---|
-| `CLOUDRU_VM_VERSION` | тег релиза, например `v1.2.1` | последний стабильный; pre-release (`-rc.N`) надо назвать явно |
+| `CLOUDRU_VM_VERSION` | тег релиза, например `v1.2.2` | последний стабильный; pre-release (`-rc.N`) надо назвать явно |
 | `INSTALL_DIR` | каталог для бинаря | `~/.local/bin`, под root `/usr/local/bin` |
 | `CLOUDRU_VM_BASE_URL` | откуда качать вместо GitHub (зеркало); ожидается `<base>/<тег>/<файл>` | GitHub Releases |
 
 ```sh
 # конкретная версия, в свой каталог
 curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh \
-  | CLOUDRU_VM_VERSION=v1.2.1 INSTALL_DIR="$HOME/bin" sh
+  | CLOUDRU_VM_VERSION=v1.2.2 INSTALL_DIR="$HOME/bin" sh
 ```
 
 Без `CLOUDRU_VM_VERSION` скрипт ставит последний стабильный релиз; кандидаты
@@ -56,7 +56,7 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 
 ```sh
 # OS: linux | darwin; ARCH: amd64 | arm64
-V=1.2.1; OS=linux; ARCH=amd64
+V=1.2.2; OS=linux; ARCH=amd64
 base=https://github.com/shatim-ops/evo-cli/releases/download/v$V
 curl -fLO "$base/evo_${V}_${OS}_${ARCH}.tar.gz"
 curl -fLO "$base/checksums.txt"
@@ -81,7 +81,7 @@ v2.0, см. [rename.md](rename.md)). Нужен он,
    `checksums.txt`:
 
    ```powershell
-   (Get-FileHash .\evo_1.2.1_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
+   (Get-FileHash .\evo_1.2.2_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
    Select-String -Path .\checksums.txt -Pattern windows_amd64
    ```
 
@@ -111,7 +111,7 @@ v2.0, см. [rename.md](rename.md)). Нужен он,
 Rekor. Ключей у проекта нет — проверяется *кто* подписал (identity workflow).
 
 ```sh
-V=v1.2.1
+V=v1.2.2
 cosign verify-blob --bundle checksums.txt.sigstore.json \
   --certificate-identity "https://github.com/shatim-ops/evo-cli/.github/workflows/release.yml@refs/tags/$V" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
