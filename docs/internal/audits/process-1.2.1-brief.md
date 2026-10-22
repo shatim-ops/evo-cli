@@ -89,7 +89,7 @@ PR с тестом, который падает без правки (§4 `CLAUDE
 | 1 | `ci: тестовые Timings в фабрике CLI-тестов` | `runCLI` получает `engine.Timings` (как `fastTimings` в `engine_test.go:393`); `TestEngineCommands_RepeatedDeployGate` с 450 с до секунд | прогон `go test ./internal/cli` < 60 с локально (проверка руками, не тестом) | 1 ч |
 | 2 | `ci: qwen-review на opened/ready_for_review` | только PR из этого репозитория; `/qwen review` остаётся для повтора | — | 0,5 ч |
 | 3 | `ci: триггеры и concurrency` | `push: branches: [main]`, `pull_request`, `workflow_call`; `concurrency` с отменой на не-`main`; `-count=1` только на `main`/теге | — | 1 ч |
-| 4 | `test: мета-тест порогов времени и -shuffle` | `TestNoWallClockAssertions`; `-shuffle=on` на `main` | сам тест | 2 ч |
+| 4 | `test: часы стенки в тестах и -shuffle` | `TestNoWallClockAssertions` (пороги времени) + второй класс по находке 1.2.2: значение из часов стенки в сравниваемом ответе (`TestReadOnly_EveryTool`, PR #190) — паритетные сравнения с подменённым временем по разные стороны минуты/часа и печать первого отличающегося ключа JSON вместо `clipLine`; `-shuffle=on` на `main` | сами тесты | 3–4 ч |
 | 5 | `test: инварианты` (3 PR) | ссылки `D\d+` ↔ `DECISIONS.md` (и записать D17); бюджет `tools/list` в байтах; цена или `tariff_url` у каждого `Mutating` превью | сами тесты; могут упасть на текущем коде — тогда находка в план | 5–7 ч |
 | 6 | `docs: процесс` | `SECURITY.md`; ритм аудитов и автозапуск Qwen в `CLAUDE.md` §4 и `review-guide`; `RELEASING.md`: откат без удаления тега, `release-1.x` при первой ломающей правке 2.0; шаблон 4 метрик в `handoff/README.md`; `standalone/{00-audit,FINAL_AUDIT,KICKOFF,stages,01-plan}` → `archive/` | `TestDocsExamples_Links` | 3 ч |
 | 7 | `ci: actionlint и deadcode` | два шага на Linux; deadcode — отчёт, не провал, пока не очищено | — | 0,5 ч |
@@ -135,7 +135,26 @@ Docker 10 с, `sshSlowNote` 5 мин). Фейк отвечает мгновен�
 Поведение продукта не меняется. Проверка: `go test ./internal/cli` локально
 меньше минуты (руками, не тестом — правило 1).
 
-### Мета-тест порогов времени (PR 4)
+### Часы стенки в тестах (PR 4): два класса
+
+Находка релизной сессии 1.2.2 (прогон 39769395820, PR #190): `TestReadOnly_EveryTool`
+падал не на пороге времени, а потому что `deploy_plan` без имени
+называет ВМ по минуте вызова (`deployplan/resolve.go:188`,
+`<base>-ГГГГММДД-ЧЧММ`), и два сравниваемых вызова, под `-race`
+разделённые секундами, попали по разные стороны минуты. Список
+`sameVolatile` знал `plan_id`, время RFC3339, имя FIP, latency, TTL —
+минуту имени не знал. Это второй класс: **значение из часов стенки
+внутри сравниваемого ответа**. Поэтому PR 4 закрывает оба:
+
+1. Пороги времени — `TestNoWallClockAssertions`, ниже.
+2. Часы в ответах — паритетные сравнения (`parity_fixtures_test.go`,
+   `readonly_test.go`) гоняются с подменённым временем: два вызова с
+   часами по разные стороны минуты и часа; расхождение — провал с
+   указанием ключа. Диагностика: при расхождении печатать первый
+   отличающийся ключ JSON, а не `clipLine` обеих строк — в 1.2.2
+   обрезка прятала само отличие.
+
+### Мета-тест порогов времени (PR 4, первый класс)
 
 `TestNoWallClockAssertions` читает все `*_test.go` репозитория (`filepath.WalkDir`
 от корня модуля, как `TestFaultFakeCopiesMatch` читает чужой файл) и падает
