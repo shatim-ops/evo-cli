@@ -290,6 +290,9 @@ func TestDiskCreatePreview_Russian(t *testing.T) {
 func TestK8sCreatePreview_NoPrice(t *testing.T) {
 	russian(t)
 	withPreviewCloud(t)
+	// The project has no cluster of the name, so the preview is reached (the
+	// taken name, D21, is TestCreate_TakenNameRefusedNoSecondClusterOrBalancer).
+	installContractTransport(t, 200, `{"clusters":[]}`)
 	_, errOut, code := execCLI(t, "k8s", "create", "--name", "k-1", "--zone", "ru.AZ-1", "--master-count", "3", "--kube-api-internet=false")
 	if code != clerrors.ExitConfirmationRequired {
 		t.Fatalf("exit %d, want 3:\n%s", code, errOut)

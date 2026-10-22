@@ -107,6 +107,10 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			"zones":[{"zoneId":"mk-az1","name":"ru.AZ-1"},{"zoneId":"mk-az2","name":"ru.AZ-2"}],
 			"flavors":[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}],
 			"channels":[{"channel":"STABLE","availableVersions":["v1.34.6"]}]}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters":
+		_, _ = io.WriteString(rec, `{"clusters":[]}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/v2/networkLoadBalancers":
+		_, _ = io.WriteString(rec, `{"balancers":[]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v3/clusters":
 		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"cl-1","done":false}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters/cl-1":
