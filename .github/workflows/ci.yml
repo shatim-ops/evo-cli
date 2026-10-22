@@ -119,6 +119,25 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
           "$(go env GOPATH)/bin/staticcheck" ./...
 
+      # Workflow: синтаксис, выражения ${{ }}, права и shellcheck каждого
+      # скрипта run (shellcheck на раннере уже есть). Версия зафиксирована;
+      # поднимать вручную (аудит процессов 1.2.1, PR 7).
+      - name: actionlint
+        if: runner.os == 'Linux'
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint"
+
+      # Функции, недостижимые из main: deadcode печатает их и выходит с 0,
+      # поэтому провал — непустой вывод. Сейчас таких нет (§2 CLAUDE.md:
+      # без мёртвого кода).
+      - name: deadcode
+        if: runner.os == 'Linux'
+        run: |
+          go install golang.org/x/tools/cmd/deadcode@v0.38.0
+          dead="$("$(go env GOPATH)/bin/deadcode" ./...)"
+          if [ -n "$dead" ]; then echo "недостижимый код:"; echo "$dead"; exit 1; fi
+
   # Образ MCP-сервера для Marketplace: сборка и smoke-тест по HTTP. Кредов
   # Cloud.ru не нужно: initialize и tools/list в облако не ходят.
   docker:
