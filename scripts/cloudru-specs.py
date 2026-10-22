@@ -43,12 +43,13 @@ START_PAGES = {
     "billing": "/docs/billing/ug/topics/api-ref",
     "organization+iam": "/docs/administration/ug/topics/guides__directory-api",
     # Data Platform (1.3): one host, dataplatform.api.cloud.ru, a spec per
-    # product. Flink and BI have no API page (404 on 22.10.2026).
+    # product. BI has no API page (404 on 22.10.2026).
     "dataplatform": "/docs/dataplatform/ug/topics/api",
     "spark": "/docs/spark/ug/topics/api",
     "trino": "/docs/trino/ug/topics/api",
     "managed-airflow": "/docs/managed-airflow/ug/topics/api",
     "metastore": "/docs/metastore/ug/topics/api",
+    "managed-flink": "/docs/managed-flink/ug/topics/api",
 }
 SPEC_RE = re.compile(r"((?:https://cloud\.ru)?/docs/api/specs/[^\"?\s'\\]+\.(?:ya?ml|json))")
 MAX_PAGES = 30  # per service: the reference and its api sub-pages
