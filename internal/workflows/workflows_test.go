@@ -9,6 +9,7 @@ package workflows
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -424,8 +425,13 @@ func TestWorkflows_ReleaseSupplyChain(t *testing.T) {
 	if p := perms("goreleaser"); p["attestations"] != "write" || p["id-token"] != "write" {
 		t.Errorf("release.yml goreleaser: permissions %v, want attestations and id-token: write", p)
 	}
-	if !runs("goreleaser", "go install github.com/anchore/syft/cmd/syft@v") {
-		t.Error("release.yml goreleaser: syft is not installed with go install at a fixed version")
+	syft := regexp.MustCompile(`go install github\.com/anchore/syft/cmd/syft@v\d+\.\d+\.\d+\s`)
+	pinned := false
+	for _, s := range w.Jobs["goreleaser"].Steps {
+		pinned = pinned || syft.MatchString(s.Run)
+	}
+	if !pinned {
+		t.Error("release.yml goreleaser: syft is not installed with go install at a full version (vX.Y.Z, not a query)")
 	}
 	if a := steps("goreleaser", "actions/attest-build-provenance"); len(a) != 1 || a[0]["subject-checksums"] != "dist/checksums.txt" {
 		t.Errorf("release.yml goreleaser: attest-build-provenance %v, want one step with subject-checksums: dist/checksums.txt", a)

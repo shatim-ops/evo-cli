@@ -107,7 +107,8 @@ stderr, если это не оставляет дефект открытым.
    # происхождение: собран release.yml этого репозитория из тега
    gh attestation verify evo_1.3.0_linux_amd64.tar.gz --repo shatim-ops/evo-cli \
      --signer-workflow shatim-ops/evo-cli/.github/workflows/release.yml
-   # образ MCP-сервера: подпись того же workflow
+   # образ MCP-сервера: подпись того же workflow; полное имя образа —
+   # в строке «Образ опубликован» лога job image
    cosign verify <реестр>.cr.cloud.ru/evo:1.3.0 \
      --certificate-identity-regexp '^https://github.com/shatim-ops/evo-cli/\.github/workflows/release\.yml@refs/tags/v' \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com

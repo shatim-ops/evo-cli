@@ -190,6 +190,9 @@ jobs:
             *)   HOST="$AR_REGISTRY.cr.cloud.ru" ;;
           esac
           echo "$AR_SECRET" | docker login "$HOST" -u "$AR_KEY_ID" --password-stdin
+          # Ключ уходит из настроек docker раннера, даже если push или
+          # подпись упали.
+          trap 'docker logout "$HOST"' EXIT
           docker tag "evo-release:$VERSION" "$HOST/evo:$VERSION"
           docker push "$HOST/evo:$VERSION"
           # Подпись — по digest, а не по тегу: тег можно передвинуть.
@@ -201,5 +204,4 @@ jobs:
             docker tag "$HOST/evo:$VERSION" "$HOST/evo:latest"
             docker push "$HOST/evo:latest"
           fi
-          docker logout "$HOST"
           echo "::notice title=Образ опубликован::$HOST/evo:$VERSION"
