@@ -20,6 +20,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
@@ -698,5 +699,65 @@ func TestStackPlan_RedisShapeCheckedAtPlan(t *testing.T) {
 		if m["job_id"] != nil {
 			t.Errorf("%s: job created: %s", c.label, text)
 		}
+	}
+}
+
+// Догфуд №4: «note» k8s в терминале называл инструменты MCP — «k8s_create
+// … confirmed=true». Русский текст — CLI (MCP говорит по-английски, D6),
+// поэтому в нём команды evo с ID кластера, а не имена инструментов;
+// английский текст агента прежний. План называет flavor и именем (поле
+// flavor), а не только UUID.
+func TestK8s_NotesInCLIWords(t *testing.T) {
+	f := &raAPI{}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	calls := []struct {
+		tool   string
+		args   map[string]any
+		en, ru []string
+	}{
+		{"k8s_plan", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1"},
+			[]string{"k8s_create", "confirmed=true", "k8s_get", "k8s_add_nodepool"},
+			[]string{"evo k8s create", "--yes", "evo k8s get", "evo k8s add-nodepool"}},
+		{"k8s_create", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "confirmed": true},
+			[]string{"k8s_get", "k8s_kubeconfig"},
+			[]string{"evo k8s get cl-1", "evo k8s kubeconfig cl-1"}},
+		{"k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "security_group_id": "sg-1", "confirmed": true},
+			[]string{"k8s_nodepools"},
+			[]string{"evo k8s nodepools cl-1"}},
+	}
+	notes := func() []string {
+		var out []string
+		for _, c := range calls {
+			m, text, isErr := callNamed(t, r, c.tool, c.args)
+			note, _ := m["note"].(string)
+			if isErr || note == "" {
+				t.Fatalf("%s: %s", c.tool, text)
+			}
+			out = append(out, note)
+		}
+		return out
+	}
+	for i, note := range notes() {
+		for _, want := range calls[i].en {
+			if !strings.Contains(note, want) {
+				t.Errorf("%s: no %q in the agent's note %q", calls[i].tool, want, note)
+			}
+		}
+	}
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	for i, note := range notes() {
+		for _, want := range calls[i].ru {
+			if !strings.Contains(note, want) {
+				t.Errorf("%s: no %q in %q", calls[i].tool, want, note)
+			}
+		}
+		if strings.Contains(note, "k8s_") || strings.Contains(note, "confirmed") {
+			t.Errorf("%s: a tool's name in the CLI's note: %q", calls[i].tool, note)
+		}
+	}
+	m, text, _ := callNamed(t, r, "k8s_plan", calls[0].args)
+	if m["flavor"] != "gen-2-4" || m["flavor_id"] != "fl-1" {
+		t.Errorf("flavor: %s", text)
 	}
 }
