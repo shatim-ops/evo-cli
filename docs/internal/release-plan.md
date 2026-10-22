@@ -108,7 +108,7 @@ summary `classify` (чек-лист и флажки cloud-e2e); cloud-e2e с в�
 
 | Что | Источник |
 |---|---|
-| Evolution Data Platform: кластеры и Managed Spark (инстансы, задачи, справочники) — волна 1 по брифу `docs/internal/briefs/data-platform.md`; сначала api-probe (путь, токен IAM, статусы Spark, справочники, продукты калькулятора); Trino/Metastore/Airflow — волны 2–3, версия — решение владельца | решение владельца 22.10; официальных MCP у Cloud.ru нет |
+| Evolution Data Platform: кластеры и Managed Spark (инстансы, задачи, справочники) — волна 1 по брифу `docs/internal/briefs/data-platform.md`; сначала api-probe (путь, токен IAM, статусы Spark, справочники, продукты калькулятора); Trino/Metastore/Airflow/Flink — волны 2–3; в какую версию evo (1.3 или 1.4) — решение владельца; API — Data Platform 1.0, Spark 3.0.3, остальные 2.0 (бриф, раздел 2) | решение владельца 22.10; официальных MCP у Cloud.ru нет |
 | `evo agent setup --client …` и SKILL.md (плюс русская версия для людей); решения по умолчанию — ТЗ, раздел 4, и решения владельца 21.10 | ТЗ `docs/internal/agent-setup/spec.md` (ветка agent-setup-1.3) |
 | Набор инструментов по правам ключа: `agent setup` и `evo mcp --toolsets` подбираются по таблице доступа из `doctor` — агент видит только разрешённое | решение 21.10 |
 | Превью изменяющих инструментов проверяет доступ к сервису до вопроса человеку: без роли — отказ на превью, а не после согласия | решение 21.10 |
