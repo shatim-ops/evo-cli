@@ -76,7 +76,7 @@ func agentSkillBody(root *cobra.Command) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, `# evo: rules for the agent
 
-<!-- Generated from the tool registry of evo: 'evo agent skill' prints it. -->
+<!-- Generated from the tool registry of evo%s: 'evo agent skill' prints it. -->
 
 evo is the CLI and the MCP server of Cloud.ru Evolution. Every MCP tool is also
 a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+"`evo vm get`"+`.
@@ -126,7 +126,7 @@ a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+
 
 | Group | Commands | Tools | Change the cloud |
 |---|---|---|---|
-`, clerrors.ExitConfirmationRequired, strings.Join(untrusted, ", "), strings.Join(raw, ", "), quote(skillLocalCommands),
+`, skillVersion(), clerrors.ExitConfirmationRequired, strings.Join(untrusted, ", "), strings.Join(raw, ", "), quote(skillLocalCommands),
 		clerrors.ExitOK, clerrors.ExitGeneral, clerrors.ExitAuth, clerrors.ExitConfirmationRequired, clerrors.ExitNotFound,
 		clerrors.ExitAPI, clerrors.ExitInterrupted, strings.Join(defaultToolsets, ","))
 
@@ -145,6 +145,16 @@ a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+
 	}
 	b.WriteString("\n## Examples\n\n```sh\n" + strings.Join(skillExamples, "\n") + "\n```\n")
 	return b.String()
+}
+
+// skillVersion names the version of evo in the rules, so rules an older
+// evo wrote show as such: " 1.3.0"; "" for a build without one (dev, and
+// docs/agent-skill.md, which the tests generate).
+func skillVersion() string {
+	if version == "dev" {
+		return ""
+	}
+	return " " + version
 }
 
 // toolCommandsByGroup are the visible commands of the tools of each group, for a

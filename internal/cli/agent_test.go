@@ -669,3 +669,38 @@ func TestAgentSetup_KeepsUsersKeys(t *testing.T) {
 		}
 	}
 }
+
+// The rules are evo's: after an upgrade the next run refreshes them without
+// --force (with the diff and consent all the same), and the rules name the
+// version that wrote them. Another evo entry of the client's file still
+// needs --force, and then nothing is written.
+func TestAgentSetup_SkillRefresh(t *testing.T) {
+	setupAgent(t)
+	oldVersion := version
+	t.Cleanup(func() { version = oldVersion })
+	version = "1.3.0"
+	if !strings.Contains(agentSkill(newRootCmd()), "evo 1.3.0") {
+		t.Errorf("the rules do not name the version:\n%s", agentSkill(newRootCmd()))
+	}
+	skill := filepath.Join(".claude", "skills", "evo", "SKILL.md")
+	putFile(t, skill, []byte("---\nname: evo\n---\n# rules of evo 1.2.0\n"), 0o600)
+	putFile(t, "AGENTS.md", []byte("# Mine\n\n"+agentconf.SectionBeginPrefix+" -->\nold rules\n<!-- END evo -->\n"), 0o600)
+	for _, client := range []string{"claude-code", "cursor"} {
+		if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", client, "--skill", "--yes"); code != 0 {
+			t.Fatalf("%s: exit %d: %s", client, code, stderr)
+		}
+	}
+	if got := string(fileBytes(t, skill)); got != agentSkill(newRootCmd()) {
+		t.Errorf("SKILL.md not refreshed:\n%s", got)
+	}
+	if got := string(fileBytes(t, "AGENTS.md")); strings.Contains(got, "old rules") || !strings.HasPrefix(got, "# Mine\n") {
+		t.Errorf("AGENTS.md not refreshed:\n%s", got)
+	}
+
+	version = "1.3.1"
+	before := fileBytes(t, skill)
+	code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-code", "--skill", "--toolsets", "k8s", "--yes")
+	if code != clerrors.ExitGeneral || !strings.Contains(stderr, "--force") || !bytes.Equal(fileBytes(t, skill), before) {
+		t.Errorf("another evo entry: exit %d, rules written=%v: %s", code, !bytes.Equal(fileBytes(t, skill), before), stderr)
+	}
+}

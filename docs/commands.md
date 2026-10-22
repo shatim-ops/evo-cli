@@ -364,7 +364,8 @@ evo agent [flags]
 
 --skill дополнительно записывает правила работы с evo для агента ('evo agent
 skill'): .claude/skills/evo/SKILL.md для claude-code, раздел AGENTS.md
-(GEMINI.md для gemini) для остальных.
+(GEMINI.md для gemini) для остальных. Правила принадлежат evo: следующий
+запуск кладёт туда правила этой версии evo, без --force.
 ```
 
 ```
