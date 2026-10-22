@@ -27,9 +27,11 @@ type workflow struct {
 		If          string `yaml:"if"`
 		Permissions any    `yaml:"permissions"`
 		Steps       []struct {
-			Uses string         `yaml:"uses"`
-			Run  string         `yaml:"run"`
-			With map[string]any `yaml:"with"`
+			ID   string            `yaml:"id"`
+			Uses string            `yaml:"uses"`
+			Run  string            `yaml:"run"`
+			With map[string]any    `yaml:"with"`
+			Env  map[string]string `yaml:"env"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -188,11 +190,12 @@ func TestWorkflows_CIShufflesOnMain(t *testing.T) {
 // writes nothing to the repository: no labels, no permissions of its own.
 func TestWorkflows_CIClassifiesPRs(t *testing.T) {
 	w := readWorkflows(t)["ci.yml"]
-	var classify, tested, registry bool
+	var classify, tested bool
+	registry := ""
 	for name, j := range w.Jobs {
 		for _, s := range j.Steps {
 			if strings.Contains(s.Run, ".github/scripts/classify_registry.sh") && strings.Contains(s.Run, ".github/scripts/tools_list.sh") {
-				registry = true
+				registry = "${{ steps." + s.ID + ".outputs.classes }}"
 			}
 			if strings.Contains(s.Run, ".github/scripts/classify_test.sh") {
 				tested = true
@@ -201,6 +204,9 @@ func TestWorkflows_CIClassifiesPRs(t *testing.T) {
 				strings.Contains(s.Run, ".github/scripts/classify_summary.sh") &&
 				strings.Contains(s.Run, "$GITHUB_STEP_SUMMARY") {
 				classify = true
+				if registry == "" || s.Env["REGISTRY"] != registry {
+					t.Errorf("ci: job %s classifies without the registry classes (REGISTRY %q)", name, s.Env["REGISTRY"])
+				}
 				if !strings.Contains(j.If, "pull_request") {
 					t.Errorf("ci: job %s classifies outside pull_request (if: %q)", name, j.If)
 				}
@@ -215,9 +221,6 @@ func TestWorkflows_CIClassifiesPRs(t *testing.T) {
 	}
 	if !tested {
 		t.Error("ci: classify_test.sh is not run")
-	}
-	if !registry {
-		t.Error("ci: no class from the registry diff (tools/list of base and head)")
 	}
 }
 

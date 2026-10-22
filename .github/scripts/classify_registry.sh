@@ -9,12 +9,14 @@
 #   policy      — у инструмента изменились annotations, обязательные
 #                 аргументы или наличие confirmed (согласие);
 #   tool-change — у инструмента изменилась остальная схема аргументов.
+# Описания инструмента и аргументов классом не считаются.
 set -euo pipefail
 
 [ $# -eq 2 ] || { echo "вызов: $0 <база.json> <голова.json>" >&2; exit 2; }
 
 jq -rn --slurpfile base "$1" --slurpfile head "$2" '
-  def byname: map({key: .name, value: .}) | from_entries;
+  def nodesc: walk(if type == "object" then del(.description) else . end);
+  def byname: map({key: .name, value: (.inputSchema |= nodesc)}) | from_entries;
   def consent: .inputSchema.properties | has("confirmed");
   def policy: [.annotations, (.inputSchema.required // [] | sort), consent];
   ($base[0] | byname) as $b | ($head[0] | byname) as $h |

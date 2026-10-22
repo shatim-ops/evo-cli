@@ -62,6 +62,7 @@ reg "реестр: аннотация — политика" "policy" 'map(if .na
 reg "реестр: обязательный аргумент — политика" "policy" 'map(if .name == "a" then .inputSchema.required = [] else . end)'
 reg "реестр: новый аргумент — изменение схемы" "tool-change" 'map(if .name == "a" then .inputSchema.properties.x = {"type":"string"} else . end)'
 reg "реестр: описание — без класса" "" 'map(if .name == "a" then .description = "x" else . end)'
+reg "реестр: описание аргумента — без класса" "" 'map(if .name == "a" then .inputSchema.properties.id.description = "x" else . end)'
 check "классы реестра в classify.sh" "classes=new-tool policy${nl}before=${nl}after=" "" "" "new-tool policy"
 
 # Каждая область, кроме основного прогона e2e, — флажок <область>_smoke
