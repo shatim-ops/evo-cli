@@ -278,4 +278,10 @@ func TestLostCreate_FoundSaysItsStatus(t *testing.T) {
 	if isErr || !strings.Contains(text, "c-1") || !strings.Contains(text, "status FAILED") {
 		t.Errorf("answer %s: want c-1 and its status FAILED", text)
 	}
+	// A script that reads status alone must not wait for a failed one to
+	// come up (Qwen review of #230).
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil || m["status"] != "failed" {
+		t.Errorf("status %v, want failed: %s", m["status"], text)
+	}
 }
