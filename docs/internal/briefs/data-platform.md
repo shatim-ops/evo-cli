@@ -9,7 +9,7 @@
 ## 1. Что это и зачем evo
 
 Data Platform — кластер, внутри которого живут инстансы продуктов:
-Managed Spark, Trino, Airflow, Metastore, Flink, BI. Инстансы одного
+Managed Spark, Trino, Airflow, Metastore, Flink, BI (у BI публичного API нет). Инстансы одного
 кластера размещаются в одной VPC и зоне. Официальных MCP-серверов у
 Cloud.ru для этого нет (владелец, 22.10). Для агента ценность — не
 жизненный цикл инстансов, а **задачи Spark**: «запусти расчёт, скажи, когда
@@ -18,7 +18,9 @@ Cloud.ru для этого нет (владелец, 22.10). Для агента
 ## 2. Факты из документации и спецификаций
 
 Эндпоинт один — `https://dataplatform.api.cloud.ru`. Спецификации (все
-Swagger 2.0, кроме Spark — OpenAPI 3):
+Swagger 2.0, кроме Spark — OpenAPI 3). Расхождения документации и
+спецификаций — реестр `docs/internal/cloudru-discrepancies.md`, раздел
+«Evolution Data Platform» (DP-1…13), он же отдаётся команде Data Factory:
 
 | Продукт | Страница API | Спецификация | Вызовы |
 |---|---|---|---|
@@ -27,7 +29,8 @@ Swagger 2.0, кроме Spark — OpenAPI 3):
 | Managed Trino 2.0 | `/docs/trino/ug/topics/api` | `/docs/api/specs/trino/ug/_specs/trino-public-api.yaml` | trinos: list/create/get/update/delete; trinoCatalogs: list/create/get/update/delete; trinoFlavors, trinoVersions |
 | Managed Airflow 2.0 | `/docs/managed-airflow/ug/topics/api` | `/docs/api/specs/managed-airflow/ug/_specs/airflow-public-api.yaml` | airflows: list/create/get/update/delete, operations; airflowFlavors |
 | Managed Metastore 2.0 | `/docs/metastore/ug/topics/api` | `/docs/api/specs/metastore/ug/_specs/metastore-public-api.yaml` | metastores: list/create/get/update/delete, operations; metastoreFlavors, metastoreVersions |
-| Flink, BI | страницы API не отвечают (404 / нет) | — | публичного API, видимо, нет; не проверено |
+| Managed Flink 2.0 | `/docs/managed-flink/ug/topics/api` | `/docs/api/specs/managed-flink/ug/_specs/flink-public-api-v1.yaml` | flinks: list/create/get/update/delete, stop, resume, operations; jobs: list/create/get/delete, operations; flinkFlavors, `/v1/versions` |
+| Managed BI | страницы API нет (404) | — | публичного API нет (DP-12) |
 
 Общее:
 - **Асинхронность.** Create/delete/stop/update возвращают `Operation`
@@ -75,8 +78,8 @@ api-probe (только чтение, из `main`, одобрения не тр�
 6. **Цена.** Ни в одной спецификации нет стоимости. Калькулятор:
    `api.cloud.ru/calculator/v2/prices/<продукт>` (D17) — выяснить имена
    продуктов для Spark/Trino/Airflow/Metastore/кластера и состав ответа.
-   Найденное — в `docs/internal/cloudru-discrepancies.md` (новый раздел
-   «Data Platform») и `.github/review-context/cloudru-api.md`.
+   Найденное — в реестр (DP-N: гипотезы DP-1, DP-4, DP-10, DP-12, DP-13
+   подтвердить или снять) и в `.github/review-context/cloudru-api.md`.
 
 ## 4. Как это ложится на evo (механизмы, не новые пути)
 
@@ -124,7 +127,7 @@ api-probe (только чтение, из `main`, одобрения не тр�
 |---|---|---|
 | 1 | кластеры DP (list/get/create/delete/stop/operations) + Spark: инстансы (list/get/create/delete/stop/resume), задачи (list/get/run/cancel), справочники (flavors/versions/base images) | ~17 |
 | 2 | Trino (инстансы, каталоги, справочники), Metastore | ~16 |
-| 3 | Airflow; Spark Connect; update у всех | ~10 |
+| 3 | Airflow, Flink (инстансы, задачи); Spark Connect; update у всех | ~24 |
 
 Волна 1 даёт сценарий «агент запускает Spark-задачу и следит за ней»;
 без него Data Platform в evo — только ещё один жизненный цикл инстансов.
