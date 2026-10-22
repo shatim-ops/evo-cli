@@ -301,6 +301,15 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(err), true
 	}
+	// A second balancer of the same name is a second bill: refused before
+	// the consent, as every other create (DECISIONS D21).
+	existing, err := cli.ListNLB(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list load balancers: %w", "проверка, что имя свободно: список балансировщиков: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult(i18n.T("load balancer", "балансировщик"), name, id, st, "lb_list")
+	}
 
 	// VPC: explicit, else inherit from the target group (LB must share its
 	// VPC). The group's VMs also name the zone the balancer serves.
