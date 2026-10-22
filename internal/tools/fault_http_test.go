@@ -25,11 +25,12 @@ import (
 )
 
 // faultAPI is the fault world of the services evo reaches over HTTP, the
-// way faultCloud is compute's: a cluster made stays made when the answer is
-// lost. It speaks the dbaas/v1 shape of Managed Kafka and Redis
-// (openapi-kafka.yaml, openapi-redis.yaml) and the compute reads they need
-// (zones, subnets). failAt arms the nth request (1-based, every request
-// counts, compute's included).
+// way faultCloud is compute's: a resource made stays made when the answer
+// is lost. It keeps the collections of faultCollections — Managed Kafka,
+// Redis and PostgreSQL clusters (the dbaas/v1 shape), Artifact Registry
+// registries, compute's SNAT gateways — and answers the reads they need
+// (zones, subnets, versions, specifications). failAt arms the nth request
+// (1-based, every request counts, compute's included).
 type faultAPI struct {
 	mu     sync.Mutex
 	seq    int
@@ -38,13 +39,26 @@ type faultAPI struct {
 	kind   string
 	cancel context.CancelFunc
 
-	clusters []faultCluster
-	next     int
+	made []faultResource
+	next int
 }
 
-type faultCluster struct {
-	host, ID, Name string
-	gone           bool
+// faultResource is a billable resource of a collection: host and path of
+// the collection, its id and name.
+type faultResource struct {
+	host, path, ID, Name string
+}
+
+// faultCollections are the collections faultAPI keeps, by path: the list
+// field of their GET, and whether a POST answers an operation (the async
+// services) or the resource itself (compute).
+var faultCollections = map[string]struct {
+	field string
+	async bool
+}{
+	"/v1/clusters":         {"clusters", true},
+	"/v1/registries":       {"registries", true},
+	"/api/v1/nat-gateways": {"items", false},
 }
 
 func (a *faultAPI) failAt(n int, kind string) {
@@ -65,10 +79,8 @@ func (a *faultAPI) billed() []faultBilled {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	var out []faultBilled
-	for _, c := range a.clusters {
-		if !c.gone {
-			out = append(out, faultBilled{what: c.host + " cluster " + c.Name, names: []string{c.ID}})
-		}
+	for _, c := range a.made {
+		out = append(out, faultBilled{what: c.host + c.path + " " + c.Name, names: []string{c.ID}})
 	}
 	return out
 }
@@ -131,29 +143,34 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"versions":[{"id":"v1","name":"1"}]}`)
 	case path == "/v1/specifications":
 		_, _ = io.WriteString(w, `{"specifications":[{"id":"s-1","name":"small","cpu":2,"memory":4,"min_storage_gigs":40,"min_brokers":1}]}`)
-	case path == "/v1/clusters" && r.Method == http.MethodGet:
+	case faultCollections[path].field != "" && r.Method == http.MethodGet:
 		a.mu.Lock()
-		var items []map[string]any
-		for _, c := range a.clusters {
-			if c.host == host && !c.gone {
+		items := []map[string]any{}
+		for _, c := range a.made {
+			if c.host == host && c.path == path {
 				items = append(items, map[string]any{"id": c.ID, "name": c.Name, "status": "RUNNING"})
 			}
 		}
 		a.mu.Unlock()
-		b, _ := json.Marshal(map[string]any{"clusters": items})
+		b, _ := json.Marshal(map[string]any{faultCollections[path].field: items, "total": len(items)})
 		_, _ = w.Write(b)
-	case path == "/v1/clusters" && r.Method == http.MethodPost:
+	case faultCollections[path].field != "" && r.Method == http.MethodPost:
 		var body struct {
 			Name string `json:"name"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		a.mu.Lock()
 		a.next++
-		c := faultCluster{host: host, ID: fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x500+a.next), Name: body.Name}
-		a.clusters = append(a.clusters, c)
+		c := faultResource{host: host, path: path, ID: fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x500+a.next), Name: body.Name}
+		a.made = append(a.made, c)
 		op := fmt.Sprintf("op-%d", a.next)
 		a.mu.Unlock()
-		_, _ = io.WriteString(w, `{"id":"`+op+`","resource_id":"`+c.ID+`","done":false}`)
+		if faultCollections[path].async {
+			// resource_id in dbaas/v1, resourceId in Artifact Registry.
+			_, _ = io.WriteString(w, `{"id":"`+op+`","resource_id":"`+c.ID+`","resourceId":"`+c.ID+`","done":false}`)
+		} else {
+			_, _ = io.WriteString(w, `{"id":"`+c.ID+`","name":"`+c.Name+`","status":"creating"}`)
+		}
 	case strings.HasPrefix(path, "/v1/operations/"):
 		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v1/operations/")+`","done":true}`)
 	default:
@@ -189,7 +206,7 @@ func faultAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 // and where to find it — not a bare error (Qwen review of #212).
 func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 	failed := func(context.Context) ([]map[string]any, error) { return nil, errors.New("list: timeout") }
-	text, isErr := lostCreate(context.Background(), failed, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: lost"))
+	text, isErr := lostCreate(context.Background(), failed, "Kafka cluster", "cluster_id", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: lost"))
 	var m map[string]any
 	if err := json.Unmarshal([]byte(text), &m); err != nil || !isErr {
 		t.Fatalf("answer %s err=%v isErr=%v", text, err, isErr)
@@ -198,7 +215,18 @@ func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 		t.Errorf("warning %q: want the name, billed and kafka_list", w)
 	}
 	absent := func(context.Context) ([]map[string]any, error) { return nil, nil }
-	if text, isErr := lostCreate(context.Background(), absent, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: 409")); !isErr || strings.Contains(text, "warning") {
+	if text, isErr := lostCreate(context.Background(), absent, "Kafka cluster", "cluster_id", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: 409")); !isErr || strings.Contains(text, "warning") {
 		t.Errorf("listed and absent: %s; want the create's error only", text)
+	}
+}
+
+// A create answered with success but no id is the API's fault: its answer
+// says API_ERROR, not USAGE (the caller's arguments were fine).
+func TestLostCreate_NoIDIsAPIError(t *testing.T) {
+	absent := func(context.Context) ([]map[string]any, error) { return nil, nil }
+	text, _ := lostCreate(context.Background(), absent, "SNAT gateway", "nat_gateway_id", "evo-n", nil, "snat_list", "snat_list", fmt.Errorf("create SNAT gateway: %w", noID("gateway")))
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil || m["reason"] != "API_ERROR" {
+		t.Errorf("reason %v, want API_ERROR: %s", m["reason"], text)
 	}
 }

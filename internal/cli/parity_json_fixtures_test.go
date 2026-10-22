@@ -178,7 +178,7 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 		case strings.HasPrefix(p, "/v1/operations/") || !get:
 			return write(jsonOp)
 		}
-	case "vpc.api.cloud.ru":
+	case "vpc.api.cloud.ru", "ar.api.cloud.ru":
 		if strings.Contains(p, "/operations/") || !get {
 			return write(jsonOp)
 		}
