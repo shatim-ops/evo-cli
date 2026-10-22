@@ -558,7 +558,7 @@ func TestDeletePreviews_NameTheResource(t *testing.T) {
 
 	f := &raAPI{targetVMs: `{"id":"vm-1"}`}
 	rr := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
-	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": "tg-1"}); !strings.Contains(text, "tg (tg-1)") {
+	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": "tg-1"}); !strings.Contains(text, `\"tg\" (tg-1)`) {
 		t.Errorf("tg_delete preview does not name the group: %s", text)
 	}
 	m, text, _ := callNamed(t, rr, "lb_delete", map[string]any{"id": "lb-missing"})
