@@ -279,13 +279,17 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 	if err != nil {
 		return errResult(err), true
 	}
-	clusters, err := cli.ListClusters(ctx)
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		clusters, err := cli.ListClusters(ctx)
+		listed := make([]map[string]any, 0, len(clusters))
+		for _, c := range clusters {
+			listed = append(listed, map[string]any{"id": c.ID, "name": c.Name, "status": c.Status})
+		}
+		return listed, err
+	}
+	listed, err := list(ctx)
 	if err != nil {
 		return errResult(fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)), true
-	}
-	listed := make([]map[string]any, 0, len(clusters))
-	for _, c := range clusters {
-		listed = append(listed, map[string]any{"id": c.ID, "name": c.Name, "status": c.Status})
 	}
 	if id, st, ok := takenName(listed, name); ok {
 		return nameTakenResult(i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, id, st, "k8s_get cluster_id="+id)
@@ -308,8 +312,11 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 	}
 	req := plan.req
 	op, err := cli.CreateCluster(ctx, req)
-	if err != nil {
-		return errResult(err), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, list, i18n.T("Kubernetes cluster", "кластер Kubernetes"), "cluster_id", name, nil, "k8s_get cluster_id", "k8s_list", err)
 	}
 	return toJSON(map[string]any{
 		"status":       "creating",

@@ -389,10 +389,19 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 		return toJSON(out), true
 	}
 	op, err := cli.CreateNLB(ctx, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create load balancer: %w", err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, cli.ListNLB, i18n.T("load balancer", "балансировщик"), "lb_id", name, willCreate, "lb_get id", "lb_list", fmt.Errorf("create load balancer: %w", err))
 	}
-	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": "Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING."}), false
+	out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": "Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING."}
+	// The balancer's id is in the create's answer: named at once (fault
+	// matrix, process audit 1.2.1; as pg_create, N-07).
+	if op.ResourceID != "" {
+		out["lb_id"] = op.ResourceID
+	}
+	return toJSON(out), false
 }
 
 // lbZoneAndSubnet picks the zone the balancer serves and its subnet there.

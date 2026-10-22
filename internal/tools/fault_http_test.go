@@ -28,8 +28,10 @@ import (
 // way faultCloud is compute's: a resource made stays made when the answer
 // is lost. It keeps the collections of faultCollections — Managed Kafka,
 // Redis and PostgreSQL clusters (the dbaas/v1 shape), Artifact Registry
-// registries, compute's SNAT gateways — and answers the reads they need
-// (zones, subnets, versions, specifications). failAt arms the nth request
+// registries, compute's SNAT gateways, Kubernetes clusters, load balancers
+// and the rest of the list below — and answers the reads they need (zones,
+// subnets, versions, specifications, mk8s product configuration, a target
+// group). failAt arms the nth request
 // (1-based, every request counts, compute's included).
 type faultAPI struct {
 	mu     sync.Mutex
@@ -68,6 +70,9 @@ var faultCollections = map[string]struct {
 	"/v1/vpcs":             {field: "vpcs", async: true},
 	"/v2/secret":           {field: "secrets", unique: true},
 	"/api/v1/disks":        {field: "items", unique: true},
+	// mk8s and NLB: their specs document no refusal of a taken name (D21).
+	"/v3/clusters":             {field: "clusters", async: true},
+	"/v2/networkLoadBalancers": {field: "balancers", async: true},
 }
 
 func (a *faultAPI) failAt(n int, kind string) {
@@ -147,9 +152,15 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 	case path == "/api/v1/availability-zones":
 		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}]}`)
 	case path == "/api/v1/subnets":
-		_, _ = io.WriteString(w, `{"items":[{"id":"sn-1","name":"Default_ru.AZ-1","default":true,"availability_zone":{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}}],"total":1}`)
+		_, _ = io.WriteString(w, `{"items":[{"id":"sn-1","name":"Default_ru.AZ-1","default":true,"vpc_id":"vpc-1","availability_zone_id":"`+zoneAZ1+`","availability_zone":{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}}],"total":1}`)
 	case path == "/v1/versions":
 		_, _ = io.WriteString(w, `{"versions":[{"id":"v1","name":"1"}]}`)
+	case path == "/v3/productConfiguration":
+		_, _ = io.WriteString(w, `{"defaultZone":"ru.AZ-1","zones":[{"zoneId":"mk-az1","name":"ru.AZ-1"}],
+			"flavors":[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}],
+			"channels":[{"channel":"STABLE","availableVersions":["v1.34.6"]}]}`)
+	case path == "/v2/targetGroups/tg-1":
+		_, _ = io.WriteString(w, `{"id":"tg-1","name":"tg","vpc_id":"vpc-1","target_vms":[]}`)
 	case path == "/v1/specifications":
 		_, _ = io.WriteString(w, `{"specifications":[{"id":"s-1","name":"small","cpu":2,"memory":4,"min_storage_gigs":40,"min_brokers":1}]}`)
 	case faultCollections[path].field != "" && r.Method == http.MethodGet:
