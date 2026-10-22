@@ -97,7 +97,7 @@
 | 6.3 | `claude/proc-13-fuzz-weekly` | еженедельный fuzz по 5 мин на цель; цели `internal/stack`, `deployplan`, ответы API | слияние |
 | 6.4 | `claude/proc-14-supply-chain` | `sboms` в goreleaser, `attest-build-provenance`, cosign для образа; раздел проверки в `RELEASING.md` | решение В8; проверяется на `1.3.0-rc.1` — одобрение rc в окружении `release` |
 | 6.5 | `claude/proc-15-classify-registry` | классы по diff `evo tools list --json`; `live-plan` по классу | слияние |
-| 6.6 | `claude/proc-16-http-body-limit` | лимит тела запроса 4 МБ по HTTP, stdio — 16 МБ (H12, D22; 1 МБ ломал `s3_put` от ~700 КБ) | решение В13 — 4 МБ; слияние после тега 1.2.3 (PR #226) |
+| 6.6 | `claude/proc-16-http-body-limit` | лимит тела запроса 4 МБ по HTTP, stdio — 16 МБ (H12, D24; 1 МБ ломал `s3_put` от ~700 КБ) | решение В13 — 4 МБ; слияние после тега 1.2.3 (PR #226) |
 | 6.7 | бриф Grok: наборы инструментов и режим без удалений | перед тегом 1.3 | отправить бриф |
 
 Критерий: полный аудит Fable 1.3 перед тегом (отдельная сессия, В9).
