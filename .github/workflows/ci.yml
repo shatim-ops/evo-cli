@@ -124,6 +124,12 @@ jobs:
       # поднимать вручную (аудит процессов 1.2.1, PR 7).
       - name: actionlint
         if: runner.os == 'Linux'
+        env:
+          # SC2015 (info): «[ -n "$A" ] && [ -n "$B" ] || { echo …; exit 1; }»
+          # — проверка входов во всех workflow, где ветка «или» и должна
+          # срабатывать, когда любая проверка ложна. shellcheck 0.10 раннера
+          # помечает её, 0.11 — нет; прочие проверки shellcheck действуют.
+          SHELLCHECK_OPTS: --exclude=SC2015
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           "$(go env GOPATH)/bin/actionlint"
