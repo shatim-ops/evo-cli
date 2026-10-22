@@ -43,5 +43,13 @@ has "чек-лист: флажки cloud-e2e" "internal/tools/tools_dns.go inter
 	"с ветки PR — \`dns_smoke\`, основной прогон (флажки не нужны)." \
 	"из \`main\` (дорогие области): \`dbaas_smoke\`."
 has "чек-лист: только тесты" "internal/engine/deploy_test.go" "Дополнительных проверок сверх CI не нужно."
+# Каждая область, кроме основного прогона e2e, — флажок <область>_smoke
+# cloud-e2e: чек-лист не назовёт флажок, которого нет.
+while read -r a; do
+	[ "$a" = e2e ] && continue
+	if ! grep -q "^      ${a}_smoke:" "$here/../workflows/cloud-e2e.yml"; then
+		echo "FAIL область $a: нет входа ${a}_smoke в cloud-e2e.yml"; fail=1
+	fi
+done < <(grep -o 'area [a-z0-9]*' "$here/classify.sh" | cut -d' ' -f2 | sort -u)
 [ "$fail" = 0 ] && echo "classify: все случаи верны"
 exit "$fail"
