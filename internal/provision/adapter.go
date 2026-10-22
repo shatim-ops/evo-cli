@@ -23,11 +23,9 @@ import (
 )
 
 const (
-	defaultBaseURL    = "https://compute.api.cloud.ru"
-	flavorCacheTTL    = 1 * time.Hour
-	maxRetries        = 3
-	initialBackoff    = 1 * time.Second
-	backoffMultiplier = 2
+	defaultBaseURL = "https://compute.api.cloud.ru"
+	flavorCacheTTL = 1 * time.Hour
+	initialBackoff = 1 * time.Second
 )
 
 // CloudRuAdapter implements CloudAPI using the Cloud.ru Compute REST API.
@@ -351,10 +349,6 @@ func hintCancelled() string {
 	return i18n.T("The operation was cancelled.", "Операция отменена.")
 }
 
-func msgCancelledBackoff() string {
-	return i18n.T("request cancelled during retry backoff", "запрос отменён во время паузы перед повтором")
-}
-
 func msgRateLimited() string {
 	return i18n.T("API rate limit exceeded after retries", "превышен лимит запросов к API, повторы не помогли")
 }
@@ -393,125 +387,93 @@ func (a *CloudRuAdapter) firstBackoff() time.Duration {
 	return initialBackoff
 }
 
-// doWithRetry executes an HTTP request with exponential-backoff retry on 429
-// responses, plus transient 5xx (500/502/503/504) on idempotent GET reads.
+// computeRetry is what the compute API repeats beyond httpretry's own: a
+// DELETE after a dropped connection (a repeated DELETE answers 404, which
+// this adapter reads as "already gone") and a read after a 500 (the API
+// 500s under bursts of concurrent reads; a couple of retries clear it).
+// Its Retry-After is not waited out: a 429 is retried after the backoff
+// (TestFault_HTTP_CreateVM429UsesBackoffNotRetryAfter). POST and PUT are
+// never repeated after a dropped connection: the server may have applied
+// them.
+var computeRetry = httpretry.Policy{DropMethods: []string{http.MethodDelete}, ReadStatuses: []int{http.StatusInternalServerError}, BackoffOnly: true}
+
+// doWithRetry sends one request through httpretry with computeRetry — the
+// one retry loop of evo (process audit 1.2.1, 6.1) — and turns the final
+// answer into evo's errors.
 func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
-	backoff := a.firstBackoff()
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		var bodyReader io.Reader
-		if body != nil {
-			bodyReader = bytes.NewReader(body)
-		}
-
-		req, err := http.NewRequestWithContext(ctx, method, a.baseURL+path, bodyReader)
-		if err != nil {
-			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to create HTTP request", "не удалось сформировать HTTP-запрос"), i18n.T("Check API configuration", "Проверьте настройки адреса API"), err)
-		}
-
-		req.Header.Set("Authorization", "Bearer "+a.getToken(ctx))
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-
-		resp, err := a.client.Do(req)
-		if err == nil {
-			resp = httpretry.HTMLAsBadGateway(resp)
-		}
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("request cancelled", "запрос отменён"), hintCancelled(), err)
-			}
-			// A dropped connection is common (about 1 call in 3 from some
-			// networks). GET and DELETE are safe to repeat — a repeated
-			// DELETE answers 404, which callers read as "already gone";
-			// POST/PUT are not: the server may have applied them.
-			idempotent := method == http.MethodGet || method == http.MethodDelete
-			// An untrusted certificate stays untrusted: no retry, and the
-			// request never left, whatever its method.
-			untrusted := clierrors.TLSUntrusted(err)
-			if idempotent && !untrusted && attempt < maxRetries {
-				select {
-				case <-ctx.Done():
-					return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, msgCancelledBackoff(), hintCancelled(), ctx.Err())
-				case <-time.After(backoff):
-				}
-				backoff *= backoffMultiplier
-				continue
-			}
-			hint := clierrors.NetworkHint(err, i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите"))
-			if !idempotent && !untrusted {
-				hint = i18n.T("The request may have reached Cloud.ru before the connection broke: check the Cloud.ru console for a resource it created before retrying.",
-					"Запрос мог дойти до Cloud.ru до обрыва соединения: прежде чем повторять, проверьте в консоли Cloud.ru, не создан ли ресурс.")
-			}
-			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("cannot reach Cloud.ru API", "API Cloud.ru недоступен"), hint, err)
-		}
-
-		switch {
-		case resp.StatusCode >= 200 && resp.StatusCode < 300:
-			return resp, nil
-
-		case resp.StatusCode == http.StatusTooManyRequests:
-			resp.Body.Close()
-			if attempt == maxRetries {
-				return nil, clierrors.New(clierrors.CodeAPIRateLimited, msgRateLimited(), hintRateLimited())
-			}
-			select {
-			case <-ctx.Done():
-				return nil, clierrors.Wrap(clierrors.CodeAPIError, msgCancelledBackoff(), i18n.T("Try again later", "Повторите позже"), ctx.Err())
-			case <-time.After(backoff):
-			}
-			backoff *= backoffMultiplier
-
-		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-			resp.Body.Close()
-			cause := &StatusError{Status: resp.StatusCode, Body: string(respBody)}
-			if resp.StatusCode == http.StatusUnauthorized {
-				return nil, clierrors.Wrap(clierrors.CodeAuthExpired, i18n.T("Cloud.ru API rejected the token (401)", "API Cloud.ru отклонил токен (401)"),
-					clierrors.TokenRejectedHint(), cause)
-			}
-			return nil, clierrors.Wrap(clierrors.CodeAuthFailed, i18n.Tf("access denied (403) for %s %s: %s", "доступ запрещён (403): %s %s: %s", method, path, respBody),
-				clierrors.NoRoleHint(), cause)
-
-		case resp.StatusCode == http.StatusNotFound:
-			resp.Body.Close()
-			return nil, clierrors.New(notFoundCode(path), i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
-				i18n.T("Verify the resource ID and API endpoint", "Проверьте ID ресурса и адрес API"))
-
-		case resp.StatusCode >= 500 && resp.StatusCode < 600 && method == http.MethodGet:
-			// Transient server error (500/502/503/504) on an idempotent READ →
-			// retry with backoff. GET only: retrying a POST on 5xx could
-			// double-create a resource (the server may have applied it before
-			// the response failed). Cloud.ru's compute API occasionally 500s
-			// under bursts of concurrent reads; a couple of retries clear it.
-			respBody, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if attempt == maxRetries {
-				msg := i18n.Tf("API returned status %d after %d retries: %s", "API вернул статус %d после %d повторов: %s", resp.StatusCode, maxRetries, string(respBody))
-				return nil, clierrors.New(clierrors.CodeAPIError, msg, hintStatusPage())
-			}
-			select {
-			case <-ctx.Done():
-				return nil, clierrors.Wrap(clierrors.CodeAPIError, msgCancelledBackoff(), i18n.T("Try again later", "Повторите позже"), ctx.Err())
-			case <-time.After(backoff):
-			}
-			backoff *= backoffMultiplier
-
-		default:
-			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-			resp.Body.Close()
-			msg := i18n.Tf("API returned status %d: %s", "API вернул статус %d: %s", resp.StatusCode, string(respBody))
-			hint := hintStatusPage()
-			if resp.StatusCode < 500 {
-				// 400/409/422: this request is refused; waiting will not help.
-				hint = i18n.T("Cloud.ru rejected the request; the message above says why.", "Cloud.ru отклонил запрос; причина — в сообщении выше.")
-			}
-			return nil, clierrors.Wrap(clierrors.CodeAPIError, msg, hint, &StatusError{Status: resp.StatusCode, Body: string(respBody)})
-		}
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, a.baseURL+path, bodyReader)
+	if err != nil {
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to create HTTP request", "не удалось сформировать HTTP-запрос"), i18n.T("Check API configuration", "Проверьте настройки адреса API"), err)
+	}
+	req.Header.Set("Authorization", "Bearer "+a.getToken(ctx))
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 
-	return nil, clierrors.New(clierrors.CodeAPIRateLimited, msgRateLimited(), hintRateLimited())
+	client := *a.client
+	client.Transport = &httpretry.Transport{Base: a.client.Transport, Backoff: a.firstBackoff(), Policy: computeRetry}
+	resp, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("request cancelled", "запрос отменён"), hintCancelled(), err)
+		}
+		// An untrusted certificate stays untrusted; the request never left.
+		untrusted := clierrors.TLSUntrusted(err)
+		hint := clierrors.NetworkHint(err, i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите"))
+		if method != http.MethodGet && method != http.MethodDelete && !untrusted {
+			hint = i18n.T("The request may have reached Cloud.ru before the connection broke: check the Cloud.ru console for a resource it created before retrying.",
+				"Запрос мог дойти до Cloud.ru до обрыва соединения: прежде чем повторять, проверьте в консоли Cloud.ru, не создан ли ресурс.")
+		}
+		return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("cannot reach Cloud.ru API", "API Cloud.ru недоступен"), hint, err)
+	}
+	resp = httpretry.HTMLAsBadGateway(resp)
+
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return resp, nil
+
+	case resp.StatusCode == http.StatusTooManyRequests:
+		resp.Body.Close()
+		return nil, clierrors.New(clierrors.CodeAPIRateLimited, msgRateLimited(), hintRateLimited())
+
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+		resp.Body.Close()
+		cause := &StatusError{Status: resp.StatusCode, Body: string(respBody)}
+		if resp.StatusCode == http.StatusUnauthorized {
+			return nil, clierrors.Wrap(clierrors.CodeAuthExpired, i18n.T("Cloud.ru API rejected the token (401)", "API Cloud.ru отклонил токен (401)"),
+				clierrors.TokenRejectedHint(), cause)
+		}
+		return nil, clierrors.Wrap(clierrors.CodeAuthFailed, i18n.Tf("access denied (403) for %s %s: %s", "доступ запрещён (403): %s %s: %s", method, path, respBody),
+			clierrors.NoRoleHint(), cause)
+
+	case resp.StatusCode == http.StatusNotFound:
+		resp.Body.Close()
+		return nil, clierrors.New(notFoundCode(path), i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
+			i18n.T("Verify the resource ID and API endpoint", "Проверьте ID ресурса и адрес API"))
+
+	case resp.StatusCode >= 500 && resp.StatusCode < 600 && method == http.MethodGet:
+		// A read the transport repeated (computeRetry) and still failed.
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		msg := i18n.Tf("API returned status %d after %d retries: %s", "API вернул статус %d после %d повторов: %s", resp.StatusCode, httpretry.MaxRetries, string(respBody))
+		return nil, clierrors.New(clierrors.CodeAPIError, msg, hintStatusPage())
+
+	default:
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+		resp.Body.Close()
+		msg := i18n.Tf("API returned status %d: %s", "API вернул статус %d: %s", resp.StatusCode, string(respBody))
+		hint := hintStatusPage()
+		if resp.StatusCode < 500 {
+			// 400/409/422: this request is refused; waiting will not help.
+			hint = i18n.T("Cloud.ru rejected the request; the message above says why.", "Cloud.ru отклонил запрос; причина — в сообщении выше.")
+		}
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, msg, hint, &StatusError{Status: resp.StatusCode, Body: string(respBody)})
+	}
 }
 
 // notFoundCode is the code of a 404 on path: VM_NOT_FOUND for a VM

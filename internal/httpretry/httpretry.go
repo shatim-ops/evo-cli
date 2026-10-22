@@ -12,6 +12,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +41,21 @@ const (
 type Transport struct {
 	Base    http.RoundTripper // nil: http.DefaultTransport
 	Backoff time.Duration     // first wait; 0: 1 s
+	Policy  Policy            // what is repeated besides the above
+}
+
+// Policy widens what a Transport repeats, for an API whose answers allow
+// it. The zero Policy repeats only what the Transport's doc lists.
+type Policy struct {
+	// DropMethods are methods besides GET and HEAD repeated after a
+	// transport error: a DELETE where a repeat answering 404 reads as done.
+	DropMethods []string
+	// ReadStatuses are statuses besides 502, 503 and 504 a GET or HEAD is
+	// repeated on: a 500 of an API that answers it under load.
+	ReadStatuses []int
+	// BackoffOnly ignores Retry-After: the waits stay the doubling backoff
+	// (an API whose Retry-After would hold a create for minutes).
+	BackoffOnly bool
 }
 
 // NewClient returns an http.Client with this transport. timeout covers all
@@ -143,18 +159,20 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		last := attempt == MaxRetries || req.Context().Err() != nil
 		if err != nil {
 			// A certificate the system does not trust stays untrusted.
-			if last || !readMethod(req.Method) || !replayable || clerrors.TLSUntrusted(err) {
+			resend := readMethod(req.Method) || slices.Contains(t.Policy.DropMethods, req.Method)
+			if last || !resend || !replayable || clerrors.TLSUntrusted(err) {
 				return nil, err
 			}
 		} else {
 			retry := replayable && (resp.StatusCode == http.StatusTooManyRequests ||
 				readMethod(req.Method) && (resp.StatusCode == http.StatusBadGateway ||
 					resp.StatusCode == http.StatusServiceUnavailable ||
-					resp.StatusCode == http.StatusGatewayTimeout))
+					resp.StatusCode == http.StatusGatewayTimeout ||
+					slices.Contains(t.Policy.ReadStatuses, resp.StatusCode)))
 			if !retry || last {
 				return HTMLAsBadGateway(resp), nil
 			}
-			if d, ok := retryAfter(resp.Header.Get("Retry-After")); ok {
+			if d, ok := retryAfter(resp.Header.Get("Retry-After")); ok && !t.Policy.BackoffOnly {
 				wait = d
 			}
 			// Drain a little so the connection can be reused.

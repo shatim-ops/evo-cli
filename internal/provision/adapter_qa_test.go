@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // dropFirst answers the first n requests by closing the connection without
@@ -94,8 +95,8 @@ func TestGET_GivesUpAfterRetries(t *testing.T) {
 	if cliCode(err) != clierrors.CodeAPIUnreachable {
 		t.Fatalf("GetVM = %v, want API_UNREACHABLE", err)
 	}
-	if calls.Load() != maxRetries+1 {
-		t.Fatalf("calls = %d, want %d", calls.Load(), maxRetries+1)
+	if calls.Load() != httpretry.MaxRetries+1 {
+		t.Fatalf("calls = %d, want %d", calls.Load(), httpretry.MaxRetries+1)
 	}
 }
 
