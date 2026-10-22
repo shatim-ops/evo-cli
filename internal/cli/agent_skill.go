@@ -58,7 +58,7 @@ func agentSkillBody(root *cobra.Command) string {
 	reg := tools.New(nil)
 	var untrusted, raw []string
 	for _, t := range reg.Tools() {
-		if tools.ReturnsUntrustedContent(t) {
+		if t.UntrustedOutput {
 			untrusted = append(untrusted, "`"+t.Name+"`")
 		}
 		if t.CLI.Raw {
