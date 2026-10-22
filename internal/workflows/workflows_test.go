@@ -28,6 +28,7 @@ type workflow struct {
 		Permissions any    `yaml:"permissions"`
 		Uses        string `yaml:"uses"`
 		Steps       []struct {
+			If   string         `yaml:"if"`
 			Uses string         `yaml:"uses"`
 			Run  string         `yaml:"run"`
 			With map[string]any `yaml:"with"`
@@ -391,17 +392,13 @@ func TestWorkflows_ContractCachesOnlyCompleteSpecs(t *testing.T) {
 				restore = true
 			case strings.HasPrefix(s.Uses, "actions/cache/save@"):
 				save = true
+				if !strings.Contains(s.If, "steps.specs.outputs.complete == 'true'") {
+					t.Errorf("api-contract job %s: the save runs on %q, not only after a complete download (steps.specs.outputs.complete)", name, s.If)
+				}
 			}
 		}
 	}
 	if !restore || !save {
 		t.Errorf("api-contract: restore %v, save %v; want both", restore, save)
-	}
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "api-contract.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), "steps.specs.outputs.complete == 'true'") {
-		t.Error("api-contract: the save does not wait for a complete download (steps.specs.outputs.complete)")
 	}
 }
