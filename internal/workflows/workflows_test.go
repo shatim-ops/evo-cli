@@ -19,7 +19,11 @@ import (
 type workflow struct {
 	On          map[string]any `yaml:"on"`
 	Permissions any            `yaml:"permissions"`
-	Jobs        map[string]struct {
+	Concurrency struct {
+		Group            string `yaml:"group"`
+		CancelInProgress string `yaml:"cancel-in-progress"`
+	} `yaml:"concurrency"`
+	Jobs map[string]struct {
 		If    string `yaml:"if"`
 		Steps []struct {
 			Uses string         `yaml:"uses"`
@@ -129,5 +133,30 @@ func TestWorkflows_QwenReviewsEveryPR(t *testing.T) {
 	}
 	if _, ok := w.On["issue_comment"]; !ok {
 		t.Error("qwen-review: /qwen review no longer repeats the review")
+	}
+}
+
+// ci runs once per change: on a push to main and on a pull request, not
+// on every push to every branch as well (a PR's push ran it twice and
+// doubled the queue of the macOS runners), and a newer push to a PR
+// cancels its running check; main and the release (workflow_call from
+// release.yml) are never cancelled (process audit 1.2.1, PR 3).
+func TestWorkflows_CIOncePerChange(t *testing.T) {
+	w, ok := readWorkflows(t)["ci.yml"]
+	if !ok {
+		t.Fatal("no ci.yml")
+	}
+	push, _ := w.On["push"].(map[string]any)
+	if b, _ := push["branches"].([]any); len(b) != 1 || b[0] != "main" {
+		t.Errorf("ci: push branches %v, want [main]", push["branches"])
+	}
+	for _, ev := range []string{"pull_request", "workflow_call"} {
+		if _, ok := w.On[ev]; !ok {
+			t.Errorf("ci: no %s", ev)
+		}
+	}
+	if !strings.Contains(w.Concurrency.Group, "github.ref") ||
+		strings.ReplaceAll(w.Concurrency.CancelInProgress, " ", "") != "${{github.event_name=='pull_request'}}" {
+		t.Errorf("ci: concurrency %+v, want a group per ref that cancels on pull_request only", w.Concurrency)
 	}
 }
