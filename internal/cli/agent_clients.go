@@ -28,9 +28,10 @@ const (
 	scopeUser    agentScope = "user"
 )
 
-// defaultScope is the scope without --scope (В-1): the project, so what is
-// connected is in sight and nothing lives globally. A client that has no
-// file of this scope uses the one it has.
+// defaultScope is the scope without --scope (В-1, D18): the project, so
+// what is connected is in sight and nothing lives globally. A client may
+// name another (agentClient.scope), and one without a file of its scope
+// uses the one it has.
 const defaultScope = scopeProject
 
 // defaultToolsets are the groups the agent sees without --toolsets (В-2):
@@ -100,6 +101,9 @@ type agentClient struct {
 	// not on this machine, and the entry is printed (--print).
 	config map[agentScope]clientFile
 	skill  map[agentScope]skillFile
+	// scope is the scope without --scope, when not defaultScope: the file
+	// the client reads whatever the project.
+	scope agentScope
 
 	// How the client spells an entry.
 	stdioType string // "type" of a stdio entry; "" for none
@@ -164,9 +168,11 @@ var agentClients = []agentClient{
 			scopeProject: {clientFile{inWorkDir, "AGENTS.md"}, false},
 			scopeUser:    {clientFile{inHome, ".codex/AGENTS.md"}, false},
 		},
+		// Codex reads .codex/config.toml of a trusted project only (D18).
+		scope:  scopeUser,
 		urlKey: "url", tokenEnvKey: "bearer_token_env_var",
-		noteEN: "Codex reads .codex/config.toml of a trusted project only; --scope user writes ~/.codex/config.toml.",
-		noteRU: "Codex читает .codex/config.toml только в доверенном проекте; --scope user пишет ~/.codex/config.toml.",
+		noteEN: "Codex reads .codex/config.toml of a project only when the project is trusted; --scope project writes that file.",
+		noteRU: "Codex читает .codex/config.toml проекта, только если проект доверенный; --scope project пишет этот файл.",
 	},
 	{
 		// The path of the agent's mcp.json depends on where it runs (a VM,
@@ -199,6 +205,14 @@ func clientNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// defaultScope is the scope the client gets without --scope.
+func (c agentClient) defaultScope() agentScope {
+	if c.scope != "" {
+		return c.scope
+	}
+	return defaultScope
 }
 
 // scopes are the scopes the client has files of, project first.

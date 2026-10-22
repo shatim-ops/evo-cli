@@ -346,7 +346,8 @@ evo agent [flags]
 файла; новый файл — с правами 0600. Ключ Cloud.ru в файл не пишется: сервер
 берёт его из профиля 'evo configure' (код 2, если ключа нет совсем).
 
-Клиенты и их файлы (--scope project — по умолчанию; --scope user):
+Клиенты и их файлы (--scope project — по умолчанию; --scope user — по
+умолчанию у codex):
   claude-code  .mcp.json              ~/.claude.json
   cursor       .cursor/mcp.json       ~/.cursor/mcp.json
   vscode       .vscode/mcp.json       <каталог настроек>/Code/User/mcp.json
@@ -390,7 +391,7 @@ evo agent setup --client <client> [flags]
       --http string        Подключаться к запущенному серверу 'evo mcp --http' по этому адресу, а не запускать evo (например, http://127.0.0.1:8080/mcp)
       --print string       Напечатать запись в формате json или toml и ничего не записывать (для клиента не из списка)
       --read-only          Запускать сервер с --read-only: без изменений в облаке и без секретов (у gigaagent — по умолчанию)
-      --scope string       Чьи настройки: project (текущий каталог) или user (домашний каталог) (по умолчанию "project")
+      --scope string       Чьи настройки: project (текущий каталог; по умолчанию) или user (домашний каталог; по умолчанию у codex)
       --skill              Записать и правила работы с evo для агента (SKILL.md или раздел AGENTS.md)
       --toolsets strings   Группы инструментов, которые видит агент (через запятую; all — все; группы — в 'evo tools list') (по умолчанию [deploy,vm,vpc,disk,image])
 ```

@@ -108,8 +108,8 @@ func newAgentSetupCmd() *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&o.client, "client", "", i18n.T("MCP client: "+strings.Join(clientNames(), ", "), "MCP-клиент: "+strings.Join(clientNames(), ", ")))
-	f.StringVar(&o.scope, "scope", string(defaultScope), i18n.T("Whose configuration: project (the working directory) or user (the home directory)",
-		"Чьи настройки: project (текущий каталог) или user (домашний каталог)"))
+	f.StringVar(&o.scope, "scope", "", i18n.T("Whose configuration: project (the working directory; the default) or user (the home directory; the default for codex)",
+		"Чьи настройки: project (текущий каталог; по умолчанию) или user (домашний каталог; по умолчанию у codex)"))
 	f.StringSliceVar(&o.toolsets, "toolsets", defaultToolsets, i18n.T("Tool groups the agent sees (comma-separated; all: every group; see 'evo tools list')",
 		"Группы инструментов, которые видит агент (через запятую; all — все; группы — в 'evo tools list')"))
 	f.BoolVar(&o.readOnly, "read-only", false, i18n.T("Run the server with --read-only: no change in the cloud, no secret (default for gigaagent)",
@@ -161,7 +161,8 @@ and keeps the file's mode; a new file gets 0600. The Cloud.ru key is not
 written: the server takes it from the profile of 'evo configure' (exit code 2
 when there is no key at all).
 
-Clients and their files (--scope project, the default; --scope user):
+Clients and their files (--scope project, the default; --scope user, the
+default for codex):
 %s
 Another client: --print json or --print toml prints the entry, writes nothing.
 
@@ -184,7 +185,8 @@ for gemini) for the others.`,
 файла; новый файл — с правами 0600. Ключ Cloud.ru в файл не пишется: сервер
 берёт его из профиля 'evo configure' (код 2, если ключа нет совсем).
 
-Клиенты и их файлы (--scope project — по умолчанию; --scope user):
+Клиенты и их файлы (--scope project — по умолчанию; --scope user — по
+умолчанию у codex):
 %s
 Другой клиент: --print json или --print toml печатает запись и ничего не пишет.
 
@@ -272,10 +274,14 @@ func (s agentServer) serverFlags() []string {
 }
 
 // scopeFor is the scope to write: --scope when given and the client has
-// it, else defaultScope or, without a file there, the client's only one.
-func (c agentClient) scopeFor(scope string, given bool) (agentScope, error) {
+// it, else the client's default or, without a file there, its only one.
+func (c agentClient) scopeFor(scope string) (agentScope, error) {
 	have := c.scopes()
+	given := scope != ""
 	want := agentScope(scope)
+	if !given {
+		want = c.defaultScope()
+	}
 	if want != scopeProject && want != scopeUser {
 		return "", clerrors.New(clerrors.CodeUsage, i18n.Tf("--scope %q: project or user", "--scope %q: project или user", scope), "")
 	}
@@ -333,7 +339,7 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 		return printAgentEntry(cmd, printer, c, srv, format)
 	}
 
-	scope, err := c.scopeFor(o.scope, cmd.Flags().Changed("scope"))
+	scope, err := c.scopeFor(o.scope)
 	if err != nil {
 		return err
 	}

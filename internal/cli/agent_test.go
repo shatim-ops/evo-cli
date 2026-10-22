@@ -149,7 +149,7 @@ func TestAgentSetup_Golden(t *testing.T) {
 			}
 			setup := func(t *testing.T, in []byte) string {
 				setupAgent(t)
-				path := clientPath(t, c, defaultScope)
+				path := clientPath(t, c, c.defaultScope())
 				if in != nil {
 					putFile(t, path, in, 0o600)
 				}
@@ -596,8 +596,8 @@ func TestAgentClients_Table(t *testing.T) {
 				t.Errorf("%s: rules of scope %s without a configuration there", c.name, s)
 			}
 		}
-		if !slices.Contains(c.scopes(), defaultScope) && len(c.scopes()) > 0 {
-			t.Logf("%s: no %s file, uses %s", c.name, defaultScope, c.scopes()[0])
+		if !slices.Contains(c.scopes(), c.defaultScope()) && len(c.scopes()) > 0 {
+			t.Logf("%s: no %s file, uses %s", c.name, c.defaultScope(), c.scopes()[0])
 		}
 	}
 }
@@ -623,6 +623,25 @@ func TestAgentSetup_ByteOrderMark(t *testing.T) {
 		}
 		if code, stdout, stderr := runCLI(t, "", "agent", "setup", "--client", client, "--scope", "project", "--yes"); code != 0 || !strings.Contains(stdout, "nothing changed") {
 			t.Errorf("%s again: exit %d: %s%s", client, code, stdout, stderr)
+		}
+	}
+}
+
+// Without --scope a client gets the file it reads by default: the
+// project's (D18), except Codex, which reads .codex/config.toml of a
+// trusted project only, so its default is the user's file.
+func TestAgentSetup_DefaultScope(t *testing.T) {
+	for client, want := range map[string]agentScope{"claude-code": scopeProject, "cursor": scopeProject, "vscode": scopeProject, "gemini": scopeProject, "codex": scopeUser} {
+		setupAgent(t)
+		c := mustClient(t, client)
+		if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", client, "--yes"); code != 0 {
+			t.Fatalf("%s: exit %d: %s", client, code, stderr)
+		}
+		for _, s := range c.scopes() {
+			_, err := os.Stat(clientPath(t, c, s))
+			if written := err == nil; written != (s == want) {
+				t.Errorf("%s: %s file written=%v, want the %s file", client, s, written, want)
+			}
 		}
 	}
 }
