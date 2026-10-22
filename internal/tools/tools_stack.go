@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/s3"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 )
 
@@ -725,6 +726,11 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 			default:
 				return nil, fmt.Errorf(i18n.T("s3[%d].bucket is empty and this project has %d buckets %v — set s3[%d].bucket explicitly", "s3[%d].bucket пуст, а в проекте %d бакетов %v — задайте s3[%d].bucket"), i, len(buckets), buckets, i)
 			}
+		}
+		// A name S3 cannot take fails the s3 step after the steps before it
+		// were created: refused here, before the consent (D19).
+		if err := s3.CheckBucketName(m.S3[i].Bucket); err != nil {
+			return nil, clierrors.Prefix(fmt.Sprintf("s3[%d].bucket: ", i), err)
 		}
 		notes = append(notes, fmt.Sprintf("%s/%s", m.S3[i].Bucket, m.S3[i].Key))
 	}
