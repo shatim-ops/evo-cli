@@ -183,13 +183,17 @@ func TestWorkflows_CIShufflesOnMain(t *testing.T) {
 
 // Every PR gets its change class and the checklist of checks beyond CI in
 // the run's summary, and the classifier's tables are tested on sample
-// paths (process audit 1.2.1, PR 8). The job holds the PR's code, so it
+// paths (process audit 1.2.1, PR 8); the classes of the registry diff come
+// from tools/list of the base and the head (stage 6.5). The job holds the PR's code, so it
 // writes nothing to the repository: no labels, no permissions of its own.
 func TestWorkflows_CIClassifiesPRs(t *testing.T) {
 	w := readWorkflows(t)["ci.yml"]
-	var classify, tested bool
+	var classify, tested, registry bool
 	for name, j := range w.Jobs {
 		for _, s := range j.Steps {
+			if strings.Contains(s.Run, ".github/scripts/classify_registry.sh") && strings.Contains(s.Run, ".github/scripts/tools_list.sh") {
+				registry = true
+			}
 			if strings.Contains(s.Run, ".github/scripts/classify_test.sh") {
 				tested = true
 			}
@@ -211,6 +215,9 @@ func TestWorkflows_CIClassifiesPRs(t *testing.T) {
 	}
 	if !tested {
 		t.Error("ci: classify_test.sh is not run")
+	}
+	if !registry {
+		t.Error("ci: no class from the registry diff (tools/list of base and head)")
 	}
 }
 
