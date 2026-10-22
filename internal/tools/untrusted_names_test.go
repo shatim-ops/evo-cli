@@ -37,6 +37,10 @@ func hostileBody() []byte {
 	return b
 }
 
+// workloadFields are the names a field of the workload's text goes by: a
+// tool that answers one declares it in untrustedFields.
+var workloadFields = []string{"log", "logs", "output", "stdout", "stderr"}
+
 // textFields are the fields of an answer that are evo's words to the agent,
 // not data: a cloud name may appear there only on one line, in quotes.
 var textFields = map[string]bool{"message": true, "next": true, "hint": true, "warning": true, "note": true, "cost_note": true, "error": true}
@@ -78,6 +82,15 @@ func TestUntrustedNames_OneLineInText(t *testing.T) {
 		_, text, _ := callNamed(t, r, name, requiredArgs(tl))
 		var m any
 		_ = json.Unmarshal([]byte(text), &m)
+		// A field of workload text without the declaration is a tool
+		// that forgot untrustedFields.
+		if top, ok := m.(map[string]any); ok && untrustedFields[name] == nil {
+			for _, f := range workloadFields {
+				if _, has := top[f]; has {
+					t.Errorf("%s answers %q, the workload's text, but untrustedFields does not declare it", name, f)
+				}
+			}
+		}
 		var texts []string
 		textOf(m, "", &texts)
 		for _, s := range texts {
