@@ -50,6 +50,13 @@ func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 		map[string]any{"existing_id": id}), true
 }
 
+// noID is the error of a create the API answered with success but no id
+// of what it made (operation or resource): the API's fault, API_ERROR, not
+// the caller's.
+func noID(what string) error {
+	return clierrors.New(clierrors.CodeAPIError, "the API answered no "+what+" id", "")
+}
+
 // lostCreate answers a create that sent its request but got no usable
 // answer — an error after the request went out, or a success without an
 // operation id; createErr says which. The service may have made the

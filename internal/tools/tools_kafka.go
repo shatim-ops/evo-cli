@@ -368,7 +368,7 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 	op, err := cli.CreateCluster(ctx, body)
 	if err != nil || op.ID == "" {
 		if err == nil {
-			err = errors.New("the API answered no operation id")
+			err = noID("operation")
 		}
 		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, kafkaQuery()) }
 		return lostCreate(ctx, list, i18n.T("Kafka cluster", "кластер Kafka"), name, willCreate, "kafka_get cluster_id", "kafka_list", fmt.Errorf("create cluster: %w", err))
