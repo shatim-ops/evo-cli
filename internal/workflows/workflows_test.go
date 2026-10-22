@@ -281,3 +281,42 @@ func TestWorkflows_CloudE2EAreasFromBranch(t *testing.T) {
 	}
 	t.Error("cloud-e2e: live-plan does not take areas from the branch's paths")
 }
+
+// Every week main's tests run three times in a random order under -race on
+// the three OSes, and a red run opens an issue (process audit 1.2.1, PR 10):
+// a race or an order dependency that shows once in a few runs is caught
+// there. The job that writes the issue checks out no code.
+func TestWorkflows_WeeklyRace(t *testing.T) {
+	w, ok := readWorkflows(t)["weekly-race.yml"]
+	if !ok {
+		t.Fatal("no weekly-race.yml")
+	}
+	if _, ok := w.On["schedule"]; !ok {
+		t.Error("weekly-race: no schedule")
+	}
+	var race, report bool
+	for name, j := range w.Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, "go test -race -count=3 -shuffle=on ./...") {
+				race = true
+			}
+			if strings.Contains(s.Run, "gh issue create") {
+				report = true
+				if j.If != "failure()" {
+					t.Errorf("weekly-race: job %s reports on %q, want failure()", name, j.If)
+				}
+				if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["issues"] != "write" {
+					t.Errorf("weekly-race: job %s permissions %v, want issues: write only", name, j.Permissions)
+				}
+				for _, s := range j.Steps {
+					if strings.HasPrefix(s.Uses, "actions/checkout@") {
+						t.Errorf("weekly-race: job %s checks out code with a write token", name)
+					}
+				}
+			}
+		}
+	}
+	if !race || !report {
+		t.Errorf("weekly-race: race run %v, issue on red %v; want both", race, report)
+	}
+}
