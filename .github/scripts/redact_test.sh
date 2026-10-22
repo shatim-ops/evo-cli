@@ -98,6 +98,10 @@ check "Пароль ВМ: aB3#x-Yz9!kq (записан только здесь �
       "Пароль ВМ: <password> (записан только здесь — сохраните: evo его не хранит)"
 check "VM password: aB3#x-Yz9!kq (shown only here — save it: evo keeps no copy)" \
       "VM password: <password> (shown only here — save it: evo keeps no copy)"
+check '{"password":"p1","adminPassword":"p2","Password":"p3","x":1}' '{"password":"<password>","adminPassword":"<password>","Password":"<password>","x":1}'
+check "Пароль ВМ: my pass 1 (записан только здесь — сохраните: evo его не хранит)" \
+      "Пароль ВМ: <password> (записан только здесь — сохраните: evo его не хранит)"
+check "Пароль ВМ: aB3#x-Yz9!kq" "Пароль ВМ: <password>"
 check "password_required: true, пароль задаётся --password-file" "password_required: true, пароль задаётся --password-file"
 [ "$fail" = 0 ] && echo "redact.sed: все образцы замаскированы верно"
 exit "$fail"
