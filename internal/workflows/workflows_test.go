@@ -169,7 +169,9 @@ func TestWorkflows_CIShufflesOnMain(t *testing.T) {
 	for _, j := range w.Jobs {
 		for _, s := range j.Steps {
 			if strings.Contains(s.Run, "go test -race") {
-				if strings.Contains(s.Run, "-shuffle=") {
+				// Expanded by Actions: a shell variable here is PowerShell's
+				// on Windows, not the environment's (-shuffle="" broke CI).
+				if strings.Contains(s.Run, "-shuffle=${{") {
 					return
 				}
 			}
