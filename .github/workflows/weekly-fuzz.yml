@@ -1,0 +1,87 @@
+name: weekly-fuzz
+
+# Настоящий фаззинг раз в неделю (аудит процессов 1.2.1, вторая волна, П9):
+# каждая цель Fuzz* репозитория — 5 минут на main. В CI цели идут только
+# по своему seed-корпусу; здесь фаззер ищет новые входы: манифесты стека,
+# аргументы deploy_plan, ответы API нестандартной формы, сообщения MCP,
+# compose-файлы. Список целей — из go test -list, новая цель попадает сюда
+# сама. Падение — issue (weekly-issue.yml); падающий вход — в логе job, его
+# кладут в testdata/fuzz/<цель>/ вместе с исправлением, и он остаётся
+# seed-тестом в CI.
+# Время — UTC, суббота 05:41 по Москве.
+
+on:
+  schedule:
+    - cron: "41 2 * * 6"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  targets:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      targets: ${{ steps.list.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+
+      # go test -list печатает имена целей пакета, затем «ok <пакет>».
+      - id: list
+        run: |
+          go test -list '^Fuzz' ./... |
+            awk '/^Fuzz/ { n[++i] = $1; next } /^ok/ { for (j = 1; j <= i; j++) print $2, n[j]; i = 0 }' |
+            jq -Rnc '[inputs | split(" ") | {pkg: .[0], name: .[1]}]' > "$RUNNER_TEMP/targets.json"
+          [ "$(jq length "$RUNNER_TEMP/targets.json")" -gt 0 ] || { echo "::error::нет ни одной цели Fuzz*"; exit 1; }
+          echo "targets=$(cat "$RUNNER_TEMP/targets.json")" >> "$GITHUB_OUTPUT"
+
+  fuzz:
+    needs: targets
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.targets.outputs.targets) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PKG: ${{ matrix.target.pkg }}
+      NAME: ${{ matrix.target.name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+
+      - name: ${{ matrix.target.name }}
+        run: go test -run '^$' -fuzz "^${NAME}\$" -fuzztime=5m "$PKG"
+
+      # Входы фаззера — не данные облака и не секреты: печатаются как есть.
+      - name: падающий вход
+        if: failure()
+        run: |
+          dir="$(go list -f '{{.Dir}}' "$PKG")/testdata/fuzz/$NAME"
+          for f in "$dir"/*; do [ -f "$f" ] && { echo "== testdata/fuzz/$NAME/$(basename "$f")"; cat "$f"; }; done
+
+  report:
+    needs: fuzz
+    if: failure()
+    permissions:
+      issues: write
+    uses: ./.github/workflows/weekly-issue.yml
+    with:
+      title: "weekly-fuzz: фаззер нашёл падающий вход на main"
+      what: "go test -fuzz упал. Цель и падающий вход — в логе job, шаг «падающий вход»: положите его в testdata/fuzz/<цель>/ вместе с исправлением."

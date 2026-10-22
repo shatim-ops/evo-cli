@@ -151,11 +151,12 @@ func (f *raAPI) postCount() int {
 
 // raRegistry — реестр с ключом и проектом; cfg дополняет конфигурацию
 // (регион, образ по умолчанию).
-func raRegistry(t *testing.T, f *raAPI, cloud raCloud, cfg func(*config.Config)) *Registry {
-	t.Helper()
+// raRegistry takes any fake API: the fuzzers answer with their own bytes.
+func raRegistry(tb testing.TB, api http.RoundTripper, cloud provision.CloudAPI, cfg func(*config.Config)) *Registry {
+	tb.Helper()
 	old := http.DefaultTransport
-	http.DefaultTransport = f
-	t.Cleanup(func() { http.DefaultTransport = old })
+	http.DefaultTransport = api
+	tb.Cleanup(func() { http.DefaultTransport = old })
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		c := config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"}
