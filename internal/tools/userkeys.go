@@ -194,9 +194,31 @@ func userKeysScript(keys []string) string {
 }
 
 // knownHostsFile is the project's own known_hosts, next to the deploy key:
-// the ssh command deploy_apply hands back checks the VM's host key against
-// it instead of turning the check off.
+// the ssh command deploy_apply and provision hand back checks the VM's host
+// key against it instead of turning the check off.
 const knownHostsFile = "known_hosts"
+
+// deployKeySSH finishes SSH access to a new VM at ip made with the agent's
+// deploy key (deploy_apply, provision): it returns the ssh command that logs
+// in as login with that key, checking the host key against the project's
+// known_hosts (accept-new records it on the first connection), and makes
+// that file trust hostKey for ip and nothing else for it (pinHostKey; an
+// empty hostKey only drops an earlier VM's entry). warning is the sentence
+// for the answer when the file could not be updated; the command works
+// without it. A plain "ssh user@IP" tries ~/.ssh/id_* and is refused
+// (dogfood 1.2.1).
+func deployKeySSH(stateDir, login, ip, hostKey string) (command, warning string) {
+	dataDir := config.DataDir(stateDir)
+	keyPath := filepath.Join(dataDir, "id_ed25519")
+	knownHosts := filepath.Join(dataDir, knownHostsFile)
+	command = fmt.Sprintf("ssh -i %s -o UserKnownHostsFile=%s -o StrictHostKeyChecking=accept-new %s@%s", keyPath, knownHosts, login, ip)
+	if err := pinHostKey(knownHosts, ip, hostKey); err != nil {
+		// Without the file the ssh command still works (accept-new
+		// creates it); a stale entry would make it refuse the new VM.
+		warning = fmt.Sprintf(" WARNING: could not update %s (%v); if ssh reports a changed host key, remove the line for %s from it.", knownHosts, err, ip)
+	}
+	return command, warning
+}
 
 // pinHostKey makes the project's known_hosts trust key for host and nothing
 // else for it: Cloud.ru reuses public IPs, so an entry for an earlier VM on

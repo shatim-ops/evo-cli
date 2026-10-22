@@ -123,6 +123,30 @@ ID проекта — только UUID (вида `00000000-0000-4000-8000-00000
 
 ## Создание и удаление ВМ
 
+### `CONFIG_INVALID` (код 2): «не задана зона доступности (region)» (no availability zone is set)
+
+`evo vm create` (и MCP `provision`) не знает, в какой зоне создать ВМ: у
+профиля нет зоны, `--region` не передан, `CLOUDRU_REGION` не задан. Так
+бывает с профилем, созданным `evo configure` до 1.2.1, — тогда он зону не
+спрашивал. Команда отказывает сразу, до превью и вопроса о согласии; ничего не
+создаётся. Зону evo сам не выбирает.
+
+```sh
+# зоны: имена и UUID, какие открыты для новых ресурсов
+evo vm zones
+# зона для одной команды: имя или UUID
+evo vm create my-vm --image Ubuntu-24.04 --region ru.AZ-2
+# или один раз — в профиль (сохраняется UUID)
+evo configure --region ru.AZ-2
+```
+
+Значение без флага (`evo vm create my-vm ru.AZ-2`) — лишний аргумент:
+«лишние аргументы: "ru.AZ-2" — пропущен флаг?», код 1. Неизвестное имя зоны —
+`USAGE` (код 1) со списком зон. Без образа — `USAGE` (код 1): «не задан образ»,
+передайте `--image` (список — `evo image list`). Зону по имени понимают
+`evo vm create`, `evo configure --region`, `evo deploy --region`, MCP
+`provision`, `deploy` и стеки.
+
 ### ВМ уходит в `error` / `error_creating`
 
 14.10 и вечером 15.10.2026 в зоне **ru.AZ-1** новые ВМ уходили в
@@ -134,7 +158,7 @@ ID проекта — только UUID (вида `00000000-0000-4000-8000-00000
 # ID и имена зон
 evo vm zones
 # или region: в .evo.yaml
-evo deploy --region <UUID ru.AZ-2>
+evo deploy --region ru.AZ-2
 ```
 
 ВМ в ошибке удалите (`evo destroy` или `evo vm delete <id>`),
@@ -170,11 +194,14 @@ evo не освобождает её floating IP и не закрывает по
 MCP `fip_attach`) или удалите ВМ (`evo destroy` / `vm delete`): созданный
 floating IP записан и освободится вместе с ней.
 
-### `deploy`: «ВМ … не стала активной за 10m0s» (did not become active within)
+### `deploy`, `vm create`: «ВМ … не стала активной за 25m0s» (did not become active within)
 
 Новая ВМ создаётся несколько минут; 15.10.2026 в ru.AZ-1 это занимало около
-5 минут, иногда дольше. `deploy` ждёт 10 минут (`CLOUDRU_TIMEOUT`, секунды);
-ВМ к этому моменту уже записана в state, так что `evo destroy` её удалит.
+5 минут, в октябре 2026 там же — до 20 минут. `deploy`, `vm create` и MCP
+`provision` ждут 25 минут (`CLOUDRU_TIMEOUT`, секунды). ВМ после этого
+продолжает создаваться и оплачивается; она уже записана в state, так что
+`evo destroy` (или `evo vm delete <id>`) её удалит. Проверить её —
+`evo vm get <id>`; ждать дольше — задайте `CLOUDRU_TIMEOUT`.
 
 ### Порты в группе безопасности после `destroy`
 

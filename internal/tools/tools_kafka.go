@@ -91,13 +91,11 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 		return "", "", fmt.Errorf(i18n.T("list availability zones: %w", "список зон доступности: %w"), err)
 	}
 	if ref != "" {
-		for _, z := range zones {
-			if z.Name == ref {
-				return z.ID, z.Name, nil
-			}
+		z, err := provision.ResolveZone(zones, ref)
+		if err != nil {
+			return "", "", err
 		}
-		return "", "", clierrors.New(clierrors.CodeUsage, i18n.Tf("availability zone %q not found", "зона доступности %q не найдена", ref),
-			i18n.T("See list_zones (evo list-zones) for the zone names.", "Имена зон — в выводе list_zones (evo list-zones)."))
+		return z.ID, firstNonEmptyStr(z.Name, z.ID), nil
 	}
 	zones = engine.PreferredZoneFirst(zones)
 	if len(zones) == 0 || zones[0].ID == "" {

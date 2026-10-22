@@ -65,28 +65,34 @@ func OpenZones(zones []*AvailabilityZone) []*AvailabilityZone {
 	return out
 }
 
-// ZoneRefError refuses a zone name given where the zone ID is expected:
-// --region, CLOUDRU_REGION and the MCP region take the ID, and a name
-// ("ru.AZ-2") would only meet an API rejection after the boot floating IP
-// (review Fable on v1.0). nil when ref is the ID of a listed zone, is not a
-// zone name, or the list is empty (not read).
-func ZoneRefError(zones []*AvailabilityZone, ref string) error {
-	if ref == "" {
-		return nil
-	}
-	var byName *AvailabilityZone
+// ResolveZone is the listed zone ref names: by its UUID or by its name
+// ("ru.AZ-2", in any case). It is the one rule for a zone a person or an
+// agent names: the zone of a new VM (--region of evo vm create, the region
+// of MCP provision, CLOUDRU_REGION), evo configure --region, a stack's
+// vm.zone and the zone of a Kafka or Redis cluster. A ref no listed zone
+// matches is USAGE with the names to choose from (the open zones).
+func ResolveZone(zones []*AvailabilityZone, ref string) (*AvailabilityZone, error) {
 	for _, z := range zones {
 		if z.ID == ref {
-			return nil
-		}
-		if strings.EqualFold(z.Name, ref) {
-			byName = z
+			return z, nil
 		}
 	}
-	if byName == nil {
-		return nil
+	for _, z := range zones {
+		if z.Name != "" && strings.EqualFold(z.Name, ref) {
+			return z, nil
+		}
 	}
-	return clierrors.New(clierrors.CodeConfigInvalid,
-		i18n.Tf("region %q is a zone name; the zone ID is expected: %s", "region %q — имя зоны, а нужен её ID: %s", ref, byName.ID),
-		i18n.Tf("Set region to %s (evo list-zones lists the IDs).", "Задайте region: %s (ID зон — в 'evo list-zones').", byName.ID))
+	var names []string
+	for _, z := range OpenZones(zones) {
+		if z.Name != "" {
+			names = append(names, z.Name)
+		}
+	}
+	hint := i18n.T("The zones are listed by evo vm zones (list_zones).", "Зоны — в выводе evo vm zones (list_zones).")
+	if len(names) > 0 {
+		hint = i18n.Tf("Zones: %s — a name or its UUID (evo vm zones, list_zones).",
+			"Зоны: %s — имя или UUID (evo vm zones, list_zones).", strings.Join(names, ", "))
+	}
+	return nil, clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("availability zone %q not found", "зона доступности %q не найдена", ref), hint)
 }

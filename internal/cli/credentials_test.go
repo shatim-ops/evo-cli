@@ -38,6 +38,12 @@ type fakeCloud struct {
 	iamStatus  int    // 0 = 200
 	orgStatus  int    // 0 = 200
 	orgProject string // JSON array of projects
+	// zones is the JSON array of the Compute zone list; "" answers 404
+	// (the list configure cannot read).
+	zones     string
+	zoneCalls atomic.Int32
+	// subnets is the JSON array of the project's subnets; "" answers 404.
+	subnets string
 }
 
 // setupCLI isolates a CLI run: temp config dir, cwd and HOME, no CLOUDRU_*
@@ -82,6 +88,19 @@ func setupCLI(t *testing.T) *fakeCloud {
 				return
 			}
 			fmt.Fprintf(w, `{"projects":%s}`, fc.orgProject)
+		case "/api/v1/availability-zones":
+			fc.zoneCalls.Add(1)
+			if fc.zones == "" || r.Header.Get("Authorization") == "" {
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprint(w, fc.zones)
+		case "/api/v1/subnets":
+			if fc.subnets == "" {
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprint(w, fc.subnets)
 		default:
 			http.NotFound(w, r)
 		}
@@ -739,11 +758,11 @@ func TestConfigure_NothingGivenWithoutTTYFails(t *testing.T) {
 		t.Errorf("--project-id alone: got project %q key %q", prof.ProjectID, creds.KeyID)
 	}
 
-	code, _, stderr = runCLI(t, "", "configure", "--region", "zone-1")
+	code, _, stderr = runCLI(t, "", "configure", "--region", zoneAZ1)
 	if code != 0 {
 		t.Fatalf("--region alone: exit %d: %s", code, stderr)
 	}
-	if prof, _, _, _ = config.LoadProfile("default"); prof.Region != "zone-1" {
+	if prof, _, _, _ = config.LoadProfile("default"); prof.Region != zoneAZ1 {
 		t.Errorf("--region alone: got region %q", prof.Region)
 	}
 }

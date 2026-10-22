@@ -543,6 +543,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}
+	region = network.ZoneID // a zone named by its name, as its UUID
 	flavorAPIName, err := e.flavorAPIName(ctx, flavorName)
 	if err != nil {
 		return state.DeploymentRecord{}, err
@@ -704,28 +705,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	// the wait shows its time and the VM's state, so a slow zone is told
 	// apart from a stuck deploy. On a terminal one line is redrawn every
 	// second; without one a line goes out on every change of the state and
-	// every VMProgressInterval; --json prints nothing.
-	pollStart, lastStatus := time.Now(), ""
-	live := e.Printer.Live()
-	progressEvery := t.VMProgressInterval
-	if live {
-		progressEvery = vmLiveRefresh
-	}
-	progressTick := time.NewTicker(progressEvery)
-	defer progressTick.Stop()
-	defer e.Printer.ProgressDone()
-	report := func() {
-		msg := i18n.Tf("waiting for the VM… %s (%s)", "ожидание ВМ… %s (%s)",
-			elapsedText(time.Since(pollStart)), statusText(lastStatus))
-		if live {
-			e.Printer.Progress(msg)
-		} else {
-			e.Printer.StepDone(msg)
-		}
-	}
+	// every VMProgressInterval; --json prints nothing (WaitLine).
+	wait := e.VMWaitLine(e.Printer)
+	defer wait.Done()
 
 	interrupted := func(sig string) (state.DeploymentRecord, error) {
-		e.Printer.ProgressDone() // the question goes to the same terminal
+		wait.Done() // the question goes to the same terminal
 		deleted, err := e.handleInterrupt(sig, vm.ID, opts.NonInteractive)
 		if deleted {
 			// The VM goes asynchronously and its FIP stays attached until
@@ -765,11 +750,11 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			return interrupted(sig.String())
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
-				i18n.Tf("VM %s did not become active within %s", "ВМ %s не стала активной за %s", vm.ID, t.VMPollTimeout),
+				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", vm.ID, t.VMPollTimeout),
 				i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
 					"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", vm.ID))
-		case <-progressTick.C:
-			report()
+		case <-wait.C():
+			wait.Show()
 		case <-pollTick:
 			updated, err := e.Cloud.GetVM(ctx, vm.ID)
 			if err != nil {
@@ -787,13 +772,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
 				continue
 			}
-			if updated.Status != lastStatus && updated.Status != "active" && updated.Status != "running" {
-				lastStatus = updated.Status
-				report()
+			if updated.Status != "active" && updated.Status != "running" {
+				wait.State(updated.Status)
 			}
 			switch updated.Status {
 			case "active", "running":
-				e.Printer.StepDone(i18n.Tf("VM %s active (%s)", "ВМ %s активна (%s)", vmText(&rec), elapsedText(time.Since(pollStart))))
+				e.Printer.StepDone(i18n.Tf("VM %s active (%s)", "ВМ %s активна (%s)", vmText(&rec), ElapsedText(wait.Elapsed())))
 
 				// The floating (public) IP: attached at creation, or now.
 				var publicIP, fipID string
@@ -847,8 +831,8 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	}
 }
 
-// elapsedText is a wait in whole seconds: "1m20s", in Russian «1м20с».
-func elapsedText(d time.Duration) string {
+// ElapsedText is a wait in whole seconds: "1m20s", in Russian «1м20с».
+func ElapsedText(d time.Duration) string {
 	s := d.Round(time.Second).String()
 	if i18n.Lang() == i18n.RU {
 		s = strings.NewReplacer("h", "ч", "m", "м", "s", "с").Replace(s)

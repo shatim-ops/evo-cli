@@ -338,7 +338,7 @@
       "name": "organization",
       "spec": "organization+iam/api.op.v3.yaml",
       "requests": [
-        {"method": "GET", "path": "/v3/projects", "code": "internal/cli/configure.go:33", "query": ["page_token"], "paginates": true, "reads": ["projects[].id", "projects[].name", "projects[].status", "projects[].organization_unit_id", "next_page_token"], "statuses": [400, 401, 403]},
+        {"method": "GET", "path": "/v3/projects", "code": "internal/cli/configure.go:37", "query": ["page_token"], "paginates": true, "reads": ["projects[].id", "projects[].name", "projects[].status", "projects[].organization_unit_id", "next_page_token"], "statuses": [400, 401, 403]},
         {"method": "GET", "path": "/v3/quotas/usages", "code": "internal/tools/tools_admin.go:237", "query": ["page_size=200", "subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT", "subject_ids", "page_token"], "paginates": true,
          "reads": ["usages[].resource_type_code", "usages[].individual_limit", "usages[].individual_usage", "next_page_token"], "statuses": [403]}
       ]
@@ -370,7 +370,8 @@
       {"file": "internal/tools/tools_k8s_addons.go", "path": "/docs/kubernetes-evolution/ug/topics/overview__limitations", "reason": "ссылка на документацию cloud.ru в тексте подсказки, не запрос"},
       {"file": "internal/tools/tools_ca.go", "path": "/docs/container-apps-evolution/ug/topics/concepts__logging", "reason": "ссылка на документацию cloud.ru в подсказке ca_logs, не запрос"},
       {"file": "internal/billing/client.go", "path": "/docs/billing/ug/topics/api-ref_start", "reason": "ссылка на документацию cloud.ru (роли для потребления) в подсказке billing_*, не запрос"},
-      {"file": "internal/billing/client.go", "path": "/docs/billing/ug/topics/faq__api_id_agreement", "reason": "ссылка на документацию cloud.ru (кто видит ID договора) в подсказке billing_*, не запрос"}
+      {"file": "internal/billing/client.go", "path": "/docs/billing/ug/topics/faq__api_id_agreement", "reason": "ссылка на документацию cloud.ru (кто видит ID договора) в подсказке billing_*, не запрос"},
+      {"file": "internal/engine/create_preview.go", "path": "/documents/tariffs/evolution/", "reason": "ссылка на публичные тарифы cloud.ru в превью (tariff_url), не запрос"}
     ],
     "expand": [
       {"file": "internal/dns/client.go", "path": "/v1/{}", "to": ["/v1/publicZones", "/v1/privateZones", "/v1/publicRecordsSole", "/v1/privateRecordsSole"],

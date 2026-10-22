@@ -204,24 +204,26 @@ func TestVMCreatePreview_English(t *testing.T) {
 
 // Without credentials the preview still names what the configuration says
 // and leaves out what only the cloud can tell (no placeholders); the exit
-// code stays 3.
+// code stays 3. (Without a zone or an image there is no preview:
+// TestVMCreate_NoZoneRefusedBeforeConsent.)
 func TestVMCreatePreview_NoCloudOmitsUnknown(t *testing.T) {
 	russian(t)
 	t.Setenv("CLOUDRU_PROJECT_ID", pvProject)
-	t.Setenv("CLOUDRU_REGION", "")
-	t.Setenv("CLOUDRU_IMAGE_ID", "")
+	t.Setenv("CLOUDRU_REGION", pvZone)
+	t.Setenv("CLOUDRU_IMAGE_ID", pvImage)
 	_, errOut, code := execCLI(t, "vm", "create", "web")
 	if code != clerrors.ExitConfirmationRequired {
 		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
 	}
 	assertHas(t, errOut, []string{
-		"План: создать ВМ web\n",
+		"План: создать ВМ web в зоне " + pvZone + "\n",
 		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
-		"  не задано:  образ (--image, --image-id или CLOUDRU_IMAGE_ID), зона (--region или CLOUDRU_REGION)",
+		"  зона:       " + pvZone + "\n",
+		"  образ:      " + pvImage + "\n",
 		"  цена:       не оценена: размер flavor неизвестен",
 	})
 	assertNoJargon(t, errOut)
-	if strings.Contains(errOut, "flavor:") || strings.Contains(errOut, "образ:") {
+	if strings.Contains(errOut, "flavor:") || strings.Contains(errOut, "не задано") {
 		t.Errorf("unknown values shown:\n%s", errOut)
 	}
 }
@@ -283,7 +285,8 @@ func TestDiskCreatePreview_Russian(t *testing.T) {
 }
 
 // A billable command without a rate card: header, project, zone and the
-// key parameters, and a word that there is no price.
+// key parameters, and that the cluster is paid, with its tariff — not a
+// line that reads as «free» (dogfood 1.2.1).
 func TestK8sCreatePreview_NoPrice(t *testing.T) {
 	russian(t)
 	withPreviewCloud(t)
@@ -298,7 +301,7 @@ func TestK8sCreatePreview_NoPrice(t *testing.T) {
 		"  зона:       ru.AZ-1\n",
 		"  мастеров:   3\n",
 		"  API извне:  нет\n",
-		"  цена:       не оценивается: у evo нет тарифа для этого ресурса\n",
+		"  цена:       evo её не рассчитывает, ресурс платный: тариф https://cloud.ru/documents/tariffs/evolution/managed-kubernetes\n",
 	})
 	assertNoJargon(t, errOut)
 	if strings.Contains(errOut, "k8s_plan") || strings.Contains(errOut, "billable") {

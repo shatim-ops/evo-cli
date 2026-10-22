@@ -78,7 +78,7 @@ var HTTPRestrictions = []Restriction{
 		Summary: "at most 32 tool calls at once; the next one gets SERVER_BUSY"},
 	{ID: "H9", StdioToo: true,
 		Where: "internal/cli/mcp.go", Symbol: "checkAllowedProject",
-		Summary: "--allow-project: a call in another project gets CONFIG_INVALID; a read wider than a project with no project_id (billing_consumption, billing_finops, org_projects) reads the server's project only (tools.Registry.SetProjectBound)"},
+		Summary: "--allow-project: a call in another project gets CONFIG_INVALID; a resource named by id that is not in an allowed project gets NOT_FOUND, as one that is gone, naming no project, and an operation the server did not start CONFIG_INVALID (both before the handler); a read wider than a project with no project_id (billing_consumption, billing_finops, org_projects) reads the server's project only, and the balance of the billing agreement is not given: billing_balance gets CONFIG_INVALID, billing_finops reports it unknown (tools.Registry.SetProjectBound)"},
 	{ID: "H10", Tools: []string{"doctor"},
 		Where: "internal/mcp/http_policy.go", Symbol: "doctor is disabled over HTTP",
 		Summary: "disabled: its checks name the server's files and network (paths in the configuration's warnings, addresses in network errors)"},

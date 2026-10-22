@@ -88,8 +88,11 @@ type Registry struct {
 	readOnly bool
 	// projectBound: SetProjectBound was called; a read that names no
 	// project reads the configuration's project, not the agreement or the
-	// organization.
+	// organization, and a resource named by id must be of an allowed
+	// project (boundToProjects).
 	projectBound bool
+	// ops are the operations this bound registry started (kindOperation).
+	ops operationSet
 }
 
 // New builds the registry. factory is called by handlers that need an
@@ -107,6 +110,8 @@ func New(factory EngineFactory) *Registry {
 		t.ShortRU, t.DescriptionRU = ru.Short, ru.Long
 		t.ArgDescriptionsRU = argDescriptionsRU(*t, ru.Args)
 		if h := r.handlers[t.Name]; h != nil {
+			// Inside requireProject: the check's engine sees its mark.
+			h = r.boundToProjects(*t, h)
 			if projectTools[t.Name] {
 				h = r.requireProject(h)
 			}
@@ -166,12 +171,17 @@ func (r *Registry) SetReadOnly() { r.readOnly = true }
 // configuration: a read that names no project_id and would read more than
 // a project otherwise reads that project only — billing_consumption and
 // billing_finops the consumption of the project, not of the whole billing
-// agreement (billingClient); org_projects lists that project, not the
-// organization's. A call in another project is the factory's to refuse.
-// evo mcp --allow-project sets it (H9), where the factory admits allowed
-// projects only; org_quotas and iam_service_accounts with project_id stay
-// the documented reads of other projects. Without it the CLI and MCP read
-// as documented: the agreement, the organization. Call it before the
+// agreement (billingClient), and the balance of the agreement is not given
+// (balanceRefused); org_projects lists that project, not the
+// organization's. A call in another project is the factory's to refuse,
+// and so is a resource a tool names by id (idArgs): before the handler,
+// the registry finds the resource's project and asks the factory for an
+// engine there (boundToProjects); a *_operation tool reads only the
+// operations this registry started. evo mcp --allow-project sets it (H9),
+// where the factory admits allowed projects only; org_quotas and
+// iam_service_accounts with project_id stay the documented reads of other
+// projects. Without it the CLI and MCP read as documented: the agreement,
+// the organization, a resource by id with no check. Call it before the
 // registry serves calls.
 func (r *Registry) SetProjectBound() { r.projectBound = true }
 
@@ -310,8 +320,8 @@ func groupOf(name string) string {
 var projectTools = map[string]bool{
 	"vm_list": true, "list_subnets": true, "list_security_groups": true, "list_floating_ips": true,
 	"disk_list": true, "disk_create": true, "image_create": true, "snat_list": true, "snat_create": true,
-	"deploy_plan": true,
-	"vpc_list":    true, "vpc_create": true, "vpc_route_create": true,
+	"deploy_plan": true, "provision": true,
+	"vpc_list": true, "vpc_create": true, "vpc_route_create": true,
 	"k8s_list": true, "k8s_plan": true, "k8s_create": true,
 	// mk8s catalogues take projectId too: GET /v3/addons without it is a
 	// live 400, the spec requires it on /v3/addons and productConfiguration

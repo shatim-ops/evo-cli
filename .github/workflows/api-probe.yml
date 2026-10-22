@@ -380,6 +380,9 @@ jobs:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          # Необязательный: ID договора — проверить, читает ли ключ уровня
+          # проекта баланс договора, зная его ID (BIL-6).
+          AGREEMENT: ${{ secrets.CLOUDRU_AGREEMENT_ID }}
         run: |
           set -euo pipefail
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] ||
@@ -450,6 +453,13 @@ jobs:
             agid=$(get "$O/v3/agreements?customer_ids=$cust" | jq -r '(.agreements // [])[0] | (.id // .agreement_id // empty)' 2>/dev/null || true)
           else
             echo "agreements_v3_customer: в токене нет customer_id — запрос пропущен"
+          fi
+          # BIL-6: ключ проекта ID договора через API не видит (403 выше), но
+          # его могут знать. Секрет CLOUDRU_AGREEMENT_ID — проверка, отдаёт ли
+          # billing баланс по одному знанию ID; ожидается 403.
+          if [ -z "$agid" ] && [ -n "${AGREEMENT:-}" ]; then
+            agid=$AGREEMENT
+            echo "billing_agreement_own: ID договора — из секрета CLOUDRU_AGREEMENT_ID"
           fi
           B=https://billing.api.cloud.ru
           probeh billing_root             "$B/" '{top: (if type == "object" then keys else type end)}'

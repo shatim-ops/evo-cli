@@ -10,6 +10,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // opwait: a single, uniform "wait for an async operation" contract shared by every
@@ -76,12 +79,18 @@ func opToMap(v any) map[string]any {
 // waitForOpJSON polls fetch() with capped exponential backoff (2s → 15s, capped at
 // wait_seconds, hard max opWaitMaxSeconds) until the operation is terminal or the
 // budget elapses. Returns the last observed state. Honors ctx cancellation.
+// The person at the CLI sees the wait as one line (Caller.Progress).
 func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Context) (map[string]any, error)) (map[string]any, error) {
 	if waitSeconds > opWaitMaxSeconds {
 		waitSeconds = opWaitMaxSeconds
 	}
 	deadline := time.Now().Add(time.Duration(waitSeconds) * time.Second)
 	delay := opWaitFirstDelay
+	pp, _ := progressOf(ctx)
+	wait := engine.NewWaitLine(pp, 0, func(elapsed, state string) string {
+		return i18n.Tf("waiting for the operation… %s (%s)", "ожидание операции… %s (%s)", elapsed, state)
+	})
+	defer wait.Done()
 	var last map[string]any
 	for {
 		m, err := fetch(ctx)
@@ -92,6 +101,7 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 		if opTerminal(m) {
 			return m, nil
 		}
+		wait.State(opState(m))
 		if !time.Now().Before(deadline) {
 			return stillRunning(m, waitSeconds), nil
 		}
@@ -101,15 +111,43 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 		if delay <= 0 {
 			return stillRunning(m, waitSeconds), nil
 		}
-		select {
-		case <-ctx.Done():
-			return last, ctx.Err()
-		case <-time.After(delay):
+		if err := sleepShowing(ctx, delay, wait); err != nil {
+			return last, err
 		}
 		if delay < 15*time.Second {
 			delay += delay / 2 // 2 → 3 → 4.5 → 6.75 → 10 → 15 → 15…
 		}
 	}
+}
+
+// sleepShowing waits d, or until ctx ends, keeping the wait line going.
+func sleepShowing(ctx context.Context, d time.Duration, wait *engine.WaitLine) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-wait.C():
+			wait.Show()
+		case <-timer.C:
+			return nil
+		}
+	}
+}
+
+// opState is the state an operation reports (status, state or phase), as
+// the wait line shows it.
+func opState(m map[string]any) string {
+	for _, k := range []string{"status", "state", "phase"} {
+		if v, ok := m[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	if b, ok := m["done"].(bool); ok {
+		return fmt.Sprintf("done=%t", b)
+	}
+	return ""
 }
 
 // stillRunning marks an operation the wait gave up on: done=false alone

@@ -920,6 +920,14 @@ jobs:
             sleep 60
           done
 
+      # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
+      # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
+      - name: k8s_get через evo mcp --allow-project
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          .github/scripts/bound-check.sh k8s_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: k8s_get"
+
       - name: Пул из одного узла, готов (до 30 мин)
         run: |
           evo --json --yes k8s add-nodepool "$CLUSTER_ID" --name np-e2e --count 1 | jq -c '{status, count}'
@@ -1181,13 +1189,13 @@ jobs:
         run: |
           set +e
           evo tools call pg_create --arg name="$CLUSTER" --arg specification_id="$SPEC_ID" --arg subnet_id="$SUBNET_ID" \
-            --json > "$RUNNER_TEMP/dup.json" 2>/dev/null
+            --json 2> "$RUNNER_TEMP/dup.json" >/dev/null
           rc=$?
           set -e
-          ex=$(jq -r '.existing_id // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null || true)
-          [ -z "$ex" ] || echo "::add-mask::$ex"
-          echo "повторный pg_create: код $rc, $(jq -c '{status, reason, existing_is_ours: (.existing_id == env.CLUSTER_ID)}' "$RUNNER_TEMP/dup.json" 2>/dev/null || echo '-')"
-          [ "$(jq -r '.reason // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null)" = USAGE ] && [ "$ex" = "$CLUSTER_ID" ] ||
+          # С --json ошибка — только {"error":…} в stderr (QA-12, 1.1.0); ID
+          # существующего кластера — в тексте отказа (existing_id есть в ответе MCP).
+          echo "повторный pg_create: код $rc, $(jq -sc --arg id "$CLUSTER_ID" 'map(select(.error))[0] | {reason: .error.reason, existing_is_ours: (.error.message | tostring | contains($id))}' "$RUNNER_TEMP/dup.json" 2>/dev/null || echo '-')"
+          jq -se --arg id "$CLUSTER_ID" 'map(select(.error))[0] | .error.reason == "USAGE" and (.error.message | tostring | contains($id))' "$RUNNER_TEMP/dup.json" >/dev/null 2>&1 ||
             { echo "::error::второй pg_create с именем $CLUSTER не отклонён как USAGE с ID нашего кластера (L-32)"; exit 1; }
           n=$(evo tools call pg_list --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
           echo "кластеров $CLUSTER в pg_list: $n"
@@ -1208,6 +1216,14 @@ jobs:
             [ $(( $(date +%s) - start )) -lt 3600 ] || { echo "::error::кластер $CLUSTER не готов за 60 мин (реестр DB-20)"; exit 1; }
             sleep 60
           done
+
+      # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
+      # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
+      - name: pg_get через evo mcp --allow-project
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          .github/scripts/bound-check.sh pg_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: pg_get"
 
       # Пароль — из букв и цифр с заглавной, строчной, цифрой и спецсимволом
       # из разрешённых; маскируется до первого использования и идёт через
@@ -1422,13 +1438,13 @@ jobs:
         run: |
           set +e
           evo --region "$ZONE_ID" tools call kafka_create --arg name="$CLUSTER" --arg brokers=1 \
-            --json > "$RUNNER_TEMP/dup.json" 2>/dev/null
+            --json 2> "$RUNNER_TEMP/dup.json" >/dev/null
           rc=$?
           set -e
-          ex=$(jq -r '.existing_id // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null || true)
-          [ -z "$ex" ] || echo "::add-mask::$ex"
-          echo "повторный kafka_create: код $rc, $(jq -c '{status, reason, existing_is_ours: (.existing_id == env.CLUSTER_ID)}' "$RUNNER_TEMP/dup.json" 2>/dev/null || echo '-')"
-          [ "$(jq -r '.reason // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null)" = USAGE ] && [ "$ex" = "$CLUSTER_ID" ] ||
+          # С --json ошибка — только {"error":…} в stderr (QA-12, 1.1.0); ID
+          # существующего кластера — в тексте отказа (existing_id есть в ответе MCP).
+          echo "повторный kafka_create: код $rc, $(jq -sc --arg id "$CLUSTER_ID" 'map(select(.error))[0] | {reason: .error.reason, existing_is_ours: (.error.message | tostring | contains($id))}' "$RUNNER_TEMP/dup.json" 2>/dev/null || echo '-')"
+          jq -se --arg id "$CLUSTER_ID" 'map(select(.error))[0] | .error.reason == "USAGE" and (.error.message | tostring | contains($id))' "$RUNNER_TEMP/dup.json" >/dev/null 2>&1 ||
             { echo "::error::второй kafka_create с именем $CLUSTER не отклонён как USAGE с ID нашего кластера (L-32)"; exit 1; }
           n=$(evo tools call kafka_list --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
           echo "кластеров $CLUSTER в kafka_list: $n"
@@ -1448,6 +1464,14 @@ jobs:
             [ $(( $(date +%s) - start )) -lt 4500 ] || { echo "::error::кластер $CLUSTER не готов за 75 мин"; exit 1; }
             sleep 60
           done
+
+      # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
+      # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
+      - name: kafka_get через evo mcp --allow-project
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          .github/scripts/bound-check.sh kafka_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: kafka_get" own
 
       - name: kafka_get и превью удаления
         run: |
@@ -1561,13 +1585,13 @@ jobs:
         run: |
           set +e
           evo --region "$ZONE_ID" tools call redis_create --arg name="$CLUSTER" --arg type=MASTER_REPLICA \
-            --arg shards=1 --arg replicas=2 --json > "$RUNNER_TEMP/dup.json" 2>/dev/null
+            --arg shards=1 --arg replicas=2 --json 2> "$RUNNER_TEMP/dup.json" >/dev/null
           rc=$?
           set -e
-          ex=$(jq -r '.existing_id // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null || true)
-          [ -z "$ex" ] || echo "::add-mask::$ex"
-          echo "повторный redis_create: код $rc, $(jq -c '{status, reason, existing_is_ours: (.existing_id == env.CLUSTER_ID)}' "$RUNNER_TEMP/dup.json" 2>/dev/null || echo '-')"
-          [ "$(jq -r '.reason // empty' "$RUNNER_TEMP/dup.json" 2>/dev/null)" = USAGE ] && [ "$ex" = "$CLUSTER_ID" ] ||
+          # С --json ошибка — только {"error":…} в stderr (QA-12, 1.1.0); ID
+          # существующего кластера — в тексте отказа (existing_id есть в ответе MCP).
+          echo "повторный redis_create: код $rc, $(jq -sc --arg id "$CLUSTER_ID" 'map(select(.error))[0] | {reason: .error.reason, existing_is_ours: (.error.message | tostring | contains($id))}' "$RUNNER_TEMP/dup.json" 2>/dev/null || echo '-')"
+          jq -se --arg id "$CLUSTER_ID" 'map(select(.error))[0] | .error.reason == "USAGE" and (.error.message | tostring | contains($id))' "$RUNNER_TEMP/dup.json" >/dev/null 2>&1 ||
             { echo "::error::второй redis_create с именем $CLUSTER не отклонён как USAGE с ID нашего кластера (L-32)"; exit 1; }
           n=$(evo tools call redis_list --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
           echo "кластеров $CLUSTER в redis_list: $n"
@@ -1587,6 +1611,14 @@ jobs:
             [ $(( $(date +%s) - start )) -lt 3000 ] || { echo "::error::кластер $CLUSTER не готов за 50 мин"; exit 1; }
             sleep 60
           done
+
+      # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
+      # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
+      - name: redis_get через evo mcp --allow-project
+        env:
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          .github/scripts/bound-check.sh redis_get "$(jq -cn --arg c "$CLUSTER_ID" '{cluster_id: $c}')" "allow-project: redis_get" own
 
       # replicas в GET — хосты шарда вместе с мастером (живое: 3 при
       # replicas=2 в запросе, реестр DB-11): только печатается.

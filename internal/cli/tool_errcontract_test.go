@@ -57,13 +57,13 @@ func TestToolError_SameAfterReasonContract(t *testing.T) {
 	for _, lang := range []string{"ru", "en"} {
 		i18n.SetLang(lang)
 		for _, err := range errs {
-			before := toolError("x", oldErrResult(err))
-			after := toolError("x", tools.ErrResult(err))
+			before := toolError("x", oldErrResult(err), callHints("x"))
+			after := toolError("x", tools.ErrResult(err), callHints("x"))
 			var b, a *clerrors.CLIError
 			if !stderrors.As(before, &b) || !stderrors.As(after, &a) {
 				t.Fatalf("%v: not a CLIError", err)
 			}
-			if *a != *b || clerrors.ExitCode(after) != clerrors.ExitCode(before) {
+			if a.Code != b.Code || a.Message != b.Message || a.Hint != b.Hint || a.Err != b.Err || a.Details != nil || clerrors.ExitCode(after) != clerrors.ExitCode(before) {
 				t.Errorf("%s %v:\n before %+v exit %d\n after  %+v exit %d", lang, err,
 					*b, clerrors.ExitCode(before), *a, clerrors.ExitCode(after))
 			}
@@ -85,7 +85,7 @@ func TestToolError_UncodedLocalErrorIsUsage(t *testing.T) {
 		{stderrors.New("vpc API 422: bad cidr"), clerrors.CodeAPIError, clerrors.ExitAPI},
 		{stderrors.New("dns API 404: zone"), clerrors.CodeNotFound, clerrors.ExitNotFound},
 	} {
-		err := toolError("x", tools.ErrResult(tt.err))
+		err := toolError("x", tools.ErrResult(tt.err), callHints("x"))
 		var ce *clerrors.CLIError
 		if !stderrors.As(err, &ce) || ce.Code != tt.code || clerrors.ExitCode(err) != tt.exit {
 			t.Errorf("%v: %v exit %d, want %s exit %d", tt.err, err, clerrors.ExitCode(err), tt.code, tt.exit)

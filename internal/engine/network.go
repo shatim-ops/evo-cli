@@ -13,6 +13,7 @@ import (
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -21,11 +22,39 @@ import (
 // vmNetwork is where a new VM is plugged in. The compute create API 500s
 // without an explicit interface, so deploy always resolves one.
 type vmNetwork struct {
+	// ZoneID is the UUID of the zone the VM goes to (resolveNetwork).
+	ZoneID          string
 	ZoneName        string
 	SubnetID        string
 	SubnetName      string
 	SecurityGroupID string
 	SecurityGroup   string
+}
+
+// ResolveZoneRef is the zone a person or an agent named for a new VM — its
+// UUID or its name, in any case (provision.ResolveZone) — from zones, the
+// list as read, and listErr, the error of reading it. A UUID stays as
+// given (nil zone, no error) when the list is unread, empty or lacks it:
+// the create call answers for it, as before. A name needs the list:
+// unread, it is refused with the list's error; naming no listed zone, with
+// ResolveZone's USAGE and the zones to choose from. An empty ref names
+// nothing. evo deploy, evo vm create and MCP provision take the zone by
+// this one rule (review of the zone in 1.2.1), before the consent and
+// anything created.
+func ResolveZoneRef(zones []*provision.AvailabilityZone, listErr error, ref string) (*provision.AvailabilityZone, error) {
+	switch {
+	case ref == "":
+		return nil, nil
+	case listErr != nil && isUUID(ref):
+		return nil, nil
+	case listErr != nil:
+		return nil, clerrors.Prefix(i18n.Tf("availability zone %q: list zones: ", "зона доступности %q: список зон: ", ref), listErr)
+	}
+	zone, err := provision.ResolveZone(zones, ref)
+	if err != nil && (isUUID(ref) || len(zones) == 0) {
+		return nil, nil
+	}
+	return zone, err
 }
 
 // resolveNetwork picks a subnet (provision.PickSubnet: the zone's main
@@ -34,23 +63,22 @@ type vmNetwork struct {
 // that contains the zone name ("Default_ru.AZ-1", "SSH-access_ru.AZ-1"),
 // the same rule as the MCP vm_create path. A security group from another
 // zone keeps the VM from booting, hence no blind "first one" for groups
-// unless the project has a single candidate.
-func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (vmNetwork, error) {
-	var n vmNetwork
-	if zones, err := e.Cloud.ListAvailabilityZones(ctx); err == nil {
-		for _, z := range zones {
-			if z.ID == zoneID {
-				n.ZoneName = z.Name
-				break
-			}
-		}
-		if err := provision.ZoneRefError(zones, zoneID); err != nil {
-			return n, err
-		}
-		if err := provision.ClosedZoneError(zones, zoneID); err != nil {
-			return n, err
-		}
+// unless the project has a single candidate. The zone is zoneRef, its UUID
+// or its name (ResolveZoneRef); n.ZoneID is its UUID.
+func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneRef string) (vmNetwork, error) {
+	n := vmNetwork{ZoneID: zoneRef}
+	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	zone, err := ResolveZoneRef(zones, err, zoneRef)
+	if err != nil {
+		return n, err
 	}
+	if zone != nil {
+		n.ZoneID, n.ZoneName = zone.ID, zone.Name
+	}
+	if err := provision.ClosedZoneError(zones, n.ZoneID); err != nil {
+		return n, err
+	}
+	zoneID := n.ZoneID
 
 	subnets, err := e.Cloud.ListSubnets(ctx, projectID)
 	if err != nil {
@@ -290,24 +318,32 @@ func zoneText(name, id string) string {
 func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp []int, rec *state.DeploymentRecord) {
 	res := sgrules.Open(ctx, e.Cloud, projectID, sgID, tcp, udp,
 		func(label string) string { return "evo: port " + label }, rec)
+	group := rec.SecurityGroupName
+	if group == "" {
+		group = sgID
+	}
+	ShowOpenedPorts(e.Printer, res, rec, group)
+}
+
+// ShowOpenedPorts tells on p what sgrules.Open did with the ports of rec in
+// the security group named group: the ports opened, the ports another rule
+// opens already, the ports it could not open or cannot close later. deploy
+// and evo vm create say it in the same words.
+func ShowOpenedPorts(p *output.Printer, res sgrules.OpenResult, rec *state.DeploymentRecord, group string) {
 	if len(res.Opened) > 0 {
-		e.Printer.StepDone(i18n.Tf("Opened ports %s in the security group", "Открыты порты %s в группе безопасности", strings.Join(res.Opened, ",")))
+		p.StepDone(i18n.Tf("Opened ports %s in the security group", "Открыты порты %s в группе безопасности", strings.Join(res.Opened, ",")))
 	}
 	// A port someone else's rule opens gets no rule from deploy and so
 	// none for destroy to delete: say so, it was silent (v1.0.1).
 	if theirs := res.NotOurs(rec); len(theirs) > 0 {
-		group := rec.SecurityGroupName
-		if group == "" {
-			group = sgID
-		}
-		e.Printer.StepDone(alreadyOpenText(theirs, group))
+		p.StepDone(alreadyOpenText(theirs, group))
 	}
 	if len(res.Failed) > 0 {
-		e.Printer.Warning(i18n.Tf("Could not open ports %s — open them in the security group in the Cloud.ru console",
+		p.Warning(i18n.Tf("Could not open ports %s — open them in the security group in the Cloud.ru console",
 			"Не удалось открыть порты %s — откройте их в группе безопасности в консоли Cloud.ru", strings.Join(res.Failed, ",")))
 	}
 	if len(res.Untracked) > 0 {
-		e.Printer.Warning(i18n.Tf("Ports %s were opened, but the API returned no rule ID: destroy will not close them — delete those rules in the Cloud.ru console after destroy",
+		p.Warning(i18n.Tf("Ports %s were opened, but the API returned no rule ID: destroy will not close them — delete those rules in the Cloud.ru console after destroy",
 			"Порты %s открыты, но API не вернул ID правил: destroy их не закроет — после destroy удалите эти правила в консоли Cloud.ru",
 			strings.Join(res.Untracked, ",")))
 	}

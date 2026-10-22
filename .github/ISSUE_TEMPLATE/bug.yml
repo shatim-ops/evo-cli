@@ -12,7 +12,7 @@ body:
     attributes:
       label: Версия
       description: Вывод `evo version` (первая строка).
-      placeholder: Cloud.ru Evolution CLI CREW edition (evo) 1.1.0
+      placeholder: Cloud.ru Evolution CLI CREW edition (evo) 1.2.1
     validations:
       required: true
   - type: dropdown

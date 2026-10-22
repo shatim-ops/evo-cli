@@ -76,24 +76,6 @@ func TestFloatingIP_AvailableStates(t *testing.T) {
 	}
 }
 
-// region — ID зоны; имя («ru.AZ-2») — отказ с ID в подсказке (ревью Fable).
-func TestZoneRefError(t *testing.T) {
-	zones := []*AvailabilityZone{{ID: "z1", Name: "ru.AZ-1"}, {ID: "z2", Name: "ru.AZ-2"}}
-	err := ZoneRefError(zones, "ru.AZ-2")
-	var ce *clierrors.CLIError
-	if !asCLI(err, &ce) || ce.Code != clierrors.CodeConfigInvalid || !strings.Contains(ce.Message, "z2") || !strings.Contains(ce.Hint, "z2") {
-		t.Errorf("name: %v", err)
-	}
-	for _, ref := range []string{"z1", "", "unknown"} {
-		if err := ZoneRefError(zones, ref); err != nil {
-			t.Errorf("%q: %v", ref, err)
-		}
-	}
-	if err := ZoneRefError(nil, "ru.AZ-2"); err != nil {
-		t.Errorf("empty list: %v", err)
-	}
-}
-
 // Имя по шаблону compute (^[a-zA-Z][a-zA-Z0-9.\-_]*$, 1–64) — до создания
 // (релизный QA, C-api 4).
 func TestValidName(t *testing.T) {

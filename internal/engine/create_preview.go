@@ -68,6 +68,10 @@ type CreatePreview struct {
 	// CostNote says where Cost comes from (the price-calculation API, or
 	// the rate card: an estimate), or why there is none.
 	CostNote string `json:"cost_note,omitempty"`
+	// TariffURL is the public Cloud.ru tariff of a resource evo has not
+	// priced (tariffs): a billable resource never goes without a price
+	// and without where to find one.
+	TariffURL string `json:"tariff_url,omitempty"`
 	// NetworkCheck: what the preview found wrong with the VM's subnet and
 	// security group (CompletePreview).
 	NetworkCheck *NetworkCheck `json:"network_check,omitempty"`
@@ -116,27 +120,54 @@ func (p *CreatePreview) AddArgs(args map[string]any, skip ...string) {
 	}
 }
 
-const noRateCard = "not estimated: evo has no rate card for this resource"
+// tariffsBase is where the public Cloud.ru Evolution tariffs are.
+const tariffsBase = "https://cloud.ru/documents/tariffs/evolution/"
+
+// tariffs are the public tariffs of the resources a CreatePreview names
+// (TestTariffs_EveryResource keeps the list whole). A preview evo cannot
+// price links the tariff: «не оценивается: у evo нет тарифа» read as
+// «free» before a paid cluster was created (dogfood 1.2.1).
+var tariffs = map[string]string{
+	ResourceVM:          tariffsBase + "evolution-compute",
+	ResourceDisk:        tariffsBase + "evolution-compute",
+	ResourceDiskResize:  tariffsBase + "evolution-compute",
+	ResourcePGCluster:   tariffsBase + "managed-postgresql",
+	ResourceK8sCluster:  tariffsBase + "managed-kubernetes",
+	ResourceK8sNodePool: tariffsBase + "managed-kubernetes",
+	ResourceK8sAddon:    tariffsBase + "managed-kubernetes",
+	ResourceS3Bucket:    tariffsBase + "object-storage",
+}
+
+// The notes of a preview without a price.
+const (
+	notPriced      = "not priced by evo: the resource is billable; its rates are at tariff_url"
+	addonNotPriced = "no price of its own: the addon runs on the cluster's nodes, billed by the rates at tariff_url"
+)
 
 // Price sets the cost estimate where evo can make one: a VM of a known
-// size (the estimator of deploy and deploy_plan) and a disk.
+// size (the estimator of deploy and deploy_plan) and a disk. Without one,
+// the note says the resource is billable and TariffURL where its rates are.
 func (p *CreatePreview) Price() {
-	p.Cost, p.CostNote = nil, noRateCard
+	p.Cost, p.TariffURL = nil, ""
 	switch {
-	case p.Resource == ResourceVM && p.VM != nil:
-		if p.VM.Flavor.VCPUs == 0 {
-			p.CostNote = "not estimated: flavor size unknown"
-			return
-		}
+	case p.Resource == ResourceVM && p.VM != nil && p.VM.Flavor.VCPUs > 0:
 		cost := deployplan.EstimateVM(*p.VM)
 		p.Cost = &cost
 	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0:
 		cost := pricing.EstimateFor("", 0, 0, p.Disk.SizeGB, p.Disk.Type)
 		p.Cost = &cost
-	default:
+	}
+	if p.Cost != nil {
+		p.CostNote = costNote
 		return
 	}
-	p.CostNote = costNote
+	p.CostNote, p.TariffURL = notPriced, tariffs[p.Resource]
+	switch {
+	case p.Resource == ResourceVM && p.VM != nil:
+		p.CostNote = "not estimated: flavor size unknown"
+	case p.Resource == ResourceK8sAddon:
+		p.CostNote = addonNotPriced
+	}
 }
 
 // priceFromAPI prices a VM preview that has talked to the cloud: the
@@ -152,7 +183,7 @@ func (p *CreatePreview) priceFromAPI(ctx context.Context, cloud provision.CloudA
 		PublicIP: p.PublicIP == nil || *p.PublicIP})
 	switch {
 	case err == nil:
-		p.Cost, p.CostNote = &cost, apiCostNote
+		p.Cost, p.CostNote, p.TariffURL = &cost, apiCostNote, ""
 	case p.Cost != nil:
 		p.Cost.PriceAPIError = err.Error()
 	}
@@ -161,9 +192,10 @@ func (p *CreatePreview) priceFromAPI(ctx context.Context, cloud provision.CloudA
 	}
 }
 
-// previewLookupTimeout bounds the lookups of CompletePreview: a slow API
-// must not hold the question back for long.
-const previewLookupTimeout = 20 * time.Second
+// PreviewLookupTimeout bounds the lookups of a preview (CompletePreview,
+// the zone of provision's preview): a slow API must not hold the question
+// back for long.
+const PreviewLookupTimeout = 20 * time.Second
 
 // networkCheckTimeout bounds the network check of the preview on its own,
 // after the price: a slow rules list must not leave the preview without a
@@ -210,7 +242,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		return nil
 	}
 	parent := ctx
-	ctx, cancel := context.WithTimeout(ctx, previewLookupTimeout)
+	ctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
 	defer cancel()
 	tok, err := e.Auth.Token(ctx)
 	if err != nil {
@@ -554,8 +586,12 @@ func createCostLines(p CreatePreview) []string {
 		return []string{previewLabel("cost", "цена") + i18n.T("not estimated: the flavor size is unknown (see 'evo vm flavors')",
 			"не оценена: размер flavor неизвестен (см. 'evo vm flavors')")}
 	}
-	return []string{previewLabel("cost", "цена") + i18n.T("not estimated: evo has no rate card for this resource",
-		"не оценивается: у evo нет тарифа для этого ресурса")}
+	if p.Resource == ResourceK8sAddon {
+		return []string{previewLabel("cost", "цена") + i18n.Tf("none of its own: the addon runs on the cluster's nodes, billed by the tariff %s",
+			"своей нет: плагин работает на узлах кластера, они оплачиваются по тарифу %s", p.TariffURL)}
+	}
+	return []string{previewLabel("cost", "цена") + i18n.Tf("not estimated by evo, the resource is billable: tariff %s",
+		"evo её не рассчитывает, ресурс платный: тариф %s", p.TariffURL)}
 }
 
 func missingText(m string) string {
