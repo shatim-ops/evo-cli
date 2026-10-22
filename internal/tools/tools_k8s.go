@@ -394,7 +394,7 @@ func (s *Registry) handleK8sNodePools(ctx context.Context, args map[string]any) 
 	clusterID := stringArg(args, "cluster_id")
 	if clusterID == "" {
 		return errResult(clierrors.New(clierrors.CodeUsage, i18n.T("cluster_id is required: the API lists node pools of one cluster", "нужен cluster_id: API выдаёт группы узлов одного кластера"),
-			i18n.T("Find the cluster ID with k8s_list (evo k8s list).", "ID кластера — в выводе k8s_list (evo k8s list)."))), true
+			i18n.T("Find the cluster ID with k8s_list (evo k8s list).", "ID кластера — в выводе evo k8s list."))), true
 	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
@@ -505,7 +505,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		if zid == "" {
 			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("cluster %s does not report its zone (controlPlane.zones is empty)", "кластер %s не сообщает свою зону (controlPlane.zones пуст)", clusterID),
-				i18n.T("Pass zone: the availability zone of the cluster's control plane (k8s_get).", "Передайте zone — зону доступности мастер-узлов кластера (k8s_get)."))), true
+				i18n.T("Pass zone: the availability zone of the cluster's control plane (k8s_get).", "Передайте --zone — зону доступности мастер-узлов кластера (evo k8s get <ID кластера>)."))), true
 		}
 		zoneRef = zid
 	}
@@ -619,7 +619,7 @@ func (s *Registry) k8sZone(ctx context.Context, pc *mk8s.ProductConfig, ref stri
 	ref = firstNonEmptyStr(ref, pc.DefaultZone)
 	if ref == "" {
 		return k8sZoneRef{}, clierrors.New(clierrors.CodeUsage, i18n.T("zone is required: productConfiguration names no default zone", "нужна zone: в productConfiguration нет зоны по умолчанию"),
-			i18n.T("Pass zone, e.g. ru.AZ-2 (k8s_options lists the zones).", "Передайте zone, например ru.AZ-2 (зоны — в выводе k8s_options)."))
+			i18n.T("Pass zone, e.g. ru.AZ-2 (k8s_options lists the zones).", "Передайте --zone, например ru.AZ-2 (зоны — в выводе evo k8s options)."))
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -654,9 +654,11 @@ func (s *Registry) k8sZone(ctx context.Context, pc *mk8s.ProductConfig, ref stri
 			}
 		}
 	}
-	hint := "k8s_options lists the zones of Managed Kubernetes."
+	// The Russian hint is the CLI's (MCP speaks English, D6): evo's
+	// commands, not the tools (Cursor review of 1.2.2, CUR122-5).
+	hint := i18n.T("k8s_options lists the zones of Managed Kubernetes.", "Зоны Managed Kubernetes — в выводе evo k8s options.")
 	if len(offered) > 0 {
-		hint = "Zones of Managed Kubernetes: " + strings.Join(offered, ", ") + " (k8s_options)."
+		hint = i18n.Tf("Zones of Managed Kubernetes: %s (k8s_options).", "Зоны Managed Kubernetes: %s (evo k8s options).", strings.Join(offered, ", "))
 	}
 	switch {
 	case z.computeID == "" && z.mk8sID == "":
