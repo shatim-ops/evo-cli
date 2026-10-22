@@ -391,7 +391,8 @@ func TestDeploy_DockerPermanentRefusalNotRetried(t *testing.T) {
 		if !stderrors.As(err, &cliErr) || cliErr.Code != clerrors.CodeConfigInvalid {
 			t.Fatalf("err = %v, want CONFIG_INVALID", err)
 		}
-		if n := attempts.Load(); n != 1 || time.Since(start) > 30*time.Second {
+		// wall-clock: guards retrying the install until DockerWaitTimeout (1 min): half of it.
+		if n := attempts.Load(); n != 1 || time.Since(start) > eng.Timings.DockerWaitTimeout/2 {
 			t.Errorf("%d install attempts in %s, want one", n, time.Since(start))
 		}
 		if !strings.Contains(cliErr.Message, "Docker cannot be installed on VM") ||

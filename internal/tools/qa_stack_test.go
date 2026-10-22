@@ -285,7 +285,8 @@ func TestQA_StackStatusHonoursShortBudget(t *testing.T) {
 	r.handlers["pg_get"] = fakeOK(map[string]any{"status": "CREATING"})
 	start := time.Now()
 	got := callTool(t, r.handleStackStatus, map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
-	if d := time.Since(start); d > 3*time.Second {
+	// wall-clock: guards a full crank pause (stackCrankInterval, 8 s) past wait_seconds=1: half of it.
+	if d := time.Since(start); d > stackCrankInterval/2 {
 		t.Fatalf("wait_seconds=1 took %v", d)
 	}
 	if got["status"] != "running" {

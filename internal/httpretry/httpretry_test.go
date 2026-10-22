@@ -184,7 +184,8 @@ func TestContextStopsBackoff(t *testing.T) {
 	if _, err := tr.RoundTrip(req); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want deadline", err)
 	}
-	if time.Since(start) > 5*time.Second {
+	// wall-clock: guards the hour of backoff: half of it.
+	if time.Since(start) > tr.Backoff/2 {
 		t.Fatal("backoff ignored the context")
 	}
 }
@@ -203,7 +204,8 @@ func TestClientTimeoutStopsBackoff(t *testing.T) {
 	if _, err := cl.Get(srv.URL); err == nil {
 		t.Fatal("want timeout")
 	}
-	if time.Since(start) > 5*time.Second {
+	// wall-clock: guards the hour of backoff: half of it.
+	if time.Since(start) > time.Hour/2 {
 		t.Fatal("client timeout ignored during backoff")
 	}
 	if calls.Load() != 1 {

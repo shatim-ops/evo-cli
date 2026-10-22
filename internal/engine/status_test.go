@@ -131,7 +131,8 @@ func TestStatus_RefreshIsBounded(t *testing.T) {
 	if err := eng.Status(context.Background(), StatusOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if d := time.Since(start); d > 5*time.Second {
+	// wall-clock: guards the production refresh timeout (statusRefreshTimeout, 8 s): half of it.
+	if d := time.Since(start); d > statusRefreshTimeout/2 {
 		t.Errorf("status took %s", d)
 	}
 	if !strings.Contains(out.String(), "not checked: no answer within 20ms") {

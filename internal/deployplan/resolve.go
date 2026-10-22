@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
@@ -185,7 +186,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	name := p.Name
 	if name == "" {
 		base := firstNonEmpty(p.Product, "vm")
-		name = sanitizeName(base) + "-" + time.Now().Format("20060102-1504")
+		name = sanitizeName(base) + "-" + clock.Now().Format("20060102-1504")
 	}
 	// A name the compute API rejects: no plan (release QA, B-lifecycle).
 	if err := provision.ValidName(i18n.T("VM", "ВМ"), name); err != nil {

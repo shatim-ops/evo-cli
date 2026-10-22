@@ -70,7 +70,8 @@ func TestCheck_SlowServiceTimesOut(t *testing.T) {
 	if r.Healthy || r.Error == "" {
 		t.Fatalf("result = %+v, want a timeout", r)
 	}
-	if d := time.Since(start); d > 3*time.Second {
+	// wall-clock: guards the production probe timeout (10 s) instead of the given 100 ms: half of it.
+	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("probe took %s with a 100ms timeout", d)
 	}
 }

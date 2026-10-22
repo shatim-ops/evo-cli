@@ -381,7 +381,7 @@ func roCase(t *testing.T, srv roServers, w parityWorld, tl tools.Tool, args map[
 				}
 			}
 			if roSame(a.text) != roSame(want) || a.isErr != plain.isErr {
-				bad = append(bad, fmt.Sprintf("%s over %s: a read answers otherwise with --read-only:\n  ro:    %s\n  plain: %s", tl.Name, surface, clipLine(a.text), clipLine(want)))
+				bad = append(bad, fmt.Sprintf("%s over %s: a read answers otherwise with --read-only: %s", tl.Name, surface, textDiff(roSame(a.text), roSame(want))))
 			}
 			if roSame(strings.Join(writes, "|")) != roSame(strings.Join(plainWrites, "|")) {
 				bad = append(bad, fmt.Sprintf("%s over %s: sent %v with --read-only, %v without", tl.Name, surface, writes, plainWrites))

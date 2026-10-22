@@ -19,9 +19,11 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -559,7 +561,22 @@ func withParityWorld(t *testing.T) parityWorld {
 		return e, nil
 	}
 	t.Cleanup(func() { toolEngine, http.DefaultTransport = old, oldRT })
+	jumpingClock(t)
 	return parityWorld{dir: home, rt: rt}
+}
+
+// jumpingClock moves clock.Now an hour, a minute and a second at each
+// reading: two calls the parity tests compare never see the same second,
+// minute or hour, so a value of the time that the comparison does not
+// mask (sameVolatile, roSame) differs every run, not once a minute
+// boundary falls between the calls under -race (TestReadOnly_EveryTool,
+// 1.2.2, #190).
+func jumpingClock(t *testing.T) {
+	var n atomic.Int64
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	old := clock.Now
+	clock.Now = func() time.Time { return base.Add(time.Duration(n.Add(1)) * (time.Hour + time.Minute + time.Second)) }
+	t.Cleanup(func() { clock.Now = old })
 }
 
 // healthyProbe answers every port of deploy's health check healthy.
@@ -699,6 +716,23 @@ func valueDiff(a, b map[string]any) string {
 		parts = append(parts, k+" ["+clipLine(string(ab))+" | "+clipLine(string(bb))+"]")
 	}
 	return strings.Join(parts, "; ")
+}
+
+// textDiff names what differs between two answers: the keys of two JSON
+// objects with both values (valueDiff), else both texts clipped. Two
+// clipped texts hid the one key that differed (TestReadOnly_EveryTool,
+// 1.2.2, #190).
+func textDiff(a, b string) string {
+	am, bm := parseObject(a), parseObject(b)
+	if am != nil && bm != nil {
+		if d := valueDiff(am, bm); d != "" {
+			return d
+		}
+		if ka, kb := keySet(am), keySet(bm); !reflect.DeepEqual(ka, kb) {
+			return "keys " + strings.Join(ka, ",") + " | " + strings.Join(kb, ",")
+		}
+	}
+	return "\n  a: " + clipLine(a) + "\n  b: " + clipLine(b)
 }
 
 func keySet(m map[string]any) []string {

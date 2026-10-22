@@ -160,3 +160,22 @@ func TestWorkflows_CIOncePerChange(t *testing.T) {
 		t.Errorf("ci: concurrency %+v, want a group per ref that cancels on pull_request only", w.Concurrency)
 	}
 }
+
+// main runs the tests in a random order: a test that depends on another's
+// state fails there, with the seed in the log, instead of in an unrelated
+// PR (process audit 1.2.1, PR 4).
+func TestWorkflows_CIShufflesOnMain(t *testing.T) {
+	w := readWorkflows(t)["ci.yml"]
+	for _, j := range w.Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, "go test -race") {
+				// Expanded by Actions: a shell variable here is PowerShell's
+				// on Windows, not the environment's (-shuffle="" broke CI).
+				if strings.Contains(s.Run, "-shuffle=${{") {
+					return
+				}
+			}
+		}
+	}
+	t.Error("ci: go test -race without -shuffle")
+}
