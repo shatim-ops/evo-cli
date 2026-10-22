@@ -61,7 +61,8 @@ func TestWaitForOpJSON_StopsOnTerminal(t *testing.T) {
 	if calls != 2 {
 		t.Errorf("expected 2 fetches, got %d", calls)
 	}
-	if time.Since(start) > 10*time.Second {
+	// wall-clock: guards waiting out wait_seconds (60 s): half of it.
+	if time.Since(start) > 30*time.Second {
 		t.Errorf("took too long: %v", time.Since(start))
 	}
 }

@@ -163,6 +163,7 @@ func TestDestroy_DeletionWaitUsesTimings(t *testing.T) {
 	// takes the whole default.
 	start := time.Now()
 	err := eng.Destroy(context.Background(), DestroyOptions{Force: true})
+	// wall-clock: guards the production wait for the deletion (destroyPollTimeout): half of it.
 	if d := time.Since(start); d >= destroyPollTimeout/2 {
 		t.Errorf("destroy took %s: the deletion wait ignored Engine.Timings (default %s)", d, destroyPollTimeout)
 	}

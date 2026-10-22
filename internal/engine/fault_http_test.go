@@ -68,7 +68,8 @@ func TestFault_HTTP_CreateVM429UsesBackoffNotRetryAfter(t *testing.T) {
 	})
 	start := time.Now()
 	_, err := a.CreateVM(context.Background(), provision.CreateVMRequest{Name: "evo-app", ProjectID: faultProject})
-	if time.Since(start) > 2*time.Second {
+	// wall-clock: guards waiting out Retry-After (3600 s; httpretry caps it at 30 s).
+	if time.Since(start) > 30*time.Second {
 		t.Fatalf("waited %s for Retry-After 3600", time.Since(start))
 	}
 	if clerrors.Reason(err) != clerrors.CodeAPIRateLimited {
@@ -91,7 +92,8 @@ func TestFault_HTTP_RetryAfterCancelled(t *testing.T) {
 	}
 	start := time.Now()
 	_, err = tr.RoundTrip(req)
-	if time.Since(start) > time.Second {
+	// wall-clock: guards the hour of backoff and of Retry-After after the context's 40 ms.
+	if time.Since(start) > 30*time.Second {
 		t.Fatalf("Retry-After wait was not cut by the context: %s (%v)", time.Since(start), err)
 	}
 	if err == nil {

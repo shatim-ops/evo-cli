@@ -36,6 +36,7 @@ func TestLockWait_WaitsForHolder(t *testing.T) {
 		t.Fatalf("LockWait: %v", err)
 	}
 	unlock2()
+	// wall-clock: a lower bound — the holder sleeps 100 ms, and a sleep never ends early.
 	if waited := time.Since(start); waited < 80*time.Millisecond {
 		t.Errorf("LockWait returned after %v, before the holder released", waited)
 	}

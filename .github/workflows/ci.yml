@@ -65,9 +65,14 @@ jobs:
 
       # The race runtime sleeps 1 s at every test binary's exit
       # (atexit_sleep_ms=1000): with ~40 packages that is most of the wall time.
-      - run: go test -race -count=1 ./...
+      # On main the tests run in a random order (the seed is in the log;
+      # -shuffle=<seed> repeats it): a test that leans on another's state
+      # is caught there, not in somebody's PR. PRs and the release keep the
+      # fixed order (process audit 1.2.1, PR 4).
+      - run: go test -race -count=1 -shuffle="$SHUFFLE" ./...
         env:
           GORACE: atexit_sleep_ms=0
+          SHUFFLE: ${{ github.ref == 'refs/heads/main' && 'on' || 'off' }}
 
       # Конфиг релиза проверяется на каждом PR, а не впервые на теге.
       - name: goreleaser check

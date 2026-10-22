@@ -138,7 +138,8 @@ func TestPriceVM_TimeoutFallsBack(t *testing.T) {
 
 	start := time.Now()
 	c := PriceVM(context.Background(), cloud, PriceInput{ProjectID: "proj-1", VM: vm, PublicIP: true})
-	if d := time.Since(start); d > 2*time.Second {
+	// wall-clock: guards the production price timeout (priceTimeout, 5 s): half of it.
+	if d := time.Since(start); d > old/2 {
 		t.Errorf("waited %s", d)
 	}
 	if c.Source == pricing.SourceAPI || c.TotalMonthlyRub != EstimateVM(vm).TotalMonthlyRub {

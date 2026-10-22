@@ -25,6 +25,7 @@ func slowVM(d time.Duration) func(context.Context, string) (*provision.VM, error
 	var start time.Time
 	return func(_ context.Context, id string) (*provision.VM, error) {
 		once.Do(func() { start = time.Now() })
+		// wall-clock: not a bound — the fake VM is slow for d.
 		if time.Since(start) < d {
 			return &provision.VM{ID: id, Status: "creating"}, nil
 		}

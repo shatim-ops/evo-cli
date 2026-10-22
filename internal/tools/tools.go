@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
@@ -1766,7 +1767,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 
 	vmName := stringArg(args, "name")
 	if vmName == "" {
-		vmName = "evo-" + fmt.Sprintf("%d", time.Now().Unix())
+		vmName = "evo-" + fmt.Sprintf("%d", clock.Now().Unix())
 	}
 	// The person at the CLI sees the stages as they go (Caller.Progress),
 	// the engine's own lines among them, on stderr: a VM takes minutes.

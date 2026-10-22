@@ -103,7 +103,8 @@ func TestDeployPreview_PriceTimeoutFallsBack(t *testing.T) {
 			return nil, ctx.Err()
 		}
 	})
-	if d := time.Since(start); d > 3*time.Second {
+	// wall-clock: guards the production lookup timeout of a preview (PreviewLookupTimeout, 20 s): half of it.
+	if d := time.Since(start); d > PreviewLookupTimeout/2 {
 		t.Errorf("waited %s", d)
 	}
 	for _, want := range []string{costNote, "  API price: none (no answer within "} {

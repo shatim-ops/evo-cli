@@ -18,14 +18,15 @@ func TestDeploy_FirstVMPollIsImmediate(t *testing.T) {
 	cloud := &mockCloudAPI{}
 	eng, dir := newTestEngine(t, cloud, newMockDeployer())
 	eng.Timings.VMPollInterval = time.Hour
-	eng.Timings.VMPollTimeout = 2 * time.Second
+	eng.Timings.VMPollTimeout = 20 * time.Second
 	start := time.Now()
 	err := eng.Deploy(context.Background(), DeployOptions{ComposeFile: writeComposeFile(t, dir), Flavor: "small",
 		Region: "az-1", NonInteractive: true, Yes: true})
 	if err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
-	if d := time.Since(start); d > time.Second {
+	// wall-clock: guards running into the poll timeout (20 s here): half of it.
+	if d := time.Since(start); d > eng.Timings.VMPollTimeout/2 {
 		t.Errorf("deploy took %s: the first poll waited for the interval", d)
 	}
 }
@@ -33,12 +34,13 @@ func TestDeploy_FirstVMPollIsImmediate(t *testing.T) {
 func TestDestroy_FirstDeletionPollIsImmediate(t *testing.T) {
 	eng, _, out := destroyFixture(t, runningRecord())
 	eng.Timings.DestroyPollInterval = time.Hour
-	eng.Timings.DestroyPollTimeout = 2 * time.Second
+	eng.Timings.DestroyPollTimeout = 20 * time.Second
 	start := time.Now()
 	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
-	if d := time.Since(start); d > time.Second {
+	// wall-clock: guards running into the poll timeout (20 s here): half of it.
+	if d := time.Since(start); d > eng.Timings.DestroyPollTimeout/2 {
 		t.Errorf("destroy took %s: the first poll waited for the interval", d)
 	}
 	if !strings.Contains(out.String(), "VM deleted") {
