@@ -52,23 +52,27 @@ func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 
 // lostCreate answers a create that sent its request but got no usable
 // answer — an error after the request went out, or a success without an
-// operation id. The service may have made the resource, and then it is
-// billed: list reads the resources again, and one with the name (free
-// before the create, takenName) is answered as made, by its id (fault
-// matrix, process audit 1.2.1). ok is false when none is there; the
-// caller answers its error.
-func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]any, error), kind, name string, created map[string]any, getHint string) (string, bool, bool) {
+// operation id; createErr says which. The service may have made the
+// resource, and then it is billed: list reads the resources again, and one
+// with the name (free before the create, takenName) is answered as made,
+// by its id (fault matrix, process audit 1.2.1). When the list cannot be
+// read either, the error says the resource may exist and where to look:
+// the same create again refuses the taken name and names its id.
+func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]any, error), kind, name string, created map[string]any, getHint, listTool string, createErr error) (string, bool) {
 	items, err := list(ctx)
 	if err != nil {
-		return "", false, false
+		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
+			"the %s %q may have been made and be billed: %s shows it by name; the same create again names its id instead of making a second",
+			"%s %q мог быть создан и оплачиваться: %s покажет его по имени; тот же вызов создания ещё раз назовёт его id, а не создаст второй",
+			kind, name, listTool)}), true
 	}
 	id, status, ok := takenName(items, name)
 	if !ok {
-		return "", false, false
+		return errResult(createErr), true
 	}
 	return toJSON(map[string]any{"status": "creating", "cluster_id": id, "cluster_status": status, "created": created,
 		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s) и оплачивается", kind, name, id),
-		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}), false, true
+		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}), false
 }
 
 // uuidArg refuses an id the API takes only as a UUID before the call: the

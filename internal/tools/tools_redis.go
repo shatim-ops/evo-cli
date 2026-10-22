@@ -206,14 +206,11 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	}
 	op, err := cli.CreateCluster(ctx, body)
 	if err != nil || op.ID == "" {
-		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, url.Values{}) }
-		if text, isErr, ok := lostCreate(ctx, list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id"); ok {
-			return text, isErr
-		}
 		if err == nil {
 			err = errors.New("the API answered no operation id")
 		}
-		return errResult(fmt.Errorf("create cluster: %w", err)), true
+		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, url.Values{}) }
+		return lostCreate(ctx, list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id", "redis_list", fmt.Errorf("create cluster: %w", err))
 	}
 	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
 		"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}), false

@@ -183,3 +183,22 @@ func faultAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 		}, nil
 	})
 }
+
+// A create whose answer was lost while the list fails too (two faults, out
+// of the matrix's one): the answer says the cluster may exist, is billed,
+// and where to find it — not a bare error (Qwen review of #212).
+func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
+	failed := func(context.Context) ([]map[string]any, error) { return nil, errors.New("list: timeout") }
+	text, isErr := lostCreate(context.Background(), failed, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: lost"))
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil || !isErr {
+		t.Fatalf("answer %s err=%v isErr=%v", text, err, isErr)
+	}
+	if w, _ := m["warning"].(string); !strings.Contains(w, "kafka_list") || !strings.Contains(w, "evo-k") || !strings.Contains(w, "billed") {
+		t.Errorf("warning %q: want the name, billed and kafka_list", w)
+	}
+	absent := func(context.Context) ([]map[string]any, error) { return nil, nil }
+	if text, isErr := lostCreate(context.Background(), absent, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: 409")); !isErr || strings.Contains(text, "warning") {
+		t.Errorf("listed and absent: %s; want the create's error only", text)
+	}
+}
