@@ -370,3 +370,38 @@ func runsStep(w workflow, cmd string) bool {
 	}
 	return false
 }
+
+// The contract check caches the specs of cloud.ru/docs for a day, and only
+// a complete download is cached: a PR whose download failed skipped the
+// check and still saved the partial directory, so every later PR of the
+// day failed on spec-missing (#230, 22.10). Restore and save are separate
+// steps, the save conditioned on a download that succeeded.
+func TestWorkflows_ContractCachesOnlyCompleteSpecs(t *testing.T) {
+	w, ok := readWorkflows(t)["api-contract.yml"]
+	if !ok {
+		t.Fatal("no api-contract.yml")
+	}
+	var restore, save bool
+	for name, j := range w.Jobs {
+		for _, s := range j.Steps {
+			switch {
+			case strings.HasPrefix(s.Uses, "actions/cache@"):
+				t.Errorf("api-contract job %s: actions/cache saves whatever the job left; use actions/cache/restore and actions/cache/save", name)
+			case strings.HasPrefix(s.Uses, "actions/cache/restore@"):
+				restore = true
+			case strings.HasPrefix(s.Uses, "actions/cache/save@"):
+				save = true
+			}
+		}
+	}
+	if !restore || !save {
+		t.Errorf("api-contract: restore %v, save %v; want both", restore, save)
+	}
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "api-contract.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "steps.specs.outputs.complete == 'true'") {
+		t.Error("api-contract: the save does not wait for a complete download (steps.specs.outputs.complete)")
+	}
+}
