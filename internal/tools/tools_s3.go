@@ -44,6 +44,9 @@ func (s *Registry) handleS3Ls(ctx context.Context, args map[string]any) (string,
 	if bucket == "" {
 		return usageT("'bucket' is required", "нужен 'bucket'"), true
 	}
+	if err := s3.CheckBucketName(bucket); err != nil {
+		return errResult(err), true
+	}
 	cli, err := s.s3Client()
 	if err != nil {
 		return errResult(err), true
@@ -64,6 +67,9 @@ func (s *Registry) handleS3Get(ctx context.Context, args map[string]any) (string
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
 		return usageT("'bucket' and 'key' are required", "нужны 'bucket' и 'key'"), true
+	}
+	if err := s3.CheckBucketName(bucket); err != nil {
+		return errResult(err), true
 	}
 	cli, err := s.s3Client()
 	if err != nil {
@@ -96,6 +102,9 @@ func (s *Registry) handleS3Put(ctx context.Context, args map[string]any) (string
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
 		return usageT("'bucket' and 'key' are required", "нужны 'bucket' и 'key'"), true
+	}
+	if err := s3.CheckBucketName(bucket); err != nil {
+		return errResult(err), true
 	}
 	// Body from inline text (content) or base64 (content_base64).
 	var data []byte
@@ -131,6 +140,9 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
 		return usageT("'bucket' and 'key' are required", "нужны 'bucket' и 'key'"), true
+	}
+	if err := s3.CheckBucketName(bucket); err != nil {
+		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -184,6 +196,9 @@ func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any
 	bucket := stringArg(args, "bucket")
 	if bucket == "" {
 		return usageT("'bucket' is required", "нужен 'bucket'"), true
+	}
+	if err := s3.CheckBucketName(bucket); err != nil {
+		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

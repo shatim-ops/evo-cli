@@ -69,6 +69,17 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 		}
 	}
 	vm.Disk.SizeGB, _ = provision.BootDiskGB(cfg.DiskSize, 0)
+	// A zone named by its name, as deploy takes it (resolveNetwork): an
+	// unknown name is refused on the preview, not after the consent.
+	if ref := cfg.Region; ref != "" && !isUUID(ref) && e.Auth != nil && e.Cloud != nil {
+		zone, err := e.zoneOfPreview(ctx, ref)
+		if err != nil {
+			return nil, err
+		}
+		if zone != nil {
+			vm.Zone = deployplan.RefSpec{ID: zone.ID, Name: zone.Name}
+		}
+	}
 	p.VM = &vm
 	for _, m := range []struct{ name, val string }{
 		{"project_id", p.ProjectID}, {"image_id", firstNonEmpty(vm.Image.ID, vm.Image.Name)}, {"region", cfg.Region},
@@ -115,6 +126,20 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 	}
 	e.previewNetwork(ctx, p)
 	return p, nil
+}
+
+// zoneOfPreview is the zone ref names (ResolveZoneRef), read within the
+// time of a preview's lookups.
+func (e *Engine) zoneOfPreview(ctx context.Context, ref string) (*provision.AvailabilityZone, error) {
+	ctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
+	defer cancel()
+	tok, err := e.Auth.Token(ctx)
+	if err != nil {
+		return ResolveZoneRef(nil, err, ref)
+	}
+	e.Cloud.SetToken(tok.Value)
+	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	return ResolveZoneRef(zones, err, ref)
 }
 
 // PlanPreview is the preview of deploy_apply: the VM of a saved plan as

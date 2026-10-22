@@ -156,8 +156,32 @@ var errHint = regexp.MustCompile(`,"hint":"(?:[^"\\]|\\.)*"`)
 // sameRefusal: the same stderr, the words of the hints aside; a hint on
 // one side has one on the other.
 func sameRefusal(treeErr, callErr string) bool {
+	treeErr, callErr = sameConsent(treeErr), sameConsent(callErr)
 	return errHint.ReplaceAllString(treeErr, "") == errHint.ReplaceAllString(callErr, "") &&
 		len(errHint.FindAllString(treeErr, -1)) == len(errHint.FindAllString(callErr, -1))
+}
+
+// sameConsent reads the record of consent on stderr without its summary
+// when the answer carries a structured preview: the command shows that
+// preview in the words of deploy (createPreview), 'evo tools call' as the
+// fields of the call, as TestContract_PreviewParity allows; the answer the
+// person consented to (details) stays compared, in one key order.
+func sameConsent(stderr string) string {
+	lines := strings.Split(stderr, "\n")
+	for i, l := range lines {
+		var rec map[string]any
+		if json.Unmarshal([]byte(l), &rec) != nil || rec["status"] != "confirmed" {
+			continue
+		}
+		p, _ := rec["preview"].(map[string]any)
+		if d, _ := p["details"].(map[string]any); d["preview"] == nil {
+			continue
+		}
+		delete(p, "summary")
+		b, _ := json.Marshal(rec)
+		lines[i] = string(b)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // stackJobID is the id stack_plan gives each plan it makes: two calls make

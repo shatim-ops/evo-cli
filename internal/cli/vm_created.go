@@ -45,12 +45,19 @@ func renderVMCreated(p *output.Printer, w io.Writer, text string) error {
 		fmt.Fprintln(w, "SSH: "+ssh)
 	}
 	if password != "" {
-		fmt.Fprintln(w, i18n.Tf("VM password: %s (shown only here — save it: evo keeps no copy)",
-			"Пароль ВМ: %s (записан только здесь — сохраните: evo его не хранит)", password))
+		fmt.Fprintln(w, vmPasswordLine(password))
 	}
 	if stateDir != "" {
 		fmt.Fprintln(w, i18n.Tf("The SSH key and the state are in %s: run evo status and evo vm delete from %s.",
 			"Ключ SSH и state — в %s: evo status и evo vm delete запускайте из %s.", stateDir, filepath.Dir(stateDir)))
 	}
 	return nil
+}
+
+// vmPasswordLine shows the password evo generated for a VM: in the answer
+// of evo vm create, and in its error when the call left the VM coming up
+// (Ctrl-C, the timeout).
+func vmPasswordLine(password string) string {
+	return i18n.Tf("VM password: %s (shown only here — save it: evo keeps no copy)",
+		"Пароль ВМ: %s (записан только здесь — сохраните: evo его не хранит)", password)
 }

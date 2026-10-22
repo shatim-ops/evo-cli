@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
@@ -1115,12 +1116,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_balance",
-			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway.",
+			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
 			Name:        "billing_consumption",
-			Description: "Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. Aggregated by service: total (excluding VAT, sum of amount), total_with_nds (including VAT, sum of amount_nds), records, by_service sorted by cost (excluding VAT). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). Use for FinOps/cost analysis.",
+			Description: "Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. Aggregated by service: total (excluding VAT, sum of amount), total_with_nds (including VAT, sum of amount_nds), records, by_service sorted by cost (excluding VAT) with cost_with_nds (including VAT). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). Use for FinOps/cost analysis.",
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Required."),
 				"end":        strProp("End date YYYY-MM-DD (default = start)."),
@@ -1129,7 +1130,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_finops",
-			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Costs exclude VAT (amount). Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks.",
+			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Costs exclude VAT (amount); total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it (amount_nds); runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks.",
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
 				"end":        strProp("End date YYYY-MM-DD. Optional; default = today."),
@@ -1771,7 +1772,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 
 	vmName := stringArg(args, "name")
 	if vmName == "" {
-		vmName = "evo-" + fmt.Sprintf("%d", time.Now().Unix())
+		vmName = "evo-" + fmt.Sprintf("%d", clock.Now().Unix())
 	}
 	// The person at the CLI sees the stages as they go (Caller.Progress),
 	// the engine's own lines among them, on stderr: a VM takes minutes.
@@ -3348,6 +3349,26 @@ func (s *Registry) completePreview(ctx context.Context, eng *engine.Engine, p en
 	return p, nil
 }
 
+// willPreview is the preview of a billable create evo does not price: the
+// resource with the key values of its will_create in the order of keys,
+// the tool's warnings, and the tariff where its rates are (Price).
+func willPreview(resource, name, zone string, will map[string]any, keys []string, warnings ...string) engine.CreatePreview {
+	p := engine.CreatePreview{Resource: resource, Name: name}
+	if zone != "" {
+		p.Zone = &deployplan.RefSpec{Name: zone}
+	}
+	for _, k := range keys {
+		p.Add(k, will[k])
+	}
+	for _, w := range warnings {
+		if w != "" {
+			p.Warnings = append(p.Warnings, w)
+		}
+	}
+	p.Price()
+	return p
+}
+
 // provisionInputError is the refusal of a provision that names no image or
 // no zone, with the argument the call lacks; nil when both are set. The
 // VM cannot be created whatever the person answers, so the preview refuses
@@ -3377,28 +3398,19 @@ func provisionInputError(eng *engine.Engine) (arg string, err error) {
 
 // resolveVMZone resolves the zone of a new VM — eng.Config.Region: the region
 // argument, else CLOUDRU_REGION or the profile — to the UUID of the listed
-// zone by provision.ResolveZone, the rule of stacks and evo configure, in
-// place, and returns that zone (nil when not listed) and the list. A name
-// needs the list: unread, or naming no listed zone, it is refused before
-// anything is created. A UUID stays as given when the list is unread or
-// does not have it, as before (the create call answers for it).
+// zone by engine.ResolveZoneRef, the rule of evo deploy, in place, and
+// returns that zone and the list. The zone is nil, with no error, for a
+// UUID the list lacks or could not be read for: the create call answers
+// for it.
 func resolveVMZone(ctx context.Context, eng *engine.Engine) (*provision.AvailabilityZone, []*provision.AvailabilityZone, error) {
-	ref := eng.Config.Region
 	zones, err := listZones(ctx, eng)
+	zone, err := engine.ResolveZoneRef(zones, err, eng.Config.Region)
 	if err != nil {
-		if isUUID(ref) {
-			return nil, nil, nil
-		}
-		return nil, nil, clierrors.Prefix(i18n.Tf("availability zone %q: list zones: ", "зона доступности %q: список зон: ", ref), err)
-	}
-	zone, err := provision.ResolveZone(zones, ref)
-	if err != nil {
-		if isUUID(ref) || len(zones) == 0 {
-			return nil, zones, nil
-		}
 		return nil, zones, err
 	}
-	eng.Config.Region = zone.ID
+	if zone != nil {
+		eng.Config.Region = zone.ID
+	}
 	return zone, zones, nil
 }
 

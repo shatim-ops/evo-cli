@@ -123,17 +123,26 @@ func (s *Registry) handleK8sOptions(ctx context.Context, args map[string]any) (s
 	}), false
 }
 
+// k8sPlan is a resolved cluster create: the request, the names of its zone
+// and flavor, and the warnings of the resolution.
+type k8sPlan struct {
+	req      mk8s.CreateClusterReq
+	zone     string
+	flavor   string
+	warnings []string
+}
+
 // resolveK8sPlan resolves the create parameters (version, flavor, zone,
-// subnet, SA) and returns them with the zone name.
-func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (mk8s.CreateClusterReq, string, []string, error) {
+// subnet, SA).
+func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8sPlan, error) {
 	var warnings []string
 	cli, pid, saID, err := s.k8sClient(ctx)
 	if err != nil {
-		return mk8s.CreateClusterReq{}, "", nil, err
+		return k8sPlan{}, err
 	}
 	pc, err := cli.ProductConfiguration(ctx)
 	if err != nil {
-		return mk8s.CreateClusterReq{}, "", nil, err
+		return k8sPlan{}, err
 	}
 
 	// Version: explicit, else newest STABLE, else first available.
@@ -160,7 +169,6 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (mk8
 	ram := intArg(args, "ram_gb", 4)
 	flavorName := stringArg(args, "flavor")
 	flavorID := ""
-	var bestName string
 	var bestCPU, bestRAM int
 	for _, f := range pc.Flavors {
 		if f.GPU != 0 {
@@ -175,14 +183,13 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (mk8
 		}
 		if f.CPU >= cpu && f.RAM >= ram {
 			if flavorID == "" || f.CPU < bestCPU || (f.CPU == bestCPU && f.RAM < bestRAM) {
-				flavorID, bestName, bestCPU, bestRAM = f.FlavorID, f.Name, f.CPU, f.RAM
+				flavorID, flavorName, bestCPU, bestRAM = f.FlavorID, f.Name, f.CPU, f.RAM
 			}
 		}
 	}
 	if flavorID == "" {
-		return mk8s.CreateClusterReq{}, "", nil, fmt.Errorf(i18n.T("no matching k8s flavor (cpu>=%d ram>=%d); use k8s_options to see flavors", "нет подходящей конфигурации k8s (cpu>=%d ram>=%d); конфигурации — в выводе k8s_options"), cpu, ram)
+		return k8sPlan{}, fmt.Errorf(i18n.T("no matching k8s flavor (cpu>=%d ram>=%d); use k8s_options to see flavors", "нет подходящей конфигурации k8s (cpu>=%d ram>=%d); конфигурации — в выводе k8s_options"), cpu, ram)
 	}
-	_ = bestName
 
 	// Master count: 1, 3 or 5 (checked by k8sArgsError before the gate).
 	masterCount := intArg(args, "master_count", 1)
@@ -195,17 +202,17 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (mk8
 	}
 	zone, err := s.k8sZone(ctx, pc, zoneArg)
 	if err != nil {
-		return mk8s.CreateClusterReq{}, "", nil, err
+		return k8sPlan{}, err
 	}
 	subnetID, err := s.k8sVIPSubnet(ctx, pid, stringArg(args, "subnet_id"), zone)
 	if err != nil {
-		return mk8s.CreateClusterReq{}, "", nil, err
+		return k8sPlan{}, err
 	}
 
 	// Cluster service account: explicit, else the agent's own (token sub).
 	clusterSaID := firstNonEmptyStr(stringArg(args, "cluster_sa_id"), saID)
 	if clusterSaID == "" {
-		return mk8s.CreateClusterReq{}, "", nil, errors.New(i18n.T("could not resolve cluster service account id; pass cluster_sa_id", "не удалось определить ID сервисного аккаунта кластера; передайте cluster_sa_id"))
+		return k8sPlan{}, errors.New(i18n.T("could not resolve cluster service account id; pass cluster_sa_id", "не удалось определить ID сервисного аккаунта кластера; передайте cluster_sa_id"))
 	}
 
 	name := stringArg(args, "name")
@@ -232,7 +239,7 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (mk8
 		NetworkConfiguration:  mk8s.NetworkConfiguration{PrivateVipSubnetID: subnetID, KubeApiInternet: kubeApiInternet},
 		IdentityConfiguration: mk8s.IdentityConfiguration{ClusterSaID: clusterSaID},
 	}
-	return req, zone.name, warnings, nil
+	return k8sPlan{req: req, zone: zone.name, flavor: flavorName, warnings: warnings}, nil
 }
 
 // handleK8sPlan resolves and shows the cluster config without creating it.
@@ -240,21 +247,26 @@ func (s *Registry) handleK8sPlan(ctx context.Context, args map[string]any) (stri
 	if err := k8sArgsError(args); err != nil {
 		return errResult(err), true
 	}
-	req, zoneName, warnings, err := s.resolveK8sPlan(ctx, args)
+	plan, err := s.resolveK8sPlan(ctx, args)
 	if err != nil {
 		return errResult(err), true
 	}
+	req := plan.req
 	return toJSON(map[string]any{
 		"name":              req.Name,
-		"zone":              zoneName,
+		"zone":              plan.zone,
 		"version":           req.ControlPlaneConfiguration.Version,
 		"master_count":      req.ControlPlaneConfiguration.SizingConfiguration.MasterCount,
+		"flavor":            plan.flavor,
 		"flavor_id":         req.ControlPlaneConfiguration.SizingConfiguration.FlavorID,
 		"subnet_id":         req.NetworkConfiguration.PrivateVipSubnetID,
 		"cluster_sa_id":     req.IdentityConfiguration.ClusterSaID,
 		"kube_api_internet": req.NetworkConfiguration.KubeApiInternet,
-		"warnings":          warnings,
-		"note":              "Read-only plan. On the user's approval call k8s_create with the same args + confirmed=true. Cluster creation is async (5-10 min per the docs, 7-12 seen live); poll k8s_get. Add workers with k8s_add_nodepool.",
+		"warnings":          plan.warnings,
+		// The Russian note is the CLI's (MCP speaks English, D6): the
+		// commands of evo, not the tools (dogfood №4).
+		"note": i18n.T("Read-only plan. On the user's approval call k8s_create with the same args + confirmed=true. Cluster creation is async (5-10 min per the docs, 7-12 seen live); poll k8s_get. Add workers with k8s_add_nodepool.",
+			"План только для чтения: кластер не создан. Создать — evo k8s create с теми же флагами (без терминала — с --yes). Кластер создаётся асинхронно: 5–10 мин по документации, вживую 7–12; статус — evo k8s get <ID кластера>. Рабочие узлы — evo k8s add-nodepool <ID кластера>."),
 	}), false
 }
 
@@ -276,10 +288,11 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 			"preview": preview,
 		}), true
 	}
-	req, _, _, err := s.resolveK8sPlan(ctx, args)
+	plan, err := s.resolveK8sPlan(ctx, args)
 	if err != nil {
 		return errResult(err), true
 	}
+	req := plan.req
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -293,7 +306,8 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 		"cluster_id":   op.ResourceID,
 		"operation_id": op.ID,
 		"name":         req.Name,
-		"note":         "Cluster is provisioning (async, about 10 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
+		"note": i18n.T("Cluster is provisioning (async, about 10 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
+			fmt.Sprintf("Кластер создаётся (асинхронно, около 10 мин). Проверяйте evo k8s get %[1]s, пока статус не станет running, затем — evo k8s kubeconfig %[1]s.", op.ResourceID)),
 	}), false
 }
 
@@ -380,7 +394,7 @@ func (s *Registry) handleK8sNodePools(ctx context.Context, args map[string]any) 
 	clusterID := stringArg(args, "cluster_id")
 	if clusterID == "" {
 		return errResult(clierrors.New(clierrors.CodeUsage, i18n.T("cluster_id is required: the API lists node pools of one cluster", "нужен cluster_id: API выдаёт группы узлов одного кластера"),
-			i18n.T("Find the cluster ID with k8s_list (evo k8s list).", "ID кластера — в выводе k8s_list (evo k8s list)."))), true
+			i18n.T("Find the cluster ID with k8s_list (evo k8s list).", "ID кластера — в выводе evo k8s list."))), true
 	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
@@ -491,7 +505,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		if zid == "" {
 			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("cluster %s does not report its zone (controlPlane.zones is empty)", "кластер %s не сообщает свою зону (controlPlane.zones пуст)", clusterID),
-				i18n.T("Pass zone: the availability zone of the cluster's control plane (k8s_get).", "Передайте zone — зону доступности мастер-узлов кластера (k8s_get)."))), true
+				i18n.T("Pass zone: the availability zone of the cluster's control plane (k8s_get).", "Передайте --zone — зону доступности мастер-узлов кластера (evo k8s get <ID кластера>)."))), true
 		}
 		zoneRef = zid
 	}
@@ -545,7 +559,8 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	return toJSON(map[string]any{
 		"status": "creating", "node_pool": name, "cluster_id": clusterID,
 		"operation_id": op.ID, "count": count, "flavor_id": flavorID,
-		"note": "Node pool is provisioning (async). Poll k8s_nodepools. NB: if Cloud.ru returns 503 'no healthy upstream' it's a transient backend outage — retry.",
+		"note": i18n.T("Node pool is provisioning (async). Poll k8s_nodepools. NB: if Cloud.ru returns 503 'no healthy upstream' it's a transient backend outage — retry.",
+			fmt.Sprintf("Группа узлов создаётся (асинхронно). Проверяйте evo k8s nodepools %s. Если Cloud.ru отвечает 503 «no healthy upstream», это временный сбой сервиса — повторите.", clusterID)),
 	}), false
 }
 
@@ -604,7 +619,7 @@ func (s *Registry) k8sZone(ctx context.Context, pc *mk8s.ProductConfig, ref stri
 	ref = firstNonEmptyStr(ref, pc.DefaultZone)
 	if ref == "" {
 		return k8sZoneRef{}, clierrors.New(clierrors.CodeUsage, i18n.T("zone is required: productConfiguration names no default zone", "нужна zone: в productConfiguration нет зоны по умолчанию"),
-			i18n.T("Pass zone, e.g. ru.AZ-2 (k8s_options lists the zones).", "Передайте zone, например ru.AZ-2 (зоны — в выводе k8s_options)."))
+			i18n.T("Pass zone, e.g. ru.AZ-2 (k8s_options lists the zones).", "Передайте --zone, например ru.AZ-2 (зоны — в выводе evo k8s options)."))
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -639,9 +654,11 @@ func (s *Registry) k8sZone(ctx context.Context, pc *mk8s.ProductConfig, ref stri
 			}
 		}
 	}
-	hint := "k8s_options lists the zones of Managed Kubernetes."
+	// The Russian hint is the CLI's (MCP speaks English, D6): evo's
+	// commands, not the tools (Cursor review of 1.2.2, CUR122-5).
+	hint := i18n.T("k8s_options lists the zones of Managed Kubernetes.", "Зоны Managed Kubernetes — в выводе evo k8s options.")
 	if len(offered) > 0 {
-		hint = "Zones of Managed Kubernetes: " + strings.Join(offered, ", ") + " (k8s_options)."
+		hint = i18n.Tf("Zones of Managed Kubernetes: %s (k8s_options).", "Зоны Managed Kubernetes: %s (evo k8s options).", strings.Join(offered, ", "))
 	}
 	switch {
 	case z.computeID == "" && z.mk8sID == "":

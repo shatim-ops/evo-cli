@@ -22,11 +22,40 @@ import (
 // vmNetwork is where a new VM is plugged in. The compute create API 500s
 // without an explicit interface, so deploy always resolves one.
 type vmNetwork struct {
+	// ZoneID is the UUID of the zone the VM goes to (resolveNetwork).
+	ZoneID          string
 	ZoneName        string
 	SubnetID        string
 	SubnetName      string
 	SecurityGroupID string
 	SecurityGroup   string
+}
+
+// ResolveZoneRef is the zone a person or an agent named for a new VM — its
+// UUID or its name, in any case (provision.ResolveZone) — from zones, the
+// list as read, and listErr, the error of reading it. A UUID stays as
+// given (nil zone, no error) when the list is unread, empty or lacks it:
+// the create call answers for it, as before. A name needs the list:
+// unread, it is refused with the list's error; naming no listed zone — an
+// empty list too (Cursor review of 1.2.2, CUR122-4: the name reached the
+// API) — with ResolveZone's USAGE. An empty ref names
+// nothing. evo deploy, evo vm create and MCP provision take the zone by
+// this one rule (review of the zone in 1.2.1), before the consent and
+// anything created.
+func ResolveZoneRef(zones []*provision.AvailabilityZone, listErr error, ref string) (*provision.AvailabilityZone, error) {
+	switch {
+	case ref == "":
+		return nil, nil
+	case listErr != nil && isUUID(ref):
+		return nil, nil
+	case listErr != nil:
+		return nil, clerrors.Prefix(i18n.Tf("availability zone %q: list zones: ", "зона доступности %q: список зон: ", ref), listErr)
+	}
+	zone, err := provision.ResolveZone(zones, ref)
+	if err != nil && isUUID(ref) {
+		return nil, nil
+	}
+	return zone, err
 }
 
 // resolveNetwork picks a subnet (provision.PickSubnet: the zone's main
@@ -35,23 +64,22 @@ type vmNetwork struct {
 // that contains the zone name ("Default_ru.AZ-1", "SSH-access_ru.AZ-1"),
 // the same rule as the MCP vm_create path. A security group from another
 // zone keeps the VM from booting, hence no blind "first one" for groups
-// unless the project has a single candidate.
-func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneID string) (vmNetwork, error) {
-	var n vmNetwork
-	if zones, err := e.Cloud.ListAvailabilityZones(ctx); err == nil {
-		for _, z := range zones {
-			if z.ID == zoneID {
-				n.ZoneName = z.Name
-				break
-			}
-		}
-		if err := provision.ZoneRefError(zones, zoneID); err != nil {
-			return n, err
-		}
-		if err := provision.ClosedZoneError(zones, zoneID); err != nil {
-			return n, err
-		}
+// unless the project has a single candidate. The zone is zoneRef, its UUID
+// or its name (ResolveZoneRef); n.ZoneID is its UUID.
+func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneRef string) (vmNetwork, error) {
+	n := vmNetwork{ZoneID: zoneRef}
+	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	zone, err := ResolveZoneRef(zones, err, zoneRef)
+	if err != nil {
+		return n, err
 	}
+	if zone != nil {
+		n.ZoneID, n.ZoneName = zone.ID, zone.Name
+	}
+	if err := provision.ClosedZoneError(zones, n.ZoneID); err != nil {
+		return n, err
+	}
+	zoneID := n.ZoneID
 
 	subnets, err := e.Cloud.ListSubnets(ctx, projectID)
 	if err != nil {

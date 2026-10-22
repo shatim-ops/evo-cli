@@ -26,8 +26,10 @@ import (
 type fakeBilling struct {
 	status int
 	body   string
-	mu     *sync.Mutex
-	calls  *[]url.Values
+	// byStart, when set, answers a period by its start_date instead of body.
+	byStart map[string]string
+	mu      *sync.Mutex
+	calls   *[]url.Values
 }
 
 func (f fakeBilling) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -40,7 +42,11 @@ func (f fakeBilling) RoundTrip(r *http.Request) (*http.Response, error) {
 	*f.calls = append(*f.calls, r.URL.Query())
 	f.mu.Unlock()
 	rec.WriteHeader(f.status)
-	_, _ = io.WriteString(rec, f.body)
+	body := f.body
+	if b, ok := f.byStart[r.URL.Query().Get("start_date")]; ok {
+		body = b
+	}
+	_, _ = io.WriteString(rec, body)
 	return rec.Result(), nil
 }
 
@@ -226,5 +232,154 @@ func TestBilling_ProjectBoundWithoutProject(t *testing.T) {
 	}
 	if len(*calls) != 0 {
 		t.Errorf("queries %v, want none", *calls)
+	}
+}
+
+// agreementFake answers the consumption with billingRows and the balance of
+// the agreement, and records the host and path of every request.
+type agreementFake struct {
+	mu   sync.Mutex
+	reqs []string
+}
+
+func (f *agreementFake) RoundTrip(r *http.Request) (*http.Response, error) {
+	f.mu.Lock()
+	f.reqs = append(f.reqs, r.URL.Host+r.URL.Path)
+	f.mu.Unlock()
+	rec := httptest.NewRecorder()
+	switch {
+	case r.URL.Host == "organization.api.cloud.ru" && r.URL.Path == "/v2/consumption":
+		_, _ = io.WriteString(rec, billingRows)
+	case r.URL.Host == "billing.api.cloud.ru":
+		_, _ = io.WriteString(rec, `{"balance":52340.5,"active":true}`)
+	default:
+		http.Error(rec, "unexpected "+r.URL.String(), 500)
+	}
+	return rec.Result(), nil
+}
+
+// A project-bound registry (evo mcp --allow-project, H9) gives no balance of
+// the agreement: it is the money of the whole organization, wider than the
+// server's project (dogfood №5). Every billing tool, with project_id or
+// without: no request for the balance; billing_balance is refused with
+// CONFIG_INVALID naming --allow-project, before the token; billing_finops
+// reports the project's costs with the balance unknown and says why. A new
+// billing tool that reads the balance fails here.
+func TestBilling_ProjectBoundNoAgreementBalance(t *testing.T) {
+	t.Setenv("CLOUDRU_AGREEMENT_ID", "agr-1")
+	r, _ := billingRegistry(t, addonProject, 200, billingRows)
+	fake := &agreementFake{}
+	http.DefaultTransport = fake
+
+	// Not bound: the balance is read, as documented.
+	if m, text, isErr := callNamed(t, r, "billing_balance", nil); isErr || m["balance"] != 52340.5 {
+		t.Fatalf("not bound: %s", text)
+	}
+
+	r.SetProjectBound()
+	fake.reqs = nil
+	tools := 0
+	for _, tl := range r.Tools() {
+		if !strings.HasPrefix(tl.Name, "billing_") {
+			continue
+		}
+		tools++
+		for _, args := range []map[string]any{
+			{"start": "2026-10-01", "end": "2026-10-02"},
+			{"start": "2026-10-01", "end": "2026-10-02", "project_id": addonProject},
+		} {
+			props, _ := tl.InputSchema["properties"].(map[string]any)
+			for k := range args {
+				if _, ok := props[k]; !ok {
+					delete(args, k)
+				}
+			}
+			m, text, isErr := callNamed(t, r, tl.Name, args)
+			if _, ok := m["balance"].(float64); ok {
+				t.Errorf("%s %v: the agreement's balance in %s", tl.Name, args, text)
+			}
+			switch tl.Name {
+			case "billing_balance":
+				msg, _ := m["error"].(string)
+				if !isErr || m["reason"] != "CONFIG_INVALID" || !strings.Contains(msg, "--allow-project") {
+					t.Errorf("billing_balance: %s", text)
+				}
+			case "billing_finops":
+				be, _ := m["balance_error"].(string)
+				if isErr || m["total_cost"] != float64(150) || m["runway_days"] != nil || !strings.Contains(be, "--allow-project") {
+					t.Errorf("billing_finops %v: %s", args, text)
+				}
+			}
+		}
+	}
+	if tools < 3 {
+		t.Fatalf("%d billing tools", tools)
+	}
+	for _, q := range fake.reqs {
+		if strings.HasPrefix(q, "billing.api.cloud.ru") {
+			t.Errorf("request for the agreement's balance: %s", q)
+		}
+	}
+}
+
+// The sums with VAT come next to the ones without it: by_service of
+// billing_consumption, and the total, the daily burn, by_service and the
+// growth of billing_finops (owner's decision 21.10: the text view shows the
+// rows with VAT, as the price preview and the invoice). The fields without
+// VAT keep their values; the growth is still found by the sums without VAT.
+func TestBilling_SumsWithVAT(t *testing.T) {
+	t.Setenv("CLOUDRU_AGREEMENT_ID", "")
+	r, _ := billingRegistry(t, addonProject, 200, billingRows)
+	m, text, isErr := callNamed(t, r, "billing_consumption", map[string]any{"start": "2026-10-01"})
+	if isErr {
+		t.Fatalf("error: %s", text)
+	}
+	svc, _ := m["by_service"].([]any)
+	first, _ := svc[0].(map[string]any)
+	if first["service"] != "Compute vm-1" || first["cost"] != float64(150) || first["cost_with_nds"] != float64(180) {
+		t.Errorf("consumption by_service: %s", text)
+	}
+	vat, _ := m["vat"].(map[string]any)
+	if s, _ := vat["by_service.cost_with_nds"].(string); !strings.Contains(s, "including VAT") {
+		t.Errorf("consumption vat: %s", text)
+	}
+
+	cur := `{"consumptions":[
+ {"servname":"Compute","resource_name":"vm-1","amount":100,"amount_nds":120},
+ {"servname":"Disks","amount":50,"amount_nds":60}]}`
+	prev := `{"consumptions":[{"servname":"Compute","resource_name":"vm-1","amount":40,"amount_nds":48}]}`
+	http.DefaultTransport = fakeBilling{status: 200, mu: &sync.Mutex{}, calls: &[]url.Values{},
+		byStart: map[string]string{"2026-10-01T00:00:00Z": cur, "2026-09-29T00:00:00Z": prev}}
+	m, text, isErr = callNamed(t, r, "billing_finops", map[string]any{"start": "2026-10-01", "end": "2026-10-02"})
+	if isErr {
+		t.Fatalf("error: %s", text)
+	}
+	if m["total_cost"] != float64(150) || m["total_cost_with_nds"] != float64(180) ||
+		m["daily_burn"] != float64(75) || m["daily_burn_with_nds"] != float64(90) {
+		t.Errorf("finops sums: %s", text)
+	}
+	svc, _ = m["by_service"].([]any)
+	first, _ = svc[0].(map[string]any)
+	if first["cost"] != float64(100) || first["cost_with_nds"] != float64(120) {
+		t.Errorf("finops by_service: %s", text)
+	}
+	an, _ := m["anomalies"].([]any)
+	if len(an) != 2 {
+		t.Fatalf("anomalies: %s", text)
+	}
+	grown, _ := an[0].(map[string]any)
+	added, _ := an[1].(map[string]any)
+	if grown["service"] != "Compute vm-1" || grown["prev"] != float64(40) || grown["now"] != float64(100) ||
+		grown["prev_with_nds"] != float64(48) || grown["now_with_nds"] != float64(120) {
+		t.Errorf("growth: %s", text)
+	}
+	if added["service"] != "Disks" || added["delta_pct"] != nil || added["prev_with_nds"] != float64(0) || added["now_with_nds"] != float64(60) {
+		t.Errorf("new service: %s", text)
+	}
+	vat, _ = m["vat"].(map[string]any)
+	for _, k := range []string{"total_cost_with_nds", "daily_burn_with_nds", "by_service.cost_with_nds", "anomalies.now_with_nds", "anomalies.prev_with_nds"} {
+		if s, _ := vat[k].(string); !strings.Contains(s, "including VAT") {
+			t.Errorf("vat %s: %s", k, text)
+		}
 	}
 }

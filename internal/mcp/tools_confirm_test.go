@@ -51,7 +51,7 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", 0},
 		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo", 0},
 		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1", 0},
-		{"s3_put", map[string]any{"bucket": "b", "key": "k.txt", "content": "hello"}, "s3://b/k.txt", 0},
+		{"s3_put", map[string]any{"bucket": "bkt", "key": "k.txt", "content": "hello"}, "s3://bkt/k.txt", 0},
 	}
 	for _, c := range cases {
 		t.Run(c.tool, func(t *testing.T) {

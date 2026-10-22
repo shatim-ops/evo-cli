@@ -74,6 +74,10 @@ func (c *interruptCloud) ListFlavors(context.Context) ([]*provision.Flavor, erro
 	return []*provision.Flavor{{ID: "flavor", Name: "flavor"}}, nil
 }
 
+// testZoneID is the zone of provisionVM in the tests whose cloud does not
+// list the zones: a UUID goes on unlisted (ResolveZoneRef), a name would not.
+const testZoneID = "00000000-0000-4000-8000-0000000000a2"
+
 func (c *interruptCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
 	return nil, stderrors.New("not in this test")
 }
@@ -113,7 +117,7 @@ func provisionInterruptedWith(t *testing.T, nonInteractive bool, cloud *interrup
 	statePath := state.DefaultPath(dir)
 	sf := &state.File{Version: 1}
 	_, err := e.provisionVM(ctx, DeployOptions{Flavor: "flavor", NonInteractive: nonInteractive, Yes: true}, sf, statePath,
-		&compose.Project{Hash: "h"}, "az")
+		&compose.Project{Hash: "h"}, testZoneID)
 	return cloud, e, &stderr, err
 }
 
@@ -252,7 +256,7 @@ func TestProvisionVM_CancelledInteractive_DeletionUnconfirmedKeepsRecord(t *test
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, _ = e.provisionVM(ctx, DeployOptions{Flavor: "flavor", Yes: true}, &state.File{Version: 1}, state.DefaultPath(dir),
-		&compose.Project{Hash: "h"}, "az")
+		&compose.Project{Hash: "h"}, testZoneID)
 
 	if len(cloud.deleted) != 1 {
 		t.Fatalf("VM not deleted: %v", cloud.deleted)

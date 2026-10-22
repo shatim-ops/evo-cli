@@ -225,9 +225,9 @@
 | `evo ar list` | `ar_list` | — | — | — | — | — |
 | `evo ar operation` | `ar_operation` | operation_id | — | — | — | — |
 | `evo audit events` | `audit_events` | — | — | — | — | — |
-| `evo billing balance` | `billing_balance` | — | — | — | — | — |
-| `evo billing consumption` | `billing_consumption` | — | project_id→--project-id | — | — | — |
-| `evo billing finops` | `billing_finops` | — | project_id→--project-id | — | — | — |
+| `evo billing balance` | `billing_balance` | — | — | — | — | render |
+| `evo billing consumption` | `billing_consumption` | — | project_id→--project-id | — | — | render |
+| `evo billing finops` | `billing_finops` | — | project_id→--project-id | — | — | render |
 | `evo ca delete` | `ca_delete` | name | — | — | confirmed | — |
 | `evo ca deploy` | `ca_deploy` | name | — | — | confirmed | pairs:env |
 | `evo ca get` | `ca_get` | name | — | — | — | — |

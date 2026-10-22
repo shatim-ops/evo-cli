@@ -3,7 +3,9 @@ name: cloud-e2e
 # Сквозная проверка на настоящем Cloud.ru: init → deploy → verify → logs -f →
 # destroy → правило порта 80 удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
 # вручную — Actions → cloud-e2e → Run workflow, ветка на выбор — и всегда
-# удаляет за собой ресурсы.
+# удаляет за собой ресурсы. Из main его раз в неделю запускает
+# cloud-e2e-weekly.yml: понедельник — e2e, dns, s3, secrets; суббота —
+# cleanup_only; job'ы ждут того же одобрения владельца.
 # Job readonly рядом проверяет чтения API и MCP, ничего не создавая. Job
 # os-smoke (вход os_smoke) создаёт ВМ из образов Astra Linux и РЕД ОС по
 # имени, заходит по SSH и удаляет их. Job k8s-smoke (вход k8s_smoke) —
@@ -346,10 +348,12 @@ jobs:
         if: always() && env.SG_ID != ''
         working-directory: e2e-app
         run: |
+          # $sg is jq's variable (--arg sg), not the shell's.
+          # shellcheck disable=SC2016
           rule80='[.security_groups[] | select(.id==$sg) | .rules[]? | select(.direction=="ingress" and .port_range=="80:80" and ((.description // "") | startswith("evo:") or startswith("cloudru-vm:")))] | length'
           had=$(jq --arg sg "$SG_ID" "$rule80" "$RUNNER_TEMP/sg-before.json")
           if [ "$had" != 0 ]; then echo "правило для 80 было в группе до deploy — destroy его не удаляет, проверка пропущена"; exit 0; fi
-          for i in 1 2 3 4 5 6; do
+          for _ in 1 2 3 4 5 6; do
             left=$(evo tools call list_security_groups --arg rules=true --json | jq --arg sg "$SG_ID" "$rule80")
             [ "$left" = 0 ] && { echo "правило для 80 удалено"; exit 0; }
             sleep 10
@@ -357,15 +361,23 @@ jobs:
           echo "::error::после destroy в группе deploy осталось правило «evo:» для порта 80"
           exit 1
 
-  # Области live, выбранные входами, — матрица job live. Без секретов и
-  # окружения: только разбор входов.
+  # Области live, выбранные входами, — матрица job live. Не выбрана ни одна —
+  # дешёвые области, которые трогает ветка (diff с main, classify.sh; решение
+  # владельца В5): с main их нет, с ветки PR — те, что нужно проверить до
+  # слияния. Без секретов и окружения: только разбор входов и путей.
   live-plan:
     if: ${{ !inputs.cleanup_only }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     outputs:
       areas: ${{ steps.areas.outputs.areas }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Нужен origin/main для diff ветки.
+          fetch-depth: 0
+
       - id: areas
         env:
           DISK: ${{ inputs.disk_smoke }}
@@ -386,6 +398,12 @@ jobs:
           [ "$CA" != true ] || a+=(ca)
           [ "$STACK" != true ] || a+=(stack)
           [ "$MCP" != true ] || a+=(mcp)
+          if [ ${#a[@]} = 0 ]; then
+            # e2e — основной прогон, он идёт всегда; в live его нет.
+            read -ra a <<<"$(git diff --name-only origin/main...HEAD | .github/scripts/classify.sh |
+              sed -n 's/^before=//p' | tr ' ' '\n' | grep -vx e2e | tr '\n' ' ')"
+            echo "::notice title=live-plan::области не выбраны; по изменениям ветки: ${a[*]:-нет}"
+          fi
           echo "areas=$(printf '%s\n' "${a[@]}" | jq -Rnc '[inputs | select(. != "")]')" >> "$GITHUB_OUTPUT"
 
   # Изменяющие инструменты вживую, по области на job (.github/scripts/

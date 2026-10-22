@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/bootstrap"
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
@@ -543,6 +544,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}
+	region = network.ZoneID // a zone named by its name, as its UUID
 	flavorAPIName, err := e.flavorAPIName(ctx, flavorName)
 	if err != nil {
 		return state.DeploymentRecord{}, err
@@ -1007,7 +1009,7 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 			"Использую floating IP %s, оставшийся от прошлого запуска", f.IPAddress))
 		return f, nil
 	}
-	name := provision.BootFIPName(vmName, time.Now())
+	name := provision.BootFIPName(vmName, clock.Now())
 	fip, err := e.Cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
 		Name:               name,
 		ProjectID:          projectID,

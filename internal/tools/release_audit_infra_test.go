@@ -20,6 +20,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
@@ -150,11 +151,12 @@ func (f *raAPI) postCount() int {
 
 // raRegistry — реестр с ключом и проектом; cfg дополняет конфигурацию
 // (регион, образ по умолчанию).
-func raRegistry(t *testing.T, f *raAPI, cloud raCloud, cfg func(*config.Config)) *Registry {
-	t.Helper()
+// raRegistry takes any fake API: the fuzzers answer with their own bytes.
+func raRegistry(tb testing.TB, api http.RoundTripper, cloud provision.CloudAPI, cfg func(*config.Config)) *Registry {
+	tb.Helper()
 	old := http.DefaultTransport
-	http.DefaultTransport = f
-	t.Cleanup(func() { http.DefaultTransport = old })
+	http.DefaultTransport = api
+	tb.Cleanup(func() { http.DefaultTransport = old })
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		c := config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"}
@@ -698,5 +700,88 @@ func TestStackPlan_RedisShapeCheckedAtPlan(t *testing.T) {
 		if m["job_id"] != nil {
 			t.Errorf("%s: job created: %s", c.label, text)
 		}
+	}
+}
+
+// Догфуд №4: «note» k8s в терминале называл инструменты MCP — «k8s_create
+// … confirmed=true». Русский текст — CLI (MCP говорит по-английски, D6),
+// поэтому в нём команды evo с ID кластера, а не имена инструментов;
+// английский текст агента прежний. План называет flavor и именем (поле
+// flavor), а не только UUID.
+func TestK8s_NotesInCLIWords(t *testing.T) {
+	f := &raAPI{}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	calls := []struct {
+		tool   string
+		args   map[string]any
+		en, ru []string
+	}{
+		{"k8s_plan", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1"},
+			[]string{"k8s_create", "confirmed=true", "k8s_get", "k8s_add_nodepool"},
+			[]string{"evo k8s create", "--yes", "evo k8s get", "evo k8s add-nodepool"}},
+		{"k8s_create", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "confirmed": true},
+			[]string{"k8s_get", "k8s_kubeconfig"},
+			[]string{"evo k8s get cl-1", "evo k8s kubeconfig cl-1"}},
+		{"k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "security_group_id": "sg-1", "confirmed": true},
+			[]string{"k8s_nodepools"},
+			[]string{"evo k8s nodepools cl-1"}},
+	}
+	notes := func() []string {
+		var out []string
+		for _, c := range calls {
+			m, text, isErr := callNamed(t, r, c.tool, c.args)
+			note, _ := m["note"].(string)
+			if isErr || note == "" {
+				t.Fatalf("%s: %s", c.tool, text)
+			}
+			out = append(out, note)
+		}
+		return out
+	}
+	for i, note := range notes() {
+		for _, want := range calls[i].en {
+			if !strings.Contains(note, want) {
+				t.Errorf("%s: no %q in the agent's note %q", calls[i].tool, want, note)
+			}
+		}
+	}
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	for i, note := range notes() {
+		for _, want := range calls[i].ru {
+			if !strings.Contains(note, want) {
+				t.Errorf("%s: no %q in %q", calls[i].tool, want, note)
+			}
+		}
+		if strings.Contains(note, "k8s_") || strings.Contains(note, "confirmed") {
+			t.Errorf("%s: a tool's name in the CLI's note: %q", calls[i].tool, note)
+		}
+	}
+	m, text, _ := callNamed(t, r, "k8s_plan", calls[0].args)
+	if m["flavor"] != "gen-2-4" || m["flavor_id"] != "fl-1" {
+		t.Errorf("flavor: %s", text)
+	}
+}
+
+// D19 for stacks: an s3 object of the manifest with a bucket name S3 cannot
+// take ("../x") passed stack_plan; stack_apply then created the VM and the
+// rest, and only the s3 step refused it with USAGE — consent was given to a
+// stack that could not finish. Now stack_plan refuses it, naming s3[i].bucket,
+// before a job exists; a valid name plans as before.
+func TestStackPlan_S3BucketNameCheckedAtPlan(t *testing.T) {
+	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+	for _, bad := range []string{"../x", "a/b"} {
+		mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": bad, "key": "k", "content": "c"}}}
+		m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf})
+		msg, _ := m["error"].(string)
+		if !isErr || m["job_id"] != nil || !strings.Contains(msg, "s3[0].bucket") {
+			t.Errorf("%q: %s", bad, text)
+			continue
+		}
+		wantReason(t, bad, m, text, "USAGE")
+	}
+	mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": "my-bucket", "key": "k", "content": "c"}}}
+	if m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf}); isErr || m["job_id"] == nil {
+		t.Errorf("valid bucket: %s", text)
 	}
 }

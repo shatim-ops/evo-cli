@@ -26,7 +26,6 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
-	"github.com/shatim-ops/evo-cli/internal/verify"
 )
 
 // The fake world of TestParity_JSONEqualsTool: the world of the previews
@@ -264,8 +263,8 @@ func (parityDeployer) Close() error { return nil }
 
 // withJSONWorld is withParityWorld with the fixtures of the answers, the
 // keys of Object Storage and the billing agreement, kubectl and helm that
-// print a line, SSH and the health checks of deploy answered by fakes, and
-// waits of milliseconds.
+// print a line; SSH, the health checks of deploy and the waits are
+// withParityWorld's.
 func withJSONWorld(t *testing.T) (parityWorld, *jsonFake) {
 	t.Helper()
 	w := withParityWorld(t)
@@ -295,19 +294,6 @@ func withJSONWorld(t *testing.T) (parityWorld, *jsonFake) {
 			a.Backoff = time.Millisecond // the retries of a failing cloud (TestParity_ErrorReasonEqualsTool)
 		}
 		e.Cloud = jsonCloud{parityCloud: pc, fake: fake}
-		e.Deployer = parityDeployer{}
-		e.Probe = func(_ context.Context, _ string, ports []int, _ time.Duration) []verify.ProbeResult {
-			out := make([]verify.ProbeResult, len(ports))
-			for i, port := range ports {
-				out[i] = verify.ProbeResult{Port: port, StatusCode: 200, Healthy: true, Protocol: "http"}
-			}
-			return out
-		}
-		ms := time.Millisecond
-		e.Timings = engine.Timings{VMPollInterval: ms, VMPollTimeout: time.Second, IfacePollInterval: ms, FIPRetryInterval: ms,
-			FIPLookupInterval: ms, FIPPollInterval: ms, SSHRetryInterval: ms, SettleDelay: ms, VerifyTimeout: 50 * ms,
-			DockerPollInterval: ms, DockerWaitTimeout: time.Second, DestroyPollInterval: ms, DestroyPollTimeout: time.Second,
-			DeletableWaitTimeout: time.Second, DeletablePollInterval: ms}
 		return e, nil
 	}
 	t.Cleanup(func() { toolEngine = world })

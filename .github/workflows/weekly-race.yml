@@ -1,0 +1,58 @@
+name: weekly-race
+
+# Детектор нестабильных тестов (аудит процессов 1.2.1, PR 10, П2): раз в
+# неделю весь go test на main трижды подряд в случайном порядке и с -race
+# на трёх ОС. CI гоняет каждый тест один раз; гонка или зависимость от
+# порядка, которая проявляется раз из нескольких прогонов, видна здесь, а не
+# в чужом PR. Красный прогон открывает issue (или дописывает в открытый) со
+# ссылкой на прогон: зерно -shuffle — в логе, -shuffle=<зерно> его повторяет.
+# «Flaky» — не причина: тест чинится в тот же день, без карантина.
+# Время — UTC, воскресенье 06:29 по Москве.
+
+on:
+  schedule:
+    - cron: "29 3 * * 0"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  race:
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      # Как в ci.yml: без этого checkout на Windows превращает LF в CRLF.
+      - name: git без перевода строк
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Та же версия, что в ci.yml; поднимать вместе.
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+
+      - run: go test -race -count=3 -shuffle=on ./...
+        env:
+          GORACE: atexit_sleep_ms=0
+
+  # Красное — в issue (weekly-issue.yml).
+  report:
+    needs: race
+    if: failure()
+    permissions:
+      issues: write
+    uses: ./.github/workflows/weekly-issue.yml
+    with:
+      title: "weekly-race: нестабильный тест на main"
+      what: "go test -race -count=3 -shuffle=on упал. Зерно -shuffle — в логе job; -shuffle=<зерно> повторяет порядок."

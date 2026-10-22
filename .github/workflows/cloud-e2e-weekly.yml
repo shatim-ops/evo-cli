@@ -1,0 +1,48 @@
+name: cloud-e2e-weekly
+
+# Еженедельный cloud-e2e из main (аудит процессов 1.2.1, PR 9; решение
+# владельца В4): в понедельник — дешёвый набор (основной прогон e2e,
+# области dns, s3, secrets), в субботу — cleanup_only, уборка остатков
+# недели. Сам ничего не проверяет и ключей не получает: запускает
+# cloud-e2e.yml с явными входами, а job'ы cloud-e2e ждут одобрения
+# владельца в окружении cloud-e2e, как при ручном запуске. Набор и уборка —
+# здесь, логика прогона — только в cloud-e2e.yml.
+# Время — UTC: понедельник 07:47 и суббота 08:13 по Москве; одобрение ждёт.
+
+on:
+  schedule:
+    - cron: "47 4 * * 1"
+    - cron: "13 5 * * 6"
+  # Тот же запуск вручную — проверить, что расписание работает.
+  workflow_dispatch:
+    inputs:
+      cleanup_only:
+        description: "Run the Saturday cleanup instead of the Monday set"
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  dispatch:
+    # Только из main: и набор, и прогон — код main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Запустить cloud-e2e.yml.
+      actions: write
+    steps:
+      - name: Запуск cloud-e2e
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLEANUP: ${{ github.event.schedule == '13 5 * * 6' || inputs.cleanup_only }}
+        run: |
+          if [ "$CLEANUP" = true ]; then
+            gh workflow run cloud-e2e.yml --repo "$GITHUB_REPOSITORY" --ref main -f cleanup_only=true
+            echo "::notice title=cloud-e2e::уборка остатков (cleanup_only) запущена — одобрите в Actions"
+          else
+            gh workflow run cloud-e2e.yml --repo "$GITHUB_REPOSITORY" --ref main \
+              -f dns_smoke=true -f s3_smoke=true -f secrets_smoke=true
+            echo "::notice title=cloud-e2e::недельный набор (e2e, dns, s3, secrets) запущен — одобрите в Actions"
+          fi

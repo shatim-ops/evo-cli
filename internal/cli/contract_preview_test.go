@@ -19,12 +19,16 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/verify"
 )
 
 const parityVM = "00000000-0000-4000-8000-000000000001"
@@ -549,10 +553,53 @@ func withParityWorld(t *testing.T) parityWorld {
 			return nil, err
 		}
 		e.Auth, e.Cloud = previewToken{}, parityCloud{previewCloud{CloudAPI: compute}}
+		// No host is reached: SSH and the health checks of deploy are fakes,
+		// as the cloud is (TestParityWorlds_NoProductionWaits).
+		e.Deployer = parityDeployer{}
+		e.Probe = healthyProbe
+		e.Timings = parityTimings
 		return e, nil
 	}
 	t.Cleanup(func() { toolEngine, http.DefaultTransport = old, oldRT })
+	jumpingClock(t)
 	return parityWorld{dir: home, rt: rt}
+}
+
+// jumpingClock moves clock.Now an hour, a minute and a second at each
+// reading: two calls the parity tests compare never see the same second,
+// minute or hour, so a value of the time that the comparison does not
+// mask (sameVolatile, roSame) differs every run, not once a minute
+// boundary falls between the calls under -race (TestReadOnly_EveryTool,
+// 1.2.2, #190).
+func jumpingClock(t *testing.T) {
+	var n atomic.Int64
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	old := clock.Now
+	clock.Now = func() time.Time { return base.Add(time.Duration(n.Add(1)) * (time.Hour + time.Minute + time.Second)) }
+	t.Cleanup(func() { clock.Now = old })
+}
+
+// healthyProbe answers every port of deploy's health check healthy.
+func healthyProbe(_ context.Context, _ string, ports []int, _ time.Duration) []verify.ProbeResult {
+	out := make([]verify.ProbeResult, len(ports))
+	for i, port := range ports {
+		out[i] = verify.ProbeResult{Port: port, StatusCode: 200, Healthy: true, Protocol: "http"}
+	}
+	return out
+}
+
+// parityTimings are the waits of the parity worlds' engines: every field
+// set, since a zero one is the production wait, which the fakes answering
+// at once only turn into sleep (TestParityWorlds_NoProductionWaits).
+var parityTimings = engine.Timings{
+	VMPollInterval: time.Millisecond, VMPollTimeout: time.Second, VMProgressInterval: time.Second,
+	IfacePollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond, FIPLookupInterval: time.Millisecond,
+	FIPPollInterval: time.Millisecond, SSHRetryInterval: time.Millisecond, SSHSlowNote: time.Second,
+	SettleDelay: time.Millisecond, VerifyTimeout: 50 * time.Millisecond,
+	DockerPollInterval: time.Millisecond, DockerWaitTimeout: time.Second,
+	DestroyPollInterval: time.Millisecond, DestroyPollTimeout: time.Second,
+	DeletableWaitTimeout: time.Second, DeletablePollInterval: time.Millisecond,
+	StatusRefreshTimeout: time.Second,
 }
 
 func stdioDetails(t *testing.T, s *mcp.Server, name string, args map[string]any) map[string]any {
@@ -669,6 +716,23 @@ func valueDiff(a, b map[string]any) string {
 		parts = append(parts, k+" ["+clipLine(string(ab))+" | "+clipLine(string(bb))+"]")
 	}
 	return strings.Join(parts, "; ")
+}
+
+// textDiff names what differs between two answers: the keys of two JSON
+// objects with both values (valueDiff), else both texts clipped. Two
+// clipped texts hid the one key that differed (TestReadOnly_EveryTool,
+// 1.2.2, #190).
+func textDiff(a, b string) string {
+	am, bm := parseObject(a), parseObject(b)
+	if am != nil && bm != nil {
+		if d := valueDiff(am, bm); d != "" {
+			return d
+		}
+		if ka, kb := keySet(am), keySet(bm); !reflect.DeepEqual(ka, kb) {
+			return "keys " + strings.Join(ka, ",") + " | " + strings.Join(kb, ",")
+		}
+	}
+	return "\n  a: " + clipLine(a) + "\n  b: " + clipLine(b)
 }
 
 func keySet(m map[string]any) []string {

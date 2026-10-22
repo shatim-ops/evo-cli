@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,23 +109,25 @@ func TestResolveNetwork_ClosedZone(t *testing.T) {
 	}
 }
 
-// region — имя зоны вместо ID: отказ с ID в подсказке до подсетей и групп
-// (ревью Fable на v1.0).
-func TestResolveNetwork_ZoneNameRefused(t *testing.T) {
+// region — имя зоны вместо ID (ревью Fable на v1.0 — тогда отказ; с 1.2.2
+// — одно правило с evo vm create, ResolveZoneRef): сеть ищется в зоне по её
+// UUID, и ZoneID — этот UUID.
+func TestResolveNetwork_ZoneByName(t *testing.T) {
 	cloud := &mockCloudAPI{
 		listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
 			return []*provision.AvailabilityZone{{ID: "z2", Name: "ru.AZ-2"}}, nil
 		},
 		listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
-			t.Error("подсети читаются после отказа")
-			return nil, nil
+			return []*provision.Subnet{{ID: "sn-2", Name: "Default_ru.AZ-2", AvailabilityZoneID: "z2"}}, nil
+		},
+		listSecurityGroupsFn: func(context.Context, string) ([]*provision.SecurityGroup, error) {
+			return []*provision.SecurityGroup{{ID: "sg-2", Name: "SSH-access_ru.AZ-2", AvailabilityZoneID: "z2"}}, nil
 		},
 	}
 	eng, _ := newTestEngine(t, cloud, newMockDeployer())
-	_, err := eng.resolveNetwork(context.Background(), "p", "ru.AZ-2")
-	var ce *clerrors.CLIError
-	if !errors.As(err, &ce) || ce.Code != clerrors.CodeConfigInvalid || !strings.Contains(ce.Hint, "z2") {
-		t.Errorf("err = %v", err)
+	n, err := eng.resolveNetwork(context.Background(), "p", "ru.AZ-2")
+	if err != nil || n.ZoneID != "z2" || n.ZoneName != "ru.AZ-2" || n.SubnetID != "sn-2" || n.SecurityGroupID != "sg-2" {
+		t.Errorf("network %+v, err %v", n, err)
 	}
 }
 
@@ -323,5 +326,119 @@ func TestResolveNetwork_SecurityGroupFromProjectFile(t *testing.T) {
 	n, err := eng.resolveNetwork(context.Background(), "p", "z2")
 	if err != nil || n.SecurityGroupID != "sg-web" {
 		t.Fatalf("group = %q, %v; want sg-web from .evo.yaml", n.SecurityGroupID, err)
+	}
+}
+
+// evo deploy --region (and CLOUDRU_REGION, region: of .evo.yaml) takes the
+// zone's name, in any case, as evo vm create and MCP provision do
+// (provision.ResolveZone, review of the zone in 1.2.1): the VM, its boot
+// floating IP and the record go to the zone's UUID, with the zone's subnet
+// and group. Before, a name was refused with "the zone ID is expected".
+func TestDeploy_ZoneByName(t *testing.T) {
+	var fipZone string
+	cloud := &mockCloudAPI{
+		listAvailabilityZonesFn: func(context.Context) ([]*provision.AvailabilityZone, error) {
+			return []*provision.AvailabilityZone{{ID: "ru-moscow-1", Name: "ru.AZ-1"}, {ID: "az-2", Name: "ru.AZ-2"}}, nil
+		},
+		listSubnetsFn: func(context.Context, string) ([]*provision.Subnet, error) {
+			return []*provision.Subnet{{ID: "sn-2", Name: "Default_ru.AZ-2"}, {ID: "sn-1", Name: "Default_ru.AZ-1"}}, nil
+		},
+		listSecurityGroupsFn: func(context.Context, string) ([]*provision.SecurityGroup, error) {
+			return []*provision.SecurityGroup{{ID: "sg-2", Name: "SSH-access_ru.AZ-2"}, {ID: "sg-1", Name: "SSH-access_ru.AZ-1"}}, nil
+		},
+		createFloatingIPFn: func(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+			fipZone = req.AvailabilityZoneID
+			return &provision.FloatingIP{ID: "fip-1", Name: req.Name, IPAddress: "127.0.0.1", State: "in_use"}, nil
+		},
+	}
+	eng, dir := newTestEngine(t, cloud, newMockDeployer())
+	eng.Config.Region = "RU.az-2"
+	if err := eng.Deploy(context.Background(), newDeployOpts(t, dir)); err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+	req := cloud.createReq
+	if req.AvailabilityZoneID != "az-2" || len(req.Interfaces) != 1 || req.Interfaces[0].SubnetID != "sn-2" {
+		t.Errorf("create: zone %q, interfaces %+v", req.AvailabilityZoneID, req.Interfaces)
+	}
+	if fipZone != "az-2" {
+		t.Errorf("boot floating IP in zone %q", fipZone)
+	}
+	if rec := readActive(t, dir); rec == nil || rec.Region != "az-2" {
+		t.Errorf("record: %+v", rec)
+	}
+}
+
+// A name no listed zone has, and a name with the zone list unread: refused
+// before the consent and anything created — USAGE naming the zones, or the
+// error of the list. A UUID the list lacks goes on as before (the create
+// call answers for it).
+func TestDeploy_UnknownZoneNameRefused(t *testing.T) {
+	zones := func(context.Context) ([]*provision.AvailabilityZone, error) {
+		return []*provision.AvailabilityZone{{ID: "ru-moscow-1", Name: "ru.AZ-1"}}, nil
+	}
+	unread := func(context.Context) ([]*provision.AvailabilityZone, error) {
+		return nil, errors.New("connection reset")
+	}
+	for _, tc := range []struct {
+		name   string
+		list   func(context.Context) ([]*provision.AvailabilityZone, error)
+		reason string
+		text   string
+	}{
+		{"ru.AZ-9", zones, clerrors.CodeUsage, "ru.AZ-1"},
+		{"ru.AZ-2", unread, "", "connection reset"},
+	} {
+		cloud := &mockCloudAPI{listAvailabilityZonesFn: tc.list}
+		eng, dir := newTestEngine(t, cloud, newMockDeployer())
+		eng.Config.Region = tc.name
+		err := eng.Deploy(context.Background(), newDeployOpts(t, dir))
+		text := fmt.Sprint(err)
+		var ce *clerrors.CLIError
+		if errors.As(err, &ce) {
+			text += " " + ce.Hint
+		}
+		if err == nil || !strings.Contains(text, tc.text) || tc.reason != "" && clerrors.Reason(err) != tc.reason {
+			t.Errorf("%s: %v", tc.name, err)
+		}
+		if cloud.createCalled {
+			t.Errorf("%s: VM created", tc.name)
+		}
+	}
+}
+
+// The one rule of a zone named for a new VM (ResolveZoneRef): a name or a
+// UUID of the list, in any case; a UUID without the list, or not in it, as
+// given; a name without the list, or not in it, refused; nothing named,
+// nothing resolved.
+func TestResolveZoneRef(t *testing.T) {
+	const az2 = "00000000-0000-4000-8000-0000000000a2"
+	const other = "00000000-0000-4000-8000-0000000000ff"
+	zones := []*provision.AvailabilityZone{{ID: az2, Name: "ru.AZ-2"}}
+	unread := errors.New("connection reset")
+	for _, tc := range []struct {
+		zones   []*provision.AvailabilityZone
+		listErr error
+		ref     string
+		wantID  string
+		wantErr string
+	}{
+		{zones, nil, "ru.az-2", az2, ""},
+		{zones, nil, az2, az2, ""},
+		{zones, nil, other, "", ""},
+		{nil, unread, other, "", ""},
+		{nil, nil, "ru.AZ-2", "", "ru.AZ-2"},
+		{nil, nil, az2, "", ""},
+		{zones, nil, "", "", ""},
+		{nil, unread, "ru.AZ-2", "", "connection reset"},
+		{zones, nil, "ru.AZ-9", "", "ru.AZ-9"},
+	} {
+		zone, err := ResolveZoneRef(tc.zones, tc.listErr, tc.ref)
+		id := ""
+		if zone != nil {
+			id = zone.ID
+		}
+		if id != tc.wantID || (err == nil) != (tc.wantErr == "") || err != nil && !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("%q (list %v, %v): zone %q, err %v", tc.ref, len(tc.zones), tc.listErr, id, err)
+		}
 	}
 }

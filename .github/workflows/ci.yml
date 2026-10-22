@@ -1,12 +1,21 @@
 name: ci
 
+# Один прогон на изменение: PR и push в main (аудит процессов 1.2.1, PR 3).
+# Push в ветку PR раньше давал два прогона — по push и по pull_request.
+# Ветку без PR CI не проверяет: открывайте PR (черновик — тоже PR).
 on:
   push:
     # Тег гоняет этот же workflow через release.yml, второй прогон не нужен.
-    branches: ["**"]
+    branches: [main]
   pull_request:
   # Вызывается из release.yml перед сборкой релиза.
   workflow_call:
+
+# Новый push в PR отменяет его идущую проверку; main и релиз
+# (workflow_call из release.yml) не отменяются никогда.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # GITHUB_TOKEN только на чтение: сборке и тестам писать в репозиторий
 # незачем, а код PR и зависимостей выполняется в этих job.
@@ -56,7 +65,13 @@ jobs:
 
       # The race runtime sleeps 1 s at every test binary's exit
       # (atexit_sleep_ms=1000): with ~40 packages that is most of the wall time.
-      - run: go test -race -count=1 ./...
+      # On main the tests run in a random order (the seed is in the log;
+      # -shuffle=<seed> repeats it): a test that leans on another's state
+      # is caught there, not in somebody's PR. PRs and the release keep the
+      # fixed order (process audit 1.2.1, PR 4). The value is put in by
+      # Actions, not the shell: Windows runs this step in PowerShell, where
+      # "$SHUFFLE" is a PowerShell variable, empty (CI of #196).
+      - run: go test -race -count=1 -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} ./...
         env:
           GORACE: atexit_sleep_ms=0
 
@@ -79,6 +94,11 @@ jobs:
       - name: redact.sed на образцах вывода evo
         if: runner.os == 'Linux'
         run: .github/scripts/redact_test.sh
+
+      # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
+      - name: classify.sh на образцах путей
+        if: runner.os == 'Linux'
+        run: .github/scripts/classify_test.sh
 
       # Метки отзывов по полям форм Issues: таблицы скрипта совпадают с формами.
       - name: issue_labels.py на образцах форм
@@ -103,6 +123,59 @@ jobs:
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
           "$(go env GOPATH)/bin/staticcheck" ./...
+
+      # Workflow: синтаксис, выражения ${{ }}, права и shellcheck каждого
+      # скрипта run (shellcheck на раннере уже есть). Версия зафиксирована;
+      # поднимать вручную (аудит процессов 1.2.1, PR 7).
+      - name: actionlint
+        if: runner.os == 'Linux'
+        env:
+          # SC2015 (info): «[ -n "$A" ] && [ -n "$B" ] || { echo …; exit 1; }»
+          # — проверка входов во всех workflow, где ветка «или» и должна
+          # срабатывать, когда любая проверка ложна. shellcheck 0.10 раннера
+          # помечает её, 0.11 — нет; прочие проверки shellcheck действуют.
+          SHELLCHECK_OPTS: --exclude=SC2015
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint"
+
+      # Функции, недостижимые из main: deadcode печатает их и выходит с 0,
+      # поэтому провал — непустой вывод. Сейчас таких нет (§2 CLAUDE.md:
+      # без мёртвого кода).
+      - name: deadcode
+        if: runner.os == 'Linux'
+        run: |
+          go install golang.org/x/tools/cmd/deadcode@v0.38.0
+          dead="$("$(go env GOPATH)/bin/deadcode" ./...)"
+          if [ -n "$dead" ]; then echo "недостижимый код:"; echo "$dead"; exit 1; fi
+
+  # Класс изменения PR по путям и чек-лист проверок сверх CI в summary
+  # прогона (аудит процессов 1.2.1, П5 и PR 8): политика, секреты,
+  # транспорт, ломающее и области cloud-e2e до и после слияния (В5).
+  # Ничего не блокирует и ничего не пишет в PR: меток нет, потому что право
+  # записи в job, где лежит код PR, давать нельзя.
+  classify:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Нужна база PR, чтобы взять diff base...head.
+          fetch-depth: 0
+
+      # SHA базы — не текст события, но идёт через env, как всё из события.
+      # Ломающее — новый заголовок «### Миграция» в CHANGELOG.md, а не слово
+      # в тексте пункта.
+      - name: классы по путям
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          MIGRATION=0
+          if git diff "$BASE...HEAD" -- CHANGELOG.md | grep -q '^+### Миграция'; then MIGRATION=1; fi
+          git diff --name-only "$BASE...HEAD" | MIGRATION=$MIGRATION .github/scripts/classify.sh |
+            .github/scripts/classify_summary.sh >> "$GITHUB_STEP_SUMMARY"
 
   # Образ MCP-сервера для Marketplace: сборка и smoke-тест по HTTP. Кредов
   # Cloud.ru не нужно: initialize и tools/list в облако не ходят.

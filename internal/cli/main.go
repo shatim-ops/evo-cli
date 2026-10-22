@@ -608,11 +608,18 @@ func projectConfigPath() string {
 
 // handleError prints err to the printer's error writer: as text with the
 // hint of the CLIError found anywhere in the wrap chain, or, in JSON mode,
-// as {"error": {"code": N, "reason": "CODE", "message": "...", "hint": "..."}}.
+// as {"error": {"code": N, "reason": "CODE", "message": "...", "hint": "...",
+// "details": {...}}}. The details of a tool's error answer are all in the
+// JSON; the text adds the one a person cannot get otherwise, the password
+// evo generated for a VM the call left coming up (FB121-1).
 func handleError(p *output.Printer, err error) {
 	code := clerrors.ExitCode(err)
 	var message, hint string
+	var details map[string]any
 	var cliErr *clerrors.CLIError
+	if stderrors.As(err, &cliErr) {
+		details = cliErr.Details
+	}
 	switch {
 	case code == clerrors.ExitInterrupted:
 		message = i18n.T("interrupted", "прервано")
@@ -637,10 +644,13 @@ func handleError(p *output.Printer, err error) {
 	}
 
 	if p.IsJSON() {
-		_ = p.JSONError(code, clerrors.Reason(err), message, hint)
+		_ = p.JSONError(code, clerrors.Reason(err), message, hint, details)
 		return
 	}
 	p.Errorf("%s", message)
+	if pw, _ := details["password"].(string); pw != "" {
+		p.Errorf("%s", vmPasswordLine(pw))
+	}
 	// --verbose: the underlying cause too (SSH exit status, HTTP error),
 	// which the message and hint summarise (QA r4 Q14).
 	if flagVerbose && cliErr != nil && cliErr.Err != nil {
