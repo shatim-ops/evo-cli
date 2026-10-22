@@ -601,3 +601,28 @@ func TestAgentClients_Table(t *testing.T) {
 		}
 	}
 }
+
+// A file saved with a UTF-8 byte order mark (Notepad, PowerShell's
+// Out-File) is read past the mark and keeps it, as a secret file does
+// (B12-7); the next run finds evo there.
+func TestAgentSetup_ByteOrderMark(t *testing.T) {
+	setupAgent(t)
+	const bom = "\uFEFF"
+	for client, old := range map[string]string{
+		"cursor": bom + "{\r\n  \"mcpServers\": {}\r\n}\r\n",
+		"codex":  bom + "model = \"o3\"\r\n",
+	} {
+		path := clientPath(t, mustClient(t, client), scopeProject)
+		putFile(t, path, []byte(old), 0o600)
+		if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", client, "--scope", "project", "--yes"); code != 0 {
+			t.Fatalf("%s: exit %d: %s", client, code, stderr)
+		}
+		got := string(fileBytes(t, path))
+		if !strings.HasPrefix(got, bom) || strings.Count(got, bom) != 1 || !strings.Contains(got, "evo") || strings.Count(got, "\n") != strings.Count(got, "\r\n") {
+			t.Errorf("%s:\n%q", client, got)
+		}
+		if code, stdout, stderr := runCLI(t, "", "agent", "setup", "--client", client, "--scope", "project", "--yes"); code != 0 || !strings.Contains(stdout, "nothing changed") {
+			t.Errorf("%s again: exit %d: %s%s", client, code, stdout, stderr)
+		}
+	}
+}

@@ -499,13 +499,16 @@ func (c agentClient) targets(scope agentScope, e agentconf.Entry, rules *cobra.C
 	return append(out, agentTarget{path: path, merge: merge}), nil
 }
 
-// readChange reads the target and puts evo's part in.
+// readChange reads the target and puts evo's part in. A UTF-8 byte order
+// mark (Notepad, PowerShell's Out-File) is not part of the format: the
+// merge reads past it, and it stays in front of the file.
 func readChange(t agentTarget) (agentChange, error) {
 	old, perm, exists, err := readUserFile(t.path)
 	if err != nil {
 		return agentChange{}, err
 	}
-	r, err := t.merge(old)
+	body, bom := bytes.CutPrefix(old, []byte(utf8BOM))
+	r, err := t.merge(body)
 	if err != nil {
 		var fe *agentconf.FileError
 		if stderrors.As(err, &fe) {
@@ -514,6 +517,9 @@ func readChange(t agentTarget) (agentChange, error) {
 					"Файл не изменён: исправьте его или напечатайте запись с --print и добавьте вручную."), err)
 		}
 		return agentChange{}, err
+	}
+	if bom {
+		r.Data = append([]byte(utf8BOM), r.Data...)
 	}
 	return agentChange{agentTarget: t, old: old, exists: exists, perm: perm, result: r}, nil
 }
