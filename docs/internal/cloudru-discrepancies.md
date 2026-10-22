@@ -23,13 +23,15 @@ Cloud.ru Evolution). Адресаты — продуктовые команды 
   новые NET-11…13, CRT-4, AR-4, наблюдения OPS-1b, OPS-2c, OPS-4;
   подтверждены CRT-3, CMP-15, CMP-16. Сверка 19.10: MON-1 снят — ссылался на
   справку продукта платформы VMware, в документации Evolution всё описано.
+  Evolution Data Platform — 22.10.2026, сверка документации с шестью
+  спецификациями (DP-1…13), без живых вызовов: проверит api-probe перед
+  волной 1 (бриф `docs/internal/briefs/data-platform.md`). Повторная сверка
+  в тот же день: DP-7 снят, DP-6 уточнён, новые DP-14…DP-17; пробы — P29–P33.
   В тот же день все пункты сверены с документацией Evolution (только платформа
   Evolution, включая свёрнутые блоки и вкладки API страниц, Terraform Evolution
   и спецификации): сняты также NET-8 и DB-15; переклассифицированы CMP-6,
   CMP-13, CMP-15, CMP-16, IAM-4, NET-9, NET-12, CRT-1; уточнены формулировки,
   ссылки и цитаты ещё 56 пунктов (у DB-9, DB-10, CRT-3, NLB-2 — и класс).
-  Сверка документации и спецификаций Data Platform — 22.10.2026, до живых
-  вызовов: DP-1…DP-10.
 - **Как получены факты:** GitHub Actions репозитория `shatim-ops/evo-cli`:
   `api-probe` (только GET и расчёт цены, в лог — коды HTTP, имена полей,
   счётчики) и `cloud-e2e` (создание и удаление ВМ и кластера Kubernetes,
@@ -48,9 +50,7 @@ Cloud.ru Evolution). Адресаты — продуктовые команды 
 API» — ответ неверен независимо от документации; эксплуатационные наблюдения —
 отдельным разделом.
 **Статусы:** «подтверждено вживую» — со ссылкой на прогон, дату и код HTTP;
-«подтверждено по документам» — противоречие видно в самих документации и
-спецификации (дата сверки), вызов не нужен; «гипотеза» — с пробой из
-раздела [«Что проверить пробой»](#что-проверить-пробой).
+«гипотеза» — с пробой из раздела [«Что проверить пробой»](#что-проверить-пробой).
 
 Ссылки на спецификации ниже сокращены: `VM-spec` —
 `https://cloud.ru/docs/api/specs/virtual-machines/ug/_specs/openapi-v3.yaml`,
@@ -71,14 +71,14 @@ API» — ответ неверен независимо от документа
 | [DBaaS: Kafka, Redis, PostgreSQL](#dbaas-kafka-redis-postgresql) | 20 | 18 | 2 | Redis `replicas` в POST и в GET означает разное (DB-11): клиент, повторивший прочитанное значение, получает 400; Kafka в `DEPLOYING` не удалить — 500 (DB-17); PostgreSQL в `FAILED` через API не удалить вовсе (DB-21) |
 | Мониторинг | 0 | — | — | расхождений нет: MON-1 снят 19.10 — предел 24 ч, миллисекунды и формат ответа описаны в документации Evolution ([снятые вопросы](#снятые-вопросы)) |
 | [Foundation Models](#foundation-models) | 1 | 1 | 0 | токен IAM отклоняется сообщением про API-ключ |
-| [Data Platform](#data-platform) | 10 | 6 по документам | 4 | путь в документации (`/api/v1/{project_id}/…`) расходится со спецификациями (`/v1/…`); `Idempotency-Key` и аутентификации нет ни в одной спецификации; нет `GET` операции по ID (DP-1, DP-2, DP-4, DP-7) |
+| [Evolution Data Platform](#evolution-data-platform) | 16 | 9 | 7 | путь в документации `/api/v1/{project_id}/…` против `/v1/…` в спецификации; у шести спецификаций нет схемы аутентификации и заголовка `Idempotency-Key`; цены нет нигде (DP-9) |
 | [Портал документации](#портал-документации) | 2 | 2 | 0 | ответ cloud.ru/docs зависит от User-Agent: без него — 403 |
 | [Artifact Registry](#artifact-registry) | 4 | 4 | 0 | имя реестра не уникально: второй `POST` с тем же именем создаёт дубль; список без `pageSize` бесконечен (AR-4) |
 | [Certificate Manager](#certificate-manager) | 4 | 4 | 0 | список версий сертификата без `pageSize` — 400, хотя инструкция обещает умолчание 100 |
 | [Container Apps](#container-apps) | 2 | 2 | 0 | HTTP 499 вместо 404/400 |
 | [Network Load Balancer](#network-load-balancer) | 2 | 2 | 0 | удаление используемой группы целей принимается; каскад описан только для единственной группы |
 | Secret Manager | 0 | — | — | расхождений не найдено; вживую — создание, версии, чтение и удаление секрета (живой прогон 17.10) |
-| **Итого** | **100** | **89** | **11** | |
+| **Итого** | **106** | **92** | **14** | |
 
 Пять пунктов с наибольшим влиянием: [IMG-1](#img-1-часть-общего-каталога-недоступна-проекту-ошибка-выдаётся-как-image-not-found),
 [BIL-1](#bil-1-лицензия-образа-маркетплейса-в-расчёте-цены-всегда-0),
@@ -730,82 +730,118 @@ API» — ответ неверен независимо от документа
 - **Влияние:** неочевидно, что токен IAM не годится, — сообщение говорит о неверном ключе.
 - **Просим:** 401 с текстом «нужен API-ключ»; одинаковое поведение у всех методов.
 
-## Data Platform
+## Evolution Data Platform
 
-Сверка документации и спецификаций 22.10.2026, до кода evo и до живых
-вызовов (бриф `docs/internal/briefs/data-platform.md`). Спецификации:
-`dp-spec` — [`data-platform-public-api.yaml`](https://cloud.ru/docs/api/specs/dataplatform/ug/_specs/data-platform-public-api.yaml),
-`spark-spec` — [`spark-public-api.yaml`](https://cloud.ru/docs/api/specs/spark/ug/_specs/spark-public-api.yaml),
-`trino-spec` — [`trino-public-api.yaml`](https://cloud.ru/docs/api/specs/trino/ug/_specs/trino-public-api.yaml),
-`airflow-spec` — [`airflow-public-api.yaml`](https://cloud.ru/docs/api/specs/managed-airflow/ug/_specs/airflow-public-api.yaml),
-`metastore-spec` — [`metastore-public-api.yaml`](https://cloud.ru/docs/api/specs/metastore/ug/_specs/metastore-public-api.yaml).
-Справочники API: [Data Platform](https://cloud.ru/docs/dataplatform/ug/topics/api),
-[Managed Spark](https://cloud.ru/docs/spark/ug/topics/api),
-[Managed Trino](https://cloud.ru/docs/trino/ug/topics/api),
-[Managed Airflow](https://cloud.ru/docs/managed-airflow/ug/topics/api),
-[Managed Metastore](https://cloud.ru/docs/metastore/ug/topics/api).
+Адресат — команда Data Platform / Data Factory. Источники: страница
+[Справочник API Data Platform](https://cloud.ru/docs/dataplatform/ug/topics/api),
+страницы API Managed Spark, Trino, Airflow, Metastore, Flink и их
+спецификации (`/docs/api/specs/<продукт>/ug/_specs/*.yaml`). Всё ниже —
+сверка текста документации и спецификаций 22.10.2026; живых вызовов не
+было, гипотезы проверит api-probe. Нумерация DP-N.
 
-#### DP-1. Путь API: в документации `/api/v1/{project_id}/…`, в спецификациях `/v1/…` с `projectId` в запросе
-Расхождение · гипотеза (P29)
-- **Док:** все пять справочников API, пример идемпотентного запроса: «POST /api/v1/{project_id}/clusters» — одинаковый текст и на страницах Spark, Trino, Airflow и Metastore, хотя там ресурсы — `sparks`, `trinos`, `airflows`, `metastores`.
-- **Спека:** `dp-spec` — `POST /v1/clusters` с `projectId` в теле, `GET /v1/clusters?projectId=…`; у остальных так же (`/v1/sparks`, `/v1/trinos`…). Пути с `/api/v1/{project_id}` нет ни в одной.
-- **Влияние:** клиент, написанный по примеру документации, получает 404 (если живой путь — из спецификации) или не находит в спецификации описания ответа.
-- **Просим:** один путь в документации и спецификациях; пример на странице каждого продукта — с его ресурсом.
+#### DP-1. Путь запроса: `/api/v1/{project_id}/clusters` в документации, `/v1/clusters` в спецификации
+Расхождение документации и спецификации · гипотеза
+- **Док:** страница API и статья «Идемпотентность API» — `POST /api/v1/{project_id}/clusters`. Тот же пример с `clusters` стоит и на страницах API Spark, Trino, Airflow и Metastore, где ресурсы — `sparks`, `trinos`, `airflows`, `metastores`.
+- **Спека:** `data-platform-public-api.yaml` — `POST /v1/clusters`, `projectId` в теле; `GET /v1/clusters?projectId=…`. Тот же стиль у Spark, Trino, Airflow, Metastore, Flink.
+- **Влияние:** клиент, собранный по документации, и клиент по спецификации стучатся в разные пути; один из них получит 404.
+- **Просим:** один путь в документации и спецификации; если живы оба — сказать, какой основной.
 
-#### DP-2. В спецификациях нет схемы аутентификации
-Нет в документации · гипотеза (P29)
-- **Спека:** ни в одной из пяти нет `securityDefinitions`/`securitySchemes` и `security` — ни глобально, ни у операций. **Док:** «Пройдите аутентификацию» — ссылка на общее [руководство](https://cloud.ru/docs/console_api/ug/topics/guides__auth_api) (токен IAM); принимает ли Data Platform токен IAM, прямо не сказано.
-- **Влияние:** генераторы клиентов по спецификации не добавляют заголовок `Authorization`; у Foundation Models токен IAM принимается не везде (FM-1) — без явного описания это приходится выяснять вызовом.
-- **Просим:** схему `Bearer` (токен IAM) в каждой спецификации.
+#### DP-2. Ни в одной из шести спецификаций нет схемы аутентификации и ответов 401/403
+Неполнота спецификации · подтверждено (текст спецификаций)
+- **Спека:** `securityDefinitions`/`securitySchemes` отсутствуют во всех шести файлах; ответы у каждого метода — только `200` и `default` (`rpcStatus`).
+- **Док:** «Пройдите аутентификацию» со ссылкой на общее руководство API консоли (токен IAM), без примера заголовка.
+- **Влияние:** генератор клиента по спецификации не знает, что слать в `Authorization`; поведение при просроченном токене не описано (у Foundation Models токен IAM принимался не всеми методами — FM-1).
+- **Просим:** `bearer` в спецификациях, ответы 401 и 403 с телом.
 
-#### DP-3. `pageSize`: нет максимума и значения по умолчанию; тип и имена расходятся
-Нет в документации · гипотеза (P30)
-- **Спека:** у всех списков `pageSize` без `maximum` и `default`; в `dp-spec`, `trino-spec`, `airflow-spec`, `metastore-spec` — `type: string` (Swagger 2.0), в `spark-spec` — `integer`. Описание параметра говорит о `page_size` и `next_page_token`, а параметр — `pageSize`, поле ответа — `nextPageToken`.
+#### DP-3. Заголовок `Idempotency-Key` описан в документации, но отсутствует в спецификациях
+Расхождение док/спеки · подтверждено (текст)
+- **Док:** статья «Идемпотентность API»: `Idempotency-Key: <UUIDv4>` на создающих запросах, повтор возвращает ту же операцию, без ключа сервер генерирует свой и отдаёт в ответе в параметре `idempotency_key`.
+- **Спека:** ни один метод не объявляет параметр `in: header`; в `Operation` нет поля `idempotency_key`.
+- **Влияние:** клиент по спецификации не узнает о гарантии, на которую опирается защита от дублей (для evo это правило «повторный create не плодит дублей»).
+- **Просим:** параметр заголовка у `POST`/`DELETE`/`PUT` и поле ключа в `Operation`.
+
+#### DP-4. У кластера есть статус `RESUMING`, но нет вызова возобновления
+Нет в документации · гипотеза
+- **Спека:** `v1ClusterStatus` содержит `STOPPING`, `STOPPED`, `SUSPENDING`, `SUSPENDED`, `RESUMING`; методы — только `POST /v1/clusters/{id}/stop`. У Spark есть `POST …:resume`, у Flink — `POST …/resume`.
+- **Влияние:** остановленный через API кластер нечем запустить через API (если это не делает консоль или не описан скрытый метод).
+- **Просим:** `resume` для кластера или описание, как он возобновляется; разницу `STOPPED` и `SUSPENDED`.
+
+#### DP-5. Имена методов и полей различаются между продуктами одной платформы
+Расхождение спецификаций между собой · подтверждено (текст)
+- **Спека:** действия — Spark `…:stop`, `…:resume`, `…/jobs/{id}:cancel` (стиль custom methods), Flink и кластер — `…/stop`, `…/resume`, задача Flink удаляется `DELETE`; версии — `/v1/sparkVersions`, `/v1/trinoVersions`, `/v1/metastoreVersions`, у Flink — `/v1/versions`; внешний доступ — `enabledExternalHost` (Spark), `enablePublicHost` (Trino), `enableExternalHost` (Airflow); вычислительные ресурсы — `computeConfiguration{flavorId,minNodes,maxNodes}` (Spark, Metastore), `nodeConfiguration{flavorId,minCount,maxCount}` (Trino), `resourcesConfiguration{…}` (Airflow, Flink).
+- **Влияние:** единого клиента и единой CLI-команды «остановить инстанс» не собрать без таблицы исключений; агент, выучивший Spark, ошибётся на Flink.
+- **Просим:** один стиль на платформу; старые имена — как алиасы до следующей мажорной версии.
+
+#### DP-6. Spark — OpenAPI 3.0.3 без адреса, остальные пять — Swagger 2.0 с полем `servers` из OpenAPI 3; `info.version` везде `1.0`
+Ошибка спецификации · подтверждено (текст)
+- **Спека:** `spark-public-api.yaml` — `openapi: 3.0.3`, `servers` нет. Остальные пять — `swagger: "2.0"` и `servers: [{url: https://dataplatform.api.cloud.ru}]`, но без `host`, `basePath` и `schemes`: в Swagger 2.0 поле `servers` не определено, адрес задают `host` и `schemes` (уточнено 22.10, первая редакция пункта называла `host`). Версия API в `info` — `1.0` у всех, в заголовках страниц — «Spark 3.0.3», «Trino 2.0» и т. п.
+- **Влияние:** валидаторы и генераторы Swagger 2.0 отбрасывают `servers` — в шести спецификациях по сути нет адреса API, он есть только в тексте документации; два формата на одну платформу; по `info.version` не понять, какая версия перед тобой.
+- **Просим:** `host: dataplatform.api.cloud.ru` и `schemes: [https]` в Swagger 2.0, `servers` в OpenAPI 3; один формат и осмысленный `info.version`.
+
+#### DP-7. Снят 22.10: у Spark enum статусов есть
+См. [«Снятые вопросы»](#снятые-вопросы). Номер не переиспользуется.
+
+#### DP-8. Flink: поле `user` описано как «Пользователь Spark для доступа к Spark History»; `flinkConf`, `s3Conf`, `secretId`, `customImageUri` без описания
+Ошибка спецификации · подтверждено (текст)
+- **Спека:** `v1CreateFlinkRequest.user` — описание скопировано из Spark; у `flinkConf` и `s3Conf` описания пустые, назначение `secretId` и `customImageUri` не объяснено. У Metastore `versionId` — тоже без описания.
+- **Влияние:** обязательные поля заполняются наугад.
+- **Просим:** описания полей; что за пользователь у Flink.
+
+#### DP-9. Цены нет ни в API, ни на страницах API
+Нет в документации · подтверждено (текст)
+- **Док/спека:** в шести спецификациях нет полей стоимости; справочники `*Flavors` отдают CPU/память/зоны, но не цену; на страницах API нет ссылки на тариф.
+- **Влияние:** превью платного создания (кластер, инстанс, задача Spark/Flink) невозможно показать с ценой из API; evo пойдёт через калькулятор (D17) — нужны имена продуктов Data Platform в калькуляторе.
+- **Просим:** цена у флейвора или метод расчёта, как `price-calculation` у Compute; до этого — имена продуктов для `calculator/v2/prices/<продукт>` и ссылки на тариф на страницах API.
+
+#### DP-10. `logGroupId` обязателен у всех инстансов, но где взять ID группы логирования — не сказано
+Неполнота документации · гипотеза
+- **Спека:** `logGroupId` — `required` у Spark, Trino, Airflow, Metastore, Flink; метода списка групп в спецификациях Data Platform нет.
+- **Док:** страницы API на сервис логирования не ссылаются.
+- **Влияние:** создание инстанса из API требует предварительного шага в другом сервисе, который не назван; evo должен проверять ID до согласия (D15), значит нужен способ его прочитать.
+- **Просим:** ссылку на API логирования и пример; или умолчание (группа проекта), если `logGroupId` можно не задавать.
+
+#### DP-11. Ошибки: только `default` → `rpcStatus`, без кодов HTTP и их смысла
+Неполнота спецификации · подтверждено (текст)
+- **Спека:** у каждого метода ответы `200` и `default` (`rpcStatus{code, message, details[]}`); какие HTTP-статусы и gRPC-коды возвращаются на «не найден», «имя занято», «квота», «кластер не в RUNNING» — не описано.
+- **Влияние:** клиент не отличит «повторить позже» от «исправить запрос»; evo маппит `reason` и коды выхода по статусам — без документации они будут угаданы по живым ответам.
+- **Просим:** таблица статусов и `rpcStatus.code` на метод, хотя бы для 400/404/409/429.
+
+#### DP-12. Managed BI в обзоре платформы есть, страницы API и спецификации нет
+Наблюдение · гипотеза
+- **Док:** обзор Data Platform перечисляет Managed BI; `/docs/bi/ug/…` и `/docs/managed-bi/ug/topics/api` отвечают 404 (22.10).
+- **Влияние:** BI через API недоступен; в evo не попадёт до появления спецификации.
+- **Просим:** подтвердить, что публичного API нет, или дать ссылку.
+
+#### DP-13. Airflow `s3Conf` требует одновременно `bucketName`, `bucketId` и `tenantId`
+Вопрос · гипотеза
+- **Спека:** все три поля `required`; что происходит при несовпадении имени и ID и откуда брать `tenantId` — не описано. У Metastore `fsInternalS3` — `tenantId` + `bucket` без ID.
+- **Влияние:** избыточные обязательные поля — лишний источник 400; `tenantId` нигде в документации API Data Platform не определён.
+- **Просим:** одно из `bucketName`/`bucketId`; определение `tenantId` и где его взять.
+
+
+#### DP-14. `pageSize`: нет максимума и значения по умолчанию; тип и имена расходятся
+Нет в документации · гипотеза
+- **Спека:** у всех списков шести спецификаций `pageSize` без `maximum` и `default`; в пяти Swagger 2.0 — `type: string`, в Spark — `integer`. Описание параметра говорит о `page_size` и `next_page_token`, а параметр — `pageSize`, поле ответа — `nextPageToken`.
 - **Влияние:** то же, что DB-1 у Kafka и Redis: «большая страница» по спецификации может кончиться ошибкой, предел не узнать без вызова.
 - **Просим:** `maximum` и `default` у `pageSize`, тип `integer` везде, имена в описании — как у параметров.
 
-#### DP-4. `Idempotency-Key` описан в документации, но не в спецификациях
-Нет в документации · подтверждено по документам (22.10)
-- **Док:** все пять справочников API: «API поддерживает идемпотентность операций… передать в запросе заголовок `Idempotency-Key: <UUID>`»; отдельная страница «Идемпотентность API» у каждого продукта. **Спека:** заголовка `Idempotency-Key` нет ни в одной из пяти — ни как параметра, ни в ответах.
-- **Влияние:** клиент по спецификации не передаёт ключ, и повтор `POST` после обрыва сети может создать второй кластер или инстанс. Что сервер делает без ключа и отдаёт ли сгенерированный ключ в ответе — не проверить без создания (cloud-e2e).
-- **Просим:** параметр `Idempotency-Key` (header) у всех изменяющих операций и заголовок ответа, если сервер его возвращает.
+#### DP-15. Статусы кластера: описания `STOPPING` и `STOPPED` перепутаны, `FAILED` и `ERROR` неразличимы
+Ошибка спецификации · подтверждено (текст)
+- **Спека:** `data-platform-public-api.yaml`, `v1ClusterStatus`: «`CLUSTER_STATUS_STOPPING` — Приостановлен из-за бездействия», «`CLUSTER_STATUS_STOPPED` — Приостановка из-за бездействия» — процесс и итог поменяны местами; `FAILED` и `ERROR` оба — «Ошибка». `STOPPED` описан только как остановка из-за бездействия, хотя есть явный `POST /v1/clusters/{clusterId}/stop`.
+- **Влияние:** клиент не знает, ждать ли завершения остановки и чем ошибка отличается от сбоя (вместе с DP-4 — и как выйти из `STOPPED`).
+- **Просим:** поправить описания, развести `FAILED` и `ERROR`, описать `STOPPED` после вызова `stop`.
 
-#### DP-5. Swagger 2.0 с полем `servers` из OpenAPI 3; у Spark адреса нет вовсе
-Ошибка спецификации · подтверждено по документам (22.10)
-- **Спека:** `dp-spec`, `trino-spec`, `airflow-spec`, `metastore-spec` — `swagger: "2.0"` и `servers: [{url: https://dataplatform.api.cloud.ru}]`; в Swagger 2.0 адрес задают `host`, `basePath`, `schemes`, поле `servers` не определено. `spark-spec` — OpenAPI 3.0.3 без `servers`.
-- **Влияние:** валидаторы и генераторы Swagger 2.0 отбрасывают `servers`, у клиента нет базового адреса; адрес остаётся только в тексте документации.
-- **Просим:** `host: dataplatform.api.cloud.ru` и `schemes: [https]` в Swagger 2.0, `servers` в OpenAPI 3.
-
-#### DP-6. Статусы кластера: описания `STOPPING` и `STOPPED` перепутаны, `FAILED` и `ERROR` неразличимы, возобновления нет
-Расхождение · подтверждено по документам (22.10); как возобновить — гипотеза
-- **Спека:** `dp-spec`, `v1ClusterStatus`: «`CLUSTER_STATUS_STOPPING` — Приостановлен из-за бездействия», «`CLUSTER_STATUS_STOPPED` — Приостановка из-за бездействия» — процесс и итог поменяны местами; `FAILED` и `ERROR` оба — «Ошибка». `STOPPED` описан как остановка из-за бездействия, хотя есть явный вызов `POST /v1/clusters/{clusterId}/stop`. Статус `RESUMING` есть, а вызова resume у кластера нет (у Spark — `POST /v1/sparks/{sparkId}:resume`).
-- **Влияние:** клиент не знает, ждать ли завершения остановки, чем ошибка отличается от сбоя и как запустить остановленный кластер.
-- **Просим:** поправить описания; развести `FAILED` и `ERROR`; описать, как кластер выходит из `STOPPED` (вызов или автоматически).
-
-#### DP-7. Операции: нет `GET` операции по ID; в Airflow и Metastore две схемы `Operation`
-Нет в документации · подтверждено по документам (22.10)
-- **Спека:** создание, удаление, остановка возвращают `Operation` (`id`, `done`, `error`, `resourceId`), но ни в одной спецификации нет `GET …/operations/{id}` — только постраничные списки операций ресурса (`GET /v1/clusters/{clusterId}/operations` и т. п.). В `airflow-spec` и `metastore-spec` кроме используемой `cloudruoperationOperation` описана `operationv1Operation` с другими полями (`percent`, `workflow`, `modifiedAt`, `createdBy`) — ни одна операция её не возвращает.
-- **Влияние:** дождаться конкретной операции можно только перебором списка; лишняя схема вводит в заблуждение, какие поля придут.
+#### DP-16. Операции: нет `GET` операции по ID; в Airflow и Metastore лишняя схема `Operation`
+Неполнота спецификации · подтверждено (текст)
+- **Спека:** создание, удаление, остановка возвращают `Operation` (`id`, `done`, `error`, `resourceId`), но ни в одной из шести спецификаций нет `GET …/operations/{id}` — только постраничные списки операций ресурса (`GET /v1/clusters/{clusterId}/operations`, `…/sparks/{sparkId}/operations`, `…/flinks/{flinkId}/jobs/{flinkJobId}/operations` и т. п.). В `airflow-public-api.yaml` и `metastore-public-api.yaml` кроме используемой `cloudruoperationOperation` описана `operationv1Operation` с другими полями (`percent`, `workflow`, `modifiedAt`, `createdBy`) — ни один метод её не возвращает.
+- **Влияние:** дождаться конкретной операции можно только перебором списка (evo ждёт создание так же, как ВМ, — D16); лишняя схема вводит в заблуждение, какие поля придут.
 - **Просим:** `GET` операции по ID; убрать неиспользуемую схему.
 
-#### DP-8. Разный стиль одинаковых действий
-Расхождение · подтверждено по документам (22.10)
-- **Спека:** остановка кластера — `POST /v1/clusters/{clusterId}/stop`; остановка и возобновление Spark — `POST /v1/sparks/{sparkId}:stop`, `:resume`; отмена задачи — `…/jobs/{sparkJobId}:cancel`, `…/jobs:batch-cancel`. У Trino, Airflow и Metastore остановки нет вовсе.
-- **Влияние:** клиент держит два правила построения пути; не видно, можно ли остановить Trino, Airflow и Metastore, чтобы не платить.
-- **Просим:** один стиль; описать, как останавливаются остальные продукты (или что не останавливаются).
-
-#### DP-9. `clusterId` обязателен для списка Spark, Airflow, Metastore, но не Trino
-Расхождение · гипотеза (P32)
-- **Спека:** `GET /v1/sparks`, `/v1/airflows`, `/v1/metastores` — `clusterId` и `projectId` обязательны; `GET /v1/trinos` — только `projectId`, хотя инстанс Trino тоже живёт в кластере.
-- **Влияние:** «все инстансы проекта» у трёх продуктов — обход всех кластеров; если `clusterId` на деле необязателен (или обязателен и у Trino), спецификация вводит в заблуждение.
+#### DP-17. `clusterId` обязателен для списка Spark, Airflow, Metastore и Flink, но не Trino
+Расхождение спецификаций между собой · гипотеза
+- **Спека:** `GET /v1/sparks`, `/v1/airflows`, `/v1/metastores`, `/v1/flinks` — `clusterId` и `projectId` обязательны; `GET /v1/trinos` — только `projectId`, хотя инстанс Trino тоже живёт в кластере.
+- **Влияние:** «все инстансы проекта» у четырёх продуктов — обход всех кластеров; если на деле правило другое, спецификация вводит в заблуждение.
 - **Просим:** одно правило для всех продуктов.
-
-#### DP-10. Flink и BI: страниц API нет
-Нет в документации · подтверждено по документам (22.10)
-- **Док:** `https://cloud.ru/docs/flink/ug/topics/api` и `…/bi/ug/topics/api` — 404 (22.10.2026), хотя Flink и BI — продукты Data Platform.
-- **Влияние:** управлять ими через API нельзя или нельзя узнать как.
-- **Просим:** опубликовать API или указать в документации, что его нет.
-
 ## Портал документации
 
 #### DOC-1. cloud.ru/docs отвечает по-разному в зависимости от User-Agent
@@ -832,6 +868,7 @@ API» — ответ неверен независимо от документа
 
 | Вопрос | Что оказалось | Доказательство |
 |---|---|---|
+| Data Platform, DP-7: у Spark статусы без enum | enum есть: инстанс — `SPARK_STATUS_*` (в том числе `RESUMING`, `SUSPENDED`, `STOPPED`), задача — `JOB_STATUS_SCHEDULING`, `SUBMITTED`, `RUNNING`, `COMPLETED`, `FAILED`, `UNKNOWN`, `CANCELLING`, `CANCELLED`, Spark Connect — `SPARK_CONNECT_STATUS_*`; ошибка первой сверки | `spark-public-api.yaml`, схемы `Spark`, `SparkJob`, `SparkConnect` (сверка 22.10); живые значения — P33 |
 | mk8s: `resolveMode` обязателен, значения `RESOLVE_CONFLICTS_MODE_*` | так и в `mk8s-spec` (`CreateClusterAddonRequest.required`); evo слал `RESOLVE_MODE_*` | k8s-smoke 16.10: 400 → исправлено, #46/#48 зелёные |
 | mk8s: `GET /v3/clusterAddons` без `clusterId` → 400 | в спецификации `clusterId` required; у `/v3/nodePools` тот же случай — 500, см. K8S-9 | api-probe #8 и 17.10 00:05 UTC (`cluster_addons` 400), cloud-e2e `readonly` |
 | mk8s: `GET /v3/addons` без `projectId` → 400 | `projectId` required | api-probe #5, #8 |
@@ -912,10 +949,10 @@ ID и IP — маскировать, суммы — только «есть ли
 | P27 | `GET compute/api/v1/disk-types?project_id=P` | по типам: `name`, `min_size`, `max_size`, есть ли `max_size` (в api-probe: `disk_types_sizes`) | CMP-12 |
 | P28 | `GET postgresql…/v1/clusters?project_id=P` → `GET …/v1/clusters/{id}` (до 5) | `status`, `backup.schedule` (cron, не секрет), число полей, есть ли `?`, `retention_policy_days`; кластеров нет — «пропуск» (в api-probe: `pg_backup_schedule`) | DB-6 (только формат, в котором API хранит расписание; приём формата проверяется лишь созданием) |
 | P29 | `GET dataplatform…/v1/clusters?projectId=P&pageSize=10`; `…/api/v1/P/clusters`; `?project_id=P`; без `projectId`; без токена | `http`, ключи, число, `.message[0:160]`, `grpc-message` (в api-probe: `dp_clusters_*`) | DP-1, DP-2 |
-| P30 | `GET …/v1/clusters?projectId=P` с `pageSize=1000`, `=100`, без; `…/v1/sparkFlavors?pageSize=1000`; `filter=name=<нет такого>` | `http`, число, есть ли `nextPageToken`, `total`, `.message[0:160]` (в api-probe: `dp_clusters_page*`, `dp_spark_flavors_p1000`, `dp_clusters_filter_none`) | DP-3 |
-| P31 | `GET …/v1/{sparkFlavors, sparkVersions, sparkBaseImages, trinoFlavors, trinoVersions, airflowFlavors, metastoreFlavors, metastoreVersions}?projectId=P` | число, ключи элемента, имена, числа и зоны элементов — публичный каталог, без ID (в api-probe: `dp_<справочник>`) | вход превью и калькулятора (D17) |
-| P32 | `GET …/v1/clusters/<несуществующий>`, `…/v1/sparks/<несуществующий>`; `…/v1/sparks?projectId=P` без и с несуществующим `clusterId`; `…/v1/trinos?projectId=P`; статусы кластеров проекта | `http`, ключи и `message` ошибки, `grpc-message`, число кластеров по статусу (в api-probe: `dp_cluster_noid`, `dp_sparks_*`, `dp_trinos_no_cluster`, `dp_cluster_statuses`) | DP-9, форма ошибок |
-| P33 | для кластеров проекта (до 3): `…/clusters/{id}/operations`, `…/clusters/{id}`; инстансы четырёх продуктов; задачи и `user` до 3 Spark | ключи операции, счёт `done`, ключи `error`; статусы инстансов и задач по числу; ключи `user` (без значений); кластеров нет — «пропуск» (в api-probe: `dp_cluster_operations`, `dp_*_statuses`, `dp_spark_jobs`, `dp_spark_user_keys`) | DP-6, DP-7; есть ли пароль Spark History в GET |
+| P30 | `GET …/v1/clusters?projectId=P` с `pageSize=1000`, `=100`, без; `…/v1/sparkFlavors?pageSize=1000`; `filter=name=<нет такого>` | `http`, число, есть ли `nextPageToken`, `total`, `.message[0:160]` (в api-probe: `dp_clusters_page*`, `dp_spark_flavors_p1000`, `dp_clusters_filter_none`) | DP-14 |
+| P31 | `GET …/v1/{sparkFlavors, sparkVersions, sparkBaseImages, trinoFlavors, trinoVersions, airflowFlavors, metastoreFlavors, metastoreVersions, flinkFlavors}?projectId=P`, `…/v1/versions` (Flink) | число, ключи элемента, имена, числа и зоны элементов — публичный каталог, без ID (в api-probe: `dp_<справочник>`) | DP-9: вход превью и калькулятора (D17) |
+| P32 | `GET …/v1/clusters/<несуществующий>`, `…/v1/sparks/<несуществующий>`; `…/v1/sparks?projectId=P` без и с несуществующим `clusterId`; `…/v1/trinos?projectId=P`; статусы кластеров проекта | `http`, ключи и `message` ошибки, `grpc-message`, число кластеров по статусу (в api-probe: `dp_cluster_noid`, `dp_sparks_*`, `dp_trinos_no_cluster`, `dp_cluster_statuses`) | DP-11, DP-17 |
+| P33 | для кластеров проекта (до 3): `…/clusters/{id}/operations`, `…/clusters/{id}`; инстансы пяти продуктов; задачи и `user` до 3 Spark | ключи операции, счёт `done`, ключи `error`; статусы инстансов и задач по числу; ключи `user` (без значений); кластеров нет — «пропуск» (в api-probe: `dp_cluster_operations`, `dp_*_statuses`, `dp_spark_jobs`, `dp_spark_user_keys`) | DP-4, DP-15, DP-16; живые статусы Spark |
 
 ## Источники
 
