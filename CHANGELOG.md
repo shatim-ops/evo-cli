@@ -23,6 +23,8 @@
 ### Исправлено
 
 - **`evo deploy --region` понимает имя зоны**, как `evo vm create` (ревью зоны 1.2.1): `--region ru.AZ-2`, `CLOUDRU_REGION`, `region:` в `.evo.yaml` и аргумент `region` MCP `deploy` принимают имя зоны в любом регистре или UUID — по одному правилу с `evo vm create` и MCP `provision`. ВМ, её floating IP и запись state получают UUID зоны, превью называет зону по имени. Раньше имя отклонялось: «region "ru.AZ-2" — имя зоны, а нужен её ID». Неизвестное имя — `USAGE` (код 1) со списком зон, уже на превью, до согласия; имя при непрочитанном списке зон — отказ с ошибкой списка. UUID — как раньше.
+- **`evo k8s plan`, `evo k8s create` и `evo k8s add-nodepool` в примечании называют команды evo, а не инструменты MCP** (догфуд №4: в терминале было «call k8s_create with the same args + confirmed=true»). Теперь: «Создать — evo k8s create с теми же флагами (без терминала — с --yes)…», «Проверяйте evo k8s get <ID>…, затем — evo k8s kubeconfig <ID>», «Проверяйте evo k8s nodepools <ID>». Примечание для агента в MCP (по-английски) прежнее. С `EVO_LANG=en` CLI печатает английский текст агента, как и другие подсказки.
+- В ответе `k8s_plan` — новое поле `flavor`: имя конфигурации мастеров рядом с `flavor_id` (UUID), и таблица `evo k8s plan` его показывает.
 
 ## [1.2.1] — 2026-10-21
 
