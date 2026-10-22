@@ -205,7 +205,14 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		body["description"] = d
 	}
 	op, err := cli.CreateCluster(ctx, body)
-	if err != nil {
+	if err != nil || op.ID == "" {
+		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, url.Values{}) }
+		if text, isErr, ok := lostCreate(ctx, list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id"); ok {
+			return text, isErr
+		}
+		if err == nil {
+			err = errors.New("the API answered no operation id")
+		}
 		return errResult(fmt.Errorf("create cluster: %w", err)), true
 	}
 	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
