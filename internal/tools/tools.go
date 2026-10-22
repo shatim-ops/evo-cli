@@ -2138,7 +2138,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				case !noPublicIP:
 					// The FIP made after boot is recorded too, so destroy
 					// releases it even when attaching it failed.
-					ip, id, err := engine.AssignFloatingIP(ctx, eng.Cloud, vm.ID, projectID, region)
+					ip, id, err := eng.AssignFloatingIP(ctx, vm.ID, projectID, region)
 					publicIP, fipID, fipErr = ip, id, err
 				}
 				if ctx.Err() != nil {

@@ -7,6 +7,7 @@ package deployplan
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -360,13 +361,17 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		InterfaceID:        ifaceID,
 		AvailabilityZoneID: plan.VM.Zone.ID,
 	})
-	if e == nil {
+	if e == nil && f != nil && f.ID != "" {
 		return f.IPAddress, f.ID, "public IP attached (created a new floating IP)"
 	}
 	if provision.IsQuotaError(e) {
 		return "", "", "⚠️ Floating-IP quota exhausted — the VM was created WITHOUT a public IP. Increase the floating-IP quota in the Cloud.ru console, then attach an IP to this VM manually."
 	}
-	// The create may have reached the cloud with its answer lost: the FIP
+	if e == nil {
+		e = errors.New("the create answered no floating IP id")
+	}
+	// The create may have reached the cloud with its answer lost, or
+	// answered without an id (deploy adopts that one by name too): the FIP
 	// then exists under its name and must be recorded, not left billed.
 	if fips, le := cloud.ListFloatingIPs(ctx, plan.ProjectID); le == nil {
 		for _, x := range fips {
