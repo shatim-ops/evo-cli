@@ -17,11 +17,13 @@ import (
 )
 
 type workflow struct {
-	On   map[string]any `yaml:"on"`
-	Jobs map[string]struct {
+	On          map[string]any `yaml:"on"`
+	Permissions any            `yaml:"permissions"`
+	Jobs        map[string]struct {
 		If    string `yaml:"if"`
 		Steps []struct {
 			Uses string         `yaml:"uses"`
+			Run  string         `yaml:"run"`
 			With map[string]any `yaml:"with"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
@@ -54,13 +56,17 @@ func readWorkflows(t *testing.T) map[string]workflow {
 // checkout of the PR's head there would hand its code the secrets (the
 // key of Foundation Models in qwen-review). The PR is read as data (git
 // diff), never checked out. A pull_request_target job runs only for a
-// branch of this repository, not a fork's.
+// branch of this repository, not a fork's, and the workflow grants no
+// permission beyond what each job declares.
 func TestWorkflows_PRCodeNeverRunsWithSecrets(t *testing.T) {
 	for name, w := range readWorkflows(t) {
 		_, prt := w.On["pull_request_target"]
 		_, comment := w.On["issue_comment"]
 		if !prt && !comment {
 			continue
+		}
+		if p, ok := w.Permissions.(map[string]any); !ok || len(p) != 0 {
+			t.Errorf("%s: workflow permissions %v, want {} (each job declares its own)", name, w.Permissions)
 		}
 		for job, j := range w.Jobs {
 			for _, s := range j.Steps {
@@ -80,6 +86,27 @@ func TestWorkflows_PRCodeNeverRunsWithSecrets(t *testing.T) {
 	}
 }
 
+// The text of an event — a PR's title or body, a comment, an issue, the
+// name of a branch — is someone else's. Put into a run script as
+// ${{ … }}, it becomes shell code with the job's token and secrets; it is
+// passed through env instead and read as data (the script injection of
+// GitHub's hardening guide). Any workflow, any trigger.
+func TestWorkflows_EventTextNeverInRunScripts(t *testing.T) {
+	for name, w := range readWorkflows(t) {
+		for job, j := range w.Jobs {
+			for _, s := range j.Steps {
+				for _, bad := range []string{"github.event.", "github.head_ref"} {
+					for _, expr := range strings.Split(s.Run, "${{")[1:] {
+						if strings.Contains(strings.SplitN(expr, "}}", 2)[0], bad) {
+							t.Errorf("%s, job %s: ${{ %s… }} in a run script: pass it through env", name, job, bad)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // The review of Qwen is part of every PR's cycle (CLAUDE.md §4): it starts
 // when the PR is opened or leaves draft, not by hand (process audit 1.2.1,
 // PR 2); the command /qwen review repeats it.
@@ -93,6 +120,11 @@ func TestWorkflows_QwenReviewsEveryPR(t *testing.T) {
 	for _, want := range []string{"opened", "ready_for_review"} {
 		if !slices.Contains(types, any(want)) {
 			t.Errorf("qwen-review: pull_request_target types %v, want %s", types, want)
+		}
+	}
+	for _, j := range w.Jobs {
+		if !strings.Contains(j.If, "!github.event.pull_request.draft") {
+			t.Error("qwen-review: a draft PR is reviewed on opening; it waits for ready_for_review")
 		}
 	}
 	if _, ok := w.On["issue_comment"]; !ok {
