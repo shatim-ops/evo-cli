@@ -62,7 +62,7 @@ type HTTPOptions struct {
 
 // Limits of the HTTP transport.
 const (
-	httpMaxBody      = maxMessageSize
+	httpMaxBody      = 4 << 20 // below the stdio line: 32 calls hold at most 128 MiB of bodies
 	httpMaxSessions  = 10000
 	httpMaxBatch     = 100 // messages in one POST: a batch of tools/list would otherwise answer ~40 KB per 30-byte request
 	httpMaxToolCalls = 32  // tool calls running at once; more are refused, not queued
@@ -73,7 +73,7 @@ const (
 )
 
 // httpBodyTimeout is how long a client may take to send a request body
-// (16 MiB at ~2 Mbit/s). A variable only so that tests can shorten it.
+// (4 MiB at ~0.5 Mbit/s). A variable only so that tests can shorten it.
 var httpBodyTimeout = 60 * time.Second
 
 // HTTPHandler serves the MCP Streamable HTTP transport.
