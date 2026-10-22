@@ -7,6 +7,10 @@
 
 ## [Не выпущено]
 
+### Миграция
+
+- **`evo vpc create` (MCP `vpc_create`) с занятым именем отказывает, а не создаёт вторую VPC** (DECISIONS D23). Было: с `--yes` (MCP — `confirmed: true`) — код 0 и вторая VPC с тем же именем; без `--yes` — код 3 (`CONFIRMATION_REQUIRED`); превью без ключа и проекта — `confirmation_required`. Стало: VPC с таким именем есть — `USAGE`, код 1, «VPC с именем … уже есть (id …)», в ответе MCP — `existing_id`, до вопроса о согласии; превью читает список VPC проекта, поэтому без ключа — `AUTH_REQUIRED`, без проекта — `CONFIG_INVALID`, оба с кодом 2. Что поменять: скрипту — проверять код 1 (`reason: USAGE`) и брать `existing_id` или выбрать свободное имя (`evo vpc list`); превью — с ключом и проектом.
+
 ### Исправлено
 
 - **Команды создания `evo kafka create`, `evo redis create`, `evo pg create`, `evo ar create`, `evo snat create`, `evo ca deploy`, `evo disk create`, `evo dns zone-create`, `evo secret create` и `evo vpc create` (MCP `kafka_create`, `redis_create`, `pg_create`, `ar_create`, `snat_create`, `ca_deploy`, `disk_create`, `dns_zone_create`, `secret_create`, `vpc_create`) не теряют созданный ресурс, если ответ на создание не дошёл.** Раньше обрыв связи после отправки запроса давал ошибку, а ответ без id — успех с пустым `operation_id`, хотя ресурс мог быть создан и оплачиваться. Теперь evo перечитывает список. Есть ресурс с этим именем — ответ `creating` с его id (`cluster_id`, `registry_id`, `nat_gateway_id`, `id`, `disk_id`, `zone_id`, `secret_id`, `vpc_id`; секрет ищется по пути), статусом в `resource_status` и предупреждением. Нет — ошибка; ответ без id — `API_ERROR`, код 5. Список прочитать не удалось — ошибка с полем `warning`: ресурс мог быть создан, его список (`*_list`, у зон DNS — `dns_zones`) покажет его по имени. Тот же вызов создания ещё раз назовёт id, а не создаст второй.
