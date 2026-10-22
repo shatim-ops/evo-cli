@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"github.com/shatim-ops/evo-cli/internal/agentconf"
@@ -275,12 +276,28 @@ func (c agentClient) render(format configFormat, e agentconf.Entry) []byte {
 	return agentconf.JSONDocument(servers, mcpServerName, e)
 }
 
-// merge puts the entry into the client's configuration file old.
+// merge puts the entry into the client's configuration file old. Only the
+// keys evo writes are evo's: what the user added to the entry stays.
 func (c agentClient) merge(old []byte, e agentconf.Entry) (agentconf.Result, error) {
 	if c.format == formatTOML {
-		return agentconf.TOML(old, []string{c.servers, mcpServerName}, e)
+		return agentconf.TOML(old, []string{c.servers, mcpServerName}, e, c.ownedKeys())
 	}
-	return agentconf.JSON(old, c.servers, mcpServerName, e, c.comments)
+	return agentconf.JSON(old, c.servers, mcpServerName, e, c.ownedKeys(), c.comments)
+}
+
+// ownedKeys are the keys of the client's entry evo writes, of either
+// transport: the stdio entry and the HTTP one, as entry spells them.
+func (c agentClient) ownedKeys() []string {
+	var keys []string
+	for _, s := range []serverSpec{{}, {url: "http://evo"}} {
+		e, _ := c.entry(s)
+		for _, f := range e {
+			if !slices.Contains(keys, f.Key) {
+				keys = append(keys, f.Key)
+			}
+		}
+	}
+	return keys
 }
 
 // mcpServerName is the name of evo's entry in a client's servers.

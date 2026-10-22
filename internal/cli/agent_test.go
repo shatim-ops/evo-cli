@@ -233,7 +233,7 @@ func TestAgentSetup_GoldenParse(t *testing.T) {
 			if c.comments {
 				// JSONC: what the file has beside the entry is checked by
 				// agentconf; here the entry is read the same way.
-				r, err := agentconf.JSON(data, c.servers, mcpServerName, nil, true)
+				r, err := agentconf.JSON(data, c.servers, mcpServerName, nil, nil, true)
 				if err != nil || r.State == agentconf.Added {
 					t.Errorf("%s/%s: no entry (%v)", c.name, name, err)
 				}
@@ -642,6 +642,30 @@ func TestAgentSetup_DefaultScope(t *testing.T) {
 			if written := err == nil; written != (s == want) {
 				t.Errorf("%s: %s file written=%v, want the %s file", client, s, written, want)
 			}
+		}
+	}
+}
+
+// The keys the user adds to evo's entry (env, a timeout) are theirs: the
+// next run finds evo unchanged, and --force replaces evo's keys only.
+func TestAgentSetup_KeepsUsersKeys(t *testing.T) {
+	for client, users := range map[string][2]string{
+		"claude-code": {`{"mcpServers": {"evo": {"command": "evo", "args": ["mcp", "--toolsets", "deploy,vm,vpc,disk,image"], "env": {"CLOUDRU_PROFILE": "x"}, "timeout": 60000}}}`, `"timeout":60000`},
+		"codex":       {"[mcp_servers.evo]\ncommand = \"evo\"\nargs = [\"mcp\", \"--toolsets\", \"deploy,vm,vpc,disk,image\"]\ntool_timeout_sec = 600\n\n[mcp_servers.evo.env]\nCLOUDRU_PROFILE = \"x\"\n", "tool_timeout_sec = 600"},
+	} {
+		setupAgent(t)
+		c := mustClient(t, client)
+		path := clientPath(t, c, c.defaultScope())
+		putFile(t, path, []byte(users[0]), 0o600)
+		if code, stdout, stderr := runCLI(t, "", "agent", "setup", "--client", client); code != 0 || !strings.Contains(stdout, "nothing changed") {
+			t.Fatalf("%s: exit %d: %s%s", client, code, stdout, stderr)
+		}
+		if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", client, "--toolsets", "k8s", "--force", "--yes"); code != 0 {
+			t.Fatalf("%s --force: exit %d: %s", client, code, stderr)
+		}
+		got := string(fileBytes(t, path))
+		if !strings.Contains(got, "CLOUDRU_PROFILE") || !strings.Contains(got, users[1]) || !strings.Contains(got, `"k8s"`) || strings.Contains(got, "deploy,vm") {
+			t.Errorf("%s after --force:\n%s", client, got)
 		}
 	}
 }

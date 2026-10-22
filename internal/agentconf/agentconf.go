@@ -78,6 +78,36 @@ func plainValue(v any) any {
 	return v
 }
 
+// ownedSet is the keys evo writes in an entry (owned) and the entry's own:
+// the keys that make an entry evo's. Every other key of an entry already in
+// a file — env, a timeout, disabled — is the user's: it does not make the
+// entry differ, and a replacement keeps it.
+func ownedSet(e Entry, owned []string) map[string]bool {
+	m := make(map[string]bool, len(owned)+len(e))
+	for _, k := range owned {
+		m[k] = true
+	}
+	for _, f := range e {
+		m[f.Key] = true
+	}
+	return m
+}
+
+// ownedPart is the part of the decoded entry v (a map) that is evo's.
+func ownedPart(v any, own map[string]bool) any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return v
+	}
+	out := map[string]any{}
+	for k, val := range m {
+		if own[k] {
+			out[k] = val
+		}
+	}
+	return out
+}
+
 // State says what the file had at the place of the entry.
 type State int
 

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -29,10 +30,12 @@ func JSONDocument(servers, name string, e Entry) []byte {
 // mcpServers.evo). An absent servers object is added at the end of the root
 // object, an absent entry at the end of the servers object, an entry already
 // there is replaced in place; the rest of the file keeps its bytes, and what
-// is added follows the file's indentation and line endings. With comments
-// the file may have // and /* */ comments and trailing commas (JSONC, as
-// VS Code reads mcp.json); they are kept too.
-func JSON(old []byte, servers, name string, e Entry, comments bool) (Result, error) {
+// is added follows the file's indentation and line endings. Only the keys
+// evo writes (owned, see ownedSet) are compared and replaced: the entry
+// becomes evo's keys, then the user's keys it had. With comments the file
+// may have // and /* */ comments and trailing commas (JSONC, as VS Code
+// reads mcp.json); they are kept too, but for those inside a replaced entry.
+func JSON(old []byte, servers, name string, e Entry, owned []string, comments bool) (Result, error) {
 	if len(bytes.TrimSpace(old)) == 0 {
 		return Result{Data: JSONDocument(servers, name, e), State: Added}, nil
 	}
@@ -67,10 +70,36 @@ func JSON(old []byte, servers, name string, e Entry, comments bool) (Result, err
 		return Result{}, err
 	case em == nil:
 		return Result{Data: d.insert(so, name, e), State: Added}, nil
-	case sameJSON(src[em.valStart:em.valEnd], e):
+	}
+	own := ownedSet(e, owned)
+	keep, err := d.usersKeys(em, own)
+	switch {
+	case err != nil:
+		return Result{}, err
+	case sameJSON(src[em.valStart:em.valEnd], e, own):
 		return Result{Data: old, State: Same}, nil
 	}
-	return Result{Data: d.replace(em, e), State: Replaced}, nil
+	return Result{Data: d.replace(em, append(slices.Clone(e), keep...)), State: Replaced}, nil
+}
+
+// usersKeys are the members of the entry m that are not evo's, with their
+// values as they are (comments blanked out); none when the entry is not an
+// object. A key there twice is refused.
+func (d *jsonDoc) usersKeys(m *jsonMember, own map[string]bool) (Entry, error) {
+	if d.src[m.valStart] != '{' {
+		return nil, nil
+	}
+	var keep Entry
+	o := d.object(m.valStart)
+	for _, mm := range o.members {
+		if _, err := d.only(o, mm.key); err != nil {
+			return nil, err
+		}
+		if !own[mm.key] {
+			keep = append(keep, Field{Key: mm.key, Value: json.RawMessage(d.src[mm.valStart:mm.valEnd])})
+		}
+	}
+	return keep, nil
 }
 
 // checkJSONObject refuses src that is not one valid JSON object, naming the
@@ -90,11 +119,11 @@ func checkJSONObject(src []byte) error {
 	return nil
 }
 
-// sameJSON reports whether the JSON value raw is the entry, by value: key
-// order and layout do not count.
-func sameJSON(raw []byte, e Entry) bool {
+// sameJSON reports whether evo's keys (own) of the JSON value raw are the
+// entry, by value: key order, layout and the user's keys do not count.
+func sameJSON(raw []byte, e Entry, own map[string]bool) bool {
 	var v any
-	return json.Unmarshal(raw, &v) == nil && reflect.DeepEqual(v, any(e.plain()))
+	return json.Unmarshal(raw, &v) == nil && reflect.DeepEqual(ownedPart(v, own), any(e.plain()))
 }
 
 // jsonDoc is a JSON file being edited: old as read, src the same bytes with

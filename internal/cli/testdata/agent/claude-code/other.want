@@ -6,7 +6,10 @@
         "mcp",
         "--toolsets",
         "deploy,vm,vpc,disk,image"
-      ]
+      ],
+      "env": {
+        "CLOUDRU_PROFILE": "staging"
+      }
     }
   }
 }

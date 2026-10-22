@@ -32,10 +32,12 @@ func TOMLDocument(table []string, e Entry) []byte {
 
 // TOML puts the entry at the table of the TOML document old (e.g.
 // [mcp_servers.evo]): an absent table is added after the last table under
-// the same parent ([mcp_servers.*]) or at the end of the file; a table
-// already there is replaced, with its sub-tables ([mcp_servers.evo.env]),
-// by the entry's own.
-func TOML(old []byte, table []string, e Entry) (Result, error) {
+// the same parent ([mcp_servers.*]) or at the end of the file. In a table
+// already there only the keys evo writes (owned, see ownedSet) are compared
+// and replaced: evo's key lines and sub-tables go, the entry's lines follow
+// the header, and the user's keys and sub-tables ([mcp_servers.evo.env])
+// stay where they are.
+func TOML(old []byte, table []string, e Entry, owned []string) (Result, error) {
 	if len(bytes.TrimSpace(old)) == 0 {
 		return Result{Data: TOMLDocument(table, e), State: Added}, nil
 	}
@@ -58,22 +60,68 @@ func TOML(old []byte, table []string, e Entry) (Result, error) {
 		if old[at-1] != '\n' {
 			text = nl + text
 		}
-		return checkedTOML(old, items, splice(old, at, at, text), table, e, Added)
+		return checkedTOML(old, items, splice(old, at, at, text), table, e, ownedSet(e, owned), Added)
 	}
-	if reflect.DeepEqual(tomlEntry(items, parts, table), e.plain()) {
+	own := ownedSet(e, owned)
+	if reflect.DeepEqual(ownedPart(tomlEntry(items, parts, table), own), e.plain()) {
 		return Result{Data: old, State: Same}, nil
 	}
-	data := old
-	for i := len(parts) - 1; i > 0; i-- {
-		// A sub-table goes with the blank lines before it.
-		start := parts[i].start
-		for start > parts[i-1].end && len(bytes.TrimSpace(old[lineStart(old, start-1):start])) == 0 {
+	// The edits do not overlap; they go from the end of the file, so the
+	// offsets before each hold.
+	type edit struct {
+		from, to int
+		text     string
+	}
+	var edits []edit
+	main := -1
+	for i, p := range parts {
+		if slices.Equal(items[p.header].path, table) {
+			main = i
+			continue
+		}
+		if !own[items[p.header].path[len(table)]] {
+			continue
+		}
+		// A sub-table of evo's key goes with the blank lines before it.
+		start, floor := p.start, 0
+		if i > 0 {
+			floor = parts[i-1].end
+		}
+		for start > floor && len(bytes.TrimSpace(old[lineStart(old, start-1):start])) == 0 {
 			start = lineStart(old, start-1)
 		}
-		data = splice(data, start, parts[i].end, "")
+		edits = append(edits, edit{start, p.end, ""})
 	}
-	data = splice(data, parts[0].start, parts[0].end, block)
-	return checkedTOML(old, items, data, table, e, Replaced)
+	if main < 0 {
+		// Only sub-tables: the table goes before the first one that stays,
+		// or after the last one when all go (not inside a removed one).
+		at := parts[len(parts)-1].end
+		for _, p := range parts {
+			if !own[items[p.header].path[len(table)]] {
+				at = p.start
+				break
+			}
+		}
+		edits = append(edits, edit{at, at, block})
+	} else {
+		h := parts[main].header
+		edits = append(edits, edit{parts[main].start, items[h].end, block})
+		for j := h + 1; j < len(items) && items[j].kind == tomlKeyValue; j++ {
+			if own[items[j].key[0]] {
+				edits = append(edits, edit{items[j].start, items[j].end, ""})
+			}
+		}
+	}
+	slices.SortFunc(edits, func(a, b edit) int { return b.from - a.from })
+	data := old
+	for _, ed := range edits {
+		data = splice(data, ed.from, ed.to, ed.text)
+	}
+	state := Replaced
+	if main < 0 && len(edits) == 1 {
+		state = Added // the user's sub-tables only: nothing of evo's to replace
+	}
+	return checkedTOML(old, items, data, table, e, own, state)
 }
 
 // tomlBlock is the table of the entry as lines ending with nl.
@@ -235,8 +283,9 @@ func ensureTable(m map[string]any, path []string) map[string]any {
 
 // checkedTOML scans the edited file again and refuses the edit unless it
 // is valid as far as the scanner sees, every item outside the entry's
-// tables reads as before, and the entry's tables define exactly the entry.
-func checkedTOML(old []byte, before []tomlItem, data []byte, table []string, e Entry, state State) (Result, error) {
+// tables reads as before, evo's keys (own) of the entry's tables define
+// exactly the entry, and the user's keys there are as they were.
+func checkedTOML(old []byte, before []tomlItem, data []byte, table []string, e Entry, own map[string]bool, state State) (Result, error) {
 	refuse := &FileError{Msg: i18n.T("the file cannot be edited safely: edit it by hand",
 		"файл не удаётся изменить безопасно: исправьте его вручную")}
 	after, err := scanTOML(data)
@@ -244,7 +293,24 @@ func checkedTOML(old []byte, before []tomlItem, data []byte, table []string, e E
 		return Result{}, refuse
 	}
 	parts, err := tomlParts(data, after, table)
-	if err != nil || !reflect.DeepEqual(tomlEntry(after, parts, table), e.plain()) ||
+	if err != nil {
+		return Result{}, refuse
+	}
+	got := tomlEntry(after, parts, table)
+	users := func(m map[string]any) map[string]any {
+		out := map[string]any{}
+		for k, v := range m {
+			if !own[k] {
+				out[k] = v
+			}
+		}
+		return out
+	}
+	var had map[string]any
+	if partsBefore, err := tomlParts(old, before, table); err == nil {
+		had = tomlEntry(before, partsBefore, table)
+	}
+	if !reflect.DeepEqual(ownedPart(got, own), e.plain()) || !reflect.DeepEqual(users(got), users(had)) ||
 		!slices.EqualFunc(outside(old, before, table), outside(data, after, table), bytes.Equal) {
 		return Result{}, refuse
 	}

@@ -15,6 +15,10 @@ import (
 
 var evo = Entry{{"command", "evo"}, {"args", []string{"mcp", "--toolsets", "vm"}}}
 
+// owned are the keys evo writes in an entry, in either of its forms: the
+// rest of an entry already there is the user's.
+var owned = []string{"type", "command", "args", "url", "headers"}
+
 func TestJSON(t *testing.T) {
 	for _, tc := range []struct {
 		name, old, want string
@@ -31,6 +35,15 @@ func TestJSON(t *testing.T) {
 			want: "{\r\n\t\"mcpServers\": {\r\n\t\t\"x\": {\"command\": \"x\"},\r\n\t\t\"evo\": {\r\n\t\t\t\"command\": \"evo\",\r\n\t\t\t\"args\": [\r\n\t\t\t\t\"mcp\",\r\n\t\t\t\t\"--toolsets\",\r\n\t\t\t\t\"vm\"\r\n\t\t\t]\r\n\t\t}\r\n\t}\r\n}\r\n"},
 		{name: "same entry, other order and layout", old: `{"mcpServers": {"evo": {"args": ["mcp", "--toolsets", "vm"], "command": "evo"}}}`, state: Same,
 			want: `{"mcpServers": {"evo": {"args": ["mcp", "--toolsets", "vm"], "command": "evo"}}}`},
+		{name: "the user's keys do not count", state: Same,
+			old:  `{"mcpServers": {"evo": {"command": "evo", "env": {"A": "1"}, "args": ["mcp", "--toolsets", "vm"], "timeout": 60}}}`,
+			want: `{"mcpServers": {"evo": {"command": "evo", "env": {"A": "1"}, "args": ["mcp", "--toolsets", "vm"], "timeout": 60}}}`},
+		{name: "replaced: evo's keys first, the user's kept, evo's not in the entry gone", state: Replaced,
+			old:  "{\n  \"mcpServers\": {\n    \"evo\": {\n      \"type\": \"http\",\n      \"env\": {\"A\": \"1\"},\n      \"url\": \"http://x/mcp\",\n      \"timeout\": 60\n    }\n  }\n}\n",
+			want: "{\n  \"mcpServers\": {\n    \"evo\": {\n      \"command\": \"evo\",\n      \"args\": [\n        \"mcp\",\n        \"--toolsets\",\n        \"vm\"\n      ],\n      \"env\": {\n        \"A\": \"1\"\n      },\n      \"timeout\": 60\n    }\n  }\n}\n"},
+		{name: "replaced in JSONC: the user's keys kept", comments: true, state: Replaced,
+			old:  "{\"servers\": {\"evo\": {\"command\": \"old\", /* mine */ \"disabled\": false,},},}",
+			want: "{\"servers\": {\"evo\": {\"command\":\"evo\",\"args\":[\"mcp\",\"--toolsets\",\"vm\"],\"disabled\":false},},}"},
 		{name: "JSONC comments and trailing commas kept", comments: true, state: Added,
 			old:  "{\n  // servers\n  \"servers\": {\n    \"x\": {\"command\": \"x\"}, /* last */\n  },\n}\n",
 			want: "{\n  // servers\n  \"servers\": {\n    \"x\": {\"command\": \"x\"},\n    \"evo\": {\n      \"command\": \"evo\",\n      \"args\": [\n        \"mcp\",\n        \"--toolsets\",\n        \"vm\"\n      ]\n    }, /* last */\n  },\n}\n"},
@@ -40,7 +53,7 @@ func TestJSON(t *testing.T) {
 			if tc.comments {
 				servers = "servers"
 			}
-			r, err := JSON([]byte(tc.old), servers, "evo", evo, tc.comments)
+			r, err := JSON([]byte(tc.old), servers, "evo", evo, owned, tc.comments)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -62,10 +75,11 @@ func TestJSON_Refuses(t *testing.T) {
 		{name: "not an object", old: "[1]\n", want: "not a JSON object", line: 1},
 		{name: "servers not an object", old: "{\"mcpServers\": [1]}", want: `"mcpServers" is not an object`, line: 1},
 		{name: "duplicate entry", old: "{\"mcpServers\": {\n\"evo\": {},\n\"evo\": {}}}", want: `key "evo" appears twice`, line: 3},
+		{name: "duplicate key of the entry", old: "{\"mcpServers\": {\"evo\": {\n\"env\": {},\n\"env\": {}}}}", want: `key "env" appears twice`, line: 3},
 		{name: "unterminated comment", old: "{ /* x", comments: true, want: "unterminated /* comment", line: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := JSON([]byte(tc.old), "mcpServers", "evo", evo, tc.comments)
+			_, err := JSON([]byte(tc.old), "mcpServers", "evo", evo, owned, tc.comments)
 			var fe *FileError
 			if !stderrors.As(err, &fe) || !strings.Contains(fe.Msg, tc.want) || fe.Line != tc.line {
 				t.Errorf("got %v (%+v), want %q at line %d", err, fe, tc.want, tc.line)
@@ -92,17 +106,37 @@ func TestTOML(t *testing.T) {
 			old:   "[mcp_servers.evo]\nargs = [\n  'mcp', # flags\n  \"--toolsets\", \"vm\",\n]\n\"command\" = '''evo'''\n",
 			want:  "[mcp_servers.evo]\nargs = [\n  'mcp', # flags\n  \"--toolsets\", \"vm\",\n]\n\"command\" = '''evo'''\n",
 			state: Same},
-		{name: "replaced with its sub-table, comments around kept",
-			old:   "# top\n[mcp_servers.evo]\ncommand = \"old\"\n\n[mcp_servers.evo.env]\nA = \"1\"\n\n# tail\n[other]\nk = 1979-05-27 07:32:00Z\n",
-			want:  "# top\n" + block + "\n# tail\n[other]\nk = 1979-05-27 07:32:00Z\n",
+		{name: "replaced: evo's keys first, the user's keys and sub-table kept, comments around kept",
+			old:   "# top\n[mcp_servers.evo]\ncommand = \"old\" # mine\nstartup_timeout_sec = 30\nurl = \"http://x\"\n\n[mcp_servers.evo.env]\nA = \"1\"\n\n# tail\n[other]\nk = 1979-05-27 07:32:00Z\n",
+			want:  "# top\n" + block + "startup_timeout_sec = 30\n\n[mcp_servers.evo.env]\nA = \"1\"\n\n# tail\n[other]\nk = 1979-05-27 07:32:00Z\n",
 			state: Replaced},
+		{name: "replaced: a sub-table of evo's key goes",
+			old:   "[mcp_servers.evo]\nurl = \"http://x\"\n\n[mcp_servers.evo.headers]\nAuthorization = \"Bearer x\"\n",
+			want:  block,
+			state: Replaced},
+		{name: "replaced: the sub-table before the table stays",
+			old:   "[mcp_servers.evo.env]\nA = \"1\"\n\n[mcp_servers.evo]\ncommand = \"old\"\n",
+			want:  "[mcp_servers.evo.env]\nA = \"1\"\n\n" + block,
+			state: Replaced},
+		{name: "only a sub-table: the table goes before it",
+			old:   "x = 1\n[mcp_servers.evo.env]\nA = \"1\"\n",
+			want:  "x = 1\n" + block + "[mcp_servers.evo.env]\nA = \"1\"\n",
+			state: Added},
+		{name: "only sub-tables of evo's keys: they go, the table comes",
+			old:   "x = 1\n\n[mcp_servers.evo.headers]\nAuthorization = \"x\"\n",
+			want:  "x = 1\n" + block,
+			state: Replaced},
+		{name: "the user's keys and sub-tables do not count",
+			old:   "[mcp_servers.evo]\ncommand = \"evo\"\nstartup_timeout_sec = 30\nargs = [\"mcp\", \"--toolsets\", \"vm\"]\n[mcp_servers.evo.env]\nA = \"1\"\n",
+			want:  "[mcp_servers.evo]\ncommand = \"evo\"\nstartup_timeout_sec = 30\nargs = [\"mcp\", \"--toolsets\", \"vm\"]\n[mcp_servers.evo.env]\nA = \"1\"\n",
+			state: Same},
 		{name: "multi-line strings that look like headers",
 			old:   "s = \"\"\"\n[mcp_servers.evo]\n\"\"\"\nt = '''\n[x]'''\n",
 			want:  "s = \"\"\"\n[mcp_servers.evo]\n\"\"\"\nt = '''\n[x]'''\n\n" + block,
 			state: Added},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r, err := TOML([]byte(tc.old), codexTable, evo)
+			r, err := TOML([]byte(tc.old), codexTable, evo, owned)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -130,7 +164,7 @@ func TestTOML_Refuses(t *testing.T) {
 		{name: "twice", old: "[mcp_servers.evo]\n[mcp_servers.evo]\n", want: "appears twice", line: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := TOML([]byte(tc.old), codexTable, evo)
+			_, err := TOML([]byte(tc.old), codexTable, evo, owned)
 			var fe *FileError
 			if !stderrors.As(err, &fe) || !strings.Contains(fe.Msg, tc.want) || fe.Line != tc.line {
 				t.Errorf("got %v (%+v), want %q at line %d", err, fe, tc.want, tc.line)
