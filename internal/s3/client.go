@@ -21,6 +21,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/s3utils"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -167,6 +168,23 @@ func (c *Client) GetObject(ctx context.Context, bucket, key string, limit int64)
 		return nil, &TooLargeError{Limit: limit}
 	}
 	return data, nil
+}
+
+// CheckBucketName refuses a name of an existing bucket that S3 cannot take
+// ("../x", "a/b") — by the client's own rule (s3utils.CheckValidBucketName),
+// which minio applies to every call anyway: USAGE in the language of the
+// CLI, before the preview and the request. minio's English text reached
+// the person, and minio-go 7.4 added a check of path-shaped names (CI of
+// Dependabot #166). The stricter rule of a new bucket is bucketName in
+// internal/tools.
+func CheckBucketName(bucket string) error {
+	if s3utils.CheckValidBucketName(bucket) == nil {
+		return nil
+	}
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("bucket name %q is not a valid S3 bucket name", "имя бакета %q не подходит для S3", bucket),
+		i18n.T("The buckets of these keys are listed by s3_buckets; a name has no '/' or '\\'.",
+			"Бакеты этих ключей — в выводе s3_buckets; в имени нет '/' и '\\'."))
 }
 
 // notFound gives a missing bucket or object its code: NOT_FOUND (exit 4),
