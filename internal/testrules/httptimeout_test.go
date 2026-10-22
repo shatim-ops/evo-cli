@@ -71,10 +71,16 @@ func TestHTTPClientsHaveTimeouts(t *testing.T) {
 	}
 }
 
-// unbounded reports an http.Client literal without a Timeout field, or a
-// use of http.DefaultClient (it has none).
+// unbounded reports an http.Client literal without a Timeout field, a zero
+// client (new(http.Client), var c http.Client), or a use of
+// http.DefaultClient (it has none).
 func unbounded(n ast.Node) bool {
 	switch x := n.(type) {
+	case *ast.CallExpr:
+		fn, ok := x.Fun.(*ast.Ident)
+		return ok && fn.Name == "new" && len(x.Args) == 1 && isHTTP(x.Args[0], "Client")
+	case *ast.ValueSpec:
+		return len(x.Values) == 0 && x.Type != nil && isHTTP(x.Type, "Client")
 	case *ast.CompositeLit:
 		if !isHTTP(x.Type, "Client") {
 			return false
@@ -115,4 +121,32 @@ func declName(d ast.Decl) string {
 		}
 	}
 	return "?"
+}
+
+// The rule sees a client however it is made: a literal, its address, new,
+// a zero variable, and http.DefaultClient.
+func TestUnboundedClientForms(t *testing.T) {
+	for src, want := range map[string]bool{
+		`var c = http.Client{}`:                          true,
+		`var c = &http.Client{Transport: nil}`:           true,
+		`var c = &http.Client{Timeout: time.Second}`:     false,
+		`var c = new(http.Client)`:                       true,
+		`var c http.Client`:                              true,
+		`var c *http.Client`:                             false,
+		`var c = http.DefaultClient`:                     true,
+		`func f() { _, _ = http.DefaultClient.Do(nil) }`: true,
+	} {
+		f, err := parser.ParseFile(token.NewFileSet(), "x.go", "package x\n"+src, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", src, err)
+		}
+		got := false
+		ast.Inspect(f, func(n ast.Node) bool {
+			got = got || unbounded(n)
+			return true
+		})
+		if got != want {
+			t.Errorf("%s: unbounded %v, want %v", src, got, want)
+		}
+	}
 }
