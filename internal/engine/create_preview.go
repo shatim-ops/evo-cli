@@ -30,6 +30,12 @@ const (
 	ResourceK8sNodePool = "k8s_nodepool"
 	ResourceK8sAddon    = "k8s_addon"
 	ResourceS3Bucket    = "s3_bucket"
+	ResourceARRegistry  = "ar_registry"
+	ResourceCAApp       = "ca_app"
+	ResourceKafka       = "kafka_cluster"
+	ResourceLB          = "load_balancer"
+	ResourceRedis       = "redis_cluster"
+	ResourceSNAT        = "snat_gateway"
 )
 
 // CreatePreview is what a tool that creates a billable resource is about to
@@ -42,7 +48,8 @@ const (
 // placeholder.
 type CreatePreview struct {
 	// Resource is what is created: vm, disk, disk_resize, pg_cluster,
-	// k8s_cluster, k8s_nodepool, k8s_addon or s3_bucket.
+	// k8s_cluster, k8s_nodepool, k8s_addon, s3_bucket, ar_registry, ca_app,
+	// kafka_cluster, load_balancer, redis_cluster or snat_gateway.
 	Resource string `json:"resource"`
 	Name     string `json:"name,omitempty"`
 	// ProjectFrom is where the project comes from: profile, project, env,
@@ -75,6 +82,10 @@ type CreatePreview struct {
 	// NetworkCheck: what the preview found wrong with the VM's subnet and
 	// security group (CompletePreview).
 	NetworkCheck *NetworkCheck `json:"network_check,omitempty"`
+	// Warnings are what the tool warns of before consent (a container run
+	// as root, a single broker): the CLI shows the preview in place of the
+	// tool's answer, so a warning goes here to be seen.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // NetworkRef is a security group of a preview, by id and name.
@@ -136,6 +147,13 @@ var tariffs = map[string]string{
 	ResourceK8sNodePool: tariffsBase + "managed-kubernetes",
 	ResourceK8sAddon:    tariffsBase + "managed-kubernetes",
 	ResourceS3Bucket:    tariffsBase + "object-storage",
+	ResourceARRegistry:  tariffsBase + "artifact-registry",
+	ResourceCAApp:       tariffsBase + "container-apps",
+	ResourceKafka:       tariffsBase + "managed-kafka",
+	ResourceLB:          tariffsBase + "load-balancer",
+	ResourceRedis:       tariffsBase + "managed-redis",
+	// The public sNAT gateway is a line of the Compute tariff.
+	ResourceSNAT: tariffsBase + "evolution-compute",
 }
 
 // The notes of a preview without a price.
@@ -488,7 +506,7 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 			i18n.T(": the call will fail without it", ": без этого команда завершится ошибкой"))
 	}
 	lines = append(lines, createCostLines(p)...)
-	for _, w := range p.NetworkCheck.lines() {
+	for _, w := range append(p.NetworkCheck.lines(), p.Warnings...) {
 		lines = append(lines, previewLabel("warning", "внимание")+w)
 	}
 
@@ -530,6 +548,18 @@ func createSummary(p CreatePreview, zone string) string {
 		return i18n.Tf("install addon %s into a Kubernetes cluster", "установить плагин %s в кластер Kubernetes", p.Name)
 	case ResourceS3Bucket:
 		return i18n.Tf("create bucket %s", "создать бакет %s", p.Name)
+	case ResourceARRegistry:
+		return i18n.Tf("create registry %s", "создать реестр %s", p.Name)
+	case ResourceCAApp:
+		return i18n.Tf("create and run container app %s", "создать и запустить приложение %s", p.Name)
+	case ResourceKafka:
+		return i18n.Tf("create Kafka cluster %s", "создать кластер Kafka %s", p.Name) + inZone
+	case ResourceLB:
+		return i18n.Tf("create load balancer %s", "создать балансировщик %s", p.Name) + inZone
+	case ResourceRedis:
+		return i18n.Tf("create Redis cluster %s", "создать кластер Redis %s", p.Name) + inZone
+	case ResourceSNAT:
+		return i18n.Tf("create SNAT gateway %s", "создать шлюз SNAT %s", p.Name) + inZone
 	}
 	return i18n.Tf("create %s %s", "создать %s %s", p.Resource, p.Name)
 }
@@ -566,6 +596,18 @@ func createdLine(p CreatePreview) string {
 			"Будет установлено: плагин %s в кластер (работает на узлах кластера)", p.Name)
 	case ResourceS3Bucket:
 		what = append(what, i18n.Tf("Object Storage bucket %s", "бакет Object Storage %s", p.Name))
+	case ResourceARRegistry:
+		what = append(what, i18n.Tf("Artifact Registry registry %s", "реестр Artifact Registry %s", p.Name))
+	case ResourceCAApp:
+		what = append(what, i18n.Tf("container app %s", "приложение Container Apps %s", p.Name))
+	case ResourceKafka:
+		what = append(what, i18n.Tf("Managed Kafka cluster %s", "кластер Managed Kafka %s", p.Name))
+	case ResourceLB:
+		what = append(what, i18n.Tf("L4 load balancer %s", "балансировщик L4 %s", p.Name))
+	case ResourceRedis:
+		what = append(what, i18n.Tf("Managed Redis cluster %s", "кластер Managed Redis %s", p.Name))
+	case ResourceSNAT:
+		what = append(what, i18n.Tf("public SNAT gateway %s", "публичный шлюз SNAT %s", p.Name))
 	default:
 		what = append(what, p.Resource+" "+p.Name)
 	}

@@ -3344,6 +3344,26 @@ func (s *Registry) completePreview(ctx context.Context, eng *engine.Engine, p en
 	return p, nil
 }
 
+// willPreview is the preview of a billable create evo does not price: the
+// resource with the key values of its will_create in the order of keys,
+// the tool's warnings, and the tariff where its rates are (Price).
+func willPreview(resource, name, zone string, will map[string]any, keys []string, warnings ...string) engine.CreatePreview {
+	p := engine.CreatePreview{Resource: resource, Name: name}
+	if zone != "" {
+		p.Zone = &deployplan.RefSpec{Name: zone}
+	}
+	for _, k := range keys {
+		p.Add(k, will[k])
+	}
+	for _, w := range warnings {
+		if w != "" {
+			p.Warnings = append(p.Warnings, w)
+		}
+	}
+	p.Price()
+	return p
+}
+
 // provisionInputError is the refusal of a provision that names no image or
 // no zone, with the argument the call lacks; nil when both are set. The
 // VM cannot be created whatever the person answers, so the preview refuses
