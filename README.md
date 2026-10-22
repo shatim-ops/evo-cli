@@ -51,8 +51,9 @@ JSON и ключи `tls.key` и `id_rsa`.
 create`, `evo ca deploy`, `evo kafka create`, `evo redis create`, `evo lb
 create` и `evo snat create` называет тариф ресурса, а предупреждения (контейнер
 от root, один брокер Kafka) показывает строками «внимание»; `deploy_apply` не
-оставляет неучтённый floating IP, если облако ответило на создание без id.
-Ломающих правок нет.
+оставляет неучтённый floating IP, если облако ответило на создание без id;
+о найденной уязвимости — приватным отчётом GitHub, не в Issues
+([SECURITY.md](SECURITY.md)). Ломающих правок нет.
 
 1.2.2 — исправления по догфуду 1.2.1 и внешним проверкам: `evo billing
 finops`, `consumption` и `balance` печатают отчёт для человека — целые рубли,
