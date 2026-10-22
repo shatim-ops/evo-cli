@@ -761,3 +761,26 @@ func TestK8s_NotesInCLIWords(t *testing.T) {
 		t.Errorf("flavor: %s", text)
 	}
 }
+
+// D19 for stacks: an s3 object of the manifest with a bucket name S3 cannot
+// take ("../x") passed stack_plan; stack_apply then created the VM and the
+// rest, and only the s3 step refused it with USAGE — consent was given to a
+// stack that could not finish. Now stack_plan refuses it, naming s3[i].bucket,
+// before a job exists; a valid name plans as before.
+func TestStackPlan_S3BucketNameCheckedAtPlan(t *testing.T) {
+	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+	for _, bad := range []string{"../x", "a/b"} {
+		mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": bad, "key": "k", "content": "c"}}}
+		m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf})
+		msg, _ := m["error"].(string)
+		if !isErr || m["job_id"] != nil || !strings.Contains(msg, "s3[0].bucket") {
+			t.Errorf("%q: %s", bad, text)
+			continue
+		}
+		wantReason(t, bad, m, text, "USAGE")
+	}
+	mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": "my-bucket", "key": "k", "content": "c"}}}
+	if m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf}); isErr || m["job_id"] == nil {
+		t.Errorf("valid bucket: %s", text)
+	}
+}
