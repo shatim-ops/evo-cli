@@ -51,7 +51,7 @@ func TestQAr3_Deploy_LostBootFIPAnswer(t *testing.T) {
 	e := &Engine{Config: config.Config{ProjectID: "p", ImageID: "img"}, Cloud: cloud,
 		Printer: output.NewWithWriter(&out, output.ModePlain, false), StateDir: dir, Timings: fastTimings}
 	_, err := e.provisionVM(context.Background(), DeployOptions{Flavor: "flavor", NonInteractive: true, Yes: true}, &state.File{Version: 1},
-		state.DefaultPath(dir), &compose.Project{Hash: "h"}, "az")
+		state.DefaultPath(dir), &compose.Project{Hash: "h"}, testZoneID)
 	if err == nil || !strings.Contains(err.Error(), "422") {
 		t.Fatalf("provisionVM = %v", err)
 	}
@@ -89,7 +89,7 @@ func TestDeploy_BootFIPFoundAfterCancel(t *testing.T) {
 	e := &Engine{Config: config.Config{ProjectID: "p", ImageID: "img"}, Cloud: cloud,
 		Printer: output.NewWithWriter(&out, output.ModePlain, false), StateDir: dir, Timings: fastTimings}
 	_, _ = e.provisionVM(ctx, DeployOptions{Flavor: "flavor", NonInteractive: true, Yes: true}, &state.File{Version: 1},
-		state.DefaultPath(dir), &compose.Project{Hash: "h"}, "az")
+		state.DefaultPath(dir), &compose.Project{Hash: "h"}, testZoneID)
 	if len(cloud.released) != 1 || cloud.released[0] != "fip-cancelled" {
 		t.Fatalf("FIP, созданный до Ctrl-C, не освобождён: %v; вывод:\n%s", cloud.released, out.String())
 	}
@@ -134,7 +134,7 @@ func TestDeploy_BootFIPLateAfterCancel(t *testing.T) {
 		e := &Engine{Config: config.Config{ProjectID: "p", ImageID: "img"}, Cloud: cloud,
 			Printer: output.NewWithWriter(&out, output.ModePlain, false), StateDir: dir, Timings: fastTimings}
 		_, _ = e.provisionVM(ctx, DeployOptions{Flavor: "flavor", NonInteractive: true, Yes: true}, &state.File{Version: 1},
-			state.DefaultPath(dir), &compose.Project{Hash: "h"}, "az")
+			state.DefaultPath(dir), &compose.Project{Hash: "h"}, testZoneID)
 		cancel()
 		switch {
 		case !never && (len(cloud.released) != 1 || cloud.released[0] != "fip-late"):

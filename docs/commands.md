@@ -2215,7 +2215,7 @@ evo deploy [flags]
       --image-id string       UUID загрузочного образа
       --non-interactive       Никогда не спрашивать; тогда и для создания ВМ, и для обновления ВМ развёртывания нужен --yes
       --project-id string     UUID проекта Cloud.ru
-      --region string         UUID зоны доступности
+      --region string         Зона доступности: имя (например, ru.AZ-2) или UUID (evo vm zones)
 ```
 
 ### Options inherited from parent commands

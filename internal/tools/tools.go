@@ -3372,28 +3372,19 @@ func provisionInputError(eng *engine.Engine) (arg string, err error) {
 
 // resolveVMZone resolves the zone of a new VM — eng.Config.Region: the region
 // argument, else CLOUDRU_REGION or the profile — to the UUID of the listed
-// zone by provision.ResolveZone, the rule of stacks and evo configure, in
-// place, and returns that zone (nil when not listed) and the list. A name
-// needs the list: unread, or naming no listed zone, it is refused before
-// anything is created. A UUID stays as given when the list is unread or
-// does not have it, as before (the create call answers for it).
+// zone by engine.ResolveZoneRef, the rule of evo deploy, in place, and
+// returns that zone and the list. The zone is nil, with no error, for a
+// UUID the list lacks or could not be read for: the create call answers
+// for it.
 func resolveVMZone(ctx context.Context, eng *engine.Engine) (*provision.AvailabilityZone, []*provision.AvailabilityZone, error) {
-	ref := eng.Config.Region
 	zones, err := listZones(ctx, eng)
+	zone, err := engine.ResolveZoneRef(zones, err, eng.Config.Region)
 	if err != nil {
-		if isUUID(ref) {
-			return nil, nil, nil
-		}
-		return nil, nil, clierrors.Prefix(i18n.Tf("availability zone %q: list zones: ", "зона доступности %q: список зон: ", ref), err)
-	}
-	zone, err := provision.ResolveZone(zones, ref)
-	if err != nil {
-		if isUUID(ref) || len(zones) == 0 {
-			return nil, zones, nil
-		}
 		return nil, zones, err
 	}
-	eng.Config.Region = zone.ID
+	if zone != nil {
+		eng.Config.Region = zone.ID
+	}
 	return zone, zones, nil
 }
 

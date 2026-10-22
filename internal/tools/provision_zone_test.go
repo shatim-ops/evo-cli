@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -328,5 +330,38 @@ func TestProvision_NoZoneOrImageRefusedBeforePreview(t *testing.T) {
 				t.Errorf("%s: облако изменено: %v", name, cloud.mutations)
 			}
 		}
+	}
+}
+
+// MCP deploy и evo deploy понимают имя зоны, как provision (план 1.2.2,
+// ревью зоны 1.2.1): превью называет зону по UUID и имени; неизвестное имя
+// — отказ USAGE уже на превью, а не после согласия, и в облаке ничего не
+// меняется.
+func TestDeploy_ZoneByNameOnPreview(t *testing.T) {
+	compose := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(compose, []byte("services:\n  web:\n    image: nginx\n    ports: [\"80:80\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}}}
+	r := zoneRegistry(t, cloud, config.Config{ProjectID: "p", ImageID: "img-1", KeyID: "k", Secret: "s", ComposeFile: compose})
+	m, text, isErr := callNamed(t, r, "deploy", map[string]any{"region": "ru.az-3"})
+	if !isErr || m["status"] != "confirmation_required" {
+		t.Fatalf("превью: %s", text)
+	}
+	var resp struct {
+		Preview engine.CreatePreview `json:"preview"`
+	}
+	_ = json.Unmarshal([]byte(text), &resp)
+	if vm := resp.Preview.VM; vm == nil || vm.Zone.ID != "z" || vm.Zone.Name != "ru.AZ-3" {
+		t.Errorf("зона превью: %s", text)
+	}
+	// Вызов с confirmed встречает имя на шаге сети — до согласия и до
+	// любых изменений (engine.TestDeploy_UnknownZoneNameRefused).
+	m, text, isErr = callNamed(t, r, "deploy", map[string]any{"region": "ru.AZ-9"})
+	if !isErr || m["reason"] != "USAGE" || !strings.Contains(text, `\"ru.AZ-9\"`) {
+		t.Errorf("неизвестное имя: %s", text)
+	}
+	if len(cloud.mutations) > 0 {
+		t.Errorf("облако изменено: %v", cloud.mutations)
 	}
 }
