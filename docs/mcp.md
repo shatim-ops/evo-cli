@@ -722,8 +722,11 @@ evo mcp --http :8080 --allow-project <UUID-1> --allow-project <UUID-2>
 читают только проект сервера: `billing_consumption` и `billing_finops` с
 `CLOUDRU_AGREEMENT_ID` — расход этого проекта в договоре (`scope: project`),
 а не всего договора, где строки и других проектов; `org_projects` — только
-этот проект. `billing_balance` отдаёт баланс договора, как раньше: баланса
-по проекту в API нет, строк проектов в нём нет. Исключение — чтения
+этот проект. Баланса договора сервер с флагом не отдаёт: это деньги всей
+организации, а баланса по проекту в API нет — `billing_balance` получает
+`CONFIG_INVALID`, `billing_finops` считает расход проекта с балансом
+`null` и `balance_error`, запас не считает. Баланс — `evo billing balance`
+с ключом договора, вне такого сервера. Исключение — чтения
 `org_quotas` и `iam_service_accounts` с аргументом `project_id`: при
 разрешённом проекте сервера они читают и другие проекты организации. Без флага сервер работает как раньше
 (`billing_*` без `project_id` с договором — весь договор, как в CLI),
@@ -841,7 +844,7 @@ claude mcp add --transport http evo http://localhost:8080/mcp \
 | H6 | отключены `embed_token=true` и `config …`: возвращают токен кластера | `k8s_kubeconfig`, `k8s_kubectl` | без `--allow-secret-export`; с `--read-only` — и по stdio |
 | H7 | значения полей с корнем из `HTTPSecretFields` (кроме `HTTPNonSecretFields`) заменены, как и `value` пары `name`/`value` или `key`/`value` с таким именем, в любом регистре (env контейнера в `ca_get`), — и внутри строки, которая сама JSON; повтор замаскированной строки или числа от 8 символов тоже заменён; ответ получает поле `redacted` | все инструменты | без `--allow-secret-export`; с `--read-only` — и по stdio |
 | H8 | не больше 32 вызовов инструментов одновременно, следующий — `SERVER_BUSY` | все инструменты | всегда |
-| H9 | `--allow-project`: вызов в проекте не из списка — `CONFIG_INVALID`; чтение шире проекта без `project_id` — только проект сервера: `billing_consumption` и `billing_finops` — расход проекта в договоре (`scope: project`), `org_projects` — только он; ресурс по id не из разрешённых проектов — `NOT_FOUND`, как ресурс, которого нет, без проекта в тексте; операция, которую сервер не запускал, — `CONFIG_INVALID`; всё до вызова (раздел [Streamable HTTP](#streamable-http), «Ресурс по id»; флаг работает и по stdio) | `deploy`, `provision`, `billing_consumption`, `billing_finops`, `org_projects`, все, что работают в проекте, и все, что адресуют ресурс по id | с флагом |
+| H9 | `--allow-project`: вызов в проекте не из списка — `CONFIG_INVALID`; чтение шире проекта без `project_id` — только проект сервера: `billing_consumption` и `billing_finops` — расход проекта в договоре (`scope: project`), `org_projects` — только он; баланса договора нет: `billing_balance` — `CONFIG_INVALID`, в `billing_finops` баланс `null`; ресурс по id не из разрешённых проектов — `NOT_FOUND`, как ресурс, которого нет, без проекта в тексте; операция, которую сервер не запускал, — `CONFIG_INVALID`; всё до вызова (раздел [Streamable HTTP](#streamable-http), «Ресурс по id»; флаг работает и по stdio) | `deploy`, `provision`, `billing_balance`, `billing_consumption`, `billing_finops`, `org_projects`, все, что работают в проекте, и все, что адресуют ресурс по id | с флагом |
 | H10 | инструмент отключён: его проверки называют файлы и сеть сервера | `doctor` | всегда |
 | H11 | `--read-only`: вызов, которому нужно согласие (`confirmed=true`), — `USAGE` с `confirmed` и без, раньше всех проверок, по HTTP — и раньше H1, H2, H4, H10; инструментов, которым согласие нужно всегда, нет в `tools/list` (флаг работает и по stdio) | все инструменты | с флагом |
 

@@ -203,7 +203,7 @@ compose file changed (with --force, even if it did not).`, `Развернуть
 	cmd.Flags().StringVarP(&composeFile, "compose-file", "f", "", i18n.T("Path to docker-compose file (default: docker-compose.yml)",
 		"Путь к compose-файлу (по умолчанию docker-compose.yml)"))
 	cmd.Flags().StringVar(&flavor, "flavor", "", i18n.T("VM flavor (default: auto)", "Flavor ВМ (по умолчанию auto — подбор по сервисам)"))
-	cmd.Flags().StringVar(&region, "region", "", i18n.T("Availability zone UUID", "UUID зоны доступности"))
+	cmd.Flags().StringVar(&region, "region", "", i18n.T("Availability zone: a name such as ru.AZ-2 or its UUID (evo vm zones)", "Зона доступности: имя (например, ru.AZ-2) или UUID (evo vm zones)"))
 	cmd.Flags().StringVar(&projectID, "project-id", "", i18n.T("Cloud.ru project UUID", "UUID проекта Cloud.ru"))
 	cmd.Flags().StringVar(&imageID, "image-id", "", i18n.T("Boot image UUID", "UUID загрузочного образа"))
 	cmd.Flags().StringVar(&image, "image", "", i18n.T("Boot image: a name from 'evo image list' or a UUID (Ubuntu or Debian)",
@@ -397,10 +397,10 @@ func newListZonesCmd() *cobra.Command {
 		Short:  i18n.T("List available availability zones", "Список зон доступности"),
 		Long: i18n.T(`List availability zones from the Cloud.ru API.
 
-Use the zone ID as the --region flag or CLOUDRU_REGION env var for deploy.
+Pass the zone's name or ID as the --region flag or CLOUDRU_REGION env var for deploy.
 Use --json for machine-readable output.`, `Список зон доступности из API Cloud.ru.
 
-ID зоны передаётся в deploy флагом --region или переменной CLOUDRU_REGION.
+Имя или ID зоны передаётся в deploy флагом --region или переменной CLOUDRU_REGION.
 Для машинного разбора — --json.`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p := cmdPrinter(cmd)

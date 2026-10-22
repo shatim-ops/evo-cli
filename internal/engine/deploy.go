@@ -543,6 +543,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}
+	region = network.ZoneID // a zone named by its name, as its UUID
 	flavorAPIName, err := e.flavorAPIName(ctx, flavorName)
 	if err != nil {
 		return state.DeploymentRecord{}, err
