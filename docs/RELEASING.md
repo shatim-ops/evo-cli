@@ -69,7 +69,7 @@ stderr, если это не оставляет дефект открытым.
      `cloud-readonly-os` (те же чтения на Windows и macOS), без одобрения. В секретах репозитория их быть не должно — их видит любой
      workflow без `environment:`.
 1. `main` зелёный в CI (в том числе `TestCommandsDoc` и `TestToolsDoc`: `docs/commands.md` и `docs/tools.md` совпадают с бинарём); локально `goreleaser check` и, по желанию,
-   `goreleaser release --snapshot --clean --skip=sign` — в `dist/` 6 архивов (в каждом `evo` и alias `cloudru-vm` до v2.0) и `checksums.txt`.
+   `goreleaser release --snapshot --clean --skip=sign,sbom` — в `dist/` 6 архивов (в каждом `evo` и alias `cloudru-vm` до v2.0) и `checksums.txt`; с `syft` в `PATH` и без `sbom` в `--skip` — ещё SBOM каждого архива.
 2. `git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3` — тег ставится на коммит в `main`.
    Если тег не запушить (облачная сессия пушит только свои ветки): Actions →
    **tag** → Run workflow с `tag` и полным `sha` коммита в `main`
@@ -80,8 +80,10 @@ stderr, если это не оставляет дефект открытым.
    только для тегов `v*`). Actions → прогон release → **Review deployments** →
    Approve. Отклонённый прогон оставляет тег без релиза; номер не
    переиспользуется, следующий — X.Y.(Z+1).
-3. `release.yml` после одобрения гоняет весь `ci.yml`, затем goreleaser: архивы, `checksums.txt`,
-   подписи cosign keyless (`*.sigstore.json`), GitHub Release. `-rc.N` публикуется как pre-release.
+3. `release.yml` после одобрения гоняет весь `ci.yml`, затем goreleaser: архивы, SBOM архивов
+   (`*.sbom.json`, SPDX), `checksums.txt`, подписи cosign keyless (`*.sigstore.json`), GitHub
+   Release; затем attestation происхождения каждого файла из `checksums.txt`. Образ MCP-сервера
+   подписывается cosign по digest. `-rc.N` публикуется как pre-release.
 4. Проверить подпись скачанного `checksums.txt` (пример для `v1.2.3`):
 
    ```
@@ -96,6 +98,25 @@ stderr, если это не оставляет дефект открытым.
 
    `v1.0.0-rc.1` и `rc.2` выпущены до переименования репозитория: их identity —
    `shatim-ops/cloudru-vm-cli`.
+
+   С 1.3.0 (решение владельца В8) ещё три проверки:
+
+   ```
+   # SBOM архива — в checksums.txt, sha256sum -c выше проверил и его
+   jq '.packages | length' evo_1.3.0_linux_amd64.tar.gz.sbom.json
+   # происхождение: собран release.yml этого репозитория из тега
+   gh attestation verify evo_1.3.0_linux_amd64.tar.gz --repo shatim-ops/evo-cli \
+     --signer-workflow shatim-ops/evo-cli/.github/workflows/release.yml
+   # образ MCP-сервера: подпись того же workflow
+   cosign verify <реестр>.cr.cloud.ru/evo:1.3.0 \
+     --certificate-identity-regexp '^https://github.com/shatim-ops/evo-cli/\.github/workflows/release\.yml@refs/tags/v' \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+   ```
+
+   Впервые — на `1.3.0-rc.1`: все шесть архивов с SBOM в `checksums.txt`,
+   `gh attestation verify` проходит, `cosign verify` образа проходит. Если
+   реестр не принял подпись (тег `sha256-….sig`), job `image` красная, а
+   образ уже опубликован без подписи: это находка rc, до стабильного тега.
 
 5. Неудачный релиз. Опубликованные тег и Release **не удаляются**: архивы
    уже могли скачать, а подписи лежат в журнале прозрачности Rekor.

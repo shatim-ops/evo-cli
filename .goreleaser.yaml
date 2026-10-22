@@ -1,8 +1,9 @@
-# Релизная сборка: бинари под 6 платформ, архивы, checksums.txt, подпись
-# cosign keyless. Запускается из .github/workflows/release.yml на тег v*.
-# Локальная проверка без публикации и подписи:
+# Релизная сборка: бинари под 6 платформ, архивы, SBOM архивов,
+# checksums.txt, подпись cosign keyless. Запускается из
+# .github/workflows/release.yml на тег v*.
+# Локальная проверка без публикации и подписи (без syft — и без SBOM):
 #   goreleaser check
-#   goreleaser release --snapshot --clean --skip=sign
+#   goreleaser release --snapshot --clean --skip=sign,sbom
 # Как выпускать релиз — docs/RELEASING.md.
 version: 2
 
@@ -78,8 +79,7 @@ checksum:
 
 # SBOM каждого архива (SPDX JSON, syft): evo_1.3.0_linux_amd64.tar.gz.sbom.json.
 # Файлы SBOM входят в checksums.txt, поэтому их покрывает его подпись и
-# attestation происхождения (release.yml). syft ставится в release.yml;
-# локально без него — goreleaser release --snapshot --clean --skip=sign,sbom.
+# attestation происхождения (release.yml). syft ставится в release.yml.
 sboms:
   - artifacts: archive
 

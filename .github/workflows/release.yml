@@ -1,8 +1,9 @@
 name: release
 
-# Тег v* → те же проверки, что в ci, → goreleaser: 6 бинарей, архивы,
-# checksums.txt, подпись cosign keyless, GitHub Release. Как выпускать —
-# docs/RELEASING.md.
+# Тег v* → те же проверки, что в ci, → goreleaser: 6 бинарей, архивы, SBOM,
+# checksums.txt, подпись cosign keyless, GitHub Release, attestation
+# происхождения; образ MCP-сервера — с подписью cosign по digest. Как
+# выпускать и проверять — docs/RELEASING.md.
 on:
   push:
     tags: ["v*"]
@@ -45,6 +46,8 @@ jobs:
       # OIDC-токен для cosign keyless: Fulcio выдаёт по нему сертификат
       # с identity этого workflow.
       id-token: write
+      # Attestation происхождения (SLSA provenance) файлов релиза.
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,6 +68,14 @@ jobs:
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      # syft пишет SBOM архивов (sboms в .goreleaser.yaml). go install
+      # сверяет модуль с базой контрольных сумм Go, и в job, которая может
+      # получить OIDC-токен этого workflow, не появляется ещё одна action.
+      - name: syft
+        run: |
+          go install github.com/anchore/syft/cmd/syft@v1.54.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: goreleaser check
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
@@ -80,6 +91,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Каждый файл из checksums.txt (архивы и их SBOM) получает attestation
+      # происхождения: какой workflow на каком коммите его собрал. Проверка —
+      # gh attestation verify (docs/RELEASING.md).
+      - name: attestation происхождения
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+
   # Образ MCP-сервера в Artifact Registry Cloud.ru — источник карточки
   # Marketplace. Секреты (Settings → Secrets → Actions):
   #   CLOUDRU_AR_REGISTRY  имя реестра (<имя>.cr.cloud.ru) или полный хост
@@ -91,6 +110,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # cosign keyless подписывает опубликованный образ по digest. Токен
+      # может запросить любой шаг job, а шаги — код помеченного коммита;
+      # код образа (docker build, docker run) переменных job не получает.
+      id-token: write
     # Ключ Artifact Registry — только в env шагов, которым он нужен (проверка
     # и push), а не всей job: сборка и smoke-тест запускают код образа, и
     # переменные job были бы видны им (аудит безопасности 19.10, SEC-5).
@@ -150,6 +173,9 @@ jobs:
           .github/scripts/mcp-smoke.sh http://localhost:8080 release-smoke-0123456789 "$VERSION"
           docker rm -f mcp
 
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: steps.ar.outputs.enabled == 'true'
+
       - name: docker push
         if: steps.ar.outputs.enabled == 'true'
         env:
@@ -166,6 +192,11 @@ jobs:
           echo "$AR_SECRET" | docker login "$HOST" -u "$AR_KEY_ID" --password-stdin
           docker tag "evo-release:$VERSION" "$HOST/evo:$VERSION"
           docker push "$HOST/evo:$VERSION"
+          # Подпись — по digest, а не по тегу: тег можно передвинуть.
+          # Подпись ложится в реестр рядом с образом (тег sha256-….sig),
+          # запись — в Rekor; :latest — тот же digest.
+          DIGEST_REF=$(docker inspect --format '{{index .RepoDigests 0}}' "$HOST/evo:$VERSION")
+          cosign sign --yes "$DIGEST_REF"
           if [ "$LATEST" = true ]; then
             docker tag "$HOST/evo:$VERSION" "$HOST/evo:latest"
             docker push "$HOST/evo:latest"
