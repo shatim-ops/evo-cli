@@ -1,12 +1,21 @@
 name: ci
 
+# Один прогон на изменение: PR и push в main (аудит процессов 1.2.1, PR 3).
+# Push в ветку PR раньше давал два прогона — по push и по pull_request.
+# Ветку без PR CI не проверяет: открывайте PR (черновик — тоже PR).
 on:
   push:
     # Тег гоняет этот же workflow через release.yml, второй прогон не нужен.
-    branches: ["**"]
+    branches: [main]
   pull_request:
   # Вызывается из release.yml перед сборкой релиза.
   workflow_call:
+
+# Новый push в PR отменяет его идущую проверку; main и релиз
+# (workflow_call из release.yml) не отменяются никогда.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # GITHUB_TOKEN только на чтение: сборке и тестам писать в репозиторий
 # незачем, а код PR и зависимостей выполняется в этих job.
