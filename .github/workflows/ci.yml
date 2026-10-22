@@ -166,13 +166,14 @@ jobs:
           fetch-depth: 0
 
       # SHA базы — не текст события, но идёт через env, как всё из события.
-      # «Миграция» — новая строка с этим словом в CHANGELOG.md (ломающее).
+      # Ломающее — новый заголовок «### Миграция» в CHANGELOG.md, а не слово
+      # в тексте пункта.
       - name: классы по путям
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           MIGRATION=0
-          if git diff "$BASE...HEAD" -- CHANGELOG.md | grep -q '^+.*Миграция'; then MIGRATION=1; fi
+          if git diff "$BASE...HEAD" -- CHANGELOG.md | grep -q '^+### Миграция'; then MIGRATION=1; fi
           git diff --name-only "$BASE...HEAD" | MIGRATION=$MIGRATION .github/scripts/classify.sh |
             .github/scripts/classify_summary.sh >> "$GITHUB_STEP_SUMMARY"
 
