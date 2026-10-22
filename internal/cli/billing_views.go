@@ -28,20 +28,24 @@ import (
 // prints the tool's answer as is, at full precision.
 
 // rub is a sum in whole rubles with a digit separator and ₽: "14 998 ₽"
-// ("14,998 ₽" in English); a sum under a ruble is "< 1 ₽", not a zero.
+// ("14,998 ₽" in English); a sum under a ruble is "< 1 ₽", not a zero. The
+// digits come from the float itself, not an int64: a sum beyond int64
+// printed its overflow, a negative sum (Cursor review of 1.2.2, CUR122-6).
+// A value that is no number (NaN, ±Inf from a numeric string) is "n/a".
 func rub(v float64) string {
 	switch {
+	case math.IsNaN(v) || math.IsInf(v, 0):
+		return i18n.T("n/a", "н/д")
 	case v > 0 && v < 1:
 		return "< 1 ₽"
 	case v < 0 && v > -1:
 		return "> -1 ₽"
 	}
-	n := int64(math.Round(v))
 	sign := ""
-	if n < 0 {
-		sign, n = "-", -n
+	if v < 0 {
+		sign, v = "-", -v
 	}
-	digits := strconv.FormatInt(n, 10)
+	digits := strconv.FormatFloat(math.Round(v), 'f', 0, 64)
 	sep := i18n.T(",", " ")
 	var b strings.Builder
 	for i, d := range digits {

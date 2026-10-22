@@ -68,8 +68,11 @@ func (*cancelCloud) GetImage(context.Context, string) (*provision.ImageDetail, e
 func (*cancelCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
 	return []*provision.Image{{ID: "img-1", Name: "ubuntu"}}, nil
 }
+
+// ListAvailabilityZones lists the zone "z" the tests' configurations name:
+// a zone the list lacks is refused before anything is created (CUR122-4).
 func (*cancelCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
-	return nil, nil
+	return []*provision.AvailabilityZone{{ID: "z"}}, nil
 }
 func (*cancelCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
 	return []*provision.Subnet{{ID: "sn-1", Name: "default"}}, nil

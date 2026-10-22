@@ -16,6 +16,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/s3"
 )
 
 // Checks of arguments the handlers make before the preview and before the
@@ -254,12 +255,17 @@ func k8sClusterName(name string) error {
 // 3-63 lowercase letters, digits, dots and hyphens.
 var bucketNameRe = regexp.MustCompile(`^[a-z0-9.-]{3,63}$`)
 
+// bucketName checks the name of a new bucket: the rule the schema states,
+// and the client's own (s3.CheckBucketName), which refuses names the
+// pattern lets through — "a..b", an IP address — so that no consent is
+// asked for a create the client would refuse (Cursor review of 1.2.2,
+// CUR122-2).
 func bucketName(name string) error {
-	if bucketNameRe.MatchString(name) {
+	if bucketNameRe.MatchString(name) && s3.CheckBucketName(name) == nil {
 		return nil
 	}
 	return clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("bucket name %q is not accepted", "имя бакета %q не подходит", name),
-		i18n.T("3-63 characters: lowercase Latin letters, digits, '.' and '-'.",
-			"3–63 символа: строчные латинские буквы, цифры, '.' и '-'."))
+		i18n.T("3-63 characters: lowercase Latin letters, digits, '.' and '-'; no '..', not an IP address.",
+			"3–63 символа: строчные латинские буквы, цифры, '.' и '-'; без '..', не IP-адрес."))
 }

@@ -36,8 +36,9 @@ type vmNetwork struct {
 // list as read, and listErr, the error of reading it. A UUID stays as
 // given (nil zone, no error) when the list is unread, empty or lacks it:
 // the create call answers for it, as before. A name needs the list:
-// unread, it is refused with the list's error; naming no listed zone, with
-// ResolveZone's USAGE and the zones to choose from. An empty ref names
+// unread, it is refused with the list's error; naming no listed zone — an
+// empty list too (Cursor review of 1.2.2, CUR122-4: the name reached the
+// API) — with ResolveZone's USAGE. An empty ref names
 // nothing. evo deploy, evo vm create and MCP provision take the zone by
 // this one rule (review of the zone in 1.2.1), before the consent and
 // anything created.
@@ -51,7 +52,7 @@ func ResolveZoneRef(zones []*provision.AvailabilityZone, listErr error, ref stri
 		return nil, clerrors.Prefix(i18n.Tf("availability zone %q: list zones: ", "зона доступности %q: список зон: ", ref), listErr)
 	}
 	zone, err := provision.ResolveZone(zones, ref)
-	if err != nil && (isUUID(ref) || len(zones) == 0) {
+	if err != nil && isUUID(ref) {
 		return nil, nil
 	}
 	return zone, err

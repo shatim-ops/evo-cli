@@ -76,13 +76,12 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	}
 	zoneInput := firstNonEmpty(p.Zone, "ru.AZ-2")
 	zone := provision.AvailabilityZone{ID: zoneInput, Name: zoneInput}
+	// The zone by its UUID or its name in any case: the rule of deploy and
+	// provision (provision.ResolveZone; Cursor review of 1.2.2, CUR122-3).
 	zones, zErr := cloud.ListAvailabilityZones(ctx)
 	if zErr == nil {
-		for _, z := range zones {
-			if z.ID == zoneInput || z.Name == zoneInput {
-				zone = *z
-				break
-			}
+		if z, err := provision.ResolveZone(zones, zoneInput); err == nil {
+			zone = *z
 		}
 	}
 	if !uuidRe.MatchString(zone.ID) {
