@@ -85,6 +85,20 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	if err != nil {
 		return errResult(err), true
 	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	// A second gateway of the same name is a second bill: refused before
+	// the consent, as every other create (fault matrix, process audit
+	// 1.2.1: a repeated snat_create made one more each time).
+	existing, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list SNAT gateways: %w", "проверка, что имя свободно: список шлюзов SNAT: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult(i18n.T("SNAT gateway", "шлюз SNAT"), name, id, st, "snat_list")
+	}
 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		will := map[string]any{
@@ -101,10 +115,6 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 		}), true
 	}
 
-	eng, err := s.authedEngine(ctx, nil)
-	if err != nil {
-		return errResult(err), true
-	}
 	gw, err := eng.Cloud.CreateNATGateway(ctx, provision.CreateNATGatewayRequest{
 		Name:               name,
 		NATType:            provision.NATTypePublicSNAT,
