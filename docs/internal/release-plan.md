@@ -34,7 +34,7 @@
 | `mcp --allow-project`: баланс договора не отдаётся (H9, DECISIONS D18; ломающее для MCP с флагом — по условиям 1–5) | #177 |
 | CLI `--json`: поля ответа инструмента в `details` конверта ошибки; пароль ВМ строкой в тексте ошибки (FB121-1) | #178 |
 | `evo deploy --region` по имени зоны: одно правило `engine.ResolveZoneRef` для deploy, vm create и provision; `ZoneRefError` удалена | #179 |
-| `k8s`: примечания словами CLI (русский текст `i18n`), `flavor` именем в `k8s_plan` | #180 |
+| `evo k8s plan`, `create`, `add-nodepool`: примечания словами CLI (русский текст `i18n`, догфуд №4), `flavor` именем в `k8s_plan` | #180 |
 
 Осталось и найдено:
 
