@@ -1159,18 +1159,27 @@ func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) err
 	}
 	// One still being created cannot be deleted yet (422 «… from current
 	// state»): it is retried until it settles, up to Timings.settlePolls
-	// more tries, rather than left billed (cloud-e2e #121).
+	// more tries, rather than left billed (cloud-e2e #121). The whole
+	// release is bounded too — those polls and 30 s for the last delete —
+	// so a slow API cannot hold the rollback for minutes.
 	t := e.timings()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(t.settlePolls())*t.FIPPollInterval+30*time.Second)
+	defer cancel()
 	for try := 0; ; try++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		err := e.Cloud.DeleteFloatingIP(ctx, fip.ID, projectID)
-		cancel()
 		if err == nil {
 			return nil
 		}
 		if provision.NotInCurrentState(err) && try < t.settlePolls() {
-			time.Sleep(t.FIPPollInterval)
-			continue
+			if try == 0 {
+				e.Printer.StepDone(i18n.Tf("Floating IP %s is still being created; waiting to release it...",
+					"floating IP %s ещё создаётся; жду, чтобы освободить его...", fip.IPAddress))
+			}
+			select {
+			case <-ctx.Done():
+			case <-time.After(t.FIPPollInterval):
+				continue
+			}
 		}
 		e.Printer.Warning(i18n.Tf("floating IP %s (%s) was not released: %v; delete it in the Cloud.ru console",
 			"floating IP %s (%s) не освобождён: %v; удалите его в консоли Cloud.ru", fip.IPAddress, fip.ID, err))
