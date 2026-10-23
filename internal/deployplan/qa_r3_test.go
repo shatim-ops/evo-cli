@@ -6,6 +6,7 @@ package deployplan
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -55,7 +56,7 @@ func (c *lostFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloatin
 }
 func (c *lostFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
 	return []*provision.FloatingIP{{ID: "fip-user", Name: "my-reserved", IPAddress: "198.51.100.1", State: "available"},
-		{ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "in_use"}}, nil
+		{ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "in_use", VM: json.RawMessage(`{"id":"vm-old"}`)}}, nil
 }
 
 // R2/R9: the lost create is found by its name and recorded; a free FIP of
@@ -208,5 +209,64 @@ func TestQAB_Apply_AdoptStoppedVMCreatesNoFIP(t *testing.T) {
 		Network: NetworkSpec{FloatingIP: true}}, 0, nil)
 	if err != nil || res.Status != "stopped" || c.fipCreates != 0 || res.PublicIP != "203.0.113.9" {
 		t.Fatalf("err=%v res=%+v fipCreates=%d", err, res, c.fipCreates)
+	}
+}
+
+// orphanOnlyFIPCloud: the create answer is lost, and the project holds a
+// free floating IP of the plan's name — an orphan of an earlier VM — not
+// bound to this one.
+type orphanOnlyFIPCloud struct{ lostFIPCloud }
+
+func (c *orphanOnlyFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return []*provision.FloatingIP{{ID: "fip-orphan", Name: "x-fip", IPAddress: "203.0.113.8", State: "available"}}, nil
+}
+
+// A3 (Cursor 1.2.3): the address found by name is taken only when it is
+// bound to this VM. An orphan "<name>-fip" of an earlier VM was recorded as
+// the new VM's public IP with the note "attached"; now none is recorded and
+// the note sends the user to deploy_apply again, which adopts the VM with
+// the address it has.
+func TestApply_LostFIPOrphanByNameNotTaken(t *testing.T) {
+	ip, id, note := ensureFloatingIP(context.Background(), &orphanOnlyFIPCloud{}, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
+	if ip != "" || id != "" || !strings.Contains(note, "deploy_apply again") {
+		t.Errorf("orphan taken: ip %q id %q note %q", ip, id, note)
+	}
+}
+
+// ownLostFIPCloud: the create answer is lost, and the address it made is
+// listed in the form the answer gives it then.
+type ownLostFIPCloud struct {
+	lostFIPCloud
+	fip provision.FloatingIP
+}
+
+func (c *ownLostFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	f := c.fip
+	return []*provision.FloatingIP{&f}, nil
+}
+
+// A3, review of #265: the address the lost create made is this VM's in the
+// forms the list gives it — bound through the interface only (vm absent),
+// or not bound yet while it is created or attached (the create named the
+// interface). Left unrecorded, the next deploy_apply would make a second
+// one and leave this one billed.
+func TestApply_LostFIPOwnTakenInEveryForm(t *testing.T) {
+	for label, f := range map[string]provision.FloatingIP{
+		"bound through the interface": {ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "in_use",
+			Interface: json.RawMessage(`{"id":"if-1","name":"eth0"}`)},
+		"being attached": {ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "attaching"},
+		"being created":  {ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "creating"},
+	} {
+		c := &ownLostFIPCloud{fip: f}
+		ip, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
+		if id != "fip-made" || ip != "203.0.113.7" {
+			t.Errorf("%s: ip %q id %q, want fip-made recorded", label, ip, id)
+		}
+	}
+	// Bound to another VM's interface: not this VM's.
+	c := &ownLostFIPCloud{fip: provision.FloatingIP{ID: "fip-other", Name: "x-fip", IPAddress: "203.0.113.8", State: "in_use",
+		Interface: json.RawMessage(`{"id":"if-9"}`), VM: json.RawMessage(`{"id":"vm-9"}`)}}
+	if _, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old"); id != "" {
+		t.Errorf("another VM's address taken: %q", id)
 	}
 }

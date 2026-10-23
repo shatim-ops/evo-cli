@@ -1,0 +1,1027 @@
+openapi: 3.0.3
+info:
+    title: Cloud.ru Container Jobs OpenAPI 3.0
+    description: |-
+        [Документация Container Jobs](https://cloud.ru/docs/container-apps-evolution/ug/index.html).
+
+        При каждом запросе к сервису в query необходимо передавать [идентификатор проекта](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__project-id).
+
+        Для аутентификации в заголовке Authorization используйте [токен](https://cloud.ru/docs/container-apps-evolution/ug/topics/api-ref__authentication).
+    version: v2
+servers:
+    - url: https://containers.api.cloud.ru
+paths:
+    /v2/jobs:
+        get:
+            tags:
+                - JobService
+            description: Получить список заданий с пагинацией.
+            operationId: JobService_List
+            parameters:
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: Количество заданий, которое вернется в ответе на запрос.
+                  schema:
+                    type: string
+                - name: pageToken
+                  in: query
+                  description: Строковый идентификатор, который указывает с какого места нужно начать выборку данных для следующей страницы.
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    Выражение, фильтрующее ответ.
+                    Например, ``count[gt]5;created_at[gte]2025-02-20``.
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: Название поля по которому производится сортировка.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListResponse'
+            security:
+                - IAM: []
+        post:
+            tags:
+                - JobService
+            description: Создание и запуск задания.
+            operationId: JobService_Create
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+    /v2/jobs/{id}/systemLogs:
+        get:
+            tags:
+                - JobService
+            description: Получение системных логов или событий задания по ``id`` и ``project_id``.
+            operationId: JobService_ListSystemLogs
+            parameters:
+                - name: id
+                  in: path
+                  description: Идентификатор задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListJobSystemLogsResponse'
+            security:
+                - IAM: []
+    /v2/jobs/{jobId}/operations:
+        get:
+            tags:
+                - JobService
+            description: Получение списка операций с заданием по ``job_id`` и ``project_id``.
+            operationId: JobService_ListOperations
+            parameters:
+                - name: jobId
+                  in: path
+                  description: Идентификатор задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: Количество операций, которое вернется в ответе на запрос.
+                  schema:
+                    type: string
+                - name: pageToken
+                  in: query
+                  description: Строковый идентификатор, который указывает с какого места нужно начать выборку данных для следующей страницы.
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    Выражение, фильтрующее ответ.
+                    Например, ``count[gt]5;created_at[gte]2025-02-20``.
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: Название поля по которому производится сортировка.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListJobOperationsResponse'
+            security:
+                - IAM: []
+    /v2/jobs/{jobName}/executions:
+        get:
+            tags:
+                - JobService
+            description: Получить список выполнений задания с пагинацией.
+            operationId: JobService_ListExecutions
+            parameters:
+                - name: jobName
+                  in: path
+                  description: Название задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: Количество заданий, которое вернется в ответе на запрос.
+                  schema:
+                    type: string
+                - name: pageToken
+                  in: query
+                  description: Строковый идентификатор, который указывает с какого места нужно начать выборку данных для следующей страницы.
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    Выражение, фильтрующее ответ.
+                    Например, ``count[gt]5;created_at[gte]2025-02-20``.
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: Название поля по которому производится сортировка.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListExecutionsResponse'
+            security:
+                - IAM: []
+    /v2/jobs/{jobName}/executions/{executionName}:
+        get:
+            tags:
+                - JobService
+            description: 'Получение подробной информации о сущности выполнения задания: название, статус.'
+            operationId: JobService_GetExecution
+            parameters:
+                - name: jobName
+                  in: path
+                  description: Название задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: executionName
+                  in: path
+                  description: Название выполнения задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Execution'
+            security:
+                - IAM: []
+    /v2/jobs/{jobName}/executions/{executionName}:cancel:
+        post:
+            tags:
+                - JobService
+            description: Отмена выполнения задания.
+            operationId: JobService_CancelExecution
+            parameters:
+                - name: jobName
+                  in: path
+                  description: Название задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: executionName
+                  in: path
+                  description: Название выполнения задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+            security:
+                - IAM: []
+    /v2/jobs/{jobName}/logs:
+        get:
+            tags:
+                - JobService
+            description: Получение списка логов задания по ``job_name`` и ``project_id``.
+            operationId: JobService_ListLogs
+            parameters:
+                - name: jobName
+                  in: path
+                  description: Название задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: Количество логов заданий, которое вернется в ответе на запрос.
+                  schema:
+                    type: string
+                - name: pageToken
+                  in: query
+                  description: Строковый идентификатор, который указывает с какого места нужно начать выборку данных для следующей страницы.
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    Выражение, фильтрующее ответ.
+                    Например, ``count[gt]5;created_at[gte]2025-02-20``.
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: Название поля по которому производится сортировка.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListJobLogsResponse'
+            security:
+                - IAM: []
+    /v2/jobs/{jobName}:execute:
+        post:
+            tags:
+                - JobService
+            description: Запуск выполнения задания (синхронный метод).
+            operationId: JobService_Execute
+            parameters:
+                - name: jobName
+                  in: path
+                  description: Название задания.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExecuteRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Execution'
+            security:
+                - IAM: []
+    /v2/jobs/{name}:
+        get:
+            tags:
+                - JobService
+            description: Получение подробной информации о задании.
+            operationId: JobService_Get
+            parameters:
+                - name: name
+                  in: path
+                  description: Название задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Job'
+            security:
+                - IAM: []
+        delete:
+            tags:
+                - JobService
+            description: Удаление задания.
+            operationId: JobService_Delete
+            parameters:
+                - name: name
+                  in: path
+                  description: Название задания.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+        patch:
+            tags:
+                - JobService
+            description: Создание новой версии задания.
+            operationId: JobService_Patch
+            parameters:
+                - name: name
+                  in: path
+                  description: Название задания.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PatchRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+    /v2/jobs:check_name:
+        post:
+            tags:
+                - JobService
+            description: Проверка наличия названия задания в проекте.
+            operationId: JobService_CheckName
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CheckNameRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CheckNameResponse'
+            security:
+                - IAM: []
+components:
+    schemas:
+        AsyncOperation:
+            type: object
+            properties:
+                id:
+                    example: 00000000-0000-0000-0000-000000000001
+                    title: Operation ID (UUID)
+                    type: string
+                    description: Идентификатор операции.
+                resourceName:
+                    example: urn:cloud:container_apps::{project_id}:container_app
+                    title: Resource name
+                    type: string
+                    description: |-
+                         Информация о ресурсе, над которым производится операция.
+                         Отображается в формате: ``urn:cloud:SERVICE:ZONE_OPT:PROJECT_OPT:RESOURCE_TYPE_OPT``.
+                         Пример: ``urn:cloud:lbaas::496e40f7-cc4b-4fa4-b42a-8cd2c9360716:backend``
+                resourceId:
+                    example: 00000000-0000-0000-0000-000000000002
+                    title: Resource ID
+                    type: string
+                    description: |-
+                        Уникальный идентификатор ресурса, над которым производится операция.
+                         Пример: ``496e40f7-cc4b-4fa4-b42a-8cd2c9360716``
+                createdAt:
+                    type: string
+                    description: Дата и время создания ресурса.
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: Дата и время обновления ресурса.
+                    format: date-time
+                done:
+                    example: true
+                    title: 'Operation completion flag: false if operation is still in process.'
+                    type: boolean
+                    description: |-
+                        Флаг завершенности операции.
+                         Если значение `false`, то операция в процессе выполнения.
+                         Если значение `true`, то операция завершена и поле `error` может быть заполнено.
+                description:
+                    example: Описание операции
+                    title: Описание операции
+                    type: string
+                    description: Описание операции. От 0 до 255 символов.
+                error:
+                    $ref: '#/components/schemas/Status'
+        CheckNameRequest:
+            type: object
+            properties:
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                name:
+                    type: string
+                    description: Название задания.
+        CheckNameResponse:
+            type: object
+            properties:
+                isExist:
+                    type: boolean
+                    description: Пометка о том, существует ли название.
+        CreateRequest:
+            type: object
+            properties:
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                name:
+                    type: string
+                    description: Название задания.
+                description:
+                    type: string
+                    description: Описание задания.
+                runImmediately:
+                    type: boolean
+                    description: Немедленный запуск.
+                configuration:
+                    $ref: '#/components/schemas/JobConfiguration'
+                template:
+                    $ref: '#/components/schemas/JobTemplate'
+                metadata:
+                    allOf:
+                        - $ref: '#/components/schemas/JobMetadata'
+                    description: Public API
+        ExecuteRequest:
+            type: object
+            properties:
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                jobName:
+                    type: string
+                    description: Название задания.
+                params:
+                    title: Параметры выполнения для контейнеров.
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/JobExecutionParams'
+                    description: Ключи словаря — названия контейнеров, например ``jobContainerName``. Вместо ``additionalProp1`` укажите название контейнера.
+        Execution:
+            type: object
+            properties:
+                executionName:
+                    type: string
+                    description: Название выполнения задания.
+                executionStatus:
+                    type: string
+                    description: Статус выполнения.
+                createdAt:
+                    type: string
+                    description: Дата и время создания.
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: Дата и время обновления.
+                    format: date-time
+                template:
+                    $ref: '#/components/schemas/JobTemplate'
+        GoogleProtobufAny:
+            type: object
+            properties:
+                '@type':
+                    type: string
+                    description: Тип сериализованного представления сообщения.
+            additionalProperties: true
+            description: Содержит сериализованное представление случайного сообщения, а также тип этого сообщения.
+        Job:
+            type: object
+            properties:
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                id:
+                    type: string
+                    description: Идентификатор задания.
+                name:
+                    type: string
+                    description: Название задания.
+                description:
+                    type: string
+                    description: Описание задания.
+                status:
+                    type: string
+                    description: Статус задания.
+                createdAt:
+                    type: string
+                    description: Дата и время создания.
+                    format: date-time
+                createdBy:
+                    type: string
+                    description: Создатель.
+                updatedAt:
+                    type: string
+                    description: Дата и время обновления.
+                    format: date-time
+                updatedBy:
+                    type: string
+                    description: Обновивший.
+                configuration:
+                    $ref: '#/components/schemas/JobConfiguration'
+                template:
+                    $ref: '#/components/schemas/JobTemplate'
+                metadata:
+                    $ref: '#/components/schemas/JobMetadata'
+        JobConfiguration:
+            type: object
+            properties:
+                privileged:
+                    example: true
+                    type: boolean
+                    description: Включить привилегированный режим для задания.
+                loggingService:
+                    $ref: '#/components/schemas/JobLoggingService'
+        JobContainer:
+            type: object
+            properties:
+                name:
+                    example: my-container-job
+                    type: string
+                    description: Название контейнера.
+                image:
+                    example: helloworld.cr.cloud.ru/react-hello-world:latest
+                    type: string
+                    description: URI образа контейнера.
+                env:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobEnv'
+                    description: Переменные окружения.
+                command:
+                    type: array
+                    items:
+                        type: string
+                    description: Команда.
+                args:
+                    type: array
+                    items:
+                        type: string
+                    description: Аргументы.
+                resources:
+                    allOf:
+                        - $ref: '#/components/schemas/JobContainerResources'
+                    description: Ресурсы контейнера.
+                volumeMounts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobVolumeMount'
+                    description: Монтирование томов.
+                livenessProbe:
+                    $ref: '#/components/schemas/JobLivenessProbe'
+        JobContainerResources:
+            type: object
+            properties:
+                cpu:
+                    example: 0.1
+                    type: string
+                    description: Запрос CPU.
+                memory:
+                    example: 256Mi
+                    type: string
+                    description: Запрос памяти.
+                gpu:
+                    $ref: '#/components/schemas/JobContainerResourcesGPU'
+        JobContainerResourcesGPU:
+            type: object
+            properties:
+                count:
+                    example: 0
+                    type: integer
+                    description: Запрос GPU.
+                    format: uint32
+                sku:
+                    example: gpu_a100
+                    type: string
+                    description: Тип GPU.
+        JobEnv:
+            type: object
+            properties:
+                name:
+                    example: MY_ENV_VAR
+                    type: string
+                    description: Имя переменной.
+                value:
+                    example: value
+                    type: string
+                    description: Значение переменной.
+                type:
+                    example: secret
+                    type: string
+                    description: Тип переменной.
+                                 Укажите ``secret``, чтобы использовать значение из Secret Management.
+                                 В этом случае в поле ``value`` укажите название секрета из Secret Management.
+        JobExecProbe:
+            type: object
+            properties:
+                command:
+                    type: string
+                    items:
+                        type: string
+                    description: Команда.
+        JobExecutionParams:
+            type: object
+            properties:
+                command:
+                    type: string
+                    items:
+                        type: string
+                    description: Команда.
+                args:
+                    type: string
+                    items:
+                        type: string
+                    description: Аргументы.
+                env:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobEnv'
+        JobInitContainer:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Название инициализирующего контейнера.
+                image:
+                    type: string
+                    description: URI образа.
+                env:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobEnv'
+                    description: Переменные окружения.
+                command:
+                    type: array
+                    items:
+                        type: string
+                    description: Команда.
+                args:
+                    type: array
+                    items:
+                        type: string
+                    description: Аргументы.
+                resources:
+                    allOf:
+                        - $ref: '#/components/schemas/JobContainerResources'
+                    description: Ресурсы контейнера.
+                volumeMounts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobVolumeMount'
+                    description: Монтирование томов.
+        JobLivenessProbe:
+            type: object
+            properties:
+                execProbe:
+                    $ref: '#/components/schemas/JobExecProbe'
+                initialDelaySeconds:
+                    type: integer
+                    description: Задержка перед первым зондированием.
+                    format: int32
+                periodSeconds:
+                    type: integer
+                    description: Период зондирования.
+                    format: int32
+                timeoutSeconds:
+                    type: integer
+                    description: Таймаут зондирования.
+                    format: int32
+                failureThreshold:
+                    type: integer
+                    description: Порог отказов.
+                    format: int32
+        JobLog:
+            type: object
+            properties:
+                timestamp:
+                    type: string
+                    description: Дата и время.
+                    format: date-time
+                message:
+                    type: string
+                    description: Запись лога.
+                versionId:
+                    type: string
+                    description: Идентификатор версии.
+                podName:
+                    type: string
+                    description: Название пода.
+                level:
+                    type: string
+                    description: Уровень логирования.
+                containerName:
+                    type: string
+                    description: Название контейнера.
+                jobExecutionName:
+                    type: string
+                    description: Название выполнения задания.
+        JobLoggingService:
+            type: object
+            properties:
+                isEnabled:
+                    type: boolean
+                    description: Включить сервис логирования.
+                groupId:
+                    type: string
+                    description: Идентификатор группы логов.
+            description: Стартовая настройка для логирования.
+        JobMetadata:
+            type: object
+            properties:
+                createdByProduct:
+                    type: string
+                    description: Создано продуктом.
+        JobSystemLog:
+            type: object
+            properties:
+                productInstanceId:
+                    type: string
+                jobId:
+                    type: string
+                versionId:
+                    type: string
+                executionId:
+                    type: string
+                message:
+                    type: string
+                    description: Сообщение.
+                eventType:
+                    type: string
+                    description: Тип события.
+                component:
+                    type: string
+                    description: Компонент.
+                componentId:
+                    type: string
+                    description: Идентификатор компонента.
+                reason:
+                    type: string
+                    description: Причина.
+                firstTimestamp:
+                    type: string
+                    description: Дата и время первого появления.
+                    format: date-time
+                lastTimestamp:
+                    type: string
+                    description: Дата и время последнего появления.
+                    format: date-time
+        JobTemplate:
+            type: object
+            properties:
+                maxRetries:
+                    example: 3
+                    type: integer
+                    description: Максимальное количество перезапусков задания.
+                    format: integer
+                timeout:
+                    example: 86400
+                    type: integer
+                    description: Максимальное время выполнения задания в секундах, включая перезапуски. При превышении задание будет завершено.
+                    format: integer
+                containers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobContainer'
+                    description: Контейнеры задания.
+                initContainers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobInitContainer'
+                    description: Инициализирующие контейнеры.
+                volumes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobVolume'
+                    description: Тома.
+            description: JobTemplate start
+        JobVolume:
+            type: object
+            properties:
+                name:
+                    example: volume-name-1
+                    type: string
+                    description: Название тома. Название должно соответствовать RFC1035, максимальная длина --- 20.
+                type:
+                    example: s3
+                    title: Тип тома.
+                    type: string
+                    description: 'Тип тома. Пример упрощенного варианта: s3'
+                volumeAttributes:
+                    example: {"bucketName": "bucket-name-1", "entrypoint": "https://s3.cloud.ru", "tenantId": "tenant-id-1", "region": "ru-central-1"}
+                    title: Атрибуты тома.
+                    type: string
+                    additionalProperties:
+                        type: string
+                    description: Атрибуты тома. Для S3 достаточно передать только bucketName — остальные поля подставятся автоматически.
+        JobVolumeMount:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Название тома.
+                mountPath:
+                    example: /data
+                    type: string
+                    description: Путь в контейнере для подключения тома.
+                subPath:
+                    example: /data
+                    type: string
+                    description: (Опционально) Путь в томе для подключения к контейнеру.
+                readOnly:
+                    type: boolean
+                    description: Только для чтения.
+        ListExecutionsResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Execution'
+                nextPageToken:
+                    example: bGltaXQ9MTAmb2Zmc2V0PTEwJm9yZGVyX2J5PS1jcmVhdGVkX2F0C********==
+                    type: string
+                    description: Токен для перехода на следующую страницу.
+                total:
+                    type: number
+                    description: Общее число выполнений.
+        ListJobLogsResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobLog'
+                nextPageToken:
+                    example: bGltaXQ9MTAmb2Zmc2V0PTEwJm9yZGVyX2J5PS1jcmVhdGVkX2F0C********==
+                    type: string
+                    description: Токен для перехода на следующую страницу.
+                total:
+                    type: number
+                    description: Общее число записей логов.
+        ListJobOperationsResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AsyncOperation'
+                nextPageToken:
+                    example: bGltaXQ9MTAmb2Zmc2V0PTEwJm9yZGVyX2J5PS1jcmVhdGVkX2F0C********==
+                    type: string
+                    description: Токен для перехода на следующую страницу.
+                total:
+                    type: number
+                    description: Общее число операций.
+        ListJobSystemLogsResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/JobSystemLog'
+        ListResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Job'
+                nextPageToken:
+                    example: bGltaXQ9MTAmb2Zmc2V0PTEwJm9yZGVyX2J5PS1jcmVhdGVkX2F0C********==
+                    type: string
+                    description: Токен для перехода на следующую страницу.
+                total:
+                    type: number
+                    description: Общее число заданий.
+        PatchRequest:
+            type: object
+            properties:
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                name:
+                    type: string
+                    description: Название задания.
+                description:
+                    type: string
+                    description: Описание задания.
+                runImmediately:
+                    type: boolean
+                    description: Запустить немедленно.
+                configuration:
+                    $ref: '#/components/schemas/JobConfiguration'
+                template:
+                    $ref: '#/components/schemas/JobTemplate'
+        Status:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    description: Код ошибки, который соответсвует значению из списка google.rpc.Code.
+                    format: int32
+                message:
+                    type: string
+                    description: Сообщение для разработчика на английском языке. Сообщение для пользователя должно быть локализовано и отправлено в поле ``google.rpc.Status.details`` или локализовано для каждого клиента в отдельности.
+                details:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoogleProtobufAny'
+                    description: Подробная информация об ошибке.
+            description: 'Модель логических ошибок для разных сред программирования, включая REST API и RPC API.
+                         Она используется в [gRPC](https://github.com/grpc).
+                         Каждое сообщение ``Status`` содержит три элемента данных: код ошибки, сообщение об ошибке и подробная информация об ошибке.
+                         Подробнее об этой модели ошибок и работе с ней можно узнать в [Руководстве по проектированию API](https://cloud.google.com/apis/design/errors).'
+    parameters:
+        projectId:
+            name: projectId
+            in: query
+            description: Идентификатор проекта (UUID) в Cloud.ru.
+            required: true
+            schema:
+                type: string
+    securitySchemes:
+        IAM:
+            type: apiKey
+            description: 'Введите токен в формате префикса ``Bearer: ``. Например, ``Bearer: abcde12345``.'
+            name: Authorization
+            in: header
+tags:
+    - name: JobService

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/vpc"
@@ -91,6 +92,7 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 			"status": "confirmation_required",
 			"message": i18n.Tf("vpc_create creates a new VPC %q (async).",
 				"vpc_create создаёт новый VPC %q (асинхронно).", name),
+			"preview": willPreview(engine.ResourceVPC, name, "", nil, nil),
 		}), true
 	}
 	body := map[string]any{"projectId": cli.ProjectID(), "name": name}
@@ -259,6 +261,8 @@ func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any
 			"status": "confirmation_required",
 			"message": i18n.Tf("vpc_route_create adds a static route %s in VPC %s (async).",
 				"vpc_route_create добавляет статический маршрут %s в VPC %s (асинхронно).", subnet, vpcID),
+			"preview": willPreview(engine.ResourceVPCRoute, subnet, "", args, []string{"vpc_id",
+				"next_hop_vm_id", "next_hop_interface_id", "next_hop_vip_id", "next_hop_magic_router_id", "next_hop_az"}),
 		}), true
 	}
 	body := map[string]any{"vpcId": vpcID, "projectId": cli.ProjectID(), "subnet": subnet, "nextHop": nextHop}

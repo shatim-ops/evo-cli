@@ -431,6 +431,21 @@ var sensitiveTools = map[string]bool{
 // although it changes nothing (sensitiveTools).
 func IsSensitive(t Tool) bool { return sensitiveTools[t.Name] }
 
+// sideEffectTools change nothing the call asks to change, so they take no
+// confirmed and are not Mutating, but they are not reads either (A9,
+// REL12-4): stack_status advances the stack it shows — its next steps
+// create resources — and k8s_kubeconfig mints a token of the cluster. They
+// are not marked readOnlyHint: a client that approves reads by itself
+// would run them unseen.
+var sideEffectTools = map[string]bool{
+	"k8s_kubeconfig": true,
+	"stack_status":   true,
+}
+
+// HasSideEffects reports whether a tool that takes no consent is not a
+// read (sideEffectTools).
+func HasSideEffects(t Tool) bool { return sideEffectTools[t.Name] }
+
 // destructiveTools are the mutating tools, besides *_delete, that may delete
 // or overwrite data: they get destructiveHint in MCP, so a client asks the
 // person every time. kubectl, apply and helm run whatever they are given

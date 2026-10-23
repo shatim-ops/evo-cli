@@ -252,6 +252,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 			"message": i18n.Tf("tg_create creates target group %q with %d target(s).",
 				"tg_create создаёт группу целей %q (целей: %d).", name, len(specs)),
 			"targets": specs,
+			"preview": willPreview(engine.ResourceTargetGroup, name, "", map[string]any{"targets": len(specs)}, []string{"targets"}),
 		}), true
 	}
 	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "target_vm_specs": specs}

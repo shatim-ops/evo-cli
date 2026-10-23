@@ -1,0 +1,1432 @@
+openapi: 3.0.3
+info:
+    title: Cloud.ru Container Services OpenAPI 3.0
+    description: |-
+        [Документация Container Apps](https://cloud.ru/docs/container-apps-evolution/ug/index.html).
+
+        При каждом запросе к сервису в query необходимо передавать [идентификатор проекта](https://cloud.ru/docs/container-apps-evolution/ug/topics/guides__project-id).
+
+        Для аутентификации в заголовке Authorization используйте [токен](https://cloud.ru/docs/container-apps-evolution/ug/topics/api-ref__authentication).
+    version: v2
+servers:
+    - url: https://containers.api.cloud.ru
+paths:
+    /v2/containers:
+        get:
+            tags:
+                - ContainerService
+            description: Получить список доступных контейнеров.
+            operationId: ContainerService_List
+            parameters:
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: Количество контейнеров, которое вернется в ответе на запрос.
+                  schema:
+                    type: string
+                - name: pageToken
+                  in: query
+                  description: Строковый идентификатор, который указывает с какого места нужно начать выборку данных для следующей страницы.
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    Выражение, фильтрующее ответ.
+                    Например, ``count[gt]5;created_at[gte]2025-02-20``.
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: Название поля по которому производится сортировка.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListContainersResponse'
+            security:
+                - IAM: []
+        post:
+            tags:
+                - ContainerService
+            description: Создание и запуск контейнера.
+            operationId: ContainerService_Create
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateContainerRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+    /v2/containers/{containerId}/operations:
+        get:
+            tags:
+                - ContainerService
+            description: Получение списка операций с контейнером по ``container_id``.
+            operationId: ContainerService_ListOperations
+            parameters:
+                - name: containerId
+                  in: path
+                  description: Идентификатор контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: Количество операций, которое вернется в ответе на запрос.
+                  schema:
+                    type: string
+                - name: pageToken
+                  in: query
+                  description: Строковый идентификатор, который указывает с какого места нужно начать выборку данных для следующей страницы.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListContainerOperationsResponse'
+            security:
+                - IAM: []
+    /v2/containers/{containerName}/revisions:
+        get:
+            tags:
+                - ContainerService
+            description: Список версий контейнера.
+            operationId: ContainerService_ListRevisions
+            parameters:
+                - name: containerName
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: Количество версий, которое вернется в ответе на запрос.
+                  schema:
+                    type: string
+                - name: pageToken
+                  in: query
+                  description: Строковый идентификатор, который указывает с какого места нужно начать выборку данных для следующей страницы.
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    Выражение, фильтрующее ответ.
+                    Например, ``count[gt]5;created_at[gte]2025-02-20``.
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: Название поля по которому производится сортировка.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RevisionListResponse'
+            security:
+                - IAM: []
+    /v2/containers/{containerName}/revisions/{revisionId}:
+        get:
+            tags:
+                - ContainerService
+            description: Получение информации о версии контейнера.
+            operationId: ContainerService_GetRevision
+            parameters:
+                - name: containerName
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: revisionId
+                  in: path
+                  description: Идентификатор версии.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ContainerRevision'
+            security:
+                - IAM: []
+    /v2/containers/{name}:
+        get:
+            tags:
+                - ContainerService
+            description: Получение информации о контейнере по названию.
+            operationId: ContainerService_Get
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ContainerResponse'
+            security:
+                - IAM: []
+        delete:
+            tags:
+                - ContainerService
+            description: Удаление контейнера.
+            operationId: ContainerService_Delete
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+        patch:
+            tags:
+                - ContainerService
+            description: Обновление и публикация новой версии контейнера.
+            operationId: ContainerService_Patch
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PatchContainerRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+    /v2/containers/{name}/logs:
+        get:
+            tags:
+                - ContainerService
+            description: Получение пользовательских логов контейнера по названию и ``project_id``.
+            operationId: ContainerService_ListLogs
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: Количество логов, которое вернется в ответе на запрос.
+                  schema:
+                    type: string
+                - name: pageToken
+                  in: query
+                  description: Строковый идентификатор, который указывает с какого места нужно начать выборку данных для следующей страницы.
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    Выражение, фильтрующее ответ.
+                    Например, ``count[gt]5;created_at[gte]2025-02-20``.
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: Название поля по которому производится сортировка.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListContainerLogsResponse'
+            security:
+                - IAM: []
+    /v2/containers/{name}/start:
+        post:
+            tags:
+                - ContainerService
+            description: Запуск контейнера по названию и ``project_id``.
+            operationId: ContainerService_Start
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+    /v2/containers/{name}/stop:
+        post:
+            tags:
+                - ContainerService
+            description: Остановка контейнера по названию и ``project_id``.
+            operationId: ContainerService_Stop
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+    /v2/containers/{name}/systemLogs:
+        get:
+            tags:
+                - ContainerService
+            description: Получение системных логов контейнера по названию и ``project_id``.
+            operationId: ContainerService_ListSystemLogs
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+                - name: serverlessId
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListContainerSystemLogsResponse'
+            security:
+                - IAM: []
+    /v2/containers/{name}/testCall:
+        post:
+            tags:
+                - ContainerService
+            description: Тестовый HTTP-вызов контейнера по названию и ``project_id``.
+            operationId: ContainerService_TestCall
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+                - name: projectId
+                  in: query
+                  description: Идентификатор проекта (UUID) в Cloud.ru.
+                  schema:
+                    type: string
+                - name: method
+                  in: query
+                  schema:
+                    type: string
+                - name: path
+                  in: query
+                  schema:
+                    type: string
+                - name: body
+                  in: query
+                  schema:
+                    type: string
+                - name: isBase64Encoded
+                  in: query
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TestCallResponse'
+            security:
+                - IAM: []
+    /v2/containers/{name}:start:
+        post:
+            tags:
+                - ContainerService
+            description: Запуск контейнера по названию и ``project_id``.
+            operationId: ContainerService_Start_v1
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StartRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+    /v2/containers/{name}:stop:
+        post:
+            tags:
+                - ContainerService
+            description: Остановка контейнера по названию и ``project_id``.
+            operationId: ContainerService_Stop_v1
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StopRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AsyncOperation'
+            security:
+                - IAM: []
+    /v2/containers/{name}:testCall:
+        post:
+            tags:
+                - ContainerService
+            description: Тестовый HTTP-вызов контейнера по названию и ``project_id``.
+            operationId: ContainerService_TestCall_v1
+            parameters:
+                - name: name
+                  in: path
+                  description: Название контейнера.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TestCallRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TestCallResponse'
+            security:
+                - IAM: []
+    /v2/containers:check_name:
+        post:
+            tags:
+                - ContainerService
+            description: Проверка доступности названия контейнера.
+            operationId: ContainerService_CheckName
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CheckContainerNameRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CheckContainerNameResponse'
+            security:
+                - IAM: []
+components:
+    schemas:
+        AccessSettings:
+            type: object
+            properties:
+                enableAuth:
+                    type: boolean
+                    description: Включить авторизацию.
+            description: Включение авторизации для ContainerApp
+        AdditionalPortMappingRequest:
+            type: object
+            properties:
+                protocol:
+                    example: http
+                    type: string
+                    description: Протокол маппинга порта.
+                targetPort:
+                    example: 8080
+                    type: number
+                    description: Открываемый порт.
+                    format: uint32
+        AdditionalPortMappingResponse:
+            type: object
+            properties:
+                protocol:
+                    example: http
+                    type: string
+                    description: Протокол маппинга порта.
+                targetPort:
+                    example: 8080
+                    type: number
+                    description: Открываемый порт.
+                    format: uint32
+                url:
+                    example: my-app-8080.forwarded.containers.cloud.ru
+                    type: string
+                    description: URL-адрес для доступа.
+        AsyncOperation:
+            type: object
+            properties:
+                id:
+                    example: 00000000-0000-0000-0000-000000000001
+                    title: Operation ID (UUID)
+                    type: string
+                    description: Идентификатор операции.
+                resourceName:
+                    example: urn:cloud:container_apps::{project_id}:container_app
+                    title: Resource name
+                    type: string
+                    description: |-
+                         Информация о ресурсе, над которым производится операция.
+                         Отображается в формате: ``urn:cloud:SERVICE:ZONE_OPT:PROJECT_OPT:RESOURCE_TYPE_OPT``.
+                         Пример: ``urn:cloud:lbaas::496e40f7-cc4b-4fa4-b42a-8cd2c9360716:backend``
+                resourceId:
+                    example: 00000000-0000-0000-0000-000000000002
+                    title: Resource ID
+                    type: string
+                    description: |-
+                        Уникальный идентификатор ресурса, над которым производится операция.
+                        Пример: ``496e40f7-cc4b-4fa4-b42a-8cd2c9360716``.
+                createdAt:
+                    type: string
+                    description: Дата и время создания ресурса.
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: Дата и время обновления ресурса.
+                    format: date-time
+                done:
+                    example: true
+                    title: 'Operation completion flag: false if operation is still in process.'
+                    type: boolean
+                    description: |-
+                        Флаг завершенности операции.
+                         Если значение `false`, то операция в процессе выполнения.
+                         Если значение `true`, то операция завершена и поле `error` может быть заполнено.
+                description:
+                    example: Описание операции
+                    title: Описание операции
+                    type: string
+                    description: Описание операции. От 0 до 255 символов.
+                error:
+                    $ref: '#/components/schemas/Status'
+        AutoDeployments:
+            type: object
+            properties:
+                enabled:
+                    example: true
+                    type: boolean
+                    description: Включить функцию автодеплоя.
+                pattern:
+                    example: latest
+                    type: string
+                    description: Шаблон тега образа.
+        CheckContainerNameRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Название контейнера.
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+        CheckContainerNameResponse:
+            type: object
+            properties:
+                isExist:
+                    type: boolean
+        Container:
+            type: object
+            properties:
+                name:
+                    example: my-container-app
+                    type: string
+                    description: Название контейнера.
+                image:
+                    example: helloworld.cr.cloud.ru/react-hello-world:latest
+                    type: string
+                    description: URI образа контейнера.
+                resources:
+                    $ref: '#/components/schemas/ContainerResources'
+                containerPort:
+                    example: 8000
+                    type: number
+                    description: Порт контейнера.
+                    format: uint32
+                env:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ContainerEnv'
+                command:
+                    type: array
+                    items:
+                        type: string
+                    description: Команда.
+                args:
+                    type: array
+                    items:
+                        type: string
+                    description: Аргументы.
+                volumeMounts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/VolumeMount'
+                livenessProbe:
+                    $ref: '#/components/schemas/ContainerLivenessProbe'
+                readinessProbe:
+                    $ref: '#/components/schemas/ContainerReadinessProbe'
+        ContainerConfigurationResponse:
+            type: object
+            properties:
+                ingress:
+                    $ref: '#/components/schemas/ContainerIngress'
+                autoDeployments:
+                    $ref: '#/components/schemas/AutoDeployments'
+                privileged:
+                    example: true
+                    type: boolean
+                    description: Включить привилегированный режим для контейнера.
+                ssh:
+                    $ref: '#/components/schemas/SSH'
+                loggingService:
+                    $ref: '#/components/schemas/ContainerLoggingService'
+        ContainerEnv:
+            type: object
+            properties:
+                name:
+                    example: MY_ENV_VAR
+                    type: string
+                    description: Имя переменной.
+                value:
+                    example: value
+                    type: string
+                    description: Значение переменной.
+                type:
+                    example: secret
+                    type: string
+                    description: |-
+                        Тип переменной.
+                        Укажите ``secret``, чтобы использовать значение из Secret Management.
+                        В этом случае в поле ``value`` укажите название секрета из Secret Management.
+        ContainerExecProbe:
+            type: object
+            properties:
+                command:
+                    type: string
+                    items:
+                        type: string
+                    description: Команда.
+        ContainerHttpProbe:
+            type: object
+            properties:
+                host:
+                    type: string
+                    description: Хост.
+                path:
+                    type: string
+                    description: Путь.
+                scheme:
+                    title: Схема
+                    type: string
+                    description: 'Протокол для подключения к контейнеру. Допустимое значение: ``HTTP``'
+                port:
+                    example: 8000
+                    type: number
+                    description: Порт контейнера.
+                    format: int32
+        ContainerIngress:
+            type: object
+            properties:
+                publiclyAccessible:
+                    example: true
+                    type: boolean
+                    description: Включить публичный URL для контейнера.
+                corsPolicy:
+                    $ref: '#/components/schemas/CorsPolicy'
+                publicUri:
+                    readOnly: true
+                    type: string
+                internalUri:
+                    readOnly: true
+                    type: string
+                additionalPortMappings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AdditionalPortMappingResponse'
+                accessSettings:
+                    $ref: '#/components/schemas/AccessSettings'
+                customDomains:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CustomDomainBinding'
+        ContainerLivenessProbe:
+            type: object
+            properties:
+                httpProbe:
+                    $ref: '#/components/schemas/ContainerHttpProbe'
+                execProbe:
+                    $ref: '#/components/schemas/ContainerExecProbe'
+                initialDelaySeconds:
+                    type: integer
+                    description: Задержка перед первым зондированием.
+                    format: int32
+                periodSeconds:
+                    type: integer
+                    description: Период зондирования.
+                    format: int32
+                timeoutSeconds:
+                    type: integer
+                    description: Таймаут зондирования.
+                    format: int32
+                failureThreshold:
+                    type: integer
+                    description: Порог отказов.
+                    format: int32
+        ContainerLog:
+            type: object
+            properties:
+                timestamp:
+                    type: string
+                    description: Дата и время.
+                    format: date-time
+                message:
+                    type: string
+                    description: Запись лога.
+                versionId:
+                    type: string
+                    description: Идентификатор версии.
+                podName:
+                    type: string
+                    description: Название пода.
+                level:
+                    type: string
+                    description: Уровень логирования.
+                containerName:
+                    type: string
+                    description: Название контейнера.
+        ContainerLoggingService:
+            type: object
+            properties:
+                isEnabled:
+                    example: true
+                    type: boolean
+                    description: Включить сервис логирования.
+                groupId:
+                    example: e3f74a23-9d44-11f0-8161-b63d362515df
+                    type: string
+                    description: Идентификатор группы логов.
+        ContainerReadinessProbe:
+            type: object
+            properties:
+                httpProbe:
+                    $ref: '#/components/schemas/ContainerHttpProbe'
+                execProbe:
+                    $ref: '#/components/schemas/ContainerExecProbe'
+                initialDelaySeconds:
+                    type: integer
+                    description: Задержка перед первым зондированием.
+                    format: int32
+                periodSeconds:
+                    type: integer
+                    description: Период зондирования.
+                    format: int32
+                timeoutSeconds:
+                    type: integer
+                    description: Таймаут зондирования.
+                    format: int32
+                successThreshold:
+                    type: integer
+                    description: Порог успешности.
+                    format: int32
+                failureThreshold:
+                    type: integer
+                    description: Порог отказов.
+                    format: int32
+        ContainerResources:
+            type: object
+            properties:
+                cpu:
+                    example: 0.1
+                    type: string
+                    description: Запрос CPU.
+                memory:
+                    example: 256Mi
+                    type: string
+                    description: Запрос памяти.
+                gpu:
+                    $ref: '#/components/schemas/ContainerResourcesGPU'
+        ContainerResourcesGPU:
+            type: object
+            properties:
+                count:
+                    example: 0
+                    type: integer
+                    description: Запрос GPU.
+                    format: uint32
+                sku:
+                    example: gpu_a100
+                    type: string
+                    description: Тип GPU.
+        ContainerResponse:
+            type: object
+            properties:
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                id:
+                    type: string
+                name:
+                    type: string
+                description:
+                    type: string
+                status:
+                    type: string
+                createdAt:
+                    type: string
+                createdBy:
+                    type: string
+                updatedAt:
+                    type: string
+                updatedBy:
+                    type: string
+                configuration:
+                    $ref: '#/components/schemas/ContainerConfigurationResponse'
+                template:
+                    $ref: '#/components/schemas/ContainerTemplate'
+                metadata:
+                    $ref: '#/components/schemas/Metadata'
+        ContainerRevision:
+            type: object
+            properties:
+                id:
+                    type: string
+                serverlessId:
+                    type: string
+                name:
+                    type: string
+                createdAt:
+                    type: string
+                createdBy:
+                    type: string
+                status:
+                    type: string
+                statusReason:
+                    type: string
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                serverlessName:
+                    type: string
+                description:
+                    type: string
+                configuration:
+                    $ref: '#/components/schemas/ContainerConfigurationResponse'
+                template:
+                    $ref: '#/components/schemas/ContainerTemplate'
+        ContainerScaling:
+            type: object
+            properties:
+                minInstanceCount:
+                    example: 0
+                    type: integer
+                    description: Минимальное количество экземпляров.
+                    format: uint32
+                maxInstanceCount:
+                    example: 1
+                    type: integer
+                    description: Максимальное количество экземпляров.
+                    format: uint32
+                rule:
+                    $ref: '#/components/schemas/ContainerScalingRule'
+        ContainerScalingRule:
+            type: object
+            properties:
+                type:
+                    example: concurrency
+                    type: string
+                    description: Тип масштабирования.
+                value:
+                    example: {"soft": 100, "hard": 0}
+                    type: string
+                    additionalProperties:
+                        type: integer
+                        format: uint32
+                    description: Настройки масштабирования.
+        ContainerSystemLog:
+            type: object
+            properties:
+                productInstanceId:
+                    type: string
+                serverlessId:
+                    type: string
+                revisionName:
+                    type: string
+                replicaName:
+                    type: string
+                eventType:
+                    type: string
+                component:
+                    type: string
+                componentId:
+                    type: string
+                reason:
+                    type: string
+                message:
+                    type: string
+                firstTimestamp:
+                    type: string
+                    format: date-time
+                lastTimestamp:
+                    type: string
+                    format: date-time
+        ContainerTemplate:
+            type: object
+            properties:
+                timeout:
+                    example: 30s
+                    type: string
+                    description: Таймаут HTTP-запроса в секундах.
+                idleTimeout:
+                    example: 60s
+                    type: string
+                    description: Таймаут бездействия контейнера в секундах.
+                protocol:
+                    example: http_1
+                    type: string
+                    description: Протокол.
+                scaling:
+                    $ref: '#/components/schemas/ContainerScaling'
+                containers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Container'
+                initContainers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InitContainer'
+                volumes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Volume'
+        CorsPolicy:
+            type: object
+            properties:
+                enabled:
+                    type: boolean
+                    description: Включить CORS.
+                allowCredentials:
+                    type: boolean
+                    description: Разрешить учетные данные.
+                allowedOrigins:
+                    type: string
+                    items:
+                        type: string
+                    description: Разрешенные источники.
+        CreateContainerConfiguration:
+            type: object
+            properties:
+                ingress:
+                    $ref: '#/components/schemas/CreateContainerIngress'
+                autoDeployments:
+                    $ref: '#/components/schemas/AutoDeployments'
+                privileged:
+                    example: true
+                    type: boolean
+                    description: Включить привилегированный режим для контейнера.
+                ssh:
+                    $ref: '#/components/schemas/SSH'
+                loggingService:
+                    $ref: '#/components/schemas/ContainerLoggingService'
+        CreateContainerIngress:
+            type: object
+            properties:
+                publiclyAccessible:
+                    example: true
+                    type: boolean
+                    description: Включить публичный URL для контейнера.
+                corsPolicy:
+                    $ref: '#/components/schemas/CorsPolicy'
+                additionalPortMappings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AdditionalPortMappingRequest'
+                accessSettings:
+                    $ref: '#/components/schemas/AccessSettings'
+                customDomains:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CustomDomainBinding'
+        CreateContainerRequest:
+            type: object
+            properties:
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                name:
+                    type: string
+                    description: Название контейнера.
+                description:
+                    type: string
+                    description: Описание контейнера.
+                configuration:
+                    $ref: '#/components/schemas/CreateContainerConfiguration'
+                template:
+                    $ref: '#/components/schemas/ContainerTemplate'
+                metadata:
+                    $ref: '#/components/schemas/Metadata'
+        CustomDomainBinding:
+            type: object
+            properties:
+                domain:
+                    type: string
+                    description: Домен.
+                certificateId:
+                    type: string
+                    description: Идентификатор сертификата.
+        GoogleProtobufAny:
+            type: object
+            properties:
+                '@type':
+                    type: string
+                    description: Тип сериализованного представления сообщения.
+            additionalProperties: true
+            description: Содержит сериализованное представление случайного сообщения, а также тип этого сообщения.
+        InitContainer:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Название инициализирующего контейнера.
+                image:
+                    type: string
+                    description: URI образа.
+                resources:
+                    $ref: '#/components/schemas/ContainerResources'
+                volumeMounts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/VolumeMount'
+                env:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ContainerEnv'
+                command:
+                    type: array
+                    items:
+                        type: string
+                    description: Команда.
+                args:
+                    type: array
+                    items:
+                        type: string
+                    description: Аргументы.
+        ListContainerLogsResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ContainerLog'
+                total:
+                    example: 10
+                    type: number
+                    description: Общее число контейнеров.
+                nextPageToken:
+                    example: bGltaXQ9MTAmb2Zmc2V0PTEwJm9yZGVyX2J5PS1jcmVhdG********==
+                    type: string
+                    description: Токен для перехода на следующую страницу.
+        ListContainerOperationsResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AsyncOperation'
+                nextPageToken:
+                    example: bGltaXQ9MTAmb2Zmc2V0PTEwJm9yZGVyX2J5PS1jcmVhdG********==
+                    type: string
+                    description: Токен для перехода на следующую страницу.
+                total:
+                    type: string
+        ListContainerSystemLogsResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ContainerSystemLog'
+        ListContainersResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ContainerResponse'
+                total:
+                    example: 10
+                    type: number
+                    description: Общее число контейнеров.
+                nextPageToken:
+                    example: bGltaXQ9MTAmb2Zmc2V0PTEwJm9yZGVyX2J5PS1jcmVhdG********==
+                    type: string
+                    description: Токен для перехода на следующую страницу.
+        Metadata:
+            type: object
+            properties:
+                createdByProduct:
+                    type: string
+                    description: Создано продуктом.
+        PatchContainerConfiguration:
+            type: object
+            properties:
+                ingress:
+                    $ref: '#/components/schemas/PatchContainerIngress'
+                autoDeployments:
+                    $ref: '#/components/schemas/AutoDeployments'
+                ssh:
+                    $ref: '#/components/schemas/SSH'
+                loggingService:
+                    $ref: '#/components/schemas/ContainerLoggingService'
+        PatchContainerIngress:
+            type: object
+            properties:
+                publiclyAccessible:
+                    example: true
+                    type: boolean
+                    description: Включить публичный URL для контейнера.
+                corsPolicy:
+                    $ref: '#/components/schemas/CorsPolicy'
+                additionalPortMappings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AdditionalPortMappingRequest'
+                accessSettings:
+                    $ref: '#/components/schemas/AccessSettings'
+                customDomains:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CustomDomainBinding'
+        PatchContainerRequest:
+            type: object
+            properties:
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                name:
+                    type: string
+                    description: Название контейнера.
+                description:
+                    type: string
+                    description: Описание контейнера.
+                configuration:
+                    $ref: '#/components/schemas/PatchContainerConfiguration'
+                template:
+                    $ref: '#/components/schemas/ContainerTemplate'
+        RevisionListResponse:
+            type: object
+            properties:
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RevisionResponse'
+                total:
+                    example: 10
+                    type: number
+                    description: Общее число версий.
+                nextPageToken:
+                    example: bGltaXQ9MTAmb2Zmc2V0PTEwJm9yZGVyX2J5PS1jcmVhdG********==
+                    type: string
+                    description: Токен для перехода на следующую страницу.
+        RevisionResponse:
+            type: object
+            properties:
+                id:
+                    example: 00000000-0000-0000-0000-000000000001
+                    type: string
+                    description: Идентификатор версии.
+                name:
+                    example: revision-00001
+                    type: string
+                    description: Название версии.
+                status:
+                    example: running
+                    type: string
+                    description: Статус версии.
+                createdAt:
+                    type: string
+                createdBy:
+                    type: string
+        SSH:
+            type: object
+            properties:
+                isEnabled:
+                    example: true
+                    type: boolean
+                    description: Включить SSH-доступ.
+                user:
+                    example: jovyan
+                    type: string
+                    description: Пользователь для SSH-соединения.
+                port:
+                    example: 2222
+                    type: number
+                    description: Порт для SSH-соединения.
+                    format: int32
+                authorizedKeysPath:
+                    example: /etc/ssh/authorized_keys
+                    type: string
+                    description: Путь к публичным SSH-ключам.
+        StartRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Название контейнера.
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+        Status:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    description: Код ошибки, который соответсвует значению из списка google.rpc.Code.
+                    format: int32
+                message:
+                    type: string
+                    description: Сообщение для разработчика на английском языке. Сообщение для пользователя должно быть локализовано и отправлено в поле ``google.rpc.Status.details`` или локализовано для каждого клиента в отдельности.
+                details:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoogleProtobufAny'
+                    description: Подробная информация об ошибке.
+            description: 'Модель логических ошибок для разных сред программирования, включая REST API и RPC API.
+                         Она используется в [gRPC](https://github.com/grpc).
+                         Каждое сообщение ``Status`` содержит три элемента данных: код ошибки, сообщение об ошибке и подробная информация об ошибке.
+                         Подробнее об этой модели ошибок и работе с ней можно узнать в [Руководстве по проектированию API](https://cloud.google.com/apis/design/errors).'
+        StopRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Название контейнера.
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+        TestCallRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Название контейнера.
+                projectId:
+                    type: string
+                    description: Идентификатор проекта (UUID) в Cloud.ru.
+                method:
+                    type: string
+                path:
+                    type: string
+                headers:
+                    type: object
+                    additionalProperties:
+                        type: string
+                queryStringParams:
+                    type: object
+                    additionalProperties:
+                        type: string
+                body:
+                    type: string
+                isBase64Encoded:
+                    type: boolean
+        TestCallResponse:
+            type: object
+            properties:
+                statusCode:
+                    type: integer
+                    description: Код статуса HTTP.
+                    format: int32
+                headers:
+                    type: object
+                    additionalProperties:
+                        type: string
+                body:
+                    type: string
+                    description: Тело ответа.
+                isBase64Encoded:
+                    type: boolean
+                    description: Флаг кодировки Base64.
+        Volume:
+            type: object
+            properties:
+                name:
+                    example: volume-name-1
+                    type: string
+                    description: Название тома. Название должно соответствовать RFC1035, максимальная длина --- 20.
+                type:
+                    example: s3
+                    title: Тип тома
+                    type: string
+                    description: 'Тип тома. Пример упрощенного варианта: s3'
+                volumeAttributes:
+                    example: {"bucketName": "bucket-name-1", "entrypoint": "https://s3.cloud.ru", "tenantId": "tenant-id-1", "region": "ru-central-1"}
+                    title: Атрибуты тома
+                    type: string
+                    additionalProperties:
+                        type: string
+                    description: Для S3 достаточно передать только bucketName — остальные поля подставятся автоматически.
+        VolumeMount:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Название тома.
+                mountPath:
+                    example: /data
+                    type: string
+                    description: Путь в контейнере для подключения тома.
+                subPath:
+                    example: /data
+                    type: string
+                    description: (Опционально) Путь в томе для подключения к контейнеру.
+                readOnly:
+                    type: boolean
+                    description: Только для чтения.
+    parameters:
+        projectId:
+            name: projectId
+            in: query
+            description: Идентификатор проекта (UUID) в Cloud.ru.
+            required: true
+            schema:
+                type: string
+    securitySchemes:
+        IAM:
+            type: apiKey
+            description: 'Введите токен в формате префикса ``Bearer: ``. Например, ``Bearer: abcde12345``.'
+            name: Authorization
+            in: header
+tags:
+    - name: ContainerService

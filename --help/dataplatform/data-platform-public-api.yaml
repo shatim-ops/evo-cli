@@ -1,0 +1,439 @@
+swagger: '2.0'
+info:
+  title: Cloud.ru Data Platform
+  description: '[Документация Data Platform](https://cloud.ru/docs/dataplatform/ug/index.html)'
+  version: "1.0"
+servers:
+  - url: https://dataplatform.api.cloud.ru  
+tags:
+  - name: ClusterService
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /v1/clusters:
+    get:
+      summary: Список кластеров
+      description: Возвращает список кластеров по заданым параметрам.
+      operationId: ClusterService_List
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1ListClusterResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+        - name: projectId
+          description: Идентификатор проекта.
+          in: query
+          required: true
+          type: string
+        - name: pageSize
+          description: >-
+            Максимальное количество результатов на странице ответа.
+
+            Если значение больше `page_size`, сервис возвращает
+            `next_page_token`, который
+
+            используется в `ListClusterResponse`. По умолчанию значение 
+            `page_size` 1000.
+          in: query
+          required: false
+          type: string
+          format: int64
+        - name: pageToken
+          description: >-
+            Токен запрашиваемой страницы с результатами. Чтобы получить
+            результаты следующей
+
+            страницы для `page_token`, используйте значение
+            `ListClusterResponse.next_page_token`,
+
+            полученное из прошлого запроса.
+          in: query
+          required: false
+          type: string
+        - name: filter
+          description: |-
+            Фильтр для списка кластеров.
+            Кластеры можно фильтровать по полю `name`.
+            Пример: `name=cluster123`.
+          in: query
+          required: false
+          type: string
+      tags:
+        - ClusterService
+    post:
+      summary: Создать кластер
+      description: |-
+        Запускает операцию по созданию кластера.
+        Возвращает операцию.
+      operationId: ClusterService_Create
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/operationOperation'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+        - name: body
+          description: Описание параметров запроса для создания кластера.
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/v1CreateClusterRequest'
+      tags:
+        - ClusterService
+  /v1/clusters/{clusterId}:
+    get:
+      summary: Информация о кластере
+      description: Возвращает кластер по заданному идентификатору.
+      operationId: ClusterService_Get
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Cluster'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+        - name: clusterId
+          description: Идентификатор кластера.
+          in: path
+          required: true
+          type: string
+      tags:
+        - ClusterService
+    delete:
+      summary: Удалить кластер
+      description: |-
+        Запускает процесс удаления кластера по заданному идентификатору.
+        Возвращает операцию.
+      operationId: ClusterService_Delete
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/operationOperation'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+        - name: clusterId
+          description: Идентификатор кластера.
+          in: path
+          required: true
+          type: string
+      tags:
+        - ClusterService
+  /v1/clusters/{clusterId}/operations:
+    get:
+      summary: Список операций
+      description: Возвращает список операций по заданым параметрам.
+      operationId: ClusterService_ListOperations
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1ListClusterOperationsResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+        - name: clusterId
+          description: Идентификатор кластера.
+          in: path
+          required: true
+          type: string
+        - name: pageSize
+          description: >-
+            Максимальное количество результатов на странице ответа.
+
+            Если значение больше `page_size`, сервис возвращает
+            `next_page_token`, который
+
+            используется в `ListClusterResponse`. По умолчанию
+            значение `page_size` 1000.
+          in: query
+          required: false
+          type: string
+          format: int64
+        - name: pageToken
+          description: >-
+            Токен запрашиваемой страницы с результатами. Чтобы получить
+            результаты следующей
+
+            страницы для `page_token`, используйте значение
+            `ListClusterResponse.next_page_token`,
+
+            полученное из прошлого запроса.
+          in: query
+          required: false
+          type: string
+      tags:
+        - ClusterService
+  /v1/clusters/{clusterId}/stop:
+    post:
+      summary: Остановить кластер
+      description: |-
+        Запускает процесс остановки кластера по заданному идентификатору.
+        Возвращает операцию.
+      operationId: ClusterService_Stop
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/operationOperation'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+        - name: clusterId
+          description: Идентификатор кластера.
+          in: path
+          required: true
+          type: string
+      tags:
+        - ClusterService
+definitions:
+  operationOperation:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Идентификатор операции.
+      resourceName:
+        type: string
+        description: >-
+          Информация о ресурсе, над которым производится операция.
+          Строится следующим образом:
+          `urn:cloud:SERVICE:ZONE_OPT:PROJECT_OPT:RESOURCE_TYPE_OPT`
+
+          Пример:
+          `urn:cloud:dataplatform::54295782-7aef-43e6-b33b-c9735938677a:metastore_server`
+        readOnly: true
+      resourceId:
+        type: string
+        description: >-
+          Уникальный идентификатор ресурса, над которым производится операция.
+          Пример: `54295782-7aef-43e6-b33b-c9735938677a`
+        readOnly: true
+      createdAt:
+        type: string
+        format: date-time
+        description: Дата и время создания операции.
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        description: Дата и время последнего изменения операции.
+        readOnly: true
+      done:
+        type: boolean
+        description: >-
+          Параметр завершенности операции.
+
+          Если вернулось значение `false`, то операция выполняется.
+
+          Если вернулось значение `true`, то операция завершена. 
+          Если операция завершена с ошибкой, поле `error` будет заполнено кодом ошибки.
+        readOnly: true
+      description:
+        type: string
+        description: Описание операции. От 0 до 255 символов.
+        readOnly: true
+      error:
+        $ref: '#/definitions/rpcStatus'
+        description: Результат операции в случае ошибки.
+        readOnly: true
+    required:
+      - id
+  protobufAny:
+    type: object
+    properties:
+      '@type':
+        type: string
+    additionalProperties: {}
+  rpcStatus:
+    type: object
+    properties:
+      code:
+        type: integer
+        format: int32
+      message:
+        type: string
+      details:
+        type: array
+        items:
+          type: object
+          $ref: '#/definitions/protobufAny'
+  v1Cluster:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Идентификатор кластера.
+      projectId:
+        type: string
+        description: Идентификатор проекта.
+      name:
+        type: string
+        description: Название кластера.
+      description:
+        type: string
+        description: Описание кластера.
+      status:
+        $ref: '#/definitions/v1ClusterStatus'
+        description: Статус, показывающий текущее состояние кластера.
+        readOnly: true
+      networkConfiguration:
+        $ref: '#/definitions/v1NetworkConfiguration'
+        description: Сетевые настройки кластера.
+      serviceAccountId:
+        type: string
+        description: >-
+          Идентификатор сервисного аккаунта, который будет использоваться в
+          кластере.
+      createdAt:
+        type: string
+        format: date-time
+        description: Дата и время создания кластера.
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        description: Дата и время последнего обновления кластера.
+        readOnly: true
+      createdBy:
+        type: string
+        description: Идентификатор пользователя, который создал кластер.
+        readOnly: true
+      updatedBy:
+        type: string
+        description: Идентификатор пользователя, который последним обновил кластер.
+        readOnly: true
+    description: Кластер.
+    required:
+      - projectId
+      - name
+      - networkConfiguration
+      - serviceAccountId
+  v1ClusterStatus:
+    type: string
+    enum:
+      - CLUSTER_STATUS_UNSPECIFIED
+      - CLUSTER_STATUS_PENDING
+      - CLUSTER_STATUS_CREATING
+      - CLUSTER_STATUS_RUNNING
+      - CLUSTER_STATUS_FAILED
+      - CLUSTER_STATUS_DELETED
+      - CLUSTER_STATUS_DELETING
+      - CLUSTER_STATUS_ERROR
+      - CLUSTER_STATUS_SUSPENDED
+      - CLUSTER_STATUS_SUSPENDING
+      - CLUSTER_STATUS_RESUMING
+      - CLUSTER_STATUS_STOPPING
+      - CLUSTER_STATUS_STOPPED
+      - CLUSTER_STATUS_UPDATING
+    default: CLUSTER_STATUS_UNSPECIFIED
+    description: |-
+      Список возможных статусов кластера.
+
+       - `CLUSTER_STATUS_UNSPECIFIED` — Не указано.
+       - `CLUSTER_STATUS_PENDING` — Ожидание.
+       - `CLUSTER_STATUS_CREATING` — Создание.
+       - `CLUSTER_STATUS_RUNNING` — Выполнение.
+       - `CLUSTER_STATUS_FAILED` — Ошибка.
+       - `CLUSTER_STATUS_DELETED` — Удалено.
+       - `CLUSTER_STATUS_DELETING` — Удаление.
+       - `CLUSTER_STATUS_ERROR` — Ошибка.
+       - `CLUSTER_STATUS_SUSPENDED` — Приостановлено из-за недостатка средств на балансе.
+       - `CLUSTER_STATUS_SUSPENDING` — Приостановка из-за недостатка средств на балансе.
+       - `CLUSTER_STATUS_RESUMING` — Возобновление.
+       - `CLUSTER_STATUS_STOPPING` — Приостановлен из-за бездействия.
+       - `CLUSTER_STATUS_STOPPED` — Приостановка из-за бездействия.
+       - `CLUSTER_STATUS_UPDATING` — Обновление.
+  v1CreateClusterRequest:
+    type: object
+    properties:
+      projectId:
+        type: string
+        description: Идентификатор проекта.
+      name:
+        type: string
+        description: Название кластера.
+      description:
+        type: string
+        description: Описание кластера.
+      serviceAccountId:
+        type: string
+        description: >-
+          Идентификатор сервисного аккаунта, который будет использоваться в
+          кластере.
+      networkConfiguration:
+        $ref: '#/definitions/v1NetworkConfiguration'
+        description: Сетевые настройки кластера.
+    description: Описание параметров запроса для создания кластера.
+    required:
+      - projectId
+      - name
+      - serviceAccountId
+      - networkConfiguration
+  v1ListClusterOperationsResponse:
+    type: object
+    properties:
+      operations:
+        type: array
+        items:
+          type: object
+          $ref: '#/definitions/operationOperation'
+        description: Список операций.
+      nextPageToken:
+        type: string
+        description: Токен следующей страницы с результатами.
+    description: Описание параметров ответа на запрос списка операций.
+  v1ListClusterResponse:
+    type: object
+    properties:
+      clusters:
+        type: array
+        items:
+          type: object
+          $ref: '#/definitions/v1Cluster'
+        description: Список кластеров.
+      nextPageToken:
+        type: string
+        description: Токен следующей страницы с результатами.
+    description: >-
+      Описание параметров ответа на запрос списка кластеров.
+  v1NetworkConfiguration:
+    type: object
+    properties:
+      zoneIds:
+        type: array
+        items:
+          type: string
+        description: Список идентификаторов зон доступности.
+      vpcId:
+        type: string
+        description: Индентификатор VPC.
+      subnetId:
+        type: string
+        description: Идентификатор подсети кластера.
+    description: Сетевые настройки кластера.
+    required:
+      - zoneIds
+      - vpcId
+      - subnetId

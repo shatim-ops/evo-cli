@@ -1,0 +1,1118 @@
+swagger: "2.0"
+info:
+  title: Certificate Manager API
+  description: '[Документация Certificate Manager](https://cloud.ru/docs/certificate-manager/ug/index.html)' 
+  contact:
+    email: support@cloud.ru 
+servers:
+  - url: https://certificatemanager.api.cloud.ru
+tags:
+  - name: CertificateService
+  - name: CertificateVersionService
+  - name: OperationService
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /v1/certificate:
+    get:
+      summary: List возвращает список сертификатов по заданным критериям
+      operationId: CertificateService_List
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1ListCertificatesResponse"
+      parameters:
+        - name: ids
+          description: Список идентификаторов сертификатов. Используется для массового
+            получения сертификатов. Передается как повторяющийся query параметр.
+          in: query
+          required: false
+          type: array
+          items:
+            type: string
+          collectionFormat: multi
+        - name: projectId
+          description: Идентификатор проекта.
+          in: query
+          required: true
+          type: string
+        - name: name
+          description: Имя или часть имени сертификата.
+          in: query
+          required: false
+          type: string
+        - name: type
+          description: >-
+            Тип управления сертификатом.
+
+             - CERTIFICATE_TYPE_UNSPECIFIED: Тип не указан.
+             - CERTIFICATE_TYPE_IMPORTED: Импортированный сертификат, управляемый пользователем.
+             - CERTIFICATE_TYPE_SELF_SIGNED: Самоподписанный сертификат, выпущенный Cloud.ru.
+             - CERTIFICATE_TYPE_LETS_ENCRYPT: Сертификат Let's Encrypt, управляемый системой.
+          in: query
+          required: false
+          type: string
+          enum:
+            - CERTIFICATE_TYPE_UNSPECIFIED
+            - CERTIFICATE_TYPE_IMPORTED
+            - CERTIFICATE_TYPE_SELF_SIGNED
+            - CERTIFICATE_TYPE_LETS_ENCRYPT
+          default: CERTIFICATE_TYPE_UNSPECIFIED
+        - name: labels
+          description: Метки, по которым выполняется частичное совпадение с сертификатом
+            по свойству labels.
+          in: query
+          required: false
+          type: string
+        - name: kmsKeyId
+          description: Ключ, который использовался для шифрования значений сертификата.
+          in: query
+          required: false
+          type: string
+        - name: dnsName
+          description: Одно из DNS имен сертификата.
+          in: query
+          required: false
+          type: string
+        - name: commonName
+          description: Частичный фильтр по общему имени сертификата.
+          in: query
+          required: false
+          type: string
+        - name: createdAt.start
+          description: Начало временного диапазона.
+          in: query
+          required: false
+          type: string
+          format: date-time
+        - name: createdAt.end
+          description: Конец временного диапазона.
+          in: query
+          required: false
+          type: string
+          format: date-time
+        - name: expiresAt.start
+          description: Начало временного диапазона.
+          in: query
+          required: false
+          type: string
+          format: date-time
+        - name: expiresAt.end
+          description: Конец временного диапазона.
+          in: query
+          required: false
+          type: string
+          format: date-time
+        - name: state
+          description: >-
+            Фильтр сертификатов по статусу истечения срока действия его версий.
+
+             - CERTIFICATE_STATE_UNSPECIFIED: Не указан.
+             - CERTIFICATE_STATE_ACTIVE: Сертификаты, у которых есть хотя бы одна версия с неистекшим сроком действия.
+             - CERTIFICATE_STATE_EXPIRED: Сертификаты, у которых нет ни одной версии с неистекшим сроком действия.
+          in: query
+          required: false
+          type: string
+          enum:
+            - CERTIFICATE_STATE_UNSPECIFIED
+            - CERTIFICATE_STATE_ACTIVE
+            - CERTIFICATE_STATE_EXPIRED
+          default: CERTIFICATE_STATE_UNSPECIFIED
+      tags:
+        - CertificateService
+    post:
+      summary: Import создает управляемый клиентом импортированный сертификат
+      operationId: CertificateService_Import
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1Certificate"
+      parameters:
+        - name: body
+          description: ImportRequest — запрос на импорт пользовательского сертификата.
+          in: body
+          required: true
+          schema:
+            $ref: "#/definitions/v1ImportRequest"
+      tags:
+        - CertificateService
+  /v1/certificate/{certificateId}/version:
+    post:
+      summary: Create создает новую версию управляемого клиентом импортированного
+        сертификата.
+      operationId: CertificateVersionService_Create
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1CertificateVersion"
+      parameters:
+        - name: certificateId
+          description: Идентификатор сертификата.
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: "#/definitions/CertificateVersionServiceCreateBody"
+      tags:
+        - CertificateVersionService
+  /v1/certificate/{certificateId}/version/{versionId}:
+    get:
+      summary: Get возвращает запрошенную версию запрошенного сертификата
+      operationId: CertificateVersionService_Get
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1CertificateVersion"
+      parameters:
+        - name: certificateId
+          description: Идентификатор сертификата.
+          in: path
+          required: true
+          type: string
+        - name: versionId
+          description: Идентификатор версии сертификата.
+          in: path
+          required: true
+          type: string
+          format: uint64
+      tags:
+        - CertificateVersionService
+    put:
+      summary: Update обновляет общие свойства версии сертификата
+      operationId: CertificateVersionService_Update
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1CertificateVersion"
+      parameters:
+        - name: certificateId
+          description: Идентификатор сертификата, к которому относится версия.
+          in: path
+          required: true
+          type: string
+        - name: versionId
+          description: Целевая версия для обновления.
+          in: path
+          required: true
+          type: integer
+          format: int64
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: "#/definitions/v1CertificateVersionServiceUpdateBody"
+      tags:
+        - CertificateVersionService
+  /v1/certificate/{certificateId}/version/{versionId}:private_key:
+    get:
+      summary: GetPrivateKey возвращает приватный ключ сертификата
+      operationId: CertificateVersionService_GetPrivateKey
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1GetPrivateKeyResponse"
+      parameters:
+        - name: certificateId
+          description: Идентификатор сертификата.
+          in: path
+          required: true
+          type: string
+        - name: versionId
+          description: Номер версии сертификата. Если не указан или указан version_id=0,
+            будет возвращен приватный ключ для последней версии сертификата.
+          in: path
+          required: true
+          type: integer
+          format: int64
+      tags:
+        - CertificateVersionService
+  /v1/certificate/{certificateId}/versions:
+    get:
+      summary: List возвращает срез версий с пагинацией
+      operationId: CertificateVersionService_List
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1ListVersionsResponse"
+      parameters:
+        - name: certificateId
+          description: Идентификатор сертификата.
+          in: path
+          required: true
+          type: string
+        - name: pageSize
+          description: Максимальное количество результатов на странице ответа.
+          in: query
+          required: false
+          type: string
+          format: int64
+        - name: pageToken
+          description: Токен запрашиваемой страницы с результатами.
+          in: query
+          required: false
+          type: string
+      tags:
+        - CertificateVersionService
+  /v1/certificate/{certificateId}:renew:
+    post:
+      summary: Renew запускает процесс обновления сертификата Let's Encrypt, если все
+        предварительные условия выполнены
+      operationId: CertificateService_Renew
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/certificate_managerv1Operation"
+      parameters:
+        - name: certificateId
+          description: Идентификатор сертификата.
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: "#/definitions/CertificateServiceRenewBody"
+      tags:
+        - CertificateService
+  /v1/certificate/{certificateId}:usage:
+    get:
+      summary: GetUsage возвращает ресурсы, которые используют сертификат
+      operationId: CertificateService_GetUsage
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1GetUsageResponse"
+      parameters:
+        - name: certificateId
+          description: Идентификатор сертификата.
+          in: path
+          required: true
+          type: string
+      tags:
+        - CertificateService
+  /v1/certificate/{id}:
+    get:
+      summary: Get возвращает сертификат по указанному идентификатору
+      operationId: CertificateService_Get
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1Certificate"
+      parameters:
+        - name: id
+          description: Идентификатор сертификата.
+          in: path
+          required: true
+          type: string
+      tags:
+        - CertificateService
+    delete:
+      summary: Delete удаляет сертификат по указанному идентификатору
+      operationId: CertificateService_Delete
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            type: object
+            properties: {}
+      parameters:
+        - name: id
+          description: Идентификатор сертификата.
+          in: path
+          required: true
+          type: string
+        - name: force
+          description: Флаг принудительного удаления. Используется для удаления
+            сертификата, даже если он используется в других
+            сервисах. Если он используется другими продуктами в качестве
+            зависимости, его удаление может нарушить их работоспособность.
+          in: query
+          required: false
+          type: boolean
+      tags:
+        - CertificateService
+    put:
+      summary: Update обновляет общие свойства сертификата
+      operationId: CertificateService_Update
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1Certificate"
+      parameters:
+        - name: id
+          description: Идентификатор сертификата.
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: "#/definitions/v1CertificateServiceUpdateBody"
+      tags:
+        - CertificateService
+  /v1/certificate:issue_lenc_cert:
+    post:
+      summary: IssueLENCCert запускает процесс создания сертификата Let's Encrypt
+      operationId: CertificateService_IssueLENCCert
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/certificate_managerv1Operation"
+      parameters:
+        - name: body
+          description: IssueLENCCertRequest — запрос на выпуск сертификата LENC.
+          in: body
+          required: true
+          schema:
+            $ref: "#/definitions/v1IssueLENCCertRequest"
+      tags:
+        - CertificateService
+  /v1/operation/{operationId}:
+    get:
+      summary: Get возвращает объект Operation по заданному идентификатору
+      operationId: OperationService_Get
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/certificate_managerv1Operation"
+      parameters:
+        - name: operationId
+          description: Идентификатор операции.
+          in: path
+          required: true
+          type: string
+      tags:
+        - OperationService
+  /v1/operations:
+    get:
+      summary: ListOperations выводит список операций, которые были произведены над
+        заданным сертификатом
+      operationId: OperationService_ListOperations
+      responses:
+        "200":
+          description: Успешное выполнение запроса.
+          schema:
+            $ref: "#/definitions/v1ListOperationsResponse"
+      parameters:
+        - name: certificateId
+          description: Идентификатор сертификата.
+          in: query
+          required: true
+          type: string
+        - name: pageSize
+          description: Максимальное количество результатов на странице ответа.
+          in: query
+          required: false
+          type: string
+          format: int64
+        - name: pageToken
+          description: Токен запрашиваемой страницы с результатами.
+          in: query
+          required: false
+          type: string
+      tags:
+        - OperationService
+definitions:
+  CertificateServiceRenewBody:
+    type: object
+    description: RenewRequest — запрос на запуск процесса обновления.
+  CertificateVersionServiceCreateBody:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+        description: Флаг, означающий, должен ли сертификат быть активированным после
+          создания.
+      serverCertificate:
+        type: string
+        description: Открытый сертификат, который идентифицирует домен. Строка в
+          кодировке Base64.
+      privateKey:
+        type: string
+        description: Используется для расшифровки данных клиента, зашифрованных открытым
+          ключом (серверный сертификат). Строка PEM в кодировке Base64.
+      intermediateCertificate:
+        type: string
+        description: Промежуточный сертификат для создания цепочки доверия между
+          сертификатом и корневым CA сертификатом. Строка PEM в кодировке
+          Base64.
+    description: CreateRequest — запрос на создание новой версии сертификата.
+    required:
+      - serverCertificate
+      - privateKey
+  certificate_managerv1Operation:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Идентификатор операции.
+      resourceName:
+        type: string
+        description: Информация о ресурсе, над которым производится операция, вида `urn:cloud:SERVICE:ZONE_OPT:PROJECT_OPT:RESOURCE_TYPE_OPT`.
+        readOnly: true
+      resourceId:
+        type: string
+        description: Уникальный идентификатор ресурса, над которым производится операция.
+        readOnly: true
+      createdAt:
+        type: string
+        format: date-time
+        description: Время создания операции.
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        description: Время последнего изменения операции.
+        readOnly: true
+      done:
+        type: boolean
+        description: Флаг завершенности операции. Если значение `false`, операция в
+          процессе выполнения. Если значение `true`, операция завершена и
+          поле `error` может быть заполнено.
+        readOnly: true
+      description:
+        type: string
+        description: Описание операции. От 0 до 255 символов.
+        readOnly: true
+      error:
+        $ref: "#/definitions/rpcStatus"
+        description: Результат операции в случае ошибки.
+        readOnly: true
+    description: Operation — описание операции.
+    required:
+      - id
+  googleprotobufAny:
+    type: object
+    properties:
+      "@type":
+        type: string
+        description: >-
+          A URL/resource name that uniquely identifies the type of the
+          serialized
+
+          protocol buffer message. This string must contain at least
+
+          one "/" character. The last segment of the URL's path must represent
+
+          the fully qualified name of the type (as in
+
+          `path/google.protobuf.Duration`). The name should be in a canonical
+          form
+
+          (e.g., leading "." is not accepted).
+
+
+          In practice, teams usually precompile into the binary all types that
+          they
+
+          expect it to use in the context of Any. However, for URLs which use
+          the
+
+          scheme `http`, `https`, or no scheme, one can optionally set up a type
+
+          server that maps type URLs to message definitions as follows:
+
+
+          * If no scheme is provided, `https` is assumed.
+
+          * An HTTP GET on the URL must yield a [google.protobuf.Type][]
+            value in binary format, or produce an error.
+          * Applications are allowed to cache lookup results based on the
+            URL, or have them precompiled into a binary to avoid any
+            lookup. Therefore, binary compatibility needs to be preserved
+            on changes to types. (Use versioned type names to manage
+            breaking changes.)
+
+          Note: this functionality is not currently available in the official
+
+          protobuf release, and it is not used for type URLs beginning with
+
+          type.googleapis.com. As of May 2023, there are no widely used type
+          server
+
+          implementations and no plans to implement one.
+
+
+          Schemes other than `http`, `https` (or the empty scheme) might be
+
+          used with implementation specific semantics.
+    additionalProperties: {}
+    description: >-
+      `Any` contains an arbitrary serialized protocol buffer message along with
+      a
+
+      URL that describes the type of the serialized message.
+
+
+      Protobuf library provides support to pack/unpack Any values in the form
+
+      of utility functions or additional generated methods of the Any type.
+
+
+      Example 1: Pack and unpack a message in C++.
+
+          Foo foo = ...;
+          Any any;
+          any.PackFrom(foo);
+          ...
+          if (any.UnpackTo(&foo)) {
+            ...
+          }
+
+      Example 2: Pack and unpack a message in Java.
+
+          Foo foo = ...;
+          Any any = Any.pack(foo);
+          ...
+          if (any.is(Foo.class)) {
+            foo = any.unpack(Foo.class);
+          }
+          // or ...
+          if (any.isSameTypeAs(Foo.getDefaultInstance())) {
+            foo = any.unpack(Foo.getDefaultInstance());
+          }
+
+       Example 3: Pack and unpack a message in Python.
+
+          foo = Foo(...)
+          any = Any()
+          any.Pack(foo)
+          ...
+          if any.Is(Foo.DESCRIPTOR):
+            any.Unpack(foo)
+            ...
+
+       Example 4: Pack and unpack a message in Go
+
+           foo := &pb.Foo{...}
+           any, err := anypb.New(foo)
+           if err != nil {
+             ...
+           }
+           ...
+           foo := &pb.Foo{}
+           if err := any.UnmarshalTo(foo); err != nil {
+             ...
+           }
+
+      The pack methods provided by protobuf library will by default use
+
+      'type.googleapis.com/full.type.name' as the type URL and the unpack
+
+      methods only use the fully qualified type name after the last '/'
+
+      in the type URL, for example "foo.bar.com/x/y.z" will yield type
+
+      name "y.z".
+
+
+      JSON
+
+      ====
+
+      The JSON representation of an `Any` value uses the regular
+
+      representation of the deserialized, embedded message, with an
+
+      additional field `@type` which contains the type URL. Example:
+
+          package google.profile;
+          message Person {
+            string first_name = 1;
+            string last_name = 2;
+          }
+
+          {
+            "@type": "type.googleapis.com/google.profile.Person",
+            "firstName": <string>,
+            "lastName": <string>
+          }
+
+      If the embedded message type is well-known and has a custom JSON
+
+      representation, that representation will be embedded adding a field
+
+      `value` which holds the custom JSON in addition to the `@type`
+
+      field. Example (for message [google.protobuf.Duration][]):
+
+          {
+            "@type": "type.googleapis.com/google.protobuf.Duration",
+            "value": "1.212s"
+          }
+  rpcStatus:
+    type: object
+    properties:
+      code:
+        type: integer
+        format: int32
+        description: |-
+          The status code, which should be an enum value of
+          [google.rpc.Code][google.rpc.Code].
+      message:
+        type: string
+        description: >-
+          A developer-facing error message, which should be in English. Any
+
+          user-facing error message should be localized and sent in the
+
+          [google.rpc.Status.details][google.rpc.Status.details] field, or
+          localized
+
+          by the client.
+      details:
+        type: array
+        items:
+          type: object
+          $ref: "#/definitions/googleprotobufAny"
+        description: >-
+          Список сообщений, содержащих подробную информацию об ошибке.
+    description: >-
+      Тип "Status" определяет модель логической ошибки, которая подходит для различных сред программирования, включая REST API и RPC API. Каждое сообщение о состоянии содержит три блока данных: код ошибки, сообщение об ошибке и подробные сведения об ошибке. Подробнее о модели ошибок — в разделе [API Design Guide](https://cloud.google.com/apis/design/errors).
+  v1CertUsage:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Идентификатор ресурса.
+      type:
+        type: string
+        description: Тип ресурса.
+      name:
+        type: string
+        description: Имя ресурса.
+    description: CertUsage — детали ресурса.
+  v1Certificate:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Идентификатор сертификата.
+      name:
+        type: string
+        description: Отображаемое имя сертификата.
+      description:
+        type: string
+        description: Описание сертификата.
+      type:
+        $ref: "#/definitions/v1CertificateType"
+        description: Тип управления сертификатом.
+      labels:
+        type: object
+        additionalProperties:
+          type: string
+        description: Метки сертификата.
+      kmsKeyId:
+        type: string
+        description: Выбранный при создании ключ шифрования. Используется для
+          безопасного хранения чувствительных данных сертификата.
+      serviceInstanceId:
+        type: string
+        description: Идентификатор продукта.
+        readOnly: true
+      projectId:
+        type: string
+        description: Идентификатор проекта.
+        readOnly: true
+      primary:
+        $ref: "#/definitions/v1CertificateVersion"
+        description: Метаданные основной версии сертификата.
+        readOnly: true
+      createdAt:
+        type: string
+        format: date-time
+        description: Время создания сертификата.
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        description: Время обновления сертификата.
+        readOnly: true
+      expiresAt:
+        type: string
+        format: date-time
+        description: Дата истечения последней по сроку действия версии сертификата.
+        readOnly: true
+      status:
+        $ref: "#/definitions/v1VersionStatus"
+        description: Статус выпускаемой версии, если такая есть, или статус текущей
+          версии, если выпускаемой нет.
+        readOnly: true
+      errorCode:
+        $ref: "#/definitions/v1ErrorCode"
+        description: Код ошибки выпускаемой версии, если такая есть, или код ошибки
+          текущей версии, если выпускаемой нет.
+        readOnly: true
+      issueState:
+        $ref: "#/definitions/v1IssueState"
+        description: Содержит текущую и выпускаемую версию и заполняется только у
+          сертификатов Let's Encrypt.
+        readOnly: true
+    description: Certificate — детали сертификата.
+    required:
+      - name
+  v1CertificateServiceUpdateBody:
+    type: object
+    properties:
+      description:
+        type: string
+        description: Описание сертификата.
+      name:
+        type: string
+        description: Отображаемое имя сертификата.
+    description: UpdateCertificateRequest — запрос на обновление свойств сертификата.
+  v1CertificateState:
+    type: string
+    enum:
+      - CERTIFICATE_STATE_UNSPECIFIED
+      - CERTIFICATE_STATE_ACTIVE
+      - CERTIFICATE_STATE_EXPIRED
+    default: CERTIFICATE_STATE_UNSPECIFIED
+    description: >-
+      CertificateState — фильтр сертификатов по статусу активности.
+
+       - CERTIFICATE_STATE_UNSPECIFIED: Не указан.
+       - CERTIFICATE_STATE_ACTIVE: Сертификаты, у которых есть хотя бы одна версия с неистекшим сроком действия.
+       - CERTIFICATE_STATE_EXPIRED: Сертификаты, у которых нет ни одной версия с неистекшим сроком действия.
+  v1CertificateType:
+    type: string
+    enum:
+      - CERTIFICATE_TYPE_UNSPECIFIED
+      - CERTIFICATE_TYPE_IMPORTED
+      - CERTIFICATE_TYPE_SELF_SIGNED
+      - CERTIFICATE_TYPE_LETS_ENCRYPT
+    default: CERTIFICATE_TYPE_UNSPECIFIED
+    description: >-
+      CertificateType — тип сертификата.
+
+       - CERTIFICATE_TYPE_UNSPECIFIED: Тип не указан.
+       - CERTIFICATE_TYPE_IMPORTED: Импортированный сертификат, управляемый пользователем.
+       - CERTIFICATE_TYPE_SELF_SIGNED: Самоподписанный сертификат, выпущенный Cloud.ru.
+       - CERTIFICATE_TYPE_LETS_ENCRYPT: Сертификат Let's Encrypt, управляемый системой.
+  v1CertificateVersion:
+    type: object
+    properties:
+      id:
+        type: integer
+        format: int64
+        description: Идентификатор версии сертификата.
+      certificateId:
+        type: string
+        description: Идентификатор сертификата, к которому относится версия.
+        readOnly: true
+      commonName:
+        type: string
+        description: Общее имя (CN) сертификата.
+        readOnly: true
+      issuer:
+        type: string
+        description: Издатель сертификата.
+        readOnly: true
+      dnsNames:
+        type: array
+        items:
+          type: string
+        description: Список DNS имен сертификата.
+        readOnly: true
+      authorityKeyId:
+        type: string
+        description: Идентификатор ключа центра сертификации.
+        readOnly: true
+      enabled:
+        type: boolean
+        description: Флаг активности версии сертификата.
+        readOnly: true
+      serverCertificate:
+        type: string
+        description: Публичный сертификат, который идентифицирует домен.
+      intermediateCertificate:
+        type: string
+        description: Промежуточный сертификат для создания цепочки доверия.
+      createdAt:
+        type: string
+        format: date-time
+        description: Время создания версии сертификата.
+        readOnly: true
+      expiresAt:
+        type: string
+        format: date-time
+        description: Время истечения срока действия версии сертификата.
+        readOnly: true
+      status:
+        $ref: "#/definitions/v1VersionStatus"
+        description: Статус версии сертификата, показывает готовность к использованию.
+        readOnly: true
+      errorCode:
+        $ref: "#/definitions/v1ErrorCode"
+        description: Код ошибки, описывающий причину статуса WARNING или FAILED.
+        readOnly: true
+      privateKeyAlgorithm:
+        $ref: "#/definitions/v1KeySpec"
+        description: Спецификация приватного ключа.
+        readOnly: true
+    description: CertificateVersion — версия сертификата.
+  v1CertificateVersionServiceUpdateBody:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+        description: Переключает свойство enabled версии сертификата. Если версия
+          сертификата отключена, она не будет использоваться как последняя
+          версия сертификата.
+    description: UpdateVersionRequest — запрос на обновление общих свойств версии
+      сертификата.
+  v1DateRange:
+    type: object
+    properties:
+      start:
+        type: string
+        format: date-time
+        description: Начало временного диапазона.
+      end:
+        type: string
+        format: date-time
+        description: Конец временного диапазона.
+    description: DateRange — объект-значение для указания диапазона дат.
+  v1ErrorCode:
+    type: string
+    enum:
+      - ERROR_CODE_NO_ERROR
+      - ERROR_CODE_UNEXPECTED
+      - ERROR_CODE_NOT_DELEGATED
+      - ERROR_CODE_INSUFFICIENT_RIGHTS
+      - ERROR_CODE_EXPIRED
+    default: ERROR_CODE_NO_ERROR
+    description: >-
+      ErrorCode — описывает причину проблемы с версией сертификата.
+
+       - ERROR_CODE_NO_ERROR: Ошибки нет.
+       - ERROR_CODE_UNEXPECTED: Во время процесса выпуска произошла неожиданная ситуация и процесс выпуска должен быть перезапущен с помощью renew.
+       - ERROR_CODE_NOT_DELEGATED: Некоторые домены не имеют делегированных зон в Evolution DNS.
+       - ERROR_CODE_INSUFFICIENT_RIGHTS: Недостаточно прав для выпуска нового сертификата Let's Encrypt.
+       - ERROR_CODE_EXPIRED: Срок годности версии истек и использовать ее нельзя.
+  v1GetDelegatedDomainsResponse:
+    type: object
+    properties:
+      domains:
+        type: array
+        items:
+          type: string
+        description: Домены, которые делегированы в Evolution DNS.
+    description: GetDelegatedDomainsResponse — ответ, содержащий запрошенные домены.
+  v1GetPrivateKeyResponse:
+    type: object
+    properties:
+      privateKey:
+        type: string
+        description: Приватный ключ PEM в декодированном Base64.
+        readOnly: true
+      version:
+        $ref: "#/definitions/v1CertificateVersion"
+        description: Версия сертификата, к которой относится приватный ключ.
+        readOnly: true
+    description: GetPrivateKeyResponse — версия сертификата с приватным ключом.
+  v1GetServiceAccountResponse:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Идентификатор сертификата.
+      username:
+        type: string
+        description: Имя сертификата.
+      email:
+        type: string
+        description: Email.
+    description: GetServiceAccountResponse — содержит запрошенные метаданные.
+  v1GetUsageResponse:
+    type: object
+    properties:
+      usage:
+        type: array
+        items:
+          type: object
+          $ref: "#/definitions/v1CertUsage"
+        description: Список ресурсов, использующих сертификат.
+    description: GetUsageResponse — список ресурсов, которые используют сертификат.
+  v1ImportRequest:
+    type: object
+    properties:
+      name:
+        type: string
+        description: Отображаемое имя сертификата.
+      description:
+        type: string
+        description: Описание сертификата.
+      labels:
+        type: object
+        additionalProperties:
+          type: string
+        description: Метки сертификата.
+      projectId:
+        type: string
+        description: Идентификатор проекта.
+      kmsKeyId:
+        type: string
+        description: Идентификатор ключа шифрования KMS.
+      serverCertificate:
+        type: string
+        description: Публичный сертификат, который идентифицирует домен. Строка в
+          кодировке Base64.
+      privateKey:
+        type: string
+        description: Используется для расшифровки данных клиента, зашифрованных открытым
+          ключом (серверный сертификат). Строка PEM в кодировке Base64.
+      intermediateCertificate:
+        type: string
+        description: Промежуточный сертификат для создания цепочки доверия между
+          сертификатом и корневым CA сертификатом. Строка в кодировке Base64.
+    description: ImportRequest — запрос на импорт пользовательского сертификата.
+    required:
+      - name
+      - projectId
+      - serverCertificate
+      - privateKey
+  v1IssueLENCCertRequest:
+    type: object
+    properties:
+      projectId:
+        type: string
+        description: Идентификатор проекта.
+      name:
+        type: string
+        description: Отображаемое имя сертификата.
+      description:
+        type: string
+        description: Описание сертификата.
+      dnsNames:
+        type: array
+        items:
+          type: string
+        description: Домены, которые будут установлены в атрибут CN сертификата и
+          атрибут DNS names.
+    description: IssueLENCCertRequest — запрос на выпуск сертификата LENC.
+    required:
+      - projectId
+      - name
+      - dnsNames
+  v1IssueState:
+    type: object
+    properties:
+      current:
+        $ref: "#/definitions/v1CertificateVersion"
+        description: Последняя выпущенная версия независимо от того, переведена ли она
+          в неактивный статус или ее срок действия истек.
+        readOnly: true
+      processing:
+        $ref: "#/definitions/v1CertificateVersion"
+        description: Последняя пустая версия независимо от того, находится ли она в
+          обработке или ее выпуск провален.
+        readOnly: true
+    description: IssueState — содержит текущую и выпускаемую версию.
+  v1KeySpec:
+    type: string
+    enum:
+      - RSA_2048
+      - RSA_3072
+      - RSA_4096
+      - ECDSA_P256
+      - ECDSA_P384
+      - ECDSA_P521
+    default: RSA_2048
+    description: |-
+      KeySpec — спецификация ключа для сертификата.
+
+       - RSA_2048: RSA ключ длиной 2048 бит.
+       - RSA_3072: RSA ключ длиной 3072 бит.
+       - RSA_4096: RSA ключ длиной 4096 бит.
+       - ECDSA_P256: ECDSA ключ на кривой NIST P-256.
+       - ECDSA_P384: ECDSA ключ на кривой NIST P-384.
+       - ECDSA_P521: ECDSA ключ на кривой NIST P-521.
+  v1ListCertificatesResponse:
+    type: object
+    properties:
+      certificates:
+        type: array
+        items:
+          type: object
+          $ref: "#/definitions/v1Certificate"
+        description: Список сертификатов. Сертификат не содержит версии. Версии можно
+          посмотреть в карточке сертификата.
+    description: ListCertificatesResponse — ответ со списком сертификатов,
+      соответствующих заданным критериям.
+  v1ListOperationsResponse:
+    type: object
+    properties:
+      operations:
+        type: array
+        items:
+          type: object
+          $ref: "#/definitions/certificate_managerv1Operation"
+        description: Список операций, выполненных над заданным сертификатом.
+        readOnly: true
+      nextPageToken:
+        type: string
+        description: Токен следующей страницы с результатами.
+        readOnly: true
+    description: ListOperationsResponse — ответ со списком операций.
+  v1ListVersionsResponse:
+    type: object
+    properties:
+      versions:
+        type: array
+        items:
+          type: object
+          $ref: "#/definitions/v1CertificateVersion"
+        description: Список версий сертификата.
+        readOnly: true
+      nextPageToken:
+        type: string
+        description: Токен следующей страницы с результатами.
+        readOnly: true
+    description: ListVersionsResponse — ответ на ListVersionsRequest.
+  v1RecheckResponse:
+    type: object
+    properties:
+      certificate:
+        $ref: "#/definitions/v1Certificate"
+        description: Обновленная версия сертификата.
+    description: RecheckResponse — ответ с результатом метода повторной проверки.
+  v1VersionStatus:
+    type: string
+    enum:
+      - VERSION_STATUS_UNSPECIFIED
+      - VERSION_STATUS_INITIATED
+      - VERSION_STATUS_PROCESSING
+      - VERSION_STATUS_FAILED
+      - VERSION_STATUS_READY
+      - VERSION_STATUS_WARNING
+    default: VERSION_STATUS_UNSPECIFIED
+    description: >-
+      VersionStatus — статус версии сертификата.
+
+       - VERSION_STATUS_UNSPECIFIED: Не указан.
+       - VERSION_STATUS_INITIATED: Инициирован — процесс создания версии запущен.
+       - VERSION_STATUS_PROCESSING: Обрабатывается — версия в процессе создания.
+       - VERSION_STATUS_FAILED: Ошибка — создание версии завершилось неудачно.
+       - VERSION_STATUS_READY: Готов — версия готова к использованию.
+       - VERSION_STATUS_WARNING: Предупреждение — версия создана с предупреждениями.

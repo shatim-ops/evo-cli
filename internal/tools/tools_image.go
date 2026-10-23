@@ -118,6 +118,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 			"status": "confirmation_required",
 			"message": i18n.T("image_create makes a billable image from a disk.",
 				"image_create создаёт платный образ из диска."),
+			"preview": willPreview(engine.ResourceImage, name, zoneRef, args, []string{"disk_id", "min_cpu", "min_ram", "min_disk"}),
 			"will_create": map[string]any{
 				"name": name, "from_disk": diskID,
 				"zone":    firstNonEmptyStr(zoneRef, "not given: configured region, else the source disk's zone"),

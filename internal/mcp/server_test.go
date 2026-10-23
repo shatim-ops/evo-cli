@@ -163,9 +163,16 @@ func TestToolsList_Annotations(t *testing.T) {
 	listed := resp["result"].(map[string]any)["tools"].([]any)
 	mutating := map[string]bool{}
 	sensitive := map[string]bool{}
+	sideEffects := map[string]bool{}
 	for _, tl := range tools.New(nil).Tools() {
 		mutating[tl.Name] = tl.Mutating
 		sensitive[tl.Name] = tools.IsSensitive(tl)
+		sideEffects[tl.Name] = tools.HasSideEffects(tl)
+	}
+	for _, name := range []string{"stack_status", "k8s_kubeconfig"} {
+		if !sideEffects[name] || mutating[name] {
+			t.Errorf("%s: side effects=%v mutating=%v, want a read with side effects", name, sideEffects[name], mutating[name])
+		}
 	}
 	for _, name := range []string{"secret_value", "cert_private_key"} {
 		if !sensitive[name] || mutating[name] {
@@ -194,6 +201,15 @@ func TestToolsList_Annotations(t *testing.T) {
 		if sensitive[name] {
 			if a["readOnlyHint"] == true || a["destructiveHint"] != false || a["idempotentHint"] != true {
 				t.Errorf("%s: annotations %v, want readOnlyHint absent, destructiveHint false, idempotentHint true", name, a)
+			}
+			continue
+		}
+		// A read that is not read-only (A9, REL12-4): stack_status advances
+		// the stack it shows, k8s_kubeconfig mints the cluster's token — a
+		// client must not approve them as reads.
+		if sideEffects[name] {
+			if a["readOnlyHint"] == true || a["destructiveHint"] != false || a["idempotentHint"] == true {
+				t.Errorf("%s: annotations %v, want readOnlyHint absent, destructiveHint false, idempotentHint absent", name, a)
 			}
 			continue
 		}

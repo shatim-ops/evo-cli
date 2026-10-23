@@ -871,3 +871,25 @@ func TestK8s_EqualFlavorsByNameWhateverCatalogOrder(t *testing.T) {
 		}
 	}
 }
+
+// A9 (decision 21.10): the instruction about consent is in next, as in
+// deploy_plan; message, the field of 1.2, says the same until 2.0; a
+// --read-only server, where stack_apply is refused, says creating the
+// stack needs another server.
+func TestStackPlan_ConsentInNext(t *testing.T) {
+	mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": "my-bucket", "key": "k", "content": "c"}}}
+	for _, readOnly := range []bool{false, true} {
+		r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+		if readOnly {
+			r.SetReadOnly()
+		}
+		m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf})
+		next, _ := m["next"].(string)
+		if isErr || m["message"] != next || !strings.Contains(next, "stack_apply") {
+			t.Errorf("read-only=%v: %s", readOnly, text)
+		}
+		if strings.Contains(next, "confirmed=true") == readOnly {
+			t.Errorf("read-only=%v: next %q", readOnly, next)
+		}
+	}
+}

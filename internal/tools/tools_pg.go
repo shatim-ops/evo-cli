@@ -723,7 +723,8 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_backup_create starts a manual backup %q of cluster %s.",
-			"pg_backup_create запускает ручное резервное копирование %q кластера %s.", name, cid)}), true
+			"pg_backup_create запускает ручное резервное копирование %q кластера %s.", name, cid),
+			"preview": willPreview(engine.ResourcePGBackup, name, "", map[string]any{"cluster_id": cid}, []string{"cluster_id"})}), true
 	}
 	op, err := cli.CreateBackup(ctx, cid, name)
 	if err != nil || op.ID == "" {

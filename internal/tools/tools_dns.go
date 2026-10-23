@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/dns"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
@@ -35,6 +36,16 @@ func dnsVisibility(args map[string]any) string {
 		return "private"
 	}
 	return "public"
+}
+
+// dnsDelegationWarning is what the preview of a public zone warns of: the
+// CLI shows the preview in place of the message that says it.
+func dnsDelegationWarning(vis string) string {
+	if vis != "public" {
+		return ""
+	}
+	return i18n.T("a public zone serves queries only after the domain is delegated to it",
+		"публичная зона обслуживает запросы только после делегирования домена")
 }
 
 // dnsZoneVisibility is the visibility of zone zoneID: type when given,
@@ -145,6 +156,8 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 			"status": "confirmation_required",
 			"message": i18n.Tf("dns_zone_create creates a %s DNS zone for %q (async). A public zone needs domain-ownership delegation to serve traffic.",
 				"dns_zone_create создаёт зону DNS (%s) для %q (асинхронно). Публичная зона обслуживает запросы только после делегирования домена.", vis, domain),
+			"preview": willPreview(engine.ResourceDNSZone, domain, "", map[string]any{"name": stringArg(args, "name"), "visibility": vis},
+				[]string{"name", "visibility"}, dnsDelegationWarning(vis)),
 		}), true
 	}
 	cli, err := s.dnsClient(ctx)

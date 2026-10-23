@@ -58,3 +58,31 @@ func TestSnatCreate_TakenNameRefusedNoSecondGateway(t *testing.T) {
 		t.Errorf("snat_create made %d gateways next to the one of that name", api.posts)
 	}
 }
+
+// natZoneAPI is natAPI with the zones of compute: ru.AZ-1 by its id.
+type natZoneAPI struct{ natAPI }
+
+func (a *natZoneAPI) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Path == "/api/v1/availability-zones" {
+		rec := httptest.NewRecorder()
+		_, _ = io.WriteString(rec, `[{"id":"00000000-0000-4000-8000-0000000000a1","name":"ru.AZ-1"}]`)
+		return rec.Result(), nil
+	}
+	return a.natAPI.RoundTrip(r)
+}
+
+// FB123-2 (A7): the preview of snat_create names the zone of the billable
+// gateway by its name, as Kafka, Redis and the balancer do: the zone given
+// by its id is looked up. It said the id alone.
+func TestSnatCreate_PreviewNamesTheZone(t *testing.T) {
+	api := &natZoneAPI{}
+	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
+	cloud.SetToken("t")
+	r := raRegistry(t, api, cloud, nil)
+	m, text, _ := callNamed(t, r, "snat_create", map[string]any{"name": "evo-new", "availability_zone_id": "00000000-0000-4000-8000-0000000000a1"})
+	p, _ := m["preview"].(map[string]any)
+	zone, _ := p["zone"].(map[string]any)
+	if m["status"] != "confirmation_required" || zone["name"] != "ru.AZ-1" {
+		t.Errorf("preview zone %v: %s", p["zone"], text)
+	}
+}

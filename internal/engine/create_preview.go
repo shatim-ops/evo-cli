@@ -36,6 +36,15 @@ const (
 	ResourceLB          = "load_balancer"
 	ResourceRedis       = "redis_cluster"
 	ResourceSNAT        = "snat_gateway"
+	ResourceDNSZone     = "dns_zone"
+	ResourceImage       = "image"
+	ResourcePGBackup    = "pg_backup"
+	ResourceS3Object    = "s3_object"
+	ResourceSecret      = "secret"
+	ResourceStack       = "stack"
+	ResourceTargetGroup = "target_group"
+	ResourceVPC         = "vpc"
+	ResourceVPCRoute    = "vpc_route"
 )
 
 // CreatePreview is what a tool that creates a billable resource is about to
@@ -49,7 +58,9 @@ const (
 type CreatePreview struct {
 	// Resource is what is created: vm, disk, disk_resize, pg_cluster,
 	// k8s_cluster, k8s_nodepool, k8s_addon, s3_bucket, ar_registry, ca_app,
-	// kafka_cluster, load_balancer, redis_cluster or snat_gateway.
+	// kafka_cluster, load_balancer, redis_cluster, snat_gateway, dns_zone,
+	// image, pg_backup, s3_object, secret, stack, target_group, vpc or
+	// vpc_route.
 	Resource string `json:"resource"`
 	Name     string `json:"name,omitempty"`
 	// ProjectFrom is where the project comes from: profile, project, env,
@@ -153,13 +164,44 @@ var tariffs = map[string]string{
 	ResourceLB:          tariffsBase + "load-balancer",
 	ResourceRedis:       tariffsBase + "managed-redis",
 	// The public sNAT gateway is a line of the Compute tariff.
-	ResourceSNAT: tariffsBase + "evolution-compute",
+	ResourceSNAT:     tariffsBase + "evolution-compute",
+	ResourceDNSZone:  tariffsBase + "evolution-dns",
+	ResourceS3Object: tariffsBase + "object-storage",
+	// No line of these tariffs names a backup or a target group: the
+	// product's tariff, with noTariffLine.
+	ResourcePGBackup:    tariffsBase + "managed-postgresql",
+	ResourceTargetGroup: tariffsBase + "load-balancer",
+	// Evolution publishes no tariff of an image, a secret or a VPC (10.2026):
+	// the index of its tariffs, with noTariffLine; a stack's resources each
+	// go by their own.
+	ResourceImage:    tariffsBase + "index",
+	ResourceSecret:   tariffsBase + "index",
+	ResourceVPC:      tariffsBase + "index",
+	ResourceVPCRoute: tariffsBase + "index",
+	ResourceStack:    tariffsBase + "index",
+}
+
+// tariffNotes are the notes of the resources tariff_url does not price as
+// it does the others; the rest go with notPriced.
+var tariffNotes = map[string]string{
+	ResourceK8sAddon:    addonNotPriced,
+	ResourceStack:       stackNotPriced,
+	ResourceImage:       noTariffLine,
+	ResourceSecret:      noTariffLine,
+	ResourceVPC:         noTariffLine,
+	ResourceVPCRoute:    noTariffLine,
+	ResourcePGBackup:    noTariffLine,
+	ResourceTargetGroup: noTariffLine,
 }
 
 // The notes of a preview without a price.
 const (
 	notPriced      = "not priced by evo: the resource is billable; its rates are at tariff_url"
 	addonNotPriced = "no price of its own: the addon runs on the cluster's nodes, billed by the rates at tariff_url"
+	// A link to a page that does not price the resource must not read as
+	// its price: the note says the line is not there.
+	noTariffLine   = "not priced by evo: no line of the tariffs at tariff_url names this resource; count it as billable"
+	stackNotPriced = "not priced by evo: each resource of the stack is billed by its own tariff (stack_plan lists them; tariffs at tariff_url)"
 )
 
 // Price sets the cost estimate where evo can make one: a VM of a known
@@ -180,11 +222,11 @@ func (p *CreatePreview) Price() {
 		return
 	}
 	p.CostNote, p.TariffURL = notPriced, tariffs[p.Resource]
-	switch {
-	case p.Resource == ResourceVM && p.VM != nil:
+	if n, ok := tariffNotes[p.Resource]; ok {
+		p.CostNote = n
+	}
+	if p.Resource == ResourceVM && p.VM != nil {
 		p.CostNote = "not estimated: flavor size unknown"
-	case p.Resource == ResourceK8sAddon:
-		p.CostNote = addonNotPriced
 	}
 }
 
@@ -239,7 +281,7 @@ func (e *Engine) CompletePreview(ctx context.Context, p *CreatePreview) error {
 // flavor of the preview, as provision does); network adds the check of the
 // subnet and the security group provision would take.
 func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick func([]*provision.Flavor) (string, error), network bool) error {
-	if p.ProjectID == "" && p.Resource != ResourceS3Bucket && !contains(p.Missing, "project_id") {
+	if p.ProjectID == "" && p.Resource != ResourceS3Bucket && p.Resource != ResourceS3Object && !contains(p.Missing, "project_id") {
 		p.ProjectID, p.ProjectFrom = e.Config.ProjectID, e.Config.ProjectOrigin
 		if p.ProjectID == "" {
 			p.Missing = append(p.Missing, "project_id")
@@ -560,6 +602,24 @@ func createSummary(p CreatePreview, zone string) string {
 		return i18n.Tf("create Redis cluster %s", "создать кластер Redis %s", p.Name) + inZone
 	case ResourceSNAT:
 		return i18n.Tf("create SNAT gateway %s", "создать шлюз SNAT %s", p.Name) + inZone
+	case ResourceDNSZone:
+		return i18n.Tf("create DNS zone %s", "создать зону DNS %s", p.Name)
+	case ResourceImage:
+		return i18n.Tf("create image %s", "создать образ %s", p.Name) + inZone
+	case ResourcePGBackup:
+		return i18n.Tf("back up a PostgreSQL cluster as %s", "создать резервную копию %s кластера PostgreSQL", p.Name)
+	case ResourceS3Object:
+		return i18n.Tf("upload object %s", "загрузить объект %s", p.Name)
+	case ResourceSecret:
+		return i18n.Tf("create secret %s", "создать секрет %s", p.Name)
+	case ResourceStack:
+		return i18n.Tf("create the resources of stack job %s", "создать ресурсы задания стека %s", p.Name)
+	case ResourceTargetGroup:
+		return i18n.Tf("create target group %s", "создать группу целей %s", p.Name)
+	case ResourceVPC:
+		return i18n.Tf("create VPC %s", "создать VPC %s", p.Name)
+	case ResourceVPCRoute:
+		return i18n.Tf("add static route %s to a VPC", "добавить статический маршрут %s в VPC", p.Name)
 	}
 	return i18n.Tf("create %s %s", "создать %s %s", p.Resource, p.Name)
 }
@@ -608,6 +668,26 @@ func createdLine(p CreatePreview) string {
 		what = append(what, i18n.Tf("Managed Redis cluster %s", "кластер Managed Redis %s", p.Name))
 	case ResourceSNAT:
 		what = append(what, i18n.Tf("public SNAT gateway %s", "публичный шлюз SNAT %s", p.Name))
+	case ResourceDNSZone:
+		what = append(what, i18n.Tf("Evolution DNS zone %s", "зона Evolution DNS %s", p.Name))
+	case ResourceImage:
+		what = append(what, i18n.Tf("image %s", "образ %s", p.Name))
+	case ResourcePGBackup:
+		what = append(what, i18n.Tf("manual backup %s of the cluster", "ручная резервная копия %s кластера", p.Name))
+	case ResourceS3Object:
+		what = append(what, i18n.Tf("Object Storage object %s (an object of the key is overwritten)",
+			"объект Object Storage %s (объект с этим ключом перезаписывается)", p.Name))
+	case ResourceSecret:
+		what = append(what, i18n.Tf("Secret Manager secret %s", "секрет Secret Manager %s", p.Name))
+	case ResourceStack:
+		what = append(what, i18n.Tf("the resources of stack job %s (stack_plan lists them)",
+			"ресурсы задания стека %s (их перечисляет stack_plan)", p.Name))
+	case ResourceTargetGroup:
+		what = append(what, i18n.Tf("load balancer target group %s", "группа целей балансировщика %s", p.Name))
+	case ResourceVPC:
+		what = append(what, i18n.Tf("VPC %s", "VPC %s", p.Name))
+	case ResourceVPCRoute:
+		what = append(what, i18n.Tf("static route %s", "статический маршрут %s", p.Name))
 	default:
 		what = append(what, p.Resource+" "+p.Name)
 	}
@@ -628,9 +708,16 @@ func createCostLines(p CreatePreview) []string {
 		return []string{previewLabel("cost", "цена") + i18n.T("not estimated: the flavor size is unknown (see 'evo vm flavors')",
 			"не оценена: размер flavor неизвестен (см. 'evo vm flavors')")}
 	}
-	if p.Resource == ResourceK8sAddon {
+	switch p.CostNote {
+	case addonNotPriced:
 		return []string{previewLabel("cost", "цена") + i18n.Tf("none of its own: the addon runs on the cluster's nodes, billed by the tariff %s",
 			"своей нет: плагин работает на узлах кластера, они оплачиваются по тарифу %s", p.TariffURL)}
+	case noTariffLine:
+		return []string{previewLabel("cost", "цена") + i18n.Tf("not estimated by evo: no line of the tariffs %s names this resource; count it as billable",
+			"evo её не рассчитывает: в тарифах %s строки для этого ресурса нет; считайте его платным", p.TariffURL)}
+	case stackNotPriced:
+		return []string{previewLabel("cost", "цена") + i18n.Tf("not estimated by evo: each resource of the stack by its own tariff (see stack_plan), tariffs %s",
+			"evo её не рассчитывает: каждый ресурс стека — по своему тарифу (см. stack_plan), тарифы %s", p.TariffURL)}
 	}
 	return []string{previewLabel("cost", "цена") + i18n.Tf("not estimated by evo, the resource is billable: tariff %s",
 		"evo её не рассчитывает, ресурс платный: тариф %s", p.TariffURL)}
@@ -657,6 +744,7 @@ var paramLabels = map[string]struct {
 	"version":           {"version", "версия", false},
 	"cpu":               {"vCPU", "vCPU", false},
 	"memory_gb":         {"RAM", "RAM", true},
+	"size_bytes":        {"size, bytes", "размер, байт", false},
 	"ram":               {"RAM", "RAM", true},
 	"ram_gb":            {"RAM", "RAM", true},
 	"storage_gb":        {"storage", "хранилище", true},
