@@ -87,6 +87,7 @@ type raAPI struct {
 	reqs      []string
 	posts     map[string]string // путь → тело последнего POST
 	targetVMs string            // target_vms целевой группы tg-1
+	flavors   string            // flavors of productConfiguration; empty — gen-2-4 only
 }
 
 func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -103,9 +104,13 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	switch {
 	case r.URL.Path == "/v3/productConfiguration":
+		flavors := f.flavors
+		if flavors == "" {
+			flavors = `[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}]`
+		}
 		_, _ = io.WriteString(rec, `{"defaultZone":"ru.AZ-2",
 			"zones":[{"zoneId":"mk-az1","name":"ru.AZ-1"},{"zoneId":"mk-az2","name":"ru.AZ-2"}],
-			"flavors":[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}],
+			"flavors":`+flavors+`,
 			"channels":[{"channel":"STABLE","availableVersions":["v1.34.6"]}]}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters":
 		_, _ = io.WriteString(rec, `{"clusters":[]}`)
@@ -787,5 +792,40 @@ func TestStackPlan_S3BucketNameCheckedAtPlan(t *testing.T) {
 	mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": "my-bucket", "key": "k", "content": "c"}}}
 	if m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf}); isErr || m["job_id"] == nil {
 		t.Errorf("valid bucket: %s", text)
+	}
+}
+
+// cloud-e2e 22.10 (runs 39838101751, 39844928752): k8s_create sent the
+// masters' flavor gen-16-128, the first in the catalog's order, not the
+// smallest that fits — since #180 the loop's chosen name doubled as the
+// explicit --flavor, and the first fit stopped the search. A cluster
+// several times dearer than the one the plan meant, after a consent that
+// named no flavor; the zone refused it as sold out.
+func TestK8s_SmallestFittingFlavorWhateverCatalogOrder(t *testing.T) {
+	f := &raAPI{flavors: `[
+		{"flavorId":"fl-16-128","name":"gen-16-128","cpu":16,"ram":128},
+		{"flavorId":"fl-gpu","name":"gpu-2-4","cpu":2,"ram":4,"gpu":1},
+		{"flavorId":"fl-4-8","name":"gen-4-8","cpu":4,"ram":8},
+		{"flavorId":"fl-2-2","name":"gen-2-2","cpu":2,"ram":2},
+		{"flavorId":"fl-2-4","name":"gen-2-4","cpu":2,"ram":4}]`}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	args := map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1"}
+	m, text, isErr := callNamed(t, r, "k8s_plan", args)
+	if isErr || m["flavor"] != "gen-2-4" || m["flavor_id"] != "fl-2-4" {
+		t.Errorf("k8s_plan: want gen-2-4 (fl-2-4): %s", text)
+	}
+	args["confirmed"] = true
+	if _, text, isErr := callNamed(t, r, "k8s_create", args); isErr {
+		t.Fatalf("k8s_create: %s", text)
+	}
+	cp, _ := f.post("/v3/clusters")["controlPlaneConfiguration"].(map[string]any)
+	sz, _ := cp["sizingConfiguration"].(map[string]any)
+	if sz["flavorId"] != "fl-2-4" {
+		t.Errorf("k8s_create sent flavor %v, want fl-2-4", sz["flavorId"])
+	}
+	// An explicit flavor is still taken by its name.
+	m, text, _ = callNamed(t, r, "k8s_plan", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "flavor": "gen-4-8"})
+	if m["flavor"] != "gen-4-8" || m["flavor_id"] != "fl-4-8" {
+		t.Errorf("k8s_plan --flavor gen-4-8: %s", text)
 	}
 }
