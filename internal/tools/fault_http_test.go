@@ -77,7 +77,12 @@ var faultCollections = map[string]struct {
 	"/v3/clusters":             {field: "clusters", async: true},
 	"/v2/networkLoadBalancers": {field: "balancers", async: true},
 	"/v3/nodePools":            {field: "nodePools", async: true},
+	// Manual backups of the cluster pg_backup_create backs up.
+	"/v1/clusters/" + faultPGCluster + "/backups": {field: "backups", async: true},
 }
+
+// faultPGCluster is the PostgreSQL cluster of pg_backup_create.
+const faultPGCluster = "00000000-0000-4000-8000-0000000000f2"
 
 func (a *faultAPI) failAt(n int, kind string) {
 	a.mu.Lock()
@@ -353,5 +358,26 @@ func TestLostCreate_FoundSaysItsStatus(t *testing.T) {
 	var m map[string]any
 	if err := json.Unmarshal([]byte(text), &m); err != nil || m["status"] != "failed" {
 		t.Errorf("status %v, want failed: %s", m["status"], text)
+	}
+}
+
+// A backup of the name in the cluster is refused before the consent, with
+// its id: a repeat after a lost answer made a second backup (fault matrix,
+// process audit 1.2.1).
+func TestPgBackupCreate_TakenNameRefusedBeforeConsent(t *testing.T) {
+	a := &faultAPI{made: []faultResource{{host: "postgresql.api.cloud.ru", path: "/v1/clusters/" + faultPGCluster + "/backups", ID: "b-7", Name: "nightly"}}}
+	r := faultAPIRegistry(t, a)
+	for _, confirmed := range []bool{false, true} {
+		text, isErr := r.handlers["pg_backup_create"](context.Background(), map[string]any{"cluster_id": faultPGCluster, "name": "nightly", "confirmed": confirmed})
+		var m map[string]any
+		_ = json.Unmarshal([]byte(text), &m)
+		if !isErr || m["reason"] != "USAGE" || m["existing_id"] != "b-7" {
+			t.Errorf("confirmed=%v: want USAGE with existing_id b-7: %s", confirmed, text)
+		}
+	}
+	for _, call := range a.callLog() {
+		if strings.HasPrefix(call, http.MethodPost) {
+			t.Errorf("a create was sent for a taken name: %s", call)
+		}
 	}
 }

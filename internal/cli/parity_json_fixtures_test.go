@@ -117,6 +117,8 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			return write(`{"message":"not found"}`)
 		case p == "/api/v1.1/vms" && r.Method == http.MethodPost:
 			return write(`[{"id":"` + parityVM + `","name":"web","state":"running"}]`)
+		case p == "/api/v1/images" && r.Method == http.MethodPost:
+			return write(`{"id":"` + parityVM + `","name":"golden"}`)
 		case p == "/api/v1/floating-ips" && r.Method == http.MethodPost:
 			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`)
 		case p == "/api/v1/floating-ips/"+parityVM && r.Method == http.MethodPut:

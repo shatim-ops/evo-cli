@@ -116,6 +116,7 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("s3_bucket_create", map[string]any{"bucket": "evo-bucket", "confirmed": true}),
 	apiCase("s3_put", map[string]any{"bucket": "evo-bucket", "key": "site/index.html", "content": "ok", "confirmed": true},
 		faultResource{host: faultS3Host, path: "bucket", ID: "evo-bucket", Name: "evo-bucket", before: true}),
+	apiCase("pg_backup_create", map[string]any{"cluster_id": faultPGCluster, "name": "evo-b", "confirmed": true}),
 	apiCase("image_create", map[string]any{"name": "evo-img", "disk_id": faultDisk, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_add_nodepool", map[string]any{"cluster_id": faultK8sCluster, "name": "evo-np", "confirmed": true}),
 }
