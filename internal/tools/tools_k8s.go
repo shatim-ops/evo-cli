@@ -395,13 +395,13 @@ func (s *Registry) handleK8sDelete(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("k8s_delete", "k8s_delete permanently deletes cluster %s.",
+		return s.deletePreview("k8s_delete", "k8s_delete permanently deletes cluster %s.",
 			"k8s_delete безвозвратно удаляет кластер %s.",
 			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {
-		return deleteFailed("k8s_delete", id, err)
+		return s.deleteFailed("k8s_delete", id, err)
 	}
 	return toJSON(map[string]any{"status": "deleting", "cluster_id": id, "operation_id": op.ID}), false
 }

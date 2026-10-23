@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -210,8 +209,9 @@ func TestAlreadyDeleted_WrongFormIsUsage(t *testing.T) {
 // be wrong; any other error is no answer of this kind.
 func TestAlreadyDeleted_Answer(t *testing.T) {
 	m := map[string]any{}
-	text, ok := alreadyDeleted("disk_delete", "", goneID, clerrors.New(clerrors.CodeNotFound, "not found", ""))
-	if err := json.Unmarshal([]byte(text), &m); err != nil || !ok {
+	r := New(nil)
+	text, isErr, ok := r.alreadyDeleted("disk_delete", "", goneID, clerrors.New(clerrors.CodeNotFound, "not found", ""))
+	if err := json.Unmarshal([]byte(text), &m); err != nil || !ok || isErr {
 		t.Fatalf("answer %q: %v", text, err)
 	}
 	if m["status"] != "already_deleted" || m["existed"] != false || m["disk_id"] != goneID {
@@ -220,7 +220,7 @@ func TestAlreadyDeleted_Answer(t *testing.T) {
 	if note, _ := m["note"].(string); !strings.Contains(note, goneID) || !strings.Contains(note, "disk_id") {
 		t.Errorf("note: %q", note)
 	}
-	if _, ok := alreadyDeleted("disk_delete", "", goneID, clerrors.New(clerrors.CodeAPIError, "boom", "")); ok {
+	if _, _, ok := r.alreadyDeleted("disk_delete", "", goneID, clerrors.New(clerrors.CodeAPIError, "boom", "")); ok {
 		t.Error("an API error read as gone")
 	}
 }
@@ -268,26 +268,29 @@ func apiFakeS3Registry(t *testing.T, f *apiFake) *Registry {
 	})
 }
 
-// Bound to its projects (evo mcp --allow-project), a target the API does
-// not have reads as one of another project: NOT_FOUND, not
-// already_deleted (owner's decision 22.10, D26; H9 option b). The bound
-// check runs before the handler, so a delete of a target it checks never
-// reaches the repeat rule.
+// Bound to its projects (evo mcp --allow-project), a delete of what is not
+// there is NOT_FOUND, not already_deleted (owner's decision 22.10, D26; H9
+// option b) — for every delete tool: the target the bound check places in
+// no allowed project, and the one the tool itself looks up in the server's
+// project (an S3 object, a secret, a database of a cluster of the project).
 func TestAlreadyDeleted_BoundServerKeepsNotFound(t *testing.T) {
 	r := goneRegistry(t)
 	r.SetProjectBound()
-	checked := 0
-	for name, d := range deleteTargets {
-		if !slices.ContainsFunc(checkedIDArgs(name), func(a idArg) bool { return a.name == d.arg }) {
-			continue
-		}
-		checked++
-		m, text, isErr := callNamed(t, r, name, goneArgs(name, d))
-		if !isErr || m["reason"] != "NOT_FOUND" || strings.Contains(text, "already_deleted") {
-			t.Errorf("%s on a bound server: want NOT_FOUND, got %s", name, text)
-		}
+	names := make([]string, 0, len(deleteTargets))
+	for name := range deleteTargets {
+		names = append(names, name)
 	}
-	if checked < 10 {
-		t.Fatalf("only %d deletes have a bound check of their target", checked)
+	sort.Strings(names)
+	for _, name := range names {
+		for _, confirmed := range []bool{false, true} {
+			args := goneArgs(name, deleteTargets[name])
+			if confirmed {
+				args["confirmed"] = true
+			}
+			m, text, isErr := callNamed(t, r, name, args)
+			if !isErr || m["reason"] != "NOT_FOUND" || strings.Contains(text, "already_deleted") {
+				t.Errorf("%s confirmed=%v on a bound server: want NOT_FOUND, got %s", name, confirmed, text)
+			}
+		}
 	}
 }

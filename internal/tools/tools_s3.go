@@ -157,7 +157,7 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 		return errResult(err), true
 	}
 	if len(objs) == 0 || objs[0].Key != key {
-		return deleteFailed("s3_rm", key, clierrors.New(clierrors.CodeNotFound,
+		return s.deleteFailed("s3_rm", key, clierrors.New(clierrors.CodeNotFound,
 			i18n.Tf("no object s3://%s/%s", "объекта s3://%s/%s нет", bucket, key), ""))
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
@@ -219,7 +219,7 @@ func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		// A bucket that is not there is already deleted (D26).
 		if _, err := cli.ListObjects(ctx, bucket, "", 1); err != nil {
-			return deleteFailed("s3_bucket_delete", bucket, err)
+			return s.deleteFailed("s3_bucket_delete", bucket, err)
 		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -228,7 +228,7 @@ func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any
 		}), true
 	}
 	if err := cli.RemoveBucket(ctx, bucket); err != nil {
-		return deleteFailed("s3_bucket_delete", bucket, err)
+		return s.deleteFailed("s3_bucket_delete", bucket, err)
 	}
 	return toJSON(map[string]any{"status": "deleted", "bucket": bucket}), false
 }

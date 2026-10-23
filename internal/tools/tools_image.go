@@ -280,7 +280,7 @@ func (s *Registry) handleImageDelete(ctx context.Context, args map[string]any) (
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		// An image that is not there is already deleted (D26).
 		if _, err := eng.Cloud.GetImage(ctx, imageID); err != nil {
-			return deleteFailed("image_delete", imageID, err)
+			return s.deleteFailed("image_delete", imageID, err)
 		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -290,7 +290,7 @@ func (s *Registry) handleImageDelete(ctx context.Context, args map[string]any) (
 		}), true
 	}
 	if err := eng.Cloud.DeleteImage(ctx, imageID, eng.Config.ProjectID); err != nil {
-		return deleteFailed("image_delete", imageID, fmt.Errorf("delete image: %w", err))
+		return s.deleteFailed("image_delete", imageID, fmt.Errorf("delete image: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleted", "image_id": imageID}), false
 }

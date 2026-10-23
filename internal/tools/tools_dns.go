@@ -187,14 +187,14 @@ func (s *Registry) handleDnsZoneDelete(ctx context.Context, args map[string]any)
 	}
 	vis, err := dnsZoneVisibility(ctx, cli, args, id)
 	if err != nil {
-		return deleteFailed("dns_zone_delete", id, err)
+		return s.deleteFailed("dns_zone_delete", id, err)
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		// With type the zone was not looked up: a zone that is not there
 		// is already deleted (D26).
 		if stringArg(args, "type") != "" {
 			if _, err := cli.GetZone(ctx, vis, id); err != nil {
-				return deleteFailed("dns_zone_delete", id, err)
+				return s.deleteFailed("dns_zone_delete", id, err)
 			}
 		}
 		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("dns_zone_delete PERMANENTLY deletes %s zone %s and its records (async).",
@@ -202,7 +202,7 @@ func (s *Registry) handleDnsZoneDelete(ctx context.Context, args map[string]any)
 	}
 	op, err := cli.DeleteZone(ctx, vis, id)
 	if err != nil {
-		return deleteFailed("dns_zone_delete", id, fmt.Errorf("delete zone: %w", err))
+		return s.deleteFailed("dns_zone_delete", id, fmt.Errorf("delete zone: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}), false
 }
@@ -418,14 +418,14 @@ func (s *Registry) handleDnsRecordDelete(ctx context.Context, args map[string]an
 	}
 	vis, err := dnsRecordVisibility(ctx, cli, args, id)
 	if err != nil {
-		return deleteFailed("dns_record_delete", id, err)
+		return s.deleteFailed("dns_record_delete", id, err)
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		// With type the record was not looked up: one that is not there is
 		// already deleted (D26).
 		if stringArg(args, "type") != "" {
 			if _, err := cli.GetRecord(ctx, vis, id); err != nil {
-				return deleteFailed("dns_record_delete", id, err)
+				return s.deleteFailed("dns_record_delete", id, err)
 			}
 		}
 		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("dns_record_delete deletes %s record %s (async).",
@@ -433,7 +433,7 @@ func (s *Registry) handleDnsRecordDelete(ctx context.Context, args map[string]an
 	}
 	op, err := cli.DeleteRecord(ctx, vis, id)
 	if err != nil {
-		return deleteFailed("dns_record_delete", id, fmt.Errorf("delete record: %w", err))
+		return s.deleteFailed("dns_record_delete", id, fmt.Errorf("delete record: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 }

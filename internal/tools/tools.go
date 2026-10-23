@@ -2536,7 +2536,7 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			if vmID == "" {
 				key, ref = "name", name
 			}
-			return deleteFailedAs("destroy", key, ref, clierrors.New(clierrors.CodeVMNotFound,
+			return s.deleteFailedAs("destroy", key, ref, clierrors.New(clierrors.CodeVMNotFound,
 				i18n.Tf("no VM %s in project %s; nothing was deleted", "ВМ %s в проекте %s нет; ничего не удалено", ref, projectID),
 				i18n.T("List the project's VMs with vm_list (evo vm list).", "ВМ проекта — в выводе vm_list (evo vm list).")))
 		}

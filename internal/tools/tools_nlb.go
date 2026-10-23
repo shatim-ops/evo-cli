@@ -279,13 +279,13 @@ func (s *Registry) handleTgDelete(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("tg_delete", "tg_delete deletes target group %s.",
+		return s.deletePreview("tg_delete", "tg_delete deletes target group %s.",
 			"tg_delete удаляет группу целей %s.",
 			id, func() (map[string]any, error) { return cli.GetTargetGroup(ctx, id) })
 	}
 	op, err := cli.DeleteTargetGroup(ctx, id)
 	if err != nil {
-		return deleteFailed("tg_delete", id, fmt.Errorf(i18n.T("delete target group: %w", "удаление целевой группы: %w"), err))
+		return s.deleteFailed("tg_delete", id, fmt.Errorf(i18n.T("delete target group: %w", "удаление целевой группы: %w"), err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 }
@@ -554,13 +554,13 @@ func (s *Registry) handleLbDelete(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("lb_delete", "lb_delete deletes load balancer %s.",
+		return s.deletePreview("lb_delete", "lb_delete deletes load balancer %s.",
 			"lb_delete удаляет балансировщик %s.",
 			id, func() (map[string]any, error) { return cli.GetNLB(ctx, id) })
 	}
 	op, err := cli.DeleteNLB(ctx, id)
 	if err != nil {
-		return deleteFailed("lb_delete", id, fmt.Errorf(i18n.T("delete load balancer: %w", "удаление балансировщика: %w"), err))
+		return s.deleteFailed("lb_delete", id, fmt.Errorf(i18n.T("delete load balancer: %w", "удаление балансировщика: %w"), err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 }

@@ -671,7 +671,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	if id != "" {
 		f, e := eng.Cloud.GetFloatingIP(ctx, id)
 		if e != nil {
-			return deleteFailed("release_floating_ip", id, fmt.Errorf("floating IP %q: %w", id, e))
+			return s.deleteFailed("release_floating_ip", id, fmt.Errorf("floating IP %q: %w", id, e))
 		}
 		fipID, fipIP, state, onNAT = id, f.IPAddress, f.State, f.OnNATGateway()
 	} else {
@@ -686,7 +686,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 			}
 		}
 		if fipID == "" {
-			return deleteFailedAs("release_floating_ip", "ip_address", ip, clierrors.New(clierrors.CodeNotFound,
+			return s.deleteFailedAs("release_floating_ip", "ip_address", ip, clierrors.New(clierrors.CodeNotFound,
 				i18n.Tf("no floating IP with address %q in this project", "в проекте нет floating IP с адресом %q", ip), ""))
 		}
 	}
@@ -719,7 +719,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	}
 
 	if err := eng.Cloud.DeleteFloatingIP(ctx, fipID, projectID); err != nil {
-		return deleteFailed("release_floating_ip", fipID, fmt.Errorf("release floating IP: %w", err))
+		return s.deleteFailed("release_floating_ip", fipID, fmt.Errorf("release floating IP: %w", err))
 	}
 	return toJSON(map[string]any{
 		"status":   "ok",

@@ -386,13 +386,13 @@ func (s *Registry) handleDiskDelete(ctx context.Context, args map[string]any) (s
 		// A disk that is not in the project is already deleted (D26): the
 		// preview asked consent for any id.
 		if _, err := eng.Cloud.GetDisk(ctx, diskID); err != nil {
-			return deleteFailed("disk_delete", diskID, err)
+			return s.deleteFailed("disk_delete", diskID, err)
 		}
 		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("disk_delete permanently destroys disk %s and its data.",
 			"disk_delete безвозвратно удаляет диск %s и его данные.", diskID)}), true
 	}
 	if err := eng.Cloud.DeleteDisk(ctx, diskID, eng.Config.ProjectID); err != nil {
-		return deleteFailed("disk_delete", diskID, fmt.Errorf("delete disk: %w", err))
+		return s.deleteFailed("disk_delete", diskID, fmt.Errorf("delete disk: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleted", "disk_id": diskID}), false
 }

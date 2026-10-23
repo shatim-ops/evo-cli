@@ -232,7 +232,7 @@ func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (str
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		// An app that is not there is already deleted (D26), not a question.
 		if _, err := cli.Get(ctx, name); err != nil {
-			return deleteFailed("ca_delete", name, err)
+			return s.deleteFailed("ca_delete", name, err)
 		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -242,7 +242,7 @@ func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (str
 	}
 	op, err := cli.Delete(ctx, name)
 	if err != nil {
-		return deleteFailed("ca_delete", name, err)
+		return s.deleteFailed("ca_delete", name, err)
 	}
 	return toJSON(map[string]any{"status": "deleting", "name": name, "operation_id": op.ID}), false
 }

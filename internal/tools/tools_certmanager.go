@@ -193,7 +193,7 @@ func (s *Registry) handleCertDelete(ctx context.Context, args map[string]any) (s
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		// A certificate that is not there is already deleted (D26).
 		if _, err := cli.Get(ctx, id); err != nil {
-			return deleteFailed("cert_delete", id, err)
+			return s.deleteFailed("cert_delete", id, err)
 		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -203,7 +203,7 @@ func (s *Registry) handleCertDelete(ctx context.Context, args map[string]any) (s
 	}
 	force, _ := args["force"].(bool)
 	if err := cli.Delete(ctx, id, force); err != nil {
-		return deleteFailed("cert_delete", id, err)
+		return s.deleteFailed("cert_delete", id, err)
 	}
 	return toJSON(map[string]any{"status": "deleted", "id": id, "force": force}), false
 }

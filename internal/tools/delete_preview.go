@@ -18,10 +18,10 @@ import (
 // R-04); any other error of the GET is the answer. The message, in English (en) and
 // Russian (ru) for the CLI's language, has one %s: the resource as
 // "name" (id), the name quoted on one line (quoteCloud).
-func deletePreview(tool, en, ru, id string, get func() (map[string]any, error)) (string, bool) {
+func (s *Registry) deletePreview(tool, en, ru, id string, get func() (map[string]any, error)) (string, bool) {
 	m, err := get()
 	if err != nil {
-		return deleteFailed(tool, id, err)
+		return s.deleteFailed(tool, id, err)
 	}
 	name, _ := m["name"].(string)
 	status, _ := m["status"].(string)
