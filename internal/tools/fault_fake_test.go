@@ -106,6 +106,9 @@ type faultCloud struct {
 	// with 422 «… from current state» (cloud-e2e #121).
 	fipSettle        int
 	fipSettleUntilVM bool
+	// fipReadDelay makes each read and delete of a floating IP take this
+	// long: a slow API, or a coarse timer (Windows ticks ~15.6 ms, CI #283).
+	fipReadDelay time.Duration
 }
 
 type faultVM struct {
@@ -488,6 +491,7 @@ func (c *faultCloud) GetFloatingIP(_ context.Context, id string) (*provision.Flo
 	if err := c.gate("GetFloatingIP"); err != nil {
 		return nil, err
 	}
+	time.Sleep(c.fipReadDelay)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for i := range c.fips {
@@ -528,6 +532,7 @@ func (c *faultCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	if err := c.gate("DeleteFloatingIP"); err != nil {
 		return err
 	}
+	time.Sleep(c.fipReadDelay)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.deleteFIP == 409 {
