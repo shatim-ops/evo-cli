@@ -232,3 +232,41 @@ func TestApply_LostFIPOrphanByNameNotTaken(t *testing.T) {
 		t.Errorf("orphan taken: ip %q id %q note %q", ip, id, note)
 	}
 }
+
+// ownLostFIPCloud: the create answer is lost, and the address it made is
+// listed in the form the answer gives it then.
+type ownLostFIPCloud struct {
+	lostFIPCloud
+	fip provision.FloatingIP
+}
+
+func (c *ownLostFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	f := c.fip
+	return []*provision.FloatingIP{&f}, nil
+}
+
+// A3, review of #265: the address the lost create made is this VM's in the
+// forms the list gives it — bound through the interface only (vm absent),
+// or not bound yet while it is created or attached (the create named the
+// interface). Left unrecorded, the next deploy_apply would make a second
+// one and leave this one billed.
+func TestApply_LostFIPOwnTakenInEveryForm(t *testing.T) {
+	for label, f := range map[string]provision.FloatingIP{
+		"bound through the interface": {ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "in_use",
+			Interface: json.RawMessage(`{"id":"if-1","name":"eth0"}`)},
+		"being attached": {ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "attaching"},
+		"being created":  {ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "creating"},
+	} {
+		c := &ownLostFIPCloud{fip: f}
+		ip, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
+		if id != "fip-made" || ip != "203.0.113.7" {
+			t.Errorf("%s: ip %q id %q, want fip-made recorded", label, ip, id)
+		}
+	}
+	// Bound to another VM's interface: not this VM's.
+	c := &ownLostFIPCloud{fip: provision.FloatingIP{ID: "fip-other", Name: "x-fip", IPAddress: "203.0.113.8", State: "in_use",
+		Interface: json.RawMessage(`{"id":"if-9"}`), VM: json.RawMessage(`{"id":"vm-9"}`)}}
+	if _, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old"); id != "" {
+		t.Errorf("another VM's address taken: %q", id)
+	}
+}

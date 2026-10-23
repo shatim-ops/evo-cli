@@ -1,0 +1,2710 @@
+openapi: 3.0.1
+info:
+    title: Cloud Monitoring API
+    description: '[Документация сервиса Cloud Monitoring](https://cloud.ru/docs/service-monitoring/ug/index.html)'
+    contact:
+        email: support@cloud.ru
+    version: 1.0.1
+servers:
+    - url: https://monitoring.api.cloud.ru
+tags:
+    - name: Metric Export
+      description: Получение метрик.
+    - name: Metric Meta
+      description: Получение метаданных метрик.   
+    - name: Dashboards
+      description: Управление дашбордами.  
+    - name: Recording Rules
+      description: Управление правилами вычисляемых метрик.        
+paths:
+  /v2/{project_id}/metrics_meta:
+    get:
+      tags:
+      - Metric Meta
+      summary: Получение списка метрик
+      description: >-
+        Если вы указываете большой запрос, который может превышать ограничения на символы в URL на стороне 
+        сервера, вы можете закодировать параметры непосредственно в теле запроса, 
+        используя метод `POST` и заголовок `Content-Type: application/x-www-form-urlencoded`. 
+          
+        Опциональные временные параметры `start` и `end` поддерживают следующие форматы:
+          - Unix-время в секундах, с опциональным указанием миллисекунд после запятой. Например: `1562529662.678`.
+          - Unix-время в миллисекундах. Например: `1562529662678`.
+          - Unix-время в микросекундах. Например: `1562529662678901`.
+          - Unix-время в наносекундах. Например: `1562529662678901234`.
+          - Формат RFC3339. Например: `2022-03-29T01:02:03Z` или `2022-03-29T01:02:03+02:30`.
+          - Частичный формат RFC3339. Например: `2022`, `2022-03`, `2022-03-29`, `2022-03-29T01`,
+           `2022-03-29T01:02`, `2022-03-29T01:02:03`.
+          - Относительная продолжительность по сравнению с текущим временем. 
+            Например: `1h5m`, `-1h5m` или `now-1h5m` означает "один час и пять минут назад", а `now` — "сейчас".
+      parameters:
+      - name: project_id
+        in: path
+        description: Идентификатор проекта.
+        required: true
+        schema:
+          type: string
+      - name: selector
+        in: query
+        description: >-
+          Селектор таймсерий в формате Prometheus.
+          Например: `http_requests_total` или `http_requests_total{method=~"(GET|POST)"}`.
+
+          Селектор должен быть закодирован по URL-адресу.
+        required: true
+        schema:
+          type: string
+          x-order: "0"
+        x-order: "0"
+      - name: start
+        in: query
+        description: Конечная временная метка.
+        schema:
+          type: string
+          x-order: "1"
+        x-order: "1"
+      - name: end
+        in: query
+        description: Начальная временная метка.
+        schema:
+          type: string
+          x-order: "2"
+        x-order: "2"
+      - name: limit
+        in: query
+        description: Максимальное количество возвращенных таймсерий.
+        schema:
+          type: integer
+          x-order: "3"
+        x-order: "3"
+      responses:
+        "200":
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/metaschemas.GetMetricsResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/metaschemas.HTTPError'
+  /v2/{project_id}/metrics_meta/labels:
+    get:
+      tags:
+      - Metric Meta
+      summary: Получение списка ключей меток
+      description: >-
+        Если вы указываете большой запрос, который может превышать ограничения на символы в URL на стороне 
+        сервера, вы можете закодировать параметры непосредственно в теле запроса, 
+        используя метод `POST` и заголовок `Content-Type: application/x-www-form-urlencoded`. 
+          
+        Опциональные временные параметры `start` и `end` поддерживают следующие форматы:
+          - Unix-время в секундах, с опциональным указанием миллисекунд после запятой. Например: `1562529662.678`.
+          - Unix-время в миллисекундах. Например: `1562529662678`.
+          - Unix-время в микросекундах. Например: `1562529662678901`.
+          - Unix-время в наносекундах. Например: `1562529662678901234`.
+          - Формат RFC3339. Например: `2022-03-29T01:02:03Z` или `2022-03-29T01:02:03+02:30`.
+          - Частичный формат RFC3339. Например: `2022`, `2022-03`, `2022-03-29`, `2022-03-29T01`,
+           `2022-03-29T01:02`, `2022-03-29T01:02:03`.
+          - Относительная продолжительность по сравнению с текущим временем. 
+            Например: `1h5m`, `-1h5m` или `now-1h5m` означает "один час и пять минут назад", а `now` — "сейчас".
+      parameters:
+      - name: project_id
+        in: path
+        description: Идентификатор проекта.
+        required: true
+        schema:
+          type: string
+      - name: selector
+        in: query
+        description: >-
+          Селектор таймсерий в формате Prometheus.
+          Например: `http_requests_total` или `http_requests_total{method=~"(GET|POST)"}`.
+
+          Селектор должен быть закодирован по URL-адресу.
+        schema:
+          type: string
+          x-order: "0"
+        x-order: "0"
+      - name: start
+        in: query
+        description: Начальная временная метка.
+        schema:
+          type: string
+          x-order: "1"
+        x-order: "1"
+      - name: end
+        in: query
+        description: Конечная временная метка.
+        schema:
+          type: string
+          x-order: "2"
+        x-order: "2"
+      - name: limit
+        in: query
+        description: Максимальное количество возвращенных таймсерий.
+        schema:
+          type: integer
+          x-order: "3"
+        x-order: "3"
+      responses:
+        "200":
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/metaschemas.GetMetricLabelsResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/metaschemas.HTTPError'
+  /v2/{project_id}/metrics_meta/labels/{label}/values:
+    get:
+      tags:
+      - Metric Meta
+      summary: Получение списка значений для указанного ключа метки
+      description: >-
+        Если вы указываете большой запрос, который может превышать ограничения на символы в URL на стороне 
+        сервера, вы можете закодировать параметры непосредственно в теле запроса, 
+        используя метод `POST` и заголовок `Content-Type: application/x-www-form-urlencoded`. 
+          
+        Опциональные временные параметры `start` и `end` поддерживают следующие форматы:
+          - Unix-время в секундах, с опциональным указанием миллисекунд после запятой. Например: `1562529662.678`.
+          - Unix-время в миллисекундах. Например: `1562529662678`.
+          - Unix-время в микросекундах. Например: `1562529662678901`.
+          - Unix-время в наносекундах. Например: `1562529662678901234`.
+          - Формат RFC3339. Например: `2022-03-29T01:02:03Z` или `2022-03-29T01:02:03+02:30`.
+          - Частичный формат RFC3339. Например: `2022`, `2022-03`, `2022-03-29`, `2022-03-29T01`,
+           `2022-03-29T01:02`, `2022-03-29T01:02:03`.
+          - Относительная продолжительность по сравнению с текущим временем. 
+            Например: `1h5m`, `-1h5m` или `now-1h5m` означает "один час и пять минут назад", а `now` — "сейчас".
+      parameters:
+      - name: label
+        in: path
+        description: Название метки
+        required: true
+        schema:
+          type: string
+      - name: project_id
+        in: path
+        description: Идентификатор проекта.
+        required: true
+        schema:
+          type: string
+      - name: selector
+        in: query
+        description: |-
+          Селектор таймсерий в формате Prometheus.
+          Например: `http_requests_total` или `http_requests_total{method=~"(GET|POST)"}`.
+
+          Селектор должен быть закодирован по URL-адресу.
+        schema:
+          type: string
+          x-order: "0"
+        x-order: "0"
+      - name: start
+        in: query
+        description: Начальная временная метка.
+        schema:
+          type: string
+          x-order: "1"
+        x-order: "1"
+      - name: end
+        in: query
+        description: Конечная временная метка.
+        schema:
+          type: string
+          x-order: "2"
+        x-order: "2"
+      - name: limit
+        in: query
+        description: Максимальное количество возвращенных таймсерий.
+        schema:
+          type: integer
+          x-order: "3"
+        x-order: "3"
+      responses:
+        "200":
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/metaschemas.GetMetricLabelValuesResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/metaschemas.HTTPError'
+  /v2/{project_id}/metrics_meta/names:
+    get:
+      tags:
+      - Metric Meta
+      summary: Получение списка имен метрик
+      description: >-
+        Если вы указываете большой запрос, который может превышать ограничения на символы в URL на стороне 
+        сервера, вы можете закодировать параметры непосредственно в теле запроса, 
+        используя метод `POST` и заголовок `Content-Type: application/x-www-form-urlencoded`. 
+          
+        Опциональные временные параметры `start` и `end` поддерживают следующие форматы:
+          - Unix-время в секундах, с опциональным указанием миллисекунд после запятой. Например: `1562529662.678`.
+          - Unix-время в миллисекундах. Например: `1562529662678`.
+          - Unix-время в микросекундах. Например: `1562529662678901`.
+          - Unix-время в наносекундах. Например: `1562529662678901234`.
+          - Формат RFC3339. Например: `2022-03-29T01:02:03Z` или `2022-03-29T01:02:03+02:30`.
+          - Частичный формат RFC3339. Например: `2022`, `2022-03`, `2022-03-29`, `2022-03-29T01`,
+           `2022-03-29T01:02`, `2022-03-29T01:02:03`.
+          - Относительная продолжительность по сравнению с текущим временем. 
+            Например: `1h5m`, `-1h5m` или `now-1h5m` означает "один час и пять минут назад", а `now` — "сейчас".
+      parameters:
+      - name: project_id
+        in: path
+        description: Идентификатор проекта.
+        required: true
+        schema:
+          type: string
+      - name: selector
+        in: query
+        description: |-
+          Селектор таймсерий в формате Prometheus.
+          Например: `http_requests_total` или `http_requests_total{method=~"(GET|POST)"}`.
+
+          Селектор должен быть закодирован по URL-адресу.
+        schema:
+          type: string
+          x-order: "0"
+        x-order: "0"
+      - name: start
+        in: query
+        description: Начальная временная метка.
+        schema:
+          type: string
+          x-order: "1"
+        x-order: "1"
+      - name: end
+        in: query
+        description: Конечная временная метка.
+        schema:
+          type: string
+          x-order: "2"
+        x-order: "2"
+      - name: limit
+        in: query
+        description: Максимальное количество возвращенных таймсерий.
+        schema:
+          type: integer
+          x-order: "3"
+        x-order: "3"
+      responses:
+        "200":
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/metaschemas.GetMetricNamesResponse'
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/metaschemas.HTTPError'
+  /v1/{project_id}/export_metrics:
+    get:
+      tags:
+      - Metric Export
+      summary: Получение истории метрик
+      description: >-
+        Метод для получения исторических данных о метриках.
+        Количество таймсерий и точек значений метрик, которые вернутся в результате одного запроса, не может превышать [установленные лимиты](https://cloud.ru/docs/service-monitoring/ug/topics/overview__limitations#id2).
+        Если эти лимиты будут превышены, ответ на запрос вернется, но полученные данные будут ограничены установленным лимитом.
+        В конце ответа появится сообщение о превышении лимита: "No more than *n* timeseries/samples are allowed to be returned in one response".
+        В этом случае попробуйте уменьшить заданный временной интервал и повторить запрос.
+      parameters:
+      - name: project_id
+        in: path
+        description: Идентификатор проекта.
+        required: true
+        schema:
+          type: string
+      - name: match
+        in: query
+        description: Правила выборки метрик — селектор временных рядов Prometheus.
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+      - name: start
+        in: query
+        description: Начало временного интервала, за который необходимо получить данные о метриках.
+        required: true
+        schema:
+          type: integer
+      - name: end
+        in: query
+        description: Конец временного интервала, за который необходимо получить данные о метриках.
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                type: string
+        "400":
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse'
+        "401":
+          description: Необходима авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse'
+        "403":
+          description: Доступ запрещен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse'
+        "404":
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse'
+        "500":
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse' 
+  /v2/{project_id}/scrape_metrics:
+    get:
+      tags:
+      - Metric Export    
+      summary: Получение метрик в формате Prometheus text-based exposition
+      description: >-
+        Метод для получения актуальных данных о метриках.
+        Количество таймсерий и точек значений метрик, которые вернутся в результате одного запроса, не может превышать [установленные лимиты](https://cloud.ru/docs/service-monitoring/ug/topics/overview__limitations#id2).
+        Если эти лимиты будут превышены, запрос завершится с ошибкой.
+        В этом случае попробуйте уменьшить заданный временной интервал и повторить запрос.
+      parameters:
+      - name: project_id
+        in: path
+        description: Идентификатор проекта
+        required: true
+        schema:
+          type: string
+      - name: match
+        in: query
+        description: Правила выборки метрик — селектор временных рядов Prometheus
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+      - name: start
+        in: query
+        description: Начало временного интервала, за который необходимо получить данные о метриках.
+        schema:
+          type: integer
+      - name: end
+        in: query
+        description: Конец временного интервала, за который необходимо получить данные о метриках.
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                type: string
+        "400":
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse'
+        "401":
+          description: Необходима авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse'
+        "403":
+          description: Доступ запрещен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse'
+        "404":
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse'
+        "413":
+          description: Превышен лимит таймсерий или точек значения метрик, которые могут вернуться в ответе на запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrTimeseriesLimits'
+        "500":
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/models.ErrResponse'
+  /api/monaas-dashboards/v1/projects/{projectId}/dashboards:
+    get:
+      operationId: ListUserDashboardsV2
+      tags:
+        - Dashboards    
+      summary: Получение списка пользовательских дашбордов в проекте
+      description: >-
+        Метод для получения списка пользовательских дашбордов в указанном проекте.
+        Поддерживается постраничная навигация, поиск по названию или описанию и сортировка списка дашбордов.
+      parameters:
+        - $ref: '#/components/parameters/projectId'
+        - name: page
+          description: >-
+            Номер страницы с результатами запроса. Значение по умолчанию — 1.
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: query
+          description: >-
+            Запрос для фильтрации списка дашбордов. Поиск выполняется по названию или описанию дашборда. Если оставить поле пустым, вернется список всех дашбордов без выборки.
+          in: query
+          required: false
+          allowEmptyValue: true
+          schema:
+            type: string
+        - name: sort
+          description: >-
+            Параметры сортировки списка дашбордов в формате `direction`:`field`, где:
+              - `direction` — порядок сортировки: `asc` (по возрастанию) или `desc` (по убыванию);  
+              - `field` — имя параметра, по которому проводится сортировка, например `title`.
+          in: query
+          required: false
+          allowEmptyValue: true
+          schema:
+            type: array
+            nullable: true
+            items:
+              type: string
+          example:
+            - asc:title
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListDashboardResponse'
+        '400':
+          $ref: '#/components/responses/400'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+    post:
+      operationId: CreateUserDashboardV2
+      tags:
+        - Dashboards    
+      summary: Создание пользовательского дашборда
+      description: >-
+        Метод для создания пользовательского дашборда в указанном проекте.
+      parameters:
+        - $ref: '#/components/parameters/projectId'
+      requestBody:
+        description: Запрос на создание дашборда.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUpdateDashboardRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUpdateDashboardResponse'
+        '400':
+          $ref: '#/components/responses/400'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+  /api/monaas-dashboards/v1/projects/{projectId}/dashboards/{dashboardId}:
+    get:
+      operationId: GetUserDashboardV2
+      tags:
+        - Dashboards    
+      summary: Получение конфигурации дашборда
+      description: >-
+        Метод для получения конфигурации дашборда по его идентификатору.
+      responses:
+        '200':
+          description: Успешное выполнение запроса.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '400':
+          $ref: '#/components/responses/400'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+    post:
+      operationId: UpdateUserDashboardV2
+      tags:
+        - Dashboards    
+      summary: Обновление конфигурации дашборда
+      description: >-
+        Метод для обновления конфигурации дашборда по его идентификатору.
+      requestBody:
+        description: Запрос на обновление дашборда.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUpdateDashboardRequest'
+      responses:
+        '200':
+          description: Успешное выполнение запроса.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUpdateDashboardResponse'
+        '400':
+          $ref: '#/components/responses/400'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+    delete:
+      operationId: DeleteUserDashboardV2
+      tags:
+        - Dashboards    
+      summary: Удаление дашборда
+      description: >-
+        Метод для удаления дашборда по его идентификатору.
+      responses:
+        '200':
+          description: Успешное выполнение запроса.
+        '400':
+          $ref: '#/components/responses/400'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+    parameters:
+      - $ref: '#/components/parameters/dashboardId'
+      - $ref: '#/components/parameters/projectId'
+  /api/monaas-dashboards/v1/projects/{projectId}/dashboards/export:
+    get:
+      tags:
+        - Dashboards    
+      summary: Экспорт пользовательских дашбордов
+      description: >-
+        Экспорт дашбордов по их ID.
+        Дашборды, экспортированные за один раз, сохраняются в одном ZIP-архиве.
+        Для каждого дашборда в архиве будет создан отдельный JSON-файл с конфигурацией дашборда. 
+        Название файла совпадает с названием дашборда.
+      parameters:
+      - name: projectId
+        in: path
+        description: Идентификатор проекта.
+        required: true
+        schema:
+          type: string
+      - name: dashboardIds
+        in: query
+        description: Идентификаторы экспортируемых дашбордов.
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+        style: form
+        explode: true
+      responses:
+        '200':
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExportUserDashboardResponse'
+        '400':
+          $ref: '#/components/responses/400'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'  
+  /api/monaas-dashboards/v1/projects/{projectId}/dashboards/import:
+    post:
+      tags:
+      - Dashboards    
+      summary: Импорт пользовательских дашбордов
+      parameters:
+      - name: projectId
+        in: path
+        description: Идентификатор проекта.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: >-
+                    ZIP-архив с JSON-файлами, содержащими конфигурацию дашбордов. Конфигурация каждого дашборда должна быть в отдельном JSON-файле. Максимальный размер архива — 5 МБ.
+      responses:
+        '200':
+          description: Успешное выполнение запроса
+        '400':
+          $ref: '#/components/responses/400'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+  /v1/{projectId}/recording-rules:
+    post:
+      tags:
+      - Recording Rules
+      summary: Создание правила вычисляемых метрик в проекте
+      description: Метод для создания нового правила вычисляемых метрик в проекте.
+      parameters:  
+      - name: projectId
+        in: path
+        description: Идентификатор проекта, в котором создается правило.
+        required: true
+        schema:
+          type: string  
+      requestBody:
+        description: Запрос на создание правила.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUpdateRecordingRuleRequestBody'
+      responses: 
+        '201':
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/apiEmptyResponse'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse' 
+    get:
+      tags:
+      - Recording Rules
+      summary: Получение списка правил вычисляемых метрик проекта
+      description: Метод для получения списка правил вычисляемых метрик проекта.
+      parameters:  
+      - name: projectId
+        in: path
+        description: Идентификатор проекта.
+        required: true
+        schema:
+          type: string  
+      - name: interval
+        in: query
+        description: >-
+          Интервал выполнения запроса в секундах: 
+            
+            - `60` — 1 минута;
+            - `300` — 5 минут;
+            - `900` — 15 минут.
+        schema:
+          type: array
+          items:
+            type: integer
+            enum:
+              - 60
+              - 300
+              - 900
+        style: form
+        explode: false
+      - name: limit
+        in: query
+        description: Количество записей на странице. Значение по умолчанию — `20`.
+        schema:
+          type: integer
+          minimum: 0
+          default: 20
+      - name: nextPage
+        in: query
+        description: Токен следующей страницы результатов.
+        schema:
+          type: string
+      - name: query
+        in: query
+        description: Запрос для фильтрации правил вычисляемых метрик.
+        schema:
+          type: string
+      - name: sort.field
+        in: query
+        description: >-
+          Поле для сортировки результатов:
+            - `name` — название правила;
+            - `state` — статус правила;
+            - `func` — функция, используемая в запросе для создания вычисляемой метрики, например `sum`, `rate`, `avg` или другие;
+            - `interval` — интервал выполнения запроса;
+            - `metric` — название вычисляемой метрики.
+        schema:
+          type: string
+          enum:
+            - name
+            - state
+            - func
+            - interval
+            - metric
+      - name: sort.value
+        in: query
+        description: >-
+          Направление сортировки результатов:
+            - `asc` — по возрастанию;
+            - `desc` — по убыванию.
+        schema:
+          type: string
+          enum:
+            - asc
+            - desc
+      - name: state
+        in: query
+        description: >-
+          Статус правила:
+            - `active` — «Включено»;
+            - `inactive` — «Выключено».
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+              - active
+              - inactive
+        style: form
+        explode: false
+      responses: 
+        '200':
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordingListResponse'
+        '400':
+          $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
+    patch:
+      tags:
+      - Recording Rules
+      summary: Включение или выключение одного или нескольких правил вычисляемых метрик
+      description: Метод для изменения статуса правил вычисляемых метрик.
+      parameters:  
+      - name: projectId
+        in: path
+        description: Идентификатор проекта.
+        required: true
+        schema:
+          type: string  
+      requestBody:
+        description: Запрос на обновление правил.
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/BulkPatchRecordingRuleRequestBody'
+      responses: 
+        '204':
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/apiEmptyResponse'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/{projectId}/recording-rules/{ruleId}:
+    get:
+      tags:
+      - Recording Rules
+      summary: Получение правила вычисляемой метрики
+      description: Метод для получения правила вычисляемой метрики в указанном проекте по его ID.
+      parameters:
+        - name: projectId
+          in: path
+          description: Идентификатор проекта, для которого применяется правило.
+          required: true
+          schema:
+            type: string
+        - name: ruleId
+          in: path
+          description: Идентификатор правила вычисляемых метрик.
+          required: true
+          schema:
+            type: string
+      responses: 
+        '200':
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordingRule'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'  
+    put:
+      tags:
+      - Recording Rules
+      summary: Обновление правила вычисляемой метрики
+      description: Метод для изменения настроек правила вычисляемых метрик.
+      parameters:
+        - name: projectId
+          in: path
+          description: Идентификатор проекта, для которого применяется правило.
+          required: true
+          schema:
+            type: string
+        - name: ruleId
+          in: path
+          description: Идентификатор правила вычисляемых метрик.
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: Запрос для обновления настроек правила.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUpdateRecordingRuleRequestBody'
+      responses:  
+        '204':
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/apiEmptyResponse'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'  
+    delete: 
+      tags:
+      - Recording Rules
+      summary: Удаление правила вычисляемых метрик
+      description: Метод для удаления правила вычисляемых метрик по его ID.
+      parameters:  
+      - name: projectId
+        in: path
+        description: Идентификатор проекта, для которого применяется правило.
+        required: true
+        schema:
+          type: string   
+      - name: ruleId
+        in: path
+        description: Идентификатор правила вычисляемых метрик.
+        required: true
+        schema:
+          type: string  
+      responses: 
+        '204':
+          description: Успешное выполнение запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/apiEmptyResponse'
+        '400':
+          description: Некорректный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'                 
+components:
+  parameters:
+    projectId:
+      name: projectId
+      description: Идентификатор проекта.
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid  
+    dashboardId:
+      name: dashboardId
+      description: Идентификатор дашборда.
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    ExportUserDashboardResponse:
+      type: object
+      required:
+        - description
+        - title
+      properties:
+        description:
+          type: string
+          description: Описание дашборда.
+        panels:
+          type: array
+          description: >-
+            Конфигурация виджетов в зависимости от их типа:
+              - `timeseries` — временной ряд;
+              - `text` — текстовый;
+              - `stat` — статистика;
+              - `table` — таблица;
+              - `state-timeline` — история состояний;
+              - `host-map` — состояние объектов.
+          items:
+            $ref: '#/components/schemas/Panel'
+        title:
+          type: string
+          description: Название дашборда.
+        variables:
+          type: array
+          description: Параметры переменных дашборда.
+          items:
+            $ref: '#/components/schemas/Variable'
+    metaschemas.GetMetricLabelValuesResponse:
+      type: object
+      properties:
+        values:
+          type: array
+          description: Список значений метки
+          items:
+            type: string
+    metaschemas.GetMetricLabelsResponse:
+      type: object
+      properties:
+        labels:
+          type: array
+          description: Список названий меток
+          items:
+            type: string
+    metaschemas.GetMetricNamesResponse:
+      type: object
+      properties:
+        names:
+          type: array
+          description: Список названий метрик
+          items:
+            type: string
+    metaschemas.GetMetricsResponse:
+      type: object
+      properties:
+        metrics:
+          type: array
+          description: Список объектов, содержащих пары ключ-значение меток, которые идентифицируют каждую таймсерию
+          items:
+            type: object
+            additionalProperties:
+              type: string
+    metaschemas.HTTPError:
+      type: object
+      properties:
+        error:
+          type: string
+    models.ErrResponse:
+      type: object
+      properties:
+        error:
+          type: string
+    models.ErrTimeseriesLimits:
+      type: object
+      properties:
+        error:
+          type: string
+      example:
+        error: No more than 30 000 timeseries/samples are allowed to be returned in one response
+    Panel:
+      type: object
+      description: Конфигурация виджетов.
+      discriminator:
+        propertyName: type
+        mapping:
+          timeseries: '#/components/schemas/TimeSeriesPanel'
+          text: '#/components/schemas/TextPanel'
+          stat: '#/components/schemas/StatPanel'
+          table: '#/components/schemas/TablePanel'
+          state-timeline: '#/components/schemas/StateTimelinePanel'
+          host-map: '#/components/schemas/HostMapPanel'
+      oneOf:
+        - $ref: '#/components/schemas/TextPanel'
+        - $ref: '#/components/schemas/TimeSeriesPanel'
+        - $ref: '#/components/schemas/StatPanel'
+        - $ref: '#/components/schemas/TablePanel'
+        - $ref: '#/components/schemas/StateTimelinePanel'
+        - $ref: '#/components/schemas/HostMapPanel'
+    TimeSeriesQuery:
+      type: object
+      description: Параметры запросов к данным.
+      required:
+        - refId
+        - legendAlias
+        - displayResults
+        - query
+      properties:
+        refId:
+          x-oapi-codegen-extra-tags:
+            bson: ref_id
+          type: string
+          description: Уникальный идентификатор запроса.
+        legendAlias:
+          type: string
+          description: Обозначение порога в легенде виджета.
+          x-oapi-codegen-extra-tags:
+            bson: legend_alias
+        displayResults:
+          type: boolean
+          description: >-
+            Отображение результатов запроса на виджете:
+              - `true` — показ результатов запроса на виджете;
+              - `false` — скрытие результатов запроса на виджете.
+          x-oapi-codegen-extra-tags:
+            bson: display_results
+        query:
+          type: string
+          description: Запрос к данным для порога.
+        formula:
+          type: string
+          description: Формула, применяемая к метрике в конструкторе запросов.
+        metric:
+          type: object
+          description: Метаданные метрики в конструкторе запросов.
+          nullable: true
+          properties:
+            productType:
+              type: string
+              description: Продукт, к которому относится метрика.
+              nullable: true
+              x-oapi-codegen-extra-tags:
+                bson: productType
+            groupId:
+              type: string
+              description: Группа, к которой относится метрика.
+              format: uuid
+              nullable: true
+              x-oapi-codegen-extra-tags:
+                bson: groupId
+    TimeSeriesThreshold:
+      type: object
+      description: Параметры порогов.
+      required:
+        - refId
+        - legendAlias
+        - legendColor
+        - displayResults
+        - query
+      properties:
+        refId:
+          x-oapi-codegen-extra-tags:
+            bson: ref_id
+          type: string
+          description: Уникальный идентификатор запроса.
+        legendAlias:
+          type: string
+          description: Обозначение порога в легенде виджета.
+          x-oapi-codegen-extra-tags:
+            bson: legend_alias
+        legendColor:
+          allOf:
+            - $ref: '#/components/schemas/Color'
+          x-oapi-codegen-extra-tags:
+            bson: legend_color
+        displayResults:
+          type: boolean
+          description: >-
+            Отображение результатов запроса на виджете:
+              - `true` — показ результатов запроса на виджете;
+              - `false` — скрытие результатов запроса на виджете.
+          x-oapi-codegen-extra-tags:
+            bson: display_results
+        query:
+          type: string
+          description: Запрос к данным.
+        formula:
+          type: string
+          description: Формула, применяемая к метрике в конструкторе запросов.
+    TableQuery:
+      allOf:
+        - $ref: '#/components/schemas/TimeSeriesQuery'
+        - required:
+            - type
+          properties:
+            type:
+              type: string
+              description: >-
+                Тип значений:
+                  - `range` — значения за период;
+                  - `instant` — текущие значения.
+              enum:
+                - range
+                - instant
+    TableFieldConfig:
+      type: object
+      description: Параметры таблицы.
+      required:
+        - defaults
+        - overrides
+      x-oapi-codegen-extra-tags:
+        bson: field_config
+      properties:
+        defaults:
+          type: object
+          description: Параметры по умолчанию.
+          required:
+            - mappings
+          properties:
+            decimals:
+              type: integer
+              description: Число десятичных знаков.
+              minimum: 0
+              maximum: 5
+            mappings:
+              type: array
+              description: Настройка переопределения значений.
+              items:
+                $ref: '#/components/schemas/Mapping'
+        overrides:
+          type: array
+          description: Переопределение значений.
+          items:
+            $ref: '#/components/schemas/Override'
+    StatPanel:
+      type: object
+      description: Параметры виджета "Статистика".
+      required:
+        - type
+        - title
+        - description
+        - position
+        - properties
+      properties:
+        type:
+          type: string
+          description: Тип виджета — "Статистика".
+        title:
+          type: string
+          description: Название виджета.
+        description:
+          type: string
+          description: Описание виджета.
+          default: ''
+        position:
+          $ref: '#/components/schemas/Position'
+        properties:
+          type: object
+          description: Параметры настройки виджета.
+          required:
+            - queries
+            - graphMode
+            - decimals
+          properties:
+            queries:
+              type: array
+              description: Параметры запросов к данным.
+              items:
+                $ref: '#/components/schemas/TimeSeriesQuery'
+            graphMode:
+              x-oapi-codegen-extra-tags:
+                bson: graph_mode
+              type: string
+              description: Вид графика.
+              enum:
+                - area
+                - none
+              default: area
+            decimals:
+              type: integer
+              description: Число десятичных знаков.
+              minimum: 0
+              maximum: 5
+              default: 2
+            thresholds:
+              type: object
+              description: Настройка добавления порогов на виджет.
+              nullable: true
+              required:
+                - show
+                - display
+                - items
+              properties:
+                show:
+                  type: boolean
+                  description: >-
+                    Отображение порогов на виджете:
+                       - `true` — показ порогов включен;
+                       - `false` — показ порогов выключен.
+                  default: false
+                display:
+                  type: string
+                  description: >-
+                    Формат показа порога на графике:
+                       - `withColor` — цвет;
+                       - `withIcon` — иконка;
+                       - `withTextColor` — текст.
+                  enum:
+                    - withColor
+                    - withIcon
+                    - withTextColor
+                  default: withColor
+                items:
+                  type: array
+                  description: Параметры порогов.
+                  maxItems: 3
+                  items:
+                    type: object
+                    required:
+                      - value
+                      - color
+                      - direction
+                    properties:
+                      value:
+                        type: number
+                        description: Числовое значение порога.
+                        format: float
+                      color:
+                        type: string
+                        description: >-
+                          HEX-код цвета порога:
+                            - `A8D1A2` — зеленый;
+                            - `E6C878` — желтый;
+                            - `FBAB99` — красный.
+                        x-go-name: ThresholdColor
+                        enum:
+                          - A8D1A2
+                          - E6C878
+                          - FBAB99
+                      direction:
+                        type: string
+                        description: >-
+                          Направление сравнения:
+                            - `lt` — меньше;
+                            - `gt` — больше;
+                            - `lte` — меньше или равно;
+                            - `gte` — больше или равно;
+                            - `eq` — равно.
+                        enum:
+                          - lt
+                          - gt
+                          - lte
+                          - gte
+                          - eq
+    TextPanel:
+      type: object
+      description: Параметры виджета "Текстовый".
+      required:
+        - type
+        - title
+        - description
+        - position
+        - properties
+      properties:
+        type:
+          type: string
+          description: Тип виджета — "Текстовый".
+        title:
+          type: string
+          description: Название виджета.
+        description:
+          type: string
+          description: Описание виджета.
+          default: ''
+        position:
+          $ref: '#/components/schemas/Position'
+        properties:
+          type: object
+          description: Параметры настройки виджета.
+          required:
+            - content
+          properties:
+            content:
+              type: string
+              description: Текст виджета.
+    TimeSeriesPanel:
+      type: object
+      description: Параметры виджета "Временной ряд".
+      required:
+        - type
+        - title
+        - description
+        - position
+        - properties
+      properties:
+        type:
+          type: string
+          description: Тип виджета — "Временной ряд".
+        title:
+          type: string
+          description: Название виджета.
+        description:
+          type: string
+          description: Описание виджета.
+          default: ''
+        position:
+          $ref: '#/components/schemas/Position'
+        properties:
+          type: object
+          description: Параметры настройки виджета.
+          required:
+            - queries
+            - legend
+            - decimals
+            - tooltip
+          properties:
+            queries:
+              type: array
+              description: Параметры запросов к данным.
+              items:
+                $ref: '#/components/schemas/TimeSeriesQuery'
+            thresholds:
+              type: array
+              description: Настройка добавления порогов на виджет.
+              items:
+                $ref: '#/components/schemas/TimeSeriesThreshold'
+            legend:
+              type: object
+              description: Параметры легенды.
+              required:
+                - showLegend
+                - displayMode
+                - placement
+              properties:
+                showLegend:
+                  type: boolean
+                  description: >-
+                    Отображение легенды:
+                      - `true` — показать легенду;
+                      - `false` — скрыть легенду.
+                displayMode:
+                  type: string
+                  description: >-
+                    Формат отображения легенды:
+                      - `list` — список; 
+                      - `table` — таблица.
+                placement:
+                  type: string
+                  description: >-
+                    Расположение легенды:
+                      - `right` — справа; 
+                      - `bottom` — внизу.
+            leftAxis:
+              type: object
+              description: Параметры левой оси графика.
+              x-oapi-codegen-extra-tags:
+                bson: line_axis,omitempty
+              required:
+                - chartType
+                - interpolation
+                - thickness
+                - opacity
+                - displayDots
+                - dotsSize
+                - category
+                - barAlignment
+              properties:
+                chartType:
+                  type: string
+                  description: >-
+                    Тип графика для этой оси:
+                      - `line` — линии;
+                      - `bar` — столбцы;
+                      - `scatter` — точки.
+                  x-oapi-codegen-extra-tags:
+                    bson: chart_type,omitempty
+                  enum:
+                    - line
+                    - bar
+                    - scatter
+                barAlignment:
+                  type: string
+                  description: >-
+                    Выравнивание столбцов:
+                      - `start` — в начале временного промежутка;
+                      - `end` — в конце временного промежутка;
+                      - `middle` — по центру временного промежутка.
+                  x-oapi-codegen-extra-tags:
+                    bson: bar_alignment,omitempty
+                  enum:
+                    - start
+                    - end
+                    - middle
+                interpolation:
+                  type: string
+                  description: >-
+                    Способ интерполяции линии между точками:
+                      - `linear` — линейная;
+                      - `step_before` — шаг до;
+                      - `step_after` — шаг после.              
+                  x-oapi-codegen-extra-tags:
+                    bson: interpolation,omitempty
+                  enum:
+                    - linear
+                    - step_before
+                    - step_after
+                thickness:
+                  description: Толщина линии.
+                  type: integer
+                  x-oapi-codegen-extra-tags:
+                    bson: thickness,omitempty
+                  minimum: 1
+                  maximum: 5
+                opacity:
+                  type: integer
+                  description: Степень заливки линий или столбцов.
+                  x-oapi-codegen-extra-tags:
+                    bson: opacity,omitempty
+                  minimum: 0
+                  maximum: 100
+                displayDots:
+                  type: boolean
+                  description: >- 
+                    Отображение отдельных точек на линии:
+                      - `true` — показать точки;
+                      - `false` — не показывать точки.
+                  x-oapi-codegen-extra-tags:
+                    bson: displayDots
+                dotsSize:
+                  type: integer
+                  description: Размер точек на графике.
+                  minimum: 1
+                  maximum: 5
+                category:
+                  type: string
+                  description: >- 
+                    Категория оси:
+                      - `default` — без размерности;
+                      - `duration` — длительность;
+                      - `percent_single` — проценты (0–1);
+                      - `percent_decimal` — проценты (0–100);
+                      - `data_volume` — объем данных;
+                      - `data_transfer` — передача данных.            
+                  x-oapi-codegen-extra-tags:
+                    bson: category
+                  enum:
+                    - default
+                    - duration
+                    - percent_single
+                    - percent_decimal
+                    - data_volume
+                    - data_transfer
+                  default: default
+            decimals:
+              type: integer
+              description: Число десятичных знаков.
+              minimum: 0
+              maximum: 5
+              default: 2
+            tooltip:
+              type: object
+              description: Настройки тултипа.
+              nullable: true
+              default: {}
+              required:
+                - show
+                - mode
+              properties:
+                show:
+                  type: boolean
+                  description: >-
+                    Отображение тултипа:
+                      - `true` — показать тултип;
+                      - `false` — скрыть тултип.
+                  default: true
+                mode:
+                  type: string
+                  description: >-
+                    Вид показа тултипа:
+                      - `single` — один;
+                      - `multi` — все.
+                  enum:
+                    - single
+                    - multi
+                  default: single
+    ValueMapping:
+      type: object
+      description: Параметры значения.
+      required:
+        - type
+        - options
+      properties:
+        type:
+          type: string
+          description: Тип переопределения "Значение", который заменит значение метрики на новое значение. 
+          enum: [value]
+        options:
+          type: object
+          description: Параметры переопределения для типа "Значение".
+          additionalProperties:
+            type: object
+            description: Параметры отображения переопределения.
+            required:
+              - index
+              - text
+            properties:
+              index:
+                type: integer
+                description: Порядковый номер в списке вариантов.
+                minimum: 0
+              text:
+                type: string
+                description: Новое значение, которое нужно отображать в таблице вместо указанного значения.
+    RangeMapping:
+      type: object
+      required:
+        - type
+        - options
+      properties:
+        type:
+          type: string
+          description: Тип переопределения "Диапазон значений", который заменит диапазон значений на новое значение. 
+          enum: [range]
+        options:
+          additionalProperties: false
+          type: object
+          description: Параметры переопределения для типа "Диапазон значений".
+          required:
+            - from
+            - result
+            - to
+          properties:
+            from:
+              type: integer
+              description: Начало диапазона значений.
+            to:
+              type: integer
+              description: Конец диапазона значений.
+            result:
+              type: object
+              description: Параметры отображения переопределения.
+              required:
+                - index
+                - text
+              properties:
+                index:
+                  type: integer
+                  description: Порядковый номер в списке вариантов.
+                  minimum: 0
+                text:
+                  type: string
+                  description: Новое значение, которое нужно отображать в таблице вместо значений, входящих в диапазон.
+    RegexMapping:
+      type: object
+      required:
+        - type
+        - options
+      properties:
+        type:
+          type: string
+          description: Тип переопределения "Регулярное выражение", который применяет регулярное выражение к строке и заменяет ее на заданный текст или цвет.
+          enum: [regex]
+        options:
+          type: object
+          description: Параметры переопределения для типа "Регулярное выражение".
+          required:
+            - pattern
+            - result
+          properties:
+            pattern:
+              type: string
+              description: Регулярное выржение.
+              format: regex
+            result:
+              type: object
+              description: Параметры отображения переопределения.
+              required:
+                - index
+                - text
+              properties:
+                index:
+                  type: integer
+                  description: Порядковый номер в списке вариантов.
+                  minimum: 0
+                text:
+                  type: string
+                  description: Новое значение, которое нужно отображать в таблице вместо заданного регулярного выражения.
+    Mapping:
+      type: object
+      description: Настройка переопределения значений.
+      discriminator:
+        propertyName: type
+        mapping:
+          value: '#/components/schemas/ValueMapping'
+          range: '#/components/schemas/RangeMapping'
+          regex: '#/components/schemas/RegexMapping'
+      oneOf:
+        - $ref: '#/components/schemas/ValueMapping'
+        - $ref: '#/components/schemas/RangeMapping'
+        - $ref: '#/components/schemas/RegexMapping'
+    OverrideProperty:
+      type: object
+      discriminator:
+        propertyName: id
+        mapping:
+          mappings: '#/components/schemas/OverridePropertyMapping'
+          decimals: '#/components/schemas/OverridePropertyDecimals'
+      oneOf:
+        - $ref: '#/components/schemas/OverridePropertyMapping'
+        - $ref: '#/components/schemas/OverridePropertyDecimals'
+    OverrideMatcher:
+      type: object
+      discriminator:
+        propertyName: id
+        mapping:
+          byName: '#/components/schemas/OverrideMatcherByName'
+      oneOf:
+        - $ref: '#/components/schemas/OverrideMatcherByName'
+    Override:
+      type: object
+      required:
+        - matcher
+        - properties
+      properties:
+        matcher:
+          $ref: '#/components/schemas/OverrideMatcher'
+        properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/OverrideProperty'
+    OverridePropertyMapping:
+      type: object
+      required:
+        - id
+        - value
+      properties:
+        id:
+          type: string
+          enum: [mappings]
+        value:
+          type: array
+          items:
+            $ref: '#/components/schemas/Mapping'
+    OverridePropertyDecimals:
+      type: object
+      required:
+        - id
+        - value
+      properties:
+        id:
+          type: string
+          enum: [decimals]
+        value:
+          type: integer
+          minimum: 0
+          maximum: 5
+    OverrideMatcherByName:
+      type: object
+      required:
+        - id
+        - options
+      properties:
+        id:
+          type: string
+          enum: [byName]
+        options:
+          type: string
+    TablePanel:
+      type: object
+      description: Параметры виджета "Таблица".
+      required:
+        - type
+        - title
+        - description
+        - position
+        - properties
+      properties:
+        type:
+          type: string
+          description: Тип виджета — "Таблица".
+        title:
+          type: string
+          description: Название виджета.
+        description:
+          type: string
+          description: Описание виджета.
+          default: ''
+        position:
+          $ref: '#/components/schemas/Position'
+        properties:
+          type: object
+          description: Параметры настройки виджета.
+          required:
+            - fieldConfig
+            - transformations
+            - queries
+            - category
+          properties:
+            category:
+              type: string
+              description: >- 
+                Настройки значений:
+                  - `default` — без размерности;
+                  - `duration` — длительность;
+                  - `percent_single` — проценты (0–1);
+                  - `percent_decimal` — проценты (0–100);
+                  - `data_volume` — объем данных;
+                  - `data_transfer` — передача данных.    
+              enum:
+                - default
+                - duration
+                - percent_single
+                - percent_decimal
+                - data_volume
+                - data_transfer
+              default: default
+            fieldConfig:
+              $ref: '#/components/schemas/TableFieldConfig'
+            transformations:
+              type: array
+              description: Настройка отображения колонок.
+              items:
+                type: object
+                required:
+                  - id
+                  - options
+                properties:
+                  id:
+                    type: string
+                    description: >-
+                      Упорядочивание колонок в таблице. 
+                      Значение по умолчанию — `organize`.
+                    enum: [organize]
+                  options:
+                    type: object
+                    description: Параметры настройки колонок.
+                    properties:
+                      excludeByName:
+                        type: object
+                        description: Настройка видимости колонок.
+                        x-oapi-codegen-extra-tags:
+                          bson: exclude_by_name,omitempty
+                        additionalProperties:
+                          type: boolean
+                          description: >-
+                            Показ или скрытие колонки в таблице. 
+                            Указывается в формате `"column_name": true` или  `"column_name": false`, где:
+                              - `column_name` — название колонки;
+                              - `true` — показ колонки;
+                              - `false` — скрытие колонки.
+                      indexByName:
+                        type: object
+                        description: Изменение порядка колонок.
+                        x-oapi-codegen-extra-tags:
+                          bson: index_by_name,omitempty
+                        additionalProperties:
+                          type: integer
+                          description: >-
+                            Порядок отображения колонок. 
+                            Указывается в формате `"column_name": X`, где:
+                              - `column_name` — название колонки;
+                              - `X` — порядковый номер колонки, начиная с `0`. 
+                      renameByName:
+                        type: object
+                        description: Переименование колонок.
+                        x-oapi-codegen-extra-tags:
+                          bson: rename_by_name,omitempty
+                        additionalProperties:
+                          type: string
+                          description: >-
+                            Текущее и новое название колонки.
+                            Указывается в формате `"column_name": "new_name"`, где:
+                              - `column_name` — текущее название колонки;
+                              - `new_name` — новое название колонки. 
+            queries:
+              type: array
+              description: Параметры запросов к данным.
+              items:
+                $ref: '#/components/schemas/TableQuery'
+    HostMapPanel:
+      type: object
+      description: Параметры виджета "Состояние объектов".
+      required:
+        - type
+        - title
+        - description
+        - position
+        - properties
+      properties:
+        type:
+          type: string
+          description: Тип виджета — "Состояние объектов".
+          enum: [host-map]
+        title:
+          type: string
+          description: Название виджета.
+        description:
+          type: string
+          description: Описание виджета.
+          default: ''
+        position:
+          $ref: '#/components/schemas/Position'
+        properties:
+          type: object
+          description: Параметры настройки виджета.
+          required:
+            - queries
+            - legend
+            - fieldConfig
+          properties:
+            queries:
+              type: array
+              description: Параметры запросов к данным.
+              items:
+                $ref: '#/components/schemas/TimeSeriesQuery'
+            legend:
+              type: object
+              description: Параметры легенды.
+              required:
+                - showLegend
+                - displayMode
+                - placement
+              properties:
+                showLegend:
+                  type: boolean
+                  description: >-
+                    Отображение легенды:
+                      - `true` — показать легенду;
+                      - `false` — скрыть легенду.
+                displayMode:
+                  type: string
+                  description: >-
+                    Формат отображения легенды:
+                      - `list` — список; 
+                      - `table` — таблица.
+                placement:
+                  type: string
+                  description: >-
+                    Расположение легенды:
+                      - `right` — справа; 
+                      - `bottom` — внизу.
+            fieldConfig:
+              type: object
+              description: Параметры переопределения значений.
+              required:
+                - defaults
+              properties:
+                defaults:
+                  type: object
+                  description: Настройка переопределения значений.
+                  required:
+                    - mappings
+                  properties:
+                    mappings:
+                      type: array
+                      description: Настройка переопределения значений.
+                      items:
+                        $ref: '#/components/schemas/StateTimelineMapping'
+              x-oapi-codegen-extra-tags:
+                bson: field_config
+    StateTimelinePanel:
+      type: object
+      description: Параметры виджета "История состояний".
+      required:
+        - type
+        - title
+        - description
+        - position
+        - properties
+      properties:
+        type:
+          type: string
+          description: Тип виджета — "История состояний".
+          enum: [state-timeline]
+        title:
+          type: string
+          description: Название виджета.
+          maxLength: 64
+        description:
+          type: string
+          description: Описание виджета.
+          maxLength: 255
+          default: ''
+        position:
+          $ref: '#/components/schemas/Position'
+        properties:
+          type: object
+          description: Параметры настройки виджета.
+          required:
+            - legend
+            - valueSource
+            - category
+            - tooltip
+            - queries
+            - fieldConfig
+          properties:
+            legend:
+              type: object
+              description: Параметры легенды.
+              required:
+                - showLegend
+                - displayMode
+                - placement
+              properties:
+                showLegend:
+                  type: boolean
+                  description: >-
+                    Отображение легенды:
+                      - `true` — показать легенду;
+                      - `false` — скрыть легенду.
+                  default: true
+                  x-oapi-codegen-extra-tags:
+                    bson: show_legend
+                displayMode:
+                  type: string
+                  description: >-
+                    Формат отображения легенды:
+                      - `list` — список; 
+                      - `table` — таблица.
+                  enum:
+                    - list
+                    - table
+                  default: list
+                  x-oapi-codegen-extra-tags:
+                    bson: display_mode
+                placement:
+                  type: string
+                  description: >-
+                    Расположение легенды:
+                      - `right` — справа; 
+                      - `bottom` — внизу.
+                  enum:
+                    - right
+                    - bottom
+                  default: bottom
+            valueSource:
+              type: string
+              description: Параметр `value`, определяющий, что графики строятся на основе значений метрик.
+              enum:
+                - value
+              default: value
+              x-oapi-codegen-extra-tags:
+                bson: value_source
+            category:
+              type: string
+              description: >- 
+                Настройки значений:
+                  - `default` — без размерности;
+                  - `duration` — длительность;
+                  - `percent_single` — проценты (0–1);
+                  - `percent_decimal` — проценты (0–100);
+                  - `data_volume` — объем данных;
+                  - `data_transfer` — передача данных.  
+              enum:
+                - default
+                - duration
+                - percent_single
+                - percent_decimal
+                - data_volume
+                - data_transfer
+              default: default
+            tooltip:
+              type: object
+              description: Настройки тултипа.
+              nullable: true
+              default: {}
+              required:
+                - show
+                - mode
+              properties:
+                show:
+                  type: boolean
+                  description: >-
+                    Отображение тултипа:
+                      - `true` — показать тултип;
+                      - `false` — скрыть тултип.
+                  default: true
+                mode:
+                  type: string
+                  description: >-
+                    Вид показа тултипа:
+                      - `single` — один;
+                      - `multi` — все.
+                  enum:
+                    - single
+                    - multi
+                  default: single
+            queries:
+              type: array
+              description: Параметры запросов к данным.
+              items:
+                $ref: '#/components/schemas/StateTimelineQuery'
+            fieldConfig:
+              type: object
+              description: Параметры переопределения значений.
+              required:
+                - defaults
+              properties:
+                defaults:
+                  type: object
+                  description: Настройка переопределения значений.
+                  required:
+                    - mappings
+                  properties:
+                    mappings:
+                      type: array
+                      description: Параметры переопределения для типа виджета "История состояний".
+                      items:
+                        $ref: '#/components/schemas/StateTimelineMapping'
+              x-oapi-codegen-extra-tags:
+                bson: field_config
+    StateTimelineQuery:
+      type: object
+      description: Параметры отображения значений.
+      required:
+        - refId
+        - legendAlias
+        - displayResults
+        - query
+      properties:
+        refId:
+          type: string
+          description: Уникальный идентификатор запроса.
+          x-oapi-codegen-extra-tags:
+            bson: ref_id
+        legendAlias:
+          type: string
+          description: Обозначение порога в легенде виджета.
+          x-oapi-codegen-extra-tags:
+            bson: legend_alias
+        displayResults:
+          type: boolean
+          description: >-
+            Отображение результатов запроса на виджете:
+              - `true` — показ результатов запроса на виджете;
+              - `false` — скрытие результатов запроса на виджете.
+          x-oapi-codegen-extra-tags:
+            bson: display_results
+        query:
+          type: string
+          description: Запрос к данным.
+        formula:
+          type: string
+          description: Формула, применяемая к метрике в конструкторе запросов.
+        label:
+          type: string
+          description: Лейблы метрики в конструкторе запросов.
+          default: value
+    StateTimelineMapping:
+      type: object
+      discriminator:
+        propertyName: type
+        mapping:
+          value: '#/components/schemas/StateTimelineValueMapping'
+          range: '#/components/schemas/StateTimelineRangeMapping'
+          regex: '#/components/schemas/StateTimelineRegexMapping'
+      oneOf:
+        - $ref: '#/components/schemas/StateTimelineValueMapping'
+        - $ref: '#/components/schemas/StateTimelineRangeMapping'
+        - $ref: '#/components/schemas/StateTimelineRegexMapping'
+    StateTimelineValueMapping:
+      type: object
+      required:
+        - type
+        - options
+      properties:
+        type:
+          type: string
+          description: Тип переопределения "Значение", который заменит значение метрики на новое значение. 
+          enum: [value]
+        options:
+          type: object
+          description: Параметры переопределения в зависимости от типа.
+          additionalProperties:
+            type: object
+            description: Параметры отображения переопределения.
+            required:
+              - index
+              - text
+              - color
+            properties:
+              index:
+                type: integer
+                description: Порядковый номер в списке вариантов.
+                minimum: 0
+              text:
+                type: string
+                description: Новое значение, которое нужно отображать в таблице вместо указанного значения.
+              color:
+                $ref: '#/components/schemas/Color'
+    StateTimelineRangeMapping:
+      type: object
+      required:
+        - type
+        - options
+      properties:
+        type:
+          type: string
+          description: Тип переопределения "Диапазон значений", который заменит диапазон значений на новое значение. 
+          enum: [range]
+        options:
+          type: object
+          description: Условие переопределения значений.
+          required:
+            - from
+            - result
+            - to
+          properties:
+            from:
+              type: number
+              description: Начало диапазона значений.
+              format: float
+            to:
+              type: number
+              description: Конец диапазона значений.
+              format: float
+            result:
+              type: object
+              description: Параметры отображения переопределения.
+              required:
+                - index
+                - text
+                - color
+              properties:
+                index:
+                  type: integer
+                  description: Порядковый номер в списке вариантов.
+                  minimum: 0
+                text:
+                  type: string
+                  description: Новое значение, которое нужно отображать в таблице виджета вместо значений, входящих в диапазон.
+                color:
+                  $ref: '#/components/schemas/Color'
+    StateTimelineRegexMapping:
+      type: object
+      required:
+        - type
+        - options
+      properties:
+        type:
+          type: string
+          description: Тип переопределения "Регулярное выражение", который применяет регулярное выражение к строке и заменяет ее на заданный текст или цвет.
+          enum: [regex]
+        options:
+          type: object
+          description: Параметры переопределения.
+          required:
+            - pattern
+            - result
+          properties:
+            pattern:
+              type: string
+              description: Регулярное выражение.
+              format: regex
+            result:
+              type: object
+              description: Параметры отображения переопределения.
+              required:
+                - index
+                - text
+                - color
+              properties:
+                index:
+                  type: integer
+                  description: Порядковый номер в списке вариантов.
+                  minimum: 0
+                text:
+                  type: string
+                  description: Новое значение, которое нужно отображать в таблице вместо заданного регулярного выражения.
+                color:
+                  $ref: '#/components/schemas/Color'
+    Position:
+      type: object
+      description: Параметры расположения виджета на дашборде.
+      required:
+        - h
+        - w
+        - x
+        - 'y'
+        - i
+      properties:
+        h:
+          type: integer
+          description: Высота виджета.
+        w:
+          type: integer
+          description: Ширина виджета.
+        x:
+          type: integer
+          description: Горизонтальная координата виджета.
+        'y':
+          type: integer
+          description: Вертикальная координата виджета.
+        i:
+          type: string
+          description: Идентификатор виджета на дашборде.
+        moved:
+          type: boolean
+          description: Параметр, показывающий, менялось ли расположение виджета на дашборде.
+    Variable:
+      type: object
+      required:
+        - name
+        - query
+        - includeAll
+        - multi
+        - show
+      properties:
+        allValue:
+          type: string
+          description: Возможность множественного выбора значений переменной.
+          minLength: 1
+          nullable: true
+        description:
+          type: string
+          description: Описание переменной.
+        includeAll:
+          type: boolean
+          description: >-
+            Выбор всех значений переменной:
+              - `true` — выбор всех значений включен;
+              - `false` — выбор всех значений выключен.
+        multi:
+          type: boolean
+          description: >-
+            Выбор нескольких значений переменной:
+              - `true` — выбор нескольких значений включен;
+              - `false` — выбор нескольких значений выключен.
+        name:
+          type: string
+          description: Уникальное название переменной на дашборде, которое будет показываться в таблице со списком переменных этого дашборда.
+        query:
+          $ref: '#/components/schemas/VariableQuery'
+        show:
+          type: boolean
+          description: >-
+            Отображение переменной на дашборде:
+              - `true` — показывать переменную;
+              - `false` — не показывать переменную.
+    VariableQuery:
+      type: object
+      description: Параметры переменных.
+      required:
+        - type
+      properties:
+        label:
+          type: string
+          description: Наименование лейбла, значения которого используются в запросах для получения значений металейбла.
+        match:
+          type: string
+          description: Оператор для фильтрации значений переменной, например `=`. 
+        metaLabel:
+          type: string
+          description: Наименование металейбла, значения которого нужно получить и показать в выпадающем списке в фильтре переменной на дашборде.
+        options:
+          type: array
+          description: Значения переменной для типа "Список".
+          items:
+            $ref: '#/components/schemas/QueryOption'
+        type:
+          type: string
+          description: >- 
+            Параметр, определяющий тип переменной:
+              - `label_values_meta` — запрос с металейблом;
+              - `label_values` — запрос;
+              - `custom` — список.
+          
+          enum:
+            - label_values_meta
+            - label_values
+            - custom
+    QueryOption:
+      type: object
+      description: Значения переменной для типа "Список".
+      required:
+        - value
+      properties:
+        value:
+          type: string
+          description: Список значений переменной.
+    Color:
+      type: string
+      description: >-
+        HEX-код цветовой индикации:
+          - `A8D1A2` — зеленый;
+          - `BEC2CF` — серый;
+          - `AAC4EA` — синий;
+          - `E6C878` — желтый;
+          - `99D7BA` — бирюзовый;
+          - `8B8E9B` — темно-серый;
+          - `F5B27B` — оранжевый;
+          - `DBB3DB` — сиреневый;
+          - `A0D3DE` — голубой;
+          - `E8B1C1` — розовый;
+          - `B4D28E` — ярко-зеленый;
+          - `FBAB99` — красный;
+          - `B88F3C` — коричневый.
+      enum:
+        - A8D1A2
+        - BEC2CF
+        - AAC4EA
+        - E6C878
+        - 99D7BA
+        - 8B8E9B
+        - F5B27B
+        - DBB3DB
+        - A0D3DE
+        - E8B1C1
+        - B4D28E
+        - FBAB99
+        - B88F3C
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+    ListDashboardResponse:
+      type: object
+      required:
+        - dashboards
+        - page
+        - total
+      properties:
+        dashboards:
+          type: array
+          description: Список дашбордов, соответствующих запросу.
+          items:
+            $ref: '#/components/schemas/DashboardItemResponse'
+        page:
+          type: integer
+          description: Номер страницы с результатом.
+        total:
+          type: integer    
+          description: Количество дашбордов, найденных по запросу.
+    DashboardItemResponse:
+      type: object
+      description: Параметры ответа.
+      required:
+        - dashboardId
+        - description
+        - title
+      properties:
+        dashboardId:
+          type: string
+          description: Идентификатор дашборда.
+          format: uuid
+        description:
+          type: string
+          description: Описание дашборда.
+        title:
+          type: string
+          description: Название дашборда.
+    Dashboard:
+      type: object
+      description: Параметры дашборда.
+      required:
+        - dashboardId
+        - description
+        - title
+      properties:
+        dashboardId:
+          $ref: '#/components/schemas/DashboardId'
+        description:
+          type: string
+          description: Описание дашборда.
+        panels:
+          type: array
+          description: Параметры виджетов дашборда.
+          items:
+            $ref: '#/components/schemas/Panel'
+        title:
+          type: string
+          description: Название дашборда.
+        variables:
+          type: array
+          description: Параметры переменных дашборда.
+          items:
+            $ref: '#/components/schemas/Variable'
+    CreateUpdateDashboardRequest:
+      type: object
+      description: Параметры дашборда.
+      required:
+        - description
+        - title
+      properties:
+        description:
+          type: string
+          description: Описание дашборда.
+        panels:
+          type: array
+          description: Параметры виджетов дашборда.
+          items:
+            $ref: '#/components/schemas/Panel'
+        title:
+          type: string
+          description: Название дашборда.
+        variables:
+          type: array
+          description: Параметры переменных дашборда.
+          items:
+            $ref: '#/components/schemas/Variable'      
+    CreateUpdateDashboardResponse:
+      type: object
+      description: Ответ на запрос создания или обновления дашборда. 
+      required:
+        - dashboardId
+      properties:
+        dashboardId:
+          $ref: '#/components/schemas/DashboardId'
+    DashboardId:
+      type: string
+      description: Идентификатор дашборда.
+      format: uuid
+    RecordingListResponse:
+      type: object
+      description: Список правил вычисляемых метрик.
+      properties:
+        nextPage:
+          type: string
+          description: Токен следующей страницы результатов.
+        rules:
+          items:
+            $ref: '#/components/schemas/RecordingRule'
+          type: array
+          description: Список правил вычисляемых метрик проекта.
+    RecordingRule:   
+      type: object
+      description: Параметры правила вычисляемых метрик.
+      properties:
+        customLabels:
+          type: object
+          description: Метки, которые применяются к новой вычисляемой метрике.
+          additionalProperties:
+            type: string
+        expr:
+          type: string
+          description: PromQL-запрос для вычисления новой метрики.
+        interval:
+          type: integer
+          description: Интервал выполнения запроса в секундах.
+        metric:
+          type: string
+          description: Название вычисляемой метрики.
+        name:
+          type: string
+          description: Название правила.
+        productInstanceId:
+          type: string
+          description: Идентификатор экземпляра продукта.
+        queryLabels:
+          $ref: '#/components/schemas/recordingschemas.LabelSelection'
+        ruleId:
+          type: string
+          description: Идентификатор правила.
+        state:
+          type: string
+          description: Статус правила.
+    recordingschemas.LabelSelection:
+      type: object
+      description: Параметры меток, назначаемых вычисляемой метрике на основе запроса.
+      properties:
+        labels:
+          items:
+            type: string
+          type: array
+          description: >-
+            Список меток, которые нужно назначить вычисляемой метрике. 
+            Заполняется, если для параметра `mode` выбрана опция `manual`.
+        mode:
+          $ref: '#/components/schemas/recordingschemas.LabelSelectionMode'
+    recordingschemas.LabelSelectionMode:
+      description: >-
+        Выбор меток, назначаемых вычисляемой метрике на основе запроса:
+        
+          - `all` — все метки;
+          - `none` — никакие метки;
+          - `manual` — метки, выбранные вручную.
+      enum:
+        - all
+        - none
+        - manual
+      type: string
+      x-enum-varnames:
+        - LabelSelectionModeAll
+        - LabelSelectionModeNone
+        - LabelSelectionModeManual      
+    BulkPatchRecordingRuleRequestBody:
+      type: object
+      description: Настройка статуса правила.
+      properties:
+        ruleId:
+          type: string
+          description: Идентификатор правила.
+        state:
+          type: string
+          description: >-
+            Статус правила:
+              - `active` — «Включено»;
+              - `inactive` — «Выключено».
+    CreateUpdateRecordingRuleRequestBody:
+      type: object
+      description: Параметры правила вычисляемых метрик.
+      properties:
+        customLabels:
+          type: object
+          description: Дополнительные метки, которые применяются к новой вычисляемой метрике.
+          additionalProperties:
+            type: string
+            description: Метка в формате `ключ-значение`.
+        expr:
+          type: string
+          description: PromQL-запрос для вычисления новой метрики.
+        interval:
+          type: integer
+          description: >-
+            Интервал выполнения запроса в секундах: 
+              - `60` — 1 минута;
+              - `300` — 5 минут;
+              - `900` — 15 минут.
+          enum:
+            - 60
+            - 300
+            - 900
+        metric:
+          type: string
+          description: >-
+            Название вычисляемой метрики. Максимальная длина — 64 символа.
+          maxLength: 64
+        name:
+          type: string
+          description: >-
+            Название правила. Максимальная длина — 64 символа.
+          maxLength: 64
+        queryLabels:
+          $ref: '#/components/schemas/recordingschemas.LabelSelection'
+        state:
+          type: string
+          description: >-
+            Статус правила:
+              - `active` — «Включено»;
+              - `inactive` — «Выключено». 
+          enum:
+            - active
+            - inactive    
+    apiEmptyResponse:
+      type: object   
+      description: Успешное выполнение запроса
+  responses:
+    '400':
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    '404':
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    '500':
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

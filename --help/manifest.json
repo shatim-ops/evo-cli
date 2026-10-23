@@ -1,0 +1,382 @@
+{
+ "source": "https://cloud.ru/docs",
+ "specs": [
+  {
+   "service": "compute",
+   "file": "compute/openapi-v3.yaml",
+   "url": "https://cloud.ru/docs/api/specs/virtual-machines/ug/_specs/openapi-v3.yaml",
+   "size": 744104,
+   "sha256": "282f3f56fe3d3e2a7d2892620d959a8ab95d2f8134b0f2f20e58d009fffb5db8",
+   "openapi": "3.1.0",
+   "title": "SVC Public API",
+   "version": "0.0.1",
+   "servers": [
+    "https://compute.api.cloud.ru"
+   ],
+   "paths": 58
+  },
+  {
+   "service": "vpc",
+   "file": "vpc/openapi.yaml",
+   "url": "https://cloud.ru/docs/api/specs/evolution-vpc/ug/_specs/openapi.yaml",
+   "size": 82031,
+   "sha256": "cb9265117b3911fa52743359b4c5c4f6042f19f2db12a6582c2e18ddef17948c",
+   "openapi": "3.0.3",
+   "title": "Evolution VPC Public API",
+   "version": "0.0.1",
+   "servers": [
+    "https://vpc.api.cloud.ru"
+   ],
+   "paths": 14
+  },
+  {
+   "service": "dns",
+   "file": "dns/openapi.yaml",
+   "url": "https://cloud.ru/docs/api/specs/evolution-dns/ug/_specs/openapi.yaml",
+   "size": 141051,
+   "sha256": "dbf90e160632e76511b4ae970aeaf9371f581fba725ec95838665360c0bbc6b1",
+   "openapi": "3.0.3",
+   "title": "Evolution DNS Public API",
+   "version": "0.0.1",
+   "servers": [
+    "https://dns.api.cloud.ru"
+   ],
+   "paths": 31
+  },
+  {
+   "service": "nlb",
+   "file": "nlb/swagger.yaml",
+   "url": "https://cloud.ru/docs/api/specs/nlb/ug/_specs/swagger.yaml",
+   "size": 44613,
+   "sha256": "da36c13eaa25cc303cf954da000a8847842ada7e84974f74089fad228159d8b6",
+   "openapi": "2.0",
+   "title": "Cloud.ru Evolution Load Balancer API",
+   "version": "1.0",
+   "servers": [
+    "https://nlb.api.cloud.ru"
+   ],
+   "paths": 5
+  },
+  {
+   "service": "mk8s",
+   "file": "mk8s/openapi-v3.yaml",
+   "url": "https://cloud.ru/docs/api/specs/kubernetes-evolution/ug/_specs/openapi-v3.yaml",
+   "size": 174431,
+   "sha256": "b1cd528ccf402ebb5f11a25912a134c0ae59582f6c3027e7ddb7854c282dec62",
+   "openapi": "3.0.3",
+   "title": "Cloud.ru Managed Kubernetes API",
+   "version": "3.0.1",
+   "servers": [
+    "https://mk8s.api.cloud.ru"
+   ],
+   "paths": 18
+  },
+  {
+   "service": "mk8s",
+   "file": "mk8s/openapi.yaml",
+   "url": "https://cloud.ru/docs/api/specs/kubernetes-evolution/ug/_specs/openapi.yaml",
+   "size": 178386,
+   "sha256": "d9a2a1685708b12608efbc8929c41b2f1deee1bec8f1c2c5ca98b72b2752d069",
+   "openapi": "3.0.3",
+   "title": "Cloud.ru Managed Kubernetes API",
+   "version": "2.1.1",
+   "servers": [
+    "https://mk8s.api.cloud.ru"
+   ],
+   "paths": 27
+  },
+  {
+   "service": "postgresql",
+   "file": "postgresql/openapi-postgresql.yaml",
+   "url": "https://cloud.ru/docs/api/specs/paas-postgresql/ug/_specs/openapi-postgresql.yaml",
+   "size": 89503,
+   "sha256": "bb39b2ea1fad133420b472e5b396b5133bb1cf0b7f52f4308e97566041b8c6b2",
+   "openapi": "3.0.3",
+   "title": "Cloud.ru Managed PostgreSQL API",
+   "version": "1.0.0",
+   "servers": [
+    "https://postgresql.api.cloud.ru"
+   ],
+   "paths": 18
+  },
+  {
+   "service": "kafka",
+   "file": "kafka/openapi-kafka.yaml",
+   "url": "https://cloud.ru/docs/api/specs/paas-kafka/ug/_specs/openapi-kafka.yaml",
+   "size": 61758,
+   "sha256": "60dde91da8f5299918d84c0c60510adfc73b5f9d91afddedb5e02fedbe5c0e92",
+   "openapi": "3.0.3",
+   "title": "Cloud.ru Managed Kafka API",
+   "version": "1.0.0",
+   "servers": [
+    "https://kafka.api.cloud.ru"
+   ],
+   "paths": 11
+  },
+  {
+   "service": "redis",
+   "file": "redis/openapi-redis.yaml",
+   "url": "https://cloud.ru/docs/api/specs/redis/ug/_specs/openapi-redis.yaml",
+   "size": 51165,
+   "sha256": "4631fa1f95e861f2e6a3202d878586edd59aaefa8962c673e57574bc87630388",
+   "openapi": "3.0.3",
+   "title": "Cloud.ru Managed Redis API",
+   "version": "1.0.0",
+   "servers": [
+    "https://redis.api.cloud.ru"
+   ],
+   "paths": 10
+  },
+  {
+   "service": "ar",
+   "file": "ar/openapi.yaml",
+   "url": "https://cloud.ru/docs/api/specs/artifact-registry-evolution/ug/_specs/openapi.yaml",
+   "size": 26819,
+   "sha256": "52055317b4b4c53156c37aa933f38ce4bf915a99f31303ad0f9d5dae19d21454",
+   "openapi": "2.0",
+   "title": "Cloud.ru Artifact Registry OpenAPI 2.0",
+   "version": "2.0",
+   "servers": [
+    "https://ar.api.cloud.ru"
+   ],
+   "paths": 4
+  },
+  {
+   "service": "containers",
+   "file": "containers/openapi-jobs.yaml",
+   "url": "https://cloud.ru/docs/api/specs/container-apps-evolution/ug/_specs/openapi-jobs.yaml",
+   "size": 44495,
+   "sha256": "7f338ac90c5f6774d4ed44b1a649791fc346c04fa0020fda5599ac69afc9ac21",
+   "openapi": "3.0.3",
+   "title": "Cloud.ru Container Jobs OpenAPI 3.0",
+   "version": "v2",
+   "servers": [
+    "https://containers.api.cloud.ru"
+   ],
+   "paths": 10
+  },
+  {
+   "service": "containers",
+   "file": "containers/openapi.yaml",
+   "url": "https://cloud.ru/docs/api/specs/container-apps-evolution/ug/_specs/openapi.yaml",
+   "size": 59355,
+   "sha256": "0bc431e66f5cec4f7adde91a9bb7e5d2b3bbf18aeb68dc98bde3f6b2635f9c4f",
+   "openapi": "3.0.3",
+   "title": "Cloud.ru Container Services OpenAPI 3.0",
+   "version": "v2",
+   "servers": [
+    "https://containers.api.cloud.ru"
+   ],
+   "paths": 14
+  },
+  {
+   "service": "secretmanager",
+   "file": "secretmanager/api.swagger-public.yaml",
+   "url": "https://cloud.ru/docs/api/specs/scsm/ug/_specs/api.swagger-public.yaml",
+   "size": 38665,
+   "sha256": "c8a2f6554e5516c3e73e8332a602c8f062b85d73024ad77796b54c2dc6ca5db1",
+   "openapi": "2.0",
+   "title": "Secret Management API",
+   "version": "1.0.13",
+   "servers": [
+    "https://secretmanager.api.cloud.ru"
+   ],
+   "paths": 15
+  },
+  {
+   "service": "certificatemanager",
+   "file": "certificatemanager/ccm.swagger.yaml",
+   "url": "https://cloud.ru/docs/api/specs/certificate-manager/ug/_specs/ccm.swagger.yaml",
+   "size": 44477,
+   "sha256": "f52e9663ea8823bf9e2a291506904e0d1aacd868f5f4e9747a6d2802462c91d7",
+   "openapi": "2.0",
+   "title": "Certificate Manager API",
+   "version": null,
+   "servers": [
+    "https://certificatemanager.api.cloud.ru"
+   ],
+   "paths": 11
+  },
+  {
+   "service": "monitoring",
+   "file": "monitoring/openapi-v3.yaml",
+   "url": "https://cloud.ru/docs/api/specs/service-monitoring/ug/_specs/openapi-v3.yaml",
+   "size": 105960,
+   "sha256": "c252a078e2adb2f55ddcfc2823f954ebc433dbdc2a68db6fedd0dffb31a51c64",
+   "openapi": "3.0.1",
+   "title": "Cloud Monitoring API",
+   "version": "1.0.1",
+   "servers": [
+    "https://monitoring.api.cloud.ru"
+   ],
+   "paths": 12
+  },
+  {
+   "service": "audit",
+   "file": "audit/openapi-v3.yaml",
+   "url": "https://cloud.ru/docs/api/specs/audit-logging/ug/_specs/openapi-v3.yaml",
+   "size": 35533,
+   "sha256": "ff576f8e383c188da3a917ecc105903ba1fe1aa914c389d65cffb36984c38511",
+   "openapi": "3.0.0",
+   "title": "API сервиса \"Аудит-логирование\"",
+   "version": "v.1",
+   "servers": [
+    "https://audit.api.cloud.ru"
+   ],
+   "paths": 4
+  },
+  {
+   "service": "billing",
+   "file": "billing/swagger.yaml",
+   "url": "https://cloud.ru/docs/api/specs/billing/ug/_specs/swagger.yaml",
+   "size": 13782,
+   "sha256": "d62046f4e56be799796f38737bf07d0447fb9a4f38de0c561850e7abf2c26c07",
+   "openapi": "2.0",
+   "title": "Public API Контроль затрат",
+   "version": "1.0",
+   "servers": [
+    "organization.api.cloud.ru"
+   ],
+   "paths": 3
+  },
+  {
+   "service": "billing",
+   "file": "billing/swagger2.yaml",
+   "url": "https://cloud.ru/docs/api/specs/billing/ug/_specs/swagger2.yaml",
+   "size": 8283,
+   "sha256": "6249d3881a94192eb6385bc9189198a82d5d375fbe7eb925eecc0d0b7adf07c1",
+   "openapi": "2.0",
+   "title": "Public API Контроль затрат",
+   "version": "2.0",
+   "servers": [
+    "organization.api.cloud.ru"
+   ],
+   "paths": 1
+  },
+  {
+   "service": "organization+iam",
+   "file": "organization+iam/api.op.v3.yaml",
+   "url": "https://cloud.ru/docs/api/specs/administration/ug/_specs/api.op.v3.yaml",
+   "size": 36714,
+   "sha256": "b7e3b14732d92a8df24dd67216dcd63b7967288f3a58af22ddd1423548279087",
+   "openapi": "3.0.0",
+   "title": "Администрирование каталогов, проектов и квот (API v3)",
+   "version": "3.0.0",
+   "servers": [
+    "https://organization.api.cloud.ru"
+   ],
+   "paths": 10
+  },
+  {
+   "service": "organization+iam",
+   "file": "organization+iam/api.op_v1.v2.yaml",
+   "url": "https://cloud.ru/docs/api/specs/administration/ug/_specs/api.op_v1.v2.yaml",
+   "size": 50735,
+   "sha256": "ffe78b887905b34119b4f2716c7d139adbdc06ac64b8ad58032d240f3a868f90",
+   "openapi": "2.0",
+   "title": "Администрирование каталогов, проектов и квот (API v1, v2)",
+   "version": "1.0",
+   "servers": [
+    "https://organization.api.cloud.ru/"
+   ],
+   "paths": 13
+  },
+  {
+   "service": "organization+iam",
+   "file": "organization+iam/iam-gw-public.yaml",
+   "url": "https://cloud.ru/docs/api/specs/administration/ug/_specs/iam-gw-public.yaml",
+   "size": 272572,
+   "sha256": "02814c6426237df34caa4647d7ee4772ccb4d63f5f9f9658ab546d83f78db388",
+   "openapi": "3.0.0",
+   "title": "Администрирование сервисных аккаунтов, пользователей и групп пользователей",
+   "version": "1.0",
+   "servers": [
+    "https://iam.api.cloud.ru"
+   ],
+   "paths": 49
+  },
+  {
+   "service": "dataplatform",
+   "file": "dataplatform/data-platform-public-api.yaml",
+   "url": "https://cloud.ru/docs/api/specs/dataplatform/ug/_specs/data-platform-public-api.yaml",
+   "size": 15967,
+   "sha256": "65ea717b169063e21bd73746bf21332aef1876059f65960b05face8747078398",
+   "openapi": "2.0",
+   "title": "Cloud.ru Data Platform",
+   "version": "1.0",
+   "servers": [
+    "https://dataplatform.api.cloud.ru"
+   ],
+   "paths": 4
+  },
+  {
+   "service": "spark",
+   "file": "spark/spark-public-api.yaml",
+   "url": "https://cloud.ru/docs/api/specs/spark/ug/_specs/spark-public-api.yaml",
+   "size": 105746,
+   "sha256": "3331d28b5e56f43506a63b2f2189aa84721a3a2ca7c042c3c9d7d2d887514458",
+   "openapi": "3.0.3",
+   "title": "Cloud.ru Managed Spark",
+   "version": "1.0",
+   "servers": [],
+   "paths": 16
+  },
+  {
+   "service": "trino",
+   "file": "trino/trino-public-api.yaml",
+   "url": "https://cloud.ru/docs/api/specs/trino/ug/_specs/trino-public-api.yaml",
+   "size": 57712,
+   "sha256": "6ec8dd95b48eb1c0cbbd7e181de5f609443d73dfb9b7c0a126b77d4da0acce99",
+   "openapi": "2.0",
+   "title": "Cloud.ru Managed Trino",
+   "version": "1.0",
+   "servers": [
+    "https://dataplatform.api.cloud.ru"
+   ],
+   "paths": 8
+  },
+  {
+   "service": "managed-airflow",
+   "file": "managed-airflow/airflow-public-api.yaml",
+   "url": "https://cloud.ru/docs/api/specs/managed-airflow/ug/_specs/airflow-public-api.yaml",
+   "size": 32825,
+   "sha256": "00e5272fb39983d38459d57132639cfac64656e72148cafd7c09cafd9dc8f895",
+   "openapi": "2.0",
+   "title": "Cloud.ru Managed Airflow",
+   "version": "1.0",
+   "servers": [
+    "https://dataplatform.api.cloud.ru"
+   ],
+   "paths": 4
+  },
+  {
+   "service": "metastore",
+   "file": "metastore/metastore-public-api.yaml",
+   "url": "https://cloud.ru/docs/api/specs/metastore/ug/_specs/metastore-public-api.yaml",
+   "size": 33817,
+   "sha256": "4cad9eed028cded4a0dd9e52138ee01b548b9f346fb159f742ffc391e6d776b9",
+   "openapi": "2.0",
+   "title": "Cloud.ru Managed Metastore",
+   "version": "1.0",
+   "servers": [
+    "https://dataplatform.api.cloud.ru"
+   ],
+   "paths": 5
+  },
+  {
+   "service": "managed-flink",
+   "file": "managed-flink/flink-public-api-v1.yaml",
+   "url": "https://cloud.ru/docs/api/specs/managed-flink/ug/_specs/flink-public-api-v1.yaml",
+   "size": 41064,
+   "sha256": "e662e272f0b859092db91de2dc4a704edb301bbd41910e25072476b05842b4bb",
+   "openapi": "2.0",
+   "title": "Cloud.ru Managed Flink",
+   "version": "1.0",
+   "servers": [
+    "https://dataplatform.api.cloud.ru"
+   ],
+   "paths": 10
+  }
+ ],
+ "missing": []
+}

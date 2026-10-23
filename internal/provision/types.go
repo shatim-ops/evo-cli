@@ -462,15 +462,22 @@ type FloatingIP struct {
 	NATGateway json.RawMessage `json:"nat_gateway,omitempty"`
 }
 
-// BoundTo reports whether the answer names VM vmID as the address's: in
-// vm, or in the interface it is attached to. The shape of both is not
-// documented, so the ID is looked for as a JSON string in either.
+// BoundTo reports whether the answer names vmID — a VM, or its interface —
+// as the address's: in vm, or in the interface it is attached to. The
+// shapes (VmMiniResponse, InterfaceMiniResponse) are read loosely, so the
+// ID is looked for as a JSON string in either.
 func (f FloatingIP) BoundTo(vmID string) bool {
 	if vmID == "" {
 		return false
 	}
 	q := []byte(strconv.Quote(vmID))
 	return bytes.Contains(f.VM, q) || bytes.Contains(f.Interface, q)
+}
+
+// Pending reports an address still being created or attached, not bound
+// to anything yet: one a create that named an interface has just made.
+func (f FloatingIP) Pending() bool {
+	return isEmptyRaw(f.VM) && isEmptyRaw(f.Interface) && (f.State == "creating" || f.State == "attaching")
 }
 
 // OnNATGateway reports an address bound to a SNAT gateway.
