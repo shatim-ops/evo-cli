@@ -237,6 +237,24 @@ func goAtLeast(version string, major, minor int) bool {
 	return ma > major || ma == major && mi >= minor
 }
 
+// Each PR writes its CHANGELOG entry as a fragment in changelog.d (one file,
+// no shared lines, so PRs of a version do not conflict); CI checks the
+// fragments and the script that folds them before a tag, and a fragment
+// with «### Миграция» marks the PR breaking, as the section in CHANGELOG.md
+// does.
+func TestWorkflows_CIChecksChangelogFragments(t *testing.T) {
+	w := readWorkflows(t)["ci.yml"]
+	for _, want := range []string{
+		"python3 scripts/changelog-test.py",
+		"python3 scripts/changelog.py check",
+		`git diff "$BASE...HEAD" -- CHANGELOG.md changelog.d/ | grep -q '^+### Миграция'`,
+	} {
+		if !runsStep(w, want) {
+			t.Errorf("ci: no step runs %s", want)
+		}
+	}
+}
+
 // Every PR gets its change class and the checklist of checks beyond CI in
 // the run's summary, and the classifier's tables are tested on sample
 // paths (process audit 1.2.1, PR 8); the classes of the registry diff come

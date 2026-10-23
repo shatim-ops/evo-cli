@@ -6,6 +6,7 @@ package tools
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -20,15 +21,24 @@ func TestReviewParity_RP_5_UnrecordedEnglishDescriptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	since, _, ok := strings.Cut(string(b), "\n## [1.1.0]")
+	paths, err := filepath.Glob("../../changelog.d/*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fragments []string
+	for _, p := range paths {
+		if filepath.Base(p) == "README.md" {
+			continue
+		}
+		f, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fragments = append(fragments, string(f))
+	}
+	bullets, ok := descriptionBullets(string(b), fragments)
 	if !ok {
 		t.Fatal("CHANGELOG has no 1.1.0 section")
-	}
-	var bullets []string
-	for _, item := range strings.Split(since, "\n- ") {
-		if strings.HasPrefix(item, "Описания инструментов MCP") {
-			bullets = append(bullets, item)
-		}
 	}
 	recorded := func(name string) bool {
 		for _, item := range bullets {
@@ -52,5 +62,32 @@ func TestReviewParity_RP_5_UnrecordedEnglishDescriptions(t *testing.T) {
 			t.Errorf("%s description differs from v1.1.0 (contains %q); no CHANGELOG bullet «Описания инструментов MCP …» after 1.1.0 names `%s`",
 				c.name, c.phrase, c.name)
 		}
+	}
+}
+
+// descriptionBullets are the «Описания инструментов MCP …» items newer than
+// 1.1.0: in CHANGELOG.md above its 1.1.0 section and in the fragments of
+// changelog.d, where a PR writes its entry until the release folds it in.
+func descriptionBullets(changelog string, fragments []string) ([]string, bool) {
+	since, _, ok := strings.Cut(changelog, "\n## [1.1.0]")
+	if !ok {
+		return nil, false
+	}
+	var bullets []string
+	for _, text := range append([]string{since}, fragments...) {
+		for _, item := range strings.Split("\n"+text, "\n- ") {
+			if strings.HasPrefix(item, "Описания инструментов MCP") {
+				bullets = append(bullets, item)
+			}
+		}
+	}
+	return bullets, true
+}
+
+func TestReviewParity_RP_5_FragmentBulletsCount(t *testing.T) {
+	changelog := "## [Не выпущено]\n\n## [1.1.0] — 2026-10-20\n\n- Описания инструментов MCP: `old`.\n"
+	got, ok := descriptionBullets(changelog, []string{"### Изменено\n\n- Описания инструментов MCP: `deploy`.\n"})
+	if !ok || len(got) != 1 || !strings.Contains(got[0], "`deploy`") {
+		t.Errorf("bullets %q, ok %v; want the fragment's bullet only", got, ok)
 	}
 }

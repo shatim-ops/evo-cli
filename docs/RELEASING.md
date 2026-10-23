@@ -59,6 +59,8 @@ stderr, если это не оставляет дефект открытым.
 | 1.3.0 | повторное удаление ресурса, которого нет, — код 0, `status: already_deleted`, `existed: false`, без вопроса о согласии (было: `NOT_FOUND`/`VM_NOT_FOUND`, код 4, у многих после согласия): `evo vm delete`, `evo disk delete`, `evo image delete`, `evo vpc fip-release`, `evo snat delete`, `evo vpc delete`, `evo vpc route-delete`, `evo k8s delete`, `evo pg delete`, `evo pg db-delete`, `evo pg user-delete`, `evo kafka delete`, `evo redis delete`, `evo lb delete`, `evo tg delete`, `evo dns zone-delete`, `evo dns record-delete`, `evo cert delete`, `evo ar delete`, `evo ca delete`, `evo secret delete`, `evo s3 rm`, `evo s3 bucket-delete` и MCP `destroy`, `disk_delete`, `image_delete`, `release_floating_ip`, `snat_delete`, `vpc_delete`, `vpc_route_delete`, `k8s_delete`, `pg_delete`, `pg_db_delete`, `pg_user_delete`, `kafka_delete`, `redis_delete`, `lb_delete`, `tg_delete`, `dns_zone_delete`, `dns_record_delete`, `cert_delete`, `ar_delete`, `ca_delete`, `secret_delete`, `s3_rm`, `s3_bucket_delete`; значение не той формы (не UUID там, где спецификация требует UUID) — `USAGE`, код 1; превью `evo disk delete`, `evo image delete`, `evo vpc fip-release`, `evo vpc route-delete`, `evo pg db-delete`, `evo pg user-delete`, `evo cert delete`, `evo ca delete`, `evo secret delete`, `evo s3 rm`, `evo s3 bucket-delete`, `evo dns zone-delete` и `evo dns record-delete` с `--type` читают облако — без ключа или проекта код 2 | повтор безопасен (`CLAUDE.md` §1): повтор после потерянного ответа и teardown после частичного удаления падали на уже удалённом; согласие спрашивалось на удаление того, чего нет; условия 1–5; DECISIONS D26 |
 
 0. Стабильный релиз — до тега отдельным PR в `main`:
+   - фрагменты `changelog.d/` — в «[Не выпущено]»: `python3
+     scripts/changelog.py fold` (`changelog.d/README.md`);
    - `CHANGELOG.md`: «[Не выпущено]» → «[X.Y.Z] — ГГГГ-ММ-ДД» (дата тега)
      и новый пустой «[Не выпущено]» сверху; ломающие изменения (если minor
      — только как исправления, см. выше) — в разделе «Миграция» в начале версии;
@@ -153,6 +155,9 @@ stderr, если это не оставляет дефект открытым.
 Minor, который меняет поверхность для агентов (наборы инструментов, режимы
 сервера MCP, новые проверки согласия), выходит сначала `-rc.1` на волну
 догфуда; стабильный тег — через 2–3 дня без находок. Patch выходит без rc.
+Перед тегом rc фрагменты `changelog.d/` вливаются в «[Не выпущено]» тем же
+`python3 scripts/changelog.py fold` отдельным PR: `CHANGELOG.md` в архиве rc
+называет всю версию, раздел версии не создаётся.
 
 ### Ветка релиза и hotfix
 
