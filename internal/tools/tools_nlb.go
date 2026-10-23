@@ -219,6 +219,15 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(err), true
 	}
+	// A group of the name: a repeat after a lost answer made a second one
+	// (fault matrix, process audit 1.2.1).
+	existing, err := cli.ListTargetGroups(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list target groups: %w", "проверка, что имя свободно: список целевых групп: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult(i18n.T("target group", "целевая группа"), name, id, st, "tg_list")
+	}
 	// Auto-resolve interface_id from the VM when the caller only gave vm_id — the
 	// agent has no standalone tool to fetch a VM's network interface, and without
 	// this it flails (ssh/raw API). NLB targets need the VM's regular VPC-subnet
@@ -247,10 +256,17 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 	}
 	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "target_vm_specs": specs}
 	op, err := cli.CreateTargetGroup(ctx, body)
-	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, cli.ListTargetGroups, i18n.T("target group", "целевая группа"), "tg_id", name, nil, "tg_list", "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
 	}
-	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll lb_operation(operation_id) until done=true; then tg_list for the id."}), false
+	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll lb_operation(operation_id) until done=true; then tg_list for the id."}
+	if op.ResourceID != "" {
+		out["tg_id"] = op.ResourceID
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handleTgDelete(ctx context.Context, args map[string]any) (string, bool) {
