@@ -160,10 +160,20 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 		body["description"] = d
 	}
 	op, err := cli.CreateZone(ctx, vis, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create zone: %w", err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListZones(ctx, vis) }
+		return lostCreate(ctx, list, i18n.T("DNS zone", "зона DNS"), "zone_id", name, nil, "dns_zone_get zone_id", "dns_zones", fmt.Errorf("create zone: %w", err))
 	}
-	return toJSON(map[string]any{"status": "creating", "visibility": vis, "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id); then dns_zones for the id (public zones return a verification_token to delegate)."}), false
+	out := map[string]any{"status": "creating", "visibility": vis, "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id); then dns_zones for the id (public zones return a verification_token to delegate)."}
+	// The zone's id is in the create's answer: named at once (fault matrix,
+	// process audit 1.2.1; as pg_create, N-07).
+	if op.ResourceID != "" {
+		out["zone_id"] = op.ResourceID
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handleDnsZoneDelete(ctx context.Context, args map[string]any) (string, bool) {

@@ -55,10 +55,19 @@ type faultResource struct {
 var faultCollections = map[string]struct {
 	field string
 	async bool
+	// unique: the API refuses a second resource of the name, 409. Only
+	// where it is known: a name in the path (containers, secrets), the
+	// spec's 409 (disks, api-contract.md), a domain (DNS zones).
+	unique bool
 }{
-	"/v1/clusters":         {"clusters", true},
-	"/v1/registries":       {"registries", true},
-	"/api/v1/nat-gateways": {"items", false},
+	"/v1/clusters":         {field: "clusters", async: true},
+	"/v1/registries":       {field: "registries", async: true},
+	"/api/v1/nat-gateways": {field: "items"},
+	"/v2/containers":       {field: "data", async: true, unique: true},
+	"/v1/publicZones":      {field: "zones", async: true, unique: true},
+	"/v1/vpcs":             {field: "vpcs", async: true},
+	"/v2/secret":           {field: "secrets", unique: true},
+	"/api/v1/disks":        {field: "items", unique: true},
 }
 
 func (a *faultAPI) failAt(n int, kind string) {
@@ -148,7 +157,7 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		items := []map[string]any{}
 		for _, c := range a.made {
 			if c.host == host && c.path == path {
-				items = append(items, map[string]any{"id": c.ID, "name": c.Name, "status": "RUNNING"})
+				items = append(items, map[string]any{"id": c.ID, "name": c.Name, "path": c.Name, "status": "RUNNING"})
 			}
 		}
 		a.mu.Unlock()
@@ -157,9 +166,22 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 	case faultCollections[path].field != "" && r.Method == http.MethodPost:
 		var body struct {
 			Name string `json:"name"`
+			Path string `json:"path"` // a secret's name
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Name == "" {
+			body.Name = body.Path
+		}
 		a.mu.Lock()
+		if faultCollections[path].unique {
+			for _, c := range a.made {
+				if c.host == host && c.path == path && c.Name == body.Name {
+					a.mu.Unlock()
+					http.Error(w, `{"message":"already exists"}`, http.StatusConflict)
+					return
+				}
+			}
+		}
 		a.next++
 		c := faultResource{host: host, path: path, ID: fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x500+a.next), Name: body.Name}
 		a.made = append(a.made, c)
@@ -169,7 +191,11 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 			// resource_id in dbaas/v1, resourceId in Artifact Registry.
 			_, _ = io.WriteString(w, `{"id":"`+op+`","resource_id":"`+c.ID+`","resourceId":"`+c.ID+`","done":false}`)
 		} else {
-			_, _ = io.WriteString(w, `{"id":"`+c.ID+`","name":"`+c.Name+`","status":"creating"}`)
+			obj := `{"id":"` + c.ID + `","name":"` + c.Name + `","status":"creating"}`
+			if path == "/v2/secret" {
+				obj = `{"secret":` + obj + `}` // Secret Manager nests it
+			}
+			_, _ = io.WriteString(w, obj)
 		}
 	case strings.HasPrefix(path, "/v1/operations/"):
 		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v1/operations/")+`","done":true}`)
