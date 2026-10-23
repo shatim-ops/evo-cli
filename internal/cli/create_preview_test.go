@@ -291,9 +291,11 @@ func TestK8sCreatePreview_NoPrice(t *testing.T) {
 	russian(t)
 	withPreviewCloud(t)
 	// The project has no cluster of the name, so the preview is reached (the
-	// taken name, D21, is TestCreate_TakenNameRefusedNoSecondClusterOrBalancer).
-	installContractTransport(t, 200, `{"clusters":[]}`)
-	_, errOut, code := execCLI(t, "k8s", "create", "--name", "k-1", "--zone", "ru.AZ-1", "--master-count", "3", "--kube-api-internet=false")
+	// taken name, D21, is TestCreate_TakenNameRefusedNoSecondClusterOrBalancer);
+	// the catalogue resolves the plan the preview names (D29).
+	installContractTransport(t, 200, `{"clusters":[],`+k8sProductConfiguration[1:])
+	_, errOut, code := execCLI(t, "k8s", "create", "--name", "k-1", "--zone", "ru.AZ-1", "--master-count", "3", "--kube-api-internet=false",
+		"--cluster-sa-id", "00000000-0000-4000-8000-0000000000aa")
 	if code != clerrors.ExitConfirmationRequired {
 		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
 	}
@@ -302,7 +304,12 @@ func TestK8sCreatePreview_NoPrice(t *testing.T) {
 		"  Будет создано: кластер Managed Kubernetes k-1\n",
 		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
 		"  зона:       ru.AZ-1\n",
+		"  flavor:     gen-2-4\n",
+		"  vCPU:       2\n",
+		"  RAM:        4 ГБ\n",
+		"  версия:     v1.31.4\n",
 		"  мастеров:   3\n",
+		"  подсеть:    00000000-0000-0000-0000-0000000000d1\n",
 		"  API извне:  нет\n",
 		"  цена:       evo её не рассчитывает, ресурс платный: тариф https://cloud.ru/documents/tariffs/evolution/managed-kubernetes\n",
 	})

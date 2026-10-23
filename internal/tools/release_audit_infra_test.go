@@ -281,12 +281,12 @@ func TestK8s_MasterCountRefused(t *testing.T) {
 // L-10: превью k8s_add_nodepool без имени показывало пустое имя.
 func TestK8sAddNodePool_PreviewShowsDefaultName(t *testing.T) {
 	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
-	m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "c-1"})
+	m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "security_group_id": "sg-1"})
 	p, _ := m["preview"].(map[string]any)
 	if p["name"] != "nodepool-1" {
 		t.Errorf("preview name %v, want nodepool-1: %s", p["name"], text)
 	}
-	m, _, _ = callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "c-1", "name": "workers"})
+	m, _, _ = callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "security_group_id": "sg-1", "name": "workers"})
 	if p, _ := m["preview"].(map[string]any); p["name"] != "workers" {
 		t.Errorf("explicit name: %v", p["name"])
 	}
@@ -308,7 +308,7 @@ func TestK8sAddNodePool_TakenNameRefusedBeforeConsent(t *testing.T) {
 	if n := f.postCount(); n != 0 {
 		t.Errorf("%d creates sent for a taken name", n)
 	}
-	if m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "name": "old"}); m["status"] != "confirmation_required" {
+	if m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "security_group_id": "sg-1", "name": "old"}); m["status"] != "confirmation_required" {
 		t.Errorf("the name of a deleted pool is refused: %s", text)
 	}
 }
