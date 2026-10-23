@@ -25,7 +25,6 @@ var gatedPreviewArgs = map[string]func(a map[string]any){
 	"provision":           func(a map[string]any) { delete(a, "image") },
 	"destroy":             func(a map[string]any) { delete(a, "vm_id"); delete(a, "name") }, // the current deployment
 	"image_create":        func(a map[string]any) { delete(a, "image_metadata") },
-	"k8s_create":          func(a map[string]any) { a["master_count"] = float64(1) },
 	"disk_create":         func(a map[string]any) { delete(a, "attach_to") },
 	"release_floating_ip": func(a map[string]any) { delete(a, "ip_address") },
 	"tg_create":           func(a map[string]any) { delete(a, "targets") },
@@ -71,6 +70,18 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	// The preview of a new VM reads the flavors, the image and the price
 	// (spec REQ-7): on the generic answers the image is not the project's,
 	// and the preview refuses it, as provision would after consent.
+	// The preview of a cluster resolves its plan, of a node pool its
+	// flavor, from the catalogue of Managed Kubernetes (D29).
+	"k8s_create": func(t *testing.T) string {
+		_, text, _ := callNamed(t, raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil), "k8s_create",
+			map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1"})
+		return text
+	},
+	"k8s_add_nodepool": func(t *testing.T) string {
+		_, text, _ := callNamed(t, raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil), "k8s_add_nodepool",
+			map[string]any{"cluster_id": "cl-1", "security_group_id": "sg-1"})
+		return text
+	},
 	"provision": func(t *testing.T) string {
 		r, _ := cancelRegistry(t, &productCloud{})
 		_, text, _ := callNamed(t, r, "provision", map[string]any{"name": "web"})

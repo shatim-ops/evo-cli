@@ -32,7 +32,7 @@ func (c *adoptFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloati
 // id for the state, instead of creating a second one.
 func TestQAr3_Apply_AdoptUsesAttachedFIP(t *testing.T) {
 	c := &adoptFIPCloud{}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0)
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func (c *lostFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.Fl
 // the user is never taken.
 func TestQAr3_Apply_LostFIPCreateFoundByName(t *testing.T) {
 	c := &lostFIPCloud{}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0)
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func (c *noIDFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloatin
 // deploy does (TestFault_Deploy_EmptyBootFIPIDIsAdoptedByName).
 func TestApply_FIPCreateWithoutIDFoundByName(t *testing.T) {
 	c := &noIDFIPCloud{}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0)
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,11 +129,11 @@ func (c *zoneCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, e
 
 func TestQAr3_Apply_AdoptChecksZoneAndState(t *testing.T) {
 	other := &zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "running", Region: "zone-A"}}
-	if res, err := ApplyWithTimeout(context.Background(), other, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0); err == nil {
+	if res, err := ApplyWithTimeout(context.Background(), other, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0, nil); err == nil {
 		t.Fatalf("VM of another zone adopted: %+v", res)
 	}
 	stopped := &zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "stopped", Region: "zone-B"}}
-	res, err := ApplyWithTimeout(context.Background(), stopped, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0)
+	res, err := ApplyWithTimeout(context.Background(), stopped, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0, nil)
 	if err != nil || res.Status != "stopped" {
 		t.Fatalf("stopped VM: %+v, %v; want status stopped", res, err)
 	}
@@ -180,7 +180,7 @@ func TestQAB_Apply_AdoptCreatingVMWaitsThenFinishes(t *testing.T) {
 	defer func() { pollInterval = old }()
 	c := &adoptCreatingCloud{}
 	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"},
-		Network: NetworkSpec{FloatingIP: true, SecurityGroupID: "sg-1"}, Ports: []int{80}}, time.Second)
+		Network: NetworkSpec{FloatingIP: true, SecurityGroupID: "sg-1"}, Ports: []int{80}}, time.Second, nil)
 	if err != nil || res.Status != "running" || res.PublicIP != "203.0.113.20" || c.fipCreates != 1 || c.rules != 1 {
 		t.Fatalf("err=%v res=%+v fip=%d rules=%d", err, res, c.fipCreates, c.rules)
 	}
@@ -205,7 +205,7 @@ func (c *stoppedFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloa
 func TestQAB_Apply_AdoptStoppedVMCreatesNoFIP(t *testing.T) {
 	c := &stoppedFIPCloud{zoneCloud: zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "stopped"}}}
 	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"},
-		Network: NetworkSpec{FloatingIP: true}}, 0)
+		Network: NetworkSpec{FloatingIP: true}}, 0, nil)
 	if err != nil || res.Status != "stopped" || c.fipCreates != 0 || res.PublicIP != "203.0.113.9" {
 		t.Fatalf("err=%v res=%+v fipCreates=%d", err, res, c.fipCreates)
 	}
