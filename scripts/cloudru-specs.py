@@ -9,8 +9,13 @@ directory (default .cache/cloudru-specs, git-ignored) with a manifest
 contract check can compare evo's requests with what Cloud.ru publishes and
 a changed spec shows up as a changed hash.
 
+A service whose page or file did not load, or that lacks a spec the
+contract check needs, is fetched again on its own, up to ROUNDS times; the
+others are kept. Services are fetched WORKERS at a time.
+
 Usage: python3 scripts/cloudru-specs.py [OUT_DIR]
 Needs: curl, PyYAML (pip install pyyaml).
+Tests: python3 scripts/cloudru-specs-test.py
 """
 import hashlib
 import json
@@ -19,6 +24,7 @@ import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 BASE = "https://cloud.ru"
 
@@ -53,6 +59,12 @@ START_PAGES = {
 }
 SPEC_RE = re.compile(r"((?:https://cloud\.ru)?/docs/api/specs/[^\"?\s'\\]+\.(?:ya?ml|json))")
 MAX_PAGES = 30  # per service: the reference and its api sub-pages
+# A full pass over the docs takes minutes and some one of its ~30 files
+# fails now and then, a different one each time (#245): only the services
+# that came back incomplete are fetched again.
+ROUNDS = 3
+# Moderate on purpose: the docs site drops requests when hit harder.
+WORKERS = 4
 
 
 def get(url, attempts=3):
@@ -146,37 +158,68 @@ def contract_specs():
     return sorted(found)
 
 
+def download(url, path):
+    return subprocess.run(["curl", "-sSL", "--fail", "--max-time", "120", "-o", path, url]).returncode == 0
+
+
+def fetch_service(service, start, out):
+    """Spec files of one service: (manifest entries, problems)."""
+    urls, failed = spec_urls(start)
+    problems = [f"{service}: page {p} did not load" for p in failed]
+    if not urls:
+        problems.append(service)
+    entries = []
+    for u in urls:
+        d = os.path.join(out, service)
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, u.rsplit("/", 1)[1])
+        if not download(u, path):
+            problems.append(f"{service}: {u}")
+            continue
+        with open(path, "rb") as f:
+            data = f.read()
+        entry = {"service": service, "file": os.path.relpath(path, out), "url": u,
+                 "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+        entry.update(describe(data))
+        entries.append(entry)
+    return entries, problems
+
+
+def unmet(results, needs):
+    """Specs the contract check needs that no fetched service has."""
+    got = {e["file"] for entries, _ in results.values() for e in entries}
+    return [need for need in needs if need not in got]
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else ".cache/cloudru-specs"
     os.makedirs(out, exist_ok=True)
+    needs = contract_specs()
+    results = {}
+    pending = list(START_PAGES)
+    for i in range(ROUNDS):
+        if i:
+            print(f"round {i + 1}: fetching again {', '.join(pending)}", file=sys.stderr)
+            time.sleep(20 * i)
+        with ThreadPoolExecutor(WORKERS) as pool:
+            fetched = pool.map(lambda s: fetch_service(s, START_PAGES[s], out), pending)
+            results.update(zip(pending, fetched))
+        # A spec page that loads but lists fewer links (seen 19.10.2026: the
+        # administration page without api.op_v1.v2.yaml) would leave a spec
+        # the contract check needs silently absent: fetch its service again.
+        lacking = {need.split("/")[0] for need in unmet(results, needs)}
+        pending = [s for s in START_PAGES if results[s][1] or s in lacking]
+        if not pending:
+            break
     manifest, missing = [], []
-    for service, start in START_PAGES.items():
-        urls, failed = spec_urls(start)
-        if not urls:
-            missing.append(service)
-        missing.extend(f"{service}: page {p} did not load" for p in failed)
-        for u in urls:
-            d = os.path.join(out, service)
-            os.makedirs(d, exist_ok=True)
-            path = os.path.join(d, u.rsplit("/", 1)[1])
-            r = subprocess.run(["curl", "-sSL", "--fail", "--max-time", "120", "-o", path, u])
-            if r.returncode != 0:
-                missing.append(f"{service}: {u}")
-                continue
-            data = open(path, "rb").read()
-            entry = {"service": service, "file": os.path.relpath(path, out), "url": u,
-                     "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
-            entry.update(describe(data))
-            manifest.append(entry)
-            print(f"{service:20} {entry['file']:50} {entry.get('paths', '?'):>4} paths")
-    # A spec page that loads but lists fewer links (seen 19.10.2026: the
-    # administration page without api.op_v1.v2.yaml) would leave a spec the
-    # contract check needs silently absent: count it as missing, so the
-    # workflow retries the download instead of failing the check.
-    got = {e["file"] for e in manifest}
-    for need in contract_specs():
-        if need not in got:
-            missing.append(f"{need}: needed by scripts/api-contract.json, not found on the API pages")
+    for service in START_PAGES:
+        entries, problems = results[service]
+        manifest.extend(entries)
+        missing.extend(problems)
+        for e in entries:
+            print(f"{service:20} {e['file']:50} {e.get('paths', '?'):>4} paths")
+    missing.extend(f"{need}: needed by scripts/api-contract.json, not found on the API pages"
+                   for need in unmet(results, needs))
     with open(os.path.join(out, "manifest.json"), "w") as f:
         json.dump({"source": BASE + "/docs", "specs": manifest, "missing": missing},
                   f, indent=1, ensure_ascii=False)
