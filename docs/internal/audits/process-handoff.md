@@ -62,6 +62,15 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
   `TestWorkflows_RaceKeepsAsyncPreemption` не даёт вернуть флаг. Третий
   случай падения — разбор (стек, версия Go, совпадение с #79249), а не
   настройка CI; переход на Go 1.28 — проверить, ушло ли.
+  Третий случай — #267 (23.10, Go 1.26.10, job 120509398814), после снятия
+  флага: nil-разыменование в `httpproxy.(*config).useProxy` (proxy.go:200,
+  цикл по `domainMatchers`), конфиг которого собирается один раз и не
+  меняется. Это порча памяти, а не nil в данных; гипотеза — та же порча
+  стека при его сжатии, что в `adjustdefers`/`shrinkstack`.
+  Попутно: раз дошло до `useProxy`, на Windows-раннере задан HTTPS_PROXY, а
+  миры сбоев строили подсказку по `ProxyFromEnvironment` — ответ зависел от
+  раннера. Закрыто: `init` в `fault_fake_test.go` (обе копии) задаёт
+  `ProxyFunc` без прокси, `TestFaultWorld_IgnoresRunnerProxy`.
 - **CI не от diff: `startup_failure` у повторного запуска** (#219, run
   39917297878: «re-run failed jobs» — ни одного job, логов нет; затем
   полный повтор того же run у «1.3 — релиза» — тоже `startup_failure`).
