@@ -3,7 +3,8 @@
 # и какие проверки этому классу нужны сверх CI (матрица — отчёт аудита, §4).
 # Пути PR — только данные: читаются построчно, сравниваются с шаблонами и
 # не печатаются. Вызов: список изменённых путей на stdin; MIGRATION=1, если
-# PR добавляет раздел «Миграция» в CHANGELOG. Печатает три строки:
+# PR добавляет раздел «Миграция» в CHANGELOG; REGISTRY — классы по diff
+# реестра (classify_registry.sh) через пробел. Печатает три строки:
 #   classes=<классы через пробел>
 #   before=<области cloud-e2e до слияния: дешёвые — ВМ, DNS, S3, секреты>
 #   after=<области после слияния из main: остальные, k8s и DBaaS>
@@ -56,6 +57,8 @@ while IFS= read -r p; do
 done
 
 [ "${MIGRATION:-}" != 1 ] || add breaking
+# Классы по diff реестра (classify_registry.sh), если CI их посчитал.
+for c in ${REGISTRY:-}; do add "$c"; done
 
 keys() { printf '%s\n' "$@" | sed '/^$/d' | sort | tr '\n' ' ' | sed 's/ $//'; }
 echo "classes=$(keys "${!cls[@]}")"
