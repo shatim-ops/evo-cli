@@ -1053,7 +1053,15 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 	return e.settledBootFIP(ctx, fip, projectID), nil
 }
 
-// settledBootFIP waits, up to Timings.FIPSettleTimeout, for a boot FIP
+// settlePolls is how many polls a floating IP still being created is
+// waited for: Timings.FIPSettleTimeout over FIPPollInterval (12 in
+// production). A count, not a deadline on the wall clock: a slow API or a
+// coarse timer (Windows, CI #283) makes the same polls, each no shorter.
+func (t Timings) settlePolls() int {
+	return max(1, int(t.FIPSettleTimeout/t.FIPPollInterval))
+}
+
+// settledBootFIP waits, up to Timings.settlePolls, for a boot FIP
 // still being created to be free: handed to the VM create in "creating",
 // it made the create fail with 422 «… from current state» (cloud-e2e
 // #121). One not ready in time stays the VM's: created without it, the VM
@@ -1062,8 +1070,7 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 // when none could be reserved (nil).
 func (e *Engine) settledBootFIP(ctx context.Context, fip *provision.FloatingIP, projectID string) *provision.FloatingIP {
 	t := e.timings()
-	deadline := time.Now().Add(t.FIPSettleTimeout)
-	for !fip.Available() && !strings.HasPrefix(fip.State, "error") && time.Now().Before(deadline) {
+	for poll := 0; poll < t.settlePolls() && !fip.Available() && !strings.HasPrefix(fip.State, "error"); poll++ {
 		select {
 		case <-ctx.Done():
 			return fip
@@ -1151,18 +1158,25 @@ func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) err
 		return nil
 	}
 	// One still being created cannot be deleted yet (422 «… from current
-	// state»): it is retried until it settles, up to
-	// Timings.FIPSettleTimeout, rather than left billed (cloud-e2e #121).
+	// state»): only that refusal is retried, up to Timings.settlePolls more
+	// tries, rather than left billed (cloud-e2e #121); any other error is
+	// warned of at once. The whole release is bounded too — those polls
+	// and 30 s for the last delete — so a slow API cannot hold the rollback
+	// for minutes. An address still refused then is named in the warning
+	// (and in the MCP answer) to delete by hand.
 	t := e.timings()
-	ctx, cancel := context.WithTimeout(context.Background(), t.FIPSettleTimeout+30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(t.settlePolls())*t.FIPPollInterval+30*time.Second)
 	defer cancel()
-	deadline := time.Now().Add(t.FIPSettleTimeout)
-	for {
+	for try := 0; ; try++ {
 		err := e.Cloud.DeleteFloatingIP(ctx, fip.ID, projectID)
 		if err == nil {
 			return nil
 		}
-		if provision.NotInCurrentState(err) && time.Now().Before(deadline) {
+		if provision.NotInCurrentState(err) && try < t.settlePolls() {
+			if try == 0 {
+				e.Printer.StepDone(i18n.Tf("Floating IP %s is still being created; waiting to release it...",
+					"floating IP %s ещё создаётся; жду, чтобы освободить его...", fip.IPAddress))
+			}
 			select {
 			case <-ctx.Done():
 			case <-time.After(t.FIPPollInterval):

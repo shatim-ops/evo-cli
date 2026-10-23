@@ -7,6 +7,7 @@ package engine
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -54,5 +55,28 @@ func TestReleaseBootFIP_WaitsWhileCreating(t *testing.T) {
 	}
 	if len(cloud.liveFIPs()) != 0 {
 		t.Fatalf("left %+v", cloud.liveFIPs())
+	}
+}
+
+// CI #283 (Windows): the waits for a settling address were bounded by the
+// wall clock (FIPSettleTimeout as a deadline), so three polls of a coarse
+// timer outlasted the test's 20 ms and the address went on after boot.
+// They are bounded by the number of polls (FIPSettleTimeout /
+// FIPPollInterval): however long a poll takes, the same polls are made.
+func TestBootFIPSettle_BoundedByPollsNotTheClock(t *testing.T) {
+	cloud := &faultCloud{fipSettle: 3, fipReadDelay: 15 * time.Millisecond}
+	eng, _, dir := faultEngine(t, cloud, &faultDeployer{})
+	if err := faultDeploy(t, eng, dir); err != nil {
+		t.Fatalf("deploy: %v\nlog=%v", err, cloud.callLog())
+	}
+	if vms, fips := cloud.liveVMs(), cloud.liveFIPs(); len(vms) != 1 || len(fips) != 1 || vms[0].FIPID != fips[0].ID {
+		t.Fatalf("vms=%+v fips=%+v: want the boot FIP attached at create after slow polls", vms, fips)
+	}
+
+	rel := &faultCloud{fips: []faultFIP{{ID: faultID(0x78), Name: "boot", IP: "203.0.113.78", State: "available", settle: 3}},
+		fipReadDelay: 15 * time.Millisecond}
+	eng, _, _ = faultEngine(t, rel, &faultDeployer{})
+	if err := eng.releaseBootFIP(&provision.FloatingIP{ID: faultID(0x78), IPAddress: "203.0.113.78"}, faultProject); err != nil {
+		t.Fatalf("release after slow tries: %v", err)
 	}
 }
