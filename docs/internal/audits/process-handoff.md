@@ -134,6 +134,7 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 | 1 | cloud-e2e `1.3.0-rc.1`: сверить состояния floating IP `creating`/`attaching` с живым API | A3, #265 (просьба «1.3 — релиза»): состояния живьём не проверены |
 | 2 | Учёт ускользнувших дефектов 1.3 → инварианты | `CLAUDE.md` §5; первый пример — K8S-12 → мир двойников |
 | 2 | 1.4: Go 1.27.x (директива `go.mod` — «1.4 — разработка», `go-version` CI — процесс), затем `go test -race ./internal/tools` ×20 на Windows против 1.26.10 | падения рантайма под `-race` на Windows (#226, #219, #267); флаги `asyncpreemptoff` (#262) и `gcshrinkstackoff` (#272) не годятся |
+| 2 | Ожидания `cloud-readonly.sh` (удаление несуществующего, stdio) — на фейке в CI на PR, а не только в живом прогоне | ускользнул: job `readonly` cloud-e2e упал на D26 (#244) — скрипт ждал NOT_FOUND и `confirmation_required`, исправлено в #276 |
 | 3 | `startup_failure` у повтора run с упавшим job | гипотеза; проверка на следующем красном PR (см. «Открыто») |
 | 3 | Этап 7 (1.4): нагрузочный тест, бенчмарки, потолок стоимости | `process-1.2.1-stages.md` |
 | 3 | Маска stderr evo в `cloud-readonly-os.yml` (Windows и macOS) | `build_evo.sh` — только Linux-job cloud-e2e и api-probe |
