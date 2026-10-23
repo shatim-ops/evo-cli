@@ -1191,12 +1191,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_import",
-			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are Base64-encoded PEM. Mutation: requires confirmed=true after the user approves.",
+			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are PEM, as it is or Base64-encoded. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":                     strProp("Display name. Required."),
-				"server_certificate":       strProp("Public cert, Base64-encoded PEM. Required."),
-				"private_key":              strProp("Private key, Base64-encoded PEM. Required."),
-				"intermediate_certificate": strProp("Intermediate chain, Base64-encoded PEM (optional)."),
+				"server_certificate":       strProp("Public cert: PEM, as it is or Base64-encoded. Required."),
+				"private_key":              strProp("Private key: PEM, as it is or Base64-encoded. Required."),
+				"intermediate_certificate": strProp("Intermediate chain: PEM, as it is or Base64-encoded (optional)."),
 				"description":              strProp("Optional description."),
 				"confirmed":                confirmedProp(),
 			}, "name", "server_certificate", "private_key"),
@@ -3250,6 +3250,13 @@ func errAnswer(err error, fields map[string]any) string {
 	}
 	res["error"] = msg
 	res["reason"] = reason
+	// A refusal of rights reads as such in fields of its own, whatever the
+	// service and its reason (decision 21.10): "no role" told apart from
+	// the other errors not by the text only.
+	if st := apiStatus(err); st == 403 {
+		res["access_denied"] = true
+		res["http_status"] = st
+	}
 	if _, ok := res["hint"]; !ok {
 		if h := uncodedHint(err, reason); h != "" {
 			res["hint"] = h
