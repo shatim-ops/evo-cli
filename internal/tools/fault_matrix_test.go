@@ -77,11 +77,12 @@ func computeCase(tool string, args map[string]any, noDial bool, setup func(t *te
 	}}
 }
 
-// apiCase is a case of the HTTP world (faultAPI).
-func apiCase(tool string, args map[string]any) faultMatrixCase {
+// apiCase is a case of the HTTP world (faultAPI); made is what the world
+// holds before the call (a bucket to put an object in).
+func apiCase(tool string, args map[string]any, made ...faultResource) faultMatrixCase {
 	return faultMatrixCase{tool: tool, args: args,
 		world: func(t *testing.T, cancel context.CancelFunc) (faultWorld, *Registry, string) {
-			a := &faultAPI{cancel: cancel}
+			a := &faultAPI{cancel: cancel, made: append([]faultResource(nil), made...)}
 			return a, faultAPIRegistry(t, a), ""
 		},
 		skip: func(call, kind string) string {
@@ -112,6 +113,9 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("disk_create", map[string]any{"name": "evo-d", "size_gb": 10, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_create", map[string]any{"name": "evo-kc", "zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "confirmed": true}),
 	apiCase("lb_create", map[string]any{"name": "evo-lb", "target_group_id": "tg-1", "port": 80, "zone": "ru.AZ-1", "confirmed": true}),
+	apiCase("s3_bucket_create", map[string]any{"bucket": "evo-bucket", "confirmed": true}),
+	apiCase("s3_put", map[string]any{"bucket": "evo-bucket", "key": "site/index.html", "content": "ok", "confirmed": true},
+		faultResource{host: faultS3Host, path: "bucket", ID: "evo-bucket", Name: "evo-bucket", before: true}),
 	apiCase("image_create", map[string]any{"name": "evo-img", "disk_id": faultDisk, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_add_nodepool", map[string]any{"cluster_id": faultK8sCluster, "name": "evo-np", "confirmed": true}),
 }

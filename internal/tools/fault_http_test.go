@@ -49,6 +49,8 @@ type faultAPI struct {
 // the collection, its id and name.
 type faultResource struct {
 	host, path, ID, Name string
+	// before: the world held it before the call; not the call's to name.
+	before bool
 }
 
 // faultCollections are the collections faultAPI keeps, by path: the list
@@ -96,7 +98,9 @@ func (a *faultAPI) billed() []faultBilled {
 	defer a.mu.Unlock()
 	var out []faultBilled
 	for _, c := range a.made {
-		out = append(out, faultBilled{what: c.host + c.path + " " + c.Name, names: []string{c.ID}})
+		if !c.before {
+			out = append(out, faultBilled{what: c.host + c.path + " " + c.Name, names: []string{c.ID}})
+		}
 	}
 	return out
 }
@@ -148,9 +152,68 @@ func (a *faultAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	return rec.Result(), nil
 }
 
+// faultS3Host is Object Storage's endpoint, path-style: /bucket and
+// /bucket/key.
+const faultS3Host = "s3.cloud.ru"
+
+// serveS3 keeps buckets and objects: a bucket made stays made, an object
+// put again is the same object.
+func (a *faultAPI) serveS3(w http.ResponseWriter, r *http.Request) {
+	bucket, key, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	find := func(path, id string) bool {
+		for _, c := range a.made {
+			if c.host == faultS3Host && c.path == path && c.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case bucket == "" && r.Method == http.MethodGet:
+		var b strings.Builder
+		b.WriteString(`<ListAllMyBucketsResult><Buckets>`)
+		for _, c := range a.made {
+			if c.host == faultS3Host && c.path == "bucket" {
+				b.WriteString(`<Bucket><Name>` + c.ID + `</Name><CreationDate>2026-01-01T00:00:00.000Z</CreationDate></Bucket>`)
+			}
+		}
+		b.WriteString(`</Buckets></ListAllMyBucketsResult>`)
+		_, _ = io.WriteString(w, b.String())
+	case key == "" && r.Method == http.MethodHead:
+		if !find("bucket", bucket) {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	case key == "" && r.Method == http.MethodPut:
+		if find("bucket", bucket) {
+			w.WriteHeader(http.StatusConflict)
+			_, _ = io.WriteString(w, `<Error><Code>BucketAlreadyOwnedByYou</Code><Message>owned by you</Message></Error>`)
+			return
+		}
+		a.made = append(a.made, faultResource{host: faultS3Host, path: "bucket", ID: bucket, Name: bucket})
+	case key != "" && r.Method == http.MethodPut:
+		if !find("bucket", bucket) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `<Error><Code>NoSuchBucket</Code><Message>no bucket</Message></Error>`)
+			return
+		}
+		// An object is named by its key; the collection is its bucket.
+		if !find("object "+bucket, key) {
+			a.made = append(a.made, faultResource{host: faultS3Host, path: "object " + bucket, ID: key, Name: key})
+		}
+		w.Header().Set("ETag", `"0"`)
+	default:
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `<Error><Code>NoSuchKey</Code><Message>no such path</Message></Error>`)
+	}
+}
+
 func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 	host, path := r.URL.Host, r.URL.Path
 	switch {
+	case host == faultS3Host:
+		a.serveS3(w, r)
 	case path == "/api/v1/availability-zones":
 		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}]}`)
 	case path == "/api/v1/subnets":
@@ -234,7 +297,8 @@ func faultAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
-			Config:   config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s"},
+			Config: config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s",
+				S3: config.S3Config{AccessKey: "fault-access", SecretKey: "fault-secret"}},
 			Auth:     staticToken{},
 			Cloud:    cloud,
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
