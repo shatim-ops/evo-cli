@@ -132,6 +132,8 @@ const (
 	zoneMine    = "00000000-0000-4000-8000-00000000e0a1"
 	zoneOther   = "00000000-0000-4000-8000-00000000e0c1"
 	zoneForeign = "00000000-0000-4000-8000-00000000e0b1"
+	// zoneAZ is the availability zone of the shared catalogue.
+	zoneAZ = "00000000-0000-4000-8000-00000000a201"
 )
 
 // resourceOf is the resource of a project of the fake.
@@ -161,6 +163,17 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(ownerObject(id))
 			return
 		}
+	}
+	// The catalogue every project shares: a zone and a node flavor, so the
+	// calls of TestProjectBound_ListedForeignResourceRefused reach the lists.
+	switch r.URL.Path {
+	case "/api/v1/availability-zones":
+		_, _ = w.Write([]byte(`{"items":[{"id":"` + zoneAZ + `","name":"ru.AZ-1"}]}`))
+		return
+	case "/v3/productConfiguration":
+		_, _ = w.Write([]byte(`{"defaultZone":"ru.AZ-1","zones":[{"zoneId":"mk-az1","name":"ru.AZ-1"}],` +
+			`"flavors":[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}],"channels":[{"channel":"STABLE","availableVersions":["v1.34.6"]}]}`))
+		return
 	}
 	if strings.Contains(r.URL.Path, resGone) {
 		http.Error(w, `{"message":"not found"}`, http.StatusNotFound)
@@ -209,8 +222,11 @@ func ownerRegistry(t *testing.T, f *ownerFake, bound bool, allowed ...string) *R
 				"The server runs with --allow-project; ask its operator to add the project.")
 		}
 		var buf bytes.Buffer
+		cfg := config.Config{ProjectID: p, KeyID: "k", Secret: "s"}
+		cfg.ImageID, _ = over["ImageID"].(string)
+		cfg.Region, _ = over["Region"].(string)
 		return &engine.Engine{
-			Config:   config.Config{ProjectID: p, KeyID: "k", Secret: "s"},
+			Config:   cfg,
 			Auth:     staticToken{},
 			Cloud:    provision.NewCloudRuAdapter(&http.Client{Transport: f}, ""),
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
@@ -498,6 +514,78 @@ func TestProjectBound_StackDestroyTakesItAsGone(t *testing.T) {
 	for _, q := range f.log() {
 		if !strings.HasPrefix(q, "GET ") {
 			t.Errorf("stack_destroy sent %s", q)
+		}
+	}
+}
+
+// listedCases are the arguments a handler resolves through the project's
+// own list (whyListed), each with the other arguments its call needs: the
+// checked ones name the resource of the server's project.
+func listedCases(id string) map[string]map[string]any {
+	return map[string]map[string]any{
+		"destroy.vm_id":                    {"vm_id": id},
+		"provision.subnet_id":              {"name": "web", "image_id": resMine, "region": "ru.AZ-1", "subnet_id": id},
+		"fip_attach.fip":                   {"fip": id, "vm": resMine},
+		"fip_attach.vm":                    {"fip": resMine, "vm": id},
+		"open_ports.security_group":        {"security_group": id, "ports": []any{float64(80)}},
+		"disk_create.attach_to":            {"name": "data", "size_gb": float64(20), "attach_to": id},
+		"disk_attach.vm":                   {"disk_id": resMine, "vm": id},
+		"disk_detach.vm":                   {"disk_id": resMine, "vm": id},
+		"k8s_add_nodepool.nodes_subnet_id": {"cluster_id": resMine, "name": "np-1", "count": float64(1), "zone": "ru.AZ-1", "nodes_subnet_id": id},
+		"k8s_plan.subnet_id":               {"name": "cl-1", "subnet_id": id},
+		"k8s_create.subnet_id":             {"name": "cl-1", "subnet_id": id},
+		"lb_create.subnet_id":              {"name": "lb", "target_group_id": resMine, "port": float64(80), "vpc_id": resMine, "subnet_id": id},
+	}
+}
+
+// An argument the handler resolves through the project's list (whyListed)
+// has no check of its own: the list is the check. A resource of a project
+// outside --allow-project is not in that list, so the confirmed call refuses
+// naming it and sends nothing but reads; a handler that switched to a
+// direct GET by id would find it (the fake answers it, with its project)
+// and go on (review Qwen #168). Every whyListed argument has a case here.
+func TestProjectBound_ListedForeignResourceRefused(t *testing.T) {
+	stackHome(t)
+	cases := listedCases(resForeign)
+	for tool, args := range idArgs {
+		for _, a := range args {
+			if a.why == whyListed {
+				if _, ok := cases[tool+"."+a.name]; !ok {
+					t.Errorf("%s.%s is resolved through the project's list (whyListed): add its case to listedCases", tool, a.name)
+				}
+			}
+		}
+	}
+	gone := listedCases(resGone)
+	for key, args := range cases {
+		tool, arg, _ := strings.Cut(key, ".")
+		if a := slices.IndexFunc(idArgs[tool], func(a idArg) bool { return a.name == arg && a.why == whyListed }); a < 0 {
+			t.Errorf("listedCases %s: not a whyListed argument of idArgs", key)
+			continue
+		}
+		answers := map[string]string{}
+		for id, args := range map[string]map[string]any{resForeign: args, resGone: gone[key]} {
+			f := &ownerFake{}
+			r := ownerRegistry(t, f, true, ownProject, ownOther)
+			_, text, isErr := callOwned(t, r, tool, args, true)
+			if !isErr || !strings.Contains(text, id) {
+				t.Errorf("%s=%s: %s, want a refusal naming %s", key, id, text, id)
+			}
+			for _, leak := range []string{"res-b1", zoneForeign, ownForeign} {
+				if strings.Contains(text, leak) {
+					t.Errorf("%s=%s: the answer shows %s: %s", key, id, leak, text)
+				}
+			}
+			for _, q := range f.log() {
+				if !strings.HasPrefix(q, "GET ") {
+					t.Errorf("%s=%s sent %s", key, id, q)
+				}
+			}
+			answers[id] = strings.ReplaceAll(text, id, "<id>")
+		}
+		// A client probing ids learns neither that it exists nor whose it is.
+		if answers[resForeign] != answers[resGone] {
+			t.Errorf("%s: a foreign resource answers\n%s\na gone one\n%s", key, answers[resForeign], answers[resGone])
 		}
 	}
 }
