@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -126,16 +126,9 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if diskNote != "" {
 		warnings = append(warnings, diskNote)
 	}
-	diskName, diskID := "SSD", ""
+	diskName, diskID := provision.DefaultDiskType, ""
 	if dts, e := cloud.ListDiskTypes(ctx, projectID); e == nil && len(dts) > 0 {
-		want := firstNonEmpty(p.DiskType, "SSD")
-		picked := dts[0]
-		for _, dt := range dts {
-			if strings.EqualFold(dt.Name, want) {
-				picked = dt
-				break
-			}
-		}
+		picked := provision.PickDiskType(dts, p.DiskType)
 		diskName, diskID = picked.Name, picked.ID
 	} else if p.DiskType != "" {
 		diskName = p.DiskType
@@ -280,13 +273,7 @@ func selectFlavor(flavors []*provision.Flavor, p Params) (provision.Flavor, []st
 			}
 		}
 		if len(cands) > 0 {
-			sort.Slice(cands, func(i, j int) bool {
-				if cands[i].VCPUs != cands[j].VCPUs {
-					return cands[i].VCPUs < cands[j].VCPUs
-				}
-				return cands[i].RAMGB < cands[j].RAMGB
-			})
-			return *cands[0], warnings, nil
+			return *slices.MinFunc(cands, provision.CompareFlavorSize), warnings, nil
 		}
 		warnings = append(warnings, fmt.Sprintf("no flavor satisfies %d vCPU / %d GB — falling back to default", p.CPU, p.RAMGB))
 	}
@@ -297,10 +284,7 @@ func selectFlavor(flavors []*provision.Flavor, p Params) (provision.Flavor, []st
 	// Last resort: smallest non-free flavor.
 	var fallback *provision.Flavor
 	for _, f := range flavors {
-		if f.FreeTier {
-			continue
-		}
-		if fallback == nil || f.VCPUs < fallback.VCPUs {
+		if !f.FreeTier && (fallback == nil || provision.CompareFlavorSize(f, fallback) < 0) {
 			fallback = f
 		}
 	}

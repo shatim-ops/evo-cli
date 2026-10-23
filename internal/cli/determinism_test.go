@@ -26,7 +26,30 @@ import (
 // second world lists them in reverse. A tool that picks by a rule picks the
 // same in both worlds; one that takes the first of a list picks the twin in
 // one of them (#234: k8s_create took the first flavor of the catalogue).
-type twinOrder struct{ reversed bool }
+// A sparse world also has no SSD disk type and no lowcost flavor, so the
+// order test reaches the fallbacks of the picks too.
+type twinOrder struct{ reversed, sparse bool }
+
+// sparseName is a catalogue name of the sparse world: "SSD" becomes "HDD",
+// "lowcost10-2-4" becomes "stdcost10-2-4".
+func sparseName(n string) string {
+	return strings.NewReplacer("SSD", "HDD", "ssd", "hdd", "low", "std", "Low", "Std").Replace(n)
+}
+
+// sparse is s with its names as the sparse world has them (copies: the
+// fakes may share what they return).
+func sparse[T any](o twinOrder, s []*T, name func(*T) *string) []*T {
+	if !o.sparse {
+		return s
+	}
+	out := make([]*T, len(s))
+	for i, e := range s {
+		c := *e
+		*name(&c) = sparseName(*name(&c))
+		out[i] = &c
+	}
+	return out
+}
 
 // twinID is an id the fakes do not know, of the same form: a UUID stays a
 // UUID, and twins of two ids stay two ids (the fakes' ids differ at the
@@ -168,7 +191,7 @@ func twins[T any](o twinOrder, s []*T, err error) ([]*T, error) {
 
 func (c twinCloud) ListFlavors(ctx context.Context) ([]*provision.Flavor, error) {
 	s, err := c.CloudAPI.ListFlavors(ctx)
-	return twins(c.o, s, err)
+	return twins(c.o, sparse(c.o, s, func(f *provision.Flavor) *string { return &f.Name }), err)
 }
 func (c twinCloud) ListAvailabilityZones(ctx context.Context) ([]*provision.AvailabilityZone, error) {
 	s, err := c.CloudAPI.ListAvailabilityZones(ctx)
@@ -184,7 +207,7 @@ func (c twinCloud) ListImagesInProject(ctx context.Context, p string) ([]*provis
 }
 func (c twinCloud) ListDiskTypes(ctx context.Context, p string) ([]*provision.DiskType, error) {
 	s, err := c.CloudAPI.ListDiskTypes(ctx, p)
-	return twins(c.o, s, err)
+	return twins(c.o, sparse(c.o, s, func(d *provision.DiskType) *string { return &d.Name }), err)
 }
 func (c twinCloud) ListSubnets(ctx context.Context, p string) ([]*provision.Subnet, error) {
 	s, err := c.CloudAPI.ListSubnets(ctx, p)
@@ -276,14 +299,15 @@ var orderDependent = map[string]string{}
 
 // The same call on the same cloud answers the same, whatever order the
 // cloud lists things in (owner's decision 22.10: the same command leads to
-// the same result, no surprises). Every tool is called without consent —
-// a read answers, a change shows its preview — on a world whose every list
-// has twins, and on the same world listing them in reverse; the answers
-// must be equal up to the order of their own lists.
+// the same result, no surprises; ties go by name, then id). Every tool is
+// called without consent — a read answers, a change shows its preview — on
+// a world whose every list has twins, and on the same world listing them in
+// reverse; the answers must be equal up to the order of their own lists.
+// The same again on the sparse world, for the fallbacks of the picks.
 func TestDeterminism_ListOrderDoesNotChangeTheAnswer(t *testing.T) {
 	run := func(o twinOrder) map[string]string {
 		out := map[string]string{}
-		t.Run(map[bool]string{false: "api-order", true: "reversed"}[o.reversed], func(t *testing.T) {
+		t.Run(map[bool]string{false: "full", true: "sparse"}[o.sparse]+"/"+map[bool]string{false: "api-order", true: "reversed"}[o.reversed], func(t *testing.T) {
 			w, fake := withJSONWorld(t)
 			http.DefaultTransport = twinRT{o: o, base: w.rt}
 			world := toolEngine
@@ -315,24 +339,26 @@ func TestDeterminism_ListOrderDoesNotChangeTheAnswer(t *testing.T) {
 		})
 		return out
 	}
-	plain, reversed := run(twinOrder{}), run(twinOrder{reversed: true})
-	if len(plain) == 0 || len(plain) != len(reversed) {
-		t.Fatalf("answers: %d in API order, %d reversed", len(plain), len(reversed))
-	}
-
 	var bad []string
 	seen := map[string]bool{}
-	for name, want := range plain {
-		got := reversed[name]
-		if got == want {
-			continue
+	for _, sp := range []bool{false, true} {
+		plain, reversed := run(twinOrder{sparse: sp}), run(twinOrder{reversed: true, sparse: sp})
+		if len(plain) == 0 || len(plain) != len(reversed) {
+			t.Fatalf("answers: %d in API order, %d reversed", len(plain), len(reversed))
 		}
-		seen[name] = true
-		if orderDependent[name] != "" {
-			continue
+		world := map[bool]string{false: "", true: " (sparse catalogue)"}[sp]
+		for name, want := range plain {
+			got := reversed[name]
+			if got == want {
+				continue
+			}
+			seen[name] = true
+			if orderDependent[name] != "" {
+				continue
+			}
+			a, r := firstDiff(want, got)
+			bad = append(bad, name+world+":\n  API order: …"+a+"…\n  reversed:  …"+r+"…")
 		}
-		a, r := firstDiff(want, got)
-		bad = append(bad, name+":\n  API order: …"+a+"…\n  reversed:  …"+r+"…")
 	}
 	sort.Strings(bad)
 	if len(bad) > 0 {

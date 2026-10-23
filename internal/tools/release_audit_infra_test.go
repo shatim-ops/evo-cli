@@ -829,3 +829,19 @@ func TestK8s_SmallestFittingFlavorWhateverCatalogOrder(t *testing.T) {
 		t.Errorf("k8s_plan --flavor gen-4-8: %s", text)
 	}
 }
+
+// Flavors of the same size: by name, then id, in either order of the
+// catalogue (D27).
+func TestK8s_EqualFlavorsByNameWhateverCatalogOrder(t *testing.T) {
+	for _, flavors := range []string{
+		`[{"flavorId":"fl-b","name":"gen-2-4-b","cpu":2,"ram":4},{"flavorId":"fl-a","name":"gen-2-4-a","cpu":2,"ram":4}]`,
+		`[{"flavorId":"fl-a","name":"gen-2-4-a","cpu":2,"ram":4},{"flavorId":"fl-b","name":"gen-2-4-b","cpu":2,"ram":4}]`,
+	} {
+		f := &raAPI{flavors: flavors}
+		r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+		m, text, isErr := callNamed(t, r, "k8s_plan", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1"})
+		if isErr || m["flavor"] != "gen-2-4-a" || m["flavor_id"] != "fl-a" {
+			t.Errorf("catalogue %s: want gen-2-4-a (fl-a): %s", flavors, text)
+		}
+	}
+}
