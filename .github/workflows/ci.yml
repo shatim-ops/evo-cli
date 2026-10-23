@@ -96,6 +96,12 @@ jobs:
           version: v2.18.3
           args: check
 
+      # Квота организации на образы в cloud-e2e disk (CMP-16): какой отказ
+      # image_create — пропуск шага, а какой — FAIL (e2e_quota.sh).
+      - name: квота образов cloud-e2e
+        if: runner.os == 'Linux'
+        run: .github/scripts/e2e_quota_test.sh
+
       # install.sh — установщик evo; internal/bootstrap/install.sh ставит Docker
       # на ВМ (release audit, REL-13); скрипты CI — .github/scripts.
       - name: shellcheck
