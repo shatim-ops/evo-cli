@@ -73,6 +73,7 @@ var faultCollections = map[string]struct {
 	// mk8s and NLB: their specs document no refusal of a taken name (D21).
 	"/v3/clusters":             {field: "clusters", async: true},
 	"/v2/networkLoadBalancers": {field: "balancers", async: true},
+	"/v3/nodePools":            {field: "nodePools", async: true},
 }
 
 func (a *faultAPI) failAt(n int, kind string) {
@@ -159,6 +160,10 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"defaultZone":"ru.AZ-1","zones":[{"zoneId":"mk-az1","name":"ru.AZ-1"}],
 			"flavors":[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}],
 			"channels":[{"channel":"STABLE","availableVersions":["v1.34.6"]}]}`)
+	case strings.HasPrefix(path, "/v3/clusters/"):
+		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v3/clusters/")+`","controlPlane":{"zones":["mk-az1"]}}`)
+	case path == "/api/v1/security-groups":
+		_, _ = io.WriteString(w, `{"items":[{"id":"sg-1","name":"SSH-access_ru.AZ-1","availability_zone":{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}}],"total":1}`)
 	case path == "/v2/targetGroups/tg-1":
 		_, _ = io.WriteString(w, `{"id":"tg-1","name":"tg","vpc_id":"vpc-1","target_vms":[]}`)
 	case path == "/v1/specifications":

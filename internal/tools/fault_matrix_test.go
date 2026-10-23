@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -111,7 +112,12 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("disk_create", map[string]any{"name": "evo-d", "size_gb": 10, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_create", map[string]any{"name": "evo-kc", "zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "confirmed": true}),
 	apiCase("lb_create", map[string]any{"name": "evo-lb", "target_group_id": "tg-1", "port": 80, "zone": "ru.AZ-1", "confirmed": true}),
+	apiCase("k8s_add_nodepool", map[string]any{"cluster_id": faultK8sCluster, "name": "evo-np", "confirmed": true}),
 }
+
+// faultK8sCluster is the cluster k8s_add_nodepool adds a pool to; the world
+// answers any cluster it is asked of.
+const faultK8sCluster = "00000000-0000-4000-8000-0000000000f1"
 
 // The fault kinds a call can meet at any step. faultLostNameless is not one:
 // it is an answer the API cannot give (a floating IP's name is required,
@@ -216,4 +222,76 @@ func namedBy(text string, names []string) bool {
 		}
 	}
 	return false
+}
+
+// Why a tool that asks for consent is not a case of the fault matrix.
+const (
+	faultOutRemoves = "removes or stops what exists: no new object to name; a repeat is the delete's own idempotency"
+	faultOutChanges = "changes an object that exists (attach, resize, start, renew, rules): no new object to name"
+	faultOutCluster = "acts inside a Kubernetes cluster through kubectl or helm, not through the cloud's API"
+	faultOutEngine  = "the engine's own fault tests (internal/engine fault_test.go, TestFault_Deploy_*, TestFault_Destroy_*)"
+	faultOutStack   = "runs the create tools of its steps, each in the matrix; its own fault tests (TestFault_Stack_*)"
+)
+
+// faultMatrixOut is the closed list of the tools that ask for consent and
+// are not in faultMatrixCases, with the reason.
+var faultMatrixOut = map[string]string{
+	"ar_delete": faultOutRemoves, "ca_delete": faultOutRemoves, "ca_stop": faultOutRemoves,
+	"cert_delete": faultOutRemoves, "disk_delete": faultOutRemoves, "disk_detach": faultOutRemoves,
+	"dns_record_delete": faultOutRemoves, "dns_zone_delete": faultOutRemoves, "image_delete": faultOutRemoves,
+	"k8s_delete": faultOutRemoves, "kafka_delete": faultOutRemoves, "lb_delete": faultOutRemoves,
+	"pg_db_delete": faultOutRemoves, "pg_delete": faultOutRemoves, "pg_user_delete": faultOutRemoves,
+	"redis_delete": faultOutRemoves, "release_floating_ip": faultOutRemoves, "s3_bucket_delete": faultOutRemoves,
+	"s3_rm": faultOutRemoves, "secret_delete": faultOutRemoves, "snat_delete": faultOutRemoves,
+	"stack_destroy": faultOutRemoves, "tg_delete": faultOutRemoves, "vpc_delete": faultOutRemoves,
+	"vpc_route_delete": faultOutRemoves,
+
+	"ca_start": faultOutChanges, "cert_renew": faultOutChanges, "disk_attach": faultOutChanges,
+	"disk_resize": faultOutChanges, "fip_attach": faultOutChanges, "open_ports": faultOutChanges,
+
+	"k8s_apply": faultOutCluster, "k8s_helm": faultOutCluster, "k8s_kubectl": faultOutCluster,
+
+	"deploy": faultOutEngine, "destroy": faultOutEngine,
+
+	"stack_apply": faultOutStack,
+}
+
+// Every tool that asks for consent and makes something is a case of the
+// fault matrix; the rest are in faultMatrixOut with the reason. A new tool
+// cannot skip the matrix silently (process audit 1.2.1, 6.1: the matrix
+// from the registry).
+func TestFault_MatrixCoversTheRegistry(t *testing.T) {
+	cases := map[string]bool{}
+	for _, c := range faultMatrixCases {
+		cases[c.tool] = true
+	}
+	var bad []string
+	mutating := map[string]bool{}
+	for _, tl := range New(nil).Tools() {
+		if !tl.Mutating {
+			continue
+		}
+		mutating[tl.Name] = true
+		why, out := faultMatrixOut[tl.Name]
+		switch {
+		case cases[tl.Name] && out:
+			bad = append(bad, tl.Name+": a case of the matrix and in faultMatrixOut ("+why+"); take it out of the list")
+		case !cases[tl.Name] && !out:
+			bad = append(bad, tl.Name+": asks for consent, not in the fault matrix; add a case (faultMatrixCases) or list it in faultMatrixOut with the reason")
+		}
+	}
+	for name := range faultMatrixOut {
+		if !mutating[name] {
+			bad = append(bad, name+": in faultMatrixOut, but no tool that asks for consent")
+		}
+	}
+	for name := range cases {
+		if !mutating[name] {
+			bad = append(bad, name+": a case of the matrix, but no tool that asks for consent")
+		}
+	}
+	sort.Strings(bad)
+	if len(bad) > 0 {
+		t.Fatal(strings.Join(bad, "\n"))
+	}
 }
