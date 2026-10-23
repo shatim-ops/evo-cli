@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,24 +17,90 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 )
 
-// faultMatrixCase is a billable tool whose cloud the fault world models:
-// args make it create, setup readies its directory (a saved plan).
+// faultWorld is a fake cloud a matrix case runs in: it counts the calls,
+// fails the armed one, and keeps what was made when an answer is lost.
+type faultWorld interface {
+	failAt(n int, kind string)
+	disarm()
+	callLog() []string
+	// billed are the billable objects alive in the world, each with the
+	// strings that name it.
+	billed() []faultBilled
+}
+
+type faultBilled struct {
+	what  string
+	names []string
+}
+
+// computeWorld is faultCloud as a matrix world: VMs by id, floating IPs by
+// id or address.
+type computeWorld struct{ *faultCloud }
+
+func (w computeWorld) billed() []faultBilled {
+	var out []faultBilled
+	for _, vm := range w.liveVMs() {
+		out = append(out, faultBilled{what: "VM " + vm.ID, names: []string{vm.ID}})
+	}
+	for _, f := range w.liveFIPs() {
+		names := []string{f.ID}
+		if f.IP != "" {
+			names = append(names, f.IP)
+		}
+		out = append(out, faultBilled{what: "floating IP " + f.ID, names: names})
+	}
+	return out
+}
+
+// faultMatrixCase is a billable tool whose cloud a fault world models.
 type faultMatrixCase struct {
-	tool  string
-	args  map[string]any
-	setup func(t *testing.T, dir string)
-	// noDial: the tool dials TCP/22 of the VM it made (deploy_apply).
-	noDial bool
+	tool string
+	args map[string]any
+	// world makes a fresh world and the registry over it; cancel is the
+	// call's context cancel, which faultCancel fires. dir is the state
+	// directory the call writes, if any.
+	world func(t *testing.T, cancel context.CancelFunc) (w faultWorld, r *Registry, dir string)
+	// skip leaves out a fault at a call: a reason, or "".
+	skip func(call, kind string) string
+}
+
+// computeCase is a case of the compute world (faultCloud).
+func computeCase(tool string, args map[string]any, noDial bool, setup func(t *testing.T, dir string)) faultMatrixCase {
+	return faultMatrixCase{tool: tool, args: args, world: func(t *testing.T, cancel context.CancelFunc) (faultWorld, *Registry, string) {
+		cloud := &faultCloud{noDial: noDial, cancel: cancel}
+		r, dir := faultToolsRegistry(t, cloud)
+		if setup != nil {
+			setup(t, dir)
+		}
+		return computeWorld{cloud}, r, dir
+	}}
+}
+
+// apiCase is a case of the HTTP world (faultAPI).
+func apiCase(tool string, args map[string]any) faultMatrixCase {
+	return faultMatrixCase{tool: tool, args: args,
+		world: func(t *testing.T, cancel context.CancelFunc) (faultWorld, *Registry, string) {
+			a := &faultAPI{cancel: cancel}
+			return a, faultAPIRegistry(t, a), ""
+		},
+		skip: func(call, kind string) string {
+			if (kind == faultTransport || kind == faultLost) && strings.HasPrefix(call, http.MethodGet+" ") {
+				return "httpretry repeats a read after its 1 s backoff (internal/httpretry tests)"
+			}
+			return ""
+		}}
 }
 
 var faultMatrixCases = []faultMatrixCase{
-	{tool: "provision", args: map[string]any{"name": "web", "confirmed": true}},
-	{tool: "deploy_apply", args: map[string]any{"plan_id": "plan-0123456789ab", "confirmed": true}, noDial: true,
-		setup: func(t *testing.T, dir string) {
+	computeCase("provision", map[string]any{"name": "web", "confirmed": true}, false, nil),
+	computeCase("deploy_apply", map[string]any{"plan_id": "plan-0123456789ab", "confirmed": true}, true,
+		func(t *testing.T, dir string) {
 			if err := deployplan.Save(dir, faultPlan()); err != nil {
 				t.Fatal(err)
 			}
-		}},
+		}),
+	apiCase("kafka_create", map[string]any{"name": "evo-k", "cpu": 2, "ram": 4, "confirmed": true}),
+	apiCase("redis_create", map[string]any{"name": "evo-r", "cpu": 2, "ram": 4, "confirmed": true}),
 }
 
 // The fault kinds a call can meet at any step. faultLostNameless is not one:
@@ -47,20 +114,15 @@ var faultMatrixKinds = []string{faultCancel, faultTransport, faultLost, faultEmp
 const fipPollWait = 5 * time.Second
 
 // faultRun is one call of a case on a fresh world, failing at call k with
-// kind (k == 0: no failure). It returns the world, the answer and the
-// state directory.
-func faultRun(t *testing.T, c faultMatrixCase, k int, kind string) (*faultCloud, string, string, *Registry) {
+// kind (k == 0: no failure). It returns the world, the answer, the state
+// directory and the registry.
+func faultRun(t *testing.T, c faultMatrixCase, k int, kind string) (faultWorld, string, string, *Registry) {
 	t.Helper()
-	cloud := &faultCloud{noDial: c.noDial}
-	r, dir := faultToolsRegistry(t, cloud)
-	if c.setup != nil {
-		c.setup(t, dir)
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	cloud.cancel = cancel
+	w, r, dir := c.world(t, cancel)
 	if k > 0 {
-		cloud.failAt(k, kind)
+		w.failAt(k, kind)
 	}
 	start := time.Now()
 	text, _ := r.handlers[c.tool](ctx, c.args)
@@ -69,7 +131,7 @@ func faultRun(t *testing.T, c faultMatrixCase, k int, kind string) (*faultCloud,
 	if d := time.Since(start); d > fipPollWait/2 {
 		t.Errorf("%s waited %s: a production interval, not the world's Timings", c.tool, d)
 	}
-	return cloud, text, dir, r
+	return w, text, dir, r
 }
 
 // stateText is every file the call wrote under its state directory: the
@@ -104,34 +166,44 @@ func TestFault_Matrix(t *testing.T) {
 	for _, c := range faultMatrixCases {
 		t.Run(c.tool, func(t *testing.T) {
 			happy, text, _, _ := faultRun(t, c, 0, "")
-			steps := len(happy.callLog())
-			vms, fips := len(happy.liveVMs()), len(happy.liveFIPs())
-			if vms == 0 {
-				t.Fatalf("the happy path created no VM: %s", text)
+			calls := happy.callLog()
+			clean := len(happy.billed())
+			if clean == 0 {
+				t.Fatalf("the happy path made nothing billable: %s", text)
 			}
-			for k := 1; k <= steps; k++ {
+			for k := 1; k <= len(calls); k++ {
 				for _, kind := range faultMatrixKinds {
-					t.Run(fmt.Sprintf("%d-%s-%s", k, happy.callLog()[k-1], kind), func(t *testing.T) {
-						cloud, text, dir, r := faultRun(t, c, k, kind)
-						named := text + stateText(t, dir)
-						for _, vm := range cloud.liveVMs() {
-							if !strings.Contains(named, vm.ID) {
-								t.Errorf("(a) VM %s is billed and named nowhere: %s", vm.ID, text)
+					if c.skip != nil && c.skip(calls[k-1], kind) != "" {
+						continue
+					}
+					t.Run(fmt.Sprintf("%d-%s-%s", k, calls[k-1], kind), func(t *testing.T) {
+						w, text, dir, r := faultRun(t, c, k, kind)
+						named := text
+						if dir != "" {
+							named += stateText(t, dir)
+						}
+						for _, b := range w.billed() {
+							if !namedBy(named, b.names) {
+								t.Errorf("(a) %s is billed and named nowhere: %s", b.what, text)
 							}
 						}
-						for _, f := range cloud.liveFIPs() {
-							if !strings.Contains(named, f.ID) && (f.IP == "" || !strings.Contains(named, f.IP)) {
-								t.Errorf("(a) floating IP %s is billed and named nowhere: %s", f.ID, text)
-							}
-						}
-						cloud.disarm()
+						w.disarm()
 						again, _ := r.handlers[c.tool](context.Background(), c.args)
-						if v, f := len(cloud.liveVMs()), len(cloud.liveFIPs()); v > vms || f > fips {
-							t.Errorf("(b) the repeat left %d VMs, %d floating IPs; one clean call leaves %d, %d\nfirst: %s\nagain: %s", v, f, vms, fips, text, again)
+						if n := len(w.billed()); n > clean {
+							t.Errorf("(b) the repeat left %d billable objects; one clean call leaves %d\nfirst: %s\nagain: %s", n, clean, text, again)
 						}
 					})
 				}
 			}
 		})
 	}
+}
+
+func namedBy(text string, names []string) bool {
+	for _, n := range names {
+		if strings.Contains(text, n) {
+			return true
+		}
+	}
+	return false
 }
