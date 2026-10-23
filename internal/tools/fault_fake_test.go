@@ -12,8 +12,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
+	"reflect"
 	"strconv"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/deploy"
@@ -45,6 +49,22 @@ const (
 	faultSG      = "00000000-0000-4000-8000-0000000000e1"
 	faultDisk    = "00000000-0000-4000-8000-0000000000d2"
 )
+
+// The answer of a world does not depend on the machine the tests run on.
+// A transport fault gets a network hint, and the hint names the proxy of
+// the request: by ProxyFromEnvironment that is the HTTPS_PROXY of the CI
+// runner (set on the Windows runner: #267, job 120509398814 went into the
+// proxy code of net/http), so the answer depended on the runner. In the
+// test binaries of the fault worlds no request goes through a proxy.
+func init() {
+	clerrors.ProxyFunc = func(*http.Request) (*url.URL, error) { return nil, nil }
+}
+
+func TestFaultWorld_IgnoresRunnerProxy(t *testing.T) {
+	if reflect.ValueOf(clerrors.ProxyFunc).Pointer() == reflect.ValueOf(http.ProxyFromEnvironment).Pointer() {
+		t.Fatal("clerrors.ProxyFunc is http.ProxyFromEnvironment: answers of the fault world depend on HTTPS_PROXY of the runner")
+	}
+}
 
 // faultCloud is a CloudAPI whose world (VMs, floating IPs, security-group
 // rules) survives a lost answer. failAt arms the Nth method call (1-based,

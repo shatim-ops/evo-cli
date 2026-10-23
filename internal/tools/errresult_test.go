@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -61,9 +60,6 @@ func TestErrResult_ReasonAndHint(t *testing.T) {
 // аккаунта, сеть — про сертификат или прокси. reason (и код выхода) — как
 // раньше: API_ERROR и API_UNREACHABLE.
 func TestErrResult_HintOfAnUncodedError(t *testing.T) {
-	old := clierrors.ProxyFunc
-	clierrors.ProxyFunc = func(*http.Request) (*url.URL, error) { return nil, nil }
-	t.Cleanup(func() { clierrors.ProxyFunc = old })
 	cert := fmt.Errorf("mk8s request failed: %w", &url.Error{Op: "Get", URL: "https://mk8s.api.cloud.ru/v3/clusters",
 		Err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}})
 	for _, tt := range []struct {
