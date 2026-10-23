@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/mk8s"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // D29 (delta audit 1.2.3, FB123-4…7): consent is asked for a create that
@@ -92,6 +93,49 @@ func TestK8s_ExplicitFlavorRefusedForWhatItIs(t *testing.T) {
 	}
 	if n := f.postCount(); n != 0 {
 		t.Errorf("refusals sent %d POST", n)
+	}
+}
+
+// A12 (D29, the class of FB123-5): k8s_add_nodepool resolves the zone of
+// the cluster, the nodes' subnet and the security group before the
+// consent: the preview names them, and a pool that cannot get them is
+// refused before the question, not after the yes.
+func TestK8sAddNodePool_NetworkBeforeConsent(t *testing.T) {
+	f := &raAPI{}
+	sgs := []*provision.SecurityGroup{{ID: "sg-az1", Name: "SSH-access_ru.AZ-1", AvailabilityZoneID: raAZ1}}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets(), sgs: sgs}, nil)
+	m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1"})
+	if m["status"] != "confirmation_required" {
+		t.Fatalf("preview: %s", text)
+	}
+	preview, _ := json.Marshal(m["preview"])
+	for _, want := range []string{"ru.AZ-1", "sn-1", "sg-az1", "gen-2-4"} {
+		if !strings.Contains(string(preview), want) {
+			t.Errorf("the preview does not name %s: %s", want, preview)
+		}
+	}
+
+	noSG := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	for _, c := range []struct {
+		label  string
+		r      *Registry
+		args   map[string]any
+		reason string
+	}{
+		{"cluster not found", r, map[string]any{"cluster_id": "cl-missing"}, "NOT_FOUND"},
+		{"cluster without a zone", r, map[string]any{"cluster_id": "cl-nozone"}, "CONFIG_INVALID"},
+		{"nodes subnet of another zone", r, map[string]any{"cluster_id": "cl-1", "nodes_subnet_id": "sn-2"}, "CONFIG_INVALID"},
+		{"no security group in the zone", noSG, map[string]any{"cluster_id": "cl-1"}, "CONFIG_INVALID"},
+	} {
+		m, text, isErr := callNamed(t, c.r, "k8s_add_nodepool", c.args)
+		if !isErr || m["status"] == "confirmation_required" {
+			t.Errorf("%s: asked for consent: %s", c.label, text)
+			continue
+		}
+		wantReason(t, c.label, m, text, c.reason)
+	}
+	if n := f.postCount(); n != 0 {
+		t.Errorf("previews sent %d POST", n)
 	}
 }
 

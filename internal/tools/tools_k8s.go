@@ -520,21 +520,9 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	if err != nil {
 		return errResult(err), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sNodePool, name, args,
-			map[string]any{"flavor": flavor.Name, "cpu": flavor.CPU, "ram_gb": flavor.RAM}))
-		if err != nil {
-			return errResult(err), true
-		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("k8s_add_nodepool creates billable worker nodes.",
-				"k8s_add_nodepool создаёт платные рабочие узлы."),
-			"preview": preview,
-		}), true
-	}
-
-	// Nodes subnet + security group: explicit, else from the cluster's zone.
+	// Nodes subnet + security group: explicit, else from the cluster's zone,
+	// before the consent as the flavor (A12, D29): the preview names them,
+	// and a pool that cannot get them is refused before the question.
 	// The zone was the product's default zone and the subnet fell back to
 	// the project's first subnet of any zone — the class of L-08 for worker
 	// nodes (release audit, L-08 follow-up).
@@ -582,6 +570,21 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 				i18n.T("Pass security_group_id (list_security_groups), or create a group in this zone in the Cloud.ru console.", "Передайте security_group_id (list_security_groups) или создайте группу в этой зоне в консоли Cloud.ru."))), true
 		}
 		sgID = sgs[i].ID
+	}
+
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sNodePool, name, args,
+			map[string]any{"flavor": flavor.Name, "cpu": flavor.CPU, "ram_gb": flavor.RAM,
+				"zone": zone.name, "nodes_subnet_id": nodesSubnetID, "security_group_id": sgID}))
+		if err != nil {
+			return errResult(err), true
+		}
+		return toJSON(map[string]any{
+			"status": "confirmation_required",
+			"message": i18n.T("k8s_add_nodepool creates billable worker nodes.",
+				"k8s_add_nodepool создаёт платные рабочие узлы."),
+			"preview": preview,
+		}), true
 	}
 
 	count := intArg(args, "count", 2)
@@ -867,7 +870,7 @@ func k8sPreview(resource, name string, args, resolved map[string]any) engine.Cre
 	}
 	p.Add("cluster_id", stringArg(args, "cluster_id"))
 	skip := []string{"name", "zone", "cluster_id"}
-	for _, k := range []string{"flavor", "cpu", "ram_gb", "version", "master_count", "subnet_id"} {
+	for _, k := range []string{"flavor", "cpu", "ram_gb", "version", "master_count", "subnet_id", "nodes_subnet_id", "security_group_id"} {
 		if v, ok := resolved[k]; ok {
 			p.Add(k, v)
 			skip = append(skip, k)
