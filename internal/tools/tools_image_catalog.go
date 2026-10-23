@@ -20,8 +20,9 @@ import (
 
 // imageListSchema is the schema of image_list and of its alias list_images.
 func imageListSchema() map[string]any {
-	typ := strProp("Only this type: public (OS images), marketplace (products of the Cloud.ru Marketplace) or private (images of the project). Default: all three.")
-	typ["enum"] = images.Types
+	// The values as enumProp lists them, so checkedArgs refuses others
+	// (a []string enum it did not read, G13-1).
+	typ := enumProp("Only this type: public (OS images), marketplace (products of the Cloud.ru Marketplace) or private (images of the project). Default: all three.", images.Types...)
 	return objSchema(map[string]any{
 		"query": strProp("Substring of the image name or display name, case-insensitive (e.g. 'astra', 'ubuntu'). Default: the whole catalogue."),
 		"type":  typ,
@@ -116,10 +117,7 @@ func (z *zoneNamer) zoneID(ref string) (string, error) {
 // handleImageList searches the image catalogue (list_images is the same
 // handler). Read-only.
 func (s *Registry) handleImageList(ctx context.Context, args map[string]any) (string, bool) {
-	f := images.Filter{Type: strings.ToLower(strings.TrimSpace(stringArg(args, "type"))), All: boolArg(args, "all", false)}
-	if !images.ValidType(f.Type) {
-		return usageT("'type' must be one of %s, got %q", "'type' должен быть одним из: %s, передано %q", strings.Join(images.Types, ", "), f.Type), true
-	}
+	f := images.Filter{Type: stringArg(args, "type"), All: boolArg(args, "all", false)}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return errResult(err), true

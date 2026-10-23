@@ -7,7 +7,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/marketplace"
@@ -26,8 +25,8 @@ const marketplaceListDescription = "Read-only: what Cloud.ru offers to deploy, i
 	"counts: rows per kind; total: matches before hiding. If one catalogue cannot be read, the other is answered with warnings[]."
 
 func marketplaceListSchema() map[string]any {
-	kind := strProp("Only this kind: vm-os (OS images), vm-app (Marketplace products on a VM) or k8s-addon (Managed Kubernetes addons). Default: all three; a VM kind does not read the addon catalogue and k8s-addon not the image one.")
-	kind["enum"] = marketplace.Kinds
+	// As enumProp lists them, so checkedArgs refuses others (G13-1).
+	kind := enumProp("Only this kind: vm-os (OS images), vm-app (Marketplace products on a VM) or k8s-addon (Managed Kubernetes addons). Default: all three; a VM kind does not read the addon catalogue and k8s-addon not the image one.", marketplace.Kinds...)
 	return objSchema(map[string]any{
 		"query": strProp("Substring of the name or display name (addons: also the description), case-insensitive, e.g. 'astra', 'nginx', 'cert'. Default: everything."),
 		"kind":  kind,
@@ -90,11 +89,8 @@ func marketRowOf(it marketplace.Item, checked bool) marketRow {
 func (s *Registry) handleMarketplaceList(ctx context.Context, args map[string]any) (string, bool) {
 	opt := marketplace.Options{
 		Query: stringArg(args, "query"),
-		Kind:  strings.ToLower(strings.TrimSpace(stringArg(args, "kind"))),
+		Kind:  stringArg(args, "kind"),
 		All:   boolArg(args, "all", false),
-	}
-	if !marketplace.ValidKind(opt.Kind) {
-		return usageT("'kind' must be one of %s, got %q", "'kind' должен быть одним из: %s, передано %q", strings.Join(marketplace.Kinds, ", "), opt.Kind), true
 	}
 	eng, err := s.newEngine(nil)
 	if err != nil {
