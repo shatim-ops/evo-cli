@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -128,8 +129,59 @@ func (s *Registry) handleK8sOptions(ctx context.Context, args map[string]any) (s
 type k8sPlan struct {
 	req      mk8s.CreateClusterReq
 	zone     string
-	flavor   string
+	flavor   mk8s.Flavor
 	warnings []string
+}
+
+// resolved is what the plan settles that the arguments may leave open, for
+// the preview of k8s_create (k8sPreview).
+func (p k8sPlan) resolved() map[string]any {
+	cp := p.req.ControlPlaneConfiguration
+	return map[string]any{
+		"zone": p.zone, "subnet_id": p.req.NetworkConfiguration.PrivateVipSubnetID,
+		"flavor": p.flavor.Name, "cpu": p.flavor.CPU, "ram_gb": p.flavor.RAM,
+		"version": cp.Version, "master_count": cp.SizingConfiguration.MasterCount,
+	}
+}
+
+// pickK8sFlavor is the flavor of the masters (k8s_create, k8s_plan) or of
+// the nodes (k8s_add_nodepool), one choice for both (FB123-6): want by its
+// name, else the smallest without a GPU with cpu and ram, ties by name and
+// id whatever the order of the catalogue (D27). An explicit name that is
+// not in the catalogue, or one with a GPU, is refused for what it is, not
+// as a want of cpu and ram nobody asked (FB123-7). USAGE either way.
+func pickK8sFlavor(flavors []mk8s.Flavor, want string, cpu, ram int) (mk8s.Flavor, error) {
+	hint := i18n.T("k8s_options lists the flavors.", "Конфигурации — в выводе evo k8s options.")
+	if want != "" {
+		for _, f := range flavors {
+			if f.Name != want {
+				continue
+			}
+			if f.GPU != 0 {
+				return mk8s.Flavor{}, clierrors.New(clierrors.CodeUsage,
+					i18n.Tf("flavor %q has a GPU: evo runs no masters or nodes on a GPU flavor", "у конфигурации %q есть GPU: evo не ставит на GPU мастера и узлы", want), hint)
+			}
+			return f, nil
+		}
+		return mk8s.Flavor{}, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("flavor %q is not in the catalogue of Managed Kubernetes", "конфигурации %q нет в каталоге Managed Kubernetes", want), hint)
+	}
+	var best *mk8s.Flavor
+	for i := range flavors {
+		f := &flavors[i]
+		if f.GPU != 0 || f.CPU < cpu || f.RAM < ram {
+			continue
+		}
+		if best == nil || cmp.Or(cmp.Compare(f.CPU, best.CPU), cmp.Compare(f.RAM, best.RAM),
+			provision.CompareByNameID(f.Name, f.FlavorID, best.Name, best.FlavorID)) < 0 {
+			best = f
+		}
+	}
+	if best == nil {
+		return mk8s.Flavor{}, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("no k8s flavor without a GPU with cpu>=%d ram>=%d", "нет конфигурации k8s без GPU с cpu>=%d ram>=%d", cpu, ram), hint)
+	}
+	return *best, nil
 }
 
 // resolveK8sPlan resolves the create parameters (version, flavor, zone,
@@ -164,34 +216,9 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8s
 		}
 	}
 
-	// Flavor: explicit name, else smallest non-GPU that fits cpu/ram, else gen-2-4.
-	cpu := intArg(args, "cpu", 2)
-	ram := intArg(args, "ram_gb", 4)
-	// The chosen name is kept apart from the argument: written back into
-	// it, the first fit ended the search (cloud-e2e 22.10).
-	wantFlavor := stringArg(args, "flavor")
-	flavorID, flavorName := "", ""
-	var bestCPU, bestRAM int
-	for _, f := range pc.Flavors {
-		if f.GPU != 0 {
-			continue
-		}
-		if wantFlavor != "" {
-			if f.Name == wantFlavor {
-				flavorID, flavorName = f.FlavorID, f.Name
-				break
-			}
-			continue
-		}
-		if f.CPU >= cpu && f.RAM >= ram {
-			if flavorID == "" || f.CPU < bestCPU || f.CPU == bestCPU && (f.RAM < bestRAM ||
-				f.RAM == bestRAM && provision.CompareByNameID(f.Name, f.FlavorID, flavorName, flavorID) < 0) {
-				flavorID, flavorName, bestCPU, bestRAM = f.FlavorID, f.Name, f.CPU, f.RAM
-			}
-		}
-	}
-	if flavorID == "" {
-		return k8sPlan{}, fmt.Errorf(i18n.T("no matching k8s flavor (cpu>=%d ram>=%d); use k8s_options to see flavors", "нет подходящей конфигурации k8s (cpu>=%d ram>=%d); конфигурации — в выводе k8s_options"), cpu, ram)
+	flavor, err := pickK8sFlavor(pc.Flavors, stringArg(args, "flavor"), intArg(args, "cpu", 2), intArg(args, "ram_gb", 4))
+	if err != nil {
+		return k8sPlan{}, err
 	}
 
 	// Master count: 1, 3 or 5 (checked by k8sArgsError before the gate).
@@ -230,7 +257,7 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8s
 		ProjectID: pid,
 		ControlPlaneConfiguration: mk8s.ControlPlaneConfiguration{
 			Version:             version,
-			SizingConfiguration: mk8s.SizingConfiguration{MasterCount: masterCount, FlavorID: flavorID},
+			SizingConfiguration: mk8s.SizingConfiguration{MasterCount: masterCount, FlavorID: flavor.FlavorID},
 			// Without zones the API puts the masters in its default zone
 			// (ru.AZ-2), away from the VIP subnet of another zone: the
 			// cluster's nodes stay NotReady (release audit, L-08).
@@ -239,7 +266,7 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8s
 		NetworkConfiguration:  mk8s.NetworkConfiguration{PrivateVipSubnetID: subnetID, KubeApiInternet: kubeApiInternet},
 		IdentityConfiguration: mk8s.IdentityConfiguration{ClusterSaID: clusterSaID},
 	}
-	return k8sPlan{req: req, zone: zone.name, flavor: flavorName, warnings: warnings}, nil
+	return k8sPlan{req: req, zone: zone.name, flavor: flavor, warnings: warnings}, nil
 }
 
 // handleK8sPlan resolves and shows the cluster config without creating it.
@@ -257,7 +284,7 @@ func (s *Registry) handleK8sPlan(ctx context.Context, args map[string]any) (stri
 		"zone":              plan.zone,
 		"version":           req.ControlPlaneConfiguration.Version,
 		"master_count":      req.ControlPlaneConfiguration.SizingConfiguration.MasterCount,
-		"flavor":            plan.flavor,
+		"flavor":            plan.flavor.Name,
 		"flavor_id":         req.ControlPlaneConfiguration.SizingConfiguration.FlavorID,
 		"subnet_id":         req.NetworkConfiguration.PrivateVipSubnetID,
 		"cluster_sa_id":     req.IdentityConfiguration.ClusterSaID,
@@ -297,8 +324,16 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 	if id, st, ok := takenName(listed, name); ok {
 		return nameTakenResult(i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, id, st, "k8s_get cluster_id="+id)
 	}
+	// The plan before the consent: the preview names the cluster that is
+	// made — the masters' flavor, version, zone, VIP subnet — and a plan
+	// that cannot be resolved is refused before the question (D29,
+	// FB123-5).
+	plan, err := s.resolveK8sPlan(ctx, args)
+	if err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sCluster, name, args))
+		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sCluster, name, args, plan.resolved()))
 		if err != nil {
 			return errResult(err), true
 		}
@@ -308,10 +343,6 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 				"k8s_create создаёт настоящий (платный) кластер Kubernetes."),
 			"preview": preview,
 		}), true
-	}
-	plan, err := s.resolveK8sPlan(ctx, args)
-	if err != nil {
-		return errResult(err), true
 	}
 	req := plan.req
 	op, err := cli.CreateCluster(ctx, req)
@@ -478,8 +509,20 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	if id, st, ok := takenName(listed, name); ok {
 		return nameTakenResult(i18n.T("node pool", "группа узлов"), name, id, st, "k8s_nodepools cluster_id="+clusterID)
 	}
+	// The nodes' flavor before the consent, as the masters' (D29): an
+	// explicit one with a GPU or not in the catalogue is refused before
+	// the question, and the preview names the one chosen.
+	pc, err := cli.ProductConfiguration(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	flavor, err := pickK8sFlavor(pc.Flavors, stringArg(args, "flavor"), intArg(args, "cpu", 2), intArg(args, "ram_gb", 4))
+	if err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sNodePool, name, args))
+		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sNodePool, name, args,
+			map[string]any{"flavor": flavor.Name, "cpu": flavor.CPU, "ram_gb": flavor.RAM}))
 		if err != nil {
 			return errResult(err), true
 		}
@@ -489,38 +532,6 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 				"k8s_add_nodepool создаёт платные рабочие узлы."),
 			"preview": preview,
 		}), true
-	}
-
-	pc, err := cli.ProductConfiguration(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-
-	// Flavor: explicit name, else smallest non-GPU that fits cpu/ram.
-	cpu := intArg(args, "cpu", 2)
-	ram := intArg(args, "ram_gb", 4)
-	flavorName := stringArg(args, "flavor")
-	flavorID := ""
-	var bCPU, bRAM int
-	for _, f := range pc.Flavors {
-		if f.GPU != 0 {
-			continue
-		}
-		if flavorName != "" {
-			if f.Name == flavorName {
-				flavorID = f.FlavorID
-				break
-			}
-			continue
-		}
-		if f.CPU >= cpu && f.RAM >= ram {
-			if flavorID == "" || f.CPU < bCPU || (f.CPU == bCPU && f.RAM < bRAM) {
-				flavorID, bCPU, bRAM = f.FlavorID, f.CPU, f.RAM
-			}
-		}
-	}
-	if flavorID == "" {
-		return errResult(fmt.Errorf(i18n.T("no matching node flavor (cpu>=%d ram>=%d); see k8s_options", "нет подходящей конфигурации узла (cpu>=%d ram>=%d); см. k8s_options"), cpu, ram)), true
 	}
 
 	// Nodes subnet + security group: explicit, else from the cluster's zone.
@@ -580,7 +591,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		ClusterID:            clusterID,
 		Name:                 name,
 		ScalePolicy:          mk8s.ScalePolicy{FixedScale: &mk8s.FixedScale{Count: count}},
-		MachineConfiguration: mk8s.MachineConfigurationRequest{FlavorID: flavorID, Disk: &mk8s.DiskRequest{Size: diskSize}},
+		MachineConfiguration: mk8s.MachineConfigurationRequest{FlavorID: flavor.FlavorID, Disk: &mk8s.DiskRequest{Size: diskSize}},
 		NetworkConfiguration: mk8s.NodePoolNetworkConfigurationRequest{NodesSubnetID: nodesSubnetID, SecurityGroupID: sgID},
 		UpdateConfiguration:  mk8s.NodePoolUpdateConfiguration{Strategy: "NODE_POOL_UPDATE_STRATEGY_ROLLING_UPDATE"},
 	}
@@ -593,7 +604,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	}
 	return toJSON(map[string]any{
 		"status": "creating", "node_pool": name, "nodepool_id": op.ResourceID, "cluster_id": clusterID,
-		"operation_id": op.ID, "count": count, "flavor_id": flavorID,
+		"operation_id": op.ID, "count": count, "flavor_id": flavor.FlavorID,
 		"note": i18n.T("Node pool is provisioning (async). Poll k8s_nodepools. NB: if Cloud.ru returns 503 'no healthy upstream' it's a transient backend outage — retry.",
 			fmt.Sprintf("Группа узлов создаётся (асинхронно). Проверяйте evo k8s nodepools %s. Если Cloud.ru отвечает 503 «no healthy upstream», это временный сбой сервиса — повторите.", clusterID)),
 	}), false
@@ -835,12 +846,19 @@ func firstNonEmptyStr(vals ...string) string {
 	return ""
 }
 
-// k8sPreview is the preview of k8s_create and k8s_add_nodepool: the
-// arguments as given (the rest is resolved at creation; k8s_plan shows it).
-// evo has no rate card for Managed Kubernetes: the preview links its tariff (Price).
-func k8sPreview(resource, name string, args map[string]any) engine.CreatePreview {
+// k8sPreview is the preview of k8s_create and k8s_add_nodepool: what the
+// call settled before the consent (resolved: the flavor, its cpu and ram;
+// for a cluster also the version, the zone and the VIP subnet, D29) in
+// place of the arguments of the same name, and the other arguments as
+// given. evo has no rate card for Managed Kubernetes: the preview links
+// its tariff (Price).
+func k8sPreview(resource, name string, args, resolved map[string]any) engine.CreatePreview {
 	p := engine.CreatePreview{Resource: resource, Name: name}
-	if z := stringArg(args, "zone"); z != "" {
+	z, _ := resolved["zone"].(string)
+	if z == "" {
+		z = stringArg(args, "zone")
+	}
+	if z != "" {
 		if looksUUID(z) {
 			p.Zone = &deployplan.RefSpec{ID: z}
 		} else {
@@ -848,7 +866,14 @@ func k8sPreview(resource, name string, args map[string]any) engine.CreatePreview
 		}
 	}
 	p.Add("cluster_id", stringArg(args, "cluster_id"))
-	p.AddArgs(args, "name", "zone", "cluster_id")
+	skip := []string{"name", "zone", "cluster_id"}
+	for _, k := range []string{"flavor", "cpu", "ram_gb", "version", "master_count", "subnet_id"} {
+		if v, ok := resolved[k]; ok {
+			p.Add(k, v)
+			skip = append(skip, k)
+		}
+	}
+	p.AddArgs(args, skip...)
 	p.Price()
 	return p
 }

@@ -72,6 +72,19 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 		regType = "DOCKER"
 	}
 	public, _ := args["public"].(bool)
+	cli, err := s.arClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	// A taken name made a second registry, rc 0 (release audit, L-18); it
+	// is refused before the consent, as every other create (D29, FB123-4).
+	existing, err := cli.ListRegistries(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list registries: %w", "проверка, что имя свободно: список реестров: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult(i18n.T("registry", "реестр"), name, id, st, "ar_list")
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -81,18 +94,6 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 				map[string]any{"registry_type": regType, "public": public, "tariff": strings.ToUpper(stringArg(args, "tariff"))},
 				[]string{"registry_type", "public", "tariff"}),
 		}), true
-	}
-	cli, err := s.arClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	// A taken name made a second registry, rc 0 (release audit, L-18).
-	existing, err := cli.ListRegistries(ctx)
-	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list registries: %w", "проверка, что имя свободно: список реестров: %w"), err)), true
-	}
-	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult(i18n.T("registry", "реестр"), name, id, st, "ar_list")
 	}
 	body := map[string]any{
 		"projectId":    cli.ProjectID(),

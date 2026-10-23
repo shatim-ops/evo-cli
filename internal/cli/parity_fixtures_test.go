@@ -324,6 +324,11 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	switch r.URL.Host {
 	case "mk8s.api.cloud.ru":
+		if r.URL.Path == "/v3/productConfiguration" {
+			// The catalogue the preview of k8s_create resolves its plan
+			// from, and k8s_add_nodepool its flavor (D29).
+			return contractRT{status: 200, body: k8sProductConfiguration}.RoundTrip(r)
+		}
 		return p.addon.RoundTrip(r)
 	case "postgresql.api.cloud.ru":
 		return pgParity(r)
@@ -343,6 +348,13 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(r)
 }
+
+// k8sProductConfiguration is the catalogue of Managed Kubernetes of the
+// parity worlds: one zone, one flavor, one version.
+const k8sProductConfiguration = `{"defaultZone":"` + pvZone + `","defaultChannel":"stable","defaultDiskType":"SSD",` +
+	`"zones":[{"zoneId":"` + pvZone + `","name":"ru.AZ-1","availableFlavors":["` + pvFlavor + `"]}],` +
+	`"flavors":[{"flavorId":"` + pvFlavor + `","name":"gen-2-4","cpu":2,"ram":4}],` +
+	`"channels":[{"channel":"stable","availableVersions":["v1.31.4"]}]}`
 
 // parityNIC is the network interface of the VM parityVM.
 const parityNIC = "00000000-0000-4000-8000-0000000000f1"
