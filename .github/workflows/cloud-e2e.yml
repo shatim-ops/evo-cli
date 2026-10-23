@@ -149,6 +149,15 @@ jobs:
           CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
         run: .github/scripts/cloud-readonly.sh
 
+      # Ссылки tariff_url превью (internal/engine, tariffs) отвечают 200 на
+      # HEAD без редиректа: Cloud.ru может перенести страницы тарифов (ревью
+      # Qwen #170). Ключ не нужен; идёт и после красного шага выше.
+      - name: Страницы тарифов (HEAD)
+        if: ${{ !cancelled() }}
+        env:
+          EVO_LIVE_TARIFFS: "1"
+        run: go test ./internal/engine/ -run '^TestLive_TariffPagesAnswer$' -count=1 -v
+
   e2e:
     environment: cloud-e2e
     if: ${{ !inputs.cleanup_only }}
