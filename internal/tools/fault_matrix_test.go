@@ -119,6 +119,7 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("pg_backup_create", map[string]any{"cluster_id": faultPGCluster, "name": "evo-b", "confirmed": true}),
 	apiCase("tg_create", map[string]any{"name": "evo-tg", "targets": []any{map[string]any{"id": faultTargetVM, "interface_id": faultNIC}}, "confirmed": true}),
 	apiCase("vpc_route_create", map[string]any{"vpc_id": faultVPC, "subnet": "192.168.10.0/24", "next_hop_vip_id": "vip-1", "confirmed": true}),
+	apiCase("dns_record_create", map[string]any{"zone_id": "z-1", "type": "public", "name": "www", "record_type": "a", "value": "203.0.113.7", "confirmed": true}),
 	apiCase("image_create", map[string]any{"name": "evo-img", "disk_id": faultDisk, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_add_nodepool", map[string]any{"cluster_id": faultK8sCluster, "name": "evo-np", "confirmed": true}),
 }

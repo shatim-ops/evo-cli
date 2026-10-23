@@ -49,6 +49,8 @@ type faultAPI struct {
 // the collection, its id and name.
 type faultResource struct {
 	host, path, ID, Name string
+	// Type is a DNS record's type.
+	Type string
 	// before: the world held it before the call; not the call's to name.
 	before bool
 }
@@ -78,6 +80,7 @@ var faultCollections = map[string]struct {
 	"/v2/networkLoadBalancers": {field: "balancers", async: true},
 	"/v3/nodePools":            {field: "nodePools", async: true},
 	"/v2/targetGroups":         {field: "target_groups", async: true},
+	"/v1/publicRecordsSole":    {field: "records", async: true},
 	// Static routes of the VPC vpc_route_create adds to, known by their
 	// destination (subnet).
 	"/v1/vpcs/" + faultVPC + "/routes/static": {field: "routes", async: true},
@@ -250,7 +253,7 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		items := []map[string]any{}
 		for _, c := range a.made {
 			if c.host == host && c.path == path {
-				items = append(items, map[string]any{"id": c.ID, "name": c.Name, "path": c.Name, "subnet": c.Name, "status": "RUNNING"})
+				items = append(items, map[string]any{"id": c.ID, "name": c.Name, "path": c.Name, "subnet": c.Name, "type": strings.ToUpper(c.Type), "status": "RUNNING"})
 			}
 		}
 		a.mu.Unlock()
@@ -261,6 +264,7 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 			Name   string `json:"name"`
 			Path   string `json:"path"`   // a secret's name
 			Subnet string `json:"subnet"` // a static route's destination
+			Type   string `json:"type"`   // a DNS record's type
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body.Name == "" {
@@ -277,7 +281,7 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		a.next++
-		c := faultResource{host: host, path: path, ID: fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x500+a.next), Name: body.Name}
+		c := faultResource{host: host, path: path, ID: fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x500+a.next), Name: body.Name, Type: body.Type}
 		a.made = append(a.made, c)
 		op := fmt.Sprintf("op-%d", a.next)
 		a.mu.Unlock()
