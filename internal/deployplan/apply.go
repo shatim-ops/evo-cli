@@ -373,9 +373,11 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	// The create may have reached the cloud with its answer lost, or
 	// answered without an id (deploy adopts that one by name too): the FIP
 	// then exists under its name and must be recorded, not left billed.
+	// Only an address bound to this VM: a free one of the name is an orphan
+	// of an earlier VM, not this VM's public IP (Cursor 1.2.3, A3).
 	if fips, le := cloud.ListFloatingIPs(ctx, plan.ProjectID); le == nil {
 		for _, x := range fips {
-			if x.Name == name {
+			if x.Name == name && x.BoundTo(vmID) {
 				return x.IPAddress, x.ID, "public IP attached (the create answer was lost; found the floating IP by name)"
 			}
 		}

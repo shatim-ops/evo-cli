@@ -8,9 +8,11 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -436,7 +438,12 @@ func (c *faultCloud) ListFloatingIPs(context.Context, string) ([]*provision.Floa
 		if f.deleted {
 			continue
 		}
-		out = append(out, &provision.FloatingIP{ID: f.ID, Name: f.Name, IPAddress: f.IP, State: f.State})
+		fip := &provision.FloatingIP{ID: f.ID, Name: f.Name, IPAddress: f.IP, State: f.State}
+		if f.VMID != "" {
+			// The VM it is bound to, as the API's list names it (vm).
+			fip.VM = json.RawMessage(strconv.Quote(f.VMID))
+		}
+		out = append(out, fip)
 	}
 	return out, nil
 }

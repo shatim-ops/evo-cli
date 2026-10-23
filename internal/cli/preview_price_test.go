@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -15,17 +16,7 @@ import (
 
 // Why a tool that asks for consent shows neither a price nor a tariff in
 // its preview.
-const (
-	priceNoNewResource = "changes or removes what exists: nothing new to pay for"
-	// The resource is billable and the preview says nothing of its cost:
-	// the gap of dogfood №4 that 1.2.1 closed for Kubernetes, PostgreSQL,
-	// buckets and node pools. Each goes with tariff_url in 1.2.3.
-	priceKnownGap = "known gap: billable, no tariff_url yet (release-plan, 1.2.3)"
-	// Whether Cloud.ru bills it is not settled; the owner decides by the
-	// start of 1.3, else it counts as billable and gets tariff_url
-	// (owner's decision 22.10, release-plan).
-	priceToConfirm = "to confirm: is it billable"
-)
+const priceNoNewResource = "changes or removes what exists: nothing new to pay for"
 
 // noPriceInPreview is the closed list of the tools whose preview carries no
 // cost and no tariff_url, with the reason.
@@ -44,12 +35,6 @@ var noPriceInPreview = map[string]string{
 	"secret_add_version": priceNoNewResource, "secret_delete": priceNoNewResource, "snat_delete": priceNoNewResource,
 	"stack_destroy": priceNoNewResource, "tg_delete": priceNoNewResource, "vpc_delete": priceNoNewResource,
 	"vpc_route_delete": priceNoNewResource,
-
-	"image_create": priceKnownGap,
-
-	"dns_zone_create": priceToConfirm, "pg_backup_create": priceToConfirm, "s3_put": priceToConfirm,
-	"secret_create": priceToConfirm, "stack_apply": priceToConfirm, "tg_create": priceToConfirm,
-	"vpc_create": priceToConfirm, "vpc_route_create": priceToConfirm,
 }
 
 // A preview the person consents to says what the call costs (cost) or where
@@ -57,12 +42,13 @@ var noPriceInPreview = map[string]string{
 // blind (dogfood №4, D17). A tool that shows neither is in the closed list
 // noPriceInPreview with its reason, so a new tool cannot join silently, and
 // one that gains a price leaves the list (process audit 1.2.1, PR 5).
+// A preview never carries the value of a secret argument
+// (CLISpec.SecretFiles): secret_create's names the path only.
 func TestContract_EveryPreviewPricedOrListed(t *testing.T) {
 	world := withParityWorld(t)
 	fakeKubeBinaries(t)
 	srv := parityServers(t)
 	var bad []string
-	gaps := map[string][]string{}
 	for _, tl := range tools.New(nil).Tools() {
 		if !tl.Mutating {
 			continue
@@ -86,17 +72,21 @@ func TestContract_EveryPreviewPricedOrListed(t *testing.T) {
 			continue
 		}
 		p, _ := got["preview"].(map[string]any)
+		blob, _ := json.Marshal(p)
+		for k := range tl.CLI.SecretFiles {
+			if v, _ := args[k].(string); v != "" && strings.Contains(string(blob), v) {
+				bad = append(bad, tl.Name+": the preview holds the value of "+k)
+			}
+		}
 		_, cost := p["cost"]
 		tariff, _ := p["tariff_url"].(string)
 		priced := cost || tariff != ""
-		why, listed := noPriceInPreview[tl.Name]
+		_, listed := noPriceInPreview[tl.Name]
 		switch {
 		case priced && listed:
 			bad = append(bad, tl.Name+": the preview has a price now; take it out of noPriceInPreview")
 		case !priced && !listed:
 			bad = append(bad, tl.Name+": the preview shows neither cost nor tariff_url; price it or list it in noPriceInPreview with the reason")
-		case listed:
-			gaps[why] = append(gaps[why], tl.Name)
 		}
 	}
 	reg := tools.New(nil)
@@ -104,10 +94,6 @@ func TestContract_EveryPreviewPricedOrListed(t *testing.T) {
 		if tl, ok := reg.Lookup(name); !ok || !tl.Mutating {
 			bad = append(bad, name+": in noPriceInPreview, but no tool that asks for consent")
 		}
-	}
-	for _, why := range []string{priceKnownGap, priceToConfirm} {
-		sort.Strings(gaps[why])
-		t.Logf("%s: %s", why, strings.Join(gaps[why], ", "))
 	}
 	if len(bad) > 0 {
 		sort.Strings(bad)

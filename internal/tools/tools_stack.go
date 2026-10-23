@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
@@ -580,8 +581,16 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		"project_id": job.ProjectID,
 		"steps":      steps,
 		"cost":       stack.EstimateCost(m),
-		"message":    "Stack planned. BILLABLE — show the user the cost and get explicit approval, then call stack_apply with this job_id and confirmed=true.",
+		// The instruction about consent, in next as deploy_plan has it
+		// (A9, decision 21.10).
+		"next": "The stack is BILLABLE: show the user the steps and the cost, and on explicit approval call stack_apply with this job_id and confirmed=true.",
 	}
+	if s.readOnly {
+		out["next"] = "Show the user the steps and the cost; creating the stack (stack_apply) needs a server without --read-only."
+	}
+	// message, the field of 1.2, says the same until 2.0 (--json is kept
+	// within a major, RELEASING).
+	out["message"] = out["next"]
 	if len(s3Notes) > 0 {
 		out["s3"] = s3Notes
 	}
@@ -744,7 +753,7 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.T("stack_apply provisions BILLABLE resources.",
-			"stack_apply создаёт ПЛАТНЫЕ ресурсы.")}), true
+			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", nil, nil)}), true
 	}
 	unlock, err := s.lockJob(id)
 	if err != nil {

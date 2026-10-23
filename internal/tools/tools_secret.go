@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/secret"
 )
@@ -108,6 +109,8 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 			"status": "confirmation_required",
 			"message": i18n.Tf("secret_create stores a new secret at %q. (The value is never echoed back.)",
 				"secret_create сохраняет новый секрет по пути %q. (Значение в ответе не возвращается.)", path),
+			// The path only: the value never goes into a preview.
+			"preview": willPreview(engine.ResourceSecret, path, "", nil, nil),
 		}), true
 	}
 	cli, err := s.secretClient(ctx)

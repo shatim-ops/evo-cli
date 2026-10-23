@@ -18,32 +18,39 @@ import (
 // resolveSnatZone turns an optional zone name / explicit availability_zone_id
 // into a concrete zone UUID, defaulting to the configured region (the AZ the
 // deploy stack targets). Returns the zone id.
-func (s *Registry) resolveSnatZone(ctx context.Context, args map[string]any) (string, error) {
-	if id := stringArg(args, "availability_zone_id"); id != "" {
-		return id, nil
-	}
+func (s *Registry) resolveSnatZone(ctx context.Context, args map[string]any) (id, name string, err error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	// A zone name was given → resolve it to a UUID.
-	if name := stringArg(args, "zone"); name != "" {
+	if name := stringArg(args, "zone"); name != "" && stringArg(args, "availability_zone_id") == "" {
 		zs, e := eng.Cloud.ListAvailabilityZones(ctx)
 		if e != nil {
-			return "", e
+			return "", "", e
 		}
 		for _, z := range zs {
 			if z.Name == name {
-				return z.ID, nil
+				return z.ID, z.Name, nil
 			}
 		}
-		return "", fmt.Errorf(i18n.T("availability zone %q not found", "зона доступности %q не найдена"), name)
+		return "", "", fmt.Errorf(i18n.T("availability zone %q not found", "зона доступности %q не найдена"), name)
 	}
-	// Default: the configured region (CLOUDRU_REGION = the AZ UUID).
-	if eng.Config.Region != "" {
-		return eng.Config.Region, nil
+	// The id given, else the configured region (CLOUDRU_REGION = the AZ
+	// UUID); its name for the preview of the billable gateway (FB123-2),
+	// none when the zones cannot be read.
+	id = firstNonEmptyStr(stringArg(args, "availability_zone_id"), eng.Config.Region)
+	if id == "" {
+		return "", "", errors.New(i18n.T("no zone: pass 'zone' (name) or 'availability_zone_id', or set the region", "зона не задана: передайте 'zone' (имя) или 'availability_zone_id' либо задайте region"))
 	}
-	return "", errors.New(i18n.T("no zone: pass 'zone' (name) or 'availability_zone_id', or set the region", "зона не задана: передайте 'zone' (имя) или 'availability_zone_id' либо задайте region"))
+	if zs, e := eng.Cloud.ListAvailabilityZones(ctx); e == nil {
+		for _, z := range zs {
+			if z.ID == id {
+				return id, z.Name, nil
+			}
+		}
+	}
+	return id, "", nil
 }
 
 // handleSnatList lists SNAT gateways (outbound-internet egress for private
@@ -81,7 +88,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	if err := provision.ValidName(i18n.T("SNAT gateway", "SNAT-шлюза"), name); err != nil {
 		return errResult(err), true
 	}
-	zoneID, err := s.resolveSnatZone(ctx, args)
+	zoneID, zoneName, err := s.resolveSnatZone(ctx, args)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -114,7 +121,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 			"message": i18n.T("snat_create makes a billable SNAT gateway.",
 				"snat_create создаёт платный шлюз SNAT."),
 			"will_create": will,
-			"preview":     willPreview(engine.ResourceSNAT, name, "", will, []string{"nat_type", "availability_zone_id"}),
+			"preview":     willPreview(engine.ResourceSNAT, name, zoneName, will, []string{"nat_type", "availability_zone_id"}),
 		}), true
 	}
 

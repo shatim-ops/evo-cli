@@ -122,6 +122,7 @@ func (s *Registry) handleS3Put(ctx context.Context, args map[string]any) (string
 			"status": "confirmation_required",
 			"message": i18n.Tf("s3_put will upload %d bytes to s3://%s/%s, overwriting the object if it exists.",
 				"s3_put загрузит %d байт в s3://%s/%s и перезапишет объект, если он есть.", len(data), bucket, key),
+			"preview": willPreview(engine.ResourceS3Object, "s3://"+bucket+"/"+key, "", map[string]any{"size_bytes": len(data)}, []string{"size_bytes"}),
 		}), true
 	}
 	cli, err := s.s3Client()

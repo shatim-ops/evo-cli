@@ -64,7 +64,11 @@ CLI показывает тот же `message` и вместо неё подск
 но отдают секрет открытым текстом (расшифрованное значение, закрытый ключ):
 без `confirmed=true` они отвечают тем же `confirmation_required`, а в
 `tools/list` у них нет `readOnlyHint` (и `destructiveHint: false`), чтобы
-клиент не одобрял их как чтения без вопроса. Аннотации — подсказка, гейт
+клиент не одобрял их как чтения без вопроса. `stack_status` и
+`k8s_kubeconfig` согласия не просят, но и не чтения: `stack_status` двигает
+стек (его следующие шаги создают ресурсы), `k8s_kubeconfig` выпускает токен
+кластера; у них нет `readOnlyHint` и `idempotentHint`, `destructiveHint:
+false` (с 1.3). Аннотации — подсказка, гейт
 `confirmed=true` от них не зависит. CLI ведёт себя так же (`--yes`, `--dry-run`, код выхода `3`, см.
 [README](../README.md#подтверждения)).
 
@@ -133,7 +137,7 @@ JSON-RPC `-32602` с сообщением `Unknown tool: <имя>`, как тр�
 
 ## Цена
 
-Превью ресурса, цену которого evo не рассчитывает (кластеры Managed Kubernetes и PostgreSQL, группы узлов, бакеты, расширение диска), не оставляет агента без цены и без источника: `preview.cost` нет, `preview.cost_note` говорит, что ресурс платный, а `preview.tariff_url` — публичный тариф Cloud.ru (`https://cloud.ru/documents/tariffs/evolution/managed-kubernetes` и т. п.). У плагина кластера своей цены нет: он работает на узлах кластера (с 1.2.1).
+Превью ресурса, цену которого evo не рассчитывает (кластеры Managed Kubernetes и PostgreSQL, группы узлов, бакеты, расширение диска), не оставляет агента без цены и без источника: `preview.cost` нет, `preview.cost_note` говорит, что ресурс платный, а `preview.tariff_url` — публичный тариф Cloud.ru (`https://cloud.ru/documents/tariffs/evolution/managed-kubernetes` и т. п.). У плагина кластера своей цены нет: он работает на узлах кластера (с 1.2.1). С 1.3 так же — превью зоны DNS (`evolution-dns`), загрузки объекта `s3_put` (`object-storage`), образа, секрета, VPC и маршрута, резервной копии PostgreSQL, группы целей и `stack_apply`. Если ни в одном тарифе Evolution нет строки для такого ресурса (образ, секрет, VPC, маршрут — своего тарифа нет; резервная копия и группа целей — нет строки в тарифе продукта), `tariff_url` ведёт на ближайший тариф или на список тарифов Evolution, а `cost_note` прямо говорит, что строки нет, и просит считать ресурс платным. У `stack_apply` каждый ресурс стека — по своему тарифу, их перечисляет `stack_plan`.
 
 С 1.2.3 так же — реестры Artifact Registry (`ar_create`), приложения Container Apps (`ca_deploy`), кластеры Managed Kafka и Redis (`kafka_create`, `redis_create`), балансировщики (`lb_create`) и шлюзы SNAT (`snat_create`, тариф Compute). Предупреждения инструмента до согласия — контейнер от root, один брокер Kafka, все хосты Redis в одной зоне — ещё и в `preview.warnings` (массив строк); прежние поля ответа (`warning`, `warnings`, `will_create`) не изменились.
 

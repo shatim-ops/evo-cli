@@ -133,6 +133,34 @@ var stackID = regexp.MustCompile(`stk-[0-9a-f]{6,}`)
 // sameVolatile, and the id of a planned stack.
 func roSame(s string) string { return stackID.ReplaceAllString(sameVolatile(s), "stk-…") }
 
+// roStackPlanNext is the stack_plan answer of a --read-only server (ro) and
+// of one without the flag (plain), each without next and message (its
+// copy until 2.0): the read-only one says stack_apply needs another
+// server, the other asks for consent (A9). why says what is not.
+func roStackPlanNext(ro, plain string) (string, string, string) {
+	r, p := parseObject(ro), parseObject(plain)
+	if r == nil || p == nil {
+		return ro, plain, ""
+	}
+	var why []string
+	if next, _ := r["next"].(string); !strings.Contains(next, "--read-only") {
+		why = append(why, "the read-only next does not name --read-only")
+	}
+	if next, _ := p["next"].(string); !strings.Contains(next, "confirmed=true") {
+		why = append(why, "next without --read-only asks for no consent")
+	}
+	for _, m := range []map[string]any{r, p} {
+		if m["message"] != m["next"] {
+			why = append(why, "message is not next")
+		}
+		delete(m, "next")
+		delete(m, "message")
+	}
+	rb, _ := json.Marshal(r)
+	pb, _ := json.Marshal(p)
+	return string(rb), string(pb), strings.Join(why, "; ")
+}
+
 // roUnsavedPlan is the deploy_plan answer of a --read-only server (ro) and
 // of one without the flag (plain), each without what saving the plan adds
 // (break 1.2, B12-9): the read-only plan is the same plan, priced the same,
@@ -377,6 +405,12 @@ func roCase(t *testing.T, srv roServers, w parityWorld, tl tools.Tool, args map[
 			if tl.Name == "deploy_plan" {
 				var why string
 				if a.text, want, why = roUnsavedPlan(a.text, want); why != "" {
+					bad = append(bad, tl.Name+" over "+surface+": "+why)
+				}
+			}
+			if tl.Name == "stack_plan" {
+				var why string
+				if a.text, want, why = roStackPlanNext(a.text, want); why != "" {
 					bad = append(bad, tl.Name+" over "+surface+": "+why)
 				}
 			}

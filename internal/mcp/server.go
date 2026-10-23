@@ -93,11 +93,19 @@ type Annotations struct {
 // reveals a secret (tools.IsSensitive: secret_value, cert_private_key) is
 // not read-only, so the client asks the person before the call; it changes
 // nothing, so it is idempotent and says destructiveHint false (the default
-// of a tool that is not read-only is true).
+// of a tool that is not read-only is true). A read with side effects
+// (tools.HasSideEffects: stack_status, k8s_kubeconfig) is neither
+// read-only nor idempotent, and destroys nothing.
 func annotations(t tools.Tool) Annotations {
 	if tools.IsSensitive(t) {
 		d := false
 		return Annotations{DestructiveHint: &d, IdempotentHint: true}
+	}
+	// Not a read although it takes no consent (tools.HasSideEffects): the
+	// stack advances, a token is minted; nothing is destroyed.
+	if tools.HasSideEffects(t) {
+		d := false
+		return Annotations{DestructiveHint: &d}
 	}
 	a := Annotations{ReadOnlyHint: !t.Mutating, IdempotentHint: !t.Mutating}
 	if t.Mutating {
