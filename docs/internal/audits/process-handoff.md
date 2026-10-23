@@ -122,7 +122,10 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 - **Миры** (`internal/cli`): `withParityWorld` (превью, считает записи),
   `withJSONWorld` (ответы, S3, kubectl/helm), мир двойников (#236);
   `TestParityWorlds_NoProductionWaits` держит все ожидания мира в
-  миллисекундах.
+  миллисекундах. Запрос без фикстуры роняет тест и называет себя (метод, хост,
+  путь с `{id}`): ответ — в `parityAnswers`, пустой список нарочно — строкой
+  с причиной в `parityEmptyLists` (только GET списков,
+  `TestParityWorld_EmptyListsAreLists`; дельта-аудит 1.2.3).
 - **Матрица сбоев** (`internal/tools/fault_*_test.go`; замысел и история —
   `process-1.2.1-stages.md`, этап 6, п. 6.1): новый изменяющий
   инструмент — случай `apiCase`/`computeCase` или строка `faultMatrixOut` с

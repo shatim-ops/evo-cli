@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -300,6 +302,9 @@ type parityRT struct {
 	extra  func(r *http.Request) (*http.Response, error)
 	mu     sync.Mutex
 	writes []string
+	// unknown are the requests no fixture answers (parityAnswers,
+	// parityEmptyLists): withParityWorld fails the test on them.
+	unknown map[string]bool
 }
 
 // takeWrites returns the writes recorded since the last call.
@@ -324,11 +329,11 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	switch r.URL.Host {
 	case "mk8s.api.cloud.ru":
-		return p.addon.RoundTrip(r)
+		return p.noPath(r)(p.addon.RoundTrip(r))
 	case "postgresql.api.cloud.ru":
-		return pgParity(r)
+		return p.noPath(r)(pgParity(r))
 	case "kafka.api.cloud.ru", "redis.api.cloud.ru":
-		return dbaasParity(r)
+		return p.noPath(r)(dbaasParity(r))
 	case "compute.api.cloud.ru":
 		if w := computeParity(r); w != nil {
 			return w.Result(), nil
@@ -341,7 +346,125 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 			return contractRT{status: 200, body: `{"routes":[{"id":"` + parityVM + `","subnet":"198.51.100.0/24"}]}`}.RoundTrip(r)
 		}
 	}
+	key := parityRequest(r)
+	if body, ok := parityAnswers[key]; ok {
+		return contractRT{status: 200, body: body}.RoundTrip(r)
+	}
+	if _, ok := parityEmptyLists[key]; !ok {
+		p.markUnknown(key)
+	}
 	return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(r)
+}
+
+func (p *parityRT) markUnknown(key string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.unknown == nil {
+		p.unknown = map[string]bool{}
+	}
+	p.unknown[key] = true
+}
+
+// noPath names the requests the fakes of one API (mk8s, PostgreSQL, Kafka
+// and Redis) answer 404 for want of a path: since D26 a 404 on a delete is
+// «already deleted», code 0, and would pass as silently as an empty list.
+func (p *parityRT) noPath(r *http.Request) func(*http.Response, error) (*http.Response, error) {
+	return func(resp *http.Response, err error) (*http.Response, error) {
+		if err == nil && resp.StatusCode == http.StatusNotFound {
+			p.markUnknown(parityRequest(r))
+		}
+		return resp, err
+	}
+}
+
+// takeUnknown returns the requests no fixture answers, sorted.
+func (p *parityRT) takeUnknown() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []string
+	for k := range p.unknown {
+		out = append(out, k)
+	}
+	p.unknown = nil
+	sort.Strings(out)
+	return out
+}
+
+var uuidInPath = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+
+// parityRequest names a request as the fixtures do: the method, the host and
+// the path with every ID as {id}.
+func parityRequest(r *http.Request) string {
+	return r.Method + " " + r.URL.Host + uuidInPath.ReplaceAllString(r.URL.Path, "{id}")
+}
+
+// parityObject is one resource of the world: the fields the tools read
+// first, in the shape most Cloud.ru APIs use.
+const parityObject = `{"id":"` + parityVM + `","name":"web","status":"ACTIVE","state":"ACTIVE"}`
+
+// parityAnswers answer the reads of one resource and the writes that the
+// fixtures above do not model: an empty list there would be no resource at
+// all, and a tool that misreads it would still pass parity (delta audit
+// 1.2.3). A request neither here, in the fixtures nor in parityEmptyLists
+// fails the test that made it (withParityWorld).
+var parityAnswers = map[string]string{
+	// Reachability probes of doctor and whoami.
+	"GET compute.api.cloud.ru/": `{}`,
+	"GET iam.api.cloud.ru/":     `{}`,
+	// One resource.
+	"GET billing.api.cloud.ru/v1/agreement/{id}":                                    `{"balance":1000,"active":true}`,
+	"GET ar.api.cloud.ru/v1/registries/{id}":                                        parityObject,
+	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}":                       parityObject,
+	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}:usage":                 `{"usage":[]}`,
+	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/version/0:private_key": `{"private_key":"-----BEGIN PRIVATE KEY-----\nparity\n-----END PRIVATE KEY-----\n"}`,
+	"GET certificatemanager.api.cloud.ru/v1/operation/{id}":                         jsonOp,
+	"GET compute.api.cloud.ru/api/v1/disks/{id}":                                    `{"id":"` + parityVM + `","name":"old","size":20,"state":"available"}`,
+	"GET compute.api.cloud.ru/api/v1/floating-ips/{id}":                             `{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`,
+	"GET containers.api.cloud.ru/v2/containers/app":                                 `{"name":"app","status":"RUNNING"}`,
+	"GET dns.api.cloud.ru/v1/publicRecordsSole/{id}":                                `{"id":"` + parityVM + `","name":"www","type":"A","values":["192.0.2.5"]}`,
+	"GET dns.api.cloud.ru/v1/publicZones/{id}":                                      `{"id":"` + parityVM + `","name":"example","domain":"example.com.","state":"ok"}`,
+	"GET nlb.api.cloud.ru/v2/networkLoadBalancers/{id}":                             parityObject,
+	"GET nlb.api.cloud.ru/v2/targetGroups/{id}":                                     parityObject,
+	"GET secretmanager.api.cloud.ru/v2/secret/app/db":                               `{"secret":{"id":"` + parityVM + `","path":"app/db"}}`,
+	"GET vpc.api.cloud.ru/v1/vpcs/{id}":                                             parityObject,
+	// Writes: the operation or the empty body the API answers with.
+	"DELETE certificatemanager.api.cloud.ru/v1/certificate/{id}":     jsonOp,
+	"POST certificatemanager.api.cloud.ru/v1/certificate/{id}:renew": jsonOp,
+	"DELETE compute.api.cloud.ru/api/v1/disks/{id}":                  `{}`,
+	"PUT compute.api.cloud.ru/api/v1/disks/{id}":                     `{}`,
+	"POST compute.api.cloud.ru/api/v1/disks/{id}/attach":             `{}`,
+	"POST compute.api.cloud.ru/api/v1/disks/{id}/detach":             `{}`,
+	"DELETE compute.api.cloud.ru/api/v1/floating-ips/{id}":           `{}`,
+	"DELETE compute.api.cloud.ru/api/v1/images/{id}":                 `{}`,
+	"DELETE compute.api.cloud.ru/api/v1/nat-gateways/{id}":           `{}`,
+	"DELETE secretmanager.api.cloud.ru/v2/secret/app/db":             `{}`,
+	"POST secretmanager.api.cloud.ru/v2/version":                     `{"version":{"id":"` + parityVM + `","secret_id":"` + parityVM + `"}}`,
+}
+
+// parityEmptyLists are the lists the world leaves empty on purpose: the
+// answer {"items":[],"total":0} is the model, and the reason says why
+// nothing in it is enough for the tool. Only lists (a GET whose last segment
+// is no {id} and no :action, TestParityWorld_EmptyListsAreLists).
+var parityEmptyLists = map[string]string{
+	"GET ar.api.cloud.ru/v1/registries":                                "the project has no registry yet: ar_create's name is free",
+	"GET audit.api.cloud.ru/events/list/{id}":                          "no audit events: the answer is the empty page on both surfaces",
+	"GET certificatemanager.api.cloud.ru/v1/certificate":               "no certificate yet: cert_import and cert_issue_le names are free",
+	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/versions": "no versions: cert_get lists none",
+	"GET compute.api.cloud.ru/api/v1/images":                           "no private image: image_create's name is free, image_list empty",
+	"GET compute.api.cloud.ru/api/v1/security-groups/{id}/rules":       "a group without rules: open_ports adds them all",
+	"GET containers.api.cloud.ru/v2/containers":                        "no container app yet: ca_deploy's name is free",
+	"GET containers.api.cloud.ru/v2/containers/app/logs":               "no log lines",
+	"GET iam.api.cloud.ru/api/v2/serviceAccounts":                      "no service account: sa_list empty",
+	"GET monitoring.api.cloud.ru/v1/{id}/export_metrics":               "no metrics",
+	"GET monitoring.api.cloud.ru/v2/{id}/scrape_metrics":               "no metrics",
+	"GET nlb.api.cloud.ru/v2/networkLoadBalancers":                     "no balancer yet: lb_create's name is free",
+	"GET nlb.api.cloud.ru/v2/targetGroups":                             "no target group yet: tg_create's name is free",
+	"GET organization.api.cloud.ru/v2/consumption":                     "no consumption in the period",
+	"GET organization.api.cloud.ru/v3/projects":                        "no other project: org_projects empty",
+	"GET organization.api.cloud.ru/v3/quotas/usages":                   "no quota usage rows",
+	"GET secretmanager.api.cloud.ru/v2/secret":                         "no secret yet: secret_create's path is free",
+	"GET secretmanager.api.cloud.ru/v2/version/app/db":                 "no version of the secret: secret_value finds none",
+	"GET vpc.api.cloud.ru/v1/vpcs":                                     "no VPC yet: vpc_create's name is free",
 }
 
 // parityNIC is the network interface of the VM parityVM.
