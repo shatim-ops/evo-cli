@@ -46,6 +46,15 @@ jobs:
         env:
           GORACE: atexit_sleep_ms=0
 
+      # Ожидание, которое тест задаёт в миллисекундах, а успеха ждёт после
+      # N опросов, решает таймер: на Windows его тик — 15,6 мс (#277,
+      # случайно пойман на #283). Миры engine и tools — 20 раз подряд на
+      # Windows, без -race: рантайм Go под -race там падает сам
+      # (process-handoff.md, «CI не от diff») и заслонил бы такие тесты.
+      - name: миры engine и tools ×20 (тик таймера Windows)
+        if: runner.os == 'Windows'
+        run: go test -count=20 -shuffle=on ./internal/engine/ ./internal/tools/
+
   # Красное — в issue (weekly-issue.yml).
   report:
     needs: race
@@ -55,4 +64,4 @@ jobs:
     uses: ./.github/workflows/weekly-issue.yml
     with:
       title: "weekly-race: нестабильный тест на main"
-      what: "go test -race -count=3 -shuffle=on упал. Зерно -shuffle — в логе job; -shuffle=<зерно> повторяет порядок."
+      what: "go test -race -count=3 -shuffle=on или прогон миров ×20 на Windows упал. Зерно -shuffle — в логе job; -shuffle=<зерно> повторяет порядок."

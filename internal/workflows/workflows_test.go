@@ -379,6 +379,14 @@ func TestWorkflows_WeeklyRace(t *testing.T) {
 	if !runsStep(w, "go test -race -count=3 -shuffle=on ./...") {
 		t.Error("weekly-race: no go test -race -count=3 -shuffle=on")
 	}
+	// A wait the test gives in milliseconds while it expects success after
+	// a number of polls decides by the timer: Windows ticks at 15.6 ms
+	// (#277, found on #283 by chance). The worlds of engine and tools run
+	// many times on Windows, without -race: the Go runtime under -race
+	// crashes there on its own (process-handoff.md) and would hide them.
+	if !runsStep(w, "go test -count=20 -shuffle=on ./internal/engine/ ./internal/tools/") {
+		t.Error("weekly-race: the worlds of engine and tools do not run many times on Windows")
+	}
 }
 
 // The cleanup of cloud-e2e removes an «evo:» rule of an e2e port only when
