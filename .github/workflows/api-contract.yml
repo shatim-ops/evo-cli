@@ -15,6 +15,7 @@ on:
     paths:
       - "scripts/api-contract*"
       - "scripts/cloudru-specs.py"
+      - "scripts/cloudru-specs-test.py"
       # Сверка покрытия читает весь internal/**/*.go: новый запрос в любом
       # пакете без записи в описи валит проверку.
       - "internal/**/*.go"
@@ -37,6 +38,10 @@ jobs:
 
       - name: Зависимости
         run: python3 -m pip install --quiet pyyaml
+
+      # Повторы загрузки — без сети, на фейке сайта.
+      - name: Тесты загрузки спецификаций
+        run: python3 scripts/cloudru-specs-test.py
 
       # Без спецификаций: каждый путь API из internal/**/*.go есть в описи.
       # Идёт до скачивания, чтобы не пропускаться, когда cloud.ru/docs
@@ -73,14 +78,19 @@ jobs:
         id: specs
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          # Сайт документации иногда рвёт соединение: до трёх попыток.
-          for i in 1 2 3; do
-            if python3 scripts/cloudru-specs.py .cache/cloudru-specs; then
-              echo "complete=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            sleep $((i * 20))
-          done
+          # Сайт документации иногда рвёт соединение: скрипт сам повторяет
+          # только недостающие сервисы (ROUNDS). Срок загрузки — 10 минут,
+          # меньше срока job: в PR медленный сайт даёт «сверка пропущена»,
+          # а не отмену job (#245, #217).
+          status=0
+          timeout 600 python3 scripts/cloudru-specs.py .cache/cloudru-specs || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "complete=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$status" -eq 124 ]; then
+            echo "::warning::загрузка спецификаций не уложилась в 10 минут"
+          fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "::warning::не удалось скачать все спецификации с cloud.ru/docs — сверка пропущена"
             echo "skip=true" >> "$GITHUB_OUTPUT"
