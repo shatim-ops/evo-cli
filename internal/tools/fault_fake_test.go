@@ -124,7 +124,8 @@ type faultFIP struct {
 	State   string
 	VMID    string
 	deleted bool
-	// settle and untilVM: see faultCloud.fipSettle.
+	// settle and untilVM: see faultCloud.fipSettle. Until they run out
+	// reads show "creating"; State is the state once settled.
 	settle  int
 	untilVM bool
 }
