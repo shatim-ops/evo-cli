@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/evo /usr/local/bin/evo
-LABEL org.opencontainers.image.title="Cloud.ru Evolution CLI CREW edition" \
+LABEL org.opencontainers.image.title="evo CMCP" \
       org.opencontainers.image.authors="Timur Shakirbekov, Cloud.ru" \
       org.opencontainers.image.vendor="Cloud.ru" \
       org.opencontainers.image.source="https://github.com/shatim-ops/evo-cli" \

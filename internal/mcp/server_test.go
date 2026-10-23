@@ -101,7 +101,7 @@ func TestInitialize(t *testing.T) {
 	}
 	// The display name is the title; the name stays "evo" for clients
 	// that key their config on it.
-	if info["name"] != "evo" || info["title"] != "Cloud.ru Evolution CLI CREW edition" {
+	if info["name"] != "evo" || info["title"] != "evo CMCP" {
 		t.Errorf("serverInfo: name %v, title %v", info["name"], info["title"])
 	}
 	if _, ok := result["capabilities"].(map[string]any)["tools"]; !ok {

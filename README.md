@@ -1,8 +1,8 @@
-# Cloud.ru Evolution CLI CREW edition
+# evo CMCP — CLI и MCP-сервер для Cloud.ru Evolution
 
-> Команда — `evo`. Эта редакция — для тестирования внутри Cloud.ru и сбора
-> обратной связи: в Telegram [@shatim](https://t.me/shatim) и в
-> [чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni).
+**CREW edition** — редакция для тестирования внутри Cloud.ru и сбора
+обратной связи: в Telegram [@shatim](https://t.me/shatim) и в
+[чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni). Команда — `evo`.
 
 Уязвимость — не в Issues, а приватным отчётом: [SECURITY.md](SECURITY.md).
 

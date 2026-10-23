@@ -219,16 +219,15 @@
 
 ## evo
 
-Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ### Synopsis
 
 ```text
-Cloud.ru Evolution CLI CREW edition (evo)
+evo CMCP — CLI и MCP-сервер для Cloud.ru Evolution
 
-CLI и MCP-сервер для Cloud.ru Evolution: развёртывание docker-compose проектов
-на ВМ и управление ресурсами облака: ВМ, диски, сети, Kubernetes, PostgreSQL,
-Object Storage, секреты.
+Развёртывание docker-compose проектов на ВМ и управление ресурсами облака:
+ВМ, диски, сети, Kubernetes, PostgreSQL, Object Storage, секреты.
 
 Сообщения по-английски: EVO_LANG=en.
 
@@ -323,7 +322,7 @@ evo agent [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo agent setup](#evo-agent-setup)	 - Добавить MCP-сервер evo в настройки MCP-клиента
 * [evo agent skill](#evo-agent-skill)	 - Правила работы с evo для ИИ-агента (SKILL.md)
 
@@ -500,7 +499,7 @@ evo ar [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo ar create](#evo-ar-create)	 - Создать реестр Artifact Registry (платно, асинхронно)
 * [evo ar delete](#evo-ar-delete)	 - Удалить реестр вместе с артефактами (асинхронно)
 * [evo ar get](#evo-ar-get)	 - Реестр Artifact Registry по ID: все сведения
@@ -783,7 +782,7 @@ evo audit [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo audit events](#evo-audit-events)	 - Журнал аудита проекта: кто, что и когда сделал
 
 ## evo audit events
@@ -867,7 +866,7 @@ evo billing [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo billing balance](#evo-billing-balance)	 - Баланс по договору: сумма в рублях, признак активности
 * [evo billing consumption](#evo-billing-consumption)	 - Стоимость потребления за период по сервисам: по договору или по проекту
 * [evo billing finops](#evo-billing-finops)	 - Отчёт FinOps: распределение затрат, аномалии, темп расходов, запас баланса
@@ -1052,7 +1051,7 @@ evo ca [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo ca delete](#evo-ca-delete)	 - Удалить приложение Container Apps (асинхронно)
 * [evo ca deploy](#evo-ca-deploy)	 - Развернуть приложение Container Apps из образа контейнера (асинхронно)
 * [evo ca get](#evo-ca-get)	 - Приложение Container Apps по имени: состояние, публичный URL
@@ -1445,7 +1444,7 @@ evo cert [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo cert delete](#evo-cert-delete)	 - Удалить сертификат (безвозвратно)
 * [evo cert get](#evo-cert-get)	 - Сертификат по ID: метаданные, основная версия, срок действия, состояние
 * [evo cert import](#evo-cert-import)	 - Загрузить в Certificate Manager свой сертификат и закрытый ключ
@@ -1999,7 +1998,7 @@ evo completion [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo completion bash](#evo-completion-bash)	 - Скрипт автодополнения для bash
 * [evo completion fish](#evo-completion-fish)	 - Скрипт автодополнения для fish
 * [evo completion powershell](#evo-completion-powershell)	 - Скрипт автодополнения для powershell
@@ -2286,7 +2285,7 @@ evo configure [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo configure delete](#evo-configure-delete)	 - Удалить сохранённый профиль и его токен из кэша
 * [evo configure list](#evo-configure-list)	 - Сохранённые профили
 
@@ -2414,7 +2413,7 @@ evo deploy [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo deploy apply](#evo-deploy-apply)	 - Шаг 2 мастера развёртывания: выполнить рассчитанный план
 * [evo deploy list](#evo-deploy-list)	 - Локальные записи развёртываний этого проекта
 * [evo deploy plan](#evo-deploy-plan)	 - Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая
@@ -2631,7 +2630,7 @@ evo destroy [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo disk
 
@@ -2662,7 +2661,7 @@ evo disk [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo disk attach](#evo-disk-attach)	 - Подключить диск к ВМ (диск и ВМ должны быть в одной зоне)
 * [evo disk create](#evo-disk-create)	 - Создать диск (с --attach-to — в зоне ВМ и сразу подключить)
 * [evo disk delete](#evo-disk-delete)	 - Удалить диск и все данные на нём (безвозвратно)
@@ -3011,7 +3010,7 @@ evo dns [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo dns operation](#evo-dns-operation)	 - Состояние асинхронной операции DNS
 * [evo dns record-create](#evo-dns-record-create)	 - Добавить запись DNS в зону (асинхронно)
 * [evo dns record-delete](#evo-dns-record-delete)	 - Удалить запись DNS (асинхронно)
@@ -3524,7 +3523,7 @@ evo doctor [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo iam
 
@@ -3555,7 +3554,7 @@ evo iam [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo iam service-accounts](#evo-iam-service-accounts)	 - Сервисные аккаунты IAM проекта
 
 ## evo iam service-accounts
@@ -3635,7 +3634,7 @@ evo image [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo image create](#evo-image-create)	 - Создать образ ВМ из загрузочного диска (платно, асинхронно)
 * [evo image delete](#evo-image-delete)	 - Удалить образ ВМ
 * [evo image get](#evo-image-get)	 - Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ
@@ -3911,7 +3910,7 @@ evo init [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo k8s
 
@@ -3942,7 +3941,7 @@ evo k8s [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo k8s add-addon](#evo-k8s-add-addon)	 - Установить плагин в кластер (асинхронно; версия по умолчанию — последняя активная)
 * [evo k8s add-nodepool](#evo-k8s-add-nodepool)	 - Добавить группу рабочих узлов (платно, асинхронно)
 * [evo k8s addon-versions](#evo-k8s-addon-versions)	 - Версии плагина: режим поддержки, требования к кластеру, схема настроек
@@ -4703,7 +4702,7 @@ evo kafka [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo kafka create](#evo-kafka-create)	 - Создать кластер Managed Kafka (платно, асинхронно)
 * [evo kafka delete](#evo-kafka-delete)	 - Удалить кластер Kafka вместе с данными (асинхронно)
 * [evo kafka get](#evo-kafka-get)	 - Кластер Kafka по ID: состояние, адреса, брокеры, версия
@@ -5092,7 +5091,7 @@ evo lb [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo lb create](#evo-lb-create)	 - Создать балансировщик L4 перед группой целей (платно, асинхронно)
 * [evo lb delete](#evo-lb-delete)	 - Удалить балансировщик (асинхронно)
 * [evo lb get](#evo-lb-get)	 - Балансировщик по ID: правила, обработчики, адреса, зоны
@@ -5393,7 +5392,7 @@ evo logs [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo marketplace
 
@@ -5424,7 +5423,7 @@ evo marketplace [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo marketplace list](#evo-marketplace-list)	 - Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания
 
 ## evo marketplace list
@@ -5585,7 +5584,7 @@ evo mcp [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo metrics
 
@@ -5616,7 +5615,7 @@ evo metrics [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo metrics history](#evo-metrics-history)	 - История метрики за недавний период (Service Monitoring)
 * [evo metrics scrape](#evo-metrics-scrape)	 - Текущие значения метрик в текстовом формате Prometheus
 
@@ -5746,7 +5745,7 @@ evo org [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo org projects](#evo-org-projects)	 - Проекты Cloud.ru, которые видит ключ доступа
 * [evo org quotas](#evo-org-quotas)	 - Квоты: ресурс, лимит, текущее использование
 
@@ -5875,7 +5874,7 @@ evo pg [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo pg backup-create](#evo-pg-backup-create)	 - Создать резервную копию вручную (асинхронно)
 * [evo pg backups](#evo-pg-backups)	 - Резервные копии кластера
 * [evo pg create](#evo-pg-create)	 - Создать кластер PostgreSQL (платно, асинхронно)
@@ -6590,7 +6589,7 @@ evo project [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo project list](#evo-project-list)	 - Проекты, которые видит ключ (* — активный)
 * [evo project use](#evo-project-use)	 - Сделать проект проектом профиля по умолчанию
 
@@ -6713,7 +6712,7 @@ evo redis [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo redis create](#evo-redis-create)	 - Создать кластер Managed Redis (платно, асинхронно)
 * [evo redis delete](#evo-redis-delete)	 - Удалить кластер Redis вместе с данными (асинхронно)
 * [evo redis get](#evo-redis-get)	 - Кластер Redis по ID: состояние, адреса, тип, шарды, реплики
@@ -7105,7 +7104,7 @@ evo s3 [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo s3 bucket-create](#evo-s3-bucket-create)	 - Создать бакет
 * [evo s3 bucket-delete](#evo-s3-bucket-delete)	 - Удалить пустой бакет
 * [evo s3 buckets](#evo-s3-buckets)	 - Бакеты Object Storage
@@ -7457,7 +7456,7 @@ evo secret [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo secret add-version](#evo-secret-add-version)	 - Добавить новую версию значения секрета (ротация)
 * [evo secret create](#evo-secret-create)	 - Создать секрет
 * [evo secret delete](#evo-secret-delete)	 - Удалить секрет со всеми версиями
@@ -7763,7 +7762,7 @@ evo snat [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo snat create](#evo-snat-create)	 - Создать публичный SNAT-шлюз: исходящий интернет для подсетей зоны (платно)
 * [evo snat delete](#evo-snat-delete)	 - Удалить SNAT-шлюз (узлы зоны теряют исходящий интернет)
 * [evo snat list](#evo-snat-list)	 - SNAT-шлюзы проекта
@@ -7949,7 +7948,7 @@ evo stack [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo stack apply](#evo-stack-apply)	 - Создать ресурсы спланированного стека (платно)
 * [evo stack destroy](#evo-stack-destroy)	 - Удалить все ресурсы стека (безвозвратно)
 * [evo stack plan](#evo-stack-plan)	 - Спланировать стек ресурсов по одному манифесту (ничего не создаёт)
@@ -8209,7 +8208,7 @@ evo status [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo tg
 
@@ -8240,7 +8239,7 @@ evo tg [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo tg create](#evo-tg-create)	 - Создать группу целей балансировщика (асинхронно)
 * [evo tg delete](#evo-tg-delete)	 - Удалить группу целей (асинхронно)
 * [evo tg get](#evo-tg-get)	 - Группа целей по ID: ВМ, VPC, состояние
@@ -8491,7 +8490,7 @@ evo tools [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo tools call](#evo-tools-call)	 - Вызвать инструмент и напечатать его ответ (JSON)
 * [evo tools describe](#evo-tools-describe)	 - Описание и аргументы инструмента
 * [evo tools list](#evo-tools-list)	 - Список инструментов: имя, группа, меняет ли что-то, описание
@@ -8697,7 +8696,7 @@ evo verify [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo version
 
@@ -8730,7 +8729,7 @@ evo version [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo vm
 
@@ -8761,7 +8760,7 @@ evo vm [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo vm create](#evo-vm-create)	 - Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip)
 * [evo vm delete](#evo-vm-delete)	 - Удалить ВМ и все данные на ней (безвозвратно)
 * [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цены за месяц
@@ -9102,7 +9101,7 @@ evo vpc [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo vpc create](#evo-vpc-create)	 - Создать VPC (асинхронно)
 * [evo vpc delete](#evo-vpc-delete)	 - Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы)
 * [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Привязать свободный floating IP к основному интерфейсу ВМ
@@ -9777,4 +9776,4 @@ evo whoami [flags]
 
 ### SEE ALSO
 
-* [evo](#evo)	 - Cloud.ru Evolution CLI CREW edition: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов

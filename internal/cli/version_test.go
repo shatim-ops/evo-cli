@@ -67,7 +67,7 @@ func TestPrintVersion_Text(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := buf.String()
-	for _, want := range []string{"Cloud.ru Evolution CLI CREW edition (evo) 1.0.0-rc.1\n", "abc123", "2026-10-14T12:00:00Z", "go1.26.9", "linux/amd64"} {
+	for _, want := range []string{"evo CMCP 1.0.0-rc.1\n", "abc123", "2026-10-14T12:00:00Z", "go1.26.9", "linux/amd64"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
@@ -84,7 +84,7 @@ func TestPrintVersion_JSON(t *testing.T) {
 		t.Fatalf("not one JSON object: %v: %q", err, buf.String())
 	}
 	want := map[string]string{
-		"product": "Cloud.ru Evolution CLI CREW edition", "author": "Timur Shakirbekov, Cloud.ru", "version": "1.0.0-rc.1", "commit": "abc123", "date": "2026-10-14T12:00:00Z",
+		"product": "evo CMCP", "author": "Timur Shakirbekov, Cloud.ru", "version": "1.0.0-rc.1", "commit": "abc123", "date": "2026-10-14T12:00:00Z",
 		"go": "go1.26.9", "os": "linux", "arch": "amd64",
 	}
 	for k, v := range want {

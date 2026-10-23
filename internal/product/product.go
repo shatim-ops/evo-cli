@@ -9,10 +9,19 @@ package product
 
 import "sync/atomic"
 
-// Name is shown in evo --help, evo version, the MCP serverInfo title and
-// the release name (.goreleaser.yaml). The edition is for testing inside
-// Cloud.ru and collecting feedback.
-const Name = "Cloud.ru Evolution CLI CREW edition"
+// Name is the product (D34): evo version, the MCP serverInfo title, the
+// User-Agent and the release name (.goreleaser.yaml). Always whole: the
+// abbreviation alone names another CLI for MCP servers (PyPI), so it never
+// stands without "evo" (TestNoBareCMCP).
+const Name = "evo CMCP"
+
+// TitleEN and TitleRU name it with what it is: the first line of evo
+// --help, in the CLI's language (i18n.T(TitleEN, TitleRU)). MCP sends
+// English only (D6), so it gets Name.
+const (
+	TitleEN = Name + " — CLI and MCP server for Cloud.ru Evolution"
+	TitleRU = Name + " — CLI и MCP-сервер для Cloud.ru Evolution"
+)
 
 // Feedback goes to the author and the testers' chat in Telegram; shown in
 // evo --help and README.
