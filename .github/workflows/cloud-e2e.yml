@@ -92,7 +92,7 @@ on:
         type: boolean
         default: false
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 when no evo-* VM is left) and print project quotas"
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no network interface left) and print project quotas"
         type: boolean
         default: false
 
@@ -149,6 +149,15 @@ jobs:
           CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
           CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
         run: .github/scripts/cloud-readonly.sh
+
+      # Ссылки tariff_url превью (internal/engine, tariffs) отвечают 200 на
+      # HEAD без редиректа: Cloud.ru может перенести страницы тарифов (ревью
+      # Qwen #170). Ключ не нужен; идёт и после красного шага выше.
+      - name: Страницы тарифов (HEAD)
+        if: ${{ !cancelled() }}
+        env:
+          EVO_LIVE_TARIFFS: "1"
+        run: go test ./internal/engine/ -run '^TestLive_TariffPagesAnswer$' -count=1 -v
 
   e2e:
     environment: cloud-e2e
@@ -686,11 +695,12 @@ jobs:
 
   # Остатки прошлых прогонов (16.10.2026: отменённый прогон оставил ВМ
   # evo-e2e-app, её FIP и правило порта 80, следующий deploy упал на 409).
-  # Ничего не создаёт. Правила «evo:» для 80/8080/8081/8082 (порты e2e)
-  # удаляются, только когда в проекте нет ни одной ВМ с именем evo-*:
-  # описание «evo: …» ставит любой evo deploy/vm create, и чужое правило
-  # иначе не отличить. Допущение: проект тестовый, evo в нём запускает только
-  # e2e. Кластеры DBaaS — только evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis
+  # Ничего не создаёт. Правила «evo:» для портов e2e удаляются, только если
+  # в их группе безопасности нет ни одного интерфейса (has_interfaces: false),
+  # и ни одно, пока идёт прогон
+  # (есть ВМ evo-e2e-*): описание «evo: …» ставит любой evo deploy/vm create,
+  # и правило ВМ пользователя иначе не отличить (e2e_rules_sweep.sh).
+  # Кластеры DBaaS — только evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis
   # (проект общий: у внешнего аудитора — audit-*). ID и IP маскируются.
   cleanup:
     environment: cloud-e2e
@@ -831,29 +841,15 @@ jobs:
           echo "диски evo-* без ВМ: $left"
           echo "::warning::в проекте есть диски evo-* без ВМ — они оплачиваются; удалите ненужные ('evo disk delete' или консоль Cloud.ru)"
 
-      # Правила удаляет API напрямую: в evo нет команды удаления правила.
+      # Правило «evo:» снимается, только если в его группе нет интерфейсов
+      # (e2e_rules_sweep.sh).
       - name: Правила «evo:» для портов e2e
         if: always()
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
-        run: |
-          n=$(evo tools call vm_list --json | jq '[.vms[]? | select((.name // "") | startswith("evo-"))] | length')
-          [ "$n" = 0 ] || { echo "::error::в проекте есть ВМ evo-* ($n) — правила «evo:» не трогаю"; exit 1; }
-          evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg.json"
-          rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080" or .port_range == "8081:8081" or .port_range == "8082:8082" or .port_range == "8086:8086") and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range)"' "$RUNNER_TEMP/sg.json")
-          [ -n "$rules" ] || { echo "правил «evo:» для 80/8080/8081/8082/8086 нет"; exit 0; }
-          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
-            jq -r '.access_token // .accessToken // empty')
-          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
-          echo "::add-mask::$TOKEN"
-          while read -r g r port; do
-            echo "::add-mask::$g"; echo "::add-mask::$r"
-            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
-              "https://compute.api.cloud.ru/api/v1/security-groups/$g/rules/$r")
-            echo "правило $port: DELETE http=$code"
-          done <<<"$rules"
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: .github/scripts/e2e_rules_sweep.sh
 
   # Managed Kubernetes вживую (до 16.10.2026 не проверялся ни разу): кластер
   # с одним мастером → пул из одного узла → плагин cert-manager → поды
