@@ -1158,10 +1158,12 @@ func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) err
 		return nil
 	}
 	// One still being created cannot be deleted yet (422 «… from current
-	// state»): it is retried until it settles, up to Timings.settlePolls
-	// more tries, rather than left billed (cloud-e2e #121). The whole
-	// release is bounded too — those polls and 30 s for the last delete —
-	// so a slow API cannot hold the rollback for minutes.
+	// state»): only that refusal is retried, up to Timings.settlePolls more
+	// tries, rather than left billed (cloud-e2e #121); any other error is
+	// warned of at once. The whole release is bounded too — those polls
+	// and 30 s for the last delete — so a slow API cannot hold the rollback
+	// for minutes. An address still refused then is named in the warning
+	// (and in the MCP answer) to delete by hand.
 	t := e.timings()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(t.settlePolls())*t.FIPPollInterval+30*time.Second)
 	defer cancel()
