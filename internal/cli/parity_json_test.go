@@ -527,6 +527,9 @@ func TestParity_ErrorReasonEqualsTool(t *testing.T) {
 			case r.code != clerrors.ExitCode(clerrors.New(reason, "", "")) || env.Code != r.code:
 				bad = append(bad, fmt.Sprintf("exit %d (envelope %d), but %s exits %d (docs/exit-codes.md): %s",
 					r.code, env.Code, reason, clerrors.ExitCode(clerrors.New(reason, "", "")), what))
+			case parseObject(r.text)["access_denied"] == true && env.Details["access_denied"] != true:
+				// A refusal of rights says so on both surfaces (A10).
+				bad = append(bad, "access_denied of the tool is not in the envelope's details: "+what)
 			default:
 				failed++
 				reasons[reason]++
@@ -570,8 +573,9 @@ func s3BadRequest(r *http.Request) (*http.Response, error) {
 
 // cliError is the error envelope of a command with --json.
 type cliError struct {
-	Code   int    `json:"code"`
-	Reason string `json:"reason"`
+	Code    int            `json:"code"`
+	Reason  string         `json:"reason"`
+	Details map[string]any `json:"details"`
 }
 
 // errorEnvelope is the last {"error":…} line of stderr.

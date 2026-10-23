@@ -22,6 +22,7 @@ import (
 	clog "github.com/shatim-ops/evo-cli/internal/log"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // envBearerToken holds the token clients must present in HTTP mode. It is
@@ -302,8 +303,8 @@ func checkAllowedProject(allowed []string, project string) error {
 		shown = "(not set)"
 		hint = fmt.Sprintf("The server has no project of its own: pass project_id (one of %s) where the tool takes one.", list)
 	}
-	return clerrors.New(clerrors.CodeConfigInvalid,
-		fmt.Sprintf("project %s is not allowed on this server", shown), hint)
+	return clerrors.Wrap(clerrors.CodeConfigInvalid,
+		fmt.Sprintf("project %s is not allowed on this server", shown), hint, tools.ErrProjectNotAllowed)
 }
 
 // runMCPStdio serves the stdio transport.

@@ -218,8 +218,8 @@ func ownerRegistry(t *testing.T, f *ownerFake, bound bool, allowed ...string) *R
 			p = v
 		}
 		if !slices.Contains(allowed, p) {
-			return nil, clierrors.New(clierrors.CodeConfigInvalid, "project "+p+" is not allowed on this server",
-				"The server runs with --allow-project; ask its operator to add the project.")
+			return nil, clierrors.Wrap(clierrors.CodeConfigInvalid, "project "+p+" is not allowed on this server",
+				"The server runs with --allow-project; ask its operator to add the project.", ErrProjectNotAllowed)
 		}
 		var buf bytes.Buffer
 		cfg := config.Config{ProjectID: p, KeyID: "k", Secret: "s"}

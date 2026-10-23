@@ -103,10 +103,10 @@ func (s *Registry) handleCertIssueLE(ctx context.Context, args map[string]any) (
 
 func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (string, bool) {
 	name := stringArg(args, "name")
-	server := stringArg(args, "server_certificate")
-	key := stringArg(args, "private_key")
+	server := pemArg(args, "server_certificate")
+	key := pemArg(args, "private_key")
 	if name == "" || server == "" || key == "" {
-		return usageT("'name', 'server_certificate' (base64 PEM) and 'private_key' (base64 PEM) are required", "нужны 'name', 'server_certificate' (PEM в base64) и 'private_key' (PEM в base64)"), true
+		return usageT("'name', 'server_certificate' and 'private_key' (PEM, or Base64 of it) are required", "нужны 'name', 'server_certificate' и 'private_key' (PEM или он же в Base64)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -124,7 +124,7 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 		return taken, true
 	}
 	body := map[string]any{"name": name, "serverCertificate": server, "privateKey": key}
-	if v := stringArg(args, "intermediate_certificate"); v != "" {
+	if v := pemArg(args, "intermediate_certificate"); v != "" {
 		body["intermediateCertificate"] = v
 	}
 	if v := stringArg(args, "description"); v != "" {
@@ -138,6 +138,19 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 		return lostCreate(ctx, list, i18n.T("certificate", "сертификат"), "certificate_id", name, nil, "cert_get id", "cert_list", fmt.Errorf("import certificate: %w", err))
 	}
 	return toJSON(map[string]any{"status": "imported", "certificate": c}), false
+}
+
+// pemArg is a PEM argument of cert_import as Certificate Manager takes it,
+// Base64: a PEM given as it is ("-----BEGIN …") is encoded, Base64 goes as
+// given (Q17, decision 21.10).
+func pemArg(args map[string]any, key string) string {
+	v := stringArg(args, key)
+	// The blank space before a pasted PEM goes; the PEM itself, its last
+	// newline included, is sent as given.
+	if pem := strings.TrimLeft(v, " \t\r\n"); strings.HasPrefix(pem, "-----BEGIN ") {
+		return base64.StdEncoding.EncodeToString([]byte(pem))
+	}
+	return v
 }
 
 // certNameTaken lists the certificates of the name: one there is refused

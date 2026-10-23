@@ -483,6 +483,15 @@ func TestContract_APIStatusReason(t *testing.T) {
 			if !contractReasonOK(kind, reqs, text, reason) {
 				t.Errorf("%s %s reason=%s want per exit-codes reqs=%v text=%.200s", tl.Name, kind, reason, reqs, text)
 			}
+			// A refusal of rights says so in fields of its own, whatever the
+			// service; its reason stays (A10, decision 21.10).
+			if kind == "403" {
+				var m map[string]any
+				_ = json.Unmarshal([]byte(text), &m)
+				if m["access_denied"] != true || m["http_status"] != float64(403) {
+					t.Errorf("%s 403: no access_denied/http_status: %.300s", tl.Name, text)
+				}
+			}
 		}
 	}
 	t.Logf("reached=%d shell_skipped=%d", reached, skipped)

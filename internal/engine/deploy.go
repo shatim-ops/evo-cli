@@ -145,6 +145,15 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		}
 	}
 
+	// A dry run of a new VM without an access key shows the preview of what
+	// is known, the missing settings named in it, as the tool's own dry run
+	// does: the key is needed to create, not to look (D31, REL12-7; it was
+	// AUTH_REQUIRED).
+	if isNewDeploy && opts.DryRun && opts.Gate != nil && (e.Config.KeyID == "" || e.Config.Secret == "") {
+		_, err := opts.Gate(ctx, nil)
+		return err
+	}
+
 	// A new VM needs the project, and that is a setting to fix, not a cloud
 	// answer: refuse before the key is exchanged for a token, as every
 	// other project command does (tools engineFor) — behind a dead proxy

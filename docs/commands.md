@@ -1565,7 +1565,7 @@ evo cert get <id> [flags]
 ```text
 Загрузить в Certificate Manager свой сертификат и закрытый ключ.
 
-Импортировать в Certificate Manager собственный сертификат пользователя (bring-your-own). Сертификат (--server-certificate) и закрытый ключ (--private-key) передаются как PEM в кодировке Base64.
+Импортировать в Certificate Manager собственный сертификат пользователя (bring-your-own). Сертификат (--server-certificate) и закрытый ключ (--private-key) передаются как PEM — как есть или в кодировке Base64.
 
 Вызывает инструмент cert_import (подробнее: 'evo tools describe cert_import').
 
@@ -1587,10 +1587,10 @@ evo cert import <name> [flags]
 ```
       --description string                Описание (необязательно)
   -h, --help                              Справка по import
-      --intermediate-certificate string   Цепочка промежуточных сертификатов, PEM в Base64 (необязательно)
-      --private-key string                Закрытый ключ, PEM в Base64 (обязательный). Или --private-key-file — безопаснее: значение не попадёт в командную строку и историю оболочки
+      --intermediate-certificate string   Цепочка промежуточных сертификатов, PEM как есть или в Base64 (необязательно)
+      --private-key string                Закрытый ключ, PEM как есть или в Base64 (обязательный). Или --private-key-file — безопаснее: значение не попадёт в командную строку и историю оболочки
       --private-key-file string           --private-key из файла без завершающего перевода строки ('-' — из stdin: до EOF, на терминале — строка без эха), вместо --private-key
-      --server-certificate string         Сертификат (открытая часть), PEM в Base64 (обязательный)
+      --server-certificate string         Сертификат (открытая часть), PEM как есть или в Base64 (обязательный)
 ```
 
 ### Options inherited from parent commands
