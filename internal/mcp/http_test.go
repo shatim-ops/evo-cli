@@ -416,8 +416,14 @@ func TestHTTPPolicy_KubeBinariesMissing(t *testing.T) {
 	t.Cleanup(func() { binaryAvailable = orig })
 	s := newTestServer()
 	s.restrictForHTTP(false)
-	for _, tool := range []string{"k8s_kubectl", "k8s_apply", "k8s_helm"} {
-		text, isErr := s.handlers[tool](context.Background(), map[string]any{"cluster_id": "c", "args": "get pods", "manifest": "x", "action": "list"})
+	// Each with its own arguments: an argument a tool does not take is the
+	// check of the arguments' USAGE first (G13-1).
+	for tool, args := range map[string]map[string]any{
+		"k8s_kubectl": {"cluster_id": "c", "args": "get pods"},
+		"k8s_apply":   {"cluster_id": "c", "manifest": "x"},
+		"k8s_helm":    {"cluster_id": "c", "action": "list"},
+	} {
+		text, isErr := s.handlers[tool](context.Background(), args)
 		if !isErr || !strings.Contains(text, "not available in this mode") {
 			t.Errorf("%s: %s", tool, text)
 		}

@@ -91,7 +91,8 @@ func checkArgs(name string, schema map[string]any, args map[string]any) error {
 		for _, e := range enum {
 			es, _ := e.(string)
 			allowed = append(allowed, es)
-			if strings.EqualFold(es, s) {
+			// Spaces around the value are not part of it (" public ").
+			if strings.EqualFold(es, strings.TrimSpace(s)) {
 				canon = es
 			}
 		}
