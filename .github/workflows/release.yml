@@ -99,12 +99,13 @@ jobs:
         with:
           subject-checksums: dist/checksums.txt
 
-  # Образ MCP-сервера в Artifact Registry Cloud.ru — источник карточки
-  # Marketplace. Секреты (Settings → Secrets → Actions):
+  # Образ MCP-сервера в Artifact Registry Cloud.ru. Пока действует D32
+  # (образ в релизах не публикуется, только локальная установка), секретов
+  # нет намеренно и job проходит с notice. Секреты, если образ вернут
+  # (Settings → Secrets → Actions):
   #   CLOUDRU_AR_REGISTRY  имя реестра (<имя>.cr.cloud.ru) или полный хост
   #   CLOUDRU_AR_KEY_ID    ключ доступа с правом push в реестр
   #   CLOUDRU_AR_SECRET    его секрет
-  # Без них job проходит с notice: бинари выпускаются и без образа.
   image:
     needs: ci
     runs-on: ubuntu-latest
