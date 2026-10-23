@@ -221,8 +221,8 @@ jobs:
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
         run: |
-          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT"
-          evo whoami
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
+          evo whoami | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
 
       - name: Тестовый проект
         run: |
@@ -232,13 +232,13 @@ jobs:
       - name: init, затем зона/образ/flavor из входов
         working-directory: e2e-app
         run: |
-          evo init --non-interactive
+          evo init --non-interactive | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
           zone_id=$(evo list-zones --json | jq -r --arg n "$ZONE" '.[] | select(.name==$n) | .id')
           image_id=$(evo list-images --json | jq -r --arg n "$IMAGE" '[.[] | select(.name==$n)][0].id')
           [ -n "$zone_id" ] && [ "$zone_id" != null ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
           [ -n "$image_id" ] && [ "$image_id" != null ] || { echo "::error::образ $IMAGE не найден"; exit 1; }
           sed -i -e "s|^region:.*|region: $zone_id|" -e "s|^image_id:.*|image_id: $image_id|" -e "s|^flavor:.*|flavor: $FLAVOR|" .evo.yaml
-          grep -E '^(region|image_id|flavor):' .evo.yaml
+          grep -E '^(region|image_id|flavor):' .evo.yaml | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
 
       - name: deploy --dry-run (ничего не создаёт)
         working-directory: e2e-app
