@@ -360,6 +360,25 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 	if err != nil {
 		return errResult(err), true
 	}
+	// A record is known by its name and type in the zone: a repeat after a
+	// lost answer added a second one (fault matrix, process audit 1.2.1).
+	// The preview stays offline, so the check is the confirmed call's.
+	key := name + " " + rtype
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		records, err := cli.ListRecords(ctx, vis, zoneID)
+		listed := make([]map[string]any, 0, len(records))
+		for _, r := range records {
+			listed = append(listed, map[string]any{"id": r["id"], "name": fmt.Sprint(r["name"]) + " " + strings.ToLower(fmt.Sprint(r["type"]))})
+		}
+		return listed, err
+	}
+	existing, err := list(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the record is new: list records: %w", "проверка, что записи ещё нет: список записей: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, key); ok {
+		return nameTakenResult(i18n.T("DNS record", "запись DNS"), key, id, st, "dns_records zone_id="+zoneID)
+	}
 	body := map[string]any{
 		dns.ZoneIDParam(vis): zoneID,
 		"name":               name,
@@ -368,10 +387,17 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 		"ttl":                ttl,
 	}
 	op, err := cli.CreateRecord(ctx, vis, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create record: %w", err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, list, i18n.T("DNS record", "запись DNS"), "record_id", key, nil, "dns_records zone_id="+zoneID, "dns_records", fmt.Errorf("create record: %w", err))
 	}
-	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id)."}), false
+	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id)."}
+	if op.ResourceID != "" {
+		out["record_id"] = op.ResourceID
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handleDnsRecordDelete(ctx context.Context, args map[string]any) (string, bool) {
