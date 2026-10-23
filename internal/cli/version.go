@@ -85,8 +85,8 @@ func printVersion(w io.Writer, jsonMode bool, v versionInfo) error {
 	if jsonMode {
 		return output.NewWithWriter(w, output.ModeJSON, false).JSON(v)
 	}
-	_, err := fmt.Fprintf(w, i18n.T("%s (evo) %s\n  author:  %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
-		"%s (evo) %s\n  автор:   %s\n  коммит:  %s\n  собран:  %s\n  go:      %s\n  os/arch: %s/%s\n"),
+	_, err := fmt.Fprintf(w, i18n.T("%s %s\n  author:  %s\n  commit:  %s\n  built:   %s\n  go:      %s\n  os/arch: %s/%s\n",
+		"%s %s\n  автор:   %s\n  коммит:  %s\n  собран:  %s\n  go:      %s\n  os/arch: %s/%s\n"),
 		v.Product, v.Version, v.Author, v.Commit, v.Date, v.Go, v.OS, v.Arch)
 	return err
 }

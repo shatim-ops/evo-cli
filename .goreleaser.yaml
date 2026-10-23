@@ -115,6 +115,6 @@ release:
     owner: shatim-ops
     name: evo-cli
   # Отображаемое имя продукта (internal/product); бинарь и архивы — evo.
-  name_template: "Cloud.ru Evolution CLI CREW edition {{ .Tag }}"
+  name_template: "evo CMCP {{ .Tag }}"
   # v1.0.0-rc.1 и подобные помечаются как pre-release.
   prerelease: auto
