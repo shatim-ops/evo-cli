@@ -338,8 +338,8 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 
 // PickVMFlavor is the flavor provision creates a VM with: a name or UUID
 // as given, or for "" and "auto" the smallest lowcost flavor (free tier is
-// limited to one VM, usually in use, so it is skipped). It returns the
-// flavor's UUID.
+// limited to one VM, usually in use, so it is skipped), else the smallest
+// other one; ties by name and id. It returns the flavor's UUID.
 func PickVMFlavor(flavors []*provision.Flavor, want string) (string, error) {
 	if want != "" && want != "auto" {
 		for _, f := range flavors {
@@ -356,26 +356,26 @@ func PickVMFlavor(flavors []*provision.Flavor, want string) (string, error) {
 		}
 		return "", fmt.Errorf("flavor %q not found. Available: %s", want, strings.Join(names, ", "))
 	}
-	var best *provision.Flavor
-	for _, f := range flavors {
-		name := strings.ToLower(f.Name)
-		if f.FreeTier || strings.Contains(name, "free") || !strings.Contains(name, "low") {
-			continue
+	smallest := func(keep func(*provision.Flavor) bool) *provision.Flavor {
+		var best *provision.Flavor
+		for _, f := range flavors {
+			if keep(f) && (best == nil || provision.CompareFlavorSize(f, best) < 0) {
+				best = f
+			}
 		}
-		if best == nil || f.VCPUs < best.VCPUs || (f.VCPUs == best.VCPUs && f.RAMGB < best.RAMGB) {
-			best = f
+		return best
+	}
+	for _, keep := range []func(*provision.Flavor) bool{
+		func(f *provision.Flavor) bool {
+			name := strings.ToLower(f.Name)
+			return !f.FreeTier && !strings.Contains(name, "free") && strings.Contains(name, "low")
+		},
+		func(f *provision.Flavor) bool { return !f.FreeTier },
+		func(*provision.Flavor) bool { return true },
+	} {
+		if best := smallest(keep); best != nil {
+			return best.ID, nil
 		}
-	}
-	if best != nil {
-		return best.ID, nil
-	}
-	for _, f := range flavors {
-		if !f.FreeTier {
-			return f.ID, nil
-		}
-	}
-	if len(flavors) > 0 {
-		return flavors[0].ID, nil
 	}
 	return "", nil
 }
