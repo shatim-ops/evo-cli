@@ -798,3 +798,30 @@ func TestWorkflows_RawToLog(t *testing.T) {
 		}
 	}
 }
+
+// A fragment left in changelog.d is missing from the CHANGELOG.md of the
+// release: #277 was merged after the fold of #273, and only a manual look
+// before tag.yml found it (1.3.0-rc.1). tag.yml refuses the tag while
+// changelog.d of the commit holds anything but README.md — before the tag,
+// so the number is not spent.
+func TestWorkflows_TagRefusesUnfoldedFragments(t *testing.T) {
+	steps := readWorkflows(t)["tag.yml"].Jobs["tag"].Steps
+	check, tag := -1, -1
+	for i, s := range steps {
+		if strings.Contains(s.Run, "changelog.d") && strings.Contains(s.Run, "README.md") && strings.Contains(s.Run, `"$SHA"`) {
+			check = i
+		}
+		if strings.Contains(s.Run, "git tag ") {
+			tag = i
+		}
+	}
+	if check < 0 {
+		t.Fatal("tag.yml does not check changelog.d of the commit it tags")
+	}
+	if !strings.Contains(steps[check].Run, "exit 1") {
+		t.Error("tag.yml: the changelog.d check does not fail the job on fragments")
+	}
+	if tag < 0 || check > tag {
+		t.Errorf("tag.yml checks changelog.d after git tag (step %d, tag at %d): the number would be spent", check, tag)
+	}
+}

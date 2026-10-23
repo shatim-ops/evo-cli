@@ -49,6 +49,17 @@ jobs:
           # История и теги: проверить, что коммит в main и тега ещё нет.
           fetch-depth: 0
 
+      # Фрагмент, оставшийся в changelog.d, не попадёт в CHANGELOG.md
+      # архива релиза (#277 слит после свёртки, 1.3.0-rc.1): до тега, чтобы
+      # номер не сгорел. Свёртка — docs/RELEASING.md, шаг 0.
+      - name: Фрагменты CHANGELOG свёрнуты
+        run: |
+          left=$(git ls-tree --name-only "$SHA" changelog.d/ | grep -vx 'changelog.d/README.md' || true)
+          [ -z "$left" ] || {
+            echo "::error::в changelog.d на $SHA есть несвёрнутые фрагменты: $(printf '%s' "$left" | tr '\n' ' ') — python3 scripts/changelog.py fold в PR версии"
+            exit 1
+          }
+
       - name: Тег
         run: |
           git merge-base --is-ancestor "$SHA" origin/main ||
