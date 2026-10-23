@@ -496,7 +496,7 @@ func TestAgentSetup_Skill(t *testing.T) {
 	if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-code", "--skill", "--yes"); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
-	if got := string(fileBytes(t, filepath.Join(".claude", "skills", "evo", "SKILL.md"))); got != agentSkill(root) {
+	if got := string(fileBytes(t, filepath.Join(".claude", "skills", "evo", "SKILL.md"))); got != agentSkill(root, false) {
 		t.Errorf("SKILL.md is not 'evo agent skill':\n%s", got)
 	}
 
@@ -506,7 +506,7 @@ func TestAgentSetup_Skill(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
 	got := string(fileBytes(t, "AGENTS.md"))
-	if !strings.HasPrefix(got, mine+"\n"+agentconf.SectionBeginPrefix) || !strings.Contains(got, agentSkillBody(root)) {
+	if !strings.HasPrefix(got, mine+"\n"+agentconf.SectionBeginPrefix) || !strings.Contains(got, agentSkillBody(root, false)) {
 		t.Errorf("AGENTS.md:\n%s", got)
 	}
 	if code, stdout, stderr := runCLI(t, "", "agent", "setup", "--client", "cursor", "--skill"); code != 0 || strings.Count(stdout, "nothing changed") != 2 {
@@ -522,7 +522,7 @@ const (
 // docs/agent-skill.md is what 'evo agent skill' prints (spec §2.3), as
 // docs/tools.md is the registry.
 func TestAgentSkillDoc(t *testing.T) {
-	got := []byte(agentSkill(newRootCmd()))
+	got := []byte(agentSkill(newRootCmd(), false))
 	if *updateDocs {
 		if err := os.WriteFile(agentSkillDocPath, got, 0o644); err != nil {
 			t.Fatal(err)
@@ -565,7 +565,7 @@ func TestAgentSkill_CommandsExist(t *testing.T) {
 	for _, ex := range skillExamples {
 		checkExampleLine(t, root, strings.SplitN(ex, "#", 2)[0])
 	}
-	body := agentSkillBody(root)
+	body := agentSkillBody(root, false)
 	for _, want := range []string{"`logs`", "`s3_get`", "`evo k8s kubectl`", "`evo vm …`", "`evo deploy plan`", "| `vm` |"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the rules lack %s", want)
@@ -679,8 +679,8 @@ func TestAgentSetup_SkillRefresh(t *testing.T) {
 	oldVersion := version
 	t.Cleanup(func() { version = oldVersion })
 	version = "1.3.0"
-	if !strings.Contains(agentSkill(newRootCmd()), "evo 1.3.0") {
-		t.Errorf("the rules do not name the version:\n%s", agentSkill(newRootCmd()))
+	if !strings.Contains(agentSkill(newRootCmd(), false), "evo 1.3.0") {
+		t.Errorf("the rules do not name the version:\n%s", agentSkill(newRootCmd(), false))
 	}
 	skill := filepath.Join(".claude", "skills", "evo", "SKILL.md")
 	putFile(t, skill, []byte("---\nname: evo\n---\n# rules of evo 1.2.0\n"), 0o600)
@@ -690,7 +690,7 @@ func TestAgentSetup_SkillRefresh(t *testing.T) {
 			t.Fatalf("%s: exit %d: %s", client, code, stderr)
 		}
 	}
-	if got := string(fileBytes(t, skill)); got != agentSkill(newRootCmd()) {
+	if got := string(fileBytes(t, skill)); got != agentSkill(newRootCmd(), false) {
 		t.Errorf("SKILL.md not refreshed:\n%s", got)
 	}
 	if got := string(fileBytes(t, "AGENTS.md")); strings.Contains(got, "old rules") || !strings.HasPrefix(got, "# Mine\n") {
@@ -702,5 +702,113 @@ func TestAgentSetup_SkillRefresh(t *testing.T) {
 	code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-code", "--skill", "--toolsets", "k8s", "--yes")
 	if code != clerrors.ExitGeneral || !strings.Contains(stderr, "--force") || !bytes.Equal(fileBytes(t, skill), before) {
 		t.Errorf("another evo entry: exit %d, rules written=%v: %s", code, !bytes.Equal(fileBytes(t, skill), before), stderr)
+	}
+}
+
+// --read-only bounds the server only: an agent with a terminal changed the
+// cloud with the CLI instead (live check of #217, 23.10). The rules of a
+// read-only agent forbid every change, through the CLI too, and drop the
+// example with --yes; the setup says the boundary is a read-only key.
+// Without --read-only the rules and the hints stay as they were.
+func TestAgentSetup_ReadOnlyRules(t *testing.T) {
+	setupAgent(t)
+	root := newRootCmd()
+	ro, rw := agentSkill(root, true), agentSkill(root, false)
+	for _, want := range []string{"## This agent is read-only", "CLI", "terminal", "viewer"} {
+		if !strings.Contains(ro, want) {
+			t.Errorf("read-only rules lack %q:\n%s", want, ro)
+		}
+	}
+	if strings.Contains(ro, "--yes --json") {
+		t.Errorf("read-only rules show a change with --yes:\n%s", ro)
+	}
+	if strings.Contains(rw, "## This agent is read-only") || !strings.Contains(rw, "--yes --json") {
+		t.Errorf("rules without --read-only changed:\n%s", rw)
+	}
+	if code, stdout, _ := runCLI(t, "", "agent", "skill", "--read-only"); code != 0 || stdout != ro {
+		t.Errorf("evo agent skill --read-only: exit %d, not the read-only rules", code)
+	}
+
+	code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-code", "--read-only", "--skill", "--yes")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if got := string(fileBytes(t, filepath.Join(".claude", "skills", "evo", "SKILL.md"))); got != ro {
+		t.Errorf("SKILL.md of a read-only setup is not the read-only rules:\n%s", got)
+	}
+	if !strings.Contains(stderr, "only the MCP server") || !strings.Contains(stderr, "viewer") {
+		t.Errorf("no warning that --read-only bounds the server only: %s", stderr)
+	}
+	if code, _, stderr = runCLI(t, "", "agent", "setup", "--client", "cursor", "--yes"); code != 0 || strings.Contains(stderr, "only the MCP server") {
+		t.Errorf("without --read-only: exit %d: %s", code, stderr)
+	}
+}
+
+// fakeEvo puts an executable named evo in a directory of its own and makes
+// that directory the PATH; target, when set, is linked instead of a script.
+func fakeEvo(t *testing.T, target string) string {
+	t.Helper()
+	dir := t.TempDir()
+	name := "evo"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	path := filepath.Join(dir, name)
+	if target != "" {
+		if err := os.Symlink(target, path); err != nil {
+			t.Skipf("no symbolic links here: %v", err)
+		}
+	} else {
+		putFile(t, path, []byte("#!/bin/sh\necho evo 1.2.1\n"), 0o755)
+	}
+	t.Setenv("PATH", dir)
+	return path
+}
+
+// The client starts evo from its PATH. Another evo there (an older one from
+// install.sh before the one that ran the setup) would serve the agent
+// silently (live check of #217, 23.10): the setup names both. The evo that
+// runs is not warned about.
+func TestAgentSetup_AnotherEvoInPath(t *testing.T) {
+	setupAgent(t)
+	other := fakeEvo(t, "")
+	code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-code", "--yes")
+	if code != 0 || !strings.Contains(stderr, other) || !strings.Contains(stderr, "not this evo") {
+		t.Errorf("another evo in PATH: exit %d: %s", code, stderr)
+	}
+
+	self, err := os.Executable()
+	if err != nil {
+		t.Skip(err)
+	}
+	fakeEvo(t, self)
+	code, _, stderr = runCLI(t, "", "agent", "setup", "--client", "cursor", "--yes")
+	if code != 0 || strings.Contains(stderr, "not this evo") || strings.Contains(stderr, "not in PATH") {
+		t.Errorf("this evo in PATH: exit %d: %s", code, stderr)
+	}
+}
+
+// The rules are a file of the project like any other: a new one is 0644.
+// The client's file stays 0600 when new: the user may add a token to it.
+func TestAgentSetup_RulesMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no Unix modes")
+	}
+	setupAgent(t)
+	if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-code", "--skill", "--yes"); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "cursor", "--skill", "--yes"); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	for path, want := range map[string]os.FileMode{
+		filepath.Join(".claude", "skills", "evo", "SKILL.md"): 0o644,
+		"AGENTS.md":                          0o644,
+		".mcp.json":                          0o600,
+		filepath.Join(".cursor", "mcp.json"): 0o600,
+	} {
+		if st, err := os.Stat(path); err != nil || st.Mode().Perm() != want {
+			t.Errorf("%s: mode %v, want %04o (%v)", path, st.Mode().Perm(), want, err)
+		}
 	}
 }

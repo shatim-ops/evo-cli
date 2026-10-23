@@ -359,7 +359,9 @@ evo agent [flags]
 Агент видит группы deploy,vm,vpc,disk,image,
 если --toolsets не задаёт другие (all — все группы).
 --read-only (у gigaagent — по умолчанию): сервер отклоняет любые изменения и
-секреты — для агента без присмотра. --http URL подключает клиент к запущенному
+секреты, а правила --skill запрещают изменения и через CLI; ограничивает он
+только сервер: агенту без присмотра нужен ещё ключ только с ролью
+наблюдателя. --http URL подключает клиент к запущенному
 серверу 'evo mcp --http'; в файле — ссылка на $MCP_BEARER_TOKEN, а не сам токен.
 
 --skill дополнительно записывает правила работы с evo для агента ('evo agent
@@ -428,6 +430,8 @@ evo agent setup --client <client> [flags]
 ответы — текст или недоверенные данные, группы инструментов. Правила
 собираются из реестра инструментов этого бинаря; docs/agent-skill.md — тот же
 текст. Текст английский: его читает агент. С --json: {"skill": "<текст>"}.
+--read-only — правила агента, который ничего не меняет, в том числе через
+CLI: их пишет 'evo agent setup --read-only --skill'.
 
 'evo agent setup --skill' кладёт их туда, где их читает клиент.
 ```
@@ -440,13 +444,14 @@ evo agent skill [flags]
 
 ```
   evo agent skill
-  evo agent skill > AGENTS.md
+  evo agent skill --read-only > AGENTS.md
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по skill
+  -h, --help        Справка по skill
+      --read-only   Правила агента, который ничего не меняет в облаке, в том числе через CLI
 ```
 
 ### Options inherited from parent commands

@@ -47,7 +47,9 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
 - `evo mcp --toolsets <groups>` shows the agent only these groups: fewer tools,
   less context. It is not a permission boundary.
 - `evo mcp --read-only` makes no call that changes the cloud or reveals a
-  secret. Use it for an agent nobody watches.
+  secret. It bounds the server only: the evo CLI with the same key still
+  changes the cloud. An agent nobody watches also needs a key whose service
+  account has only a viewer role.
 - `evo agent setup --client <client>` connects evo to an MCP client, with the
   groups `deploy,vm,vpc,disk,image` by default.
 
