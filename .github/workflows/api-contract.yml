@@ -11,6 +11,18 @@ on:
   schedule:
     - cron: "17 6 * * 1" # понедельник, 06:17 UTC
   workflow_dispatch:
+  # После слияния — та же сверка, что в PR: в PR медленный сайт документации
+  # её пропускает, а кэш, сохранённый на main, читают все PR (кэш PR виден
+  # только ему самому). Пути — те же, что у pull_request.
+  push:
+    branches: [main]
+    paths:
+      - "scripts/api-contract*"
+      - "scripts/cloudru-specs.py"
+      - "scripts/cloudru-specs-test.py"
+      # Сверка покрытия читает весь internal/**/*.go: новый запрос в любом
+      # пакете без записи в описи валит проверку.
+      - "internal/**/*.go"
   pull_request:
     paths:
       - "scripts/api-contract*"
@@ -52,13 +64,13 @@ jobs:
           grep -v '^\[ok' "$RUNNER_TEMP/coverage.txt" || true
           exit "${status:-0}"
 
-      # В PR спецификации берутся из кэша на сутки: сайт документации
-      # медленный и сбоит, и каждый push в PR качал их заново 4–12 минут.
-      # Изменения на стороне Cloud.ru ловит запуск по расписанию: он кэш
-      # не читает и всегда качает свежие.
+      # В PR и на main спецификации берутся из кэша на сутки: сайт
+      # документации медленный и сбоит, и каждый push в PR качал их заново
+      # 4–12 минут. Изменения на стороне Cloud.ru ловит запуск по расписанию
+      # (и ручной): он кэш не читает и всегда качает свежие.
       - name: День для кэша спецификаций
         id: day
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       # Восстановление и сохранение — отдельные шаги: actions/cache
@@ -66,9 +78,9 @@ jobs:
       # каждый PR падал на spec-missing (#230, 22.10). Сохраняется только
       # полная загрузка (шаг «Сохранить кэш спецификаций»). v2 в ключе
       # отбрасывает кэш, сохранённый до этой правки.
-      - name: Кэш спецификаций (PR)
+      - name: Кэш спецификаций (PR и main)
         id: cache
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/cloudru-specs
@@ -77,10 +89,14 @@ jobs:
       - name: Спецификации Cloud.ru
         id: specs
         if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          # Мягкое правило PR и main: не скачалось — сверка пропущена с
+          # предупреждением и строкой в summary, а не красный job.
+          SOFT: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
         run: |
           # Сайт документации иногда рвёт соединение: скрипт сам повторяет
           # только недостающие сервисы (ROUNDS). Срок загрузки — 10 минут,
-          # меньше срока job: в PR медленный сайт даёт «сверка пропущена»,
+          # меньше срока job: в PR и на main медленный сайт даёт «сверка пропущена»,
           # а не отмену job (#245, #217).
           status=0
           timeout 600 python3 scripts/cloudru-specs.py .cache/cloudru-specs || status=$?
@@ -91,8 +107,9 @@ jobs:
           if [ "$status" -eq 124 ]; then
             echo "::warning::загрузка спецификаций не уложилась в 10 минут"
           fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "$SOFT" = true ]; then
             echo "::warning::не удалось скачать все спецификации с cloud.ru/docs — сверка пропущена"
+            echo "**Сверка контракта пропущена:** спецификации с cloud.ru/docs не скачались. Следующая — на следующем слиянии в main или по расписанию." >> "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -100,7 +117,7 @@ jobs:
           exit 1
 
       - name: Сохранить кэш спецификаций
-        if: github.event_name == 'pull_request' && steps.specs.outputs.complete == 'true'
+        if: (github.event_name == 'pull_request' || github.event_name == 'push') && steps.specs.outputs.complete == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/cloudru-specs
