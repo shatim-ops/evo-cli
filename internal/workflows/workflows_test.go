@@ -709,3 +709,87 @@ func TestWorkflows_CloudE2EStderrRedacted(t *testing.T) {
 		t.Error("ci: the evo wrapper of the public logs is not tested (evo_wrapper_test.sh)")
 	}
 }
+
+// evoOutput is a command whose output carries IDs of the cloud: evo itself,
+// or lines of its config and state (.evo.yaml, .evo/) printed as they are.
+// A jq filter prints what it selects (a count, a port), so it is not one.
+var evoOutput = regexp.MustCompile(`^(timeout [0-9]+ )?evo\s|^(grep|cat|head|tail)\s.*\.evo(\.yaml|/)`)
+
+// rawToLog lists the shell commands of a step whose stdout reaches the log
+// as is: the last command of a pipeline, with no redirection, matching
+// evoOutput.
+func rawToLog(run string) []string {
+	var out []string
+	for _, line := range strings.Split(strings.ReplaceAll(unquoteOps(run), "\\\n", " "), "\n") {
+		line = strings.ReplaceAll(line, "||", ";")
+		line = strings.ReplaceAll(line, "&&", ";")
+		for _, list := range strings.Split(line, ";") {
+			stages := strings.Split(list, "|")
+			last := strings.TrimSpace(stages[len(stages)-1])
+			for _, kw := range []string{"then ", "else ", "do ", "! ", "{ "} {
+				last = strings.TrimPrefix(last, kw)
+			}
+			if evoOutput.MatchString(last) && !strings.Contains(last, ">") {
+				out = append(out, last)
+			}
+		}
+	}
+	return out
+}
+
+// unquoteOps blanks the shell operators inside quotes ('^(a|b):' is a
+// pattern, not a pipe), keeping the rest of the quoted text.
+func unquoteOps(run string) string {
+	b := []byte(run)
+	var quote byte
+	for i, c := range b {
+		switch {
+		case quote == 0 && (c == '\'' || c == '"'):
+			quote = c
+		case quote != 0 && c == quote:
+			quote = 0
+		case quote != 0 && strings.IndexByte("|;&>", c) >= 0:
+			b[i] = ' '
+		}
+	}
+	return string(b)
+}
+
+// The repository is public and so are the logs of its workflows: what evo
+// prints (IDs of zones, images and resources of the test project) goes to
+// the log through redact.sed, a file or a pipe. The evo wrapper masks only
+// stderr (stdout is read by jq), so `evo init` and `grep .evo.yaml` printed
+// real IDs of the catalogue in every e2e run (cloud-e2e, 23.10).
+func TestWorkflows_CloudLogsGetNoRawEvoOutput(t *testing.T) {
+	ws := readWorkflows(t)
+	for _, file := range []string{"cloud-e2e.yml", "cloud-e2e-weekly.yml", "api-probe.yml", "cloud-readonly-os.yml"} {
+		for name, j := range ws[file].Jobs {
+			for _, s := range j.Steps {
+				for _, cmd := range rawToLog(s.Run) {
+					t.Errorf("%s job %s step %q: %q prints to the public log unmasked: pipe it through redact.sed or into a file", file, name, s.Name, cmd)
+				}
+			}
+		}
+	}
+}
+
+func TestWorkflows_RawToLog(t *testing.T) {
+	for run, want := range map[string]int{
+		"evo whoami":                                   1,
+		"evo init --non-interactive":                   1,
+		"grep -E '^(region):' .evo.yaml":               1,
+		"printf '%s' \"$S\" | evo configure --key x":   1,
+		"[ -s x ] || evo whoami":                       1,
+		"evo whoami | sed -E -f redact.sed":            0,
+		"evo --json vm list > \"$RUNNER_TEMP/v.json\"": 0,
+		"evo tools call x \\\n  --json > out.json":     0,
+		"id=$(evo list-zones --json | jq -r .id)":      0,
+		"evo deploy 2>&1 | sed -E -f r.sed":            0,
+		"cat .evo/state.json":                          1,
+		"cat .evo/state.json > copy":                   0,
+	} {
+		if got := len(rawToLog(run)); got != want {
+			t.Errorf("rawToLog(%q): %d commands, want %d", run, got, want)
+		}
+	}
+}
