@@ -32,7 +32,9 @@ cat > "$dir/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
 # The https:// argument is the URL; -o FILE takes the body, -w the code.
 out=/dev/stdout url= method=GET
-while [ $# -gt 0 ]; do case $1 in -o) out=$2; shift ;; -X) method=$2; shift ;; https://*) url=$1 ;; esac; shift; done
+# --data-binary @- reads the body from stdin, as curl does: otherwise the
+# writer of the pipe (jq) meets a closed pipe under pipefail (CI of #260).
+while [ $# -gt 0 ]; do case $1 in -o) out=$2; shift ;; -X) method=$2; shift ;; @-) cat >/dev/null ;; https://*) url=$1 ;; esac; shift; done
 echo "$method $url" >> "$FAKE_DIR/calls"
 case "$url" in
   */auth/token) printf '{"access_token":"tok"}' ;;
