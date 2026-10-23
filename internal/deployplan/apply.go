@@ -7,6 +7,7 @@ package deployplan
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -360,13 +361,17 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		InterfaceID:        ifaceID,
 		AvailabilityZoneID: plan.VM.Zone.ID,
 	})
-	if e == nil {
+	if e == nil && f != nil && f.ID != "" {
 		return f.IPAddress, f.ID, "public IP attached (created a new floating IP)"
 	}
 	if provision.IsQuotaError(e) {
 		return "", "", "⚠️ Floating-IP quota exhausted — the VM was created WITHOUT a public IP. Increase the floating-IP quota in the Cloud.ru console, then attach an IP to this VM manually."
 	}
-	// The create may have reached the cloud with its answer lost: the FIP
+	if e == nil {
+		e = errors.New("the create answered no floating IP id")
+	}
+	// The create may have reached the cloud with its answer lost, or
+	// answered without an id (deploy adopts that one by name too): the FIP
 	// then exists under its name and must be recorded, not left billed.
 	if fips, le := cloud.ListFloatingIPs(ctx, plan.ProjectID); le == nil {
 		for _, x := range fips {
@@ -375,7 +380,10 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			}
 		}
 	}
-	return "", "", "could not attach a floating IP (" + e.Error() + ") — the VM was created without a public IP; attach one via the console"
+	// The FIP may still exist on the VM, unseen: a second one attached by
+	// hand would be billed too. deploy_apply again adopts the VM with the
+	// address it has.
+	return "", "", "could not attach a floating IP (" + e.Error() + ") — the VM has no public IP evo could confirm; run deploy_apply again with the same plan: it adopts the VM and the floating IP already on it, or attaches a new one"
 }
 
 // joinNotes concatenates non-empty notes with "; ".

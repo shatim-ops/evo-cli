@@ -2138,7 +2138,7 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 				case !noPublicIP:
 					// The FIP made after boot is recorded too, so destroy
 					// releases it even when attaching it failed.
-					ip, id, err := engine.AssignFloatingIP(ctx, eng.Cloud, vm.ID, projectID, region)
+					ip, id, err := eng.AssignFloatingIP(ctx, vm.ID, projectID, region)
 					publicIP, fipID, fipErr = ip, id, err
 				}
 				if ctx.Err() != nil {
@@ -3342,6 +3342,26 @@ func (s *Registry) completePreview(ctx context.Context, eng *engine.Engine, p en
 		return engine.CreatePreview{}, err
 	}
 	return p, nil
+}
+
+// willPreview is the preview of a billable create evo does not price: the
+// resource with the key values of its will_create in the order of keys,
+// the tool's warnings, and the tariff where its rates are (Price).
+func willPreview(resource, name, zone string, will map[string]any, keys []string, warnings ...string) engine.CreatePreview {
+	p := engine.CreatePreview{Resource: resource, Name: name}
+	if zone != "" {
+		p.Zone = &deployplan.RefSpec{Name: zone}
+	}
+	for _, k := range keys {
+		p.Add(k, will[k])
+	}
+	for _, w := range warnings {
+		if w != "" {
+			p.Warnings = append(p.Warnings, w)
+		}
+	}
+	p.Price()
+	return p
 }
 
 // provisionInputError is the refusal of a provision that names no image or

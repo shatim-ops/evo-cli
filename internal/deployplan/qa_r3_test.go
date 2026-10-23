@@ -6,6 +6,7 @@ package deployplan
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -67,6 +68,48 @@ func TestQAr3_Apply_LostFIPCreateFoundByName(t *testing.T) {
 	}
 	if res.FloatingIPID != "fip-made" || res.PublicIP != "203.0.113.7" {
 		t.Fatalf("result %+v; want fip-made found by name, never the user's fip-user", res)
+	}
+}
+
+// noIDFIPCloud: the create answers success without an id; the FIP exists
+// under its name.
+type noIDFIPCloud struct{ lostFIPCloud }
+
+func (c *noIDFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	c.fipCreates++
+	return &provision.FloatingIP{Name: "x-fip", IPAddress: "203.0.113.7", State: "available"}, nil
+}
+
+// Fault matrix (process audit 1.2.1, 6.1): a create that answered success
+// without an id was taken as done — the address was billed, recorded
+// nowhere, and destroy could not release it. It is found by its name, as
+// deploy does (TestFault_Deploy_EmptyBootFIPIDIsAdoptedByName).
+func TestApply_FIPCreateWithoutIDFoundByName(t *testing.T) {
+	c := &noIDFIPCloud{}
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.FloatingIPID != "fip-made" || res.PublicIP != "203.0.113.7" || c.fipCreates != 1 {
+		t.Fatalf("result %+v after %d creates; want fip-made found by name, one create", res, c.fipCreates)
+	}
+}
+
+// unlistedFIPCloud: the create answer is lost and the list fails too.
+type unlistedFIPCloud struct{ lostFIPCloud }
+
+func (c *unlistedFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return nil, context.DeadlineExceeded
+}
+
+// With the create answer lost and the list failed, the floating IP may
+// exist on the VM. The note sends the user to deploy_apply again, which
+// adopts the VM with the address on it, never to the console, where a
+// second billed address would be attached (Qwen review of #211).
+func TestApply_LostFIPUnlistedRetryNotConsole(t *testing.T) {
+	_, _, note := ensureFloatingIP(context.Background(), &unlistedFIPCloud{}, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
+	if !strings.Contains(note, "deploy_apply again") || strings.Contains(note, "console") {
+		t.Fatalf("note %q: want deploy_apply again, not the console", note)
 	}
 }
 

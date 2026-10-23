@@ -14,7 +14,8 @@ import (
 // allResources are the resources of a CreatePreview (the constants). A new
 // one goes here and in tariffs, or this test fails.
 var allResources = []string{ResourceVM, ResourceDisk, ResourceDiskResize, ResourcePGCluster,
-	ResourceK8sCluster, ResourceK8sNodePool, ResourceK8sAddon, ResourceS3Bucket}
+	ResourceK8sCluster, ResourceK8sNodePool, ResourceK8sAddon, ResourceS3Bucket, ResourceARRegistry, ResourceCAApp,
+	ResourceKafka, ResourceLB, ResourceRedis, ResourceSNAT}
 
 func TestTariffs_EveryResource(t *testing.T) {
 	if len(tariffs) != len(allResources) {
@@ -32,7 +33,8 @@ func TestTariffs_EveryResource(t *testing.T) {
 // CLI's line): «не оценивается: у evo нет тарифа» read as «free» before a
 // paid cluster was created (dogfood 1.2.1).
 func TestPrice_UnpricedLinksTariff(t *testing.T) {
-	for _, r := range []string{ResourcePGCluster, ResourceK8sCluster, ResourceK8sNodePool, ResourceK8sAddon, ResourceS3Bucket, ResourceDiskResize} {
+	for _, r := range []string{ResourcePGCluster, ResourceK8sCluster, ResourceK8sNodePool, ResourceK8sAddon, ResourceS3Bucket, ResourceDiskResize,
+		ResourceARRegistry, ResourceCAApp, ResourceKafka, ResourceLB, ResourceRedis, ResourceSNAT} {
 		p := CreatePreview{Resource: r, Name: "x"}
 		p.Price()
 		if p.Cost != nil || p.TariffURL != tariffs[r] || !strings.Contains(p.CostNote, "tariff_url") || strings.Contains(p.CostNote, "no rate card") {

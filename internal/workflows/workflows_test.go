@@ -26,8 +26,10 @@ type workflow struct {
 	Jobs map[string]struct {
 		If          string `yaml:"if"`
 		Permissions any    `yaml:"permissions"`
+		Uses        string `yaml:"uses"`
 		Steps       []struct {
 			ID   string            `yaml:"id"`
+			If   string            `yaml:"if"`
 			Uses string            `yaml:"uses"`
 			Run  string            `yaml:"run"`
 			With map[string]any    `yaml:"with"`
@@ -295,38 +297,118 @@ func TestWorkflows_CloudE2EAreasFromBranch(t *testing.T) {
 // Every week main's tests run three times in a random order under -race on
 // the three OSes, and a red run opens an issue (process audit 1.2.1, PR 10):
 // a race or an order dependency that shows once in a few runs is caught
-// there. The job that writes the issue checks out no code.
+// there.
 func TestWorkflows_WeeklyRace(t *testing.T) {
-	w, ok := readWorkflows(t)["weekly-race.yml"]
+	w := weeklyWorkflow(t, "weekly-race.yml")
+	if !runsStep(w, "go test -race -count=3 -shuffle=on ./...") {
+		t.Error("weekly-race: no go test -race -count=3 -shuffle=on")
+	}
+}
+
+// Every week each Fuzz* target of the repository fuzzes main for five
+// minutes (process audit 1.2.1, second wave): the target list comes from
+// go test -list, so a new target joins without an edit here.
+func TestWorkflows_WeeklyFuzz(t *testing.T) {
+	w := weeklyWorkflow(t, "weekly-fuzz.yml")
+	for _, want := range []string{"go test -list '^Fuzz' ./...", `go test -run '^$' -fuzz "^${NAME}\$" -fuzztime=5m`} {
+		if !runsStep(w, want) {
+			t.Errorf("weekly-fuzz: no step runs %s", want)
+		}
+	}
+}
+
+// A red weekly run reaches people as an issue, one per kind, written by one
+// workflow that checks out no code and may do nothing but write issues.
+func TestWorkflows_WeeklyIssue(t *testing.T) {
+	w, ok := readWorkflows(t)["weekly-issue.yml"]
 	if !ok {
-		t.Fatal("no weekly-race.yml")
+		t.Fatal("no weekly-issue.yml")
+	}
+	if _, ok := w.On["workflow_call"]; !ok || len(w.On) != 1 {
+		t.Errorf("weekly-issue: triggers %v, want workflow_call only", w.On)
+	}
+	for name, j := range w.Jobs {
+		if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["issues"] != "write" {
+			t.Errorf("weekly-issue: job %s permissions %v, want issues: write only", name, j.Permissions)
+		}
+		for _, s := range j.Steps {
+			if strings.HasPrefix(s.Uses, "actions/checkout@") {
+				t.Errorf("weekly-issue: job %s checks out code with a write token", name)
+			}
+		}
+	}
+	if !runsStep(w, "gh issue create") {
+		t.Error("weekly-issue: no gh issue create")
+	}
+}
+
+// weeklyWorkflow is a scheduled workflow whose red run calls weekly-issue.yml.
+func weeklyWorkflow(t *testing.T, file string) workflow {
+	t.Helper()
+	w, ok := readWorkflows(t)[file]
+	if !ok {
+		t.Fatalf("no %s", file)
 	}
 	if _, ok := w.On["schedule"]; !ok {
-		t.Error("weekly-race: no schedule")
+		t.Errorf("%s: no schedule", file)
 	}
-	var race, report bool
+	reports := false
+	for name, j := range w.Jobs {
+		if j.Uses != "./.github/workflows/weekly-issue.yml" {
+			continue
+		}
+		reports = true
+		if j.If != "failure()" {
+			t.Errorf("%s: job %s reports on %q, want failure()", file, name, j.If)
+		}
+		if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["issues"] != "write" {
+			t.Errorf("%s: job %s permissions %v, want issues: write only", file, name, j.Permissions)
+		}
+	}
+	if !reports {
+		t.Errorf("%s: a red run opens no issue (weekly-issue.yml)", file)
+	}
+	return w
+}
+
+func runsStep(w workflow, cmd string) bool {
+	for _, j := range w.Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, cmd) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// The contract check caches the specs of cloud.ru/docs for a day, and only
+// a complete download is cached: a PR whose download failed skipped the
+// check and still saved the partial directory, so every later PR of the
+// day failed on spec-missing (#230, 22.10). Restore and save are separate
+// steps, the save conditioned on a download that succeeded.
+func TestWorkflows_ContractCachesOnlyCompleteSpecs(t *testing.T) {
+	w, ok := readWorkflows(t)["api-contract.yml"]
+	if !ok {
+		t.Fatal("no api-contract.yml")
+	}
+	var restore, save bool
 	for name, j := range w.Jobs {
 		for _, s := range j.Steps {
-			if strings.Contains(s.Run, "go test -race -count=3 -shuffle=on ./...") {
-				race = true
-			}
-			if strings.Contains(s.Run, "gh issue create") {
-				report = true
-				if j.If != "failure()" {
-					t.Errorf("weekly-race: job %s reports on %q, want failure()", name, j.If)
-				}
-				if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["issues"] != "write" {
-					t.Errorf("weekly-race: job %s permissions %v, want issues: write only", name, j.Permissions)
-				}
-				for _, s := range j.Steps {
-					if strings.HasPrefix(s.Uses, "actions/checkout@") {
-						t.Errorf("weekly-race: job %s checks out code with a write token", name)
-					}
+			switch {
+			case strings.HasPrefix(s.Uses, "actions/cache@"):
+				t.Errorf("api-contract job %s: actions/cache saves whatever the job left; use actions/cache/restore and actions/cache/save", name)
+			case strings.HasPrefix(s.Uses, "actions/cache/restore@"):
+				restore = true
+			case strings.HasPrefix(s.Uses, "actions/cache/save@"):
+				save = true
+				if !strings.Contains(s.If, "steps.specs.outputs.complete == 'true'") {
+					t.Errorf("api-contract job %s: the save runs on %q, not only after a complete download (steps.specs.outputs.complete)", name, s.If)
 				}
 			}
 		}
 	}
-	if !race || !report {
-		t.Errorf("weekly-race: race run %v, issue on red %v; want both", race, report)
+	if !restore || !save {
+		t.Errorf("api-contract: restore %v, save %v; want both", restore, save)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -84,24 +85,36 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	if err != nil {
 		return errResult(err), true
 	}
-
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("snat_create makes a billable SNAT gateway.",
-				"snat_create создаёт платный шлюз SNAT."),
-			"will_create": map[string]any{
-				"name":                 name,
-				"nat_type":             provision.NATTypePublicSNAT,
-				"availability_zone_id": zoneID,
-			},
-		}), true
-	}
-
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return errResult(err), true
 	}
+	// A second gateway of the same name is a second bill: refused before
+	// the consent, as every other create (fault matrix, process audit
+	// 1.2.1: a repeated snat_create made one more each time).
+	existing, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list SNAT gateways: %w", "проверка, что имя свободно: список шлюзов SNAT: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult(i18n.T("SNAT gateway", "шлюз SNAT"), name, id, st, "snat_list")
+	}
+
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		will := map[string]any{
+			"name":                 name,
+			"nat_type":             provision.NATTypePublicSNAT,
+			"availability_zone_id": zoneID,
+		}
+		return toJSON(map[string]any{
+			"status": "confirmation_required",
+			"message": i18n.T("snat_create makes a billable SNAT gateway.",
+				"snat_create создаёт платный шлюз SNAT."),
+			"will_create": will,
+			"preview":     willPreview(engine.ResourceSNAT, name, "", will, []string{"nat_type", "availability_zone_id"}),
+		}), true
+	}
+
 	gw, err := eng.Cloud.CreateNATGateway(ctx, provision.CreateNATGatewayRequest{
 		Name:               name,
 		NATType:            provision.NATTypePublicSNAT,

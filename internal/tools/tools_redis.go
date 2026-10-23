@@ -186,7 +186,9 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		out := map[string]any{"status": "confirmation_required",
 			"message": i18n.T("redis_create provisions a BILLABLE Managed Redis cluster (async, ~minutes).",
 				"redis_create создаёт ПЛАТНЫЙ кластер Managed Redis (асинхронно, несколько минут)."),
-			"will_create": willCreate}
+			"will_create": willCreate,
+			"preview": willPreview(engine.ResourceRedis, name, zone, willCreate,
+				[]string{"version_id", "type", "cpu", "memory_gb", "storage_gb", "shards", "hosts_per_shard", "subnet_id"}, warn)}
 		if warn != "" {
 			out["warning"] = warn
 		}
@@ -205,8 +207,12 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		body["description"] = d
 	}
 	op, err := cli.CreateCluster(ctx, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create cluster: %w", err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, url.Values{}) }
+		return lostCreate(ctx, list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id", "redis_list", fmt.Errorf("create cluster: %w", err))
 	}
 	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
 		"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}), false

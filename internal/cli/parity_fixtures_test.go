@@ -78,7 +78,7 @@ var parityArgs = map[string]map[string]any{
 	"vpc_delete":           {"id": parityVM},
 	"vpc_route_create":     {"vpc_id": parityVM, "subnet": "192.0.2.0/24", "next_hop_vm_id": parityVM, "next_hop_interface_id": parityNIC},
 	"vpc_route_delete":     {"vpc_id": parityVM, "route_id": parityVM},
-	"snat_create":          {"name": "nat", "availability_zone_id": pvZone},
+	"snat_create":          {"name": "nat-new", "availability_zone_id": pvZone},
 	"snat_delete":          {"id": parityVM},
 	// k8s
 	"k8s_create":         {"name": "k8s-web", "zone": pvZone, "cluster_sa_id": parityVM},
@@ -348,6 +348,10 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 	case "/api/v1/vms/" + parityVM:
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","state":"running","interfaces":[{"id":"`+parityNIC+`","type":"regular","ip_address":"192.0.2.5"}]}`)
 	case "/api/v1/nat-gateways":
+		if r.Method == http.MethodPost {
+			_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"nat-new","status":"CREATING"}`)
+			break
+		}
 		_, _ = io.WriteString(w, `{"items":[{"id":"`+parityVM+`","name":"nat","status":"ACTIVE"}],"total":1}`)
 	default:
 		return nil

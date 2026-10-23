@@ -301,6 +301,15 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(err), true
 	}
+	// A second balancer of the same name is a second bill: refused before
+	// the consent, as every other create (DECISIONS D21).
+	existing, err := cli.ListNLB(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list load balancers: %w", "проверка, что имя свободно: список балансировщиков: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult(i18n.T("load balancer", "балансировщик"), name, id, st, "lb_list")
+	}
 
 	// VPC: explicit, else inherit from the target group (LB must share its
 	// VPC). The group's VMs also name the zone the balancer serves.
@@ -371,6 +380,8 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 			"message": i18n.T("lb_create provisions a BILLABLE L4 load balancer (async).",
 				"lb_create создаёт ПЛАТНЫЙ балансировщик L4 (асинхронно)."),
 			"will_create": willCreate,
+			"preview": willPreview(engine.ResourceLB, name, firstNonEmptyStr(zone.Name, zone.ID), willCreate,
+				[]string{"listener", "health_check_port", "external", "subnet_id"}, warnings...),
 		}
 		if len(warnings) > 0 {
 			out["warnings"] = warnings

@@ -852,9 +852,10 @@ func statusText(s string) string {
 // AssignFloatingIP creates a floating IP and attaches it to the VM's primary interface.
 // It polls until the floating IP is in_use or times out. The FIP ID is set
 // as soon as the FIP exists, even with an error: the caller records it, so
-// destroy releases it (release audit, R-02).
-func AssignFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID, projectID, azID string) (ip, fipID string, err error) {
-	return assignFloatingIP(ctx, cloud, Timings{}.withDefaults(), nil, vmID, projectID, azID)
+// destroy releases it (release audit, R-02). The waits are the engine's
+// Timings: a test world waits milliseconds, not the production 5 s polls.
+func (e *Engine) AssignFloatingIP(ctx context.Context, vmID, projectID, azID string) (ip, fipID string, err error) {
+	return assignFloatingIP(ctx, e.Cloud, e.timings(), nil, vmID, projectID, azID)
 }
 
 // assignFloatingIP prints its progress: the waits add up to minutes.

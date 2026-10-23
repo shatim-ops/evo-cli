@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/containerapp"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
@@ -187,10 +188,16 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 			msg = i18n.Tf("ca_deploy will create+run container app %q from image %q in PRIVILEGED mode: the container runs as root (billable).",
 				"ca_deploy создаст и запустит приложение %q из образа %q в ПРИВИЛЕГИРОВАННОМ режиме: контейнер работает от root (платно).", name, req.Template.Containers[0].Image)
 		}
+		will, warning := caDeployPreview(req), ""
+		if req.Configuration.Privileged {
+			warning = i18n.T("privileged mode: the container runs as root", "привилегированный режим: контейнер работает от root")
+		}
 		return toJSON(map[string]any{
 			"status":      "confirmation_required",
 			"message":     msg,
-			"will_create": caDeployPreview(req),
+			"will_create": will,
+			"preview": willPreview(engine.ResourceCAApp, name, "", will,
+				[]string{"image", "port", "cpu", "memory", "public", "min_instances", "max_instances", "runs_as", "env"}, warning),
 		}), true
 	}
 
