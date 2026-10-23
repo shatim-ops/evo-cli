@@ -26,7 +26,7 @@
 
 ## Проверки
 
-| Проверка | Результат |
+| Проверка (коммит `eef78db`, `main` до #268; `622070d` меняет только `--help/**`) | Результат |
 |---|---|
 | CI на `eef78db` (head `main`) | `ci` run 39977745011 — success: test ×3 ОС (`go test -race -count=1 -shuffle=on`), docker, на ubuntu — gofmt, shellcheck, фрагменты CHANGELOG, `redact.sed`, обёртка evo, classify.sh, govulncheck, staticcheck, actionlint, deadcode; `classify` на push не нужен (skipped). `api-contract` run 39977744822 — success |
 | Локально на `eef78db` | gofmt чисто; `go vet ./...` чисто (linux и `GOOS=windows`); staticcheck чисто; `go test -race -count=1 ./...` — 43 пакета, 0 падений (`internal/tools` 51 с, `internal/cli` 49 с, `internal/mcp` 8 с); `python3 scripts/changelog.py check` — ok |
@@ -121,6 +121,19 @@
   (`agent_clients.go:240–262`): ключ Cloud.ru остаётся в профиле, токен HTTP
   — имя переменной (`${CLOUDRU_MCP_TOKEN}`, `bearer_token_env_var`), файл
   MCP — 0600. Замечание — FB13-6.
+- **Права на файлы, которые пишет код 1.3** (ревью Qwen #267). Новые
+  писатели дельты — только `agent setup`/`agent skill`: конфигурация
+  клиента MCP — 0600 (`cli/agent.go:508`, «пользователь может вписать в неё
+  токен», `:315–317`), правила агента (SKILL.md, `AGENTS.md`) — 0644
+  (`:530`, секретов не содержат); существующий файл сохраняет свой режим
+  (`:537–542`); запись — `config.WriteFileAtomic` (`:626`), как у профиля.
+  Других `os.WriteFile`/`os.OpenFile` в изменённых продуктовых файлах нет
+  (`git diff --name-only | xargs grep`), кроме `.gitignore` 0644 в
+  `cli/main.go:533` без секретов. Писатели секретов и state дельта не
+  трогает, их режимы прежние: профиль — 0600 (`config/profile.go:374, 536`),
+  каталог — 0700 (`config.MkdirPrivate`), план `deploy_plan` — 0600
+  (`deployplan/store.go:158`), state и его lock — `internal/state` вне
+  diff. Нарушений нет.
 - **FB121-7** (пароль ВМ шага `provision` в `stack_status`): `internal/stack`
   в diff не входит, шаги не шлют прогресс (`stepOf`), H7 без изменений —
   хуже не стало; перенос в 1.4 подтверждаю.
@@ -188,7 +201,35 @@
   (`name_dup_test.go`, `k8s_consent_test.go:205`).
 
 ### 5. «Миграция» ↔ DECISIONS ↔ RELEASING
-Ломающих изменений в дельте восемь, каждое записано трижды:
+Ломающих изменений в дельте восемь, каждое записано трижды. Три фрагмента
+`changelog.d/*` сверены с кодом построчно (ревью Qwen #267):
+- `plain-names.md` (D30): 13 инструментов фрагмента — ровно те записи
+  `createNames` без `rule` (`create_names.go:33–55`; у десяти остальных —
+  своё правило сервиса, они верно названы «не изменилось»); код — `USAGE`
+  из `plainName` (`argrules.go:218–236`: пустое после обрезки, пробел по
+  краям, управляющий символ, больше 255 символов); «до вопроса о согласии
+  и до запроса» — обёртка стоит до обработчика (`registry.go:129`), тест
+  `TestCreateNames_SpacesRefusedBeforeTheCloud` считает запросы; у
+  `dns_zone_create` — `name` и `domain` (`:40`). Верно.
+- `honest-errors.md` (D31): (1) `evo deploy --dry-run` без ключа — код 0,
+  `status: dry_run` с `missing`, без `--dry-run` — код 2
+  (`TestDeploy_DryRunWithoutKey`, `engine/deploy.go:152`); (2) `vm_get` с
+  именем в `vm_id` на сервере `--allow-project` находит ВМ, ошибка фабрики
+  — как есть, пример `CONFIG_INVALID` (`TestProjectBound_VMGetByNameInVMID`,
+  `TestProjectBound_FactoryErrorIsItsOwn`), чужая — `NOT_FOUND`
+  (`TestProjectBound_ForeignResourceRefused`); (3) `release_floating_ip` —
+  `USAGE`, `status: refused` до согласия для адреса SNAT и `in_use`
+  (`TestReleaseFloatingIP_RefusedBeforeConsent`, `tools_deploy.go:708–723`).
+  «Добавлено»: `access_denied: true`, `http_status: 403` у каждого
+  инструмента при 403 (`contract_test.go:491`), в `details` CLI
+  (`parity_json_test.go:530`); PEM `-----BEGIN` кодируется, Base64 как
+  дано (`TestCertImport_RawPEM`). Верно.
+- `k8s-ar-consent.md` (D29): верно, кроме кода у «кластер не найден» —
+  FB13-2.
+- `mcp-progress.md`, `preview-meta.md` — не «Миграция»; поведение сверено в
+  разделах 1, 2 и 4.
+
+Таблица решений:
 
 | Решение | Фрагмент или раздел «Миграция» | Таблица 1.3.0 `RELEASING.md` |
 |---|---|---|
@@ -344,6 +385,15 @@ D31. Не ломающее и записано как «Изменено»/«Д�
 - **Исправление:** `notify` по HTTP — через ту же маску, что ответ
   (`redactSecrets` на `params.message`), одной обёрткой. **Тест:**
   строка прогресса с эхом секретного значения по HTTP приходит замаскированной.
+- **Почему не до rc.1** (ревью Qwen #267 предлагает временный инвариант по
+  образцам «пароль, PEM, ключ» в `progress_test.go`): единственный секрет,
+  который рождается в `provision` и `deploy_apply`, — пароль ВМ, и его
+  инвариант уже есть (`TestProgress_Stdio`, `TestProgress_HTTP` на обоих
+  транспортах); PEM и ключи в эти обработчики не входят, а `*_operation`
+  печатает только статус операции (`opwait.go:89`). Проверка по образцам
+  ловила бы только то, что заранее назвали, и давала бы ложное
+  спокойствие; правильная защита — одна точка маски, это правка кода
+  сервера MCP, а не теста — 1.4.
 
 ### FB13-5 (1.4; деньги, гипотеза) — свободный одноимённый адрес после сбоя привязки остаётся безымянным
 - **Путь:** создание FIP с `interface_id` прошло, привязка не удалась —
@@ -368,7 +418,12 @@ D31. Не ломающее и записано как «Изменено»/«Д�
   Подсказки про `.gitignore` или `--scope user` нет.
 - **Исправление:** в подсказку — «файл с токеном не коммитьте: добавьте в
   `.gitignore` или используйте `--scope user`»; в `docs/agent-setup.md` —
-  то же. **Тест:** текст подсказки содержит `.gitignore` при заполнителе.
+  то же. Вариант сильнее (ревью Qwen #267): для клиента с заполнителем —
+  `--scope user` по умолчанию, чтобы файл с токеном не попадал в проект
+  вовсе; это правка умолчаний D22, решение владельца. Это единственное
+  место, где человек вписывает секрет в файл сам: профиль и план evo пишет
+  сам с 0600. **Тест:** текст подсказки содержит `.gitignore` при
+  заполнителе.
 
 ### FB13-7 (1.4; идемпотентность, гипотеза для cloud-e2e) — сравнение «имени» вложенного объекта строкой
 - **Путь:** `dns_record_create` — `name` как дано против `name` из списка
