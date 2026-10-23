@@ -729,6 +729,9 @@ func TestWorkflows_TagRefusesUnfoldedFragments(t *testing.T) {
 	if check < 0 {
 		t.Fatal("tag.yml does not check changelog.d of the commit it tags")
 	}
+	if !strings.Contains(steps[check].Run, "exit 1") {
+		t.Error("tag.yml: the changelog.d check does not fail the job on fragments")
+	}
 	if tag < 0 || check > tag {
 		t.Errorf("tag.yml checks changelog.d after git tag (step %d, tag at %d): the number would be spent", check, tag)
 	}
