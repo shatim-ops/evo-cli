@@ -132,10 +132,10 @@ func TestProgress_HTTP(t *testing.T) {
 	}
 	checkProgress(t, msgs, `"p-http"`, cloud.password())
 
-	resp = post(t, ts, progressCall(`"p-json"`), nil)
+	resp = post(t, ts, progressCall(`"p-json"`), map[string]string{"Accept": "application/json"})
 	var m rpcMessage
 	decodeBody(t, resp, &m)
-	if string(m.ID) != "1" || len(m.Result) == 0 {
-		t.Errorf("plain JSON: %+v", m)
+	if ct := resp.Header.Get("Content-Type"); string(m.ID) != "1" || len(m.Result) == 0 || !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("plain JSON (%s): %+v", ct, m)
 	}
 }
