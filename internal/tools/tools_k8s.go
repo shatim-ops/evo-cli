@@ -167,16 +167,18 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8s
 	// Flavor: explicit name, else smallest non-GPU that fits cpu/ram, else gen-2-4.
 	cpu := intArg(args, "cpu", 2)
 	ram := intArg(args, "ram_gb", 4)
-	flavorName := stringArg(args, "flavor")
-	flavorID := ""
+	// The chosen name is kept apart from the argument: written back into
+	// it, the first fit ended the search (cloud-e2e 22.10).
+	wantFlavor := stringArg(args, "flavor")
+	flavorID, flavorName := "", ""
 	var bestCPU, bestRAM int
 	for _, f := range pc.Flavors {
 		if f.GPU != 0 {
 			continue
 		}
-		if flavorName != "" {
-			if f.Name == flavorName {
-				flavorID = f.FlavorID
+		if wantFlavor != "" {
+			if f.Name == wantFlavor {
+				flavorID, flavorName = f.FlavorID, f.Name
 				break
 			}
 			continue
