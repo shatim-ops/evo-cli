@@ -1,0 +1,14 @@
+{
+	"servers": {
+		/* the old one */
+		"evo": {
+			"type": "stdio",
+			"command": "evo",
+			"args": [
+				"mcp",
+				"--toolsets",
+				"deploy,vm,vpc,disk,image"
+			]
+		}
+	}
+}

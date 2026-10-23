@@ -20,6 +20,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -63,6 +64,10 @@ type Tool struct {
 	// RequiredOneOf are argument sets one argument of each the call must
 	// have, beside the schema's "required" (see requiredOneOf).
 	RequiredOneOf [][]string `json:"-"`
+	// UntrustedOutput: the answer carries what a workload or a stored
+	// object wrote (logs, kubectl output, S3 objects), which the agent must
+	// not take for instructions (untrustedOutput).
+	UntrustedOutput bool `json:"-"`
 	// CLI is the tool's command in the CLI (cliSpecs).
 	CLI     CLISpec `json:"-"`
 	Handler Handler `json:"-"`
@@ -105,6 +110,9 @@ func New(factory EngineFactory) *Registry {
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
 		t.RequiredOneOf = requiredOneOf[t.Name]
+		if t.UntrustedOutput = untrustedOutput[t.Name]; t.UntrustedOutput {
+			t.Description += " " + untrustedOutputNote
+		}
 		t.CLI = cliSpecs[t.Name]
 		ru := toolsRU[t.Name]
 		t.ShortRU, t.DescriptionRU = ru.Short, ru.Long
@@ -232,6 +240,32 @@ func Groups() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// ParseToolsets reads a --toolsets list (evo mcp, evo agent setup): the
+// groups it names, lower-cased, without repeats, in the order given; nil
+// for every group ("all", or no group named). An unknown group is an error.
+func ParseToolsets(groups []string) ([]string, error) {
+	known := map[string]bool{}
+	for _, g := range Groups() {
+		known[g] = true
+	}
+	var want []string
+	seen := map[string]bool{}
+	for _, g := range groups {
+		g = strings.ToLower(strings.TrimSpace(g))
+		switch {
+		case g == "", seen[g]:
+		case g == "all":
+			return nil, nil
+		case !known[g]:
+			return nil, fmt.Errorf("unknown toolset %q; known: all, %s", g, strings.Join(Groups(), ", "))
+		default:
+			seen[g] = true
+			want = append(want, g)
+		}
+	}
+	return want, nil
 }
 
 // groupByName assigns tools whose name does not start with their group.

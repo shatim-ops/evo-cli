@@ -7,10 +7,12 @@
 package workflows
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -25,10 +27,11 @@ type workflow struct {
 		CancelInProgress string `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
 	Jobs map[string]struct {
-		If          string `yaml:"if"`
-		Permissions any    `yaml:"permissions"`
-		Uses        string `yaml:"uses"`
-		Steps       []struct {
+		If             string `yaml:"if"`
+		TimeoutMinutes int    `yaml:"timeout-minutes"`
+		Permissions    any    `yaml:"permissions"`
+		Uses           string `yaml:"uses"`
+		Steps          []struct {
 			ID   string            `yaml:"id"`
 			If   string            `yaml:"if"`
 			Uses string            `yaml:"uses"`
@@ -184,6 +187,53 @@ func TestWorkflows_CIShufflesOnMain(t *testing.T) {
 		}
 	}
 	t.Error("ci: go test -race without -shuffle")
+}
+
+// On Windows the race-enabled go test runs with async preemption off until
+// CI moves to a Go with the fix: the runtime crashed there with 0xc0000005
+// in adjustdefers during shrinkstack, in internal/tools, on PRs whose diff
+// could not cause it (#226, #219; hypothesis golang/go#79249, fixed for Go
+// 1.28). Other systems keep the default. On Go 1.28 and later the setting
+// must go, so the test fails until it is removed.
+func TestWorkflows_WindowsRaceWithoutAsyncPreemptBeforeGo128(t *testing.T) {
+	const want = "${{ runner.os == 'Windows' && 'asyncpreemptoff=1' || '' }}"
+	ws := readWorkflows(t)
+	for _, file := range []string{"ci.yml", "weekly-race.yml"} {
+		found := false
+		for name, j := range ws[file].Jobs {
+			goVersion := ""
+			for _, s := range j.Steps {
+				if strings.HasPrefix(s.Uses, "actions/setup-go@") {
+					goVersion, _ = s.With["go-version"].(string)
+				}
+			}
+			for _, s := range j.Steps {
+				if !strings.Contains(s.Run, "go test -race") {
+					continue
+				}
+				found = true
+				got, set := s.Env["GODEBUG"]
+				switch fixed := goAtLeast(goVersion, 1, 28); {
+				case fixed && set:
+					t.Errorf("%s: job %s runs Go %s with the fix of golang/go#79249: remove GODEBUG %q", file, name, goVersion, got)
+				case !fixed && got != want:
+					t.Errorf("%s: job %s (Go %q) go test -race GODEBUG %q, want %q", file, name, goVersion, got, want)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no go test -race step", file)
+		}
+	}
+}
+
+// goAtLeast reports whether version ("1.26.10") is major.minor or later.
+func goAtLeast(version string, major, minor int) bool {
+	var ma, mi int
+	if _, err := fmt.Sscanf(version, "%d.%d", &ma, &mi); err != nil {
+		return false
+	}
+	return ma > major || ma == major && mi >= minor
 }
 
 // Every PR gets its change class and the checklist of checks beyond CI in
@@ -487,5 +537,51 @@ func TestWorkflows_ContractCachesOnlyCompleteSpecs(t *testing.T) {
 	}
 	if !restore || !save {
 		t.Errorf("api-contract: restore %v, save %v; want both", restore, save)
+	}
+}
+
+// The download of the specs ends before the job's own limit: on a pull
+// request a docs site that does not answer in time skips the check with a
+// warning instead of cancelling the job (#245, #217: three full passes over
+// the docs ran out the 15 minutes). The script retries only what is missing
+// and is tested without the network on every change to it.
+func TestWorkflows_ContractDownloadEndsBeforeTheJob(t *testing.T) {
+	w, ok := readWorkflows(t)["api-contract.yml"]
+	if !ok {
+		t.Fatal("no api-contract.yml")
+	}
+	limit := regexp.MustCompile(`\btimeout (\d+) python3 scripts/cloudru-specs\.py\b`)
+	var download, selfTest bool
+	for name, j := range w.Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, "python3 scripts/cloudru-specs-test.py") {
+				selfTest = true
+			}
+			if s.ID != "specs" {
+				continue
+			}
+			download = true
+			m := limit.FindStringSubmatch(s.Run)
+			if m == nil {
+				t.Errorf("api-contract job %s: the download has no time limit of its own (timeout N python3 scripts/cloudru-specs.py)", name)
+				continue
+			}
+			secs, _ := strconv.Atoi(m[1])
+			// Two minutes stay for checkout, the coverage step and the check.
+			if j.TimeoutMinutes == 0 || secs > j.TimeoutMinutes*60-120 {
+				t.Errorf("api-contract job %s: download limit %d s, job limit %d min: the skip on a pull request is never reached", name, secs, j.TimeoutMinutes)
+			}
+		}
+	}
+	if !download {
+		t.Error("api-contract: no step with id specs")
+	}
+	if !selfTest {
+		t.Error("api-contract: scripts/cloudru-specs-test.py does not run")
+	}
+	pr, _ := w.On["pull_request"].(map[string]any)
+	paths, _ := pr["paths"].([]any)
+	if !slices.Contains(paths, any("scripts/cloudru-specs-test.py")) {
+		t.Errorf("api-contract: pull_request paths %v miss scripts/cloudru-specs-test.py", paths)
 	}
 }

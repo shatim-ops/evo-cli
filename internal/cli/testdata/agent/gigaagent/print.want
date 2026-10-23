@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "evo": {
+      "command": "evo",
+      "args": [
+        "mcp",
+        "--read-only",
+        "--toolsets",
+        "deploy,vm,vpc,disk,image"
+      ]
+    }
+  }
+}

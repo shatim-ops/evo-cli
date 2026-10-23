@@ -63,6 +63,7 @@ archives:
       # README ссылается на docs/*.md — в распакованном архиве они должны
       # быть рядом (и те, на которые ссылаются они сами: rename.md).
       # Внутренние документы (docs/internal, RELEASING) — нет.
+      - docs/agent-skill.md
       - docs/auth.md
       - docs/commands.md
       - docs/exit-codes.md

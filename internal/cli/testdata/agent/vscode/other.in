@@ -1,0 +1,6 @@
+{
+	"servers": {
+		/* the old one */
+		"evo": {"type": "stdio", "command": "evo", "args": ["mcp", "--read-only"]}
+	}
+}

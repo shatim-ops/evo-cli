@@ -1,0 +1,13 @@
+model = "o3"
+approval_policy = "on-request"
+
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+
+[mcp_servers.github.env]
+LOG_LEVEL = "info"
+
+# Profiles.
+[profiles.fast]
+model = "o4-mini"

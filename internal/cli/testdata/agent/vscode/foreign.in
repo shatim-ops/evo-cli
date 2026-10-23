@@ -1,0 +1,10 @@
+{
+	// Servers of this workspace.
+	"inputs": [],
+	"servers": {
+		"github": {
+			"type": "http",
+			"url": "https://api.githubcopilot.com/mcp/", // remote
+		},
+	},
+}
