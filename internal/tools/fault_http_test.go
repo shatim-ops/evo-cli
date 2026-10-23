@@ -59,7 +59,7 @@ var faultCollections = map[string]struct {
 	async bool
 	// unique: the API refuses a second resource of the name, 409. Only
 	// where it is known: a name in the path (containers, secrets), the
-	// spec's 409 (disks, api-contract.md), a domain (DNS zones).
+	// spec's 409 (disks and images, api-contract.md), a domain (DNS zones).
 	unique bool
 }{
 	"/v1/clusters":         {field: "clusters", async: true},
@@ -70,6 +70,7 @@ var faultCollections = map[string]struct {
 	"/v1/vpcs":             {field: "vpcs", async: true},
 	"/v2/secret":           {field: "secrets", unique: true},
 	"/api/v1/disks":        {field: "items", unique: true},
+	"/api/v1/images":       {field: "items", unique: true}, // the spec's 409 «образ уже существует»
 	// mk8s and NLB: their specs document no refusal of a taken name (D21).
 	"/v3/clusters":             {field: "clusters", async: true},
 	"/v2/networkLoadBalancers": {field: "balancers", async: true},

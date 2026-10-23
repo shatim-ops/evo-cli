@@ -112,6 +112,7 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("disk_create", map[string]any{"name": "evo-d", "size_gb": 10, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_create", map[string]any{"name": "evo-kc", "zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "confirmed": true}),
 	apiCase("lb_create", map[string]any{"name": "evo-lb", "target_group_id": "tg-1", "port": 80, "zone": "ru.AZ-1", "confirmed": true}),
+	apiCase("image_create", map[string]any{"name": "evo-img", "disk_id": faultDisk, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_add_nodepool", map[string]any{"cluster_id": faultK8sCluster, "name": "evo-np", "confirmed": true}),
 }
 
