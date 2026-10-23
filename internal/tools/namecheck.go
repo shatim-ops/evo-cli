@@ -5,10 +5,12 @@
 package tools
 
 import (
+	"context"
 	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // takenName finds a listed resource (cluster, registry) named name that is
@@ -49,6 +51,43 @@ func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 		map[string]any{"existing_id": id}), true
 }
 
+// noID is the error of a create the API answered with success but no id
+// of what it made (operation or resource): the API's fault, API_ERROR, not
+// the caller's.
+func noID(what string) error {
+	return clierrors.New(clierrors.CodeAPIError, "the API answered no "+what+" id", "")
+}
+
+// lostCreate answers a create that sent its request but got no usable
+// answer — an error after the request went out, or a success without an
+// operation id; createErr says which. The service may have made the
+// resource, and then it is billed: list reads the resources again, and one
+// with the name (free before the create, takenName) is answered as made,
+// by its id under idField (fault matrix, process audit 1.2.1). When the list cannot be
+// read either, the error says the resource may exist and where to look:
+// the same create again refuses the taken name and names its id.
+func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]any, error), kind, idField, name string, created map[string]any, getHint, listTool string, createErr error) (string, bool) {
+	items, err := list(ctx)
+	if err != nil {
+		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
+			"the %s %q may have been made and be billed: %s shows it by name; the same create again names its id instead of making a second",
+			"%s %q мог быть создан и оплачиваться: %s покажет его по имени; тот же вызов создания ещё раз назовёт его id, а не создаст второй",
+			kind, name, listTool)}), true
+	}
+	id, status, ok := takenName(items, name)
+	if !ok {
+		return errResult(createErr), true
+	}
+	answer := "creating"
+	if resourceFailed(status) {
+		// A script that reads status alone must not wait for it to come up.
+		answer = "failed"
+	}
+	return toJSON(map[string]any{"status": answer, idField: id, "resource_status": status, "created": created,
+		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s) и оплачивается", kind, name, id, status),
+		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}), false
+}
+
 // uuidArg refuses an id the API takes only as a UUID before the call: the
 // API answered a malformed id with a 400 that read as API_ERROR, exit 5
 // (release audit, L-15). Returns "" when id is a UUID.
@@ -81,4 +120,11 @@ func needSpecResult(specsTool, specID string, cpu, ram int, fields map[string]an
 	return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 		i18n.Tf("Pass specification_id (or cpu+ram) of one of available_specifications; %s lists them all.",
 			"Укажите specification_id (или cpu+ram) одной из available_specifications; полный список — %s.", specsTool)), fields), true
+}
+
+// resourceFailed reports a status of a resource that will not come up:
+// FAILED of the managed services, ERROR or error_<step> of compute
+// (provision.VMFailed).
+func resourceFailed(status string) bool {
+	return strings.Contains(strings.ToLower(status), "fail") || provision.VMFailed(status)
 }
