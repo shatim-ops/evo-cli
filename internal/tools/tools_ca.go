@@ -206,8 +206,11 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	op, err := cli.Create(ctx, req)
-	if err != nil {
-		return errResult(err), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, cli.List, i18n.T("container app", "приложение"), "id", name, nil, "ca_get name", "ca_list", err)
 	}
 	return toJSON(map[string]any{
 		"status":       "deploying",
