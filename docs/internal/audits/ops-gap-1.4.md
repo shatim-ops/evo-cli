@@ -305,6 +305,10 @@ PublicKey`). Явное значение `--meta <поле>=…` (`image_metadat
 ### G3. `evo status` и `evo vm delete` видят ВМ только из каталога создания
 
 **Вердикт: `status` — правда, `vm delete` — нет (с 1.0 по `--vm-id`/`--name`).**
+Уточнение терминов: отдельного инструмента `vm_delete` нет — `evo vm delete`
+это команда CLI инструмента `destroy` (`docs/tools.md`, группа `deploy`;
+`CLISpec` в `internal/tools/cli_spec.go`). Без аргументов она удаляет
+текущее развёртывание каталога, с `--vm-id`/`--name` — ВМ по живому API.
 
 - `handleStatus` (`internal/tools/tools.go:2292`) читает только локальный
   state каталога (`engine.Status`); `refresh` дочитывает облако по ВМ из
@@ -530,16 +534,19 @@ table|yaml`, `--jq` отсутствуют. BACKLOG cli-practice (15.10): язы
 
 ### G15. Детач floating IP
 
-**Вердикт: нет.** `fip_attach` есть, обратного нет; `fip-release` занятый
-адрес не освобождает (D31). API: `PUT /floating-ips/{id}` с `detach`.
-Трудоёмкость **S**. В плане нет.
+**Вердикт: нет.** `fip_attach` есть, обратного нет. Две разные операции:
+`fip_detach` — открепить адрес от интерфейса, адрес остаётся в проекте
+(API: `PUT /floating-ips/{id}` с `detach`); `release_floating_ip`
+(`evo vpc fip-release`) — удалить адрес из проекта, занятый ВМ или шлюзом
+SNAT адрес отказывает до согласия (D31). Сейчас, чтобы освободить адрес от
+ВМ без её удаления, пути нет. Трудоёмкость **S**. В плане нет.
 
 ### Где evo впереди (факты по коду и документации)
 
 | Возможность | evo | У конкурентов |
 |---|---|---|
 | Превью с ценой до платного действия, на обеих поверхностях | `CreatePreview`, `price-calculation`, `tariff_url` (D17), `--dry-run` у любой команды | CLI облаков цены не показывают; Terraform — только план без цены (оценка — HCP/Infracost, см. §6) |
-| Согласие одинаково для человека и агента | `confirmed=true` ↔ `--yes`, `confirmation_required` (D9, D10) | MCP-серверы полагаются на клиента; AWS/Azure дают read-only флаг, не превью |
+| Согласие одинаково для человека и агента | `confirmed=true` ↔ `--yes`, `confirmation_required` (D9, D10) | MCP-серверы полагаются на клиента: AWS API MCP и Azure дают read-only флаг; согласие через elicitation — у AWS API MCP (`REQUIRE_MUTATION_CONSENT`, выключено по умолчанию) и у Azure (только для инструментов, раскрывающих секреты, не для разрушительных); превью с ценой и `confirmation_required` в ответе самого инструмента, независимо от клиента, — только у evo |
 | Отказ до согласия на вызов, который не пройдёт | D15, D19–D21, D23, D29–D31 | нет аналога: CLI отдают ошибку API после отправки |
 | Идемпотентность create/delete | `takenName`, `lostCreate`, `already_deleted` (D20–D28), тест-инварианты | `aws ec2 run-instances --client-token`; у `gcloud`/`az` повтор создания — ошибка 409 |
 | Паритет CLI ↔ MCP | один реестр, `TestParity_*` (D13, D14) | MCP-серверы — отдельные проекты от CLI (awslabs/mcp, Azure MCP) |
