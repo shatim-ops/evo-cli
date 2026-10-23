@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Проверка обёртки evo из evo_wrapper.sh (job ci): stderr — через redact.sed,
-# stdout — как есть (его читает jq), код выхода и сигнал — от evo.
+# Проверка обёртки evo из evo_wrapper.sh (job ci): stderr в канал — через
+# redact.sed, stderr в файл — как есть и дописан к возврату вызова, stdout —
+# как есть (его читает jq), код выхода и сигнал — от evo.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 dir=$(mktemp -d)
@@ -18,25 +19,26 @@ chmod +x "$dir/evo-real"
 fail=0
 want() { if [ "$2" != "$3" ]; then printf 'FAIL %s\n  got:  %q\n  want: %q\n' "$1" "$2" "$3"; fail=1; fi; }
 
+# stderr в канал (лог шага, 2>&1 | jq): маска; читатель ждёт конца канала.
 set +e
-out=$("$dir/evo" out 2>"$dir/err"); rc=$?
+got=$("$dir/evo" out 2>&1 >"$dir/out"); rc=$?
 set -e
-want "stdout как есть" "$out" "stdout $id"
-want "stderr через redact.sed" "$(cat "$dir/err")" "stderr <id>"
+want "stderr в канал — через redact.sed" "$got" "stderr <id>"
+want "stdout как есть" "$(cat "$dir/out")" "stdout $id"
 want "код выхода evo" "$rc" 7
 
+# stderr в файл: как есть и уже дописан, когда вызов вернулся.
 set +e
-E2E_RAW_STDERR=1 "$dir/evo" out >/dev/null 2>"$dir/err"
+"$dir/evo" out >/dev/null 2>"$dir/err"
 set -e
-want "E2E_RAW_STDERR=1 — stderr как есть" "$(cat "$dir/err")" "stderr $id"
+want "stderr в файл — как есть, сразу" "$(cat "$dir/err")" "stderr $id"
 
 # Ctrl-C (timeout -s INT, шаг «logs -f») доходит до evo, а не до обёртки.
 set +e
-timeout --preserve-status -s INT 1 "$dir/evo" wait 2>"$dir/err"; rc=$?
+got=$(timeout --preserve-status -s INT 1 "$dir/evo" wait 2>&1 >/dev/null); rc=$?
 set -e
-sleep 0.2
 want "INT доходит до evo" "$rc" 130
-want "stderr после INT — через redact.sed" "$(cat "$dir/err")" "stderr прерван <id>"
+want "stderr после INT — через redact.sed" "$got" "stderr прерван <id>"
 
 [ "$fail" = 0 ] && echo "evo_wrapper: ok"
 exit "$fail"

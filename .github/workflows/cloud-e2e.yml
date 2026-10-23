@@ -577,7 +577,7 @@ jobs:
           (cd os-app && evo init --non-interactive --image "$IMAGE" > init.txt 2>&1)
           rc=$?
           set -e
-          tail -3 os-app/init.txt
+          tail -3 os-app/init.txt | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
           if [ "$avail" != true ]; then
             [ "$rc" = 4 ] || { echo "::error::init --image $IMAGE: код $rc, ждали 4 (образ недоступен проекту)"; exit 1; }
           elif [ "$rc" = 0 ] || ! grep -q "get.docker.com" os-app/init.txt; then
@@ -1215,9 +1215,7 @@ jobs:
       - name: Второй pg_create с тем же именем отклонён (L-32)
         run: |
           set +e
-          # stderr — в файл без маски: шаг ищет в отказе ID своего кластера и
-          # печатает только reason и да/нет (TestWorkflows_CloudE2EStderrRedacted).
-          E2E_RAW_STDERR=1 evo tools call pg_create --arg name="$CLUSTER" --arg specification_id="$SPEC_ID" --arg subnet_id="$SUBNET_ID" \
+          evo tools call pg_create --arg name="$CLUSTER" --arg specification_id="$SPEC_ID" --arg subnet_id="$SUBNET_ID" \
             --json 2> "$RUNNER_TEMP/dup.json" >/dev/null
           rc=$?
           set -e
@@ -1467,9 +1465,7 @@ jobs:
       - name: Второй kafka_create с тем же именем отклонён (L-32)
         run: |
           set +e
-          # stderr — в файл без маски: шаг ищет в отказе ID своего кластера и
-          # печатает только reason и да/нет (TestWorkflows_CloudE2EStderrRedacted).
-          E2E_RAW_STDERR=1 evo --region "$ZONE_ID" tools call kafka_create --arg name="$CLUSTER" --arg brokers=1 \
+          evo --region "$ZONE_ID" tools call kafka_create --arg name="$CLUSTER" --arg brokers=1 \
             --json 2> "$RUNNER_TEMP/dup.json" >/dev/null
           rc=$?
           set -e
@@ -1617,9 +1613,7 @@ jobs:
       - name: Второй redis_create с тем же именем отклонён (L-32)
         run: |
           set +e
-          # stderr — в файл без маски: шаг ищет в отказе ID своего кластера и
-          # печатает только reason и да/нет (TestWorkflows_CloudE2EStderrRedacted).
-          E2E_RAW_STDERR=1 evo --region "$ZONE_ID" tools call redis_create --arg name="$CLUSTER" --arg type=MASTER_REPLICA \
+          evo --region "$ZONE_ID" tools call redis_create --arg name="$CLUSTER" --arg type=MASTER_REPLICA \
             --arg shards=1 --arg replicas=2 --json 2> "$RUNNER_TEMP/dup.json" >/dev/null
           rc=$?
           set -e

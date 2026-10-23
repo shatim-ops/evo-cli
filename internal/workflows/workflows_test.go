@@ -629,13 +629,13 @@ func TestWorkflows_ContractDownloadEndsBeforeTheJob(t *testing.T) {
 }
 
 // The logs of cloud-e2e and api-probe are public: every job there builds evo
-// with build_evo.sh, which puts on PATH a wrapper whose stderr goes through
-// redact.sed, instead of a mask at each call (k8s-smoke, 22.10: a cloud error
-// from k8s create reached the log unmasked). The wrapper is tested in ci. A
-// command that needs the raw stderr (E2E_RAW_STDERR=1) sends it to a file.
+// with build_evo.sh, which puts on PATH a wrapper whose stderr to the log or
+// a pipe goes through redact.sed, instead of a mask at each call (k8s-smoke,
+// 22.10: a cloud error from k8s create reached the log unmasked); stderr to a
+// file stays as it is, written by the time the call returns. The wrapper is
+// tested in ci.
 func TestWorkflows_CloudE2EStderrRedacted(t *testing.T) {
 	ws := readWorkflows(t)
-	cont := regexp.MustCompile(`\\\n\s*`)
 	for _, file := range []string{"cloud-e2e.yml", "api-probe.yml"} {
 		builds := 0
 		for name, j := range ws[file].Jobs {
@@ -645,11 +645,6 @@ func TestWorkflows_CloudE2EStderrRedacted(t *testing.T) {
 				}
 				if strings.Contains(s.Run, ".github/scripts/build_evo.sh") {
 					builds++
-				}
-				for _, line := range strings.Split(cont.ReplaceAllString(s.Run, " "), "\n") {
-					if strings.Contains(line, "E2E_RAW_STDERR=1") && !regexp.MustCompile(`\s2>\s*"?\$RUNNER_TEMP/`).MatchString(line) {
-						t.Errorf("%s job %s: E2E_RAW_STDERR=1 without stderr to a file in $RUNNER_TEMP: %s", file, name, strings.TrimSpace(line))
-					}
 				}
 			}
 		}

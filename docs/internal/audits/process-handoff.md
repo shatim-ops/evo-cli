@@ -98,9 +98,10 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 - **stderr evo в публичных логах cloud-e2e и api-probe** (задача процесса
   1.3, `release-plan.md`: ошибка облака из `k8s create` в `k8s-smoke` ушла в
   лог без `redact.sed`, 22.10). Одна точка: `build_evo.sh` кладёт в PATH
-  обёртку (`evo_wrapper.sh`), stderr — через `redact.sed`; исключение
-  `E2E_RAW_STDERR=1` — только со stderr в файл
-  (`TestWorkflows_CloudE2EStderrRedacted`, `evo_wrapper_test.sh` в ci).
+  обёртку (`evo_wrapper.sh`): stderr в лог или канал — через `redact.sed`,
+  stderr в файл — как есть и синхронно (шаги читают его сразу; в лог файл
+  выводится через `redact.sed`) (`TestWorkflows_CloudE2EStderrRedacted`,
+  `evo_wrapper_test.sh` в ci).
   Не покрыт `cloud-readonly-os.yml` (Windows и macOS, только чтение) — в
   бэклог. Проверить на первом cloud-e2e после слияния: шаги `logs -f` (код
   130), повторные `*_create` (ID в отказе), `bound-check`.
