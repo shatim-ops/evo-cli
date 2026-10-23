@@ -4,9 +4,9 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 fail=0
-check() { # имя, ожидаемый вывод, пути через пробел [, MIGRATION]
+check() { # имя, ожидаемый вывод, пути через пробел [, MIGRATION [, REGISTRY]]
 	local got
-	got=$(tr ' ' '\n' <<<"$3" | MIGRATION=${4:-} "$here/classify.sh")
+	got=$(tr ' ' '\n' <<<"$3" | MIGRATION=${4:-} REGISTRY=${5:-} "$here/classify.sh")
 	if [ "$got" = "$2" ]; then echo "ok   $1"; else
 		echo "FAIL $1"; echo "  ждали: $2" | tr '\n' '|'; echo; echo "  вышло: $got" | tr '\n' '|'; echo
 		fail=1
@@ -43,6 +43,28 @@ has "чек-лист: флажки cloud-e2e" "internal/tools/tools_dns.go inter
 	"с ветки PR — \`dns_smoke\`, основной прогон (флажки не нужны)." \
 	"из \`main\` (дорогие области): \`dbaas_smoke\`."
 has "чек-лист: только тесты" "internal/engine/deploy_test.go" "Дополнительных проверок сверх CI не нужно."
+# Классы по diff реестра: tools/list базы и головы.
+reg() { # имя, ожидаемые классы через пробел, jq-правка списка базы
+	local base head got
+	base=$(mktemp) head=$(mktemp)
+	printf '%s' '[{"name":"a","annotations":{"readOnlyHint":true},"inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}},
+		{"name":"b","annotations":{"destructiveHint":true},"inputSchema":{"type":"object","properties":{"confirmed":{"type":"boolean"}}}}]' > "$base"
+	jq "$3" "$base" > "$head"
+	got=$("$here/classify_registry.sh" "$base" "$head" | tr '\n' ' ' | sed 's/ $//')
+	rm -f "$base" "$head"
+	if [ "$got" = "$2" ]; then echo "ok   $1"; else echo "FAIL $1: ждали «$2», вышло «$got»"; fail=1; fi
+}
+reg "реестр: без изменений" "" '.'
+reg "реестр: новый инструмент" "new-tool" '. + [{"name":"c","inputSchema":{}}]'
+reg "реестр: инструмент пропал — ломающее" "breaking" 'map(select(.name != "a"))'
+reg "реестр: согласие убрано — политика" "policy" 'map(if .name == "b" then del(.inputSchema.properties.confirmed) else . end)'
+reg "реестр: аннотация — политика" "policy" 'map(if .name == "a" then .annotations.readOnlyHint = false else . end)'
+reg "реестр: обязательный аргумент — политика" "policy" 'map(if .name == "a" then .inputSchema.required = [] else . end)'
+reg "реестр: новый аргумент — изменение схемы" "tool-change" 'map(if .name == "a" then .inputSchema.properties.x = {"type":"string"} else . end)'
+reg "реестр: описание — без класса" "" 'map(if .name == "a" then .description = "x" else . end)'
+reg "реестр: описание аргумента — без класса" "" 'map(if .name == "a" then .inputSchema.properties.id.description = "x" else . end)'
+check "классы реестра в classify.sh" "classes=new-tool policy${nl}before=${nl}after=" "" "" "new-tool policy"
+
 # Каждая область, кроме основного прогона e2e, — флажок <область>_smoke
 # cloud-e2e: чек-лист не назовёт флажок, которого нет.
 while read -r a; do
