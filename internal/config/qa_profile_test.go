@@ -22,6 +22,12 @@ import (
 // «configure --profile pN» сохранилось 8, все 20 ответили успехом.
 func TestSaveProfile_ConcurrentWritersKeepEveryProfile(t *testing.T) {
 	isolate(t)
+	// The test is about lost profiles, not the wait: 16 writers queued on
+	// a slow macOS runner past the production 10 s (CI, 22.10). The wait
+	// is the one of a busy lock, not a bound on this test's time.
+	oldWait := lockWait
+	lockWait = time.Minute
+	t.Cleanup(func() { lockWait = oldWait })
 	const n = 16
 	var wg sync.WaitGroup
 	errs := make(chan error, n)
