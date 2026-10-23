@@ -110,6 +110,16 @@ class Fold(Repo):
         changelog.fold(self.root)
         self.assertEqual(self.read("CHANGELOG.md"), HEAD + "## [Не выпущено]\n\n### Безопасность\n\n- Закрыто.\n\n" + RELEASED)
 
+    def test_known_limitations_go_last(self):
+        # Owner's decision 23.10: limits of the version (FB121-7) go after
+        # «Безопасность».
+        self.write("CHANGELOG.md", HEAD + "## [Не выпущено]\n\n" + RELEASED)
+        self.write("changelog.d/a.md", "### Известные ограничения\n\n- Пароль не отдаётся.\n")
+        self.write("changelog.d/b.md", "### Безопасность\n\n- Закрыто.\n")
+        changelog.fold(self.root)
+        self.assertEqual(self.read("CHANGELOG.md"), HEAD + "## [Не выпущено]\n\n### Безопасность\n\n- Закрыто.\n\n"
+                         "### Известные ограничения\n\n- Пароль не отдаётся.\n\n" + RELEASED)
+
     def test_bad_fragment_folds_nothing(self):
         text = HEAD + "## [Не выпущено]\n\n" + RELEASED
         self.write("CHANGELOG.md", text)
