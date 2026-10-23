@@ -47,7 +47,7 @@ func TestDestroyTargeted_FIPByExactBootName(t *testing.T) {
 		}, "fip-w"},
 		"два FIP с именем ВМ — привязанный к ней": {[]*provision.FloatingIP{
 			{ID: "fip-old", Name: provision.BootFIPName("web", stamp)},
-			{ID: "fip-w", Name: provision.BootFIPName("web", other), VM: json.RawMessage(`{"id":"vm-1","name":"web"}`)},
+			{ID: "fip-w", Name: provision.BootFIPName("web", other), VM: json.RawMessage(`{"id":"0000a1a1-0000-4000-8000-000000000001","name":"web"}`)},
 		}, "fip-w"},
 		"два FIP, ни один не привязан — не угадываем": {[]*provision.FloatingIP{
 			{ID: "fip-a", Name: provision.BootFIPName("web", stamp)},

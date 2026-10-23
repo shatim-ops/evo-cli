@@ -360,12 +360,14 @@ func TestContract_GatePreviewDoesNotWrite(t *testing.T) {
 			text, isErr, pan := contractCall(tl, call, 250*time.Millisecond)
 			reqs := rt.take()
 			reason, status := contractReason(text)
-			if pan != "" || contractWrites(reqs) != 0 || !isErr {
+			// already_deleted is no error and no write: a delete of what the
+			// cloud does not have answers so already in the preview (D26).
+			if pan != "" || contractWrites(reqs) != 0 || !isErr && status != "already_deleted" {
 				t.Errorf("%s %s panic=%s writes=%d err=%v reason=%s status=%s text=%.180s", tl.Name, label, pan, contractWrites(reqs), isErr, reason, status, text)
 			}
 			// Не confirmation_required, но и не запись — так задумано:
-			// USAGE до облака (имя, enum); NOT_FOUND / VM_NOT_FOUND уже на
-			// превью (docs/exit-codes.md, несуществующая ВМ — код 4);
+			// USAGE до облака (имя, enum); NOT_FOUND родителя уже на превью;
+			// already_deleted — удаление того, чего нет (D26);
 			// need_specification — меню спецификаций, только GET.
 		}
 	}
@@ -465,6 +467,14 @@ func TestContract_APIStatusReason(t *testing.T) {
 				continue // пустой 2xx — успех по построению, см. contractAPIBreak.
 			}
 			reached++
+			if _, del := deleteTargets[tl.Name]; del && kind == "404" && !isErr {
+				// A 404 on the delete target is a done delete (D26); a 404 on
+				// the parent stays NOT_FOUND and takes the check below.
+				if !strings.Contains(text, `"status": "already_deleted"`) {
+					t.Errorf("%s 404 success that is not already_deleted: %.200s", tl.Name, text)
+				}
+				continue
+			}
 			reason, _ := contractReason(text)
 			if !isErr || reason == "" || reason == clerrors.ReasonGeneral {
 				t.Errorf("%s %s reason=%q err=%v reqs=%v text=%.200s", tl.Name, kind, reason, isErr, reqs, text)

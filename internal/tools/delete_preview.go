@@ -13,14 +13,15 @@ import (
 
 // deletePreview is the confirmation answer of a *_delete tool: one GET of
 // the resource names what goes — its name and status next to the ID the
-// caller passed — and an ID that is not there is that GET's error instead
-// of a question (release audit, R-04). The message, in English (en) and
+// caller passed — and an ID that is not there is already deleted, the
+// answer of a repeated delete (D26), instead of a question (release audit,
+// R-04); any other error of the GET is the answer. The message, in English (en) and
 // Russian (ru) for the CLI's language, has one %s: the resource as
 // "name" (id), the name quoted on one line (quoteCloud).
-func deletePreview(en, ru, id string, get func() (map[string]any, error)) (string, bool) {
+func deletePreview(tool, en, ru, id string, get func() (map[string]any, error)) (string, bool) {
 	m, err := get()
 	if err != nil {
-		return errResult(err), true
+		return deleteFailed(tool, id, err)
 	}
 	name, _ := m["name"].(string)
 	status, _ := m["status"].(string)

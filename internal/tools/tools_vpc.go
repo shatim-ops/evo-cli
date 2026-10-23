@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -127,13 +128,13 @@ func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (st
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first.",
+		return deletePreview("vpc_delete", "vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first.",
 			"vpc_delete удаляет VPC %s (асинхронно). Сначала нужно удалить его подсети и ресурсы.",
 			id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) })
 	}
 	op, err := cli.DeleteVPC(ctx, id)
 	if err != nil {
-		return errResult(fmt.Errorf("delete vpc: %w", err)), true
+		return deleteFailed("vpc_delete", id, fmt.Errorf("delete vpc: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 }
@@ -287,17 +288,30 @@ func (s *Registry) handleVpcRouteDelete(ctx context.Context, args map[string]any
 	if vpcID == "" || routeID == "" {
 		return usageT("'vpc_id' and 'route_id' (from vpc_routes) are required", "нужны 'vpc_id' и 'route_id' (из vpc_routes)"), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("vpc_route_delete removes static route %s from VPC %s (async).",
-			"vpc_route_delete удаляет статический маршрут %s из VPC %s (асинхронно).", routeID, vpcID)}), true
-	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return errResult(err), true
 	}
+	// The VPC first: one that is not there is the call's error (NOT_FOUND),
+	// not a repeat; a route that is not there is (D26).
+	if _, err := cli.GetVPC(ctx, vpcID); err != nil {
+		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		routes, err := cli.ListRoutes(ctx, vpcID)
+		if err != nil {
+			return errResult(err), true
+		}
+		if !slices.ContainsFunc(routes, func(m map[string]any) bool { return m["id"] == routeID }) {
+			return deleteFailed("vpc_route_delete", routeID, clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("no route %s in VPC %s", "маршрута %s в VPC %s нет", routeID, vpcID), ""))
+		}
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("vpc_route_delete removes static route %s from VPC %s (async).",
+			"vpc_route_delete удаляет статический маршрут %s из VPC %s (асинхронно).", routeID, vpcID)}), true
+	}
 	op, err := cli.DeleteRoute(ctx, vpcID, routeID)
 	if err != nil {
-		return errResult(fmt.Errorf("delete route: %w", err)), true
+		return deleteFailed("vpc_route_delete", routeID, fmt.Errorf("delete route: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "route_id": routeID, "operation_id": op.ID}), false
 }

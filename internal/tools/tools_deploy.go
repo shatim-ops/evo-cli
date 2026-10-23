@@ -658,27 +658,20 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	default:
 		return usageT("provide either 'id' or 'ip_address'", "укажите 'id' или 'ip_address'"), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
-				"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
-		}), true
-	}
-
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return errResult(err), true
 	}
 	projectID := eng.Config.ProjectID
 
-	// Resolve to a concrete FIP (id, address, state).
+	// Resolve to a concrete FIP (id, address, state), before the question:
+	// one that is not there is already released (D26).
 	var fipID, fipIP, state string
 	onNAT := false
 	if id != "" {
 		f, e := eng.Cloud.GetFloatingIP(ctx, id)
 		if e != nil {
-			return errResult(fmt.Errorf(i18n.T("floating IP %q not found: %w", "floating IP %q не найден: %w"), id, e)), true
+			return deleteFailed("release_floating_ip", id, fmt.Errorf("floating IP %q: %w", id, e))
 		}
 		fipID, fipIP, state, onNAT = id, f.IPAddress, f.State, f.OnNATGateway()
 	} else {
@@ -693,8 +686,17 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 			}
 		}
 		if fipID == "" {
-			return errResult(fmt.Errorf(i18n.T("no floating IP with address %q in this project", "в проекте нет floating IP с адресом %q"), ip)), true
+			return deleteFailedAs("release_floating_ip", "ip_address", ip, clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("no floating IP with address %q in this project", "в проекте нет floating IP с адресом %q", ip), ""))
 		}
+	}
+
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status": "confirmation_required",
+			"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
+				"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
+		}), true
 	}
 
 	// A SNAT gateway's address goes with the gateway: the API refuses to
@@ -717,7 +719,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	}
 
 	if err := eng.Cloud.DeleteFloatingIP(ctx, fipID, projectID); err != nil {
-		return errResult(fmt.Errorf("release floating IP: %w", err)), true
+		return deleteFailed("release_floating_ip", fipID, fmt.Errorf("release floating IP: %w", err))
 	}
 	return toJSON(map[string]any{
 		"status":   "ok",

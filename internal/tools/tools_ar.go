@@ -134,13 +134,13 @@ func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("ar_delete PERMANENTLY deletes registry %s and its artifacts.",
+		return deletePreview("ar_delete", "ar_delete PERMANENTLY deletes registry %s and its artifacts.",
 			"ar_delete БЕЗВОЗВРАТНО удаляет реестр %s и его артефакты.",
 			id, func() (map[string]any, error) { return cli.GetRegistry(ctx, id) })
 	}
 	op, err := cli.DeleteRegistry(ctx, id)
 	if err != nil {
-		return errResult(fmt.Errorf("delete registry: %w", err)), true
+		return deleteFailed("ar_delete", id, fmt.Errorf("delete registry: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 }

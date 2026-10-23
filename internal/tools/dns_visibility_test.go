@@ -100,13 +100,14 @@ func TestDNS_ZoneDeletePreviewNamesVisibility(t *testing.T) {
 	}
 }
 
-// Зоны нет ни в одном списке — NOT_FOUND до запроса на удаление, а не 403.
+// Зоны нет ни в одном списке — уже удалена (D26; было NOT_FOUND) до
+// запроса на удаление, а не 403.
 func TestDNS_UnknownZoneWithoutType(t *testing.T) {
 	f := dnsVisFake()
 	r := apiFakeRegistry(t, f)
 	m, text, isErr := callNamed(t, r, "dns_zone_delete", map[string]any{"id": dnsMissing, "confirmed": true})
-	if !isErr || m["reason"] != "NOT_FOUND" {
-		t.Fatalf("неизвестная зона: ждали NOT_FOUND, ответ %s", text)
+	if isErr || m["status"] != "already_deleted" {
+		t.Fatalf("неизвестная зона: ждали already_deleted, ответ %s", text)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()

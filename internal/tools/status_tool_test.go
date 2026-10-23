@@ -40,7 +40,9 @@ func TestStatusTool_Refresh(t *testing.T) {
 		wantCalls int
 		check     func(map[string]any) bool
 	}{
-		{"live", nil, func() (*provision.VM, error) { return &provision.VM{ID: "vm-1", Status: "running"}, nil }, 1,
+		{"live", nil, func() (*provision.VM, error) {
+			return &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Status: "running"}, nil
+		}, 1,
 			func(m map[string]any) bool { return m["cloud_checked"] == true && m["cloud_state"] == "running" }},
 		{"404", nil, func() (*provision.VM, error) {
 			return nil, clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
@@ -68,7 +70,7 @@ func TestStatusTool_Refresh(t *testing.T) {
 				args = map[string]any{}
 			}
 			got := callTool(t, r.handlers["status"], args)
-			if got["vm_id"] != "vm-1" || got["status"] != "running" {
+			if got["vm_id"] != "0000a1a1-0000-4000-8000-000000000001" || got["status"] != "running" {
 				t.Errorf("record fields lost: %v", got)
 			}
 			if !tt.check(got) {

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -144,29 +145,56 @@ func TestToolsDescribe(t *testing.T) {
 
 // A gated tool without a terminal and without --yes stops at the preview
 // with exit code 3; --dry-run shows the preview and exits 0; --yes passes
-// the gate and goes on to the cloud (here: no credentials, exit 2).
+// the gate and deletes. The preview looks the disk up first (D26), so the
+// fake cloud has it; a disk it does not have is already deleted — exit 0,
+// no question — and a value that is not a UUID is USAGE.
 func TestToolsCall_Confirmation(t *testing.T) {
-	out, errOut, code := execCLI(t, "tools", "call", "disk_delete", "--arg", "disk_id=X")
+	w := withParityWorld(t)
+	out, errOut, code := execCLI(t, "tools", "call", "disk_delete", "--arg", "disk_id="+parityVM)
 	if code != clerrors.ExitConfirmationRequired {
 		t.Fatalf("no tty: exit %d, want 3 (%s)", code, errOut)
 	}
-	if out != "" || !strings.Contains(errOut, "disk_delete permanently destroys disk X") {
+	if out != "" || !strings.Contains(errOut, "disk_delete permanently destroys disk "+parityVM) {
 		t.Errorf("preview should go to stderr: out=%q err=%q", out, errOut)
 	}
 
-	out, _, code = execCLI(t, "tools", "call", "disk_delete", "--arg", "disk_id=X", "--dry-run")
+	out, _, code = execCLI(t, "tools", "call", "disk_delete", "--arg", "disk_id="+parityVM, "--dry-run")
 	if code != 0 || !strings.Contains(out, "Dry run") {
 		t.Errorf("dry run: exit %d, out %q", code, out)
 	}
 
-	out, _, code = execCLI(t, "tools", "call", "disk_delete", "--arg", "disk_id=X", "--json")
+	out, _, code = execCLI(t, "tools", "call", "disk_delete", "--arg", "disk_id="+parityVM, "--json")
 	if code != clerrors.ExitConfirmationRequired || !strings.Contains(out, `"confirmation_required"`) {
 		t.Errorf("--json: exit %d, out %q", code, out)
 	}
+	if writes := w.rt.takeWrites(); len(writes) != 0 {
+		t.Errorf("the previews wrote: %v", writes)
+	}
 
-	out, _, code = execCLI(t, "tools", "call", "disk_delete", "--arg", "disk_id=X", "--yes")
-	if code != clerrors.ExitAuth || !strings.Contains(out, "AUTH_REQUIRED") {
-		t.Errorf("--yes: exit %d, want 2 (no credentials), out %q", code, out)
+	out, errOut, code = execCLI(t, "tools", "call", "disk_delete", "--arg", "disk_id="+parityVM, "--yes")
+	if code != 0 || len(w.rt.takeWrites()) != 1 {
+		t.Errorf("--yes: exit %d, want 0 and one DELETE, out %q err %q", code, out, errOut)
+	}
+
+	w.rt.extra = func(r *http.Request) (*http.Response, error) {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
+			return contractRT{status: 404, body: `{"message":"disk not found"}`}.RoundTrip(r)
+		}
+		return nil, nil
+	}
+	for _, yes := range []string{"", "--yes"} {
+		args := []string{"tools", "call", "disk_delete", "--arg", "disk_id=" + parityVM, "--json"}
+		if yes != "" {
+			args = append(args, yes)
+		}
+		out, errOut, code = execCLI(t, args...)
+		if code != 0 || !strings.Contains(out, `"already_deleted"`) || !strings.Contains(out, `"existed": false`) {
+			t.Errorf("gone disk %s: exit %d, want 0 already_deleted, out %q err %q", yes, code, out, errOut)
+		}
+	}
+
+	if _, errOut, code = execCLI(t, "tools", "call", "disk_delete", "--arg", "disk_id=X"); code != clerrors.ExitGeneral || !strings.Contains(errOut, "USAGE") {
+		t.Errorf("not a UUID: exit %d, want 1 USAGE (%s)", code, errOut)
 	}
 }
 

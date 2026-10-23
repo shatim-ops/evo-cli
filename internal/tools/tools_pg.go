@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -507,7 +508,7 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups.",
+		return deletePreview("pg_delete", "pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups.",
 			"pg_delete БЕЗВОЗВРАТНО удаляет кластер PostgreSQL %s, его базы данных и все резервные копии.",
 			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
@@ -525,7 +526,7 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
 				i18n.T("The cluster is still being created (DEPLOYING): Cloud.ru deletes it through the API once it is READY. Check it with pg_get, then call pg_delete again; a cluster that ends FAILED is deleted only in the Cloud.ru console.", "Кластер ещё создаётся (DEPLOYING): через API Cloud.ru удалит его, когда он станет READY. Проверьте его через pg_get и повторите pg_delete; кластер, оказавшийся в FAILED, удаляется только в консоли Cloud.ru."))), true
 		}
-		return errResult(fmt.Errorf("delete cluster: %w", err)), true
+		return deleteFailed("pg_delete", id, fmt.Errorf("delete cluster: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id) until done=true."}), false
 }
@@ -583,16 +584,29 @@ func (s *Registry) handlePgDbDelete(ctx context.Context, args map[string]any) (s
 	if cid == "" || name == "" {
 		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_db_delete PERMANENTLY drops database %q in cluster %s.",
-			"pg_db_delete БЕЗВОЗВРАТНО удаляет базу данных %q в кластере %s.", name, cid)}), true
-	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
 		return errResult(err), true
 	}
+	// The cluster first: one that is not there is the call's error
+	// (NOT_FOUND), not a repeat; the database that is not there is (D26).
+	if _, err := cli.GetCluster(ctx, cid); err != nil {
+		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		items, err := cli.ListDatabases(ctx, cid)
+		if err != nil {
+			return errResult(err), true
+		}
+		if !slices.ContainsFunc(items, func(m map[string]any) bool { return m["name"] == name }) {
+			return deleteFailed("pg_db_delete", name, clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("no database %q in cluster %s", "базы данных %q в кластере %s нет", name, cid), ""))
+		}
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_db_delete PERMANENTLY drops database %q in cluster %s.",
+			"pg_db_delete БЕЗВОЗВРАТНО удаляет базу данных %q в кластере %s.", name, cid)}), true
+	}
 	if err := cli.DeleteDatabase(ctx, cid, name); err != nil {
-		return errResult(fmt.Errorf("delete database: %w", err)), true
+		return deleteFailed("pg_db_delete", name, fmt.Errorf("delete database: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleted", "database": name}), false
 }
@@ -645,16 +659,29 @@ func (s *Registry) handlePgUserDelete(ctx context.Context, args map[string]any) 
 	if cid == "" || name == "" {
 		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_user_delete PERMANENTLY deletes user %q in cluster %s.",
-			"pg_user_delete БЕЗВОЗВРАТНО удаляет пользователя %q в кластере %s.", name, cid)}), true
-	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
 		return errResult(err), true
 	}
+	// The cluster first: one that is not there is the call's error
+	// (NOT_FOUND), not a repeat; the user that is not there is (D26).
+	if _, err := cli.GetCluster(ctx, cid); err != nil {
+		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		items, err := cli.ListUsers(ctx, cid)
+		if err != nil {
+			return errResult(err), true
+		}
+		if !slices.ContainsFunc(items, func(m map[string]any) bool { return m["name"] == name }) {
+			return deleteFailed("pg_user_delete", name, clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("no user %q in cluster %s", "пользователя %q в кластере %s нет", name, cid), ""))
+		}
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_user_delete PERMANENTLY deletes user %q in cluster %s.",
+			"pg_user_delete БЕЗВОЗВРАТНО удаляет пользователя %q в кластере %s.", name, cid)}), true
+	}
 	if err := cli.DeleteUser(ctx, cid, name); err != nil {
-		return errResult(fmt.Errorf("delete user: %w", err)), true
+		return deleteFailed("pg_user_delete", name, fmt.Errorf("delete user: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleted", "user": name}), false
 }

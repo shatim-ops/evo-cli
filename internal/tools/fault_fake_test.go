@@ -665,6 +665,12 @@ func (c *faultCloud) ListDisks(context.Context, string) ([]map[string]any, error
 	}
 	return nil, nil
 }
+func (c *faultCloud) GetDisk(context.Context, string) (map[string]any, error) {
+	if err := c.gate("GetDisk"); err != nil {
+		return nil, err
+	}
+	return map[string]any{}, nil
+}
 func (c *faultCloud) CreateDisk(context.Context, provision.CreateDiskReq) (map[string]any, error) {
 	return nil, c.gate("CreateDisk")
 }

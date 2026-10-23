@@ -117,7 +117,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "destroy",
-			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name: the preview names the VM (id, name, zone, status, address) and the floating IP and port rules that go with it; a VM that is not there is VM_NOT_FOUND, and a name several VMs share is refused (USAGE with the candidates — pass vm_id). By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy. A deletion Cloud.ru accepted but did not confirm is status partial (an error): the floating IP, the rules and the record stay until destroy is called again.",
+			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name: the preview names the VM (id, name, zone, status, address) and the floating IP and port rules that go with it; a VM that is not there is already deleted (status already_deleted, existed false; check the id against vm_list if it matters), and a name several VMs share is refused (USAGE with the candidates — pass vm_id). By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy. A deletion Cloud.ru accepted but did not confirm is status partial (an error): the floating IP, the rules and the record stay until destroy is called again.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":      strProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
 				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
@@ -2529,10 +2529,16 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			}
 		}
 		if target == nil {
-			// VM_NOT_FOUND, exit 4 as vm_get (A-004).
-			return errResult(clierrors.New(clierrors.CodeVMNotFound,
-				i18n.Tf("no VM %s in project %s; nothing was deleted", "ВМ %s в проекте %s нет; ничего не удалено", firstNonEmptyStr(vmID, name), projectID),
-				i18n.T("List the project's VMs with vm_list (evo vm list).", "ВМ проекта — в выводе vm_list (evo vm list)."))), true
+			// Neither the cloud nor this directory has the VM: already
+			// deleted, exit 0, as any repeated delete (D26; it was
+			// VM_NOT_FOUND, exit 4, as vm_get — A-004).
+			key, ref := "vm_id", vmID
+			if vmID == "" {
+				key, ref = "name", name
+			}
+			return deleteFailedAs("destroy", key, ref, clierrors.New(clierrors.CodeVMNotFound,
+				i18n.Tf("no VM %s in project %s; nothing was deleted", "ВМ %s в проекте %s нет; ничего не удалено", ref, projectID),
+				i18n.T("List the project's VMs with vm_list (evo vm list).", "ВМ проекта — в выводе vm_list (evo vm list).")))
 		}
 	}
 
@@ -3233,24 +3239,11 @@ func errAnswer(err error, fields map[string]any) string {
 	if _, ok := res["status"]; !ok {
 		res["status"] = "error"
 	}
-	msg := err.Error()
-	reason := ""
-	var ce *clierrors.CLIError
-	if stderrors.As(err, &ce) {
-		if clierrors.IsCode(ce.Code) {
-			reason = ce.Code
-		}
-		if ce.Hint != "" {
-			res["hint"] = ce.Hint
-		}
-	}
-	if code, rest, ok := strings.Cut(msg, ": "); ok && clierrors.IsCode(code) && (reason == "" || reason == code) {
-		reason, msg = code, rest
+	reason, msg, hint := errReason(err, res)
+	if hint != "" {
+		res["hint"] = hint
 	}
 	res["error"] = msg
-	if reason == "" {
-		reason = uncodedReason(err, res)
-	}
 	res["reason"] = reason
 	if _, ok := res["hint"]; !ok {
 		if h := uncodedHint(err, reason); h != "" {
@@ -3258,6 +3251,33 @@ func errAnswer(err error, fields map[string]any) string {
 		}
 	}
 	return toJSON(res)
+}
+
+// errReason is the reason of err as its error answer gives it, the message
+// without a leading "CODE: ", and the hint of its CLIError: the one
+// classification of an error (errAnswer, isGone). fields are the answer's
+// other fields, which uncodedReason reads too.
+func errReason(err error, fields map[string]any) (reason, msg, hint string) {
+	msg = err.Error()
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		if clierrors.IsCode(ce.Code) {
+			reason = ce.Code
+		}
+		hint = ce.Hint
+	}
+	if code, rest, ok := strings.Cut(msg, ": "); ok && clierrors.IsCode(code) && (reason == "" || reason == code) {
+		reason, msg = code, rest
+	}
+	if reason == "" {
+		f := make(map[string]any, len(fields)+1)
+		for k, v := range fields {
+			f[k] = v
+		}
+		f["error"] = msg
+		reason = uncodedReason(err, f)
+	}
+	return reason, msg, hint
 }
 
 // isUUID checks if a string looks like a UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).

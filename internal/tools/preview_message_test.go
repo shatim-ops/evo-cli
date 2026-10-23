@@ -50,6 +50,24 @@ const gatedPreviewBody = `{"items":[{"id":"` + contractID + `","name":"web","sta
 // specifications): each builds its registry on its fake (which takes
 // http.DefaultTransport) and returns the tool's answer.
 var gatedPreviewFixtures = map[string]func(t *testing.T) string{
+	// A delete asks consent for what the cloud has; what it does not have
+	// is already deleted (D26): these look their resource up in its list.
+	"disk_delete": func(t *testing.T) string { return liveDelete(t, "disk_delete", map[string]any{"disk_id": liveID}) },
+	"pg_db_delete": func(t *testing.T) string {
+		return liveDelete(t, "pg_db_delete", map[string]any{"cluster_id": liveID, "name": liveName})
+	},
+	"pg_user_delete": func(t *testing.T) string {
+		return liveDelete(t, "pg_user_delete", map[string]any{"cluster_id": liveID, "name": liveName})
+	},
+	"vpc_route_delete": func(t *testing.T) string {
+		return liveDelete(t, "vpc_route_delete", map[string]any{"vpc_id": liveID, "route_id": liveID})
+	},
+	"s3_rm": func(t *testing.T) string {
+		return liveDelete(t, "s3_rm", map[string]any{"bucket": liveName, "key": liveName})
+	},
+	"s3_bucket_delete": func(t *testing.T) string {
+		return liveDelete(t, "s3_bucket_delete", map[string]any{"bucket": liveName})
+	},
 	// The preview of a new VM reads the flavors, the image and the price
 	// (spec REQ-7): on the generic answers the image is not the project's,
 	// and the preview refuses it, as provision would after consent.

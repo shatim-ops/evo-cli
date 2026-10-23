@@ -112,13 +112,14 @@ func TestTrees_ConfirmationAndUsage(t *testing.T) {
 		args []string
 		want int
 	}{
-		{[]string{"disk", "delete", "d-1"}, clerrors.ExitConfirmationRequired},
-		{[]string{"disk", "delete", "d-1", "--dry-run"}, clerrors.ExitOK},
-		{[]string{"disk", "delete", "d-1", "--yes"}, clerrors.ExitAuth}, // past the gate, no credentials
-		// The preview names the VM, so it looks it up first: no project, no
-		// question (release audit, R-04).
-		{[]string{"vm", "delete", "web"}, clerrors.ExitAuth},
 		{[]string{"s3", "bucket-create", "bk1"}, clerrors.ExitConfirmationRequired},
+		{[]string{"s3", "bucket-create", "bk1", "--dry-run"}, clerrors.ExitOK},
+		{[]string{"s3", "bucket-create", "bk1", "--yes"}, clerrors.ExitAuth}, // past the gate, no credentials
+		// The preview names the VM, so it looks it up first: no project, no
+		// question (release audit, R-04). So does disk delete's (D26).
+		{[]string{"vm", "delete", "web"}, clerrors.ExitAuth},
+		{[]string{"disk", "delete", "00000000-0000-4000-8000-000000000001"}, clerrors.ExitAuth},
+		{[]string{"disk", "delete", "d-1"}, clerrors.ExitGeneral},                  // not a UUID: USAGE before the cloud
 		{[]string{"disk", "create", "d1"}, clerrors.ExitGeneral},                   // --size-gb is required
 		{[]string{"disk", "create", "d1", "--size-gb", "x"}, clerrors.ExitGeneral}, // not an int
 		{[]string{"disk", "delete"}, clerrors.ExitGeneral},                         // no id
@@ -343,8 +344,8 @@ func TestTrees_JSONToolErrorNotOnStdout(t *testing.T) {
 		stdout string // "" — stdout must be empty, else the status it must carry
 	}{
 		{[]string{"vm", "list", "--json"}, clerrors.ExitAuth, ""},
-		{[]string{"disk", "delete", "d-1", "--json"}, clerrors.ExitConfirmationRequired, "confirmation_required"},
-		{[]string{"disk", "delete", "d-1", "--dry-run", "--json"}, clerrors.ExitOK, "dry_run"},
+		{[]string{"s3", "bucket-create", "bk1", "--json"}, clerrors.ExitConfirmationRequired, "confirmation_required"},
+		{[]string{"s3", "bucket-create", "bk1", "--dry-run", "--json"}, clerrors.ExitOK, "dry_run"},
 	}
 	for _, c := range cases {
 		newProcess()

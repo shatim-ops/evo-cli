@@ -148,7 +148,7 @@ func (s *Registry) handleSnatDelete(ctx context.Context, args map[string]any) (s
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("snat_delete removes SNAT gateway %s — nodes in that zone lose outbound internet.",
+		return deletePreview("snat_delete", "snat_delete removes SNAT gateway %s — nodes in that zone lose outbound internet.",
 			"snat_delete удаляет шлюз SNAT %s — узлы в этой зоне потеряют исходящий доступ в интернет.",
 			id, func() (map[string]any, error) {
 				gws, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
@@ -164,7 +164,7 @@ func (s *Registry) handleSnatDelete(ctx context.Context, args map[string]any) (s
 			})
 	}
 	if err := eng.Cloud.DeleteNATGateway(ctx, id, eng.Config.ProjectID); err != nil {
-		return errResult(fmt.Errorf("delete SNAT gateway: %w", err)), true
+		return deleteFailed("snat_delete", id, fmt.Errorf("delete SNAT gateway: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleted", "id": id}), false
 }

@@ -30,6 +30,21 @@ func (a *CloudRuAdapter) ListDisks(ctx context.Context, projectID string) ([]map
 	return listRaw(a, ctx, "/api/v1/disks", projectID)
 }
 
+// GetDisk reads one disk by id (GET /api/v1/disks/{id}); a disk that is
+// not there is a 404 error.
+func (a *CloudRuAdapter) GetDisk(ctx context.Context, diskID string) (map[string]any, error) {
+	resp, err := a.doWithRetry(ctx, http.MethodGet, fmt.Sprintf("/api/v1/disks/%s", seg(diskID)), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var m map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // CreateDisk creates a disk and returns the raw API object.
 func (a *CloudRuAdapter) CreateDisk(ctx context.Context, req CreateDiskReq) (map[string]any, error) {
 	body, err := json.Marshal(req)

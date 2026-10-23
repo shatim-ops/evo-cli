@@ -414,13 +414,13 @@ func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("kafka_delete PERMANENTLY deletes Kafka cluster %s and its data.",
+		return deletePreview("kafka_delete", "kafka_delete PERMANENTLY deletes Kafka cluster %s and its data.",
 			"kafka_delete БЕЗВОЗВРАТНО удаляет кластер Kafka %s и его данные.",
 			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {
-		return errResult(fmt.Errorf("delete cluster: %w", err)), true
+		return deleteFailed("kafka_delete", id, fmt.Errorf("delete cluster: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 }

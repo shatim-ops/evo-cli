@@ -21,7 +21,7 @@ type natFIPCloud struct {
 
 func natFIP() *provision.FloatingIP {
 	var f provision.FloatingIP
-	_ = json.Unmarshal([]byte(`{"id":"fip-nat","name":"snat","ip_address":"203.0.113.9","state":"available","nat_gateway":{"id":"gw-1","name":"gw"}}`), &f)
+	_ = json.Unmarshal([]byte(`{"id":"0000f1f1-0000-4000-8000-0000000000aa","name":"snat","ip_address":"203.0.113.9","state":"available","nat_gateway":{"id":"gw-1","name":"gw"}}`), &f)
 	return &f
 }
 
@@ -51,7 +51,7 @@ func TestFloatingIP_NATGatewayAddressIsInUse(t *testing.T) {
 	if len(list) != 1 || list[0].(map[string]any)["available"] != false || list[0].(map[string]any)["nat_gateway"] != true {
 		t.Errorf("list: %s", text)
 	}
-	for _, args := range []map[string]any{{"id": "fip-nat", "confirmed": true}, {"ip_address": "203.0.113.9", "confirmed": true}} {
+	for _, args := range []map[string]any{{"id": "0000f1f1-0000-4000-8000-0000000000aa", "confirmed": true}, {"ip_address": "203.0.113.9", "confirmed": true}} {
 		m, text, _ = callNamed(t, r, "release_floating_ip", args)
 		if m["status"] != "refused" || cloud.deleted != "" {
 			t.Errorf("release %v: %s (deleted %q)", args, text, cloud.deleted)

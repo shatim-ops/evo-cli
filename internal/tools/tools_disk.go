@@ -378,16 +378,21 @@ func (s *Registry) handleDiskDelete(ctx context.Context, args map[string]any) (s
 	if diskID == "" {
 		return usageT("'disk_id' is required", "нужен 'disk_id'"), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("disk_delete permanently destroys disk %s and its data.",
-			"disk_delete безвозвратно удаляет диск %s и его данные.", diskID)}), true
-	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return errResult(err), true
 	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		// A disk that is not in the project is already deleted (D26): the
+		// preview asked consent for any id.
+		if _, err := eng.Cloud.GetDisk(ctx, diskID); err != nil {
+			return deleteFailed("disk_delete", diskID, err)
+		}
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("disk_delete permanently destroys disk %s and its data.",
+			"disk_delete безвозвратно удаляет диск %s и его данные.", diskID)}), true
+	}
 	if err := eng.Cloud.DeleteDisk(ctx, diskID, eng.Config.ProjectID); err != nil {
-		return errResult(fmt.Errorf("delete disk: %w", err)), true
+		return deleteFailed("disk_delete", diskID, fmt.Errorf("delete disk: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleted", "disk_id": diskID}), false
 }

@@ -183,13 +183,18 @@ func TestContract_ConfirmedIsNotAnArg(t *testing.T) {
 
 func TestContract_YesDryRunIsDryRun(t *testing.T) {
 	// confirm.Ask checks DryRun before Yes. --yes --dry-run is a dry run, exit 0.
-	out, errOut, code := execCLI(t, "disk", "delete", "00000000-0000-4000-8000-000000000001", "--yes", "--dry-run", "--json")
+	// The preview looks the disk up (D26): the fake cloud has it.
+	w := withParityWorld(t)
+	out, errOut, code := execCLI(t, "disk", "delete", parityVM, "--yes", "--dry-run", "--json")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
 	var m map[string]any
 	if json.Unmarshal([]byte(out), &m) != nil || m["status"] != "dry_run" {
 		t.Fatalf("stdout %s stderr %s", out, errOut)
+	}
+	if writes := w.rt.takeWrites(); len(writes) != 0 {
+		t.Errorf("the dry run wrote: %v", writes)
 	}
 }
 

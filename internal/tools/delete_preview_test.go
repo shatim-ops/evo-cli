@@ -13,7 +13,7 @@ import (
 // (400/500 FailedPrecondition) — превью предупреждает до подтверждения.
 func TestDeletePreview_WarnsWhileBeingCreated(t *testing.T) {
 	for status, warn := range map[string]bool{"DEPLOYING": true, "creating": true, "READY": false, "FAILED": false} {
-		text, _ := deletePreview("x_delete deletes %s.", "x_delete удаляет %s.", "id-1", func() (map[string]any, error) {
+		text, _ := deletePreview("k8s_delete", "x_delete deletes %s.", "x_delete удаляет %s.", "id-1", func() (map[string]any, error) {
 			return map[string]any{"name": "c1", "status": status}, nil
 		})
 		if got := strings.Contains(text, `"warning"`); got != warn {
