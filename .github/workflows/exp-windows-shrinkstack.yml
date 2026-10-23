@@ -41,13 +41,17 @@ jobs:
           grep -E -- '--- (PASS|FAIL): TestFault_Matrix/provision/' out.txt | sed -E 's/.*provision\/([^ ]+) \(([0-9.]+)s\)/\2 \1/' | sort -rn | head -15
           grep -c -- '--- FAIL' out.txt || true
           grep 'waited' out.txt || true
-      - name: internal/tools целиком ×3
+      - name: internal/tools целиком ×8
         env:
           GORACE: atexit_sleep_ms=0
           GODEBUG: ${{ matrix.godebug }}
         shell: bash
         run: |
-          for i in 1 2 3; do
+          for i in 1 2 3 4 5 6 7 8; do
             s=$(date +%s); rc=0; go test -race -count=1 ./internal/tools/ > t.txt 2>&1 || rc=$?
-            echo "прогон $i: код $rc, $(( $(date +%s) - s )) с"; tail -3 t.txt
+            echo "прогон $i: код $rc, $(( $(date +%s) - s )) с"; tail -1 t.txt
+            if [ "$rc" != 0 ]; then
+              grep -n -m3 -E -- '--- FAIL|^panic:|^fatal error:|Exception 0x|WARNING: DATA RACE' t.txt || true
+              grep -A45 -m1 -E '^panic:|^fatal error:|Exception 0x' t.txt || true
+            fi
           done
