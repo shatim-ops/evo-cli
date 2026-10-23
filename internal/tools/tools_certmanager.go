@@ -145,8 +145,10 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 // given (Q17, decision 21.10).
 func pemArg(args map[string]any, key string) string {
 	v := stringArg(args, key)
-	if strings.HasPrefix(strings.TrimSpace(v), "-----BEGIN ") {
-		return base64.StdEncoding.EncodeToString([]byte(v))
+	// The blank space before a pasted PEM goes; the PEM itself, its last
+	// newline included, is sent as given.
+	if pem := strings.TrimLeft(v, " \t\r\n"); strings.HasPrefix(pem, "-----BEGIN ") {
+		return base64.StdEncoding.EncodeToString([]byte(pem))
 	}
 	return v
 }

@@ -34,7 +34,8 @@ func TestCertImport_RawPEM(t *testing.T) {
 		return true
 	}}
 	r := apiFakeRegistry(t, f)
-	m, text, isErr := callNamed(t, r, "cert_import", map[string]any{"name": "byo", "server_certificate": cert,
+	// Pasted from a terminal: blank space before the PEM is not sent.
+	m, text, isErr := callNamed(t, r, "cert_import", map[string]any{"name": "byo", "server_certificate": "  \n" + cert,
 		"private_key": key, "intermediate_certificate": inB64, "confirmed": true})
 	if isErr || m["status"] != "imported" {
 		t.Fatalf("cert_import: %s", text)
