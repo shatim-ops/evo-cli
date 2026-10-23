@@ -35,7 +35,7 @@ func (c *conflictCloud) ListVMsInProject(context.Context, string) ([]*provision.
 // Внешний аудит релиза v1.0.0, L-01: после отказа API (409) deploy_apply не
 // выдаёт найденную по имени ВМ за созданную.
 func TestAudit_Apply_RejectedCreateDoesNotNameAnotherVM(t *testing.T) {
-	res, err := ApplyWithTimeout(context.Background(), &conflictCloud{}, &Plan{ProjectID: "p", VM: VMSpec{Name: "x"}}, 0)
+	res, err := ApplyWithTimeout(context.Background(), &conflictCloud{}, &Plan{ProjectID: "p", VM: VMSpec{Name: "x"}}, 0, nil)
 	if err == nil || provision.HTTPStatus(err) != 409 {
 		t.Fatalf("Apply = %v, want the 409", err)
 	}

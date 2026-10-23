@@ -5,9 +5,12 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	stderrors "errors"
 	"io"
+	"strings"
+	"sync"
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -90,13 +93,59 @@ func callerOf(ctx context.Context) *Caller {
 // nothing.
 var silent = output.NewWithWriter(io.Discard, output.ModeJSON, false)
 
-// progressOf is the printer of the call's progress (Caller.Progress), and
-// whether someone watches it; a printer that shows nothing for MCP.
+type progressKey struct{}
+
+// WithProgress is ctx for a call whose MCP client asked for its progress
+// (a progressToken): every line of progress the CLI shows the person on
+// stderr goes to send as well, one line at a time, as the CLI prints it
+// without a terminal.
+func WithProgress(ctx context.Context, send func(line string)) context.Context {
+	return context.WithValue(ctx, progressKey{}, send)
+}
+
+// progressOf is the printer of the call's progress — Caller.Progress, or
+// the lines of an MCP client that asked for them (WithProgress) — and
+// whether someone watches it; a printer that shows nothing otherwise.
 func progressOf(ctx context.Context) (*output.Printer, bool) {
 	if c := callerOf(ctx); c != nil && c.Progress != nil {
 		return c.Progress, true
 	}
+	if send, _ := ctx.Value(progressKey{}).(func(string)); send != nil {
+		return output.NewWithWriter(&lineWriter{send: send}, output.ModePlain, false), true
+	}
 	return silent, false
+}
+
+// stepOf is ctx for a tool a tool calls (callTool: the steps of a stack):
+// the step is not the call the person or the MCP client made, so it has no
+// Caller and no progress of its own — its progress and its error are the
+// outer tool's to show, alike on both surfaces.
+func stepOf(ctx context.Context) context.Context {
+	return context.WithValue(WithCaller(ctx, nil), progressKey{}, (func(string))(nil))
+}
+
+// lineWriter hands each line written to it to send, trimmed; blank lines
+// are dropped. A line is sent once its end is written.
+type lineWriter struct {
+	mu   sync.Mutex
+	buf  []byte
+	send func(string)
+}
+
+func (w *lineWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.buf = append(w.buf, p...)
+	for {
+		i := bytes.IndexAny(w.buf, "\r\n")
+		if i < 0 {
+			return len(p), nil
+		}
+		if line := strings.TrimSpace(string(w.buf[:i])); line != "" {
+			w.send(line)
+		}
+		w.buf = w.buf[i+1:]
+	}
 }
 
 // live is the Caller of a call the engine shows and gates itself, nil

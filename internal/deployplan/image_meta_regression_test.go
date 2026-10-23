@@ -83,7 +83,7 @@ func resolveAndApply(t *testing.T, fields []provision.ImageMetadataField, p Para
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	res, _ := ApplyWithTimeout(ctx, cloud, plan, 0)
+	res, _ := ApplyWithTimeout(ctx, cloud, plan, 0, nil)
 	return plan, cloud.createReq, res
 }
 
@@ -137,7 +137,7 @@ func TestApply_OldPlanMetaFields(t *testing.T) {
 		MetaStatic: map[string]string{"motd": "hi"},
 		PublicKey:  "ssh-ed25519 AAAA agent",
 	}
-	_, _ = ApplyWithTimeout(ctx, cloud, plan, 0)
+	_, _ = ApplyWithTimeout(ctx, cloud, plan, 0, nil)
 	meta := cloud.createReq.ImageMetadata
 	if meta["name"] != "user1" || meta["hostname"] != "web" || meta["public_key"] != plan.PublicKey || meta["motd"] != "hi" || len(meta["linux_password"]) != 16 {
 		t.Errorf("image_metadata старого плана = %v", meta)

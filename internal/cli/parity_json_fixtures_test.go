@@ -156,11 +156,6 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 		}
 	case "mk8s.api.cloud.ru":
 		switch {
-		case p == "/v3/productConfiguration":
-			return write(`{"defaultZone":"` + pvZone + `","defaultChannel":"stable","defaultDiskType":"SSD",` +
-				`"zones":[{"zoneId":"` + pvZone + `","name":"ru.AZ-1","availableFlavors":["` + pvFlavor + `"]}],` +
-				`"flavors":[{"flavorId":"` + pvFlavor + `","name":"gen-2-4","cpu":2,"ram":4}],` +
-				`"channels":[{"channel":"stable","availableVersions":["v1.31.4"]}]}`)
 		case p == "/v3/clusters" && get:
 			return write(`{"clusters":[]}`)
 		case strings.HasSuffix(p, ":getKubeConfig"):

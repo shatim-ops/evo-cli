@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -20,6 +21,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -315,7 +317,13 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		return errResult(err), true
 	}
 	defer unlock()
-	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.VMPollTimeout())
+	// The person at the CLI, and an MCP client that asked, see the stages
+	// as they go, in the words of deploy (Caller.Progress, WithProgress).
+	pp, _ := progressOf(ctx)
+	show := &deployplan.Progress{P: pp, Wait: eng.VMWaitLine(pp), Ports: func(r sgrules.OpenResult, rec *state.DeploymentRecord) {
+		engine.ShowOpenedPorts(pp, r, rec, cmp.Or(rec.SecurityGroupName, rec.SecurityGroupID))
+	}}
+	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.VMPollTimeout(), show)
 	if err != nil {
 		// Interrupted after the VM was created: record it, so status and
 		// destroy see it; the plan stays for a retry, which adopts the VM.

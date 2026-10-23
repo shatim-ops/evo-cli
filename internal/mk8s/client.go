@@ -175,17 +175,20 @@ type ProductConfig struct {
 		Name             string   `json:"name"`
 		AvailableFlavors []string `json:"availableFlavors"`
 	} `json:"zones"`
-	Flavors []struct {
-		FlavorID string `json:"flavorId"`
-		Name     string `json:"name"`
-		CPU      int    `json:"cpu"`
-		RAM      int    `json:"ram"`
-		GPU      int    `json:"gpu"`
-	} `json:"flavors"`
+	Flavors  []Flavor `json:"flavors"`
 	Channels []struct {
 		Channel           string   `json:"channel"`
 		AvailableVersions []string `json:"availableVersions"`
 	} `json:"channels"`
+}
+
+// Flavor is a configuration of the catalogue for a master or a node.
+type Flavor struct {
+	FlavorID string `json:"flavorId"`
+	Name     string `json:"name"`
+	CPU      int    `json:"cpu"`
+	RAM      int    `json:"ram"`
+	GPU      int    `json:"gpu"`
 }
 
 // --- Operations ---

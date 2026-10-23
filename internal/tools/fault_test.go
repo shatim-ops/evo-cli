@@ -202,10 +202,10 @@ func TestFault_DeployApply_RetryReusesFIP(t *testing.T) {
 	t.Cleanup(func() { deployplan.SSHPortWait = prev })
 	cloud := &faultCloud{}
 	plan := faultPlan()
-	if _, err := deployplan.ApplyWithTimeout(context.Background(), cloud, plan, 50*time.Millisecond); err != nil {
+	if _, err := deployplan.ApplyWithTimeout(context.Background(), cloud, plan, 50*time.Millisecond, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := deployplan.ApplyWithTimeout(context.Background(), cloud, plan, 50*time.Millisecond); err != nil {
+	if _, err := deployplan.ApplyWithTimeout(context.Background(), cloud, plan, 50*time.Millisecond, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(cloud.liveVMs()) != 1 || len(cloud.liveFIPs()) != 1 {
