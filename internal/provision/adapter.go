@@ -380,6 +380,14 @@ func HTTPStatus(err error) int {
 	return 0
 }
 
+// NotInCurrentState reports the API's 422 for a resource that cannot be
+// changed or deleted in its current state (…_from_current_state): one
+// still being created, attached or deleted. Waited out, it goes through.
+func NotInCurrentState(err error) bool {
+	var se *StatusError
+	return errors.As(err, &se) && se.Status == http.StatusUnprocessableEntity && strings.Contains(se.Body, "_from_current_state")
+}
+
 // firstBackoff returns the delay before the first retry.
 func (a *CloudRuAdapter) firstBackoff() time.Duration {
 	if a.Backoff > 0 {

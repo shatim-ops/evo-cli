@@ -59,6 +59,7 @@ func faultToolsTimings() engine.Timings {
 		FIPRetryInterval:      time.Millisecond,
 		FIPLookupInterval:     time.Millisecond,
 		FIPPollInterval:       time.Millisecond,
+		FIPSettleTimeout:      20 * time.Millisecond,
 		SSHRetryInterval:      time.Millisecond,
 		SettleDelay:           time.Millisecond,
 		VerifyTimeout:         time.Millisecond,

@@ -33,6 +33,7 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 		FIPRetryInterval:   10 * time.Second,
 		FIPLookupInterval:  2 * time.Second,
 		FIPPollInterval:    5 * time.Second,
+		FIPSettleTimeout:   time.Minute, // cloud-e2e #121: a release went through ~45 s after the 422
 		SSHRetryInterval:   5 * time.Second,
 		SSHSlowNote:        5 * time.Minute,
 		SettleDelay:        2 * time.Second,

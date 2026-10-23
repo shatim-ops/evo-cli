@@ -20,6 +20,7 @@ const (
 	fipRetryInterval      = 10 * time.Second
 	fipLookupInterval     = 2 * time.Second // after Ctrl-C: short, before a second Ctrl-C
 	fipPollInterval       = 5 * time.Second
+	fipSettleTimeout      = time.Minute // a FIP still being created, before the VM create and its release (cloud-e2e #121)
 	sshRetryInterval      = 5 * time.Second
 	verifySettleDelay     = 2 * time.Second
 	verifyTimeout         = 10 * time.Second
@@ -48,6 +49,7 @@ type Timings struct {
 	FIPRetryInterval   time.Duration // between CreateFloatingIP attempts
 	FIPLookupInterval  time.Duration // between lookups of a boot FIP after Ctrl-C
 	FIPPollInterval    time.Duration // waiting for the floating IP to become in_use
+	FIPSettleTimeout   time.Duration // a floating IP still being created: ready for the VM create, deletable
 	SSHRetryInterval   time.Duration // between SSH connect attempts
 	SSHSlowNote        time.Duration // without SSH this long, deploy says once why it still waits
 	SettleDelay        time.Duration // pause before health checks after compose up
@@ -78,6 +80,7 @@ func (t Timings) withDefaults() Timings {
 	def(&t.FIPRetryInterval, fipRetryInterval)
 	def(&t.FIPLookupInterval, fipLookupInterval)
 	def(&t.FIPPollInterval, fipPollInterval)
+	def(&t.FIPSettleTimeout, fipSettleTimeout)
 	def(&t.SSHRetryInterval, sshRetryInterval)
 	def(&t.SSHSlowNote, sshSlowNote)
 	def(&t.SettleDelay, verifySettleDelay)

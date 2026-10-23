@@ -100,6 +100,12 @@ type faultCloud struct {
 	deleteVM   int // 404 or 409
 	deleteFIP  int
 	deleteRule int
+	// fipSettle keeps a new floating IP "creating" for its first reads
+	// (GetFloatingIP, ListFloatingIPs); fipSettleUntilVM until a VM exists.
+	// Meanwhile the API refuses it to a VM create, an attach and a delete
+	// with 422 «… from current state» (cloud-e2e #121).
+	fipSettle        int
+	fipSettleUntilVM bool
 }
 
 type faultVM struct {
@@ -118,6 +124,41 @@ type faultFIP struct {
 	State   string
 	VMID    string
 	deleted bool
+	// settle and untilVM: see faultCloud.fipSettle. Until they run out
+	// reads show "creating"; State is the state once settled.
+	settle  int
+	untilVM bool
+}
+
+// creatingLocked reports whether fip is still being created, without
+// counting a read.
+func (c *faultCloud) creatingLocked(f *faultFIP) bool {
+	if f.untilVM {
+		for _, vm := range c.vms {
+			if !vm.gone {
+				f.untilVM = false
+			}
+		}
+	}
+	return f.settle > 0 || f.untilVM
+}
+
+// readStateLocked is the state a read of fip shows; a read counts down its
+// settle.
+func (c *faultCloud) readStateLocked(f *faultFIP) string {
+	if c.creatingLocked(f) {
+		if f.settle > 0 {
+			f.settle--
+		}
+		return "creating"
+	}
+	return f.State
+}
+
+// notNow is the API's refusal of an address still being created.
+func notNow(what string) error {
+	return clerrors.Wrap(clerrors.CodeAPIError, "HTTP 422", "", &provision.StatusError{Status: 422,
+		Body: `{"code":"floating_ip_can_not_be_` + what + `_from_current_state","message":"Floating Ip can not be ` + what + ` from current state"}`})
 }
 
 // faultPoint is one armed failure. Exactly one of n or op is used.
@@ -270,6 +311,16 @@ func (c *faultCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) 
 	if err != nil && !errors.Is(err, errFaultLost) && !errors.Is(err, errFaultEmpty) {
 		return nil, err
 	}
+	if len(req.Interfaces) > 0 && req.Interfaces[0].AttachExternalIPID != "" {
+		c.mu.Lock()
+		for i := range c.fips {
+			if c.fips[i].ID == req.Interfaces[0].AttachExternalIPID && c.creatingLocked(&c.fips[i]) {
+				c.mu.Unlock()
+				return nil, notNow("changed")
+			}
+		}
+		c.mu.Unlock()
+	}
 	vm, taken := c.storeVM(req)
 	// CMP-13: a second VM with the same name is 409 and is not stored.
 	// The check shares storeVM's lock, so two creates cannot both land.
@@ -399,7 +450,7 @@ func (c *faultCloud) CreateFloatingIP(_ context.Context, req provision.CreateFlo
 	if err == errFaultNameless {
 		name = ""
 	}
-	fip := faultFIP{ID: id, Name: name, IP: faultIP(n), State: "available"}
+	fip := faultFIP{ID: id, Name: name, IP: faultIP(n), State: "available", settle: c.fipSettle, untilVM: c.fipSettleUntilVM}
 	// interface_id on the create binds the address (the request field the
 	// spec documents). A later GetVMDetail then shows it, so a retry does
 	// not reserve a second one.
@@ -423,10 +474,14 @@ func (c *faultCloud) CreateFloatingIP(_ context.Context, req provision.CreateFlo
 	if c.noDial {
 		ip = ""
 	}
-	if errors.Is(err, errFaultEmpty) {
-		return &provision.FloatingIP{Name: name, IPAddress: ip, State: "available"}, nil
+	st := "available"
+	if fip.settle > 0 || fip.untilVM {
+		st = "creating"
 	}
-	return &provision.FloatingIP{ID: id, Name: req.Name, IPAddress: ip, State: "available"}, nil
+	if errors.Is(err, errFaultEmpty) {
+		return &provision.FloatingIP{Name: name, IPAddress: ip, State: st}, nil
+	}
+	return &provision.FloatingIP{ID: id, Name: req.Name, IPAddress: ip, State: st}, nil
 }
 
 func (c *faultCloud) GetFloatingIP(_ context.Context, id string) (*provision.FloatingIP, error) {
@@ -435,9 +490,9 @@ func (c *faultCloud) GetFloatingIP(_ context.Context, id string) (*provision.Flo
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, f := range c.fips {
-		if f.ID == id && !f.deleted {
-			st := f.State
+	for i := range c.fips {
+		if f := &c.fips[i]; f.ID == id && !f.deleted {
+			st := c.readStateLocked(f)
 			if c.fipDown {
 				st = "down"
 			}
@@ -454,11 +509,12 @@ func (c *faultCloud) ListFloatingIPs(context.Context, string) ([]*provision.Floa
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var out []*provision.FloatingIP
-	for _, f := range c.fips {
+	for i := range c.fips {
+		f := &c.fips[i]
 		if f.deleted {
 			continue
 		}
-		fip := &provision.FloatingIP{ID: f.ID, Name: f.Name, IPAddress: f.IP, State: f.State}
+		fip := &provision.FloatingIP{ID: f.ID, Name: f.Name, IPAddress: f.IP, State: c.readStateLocked(f)}
 		if f.VMID != "" {
 			// The VM it is bound to, as the API's list names it (vm).
 			fip.VM = json.RawMessage(strconv.Quote(f.VMID))
@@ -482,6 +538,10 @@ func (c *faultCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	}
 	for i := range c.fips {
 		if c.fips[i].ID == id {
+			if c.creatingLocked(&c.fips[i]) {
+				c.readStateLocked(&c.fips[i]) // a refused try counts as time passing
+				return notNow("deleted")
+			}
 			c.fips[i].deleted = true
 			return nil
 		}
@@ -500,6 +560,9 @@ func (c *faultCloud) AttachFloatingIP(_ context.Context, fipID, _, _, _ string) 
 	}
 	for i := range c.fips {
 		if c.fips[i].ID == fipID {
+			if c.creatingLocked(&c.fips[i]) {
+				return nil, notNow("changed")
+			}
 			c.fips[i].State = "in_use"
 			return &provision.FloatingIP{ID: c.fips[i].ID, Name: c.fips[i].Name, IPAddress: c.fips[i].IP, State: "in_use"}, nil
 		}
