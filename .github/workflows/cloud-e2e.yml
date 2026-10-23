@@ -129,7 +129,8 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -190,7 +191,8 @@ jobs:
             { echo "::error::timeout — число секунд"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: Проверка секретов
         env:
@@ -447,7 +449,8 @@ jobs:
             { echo "::error::timeout — число секунд"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -548,7 +551,8 @@ jobs:
             { echo "::error::timeout — число секунд"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -710,7 +714,8 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -885,7 +890,8 @@ jobs:
             { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -913,8 +919,10 @@ jobs:
 
       - name: k8s plan, затем create (1 мастер)
         run: |
+          # warnings плана называют каталог (flavor, зона): через redact.sed.
           evo --json k8s plan --name "$CLUSTER" --zone "$ZONE" --master-count 1 |
-            jq '{version, master_count, kube_api_internet, warnings}' || true
+            jq '{version, master_count, kube_api_internet, warnings}' |
+            sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
           evo --json --yes k8s create --name "$CLUSTER" --zone "$ZONE" --master-count 1 > "$RUNNER_TEMP/create.json"
           id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json")
           [ -n "$id" ] || { jq -c '{status, error}' "$RUNNER_TEMP/create.json" | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; echo "::error::k8s create без cluster_id"; exit 1; }
@@ -1126,7 +1134,8 @@ jobs:
             { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -1206,7 +1215,9 @@ jobs:
       - name: Второй pg_create с тем же именем отклонён (L-32)
         run: |
           set +e
-          evo tools call pg_create --arg name="$CLUSTER" --arg specification_id="$SPEC_ID" --arg subnet_id="$SUBNET_ID" \
+          # stderr — в файл без маски: шаг ищет в отказе ID своего кластера и
+          # печатает только reason и да/нет (TestWorkflows_CloudE2EStderrRedacted).
+          E2E_RAW_STDERR=1 evo tools call pg_create --arg name="$CLUSTER" --arg specification_id="$SPEC_ID" --arg subnet_id="$SUBNET_ID" \
             --json 2> "$RUNNER_TEMP/dup.json" >/dev/null
           rc=$?
           set -e
@@ -1394,7 +1405,8 @@ jobs:
             { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -1455,7 +1467,9 @@ jobs:
       - name: Второй kafka_create с тем же именем отклонён (L-32)
         run: |
           set +e
-          evo --region "$ZONE_ID" tools call kafka_create --arg name="$CLUSTER" --arg brokers=1 \
+          # stderr — в файл без маски: шаг ищет в отказе ID своего кластера и
+          # печатает только reason и да/нет (TestWorkflows_CloudE2EStderrRedacted).
+          E2E_RAW_STDERR=1 evo --region "$ZONE_ID" tools call kafka_create --arg name="$CLUSTER" --arg brokers=1 \
             --json 2> "$RUNNER_TEMP/dup.json" >/dev/null
           rc=$?
           set -e
@@ -1542,7 +1556,8 @@ jobs:
             { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -1602,7 +1617,9 @@ jobs:
       - name: Второй redis_create с тем же именем отклонён (L-32)
         run: |
           set +e
-          evo --region "$ZONE_ID" tools call redis_create --arg name="$CLUSTER" --arg type=MASTER_REPLICA \
+          # stderr — в файл без маски: шаг ищет в отказе ID своего кластера и
+          # печатает только reason и да/нет (TestWorkflows_CloudE2EStderrRedacted).
+          E2E_RAW_STDERR=1 evo --region "$ZONE_ID" tools call redis_create --arg name="$CLUSTER" --arg type=MASTER_REPLICA \
             --arg shards=1 --arg replicas=2 --json 2> "$RUNNER_TEMP/dup.json" >/dev/null
           rc=$?
           set -e

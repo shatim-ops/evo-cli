@@ -101,6 +101,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/redact_test.sh
 
+      # Обёртка evo публичных логов cloud-e2e и api-probe (build_evo.sh):
+      # stderr — через redact.sed, stdout, код выхода и Ctrl-C — как у evo.
+      - name: обёртка evo с маской stderr
+        if: runner.os == 'Linux'
+        run: .github/scripts/evo_wrapper_test.sh
+
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
         if: runner.os == 'Linux'
