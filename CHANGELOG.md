@@ -19,6 +19,8 @@
 
 ### Добавлено
 
+- Релиз доказывает своё происхождение. У каждого архива есть SBOM (`*.sbom.json`, SPDX: модули Go и версия Go, из которых собран бинарь), он входит в подписанный `checksums.txt`. У каждого файла из `checksums.txt` есть attestation происхождения: какой workflow на каком коммите его собрал. Образ MCP-сервера подписан cosign keyless по digest. Как проверить — `docs/RELEASING.md`, шаг 4.
+
 - Ответы `evo logs`, `evo ca logs` и `evo k8s kubectl` с `--json` (MCP `logs`, `ca_logs`, `k8s_kubectl`) получили поле `_untrusted` со списком полей, которые написала нагрузка, а не evo (`log`, `logs`, `output`). Клиент MCP по нему отличает данные от указаний. Остальные поля не изменились (docs/mcp.md, «Данные из облака и нагрузки»).
 
 - `evo ar create`, `evo dns zone-create`, `evo vpc create` и `evo lb create` (MCP `ar_create`, `dns_zone_create`, `vpc_create`, `lb_create`) отвечают id нового ресурса (`registry_id`, `zone_id`, `vpc_id`, `lb_id`), когда ответ API его несёт, как `evo pg create` — `cluster_id`: искать ресурс в списке не нужно.
