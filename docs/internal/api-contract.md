@@ -659,9 +659,11 @@ python3 scripts/api-contract-check.py --specs .cache/cloudru-specs
 
 Workflow `api-contract.yml`:
 
-- `schedule: cron "0 6 * * 1"` (раз в неделю) + `workflow_dispatch` + на PR,
-  меняющих `scripts/api-contract.json`, `internal/*/client.go`,
-  `internal/provision/*.go`.
+- `schedule` (раз в неделю) и `workflow_dispatch` — строго, со свежими
+  спецификациями; PR и push в `main` по путям `scripts/api-contract*`,
+  `scripts/cloudru-specs*.py`, `internal/**/*.go` — со спецификациями из кэша
+  на сутки (кэш `main` читают все PR) и мягко: не скачались — сверка
+  пропущена с предупреждением и строкой в summary (с 23.10.2026).
 - Шаги: `pip install pyyaml` → `python3 scripts/cloudru-specs.py
   .cache/cloudru-specs` (с повтором: сайт docs рвёт TLS, см. §1) →
   `python3 scripts/api-contract-check.py --markdown >> $GITHUB_STEP_SUMMARY` →

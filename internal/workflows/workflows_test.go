@@ -33,6 +33,7 @@ type workflow struct {
 		Uses           string `yaml:"uses"`
 		Steps          []struct {
 			ID   string            `yaml:"id"`
+			Name string            `yaml:"name"`
 			If   string            `yaml:"if"`
 			Uses string            `yaml:"uses"`
 			Run  string            `yaml:"run"`
@@ -537,6 +538,47 @@ func TestWorkflows_ContractCachesOnlyCompleteSpecs(t *testing.T) {
 	}
 	if !restore || !save {
 		t.Errorf("api-contract: restore %v, save %v; want both", restore, save)
+	}
+}
+
+// The contract is checked after every merge that can change it, not only on
+// the pull request, where a slow docs site skips it, and by the weekly run:
+// main runs it with the paths of the pull request and the same soft rule (a
+// download that fails skips the check with a warning and a line in the run's
+// summary), and the cache it saves is the one every pull request can read
+// (a pull request's cache is visible to that pull request only). Only the
+// schedule and a manual run stay strict and always fetch fresh specs.
+func TestWorkflows_ContractOnMainSoftAndWarmsTheCache(t *testing.T) {
+	w, ok := readWorkflows(t)["api-contract.yml"]
+	if !ok {
+		t.Fatal("no api-contract.yml")
+	}
+	push, _ := w.On["push"].(map[string]any)
+	pr, _ := w.On["pull_request"].(map[string]any)
+	if b, _ := push["branches"].([]any); len(b) != 1 || b[0] != "main" {
+		t.Errorf("api-contract: push branches %v, want [main]", push["branches"])
+	}
+	pushPaths, _ := push["paths"].([]any)
+	prPaths, _ := pr["paths"].([]any)
+	if len(prPaths) == 0 || !slices.Equal(pushPaths, prPaths) {
+		t.Errorf("api-contract: push paths %v, pull_request paths %v; want the same", push["paths"], pr["paths"])
+	}
+	const soft = "github.event_name == 'pull_request' || github.event_name == 'push'"
+	for name, j := range w.Jobs {
+		for _, s := range j.Steps {
+			cacheStep := strings.HasPrefix(s.Uses, "actions/cache/restore@") || strings.HasPrefix(s.Uses, "actions/cache/save@")
+			if (cacheStep || s.ID == "day") && !strings.Contains(s.If, soft) {
+				t.Errorf("api-contract job %s: step %q runs on %q, want pull_request and push (%s)", name, s.Name, s.If, soft)
+			}
+			if s.ID == "specs" {
+				if s.Env["SOFT"] != "${{ "+soft+" }}" || !strings.Contains(s.Run, `if [ "$SOFT" = true ]`) {
+					t.Errorf("api-contract job %s: the download is not soft on pull_request and push (env SOFT %q)", name, s.Env["SOFT"])
+				}
+				if !strings.Contains(s.Run, "GITHUB_STEP_SUMMARY") {
+					t.Errorf("api-contract job %s: a skipped check leaves no line in the run's summary", name)
+				}
+			}
+		}
 	}
 }
 
