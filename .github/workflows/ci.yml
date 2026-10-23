@@ -157,13 +157,31 @@ jobs:
   classify:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # Нужна база PR, чтобы взять diff base...head.
           fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+
+      # Точнее путей — то, что видит агент: tools/list сервера evo mcp на
+      # базе и на голове PR (аудит процессов 1.2.1, этап 6.5).
+      - name: классы по diff реестра
+        id: registry
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git worktree add -q "$RUNNER_TEMP/base" "$BASE"
+          (cd "$RUNNER_TEMP/base" && go build -o "$RUNNER_TEMP/evo-base" ./cmd/evo)
+          go build -o "$RUNNER_TEMP/evo-head" ./cmd/evo
+          .github/scripts/tools_list.sh "$RUNNER_TEMP/evo-base" > "$RUNNER_TEMP/base.json"
+          .github/scripts/tools_list.sh "$RUNNER_TEMP/evo-head" > "$RUNNER_TEMP/head.json"
+          echo "classes=$(.github/scripts/classify_registry.sh "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
       # SHA базы — не текст события, но идёт через env, как всё из события.
       # Ломающее — новый заголовок «### Миграция» в CHANGELOG.md, а не слово
@@ -171,6 +189,7 @@ jobs:
       - name: классы по путям
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
+          REGISTRY: ${{ steps.registry.outputs.classes }}
         run: |
           MIGRATION=0
           if git diff "$BASE...HEAD" -- CHANGELOG.md | grep -q '^+### Миграция'; then MIGRATION=1; fi
