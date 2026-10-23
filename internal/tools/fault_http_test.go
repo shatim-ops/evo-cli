@@ -160,6 +160,9 @@ func (a *faultAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch kind {
 	case faultLost:
 		return nil, errors.New("fault: connection reset after the request was served")
+	case faultSlow:
+		// http.Client reports its Timeout as the context's deadline.
+		return nil, context.DeadlineExceeded
 	case faultEmpty:
 		if rec.Code >= 200 && rec.Code < 300 {
 			rec = httptest.NewRecorder()

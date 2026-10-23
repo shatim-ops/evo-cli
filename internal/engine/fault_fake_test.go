@@ -9,6 +9,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -30,6 +31,7 @@ const (
 	faultReject       = "reject"        // HTTP 409, nothing stored
 	faultHTTP500      = "http500"       // HTTP 500, nothing stored
 	faultLostNameless = "lost-nameless" // FIP stored with an empty name, answer lost
+	faultSlow         = "slow"          // stored, the answer comes after the client's timeout
 )
 
 const (
@@ -205,6 +207,8 @@ func (c *faultCloud) gate(op string) error {
 		return clerrors.Wrap(clerrors.CodeAPIError, "upstream", "", &provision.StatusError{Status: 500, Body: "boom"})
 	case faultLost:
 		return errFaultLost
+	case faultSlow:
+		return errFaultSlow
 	case faultEmpty:
 		return errFaultEmpty
 	case faultLostNameless:
@@ -215,10 +219,22 @@ func (c *faultCloud) gate(op string) error {
 }
 
 var (
-	errFaultLost     = errors.New("fault: lost")
+	errFaultLost = errors.New("fault: lost")
+	// errFaultSlow is a lost answer whose error is the client's deadline,
+	// as http.Client.Timeout reports it.
+	errFaultSlow     = fmt.Errorf("%w: the answer came after the client's timeout: %w", errFaultLost, context.DeadlineExceeded)
 	errFaultEmpty    = errors.New("fault: empty")
 	errFaultNameless = errors.New("fault: nameless")
 )
+
+// lostAnswer is the error of a create whose answer did not come back:
+// lost, the client's deadline for faultSlow.
+func lostAnswer(fault, lost error) error {
+	if errors.Is(fault, context.DeadlineExceeded) {
+		return fault
+	}
+	return lost
+}
 
 func (c *faultCloud) bump() int {
 	c.next++
@@ -240,7 +256,7 @@ func (c *faultCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) 
 	}
 	c.reachedPause("CreateVM")
 	if errors.Is(err, errFaultLost) {
-		return nil, clerrors.New(clerrors.CodeAPIUnreachable, "lost response", "network")
+		return nil, lostAnswer(err, clerrors.New(clerrors.CodeAPIUnreachable, "lost response", "network"))
 	}
 	if errors.Is(err, errFaultEmpty) {
 		return &provision.VM{Name: vm.Name, CreatedAt: vm.CreatedAt}, nil
@@ -379,7 +395,7 @@ func (c *faultCloud) CreateFloatingIP(_ context.Context, req provision.CreateFlo
 	c.mu.Unlock()
 	c.reachedPause("CreateFloatingIP")
 	if errors.Is(err, errFaultLost) || errors.Is(err, errFaultNameless) {
-		return nil, clerrors.New(clerrors.CodeAPIUnreachable, "lost response", "")
+		return nil, lostAnswer(err, clerrors.New(clerrors.CodeAPIUnreachable, "lost response", ""))
 	}
 	ip := fip.IP
 	if c.noDial {
@@ -477,7 +493,7 @@ func (c *faultCloud) AddSecurityGroupRule(_ context.Context, _, _ string, rule p
 	id := rule.ID
 	c.mu.Unlock()
 	if errors.Is(err, errFaultLost) {
-		return nil, clerrors.Wrap(clerrors.CodeAPIError, "lost", "", &provision.StatusError{Status: 500, Body: "lost"})
+		return nil, lostAnswer(err, clerrors.Wrap(clerrors.CodeAPIError, "lost", "", &provision.StatusError{Status: 500, Body: "lost"}))
 	}
 	if errors.Is(err, errFaultEmpty) {
 		rule.ID = ""
