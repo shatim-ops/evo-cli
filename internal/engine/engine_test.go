@@ -207,7 +207,7 @@ func (m *mockCloudAPI) CreateFloatingIP(ctx context.Context, req provision.Creat
 		ID:        "fip-1",
 		Name:      req.Name,
 		IPAddress: "127.0.0.1",
-		State:     "in_use",
+		State:     "available", // a new address is free until a VM takes it
 	}, nil
 }
 
@@ -397,6 +397,7 @@ var fastTimings = Timings{
 	FIPRetryInterval:  time.Millisecond,
 	FIPLookupInterval: time.Millisecond,
 	FIPPollInterval:   time.Millisecond,
+	FIPSettleTimeout:  50 * time.Millisecond,
 	SSHRetryInterval:  time.Millisecond,
 	SettleDelay:       time.Millisecond,
 	VerifyTimeout:     time.Second,

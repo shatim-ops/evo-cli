@@ -605,7 +605,7 @@ func healthyProbe(_ context.Context, _ string, ports []int, _ time.Duration) []v
 var parityTimings = engine.Timings{
 	VMPollInterval: time.Millisecond, VMPollTimeout: time.Second, VMProgressInterval: time.Second,
 	IfacePollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond, FIPLookupInterval: time.Millisecond,
-	FIPPollInterval: time.Millisecond, SSHRetryInterval: time.Millisecond, SSHSlowNote: time.Second,
+	FIPPollInterval: time.Millisecond, FIPSettleTimeout: 20 * time.Millisecond, SSHRetryInterval: time.Millisecond, SSHSlowNote: time.Second,
 	SettleDelay: time.Millisecond, VerifyTimeout: 50 * time.Millisecond,
 	DockerPollInterval: time.Millisecond, DockerWaitTimeout: time.Second,
 	DestroyPollInterval: time.Millisecond, DestroyPollTimeout: time.Second,

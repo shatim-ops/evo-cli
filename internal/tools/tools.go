@@ -1994,8 +1994,8 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 		if err != nil {
 			return errResult(err), true
 		}
+		req.Interfaces[0].AttachExternalIPID = engine.BootFIPAttachID(bootFIP)
 		if bootFIP != nil {
-			req.Interfaces[0].AttachExternalIPID = bootFIP.ID
 			pp.StepDone(i18n.Tf("Floating IP %s reserved", "Зарезервирован floating IP %s", bootFIP.IPAddress))
 		}
 	}

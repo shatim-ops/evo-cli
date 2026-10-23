@@ -615,9 +615,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}
-	if bootFIP != nil {
-		req.Interfaces[0].AttachExternalIPID = bootFIP.ID
-	}
+	req.Interfaces[0].AttachExternalIPID = BootFIPAttachID(bootFIP)
 
 	createStart := time.Now()
 	vm, createErr := provision.CreateVMChecked(ctx, e.Cloud, req)
@@ -1030,7 +1028,7 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 		// the FIP exists under this unique name. Taken as the boot FIP, it is
 		// recorded and released like one, not left billed (QA r3 R7).
 		if f := e.findBootFIP(ctx, projectID, name); f != nil {
-			return f, nil
+			return e.settledBootFIP(ctx, f, projectID), nil
 		}
 		if ctx.Err() != nil {
 			e.Printer.Warning(i18n.Tf("reserving floating IP %s was interrupted: the platform may still create it; check 'evo vpc fips' and release it ('evo vpc fip-release') if it is there",
@@ -1052,7 +1050,50 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 		}
 		return nil, nil
 	}
-	return fip, nil
+	return e.settledBootFIP(ctx, fip, projectID), nil
+}
+
+// settledBootFIP waits, up to Timings.FIPSettleTimeout, for a boot FIP
+// still being created to be free: handed to the VM create in "creating",
+// it made the create fail with 422 «… from current state» (cloud-e2e
+// #121). One not ready in time stays the VM's: created without it, the VM
+// gets it after boot (waitBootFIP), so no second address is reserved. One
+// that failed to create is released, and the VM gets an IP after boot as
+// when none could be reserved (nil).
+func (e *Engine) settledBootFIP(ctx context.Context, fip *provision.FloatingIP, projectID string) *provision.FloatingIP {
+	t := e.timings()
+	deadline := time.Now().Add(t.FIPSettleTimeout)
+	for !fip.Available() && !strings.HasPrefix(fip.State, "error") && time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return fip
+		case <-time.After(t.FIPPollInterval):
+		}
+		if f, err := e.Cloud.GetFloatingIP(ctx, fip.ID); err == nil && f != nil {
+			fip = f
+		}
+	}
+	switch {
+	case fip.Available():
+	case strings.HasPrefix(fip.State, "error"):
+		e.Printer.Warning(i18n.Tf("floating IP %s could not be created (state %s); the VM gets a public IP after boot",
+			"floating IP %s не создался (состояние %s); внешний IP ВМ получит после загрузки", fip.IPAddress, fip.State))
+		_ = e.releaseBootFIP(fip, projectID) // the warning is printed
+		return nil
+	default:
+		e.Printer.Warning(i18n.Tf("floating IP %s is not ready yet (state %s); the VM is created without it and gets it after boot, which can make the first boot slow",
+			"floating IP %s ещё не готов (состояние %s); ВМ создаётся без него и получит его после загрузки, из-за этого первая загрузка может затянуться", fip.IPAddress, fip.State))
+	}
+	return fip
+}
+
+// BootFIPAttachID is the boot FIP the VM create attaches: one that is free
+// (settledBootFIP); one still being created goes on after boot.
+func BootFIPAttachID(fip *provision.FloatingIP) string {
+	if fip == nil || !fip.Available() {
+		return ""
+	}
+	return fip.ID
 }
 
 // leftBootFIP finds a free boot FIP of vmName in the project, or nil. A
@@ -1109,14 +1150,29 @@ func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) err
 	if fip == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// One still being created cannot be deleted yet (422 «… from current
+	// state»): it is retried until it settles, up to
+	// Timings.FIPSettleTimeout, rather than left billed (cloud-e2e #121).
+	t := e.timings()
+	ctx, cancel := context.WithTimeout(context.Background(), t.FIPSettleTimeout+30*time.Second)
 	defer cancel()
-	if err := e.Cloud.DeleteFloatingIP(ctx, fip.ID, projectID); err != nil {
+	deadline := time.Now().Add(t.FIPSettleTimeout)
+	for {
+		err := e.Cloud.DeleteFloatingIP(ctx, fip.ID, projectID)
+		if err == nil {
+			return nil
+		}
+		if provision.NotInCurrentState(err) && time.Now().Before(deadline) {
+			select {
+			case <-ctx.Done():
+			case <-time.After(t.FIPPollInterval):
+				continue
+			}
+		}
 		e.Printer.Warning(i18n.Tf("floating IP %s (%s) was not released: %v; delete it in the Cloud.ru console",
 			"floating IP %s (%s) не освобождён: %v; удалите его в консоли Cloud.ru", fip.IPAddress, fip.ID, err))
 		return err
 	}
-	return nil
 }
 
 // waitBootFIP waits for the FIP attached at creation to be in use. If the
