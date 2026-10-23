@@ -63,7 +63,8 @@ func TestCreateNames_EveryCreateDeclared(t *testing.T) {
 // A name with a space at either end, or blank, is refused before the
 // cloud, confirmed or not, by every create: "web " passed by a taken "web"
 // and made a second resource (Cursor 1.2.3; lb_create, ar_create and the
-// others had no rule). The name is quoted in the refusal.
+// others had no rule). So is one with a control character or longer than
+// 255 characters (D30). The name is quoted in the refusal.
 func TestCreateNames_SpacesRefusedBeforeTheCloud(t *testing.T) {
 	var reqs atomic.Int64
 	f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
@@ -80,7 +81,7 @@ func TestCreateNames_SpacesRefusedBeforeTheCloud(t *testing.T) {
 	for _, name := range names {
 		tl, _ := r.Lookup(name)
 		for _, arg := range createNames[name].args {
-			for _, bad := range []string{"web ", " web", "  "} {
+			for _, bad := range []string{"web ", " web", "  ", "we\x00b", "web\n", strings.Repeat("w", 256)} {
 				for _, confirmed := range []bool{false, true} {
 					args := contractArgs(tl)
 					if name == "k8s_create" {
