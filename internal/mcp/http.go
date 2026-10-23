@@ -378,11 +378,24 @@ func (h *HTTPHandler) postSSE(ctx context.Context, w http.ResponseWriter, r *htt
 		cancelled bool
 	}
 	result := make(chan answer, 1)
+	// The call's notifications (its progress) go on the stream before its
+	// answer, from this loop: one writer.
+	notes := make(chan []byte)
+	notify := func(v any) {
+		data, err := json.Marshal(v)
+		if err != nil {
+			return
+		}
+		select {
+		case notes <- data:
+		case <-r.Context().Done():
+		}
+	}
 	// When the client goes away, ctx ends and the call is cancelled: the
 	// stream has no resumption (Last-Event-ID), the answer would be lost.
 	// Mutating tools leave the state naming what they created.
 	go func() {
-		resp, cancelled := h.dispatch(ctx, scope, req)
+		resp, cancelled := h.dispatch(withNotifier(ctx, notify), scope, req)
 		result <- answer{resp, cancelled}
 	}()
 
@@ -402,6 +415,9 @@ func (h *HTTPHandler) postSSE(ctx context.Context, w http.ResponseWriter, r *htt
 			fmt.Fprintf(w, "event: message\ndata: %s\n\n", data)
 			flusher.Flush()
 			return
+		case data := <-notes:
+			fmt.Fprintf(w, "event: message\ndata: %s\n\n", data)
+			flusher.Flush()
 		case <-tick.C:
 			_, _ = io.WriteString(w, ": keep-alive\n\n")
 			flusher.Flush()

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // evo vm create показывает этапы в stderr (догфуд 1.2.0: «y» — и минуты
@@ -102,5 +103,37 @@ func TestVMCreate_TextStagesOnStderrTableOnStdout(t *testing.T) {
 	}
 	if strings.Contains(out, "Создаю") || strings.Contains(out, "==>") {
 		t.Errorf("progress on stdout:\n%s", out)
+	}
+}
+
+// The stages an MCP client that asked for them gets (a progressToken:
+// notifications/progress, tools.WithProgress) are the lines evo vm create
+// prints on stderr, one for one (owner's decision 23.10, parity of the
+// progress): the two surfaces show the same call the same way.
+func TestVMCreate_MCPProgressIsTheStderrStages(t *testing.T) {
+	russian(t)
+	setupCLI(t)
+	withVMCreateCloud(t)
+	code, out, errOut := runCLI(t, "", append([]string{"--yes"}, vmCreateArgs...)...)
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s\n%s", code, out, errOut)
+	}
+	// The stages start at the first step; the line of the consent before
+	// it is the command's own (MCP consents with confirmed).
+	var cli []string
+	for _, line := range strings.Split(errOut, "\n") {
+		if line = strings.TrimSpace(line); line != "" && (len(cli) > 0 || strings.HasPrefix(line, "==> ")) {
+			cli = append(cli, line)
+		}
+	}
+	var mcp []string
+	ctx := tools.WithProgress(context.Background(), func(line string) { mcp = append(mcp, line) })
+	tl, _ := newRegistry().Lookup("provision")
+	if text, isErr := tl.Handler(ctx, map[string]any{"name": "web", "image": "opensearchdashboards",
+		"image_metadata": map[string]any{"opensearch_host": "db.internal"}, "no_public_ip": true, "ports": []any{"80"}, "confirmed": true}); isErr {
+		t.Fatalf("tool: %s", text)
+	}
+	if len(mcp) == 0 || strings.Join(mcp, "\n") != strings.Join(cli, "\n") {
+		t.Errorf("MCP progress is not the stderr stages:\nMCP:\n%s\nstderr:\n%s", strings.Join(mcp, "\n"), strings.Join(cli, "\n"))
 	}
 }

@@ -22,6 +22,8 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -298,7 +300,16 @@ func (s *Server) RunContext(ctx context.Context, in io.Reader, out io.Writer) er
 	lines := make(chan stdioLine, stdioQueue)
 	go s.readStdio(serve, stop, in, lines)
 
+	// The answers and the notifications of a running call (its progress)
+	// share the writer: one message at a time.
 	enc := json.NewEncoder(out)
+	var mu sync.Mutex
+	write := func(v any) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return enc.Encode(v)
+	}
+	notify := func(v any) { _ = write(v) }
 	for {
 		var ln stdioLine
 		var ok bool
@@ -311,7 +322,7 @@ func (s *Server) RunContext(ctx context.Context, in io.Reader, out io.Writer) er
 			return nil // EOF
 		}
 		answered := make(chan any, 1)
-		go func() { answered <- s.answerLine(serve, ln) }()
+		go func() { answered <- s.answerLine(serve, ln, notify) }()
 		var resp any
 		select {
 		case resp = <-answered:
@@ -323,7 +334,7 @@ func (s *Server) RunContext(ctx context.Context, in io.Reader, out io.Writer) er
 			}
 		}
 		if resp != nil {
-			if err := enc.Encode(resp); err != nil && serve.Err() == nil {
+			if err := write(resp); err != nil && serve.Err() == nil {
 				return fmt.Errorf("write response: %w", err)
 			}
 		}
@@ -396,7 +407,7 @@ func (s *Server) readStdio(serve context.Context, stop context.CancelCauseFunc, 
 // answerLine answers one stdio line. A tool call cancelled by
 // notifications/cancelled gets no answer (MCP: the receiver SHOULD NOT
 // respond to a cancelled request).
-func (s *Server) answerLine(serve context.Context, ln stdioLine) any {
+func (s *Server) answerLine(serve context.Context, ln stdioLine, notify func(any)) any {
 	if ln.tooLong {
 		return errorResponse(nullID, codeInvalidReq, fmt.Sprintf("message larger than %d bytes", maxMessageSize))
 	}
@@ -411,6 +422,7 @@ func (s *Server) answerLine(serve context.Context, ln stdioLine) any {
 			if registered {
 				ctx = c.ctx
 			}
+			ctx = withNotifier(ctx, notify)
 			resp := s.handle(ctx, "", m.req)
 			if registered {
 				c.done()
@@ -573,11 +585,53 @@ func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 	}
 }
 
+type notifierKey struct{}
+
+// withNotifier is ctx for a request whose transport can send the client a
+// message while the request runs: stdio, and a tools/call over HTTP
+// answered on an SSE stream. A plain JSON answer over HTTP has nowhere to
+// send one.
+func withNotifier(ctx context.Context, send func(any)) context.Context {
+	return context.WithValue(ctx, notifierKey{}, send)
+}
+
+// rpcNotification is a JSON-RPC notification the server sends.
+type rpcNotification struct {
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	Params  any    `json:"params"`
+}
+
+// withProgress is ctx for a tool call whose client asked for its progress
+// with a progressToken (MCP, Progress): each line of progress the tool
+// shows (the stages the CLI prints on stderr) goes to the client as
+// notifications/progress, with a progress that only rises and the line as
+// its message, while the call runs. Without a token, or a transport that
+// can send it, the call shows nothing, as before.
+func withProgress(ctx context.Context, token json.RawMessage) context.Context {
+	send, ok := ctx.Value(notifierKey{}).(func(any))
+	if !ok || len(token) == 0 || string(token) == "null" {
+		return ctx
+	}
+	var n atomic.Int64
+	return tools.WithProgress(ctx, func(line string) {
+		if ctx.Err() != nil {
+			return // cancelled: the client expects nothing more of the call
+		}
+		send(rpcNotification{JSONRPC: "2.0", Method: "notifications/progress", Params: map[string]any{
+			"progressToken": token, "progress": n.Add(1), "message": line,
+		}})
+	})
+}
+
 // handleToolCall dispatches a tools/call request to the matching handler.
 func (s *Server) handleToolCall(ctx context.Context, req *rpcRequest) *rpcResponse {
 	var p struct {
 		Name      string         `json:"name"`
 		Arguments map[string]any `json:"arguments"`
+		Meta      struct {
+			ProgressToken json.RawMessage `json:"progressToken"`
+		} `json:"_meta"`
 	}
 	if len(req.Params) > 0 {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
@@ -602,7 +656,7 @@ func (s *Server) handleToolCall(ctx context.Context, req *rpcRequest) *rpcRespon
 		return s.fail(req, codeInvalidParams, "Unknown tool: "+p.Name)
 	}
 
-	text, isErr := callHandler(ctx, handler, p.Name, p.Arguments)
+	text, isErr := callHandler(withProgress(ctx, p.Meta.ProgressToken), handler, p.Name, p.Arguments)
 	return s.toolResult(req, withApprovalNote(text), isErr)
 }
 
