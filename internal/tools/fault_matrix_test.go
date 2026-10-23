@@ -109,6 +109,8 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("vpc_create", map[string]any{"name": "evo-v", "confirmed": true}),
 	apiCase("secret_create", map[string]any{"path": "evo-s", "value": "x", "confirmed": true}),
 	apiCase("disk_create", map[string]any{"name": "evo-d", "size_gb": 10, "zone": "ru.AZ-1", "confirmed": true}),
+	apiCase("k8s_create", map[string]any{"name": "evo-kc", "zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "confirmed": true}),
+	apiCase("lb_create", map[string]any{"name": "evo-lb", "target_group_id": "tg-1", "port": 80, "zone": "ru.AZ-1", "confirmed": true}),
 }
 
 // The fault kinds a call can meet at any step. faultLostNameless is not one:
