@@ -564,7 +564,14 @@ func withParityWorld(t *testing.T) parityWorld {
 		e.Timings = parityTimings
 		return e, nil
 	}
-	t.Cleanup(func() { toolEngine, http.DefaultTransport = old, oldRT })
+	t.Cleanup(func() {
+		toolEngine, http.DefaultTransport = old, oldRT
+		// A request without a fixture would get the empty list and a tool
+		// that misreads it would still pass parity (delta audit 1.2.3).
+		for _, req := range rt.takeUnknown() {
+			t.Errorf("parity world: no fixture for %s — add it to the fixtures, parityAnswers or, for a list that stays empty, parityEmptyLists", req)
+		}
+	})
 	jumpingClock(t)
 	return parityWorld{dir: home, rt: rt}
 }
