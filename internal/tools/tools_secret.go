@@ -126,8 +126,19 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 		body["kmsKeyId"] = k
 	}
 	res, err := cli.Create(ctx, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create secret: %w", err)), true
+	if err != nil || secretID(res) == "" {
+		if err == nil {
+			err = noID("secret")
+		}
+		// A secret is found by its path: the list's name of it.
+		list := func(ctx context.Context) ([]map[string]any, error) {
+			items, err := cli.List(ctx)
+			for _, it := range items {
+				it["name"] = it["path"]
+			}
+			return items, err
+		}
+		return lostCreate(ctx, list, i18n.T("secret", "секрет"), "secret_id", path, nil, "secret_get path", "secret_list", fmt.Errorf("create secret: %w", err))
 	}
 	// Strip any payload echoed back before returning.
 	if sec, ok := res["secret"].(map[string]any); ok {
@@ -188,4 +199,11 @@ func (s *Registry) handleSecretDelete(ctx context.Context, args map[string]any) 
 		return errResult(fmt.Errorf("delete secret: %w", err)), true
 	}
 	return toJSON(map[string]any{"status": "deleted", "path": path}), false
+}
+
+// secretID is the id of the secret a create answered ({"secret": {...}}).
+func secretID(res map[string]any) string {
+	sec, _ := res["secret"].(map[string]any)
+	id, _ := sec["id"].(string)
+	return id
 }
