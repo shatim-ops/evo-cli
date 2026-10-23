@@ -31,9 +31,10 @@ import (
 // environment variable the code reads.
 
 // -update-docs rewrites the generated files instead of comparing them:
-// docs/commands.md (TestCommandsDoc), docs/tools.md (TestToolsDoc) and
+// docs/commands.md (TestCommandsDoc), docs/tools.md (TestToolsDoc),
+// docs/agent-skill.md (TestAgentSkillDoc) and
 // docs/internal/cli-mcp-parity/inventory.md (TestParityInventory).
-var updateDocs = flag.Bool("update-docs", false, "rewrite docs/commands.md, docs/tools.md and the parity inventory from the code")
+var updateDocs = flag.Bool("update-docs", false, "rewrite docs/commands.md, docs/tools.md, docs/agent-skill.md and the parity inventory from the code")
 
 // deprecatedCommands are the commands kept until v2.0, with what replaces
 // them. They are hidden, so docs/commands.md has no section for them; the

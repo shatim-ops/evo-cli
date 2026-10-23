@@ -63,13 +63,19 @@ func TestSecretValue_ConfirmedReturnsValue(t *testing.T) {
 
 // SEC-4: инструменты, чей ответ несёт написанное рабочей нагрузкой (логи,
 // вывод kubectl, заметки helm, объекты S3), предупреждают агента, что это
-// недоверенные данные. Остальные описания этой фразы не несут.
+// недоверенные данные. Остальные описания этой фразы не несут. Признак —
+// объявление UntrustedOutput, фраза описания следует из него.
 func TestUntrustedOutputNote(t *testing.T) {
 	want := map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_helm": true}
 	for _, tl := range New(nil).Tools() {
-		has := strings.HasSuffix(tl.Description, " "+untrustedOutputNote)
-		if has != want[tl.Name] {
-			t.Errorf("%s: note=%v, want %v", tl.Name, has, want[tl.Name])
+		if tl.UntrustedOutput != want[tl.Name] {
+			t.Errorf("%s: UntrustedOutput=%v, want %v", tl.Name, tl.UntrustedOutput, want[tl.Name])
+		}
+		if has := strings.HasSuffix(tl.Description, " "+untrustedOutputNote); has != tl.UntrustedOutput {
+			t.Errorf("%s: note=%v, UntrustedOutput=%v", tl.Name, has, tl.UntrustedOutput)
+		}
+		if n := strings.Count(tl.Description, untrustedOutputNote); n > 1 {
+			t.Errorf("%s: the note %d times", tl.Name, n)
 		}
 		delete(want, tl.Name)
 	}

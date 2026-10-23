@@ -1,0 +1,19 @@
+{
+	// Servers of this workspace.
+	"inputs": [],
+	"servers": {
+		"github": {
+			"type": "http",
+			"url": "https://api.githubcopilot.com/mcp/", // remote
+		},
+		"evo": {
+			"type": "stdio",
+			"command": "evo",
+			"args": [
+				"mcp",
+				"--toolsets",
+				"deploy,vm,vpc,disk,image"
+			]
+		},
+	},
+}

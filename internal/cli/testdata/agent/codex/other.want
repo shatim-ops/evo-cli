@@ -1,0 +1,9 @@
+[mcp_servers.evo]
+command = "evo"
+args = ["mcp", "--toolsets", "deploy,vm,vpc,disk,image"]
+
+[mcp_servers.evo.env]
+CLOUDRU_PROFILE = "staging"
+
+[tui]
+notifications = true

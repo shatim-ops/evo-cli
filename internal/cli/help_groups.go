@@ -41,7 +41,7 @@ var commandGroups = []struct {
 	{"setup", "Setup:", "Настройка:",
 		[]string{"configure", "project", "whoami", "doctor", "version", "completion", "help"}},
 	{"agents", "For AI agents:", "Для ИИ-агентов:",
-		[]string{"mcp", "tools"}},
+		[]string{"mcp", "tools", "agent"}},
 }
 
 // exitCodesTail is appended to the usage template: the exit codes after

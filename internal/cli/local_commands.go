@@ -34,6 +34,9 @@ var localCommands = []localCommand{
 	{"evo tools list", "список инструментов реестра"},
 	{"evo tools describe", "описание и схема инструмента"},
 	{"evo tools call", "универсальный вызов любого инструмента"},
+	{"evo agent", "группа: agent setup и agent skill — локальные"},
+	{"evo agent setup", "пишет настройки MCP-клиента (и правила для агента) в файлы на машине пользователя: у сервера MCP такого действия по природе нет"},
+	{"evo agent skill", "печатает правила работы с evo для агента (docs/agent-skill.md), собранные из реестра; к облаку не обращается"},
 	{"evo crew", "титры"},
 	{"evo help", "справка cobra"},
 }
