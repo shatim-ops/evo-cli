@@ -74,6 +74,20 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 	if err := plainName("VPC", "name", name); err != nil {
 		return errResult(err), true
 	}
+	cli, err := s.vpcClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	// A second VPC of the same name: refused before the consent, as every
+	// other create (fault matrix, process audit 1.2.1: a repeated vpc_create
+	// made one more; the VPC spec documents no refusal of a taken name).
+	existing, err := cli.ListVPCs(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list VPCs: %w", "проверка, что имя свободно: список VPC: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult("VPC", name, id, st, "vpc_get id="+id)
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -81,19 +95,26 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 				"vpc_create создаёт новый VPC %q (асинхронно).", name),
 		}), true
 	}
-	cli, err := s.vpcClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
 	body := map[string]any{"projectId": cli.ProjectID(), "name": name}
 	if d := stringArg(args, "description"); d != "" {
 		body["description"] = d
 	}
 	op, err := cli.CreateVPC(ctx, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create vpc: %w", err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, cli.ListVPCs, "VPC", "vpc_id", name, nil, "vpc_list", "vpc_list", fmt.Errorf("create vpc: %w", err))
 	}
-	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id); then vpc_list for the id."}), false
+	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id); then vpc_get for the status."}
+	// The VPC's id is in the create's answer: named at once (fault matrix,
+	// process audit 1.2.1; as pg_create, N-07).
+	if op.ResourceID != "" {
+		out["vpc_id"] = op.ResourceID
+	} else {
+		out["note"] = "Async — poll vpc_operation(operation_id); then vpc_list for the id."
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (string, bool) {

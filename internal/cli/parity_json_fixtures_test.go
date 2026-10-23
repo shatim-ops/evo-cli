@@ -178,9 +178,13 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 		case strings.HasPrefix(p, "/v1/operations/") || !get:
 			return write(jsonOp)
 		}
-	case "vpc.api.cloud.ru", "ar.api.cloud.ru":
+	case "vpc.api.cloud.ru", "ar.api.cloud.ru", "containers.api.cloud.ru":
 		if strings.Contains(p, "/operations/") || !get {
 			return write(jsonOp)
+		}
+	case "secretmanager.api.cloud.ru":
+		if p == "/v2/secret" && r.Method == http.MethodPost {
+			return write(`{"secret":{"id":"` + parityVM + `","path":"app/db"}}`)
 		}
 	}
 	return nil
