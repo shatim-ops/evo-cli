@@ -81,6 +81,7 @@ var faultCollections = map[string]struct {
 	"/v3/nodePools":            {field: "nodePools", async: true},
 	"/v2/targetGroups":         {field: "target_groups", async: true},
 	"/v1/publicRecordsSole":    {field: "records", async: true},
+	"/v1/certificate":          {field: "certificates"},
 	// Static routes of the VPC vpc_route_create adds to, known by their
 	// destination (subnet).
 	"/v1/vpcs/" + faultVPC + "/routes/static": {field: "routes", async: true},
@@ -295,6 +296,19 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 			}
 			_, _ = io.WriteString(w, obj)
 		}
+	case path == "/v1/certificate:issue_lenc_cert" && r.Method == http.MethodPost:
+		// Let's Encrypt: the certificate is in the list at once, the
+		// answer is an operation.
+		var body struct {
+			Name string `json:"name"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		a.mu.Lock()
+		a.next++
+		a.made = append(a.made, faultResource{host: host, path: "/v1/certificate", ID: fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x500+a.next), Name: body.Name})
+		op := fmt.Sprintf("op-%d", a.next)
+		a.mu.Unlock()
+		_, _ = io.WriteString(w, `{"id":"`+op+`","done":false}`)
 	case strings.HasPrefix(path, "/v1/operations/"):
 		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v1/operations/")+`","done":true}`)
 	default:

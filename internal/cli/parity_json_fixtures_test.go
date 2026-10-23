@@ -188,6 +188,13 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 		if p == "/v2/secret" && r.Method == http.MethodPost {
 			return write(`{"secret":{"id":"` + parityVM + `","path":"app/db"}}`)
 		}
+	case "certificatemanager.api.cloud.ru":
+		switch {
+		case p == "/v1/certificate" && r.Method == http.MethodPost:
+			return write(`{"id":"` + parityVM + `","name":"byo"}`)
+		case p == "/v1/certificate:issue_lenc_cert":
+			return write(`{"id":"` + parityVM + `","done":false}`)
+		}
 	}
 	return nil
 }

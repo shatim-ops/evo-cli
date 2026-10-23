@@ -63,6 +63,9 @@ type faultMatrixCase struct {
 	world func(t *testing.T, cancel context.CancelFunc) (w faultWorld, r *Registry, dir string)
 	// skip leaves out a fault at a call: a reason, or "".
 	skip func(call, kind string) string
+	// skipLast leaves out the faults of the last call of the happy path:
+	// the reason, or "".
+	skipLast string
 }
 
 // computeCase is a case of the compute world (faultCloud).
@@ -120,6 +123,15 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("tg_create", map[string]any{"name": "evo-tg", "targets": []any{map[string]any{"id": faultTargetVM, "interface_id": faultNIC}}, "confirmed": true}),
 	apiCase("vpc_route_create", map[string]any{"vpc_id": faultVPC, "subnet": "192.168.10.0/24", "next_hop_vip_id": "vip-1", "confirmed": true}),
 	apiCase("dns_record_create", map[string]any{"zone_id": "z-1", "type": "public", "name": "www", "record_type": "a", "value": "203.0.113.7", "confirmed": true}),
+	func() faultMatrixCase {
+		c := apiCase("cert_issue_le", map[string]any{"name": "evo-le", "dns_names": []any{"www.example.com"}, "confirmed": true})
+		// The issue's operation names no certificate (api-contract.json);
+		// the read after it adds the id when it can, the operation id and
+		// the name are the answer's either way.
+		c.skipLast = "the read that adds certificate_id after the issue"
+		return c
+	}(),
+	apiCase("cert_import", map[string]any{"name": "evo-crt", "server_certificate": "Y2VydA==", "private_key": "a2V5", "confirmed": true}),
 	apiCase("image_create", map[string]any{"name": "evo-img", "disk_id": faultDisk, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_add_nodepool", map[string]any{"cluster_id": faultK8sCluster, "name": "evo-np", "confirmed": true}),
 }
@@ -205,7 +217,7 @@ func TestFault_Matrix(t *testing.T) {
 			}
 			for k := 1; k <= len(calls); k++ {
 				for _, kind := range faultMatrixKinds {
-					if c.skip != nil && c.skip(calls[k-1], kind) != "" {
+					if c.skip != nil && c.skip(calls[k-1], kind) != "" || k == len(calls) && c.skipLast != "" {
 						continue
 					}
 					t.Run(fmt.Sprintf("%d-%s-%s", k, calls[k-1], kind), func(t *testing.T) {
