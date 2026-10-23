@@ -54,14 +54,14 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
   `0xc0000005` в `adjustdefers` при `shrinkstack` во время сборки мусора, в
   `internal/tools`: #226 (22.10) и #219 (23.10, PR без `.go`-файлов); оба
   раза другие ОС зелёные. Гипотеза: golang/go#79249 (вытеснение потока
-  Windows внутри обработки исключения; обход `asyncpreemptoff=1`,
-  исправление — Go 1.28). Решение владельца 23.10 — не ждать третьего
-  случая: `GODEBUG=asyncpreemptoff=1` только на Windows в шаге `go test
-  -race` `ci.yml` и `weekly-race.yml` (PR «(процесс)», ветка
-  `claude/proc-windows-asyncpreemptoff`).
-  `TestWorkflows_WindowsRaceWithoutAsyncPreemptBeforeGo128` держит флаг до
-  Go 1.28 и падает, пока его не уберут после перехода. Повторится с флагом —
-  гипотеза снята, флаг убрать, разбирать заново.
+  Windows внутри обработки исключения, исправление — Go 1.28). Обход
+  `GODEBUG=asyncpreemptoff=1` на Windows (#245) снят решением владельца
+  23.10: эксперимент #262 показал, что флаг растягивает хвост задержек в
+  10–20 раз (`state.Update` p90 142 мс против 10 мс), отсюда
+  нестабильный `TestFault_Matrix/provision` (2,6–4,9 с, #255).
+  `TestWorkflows_RaceKeepsAsyncPreemption` не даёт вернуть флаг. Третий
+  случай падения — разбор (стек, версия Go, совпадение с #79249), а не
+  настройка CI; переход на Go 1.28 — проверить, ушло ли.
 - **CI не от diff: `startup_failure` у повторного запуска** (#219, run
   39917297878: «re-run failed jobs» — ни одного job, логов нет; затем
   полный повтор того же run у «1.3 — релиза» — тоже `startup_failure`).
