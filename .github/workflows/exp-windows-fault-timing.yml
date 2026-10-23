@@ -1,0 +1,43 @@
+# Эксперимент «Процесса · 1.3» (не сливать): TestFault_Matrix/provision на
+# Windows ждал 2,6–4,9 с (#255). Две гипотезы: медленная запись state
+# (fsync) или asyncpreemptoff=1 (#245). Только на этой ветке.
+name: exp-windows-fault-timing
+on:
+  pull_request:
+    branches: [main]
+    paths: [".github/workflows/exp-windows-fault-timing.yml"]
+permissions:
+  contents: read
+jobs:
+  exp:
+    strategy:
+      fail-fast: false
+      matrix:
+        godebug: ["", "asyncpreemptoff=1"]
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: git без перевода строк
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+      - name: state.Update на диске раннера
+        env:
+          EVO_EXP: "1"
+          GODEBUG: ${{ matrix.godebug }}
+        run: go test -race -count=1 -run TestExp_WriteTiming -v ./internal/state/
+      - name: TestFault_Matrix/provision ×5
+        env:
+          GORACE: atexit_sleep_ms=0
+          GODEBUG: ${{ matrix.godebug }}
+        shell: bash
+        run: |
+          go test -race -count=5 -run 'TestFault_Matrix/provision$' -v ./internal/tools/ > out.txt 2>&1 || true
+          grep -E -- '--- (PASS|FAIL): TestFault_Matrix/provision/' out.txt | sed -E 's/.*provision\/([^ ]+) \(([0-9.]+)s\)/\2 \1/' | sort -rn | head -15
+          grep -c -- '--- FAIL' out.txt || true
+          grep 'waited' out.txt || true
