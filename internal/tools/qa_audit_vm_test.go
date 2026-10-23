@@ -495,7 +495,7 @@ func TestAudit_ServiceDeletePreviewsNameTheResource(t *testing.T) {
 			t.Errorf("%s: %s", tool, text)
 			continue
 		}
-		if msg, _ := m["message"].(string); !strings.Contains(msg, "prod-db ("+id+")") {
+		if msg, _ := m["message"].(string); !strings.Contains(msg, `"prod-db" (`+id+")") {
 			t.Errorf("%s: message %q does not name the resource", tool, msg)
 		}
 		if tgt, _ := m["target"].(map[string]any); tgt["name"] != "prod-db" || tgt["status"] != "RUNNING" {
