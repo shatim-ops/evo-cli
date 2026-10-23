@@ -101,6 +101,9 @@ var faultMatrixCases = []faultMatrixCase{
 		}),
 	apiCase("kafka_create", map[string]any{"name": "evo-k", "cpu": 2, "ram": 4, "confirmed": true}),
 	apiCase("redis_create", map[string]any{"name": "evo-r", "cpu": 2, "ram": 4, "confirmed": true}),
+	apiCase("pg_create", map[string]any{"name": "evo-p", "cpu": 2, "ram": 4, "confirmed": true}),
+	apiCase("ar_create", map[string]any{"name": "evo-a", "confirmed": true}),
+	apiCase("snat_create", map[string]any{"name": "evo-n", "zone": "ru.AZ-1", "confirmed": true}),
 }
 
 // The fault kinds a call can meet at any step. faultLostNameless is not one:

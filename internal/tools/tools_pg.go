@@ -473,8 +473,11 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		body["description"] = d
 	}
 	op, err := cli.CreateCluster(ctx, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create cluster: %w", err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, cli.ListClusters, i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), "cluster_id", name, willCreate, "pg_get id", "pg_list", fmt.Errorf("create cluster: %w", err))
 	}
 	out := map[string]any{
 		"status":       "creating",
