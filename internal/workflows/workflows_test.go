@@ -380,6 +380,16 @@ func TestWorkflows_CloudE2EAreasFromBranch(t *testing.T) {
 	t.Error("cloud-e2e: live-plan does not take areas from the branch's paths")
 }
 
+// cloud-e2e disk marks image_create «не покрыто», not FAIL, only when the
+// organisation's quota of custom images refuses it (CMP-16, a limit of the
+// platform and the test organisation); which refusal that is is tested in
+// ci (e2e_quota_test.sh).
+func TestWorkflows_CIChecksImageQuotaSkip(t *testing.T) {
+	if !runsStep(readWorkflows(t)["ci.yml"], ".github/scripts/e2e_quota_test.sh") {
+		t.Error("ci: the image quota skip of cloud-e2e disk is not tested (e2e_quota_test.sh)")
+	}
+}
+
 // Every week main's tests run three times in a random order under -race on
 // the three OSes, and a red run opens an issue (process audit 1.2.1, PR 10):
 // a race or an order dependency that shows once in a few runs is caught
