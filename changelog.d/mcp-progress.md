@@ -1,3 +1,0 @@
-### Добавлено
-
-- Прогресс долгих вызовов по MCP. `provision`, `deploy_apply` и ожидание операций (`*_operation` с `wait_seconds`) сообщают этапы клиенту, который передал `_meta.progressToken`: уведомления `notifications/progress` с теми же строками, что `evo vm create` печатает в stderr, — раньше по MCP до 25 минут не было ничего, кроме ответа в конце. По stdio — в том же потоке, по HTTP — в потоке SSE ответа; клиент, который берёт ответ обычным JSON, прогресса не получает (строка H13 в docs/mcp.md). Без `progressToken` ничего не меняется. `evo deploy apply` (MCP `deploy_apply`) теперь показывает этапы и в CLI: создание ВМ, ожидание, публичный IP, SSH, открытые порты — как `evo deploy`.
