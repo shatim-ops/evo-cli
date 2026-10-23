@@ -237,6 +237,24 @@ func goAtLeast(version string, major, minor int) bool {
 	return ma > major || ma == major && mi >= minor
 }
 
+// Each PR writes its CHANGELOG entry as a fragment in changelog.d (one file,
+// no shared lines, so PRs of a version do not conflict); CI checks the
+// fragments and the script that folds them before a tag, and a fragment
+// with «### Миграция» marks the PR breaking, as the section in CHANGELOG.md
+// does.
+func TestWorkflows_CIChecksChangelogFragments(t *testing.T) {
+	w := readWorkflows(t)["ci.yml"]
+	for _, want := range []string{
+		"python3 scripts/changelog-test.py",
+		"python3 scripts/changelog.py check",
+		`git diff "$BASE...HEAD" -- CHANGELOG.md changelog.d/ | grep -q '^+### Миграция'`,
+	} {
+		if !runsStep(w, want) {
+			t.Errorf("ci: no step runs %s", want)
+		}
+	}
+}
+
 // Every PR gets its change class and the checklist of checks beyond CI in
 // the run's summary, and the classifier's tables are tested on sample
 // paths (process audit 1.2.1, PR 8); the classes of the registry diff come
@@ -654,5 +672,34 @@ func TestWorkflows_ContractDownloadEndsBeforeTheJob(t *testing.T) {
 	paths, _ := pr["paths"].([]any)
 	if !slices.Contains(paths, any("scripts/cloudru-specs-test.py")) {
 		t.Errorf("api-contract: pull_request paths %v miss scripts/cloudru-specs-test.py", paths)
+	}
+}
+
+// The logs of cloud-e2e and api-probe are public: every job there builds evo
+// with build_evo.sh, which puts on PATH a wrapper whose stderr to the log or
+// a pipe goes through redact.sed, instead of a mask at each call (k8s-smoke,
+// 22.10: a cloud error from k8s create reached the log unmasked); stderr to a
+// file stays as it is, written by the time the call returns. The wrapper is
+// tested in ci.
+func TestWorkflows_CloudE2EStderrRedacted(t *testing.T) {
+	ws := readWorkflows(t)
+	for _, file := range []string{"cloud-e2e.yml", "api-probe.yml"} {
+		builds := 0
+		for name, j := range ws[file].Jobs {
+			for _, s := range j.Steps {
+				if strings.Contains(s.Run, "go build") && strings.Contains(s.Run, "./cmd/evo") {
+					t.Errorf("%s job %s: evo built without build_evo.sh: its stderr reaches the public log unmasked", file, name)
+				}
+				if strings.Contains(s.Run, ".github/scripts/build_evo.sh") {
+					builds++
+				}
+			}
+		}
+		if builds == 0 {
+			t.Errorf("%s: no job builds evo with build_evo.sh", file)
+		}
+	}
+	if !runsStep(ws["ci.yml"], ".github/scripts/evo_wrapper_test.sh") {
+		t.Error("ci: the evo wrapper of the public logs is not tested (evo_wrapper_test.sh)")
 	}
 }

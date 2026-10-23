@@ -129,7 +129,8 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -190,7 +191,8 @@ jobs:
             { echo "::error::timeout — число секунд"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: Проверка секретов
         env:
@@ -447,7 +449,8 @@ jobs:
             { echo "::error::timeout — число секунд"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -548,7 +551,8 @@ jobs:
             { echo "::error::timeout — число секунд"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -573,7 +577,7 @@ jobs:
           (cd os-app && evo init --non-interactive --image "$IMAGE" > init.txt 2>&1)
           rc=$?
           set -e
-          tail -3 os-app/init.txt
+          tail -3 os-app/init.txt | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
           if [ "$avail" != true ]; then
             [ "$rc" = 4 ] || { echo "::error::init --image $IMAGE: код $rc, ждали 4 (образ недоступен проекту)"; exit 1; }
           elif [ "$rc" = 0 ] || ! grep -q "get.docker.com" os-app/init.txt; then
@@ -711,7 +715,8 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -872,7 +877,8 @@ jobs:
             { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -900,8 +906,10 @@ jobs:
 
       - name: k8s plan, затем create (1 мастер)
         run: |
+          # warnings плана называют каталог (flavor, зона): через redact.sed.
           evo --json k8s plan --name "$CLUSTER" --zone "$ZONE" --master-count 1 |
-            jq '{version, master_count, kube_api_internet, warnings}' || true
+            jq '{version, master_count, kube_api_internet, warnings}' |
+            sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
           evo --json --yes k8s create --name "$CLUSTER" --zone "$ZONE" --master-count 1 > "$RUNNER_TEMP/create.json"
           id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json")
           [ -n "$id" ] || { jq -c '{status, error}' "$RUNNER_TEMP/create.json" | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; echo "::error::k8s create без cluster_id"; exit 1; }
@@ -1113,7 +1121,8 @@ jobs:
             { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -1381,7 +1390,8 @@ jobs:
             { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
@@ -1529,7 +1539,8 @@ jobs:
             { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
 
       - name: Сборка
-        run: go build -o "$RUNNER_TEMP/evo" ./cmd/evo && echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
 
       - name: configure
         env:
