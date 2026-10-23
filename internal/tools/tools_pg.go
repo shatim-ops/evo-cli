@@ -683,19 +683,36 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 	if cid == "" || name == "" {
 		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_backup_create starts a manual backup %q of cluster %s.",
-			"pg_backup_create запускает ручное резервное копирование %q кластера %s.", name, cid)}), true
-	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
 		return errResult(err), true
 	}
-	op, err := cli.CreateBackup(ctx, cid, name)
+	// A backup of the name in the cluster: a repeat after a lost answer
+	// made a second one (fault matrix, process audit 1.2.1).
+	list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListBackups(ctx, cid) }
+	existing, err := list(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf("create backup: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list backups: %w", "проверка, что имя свободно: список резервных копий: %w"), err)), true
 	}
-	return toJSON(map[string]any{"status": "backing_up", "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id)."}), false
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult(i18n.T("backup", "резервная копия"), name, id, st, "pg_backups cluster_id="+cid)
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_backup_create starts a manual backup %q of cluster %s.",
+			"pg_backup_create запускает ручное резервное копирование %q кластера %s.", name, cid)}), true
+	}
+	op, err := cli.CreateBackup(ctx, cid, name)
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, list, i18n.T("backup", "резервная копия"), "backup_id", name, nil, "pg_backups cluster_id="+cid, "pg_backups", fmt.Errorf("create backup: %w", err))
+	}
+	out := map[string]any{"status": "backing_up", "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id)."}
+	if op.ResourceID != "" {
+		out["backup_id"] = op.ResourceID
+	}
+	return toJSON(out), false
 }
 
 // pgCreatePreview is the preview of pg_create: the cluster as resolved.

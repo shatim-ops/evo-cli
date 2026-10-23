@@ -285,3 +285,62 @@ func TestHTMLAsBadGateway(t *testing.T) {
 		t.Errorf("a 404 HTML page became %d", got)
 	}
 }
+
+// A Policy widens what is repeated, and only that: the compute adapter
+// repeats a DELETE after a dropped connection and a read after a 500
+// (process audit 1.2.1, 6.1: one retry loop). Without it neither is.
+func TestPolicyWidensOnlyWhatItNames(t *testing.T) {
+	compute := Policy{DropMethods: []string{http.MethodDelete}, ReadStatuses: []int{http.StatusInternalServerError}}
+	for _, c := range []struct {
+		name   string
+		policy Policy
+		method string
+		f      *flaky
+		calls  int32
+	}{
+		{"DELETE after a drop, compute", compute, http.MethodDelete, &flaky{n: 1, err: errors.New("EOF")}, 2},
+		{"DELETE after a drop, default", Policy{}, http.MethodDelete, &flaky{n: 1, err: errors.New("EOF")}, 1},
+		{"POST after a drop, compute", compute, http.MethodPost, &flaky{n: 1, err: errors.New("EOF")}, 1},
+		{"GET after a 500, compute", compute, http.MethodGet, &flaky{n: 1, status: 500}, 2},
+		{"GET after a 500, default", Policy{}, http.MethodGet, &flaky{n: 1, status: 500}, 1},
+		{"POST after a 500, compute", compute, http.MethodPost, &flaky{n: 1, status: 500}, 1},
+	} {
+		tr := &Transport{Base: c.f, Backoff: time.Millisecond, Policy: c.policy}
+		req, _ := http.NewRequest(c.method, "https://example.invalid/x", nil)
+		resp, _ := tr.RoundTrip(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if got := c.f.calls.Load(); got != c.calls {
+			t.Errorf("%s: %d calls, want %d", c.name, got, c.calls)
+		}
+	}
+}
+
+// BackoffOnly keeps the doubling backoff where Retry-After asks for more.
+func TestPolicyBackoffOnlyIgnoresRetryAfter(t *testing.T) {
+	f := &flaky{n: 1, status: http.StatusTooManyRequests}
+	tr := &Transport{Base: retryAfterRT{f}, Backoff: time.Millisecond, Policy: Policy{BackoffOnly: true}}
+	req, _ := http.NewRequest(http.MethodGet, "https://example.invalid/x", nil)
+	start := time.Now()
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	// wall-clock: guards waiting out a Retry-After of 30 s (maxRetryAfter).
+	if d := time.Since(start); d > maxRetryAfter/2 {
+		t.Errorf("waited %s: Retry-After was honoured", d)
+	}
+}
+
+// retryAfterRT adds a Retry-After of an hour to every answer.
+type retryAfterRT struct{ f *flaky }
+
+func (r retryAfterRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := r.f.RoundTrip(req)
+	if resp != nil {
+		resp.Header.Set("Retry-After", "3600")
+	}
+	return resp, err
+}

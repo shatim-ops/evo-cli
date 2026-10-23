@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -394,6 +395,8 @@ func pgParity(r *http.Request) (*http.Response, error) {
 		_, _ = io.WriteString(w, `{"versions":[{"id":"v17","name":"17"}]}`)
 	case r.URL.Path == "/v1/specifications":
 		_, _ = io.WriteString(w, `{"specifications":[{"id":"std","display_name":"std","cpu":2,"memory":4,"deployment_mode":"STANDARD","min_storage_gb":20,"max_hosts":2}]}`)
+	case strings.HasSuffix(r.URL.Path, "/backups") && r.Method == http.MethodGet:
+		_, _ = io.WriteString(w, `{"backups":[]}`) // pg_backup_create checks the name is free
 	default:
 		http.Error(w, `{"message":"no such path"}`, 404)
 	}

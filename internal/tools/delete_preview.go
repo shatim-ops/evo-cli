@@ -16,7 +16,7 @@ import (
 // caller passed — and an ID that is not there is that GET's error instead
 // of a question (release audit, R-04). The message, in English (en) and
 // Russian (ru) for the CLI's language, has one %s: the resource as
-// "name (id)".
+// "name" (id), the name quoted on one line (quoteCloud).
 func deletePreview(en, ru, id string, get func() (map[string]any, error)) (string, bool) {
 	m, err := get()
 	if err != nil {
@@ -29,7 +29,7 @@ func deletePreview(en, ru, id string, get func() (map[string]any, error)) (strin
 	}
 	label := id
 	if name != "" {
-		label = fmt.Sprintf("%s (%s)", name, id)
+		label = fmt.Sprintf("%s (%s)", quoteCloud(name), id)
 	}
 	out := map[string]any{
 		"status":  "confirmation_required",
