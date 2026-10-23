@@ -115,6 +115,9 @@ func New(factory EngineFactory) *Registry {
 			if projectTools[t.Name] {
 				h = r.requireProject(h)
 			}
+			if f := untrustedFields[t.Name]; f != nil {
+				h = markUntrusted(f, h)
+			}
 			r.handlers[t.Name] = checkedArgs(t.Name, t.InputSchema, h)
 		}
 		t.Handler = r.handlers[t.Name]

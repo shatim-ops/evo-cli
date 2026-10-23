@@ -19,11 +19,15 @@
 
 ### Добавлено
 
+- Ответы `evo logs`, `evo ca logs` и `evo k8s kubectl` с `--json` (MCP `logs`, `ca_logs`, `k8s_kubectl`) получили поле `_untrusted` со списком полей, которые написала нагрузка, а не evo (`log`, `logs`, `output`). Клиент MCP по нему отличает данные от указаний. Остальные поля не изменились (docs/mcp.md, «Данные из облака и нагрузки»).
+
 - `evo ar create`, `evo dns zone-create`, `evo vpc create` и `evo lb create` (MCP `ar_create`, `dns_zone_create`, `vpc_create`, `lb_create`) отвечают id нового ресурса (`registry_id`, `zone_id`, `vpc_id`, `lb_id`), когда ответ API его несёт, как `evo pg create` — `cluster_id`: искать ресурс в списке не нужно.
 
 - `evo k8s add-nodepool`, `evo pg backup-create`, `evo tg create`, `evo vpc route-create` и `evo dns record-create` (MCP `k8s_add_nodepool`, `pg_backup_create`, `tg_create`, `vpc_route_create`, `dns_record_create`) отвечают id нового объекта (`nodepool_id`, `backup_id`, `tg_id`, `route_id`, `record_id`), когда ответ API его несёт; `evo cert issue-le` (MCP `cert_issue_le`) — `certificate_id` из списка сертификатов: операция выпуска сертификат не называет.
 
 ### Изменено
+
+- Имя ресурса из облака в превью удаления (`evo … delete` без `--yes`, MCP `*_delete` без `confirmed`) — в одну строку и в кавычках: `удаляет реестр "web" (id …)`. Раньше имя шло как есть, и перевод строки в нём выглядел как продолжение текста evo. Поля данных (`name`, списки) отдают имя как его хранит облако.
 
 - Запрос к API Compute (ВМ, диски, floating IP, шлюзы SNAT, группы безопасности) повторяется тем же механизмом, что запросы к остальным сервисам. Что повторяется, не изменилось. Одно отличие: 60 с ожидания теперь — на запрос со всеми его повторами, а не на каждую попытку, как у остальных сервисов. Чтение или удаление, которое раньше могло ждать до четырёх минут (четыре попытки по 60 с), теперь заканчивается ошибкой `API_UNREACHABLE` через 60 с.
 
