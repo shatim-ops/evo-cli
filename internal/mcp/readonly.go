@@ -32,11 +32,12 @@ import (
 //     no cluster token, credential fields masked (readOnlyWording).
 //
 // Call it before the server serves. H11 is the outermost layer of every
-// handler, on either transport: a call that needs consent is refused as
-// such, before the checks of its arguments — over HTTP too, where the
-// restrictions of the transport (NewHTTPHandler) come later and go under
-// it (wrapHandler), so a refused call reaches no host file (H2) and no
-// resolver (H4).
+// handler but the check of the arguments (tools.Registry.Wrap), on either
+// transport: a call with arguments the tool does not take gets that USAGE
+// (G13-1), and a call that needs consent is refused as such before any
+// other check — over HTTP too, where the restrictions of the transport
+// (NewHTTPHandler) come later and go under it (wrapHandler), so a refused
+// call reaches no host file (H2) and no resolver (H4).
 func (s *Server) SetReadOnly() {
 	if s.readOnly {
 		return

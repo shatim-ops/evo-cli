@@ -83,6 +83,10 @@ type Registry struct {
 	newEngine EngineFactory
 	tools     []Tool
 	handlers  map[string]toolHandler
+	// unchecked are the handlers under the check of the arguments
+	// (checkedArgs): Wrap wraps them, so the check stays the first layer of
+	// every call whatever a transport adds (G13-1).
+	unchecked map[string]Handler
 
 	// jobLocks serialize the stack tools per job_id (see lockJob).
 	jobMu    sync.Mutex
@@ -126,7 +130,11 @@ func New(factory EngineFactory) *Registry {
 			if f := untrustedFields[t.Name]; f != nil {
 				h = markUntrusted(f, h)
 			}
-			r.handlers[t.Name] = checkedArgs(t.Name, t.InputSchema, checkedDelete(t.Name, checkedCreateName(t.Name, h)))
+			if r.unchecked == nil {
+				r.unchecked = map[string]Handler{}
+			}
+			r.unchecked[t.Name] = checkedDelete(t.Name, checkedCreateName(t.Name, h))
+			r.handlers[t.Name] = checkedArgs(t.Name, t.InputSchema, r.unchecked[t.Name])
 		}
 		t.Handler = r.handlers[t.Name]
 	}
@@ -148,17 +156,23 @@ func (r *Registry) Lookup(name string) (Tool, bool) {
 	return Tool{}, false
 }
 
-// Wrap replaces the handler of the named tool with wrap(current handler).
-// Every caller sees the new handler: transports, Tools/Lookup, and the
-// in-process calls the stack orchestrator makes. It reports whether the
-// tool exists. Transport policies (MCP over HTTP) use it; the CLI builds its
-// own registry and is not affected.
+// Wrap replaces the handler of the named tool with wrap(current handler),
+// under the check of its arguments: a call with arguments the tool does
+// not take gets that USAGE first, never a refusal of a server mode
+// (--read-only, the HTTP restrictions) that reads as if the call were
+// otherwise right (Grok on rc.1, G13-1). Every caller sees the new
+// handler: transports, Tools/Lookup, and the in-process calls the stack
+// orchestrator makes. It reports whether the tool exists. Transport
+// policies (MCP over HTTP) use it; the CLI builds its own registry and is
+// not affected.
 func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
-	next, ok := r.handlers[name]
+	next, ok := r.unchecked[name]
 	if !ok {
 		return false
 	}
-	h := wrap(next)
+	t, _ := r.Lookup(name)
+	r.unchecked[name] = wrap(next)
+	h := checkedArgs(name, t.InputSchema, r.unchecked[name])
 	r.handlers[name] = h
 	for i := range r.tools {
 		if r.tools[i].Name == name {
