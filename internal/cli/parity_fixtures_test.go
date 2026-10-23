@@ -329,11 +329,11 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	switch r.URL.Host {
 	case "mk8s.api.cloud.ru":
-		return p.addon.RoundTrip(r)
+		return p.noPath(r)(p.addon.RoundTrip(r))
 	case "postgresql.api.cloud.ru":
-		return pgParity(r)
+		return p.noPath(r)(pgParity(r))
 	case "kafka.api.cloud.ru", "redis.api.cloud.ru":
-		return dbaasParity(r)
+		return p.noPath(r)(dbaasParity(r))
 	case "compute.api.cloud.ru":
 		if w := computeParity(r); w != nil {
 			return w.Result(), nil
@@ -351,14 +351,30 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 		return contractRT{status: 200, body: body}.RoundTrip(r)
 	}
 	if _, ok := parityEmptyLists[key]; !ok {
-		p.mu.Lock()
-		if p.unknown == nil {
-			p.unknown = map[string]bool{}
-		}
-		p.unknown[key] = true
-		p.mu.Unlock()
+		p.markUnknown(key)
 	}
 	return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(r)
+}
+
+func (p *parityRT) markUnknown(key string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.unknown == nil {
+		p.unknown = map[string]bool{}
+	}
+	p.unknown[key] = true
+}
+
+// noPath names the requests the fakes of one API (mk8s, PostgreSQL, Kafka
+// and Redis) answer 404 for want of a path: since D26 a 404 on a delete is
+// «already deleted», code 0, and would pass as silently as an empty list.
+func (p *parityRT) noPath(r *http.Request) func(*http.Response, error) (*http.Response, error) {
+	return func(resp *http.Response, err error) (*http.Response, error) {
+		if err == nil && resp.StatusCode == http.StatusNotFound {
+			p.markUnknown(parityRequest(r))
+		}
+		return resp, err
+	}
 }
 
 // takeUnknown returns the requests no fixture answers, sorted.

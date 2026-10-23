@@ -16,10 +16,12 @@ import (
 func TestParityWorld_UnknownRequestIsNamed(t *testing.T) {
 	rt := &parityRT{addon: &addonAPI{}}
 	for _, u := range []string{
-		"https://nlb.api.cloud.ru/v2/targetGroups",                           // an empty list on purpose
-		"https://vpc.api.cloud.ru/v1/vpcs/" + parityVM,                       // an answer
-		"https://nlb.api.cloud.ru/v2/healthChecks/" + parityVM,               // nothing
-		"https://dataplatform.api.cloud.ru/v1/clusters?project=" + pvProject, // nothing
+		"https://nlb.api.cloud.ru/v2/targetGroups",                                // an empty list on purpose
+		"https://vpc.api.cloud.ru/v1/vpcs/" + parityVM,                            // an answer
+		"https://nlb.api.cloud.ru/v2/healthChecks/" + parityVM,                    // nothing
+		"https://dataplatform.api.cloud.ru/v1/clusters?project=" + pvProject,      // nothing
+		"https://postgresql.api.cloud.ru/v1/clusters/" + parityVM + "/extensions", // the fake's 404
+		"https://redis.api.cloud.ru/v1/specifications",                            // the fake's answer
 	} {
 		r, err := http.NewRequest(http.MethodGet, u, nil)
 		if err != nil {
@@ -30,7 +32,7 @@ func TestParityWorld_UnknownRequestIsNamed(t *testing.T) {
 		}
 	}
 	got := strings.Join(rt.takeUnknown(), "; ")
-	want := "GET dataplatform.api.cloud.ru/v1/clusters; GET nlb.api.cloud.ru/v2/healthChecks/{id}"
+	want := "GET dataplatform.api.cloud.ru/v1/clusters; GET nlb.api.cloud.ru/v2/healthChecks/{id}; GET postgresql.api.cloud.ru/v1/clusters/{id}/extensions"
 	if got != want {
 		t.Errorf("unknown %q, want %q", got, want)
 	}
