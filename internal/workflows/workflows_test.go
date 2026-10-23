@@ -237,6 +237,24 @@ func goAtLeast(version string, major, minor int) bool {
 	return ma > major || ma == major && mi >= minor
 }
 
+// Each PR writes its CHANGELOG entry as a fragment in changelog.d (one file,
+// no shared lines, so PRs of a version do not conflict); CI checks the
+// fragments and the script that folds them before a tag, and a fragment
+// with «### Миграция» marks the PR breaking, as the section in CHANGELOG.md
+// does.
+func TestWorkflows_CIChecksChangelogFragments(t *testing.T) {
+	w := readWorkflows(t)["ci.yml"]
+	for _, want := range []string{
+		"python3 scripts/changelog-test.py",
+		"python3 scripts/changelog.py check",
+		`git diff "$BASE...HEAD" -- CHANGELOG.md changelog.d/ | grep -q '^+### Миграция'`,
+	} {
+		if !runsStep(w, want) {
+			t.Errorf("ci: no step runs %s", want)
+		}
+	}
+}
+
 // Every PR gets its change class and the checklist of checks beyond CI in
 // the run's summary, and the classifier's tables are tested on sample
 // paths (process audit 1.2.1, PR 8); the classes of the registry diff come
@@ -333,6 +351,22 @@ func TestWorkflows_CloudE2EWeekly(t *testing.T) {
 	}
 }
 
+// The readonly job of cloud-e2e checks that every tariff_url of the previews
+// answers (TestLive_TariffPagesAnswer, network only there): a page Cloud.ru
+// moved would send the person to a 404 (review Qwen #170).
+func TestWorkflows_ReadonlyChecksTariffPages(t *testing.T) {
+	j, ok := readWorkflows(t)["cloud-e2e.yml"].Jobs["readonly"]
+	if !ok {
+		t.Fatal("cloud-e2e: no job readonly")
+	}
+	for _, s := range j.Steps {
+		if strings.Contains(s.Run, "-run '^TestLive_TariffPagesAnswer$'") && s.Env["EVO_LIVE_TARIFFS"] == "1" {
+			return
+		}
+	}
+	t.Error("cloud-e2e readonly: no step runs TestLive_TariffPagesAnswer with EVO_LIVE_TARIFFS=1")
+}
+
 // cloud-e2e started from a PR's branch with no area chosen checks the cheap
 // areas the branch touches (classify.sh, owner's decision В5) instead of
 // none: the owner's one click covers what the PR's checklist asks for.
@@ -346,6 +380,16 @@ func TestWorkflows_CloudE2EAreasFromBranch(t *testing.T) {
 	t.Error("cloud-e2e: live-plan does not take areas from the branch's paths")
 }
 
+// cloud-e2e disk marks image_create «не покрыто», not FAIL, only when the
+// organisation's quota of custom images refuses it (CMP-16, a limit of the
+// platform and the test organisation); which refusal that is is tested in
+// ci (e2e_quota_test.sh).
+func TestWorkflows_CIChecksImageQuotaSkip(t *testing.T) {
+	if !runsStep(readWorkflows(t)["ci.yml"], ".github/scripts/e2e_quota_test.sh") {
+		t.Error("ci: the image quota skip of cloud-e2e disk is not tested (e2e_quota_test.sh)")
+	}
+}
+
 // Every week main's tests run three times in a random order under -race on
 // the three OSes, and a red run opens an issue (process audit 1.2.1, PR 10):
 // a race or an order dependency that shows once in a few runs is caught
@@ -354,6 +398,35 @@ func TestWorkflows_WeeklyRace(t *testing.T) {
 	w := weeklyWorkflow(t, "weekly-race.yml")
 	if !runsStep(w, "go test -race -count=3 -shuffle=on ./...") {
 		t.Error("weekly-race: no go test -race -count=3 -shuffle=on")
+	}
+}
+
+// The cleanup of cloud-e2e removes an «evo:» rule of an e2e port only when
+// its security group has no interface (e2e_rules_sweep.sh, tested in ci): any evo
+// deploy writes «evo: …», and a rule of a person's VM looks the same. No
+// step deletes rules on its own.
+func TestWorkflows_CleanupKeepsRulesOfGroupsInUse(t *testing.T) {
+	ws := readWorkflows(t)
+	j, ok := ws["cloud-e2e.yml"].Jobs["cleanup"]
+	if !ok {
+		t.Fatal("cloud-e2e: no job cleanup")
+	}
+	sweeps := false
+	for name, job := range ws["cloud-e2e.yml"].Jobs {
+		for _, s := range job.Steps {
+			if strings.Contains(s.Run, "/rules/") && strings.Contains(s.Run, "DELETE") {
+				t.Errorf("cloud-e2e job %s: a step deletes security group rules itself, not with e2e_rules_sweep.sh", name)
+			}
+		}
+	}
+	for _, s := range j.Steps {
+		sweeps = sweeps || strings.Contains(s.Run, ".github/scripts/e2e_rules_sweep.sh")
+	}
+	if !sweeps {
+		t.Error("cloud-e2e cleanup: the «evo:» rules are not swept with e2e_rules_sweep.sh")
+	}
+	if !runsStep(ws["ci.yml"], ".github/scripts/e2e_rules_sweep_test.sh") {
+		t.Error("ci: e2e_rules_sweep.sh is not tested (e2e_rules_sweep_test.sh)")
 	}
 }
 
@@ -625,5 +698,34 @@ func TestWorkflows_ContractDownloadEndsBeforeTheJob(t *testing.T) {
 	paths, _ := pr["paths"].([]any)
 	if !slices.Contains(paths, any("scripts/cloudru-specs-test.py")) {
 		t.Errorf("api-contract: pull_request paths %v miss scripts/cloudru-specs-test.py", paths)
+	}
+}
+
+// The logs of cloud-e2e and api-probe are public: every job there builds evo
+// with build_evo.sh, which puts on PATH a wrapper whose stderr to the log or
+// a pipe goes through redact.sed, instead of a mask at each call (k8s-smoke,
+// 22.10: a cloud error from k8s create reached the log unmasked); stderr to a
+// file stays as it is, written by the time the call returns. The wrapper is
+// tested in ci.
+func TestWorkflows_CloudE2EStderrRedacted(t *testing.T) {
+	ws := readWorkflows(t)
+	for _, file := range []string{"cloud-e2e.yml", "api-probe.yml"} {
+		builds := 0
+		for name, j := range ws[file].Jobs {
+			for _, s := range j.Steps {
+				if strings.Contains(s.Run, "go build") && strings.Contains(s.Run, "./cmd/evo") {
+					t.Errorf("%s job %s: evo built without build_evo.sh: its stderr reaches the public log unmasked", file, name)
+				}
+				if strings.Contains(s.Run, ".github/scripts/build_evo.sh") {
+					builds++
+				}
+			}
+		}
+		if builds == 0 {
+			t.Errorf("%s: no job builds evo with build_evo.sh", file)
+		}
+	}
+	if !runsStep(ws["ci.yml"], ".github/scripts/evo_wrapper_test.sh") {
+		t.Error("ci: the evo wrapper of the public logs is not tested (evo_wrapper_test.sh)")
 	}
 }
