@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -47,15 +49,51 @@ type ApplyResult struct {
 	Ports state.DeploymentRecord `json:"-"`
 }
 
+// Progress shows an apply to the person who waits for it, as it goes (the
+// CLI's stderr, the notifications/progress of an MCP client that asked):
+// its stages on P, the wait for the VM on Wait, the ports opened in the
+// words of deploy (Ports). A nil *Progress shows nothing.
+type Progress struct {
+	P     *output.Printer
+	Wait  Waiter
+	Ports func(sgrules.OpenResult, *state.DeploymentRecord)
+}
+
+// Waiter is the wait for the VM as it is shown (engine.WaitLine): told each
+// state polled, shown again when C ticks, done on every way out.
+type Waiter interface {
+	C() <-chan time.Time
+	Show()
+	State(string)
+	Done()
+}
+
+// step and done show a stage and its result; nothing without a Progress.
+func (p *Progress) step(msg string) {
+	if p != nil {
+		p.P.Step(0, 0, msg)
+	}
+}
+
+func (p *Progress) done(msg string) {
+	if p != nil {
+		p.P.StepDone(msg)
+	}
+}
+
 // ApplyWithTimeout executes a resolved plan, waiting at most pollTimeout for
 // the VM to run (CLOUDRU_TIMEOUT through the engine's timings; zero means
-// the default). It is idempotent: if a VM with the plan's name already
-// exists, it adopts that VM instead of creating a duplicate.
-func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan, pollTimeout time.Duration) (*ApplyResult, error) {
+// the default), and shows it on show. It is idempotent: if a VM with the
+// plan's name already exists, it adopts that VM instead of creating a
+// duplicate.
+func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan, pollTimeout time.Duration, show *Progress) (*ApplyResult, error) {
 	if pollTimeout <= 0 {
 		pollTimeout = DefaultPollTimeout
 	}
 	start := time.Now()
+	if show != nil && show.Wait != nil {
+		defer show.Wait.Done()
+	}
 
 	// --- Idempotency: adopt an existing VM with the same name ---
 	existing, lookErr := findVMByName(ctx, cloud, plan.ProjectID, plan.VM.Name)
@@ -85,7 +123,8 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		// already has — a new floating IP on it would only be billed.
 		switch existing.Status {
 		case "", "running", "active", "creating", "building", "starting", "pending":
-			return finishApply(ctx, cloud, plan, existing, "", start, pollTimeout,
+			show.step(i18n.Tf("Adopting VM %s: it already exists…", "Беру ВМ %s: она уже есть…", plan.VM.Name))
+			return finishApply(ctx, cloud, plan, existing, "", start, pollTimeout, show,
 				"VM already existed — adopted (idempotent), nothing recreated")
 		}
 		ip, fipID := attachedFloatingIP(ctx, cloud, existing.ID)
@@ -160,6 +199,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		req.ImageMetadata = meta
 	}
 
+	show.step(i18n.Tf("Creating VM %s…", "Создаю ВМ %s…", plan.VM.Name))
 	createStart := time.Now()
 	vm, err := provision.CreateVMChecked(ctx, cloud, req)
 	if err != nil {
@@ -182,13 +222,14 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		return nil, fmt.Errorf("create VM: %w", err)
 	}
 
-	return finishApply(ctx, cloud, plan, vm, password, start, pollTimeout, "")
+	show.done(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", plan.VM.Name, vm.ID))
+	return finishApply(ctx, cloud, plan, vm, password, start, pollTimeout, show, "")
 }
 
 // finishApply waits for the VM to run, then gives it its floating IP, waits
 // for SSH and opens the plan's ports — for a VM just created and for one a
 // retry adopts. note goes first in the answer's note.
-func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *provision.VM, password string, start time.Time, pollTimeout time.Duration, note string) (*ApplyResult, error) {
+func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *provision.VM, password string, start time.Time, pollTimeout time.Duration, show *Progress, note string) (*ApplyResult, error) {
 	// Cancelled from here on (the MCP client went away or cancelled the
 	// call): the VM exists and is billed. The result names it, so the
 	// caller can record it in the state, together with an error that says
@@ -210,9 +251,16 @@ func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *
 	deadline := time.After(pollTimeout)
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
+	var shown <-chan time.Time // the wait's own ticks, when it is shown
+	if show != nil && show.Wait != nil {
+		shown = show.Wait.C()
+		show.Wait.State(vm.Status)
+	}
 poll:
 	for status != "running" {
 		select {
+		case <-shown:
+			show.Wait.Show()
 		case <-ctx.Done():
 			// The VM exists: say which, or nobody will find it.
 			return interrupted("", "")
@@ -226,6 +274,9 @@ poll:
 			cur, e := cloud.GetVM(ctx, vm.ID)
 			if e != nil {
 				continue
+			}
+			if shown != nil {
+				show.Wait.State(cur.Status)
 			}
 			switch cur.Status {
 			case "running", "active":
@@ -242,8 +293,16 @@ poll:
 		}
 	}
 
+	if show != nil && show.Wait != nil {
+		show.Wait.Done()
+	}
+	show.done(i18n.Tf("VM %s is running", "ВМ %s запущена", plan.VM.Name))
+
 	// --- Floating IP ---
 	ip, fipID, fipNote := ensureFloatingIP(ctx, cloud, plan, vm.ID)
+	if ip != "" {
+		show.done(i18n.Tf("Public IP %s", "Публичный IP %s", ip))
+	}
 	if ctx.Err() != nil {
 		// The steps below would only fail on the cancelled context and
 		// report a half-done VM as "running".
@@ -256,6 +315,7 @@ poll:
 	// tool call stays well under the MCP timeout. ---
 	sshNote := ""
 	if ip != "" {
+		show.done(i18n.Tf("Waiting for SSH on %s…", "Жду SSH на %s…", ip))
 		if waitForSSHPort(ctx, ip, SSHPortWait) {
 			sshNote = "SSH port 22 is open — connect now with the ssh command above."
 		} else {
@@ -268,6 +328,9 @@ poll:
 	var ports state.DeploymentRecord
 	opened := sgrules.Open(ctx, cloud, plan.ProjectID, plan.Network.SecurityGroupID, plan.Ports, nil,
 		func(label string) string { return fmt.Sprintf("auto: %s port %s", plan.Product, label) }, &ports)
+	if show != nil && show.Ports != nil {
+		show.Ports(opened, &ports)
+	}
 
 	return &ApplyResult{
 		VMID:         vm.ID,

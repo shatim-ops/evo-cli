@@ -115,9 +115,28 @@ func callEngineTool(cmd *cobra.Command, tool string, args map[string]any, c *too
 		return text, nil
 	}
 	if c.Err != nil {
-		return text, c.Err
+		return text, withAccessDenied(c.Err, text)
 	}
 	return text, toolError(tool, text, commandHints(cmd, nil))
+}
+
+// withAccessDenied is err, the engine's error of the command, with the
+// access_denied and http_status of the tool's answer text in its details:
+// a refusal of rights says so as the answer of any other command does
+// (toolError, answerDetails).
+func withAccessDenied(err error, text string) error {
+	m := parseObject(text)
+	var ce *clerrors.CLIError
+	if m["access_denied"] != true || !stderrors.As(err, &ce) {
+		return err
+	}
+	details := make(map[string]any, len(ce.Details)+2)
+	for k, v := range ce.Details {
+		details[k] = v
+	}
+	details["access_denied"], details["http_status"] = m["access_denied"], m["http_status"]
+	ce.Details = details // the call's own error: the message and its context stay
+	return err
 }
 
 // engineGate is the consent of an engine command (tools.Caller.Gate): the

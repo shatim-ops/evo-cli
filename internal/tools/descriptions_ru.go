@@ -965,14 +965,14 @@ var toolsRU = map[string]toolRU{
 	"cert_import": {
 		Short: "Загрузить в Certificate Manager свой сертификат и закрытый ключ",
 		Long: "Импортировать в Certificate Manager собственный сертификат пользователя (bring-your-own). " +
-			"Сертификат (--server-certificate) и закрытый ключ (--private-key) передаются как PEM в кодировке " +
-			"Base64.",
+			"Сертификат (--server-certificate) и закрытый ключ (--private-key) передаются как PEM — " +
+			"как есть или в кодировке Base64.",
 		Args: map[string]string{
 			"description":              "Описание (необязательно)",
-			"intermediate_certificate": "Цепочка промежуточных сертификатов, PEM в Base64 (необязательно)",
+			"intermediate_certificate": "Цепочка промежуточных сертификатов, PEM как есть или в Base64 (необязательно)",
 			"name":                     "Отображаемое имя (обязательный)",
-			"private_key":              "Закрытый ключ, PEM в Base64 (обязательный)",
-			"server_certificate":       "Сертификат (открытая часть), PEM в Base64 (обязательный)",
+			"private_key":              "Закрытый ключ, PEM как есть или в Base64 (обязательный)",
+			"server_certificate":       "Сертификат (открытая часть), PEM как есть или в Base64 (обязательный)",
 		},
 	},
 	"cert_renew": {

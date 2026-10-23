@@ -73,9 +73,6 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 	if name == "" {
 		return usageT("'name' is required", "нужен 'name'"), true
 	}
-	if err := plainName("VPC", "name", name); err != nil {
-		return errResult(err), true
-	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return errResult(err), true

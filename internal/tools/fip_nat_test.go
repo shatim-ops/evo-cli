@@ -7,8 +7,10 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -59,5 +61,29 @@ func TestFloatingIP_NATGatewayAddressIsInUse(t *testing.T) {
 	}
 	if _, text, isErr := callNamed(t, r, "fip_attach", map[string]any{"fip": "203.0.113.9", "vm": "web", "confirmed": true}); !isErr {
 		t.Errorf("attach: %s", text)
+	}
+}
+
+// A6 (D31): release_floating_ip refuses the address of a SNAT gateway, and
+// one in use by a VM, before the consent — the call cannot go through
+// whatever the person answers (CLAUDE.md §4); the question was asked, and
+// the refusal came after the yes.
+func TestReleaseFloatingIP_RefusedBeforeConsent(t *testing.T) {
+	nat := &natFIPCloud{}
+	r, _ := targetRegistry(t, nat)
+	for _, args := range []map[string]any{{"id": "0000f1f1-0000-4000-8000-0000000000aa"}, {"ip_address": "203.0.113.9"}} {
+		m, text, isErr := callNamed(t, r, "release_floating_ip", args)
+		if !isErr || m["status"] != "refused" || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, "snat_delete") {
+			t.Errorf("SNAT address %v: %s", args, text)
+		}
+	}
+	used := &inUseFIPCloud{}
+	r, _ = targetRegistry(t, used)
+	m, text, isErr := callNamed(t, r, "release_floating_ip", map[string]any{"id": "0000f1f1-0000-4000-8000-000000000001"})
+	if !isErr || m["status"] != "refused" || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, "in use") {
+		t.Errorf("in use: %s", text)
+	}
+	if nat.deleted != "" || used.deleted {
+		t.Error("a refused release deleted the address")
 	}
 }

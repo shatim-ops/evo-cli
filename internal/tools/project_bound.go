@@ -40,6 +40,11 @@ import (
 type ownerKind struct {
 	// what names the kind in messages ("PostgreSQL cluster").
 	what string
+	// byName: a value that is not a UUID is a name, which the handler
+	// finds in the server's project (vm_get takes a VM's name in vm_id):
+	// it addresses nothing by id, so the check passes it; a UUID must be
+	// one of the project's (FB121-2).
+	byName bool
 	// listTool lists the resources of the project (the hint of a refusal).
 	listTool string
 	// check refuses id unless it names a resource of an allowed project.
@@ -289,6 +294,11 @@ func (c *ownerCall) engine(ctx context.Context) (*engine.Engine, error) {
 	return eng, nil
 }
 
+// ErrProjectNotAllowed marks the factory's refusal of a project outside
+// the server's (evo mcp --allow-project, checkAllowedProject): admit
+// answers it as notInProject, and any other error of the factory as it is.
+var ErrProjectNotAllowed = stderrors.New("project not allowed on this server")
+
 // admit refuses a resource whose project is not allowed: the factory
 // decides, as for project_id (checkAllowedProject). Its refusal is answered
 // as notInProject — NOT_FOUND, naming no project — so that a resource of
@@ -306,7 +316,12 @@ func (c *ownerCall) admit(k *ownerKind, id, project string) error {
 				"Попросите оператора сервера проверить ресурс в консоли Cloud.ru."))
 	}
 	if _, err := c.r.newEngine(map[string]any{"ProjectID": project}); err != nil {
-		return notInProject(k, id)
+		if stderrors.Is(err, ErrProjectNotAllowed) {
+			return notInProject(k, id)
+		}
+		// A broken setup (a profile, no key) is that, not "no such
+		// resource" (audit Fable 1.2.1, FB121-5).
+		return err
 	}
 	return nil
 }
@@ -360,6 +375,9 @@ func byProjectField(what, listTool string, get func(ctx context.Context, c *owne
 // must hold the id.
 func inProjectList(what, listTool string, list func(ctx context.Context, c *ownerCall) ([]string, error)) *ownerKind {
 	return &ownerKind{what: what, listTool: listTool, check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
+		if k.byName && !looksUUID(id) {
+			return nil
+		}
 		ids, err := list(ctx, c)
 		if err != nil {
 			return err
@@ -371,6 +389,12 @@ func inProjectList(what, listTool string, list func(ctx context.Context, c *owne
 		}
 		return notInProject(k, id)
 	}}
+}
+
+// byName marks k as taking a name where a UUID is not given (byName).
+func byName(k *ownerKind) *ownerKind {
+	k.byName = true
+	return k
 }
 
 // computeList is the list of a Compute resource in the call's project:
@@ -399,14 +423,14 @@ func mapIDs(items []map[string]any) []string {
 }
 
 var (
-	kindVM = inProjectList("VM", "vm_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	kindVM = byName(inProjectList("VM", "vm_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		vms, err := eng.Cloud.ListVMsInProject(ctx, eng.Config.ProjectID)
 		ids := make([]string, 0, len(vms))
 		for _, v := range vms {
 			ids = append(ids, v.ID)
 		}
 		return ids, err
-	}))
+	})))
 	kindDisk = inProjectList("disk", "disk_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		disks, err := eng.Cloud.ListDisks(ctx, eng.Config.ProjectID)
 		return mapIDs(disks), err
