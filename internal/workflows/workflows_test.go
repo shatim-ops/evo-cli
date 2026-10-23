@@ -351,6 +351,22 @@ func TestWorkflows_CloudE2EWeekly(t *testing.T) {
 	}
 }
 
+// The readonly job of cloud-e2e checks that every tariff_url of the previews
+// answers (TestLive_TariffPagesAnswer, network only there): a page Cloud.ru
+// moved would send the person to a 404 (review Qwen #170).
+func TestWorkflows_ReadonlyChecksTariffPages(t *testing.T) {
+	j, ok := readWorkflows(t)["cloud-e2e.yml"].Jobs["readonly"]
+	if !ok {
+		t.Fatal("cloud-e2e: no job readonly")
+	}
+	for _, s := range j.Steps {
+		if strings.Contains(s.Run, "-run '^TestLive_TariffPagesAnswer$'") && s.Env["EVO_LIVE_TARIFFS"] == "1" {
+			return
+		}
+	}
+	t.Error("cloud-e2e readonly: no step runs TestLive_TariffPagesAnswer with EVO_LIVE_TARIFFS=1")
+}
+
 // cloud-e2e started from a PR's branch with no area chosen checks the cheap
 // areas the branch touches (classify.sh, owner's decision В5) instead of
 // none: the owner's one click covers what the PR's checklist asks for.
