@@ -34,7 +34,7 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 | 6.6 лимит тела HTTP | 4 МБ по HTTP, 16 МБ stdio (D24) | #226 |
 | 6.7 бриф Grok | роль и бриф атаки 1.3 | #229 |
 | Номера D | резерв строкой в `DECISIONS.md` при выдаче (правило 4 §0, решение владельца 23.10); `TestDocs_DecisionReserves`: резерв без версии, рядом со строкой решения или после выпуска версии роняет тест | #243 |
-| Состав репозитория (FB13-1 аудита Fable) | `internal/repolayout`: каталог в корне вне `rootDirs` и OpenAPI/Swagger-файл (по имени или ключу верхнего уровня) вне `apiSpecs` роняют тест; файлы — как их увидит `git add -A`; `cloudru-specs.py` не принимает опцию за OUT_DIR | этот PR; каталог `--help/` удаляет `claude/rm-stray-specs-1.3` |
+| Состав репозитория (FB13-1 аудита Fable) | `internal/repolayout`: каталог или файл в корне вне `rootDirs`/`rootFiles` и OpenAPI/Swagger-файл (по имени или ключу верхнего уровня) вне `apiSpecs` роняют тест; файлы — как их увидит `git add -A`; `cloudru-specs.py` не принимает опцию за OUT_DIR | этот PR; каталог `--help/` удаляет `claude/rm-stray-specs-1.3` |
 | Детерминизм | `TestDeterminism_ListOrderDoesNotChangeTheAnswer` (мир двойников) | тест в #236 у «1.3 — разработки» (D27) |
 
 ## Открыто

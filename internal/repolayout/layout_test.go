@@ -18,7 +18,8 @@ import (
 	"testing"
 )
 
-// rootDirs are the directories at the root of the repository.
+// rootDirs and rootFiles are the directories and files at the root of the
+// repository.
 var rootDirs = map[string]bool{
 	".github":     true,
 	"changelog.d": true,
@@ -27,6 +28,22 @@ var rootDirs = map[string]bool{
 	"internal":    true,
 	"scripts":     true,
 	"specs":       true,
+}
+
+var rootFiles = map[string]bool{
+	".dockerignore":    true,
+	".gitignore":       true,
+	".goreleaser.yaml": true,
+	"CHANGELOG.md":     true,
+	"CLAUDE.md":        true,
+	"Dockerfile":       true,
+	"LICENSE":          true,
+	"NOTICE":           true,
+	"README.md":        true,
+	"SECURITY.md":      true,
+	"go.mod":           true,
+	"go.sum":           true,
+	"install.sh":       true,
 }
 
 // apiSpecs are the OpenAPI and Swagger files kept in the repository: "path"
@@ -93,14 +110,18 @@ func files(t *testing.T) []string {
 
 // A script run with an option where it takes a directory created "--help/"
 // at the root and 18 Cloud.ru specs were committed into it (audit FB13-1,
-// #267). Every directory at the root is in rootDirs.
-func TestLayout_RootDirectoriesListed(t *testing.T) {
+// #267). Every directory at the root is in rootDirs, every file in
+// rootFiles.
+func TestLayout_RootListed(t *testing.T) {
 	seen := map[string]bool{}
 	for _, p := range files(t) {
 		dir, _, nested := strings.Cut(p, "/")
-		if nested && !rootDirs[dir] && !seen[dir] {
+		switch {
+		case nested && !rootDirs[dir] && !seen[dir]:
 			seen[dir] = true
 			t.Errorf("directory %q at the root of the repository is not in rootDirs: output of a tool run in the wrong place? (FB13-1)", dir)
+		case !nested && !rootFiles[p]:
+			t.Errorf("file %q at the root of the repository is not in rootFiles: output of a tool run in the wrong place? (FB13-1)", p)
 		}
 	}
 }
