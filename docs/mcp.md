@@ -1136,10 +1136,9 @@ https://…` отправляет запрос на любой адрес, `get 
 ## Docker-образ
 
 Образ `evo` — distroless, без shell, пользователь `nonroot`, слушает
-`:8080`, `HEALTHCHECK` встроен (`evo mcp healthcheck`). Релизные образы
-публикуются в Artifact Registry Cloud.ru (`<реестр>.cr.cloud.ru/evo:<версия>`;
-публичный адрес реестра появится вместе с первым опубликованным образом);
-собрать самому:
+`:8080`, `HEALTHCHECK` встроен (`evo mcp healthcheck`). Готовый образ в
+релизах не публикуется: evo ставится локально, общего MCP-сервера в плане
+пока нет (DECISIONS D32). Образ собирается из `Dockerfile`:
 
 ```sh
 docker build -t evo:local .

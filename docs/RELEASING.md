@@ -119,17 +119,20 @@ stderr, если это не оставляет дефект открытым.
    # происхождение: собран release.yml этого репозитория из тега
    gh attestation verify evo_1.3.0_linux_amd64.tar.gz --repo shatim-ops/evo-cli \
      --signer-workflow shatim-ops/evo-cli/.github/workflows/release.yml
-   # образ MCP-сервера: подпись того же workflow; полное имя образа —
-   # в строке «Образ опубликован» лога job image
+   # образ MCP-сервера — только когда он публикуется (D32): подпись того же
+   # workflow; полное имя образа — в строке «Образ опубликован» лога job image
    cosign verify <реестр>.cr.cloud.ru/evo:1.3.0 \
      --certificate-identity-regexp '^https://github.com/shatim-ops/evo-cli/\.github/workflows/release\.yml@refs/tags/v' \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com
    ```
 
    Впервые — на `1.3.0-rc.1`: все шесть архивов с SBOM в `checksums.txt`,
-   `gh attestation verify` проходит, `cosign verify` образа проходит. Если
-   реестр не принял подпись (тег `sha256-….sig`), job `image` красная, а
-   образ уже опубликован без подписи: это находка rc, до стабильного тега.
+   `gh attestation verify` проходит (проверено 23.10). Образ пока не
+   публикуется (D32: общий MCP-сервер не делаем, только локальная установка),
+   поэтому `cosign verify` образа — с первого релиза, в котором образ выйдет.
+   Если тогда реестр не примет подпись (тег `sha256-….sig`), job `image`
+   красная, а образ уже опубликован без подписи: это находка rc, до
+   стабильного тега.
 
 5. Неудачный релиз. Опубликованные тег и Release **не удаляются**: архивы
    уже могли скачать, а подписи лежат в журнале прозрачности Rekor.
@@ -195,7 +198,8 @@ Registry Cloud.ru: `<реестр>/evo:<версия>`, для стабильн�
 | `CLOUDRU_AR_KEY_ID`, `CLOUDRU_AR_SECRET` | ключ доступа с правом push в этот реестр |
 
 Без них job пишет notice «Образ не опубликован» и не падает: бинари
-выпускаются всё равно. Образ только `linux/amd64`; с 1.3.0 подписан cosign по digest (проверка — шаг 4).
+выпускаются всё равно. Сейчас секретов нет намеренно: образ не публикуется,
+пока общий MCP-сервер не в плане (D32); собрать его можно из `Dockerfile`. Образ только `linux/amd64`; с 1.3.0 подписан cosign по digest (проверка — шаг 4).
 
 ## Документация
 
