@@ -78,12 +78,19 @@ var faultCollections = map[string]struct {
 	"/v2/networkLoadBalancers": {field: "balancers", async: true},
 	"/v3/nodePools":            {field: "nodePools", async: true},
 	"/v2/targetGroups":         {field: "target_groups", async: true},
+	// Static routes of the VPC vpc_route_create adds to, known by their
+	// destination (subnet).
+	"/v1/vpcs/" + faultVPC + "/routes/static": {field: "routes", async: true},
 	// Manual backups of the cluster pg_backup_create backs up.
 	"/v1/clusters/" + faultPGCluster + "/backups": {field: "backups", async: true},
 }
 
-// faultPGCluster is the PostgreSQL cluster of pg_backup_create.
-const faultPGCluster = "00000000-0000-4000-8000-0000000000f2"
+// faultPGCluster is the PostgreSQL cluster of pg_backup_create, faultVPC
+// the VPC of vpc_route_create.
+const (
+	faultPGCluster = "00000000-0000-4000-8000-0000000000f2"
+	faultVPC       = "00000000-0000-4000-8000-0000000000f5"
+)
 
 func (a *faultAPI) failAt(n int, kind string) {
 	a.mu.Lock()
@@ -243,7 +250,7 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		items := []map[string]any{}
 		for _, c := range a.made {
 			if c.host == host && c.path == path {
-				items = append(items, map[string]any{"id": c.ID, "name": c.Name, "path": c.Name, "status": "RUNNING"})
+				items = append(items, map[string]any{"id": c.ID, "name": c.Name, "path": c.Name, "subnet": c.Name, "status": "RUNNING"})
 			}
 		}
 		a.mu.Unlock()
@@ -251,12 +258,13 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(b)
 	case faultCollections[path].field != "" && r.Method == http.MethodPost:
 		var body struct {
-			Name string `json:"name"`
-			Path string `json:"path"` // a secret's name
+			Name   string `json:"name"`
+			Path   string `json:"path"`   // a secret's name
+			Subnet string `json:"subnet"` // a static route's destination
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body.Name == "" {
-			body.Name = body.Path
+			body.Name = body.Path + body.Subnet
 		}
 		a.mu.Lock()
 		if faultCollections[path].unique {
