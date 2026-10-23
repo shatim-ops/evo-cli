@@ -284,7 +284,7 @@ func TestQA6_ReasonsOfRefusals(t *testing.T) {
 	// release_floating_ip: the address of a SNAT gateway, and one in use.
 	cloud := &natFIPCloud{}
 	r, _ := targetRegistry(t, cloud)
-	for _, args := range []map[string]any{{"id": "fip-nat", "confirmed": true}, {"ip_address": "203.0.113.9", "confirmed": true}} {
+	for _, args := range []map[string]any{{"id": "0000f1f1-0000-4000-8000-0000000000aa", "confirmed": true}, {"ip_address": "203.0.113.9", "confirmed": true}} {
 		m, text, isErr := callNamed(t, r, "release_floating_ip", args)
 		if !isErr || m["reason"] != clerrors.CodeUsage || m["error"] == nil || m["status"] != "refused" || cloud.deleted != "" {
 			t.Errorf("release %v: %s", args, text)
@@ -292,7 +292,7 @@ func TestQA6_ReasonsOfRefusals(t *testing.T) {
 	}
 	used := &inUseFIPCloud{}
 	r, _ = targetRegistry(t, used)
-	m, text, isErr := callNamed(t, r, "release_floating_ip", map[string]any{"id": "fip-1", "confirmed": true})
+	m, text, isErr := callNamed(t, r, "release_floating_ip", map[string]any{"id": "0000f1f1-0000-4000-8000-000000000001", "confirmed": true})
 	if !isErr || m["reason"] != clerrors.CodeUsage || m["status"] != "refused" || !strings.Contains(text, "in use") || used.deleted {
 		t.Errorf("in use: %s", text)
 	}
@@ -300,7 +300,7 @@ func TestQA6_ReasonsOfRefusals(t *testing.T) {
 	tc := &targetCloud{deleteErr: clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
 		&provision.StatusError{Status: 409, Body: "creating"})}
 	r, _ = targetRegistry(t, tc)
-	m, text, isErr = callNamed(t, r, "destroy", map[string]any{"vm_id": "vm-1", "confirmed": true})
+	m, text, isErr = callNamed(t, r, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if !isErr || m["status"] != "not_deletable_yet" || m["reason"] != clerrors.CodeAPIError || m["error"] == nil || m["hint"] == nil {
 		t.Errorf("not_deletable_yet: %s", text)
 	}
@@ -327,7 +327,7 @@ type inUseFIPCloud struct {
 func (*inUseFIPCloud) SetToken(string) {}
 func (*inUseFIPCloud) GetFloatingIP(context.Context, string) (*provision.FloatingIP, error) {
 	var f provision.FloatingIP
-	_ = json.Unmarshal([]byte(`{"id":"fip-1","ip_address":"192.0.2.11","state":"in_use"}`), &f)
+	_ = json.Unmarshal([]byte(`{"id":"0000f1f1-0000-4000-8000-000000000001","ip_address":"192.0.2.11","state":"in_use"}`), &f)
 	return &f, nil
 }
 func (c *inUseFIPCloud) DeleteFloatingIP(context.Context, string, string) error {

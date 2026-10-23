@@ -40,16 +40,16 @@ func qaBRegistry(t *testing.T, cloud provision.CloudAPI, dir string) *Registry {
 func TestQAB_RecordDeployment_KeepsFloatingIPOfOldRecord(t *testing.T) {
 	dir := t.TempDir()
 	sf := &state.File{Version: 1}
-	sf.UpsertDeployment(state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", VMIP: "203.0.113.5", FloatingIPID: "fip-1", Status: "creating"})
+	sf.UpsertDeployment(state.DeploymentRecord{ID: "0000a1a1-0000-4000-8000-000000000001", VMID: "0000a1a1-0000-4000-8000-000000000001", VMIP: "203.0.113.5", FloatingIPID: "0000f1f1-0000-4000-8000-000000000001", Status: "creating"})
 	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
 		t.Fatal(err)
 	}
-	res := &deployplan.ApplyResult{VMID: "vm-1", Status: "creating"}
+	res := &deployplan.ApplyResult{VMID: "0000a1a1-0000-4000-8000-000000000001", Status: "creating"}
 	if err := recordDeployment(dir, &deployplan.Plan{ProjectID: "p", VM: deployplan.VMSpec{Name: "x"}}, res, res.Status); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := state.Read(state.DefaultPath(dir))
-	if rec := got.FindDeployment("vm-1"); rec.FloatingIPID != "fip-1" || rec.VMIP != "203.0.113.5" {
+	if rec := got.FindDeployment("0000a1a1-0000-4000-8000-000000000001"); rec.FloatingIPID != "0000f1f1-0000-4000-8000-000000000001" || rec.VMIP != "203.0.113.5" {
 		t.Fatalf("floating_ip_id=%q vm_ip=%q", rec.FloatingIPID, rec.VMIP)
 	}
 }
@@ -64,7 +64,7 @@ type foreignVMCloud struct {
 
 func (*foreignVMCloud) SetToken(string) {}
 func (*foreignVMCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
-	return []*provision.VM{{ID: "vm-9", Name: "user-vm", FloatingIP: "198.51.100.7"}}, nil
+	return []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000009", Name: "user-vm", FloatingIP: "198.51.100.7"}}, nil
 }
 func (c *foreignVMCloud) DeleteVMInProject(context.Context, string, string) error {
 	c.gone = true
@@ -74,7 +74,7 @@ func (c *foreignVMCloud) GetVM(context.Context, string) (*provision.VM, error) {
 	if c.gone {
 		return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")
 	}
-	return &provision.VM{ID: "vm-9"}, nil
+	return &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000009"}, nil
 }
 func (c *foreignVMCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
 	return []*provision.FloatingIP{{ID: "fip-user", Name: c.fipName, IPAddress: "198.51.100.7", State: "in_use"}}, nil
@@ -99,11 +99,11 @@ func TestQAB_DestroyTargeted_ForeignVMFloatingIP(t *testing.T) {
 	} {
 		cloud := &foreignVMCloud{fipName: tc.fipName}
 		r := qaBRegistry(t, cloud, t.TempDir())
-		preview, _ := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-9"})
+		preview, _ := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000009"})
 		if !strings.Contains(preview, "release_ip=true") {
 			t.Fatalf("превью не говорит о floating IP: %s", preview)
 		}
-		args := map[string]any{"vm_id": "vm-9", "confirmed": true}
+		args := map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000009", "confirmed": true}
 		if tc.release != nil {
 			args["release_ip"] = tc.release
 		}
@@ -161,7 +161,7 @@ func TestQAB_DeployApply_TimeoutGivesPassword(t *testing.T) {
 // Ревью Grok по #87: подхваченная остановленная ВМ сама не запустится —
 // подсказка «запустите в консоли», а не «повторите позже».
 func TestQAB_DeployApply_StoppedVMSaysStartIt(t *testing.T) {
-	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "wiki-1", Status: "stopped"}}
+	cloud := &sgCloud{vm: &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "wiki-1", Status: "stopped"}}
 	r, dir := sgRegistry(t, cloud)
 	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ExpiresAt: time.Now().Add(time.Hour), Product: "wiki",
 		VM: deployplan.VMSpec{Name: "wiki-1"}, Network: deployplan.NetworkSpec{SecurityGroupID: "sg-1"}}
@@ -185,7 +185,7 @@ func (*fipListFailsCloud) ListFloatingIPs(context.Context, string) ([]*provision
 func TestQAB_DestroyTargeted_FIPListFailsSaysSo(t *testing.T) {
 	cloud := &fipListFailsCloud{}
 	r := qaBRegistry(t, cloud, t.TempDir())
-	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-9", "confirmed": true})
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000009", "confirmed": true})
 	if isErr || cloud.released != "" || !strings.Contains(text, "could not check who made it") {
 		t.Fatalf("освобождён %q; ответ %s", cloud.released, text)
 	}

@@ -27,13 +27,13 @@ func (c *neverReleaseCloud) DeleteFloatingIP(context.Context, string, string) er
 func TestQAr3_DestroyTargeted_FIPReleaseFailsKeepsRecord(t *testing.T) {
 	cloud := &neverReleaseCloud{}
 	r, dir := targetRegistry(t, cloud)
-	text, _ := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true})
+	text, _ := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if !strings.Contains(text, "NOT released") {
 		t.Fatalf("answer: %s", text)
 	}
 	sf, _ := state.Read(state.DefaultPath(dir))
 	for _, d := range sf.Deployments {
-		if d.VMID == "vm-1" {
+		if d.VMID == "0000a1a1-0000-4000-8000-000000000001" {
 			if d.Status != "destroying" || d.FloatingIPID != "fip-1" {
 				t.Errorf("record = %+v, want destroying with floating_ip_id fip-1", d)
 			}
@@ -46,7 +46,7 @@ func TestQAr3_DestroyTargeted_FIPReleaseFailsKeepsRecord(t *testing.T) {
 // The released FIP: the record goes, as before.
 func TestQAr3_DestroyTargeted_FIPReleasedDropsRecord(t *testing.T) {
 	r, dir := targetRegistry(t, &targetCloud{})
-	if _, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true}); isErr {
+	if _, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true}); isErr {
 		t.Fatal("destroy failed")
 	}
 	sf, _ := state.Read(state.DefaultPath(dir))

@@ -225,20 +225,24 @@ func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (str
 	if name == "" {
 		return usageT("name is required", "нужен name"), true
 	}
+	cli, err := s.caClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		// An app that is not there is already deleted (D26), not a question.
+		if _, err := cli.Get(ctx, name); err != nil {
+			return s.deleteFailed("ca_delete", name, err)
+		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.Tf("ca_delete permanently deletes container app %q.",
 				"ca_delete безвозвратно удаляет приложение %q.", name),
 		}), true
 	}
-	cli, err := s.caClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
 	op, err := cli.Delete(ctx, name)
 	if err != nil {
-		return errResult(err), true
+		return s.deleteFailed("ca_delete", name, err)
 	}
 	return toJSON(map[string]any{"status": "deleting", "name": name, "operation_id": op.ID}), false
 }

@@ -142,6 +142,10 @@ a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+
    repeat the same call unchanged.
 8. Local commands work on the person's machine and have no MCP tool: ask the
    person to run %s.
+9. A delete of what is not there succeeds: `+"`\"status\": \"already_deleted\"`"+`,
+   `+"`\"existed\": false`"+`, exit code %d. A repeat is safe, but a mistyped id reads
+   the same: when it matters that the resource was there, check the id with its
+   list command.
 
 ## Exit codes
 
@@ -170,7 +174,7 @@ a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+
 
 | Group | Commands | Tools | Change the cloud |
 |---|---|---|---|
-`, skillVersion(), head, consent, strings.Join(untrusted, ", "), strings.Join(raw, ", "), quote(skillLocalCommands),
+`, skillVersion(), head, consent, strings.Join(untrusted, ", "), strings.Join(raw, ", "), quote(skillLocalCommands), clerrors.ExitOK,
 		clerrors.ExitOK, clerrors.ExitGeneral, clerrors.ExitAuth, clerrors.ExitConfirmationRequired, consentRow, clerrors.ExitNotFound,
 		clerrors.ExitAPI, clerrors.ExitInterrupted, strings.Join(defaultToolsets, ","))
 

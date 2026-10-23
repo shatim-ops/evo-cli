@@ -118,8 +118,12 @@ func TestZoneStatesSummarisesBuildState(t *testing.T) {
 }
 
 func TestImageDeleteAsksConfirmation(t *testing.T) {
-	s := newTestServer()
-	got := callTool(t, s.handleImageDelete, map[string]any{"image_id": "img-1"})
+	// The preview looks the image up first (D26), so it needs a cloud.
+	text := liveDelete(t, "image_delete", map[string]any{"image_id": liveID})
+	var got map[string]any
+	if err := json.Unmarshal([]byte(text), &got); err != nil {
+		t.Fatal(err)
+	}
 	if got["status"] != "confirmation_required" {
 		t.Fatalf("удаление образа без confirmed должно требовать подтверждения, получили %v", got)
 	}

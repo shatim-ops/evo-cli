@@ -97,12 +97,12 @@ func writeRecords(t *testing.T, dir string, recs ...state.DeploymentRecord) {
 // MCP destroy of a VM by id closes the rules its deployment created, with
 // the same code as the CLI destroy.
 func TestDestroyTargeted_ClosesOwnRules(t *testing.T) {
-	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "web"}}
+	cloud := &sgCloud{vm: &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "web"}}
 	r, dir := sgRegistry(t, cloud)
-	writeRecords(t, dir, state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", Status: "running", SecurityGroupID: "sg-1",
+	writeRecords(t, dir, state.DeploymentRecord{ID: "0000a1a1-0000-4000-8000-000000000001", VMID: "0000a1a1-0000-4000-8000-000000000001", Status: "running", SecurityGroupID: "sg-1",
 		SecurityGroupPorts: []string{"80/tcp"}, OpenedRules: []state.SGRule{{ID: "rule-80", SecurityGroupID: "sg-1", Port: "80/tcp"}}})
 
-	text := callSGTool(t, r, "destroy", map[string]any{"vm_id": "vm-1", "confirmed": true, "release_ip": false})
+	text := callSGTool(t, r, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true, "release_ip": false})
 	if strings.Join(cloud.deleted, ",") != "sg-1/rule-80" {
 		t.Errorf("deleted = %v", cloud.deleted)
 	}
@@ -119,11 +119,11 @@ func TestDestroyTargeted_ClosesOwnRules(t *testing.T) {
 // 80 is open already); the rules an earlier apply recorded must stay with
 // the record, or destroy never deletes them.
 func TestDeployApply_AdoptKeepsRecordedRules(t *testing.T) {
-	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "wiki-1", Status: "running"},
+	cloud := &sgCloud{vm: &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "wiki-1", Status: "running"},
 		rules: []*provision.SGRule{{ID: "rule-80", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0", Description: "auto: wiki port 80", State: "created"}}}
 	r, dir := sgRegistry(t, cloud)
 	created := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	writeRecords(t, dir, state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", Status: "running", SecurityGroupID: "sg-1",
+	writeRecords(t, dir, state.DeploymentRecord{ID: "0000a1a1-0000-4000-8000-000000000001", VMID: "0000a1a1-0000-4000-8000-000000000001", Status: "running", SecurityGroupID: "sg-1",
 		SecurityGroupPorts: []string{"80/tcp"}, OpenedRules: []state.SGRule{{ID: "rule-80", SecurityGroupID: "sg-1", Port: "80/tcp"}},
 		CreatedAt: created})
 	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ExpiresAt: time.Now().Add(time.Hour), Product: "wiki",
@@ -134,7 +134,7 @@ func TestDeployApply_AdoptKeepsRecordedRules(t *testing.T) {
 
 	callSGTool(t, r, "deploy_apply", map[string]any{"plan_id": plan.PlanID, "confirmed": true})
 	sf, _ := state.Read(state.DefaultPath(dir))
-	rec := sf.FindDeployment("vm-1")
+	rec := sf.FindDeployment("0000a1a1-0000-4000-8000-000000000001")
 	if rec == nil || rec.SecurityGroupID != "sg-1" || len(rec.OpenedRules) != 1 || rec.OpenedRules[0].ID != "rule-80" ||
 		!rec.CreatedAt.Equal(created) {
 		t.Errorf("record = %+v", rec)
@@ -167,7 +167,7 @@ func TestListSecurityGroups_Rules(t *testing.T) {
 // The VM is up but the state cannot be written: the answer names the VM
 // and the plan stays, so a retry adopts the VM instead of losing it.
 func TestDeployApply_StateNotWritable_NamesVMAndKeepsPlan(t *testing.T) {
-	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "wiki-1", Status: "running"}}
+	cloud := &sgCloud{vm: &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "wiki-1", Status: "running"}}
 	r, dir := sgRegistry(t, cloud)
 	if err := os.MkdirAll(filepath.Dir(state.DefaultPath(dir)), 0o700); err != nil {
 		t.Fatal(err)
@@ -182,7 +182,7 @@ func TestDeployApply_StateNotWritable_NamesVMAndKeepsPlan(t *testing.T) {
 	}
 
 	text, isErr := r.handlers["deploy_apply"](context.Background(), map[string]any{"plan_id": plan.PlanID, "confirmed": true})
-	if !isErr || !strings.Contains(text, "vm-1") || !strings.Contains(text, "state") {
+	if !isErr || !strings.Contains(text, "0000a1a1-0000-4000-8000-000000000001") || !strings.Contains(text, "state") {
 		t.Fatalf("answer = %s (isErr %v), want an error naming vm-1 and the state", text, isErr)
 	}
 	if _, err := deployplan.Load(dir, plan.PlanID); err != nil {
@@ -193,7 +193,7 @@ func TestDeployApply_StateNotWritable_NamesVMAndKeepsPlan(t *testing.T) {
 // The VM is deleted but the state cannot be updated: the answer says the
 // record and the port rules were left behind instead of staying silent.
 func TestDestroyTargeted_StateNotWritable_Warns(t *testing.T) {
-	cloud := &sgCloud{vm: &provision.VM{ID: "vm-1", Name: "wiki-1", Status: "running"}}
+	cloud := &sgCloud{vm: &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "wiki-1", Status: "running"}}
 	r, dir := sgRegistry(t, cloud)
 	if err := os.MkdirAll(filepath.Dir(state.DefaultPath(dir)), 0o700); err != nil {
 		t.Fatal(err)
@@ -201,7 +201,7 @@ func TestDestroyTargeted_StateNotWritable_Warns(t *testing.T) {
 	if err := os.WriteFile(state.DefaultPath(dir), []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	text := callSGTool(t, r, "destroy", map[string]any{"vm_id": "vm-1", "confirmed": true, "release_ip": false})
+	text := callSGTool(t, r, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true, "release_ip": false})
 	if !strings.Contains(text, "local state was not updated") {
 		t.Fatalf("answer does not warn about the state: %s", text)
 	}

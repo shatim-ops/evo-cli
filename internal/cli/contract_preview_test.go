@@ -537,6 +537,10 @@ func withParityWorld(t *testing.T) parityWorld {
 	t.Setenv("CLOUDRU_FLAVOR", "")
 	t.Setenv("CLOUDRU_DISK_SIZE", "")
 	t.Setenv("EVO_LANG", "en")
+	// Object Storage: the previews of s3_rm and s3_bucket_delete look the
+	// object and the bucket up (D26).
+	t.Setenv("CLOUDRU_S3_ACCESS_KEY", "parity-access")
+	t.Setenv("CLOUDRU_S3_SECRET_KEY", "parity-secret")
 	t.Chdir(home)
 	rt := &parityRT{addon: &addonAPI{}}
 	oldRT := http.DefaultTransport

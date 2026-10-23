@@ -178,13 +178,17 @@ func (s *Registry) handleSecretDelete(ctx context.Context, args map[string]any) 
 	if path == "" {
 		return usageT("'path' is required (from secret_list)", "нужен 'path' (из secret_list)"), true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("secret_delete PERMANENTLY deletes secret %q and all its versions.",
-			"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q и все его версии.", path)}), true
-	}
 	cli, err := s.secretClient(ctx)
 	if err != nil {
 		return errResult(err), true
+	}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		// A secret that is not there is already deleted (D26).
+		if _, err := cli.Get(ctx, path); err != nil {
+			return s.deleteFailed("secret_delete", path, err)
+		}
+		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("secret_delete PERMANENTLY deletes secret %q and all its versions.",
+			"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q и все его версии.", path)}), true
 	}
 	// confirmed=true already authorizes deleting the secret AND all its versions
 	// (see the confirmation message), so force defaults to true — otherwise the
@@ -196,7 +200,7 @@ func (s *Registry) handleSecretDelete(ctx context.Context, args map[string]any) 
 		force = v
 	}
 	if err := cli.Delete(ctx, path, force); err != nil {
-		return errResult(fmt.Errorf("delete secret: %w", err)), true
+		return s.deleteFailed("secret_delete", path, fmt.Errorf("delete secret: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleted", "path": path}), false
 }

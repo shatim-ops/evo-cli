@@ -595,11 +595,12 @@ func TestDeletePreviews_NameTheResource(t *testing.T) {
 	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": "tg-1"}); !strings.Contains(text, `\"tg\" (tg-1)`) {
 		t.Errorf("tg_delete preview does not name the group: %s", text)
 	}
-	m, text, _ := callNamed(t, rr, "lb_delete", map[string]any{"id": "lb-missing"})
-	if strings.Contains(text, "confirmation_required") {
+	// A missing balancer is already deleted (D26; it was NOT_FOUND): no
+	// confirmation question for nothing to delete.
+	m, text, isErr := callNamed(t, rr, "lb_delete", map[string]any{"id": "lb-missing"})
+	if isErr || m["status"] != "already_deleted" {
 		t.Fatalf("lb_delete preview of a missing balancer: %s", text)
 	}
-	wantReason(t, "lb_delete missing", m, text, "NOT_FOUND")
 }
 
 // Продолжение L-08 для групп узлов: зона по умолчанию была зоной продукта

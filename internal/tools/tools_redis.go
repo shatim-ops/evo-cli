@@ -270,13 +270,13 @@ func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return deletePreview("redis_delete PERMANENTLY deletes Redis cluster %s and its data.",
+		return s.deletePreview("redis_delete", "redis_delete PERMANENTLY deletes Redis cluster %s and its data.",
 			"redis_delete БЕЗВОЗВРАТНО удаляет кластер Redis %s и его данные.",
 			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {
-		return errResult(fmt.Errorf("delete cluster: %w", err)), true
+		return s.deleteFailed("redis_delete", id, fmt.Errorf("delete cluster: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 }

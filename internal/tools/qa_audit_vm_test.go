@@ -171,22 +171,22 @@ func (c *previewCloud) DeleteVMInProject(ctx context.Context, id, p string) erro
 // R-04: превью удаления называет цель — id, имя, зону, состояние, адрес —
 // и какой FIP будет освобождён; ничего не удаляется.
 func TestAudit_DestroyPreviewNamesTarget(t *testing.T) {
-	cloud := &previewCloud{vms: []*provision.VM{{ID: "vm-1", Name: "web", Status: "running",
+	cloud := &previewCloud{vms: []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "web", Status: "running",
 		AvailabilityZone: &provision.ZoneRef{ID: "z-2", Name: "ru.AZ-2"}}}}
 	r, _ := targetRegistry(t, cloud)
-	for _, args := range []map[string]any{{"vm_id": "vm-1"}, {"name": "web"}} {
+	for _, args := range []map[string]any{{"vm_id": "0000a1a1-0000-4000-8000-000000000001"}, {"name": "web"}} {
 		m, text, isErr := callNamed(t, r, "destroy", args)
 		if !isErr || m["status"] != "confirmation_required" {
 			t.Fatalf("%v: %s", args, text)
 		}
 		tgt, _ := m["target"].(map[string]any)
-		if tgt["id"] != "vm-1" || tgt["name"] != "web" || tgt["zone"] != "ru.AZ-2" || tgt["status"] != "running" || tgt["public_ip"] != "203.0.113.5" {
+		if tgt["id"] != "0000a1a1-0000-4000-8000-000000000001" || tgt["name"] != "web" || tgt["zone"] != "ru.AZ-2" || tgt["status"] != "running" || tgt["public_ip"] != "203.0.113.5" {
 			t.Errorf("%v: target = %v", args, tgt)
 		}
 		if f, _ := m["floating_ip"].(string); !strings.Contains(f, "released") || !strings.Contains(f, "203.0.113.5 (fip-1)") {
 			t.Errorf("%v: floating_ip = %q", args, f)
 		}
-		if msg, _ := m["message"].(string); !strings.Contains(msg, "web (vm-1) in zone ru.AZ-2") {
+		if msg, _ := m["message"].(string); !strings.Contains(msg, "web (0000a1a1-0000-4000-8000-000000000001) in zone ru.AZ-2") {
 			t.Errorf("%v: message = %q", args, msg)
 		}
 		if m["project_id"] != "p" || !strings.Contains(text, "release_ip=true") {
@@ -198,19 +198,20 @@ func TestAudit_DestroyPreviewNamesTarget(t *testing.T) {
 	}
 }
 
-// R-04, A-004: несуществующая ВМ — VM_NOT_FOUND (код 4) уже на превью, без
-// вопроса; без проекта — CONFIG_INVALID.
+// R-04, A-004, D26: ВМ, которой нет ни в облаке, ни в записях, — уже
+// удалена (код 0, already_deleted) уже на превью, без вопроса; id не того
+// вида — USAGE до облака; без проекта — CONFIG_INVALID.
 func TestAudit_DestroyPreviewNotFoundAndNoProject(t *testing.T) {
-	cloud := &previewCloud{vms: []*provision.VM{{ID: "vm-1", Name: "web"}}}
+	cloud := &previewCloud{vms: []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "web"}}}
 	r, _ := targetRegistry(t, cloud)
-	for _, args := range []map[string]any{{"name": "nope"}, {"vm_id": "vm-404"}, {"name": "nope", "confirmed": true}} {
+	for _, args := range []map[string]any{{"name": "nope"}, {"vm_id": "0000a1a1-0000-4000-8000-000000000404"}, {"name": "nope", "confirmed": true}} {
 		m, text, isErr := callNamed(t, r, "destroy", args)
-		if !isErr || m["reason"] != "VM_NOT_FOUND" || m["status"] == "confirmation_required" {
+		if isErr || m["status"] != "already_deleted" || m["existed"] != false {
 			t.Errorf("%v: %s", args, text)
 		}
-		if clerrors.ExitCode(clerrors.New(m["reason"].(string), "", "")) != clerrors.ExitNotFound {
-			t.Errorf("%v: exit code is not 4", args)
-		}
+	}
+	if m, text, isErr := callNamed(t, r, "destroy", map[string]any{"vm_id": "vm-404"}); !isErr || m["reason"] != "USAGE" {
+		t.Errorf("vm_id of the wrong form: %s", text)
 	}
 	r, _ = fastRegistry(t, cloud, config.Config{KeyID: "k", Secret: "s"})
 	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"name": "web"})
@@ -226,13 +227,13 @@ func TestAudit_DestroyPreviewNotFoundAndNoProject(t *testing.T) {
 // ничего не удаляется; vm_id выбирает нужную.
 func TestAudit_DestroyAmbiguousName(t *testing.T) {
 	cloud := &previewCloud{vms: []*provision.VM{
-		{ID: "vm-a", Name: "web", AvailabilityZone: &provision.ZoneRef{ID: "z-1", Name: "ru.AZ-1"}},
-		{ID: "vm-b", Name: "web", AvailabilityZone: &provision.ZoneRef{ID: "z-2", Name: "ru.AZ-2"}},
+		{ID: "0000a1a1-0000-4000-8000-00000000000a", Name: "web", AvailabilityZone: &provision.ZoneRef{ID: "z-1", Name: "ru.AZ-1"}},
+		{ID: "0000a1a1-0000-4000-8000-00000000000b", Name: "web", AvailabilityZone: &provision.ZoneRef{ID: "z-2", Name: "ru.AZ-2"}},
 	}}
 	r, _ := targetRegistry(t, cloud)
 	for _, confirmed := range []bool{false, true} {
 		m, text, isErr := callNamed(t, r, "destroy", map[string]any{"name": "web", "confirmed": confirmed})
-		if !isErr || m["reason"] != "USAGE" || !strings.Contains(text, "vm-a (zone ru.AZ-1)") || !strings.Contains(text, "vm-b (zone ru.AZ-2)") {
+		if !isErr || m["reason"] != "USAGE" || !strings.Contains(text, "0000a1a1-0000-4000-8000-00000000000a (zone ru.AZ-1)") || !strings.Contains(text, "0000a1a1-0000-4000-8000-00000000000b (zone ru.AZ-2)") {
 			t.Fatalf("confirmed=%v: %s", confirmed, text)
 		}
 		if c, _ := m["candidates"].([]any); len(c) != 2 {
@@ -245,9 +246,9 @@ func TestAudit_DestroyAmbiguousName(t *testing.T) {
 	if cloud.deletes != 0 {
 		t.Fatalf("deleted %d VMs on an ambiguous name", cloud.deletes)
 	}
-	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"vm_id": "vm-b", "confirmed": true})
-	if isErr || m["deleted_vm"] != "vm-b" || cloud.deletes != 1 {
-		t.Errorf("vm_id=vm-b: %s", text)
+	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-00000000000b", "confirmed": true})
+	if isErr || m["deleted_vm"] != "0000a1a1-0000-4000-8000-00000000000b" || cloud.deletes != 1 {
+		t.Errorf("vm_id: %s", text)
 	}
 }
 
@@ -275,7 +276,7 @@ func withRule(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := sf.FindDeployment("vm-1")
+	rec := sf.FindDeployment("0000a1a1-0000-4000-8000-000000000001")
 	rec.SecurityGroupID = "sg-1"
 	rec.OpenedRules = []state.SGRule{{ID: "rule-80", SecurityGroupID: "sg-1", Port: "tcp/80"}}
 	if err := state.Write(path, sf); err != nil {
@@ -291,7 +292,7 @@ func TestAudit_DestroyTargetedUnconfirmedIsPartial(t *testing.T) {
 	cloud := &stuckTargetCloud{}
 	r, dir := targetRegistry(t, cloud)
 	withRule(t, dir)
-	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"vm_id": "vm-1", "confirmed": true})
+	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if !isErr || m["status"] != "partial" || m["reason"] != "API_ERROR" {
 		t.Fatalf("want partial API_ERROR, got %s", text)
 	}
@@ -301,7 +302,7 @@ func TestAudit_DestroyTargetedUnconfirmedIsPartial(t *testing.T) {
 	if cloud.fipTries != 0 || cloud.ruleDeletes != 0 {
 		t.Errorf("released while the VM still exists: %d FIP tries, %d rule deletes", cloud.fipTries, cloud.ruleDeletes)
 	}
-	rec := stateHasVM(t, dir, "vm-1")
+	rec := stateHasVM(t, dir, "0000a1a1-0000-4000-8000-000000000001")
 	if rec.Status != "destroying" || rec.FloatingIPID != "fip-1" || len(rec.OpenedRules) != 1 {
 		t.Errorf("record = %+v, want destroying with its FIP and rule", rec)
 	}
@@ -316,7 +317,7 @@ func TestAudit_DestroyTargetedUnconfirmedIsPartial(t *testing.T) {
 		}
 		return eng, err
 	})
-	m, text, isErr = callNamed(t, r2, "destroy", map[string]any{"vm_id": "vm-1", "confirmed": true})
+	m, text, isErr = callNamed(t, r2, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if isErr || m["status"] != "already_deleted" || gone.releasedFIP != "fip-1" {
 		t.Fatalf("re-run: %s (released %q)", text, gone.releasedFIP)
 	}
@@ -333,7 +334,7 @@ func TestAudit_DestroyUnconfirmedKeepsReleaseIPFalseInHint(t *testing.T) {
 	cloud := &stuckTargetCloud{}
 	r, dir := targetRegistry(t, cloud)
 	withRule(t, dir)
-	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"vm_id": "vm-1", "confirmed": true, "release_ip": false})
+	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true, "release_ip": false})
 	if !isErr || m["status"] != "partial" {
 		t.Fatalf("want partial, got %s", text)
 	}
@@ -360,7 +361,7 @@ func TestAudit_DestroyCurrentUnconfirmedIsPartial(t *testing.T) {
 	if cloud.fipTries != 0 {
 		t.Errorf("FIP released while the VM still exists")
 	}
-	if rec := stateHasVM(t, dir, "vm-1"); rec.Status != "destroying" || rec.FloatingIPID != "fip-1" {
+	if rec := stateHasVM(t, dir, "0000a1a1-0000-4000-8000-000000000001"); rec.Status != "destroying" || rec.FloatingIPID != "fip-1" {
 		t.Errorf("record = %+v", rec)
 	}
 }
@@ -391,7 +392,7 @@ type diskCloud struct {
 
 func (*diskCloud) SetToken(string) {}
 func (*diskCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
-	return []*provision.VM{{ID: "vm-1", Name: "web", Region: "z"}}, nil
+	return []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "web", Region: "z"}}, nil
 }
 func (*diskCloud) CreateDisk(context.Context, provision.CreateDiskReq) (map[string]any, error) {
 	return map[string]any{"id": "d-1", "name": "data", "state": "creating"}, nil

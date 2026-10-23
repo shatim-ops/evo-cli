@@ -172,9 +172,9 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 	case "postgresql.api.cloud.ru", "kafka.api.cloud.ru", "redis.api.cloud.ru":
 		switch {
 		case strings.HasSuffix(p, "/databases") && get:
-			return write(`{"databases":[]}`)
+			return write(`{"databases":[{"name":"old"}]}`)
 		case strings.HasSuffix(p, "/users") && get:
-			return write(`{"users":[]}`)
+			return write(`{"users":[{"name":"old"}]}`)
 		case strings.HasSuffix(p, "/backups") && get:
 			return write(`{"backups":[]}`)
 		case strings.HasPrefix(p, "/v1/operations/") || !get:

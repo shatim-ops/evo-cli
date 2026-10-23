@@ -1005,8 +1005,10 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 			}
 		}
 	}
-	// Reverse teardown of what was created. 404/not-found is idempotent success.
-	// The code (VM_NOT_FOUND, NOT_FOUND) is checked too: in the CLI the
+	// Reverse teardown of what was created. A resource already gone is
+	// success: the delete tools answer already_deleted (D26), and on a
+	// server bound to its projects (H9) they keep NOT_FOUND, which reads
+	// the same here. The code (VM_NOT_FOUND, NOT_FOUND) is checked too: in the CLI the
 	// message is in the language of the CLI, and destroy of a VM already
 	// gone says "no VM … in project …; nothing was deleted" (live run 18.10:
 	// a second stack_destroy turned a destroyed job into destroy_failed).
@@ -1027,9 +1029,14 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 				failed = append(failed, label+": "+msg)
 			}
 		} else {
-			deleted = append(deleted, label)
-			if st, _ := res["status"].(string); st == "deleting" {
+			switch st, _ := res["status"].(string); st {
+			case "already_deleted":
+				deleted = append(deleted, label+" (already gone)")
+			case "deleting":
+				deleted = append(deleted, label)
 				deleting = append(deleting, label)
+			default:
+				deleted = append(deleted, label)
 			}
 		}
 	}

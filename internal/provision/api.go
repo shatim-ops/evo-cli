@@ -54,8 +54,9 @@ type CloudAPI interface {
 	CreateNATGateway(ctx context.Context, req CreateNATGatewayRequest) (map[string]any, error)
 	DeleteNATGateway(ctx context.Context, id, projectID string) error
 
-	// Disks (block storage) — create/attach/detach/delete + list.
+	// Disks (block storage) — create/attach/detach/delete + list and get.
 	ListDisks(ctx context.Context, projectID string) ([]map[string]any, error)
+	GetDisk(ctx context.Context, diskID string) (map[string]any, error)
 	CreateDisk(ctx context.Context, req CreateDiskReq) (map[string]any, error)
 	AttachDisk(ctx context.Context, diskID, vmID, projectID string) (map[string]any, error)
 	DetachDisk(ctx context.Context, diskID, vmID, projectID string) (map[string]any, error)

@@ -102,9 +102,9 @@ var parityArgs = map[string]map[string]any{
 	"pg_create":        {"name": "web", "specification_id": "std"},
 	"pg_delete":        {"cluster_id": parityVM},
 	"pg_db_create":     {"cluster_id": parityVM, "name": "app", "owner": "app"},
-	"pg_db_delete":     {"cluster_id": parityVM, "name": "app"},
+	"pg_db_delete":     {"cluster_id": parityVM, "name": "old"},
 	"pg_user_create":   {"cluster_id": parityVM, "name": "app", "password": "Parity-Pass-0"},
-	"pg_user_delete":   {"cluster_id": parityVM, "name": "app"},
+	"pg_user_delete":   {"cluster_id": parityVM, "name": "old"},
 	"pg_backup_create": {"cluster_id": parityVM, "name": "nightly"},
 	"pg_list":          {},
 	"pg_get":           {"cluster_id": parityVM},
@@ -333,6 +333,13 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 		if w := computeParity(r); w != nil {
 			return w.Result(), nil
 		}
+	case "s3.cloud.ru":
+		return s3Parity(r), nil
+	case "vpc.api.cloud.ru":
+		// The route vpc_route_delete removes: its preview looks it up (D26).
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/routes/static") {
+			return contractRT{status: 200, body: `{"routes":[{"id":"` + parityVM + `","subnet":"198.51.100.0/24"}]}`}.RoundTrip(r)
+		}
 	}
 	return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(r)
 }
@@ -341,8 +348,8 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 const parityNIC = "00000000-0000-4000-8000-0000000000f1"
 
 // computeParity: the compute API beyond previewCloud — the VM with its
-// interface (tg_create picks it), the project's SNAT gateway
-// (snat_delete names it); nil for the rest.
+// interface (tg_create picks it), the project's disk and SNAT gateway
+// (disk_delete and snat_delete look them up); nil for the rest.
 func computeParity(r *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	switch r.URL.Path {
@@ -350,7 +357,8 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","state":"running","interfaces":[{"id":"`+parityNIC+`","type":"regular","ip_address":"192.0.2.5"}]}`)
 	case "/api/v1/disks":
 		if r.Method != http.MethodPost {
-			return nil
+			_, _ = io.WriteString(w, `{"items":[{"id":"`+parityVM+`","name":"old","size":20}],"total":1}`)
+			break
 		}
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"data","size":20,"status":"creating"}`)
 	case "/api/v1/nat-gateways":
@@ -395,6 +403,10 @@ func pgParity(r *http.Request) (*http.Response, error) {
 		_, _ = io.WriteString(w, `{"versions":[{"id":"v17","name":"17"}]}`)
 	case r.URL.Path == "/v1/specifications":
 		_, _ = io.WriteString(w, `{"specifications":[{"id":"std","display_name":"std","cpu":2,"memory":4,"deployment_mode":"STANDARD","min_storage_gb":20,"max_hosts":2}]}`)
+	case strings.HasSuffix(r.URL.Path, "/databases") && r.Method == http.MethodGet:
+		_, _ = io.WriteString(w, `{"databases":[{"name":"old"}]}`) // pg_db_delete looks it up (D26)
+	case strings.HasSuffix(r.URL.Path, "/users") && r.Method == http.MethodGet:
+		_, _ = io.WriteString(w, `{"users":[{"name":"old"}]}`) // pg_user_delete looks it up (D26)
 	case strings.HasSuffix(r.URL.Path, "/backups") && r.Method == http.MethodGet:
 		_, _ = io.WriteString(w, `{"backups":[]}`) // pg_backup_create checks the name is free
 	default:

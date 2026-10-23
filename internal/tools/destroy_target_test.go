@@ -31,7 +31,7 @@ type targetCloud struct {
 
 func (*targetCloud) SetToken(string) {}
 func (*targetCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
-	return []*provision.VM{{ID: "vm-1", Name: "web"}}, nil
+	return []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "web"}}, nil
 }
 func (c *targetCloud) DeleteVMInProject(context.Context, string, string) error {
 	if c.deleteErr != nil {
@@ -44,7 +44,7 @@ func (c *targetCloud) GetVM(context.Context, string) (*provision.VM, error) {
 	if c.vmGone {
 		return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")
 	}
-	return &provision.VM{ID: "vm-1", Status: "creating"}, nil
+	return &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Status: "creating"}, nil
 }
 func (c *targetCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	c.fipTries++
@@ -62,7 +62,7 @@ func targetRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) 
 	t.Helper()
 	dir := t.TempDir()
 	sf := &state.File{Version: 1}
-	sf.UpsertDeployment(state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", VMIP: "203.0.113.5", FloatingIPID: "fip-1", Status: "running"})
+	sf.UpsertDeployment(state.DeploymentRecord{ID: "0000a1a1-0000-4000-8000-000000000001", VMID: "0000a1a1-0000-4000-8000-000000000001", VMIP: "203.0.113.5", FloatingIPID: "fip-1", Status: "running"})
 	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func targetRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) 
 func TestDestroyTargeted_ReleasesFIPFromState(t *testing.T) {
 	cloud := &targetCloud{}
 	r, _ := targetRegistry(t, cloud)
-	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true})
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if isErr {
 		t.Fatalf("destroy: %s", text)
 	}
@@ -103,7 +103,7 @@ func TestDestroyTargeted_NotDeletableYet(t *testing.T) {
 	cloud := &targetCloud{deleteErr: clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
 		&provision.StatusError{Status: 409, Body: "creating"})}
 	r, _ := targetRegistry(t, cloud)
-	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true})
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if !isErr || !strings.Contains(text, "not_deletable_yet") || !strings.Contains(text, "again") {
 		t.Fatalf("answer = %s", text)
 	}
@@ -140,7 +140,7 @@ func (c *goneCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 func TestDestroyTargeted_AlreadyGoneCleansState(t *testing.T) {
 	cloud := &goneCloud{}
 	r, dir := targetRegistry(t, cloud)
-	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true})
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if isErr || !strings.Contains(text, `"status": "already_deleted"`) || !strings.Contains(text, "already deleted") {
 		t.Fatalf("answer = %s", text)
 	}
@@ -152,7 +152,7 @@ func TestDestroyTargeted_AlreadyGoneCleansState(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, d := range sf.Deployments {
-		if d.VMID == "vm-1" && d.Status != "destroyed" {
+		if d.VMID == "0000a1a1-0000-4000-8000-000000000001" && d.Status != "destroyed" {
 			t.Errorf("record kept: %+v", d)
 		}
 	}
@@ -160,12 +160,13 @@ func TestDestroyTargeted_AlreadyGoneCleansState(t *testing.T) {
 		t.Errorf("active deployment left: %+v", a)
 	}
 
-	// A VM this directory never recorded: VM_NOT_FOUND (exit 4, as vm_get —
-	// release audit, A-004), and the cloud is not asked.
+	// A VM this directory never recorded and the project does not list:
+	// already deleted (exit 0, D26; it was VM_NOT_FOUND, exit 4 — release
+	// audit, A-004), and the cloud is not asked for it by id.
 	cloud = &goneCloud{}
 	r, _ = targetRegistry(t, cloud)
-	text, isErr = r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-other", "confirmed": true})
-	if !isErr || !strings.Contains(text, `"reason": "VM_NOT_FOUND"`) || !strings.Contains(text, "vm-other") || cloud.getCalls != 0 {
+	text, isErr = r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-0000000000ff", "confirmed": true})
+	if isErr || !strings.Contains(text, `"status": "already_deleted"`) || !strings.Contains(text, "0000a1a1-0000-4000-8000-0000000000ff") || cloud.getCalls != 0 {
 		t.Errorf("unrecorded VM: answer %s, GET calls %d", text, cloud.getCalls)
 	}
 }
@@ -189,7 +190,7 @@ func (*failingGetCloud) GetVM(context.Context, string) (*provision.VM, error) {
 func TestDestroyTargeted_GetFailsKeepsRecord(t *testing.T) {
 	cloud := &failingGetCloud{}
 	r, dir := targetRegistry(t, cloud)
-	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true})
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if !isErr || strings.Contains(text, "no VM matching") || !strings.Contains(text, "record is kept") {
 		t.Fatalf("answer = %s", text)
 	}
@@ -200,7 +201,7 @@ func TestDestroyTargeted_GetFailsKeepsRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a := sf.ActiveDeployment(); a == nil || a.VMID != "vm-1" || a.Status != "running" {
+	if a := sf.ActiveDeployment(); a == nil || a.VMID != "0000a1a1-0000-4000-8000-000000000001" || a.Status != "running" {
 		t.Errorf("record changed: %+v", a)
 	}
 }
@@ -221,13 +222,13 @@ func TestDestroyTargeted_RecordOfAnotherProject(t *testing.T) {
 	if err := state.Write(path, sf); err != nil {
 		t.Fatal(err)
 	}
-	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "vm-1", "confirmed": true})
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if !isErr || !strings.Contains(text, "another project") || !strings.Contains(text, `"reason": "CONFIG_INVALID"`) ||
 		cloud.getCalls != 0 || cloud.releasedFIP != "" {
 		t.Fatalf("answer %s, GET calls %d, released %q", text, cloud.getCalls, cloud.releasedFIP)
 	}
 	sf, _ = state.Read(path)
-	if a := sf.ActiveDeployment(); a == nil || a.VMID != "vm-1" {
+	if a := sf.ActiveDeployment(); a == nil || a.VMID != "0000a1a1-0000-4000-8000-000000000001" {
 		t.Errorf("record dropped: %+v", sf.Deployments)
 	}
 }

@@ -29,6 +29,10 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
    repeat the same call unchanged.
 8. Local commands work on the person's machine and have no MCP tool: ask the
    person to run `evo configure`, `evo project use`, `evo init`, `evo verify`, `evo agent setup`.
+9. A delete of what is not there succeeds: `"status": "already_deleted"`,
+   `"existed": false`, exit code 0. A repeat is safe, but a mistyped id reads
+   the same: when it matters that the resource was there, check the id with its
+   list command.
 
 ## Exit codes
 

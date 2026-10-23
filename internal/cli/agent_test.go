@@ -812,3 +812,18 @@ func TestAgentSetup_RulesMode(t *testing.T) {
 		}
 	}
 }
+
+// A repeated delete answers already_deleted, exit 0, whatever the id
+// (D26): a mistyped one reads the same. The rules tell the agent to check
+// the id with a list when it matters that the resource was there.
+func TestAgentSkill_AlreadyDeleted(t *testing.T) {
+	root := newRootCmd()
+	for _, readOnly := range []bool{false, true} {
+		skill := agentSkill(root, readOnly)
+		for _, want := range []string{`"status": "already_deleted"`, `"existed": false`, "list command"} {
+			if !strings.Contains(skill, want) {
+				t.Errorf("read-only=%v: the rules lack %q", readOnly, want)
+			}
+		}
+	}
+}

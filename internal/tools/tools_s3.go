@@ -144,16 +144,28 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 	if err := s3.CheckBucketName(bucket); err != nil {
 		return errResult(err), true
 	}
+	cli, err := s.s3Client()
+	if err != nil {
+		return errResult(err), true
+	}
+	// The object first, before and after consent: S3 answers the delete of
+	// a key that is not there as done, and a bucket that is not there is
+	// the call's error (NOT_FOUND), not a repeat (D26). The first key at or
+	// after key is key itself when it is there.
+	objs, err := cli.ListObjects(ctx, bucket, key, 1)
+	if err != nil {
+		return errResult(err), true
+	}
+	if len(objs) == 0 || objs[0].Key != key {
+		return s.deleteFailed("s3_rm", key, clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("no object s3://%s/%s", "объекта s3://%s/%s нет", bucket, key), ""))
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.Tf("s3_rm permanently deletes s3://%s/%s.",
 				"s3_rm безвозвратно удаляет s3://%s/%s.", bucket, key),
 		}), true
-	}
-	cli, err := s.s3Client()
-	if err != nil {
-		return errResult(err), true
 	}
 	if err := cli.RemoveObject(ctx, bucket, key); err != nil {
 		return errResult(err), true
@@ -200,19 +212,23 @@ func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any
 	if err := s3.CheckBucketName(bucket); err != nil {
 		return errResult(err), true
 	}
+	cli, err := s.s3Client()
+	if err != nil {
+		return errResult(err), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		// A bucket that is not there is already deleted (D26).
+		if _, err := cli.ListObjects(ctx, bucket, "", 1); err != nil {
+			return s.deleteFailed("s3_bucket_delete", bucket, err)
+		}
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.Tf("s3_bucket_delete permanently deletes bucket %q (it must be EMPTY).",
 				"s3_bucket_delete безвозвратно удаляет бакет %q (он должен быть ПУСТЫМ).", bucket),
 		}), true
 	}
-	cli, err := s.s3Client()
-	if err != nil {
-		return errResult(err), true
-	}
 	if err := cli.RemoveBucket(ctx, bucket); err != nil {
-		return errResult(err), true
+		return s.deleteFailed("s3_bucket_delete", bucket, err)
 	}
 	return toJSON(map[string]any{"status": "deleted", "bucket": bucket}), false
 }
