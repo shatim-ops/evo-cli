@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Проверки на настоящем Cloud.ru без платных ресурсов: только чтения API
 # через CLI, все инструменты только для чтения без обязательных аргументов,
-# MCP по stdio и по HTTP (гейт подтверждения, --allow-project, отказ без
-# токена). Запускается job'ом readonly в cloud-e2e.yml (Linux) и в
+# MCP по stdio и по HTTP (--allow-project, отказ без токена; гейт
+# подтверждения на настоящем ресурсе — cloud-live.sh). Запускается job'ом
+# readonly в cloud-e2e.yml (Linux) и в
 # cloud-readonly-os.yml (Windows, macOS) после evo configure.
 #
 # Репозиторий публичный, лог — тоже: печатаются только имена, коды выхода,
@@ -185,25 +186,32 @@ echo "| **инструменты только для чтения** | $passed / 
 echo "== Превью удаления несуществующего ресурса"
 # Удаляющие инструменты без --yes (и никогда с ним: confirmed=true здесь не
 # передаётся) по случайному UUID: превью сначала ищет ресурс (GET, у SNAT —
-# список) и отказывает NOT_FOUND, код 4, до вопроса о подтверждении
-# (release audit, R-04). Код 3 (confirmation_required) — гейт спросил бы
-# согласие на удаление того, чего нет; код 0 — что-то «удалилось». NLB, VPC
-# и compute на отсутствующий id отвечают 404; 403 вместо 404 известен только
-# у Artifact Registry и Certificate Manager (реестр AR-2, CRT-2) — здесь он
-# лишь предупреждение (сервис может быть недоступен проекту).
+# список) и отвечает, что удалять нечего, до вопроса о подтверждении: код 0,
+# status already_deleted, existed false (D26: повторное удаление — тот же
+# итог, что первое; раньше — NOT_FOUND, release audit R-04). Код 3
+# (confirmation_required) — гейт спросил бы согласие на удаление того, чего
+# нет. NLB, VPC и compute на отсутствующий id отвечают 404; 403 вместо 404
+# известен только у Artifact Registry и Certificate Manager (реестр AR-2,
+# CRT-2) — здесь он лишь предупреждение (сервис может быть недоступен
+# проекту).
 h=$(openssl rand -hex 16)
 nf="${h:0:8}-${h:8:4}-4${h:13:3}-8${h:17:3}-${h:20:12}"
 for t in lb_delete tg_delete vpc_delete snat_delete; do
 	run "$t" timeout 120 evo tools call "$t" --arg id="$nf" --json
+	gone=$(j -r 'select(.status == "already_deleted" and .existed == false) | .status' "$tmp/out")
 	case "$rc:${reason%%,*}" in
-	4:NOT_FOUND) ok "$t <нет такого> → NOT_FOUND" "код 4" ;;
-	0:* | 3:*) bad "$t <нет такого> → NOT_FOUND" "код $rc, reason $reason: превью не проверило, что ресурс есть" ;;
-	*:API_ERROR) if [[ $reason == *"HTTP 403"* ]]; then
-		warn "$t <нет такого> → NOT_FOUND" "код $rc, reason $reason"
+	0:-) if [ "$gone" = already_deleted ]; then
+		ok "$t <нет такого> → already_deleted" "код 0, existed false"
 	else
-		bad "$t <нет такого> → NOT_FOUND" "код $rc, reason $reason"
+		bad "$t <нет такого> → already_deleted" "код 0 без already_deleted и existed false: что-то «удалилось»?"
 	fi ;;
-	*) bad "$t <нет такого> → NOT_FOUND" "код $rc, reason $reason" ;;
+	3:*) bad "$t <нет такого> → already_deleted" "код 3: гейт спросил согласие на удаление того, чего нет" ;;
+	*:API_ERROR) if [[ $reason == *"HTTP 403"* ]]; then
+		warn "$t <нет такого> → already_deleted" "код $rc, reason $reason"
+	else
+		bad "$t <нет такого> → already_deleted" "код $rc, reason $reason"
+	fi ;;
+	*) bad "$t <нет такого> → already_deleted" "код $rc, reason $reason" ;;
 	esac
 done
 
@@ -221,8 +229,13 @@ if [ "$(resp 1 | j -r '.result.serverInfo.name')" = evo ]; then ok "stdio: initi
 n=$(resp 2 | j '.result.tools | length')
 if [ "$n" = "$ntools" ]; then ok "stdio: tools/list" "инструментов: $n"; else bad "stdio: tools/list" "$n, а tools list — $ntools"; fi
 if [ "$(resp 3 | j '.result.isError')" = false ]; then ok "stdio: vm_list" "живой ответ без ошибки"; else bad "stdio: vm_list" "$(resp 3 | j -r '.result.content[0].text | fromjson? | .reason // "-"')"; fi
-st=$(resp 4 | j -r '.result.content[0].text | fromjson? | .status')
-if [ "$st" = confirmation_required ]; then ok "stdio: гейт без confirmed" "release_floating_ip → $st"; else bad "stdio: гейт без confirmed" "status $st"; fi
+# Изменяющий вызов без confirmed по тому, чего нет: ответ — already_deleted
+# до вопроса о согласии, как у команды (D26). Гейт по stdio на настоящем
+# ресурсе (deploy_apply и destroy без confirmed — ничего не изменилось)
+# проверяет cloud-live.sh: здесь ресурса нет, а согласие спрашивают только
+# про то, что вызов действительно изменит.
+st=$(resp 4 | j -r '.result.content[0].text | fromjson? | select(.existed == false) | .status')
+if [ "$st" = already_deleted ]; then ok "stdio: release_floating_ip <нет такого>" "already_deleted, existed false"; else bad "stdio: release_floating_ip <нет такого>" "status $st"; fi
 
 echo "== MCP по HTTP"
 token=$(openssl rand -hex 32)
