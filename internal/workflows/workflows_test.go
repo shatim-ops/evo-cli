@@ -645,3 +645,32 @@ func TestWorkflows_ContractDownloadEndsBeforeTheJob(t *testing.T) {
 		t.Errorf("api-contract: pull_request paths %v miss scripts/cloudru-specs-test.py", paths)
 	}
 }
+
+// The logs of cloud-e2e and api-probe are public: every job there builds evo
+// with build_evo.sh, which puts on PATH a wrapper whose stderr to the log or
+// a pipe goes through redact.sed, instead of a mask at each call (k8s-smoke,
+// 22.10: a cloud error from k8s create reached the log unmasked); stderr to a
+// file stays as it is, written by the time the call returns. The wrapper is
+// tested in ci.
+func TestWorkflows_CloudE2EStderrRedacted(t *testing.T) {
+	ws := readWorkflows(t)
+	for _, file := range []string{"cloud-e2e.yml", "api-probe.yml"} {
+		builds := 0
+		for name, j := range ws[file].Jobs {
+			for _, s := range j.Steps {
+				if strings.Contains(s.Run, "go build") && strings.Contains(s.Run, "./cmd/evo") {
+					t.Errorf("%s job %s: evo built without build_evo.sh: its stderr reaches the public log unmasked", file, name)
+				}
+				if strings.Contains(s.Run, ".github/scripts/build_evo.sh") {
+					builds++
+				}
+			}
+		}
+		if builds == 0 {
+			t.Errorf("%s: no job builds evo with build_evo.sh", file)
+		}
+	}
+	if !runsStep(ws["ci.yml"], ".github/scripts/evo_wrapper_test.sh") {
+		t.Error("ci: the evo wrapper of the public logs is not tested (evo_wrapper_test.sh)")
+	}
+}

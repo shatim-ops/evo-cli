@@ -95,6 +95,17 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
   взял кэш `main` (`Cache restored`) — job 15 с. Дальше: время шага и
   пропуски сверки — сюда при отклонении.
 
+- **stderr evo в публичных логах cloud-e2e и api-probe** (задача процесса
+  1.3, `release-plan.md`: ошибка облака из `k8s create` в `k8s-smoke` ушла в
+  лог без `redact.sed`, 22.10). Одна точка: `build_evo.sh` кладёт в PATH
+  обёртку (`evo_wrapper.sh`): stderr в лог или канал — через `redact.sed`,
+  stderr в файл — как есть и синхронно (шаги читают его сразу; в лог файл
+  выводится через `redact.sed`) (`TestWorkflows_CloudE2EStderrRedacted`,
+  `evo_wrapper_test.sh` в ci).
+  Не покрыт `cloud-readonly-os.yml` (Windows и macOS, только чтение) — в
+  бэклог. Проверить на первом cloud-e2e после слияния: шаги `logs -f` (код
+  130), повторные `*_create` (ID в отказе), `bound-check`.
+
 ## Бэклог процесса
 
 | Приоритет | Что усилить | Причина |
@@ -104,6 +115,7 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 | 2 | Учёт ускользнувших дефектов 1.3 → инварианты | `CLAUDE.md` §5; первый пример — K8S-12 → мир двойников |
 | 3 | `startup_failure` у повтора run с упавшим job | гипотеза; проверка на следующем красном PR (см. «Открыто») |
 | 3 | Этап 7 (1.4): нагрузочный тест, бенчмарки, потолок стоимости | `process-1.2.1-stages.md` |
+| 3 | Маска stderr evo в `cloud-readonly-os.yml` (Windows и macOS) | `build_evo.sh` — только Linux-job cloud-e2e и api-probe |
 
 ## Инструменты
 
