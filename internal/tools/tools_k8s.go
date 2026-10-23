@@ -850,10 +850,11 @@ func firstNonEmptyStr(vals ...string) string {
 }
 
 // k8sPreview is the preview of k8s_create and k8s_add_nodepool: what the
-// call settled before the consent (resolved: the flavor, its cpu and ram;
-// for a cluster also the version, the zone and the VIP subnet, D29) in
-// place of the arguments of the same name, and the other arguments as
-// given. evo has no rate card for Managed Kubernetes: the preview links
+// call settled before the consent in place of the arguments of the same
+// name, and the other arguments as given. resolved holds flavor, cpu,
+// ram_gb and zone; for a cluster also version, master_count and subnet_id
+// (k8sPlan.resolved), for a node pool nodes_subnet_id and
+// security_group_id (D29, A12). evo has no rate card for Managed Kubernetes: the preview links
 // its tariff (Price).
 func k8sPreview(resource, name string, args, resolved map[string]any) engine.CreatePreview {
 	p := engine.CreatePreview{Resource: resource, Name: name}
