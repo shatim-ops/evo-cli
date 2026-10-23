@@ -6,7 +6,7 @@ package sizer
 
 import (
 	"math"
-	"sort"
+	"slices"
 
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -21,7 +21,8 @@ type FlavorMatch struct {
 }
 
 // Match selects the smallest flavor that satisfies the resource requirements
-// (with 30% headroom). Returns the first sufficient flavor from the sorted list.
+// (with 30% headroom): the first sufficient flavor, smallest first
+// (provision.CompareFlavorSize: ties by name and id).
 // If no flavor is sufficient, it returns nil.
 func Match(resources compose.Resources, flavors []provision.Flavor) *FlavorMatch {
 	// Apply minimum defaults when no limits are specified.
@@ -36,15 +37,8 @@ func Match(resources compose.Resources, flavors []provision.Flavor) *FlavorMatch
 	requiredCPU := int(math.Ceil(cpuCores * headroomFactor))
 	requiredMemMB := int(math.Ceil(float64(memMB) * headroomFactor))
 
-	// Sort flavors by VCPUs ascending, then RAMGB ascending.
-	sorted := make([]provision.Flavor, len(flavors))
-	copy(sorted, flavors)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].VCPUs != sorted[j].VCPUs {
-			return sorted[i].VCPUs < sorted[j].VCPUs
-		}
-		return sorted[i].RAMGB < sorted[j].RAMGB
-	})
+	sorted := slices.Clone(flavors)
+	slices.SortFunc(sorted, func(a, b provision.Flavor) int { return provision.CompareFlavorSize(&a, &b) })
 
 	for _, f := range sorted {
 		if f.VCPUs >= requiredCPU && f.RAMGB*1024 >= requiredMemMB {

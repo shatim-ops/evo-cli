@@ -184,7 +184,8 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8s
 			continue
 		}
 		if f.CPU >= cpu && f.RAM >= ram {
-			if flavorID == "" || f.CPU < bestCPU || (f.CPU == bestCPU && f.RAM < bestRAM) {
+			if flavorID == "" || f.CPU < bestCPU || f.CPU == bestCPU && (f.RAM < bestRAM ||
+				f.RAM == bestRAM && provision.CompareByNameID(f.Name, f.FlavorID, flavorName, flavorID) < 0) {
 				flavorID, flavorName, bestCPU, bestRAM = f.FlavorID, f.Name, f.CPU, f.RAM
 			}
 		}
