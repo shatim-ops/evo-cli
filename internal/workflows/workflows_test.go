@@ -710,10 +710,11 @@ func TestWorkflows_CloudE2EStderrRedacted(t *testing.T) {
 	}
 }
 
-// evoOutput is a command whose output carries IDs of the cloud: evo itself,
+// evoOutput is a command whose output carries IDs of the cloud: evo itself
+// (also by its path, "$RUNNER_TEMP/evo" of cloud-readonly-os),
 // or lines of its config and state (.evo.yaml, .evo/) printed as they are.
 // A jq filter prints what it selects (a count, a port), so it is not one.
-var evoOutput = regexp.MustCompile(`^(timeout [0-9]+ )?evo\s|^(grep|cat|head|tail)\s.*\.evo(\.yaml|/)`)
+var evoOutput = regexp.MustCompile(`^(timeout [0-9]+ )?"?(\S*/)?evo(\.exe)?"?\s|^(grep|cat|head|tail)\s.*\.evo(\.yaml|/)`)
 
 // rawToLog lists the shell commands of a step whose stdout reaches the log
 // as is: the last command of a pipeline, with no redirection, matching
@@ -776,6 +777,10 @@ func TestWorkflows_CloudLogsGetNoRawEvoOutput(t *testing.T) {
 func TestWorkflows_RawToLog(t *testing.T) {
 	for run, want := range map[string]int{
 		"evo whoami":                                   1,
+		"\"$RUNNER_TEMP/evo\" whoami":                  1,
+		"./bin/evo.exe init":                           1,
+		"evo whoami; evo vm list":                      2,
+		"evolve --help":                                0,
 		"evo init --non-interactive":                   1,
 		"grep -E '^(region):' .evo.yaml":               1,
 		"printf '%s' \"$S\" | evo configure --key x":   1,
