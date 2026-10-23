@@ -79,6 +79,8 @@ cov() { covered+=("$@"); }                  # изменяющий инстру�
 # после создания ресурса; серверы останавливает finish.
 # shellcheck source-path=SCRIPTDIR source=bound-check.sh
 . "$here/bound-check.sh"
+# shellcheck source-path=SCRIPTDIR source=e2e_quota.sh
+. "$here/e2e_quota.sh"
 # j — jq по ответу последнего вызова; ответ не JSON не обрывает скрипт.
 j() { jq "$@" "$tmp/r.json" 2>/dev/null || true; }
 
@@ -479,6 +481,26 @@ area_disk() {
 		cov disk_delete
 	else bad disk_delete "диск в disk_list через 3 мин"; fi
 
+	# image_steps — образ, созданный tc image_create (ответ в $tmp/r.json):
+	# готовность, проект на --allow-project, удаление.
+	image_steps() {
+		img=$(j -r '.image.id // empty')
+		mask "$img"
+		ok image_create "$(j -r .status)"
+		cov image_create
+		[ -n "$img" ] || img=$(lst image "$prefix-img" | cut -f1 | head -1)
+		[ -n "$img" ] || { bad image_create "нет id образа"; return 1; }
+		img_ready() { evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -e '.ready == true' >/dev/null; }
+		if poll 1800 30 img_ready; then ok "image_get ready" "образ готов"; else bad "image_get ready" "за 30 мин не ready: $(evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -c '.zone_states // {}')"; fi
+		bound_check image_get "$(jq -cn --arg i "$img" '{image_id: $i}')" "allow-project: image_get" own
+
+		must image_delete image_delete --arg image_id="$img" || return 1
+		if poll 300 15 sh -c "evo tools call image_list --arg type=private --json | jq -e --arg id '$img' '(.images | type) == \"array\" and (any(.images[]; .id == \$id) | not)' >/dev/null"; then
+			ok image_delete "образа нет в image_list"
+			cov image_delete
+		else bad image_delete "образ в image_list через 5 мин"; fi
+	}
+
 	# Образ из загрузочного диска: ВМ выключается изнутри (vm stop в evo нет,
 	# BACKLOG [04]), диск отключается, затем image_create.
 	ssh_vm() {
@@ -503,22 +525,18 @@ area_disk() {
 	fi
 	ok "disk_detach загрузочного" "available"
 
-	must image_create image_create --arg name="$prefix-img" --arg disk_id="$boot" --arg description="evo e2e live run" || return 1
-	img=$(j -r '.image.id // empty')
-	mask "$img"
-	ok image_create "$(j -r .status)"
-	cov image_create
-	[ -n "$img" ] || img=$(lst image "$prefix-img" | cut -f1 | head -1)
-	[ -n "$img" ] || { bad image_create "нет id образа"; return 1; }
-	img_ready() { evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -e '.ready == true' >/dev/null; }
-	if poll 1800 30 img_ready; then ok "image_get ready" "образ готов"; else bad "image_get ready" "за 30 мин не ready: $(evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -c '.zone_states // {}')"; fi
-	bound_check image_get "$(jq -cn --arg i "$img" '{image_id: $i}')" "allow-project: image_get" own
-
-	must image_delete image_delete --arg image_id="$img" || return 1
-	if poll 300 15 sh -c "evo tools call image_list --arg type=private --json | jq -e --arg id '$img' '(.images | type) == \"array\" and (any(.images[]; .id == \$id) | not)' >/dev/null"; then
-		ok image_delete "образа нет в image_list"
-		cov image_delete
-	else bad image_delete "образ в image_list через 5 мин"; fi
+	tc image_create --arg name="$prefix-img" --arg disk_id="$boot" --arg description="evo e2e live run"
+	if [ "$rc" != 0 ] && image_quota_exceeded "$why"; then
+		# Квота организации на пользовательские образы (CMP-16) — не evo:
+		# шаги образа не покрыты, ВМ и диск удаляются дальше как обычно.
+		gap image_create "квота организации на пользовательские образы (CMP-16): $reason"
+		gap image_delete "образа нет: квота (CMP-16)"
+	elif [ "$rc" != 0 ]; then
+		bad image_create "код $rc, $reason: $why"
+		return 1
+	else
+		image_steps || return 1
+	fi
 
 	must "destroy ВМ без загрузочного диска" destroy --arg name="$vm" || return 1
 	ok destroy "$(j -r .status)"
