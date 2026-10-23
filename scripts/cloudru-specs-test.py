@@ -9,6 +9,7 @@ different one of 28 files, and three full passes ran out the job's time).
 Usage: python3 scripts/cloudru-specs-test.py
 """
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -116,6 +117,42 @@ class Download(unittest.TestCase):
         self.assertEqual(site.pages.count("beta"), specs.ROUNDS)
         self.assertIn("beta", manifest["missing"])
         self.assertEqual([e["service"] for e in manifest["specs"]], ["alpha", "gamma"])
+
+
+class Args(unittest.TestCase):
+    """An option is not a directory: «cloudru-specs.py --help» downloaded the
+    specs into «--help/» at the root of the repository (FB13-1, #267)."""
+
+    def run_args(self, *args):
+        site = FakeSite()
+        made = []
+        with mock.patch.object(specs, "get", site.get), \
+                mock.patch.object(specs, "download", site.download), \
+                mock.patch.object(specs.os, "makedirs", lambda *a, **k: made.append(a)), \
+                mock.patch.object(specs.sys, "argv", ["cloudru-specs.py", *args]), \
+                mock.patch.object(specs.sys, "stdout", new_callable=io.StringIO) as out, \
+                mock.patch.object(specs.sys, "stderr", new_callable=io.StringIO) as err:
+            rc = specs.main()
+        self.assertEqual((site.pages, site.files, made), ([], [], []), "nothing is fetched or created")
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_help_prints_usage(self):
+        for flag in ("-h", "--help"):
+            with self.subTest(flag):
+                rc, out, _ = self.run_args(flag)
+                self.assertEqual(rc, 0)
+                self.assertIn("Usage:", out)
+
+    def test_option_is_refused(self):
+        for args in (["--out", "x"], ["-o"], ["-"]):
+            with self.subTest(args):
+                rc, _, err = self.run_args(*args)
+                self.assertEqual(rc, 2)
+                self.assertIn("Usage:", err)
+
+    def test_two_directories_are_refused(self):
+        rc, _, _ = self.run_args("a", "b")
+        self.assertEqual(rc, 2)
 
 
 if __name__ == "__main__":
