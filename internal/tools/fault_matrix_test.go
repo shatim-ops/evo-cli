@@ -117,9 +117,17 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("s3_put", map[string]any{"bucket": "evo-bucket", "key": "site/index.html", "content": "ok", "confirmed": true},
 		faultResource{host: faultS3Host, path: "bucket", ID: "evo-bucket", Name: "evo-bucket", before: true}),
 	apiCase("pg_backup_create", map[string]any{"cluster_id": faultPGCluster, "name": "evo-b", "confirmed": true}),
+	apiCase("tg_create", map[string]any{"name": "evo-tg", "targets": []any{map[string]any{"id": faultTargetVM, "interface_id": faultNIC}}, "confirmed": true}),
 	apiCase("image_create", map[string]any{"name": "evo-img", "disk_id": faultDisk, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_add_nodepool", map[string]any{"cluster_id": faultK8sCluster, "name": "evo-np", "confirmed": true}),
 }
+
+// faultTargetVM and faultNIC are the VM and its interface tg_create
+// targets.
+const (
+	faultTargetVM = "00000000-0000-4000-8000-0000000000f3"
+	faultNIC      = "00000000-0000-4000-8000-0000000000f4"
+)
 
 // faultK8sCluster is the cluster k8s_add_nodepool adds a pool to; the world
 // answers any cluster it is asked of.

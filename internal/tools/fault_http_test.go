@@ -77,6 +77,7 @@ var faultCollections = map[string]struct {
 	"/v3/clusters":             {field: "clusters", async: true},
 	"/v2/networkLoadBalancers": {field: "balancers", async: true},
 	"/v3/nodePools":            {field: "nodePools", async: true},
+	"/v2/targetGroups":         {field: "target_groups", async: true},
 	// Manual backups of the cluster pg_backup_create backs up.
 	"/v1/clusters/" + faultPGCluster + "/backups": {field: "backups", async: true},
 }
