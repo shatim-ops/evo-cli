@@ -16,8 +16,10 @@ import re
 import sys
 
 # Keep a Changelog order; «Миграция» goes first in a version
-# (docs/RELEASING.md, breaking changes, condition 5).
-SECTIONS = ["Миграция", "Добавлено", "Изменено", "Устарело", "Удалено", "Исправлено", "Безопасность"]
+# (docs/RELEASING.md, breaking changes, condition 5); «Известные ограничения»
+# — last (owner's decision 23.10).
+SECTIONS = ["Миграция", "Добавлено", "Изменено", "Устарело", "Удалено", "Исправлено", "Безопасность",
+            "Известные ограничения"]
 UNRELEASED = "## [Не выпущено]"
 FRAGMENTS = "changelog.d"
 
