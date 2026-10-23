@@ -67,9 +67,9 @@ func TestUserAgent(t *testing.T) {
 
 // D34: the product is «evo CMCP», never a bare «CMCP» — a CLI of that name
 // for MCP servers is on PyPI (cmcp). The user-facing texts — code, README,
-// the user docs, the release and issue templates — name it whole; the
-// history (CHANGELOG, docs/rename.md) and the docs for development keep
-// what they say.
+// CHANGELOG and its fragments, the user docs, the release and issue
+// templates — name it whole; docs/rename.md and the docs for development
+// keep what they say.
 func TestNoBareCMCP(t *testing.T) {
 	root := filepath.Join("..", "..")
 	bare := regexp.MustCompile(`(?i)(^|[^A-Za-z0-9_-])cmcp\b`)
@@ -87,10 +87,12 @@ func TestNoBareCMCP(t *testing.T) {
 			}
 		}
 	}
-	for _, f := range []string{"README.md", ".goreleaser.yaml"} {
+	for _, f := range []string{"README.md", "CHANGELOG.md", ".goreleaser.yaml"} {
 		check(filepath.Join(root, f))
 	}
-	for _, dir := range []string{"internal", "cmd", "docs", filepath.Join(".github", "ISSUE_TEMPLATE")} {
+	// changelog.d: the fragments become CHANGELOG at the fold, checked
+	// before it.
+	for _, dir := range []string{"internal", "cmd", "docs", "changelog.d", filepath.Join(".github", "ISSUE_TEMPLATE")} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
