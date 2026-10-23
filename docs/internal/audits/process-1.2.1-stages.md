@@ -98,7 +98,7 @@
 | 6.4 | `claude/proc-14-supply-chain` | `sboms` в goreleaser, `attest-build-provenance`, cosign для образа; раздел проверки в `RELEASING.md` | решение В8; проверяется на `1.3.0-rc.1` — одобрение rc в окружении `release` |
 | 6.5 | `claude/proc-15-classify-registry` | классы по diff `evo tools list --json`; `live-plan` по классу | слияние |
 | 6.6 | `claude/proc-16-http-body-limit` | лимит тела `tools/call` 1 МБ по HTTP | решение В13; слияние |
-| 6.7 | бриф Grok: наборы инструментов и режим без удалений | перед тегом 1.3 | отправить бриф |
+| 6.7 | бриф Grok: наборы инструментов и режим без удалений — `docs/internal/briefs/grok-attack-1.3.md` (цели A–G, вместе с `cloud-readonly` из ветки) | перед тегом 1.3, на `1.3.0-rc.1` | отправить бриф; выдать ключ наблюдателя в тестовом проекте и ресурсы с «вредными» именами |
 
 Критерий: полный аудит Fable 1.3 перед тегом (отдельная сессия, В9).
 
