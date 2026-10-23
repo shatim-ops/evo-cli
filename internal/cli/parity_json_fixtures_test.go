@@ -117,6 +117,8 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			return write(`{"message":"not found"}`)
 		case p == "/api/v1.1/vms" && r.Method == http.MethodPost:
 			return write(`[{"id":"` + parityVM + `","name":"web","state":"running"}]`)
+		case p == "/api/v1/images" && r.Method == http.MethodPost:
+			return write(`{"id":"` + parityVM + `","name":"golden"}`)
 		case p == "/api/v1/floating-ips" && r.Method == http.MethodPost:
 			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`)
 		case p == "/api/v1/floating-ips/"+parityVM && r.Method == http.MethodPut:
@@ -178,13 +180,20 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 		case strings.HasPrefix(p, "/v1/operations/") || !get:
 			return write(jsonOp)
 		}
-	case "vpc.api.cloud.ru", "ar.api.cloud.ru", "containers.api.cloud.ru":
+	case "vpc.api.cloud.ru", "ar.api.cloud.ru", "containers.api.cloud.ru", "nlb.api.cloud.ru":
 		if strings.Contains(p, "/operations/") || !get {
 			return write(jsonOp)
 		}
 	case "secretmanager.api.cloud.ru":
 		if p == "/v2/secret" && r.Method == http.MethodPost {
 			return write(`{"secret":{"id":"` + parityVM + `","path":"app/db"}}`)
+		}
+	case "certificatemanager.api.cloud.ru":
+		switch {
+		case p == "/v1/certificate" && r.Method == http.MethodPost:
+			return write(`{"id":"` + parityVM + `","name":"byo"}`)
+		case p == "/v1/certificate:issue_lenc_cert":
+			return write(`{"id":"` + parityVM + `","done":false}`)
 		}
 	}
 	return nil

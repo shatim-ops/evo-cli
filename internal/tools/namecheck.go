@@ -10,6 +10,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // takenName finds a listed resource (cluster, registry) named name that is
@@ -77,7 +78,12 @@ func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]an
 	if !ok {
 		return errResult(createErr), true
 	}
-	return toJSON(map[string]any{"status": "creating", idField: id, "resource_status": status, "created": created,
+	answer := "creating"
+	if resourceFailed(status) {
+		// A script that reads status alone must not wait for it to come up.
+		answer = "failed"
+	}
+	return toJSON(map[string]any{"status": answer, idField: id, "resource_status": status, "created": created,
 		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s) и оплачивается", kind, name, id, status),
 		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}), false
 }
@@ -114,4 +120,11 @@ func needSpecResult(specsTool, specID string, cpu, ram int, fields map[string]an
 	return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 		i18n.Tf("Pass specification_id (or cpu+ram) of one of available_specifications; %s lists them all.",
 			"Укажите specification_id (или cpu+ram) одной из available_specifications; полный список — %s.", specsTool)), fields), true
+}
+
+// resourceFailed reports a status of a resource that will not come up:
+// FAILED of the managed services, ERROR or error_<step> of compute
+// (provision.VMFailed).
+func resourceFailed(status string) bool {
+	return strings.Contains(strings.ToLower(status), "fail") || provision.VMFailed(status)
 }

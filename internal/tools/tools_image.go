@@ -152,8 +152,19 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	req.AvailZones = []provision.ImageAZTarget{{AvailabilityZoneID: zoneID}}
 
 	img, err := eng.Cloud.CreateImage(ctx, req)
-	if err != nil {
-		return errResult(fmt.Errorf("create image: %w", err)), true
+	if id, _ := img["id"].(string); err != nil || id == "" {
+		if err == nil {
+			err = noID("image")
+		}
+		list := func(ctx context.Context) ([]map[string]any, error) {
+			images, err := eng.Cloud.ListImagesInProject(ctx, req.ProjectID)
+			listed := make([]map[string]any, 0, len(images))
+			for _, im := range images {
+				listed = append(listed, map[string]any{"id": im.ID, "name": im.Name})
+			}
+			return listed, err
+		}
+		return lostCreate(ctx, list, i18n.T("image", "образ"), "image_id", name, nil, "image_get id", "image_list", fmt.Errorf("create image: %w", err))
 	}
 	return toJSON(map[string]any{
 		"status": "building",
