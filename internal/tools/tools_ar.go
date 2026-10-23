@@ -104,13 +104,24 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 		body["tariff"] = t
 	}
 	op, err := cli.CreateRegistry(ctx, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create registry: %w", err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, cli.ListRegistries, i18n.T("registry", "реестр"), "registry_id", name, nil, "ar_get id", "ar_list", fmt.Errorf("create registry: %w", err))
 	}
-	return toJSON(map[string]any{
+	out := map[string]any{
 		"status": "creating", "operation_id": op.ID,
-		"note": "Async — poll ar_operation(operation_id) until done=true; then ar_list for the id/status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key).",
-	}), false
+		"note": "Async — poll ar_operation(operation_id) until done=true; then ar_get for the status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key).",
+	}
+	// The registry's id is in the create's answer: named at once, not left
+	// to ar_list (fault matrix, process audit 1.2.1; as pg_create, N-07).
+	if op.ResourceID != "" {
+		out["registry_id"] = op.ResourceID
+	} else {
+		out["note"] = "Async — poll ar_operation(operation_id) until done=true; then ar_list for the id/status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key)."
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (string, bool) {

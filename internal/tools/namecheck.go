@@ -62,10 +62,10 @@ func noID(what string) error {
 // operation id; createErr says which. The service may have made the
 // resource, and then it is billed: list reads the resources again, and one
 // with the name (free before the create, takenName) is answered as made,
-// by its id (fault matrix, process audit 1.2.1). When the list cannot be
+// by its id under idField (fault matrix, process audit 1.2.1). When the list cannot be
 // read either, the error says the resource may exist and where to look:
 // the same create again refuses the taken name and names its id.
-func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]any, error), kind, name string, created map[string]any, getHint, listTool string, createErr error) (string, bool) {
+func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]any, error), kind, idField, name string, created map[string]any, getHint, listTool string, createErr error) (string, bool) {
 	items, err := list(ctx)
 	if err != nil {
 		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
@@ -77,8 +77,8 @@ func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]an
 	if !ok {
 		return errResult(createErr), true
 	}
-	return toJSON(map[string]any{"status": "creating", "cluster_id": id, "cluster_status": status, "created": created,
-		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s) и оплачивается", kind, name, id),
+	return toJSON(map[string]any{"status": "creating", idField: id, "resource_status": status, "created": created,
+		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s) и оплачивается", kind, name, id, status),
 		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}), false
 }
 

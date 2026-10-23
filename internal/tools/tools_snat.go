@@ -92,7 +92,10 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	// A second gateway of the same name is a second bill: refused before
 	// the consent, as every other create (fault matrix, process audit
 	// 1.2.1: a repeated snat_create made one more each time).
-	existing, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		return eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+	}
+	existing, err := list(ctx)
 	if err != nil {
 		return errResult(fmt.Errorf(i18n.T("check the name is free: list SNAT gateways: %w", "проверка, что имя свободно: список шлюзов SNAT: %w"), err)), true
 	}
@@ -121,8 +124,11 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 		ProjectID:          eng.Config.ProjectID,
 		AvailabilityZoneID: zoneID,
 	})
-	if err != nil {
-		return errResult(fmt.Errorf("create SNAT gateway: %w", err)), true
+	if id, _ := gw["id"].(string); err != nil || id == "" {
+		if err == nil {
+			err = noID("gateway")
+		}
+		return lostCreate(ctx, list, i18n.T("SNAT gateway", "шлюз SNAT"), "nat_gateway_id", name, nil, "snat_list", "snat_list", fmt.Errorf("create SNAT gateway: %w", err))
 	}
 	return toJSON(map[string]any{
 		"status":      "created",
