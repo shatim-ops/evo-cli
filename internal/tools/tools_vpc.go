@@ -74,6 +74,20 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 	if err := plainName("VPC", "name", name); err != nil {
 		return errResult(err), true
 	}
+	cli, err := s.vpcClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	// A second VPC of the same name: refused before the consent, as every
+	// other create (fault matrix, process audit 1.2.1: a repeated vpc_create
+	// made one more; the VPC spec documents no refusal of a taken name).
+	existing, err := cli.ListVPCs(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: list VPCs: %w", "проверка, что имя свободно: список VPC: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		return nameTakenResult("VPC", name, id, st, "vpc_get id="+id)
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -81,19 +95,26 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 				"vpc_create создаёт новый VPC %q (асинхронно).", name),
 		}), true
 	}
-	cli, err := s.vpcClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
 	body := map[string]any{"projectId": cli.ProjectID(), "name": name}
 	if d := stringArg(args, "description"); d != "" {
 		body["description"] = d
 	}
 	op, err := cli.CreateVPC(ctx, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create vpc: %w", err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, cli.ListVPCs, "VPC", "vpc_id", name, nil, "vpc_list", "vpc_list", fmt.Errorf("create vpc: %w", err))
 	}
-	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id); then vpc_list for the id."}), false
+	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id); then vpc_get for the status."}
+	// The VPC's id is in the create's answer: named at once (fault matrix,
+	// process audit 1.2.1; as pg_create, N-07).
+	if op.ResourceID != "" {
+		out["vpc_id"] = op.ResourceID
+	} else {
+		out["note"] = "Async — poll vpc_operation(operation_id); then vpc_list for the id."
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (string, bool) {
@@ -214,6 +235,27 @@ func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any
 	if err != nil {
 		return errResult(err), true
 	}
+	cli, err := s.vpcClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	// A route is known by its destination: a repeat after a lost answer
+	// added a second route to it (fault matrix, process audit 1.2.1).
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		routes, err := cli.ListRoutes(ctx, vpcID)
+		listed := make([]map[string]any, 0, len(routes))
+		for _, r := range routes {
+			listed = append(listed, map[string]any{"id": r["id"], "name": r["subnet"], "status": r["status"]})
+		}
+		return listed, err
+	}
+	existing, err := list(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the destination is free: list routes: %w", "проверка, что назначение свободно: список маршрутов: %w"), err)), true
+	}
+	if id, st, ok := takenName(existing, subnet); ok {
+		return nameTakenResult(i18n.T("static route", "статический маршрут"), subnet, id, st, "vpc_routes vpc_id="+vpcID)
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -221,19 +263,22 @@ func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any
 				"vpc_route_create добавляет статический маршрут %s в VPC %s (асинхронно).", subnet, vpcID),
 		}), true
 	}
-	cli, err := s.vpcClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
 	body := map[string]any{"vpcId": vpcID, "projectId": cli.ProjectID(), "subnet": subnet, "nextHop": nextHop}
 	if d := stringArg(args, "description"); d != "" {
 		body["description"] = d
 	}
 	op, err := cli.CreateRoute(ctx, vpcID, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create route: %w", err)), true
+	if err != nil || op.ID == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, list, i18n.T("static route", "статический маршрут"), "route_id", subnet, nil, "vpc_routes vpc_id="+vpcID, "vpc_routes", fmt.Errorf("create route: %w", err))
 	}
-	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id)."}), false
+	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id)."}
+	if op.ResourceID != "" {
+		out["route_id"] = op.ResourceID
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handleVpcRouteDelete(ctx context.Context, args map[string]any) (string, bool) {

@@ -11,7 +11,8 @@ name: api-probe
 # P20, P23–P28) — потребление и договор, команда протокола догфуда
 # billing_consumption, версии сертификата, брокеры Kafka, предел размера
 # диска, расписание резервных копий PostgreSQL, параметр resource у токена
-# IAM. Ничего не создаёт и не удаляет: всё — GET, кроме POST
+# IAM; Data Platform до кода (P29–P33, DP-1…DP-17) — путь, аутентификация,
+# пагинация, справочники, статусы и операции. Ничего не создаёт и не удаляет: всё — GET, кроме POST
 # price-calculation, который только считает стоимость, и обмена ключа на
 # токен.
 #
@@ -625,6 +626,119 @@ jobs:
             probeh pg_backup_schedule "$PG/clusters/$id" 'if type == "object" then (.backup.schedule? // null) as $s | {status: (.status // null), has_backup: has("backup"), schedule: $s, fields: ($s | if . == null then null else (split(" ") | map(select(. != "")) | length) end), has_q: ($s | if . == null then null else contains("?") end), retention_days: (.backup.retention_policy_days? // null)} else {type: type} end'
           done
 
+      # Data Platform (1.3, до кода; docs/internal/briefs/data-platform.md,
+      # реестр — «Evolution Data Platform», DP-1…DP-17): один хост
+      # dataplatform.api.cloud.ru, спецификации кластеров, Spark, Trino,
+      # Airflow, Metastore и Flink. Idempotency-Key (DP-3) здесь не
+      # проверить: ключ только читает, создание — в cloud-e2e dp_smoke. Только GET. Печатаются коды HTTP, имена полей,
+      # счётчики, статусы и имена флейворов и версий — публичный каталог
+      # продукта, как имена образов; ID и адреса маскирует redact.sed.
+      - name: Data Platform (P29–P33)
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] ||
+            { echo "::error::нет секретов CLOUDRU_KEY_ID / CLOUDRU_SECRET / CLOUDRU_PROJECT_ID"; exit 1; }
+          echo "::add-mask::$PROJECT"
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token \
+              -H 'Content-Type: application/json' --data-binary @- |
+            jq -r '.access_token // .accessToken // empty' || true)
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          NOID=00000000-0000-4000-8000-000000000000
+          D=https://dataplatform.api.cloud.ru
+          P="projectId=$PROJECT"
+
+          get() { curl -sS -H "Authorization: Bearer $TOKEN" "$1" 2>/dev/null || true; }
+          # probeh NAME URL JQ [AUTH] — код HTTP, JQ по телу, grpc-message
+          # (до 160 символов); AUTH=none — запрос без токена.
+          probeh() {
+            local name=$1 url=$2 filter=$3 auth=${4:-} r c b h e g
+            h=$(mktemp); e=$(mktemp)
+            if [ "$auth" = none ]; then
+              r=$(curl -sS -D "$h" -w '\n%{http_code}' "$url" 2>"$e" || true)
+            else
+              r=$(curl -sS -D "$h" -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "$url" 2>"$e" || true)
+            fi
+            c=${r##*$'\n'}; b=${r%$'\n'*}
+            g=$(awk 'tolower($1) == "grpc-message:" { sub(/^[^:]*:[ ]*/, ""); sub(/\r$/, ""); print; exit }' "$h" || true)
+            [ "$c" != 000 ] || g=$(head -c 120 "$e" | tr '\n' ' ')
+            rm -f "$h" "$e"
+            printf '%-30s http=%s %s grpc=%.160s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c "$filter" 2>/dev/null || echo 'не JSON')" "${g:--}" | redact
+          }
+          # Ответ списка: ключи, число элементов первого массива, есть ли
+          # следующая страница и total; ошибка — её ключи и message.
+          lst='if type == "object" then {top: keys, n: ([.[] | arrays | length] | first // null), next: ((.nextPageToken // .next_page_token // "") != ""), total: (.total // null), message: ((.message // null) | if . == null then null else tostring | .[0:160] end)} else {type: type} end'
+          err='if type == "object" then {top: keys, code: (.code // null), message: ((.message // null) | if . == null then null else tostring | .[0:160] end), details: ((.details // null) | if type == "array" then [.[] | keys? // type] else . end)} else {type: type} end'
+
+          echo "== P29 (DP-1, DP-2): путь и аутентификация"
+          # Спецификация: GET /v1/clusters?projectId=…; документация, пример:
+          # «POST /api/v1/{project_id}/clusters»; аутентификации ни в одной
+          # спецификации нет, документация отсылает к токену IAM.
+          probeh dp_clusters_spec_path   "$D/v1/clusters?$P&pageSize=10" "$lst"
+          probeh dp_clusters_doc_path    "$D/api/v1/$PROJECT/clusters" "$lst"
+          probeh dp_clusters_snake_param "$D/v1/clusters?project_id=$PROJECT&pageSize=10" "$lst"
+          probeh dp_clusters_no_project  "$D/v1/clusters?pageSize=10" "$err"
+          probeh dp_clusters_no_token    "$D/v1/clusters?$P&pageSize=10" "$err" none
+
+          echo "== P30 (DP-14): pageSize — без максимума и значения по умолчанию в спецификации"
+          probeh dp_clusters_page1000    "$D/v1/clusters?$P&pageSize=1000" "$lst"
+          probeh dp_clusters_page100     "$D/v1/clusters?$P&pageSize=100" "$lst"
+          probeh dp_clusters_nopage      "$D/v1/clusters?$P" "$lst"
+          probeh dp_spark_flavors_p1000  "$D/v1/sparkFlavors?$P&pageSize=1000" "$lst"
+          probeh dp_clusters_filter_none "$D/v1/clusters?$P&filter=name%3Devo-e2e-dp-absent" "$lst"
+
+          echo "== P31 (DP-9): справочники — вход превью и калькулятора"
+          # Имена и числа элементов (без ID): что из этого — флейвор для
+          # калькулятора, есть ли CPU/RAM и зоны.
+          # shellcheck disable=SC2016 # $v, $k — переменные jq
+          dict='if type == "object" then ([.[] | arrays] | first // []) as $v | {n: ($v | length), keys: ($v[0] | keys? // null), items: [$v[:12][] | with_entries(select((.value | type) == "number" or (.value | type) == "boolean" or ((.key | test("^(name|version|label|title|status|type|zone.*|availabilityZone.*)$"; "i")) and (.value | type) == "string") or ((.value | type) == "array" and (.value | all(type == "string"))))) | with_entries(.value |= if type == "string" then .[0:60] else . end)]} else {type: type} end'
+          for path in sparkFlavors sparkVersions sparkBaseImages trinoFlavors trinoVersions airflowFlavors metastoreFlavors metastoreVersions flinkFlavors; do
+            probeh "dp_$path" "$D/v1/$path?$P&pageSize=100" "$dict"
+          done
+          # Flink: версии — /v1/versions без projectId (DP-5).
+          probeh dp_flink_versions "$D/v1/versions?pageSize=100" "$dict"
+
+          echo "== P32 (DP-11, DP-17): форма ошибок, clusterId, статусы"
+          probeh dp_cluster_noid         "$D/v1/clusters/$NOID" "$err"
+          probeh dp_sparks_noid_cluster  "$D/v1/sparks?$P&clusterId=$NOID" "$lst"
+          probeh dp_sparks_no_cluster    "$D/v1/sparks?$P" "$err"
+          probeh dp_trinos_no_cluster    "$D/v1/trinos?$P" "$lst"
+          probeh dp_spark_noid           "$D/v1/sparks/$NOID" "$err"
+          cl=$(get "$D/v1/clusters?$P&pageSize=100")
+          echo "dp_cluster_statuses: $(printf '%s' "$cl" | jq -c '[(.clusters // [])[] | .status] | group_by(.) | map({(.[0] // "null"): length}) | add // {}' 2>/dev/null || echo 'не JSON')" | redact
+          cids=$(printf '%s' "$cl" | jq -r '(.clusters // [])[:3][] | .id // empty' 2>/dev/null || true)
+          unset cl
+          for id in $cids; do echo "::add-mask::$id"; done
+          [ -n "$cids" ] || echo "dp_instances: кластеров Data Platform в проекте нет — статусы инстансов и задач пропущены"
+
+          echo "== P33 (DP-4, DP-15, DP-16): операции, инстансы и задачи существующих кластеров"
+          # shellcheck disable=SC2016 # $o — переменная jq
+          ops='if type == "object" then ((.operations // []) as $o | {n: ($o | length), keys: ($o[0] | keys? // null), done: ([$o[] | .done] | group_by(.) | map({(.[0] | tostring): length}) | add // {}), error_keys: ([$o[] | .error | objects | keys] | first // null)}) else {type: type} end'
+          for id in $cids; do
+            probeh dp_cluster_operations "$D/v1/clusters/$id/operations?pageSize=10" "$ops"
+            probeh dp_cluster_item_keys  "$D/v1/clusters/$id" 'if type == "object" then {keys: keys, status: (.status // null), net_keys: (.networkConfiguration | keys? // null)} else {type: type} end'
+            for kind in sparks trinos airflows metastores flinks; do
+              il=$(get "$D/v1/$kind?$P&clusterId=$id&pageSize=100")
+              echo "dp_${kind}_statuses: $(printf '%s' "$il" | jq -c '{n: ([.[] | arrays | length] | first // null), statuses: ([.[] | arrays | .[] | .status] | group_by(.) | map({(.[0] // "null"): length}) | add // {}), keys: ([.[] | arrays | .[0] | keys] | first // null)}' 2>/dev/null || echo 'не JSON')" | redact
+              if [ "$kind" = sparks ]; then
+                sids=$(printf '%s' "$il" | jq -r '(.sparks // [])[:3][] | .id // empty' 2>/dev/null || true)
+                for sid in $sids; do
+                  echo "::add-mask::$sid"
+                  probeh dp_spark_jobs "$D/v1/sparks/$sid/jobs?pageSize=100" 'if type == "object" then {n: ((.jobs // []) | length), statuses: ([(.jobs // [])[] | .status] | group_by(.) | map({(.[0] // "null"): length}) | add // {}), keys: ((.jobs // [])[0] | keys? // null)} else {type: type} end'
+                  # Пароль Spark History: отдаёт ли GET что-то, кроме имени.
+                  probeh dp_spark_user_keys "$D/v1/sparks/$sid" 'if type == "object" then {user_keys: (.user | keys? // null), keys: keys} else {type: type} end'
+                done
+              fi
+              unset il
+            done
+          done
+
       # Ключ cloud-readonly должен только читать: роль «Наблюдатель проекта»
       # тянет за собой роли *.user сервисов, и что они разрешают, по
       # документации не видно. Здесь — запросы на изменение, которые ничего
@@ -676,5 +790,7 @@ jobs:
           try vpc_delete_noid        DELETE "https://vpc.api.cloud.ru/v1/vpcs/$NOID?project_id=$PROJECT"
           try nlb_delete_noid        DELETE "https://nlb.api.cloud.ru/v2/networkLoadBalancers/$NOID?project_id=$PROJECT"
           try vm_delete_noid         DELETE "https://compute.api.cloud.ru/api/v1/vms/$NOID?project_id=$PROJECT"
+          try dp_cluster_incomplete  POST   "https://dataplatform.api.cloud.ru/v1/clusters" "$(jq -nc --arg p "$PROJECT" '{projectId:$p, name:"evo-e2e-ro-probe"}')"
+          try dp_cluster_delete_noid DELETE "https://dataplatform.api.cloud.ru/v1/clusters/$NOID"
           echo "запрещено: $denied, разрешено: $bad"
           [ "$bad" -eq 0 ] || { echo "::error::ключ cloud-readonly может изменять ресурсы — сузьте роли сервисного аккаунта"; exit 1; }

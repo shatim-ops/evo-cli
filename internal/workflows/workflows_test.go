@@ -9,6 +9,7 @@ package workflows
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -28,9 +29,12 @@ type workflow struct {
 		Permissions any    `yaml:"permissions"`
 		Uses        string `yaml:"uses"`
 		Steps       []struct {
-			Uses string         `yaml:"uses"`
-			Run  string         `yaml:"run"`
-			With map[string]any `yaml:"with"`
+			ID   string            `yaml:"id"`
+			If   string            `yaml:"if"`
+			Uses string            `yaml:"uses"`
+			Run  string            `yaml:"run"`
+			With map[string]any    `yaml:"with"`
+			Env  map[string]string `yaml:"env"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -184,13 +188,18 @@ func TestWorkflows_CIShufflesOnMain(t *testing.T) {
 
 // Every PR gets its change class and the checklist of checks beyond CI in
 // the run's summary, and the classifier's tables are tested on sample
-// paths (process audit 1.2.1, PR 8). The job holds the PR's code, so it
+// paths (process audit 1.2.1, PR 8); the classes of the registry diff come
+// from tools/list of the base and the head (stage 6.5). The job holds the PR's code, so it
 // writes nothing to the repository: no labels, no permissions of its own.
 func TestWorkflows_CIClassifiesPRs(t *testing.T) {
 	w := readWorkflows(t)["ci.yml"]
 	var classify, tested bool
+	registry := ""
 	for name, j := range w.Jobs {
 		for _, s := range j.Steps {
+			if strings.Contains(s.Run, ".github/scripts/classify_registry.sh") && strings.Contains(s.Run, ".github/scripts/tools_list.sh") {
+				registry = "${{ steps." + s.ID + ".outputs.classes }}"
+			}
 			if strings.Contains(s.Run, ".github/scripts/classify_test.sh") {
 				tested = true
 			}
@@ -198,6 +207,9 @@ func TestWorkflows_CIClassifiesPRs(t *testing.T) {
 				strings.Contains(s.Run, ".github/scripts/classify_summary.sh") &&
 				strings.Contains(s.Run, "$GITHUB_STEP_SUMMARY") {
 				classify = true
+				if registry == "" || s.Env["REGISTRY"] != registry {
+					t.Errorf("ci: job %s classifies without the registry classes (REGISTRY %q)", name, s.Env["REGISTRY"])
+				}
 				if !strings.Contains(j.If, "pull_request") {
 					t.Errorf("ci: job %s classifies outside pull_request (if: %q)", name, j.If)
 				}
@@ -369,4 +381,111 @@ func runsStep(w workflow, cmd string) bool {
 		}
 	}
 	return false
+}
+
+// A release proves where it came from (process audit 1.2.1, 6.4; owner's
+// decision В8): every archive has an SBOM listed in the signed
+// checksums.txt, every file in checksums.txt has a provenance attestation
+// of release.yml, and the MCP image pushed to the registry is signed by
+// digest with cosign keyless. syft comes from go install at a fixed
+// version, checked against the Go checksum database, not from one more
+// action in the jobs that may mint the workflow's OIDC token.
+func TestWorkflows_ReleaseSupplyChain(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".goreleaser.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gr struct {
+		SBOMs []struct {
+			Artifacts string `yaml:"artifacts"`
+		} `yaml:"sboms"`
+	}
+	if err := yaml.Unmarshal(b, &gr); err != nil {
+		t.Fatal(err)
+	}
+	if len(gr.SBOMs) != 1 || gr.SBOMs[0].Artifacts != "archive" {
+		t.Errorf(".goreleaser.yaml: sboms %+v, want one entry for archive", gr.SBOMs)
+	}
+
+	w, ok := readWorkflows(t)["release.yml"]
+	if !ok {
+		t.Fatal("no release.yml")
+	}
+	perms := func(job string) map[string]any {
+		p, _ := w.Jobs[job].Permissions.(map[string]any)
+		return p
+	}
+	steps := func(job, uses string) []map[string]any {
+		var out []map[string]any
+		for _, s := range w.Jobs[job].Steps {
+			if strings.HasPrefix(s.Uses, uses+"@") {
+				out = append(out, s.With)
+			}
+		}
+		return out
+	}
+	runs := func(job, cmd string) bool {
+		for _, s := range w.Jobs[job].Steps {
+			if strings.Contains(s.Run, cmd) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if p := perms("goreleaser"); p["attestations"] != "write" || p["id-token"] != "write" {
+		t.Errorf("release.yml goreleaser: permissions %v, want attestations and id-token: write", p)
+	}
+	syft := regexp.MustCompile(`go install github\.com/anchore/syft/cmd/syft@v\d+\.\d+\.\d+\s`)
+	pinned := false
+	for _, s := range w.Jobs["goreleaser"].Steps {
+		pinned = pinned || syft.MatchString(s.Run)
+	}
+	if !pinned {
+		t.Error("release.yml goreleaser: syft is not installed with go install at a full version (vX.Y.Z, not a query)")
+	}
+	if a := steps("goreleaser", "actions/attest-build-provenance"); len(a) != 1 || a[0]["subject-checksums"] != "dist/checksums.txt" {
+		t.Errorf("release.yml goreleaser: attest-build-provenance %v, want one step with subject-checksums: dist/checksums.txt", a)
+	}
+
+	if p := perms("image"); p["id-token"] != "write" || p["contents"] != "read" || len(p) != 2 {
+		t.Errorf("release.yml image: permissions %v, want contents: read and id-token: write only", p)
+	}
+	if len(steps("image", "sigstore/cosign-installer")) != 1 {
+		t.Error("release.yml image: cosign is not installed")
+	}
+	if !runs("image", `cosign sign --yes "$DIGEST_REF"`) {
+		t.Error("release.yml image: the pushed image is not signed by digest")
+	}
+}
+
+// The contract check caches the specs of cloud.ru/docs for a day, and only
+// a complete download is cached: a PR whose download failed skipped the
+// check and still saved the partial directory, so every later PR of the
+// day failed on spec-missing (#230, 22.10). Restore and save are separate
+// steps, the save conditioned on a download that succeeded.
+func TestWorkflows_ContractCachesOnlyCompleteSpecs(t *testing.T) {
+	w, ok := readWorkflows(t)["api-contract.yml"]
+	if !ok {
+		t.Fatal("no api-contract.yml")
+	}
+	var restore, save bool
+	for name, j := range w.Jobs {
+		for _, s := range j.Steps {
+			switch {
+			case strings.HasPrefix(s.Uses, "actions/cache@"):
+				t.Errorf("api-contract job %s: actions/cache saves whatever the job left; use actions/cache/restore and actions/cache/save", name)
+			case strings.HasPrefix(s.Uses, "actions/cache/restore@"):
+				restore = true
+			case strings.HasPrefix(s.Uses, "actions/cache/save@"):
+				save = true
+				if !strings.Contains(s.If, "steps.specs.outputs.complete == 'true'") {
+					t.Errorf("api-contract job %s: the save runs on %q, not only after a complete download (steps.specs.outputs.complete)", name, s.If)
+				}
+			}
+		}
+	}
+	if !restore || !save {
+		t.Errorf("api-contract: restore %v, save %v; want both", restore, save)
+	}
 }

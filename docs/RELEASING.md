@@ -18,7 +18,9 @@
    тратятся, данные удаляются или секрет раскрывается без явного согласия
    человека. Второе: ошибка, из-за которой результат неверен, а скрипт
    этого не видит (например, урезанный список с кодом 0 или чужой ресурс
-   под тем же именем).
+   под тем же именем). Отказ в обслуживании сервера MCP — исчерпание его
+   памяти или потоков одним клиентом — приравнен к дыре в безопасности:
+   сервер с токеном у нескольких агентов падает для всех.
 2. **Ждать major — значит оставить пользователей под риском.** Дефект
    задевает текущее использование, а не гипотетическое, и обходного пути
    без изменения evo нет.
@@ -50,6 +52,10 @@ stderr, если это не оставляет дефект открытым.
 | 1.2.2 | `evo s3 put`/`rm` и MCP `s3_put`/`s3_rm` с именем бакета, которое S3 не примет, — `USAGE`, код 1, до превью (было: код 3 без `--yes`, после согласия — ошибка клиента S3) | согласие спрашивалось на вызов, который не мог пройти (как D15); условия 1–5; DECISIONS D19 |
 | 1.2.3 | `evo snat create` и MCP `snat_create` с занятым именем — `USAGE`, код 1, `existing_id`, до согласия (было: с `--yes` код 0 и второй платный шлюз, без `--yes` код 3); превью без ключа или проекта — код 2 | повтор создавал второй платный шлюз (матрица сбоев 6.1); условия 1–5; DECISIONS D20 |
 | 1.2.3 | `evo k8s create`, `evo lb create` и MCP `k8s_create`, `lb_create` с занятым именем — `USAGE`, код 1, `existing_id`, до согласия (было: с `--yes` у `k8s_create` код 0 и второй платный кластер, у `lb_create` код 5 после согласия — 409 облака; без `--yes` код 3); превью `k8s_create` без ключа или проекта — код 2 | повтор `k8s_create` мог создать второй платный кластер; `lb_create` спрашивал согласие на вызов, который не пройдёт; условия 1–5; DECISIONS D21 |
+| 1.3.0 | `evo vpc create` и MCP `vpc_create` с занятым именем — `USAGE`, код 1, `existing_id`, до согласия (было: с `--yes` код 0 и вторая VPC, без `--yes` код 3); превью без ключа или проекта — код 2 | две VPC с одним именем: поиск по имени после потерянного ответа (`lostCreate`) называет не ту (матрица сбоев 6.1); условия 1–5; DECISIONS D23 |
+| 1.3.0 | MCP по HTTP: тело запроса больше 4 МБ — `413` (было 16 МБ, как по stdio); `s3_put` файла больше ~3 МБ по HTTP не проходит | отказ в обслуживании (условие 1): 32 вызова × 16 МБ — до 512 МБ одних тел; условия 1–5; DECISIONS D24, строка H12 в `docs/mcp.md` |
+| 1.3.0 | создание с ответом без id — `API_ERROR`, код 5 (было: код 0 с пустым id); с потерянным ответом — код 0 с id ресурса, если он найден по имени (было: ошибка обрыва): `evo kafka create`, `evo redis create`, `evo pg create`, `evo ar create`, `evo snat create`, `evo ca deploy`, `evo disk create`, `evo dns zone-create`, `evo secret create`, `evo vpc create`, `evo k8s create`, `evo lb create`, `evo k8s add-nodepool`, `evo pg backup-create`, `evo tg create`, `evo vpc route-create`, `evo dns record-create`, `evo cert issue-le`, `evo cert import`, `evo image create` и MCP `kafka_create`, `redis_create`, `pg_create`, `ar_create`, `snat_create`, `ca_deploy`, `disk_create`, `dns_zone_create`, `secret_create`, `vpc_create`, `k8s_create`, `lb_create`, `k8s_add_nodepool`, `pg_backup_create`, `tg_create`, `vpc_route_create`, `dns_record_create`, `cert_issue_le`, `cert_import`, `image_create` | оплачиваемый ресурс оставался неназванным (матрица сбоев 6.1); условия 1–5; DECISIONS D25 |
+| 1.3.0 | повторное создание с занятым именем — `USAGE`, код 1, `existing_id` (было: код 0 и второй объект): `evo k8s add-nodepool`, `evo pg backup-create`, `evo tg create`, `evo vpc route-create` — до согласия, превью без ключа или проекта — код 2; `evo dns record-create`, `evo cert issue-le`, `evo cert import` — после согласия; MCP `k8s_add_nodepool`, `pg_backup_create`, `tg_create`, `vpc_route_create`, `dns_record_create`, `cert_issue_le`, `cert_import` | повтор после потерянного ответа создавал второй объект, вторая группа узлов — платные узлы (матрица сбоев 6.1); условия 1–5; DECISIONS D28 |
 
 0. Стабильный релиз — до тега отдельным PR в `main`:
    - `CHANGELOG.md`: «[Не выпущено]» → «[X.Y.Z] — ГГГГ-ММ-ДД» (дата тега)
@@ -69,7 +75,7 @@ stderr, если это не оставляет дефект открытым.
      `cloud-readonly-os` (те же чтения на Windows и macOS), без одобрения. В секретах репозитория их быть не должно — их видит любой
      workflow без `environment:`.
 1. `main` зелёный в CI (в том числе `TestCommandsDoc` и `TestToolsDoc`: `docs/commands.md` и `docs/tools.md` совпадают с бинарём); локально `goreleaser check` и, по желанию,
-   `goreleaser release --snapshot --clean --skip=sign` — в `dist/` 6 архивов (в каждом `evo` и alias `cloudru-vm` до v2.0) и `checksums.txt`.
+   `goreleaser release --snapshot --clean --skip=sign,sbom` — в `dist/` 6 архивов (в каждом `evo` и alias `cloudru-vm` до v2.0) и `checksums.txt`; с `syft` в `PATH` и без `sbom` в `--skip` — ещё SBOM каждого архива.
 2. `git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3` — тег ставится на коммит в `main`.
    Если тег не запушить (облачная сессия пушит только свои ветки): Actions →
    **tag** → Run workflow с `tag` и полным `sha` коммита в `main`
@@ -80,8 +86,10 @@ stderr, если это не оставляет дефект открытым.
    только для тегов `v*`). Actions → прогон release → **Review deployments** →
    Approve. Отклонённый прогон оставляет тег без релиза; номер не
    переиспользуется, следующий — X.Y.(Z+1).
-3. `release.yml` после одобрения гоняет весь `ci.yml`, затем goreleaser: архивы, `checksums.txt`,
-   подписи cosign keyless (`*.sigstore.json`), GitHub Release. `-rc.N` публикуется как pre-release.
+3. `release.yml` после одобрения гоняет весь `ci.yml`, затем goreleaser: архивы, SBOM архивов
+   (`*.sbom.json`, SPDX), `checksums.txt`, подписи cosign keyless (`*.sigstore.json`), GitHub
+   Release; затем attestation происхождения каждого файла из `checksums.txt`. Образ MCP-сервера
+   подписывается cosign по digest. `-rc.N` публикуется как pre-release.
 4. Проверить подпись скачанного `checksums.txt` (пример для `v1.2.3`):
 
    ```
@@ -96,6 +104,26 @@ stderr, если это не оставляет дефект открытым.
 
    `v1.0.0-rc.1` и `rc.2` выпущены до переименования репозитория: их identity —
    `shatim-ops/cloudru-vm-cli`.
+
+   С 1.3.0 (решение владельца В8) ещё три проверки:
+
+   ```
+   # SBOM архива — в checksums.txt, sha256sum -c выше проверил и его
+   jq '.packages | length' evo_1.3.0_linux_amd64.tar.gz.sbom.json
+   # происхождение: собран release.yml этого репозитория из тега
+   gh attestation verify evo_1.3.0_linux_amd64.tar.gz --repo shatim-ops/evo-cli \
+     --signer-workflow shatim-ops/evo-cli/.github/workflows/release.yml
+   # образ MCP-сервера: подпись того же workflow; полное имя образа —
+   # в строке «Образ опубликован» лога job image
+   cosign verify <реестр>.cr.cloud.ru/evo:1.3.0 \
+     --certificate-identity-regexp '^https://github.com/shatim-ops/evo-cli/\.github/workflows/release\.yml@refs/tags/v' \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+   ```
+
+   Впервые — на `1.3.0-rc.1`: все шесть архивов с SBOM в `checksums.txt`,
+   `gh attestation verify` проходит, `cosign verify` образа проходит. Если
+   реестр не принял подпись (тег `sha256-….sig`), job `image` красная, а
+   образ уже опубликован без подписи: это находка rc, до стабильного тега.
 
 5. Неудачный релиз. Опубликованные тег и Release **не удаляются**: архивы
    уже могли скачать, а подписи лежат в журнале прозрачности Rekor.
@@ -158,7 +186,7 @@ Registry Cloud.ru: `<реестр>/evo:<версия>`, для стабильн�
 | `CLOUDRU_AR_KEY_ID`, `CLOUDRU_AR_SECRET` | ключ доступа с правом push в этот реестр |
 
 Без них job пишет notice «Образ не опубликован» и не падает: бинари
-выпускаются всё равно. Образ только `linux/amd64`, не подписан cosign.
+выпускаются всё равно. Образ только `linux/amd64`; с 1.3.0 подписан cosign по digest (проверка — шаг 4).
 
 ## Документация
 

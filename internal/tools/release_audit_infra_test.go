@@ -88,6 +88,7 @@ type raAPI struct {
 	posts     map[string]string // путь → тело последнего POST
 	targetVMs string            // target_vms целевой группы tg-1
 	flavors   string            // flavors of productConfiguration; empty — gen-2-4 only
+	pools     string            // nodePools of the cluster
 }
 
 func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -122,6 +123,8 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		_, _ = io.WriteString(rec, `{"id":"cl-1","controlPlane":{"zones":["mk-az1"]}}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters/cl-nozone":
 		_, _ = io.WriteString(rec, `{"id":"cl-nozone","controlPlane":{"zones":[]}}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/v3/nodePools":
+		_, _ = io.WriteString(rec, `{"nodePools":[`+f.pools+`]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v3/nodePools":
 		_, _ = io.WriteString(rec, `{"id":"op-np","resourceId":"np-1","done":false}`)
 	case r.URL.Path == "/v2/targetGroups/tg-1":
@@ -277,14 +280,36 @@ func TestK8s_MasterCountRefused(t *testing.T) {
 
 // L-10: превью k8s_add_nodepool без имени показывало пустое имя.
 func TestK8sAddNodePool_PreviewShowsDefaultName(t *testing.T) {
-	m, text, _ := callNamed(t, newTestServer(), "k8s_add_nodepool", map[string]any{"cluster_id": "c-1"})
+	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+	m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "c-1"})
 	p, _ := m["preview"].(map[string]any)
 	if p["name"] != "nodepool-1" {
 		t.Errorf("preview name %v, want nodepool-1: %s", p["name"], text)
 	}
-	m, _, _ = callNamed(t, newTestServer(), "k8s_add_nodepool", map[string]any{"cluster_id": "c-1", "name": "workers"})
+	m, _, _ = callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "c-1", "name": "workers"})
 	if p, _ := m["preview"].(map[string]any); p["name"] != "workers" {
 		t.Errorf("explicit name: %v", p["name"])
+	}
+}
+
+// A pool of the name in the cluster is refused before the consent, with
+// its id: a repeat after a lost answer made a second billable pool (fault
+// matrix, process audit 1.2.1). A deleted pool frees its name.
+func TestK8sAddNodePool_TakenNameRefusedBeforeConsent(t *testing.T) {
+	f := &raAPI{pools: `{"id":"np-7","name":"workers","status":"RUNNING"},{"id":"np-8","name":"old","status":"DELETED"}`}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	for _, confirmed := range []bool{false, true} {
+		m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "name": "workers", "confirmed": confirmed})
+		wantReason(t, "taken name", m, text, "USAGE")
+		if m["existing_id"] != "np-7" {
+			t.Errorf("confirmed=%v: existing_id %v, want np-7: %s", confirmed, m["existing_id"], text)
+		}
+	}
+	if n := f.postCount(); n != 0 {
+		t.Errorf("%d creates sent for a taken name", n)
+	}
+	if m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "name": "old"}); m["status"] != "confirmation_required" {
+		t.Errorf("the name of a deleted pool is refused: %s", text)
 	}
 }
 
@@ -567,7 +592,7 @@ func TestDeletePreviews_NameTheResource(t *testing.T) {
 
 	f := &raAPI{targetVMs: `{"id":"vm-1"}`}
 	rr := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
-	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": "tg-1"}); !strings.Contains(text, "tg (tg-1)") {
+	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": "tg-1"}); !strings.Contains(text, `\"tg\" (tg-1)`) {
 		t.Errorf("tg_delete preview does not name the group: %s", text)
 	}
 	m, text, _ := callNamed(t, rr, "lb_delete", map[string]any{"id": "lb-missing"})

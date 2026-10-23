@@ -26,7 +26,7 @@ var binaryAvailable = kubetools.Available
 // The server settings an HTTP client meets are listed too (StdioToo:
 // --allow-project, --read-only).
 type Restriction struct {
-	ID string // H1…H11, the row in docs/mcp.md
+	ID string // H1…H12, the row in docs/mcp.md
 	// Tools are the tools whose handler restrictForHTTP wraps for the
 	// entry; AllTools wraps every tool. With neither, the difference is
 	// not in a tool handler and Where says where it is.
@@ -85,6 +85,9 @@ var HTTPRestrictions = []Restriction{
 	{ID: "H11", AllTools: true, StdioToo: true,
 		Where: "internal/mcp/readonly.go", Symbol: "tools.NeedsConsent",
 		Summary: "--read-only: a call that needs consent (confirmed=true) gets USAGE, confirmed or not, and tools/list leaves out the tools every call of which needs it"},
+	{ID: "H12",
+		Where: "internal/mcp/http.go", Symbol: "httpMaxBody",
+		Summary: "a request body over 4 MiB gets 413 (over stdio a line may hold 16 MiB): s3_put of a file over ~3 MB fails, base64 adds a third"},
 }
 
 // wording words the refusals (and the mask of H7) of a restriction a
@@ -132,7 +135,7 @@ func (s *Server) restrict(id, tool string, wrap func(next tools.Handler) tools.H
 }
 
 // restrictForHTTP adjusts tool handlers for the HTTP transport, as
-// HTTPRestrictions lists (H1–H7, H10; H8 is in the HTTP handler, H9 in the
+// HTTPRestrictions lists (H1–H7, H10; H8 and H12 are in the HTTP handler, H9 in the
 // CLI). A --read-only server has its H3, H6 and H7 already (SetReadOnly)
 // and exports no secret, so H5 would refuse nothing H11 lets through; the
 // wraps here go under its H11 gate (wrapHandler).

@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/certmanager"
@@ -77,12 +78,27 @@ func (s *Registry) handleCertIssueLE(ctx context.Context, args map[string]any) (
 	if err != nil {
 		return errResult(err), true
 	}
+	list, taken := certNameTaken(ctx, cli, name)
+	if taken != "" {
+		return taken, true
+	}
 	op, err := cli.IssueLetsEncrypt(ctx, name, stringArg(args, "description"), dnsNames)
-	if err != nil {
-		return errResult(err), true
+	if id, _ := op["id"].(string); err != nil || id == "" {
+		if err == nil {
+			err = noID("operation")
+		}
+		return lostCreate(ctx, list, i18n.T("certificate", "сертификат"), "certificate_id", name, nil, "cert_get id", "cert_list", fmt.Errorf("issue certificate: %w", err))
 	}
 	// Async: return the operation; the caller polls cert_operation until done.
-	return toJSON(map[string]any{"status": "issuing", "note": "Let's Encrypt issuance is async — poll cert_operation with this operation id until done=true. Domains must have delegated zones in Evolution DNS.", "operation": op}), false
+	out := map[string]any{"status": "issuing", "note": "Let's Encrypt issuance is async — poll cert_operation with this operation id until done=true. Domains must have delegated zones in Evolution DNS.", "operation": op}
+	// The operation does not name the certificate; the list does, at once
+	// (fault matrix, process audit 1.2.1).
+	if items, err := list(ctx); err == nil {
+		if id, _, ok := takenName(items, name); ok {
+			out["certificate_id"] = id
+		}
+	}
+	return toJSON(out), false
 }
 
 func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (string, bool) {
@@ -103,6 +119,10 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 	if err != nil {
 		return errResult(err), true
 	}
+	list, taken := certNameTaken(ctx, cli, name)
+	if taken != "" {
+		return taken, true
+	}
 	body := map[string]any{"name": name, "serverCertificate": server, "privateKey": key}
 	if v := stringArg(args, "intermediate_certificate"); v != "" {
 		body["intermediateCertificate"] = v
@@ -111,10 +131,31 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 		body["description"] = v
 	}
 	c, err := cli.Import(ctx, body)
-	if err != nil {
-		return errResult(err), true
+	if id, _ := c["id"].(string); err != nil || id == "" {
+		if err == nil {
+			err = noID("certificate")
+		}
+		return lostCreate(ctx, list, i18n.T("certificate", "сертификат"), "certificate_id", name, nil, "cert_get id", "cert_list", fmt.Errorf("import certificate: %w", err))
 	}
 	return toJSON(map[string]any{"status": "imported", "certificate": c}), false
+}
+
+// certNameTaken lists the certificates of the name: one there is refused
+// (its answer, else ""), since a repeat after a lost answer made a second
+// certificate (fault matrix, process audit 1.2.1). The previews stay
+// offline, so the check is the confirmed call's. list is for lostCreate.
+func certNameTaken(ctx context.Context, cli *certmanager.Client, name string) (list func(context.Context) ([]map[string]any, error), taken string) {
+	list = func(ctx context.Context) ([]map[string]any, error) {
+		return cli.List(ctx, certmanager.ListOptions{Name: name})
+	}
+	existing, err := list(ctx)
+	if err != nil {
+		return list, errResult(fmt.Errorf(i18n.T("check the name is free: list certificates: %w", "проверка, что имя свободно: список сертификатов: %w"), err))
+	}
+	if id, st, ok := takenName(existing, name); ok {
+		taken, _ = nameTakenResult(i18n.T("certificate", "сертификат"), name, id, st, "cert_get id="+id)
+	}
+	return list, taken
 }
 
 func (s *Registry) handleCertRenew(ctx context.Context, args map[string]any) (string, bool) {
