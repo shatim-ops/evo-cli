@@ -691,18 +691,12 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 		}
 	}
 
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
-				"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
-		}), true
-	}
-
 	// A SNAT gateway's address goes with the gateway: the API refuses to
 	// release it alone (422 floating_ip_address_is_used_by_nat_gateway).
 	// A refusal is local, nothing was released: USAGE (exit 1) with the
 	// reason; it had no reason and the CLI exited 5, API_ERROR (QA-6).
+	// Both refusals come before the consent: the call cannot go through
+	// whatever the person answers (A6, D31).
 	if onNAT {
 		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (snat_delete); not released", fipIP, fipID)
 		return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
@@ -716,6 +710,14 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 		return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("Detach it from the VM, or delete the VM (destroy), then release it.", "Отвяжите его от ВМ или удалите ВМ (destroy), затем освободите.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true
+	}
+
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status": "confirmation_required",
+			"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
+				"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
+		}), true
 	}
 
 	if err := eng.Cloud.DeleteFloatingIP(ctx, fipID, projectID); err != nil {
