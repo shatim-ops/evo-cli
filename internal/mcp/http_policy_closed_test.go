@@ -105,6 +105,9 @@ func TestHTTPPolicy_ClosedList(t *testing.T) {
 	if !strings.Contains(restriction("H8").Summary, strconv.Itoa(httpMaxToolCalls)) {
 		t.Errorf("H8 does not name the limit %d: %s", httpMaxToolCalls, restriction("H8").Summary)
 	}
+	if body := fmt.Sprintf("%d MiB", httpMaxBody>>20); !strings.Contains(restriction("H12").Summary, body) {
+		t.Errorf("H12 does not name the limit %s: %s", body, restriction("H12").Summary)
+	}
 
 	// The handlers: exactly the listed wraps are applied, and no other tool's
 	// handler changes, over the whole HTTP setup (NewHTTPHandler), and with

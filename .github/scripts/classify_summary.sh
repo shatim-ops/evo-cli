@@ -41,7 +41,11 @@ for c in $classes; do
 	output)
 		item "Вывод: \`--json\` команды равен ответу инструмента; примеры в docs перегенерированы." ;;
 	tools)
-		item "Инструменты: изменяющий — превью с ценой или \`tariff_url\`, согласие, \`--read-only\`, \`--allow-project\`; новый — \`CLISpec\`, RU/EN, \`docs/tools.md\` и \`docs/commands.md\` перегенерированы." ;;
+		item "Инструменты: изменяющий — превью с ценой или \`tariff_url\`, согласие, \`--read-only\`, \`--allow-project\`." ;;
+	new-tool)
+		item "Новый инструмент: \`CLISpec\`, группа, RU/EN, описание в лимите, \`idArgs\` для id-аргументов; \`docs/tools.md\` и \`docs/commands.md\` перегенерированы; \`tools/list\` в бюджете." ;;
+	tool-change)
+		item "Схема инструмента изменилась: команда CLI совпадает (\`TestParity_*\`), docs перегенерированы; аргумент убран или стал обязательным — ломающее по \`docs/RELEASING.md\`." ;;
 	deps)
 		item "Зависимости: govulncheck зелёный; экшены и образы закреплены по SHA или digest." ;;
 	ci)

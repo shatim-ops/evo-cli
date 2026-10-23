@@ -56,13 +56,18 @@ jobs:
         if: github.event_name == 'pull_request'
         run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
+      # Восстановление и сохранение — отдельные шаги: actions/cache
+      # сохранял и неполный каталог после неудачной загрузки, и до конца дня
+      # каждый PR падал на spec-missing (#230, 22.10). Сохраняется только
+      # полная загрузка (шаг «Сохранить кэш спецификаций»). v2 в ключе
+      # отбрасывает кэш, сохранённый до этой правки.
       - name: Кэш спецификаций (PR)
         id: cache
         if: github.event_name == 'pull_request'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/cloudru-specs
-          key: cloudru-specs-${{ hashFiles('scripts/cloudru-specs.py') }}-${{ steps.day.outputs.day }}
+          key: cloudru-specs-v2-${{ hashFiles('scripts/cloudru-specs.py') }}-${{ steps.day.outputs.day }}
 
       - name: Спецификации Cloud.ru
         id: specs
@@ -70,7 +75,10 @@ jobs:
         run: |
           # Сайт документации иногда рвёт соединение: до трёх попыток.
           for i in 1 2 3; do
-            python3 scripts/cloudru-specs.py .cache/cloudru-specs && exit 0
+            if python3 scripts/cloudru-specs.py .cache/cloudru-specs; then
+              echo "complete=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             sleep $((i * 20))
           done
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -80,6 +88,13 @@ jobs:
           fi
           echo "::error::не удалось скачать спецификации: изменились адреса на cloud.ru/docs? (scripts/cloudru-specs.py, START_PAGES)"
           exit 1
+
+      - name: Сохранить кэш спецификаций
+        if: github.event_name == 'pull_request' && steps.specs.outputs.complete == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/cloudru-specs
+          key: cloudru-specs-v2-${{ hashFiles('scripts/cloudru-specs.py') }}-${{ steps.day.outputs.day }}
 
       - name: Сверка контракта
         if: steps.specs.outputs.skip != 'true'

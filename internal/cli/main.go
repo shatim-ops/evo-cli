@@ -114,6 +114,12 @@ func run(args []string) int {
 	}()
 
 	commandStarted = false
+	// The global flags live for this run: a later engine built without a
+	// run (tests, the parity worlds) must not read its --profile.
+	defer func() {
+		flagJSON, flagVerbose, flagNoColor, flagYes, flagDryRun = false, false, false, false, false
+		flagProfile = ""
+	}()
 	// Until flags are parsed: plain text to stderr.
 	config.SetWarnFunc(func(msg string) { output.New(false, true).Warning(msg) })
 	if msg, err := config.MigrateLegacyDir(); err != nil {

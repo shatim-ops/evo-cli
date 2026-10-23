@@ -135,7 +135,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 		zoneID = eng.Config.Region
 	}
 
-	// Resolve disk type (name or id); default to an SSD type.
+	// Resolve disk type (name or id); default to the SSD type, as a VM's.
 	req := provision.CreateDiskReq{Name: name, Size: sizeGB, AvailabilityZoneID: zoneID, ProjectID: pid}
 	if dt := stringArg(args, "disk_type"); dt != "" {
 		if looksUUID(dt) {
@@ -144,14 +144,8 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 			req.DiskTypeName = dt
 		}
 	} else if dts, e := eng.Cloud.ListDiskTypes(ctx, pid); e == nil {
-		for _, t := range dts {
-			if strings.Contains(strings.ToLower(t.Name), "ssd") {
-				req.DiskTypeName = t.Name
-				break
-			}
-		}
-		if req.DiskTypeName == "" && len(dts) > 0 {
-			req.DiskTypeName = dts[0].Name
+		if t := provision.PickDiskType(dts, ""); t != nil {
+			req.DiskTypeName = t.Name
 		}
 	}
 
@@ -173,8 +167,12 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	}
 
 	disk, err := eng.Cloud.CreateDisk(ctx, req)
-	if err != nil {
-		return errResult(fmt.Errorf("create disk: %w", err)), true
+	if id, _ := disk["id"].(string); err != nil || id == "" {
+		if err == nil {
+			err = noID("disk")
+		}
+		list := func(ctx context.Context) ([]map[string]any, error) { return eng.Cloud.ListDisks(ctx, pid) }
+		return lostCreate(ctx, list, i18n.T("disk", "диск"), "disk_id", name, nil, "disk_list", "disk_list", fmt.Errorf("create disk: %w", err))
 	}
 	res := map[string]any{"status": "created", "disk": disk}
 	if attachTo == "" || vmID == "" {

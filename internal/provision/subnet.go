@@ -8,7 +8,7 @@ import "strings"
 
 // PickSubnet picks the subnet for a new VM among the zone's subnets: the
 // one the API marks as the zone's main subnet (default), then a routed
-// one (a floating IP binds only there), then the API order. Technical
+// one (a floating IP binds only there), then by name and id. Technical
 // subnets and those not in a usable state come last. The only subnet of
 // the project is taken when none is in the zone only if its zone is
 // unknown: a subnet of another zone does not boot the VM (error_creating
@@ -20,7 +20,12 @@ func PickSubnet(subnets []*Subnet, zoneID, zoneName string) int {
 		if !SubnetInZone(s, zoneID, zoneName) {
 			continue
 		}
-		if best < 0 || subnetRank(s) > subnetRank(subnets[best]) {
+		if best < 0 {
+			best = i
+			continue
+		}
+		b := subnets[best]
+		if r, rb := subnetRank(s), subnetRank(b); r > rb || r == rb && CompareByNameID(s.Name, s.ID, b.Name, b.ID) < 0 {
 			best = i
 		}
 	}

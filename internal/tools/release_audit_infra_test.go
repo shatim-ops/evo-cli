@@ -87,6 +87,8 @@ type raAPI struct {
 	reqs      []string
 	posts     map[string]string // путь → тело последнего POST
 	targetVMs string            // target_vms целевой группы tg-1
+	flavors   string            // flavors of productConfiguration; empty — gen-2-4 only
+	pools     string            // nodePools of the cluster
 }
 
 func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -103,16 +105,26 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	switch {
 	case r.URL.Path == "/v3/productConfiguration":
+		flavors := f.flavors
+		if flavors == "" {
+			flavors = `[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}]`
+		}
 		_, _ = io.WriteString(rec, `{"defaultZone":"ru.AZ-2",
 			"zones":[{"zoneId":"mk-az1","name":"ru.AZ-1"},{"zoneId":"mk-az2","name":"ru.AZ-2"}],
-			"flavors":[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}],
+			"flavors":`+flavors+`,
 			"channels":[{"channel":"STABLE","availableVersions":["v1.34.6"]}]}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters":
+		_, _ = io.WriteString(rec, `{"clusters":[]}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/v2/networkLoadBalancers":
+		_, _ = io.WriteString(rec, `{"balancers":[]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v3/clusters":
 		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"cl-1","done":false}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters/cl-1":
 		_, _ = io.WriteString(rec, `{"id":"cl-1","controlPlane":{"zones":["mk-az1"]}}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/v3/clusters/cl-nozone":
 		_, _ = io.WriteString(rec, `{"id":"cl-nozone","controlPlane":{"zones":[]}}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/v3/nodePools":
+		_, _ = io.WriteString(rec, `{"nodePools":[`+f.pools+`]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v3/nodePools":
 		_, _ = io.WriteString(rec, `{"id":"op-np","resourceId":"np-1","done":false}`)
 	case r.URL.Path == "/v2/targetGroups/tg-1":
@@ -268,14 +280,36 @@ func TestK8s_MasterCountRefused(t *testing.T) {
 
 // L-10: превью k8s_add_nodepool без имени показывало пустое имя.
 func TestK8sAddNodePool_PreviewShowsDefaultName(t *testing.T) {
-	m, text, _ := callNamed(t, newTestServer(), "k8s_add_nodepool", map[string]any{"cluster_id": "c-1"})
+	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+	m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "c-1"})
 	p, _ := m["preview"].(map[string]any)
 	if p["name"] != "nodepool-1" {
 		t.Errorf("preview name %v, want nodepool-1: %s", p["name"], text)
 	}
-	m, _, _ = callNamed(t, newTestServer(), "k8s_add_nodepool", map[string]any{"cluster_id": "c-1", "name": "workers"})
+	m, _, _ = callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "c-1", "name": "workers"})
 	if p, _ := m["preview"].(map[string]any); p["name"] != "workers" {
 		t.Errorf("explicit name: %v", p["name"])
+	}
+}
+
+// A pool of the name in the cluster is refused before the consent, with
+// its id: a repeat after a lost answer made a second billable pool (fault
+// matrix, process audit 1.2.1). A deleted pool frees its name.
+func TestK8sAddNodePool_TakenNameRefusedBeforeConsent(t *testing.T) {
+	f := &raAPI{pools: `{"id":"np-7","name":"workers","status":"RUNNING"},{"id":"np-8","name":"old","status":"DELETED"}`}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	for _, confirmed := range []bool{false, true} {
+		m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "name": "workers", "confirmed": confirmed})
+		wantReason(t, "taken name", m, text, "USAGE")
+		if m["existing_id"] != "np-7" {
+			t.Errorf("confirmed=%v: existing_id %v, want np-7: %s", confirmed, m["existing_id"], text)
+		}
+	}
+	if n := f.postCount(); n != 0 {
+		t.Errorf("%d creates sent for a taken name", n)
+	}
+	if m, text, _ := callNamed(t, r, "k8s_add_nodepool", map[string]any{"cluster_id": "cl-1", "name": "old"}); m["status"] != "confirmation_required" {
+		t.Errorf("the name of a deleted pool is refused: %s", text)
 	}
 }
 
@@ -558,7 +592,7 @@ func TestDeletePreviews_NameTheResource(t *testing.T) {
 
 	f := &raAPI{targetVMs: `{"id":"vm-1"}`}
 	rr := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
-	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": "tg-1"}); !strings.Contains(text, "tg (tg-1)") {
+	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": "tg-1"}); !strings.Contains(text, `\"tg\" (tg-1)`) {
 		t.Errorf("tg_delete preview does not name the group: %s", text)
 	}
 	m, text, _ := callNamed(t, rr, "lb_delete", map[string]any{"id": "lb-missing"})
@@ -783,5 +817,56 @@ func TestStackPlan_S3BucketNameCheckedAtPlan(t *testing.T) {
 	mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": "my-bucket", "key": "k", "content": "c"}}}
 	if m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf}); isErr || m["job_id"] == nil {
 		t.Errorf("valid bucket: %s", text)
+	}
+}
+
+// cloud-e2e 22.10 (runs 39838101751, 39844928752): k8s_create sent the
+// masters' flavor gen-16-128, the first in the catalog's order, not the
+// smallest that fits — since #180 the loop's chosen name doubled as the
+// explicit --flavor, and the first fit stopped the search. A cluster
+// several times dearer than the one the plan meant, after a consent that
+// named no flavor; the zone refused it as sold out.
+func TestK8s_SmallestFittingFlavorWhateverCatalogOrder(t *testing.T) {
+	f := &raAPI{flavors: `[
+		{"flavorId":"fl-16-128","name":"gen-16-128","cpu":16,"ram":128},
+		{"flavorId":"fl-gpu","name":"gpu-2-4","cpu":2,"ram":4,"gpu":1},
+		{"flavorId":"fl-4-8","name":"gen-4-8","cpu":4,"ram":8},
+		{"flavorId":"fl-2-2","name":"gen-2-2","cpu":2,"ram":2},
+		{"flavorId":"fl-2-4","name":"gen-2-4","cpu":2,"ram":4}]`}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	args := map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1"}
+	m, text, isErr := callNamed(t, r, "k8s_plan", args)
+	if isErr || m["flavor"] != "gen-2-4" || m["flavor_id"] != "fl-2-4" {
+		t.Errorf("k8s_plan: want gen-2-4 (fl-2-4): %s", text)
+	}
+	args["confirmed"] = true
+	if _, text, isErr := callNamed(t, r, "k8s_create", args); isErr {
+		t.Fatalf("k8s_create: %s", text)
+	}
+	cp, _ := f.post("/v3/clusters")["controlPlaneConfiguration"].(map[string]any)
+	sz, _ := cp["sizingConfiguration"].(map[string]any)
+	if sz["flavorId"] != "fl-2-4" {
+		t.Errorf("k8s_create sent flavor %v, want fl-2-4", sz["flavorId"])
+	}
+	// An explicit flavor is still taken by its name.
+	m, text, _ = callNamed(t, r, "k8s_plan", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "flavor": "gen-4-8"})
+	if m["flavor"] != "gen-4-8" || m["flavor_id"] != "fl-4-8" {
+		t.Errorf("k8s_plan --flavor gen-4-8: %s", text)
+	}
+}
+
+// Flavors of the same size: by name, then id, in either order of the
+// catalogue (D27).
+func TestK8s_EqualFlavorsByNameWhateverCatalogOrder(t *testing.T) {
+	for _, flavors := range []string{
+		`[{"flavorId":"fl-b","name":"gen-2-4-b","cpu":2,"ram":4},{"flavorId":"fl-a","name":"gen-2-4-a","cpu":2,"ram":4}]`,
+		`[{"flavorId":"fl-a","name":"gen-2-4-a","cpu":2,"ram":4},{"flavorId":"fl-b","name":"gen-2-4-b","cpu":2,"ram":4}]`,
+	} {
+		f := &raAPI{flavors: flavors}
+		r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+		m, text, isErr := callNamed(t, r, "k8s_plan", map[string]any{"zone": "ru.AZ-1", "cluster_sa_id": "sa-1"})
+		if isErr || m["flavor"] != "gen-2-4-a" || m["flavor_id"] != "fl-a" {
+			t.Errorf("catalogue %s: want gen-2-4-a (fl-a): %s", flavors, text)
+		}
 	}
 }

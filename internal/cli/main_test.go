@@ -243,3 +243,15 @@ func TestRun_CommandsWithoutVMCreateNoSSHKey(t *testing.T) {
 		}
 	}
 }
+
+// The global flags live for one run: --profile ci of one CLI run made the
+// next test that builds an engine without run() read a profile it never
+// saved (TestContract_EveryPreviewPricedOrListed on main under -shuffle).
+func TestRun_GlobalFlagsDoNotOutliveTheRun(t *testing.T) {
+	t.Setenv("CLOUDRU_CONFIG_DIR", t.TempDir())
+	runCLI(t, "", "--profile", "ci", "--json", "--yes", "--dry-run", "--verbose", "--no-color", "version")
+	if flagProfile != "" || flagJSON || flagYes || flagDryRun || flagVerbose || flagNoColor {
+		t.Errorf("after the run: profile %q json %v yes %v dry-run %v verbose %v no-color %v",
+			flagProfile, flagJSON, flagYes, flagDryRun, flagVerbose, flagNoColor)
+	}
+}
