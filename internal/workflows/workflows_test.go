@@ -357,6 +357,35 @@ func TestWorkflows_WeeklyRace(t *testing.T) {
 	}
 }
 
+// The cleanup of cloud-e2e removes an «evo:» rule of an e2e port only when
+// its security group has no VM (e2e_rules_sweep.sh, tested in ci): any evo
+// deploy writes «evo: …», and a rule of a person's VM looks the same. No
+// step deletes rules on its own.
+func TestWorkflows_CleanupKeepsRulesOfGroupsInUse(t *testing.T) {
+	ws := readWorkflows(t)
+	j, ok := ws["cloud-e2e.yml"].Jobs["cleanup"]
+	if !ok {
+		t.Fatal("cloud-e2e: no job cleanup")
+	}
+	sweeps := false
+	for name, job := range ws["cloud-e2e.yml"].Jobs {
+		for _, s := range job.Steps {
+			if strings.Contains(s.Run, "/rules/") && strings.Contains(s.Run, "DELETE") {
+				t.Errorf("cloud-e2e job %s: a step deletes security group rules itself, not with e2e_rules_sweep.sh", name)
+			}
+		}
+	}
+	for _, s := range j.Steps {
+		sweeps = sweeps || strings.Contains(s.Run, ".github/scripts/e2e_rules_sweep.sh")
+	}
+	if !sweeps {
+		t.Error("cloud-e2e cleanup: the «evo:» rules are not swept with e2e_rules_sweep.sh")
+	}
+	if !runsStep(ws["ci.yml"], ".github/scripts/e2e_rules_sweep_test.sh") {
+		t.Error("ci: e2e_rules_sweep.sh is not tested (e2e_rules_sweep_test.sh)")
+	}
+}
+
 // Every week each Fuzz* target of the repository fuzzes main for five
 // minutes (process audit 1.2.1, second wave): the target list comes from
 // go test -list, so a new target joins without an edit here.

@@ -53,6 +53,12 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
 
+      # Уборка правил «evo:» в cloud-e2e cleanup: только группы без ВМ
+      # (e2e_rules_sweep.sh), на фейках evo и curl.
+      - name: уборка правил evo в cloud-e2e
+        if: runner.os == 'Linux'
+        run: .github/scripts/e2e_rules_sweep_test.sh
+
       # Форматирование от ОС не зависит — проверяем один раз. gofmt молча
       # ничего не возвращает, поэтому непустой вывод и есть провал.
       - name: gofmt
