@@ -96,10 +96,24 @@ jobs:
         if: runner.os == 'Linux'
         run: shellcheck install.sh internal/bootstrap/install.sh .github/scripts/*.sh
 
+      # Запись CHANGELOG каждого PR — фрагмент changelog.d/<тема>.md
+      # (changelog.d/README.md); перед тегом релиз вливает их скриптом.
+      - name: фрагменты CHANGELOG
+        if: runner.os == 'Linux'
+        run: |
+          python3 scripts/changelog-test.py
+          python3 scripts/changelog.py check
+
       # Маска публичных логов cloud-e2e: имена групп и подсетей тестового проекта.
       - name: redact.sed на образцах вывода evo
         if: runner.os == 'Linux'
         run: .github/scripts/redact_test.sh
+
+      # Обёртка evo публичных логов cloud-e2e и api-probe (build_evo.sh):
+      # stderr — через redact.sed, stdout, код выхода и Ctrl-C — как у evo.
+      - name: обёртка evo с маской stderr
+        if: runner.os == 'Linux'
+        run: .github/scripts/evo_wrapper_test.sh
 
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
@@ -190,15 +204,15 @@ jobs:
           echo "classes=$(.github/scripts/classify_registry.sh "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
       # SHA базы — не текст события, но идёт через env, как всё из события.
-      # Ломающее — новый заголовок «### Миграция» в CHANGELOG.md, а не слово
-      # в тексте пункта.
+      # Ломающее — новый заголовок «### Миграция» в CHANGELOG.md или во
+      # фрагменте changelog.d/, а не слово в тексте пункта.
       - name: классы по путям
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           REGISTRY: ${{ steps.registry.outputs.classes }}
         run: |
           MIGRATION=0
-          if git diff "$BASE...HEAD" -- CHANGELOG.md | grep -q '^+### Миграция'; then MIGRATION=1; fi
+          if git diff "$BASE...HEAD" -- CHANGELOG.md changelog.d/ | grep -q '^+### Миграция'; then MIGRATION=1; fi
           git diff --name-only "$BASE...HEAD" | MIGRATION=$MIGRATION .github/scripts/classify.sh |
             .github/scripts/classify_summary.sh >> "$GITHUB_STEP_SUMMARY"
 
