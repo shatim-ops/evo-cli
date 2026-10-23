@@ -7,6 +7,7 @@
 package workflows
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -186,6 +187,53 @@ func TestWorkflows_CIShufflesOnMain(t *testing.T) {
 		}
 	}
 	t.Error("ci: go test -race without -shuffle")
+}
+
+// On Windows the race-enabled go test runs with async preemption off until
+// CI moves to a Go with the fix: the runtime crashed there with 0xc0000005
+// in adjustdefers during shrinkstack, in internal/tools, on PRs whose diff
+// could not cause it (#226, #219; hypothesis golang/go#79249, fixed for Go
+// 1.28). Other systems keep the default. On Go 1.28 and later the setting
+// must go, so the test fails until it is removed.
+func TestWorkflows_WindowsRaceWithoutAsyncPreemptBeforeGo128(t *testing.T) {
+	const want = "${{ runner.os == 'Windows' && 'asyncpreemptoff=1' || '' }}"
+	ws := readWorkflows(t)
+	for _, file := range []string{"ci.yml", "weekly-race.yml"} {
+		found := false
+		for name, j := range ws[file].Jobs {
+			goVersion := ""
+			for _, s := range j.Steps {
+				if strings.HasPrefix(s.Uses, "actions/setup-go@") {
+					goVersion, _ = s.With["go-version"].(string)
+				}
+			}
+			for _, s := range j.Steps {
+				if !strings.Contains(s.Run, "go test -race") {
+					continue
+				}
+				found = true
+				got, set := s.Env["GODEBUG"]
+				switch fixed := goAtLeast(goVersion, 1, 28); {
+				case fixed && set:
+					t.Errorf("%s: job %s runs Go %s with the fix of golang/go#79249: remove GODEBUG %q", file, name, goVersion, got)
+				case !fixed && got != want:
+					t.Errorf("%s: job %s (Go %q) go test -race GODEBUG %q, want %q", file, name, goVersion, got, want)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no go test -race step", file)
+		}
+	}
+}
+
+// goAtLeast reports whether version ("1.26.10") is major.minor or later.
+func goAtLeast(version string, major, minor int) bool {
+	var ma, mi int
+	if _, err := fmt.Sscanf(version, "%d.%d", &ma, &mi); err != nil {
+		return false
+	}
+	return ma > major || ma == major && mi >= minor
 }
 
 // Every PR gets its change class and the checklist of checks beyond CI in
