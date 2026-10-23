@@ -13,7 +13,8 @@ A service whose page or file did not load, or that lacks a spec the
 contract check needs, is fetched again on its own, up to ROUNDS times; the
 others are kept. Services are fetched WORKERS at a time.
 
-Usage: python3 scripts/cloudru-specs.py [OUT_DIR]
+Usage: python3 scripts/cloudru-specs.py [OUT_DIR]   (OUT_DIR not starting with «-»)
+       python3 scripts/cloudru-specs.py -h | --help
 Needs: curl, PyYAML (pip install pyyaml).
 Tests: python3 scripts/cloudru-specs-test.py
 """
@@ -192,7 +193,16 @@ def unmet(results, needs):
 
 
 def main():
-    out = sys.argv[1] if len(sys.argv) > 1 else ".cache/cloudru-specs"
+    args = sys.argv[1:]
+    if args in (["-h"], ["--help"]):
+        print(__doc__)
+        return 0
+    # An option is not a directory: «--help» once got the specs written
+    # into «--help/» at the root of the repository (FB13-1, #267).
+    if len(args) > 1 or any(a.startswith("-") for a in args):
+        print(__doc__, file=sys.stderr)
+        return 2
+    out = args[0] if args else ".cache/cloudru-specs"
     os.makedirs(out, exist_ok=True)
     needs = contract_specs()
     results = {}
