@@ -89,7 +89,7 @@ func apiCase(tool string, args map[string]any, made ...faultResource) faultMatri
 			return a, faultAPIRegistry(t, a), ""
 		},
 		skip: func(call, kind string) string {
-			if (kind == faultTransport || kind == faultLost) && strings.HasPrefix(call, http.MethodGet+" ") {
+			if (kind == faultTransport || kind == faultLost || kind == faultSlow) && strings.HasPrefix(call, http.MethodGet+" ") {
 				return "httpretry repeats a read after its 1 s backoff (internal/httpretry tests)"
 			}
 			return ""
@@ -147,10 +147,13 @@ const (
 // answers any cluster it is asked of.
 const faultK8sCluster = "00000000-0000-4000-8000-0000000000f1"
 
-// The fault kinds a call can meet at any step. faultLostNameless is not one:
+// The fault kinds a call can meet at any step. faultSlow is a lost answer
+// whose error is the client's deadline (http.Client.Timeout, #224): a
+// create that reads a timeout as "nothing was made" leaves its resource
+// named nowhere. faultLostNameless is not one:
 // it is an answer the API cannot give (a floating IP's name is required,
 // minLength 1), weighed and left in BACKLOG.md (break-r3a).
-var faultMatrixKinds = []string{faultCancel, faultTransport, faultLost, faultEmpty, faultAuth, faultReject, faultHTTP500}
+var faultMatrixKinds = []string{faultCancel, faultTransport, faultLost, faultSlow, faultEmpty, faultAuth, faultReject, faultHTTP500}
 
 // fipPollWait is the production poll of a floating IP (engine
 // fipPollInterval): a fault run that waits one has missed the world's
