@@ -74,6 +74,12 @@ jobs:
       - run: go test -race -count=1 -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} ./...
         env:
           GORACE: atexit_sleep_ms=0
+          # Windows only: async preemption off until CI is on Go 1.28. The
+          # runtime crashed with 0xc0000005 in adjustdefers/shrinkstack in
+          # internal/tools on PRs whose diff could not cause it (#226, #219);
+          # hypothesis golang/go#79249. Remove with the Go bump
+          # (TestWorkflows_WindowsRaceWithoutAsyncPreemptBeforeGo128).
+          GODEBUG: ${{ runner.os == 'Windows' && 'asyncpreemptoff=1' || '' }}
 
       # Конфиг релиза проверяется на каждом PR, а не впервые на теге.
       - name: goreleaser check
