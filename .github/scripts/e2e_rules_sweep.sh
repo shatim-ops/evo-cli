@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 # Уборка правил «evo:» для портов e2e (80/8080/8081/8082/8086) в job cleanup
 # cloud-e2e. Описание «evo: …» ставит любой evo deploy и vm create, поэтому
-# правило снимается, только если в его группе безопасности нет ни одной ВМ:
+# правило снимается, только если в его группе безопасности нет ни одного
+# сетевого интерфейса — ни ВМ, ни отвязанного порта:
 # раньше снимались все, когда в проекте нет ВМ evo-*, и evo deploy под
 # другим именем в том же проекте терял бы своё правило (release-plan 1.3,
 # задача процесса). Идёт прогон e2e (есть ВМ evo-e2e-*) — ничего не трогает,
-# код 1. Интерфейсы группы не прочитаны — правило остаётся. Правила удаляет
+# код 1. Признак — has_interfaces группы (Compute GET
+# /api/v1/security-groups/{id}, PublicSecurityGroupResponse: обязательное
+# boolean «наличие сетевых интерфейсов, которые добавлены в группу»).
+# Снимается только при has_interfaces строго false: ответ не 200, поля нет
+# или оно не boolean — правило остаётся (отказ в безопасную сторону, ревью
+# «1.3 — релиза»: ошибка модели API не должна снять правило у ВМ
+# пользователя). Правила удаляет
 # API напрямую: в evo нет команды удаления правила.
 # Проверка — e2e_rules_sweep_test.sh (job ci). Окружение: KEY_ID, SECRET,
 # PROJECT, RUNNER_TEMP.
@@ -26,23 +33,22 @@ echo "::add-mask::$TOKEN"
 while read -r g r port; do
 	echo "::add-mask::$g"
 	echo "::add-mask::$r"
-	# ВМ в группе: интерфейсы с этой группой (Compute API, /interfaces).
-	code=$(curl -sS -o "$RUNNER_TEMP/ifaces.json" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
-		"$compute/interfaces?project_id=$PROJECT&security_group_id=$g&limit=1000") || code=000
-	used=-
-	[ "$code" != 200 ] || used=$(jq '[.items[]? | select(.vm != null)] | length' "$RUNNER_TEMP/ifaces.json" 2>/dev/null || echo -)
-	case "$used" in
-	0) ;;
-	-)
-		echo "::warning::правило $port: интерфейсы группы не прочитаны (http=$code) — оставлено"
+	code=$(curl -sS -o "$RUNNER_TEMP/sg-one.json" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
+		"$compute/security-groups/$g") || code=000
+	busy=unknown
+	[ "$code" != 200 ] || busy=$(jq -r 'if (.has_interfaces | type) == "boolean" then .has_interfaces else "unknown" end' "$RUNNER_TEMP/sg-one.json" 2>/dev/null || echo unknown)
+	case "$busy" in
+	false) ;;
+	true)
+		echo "правило $port: в группе есть интерфейсы (ВМ не из e2e) — оставлено"
 		continue
 		;;
 	*)
-		echo "правило $port: в группе ВМ ($used), не из e2e — оставлено"
+		echo "::warning::правило $port: группа не прочитана или без has_interfaces (http=$code) — оставлено"
 		continue
 		;;
 	esac
 	code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
 		"$compute/security-groups/$g/rules/$r")
-	echo "правило $port: в группе нет ВМ, DELETE http=$code"
+	echo "правило $port: в группе нет интерфейсов, DELETE http=$code"
 done <<<"$rules"

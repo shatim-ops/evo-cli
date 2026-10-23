@@ -358,7 +358,7 @@ func TestWorkflows_WeeklyRace(t *testing.T) {
 }
 
 // The cleanup of cloud-e2e removes an «evo:» rule of an e2e port only when
-// its security group has no VM (e2e_rules_sweep.sh, tested in ci): any evo
+// its security group has no interface (e2e_rules_sweep.sh, tested in ci): any evo
 // deploy writes «evo: …», and a rule of a person's VM looks the same. No
 // step deletes rules on its own.
 func TestWorkflows_CleanupKeepsRulesOfGroupsInUse(t *testing.T) {

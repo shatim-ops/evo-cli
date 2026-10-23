@@ -92,7 +92,7 @@ on:
         type: boolean
         default: false
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no VM left) and print project quotas"
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no network interface left) and print project quotas"
         type: boolean
         default: false
 
@@ -683,7 +683,8 @@ jobs:
   # Остатки прошлых прогонов (16.10.2026: отменённый прогон оставил ВМ
   # evo-e2e-app, её FIP и правило порта 80, следующий deploy упал на 409).
   # Ничего не создаёт. Правила «evo:» для портов e2e удаляются, только если
-  # в их группе безопасности нет ни одной ВМ, и ни одно, пока идёт прогон
+  # в их группе безопасности нет ни одного интерфейса (has_interfaces: false),
+  # и ни одно, пока идёт прогон
   # (есть ВМ evo-e2e-*): описание «evo: …» ставит любой evo deploy/vm create,
   # и правило ВМ пользователя иначе не отличить (e2e_rules_sweep.sh).
   # Кластеры DBaaS — только evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis
@@ -826,7 +827,7 @@ jobs:
           echo "диски evo-* без ВМ: $left"
           echo "::warning::в проекте есть диски evo-* без ВМ — они оплачиваются; удалите ненужные ('evo disk delete' или консоль Cloud.ru)"
 
-      # Правило «evo:» снимается, только если в его группе нет ВМ
+      # Правило «evo:» снимается, только если в его группе нет интерфейсов
       # (e2e_rules_sweep.sh).
       - name: Правила «evo:» для портов e2e
         if: always()
