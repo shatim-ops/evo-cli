@@ -325,9 +325,6 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	if instances < 1 {
 		return usageT("instances %d: at least 1", "instances %d: нужен хотя бы 1", instances), true
 	}
-	if err := plainName("PostgreSQL cluster", "name", name); err != nil {
-		return errResult(err), true
-	}
 	// Sizes before the cloud: storage_gb 0 or -5 and a retention of 0 or
 	// 90 days made a preview, then the API refused it (QA 20.10, QA-7).
 	if err := minIntArg(args, "storage_gb", 1, i18n.T("Omit storage_gb for the specification's minimum.", "Без storage_gb — минимум конфигурации.")); err != nil {

@@ -97,9 +97,6 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 	}
 	// The secret's name is the last part of the path: "folder/" names none
 	// (QA-15).
-	if err := plainName("secret", "path", path); err != nil {
-		return errResult(err), true
-	}
 	if err := plainName("secret", "name", path[strings.LastIndex(path, "/")+1:]); err != nil {
 		return errResult(err), true
 	}
