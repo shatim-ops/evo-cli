@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -201,6 +202,20 @@ func (a *faultAPI) serveS3(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</Buckets></ListAllMyBucketsResult>`)
 		_, _ = io.WriteString(w, b.String())
+	case key == "" && r.Method == http.MethodGet && r.URL.Query().Has("location"):
+		_, _ = io.WriteString(w, `<LocationConstraint>ru-central-1</LocationConstraint>`)
+	case key == "" && r.Method == http.MethodGet && find("bucket", bucket):
+		// ListObjectsV2 by prefix, as s3_rm looks for the key it deletes.
+		prefix := r.URL.Query().Get("prefix")
+		var b strings.Builder
+		b.WriteString(`<ListBucketResult><Name>` + bucket + `</Name><IsTruncated>false</IsTruncated>`)
+		for _, c := range a.made {
+			if c.host == faultS3Host && c.path == "object "+bucket && strings.HasPrefix(c.ID, prefix) {
+				b.WriteString(`<Contents><Key>` + c.ID + `</Key><Size>2</Size><LastModified>2026-01-01T00:00:00.000Z</LastModified></Contents>`)
+			}
+		}
+		b.WriteString(`</ListBucketResult>`)
+		_, _ = io.WriteString(w, b.String())
 	case key == "" && r.Method == http.MethodHead:
 		if !find("bucket", bucket) {
 			w.WriteHeader(http.StatusNotFound)
@@ -223,6 +238,15 @@ func (a *faultAPI) serveS3(w http.ResponseWriter, r *http.Request) {
 			a.made = append(a.made, faultResource{host: faultS3Host, path: "object " + bucket, ID: key, Name: key})
 		}
 		w.Header().Set("ETag", `"0"`)
+	case key != "" && r.Method == http.MethodDelete:
+		// S3 answers 204 to a key that is not there as to one that is.
+		for k, c := range a.made {
+			if c.host == faultS3Host && c.path == "object "+bucket && c.ID == key {
+				a.made = append(a.made[:k], a.made[k+1:]...)
+				break
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
 	default:
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = io.WriteString(w, `<Error><Code>NoSuchKey</Code><Message>no such path</Message></Error>`)
@@ -314,9 +338,37 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"id":"`+op+`","done":false}`)
 	case strings.HasPrefix(path, "/v1/operations/"):
 		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v1/operations/")+`","done":true}`)
+	case r.Method == http.MethodDelete && a.remove(host, path):
+		_, _ = io.WriteString(w, `{}`)
 	default:
 		http.Error(w, `{"message":"not found"}`, 404)
 	}
+}
+
+// remove deletes the resource a DELETE of path names: an item of the
+// longest collection the path is under, by its id or name — a name may
+// hold "/" (a secret's path, app/db). It reports whether there was one; a
+// DELETE of what is not there is 404.
+func (a *faultAPI) remove(host, path string) bool {
+	coll := ""
+	for c := range faultCollections {
+		if strings.HasPrefix(path, c+"/") && len(c) > len(coll) {
+			coll = c
+		}
+	}
+	if coll == "" {
+		return false
+	}
+	ref := strings.TrimPrefix(path, coll+"/")
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for k, c := range a.made {
+		if c.host == host && c.path == coll && (c.ID == ref || c.Name == ref) {
+			a.made = append(a.made[:k], a.made[k+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // faultAPIRegistry is a registry whose every service, compute included,
@@ -430,5 +482,69 @@ func TestNameCheck_OfflinePreviewsMakeNoRequest(t *testing.T) {
 		if calls := a.callLog(); len(calls) > 0 {
 			t.Errorf("%s: the preview reached the cloud: %v", tool, calls)
 		}
+	}
+}
+
+// The world deletes what a DELETE names and lists objects by prefix, as
+// the stack tests that run stack_apply and stack_destroy on real handlers
+// need (G13-14): a delete that removed nothing answers 404, which is
+// «already deleted» since D26 and would pass as silently as a removal.
+func TestFaultAPI_DeletesWhatItKeeps(t *testing.T) {
+	const sm, vpc = "secretmanager.api.cloud.ru", "vpc.api.cloud.ru"
+	routes := "/v1/vpcs/" + faultVPC + "/routes/static"
+	a := &faultAPI{made: []faultResource{
+		{host: sm, path: "/v2/secret", ID: "s-1", Name: "app/db"},
+		{host: vpc, path: "/v1/vpcs", ID: faultVPC, Name: "net"},
+		{host: vpc, path: routes, ID: "r-1", Name: "198.51.100.0/24"},
+		{host: faultS3Host, path: "bucket", ID: "b", Name: "b"},
+		{host: faultS3Host, path: "object b", ID: "logs/a", Name: "logs/a"},
+		{host: faultS3Host, path: "object b", ID: "x", Name: "x"},
+	}}
+	c := &http.Client{Transport: a}
+	do := func(method, url string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, url, nil)
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	kept := func() []string {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		var out []string
+		for _, r := range a.made {
+			out = append(out, r.ID)
+		}
+		return out
+	}
+
+	if code, body := do(http.MethodGet, "https://"+faultS3Host+"/b?list-type=2&prefix=logs/"); code != 200 ||
+		!strings.Contains(body, "<Key>logs/a</Key>") || strings.Contains(body, "<Key>x</Key>") {
+		t.Errorf("list by prefix logs/: %d %s", code, body)
+	}
+	for _, d := range []struct{ url, gone string }{
+		{"https://" + sm + "/v2/secret/app/db", "s-1"}, // by name, with a folder
+		{"https://" + vpc + routes + "/r-1", "r-1"},    // the longest collection, not /v1/vpcs
+		{"https://" + faultS3Host + "/b/logs/a", "logs/a"},
+	} {
+		if code, body := do(http.MethodDelete, d.url); code >= 300 {
+			t.Errorf("DELETE %s: %d %s", d.url, code, body)
+		}
+		if slices.Contains(kept(), d.gone) {
+			t.Errorf("DELETE %s left %s: %v", d.url, d.gone, kept())
+		}
+	}
+	if code, _ := do(http.MethodDelete, "https://"+sm+"/v2/secret/app/db"); code != http.StatusNotFound {
+		t.Errorf("a second DELETE of the secret: %d, want 404", code)
+	}
+	if code, _ := do(http.MethodDelete, "https://"+faultS3Host+"/b/logs/a"); code != http.StatusNoContent {
+		t.Errorf("a second DELETE of the object: %d, want 204 as S3 answers", code)
+	}
+	if got := kept(); !slices.Equal(got, []string{faultVPC, "b", "x"}) {
+		t.Errorf("kept %v, want the VPC, the bucket and x", got)
 	}
 }
