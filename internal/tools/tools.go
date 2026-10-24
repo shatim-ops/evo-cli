@@ -1380,7 +1380,7 @@ func (s *Registry) registerTools() {
 		"disk_create":          s.handleDiskCreate,
 		"disk_attach":          s.handleDiskAttach,
 		"disk_detach":          s.handleDiskDetach,
-		"disk_resize":          s.handleDiskResize,
+		"disk_resize":          s.gated("disk_resize", s.planDiskResize),
 		"disk_delete":          s.gated("disk_delete", s.planDiskDelete),
 		"ca_list":              s.handleCaList,
 		"ca_get":               s.handleCaGet,

@@ -38,7 +38,6 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_disk.go: handleDiskAttach":            "1.4",
 	"internal/tools/tools_disk.go: handleDiskCreate":            "1.4",
 	"internal/tools/tools_disk.go: handleDiskDetach":            "1.4",
-	"internal/tools/tools_disk.go: handleDiskResize":            "W5",
 	"internal/tools/tools_dns.go: handleDnsRecordCreate":        "1.4",
 	"internal/tools/tools_dns.go: handleDnsZoneCreate":          "1.4",
 	"internal/tools/tools_image.go: handleFipAttach":            "1.4",
@@ -72,7 +71,7 @@ var inlineGates = map[string]string{
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 43
+const inlineGatesLeft = 42
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{
