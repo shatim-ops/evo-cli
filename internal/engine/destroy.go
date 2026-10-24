@@ -85,7 +85,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			return e.finishPendingRules(ctx, opts, statePath, stateFile, pending)
 		}
 		if e.Printer.IsJSON() {
-			return e.Printer.JSON(map[string]any{"status": "none", "message": noDeploymentToDestroy()})
+			return e.Printer.JSON(noDeploymentAnswer())
 		}
 		e.Printer.Success(noDeploymentToDestroy())
 		return nil
@@ -326,6 +326,26 @@ func notOursText(labels []string) string {
 
 func noDeploymentToDestroy() string {
 	return i18n.T("No active deployment to destroy.", "Активного развёртывания нет, удалять нечего.")
+}
+
+// noDeploymentAnswer is the JSON answer of a destroy with nothing to
+// destroy, as 'evo destroy --json' has given it since v1.0.
+func noDeploymentAnswer() map[string]any {
+	return map[string]any{"status": "none", "message": noDeploymentToDestroy()}
+}
+
+// NothingToDestroy is the answer of a destroy of this directory with
+// nothing to destroy — no active deployment and no port rules an earlier
+// destroy left — the one 'evo destroy --json' gives; false when there is
+// something to destroy or the state cannot be read (the destroy meets it).
+// The MCP destroy answers it with no question, as the CLI does (owner's
+// decision 24.10, W5).
+func (e *Engine) NothingToDestroy() (map[string]any, bool) {
+	sf, err := state.Read(state.DefaultPath(e.StateDir))
+	if err != nil || sf.ActiveDeployment() != nil || len(sgrules.Pending(sf)) > 0 {
+		return nil, false
+	}
+	return noDeploymentAnswer(), true
 }
 
 // closeRules deletes the port rules the given deployments created and

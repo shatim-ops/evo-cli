@@ -168,58 +168,52 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	}), false
 }
 
-// handleFipAttach binds an existing free floating IP to a VM's primary
-// interface. Needed whenever a VM ends up without a public address — e.g. when
-// provisioning from a large custom image takes longer than the provision
-// wizard's wait and it returns before assigning one.
-// Mutation: requires confirmed=true.
-func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (string, bool) {
+// planFipAttach plans fip_attach, which binds an existing free floating IP
+// to a VM's primary interface. Needed whenever a VM ends up without a
+// public address — e.g. when provisioning from a large custom image takes
+// longer than the provision wizard's wait and it returns before assigning
+// one. The floating IP, the VM and its interface are found before the
+// question (D35): one that is not there is refused then, not after consent
+// (W6, G13-3).
+func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Plan, error) {
 	fipRef := stringArg(args, "fip")
 	vmRef := stringArg(args, "vm")
 	if fipRef == "" || vmRef == "" {
-		return usageT("'fip' (address or UUID) and 'vm' (name or UUID) are required", "нужны 'fip' (адрес или UUID) и 'vm' (имя или UUID)"), true
-	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("fip_attach gives the VM a public address.",
-				"fip_attach даёт ВМ публичный адрес."),
-			"will_attach": map[string]any{"fip": fipRef, "vm": vmRef},
-		}), true
+		return nil, usageErr("'fip' (address or UUID) and 'vm' (name or UUID) are required", "нужны 'fip' (адрес или UUID) и 'vm' (имя или UUID)")
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	pid := eng.Config.ProjectID
 
 	// Resolve the floating IP by address or UUID, and refuse one already in use.
 	fips, err := eng.Cloud.ListFloatingIPs(ctx, pid)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("list floating ips: %w", "список floating IP: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("list floating ips: %w", "список floating IP: %w"), err)
 	}
 	fipID, fipName := "", ""
 	for _, f := range fips {
 		if f.ID == fipRef || f.IPAddress == fipRef {
 			if f.OnNATGateway() {
-				return errResult(fmt.Errorf(i18n.T("floating IP %q belongs to a SNAT gateway and cannot be attached to a VM", "floating IP %q принадлежит SNAT-шлюзу, к ВМ его не привязать"), fipRef)), true
+				return nil, fmt.Errorf(i18n.T("floating IP %q belongs to a SNAT gateway and cannot be attached to a VM", "floating IP %q принадлежит SNAT-шлюзу, к ВМ его не привязать"), fipRef)
 			}
 			fipID, fipName = f.ID, f.Name
 			break
 		}
 	}
 	if fipID == "" {
-		return errResult(fmt.Errorf(i18n.T("floating IP %q not found", "floating IP %q не найден"), fipRef)), true
+		return nil, fmt.Errorf(i18n.T("floating IP %q not found", "floating IP %q не найден"), fipRef)
 	}
 
 	// Find the VM's primary interface — that is what the address binds to.
 	vmID, _, err := s.resolveVM(ctx, vmRef, pid)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	detail, err := eng.Cloud.GetVMDetail(ctx, vmID)
 	if err != nil {
-		return errResult(fmt.Errorf("get vm detail: %w", err)), true
+		return nil, fmt.Errorf(i18n.T("get vm detail: %w", "данные ВМ: %w"), err)
 	}
 	ifaceID := ""
 	for _, itf := range detail.Interfaces {
@@ -232,7 +226,7 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 		ifaceID = detail.Interfaces[0].ID
 	}
 	if ifaceID == "" {
-		return errResult(fmt.Errorf(i18n.T("VM %s has no interface to attach to", "у ВМ %s нет интерфейса для привязки"), vmRef)), true
+		return nil, fmt.Errorf(i18n.T("VM %s has no interface to attach to", "у ВМ %s нет интерфейса для привязки"), vmRef)
 	}
 
 	// The API rejects an empty name ("Value should have at least 1 item"), so
@@ -241,11 +235,20 @@ func (s *Registry) handleFipAttach(ctx context.Context, args map[string]any) (st
 	if name == "" {
 		name = provision.FitName("fip-"+detail.Name, "")
 	}
-	res, err := eng.Cloud.AttachFloatingIP(ctx, fipID, pid, ifaceID, name)
-	if err != nil {
-		return errResult(fmt.Errorf("attach floating ip: %w", err)), true
-	}
-	return toJSON(map[string]any{"status": "attached", "floating_ip": res, "vm_id": vmID, "interface_id": ifaceID}), false
+	return &Plan{
+		Preview: map[string]any{
+			"message": i18n.T("fip_attach gives the VM a public address.",
+				"fip_attach даёт ВМ публичный адрес."),
+			"will_attach": map[string]any{"fip": fipRef, "vm": vmRef},
+		},
+		Execute: func(ctx context.Context) (string, bool) {
+			res, err := eng.Cloud.AttachFloatingIP(ctx, fipID, pid, ifaceID, name)
+			if err != nil {
+				return errResult(fmt.Errorf(i18n.T("attach floating ip: %w", "привязка floating IP: %w"), err)), true
+			}
+			return toJSON(map[string]any{"status": "attached", "floating_ip": res, "vm_id": vmID, "interface_id": ifaceID}), false
+		},
+	}, nil
 }
 
 // zoneStates maps each zone name to the image's build state there.

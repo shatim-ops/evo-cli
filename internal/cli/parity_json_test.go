@@ -103,8 +103,9 @@ var jsonAliasCompat = map[string]jsonCompat{
 			return ""
 		}},
 	"evo destroy": {
-		reason: "итог движка, как с v1.0: status destroyed с vm_id, vm_ip, vm_name, без развёртывания — status none с message; инструмент — status ok и log. " +
-			"Ключ status есть у обоих с разными значениями — свести без потери нельзя: вопрос владельцу",
+		reason: "итог движка, как с v1.0: status destroyed с vm_id, vm_ip, vm_name; инструмент — status ok и log. " +
+			"Ключ status есть у обоих с разными значениями — свести без потери нельзя: вопрос владельцу. " +
+			"Без развёртывания ответы одни (status none, W5)",
 		check: func(cmdOut, _, text string) string {
 			cmd, tool := parseObject(cmdOut), parseObject(text)
 			log, _ := tool["log"].(string)
@@ -112,9 +113,8 @@ var jsonAliasCompat = map[string]jsonCompat{
 			case tool["status"] != "ok":
 				return "the tool's answer is not status ok"
 			case cmd["status"] == "destroyed" && strings.Contains(log, fmt.Sprint(cmd["vm_id"])):
-			case cmd["status"] == "none" && strings.Contains(log, fmt.Sprint(cmd["message"])):
 			default:
-				return fmt.Sprintf("status %v is not the VM or the no-deployment of the tool's log", cmd["status"])
+				return fmt.Sprintf("status %v is not the VM of the tool's log", cmd["status"])
 			}
 			return ""
 		}},
@@ -356,7 +356,7 @@ func TestParity_JSONEqualsTool(t *testing.T) {
 	w, fake := withJSONWorld(t)
 	cases, withCommand, bad := jsonCases(t)
 	compat := 0
-	seen, logged := map[string]bool{}, map[string]bool{}
+	seen, logged, needed := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, c := range cases {
 		r := runJSONCase(t, c, w, fake)
 		seen[c.path] = true
@@ -386,10 +386,12 @@ func TestParity_JSONEqualsTool(t *testing.T) {
 		if ca, ok := jsonAliasCompat[c.path]; ok && ca.check != nil {
 			switch why := ca.check(r.out, r.errOut, r.text); {
 			case equal:
-				bad = append(bad, c.path+": in jsonAliasCompat, but --json is the tool's answer: drop the entry")
+				// This state needs no alias; another may (evo destroy:
+				// with no deployment the answers are one, with one not).
 			case why != "":
 				bad = append(bad, c.path+": not the form jsonAliasCompat gives ("+why+"): "+what)
 			default:
+				needed[c.path] = true
 				compat++
 				if !logged[c.path] {
 					t.Logf("%s: %s", c.path, ca.reason)
@@ -405,6 +407,9 @@ func TestParity_JSONEqualsTool(t *testing.T) {
 	for path, ca := range jsonAliasCompat {
 		if !seen[path] {
 			bad = append(bad, path+": in jsonAliasCompat, but no command of a tool")
+		}
+		if seen[path] && ca.check != nil && !needed[path] {
+			bad = append(bad, path+": in jsonAliasCompat, but --json is the tool's answer in every state: drop the entry")
 		}
 		if ca.reason == "" || ca.check == nil && ca.onError == nil {
 			bad = append(bad, path+": an entry of jsonAliasCompat needs a reason and a check")

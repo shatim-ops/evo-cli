@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +34,12 @@ type provisionCloud struct {
 }
 
 func (*provisionCloud) SetToken(string) {}
+
+// ListDiskTypes: the plan prices the preview before the question (D35);
+// the price is not this fake's concern.
+func (*provisionCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
+	return nil, errors.New("no disk types in this fake")
+}
 func (*provisionCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
 	return nil, nil
 }

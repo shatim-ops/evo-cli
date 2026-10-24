@@ -25,13 +25,7 @@ import (
 // release plan that moves the check before the question (W3…W6). The list
 // only shrinks: a case not here fails the test, and so does a line whose
 // call no longer fails that way.
-var lateRefusals = map[string]string{
-	"deploy: world: zone without subnet":         "W5: the subnet of the zone before the question (provision path)",
-	"provision: world: zone without subnet":      "W5: the subnet of the zone before the question",
-	"cert_private_key: certificate_id=absent id": "W6: the certificate looked up before the question",
-	"dns_record_create: zone_id=absent id":       "W6: the zone looked up before the question",
-	"fip_attach: fip=absent id":                  "W6: the floating IP looked up before the question",
-}
+var lateRefusals = map[string]string{}
 
 // consentAbsentID is an id no resource of the world has: every API answers
 // it 404.

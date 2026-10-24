@@ -498,14 +498,14 @@ func TestPgBackupCreate_TakenNameRefusedBeforeConsent(t *testing.T) {
 	}
 }
 
-// The previews of dns_record_create, cert_issue_le and cert_import stay
-// offline (REL-11): the check of a taken name is the confirmed call's, so
-// a call without consent makes no request at all (Qwen review of #239).
+// The previews of cert_issue_le and cert_import stay offline (REL-11): the
+// check of a taken name is the confirmed call's, so a call without consent
+// makes no request at all (Qwen review of #239). dns_record_create looks its
+// zone up before the question since W6.
 func TestNameCheck_OfflinePreviewsMakeNoRequest(t *testing.T) {
 	for tool, args := range map[string]map[string]any{
-		"dns_record_create": {"zone_id": "z-1", "name": "www", "record_type": "a", "value": "203.0.113.7"},
-		"cert_issue_le":     {"name": "evo-le", "dns_names": []any{"www.example.com"}},
-		"cert_import":       {"name": "evo-crt", "server_certificate": "Y2VydA==", "private_key": "a2V5"},
+		"cert_issue_le": {"name": "evo-le", "dns_names": []any{"www.example.com"}},
+		"cert_import":   {"name": "evo-crt", "server_certificate": "Y2VydA==", "private_key": "a2V5"},
 	} {
 		a := &faultAPI{}
 		r := faultAPIRegistry(t, a)

@@ -344,45 +344,35 @@ func (s *Registry) handleDnsRecordGet(ctx context.Context, args map[string]any) 
 // audit, L-16); the schema's enum matches any case and passes it on lower.
 var dnsRecordTypes = []string{"a", "aaaa", "cname", "mx", "ns", "spf", "txt", "caa", "srv"}
 
-func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]any) (string, bool) {
+// planDnsRecordCreate plans dns_record_create (D35): the zone and its
+// records are read before the question — a zone that is not there is
+// NOT_FOUND and a record of the same name and type is the taken name, both
+// before consent, not after it (W6, G13-3).
+func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	zoneID := stringArg(args, "zone_id")
 	name := stringArg(args, "name")
 	rtype := strings.ToLower(stringArg(args, "record_type"))
 	if err := recordValueArgs(args); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	vals := recordValues(args)
 	if zoneID == "" || name == "" || rtype == "" || len(vals) == 0 {
-		return usageT("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required", "нужны 'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) и 'value' или 'values'"), true
+		return nil, usageErr("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required", "нужны 'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) и 'value' или 'values'")
 	}
 	if !slices.Contains(dnsRecordTypes, rtype) {
-		return usageT("record_type %q is not one of %s", "record_type %q не входит в список: %s", stringArg(args, "record_type"), strings.Join(dnsRecordTypes, ", ")), true
+		return nil, usageErr("record_type %q is not one of %s", "record_type %q не входит в список: %s", stringArg(args, "record_type"), strings.Join(dnsRecordTypes, ", "))
 	}
 	ttl := pgInt(args, "ttl", 300)
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// the preview stays offline: without type the zone's visibility is
-		// looked up on the confirmed call
-		vis := dnsVisibility(args)
-		if stringArg(args, "type") == "" {
-			vis = i18n.T("(public or private: found by id)", "публичную или приватную — найдём по id")
-		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("dns_record_create adds a %s-record %q → %v (ttl %d) in %s zone %s (async).",
-				"dns_record_create добавляет запись %s %q → %v (ttl %d) в зону (%s) %s (асинхронно).", rtype, name, vals, ttl, vis, zoneID),
-		}), true
-	}
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	vis, err := dnsZoneVisibility(ctx, cli, args, zoneID)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// A record is known by its name and type in the zone: a repeat after a
 	// lost answer added a second one (fault matrix, process audit 1.2.1).
-	// The preview stays offline, so the check is the confirmed call's.
 	key := name + " " + rtype
 	list := func(ctx context.Context) ([]map[string]any, error) {
 		records, err := cli.ListRecords(ctx, vis, zoneID)
@@ -394,30 +384,38 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 	}
 	existing, err := list(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the record is new: list records: %w", "проверка, что записи ещё нет: список записей: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the record is new: list records: %w", "проверка, что записи ещё нет: список записей: %w"), err)
 	}
 	if id, st, ok := takenName(existing, key); ok {
-		return nameTakenResult(i18n.T("DNS record", "запись DNS"), key, id, st, "dns_records zone_id="+zoneID)
+		return answered(nameTakenResult(i18n.T("DNS record", "запись DNS"), key, id, st, "dns_records zone_id="+zoneID)), nil
 	}
-	body := map[string]any{
-		dns.ZoneIDParam(vis): zoneID,
-		"name":               name,
-		"type":               rtype,
-		"values":             vals,
-		"ttl":                ttl,
-	}
-	op, err := cli.CreateRecord(ctx, vis, body)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
-		}
-		return lostCreate(ctx, "dns_record_create", list, i18n.T("DNS record", "запись DNS"), key, nil, "dns_records zone_id="+zoneID, fmt.Errorf("create record: %w", err))
-	}
-	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id)."}
-	if op.ResourceID != "" {
-		out["record_id"] = op.ResourceID
-	}
-	return toJSON(out), false
+	return &Plan{
+		Preview: map[string]any{
+			"message": i18n.Tf("dns_record_create adds a %s-record %q → %v (ttl %d) in %s zone %s (async).",
+				"dns_record_create добавляет запись %s %q → %v (ttl %d) в зону (%s) %s (асинхронно).", rtype, name, vals, ttl, vis, zoneID),
+		},
+		Execute: func(ctx context.Context) (string, bool) {
+			body := map[string]any{
+				dns.ZoneIDParam(vis): zoneID,
+				"name":               name,
+				"type":               rtype,
+				"values":             vals,
+				"ttl":                ttl,
+			}
+			op, err := cli.CreateRecord(ctx, vis, body)
+			if err != nil || op.ID == "" {
+				if err == nil {
+					err = noID("operation")
+				}
+				return lostCreate(ctx, "dns_record_create", list, i18n.T("DNS record", "запись DNS"), key, nil, "dns_records zone_id="+zoneID, fmt.Errorf("create record: %w", err))
+			}
+			out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id)."}
+			if op.ResourceID != "" {
+				out["record_id"] = op.ResourceID
+			}
+			return toJSON(out), false
+		},
+	}, nil
 }
 
 func (s *Registry) planDnsRecordDelete(ctx context.Context, args map[string]any) (*Plan, error) {

@@ -104,37 +104,37 @@ func (s *Registry) handleRedisSpecs(ctx context.Context, args map[string]any) (s
 	return toJSON(res), false
 }
 
-func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageT("'name' is required", "нужен 'name'"), true
+		return nil, usageErr("'name' is required", "нужен 'name'")
 	}
 	// The shape first, before the cloud: type=FOO and shards=20 went through
 	// to the preview (release audit, L-35).
 	rtype, shards, replicas, err := redisShape(args)
 	if err != nil {
-		return usageResult(err), true
+		return answered(usageResult(err), true), nil
 	}
 	cli, eng, err := s.redisClientEng(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	existing, err := cli.ListClusters(ctx, url.Values{})
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult(i18n.T("Redis cluster", "кластер Redis"), name, id, st, "redis_get cluster_id="+id)
+		return answered(nameTakenResult(i18n.T("Redis cluster", "кластер Redis"), name, id, st, "redis_get cluster_id="+id)), nil
 	}
 
 	versionID := stringArg(args, "version_id")
 	if versionID == "" {
 		vers, e := cli.ListVersions(ctx, url.Values{})
 		if e != nil {
-			return errResult(fmt.Errorf("list versions: %w", e)), true
+			return nil, fmt.Errorf("list versions: %w", e)
 		}
 		if len(vers) == 0 {
-			return errResult(errors.New(i18n.T("no redis versions available", "нет доступных версий Redis"))), true
+			return nil, errors.New(i18n.T("no redis versions available", "нет доступных версий Redis"))
 		}
 		versionID, _ = vers[len(vers)-1]["id"].(string)
 	}
@@ -143,11 +143,11 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	// are listed for it.
 	subnetID, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	specs, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
-		return errResult(fmt.Errorf("list specifications: %w", err)), true
+		return nil, fmt.Errorf("list specifications: %w", err)
 	}
 	specArg, cpu, ram := stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0)
 	spec := findDbaasSpec(specs, specArg, cpu, ram)
@@ -157,16 +157,13 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
 		}
-		return needSpecResult("redis_specs", specArg, cpu, ram, out)
+		return answered(needSpecResult("redis_specs", specArg, cpu, ram, out)), nil
 	}
 	specID, _ := spec["id"].(string)
 
-	storage := pgInt(args, "storage_gb", 0)
-	if storage == 0 {
-		storage = int(toF(spec["min_storage_gb"]))
-	}
-	if storage == 0 {
-		storage = 40
+	storage, err := specStorage(args, "storage_gb", spec, 40)
+	if err != nil {
+		return nil, err
 	}
 
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
@@ -179,40 +176,37 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 		// in its zone.
 		warn = "MASTER_REPLICA is a master and two replicas; with one subnet all hosts go to zone " + zone + " (Single-AZ, which the docs allow — Multi-AZ needs a subnet per zone, not available through evo). If the cluster ends FAILED it currently cannot be deleted via the API (Cloud.ru orphan-lock) and needs console cleanup."
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		out := map[string]any{"status": "confirmation_required",
-			"message": i18n.T("redis_create provisions a BILLABLE Managed Redis cluster (async, ~minutes).",
-				"redis_create создаёт ПЛАТНЫЙ кластер Managed Redis (асинхронно, несколько минут)."),
-			"will_create": willCreate,
-			"preview": willPreview(engine.ResourceRedis, name, zone, willCreate,
-				[]string{"version_id", "type", "cpu", "memory_gb", "storage_gb", "shards", "hosts_per_shard", "subnet_id"}, warn)}
-		if warn != "" {
-			out["warning"] = warn
+	out := map[string]any{"message": i18n.T("redis_create provisions a BILLABLE Managed Redis cluster (async, ~minutes).",
+		"redis_create создаёт ПЛАТНЫЙ кластер Managed Redis (асинхронно, несколько минут)."),
+		"will_create": willCreate,
+		"preview": willPreview(engine.ResourceRedis, name, zone, willCreate,
+			[]string{"version_id", "type", "cpu", "memory_gb", "storage_gb", "shards", "hosts_per_shard", "subnet_id"}, warn)}
+	if warn != "" {
+		out["warning"] = warn
+	}
+	return &Plan{Preview: out, Execute: func(ctx context.Context) (string, bool) {
+		body := map[string]any{
+			"name": name, "project_id": cli.ProjectID(), "version_id": versionID,
+			"specification_id": specID, "storage_gb": storage, "shards": shards, "replicas": replicas, "type": rtype,
 		}
-		return toJSON(out), true
-	}
-
-	body := map[string]any{
-		"name": name, "project_id": cli.ProjectID(), "version_id": versionID,
-		"specification_id": specID, "storage_gb": storage, "shards": shards, "replicas": replicas, "type": rtype,
-	}
-	// Use the DEPRECATED singular subnet_id, NOT subnet_ids[]: the Redis backend
-	// panics (divide-by-zero) when given the subnet_ids array (it mishandles
-	// zone-distribution across the list), but works with the single subnet_id.
-	body["subnet_id"] = subnetID
-	if d := stringArg(args, "description"); d != "" {
-		body["description"] = d
-	}
-	op, err := cli.CreateCluster(ctx, body)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+		// Use the DEPRECATED singular subnet_id, NOT subnet_ids[]: the Redis backend
+		// panics (divide-by-zero) when given the subnet_ids array (it mishandles
+		// zone-distribution across the list), but works with the single subnet_id.
+		body["subnet_id"] = subnetID
+		if d := stringArg(args, "description"); d != "" {
+			body["description"] = d
 		}
-		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, url.Values{}) }
-		return lostCreate(ctx, "redis_create", list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id", fmt.Errorf("create cluster: %w", err))
-	}
-	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
-		"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}), false
+		op, err := cli.CreateCluster(ctx, body)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, url.Values{}) }
+			return lostCreate(ctx, "redis_create", list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id", fmt.Errorf("create cluster: %w", err))
+		}
+		return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
+			"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}), false
+	}}, nil
 }
 
 // Redis cluster types of the API (openapi-redis.yaml, type).

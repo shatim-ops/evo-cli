@@ -377,7 +377,18 @@ func TestStack_TakenNameOnRetryIsNotAdopted(t *testing.T) {
 // L-16: API принимает тип записи только в нижнем регистре; record_type=A
 // уходит как «a», неизвестный тип — USAGE до облака.
 func TestDnsRecordCreate_TypeLowerCase(t *testing.T) {
-	r := newTestServer()
+	// The plan reads the zone and its records before the question (W6).
+	r := apiFakeRegistry(t, &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Host != "dns.api.cloud.ru" {
+			return false
+		}
+		if strings.HasSuffix(r.URL.Path, "Zones") {
+			_, _ = io.WriteString(w, `{"zones":[{"id":"z","domain":"example.test."}]}`)
+		} else {
+			_, _ = io.WriteString(w, `{"records":[]}`)
+		}
+		return true
+	}})
 	for _, c := range []struct{ in, want string }{{"A", "a-record"}, {"Cname", "cname-record"}} {
 		m, text, _ := callNamed(t, r, "dns_record_create", map[string]any{"zone_id": "z", "name": "www", "record_type": c.in, "value": "1.2.3.4"})
 		if m["status"] != "confirmation_required" || !strings.Contains(text, c.want) {
@@ -385,7 +396,7 @@ func TestDnsRecordCreate_TypeLowerCase(t *testing.T) {
 		}
 	}
 	// Мимо схемы (вызов из стека) — тоже в нижний регистр.
-	if text, _ := r.handleDnsRecordCreate(context.Background(), map[string]any{"zone_id": "z", "name": "www", "record_type": "AAAA", "value": "::1"}); !strings.Contains(text, "aaaa-record") {
+	if text, _ := r.handlers["dns_record_create"](context.Background(), map[string]any{"zone_id": "z", "name": "www", "record_type": "AAAA", "value": "::1"}); !strings.Contains(text, "aaaa-record") {
 		t.Errorf("AAAA: %s", text)
 	}
 	for _, bad := range []string{"weird", "PTR"} {
