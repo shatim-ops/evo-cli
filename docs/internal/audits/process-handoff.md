@@ -17,7 +17,7 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 Правила ролей и процесса здесь не повторяются — только ссылки на
 `CLAUDE.md`, `DECISIONS.md` и `RELEASING.md`: копия расходится с источником.
 
-Обновлено: 24.10.2026, «Процесс · 1.3 (2)»: W8 (инварианты K1), бэклог 1.4 по волне 2 Grok, триггер Qwen.
+Обновлено: 24.10.2026, «Процесс · 1.3 (2)»: W8, K2, миры под A1, W4, W5, W9; постоянное разрешение на миры.
 
 ## Сделано
 
@@ -39,7 +39,10 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 | W8, ось 1 контракта (K1, G13-3) | `TestConfirmedReadOnlyInTheGate` (`internal/testrules`, `inlineGates`), `TestConsent_RefusalWithoutWriteComesBeforeTheQuestion` (`internal/cli`, `lateRefusals`); оба перечня только усыхают, их вычёркивают PR W4–W6 | #300 |
 | Мир HTTP-сбоев удаляет (P0 к A1) | DELETE элемента коллекции по самой длинной коллекции-префиксу, DELETE объекта S3, листинг по prefix; `TestFaultAPI_DeletesWhatItKeeps` | #301 |
 | Проба копий PG после удаления (DB-22, G13-27) | шаг `dbaas-pg`, `pg-backup-probe.sh`, `TestWorkflows_PGBackupProbeAfterDeleteChangesNothing`; живой итог — прогон cloud-e2e на теге rc.2 | #303 |
-| Ось 3 контракта: объявление созданного (K2, G13-14) | `TestCreated_EveryCreateDeclared` (create ⇔ `createdIDs`, одна форма, `lostField()` — поле верхнего уровня, delete объявлен, каждый шаг стека находится по имени и удаляется), инвариант (c) матрицы сбоев `checkCreatedID`, `TestCreatedFakes_AnswerTheDeclaredID` (фейк create в тестах отвечает объявленным полем id; нашёл `TestQA_StackConcurrentCranksCreateOnce` с `id` вместо `cluster_id`) | этот PR |
+| Ось 3 контракта: объявление созданного (K2, G13-14) | `TestCreated_EveryCreateDeclared` (create ⇔ `createdIDs`, одна форма, `lostField()` — поле верхнего уровня, delete объявлен, каждый шаг стека находится по имени и удаляется), инвариант (c) матрицы сбоев `checkCreatedID`, `TestCreatedFakes_AnswerTheDeclaredID` (фейк create в тестах отвечает объявленным полем id; нашёл `TestQA_StackConcurrentCranksCreateOnce` с `id` вместо `cluster_id`) | #305 |
+| `lostCreate`: инструмент назван литералом и объявляет `lostField()`, `list`, `field` | `TestCreated_LostCreateCallersDeclareListAndField` (AST, без ручного списка; просьба «разработки» из ревью #306) | #308 |
+| Мир HTTP-сбоев отвечает на GET элемента (W4: удаление читает ресурс до DELETE) | `item`/`writeItem` — один просмотр под `a.mu`; `TestFaultAPI_DeletesWhatItKeeps` | #309 |
+| Миры под W5 и W9 (в PR «разработки», без своего PR) | `open_ports` и `close_ports` в паритете — группа зоны `SSH-access_ru.AZ-1` (есть в обоих мирах); `paritySetup["close_ports"]` с правилом порта 80; фикстуры превью в `internal/tools`; D26 для удаления по списку портов (`goneArgs`, `goneWorld`, `namesTarget`), `faultMatrixOut`, `listedCases` | коммиты `d1b96ee`, `bfe9250`, `11b345e` |
 | Атака Grok 1.3, волна 1 (цели A–I, `grok-attack-1.3.md`) | отчёт 23.10: «критично» и «высокая» нет; «средние» G13-1 (проверка аргументов после запрета режима сервера) и G13-2 (инструкция сервера о данных ресурсов) исправлены «1.3 — разработкой», D33; инварианты `TestArgs_CheckedFirstInEveryMode`, `TestInitialize_InstructionsSayCloudFieldsAreData` | #288 |
 
 ## Открыто
@@ -225,3 +228,11 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 
 Роли сессий, кто сливает, кто обновляет ветку, номера D и передача
 находок — `CLAUDE.md` §0; ускользнувшие дефекты — `CLAUDE.md` §5.
+
+Постоянное разрешение владельца (24.10.2026): правки тестовых миров и
+фейков, которых требует чужой PR, «Процесс» делает без согласования и
+сообщает после — владельцу, «N — релизу» и автору PR. Когда без
+инструмента из чужой ветки правка не соберётся, она идёт коммитом поверх
+этой ветки, и автор вливает его в свой PR. Слияние своих PR «Процесса» —
+по-прежнему по «да» владельца на каждый. Продуктовый код, CI-workflow и
+живое облако — только по «да».
