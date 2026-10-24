@@ -8,8 +8,10 @@ package workflows
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -1033,5 +1035,53 @@ func TestWorkflows_CILinuxImageIsPinned(t *testing.T) {
 	}
 	if !probe {
 		t.Error("ci: no job runs evo_wrapper_test.sh on ubuntu-latest")
+	}
+}
+
+// With --json the error of a tool is {"error":…} on stderr and stdout is
+// empty (QA-12). Steps of cloud-e2e threw stderr away and read .error from
+// stdout: pg_create on bf6b9ea failed with exit 4 and no reason (run
+// 40118457142). A step reads the reason with evo_err.sh from the stderr it
+// kept, never .error from stdout.
+func TestWorkflows_CloudE2EReasonFromStderr(t *testing.T) {
+	stdoutError := regexp.MustCompile(`jq[^|]*'\.error //`)
+	for name, j := range readWorkflows(t)["cloud-e2e.yml"].Jobs {
+		for _, s := range j.Steps {
+			for _, l := range strings.Split(s.Run, "\n") {
+				if stdoutError.MatchString(l) {
+					t.Errorf("cloud-e2e %s, %s: reads .error from stdout, where --json never puts it: %s", name, s.Name, strings.TrimSpace(l))
+				}
+			}
+		}
+	}
+}
+
+// evo_err.sh prints the reason and the message of the error evo wrote on
+// stderr, redacted and cut, and the start of a stderr that is no error JSON.
+func TestWorkflows_EvoErrPrintsTheRedactedReason(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("bash script: CI runs it on Linux")
+	}
+	dir := t.TempDir()
+	run := func(stderr string) string {
+		f := filepath.Join(dir, "err")
+		if err := os.WriteFile(f, []byte(stderr), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		out, err := exec.Command("bash", filepath.Join("..", "..", ".github", "scripts", "evo_err.sh"), f).CombinedOutput()
+		if err != nil {
+			t.Fatalf("evo_err.sh: %v\n%s", err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	id := "00000000-0000-4000-8000-0000000000aa"
+	if got := run("==> [1/2] Reading...\n{\"error\":{\"code\":4,\"reason\":\"NOT_FOUND\",\"message\":\"subnet " + id + " not found\"}}\n"); got != "NOT_FOUND: subnet <id> not found" {
+		t.Errorf("error JSON on stderr: %q", got)
+	}
+	if got := run("panic: boom near " + id + "\n"); got != "panic: boom near <id>" {
+		t.Errorf("stderr that is no error JSON: %q", got)
+	}
+	if got := run(strings.Repeat("x", 500)); len(got) > 300 {
+		t.Errorf("not cut to 300: %d", len(got))
 	}
 }
