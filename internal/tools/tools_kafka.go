@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/dbaas"
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -420,6 +421,10 @@ func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (
 	}
 	op, err := cli.DeleteCluster(ctx, id)
 	if err != nil {
+		if msg := fmt.Sprintf("delete cluster: %v", err); strings.Contains(msg, "API 500") {
+			// A FAILED cluster: Cloud.ru answers its delete with a 500 (G13-19).
+			return errResult(clierrors.New(clierrors.CodeAPIError, msg, failedDeleteNote(id))), true
+		}
 		return s.deleteFailed("kafka_delete", id, fmt.Errorf("delete cluster: %w", err))
 	}
 	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false

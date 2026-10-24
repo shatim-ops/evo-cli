@@ -491,6 +491,16 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	return toJSON(out), false
 }
 
+// pgDeleteEN and pgDeleteRU are the preview of pg_delete. It said all the
+// backups go; the backups of a deleted cluster were gone in a live run,
+// which manual ones the API does not promise (G13-27).
+const (
+	pgDeleteEN = "pg_delete PERMANENTLY deletes PostgreSQL cluster %s and its databases. Automatic backups go with the cluster; " +
+		"what becomes of manual backups is not guaranteed — check them with pg_backups before the delete."
+	pgDeleteRU = "pg_delete БЕЗВОЗВРАТНО удаляет кластер PostgreSQL %s и его базы данных. Автоматические резервные копии удаляются вместе с кластером; " +
+		"судьба ручных копий не гарантируется — проверьте их через pg_backups до удаления."
+)
+
 func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (string, bool) {
 	// Both and different deleted the cluster of id (QA-1).
 	id, err := aliasArg(args, "id", "cluster_id")
@@ -505,8 +515,7 @@ func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (str
 		return errResult(err), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("pg_delete", "pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups.",
-			"pg_delete БЕЗВОЗВРАТНО удаляет кластер PostgreSQL %s, его базы данных и все резервные копии.",
+		return s.deletePreview("pg_delete", pgDeleteEN, pgDeleteRU,
 			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
 	}
 	op, err := cli.DeleteCluster(ctx, id)
