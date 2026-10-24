@@ -856,6 +856,16 @@ func TestStackPlan_NamedBucketMustExist(t *testing.T) {
 		t.Fatalf("a bucket the project does not have: %s", text)
 	}
 	wantReason(t, "no-such-bucket", m, text, "NOT_FOUND")
+
+	// Without S3 keys the bucket cannot be looked up: CONFIG_INVALID, and
+	// no job either (the s3 step needed the keys after the steps before it).
+	r = raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+	mf["s3"] = []any{map[string]any{"bucket": "my-bucket", "key": "k", "content": "c"}}
+	m, text, isErr = callNamed(t, r, "stack_plan", map[string]any{"manifest": mf})
+	if !isErr || m["job_id"] != nil {
+		t.Fatalf("a manifest with an S3 object, no S3 keys: %s", text)
+	}
+	wantReason(t, "no S3 keys", m, text, "CONFIG_INVALID")
 }
 
 // cloud-e2e 22.10 (runs 39838101751, 39844928752): k8s_create sent the
