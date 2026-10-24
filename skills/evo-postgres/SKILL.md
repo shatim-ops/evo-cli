@@ -91,6 +91,7 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
 |---|---|
 | `USAGE` with `existing_id` | the name is taken: pick another, or use that cluster |
 | `USAGE` (storage, nodes) | below the specification's minimum or above its nodes: fix, preview again |
+| `API_RATE_LIMITED` on create (`ResourceExhausted`) | the zone has no capacity now: offer the person to try later or another zone (`subnet_id` of a subnet in another zone); do not repeat the call in a loop |
 | `API_ERROR` on create | read the message; check `pg_list` before any new create |
 | `pg_operation` with `error` | the operation failed: `pg_get` for the state, then ask the person |
 
