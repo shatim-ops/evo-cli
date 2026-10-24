@@ -136,18 +136,18 @@ func (s *Registry) handleS3Put(ctx context.Context, args map[string]any) (string
 	return toJSON(map[string]any{"status": "ok", "bucket": bucket, "key": key, "size": n}), false
 }
 
-func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planS3Rm(ctx context.Context, args map[string]any) (*Plan, error) {
 	bucket := stringArg(args, "bucket")
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
-		return usageT("'bucket' and 'key' are required", "нужны 'bucket' и 'key'"), true
+		return nil, usageErr("'bucket' and 'key' are required", "нужны 'bucket' и 'key'")
 	}
 	if err := s3.CheckBucketName(bucket); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	cli, err := s.s3Client()
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// The object first, before and after consent: S3 answers the delete of
 	// a key that is not there as done, and a bucket that is not there is
@@ -155,23 +155,21 @@ func (s *Registry) handleS3Rm(ctx context.Context, args map[string]any) (string,
 	// after key is key itself when it is there.
 	objs, err := cli.ListObjects(ctx, bucket, key, 1)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	if len(objs) == 0 || objs[0].Key != key {
-		return s.deleteFailed("s3_rm", key, clierrors.New(clierrors.CodeNotFound,
-			i18n.Tf("no object s3://%s/%s", "объекта s3://%s/%s нет", bucket, key), ""))
+		return answered(s.deleteFailed("s3_rm", key, clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("no object s3://%s/%s", "объекта s3://%s/%s нет", bucket, key), ""))), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("s3_rm permanently deletes s3://%s/%s.",
-				"s3_rm безвозвратно удаляет s3://%s/%s.", bucket, key),
-		}), true
+	preview := map[string]any{"message": i18n.Tf("s3_rm permanently deletes s3://%s/%s.",
+		"s3_rm безвозвратно удаляет s3://%s/%s.", bucket, key),
 	}
-	if err := cli.RemoveObject(ctx, bucket, key); err != nil {
-		return errResult(err), true
-	}
-	return toJSON(map[string]any{"status": "deleted", "bucket": bucket, "key": key}), false
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		if err := cli.RemoveObject(ctx, bucket, key); err != nil {
+			return errResult(err), true
+		}
+		return toJSON(map[string]any{"status": "deleted", "bucket": bucket, "key": key}), false
+	}}, nil
 }
 
 func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any) (string, bool) {

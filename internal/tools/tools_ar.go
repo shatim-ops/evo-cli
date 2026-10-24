@@ -125,25 +125,25 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 	return toJSON(out), false
 }
 
-func (s *Registry) handleArDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planArDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageT("'id' is required (from ar_list)", "нужен 'id' (из ar_list)"), true
+		return nil, usageErr("'id' is required (from ar_list)", "нужен 'id' (из ar_list)")
 	}
 	cli, err := s.arClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("ar_delete", "ar_delete PERMANENTLY deletes registry %s and its artifacts.",
-			"ar_delete БЕЗВОЗВРАТНО удаляет реестр %s и его артефакты.",
-			id, func() (map[string]any, error) { return cli.GetRegistry(ctx, id) })
-	}
-	op, err := cli.DeleteRegistry(ctx, id)
-	if err != nil {
-		return s.deleteFailed("ar_delete", id, fmt.Errorf("delete registry: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+	return s.deletePlan("ar_delete", "ar_delete PERMANENTLY deletes registry %s and its artifacts.",
+		"ar_delete БЕЗВОЗВРАТНО удаляет реестр %s и его артефакты.",
+		id, func() (map[string]any, error) { return cli.GetRegistry(ctx, id) },
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteRegistry(ctx, id)
+			if err != nil {
+				return s.deleteFailed("ar_delete", id, fmt.Errorf("delete registry: %w", err))
+			}
+			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+		}), nil
 }
 
 func (s *Registry) handleArOperation(ctx context.Context, args map[string]any) (string, bool) {

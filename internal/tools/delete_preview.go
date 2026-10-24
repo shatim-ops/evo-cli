@@ -5,23 +5,25 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// deletePreview is the confirmation answer of a *_delete tool: one GET of
-// the resource names what goes — its name and status next to the ID the
+// deletePlan is the plan of a *_delete tool (gate.go): one GET of the
+// resource names what goes — its name and status next to the ID the
 // caller passed — and an ID that is not there is already deleted, the
-// answer of a repeated delete (D26), instead of a question (release audit,
-// R-04); any other error of the GET is the answer. The message, in English (en) and
-// Russian (ru) for the CLI's language, has one %s: the resource as
-// "name" (id), the name quoted on one line (quoteCloud).
-func (s *Registry) deletePreview(tool, en, ru, id string, get func() (map[string]any, error)) (string, bool) {
+// answer of a repeated delete (D26), with no question (release audit,
+// R-04); any other error of the GET is the answer. The message, in English
+// (en) and Russian (ru) for the CLI's language, has one %s: the resource as
+// "name" (id), the name quoted on one line (quoteCloud). execute deletes
+// it.
+func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]any, error), execute func(context.Context) (string, bool)) *Plan {
 	m, err := get()
 	if err != nil {
-		return s.deleteFailed(tool, id, err)
+		return answered(s.deleteFailed(tool, id, err))
 	}
 	name, _ := m["name"].(string)
 	status, _ := m["status"].(string)
@@ -33,7 +35,6 @@ func (s *Registry) deletePreview(tool, en, ru, id string, get func() (map[string
 		label = fmt.Sprintf("%s (%s)", quoteCloud(name), id)
 	}
 	out := map[string]any{
-		"status":  "confirmation_required",
 		"message": i18n.Tf(en, ru, label),
 		"target":  map[string]any{"id": id, "name": name, "status": status},
 	}
@@ -48,7 +49,7 @@ func (s *Registry) deletePreview(tool, en, ru, id string, get func() (map[string
 		// kafka_delete of a FAILED cluster met a bare 500 (G13-19).
 		out["warning"] = i18n.Tf("it is in %s: ", "он в состоянии %s: ", status) + failedDeleteNote(id)
 	}
-	return toJSON(out), true
+	return &Plan{Preview: out, Execute: execute}
 }
 
 // failedDeleteNote is what to do when Cloud.ru refuses to delete a

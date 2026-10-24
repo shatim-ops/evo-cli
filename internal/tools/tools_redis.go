@@ -257,25 +257,25 @@ func redisShape(args map[string]any) (rtype string, shards, replicas int, err er
 	return rtype, shards, replicas, nil
 }
 
-func (s *Registry) handleRedisDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planRedisDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return usageT("'cluster_id' is required (from redis_list)", "нужен 'cluster_id' (из redis_list)"), true
+		return nil, usageErr("'cluster_id' is required (from redis_list)", "нужен 'cluster_id' (из redis_list)")
 	}
 	cli, _, err := s.redisClientEng(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("redis_delete", "redis_delete PERMANENTLY deletes Redis cluster %s and its data.",
-			"redis_delete БЕЗВОЗВРАТНО удаляет кластер Redis %s и его данные.",
-			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
-	}
-	op, err := cli.DeleteCluster(ctx, id)
-	if err != nil {
-		return s.deleteFailed("redis_delete", id, fmt.Errorf("delete cluster: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+	return s.deletePlan("redis_delete", "redis_delete PERMANENTLY deletes Redis cluster %s and its data.",
+		"redis_delete БЕЗВОЗВРАТНО удаляет кластер Redis %s и его данные.",
+		id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) },
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteCluster(ctx, id)
+			if err != nil {
+				return s.deleteFailed("redis_delete", id, fmt.Errorf("delete cluster: %w", err))
+			}
+			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+		}), nil
 }
 
 func (s *Registry) handleRedisOperation(ctx context.Context, args map[string]any) (string, bool) {

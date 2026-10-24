@@ -148,9 +148,9 @@ func (w *lineWriter) Write(p []byte) (int, error) {
 	}
 }
 
-// live is the Caller of a call the engine shows and gates itself, nil
-// otherwise.
-func live(ctx context.Context) *Caller {
+// liveCaller is the Caller of a call the engine shows and gates itself,
+// nil otherwise.
+func liveCaller(ctx context.Context) *Caller {
 	if c := callerOf(ctx); c != nil && c.Printer != nil && c.Gate != nil {
 		return c
 	}

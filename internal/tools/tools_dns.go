@@ -189,35 +189,35 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 	return toJSON(out), false
 }
 
-func (s *Registry) handleDnsZoneDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planDnsZoneDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageT("'id' is required (from dns_zones)", "нужен 'id' (из dns_zones)"), true
+		return nil, usageErr("'id' is required (from dns_zones)", "нужен 'id' (из dns_zones)")
 	}
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	vis, err := dnsZoneVisibility(ctx, cli, args, id)
 	if err != nil {
-		return s.deleteFailed("dns_zone_delete", id, err)
+		return answered(s.deleteFailed("dns_zone_delete", id, err)), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// With type the zone was not looked up: a zone that is not there
-		// is already deleted (D26).
-		if stringArg(args, "type") != "" {
-			if _, err := cli.GetZone(ctx, vis, id); err != nil {
-				return s.deleteFailed("dns_zone_delete", id, err)
-			}
+	// With type the zone was not looked up: a zone that is not there
+	// is already deleted (D26).
+	if stringArg(args, "type") != "" {
+		if _, err := cli.GetZone(ctx, vis, id); err != nil {
+			return answered(s.deleteFailed("dns_zone_delete", id, err)), nil
 		}
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("dns_zone_delete PERMANENTLY deletes %s zone %s and its records (async).",
-			"dns_zone_delete БЕЗВОЗВРАТНО удаляет зону (%s) %s и её записи (асинхронно).", vis, id)}), true
 	}
-	op, err := cli.DeleteZone(ctx, vis, id)
-	if err != nil {
-		return s.deleteFailed("dns_zone_delete", id, fmt.Errorf("delete zone: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}), false
+	preview := map[string]any{"message": i18n.Tf("dns_zone_delete PERMANENTLY deletes %s zone %s and its records (async).",
+		"dns_zone_delete БЕЗВОЗВРАТНО удаляет зону (%s) %s и её записи (асинхронно).", vis, id)}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		op, err := cli.DeleteZone(ctx, vis, id)
+		if err != nil {
+			return s.deleteFailed("dns_zone_delete", id, fmt.Errorf("delete zone: %w", err))
+		}
+		return toJSON(map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}), false
+	}}, nil
 }
 
 // --- Operations ---
@@ -420,33 +420,33 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 	return toJSON(out), false
 }
 
-func (s *Registry) handleDnsRecordDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planDnsRecordDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "record_id")
 	if id == "" {
-		return usageT("'record_id' is required (from dns_records)", "нужен 'record_id' (из dns_records)"), true
+		return nil, usageErr("'record_id' is required (from dns_records)", "нужен 'record_id' (из dns_records)")
 	}
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	vis, err := dnsRecordVisibility(ctx, cli, args, id)
 	if err != nil {
-		return s.deleteFailed("dns_record_delete", id, err)
+		return answered(s.deleteFailed("dns_record_delete", id, err)), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// With type the record was not looked up: one that is not there is
-		// already deleted (D26).
-		if stringArg(args, "type") != "" {
-			if _, err := cli.GetRecord(ctx, vis, id); err != nil {
-				return s.deleteFailed("dns_record_delete", id, err)
-			}
+	// With type the record was not looked up: one that is not there is
+	// already deleted (D26).
+	if stringArg(args, "type") != "" {
+		if _, err := cli.GetRecord(ctx, vis, id); err != nil {
+			return answered(s.deleteFailed("dns_record_delete", id, err)), nil
 		}
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("dns_record_delete deletes %s record %s (async).",
-			"dns_record_delete удаляет запись (%s) %s (асинхронно).", vis, id)}), true
 	}
-	op, err := cli.DeleteRecord(ctx, vis, id)
-	if err != nil {
-		return s.deleteFailed("dns_record_delete", id, fmt.Errorf("delete record: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+	preview := map[string]any{"message": i18n.Tf("dns_record_delete deletes %s record %s (async).",
+		"dns_record_delete удаляет запись (%s) %s (асинхронно).", vis, id)}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		op, err := cli.DeleteRecord(ctx, vis, id)
+		if err != nil {
+			return s.deleteFailed("dns_record_delete", id, fmt.Errorf("delete record: %w", err))
+		}
+		return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+	}}, nil
 }

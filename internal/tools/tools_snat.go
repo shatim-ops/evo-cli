@@ -144,36 +144,36 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	}), false
 }
 
-// handleSnatDelete deletes a SNAT gateway by id. Gated on confirmed.
-func (s *Registry) handleSnatDelete(ctx context.Context, args map[string]any) (string, bool) {
+// planSnatDelete plans the delete of a SNAT gateway by id (gate.go).
+func (s *Registry) planSnatDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageT("'id' is required (get it from snat_list)", "нужен 'id' (из snat_list)"), true
+		return nil, usageErr("'id' is required (get it from snat_list)", "нужен 'id' (из snat_list)")
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("snat_delete", "snat_delete removes SNAT gateway %s — nodes in that zone lose outbound internet.",
-			"snat_delete удаляет шлюз SNAT %s — узлы в этой зоне потеряют исходящий доступ в интернет.",
-			id, func() (map[string]any, error) {
-				gws, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
-				if err != nil {
-					return nil, err
+	return s.deletePlan("snat_delete", "snat_delete removes SNAT gateway %s — nodes in that zone lose outbound internet.",
+		"snat_delete удаляет шлюз SNAT %s — узлы в этой зоне потеряют исходящий доступ в интернет.",
+		id, func() (map[string]any, error) {
+			gws, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+			if err != nil {
+				return nil, err
+			}
+			for _, gw := range gws {
+				if gid, _ := gw["id"].(string); gid == id {
+					return gw, nil
 				}
-				for _, gw := range gws {
-					if gid, _ := gw["id"].(string); gid == id {
-						return gw, nil
-					}
-				}
-				return nil, clierrors.New(clierrors.CodeNotFound, i18n.Tf("SNAT gateway %s not found in the project", "SNAT-шлюз %s в проекте не найден", id), i18n.T("snat_list lists the project's gateways.", "Шлюзы проекта — в выводе snat_list."))
-			})
-	}
-	if err := eng.Cloud.DeleteNATGateway(ctx, id, eng.Config.ProjectID); err != nil {
-		return s.deleteFailed("snat_delete", id, fmt.Errorf("delete SNAT gateway: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleted", "id": id}), false
+			}
+			return nil, clierrors.New(clierrors.CodeNotFound, i18n.Tf("SNAT gateway %s not found in the project", "SNAT-шлюз %s в проекте не найден", id), i18n.T("snat_list lists the project's gateways.", "Шлюзы проекта — в выводе snat_list."))
+		},
+		func(ctx context.Context) (string, bool) {
+			if err := eng.Cloud.DeleteNATGateway(ctx, id, eng.Config.ProjectID); err != nil {
+				return s.deleteFailed("snat_delete", id, fmt.Errorf("delete SNAT gateway: %w", err))
+			}
+			return toJSON(map[string]any{"status": "deleted", "id": id}), false
+		}), nil
 }
 
 // firstNonNil returns the first non-nil value.

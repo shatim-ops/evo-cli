@@ -416,26 +416,26 @@ func (s *Registry) handleK8sKubeconfig(ctx context.Context, args map[string]any)
 	}), false
 }
 
-// handleK8sDelete deletes a cluster (gated on confirmation). Async.
-func (s *Registry) handleK8sDelete(ctx context.Context, args map[string]any) (string, bool) {
+// planK8sDelete plans the delete of a cluster (gate.go). Async.
+func (s *Registry) planK8sDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return usageT("cluster_id is required", "нужен cluster_id"), true
+		return nil, usageErr("cluster_id is required", "нужен cluster_id")
 	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("k8s_delete", "k8s_delete permanently deletes cluster %s.",
-			"k8s_delete безвозвратно удаляет кластер %s.",
-			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
-	}
-	op, err := cli.DeleteCluster(ctx, id)
-	if err != nil {
-		return s.deleteFailed("k8s_delete", id, err)
-	}
-	return toJSON(map[string]any{"status": "deleting", "cluster_id": id, "operation_id": op.ID}), false
+	return s.deletePlan("k8s_delete", "k8s_delete permanently deletes cluster %s.",
+		"k8s_delete безвозвратно удаляет кластер %s.",
+		id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) },
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteCluster(ctx, id)
+			if err != nil {
+				return s.deleteFailed("k8s_delete", id, err)
+			}
+			return toJSON(map[string]any{"status": "deleting", "cluster_id": id, "operation_id": op.ID}), false
+		}), nil
 }
 
 // handleK8sNodePools lists node pools of a cluster. The API has no list

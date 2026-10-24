@@ -270,25 +270,25 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 	return toJSON(out), false
 }
 
-func (s *Registry) handleTgDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planTgDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageT("'id' is required (from tg_list)", "нужен 'id' (из tg_list)"), true
+		return nil, usageErr("'id' is required (from tg_list)", "нужен 'id' (из tg_list)")
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("tg_delete", "tg_delete deletes target group %s.",
-			"tg_delete удаляет группу целей %s.",
-			id, func() (map[string]any, error) { return cli.GetTargetGroup(ctx, id) })
-	}
-	op, err := cli.DeleteTargetGroup(ctx, id)
-	if err != nil {
-		return s.deleteFailed("tg_delete", id, fmt.Errorf(i18n.T("delete target group: %w", "удаление целевой группы: %w"), err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+	return s.deletePlan("tg_delete", "tg_delete deletes target group %s.",
+		"tg_delete удаляет группу целей %s.",
+		id, func() (map[string]any, error) { return cli.GetTargetGroup(ctx, id) },
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteTargetGroup(ctx, id)
+			if err != nil {
+				return s.deleteFailed("tg_delete", id, fmt.Errorf(i18n.T("delete target group: %w", "удаление целевой группы: %w"), err))
+			}
+			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+		}), nil
 }
 
 // --- Load balancer create/delete ---
@@ -538,23 +538,23 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	return *zone, inVPC[i].ID, warnings, nil
 }
 
-func (s *Registry) handleLbDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planLbDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageT("'id' is required (from lb_list)", "нужен 'id' (из lb_list)"), true
+		return nil, usageErr("'id' is required (from lb_list)", "нужен 'id' (из lb_list)")
 	}
 	cli, err := s.nlbClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("lb_delete", "lb_delete deletes load balancer %s.",
-			"lb_delete удаляет балансировщик %s.",
-			id, func() (map[string]any, error) { return cli.GetNLB(ctx, id) })
-	}
-	op, err := cli.DeleteNLB(ctx, id)
-	if err != nil {
-		return s.deleteFailed("lb_delete", id, fmt.Errorf(i18n.T("delete load balancer: %w", "удаление балансировщика: %w"), err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+	return s.deletePlan("lb_delete", "lb_delete deletes load balancer %s.",
+		"lb_delete удаляет балансировщик %s.",
+		id, func() (map[string]any, error) { return cli.GetNLB(ctx, id) },
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteNLB(ctx, id)
+			if err != nil {
+				return s.deleteFailed("lb_delete", id, fmt.Errorf(i18n.T("delete load balancer: %w", "удаление балансировщика: %w"), err))
+			}
+			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+		}), nil
 }

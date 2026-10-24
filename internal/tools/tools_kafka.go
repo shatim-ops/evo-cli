@@ -402,32 +402,32 @@ func kafkaBrokers(arg int, spec map[string]any) (brokers int, note string, err e
 	return brokers, note, nil
 }
 
-func (s *Registry) handleKafkaDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planKafkaDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "cluster_id")
 	if id == "" {
-		return usageT("'cluster_id' is required (from kafka_list)", "нужен 'cluster_id' (из kafka_list)"), true
+		return nil, usageErr("'cluster_id' is required (from kafka_list)", "нужен 'cluster_id' (из kafka_list)")
 	}
 	cli, _, err := s.kafkaClientEng(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("kafka_delete", "kafka_delete PERMANENTLY deletes Kafka cluster %s and its data.",
-			"kafka_delete БЕЗВОЗВРАТНО удаляет кластер Kafka %s и его данные.",
-			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
-	}
-	op, err := cli.DeleteCluster(ctx, id)
-	if err != nil {
-		if msg := fmt.Sprintf("delete cluster: %v", err); strings.Contains(msg, "API 500") {
-			// Cloud.ru answers 500 to the delete of a cluster still being
-			// created (register DB-17) and of a FAILED one (G13-19).
-			return errResult(clierrors.New(clierrors.CodeAPIError, msg, i18n.T(
-				"Cloud.ru refuses to delete a cluster still being created or in FAILED. Still being created (DEPLOYING): wait until kafka_get shows it READY, then call kafka_delete again. In FAILED: ",
-				"Cloud.ru не удаляет кластер, который ещё создаётся или в FAILED. Ещё создаётся (DEPLOYING): дождитесь READY в kafka_get и повторите kafka_delete. В FAILED: ")+failedDeleteNote(id))), true
-		}
-		return s.deleteFailed("kafka_delete", id, fmt.Errorf("delete cluster: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+	return s.deletePlan("kafka_delete", "kafka_delete PERMANENTLY deletes Kafka cluster %s and its data.",
+		"kafka_delete БЕЗВОЗВРАТНО удаляет кластер Kafka %s и его данные.",
+		id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) },
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteCluster(ctx, id)
+			if err != nil {
+				if msg := fmt.Sprintf("delete cluster: %v", err); strings.Contains(msg, "API 500") {
+					// Cloud.ru answers 500 to the delete of a cluster still being
+					// created (register DB-17) and of a FAILED one (G13-19).
+					return errResult(clierrors.New(clierrors.CodeAPIError, msg, i18n.T(
+						"Cloud.ru refuses to delete a cluster still being created or in FAILED. Still being created (DEPLOYING): wait until kafka_get shows it READY, then call kafka_delete again. In FAILED: ",
+						"Cloud.ru не удаляет кластер, который ещё создаётся или в FAILED. Ещё создаётся (DEPLOYING): дождитесь READY в kafka_get и повторите kafka_delete. В FAILED: ")+failedDeleteNote(id))), true
+				}
+				return s.deleteFailed("kafka_delete", id, fmt.Errorf("delete cluster: %w", err))
+			}
+			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+		}), nil
 }
 
 func (s *Registry) handleKafkaOperation(ctx context.Context, args map[string]any) (string, bool) {

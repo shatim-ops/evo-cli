@@ -114,25 +114,25 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 	return toJSON(out), false
 }
 
-func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planVpcDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageT("'id' is required (from vpc_list)", "нужен 'id' (из vpc_list)"), true
+		return nil, usageErr("'id' is required (from vpc_list)", "нужен 'id' (из vpc_list)")
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("vpc_delete", "vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first.",
-			"vpc_delete удаляет VPC %s (асинхронно). Сначала нужно удалить его подсети и ресурсы.",
-			id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) })
-	}
-	op, err := cli.DeleteVPC(ctx, id)
-	if err != nil {
-		return s.deleteFailed("vpc_delete", id, fmt.Errorf("delete vpc: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+	return s.deletePlan("vpc_delete", "vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first.",
+		"vpc_delete удаляет VPC %s (асинхронно). Сначала нужно удалить его подсети и ресурсы.",
+		id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) },
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteVPC(ctx, id)
+			if err != nil {
+				return s.deleteFailed("vpc_delete", id, fmt.Errorf("delete vpc: %w", err))
+			}
+			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+		}), nil
 }
 
 func (s *Registry) handleVpcOperation(ctx context.Context, args map[string]any) (string, bool) {
@@ -277,36 +277,36 @@ func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any
 	return toJSON(out), false
 }
 
-func (s *Registry) handleVpcRouteDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planVpcRouteDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	vpcID := stringArg(args, "vpc_id")
 	routeID := stringArg(args, "route_id")
 	if vpcID == "" || routeID == "" {
-		return usageT("'vpc_id' and 'route_id' (from vpc_routes) are required", "нужны 'vpc_id' и 'route_id' (из vpc_routes)"), true
+		return nil, usageErr("'vpc_id' and 'route_id' (from vpc_routes) are required", "нужны 'vpc_id' и 'route_id' (из vpc_routes)")
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// The VPC first: one that is not there is the call's error (NOT_FOUND),
 	// not a repeat; a route that is not there is (D26).
 	if _, err := cli.GetVPC(ctx, vpcID); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		routes, err := cli.ListRoutes(ctx, vpcID)
-		if err != nil {
-			return errResult(err), true
-		}
-		if !slices.ContainsFunc(routes, func(m map[string]any) bool { return m["id"] == routeID }) {
-			return s.deleteFailed("vpc_route_delete", routeID, clierrors.New(clierrors.CodeNotFound,
-				i18n.Tf("no route %s in VPC %s", "маршрута %s в VPC %s нет", routeID, vpcID), ""))
-		}
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("vpc_route_delete removes static route %s from VPC %s (async).",
-			"vpc_route_delete удаляет статический маршрут %s из VPC %s (асинхронно).", routeID, vpcID)}), true
-	}
-	op, err := cli.DeleteRoute(ctx, vpcID, routeID)
+	routes, err := cli.ListRoutes(ctx, vpcID)
 	if err != nil {
-		return s.deleteFailed("vpc_route_delete", routeID, fmt.Errorf("delete route: %w", err))
+		return nil, err
 	}
-	return toJSON(map[string]any{"status": "deleting", "route_id": routeID, "operation_id": op.ID}), false
+	if !slices.ContainsFunc(routes, func(m map[string]any) bool { return m["id"] == routeID }) {
+		return answered(s.deleteFailed("vpc_route_delete", routeID, clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("no route %s in VPC %s", "маршрута %s в VPC %s нет", routeID, vpcID), ""))), nil
+	}
+	preview := map[string]any{"message": i18n.Tf("vpc_route_delete removes static route %s from VPC %s (async).",
+		"vpc_route_delete удаляет статический маршрут %s из VPC %s (асинхронно).", routeID, vpcID)}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		op, err := cli.DeleteRoute(ctx, vpcID, routeID)
+		if err != nil {
+			return s.deleteFailed("vpc_route_delete", routeID, fmt.Errorf("delete route: %w", err))
+		}
+		return toJSON(map[string]any{"status": "deleting", "route_id": routeID, "operation_id": op.ID}), false
+	}}, nil
 }
