@@ -191,8 +191,9 @@ func TestQA_StackDestroyFailureKeepsJobVisible(t *testing.T) {
 	stackHome(t)
 	r := newTestServer()
 	j := planJob(t, `{"name":"f","vpc":{"name":"v"}}`)
-	j.Steps[0].Status, j.Steps[0].ResourceID, j.Status = "done", "vpc-1", "done"
-	j.Outputs["vpc"] = "vpc-1"
+	// A VPC is named by a UUID (vpc_delete, D36).
+	j.Steps[0].Status, j.Steps[0].ResourceID, j.Status = "done", faultID(1), "done"
+	j.Outputs["vpc"] = faultID(1)
 	if err := j.Save(); err != nil {
 		t.Fatal(err)
 	}

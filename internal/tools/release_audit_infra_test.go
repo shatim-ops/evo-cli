@@ -81,12 +81,20 @@ func raSubnets() []*provision.Subnet {
 	}
 }
 
+// raTargetGroup is the target group tg_delete deletes, raMissingLB a
+// balancer the world has not: both named by UUIDs, as the schemas of the
+// deletes take them (D36).
+const (
+	raTargetGroup = "00000000-0000-4000-8000-0000000000b7"
+	raMissingLB   = "00000000-0000-4000-8000-0000000000b8"
+)
+
 // raAPI — mk8s, nlb и Container Apps за http.DefaultTransport.
 type raAPI struct {
 	mu        sync.Mutex
 	reqs      []string
 	posts     map[string]string // путь → тело последнего POST
-	targetVMs string            // target_vms целевой группы tg-1
+	targetVMs string            // target_vms целевой группы tg-1 и raTargetGroup
 	flavors   string            // flavors of productConfiguration; empty — gen-2-4 only
 	pools     string            // nodePools of the cluster
 }
@@ -129,6 +137,9 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		_, _ = io.WriteString(rec, `{"id":"op-np","resourceId":"np-1","done":false}`)
 	case r.URL.Path == "/v2/targetGroups/tg-1":
 		_, _ = io.WriteString(rec, `{"id":"tg-1","name":"tg","vpc_id":"vpc-1","target_vms":[`+f.targetVMs+`]}`)
+	case r.URL.Path == "/v2/targetGroups/"+raTargetGroup:
+		// The group tg_delete names by a UUID (its schema, D36).
+		_, _ = io.WriteString(rec, `{"id":"`+raTargetGroup+`","name":"tg","vpc_id":"vpc-1","target_vms":[`+f.targetVMs+`]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v2/networkLoadBalancers":
 		_, _ = io.WriteString(rec, `{"id":"op-lb","done":false}`)
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/containers"):
@@ -546,7 +557,8 @@ func TestStackDestroy_ReportsAsyncDeletions(t *testing.T) {
 		st.Status = "done"
 	}
 	j.Status = "done"
-	j.Outputs["postgres"], j.Outputs["secret:0"] = "pg-1", "a"
+	// A cluster is named by a UUID (pg_delete, D36).
+	j.Outputs["postgres"], j.Outputs["secret:0"] = "00000000-0000-4000-8000-0000000000a7", "a"
 	if err := j.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -592,12 +604,12 @@ func TestDeletePreviews_NameTheResource(t *testing.T) {
 
 	f := &raAPI{targetVMs: `{"id":"vm-1"}`}
 	rr := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
-	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": "tg-1"}); !strings.Contains(text, `\"tg\" (tg-1)`) {
+	if _, text, _ := callNamed(t, rr, "tg_delete", map[string]any{"id": raTargetGroup}); !strings.Contains(text, `\"tg\" (`+raTargetGroup+`)`) {
 		t.Errorf("tg_delete preview does not name the group: %s", text)
 	}
 	// A missing balancer is already deleted (D26; it was NOT_FOUND): no
 	// confirmation question for nothing to delete.
-	m, text, isErr := callNamed(t, rr, "lb_delete", map[string]any{"id": "lb-missing"})
+	m, text, isErr := callNamed(t, rr, "lb_delete", map[string]any{"id": raMissingLB})
 	if isErr || m["status"] != "already_deleted" {
 		t.Fatalf("lb_delete preview of a missing balancer: %s", text)
 	}

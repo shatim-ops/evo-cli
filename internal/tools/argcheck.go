@@ -156,6 +156,15 @@ func ruleArg(k string, p map[string]any, v any) error {
 	return nil
 }
 
+// argRefused reports whether the static rules of tool's schema refuse v
+// as its argument arg (ruleArg).
+func (r *Registry) argRefused(tool, arg string, v any) bool {
+	t, _ := r.Lookup(tool)
+	props, _ := t.InputSchema["properties"].(map[string]any)
+	p, _ := props[arg].(map[string]any)
+	return ruleArg(arg, p, v) != nil
+}
+
 // ruleHint points at the argument's description, which says where the
 // value comes from.
 func ruleHint(k string, _ map[string]any) string {
