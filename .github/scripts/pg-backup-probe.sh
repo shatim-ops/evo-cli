@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Проба реестра DB-22 (G13-27): что отвечает список резервных копий кластера
-# PostgreSQL после его удаления. Вызывает job dbaas-pg в cloud-e2e.yml
+# PostgreSQL после его удаления. Документация Cloud.ru: при удалении кластера
+# удаляются «а также резервные копии кластера»
+# (https://cloud.ru/docs/paas-postgresql/ug/topics/guides__deleting-cluster).
+# Ожидание — копий нет; расхождение с документацией — копия найдена; ответ
+# не 200 и не 404 на список — отдельное расхождение API. Начисления проба не
+# видит. Вызывает job dbaas-pg в cloud-e2e.yml
 # после шага удаления кластера; окружение: CLUSTER_ID (кластер прогона,
 # уже замаскирован), BACKUP_NAME (копия, сделанная pg_backup_create),
 # KEY_ID, SECRET — ключ прогона.
@@ -70,6 +75,13 @@ echo "GET /v1/clusters/{id}/backups: $(show "$list_code"), копий $list_n"
 one_code=$(get "/v1/clusters/$CLUSTER_ID/backups/$BACKUP_NAME")
 echo "GET /v1/clusters/{id}/backups/{name}: $(show "$one_code"), статус $(jq -r '.status // "-"' "$out" 2>/dev/null || echo '?')"
 
-echo "DB-22 проба: после удаления кластера evo pg_backups — код $evo_rc ($evo_reason, копий $evo_n);" \
-	"API: список — $list_code (копий $list_n), копия по имени — $one_code;" \
-	"DELETE копии и списка по проекту в спецификации нет"
+# Итог под гипотезу документации: копии уходят вместе с кластером.
+if [ "$list_code" = 200 ] && [ "$list_n" != 0 ] && [ "$list_n" != "-" ] || [ "$one_code" = 200 ]; then
+	verdict="РАСХОЖДЕНИЕ с документацией: копия удалённого кластера найдена"
+elif { [ "$list_code" = 200 ] && [ "$list_n" = 0 ]; } || [ "$list_code" = 404 ]; then
+	verdict="как в документации: копий нет"
+else
+	verdict="копий не видно, но список отвечает $list_code вместо пустого списка или 404 — расхождение API"
+fi
+echo "DB-22 проба: $verdict (API: список — $list_code, копий $list_n; копия по имени — $one_code;" \
+	"evo pg_backups — код $evo_rc, $evo_reason). DELETE копии и списка по проекту в спецификации нет; начисления не проверялись"
