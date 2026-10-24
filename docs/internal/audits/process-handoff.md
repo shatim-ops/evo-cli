@@ -36,6 +36,10 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 | Номера D | резерв строкой в `DECISIONS.md` при выдаче (правило 4 §0, решение владельца 23.10); `TestDocs_DecisionReserves`: резерв без версии, рядом со строкой решения или после выпуска версии роняет тест | #243 |
 | Состав репозитория (FB13-1 аудита Fable) | `internal/repolayout`: каталог или файл в корне вне `rootDirs`/`rootFiles` и OpenAPI/Swagger-файл (по имени или ключу верхнего уровня) вне `apiSpecs` роняют тест; файлы — как их увидит `git add -A`; `cloudru-specs.py` не принимает опцию за OUT_DIR | этот PR; каталог `--help/` удаляет `claude/rm-stray-specs-1.3` |
 | Детерминизм | `TestDeterminism_ListOrderDoesNotChangeTheAnswer` (мир двойников) | тест в #236 у «1.3 — разработки» (D27) |
+| W8, ось 1 контракта (K1, G13-3) | `TestConfirmedReadOnlyInTheGate` (`internal/testrules`, `inlineGates`), `TestConsent_RefusalWithoutWriteComesBeforeTheQuestion` (`internal/cli`, `lateRefusals`); оба перечня только усыхают, их вычёркивают PR W4–W6 | #300 |
+| Мир HTTP-сбоев удаляет (P0 к A1) | DELETE элемента коллекции по самой длинной коллекции-префиксу, DELETE объекта S3, листинг по prefix; `TestFaultAPI_DeletesWhatItKeeps` | #301 |
+| Проба копий PG после удаления (DB-22, G13-27) | шаг `dbaas-pg`, `pg-backup-probe.sh`, `TestWorkflows_PGBackupProbeAfterDeleteChangesNothing`; живой итог — прогон cloud-e2e на теге rc.2 | #303 |
+| Ось 3 контракта: объявление созданного (K2, G13-14) | `TestCreated_EveryCreateDeclared` (create ⇔ `createdIDs`, одна форма, delete объявлен, `list` ⇒ `createNames`, каждый шаг стека находится по имени и удаляется), инвариант (c) матрицы сбоев `checkCreatedID`, `TestCreatedFakes_AnswerTheDeclaredID` (фейк create в тестах отвечает объявленным полем id; нашёл `TestQA_StackConcurrentCranksCreateOnce` с `id` вместо `cluster_id`) | этот PR |
 | Атака Grok 1.3, волна 1 (цели A–I, `grok-attack-1.3.md`) | отчёт 23.10: «критично» и «высокая» нет; «средние» G13-1 (проверка аргументов после запрета режима сервера) и G13-2 (инструкция сервера о данных ресурсов) исправлены «1.3 — разработкой», D33; инварианты `TestArgs_CheckedFirstInEveryMode`, `TestInitialize_InstructionsSayCloudFieldsAreData` | #288 |
 
 ## Открыто
@@ -52,11 +56,7 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
   `dns_record_create`, `fip_attach` на несуществующем id; назначил
   релиз). PR W4–W6 «разработки» вычёркивают строки в обоих перечнях.
   Видит только смоделированное миром; правила 4xx платформы — мир 4xx в
-  1.4. После A1 (решение владельца 24.10, «да» в чате «Процесса»):
-  `TestCreated_EveryCreateDeclared` (вариант из A1 передаёт «разработка»),
-  `checkCreatedID` в `TestFault_Matrix` и правило `internal/testrules`
-  для стековых тестов — подмена create-инструмента только формой из
-  `createdIDs` (G13-14, K2).
+  1.4. Инварианты K2 после A1 — «Сделано».
 - **Проба копий PG после удаления кластера** (DB-22, G13-27; решение
   владельца 24.10 — в прогоне cloud-e2e на коммите тега rc.2): шаг job
   `dbaas-pg` после удаления, `.github/scripts/pg-backup-probe.sh` —
@@ -186,6 +186,7 @@ workflows, аудиты процессов, брифы Cursor и Grok, пров�
 | 2 (1.4) | Job `api-contract`: `format: uuid` в схеме инструмента ⇔ `format: uuid` у параметра пути в спецификации | W3: `format: uuid` — только где спецификация подтверждает UUID |
 | 2 (1.4) | Матрица сбоев: случай манифеста с несуществующим бакетом | K3 (G13-13): бакет в матрице всегда создан заранее (`before: true`) |
 | 3 | Правило запуска волны «агент-оператор» в брифе Grok (1.4): на rc.1 или на rc.2 по итогам волны на чтение | в 1.3 решено владельцем разово (волна 2 на rc.1), в бриф не записано |
+| 3 | Локальный shellcheck — той же версии, что на раннере (0.10) | #303: локальный 0.11 не пометил SC2015, CI упал; версию держать в одном месте с CI |
 | 3 | `startup_failure` у повтора run с упавшим job | гипотеза; проверка на следующем красном PR (см. «Открыто») |
 | 3 | Этап 7 (1.4): нагрузочный тест, бенчмарки, потолок стоимости | `process-1.2.1-stages.md` |
 | 3 | Маска stderr evo в `cloud-readonly-os.yml` (Windows и macOS) | `build_evo.sh` — только Linux-job cloud-e2e и api-probe |
