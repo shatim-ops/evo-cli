@@ -396,6 +396,54 @@ func TestWorkflows_WeeklyRace(t *testing.T) {
 	}
 }
 
+// The Go runtime crashes on Windows now and then under -race (#226, #219,
+// #267, #278, #293, #331: "found pointer to free object" in internal/tools).
+// A run by hand with windows_gc_probe tells the runtime from the only unsafe
+// of evo, the ACLs of internal/config/private_windows.go: config many times
+// under -race, tools with and without it, every step under GODEBUG checks
+// of the collector, none hiding the next. The weekly race does not run then.
+func TestWorkflows_WindowsGCProbe(t *testing.T) {
+	w := weeklyWorkflow(t, "weekly-race.yml")
+	d, _ := w.On["workflow_dispatch"].(map[string]any)
+	in, _ := d["inputs"].(map[string]any)
+	if p, _ := in["windows_gc_probe"].(map[string]any); p["type"] != "boolean" {
+		t.Fatal("weekly-race: no boolean input windows_gc_probe")
+	}
+	if !strings.Contains(w.Jobs["race"].If, "!inputs.windows_gc_probe") {
+		t.Errorf("weekly-race: the race job runs with the probe: if %q", w.Jobs["race"].If)
+	}
+	j, ok := w.Jobs["gc-probe"]
+	if !ok || j.RunsOn != "windows-latest" || !strings.Contains(j.If, "inputs.windows_gc_probe") {
+		t.Fatalf("weekly-race: no gc-probe job on windows-latest behind the input (runs-on %q, if %q)", j.RunsOn, j.If)
+	}
+	if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["contents"] != "read" {
+		t.Errorf("weekly-race: gc-probe permissions %v, want contents: read only", j.Permissions)
+	}
+	want := []string{
+		"go test -race -count=200 ./internal/config/",
+		"go test -race -count=20 ./internal/tools/",
+		"go test -count=20 ./internal/tools/",
+	}
+	for _, cmd := range want {
+		found := false
+		for _, s := range j.Steps {
+			if strings.TrimSpace(s.Run) != cmd {
+				continue
+			}
+			found = true
+			if !s.ContinueOnError {
+				t.Errorf("weekly-race: gc-probe step %q stops the next ones", cmd)
+			}
+			if g := s.Env["GODEBUG"]; !strings.Contains(g, "gccheckmark=1") || !strings.Contains(g, "invalidptr=1") {
+				t.Errorf("weekly-race: gc-probe step %q has GODEBUG %q", cmd, g)
+			}
+		}
+		if !found {
+			t.Errorf("weekly-race: gc-probe does not run %q", cmd)
+		}
+	}
+}
+
 // The cleanup of cloud-e2e removes an «evo:» rule of an e2e port only when
 // its security group has no interface (e2e_rules_sweep.sh, tested in ci): any evo
 // deploy writes «evo: …», and a rule of a person's VM looks the same. No

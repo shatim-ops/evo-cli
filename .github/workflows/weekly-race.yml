@@ -13,12 +13,19 @@ on:
   schedule:
     - cron: "29 3 * * 0"
   workflow_dispatch:
+    inputs:
+      # Диагностика падений рантайма Go под -race на Windows
+      # (process-handoff.md, бэклог; #331): только job gc-probe ниже.
+      windows_gc_probe:
+        description: "Только проба GC на Windows (config ×200 и tools ×20 под GODEBUG)"
+        type: boolean
+        default: false
 
 permissions: {}
 
 jobs:
   race:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && !inputs.windows_gc_probe
     strategy:
       fail-fast: false
       matrix:
@@ -54,6 +61,71 @@ jobs:
       - name: миры engine и tools ×20 (тик таймера Windows)
         if: runner.os == 'Windows'
         run: go test -count=20 -shuffle=on ./internal/engine/ ./internal/tools/
+
+  # Падения рантайма Go под -race на Windows (#226, #219, #267, #278, #293,
+  # #331: «found pointer to free object» в internal/tools). Проба отличает
+  # рантайм от единственного unsafe evo — ACL в
+  # internal/config/private_windows.go: config много раз под -race, tools с
+  # -race и без. GODEBUG включает проверки сборщика: висячий указатель
+  # падает там, где он появился, а не в случайном тесте. Шаги не
+  # останавливают друг друга, итог — в сводке прогона. Запуск — вручную,
+  # с любой ветки: секретов и записи нет.
+  gc-probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_gc_probe
+    runs-on: windows-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    steps:
+      - name: git без перевода строк
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Та же версия, что в ci.yml; поднимать вместе.
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+
+      - id: config
+        name: config ×200 под -race (ACL, unsafe)
+        continue-on-error: true
+        run: go test -race -count=200 ./internal/config/
+        env:
+          GODEBUG: invalidptr=1,gccheckmark=1
+          GORACE: atexit_sleep_ms=0
+
+      - id: tools-race
+        name: tools ×20 под -race
+        continue-on-error: true
+        run: go test -race -count=20 ./internal/tools/
+        env:
+          GODEBUG: invalidptr=1,gccheckmark=1
+          GORACE: atexit_sleep_ms=0
+
+      - id: tools
+        name: tools ×20 без -race
+        continue-on-error: true
+        run: go test -count=20 ./internal/tools/
+        env:
+          GODEBUG: invalidptr=1,gccheckmark=1
+
+      - name: итог
+        shell: bash
+        env:
+          CONFIG: ${{ steps.config.outcome }}
+          TOOLS_RACE: ${{ steps.tools-race.outcome }}
+          TOOLS: ${{ steps.tools.outcome }}
+        run: |
+          {
+            echo "| шаг | итог |"
+            echo "|---|---|"
+            echo "| config ×200, -race | $CONFIG |"
+            echo "| tools ×20, -race | $TOOLS_RACE |"
+            echo "| tools ×20, без -race | $TOOLS |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Красное — в issue (weekly-issue.yml).
   report:
