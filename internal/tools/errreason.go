@@ -24,6 +24,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
+// statusClientClosed is the 499 Container Apps answers a resource that is
+// not there with («… is not found»).
+const statusClientClosed = 499
+
 // uncodedReason is the reason of a tool error that carries no code (no
 // CLIError in the chain, no "CODE: " prefix). Every such error used to be
 // API_ERROR (exit 5, "Cloud.ru answered with an error"), local refusals as
@@ -32,7 +36,7 @@ import (
 //   - an answer of an API, by its HTTP status (provision.StatusError, the
 //     Organization API, S3, or "<service> API 404: …" / "HTTP 502: …" in the
 //     message of the service clients): 404 — NOT_FOUND, 429 —
-//     API_RATE_LIMITED, another 4xx whose answer says "not found" —
+//     API_RATE_LIMITED, a 400, 422 or 499 whose answer says "not found" —
 //     NOT_FOUND, else API_ERROR;
 //   - no answer at all (network, DNS, a deadline) — API_UNREACHABLE;
 //   - a failed operation of the cloud ("mk8s operation … failed"), or
@@ -47,16 +51,18 @@ func uncodedReason(err error, fields map[string]any) string {
 	answer := strings.ToLower(toJSON(fields) + " " + err.Error())
 	notFound := strings.Contains(answer, "not found") || strings.Contains(answer, "не найден")
 	if st := apiStatus(err); st != 0 {
-		// The status decides; the words of the answer only name a 4xx
-		// that has no code of its own (a 400 «subnet not found»). A 429
-		// or a 5xx whose text says «not found» is not «no such
-		// resource» (cloud-e2e 24.10: pg_create, 429 ResourceExhausted).
+		// The status decides; the words of the answer name a missing
+		// resource only on the statuses the platform answers it with
+		// besides 404: 400 (DBaaS, register DB-13), 422 (Compute images),
+		// 499 (Container Apps). A 403, 409, 429 or 5xx whose text says
+		// «not found» is not «no such resource» (cloud-e2e 24.10:
+		// pg_create, 429 ResourceExhausted).
 		switch {
 		case st == http.StatusNotFound:
 			return clierrors.CodeNotFound
 		case st == http.StatusTooManyRequests:
 			return clierrors.CodeAPIRateLimited
-		case st >= 400 && st < 500 && notFound:
+		case notFound && (st == http.StatusBadRequest || st == http.StatusUnprocessableEntity || st == statusClientClosed):
 			return clierrors.CodeNotFound
 		}
 		return clierrors.CodeAPIError
