@@ -29,7 +29,8 @@ echo "::add-mask::$CLUSTER_ID"
 redact() { sed -E -f "$(dirname "$0")/redact.sed"; }
 api=https://postgresql.api.cloud.ru
 out="${RUNNER_TEMP:-/tmp}/pg-backup-probe.json"
-trap 'rm -f "$out"' EXIT
+err="${RUNNER_TEMP:-/tmp}/pg-backup-probe.err"
+trap 'rm -f "$out" "$err"' EXIT
 [ -z "${BACKUP_NAME:-}" ] || echo "::add-mask::$BACKUP_NAME"
 
 # Копии не было (pg_backup_create упал раньше): вопрос DB-22 не задан.
@@ -49,19 +50,22 @@ if jq -e --arg id "$CLUSTER_ID" 'any(.clusters[]?; .id == $id)' "$out" >/dev/nul
 	exit 0
 fi
 
-# 1. evo pg_backups по ID удалённого кластера.
+# 1. evo pg_backups по ID удалённого кластера. Ошибка инструмента — в
+# stderr ({"error":…}), stdout тогда пуст (QA-12): на rc.2 проба выбрасывала
+# stderr и печатала пустой reason (run 40093421741).
 set +e
-evo tools call pg_backups --arg cluster_id="$CLUSTER_ID" --json >"$out" 2>/dev/null
+evo tools call pg_backups --arg cluster_id="$CLUSTER_ID" --json >"$out" 2>"$err"
 evo_rc=$?
 set -e
-evo_reason=$(jq -r '.reason // .error.reason // "-"' "$out" 2>/dev/null || echo '?')
+evo_reason=$(jq -r '.reason // empty' "$out" 2>/dev/null) || evo_reason=
+[ -n "$evo_reason" ] || evo_reason=$(jq -rR 'fromjson? | .error.reason? // empty' "$err" 2>/dev/null | sed -n 1p) || evo_reason=
 evo_n=$(jq -r 'if (.backups | type) == "array" then (.backups | length) else "-" end' "$out" 2>/dev/null || echo '?')
-echo "evo pg_backups: код $evo_rc, reason $evo_reason, копий $evo_n, поля $(jq -c 'keys' "$out" 2>/dev/null || echo '-')"
-[ "$evo_rc" = 0 ] || echo "evo pg_backups: $(jq -r '.error // empty | tostring' "$out" 2>/dev/null | redact | cut -c1-200)"
+echo "evo pg_backups: код $evo_rc, reason ${evo_reason:--}, копий ${evo_n:--}, поля $(jq -c 'keys' "$out" 2>/dev/null || echo '-')"
+[ "$evo_rc" = 0 ] || echo "evo pg_backups: $(jq -rR 'fromjson? | .error.message? // empty' "$err" 2>/dev/null | sed -n 1p | redact | cut -c1-200)"
 
 # 2. Те же копии прямым GET API: список и копия по имени.
 if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ]; then
-	echo "DB-22 проба: evo pg_backups — код $evo_rc ($evo_reason, копий $evo_n); API не проверен: нет ключа"
+	echo "DB-22 проба: evo pg_backups — код $evo_rc (${evo_reason:--}, копий $evo_n); API не проверен: нет ключа"
 	exit 0
 fi
 # Тело запроса токена — через stdin, не в argv.
@@ -73,14 +77,21 @@ get() { # ПУТЬ → тело в $out, код HTTP на stdout; 000 — зап
 	# stderr curl — в никуда: его текст об ошибке может нести URL с ID.
 	curl -sS -o "$out" -w '%{http_code}' -H "Authorization: Bearer $token" "$api$1" 2>/dev/null || echo 000
 }
-show() { # КОД — что ответил API: поля и текст ошибки
+show() { # КОД — что ответил API: поля и текст ошибки; тело не JSON — его
+	# начало (на rc.2 список ответил 400 не JSON, и проба не показала ничего)
 	local keys msg
-	keys=$(jq -c 'if type == "object" then keys else type end' "$out" 2>/dev/null || echo '-')
-	msg=$(jq -r '.message // .error // empty | tostring' "$out" 2>/dev/null | redact | cut -c1-160)
+	if jq -e . "$out" >/dev/null 2>&1; then
+		keys=$(jq -c 'if type == "object" then keys else type end' "$out")
+		msg=$(jq -r '.message // .error // empty | tostring' "$out" | redact | cut -c1-160)
+	else
+		keys="не JSON"
+		# маска до обрезки: обрезанный ID redact.sed уже не узнаёт
+		msg=$(head -c 4000 "$out" | tr '\n\r' '  ' | redact | cut -c1-160)
+	fi
 	echo "http=$1, поля $keys${msg:+, «$msg»}"
 }
 if [ -z "$token" ]; then
-	echo "DB-22 проба: evo pg_backups — код $evo_rc ($evo_reason, копий $evo_n); API не проверен: нет токена"
+	echo "DB-22 проба: evo pg_backups — код $evo_rc (${evo_reason:--}, копий $evo_n); API не проверен: нет токена"
 	exit 0
 fi
 list_code=$(get "/v1/clusters/$CLUSTER_ID/backups")
@@ -99,4 +110,4 @@ else
 	verdict="копий не видно, но список отвечает $list_code вместо пустого списка или 404 — расхождение API"
 fi
 echo "DB-22 проба: $verdict (API: список — $list_code, копий $list_n; копия по имени — $one_code;" \
-	"evo pg_backups — код $evo_rc, $evo_reason). DELETE копии и списка по проекту в спецификации нет; начисления не проверялись"
+	"evo pg_backups — код $evo_rc, ${evo_reason:--}). DELETE копии и списка по проекту в спецификации нет; начисления не проверялись"
