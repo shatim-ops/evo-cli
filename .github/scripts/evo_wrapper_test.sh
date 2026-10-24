@@ -43,10 +43,13 @@ set +e
 reader=$!
 for _ in $(seq 1 600); do grep -q 'готов' "$dir/int.out" 2>/dev/null && break; sleep 0.05; done
 pg=$(ps -o pgid= -p "$(cat "$dir/pid" 2>/dev/null)" 2>/dev/null | tr -d ' ')
-[ -n "$pg" ] && kill -INT -- "-$pg"
+own=$(ps -o pgid= -p $$ | tr -d ' ')
+# timeout без своей группы (GNU делает setpgid) — INT ушёл бы и в этот тест.
+if [ -n "$pg" ] && [ "$pg" != "$own" ]; then kill -INT -- "-$pg"; else kill -INT "$(cat "$dir/pid" 2>/dev/null)" 2>/dev/null; fi
 wait "$reader"
 set -e
 want "evo запустился" "${pg:+да}" да
+want "timeout ведёт свою группу процессов" "$([ "$pg" != "$own" ] && echo да)" да
 want "INT доходит до evo" "$(cat "$dir/int.rc")" 130
 want "stderr после INT — через redact.sed" "$(cat "$dir/int.out")" "$(printf 'stderr готов <id>\nstderr прерван <id>')"
 

@@ -30,7 +30,10 @@ type workflow struct {
 		TimeoutMinutes int    `yaml:"timeout-minutes"`
 		Permissions    any    `yaml:"permissions"`
 		Uses           string `yaml:"uses"`
-		Steps          []struct {
+		RunsOn         string `yaml:"runs-on"`
+		// ContinueOnError: a job whose failure does not fail the run.
+		ContinueOnError bool `yaml:"continue-on-error"`
+		Steps           []struct {
 			ID   string            `yaml:"id"`
 			Name string            `yaml:"name"`
 			If   string            `yaml:"if"`
@@ -948,5 +951,35 @@ func TestWorkflows_RuleSeenBeforeItIsCheckedGone(t *testing.T) {
 	if create < 0 || seenStep < 0 || del < 0 || gone < 0 || !(create < seenStep && seenStep < del && del < gone) {
 		t.Errorf("cloud-e2e os-smoke: vm create (%d), the rule seen (%d), vm delete (%d), the rule gone (%d) — out of order or missing",
 			create, seenStep, del, gone)
+	}
+}
+
+// The Linux job of ci runs on a named image, not ubuntu-latest: on
+// ubuntu-26.04 (ubuntu-latest from 24.10.2026) evo_wrapper_test.sh failed
+// 2 of 2 on the tag v1.3.0-rc.2 (release run 40100673928) and passed on
+// ubuntu-24 the same day, so the image changed under an unchanged commit.
+// A job on ubuntu-latest runs the wrapper test without failing the run, so
+// the move to the new image is a decision made on its result.
+func TestWorkflows_CILinuxImageIsPinned(t *testing.T) {
+	ci := readWorkflows(t)["ci.yml"]
+	if ro := ci.Jobs["test"].RunsOn; !strings.Contains(ro, "'ubuntu-24.04'") {
+		t.Errorf("ci test: runs-on %q — the Linux job takes ubuntu-latest, not ubuntu-24.04", ro)
+	}
+	probe := false
+	for name, j := range ci.Jobs {
+		if j.RunsOn != "ubuntu-latest" {
+			continue
+		}
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, ".github/scripts/evo_wrapper_test.sh") {
+				probe = true
+				if !j.ContinueOnError {
+					t.Errorf("ci %s: the probe of ubuntu-latest fails the run (continue-on-error: true)", name)
+				}
+			}
+		}
+	}
+	if !probe {
+		t.Error("ci: no job runs evo_wrapper_test.sh on ubuntu-latest")
 	}
 }
