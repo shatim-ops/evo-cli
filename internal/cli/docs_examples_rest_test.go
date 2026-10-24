@@ -25,8 +25,8 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
-// TestDocsExamples_Counts pins the numbers the user docs state: 154 tools,
-// 24 --toolsets groups, 89 tools left under --read-only, 26 tools in
+// TestDocsExamples_Counts pins the numbers the user docs state: 155 tools,
+// 24 --toolsets groups, 89 tools left under --read-only, 27 tools in
 // deploy,vm,vpc, and 17 read-only tools in vm,vpc,disk,image.
 func TestDocsExamples_Counts(t *testing.T) {
 	list := newRegistry().Tools()
@@ -45,7 +45,7 @@ func TestDocsExamples_Counts(t *testing.T) {
 		}
 	}
 	subset := groups["deploy"] + groups["vm"] + groups["vpc"]
-	if len(list) != 154 || len(groups) != 24 || readOnly != 89 || subset != 26 || readOnlySlice != 17 {
+	if len(list) != 155 || len(groups) != 24 || readOnly != 89 || subset != 27 || readOnlySlice != 17 {
 		names := make([]string, 0, len(groups))
 		for g, n := range groups {
 			names = append(names, fmt.Sprintf("%s=%d", g, n))
@@ -64,16 +64,16 @@ func TestDocsExamples_Counts(t *testing.T) {
 	readme := flat("README.md")
 	dog := flat("docs/internal/dogfood-protocol.md")
 	for _, text := range []string{mcp, readme, dog} {
-		if !strings.Contains(text, "154") {
-			t.Errorf("a user doc dropped the tool count 154")
+		if !strings.Contains(text, "155") {
+			t.Errorf("a user doc dropped the tool count 155")
 			break
 		}
 	}
-	if !strings.Contains(mcp, "остаются 89") || !strings.Contains(mcp, "26 инструментов") || !strings.Contains(mcp, "17 инструментов") {
-		t.Errorf("docs/mcp.md no longer states 89 read-only, 26 in deploy,vm,vpc, or 17 in vm,vpc,disk,image")
+	if !strings.Contains(mcp, "остаются 89") || !strings.Contains(mcp, "27 инструментов") || !strings.Contains(mcp, "17 инструментов") {
+		t.Errorf("docs/mcp.md no longer states 89 read-only, 27 in deploy,vm,vpc, or 17 in vm,vpc,disk,image")
 	}
-	if !strings.Contains(dog, "26 инструментов") || !strings.Contains(dog, "154 инструмента") {
-		t.Errorf("docs/internal/dogfood-protocol.md no longer states 154 tools or 26 in deploy,vm,vpc")
+	if !strings.Contains(dog, "27 инструментов") || !strings.Contains(dog, "155 инструментов") {
+		t.Errorf("docs/internal/dogfood-protocol.md no longer states 155 tools or 27 in deploy,vm,vpc")
 	}
 }
 

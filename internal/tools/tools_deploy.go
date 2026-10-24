@@ -649,6 +649,119 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 	return errAnswer(fmt.Errorf("opened %s, not opened %s: %w", strings.Join(opened, ","), strings.Join(failed, ","), firstErr), res), true
 }
 
+// planClosePorts plans close_ports (gate.go), the way back from open_ports
+// (G13-9, D37): the ingress rules of exactly the ports, protocol and source
+// given, read before the question. A group that is not there is the call's
+// error; no rule to close is already deleted (D26), with no question. The
+// group is shared per zone: the preview says so, as open_ports' does.
+func (s *Registry) planClosePorts(ctx context.Context, args map[string]any) (*Plan, error) {
+	sgRef := stringArg(args, "security_group")
+	ports, err := portsArg("ports", args["ports"])
+	if err != nil {
+		return nil, err
+	}
+	if sgRef == "" || len(ports) == 0 {
+		return nil, usageErr("security_group and ports are required", "нужны security_group и ports")
+	}
+	proto := firstNonEmptyStr(stringArg(args, "protocol"), "tcp")
+	cidr := firstNonEmptyStr(stringArg(args, "cidr"), "0.0.0.0/0")
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	sgs, err := eng.Cloud.ListSecurityGroups(ctx, eng.Config.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	var target *provision.SecurityGroup
+	for _, g := range sgs {
+		if g.ID == sgRef || g.Name == sgRef {
+			target = g
+			break
+		}
+	}
+	if target == nil {
+		return nil, clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("security group %q not found", "группа безопасности %q не найдена", sgRef),
+			i18n.T("list_security_groups lists the project's groups.", "Группы проекта — в выводе list_security_groups."))
+	}
+	rules, err := eng.Cloud.ListSecurityGroupRules(ctx, target.ID)
+	if err != nil {
+		return nil, err
+	}
+	type closing struct {
+		port int
+		id   string
+	}
+	var toClose []closing
+	var closedAlready []string
+	for _, p := range ports {
+		found := false
+		for _, r := range rules {
+			if r.Direction == "ingress" && r.IPProtocol == proto && r.PortRange == fmt.Sprintf("%d:%d", p, p) && r.RemoteIPPrefix == cidr {
+				toClose = append(toClose, closing{p, r.ID})
+				found = true
+			}
+		}
+		if !found {
+			closedAlready = append(closedAlready, strconv.Itoa(p))
+		}
+	}
+	if len(toClose) == 0 {
+		ref := fmt.Sprintf("%s/%s from %s", strings.Join(closedAlready, ","), proto, cidr)
+		return answered(s.deleteFailedAs("close_ports", "ports", ref, clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("no rule %s in security group %q", "правила %s в группе безопасности %q нет", ref, target.Name), ""))), nil
+	}
+	listed := make([]map[string]any, 0, len(toClose))
+	for _, c := range toClose {
+		listed = append(listed, map[string]any{"id": c.id, "port": c.port, "protocol": proto, "cidr": cidr})
+	}
+	preview := map[string]any{
+		"message": i18n.Tf("close_ports would delete %d rule(s) of security group %q (shared per zone — affects every VM in it).",
+			"close_ports удалит правила (%d) группы безопасности %q (она общая для зоны — затронет каждую ВМ в ней).", len(toClose), target.Name),
+		"security_group": target.Name,
+		"rules":          listed,
+		"already_closed": closedAlready,
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		var closed, failed []string
+		failures := map[string]string{}
+		var firstErr error
+		for _, c := range toClose {
+			port := strconv.Itoa(c.port)
+			// A rule gone meanwhile is closed (D26).
+			if e := eng.Cloud.DeleteSecurityGroupRule(ctx, target.ID, c.id); e != nil && !isGone(e) {
+				failed = append(failed, port)
+				failures[port] = e.Error()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("close port %d: %w", c.port, e)
+				}
+				continue
+			}
+			closed = append(closed, port)
+		}
+		res := map[string]any{
+			"status":         "ok",
+			"security_group": target.Name,
+			"protocol":       proto,
+			"cidr":           cidr,
+			"closed":         closed,
+			"already_closed": closedAlready,
+			"failed":         failed,
+		}
+		if firstErr == nil {
+			return toJSON(res), false
+		}
+		res["failures"] = failures
+		res["status"] = "partial"
+		if len(closed) == 0 {
+			res["status"] = "error"
+			return errAnswer(firstErr, res), true
+		}
+		return errAnswer(fmt.Errorf("closed %s, not closed %s: %w", strings.Join(closed, ","), strings.Join(failed, ","), firstErr), res), true
+	}}, nil
+}
+
 // planReleaseFloatingIP plans the release of a floating IP (gate.go), refusing one in use.
 func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]any) (*Plan, error) {
 	// Both: the id was taken and the address dropped without a word —
