@@ -13,8 +13,6 @@ import (
 // synchronous stack step took the id from vm_id, id or path of the answer
 // and wrote "ok" when none was there; snat_create answers nat_gateway.id,
 // so stack_destroy got "ok" and the billed gateway stayed.
-// TestCreated_EveryCreateDeclared keeps the list closed, and the fault
-// matrix checks every id against what the call made (invariant c).
 //
 // For now lostCreate still takes the id field and the list of its own
 // arguments (two sources); the next change makes it read them from here.
