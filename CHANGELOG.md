@@ -59,7 +59,10 @@
   record-create` с зоной, которой нет, `evo vpc fip-attach` с адресом или
   ВМ, которых нет, — `NOT_FOUND`, код 4; `evo dns record-create` с занятыми
   именем и типом записи — `USAGE`, код 1, `existing_id` (было: после
-  согласия, D28). То же в MCP `kafka_create`, `redis_create`, `pg_create`,
+  согласия, D28); `evo vpc fip-attach` с адресом, который не свободен
+  (привязан к другой ВМ или меняет состояние), или к ВМ, у которой уже есть
+  floating IP, — `USAGE`, код 1 (FB130-1), а с адресом, уже привязанным к
+  этой ВМ, — `status: already_attached`, код 0, без вопроса (D26). То же в MCP `kafka_create`, `redis_create`, `pg_create`,
   `s3_bucket_delete`, `cert_private_key`, `dns_record_create`, `fip_attach`.
   Что поменять: проверять код отказа без `--yes` так же, как с ним.
 

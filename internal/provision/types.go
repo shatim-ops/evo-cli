@@ -474,6 +474,9 @@ func (f FloatingIP) BoundTo(vmID string) bool {
 	return bytes.Contains(f.VM, q) || bytes.Contains(f.Interface, q)
 }
 
+// Bound reports an address the answer binds to a VM or its interface.
+func (f FloatingIP) Bound() bool { return !isEmptyRaw(f.VM) || !isEmptyRaw(f.Interface) }
+
 // Pending reports an address still being created or attached, not bound
 // to anything yet: one a create that named an interface has just made.
 func (f FloatingIP) Pending() bool {
