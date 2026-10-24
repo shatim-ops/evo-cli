@@ -74,8 +74,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_gc_probe
     runs-on: windows-latest
     # tools ×20 под GODEBUG не укладывается в -timeout 10m по умолчанию
-    # (run 40135541445): у шагов tools свой срок, у job — их сумма с запасом.
-    timeout-minutes: 330
+    # (run 40135541445): у каждого шага свой срок, у job — их сумма с запасом.
+    timeout-minutes: 390
     permissions:
       contents: read
     steps:
@@ -94,7 +94,7 @@ jobs:
       - id: config
         name: config ×200 под -race (ACL, unsafe)
         continue-on-error: true
-        run: go test -race -count=200 ./internal/config/
+        run: go test -race -count=200 -timeout=60m ./internal/config/
         env:
           GODEBUG: invalidptr=1,gccheckmark=1
           GORACE: atexit_sleep_ms=0

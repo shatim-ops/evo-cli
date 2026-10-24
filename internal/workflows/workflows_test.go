@@ -403,7 +403,7 @@ func TestWorkflows_WeeklyRace(t *testing.T) {
 // under -race, tools with and without it, every step under GODEBUG checks
 // of the collector, none hiding the next. The weekly race does not run then.
 // tools ×20 under GODEBUG outlives the default -timeout of 10m (run
-// 40135541445): its steps set their own.
+// 40135541445): every step sets its own.
 func TestWorkflows_WindowsGCProbe(t *testing.T) {
 	w := weeklyWorkflow(t, "weekly-race.yml")
 	d, _ := w.On["workflow_dispatch"].(map[string]any)
@@ -422,7 +422,7 @@ func TestWorkflows_WindowsGCProbe(t *testing.T) {
 		t.Errorf("weekly-race: gc-probe permissions %v, want contents: read only", j.Permissions)
 	}
 	want := []string{
-		"go test -race -count=200 ./internal/config/",
+		"go test -race -count=200 -timeout=60m ./internal/config/",
 		"go test -race -count=20 -timeout=150m ./internal/tools/",
 		"go test -count=20 -timeout=150m ./internal/tools/",
 	}
