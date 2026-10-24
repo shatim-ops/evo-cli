@@ -667,7 +667,7 @@ jobs:
             fi
             sleep 15
           done
-          echo "::error::SSH к ВМ не поднялся за 10 минут"
+          echo "::error::SSH к ВМ не поднялся за 40 попыток (10–17 мин: пауза 15 с и до 10 с на соединение)"
           exit 1
 
       - name: vm delete (всегда)
@@ -1175,7 +1175,10 @@ jobs:
           [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
           [ "$(jq -r '.enabled' <<<"$z")" != false ] ||
             { echo "::error::зона $ZONE закрыта (enabled=false): Cloud.ru в ней сейчас не создаёт и не удаляет ресурсы — запустите с другой зоной (вход zone)"; exit 1; }
-          echo "ZONE_ID=$(jq -r '.id' <<<"$z")" >> "$GITHUB_ENV"
+          # ID зоны — в env следующих шагов, а GitHub печатает их env: маска
+          zid=$(jq -r '.id' <<<"$z")
+          echo "::add-mask::$zid"
+          echo "ZONE_ID=$zid" >> "$GITHUB_ENV"
           n=$(evo tools call "${KIND}_list" --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
           [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
           echo "зона $ZONE открыта, кластера $CLUSTER нет"
@@ -1455,7 +1458,10 @@ jobs:
           [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
           [ "$(jq -r '.enabled' <<<"$z")" != false ] ||
             { echo "::error::зона $ZONE закрыта (enabled=false): Cloud.ru в ней сейчас не создаёт и не удаляет ресурсы — запустите с другой зоной (вход zone)"; exit 1; }
-          echo "ZONE_ID=$(jq -r '.id' <<<"$z")" >> "$GITHUB_ENV"
+          # ID зоны — в env следующих шагов, а GitHub печатает их env: маска
+          zid=$(jq -r '.id' <<<"$z")
+          echo "::add-mask::$zid"
+          echo "ZONE_ID=$zid" >> "$GITHUB_ENV"
           n=$(evo tools call "${KIND}_list" --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
           [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
           echo "зона $ZONE открыта, кластера $CLUSTER нет"
@@ -1604,7 +1610,10 @@ jobs:
           [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
           [ "$(jq -r '.enabled' <<<"$z")" != false ] ||
             { echo "::error::зона $ZONE закрыта (enabled=false): Cloud.ru в ней сейчас не создаёт и не удаляет ресурсы — запустите с другой зоной (вход zone)"; exit 1; }
-          echo "ZONE_ID=$(jq -r '.id' <<<"$z")" >> "$GITHUB_ENV"
+          # ID зоны — в env следующих шагов, а GitHub печатает их env: маска
+          zid=$(jq -r '.id' <<<"$z")
+          echo "::add-mask::$zid"
+          echo "ZONE_ID=$zid" >> "$GITHUB_ENV"
           n=$(evo tools call "${KIND}_list" --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
           [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
           echo "зона $ZONE открыта, кластера $CLUSTER нет"

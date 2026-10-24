@@ -891,6 +891,11 @@ func TestWorkflows_PGBackupProbeAfterDeleteChangesNothing(t *testing.T) {
 		if strings.Contains(l, "curl ") && !strings.Contains(l, "2>/dev/null") {
 			t.Errorf("pg-backup-probe.sh lets curl's errors into the log: %s", strings.TrimSpace(l))
 		}
+		// The error of a tool is on stderr, stdout empty (QA-12): thrown
+		// away, the probe of rc.2 logged «reason ,» (run 40093421741).
+		if strings.Contains(l, "evo tools call pg_backups") && strings.Contains(l, "2>/dev/null") {
+			t.Errorf("pg-backup-probe.sh throws away the error of pg_backups: %s", strings.TrimSpace(l))
+		}
 	}
 }
 
@@ -948,5 +953,32 @@ func TestWorkflows_RuleSeenBeforeItIsCheckedGone(t *testing.T) {
 	if create < 0 || seenStep < 0 || del < 0 || gone < 0 || !(create < seenStep && seenStep < del && del < gone) {
 		t.Errorf("cloud-e2e os-smoke: vm create (%d), the rule seen (%d), vm delete (%d), the rule gone (%d) — out of order or missing",
 			create, seenStep, del, gone)
+	}
+}
+
+// The API answered the probe of rc.2 400 with a body that is no JSON, and
+// the probe printed nothing of it (run 40093421741): such a body goes to
+// the log cut and through redact.sed.
+func TestWorkflows_PGBackupProbeShowsANonJSONBody(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "pg-backup-probe.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := regexp.MustCompile(`(?m)^show\(\) \{[\s\S]*?^\}`).FindString(string(b))
+	if body == "" || !strings.Contains(body, "redact") || !strings.Contains(body, "head -c") {
+		t.Errorf("pg-backup-probe.sh show(): no cut, redacted text of a body that is no JSON:\n%s", body)
+	}
+}
+
+// The zone of a DBaaS job goes to GITHUB_ENV, and GitHub prints the env of
+// every later step: unmasked, its id was in the public log of rc.2 (run
+// 40093421741). A step that writes ZONE_ID masks it.
+func TestWorkflows_ZoneIDMaskedBeforeEnv(t *testing.T) {
+	for name, j := range readWorkflows(t)["cloud-e2e.yml"].Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, "ZONE_ID=") && strings.Contains(s.Run, "GITHUB_ENV") && !strings.Contains(s.Run, "::add-mask::") {
+				t.Errorf("cloud-e2e %s, %s: ZONE_ID goes to GITHUB_ENV unmasked", name, s.Name)
+			}
+		}
 	}
 }
