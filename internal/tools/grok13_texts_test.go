@@ -47,8 +47,11 @@ func TestKafkaDelete_ServerErrorSaysWhatNext(t *testing.T) {
 	if m["reason"] != "API_ERROR" {
 		t.Errorf("reason %v, want API_ERROR (unchanged): %s", m["reason"], text)
 	}
-	if h, _ := m["hint"].(string); !strings.Contains(h, "support") || !strings.Contains(h, faultPGCluster) {
-		t.Errorf("hint %q, want support with the cluster id: %s", m["hint"], text)
+	// The same 500 answers a cluster still being created (DEPLOYING,
+	// register DB-17): wait for READY and repeat; a FAILED one goes to
+	// support with its id.
+	if h, _ := m["hint"].(string); !strings.Contains(h, "READY") || !strings.Contains(h, "support") || !strings.Contains(h, faultPGCluster) {
+		t.Errorf("hint %q, want wait for READY, or support with the cluster id: %s", m["hint"], text)
 	}
 }
 
