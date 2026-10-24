@@ -41,6 +41,15 @@ func TestUncodedReason(t *testing.T) {
 		{"429 клиента сервиса", errors.New("secret API 429: slow down"), nil, clierrors.CodeAPIRateLimited, 5},
 		{"5xx клиента сервиса", fmt.Errorf("create zone: %w", errors.New("dns API 500: internal")), nil, clierrors.CodeAPIError, 5},
 		{"HTTP: 502", errors.New("HTTP: 502"), nil, clierrors.CodeAPIError, 5},
+		// The status decides, not the words of the answer (cloud-e2e
+		// 24.10, run 40123320696: pg_create met 429 ResourceExhausted «…
+		// not found …» and answered NOT_FOUND, code 4). The words count
+		// only for a 4xx with no code of its own.
+		{"429 со словами not found", errors.New("postgresql API 429: rpc error: code = ResourceExhausted desc = reserve resources: shared cluster not found"), nil, clierrors.CodeAPIRateLimited, 5},
+		{"5xx со словами not found", errors.New("kafka API 500: upstream not found"), nil, clierrors.CodeAPIError, 5},
+		{"статус compute 503 со словами not found", fmt.Errorf("x: %w", &provision.StatusError{Status: 503, Body: "backend not found"}), nil, clierrors.CodeAPIError, 5},
+		{"S3 503 со словами not found", fmt.Errorf("get: %w", minio.ErrorResponse{Code: "SlowDown", Message: "not found", StatusCode: 503}), nil, clierrors.CodeAPIError, 5},
+		{"400 со словами not found", errors.New("vpc API 400: subnet not found"), nil, clierrors.CodeNotFound, 4},
 		{"API returned status", errors.New("VM v1 was created, but the create call failed (API_ERROR: API returned status 500: x)"), nil, clierrors.CodeAPIError, 5},
 		{"Organization API", &adminHTTPError{Status: 503, Msg: "down"}, nil, clierrors.CodeAPIError, 5},
 		{"S3", fmt.Errorf("list buckets: %w", minio.ErrorResponse{Code: "AccessDenied", StatusCode: 403}), nil, clierrors.CodeAPIError, 5},
