@@ -174,7 +174,8 @@ func caDeployPreview(req containerapp.CreateContainerReq) map[string]any {
 	return p
 }
 
-// handleCaDeploy creates+runs a container app (gated). Async.
+// planCaDeploy plans ca_deploy, which creates and runs a container app
+// (D35). Async.
 func (s *Registry) planCaDeploy(ctx context.Context, args map[string]any) (*Plan, error) {
 	req, err := caDeployReq(args)
 	if err != nil {

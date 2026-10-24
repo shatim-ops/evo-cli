@@ -33,7 +33,8 @@ func TestRel11_TgAndDNSRecordArgs(t *testing.T) {
 		{"dns_record_create", map[string]any{"zone_id": qaID1, "name": "www", "record_type": "a", "values": []any{"192.0.2.1", " "}}, "empty value of values[1]"},
 		{"dns_record_create", map[string]any{"zone_id": qaID1, "name": "www", "record_type": "a", "value": "192.0.2.1", "values": []any{"192.0.2.2"}}, "value or values, not both"},
 	})
-	// Один из аргументов — как раньше: превью DNS без облака.
+	// Один из аргументов — как раньше: проверка аргументов проходит, и план
+	// идёт в облако за зоной (W6, D35; здесь облако отвечает 500).
 	reg := contractReg(t, &contractRT{kind: "500"})
 	tl, _ := reg.Lookup("dns_record_create")
 	for _, args := range []map[string]any{
@@ -41,7 +42,7 @@ func TestRel11_TgAndDNSRecordArgs(t *testing.T) {
 		{"zone_id": qaID1, "name": "www", "record_type": "a", "values": []any{"192.0.2.1", "192.0.2.2"}},
 	} {
 		text, _, _ := contractCall(tl, args, 300*time.Millisecond)
-		if m := qaDecode(t, text); m["status"] != "confirmation_required" {
+		if m := qaDecode(t, text); m["reason"] == "USAGE" {
 			t.Errorf("dns_record_create %v: %s", args, text)
 		}
 	}
