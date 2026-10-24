@@ -113,9 +113,11 @@ var notGates = map[string]string{
 // "confirmed" or "confirmed" passed to a call — only in gateFile, the
 // handlers of inlineGates and the reads of notGates.
 func TestConfirmedReadOnlyInTheGate(t *testing.T) {
-	if len(inlineGates) != inlineGatesLeft {
-		t.Errorf("inlineGates has %d lines, inlineGatesLeft says %d: the list only shrinks — lower inlineGatesLeft with each line removed, never add one",
-			len(inlineGates), inlineGatesLeft)
+	switch n := len(inlineGates); {
+	case n > inlineGatesLeft:
+		t.Errorf("inlineGates grew to %d lines from %d: the list only shrinks — put the handler on the gate instead", n, inlineGatesLeft)
+	case n < inlineGatesLeft:
+		t.Errorf("inlineGates has %d lines: lower inlineGatesLeft from %d to %d", n, inlineGatesLeft, n)
 	}
 	root := filepath.Join("..", "..")
 	seen := map[string]bool{}

@@ -26,12 +26,11 @@ import (
 // only shrinks: a case not here fails the test, and so does a line whose
 // call no longer fails that way.
 var lateRefusals = map[string]string{
-	"deploy: world: zone without subnet":    "W5: the subnet of the zone before the question (provision path)",
-	"provision: world: zone without subnet": "W5: the subnet of the zone before the question",
-	// Outside W4–W6 of 24.10: to be assigned by «1.3 — релиз».
-	"cert_private_key: certificate_id=absent id": "unassigned: the certificate looked up before the question",
-	"dns_record_create: zone_id=absent id":       "unassigned: the zone looked up before the question",
-	"fip_attach: fip=absent id":                  "unassigned: the floating IP looked up before the question",
+	"deploy: world: zone without subnet":         "W5: the subnet of the zone before the question (provision path)",
+	"provision: world: zone without subnet":      "W5: the subnet of the zone before the question",
+	"cert_private_key: certificate_id=absent id": "W6: the certificate looked up before the question",
+	"dns_record_create: zone_id=absent id":       "W6: the zone looked up before the question",
+	"fip_attach: fip=absent id":                  "W6: the floating IP looked up before the question",
 }
 
 // consentAbsentID is an id no resource of the world has: every API answers
