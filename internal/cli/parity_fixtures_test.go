@@ -18,6 +18,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -242,6 +244,20 @@ var paritySetup = map[string]func(t *testing.T, w parityWorld) (map[string]any, 
 		}
 		return map[string]any{"plan_id": id}, func() {}
 	},
+	// fip_attach: a free floating IP (the preview world has none, so that
+	// destroy bills none); it looks the address up before the question
+	// (W6).
+	"fip_attach": func(t *testing.T, _ parityWorld) (map[string]any, func()) {
+		world := toolEngine
+		toolEngine = func(o map[string]any) (*engine.Engine, error) {
+			e, err := world(o)
+			if err == nil {
+				e.Cloud = freeFIPCloud{e.Cloud}
+			}
+			return e, err
+		}
+		return nil, func() { toolEngine = world }
+	},
 	// deploy in a directory with no deployment: its compose file sizes
 	// the VM (as evo deploy does), and the preview prices it.
 	"deploy": func(t *testing.T, w parityWorld) (map[string]any, func()) {
@@ -437,10 +453,13 @@ var parityAnswers = map[string]string{
 	"GET containers.api.cloud.ru/v2/containers/app":                                 `{"name":"app","status":"RUNNING"}`,
 	"GET dns.api.cloud.ru/v1/publicRecordsSole/{id}":                                `{"id":"` + parityVM + `","name":"www","type":"A","values":["192.0.2.5"]}`,
 	"GET dns.api.cloud.ru/v1/publicZones/{id}":                                      `{"id":"` + parityVM + `","name":"example","domain":"example.com.","state":"ok"}`,
-	"GET nlb.api.cloud.ru/v2/networkLoadBalancers/{id}":                             parityObject,
-	"GET nlb.api.cloud.ru/v2/targetGroups/{id}":                                     parityObject,
-	"GET secretmanager.api.cloud.ru/v2/secret/app/db":                               `{"secret":{"id":"` + parityVM + `","path":"app/db"}}`,
-	"GET vpc.api.cloud.ru/v1/vpcs/{id}":                                             parityObject,
+	// The zone dns_record_create adds to: it looks the zone up before the
+	// question (W6).
+	"GET dns.api.cloud.ru/v1/publicZones":               `{"zones":[{"id":"` + parityVM + `","name":"example","domain":"example.com.","state":"ok"}]}`,
+	"GET nlb.api.cloud.ru/v2/networkLoadBalancers/{id}": parityObject,
+	"GET nlb.api.cloud.ru/v2/targetGroups/{id}":         parityObject,
+	"GET secretmanager.api.cloud.ru/v2/secret/app/db":   `{"secret":{"id":"` + parityVM + `","path":"app/db"}}`,
+	"GET vpc.api.cloud.ru/v1/vpcs/{id}":                 parityObject,
 	// Writes: the operation or the empty body the API answers with.
 	"DELETE certificatemanager.api.cloud.ru/v1/certificate/{id}":     jsonOp,
 	"POST certificatemanager.api.cloud.ru/v1/certificate/{id}:renew": jsonOp,
@@ -468,6 +487,8 @@ var parityEmptyLists = map[string]string{
 	"GET compute.api.cloud.ru/api/v1/security-groups/{id}/rules":       "a group without rules: open_ports adds them all",
 	"GET containers.api.cloud.ru/v2/containers":                        "no container app yet: ca_deploy's name is free",
 	"GET containers.api.cloud.ru/v2/containers/app/logs":               "no log lines",
+	"GET dns.api.cloud.ru/v1/privateZones":                             "no private zone: the zone of dns_record_create is public",
+	"GET dns.api.cloud.ru/v1/publicRecordsSole":                        "the zone has no records yet: dns_record_create's name is free",
 	"GET iam.api.cloud.ru/api/v2/serviceAccounts":                      "no service account: sa_list empty",
 	"GET monitoring.api.cloud.ru/v1/{id}/export_metrics":               "no metrics",
 	"GET monitoring.api.cloud.ru/v2/{id}/scrape_metrics":               "no metrics",
@@ -550,4 +571,11 @@ func pgParity(r *http.Request) (*http.Response, error) {
 		http.Error(w, `{"message":"no such path"}`, 404)
 	}
 	return w.Result(), nil
+}
+
+// freeFIPCloud has the free floating IP fip_attach attaches.
+type freeFIPCloud struct{ provision.CloudAPI }
+
+func (freeFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return []*provision.FloatingIP{{ID: parityVM, IPAddress: "203.0.113.10", State: "available"}}, nil
 }
