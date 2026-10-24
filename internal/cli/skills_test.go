@@ -6,6 +6,7 @@ package cli
 
 import (
 	"bufio"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/shatim-ops/evo-cli/internal/tools"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,20 +42,6 @@ const skillVersionWant = "1.3"
 // rest.
 var skillOneWordTools = map[string]bool{"deploy": true, "destroy": true, "status": true, "logs": true,
 	"list": true, "provision": true, "doctor": true, "whoami": true}
-
-// skillAnswerWords are words with "_" an answer of evo carries that are no
-// tool and no argument: statuses and fields the scenarios read. A word is
-// added with the answer that carries it.
-var skillAnswerWords = map[string]bool{
-	"already_deleted":       true, // D26
-	"confirmation_required": true, // the preview
-	"already_attached":      true, // fip_attach, FB130-1
-	"already_open":          true, // open_ports
-	"already_closed":        true, // close_ports
-	"still_running":         true, // *_operation
-	"vm_ip":                 true, // provision, deploy
-	"public_ip":             true, // vm_get
-}
 
 // skillUpperWords are capitalised words in backticks that are no code of
 // evo (spec §8.3).
@@ -173,26 +162,64 @@ type skillSpan struct {
 	text string
 }
 
-// skillSpans are the texts in backticks of the lines and, inside a fenced
-// block, the line itself.
+// skillSpans are the texts in backticks, a span wrapped over lines read as
+// one line, and, inside a fenced block, each line itself.
 func skillSpans(lines []string) []skillSpan {
 	var out []skillSpan
+	prose := make([]string, len(lines))
 	fence := false
-	tick := regexp.MustCompile("`([^`]+)`")
 	for i, l := range lines {
-		if strings.HasPrefix(strings.TrimSpace(l), "```") {
+		switch {
+		case strings.HasPrefix(strings.TrimSpace(l), "```"):
 			fence = !fence
-			continue
-		}
-		if fence {
+		case fence:
 			out = append(out, skillSpan{i + 1, strings.TrimSpace(l)})
-			continue
-		}
-		for _, m := range tick.FindAllStringSubmatch(l, -1) {
-			out = append(out, skillSpan{i + 1, m[1]})
+		default:
+			prose[i] = l
 		}
 	}
+	text := strings.Join(prose, "\n")
+	for _, m := range regexp.MustCompile("`([^`]+)`").FindAllStringSubmatchIndex(text, -1) {
+		line := strings.Count(text[:m[0]], "\n") + 1
+		out = append(out, skillSpan{line, strings.Join(strings.Fields(text[m[2]:m[3]]), " ")})
+	}
 	return out
+}
+
+// skillProductWords are the names an answer of evo can carry: the string
+// literals and JSON keys of the code of evo, and the words with "_" of the
+// tool descriptions (a field passed through from the API, like
+// connection_string of pg_get). A skill names a field or a state of the
+// answer by one of them; a typo or an invented field is none.
+func skillProductWords(t *testing.T, reg *tools.Registry) map[string]bool {
+	t.Helper()
+	words := map[string]bool{}
+	lit := regexp.MustCompile(`"([A-Za-z][A-Za-z0-9_]*)[",]`)
+	under := regexp.MustCompile(`\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b`)
+	for _, dir := range []string{filepath.Join("..", "..", "internal"), filepath.Join("..", "..", "cmd")} {
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return err
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for _, m := range lit.FindAllStringSubmatch(string(b), -1) {
+				words[m[1]] = true
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tl := range reg.Tools() {
+		for _, w := range under.FindAllString(tl.Description, -1) {
+			words[w] = true
+		}
+	}
+	return words
 }
 
 // skillCommand checks a CLI command line: the words up to the first flag or
@@ -223,6 +250,10 @@ func skillCommand(root *cobra.Command, line string) string {
 	}
 	if cmd == root {
 		return "no command " + strings.Join(words[:2], " ")
+	}
+	// A bare command path names the command, as in a table of scenarios.
+	if i == len(words) {
+		return ""
 	}
 	// The words before the first flag are the command's arguments, checked
 	// by the command itself: a group rejects a word that is none of its
@@ -261,7 +292,8 @@ func TestSkills_NamesExist(t *testing.T) {
 			known[k] = true
 		}
 	}
-	for w := range skillAnswerWords {
+	product := skillProductWords(t, reg)
+	for w := range product {
 		known[w] = true
 	}
 	codes := map[string]bool{}
@@ -281,11 +313,11 @@ func TestSkills_NamesExist(t *testing.T) {
 			switch {
 			case ident.MatchString(text) && (strings.Contains(text, "_") || skillOneWordTools[text]):
 				if !known[text] {
-					t.Errorf("skills/%s:%d: `%s` is no tool or argument of evo (nor in skillAnswerWords)", s.name, line, text)
+					t.Errorf("skills/%s:%d: `%s` is no tool, argument or answer field of evo", s.name, line, text)
 				}
 			case upper.MatchString(text) && !skillUpperWords[text]:
-				if !codes[text] {
-					t.Errorf("skills/%s:%d: `%s` is no reason of evo (internal/errors)", s.name, line, text)
+				if !codes[text] && !product[text] {
+					t.Errorf("skills/%s:%d: `%s` is no reason (internal/errors) or state evo knows", s.name, line, text)
 				}
 			case strings.HasPrefix(text, "evo "):
 				if msg := skillCommand(root, text); msg != "" {
