@@ -238,6 +238,9 @@ func (a *faultAPI) serveS3(w http.ResponseWriter, r *http.Request) {
 			a.made = append(a.made, faultResource{host: faultS3Host, path: "object " + bucket, ID: key, Name: key})
 		}
 		w.Header().Set("ETag", `"0"`)
+	case key != "" && r.Method == http.MethodDelete && !find("bucket", bucket):
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `<Error><Code>NoSuchBucket</Code><Message>no such bucket</Message></Error>`)
 	case key != "" && r.Method == http.MethodDelete:
 		// S3 answers 204 to a key that is not there as to one that is.
 		for k, c := range a.made {
@@ -543,6 +546,9 @@ func TestFaultAPI_DeletesWhatItKeeps(t *testing.T) {
 	}
 	if code, _ := do(http.MethodDelete, "https://"+faultS3Host+"/b/logs/a"); code != http.StatusNoContent {
 		t.Errorf("a second DELETE of the object: %d, want 204 as S3 answers", code)
+	}
+	if code, _ := do(http.MethodDelete, "https://"+faultS3Host+"/nobucket/x"); code != http.StatusNotFound {
+		t.Errorf("DELETE of an object in a bucket that is not there: %d, want 404 NoSuchBucket", code)
 	}
 	if got := kept(); !slices.Equal(got, []string{faultVPC, "b", "x"}) {
 		t.Errorf("kept %v, want the VPC, the bucket and x", got)
