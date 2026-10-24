@@ -24,7 +24,8 @@
 #
 # Окружение: ZONE (имя зоны), IMAGE, FLAVOR, RUN (уникальный суффикс, по
 # умолчанию GITHUB_RUN_ID); для правил групп безопасности — KEY_ID, SECRET
-# (в evo нет удаления правила, его удаляет API напрямую, как job cleanup).
+# (правило закрывает close_ports; что он оставил, уборка удаляет API
+# напрямую, как job cleanup).
 #
 # Код выхода: 0 — все проверки области прошли и остатков нет; 1 — нет.
 # A && ok || bad — ok всегда 0; фильтры jq — в одинарных кавычках; функции
@@ -360,7 +361,8 @@ probe_dns_op() {
 }
 
 # Правило группы безопасности на порт RULE_PORT из RULE_CIDR (open_ports):
-# в evo нет удаления правила — DELETE в API, как шаг cleanup.
+# закрывает его close_ports в области net; если правило осталось (close_ports
+# упал или не дошёл), уборка удаляет его DELETE в API, как шаг cleanup.
 delete_test_rules() {
 	local sg r code n=0
 	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] || { echo "::warning::нет KEY_ID/SECRET — правило $RULE_PORT не удалено"; return 1; }
@@ -383,6 +385,13 @@ rules_left() {
 }
 
 no_rules() { [ "$(rules_left)" = 0 ]; }
+# port_ranges — значения port_range всех правил ingress из RULE_CIDR (адрес
+# одинаков во всех прогонах, правила с него ставит только область net), в
+# любом формате: что отдал API (без ID).
+port_ranges() {
+	evo tools call list_security_groups --arg rules=true --json |
+		jq -c --arg c "$RULE_CIDR" '[.security_groups[] | .rules[]? | select(.direction == "ingress" and .remote_ip_prefix == $c) | .port_range] | unique'
+}
 
 prefix="evo-e2e-$area-$RUN"
 finish() {
@@ -683,6 +692,31 @@ area_net() {
 				cov open_ports
 			else bad "open_ports повтор" "код $rc, already_open=$(j -c .already_open)"; fi
 		else bad open_ports "opened=$(j -c .opened), failed=$(j -c .failed)"; fi
+	fi
+
+	# close_ports (D37): правило open_ports видно в формате, который сверяет
+	# close_ports ("P:P"), закрывается, повтор — already_deleted (D26). Без
+	# «видно до закрытия» отсутствие правила после ничего не доказывает: при
+	# другом формате port_range close_ports ответил бы already_deleted при
+	# открытом порте (Qwen на #315). Подписи проверок «видно до close_ports»
+	# и вызовы ниже читает TestWorkflows_RuleSeenBeforeItIsCheckedGone:
+	# правка подписи — вместе с тестом.
+	if [ -n "$sg" ] && printf '%s\n' "${covered[@]}" | grep -qx open_ports; then
+		n=$(rules_left)
+		if [ "$n" != 0 ]; then
+			ok "правило $RULE_PORT видно до close_ports" "port_range $RULE_PORT:$RULE_PORT, правил $n; port_range правил из $RULE_CIDR: $(port_ranges)"
+			if must close_ports close_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"; then
+				if [ "$(j -c '(.closed // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ] && poll 120 10 no_rules; then
+					tc close_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"
+					if [ "$rc" = 0 ] && [ "$(j -r '.status // empty')" = already_deleted ]; then
+						ok close_ports "closed, правила нет, повтор — already_deleted"
+						cov close_ports
+					else bad "close_ports повтор" "код $rc, status $(j -r '.status // empty'), $reason"; fi
+				else bad close_ports "closed=$(j -c .closed), правил $RULE_PORT:$RULE_PORT осталось $(rules_left)"; fi
+			fi
+		else
+			bad "правило $RULE_PORT видно до close_ports" "правил $RULE_PORT:$RULE_PORT нет; port_range правил из $RULE_CIDR: $(port_ranges) — close_ports их не найдёт (в реестр расхождений)"
+		fi
 	fi
 
 	# SNAT: только если в зоне шлюза нет (один на зону; чужой не трогаем).
