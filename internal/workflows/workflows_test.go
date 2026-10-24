@@ -38,6 +38,8 @@ type workflow struct {
 			Run  string            `yaml:"run"`
 			With map[string]any    `yaml:"with"`
 			Env  map[string]string `yaml:"env"`
+			// ContinueOnError: a step whose failure does not fail the job.
+			ContinueOnError bool `yaml:"continue-on-error"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -831,5 +833,63 @@ func TestWorkflows_TagRefusesUnfoldedFragments(t *testing.T) {
 	}
 	if tag < 0 || check > tag {
 		t.Errorf("tag.yml checks changelog.d after git tag (step %d, tag at %d): the number would be spent", check, tag)
+	}
+}
+
+// The probe of DB-22 (G13-27) asks the API what is left of a deleted
+// cluster's backups: it runs after the cluster's deletion, whatever came
+// before, and is a record, not a check — it never fails the job (the run of
+// the rc tag must not go red on a question) and it changes nothing in the
+// cloud: no curl writes but the exchange of the key for a token. Nor
+// does it print what names the project's resources.
+func TestWorkflows_PGBackupProbeAfterDeleteChangesNothing(t *testing.T) {
+	steps := readWorkflows(t)["cloud-e2e.yml"].Jobs["dbaas-pg"].Steps
+	del, probe := -1, -1
+	for i, s := range steps {
+		if strings.Contains(s.Run, "dbaas-delete.sh") {
+			del = i
+		}
+		if strings.Contains(s.Run, "pg-backup-probe.sh") {
+			probe = i
+		}
+	}
+	if del < 0 || probe < 0 || probe < del {
+		t.Fatalf("dbaas-pg: the probe (step %d) must run after the deletion of the cluster (step %d)", probe, del)
+	}
+	b0, _ := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "pg-backup-probe.sh"))
+	if !strings.Contains(string(b0), `echo "::add-mask::$CLUSTER_ID"`) {
+		t.Error("pg-backup-probe.sh does not mask CLUSTER_ID itself")
+	}
+	if p := steps[probe]; !strings.Contains(p.If, "always()") || !p.ContinueOnError {
+		t.Errorf("dbaas-pg: the probe needs if: always() and continue-on-error: true, has if %q, continue-on-error %v", p.If, p.ContinueOnError)
+	}
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "pg-backup-probe.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(b)
+	for _, l := range strings.Split(script, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "#") {
+			continue
+		}
+		if strings.Contains(l, "curl ") && strings.Contains(l, "-X") && !strings.Contains(l, "/auth/token") {
+			t.Errorf("pg-backup-probe.sh writes to the API: %s", strings.TrimSpace(l))
+		}
+		if strings.Contains(l, "exit 1") || strings.Contains(l, "::error::") {
+			t.Errorf("pg-backup-probe.sh fails the step: %s", strings.TrimSpace(l))
+		}
+		if strings.Contains(l, "evo ") && strings.Contains(l, "--yes") {
+			t.Errorf("pg-backup-probe.sh confirms a change: %s", strings.TrimSpace(l))
+		}
+		// The log is public (#278): the ID of the cluster and the name of
+		// the backup are masked, never printed, and curl's own errors,
+		// which may carry the URL, do not reach it.
+		if strings.Contains(l, "echo ") && !strings.Contains(l, "::add-mask::") &&
+			(strings.Contains(l, "$CLUSTER_ID") || strings.Contains(l, "$BACKUP_NAME")) {
+			t.Errorf("pg-backup-probe.sh prints the cluster or the backup: %s", strings.TrimSpace(l))
+		}
+		if strings.Contains(l, "curl ") && !strings.Contains(l, "2>/dev/null") {
+			t.Errorf("pg-backup-probe.sh lets curl's errors into the log: %s", strings.TrimSpace(l))
+		}
 	}
 }

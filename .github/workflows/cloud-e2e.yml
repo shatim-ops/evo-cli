@@ -1357,6 +1357,7 @@ jobs:
           call pg_backups --arg cluster_id="$CLUSTER_ID"
           echo "pg_backups: резервных копий $(jq '.backups // [] | length' "$RUNNER_TEMP/r.json")"
           jq -e '(.backups // []) | length > 0' "$RUNNER_TEMP/r.json" >/dev/null || { echo "::error::pg_backups: копии нет после pg_backup_create"; exit 1; }
+          echo "BACKUP_NAME=evo-e2e-backup" >> "$GITHUB_ENV" # для пробы DB-22 после удаления
           call pg_db_delete --arg cluster_id="$CLUSTER_ID" --arg name=evo_e2e_db
           jq -c '{status}' "$RUNNER_TEMP/r.json"
           for i in $(seq 1 10); do has pg_databases databases evo_e2e_db || break; [ "$i" -lt 10 ] || { echo "::error::база осталась через 5 мин"; exit 1; }; sleep 30; done
@@ -1368,6 +1369,18 @@ jobs:
       - name: Удаление кластера (всегда)
         if: always()
         run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
+
+      # Реестр DB-22 (G13-27): что отвечают список копий evo и API после
+      # удаления кластера, у которого была ручная копия. Проба: итог —
+      # строка «DB-22 проба: …» в логе, job она не роняет; ничего не создаёт
+      # и не удаляет. Решение владельца 24.10 — в прогоне на коммите тега rc.2.
+      - name: Копии удалённого кластера (DB-22, проба)
+        if: always() && env.CLUSTER_ID != ''
+        continue-on-error: true
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+        run: .github/scripts/pg-backup-probe.sh
 
   dbaas-kafka:
     environment: cloud-e2e
