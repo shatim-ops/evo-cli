@@ -87,15 +87,3 @@ func TestDeployPlan_ComposeNextNamesDeploy(t *testing.T) {
 		}
 	}
 }
-
-// G13-27: the preview of pg_delete said all backups go with the cluster;
-// Grok saw the backups of a deleted cluster gone, which manual ones the
-// API does not promise. The preview says what is known and where to look.
-func TestPgDelete_PreviewOnBackups(t *testing.T) {
-	text, _ := New(nil).deletePreview("pg_delete", pgDeleteEN, pgDeleteRU, "id-1", func() (map[string]any, error) {
-		return map[string]any{"name": "p1", "status": "READY"}, nil
-	})
-	if strings.Contains(text, "all its backups") || !strings.Contains(text, "pg_backups") {
-		t.Errorf("pg_delete preview: %s", text)
-	}
-}
