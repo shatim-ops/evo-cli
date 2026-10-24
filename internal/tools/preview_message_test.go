@@ -64,8 +64,20 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	"s3_rm": func(t *testing.T) string {
 		return liveDelete(t, "s3_rm", map[string]any{"bucket": liveName, "key": liveName})
 	},
+	// S3 deletes only an empty bucket: the plan refuses one with objects
+	// before the question (W6), so the bucket of the preview is empty.
 	"s3_bucket_delete": func(t *testing.T) string {
-		return liveDelete(t, "s3_bucket_delete", map[string]any{"bucket": liveName})
+		f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+			if r.URL.Host != "s3.cloud.ru" && !strings.HasSuffix(r.URL.Host, ".s3.cloud.ru") {
+				return liveWorld(w, r)
+			}
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`+
+				`<Name>`+liveName+`</Name><KeyCount>0</KeyCount><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>`)
+			return true
+		}}
+		_, text, _ := callNamed(t, apiFakeS3Registry(t, f), "s3_bucket_delete", map[string]any{"bucket": liveName})
+		return text
 	},
 	// The preview of a new VM reads the flavors, the image and the price
 	// (spec REQ-7): on the generic answers the image is not the project's,

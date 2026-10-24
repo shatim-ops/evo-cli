@@ -188,7 +188,7 @@ var parityArgs = map[string]map[string]any{
 	"s3_put":           {"bucket": "bucket-web", "key": "k.txt", "content": "hello"},
 	"s3_rm":            {"bucket": "bucket-web", "key": "k.txt"},
 	"s3_bucket_create": {"bucket": "bucket-web"},
-	"s3_bucket_delete": {"bucket": "bucket-web"},
+	"s3_bucket_delete": {"bucket": "bucket-empty"},
 	"s3_buckets":       {},
 	"s3_ls":            {"bucket": "bucket-web"},
 	"s3_get":           {"bucket": "bucket-web", "key": "k.txt"},
