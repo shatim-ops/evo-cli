@@ -94,6 +94,7 @@ var idArgs = map[string][]idArg{
 	"fip_attach":          {{name: "fip", why: whyListed}, {name: "vm", why: whyListed}},
 	"release_floating_ip": {{name: "id", kind: kindFIP}},
 	"open_ports":          {{name: "security_group", why: whyListed}},
+	"close_ports":         {{name: "security_group", why: whyListed}},
 	"disk_create":         {{name: "attach_to", why: whyListed}},
 	"disk_attach":         {{name: "disk_id", kind: kindDisk}, {name: "vm", why: whyListed}},
 	"disk_detach":         {{name: "disk_id", kind: kindDisk}, {name: "vm", why: whyListed}},

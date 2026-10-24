@@ -292,6 +292,7 @@ var groupByName = map[string]string{
 	"logs":         "deploy",
 	"destroy":      "deploy",
 	"open_ports":   "deploy",
+	"close_ports":  "deploy",
 
 	"provision":    "vm",
 	"vm_get":       "vm",

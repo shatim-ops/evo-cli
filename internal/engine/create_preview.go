@@ -374,8 +374,8 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	}
 	nctx, ncancel := context.WithTimeout(parent, networkCheckTimeout)
 	defer ncancel()
-	p.NetworkCheck = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
-	return nil
+	p.NetworkCheck, err = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
+	return err
 }
 
 // PickVMFlavor is the flavor provision creates a VM with: a name or UUID
