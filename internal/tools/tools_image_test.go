@@ -134,11 +134,12 @@ func TestImageGetAndFipAttachValidateArgs(t *testing.T) {
 	if got := callTool(t, s.handleImageGet, map[string]any{}); got["error"] == nil {
 		t.Fatal("image_get без image_id должен отказать")
 	}
-	if got := callTool(t, s.handleFipAttach, map[string]any{"fip": "1.2.3.4"}); got["error"] == nil {
+	if got := callTool(t, s.handlers["fip_attach"], map[string]any{"fip": "1.2.3.4"}); got["error"] == nil {
 		t.Fatal("fip_attach без vm должен отказать")
 	}
-	if got := callTool(t, s.handleFipAttach, map[string]any{"vm": "x", "fip": "1.2.3.4"}); got["status"] != "confirmation_required" {
-		t.Fatalf("fip_attach меняет ВМ — ждали подтверждения, получили %v", got)
+	// Адрес и ВМ ищутся до вопроса (W6, D35): без облака — отказ, не превью.
+	if got := callTool(t, s.handlers["fip_attach"], map[string]any{"vm": "x", "fip": "1.2.3.4"}); got["error"] == nil || got["status"] == "confirmation_required" {
+		t.Fatalf("fip_attach без облака спросил согласие: %v", got)
 	}
 }
 

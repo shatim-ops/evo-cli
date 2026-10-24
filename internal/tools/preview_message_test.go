@@ -65,8 +65,20 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	"s3_rm": func(t *testing.T) string {
 		return liveDelete(t, "s3_rm", map[string]any{"bucket": liveName, "key": liveName})
 	},
+	// S3 deletes only an empty bucket: the plan refuses one with objects
+	// before the question (W6), so the bucket of the preview is empty.
 	"s3_bucket_delete": func(t *testing.T) string {
-		return liveDelete(t, "s3_bucket_delete", map[string]any{"bucket": liveName})
+		f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+			if r.URL.Host != "s3.cloud.ru" && !strings.HasSuffix(r.URL.Host, ".s3.cloud.ru") {
+				return liveWorld(w, r)
+			}
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`+
+				`<Name>`+liveName+`</Name><KeyCount>0</KeyCount><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>`)
+			return true
+		}}
+		_, text, _ := callNamed(t, apiFakeS3Registry(t, f), "s3_bucket_delete", map[string]any{"bucket": liveName})
+		return text
 	},
 	// The preview of a new VM reads the flavors, the image and the price
 	// (spec REQ-7): on the generic answers the image is not the project's,
@@ -98,6 +110,17 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	"open_ports": func(t *testing.T) string {
 		r, _ := faultToolsRegistry(t, &faultCloud{})
 		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}})
+		return text
+	},
+	// fip_attach finds the address and the VM before the question (W6): a
+	// free address and a VM with its interface in the fault cloud.
+	"fip_attach": func(t *testing.T) string {
+		c := &faultCloud{
+			vms:  []faultVM{{ID: faultID(0x41), Name: "web", Status: "running"}},
+			fips: []faultFIP{{ID: faultID(0x42), IP: "203.0.113.10", State: "available"}},
+		}
+		r, _ := faultToolsRegistry(t, c)
+		_, text, _ := callNamed(t, r, "fip_attach", map[string]any{"fip": "203.0.113.10", "vm": faultID(0x41)})
 		return text
 	},
 	// destroy with no deployment answers status none with no question, as

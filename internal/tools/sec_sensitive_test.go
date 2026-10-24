@@ -12,10 +12,12 @@ import (
 )
 
 // SEC-4: secret_value отдаёт расшифрованный секрет только с confirmed=true —
-// как cert_private_key; без него — confirmation_required и ни одного
-// запроса в облако. message говорит, что будет раскрыто (открытый текст);
-// как дать согласие, говорит транспорт: MCP — approval, CLI — --yes
-// (REQ-5), поэтому confirmed в message нет.
+// как cert_private_key; без него — confirmation_required, и секрет не
+// запрашивается: secret_value не идёт в облако вовсе, cert_private_key
+// читает только сам сертификат (W6, D35: сертификата нет — отказ до
+// вопроса). message говорит, что будет раскрыто (открытый текст); как дать
+// согласие, говорит транспорт: MCP — approval, CLI — --yes (REQ-5),
+// поэтому confirmed в message нет.
 func TestSensitiveTools_NeedConfirmed(t *testing.T) {
 	for _, c := range []struct {
 		tool string
@@ -24,7 +26,13 @@ func TestSensitiveTools_NeedConfirmed(t *testing.T) {
 		{"secret_value", map[string]any{"path": "app/db"}},
 		{"cert_private_key", map[string]any{"certificate_id": "00000000-0000-0000-0000-000000000001"}},
 	} {
-		f := &apiFake{}
+		f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+			if r.URL.Host != "certificatemanager.api.cloud.ru" || strings.Contains(r.URL.Path, "private_key") {
+				return false
+			}
+			_, _ = w.Write([]byte(`{"id":"00000000-0000-0000-0000-000000000001","name":"web"}`))
+			return true
+		}}
 		r := apiFakeRegistry(t, f)
 		for _, confirmed := range []any{nil, false} {
 			args := map[string]any{}
@@ -40,8 +48,10 @@ func TestSensitiveTools_NeedConfirmed(t *testing.T) {
 				t.Errorf("%s confirmed=%v: %s", c.tool, confirmed, text)
 			}
 		}
-		if n := f.count(); n != 0 {
-			t.Errorf("%s: %d requests before consent", c.tool, n)
+		for _, call := range f.calls {
+			if c.tool == "secret_value" || strings.Contains(call, "private_key") {
+				t.Errorf("%s: %s before consent", c.tool, call)
+			}
 		}
 	}
 }

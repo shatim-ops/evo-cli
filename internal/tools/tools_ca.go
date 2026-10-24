@@ -174,50 +174,48 @@ func caDeployPreview(req containerapp.CreateContainerReq) map[string]any {
 	return p
 }
 
-// handleCaDeploy creates+runs a container app (gated). Async.
-func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (string, bool) {
+// planCaDeploy plans ca_deploy, which creates and runs a container app
+// (D35). Async.
+func (s *Registry) planCaDeploy(ctx context.Context, args map[string]any) (*Plan, error) {
 	req, err := caDeployReq(args)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	name := req.Name
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		msg := i18n.Tf("ca_deploy will create+run container app %q from image %q (billable).",
-			"ca_deploy создаст и запустит приложение %q из образа %q (платно).", name, req.Template.Containers[0].Image)
-		if req.Configuration.Privileged {
-			msg = i18n.Tf("ca_deploy will create+run container app %q from image %q in PRIVILEGED mode: the container runs as root (billable).",
-				"ca_deploy создаст и запустит приложение %q из образа %q в ПРИВИЛЕГИРОВАННОМ режиме: контейнер работает от root (платно).", name, req.Template.Containers[0].Image)
+	msg := i18n.Tf("ca_deploy will create+run container app %q from image %q (billable).",
+		"ca_deploy создаст и запустит приложение %q из образа %q (платно).", name, req.Template.Containers[0].Image)
+	if req.Configuration.Privileged {
+		msg = i18n.Tf("ca_deploy will create+run container app %q from image %q in PRIVILEGED mode: the container runs as root (billable).",
+			"ca_deploy создаст и запустит приложение %q из образа %q в ПРИВИЛЕГИРОВАННОМ режиме: контейнер работает от root (платно).", name, req.Template.Containers[0].Image)
+	}
+	will, warning := caDeployPreview(req), ""
+	if req.Configuration.Privileged {
+		warning = i18n.T("privileged mode: the container runs as root", "привилегированный режим: контейнер работает от root")
+	}
+	preview := map[string]any{"message": msg,
+		"will_create": will,
+		"preview": willPreview(engine.ResourceCAApp, name, "", will,
+			[]string{"image", "port", "cpu", "memory", "public", "min_instances", "max_instances", "runs_as", "env"}, warning),
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		cli, err := s.caClient(ctx)
+		if err != nil {
+			return errResult(err), true
 		}
-		will, warning := caDeployPreview(req), ""
-		if req.Configuration.Privileged {
-			warning = i18n.T("privileged mode: the container runs as root", "привилегированный режим: контейнер работает от root")
+		op, err := cli.Create(ctx, req)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "ca_deploy", cli.List, i18n.T("container app", "приложение"), name, nil, "ca_get name", err)
 		}
 		return toJSON(map[string]any{
-			"status":      "confirmation_required",
-			"message":     msg,
-			"will_create": will,
-			"preview": willPreview(engine.ResourceCAApp, name, "", will,
-				[]string{"image", "port", "cpu", "memory", "public", "min_instances", "max_instances", "runs_as", "env"}, warning),
-		}), true
-	}
-
-	cli, err := s.caClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	op, err := cli.Create(ctx, req)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
-		}
-		return lostCreate(ctx, "ca_deploy", cli.List, i18n.T("container app", "приложение"), name, nil, "ca_get name", err)
-	}
-	return toJSON(map[string]any{
-		"status":       "deploying",
-		"name":         name,
-		"operation_id": op.ID,
-		"note":         "Container app is deploying (async). Use ca_get for status + public URL, ca_logs for logs. Scales to zero when idle.",
-	}), false
+			"status":       "deploying",
+			"name":         name,
+			"operation_id": op.ID,
+			"note":         "Container app is deploying (async). Use ca_get for status + public URL, ca_logs for logs. Scales to zero when idle.",
+		}), false
+	}}, nil
 }
 
 func (s *Registry) planCaDelete(ctx context.Context, args map[string]any) (*Plan, error) {

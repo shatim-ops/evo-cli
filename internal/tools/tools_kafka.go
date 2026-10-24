@@ -28,6 +28,36 @@ func boolArg(args map[string]any, key string, def bool) bool {
 	return def
 }
 
+// specMinStorage is the least storage, GB, a DBaaS specification takes as
+// the service lists it: min_storage_gb (PostgreSQL, Redis) or
+// min_storage_gigs (Kafka); nil when it does not.
+func specMinStorage(spec map[string]any) any {
+	if v := spec["min_storage_gb"]; v != nil {
+		return v
+	}
+	return spec["min_storage_gigs"]
+}
+
+// specStorage is the storage a DBaaS create asks for: the argument arg as
+// given, else the specification's minimum, else def. Storage below the
+// minimum is refused before the question (D35, W6): Cloud.ru refuses the
+// create after consent.
+func specStorage(args map[string]any, arg string, spec map[string]any, def int) (int, error) {
+	least := int(toF(specMinStorage(spec)))
+	storage := pgInt(args, arg, 0)
+	switch {
+	case storage == 0 && least > 0:
+		return least, nil
+	case storage == 0:
+		return def, nil
+	case storage < least:
+		id, _ := spec["id"].(string)
+		return 0, usageErr("%s %d is below the minimum of specification %s: %d GB",
+			"%s %d меньше минимума спецификации %s: %d ГБ", arg, storage, id, least)
+	}
+	return storage, nil
+}
+
 // findDbaasSpec picks a spec by id, or by cpu+memory, else the first (cheapest
 // after the caller sorted). Works for Kafka/Redis specs (cpu/memory fields).
 func findDbaasSpec(specs []map[string]any, specID string, cpu, ram int) map[string]any {
@@ -272,34 +302,34 @@ func (s *Registry) handleKafkaSpecs(ctx context.Context, args map[string]any) (s
 	return toJSON(res), false
 }
 
-func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageT("'name' is required (2-63 chars)", "нужен 'name' (2–63 символа)"), true
+		return nil, usageErr("'name' is required (2-63 chars)", "нужен 'name' (2–63 символа)")
 	}
 	if b := pgInt(args, "brokers", 0); b < 0 {
-		return usageT("brokers %d: at least 1", "brokers %d: нужен хотя бы 1", b), true
+		return nil, usageErr("brokers %d: at least 1", "brokers %d: нужен хотя бы 1", b)
 	}
 	cli, eng, err := s.kafkaClientEng(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	existing, err := cli.ListClusters(ctx, kafkaQuery())
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult(i18n.T("Kafka cluster", "кластер Kafka"), name, id, st, "kafka_get cluster_id="+id)
+		return answered(nameTakenResult(i18n.T("Kafka cluster", "кластер Kafka"), name, id, st, "kafka_get cluster_id="+id)), nil
 	}
 
 	versionID := stringArg(args, "version_id")
 	if versionID == "" {
 		vers, e := cli.ListVersions(ctx, kafkaQuery())
 		if e != nil {
-			return errResult(fmt.Errorf("list versions: %w", e)), true
+			return nil, fmt.Errorf("list versions: %w", e)
 		}
 		if len(vers) == 0 {
-			return errResult(errors.New(i18n.T("no kafka versions available", "нет доступных версий Kafka"))), true
+			return nil, errors.New(i18n.T("no kafka versions available", "нет доступных версий Kafka"))
 		}
 		versionID, _ = vers[len(vers)-1]["id"].(string)
 	}
@@ -308,11 +338,11 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 	// are listed for it.
 	subnetID, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	specs, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
-		return errResult(fmt.Errorf("list specifications: %w", err)), true
+		return nil, fmt.Errorf("list specifications: %w", err)
 	}
 	specArg, cpu, ram := stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0)
 	spec := findDbaasSpec(specs, specArg, cpu, ram)
@@ -322,57 +352,51 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
 		}
-		return needSpecResult("kafka_specs", specArg, cpu, ram, out)
+		return answered(needSpecResult("kafka_specs", specArg, cpu, ram, out)), nil
 	}
 	specID, _ := spec["id"].(string)
 
-	storage := pgInt(args, "storage_gib", 0)
-	if storage == 0 {
-		storage = int(toF(spec["min_storage_gigs"]))
-	}
-	if storage == 0 {
-		storage = 40
+	storage, err := specStorage(args, "storage_gib", spec, 40)
+	if err != nil {
+		return nil, err
 	}
 	brokers, brokersNote, err := kafkaBrokers(pgInt(args, "brokers", 0), spec)
 	if err != nil {
-		return usageResult(err), true
+		return answered(usageResult(err), true), nil
 	}
 
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
 		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gib": storage, "brokers": brokers, "subnet_id": subnetID,
 		"availability_zone": zone}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		out := map[string]any{"status": "confirmation_required",
-			"message": i18n.T("kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes).",
-				"kafka_create создаёт ПЛАТНЫЙ кластер Managed Kafka (асинхронно, несколько минут)."),
-			"will_create": willCreate,
-			"preview": willPreview(engine.ResourceKafka, name, zone, willCreate,
-				[]string{"version_id", "cpu", "memory_gb", "storage_gib", "brokers", "subnet_id"}, brokersNote)}
-		if brokersNote != "" {
-			out["warning"] = brokersNote
+	out := map[string]any{"message": i18n.T("kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes).",
+		"kafka_create создаёт ПЛАТНЫЙ кластер Managed Kafka (асинхронно, несколько минут)."),
+		"will_create": willCreate,
+		"preview": willPreview(engine.ResourceKafka, name, zone, willCreate,
+			[]string{"version_id", "cpu", "memory_gb", "storage_gib", "brokers", "subnet_id"}, brokersNote)}
+	if brokersNote != "" {
+		out["warning"] = brokersNote
+	}
+	return &Plan{Preview: out, Execute: func(ctx context.Context) (string, bool) {
+		body := map[string]any{
+			"name": name, "project_id": cli.ProjectID(), "version_id": versionID,
+			"specification_id": specID, "subnet_id": subnetID, "storage_gib": storage, "brokers": brokers,
+			"ui_enabled": boolArg(args, "ui_enabled", false), "cruise_control_enabled": false,
+			"cruise_control_rebalance_auto_enabled": false,
 		}
-		return toJSON(out), true
-	}
-
-	body := map[string]any{
-		"name": name, "project_id": cli.ProjectID(), "version_id": versionID,
-		"specification_id": specID, "subnet_id": subnetID, "storage_gib": storage, "brokers": brokers,
-		"ui_enabled": boolArg(args, "ui_enabled", false), "cruise_control_enabled": false,
-		"cruise_control_rebalance_auto_enabled": false,
-	}
-	if d := stringArg(args, "description"); d != "" {
-		body["description"] = d
-	}
-	op, err := cli.CreateCluster(ctx, body)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+		if d := stringArg(args, "description"); d != "" {
+			body["description"] = d
 		}
-		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, kafkaQuery()) }
-		return lostCreate(ctx, "kafka_create", list, i18n.T("Kafka cluster", "кластер Kafka"), name, willCreate, "kafka_get cluster_id", fmt.Errorf("create cluster: %w", err))
-	}
-	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
-		"created": willCreate, "note": "Async (~minutes). Poll kafka_operation(operation_id); then kafka_get for status READY + kafka_hosts."}), false
+		op, err := cli.CreateCluster(ctx, body)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, kafkaQuery()) }
+			return lostCreate(ctx, "kafka_create", list, i18n.T("Kafka cluster", "кластер Kafka"), name, willCreate, "kafka_get cluster_id", fmt.Errorf("create cluster: %w", err))
+		}
+		return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
+			"created": willCreate, "note": "Async (~minutes). Poll kafka_operation(operation_id); then kafka_get for status READY + kafka_hosts."}), false
+	}}, nil
 }
 
 // kafkaBrokers is the broker count of kafka_create: the argument, else the

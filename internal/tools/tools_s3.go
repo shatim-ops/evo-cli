@@ -203,33 +203,45 @@ func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any
 	return toJSON(map[string]any{"status": "created", "bucket": bucket}), false
 }
 
-func (s *Registry) handleS3BucketDelete(ctx context.Context, args map[string]any) (string, bool) {
+// planS3BucketDelete plans s3_bucket_delete (D35): a bucket that is not
+// there is already deleted (D26), and one with objects is refused before
+// the question — S3 refuses to delete it (BucketNotEmpty), and the refusal
+// came after consent (W6, G13-3).
+func (s *Registry) planS3BucketDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	bucket := stringArg(args, "bucket")
 	if bucket == "" {
-		return usageT("'bucket' is required", "нужен 'bucket'"), true
+		return nil, usageErr("'bucket' is required", "нужен 'bucket'")
 	}
 	if err := s3.CheckBucketName(bucket); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	cli, err := s.s3Client()
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// A bucket that is not there is already deleted (D26).
-		if _, err := cli.ListObjects(ctx, bucket, "", 1); err != nil {
-			return s.deleteFailed("s3_bucket_delete", bucket, err)
-		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
+	objs, err := cli.ListObjects(ctx, bucket, "", 1)
+	if err != nil {
+		return answered(s.deleteFailed("s3_bucket_delete", bucket, err)), nil
+	}
+	if len(objs) > 0 {
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("bucket %q is not empty, and S3 deletes only an empty bucket; nothing was deleted",
+				"бакет %q не пуст, а S3 удаляет только пустой бакет; ничего не удалено", bucket),
+			i18n.Tf("List its objects with s3_ls bucket=%[1]s (evo s3 ls %[1]s), delete them with s3_rm, then delete the bucket.",
+				"Объекты бакета — в s3_ls bucket=%[1]s (evo s3 ls %[1]s); удалите их через s3_rm, затем удалите бакет.", bucket))
+	}
+	return &Plan{
+		Preview: map[string]any{
 			"message": i18n.Tf("s3_bucket_delete permanently deletes bucket %q (it must be EMPTY).",
 				"s3_bucket_delete безвозвратно удаляет бакет %q (он должен быть ПУСТЫМ).", bucket),
-		}), true
-	}
-	if err := cli.RemoveBucket(ctx, bucket); err != nil {
-		return s.deleteFailed("s3_bucket_delete", bucket, err)
-	}
-	return toJSON(map[string]any{"status": "deleted", "bucket": bucket}), false
+		},
+		Execute: func(ctx context.Context) (string, bool) {
+			if err := cli.RemoveBucket(ctx, bucket); err != nil {
+				return s.deleteFailed("s3_bucket_delete", bucket, err)
+			}
+			return toJSON(map[string]any{"status": "deleted", "bucket": bucket}), false
+		},
+	}, nil
 }
 
 // s3BucketPreview is the preview of s3_bucket_create. Storage is billed by

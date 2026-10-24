@@ -251,29 +251,36 @@ func (s *Registry) handleCertVersions(ctx context.Context, args map[string]any) 
 	return toJSON(v), false
 }
 
-func (s *Registry) handleCertPrivateKey(ctx context.Context, args map[string]any) (string, bool) {
+// planCertPrivateKey plans cert_private_key (D35): the certificate is read
+// before the question — one that is not there is NOT_FOUND then, not after
+// consent (W6, G13-3).
+func (s *Registry) planCertPrivateKey(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "certificate_id")
 	if id == "" {
-		return usageT("'certificate_id' is required", "нужен 'certificate_id'"), true
-	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("cert_private_key returns the SECRET private key in plaintext.",
-				"cert_private_key возвращает СЕКРЕТНЫЙ закрытый ключ открытым текстом."),
-		}), true
+		return nil, usageErr("'certificate_id' is required", "нужен 'certificate_id'")
 	}
 	cli, err := s.certClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	ver := int64(pgInt(args, "version_id", 0))
-	pk, err := cli.PrivateKey(ctx, id, ver)
-	if err != nil {
-		return errResult(err), true
+	if _, err := cli.Get(ctx, id); err != nil {
+		return nil, err
 	}
-	pemKey(pk)
-	return toJSON(pk), false
+	return &Plan{
+		Preview: map[string]any{
+			"message": i18n.T("cert_private_key returns the SECRET private key in plaintext.",
+				"cert_private_key возвращает СЕКРЕТНЫЙ закрытый ключ открытым текстом."),
+		},
+		Execute: func(ctx context.Context) (string, bool) {
+			ver := int64(pgInt(args, "version_id", 0))
+			pk, err := cli.PrivateKey(ctx, id, ver)
+			if err != nil {
+				return errResult(err), true
+			}
+			pemKey(pk)
+			return toJSON(pk), false
+		},
+	}, nil
 }
 
 // pemKey turns the private key of a GetPrivateKey answer into PEM text, as
