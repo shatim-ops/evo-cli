@@ -343,8 +343,7 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v1/operations/")+`","done":true}`)
 	case r.Method == http.MethodDelete && a.remove(host, path):
 		_, _ = io.WriteString(w, `{}`)
-	case r.Method == http.MethodGet && a.get(host, path) != nil:
-		_, _ = w.Write(a.get(host, path))
+	case r.Method == http.MethodGet && a.writeItem(w, host, path):
 	default:
 		http.Error(w, `{"message":"not found"}`, 404)
 	}
@@ -386,21 +385,24 @@ func (a *faultAPI) remove(host, path string) bool {
 	return true
 }
 
-// get answers a GET of the resource path names (item) as its create did,
-// alive; nil when there is none, and the GET is 404.
-func (a *faultAPI) get(host, path string) []byte {
+// writeItem answers a GET of the resource path names (item) as its create
+// did, alive, in one look under a.mu: a DELETE in between cannot leave a
+// 200 without a body. It reports false when there is none (the GET is 404).
+func (a *faultAPI) writeItem(w http.ResponseWriter, host, path string) bool {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	k := a.item(host, path)
 	if k < 0 {
-		return nil
+		a.mu.Unlock()
+		return false
 	}
 	c := a.made[k]
+	a.mu.Unlock()
 	obj := `{"id":"` + c.ID + `","name":"` + c.Name + `","status":"RUNNING"}`
 	if c.path == "/v2/secret" {
 		obj = `{"secret":` + obj + `}` // Secret Manager nests it
 	}
-	return []byte(obj)
+	_, _ = io.WriteString(w, obj)
+	return true
 }
 
 // faultAPIRegistry is a registry whose every service, compute included,
@@ -559,7 +561,7 @@ func TestFaultAPI_DeletesWhatItKeeps(t *testing.T) {
 	// A delete is planned (W4): it reads the resource, the confirmed call
 	// too, before it deletes it — the world answers it as made.
 	if code, body := do(http.MethodGet, "https://"+sm+"/v2/secret/app/db"); code != 200 ||
-		!strings.Contains(body, `"secret":{"id":"s-1","name":"app/db"`) {
+		!strings.Contains(body, `"secret":{"id":"s-1","name":"app/db","status":"RUNNING"}`) {
 		t.Errorf("GET of the secret app/db: %d %s", code, body)
 	}
 	if code, body := do(http.MethodGet, "https://"+vpc+routes+"/r-1"); code != 200 || !strings.Contains(body, `"id":"r-1"`) {
