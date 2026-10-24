@@ -99,6 +99,13 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}})
 		return text
 	},
+	// destroy with no deployment answers status none with no question, as
+	// the CLI (W5): its preview needs a deployment in the state.
+	"destroy": func(t *testing.T) string {
+		r, _ := targetRegistry(t, &targetCloud{})
+		_, text, _ := callNamed(t, r, "destroy", map[string]any{})
+		return text
+	},
 	// The preview of deploy_apply is its saved plan (B12-8): a plan_id
 	// with no plan file is refused before the gate.
 	"deploy_apply": func(t *testing.T) string {
