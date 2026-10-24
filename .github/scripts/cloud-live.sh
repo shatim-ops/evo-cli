@@ -698,7 +698,9 @@ area_net() {
 	# close_ports ("P:P"), закрывается, повтор — already_deleted (D26). Без
 	# «видно до закрытия» отсутствие правила после ничего не доказывает: при
 	# другом формате port_range close_ports ответил бы already_deleted при
-	# открытом порте (Qwen на #315).
+	# открытом порте (Qwen на #315). Подписи проверок «видно до close_ports»
+	# и вызовы ниже читает TestWorkflows_RuleSeenBeforeItIsCheckedGone:
+	# правка подписи — вместе с тестом.
 	if [ -n "$sg" ] && printf '%s\n' "${covered[@]}" | grep -qx open_ports; then
 		n=$(rules_left)
 		if [ "$n" != 0 ]; then
