@@ -1020,12 +1020,12 @@ jobs:
             local t=$1 rc
             shift
             set +e
-            evo --yes tools call "$t" --arg cluster_id="$CLUSTER_ID" "$@" --json > "$RUNNER_TEMP/t.json" 2>/dev/null
+            evo --yes tools call "$t" --arg cluster_id="$CLUSTER_ID" "$@" --json > "$RUNNER_TEMP/t.json" 2>"$RUNNER_TEMP/t.err"
             rc=$?
             set -e
             [ "$rc" = 0 ] && return 0
             jq -c '{status, reason, stage}' "$RUNNER_TEMP/t.json" 2>/dev/null || true
-            echo "$t: $(jq -r '.error // .output // empty' "$RUNNER_TEMP/t.json" 2>/dev/null | redact | tail -c 300 | tr '\n' ' ')"
+            echo "$t: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/t.err") $(jq -r '.output // empty' "$RUNNER_TEMP/t.json" 2>/dev/null | redact | tail -c 300 | tr '\n' ' ')"
             echo "::error::$t: код $rc"
             exit 1
           }
@@ -1208,7 +1208,7 @@ jobs:
           { echo "SPEC_ID=$spec_id"; echo "SUBNET_ID=$subnet"; } >> "$GITHUB_ENV"
           set +e
           evo --yes tools call pg_create --arg name="$CLUSTER" --arg specification_id="$spec_id" --arg subnet_id="$subnet" \
-            --json > "$RUNNER_TEMP/create.json" 2>/dev/null
+            --json > "$RUNNER_TEMP/create.json" 2>"$RUNNER_TEMP/create.err"
           rc=$?
           set -e
           id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json" 2>/dev/null || true)
@@ -1219,7 +1219,7 @@ jobs:
             created: ((.created // {}) | {version, cpu, memory_gb, storage_gb, instances, deployment_mode, backup_enabled})}' \
             "$RUNNER_TEMP/create.json" || true
           if [ "$rc" != 0 ]; then
-            echo "pg_create: $(jq -r '.error // empty' "$RUNNER_TEMP/create.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "pg_create: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/create.err")"
             echo "::error::pg_create: код $rc"
             exit 1
           fi
@@ -1291,12 +1291,12 @@ jobs:
             local t=$1 rc
             shift
             set +e
-            evo tools call "$t" "$@" --json > "$RUNNER_TEMP/r.json" 2>/dev/null
+            evo tools call "$t" "$@" --json > "$RUNNER_TEMP/r.json" 2>"$RUNNER_TEMP/r.err"
             rc=$?
             set -e
             [ "$rc" = 0 ] && return 0
             jq -c '{status, reason}' "$RUNNER_TEMP/r.json" 2>/dev/null || true
-            echo "$t: $(jq -r '.error // empty' "$RUNNER_TEMP/r.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "$t: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/r.err")"
             echo "::error::$t: код $rc"
             exit 1
           }
@@ -1321,12 +1321,12 @@ jobs:
           umask 077
           jq -n --arg c "$CLUSTER_ID" --arg n "$user" --arg p "$pw" '{cluster_id: $c, name: $n, password: $p}' > "$RUNNER_TEMP/user.json"
           set +e
-          evo --yes tools call pg_user_create --args-file "$RUNNER_TEMP/user.json" --json > "$RUNNER_TEMP/r.json" 2>/dev/null
+          evo --yes tools call pg_user_create --args-file "$RUNNER_TEMP/user.json" --json > "$RUNNER_TEMP/r.json" 2>"$RUNNER_TEMP/r.err"
           rc=$?
           set -e
           rm -f "$RUNNER_TEMP/user.json"
           jq -c '{status, reason}' "$RUNNER_TEMP/r.json" || true
-          [ "$rc" = 0 ] || { echo "pg_user_create: $(jq -r '.error // empty' "$RUNNER_TEMP/r.json" 2>/dev/null | redact | cut -c1-300)"; echo "::error::pg_user_create: код $rc"; exit 1; }
+          [ "$rc" = 0 ] || { echo "pg_user_create: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/r.err")"; echo "::error::pg_user_create: код $rc"; exit 1; }
           present pg_users users "$user"
 
           call pg_db_create --yes --arg cluster_id="$CLUSTER_ID" --arg name="$db" --arg owner="$user"
@@ -1361,12 +1361,12 @@ jobs:
             local t=$1 rc
             shift
             set +e
-            evo --yes tools call "$t" "$@" --json > "$RUNNER_TEMP/r.json" 2>/dev/null
+            evo --yes tools call "$t" "$@" --json > "$RUNNER_TEMP/r.json" 2>"$RUNNER_TEMP/r.err"
             rc=$?
             set -e
             [ "$rc" = 0 ] && return 0
             jq -c '{status, reason}' "$RUNNER_TEMP/r.json" 2>/dev/null || true
-            echo "$t: $(jq -r '.error // empty' "$RUNNER_TEMP/r.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "$t: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/r.err")"
             echo "::error::$t: код $rc"
             exit 1
           }
@@ -1478,7 +1478,7 @@ jobs:
           redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
           set +e
           evo --yes --region "$ZONE_ID" tools call kafka_create --arg name="$CLUSTER" --arg brokers=1 \
-            --json > "$RUNNER_TEMP/create.json" 2>/dev/null
+            --json > "$RUNNER_TEMP/create.json" 2>"$RUNNER_TEMP/create.err"
           rc=$?
           set -e
           id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json" 2>/dev/null || true)
@@ -1489,7 +1489,7 @@ jobs:
             created: ((.created // {}) | {cpu, memory_gb, storage_gib, brokers, availability_zone})}' \
             "$RUNNER_TEMP/create.json" || true
           if [ "$rc" != 0 ]; then
-            echo "kafka_create: $(jq -r '.error // empty' "$RUNNER_TEMP/create.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "kafka_create: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/create.err")"
             echo "::error::kafka_create: код $rc"
             exit 1
           fi
@@ -1546,8 +1546,8 @@ jobs:
 
       - name: kafka_get и превью удаления
         run: |
-          evo tools call kafka_get --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/get.json" 2>/dev/null ||
-            { jq -c '{status, reason}' "$RUNNER_TEMP/get.json" 2>/dev/null || true; echo "::error::kafka_get"; exit 1; }
+          evo tools call kafka_get --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/get.json" 2>"$RUNNER_TEMP/get.err" ||
+            { echo "kafka_get: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/get.err")"; echo "::error::kafka_get"; exit 1; }
           jq -c '{status, brokers, kafka_hosts: ((.kafka_hosts // []) | length)}' "$RUNNER_TEMP/get.json"
           b=$(jq -r 'if (.brokers | type) == "number" then .brokers else empty end' "$RUNNER_TEMP/get.json")
           if [ -z "$b" ]; then
@@ -1555,8 +1555,8 @@ jobs:
           elif [ "$b" != 1 ]; then
             echo "::error::kafka_get: брокеров $b, создавали 1"; exit 1
           fi
-          evo --dry-run tools call kafka_delete --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/pv.json" 2>/dev/null ||
-            { jq -c '{status, reason}' "$RUNNER_TEMP/pv.json" 2>/dev/null || true; echo "::error::превью kafka_delete"; exit 1; }
+          evo --dry-run tools call kafka_delete --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/pv.json" 2>"$RUNNER_TEMP/pv.err" ||
+            { echo "превью kafka_delete: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/pv.err")"; echo "::error::превью kafka_delete"; exit 1; }
           jq -c '{status, tool_status: .preview.details.status, target_name: .preview.details.target.name, target_status: .preview.details.target.status}' "$RUNNER_TEMP/pv.json"
           jq -e --arg n "$CLUSTER" '.preview.details.status == "confirmation_required" and .preview.details.target.name == $n' "$RUNNER_TEMP/pv.json" >/dev/null ||
             { echo "::error::превью kafka_delete не называет кластер $CLUSTER"; exit 1; }
@@ -1629,7 +1629,7 @@ jobs:
           redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
           set +e
           evo --yes --region "$ZONE_ID" tools call redis_create --arg name="$CLUSTER" --arg type=MASTER_REPLICA \
-            --arg shards=1 --arg replicas=2 --json > "$RUNNER_TEMP/create.json" 2>/dev/null
+            --arg shards=1 --arg replicas=2 --json > "$RUNNER_TEMP/create.json" 2>"$RUNNER_TEMP/create.err"
           rc=$?
           set -e
           id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json" 2>/dev/null || true)
@@ -1640,7 +1640,7 @@ jobs:
             created: ((.created // {}) | {cpu, memory_gb, storage_gb, type, shards, replicas, hosts_per_shard, availability_zone})}' \
             "$RUNNER_TEMP/create.json" || true
           if [ "$rc" != 0 ]; then
-            echo "redis_create: $(jq -r '.error // empty' "$RUNNER_TEMP/create.json" 2>/dev/null | redact | cut -c1-300)"
+            echo "redis_create: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/create.err")"
             echo "::error::redis_create: код $rc"
             exit 1
           fi
@@ -1699,14 +1699,14 @@ jobs:
       # replicas=2 в запросе, реестр DB-11): только печатается.
       - name: redis_get и превью удаления
         run: |
-          evo tools call redis_get --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/get.json" 2>/dev/null ||
-            { jq -c '{status, reason}' "$RUNNER_TEMP/get.json" 2>/dev/null || true; echo "::error::redis_get"; exit 1; }
+          evo tools call redis_get --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/get.json" 2>"$RUNNER_TEMP/get.err" ||
+            { echo "redis_get: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/get.err")"; echo "::error::redis_get"; exit 1; }
           jq -c '{status, type, shards, replicas, redis_hosts: ((.redis_hosts // []) | length)}' "$RUNNER_TEMP/get.json"
           echo "replicas в redis_get: $(jq -r '.replicas // "-"' "$RUNNER_TEMP/get.json") (создан с replicas=2; GET считает хосты шарда с мастером — DB-11)"
           [ "$(jq -r '.type // empty' "$RUNNER_TEMP/get.json")" = MASTER_REPLICA ] ||
             { echo "::error::redis_get: type не MASTER_REPLICA"; exit 1; }
-          evo --dry-run tools call redis_delete --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/pv.json" 2>/dev/null ||
-            { jq -c '{status, reason}' "$RUNNER_TEMP/pv.json" 2>/dev/null || true; echo "::error::превью redis_delete"; exit 1; }
+          evo --dry-run tools call redis_delete --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/pv.json" 2>"$RUNNER_TEMP/pv.err" ||
+            { echo "превью redis_delete: $("$GITHUB_WORKSPACE/.github/scripts/evo_err.sh" "$RUNNER_TEMP/pv.err")"; echo "::error::превью redis_delete"; exit 1; }
           jq -c '{status, tool_status: .preview.details.status, target_name: .preview.details.target.name, target_status: .preview.details.target.status}' "$RUNNER_TEMP/pv.json"
           jq -e --arg n "$CLUSTER" '.preview.details.status == "confirmation_required" and .preview.details.target.name == $n' "$RUNNER_TEMP/pv.json" >/dev/null ||
             { echo "::error::превью redis_delete не называет кластер $CLUSTER"; exit 1; }
