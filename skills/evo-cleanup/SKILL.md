@@ -48,15 +48,16 @@ skill `evo-scenarios`, section 5.
 4. Delete in the order of `references/delete-map.md`: deployments, DNS,
    load balancers and target groups, Kubernetes, VMs, free disks, free
    floating IPs, SNAT gateways, database clusters, routes, VPCs, S3 objects
-   and buckets, secrets, certificates, registries, container apps, own
+   and buckets, container apps, secrets, certificates, registries, own
    images.
 5. Each delete: its preview first; one yes from step 3 covers the rows of
    that table only while the preview of each matches its row. A preview
    that differs, a resource not in the table, or an error: stop and ask
    again. Then the call with `confirmed: true` / `--yes`, then the check:
    the resource is gone from its list, or its `*_get` answers `NOT_FOUND`.
-   An answer without that check is not a success. A delete that answers
-   `already_deleted` is no error: the resource was gone before it.
+   That check confirms only a delete that answered success or
+   `already_deleted`; an answer without it is not a success. A delete that
+   answers `already_deleted` is no error: the resource was gone before it.
 6. Report one table: deleted / already gone (`already_deleted`) / not
    deleted and why / left by your word.
 
@@ -78,7 +79,7 @@ skill `evo-scenarios`, section 5.
 | Answer | What to do |
 |---|---|
 | `already_deleted` | gone already: report it as such |
-| `NOT_FOUND` on a server with `--allow-project` | check the resource with its `*_get` |
+| `NOT_FOUND` on a delete | not in this server's projects, or the parent is gone: report it as not deleted; the person decides |
 | `USAGE` on `s3_bucket_delete` | the bucket has objects: delete them first |
 | refused `release_floating_ip` | the address is in use by a VM or a SNAT gateway: it goes with them |
 | error on a cluster in FAILED | DB-21, DB-17: do not repeat; name support or the console |

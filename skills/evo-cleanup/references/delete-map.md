@@ -24,10 +24,10 @@ resource is gone) or with its `*_get` (`NOT_FOUND`).
 | 15 | VPC | `vpc_list` | `vpc_delete` / `evo vpc delete` | `id` |
 | 16 | S3 object | `s3_ls` | `s3_rm` / `evo s3 rm` | `bucket`, `key` |
 | 17 | S3 bucket, empty | `s3_buckets` | `s3_bucket_delete` / `evo s3 bucket-delete` | `bucket` |
-| 18 | secret | `secret_list` | `secret_delete` / `evo secret delete` | `path` |
-| 19 | certificate | `cert_list` | `cert_delete` / `evo cert delete` | `id` |
-| 20 | artifact registry | `ar_list` | `ar_delete` / `evo ar delete` | `id` |
-| 21 | container app | `ca_list` | `ca_delete` / `evo ca delete` | `name` |
+| 18 | container app | `ca_list` | `ca_delete` / `evo ca delete` | `name` |
+| 19 | secret | `secret_list` | `secret_delete` / `evo secret delete` | `path` |
+| 20 | certificate | `cert_list` | `cert_delete` / `evo cert delete` | `id` |
+| 21 | artifact registry | `ar_list` | `ar_delete` / `evo ar delete` | `id` |
 | 22 | own image | `image_list` with `type: private` | `image_delete` / `evo image delete` | `image_id` |
 
 Notes:

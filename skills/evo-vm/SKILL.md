@@ -115,7 +115,7 @@ After an interruption find the VM by name with `evo vm list --json` /
 ## Known platform limits
 
 - G1: a security group is shared by the VMs of a zone; a rule opened for
-  one VM is open for all of them. A source per VM comes in 1.4.
+  one VM is open for all of them.
 - The generated password is returned once, in the create answer.
 
 ## Never

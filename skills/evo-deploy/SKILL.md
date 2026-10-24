@@ -22,8 +22,8 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
 
 ## Prerequisites
 
-- `evo doctor --json` (tool `doctor`, group `auth`) passes: key, project,
-  zone.
+- `evo doctor --json` (tool `doctor`, group `auth`) passes: key and
+  project; the zone is checked by the preview.
 - Tool groups `deploy,vm,vpc,image,auth`.
 - The compose file in the working directory, or its path. evo keeps the
   deployment in `.evo/` of that directory: run every command there.
@@ -81,8 +81,9 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
 
 | `reason` | What to do |
 |---|---|
-| `SSH_TIMEOUT` | the VM exists, Docker did not come up: `status`, then ask the person: wait, read `logs`, or tear down |
-| `CONFIG_INVALID` | the image cannot run Docker, the zone has no subnet, or several deployments are recorded here: read `hint`, fix, preview again |
+| `SSH_TIMEOUT` | the VM exists; SSH, the Docker install or `docker compose up` did not finish: read `hint`, `status`, `logs`, then ask the person |
+| `CONFIG_INVALID` before the VM is made | the image, a zone without a subnet, or several deployments recorded here: read `hint`, fix, preview again |
+| `CONFIG_INVALID` "Docker cannot be installed on VM …" | the VM exists and is billed: `status`, then ask: another image (`destroy`, deploy again) or keep it |
 | `AUTH_EXPIRED` | the same command again continues from `.evo/`, it does not create a second VM |
 | `STATE_LOCKED` | another `deploy` or `destroy` runs in this directory: wait |
 | exit code 130 | interrupted: the message names the VM; check before anything else |
