@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -38,6 +39,11 @@ const consentAbsentID = "00000000-0000-4000-8000-0000000000ad"
 type consentWorld struct {
 	cloud  func(provision.CloudAPI) provision.CloudAPI
 	answer func(r *http.Request) *http.Response
+	// refusedBy names the tools that can see the broken precondition by a
+	// read and must refuse before the question, though the platform's own
+	// refusal comes only with the write (the test world refuses every
+	// write, so a refusal after consent alone does not show them).
+	refusedBy []string
 }
 
 var consentWorlds = map[string]consentWorld{
@@ -46,6 +52,9 @@ var consentWorlds = map[string]consentWorld{
 	// disk_resize asks for 50 GB: the disk has 100, a shrink the API
 	// refuses. No tool reads the size before the write yet: the variant
 	// keeps the check of W5 before the question once it is there.
+	// The address is attached to another VM: fip_attach reads it before
+	// the question (Fable, delta audit 1.3.0, FB130-1).
+	"floating IP in use": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return busyFIPCloud{c} }, refusedBy: []string{"fip_attach"}},
 	"disk larger than requested": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 			return nil
@@ -55,6 +64,14 @@ var consentWorlds = map[string]consentWorld{
 }
 
 type noSubnetCloud struct{ provision.CloudAPI }
+
+// busyFIPCloud has the address of fip_attach in use by another VM.
+type busyFIPCloud struct{ provision.CloudAPI }
+
+func (busyFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return []*provision.FloatingIP{{ID: parityVM, IPAddress: "203.0.113.10", State: "in_use",
+		VM: []byte(`{"id":"00000000-0000-4000-8000-0000000000b7","name":"other"}`)}}, nil
+}
 
 func (noSubnetCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
 	return nil, nil
@@ -180,18 +197,6 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		}
 		return world(r)
 	}
-	jsonEngine := toolEngine
-	toolEngine = func(o map[string]any) (*engine.Engine, error) {
-		e, err := jsonEngine(o)
-		mu.Lock()
-		v := variant
-		mu.Unlock()
-		if err == nil && v.cloud != nil {
-			e.Cloud = v.cloud(e.Cloud)
-		}
-		return e, err
-	}
-	t.Cleanup(func() { toolEngine = jsonEngine })
 
 	call := func(tl tools.Tool, c consentCase, confirmed bool) (map[string]any, bool, int) {
 		a := copyArgs(c.args)
@@ -204,6 +209,20 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 				}
 			}
 			done = teardown
+		}
+		// The variant's cloud wraps the tool's own world (paritySetup),
+		// so what the variant breaks is what the tool reads.
+		if c.world.cloud != nil {
+			inner := toolEngine
+			toolEngine = func(o map[string]any) (*engine.Engine, error) {
+				e, err := inner(o)
+				if err == nil {
+					e.Cloud = c.world.cloud(e.Cloud)
+				}
+				return e, err
+			}
+			setupDone := done
+			done = func() { toolEngine = inner; setupDone() }
 		}
 		if confirmed {
 			a["confirmed"] = true
@@ -235,13 +254,19 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			continue
 		}
 		for _, c := range consentCases(tl, base) {
+			key := tl.Name + ": " + c.name
+			if slices.Contains(c.world.refusedBy, tl.Name) {
+				if before, _, _ := call(tl, c, false); before["status"] == "confirmation_required" {
+					found[key] = "asks for consent in a world it can read as refusing the write"
+				}
+				continue
+			}
 			after, failed, writes := call(tl, c, true)
 			if !failed || writes > 0 {
 				continue
 			}
 			reason, _ := after["reason"].(string)
 			before, _, _ := call(tl, c, false)
-			key := tl.Name + ": " + c.name
 			switch {
 			case before["status"] == "confirmation_required":
 				found[key] = fmt.Sprintf("asks for consent, then fails with %s: %s", reason, clipLine(fmt.Sprint(after["error"])))
