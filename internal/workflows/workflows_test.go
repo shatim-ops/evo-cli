@@ -38,6 +38,8 @@ type workflow struct {
 			Run  string            `yaml:"run"`
 			With map[string]any    `yaml:"with"`
 			Env  map[string]string `yaml:"env"`
+			// ContinueOnError: a step whose failure does not fail the job.
+			ContinueOnError bool `yaml:"continue-on-error"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -831,5 +833,45 @@ func TestWorkflows_TagRefusesUnfoldedFragments(t *testing.T) {
 	}
 	if tag < 0 || check > tag {
 		t.Errorf("tag.yml checks changelog.d after git tag (step %d, tag at %d): the number would be spent", check, tag)
+	}
+}
+
+// The probe of DB-22 (G13-27) asks the API what is left of a deleted
+// cluster's backups: it runs after the cluster's deletion, whatever came
+// before, and is a record, not a check — it never fails the job (the run of
+// the rc tag must not go red on a question) and it changes nothing in the
+// cloud: no curl writes but the exchange of the key for a token.
+func TestWorkflows_PGBackupProbeAfterDeleteChangesNothing(t *testing.T) {
+	steps := readWorkflows(t)["cloud-e2e.yml"].Jobs["dbaas-pg"].Steps
+	del, probe := -1, -1
+	for i, s := range steps {
+		if strings.Contains(s.Run, "dbaas-delete.sh") {
+			del = i
+		}
+		if strings.Contains(s.Run, "pg-backup-probe.sh") {
+			probe = i
+		}
+	}
+	if del < 0 || probe < 0 || probe < del {
+		t.Fatalf("dbaas-pg: the probe (step %d) must run after the deletion of the cluster (step %d)", probe, del)
+	}
+	if p := steps[probe]; !strings.Contains(p.If, "always()") || !p.ContinueOnError {
+		t.Errorf("dbaas-pg: the probe needs if: always() and continue-on-error: true, has if %q, continue-on-error %v", p.If, p.ContinueOnError)
+	}
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "pg-backup-probe.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(b)
+	for _, l := range strings.Split(script, "\n") {
+		if strings.Contains(l, "curl ") && strings.Contains(l, "-X") && !strings.Contains(l, "/auth/token") {
+			t.Errorf("pg-backup-probe.sh writes to the API: %s", strings.TrimSpace(l))
+		}
+		if strings.Contains(l, "exit 1") || strings.Contains(l, "::error::") {
+			t.Errorf("pg-backup-probe.sh fails the step: %s", strings.TrimSpace(l))
+		}
+		if strings.Contains(l, "evo ") && strings.Contains(l, "--yes") {
+			t.Errorf("pg-backup-probe.sh confirms a change: %s", strings.TrimSpace(l))
+		}
 	}
 }
