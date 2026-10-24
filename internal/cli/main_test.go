@@ -249,9 +249,16 @@ func TestRun_CommandsWithoutVMCreateNoSSHKey(t *testing.T) {
 // saved (TestContract_EveryPreviewPricedOrListed on main under -shuffle).
 func TestRun_GlobalFlagsDoNotOutliveTheRun(t *testing.T) {
 	t.Setenv("CLOUDRU_CONFIG_DIR", t.TempDir())
-	runCLI(t, "", "--profile", "ci", "--json", "--yes", "--dry-run", "--verbose", "--no-color", "version")
+	runCLI(t, "", "--profile", "ci", "--json", "--yes", "--dry-run", "--verbose", "--no-color",
+		"--project-id", "p-flag", "--region", "z-flag", "version")
 	if flagProfile != "" || flagJSON || flagYes || flagDryRun || flagVerbose || flagNoColor {
 		t.Errorf("after the run: profile %q json %v yes %v dry-run %v verbose %v no-color %v",
 			flagProfile, flagJSON, flagYes, flagDryRun, flagVerbose, flagNoColor)
+	}
+	// The scope flags too: an engine built after the run took the project of
+	// the run before (TestDeployDryRunKeepsV11Keys after
+	// TestWhoamiDoctor_ProjectFlag, -shuffle 1792844402228420628 on main).
+	if flagProjectID != "" || flagRegion != "" {
+		t.Errorf("after the run: project-id %q region %q", flagProjectID, flagRegion)
 	}
 }
