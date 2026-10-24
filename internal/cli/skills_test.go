@@ -360,6 +360,44 @@ func TestSkills_ConsentAfterThePreview(t *testing.T) {
 	}
 }
 
+// skillBatchYes is the skill where one yes may cover a table of deletes
+// (owner's decision 24.10, spec §13.5), and skillBatchYesTerms are the
+// terms that bound it: the rows of the table only, while the preview of
+// each matches its row; anything else stops for a new question.
+const skillBatchYes = "evo-cleanup"
+
+var skillBatchYesTerms = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)only while the preview of each matches its row`),
+	regexp.MustCompile(`(?i)a resource not in the table`),
+	regexp.MustCompile(`(?i)an error: stop and ask again`),
+}
+
+// spec §8.4, §13.5: one yes for many changes only in evo-cleanup, and there
+// only with the terms that bound it.
+func TestSkills_OneYesForATable(t *testing.T) {
+	oneYes := regexp.MustCompile(`(?i)\bone yes\b`)
+	seen := false
+	for _, s := range readSkills(t) {
+		text := strings.Join(strings.Fields(strings.Join(s.body, " ")), " ")
+		if !oneYes.MatchString(text) {
+			continue
+		}
+		if s.name != skillBatchYes {
+			t.Errorf("skills/%s: one yes for many changes is %s's only (spec §13.5): ask before each", s.name, skillBatchYes)
+			continue
+		}
+		seen = true
+		for _, re := range skillBatchYesTerms {
+			if !re.MatchString(text) {
+				t.Errorf("skills/%s: one yes for the table without the term %q (spec §13.5)", s.name, re)
+			}
+		}
+	}
+	if !seen {
+		t.Errorf("skills/%s: no \"one yes\" for the table of deletes, the scenario of spec §6.4", skillBatchYes)
+	}
+}
+
 // spec §8.5: a scenario does not repeat the rules evo generates
 // (docs/agent-skill.md): it would drift from them.
 func TestSkills_NoBuiltInRuleRepeated(t *testing.T) {
