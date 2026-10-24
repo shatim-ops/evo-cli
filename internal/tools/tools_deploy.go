@@ -648,16 +648,36 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 }
 
 // securityGroupByRef is the project's security group named or numbered
-// ref; one that is not there is NOT_FOUND.
+// ref; one that is not there is NOT_FOUND, and a name several groups share
+// is USAGE naming their ids.
 func securityGroupByRef(ctx context.Context, eng *engine.Engine, ref string) (*provision.SecurityGroup, error) {
 	sgs, err := eng.Cloud.ListSecurityGroups(ctx, eng.Config.ProjectID)
 	if err != nil {
 		return nil, err
 	}
+	var named []*provision.SecurityGroup
 	for _, g := range sgs {
-		if g.ID == ref || g.Name == ref {
+		if g.ID == ref {
 			return g, nil
 		}
+		if g.Name == ref {
+			named = append(named, g)
+		}
+	}
+	switch len(named) {
+	case 1:
+		return named[0], nil
+	case 0:
+	default:
+		// The first the list gave was taken, and its rules were the ones
+		// changed (review of #315).
+		ids := make([]string, 0, len(named))
+		for _, g := range named {
+			ids = append(ids, g.ID)
+		}
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("%d security groups are named %q: %s", "%d групп безопасности с именем %q: %s", len(named), ref, strings.Join(ids, ", ")),
+			i18n.T("Name the group by its id (list_security_groups).", "Укажите группу по id (list_security_groups)."))
 	}
 	return nil, clierrors.New(clierrors.CodeNotFound,
 		i18n.Tf("security group %q not found", "группа безопасности %q не найдена", ref),
