@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -71,6 +72,23 @@ func TestOpenPorts_AmbiguousGroupNameBeforeTheQuestion(t *testing.T) {
 		m, text, isErr := callNamed(t, r, "open_ports", map[string]any{"security_group": "web", "ports": []any{float64(8080)}, "confirmed": confirmed})
 		if !isErr || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, faultID(0x81)) || !strings.Contains(text, faultID(0x82)) {
 			t.Errorf("open_ports of a name two groups share, confirmed=%v: %s", confirmed, text)
+		}
+	}
+}
+
+// The plans of open_ports and disk_resize read the cloud (D35): without a
+// key the preview is AUTH_REQUIRED, not a question (D31; review of #316).
+func TestPreviewThatReadsTheCloud_NoKeyBeforeTheQuestion(t *testing.T) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		return nil, clerrors.New(clerrors.CodeAuthRequired, "no access key", "Run 'evo configure'")
+	})
+	for tool, args := range map[string]map[string]any{
+		"open_ports":  {"security_group": "web", "ports": []any{float64(8080)}},
+		"disk_resize": {"disk_id": faultID(0x91), "size_gb": float64(20)},
+	} {
+		m, text, isErr := callNamed(t, r, tool, args)
+		if !isErr || m["reason"] != clerrors.CodeAuthRequired {
+			t.Errorf("%s without a key: %s", tool, text)
 		}
 	}
 }
