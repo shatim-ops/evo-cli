@@ -310,28 +310,28 @@ func pgMaxHosts(spec map[string]any) int {
 	return 0
 }
 
-func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageT("'name' is required", "нужен 'name'"), true
+		return nil, usageErr("'name' is required", "нужен 'name'")
 	}
 	instances := pgInt(args, "instances", 1)
 	cli, eng, err := s.pgClientEng(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	existing, err := cli.ListClusters(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult(i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, id, st, "pg_get id="+id)
+		return answered(nameTakenResult(i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, id, st, "pg_get id="+id)), nil
 	}
 
 	// Resolve version (default: latest available).
 	versions, err := cli.ListVersions(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf("list versions: %w", err)), true
+		return nil, fmt.Errorf("list versions: %w", err)
 	}
 	version := stringArg(args, "version")
 	if version == "" {
@@ -341,7 +341,7 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	// Resolve specification (by id, or by cpu+ram).
 	specs, err := cli.ListSpecifications(ctx, version)
 	if err != nil {
-		return errResult(fmt.Errorf("list specifications: %w", err)), true
+		return nil, fmt.Errorf("list specifications: %w", err)
 	}
 	specArg, cpu, ram := stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0)
 	spec := findSpec(specs, specArg, cpu, ram)
@@ -358,16 +358,16 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		if trunc > 0 {
 			out["specifications_truncated"] = trunc
 		}
-		return needSpecResult("pg_specs", specArg, cpu, ram, out)
+		return answered(needSpecResult("pg_specs", specArg, cpu, ram, out)), nil
 	}
 	specID, _ := spec["id"].(string)
 	if maxHosts := pgMaxHosts(spec); maxHosts > 0 && instances > maxHosts {
-		return usageResult(fmt.Errorf("instances %d: specification %s (%v) takes 1-%d nodes", instances, specID, firstNonNil(spec["deployment_mode"], spec["display_name"]), maxHosts)), true
+		return answered(usageResult(fmt.Errorf("instances %d: specification %s (%v) takes 1-%d nodes", instances, specID, firstNonNil(spec["deployment_mode"], spec["display_name"]), maxHosts)), true), nil
 	}
 
 	storageGB, err := specStorage(args, "storage_gb", spec, 50)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	initialDB := stringArg(args, "initial_database")
 	if initialDB == "" {
@@ -399,7 +399,7 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	// one included (final audit, N-06).
 	subnetID, _, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 
 	willCreate := map[string]any{
@@ -416,55 +416,52 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		"initial_database": initialDB,
 		"backup_enabled":   backupEnabled,
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		preview, err := s.completePreview(ctx, eng, pgCreatePreview(eng.Config, willCreate))
-		if err != nil {
-			return errResult(err), true
+	priced, err := s.completePreview(ctx, eng, pgCreatePreview(eng.Config, willCreate))
+	if err != nil {
+		return nil, err
+	}
+	preview := map[string]any{"message": i18n.T("pg_create provisions a BILLABLE Managed PostgreSQL cluster (~minutes).",
+		"pg_create создаёт ПЛАТНЫЙ кластер Managed PostgreSQL (несколько минут)."),
+		"will_create": willCreate,
+		"preview":     priced,
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		body := map[string]any{
+			"name":             name,
+			"project_id":       cli.ProjectID(),
+			"version":          version,
+			"specification_id": specID,
+			"storage":          map[string]any{"pg_data_gb": storageGB},
+			"initial_database": initialDB,
+			"instances":        instances,
+			"subnet_ids":       []string{subnetID},
 		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("pg_create provisions a BILLABLE Managed PostgreSQL cluster (~minutes).",
-				"pg_create создаёт ПЛАТНЫЙ кластер Managed PostgreSQL (несколько минут)."),
-			"will_create": willCreate,
-			"preview":     preview,
-		}), true
-	}
-
-	body := map[string]any{
-		"name":             name,
-		"project_id":       cli.ProjectID(),
-		"version":          version,
-		"specification_id": specID,
-		"storage":          map[string]any{"pg_data_gb": storageGB},
-		"initial_database": initialDB,
-		"instances":        instances,
-		"subnet_ids":       []string{subnetID},
-	}
-	if backupSpec != nil {
-		body["backup"] = backupSpec
-	}
-	if d := stringArg(args, "description"); d != "" {
-		body["description"] = d
-	}
-	op, err := cli.CreateCluster(ctx, body)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+		if backupSpec != nil {
+			body["backup"] = backupSpec
 		}
-		return lostCreate(ctx, "pg_create", cli.ListClusters, i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, willCreate, "pg_get id", fmt.Errorf("create cluster: %w", err))
-	}
-	out := map[string]any{
-		"status":       "creating",
-		"operation_id": op.ID,
-		"created":      willCreate,
-		"note":         "Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; then pg_list/pg_get for status READY.",
-	}
-	if op.ResourceID != "" {
-		out["cluster_id"] = op.ResourceID // release audit re-run, N-07
-	} else {
-		out["note"] = "Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; pg_list shows the cluster's id by its name, then pg_get for status READY."
-	}
-	return toJSON(out), false
+		if d := stringArg(args, "description"); d != "" {
+			body["description"] = d
+		}
+		op, err := cli.CreateCluster(ctx, body)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "pg_create", cli.ListClusters, i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, willCreate, "pg_get id", fmt.Errorf("create cluster: %w", err))
+		}
+		out := map[string]any{
+			"status":       "creating",
+			"operation_id": op.ID,
+			"created":      willCreate,
+			"note":         "Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; then pg_list/pg_get for status READY.",
+		}
+		if op.ResourceID != "" {
+			out["cluster_id"] = op.ResourceID // release audit re-run, N-07
+		} else {
+			out["note"] = "Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; pg_list shows the cluster's id by its name, then pg_get for status READY."
+		}
+		return toJSON(out), false
+	}}, nil
 }
 
 func (s *Registry) planPgDelete(ctx context.Context, args map[string]any) (*Plan, error) {
@@ -602,28 +599,28 @@ func (s *Registry) handlePgUsers(ctx context.Context, args map[string]any) (stri
 	return toJSON(map[string]any{"users": items}), false
 }
 
-func (s *Registry) handlePgUserCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	password := stringArg(args, "password")
 	if cid == "" || name == "" || password == "" {
-		return usageT("'cluster_id', 'name' and 'password' are required", "нужны 'cluster_id', 'name' и 'password'"), true
+		return nil, usageErr("'cluster_id', 'name' and 'password' are required", "нужны 'cluster_id', 'name' и 'password'")
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_user_create creates user %q in cluster %s.",
-			"pg_user_create создаёт пользователя %q в кластере %s.", name, cid)}), true
-	}
-	cli, err := s.pgClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	body := map[string]any{"cluster_id": cid, "name": name, "password": password}
-	u, err := cli.CreateUser(ctx, cid, body)
-	if err != nil {
-		return errResult(fmt.Errorf("create user: %w", err)), true
-	}
-	// Never echo the password back.
-	return toJSON(map[string]any{"status": "created", "user": u}), false
+	preview := map[string]any{"message": i18n.Tf("pg_user_create creates user %q in cluster %s.",
+		"pg_user_create создаёт пользователя %q в кластере %s.", name, cid)}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		cli, err := s.pgClient(ctx)
+		if err != nil {
+			return errResult(err), true
+		}
+		body := map[string]any{"cluster_id": cid, "name": name, "password": password}
+		u, err := cli.CreateUser(ctx, cid, body)
+		if err != nil {
+			return errResult(fmt.Errorf("create user: %w", err)), true
+		}
+		// Never echo the password back.
+		return toJSON(map[string]any{"status": "created", "user": u}), false
+	}}, nil
 }
 
 func (s *Registry) planPgUserDelete(ctx context.Context, args map[string]any) (*Plan, error) {

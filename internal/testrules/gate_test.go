@@ -26,7 +26,6 @@ const gateFile = "internal/tools/gate.go"
 // each line removed (G13-3, class K1).
 var inlineGates = map[string]string{
 	"internal/tools/tools_ar.go: handleArCreate":                "1.4",
-	"internal/tools/tools_ca.go: handleCaDeploy":                "W6",
 	"internal/tools/tools_ca.go: handleCaStartStop":             "1.4",
 	"internal/tools/tools_certmanager.go: handleCertImport":     "1.4",
 	"internal/tools/tools_certmanager.go: handleCertIssueLE":    "1.4",
@@ -43,17 +42,13 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_k8s.go: handleK8sAddNodePool":         "1.4",
 	"internal/tools/tools_k8s.go: handleK8sCreate":              "1.4",
 	"internal/tools/tools_k8s_addons.go: handleK8sAddAddon":     "1.4",
-	"internal/tools/tools_kafka.go: handleKafkaCreate":          "W6",
 	"internal/tools/tools_kube.go: handleK8sApply":              "1.4",
 	"internal/tools/tools_kube.go: handleK8sHelm":               "1.4",
 	"internal/tools/tools_kube.go: handleK8sKubectl":            "1.4",
 	"internal/tools/tools_nlb.go: handleLbCreate":               "1.4",
 	"internal/tools/tools_nlb.go: handleTgCreate":               "1.4",
 	"internal/tools/tools_pg.go: handlePgBackupCreate":          "1.4",
-	"internal/tools/tools_pg.go: handlePgCreate":                "W6",
 	"internal/tools/tools_pg.go: handlePgDbCreate":              "1.4",
-	"internal/tools/tools_pg.go: handlePgUserCreate":            "W6",
-	"internal/tools/tools_redis.go: handleRedisCreate":          "W6",
 	"internal/tools/tools_s3.go: handleS3BucketCreate":          "1.4",
 	"internal/tools/tools_s3.go: handleS3Put":                   "1.4",
 	"internal/tools/tools_secret.go: handleSecretAddVersion":    "1.4",
@@ -68,7 +63,7 @@ var inlineGates = map[string]string{
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 39
+const inlineGatesLeft = 34
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{
