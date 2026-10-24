@@ -37,7 +37,8 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
    security group and the monthly price. An image the project cannot use is
    `NOT_FOUND`; a zone without a subnet or a security group is
    `CONFIG_INVALID`, both before any question.
-2. Do not pass ports to `provision` (`--port`): they open from `0.0.0.0/0`.
+2. Do not pass ports to `provision` (`--port`): it has no `cidr`, so they
+   open from `0.0.0.0/0`.
    Open them in step 5 with a source the person names.
 3. Stop and ask: show the preview: what is created, the price, the zone,
    the public address. Go on only after their explicit yes.

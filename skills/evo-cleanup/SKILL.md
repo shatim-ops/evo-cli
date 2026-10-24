@@ -55,7 +55,8 @@ skill `evo-scenarios`, section 5.
    that differs, a resource not in the table, or an error: stop and ask
    again. Then the call with `confirmed: true` / `--yes`, then the check:
    the resource is gone from its list, or its `*_get` answers `NOT_FOUND`.
-   An answer without that check is not a success.
+   An answer without that check is not a success. A delete that answers
+   `already_deleted` is no error: the resource was gone before it.
 6. Report one table: deleted / already gone (`already_deleted`) / not
    deleted and why / left by your word.
 
