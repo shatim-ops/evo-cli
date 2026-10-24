@@ -44,6 +44,17 @@ body:
       placeholder: PowerShell; без прокси; Claude Code + Opus
     validations:
       required: true
+  - type: dropdown
+    id: skills
+    attributes:
+      label: Сценарные скиллы
+      description: Были ли у агента скиллы из каталога `skills/` (evo-scenarios и др.). Встроенные правила `evo agent setup --skill` — не они.
+      options:
+        - Со скиллами
+        - Без скиллов
+        - Без агента (только CLI)
+    validations:
+      required: true
   - type: checkboxes
     id: areas
     attributes:
