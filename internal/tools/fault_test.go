@@ -269,7 +269,7 @@ func TestFault_Stack_TakenByNameErrorAndDeleting(t *testing.T) {
 			}}), false
 		}
 		id, err := r.takenByName(context.Background(), &stack.Step{
-			FindTool: "vm_list", FindField: "vms", FindName: "web",
+			Tool: "provision", Args: map[string]any{"name": "web"},
 		})
 		if err != nil || id != faultID(1) {
 			t.Fatalf("status %s: id=%q err=%v", status, id, err)
@@ -282,7 +282,7 @@ func TestFault_Stack_TakenByNameErrorAndDeleting(t *testing.T) {
 		}}), false
 	}
 	id, err := r.takenByName(context.Background(), &stack.Step{
-		FindTool: "vm_list", FindField: "vms", FindName: "web",
+		Tool: "provision", Args: map[string]any{"name": "web"},
 	})
 	if err != nil || id != "" {
 		t.Fatalf("DELETED/ERASED counted as taken: %q %v", id, err)

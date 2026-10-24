@@ -496,7 +496,7 @@ func TestProjectBound_NoProjectInAnswerRefused(t *testing.T) {
 // teardown counts as already gone, and nothing is deleted.
 func TestProjectBound_StackDestroyTakesItAsGone(t *testing.T) {
 	stackHome(t)
-	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
+	j := planJob(t, `{"name":"g","postgres":{"name":"p"},"kafka":{"name":"k"}}`)
 	j.ProjectID = ownProject
 	j.Outputs["postgres"] = resForeign
 	j.Outputs["kafka"] = resGone

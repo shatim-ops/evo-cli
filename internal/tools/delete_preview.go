@@ -44,6 +44,17 @@ func (s *Registry) deletePreview(tool, en, ru, id string, get func() (map[string
 	case "DEPLOYING", "CREATING", "PROVISIONING":
 		out["warning"] = i18n.Tf("it is still being created (%s): Cloud.ru refuses the delete until it is ready",
 			"он ещё создаётся (%s): Cloud.ru не удалит его, пока он не будет готов", status)
+	case "FAILED", "ERROR":
+		// kafka_delete of a FAILED cluster met a bare 500 (G13-19).
+		out["warning"] = i18n.Tf("it is in %s: ", "он в состоянии %s: ", status) + failedDeleteNote(id)
 	}
 	return toJSON(out), true
+}
+
+// failedDeleteNote is what to do when Cloud.ru refuses to delete a
+// resource in FAILED or ERROR: the preview says it before the question,
+// the error after the refusal (G13-19).
+func failedDeleteNote(id string) string {
+	return i18n.Tf("Cloud.ru may refuse to delete it in this state; if it does, contact Cloud.ru support with its id %s.",
+		"Cloud.ru может отказать в удалении в этом состоянии; при отказе обратитесь в поддержку Cloud.ru с его id %s.", id)
 }
