@@ -28,6 +28,7 @@ var userDocs = []string{
 	"docs/troubleshooting.md",
 	"docs/exit-codes.md",
 	"docs/internal/dogfood-protocol.md",
+	"skills/README.md",
 }
 
 // docExampleSkip are invocations the checker does not treat as a runnable
