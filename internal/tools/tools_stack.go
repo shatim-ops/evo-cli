@@ -110,35 +110,65 @@ func (s *Registry) findIDByName(ctx context.Context, tool, field, name string, e
 	return ""
 }
 
+// stepFind is how to find what a step makes by its name: the list tool of
+// its create and the array of the answer (createdIDs), the name the step
+// gives it (createNames) and the create's arguments the list takes too.
+type stepFind struct {
+	list, field, name string
+	args              map[string]any
+}
+
+// stepFinder is the stepFind of st; ok is false for a create not found by
+// name (its createdIDs declare no list).
+func stepFinder(st *stack.Step) (f stepFind, ok bool) {
+	c := createdIDs[st.Tool]
+	n := createNames[st.Tool]
+	if c.list == "" || len(n.args) == 0 {
+		return stepFind{}, false
+	}
+	f = stepFind{list: c.list, field: c.field, name: stringArg(st.Args, n.args[0]), args: map[string]any{}}
+	for _, a := range c.listArgs {
+		f.args[a] = st.Args[a]
+	}
+	return f, f.name != ""
+}
+
+// findStepID is the id of a live resource named as the step's; "" when
+// there is none, or the step's create is not found by name.
+func (s *Registry) findStepID(ctx context.Context, st *stack.Step) string {
+	f, ok := stepFinder(st)
+	if !ok {
+		return ""
+	}
+	return s.findIDByName(ctx, f.list, f.field, f.name, f.args)
+}
+
 // takenByName is the id of a live resource named as the step's, from its
 // list tool; an error when the list could not be read (then nothing is
 // known and nothing may be created yet).
 func (s *Registry) takenByName(ctx context.Context, st *stack.Step) (string, error) {
-	args := map[string]any{}
-	for k, v := range st.FindArgs {
-		args[k] = v
-	}
-	res, err := s.callTool(ctx, st.FindTool, args)
+	f, _ := stepFinder(st)
+	res, err := s.callTool(ctx, f.list, f.args)
 	if err != nil {
 		return "", err
 	}
-	arr, ok := res[st.FindField].([]any)
+	arr, ok := res[f.field].([]any)
 	if !ok {
-		return "", fmt.Errorf("%s answered without %q", st.FindTool, st.FindField)
+		return "", fmt.Errorf("%s answered without %q", f.list, f.field)
 	}
 	for _, it := range arr {
 		m, ok := it.(map[string]any)
 		if !ok {
 			continue
 		}
-		if n, _ := m["name"].(string); n != st.FindName {
+		if n, _ := m["name"].(string); n != f.name {
 			continue
 		}
 		if status := strings.ToUpper(fmt.Sprint(m["status"])); strings.Contains(status, "DELETED") || strings.Contains(status, "ERASED") {
 			continue
 		}
 		id, _ := m["id"].(string)
-		return firstNonEmptyStr(id, st.FindName), nil
+		return firstNonEmptyStr(id, f.name), nil
 	}
 	return "", nil
 }
@@ -154,26 +184,27 @@ const vmClockSkew = 2 * time.Minute
 // state is the VM's state ("" for other kinds). Steps that never started,
 // or VMs without a creation time, are not adopted.
 func (s *Registry) findStepResource(ctx context.Context, st *stack.Step) (id, state string) {
-	if st.FindTool == "" || st.FindName == "" {
+	f, ok := stepFinder(st)
+	if !ok {
 		return "", ""
 	}
 	if st.Tool != "provision" {
-		return s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs), ""
+		return s.findIDByName(ctx, f.list, f.field, f.name, f.args), ""
 	}
 	if st.StartedAt.IsZero() {
 		return "", ""
 	}
-	res, err := s.callTool(ctx, st.FindTool, st.FindArgs)
+	res, err := s.callTool(ctx, f.list, f.args)
 	if err != nil {
 		return "", ""
 	}
-	arr, _ := res[st.FindField].([]any)
+	arr, _ := res[f.field].([]any)
 	for _, it := range arr {
 		m, ok := it.(map[string]any)
 		if !ok {
 			continue
 		}
-		if n, _ := m["name"].(string); n != st.FindName {
+		if n, _ := m["name"].(string); n != f.name {
 			continue
 		}
 		created, _ := m["created_time"].(string)
@@ -286,8 +317,12 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 							job.Status = "error"
 							return
 						}
-						id := s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs)
-						st.ResourceID = id
+						// The name finds what the operation made; the create's
+						// answer named it already when it could.
+						if id := s.findStepID(ctx, st); id != "" {
+							st.ResourceID = id
+						}
+						id := st.ResourceID
 						job.Outputs[st.Key] = id
 						if st.Key == "lb" && id != "" {
 							if lb, e := s.callTool(ctx, "lb_get", map[string]any{"id": id}); e == nil {
@@ -303,7 +338,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					}
 				} else if st.ReadyKind == "status" {
 					if st.ResourceID == "" {
-						st.ResourceID = s.findIDByName(ctx, st.FindTool, st.FindField, st.FindName, st.FindArgs)
+						st.ResourceID = s.findStepID(ctx, st)
 					}
 					if st.ResourceID != "" {
 						cl, err := s.callTool(ctx, st.StatusTool, map[string]any{st.StatusArg: st.ResourceID})
@@ -361,7 +396,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						continue
 					}
 				}
-				if st.StartedAt.IsZero() && !resumed && st.Tool != "provision" && st.FindTool != "" && st.FindName != "" {
+				if _, findable := stepFinder(st); st.StartedAt.IsZero() && !resumed && st.Tool != "provision" && findable {
 					// Before the step's first create: a resource with its
 					// name now is not the job's. Without this, a retry after
 					// an attempt that failed before its create found it by
@@ -376,7 +411,8 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					}
 					if id != "" {
 						st.Status = "error"
-						job.Error = fmt.Sprintf("%s: %q is already taken by an existing resource (%s) — rename it in the manifest, or remove the existing one", st.Key, st.FindName, id)
+						f, _ := stepFinder(st)
+						job.Error = fmt.Sprintf("%s: %q is already taken by an existing resource (%s) — rename it in the manifest, or remove the existing one", st.Key, f.name, id)
 						job.Status = "error"
 						return
 					}
@@ -393,7 +429,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// Cancelled mid-create: not a failed attempt. Keep the id
 					// the tool reported (provision names the VM it made).
 					st.Interrupted = true
-					st.ResourceID = firstStr(res, "vm_id", "cluster_id", "id")
+					st.ResourceID = createdID(st.Tool, res)
 					st.Detail = "interrupted: " + err.Error()
 					return
 				}
@@ -404,7 +440,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// (provision: a VM in error_creating or not active in
 					// time). It exists and is billed: record it for
 					// stack_destroy and stop — a retry would create another.
-					if id := firstStr(res, "vm_id", "cluster_id"); id != "" {
+					if id := createdID(st.Tool, res); id != "" {
 						st.ResourceID = id
 						st.Status = "error"
 						job.Error = fmt.Sprintf("%s: %s (resource %s kept for stack_destroy)", st.Key, err.Error(), id)
@@ -454,22 +490,30 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					continue // stay pending, no progress → retried next stack_status crank
 				}
 				if st.ReadyKind == "" {
-					// synchronous — capture id and finish
-					id := firstStr(res, "vm_id", "id", "path")
-					if id != "" {
-						job.Outputs[st.Key] = id
-						st.ResourceID = id
-					} else {
-						job.Outputs[st.Key] = "ok"
+					// synchronous — capture what it made (createdIDs) and
+					// finish. An answer that names nothing is not success:
+					// the step made something billed or nothing, and only
+					// its name can tell (G13-14: it was "ok", and
+					// stack_destroy kept the SNAT gateway).
+					id := createdRef(st.Tool, args, res)
+					if id == "" {
+						id, _ = s.findStepResource(ctx, st)
 					}
+					if id == "" {
+						st.Status = "error"
+						job.Error = fmt.Sprintf("%s: %s answered no id of what it made, and its name finds nothing", st.Key, st.Tool)
+						job.Status = "error"
+						return
+					}
+					job.Outputs[st.Key] = id
+					st.ResourceID = id
 					st.Status = "done"
 				} else {
-					// async — remember the op and wait on subsequent cranks
+					// async — remember the op and wait on subsequent cranks;
+					// the id, when the answer gives it (k8s: cluster_id),
+					// lets stack_destroy delete what is still being made.
 					st.OpID = firstStr(res, "operation_id")
-					if st.ReadyKind == "status" {
-						// some creates return the id directly (k8s: cluster_id)
-						st.ResourceID = firstStr(res, "cluster_id", "id")
-					}
+					st.ResourceID = createdID(st.Tool, res)
 					st.Status = "waiting"
 				}
 				progress = true
@@ -924,6 +968,14 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 	}
 }
 
+// stackTeardown are the creates of stack steps in the order stack_destroy
+// deletes what they made (createdIDs names the delete): what uses a
+// resource before it, the VPC last — its subnets must be empty.
+var stackTeardown = []string{
+	"dns_record_create", "lb_create", "tg_create", "k8s_create", "kafka_create", "redis_create",
+	"snat_create", "ar_create", "pg_create", "provision", "secret_create", "s3_put", "vpc_create",
+}
+
 // stepMayHaveCreated reports whether a step may have reached the cloud: it
 // ran (running, waiting, error after a try) or its create was cut off. Only
 // such a step is looked up by name at destroy: a step that never ran owns
@@ -967,8 +1019,8 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 			if rid != "" {
 				row["id"] = rid
 			}
-			if st.FindName != "" {
-				row["name"] = st.FindName
+			if f, ok := stepFinder(st); ok {
+				row["name"] = f.name
 			}
 			res = append(res, row)
 		}
@@ -1047,49 +1099,32 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 			}
 		}
 	}
-	if id := job.Outputs["dns"]; id != "" {
-		del("dns", "dns_record_delete", map[string]any{"record_id": id})
-	}
-	if id := job.Outputs["lb"]; id != "" {
-		del("lb", "lb_delete", map[string]any{"id": id})
-	}
-	if id := job.Outputs["tg"]; id != "" {
-		del("tg", "tg_delete", map[string]any{"id": id})
-	}
-	if id := job.Outputs["k8s"]; id != "" {
-		del("k8s", "k8s_delete", map[string]any{"cluster_id": id})
-	}
-	if id := job.Outputs["kafka"]; id != "" {
-		del("kafka", "kafka_delete", map[string]any{"cluster_id": id})
-	}
-	if id := job.Outputs["redis"]; id != "" {
-		del("redis", "redis_delete", map[string]any{"cluster_id": id})
-	}
-	if id := job.Outputs["snat"]; id != "" {
-		del("snat", "snat_delete", map[string]any{"id": id})
-	}
-	if id := job.Outputs["registry"]; id != "" {
-		del("registry", "ar_delete", map[string]any{"id": id})
-	}
-	if id := job.Outputs["postgres"]; id != "" {
-		del("postgres", "pg_delete", map[string]any{"cluster_id": id})
-	}
-	if id := job.Outputs["vm"]; id != "" {
-		del("vm", "destroy", map[string]any{"vm_id": id})
-	}
-	for i, sc := range job.Manifest.Secrets {
-		if job.Outputs[fmt.Sprintf("secret:%d", i)] != "" {
-			del("secret", "secret_delete", map[string]any{"path": sc.Path, "force": true})
+	for _, tool := range stackTeardown {
+		for _, st := range job.Steps {
+			ref := job.Outputs[st.Key]
+			if st.Tool != tool || ref == "" {
+				continue
+			}
+			c := createdIDs[tool]
+			dt := deleteTargets[c.delete]
+			if c.arg != "" {
+				// Deleted by the argument that named it (a secret by its
+				// path): its output only says it was made.
+				ref = stringArg(st.Args, c.arg)
+			} else if dt.uuid && !isUUID(ref) {
+				// Not an id: a job saved before G13-14 holds "ok" for its
+				// SNAT gateway. Its name finds it; nothing found is gone.
+				if ref = s.findStepID(ctx, st); ref == "" {
+					deleted = append(deleted, st.Key+" (already gone)")
+					continue
+				}
+			}
+			dargs := map[string]any{dt.arg: ref}
+			if dt.parent != "" {
+				dargs[dt.parent] = st.Args[dt.parent]
+			}
+			del(st.Key, c.delete, dargs)
 		}
-	}
-	for i, s3 := range job.Manifest.S3 {
-		if job.Outputs[fmt.Sprintf("s3:%d", i)] != "" {
-			del("s3", "s3_rm", map[string]any{"bucket": s3.Bucket, "key": s3.Key})
-		}
-	}
-	// VPC last — its subnets/resources must be gone first.
-	if id := job.Outputs["vpc"]; id != "" {
-		del("vpc", "vpc_delete", map[string]any{"id": id})
 	}
 	// A job with a failed deletion still holds resources: "destroyed" would
 	// hide it from the duplicate warning of stack_plan. Calling stack_destroy

@@ -221,7 +221,7 @@ func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 		st.Status = "done"
 	}
 	j.Status = "destroyed"
-	j.Outputs["vm"] = "vm-1"
+	j.Outputs["vm"] = faultID(1)
 	if err := j.Save(); err != nil {
 		t.Fatal(err)
 	}

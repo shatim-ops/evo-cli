@@ -177,21 +177,17 @@ type Step struct {
 	// async handling
 	PollTool  string `json:"poll_tool,omitempty"`  // operation-poll tool for ReadyKind "op" (lb_operation/vpc_operation/…)
 	ReadyKind string `json:"ready_kind,omitempty"` // "" (sync) | "op" (poll operation) | "status" (poll a get tool for a ready status)
-	FindTool  string `json:"find_tool,omitempty"`  // list tool to resolve id by name (tg_list/lb_list/…)
-	FindField string `json:"find_field,omitempty"` // array field in the list result (target_groups/clusters/…)
-	FindName  string `json:"find_name,omitempty"`  // name to match
 	// ReadyKind "status": poll StatusTool({StatusArg: id}) until StatusField contains ReadyValue
 	StatusTool  string `json:"status_tool,omitempty"`  // pg_get / k8s_get
 	StatusArg   string `json:"status_arg,omitempty"`   // id arg name: cluster_id
 	StatusField string `json:"status_field,omitempty"` // "status"
 	ReadyValue  string `json:"ready_value,omitempty"`  // "READY" / "RUNNING" (substring match)
 	// runtime
-	Status     string         `json:"status"` // pending|running|waiting|done|error
-	OpID       string         `json:"op_id,omitempty"`
-	ResourceID string         `json:"resource_id,omitempty"`
-	Attempts   int            `json:"attempts,omitempty"`  // create retries used (transient-error tolerance)
-	FindArgs   map[string]any `json:"find_args,omitempty"` // extra args for the find-by-name list call (e.g. dns zone_id)
-	Detail     string         `json:"detail,omitempty"`
+	Status     string `json:"status"` // pending|running|waiting|done|error
+	OpID       string `json:"op_id,omitempty"`
+	ResourceID string `json:"resource_id,omitempty"`
+	Attempts   int    `json:"attempts,omitempty"` // create retries used (transient-error tolerance)
+	Detail     string `json:"detail,omitempty"`
 	// Interrupted marks a create cut off by a cancelled call: it may have
 	// reached the cloud, so the next crank looks for the resource before
 	// creating it again.
@@ -436,7 +432,6 @@ func Plan(m Manifest) *Job {
 		j.Steps = append(j.Steps, &Step{
 			Key: "postgres", Tool: "pg_create", Args: args,
 			ReadyKind: "status", Status: "pending",
-			FindTool: "pg_list", FindField: "clusters", FindName: pg.Name,
 			StatusTool: "pg_get", StatusArg: "cluster_id", StatusField: "status", ReadyValue: "READY",
 		})
 	}
@@ -467,7 +462,6 @@ func Plan(m Manifest) *Job {
 		j.Steps = append(j.Steps, &Step{
 			Key: "kafka", Tool: "kafka_create", Args: args,
 			ReadyKind: "status", Status: "pending",
-			FindTool: "kafka_list", FindField: "clusters", FindName: k.Name,
 			StatusTool: "kafka_get", StatusArg: "cluster_id", StatusField: "status", ReadyValue: "READY",
 		})
 	}
@@ -501,7 +495,6 @@ func Plan(m Manifest) *Job {
 		j.Steps = append(j.Steps, &Step{
 			Key: "redis", Tool: "redis_create", Args: args,
 			ReadyKind: "status", Status: "pending",
-			FindTool: "redis_list", FindField: "clusters", FindName: r.Name,
 			StatusTool: "redis_get", StatusArg: "cluster_id", StatusField: "status", ReadyValue: "READY",
 		})
 	}
@@ -514,7 +507,6 @@ func Plan(m Manifest) *Job {
 		j.Steps = append(j.Steps, &Step{
 			Key: "vpc", Tool: "vpc_create", Args: args,
 			ReadyKind: "op", PollTool: "vpc_operation",
-			FindTool: "vpc_list", FindField: "vpcs", FindName: v.Name,
 			Status: "pending",
 		})
 	}
@@ -543,7 +535,6 @@ func Plan(m Manifest) *Job {
 		j.Steps = append(j.Steps, &Step{
 			Key: "k8s", Tool: "k8s_create", Args: args,
 			ReadyKind: "status", Status: "pending",
-			FindTool: "k8s_list", FindField: "clusters", FindName: k.Name,
 			StatusTool: "k8s_get", StatusArg: "cluster_id", StatusField: "status", ReadyValue: "RUNNING",
 		})
 	}
@@ -562,7 +553,6 @@ func Plan(m Manifest) *Job {
 		j.Steps = append(j.Steps, &Step{
 			Key: "registry", Tool: "ar_create", Args: args,
 			ReadyKind: "op", PollTool: "ar_operation",
-			FindTool: "ar_list", FindField: "registries", FindName: r.Name,
 			Status: "pending",
 		})
 	}
@@ -628,7 +618,6 @@ func Plan(m Manifest) *Job {
 		// name before any retry, as for the other steps.
 		j.Steps = append(j.Steps, &Step{
 			Key: "vm", Tool: "provision", Args: args, ReadyKind: "", Status: "pending",
-			FindTool: "vm_list", FindField: "vms", FindName: name,
 		})
 	}
 
@@ -643,7 +632,6 @@ func Plan(m Manifest) *Job {
 			Args:      map[string]any{"name": nlb.Name + "-tg", "vm_id": "$" + target, "confirmed": true},
 			DependsOn: []string{target},
 			PollTool:  "lb_operation", ReadyKind: "op",
-			FindTool: "tg_list", FindField: "target_groups", FindName: nlb.Name + "-tg",
 			Status: "pending",
 		})
 		lbArgs := map[string]any{
@@ -657,7 +645,6 @@ func Plan(m Manifest) *Job {
 			Key: "lb", Tool: "lb_create", Args: lbArgs,
 			DependsOn: []string{"tg"},
 			PollTool:  "lb_operation", ReadyKind: "op",
-			FindTool: "lb_list", FindField: "load_balancers", FindName: nlb.Name,
 			Status: "pending",
 		})
 	}
@@ -687,9 +674,7 @@ func Plan(m Manifest) *Job {
 			},
 			DependsOn: deps,
 			PollTool:  "dns_operation", ReadyKind: "op",
-			FindTool: "dns_records", FindField: "records", FindName: d.Name,
-			FindArgs: map[string]any{"zone_id": d.ZoneID},
-			Status:   "pending",
+			Status: "pending",
 		})
 	}
 
