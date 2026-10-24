@@ -1431,7 +1431,7 @@ func (s *Registry) registerTools() {
 		"tg_list":              s.handleTgList,
 		"tg_get":               s.handleTgGet,
 		"tg_create":            s.handleTgCreate,
-		"tg_delete":            s.handleTgDelete,
+		"tg_delete":            s.gated("tg_delete", s.planTgDelete),
 		"vpc_list":             s.handleVpcList,
 		"vpc_get":              s.handleVpcGet,
 		"vpc_create":           s.handleVpcCreate,
@@ -3209,7 +3209,12 @@ func usageResult(err error) string {
 // usageT is usageResult of a message in the CLI's language: i18n.Tf of en
 // and ru with args.
 func usageT(en, ru string, args ...any) string {
-	return errResult(clierrors.New(clierrors.CodeUsage, i18n.Tf(en, ru, args...), ""))
+	return errResult(usageErr(en, ru, args...))
+}
+
+// usageErr is the error of usageT, for a planner's refusal (gate.go).
+func usageErr(en, ru string, args ...any) error {
+	return clierrors.New(clierrors.CodeUsage, i18n.Tf(en, ru, args...), "")
 }
 
 // diskSizeHint is the hint of a negative disk_size (deploy, provision).

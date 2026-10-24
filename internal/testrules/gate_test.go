@@ -66,7 +66,6 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_nlb.go: handleLbCreate":               "W4",
 	"internal/tools/tools_nlb.go: handleLbDelete":               "W4",
 	"internal/tools/tools_nlb.go: handleTgCreate":               "W4",
-	"internal/tools/tools_nlb.go: handleTgDelete":               "W4",
 	"internal/tools/tools_pg.go: handlePgBackupCreate":          "W4",
 	"internal/tools/tools_pg.go: handlePgCreate":                "W6",
 	"internal/tools/tools_pg.go: handlePgDbCreate":              "W4",
@@ -96,7 +95,7 @@ var inlineGates = map[string]string{
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 67
+const inlineGatesLeft = 66
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{

@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -19,9 +20,25 @@ import (
 // Russian (ru) for the CLI's language, has one %s: the resource as
 // "name" (id), the name quoted on one line (quoteCloud).
 func (s *Registry) deletePreview(tool, en, ru, id string, get func() (map[string]any, error)) (string, bool) {
+	p := s.deletePlan(tool, en, ru, id, get, nil)
+	if p.Preview == nil {
+		return p.answer, p.answerErr
+	}
+	out := map[string]any{"status": "confirmation_required"}
+	for k, v := range p.Preview {
+		out[k] = v
+	}
+	return toJSON(out), true
+}
+
+// deletePlan is the plan of a delete (gate.go) on deletePreview's GET: a
+// resource that is not there is already deleted (D26), with no question;
+// any other error of the GET is the answer; else the preview names what
+// goes, and execute deletes it.
+func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]any, error), execute func(context.Context) (string, bool)) *Plan {
 	m, err := get()
 	if err != nil {
-		return s.deleteFailed(tool, id, err)
+		return answered(s.deleteFailed(tool, id, err))
 	}
 	name, _ := m["name"].(string)
 	status, _ := m["status"].(string)
@@ -33,7 +50,6 @@ func (s *Registry) deletePreview(tool, en, ru, id string, get func() (map[string
 		label = fmt.Sprintf("%s (%s)", quoteCloud(name), id)
 	}
 	out := map[string]any{
-		"status":  "confirmation_required",
 		"message": i18n.Tf(en, ru, label),
 		"target":  map[string]any{"id": id, "name": name, "status": status},
 	}
@@ -48,7 +64,7 @@ func (s *Registry) deletePreview(tool, en, ru, id string, get func() (map[string
 		// kafka_delete of a FAILED cluster met a bare 500 (G13-19).
 		out["warning"] = i18n.Tf("it is in %s: ", "он в состоянии %s: ", status) + failedDeleteNote(id)
 	}
-	return toJSON(out), true
+	return &Plan{Preview: out, Execute: execute}
 }
 
 // failedDeleteNote is what to do when Cloud.ru refuses to delete a
