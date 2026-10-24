@@ -51,6 +51,15 @@ var schemaRules = map[string]schemaRule{
 	"image_delete.image_id":           {format: "uuid"},
 	"release_floating_ip.id":          {format: "uuid"},
 	"snat_delete.id":                  {format: "uuid"},
+	// G13-21, G13-22 (Grok, wave 2): what the specification of the
+	// service states (the registry's id is a UUID by its description).
+	"ar_delete.id": {format: "uuid"},
+	// G13-3: a value no API takes made a preview, then failed after consent.
+	"kafka_create.storage_gib": {min: 1},
+	"redis_create.storage_gb":  {min: 1},
+	"dns_record_create.ttl":    {min: 0},
+	"open_ports.cidr":          {format: "cidr"},
+	"vpc_route_create.subnet":  {format: "cidr"},
 }
 
 // The rules a handler checked itself are in the schema (D36).
