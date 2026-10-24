@@ -536,51 +536,29 @@ func (s *Registry) handleListSecurityGroups(ctx context.Context, args map[string
 }
 
 // handleOpenPorts adds ingress rules for the given ports to a security group.
-func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (string, bool) {
+// planOpenPorts plans open_ports (gate.go): the group and its rules are read
+// before the question, a group that is not there is refused, and the
+// preview says the protocol and the source the rules open the ports to
+// (0.0.0.0/0 by default) and what is open already (G13-23, D35).
+func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Plan, error) {
 	sgRef := stringArg(args, "security_group")
 	ports, err := portsArg("ports", args["ports"])
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	if sgRef == "" || len(ports) == 0 {
-		return usageT("security_group and ports are required", "нужны security_group и ports"), true
+		return nil, usageErr("security_group and ports are required", "нужны security_group и ports")
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("open_ports would open %v on security group %q (shared per zone — affects every VM in it).",
-				"open_ports откроет %v в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней).", ports, sgRef),
-		}), true
-	}
-
-	proto := stringArg(args, "protocol")
-	if proto == "" {
-		proto = "tcp"
-	}
-	cidr := stringArg(args, "cidr")
-	if cidr == "" {
-		cidr = "0.0.0.0/0"
-	}
-
+	proto := firstNonEmptyStr(stringArg(args, "protocol"), "tcp")
+	cidr := firstNonEmptyStr(stringArg(args, "cidr"), "0.0.0.0/0")
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	sgs, err := eng.Cloud.ListSecurityGroups(ctx, eng.Config.ProjectID)
+	target, err := securityGroupByRef(ctx, eng, sgRef)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	var target *provision.SecurityGroup
-	for _, g := range sgs {
-		if g.ID == sgRef || g.Name == sgRef {
-			target = g
-			break
-		}
-	}
-	if target == nil {
-		return errResult(fmt.Errorf(i18n.T("security group %q not found", "группа безопасности %q не найдена"), sgRef)), true
-	}
-
 	// The group list carries no rules: read them, as deploy does.
 	existing := map[string]bool{}
 	if rules, e := eng.Cloud.ListSecurityGroupRules(ctx, target.ID); e == nil {
@@ -592,61 +570,98 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 			}
 		}
 	}
-
-	var opened, skipped, failed []string
-	// Why each port failed: the answer said status ok with failed ports and
-	// no reason, exit 0, when every rule was refused (QA 20.10, QA-3).
-	failures := map[string]string{}
-	var firstErr error
+	willOpen, alreadyOpen := []string{}, []string{}
 	for _, p := range ports {
-		pr := fmt.Sprintf("%d:%d", p, p)
-		if existing[proto+" "+pr] {
-			skipped = append(skipped, strconv.Itoa(p))
-			continue
-		}
-		rule := provision.SGRule{
-			Direction:      "ingress",
-			EtherType:      "IPv4",
-			IPProtocol:     proto,
-			PortRange:      pr,
-			RemoteIPPrefix: cidr,
-			Description:    "opened via open_ports",
-		}
-		if _, e := eng.Cloud.AddSecurityGroupRule(ctx, target.ID, eng.Config.ProjectID, rule); e != nil {
-			failed = append(failed, strconv.Itoa(p))
-			failures[strconv.Itoa(p)] = e.Error()
-			if firstErr == nil {
-				firstErr = fmt.Errorf("open port %d: %w", p, e)
-			}
+		if existing[fmt.Sprintf("%s %d:%d", proto, p, p)] {
+			alreadyOpen = append(alreadyOpen, strconv.Itoa(p))
 		} else {
-			opened = append(opened, strconv.Itoa(p))
-			// Open now: the port is not opened a second time (R4-19).
-			existing[proto+" "+pr] = true
+			willOpen = append(willOpen, strconv.Itoa(p))
 		}
 	}
-	res := map[string]any{
-		"status":         "ok",
+	preview := map[string]any{
+		"message": i18n.Tf("open_ports would open %s/%s from %s on security group %q (shared per zone — affects every VM in it).",
+			"open_ports откроет %s/%s из %s в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней).",
+			strings.Join(willOpen, ","), proto, cidr, target.Name),
 		"security_group": target.Name,
 		"protocol":       proto,
 		"cidr":           cidr,
-		"opened":         opened,
-		"already_open":   skipped,
-		"failed":         failed,
+		"will_open":      willOpen,
+		"already_open":   alreadyOpen,
 	}
-	if firstErr == nil {
-		return toJSON(res), false
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+
+		var opened, skipped, failed []string
+		// Why each port failed: the answer said status ok with failed ports and
+		// no reason, exit 0, when every rule was refused (QA 20.10, QA-3).
+		failures := map[string]string{}
+		var firstErr error
+		for _, p := range ports {
+			pr := fmt.Sprintf("%d:%d", p, p)
+			if existing[proto+" "+pr] {
+				skipped = append(skipped, strconv.Itoa(p))
+				continue
+			}
+			rule := provision.SGRule{
+				Direction:      "ingress",
+				EtherType:      "IPv4",
+				IPProtocol:     proto,
+				PortRange:      pr,
+				RemoteIPPrefix: cidr,
+				Description:    "opened via open_ports",
+			}
+			if _, e := eng.Cloud.AddSecurityGroupRule(ctx, target.ID, eng.Config.ProjectID, rule); e != nil {
+				failed = append(failed, strconv.Itoa(p))
+				failures[strconv.Itoa(p)] = e.Error()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("open port %d: %w", p, e)
+				}
+			} else {
+				opened = append(opened, strconv.Itoa(p))
+				// Open now: the port is not opened a second time (R4-19).
+				existing[proto+" "+pr] = true
+			}
+		}
+		res := map[string]any{
+			"status":         "ok",
+			"security_group": target.Name,
+			"protocol":       proto,
+			"cidr":           cidr,
+			"opened":         opened,
+			"already_open":   skipped,
+			"failed":         failed,
+		}
+		if firstErr == nil {
+			return toJSON(res), false
+		}
+		res["failures"] = failures
+		if len(opened) == 0 {
+			// Nothing opened: an error, its reason from the first refusal (an
+			// API status: API_ERROR, AUTH_FAILED, ...).
+			res["status"] = "error"
+			return errAnswer(firstErr, res), true
+		}
+		// Some opened, some not: partial, as disk_create and destroy say it;
+		// the reason is the first refusal's.
+		res["status"] = "partial"
+		return errAnswer(fmt.Errorf("opened %s, not opened %s: %w", strings.Join(opened, ","), strings.Join(failed, ","), firstErr), res), true
+	}}, nil
+}
+
+// securityGroupByRef is the project's security group named or numbered
+// ref; one that is not there is NOT_FOUND.
+func securityGroupByRef(ctx context.Context, eng *engine.Engine, ref string) (*provision.SecurityGroup, error) {
+	sgs, err := eng.Cloud.ListSecurityGroups(ctx, eng.Config.ProjectID)
+	if err != nil {
+		return nil, err
 	}
-	res["failures"] = failures
-	if len(opened) == 0 {
-		// Nothing opened: an error, its reason from the first refusal (an
-		// API status: API_ERROR, AUTH_FAILED, ...).
-		res["status"] = "error"
-		return errAnswer(firstErr, res), true
+	for _, g := range sgs {
+		if g.ID == ref || g.Name == ref {
+			return g, nil
+		}
 	}
-	// Some opened, some not: partial, as disk_create and destroy say it;
-	// the reason is the first refusal's.
-	res["status"] = "partial"
-	return errAnswer(fmt.Errorf("opened %s, not opened %s: %w", strings.Join(opened, ","), strings.Join(failed, ","), firstErr), res), true
+	return nil, clierrors.New(clierrors.CodeNotFound,
+		i18n.Tf("security group %q not found", "группа безопасности %q не найдена", ref),
+		i18n.T("list_security_groups lists the project's groups.", "Группы проекта — в выводе list_security_groups."))
 }
 
 // planReleaseFloatingIP plans the release of a floating IP (gate.go), refusing one in use.

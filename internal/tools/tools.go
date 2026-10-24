@@ -1357,7 +1357,7 @@ func (s *Registry) registerTools() {
 		"list_security_groups": s.handleListSecurityGroups,
 		"list_floating_ips":    s.handleListFloatingIPs,
 		"release_floating_ip":  s.gated("release_floating_ip", s.planReleaseFloatingIP),
-		"open_ports":           s.handleOpenPorts,
+		"open_ports":           s.gated("open_ports", s.planOpenPorts),
 		"snat_list":            s.handleSnatList,
 		"snat_create":          s.handleSnatCreate,
 		"snat_delete":          s.gated("snat_delete", s.planSnatDelete),
