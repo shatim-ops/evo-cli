@@ -67,6 +67,9 @@ func fullArgs(tl Tool) map[string]any {
 		switch pm["type"] {
 		case "string":
 			args[k] = id
+			if pm["format"] == "cidr" {
+				args[k] = "10.0.0.0/16"
+			}
 		case "integer", "number":
 			args[k] = float64(1)
 		case "boolean":

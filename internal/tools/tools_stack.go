@@ -1111,9 +1111,10 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 				// Deleted by the argument that named it (a secret by its
 				// path): its output only says it was made.
 				ref = stringArg(st.Args, c.arg)
-			} else if dt.uuid && !isUUID(ref) {
-				// Not an id: a job saved before G13-14 holds "ok" for its
-				// SNAT gateway. Its name finds it; nothing found is gone.
+			} else if s.argRefused(c.delete, dt.arg, ref) {
+				// Not of the form the delete takes (its schema, D36): a job
+				// saved before G13-14 holds "ok" for its SNAT gateway. Its
+				// name finds it; nothing found is gone.
 				if ref = s.findStepID(ctx, st); ref == "" {
 					deleted = append(deleted, st.Key+" (already gone)")
 					continue

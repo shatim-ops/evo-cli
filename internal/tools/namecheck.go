@@ -94,18 +94,6 @@ func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]
 		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}), false
 }
 
-// uuidArg refuses an id the API takes only as a UUID before the call: the
-// API answered a malformed id with a 400 that read as API_ERROR, exit 5
-// (release audit, L-15). Returns "" when id is a UUID.
-func uuidArg(arg, id, from string) string {
-	if isUUID(id) {
-		return ""
-	}
-	return errResult(clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("'%s' must be a UUID, got %q", "'%s' должен быть UUID, передано %q", arg, id),
-		i18n.Tf("Take the id from %s.", "id — в выводе %s.", from)))
-}
-
 // needSpecResult is the answer of pg_create, kafka_create and redis_create
 // when no specification matches the call: an error (USAGE) with the menu to
 // choose from. It was status need_specification with rc 0, even with --yes:

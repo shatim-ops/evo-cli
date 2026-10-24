@@ -52,9 +52,6 @@ func (s *Registry) handleVpcGet(ctx context.Context, args map[string]any) (strin
 	if id == "" {
 		return usageT("'id' is required (from vpc_list)", "нужен 'id' (из vpc_list)"), true
 	}
-	if res := uuidArg("id", id, "vpc_list"); res != "" {
-		return res, true
-	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -173,9 +170,6 @@ func (s *Registry) handleVpcRoutes(ctx context.Context, args map[string]any) (st
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID == "" {
 		return usageT("'vpc_id' is required (from vpc_list)", "нужен 'vpc_id' (из vpc_list)"), true
-	}
-	if res := uuidArg("vpc_id", vpcID, "vpc_list"); res != "" {
-		return res, true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
