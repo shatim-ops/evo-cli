@@ -206,7 +206,14 @@ func s3Parity(r *http.Request) *http.Response {
 	switch p := strings.Trim(r.URL.Path, "/"); {
 	case r.Method == http.MethodGet && p == "":
 		return xml(`<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>o</ID></Owner><Buckets>` +
-			`<Bucket><Name>bucket-web</Name><CreationDate>` + created + `</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>`)
+			`<Bucket><Name>bucket-web</Name><CreationDate>` + created + `</CreationDate></Bucket>` +
+			`<Bucket><Name>bucket-empty</Name><CreationDate>` + created + `</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>`)
+	case r.Method == http.MethodGet && p == "bucket-empty":
+		// The bucket s3_bucket_delete deletes: S3 deletes only an empty one
+		// (W6), and the plan refuses a bucket with objects before the
+		// question.
+		return xml(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>bucket-empty</Name><Prefix></Prefix><KeyCount>0</KeyCount>` +
+			`<MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>`)
 	case r.Method == http.MethodGet && p == "bucket-web":
 		return xml(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>bucket-web</Name><Prefix></Prefix><KeyCount>1</KeyCount>` +
 			`<MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>k.txt</Key><LastModified>` + created + `</LastModified>` +
