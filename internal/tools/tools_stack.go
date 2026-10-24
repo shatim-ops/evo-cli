@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -703,8 +704,11 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 // that an empty s3 bucket produced (s3_put needs bucket+key → 4 retries → the
 // job goes "error" though snat/secret/vm already deployed).
 //
-// It returns per-object s3 notes (the resolved bucket/key) for transparency, and
-// only calls the S3 API when a bucket actually needs defaulting.
+// It returns per-object s3 notes (the resolved bucket/key) for transparency.
+// The project's buckets are listed once: an object without a bucket takes
+// the only one, and a bucket the manifest names must be among them — the
+// stack does not create buckets, and its s3 step failed after the steps
+// before it were created (G13-13, W7).
 func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]string, error) {
 	// --- VM flavor: validate at plan time so a bad name fails fast here rather
 	// than mid-apply. A non-existent flavor (e.g. "performance-2-4") otherwise
@@ -738,7 +742,7 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 		return nil, nil
 	}
 
-	// Resolve the project bucket list only if at least one object omits it.
+	// The project's buckets, listed once.
 	var buckets []string
 	fetched := false
 	fetch := func() error {
@@ -747,11 +751,11 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 		}
 		cli, err := s.s3Client()
 		if err != nil {
-			return fmt.Errorf("resolve default S3 bucket: %w", err)
+			return fmt.Errorf("list S3 buckets: %w", err)
 		}
 		bs, err := cli.ListBuckets(ctx)
 		if err != nil {
-			return fmt.Errorf("resolve default S3 bucket: %w", err)
+			return fmt.Errorf("list S3 buckets: %w", err)
 		}
 		for _, b := range bs {
 			buckets = append(buckets, b.Name)
@@ -782,6 +786,15 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 		// were created: refused here, before the consent (D19).
 		if err := s3.CheckBucketName(m.S3[i].Bucket); err != nil {
 			return nil, clierrors.Prefix(fmt.Sprintf("s3[%d].bucket: ", i), err)
+		}
+		if err := fetch(); err != nil {
+			return nil, err
+		}
+		if !slices.Contains(buckets, m.S3[i].Bucket) {
+			return nil, clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("s3[%d].bucket %q is not in this project, and a stack does not create buckets", "бакета s3[%d].bucket %q в проекте нет, а стек бакеты не создаёт", i, m.S3[i].Bucket),
+				i18n.T("Create it with s3_bucket_create (evo s3 bucket-create) or name one of s3_buckets, then plan again.",
+					"Создайте его через s3_bucket_create (evo s3 bucket-create) или укажите бакет из s3_buckets и спланируйте снова."))
 		}
 		notes = append(notes, fmt.Sprintf("%s/%s", m.S3[i].Bucket, m.S3[i].Key))
 	}
