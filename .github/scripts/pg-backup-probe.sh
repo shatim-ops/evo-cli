@@ -23,10 +23,14 @@
 set -euo pipefail
 
 : "${CLUSTER_ID:?нужен CLUSTER_ID}"
+# ID и имя копии скрипт не печатает; маска — второй рубеж, если их унесёт
+# чужой текст (ошибка API идёт ещё и через redact.sed).
+echo "::add-mask::$CLUSTER_ID"
 redact() { sed -E -f "$(dirname "$0")/redact.sed"; }
 api=https://postgresql.api.cloud.ru
 out="${RUNNER_TEMP:-/tmp}/pg-backup-probe.json"
 trap 'rm -f "$out"' EXIT
+[ -z "${BACKUP_NAME:-}" ] || echo "::add-mask::$BACKUP_NAME"
 
 # Копии не было (pg_backup_create упал раньше): вопрос DB-22 не задан.
 if [ -z "${BACKUP_NAME:-}" ]; then
@@ -40,7 +44,8 @@ if ! evo tools call pg_list --json >"$out" 2>/dev/null; then
 	exit 0
 fi
 if jq -e --arg id "$CLUSTER_ID" 'any(.clusters[]?; .id == $id)' "$out" >/dev/null; then
-	echo "DB-22 проба: не проведена — кластер ещё в pg_list ($(jq -r --arg id "$CLUSTER_ID" '[.clusters[] | select(.id == $id) | .status][0]' "$out"))"
+	st=$(jq -r --arg id "$CLUSTER_ID" '[.clusters[] | select(.id == $id) | .status][0]' "$out")
+	echo "DB-22 проба: не проведена — кластер ещё в pg_list ($st)"
 	exit 0
 fi
 
@@ -61,11 +66,12 @@ if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ]; then
 fi
 # Тело запроса токена — через stdin, не в argv.
 token=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-	curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
+	curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
 	jq -r '.access_token // .accessToken // empty') || token=
 [ -n "$token" ] && echo "::add-mask::$token"
-get() { # ПУТЬ → тело в $out, код HTTP на stdout
-	curl -sS -o "$out" -w '%{http_code}' -H "Authorization: Bearer $token" "$api$1" || echo 000
+get() { # ПУТЬ → тело в $out, код HTTP на stdout; 000 — запрос не дошёл
+	# stderr curl — в никуда: его текст об ошибке может нести URL с ID.
+	curl -sS -o "$out" -w '%{http_code}' -H "Authorization: Bearer $token" "$api$1" 2>/dev/null || echo 000
 }
 show() { # КОД — что ответил API: поля и текст ошибки
 	local keys msg
