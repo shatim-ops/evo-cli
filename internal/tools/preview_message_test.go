@@ -14,6 +14,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // gatedPreviewArgs adjusts contractArgs so the call gets past the checks
@@ -90,6 +91,15 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	"deploy": func(t *testing.T) string {
 		r, _ := cancelRegistry(t, &productCloud{})
 		_, text, _ := callNamed(t, r, "deploy", map[string]any{})
+		return text
+	},
+	// close_ports reads its group and the rules it would delete before the
+	// question (D37): the zone's group with the rule of port 80.
+	"close_ports": func(t *testing.T) string {
+		r, _ := faultToolsRegistry(t, &faultCloud{rules: []provision.SGRule{
+			{ID: faultID(0x72), Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0"},
+		}})
+		_, text, _ := callNamed(t, r, "close_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80)}})
 		return text
 	},
 	// The preview of deploy_apply is its saved plan (B12-8): a plan_id

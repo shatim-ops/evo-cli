@@ -528,6 +528,7 @@ func listedCases(id string) map[string]map[string]any {
 		"fip_attach.fip":                   {"fip": id, "vm": resMine},
 		"fip_attach.vm":                    {"fip": resMine, "vm": id},
 		"open_ports.security_group":        {"security_group": id, "ports": []any{float64(80)}},
+		"close_ports.security_group":       {"security_group": id, "ports": []any{float64(80)}},
 		"disk_create.attach_to":            {"name": "data", "size_gb": float64(20), "attach_to": id},
 		"disk_attach.vm":                   {"disk_id": resMine, "vm": id},
 		"disk_detach.vm":                   {"disk_id": resMine, "vm": id},
