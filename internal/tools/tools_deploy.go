@@ -155,6 +155,11 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	// size anew.
 	plan.SourceParams = params
 
+	apply := "On explicit approval, call deploy_apply with this plan_id and confirmed=true."
+	if plan.ComposeRequired {
+		// deploy_apply makes the VM and nothing on it (G13-7).
+		apply += " deploy_apply creates the VM without the application: to deploy the compose project, call deploy instead."
+	}
 	// Compact, user-facing view (omit internal fields like meta_fields/public_key).
 	view := map[string]any{
 		"product":          plan.Product,
@@ -165,7 +170,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		"cost":             plan.Cost,
 		"warnings":         plan.Warnings,
 		"compose_required": plan.ComposeRequired,
-		"next":             "Show this plan and its monthly cost to the user. On explicit approval, call deploy_apply with this plan_id and confirmed=true.",
+		"next":             "Show this plan and its monthly cost to the user. " + apply,
 	}
 	// deploy_apply appends these to authorized_keys of the VM: the user
 	// approves them with the plan.
@@ -173,7 +178,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		if keys, rejected, keysFile := loadUserKeyLines(eng.StateDir); len(keys)+len(rejected) > 0 {
 			view["user_ssh_keys"] = describeUserKeys(keys, rejected)
 			view["user_ssh_keys_file"] = filepath.Join(filepath.Base(config.DataDir(eng.StateDir)), keysFile)
-			view["next"] = "Show this plan, its monthly cost and the user_ssh_keys to the user: those keys get an SSH login on the VM, and the file may have come with a repository someone else wrote. On explicit approval, call deploy_apply with this plan_id and confirmed=true."
+			view["next"] = "Show this plan, its monthly cost and the user_ssh_keys to the user: those keys get an SSH login on the VM, and the file may have come with a repository someone else wrote. " + apply
 		}
 	}
 	if s.readOnly {
