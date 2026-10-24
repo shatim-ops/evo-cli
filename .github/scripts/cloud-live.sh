@@ -386,8 +386,8 @@ rules_left() {
 
 no_rules() { [ "$(rules_left)" = 0 ]; }
 # port_ranges — значения port_range всех правил ingress из RULE_CIDR (адрес
-# только этого прогона), в любом формате: что отдал API, когда правила "P:P"
-# не видно (без ID).
+# одинаков во всех прогонах, правила с него ставит только область net), в
+# любом формате: что отдал API (без ID).
 port_ranges() {
 	evo tools call list_security_groups --arg rules=true --json |
 		jq -c --arg c "$RULE_CIDR" '[.security_groups[] | .rules[]? | select(.direction == "ingress" and .remote_ip_prefix == $c) | .port_range] | unique'
@@ -704,7 +704,7 @@ area_net() {
 	if [ -n "$sg" ] && printf '%s\n' "${covered[@]}" | grep -qx open_ports; then
 		n=$(rules_left)
 		if [ "$n" != 0 ]; then
-			ok "правило $RULE_PORT видно до close_ports" "port_range $RULE_PORT:$RULE_PORT, правил $n"
+			ok "правило $RULE_PORT видно до close_ports" "port_range $RULE_PORT:$RULE_PORT, правил $n; port_range правил из $RULE_CIDR: $(port_ranges)"
 			if must close_ports close_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"; then
 				if [ "$(j -c '(.closed // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ] && poll 120 10 no_rules; then
 					tc close_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"
