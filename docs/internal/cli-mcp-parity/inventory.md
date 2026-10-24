@@ -440,7 +440,7 @@
 | Команда | Почему |
 |---|---|
 | `evo deploy` | итог движка, как с v1.0: status deployed/unchanged, vm_id, vm_ip, vm_name, zone_name, flavor, ports, verify…; инструмент — status ok, deployment (запись state) и log. Ключ status есть у обоих с разными значениями — свести без потери нельзя (в 1.2 ломается только Q1): вопрос владельцу |
-| `evo destroy` | итог движка, как с v1.0: status destroyed с vm_id, vm_ip, vm_name, без развёртывания — status none с message; инструмент — status ok и log. Ключ status есть у обоих с разными значениями — свести без потери нельзя: вопрос владельцу |
+| `evo destroy` | итог движка, как с v1.0: status destroyed с vm_id, vm_ip, vm_name; инструмент — status ok и log. Ключ status есть у обоих с разными значениями — свести без потери нельзя: вопрос владельцу. Без развёртывания ответы одни (status none, W5) |
 | `evo doctor` | проверки машины, где запущена команда, — версия evo, файлы настроек и их права, kubectl и helm в PATH — часть ответа только в CLI (tools.Caller.Doctor): по MCP это были бы пути и программы сервера (REQ-11). Не прошли только проверки связи — код 1 и reason ERROR, как с v1.0, у инструмента API_UNREACHABLE (тот же код 1): вопрос владельцу |
 | `evo list-images` | скрытая устаревшая команда list_images (evo image list): --json — массив images из ответа инструмента, пустой — без вывода, как с v1.0; до v2.0 |
 | `evo list-zones` | скрытый устаревший алиас evo vm zones: --json — массив zones из ответа инструмента, как с v1.0; до v2.0 (spec.md §4) |

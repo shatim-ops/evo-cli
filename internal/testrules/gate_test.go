@@ -25,8 +25,6 @@ const gateFile = "internal/tools/gate.go"
 // test, so does a line with no read, and inlineGatesLeft is lowered with
 // each line removed (G13-3, class K1).
 var inlineGates = map[string]string{
-	"internal/tools/tools.go: destroyTargeted":                  "W5",
-	"internal/tools/tools.go: handleProvision":                  "W5",
 	"internal/tools/tools_ar.go: handleArCreate":                "1.4",
 	"internal/tools/tools_ca.go: handleCaDeploy":                "W6",
 	"internal/tools/tools_ca.go: handleCaStartStop":             "1.4",
@@ -35,11 +33,9 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_certmanager.go: handleCertPrivateKey": "1.4",
 	"internal/tools/tools_certmanager.go: handleCertRenew":      "1.4",
 	"internal/tools/tools_deploy.go: handleDeployApply":         "1.4",
-	"internal/tools/tools_deploy.go: handleOpenPorts":           "W5",
 	"internal/tools/tools_disk.go: handleDiskAttach":            "1.4",
 	"internal/tools/tools_disk.go: handleDiskCreate":            "1.4",
 	"internal/tools/tools_disk.go: handleDiskDetach":            "1.4",
-	"internal/tools/tools_disk.go: handleDiskResize":            "W5",
 	"internal/tools/tools_dns.go: handleDnsRecordCreate":        "1.4",
 	"internal/tools/tools_dns.go: handleDnsZoneCreate":          "1.4",
 	"internal/tools/tools_image.go: handleFipAttach":            "1.4",
@@ -73,7 +69,7 @@ var inlineGates = map[string]string{
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 44
+const inlineGatesLeft = 40
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{

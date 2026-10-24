@@ -322,48 +322,65 @@ func (s *Registry) handleDiskDetach(ctx context.Context, args map[string]any) (s
 	return toJSON(map[string]any{"status": "detached", "result": r}), false
 }
 
-// handleDiskResize grows a disk in place (PUT {size}). Only grows; shrink and
-// free-tier disks are rejected by the API. Mutation: requires confirmed=true.
-func (s *Registry) handleDiskResize(ctx context.Context, args map[string]any) (string, bool) {
+// planDiskResize plans the growth of a disk in place (PUT {size}, gate.go).
+// Only grows: a smaller or the same size is refused before the question;
+// free-tier disks are rejected by the API.
+func (s *Registry) planDiskResize(ctx context.Context, args map[string]any) (*Plan, error) {
 	diskID := stringArg(args, "disk_id")
 	sizeGB := intArg(args, "size_gb", 0)
 	if diskID == "" {
-		return usageT("'disk_id' is required", "нужен 'disk_id'"), true
+		return nil, usageErr("'disk_id' is required", "нужен 'disk_id'")
 	}
 	if _, ok := args["size_gb"]; !ok {
-		return usageT("'size_gb' is required (the new size, larger than the current one)", "нужен 'size_gb' — новый размер, больше текущего"), true
+		return nil, usageErr("'size_gb' is required (the new size, larger than the current one)", "нужен 'size_gb' — новый размер, больше текущего")
 	}
 	if sizeGB <= 0 {
-		return usageT("size_gb must be greater than 0, got %d", "size_gb должен быть больше 0, передано %d", sizeGB), true
+		return nil, usageErr("size_gb must be greater than 0, got %d", "size_gb должен быть больше 0, передано %d", sizeGB)
 	}
 	if sizeGB > provision.MaxDiskGB {
-		return usageT("size_gb %d is over the disk maximum of %d GB", "size_gb %d больше предельного размера диска %d ГБ", sizeGB, provision.MaxDiskGB), true
-	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		preview, err := s.completePreview(ctx, nil, engine.CreatePreview{Resource: engine.ResourceDiskResize, Name: diskID,
-			Disk: &deployplan.DiskSpec{SizeGB: sizeGB}})
-		if err != nil {
-			return errResult(err), true
-		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("disk_resize grows disk %s to %d GB (grow only; billable). NB: after resize you must grow the partition+filesystem on the VM (e.g. growpart + resize2fs). Free-tier disks are rejected by the API.",
-				"disk_resize увеличит диск %s до %d ГБ (только увеличение; платно). После этого раздел и файловую систему на ВМ нужно расширить (например, growpart и resize2fs). Диски бесплатного тарифа API не увеличивает.", diskID, sizeGB),
-			"preview": preview,
-		}), true
+		return nil, usageErr("size_gb %d is over the disk maximum of %d GB", "size_gb %d больше предельного размера диска %d ГБ", sizeGB, provision.MaxDiskGB)
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	d, err := eng.Cloud.ResizeDisk(ctx, diskID, sizeGB, eng.Config.ProjectID)
+	// The disk before the question: a shrink the API refuses, the same
+	// size changes nothing — both failed after consent (G13-3, W5).
+	d, err := eng.Cloud.GetDisk(ctx, diskID)
 	if err != nil {
-		return errResult(fmt.Errorf("resize disk: %w", err)), true
+		return nil, err
 	}
-	return toJSON(map[string]any{
-		"status": "resized", "disk": d,
-		"note": "Disk grown. On the VM grow the partition + filesystem to use it: e.g. `growpart /dev/vda 2 && resize2fs /dev/vda2`.",
-	}), false
+	if cur, ok := numberValue(d["size"]); ok {
+		switch {
+		case float64(sizeGB) < cur:
+			return nil, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("disk %s has %v GB: disk_resize only grows it, %d GB is smaller", "у диска %s %v ГБ: disk_resize только увеличивает, %d ГБ меньше", diskID, cur, sizeGB),
+				i18n.T("Pass a size larger than the current one.", "Укажите размер больше текущего."))
+		case float64(sizeGB) == cur:
+			return nil, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("disk %s already has %d GB: nothing to change", "у диска %s уже %d ГБ: менять нечего", diskID, sizeGB),
+				i18n.T("Pass a size larger than the current one.", "Укажите размер больше текущего."))
+		}
+	}
+	preview, err := s.completePreview(ctx, nil, engine.CreatePreview{Resource: engine.ResourceDiskResize, Name: diskID,
+		Disk: &deployplan.DiskSpec{SizeGB: sizeGB}})
+	if err != nil {
+		return nil, err
+	}
+	return &Plan{Preview: map[string]any{
+		"message": i18n.Tf("disk_resize grows disk %s to %d GB (grow only; billable). NB: after resize you must grow the partition+filesystem on the VM (e.g. growpart + resize2fs). Free-tier disks are rejected by the API.",
+			"disk_resize увеличит диск %s до %d ГБ (только увеличение; платно). После этого раздел и файловую систему на ВМ нужно расширить (например, growpart и resize2fs). Диски бесплатного тарифа API не увеличивает.", diskID, sizeGB),
+		"preview": preview,
+	}, Execute: func(ctx context.Context) (string, bool) {
+		d, err := eng.Cloud.ResizeDisk(ctx, diskID, sizeGB, eng.Config.ProjectID)
+		if err != nil {
+			return errResult(fmt.Errorf("resize disk: %w", err)), true
+		}
+		return toJSON(map[string]any{
+			"status": "resized", "disk": d,
+			"note": "Disk grown. On the VM grow the partition + filesystem to use it: e.g. `growpart /dev/vda 2 && resize2fs /dev/vda2`.",
+		}), false
+	}}, nil
 }
 
 // planDiskDelete plans the delete of a disk by id (gate.go).

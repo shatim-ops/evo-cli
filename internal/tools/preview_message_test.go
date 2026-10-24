@@ -93,6 +93,20 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "deploy", map[string]any{})
 		return text
 	},
+	// open_ports reads its group and the group's rules before the question
+	// (G13-23, D35): the zone's group of the fault cloud.
+	"open_ports": func(t *testing.T) string {
+		r, _ := faultToolsRegistry(t, &faultCloud{})
+		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}})
+		return text
+	},
+	// destroy with no deployment answers status none with no question, as
+	// the CLI (W5): its preview needs a deployment in the state.
+	"destroy": func(t *testing.T) string {
+		r, _ := targetRegistry(t, &targetCloud{})
+		_, text, _ := callNamed(t, r, "destroy", map[string]any{})
+		return text
+	},
 	// close_ports reads its group and the rules it would delete before the
 	// question (D37): the zone's group with the rule of port 80.
 	"close_ports": func(t *testing.T) string {

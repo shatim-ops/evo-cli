@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,10 +52,6 @@ func (*otherZoneCloud) ListSecurityGroupRules(context.Context, string) ([]*provi
 	return nil, nil
 }
 
-// ListDiskTypes: the price of the preview is not this fake's concern.
-func (*otherZoneCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
-	return nil, errors.New("no disk types in this fake")
-}
 func (c *otherZoneCloud) CreateFloatingIP(ctx context.Context, r provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
 	c.mutations = append(c.mutations, "CreateFloatingIP")
 	return c.cancelCloud.CreateFloatingIP(ctx, r)
@@ -85,22 +82,26 @@ func TestProvision_NoSubnetOrGroupInZoneRefusedBeforeAnyMutation(t *testing.T) {
 		"единственная подсеть чужой зоны": {subnetsAZ1[:1], groupsAZ1, "no subnet for zone ru.AZ-3"},
 		"единственная группа чужой зоны":  {subnetsAZ3, groupsAZ1[:1], "no security group for zone ru.AZ-3"},
 	} {
-		t.Run(name, func(t *testing.T) {
-			cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}}, subnets: tc.subnets, groups: tc.groups}
-			r, _ := cancelRegistry(t, cloud)
-			text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
-			if !isErr {
-				t.Fatalf("ждали отказ: %s", text)
-			}
-			var res map[string]any
-			_ = json.Unmarshal([]byte(text), &res)
-			if res["reason"] != "CONFIG_INVALID" || !strings.Contains(res["error"].(string), tc.want) || res["hint"] == nil {
-				t.Errorf("ответ: %s", text)
-			}
-			if len(cloud.mutations) > 0 {
-				t.Errorf("до отказа облако изменено: %v", cloud.mutations)
-			}
-		})
+		// The preview refuses it as the call with confirmed does: before
+		// the question (W5, D35).
+		for _, confirmed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/confirmed=%v", name, confirmed), func(t *testing.T) {
+				cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}}, subnets: tc.subnets, groups: tc.groups}
+				r, _ := cancelRegistry(t, cloud)
+				text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": confirmed})
+				if !isErr {
+					t.Fatalf("ждали отказ: %s", text)
+				}
+				var res map[string]any
+				_ = json.Unmarshal([]byte(text), &res)
+				if res["reason"] != "CONFIG_INVALID" || !strings.Contains(res["error"].(string), tc.want) || res["hint"] == nil {
+					t.Errorf("ответ: %s", text)
+				}
+				if len(cloud.mutations) > 0 {
+					t.Errorf("до отказа облако изменено: %v", cloud.mutations)
+				}
+			})
+		}
 	}
 }
 
@@ -342,7 +343,11 @@ func TestDeploy_ZoneByNameOnPreview(t *testing.T) {
 	if err := os.WriteFile(compose, []byte("services:\n  web:\n    image: nginx\n    ports: [\"80:80\"]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}}}
+	// The zone has its subnet and group: the preview refuses a zone without
+	// them before the question (W5).
+	cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}},
+		subnets: []*provision.Subnet{{ID: "sn-3", Name: "Default_ru.AZ-3", AvailabilityZoneID: "z", Default: true}},
+		groups:  []*provision.SecurityGroup{{ID: "sg-3", Name: "SSH-access_ru.AZ-3", AvailabilityZoneID: "z"}}}
 	r := zoneRegistry(t, cloud, config.Config{ProjectID: "p", ImageID: "img-1", KeyID: "k", Secret: "s", ComposeFile: compose})
 	m, text, isErr := callNamed(t, r, "deploy", map[string]any{"region": "ru.az-3"})
 	if !isErr || m["status"] != "confirmation_required" {

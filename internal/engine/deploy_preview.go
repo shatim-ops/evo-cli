@@ -14,6 +14,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -124,7 +125,9 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 	if err := e.completePreview(ctx, p, pick, false); err != nil {
 		return nil, err
 	}
-	e.previewNetwork(ctx, p)
+	if err := e.previewNetwork(ctx, p); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
@@ -177,26 +180,35 @@ func PlanPreview(plan *deployplan.Plan) *CreatePreview {
 // only, best effort and bounded: a choice that fails here fails deploy at
 // its own step, with the warnings deploy prints there (not here: the
 // preview has no output of its own).
-func (e *Engine) previewNetwork(ctx context.Context, p *CreatePreview) {
+func (e *Engine) previewNetwork(ctx context.Context, p *CreatePreview) error {
 	if p.VM == nil || p.ProjectID == "" || p.VM.Zone.ID == "" || e.Auth == nil || e.Cloud == nil {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, networkCheckTimeout)
 	defer cancel()
 	tok, err := e.Auth.Token(ctx)
 	if err != nil {
-		return
+		return nil
 	}
 	e.Cloud.SetToken(tok.Value)
 	quiet := *e
 	quiet.Printer = output.NewWithWriter(io.Discard, output.ModeJSON, false)
-	if n, err := quiet.resolveNetwork(ctx, p.ProjectID, p.VM.Zone.ID); err == nil {
+	n, err := quiet.resolveNetwork(ctx, p.ProjectID, p.VM.Zone.ID)
+	var ce *clerrors.CLIError
+	switch {
+	case err == nil:
 		p.SubnetID, p.SubnetName = n.SubnetID, n.SubnetName
 		p.SecurityGroup = &NetworkRef{ID: n.SecurityGroupID, Name: n.SecurityGroup}
+	case errors.As(err, &ce) && ce.Code == clerrors.CodeConfigInvalid:
+		// A zone without a subnet or a group: deploy refuses it, so the
+		// preview does, before the question (D35, G13-3). A list that
+		// could not be read stays the call's to meet.
+		return err
 	}
 	if dt, err := quiet.resolveDiskType(ctx, p.ProjectID, defaultDiskTypeName); err == nil {
 		p.VM.Disk.TypeID = dt.ID
 	}
+	return nil
 }
 
 // DeployDetailsV11 are the details 'evo deploy --dry-run --json' gave for a
