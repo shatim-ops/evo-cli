@@ -336,7 +336,7 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_delete",
 			Description: "Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the user approves. Async.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID."),
+				"cluster_id": uuidProp("Cluster UUID."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id"),
 		},
@@ -642,8 +642,8 @@ func (s *Registry) registerTools() {
 			Name:        "pg_delete",
 			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":         strProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
-				"cluster_id": strProp("Alias for id."),
+				"id":         uuidProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
+				"cluster_id": uuidProp("Alias for id."),
 				"confirmed":  confirmedProp(),
 			}),
 		},
@@ -699,7 +699,7 @@ func (s *Registry) registerTools() {
 			Name:        "kafka_delete",
 			Description: "Delete a Managed Kafka cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID (from kafka_list). Required."),
+				"cluster_id": uuidProp("Cluster UUID (from kafka_list). Required."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id"),
 		},
@@ -753,7 +753,7 @@ func (s *Registry) registerTools() {
 			Name:        "redis_delete",
 			Description: "Delete a Managed Redis cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID (from redis_list). Required."),
+				"cluster_id": uuidProp("Cluster UUID (from redis_list). Required."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id"),
 		},
@@ -785,7 +785,7 @@ func (s *Registry) registerTools() {
 			Name:        "pg_db_delete",
 			Description: "Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID. Required."),
+				"cluster_id": uuidProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name"),
@@ -811,7 +811,7 @@ func (s *Registry) registerTools() {
 			Name:        "pg_user_delete",
 			Description: "Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID. Required."),
+				"cluster_id": uuidProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name"),
@@ -871,7 +871,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "tg_delete",
 			Description: "Delete a target group by id (from tg_list). Mutation (async): requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Target group UUID. Required."), "confirmed": confirmedProp()}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("Target group UUID. Required."), "confirmed": confirmedProp()}, "id"),
 		},
 		{
 			Name:        "lb_create",
@@ -892,7 +892,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "lb_delete",
 			Description: "Delete a load balancer by id (from lb_list). Mutation (async): requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Load balancer UUID. Required."), "confirmed": confirmedProp()}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("Load balancer UUID. Required."), "confirmed": confirmedProp()}, "id"),
 		},
 		{
 			Name:        "vpc_list",
@@ -917,7 +917,7 @@ func (s *Registry) registerTools() {
 			Name:        "vpc_delete",
 			Description: "Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":        strProp("VPC UUID (from vpc_list). Required."),
+				"id":        uuidProp("VPC UUID (from vpc_list). Required."),
 				"confirmed": confirmedProp(),
 			}, "id"),
 		},
@@ -950,8 +950,8 @@ func (s *Registry) registerTools() {
 			Name:        "vpc_route_delete",
 			Description: "Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"vpc_id":    strProp("VPC UUID. Required."),
-				"route_id":  strProp("Static route UUID (from vpc_routes). Required."),
+				"vpc_id":    uuidProp("VPC UUID. Required."),
+				"route_id":  uuidProp("Static route UUID (from vpc_routes). Required."),
 				"confirmed": confirmedProp(),
 			}, "vpc_id", "route_id"),
 		},
@@ -983,7 +983,7 @@ func (s *Registry) registerTools() {
 			Name:        "dns_zone_delete",
 			Description: "Delete a DNS zone by id (from dns_zones) AND its records (async). type (public|private) is optional: evo finds it by the zone id. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":        strProp("Zone UUID (from dns_zones). Required."),
+				"id":        uuidProp("Zone UUID (from dns_zones). Required."),
 				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed": confirmedProp(),
 			}, "id"),
@@ -1027,7 +1027,7 @@ func (s *Registry) registerTools() {
 			Name:        "dns_record_delete",
 			Description: "Delete a DNS record by id (from dns_records) (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"record_id": strProp("Record UUID (from dns_records). Required."),
+				"record_id": uuidProp("Record UUID (from dns_records). Required."),
 				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed": confirmedProp(),
 			}, "record_id"),
@@ -1210,7 +1210,7 @@ func (s *Registry) registerTools() {
 			Name:        "cert_delete",
 			Description: "Certificate Manager — permanently delete a certificate. Gated: requires confirmed=true. If bound to a load balancer, deletion can break HTTPS (use force=true to delete anyway).",
 			InputSchema: objSchema(map[string]any{
-				"id":        strProp("Certificate id. Required."),
+				"id":        uuidProp("Certificate id. Required."),
 				"confirmed": confirmedProp(),
 				"force":     boolProp("Delete even if the certificate is in use by other services (default false)."),
 			}, "id"),

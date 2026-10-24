@@ -54,6 +54,24 @@ var schemaRules = map[string]schemaRule{
 	// G13-21, G13-22 (Grok, wave 2): what the specification of the
 	// service states (the registry's id is a UUID by its description).
 	"ar_delete.id": {format: "uuid"},
+	// The other deletes of G13-21 (owner's decision 24.10, D36: the live
+	// data of L-15 and of G13-21 — their get refuses another form with a
+	// 400, their lists give UUIDs).
+	"cert_delete.id":              {format: "uuid"},
+	"dns_record_delete.record_id": {format: "uuid"},
+	"dns_zone_delete.id":          {format: "uuid"},
+	"k8s_delete.cluster_id":       {format: "uuid"},
+	"kafka_delete.cluster_id":     {format: "uuid"},
+	"lb_delete.id":                {format: "uuid"},
+	"pg_delete.id":                {format: "uuid"},
+	"pg_delete.cluster_id":        {format: "uuid"},
+	"pg_db_delete.cluster_id":     {format: "uuid"},
+	"pg_user_delete.cluster_id":   {format: "uuid"},
+	"redis_delete.cluster_id":     {format: "uuid"},
+	"tg_delete.id":                {format: "uuid"},
+	"vpc_delete.id":               {format: "uuid"},
+	"vpc_route_delete.route_id":   {format: "uuid"},
+	"vpc_route_delete.vpc_id":     {format: "uuid"},
 	// G13-3: a value no API takes made a preview, then failed after consent.
 	"kafka_create.storage_gib": {min: 1},
 	"redis_create.storage_gb":  {min: 1},

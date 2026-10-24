@@ -172,8 +172,15 @@ func TestAlreadyDeleted_ParentGoneIsNotFound(t *testing.T) {
 		if d.parent == "" {
 			continue
 		}
+		// A target the schema takes as a UUID (vpc_route_delete route_id,
+		// D36) is named by one: another form is USAGE before the parent.
+		target := any(liveName)
+		tl, _ := r.Lookup(name)
+		if p, _ := schemaProps(tl)[d.arg].(map[string]any); p["format"] == "uuid" {
+			target = liveID
+		}
 		for _, confirmed := range []bool{false, true} {
-			args := map[string]any{d.arg: liveName, d.parent: goneID, "confirmed": confirmed}
+			args := map[string]any{d.arg: target, d.parent: goneID, "confirmed": confirmed}
 			if d.parent == "bucket" {
 				args[d.parent] = goneName
 			}
