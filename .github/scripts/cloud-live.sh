@@ -385,11 +385,12 @@ rules_left() {
 }
 
 no_rules() { [ "$(rules_left)" = 0 ]; }
-# port_ranges — значения port_range правил ingress из RULE_CIDR с RULE_PORT
-# в любом формате: что отдал API, когда правила "P:P" не видно (без ID).
+# port_ranges — значения port_range всех правил ingress из RULE_CIDR (адрес
+# только этого прогона), в любом формате: что отдал API, когда правила "P:P"
+# не видно (без ID).
 port_ranges() {
 	evo tools call list_security_groups --arg rules=true --json |
-		jq -c --arg p "$RULE_PORT" --arg c "$RULE_CIDR" '[.security_groups[] | .rules[]? | select(.direction == "ingress" and .remote_ip_prefix == $c and ((.port_range // "") | tostring | contains($p))) | .port_range] | unique'
+		jq -c --arg c "$RULE_CIDR" '[.security_groups[] | .rules[]? | select(.direction == "ingress" and .remote_ip_prefix == $c) | .port_range] | unique'
 }
 
 prefix="evo-e2e-$area-$RUN"
@@ -712,7 +713,7 @@ area_net() {
 				else bad close_ports "closed=$(j -c .closed), правил $RULE_PORT:$RULE_PORT осталось $(rules_left)"; fi
 			fi
 		else
-			bad "правило $RULE_PORT видно до close_ports" "правил $RULE_PORT:$RULE_PORT нет; port_range с портом: $(port_ranges) — close_ports их не найдёт (в реестр расхождений)"
+			bad "правило $RULE_PORT видно до close_ports" "правил $RULE_PORT:$RULE_PORT нет; port_range правил из $RULE_CIDR: $(port_ranges) — close_ports их не найдёт (в реестр расхождений)"
 		fi
 	fi
 

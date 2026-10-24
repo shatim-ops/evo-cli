@@ -924,6 +924,9 @@ func TestWorkflows_RuleSeenBeforeItIsCheckedGone(t *testing.T) {
 	if !strings.Contains(net, "cov close_ports") {
 		t.Error("cloud-live.sh area_net: close_ports is not counted as covered")
 	}
+	if !strings.Contains(net[seen:], "$(port_ranges)") {
+		t.Error("cloud-live.sh area_net: a rule not seen does not print the port_range the API gave (port_ranges)")
+	}
 
 	steps := readWorkflows(t)["cloud-e2e.yml"].Jobs["os-smoke"].Steps
 	create, seenStep, del, gone := -1, -1, -1, -1
@@ -937,7 +940,7 @@ func TestWorkflows_RuleSeenBeforeItIsCheckedGone(t *testing.T) {
 			del = i
 		case s.Name == "Правило порта удалено после delete":
 			gone = i
-			if !strings.Contains(s.Run, "RULE_SEEN") {
+			if !strings.Contains(s.Run, `[ "${RULE_SEEN:-}" = 1 ] || {`) {
 				t.Error("cloud-e2e os-smoke: the check after delete does not refuse without the rule seen after create")
 			}
 		}

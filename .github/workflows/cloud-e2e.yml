@@ -636,7 +636,8 @@ jobs:
           # $pr — переменная jq, не shell
           # shellcheck disable=SC2016
           rule='[.security_groups[] | .rules[]? | select(.direction=="ingress" and .port_range==$pr and ((.description // "") | startswith("evo:")))] | length'
-          for _ in 1 2 3 4 5 6; do
+          # до 2 мин, как ожидание «правила нет» после close_ports в cloud-live.sh
+          for _ in $(seq 1 12); do
             evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-after.json"
             n=$(jq --arg pr "$PORT:$PORT" "$rule" "$RUNNER_TEMP/sg-after.json")
             if [ "$n" != 0 ]; then
@@ -646,8 +647,8 @@ jobs:
             fi
             sleep 10
           done
-          # что отдал API: port_range правил с этим портом, без ID
-          jq -c --arg p "$PORT" '[.security_groups[] | .rules[]? | select(.direction=="ingress" and ((.port_range // "") | tostring | contains($p))) | .port_range] | unique' "$RUNNER_TEMP/sg-after.json"
+          # что отдал API: port_range правил «evo:», где порт — отдельное число, без ID
+          jq -c --arg p "$PORT" '[.security_groups[] | .rules[]? | select(.direction=="ingress" and ((.description // "") | startswith("evo:")) and ((.port_range // "") | tostring | test("(^|[^0-9])" + $p + "([^0-9]|$)"))) | .port_range] | unique' "$RUNNER_TEMP/sg-after.json"
           echo "::error::после vm create не видно правила «evo:» $PORT:$PORT — проверка после delete ничего не докажет"
           exit 1
 
