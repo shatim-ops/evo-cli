@@ -968,8 +968,16 @@ func TestWorkflows_PGBackupProbeShowsANonJSONBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := regexp.MustCompile(`(?m)^show\(\) \{[\s\S]*?^\}`).FindString(string(b))
-	if body == "" || !strings.Contains(body, "redact") || !strings.Contains(body, "head -c") {
-		t.Errorf("pg-backup-probe.sh show(): no cut, redacted text of a body that is no JSON:\n%s", body)
+	// Redacted before the cut: a cut id is no id to redact.sed, and half of
+	// it would reach the log (Qwen on #323).
+	if body == "" || !regexp.MustCompile(`redact \| cut -c`).MatchString(body) {
+		t.Errorf("pg-backup-probe.sh show(): the text of a body that is no JSON is not redacted before its cut:\n%s", body)
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		// head -c only bounds what is read; the cut for the log is after redact.
+		if strings.Contains(l, "redact") && strings.Contains(l, "head -c") && !strings.Contains(l, "redact | cut -c") {
+			t.Errorf("pg-backup-probe.sh cuts before redact.sed: %s", strings.TrimSpace(l))
+		}
 	}
 }
 

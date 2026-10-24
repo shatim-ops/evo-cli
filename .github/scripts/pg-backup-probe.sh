@@ -58,10 +58,10 @@ evo tools call pg_backups --arg cluster_id="$CLUSTER_ID" --json >"$out" 2>"$err"
 evo_rc=$?
 set -e
 evo_reason=$(jq -r '.reason // empty' "$out" 2>/dev/null) || evo_reason=
-[ -n "$evo_reason" ] || evo_reason=$(jq -rR 'fromjson? | .error.reason? // empty' "$err" 2>/dev/null | head -1) || evo_reason=
+[ -n "$evo_reason" ] || evo_reason=$(jq -rR 'fromjson? | .error.reason? // empty' "$err" 2>/dev/null | sed -n 1p) || evo_reason=
 evo_n=$(jq -r 'if (.backups | type) == "array" then (.backups | length) else "-" end' "$out" 2>/dev/null || echo '?')
 echo "evo pg_backups: код $evo_rc, reason ${evo_reason:--}, копий ${evo_n:--}, поля $(jq -c 'keys' "$out" 2>/dev/null || echo '-')"
-[ "$evo_rc" = 0 ] || echo "evo pg_backups: $(jq -rR 'fromjson? | .error.message? // empty' "$err" 2>/dev/null | head -1 | redact | cut -c1-200)"
+[ "$evo_rc" = 0 ] || echo "evo pg_backups: $(jq -rR 'fromjson? | .error.message? // empty' "$err" 2>/dev/null | sed -n 1p | redact | cut -c1-200)"
 
 # 2. Те же копии прямым GET API: список и копия по имени.
 if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ]; then
@@ -85,7 +85,8 @@ show() { # КОД — что ответил API: поля и текст ошиб
 		msg=$(jq -r '.message // .error // empty | tostring' "$out" | redact | cut -c1-160)
 	else
 		keys="не JSON"
-		msg=$(head -c 160 "$out" | tr '\n\r' '  ' | redact)
+		# маска до обрезки: обрезанный ID redact.sed уже не узнаёт
+		msg=$(head -c 4000 "$out" | tr '\n\r' '  ' | redact | cut -c1-160)
 	fi
 	echo "http=$1, поля $keys${msg:+, «$msg»}"
 }
