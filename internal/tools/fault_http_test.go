@@ -343,16 +343,17 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v1/operations/")+`","done":true}`)
 	case r.Method == http.MethodDelete && a.remove(host, path):
 		_, _ = io.WriteString(w, `{}`)
+	case r.Method == http.MethodGet && a.writeItem(w, host, path):
 	default:
 		http.Error(w, `{"message":"not found"}`, 404)
 	}
 }
 
-// remove deletes the resource a DELETE of path names: an item of the
+// item is the resource a GET or DELETE of path names: an item of the
 // longest collection the path is under, by its id or name — a name may
-// hold "/" (a secret's path, app/db). It reports whether there was one; a
-// DELETE of what is not there is 404.
-func (a *faultAPI) remove(host, path string) bool {
+// hold "/" (a secret's path, app/db); its index in a.made, -1 for none.
+// The caller holds a.mu.
+func (a *faultAPI) item(host, path string) int {
 	coll := ""
 	for c := range faultCollections {
 		if strings.HasPrefix(path, c+"/") && len(c) > len(coll) {
@@ -360,18 +361,48 @@ func (a *faultAPI) remove(host, path string) bool {
 		}
 	}
 	if coll == "" {
-		return false
+		return -1
 	}
 	ref := strings.TrimPrefix(path, coll+"/")
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	for k, c := range a.made {
 		if c.host == host && c.path == coll && (c.ID == ref || c.Name == ref) {
-			a.made = append(a.made[:k], a.made[k+1:]...)
-			return true
+			return k
 		}
 	}
-	return false
+	return -1
+}
+
+// remove deletes the resource a DELETE of path names (item). It reports
+// whether there was one; a DELETE of what is not there is 404.
+func (a *faultAPI) remove(host, path string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	k := a.item(host, path)
+	if k < 0 {
+		return false
+	}
+	a.made = append(a.made[:k], a.made[k+1:]...)
+	return true
+}
+
+// writeItem answers a GET of the resource path names (item) as its create
+// did, alive, in one look under a.mu: a DELETE in between cannot leave a
+// 200 without a body. It reports false when there is none (the GET is 404).
+func (a *faultAPI) writeItem(w http.ResponseWriter, host, path string) bool {
+	a.mu.Lock()
+	k := a.item(host, path)
+	if k < 0 {
+		a.mu.Unlock()
+		return false
+	}
+	c := a.made[k]
+	a.mu.Unlock()
+	obj := `{"id":"` + c.ID + `","name":"` + c.Name + `","status":"RUNNING"}`
+	if c.path == "/v2/secret" {
+		obj = `{"secret":` + obj + `}` // Secret Manager nests it
+	}
+	_, _ = io.WriteString(w, obj)
+	return true
 }
 
 // faultAPIRegistry is a registry whose every service, compute included,
@@ -403,7 +434,7 @@ func faultAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 // and where to find it — not a bare error (Qwen review of #212).
 func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 	failed := func(context.Context) ([]map[string]any, error) { return nil, errors.New("list: timeout") }
-	text, isErr := lostCreate(context.Background(), failed, "Kafka cluster", "cluster_id", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: lost"))
+	text, isErr := lostCreate(context.Background(), "kafka_create", failed, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: lost"))
 	var m map[string]any
 	if err := json.Unmarshal([]byte(text), &m); err != nil || !isErr {
 		t.Fatalf("answer %s err=%v isErr=%v", text, err, isErr)
@@ -412,7 +443,7 @@ func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 		t.Errorf("warning %q: want the name, billed and kafka_list", w)
 	}
 	absent := func(context.Context) ([]map[string]any, error) { return nil, nil }
-	if text, isErr := lostCreate(context.Background(), absent, "Kafka cluster", "cluster_id", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: 409")); !isErr || strings.Contains(text, "warning") {
+	if text, isErr := lostCreate(context.Background(), "kafka_create", absent, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: 409")); !isErr || strings.Contains(text, "warning") {
 		t.Errorf("listed and absent: %s; want the create's error only", text)
 	}
 }
@@ -421,7 +452,7 @@ func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 // says API_ERROR, not USAGE (the caller's arguments were fine).
 func TestLostCreate_NoIDIsAPIError(t *testing.T) {
 	absent := func(context.Context) ([]map[string]any, error) { return nil, nil }
-	text, _ := lostCreate(context.Background(), absent, "SNAT gateway", "nat_gateway_id", "evo-n", nil, "snat_list", "snat_list", fmt.Errorf("create SNAT gateway: %w", noID("gateway")))
+	text, _ := lostCreate(context.Background(), "snat_create", absent, "SNAT gateway", "evo-n", nil, "snat_list", fmt.Errorf("create SNAT gateway: %w", noID("gateway")))
 	var m map[string]any
 	if err := json.Unmarshal([]byte(text), &m); err != nil || m["reason"] != "API_ERROR" {
 		t.Errorf("reason %v, want API_ERROR: %s", m["reason"], text)
@@ -434,7 +465,7 @@ func TestLostCreate_FoundSaysItsStatus(t *testing.T) {
 	failed := func(context.Context) ([]map[string]any, error) {
 		return []map[string]any{{"id": "c-1", "name": "evo-k", "status": "FAILED"}}, nil
 	}
-	text, isErr := lostCreate(context.Background(), failed, "Kafka cluster", "cluster_id", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: lost"))
+	text, isErr := lostCreate(context.Background(), "kafka_create", failed, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: lost"))
 	if isErr || !strings.Contains(text, "c-1") || !strings.Contains(text, "status FAILED") {
 		t.Errorf("answer %s: want c-1 and its status FAILED", text)
 	}
@@ -488,10 +519,12 @@ func TestNameCheck_OfflinePreviewsMakeNoRequest(t *testing.T) {
 	}
 }
 
-// The world deletes what a DELETE names and lists objects by prefix, as
-// the stack tests that run stack_apply and stack_destroy on real handlers
-// need (G13-14): a delete that removed nothing answers 404, which is
-// «already deleted» since D26 and would pass as silently as a removal.
+// The world reads and deletes what a GET or a DELETE names and lists
+// objects by prefix, as the stack tests that run stack_apply and
+// stack_destroy on real handlers need (G13-14), and a planned delete (W4)
+// that reads before it deletes: a delete that removed nothing answers 404,
+// which is «already deleted» since D26 and would pass as silently as a
+// removal.
 func TestFaultAPI_DeletesWhatItKeeps(t *testing.T) {
 	const sm, vpc = "secretmanager.api.cloud.ru", "vpc.api.cloud.ru"
 	routes := "/v1/vpcs/" + faultVPC + "/routes/static"
@@ -525,6 +558,18 @@ func TestFaultAPI_DeletesWhatItKeeps(t *testing.T) {
 		return out
 	}
 
+	// A delete is planned (W4): it reads the resource, the confirmed call
+	// too, before it deletes it — the world answers it as made.
+	if code, body := do(http.MethodGet, "https://"+sm+"/v2/secret/app/db"); code != 200 ||
+		!strings.Contains(body, `"secret":{"id":"s-1","name":"app/db","status":"RUNNING"}`) {
+		t.Errorf("GET of the secret app/db: %d %s", code, body)
+	}
+	if code, body := do(http.MethodGet, "https://"+vpc+routes+"/r-1"); code != 200 || !strings.Contains(body, `"id":"r-1"`) {
+		t.Errorf("GET of the route r-1: %d %s", code, body)
+	}
+	if code, _ := do(http.MethodGet, "https://"+vpc+routes+"/r-none"); code != http.StatusNotFound {
+		t.Errorf("GET of a route that is not there: %d, want 404", code)
+	}
 	if code, body := do(http.MethodGet, "https://"+faultS3Host+"/b?list-type=2&prefix=logs/"); code != 200 ||
 		!strings.Contains(body, "<Key>logs/a</Key>") || strings.Contains(body, "<Key>x</Key>") {
 		t.Errorf("list by prefix logs/: %d %s", code, body)
@@ -543,6 +588,9 @@ func TestFaultAPI_DeletesWhatItKeeps(t *testing.T) {
 	}
 	if code, _ := do(http.MethodDelete, "https://"+sm+"/v2/secret/app/db"); code != http.StatusNotFound {
 		t.Errorf("a second DELETE of the secret: %d, want 404", code)
+	}
+	if code, _ := do(http.MethodGet, "https://"+sm+"/v2/secret/app/db"); code != http.StatusNotFound {
+		t.Errorf("GET of the secret deleted: %d, want 404", code)
 	}
 	if code, _ := do(http.MethodDelete, "https://"+faultS3Host+"/b/logs/a"); code != http.StatusNoContent {
 		t.Errorf("a second DELETE of the object: %d, want 204 as S3 answers", code)

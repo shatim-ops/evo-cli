@@ -261,7 +261,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, cli.ListTargetGroups, i18n.T("target group", "целевая группа"), "tg_id", name, nil, "tg_list", "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
+		return lostCreate(ctx, "tg_create", cli.ListTargetGroups, i18n.T("target group", "целевая группа"), name, nil, "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll lb_operation(operation_id) until done=true; then tg_list for the id."}
 	if op.ResourceID != "" {
@@ -403,7 +403,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, cli.ListNLB, i18n.T("load balancer", "балансировщик"), "lb_id", name, willCreate, "lb_get id", "lb_list", fmt.Errorf("create load balancer: %w", err))
+		return lostCreate(ctx, "lb_create", cli.ListNLB, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf("create load balancer: %w", err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": "Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING."}
 	// The balancer's id is in the create's answer: named at once (fault

@@ -350,7 +350,7 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, list, i18n.T("Kubernetes cluster", "кластер Kubernetes"), "cluster_id", name, nil, "k8s_get cluster_id", "k8s_list", err)
+		return lostCreate(ctx, "k8s_create", list, i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, nil, "k8s_get cluster_id", err)
 	}
 	return toJSON(map[string]any{
 		"status":       "creating",
@@ -600,7 +600,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, list, i18n.T("node pool", "группа узлов"), "nodepool_id", name, nil, "k8s_nodepools cluster_id="+clusterID, "k8s_nodepools", fmt.Errorf("create node pool: %w", err))
+		return lostCreate(ctx, "k8s_add_nodepool", list, i18n.T("node pool", "группа узлов"), name, nil, "k8s_nodepools cluster_id="+clusterID, fmt.Errorf("create node pool: %w", err))
 	}
 	return toJSON(map[string]any{
 		"status": "creating", "node_pool": name, "nodepool_id": op.ResourceID, "cluster_id": clusterID,

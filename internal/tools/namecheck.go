@@ -63,10 +63,16 @@ func noID(what string) error {
 // operation id; createErr says which. The service may have made the
 // resource, and then it is billed: list reads the resources again, and one
 // with the name (free before the create, takenName) is answered as made,
-// by its id under idField (fault matrix, process audit 1.2.1). When the list cannot be
-// read either, the error says the resource may exist and where to look:
-// the same create again refuses the taken name and names its id.
-func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]any, error), kind, idField, name string, created map[string]any, getHint, listTool string, createErr error) (string, bool) {
+// by its id under the field createdIDs declares for tool (fault matrix,
+// process audit 1.2.1). When the list cannot be read either, the error
+// says the resource may exist and where to look, the list tool createdIDs
+// declares: the same create again refuses the taken name and names its id.
+func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]map[string]any, error), kind, name string, created map[string]any, getHint string, createErr error) (string, bool) {
+	c := createdIDs[tool]
+	idField, listTool := c.lostField(), c.list
+	if idField == "" || listTool == "" {
+		panic("tools: lostCreate for " + tool + ", whose createdIDs declare no id field or list")
+	}
 	items, err := list(ctx)
 	if err != nil {
 		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(

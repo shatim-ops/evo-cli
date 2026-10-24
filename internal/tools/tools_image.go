@@ -158,7 +158,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 			}
 			return listed, err
 		}
-		return lostCreate(ctx, list, i18n.T("image", "образ"), "image_id", name, nil, "image_get id", "image_list", fmt.Errorf("create image: %w", err))
+		return lostCreate(ctx, "image_create", list, i18n.T("image", "образ"), name, nil, "image_get id", fmt.Errorf("create image: %w", err))
 	}
 	return toJSON(map[string]any{
 		"status": "building",
