@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -192,19 +193,20 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("list floating ips: %w", "список floating IP: %w"), err)
 	}
-	fipID, fipName := "", ""
+	var fip *provision.FloatingIP
 	for _, f := range fips {
 		if f.ID == fipRef || f.IPAddress == fipRef {
 			if f.OnNATGateway() {
 				return nil, fmt.Errorf(i18n.T("floating IP %q belongs to a SNAT gateway and cannot be attached to a VM", "floating IP %q принадлежит SNAT-шлюзу, к ВМ его не привязать"), fipRef)
 			}
-			fipID, fipName = f.ID, f.Name
+			fip = f
 			break
 		}
 	}
-	if fipID == "" {
+	if fip == nil {
 		return nil, fmt.Errorf(i18n.T("floating IP %q not found", "floating IP %q не найден"), fipRef)
 	}
+	fipID, fipName := fip.ID, fip.Name
 
 	// Find the VM's primary interface — that is what the address binds to.
 	vmID, _, err := s.resolveVM(ctx, vmRef, pid)
@@ -227,6 +229,27 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 	}
 	if ifaceID == "" {
 		return nil, fmt.Errorf(i18n.T("VM %s has no interface to attach to", "у ВМ %s нет интерфейса для привязки"), vmRef)
+	}
+	// The address and the VM as they are (FB130-1): the address already
+	// this VM's is the answer of a repeat (D26); one that is not free, or a
+	// VM with an address of its own, is refused before the question — the
+	// attach after consent failed or moved the address off another VM.
+	vmIP, vmFIPID := detail.AttachedFloatingIP()
+	if vmFIPID == fipID || fip.BoundTo(vmID) {
+		return answered(toJSON(map[string]any{"status": "already_attached", "floating_ip": fip.IPAddress,
+			"floating_ip_id": fipID, "vm_id": vmID}), false), nil
+	}
+	if !fip.Available() {
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("floating IP %s is not free (state %s): it is bound to another VM or is changing state; nothing was attached",
+				"floating IP %s не свободен (состояние %s): он привязан к другой ВМ или меняет состояние; ничего не привязано", fip.IPAddress, firstNonEmptyStr(fip.State, "in_use")),
+			i18n.T("Take a free address from list_floating_ips (available: true), or detach this one from its VM first.",
+				"Возьмите свободный адрес из list_floating_ips (available: true) или сначала отвяжите этот от его ВМ."))
+	}
+	if vmIP != "" {
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("VM %s already has floating IP %s; nothing was attached", "у ВМ %s уже есть floating IP %s; ничего не привязано", vmRef, vmIP),
+			i18n.T("A VM takes one floating IP: release or detach the one it has first.", "У ВМ один floating IP: сначала освободите или отвяжите тот, что есть."))
 	}
 
 	// The API rejects an empty name ("Value should have at least 1 item"), so
