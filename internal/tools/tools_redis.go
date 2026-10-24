@@ -54,9 +54,6 @@ func (s *Registry) handleRedisGet(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageT("'cluster_id' is required (from redis_list)", "нужен 'cluster_id' (из redis_list)"), true
 	}
-	if res := uuidArg("cluster_id", id, "redis_list"); res != "" {
-		return res, true
-	}
 	cli, _, err := s.redisClientEng(ctx)
 	if err != nil {
 		return errResult(err), true

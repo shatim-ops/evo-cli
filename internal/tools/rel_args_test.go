@@ -50,7 +50,7 @@ func TestRel11_TgAndDNSRecordArgs(t *testing.T) {
 // REL-15: billing_finops days — от 1 до 366, иначе USAGE до облака.
 func TestRel15_FinopsDaysUpperBound(t *testing.T) {
 	runUsageCases(t, []usageCase{
-		{"billing_finops", map[string]any{"days": 367}, "at most 366"},
-		{"billing_finops", map[string]any{"days": 1000000000}, "at most 366"},
+		{"billing_finops", map[string]any{"days": 367}, "maximum 366"},
+		{"billing_finops", map[string]any{"days": 1000000000}, "maximum 366"},
 	})
 }

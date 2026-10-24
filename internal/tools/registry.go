@@ -133,7 +133,7 @@ func New(factory EngineFactory) *Registry {
 			if r.unchecked == nil {
 				r.unchecked = map[string]Handler{}
 			}
-			r.unchecked[t.Name] = checkedDelete(t.Name, checkedCreateName(t.Name, h))
+			r.unchecked[t.Name] = checkedCreateName(t.Name, h)
 			r.handlers[t.Name] = checkedArgs(t.Name, t.InputSchema, r.unchecked[t.Name])
 		}
 		t.Handler = r.handlers[t.Name]
