@@ -83,8 +83,9 @@ echo "GET /v1/clusters/{id}/backups: $(show "$list_code"), копий $list_n"
 one_code=$(get "/v1/clusters/$CLUSTER_ID/backups/$BACKUP_NAME")
 echo "GET /v1/clusters/{id}/backups/{name}: $(show "$one_code"), статус $(jq -r '.status // "-"' "$out" 2>/dev/null || echo '?')"
 
-# Итог под гипотезу документации: копии уходят вместе с кластером.
-if [ "$list_code" = 200 ] && [ "$list_n" != 0 ] && [ "$list_n" != "-" ] || [ "$one_code" = 200 ]; then
+# Итог под гипотезу документации: копии уходят вместе с кластером. Копия,
+# которая читается по имени, существует — расхождение при любом ответе списка.
+if { [ "$list_code" = 200 ] && [ "$list_n" != 0 ] && [ "$list_n" != "-" ]; } || [ "$one_code" = 200 ]; then
 	verdict="РАСХОЖДЕНИЕ с документацией: копия удалённого кластера найдена"
 elif { [ "$list_code" = 200 ] && [ "$list_n" = 0 ]; } || [ "$list_code" = 404 ]; then
 	verdict="как в документации: копий нет"
