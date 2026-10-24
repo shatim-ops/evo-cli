@@ -78,6 +78,9 @@ stderr, если это не оставляет дефект открытым.
    - убрать «до выхода `v1.0.0` стабильного релиза нет» и примеры с
      `CLOUDRU_VM_VERSION=v1.0.0-rc.N` из `README.md`, `docs/install.md`,
      `docs/guide.md`: `install.sh` без версии ставит последний стабильный;
+   - при смене minor — `metadata.evo-version` во всех `skills/*/SKILL.md` и
+     константа ожидаемой версии в тесте скиллов — новый major.minor
+     (с 1.3.0, сценарные скиллы);
    - cloud-e2e на этом коммите зелёный (ru.AZ-2), `cleanup_only` — без остатков.
      Его job ждут одобрения владельца в окружении `cloud-e2e`: Actions → прогон →
      **Review deployments** → Approve. Ключи Cloud.ru (`CLOUDRU_KEY_ID`,
@@ -116,6 +119,12 @@ stderr, если это не оставляет дефект открытым.
 
    `v1.0.0-rc.1` и `rc.2` выпущены до переименования репозитория: их identity —
    `shatim-ops/cloudru-vm-cli`.
+
+   С 1.3.0 — установка сценарных скиллов с тега: `npx skills add
+   https://github.com/shatim-ops/evo-cli/tree/vX.Y.Z/skills/evo-deploy`
+   ставит скилл из тега (ref в пути URL). Не ставит — правка
+   `skills/README.md` отдельным PR «(процесс)»: основной канал — копирование
+   с тега.
 
    С 1.3.0 (решение владельца В8) ещё три проверки:
 

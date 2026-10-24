@@ -27,6 +27,7 @@ var rootDirs = map[string]bool{
 	"docs":        true,
 	"internal":    true,
 	"scripts":     true,
+	"skills":      true,
 	"specs":       true,
 }
 
