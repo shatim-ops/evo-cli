@@ -138,3 +138,31 @@ func TestSkillsReadme_DesktopNotChecked(t *testing.T) {
 		}
 	}
 }
+
+// TestSkillsReadme_PromptClients: the clients the prompt lists are clients
+// of 'evo agent setup', and a client without user-level rules (Cursor) is
+// told to run the same command without --scope user.
+func TestSkillsReadme_PromptClients(t *testing.T) {
+	prompt := skillsInstallPrompt(t, skillsInstallSection(t))
+	const lead = "(клиент: "
+	i := strings.Index(prompt, lead)
+	if i < 0 {
+		t.Fatalf("%s: the prompt does not list the clients as %q", skillsReadme, lead+"…)")
+	}
+	list := prompt[i+len(lead):]
+	list = list[:strings.Index(list, ")")]
+	for _, name := range strings.Split(list, ",") {
+		name = strings.TrimSpace(name)
+		if _, ok := lookupClient(name); !ok {
+			t.Errorf("%s: the prompt lists %q, not a client of 'evo agent setup' (%s)", skillsReadme, name, strings.Join(clientNames(), ", "))
+		}
+	}
+	for _, c := range agentClients {
+		if _, user := c.skill[scopeUser]; user || !strings.Contains(list, c.name) {
+			continue
+		}
+		if !strings.Contains(prompt, "ту же команду без `--scope user`") {
+			t.Errorf("%s: %s has no user-level rules, and the prompt does not say to run the same command without `--scope user`", skillsReadme, c.name)
+		}
+	}
+}
