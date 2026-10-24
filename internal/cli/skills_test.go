@@ -142,6 +142,30 @@ func TestSkills_Structure(t *testing.T) {
 	}
 }
 
+// A skill whose description claims what the built-in skill evo claims ("Use
+// it for any task on Cloud.ru resources") is loaded next to it for every
+// task, and the agent reads two sources of one rule (spec §3.1, variant
+// (a)). The phrase is taken from skillFrontMatter, so a new wording of the
+// built-in moves the check with it.
+func TestSkills_DescriptionNotTheBuiltIn(t *testing.T) {
+	var builtIn struct{ Description string }
+	fm := strings.TrimPrefix(skillFrontMatter, "---\n")
+	fm, _, _ = strings.Cut(fm, "\n---")
+	if err := yaml.Unmarshal([]byte(fm), &builtIn); err != nil {
+		t.Fatalf("front matter of the built-in skill: %v", err)
+	}
+	_, claim, ok := strings.Cut(builtIn.Description, "Use it for ")
+	claim = strings.TrimSuffix(claim, ".")
+	if !ok || claim == "" {
+		t.Fatalf("no \"Use it for …\" in the description of the built-in skill: %q", builtIn.Description)
+	}
+	for _, s := range readSkills(t) {
+		if strings.Contains(strings.ToLower(s.front.Description), strings.ToLower(claim)) {
+			t.Errorf("skills/%s: description claims %q, as the built-in skill evo does: name the scenario instead", s.name, claim)
+		}
+	}
+}
+
 // skillSpan is a text in backticks, or a line of a fenced block, and its
 // line.
 type skillSpan struct {
