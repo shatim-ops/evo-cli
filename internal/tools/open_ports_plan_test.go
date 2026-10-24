@@ -63,15 +63,17 @@ func (twinGroupsCloud) ListSecurityGroups(context.Context, string) ([]*provision
 	}, nil
 }
 
-// A name two groups share is USAGE with the candidates before the question:
-// the first the list gave was taken, and its rules were the ones changed.
-// The group by its id is taken.
+// A name two groups share is USAGE with the candidates before the question,
+// at open_ports and close_ports alike (securityGroupByRef): the first the
+// list gave was taken, and its rules were the ones changed.
 func TestOpenPorts_AmbiguousGroupNameBeforeTheQuestion(t *testing.T) {
 	r, _ := fastRegistry(t, twinGroupsCloud{}, config.Config{ProjectID: "p", KeyID: "k", Secret: "s"})
-	for _, confirmed := range []bool{false, true} {
-		m, text, isErr := callNamed(t, r, "open_ports", map[string]any{"security_group": "web", "ports": []any{float64(8080)}, "confirmed": confirmed})
-		if !isErr || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, faultID(0x81)) || !strings.Contains(text, faultID(0x82)) {
-			t.Errorf("open_ports of a name two groups share, confirmed=%v: %s", confirmed, text)
+	for _, tool := range []string{"open_ports", "close_ports"} {
+		for _, confirmed := range []bool{false, true} {
+			m, text, isErr := callNamed(t, r, tool, map[string]any{"security_group": "web", "ports": []any{float64(8080)}, "confirmed": confirmed})
+			if !isErr || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, faultID(0x81)) || !strings.Contains(text, faultID(0x82)) {
+				t.Errorf("%s of a name two groups share, confirmed=%v: %s", tool, confirmed, text)
+			}
 		}
 	}
 }

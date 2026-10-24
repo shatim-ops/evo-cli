@@ -279,6 +279,17 @@ func (s *Registry) registerTools() {
 			}, "security_group", "ports"),
 		},
 		{
+			Name:        "close_ports",
+			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open). NOTE: security groups are shared per availability zone — closing a port affects every VM in that group. Mutation: requires confirmed=true after the user approves.",
+			InputSchema: objSchema(map[string]any{
+				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
+				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to close, e.g. [8080]."},
+				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
+				"cidr":           cidrProp("Source CIDR of the rules (default 0.0.0.0/0 = anywhere)."),
+				"confirmed":      confirmedProp(),
+			}, "security_group", "ports"),
+		},
+		{
 			Name:        "k8s_list",
 			Description: "List Managed Kubernetes (mk8s) clusters in the project (id, name, status). Read-only.",
 			InputSchema: objSchema(nil),
@@ -1358,6 +1369,7 @@ func (s *Registry) registerTools() {
 		"list_floating_ips":    s.handleListFloatingIPs,
 		"release_floating_ip":  s.gated("release_floating_ip", s.planReleaseFloatingIP),
 		"open_ports":           s.gated("open_ports", s.planOpenPorts),
+		"close_ports":          s.gated("close_ports", s.planClosePorts),
 		"snat_list":            s.handleSnatList,
 		"snat_create":          s.handleSnatCreate,
 		"snat_delete":          s.gated("snat_delete", s.planSnatDelete),

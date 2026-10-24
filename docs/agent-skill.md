@@ -67,7 +67,7 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
 | `billing` | `evo billing …` | 3 | 0 |
 | `ca` | `evo ca …` | 7 | 4 |
 | `cert` | `evo cert …` | 10 | 4 |
-| `deploy` | `evo deploy`, `evo deploy apply`, `evo deploy list`, `evo deploy plan`, `evo destroy`, `evo logs`, `evo status`, `evo vm delete`, `evo vpc open-ports` | 8 | 4 |
+| `deploy` | `evo deploy`, `evo deploy apply`, `evo deploy list`, `evo deploy plan`, `evo destroy`, `evo logs`, `evo status`, `evo vm delete`, `evo vpc close-ports`, `evo vpc open-ports` | 9 | 5 |
 | `disk` | `evo disk …` | 7 | 5 |
 | `dns` | `evo dns …` | 9 | 4 |
 | `iam` | `evo iam …` | 1 | 0 |

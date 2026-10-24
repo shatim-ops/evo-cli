@@ -201,6 +201,7 @@
     - [evo vm list](#evo-vm-list)
     - [evo vm zones](#evo-vm-zones)
   - [evo vpc](#evo-vpc)
+    - [evo vpc close-ports](#evo-vpc-close-ports)
     - [evo vpc create](#evo-vpc-create)
     - [evo vpc delete](#evo-vpc-delete)
     - [evo vpc fip-attach](#evo-vpc-fip-attach)
@@ -9102,6 +9103,7 @@ evo vpc [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo vpc close-ports](#evo-vpc-close-ports)	 - Закрыть входящие порты в группе безопасности
 * [evo vpc create](#evo-vpc-create)	 - Создать VPC (асинхронно)
 * [evo vpc delete](#evo-vpc-delete)	 - Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы)
 * [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Привязать свободный floating IP к основному интерфейсу ВМ
@@ -9116,6 +9118,52 @@ evo vpc [flags]
 * [evo vpc routes](#evo-vpc-routes)	 - Статические маршруты VPC
 * [evo vpc security-groups](#evo-vpc-security-groups)	 - Группы безопасности (с --rules — вместе с правилами)
 * [evo vpc subnets](#evo-vpc-subnets)	 - Подсети: UUID, имя, зона доступности
+
+## evo vpc close-ports
+
+Закрыть входящие порты в группе безопасности
+
+### Synopsis
+
+```text
+Закрыть входящие порты в группе безопасности.
+
+Закрыть входящие порты в группе безопасности Cloud.ru: удалить правила ingress для указанных портов, по умолчанию tcp из 0.0.0.0/0, — обратная операция к открытию портов (evo vpc open-ports). Группа — аргумент <security-group> (имя или UUID). Удаляются только правила ровно этого порта, протокола и источника; порты без такого правила уже закрыты (если не открыт ни один — status already_deleted). Группы безопасности общие для зоны доступности: закрытый порт затрагивает каждую ВМ в этой группе.
+
+Вызывает инструмент close_ports (подробнее: 'evo tools describe close_ports').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vpc close-ports <security-group> [flags]
+```
+
+### Options
+
+```
+      --cidr string        CIDR источника правил (по умолчанию 0.0.0.0/0 — откуда угодно)
+  -h, --help               Справка по close-ports
+      --port stringArray   Порты, которые закрыть, например 8080 (флаг повторяется или значения через запятую)
+      --protocol string    Протокол: tcp (по умолчанию) или udp
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
 
 ## evo vpc create
 
