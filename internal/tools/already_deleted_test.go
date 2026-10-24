@@ -7,6 +7,7 @@ package tools
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -51,6 +52,12 @@ func goneWorld(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if r.Method == http.MethodGet && r.URL.Path == "/api/v1/security-groups" {
+		// The group of close_ports is a list's item (the API reads no group
+		// by id): liveID is there, goneID is not; its rules are none.
+		_, _ = io.WriteString(w, `{"items":[{"id":"`+liveID+`","name":"`+liveName+`"}],"total":1}`)
+		return true
+	}
 	if gone {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = io.WriteString(w, `{"code":5,"message":"not found"}`)
@@ -131,6 +138,12 @@ func goneArgs(name string, d deleteTarget) map[string]any {
 	if strings.Contains(d.arg, "name") || d.arg == "path" || d.arg == "bucket" || d.arg == "key" {
 		args[d.arg] = goneName
 	}
+	// A target that is a list of ports (close_ports): a port with no rule.
+	if tl, ok := New(nil).Lookup(name); ok {
+		if p, _ := schemaProps(tl)[d.arg].(map[string]any); p["type"] == "array" {
+			args[d.arg] = []any{float64(80)}
+		}
+	}
 	if d.parent != "" {
 		args[d.parent] = liveID
 		if d.parent == "bucket" {
@@ -158,11 +171,27 @@ func TestAlreadyDeleted_RepeatedDeleteIsDeleted(t *testing.T) {
 				args["confirmed"] = true
 			}
 			m, text, isErr := callNamed(t, r, name, args)
-			if isErr || m["status"] != "already_deleted" || m["existed"] != false || m[d.arg] != args[d.arg] {
+			if isErr || m["status"] != "already_deleted" || m["existed"] != false || !namesTarget(m[d.arg], args[d.arg]) {
 				t.Errorf("%s confirmed=%v: want already_deleted, exit 0: %s", name, confirmed, text)
 			}
 		}
 	}
+}
+
+// namesTarget: the answer names the target as the call did — the same
+// value, or for a list (ports) a text that names each element.
+func namesTarget(answer, arg any) bool {
+	list, ok := arg.([]any)
+	if !ok {
+		return answer == arg
+	}
+	text := fmt.Sprint(answer)
+	for _, v := range list {
+		if !strings.Contains(text, fmt.Sprint(v)) {
+			return false
+		}
+	}
+	return true
 }
 
 // A parent that is not there is the call's error, not a repeat: NOT_FOUND.
@@ -176,8 +205,11 @@ func TestAlreadyDeleted_ParentGoneIsNotFound(t *testing.T) {
 		// D36) is named by one: another form is USAGE before the parent.
 		target := any(liveName)
 		tl, _ := r.Lookup(name)
-		if p, _ := schemaProps(tl)[d.arg].(map[string]any); p["format"] == "uuid" {
+		switch p, _ := schemaProps(tl)[d.arg].(map[string]any); {
+		case p["format"] == "uuid":
 			target = liveID
+		case p["type"] == "array":
+			target = []any{float64(80)} // ports (close_ports)
 		}
 		for _, confirmed := range []bool{false, true} {
 			args := map[string]any{d.arg: target, d.parent: goneID, "confirmed": confirmed}

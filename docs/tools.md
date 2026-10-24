@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (154) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo (155) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -86,6 +86,7 @@
 | `deploy_plan` | `evo deploy plan` | нет | — | STEP 1 of the deploy wizard (read-only, creates nothing). | Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая |
 | `deploy_apply` | `evo deploy apply` | да | `plan_id` | STEP 2 of the deploy wizard. | Шаг 2 мастера развёртывания: выполнить рассчитанный план |
 | `open_ports` | `evo vpc open-ports` | да | `security_group`, `ports` | Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). | Открыть входящие порты в группе безопасности |
+| `close_ports` | `evo vpc close-ports` | да | `security_group`, `ports` | Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. | Закрыть входящие порты в группе безопасности |
 
 ## disk
 

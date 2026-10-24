@@ -280,4 +280,5 @@ var cliSpecs = map[string]CLISpec{
 	"image_create": {Group: "image", Verb: "create", Args: []string{"name"}},
 	"image_delete": {Group: "image", Verb: "delete", Args: []string{"image_id"}},
 	"open_ports":   {Group: "vpc", Verb: "open-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
+	"close_ports":  {Group: "vpc", Verb: "close-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
 }

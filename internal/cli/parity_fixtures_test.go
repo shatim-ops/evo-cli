@@ -71,6 +71,7 @@ var parityArgs = map[string]map[string]any{
 	// The zone's group, in the worlds of the previews and of the answers
 	// alike: open_ports reads it before the question (G13-23).
 	"open_ports":           {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(443)}},
+	"close_ports":          {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80)}},
 	"vpc_list":             {},
 	"vpc_get":              {"id": parityVM},
 	"vpc_operation":        {"operation_id": parityVM},
@@ -257,6 +258,30 @@ var paritySetup = map[string]func(t *testing.T, w parityWorld) (map[string]any, 
 			return e, err
 		}
 		return nil, func() { toolEngine = world }
+	},
+	// close_ports: the zone's group (in the worlds of the previews and of
+	// the answers alike) holds the rule of port 80 that open_ports adds —
+	// the world's groups have no rules, as open_ports needs. The world as
+	// it was answers first, a failing cloud included
+	// (TestParity_ErrorReasonEqualsTool).
+	"close_ports": func(t *testing.T, w parityWorld) (map[string]any, func()) {
+		world := w.rt.extra
+		w.rt.extra = func(r *http.Request) (*http.Response, error) {
+			if world != nil {
+				if resp, err := world(r); resp != nil || err != nil {
+					return resp, err
+				}
+			}
+			if r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/security-groups/") || !strings.Contains(r.URL.Path, "/rules") {
+				return nil, nil
+			}
+			if r.Method == http.MethodDelete {
+				return contractRT{status: http.StatusNoContent}.RoundTrip(r)
+			}
+			return contractRT{status: 200, body: `{"items":[{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp",` +
+				`"port_range":"80:80","remote_ip_prefix":"0.0.0.0/0"}],"total":1}`}.RoundTrip(r)
+		}
+		return nil, func() { w.rt.extra = world }
 	},
 	// deploy in a directory with no deployment: its compose file sizes
 	// the VM (as evo deploy does), and the preview prices it.

@@ -7,13 +7,13 @@
      go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc|TestParityInventory' -update-docs
      CI сверяет файл с кодом. -->
 
-Инструментов в реестре: 154 (изменяющих: 65). Команд из `CLISpec`: 154. Команд в бинаре вместе с корнем `evo`: 206 — в docs/commands.md 201, скрытых 4, прочих 1 (`evo help`).
+Инструментов в реестре: 155 (изменяющих: 66). Команд из `CLISpec`: 155. Команд в бинаре вместе с корнем `evo`: 207 — в docs/commands.md 202, скрытых 4, прочих 1 (`evo help`).
 
 ## 1. Инструменты по способу вызова из CLI
 
 | Способ | Инструментов | из них изменяющих |
 |---|---|---|
-| дерево | 148 | 64 |
+| дерево | 149 | 65 |
 | движок | 6 | 1 |
 | tools call | 0 | 0 |
 
@@ -29,7 +29,7 @@
 | billing | 3 | 3 | 0 | 0 | 3/3 |
 | ca | 7 | 7 | 0 | 0 | 7/7 |
 | cert | 10 | 10 | 0 | 0 | 10/10 |
-| deploy | 8 | 5 | 3 | 0 | 8/8 |
+| deploy | 9 | 6 | 3 | 0 | 9/9 |
 | disk | 7 | 7 | 0 | 0 | 7/7 |
 | dns | 9 | 9 | 0 | 0 | 9/9 |
 | iam | 1 | 1 | 0 | 0 | 1/1 |
@@ -80,6 +80,7 @@
 | cert | `cert_renew` | да | дерево | `evo cert renew` | да/да |
 | cert | `cert_usage` | нет | дерево | `evo cert usage` | да/да |
 | cert | `cert_versions` | нет | дерево | `evo cert versions` | да/да |
+| deploy | `close_ports` | да | дерево | `evo vpc close-ports` | да/да |
 | deploy | `deploy` | да | движок | `evo deploy` | да/да |
 | deploy | `deploy_apply` | да | дерево | `evo deploy apply` | да/да |
 | deploy | `deploy_plan` | нет | дерево | `evo deploy plan` | да/да |
@@ -353,6 +354,7 @@
 | `evo vm get` | `vm_get` | vm_id\|name | — | — | — | — |
 | `evo vm list` | `vm_list` | — | — | — | — | — |
 | `evo vm zones` | `list_zones` | — | — | — | — | — |
+| `evo vpc close-ports` | `close_ports` | security_group | ports→--port | — | confirmed | — |
 | `evo vpc create` | `vpc_create` | name | — | — | confirmed | — |
 | `evo vpc delete` | `vpc_delete` | id | — | — | confirmed | — |
 | `evo vpc fip-attach` | `fip_attach` | fip | — | — | confirmed | — |
@@ -413,17 +415,17 @@
 
 Ожидаемый набор флагов выводится из схемы (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с флагами команды в дереве cobra. Пусто — расхождений нет.
 
-Расхождений нет: флаги всех 148 команд деревьев выведены из схемы; флаги 6 команд движка сверяет со схемой TestParity_EngineCommands.
+Расхождений нет: флаги всех 149 команд деревьев выведены из схемы; флаги 6 команд движка сверяет со схемой TestParity_EngineCommands.
 
 ## 5. Русская справка
 
 | Что | Есть по-русски | Всего |
 |---|---|---|
-| краткое описание инструмента (ShortRU) | 154 | 154 инструментов |
-| подробное описание инструмента (DescriptionRU) | 154 | 154 инструментов |
-| описания аргументов (ArgDescriptionsRU) | 444 | 444 аргументов |
-| из них флаги команд деревьев | 243 | 243 флагов |
-| описания инструментов в MCP | 0 | 154 (всегда английские) |
+| краткое описание инструмента (ShortRU) | 155 | 155 инструментов |
+| подробное описание инструмента (DescriptionRU) | 155 | 155 инструментов |
+| описания аргументов (ArgDescriptionsRU) | 449 | 449 аргументов |
+| из них флаги команд деревьев | 246 | 246 флагов |
+| описания инструментов в MCP | 0 | 155 (всегда английские) |
 
 ## 6. Исключения из паритета
 
