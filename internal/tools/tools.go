@@ -1482,7 +1482,7 @@ func (s *Registry) registerTools() {
 		"s3_put":               s.handleS3Put,
 		"s3_rm":                s.gated("s3_rm", s.planS3Rm),
 		"s3_bucket_create":     s.handleS3BucketCreate,
-		"s3_bucket_delete":     s.handleS3BucketDelete,
+		"s3_bucket_delete":     s.gated("s3_bucket_delete", s.planS3BucketDelete),
 		"stack_plan":           s.handleStackPlan,
 		"stack_apply":          s.handleStackApply,
 		"stack_status":         s.handleStackStatus,

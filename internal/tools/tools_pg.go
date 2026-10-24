@@ -45,10 +45,7 @@ func compactSpecs(specs []map[string]any, cap int) ([]map[string]any, int) {
 	}
 	out := make([]map[string]any, 0, len(sorted))
 	for _, s := range sorted {
-		minStorage := s["min_storage_gb"]
-		if minStorage == nil {
-			minStorage = s["min_storage_gigs"] // Kafka uses this field name
-		}
+		minStorage := specMinStorage(s)
 		name := s["display_name"]
 		if name == nil {
 			name = s["name"] // Kafka/Redis specs use "name"
@@ -368,12 +365,9 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		return usageResult(fmt.Errorf("instances %d: specification %s (%v) takes 1-%d nodes", instances, specID, firstNonNil(spec["deployment_mode"], spec["display_name"]), maxHosts)), true
 	}
 
-	storageGB := pgInt(args, "storage_gb", 0)
-	if storageGB == 0 {
-		storageGB = int(toF(spec["min_storage_gb"]))
-	}
-	if storageGB == 0 {
-		storageGB = 50
+	storageGB, err := specStorage(args, "storage_gb", spec, 50)
+	if err != nil {
+		return errResult(err), true
 	}
 	initialDB := stringArg(args, "initial_database")
 	if initialDB == "" {

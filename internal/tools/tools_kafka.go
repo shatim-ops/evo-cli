@@ -28,6 +28,36 @@ func boolArg(args map[string]any, key string, def bool) bool {
 	return def
 }
 
+// specMinStorage is the least storage, GB, a DBaaS specification takes as
+// the service lists it: min_storage_gb (PostgreSQL, Redis) or
+// min_storage_gigs (Kafka); nil when it does not.
+func specMinStorage(spec map[string]any) any {
+	if v := spec["min_storage_gb"]; v != nil {
+		return v
+	}
+	return spec["min_storage_gigs"]
+}
+
+// specStorage is the storage a DBaaS create asks for: the argument arg as
+// given, else the specification's minimum, else def. Storage below the
+// minimum is refused before the question (D35, W6): Cloud.ru refuses the
+// create after consent.
+func specStorage(args map[string]any, arg string, spec map[string]any, def int) (int, error) {
+	least := int(toF(specMinStorage(spec)))
+	storage := pgInt(args, arg, 0)
+	switch {
+	case storage == 0 && least > 0:
+		return least, nil
+	case storage == 0:
+		return def, nil
+	case storage < least:
+		id, _ := spec["id"].(string)
+		return 0, usageErr("%s %d is below the minimum of specification %s: %d GB",
+			"%s %d меньше минимума спецификации %s: %d ГБ", arg, storage, id, least)
+	}
+	return storage, nil
+}
+
 // findDbaasSpec picks a spec by id, or by cpu+memory, else the first (cheapest
 // after the caller sorted). Works for Kafka/Redis specs (cpu/memory fields).
 func findDbaasSpec(specs []map[string]any, specID string, cpu, ram int) map[string]any {
@@ -326,12 +356,9 @@ func (s *Registry) handleKafkaCreate(ctx context.Context, args map[string]any) (
 	}
 	specID, _ := spec["id"].(string)
 
-	storage := pgInt(args, "storage_gib", 0)
-	if storage == 0 {
-		storage = int(toF(spec["min_storage_gigs"]))
-	}
-	if storage == 0 {
-		storage = 40
+	storage, err := specStorage(args, "storage_gib", spec, 40)
+	if err != nil {
+		return errResult(err), true
 	}
 	brokers, brokersNote, err := kafkaBrokers(pgInt(args, "brokers", 0), spec)
 	if err != nil {

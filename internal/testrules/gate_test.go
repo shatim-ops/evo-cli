@@ -55,7 +55,6 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_pg.go: handlePgUserCreate":            "W6",
 	"internal/tools/tools_redis.go: handleRedisCreate":          "W6",
 	"internal/tools/tools_s3.go: handleS3BucketCreate":          "1.4",
-	"internal/tools/tools_s3.go: handleS3BucketDelete":          "W6",
 	"internal/tools/tools_s3.go: handleS3Put":                   "1.4",
 	"internal/tools/tools_secret.go: handleSecretAddVersion":    "1.4",
 	"internal/tools/tools_secret.go: handleSecretCreate":        "1.4",
@@ -69,7 +68,7 @@ var inlineGates = map[string]string{
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 40
+const inlineGatesLeft = 39
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{

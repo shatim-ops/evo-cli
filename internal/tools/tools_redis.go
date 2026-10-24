@@ -161,12 +161,9 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 	}
 	specID, _ := spec["id"].(string)
 
-	storage := pgInt(args, "storage_gb", 0)
-	if storage == 0 {
-		storage = int(toF(spec["min_storage_gb"]))
-	}
-	if storage == 0 {
-		storage = 40
+	storage, err := specStorage(args, "storage_gb", spec, 40)
+	if err != nil {
+		return errResult(err), true
 	}
 
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
