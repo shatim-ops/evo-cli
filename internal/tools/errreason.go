@@ -32,7 +32,8 @@ import (
 //   - an answer of an API, by its HTTP status (provision.StatusError, the
 //     Organization API, S3, or "<service> API 404: …" / "HTTP 502: …" in the
 //     message of the service clients): 404 — NOT_FOUND, 429 —
-//     API_RATE_LIMITED, else API_ERROR;
+//     API_RATE_LIMITED, another 4xx whose answer says "not found" —
+//     NOT_FOUND, else API_ERROR;
 //   - no answer at all (network, DNS, a deadline) — API_UNREACHABLE;
 //   - a failed operation of the cloud ("mk8s operation … failed"), or
 //     kubectl/helm that ran against the cluster and failed — API_ERROR
@@ -46,11 +47,17 @@ func uncodedReason(err error, fields map[string]any) string {
 	answer := strings.ToLower(toJSON(fields) + " " + err.Error())
 	notFound := strings.Contains(answer, "not found") || strings.Contains(answer, "не найден")
 	if st := apiStatus(err); st != 0 {
+		// The status decides; the words of the answer only name a 4xx
+		// that has no code of its own (a 400 «subnet not found»). A 429
+		// or a 5xx whose text says «not found» is not «no such
+		// resource» (cloud-e2e 24.10: pg_create, 429 ResourceExhausted).
 		switch {
-		case st == http.StatusNotFound || notFound:
+		case st == http.StatusNotFound:
 			return clierrors.CodeNotFound
 		case st == http.StatusTooManyRequests:
 			return clierrors.CodeAPIRateLimited
+		case st >= 400 && st < 500 && notFound:
+			return clierrors.CodeNotFound
 		}
 		return clierrors.CodeAPIError
 	}
