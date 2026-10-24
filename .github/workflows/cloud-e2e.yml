@@ -64,7 +64,7 @@ on:
         type: boolean
         default: false
       net_smoke:
-        description: "Live: VPC create/delete, private VM behind a target group and load balancer, floating IP kept and re-attached, open_ports, VPC route, SNAT if the zone has none (~40 min)"
+        description: "Live: VPC create/delete, private VM behind a target group and load balancer, floating IP kept and re-attached, open_ports and close_ports, VPC route, SNAT if the zone has none (~40 min)"
         type: boolean
         default: false
       dns_smoke:
@@ -628,6 +628,29 @@ jobs:
             jq -e '.ports.already_open | length == 1' "$RUNNER_TEMP/vm.json" >/dev/null ||
             { echo "::error::порт $PORT не открыт"; exit 1; }
 
+      # Без этого шага проверка после delete прошла бы и при правиле, которое
+      # она не видит: другой формат port_range (Qwen на #315) — «правила нет».
+      - name: Правило порта видно после create
+        if: env.VM_ID != '' && env.VM_IP != ''
+        run: |
+          # $pr — переменная jq, не shell
+          # shellcheck disable=SC2016
+          rule='[.security_groups[] | .rules[]? | select(.direction=="ingress" and .port_range==$pr and ((.description // "") | startswith("evo:")))] | length'
+          for _ in 1 2 3 4 5 6; do
+            evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-after.json"
+            n=$(jq --arg pr "$PORT:$PORT" "$rule" "$RUNNER_TEMP/sg-after.json")
+            if [ "$n" != 0 ]; then
+              echo "правило для $PORT видно ($n)"
+              echo "RULE_SEEN=1" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 10
+          done
+          # что отдал API: port_range правил с этим портом, без ID
+          jq -c --arg p "$PORT" '[.security_groups[] | .rules[]? | select(.direction=="ingress" and ((.port_range // "") | tostring | contains($p))) | .port_range] | unique' "$RUNNER_TEMP/sg-after.json"
+          echo "::error::после vm create не видно правила «evo:» $PORT:$PORT — проверка после delete ничего не докажет"
+          exit 1
+
       - name: SSH и os-release
         if: env.VM_ID != ''
         working-directory: os-vm
@@ -685,6 +708,7 @@ jobs:
           rule='[.security_groups[] | .rules[]? | select(.direction=="ingress" and .port_range==$pr and ((.description // "") | startswith("evo:")))] | length'
           had=$(jq --arg pr "$PORT:$PORT" "$rule" "$RUNNER_TEMP/sg-before.json")
           if [ "$had" != 0 ]; then echo "правило для $PORT было до создания — проверка пропущена"; exit 0; fi
+          [ "${RULE_SEEN:-}" = 1 ] || { echo "::error::правило для $PORT не было видно после create — его отсутствие после delete ничего не доказывает"; exit 1; }
           for _ in 1 2 3 4 5 6; do
             left=$(evo tools call list_security_groups --arg rules=true --json | jq --arg pr "$PORT:$PORT" "$rule")
             [ "$left" = 0 ] && { echo "правило для $PORT удалено"; exit 0; }

@@ -893,3 +893,57 @@ func TestWorkflows_PGBackupProbeAfterDeleteChangesNothing(t *testing.T) {
 		}
 	}
 }
+
+// A rule that is not there afterwards proves nothing unless it was seen
+// first, in the format the check reads (Qwen on #315): close_ports and the
+// check after it match port_range "P:P", and an API that read it in another
+// format would make close_ports answer already_deleted with the port open
+// and the check pass on nothing. The live area net reads the rule of
+// open_ports before close_ports, then repeats close_ports for
+// already_deleted (D26, D37); os-smoke reads the rule of vm create --port
+// before vm delete and refuses its check after delete without it.
+func TestWorkflows_RuleSeenBeforeItIsCheckedGone(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "cloud-live.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(b)
+	start := strings.Index(script, "\narea_net() {")
+	end := strings.Index(script[start+1:], "\n}\n")
+	if start < 0 || end < 0 {
+		t.Fatal("cloud-live.sh: no area_net")
+	}
+	net := script[start : start+1+end]
+	at := func(s string) int { return strings.Index(net, s) }
+	open, seen, closeP, again := at("must open_ports open_ports"), at(`"правило $RULE_PORT видно до close_ports"`),
+		at("must close_ports close_ports"), at("= already_deleted ]")
+	if open < 0 || seen < 0 || closeP < 0 || again < 0 || !(open < seen && seen < closeP && closeP < again) {
+		t.Errorf("cloud-live.sh area_net: open_ports (%d), the rule seen (%d), close_ports (%d), repeat already_deleted (%d) — out of order or missing",
+			open, seen, closeP, again)
+	}
+	if !strings.Contains(net, "cov close_ports") {
+		t.Error("cloud-live.sh area_net: close_ports is not counted as covered")
+	}
+
+	steps := readWorkflows(t)["cloud-e2e.yml"].Jobs["os-smoke"].Steps
+	create, seenStep, del, gone := -1, -1, -1, -1
+	for i, s := range steps {
+		switch {
+		case strings.Contains(s.Run, "vm create \"$VM\""):
+			create = i
+		case strings.Contains(s.Run, "RULE_SEEN=1"):
+			seenStep = i
+		case strings.Contains(s.Run, "vm delete \"$VM_ID\""):
+			del = i
+		case s.Name == "Правило порта удалено после delete":
+			gone = i
+			if !strings.Contains(s.Run, "RULE_SEEN") {
+				t.Error("cloud-e2e os-smoke: the check after delete does not refuse without the rule seen after create")
+			}
+		}
+	}
+	if create < 0 || seenStep < 0 || del < 0 || gone < 0 || !(create < seenStep && seenStep < del && del < gone) {
+		t.Errorf("cloud-e2e os-smoke: vm create (%d), the rule seen (%d), vm delete (%d), the rule gone (%d) — out of order or missing",
+			create, seenStep, del, gone)
+	}
+}
