@@ -213,7 +213,7 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 	}
 	detail, err := eng.Cloud.GetVMDetail(ctx, vmID)
 	if err != nil {
-		return nil, fmt.Errorf("get vm detail: %w", err)
+		return nil, fmt.Errorf(i18n.T("get vm detail: %w", "данные ВМ: %w"), err)
 	}
 	ifaceID := ""
 	for _, itf := range detail.Interfaces {
@@ -244,7 +244,7 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 		Execute: func(ctx context.Context) (string, bool) {
 			res, err := eng.Cloud.AttachFloatingIP(ctx, fipID, pid, ifaceID, name)
 			if err != nil {
-				return errResult(fmt.Errorf("attach floating ip: %w", err)), true
+				return errResult(fmt.Errorf(i18n.T("attach floating ip: %w", "привязка floating IP: %w"), err)), true
 			}
 			return toJSON(map[string]any{"status": "attached", "floating_ip": res, "vm_id": vmID, "interface_id": ifaceID}), false
 		},
