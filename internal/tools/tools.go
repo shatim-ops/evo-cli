@@ -2362,6 +2362,15 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 
 	// Default: delete the current local deployment. Destructive and previously
 	// ungated — now requires the same explicit confirmation as targeted deletes.
+	// Nothing to destroy is the answer 'evo destroy' gives, status none and
+	// no question (W5): there is nothing to consent to.
+	if liveCaller(ctx) == nil {
+		if eng, err := s.newEngine(nil); err == nil && eng != nil {
+			if none, ok := eng.NothingToDestroy(); ok {
+				return toJSON(none), false
+			}
+		}
+	}
 	return s.engineGated(ctx, "destroy", args,
 		func(c *Caller) (string, bool) { return s.destroyLive(ctx, c) },
 		func() (string, bool) {
