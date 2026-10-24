@@ -112,6 +112,11 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		f.posts[r.URL.Path] = string(b)
 	}
 	switch {
+	case r.URL.Host == "s3.cloud.ru" && r.Method == http.MethodGet && r.URL.Path == "/":
+		// The project's buckets: my-bucket only.
+		rec.Header().Set("Content-Type", "application/xml")
+		_, _ = io.WriteString(rec, `<?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`+
+			`<Owner><ID>o</ID></Owner><Buckets><Bucket><Name>my-bucket</Name><CreationDate>2026-10-01T00:00:00.000Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>`)
 	case r.URL.Path == "/v3/productConfiguration":
 		flavors := f.flavors
 		if flavors == "" {
@@ -810,13 +815,16 @@ func TestK8s_NotesInCLIWords(t *testing.T) {
 	}
 }
 
+// raS3 gives the configuration S3 keys: a manifest's bucket is looked up.
+func raS3(c *config.Config) { c.S3 = config.S3Config{AccessKey: "a", SecretKey: "s"} }
+
 // D19 for stacks: an s3 object of the manifest with a bucket name S3 cannot
 // take ("../x") passed stack_plan; stack_apply then created the VM and the
 // rest, and only the s3 step refused it with USAGE — consent was given to a
 // stack that could not finish. Now stack_plan refuses it, naming s3[i].bucket,
 // before a job exists; a valid name plans as before.
 func TestStackPlan_S3BucketNameCheckedAtPlan(t *testing.T) {
-	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, raS3)
 	for _, bad := range []string{"../x", "a/b"} {
 		mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": bad, "key": "k", "content": "c"}}}
 		m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf})
@@ -831,6 +839,33 @@ func TestStackPlan_S3BucketNameCheckedAtPlan(t *testing.T) {
 	if m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf}); isErr || m["job_id"] == nil {
 		t.Errorf("valid bucket: %s", text)
 	}
+}
+
+// G13-13 (W7): a bucket the manifest names that the project does not have
+// passed stack_plan, and stack_apply failed at the s3 step after the steps
+// before it were created and billed. stack_plan lists the project's
+// buckets: one that is not there is NOT_FOUND naming s3[i].bucket, and no
+// job is planned.
+func TestStackPlan_NamedBucketMustExist(t *testing.T) {
+	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, raS3)
+	mf := map[string]any{"name": "s1", "vm": map[string]any{"name": "vm"},
+		"s3": []any{map[string]any{"bucket": "no-such-bucket", "key": "k", "content": "c"}}}
+	m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf})
+	msg, _ := m["error"].(string)
+	if !isErr || m["job_id"] != nil || !strings.Contains(msg, "s3[0].bucket") || !strings.Contains(msg, "no-such-bucket") {
+		t.Fatalf("a bucket the project does not have: %s", text)
+	}
+	wantReason(t, "no-such-bucket", m, text, "NOT_FOUND")
+
+	// Without S3 keys the bucket cannot be looked up: CONFIG_INVALID, and
+	// no job either (the s3 step needed the keys after the steps before it).
+	r = raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+	mf["s3"] = []any{map[string]any{"bucket": "my-bucket", "key": "k", "content": "c"}}
+	m, text, isErr = callNamed(t, r, "stack_plan", map[string]any{"manifest": mf})
+	if !isErr || m["job_id"] != nil {
+		t.Fatalf("a manifest with an S3 object, no S3 keys: %s", text)
+	}
+	wantReason(t, "no S3 keys", m, text, "CONFIG_INVALID")
 }
 
 // cloud-e2e 22.10 (runs 39838101751, 39844928752): k8s_create sent the
@@ -891,7 +926,7 @@ func TestK8s_EqualFlavorsByNameWhateverCatalogOrder(t *testing.T) {
 func TestStackPlan_ConsentInNext(t *testing.T) {
 	mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": "my-bucket", "key": "k", "content": "c"}}}
 	for _, readOnly := range []bool{false, true} {
-		r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+		r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, raS3)
 		if readOnly {
 			r.SetReadOnly()
 		}
