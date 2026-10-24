@@ -51,7 +51,7 @@ func TestCreatedFakes_AnswerTheDeclaredID(t *testing.T) {
 					return true
 				}
 				tool := replacedHandler(as.Lhs[0])
-				if len(createdIDs[tool].id) == 0 {
+				if createdIDs[tool].id == "" {
 					return true
 				}
 				if answersKey(as.Rhs[0], idKeys(tool)) {
@@ -59,7 +59,7 @@ func TestCreatedFakes_AnswerTheDeclaredID(t *testing.T) {
 				}
 				seen[key] = true
 				if foreignFakes[key] == "" {
-					bad = append(bad, fmt.Sprintf("%s (%s): the fake of %s answers without %v (createdIDs)", key, fset.Position(as.Pos()), tool, createdIDs[tool].id))
+					bad = append(bad, fmt.Sprintf("%s (%s): the fake of %s answers without %q (createdIDs)", key, fset.Position(as.Pos()), tool, createdIDs[tool].id))
 				}
 				return true
 			})
@@ -97,7 +97,8 @@ func replacedHandler(e ast.Expr) string {
 // idKeys are the top-level keys of the answer of tool that hold its id.
 func idKeys(tool string) map[string]bool {
 	out := map[string]bool{}
-	for _, p := range createdIDs[tool].id {
+	c := createdIDs[tool]
+	for _, p := range []string{c.id, c.lostField()} {
 		k, _, _ := strings.Cut(p, ".")
 		out[k] = true
 	}

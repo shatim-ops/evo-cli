@@ -178,7 +178,7 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 			err = noID("operation")
 		}
 		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListZones(ctx, vis) }
-		return lostCreate(ctx, list, i18n.T("DNS zone", "зона DNS"), "zone_id", name, nil, "dns_zone_get zone_id", "dns_zones", fmt.Errorf("create zone: %w", err))
+		return lostCreate(ctx, "dns_zone_create", list, i18n.T("DNS zone", "зона DNS"), name, nil, "dns_zone_get zone_id", fmt.Errorf("create zone: %w", err))
 	}
 	out := map[string]any{"status": "creating", "visibility": vis, "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id); then dns_zones for the id (public zones return a verification_token to delegate)."}
 	// The zone's id is in the create's answer: named at once (fault matrix,
@@ -411,7 +411,7 @@ func (s *Registry) handleDnsRecordCreate(ctx context.Context, args map[string]an
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, list, i18n.T("DNS record", "запись DNS"), "record_id", key, nil, "dns_records zone_id="+zoneID, "dns_records", fmt.Errorf("create record: %w", err))
+		return lostCreate(ctx, "dns_record_create", list, i18n.T("DNS record", "запись DNS"), key, nil, "dns_records zone_id="+zoneID, fmt.Errorf("create record: %w", err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id)."}
 	if op.ResourceID != "" {

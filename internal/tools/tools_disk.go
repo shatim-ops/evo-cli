@@ -172,7 +172,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 			err = noID("disk")
 		}
 		list := func(ctx context.Context) ([]map[string]any, error) { return eng.Cloud.ListDisks(ctx, pid) }
-		return lostCreate(ctx, list, i18n.T("disk", "диск"), "disk_id", name, nil, "disk_list", "disk_list", fmt.Errorf("create disk: %w", err))
+		return lostCreate(ctx, "disk_create", list, i18n.T("disk", "диск"), name, nil, "disk_list", fmt.Errorf("create disk: %w", err))
 	}
 	res := map[string]any{"status": "created", "disk": disk}
 	if attachTo == "" || vmID == "" {

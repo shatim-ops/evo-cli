@@ -7,6 +7,7 @@ package tools
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -15,9 +16,10 @@ const stackManifestAll = `{"name":"s","vpc":{"name":"v"},"postgres":{"name":"p"}
 
 // Every create says what names what it makes (createdIDs, G13-14): the
 // field of its answer, the argument the delete takes, or why nothing; the
-// delete is a declared one and takes what the create gives, and a create
-// with a list is found by the name its createNames rule says. Every create
-// of a stack step is found by name and deleted by stack_destroy.
+// delete is a declared one and takes what the create gives. Every create
+// of a stack step is found by name (its list and createNames, stepFinder)
+// and deleted by stack_destroy; a list serves lostCreate too, which may
+// find by another field (a route by its destination).
 func TestCreated_EveryCreateDeclared(t *testing.T) {
 	stackHome(t)
 	r := New(nil)
@@ -31,13 +33,17 @@ func TestCreated_EveryCreateDeclared(t *testing.T) {
 			continue
 		}
 		forms := 0
-		for _, set := range []bool{len(c.id) > 0, c.arg != "", c.none != ""} {
+		for _, set := range []bool{c.id != "", c.arg != "", c.none != ""} {
 			if set {
 				forms++
 			}
 		}
 		if forms != 1 {
 			t.Errorf("%s: one of id, arg and none is set, not %d", tl.Name, forms)
+		}
+		// lostCreate answers the id as a field of its own answer.
+		if strings.Contains(c.lostField(), ".") || c.lost != "" && c.none != "" {
+			t.Errorf("%s: lost field %q is not a field of lostCreate's answer", tl.Name, c.lostField())
 		}
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for _, a := range append([]string{c.arg}, c.listArgs...) {
@@ -48,10 +54,6 @@ func TestCreated_EveryCreateDeclared(t *testing.T) {
 		if c.list != "" {
 			if _, ok := r.Lookup(c.list); !ok || c.field == "" {
 				t.Errorf("%s: list %q is not a tool, or names no field", tl.Name, c.list)
-			}
-			// stepFinder finds it by the name createNames says.
-			if len(createNames[tl.Name].args) == 0 {
-				t.Errorf("%s: has a list, but createNames gives no name argument to find it by", tl.Name)
 			}
 		}
 		if c.delete == "" {
@@ -88,7 +90,7 @@ func TestCreated_EveryCreateDeclared(t *testing.T) {
 // would leave the stack nothing to delete (G13-14).
 func checkCreatedID(t *testing.T, tool, text string, w faultWorld) {
 	t.Helper()
-	if len(createdIDs[tool].id) == 0 {
+	if createdIDs[tool].id == "" {
 		return
 	}
 	var res map[string]any
@@ -97,7 +99,7 @@ func checkCreatedID(t *testing.T, tool, text string, w faultWorld) {
 	}
 	id := createdID(tool, res)
 	if id == "" {
-		t.Errorf("(c) %s answered success without the id at %v: %s", tool, createdIDs[tool].id, text)
+		t.Errorf("(c) %s answered success without the id at %q: %s", tool, createdIDs[tool].id, text)
 		return
 	}
 	for _, b := range w.billed() {

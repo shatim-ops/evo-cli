@@ -87,7 +87,7 @@ func (s *Registry) handleCertIssueLE(ctx context.Context, args map[string]any) (
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, list, i18n.T("certificate", "сертификат"), "certificate_id", name, nil, "cert_get id", "cert_list", fmt.Errorf("issue certificate: %w", err))
+		return lostCreate(ctx, "cert_issue_le", list, i18n.T("certificate", "сертификат"), name, nil, "cert_get id", fmt.Errorf("issue certificate: %w", err))
 	}
 	// Async: return the operation; the caller polls cert_operation until done.
 	out := map[string]any{"status": "issuing", "note": "Let's Encrypt issuance is async — poll cert_operation with this operation id until done=true. Domains must have delegated zones in Evolution DNS.", "operation": op}
@@ -135,7 +135,7 @@ func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (s
 		if err == nil {
 			err = noID("certificate")
 		}
-		return lostCreate(ctx, list, i18n.T("certificate", "сертификат"), "certificate_id", name, nil, "cert_get id", "cert_list", fmt.Errorf("import certificate: %w", err))
+		return lostCreate(ctx, "cert_import", list, i18n.T("certificate", "сертификат"), name, nil, "cert_get id", fmt.Errorf("import certificate: %w", err))
 	}
 	return toJSON(map[string]any{"status": "imported", "certificate": c}), false
 }
