@@ -270,7 +270,7 @@ const (
 // faultMatrixOut is the closed list of the tools that ask for consent and
 // are not in faultMatrixCases, with the reason.
 var faultMatrixOut = map[string]string{
-	"ar_delete": faultOutRemoves, "ca_delete": faultOutRemoves, "ca_stop": faultOutRemoves,
+	"ar_delete": faultOutRemoves, "ca_delete": faultOutRemoves, "close_ports": faultOutRemoves, "ca_stop": faultOutRemoves,
 	"cert_delete": faultOutRemoves, "disk_delete": faultOutRemoves, "disk_detach": faultOutRemoves,
 	"dns_record_delete": faultOutRemoves, "dns_zone_delete": faultOutRemoves, "image_delete": faultOutRemoves,
 	"k8s_delete": faultOutRemoves, "kafka_delete": faultOutRemoves, "lb_delete": faultOutRemoves,
