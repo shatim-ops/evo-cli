@@ -2350,11 +2350,14 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 	if err != nil {
 		return errResult(err), true
 	}
-	switch key {
-	case "vm_id":
-		return s.destroyTargeted(ctx, args, ref, "")
-	case "name":
-		return s.destroyTargeted(ctx, args, "", ref)
+	if key != "" {
+		vmID, name := ref, ""
+		if key == "name" {
+			vmID, name = "", ref
+		}
+		return s.gated("destroy", func(ctx context.Context, args map[string]any) (*Plan, error) {
+			return s.planDestroyTargeted(ctx, args, vmID, name)
+		})(ctx, args)
 	}
 
 	// Default: delete the current local deployment. Destructive and previously
@@ -2447,37 +2450,38 @@ func logField(log string) map[string]any {
 	return map[string]any{"log": log}
 }
 
-// destroyTargeted deletes a specific VM by id or name (gated on confirmation),
-// optionally releasing its floating IP and removing it from local state.
-// The VM is looked up before the gate: the preview names the target, the
-// floating IP and the port rules that go with it; a VM that is not there is
-// VM_NOT_FOUND, and a name several VMs share is USAGE with the candidates,
-// both without a question (release audit, R-03, R-04, A-004).
-func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmID, name string) (string, bool) {
+// planDestroyTargeted plans the delete of a specific VM by id or name
+// (D35), optionally releasing its floating IP and removing it from local
+// state. The VM is looked up before the gate: the preview names the
+// target, the floating IP and the port rules that go with it; a VM that is
+// not there is already deleted (D26), and a name several VMs share is
+// USAGE with the candidates, both without a question (release audit, R-03,
+// R-04, A-004).
+func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any, vmID, name string) (*Plan, error) {
 	eng, err := s.newEngine(nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	if eng == nil {
-		return errResult(fmt.Errorf("engine unavailable")), true
+		return nil, fmt.Errorf("engine unavailable")
 	}
 	projectID := eng.Config.ProjectID
 	if projectID == "" {
-		return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+		return nil, clierrors.New(clierrors.CodeConfigInvalid,
 			i18n.T("no project is set, so the VM to delete cannot be looked up; nothing was deleted",
 				"не задан проект: удаляемую ВМ не найти, ничего не удалено"),
 			i18n.T("Set the project: 'evo project use <id>', CLOUDRU_PROJECT_ID or project_id in .evo.yaml (the projects: list_projects).",
-				"Задайте проект: 'evo project use <id>', CLOUDRU_PROJECT_ID или project_id в .evo.yaml (проекты — list_projects)."))), true
+				"Задайте проект: 'evo project use <id>', CLOUDRU_PROJECT_ID или project_id в .evo.yaml (проекты — list_projects)."))
 	}
 	tok, err := eng.Auth.Token(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	eng.Cloud.SetToken(tok.Value)
 
 	vms, err := eng.Cloud.ListVMsInProject(ctx, projectID)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// vm_id wins; a name is taken only when one VM has it. Of several
 	// VMs with the name, the first the list gave used to be deleted (R-03).
@@ -2499,10 +2503,10 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			cands = append(cands, map[string]any{"id": v.ID, "zone": vmZone(v), "status": v.Status})
 			ids = append(ids, fmt.Sprintf("%s (zone %s)", v.ID, firstNonEmptyStr(vmZone(v), "unknown")))
 		}
-		return errAnswer(clierrors.New(clierrors.CodeUsage,
+		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("%d VMs in this project are named %s: %s; nothing was deleted", "в проекте %d ВМ с именем %s: %s; ничего не удалено", len(byName), name, strings.Join(ids, ", ")),
 			i18n.T("Pass the VM to delete by vm_id (evo vm delete <vm_id>).", "Укажите удаляемую ВМ по vm_id (evo vm delete <vm_id>).")),
-			map[string]any{"candidates": cands}), true
+			map[string]any{"candidates": cands}), true), nil
 	}
 	if target == nil && len(byName) == 1 {
 		target = byName[0]
@@ -2521,9 +2525,9 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 		// A record of another project: GET /vms/{id} carries no project, so
 		// its 404 does not prove the VM is gone (ревью Fable на #81).
 		if recorded && recProject != "" && recProject != projectID {
-			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+			return nil, clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("VM %s is recorded for another project than the active one; nothing was deleted and its record is kept", "ВМ %s записана для другого проекта, не для активного; ничего не удалено, запись сохранена", vmID),
-				i18n.T("Switch to the record's project ('evo project use <id>' or CLOUDRU_PROJECT_ID) and call destroy again.", "Переключитесь на проект записи ('evo project use <id>' или CLOUDRU_PROJECT_ID) и повторите destroy."))), true
+				i18n.T("Switch to the record's project ('evo project use <id>' or CLOUDRU_PROJECT_ID) and call destroy again.", "Переключитесь на проект записи ('evo project use <id>' или CLOUDRU_PROJECT_ID) и повторите destroy."))
 		}
 		if recorded {
 			_, gerr := eng.Cloud.GetVM(ctx, vmID)
@@ -2533,8 +2537,8 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 				target, alreadyGone = &provision.VM{ID: vmID}, true
 			case gerr != nil:
 				// Not "no VM matching": the cloud did not say the VM is gone.
-				return errResult(fmt.Errorf("VM %s is not in this project's VM list, and asking for it by ID failed (%w); "+
-					"nothing was deleted and its local record is kept — call destroy again", vmID, gerr)), true
+				return nil, fmt.Errorf("VM %s is not in this project's VM list, and asking for it by ID failed (%w); "+
+					"nothing was deleted and its local record is kept — call destroy again", vmID, gerr)
 			}
 		}
 		if target == nil {
@@ -2545,9 +2549,9 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 			if vmID == "" {
 				key, ref = "name", name
 			}
-			return s.deleteFailedAs("destroy", key, ref, clierrors.New(clierrors.CodeVMNotFound,
+			return answered(s.deleteFailedAs("destroy", key, ref, clierrors.New(clierrors.CodeVMNotFound,
 				i18n.Tf("no VM %s in project %s; nothing was deleted", "ВМ %s в проекте %s нет; ничего не удалено", ref, projectID),
-				i18n.T("List the project's VMs with vm_list (evo vm list).", "ВМ проекта — в выводе vm_list (evo vm list).")))
+				i18n.T("List the project's VMs with vm_list (evo vm list).", "ВМ проекта — в выводе vm_list (evo vm list).")))), nil
 		}
 	}
 
@@ -2627,115 +2631,115 @@ func (s *Registry) destroyTargeted(ctx context.Context, args map[string]any, vmI
 	}
 	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
 
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned), true
-	}
+	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 
-	if alreadyGone {
-		// Nothing to delete in the cloud.
-	} else if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
-		if engine.IsNotDeletableYet(err) {
-			// A VM still being created cannot be deleted yet; say when to
-			// come back instead of a bare API error (QA H1/H4).
-			// Cloud.ru answered the delete with a refusal: API_ERROR, as
-			// docs/exit-codes.md has it; the answer had no reason (QA-6).
-			msg := fmt.Sprintf("VM %s is still being created or changing state, so Cloud.ru refuses to delete it now. "+
-				"Call destroy with vm_id %s again in a minute or two; nothing was deleted.", target.ID, target.ID)
-			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError, msg,
-				fmt.Sprintf("Wait until vm_get shows the VM running or stopped, then call destroy vm_id=%s again.", target.ID), err),
-				map[string]any{"status": "not_deletable_yet", "vm_id": target.ID, "message": msg}), true
+		if alreadyGone {
+			// Nothing to delete in the cloud.
+		} else if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
+			if engine.IsNotDeletableYet(err) {
+				// A VM still being created cannot be deleted yet; say when to
+				// come back instead of a bare API error (QA H1/H4).
+				// Cloud.ru answered the delete with a refusal: API_ERROR, as
+				// docs/exit-codes.md has it; the answer had no reason (QA-6).
+				msg := fmt.Sprintf("VM %s is still being created or changing state, so Cloud.ru refuses to delete it now. "+
+					"Call destroy with vm_id %s again in a minute or two; nothing was deleted.", target.ID, target.ID)
+				return errAnswer(clierrors.Wrap(clierrors.CodeAPIError, msg,
+					fmt.Sprintf("Wait until vm_get shows the VM running or stopped, then call destroy vm_id=%s again.", target.ID), err),
+					map[string]any{"status": "not_deletable_yet", "vm_id": target.ID, "message": msg}), true
+			}
+			return errResult(fmt.Errorf("delete VM: %w", err)), true
+		} else if !eng.WaitVMGone(ctx, target.ID) {
+			// The delete was accepted, but the VM is still listed: its floating
+			// IP stays attached and its ports may still serve. The record stays
+			// (destroying, with the FIP) and nothing else is released until a
+			// re-run sees the VM gone; the answer is partial, not ok (release
+			// audit, A-005, L-11).
+			return destroyUnconfirmed(statePath, projectID, target, &fipRec, releaseIP && hasFIP, !releaseIP && hasFIP), true
 		}
-		return errResult(fmt.Errorf("delete VM: %w", err)), true
-	} else if !eng.WaitVMGone(ctx, target.ID) {
-		// The delete was accepted, but the VM is still listed: its floating
-		// IP stays attached and its ports may still serve. The record stays
-		// (destroying, with the FIP) and nothing else is released until a
-		// re-run sees the VM gone; the answer is partial, not ok (release
-		// audit, A-005, L-11).
-		return destroyUnconfirmed(statePath, projectID, target, &fipRec, releaseIP && hasFIP, !releaseIP && hasFIP), true
-	}
 
-	// The floating IP first, as the CLI destroy does: it stays attached until
-	// the VM is gone. Only then the record goes — dropping it before a failed
-	// release left the FIP billed with no trace (QA r3 R1).
-	msg := "VM deleted"
-	if alreadyGone {
-		msg = "VM already deleted (not found in the cloud); its local record is cleaned up"
-	}
-	if keptFIP != "" {
-		msg += "; floating IP " + keptFIP + " kept: " + keptWhy + " (release it with release_floating_ip, or call destroy with release_ip=true)"
-	}
-	fipLeft := false
-	if releaseIP && hasFIP {
-		if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
-			fipLeft = true
-			msg += fmt.Sprintf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
-				"call destroy with vm_id %s again, or release it with release_floating_ip", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
-		} else {
-			msg += "; released floating IP " + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
+		// The floating IP first, as the CLI destroy does: it stays attached until
+		// the VM is gone. Only then the record goes — dropping it before a failed
+		// release left the FIP billed with no trace (QA r3 R1).
+		msg := "VM deleted"
+		if alreadyGone {
+			msg = "VM already deleted (not found in the cloud); its local record is cleaned up"
 		}
-	}
-
-	// Local state: delete the port rules the deployment created (the same
-	// code as the CLI destroy) and drop the record — unless its FIP is still
-	// billed: then it stays "destroying" with the FIP, for the next destroy.
-	var rules sgrules.CloseResult
-	stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
-		var ids []string
-		for _, d := range sf.Deployments {
-			if d.VMID == target.ID {
-				ids = append(ids, d.ID)
+		if keptFIP != "" {
+			msg += "; floating IP " + keptFIP + " kept: " + keptWhy + " (release it with release_floating_ip, or call destroy with release_ip=true)"
+		}
+		fipLeft := false
+		if releaseIP && hasFIP {
+			if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
+				fipLeft = true
+				msg += fmt.Sprintf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
+					"call destroy with vm_id %s again, or release it with release_floating_ip", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
+			} else {
+				msg += "; released floating IP " + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 			}
 		}
-		for _, id := range ids {
-			rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id))
-		}
-		if fipLeft {
-			rec := state.DeploymentRecord{ID: target.ID, VMID: target.ID, CreatedAt: time.Now()}
+
+		// Local state: delete the port rules the deployment created (the same
+		// code as the CLI destroy) and drop the record — unless its FIP is still
+		// billed: then it stays "destroying" with the FIP, for the next destroy.
+		var rules sgrules.CloseResult
+		stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
+			var ids []string
 			for _, d := range sf.Deployments {
 				if d.VMID == target.ID {
-					rec = d
-					break
+					ids = append(ids, d.ID)
 				}
 			}
-			rec.Status = "destroying"
-			rec.FloatingIPID = firstNonEmptyStr(fipRec.FloatingIPID, rec.FloatingIPID)
-			rec.VMIP = firstNonEmptyStr(fipRec.VMIP, rec.VMIP)
-			rec.ProjectID = firstNonEmptyStr(rec.ProjectID, fipRec.ProjectID, projectID)
-			rec.UpdatedAt = time.Now()
-			sf.UpsertDeployment(rec)
+			for _, id := range ids {
+				rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id))
+			}
+			if fipLeft {
+				rec := state.DeploymentRecord{ID: target.ID, VMID: target.ID, CreatedAt: time.Now()}
+				for _, d := range sf.Deployments {
+					if d.VMID == target.ID {
+						rec = d
+						break
+					}
+				}
+				rec.Status = "destroying"
+				rec.FloatingIPID = firstNonEmptyStr(fipRec.FloatingIPID, rec.FloatingIPID)
+				rec.VMIP = firstNonEmptyStr(fipRec.VMIP, rec.VMIP)
+				rec.ProjectID = firstNonEmptyStr(rec.ProjectID, fipRec.ProjectID, projectID)
+				rec.UpdatedAt = time.Now()
+				sf.UpsertDeployment(rec)
+				return nil
+			}
+			for _, id := range ids {
+				sgrules.Retire(sf, id)
+			}
 			return nil
-		}
-		for _, id := range ids {
-			sgrules.Retire(sf, id)
-		}
-		return nil
-	})
+		})
 
-	out := map[string]any{
-		"status":     "ok",
-		"deleted_vm": target.ID,
-		"name":       target.Name,
-	}
-	if alreadyGone {
-		out["status"] = "already_deleted"
-	}
-	if len(rules.Closed) > 0 {
-		msg += "; closed ports " + strings.Join(rules.Closed, ",")
-	}
-	if len(rules.Failed) > 0 {
-		msg += "; WARNING: could not delete the rules for ports " + strings.Join(rules.Failed, "; ") + " — call destroy again to retry"
-	}
-	if !rules.Empty() {
-		out["security_group_rules"] = rules
-	}
-	if stateErr != nil {
-		// The VM is gone; only the local bookkeeping is stale. Say so rather
-		// than leave port rules open without a word.
-		msg += fmt.Sprintf("; WARNING: the local state was not updated (%v): its record of this VM stays, and the port rules that deployment opened were not closed — close them in the Cloud.ru console if nothing else uses them", stateErr)
-	}
-	out["message"] = msg
-	return toJSON(out), false
+		out := map[string]any{
+			"status":     "ok",
+			"deleted_vm": target.ID,
+			"name":       target.Name,
+		}
+		if alreadyGone {
+			out["status"] = "already_deleted"
+		}
+		if len(rules.Closed) > 0 {
+			msg += "; closed ports " + strings.Join(rules.Closed, ",")
+		}
+		if len(rules.Failed) > 0 {
+			msg += "; WARNING: could not delete the rules for ports " + strings.Join(rules.Failed, "; ") + " — call destroy again to retry"
+		}
+		if !rules.Empty() {
+			out["security_group_rules"] = rules
+		}
+		if stateErr != nil {
+			// The VM is gone; only the local bookkeeping is stale. Say so rather
+			// than leave port rules open without a word.
+			msg += fmt.Sprintf("; WARNING: the local state was not updated (%v): its record of this VM stays, and the port rules that deployment opened were not closed — close them in the Cloud.ru console if nothing else uses them", stateErr)
+		}
+		out["message"] = msg
+		return toJSON(out), false
+	}}, nil
 }
 
 // vmZone is the VM's zone for an answer: its name when the list gave it,
@@ -2755,12 +2759,12 @@ func addrLabel(ip, id string) string {
 	return ip + " (" + id + ")"
 }
 
-// destroyTargetPreview is the confirmation answer of destroy vm_id=/name=:
+// destroyTargetPreview is the preview of destroy vm_id=/name=:
 // the VM it deletes, the floating IP it releases or keeps and the port
 // rules evo opened for it (release audit, R-04). The person approving sees
 // which VM goes, not only an instruction.
 func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID string, releaseIP, hasFIP bool,
-	fipRec *state.DeploymentRecord, keptFIP, keptWhy string, rules []sgrules.Planned) string {
+	fipRec *state.DeploymentRecord, keptFIP, keptWhy string, rules []sgrules.Planned) map[string]any {
 	tgt := map[string]any{"id": target.ID, "name": target.Name, "zone": vmZone(target), "status": target.Status,
 		"public_ip": firstNonEmptyStr(target.FloatingIP, target.PublicIP, fipRec.VMIP)}
 	if !target.CreatedAt.IsZero() {
@@ -2793,7 +2797,6 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 		fip = "kept (release_ip=false): " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	}
 	out := map[string]any{
-		"status":      "confirmation_required",
 		"message":     msg,
 		"project_id":  projectID,
 		"target":      tgt,
@@ -2812,7 +2815,7 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 	if len(ports) > 0 {
 		out["port_rules"] = ports
 	}
-	return toJSON(out)
+	return out
 }
 
 // fipLeftAnswer is the error answer of a provision whose VM was not created:
