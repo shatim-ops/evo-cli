@@ -66,7 +66,9 @@ var parityArgs = map[string]map[string]any{
 	"disk_list":       {},
 	"list_disk_types": {},
 	// vpc
-	"open_ports":           {"security_group": "web", "ports": []any{float64(80), float64(443)}},
+	// The zone's group, in the worlds of the previews and of the answers
+	// alike: open_ports reads it before the question (G13-23).
+	"open_ports":           {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(443)}},
 	"vpc_list":             {},
 	"vpc_get":              {"id": parityVM},
 	"vpc_operation":        {"operation_id": parityVM},

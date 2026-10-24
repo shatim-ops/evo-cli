@@ -92,6 +92,13 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "deploy", map[string]any{})
 		return text
 	},
+	// open_ports reads its group and the group's rules before the question
+	// (G13-23, D35): the zone's group of the fault cloud.
+	"open_ports": func(t *testing.T) string {
+		r, _ := faultToolsRegistry(t, &faultCloud{})
+		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}})
+		return text
+	},
 	// The preview of deploy_apply is its saved plan (B12-8): a plan_id
 	// with no plan file is refused before the gate.
 	"deploy_apply": func(t *testing.T) string {
