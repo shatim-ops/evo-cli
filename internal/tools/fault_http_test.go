@@ -403,7 +403,7 @@ func faultAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 // and where to find it — not a bare error (Qwen review of #212).
 func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 	failed := func(context.Context) ([]map[string]any, error) { return nil, errors.New("list: timeout") }
-	text, isErr := lostCreate(context.Background(), failed, "Kafka cluster", "cluster_id", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: lost"))
+	text, isErr := lostCreate(context.Background(), "kafka_create", failed, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: lost"))
 	var m map[string]any
 	if err := json.Unmarshal([]byte(text), &m); err != nil || !isErr {
 		t.Fatalf("answer %s err=%v isErr=%v", text, err, isErr)
@@ -412,7 +412,7 @@ func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 		t.Errorf("warning %q: want the name, billed and kafka_list", w)
 	}
 	absent := func(context.Context) ([]map[string]any, error) { return nil, nil }
-	if text, isErr := lostCreate(context.Background(), absent, "Kafka cluster", "cluster_id", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: 409")); !isErr || strings.Contains(text, "warning") {
+	if text, isErr := lostCreate(context.Background(), "kafka_create", absent, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: 409")); !isErr || strings.Contains(text, "warning") {
 		t.Errorf("listed and absent: %s; want the create's error only", text)
 	}
 }
@@ -421,7 +421,7 @@ func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 // says API_ERROR, not USAGE (the caller's arguments were fine).
 func TestLostCreate_NoIDIsAPIError(t *testing.T) {
 	absent := func(context.Context) ([]map[string]any, error) { return nil, nil }
-	text, _ := lostCreate(context.Background(), absent, "SNAT gateway", "nat_gateway_id", "evo-n", nil, "snat_list", "snat_list", fmt.Errorf("create SNAT gateway: %w", noID("gateway")))
+	text, _ := lostCreate(context.Background(), "snat_create", absent, "SNAT gateway", "evo-n", nil, "snat_list", fmt.Errorf("create SNAT gateway: %w", noID("gateway")))
 	var m map[string]any
 	if err := json.Unmarshal([]byte(text), &m); err != nil || m["reason"] != "API_ERROR" {
 		t.Errorf("reason %v, want API_ERROR: %s", m["reason"], text)
@@ -434,7 +434,7 @@ func TestLostCreate_FoundSaysItsStatus(t *testing.T) {
 	failed := func(context.Context) ([]map[string]any, error) {
 		return []map[string]any{{"id": "c-1", "name": "evo-k", "status": "FAILED"}}, nil
 	}
-	text, isErr := lostCreate(context.Background(), failed, "Kafka cluster", "cluster_id", "evo-k", nil, "kafka_get cluster_id", "kafka_list", errors.New("create cluster: lost"))
+	text, isErr := lostCreate(context.Background(), "kafka_create", failed, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: lost"))
 	if isErr || !strings.Contains(text, "c-1") || !strings.Contains(text, "status FAILED") {
 		t.Errorf("answer %s: want c-1 and its status FAILED", text)
 	}
