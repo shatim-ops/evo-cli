@@ -4,7 +4,7 @@
 только чтение. Сверено: diff `origin/main...b5229c5` (база `7626bb3`) против
 собранного бинаря ветки (`evo tools describe`, `--help`), `internal/tools`,
 `internal/engine`, `docs/mcp.md`, DECISIONS (D16, D26, D28, D35–D38) и реестра
-расхождений; `go test ./internal/cli -run TestSkills` — ok. Дельту
+расхождений; `go test ./internal/cli -run TestSkills` — ok. Дельта
 `b5229c5..c487890` (ответы на ревью Qwen, три файла текста) — новых находок нет (Fable и релиз).
 
 **Вердикт:** тег 1.3.0 со скиллами разрешён после FBS-1. Находок уровня
