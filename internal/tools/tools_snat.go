@@ -135,7 +135,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 		if err == nil {
 			err = noID("gateway")
 		}
-		return lostCreate(ctx, list, i18n.T("SNAT gateway", "шлюз SNAT"), "nat_gateway_id", name, nil, "snat_list", "snat_list", fmt.Errorf("create SNAT gateway: %w", err))
+		return lostCreate(ctx, "snat_create", list, i18n.T("SNAT gateway", "шлюз SNAT"), name, nil, "snat_list", fmt.Errorf("create SNAT gateway: %w", err))
 	}
 	return toJSON(map[string]any{
 		"status":      "created",

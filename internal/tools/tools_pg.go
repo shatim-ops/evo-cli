@@ -475,7 +475,7 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, cli.ListClusters, i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), "cluster_id", name, willCreate, "pg_get id", "pg_list", fmt.Errorf("create cluster: %w", err))
+		return lostCreate(ctx, "pg_create", cli.ListClusters, i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, willCreate, "pg_get id", fmt.Errorf("create cluster: %w", err))
 	}
 	out := map[string]any{
 		"status":       "creating",
@@ -731,7 +731,7 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, list, i18n.T("backup", "резервная копия"), "backup_id", name, nil, "pg_backups cluster_id="+cid, "pg_backups", fmt.Errorf("create backup: %w", err))
+		return lostCreate(ctx, "pg_backup_create", list, i18n.T("backup", "резервная копия"), name, nil, "pg_backups cluster_id="+cid, fmt.Errorf("create backup: %w", err))
 	}
 	out := map[string]any{"status": "backing_up", "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id)."}
 	if op.ResourceID != "" {
