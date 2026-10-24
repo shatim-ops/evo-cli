@@ -111,6 +111,17 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}})
 		return text
 	},
+	// fip_attach finds the address and the VM before the question (W6): a
+	// free address and a VM with its interface in the fault cloud.
+	"fip_attach": func(t *testing.T) string {
+		c := &faultCloud{
+			vms:  []faultVM{{ID: faultID(0x41), Name: "web", Status: "running"}},
+			fips: []faultFIP{{ID: faultID(0x42), IP: "203.0.113.10", State: "available"}},
+		}
+		r, _ := faultToolsRegistry(t, c)
+		_, text, _ := callNamed(t, r, "fip_attach", map[string]any{"fip": "203.0.113.10", "vm": faultID(0x41)})
+		return text
+	},
 	// destroy with no deployment answers status none with no question, as
 	// the CLI (W5): its preview needs a deployment in the state.
 	"destroy": func(t *testing.T) string {
