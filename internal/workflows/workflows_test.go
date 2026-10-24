@@ -30,7 +30,10 @@ type workflow struct {
 		TimeoutMinutes int    `yaml:"timeout-minutes"`
 		Permissions    any    `yaml:"permissions"`
 		Uses           string `yaml:"uses"`
-		Steps          []struct {
+		RunsOn         string `yaml:"runs-on"`
+		// ContinueOnError: a job whose failure does not fail the run.
+		ContinueOnError bool `yaml:"continue-on-error"`
+		Steps           []struct {
 			ID   string            `yaml:"id"`
 			Name string            `yaml:"name"`
 			If   string            `yaml:"if"`
@@ -980,5 +983,47 @@ func TestWorkflows_ZoneIDMaskedBeforeEnv(t *testing.T) {
 				t.Errorf("cloud-e2e %s, %s: ZONE_ID goes to GITHUB_ENV unmasked", name, s.Name)
 			}
 		}
+	}
+}
+
+// The Linux job of ci runs on a named image, not ubuntu-latest: on
+// ubuntu-26.04 (ubuntu-latest from 24.10.2026) evo_wrapper_test.sh failed
+// 2 of 2 on the tag v1.3.0-rc.2 (release run 40100673928) and passed on
+// ubuntu-24 the same day, so the image changed under an unchanged commit.
+// The release and cloud-e2e are pinned the same way. A job on ubuntu-latest
+// runs the wrapper test without failing the run, so the move to the new
+// image is a decision made on its result.
+func TestWorkflows_CILinuxImageIsPinned(t *testing.T) {
+	ci := readWorkflows(t)["ci.yml"]
+	if ro := ci.Jobs["test"].RunsOn; !strings.Contains(ro, "'ubuntu-24.04'") {
+		t.Errorf("ci test: runs-on %q — the Linux job takes ubuntu-latest, not ubuntu-24.04", ro)
+	}
+	// The release and the live runs (logs -f, Ctrl-C through timeout -s
+	// INT) run on the same image as the tests that cleared them.
+	ws := readWorkflows(t)
+	for _, f := range []string{"release.yml", "cloud-e2e.yml"} {
+		for name, j := range ws[f].Jobs {
+			// A job with uses: runs on the image of the workflow it calls.
+			if j.Uses == "" && j.RunsOn != "ubuntu-24.04" {
+				t.Errorf("%s %s: runs-on %q, not ubuntu-24.04", f, name, j.RunsOn)
+			}
+		}
+	}
+	probe := false
+	for name, j := range ci.Jobs {
+		if j.RunsOn != "ubuntu-latest" {
+			continue
+		}
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, ".github/scripts/evo_wrapper_test.sh") {
+				probe = true
+				if !j.ContinueOnError {
+					t.Errorf("ci %s: the probe of ubuntu-latest fails the run (continue-on-error: true)", name)
+				}
+			}
+		}
+	}
+	if !probe {
+		t.Error("ci: no job runs evo_wrapper_test.sh on ubuntu-latest")
 	}
 }

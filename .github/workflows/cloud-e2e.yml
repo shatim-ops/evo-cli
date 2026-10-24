@@ -32,6 +32,9 @@ name: cloud-e2e
 # наблюдателя), без одобрения. Пуша в e2e/** как триггера больше нет: с ним
 # код из ветки запускался с ключом без чьего-либо решения.
 
+# Образ раннера — ubuntu-24.04, не ubuntu-latest (26.04 с 24.10.2026):
+# обёртка evo и Ctrl-C через timeout -s INT проверены на 24.04; переход —
+# по job wrapper-ubuntu-latest в ci.yml (TestWorkflows_CILinuxImageIsPinned).
 on:
   workflow_dispatch:
     inputs:
@@ -115,7 +118,7 @@ jobs:
     # не запускается (иначе прогон красный без единого шага).
     environment: cloud-readonly
     if: ${{ !inputs.cleanup_only && github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
@@ -162,7 +165,7 @@ jobs:
   e2e:
     environment: cloud-e2e
     if: ${{ !inputs.cleanup_only }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
@@ -378,7 +381,7 @@ jobs:
   # слияния. Без секретов и окружения: только разбор входов и путей.
   live-plan:
     if: ${{ !inputs.cleanup_only }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       areas: ${{ steps.areas.outputs.areas }}
@@ -426,7 +429,7 @@ jobs:
     needs: live-plan
     if: ${{ !inputs.cleanup_only && needs.live-plan.outputs.areas != '[]' }}
     environment: cloud-e2e
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -502,7 +505,7 @@ jobs:
   os-smoke:
     environment: cloud-e2e
     if: ${{ inputs.os_smoke && !inputs.cleanup_only }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -730,7 +733,7 @@ jobs:
   cleanup:
     environment: cloud-e2e
     if: ${{ inputs.cleanup_only }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Кластер DBaaS, который ещё создаётся, Cloud.ru удалять отказывается:
     # повтор до 120 мин и ожидание до 30 (dbaas-delete.sh) поверх ВМ и mk8s.
     timeout-minutes: 240
@@ -884,7 +887,7 @@ jobs:
   k8s-smoke:
     environment: cloud-e2e
     if: ${{ inputs.k8s_smoke && !inputs.cleanup_only }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Шаги ждут до 40 + 30 + 25 мин, удаление — до 30: запас, чтобы job не
     # оборвался по таймауту до удаления кластера.
     timeout-minutes: 180
@@ -1127,7 +1130,7 @@ jobs:
   dbaas-pg:
     environment: cloud-e2e
     if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Создание до 60 мин, проверки до ~20, удаление: отказы «ещё создаётся»
     # до 120 мин и ожидание до 30 — запас, чтобы job не оборвался до
     # удаления кластера.
@@ -1413,7 +1416,7 @@ jobs:
   dbaas-kafka:
     environment: cloud-e2e
     if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Создание до 75 мин (живое — 37–39, DB-10), проверки — минуты,
     # удаление: отказы «ещё создаётся» до 120 мин и ожидание до 30.
     timeout-minutes: 300
@@ -1565,7 +1568,7 @@ jobs:
   dbaas-redis:
     environment: cloud-e2e
     if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Создание до 50 мин (живое — ~27, DB-12), удаление: отказы «ещё
     # создаётся» до 120 мин и ожидание до 30.
     timeout-minutes: 300

@@ -29,7 +29,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    # Linux — ubuntu-24.04, не ubuntu-latest: на ubuntu-26.04 (ubuntu-latest
+    # с 24.10.2026) evo_wrapper_test.sh упал 2 из 2 на теге v1.3.0-rc.2 при
+    # зелёном том же коммите на ubuntu-24. Имя job прежнее — на него
+    # ссылаются обязательные проверки. Переход — по итогу job
+    # wrapper-ubuntu-latest ниже.
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     steps:
       # Без этого checkout на Windows превращает LF в CRLF, и тесты, читающие
       # файлы из репозитория, видят не те байты, что на Linux.
@@ -174,6 +179,25 @@ jobs:
           go install golang.org/x/tools/cmd/deadcode@v0.38.0
           dead="$("$(go env GOPATH)/bin/deadcode" ./...)"
           if [ -n "$dead" ]; then echo "недостижимый код:"; echo "$dead"; exit 1; fi
+
+  # Проба ubuntu-latest (с 24.10.2026 — ubuntu-26.04, другие coreutils):
+  # обёртка evo, Ctrl-C через timeout -s INT. Прогон не роняет: итог —
+  # решение о переходе job test (TestWorkflows_CILinuxImageIsPinned).
+  wrapper-ubuntu-latest:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: какие timeout и sed
+        run: |
+          timeout --version | head -1
+          sed --version | head -1
+          readlink -f "$(command -v timeout)"
+      - name: обёртка evo с маской stderr
+        run: .github/scripts/evo_wrapper_test.sh
 
   # Класс изменения PR по путям и чек-лист проверок сверх CI в summary
   # прогона (аудит процессов 1.2.1, П5 и PR 8): политика, секреты,
