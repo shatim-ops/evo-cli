@@ -54,9 +54,6 @@ func (s *Registry) handleRedisGet(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageT("'cluster_id' is required (from redis_list)", "нужен 'cluster_id' (из redis_list)"), true
 	}
-	if res := uuidArg("cluster_id", id, "redis_list"); res != "" {
-		return res, true
-	}
 	cli, _, err := s.redisClientEng(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -212,7 +209,7 @@ func (s *Registry) handleRedisCreate(ctx context.Context, args map[string]any) (
 			err = noID("operation")
 		}
 		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, url.Values{}) }
-		return lostCreate(ctx, list, i18n.T("Redis cluster", "кластер Redis"), "cluster_id", name, willCreate, "redis_get cluster_id", "redis_list", fmt.Errorf("create cluster: %w", err))
+		return lostCreate(ctx, "redis_create", list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id", fmt.Errorf("create cluster: %w", err))
 	}
 	return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
 		"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}), false

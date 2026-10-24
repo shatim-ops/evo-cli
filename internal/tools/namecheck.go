@@ -63,10 +63,16 @@ func noID(what string) error {
 // operation id; createErr says which. The service may have made the
 // resource, and then it is billed: list reads the resources again, and one
 // with the name (free before the create, takenName) is answered as made,
-// by its id under idField (fault matrix, process audit 1.2.1). When the list cannot be
-// read either, the error says the resource may exist and where to look:
-// the same create again refuses the taken name and names its id.
-func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]any, error), kind, idField, name string, created map[string]any, getHint, listTool string, createErr error) (string, bool) {
+// by its id under the field createdIDs declares for tool (fault matrix,
+// process audit 1.2.1). When the list cannot be read either, the error
+// says the resource may exist and where to look, the list tool createdIDs
+// declares: the same create again refuses the taken name and names its id.
+func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]map[string]any, error), kind, name string, created map[string]any, getHint string, createErr error) (string, bool) {
+	c := createdIDs[tool]
+	idField, listTool := c.lostField(), c.list
+	if idField == "" || listTool == "" {
+		panic("tools: lostCreate for " + tool + ", whose createdIDs declare no id field or list")
+	}
 	items, err := list(ctx)
 	if err != nil {
 		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
@@ -86,18 +92,6 @@ func lostCreate(ctx context.Context, list func(context.Context) ([]map[string]an
 	return toJSON(map[string]any{"status": answer, idField: id, "resource_status": status, "created": created,
 		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s) и оплачивается", kind, name, id, status),
 		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}), false
-}
-
-// uuidArg refuses an id the API takes only as a UUID before the call: the
-// API answered a malformed id with a 400 that read as API_ERROR, exit 5
-// (release audit, L-15). Returns "" when id is a UUID.
-func uuidArg(arg, id, from string) string {
-	if isUUID(id) {
-		return ""
-	}
-	return errResult(clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("'%s' must be a UUID, got %q", "'%s' должен быть UUID, передано %q", arg, id),
-		i18n.Tf("Take the id from %s.", "id — в выводе %s.", from)))
 }
 
 // needSpecResult is the answer of pg_create, kafka_create and redis_create

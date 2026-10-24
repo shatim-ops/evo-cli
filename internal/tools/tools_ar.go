@@ -109,7 +109,7 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, cli.ListRegistries, i18n.T("registry", "реестр"), "registry_id", name, nil, "ar_get id", "ar_list", fmt.Errorf("create registry: %w", err))
+		return lostCreate(ctx, "ar_create", cli.ListRegistries, i18n.T("registry", "реестр"), name, nil, "ar_get id", fmt.Errorf("create registry: %w", err))
 	}
 	out := map[string]any{
 		"status": "creating", "operation_id": op.ID,

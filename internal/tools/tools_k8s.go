@@ -350,7 +350,7 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, list, i18n.T("Kubernetes cluster", "кластер Kubernetes"), "cluster_id", name, nil, "k8s_get cluster_id", "k8s_list", err)
+		return lostCreate(ctx, "k8s_create", list, i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, nil, "k8s_get cluster_id", err)
 	}
 	return toJSON(map[string]any{
 		"status":       "creating",
@@ -489,9 +489,6 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	if clusterID == "" {
 		return usageT("cluster_id is required", "нужен cluster_id"), true
 	}
-	if err := nodePoolArgsError(args); err != nil {
-		return errResult(err), true
-	}
 	cli, pid, _, err := s.k8sClient(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -603,7 +600,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, list, i18n.T("node pool", "группа узлов"), "nodepool_id", name, nil, "k8s_nodepools cluster_id="+clusterID, "k8s_nodepools", fmt.Errorf("create node pool: %w", err))
+		return lostCreate(ctx, "k8s_add_nodepool", list, i18n.T("node pool", "группа узлов"), name, nil, "k8s_nodepools cluster_id="+clusterID, fmt.Errorf("create node pool: %w", err))
 	}
 	return toJSON(map[string]any{
 		"status": "creating", "node_pool": name, "nodepool_id": op.ResourceID, "cluster_id": clusterID,
@@ -618,22 +615,6 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 // name (release audit, L-10).
 func nodePoolName(args map[string]any) string {
 	return firstNonEmptyStr(stringArg(args, "name"), "nodepool-1")
-}
-
-// nodePoolArgsError checks the sizes of k8s_add_nodepool before the
-// preview: count 0, disk_gb 5 or cpu -1 made a preview, then the API
-// refused it with exit 5 (QA 20.10, QA-7). disk_gb is at least 10, as the
-// schema says.
-func nodePoolArgsError(args map[string]any) error {
-	for _, c := range []struct {
-		key string
-		min int
-	}{{"count", 1}, {"cpu", 1}, {"ram_gb", 1}, {"disk_gb", 10}} {
-		if err := minIntArg(args, c.key, c.min, i18n.T("See the defaults in the tool's description (count 2, cpu 2, ram_gb 4, disk_gb 20).", "Значения по умолчанию — в описании инструмента (count 2, cpu 2, ram_gb 4, disk_gb 20).")); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // k8sArgsError checks the arguments of k8s_plan and k8s_create that need

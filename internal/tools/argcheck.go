@@ -8,7 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"net/netip"
 	"sort"
+	"strconv"
 	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -81,6 +83,12 @@ func checkArgs(name string, schema map[string]any, args map[string]any) error {
 	}
 	for k, v := range args {
 		p, _ := props[k].(map[string]any)
+		if err := ruleArg(k, p, v); err != nil {
+			return err
+		}
+	}
+	for k, v := range args {
+		p, _ := props[k].(map[string]any)
 		enum, _ := p["enum"].([]any)
 		s, isStr := v.(string)
 		if len(enum) == 0 || !isStr || s == "" {
@@ -104,6 +112,83 @@ func checkArgs(name string, schema map[string]any, args map[string]any) error {
 		args[k] = canon
 	}
 	return nil
+}
+
+// ruleArg checks v against the static rules of its schema p (D36): the
+// minimum and maximum of a number, the format of a string — uuid (an id
+// the API takes only as a UUID; another form was a 400 that read as
+// API_ERROR, release audit L-15, or "already deleted" of a repeated delete,
+// D26) and cidr. The handlers checked these themselves, each in its own
+// words (minIntArg, portArg, uuidArg, checkedDelete); a value of only
+// spaces stays the handler's "which argument" error.
+func ruleArg(k string, p map[string]any, v any) error {
+	if n, ok := numberValue(v); ok {
+		shown := strconv.FormatFloat(n, 'f', -1, 64)
+		if min, ok := p["minimum"].(int); ok && n < float64(min) {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("%s %s is below the minimum %d", "%s %s меньше минимума %d", k, shown, min),
+				ruleHint(k, p))
+		}
+		if max, ok := p["maximum"].(int); ok && n > float64(max) {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("%s %s is above the maximum %d", "%s %s больше максимума %d", k, shown, max),
+				ruleHint(k, p))
+		}
+	}
+	s, ok := v.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return nil
+	}
+	switch p["format"] {
+	case "uuid":
+		if !isUUID(s) {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("%s %q is not an id: it is a UUID", "%s %q — не id: он задаётся UUID", k, s),
+				ruleHint(k, p))
+		}
+	case "cidr":
+		if _, err := netip.ParsePrefix(s); err != nil {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("%s %q is not a CIDR (address/prefix length, e.g. 10.0.0.0/16)", "%s %q — не CIDR (адрес/длина префикса, например 10.0.0.0/16)", k, s),
+				ruleHint(k, p))
+		}
+	}
+	return nil
+}
+
+// argRefused reports whether the static rules of tool's schema refuse v
+// as its argument arg (ruleArg).
+func (r *Registry) argRefused(tool, arg string, v any) bool {
+	t, _ := r.Lookup(tool)
+	props, _ := t.InputSchema["properties"].(map[string]any)
+	p, _ := props[arg].(map[string]any)
+	return ruleArg(arg, p, v) != nil
+}
+
+// ruleHint points at the argument's description, which says where the
+// value comes from.
+func ruleHint(k string, _ map[string]any) string {
+	return i18n.Tf("See %s in the tool's inputSchema.", "См. %s в inputSchema инструмента.", k)
+}
+
+// numberValue is v as a number, when it is one.
+func numberValue(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	}
+	return 0, false
 }
 
 // scalarOfType reports whether v fits a scalar schema type: boolean,

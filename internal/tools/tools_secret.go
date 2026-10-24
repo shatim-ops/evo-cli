@@ -138,7 +138,7 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 			}
 			return items, err
 		}
-		return lostCreate(ctx, list, i18n.T("secret", "секрет"), "secret_id", path, nil, "secret_get path", "secret_list", fmt.Errorf("create secret: %w", err))
+		return lostCreate(ctx, "secret_create", list, i18n.T("secret", "секрет"), path, nil, "secret_get path", fmt.Errorf("create secret: %w", err))
 	}
 	// Strip any payload echoed back before returning.
 	if sec, ok := res["secret"].(map[string]any); ok {

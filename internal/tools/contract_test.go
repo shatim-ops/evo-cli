@@ -229,6 +229,8 @@ func contractArgs(tl Tool) map[string]any {
 			args[k] = map[string]any{"name": "web"}
 		default:
 			switch {
+			case p["format"] == "cidr":
+				args[k] = "10.0.0.0/16"
 			case k == "job_id":
 				args[k] = "stk-0123456789"
 			case k == "plan_id":

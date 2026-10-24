@@ -151,30 +151,6 @@ func badPortsArg(arg string, e any) error {
 			"Порт — целое число 1–65535, например [80, 443]; диапазоны (8000-8010) не принимаются: перечислите порты."))
 }
 
-// portArg checks an integer port argument that was passed: 1-65535.
-func portArg(args map[string]any, key string) error {
-	if v, ok := args[key]; !ok || v == nil {
-		return nil
-	}
-	if p := intArg(args, key, 0); p < 1 || p > 65535 {
-		return clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("%s %d is out of range 1-65535", "%s %d вне диапазона 1–65535", key, p), "")
-	}
-	return nil
-}
-
-// minIntArg checks an integer argument that was passed: at least min.
-func minIntArg(args map[string]any, key string, min int, hint string) error {
-	if v, ok := args[key]; !ok || v == nil {
-		return nil
-	}
-	if n := intArg(args, key, 0); n < min {
-		return clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("%s must be at least %d, got %d", "%s должен быть не меньше %d, передано %d", key, min, n), hint)
-	}
-	return nil
-}
-
 // dateArg parses a YYYY-MM-DD argument. "2026-13-45", "yesterday" and a
 // timestamp went to the billing API as they were and the answer was 0
 // (QA-5).

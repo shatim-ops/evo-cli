@@ -261,7 +261,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, cli.ListTargetGroups, i18n.T("target group", "целевая группа"), "tg_id", name, nil, "tg_list", "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
+		return lostCreate(ctx, "tg_create", cli.ListTargetGroups, i18n.T("target group", "целевая группа"), name, nil, "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll lb_operation(operation_id) until done=true; then tg_list for the id."}
 	if op.ResourceID != "" {
@@ -299,13 +299,6 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	port := pgInt(args, "port", 0)
 	if name == "" || tgID == "" || port == 0 {
 		return usageT("'name', 'target_group_id' and 'port' are required", "нужны 'name', 'target_group_id' и 'port'"), true
-	}
-	// Ports 1-65535 before the cloud: 70000 made a preview, then the API
-	// refused it with exit 5 (QA 20.10, QA-7).
-	for _, k := range []string{"port", "target_port", "hc_port"} {
-		if err := portArg(args, k); err != nil {
-			return errResult(err), true
-		}
 	}
 	targetPort := pgInt(args, "target_port", port)
 	hcPort := pgInt(args, "hc_port", targetPort)
@@ -410,7 +403,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, cli.ListNLB, i18n.T("load balancer", "балансировщик"), "lb_id", name, willCreate, "lb_get id", "lb_list", fmt.Errorf("create load balancer: %w", err))
+		return lostCreate(ctx, "lb_create", cli.ListNLB, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf("create load balancer: %w", err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": "Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING."}
 	// The balancer's id is in the create's answer: named at once (fault

@@ -5,9 +5,6 @@
 package tools
 
 import (
-	"context"
-	"strings"
-
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
@@ -25,11 +22,8 @@ import (
 // deleteTarget is what a delete tool deletes: the argument naming it, the
 // argument naming the resource it lives in, and its kind for the answer.
 type deleteTarget struct {
-	arg    string // names the resource
-	parent string // names the resource it lives in; "" for none
-	// uuid: the API names the resource by UUID (format uuid in its spec):
-	// another form is USAGE before the cloud.
-	uuid       bool
+	arg        string // names the resource
+	parent     string // names the resource it lives in; "" for none
 	what, whRU string
 }
 
@@ -39,11 +33,11 @@ var deleteTargets = map[string]deleteTarget{
 	"ar_delete":           {arg: "id", what: "artifact registry", whRU: "реестр артефактов"},
 	"ca_delete":           {arg: "name", what: "container app", whRU: "приложение Container Apps"},
 	"cert_delete":         {arg: "id", what: "certificate", whRU: "сертификат"},
-	"destroy":             {arg: "vm_id", uuid: true, what: "VM", whRU: "ВМ"},
-	"disk_delete":         {arg: "disk_id", uuid: true, what: "disk", whRU: "диск"},
+	"destroy":             {arg: "vm_id", what: "VM", whRU: "ВМ"},
+	"disk_delete":         {arg: "disk_id", what: "disk", whRU: "диск"},
 	"dns_record_delete":   {arg: "record_id", what: "DNS record", whRU: "DNS-запись"},
 	"dns_zone_delete":     {arg: "id", what: "DNS zone", whRU: "DNS-зона"},
-	"image_delete":        {arg: "image_id", uuid: true, what: "image", whRU: "образ"},
+	"image_delete":        {arg: "image_id", what: "image", whRU: "образ"},
 	"k8s_delete":          {arg: "cluster_id", what: "Kubernetes cluster", whRU: "кластер Kubernetes"},
 	"kafka_delete":        {arg: "cluster_id", what: "Kafka cluster", whRU: "кластер Kafka"},
 	"lb_delete":           {arg: "id", what: "load balancer", whRU: "балансировщик"},
@@ -51,11 +45,11 @@ var deleteTargets = map[string]deleteTarget{
 	"pg_delete":           {arg: "id", what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"},
 	"pg_user_delete":      {arg: "name", parent: "cluster_id", what: "database user", whRU: "пользователь базы данных"},
 	"redis_delete":        {arg: "cluster_id", what: "Redis cluster", whRU: "кластер Redis"},
-	"release_floating_ip": {arg: "id", uuid: true, what: "floating IP", whRU: "floating IP"},
+	"release_floating_ip": {arg: "id", what: "floating IP", whRU: "floating IP"},
 	"s3_bucket_delete":    {arg: "bucket", what: "bucket", whRU: "бакет"},
 	"s3_rm":               {arg: "key", parent: "bucket", what: "object", whRU: "объект"},
 	"secret_delete":       {arg: "path", what: "secret", whRU: "секрет"},
-	"snat_delete":         {arg: "id", uuid: true, what: "SNAT gateway", whRU: "SNAT-шлюз"},
+	"snat_delete":         {arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"},
 	"tg_delete":           {arg: "id", what: "target group", whRU: "группа целей"},
 	"vpc_delete":          {arg: "id", what: "VPC", whRU: "VPC"},
 	"vpc_route_delete":    {arg: "route_id", parent: "vpc_id", what: "route", whRU: "маршрут"},
@@ -119,23 +113,4 @@ func (s *Registry) deleteFailedAs(tool, key, ref string, err error) (string, boo
 		return out, isErr
 	}
 	return errResult(err), true
-}
-
-// checkedDelete refuses, before the handler, an id of a delete tool that
-// is not of its form: a UUID the API's spec declares (D26: a wrong form is
-// USAGE, not "already deleted").
-func checkedDelete(name string, next Handler) Handler {
-	t, ok := deleteTargets[name]
-	if !ok || !t.uuid {
-		return next
-	}
-	return func(ctx context.Context, args map[string]any) (string, bool) {
-		// A blank value is the handler's own "which argument" error.
-		if v := stringArg(args, t.arg); strings.TrimSpace(v) != "" && !isUUID(v) {
-			return errResult(clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("%s %q is not an id: a %s is named by a UUID", "%s %q — не id: %s задаётся UUID", t.arg, v, i18n.T(t.what, t.whRU)),
-				i18n.T("Take the id from the list of the project's resources.", "id — в списке ресурсов проекта."))), true
-		}
-		return next(ctx, args)
-	}
 }

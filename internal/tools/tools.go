@@ -55,7 +55,7 @@ func (s *Registry) registerTools() {
 				"project_id":   strProp("Cloud.ru project UUID."),
 				"image_id":     strProp("Boot image UUID (see image_list, image_get)."),
 				"image":        strProp("Boot image by exact name, display name or UUID (Ubuntu or Debian: Astra Linux, Alt and RED OS are refused, Docker cannot be installed there). Use it or image_id, not both."),
-				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
+				"disk_size":    atLeast(0, intProp("Boot disk size in GB (default: 10, raised to the image's min_disk).")),
 				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
 				"confirmed":    confirmedProp(),
 			}),
@@ -79,7 +79,7 @@ func (s *Registry) registerTools() {
 					"description": "Values of the image's metadata fields by name, e.g. {\"admin_password\": \"…\"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused."},
 				"ports": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
 					"description": "Inbound ports to open in the VM's security group from 0.0.0.0/0, e.g. [\"80\", \"8080/tcp\", \"53/udp\"] (tcp by default). The group is shared by the zone's VMs; destroy deletes the rules evo created."},
-				"disk_size":    intProp("Boot disk size in GB (default: 10, raised to the image's min_disk)."),
+				"disk_size":    atLeast(0, intProp("Boot disk size in GB (default: 10, raised to the image's min_disk).")),
 				"subnet_id":    strProp("Subnet UUID for the interface (default: a subnet in the target zone)."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
 				"confirmed":    confirmedProp(),
@@ -124,7 +124,7 @@ func (s *Registry) registerTools() {
 			Name:        "destroy",
 			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name: the preview names the VM (id, name, zone, status, address) and the floating IP and port rules that go with it; a VM that is not there is already deleted (status already_deleted, existed false; check the id against vm_list if it matters), and a name several VMs share is refused (USAGE with the candidates — pass vm_id). By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy. A deletion Cloud.ru accepted but did not confirm is status partial (an error): the floating IP, the rules and the record stay until destroy is called again.",
 			InputSchema: objSchema(map[string]any{
-				"vm_id":      strProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
+				"vm_id":      uuidProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
 				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
 				"confirmed":  confirmedProp(),
 				"release_ip": boolPropTrue("Also release the VM's floating IP (default: true)."),
@@ -165,9 +165,9 @@ func (s *Registry) registerTools() {
 				"display_name":       strProp("Human-readable name shown in the console."),
 				"description":        strProp("Free-text description, MAX 255 characters (the API rejects longer with too_long). Keep it to product, pinned version and digest; legal disclaimers belong in the Marketplace listing, not here."),
 				"zone":               strProp("Availability zone name or UUID to build the image in. Defaults to the configured region, and to the source disk's own zone when no region is configured. Must match the disk's zone."),
-				"min_cpu":            intProp("Minimum vCPUs a VM needs to boot this image."),
-				"min_ram":            intProp("Minimum RAM in GB."),
-				"min_disk":           intProp("Minimum boot disk in GB — must be >= the image size, or VMs cannot be created from it."),
+				"min_cpu":            atLeast(0, intProp("Minimum vCPUs a VM needs to boot this image.")),
+				"min_ram":            atLeast(0, intProp("Minimum RAM in GB.")),
+				"min_disk":           atLeast(0, intProp("Minimum boot disk in GB — must be >= the image size, or VMs cannot be created from it.")),
 				"user_data_template": strProp("cloud-init template (Jinja) rendered when a VM is created from this image. Required for Marketplace images."),
 				"image_metadata": map[string]any{
 					"type":  "array",
@@ -204,7 +204,7 @@ func (s *Registry) registerTools() {
 			Name:        "image_delete",
 			Description: "Delete a VM image. Running VMs keep working, but no new VM can be created from it. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
-				"image_id":  strProp("Image UUID (from image_list)."),
+				"image_id":  uuidProp("Image UUID (from image_list)."),
 				"confirmed": confirmedProp(),
 			}, "image_id"),
 		},
@@ -274,7 +274,7 @@ func (s *Registry) registerTools() {
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
-				"cidr":           strProp("Source CIDR (default 0.0.0.0/0 = anywhere)."),
+				"cidr":           cidrProp("Source CIDR (default 0.0.0.0/0 = anywhere)."),
 				"confirmed":      confirmedProp(),
 			}, "security_group", "ports"),
 		},
@@ -336,7 +336,7 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_delete",
 			Description: "Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the user approves. Async.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID."),
+				"cluster_id": uuidProp("Cluster UUID."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id"),
 		},
@@ -351,11 +351,11 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":        strProp("Cluster UUID (from k8s_list)."),
 				"name":              strProp("Node pool name, 4-60 (default nodepool-1)."),
-				"count":             intProp("Number of worker nodes (fixed scale, default 2)."),
+				"count":             atLeast(1, intProp("Number of worker nodes (fixed scale, default 2).")),
 				"flavor":            strProp("Node flavor name (see k8s_options); overrides cpu/ram_gb."),
-				"cpu":               intProp("Node vCPUs for auto flavor (default 2)."),
-				"ram_gb":            intProp("Node RAM GB for auto flavor (default 4)."),
-				"disk_gb":           intProp("Node disk GB, min 10 (default 20)."),
+				"cpu":               atLeast(1, intProp("Node vCPUs for auto flavor (default 2).")),
+				"ram_gb":            atLeast(1, intProp("Node RAM GB for auto flavor (default 4).")),
+				"disk_gb":           atLeast(10, intProp("Node disk GB, min 10 (default 20).")),
 				"zone":              strProp("Zone name (default: the zone of the cluster's control plane; refused when the cluster does not report it)."),
 				"nodes_subnet_id":   strProp("Subnet UUID for worker nodes (default auto zone-matched)."),
 				"security_group_id": strProp("Security group UUID for nodes (default auto zone-matched SSH-access)."),
@@ -474,7 +474,7 @@ func (s *Registry) registerTools() {
 			Name:        "disk_delete",
 			Description: "Permanently delete a disk and all its data (irreversible). Detach it first if attached. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
-				"disk_id":   strProp("Disk UUID (from disk_list)."),
+				"disk_id":   uuidProp("Disk UUID (from disk_list)."),
 				"confirmed": confirmedProp(),
 			}, "disk_id"),
 		},
@@ -565,7 +565,7 @@ func (s *Registry) registerTools() {
 			Name:        "release_floating_ip",
 			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: snat_delete). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":         strProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required, not both."),
+				"id":         uuidProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required, not both."),
 				"ip_address": strProp("Floating IP address, e.g. '203.0.113.11' (alternative to id; not with it)."),
 				"confirmed":  confirmedProp(),
 			}),
@@ -589,7 +589,7 @@ func (s *Registry) registerTools() {
 			Name:        "snat_delete",
 			Description: "Delete a SNAT gateway by id (from snat_list). Nodes in that zone lose outbound internet. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":        strProp("SNAT gateway UUID (from snat_list). Required."),
+				"id":        uuidProp("SNAT gateway UUID (from snat_list). Required."),
 				"confirmed": confirmedProp(),
 			}, "id"),
 		},
@@ -602,8 +602,8 @@ func (s *Registry) registerTools() {
 			Name:        "pg_get",
 			Description: "Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status. Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"id":         strProp("PostgreSQL cluster UUID (from pg_list). Required (alias: cluster_id)."),
-				"cluster_id": strProp("Alias for id."),
+				"id":         uuidProp("PostgreSQL cluster UUID (from pg_list). Required (alias: cluster_id)."),
+				"cluster_id": uuidProp("Alias for id."),
 			}),
 		},
 		{
@@ -627,14 +627,14 @@ func (s *Registry) registerTools() {
 				"specification_id":      strProp("Specification UUID (from pg_specs). Optional if cpu+ram given."),
 				"cpu":                   intProp("vCPU count — used to auto-pick a specification when specification_id is omitted."),
 				"ram":                   intProp("RAM in GB — used with cpu to auto-pick a specification."),
-				"storage_gb":            intProp("Main data disk size in GB. Optional; default = specification minimum."),
-				"instances":             intProp("Number of nodes (1-2 standard, 1-3 business: checked against the spec's max_hosts). Default 1."),
+				"storage_gb":            atLeast(1, intProp("Main data disk size in GB. Optional; default = specification minimum.")),
+				"instances":             atLeast(1, intProp("Number of nodes (1-2 standard, 1-3 business: checked against the spec's max_hosts). Default 1.")),
 				"subnet_id":             strProp("Subnet UUID (defines the AZ). Optional; default = first project subnet."),
 				"initial_database":      strProp("Name of the default database to create. Default 'defaultdb'."),
 				"description":           strProp("Optional cluster description."),
 				"no_backup":             boolProp("Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'."),
 				"backup_schedule":       strProp("CRON schedule for automatic backups (default '0 3 * * 0' = weekly Sun 03:00; min once per 6h)."),
-				"backup_retention_days": intProp("Retention for automatic backups in days (default 14, max 30)."),
+				"backup_retention_days": inRange(1, 30, intProp("Retention for automatic backups in days (default 14, max 30).")),
 				"confirmed":             confirmedProp(),
 			}, "name"),
 		},
@@ -642,8 +642,8 @@ func (s *Registry) registerTools() {
 			Name:        "pg_delete",
 			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":         strProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
-				"cluster_id": strProp("Alias for id."),
+				"id":         uuidProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
+				"cluster_id": uuidProp("Alias for id."),
 				"confirmed":  confirmedProp(),
 			}),
 		},
@@ -663,7 +663,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "kafka_get",
 			Description: "Get a Managed Kafka cluster by id (status, kafka_hosts, brokers, version). Read-only.",
-			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (from kafka_list). Required.")}, "cluster_id"),
+			InputSchema: objSchema(map[string]any{"cluster_id": uuidProp("Cluster UUID (from kafka_list). Required.")}, "cluster_id"),
 		},
 		{
 			Name:        "kafka_versions",
@@ -687,7 +687,7 @@ func (s *Registry) registerTools() {
 				"specification_id": strProp("Specification UUID (from kafka_specs). Optional if cpu+ram given."),
 				"cpu":              intProp("vCPU — auto-picks a spec when specification_id omitted."),
 				"ram":              intProp("RAM GB — with cpu."),
-				"storage_gib":      intProp("Disk size GiB. Optional; default = spec minimum."),
+				"storage_gib":      atLeast(1, intProp("Disk size GiB. Optional; default = spec minimum.")),
 				"brokers":          intProp("Broker count. Optional; default = the spec's min_brokers, else 1 (a single broker: no replication; pass 3 for a replicated cluster). Checked against the spec's min/max_brokers when it has them."),
 				"ui_enabled":       boolProp("Enable the Kafka UI (default false)."),
 				"subnet_id":        strProp("Subnet UUID (from vpc_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
@@ -699,7 +699,7 @@ func (s *Registry) registerTools() {
 			Name:        "kafka_delete",
 			Description: "Delete a Managed Kafka cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID (from kafka_list). Required."),
+				"cluster_id": uuidProp("Cluster UUID (from kafka_list). Required."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id"),
 		},
@@ -716,7 +716,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "redis_get",
 			Description: "Get a Managed Redis cluster by id (status, redis_hosts, type, shards, replicas). Read-only.",
-			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (from redis_list). Required.")}, "cluster_id"),
+			InputSchema: objSchema(map[string]any{"cluster_id": uuidProp("Cluster UUID (from redis_list). Required.")}, "cluster_id"),
 		},
 		{
 			Name:        "redis_versions",
@@ -740,7 +740,7 @@ func (s *Registry) registerTools() {
 				"specification_id": strProp("Specification UUID (from redis_specs). Optional if cpu+ram given."),
 				"cpu":              intProp("vCPU — auto-picks a spec when specification_id omitted."),
 				"ram":              intProp("RAM GB — with cpu."),
-				"storage_gb":       intProp("Disk size GB. Optional; default = spec minimum."),
+				"storage_gb":       atLeast(1, intProp("Disk size GB. Optional; default = spec minimum.")),
 				"shards":           intProp("Shard count 1-8 (default 1)."),
 				"replicas":         intProp("Replicas per shard WITHOUT the master — the create request's replicas field. MASTER_REPLICA takes 2 (the default: a master and two replicas, 3 hosts — what redis_get then reports as replicas); STANDALONE takes 0."),
 				"type":             enumProp("MASTER_REPLICA (default) or STANDALONE (rejected by the API so far).", "MASTER_REPLICA", "STANDALONE"),
@@ -753,7 +753,7 @@ func (s *Registry) registerTools() {
 			Name:        "redis_delete",
 			Description: "Delete a Managed Redis cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID (from redis_list). Required."),
+				"cluster_id": uuidProp("Cluster UUID (from redis_list). Required."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id"),
 		},
@@ -785,7 +785,7 @@ func (s *Registry) registerTools() {
 			Name:        "pg_db_delete",
 			Description: "Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID. Required."),
+				"cluster_id": uuidProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name"),
@@ -811,7 +811,7 @@ func (s *Registry) registerTools() {
 			Name:        "pg_user_delete",
 			Description: "Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID. Required."),
+				"cluster_id": uuidProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name"),
@@ -871,7 +871,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "tg_delete",
 			Description: "Delete a target group by id (from tg_list). Mutation (async): requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Target group UUID. Required."), "confirmed": confirmedProp()}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("Target group UUID. Required."), "confirmed": confirmedProp()}, "id"),
 		},
 		{
 			Name:        "lb_create",
@@ -879,9 +879,9 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"name":            strProp("Load balancer name. Required."),
 				"target_group_id": strProp("Target group UUID (from tg_list/tg_create) to balance traffic to. Required."),
-				"port":            intProp("Listener port the balancer accepts traffic on. Required."),
-				"target_port":     intProp("Port on the targets to forward to. Default = port."),
-				"hc_port":         intProp("Health-check port. Default = target_port."),
+				"port":            inRange(1, 65535, intProp("Listener port the balancer accepts traffic on. Required.")),
+				"target_port":     inRange(1, 65535, intProp("Port on the targets to forward to. Default = port.")),
+				"hc_port":         inRange(1, 65535, intProp("Health-check port. Default = target_port.")),
 				"external":        boolPropTrue("Allocate a public IP (default true). Set false for an internal-only balancer."),
 				"vpc_id":          strProp("VPC UUID. Optional; default = the target group's VPC."),
 				"zone":            strProp("Availability zone the balancer serves, name or UUID (see list_zones). Optional; default = the zone of subnet_id, else of the target group's VMs, else the configured region."),
@@ -892,7 +892,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "lb_delete",
 			Description: "Delete a load balancer by id (from lb_list). Mutation (async): requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Load balancer UUID. Required."), "confirmed": confirmedProp()}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("Load balancer UUID. Required."), "confirmed": confirmedProp()}, "id"),
 		},
 		{
 			Name:        "vpc_list",
@@ -902,7 +902,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "vpc_get",
 			Description: "Get full details of one VPC by id (from vpc_list). Read-only.",
-			InputSchema: objSchema(map[string]any{"id": strProp("VPC UUID (from vpc_list). Required.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("VPC UUID (from vpc_list). Required.")}, "id"),
 		},
 		{
 			Name:        "vpc_create",
@@ -917,7 +917,7 @@ func (s *Registry) registerTools() {
 			Name:        "vpc_delete",
 			Description: "Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":        strProp("VPC UUID (from vpc_list). Required."),
+				"id":        uuidProp("VPC UUID (from vpc_list). Required."),
 				"confirmed": confirmedProp(),
 			}, "id"),
 		},
@@ -929,14 +929,14 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "vpc_routes",
 			Description: "List static routes of a VPC (id, subnet, next_hop_type, status). Read-only.",
-			InputSchema: objSchema(map[string]any{"vpc_id": strProp("VPC UUID (from vpc_list). Required.")}, "vpc_id"),
+			InputSchema: objSchema(map[string]any{"vpc_id": uuidProp("VPC UUID (from vpc_list). Required.")}, "vpc_id"),
 		},
 		{
 			Name:        "vpc_route_create",
 			Description: "Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"vpc_id":                   strProp("VPC UUID. Required."),
-				"subnet":                   strProp("Destination CIDR, e.g. '192.168.0.0/24'. Required."),
+				"subnet":                   cidrProp("Destination CIDR, e.g. '192.168.0.0/24'. Required."),
 				"next_hop_vm_id":           strProp("VM UUID for a VM-interface next hop (with next_hop_interface_id)."),
 				"next_hop_interface_id":    strProp("VM network interface UUID."),
 				"next_hop_vip_id":          strProp("Virtual IP UUID for a VIP next hop."),
@@ -950,8 +950,8 @@ func (s *Registry) registerTools() {
 			Name:        "vpc_route_delete",
 			Description: "Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"vpc_id":    strProp("VPC UUID. Required."),
-				"route_id":  strProp("Static route UUID (from vpc_routes). Required."),
+				"vpc_id":    uuidProp("VPC UUID. Required."),
+				"route_id":  uuidProp("Static route UUID (from vpc_routes). Required."),
 				"confirmed": confirmedProp(),
 			}, "vpc_id", "route_id"),
 		},
@@ -983,7 +983,7 @@ func (s *Registry) registerTools() {
 			Name:        "dns_zone_delete",
 			Description: "Delete a DNS zone by id (from dns_zones) AND its records (async). type (public|private) is optional: evo finds it by the zone id. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":        strProp("Zone UUID (from dns_zones). Required."),
+				"id":        uuidProp("Zone UUID (from dns_zones). Required."),
 				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed": confirmedProp(),
 			}, "id"),
@@ -1018,7 +1018,7 @@ func (s *Registry) registerTools() {
 				"record_type": enumProp("Record type: a, aaaa, cname, mx, ns, spf, txt, caa, srv (any case; sent lower-case, as the API takes it). Required.", dnsRecordTypes...),
 				"value":       strProp("Single record value (e.g. an IP for A). Use this or 'values', not both."),
 				"values":      map[string]any{"type": "array", "description": "Multiple record values.", "items": map[string]any{"type": "string"}},
-				"ttl":         intProp("TTL seconds (default 300)."),
+				"ttl":         atLeast(0, intProp("TTL seconds (default 300).")),
 				"type":        enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed":   confirmedProp(),
 			}, "zone_id", "name", "record_type"),
@@ -1027,7 +1027,7 @@ func (s *Registry) registerTools() {
 			Name:        "dns_record_delete",
 			Description: "Delete a DNS record by id (from dns_records) (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"record_id": strProp("Record UUID (from dns_records). Required."),
+				"record_id": uuidProp("Record UUID (from dns_records). Required."),
 				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed": confirmedProp(),
 			}, "record_id"),
@@ -1105,7 +1105,7 @@ func (s *Registry) registerTools() {
 			Name:        "ar_delete",
 			Description: "Delete an Artifact Registry registry by id (from ar_list) AND its artifacts (async). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
-				"id":        strProp("Registry UUID (from ar_list). Required."),
+				"id":        uuidProp("Registry UUID (from ar_list). Required."),
 				"confirmed": confirmedProp(),
 			}, "id"),
 		},
@@ -1134,7 +1134,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
 				"end":        strProp("End date YYYY-MM-DD. Optional; default = today."),
-				"days":       intProp("Window length in days if start omitted: 1-366 (default 30)."),
+				"days":       inRange(1, maxFinopsDays, intProp("Window length in days if start omitted: 1-366 (default 30).")),
 				"budget":     intProp("Monthly budget in RUB → projected-monthly threshold check (optional)."),
 				"project_id": strProp("Project UUID (default: the current project when CLOUDRU_AGREEMENT_ID is not set; with it, the whole agreement)."),
 			}),
@@ -1210,7 +1210,7 @@ func (s *Registry) registerTools() {
 			Name:        "cert_delete",
 			Description: "Certificate Manager — permanently delete a certificate. Gated: requires confirmed=true. If bound to a load balancer, deletion can break HTTPS (use force=true to delete anyway).",
 			InputSchema: objSchema(map[string]any{
-				"id":        strProp("Certificate id. Required."),
+				"id":        uuidProp("Certificate id. Required."),
 				"confirmed": confirmedProp(),
 				"force":     boolProp("Delete even if the certificate is in use by other services (default false)."),
 			}, "id"),
@@ -1493,10 +1493,6 @@ func (s *Registry) registerTools() {
 // --- handlers ---
 
 func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (string, bool) {
-	// disk_size -5 became 10 GB without a word (QA-14).
-	if err := minIntArg(args, "disk_size", 0, diskSizeHint()); err != nil {
-		return failed(ctx, err, nil), true
-	}
 	// image and image_id, or one of only spaces: refused before the
 	// preview (break r4, R4-11).
 	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
@@ -1705,10 +1701,6 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// included: image and image_id, or one of only spaces (break r4,
 	// R4-11).
 	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
-		return errResult(err), true
-	}
-	// disk_size -5 became 10 GB in the preview and the VM (QA-14).
-	if err := minIntArg(args, "disk_size", 0, diskSizeHint()); err != nil {
 		return errResult(err), true
 	}
 	metaValues, err := metadataArg(args, "image_metadata")
@@ -3007,6 +2999,31 @@ func intProp(desc string) map[string]any {
 	return map[string]any{"type": "integer", "description": desc}
 }
 
+// atLeast and inRange bound an integer argument, uuidProp is an id the API
+// takes only as a UUID, cidrProp a CIDR: static rules of the schema, which
+// CheckArgs checks before the handler (D36).
+func atLeast(min int, p map[string]any) map[string]any {
+	p["minimum"] = min
+	return p
+}
+
+func inRange(min, max int, p map[string]any) map[string]any {
+	p["minimum"], p["maximum"] = min, max
+	return p
+}
+
+func uuidProp(desc string) map[string]any {
+	p := strProp(desc)
+	p["format"] = "uuid"
+	return p
+}
+
+func cidrProp(desc string) map[string]any {
+	p := strProp(desc)
+	p["format"] = "cidr"
+	return p
+}
+
 // confirmedDesc describes the confirmed argument of every gated tool. One
 // text for all of them (there were 15 wordings of the same rule), so the
 // schema says the same thing everywhere; the gate itself is in each handler.
@@ -3217,12 +3234,6 @@ func usageT(en, ru string, args ...any) string {
 // usageErr is the error of usageT, for a planner's refusal (gate.go).
 func usageErr(en, ru string, args ...any) error {
 	return clierrors.New(clierrors.CodeUsage, i18n.Tf(en, ru, args...), "")
-}
-
-// diskSizeHint is the hint of a negative disk_size (deploy, provision).
-func diskSizeHint() string {
-	return i18n.T("Omit disk_size for 10 GB, raised to the image's min_disk.",
-		"Без disk_size диск — 10 ГБ, но не меньше min_disk образа.")
 }
 
 // errResult formats an error as a JSON tool result (see errAnswer).

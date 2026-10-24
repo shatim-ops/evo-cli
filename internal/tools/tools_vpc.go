@@ -52,9 +52,6 @@ func (s *Registry) handleVpcGet(ctx context.Context, args map[string]any) (strin
 	if id == "" {
 		return usageT("'id' is required (from vpc_list)", "нужен 'id' (из vpc_list)"), true
 	}
-	if res := uuidArg("id", id, "vpc_list"); res != "" {
-		return res, true
-	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -104,7 +101,7 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, cli.ListVPCs, "VPC", "vpc_id", name, nil, "vpc_list", "vpc_list", fmt.Errorf("create vpc: %w", err))
+		return lostCreate(ctx, "vpc_create", cli.ListVPCs, "VPC", name, nil, "vpc_list", fmt.Errorf("create vpc: %w", err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id); then vpc_get for the status."}
 	// The VPC's id is in the create's answer: named at once (fault matrix,
@@ -173,9 +170,6 @@ func (s *Registry) handleVpcRoutes(ctx context.Context, args map[string]any) (st
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID == "" {
 		return usageT("'vpc_id' is required (from vpc_list)", "нужен 'vpc_id' (из vpc_list)"), true
-	}
-	if res := uuidArg("vpc_id", vpcID, "vpc_list"); res != "" {
-		return res, true
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
@@ -274,7 +268,7 @@ func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, list, i18n.T("static route", "статический маршрут"), "route_id", subnet, nil, "vpc_routes vpc_id="+vpcID, "vpc_routes", fmt.Errorf("create route: %w", err))
+		return lostCreate(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), subnet, nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf("create route: %w", err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id)."}
 	if op.ResourceID != "" {

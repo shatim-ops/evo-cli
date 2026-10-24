@@ -74,13 +74,6 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	if err := provision.ValidName(i18n.T("image", "образа"), name); err != nil {
 		return errResult(err), true
 	}
-	// A negative minimum made a preview, then the API refused it (QA 20.10,
-	// QA-7); 0 is "no minimum".
-	for _, k := range []string{"min_cpu", "min_ram", "min_disk"} {
-		if err := minIntArg(args, k, 0, i18n.T("0 (the default) sets no minimum.", "0 (по умолчанию) — без минимума.")); err != nil {
-			return errResult(err), true
-		}
-	}
 	req := provision.CreateImageReq{
 		Name:             name,
 		DisplayName:      stringArg(args, "display_name"),
@@ -165,7 +158,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 			}
 			return listed, err
 		}
-		return lostCreate(ctx, list, i18n.T("image", "образ"), "image_id", name, nil, "image_get id", "image_list", fmt.Errorf("create image: %w", err))
+		return lostCreate(ctx, "image_create", list, i18n.T("image", "образ"), name, nil, "image_get id", fmt.Errorf("create image: %w", err))
 	}
 	return toJSON(map[string]any{
 		"status": "building",
