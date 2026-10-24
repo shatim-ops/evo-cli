@@ -4,6 +4,8 @@ name: release
 # checksums.txt, подпись cosign keyless, GitHub Release, attestation
 # происхождения; образ MCP-сервера — с подписью cosign по digest. Как
 # выпускать и проверять — docs/RELEASING.md.
+# Образ раннера — ubuntu-24.04, как у ci/test, который выпуск проходит
+# (TestWorkflows_CILinuxImageIsPinned).
 on:
   push:
     tags: ["v*"]
@@ -22,7 +24,7 @@ jobs:
   # GitHub создал бы его сам, без защиты.
   approve:
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: release
     permissions: {}
     steps:
@@ -39,7 +41,7 @@ jobs:
 
   goreleaser:
     needs: ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       # Создать Release и загрузить в него файлы.
       contents: write
@@ -108,7 +110,7 @@ jobs:
   #   CLOUDRU_AR_SECRET    его секрет
   image:
     needs: ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # cosign keyless подписывает опубликованный образ по digest. Токен
