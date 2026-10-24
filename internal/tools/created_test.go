@@ -5,7 +5,6 @@
 package tools
 
 import (
-	"encoding/json"
 	"slices"
 	"testing"
 )
@@ -73,30 +72,4 @@ func TestCreated_EveryCreateDeclared(t *testing.T) {
 			t.Errorf("step %s: %s is not found by name (createdIDs list)", st.Key, st.Tool)
 		}
 	}
-}
-
-// checkCreatedID is invariant (c) of the fault matrix: an answer of a
-// create that is not an error gives the id of what it made where
-// createdIDs says, and the id is of something the call made.
-func checkCreatedID(t *testing.T, tool, text string, w faultWorld) {
-	t.Helper()
-	c := createdIDs[tool]
-	if len(c.id) == 0 {
-		return
-	}
-	var res map[string]any
-	if json.Unmarshal([]byte(text), &res) != nil || res["status"] == "error" || res["reason"] != nil {
-		return
-	}
-	id := createdID(tool, res)
-	if id == "" {
-		t.Errorf("(c) %s answered success without the id at %v: %s", tool, c.id, text)
-		return
-	}
-	for _, b := range w.billed() {
-		if slices.Contains(b.names, id) {
-			return
-		}
-	}
-	t.Errorf("(c) %s answered id %s, which names nothing it made: %s", tool, id, text)
 }

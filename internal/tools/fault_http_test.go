@@ -201,20 +201,6 @@ func (a *faultAPI) serveS3(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</Buckets></ListAllMyBucketsResult>`)
 		_, _ = io.WriteString(w, b.String())
-	case key == "" && r.Method == http.MethodGet && r.URL.Query().Has("location"):
-		_, _ = io.WriteString(w, `<LocationConstraint>ru-central-1</LocationConstraint>`)
-	case key == "" && r.Method == http.MethodGet && find("bucket", bucket):
-		// ListObjectsV2 by prefix, as s3_rm looks for the key it deletes.
-		prefix := r.URL.Query().Get("prefix")
-		var b strings.Builder
-		b.WriteString(`<ListBucketResult><Name>` + bucket + `</Name><IsTruncated>false</IsTruncated>`)
-		for _, c := range a.made {
-			if c.host == faultS3Host && c.path == "object "+bucket && strings.HasPrefix(c.ID, prefix) {
-				b.WriteString(`<Contents><Key>` + c.ID + `</Key><Size>2</Size><LastModified>2026-01-01T00:00:00.000Z</LastModified></Contents>`)
-			}
-		}
-		b.WriteString(`</ListBucketResult>`)
-		_, _ = io.WriteString(w, b.String())
 	case key == "" && r.Method == http.MethodHead:
 		if !find("bucket", bucket) {
 			w.WriteHeader(http.StatusNotFound)
@@ -237,15 +223,6 @@ func (a *faultAPI) serveS3(w http.ResponseWriter, r *http.Request) {
 			a.made = append(a.made, faultResource{host: faultS3Host, path: "object " + bucket, ID: key, Name: key})
 		}
 		w.Header().Set("ETag", `"0"`)
-	case key != "" && r.Method == http.MethodDelete:
-		// S3 answers 204 to a key that is not there as to one that is.
-		for k, c := range a.made {
-			if c.host == faultS3Host && c.path == "object "+bucket && c.ID == key {
-				a.made = append(a.made[:k], a.made[k+1:]...)
-				break
-			}
-		}
-		w.WriteHeader(http.StatusNoContent)
 	default:
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = io.WriteString(w, `<Error><Code>NoSuchKey</Code><Message>no such path</Message></Error>`)
@@ -337,31 +314,9 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"id":"`+op+`","done":false}`)
 	case strings.HasPrefix(path, "/v1/operations/"):
 		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v1/operations/")+`","done":true}`)
-	case r.Method == http.MethodDelete && a.remove(host, path):
-		_, _ = io.WriteString(w, `{}`)
 	default:
 		http.Error(w, `{"message":"not found"}`, 404)
 	}
-}
-
-// remove deletes the resource a DELETE of path names: an item of a
-// collection, by its id or name (a secret is named by its path). It
-// reports whether there was one; a DELETE of what is not there is 404.
-func (a *faultAPI) remove(host, path string) bool {
-	i := strings.LastIndex(path, "/")
-	coll, ref := path[:i], path[i+1:]
-	if faultCollections[coll].field == "" {
-		return false
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for k, c := range a.made {
-		if c.host == host && c.path == coll && (c.ID == ref || c.Name == ref) {
-			a.made = append(a.made[:k], a.made[k+1:]...)
-			return true
-		}
-	}
-	return false
 }
 
 // faultAPIRegistry is a registry whose every service, compute included,
