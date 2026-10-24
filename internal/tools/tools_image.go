@@ -240,11 +240,16 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 			"floating_ip_id": fipID, "vm_id": vmID}), false), nil
 	}
 	if !fip.Available() {
+		hint := i18n.T("Take a free address from list_floating_ips (available: true).",
+			"Возьмите свободный адрес из list_floating_ips (available: true).")
+		if fip.Bound() {
+			return nil, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("floating IP %s is bound to another VM; nothing was attached", "floating IP %s привязан к другой ВМ; ничего не привязано", fip.IPAddress),
+				hint+" "+i18n.T("Or detach this one from its VM first.", "Или сначала отвяжите этот от его ВМ."))
+		}
 		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("floating IP %s is not free (state %s): it is bound to another VM or is changing state; nothing was attached",
-				"floating IP %s не свободен (состояние %s): он привязан к другой ВМ или меняет состояние; ничего не привязано", fip.IPAddress, firstNonEmptyStr(fip.State, "in_use")),
-			i18n.T("Take a free address from list_floating_ips (available: true), or detach this one from its VM first.",
-				"Возьмите свободный адрес из list_floating_ips (available: true) или сначала отвяжите этот от его ВМ."))
+			i18n.Tf("floating IP %s is not free (state %s); nothing was attached", "floating IP %s не свободен (состояние %s); ничего не привязано", fip.IPAddress, fip.State),
+			hint)
 	}
 	if vmIP != "" {
 		return nil, clierrors.New(clierrors.CodeUsage,

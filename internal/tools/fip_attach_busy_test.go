@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -61,6 +62,11 @@ func TestFipAttach_BusyAddressBeforeTheQuestion(t *testing.T) {
 			m, text, isErr := callNamed(t, r, "fip_attach", map[string]any{"fip": "203.0.113.10", "vm": "web", "confirmed": confirmed})
 			if !isErr || m["reason"] != clerrors.CodeUsage || c.attaches != 0 {
 				t.Errorf("%s, confirmed=%v (attaches %d): %s", name, confirmed, c.attaches, text)
+			}
+			// The refusal says what is wrong: «bound to another VM» only
+			// when the answer binds the address (review of #326).
+			if bound := strings.Contains(text, "bound to another VM"); bound != (name == "in use by another VM") {
+				t.Errorf("%s: the refusal names a binding: %v: %s", name, bound, text)
 			}
 		}
 	}
