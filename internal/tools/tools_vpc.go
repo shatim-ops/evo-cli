@@ -117,25 +117,25 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 	return toJSON(out), false
 }
 
-func (s *Registry) handleVpcDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planVpcDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageT("'id' is required (from vpc_list)", "нужен 'id' (из vpc_list)"), true
+		return nil, usageErr("'id' is required (from vpc_list)", "нужен 'id' (из vpc_list)")
 	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("vpc_delete", "vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first.",
-			"vpc_delete удаляет VPC %s (асинхронно). Сначала нужно удалить его подсети и ресурсы.",
-			id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) })
-	}
-	op, err := cli.DeleteVPC(ctx, id)
-	if err != nil {
-		return s.deleteFailed("vpc_delete", id, fmt.Errorf("delete vpc: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+	return s.deletePlan("vpc_delete", "vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first.",
+		"vpc_delete удаляет VPC %s (асинхронно). Сначала нужно удалить его подсети и ресурсы.",
+		id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) },
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteVPC(ctx, id)
+			if err != nil {
+				return s.deleteFailed("vpc_delete", id, fmt.Errorf("delete vpc: %w", err))
+			}
+			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+		}), nil
 }
 
 func (s *Registry) handleVpcOperation(ctx context.Context, args map[string]any) (string, bool) {

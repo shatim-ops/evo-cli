@@ -30,7 +30,6 @@ var inlineGates = map[string]string{
 	"internal/tools/tools.go: handleDestroy":                    "W5",
 	"internal/tools/tools.go: handleProvision":                  "W5",
 	"internal/tools/tools_ar.go: handleArCreate":                "W4",
-	"internal/tools/tools_ar.go: handleArDelete":                "W4",
 	"internal/tools/tools_ca.go: handleCaDelete":                "W4",
 	"internal/tools/tools_ca.go: handleCaDeploy":                "W6",
 	"internal/tools/tools_ca.go: handleCaStartStop":             "W4",
@@ -56,15 +55,12 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_image.go: handleImageDelete":          "W4",
 	"internal/tools/tools_k8s.go: handleK8sAddNodePool":         "W4",
 	"internal/tools/tools_k8s.go: handleK8sCreate":              "W4",
-	"internal/tools/tools_k8s.go: handleK8sDelete":              "W4",
 	"internal/tools/tools_k8s_addons.go: handleK8sAddAddon":     "W4",
 	"internal/tools/tools_kafka.go: handleKafkaCreate":          "W6",
-	"internal/tools/tools_kafka.go: handleKafkaDelete":          "W4",
 	"internal/tools/tools_kube.go: handleK8sApply":              "W4",
 	"internal/tools/tools_kube.go: handleK8sHelm":               "W4",
 	"internal/tools/tools_kube.go: handleK8sKubectl":            "W4",
 	"internal/tools/tools_nlb.go: handleLbCreate":               "W4",
-	"internal/tools/tools_nlb.go: handleLbDelete":               "W4",
 	"internal/tools/tools_nlb.go: handleTgCreate":               "W4",
 	"internal/tools/tools_pg.go: handlePgBackupCreate":          "W4",
 	"internal/tools/tools_pg.go: handlePgCreate":                "W6",
@@ -74,7 +70,6 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_pg.go: handlePgUserCreate":            "W6",
 	"internal/tools/tools_pg.go: handlePgUserDelete":            "W4",
 	"internal/tools/tools_redis.go: handleRedisCreate":          "W6",
-	"internal/tools/tools_redis.go: handleRedisDelete":          "W4",
 	"internal/tools/tools_s3.go: handleS3BucketCreate":          "W4",
 	"internal/tools/tools_s3.go: handleS3BucketDelete":          "W6",
 	"internal/tools/tools_s3.go: handleS3Put":                   "W4",
@@ -84,18 +79,16 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_secret.go: handleSecretDelete":        "W4",
 	"internal/tools/tools_secret.go: handleSecretValue":         "W4",
 	"internal/tools/tools_snat.go: handleSnatCreate":            "W4",
-	"internal/tools/tools_snat.go: handleSnatDelete":            "W4",
 	"internal/tools/tools_stack.go: handleStackApply":           "W4",
 	"internal/tools/tools_stack.go: handleStackDestroy":         "W4",
 	"internal/tools/tools_vpc.go: handleVpcCreate":              "W4",
-	"internal/tools/tools_vpc.go: handleVpcDelete":              "W4",
 	"internal/tools/tools_vpc.go: handleVpcRouteCreate":         "W4",
 	"internal/tools/tools_vpc.go: handleVpcRouteDelete":         "W4",
 }
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 66
+const inlineGatesLeft = 59
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{

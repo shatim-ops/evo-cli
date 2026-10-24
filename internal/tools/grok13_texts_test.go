@@ -7,6 +7,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,10 +38,18 @@ func TestDeletePreview_WarnsInFailedState(t *testing.T) {
 }
 
 func TestKafkaDelete_ServerErrorSaysWhatNext(t *testing.T) {
-	a := &faultAPI{}
-	r := faultAPIRegistry(t, a)
-	a.failAt(1, faultHTTP500)
-	text, isErr := r.handlers["kafka_delete"](context.Background(), map[string]any{"cluster_id": faultPGCluster, "confirmed": true})
+	// The cluster is there (its plan reads it first, D35); its delete
+	// answers 500.
+	f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"message":"upstream"}`)
+			return true
+		}
+		return liveWorld(w, r)
+	}}
+	r := apiFakeS3Registry(t, f)
+	text, isErr := r.handlers["kafka_delete"](context.Background(), map[string]any{"cluster_id": liveID, "confirmed": true})
 	var m map[string]any
 	if err := json.Unmarshal([]byte(text), &m); err != nil || !isErr {
 		t.Fatalf("kafka_delete: %s", text)
@@ -50,7 +60,7 @@ func TestKafkaDelete_ServerErrorSaysWhatNext(t *testing.T) {
 	// The same 500 answers a cluster still being created (DEPLOYING,
 	// register DB-17): wait for READY and repeat; a FAILED one goes to
 	// support with its id.
-	if h, _ := m["hint"].(string); !strings.Contains(h, "READY") || !strings.Contains(h, "support") || !strings.Contains(h, faultPGCluster) {
+	if h, _ := m["hint"].(string); !strings.Contains(h, "READY") || !strings.Contains(h, "support") || !strings.Contains(h, liveID) {
 		t.Errorf("hint %q, want wait for READY, or support with the cluster id: %s", m["hint"], text)
 	}
 }
