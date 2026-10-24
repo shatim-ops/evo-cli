@@ -22,7 +22,7 @@
    не привязываешь к нему адреса. Это касается и ресурсов `grok-` прошлых
    волн: их называешь в отчёте, но не трогаешь.
 2. **Инвентарь созданного.** Каждый create сразу пишет строку в
-   `grok-inventory.jsonl` (раздел 4). Удалить можно только ресурс с id из
+   `grok-inventory-<трек>.jsonl` (раздел 4). Удалить можно только ресурс с id из
    инвентаря. Префикса имени для этого мало: имя может совпасть, id — нет.
 3. **Префикс имени** `grok-<трек>-` (раздел 3.2) — для глаз человека и для
    поиска остатков.
@@ -96,6 +96,8 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 
   Повторный delete уже удалённого (D26: `already_deleted`) — на сервере
   без `--allow-project`: с флагом evo по замыслу отвечает `NOT_FOUND` (H9).
+  Такой сервер запускает только трек attack, на отдельном порту, и только
+  для повторного delete id из своего инвентаря: ничего не создаёт.
   Атакующие цели A–F берут флаги из брифа волны 3.
 
 ## 2. Что проверить
@@ -280,7 +282,7 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 - **Кластеры** (Kubernetes, PostgreSQL, Kafka, Redis): деньги не ограничены,
   но ёмкость зоны ограничена. Одновременно — не больше двух кластеров
   одного вида на весь прогон. Порядок:
-  1. Перед `*_create` кластера агент пишет в `grok-inventory.jsonl` строку
+  1. Перед `*_create` кластера агент пишет в свой `grok-inventory-<трек>.jsonl` строку
      `op: reserve` с видом кластера и ждёт ответа координатора.
   2. Координатор отвечает «ok» или «wait» по счёту строк `reserve` без
      парного `release`.
@@ -303,7 +305,7 @@ curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh 
 
 | Файл | Строка на | Поля |
 |---|---|---|
-| `grok-inventory.jsonl` (общий, только дописывание) | каждый create и delete | `op` (create/delete), `tool`, `surface` (mcp/cli), `id`, `name`, `kind`, `zone`, `status` (ответ) |
+| `grok-inventory-<трек>.jsonl` (у каждого трека свой; координатор читает все и сводит в конце в `grok-inventory.jsonl`) | каждый create, delete, reserve и release | `op` (create/delete/reserve/release), `tool`, `surface` (mcp/cli), `id`, `name`, `kind`, `zone`, `status` (ответ) |
 | `grok-consents-<трек>.jsonl` | каждый вызов с `confirmed: true` | вызов, превью (целиком), результат; совпали ли превью и результат |
 | `grok-calls-<трек>.jsonl` | каждый вызов | инструмент, аргументы без секретов, `reason`, код выхода, время |
 
