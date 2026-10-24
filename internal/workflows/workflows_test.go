@@ -402,6 +402,8 @@ func TestWorkflows_WeeklyRace(t *testing.T) {
 // of evo, the ACLs of internal/config/private_windows.go: config many times
 // under -race, tools with and without it, every step under GODEBUG checks
 // of the collector, none hiding the next. The weekly race does not run then.
+// tools ×20 under GODEBUG outlives the default -timeout of 10m (run
+// 40135541445): its steps set their own.
 func TestWorkflows_WindowsGCProbe(t *testing.T) {
 	w := weeklyWorkflow(t, "weekly-race.yml")
 	d, _ := w.On["workflow_dispatch"].(map[string]any)
@@ -421,8 +423,8 @@ func TestWorkflows_WindowsGCProbe(t *testing.T) {
 	}
 	want := []string{
 		"go test -race -count=200 ./internal/config/",
-		"go test -race -count=20 ./internal/tools/",
-		"go test -count=20 ./internal/tools/",
+		"go test -race -count=20 -timeout=150m ./internal/tools/",
+		"go test -count=20 -timeout=150m ./internal/tools/",
 	}
 	for _, cmd := range want {
 		found := false

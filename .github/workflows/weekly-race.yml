@@ -73,7 +73,9 @@ jobs:
   gc-probe:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_gc_probe
     runs-on: windows-latest
-    timeout-minutes: 180
+    # tools ×20 под GODEBUG не укладывается в -timeout 10m по умолчанию
+    # (run 40135541445): у шагов tools свой срок, у job — их сумма с запасом.
+    timeout-minutes: 330
     permissions:
       contents: read
     steps:
@@ -100,7 +102,7 @@ jobs:
       - id: tools-race
         name: tools ×20 под -race
         continue-on-error: true
-        run: go test -race -count=20 ./internal/tools/
+        run: go test -race -count=20 -timeout=150m ./internal/tools/
         env:
           GODEBUG: invalidptr=1,gccheckmark=1
           GORACE: atexit_sleep_ms=0
@@ -108,7 +110,7 @@ jobs:
       - id: tools
         name: tools ×20 без -race
         continue-on-error: true
-        run: go test -count=20 ./internal/tools/
+        run: go test -count=20 -timeout=150m ./internal/tools/
         env:
           GODEBUG: invalidptr=1,gccheckmark=1
 
