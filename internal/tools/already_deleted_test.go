@@ -128,7 +128,7 @@ func TestAlreadyDeleted_EveryDeleteDeclared(t *testing.T) {
 // the target names goneID (a UUID) or goneName, the parent is there.
 func goneArgs(name string, d deleteTarget) map[string]any {
 	args := map[string]any{d.arg: goneID}
-	if !d.uuid && strings.Contains(d.arg, "name") || d.arg == "path" || d.arg == "bucket" || d.arg == "key" {
+	if strings.Contains(d.arg, "name") || d.arg == "path" || d.arg == "bucket" || d.arg == "key" {
 		args[d.arg] = goneName
 	}
 	if d.parent != "" {
@@ -185,12 +185,17 @@ func TestAlreadyDeleted_ParentGoneIsNotFound(t *testing.T) {
 	}
 }
 
-// An id of the wrong form is USAGE before the cloud, not already_deleted.
+// An id of the wrong form is USAGE before the cloud, not already_deleted:
+// the target of a delete whose schema says format uuid (D36).
 func TestAlreadyDeleted_WrongFormIsUsage(t *testing.T) {
+	uuids := 0
 	for name, d := range deleteTargets {
-		if !d.uuid {
+		tl, _ := New(nil).Lookup(name)
+		props, _ := tl.InputSchema["properties"].(map[string]any)
+		if p, _ := props[d.arg].(map[string]any); p["format"] != "uuid" {
 			continue
 		}
+		uuids++
 		f := &apiFake{own: goneWorld}
 		r := apiFakeRegistry(t, f)
 		for _, confirmed := range []bool{false, true} {
@@ -202,6 +207,11 @@ func TestAlreadyDeleted_WrongFormIsUsage(t *testing.T) {
 		if n := f.count(); n != 0 {
 			t.Errorf("%s: %d requests for an id of the wrong form", name, n)
 		}
+	}
+	// The Compute deletes: destroy, disk_delete, image_delete,
+	// release_floating_ip, snat_delete.
+	if uuids < 5 {
+		t.Errorf("%d deletes take a UUID by their schema, want at least 5", uuids)
 	}
 }
 

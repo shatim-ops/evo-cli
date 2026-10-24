@@ -152,9 +152,6 @@ func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string
 	if id == "" {
 		return usageT("'id' is required (get it from pg_list)", "нужен 'id' (из pg_list)"), true
 	}
-	if res := uuidArg("id", id, "pg_list"); res != "" {
-		return res, true
-	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
 		return errResult(err), true
@@ -322,21 +319,6 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 		return usageT("'name' is required", "нужен 'name'"), true
 	}
 	instances := pgInt(args, "instances", 1)
-	if instances < 1 {
-		return usageT("instances %d: at least 1", "instances %d: нужен хотя бы 1", instances), true
-	}
-	// Sizes before the cloud: storage_gb 0 or -5 and a retention of 0 or
-	// 90 days made a preview, then the API refused it (QA 20.10, QA-7).
-	if err := minIntArg(args, "storage_gb", 1, i18n.T("Omit storage_gb for the specification's minimum.", "Без storage_gb — минимум конфигурации.")); err != nil {
-		return errResult(err), true
-	}
-	if _, ok := args["backup_retention_days"]; ok && args["backup_retention_days"] != nil {
-		if d := pgInt(args, "backup_retention_days", 14); d < 1 || d > 30 {
-			return errResult(clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("backup_retention_days %d is out of range 1-30", "backup_retention_days %d вне диапазона 1–30", d),
-				i18n.T("Automatic backups are kept 1 to 30 days; the default is 14.", "Автоматические резервные копии хранятся от 1 до 30 дней; по умолчанию 14."))), true
-		}
-	}
 	cli, eng, err := s.pgClientEng(ctx)
 	if err != nil {
 		return errResult(err), true

@@ -282,20 +282,9 @@ func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any)
 	const layout = "2006-01-02"
 	now := time.Now().UTC()
 	today := now.Format(layout)
-	// days -1 became 30, a reversed period counted as one day (QA-5, QA-14).
-	if err := minIntArg(args, "days", 1, i18n.T("days is the length of the window ending at end; the default is 30.", "days — длина периода, который заканчивается в end; по умолчанию 30.")); err != nil {
-		return errResult(err), true
-	}
+	// days is 1-366 by the schema (D36): -1 became 30, 10^9 went into the
+	// date arithmetic as it was (QA-14, release audit REL-15).
 	days := pgInt(args, "days", 30)
-	// At most a year: the report also reads the period before, and days of
-	// 10^9 went into the date arithmetic as they were (release audit,
-	// REL-15).
-	if days > maxFinopsDays {
-		return errResult(clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("days must be at most %d, got %d", "days должен быть не больше %d, передано %d", maxFinopsDays, days),
-			i18n.Tf("The report covers at most a year (%d days); for a longer one pass start and end for each year.",
-				"Отчёт строится не больше чем за год (%d дней); для более долгого периода передайте start и end по годам.", maxFinopsDays))), true
-	}
 	end := stringArg(args, "end")
 	if end == "" {
 		end = today

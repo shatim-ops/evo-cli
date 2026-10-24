@@ -221,9 +221,6 @@ func (s *Registry) handleKafkaGet(ctx context.Context, args map[string]any) (str
 	if id == "" {
 		return usageT("'cluster_id' is required (from kafka_list)", "нужен 'cluster_id' (из kafka_list)"), true
 	}
-	if res := uuidArg("cluster_id", id, "kafka_list"); res != "" {
-		return res, true
-	}
 	cli, _, err := s.kafkaClientEng(ctx)
 	if err != nil {
 		return errResult(err), true
