@@ -112,6 +112,10 @@
   `stack_plan` — `CONFIG_INVALID`, код 2, задание не создаётся (было:
   код 0). Что поменять: задать ключи S3 (`evo configure`) до плана.
 
+- **`evo tools call destroy` и MCP `destroy` в каталоге без развёртывания отвечают `status: none`, код 0, без вопроса о согласии** (DECISIONS D35, W5; решение владельца 24.10). Было: `confirmation_required` на пустое превью, у `evo tools call destroy` без `--yes` — код 3. Стало: код 0, `status: none` с `message`, как `evo destroy --json` с v1.0. Что поменять: скрипту, который ждал код 3 у `evo tools call destroy` без развёртывания, — считать код 0 со `status: none` ответом «удалять нечего».
+
+- **Ответ `evo stack status --json` и `evo stack destroy --json` (MCP `stack_status`, `stack_destroy`) называет созданное, а не `"ok"`** (G13-14, атака Grok, волна 2). Было: в `outputs` у шагов `secret:N`, `s3:N` и у `snat` — строка `"ok"`; в `deleted` и `failed` `stack_destroy` — тип шага (`secret`); синхронный шаг без id созданного — `done`. Стало: в `outputs` — путь секрета, ключ объекта, id шлюза; в `deleted` и `failed` — ключ шага (`secret:0`); шаг без id и без ресурса с этим именем — `error`. Что поменять: скрипту, который сверял `outputs` со строкой `"ok"` или искал в `deleted` тип шага, — читать значение как id или путь и искать ключ шага.
+
 ### Добавлено
 
 - Релиз доказывает своё происхождение. У каждого архива есть SBOM (`*.sbom.json`, SPDX: модули Go и версия Go, из которых собран бинарь), он входит в подписанный `checksums.txt`. У каждого файла из `checksums.txt` есть attestation происхождения: какой workflow на каком коммите его собрал. Образ MCP-сервера подписан cosign keyless по digest. Как проверить — `docs/RELEASING.md`, шаг 4.
@@ -154,11 +158,6 @@
 - Проверка аргументов инструмента — теперь первая проверка любого вызова MCP при любых флагах сервера. Раньше `evo mcp --read-only` на вызов с неверными аргументами отвечал отказом read-only («the call needs the user's consent…»), и агент делал вывод, что чтения тоже запрещены; по HTTP так же отвечали ограничения H2–H6 и H10. Теперь — `USAGE` «unknown argument(s) …» (или «… must be …» для неверного типа) с подсказкой, какие аргументы инструмент принимает. `reason` у этих случаев прежний (`USAGE`), меняются текст и подсказка.
 
 - `evo image list --type` и `evo marketplace list --kind` (MCP `image_list`, `marketplace_list`) проверяют значение той же общей проверкой аргументов, что и остальные перечисления. Неверное значение — прежний `USAGE` с текстом «type "…" is not one of public, marketplace, private». Пробелы вокруг значения, как и раньше, не мешают, и теперь это верно для всех перечислений.
-
-- MCP `destroy` в каталоге без развёртывания отвечает без вопроса о
-  согласии `status: none` с `message`, код 0 — как `evo destroy --json` с
-  v1.0 (решение владельца 24.10). Было: `confirmation_required` на пустое
-  превью, после согласия — `status: ok` с логом.
 
 - Превью MCP `open_ports` и `evo vpc open-ports` называет протокол и
   источник правил (`protocol`, `cidr`, по умолчанию `0.0.0.0/0`), порты,
