@@ -205,7 +205,10 @@ func stateText(t *testing.T, dir string) string {
 //	    the answer or in the state the call wrote — so nothing is billed
 //	    that the user cannot find;
 //	(b) the same call again, the fault gone, converges: it leaves no more
-//	    billable objects than one clean call does.
+//	    billable objects than one clean call does;
+//	(c) an answer that is not an error gives the id of what the call made
+//	    where createdIDs says (checkCreatedID): stack steps and A2's
+//	    lostCreate read it there.
 func TestFault_Matrix(t *testing.T) {
 	prev := deployplan.SSHPortWait
 	deployplan.SSHPortWait = time.Millisecond
@@ -213,6 +216,7 @@ func TestFault_Matrix(t *testing.T) {
 	for _, c := range faultMatrixCases {
 		t.Run(c.tool, func(t *testing.T) {
 			happy, text, _, _ := faultRun(t, c, 0, "")
+			checkCreatedID(t, c.tool, text, happy)
 			calls := happy.callLog()
 			clean := len(happy.billed())
 			if clean == 0 {
@@ -234,6 +238,7 @@ func TestFault_Matrix(t *testing.T) {
 								t.Errorf("(a) %s is billed and named nowhere: %s", b.what, text)
 							}
 						}
+						checkCreatedID(t, c.tool, text, w)
 						w.disarm()
 						again, _ := r.handlers[c.tool](context.Background(), c.args)
 						if n := len(w.billed()); n > clean {
