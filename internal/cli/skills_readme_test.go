@@ -82,6 +82,7 @@ func TestSkillsReadme_PromptSteps(t *testing.T) {
 		"--dry-run",            // the diff before the write
 		"metadata.evo-version", // the check after the copy
 		"новую сессию",         // skills load at the start of a session
+		"--toolsets all",       // evo-cleanup needs every group: the agent says so
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("%s: the prompt for the agent does not name %q", skillsReadme, want)
