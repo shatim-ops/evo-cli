@@ -80,7 +80,7 @@ skill `evo-scenarios`, section 5.
 | `NOT_FOUND` on a server with `--allow-project` | check the resource with its `*_get` |
 | `USAGE` on `s3_bucket_delete` | the bucket has objects: delete them first |
 | refused `release_floating_ip` | the address is in use by a VM or a SNAT gateway: it goes with them |
-| error on a cluster in `FAILED` | DB-21, DB-17: do not repeat; name support or the console |
+| error on a cluster in FAILED | DB-21, DB-17: do not repeat; name support or the console |
 
 After an interruption make the inventory again (step 1); never resume from
 memory.
@@ -93,7 +93,7 @@ again: none should show a resource with the prefix.
 ## Known platform limits
 
 - Nothing marks a resource as created by evo; the prefix is the key.
-- DB-21: a PostgreSQL cluster in `FAILED` cannot be deleted through the API.
+- DB-21: a PostgreSQL cluster in FAILED cannot be deleted through the API.
 - DB-17: a Kafka cluster still being created cannot be deleted.
 - Port rules opened with `open_ports` in a shared security group can be
   closed with `close_ports` only when the port, protocol and source are
@@ -104,4 +104,4 @@ again: none should show a resource with the prefix.
 - Never delete before the table of step 3 got the person's yes.
 - Never delete a resource without the prefix without a separate yes.
 - Never call a delete a success without the check of step 5.
-- Never repeat a delete that the platform refuses for a `FAILED` cluster.
+- Never repeat a delete that the platform refuses for a FAILED cluster.

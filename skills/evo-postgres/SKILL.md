@@ -112,7 +112,7 @@ it again before you looked.
 
 ## Known platform limits
 
-- DB-21: a cluster in `FAILED` cannot be deleted through the API; evo
+- DB-21: a cluster in FAILED cannot be deleted through the API; evo
   answers the platform's error. Do not repeat the delete and do not report
   success: tell the person the way is Cloud.ru support or the console.
 - DB-22: listing the backups of a deleted cluster answers an error.
@@ -125,4 +125,4 @@ it again before you looked.
 - Never put a password in your reply, a command line or a log.
 - Never call `pg_create` again after an interruption before checking
   `pg_list`.
-- Never treat an answer to a delete of a `FAILED` cluster as success.
+- Never treat an answer to a delete of a FAILED cluster as success.

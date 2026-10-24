@@ -38,7 +38,7 @@ Notes:
   its objects first.
 - A floating IP in use by a VM or a SNAT gateway is refused: it goes with
   the VM (`release_ip`) or the gateway.
-- A cluster in `FAILED` may not be deletable through the API (DB-21,
+- A cluster in FAILED may not be deletable through the API (DB-21,
   DB-17): do not repeat the delete; the way is Cloud.ru support or the
   console.
 - Port rules opened with `open_ports` are not resources of a list here:

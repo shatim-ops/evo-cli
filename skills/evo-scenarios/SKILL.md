@@ -42,12 +42,12 @@ not change the client's settings yourself.
 | You want | Take | Not |
 |---|---|---|
 | a compose project on a VM | `deploy` / `evo deploy` | `provision` |
-| a bare VM | `provision` / `evo vm create` | `deploy` |
+| a bare VM | `provision` / `evo vm create <name>` | `deploy` |
 | delete the deployment of this directory | `destroy` with no arguments / `evo destroy` | `destroy` with `vm_id` |
-| delete one VM | `destroy` with `vm_id` / `evo vm delete` | `evo destroy` |
+| delete one VM | `destroy` with `vm_id` / `evo vm delete <vm-id>` | `evo destroy` |
 | delete anything else | its `*_delete` tool | `destroy` |
 | images | `image_list` / `evo image list` | `list_images` (deprecated alias) |
-| a VM's addresses, live | `vm_get` / `evo vm get` | `status`, `list` (local state) |
+| a VM's addresses, live | `vm_get` / `evo vm get <name>` | `status`, `list` (local state) |
 | this directory's deployment | `status` / `evo status` | `vm_list` |
 | floating IPs | `list_floating_ips` / `evo vpc fips` | — |
 
