@@ -649,8 +649,8 @@ func (s *Registry) handleOpenPorts(ctx context.Context, args map[string]any) (st
 	return errAnswer(fmt.Errorf("opened %s, not opened %s: %w", strings.Join(opened, ","), strings.Join(failed, ","), firstErr), res), true
 }
 
-// handleReleaseFloatingIP deletes a floating IP, refusing if it's in use.
-func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]any) (string, bool) {
+// planReleaseFloatingIP plans the release of a floating IP (gate.go), refusing one in use.
+func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]any) (*Plan, error) {
 	// Both: the id was taken and the address dropped without a word —
 	// `evo vpc fip-release <id> --ip-address X` released the id's address
 	// (QA 20.10, QA-8). One of only spaces is USAGE too, as in vm_get
@@ -660,7 +660,7 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 		i18n.T("The id comes from list_floating_ips; ip_address finds the floating IP by its address.",
 			"id — из list_floating_ips; по ip_address floating IP ищется по адресу.")), "id", "ip_address")
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	var id, ip string
 	switch key {
@@ -669,11 +669,11 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	case "ip_address":
 		ip = ref
 	default:
-		return usageT("provide either 'id' or 'ip_address'", "укажите 'id' или 'ip_address'"), true
+		return nil, usageErr("provide either 'id' or 'ip_address'", "укажите 'id' или 'ip_address'")
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	projectID := eng.Config.ProjectID
 
@@ -684,13 +684,13 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	if id != "" {
 		f, e := eng.Cloud.GetFloatingIP(ctx, id)
 		if e != nil {
-			return s.deleteFailed("release_floating_ip", id, fmt.Errorf("floating IP %q: %w", id, e))
+			return answered(s.deleteFailed("release_floating_ip", id, fmt.Errorf("floating IP %q: %w", id, e))), nil
 		}
 		fipID, fipIP, state, onNAT = id, f.IPAddress, f.State, f.OnNATGateway()
 	} else {
 		fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID)
 		if e != nil {
-			return errResult(e), true
+			return nil, e
 		}
 		for _, f := range fips {
 			if f.IPAddress == ip {
@@ -699,8 +699,8 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 			}
 		}
 		if fipID == "" {
-			return s.deleteFailedAs("release_floating_ip", "ip_address", ip, clierrors.New(clierrors.CodeNotFound,
-				i18n.Tf("no floating IP with address %q in this project", "в проекте нет floating IP с адресом %q", ip), ""))
+			return answered(s.deleteFailedAs("release_floating_ip", "ip_address", ip, clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("no floating IP with address %q in this project", "в проекте нет floating IP с адресом %q", ip), ""))), nil
 		}
 	}
 
@@ -712,36 +712,33 @@ func (s *Registry) handleReleaseFloatingIP(ctx context.Context, args map[string]
 	// whatever the person answers (A6, D31).
 	if onNAT {
 		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (snat_delete); not released", fipIP, fipID)
-		return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
+		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("Delete the SNAT gateway with snat_delete: its floating IP goes with it.", "Удалите SNAT-шлюз через snat_delete: его floating IP освободится вместе с ним.")),
-			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true
+			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
 	}
 
 	// Safety: never release an IP that is attached to a VM.
 	if state == "in_use" {
 		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it or destroy the VM first; not released", fipIP, fipID)
-		return errAnswer(clierrors.New(clierrors.CodeUsage, msg,
+		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("Detach it from the VM, or delete the VM (destroy), then release it.", "Отвяжите его от ВМ или удалите ВМ (destroy), затем освободите.")),
-			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true
+			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
 	}
 
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+	preview := map[string]any{"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
+		"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		if err := eng.Cloud.DeleteFloatingIP(ctx, fipID, projectID); err != nil {
+			return s.deleteFailed("release_floating_ip", fipID, fmt.Errorf("release floating IP: %w", err))
+		}
 		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
-				"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
-		}), true
-	}
-
-	if err := eng.Cloud.DeleteFloatingIP(ctx, fipID, projectID); err != nil {
-		return s.deleteFailed("release_floating_ip", fipID, fmt.Errorf("release floating IP: %w", err))
-	}
-	return toJSON(map[string]any{
-		"status":   "ok",
-		"released": fipIP,
-		"id":       fipID,
-		"message":  fmt.Sprintf("floating IP %s released", fipIP),
-	}), false
+			"status":   "ok",
+			"released": fipIP,
+			"id":       fipID,
+			"message":  fmt.Sprintf("floating IP %s released", fipIP),
+		}), false
+	}}, nil
 }
 
 // handleListFloatingIPs lists floating IPs (address, state, availability).

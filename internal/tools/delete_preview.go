@@ -12,29 +12,14 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// deletePreview is the confirmation answer of a *_delete tool: one GET of
-// the resource names what goes — its name and status next to the ID the
+// deletePlan is the plan of a *_delete tool (gate.go): one GET of the
+// resource names what goes — its name and status next to the ID the
 // caller passed — and an ID that is not there is already deleted, the
-// answer of a repeated delete (D26), instead of a question (release audit,
-// R-04); any other error of the GET is the answer. The message, in English (en) and
-// Russian (ru) for the CLI's language, has one %s: the resource as
-// "name" (id), the name quoted on one line (quoteCloud).
-func (s *Registry) deletePreview(tool, en, ru, id string, get func() (map[string]any, error)) (string, bool) {
-	p := s.deletePlan(tool, en, ru, id, get, nil)
-	if p.Preview == nil {
-		return p.answer, p.answerErr
-	}
-	out := map[string]any{"status": "confirmation_required"}
-	for k, v := range p.Preview {
-		out[k] = v
-	}
-	return toJSON(out), true
-}
-
-// deletePlan is the plan of a delete (gate.go) on deletePreview's GET: a
-// resource that is not there is already deleted (D26), with no question;
-// any other error of the GET is the answer; else the preview names what
-// goes, and execute deletes it.
+// answer of a repeated delete (D26), with no question (release audit,
+// R-04); any other error of the GET is the answer. The message, in English
+// (en) and Russian (ru) for the CLI's language, has one %s: the resource as
+// "name" (id), the name quoted on one line (quoteCloud). execute deletes
+// it.
 func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]any, error), execute func(context.Context) (string, bool)) *Plan {
 	m, err := get()
 	if err != nil {

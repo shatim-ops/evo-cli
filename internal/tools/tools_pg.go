@@ -491,41 +491,41 @@ func (s *Registry) handlePgCreate(ctx context.Context, args map[string]any) (str
 	return toJSON(out), false
 }
 
-func (s *Registry) handlePgDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planPgDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	// Both and different deleted the cluster of id (QA-1).
 	id, err := aliasArg(args, "id", "cluster_id")
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	if id == "" {
-		return usageT("'id' is required (from pg_list)", "нужен 'id' (из pg_list)"), true
+		return nil, usageErr("'id' is required (from pg_list)", "нужен 'id' (из pg_list)")
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return s.deletePreview("pg_delete", "pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups.",
-			"pg_delete БЕЗВОЗВРАТНО удаляет кластер PostgreSQL %s, его базы данных и все резервные копии.",
-			id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) })
-	}
-	op, err := cli.DeleteCluster(ctx, id)
-	if err != nil {
-		msg := fmt.Sprintf("delete cluster: %v", err)
-		switch {
-		case strings.Contains(msg, "force flag"):
-			// A FAILED cluster: the public API takes no force (`?force=true`
-			// is 415 at the gateway, register CRD-19; release audit re-run,
-			// N-13).
-			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
-				i18n.T("Cloud.ru deletes a FAILED cluster only with force, which its public API does not accept: delete it in the Cloud.ru console or ask support.", "Кластер в FAILED Cloud.ru удаляет только с force, а публичный API его не принимает: удалите кластер в консоли Cloud.ru или обратитесь в поддержку."))), true
-		case strings.Contains(msg, "FailedPrecondition"):
-			return errResult(clierrors.New(clierrors.CodeAPIError, msg,
-				i18n.T("The cluster is still being created (DEPLOYING): Cloud.ru deletes it through the API once it is READY. Check it with pg_get, then call pg_delete again; a cluster that ends FAILED is deleted only in the Cloud.ru console.", "Кластер ещё создаётся (DEPLOYING): через API Cloud.ru удалит его, когда он станет READY. Проверьте его через pg_get и повторите pg_delete; кластер, оказавшийся в FAILED, удаляется только в консоли Cloud.ru."))), true
-		}
-		return s.deleteFailed("pg_delete", id, fmt.Errorf("delete cluster: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id) until done=true."}), false
+	return s.deletePlan("pg_delete", "pg_delete PERMANENTLY deletes PostgreSQL cluster %s, its databases and all its backups.",
+		"pg_delete БЕЗВОЗВРАТНО удаляет кластер PostgreSQL %s, его базы данных и все резервные копии.",
+		id, func() (map[string]any, error) { return cli.GetCluster(ctx, id) },
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteCluster(ctx, id)
+			if err != nil {
+				msg := fmt.Sprintf("delete cluster: %v", err)
+				switch {
+				case strings.Contains(msg, "force flag"):
+					// A FAILED cluster: the public API takes no force (`?force=true`
+					// is 415 at the gateway, register CRD-19; release audit re-run,
+					// N-13).
+					return errResult(clierrors.New(clierrors.CodeAPIError, msg,
+						i18n.T("Cloud.ru deletes a FAILED cluster only with force, which its public API does not accept: delete it in the Cloud.ru console or ask support.", "Кластер в FAILED Cloud.ru удаляет только с force, а публичный API его не принимает: удалите кластер в консоли Cloud.ru или обратитесь в поддержку."))), true
+				case strings.Contains(msg, "FailedPrecondition"):
+					return errResult(clierrors.New(clierrors.CodeAPIError, msg,
+						i18n.T("The cluster is still being created (DEPLOYING): Cloud.ru deletes it through the API once it is READY. Check it with pg_get, then call pg_delete again; a cluster that ends FAILED is deleted only in the Cloud.ru console.", "Кластер ещё создаётся (DEPLOYING): через API Cloud.ru удалит его, когда он станет READY. Проверьте его через pg_get и повторите pg_delete; кластер, оказавшийся в FAILED, удаляется только в консоли Cloud.ru."))), true
+				}
+				return s.deleteFailed("pg_delete", id, fmt.Errorf("delete cluster: %w", err))
+			}
+			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id) until done=true."}), false
+		}), nil
 }
 
 // --- Databases ---
@@ -575,37 +575,37 @@ func (s *Registry) handlePgDbCreate(ctx context.Context, args map[string]any) (s
 	return toJSON(map[string]any{"status": "created", "database": db}), false
 }
 
-func (s *Registry) handlePgDbDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planPgDbDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	if cid == "" || name == "" {
-		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
+		return nil, usageErr("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'")
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// The cluster first: one that is not there is the call's error
 	// (NOT_FOUND), not a repeat; the database that is not there is (D26).
 	if _, err := cli.GetCluster(ctx, cid); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		items, err := cli.ListDatabases(ctx, cid)
-		if err != nil {
-			return errResult(err), true
+	items, err := cli.ListDatabases(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.ContainsFunc(items, func(m map[string]any) bool { return m["name"] == name }) {
+		return answered(s.deleteFailed("pg_db_delete", name, clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("no database %q in cluster %s", "базы данных %q в кластере %s нет", name, cid), ""))), nil
+	}
+	preview := map[string]any{"message": i18n.Tf("pg_db_delete PERMANENTLY drops database %q in cluster %s.",
+		"pg_db_delete БЕЗВОЗВРАТНО удаляет базу данных %q в кластере %s.", name, cid)}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		if err := cli.DeleteDatabase(ctx, cid, name); err != nil {
+			return s.deleteFailed("pg_db_delete", name, fmt.Errorf("delete database: %w", err))
 		}
-		if !slices.ContainsFunc(items, func(m map[string]any) bool { return m["name"] == name }) {
-			return s.deleteFailed("pg_db_delete", name, clierrors.New(clierrors.CodeNotFound,
-				i18n.Tf("no database %q in cluster %s", "базы данных %q в кластере %s нет", name, cid), ""))
-		}
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_db_delete PERMANENTLY drops database %q in cluster %s.",
-			"pg_db_delete БЕЗВОЗВРАТНО удаляет базу данных %q в кластере %s.", name, cid)}), true
-	}
-	if err := cli.DeleteDatabase(ctx, cid, name); err != nil {
-		return s.deleteFailed("pg_db_delete", name, fmt.Errorf("delete database: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleted", "database": name}), false
+		return toJSON(map[string]any{"status": "deleted", "database": name}), false
+	}}, nil
 }
 
 // --- Users ---
@@ -650,37 +650,37 @@ func (s *Registry) handlePgUserCreate(ctx context.Context, args map[string]any) 
 	return toJSON(map[string]any{"status": "created", "user": u}), false
 }
 
-func (s *Registry) handlePgUserDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planPgUserDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	if cid == "" || name == "" {
-		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
+		return nil, usageErr("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'")
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// The cluster first: one that is not there is the call's error
 	// (NOT_FOUND), not a repeat; the user that is not there is (D26).
 	if _, err := cli.GetCluster(ctx, cid); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		items, err := cli.ListUsers(ctx, cid)
-		if err != nil {
-			return errResult(err), true
+	items, err := cli.ListUsers(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.ContainsFunc(items, func(m map[string]any) bool { return m["name"] == name }) {
+		return answered(s.deleteFailed("pg_user_delete", name, clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("no user %q in cluster %s", "пользователя %q в кластере %s нет", name, cid), ""))), nil
+	}
+	preview := map[string]any{"message": i18n.Tf("pg_user_delete PERMANENTLY deletes user %q in cluster %s.",
+		"pg_user_delete БЕЗВОЗВРАТНО удаляет пользователя %q в кластере %s.", name, cid)}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		if err := cli.DeleteUser(ctx, cid, name); err != nil {
+			return s.deleteFailed("pg_user_delete", name, fmt.Errorf("delete user: %w", err))
 		}
-		if !slices.ContainsFunc(items, func(m map[string]any) bool { return m["name"] == name }) {
-			return s.deleteFailed("pg_user_delete", name, clierrors.New(clierrors.CodeNotFound,
-				i18n.Tf("no user %q in cluster %s", "пользователя %q в кластере %s нет", name, cid), ""))
-		}
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_user_delete PERMANENTLY deletes user %q in cluster %s.",
-			"pg_user_delete БЕЗВОЗВРАТНО удаляет пользователя %q в кластере %s.", name, cid)}), true
-	}
-	if err := cli.DeleteUser(ctx, cid, name); err != nil {
-		return s.deleteFailed("pg_user_delete", name, fmt.Errorf("delete user: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleted", "user": name}), false
+		return toJSON(map[string]any{"status": "deleted", "user": name}), false
+	}}, nil
 }
 
 // --- Backups ---

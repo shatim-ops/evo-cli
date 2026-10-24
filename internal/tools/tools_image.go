@@ -268,30 +268,28 @@ func zoneStates(img *provision.ImageDetail) map[string]string {
 	return states
 }
 
-// handleImageDelete removes an image. Mutation: requires confirmed=true.
-func (s *Registry) handleImageDelete(ctx context.Context, args map[string]any) (string, bool) {
+// planImageDelete plans the removal of an image (gate.go).
+func (s *Registry) planImageDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	imageID := stringArg(args, "image_id")
 	if imageID == "" {
-		return usageT("'image_id' is required", "нужен 'image_id'"), true
+		return nil, usageErr("'image_id' is required", "нужен 'image_id'")
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// An image that is not there is already deleted (D26).
-		if _, err := eng.Cloud.GetImage(ctx, imageID); err != nil {
-			return s.deleteFailed("image_delete", imageID, err)
+	// An image that is not there is already deleted (D26).
+	if _, err := eng.Cloud.GetImage(ctx, imageID); err != nil {
+		return answered(s.deleteFailed("image_delete", imageID, err)), nil
+	}
+	preview := map[string]any{"message": i18n.T("image_delete permanently removes the image. VMs already running keep working, but no new VM can be created from it.",
+		"image_delete безвозвратно удаляет образ. Уже работающие ВМ продолжат работать, но новую ВМ из него не создать."),
+		"will_delete": map[string]any{"image_id": imageID},
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		if err := eng.Cloud.DeleteImage(ctx, imageID, eng.Config.ProjectID); err != nil {
+			return s.deleteFailed("image_delete", imageID, fmt.Errorf("delete image: %w", err))
 		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("image_delete permanently removes the image. VMs already running keep working, but no new VM can be created from it.",
-				"image_delete безвозвратно удаляет образ. Уже работающие ВМ продолжат работать, но новую ВМ из него не создать."),
-			"will_delete": map[string]any{"image_id": imageID},
-		}), true
-	}
-	if err := eng.Cloud.DeleteImage(ctx, imageID, eng.Config.ProjectID); err != nil {
-		return s.deleteFailed("image_delete", imageID, fmt.Errorf("delete image: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleted", "image_id": imageID}), false
+		return toJSON(map[string]any{"status": "deleted", "image_id": imageID}), false
+	}}, nil
 }

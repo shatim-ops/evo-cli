@@ -220,31 +220,29 @@ func (s *Registry) handleCaDeploy(ctx context.Context, args map[string]any) (str
 	}), false
 }
 
-func (s *Registry) handleCaDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planCaDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageT("name is required", "нужен name"), true
+		return nil, usageErr("name is required", "нужен name")
 	}
 	cli, err := s.caClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// An app that is not there is already deleted (D26), not a question.
-		if _, err := cli.Get(ctx, name); err != nil {
+	// An app that is not there is already deleted (D26), not a question.
+	if _, err := cli.Get(ctx, name); err != nil {
+		return answered(s.deleteFailed("ca_delete", name, err)), nil
+	}
+	preview := map[string]any{"message": i18n.Tf("ca_delete permanently deletes container app %q.",
+		"ca_delete безвозвратно удаляет приложение %q.", name),
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		op, err := cli.Delete(ctx, name)
+		if err != nil {
 			return s.deleteFailed("ca_delete", name, err)
 		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("ca_delete permanently deletes container app %q.",
-				"ca_delete безвозвратно удаляет приложение %q.", name),
-		}), true
-	}
-	op, err := cli.Delete(ctx, name)
-	if err != nil {
-		return s.deleteFailed("ca_delete", name, err)
-	}
-	return toJSON(map[string]any{"status": "deleting", "name": name, "operation_id": op.ID}), false
+		return toJSON(map[string]any{"status": "deleting", "name": name, "operation_id": op.ID}), false
+	}}, nil
 }
 
 func (s *Registry) handleCaLogs(ctx context.Context, args map[string]any) (string, bool) {

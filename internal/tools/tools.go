@@ -1348,7 +1348,7 @@ func (s *Registry) registerTools() {
 		"image_create":         s.handleImageCreate,
 		"image_get":            s.handleImageGet,
 		"fip_attach":           s.handleFipAttach,
-		"image_delete":         s.handleImageDelete,
+		"image_delete":         s.gated("image_delete", s.planImageDelete),
 		"deploy_plan":          s.handleDeployPlan,
 		"deploy_apply":         s.handleDeployApply,
 		"list_flavors":         s.handleListFlavors,
@@ -1356,7 +1356,7 @@ func (s *Registry) registerTools() {
 		"list_subnets":         s.handleListSubnets,
 		"list_security_groups": s.handleListSecurityGroups,
 		"list_floating_ips":    s.handleListFloatingIPs,
-		"release_floating_ip":  s.handleReleaseFloatingIP,
+		"release_floating_ip":  s.gated("release_floating_ip", s.planReleaseFloatingIP),
 		"open_ports":           s.handleOpenPorts,
 		"snat_list":            s.handleSnatList,
 		"snat_create":          s.handleSnatCreate,
@@ -1381,11 +1381,11 @@ func (s *Registry) registerTools() {
 		"disk_attach":          s.handleDiskAttach,
 		"disk_detach":          s.handleDiskDetach,
 		"disk_resize":          s.handleDiskResize,
-		"disk_delete":          s.handleDiskDelete,
+		"disk_delete":          s.gated("disk_delete", s.planDiskDelete),
 		"ca_list":              s.handleCaList,
 		"ca_get":               s.handleCaGet,
 		"ca_deploy":            s.handleCaDeploy,
-		"ca_delete":            s.handleCaDelete,
+		"ca_delete":            s.gated("ca_delete", s.planCaDelete),
 		"ca_logs":              s.handleCaLogs,
 		"ca_start":             s.handleCaStart,
 		"ca_stop":              s.handleCaStop,
@@ -1399,7 +1399,7 @@ func (s *Registry) registerTools() {
 		"pg_versions":          s.handlePgVersions,
 		"pg_specs":             s.handlePgSpecs,
 		"pg_create":            s.handlePgCreate,
-		"pg_delete":            s.handlePgDelete,
+		"pg_delete":            s.gated("pg_delete", s.planPgDelete),
 		"pg_operation":         s.handlePgOperation,
 		"kafka_list":           s.handleKafkaList,
 		"kafka_get":            s.handleKafkaGet,
@@ -1417,10 +1417,10 @@ func (s *Registry) registerTools() {
 		"redis_operation":      s.handleRedisOperation,
 		"pg_databases":         s.handlePgDatabases,
 		"pg_db_create":         s.handlePgDbCreate,
-		"pg_db_delete":         s.handlePgDbDelete,
+		"pg_db_delete":         s.gated("pg_db_delete", s.planPgDbDelete),
 		"pg_users":             s.handlePgUsers,
 		"pg_user_create":       s.handlePgUserCreate,
-		"pg_user_delete":       s.handlePgUserDelete,
+		"pg_user_delete":       s.gated("pg_user_delete", s.planPgUserDelete),
 		"pg_backups":           s.handlePgBackups,
 		"pg_backup_create":     s.handlePgBackupCreate,
 		"lb_list":              s.handleLbList,
@@ -1439,22 +1439,22 @@ func (s *Registry) registerTools() {
 		"vpc_operation":        s.handleVpcOperation,
 		"vpc_routes":           s.handleVpcRoutes,
 		"vpc_route_create":     s.handleVpcRouteCreate,
-		"vpc_route_delete":     s.handleVpcRouteDelete,
+		"vpc_route_delete":     s.gated("vpc_route_delete", s.planVpcRouteDelete),
 		"dns_zones":            s.handleDnsZones,
 		"dns_zone_get":         s.handleDnsZoneGet,
 		"dns_zone_create":      s.handleDnsZoneCreate,
-		"dns_zone_delete":      s.handleDnsZoneDelete,
+		"dns_zone_delete":      s.gated("dns_zone_delete", s.planDnsZoneDelete),
 		"dns_operation":        s.handleDnsOperation,
 		"dns_records":          s.handleDnsRecords,
 		"dns_record_get":       s.handleDnsRecordGet,
 		"dns_record_create":    s.handleDnsRecordCreate,
-		"dns_record_delete":    s.handleDnsRecordDelete,
+		"dns_record_delete":    s.gated("dns_record_delete", s.planDnsRecordDelete),
 		"secret_list":          s.handleSecretList,
 		"secret_get":           s.handleSecretGet,
 		"secret_value":         s.handleSecretValue,
 		"secret_create":        s.handleSecretCreate,
 		"secret_add_version":   s.handleSecretAddVersion,
-		"secret_delete":        s.handleSecretDelete,
+		"secret_delete":        s.gated("secret_delete", s.planSecretDelete),
 		"ar_list":              s.handleArList,
 		"ar_get":               s.handleArGet,
 		"ar_create":            s.handleArCreate,
@@ -1471,7 +1471,7 @@ func (s *Registry) registerTools() {
 		"cert_issue_le":        s.handleCertIssueLE,
 		"cert_import":          s.handleCertImport,
 		"cert_renew":           s.handleCertRenew,
-		"cert_delete":          s.handleCertDelete,
+		"cert_delete":          s.gated("cert_delete", s.planCertDelete),
 		"cert_usage":           s.handleCertUsage,
 		"cert_versions":        s.handleCertVersions,
 		"cert_private_key":     s.handleCertPrivateKey,
@@ -1480,7 +1480,7 @@ func (s *Registry) registerTools() {
 		"s3_ls":                s.handleS3Ls,
 		"s3_get":               s.handleS3Get,
 		"s3_put":               s.handleS3Put,
-		"s3_rm":                s.handleS3Rm,
+		"s3_rm":                s.gated("s3_rm", s.planS3Rm),
 		"s3_bucket_create":     s.handleS3BucketCreate,
 		"s3_bucket_delete":     s.handleS3BucketDelete,
 		"stack_plan":           s.handleStackPlan,
@@ -1516,51 +1516,52 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			overrides[field] = v
 		}
 	}
-	if c := live(ctx); c != nil {
-		return s.deployLive(ctx, args, overrides, c)
-	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		eng, err := s.newEngine(overrides)
-		if err != nil {
-			eng = nil
-		}
-		answer, err := s.deployAnswer(ctx, args, eng)
-		if err != nil {
-			return errResult(err), true
-		}
-		return answer, true
-	}
+	return s.engineGated(ctx, "deploy", args,
+		func(c *Caller) (string, bool) { return s.deployLive(ctx, args, overrides, c) },
+		func() (string, bool) {
+			eng, err := s.newEngine(overrides)
+			if err != nil {
+				eng = nil
+			}
+			answer, err := s.deployAnswer(ctx, args, eng)
+			if err != nil {
+				return errResult(err), true
+			}
+			return answer, true
+		},
+		func() (string, bool) {
 
-	eng, err := s.newEngine(overrides)
-	if err != nil {
-		return errResult(err), true
-	}
-	var buf bytes.Buffer
-	eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
+			eng, err := s.newEngine(overrides)
+			if err != nil {
+				return errResult(err), true
+			}
+			var buf bytes.Buffer
+			eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
 
-	force, _ := args["force"].(bool)
-	opts := engine.DeployOptions{
-		ComposeFile:    eng.Config.ComposeFile,
-		Flavor:         eng.Config.Flavor,
-		Region:         eng.Config.Region,
-		Force:          force,
-		NonInteractive: true,
-		Yes:            true, // confirmed above
-	}
+			force, _ := args["force"].(bool)
+			opts := engine.DeployOptions{
+				ComposeFile:    eng.Config.ComposeFile,
+				Flavor:         eng.Config.Flavor,
+				Region:         eng.Config.Region,
+				Force:          force,
+				NonInteractive: true,
+				Yes:            true, // confirmed above
+			}
 
-	deployErr := eng.Deploy(ctx, opts)
+			deployErr := eng.Deploy(ctx, opts)
 
-	result := map[string]any{"log": buf.String()}
-	if sf, e := state.Read(state.DefaultPath(eng.StateDir)); e == nil {
-		if active := sf.ActiveDeployment(); active != nil {
-			result["deployment"] = active
-		}
-	}
-	if deployErr != nil {
-		return errAnswer(deployErr, result), true
-	}
-	result["status"] = "ok"
-	return toJSON(result), false
+			result := map[string]any{"log": buf.String()}
+			if sf, e := state.Read(state.DefaultPath(eng.StateDir)); e == nil {
+				if active := sf.ActiveDeployment(); active != nil {
+					result["deployment"] = active
+				}
+			}
+			if deployErr != nil {
+				return errAnswer(deployErr, result), true
+			}
+			result["status"] = "ok"
+			return toJSON(result), false
+		})
 }
 
 // deployAnswer is the answer of deploy without confirmed=true: what it is
@@ -2356,36 +2357,37 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 
 	// Default: delete the current local deployment. Destructive and previously
 	// ungated — now requires the same explicit confirmation as targeted deletes.
-	if c := live(ctx); c != nil {
-		return s.destroyLive(ctx, c)
-	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// What 'evo destroy' lists before it asks (spec REQ-4): the VM by
-		// name, its floating IP, the port rules and the record.
-		if eng, err := s.newEngine(nil); err == nil && eng != nil {
-			if p, ok := eng.DestroyPreview(ctx); ok {
-				return destroyAnswer(p, s.deploymentProject()), true
+	return s.engineGated(ctx, "destroy", args,
+		func(c *Caller) (string, bool) { return s.destroyLive(ctx, c) },
+		func() (string, bool) {
+			// What 'evo destroy' lists before it asks (spec REQ-4): the VM by
+			// name, its floating IP, the port rules and the record.
+			if eng, err := s.newEngine(nil); err == nil && eng != nil {
+				if p, ok := eng.DestroyPreview(ctx); ok {
+					return destroyAnswer(p, s.deploymentProject()), true
+				}
 			}
-		}
-		return destroyAnswer(confirm.Preview{}, s.deploymentProject()), true
-	}
-	eng, err := s.newEngine(nil)
-	if err != nil {
-		return errResult(err), true
-	}
-	var buf bytes.Buffer
-	eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
+			return destroyAnswer(confirm.Preview{}, s.deploymentProject()), true
+		},
+		func() (string, bool) {
+			eng, err := s.newEngine(nil)
+			if err != nil {
+				return errResult(err), true
+			}
+			var buf bytes.Buffer
+			eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
 
-	if err := eng.Destroy(ctx, engine.DestroyOptions{Force: true}); err != nil {
-		fields := logField(buf.String())
-		if stderrors.Is(err, engine.ErrDeletionUnconfirmed) {
-			// The delete is accepted, the rest waits for the re-run
-			// (release audit, A-005).
-			fields["status"] = "partial"
-		}
-		return errAnswer(err, fields), true
-	}
-	return toJSON(map[string]any{"status": "ok", "log": buf.String()}), false
+			if err := eng.Destroy(ctx, engine.DestroyOptions{Force: true}); err != nil {
+				fields := logField(buf.String())
+				if stderrors.Is(err, engine.ErrDeletionUnconfirmed) {
+					// The delete is accepted, the rest waits for the re-run
+					// (release audit, A-005).
+					fields["status"] = "partial"
+				}
+				return errAnswer(err, fields), true
+			}
+			return toJSON(map[string]any{"status": "ok", "log": buf.String()}), false
+		})
 }
 
 // destroyAnswer is the answer of destroy without confirmed=true for the

@@ -14,9 +14,9 @@ import (
 // FAILED и ERROR — TestDeletePreview_WarnsInFailedState (G13-19).
 func TestDeletePreview_WarnsWhileBeingCreated(t *testing.T) {
 	for status, warn := range map[string]bool{"DEPLOYING": true, "creating": true, "READY": false} {
-		text, _ := New(nil).deletePreview("k8s_delete", "x_delete deletes %s.", "x_delete удаляет %s.", "id-1", func() (map[string]any, error) {
+		text := toJSON(New(nil).deletePlan("k8s_delete", "x_delete deletes %s.", "x_delete удаляет %s.", "id-1", func() (map[string]any, error) {
 			return map[string]any{"name": "c1", "status": status}, nil
-		})
+		}, nil).Preview)
 		if got := strings.Contains(text, `"warning"`); got != warn {
 			t.Errorf("status %s: warning=%v, want %v: %s", status, got, warn, text)
 		}

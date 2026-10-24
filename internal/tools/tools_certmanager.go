@@ -194,31 +194,29 @@ func (s *Registry) handleCertRenew(ctx context.Context, args map[string]any) (st
 	return toJSON(map[string]any{"status": "renewing", "operation": op}), false
 }
 
-func (s *Registry) handleCertDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planCertDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "id")
 	if id == "" {
-		return usageT("'id' is required", "нужен 'id'"), true
+		return nil, usageErr("'id' is required", "нужен 'id'")
 	}
 	cli, err := s.certClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// A certificate that is not there is already deleted (D26).
-		if _, err := cli.Get(ctx, id); err != nil {
+	// A certificate that is not there is already deleted (D26).
+	if _, err := cli.Get(ctx, id); err != nil {
+		return answered(s.deleteFailed("cert_delete", id, err)), nil
+	}
+	preview := map[string]any{"message": i18n.Tf("cert_delete permanently deletes certificate %q. If it is bound to a load balancer/listener, deletion can break HTTPS. (force=true deletes it despite active usage.)",
+		"cert_delete безвозвратно удаляет сертификат %q. Если он привязан к балансировщику или обработчику, удаление может сломать HTTPS. (force=true — удалить, хотя сертификат используется.)", id),
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		force, _ := args["force"].(bool)
+		if err := cli.Delete(ctx, id, force); err != nil {
 			return s.deleteFailed("cert_delete", id, err)
 		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("cert_delete permanently deletes certificate %q. If it is bound to a load balancer/listener, deletion can break HTTPS. (force=true deletes it despite active usage.)",
-				"cert_delete безвозвратно удаляет сертификат %q. Если он привязан к балансировщику или обработчику, удаление может сломать HTTPS. (force=true — удалить, хотя сертификат используется.)", id),
-		}), true
-	}
-	force, _ := args["force"].(bool)
-	if err := cli.Delete(ctx, id, force); err != nil {
-		return s.deleteFailed("cert_delete", id, err)
-	}
-	return toJSON(map[string]any{"status": "deleted", "id": id, "force": force}), false
+		return toJSON(map[string]any{"status": "deleted", "id": id, "force": force}), false
+	}}, nil
 }
 
 func (s *Registry) handleCertUsage(ctx context.Context, args map[string]any) (string, bool) {

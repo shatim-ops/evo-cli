@@ -173,36 +173,36 @@ func (s *Registry) handleSecretAddVersion(ctx context.Context, args map[string]a
 	return toJSON(map[string]any{"status": "version_added", "version": res["version"]}), false
 }
 
-func (s *Registry) handleSecretDelete(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planSecretDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	path := stringArg(args, "path")
 	if path == "" {
-		return usageT("'path' is required (from secret_list)", "нужен 'path' (из secret_list)"), true
+		return nil, usageErr("'path' is required (from secret_list)", "нужен 'path' (из secret_list)")
 	}
 	cli, err := s.secretClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// A secret that is not there is already deleted (D26).
-		if _, err := cli.Get(ctx, path); err != nil {
-			return s.deleteFailed("secret_delete", path, err)
+	// A secret that is not there is already deleted (D26).
+	if _, err := cli.Get(ctx, path); err != nil {
+		return answered(s.deleteFailed("secret_delete", path, err)), nil
+	}
+	preview := map[string]any{"message": i18n.Tf("secret_delete PERMANENTLY deletes secret %q and all its versions.",
+		"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q и все его версии.", path)}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		// confirmed=true already authorizes deleting the secret AND all its versions
+		// (see the confirmation message), so force defaults to true — otherwise the
+		// API 400s with "cannot delete the secret with active versions" and the agent
+		// has to discover the force flag by trial (it did, during a live teardown).
+		// An explicit force:false is still honored for a versions-must-be-empty delete.
+		force := true
+		if v, ok := args["force"].(bool); ok {
+			force = v
 		}
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("secret_delete PERMANENTLY deletes secret %q and all its versions.",
-			"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q и все его версии.", path)}), true
-	}
-	// confirmed=true already authorizes deleting the secret AND all its versions
-	// (see the confirmation message), so force defaults to true — otherwise the
-	// API 400s with "cannot delete the secret with active versions" and the agent
-	// has to discover the force flag by trial (it did, during a live teardown).
-	// An explicit force:false is still honored for a versions-must-be-empty delete.
-	force := true
-	if v, ok := args["force"].(bool); ok {
-		force = v
-	}
-	if err := cli.Delete(ctx, path, force); err != nil {
-		return s.deleteFailed("secret_delete", path, fmt.Errorf("delete secret: %w", err))
-	}
-	return toJSON(map[string]any{"status": "deleted", "path": path}), false
+		if err := cli.Delete(ctx, path, force); err != nil {
+			return s.deleteFailed("secret_delete", path, fmt.Errorf("delete secret: %w", err))
+		}
+		return toJSON(map[string]any{"status": "deleted", "path": path}), false
+	}}, nil
 }
 
 // secretID is the id of the secret a create answered ({"secret": {...}}).

@@ -23,9 +23,9 @@ import (
 // reason stays API_ERROR.
 func TestDeletePreview_WarnsInFailedState(t *testing.T) {
 	for _, status := range []string{"FAILED", "ERROR", "error"} {
-		text, _ := New(nil).deletePreview("kafka_delete", "x_delete deletes %s.", "x_delete удаляет %s.", "id-1", func() (map[string]any, error) {
+		text := toJSON(New(nil).deletePlan("kafka_delete", "x_delete deletes %s.", "x_delete удаляет %s.", "id-1", func() (map[string]any, error) {
 			return map[string]any{"name": "c1", "status": status}, nil
-		})
+		}, nil).Preview)
 		var m map[string]any
 		if err := json.Unmarshal([]byte(text), &m); err != nil {
 			t.Fatal(err)

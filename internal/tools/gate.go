@@ -67,3 +67,20 @@ func (r *Registry) gated(name string, plan Planner) Handler {
 		return p.Execute(ctx)
 	}
 }
+
+// engineGated is the gate of a tool the engine drives itself (deploy, the
+// destroy of the deployment): the Caller of a CLI command asks for consent
+// where the engine reaches its gate (Caller.Gate: live), after the checks
+// the engine makes first; any other call gates here on confirmed —
+// without it, preview answers; with it, execute runs.
+func (r *Registry) engineGated(ctx context.Context, name string, args map[string]any,
+	live func(*Caller) (string, bool), preview, execute func() (string, bool)) (string, bool) {
+	if c := liveCaller(ctx); c != nil {
+		return live(c)
+	}
+	t, _ := r.Lookup(name)
+	if confirmed, _ := args["confirmed"].(bool); !confirmed && NeedsConsent(t, args) {
+		return preview()
+	}
+	return execute()
+}
