@@ -26,7 +26,6 @@ const gateFile = "internal/tools/gate.go"
 // each line removed (G13-3, class K1).
 var inlineGates = map[string]string{
 	"internal/tools/tools.go: destroyTargeted":                  "W5",
-	"internal/tools/tools.go: handleProvision":                  "W5",
 	"internal/tools/tools_ar.go: handleArCreate":                "1.4",
 	"internal/tools/tools_ca.go: handleCaDeploy":                "W6",
 	"internal/tools/tools_ca.go: handleCaStartStop":             "1.4",
@@ -71,7 +70,7 @@ var inlineGates = map[string]string{
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 42
+const inlineGatesLeft = 41
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{

@@ -41,6 +41,12 @@ type cancelCloud struct {
 	deletedFIPs []string
 }
 
+// ListDiskTypes: the plan prices the preview before the question (D35);
+// the price is not this fake's concern.
+func (*cancelCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
+	return nil, errors.New("no disk types in this fake")
+}
+
 func (c *cancelCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
 	if c.fipErr != nil {
 		return nil, c.fipErr

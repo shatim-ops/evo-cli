@@ -203,17 +203,22 @@ type NetworkCheck struct {
 
 // checkNetwork resolves the subnet and the group as provision does (the
 // zone's main subnet or subnet_id; the zone's default group) and checks
-// them; nil when nothing is wrong or nothing could be read.
-func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, subnetID string) *NetworkCheck {
+// them; nil when nothing is wrong or nothing could be read. A zone the
+// lists show without a subnet or a group is the error provision refuses
+// with (NoSubnetError, NoSecurityGroupError): the preview refuses it before
+// the question, as an image the project cannot use (D35, G13-3).
+func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, subnetID string) (*NetworkCheck, error) {
 	if projectID == "" || zoneID == "" {
-		return nil
+		return nil, nil
 	}
 	var c NetworkCheck
 	gateway := ""
-	if subnets, err := e.Cloud.ListSubnets(ctx, projectID); err == nil && len(subnets) > 0 {
+	if subnets, err := e.Cloud.ListSubnets(ctx, projectID); err == nil {
 		var sn *provision.Subnet
 		if i := provision.PickSubnet(subnets, zoneID, zoneName); i >= 0 {
 			sn = subnets[i]
+		} else if subnetID == "" {
+			return nil, NoSubnetError(zoneName, zoneID)
 		}
 		if subnetID != "" {
 			sn = nil
@@ -230,8 +235,10 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 			}
 		}
 	}
-	// No subnet or group in the zone: provision refuses (NoSubnetError,
-	// NoSecurityGroupError), so there is nothing to warn about here.
+	sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID)
+	if err == nil && provision.PickSecurityGroup(sgs, zoneID, zoneName) < 0 {
+		return nil, NoSecurityGroupError(zoneName, zoneID)
+	}
 	if g := pickGroup(ctx, e, projectID, zoneID, zoneName); g != nil {
 		if rules, err := provision.GroupRules(ctx, e.Cloud, g); err == nil {
 			gaps := provision.CheckVMGroupRules(rules, gateway)
@@ -241,9 +248,9 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 		}
 	}
 	if c == (NetworkCheck{}) {
-		return nil
+		return nil, nil
 	}
-	return &c
+	return &c, nil
 }
 
 // pickGroup is the zone's group provision takes; nil when the list

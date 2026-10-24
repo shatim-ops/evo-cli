@@ -1334,7 +1334,7 @@ func (s *Registry) registerTools() {
 
 	s.handlers = map[string]toolHandler{
 		"deploy":               s.handleDeploy,
-		"provision":            s.handleProvision,
+		"provision":            s.gated("provision", s.planProvision),
 		"status":               s.handleStatus,
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
@@ -1678,10 +1678,14 @@ func subnetNamesOtherZone(s *provision.Subnet, zoneID string, zones []*provision
 	return false
 }
 
-func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (string, bool) {
+// planProvision plans a provision (D35): the call's own mistakes, the
+// configuration, the zone and what the preview reads (the flavor, the
+// image, the subnet and the group of the zone) refuse it before the
+// question, with confirmed or without.
+func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Plan, error) {
 	if name := stringArg(args, "name"); name != "" {
 		if err := provision.ValidName(i18n.T("VM", "ВМ"), name); err != nil {
-			return errResult(err), true
+			return nil, err
 		}
 	}
 	overrides := map[string]any{}
@@ -1701,68 +1705,74 @@ func (s *Registry) handleProvision(ctx context.Context, args map[string]any) (st
 	// included: image and image_id, or one of only spaces (break r4,
 	// R4-11).
 	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	metaValues, err := metadataArg(args, "image_metadata")
 	if err != nil {
-		return usageResult(err), true
+		return nil, clierrors.Wrap(clierrors.CodeUsage, err.Error(), "", err)
 	}
 	tcpPorts, udpPorts, err := sgrules.ParsePorts(portSpecs(args["ports"]))
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// The engine of the preview and of the call alike: a configuration
 	// that cannot be built, or that names no project (engineFor), no image
 	// or no zone (provisionInputError), fails the call whatever the person
-	// answers, so the preview refuses it instead of asking for consent
-	// (dogfood 1.2.0), and so does a call with confirmed=true.
+	// answers, so the plan refuses it before the question (dogfood 1.2.0).
 	eng, err := s.engineFor(ctx, overrides)
 	if err == nil && eng == nil {
 		err = stderrors.New("engine unavailable")
 	}
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	if arg, err := provisionInputError(eng); err != nil {
-		return errAnswer(err, map[string]any{"missing": []string{arg}}), true
+		return answered(errAnswer(err, map[string]any{"missing": []string{arg}}), true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		noPublicIP, _ := args["no_public_ip"].(bool)
-		// The configuration names the project, the zone and the image;
-		// the reads of the preview (flavor, zone and image names, the
-		// price) complete it, and create nothing (spec REQ-7).
-		zctx, cancel := context.WithTimeout(ctx, engine.PreviewLookupTimeout)
-		zone, _, err := resolveVMZone(zctx, eng)
-		cancel()
-		if err != nil {
-			return errResult(err), true
-		}
-		preview := provisionPreview(eng.Config, zone, args)
-		if preview, err = s.completePreview(ctx, eng, preview); err != nil {
-			return errResult(err), true
-		}
-		will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
-			firstNonEmptyStr(stringArg(args, "project_id"), preview.ProjectID))
-		if v := stringArg(args, "image"); v != "" {
-			will["image"] = v
-		}
-		if len(tcpPorts)+len(udpPorts) > 0 {
-			will["ports"] = portLabels(tcpPorts, udpPorts)
-		}
-		if len(metaValues) > 0 {
-			// Names only: a value may be a password.
-			will["image_metadata_fields"] = sortedMetaKeys(metaValues)
-		}
-		will["public_ip"] = !noPublicIP
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
+	noPublicIP, _ := args["no_public_ip"].(bool)
+	// The configuration names the project, the zone and the image; the
+	// reads of the preview (flavor, zone and image names, the subnet and
+	// the group of the zone, the price) complete it, and create nothing
+	// (spec REQ-7).
+	zctx, cancel := context.WithTimeout(ctx, engine.PreviewLookupTimeout)
+	zone, _, err := resolveVMZone(zctx, eng)
+	cancel()
+	if err != nil {
+		return nil, err
+	}
+	preview := provisionPreview(eng.Config, zone, args)
+	if preview, err = s.completePreview(ctx, eng, preview); err != nil {
+		return nil, err
+	}
+	will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
+		firstNonEmptyStr(stringArg(args, "project_id"), preview.ProjectID))
+	if v := stringArg(args, "image"); v != "" {
+		will["image"] = v
+	}
+	if len(tcpPorts)+len(udpPorts) > 0 {
+		will["ports"] = portLabels(tcpPorts, udpPorts)
+	}
+	if len(metaValues) > 0 {
+		// Names only: a value may be a password.
+		will["image_metadata_fields"] = sortedMetaKeys(metaValues)
+	}
+	will["public_ip"] = !noPublicIP
+	return &Plan{
+		Preview: map[string]any{
 			"message": i18n.T("provision creates a billable VM (and a public floating IP unless no_public_ip=true). preview has the VM and its monthly cost.",
 				"provision создаёт платную ВМ (и публичный floating IP, если не задано no_public_ip=true). В preview — ВМ и её цена в месяц."),
 			"will_create": will,
 			"preview":     preview,
-		}), true
-	}
+		},
+		Execute: func(ctx context.Context) (string, bool) {
+			return s.provisionVM(ctx, eng, args, metaValues, tcpPorts, udpPorts)
+		},
+	}, nil
+}
 
+// provisionVM is the execution of a provision planned by planProvision.
+func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map[string]any,
+	metaValues map[string]string, tcpPorts, udpPorts []int) (string, bool) {
 	vmName := stringArg(args, "name")
 	if vmName == "" {
 		vmName = "evo-" + fmt.Sprintf("%d", clock.Now().Unix())
