@@ -7,7 +7,8 @@
 # не 200 и не 404 на список — отдельное расхождение API. Начисления проба не
 # видит. Вызывает job dbaas-pg в cloud-e2e.yml
 # после шага удаления кластера; окружение: CLUSTER_ID (кластер прогона,
-# уже замаскирован), BACKUP_NAME (копия, сделанная pg_backup_create),
+# уже замаскирован), BACKUP_NAME (копия, сделанная pg_backup_create; нет —
+# проба не проводится),
 # KEY_ID, SECRET — ключ прогона.
 #
 # Проба, не проверка: итог — строка «DB-22 проба: …» для реестра, код выхода
@@ -21,10 +22,17 @@
 # текст ошибки API — через redact.sed и обрезанным. ID и токен не печатаются.
 set -euo pipefail
 
-: "${CLUSTER_ID:?нужен CLUSTER_ID}" "${BACKUP_NAME:?нужно имя копии BACKUP_NAME}"
+: "${CLUSTER_ID:?нужен CLUSTER_ID}"
 redact() { sed -E -f "$(dirname "$0")/redact.sed"; }
 api=https://postgresql.api.cloud.ru
 out="${RUNNER_TEMP:-/tmp}/pg-backup-probe.json"
+trap 'rm -f "$out"' EXIT
+
+# Копии не было (pg_backup_create упал раньше): вопрос DB-22 не задан.
+if [ -z "${BACKUP_NAME:-}" ]; then
+	echo "DB-22 проба: не проведена — ручной копии в прогоне нет"
+	exit 0
+fi
 
 # Кластер обязан быть удалён: иначе проба отвечает не на вопрос DB-22.
 if ! evo tools call pg_list --json >"$out" 2>/dev/null; then

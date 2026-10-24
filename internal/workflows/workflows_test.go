@@ -864,6 +864,9 @@ func TestWorkflows_PGBackupProbeAfterDeleteChangesNothing(t *testing.T) {
 	}
 	script := string(b)
 	for _, l := range strings.Split(script, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "#") {
+			continue
+		}
 		if strings.Contains(l, "curl ") && strings.Contains(l, "-X") && !strings.Contains(l, "/auth/token") {
 			t.Errorf("pg-backup-probe.sh writes to the API: %s", strings.TrimSpace(l))
 		}

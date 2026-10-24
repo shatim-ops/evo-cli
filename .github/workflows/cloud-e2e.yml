@@ -1375,7 +1375,7 @@ jobs:
       # строка «DB-22 проба: …» в логе, job она не роняет; ничего не создаёт
       # и не удаляет. Решение владельца 24.10 — в прогоне на коммите тега rc.2.
       - name: Копии удалённого кластера (DB-22, проба)
-        if: always() && env.BACKUP_NAME != '' && env.CLUSTER_ID != ''
+        if: always() && env.CLUSTER_ID != ''
         continue-on-error: true
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
