@@ -91,7 +91,7 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
 |---|---|
 | `USAGE` with `existing_id` | the name is taken: pick another, or use that cluster |
 | `USAGE` (storage, nodes) | below the specification's minimum or above its nodes: fix, preview again |
-| `API_RATE_LIMITED` on create (`ResourceExhausted`) | the zone has no capacity now: offer the person to try later or another zone (`subnet_id` of a subnet in another zone); do not repeat the call in a loop |
+| `API_RATE_LIMITED` on create (`ResourceExhausted`, DB-23) | the zone has no capacity now: offer the person to try later or another zone (`subnet_id` of a subnet in another zone); do not repeat the call in a loop |
 | `API_ERROR` on create | read the message; check `pg_list` before any new create |
 | `pg_operation` with `error` | the operation failed: `pg_get` for the state, then ask the person |
 
@@ -117,6 +117,8 @@ it again before you looked.
   answers the platform's error. Do not repeat the delete and do not report
   success: tell the person the way is Cloud.ru support or the console.
 - DB-22: listing the backups of a deleted cluster answers an error.
+- DB-23: a zone without capacity refuses `pg_create` with
+  `API_RATE_LIMITED` (`ResourceExhausted`): another zone or later.
 - Backups are set at creation and cannot be turned on or off later.
 
 ## Never
