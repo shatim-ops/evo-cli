@@ -5,9 +5,11 @@
 package tools
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -45,6 +47,30 @@ func TestOpenPorts_GroupNotThereBeforeTheQuestion(t *testing.T) {
 		m, _, isErr := callNamed(t, r, "open_ports", map[string]any{"security_group": "no-such-group", "ports": []any{float64(8080)}, "confirmed": confirmed})
 		if !isErr || m["reason"] != clerrors.CodeNotFound {
 			t.Errorf("open_ports of a group that is not there, confirmed=%v: %v", confirmed, m)
+		}
+	}
+}
+
+// twinGroupsCloud has two security groups of one name (review of #315).
+type twinGroupsCloud struct{ provision.CloudAPI }
+
+func (twinGroupsCloud) SetToken(string) {}
+func (twinGroupsCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return []*provision.SecurityGroup{
+		{ID: faultID(0x81), Name: "web", AvailabilityZoneID: "z1"},
+		{ID: faultID(0x82), Name: "web", AvailabilityZoneID: "z2"},
+	}, nil
+}
+
+// A name two groups share is USAGE with the candidates before the question:
+// the first the list gave was taken, and its rules were the ones changed.
+// The group by its id is taken.
+func TestOpenPorts_AmbiguousGroupNameBeforeTheQuestion(t *testing.T) {
+	r, _ := fastRegistry(t, twinGroupsCloud{}, config.Config{ProjectID: "p", KeyID: "k", Secret: "s"})
+	for _, confirmed := range []bool{false, true} {
+		m, text, isErr := callNamed(t, r, "open_ports", map[string]any{"security_group": "web", "ports": []any{float64(8080)}, "confirmed": confirmed})
+		if !isErr || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, faultID(0x81)) || !strings.Contains(text, faultID(0x82)) {
+			t.Errorf("open_ports of a name two groups share, confirmed=%v: %s", confirmed, text)
 		}
 	}
 }
