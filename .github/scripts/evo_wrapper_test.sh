@@ -41,16 +41,31 @@ want "stderr в файл — как есть, сразу" "$(cat "$dir/err")" "s
 set +e
 { timeout --preserve-status -s INT 60 "$dir/evo" wait 2>&1 >/dev/null; echo "$?" >"$dir/int.rc"; } | cat >"$dir/int.out" &
 reader=$!
-for _ in $(seq 1 600); do grep -q 'готов' "$dir/int.out" 2>/dev/null && break; sleep 0.05; done
-pg=$(ps -o pgid= -p "$(cat "$dir/pid" 2>/dev/null)" 2>/dev/null | tr -d ' ')
+ready=нет
+for _ in $(seq 1 600); do grep -q 'готов' "$dir/int.out" 2>/dev/null && { ready=да; break; }; sleep 0.05; done
+pid=$(cat "$dir/pid" 2>/dev/null)
+pg=$(ps -o pgid= -p "${pid:-0}" 2>/dev/null | tr -d ' ')
 own=$(ps -o pgid= -p $$ | tr -d ' ')
+# Что evo игнорирует на входе (Linux): игнорируемый на входе INT bash
+# перехватить не может (ubuntu-26.04, timeout из uutils: проба #321 висела).
+ign=$(awk '/^SigIgn:/ {print $2}' "/proc/${pid:-0}/status" 2>/dev/null)
 # timeout без своей группы (GNU делает setpgid) — INT ушёл бы и в этот тест.
-if [ -n "$pg" ] && [ "$pg" != "$own" ]; then kill -INT -- "-$pg"; else kill -INT "$(cat "$dir/pid" 2>/dev/null)" 2>/dev/null; fi
+if [ -n "$pg" ] && [ "$pg" != "$own" ]; then kill -INT -- "-$pg" 2>/dev/null; elif [ -n "$pid" ]; then kill -INT "$pid" 2>/dev/null; fi
+# Не дождались — убить и упасть, а не висеть до лимита job.
+for _ in $(seq 1 200); do [ -s "$dir/int.rc" ] && break; sleep 0.05; done
+if [ ! -s "$dir/int.rc" ]; then
+	printf 'FAIL evo не завершился после INT (SigIgn evo: %s)\n' "${ign:-?}"
+	fail=1
+	if [ -n "$pg" ] && [ "$pg" != "$own" ]; then kill -KILL -- "-$pg" 2>/dev/null; fi
+	parent=$(ps -o ppid= -p "${pid:-0}" 2>/dev/null | tr -d ' ')
+	[ -z "$pid" ] || kill -KILL "$pid" 2>/dev/null
+	[ -z "$parent" ] || [ "$parent" = $$ ] || kill -KILL "$parent" 2>/dev/null
+fi
 wait "$reader"
 set -e
-want "evo запустился" "${pg:+да}" да
-want "timeout ведёт свою группу процессов" "$([ "$pg" != "$own" ] && echo да)" да
-want "INT доходит до evo" "$(cat "$dir/int.rc")" 130
+want "evo запустился и вывел строку через sed" "$ready" да
+want "timeout ведёт свою группу процессов" "$([ -n "$pg" ] && [ "$pg" != "$own" ] && echo да)" да
+want "INT доходит до evo" "$(cat "$dir/int.rc" 2>/dev/null)" 130
 want "stderr после INT — через redact.sed" "$(cat "$dir/int.out")" "$(printf 'stderr готов <id>\nstderr прерван <id>')"
 
 [ "$fail" = 0 ] && echo "evo_wrapper: ok"

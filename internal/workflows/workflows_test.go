@@ -971,6 +971,7 @@ func TestWorkflows_CILinuxImageIsPinned(t *testing.T) {
 	ws := readWorkflows(t)
 	for _, f := range []string{"release.yml", "cloud-e2e.yml"} {
 		for name, j := range ws[f].Jobs {
+			// A job with uses: runs on the image of the workflow it calls.
 			if j.Uses == "" && j.RunsOn != "ubuntu-24.04" {
 				t.Errorf("%s %s: runs-on %q, not ubuntu-24.04", f, name, j.RunsOn)
 			}
