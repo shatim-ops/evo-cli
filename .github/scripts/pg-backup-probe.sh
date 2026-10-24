@@ -55,10 +55,10 @@ echo "evo pg_backups: код $evo_rc, reason $evo_reason, копий $evo_n, п�
 [ "$evo_rc" = 0 ] || echo "evo pg_backups: $(jq -r '.error // empty | tostring' "$out" 2>/dev/null | redact | cut -c1-200)"
 
 # 2. Те же копии прямым GET API: список и копия по имени.
-[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] || {
+if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ]; then
 	echo "DB-22 проба: evo pg_backups — код $evo_rc ($evo_reason, копий $evo_n); API не проверен: нет ключа"
 	exit 0
-}
+fi
 # Тело запроса токена — через stdin, не в argv.
 token=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
 	curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
