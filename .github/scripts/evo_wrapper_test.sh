@@ -11,7 +11,7 @@ cat > "$dir/evo-real" <<FAKE
 #!/usr/bin/env bash
 case "\$1" in
   out) echo "stdout $id"; echo "stderr $id" >&2; exit 7 ;;
-  wait) trap 'echo "stderr прерван $id" >&2; exit 130' INT; while :; do sleep 0.1; done ;;
+  wait) trap 'echo "stderr прерван $id" >&2; exit 130' INT; echo "\$\$" >"$dir/pid"; echo "stderr готов $id" >&2; while :; do sleep 0.1; done ;;
 esac
 FAKE
 chmod +x "$dir/evo-real"
@@ -34,11 +34,21 @@ set -e
 want "stderr в файл — как есть, сразу" "$(cat "$dir/err")" "stderr $id"
 
 # Ctrl-C (timeout -s INT, шаг «logs -f») доходит до evo, а не до обёртки.
+# INT — всей группе timeout (evo и sed маски), как шлёт сам timeout, но не по
+# часам, а когда первая строка evo прошла через sed: обработчик evo и
+# ловушка sed уже стоят. По часам (timeout 1 с) INT на занятом раннере
+# приходил раньше ловушек, и stderr пропадал (release rc.2, run 40100673928).
 set +e
-got=$(timeout --preserve-status -s INT 1 "$dir/evo" wait 2>&1 >/dev/null); rc=$?
+{ timeout --preserve-status -s INT 60 "$dir/evo" wait 2>&1 >/dev/null; echo "$?" >"$dir/int.rc"; } | cat >"$dir/int.out" &
+reader=$!
+for _ in $(seq 1 600); do grep -q 'готов' "$dir/int.out" 2>/dev/null && break; sleep 0.05; done
+pg=$(ps -o pgid= -p "$(cat "$dir/pid" 2>/dev/null)" 2>/dev/null | tr -d ' ')
+[ -n "$pg" ] && kill -INT -- "-$pg"
+wait "$reader"
 set -e
-want "INT доходит до evo" "$rc" 130
-want "stderr после INT — через redact.sed" "$got" "stderr прерван <id>"
+want "evo запустился" "${pg:+да}" да
+want "INT доходит до evo" "$(cat "$dir/int.rc")" 130
+want "stderr после INT — через redact.sed" "$(cat "$dir/int.out")" "$(printf 'stderr готов <id>\nstderr прерван <id>')"
 
 [ "$fail" = 0 ] && echo "evo_wrapper: ok"
 exit "$fail"
