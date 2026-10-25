@@ -156,13 +156,13 @@ func NoSubnetError(zoneName, zoneID string) error {
 func SubnetNotInProjectError(subnetID string) error {
 	return clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
-		i18n.T("Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из vpc_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))
+		i18n.T("Take a subnet ID from list_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из list_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))
 }
 
 func SubnetNotInZoneError(subnetName, zoneName, zoneID string) error {
 	return clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("subnet %s is not in zone %s", "подсеть %s не в зоне %s", subnetName, zoneText(zoneName, zoneID)),
-		i18n.T("Take a subnet of this zone (vpc_subnets), or omit subnet_id: the zone's main subnet is taken.", "Возьмите подсеть этой зоны (vpc_subnets) или не указывайте subnet_id: возьмётся основная подсеть зоны."))
+		i18n.T("Take a subnet of this zone (list_subnets), or omit subnet_id: the zone's main subnet is taken.", "Возьмите подсеть этой зоны (list_subnets) или не указывайте subnet_id: возьмётся основная подсеть зоны."))
 }
 
 // SubnetForVM is the subnet provision plugs the VM into: subnet_id when
