@@ -84,7 +84,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("vpc request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("vpc request failed: %w", "запрос к vpc не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -119,7 +119,7 @@ func (c *Client) doOperation(ctx context.Context, method, path string, body any)
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }
@@ -156,12 +156,12 @@ func (c *Client) listPages(ctx context.Context, path string, query url.Values, f
 		}
 		var out map[string]json.RawMessage
 		if err := json.Unmarshal(data, &out); err != nil {
-			return "", fmt.Errorf("parse %s: %w", field, err)
+			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 		}
 		var page []map[string]any
 		if raw, ok := out[field]; ok {
 			if err := json.Unmarshal(raw, &page); err != nil {
-				return "", fmt.Errorf("parse %s: %w", field, err)
+				return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 			}
 		}
 		all = append(all, page...)
@@ -188,7 +188,7 @@ func (c *Client) GetVPC(ctx context.Context, id string) (map[string]any, error) 
 	}
 	var out map[string]any
 	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse vpc: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse vpc: %w", "разбор vpc: %w"), err)
 	}
 	return out, nil
 }
@@ -214,7 +214,7 @@ func (c *Client) GetOperation(ctx context.Context, id string) (*Operation, error
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }

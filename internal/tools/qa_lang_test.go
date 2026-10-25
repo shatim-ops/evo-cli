@@ -78,7 +78,7 @@ func englishPhrase(s string) string {
 var apiErrorEnglishLeft = map[string]bool{
 	"deploy_plan": true, "disk_create": true, "dns_zone_create": true, "image_create": true,
 	"pg_db_create": true, "pg_user_create": true, "provision": true, "release_floating_ip": true,
-	"s3_get": true, "secret_add_version": true, "secret_create": true,
+	"secret_add_version": true, "secret_create": true,
 }
 
 // cloudSegment marks where an API_ERROR leaves evo's words for the

@@ -34,21 +34,6 @@ var (
 var englishWraps = map[string]string{
 	"internal/tools": "1.3.1, part 1",
 
-	"internal/artifact":     "1.3.1, part 2",
-	"internal/audit":        "1.3.1, part 2",
-	"internal/billing":      "1.3.1, part 2",
-	"internal/certmanager":  "1.3.1, part 2",
-	"internal/containerapp": "1.3.1, part 2",
-	"internal/dbaas":        "1.3.1, part 2",
-	"internal/dns":          "1.3.1, part 2",
-	"internal/mk8s":         "1.3.1, part 2",
-	"internal/monitoring":   "1.3.1, part 2",
-	"internal/nlb":          "1.3.1, part 2",
-	"internal/postgresql":   "1.3.1, part 2",
-	"internal/s3":           "1.3.1, part 2",
-	"internal/secret":       "1.3.1, part 2",
-	"internal/vpc":          "1.3.1, part 2",
-
 	"internal/agentconf":  "1.3.1, part 3",
 	"internal/auth":       "1.3.1, part 3",
 	"internal/cli":        "1.3.1, part 3",

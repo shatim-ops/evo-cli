@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -104,7 +105,7 @@ func (c *Client) ListAddons(ctx context.Context) ([]Addon, error) {
 			NextPageToken string  `json:"nextPageToken"`
 		}
 		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf("parse addons: %w", err)
+			return "", fmt.Errorf(i18n.T("parse addons: %w", "разбор плагинов: %w"), err)
 		}
 		out = append(out, r.Addons...)
 		return r.NextPageToken, nil
@@ -122,7 +123,7 @@ func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRele
 			NextPageToken string         `json:"nextPageToken"`
 		}
 		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf("parse addon releases: %w", err)
+			return "", fmt.Errorf(i18n.T("parse addon releases: %w", "разбор релизов плагина: %w"), err)
 		}
 		for _, rel := range r.Releases {
 			// The live API (16.10.2026) puts the addon version into
@@ -242,7 +243,7 @@ func (c *Client) CreateClusterAddon(ctx context.Context, req CreateClusterAddonR
 		Name       string          `json:"name"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, fmt.Errorf("parse cluster addon: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse cluster addon: %w", "разбор плагина кластера: %w"), err)
 	}
 	// The spec answers an Operation: with done or resourceId (the live
 	// answer, 16.10.2026), and also bare — protojson leaves out done:false
@@ -283,7 +284,7 @@ func (c *Client) ListClusterAddons(ctx context.Context, clusterID string) ([]map
 			NextPageToken string           `json:"nextPageToken"`
 		}
 		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf("parse cluster addons: %w", err)
+			return "", fmt.Errorf(i18n.T("parse cluster addons: %w", "разбор плагинов кластера: %w"), err)
 		}
 		out = append(out, r.ClusterAddons...)
 		out = append(out, r.Items...)
