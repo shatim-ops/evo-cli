@@ -6,9 +6,24 @@
 Бриф пишет «Процесс и тестирование»; исполнитель — Cursor; ревью каждого
 файла — «1.3.1 — разработка»; ревью Qwen приходит само.
 
-Репозиторий `shatim-ops/evo-cli`. **Базовая ветка — `claude/proc-api-error-lang`**
-(от `main`): в ней уже лежат два падающих теста — это и есть критерий
-приёмки. Ветку не переписывать: свою ветку создать от неё, PR — в `main`.
+Репозиторий `shatim-ops/evo-cli`, база — `main`. Инварианты уже в `main`
+(«Процесс»): два закрытых перечня мест, которые ещё по-английски. Перечни
+только сокращаются: каждый PR правит свои пакеты и вычёркивает их строки, и
+тест сам проверяет, что вычеркнутое действительно исправлено, а нового
+английского не появилось.
+
+**Работа идёт тремя PR по частям** (решение владельца 25.10), по порядку,
+каждый — после слияния предыдущего:
+
+| Часть | Пакеты | Вычеркнуть |
+|---|---|---|
+| 1 | `internal/tools` | строку `internal/tools` в `englishWraps` (`internal/testrules/errwrap_test.go`) и весь перечень `apiErrorEnglishLeft` (`internal/tools/qa_lang_test.go`) |
+| 2 | клиенты сервисов: `artifact`, `audit`, `billing`, `certmanager`, `containerapp`, `dbaas`, `dns`, `mk8s`, `monitoring`, `nlb`, `postgresql`, `s3`, `secret`, `vpc` | их строки «part 2» в `englishWraps` |
+| 3 | остальное: `agentconf`, `auth`, `cli`, `config`, `deployplan`, `kubetools`, `mcp`, `stack` | их строки «part 3»; после неё `englishWraps` пуст |
+
+Если правка части 1 не убирает инструмент из `apiErrorEnglishLeft` (его
+английская приставка — из клиента сервиса, например `s3_get` → `internal/s3`),
+строка остаётся до части 2 — тест скажет, какая.
 
 ## Что сделать
 
@@ -38,9 +53,10 @@ return errResult(fmt.Errorf(i18n.T("create zone: %w", "создание зоны
 «non-constant format string» — значит, у вызова нет аргументов после
 формата; такого случая среди мест ниже быть не должно, иначе — вопрос в PR.
 
-## Где (182 места в 24 пакетах)
+## Где (182 места в 23 пакетах)
 
-Полный список с номерами строк печатает сам тест:
+Список с номерами строк печатает сам тест, если вычеркнуть пакет из
+`englishWraps`:
 
 ```
 go test ./internal/testrules -run TestErrorWrapsSpeakCLILanguage
@@ -100,17 +116,17 @@ go test ./internal/testrules -run TestErrorWrapsSpeakCLILanguage
 
 Второй тест — мир «500» (`internal/tools/qa_lang_test.go`,
 `TestQA11_ToolErrorsSpeakCLILanguage`, новая ветвь `API_ERROR`): вызывает
-каждый инструмент с отказом облака и проверяет, что в русском CLI
+каждый инструмент с отказом облака и проверяет (кроме перечня `apiErrorEnglishLeft`), что в русском CLI
 приставка evo до текста облака (`dns API 500`, `HTTP 500`, «API вернул
 статус…», тело ответа, фраза клиентской библиотеки) не содержит сегмента без
-кириллицы. Сейчас он называет 11 инструментов (`dns_zone_create`,
+кириллицы. В перечне — 11 инструментов (`dns_zone_create`,
 `disk_create`, `image_create`, `pg_db_create`, `pg_user_create`,
 `secret_create`, `secret_add_version`, `release_floating_ip`, `s3_get`,
 `provision` и `deploy_plan` через `list flavors`) — они входят в 182.
 
-## Приёмка
+## Приёмка (каждой части)
 
-Обе команды зелёные, и ничего больше не сломано:
+Строки своей части вычеркнуты, и всё зелёное:
 
 ```
 go test ./internal/testrules -run TestErrorWrapsSpeakCLILanguage
@@ -125,16 +141,17 @@ go test -race ./...
 - менять английский текст (с `EVO_LANG=en` и в MCP-сервере вывод
   байт-в-байт прежний);
 - трогать тесты: `TestContract_*`, `TestParity_*`, `TestQA11_*`,
-  `TestErrorWrapsSpeakCLILanguage` и любые другие `_test.go` — правка
-  только в продуктовом коде (`*.go` без `_test`);
+  `TestErrorWrapsSpeakCLILanguage` и любые другие `_test.go`; единственная
+  правка в тестах — вычеркнуть строки своей части в `englishWraps` и
+  `apiErrorEnglishLeft` (добавлять строки нельзя);
 - переписывать сообщения, которые уже идут через `i18n`, и тексты облака
   (`dns API 500`, тела ответов);
 - менять логику: только формат ошибки.
 
 ## PR
 
-- Заголовок: «Язык CLI в обёртках ошибок облака (продукт, 1.3.1)».
-- Фрагмент CHANGELOG: `changelog.d/error-wraps-lang.md` (формат —
+- Заголовок: «Язык CLI в обёртках ошибок, часть N (продукт, 1.3.1)»; ревью «разработки» — каждый файл.
+- Фрагмент CHANGELOG — в части 1, части 2 и 3 его дополняют: `changelog.d/error-wraps-lang.md` (формат —
   `changelog.d/README.md`), раздел «Исправлено»: «Русский CLI: приставка evo
   перед ошибкой облака — по-русски (было по-английски); `reason`, коды
   выхода и английский текст не меняются». Не «Миграция»: `reason` и коды
