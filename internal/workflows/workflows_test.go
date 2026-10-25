@@ -7,6 +7,7 @@
 package workflows
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +34,10 @@ type workflow struct {
 		Permissions    any    `yaml:"permissions"`
 		Uses           string `yaml:"uses"`
 		RunsOn         string `yaml:"runs-on"`
+		Strategy       struct {
+			Matrix map[string]any `yaml:"matrix"`
+		} `yaml:"strategy"`
+		Env map[string]string `yaml:"env"`
 		// ContinueOnError: a job whose failure does not fail the run.
 		ContinueOnError bool `yaml:"continue-on-error"`
 		Steps           []struct {
@@ -404,6 +409,11 @@ func TestWorkflows_WeeklyRace(t *testing.T) {
 // of the collector, none hiding the next. The weekly race does not run then.
 // tools ×20 under GODEBUG outlives the default -timeout of 10m (run
 // 40135541445): every step sets its own.
+// The third run of the probe (owner's decision 25.10): which axis takes
+// the runtime crash away on Windows — the Go release, -race, the GC checks
+// of GODEBUG, the Green Tea collector, async preemption. Two axes are the
+// matrix of jobs, three are the runs of .github/scripts/gc-probe-matrix.sh
+// in each; no run stops the next, the table is the result.
 func TestWorkflows_WindowsGCProbe(t *testing.T) {
 	w := weeklyWorkflow(t, "weekly-race.yml")
 	d, _ := w.On["workflow_dispatch"].(map[string]any)
@@ -421,28 +431,27 @@ func TestWorkflows_WindowsGCProbe(t *testing.T) {
 	if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["contents"] != "read" {
 		t.Errorf("weekly-race: gc-probe permissions %v, want contents: read only", j.Permissions)
 	}
-	want := []string{
-		"go test -race -count=200 -timeout=60m ./internal/config/",
-		"go test -race -count=20 -timeout=150m ./internal/tools/",
-		"go test -count=20 -timeout=150m ./internal/tools/",
+	axes := map[string][]string{
+		"go": {"1.26.10", "1.27.x", "tip"},
+		"gc": {"greenteagc", "nogreenteagc"},
 	}
-	for _, cmd := range want {
-		found := false
-		for _, s := range j.Steps {
-			if strings.TrimSpace(s.Run) != cmd {
-				continue
-			}
+	for axis, want := range axes {
+		got, _ := j.Strategy.Matrix[axis].([]any)
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("weekly-race: gc-probe matrix %s = %v, want %v", axis, got, want)
+		}
+	}
+	if !strings.Contains(j.Env["GOEXPERIMENT"], "matrix.gc") {
+		t.Errorf("weekly-race: gc-probe GOEXPERIMENT %q does not follow matrix.gc", j.Env["GOEXPERIMENT"])
+	}
+	found := false
+	for _, s := range j.Steps {
+		if strings.TrimSpace(s.Run) == "bash .github/scripts/gc-probe-matrix.sh ./internal/tools/" {
 			found = true
-			if !s.ContinueOnError {
-				t.Errorf("weekly-race: gc-probe step %q stops the next ones", cmd)
-			}
-			if g := s.Env["GODEBUG"]; !strings.Contains(g, "gccheckmark=1") || !strings.Contains(g, "invalidptr=1") {
-				t.Errorf("weekly-race: gc-probe step %q has GODEBUG %q", cmd, g)
-			}
 		}
-		if !found {
-			t.Errorf("weekly-race: gc-probe does not run %q", cmd)
-		}
+	}
+	if !found {
+		t.Error("weekly-race: gc-probe does not run .github/scripts/gc-probe-matrix.sh ./internal/tools/")
 	}
 }
 

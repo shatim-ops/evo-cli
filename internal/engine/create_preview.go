@@ -6,6 +6,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
@@ -341,8 +343,14 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	cat := images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}
 	checked, marketplace := false, false
 	if vm.Image.ID == "" && vm.Image.Name != "" {
-		// image by name: the call resolves it the same way.
-		if img, err := cat.Resolve(ctx, vm.Image.Name); err == nil {
+		// image by name: the call resolves it the same way. The catalogue
+		// without the image, or with several, refuses the preview as the
+		// call would refuse after the question (G130-02, D39).
+		img, err := cat.Resolve(ctx, vm.Image.Name)
+		if imageDecided(err) {
+			return err
+		}
+		if err == nil {
 			if img.NotInProject {
 				return images.NotInProjectError(img.Name)
 			}
@@ -351,7 +359,11 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		}
 	}
 	if vm.Image.ID != "" {
-		if img, err := e.Cloud.GetImage(ctx, vm.Image.ID); err == nil {
+		img, err := e.Cloud.GetImage(ctx, vm.Image.ID)
+		if imageDecided(err) {
+			return images.NotFoundError(vm.Image.ID)
+		}
+		if err == nil {
 			if !checked {
 				cat.MarkInProject(ctx, img)
 				if img.NotInProject {
@@ -376,6 +388,17 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	defer ncancel()
 	p.NetworkCheck, err = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
 	return err
+}
+
+// imageDecided reports an image lookup the catalogue answered: no such
+// image (NOT_FOUND) or several of the name (USAGE). The call with the same
+// image would fail after the question, so the preview refuses before it
+// (D35). Any other error — the network, a 5xx, no right — decides nothing:
+// the preview goes on without the image's details, and the call itself
+// meets the error.
+func imageDecided(err error) bool {
+	var ce *clerrors.CLIError
+	return errors.As(err, &ce) && (ce.Code == clerrors.CodeNotFound || ce.Code == clerrors.CodeVMNotFound || ce.Code == clerrors.CodeUsage)
 }
 
 // PickVMFlavor is the flavor provision creates a VM with: a name or UUID

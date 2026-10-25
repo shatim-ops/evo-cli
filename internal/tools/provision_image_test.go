@@ -40,6 +40,12 @@ func (c *productCloud) CreateVM(ctx context.Context, req provision.CreateVMReque
 	return c.cancelCloud.CreateVM(ctx, req)
 }
 
+// The catalogue holds the product image by its name and display name:
+// the preview resolves it there, as the call does (D39).
+func (*productCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
+	return []*provision.Image{{ID: "img-1", Name: "Product-1", DisplayName: "Product 1"}}, nil
+}
+
 // The reads of the preview (spec REQ-7) that cancelCloud has not: the
 // project's own images and the disk types are not in this fake.
 func (*productCloud) ListImagesInProject(context.Context, string) ([]*provision.Image, error) {

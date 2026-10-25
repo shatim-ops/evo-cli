@@ -237,7 +237,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 			vmid, _ := sp["id"].(string)
 			det, e := eng.Cloud.GetVMDetail(ctx, vmid)
 			if e != nil {
-				return errResult(fmt.Errorf("resolve interface for vm %s: %w", vmid, e)), true
+				return errResult(fmt.Errorf(i18n.T("resolve interface for vm %s: %w", "разрешение интерфейса ВМ %s: %w"), vmid, e)), true
 			}
 			ifid := pickVMInterface(det)
 			if ifid == "" {
@@ -403,7 +403,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, "lb_create", cli.ListNLB, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf("create load balancer: %w", err))
+		return lostCreate(ctx, "lb_create", cli.ListNLB, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf(i18n.T("create load balancer: %w", "создание балансировщика: %w"), err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": "Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING."}
 	// The balancer's id is in the create's answer: named at once (fault
@@ -430,7 +430,7 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	}
 	subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
 	if err != nil {
-		return none, "", nil, fmt.Errorf("resolve subnet: %w", err)
+		return none, "", nil, fmt.Errorf(i18n.T("resolve subnet: %w", "выбор подсети: %w"), err)
 	}
 	find := func(ref string) *provision.AvailabilityZone {
 		for _, z := range zones {

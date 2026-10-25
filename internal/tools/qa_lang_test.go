@@ -71,6 +71,50 @@ func englishPhrase(s string) string {
 	return ""
 }
 
+// apiErrorEnglishLeft are the tools whose API_ERROR still starts with
+// English words of evo in the Russian CLI (1.3.1; prefixes left are from
+// service clients — part 2 of englishWraps). The list only shrinks: a
+// tool not here fails the test, and so does a line whose tool answers
+// in Russian.
+var apiErrorEnglishLeft = map[string]bool{
+	"deploy_plan": true, "release_floating_ip": true, "s3_get": true,
+}
+
+// cloudSegment marks where an API_ERROR leaves evo's words for the
+// cloud's: the service and status the client names («dns API 500»,
+// «HTTP 500», «Organization API»), the transport's «API returned status»
+// in either language, an error code (API_ERROR), the body itself, or a
+// sentence of a client library («Object name cannot be empty», minio):
+// evo's own segments start with a lower-case word.
+var cloudSegment = regexp.MustCompile(`^(?:[\w.-]+ API(?: \d{3})?|HTTP \d{3}|API (?:returned|вернул)\b.*|[A-Z_]+|[{\[].*|[A-Z][a-z].*)$`)
+
+// apiErrorPrefix is the part of an API_ERROR message evo wrote: the
+// segments («a: b: …») before the first of the cloud's.
+func apiErrorPrefix(msg string) string {
+	var own []string
+	for _, seg := range strings.Split(msg, ": ") {
+		if cloudSegment.MatchString(strings.TrimSpace(seg)) {
+			break
+		}
+		own = append(own, seg)
+	}
+	return strings.Join(own, ": ")
+}
+
+// latinSegment is the first segment of an evo prefix with no Cyrillic in
+// it — a phrase of the English CLI («create zone»), or "".
+func latinSegment(prefix string) string {
+	if prefix == "" {
+		return ""
+	}
+	for _, seg := range strings.Split(prefix, ": ") {
+		if !hasCyrillic(seg) {
+			return seg
+		}
+	}
+	return ""
+}
+
 func plainWord(w string) bool {
 	if w == "" {
 		return false
@@ -187,7 +231,7 @@ type langCall struct {
 // walkLang calls every tool with every set of langArgSets and returns the
 // complaints: in ru an English phrase, in en Cyrillic, in the message or
 // the hint of a local refusal.
-func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad map[string]string, n int) {
+func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad map[string]string, n int, left map[string]bool) {
 	rt := &contractRT{kind: kind}
 	reg := contractRegCfg(t, rt, edit)
 	i18n.SetLang(lang)
@@ -198,6 +242,7 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 		}
 	}
 	bad = map[string]string{}
+	left = map[string]bool{}
 	var mu sync.Mutex
 	ch := make(chan langCall)
 	var wg sync.WaitGroup
@@ -230,17 +275,31 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 					msg, _ := m["error"].(string)
 					hint, _ := m["hint"].(string)
 					fields = map[string]string{"error": msg, "hint": hint}
+				case reason == clerrors.CodeAPIError:
+					// The cloud's own text is the cloud's; what evo puts
+					// before it is evo's (#319, D6).
+					msg, _ := m["error"].(string)
+					fields = map[string]string{"error prefix": apiErrorPrefix(msg)}
 				default:
 					continue
 				}
 				for field, s := range fields {
 					what := ""
-					if lang == i18n.RU {
+					switch {
+					case field == "error prefix" && lang == i18n.RU:
+						what = latinSegment(s)
+					case lang == i18n.RU:
 						what = englishPhrase(s)
-					} else if hasCyrillic(s) {
+					case hasCyrillic(s):
 						what = "cyrillic"
 					}
 					if what == "" {
+						continue
+					}
+					if field == "error prefix" && apiErrorEnglishLeft[c.tool] {
+						mu.Lock()
+						left[c.tool] = true
+						mu.Unlock()
 						continue
 					}
 					key := fmt.Sprintf("%s %s %s: %s", c.tool, reason, field, s)
@@ -259,11 +318,19 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 	}
 	close(ch)
 	wg.Wait()
-	return bad, len(calls)
+	return bad, len(calls), left
 }
 
 func TestQA11_ToolErrorsSpeakCLILanguage(t *testing.T) {
 	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	stillEnglish := map[string]bool{}
+	defer func() {
+		for tool := range apiErrorEnglishLeft {
+			if !stillEnglish[tool] {
+				t.Errorf("apiErrorEnglishLeft names %s, whose API_ERROR speaks Russian: remove the line", tool)
+			}
+		}
+	}()
 	// No S3 keys, no image, no project: the CONFIG_INVALID answers.
 	bare := func(c *config.Config) { c.S3 = config.S3Config{}; c.ImageID = ""; c.ProjectID = "" }
 	for _, lang := range []string{i18n.RU, i18n.EN} {
@@ -275,7 +342,10 @@ func TestQA11_ToolErrorsSpeakCLILanguage(t *testing.T) {
 			if run.edit != nil {
 				kind += "-bare"
 			}
-			bad, n := walkLang(t, lang, run.kind, run.edit)
+			bad, n, left := walkLang(t, lang, run.kind, run.edit)
+			for tool := range left {
+				stillEnglish[tool] = true
+			}
 			if n < 3000 {
 				t.Fatalf("only %d calls", n)
 			}

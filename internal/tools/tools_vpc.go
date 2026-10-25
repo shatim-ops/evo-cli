@@ -101,7 +101,7 @@ func (s *Registry) handleVpcCreate(ctx context.Context, args map[string]any) (st
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, "vpc_create", cli.ListVPCs, "VPC", name, nil, "vpc_list", fmt.Errorf("create vpc: %w", err))
+		return lostCreate(ctx, "vpc_create", cli.ListVPCs, "VPC", name, nil, "vpc_list", fmt.Errorf(i18n.T("create vpc: %w", "создание vpc: %w"), err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id); then vpc_get for the status."}
 	// The VPC's id is in the create's answer: named at once (fault matrix,
@@ -129,7 +129,7 @@ func (s *Registry) planVpcDelete(ctx context.Context, args map[string]any) (*Pla
 		func(ctx context.Context) (string, bool) {
 			op, err := cli.DeleteVPC(ctx, id)
 			if err != nil {
-				return s.deleteFailed("vpc_delete", id, fmt.Errorf("delete vpc: %w", err))
+				return s.deleteFailed("vpc_delete", id, fmt.Errorf(i18n.T("delete vpc: %w", "удаление vpc: %w"), err))
 			}
 			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 		}), nil
@@ -268,7 +268,7 @@ func (s *Registry) handleVpcRouteCreate(ctx context.Context, args map[string]any
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), subnet, nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf("create route: %w", err))
+		return lostCreate(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), subnet, nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf(i18n.T("create route: %w", "создание маршрута: %w"), err))
 	}
 	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id)."}
 	if op.ResourceID != "" {
@@ -305,7 +305,7 @@ func (s *Registry) planVpcRouteDelete(ctx context.Context, args map[string]any) 
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := cli.DeleteRoute(ctx, vpcID, routeID)
 		if err != nil {
-			return s.deleteFailed("vpc_route_delete", routeID, fmt.Errorf("delete route: %w", err))
+			return s.deleteFailed("vpc_route_delete", routeID, fmt.Errorf(i18n.T("delete route: %w", "удаление маршрута: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleting", "route_id": routeID, "operation_id": op.ID}), false
 	}}, nil

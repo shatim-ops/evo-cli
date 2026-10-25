@@ -131,7 +131,7 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 	if versionID == "" {
 		vers, e := cli.ListVersions(ctx, url.Values{})
 		if e != nil {
-			return nil, fmt.Errorf("list versions: %w", e)
+			return nil, fmt.Errorf(i18n.T("list versions: %w", "список версий: %w"), e)
 		}
 		if len(vers) == 0 {
 			return nil, errors.New(i18n.T("no redis versions available", "нет доступных версий Redis"))
@@ -147,7 +147,7 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 	}
 	specs, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
-		return nil, fmt.Errorf("list specifications: %w", err)
+		return nil, fmt.Errorf(i18n.T("list specifications: %w", "список спецификаций: %w"), err)
 	}
 	specArg, cpu, ram := stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0)
 	spec := findDbaasSpec(specs, specArg, cpu, ram)
@@ -202,7 +202,7 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 				err = noID("operation")
 			}
 			list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, url.Values{}) }
-			return lostCreate(ctx, "redis_create", list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id", fmt.Errorf("create cluster: %w", err))
+			return lostCreate(ctx, "redis_create", list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id", fmt.Errorf(i18n.T("create cluster: %w", "создание кластера: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
 			"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}), false
@@ -266,7 +266,7 @@ func (s *Registry) planRedisDelete(ctx context.Context, args map[string]any) (*P
 		func(ctx context.Context) (string, bool) {
 			op, err := cli.DeleteCluster(ctx, id)
 			if err != nil {
-				return s.deleteFailed("redis_delete", id, fmt.Errorf("delete cluster: %w", err))
+				return s.deleteFailed("redis_delete", id, fmt.Errorf(i18n.T("delete cluster: %w", "удаление кластера: %w"), err))
 			}
 			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 		}), nil

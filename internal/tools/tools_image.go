@@ -159,7 +159,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 			}
 			return listed, err
 		}
-		return lostCreate(ctx, "image_create", list, i18n.T("image", "образ"), name, nil, "image_get id", fmt.Errorf("create image: %w", err))
+		return lostCreate(ctx, "image_create", list, i18n.T("image", "образ"), name, nil, "image_get id", fmt.Errorf(i18n.T("create image: %w", "создание образа: %w"), err))
 	}
 	return toJSON(map[string]any{
 		"status": "building",
@@ -312,7 +312,7 @@ func (s *Registry) planImageDelete(ctx context.Context, args map[string]any) (*P
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		if err := eng.Cloud.DeleteImage(ctx, imageID, eng.Config.ProjectID); err != nil {
-			return s.deleteFailed("image_delete", imageID, fmt.Errorf("delete image: %w", err))
+			return s.deleteFailed("image_delete", imageID, fmt.Errorf(i18n.T("delete image: %w", "удаление образа: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleted", "image_id": imageID}), false
 	}}, nil
