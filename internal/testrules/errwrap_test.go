@@ -35,21 +35,6 @@ var (
 // The list only shrinks: a wrap elsewhere fails the test, and so does a
 // line whose package has none left.
 var englishWraps = map[string]string{
-	"internal/artifact":     "1.3.1, part 2",
-	"internal/audit":        "1.3.1, part 2",
-	"internal/billing":      "1.3.1, part 2",
-	"internal/certmanager":  "1.3.1, part 2",
-	"internal/containerapp": "1.3.1, part 2",
-	"internal/dbaas":        "1.3.1, part 2",
-	"internal/dns":          "1.3.1, part 2",
-	"internal/mk8s":         "1.3.1, part 2",
-	"internal/monitoring":   "1.3.1, part 2",
-	"internal/nlb":          "1.3.1, part 2",
-	"internal/postgresql":   "1.3.1, part 2",
-	"internal/s3":           "1.3.1, part 2",
-	"internal/secret":       "1.3.1, part 2",
-	"internal/vpc":          "1.3.1, part 2",
-
 	"internal/agentconf":  "1.3.1, part 3",
 	"internal/auth":       "1.3.1, part 3",
 	"internal/cli":        "1.3.1, part 3",
@@ -62,9 +47,7 @@ var englishWraps = map[string]string{
 
 // copiedWraps are the wraps whose ru in i18n.T is the en copied —
 // "package<TAB>format" → the PR that fixes it. The list only shrinks.
-var copiedWraps = map[string]string{
-	"internal/tools\tfloating IP %q: %w": "1.3.1, after #352",
-}
+var copiedWraps = map[string]string{}
 
 // CLAUDE.md §2, D6: what evo writes in an error is in the CLI's language;
 // the cloud's own text stays the cloud's. An error that wraps another
