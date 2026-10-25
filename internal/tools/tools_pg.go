@@ -399,7 +399,7 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 	// one included (final audit, N-06).
 	subnetID, _, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
 	if err != nil {
-		return nil, err
+		return dbaasSubnetErr(err)
 	}
 
 	willCreate := map[string]any{

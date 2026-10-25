@@ -7,6 +7,7 @@ package engine
 import (
 	"context"
 	crand "crypto/rand"
+	stderrors "errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -143,14 +144,26 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneRef string) 
 // anything.
 func NoSubnetError(zoneName, zoneID string) error {
 	// Name what to pass first (subnet_id / region); the console only when
-	// the project has no subnet in any zone. "missing" lets the CLI word
-	// the same hint with its flags (G130-27).
-	ce := clerrors.New(clerrors.CodeConfigInvalid,
+	// the project has no subnet in any zone (G130-27). The tool answer that
+	// surfaces this error may add "missing": ["subnet_id"] so the CLI words
+	// the hint with --subnet-id.
+	return &noSubnetError{ce: clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(zoneName, zoneID)),
 		i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); if the project has no subnet in any zone, create one in the Cloud.ru console.",
-			"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
-	ce.Details = map[string]any{"missing": []string{"subnet_id"}}
-	return ce
+			"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))}
+}
+
+// noSubnetError is NoSubnetError's type so a tool answer can tell it apart
+// and add "missing" without copying CLIError.Details.
+type noSubnetError struct{ ce *clerrors.CLIError }
+
+func (e *noSubnetError) Error() string { return e.ce.Error() }
+func (e *noSubnetError) Unwrap() error { return e.ce }
+
+// IsNoSubnet reports whether err is NoSubnetError (or wraps one).
+func IsNoSubnet(err error) bool {
+	var e *noSubnetError
+	return stderrors.As(err, &e)
 }
 
 // NoSecurityGroupError: the project has groups, none in the VM's zone; a

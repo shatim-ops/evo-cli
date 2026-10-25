@@ -1754,6 +1754,9 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	}
 	preview := provisionPreview(eng.Config, zone, args)
 	if preview, err = s.completePreview(ctx, eng, preview); err != nil {
+		if engine.IsNoSubnet(err) {
+			return answered(errAnswer(err, map[string]any{"missing": []string{"subnet_id"}}), true), nil
+		}
 		return nil, err
 	}
 	will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
@@ -1924,7 +1927,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		subnet = subnets[i]
 		subnetID = subnet.ID
 	} else {
-		return errResult(engine.NoSubnetError(zoneName, region)), true
+		return errAnswer(engine.NoSubnetError(zoneName, region), map[string]any{"missing": []string{"subnet_id"}}), true
 	}
 	var netWarnings []string
 	gateway := ""
@@ -3296,13 +3299,18 @@ func errAnswer(err error, fields map[string]any) string {
 	for k, v := range fields {
 		res[k] = v
 	}
-	// Details of a CLIError (argument, missing, …) become answer fields so
-	// the CLI can word the hint without parsing the text; fields win.
-	var ce *clierrors.CLIError
-	if stderrors.As(err, &ce) {
-		for k, v := range ce.Details {
-			if _, ok := res[k]; !ok {
-				res[k] = v
+	// Schema-rule refusals name the argument (and format) explicitly so
+	// the CLI can word the hint without parsing the text (G130-35). Other
+	// answer fields come only from the fields argument — CLIError.Details
+	// are not copied.
+	var re *ruleError
+	if stderrors.As(err, &re) {
+		if _, ok := res["argument"]; !ok {
+			res["argument"] = re.Arg
+		}
+		if re.Format != "" {
+			if _, ok := res["format"]; !ok {
+				res["format"] = re.Format
 			}
 		}
 	}

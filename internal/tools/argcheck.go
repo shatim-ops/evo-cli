@@ -148,16 +148,26 @@ func ruleArg(k string, p map[string]any, v any) error {
 	return nil
 }
 
-// ruleErr is a USAGE refusal of a schema rule: the tool hint points at
-// inputSchema; "argument" (and "format" when set) let the CLI name its
-// flag or positional without parsing the text (G130-35).
+// ruleError is a USAGE refusal of a schema rule (D36). errAnswer is the
+// only place that turns Arg and Format into answer fields, so the CLI can
+// name its flag or positional without parsing the text (G130-35).
+type ruleError struct {
+	Arg, Format string
+	ce          *clierrors.CLIError
+}
+
+func (e *ruleError) Error() string { return e.ce.Error() }
+func (e *ruleError) Unwrap() error { return e.ce }
+
 func ruleErr(k string, p map[string]any, msg string) error {
-	ce := clierrors.New(clierrors.CodeUsage, msg, ruleHint(k, p))
-	ce.Details = map[string]any{"argument": k}
-	if f, ok := p["format"].(string); ok && f != "" {
-		ce.Details["format"] = f
+	re := &ruleError{
+		Arg: k,
+		ce:  clierrors.New(clierrors.CodeUsage, msg, ruleHint(k, p)),
 	}
-	return ce
+	if f, ok := p["format"].(string); ok && f != "" {
+		re.Format = f
+	}
+	return re
 }
 
 // argRefused reports whether the static rules of tool's schema refuse v

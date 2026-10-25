@@ -143,7 +143,7 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 	// are listed for it.
 	subnetID, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
 	if err != nil {
-		return nil, err
+		return dbaasSubnetErr(err)
 	}
 	specs, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
