@@ -17,16 +17,28 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // lateRefusals are the calls known to ask for consent and then fail
-// without a write (G13-3, class K1): "tool: case" → the work item of the
-// release plan that moves the check before the question (W3…W6). The list
-// only shrinks: a case not here fails the test, and so does a line whose
-// call no longer fails that way.
-var lateRefusals = map[string]string{}
+// without a write (G13-3, class K1), or to answer a write the world refused
+// as a success (G130-15): "tool: case" → the work item of the release plan
+// that fixes it (W3…W6; the decisions of 1.3.1, D39…D42, with their PR).
+// The list only shrinks: a case not here fails the test, and so does a line
+// whose call no longer fails that way.
+var lateRefusals = map[string]string{
+	"provision: world: image not in the catalogue": "D39 (#345)",
+	"deploy: world: image not in the catalogue":    "D39 (#345)",
+	"secret_create: world: secret path taken":      "D42 (#344)",
+}
+
+// jobStarts answer a refused write as a success by design: the call starts
+// a job, and the step's refusal is the job's state, not the call's answer.
+var jobStarts = map[string]string{
+	"stack_apply": "starts the job: the refusal of a step is stack_status's answer (G130-04)",
+}
 
 // consentAbsentID is an id no resource of the world has: every API answers
 // it 404.
@@ -55,6 +67,19 @@ var consentWorlds = map[string]consentWorld{
 	// The address is attached to another VM: fip_attach reads it before
 	// the question (Fable, delta audit 1.3.0, FB130-1).
 	"floating IP in use": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return busyFIPCloud{c} }, refusedBy: []string{"fip_attach"}},
+	// The image of the configuration is not in the catalogue: provision
+	// and deploy read the catalogue for the preview, so they know the call
+	// fails (G130-02, D39).
+	"image not in the catalogue": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return noImageCloud{c} },
+		refusedBy: []string{"provision", "deploy"}},
+	// The path of secret_create is taken: the create's 4xx is a refusal,
+	// and the secret found by the path is not the call's (G130-15, D42).
+	"secret path taken": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "secretmanager.api.cloud.ru" || r.URL.Path != "/v2/secret" {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"secrets":[{"id":"`+consentOtherID+`","path":"app/db"}]}`)
+	}},
 	"disk larger than requested": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 			return nil
@@ -64,6 +89,24 @@ var consentWorlds = map[string]consentWorld{
 }
 
 type noSubnetCloud struct{ provision.CloudAPI }
+
+// noImageCloud has no image at all: the catalogue answers not found.
+type noImageCloud struct{ provision.CloudAPI }
+
+func (noImageCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
+	return nil, nil
+}
+
+func (noImageCloud) ListImagesInProject(context.Context, string) ([]*provision.Image, error) {
+	return nil, nil
+}
+
+func (noImageCloud) GetImage(_ context.Context, id string) (*provision.ImageDetail, error) {
+	return nil, clierrors.New(clierrors.CodeNotFound, "HTTP 404: image "+id+" not found", "")
+}
+
+// consentOtherID is a resource of the world the call did not make.
+const consentOtherID = "00000000-0000-4000-8000-0000000000b8"
 
 // busyFIPCloud has the address of fip_attach in use by another VM.
 type busyFIPCloud struct{ provision.CloudAPI }
@@ -162,9 +205,12 @@ func looksParityID(v string) bool {
 // refuses every write; a call that fails without trying one failed on a
 // check the preview could have made, so the same call without confirmed
 // must give that refusal (the same reason), not confirmation_required.
-// It sees only what the world models: the rules of the platform it does
-// not know (4xx after a write) are the world of 4xx of 1.4 (G13-3, K1;
-// release plan 1.3, W8).
+// A call whose write the world refused must not answer a success either:
+// the resource is not there, or the one found is not the call's (G130-15),
+// unless the call only starts a job (jobStarts). It sees only what the
+// world models: each rule of the platform is a variant of consentWorlds,
+// taken from the register of discrepancies and the decisions (D39, D42 —
+// the first rules of the world of 4xx; G13-3, K1; release plan 1.3, W8).
 func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 	w, fake := withJSONWorld(t)
 	srv := newROServers(t)
@@ -262,6 +308,13 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 				continue
 			}
 			after, failed, writes := call(tl, c, true)
+			if writes > 0 && !failed && jobStarts[tl.Name] == "" {
+				// The world refused the write: a success is a resource
+				// that is not there, or not the call's (K1 after the
+				// question; G130-15).
+				found[key] = fmt.Sprintf("the world refused its write (403), the answer is a success: %s", clipLine(fmt.Sprint(after)))
+				continue
+			}
 			if !failed || writes > 0 {
 				continue
 			}
@@ -287,7 +340,7 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 	}
 	for k := range lateRefusals {
 		if found[k] == "" {
-			t.Errorf("lateRefusals names %s, which no longer fails after consent without a write: remove the line", k)
+			t.Errorf("lateRefusals names %s, which no longer fails that way: remove the line", k)
 		}
 	}
 }
