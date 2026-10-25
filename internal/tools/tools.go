@@ -1806,7 +1806,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	flavorID := eng.Config.Flavor
 	flavors, err := eng.Cloud.ListFlavors(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf("list flavors: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("list flavors: %w", "список flavor: %w"), err)), true
 	}
 	if picked, err := engine.PickVMFlavor(flavors, flavorID); err != nil {
 		return errResult(err), true
@@ -1878,7 +1878,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	}
 	subnets, err := eng.Cloud.ListSubnets(ctx, projectID)
 	if err != nil {
-		return errResult(fmt.Errorf("list subnets: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)), true
 	}
 	if len(subnets) == 0 {
 		return errResult(fmt.Errorf("no subnets in project — cannot attach a network interface")), true
@@ -1912,7 +1912,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	sgName := ""
 	sgs, sgErr := eng.Cloud.ListSecurityGroups(ctx, projectID)
 	if sgErr != nil {
-		return errResult(fmt.Errorf("list security groups: %w", sgErr)), true
+		return errResult(fmt.Errorf(i18n.T("list security groups: %w", "список групп безопасности: %w"), sgErr)), true
 	}
 	{
 		i := provision.PickSecurityGroup(sgs, region, zoneName)
@@ -2043,7 +2043,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.",
 					"Проверьте её: evo vm get %s — если это ВМ прерванного запуска, она ещё создаётся; иначе укажите другое имя или удалите её: evo vm delete %s.", vmName, vmName), err), bootFIP, fipErr), true
 		}
-		return fipLeftAnswer(fmt.Errorf("create VM: %w", err), bootFIP, fipErr), true
+		return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, fipErr), true
 	}
 	if err != nil {
 		// The VM can exist although the call failed (timeout, cancel, a
@@ -2055,7 +2055,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
 				map[string]any{"vm_id": found.ID}), true
 		}
-		return fipLeftAnswer(fmt.Errorf("create VM: %w", err), bootFIP, eng.ReleaseBootFIP(bootFIP, projectID)), true
+		return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, eng.ReleaseBootFIP(bootFIP, projectID)), true
 	}
 	// Recorded at once, as the CLI deploy does: a hard stop during the wait
 	// below (kill, OOM) must not leave the VM and its boot FIP billed with no
@@ -2640,7 +2640,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					fmt.Sprintf("Wait until vm_get shows the VM running or stopped, then call destroy vm_id=%s again.", target.ID), err),
 					map[string]any{"status": "not_deletable_yet", "vm_id": target.ID, "message": msg}), true
 			}
-			return errResult(fmt.Errorf("delete VM: %w", err)), true
+			return errResult(fmt.Errorf(i18n.T("delete VM: %w", "удаление ВМ: %w"), err)), true
 		} else if !eng.WaitVMGone(ctx, target.ID) {
 			// The delete was accepted, but the VM is still listed: its floating
 			// IP stays attached and its ports may still serve. The record stays
@@ -2817,7 +2817,7 @@ func fipLeftAnswer(err error, fip *provision.FloatingIP, fipErr error) string {
 	if fipErr == nil || fip == nil {
 		return errResult(err)
 	}
-	return errAnswer(fmt.Errorf("%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — release it with release_floating_ip",
+	return errAnswer(fmt.Errorf(i18n.T("%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — release it with release_floating_ip", "%w; floating IP %s (%s), созданный для этой ВМ, НЕ освобождён (%v) и тарифицируется — освободите его через release_floating_ip"),
 		err, fip.IPAddress, fip.ID, fipErr), map[string]any{"floating_ip_id": fip.ID, "floating_ip": fip.IPAddress})
 }
 

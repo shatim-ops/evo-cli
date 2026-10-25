@@ -172,7 +172,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 			err = noID("disk")
 		}
 		list := func(ctx context.Context) ([]map[string]any, error) { return eng.Cloud.ListDisks(ctx, pid) }
-		return lostCreate(ctx, "disk_create", list, i18n.T("disk", "диск"), name, nil, "disk_list", fmt.Errorf("create disk: %w", err))
+		return lostCreate(ctx, "disk_create", list, i18n.T("disk", "диск"), name, nil, "disk_list", fmt.Errorf(i18n.T("create disk: %w", "создание диска: %w"), err))
 	}
 	res := map[string]any{"status": "created", "disk": disk}
 	if attachTo == "" || vmID == "" {
@@ -200,7 +200,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	}
 	at, err := eng.Cloud.AttachDisk(ctx, diskID, vmID, pid)
 	if err != nil {
-		return partial(fmt.Errorf("attach: %w", err))
+		return partial(fmt.Errorf(i18n.T("attach: %w", "привязка: %w"), err))
 	}
 	res["attach"] = at
 	res["note"] = "Disk created and attached. On the VM: partition/format the new device (e.g. mkfs.ext4 /dev/vdX) and mount it — attaching does NOT grow the existing filesystem."
@@ -279,12 +279,12 @@ func (s *Registry) handleDiskAttach(ctx context.Context, args map[string]any) (s
 		// disk_create). Wait until it is available, as disk_create
 		// attach_to does (L-24), and attach once more.
 		if werr := waitDiskAvailable(ctx, eng, diskID, eng.Config.ProjectID); werr != nil {
-			return errResult(fmt.Errorf("attach disk: %w (waited for the new disk: %v)", err, werr)), true
+			return errResult(fmt.Errorf(i18n.T("attach disk: %w (waited for the new disk: %v)", "привязка диска: %w (ожидание нового диска: %v)"), err, werr)), true
 		}
 		r, err = eng.Cloud.AttachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
 	}
 	if err != nil {
-		return errResult(fmt.Errorf("attach disk: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("attach disk: %w", "привязка диска: %w"), err)), true
 	}
 	return toJSON(map[string]any{"status": "attached", "result": r}), false
 }
@@ -317,7 +317,7 @@ func (s *Registry) handleDiskDetach(ctx context.Context, args map[string]any) (s
 	}
 	r, err := eng.Cloud.DetachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
 	if err != nil {
-		return errResult(fmt.Errorf("detach disk: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("detach disk: %w", "отвязка диска: %w"), err)), true
 	}
 	return toJSON(map[string]any{"status": "detached", "result": r}), false
 }
@@ -374,7 +374,7 @@ func (s *Registry) planDiskResize(ctx context.Context, args map[string]any) (*Pl
 	}, Execute: func(ctx context.Context) (string, bool) {
 		d, err := eng.Cloud.ResizeDisk(ctx, diskID, sizeGB, eng.Config.ProjectID)
 		if err != nil {
-			return errResult(fmt.Errorf("resize disk: %w", err)), true
+			return errResult(fmt.Errorf(i18n.T("resize disk: %w", "изменение размера диска: %w"), err)), true
 		}
 		return toJSON(map[string]any{
 			"status": "resized", "disk": d,
@@ -402,7 +402,7 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 		"disk_delete безвозвратно удаляет диск %s и его данные.", diskID)}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		if err := eng.Cloud.DeleteDisk(ctx, diskID, eng.Config.ProjectID); err != nil {
-			return s.deleteFailed("disk_delete", diskID, fmt.Errorf("delete disk: %w", err))
+			return s.deleteFailed("disk_delete", diskID, fmt.Errorf(i18n.T("delete disk: %w", "удаление диска: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleted", "disk_id": diskID}), false
 	}}, nil

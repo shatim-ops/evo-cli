@@ -612,7 +612,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		return errResult(fmt.Errorf(i18n.T("invalid manifest: %w", "неверный манифест: %w"), err)), true
 	}
 	if err := job.Save(); err != nil {
-		return errResult(fmt.Errorf("persist plan: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("persist plan: %w", "сохранение плана: %w"), err)), true
 	}
 	steps := make([]string, 0, len(job.Steps))
 	for _, st := range job.Steps {
@@ -659,7 +659,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[string]any, error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("validate vm: %w", err)
+		return nil, fmt.Errorf(i18n.T("validate vm: %w", "проверка vm: %w"), err)
 	}
 	imageRef := firstNonEmptyStr(vm.Image, eng.Config.ImageID, eng.Config.Image)
 	if imageRef == "" {
@@ -684,7 +684,7 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 	}
 	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("validate vm.zone: list availability zones: %w", err)
+		return nil, fmt.Errorf(i18n.T("validate vm.zone: list availability zones: %w", "проверка vm.zone: список зон доступности: %w"), err)
 	}
 	zone, err := provision.ResolveZone(zones, zoneRef)
 	if err != nil {
@@ -718,11 +718,11 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 	if m.VM != nil && m.VM.Flavor != "" && m.VM.Flavor != "auto" {
 		eng, err := s.authedEngine(ctx, nil)
 		if err != nil {
-			return nil, fmt.Errorf("validate vm.flavor: %w", err)
+			return nil, fmt.Errorf(i18n.T("validate vm.flavor: %w", "проверка vm.flavor: %w"), err)
 		}
 		flavors, err := eng.Cloud.ListFlavors(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("validate vm.flavor: %w", err)
+			return nil, fmt.Errorf(i18n.T("validate vm.flavor: %w", "проверка vm.flavor: %w"), err)
 		}
 		found := false
 		names := make([]string, 0, len(flavors))
@@ -751,11 +751,11 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 		}
 		cli, err := s.s3Client()
 		if err != nil {
-			return fmt.Errorf("list S3 buckets: %w", err)
+			return fmt.Errorf(i18n.T("list S3 buckets: %w", "список бакетов S3: %w"), err)
 		}
 		bs, err := cli.ListBuckets(ctx)
 		if err != nil {
-			return fmt.Errorf("list S3 buckets: %w", err)
+			return fmt.Errorf(i18n.T("list S3 buckets: %w", "список бакетов S3: %w"), err)
 		}
 		for _, b := range bs {
 			buckets = append(buckets, b.Name)
@@ -829,7 +829,7 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	}
 	s.advance(ctx, job)
 	if e := job.Save(); e != nil {
-		return errResult(fmt.Errorf("persist job: %w", e)), true
+		return errResult(fmt.Errorf(i18n.T("persist job: %w", "сохранение задания: %w"), e)), true
 	}
 	out := job.Compact()
 	out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
@@ -920,7 +920,7 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 		}
 		s.advance(ctx, job)
 		if e := job.Save(); e != nil {
-			return nil, fmt.Errorf("persist job: %w", e)
+			return nil, fmt.Errorf(i18n.T("persist job: %w", "сохранение задания: %w"), e)
 		}
 	}
 	return job, nil

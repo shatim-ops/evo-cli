@@ -35,8 +35,6 @@ var (
 // shrinks: a wrap elsewhere fails the test, and so does a line whose
 // package has none left.
 var englishWraps = map[string]string{
-	"internal/tools": "1.3.1, part 1",
-
 	"internal/artifact":     "1.3.1, part 2",
 	"internal/audit":        "1.3.1, part 2",
 	"internal/billing":      "1.3.1, part 2",
