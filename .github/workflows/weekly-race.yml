@@ -17,7 +17,7 @@ on:
       # Диагностика падений рантайма Go под -race на Windows
       # (process-handoff.md, бэклог; #331): только job gc-probe ниже.
       windows_gc_probe:
-        description: "Только проба GC на Windows (config ×200 и tools ×20 под GODEBUG)"
+        description: "Только проба GC на Windows (матрица осей, tools)"
         type: boolean
         default: false
 
@@ -62,22 +62,30 @@ jobs:
         if: runner.os == 'Windows'
         run: go test -count=20 -shuffle=on ./internal/engine/ ./internal/tools/
 
-  # Падения рантайма Go под -race на Windows (#226, #219, #267, #278, #293,
-  # #331: «found pointer to free object» в internal/tools). Проба отличает
-  # рантайм от единственного unsafe evo — ACL в
-  # internal/config/private_windows.go: config много раз под -race, tools с
-  # -race и без. GODEBUG включает проверки сборщика: висячий указатель
-  # падает там, где он появился, а не в случайном тесте. Шаги не
-  # останавливают друг друга, итог — в сводке прогона. Запуск — вручную,
-  # с любой ветки: секретов и записи нет.
+  # Падения рантайма Go на Windows (#226, #219, #267, #278, #293, #331).
+  # Первые два запуска (run 40135541445, 40163378381): ACL в
+  # internal/config — не причина (config ×200 ok); internal/tools с
+  # GODEBUG=invalidptr=1,gccheckmark=1 падает на первом прогоне и под -race,
+  # и без, на Linux — чисто. Третий запуск (решение владельца 25.10) ищет
+  # ось, которая убирает падение: Go (1.26.10 как в ci.yml, 1.27.x, tip из
+  # исходников) и сборщик (Green Tea или нет) — матрица job; -race,
+  # проверки сборщика и асинхронное вытеснение — восемь прогонов
+  # gc-probe-matrix.sh. Итог — таблица в сводке каждого job. Запуск —
+  # вручную, с любой ветки: секретов и записи нет.
   gc-probe:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_gc_probe
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.26.10", "1.27.x", "tip"]
+        gc: ["greenteagc", "nogreenteagc"]
     runs-on: windows-latest
-    # tools ×20 под GODEBUG не укладывается в -timeout 10m по умолчанию
-    # (run 40135541445): у каждого шага свой срок, у job — их сумма с запасом.
-    timeout-minutes: 390
+    # tip собирается ~10 мин; 8 прогонов по -count=3 с запасом.
+    timeout-minutes: 120
     permissions:
       contents: read
+    env:
+      GOEXPERIMENT: ${{ matrix.gc == 'nogreenteagc' && 'nogreenteagc' || '' }}
     steps:
       - name: git без перевода строк
         run: git config --global core.autocrlf false
@@ -87,47 +95,27 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # Та же версия, что в ci.yml; поднимать вместе.
-          go-version: "1.26.10"
+          # tip собирается этой версией.
+          go-version: ${{ matrix.go == 'tip' && '1.26.10' || matrix.go }}
           cache-dependency-path: go.sum
 
-      - id: config
-        name: config ×200 под -race (ACL, unsafe)
-        continue-on-error: true
-        run: go test -race -count=200 -timeout=60m ./internal/config/
-        env:
-          GODEBUG: invalidptr=1,gccheckmark=1
-          GORACE: atexit_sleep_ms=0
-
-      - id: tools-race
-        name: tools ×20 под -race
-        continue-on-error: true
-        run: go test -race -count=20 -timeout=150m ./internal/tools/
-        env:
-          GODEBUG: invalidptr=1,gccheckmark=1
-          GORACE: atexit_sleep_ms=0
-
-      - id: tools
-        name: tools ×20 без -race
-        continue-on-error: true
-        run: go test -count=20 -timeout=150m ./internal/tools/
-        env:
-          GODEBUG: invalidptr=1,gccheckmark=1
-
-      - name: итог
+      - name: Go tip из исходников
+        if: matrix.go == 'tip'
         shell: bash
-        env:
-          CONFIG: ${{ steps.config.outcome }}
-          TOOLS_RACE: ${{ steps.tools-race.outcome }}
-          TOOLS: ${{ steps.tools.outcome }}
         run: |
-          {
-            echo "| шаг | итог |"
-            echo "|---|---|"
-            echo "| config ×200, -race | $CONFIG |"
-            echo "| tools ×20, -race | $TOOLS_RACE |"
-            echo "| tools ×20, без -race | $TOOLS |"
-          } >> "$GITHUB_STEP_SUMMARY"
+          git clone --depth 1 https://go.googlesource.com/go "$RUNNER_TEMP/gotip"
+          git -C "$RUNNER_TEMP/gotip" log -1 --format='tip: %H %cs' >> "$GITHUB_STEP_SUMMARY"
+          cd "$RUNNER_TEMP/gotip/src"
+          GOROOT_BOOTSTRAP="$(go env GOROOT)" GOEXPERIMENT='' cmd //c make.bat
+          echo "$RUNNER_TEMP/gotip/bin" >> "$GITHUB_PATH"
+        env:
+          GOTOOLCHAIN: local
+
+      - name: восемь прогонов tools
+        shell: bash
+        run: bash .github/scripts/gc-probe-matrix.sh ./internal/tools/
+        env:
+          GOTOOLCHAIN: local
 
   # Красное — в issue (weekly-issue.yml).
   report:
