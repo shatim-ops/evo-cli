@@ -31,7 +31,6 @@ import (
 var lateRefusals = map[string]string{
 	"provision: world: image not in the catalogue": "D39 (#345)",
 	"deploy: world: image not in the catalogue":    "D39 (#345)",
-	"secret_create: world: secret path taken":      "D42 (#344)",
 }
 
 // jobStarts answer a refused write as a success by design: the call starts
