@@ -135,7 +135,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 		if err == nil {
 			err = noID("gateway")
 		}
-		return lostCreate(ctx, "snat_create", list, i18n.T("SNAT gateway", "шлюз SNAT"), name, nil, "snat_list", fmt.Errorf("create SNAT gateway: %w", err))
+		return lostCreate(ctx, "snat_create", list, i18n.T("SNAT gateway", "шлюз SNAT"), name, nil, "snat_list", fmt.Errorf(i18n.T("create SNAT gateway: %w", "создание шлюза SNAT: %w"), err))
 	}
 	return toJSON(map[string]any{
 		"status":      "created",
@@ -170,7 +170,7 @@ func (s *Registry) planSnatDelete(ctx context.Context, args map[string]any) (*Pl
 		},
 		func(ctx context.Context) (string, bool) {
 			if err := eng.Cloud.DeleteNATGateway(ctx, id, eng.Config.ProjectID); err != nil {
-				return s.deleteFailed("snat_delete", id, fmt.Errorf("delete SNAT gateway: %w", err))
+				return s.deleteFailed("snat_delete", id, fmt.Errorf(i18n.T("delete SNAT gateway: %w", "удаление шлюза SNAT: %w"), err))
 			}
 			return toJSON(map[string]any{"status": "deleted", "id": id}), false
 		}), nil

@@ -138,7 +138,7 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 			}
 			return items, err
 		}
-		return lostCreate(ctx, "secret_create", list, i18n.T("secret", "секрет"), path, nil, "secret_get path", fmt.Errorf("create secret: %w", err))
+		return lostCreate(ctx, "secret_create", list, i18n.T("secret", "секрет"), path, nil, "secret_get path", fmt.Errorf(i18n.T("create secret: %w", "создание секрета: %w"), err))
 	}
 	// Strip any payload echoed back before returning.
 	if sec, ok := res["secret"].(map[string]any); ok {
@@ -168,7 +168,7 @@ func (s *Registry) handleSecretAddVersion(ctx context.Context, args map[string]a
 	}
 	res, err := cli.AddVersion(ctx, body)
 	if err != nil {
-		return errResult(fmt.Errorf("add version: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("add version: %w", "добавление версии: %w"), err)), true
 	}
 	return toJSON(map[string]any{"status": "version_added", "version": res["version"]}), false
 }
@@ -199,7 +199,7 @@ func (s *Registry) planSecretDelete(ctx context.Context, args map[string]any) (*
 			force = v
 		}
 		if err := cli.Delete(ctx, path, force); err != nil {
-			return s.deleteFailed("secret_delete", path, fmt.Errorf("delete secret: %w", err))
+			return s.deleteFailed("secret_delete", path, fmt.Errorf(i18n.T("delete secret: %w", "удаление секрета: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleted", "path": path}), false
 	}}, nil
