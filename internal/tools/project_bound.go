@@ -499,7 +499,7 @@ var (
 		if err != nil {
 			return gone(k, id, err)
 		}
-		m, err := cli.GetRecord(ctx, vis, id)
+		m, err := dnsGetRecord(ctx, cli, vis, id)
 		if err != nil {
 			return gone(k, id, err)
 		}
