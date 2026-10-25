@@ -133,8 +133,11 @@ func uncodedHint(err error, reason string) string {
 var apiStatusRE = regexp.MustCompile(`\b(?:API|HTTP):? ([1-5][0-9]{2})\b|\b(?:API returned status|API вернул статус) ([1-5][0-9]{2})\b`)
 
 // parseAnswerRE is how the service clients wrap a JSON error of the API's
-// answer: "parse <what>: …" (a local manifest says "invalid manifest").
-var parseAnswerRE = regexp.MustCompile(`\bparse [a-z_ ]+: `)
+// answer: "parse <what>: …", «разбор <чего>: …» in the Russian CLI (a local
+// manifest says "invalid manifest"). The reason must not depend on the
+// language (TestReason_SameInEveryLanguage); \b is ASCII in RE2, so the
+// Russian word starts after a non-letter.
+var parseAnswerRE = regexp.MustCompile(`\bparse [a-z_ ]+: |(?:^|[^\p{L}])разбор [\p{L}_ ]+: `)
 
 // operationFailedRE is an asynchronous operation the cloud reported failed.
 var operationFailedRE = regexp.MustCompile(`\boperation\b[^"]*\bfailed\b`)
