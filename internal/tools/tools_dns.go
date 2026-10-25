@@ -225,7 +225,7 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 			err = noID("operation")
 		}
 		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListZones(ctx, vis) }
-		return lostCreate(ctx, "dns_zone_create", list, i18n.T("DNS zone", "зона DNS"), name, nil, "dns_zone_get zone_id", fmt.Errorf("create zone: %w", err))
+		return lostCreate(ctx, "dns_zone_create", list, i18n.T("DNS zone", "зона DNS"), name, nil, "dns_zone_get zone_id", fmt.Errorf(i18n.T("create zone: %w", "создание зоны: %w"), err))
 	}
 	out := map[string]any{"status": "creating", "visibility": vis, "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id); then dns_zones for the id (public zones return a verification_token to delegate)."}
 	// The zone's id is in the create's answer: named at once (fault matrix,
@@ -261,7 +261,7 @@ func (s *Registry) planDnsZoneDelete(ctx context.Context, args map[string]any) (
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := cli.DeleteZone(ctx, vis, id)
 		if err != nil {
-			return s.deleteFailed("dns_zone_delete", id, fmt.Errorf("delete zone: %w", err))
+			return s.deleteFailed("dns_zone_delete", id, fmt.Errorf(i18n.T("delete zone: %w", "удаление зоны: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}), false
 	}}, nil
@@ -454,7 +454,7 @@ func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any)
 				if err == nil {
 					err = noID("operation")
 				}
-				return lostCreate(ctx, "dns_record_create", list, i18n.T("DNS record", "запись DNS"), key, nil, "dns_records zone_id="+zoneID, fmt.Errorf("create record: %w", err))
+				return lostCreate(ctx, "dns_record_create", list, i18n.T("DNS record", "запись DNS"), key, nil, "dns_records zone_id="+zoneID, fmt.Errorf(i18n.T("create record: %w", "создание записи: %w"), err))
 			}
 			out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id)."}
 			if op.ResourceID != "" {
@@ -490,7 +490,7 @@ func (s *Registry) planDnsRecordDelete(ctx context.Context, args map[string]any)
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := dnsDeleteRecord(ctx, cli, vis, id)
 		if err != nil {
-			return s.deleteFailed("dns_record_delete", id, fmt.Errorf("delete record: %w", err))
+			return s.deleteFailed("dns_record_delete", id, fmt.Errorf(i18n.T("delete record: %w", "удаление записи: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 	}}, nil

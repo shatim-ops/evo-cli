@@ -3,7 +3,7 @@
 Решение владельца 25.10: ошибки, в которых evo оборачивает ответ облака
 (`fmt.Errorf("create zone: %w", err)`), в русском CLI показывают приставку evo
 по-английски — «create zone: dns API 500: …». Правка — в патче 1.3.1.
-Бриф пишет «Процесс и тестирование»; исполнитель — Cursor; ревью каждого
+Бриф пишет «Процесс и тестирование»; исполнитель — Cursor (решение владельца 25.10: Cursor недоступен); ревью каждого
 файла — «1.3.1 — разработка»; ревью Qwen приходит само.
 
 Репозиторий `shatim-ops/evo-cli`, база — `main`. Инварианты уже в `main`
@@ -129,11 +129,22 @@ go test ./internal/testrules -run TestErrorWrapsSpeakCLILanguage
 Строки своей части вычеркнуты, и всё зелёное:
 
 ```
-go test ./internal/testrules -run TestErrorWrapsSpeakCLILanguage
+go test ./internal/testrules -run "TestErrorWrapsSpeakCLILanguage|TestErrorWrapsKeepTheirEnglish"
 go test ./internal/tools -run TestQA11_ToolErrorsSpeakCLILanguage
 gofmt -l . ; go vet ./... ; GOOS=windows go vet ./...
 go test -race ./...
 ```
+
+## Английский текст — под тестом
+
+`TestErrorWrapsKeepTheirEnglish` (`internal/testrules`) сверяет каждую
+английскую строку обёрток с `internal/testrules/testdata/english-wraps.txt`:
+литерал, ставший первым аргументом `i18n.T`, должен совпасть с прежним
+байт-в-байт. «Улучшенный» английский текст роняет тест. Файл
+`english-wraps.txt` **не править**.
+
+**Окружение — без ключей Cloud.ru**: задача только про код, живые прогоны
+не нужны; ключ оператора прошлых волн в этот сеанс не передаётся.
 
 ## Нельзя
 

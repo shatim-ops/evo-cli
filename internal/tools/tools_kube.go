@@ -318,7 +318,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 			// A failed write must not install the chart with its defaults.
 			vf, e := os.CreateTemp("", "helm-values-*.yaml")
 			if e != nil {
-				return errResult(fmt.Errorf("values file: %w", e)), true
+				return errResult(fmt.Errorf(i18n.T("values file: %w", "файл values: %w"), e)), true
 			}
 			defer os.Remove(vf.Name())
 			_, e = vf.WriteString(values)
@@ -326,7 +326,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 				e = ce
 			}
 			if e != nil {
-				return errResult(fmt.Errorf("values file: %w", e)), true
+				return errResult(fmt.Errorf(i18n.T("values file: %w", "файл values: %w"), e)), true
 			}
 			hargs = append(hargs, "-f", vf.Name())
 		}

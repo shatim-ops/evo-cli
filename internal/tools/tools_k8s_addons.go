@@ -222,7 +222,7 @@ func addonConfig(v any) (string, []string, error) {
 	}
 	b, err := json.Marshal(obj)
 	if err != nil {
-		return "", nil, fmt.Errorf("config: %w", err)
+		return "", nil, fmt.Errorf(i18n.T("config: %w", "конфигурация: %w"), err)
 	}
 	keys := make([]string, 0, len(obj))
 	for k := range obj {

@@ -331,7 +331,7 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 	// Resolve version (default: latest available).
 	versions, err := cli.ListVersions(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list versions: %w", err)
+		return nil, fmt.Errorf(i18n.T("list versions: %w", "список версий: %w"), err)
 	}
 	version := stringArg(args, "version")
 	if version == "" {
@@ -341,7 +341,7 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 	// Resolve specification (by id, or by cpu+ram).
 	specs, err := cli.ListSpecifications(ctx, version)
 	if err != nil {
-		return nil, fmt.Errorf("list specifications: %w", err)
+		return nil, fmt.Errorf(i18n.T("list specifications: %w", "список спецификаций: %w"), err)
 	}
 	specArg, cpu, ram := stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0)
 	spec := findSpec(specs, specArg, cpu, ram)
@@ -447,7 +447,7 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "pg_create", cli.ListClusters, i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, willCreate, "pg_get id", fmt.Errorf("create cluster: %w", err))
+			return lostCreate(ctx, "pg_create", cli.ListClusters, i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, willCreate, "pg_get id", fmt.Errorf(i18n.T("create cluster: %w", "создание кластера: %w"), err))
 		}
 		out := map[string]any{
 			"status":       "creating",
@@ -495,7 +495,7 @@ func (s *Registry) planPgDelete(ctx context.Context, args map[string]any) (*Plan
 					return errResult(clierrors.New(clierrors.CodeAPIError, msg,
 						i18n.T("The cluster is still being created (DEPLOYING): Cloud.ru deletes it through the API once it is READY. Check it with pg_get, then call pg_delete again; a cluster that ends FAILED is deleted only in the Cloud.ru console.", "Кластер ещё создаётся (DEPLOYING): через API Cloud.ru удалит его, когда он станет READY. Проверьте его через pg_get и повторите pg_delete; кластер, оказавшийся в FAILED, удаляется только в консоли Cloud.ru."))), true
 				}
-				return s.deleteFailed("pg_delete", id, fmt.Errorf("delete cluster: %w", err))
+				return s.deleteFailed("pg_delete", id, fmt.Errorf(i18n.T("delete cluster: %w", "удаление кластера: %w"), err))
 			}
 			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id) until done=true."}), false
 		}), nil
@@ -543,7 +543,7 @@ func (s *Registry) handlePgDbCreate(ctx context.Context, args map[string]any) (s
 	}
 	db, err := cli.CreateDatabase(ctx, cid, body)
 	if err != nil {
-		return errResult(fmt.Errorf("create database: %w", err)), true
+		return errResult(fmt.Errorf(i18n.T("create database: %w", "создание базы: %w"), err)), true
 	}
 	return toJSON(map[string]any{"status": "created", "database": db}), false
 }
@@ -575,7 +575,7 @@ func (s *Registry) planPgDbDelete(ctx context.Context, args map[string]any) (*Pl
 		"pg_db_delete БЕЗВОЗВРАТНО удаляет базу данных %q в кластере %s.", name, cid)}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		if err := cli.DeleteDatabase(ctx, cid, name); err != nil {
-			return s.deleteFailed("pg_db_delete", name, fmt.Errorf("delete database: %w", err))
+			return s.deleteFailed("pg_db_delete", name, fmt.Errorf(i18n.T("delete database: %w", "удаление базы: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleted", "database": name}), false
 	}}, nil
@@ -616,7 +616,7 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 		body := map[string]any{"cluster_id": cid, "name": name, "password": password}
 		u, err := cli.CreateUser(ctx, cid, body)
 		if err != nil {
-			return errResult(fmt.Errorf("create user: %w", err)), true
+			return errResult(fmt.Errorf(i18n.T("create user: %w", "создание пользователя: %w"), err)), true
 		}
 		// Never echo the password back.
 		return toJSON(map[string]any{"status": "created", "user": u}), false
@@ -650,7 +650,7 @@ func (s *Registry) planPgUserDelete(ctx context.Context, args map[string]any) (*
 		"pg_user_delete БЕЗВОЗВРАТНО удаляет пользователя %q в кластере %s.", name, cid)}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		if err := cli.DeleteUser(ctx, cid, name); err != nil {
-			return s.deleteFailed("pg_user_delete", name, fmt.Errorf("delete user: %w", err))
+			return s.deleteFailed("pg_user_delete", name, fmt.Errorf(i18n.T("delete user: %w", "удаление пользователя: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleted", "user": name}), false
 	}}, nil
@@ -704,7 +704,7 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, "pg_backup_create", list, i18n.T("backup", "резервная копия"), name, nil, "pg_backups cluster_id="+cid, fmt.Errorf("create backup: %w", err))
+		return lostCreate(ctx, "pg_backup_create", list, i18n.T("backup", "резервная копия"), name, nil, "pg_backups cluster_id="+cid, fmt.Errorf(i18n.T("create backup: %w", "создание резервной копии: %w"), err))
 	}
 	out := map[string]any{"status": "backing_up", "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id)."}
 	if op.ResourceID != "" {

@@ -326,7 +326,7 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 	if versionID == "" {
 		vers, e := cli.ListVersions(ctx, kafkaQuery())
 		if e != nil {
-			return nil, fmt.Errorf("list versions: %w", e)
+			return nil, fmt.Errorf(i18n.T("list versions: %w", "список версий: %w"), e)
 		}
 		if len(vers) == 0 {
 			return nil, errors.New(i18n.T("no kafka versions available", "нет доступных версий Kafka"))
@@ -342,7 +342,7 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 	}
 	specs, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
-		return nil, fmt.Errorf("list specifications: %w", err)
+		return nil, fmt.Errorf(i18n.T("list specifications: %w", "список спецификаций: %w"), err)
 	}
 	specArg, cpu, ram := stringArg(args, "specification_id"), pgInt(args, "cpu", 0), pgInt(args, "ram", 0)
 	spec := findDbaasSpec(specs, specArg, cpu, ram)
@@ -392,7 +392,7 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 				err = noID("operation")
 			}
 			list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, kafkaQuery()) }
-			return lostCreate(ctx, "kafka_create", list, i18n.T("Kafka cluster", "кластер Kafka"), name, willCreate, "kafka_get cluster_id", fmt.Errorf("create cluster: %w", err))
+			return lostCreate(ctx, "kafka_create", list, i18n.T("Kafka cluster", "кластер Kafka"), name, willCreate, "kafka_get cluster_id", fmt.Errorf(i18n.T("create cluster: %w", "создание кластера: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
 			"created": willCreate, "note": "Async (~minutes). Poll kafka_operation(operation_id); then kafka_get for status READY + kafka_hosts."}), false
@@ -448,7 +448,7 @@ func (s *Registry) planKafkaDelete(ctx context.Context, args map[string]any) (*P
 						"Cloud.ru refuses to delete a cluster still being created or in FAILED. Still being created (DEPLOYING): wait until kafka_get shows it READY, then call kafka_delete again. In FAILED: ",
 						"Cloud.ru не удаляет кластер, который ещё создаётся или в FAILED. Ещё создаётся (DEPLOYING): дождитесь READY в kafka_get и повторите kafka_delete. В FAILED: ")+failedDeleteNote(id))), true
 				}
-				return s.deleteFailed("kafka_delete", id, fmt.Errorf("delete cluster: %w", err))
+				return s.deleteFailed("kafka_delete", id, fmt.Errorf(i18n.T("delete cluster: %w", "удаление кластера: %w"), err))
 			}
 			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 		}), nil
