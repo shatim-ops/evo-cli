@@ -72,13 +72,12 @@ func englishPhrase(s string) string {
 }
 
 // apiErrorEnglishLeft are the tools whose API_ERROR still starts with
-// English words of evo in the Russian CLI (1.3.1, part 1 of the fix of
-// englishWraps, internal/testrules). The list only shrinks: a tool not
-// here fails the test, and so does a line whose tool answers in Russian.
+// English words of evo in the Russian CLI (1.3.1; prefixes left are from
+// service clients — part 2 of englishWraps). The list only shrinks: a
+// tool not here fails the test, and so does a line whose tool answers
+// in Russian.
 var apiErrorEnglishLeft = map[string]bool{
-	"deploy_plan": true, "disk_create": true, "dns_zone_create": true, "image_create": true,
-	"pg_db_create": true, "pg_user_create": true, "provision": true, "release_floating_ip": true,
-	"secret_add_version": true, "secret_create": true,
+	"deploy_plan": true,
 }
 
 // cloudSegment marks where an API_ERROR leaves evo's words for the
