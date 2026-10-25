@@ -64,3 +64,18 @@ func SubnetInZone(s *Subnet, zoneID, zoneName string) bool {
 	}
 	return zoneName != "" && strings.Contains(s.Name, zoneName)
 }
+
+// SubnetNamesOtherZone: a subnet the API gave without its zone whose name
+// carries another zone's name ("Default_ru.AZ-1" for a VM in ru.AZ-3) — the
+// same name rule as PickSubnet (review Grok on #86).
+func SubnetNamesOtherZone(s *Subnet, zoneID string, zones []*AvailabilityZone) bool {
+	if s.AvailabilityZoneID != "" {
+		return false
+	}
+	for _, z := range zones {
+		if z.ID != zoneID && z.Name != "" && strings.Contains(s.Name, z.Name) {
+			return true
+		}
+	}
+	return false
+}

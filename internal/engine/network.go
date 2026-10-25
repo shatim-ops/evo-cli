@@ -148,6 +148,50 @@ func NoSubnetError(zoneName, zoneID string) error {
 			"Создайте сеть и подсеть в этой зоне в консоли Cloud.ru или выберите другую зону ('evo init')."))
 }
 
+// SubnetNotInProjectError: subnet_id names a subnet the project's list does
+// not have. SubnetNotInZoneError: it names one of another zone, by its zone
+// id or by a zone name in its name (provision.SubnetNamesOtherZone). Either
+// keeps the VM from booting while it and its boot FIP are billed: provision
+// refuses before the question (G130-27, D39) and before creating anything.
+func SubnetNotInProjectError(subnetID string) error {
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
+		i18n.T("Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из vpc_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))
+}
+
+func SubnetNotInZoneError(subnetName, zoneName, zoneID string) error {
+	return clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("subnet %s is not in zone %s", "подсеть %s не в зоне %s", subnetName, zoneText(zoneName, zoneID)),
+		i18n.T("Take a subnet of this zone (vpc_subnets), or omit subnet_id: the zone's main subnet is taken.", "Возьмите подсеть этой зоны (vpc_subnets) или не указывайте subnet_id: возьмётся основная подсеть зоны."))
+}
+
+// SubnetForVM is the subnet provision plugs the VM into: subnet_id when
+// given — refused when the project has no such subnet or it is of another
+// zone (SubnetNotInProjectError, SubnetNotInZoneError) — else the zone's
+// main subnet (provision.PickSubnet), nil when the zone has none. zones
+// are for the name rule of a subnet the API gave without its zone.
+func SubnetForVM(subnets []*provision.Subnet, zones []*provision.AvailabilityZone, zoneID, zoneName, subnetID string) (*provision.Subnet, error) {
+	if subnetID == "" {
+		if i := provision.PickSubnet(subnets, zoneID, zoneName); i >= 0 {
+			return subnets[i], nil
+		}
+		return nil, nil
+	}
+	var sn *provision.Subnet
+	for _, s := range subnets {
+		if s.ID == subnetID {
+			sn = s
+		}
+	}
+	if sn == nil {
+		return nil, SubnetNotInProjectError(subnetID)
+	}
+	if sn.AvailabilityZoneID != "" && sn.AvailabilityZoneID != zoneID || provision.SubnetNamesOtherZone(sn, zoneID, zones) {
+		return nil, SubnetNotInZoneError(sn.Name, zoneName, zoneID)
+	}
+	return sn, nil
+}
+
 // NoSecurityGroupError: the project has groups, none in the VM's zone; a
 // group of another zone keeps the VM from booting.
 func NoSecurityGroupError(zoneName, zoneID string) error {
@@ -214,19 +258,18 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 	var c NetworkCheck
 	gateway := ""
 	if subnets, err := e.Cloud.ListSubnets(ctx, projectID); err == nil {
-		var sn *provision.Subnet
-		if i := provision.PickSubnet(subnets, zoneID, zoneName); i >= 0 {
-			sn = subnets[i]
-		} else if subnetID == "" {
-			return nil, NoSubnetError(zoneName, zoneID)
-		}
+		// The zone list is for the name rule of a subnet without its zone;
+		// unread, the rule is skipped, as nothing could be read.
+		var zones []*provision.AvailabilityZone
 		if subnetID != "" {
-			sn = nil
-			for _, s := range subnets {
-				if s.ID == subnetID {
-					sn = s
-				}
-			}
+			zones, _ = e.Cloud.ListAvailabilityZones(ctx)
+		}
+		sn, err := SubnetForVM(subnets, zones, zoneID, zoneName, subnetID)
+		if err != nil {
+			return nil, err
+		}
+		if sn == nil && subnetID == "" {
+			return nil, NoSubnetError(zoneName, zoneID)
 		}
 		if sn != nil {
 			gateway = sn.DefaultGateway
