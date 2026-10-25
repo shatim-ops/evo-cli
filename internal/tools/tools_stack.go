@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -465,6 +466,19 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						job.Status = "error"
 						return
 					}
+					// The cloud refused the create on purpose — the call is
+					// wrong (USAGE), names what is not there (NOT_FOUND), or
+					// got a 4xx — and nothing was made: a retry meets the same
+					// refusal, and a resource of the step's name is not the
+					// step's (G130-04, G130-24; D41). Only on the first try:
+					// a refusal after an attempt whose answer was lost may be
+					// that attempt's own resource, found by name below.
+					if !resumed && st.Attempts == 1 && createRefused(res, err) {
+						st.Status = "error"
+						job.Error = fmt.Sprintf("%s: %s", st.Key, err.Error())
+						job.Status = "error"
+						return
+					}
 					// Reconcile before retrying: a create can fail the RESPONSE yet
 					// succeed server-side (e.g. 504 gateway timeout after the backend
 					// applied it). If the resource now exists by name, ADOPT it — never
@@ -540,6 +554,19 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 	}
 }
 
+// createRefused reports a step create the cloud refused on purpose: its
+// answer's reason is USAGE, NOT_FOUND or CONFIG_INVALID, or the error
+// carries a 4xx status other than 429 (lostCreate draws the same line,
+// D42). A lost answer — no status, a 5xx, 429 — is not one.
+func createRefused(res map[string]any, err error) bool {
+	switch reason, _ := res["reason"].(string); reason {
+	case clierrors.CodeUsage, clierrors.CodeNotFound, clierrors.CodeConfigInvalid:
+		return true
+	}
+	st := apiStatus(err)
+	return st >= 400 && st < 500 && st != http.StatusTooManyRequests
+}
+
 func firstStr(m map[string]any, keys ...string) string {
 	for _, k := range keys {
 		if v, ok := m[k].(string); ok && v != "" {
@@ -569,6 +596,9 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	// "error" mid-deploy after other resources are already live.
 	s3Notes, err := s.normalizeManifest(ctx, &m)
 	if err != nil {
+		return errResult(err), true
+	}
+	if err := s.checkStackSecrets(ctx, &m); err != nil {
 		return errResult(err), true
 	}
 	var vmNote map[string]any
@@ -647,6 +677,37 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		out["existing_jobs"] = orphans
 	}
 	return toJSON(out), false
+}
+
+// checkStackSecrets refuses a secret path that is not free: one the Secret
+// Manager has, or one another stack's job may have made. The stack would
+// take that secret over, and its destroy would delete it (G130-24, D41).
+func (s *Registry) checkStackSecrets(ctx context.Context, m *stack.Manifest) error {
+	if len(m.Secrets) == 0 {
+		return nil
+	}
+	cli, err := s.secretClient(ctx)
+	if err != nil {
+		return err
+	}
+	for i, sc := range m.Secrets {
+		if holders := stack.SecretHolders(sc.Path, ""); len(holders) > 0 {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("secrets[%d]: the path %q belongs to stack job %s", "secrets[%d]: путь %q принадлежит заданию стека %s", i, sc.Path, strings.Join(holders, ", ")),
+				i18n.T("Pick another secret path in the manifest, or stack_destroy that job first.",
+					"Укажите в манифесте другой путь секрета или сначала выполните stack_destroy этого задания."))
+		}
+		_, err := cli.Get(ctx, sc.Path)
+		if err == nil {
+			return clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("secrets[%d]: the secret %q already exists; the stack would take it over, and stack_destroy would delete it", "secrets[%d]: секрет %q уже есть; стек присвоил бы его, а stack_destroy удалил бы", i, sc.Path),
+				i18n.T("Pick another secret path in the manifest.", "Укажите в манифесте другой путь секрета."))
+		}
+		if !isGone(err) {
+			return fmt.Errorf(i18n.T("secrets[%d]: check the path: %w", "secrets[%d]: проверка пути: %w"), i, err)
+		}
+	}
+	return nil
 }
 
 // normalizeStackVM resolves the image and the zone of the stack's VM at
@@ -744,13 +805,14 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 
 	// The project's buckets, listed once.
 	var buckets []string
+	var cli *s3.Client
 	fetched := false
 	fetch := func() error {
 		if fetched {
 			return nil
 		}
-		cli, err := s.s3Client()
-		if err != nil {
+		var err error
+		if cli, err = s.s3Client(); err != nil {
 			return fmt.Errorf(i18n.T("list S3 buckets: %w", "список бакетов S3: %w"), err)
 		}
 		bs, err := cli.ListBuckets(ctx)
@@ -795,6 +857,20 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 				i18n.Tf("s3[%d].bucket %q is not in this project, and a stack does not create buckets", "бакета s3[%d].bucket %q в проекте нет, а стек бакеты не создаёт", i, m.S3[i].Bucket),
 				i18n.T("Create it with s3_bucket_create (evo s3 bucket-create) or name one of s3_buckets, then plan again.",
 					"Создайте его через s3_bucket_create (evo s3 bucket-create) или укажите бакет из s3_buckets и спланируйте снова."))
+		}
+		// An object already at the key is not the stack's: its s3 step
+		// would overwrite it and stack_destroy delete it (G130-03, D41).
+		objs, err := cli.ListObjects(ctx, m.S3[i].Bucket, m.S3[i].Key, 0)
+		if err != nil {
+			return nil, fmt.Errorf(i18n.T("s3[%d]: list objects: %w", "s3[%d]: список объектов: %w"), i, err)
+		}
+		for _, o := range objs {
+			if o.Key == m.S3[i].Key {
+				return nil, clierrors.New(clierrors.CodeUsage,
+					i18n.Tf("s3[%d]: the object s3://%s/%s already exists; the stack would overwrite it, and stack_destroy would delete it", "s3[%d]: объект s3://%s/%s уже есть; стек перезаписал бы его, а stack_destroy удалил бы", i, m.S3[i].Bucket, m.S3[i].Key),
+					i18n.T("Pick another s3 key in the manifest, or remove the object (s3_rm) if the stack is to own it.",
+						"Укажите в манифесте другой ключ s3 или удалите объект (s3_rm), если он должен принадлежать стеку."))
+			}
 		}
 		notes = append(notes, fmt.Sprintf("%s/%s", m.S3[i].Bucket, m.S3[i].Key))
 	}
@@ -994,17 +1070,6 @@ var stackTeardown = []string{
 // such a step is looked up by name at destroy: a step that never ran owns
 // nothing, and a resource with its name belongs to someone else — deleting
 // it destroyed a foreign cluster (QA r3 R3).
-func stepMayHaveCreated(st *stack.Step) bool {
-	if st.Interrupted || st.Attempts > 0 || st.OpID != "" {
-		return true
-	}
-	switch st.Status {
-	case "running", "waiting", "done":
-		return true
-	}
-	return false
-}
-
 func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
@@ -1022,10 +1087,18 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		if err := s.checkJobProject(job); err != nil {
 			return errResult(err), true
 		}
+		// Its resources were deleted by an earlier stack_destroy: nothing to
+		// ask about (D26, G130-31; D41). confirmed=true runs the teardown
+		// again, for deletions the cloud was still finishing.
+		if job.Status == "destroyed" {
+			return toJSON(map[string]any{"status": "already_destroyed", "job_id": id,
+				"note": i18n.T("The stack was destroyed earlier. To re-check deletions still in progress, call stack_destroy again with confirmed=true.",
+					"Стек удалён раньше. Чтобы перепроверить удаления, которые ещё идут, вызовите stack_destroy снова с confirmed=true.")}), false
+		}
 		var res []map[string]any
 		for _, st := range job.Steps {
 			rid := firstNonEmptyStr(job.Outputs[st.Key], st.ResourceID)
-			if rid == "" && !stepMayHaveCreated(st) {
+			if rid == "" && !st.MayHaveCreated() {
 				continue
 			}
 			row := map[string]any{"step": st.Key, "status": st.Status}
@@ -1071,7 +1144,7 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		}
 		if st.ResourceID != "" {
 			job.Outputs[st.Key] = st.ResourceID
-		} else if stepMayHaveCreated(st) {
+		} else if st.MayHaveCreated() {
 			if id, _ := s.findStepResource(ctx, st); id != "" {
 				job.Outputs[st.Key] = id
 			}
