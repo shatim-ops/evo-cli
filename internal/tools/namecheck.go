@@ -67,11 +67,25 @@ func noID(what string) error {
 // process audit 1.2.1). When the list cannot be read either, the error
 // says the resource may exist and where to look, the list tool createdIDs
 // declares: the same create again refuses the taken name and names its id.
+//
+// A refusal the API gave on purpose is not a lost answer: a 4xx (the path
+// is taken, 409; the body is wrong, 400; no right, 403; too fast, 429)
+// means the request was read and declined, and nothing was made. It is
+// answered as the error it is, with the reason of its status (errReason):
+// secret_create on a path that existed found the secret by its path and
+// answered "creating … exists and is billed", isError false (Grok live run
+// on 1.3.0, G130-15; D42). Only an answer that did not come back — no
+// status at all (the connection, a deadline, a cut body) or a 5xx a gateway
+// may have given for a backend that applied the request — and a success
+// without an id are reconciled by name.
 func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]map[string]any, error), kind, name string, created map[string]any, getHint string, createErr error) (string, bool) {
 	c := createdIDs[tool]
 	idField, listTool := c.lostField(), c.list
 	if idField == "" || listTool == "" {
 		panic("tools: lostCreate for " + tool + ", whose createdIDs declare no id field or list")
+	}
+	if st := apiStatus(createErr); st >= 400 && st < 500 {
+		return errResult(createErr), true
 	}
 	items, err := list(ctx)
 	if err != nil {

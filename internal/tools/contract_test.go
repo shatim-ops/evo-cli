@@ -28,6 +28,11 @@ import (
 
 const contractID = "00000000-0000-4000-8000-000000000001"
 
+// contractCallLimit is the context of one call of the contract tests: a
+// call that waits longer waits on a clock of its own (minio's retries,
+// s3_retry_test.go).
+const contractCallLimit = 400 * time.Millisecond
+
 // contractRT records every request and answers with one fixed status.
 // Retry-After: 0 so httpretry does not sleep (its cap is 30s).
 type contractRT struct {
@@ -437,7 +442,7 @@ func TestContract_APIStatusReason(t *testing.T) {
 		for _, kind := range kinds {
 			rt.kind = kind
 			rt.take()
-			limit := 400 * time.Millisecond
+			limit := contractCallLimit
 			if kind == "conn" {
 				limit = 40 * time.Millisecond
 			}
@@ -449,9 +454,6 @@ func TestContract_APIStatusReason(t *testing.T) {
 			}
 			if len(reqs) == 0 {
 				continue
-			}
-			if strings.HasPrefix(tl.Name, "s3_") && (kind == "429" || kind == "500" || kind == "502") {
-				continue // minio retries on its own clock; the test context expires first. Не покрыто.
 			}
 			if tl.Name == "org_projects" && strings.Contains(text, "Not an error") {
 				continue // BACKLOG [02]: 400 списка проектов у сервисного аккаунта — не ошибка вызова.
