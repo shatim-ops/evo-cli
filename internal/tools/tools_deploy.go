@@ -334,7 +334,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		// destroy see it; the plan stays for a retry, which adopts the VM.
 		if res != nil && res.VMID != "" {
 			if rerr := recordDeployment(eng.StateDir, plan, res, "creating"); rerr != nil {
-				err = fmt.Errorf("%w (VM %s is not in the state either: %v)", err, res.VMID, rerr)
+				err = fmt.Errorf(i18n.T("%w (VM %s is not in the state either: %v)", "%w (ВМ %s тоже нет в state: %v)"), err, res.VMID, rerr)
 			}
 		}
 		return errResult(err), true
@@ -523,7 +523,7 @@ func (s *Registry) handleListSecurityGroups(ctx context.Context, args map[string
 		if withRules {
 			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, g.ID)
 			if err != nil {
-				return errResult(fmt.Errorf("rules of security group %s: %w", g.Name, err)), true
+				return errResult(fmt.Errorf(i18n.T("rules of security group %s: %w", "правила группы безопасности %s: %w"), g.Name, err)), true
 			}
 			if rules == nil {
 				rules = []*provision.SGRule{}
@@ -613,7 +613,7 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 				failed = append(failed, strconv.Itoa(p))
 				failures[strconv.Itoa(p)] = e.Error()
 				if firstErr == nil {
-					firstErr = fmt.Errorf("open port %d: %w", p, e)
+					firstErr = fmt.Errorf(i18n.T("open port %d: %w", "открытие порта %d: %w"), p, e)
 				}
 			} else {
 				opened = append(opened, strconv.Itoa(p))
@@ -643,7 +643,7 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 		// Some opened, some not: partial, as disk_create and destroy say it;
 		// the reason is the first refusal's.
 		res["status"] = "partial"
-		return errAnswer(fmt.Errorf("opened %s, not opened %s: %w", strings.Join(opened, ","), strings.Join(failed, ","), firstErr), res), true
+		return errAnswer(fmt.Errorf(i18n.T("opened %s, not opened %s: %w", "открыты %s, не открыты %s: %w"), strings.Join(opened, ","), strings.Join(failed, ","), firstErr), res), true
 	}}, nil
 }
 
@@ -757,7 +757,7 @@ func (s *Registry) planClosePorts(ctx context.Context, args map[string]any) (*Pl
 				failed = append(failed, port)
 				failures[port] = e.Error()
 				if firstErr == nil {
-					firstErr = fmt.Errorf("close port %d: %w", c.port, e)
+					firstErr = fmt.Errorf(i18n.T("close port %d: %w", "закрытие порта %d: %w"), c.port, e)
 				}
 				continue
 			}
@@ -781,7 +781,7 @@ func (s *Registry) planClosePorts(ctx context.Context, args map[string]any) (*Pl
 			res["status"] = "error"
 			return errAnswer(firstErr, res), true
 		}
-		return errAnswer(fmt.Errorf("closed %s, not closed %s: %w", strings.Join(closed, ","), strings.Join(failed, ","), firstErr), res), true
+		return errAnswer(fmt.Errorf(i18n.T("closed %s, not closed %s: %w", "закрыты %s, не закрыты %s: %w"), strings.Join(closed, ","), strings.Join(failed, ","), firstErr), res), true
 	}}, nil
 }
 
@@ -820,7 +820,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	if id != "" {
 		f, e := eng.Cloud.GetFloatingIP(ctx, id)
 		if e != nil {
-			return answered(s.deleteFailed("release_floating_ip", id, fmt.Errorf("floating IP %q: %w", id, e))), nil
+			return answered(s.deleteFailed("release_floating_ip", id, fmt.Errorf(i18n.T("floating IP %q: %w", "floating IP %q: %w"), id, e))), nil
 		}
 		fipID, fipIP, state, onNAT = id, f.IPAddress, f.State, f.OnNATGateway()
 	} else {
@@ -866,7 +866,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		if err := eng.Cloud.DeleteFloatingIP(ctx, fipID, projectID); err != nil {
-			return s.deleteFailed("release_floating_ip", fipID, fmt.Errorf("release floating IP: %w", err))
+			return s.deleteFailed("release_floating_ip", fipID, fmt.Errorf(i18n.T("release floating IP: %w", "освобождение floating IP: %w"), err))
 		}
 		return toJSON(map[string]any{
 			"status":   "ok",

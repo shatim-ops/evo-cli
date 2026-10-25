@@ -109,7 +109,7 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, "ar_create", cli.ListRegistries, i18n.T("registry", "реестр"), name, nil, "ar_get id", fmt.Errorf("create registry: %w", err))
+		return lostCreate(ctx, "ar_create", cli.ListRegistries, i18n.T("registry", "реестр"), name, nil, "ar_get id", fmt.Errorf(i18n.T("create registry: %w", "создание реестра: %w"), err))
 	}
 	out := map[string]any{
 		"status": "creating", "operation_id": op.ID,
@@ -140,7 +140,7 @@ func (s *Registry) planArDelete(ctx context.Context, args map[string]any) (*Plan
 		func(ctx context.Context) (string, bool) {
 			op, err := cli.DeleteRegistry(ctx, id)
 			if err != nil {
-				return s.deleteFailed("ar_delete", id, fmt.Errorf("delete registry: %w", err))
+				return s.deleteFailed("ar_delete", id, fmt.Errorf(i18n.T("delete registry: %w", "удаление реестра: %w"), err))
 			}
 			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 		}), nil

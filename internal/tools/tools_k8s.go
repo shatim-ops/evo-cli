@@ -529,7 +529,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		// that is how the pool would land away from the control plane.
 		zid, zerr := clusterZoneID(ctx, cli, clusterID)
 		if zerr != nil {
-			return errResult(fmt.Errorf("read the zone of cluster %s: %w (or pass zone)", clusterID, zerr)), true
+			return errResult(fmt.Errorf(i18n.T("read the zone of cluster %s: %w (or pass zone)", "чтение зоны кластера %s: %w (или передайте zone)"), clusterID, zerr)), true
 		}
 		if zid == "" {
 			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
@@ -558,7 +558,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		// same case (final audit, stage 2).
 		sgs, se := eng.Cloud.ListSecurityGroups(ctx, pid)
 		if se != nil {
-			return errResult(fmt.Errorf("list security groups: %w (or pass security_group_id)", se)), true
+			return errResult(fmt.Errorf(i18n.T("list security groups: %w (or pass security_group_id)", "список групп безопасности: %w (или передайте security_group_id)"), se)), true
 		}
 		i := provision.PickSecurityGroup(sgs, zone.computeID, zone.name)
 		if i < 0 {
@@ -600,7 +600,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		if err == nil {
 			err = noID("operation")
 		}
-		return lostCreate(ctx, "k8s_add_nodepool", list, i18n.T("node pool", "группа узлов"), name, nil, "k8s_nodepools cluster_id="+clusterID, fmt.Errorf("create node pool: %w", err))
+		return lostCreate(ctx, "k8s_add_nodepool", list, i18n.T("node pool", "группа узлов"), name, nil, "k8s_nodepools cluster_id="+clusterID, fmt.Errorf(i18n.T("create node pool: %w", "создание группы узлов: %w"), err))
 	}
 	return toJSON(map[string]any{
 		"status": "creating", "node_pool": name, "nodepool_id": op.ResourceID, "cluster_id": clusterID,
@@ -744,7 +744,7 @@ func (s *Registry) k8sVIPSubnet(ctx context.Context, pid, subnetID string, zone 
 	}
 	subs, err := eng.Cloud.ListSubnets(ctx, pid)
 	if err != nil {
-		return "", fmt.Errorf("list subnets: %w", err)
+		return "", fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
 	}
 	if subnetID != "" {
 		for _, sn := range subs {
@@ -797,7 +797,7 @@ func (s *Registry) k8sNodesSubnet(ctx context.Context, pid, subnetID string, zon
 	}
 	subs, err := eng.Cloud.ListSubnets(ctx, pid)
 	if err != nil {
-		return "", fmt.Errorf("list subnets: %w", err)
+		return "", fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
 	}
 	if subnetID != "" {
 		for _, sn := range subs {
