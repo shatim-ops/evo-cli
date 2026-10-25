@@ -74,7 +74,7 @@ func New(cfg Config) (*Client, error) {
 		Transport: httpretry.UserAgent(nil),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("init S3 client: %w", err)
+		return nil, fmt.Errorf(i18n.T("init S3 client: %w", "инициализация клиента S3: %w"), err)
 	}
 	return &Client{mc: mc, region: region}, nil
 }
@@ -143,7 +143,7 @@ func (e *TooLargeError) Error() string {
 func (c *Client) GetObject(ctx context.Context, bucket, key string, limit int64) ([]byte, error) {
 	obj, err := c.mc.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, notFound(fmt.Errorf("get object: %w", err), bucket, key)
+		return nil, notFound(fmt.Errorf(i18n.T("get object: %w", "чтение объекта: %w"), err), bucket, key)
 	}
 	defer obj.Close()
 	var r io.Reader = obj

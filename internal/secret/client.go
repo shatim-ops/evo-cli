@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 const defaultBaseURL = "https://secretmanager.api.cloud.ru"
@@ -91,7 +92,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("secret request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("secret request failed: %w", "запрос к secret не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -127,7 +128,7 @@ func (c *Client) List(ctx context.Context) ([]map[string]any, error) {
 		Secrets []map[string]any `json:"secrets"`
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse secrets: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse secrets: %w", "разбор секретов: %w"), err)
 	}
 	return out.Secrets, nil
 }
@@ -143,7 +144,7 @@ func (c *Client) Get(ctx context.Context, path string) (map[string]any, error) {
 	}
 	var out map[string]any
 	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse secret: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse secret: %w", "разбор секрета: %w"), err)
 	}
 	// GET /v2/secret/{path} nests the secret under "secret" — unwrap it.
 	if inner, ok := out["secret"].(map[string]any); ok {
@@ -198,7 +199,7 @@ func (c *Client) AccessPayload(ctx context.Context, path string, version int) (s
 		Payload string `json:"payload"`
 	}
 	if err := json.Unmarshal(data, &out); err != nil {
-		return "", fmt.Errorf("parse payload: %w", err)
+		return "", fmt.Errorf(i18n.T("parse payload: %w", "разбор payload: %w"), err)
 	}
 	return out.Payload, nil
 }

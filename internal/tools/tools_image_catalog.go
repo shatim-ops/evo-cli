@@ -7,7 +7,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	stderrors "errors"
 	"sort"
 	"strings"
 
@@ -170,15 +169,9 @@ func hasNotInProject(list []*provision.Image) bool {
 	return false
 }
 
-// imageErrResult is errResult plus the candidates of an ambiguous
-// reference, for an agent to pick one or ask.
-func imageErrResult(err error) string {
-	var amb *images.AmbiguousError
-	if !stderrors.As(err, &amb) {
-		return errResult(err)
-	}
-	var m map[string]any
-	_ = json.Unmarshal([]byte(errResult(err)), &m)
+// imageCandidates are the images an ambiguous name matches, for the error
+// answer (errAnswer).
+func imageCandidates(amb *images.AmbiguousError) []map[string]any {
 	cands := make([]map[string]any, 0, len(amb.Candidates))
 	for _, c := range amb.Candidates {
 		cand := map[string]any{"id": c.ID, "name": c.Name, "display_name": c.DisplayName, "type": c.Type}
@@ -187,8 +180,7 @@ func imageErrResult(err error) string {
 		}
 		cands = append(cands, cand)
 	}
-	m["candidates"] = cands
-	return toJSON(m)
+	return cands
 }
 
 // imageRefNotBoth is the refusal of a call with both image and image_id
@@ -224,7 +216,7 @@ func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (str
 	cat := images.Catalog{Cloud: eng.Cloud, ProjectID: eng.Config.ProjectID}
 	img, err := cat.Get(ctx, ref)
 	if err != nil {
-		return imageErrResult(err), true
+		return errResult(err), true
 	}
 
 	var card map[string]any

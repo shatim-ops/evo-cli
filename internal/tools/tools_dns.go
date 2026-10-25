@@ -73,11 +73,58 @@ func dnsZoneVisibility(ctx context.Context, cli *dns.Client, args map[string]any
 		i18n.T("See dns_zones for the zone ids.", "ID зон — в выводе dns_zones."))
 }
 
+// dnsRecordGone reports the DNS API's answer to a record id it has no
+// record for: 404, and the 400 «precondition» the live API gives on an id
+// of the right form on GET and DELETE alike (register NET-15; G130-07,
+// G13-31, D40). The id is a UUID by the schema (D36) and a request by id
+// carries no body, so the 400 is not the call's.
+func dnsRecordGone(err error) bool {
+	var ae *dns.APIError
+	return errors.As(err, &ae) && (ae.Status == http.StatusNotFound || ae.Status == http.StatusBadRequest)
+}
+
+// dnsRecordNotFound is the refusal of a record the API answered it has no
+// record for (dnsRecordGone), in the terms of evo: NOT_FOUND, which the
+// delete reads as already_deleted (D26).
+func dnsRecordNotFound(vis, recordID string) error {
+	return clierrors.New(clierrors.CodeNotFound,
+		i18n.Tf("DNS record %s is not in the %s API", "DNS-записи %s нет в API %s зон", recordID, vis),
+		i18n.T("See dns_records (zone_id) for the record ids.", "ID записей — в выводе dns_records (zone_id)."))
+}
+
+// dnsGetRecord reads record recordID in the API of vis; an answer that the
+// API has no such record is NOT_FOUND (dnsRecordNotFound), any other error
+// is as it is.
+func dnsGetRecord(ctx context.Context, cli *dns.Client, vis, recordID string) (map[string]any, error) {
+	m, err := cli.GetRecord(ctx, vis, recordID)
+	if dnsRecordGone(err) {
+		return nil, dnsRecordNotFound(vis, recordID)
+	}
+	return m, err
+}
+
+// dnsDeleteRecord deletes record recordID in the API of vis. A DELETE the
+// API answers with «no such record» (dnsRecordGone) is checked by a read:
+// the record gone — NOT_FOUND, the delete is done (already_deleted, D26);
+// the record still there — the DELETE's error as it is: «deleted» means
+// the record is not there (CLAUDE.md §6, axis 3).
+func dnsDeleteRecord(ctx context.Context, cli *dns.Client, vis, recordID string) (*dns.Operation, error) {
+	op, err := cli.DeleteRecord(ctx, vis, recordID)
+	if !dnsRecordGone(err) {
+		return op, err
+	}
+	if _, readErr := cli.GetRecord(ctx, vis, recordID); dnsRecordGone(readErr) {
+		return nil, dnsRecordNotFound(vis, recordID)
+	}
+	return nil, err
+}
+
 // dnsRecordVisibility is the visibility of record recordID: type when
 // given, otherwise the API (public, then private) that answers its GET.
-// Only 403 and 404 mean "not in this API" (a foreign id gets 403, as
-// AR-2, CRT-2); any other error (401, 5xx, no connection) is returned as
-// is. Neither API has the record — NOT_FOUND.
+// Only 403 and «no such record» (dnsRecordGone: 404, the live API's 400)
+// mean "not in this API" (a foreign id gets 403, as AR-2, CRT-2); any
+// other error (401, 5xx, no connection) is returned as is. Neither API has
+// the record — NOT_FOUND.
 func dnsRecordVisibility(ctx context.Context, cli *dns.Client, args map[string]any, recordID string) (string, error) {
 	if stringArg(args, "type") != "" {
 		return dnsVisibility(args), nil
@@ -88,7 +135,7 @@ func dnsRecordVisibility(ctx context.Context, cli *dns.Client, args map[string]a
 			return vis, nil
 		}
 		var ae *dns.APIError
-		if !errors.As(err, &ae) || (ae.Status != http.StatusForbidden && ae.Status != http.StatusNotFound) {
+		if !dnsRecordGone(err) && (!errors.As(err, &ae) || ae.Status != http.StatusForbidden) {
 			return "", err
 		}
 	}
@@ -178,7 +225,7 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 			err = noID("operation")
 		}
 		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListZones(ctx, vis) }
-		return lostCreate(ctx, "dns_zone_create", list, i18n.T("DNS zone", "зона DNS"), name, nil, "dns_zone_get zone_id", fmt.Errorf("create zone: %w", err))
+		return lostCreate(ctx, "dns_zone_create", list, i18n.T("DNS zone", "зона DNS"), name, nil, "dns_zone_get zone_id", fmt.Errorf(i18n.T("create zone: %w", "создание зоны: %w"), err))
 	}
 	out := map[string]any{"status": "creating", "visibility": vis, "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id); then dns_zones for the id (public zones return a verification_token to delegate)."}
 	// The zone's id is in the create's answer: named at once (fault matrix,
@@ -214,7 +261,7 @@ func (s *Registry) planDnsZoneDelete(ctx context.Context, args map[string]any) (
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := cli.DeleteZone(ctx, vis, id)
 		if err != nil {
-			return s.deleteFailed("dns_zone_delete", id, fmt.Errorf("delete zone: %w", err))
+			return s.deleteFailed("dns_zone_delete", id, fmt.Errorf(i18n.T("delete zone: %w", "удаление зоны: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}), false
 	}}, nil
@@ -331,7 +378,7 @@ func (s *Registry) handleDnsRecordGet(ctx context.Context, args map[string]any) 
 	if err != nil {
 		return errResult(err), true
 	}
-	m, err := cli.GetRecord(ctx, vis, id)
+	m, err := dnsGetRecord(ctx, cli, vis, id)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -407,7 +454,7 @@ func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any)
 				if err == nil {
 					err = noID("operation")
 				}
-				return lostCreate(ctx, "dns_record_create", list, i18n.T("DNS record", "запись DNS"), key, nil, "dns_records zone_id="+zoneID, fmt.Errorf("create record: %w", err))
+				return lostCreate(ctx, "dns_record_create", list, i18n.T("DNS record", "запись DNS"), key, nil, "dns_records zone_id="+zoneID, fmt.Errorf(i18n.T("create record: %w", "создание записи: %w"), err))
 			}
 			out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id)."}
 			if op.ResourceID != "" {
@@ -434,16 +481,16 @@ func (s *Registry) planDnsRecordDelete(ctx context.Context, args map[string]any)
 	// With type the record was not looked up: one that is not there is
 	// already deleted (D26).
 	if stringArg(args, "type") != "" {
-		if _, err := cli.GetRecord(ctx, vis, id); err != nil {
+		if _, err := dnsGetRecord(ctx, cli, vis, id); err != nil {
 			return answered(s.deleteFailed("dns_record_delete", id, err)), nil
 		}
 	}
 	preview := map[string]any{"message": i18n.Tf("dns_record_delete deletes %s record %s (async).",
 		"dns_record_delete удаляет запись (%s) %s (асинхронно).", vis, id)}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-		op, err := cli.DeleteRecord(ctx, vis, id)
+		op, err := dnsDeleteRecord(ctx, cli, vis, id)
 		if err != nil {
-			return s.deleteFailed("dns_record_delete", id, fmt.Errorf("delete record: %w", err))
+			return s.deleteFailed("dns_record_delete", id, fmt.Errorf(i18n.T("delete record: %w", "удаление записи: %w"), err))
 		}
 		return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
 	}}, nil

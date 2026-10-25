@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -69,7 +70,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("postgresql request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("postgresql request failed: %w", "запрос к postgresql не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -132,7 +133,7 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 		}
 		var out map[string]json.RawMessage
 		if err := json.Unmarshal(data, &out); err != nil {
-			return "", fmt.Errorf("parse %s: %w", field, err)
+			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 		}
 		var page []map[string]any
 		if raw, ok := out[field]; ok {
@@ -161,7 +162,7 @@ func (c *Client) getObject(ctx context.Context, path string, query url.Values) (
 	}
 	var out map[string]any
 	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse response: %w", "разбор ответа: %w"), err)
 	}
 	return out, nil
 }
@@ -176,7 +177,7 @@ func (c *Client) doOperation(ctx context.Context, method, path string, body any)
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }
@@ -222,7 +223,7 @@ func (c *Client) GetOperation(ctx context.Context, id string) (*Operation, error
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }

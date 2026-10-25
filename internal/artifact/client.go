@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -82,7 +83,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("artifact-registry request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("artifact-registry request failed: %w", "запрос к artifact-registry не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -119,7 +120,7 @@ func (c *Client) doOperation(ctx context.Context, method, path string, query url
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }
@@ -158,7 +159,7 @@ func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 			NextPageToken string           `json:"nextPageToken"`
 		}
 		if err := json.Unmarshal(data, &out); err != nil {
-			return "", fmt.Errorf("parse registries: %w", err)
+			return "", fmt.Errorf(i18n.T("parse registries: %w", "разбор реестров: %w"), err)
 		}
 		added := 0
 		for _, r := range out.Registries {
@@ -213,7 +214,7 @@ func (c *Client) GetRegistry(ctx context.Context, id string) (map[string]any, er
 	}
 	var out map[string]any
 	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse registry: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse registry: %w", "разбор реестра: %w"), err)
 	}
 	return out, nil
 }
@@ -239,7 +240,7 @@ func (c *Client) GetOperation(ctx context.Context, id string) (*Operation, error
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }

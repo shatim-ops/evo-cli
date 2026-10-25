@@ -1,0 +1,232 @@
+internal/agentconf	encode: %w
+internal/artifact	artifact-registry request failed: %w
+internal/artifact	parse operation: %w
+internal/artifact	parse operation: %w
+internal/artifact	parse registries: %w
+internal/artifact	parse registry: %w
+internal/audit	audit request failed: %w
+internal/audit	parse audit events: %w
+internal/auth	create ssh public key: %w
+internal/auth	generate ed25519 key: %w
+internal/auth	marshal private key: %w
+internal/billing	billing request failed: %w
+internal/billing	parse balance: %w
+internal/billing	parse consumption: %w
+internal/certmanager	certmanager request failed: %w
+internal/certmanager	parse certmanager response: %w
+internal/cli	create key directory: %w
+internal/cli	get working directory: %w
+internal/cli	healthcheck: %w
+internal/cli	key directory: %w
+internal/cli	read key ID: %w
+internal/cli	read project ID: %w
+internal/cli	read project: %w
+internal/cli	read secret: %w
+internal/cli	read zone: %w
+internal/cli	restrict key directory: %w
+internal/cli	write private key: %w
+internal/cli	write public key: %w
+internal/config	chmod %s: %w
+internal/config	create %s: %w
+internal/config	create %s: %w
+internal/config	create %s: %w
+internal/config	create %s: %w
+internal/config	current user: %w
+internal/config	flag %s: %w
+internal/config	invalid integer: %w
+internal/config	lock %s: %w
+internal/config	lock %s: %w
+internal/config	read %s: %w
+internal/config	read %s: %w
+internal/config	remove token cache: %w
+internal/config	security descriptor: %w
+internal/config	write %s: %w
+internal/config	write %s: %w
+internal/config	write %s: %w
+internal/config	write %s: %w
+internal/containerapp	container-apps request failed: %w
+internal/containerapp	parse container: %w
+internal/containerapp	parse containers: %w
+internal/containerapp	parse logs: %w
+internal/containerapp	parse operation: %w
+internal/dbaas	dbaas request failed: %w
+internal/dbaas	parse %s: %w
+internal/dbaas	parse clusters: %w
+internal/dbaas	parse operation: %w
+internal/dbaas	parse operation: %w
+internal/dbaas	parse response: %w
+internal/deployplan	cannot check whether VM %q already exists (%w); nothing was created — retry deploy_apply
+internal/deployplan	create VM: %w
+internal/deployplan	create VM: %w
+internal/deployplan	list flavors: %w
+internal/deployplan	list images: %w
+internal/deployplan	list security groups: %w
+internal/deployplan	list subnets: %w
+internal/deployplan	plan %q is corrupt: %w
+internal/dns	dns request failed: %w
+internal/dns	parse %s: %w
+internal/dns	parse operation: %w
+internal/dns	parse operation: %w
+internal/dns	parse response: %w
+internal/kubetools	%s timed out after %s: %w
+internal/kubetools	write kubeconfig: %w
+internal/mcp	compose_file over HTTP: %w
+internal/mcp	k8s_helm over HTTP: chart: %w
+internal/mcp	k8s_helm over HTTP: repo_url: %w
+internal/mcp	resolve %s: %w
+internal/mcp	write response: %w
+internal/mk8s	mk8s request failed: %w
+internal/mk8s	parse addon releases: %w
+internal/mk8s	parse addons: %w
+internal/mk8s	parse cluster addon: %w
+internal/mk8s	parse cluster addons: %w
+internal/mk8s	parse cluster: %w
+internal/mk8s	parse clusters: %w
+internal/mk8s	parse kubeconfig: %w
+internal/mk8s	parse node pools: %w
+internal/mk8s	parse oidc token: %w
+internal/mk8s	parse operation: %w
+internal/mk8s	parse operation: %w
+internal/mk8s	parse operation: %w
+internal/mk8s	parse product configuration: %w
+internal/monitoring	monitoring request failed: %w
+internal/nlb	nlb request failed: %w
+internal/nlb	parse %s: %w
+internal/nlb	parse operation: %w
+internal/nlb	parse operation: %w
+internal/nlb	parse response: %w
+internal/postgresql	parse %s: %w
+internal/postgresql	parse operation: %w
+internal/postgresql	parse operation: %w
+internal/postgresql	parse response: %w
+internal/postgresql	postgresql request failed: %w
+internal/s3	create bucket: %w
+internal/s3	get object: %w
+internal/s3	init S3 client: %w
+internal/s3	list buckets: %w
+internal/s3	list objects: %w
+internal/s3	put object: %w
+internal/s3	read object %s/%s: %w
+internal/s3	remove bucket: %w
+internal/s3	remove object: %w
+internal/secret	parse payload: %w
+internal/secret	parse secret: %w
+internal/secret	parse secrets: %w
+internal/secret	secret request failed: %w
+internal/stack	job %s not found: %w
+internal/stack	lock job %s: %w
+internal/stack	parse job %s: %w
+internal/tools	%w (VM %s is not in the state either: %v)
+internal/tools	%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — release it with release_floating_ip
+internal/tools	add version: %w
+internal/tools	attach disk: %w
+internal/tools	attach disk: %w (waited for the new disk: %v)
+internal/tools	attach floating ip: %w
+internal/tools	attach: %w
+internal/tools	check the destination is free: list routes: %w
+internal/tools	check the name is free: list SNAT gateways: %w
+internal/tools	check the name is free: list VPCs: %w
+internal/tools	check the name is free: list backups: %w
+internal/tools	check the name is free: list certificates: %w
+internal/tools	check the name is free: list clusters: %w
+internal/tools	check the name is free: list clusters: %w
+internal/tools	check the name is free: list clusters: %w
+internal/tools	check the name is free: list clusters: %w
+internal/tools	check the name is free: list load balancers: %w
+internal/tools	check the name is free: list node pools: %w
+internal/tools	check the name is free: list registries: %w
+internal/tools	check the name is free: list target groups: %w
+internal/tools	check the record is new: list records: %w
+internal/tools	close port %d: %w
+internal/tools	closed %s, not closed %s: %w
+internal/tools	config: %w
+internal/tools	create SNAT gateway: %w
+internal/tools	create VM: %w
+internal/tools	create VM: %w
+internal/tools	create backup: %w
+internal/tools	create cluster: %w
+internal/tools	create cluster: %w
+internal/tools	create cluster: %w
+internal/tools	create database: %w
+internal/tools	create disk: %w
+internal/tools	create image: %w
+internal/tools	create load balancer: %w
+internal/tools	create node pool: %w
+internal/tools	create record: %w
+internal/tools	create registry: %w
+internal/tools	create route: %w
+internal/tools	create secret: %w
+internal/tools	create target group: %w
+internal/tools	create user: %w
+internal/tools	create vpc: %w
+internal/tools	create zone: %w
+internal/tools	delete SNAT gateway: %w
+internal/tools	delete VM: %w
+internal/tools	delete cluster: %w
+internal/tools	delete cluster: %w
+internal/tools	delete cluster: %w
+internal/tools	delete database: %w
+internal/tools	delete disk: %w
+internal/tools	delete image: %w
+internal/tools	delete load balancer: %w
+internal/tools	delete record: %w
+internal/tools	delete registry: %w
+internal/tools	delete route: %w
+internal/tools	delete secret: %w
+internal/tools	delete target group: %w
+internal/tools	delete user: %w
+internal/tools	delete vpc: %w
+internal/tools	delete zone: %w
+internal/tools	detach disk: %w
+internal/tools	embed_token: OIDC token exchange failed: %w
+internal/tools	floating IP %q: %w
+internal/tools	get vm detail: %w
+internal/tools	image_metadata must be an array of field objects: %w
+internal/tools	import certificate: %w
+internal/tools	invalid content_base64: %w
+internal/tools	invalid manifest: %w
+internal/tools	invalid manifest: %w
+internal/tools	issue certificate: %w
+internal/tools	kube token exchange: %w
+internal/tools	list S3 buckets: %w
+internal/tools	list S3 buckets: %w
+internal/tools	list availability zones: %w
+internal/tools	list availability zones: %w
+internal/tools	list availability zones: %w
+internal/tools	list flavors: %w
+internal/tools	list floating ips: %w
+internal/tools	list security groups: %w
+internal/tools	list security groups: %w (or pass security_group_id)
+internal/tools	list specifications: %w
+internal/tools	list specifications: %w
+internal/tools	list specifications: %w
+internal/tools	list subnets: %w
+internal/tools	list subnets: %w
+internal/tools	list subnets: %w
+internal/tools	list versions: %w
+internal/tools	list versions: %w
+internal/tools	list versions: %w
+internal/tools	open port %d: %w
+internal/tools	opened %s, not opened %s: %w
+internal/tools	persist job: %w
+internal/tools	persist job: %w
+internal/tools	persist plan: %w
+internal/tools	read target group %s: %w
+internal/tools	read the zone of cluster %s: %w (or pass zone)
+internal/tools	release floating IP: %w
+internal/tools	resize disk: %w
+internal/tools	resolve interface for vm %s: %w
+internal/tools	resolve subnet: %w
+internal/tools	rules of security group %s: %w
+internal/tools	validate vm.flavor: %w
+internal/tools	validate vm.flavor: %w
+internal/tools	validate vm.zone: list availability zones: %w
+internal/tools	validate vm: %w
+internal/tools	values file: %w
+internal/tools	values file: %w
+internal/vpc	parse %s: %w
+internal/vpc	parse %s: %w
+internal/vpc	parse operation: %w
+internal/vpc	parse operation: %w
+internal/vpc	parse vpc: %w
+internal/vpc	vpc request failed: %w
