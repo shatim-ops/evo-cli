@@ -72,8 +72,18 @@ func TestDocs_DecisionsCitedAreWritten(t *testing.T) {
 
 var (
 	reserveRow     = regexp.MustCompile(`(?m)^\| D(\d{1,3}) \| ([^|]*)\| \*\*Зарезервирован\*\*`)
-	reserveVersion = regexp.MustCompile(`\((\d+\.\d+)\)`)
+	reserveVersion = regexp.MustCompile(`\((\d+\.\d+(?:\.\d+)?)\)`)
 )
+
+// releasedRow is the CHANGELOG heading that releases version v: a minor
+// («1.3») is released by any of its tags, a patch («1.3.1») only by its
+// own — a reserve for a patch of a released minor stays until that patch.
+func releasedRow(v string) *regexp.Regexp {
+	if strings.Count(v, ".") == 2 {
+		return regexp.MustCompile(`(?m)^## \[` + regexp.QuoteMeta(v) + `\]`)
+	}
+	return regexp.MustCompile(`(?m)^## \[` + regexp.QuoteMeta(v) + `\.\d+\]`)
+}
 
 // reserveProblems checks the rows that hold an issued decision number
 // until its PR writes the decision (CLAUDE.md §0, rule 4): a reserve names
@@ -95,8 +105,7 @@ func reserveProblems(table, changelog string) []string {
 			problems = append(problems, fmt.Sprintf("D%s: reserve row names no version, e.g. «(1.3)»", n))
 			continue
 		}
-		released := regexp.MustCompile(`(?m)^## \[` + regexp.QuoteMeta(v[1]) + `\.\d+\]`)
-		if released.MatchString(changelog) {
+		if releasedRow(v[1]).MatchString(changelog) {
 			problems = append(problems, fmt.Sprintf("D%s: still reserved, but CHANGELOG releases %s — write the decision or mark it «**Снят**»", n, v[1]))
 		}
 	}
@@ -126,6 +135,8 @@ func TestDocs_DecisionReserves(t *testing.T) {
 		{"rc is not a release", reserve, "## [Не выпущено]\n", 0},
 		{"released version", reserve, "## [1.3.0] — 2026-11-01\n", 1},
 		{"released patch", reserve, "## [1.3.1] — 2026-11-05\n", 1},
+		{"patch reserve, minor released", "| D39 | Образ до вопроса (1.3.1) | **Зарезервирован** «1.3 — релизом» | правило 4 |\n", "## [Не выпущено]\n## [1.3.0] — 2026-10-24\n", 0},
+		{"patch reserve, patch released", "| D39 | Образ до вопроса (1.3.1) | **Зарезервирован** «1.3 — релизом» | правило 4 |\n", "## [1.3.1] — 2026-11-05\n## [1.3.0] — 2026-10-24\n", 1},
 		{"no version", "| D26 | Повторный delete | **Зарезервирован** «1.3 — релизом» | правило 4 |\n", "", 1},
 		{"beside the decision", reserve + "| D26 | Повторный delete (1.3) | **Отказ не нужен** | … |\n", "", 1},
 		{"written", "| D26 | Повторный delete (1.3) | **Отказ не нужен** | … |\n", "## [1.3.0] — 2026-11-01\n", 0},
