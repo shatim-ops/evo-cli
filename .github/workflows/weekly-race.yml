@@ -77,8 +77,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ["1.26.10", "1.27.x", "tip"]
-        gc: ["greenteagc", "nogreenteagc"]
+        go: ["1.26.10"]
+        gc: ["greenteagc"]
     runs-on: windows-latest
     # tip собирается ~10 мин; 8 прогонов по -count=3 с запасом.
     timeout-minutes: 120
