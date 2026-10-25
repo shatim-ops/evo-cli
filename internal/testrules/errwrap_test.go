@@ -31,9 +31,9 @@ var (
 
 // englishWraps are the packages whose wraps are still English only, each
 // with its part of the fix (1.3.1, owner's decision 25.10: internal/tools
-// first, then the clients of the services, then the rest). The list only
-// shrinks: a wrap elsewhere fails the test, and so does a line whose
-// package has none left.
+// first, then the clients of the services, then the rest) or why it stays.
+// The list only shrinks: a wrap elsewhere fails the test, and so does a
+// line whose package has none left.
 var englishWraps = map[string]string{
 	"internal/artifact":     "1.3.1, part 2",
 	"internal/audit":        "1.3.1, part 2",
@@ -56,8 +56,8 @@ var englishWraps = map[string]string{
 	"internal/config":     "1.3.1, part 3",
 	"internal/deployplan": "1.3.1, part 3",
 	"internal/kubetools":  "1.3.1, part 3",
-	"internal/mcp":        "1.3.1, part 3",
-	"internal/stack":      "1.3.1, part 3",
+	"internal/mcp":        "stays: the MCP server speaks English (internal/cli/mcp.go sets i18n.EN; D6)",
+	"internal/stack":      "1.3.1, with D41 («1.3 — разработка») or after it",
 }
 
 // copiedWraps are the wraps whose ru in i18n.T is the en copied —
