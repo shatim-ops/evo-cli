@@ -1,7 +1,7 @@
-# Cursor или Grok: язык CLI в обёртках ошибок — часть 2, клиенты сервисов (evo 1.3.1)
+# Cursor: язык CLI в обёртках ошибок — часть 2, клиенты сервисов (evo 1.3.1)
 
 Репозиторий `shatim-ops/evo-cli`, база — свежий `main`. Общий бриф —
-`docs/internal/briefs/grok-error-wraps-1.3.1.md`; здесь — только часть 2.
+`docs/internal/briefs/cursor-error-wraps-1.3.1.md`; здесь — только часть 2.
 Правка только в продуктовом коде (`*.go` без `_test`), кроме двух
 вычеркиваний ниже.
 
@@ -75,7 +75,13 @@ return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операц�
    `"s3_get": true` — его английская приставка «get object» живёт в
    `internal/s3`. Если часть 1 (`internal/tools`) ещё не слита, остальные
    строки перечня не трогай.
-4. Других правок в `_test.go` нет: строки в перечни **не добавлять**.
+4. Исправление части 1 (#352 слит с копией английского в `ru`): в
+   `internal/tools/tools_deploy.go` — `i18n.T("floating IP %q: %w", "floating IP %q: %w")`
+   → русский `ru` (например, `"адрес floating IP %q: %w"`, английский — как
+   был); вычеркни строку в `copiedWraps` (`internal/testrules/errwrap_test.go`)
+   и `"release_floating_ip": true` в `apiErrorEnglishLeft`.
+5. Других правок в `_test.go` нет: строки в перечни **не добавлять**.
+6. Начинать после слияния #353 и вливания `main`.
 
 ## Приёмка
 
