@@ -331,9 +331,12 @@ func (c *ownerCall) admit(k *ownerKind, id, project string) error {
 // of another project, or gone — one answer for both, NOT_FOUND as the API
 // gives for one that is gone, naming no project.
 func notInProject(k *ownerKind, id string) error {
+	// One answer for both a resource of another project and one that is
+	// gone (D26, H9 б): naming both reasons keeps an agent from hunting
+	// for another server when the resource was deleted (G130-16).
 	return clierrors.New(clierrors.CodeNotFound,
-		i18n.Tf("%s %s is not found in the projects of this server (--allow-project); nothing was done",
-			"%s %s не найден в проектах этого сервера (--allow-project); ничего не сделано", k.what, id),
+		i18n.Tf("%s %s is deleted or not in the projects of this server (--allow-project); nothing was done",
+			"%s %s удалён или не в проектах этого сервера (--allow-project); ничего не сделано", k.what, id),
 		i18n.Tf("Take the id from %s.", "id — в выводе %s.", k.listTool))
 }
 

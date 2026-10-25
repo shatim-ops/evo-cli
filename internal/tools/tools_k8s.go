@@ -754,19 +754,20 @@ func (s *Registry) k8sVIPSubnet(ctx context.Context, pid, subnetID string, zone 
 			if !provision.SubnetInZone(sn, zone.computeID, zone.name) {
 				return "", clierrors.New(clierrors.CodeConfigInvalid,
 					i18n.Tf("subnet %s is not in zone %s, where the control plane goes; nothing was created", "подсеть %s не в зоне %s, где будут мастер-узлы; ничего не создано", subnetID, zone.name),
-					i18n.T("Pass a subnet of that zone (vpc_subnets), or pass zone = the subnet's zone.", "Передайте подсеть этой зоны (vpc_subnets) или zone — зону подсети."))
+					i18n.T("Pass a subnet of that zone (list_subnets), or pass zone = the subnet's zone.", "Передайте подсеть этой зоны (list_subnets) или zone — зону подсети."))
 			}
 			return subnetID, nil
 		}
 		return "", clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
-			i18n.T("Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из vpc_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))
+			i18n.T("Take a subnet ID from list_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из list_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))
 	}
 	if i := provision.PickSubnet(subs, zone.computeID, zone.name); i >= 0 {
 		return subs[i].ID, nil
 	}
 	return "", clierrors.New(clierrors.CodeConfigInvalid,
 		i18n.Tf("no subnet in zone %s for the control-plane VIP; nothing was created", "в зоне %s нет подсети для VIP мастер-узлов; ничего не создано", zone.name),
-		i18n.T("Create a subnet in that zone, pass subnet_id of one, or pick another zone (k8s_options).", "Создайте подсеть в этой зоне, передайте subnet_id существующей или выберите другую зону (k8s_options)."))
+		i18n.T("Pass subnet_id (list: list_subnets) or another zone; if the project has no subnet in any zone, create one in the Cloud.ru console.",
+			"Передайте subnet_id (список: list_subnets) или другую зону; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
 }
 
 // clusterZoneID is the zone ID of the cluster's control plane
@@ -805,20 +806,21 @@ func (s *Registry) k8sNodesSubnet(ctx context.Context, pid, subnetID string, zon
 				if !provision.SubnetInZone(sn, zone.computeID, zone.name) {
 					return "", clierrors.New(clierrors.CodeConfigInvalid,
 						i18n.Tf("subnet %s is not in zone %s of the node pool; nothing was created", "подсеть %s не в зоне %s группы узлов; ничего не создано", subnetID, zone.name),
-						i18n.T("Pass a subnet of that zone (vpc_subnets), or pass zone = the subnet's zone.", "Передайте подсеть этой зоны (vpc_subnets) или zone — зону подсети."))
+						i18n.T("Pass a subnet of that zone (list_subnets), or pass zone = the subnet's zone.", "Передайте подсеть этой зоны (list_subnets) или zone — зону подсети."))
 				}
 				return subnetID, nil
 			}
 		}
 		return "", clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
-			i18n.T("Take a subnet ID from vpc_subnets, or omit nodes_subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из vpc_subnets или не указывайте nodes_subnet_id: возьмётся основная подсеть зоны."))
+			i18n.T("Take a subnet ID from list_subnets, or omit nodes_subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из list_subnets или не указывайте nodes_subnet_id: возьмётся основная подсеть зоны."))
 	}
 	if i := provision.PickSubnet(subs, zone.computeID, zone.name); i >= 0 {
 		return subs[i].ID, nil
 	}
 	return "", clierrors.New(clierrors.CodeConfigInvalid,
 		i18n.Tf("no subnet in zone %s for the node pool; nothing was created", "в зоне %s нет подсети для группы узлов; ничего не создано", zone.name),
-		i18n.T("Create a subnet in that zone or pass nodes_subnet_id of one.", "Создайте подсеть в этой зоне или передайте nodes_subnet_id существующей."))
+		i18n.T("Pass nodes_subnet_id (list: list_subnets) or another zone; if the project has no subnet in any zone, create one in the Cloud.ru console.",
+			"Передайте nodes_subnet_id (список: list_subnets) или другую зону; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
 }
 
 func firstNonEmptyStr(vals ...string) string {

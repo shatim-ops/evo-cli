@@ -450,7 +450,7 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 		}
 		if subnet == nil {
 			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
-				i18n.T("Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet of the balancer's VPC is taken.", "Возьмите ID подсети из vpc_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны в VPC балансировщика."))
+				i18n.T("Take a subnet ID from list_subnets, or omit subnet_id: the zone's main subnet of the balancer's VPC is taken.", "Возьмите ID подсети из list_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны в VPC балансировщика."))
 		}
 	}
 
@@ -514,12 +514,12 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 		if subnet.VPCID != "" && vpcID != "" && subnet.VPCID != vpcID {
 			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("subnet %s is not in VPC %s of the balancer; nothing was created", "подсеть %s не в VPC %s балансировщика; ничего не создано", subnetID, vpcID),
-				i18n.T("Pass a subnet of that VPC (vpc_subnets), or omit subnet_id.", "Передайте подсеть этой VPC (vpc_subnets) или не указывайте subnet_id."))
+				i18n.T("Pass a subnet of that VPC (list_subnets), or omit subnet_id.", "Передайте подсеть этой VPC (list_subnets) или не указывайте subnet_id."))
 		}
 		if from != "subnet_id" && !provision.SubnetInZone(subnet, zone.ID, zone.Name) {
 			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("subnet %s is not in zone %s; nothing was created", "подсеть %s не в зоне %s; ничего не создано", subnetID, firstNonEmptyStr(zone.Name, zone.ID)),
-				i18n.T("Pass a subnet of that zone (vpc_subnets), or omit subnet_id.", "Передайте подсеть этой зоны (vpc_subnets) или не указывайте subnet_id."))
+				i18n.T("Pass a subnet of that zone (list_subnets), or omit subnet_id.", "Передайте подсеть этой зоны (list_subnets) или не указывайте subnet_id."))
 		}
 		return *zone, subnetID, warnings, nil
 	}
@@ -533,7 +533,8 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	if i < 0 {
 		return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
 			i18n.Tf("no subnet of VPC %s in zone %s for the balancer; nothing was created", "в зоне %s нет подсети VPC %s для балансировщика; ничего не создано", vpcID, firstNonEmptyStr(zone.Name, zone.ID)),
-			i18n.T("Pass subnet_id of a subnet in that zone and VPC (vpc_subnets), or another zone.", "Передайте subnet_id подсети этой зоны и VPC (vpc_subnets) или выберите другую зону."))
+			i18n.T("Pass subnet_id (list: list_subnets) of a subnet in that zone and VPC, or another zone; if the project has no subnet in any zone, create one in the Cloud.ru console.",
+				"Передайте subnet_id (список: list_subnets) подсети этой зоны и VPC или другую зону; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
 	}
 	return *zone, inVPC[i].ID, warnings, nil
 }

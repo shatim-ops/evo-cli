@@ -701,7 +701,7 @@ func (s *Registry) registerTools() {
 				"storage_gib":      atLeast(1, intProp("Disk size GiB. Optional; default = spec minimum.")),
 				"brokers":          intProp("Broker count. Optional; default = the spec's min_brokers, else 1 (a single broker: no replication; pass 3 for a replicated cluster). Checked against the spec's min/max_brokers when it has them."),
 				"ui_enabled":       boolProp("Enable the Kafka UI (default false)."),
-				"subnet_id":        strProp("Subnet UUID (from vpc_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
+				"subnet_id":        strProp("Subnet UUID (from list_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
 				"description":      strProp("Optional description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),
@@ -755,7 +755,7 @@ func (s *Registry) registerTools() {
 				"shards":           intProp("Shard count 1-8 (default 1)."),
 				"replicas":         intProp("Replicas per shard WITHOUT the master — the create request's replicas field. MASTER_REPLICA takes 2 (the default: a master and two replicas, 3 hosts — what redis_get then reports as replicas); STANDALONE takes 0."),
 				"type":             enumProp("MASTER_REPLICA (default) or STANDALONE (rejected by the API so far).", "MASTER_REPLICA", "STANDALONE"),
-				"subnet_id":        strProp("Subnet UUID (from vpc_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
+				"subnet_id":        strProp("Subnet UUID (from list_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
 				"description":      strProp("Optional description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),
@@ -1913,12 +1913,12 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		if subnet == nil {
 			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
-				i18n.T("Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из vpc_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))), true
+				i18n.T("Take a subnet ID from list_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из list_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))), true
 		}
 		if subnet.AvailabilityZoneID != "" && subnet.AvailabilityZoneID != region || subnetNamesOtherZone(subnet, region, zones) {
 			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("subnet %s is not in zone %s", "подсеть %s не в зоне %s", subnet.Name, firstNonEmptyStr(zoneName, region)),
-				i18n.T("Take a subnet of this zone (vpc_subnets), or omit subnet_id: the zone's main subnet is taken.", "Возьмите подсеть этой зоны (vpc_subnets) или не указывайте subnet_id: возьмётся основная подсеть зоны."))), true
+				i18n.T("Take a subnet of this zone (list_subnets), or omit subnet_id: the zone's main subnet is taken.", "Возьмите подсеть этой зоны (list_subnets) или не указывайте subnet_id: возьмётся основная подсеть зоны."))), true
 		}
 	} else if i := provision.PickSubnet(subnets, region, zoneName); i >= 0 {
 		subnet = subnets[i]
@@ -2811,11 +2811,14 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 	fip := "none: no floating IP of this VM is known"
 	switch {
 	case keptFIP != "":
-		fip = "kept: " + keptFIP + " — " + keptWhy + " (call with release_ip=true to release it)"
+		fip = "will be kept: " + keptFIP + " — " + keptWhy + " (call with release_ip=true to release it)"
 	case hasFIP && releaseIP:
-		fip = "released: " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
+		// Future tense: the preview is before consent; "released:" read as
+		// already done (G130-36). The answer after confirmed=true still says
+		// "released floating IP …".
+		fip = "will be released: " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	case hasFIP:
-		fip = "kept (release_ip=false): " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
+		fip = "will be kept (release_ip=false): " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	}
 	out := map[string]any{
 		"message":     msg,
@@ -3292,6 +3295,16 @@ func errAnswer(err error, fields map[string]any) string {
 	res := make(map[string]any, len(fields)+4)
 	for k, v := range fields {
 		res[k] = v
+	}
+	// Details of a CLIError (argument, missing, …) become answer fields so
+	// the CLI can word the hint without parsing the text; fields win.
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		for k, v := range ce.Details {
+			if _, ok := res[k]; !ok {
+				res[k] = v
+			}
+		}
 	}
 	if _, ok := res["status"]; !ok {
 		res["status"] = "error"

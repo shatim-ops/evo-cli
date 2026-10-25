@@ -94,8 +94,13 @@ func TestProvision_NoSubnetOrGroupInZoneRefusedBeforeAnyMutation(t *testing.T) {
 				}
 				var res map[string]any
 				_ = json.Unmarshal([]byte(text), &res)
+				hint, _ := res["hint"].(string)
 				if res["reason"] != "CONFIG_INVALID" || !strings.Contains(res["error"].(string), tc.want) || res["hint"] == nil {
 					t.Errorf("ответ: %s", text)
+				}
+				if strings.Contains(tc.want, "no subnet") &&
+					(!strings.Contains(hint, "subnet_id") || !strings.Contains(hint, "list_subnets")) {
+					t.Errorf("подсказка без subnet_id/list_subnets: %s", text)
 				}
 				if len(cloud.mutations) > 0 {
 					t.Errorf("до отказа облако изменено: %v", cloud.mutations)

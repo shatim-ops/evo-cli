@@ -142,10 +142,15 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneRef string) 
 // FIP is billed, so deploy and the MCP provision refuse before creating
 // anything.
 func NoSubnetError(zoneName, zoneID string) error {
-	return clerrors.New(clerrors.CodeConfigInvalid,
+	// Name what to pass first (subnet_id / region); the console only when
+	// the project has no subnet in any zone. "missing" lets the CLI word
+	// the same hint with its flags (G130-27).
+	ce := clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(zoneName, zoneID)),
-		i18n.T("Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'evo init'.",
-			"Создайте сеть и подсеть в этой зоне в консоли Cloud.ru или выберите другую зону ('evo init')."))
+		i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); if the project has no subnet in any zone, create one in the Cloud.ru console.",
+			"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
+	ce.Details = map[string]any{"missing": []string{"subnet_id"}}
+	return ce
 }
 
 // NoSecurityGroupError: the project has groups, none in the VM's zone; a

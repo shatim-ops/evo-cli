@@ -406,8 +406,9 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		}
 		// The tool's own check of the arguments (tools.CheckArgs, spec.md
 		// REQ-8), before the preview: its refusal is the one the tool
-		// gives, as every refusal of a tool is shown.
-		hints := commandHints(cmd, c.flagName)
+		// gives, as every refusal of a tool is shown. Hints name flags
+		// and positionals, not inputSchema (G130-35).
+		hints := treeCommandHints(cmd, c)
 		if err := tools.CheckArgs(t, callArgs); err != nil {
 			return toolError(t.Name, tools.ErrResult(err), hints)
 		}

@@ -193,8 +193,11 @@ func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, 
 		if i := provision.PickSubnet(subs, zid, shown); i >= 0 && provision.SubnetInZone(subs[i], zid, shown) {
 			return subs[i].ID, zid, shown, nil
 		}
-		return "", "", "", clierrors.New(clierrors.CodeUsage, i18n.Tf("no subnet of the project in zone %s", "в зоне %s нет подсети проекта", shown),
-			i18n.T("Pass subnet_id, or create a subnet in this zone in the Cloud.ru console.", "Передайте subnet_id или создайте подсеть в этой зоне в консоли Cloud.ru."))
+		ce := clierrors.New(clierrors.CodeUsage, i18n.Tf("no subnet of the project in zone %s", "в зоне %s нет подсети проекта", shown),
+			i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); if the project has no subnet in any zone, create one in the Cloud.ru console.",
+				"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
+		ce.Details = map[string]any{"missing": []string{"subnet_id"}}
+		return "", "", "", ce
 	default:
 		for _, z := range engine.PreferredZoneFirst(provision.OpenZones(zones)) {
 			if i := provision.PickSubnet(subs, z.ID, z.Name); i >= 0 && provision.SubnetInZone(subs[i], z.ID, z.Name) {

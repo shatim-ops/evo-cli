@@ -183,8 +183,11 @@ func TestAudit_DestroyPreviewNamesTarget(t *testing.T) {
 		if tgt["id"] != "0000a1a1-0000-4000-8000-000000000001" || tgt["name"] != "web" || tgt["zone"] != "ru.AZ-2" || tgt["status"] != "running" || tgt["public_ip"] != "203.0.113.5" {
 			t.Errorf("%v: target = %v", args, tgt)
 		}
-		if f, _ := m["floating_ip"].(string); !strings.Contains(f, "released") || !strings.Contains(f, "203.0.113.5 (fip-1)") {
+		if f, _ := m["floating_ip"].(string); !strings.Contains(f, "will be released") || !strings.Contains(f, "203.0.113.5 (fip-1)") {
 			t.Errorf("%v: floating_ip = %q", args, f)
+		}
+		if f, _ := m["floating_ip"].(string); strings.Contains(f, "released:") && !strings.Contains(f, "will be released:") {
+			t.Errorf("%v: preview uses past tense: %q", args, f)
 		}
 		if msg, _ := m["message"].(string); !strings.Contains(msg, "web (0000a1a1-0000-4000-8000-000000000001) in zone ru.AZ-2") {
 			t.Errorf("%v: message = %q", args, msg)

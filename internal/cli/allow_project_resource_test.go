@@ -109,8 +109,11 @@ func TestAllowProject_ResourceByIDOfAnotherProject(t *testing.T) {
 				obj := parseObject(a.text)
 				msg, _ := obj["error"].(string)
 				if !a.isErr || obj["reason"] != clerrors.CodeNotFound || obj["hint"] != "Take the id from pg_list." ||
-					!strings.Contains(msg, id) || !strings.Contains(msg, "not found in the projects of this server (--allow-project)") {
-					t.Errorf("%s %s %s: %s, want NOT_FOUND «not found in the projects of this server»", transport, c.tool, id, a.text)
+					!strings.Contains(msg, id) || !strings.Contains(msg, "deleted or not in the projects of this server (--allow-project)") {
+					t.Errorf("%s %s %s: %s, want NOT_FOUND «deleted or not in the projects of this server»", transport, c.tool, id, a.text)
+				}
+				if !strings.Contains(msg, "deleted") || !strings.Contains(msg, "not in the projects") {
+					t.Errorf("%s %s %s: message must name both reasons: %s", transport, c.tool, id, msg)
 				}
 				if strings.Contains(a.text, "pg-c2") || strings.Contains(a.text, otherProject) {
 					t.Errorf("%s %s: the answer shows the cluster or its project: %s", transport, c.tool, a.text)
