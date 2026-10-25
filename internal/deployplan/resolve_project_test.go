@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -151,6 +152,10 @@ func (c sgCloud) ListSecurityGroups(context.Context, string) ([]*provision.Secur
 }
 
 func TestResolve_NoSecurityGroupRefused(t *testing.T) {
+	// The text is checked in English (D6: the wrap goes through i18n).
+	lang := i18n.Lang()
+	i18n.SetLang(i18n.EN)
+	t.Cleanup(func() { i18n.SetLang(lang) })
 	for name, cloud := range map[string]sgCloud{
 		"групп нет":          {metaCloud: &metaCloud{fields: ubuntu2404Fields()}},
 		"только чужая зона":  {metaCloud: &metaCloud{fields: ubuntu2404Fields()}, sgs: []*provision.SecurityGroup{{ID: "sg-1", Name: "SSH-access_ru.AZ-1", AvailabilityZoneID: "z1"}, {ID: "sg-3", Name: "web_ru.AZ-3", AvailabilityZoneID: "z3"}}},

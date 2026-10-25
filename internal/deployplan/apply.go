@@ -100,7 +100,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	if lookErr != nil {
 		// Unknown is not "absent": creating now could make a second
 		// billed VM next to one a lost answer already created (QA H5).
-		return nil, fmt.Errorf("cannot check whether VM %q already exists (%w); nothing was created — retry deploy_apply", plan.VM.Name, lookErr)
+		return nil, fmt.Errorf(i18n.T("cannot check whether VM %q already exists (%w); nothing was created — retry deploy_apply", "не удалось проверить, есть ли уже ВМ %q (%w); ничего не создано — повторите deploy_apply"), plan.VM.Name, lookErr)
 	}
 	if existing != nil {
 		if provision.VMFailed(existing.Status) {
@@ -209,7 +209,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		// taken since the check above): then the VM by that name is
 		// another one (release audit, L-01).
 		if provision.CreateRejected(err) {
-			return nil, fmt.Errorf("create VM: %w", err)
+			return nil, fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err)
 		}
 		if found := provision.FindCreatedVM(cloud, plan.ProjectID, plan.VM.Name, createStart); found != nil {
 			return &ApplyResult{
@@ -219,7 +219,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 					"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
 					"or delete it with destroy: %w", found.ID, err)
 		}
-		return nil, fmt.Errorf("create VM: %w", err)
+		return nil, fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err)
 	}
 
 	show.done(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", plan.VM.Name, vm.ID))

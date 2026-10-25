@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -188,6 +189,10 @@ func TestApply_AdoptsExistingVMInProject(t *testing.T) {
 
 // The lookup fails: nothing is created, so a retry cannot leave two VMs.
 func TestApply_LookupFails_CreatesNothing(t *testing.T) {
+	// The text is checked in English (D6: the wrap goes through i18n).
+	lang := i18n.Lang()
+	i18n.SetLang(i18n.EN)
+	t.Cleanup(func() { i18n.SetLang(lang) })
 	c := &existingCloud{listErr: errors.New("502 bad gateway")}
 	_, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}}, 0, nil)
 	if err == nil || !strings.Contains(err.Error(), "nothing was created") {
