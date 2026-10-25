@@ -77,7 +77,7 @@ func englishPhrase(s string) string {
 // tool not here fails the test, and so does a line whose tool answers
 // in Russian.
 var apiErrorEnglishLeft = map[string]bool{
-	"deploy_plan": true, "release_floating_ip": true, "s3_get": true,
+	"deploy_plan": true, "s3_get": true,
 }
 
 // cloudSegment marks where an API_ERROR leaves evo's words for the
