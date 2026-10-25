@@ -60,6 +60,12 @@ var englishWraps = map[string]string{
 	"internal/stack":      "1.3.1, part 3",
 }
 
+// copiedWraps are the wraps whose ru in i18n.T is the en copied —
+// "package<TAB>format" → the PR that fixes it. The list only shrinks.
+var copiedWraps = map[string]string{
+	"internal/tools\tfloating IP %q: %w": "1.3.1, after #352",
+}
+
 // CLAUDE.md §2, D6: what evo writes in an error is in the CLI's language;
 // the cloud's own text stays the cloud's. An error that wraps another
 // (fmt.Errorf with %w) puts evo's words before the cloud's, and a literal
@@ -71,6 +77,7 @@ func TestErrorWrapsSpeakCLILanguage(t *testing.T) {
 	root := filepath.Join("..", "..")
 	n := 0
 	left := map[string]int{}
+	copied := map[string]bool{}
 	for _, dir := range []string{"internal", "cmd"} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
@@ -118,6 +125,10 @@ func TestErrorWrapsSpeakCLILanguage(t *testing.T) {
 					if englishWraps[pkg] != "" {
 						return true
 					}
+					if translated && copiedWraps[pkg+"\t"+format] != "" {
+						copied[pkg+"\t"+format] = true
+						return true
+					}
 					t.Errorf("%s:%d: fmt.Errorf(%s): evo's words before a wrapped error — the format through i18n.T(en, ru)",
 						filepath.ToSlash(rel), fset.Position(lit.Pos()).Line, lit.Value)
 				}
@@ -127,6 +138,11 @@ func TestErrorWrapsSpeakCLILanguage(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatal(err)
+		}
+	}
+	for k := range copiedWraps {
+		if !copied[k] {
+			t.Errorf("copiedWraps names %q, whose ru is Russian now: remove the line", k)
 		}
 	}
 	for pkg := range englishWraps {
@@ -222,6 +238,9 @@ func TestErrorWrapsKeepTheirEnglish(t *testing.T) {
 		t.Fatalf("%s is empty", englishWrapsFile)
 	}
 	got := wrapFormats(t)
+	if len(got) == 0 {
+		t.Fatal("no wrap found: the walk of the code is broken")
+	}
 	keys := make([]string, 0, len(want))
 	for k := range want {
 		keys = append(keys, k)
