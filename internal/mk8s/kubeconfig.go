@@ -97,7 +97,7 @@ func fetchOIDCTokenOnce(ctx context.Context, tokenURL, keyID, secret string) (to
 		AccessToken string `json:"access_token"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
-		return "", false, fmt.Errorf("parse oidc token: %w", err)
+		return "", false, fmt.Errorf(i18n.T("parse oidc token: %w", "разбор токена oidc: %w"), err)
 	}
 	if r.IDToken != "" {
 		return r.IDToken, false, nil

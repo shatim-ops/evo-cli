@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -68,7 +69,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("container-apps request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("container-apps request failed: %w", "запрос к container-apps не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -169,7 +170,7 @@ func (c *Client) List(ctx context.Context) ([]map[string]any, error) {
 			NextPageToken string           `json:"nextPageToken"`
 		}
 		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf("parse containers: %w", err)
+			return "", fmt.Errorf(i18n.T("parse containers: %w", "разбор контейнеров: %w"), err)
 		}
 		all = append(all, r.Data...)
 		return r.NextPageToken, nil
@@ -190,7 +191,7 @@ func (c *Client) Get(ctx context.Context, name string) (map[string]any, error) {
 	}
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("parse container: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse container: %w", "разбор контейнера: %w"), err)
 	}
 	return m, nil
 }
@@ -208,7 +209,7 @@ func (c *Client) Create(ctx context.Context, req CreateContainerReq) (*Operation
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }
@@ -325,7 +326,7 @@ func (c *Client) logsPage(ctx context.Context, path string, q url.Values) (*logs
 	}
 	var r logsPage
 	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, fmt.Errorf("parse logs: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse logs: %w", "разбор логов: %w"), err)
 	}
 	if b, err := json.Marshal(r.Data); err == nil {
 		r.raw = string(b)

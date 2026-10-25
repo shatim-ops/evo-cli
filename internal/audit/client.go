@@ -65,7 +65,7 @@ func (c *Client) do(ctx context.Context, path string, q url.Values) ([]byte, int
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("audit request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("audit request failed: %w", "запрос к audit не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -168,7 +168,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) (*EventPage, error)
 		return page, nil
 	}
 	if err := json.Unmarshal(data, page); err != nil {
-		return nil, fmt.Errorf("parse audit events: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse audit events: %w", "разбор событий аудита: %w"), err)
 	}
 	if len(page.Events) == 0 && len(page.Logs) > 0 {
 		page.Events = page.Logs
