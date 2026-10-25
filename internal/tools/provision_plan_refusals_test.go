@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -172,4 +174,67 @@ func boolText(b bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+// shelfZoneCloud is otherZoneCloud with a catalogue of images: deploy's
+// preview reads both.
+type shelfZoneCloud struct {
+	otherZoneCloud
+	images []*provision.Image
+}
+
+func (c *shelfZoneCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*provision.Image, error) {
+	return c.images, nil
+}
+func (c *shelfZoneCloud) GetImage(_ context.Context, id string) (*provision.ImageDetail, error) {
+	for _, img := range c.images {
+		if img.ID == id {
+			return &provision.ImageDetail{ID: img.ID, Name: img.Name}, nil
+		}
+	}
+	return nil, clierrors.New(clierrors.CodeNotFound, "HTTP 404: image not found", "")
+}
+func (*shelfZoneCloud) ListImagesInProject(context.Context, string) ([]*provision.Image, error) {
+	return nil, errNoPriceAPI
+}
+
+// deploy reads the image in the same preview (engine.completePreview): an
+// image the catalogue does not have is NOT_FOUND before the question, and
+// a name several images match is USAGE with the candidates — the same
+// answer as provision (Qwen review of #345).
+func TestDeploy_UnknownImageRefusedBeforePreview(t *testing.T) {
+	compose := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(compose, []byte("services:\n  web:\n    image: nginx\n    ports: [\"80:80\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		image      string
+		reason     string
+		candidates bool
+	}{
+		"no such":   {"NoSuch-1.0", clierrors.CodeNotFound, false},
+		"ambiguous": {"Ubuntu", clierrors.CodeUsage, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cloud := &shelfZoneCloud{
+				otherZoneCloud: otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}},
+					subnets: []*provision.Subnet{{ID: "sn-3", Name: "Default_ru.AZ-3", AvailabilityZoneID: "z", Default: true}},
+					groups:  []*provision.SecurityGroup{{ID: "sg-3", Name: "SSH-access_ru.AZ-3", AvailabilityZoneID: "z"}}},
+				images: []*provision.Image{
+					{ID: catalogUbuntu22, Name: "Ubuntu-22.04", DisplayName: "Ubuntu 22.04", Status: "active"},
+					{ID: catalogUbuntu24, Name: "Ubuntu-24.04", DisplayName: "Ubuntu 24.04", Status: "active"},
+				}}
+			r := zoneRegistry(t, cloud, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s", ComposeFile: compose})
+			m, text, isErr := callNamed(t, r, "deploy", map[string]any{"image": tc.image})
+			if !isErr || m["reason"] != tc.reason || m["status"] == "confirmation_required" {
+				t.Errorf("deploy image %q: want %s before the question, got %s", tc.image, tc.reason, text)
+			}
+			if _, ok := m["candidates"]; ok != tc.candidates {
+				t.Errorf("candidates present=%v, want %v: %s", ok, tc.candidates, text)
+			}
+			if len(cloud.mutations) > 0 {
+				t.Errorf("the cloud was changed: %v", cloud.mutations)
+			}
+		})
+	}
 }

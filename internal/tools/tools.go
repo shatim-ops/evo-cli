@@ -1739,12 +1739,6 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	}
 	preview := provisionPreview(eng.Config, zone, args)
 	if preview, err = s.completePreview(ctx, eng, preview); err != nil {
-		// An image name several images match: the refusal names them, as
-		// image_get does.
-		var amb *images.AmbiguousError
-		if stderrors.As(err, &amb) {
-			return answered(imageErrResult(err), true), nil
-		}
 		return nil, err
 	}
 	will := withProject(previewArgs(args, "name", "flavor", "region", "image_id", "disk_size", "subnet_id"),
@@ -3290,6 +3284,13 @@ func errAnswer(err error, fields map[string]any) string {
 		if h := uncodedHint(err, reason); h != "" {
 			res["hint"] = h
 		}
+	}
+	// An image name several images match names them, whichever tool
+	// resolved it (image_get, provision, deploy): one answer, not one per
+	// handler (Qwen review of #345).
+	var amb *images.AmbiguousError
+	if stderrors.As(err, &amb) {
+		res["candidates"] = imageCandidates(amb)
 	}
 	return toJSON(res)
 }
