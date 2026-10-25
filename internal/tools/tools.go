@@ -65,7 +65,7 @@ func (s *Registry) registerTools() {
 			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. A subnet and a security group are attached. " +
 				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works (Astra Linux, Alt, RED OS too); one it cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
 				"evo fills image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else refused before anything is created. " +
-				"No image or zone: refused before the preview ('missing' names it). " +
+				"No image or region: refused before the preview ('missing' names it). " +
 				"Returns ssh (deploy-key login), password (generated; this answer only), state_dir (key, state). " +
 				"For docker-compose use 'deploy'.",
 			InputSchema: objSchema(map[string]any{
@@ -1675,21 +1675,6 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 	return toJSON(map[string]any{"status": "ok"}), false
 }
 
-// subnetNamesOtherZone: a subnet the API gave without its zone whose name
-// carries another zone's name ("Default_ru.AZ-1" for a VM in ru.AZ-3) — the
-// same name rule as provision.PickSubnet (review Grok on #86).
-func subnetNamesOtherZone(s *provision.Subnet, zoneID string, zones []*provision.AvailabilityZone) bool {
-	if s.AvailabilityZoneID != "" {
-		return false
-	}
-	for _, z := range zones {
-		if z.ID != zoneID && z.Name != "" && strings.Contains(s.Name, z.Name) {
-			return true
-		}
-	}
-	return false
-}
-
 // planProvision plans a provision (D35): the call's own mistakes, the
 // configuration, the zone and what the preview reads (the flavor, the
 // image, the subnet and the group of the zone) refuse it before the
@@ -1899,33 +1884,19 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		return errResult(fmt.Errorf("no subnets in project — cannot attach a network interface")), true
 	}
 	// subnet_id as given; else the zone's main subnet, then a routed one
-	// (provision.PickSubnet, as deploy).
-	var subnet *provision.Subnet
+	// (provision.PickSubnet, as deploy). A subnet the project does not
+	// have, or one of another zone, keeps the VM from booting while it and
+	// its boot FIP are billed: the one rule of the preview and the call
+	// (engine.SubnetForVM).
 	subnetID := stringArg(args, "subnet_id")
-	if subnetID != "" {
-		for _, s := range subnets {
-			if s.ID == subnetID {
-				subnet = s
-			}
-		}
-		// A subnet the project does not have, or one of another zone, keeps
-		// the VM from booting while it and its boot FIP are billed.
-		if subnet == nil {
-			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
-				i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
-				i18n.T("Take a subnet ID from vpc_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из vpc_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))), true
-		}
-		if subnet.AvailabilityZoneID != "" && subnet.AvailabilityZoneID != region || subnetNamesOtherZone(subnet, region, zones) {
-			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
-				i18n.Tf("subnet %s is not in zone %s", "подсеть %s не в зоне %s", subnet.Name, firstNonEmptyStr(zoneName, region)),
-				i18n.T("Take a subnet of this zone (vpc_subnets), or omit subnet_id: the zone's main subnet is taken.", "Возьмите подсеть этой зоны (vpc_subnets) или не указывайте subnet_id: возьмётся основная подсеть зоны."))), true
-		}
-	} else if i := provision.PickSubnet(subnets, region, zoneName); i >= 0 {
-		subnet = subnets[i]
-		subnetID = subnet.ID
-	} else {
+	subnet, err := engine.SubnetForVM(subnets, zones, region, zoneName, subnetID)
+	if err != nil {
+		return errResult(err), true
+	}
+	if subnet == nil {
 		return errResult(engine.NoSubnetError(zoneName, region)), true
 	}
+	subnetID = subnet.ID
 	var netWarnings []string
 	gateway := ""
 	if subnet != nil {
@@ -3313,6 +3284,13 @@ func errAnswer(err error, fields map[string]any) string {
 		if h := uncodedHint(err, reason); h != "" {
 			res["hint"] = h
 		}
+	}
+	// An image name several images match names them, whichever tool
+	// resolved it (image_get, provision, deploy): one answer, not one per
+	// handler (Qwen review of #345).
+	var amb *images.AmbiguousError
+	if stderrors.As(err, &amb) {
+		res["candidates"] = imageCandidates(amb)
 	}
 	return toJSON(res)
 }

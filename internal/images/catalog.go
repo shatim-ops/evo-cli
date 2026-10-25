@@ -325,6 +325,10 @@ func ambiguous(ref string, cands []*provision.Image) error {
 		i18n.Tf("Give the exact name or the UUID; all matches: evo image list %s", "Укажите точное имя или UUID; все совпадения: evo image list %s", shellQuote(ref)))}
 }
 
+// NotFoundError is the refusal of an image the catalogue does not have, by
+// the reference the caller gave (a name or a UUID).
+func NotFoundError(ref string) error { return notFound(ref) }
+
 func notFound(ref string) error {
 	return clierrors.New(clierrors.CodeNotFound,
 		i18n.Tf("image %q not found", "образ %q не найден", ref),
