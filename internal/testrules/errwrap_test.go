@@ -26,6 +26,7 @@ var (
 	wrapVerb  = regexp.MustCompile(`%[-+# 0-9.]*[a-zA-Z]`)
 	wrapIdent = regexp.MustCompile(`[A-Za-z0-9]*[_.][A-Za-z0-9_.]*`)
 	wrapWord  = regexp.MustCompile(`[A-Za-z]{2,}`)
+	cyrillic  = regexp.MustCompile(`\p{Cyrillic}`)
 )
 
 // englishWraps are the packages whose wraps are still English only, each
@@ -88,12 +89,27 @@ func TestErrorWrapsSpeakCLILanguage(t *testing.T) {
 				if !ok || len(call.Args) == 0 || !isSel(call.Fun, "fmt", "Errorf") {
 					return true
 				}
-				lit, ok := call.Args[0].(*ast.BasicLit)
+				arg := call.Args[0]
+				translated := false
+				if tr, ok := arg.(*ast.CallExpr); ok && len(tr.Args) > 1 && (isSel(tr.Fun, "i18n", "T") || isSel(tr.Fun, "i18n", "Tf")) {
+					// i18n.T(en, ru): the wrap is in the CLI's language only
+					// when ru is Russian — an en copied into ru passes the
+					// form, not the rule.
+					ru, ok := tr.Args[1].(*ast.BasicLit)
+					if !ok || ru.Kind != token.STRING {
+						return true
+					}
+					arg, translated = ru, true
+				}
+				lit, ok := arg.(*ast.BasicLit)
 				if !ok || lit.Kind != token.STRING {
 					return true
 				}
 				format, err := strconv.Unquote(lit.Value)
 				if err != nil || !strings.Contains(format, "%w") {
+					return true
+				}
+				if translated && cyrillic.MatchString(format) {
 					return true
 				}
 				prose := wrapIdent.ReplaceAllString(wrapVerb.ReplaceAllString(format, " "), " ")
