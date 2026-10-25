@@ -71,6 +71,41 @@ func englishPhrase(s string) string {
 	return ""
 }
 
+// cloudSegment marks where an API_ERROR leaves evo's words for the
+// cloud's: the service and status the client names («dns API 500»,
+// «HTTP 500», «Organization API»), the transport's «API returned status»
+// in either language, an error code (API_ERROR), the body itself, or a
+// sentence of a client library («Object name cannot be empty», minio):
+// evo's own segments start with a lower-case word.
+var cloudSegment = regexp.MustCompile(`^(?:[\w.-]+ API(?: \d{3})?|HTTP \d{3}|API (?:returned|вернул)\b.*|[A-Z_]+|[{\[].*|[A-Z][a-z].*)$`)
+
+// apiErrorPrefix is the part of an API_ERROR message evo wrote: the
+// segments («a: b: …») before the first of the cloud's.
+func apiErrorPrefix(msg string) string {
+	var own []string
+	for _, seg := range strings.Split(msg, ": ") {
+		if cloudSegment.MatchString(strings.TrimSpace(seg)) {
+			break
+		}
+		own = append(own, seg)
+	}
+	return strings.Join(own, ": ")
+}
+
+// latinSegment is the first segment of an evo prefix with no Cyrillic in
+// it — a phrase of the English CLI («create zone»), or "".
+func latinSegment(prefix string) string {
+	if prefix == "" {
+		return ""
+	}
+	for _, seg := range strings.Split(prefix, ": ") {
+		if !hasCyrillic(seg) {
+			return seg
+		}
+	}
+	return ""
+}
+
 func plainWord(w string) bool {
 	if w == "" {
 		return false
@@ -230,14 +265,22 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 					msg, _ := m["error"].(string)
 					hint, _ := m["hint"].(string)
 					fields = map[string]string{"error": msg, "hint": hint}
+				case reason == clerrors.CodeAPIError:
+					// The cloud's own text is the cloud's; what evo puts
+					// before it is evo's (#319, D6).
+					msg, _ := m["error"].(string)
+					fields = map[string]string{"error prefix": apiErrorPrefix(msg)}
 				default:
 					continue
 				}
 				for field, s := range fields {
 					what := ""
-					if lang == i18n.RU {
+					switch {
+					case field == "error prefix" && lang == i18n.RU:
+						what = latinSegment(s)
+					case lang == i18n.RU:
 						what = englishPhrase(s)
-					} else if hasCyrillic(s) {
+					case hasCyrillic(s):
 						what = "cyrillic"
 					}
 					if what == "" {
