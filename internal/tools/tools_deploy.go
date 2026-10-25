@@ -820,7 +820,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	if id != "" {
 		f, e := eng.Cloud.GetFloatingIP(ctx, id)
 		if e != nil {
-			return answered(s.deleteFailed("release_floating_ip", id, fmt.Errorf(i18n.T("floating IP %q: %w", "floating IP %q: %w"), id, e))), nil
+			return answered(s.deleteFailed("release_floating_ip", id, fmt.Errorf(i18n.T("floating IP %q: %w", "адрес floating IP %q: %w"), id, e))), nil
 		}
 		fipID, fipIP, state, onNAT = id, f.IPAddress, f.State, f.OnNATGateway()
 	} else {
