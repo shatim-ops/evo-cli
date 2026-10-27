@@ -10,8 +10,10 @@ matched against fixed answers, never executed, and only labels from the
 tables below are ever set.
 
 Prefixed labels (area, OS) follow the body when it is edited. Flags
-(platform, money, question) are only added: the triage session may set
-them by hand, and an edit must not take them off.
+(platform, money, question, the dogfood wave) are only added: the triage
+session may set them by hand, and an edit must not take them off. A form
+cannot set a label the repository lacks, so the wave's label comes from
+here, created on its first use.
 
 Check-ins (checkin.yml) get no labels here: the form sets "чек-ин", not
 "отзыв", so the workflow skips them, and their "Области" are counted by
@@ -57,9 +59,13 @@ FLAGS = {
     ("Ресурсы и деньги", "Создан лишний ресурс (дубль)"): "деньги",
     ("Ресурсы и деньги", "Ресурс остался после удаления или ошибки"): "деньги",
     ("Что это", "Вопрос, ответа на который нет в документации"): "вопрос",
+    # Находка догфуда (dogfood.yml): метка волны и «Тип» участника.
+    ("Волна", "1.4.0"): "догфуд",
+    ("Тип", "Поведение платформы Cloud.ru"): "платформа",
+    ("Тип", "Вопрос «как сделать»"): "вопрос",
 }
 PREFIXES = ("обл: ", "ос: ")
-COLORS = {"обл: ": "c5def5", "ос: ": "e4e669", "платформа": "f9d0c4", "деньги": "b60205", "вопрос": "d876e3"}
+COLORS = {"обл: ": "c5def5", "ос: ": "e4e669", "платформа": "f9d0c4", "деньги": "b60205", "вопрос": "d876e3", "догфуд": "0e8a16"}
 
 
 def fields(body):

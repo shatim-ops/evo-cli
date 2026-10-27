@@ -65,6 +65,42 @@ check "вопрос" 'вопрос|обл: MCP' <<'B'
 MCP-агент (Cursor, Claude Code и др.)
 B
 
+check "догфуд: волна, платформа, деньги" 'деньги|догфуд|обл: PostgreSQL|ос: Linux|платформа' <<'B'
+### Волна
+
+1.4.0
+
+### ОС
+
+Linux
+
+### Область
+
+PostgreSQL
+
+### Тип
+
+Поведение платформы Cloud.ru
+
+### Ресурсы и деньги
+
+Ресурс остался после удаления или ошибки
+B
+
+check "догфуд: вопрос" 'вопрос|догфуд|обл: MCP' <<'B'
+### Волна
+
+1.4.0
+
+### Область
+
+MCP-агент (Cursor, Claude Code и др.)
+
+### Тип
+
+Вопрос «как сделать»
+B
+
 check "чужой текст не даёт меток" '' <<'B'
 ### Область
 
@@ -88,9 +124,16 @@ import issue_labels as il
 def options(form):
     return set(json.loads(m) for m in re.findall(r'^ +- (?:label: )?("[^"]*")$', open(form, encoding="utf-8").read(), re.M))
 miss = []
-for form, table in (("bug.yml", il.AREA), ("idea.yml", il.AREA), ("bug.yml", il.OS), ("checkin.yml", il.OS)):
+for form, table in (("bug.yml", il.AREA), ("idea.yml", il.AREA), ("dogfood.yml", il.AREA),
+                    ("bug.yml", il.OS), ("checkin.yml", il.OS), ("dogfood.yml", il.OS)):
     have = options("../ISSUE_TEMPLATE/" + form)
     miss += [f"{form}: {k}" for k in table if k not in have]
+# Every answer a flag reads is an option of some form.
+def answers(form):  # options with or without quotes
+    lines = re.findall(r'^ +- (?:label: )?(.+?)\s*$', open(form, encoding="utf-8").read(), re.M)
+    return set(json.loads(l) if l.startswith('"') else l for l in lines)
+every = set().union(*(answers("../ISSUE_TEMPLATE/" + f) for f in ("bug.yml", "idea.yml", "checkin.yml", "dogfood.yml")))
+miss += [f"флаг {field}: {answer}" for field, answer in il.FLAGS if answer not in every]
 print("\n".join(miss)); sys.exit(1 if miss else 0)
 PY
 then echo "ok   таблицы совпадают с формами"; else echo "FAIL таблицы и формы разошлись"; fail=1; fi
