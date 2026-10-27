@@ -435,6 +435,24 @@ func TestWorkflows_SmokeBearerTokenLong(t *testing.T) {
 	}
 }
 
+// The review's comment is public: the text of a refusal of Foundation
+// Models comes from fm_error.sh alone, which gives 401, 403 and 404 as one
+// line without the answer's body (E7, 1.4.0; fm_error_test.sh); the review
+// script reads no message of the API's answer itself.
+func TestWorkflows_QwenRefusalWithoutBody(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "qwen-review.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `fm_error "$code"`) {
+		t.Error("qwen-review.sh: a refusal of Foundation Models is not worded by fm_error")
+	}
+	if strings.Contains(s, ".error.message") {
+		t.Error("qwen-review.sh reads the message of the API's answer itself: the comment is public, fm_error words it")
+	}
+}
+
 // Every offline test of a CI script (.github/scripts/*_test.sh) runs in
 // ci: a test that no job runs guards nothing (dbaas_delete_test.sh, 1.3.1:
 // the repeated delete of a DBaaS cluster in ERASED, D44).

@@ -132,6 +132,18 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/evo_wrapper_test.sh
 
+      # Отказ Foundation Models в ревью Qwen: на 401/403/404 — строка без
+      # тела ответа (комментарий публичный, E7).
+      - name: fm_error.sh на образцах ответов
+        if: runner.os == 'Linux'
+        run: .github/scripts/fm_error_test.sh
+
+      # Начало ревью Qwen: нет refs/pull/N/head — голова PR по sha; git не
+      # получил её — комментарий в PR, а не молчаливый красный job (#412).
+      - name: qwen-review.sh — получение PR
+        if: runner.os == 'Linux'
+        run: .github/scripts/qwen_review_fetch_test.sh
+
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
         if: runner.os == 'Linux'
