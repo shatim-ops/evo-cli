@@ -21,6 +21,7 @@ check() { # КОД ТЕЛО ждём-подстроку не-ждём-подст
 check 401 "$leak" 'CLOUDRU_FM_API_KEY' 'gw-internal'
 check 403 "$leak" 'не принят этим сервисом' '10.1.2.3'
 check 404 "$leak" 'FM_BASE_URL' 'gw-internal'
+check 404 "$leak" 'FM_BASE_URL' '10.1.2.3'
 check 404 '<html>404 Not Found</html>' 'эндпоинт сменился' 'html'
 # Прочие коды — сообщение API, как раньше.
 check 400 '{"error":{"message":"model is not found"}}' 'model is not found' ''
