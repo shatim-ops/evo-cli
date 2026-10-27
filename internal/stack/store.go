@@ -278,6 +278,59 @@ func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 	return out
 }
 
+// MayHaveCreated reports whether the step may have made its resource: it
+// started, was interrupted mid-create, or used an attempt.
+func (st *Step) MayHaveCreated() bool {
+	if st.Interrupted || st.Attempts > 0 || st.OpID != "" {
+		return true
+	}
+	switch st.Status {
+	case "running", "waiting", "done":
+		return true
+	}
+	return false
+}
+
+// SecretHolders are the jobs, other than excludeID, not destroyed, whose
+// secret step for path may have made it: a second stack with the path would
+// take that secret over, and its destroy would delete it (Grok live run on
+// 1.3.0, G130-24; D41).
+func SecretHolders(path, excludeID string) []string {
+	dir, err := jobsDir()
+	if err != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(e.Name(), ".json")
+		if id == excludeID {
+			continue
+		}
+		j, err := LoadJob(id)
+		if err != nil || j.Status == "destroyed" {
+			continue
+		}
+		for i, sc := range j.Manifest.Secrets {
+			if sc.Path != path {
+				continue
+			}
+			for _, st := range j.Steps {
+				if st.Key == fmt.Sprintf("secret:%d", i) && st.MayHaveCreated() {
+					out = append(out, id)
+				}
+			}
+		}
+	}
+	return out
+}
+
 // Save persists a job to disk: the directory 0700, the file 0600 via a
 // temporary file and rename. Secret values and S3 object bodies that are
 // already in the cloud are dropped first (see redactSpent).
@@ -833,6 +886,23 @@ func (j *Job) Compact() map[string]any {
 	}
 	if j.Error != "" {
 		out["error"] = j.Error
+	}
+	// What a step met and how many creates it used: a step that stays
+	// pending or ends in error says why (G130-04, D41).
+	details, attempts := map[string]string{}, map[string]int{}
+	for _, s := range j.Steps {
+		if s.Detail != "" && s.Status != "done" {
+			details[s.Key] = s.Detail
+		}
+		if s.Attempts > 0 {
+			attempts[s.Key] = s.Attempts
+		}
+	}
+	if len(details) > 0 {
+		out["details"] = details
+	}
+	if len(attempts) > 0 {
+		out["attempts"] = attempts
 	}
 	return out
 }

@@ -3,7 +3,7 @@
 - **Повторное удаление кластера PostgreSQL, Kafka или Redis, который
   платформа ещё показывает в `ERASED` или `DELETED`, — успех, а не ошибка:
   `evo pg delete`, `evo kafka delete`, `evo redis delete` и MCP `pg_delete`,
-  `kafka_delete`, `redis_delete`** (поправка DECISIONS D26; исправление:
+  `kafka_delete`, `redis_delete`** (DECISIONS D44, класс D26; исправление:
   живой прогон Grok на 1.3.0). Было: без `--yes` — код 3 и вопрос о согласии,
   с `--yes` — `API_ERROR`, код 5, 500 `FailedPrecondition` с подсказкой «ещё
   создаётся». Стало: код 0, `status: already_deleted`, без вопроса и без

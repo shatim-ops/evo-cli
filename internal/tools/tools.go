@@ -1312,7 +1312,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_plan",
-			Description: "Plan a multi-resource STACK from ONE declarative manifest. Read-only (creates nothing): returns a job_id and a rate-card cost estimate — show it to the user, get explicit approval, THEN stack_apply. Use it for ANY multi-service deploy instead of calling pg_create, provision, … yourself: the engine runs the chain server-side. manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]}. vm.image and vm.zone (name or UUID) default to the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION; a stack with a VM is refused when either is missing or unknown.",
+			Description: "Plan a multi-resource STACK from ONE declarative manifest. Read-only (creates nothing): returns a job_id and a rate-card cost estimate — show it to the user, get explicit approval, THEN stack_apply. Use it for ANY multi-service deploy instead of calling pg_create, provision, … yourself: the engine runs the chain server-side. manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]} (a taken path or key is refused). vm.image and vm.zone (name or UUID) default to the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION; a VM stack is refused when either is missing or unknown.",
 			InputSchema: objSchema(map[string]any{
 				"manifest": map[string]any{"type": "object", "description": "Declarative stack spec (see description)."},
 			}, "manifest"),
@@ -1327,7 +1327,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_status",
-			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs; lb_external_ip is there only for a balancer with a public address) or status=error. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
+			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], details{step: reason} of a step that is not done, attempts{step: n}, outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs; lb_external_ip is there only for a balancer with a public address) or status=error. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":       strProp("Job id. Required."),
 				"wait_seconds": intProp("How long this call may block while advancing (default 90, max 240). Fewer calls for a long deploy."),
@@ -1335,7 +1335,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_destroy",
-			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved. status=destroyed means every deletion was accepted: the VM, secrets and S3 objects are gone, while the async resources listed in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes (Postgres ~5 min seen live) — check them with pg_list, k8s_list and the like.",
+			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved. status=destroyed means every deletion was accepted: the VM, secrets and S3 objects are gone, while the async resources listed in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes (Postgres ~5 min seen live) — check them with pg_list, k8s_list and the like. A job destroyed already answers status already_destroyed without the question; confirmed=true runs the teardown again.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id. Required."),
 				"confirmed": confirmedProp(),

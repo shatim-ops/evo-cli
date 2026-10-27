@@ -260,7 +260,7 @@
 |---|---|---|---|---|---|
 | `stack_plan` | `evo stack plan` | нет | `manifest` | Plan a multi-resource STACK from ONE declarative manifest. | Спланировать стек ресурсов по одному манифесту (ничего не создаёт) |
 | `stack_apply` | `evo stack apply` | да | `job_id` | Apply a planned stack (from stack_plan). | Создать ресурсы спланированного стека (платно) |
-| `stack_status` | `evo stack status` | нет | `job_id` | Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public … | Ход развёртывания стека |
+| `stack_status` | `evo stack status` | нет | `job_id` | Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], details{step: reason} of a step that is not done, attempts{step: n} … | Ход развёртывания стека |
 | `stack_destroy` | `evo stack destroy` | удаляет | `job_id` | Tear down every resource in a stack (reverse order, idempotent). | Удалить все ресурсы стека (безвозвратно) |
 
 ## vm

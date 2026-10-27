@@ -21,12 +21,13 @@ func projectServer(project string) *Registry {
 	})
 }
 
-// stack_plan records the server's project in the job.
+// stack_plan records the server's project in the job. A VPC plans without
+// a read; a secret path is checked in the Secret Manager (D41).
 func TestStackPlan_RecordsProject(t *testing.T) {
 	stackHome(t)
 	r := projectServer("p-A")
 	got := callTool(t, r.handleStackPlan, map[string]any{"manifest": map[string]any{
-		"name": "g", "secrets": []any{map[string]any{"path": "a", "value": "b"}},
+		"name": "g", "vpc": map[string]any{"name": "v"},
 	}})
 	if got["project_id"] != "p-A" {
 		t.Fatalf("plan answer = %v, want project_id p-A", got)
