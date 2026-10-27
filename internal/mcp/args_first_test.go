@@ -161,7 +161,7 @@ func TestInitialize_InstructionsNameTheScenarioSkills(t *testing.T) {
 	resp := roundTrip(t, newTestServer(), `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`)
 	res, _ := resp["result"].(map[string]any)
 	ins, _ := res["instructions"].(string)
-	for _, want := range []string{"skills/", "evo-scenarios", "evo-cleanup"} {
+	for _, want := range []string{"skills/", "evo-scenarios", "evo-deploy", "evo-vm", "evo-postgres", "evo-cleanup"} {
 		if !strings.Contains(ins, want) {
 			t.Errorf("instructions do not name %q: %q", want, ins)
 		}
