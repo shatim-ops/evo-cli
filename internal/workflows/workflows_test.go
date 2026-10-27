@@ -382,6 +382,59 @@ func TestWorkflows_CIChecksImageQuotaSkip(t *testing.T) {
 	}
 }
 
+var (
+	smokeToken = regexp.MustCompile(`MCP_BEARER_TOKEN=([^\s"'$]+)`)
+	// minBearerTokenLen of internal/cli/mcp.go: a shorter MCP_BEARER_TOKEN
+	// on an address open to the network (the container's -p 8080:8080) is
+	// CONFIG_INVALID, and the server does not start (D45). Read from the
+	// source, so the test follows the server's bound.
+	minBearerConst = regexp.MustCompile(`(?m)^const minBearerTokenLen = (\d+)$`)
+)
+
+// The HTTP smoke of the image starts the server with a literal token: in
+// ci on every PR, in release only on a tag. A token shorter than the
+// server takes would surface first on the tag (#384, D45), and a smoke
+// whose script call names another token fails the same way. Every literal
+// MCP_BEARER_TOKEN of the workflows is long enough, the step's
+// mcp-smoke.sh call passes that same token, and release runs the script ci
+// runs.
+func TestWorkflows_SmokeBearerTokenLong(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "cli", "mcp.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := minBearerConst.FindSubmatch(src)
+	if m == nil {
+		t.Fatal("internal/cli/mcp.go: no const minBearerTokenLen — the bound moved, update the test")
+	}
+	smokeTokenLen, _ := strconv.Atoi(string(m[1]))
+	ws := readWorkflows(t)
+	found := 0
+	for name, w := range ws {
+		for jname, j := range w.Jobs {
+			for _, s := range j.Steps {
+				for _, m := range smokeToken.FindAllStringSubmatch(s.Run, -1) {
+					found++
+					tok := m[1]
+					if len(tok) < smokeTokenLen {
+						t.Errorf("%s/%s: MCP_BEARER_TOKEN of %d characters, the server takes %d or more off loopback (D45)", name, jname, len(tok), smokeTokenLen)
+					}
+					call := regexp.MustCompile(`mcp-smoke\.sh http://localhost:8080 ` + regexp.QuoteMeta(tok) + `(\s|$)`)
+					if strings.Contains(s.Run, "mcp-smoke.sh") && !call.MatchString(s.Run) {
+						t.Errorf("%s/%s: mcp-smoke.sh is not called with the token the container starts with", name, jname)
+					}
+				}
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("no literal MCP_BEARER_TOKEN in the workflows: the smoke moved, update the test")
+	}
+	if !runsStep(ws["release.yml"], ".github/scripts/mcp-smoke.sh") || !runsStep(ws["ci.yml"], ".github/scripts/mcp-smoke.sh") {
+		t.Error("ci and release must run the same smoke script, .github/scripts/mcp-smoke.sh")
+	}
+}
+
 // Every offline test of a CI script (.github/scripts/*_test.sh) runs in
 // ci: a test that no job runs guards nothing (dbaas_delete_test.sh, 1.3.1:
 // the repeated delete of a DBaaS cluster in ERASED, D44).
