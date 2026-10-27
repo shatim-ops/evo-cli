@@ -174,6 +174,8 @@ func consentCases(tl tools.Tool, base map[string]any) []consentCase {
 		}
 		if v, _ := base[k].(string); looksParityID(v) {
 			with("absent id", k, consentAbsentID)
+		} else if absent := consentAbsentEvoID(v); absent != "" {
+			with("absent id", k, absent)
 		}
 		if _, ok := p["format"]; ok {
 			with("bad", k, "bad")
@@ -188,6 +190,21 @@ func consentCases(tl tools.Tool, base map[string]any) []consentCase {
 		out = append(out, consentCase{name: "world: " + n, args: copyArgs(base), world: consentWorlds[n]})
 	}
 	return out
+}
+
+// consentAbsentEvoID is an id of evo's own (a stack job stk-<10 hex>, a
+// plan plan-<12 hex>) of the same form as v that no job or plan has, or ""
+// when v is none: the job of stack_apply is read from the local store, not
+// the cloud, and an absent one is as sure a refusal as a 404 (1.4.0: it
+// asked for consent to a billable apply, then answered NOT_FOUND).
+func consentAbsentEvoID(v string) string {
+	switch {
+	case strings.HasPrefix(v, "stk-"):
+		return "stk-00000000ad"
+	case strings.HasPrefix(v, "plan-"):
+		return "plan-0000000000ad"
+	}
+	return ""
 }
 
 // looksParityID: an id of the world (parityVM, the zone, the cluster).

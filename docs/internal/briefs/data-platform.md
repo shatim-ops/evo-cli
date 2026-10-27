@@ -19,7 +19,7 @@ Cloud.ru для этого нет (владелец, 22.10). Для агента
 
 Эндпоинт один — `https://dataplatform.api.cloud.ru`. Спецификации (все
 Swagger 2.0, кроме Spark — OpenAPI 3). Расхождения документации и
-спецификаций — реестр `docs/internal/cloudru-discrepancies.md`, раздел
+спецификаций — реестр `evo-internal/discrepancies/cloudru-discrepancies.md`, раздел
 «Evolution Data Platform» (DP-1…13), он же отдаётся команде Data Factory:
 
 | Продукт | Страница API | Спецификация | Вызовы |
