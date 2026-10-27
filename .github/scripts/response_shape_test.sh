@@ -14,7 +14,9 @@ import http.server, sys
 class H(http.server.BaseHTTPRequestHandler):
     server_version, sys_version = "envoy", ""
     def do_GET(self):
-        if self.path.startswith("/json/"):
+        # Без токена в запросе — страница шлюза: случаи JSON проходят,
+        # только если заголовок дошёл до сервера.
+        if self.path.startswith("/json/") and self.headers.get("Authorization") == "Bearer token":
             body, ct = b'{"error":"bad","id":"11110000-0000-4000-8000-000000000001"}', "application/json; charset=utf-8"
         else:
             body, ct = b"<html><body>gateway</body></html>", "text/html"

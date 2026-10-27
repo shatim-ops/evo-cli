@@ -10,7 +10,9 @@ response_shape() {
   local dir hdr body code ct srv start
   dir=$(mktemp -d)
   hdr="$dir/h" body="$dir/b"
-  code=$(curl -sS -o "$body" -D "$hdr" -w '%{http_code}' --max-time 30 -H "Authorization: Bearer $2" "$1" 2>/dev/null) || code=000
+  # Токен — в stdin curl (printf встроен в bash), а не в его argv, который
+  # видит любой процесс раннера.
+  code=$(printf 'Authorization: Bearer %s\n' "$2" | curl -sS -o "$body" -D "$hdr" -w '%{http_code}' --max-time 30 -H @- "$1" 2>/dev/null) || code=000
   ct=$(awk 'tolower($1)=="content-type:"{print tolower($2)}' "$hdr" 2>/dev/null | tr -d '\r;' | head -1)
   srv=$(awk 'tolower($1)=="server:"{print tolower($2)}' "$hdr" 2>/dev/null | tr -d '\r' | head -1)
   case "$srv" in envoy*) srv=envoy ;; nginx*) srv=nginx ;; istio*) srv=istio ;; "") srv=нет ;; *) srv=другой ;; esac
