@@ -180,7 +180,7 @@ func marshalJSON(v any, prefix, indent string) ([]byte, error) {
 		enc.SetIndent(prefix, indent)
 	}
 	if err := enc.Encode(v); err != nil {
-		return nil, fmt.Errorf("encode: %w", err)
+		return nil, fmt.Errorf(i18n.T("encode: %w", "кодирование: %w"), err)
 	}
 	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }

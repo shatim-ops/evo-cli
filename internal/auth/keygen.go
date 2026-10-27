@@ -10,6 +10,8 @@ import (
 	"encoding/pem"
 	"fmt"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
+
 	"golang.org/x/crypto/ssh"
 )
 
@@ -18,20 +20,20 @@ import (
 func GenerateSSHKeyPair() (privateKeyPEM []byte, publicKey string, err error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		return nil, "", fmt.Errorf("generate ed25519 key: %w", err)
+		return nil, "", fmt.Errorf(i18n.T("generate ed25519 key: %w", "генерация ключа ed25519: %w"), err)
 	}
 
 	// Encode private key in OpenSSH format (compatible with both Go and ssh CLI).
 	block, err := ssh.MarshalPrivateKey(priv, "")
 	if err != nil {
-		return nil, "", fmt.Errorf("marshal private key: %w", err)
+		return nil, "", fmt.Errorf(i18n.T("marshal private key: %w", "сериализация закрытого ключа: %w"), err)
 	}
 	privateKeyPEM = pem.EncodeToMemory(block)
 
 	// Encode public key in SSH authorized_keys format.
 	sshPub, err := ssh.NewPublicKey(pub)
 	if err != nil {
-		return nil, "", fmt.Errorf("create ssh public key: %w", err)
+		return nil, "", fmt.Errorf(i18n.T("create ssh public key: %w", "создание открытого ключа SSH: %w"), err)
 	}
 	publicKey = string(ssh.MarshalAuthorizedKey(sshPub))
 

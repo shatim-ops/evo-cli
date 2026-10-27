@@ -182,7 +182,7 @@ func Load(stateDir, planID string) (*Plan, error) {
 	}
 	var p Plan
 	if err := json.Unmarshal(data, &p); err != nil {
-		return nil, fmt.Errorf("plan %q is corrupt: %w", planID, err)
+		return nil, fmt.Errorf(i18n.T("plan %q is corrupt: %w", "план %q повреждён: %w"), planID, err)
 	}
 	if !p.ExpiresAt.IsZero() && time.Now().After(p.ExpiresAt) {
 		return nil, fmt.Errorf("plan %q expired at %s; run deploy_plan again", planID, p.ExpiresAt.Format(time.RFC3339))
