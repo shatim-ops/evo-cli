@@ -38,12 +38,19 @@ fi
 
 [ -n "${FM_API_KEY:-}" ] || fail 'в репозитории нет секрета `CLOUDRU_FM_API_KEY` (Settings → Secrets and variables → Actions).'
 
-gh pr view "$PR" --repo "$REPO" --json title,body,baseRefName,headRefOid >"$work/pr.json"
+gh pr view "$PR" --repo "$REPO" --json title,body,baseRefName,headRefOid >"$work/pr.json" ||
+  fail 'GitHub не отдал PR (`gh pr view`).'
 base=$(jq -r .baseRefName "$work/pr.json")
 head=$(jq -r .headRefOid "$work/pr.json")
 
-git fetch --no-tags --quiet origin \
-  "+refs/heads/$base:refs/review/base" "+refs/pull/$PR/head:refs/review/head"
+# refs/pull/N/head GitHub создаёт не сразу, а изредка не создаёт вовсе
+# (#412) — тогда голова PR по её sha. Не получил ни того, ни другого —
+# комментарий в PR, а не молчаливый красный job.
+if ! git fetch --no-tags --quiet origin \
+  "+refs/heads/$base:refs/review/base" "+refs/pull/$PR/head:refs/review/head"; then
+  git fetch --no-tags --quiet origin "+refs/heads/$base:refs/review/base" "+$head:refs/review/head" ||
+    fail "git не получил базу \`$base\` или голову PR \`${head:0:7}\` — перезапустите командой \`/qwen review\`."
+fi
 git diff --no-color --find-renames refs/review/base...refs/review/head -- . \
   ':(exclude)go.sum' ':(exclude)specs/**' >"$work/diff.full"
 [ -s "$work/diff.full" ] || fail 'diff пустой: PR ничего не меняет относительно базы.'
