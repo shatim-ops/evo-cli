@@ -18,6 +18,9 @@ CONTEXT_DOCS=(README.md docs/internal/architecture.md docs/internal/standalone/D
 # Лимит тела комментария GitHub — 65536 символов.
 MAX_COMMENT_CHARS=60000
 
+# shellcheck source-path=SCRIPTDIR source=fm_error.sh
+. "$(dirname "$0")/fm_error.sh"
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -153,8 +156,6 @@ ask() {
   [ "$code" != 000 ] || fail 'запрос к Foundation Models не прошёл дважды (сеть или таймаут 10 мин).'
 
   if [ "$code" != 200 ]; then
-    msg=$(jq -r '.error.message // .error // .detail // .message // "без описания"' "$work/resp.json" 2>/dev/null |
-      head -c 500 || true)
     hint=""
     if [ "$code" = 404 ] || [ "$code" = 400 ]; then
       # Неверный id модели: подскажем доступные, чтобы выбрать в QWEN_MODEL.
@@ -162,7 +163,7 @@ ask() {
         jq -r '[.data[]?.id] | map("`" + . + "`") | join(", ")' 2>/dev/null || true)
       [ -z "$models" ] || hint=" Доступные модели: $models. Нужную задайте в переменной репозитория \`QWEN_MODEL\`."
     fi
-    fail "Foundation Models ответил $code: ${msg}.${hint}"
+    fail "$(fm_error "$code" "$work/resp.json")${hint}"
   fi
 
   # Рассуждения модели (reasoning_content или блок <think>) в комментарий не идут.

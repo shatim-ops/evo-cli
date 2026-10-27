@@ -132,6 +132,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/evo_wrapper_test.sh
 
+      # Отказ Foundation Models в ревью Qwen: на 401/403/404 — строка без
+      # тела ответа (комментарий публичный, E7).
+      - name: fm_error.sh на образцах ответов
+        if: runner.os == 'Linux'
+        run: .github/scripts/fm_error_test.sh
+
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
         if: runner.os == 'Linux'
