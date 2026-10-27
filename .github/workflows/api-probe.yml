@@ -7,7 +7,7 @@ name: api-probe
 # расчёт цены, каталог плагинов mk8s, списки и спецификации Kafka/Redis,
 # группы узлов mk8s, диски evo без ВМ, признаки подсетей, SNAT-шлюзы и их
 # адреса, имена claims токена; открытые вопросы реестра
-# (docs/internal/cloudru-discrepancies.md, «Что проверить пробой»: P13, P15,
+# (evo-internal: discrepancies/cloudru-discrepancies.md, «Что проверить пробой»: P13, P15,
 # P20, P23–P28) — потребление и договор, команда протокола догфуда
 # billing_consumption, версии сертификата, брокеры Kafka, предел размера
 # диска, расписание резервных копий PostgreSQL, параметр resource у токена
@@ -370,7 +370,7 @@ jobs:
           fi
           probeh nodepools_unknown_cluster    "$M/v3/nodePools?clusterId=00000000-0000-4000-8000-000000000000" "$nlist"
 
-      # Открытые вопросы реестра (docs/internal/cloudru-discrepancies.md,
+      # Открытые вопросы реестра (evo-internal: discrepancies/cloudru-discrepancies.md,
       # «Что проверить пробой»): P13, P15, P20, P23–P28. Только чтение, кроме
       # расчёта цены и обмена ключа на токен. В лог — коды HTTP, имена полей,
       # счётчики, признаки «есть/нет поле»; сумм, ID и токенов нет. Упавшая

@@ -63,6 +63,15 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 		body = "<html><body>gateway</body></html>"
 	case "empty":
 		body = ""
+	case "404html":
+		// A 404 the product did not write: a gateway's page, a route that
+		// is not there (E1, FB13-3).
+		code = 404
+		hdr.Set("Content-Type", "text/html")
+		body = "<html><body>404 Not Found</body></html>"
+	case "404empty":
+		code = 404
+		body = ""
 	default:
 		code, _ = strconv.Atoi(kind)
 		if code == 0 {
