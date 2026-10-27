@@ -515,10 +515,6 @@ func TestEngineCommands_WhoamiDoctorOverHTTP(t *testing.T) {
 	w, _ := withJSONWorld(t)
 	srv := parityServers(t)
 	stdio, overHTTP := stdioDetails(t, srv.stdio, "whoami", map[string]any{}), httpDetails(t, srv.http, "whoami", map[string]any{})
-	for _, k := range []string{"token_expires_at", "token_ttl_seconds"} { // the time of each call
-		delete(stdio, k)
-		delete(overHTTP, k)
-	}
 	if !reflect.DeepEqual(stdio, overHTTP) || overHTTP["key_id"] != "0000****0000" {
 		t.Errorf("whoami over HTTP ≠ stdio, or the key ID is not masked: %s", valueDiff(stdio, overHTTP))
 	}
@@ -531,5 +527,22 @@ func TestEngineCommands_WhoamiDoctorOverHTTP(t *testing.T) {
 	}
 	if got := stdioDetails(t, srv.stdio, "doctor", map[string]any{}); got["ok"] != true || got["checks"] == nil {
 		t.Errorf("doctor over stdio: %v", got)
+	}
+}
+
+// FB140-6: the token of the parity worlds expires an hour after the
+// world's stopped clock, so whoami tells the same TTL on every call and
+// over every transport, unmasked. A world on a moving clock or a token on
+// the wall clock answers anything but 3600.
+func TestParityWorld_TokenTTLIsExact(t *testing.T) {
+	withJSONWorld(t)
+	srv := parityServers(t)
+	for name, got := range map[string]map[string]any{
+		"stdio": stdioDetails(t, srv.stdio, "whoami", map[string]any{}),
+		"http":  httpDetails(t, srv.http, "whoami", map[string]any{}),
+	} {
+		if ttl, _ := got["token_ttl_seconds"].(float64); ttl != 3600 {
+			t.Errorf("whoami over %s: token_ttl_seconds = %v, want 3600 — the world's clock moves or its token reads the wall clock", name, got["token_ttl_seconds"])
+		}
 	}
 }
