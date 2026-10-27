@@ -315,9 +315,11 @@ func runMCPStdio(ctx context.Context, srv *mcp.Server) error {
 	return srv.RunContext(ctx, os.Stdin, os.Stdout)
 }
 
-// minBearerTokenLen is the token length below which the HTTP server warns
-// (it still starts): 32 random characters, as "openssl rand -hex 32" gives
-// 64 (security audit 19.10, SEC-9; was 16).
+// minBearerTokenLen is the shortest bearer token the HTTP server takes on
+// an address open to the network; on loopback a shorter one starts with a
+// warning (bearerTokenWarning). 32 random characters, as "openssl rand
+// -hex 32" gives 64 (security audit 19.10, SEC-9; D45: refused off
+// loopback since 1.3.1).
 const minBearerTokenLen = 32
 
 // bearerTokenWarning is the startup warning about a short bearer token, ""
@@ -349,6 +351,16 @@ func httpAuthToken(addr, mode, envToken string) (string, error) {
 					"or use --auth none with a loopback address (--http 127.0.0.1:8080)",
 					"Задайте в %s длинную случайную строку (например, openssl rand -hex 32) "+
 						"или используйте --auth none с адресом loopback (--http 127.0.0.1:8080)", envBearerToken))
+		}
+		// A short token guards a server every host of the network can
+		// reach: it does not start (D45). On loopback only this machine
+		// reaches it, and the warning says it.
+		if len(envToken) < minBearerTokenLen && !mcp.LoopbackHost(host) {
+			return "", clerrors.New(clerrors.CodeConfigInvalid,
+				i18n.Tf("%s is shorter than %d characters: the HTTP server on %s does not start with it",
+					"%s короче %d символов: HTTP-сервер на %s с ним не запускается", envBearerToken, minBearerTokenLen, addr),
+				i18n.Tf("Set %s to a long random string (e.g. openssl rand -hex 32), or listen on a loopback address (--http 127.0.0.1:8080)",
+					"Задайте в %s длинную случайную строку (например, openssl rand -hex 32) или слушайте адрес loopback (--http 127.0.0.1:8080)", envBearerToken))
 		}
 		return envToken, nil
 	case authNone:

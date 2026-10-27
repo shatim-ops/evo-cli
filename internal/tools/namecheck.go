@@ -28,14 +28,26 @@ func takenName(items []map[string]any, name string) (id, status string, ok bool)
 		if st == "" {
 			st, _ = m["state"].(string)
 		}
-		switch strings.ToUpper(st) {
-		case "DELETED", "ERASED":
+		if statusGone(st) {
 			continue // gone: the name is free again
 		}
 		id, _ = m["id"].(string)
 		return id, st, true
 	}
 	return "", "", false
+}
+
+// statusGone reports a status that means the resource is gone though the
+// API still lists or reads it: DELETED, or ERASED, in which Cloud.ru keeps a
+// DBaaS cluster readable after its deletion (Grok live run on 1.3.0, N1).
+// The one rule of the name check (takenName), the stack's name lookups and
+// the delete plan (deletePlan, D26/D44).
+func statusGone(status string) bool {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "DELETED", "ERASED":
+		return true
+	}
+	return false
 }
 
 // nameTakenResult is the answer of a create tool whose name is in use: USAGE

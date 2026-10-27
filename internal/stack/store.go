@@ -219,7 +219,8 @@ type Job struct {
 func jobsDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return "", fmt.Errorf("no home directory (HOME is not set) for the stack jobs (~/.evo/stack-jobs)")
+		return "", errors.New(i18n.T("no home directory (HOME is not set) for the stack jobs (~/.evo/stack-jobs)",
+			"нет домашнего каталога (HOME не задан) для заданий стека (~/.evo/stack-jobs)"))
 	}
 	return filepath.Join(config.DataDir(home), "stack-jobs"), nil
 }
@@ -273,6 +274,59 @@ func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 		}
 		if len(res) > 0 {
 			out = append(out, OrphanRef{JobID: id, Status: j.Status, Resources: res})
+		}
+	}
+	return out
+}
+
+// MayHaveCreated reports whether the step may have made its resource: it
+// started, was interrupted mid-create, or used an attempt.
+func (st *Step) MayHaveCreated() bool {
+	if st.Interrupted || st.Attempts > 0 || st.OpID != "" {
+		return true
+	}
+	switch st.Status {
+	case "running", "waiting", "done":
+		return true
+	}
+	return false
+}
+
+// SecretHolders are the jobs, other than excludeID, not destroyed, whose
+// secret step for path may have made it: a second stack with the path would
+// take that secret over, and its destroy would delete it (Grok live run on
+// 1.3.0, G130-24; D41).
+func SecretHolders(path, excludeID string) []string {
+	dir, err := jobsDir()
+	if err != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(e.Name(), ".json")
+		if id == excludeID {
+			continue
+		}
+		j, err := LoadJob(id)
+		if err != nil || j.Status == "destroyed" {
+			continue
+		}
+		for i, sc := range j.Manifest.Secrets {
+			if sc.Path != path {
+				continue
+			}
+			for _, st := range j.Steps {
+				if st.Key == fmt.Sprintf("secret:%d", i) && st.MayHaveCreated() {
+					out = append(out, id)
+				}
+			}
 		}
 	}
 	return out
@@ -357,13 +411,13 @@ var jobIDRe = regexp.MustCompile(`^stk-[0-9a-f]{10}$`)
 // uuidRe matches a UUID (vm.image by id goes to provision as image_id).
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// LoadJob reads a job from disk.
 // LockJob takes the job's file lock, across processes: two MCP servers
 // (stdio and HTTP) on one stack-jobs directory would otherwise both see a
 // step pending and create it twice. It waits up to maxWait.
 func LockJob(id string, maxWait time.Duration) (unlock func(), err error) {
 	if !jobIDRe.MatchString(id) {
-		return nil, fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", id)
+		return nil, fmt.Errorf(i18n.T("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)",
+			"неверный job_id %q (нужен stk-<10 шестнадцатеричных цифр>, как его возвращает stack_plan)"), id)
 	}
 	dir, err := jobsDir()
 	if err != nil {
@@ -371,17 +425,20 @@ func LockJob(id string, maxWait time.Duration) (unlock func(), err error) {
 	}
 	unlock, err = state.FileLock(filepath.Join(dir, id+".lock"), maxWait)
 	if errors.Is(err, state.ErrFileLocked) {
-		return nil, fmt.Errorf("job %s is being changed by another evo process (another MCP server?); try again when it finishes", id)
+		return nil, fmt.Errorf(i18n.T("job %s is being changed by another evo process (another MCP server?); try again when it finishes",
+			"задание %s меняет другой процесс evo (другой MCP-сервер?); повторите, когда он закончит"), id)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("lock job %s: %w", id, err)
+		return nil, fmt.Errorf(i18n.T("lock job %s: %w", "блокировка задания %s: %w"), id, err)
 	}
 	return unlock, nil
 }
 
+// LoadJob reads a job from disk.
 func LoadJob(id string) (*Job, error) {
 	if !jobIDRe.MatchString(id) {
-		return nil, fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", id)
+		return nil, fmt.Errorf(i18n.T("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)",
+			"неверный job_id %q (нужен stk-<10 шестнадцатеричных цифр>, как его возвращает stack_plan)"), id)
 	}
 	dir, err := jobsDir()
 	if err != nil {
@@ -398,7 +455,7 @@ func LoadJob(id string) (*Job, error) {
 	}
 	var j Job
 	if err := json.Unmarshal(data, &j); err != nil {
-		return nil, fmt.Errorf("parse job %s: %w", id, err)
+		return nil, fmt.Errorf(i18n.T("parse job %s: %w", "разбор задания %s: %w"), id, err)
 	}
 	return &j, nil
 }
@@ -692,7 +749,8 @@ func (j *Job) CheckDeps() error {
 	for _, st := range j.Steps {
 		for _, d := range st.DependsOn {
 			if byKey[d] == nil {
-				return fmt.Errorf("step %q depends on %q, which this stack does not have (nlb.target must name a step such as \"vm\"; dns without an explicit target needs nlb)", st.Key, d)
+				return fmt.Errorf(i18n.T("step %q depends on %q, which this stack does not have (nlb.target must name a step such as \"vm\"; dns without an explicit target needs nlb)",
+					"шаг %q зависит от %q, которого в этом стеке нет (nlb.target должен называть шаг, например \"vm\"; dns без явной цели требует nlb)"), st.Key, d)
 			}
 		}
 	}
@@ -706,7 +764,7 @@ func (j *Job) CheckDeps() error {
 	visit = func(key string, path []string) error {
 		switch state[key] {
 		case inPath:
-			return fmt.Errorf("dependency cycle: %s", strings.Join(append(path, key), " → "))
+			return fmt.Errorf(i18n.T("dependency cycle: %s", "цикл зависимостей: %s"), strings.Join(append(path, key), " → "))
 		case finished:
 			return nil
 		}
@@ -833,6 +891,23 @@ func (j *Job) Compact() map[string]any {
 	}
 	if j.Error != "" {
 		out["error"] = j.Error
+	}
+	// What a step met and how many creates it used: a step that stays
+	// pending or ends in error says why (G130-04, D41).
+	details, attempts := map[string]string{}, map[string]int{}
+	for _, s := range j.Steps {
+		if s.Detail != "" && s.Status != "done" {
+			details[s.Key] = s.Detail
+		}
+		if s.Attempts > 0 {
+			attempts[s.Key] = s.Attempts
+		}
+	}
+	if len(details) > 0 {
+		out["details"] = details
+	}
+	if len(attempts) > 0 {
+		out["attempts"] = attempts
 	}
 	return out
 }

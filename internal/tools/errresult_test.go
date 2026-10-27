@@ -98,6 +98,46 @@ func TestUsageResult_Reason(t *testing.T) {
 	}
 }
 
+// errAnswer does not copy CLIError.Details into the answer: answer fields
+// are only those passed in, or argument/format from a ruleError (variant A,
+// G130-35). Returning a general Details merge must fail this test.
+func TestErrAnswer_CLIErrorDetailsNotCopied(t *testing.T) {
+	ce := clierrors.New(clierrors.CodeUsage, "bad value", "see help")
+	ce.Details = map[string]any{
+		"sneaky":   "from-details",
+		"argument": "from-details",
+		"missing":  []string{"from-details"},
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(errAnswer(ce, nil)), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"sneaky", "argument", "missing"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("errAnswer copied Details[%q] into the answer: %v", k, got)
+		}
+	}
+	if got["reason"] != clierrors.CodeUsage || got["hint"] != "see help" {
+		t.Errorf("reason/hint lost: %v", got)
+	}
+}
+
+// A schema-rule refusal puts argument (and format) into the answer via
+// ruleError, not via CLIError.Details.
+func TestErrAnswer_RuleErrorNamesArgument(t *testing.T) {
+	err := ruleErr("id", map[string]any{"format": "uuid"}, `id "x" is not an id: it is a UUID`)
+	var got map[string]any
+	if err := json.Unmarshal([]byte(errAnswer(err, nil)), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["argument"] != "id" || got["format"] != "uuid" || got["reason"] != clierrors.CodeUsage {
+		t.Errorf("ruleError answer: %v", got)
+	}
+	if _, ok := got["sneaky"]; ok {
+		t.Errorf("unexpected field: %v", got)
+	}
+}
+
 // errAnswer keeps the fields of a hand-built answer and its own status, and
 // finds "not found" in them as the CLI does (kubectl output).
 func TestErrAnswer_Fields(t *testing.T) {

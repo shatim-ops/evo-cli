@@ -22,8 +22,19 @@ func TestHTTPAuthToken(t *testing.T) {
 		wantToken       string
 		wantCode        string // "" = no error
 	}{
-		{":8080", "bearer", "tok", "tok", ""},
-		{"0.0.0.0:8080", "bearer", "tok", "tok", ""},
+		// A token shorter than minBearerTokenLen guards a server open to
+		// the network: refused there (D45); on loopback it starts, with
+		// the warning (bearerTokenWarning).
+		{":8080", "bearer", "tok", "", clerrors.CodeConfigInvalid},
+		{"0.0.0.0:8080", "bearer", "tok", "", clerrors.CodeConfigInvalid},
+		{"[::]:8080", "bearer", "tok", "", clerrors.CodeConfigInvalid},
+		{"10.0.0.5:8080", "bearer", strings.Repeat("x", 31), "", clerrors.CodeConfigInvalid},
+		{"127.0.0.1:8080", "bearer", "tok", "tok", ""},
+		{"localhost:8080", "bearer", "tok", "tok", ""},
+		{"[::1]:8080", "bearer", "tok", "tok", ""},
+		{":8080", "bearer", strings.Repeat("x", 32), strings.Repeat("x", 32), ""},
+		{"0.0.0.0:8080", "bearer", strings.Repeat("x", 64), strings.Repeat("x", 64), ""},
+		{"10.0.0.5:8080", "bearer", strings.Repeat("x", 32), strings.Repeat("x", 32), ""},
 		{":8080", "bearer", "", "", clerrors.CodeConfigInvalid},
 		{"127.0.0.1:8080", "none", "", "", ""},
 		{"localhost:8080", "none", "", "", ""},
@@ -144,8 +155,9 @@ func TestMCPFactory_EngineDoesNotPrintToStdout(t *testing.T) {
 	}
 }
 
-// SEC-9: предупреждение о коротком токене — до 32 символов (было 16);
-// сервер всё равно запускается.
+// SEC-9: a token shorter than 32 characters (was 16) is warned about. On
+// loopback the server starts with the warning; off loopback it does not
+// start at all (D45, TestHTTPAuthToken).
 func TestBearerTokenWarning(t *testing.T) {
 	for _, c := range []struct {
 		token string

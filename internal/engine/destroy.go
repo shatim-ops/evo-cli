@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -538,6 +539,7 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
 	t := e.timings()
 	start := time.Now()
 	deadline := start.Add(t.DeletableWaitTimeout)
+	shown := clock.Now() // the duration the reports print
 	e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet (still being created or changing state); waiting up to %s...",
 		"ВМ %s пока нельзя удалить (ещё создаётся или меняет состояние); ждём до %s...",
 		vmID, t.DeletableWaitTimeout))
@@ -559,7 +561,7 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
 				status = vm.Status
 			}
 			e.Printer.StepDone(i18n.Tf("still waiting: VM is %s (%s elapsed)", "всё ещё ждём: состояние ВМ — %s (прошло %s)",
-				status, time.Since(start).Round(time.Second)))
+				status, clock.Since(shown).Round(time.Second)))
 		}
 	}
 	return err

@@ -35,8 +35,7 @@ var (
 // The list only shrinks: a wrap elsewhere fails the test, and so does a
 // line whose package has none left.
 var englishWraps = map[string]string{
-	"internal/mcp":   "stays: the MCP server speaks English (internal/cli/mcp.go sets i18n.EN; D6)",
-	"internal/stack": "1.3.1, with D41 («1.3 — разработка») or after it",
+	"internal/mcp": "stays: the MCP server speaks English (internal/cli/mcp.go sets i18n.EN; D6)",
 }
 
 // copiedWraps are the wraps whose ru in i18n.T is the en copied —

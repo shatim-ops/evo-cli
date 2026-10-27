@@ -170,10 +170,10 @@ jobs:
           IMAGE: evo-release
           VERSION: ${{ steps.ar.outputs.version }}
         run: |
-          docker run -d --name mcp -e MCP_BEARER_TOKEN=release-smoke-0123456789 -p 8080:8080 "$IMAGE:$VERSION"
+          docker run -d --name mcp -e MCP_BEARER_TOKEN=release-smoke-0123456789abcdef0123456789 -p 8080:8080 "$IMAGE:$VERSION"
           # Тот же скрипт, что в ci.yml: с Content-Type: application/json
           # (без него сервер отвечает 415 — релизный аудит, R-01).
-          .github/scripts/mcp-smoke.sh http://localhost:8080 release-smoke-0123456789 "$VERSION"
+          .github/scripts/mcp-smoke.sh http://localhost:8080 release-smoke-0123456789abcdef0123456789 "$VERSION"
           docker rm -f mcp
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
