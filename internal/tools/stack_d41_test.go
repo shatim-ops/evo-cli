@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -194,5 +195,55 @@ func TestStackDestroy_DestroyedJobAnswersAlreadyDestroyed(t *testing.T) {
 	}
 	if n := atomic.LoadInt32(&deletes); n != 0 {
 		t.Errorf("already_destroyed called delete %d times", n)
+	}
+}
+
+// A destroy the cloud is still finishing is not done: the preview of the
+// job asks again, so the CLI's --yes, which calls the preview first, gets
+// to the confirmed call that re-checks the deletions — as MCP does with
+// confirmed=true (cloud-e2e 1.3.1, live stack: lb and tg in deleting, each
+// --yes answered already_destroyed with nothing re-checked). Once the
+// re-check finds them gone, the job is already_destroyed.
+func TestStackDestroy_PendingDeletionsAreRechecked(t *testing.T) {
+	stackHome(t)
+	r := newTestServer()
+	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
+	key := j.Steps[0].Key
+	j.Steps[0].Status = "done"
+	j.Outputs[key] = "ok"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	answer := "deleting"
+	var deletes int32
+	r.handlers["secret_delete"] = func(context.Context, map[string]any) (string, bool) {
+		atomic.AddInt32(&deletes, 1)
+		return toJSON(map[string]any{"status": answer}), false
+	}
+	destroy := func(confirmed bool) map[string]any {
+		t.Helper()
+		text, _ := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": confirmed})
+		var m map[string]any
+		if err := json.Unmarshal([]byte(text), &m); err != nil {
+			t.Fatalf("%v: %s", err, text)
+		}
+		return m
+	}
+	if m := destroy(true); m["status"] != "destroyed" || fmt.Sprint(m["deleting"]) != "["+key+"]" {
+		t.Fatalf("first destroy: %v", m)
+	}
+	m := destroy(false)
+	if m["status"] != "confirmation_required" || !strings.Contains(fmt.Sprint(m["resources"]), key) {
+		t.Fatalf("a destroy still in progress must ask again (the CLI's --yes goes on to confirmed=true), got %v", m)
+	}
+	answer = "already_deleted"
+	if m := destroy(true); m["status"] != "destroyed" || m["deleting"] != nil {
+		t.Fatalf("re-check: %v", m)
+	}
+	if m := destroy(false); m["status"] != "already_destroyed" {
+		t.Fatalf("nothing in progress any more: want already_destroyed, got %v", m)
+	}
+	if n := atomic.LoadInt32(&deletes); n != 2 {
+		t.Errorf("deletes %d, want 2: the previews call nothing", n)
 	}
 }
