@@ -208,8 +208,9 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 }
 
 // diskReadyTimeout bounds the wait for a new disk to become available
-// before disk_create attaches it.
-const diskReadyTimeout = 2 * time.Minute
+// before it is attached. A live disk took 149 s (Grok live run on 1.3.0,
+// N3): 2 minutes failed the attach of a disk about to be ready.
+const diskReadyTimeout = 5 * time.Minute
 
 // waitDiskAvailable polls disk_list until the disk is "available", at the
 // VM poll interval (Engine.Timings.VMPollInterval, 5 s by default), for at
@@ -226,6 +227,9 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 	}
 	deadline := time.Now().Add(timeout)
 	last := "unknown"
+	// The wait says the disk's state when it changes, in the CLI and over
+	// MCP alike, so a wait of minutes is not silent (CLAUDE.md §6, axis 2).
+	pp, _ := progressOf(ctx)
 	for {
 		if disks, err := eng.Cloud.ListDisks(ctx, projectID); err == nil {
 			for _, d := range disks {
@@ -233,6 +237,9 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 					continue
 				}
 				st, _ := d["state"].(string)
+				if st != last && st != "available" {
+					pp.Step(0, 0, i18n.Tf("Disk %s: %s, waiting until it is available…", "Диск %s: %s, жду, пока он станет доступен…", diskID, st))
+				}
 				last = st
 				switch {
 				case st == "available":

@@ -100,7 +100,7 @@ func (s *Registry) findIDByName(ctx context.Context, tool, field, name string, e
 	for _, it := range arr {
 		if m, ok := it.(map[string]any); ok {
 			// A deleted namesake is not the step's resource (as takenName).
-			if st := strings.ToUpper(fmt.Sprint(m["status"])); strings.Contains(st, "DELETED") || strings.Contains(st, "ERASED") {
+			if statusGone(fmt.Sprint(m["status"])) {
 				continue
 			}
 			if n, _ := m["name"].(string); n == name {
@@ -166,7 +166,7 @@ func (s *Registry) takenByName(ctx context.Context, st *stack.Step) (string, err
 		if n, _ := m["name"].(string); n != f.name {
 			continue
 		}
-		if status := strings.ToUpper(fmt.Sprint(m["status"])); strings.Contains(status, "DELETED") || strings.Contains(status, "ERASED") {
+		if statusGone(fmt.Sprint(m["status"])) {
 			continue
 		}
 		id, _ := m["id"].(string)
