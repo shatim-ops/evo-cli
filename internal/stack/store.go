@@ -209,6 +209,10 @@ type Job struct {
 	Steps     []*Step           `json:"steps"`
 	Outputs   map[string]string `json:"outputs"` // stepkey -> resource id; plus extras like lb_external_ip
 	Error     string            `json:"error,omitempty"`
+	// Deleting are the steps whose deletion the last stack_destroy saw
+	// accepted but not finished (Postgres, NLB, …): the job is not done
+	// with until a destroy finds them gone.
+	Deleting []string `json:"deleting,omitempty"`
 }
 
 // --- Persistence ---
