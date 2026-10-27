@@ -11,7 +11,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/journal"
 )
@@ -76,6 +78,13 @@ func answersIn(t *testing.T, mode journalMode) map[string]string {
 // file that cannot be written — a lost record is the journal's loss, not
 // the call's.
 func TestJournal_AnswerSameOnOffAndBroken(t *testing.T) {
+	// The values of the time an answer carries (the token's TTL, default
+	// names) are read on internal/clock: a stopped clock gives every mode
+	// the same.
+	stopped := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	old := clock.Now
+	clock.Now = func() time.Time { return stopped }
+	t.Cleanup(func() { clock.Now = old })
 	off := answersIn(t, journalOff)
 	if len(off) == 0 {
 		t.Fatal("no tool answered")
@@ -161,10 +170,8 @@ func TestJournal_NoValueOfAnyTool(t *testing.T) {
 }
 
 // journalVolatileRE: what each call makes anew — the id of a stack job or
-// a plan, a time, the TTL of the token (staticToken gives each call a new
-// one, and Token.TTL counts it on the wall clock: 3600 or 3599 on Windows,
-// whose clock ticks at 15.6 ms — wallClockReads, «разработка»).
-var journalVolatileRE = regexp.MustCompile(`stk-[0-9a-f]{10}|plan-[0-9a-f]{12}|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)|"token_ttl_seconds": \d+`)
+// a plan, a time.
+var journalVolatileRE = regexp.MustCompile(`stk-[0-9a-f]{10}|plan-[0-9a-f]{12}|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)`)
 
 func journalVolatile(s string) string { return journalVolatileRE.ReplaceAllString(s, "<new>") }
 

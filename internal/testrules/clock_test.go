@@ -26,9 +26,6 @@ const (
 	wallWait = "wait or deadline"
 	// A line of the server's log, not an answer.
 	wallLog = "log"
-	// A value of the answer counted on the wall clock: a defect the line
-	// hands to «разработка»; it goes when the function reads internal/clock.
-	wallInAnswer = "in the answer — «1.4 — разработка»: through internal/clock"
 )
 
 // wallClockReads are the functions of production code that measure the
@@ -44,14 +41,9 @@ var wallClockReads = map[string]struct {
 }{
 	// The interval between reports and the slow-SSH note are waits; the
 	// report itself prints its duration through internal/clock.
-	"internal/engine/deploy.go\tEngine.waitForSSH":       {2, wallWait},
-	"internal/engine/destroy.go\tEngine.waitAndDeleteVM": {1, wallWait}, // interval between reports
-	"internal/auth/token.go\tToken.IsValid":              {1, wallWait}, // the token's TTL against a minimum
-	// token_ttl_seconds of whoami and the TTL of doctor's line: two calls
-	// of whoami answer 3600 and 3599 (TestJournal_AnswerSameOnOffAndBroken,
-	// Windows, #408). The line goes with the mask of the TTL in
-	// journalVolatileRE (internal/tools), which then compares it again.
-	"internal/auth/token.go\tToken.TTL":                         {1, wallInAnswer},
+	"internal/engine/deploy.go\tEngine.waitForSSH":              {2, wallWait},
+	"internal/engine/destroy.go\tEngine.waitAndDeleteVM":        {1, wallWait}, // interval between reports
+	"internal/auth/token.go\tToken.IsValid":                     {1, wallWait}, // the token's TTL against a minimum
 	"internal/deployplan/apply.go\twaitForSSHPort":              {2, wallWait},
 	"internal/tools/opwait.go\twaitForOpJSON":                   {1, wallWait},
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {1, wallWait}, // the budget of one poll
