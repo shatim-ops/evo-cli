@@ -243,6 +243,9 @@ func TestContract_PreviewMessageHasNoConfirmedHint(t *testing.T) {
 			switch tl.Name {
 			case "snat_delete", "lb_create":
 				rt.body = gatedPreviewBody
+			case "stack_apply":
+				// Its preview refuses a job that is not there (D35).
+				args["job_id"] = planned.ID
 			case "stack_destroy":
 				// Both previews: a stack that holds a resource, and one
 				// that has created nothing.

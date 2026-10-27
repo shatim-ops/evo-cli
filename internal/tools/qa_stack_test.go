@@ -221,7 +221,9 @@ func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 	for _, st := range j.Steps {
 		st.Status = "done"
 	}
-	j.Status = "destroyed"
+	// The first destroy left a deletion in progress: the second re-checks
+	// (a destroy with none left answers already_destroyed, D41).
+	j.Status, j.Deleting = "destroyed", []string{"vm"}
 	j.Outputs["vm"] = faultID(1)
 	if err := j.Save(); err != nil {
 		t.Fatal(err)
@@ -239,6 +241,9 @@ func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 	// «уже удалено» — код ответа, а не любая ошибка destroy.
 	r.handlers["destroy"] = func(context.Context, map[string]any) (string, bool) {
 		return errResult(clerrors.New(clerrors.CodeAPIError, "destroy VM vm-1: API returned status 500", "")), true
+	}
+	if err := j.Save(); err != nil { // the deletion in progress again
+		t.Fatal(err)
 	}
 	text, isErr = r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	if !isErr || !strings.Contains(text, `"destroy_failed"`) {

@@ -883,6 +883,12 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 		return usageT("'job_id' is required (from stack_plan)", "нужен 'job_id' (из stack_plan)"), true
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		// What refuses the confirmed call refuses the preview, before the
+		// question (axis 1 of CLAUDE.md §6, D35): a job not there, of
+		// another project, or destroyed.
+		if _, err := s.appliableJob(id); err != nil {
+			return errResult(err), true
+		}
 		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.T("stack_apply provisions BILLABLE resources.",
 			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", nil, nil)}), true
 	}
@@ -891,17 +897,9 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 		return errResult(err), true
 	}
 	defer unlock()
-	job, err := stack.LoadJob(id)
+	job, err := s.appliableJob(id)
 	if err != nil {
 		return errResult(err), true
-	}
-	if err := s.checkJobProject(job); err != nil {
-		return errResult(err), true
-	}
-	if job.Status == "destroyed" || job.Status == "destroy_failed" {
-		// Its steps are all "done" from the first apply: advancing would
-		// report status=done for resources that no longer exist.
-		return errResult(fmt.Errorf(i18n.T("job %s is %s: its resources were torn down; run stack_plan again for a new deploy", "задание %s в состоянии %s: его ресурсы удалены; для нового развёртывания снова выполните stack_plan"), id, job.Status)), true
 	}
 	s.advance(ctx, job)
 	if e := job.Save(); e != nil {
@@ -910,6 +908,24 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	out := job.Compact()
 	out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
 	return toJSON(out), job.Status == "error"
+}
+
+// appliableJob is the job stack_apply may advance: there, of this server's
+// project, and not torn down — its steps are all "done" from the first
+// apply, so advancing would report status=done for resources that no
+// longer exist.
+func (s *Registry) appliableJob(id string) (*stack.Job, error) {
+	job, err := stack.LoadJob(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkJobProject(job); err != nil {
+		return nil, err
+	}
+	if job.Status == "destroyed" || job.Status == "destroy_failed" {
+		return nil, fmt.Errorf(i18n.T("job %s is %s: its resources were torn down; run stack_plan again for a new deploy", "задание %s в состоянии %s: его ресурсы удалены; для нового развёртывания снова выполните stack_plan"), id, job.Status)
+	}
+	return job, nil
 }
 
 // lockJob serializes the stack tools on one job and returns the unlock.
@@ -1070,6 +1086,19 @@ var stackTeardown = []string{
 // such a step is looked up by name at destroy: a step that never ran owns
 // nothing, and a resource with its name belongs to someone else — deleting
 // it destroyed a foreign cluster (QA r3 R3).
+// finishedDestroy: an earlier stack_destroy deleted the job's resources and
+// left none of them still being deleted.
+func finishedDestroy(job *stack.Job) bool {
+	return job.Status == "destroyed" && len(job.Deleting) == 0
+}
+
+// alreadyDestroyed is the answer of stack_destroy for finishedDestroy.
+func alreadyDestroyed(id string) string {
+	return toJSON(map[string]any{"status": "already_destroyed", "job_id": id,
+		"note": i18n.T("The stack was destroyed earlier; its deletions were all finished.",
+			"Стек удалён раньше; все его удаления завершены.")})
+}
+
 func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "job_id")
 	if id == "" {
@@ -1089,10 +1118,8 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		}
 		// Its resources were deleted by an earlier stack_destroy and none
 		// was still being deleted: nothing to ask about (D26, G130-31; D41).
-		if job.Status == "destroyed" && len(job.Deleting) == 0 {
-			return toJSON(map[string]any{"status": "already_destroyed", "job_id": id,
-				"note": i18n.T("The stack was destroyed earlier; its deletions were all finished.",
-					"Стек удалён раньше; все его удаления завершены.")}), false
+		if finishedDestroy(job) {
+			return alreadyDestroyed(id), false
 		}
 		// Deletions the cloud was still finishing: the question again, so
 		// that the CLI's --yes, which calls this preview first, gets to the
@@ -1146,6 +1173,11 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	// would be marked destroyed with its resources still billed (QA P2).
 	if err := s.checkJobProject(job); err != nil {
 		return errResult(err), true
+	}
+	// confirmed=true answers as the preview: the CLI's --yes stops at the
+	// preview's already_destroyed, MCP gets here (TestParity_YesEqualsConfirmed).
+	if finishedDestroy(job) {
+		return alreadyDestroyed(id), false
 	}
 	// Reconcile ids from the STEPS before teardown: a resource created but not yet
 	// "done" (e.g. a k8s cluster still PROVISIONING) has its id on the step, not in

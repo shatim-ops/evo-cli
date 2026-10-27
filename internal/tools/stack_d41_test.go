@@ -247,3 +247,55 @@ func TestStackDestroy_PendingDeletionsAreRechecked(t *testing.T) {
 		t.Errorf("deletes %d, want 2: the previews call nothing", n)
 	}
 }
+
+// A confirmed stack_destroy of a job whose deletions are all finished
+// answers as its preview does — already_destroyed, with no call — so the
+// CLI's --yes, which stops at the preview, and MCP's confirmed=true say the
+// same (TestParity_YesEqualsConfirmed, Process, #405).
+func TestStackDestroy_ConfirmedOnDestroyedJobIsAlreadyDestroyed(t *testing.T) {
+	stackHome(t)
+	r := newTestServer()
+	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
+	j.Steps[0].Status, j.Status = "done", "destroyed"
+	j.Outputs[j.Steps[0].Key] = "ok"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	var deletes int32
+	r.handlers["secret_delete"] = func(context.Context, map[string]any) (string, bool) {
+		atomic.AddInt32(&deletes, 1)
+		return toJSON(map[string]any{"status": "already_deleted"}), false
+	}
+	preview, _ := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID})
+	confirmed, isErr := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	if isErr || !strings.Contains(confirmed, `"already_destroyed"`) || confirmed != preview {
+		t.Fatalf("confirmed must answer as the preview:\npreview   %s\nconfirmed %s", preview, confirmed)
+	}
+	if n := atomic.LoadInt32(&deletes); n != 0 {
+		t.Errorf("confirmed already_destroyed called delete %d times", n)
+	}
+}
+
+// stack_apply of a job that is not there, or was destroyed, refuses before
+// the question: no preview of billable resources for a call that cannot
+// run (axis 1 of CLAUDE.md §6, D35; W8 of Process, #405).
+func TestStackApply_RefusedBeforeTheQuestion(t *testing.T) {
+	stackHome(t)
+	r := newTestServer()
+	gone := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
+	gone.Status = "destroyed"
+	if err := gone.Save(); err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct{ id, reason string }{
+		"absent":    {"stk-0123456789", "NOT_FOUND"},
+		"destroyed": {gone.ID, "USAGE"},
+	} {
+		text, isErr := r.handleStackApply(context.Background(), map[string]any{"job_id": tc.id})
+		var m map[string]any
+		_ = json.Unmarshal([]byte(text), &m)
+		if !isErr || m["reason"] != tc.reason || m["status"] == "confirmation_required" {
+			t.Errorf("%s: want %s before the question, got %s", name, tc.reason, text)
+		}
+	}
+}
