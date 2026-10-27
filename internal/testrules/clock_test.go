@@ -26,10 +26,14 @@ const (
 	wallWait = "wait or deadline"
 	// A line of the server's log, not an answer.
 	wallLog = "log"
+	// A value of the answer counted on the wall clock: a defect the line
+	// hands to «разработка»; it goes when the function reads internal/clock.
+	wallInAnswer = "in the answer — «1.4 — разработка»: through internal/clock"
 )
 
 // wallClockReads are the functions of production code that measure the
-// wall clock — time.Since or time.Now().Sub — "path<TAB>function" → how
+// wall clock — time.Since, time.Until or time.Now().Sub —
+// "path<TAB>function" → how
 // many times and why. A new one, or one more in a function, fails the
 // test, and so does a line whose count is no longer there: a duration in
 // the output goes through internal/clock, a wait or a log is declared
@@ -42,16 +46,25 @@ var wallClockReads = map[string]struct {
 	// report itself prints its duration through internal/clock.
 	"internal/engine/deploy.go\tEngine.waitForSSH":       {2, wallWait},
 	"internal/engine/destroy.go\tEngine.waitAndDeleteVM": {1, wallWait}, // interval between reports
-	"internal/mcp/http.go\tHTTPHandler.dispatch":         {1, wallLog},  // duration_ms of the log
-	"internal/mcp/http.go\tHTTPHandler.touchSession":     {1, wallWait}, // TTL of the session
-	"internal/tools/journal.go\tjournaled":               {1, wallLog},  // ms of the session journal (D46)
+	"internal/auth/token.go\tToken.IsValid":              {1, wallWait}, // the token's TTL against a minimum
+	// token_ttl_seconds of whoami and the TTL of doctor's line: two calls
+	// of whoami answer 3600 and 3599 (TestJournal_AnswerSameOnOffAndBroken,
+	// Windows, #408). The line goes with the mask of the TTL in
+	// journalVolatileRE (internal/tools), which then compares it again.
+	"internal/auth/token.go\tToken.TTL":                         {1, wallInAnswer},
+	"internal/deployplan/apply.go\twaitForSSHPort":              {2, wallWait},
+	"internal/tools/opwait.go\twaitForOpJSON":                   {1, wallWait},
+	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {1, wallWait}, // the budget of one poll
+	"internal/mcp/http.go\tHTTPHandler.dispatch":                {1, wallLog},  // duration_ms of the log
+	"internal/mcp/http.go\tHTTPHandler.touchSession":            {1, wallWait}, // TTL of the session
+	"internal/tools/journal.go\tjournaled":                      {1, wallLog},  // ms of the session journal (D46)
 }
 
 // A value of the time that goes into an answer goes through internal/clock
 // (CLAUDE.md §5); internal/clock covered the names (of a VM, a plan, a
 // floating IP), not the durations, and TestNoUnguardedWallClockBounds reads
 // only the tests. In production code of internal and cmd, every
-// time.Since and time.Now().Sub is declared in wallClockReads.
+// time.Since, time.Until and time.Now().Sub is declared in wallClockReads.
 func TestWallClockReadsDeclared(t *testing.T) {
 	root := filepath.Join("..", "..")
 	got := map[string]int{}
@@ -96,9 +109,9 @@ func TestWallClockReadsDeclared(t *testing.T) {
 	}
 }
 
-// readsWallClock: time.Since(…) or time.Now().Sub(…).
+// readsWallClock: time.Since(…), time.Until(…) or time.Now().Sub(…).
 func readsWallClock(call *ast.CallExpr) bool {
-	if isSel(call.Fun, "time", "Since") {
+	if isSel(call.Fun, "time", "Since") || isSel(call.Fun, "time", "Until") {
 		return true
 	}
 	s, ok := call.Fun.(*ast.SelectorExpr)

@@ -161,8 +161,10 @@ func TestJournal_NoValueOfAnyTool(t *testing.T) {
 }
 
 // journalVolatileRE: what each call makes anew — the id of a stack job or
-// a plan, a time.
-var journalVolatileRE = regexp.MustCompile(`stk-[0-9a-f]{10}|plan-[0-9a-f]{12}|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)`)
+// a plan, a time, the TTL of the token (staticToken gives each call a new
+// one, and Token.TTL counts it on the wall clock: 3600 or 3599 on Windows,
+// whose clock ticks at 15.6 ms — wallClockReads, «разработка»).
+var journalVolatileRE = regexp.MustCompile(`stk-[0-9a-f]{10}|plan-[0-9a-f]{12}|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)|"token_ttl_seconds": \d+`)
 
 func journalVolatile(s string) string { return journalVolatileRE.ReplaceAllString(s, "<new>") }
 
