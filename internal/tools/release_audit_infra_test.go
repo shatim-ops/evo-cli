@@ -117,6 +117,12 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		rec.Header().Set("Content-Type", "application/xml")
 		_, _ = io.WriteString(rec, `<?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`+
 			`<Owner><ID>o</ID></Owner><Buckets><Bucket><Name>my-bucket</Name><CreationDate>2026-10-01T00:00:00.000Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>`)
+	case r.URL.Host == "s3.cloud.ru" && r.Method == http.MethodGet && r.URL.Query().Has("location"):
+		_, _ = io.WriteString(rec, `<LocationConstraint>ru-central-1</LocationConstraint>`)
+	case r.URL.Host == "s3.cloud.ru" && r.Method == http.MethodGet && r.URL.Path == "/my-bucket/":
+		// my-bucket is empty: stack_plan looks for the manifest's key (D41).
+		rec.Header().Set("Content-Type", "application/xml")
+		_, _ = io.WriteString(rec, `<ListBucketResult><Name>my-bucket</Name><IsTruncated>false</IsTruncated></ListBucketResult>`)
 	case r.URL.Path == "/v3/productConfiguration":
 		flavors := f.flavors
 		if flavors == "" {
