@@ -432,6 +432,7 @@ area_disk() {
 	cov provision
 
 	must disk_create disk_create --arg name="$prefix-data" --arg size_gb=10 --arg zone="$ZONE" || return 1
+	local t0=$SECONDS # ответ disk_create: от него — время до attached (N3)
 	data=$(j -r '.disk_id // .disk.id // empty')
 	mask "$data"
 	[ -n "$data" ] || { bad disk_create "нет id диска"; return 1; }
@@ -444,8 +445,7 @@ area_disk() {
 	# N3 (1.3.1): disk_attach сразу после disk_create сам ждёт готовности
 	# диска; живой диск 27.10 был готов через 149 с, а attach ждал 2 мин и
 	# получал 422 «no openstack_id». Сколько ушло от create до attached —
-	# строкой отчёта.
-	local t0=$SECONDS
+	# строкой отчёта (t0 — после ответа disk_create).
 	must disk_attach disk_attach --arg disk_id="$data" --arg vm="$vm" || return 1
 	# disk_has ФИЛЬТР — jq -e по disk_list, $id — диск данных, $vm — имя ВМ.
 	disk_has() { evo tools call disk_list --json | jq -e --arg id "$data" --arg vm "$vm" "$1" >/dev/null; }
