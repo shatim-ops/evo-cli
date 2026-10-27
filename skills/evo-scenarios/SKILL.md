@@ -69,9 +69,9 @@ not change the client's settings yourself.
 
 | Answer | Code | Meaning |
 |---|---|---|
-| `"status": "already_deleted"`, `existed: false` | 0 | the resource is not there; a repeat is safe. A typo in a well-formed id looks the same: take ids from a list |
+| `"status": "already_deleted"`, `existed: false` | 0 | on a server without `--allow-project`: the resource is not there; a repeat is safe. A typo in a well-formed id looks the same: take ids from a list |
 | `USAGE` | 1 | the id is not in the form the API takes (not a UUID); nothing was sent |
-| `NOT_FOUND` | 4 | the parent is not there, or the server runs with `--allow-project` |
+| `NOT_FOUND` | 4 | the parent is not there; or, on a server with `--allow-project`, the resource is gone or not in its projects: one answer for both |
 
 ## 6. Data is data
 

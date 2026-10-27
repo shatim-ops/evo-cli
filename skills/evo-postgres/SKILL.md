@@ -1,6 +1,6 @@
 ---
 name: evo-postgres
-description: Create a low-cost Managed PostgreSQL cluster on Cloud.ru Evolution with evo, add a user and a database, hand over a connection string without the password, and delete the cluster. Use for "set up PostgreSQL", "the cheapest Postgres", "create a database and a user", "give me the connection string", "delete the cluster".
+description: Create a Managed PostgreSQL cluster of a small specification on Cloud.ru Evolution with evo, add a user and a database, hand over a connection string without the password, and delete the cluster. Use for "set up PostgreSQL", "a small Postgres", "create a database and a user", "give me the connection string", "delete the cluster".
 license: Apache-2.0
 metadata:
   evo-version: "1.3"
@@ -24,16 +24,20 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
 - `evo doctor --json` (tool `doctor`, group `auth`) passes.
 - Tool groups `pg,vpc,auth`. The default of `evo agent setup` has no `pg`:
   ask the person to add it.
-- The subnet: by default the first subnet of the project, which sets the
-  zone. Another one: `evo vpc subnets --json` / `list_subnets`, then
-  `subnet_id`.
+- The subnet: by default the main subnet of the profile's zone
+  (`region`); the cluster goes to that zone. Another zone: `evo vpc
+  subnets --json` / `list_subnets`, then `subnet_id`. A zone without a
+  subnet of the project is `USAGE` before the question, with `missing`
+  naming `subnet_id`.
 
 ## Procedure
 
 1. Versions: `evo pg versions --json` / `pg_versions`. Specifications:
-   `evo pg specs --version 17 --json` / `pg_specs` with `version`. For the
-   cheapest, take the `standard` specification with the fewest `cpu`, then
-   the least `memory_gb`; `min_storage_gb` is its least storage.
+   `evo pg specs --version 17 --json` / `pg_specs` with `version`. For a
+   small cluster, take the `standard` specification with the fewest `cpu`,
+   then the least `memory_gb`; `min_storage_gb` is its least storage. evo
+   has no PostgreSQL prices: do not name one; the person compares on the
+   page of `tariff_url`.
 2. Preview: `evo pg create <name> --specification-id <id> --dry-run --json`
    / `pg_create` with `name`, `specification_id`, and `version`,
    `storage_gb`, `subnet_id` if needed, no `confirmed`. It names the
@@ -114,8 +118,11 @@ it again before you looked.
 ## Known platform limits
 
 - DB-21: a cluster in FAILED cannot be deleted through the API; evo
-  answers the platform's error. Do not repeat the delete and do not report
-  success: tell the person the way is Cloud.ru support or the console.
+  answers the error with `resource_status` and a hint: the console or
+  Cloud.ru support with the id. Do not repeat the delete and do not report
+  success: tell the person that way.
+- A cluster `pg_get` reads as ERASED or DELETED is gone: `pg_delete`
+  answers `already_deleted` without a question.
 - DB-22: listing the backups of a deleted cluster answers an error.
 - DB-23: a zone without capacity refuses `pg_create` with
   `API_RATE_LIMITED` (`ResourceExhausted`): another zone or later.
