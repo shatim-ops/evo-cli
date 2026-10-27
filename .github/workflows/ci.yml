@@ -121,6 +121,12 @@ jobs:
           python3 scripts/changelog-test.py
           python3 scripts/changelog.py check
 
+      # Журнал сессии (evo diag export, D46): diag-check.py на образцах —
+      # схема записи, sha256 из issue, --public (догфуд 1.4.0).
+      - name: diag-check.py на образцах журнала
+        if: runner.os == 'Linux'
+        run: python3 scripts/diag-check-test.py
+
       # Маска публичных логов cloud-e2e: имена групп и подсетей тестового проекта.
       - name: redact.sed на образцах вывода evo
         if: runner.os == 'Linux'

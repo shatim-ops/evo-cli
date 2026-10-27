@@ -144,6 +144,12 @@ jobs:
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
           printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
 
+      # Журнал сессии (D46) — включён на весь прогон: до тега 1.4.0
+      # diag-check.py --public проверяет настоящий журнал (решение
+      # владельца 27.10: 1.4.0 без rc).
+      - name: журнал evo — включить
+        run: evo diag on >/dev/null
+
       - name: Чтения CLI, инструменты, MCP stdio и HTTP
         env:
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
@@ -164,6 +170,16 @@ jobs:
         env:
           EVO_LIVE_TARIFFS: "1"
         run: go test ./internal/engine/ -run '^TestLive_TariffPagesAnswer$' -count=1 -v
+
+      # Журнал прогона: схема записи и --public (ни UUID, ни IP, ни
+      # имени хоста). В лог — только сводка diag-check (sha256, счётчики),
+      # файл не публикуется.
+      - name: журнал evo — diag-check --public
+        if: ${{ !cancelled() }}
+        run: |
+          command -v evo >/dev/null || { echo "::warning::evo не собран — журнал не проверен"; exit 0; }
+          evo diag export --out "$RUNNER_TEMP/evo-journal.jsonl" >/dev/null
+          python3 scripts/diag-check.py --public "$RUNNER_TEMP/evo-journal.jsonl"
 
   e2e:
     environment: cloud-e2e
@@ -476,6 +492,12 @@ jobs:
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
           printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
 
+      # Журнал сессии (D46) — включён на весь прогон: до тега 1.4.0
+      # diag-check.py --public проверяет настоящий журнал (решение
+      # владельца 27.10: 1.4.0 без rc).
+      - name: журнал evo — включить
+        run: evo diag on >/dev/null
+
       # Скрипт сам удаляет свои ресурсы (trap EXIT) и проверяет остатки.
       - name: Область ${{ matrix.area }}
         env:
@@ -499,6 +521,16 @@ jobs:
         run: |
           command -v evo >/dev/null || { echo "evo не собран — ресурсов не создавалось"; exit 0; }
           .github/scripts/cloud-live.sh sweep "evo-e2e-$AREA-$(printf '%s' "$RUN" | tr -cd 'a-z0-9' | cut -c1-16)" "$AREA"
+
+      # Журнал прогона: схема записи и --public (ни UUID, ни IP, ни
+      # имени хоста). В лог — только сводка diag-check (sha256, счётчики),
+      # файл не публикуется.
+      - name: журнал evo — diag-check --public
+        if: ${{ !cancelled() }}
+        run: |
+          command -v evo >/dev/null || { echo "::warning::evo не собран — журнал не проверен"; exit 0; }
+          evo diag export --out "$RUNNER_TEMP/evo-journal.jsonl" >/dev/null
+          python3 scripts/diag-check.py --public "$RUNNER_TEMP/evo-journal.jsonl"
 
   # Отечественные ОС по имени образа (шаг E, docs/internal/design-images.md):
   # init --image отказывает (Docker на них не ставится), vm create --image
