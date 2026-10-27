@@ -28,6 +28,7 @@ import (
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/journal"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/product"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -131,6 +132,7 @@ func run(args []string) int {
 	} else if msg != "" {
 		output.New(jsonRequested(args), true).Warning(msg)
 	}
+	journal.Begin(journal.SurfaceCLI, currentVersion().Version)
 	rootCmd := newRootCmd()
 	rootCmd.SetArgs(args)
 	if mcpCommand(rootCmd, args) {
@@ -350,6 +352,7 @@ func newRootCmd() *cobra.Command {
 		newDoctorCmd(),
 		newToolsCmd(),
 		newAgentCmd(),
+		newDiagCmd(),
 	)
 	cmd.AddCommand(newTreeCmds(cmd)...)
 	applyExamples(cmd)

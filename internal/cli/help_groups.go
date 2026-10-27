@@ -39,7 +39,7 @@ var commandGroups = []struct {
 	{"account", "Costs, audit and monitoring:", "Затраты, аудит и мониторинг:",
 		[]string{"billing", "audit", "org", "iam", "metrics"}},
 	{"setup", "Setup:", "Настройка:",
-		[]string{"configure", "project", "whoami", "doctor", "version", "completion", "help"}},
+		[]string{"configure", "project", "whoami", "doctor", "diag", "version", "completion", "help"}},
 	{"agents", "For AI agents:", "Для ИИ-агентов:",
 		[]string{"mcp", "tools", "agent"}},
 }

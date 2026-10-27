@@ -63,6 +63,11 @@
     - [evo deploy list](#evo-deploy-list)
     - [evo deploy plan](#evo-deploy-plan)
   - [evo destroy](#evo-destroy)
+  - [evo diag](#evo-diag)
+    - [evo diag export](#evo-diag-export)
+    - [evo diag off](#evo-diag-off)
+    - [evo diag on](#evo-diag-on)
+    - [evo diag status](#evo-diag-status)
   - [evo disk](#evo-disk)
     - [evo disk attach](#evo-disk-attach)
     - [evo disk create](#evo-disk-create)
@@ -262,6 +267,7 @@ evo CMCP — CLI и MCP-сервер для Cloud.ru Evolution
 * [evo configure](#evo-configure)	 - Ключ доступа, проект и зона по умолчанию для профиля
 * [evo deploy](#evo-deploy)	 - Развернуть docker-compose проект на ВМ Cloud.ru
 * [evo destroy](#evo-destroy)	 - Удалить развёрнутую ВМ и связанные ресурсы
+* [evo diag](#evo-diag)	 - Журнал сессии evo для догфуда: включить, выключить, состояние, выгрузка
 * [evo disk](#evo-disk)	 - Диски
 * [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
 * [evo doctor](#evo-doctor)	 - Проверить настройки, ключ доступа и связь с API
@@ -2632,6 +2638,196 @@ evo destroy [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+
+## evo diag
+
+> Локальная команда: журнал сессии evo (D46) — файл на машине, где стоит evo; клиенту MCP-сервера до него дела нет.
+
+Журнал сессии evo для догфуда: включить, выключить, состояние, выгрузка
+
+### Synopsis
+
+```text
+Журнал сессии записывает каждый вызов инструмента — и через CLI, и через
+MCP-сервер: инструмент, имена аргументов (без значений), причину ошибки,
+согласие, длительность и размер ответа. Значений аргументов, ответов и
+сообщений в нём нет. Выключен, пока не выполнено 'evo diag on'; это один
+файл рядом с config.yaml с лимитом размера; никуда не отправляется:
+'evo diag export' копирует его, чтобы вы передали файл сами.
+```
+
+```
+evo diag [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по diag
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo diag export](#evo-diag-export)	 - Скопировать журнал сессии в файл для передачи
+* [evo diag off](#evo-diag-off)	 - Выключить журнал сессии (файл остаётся)
+* [evo diag on](#evo-diag-on)	 - Включить журнал сессии
+* [evo diag status](#evo-diag-status)	 - Включён ли журнал сессии и что в нём
+
+## evo diag export
+
+> Локальная команда: копирует файл журнала сессии для передачи.
+
+Скопировать журнал сессии в файл для передачи
+
+### Synopsis
+
+```text
+Копирует журнал сессии в файл (0600) для передачи; журнал остаётся и
+продолжает расти, так что промежуточная выгрузка безопасна. Просмотрите
+файл перед отправкой: в нём имена инструментов и аргументов, причины,
+длительности и размеры, без значений.
+```
+
+```
+evo diag export [flags]
+```
+
+### Options
+
+```
+  -h, --help         Справка по export
+      --out string   Файл для записи (по умолчанию evo-journal-<время>.jsonl в текущем каталоге)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo diag](#evo-diag)	 - Журнал сессии evo для догфуда: включить, выключить, состояние, выгрузка
+
+## evo diag off
+
+> Локальная команда: выключает журнал сессии в config.yaml.
+
+Выключить журнал сессии (файл остаётся)
+
+```
+evo diag off [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по off
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo diag](#evo-diag)	 - Журнал сессии evo для догфуда: включить, выключить, состояние, выгрузка
+
+## evo diag on
+
+> Локальная команда: включает журнал сессии в config.yaml.
+
+Включить журнал сессии
+
+```
+evo diag on [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по on
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo diag](#evo-diag)	 - Журнал сессии evo для догфуда: включить, выключить, состояние, выгрузка
+
+## evo diag status
+
+> Локальная команда: читает файл журнала сессии.
+
+Включён ли журнал сессии и что в нём
+
+```
+evo diag status [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по status
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo diag](#evo-diag)	 - Журнал сессии evo для догфуда: включить, выключить, состояние, выгрузка
 
 ## evo disk
 

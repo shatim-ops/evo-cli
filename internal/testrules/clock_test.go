@@ -44,6 +44,7 @@ var wallClockReads = map[string]struct {
 	"internal/engine/destroy.go\tEngine.waitAndDeleteVM": {1, wallWait}, // interval between reports
 	"internal/mcp/http.go\tHTTPHandler.dispatch":         {1, wallLog},  // duration_ms of the log
 	"internal/mcp/http.go\tHTTPHandler.touchSession":     {1, wallWait}, // TTL of the session
+	"internal/tools/journal.go\tjournaled":               {1, wallLog},  // ms of the session journal (D46)
 }
 
 // A value of the time that goes into an answer goes through internal/clock
