@@ -87,7 +87,7 @@ func TestWallClockReadsDeclared(t *testing.T) {
 					if call, ok := n.(*ast.CallExpr); ok && readsWallClock(call) {
 						got[key]++
 						if wallClockReads[key].n == 0 {
-							t.Errorf("%s:%d: %s measures the wall clock — a duration in the output through internal/clock, a wait or a log declared in wallClockReads",
+							t.Errorf("%s:%d: %s measures the wall clock — a duration in the output through internal/clock; a wait or a log declared in wallClockReads (wallWait, wallLog)",
 								filepath.ToSlash(rel), fset.Position(call.Pos()).Line, funcName(fd))
 						}
 					}
