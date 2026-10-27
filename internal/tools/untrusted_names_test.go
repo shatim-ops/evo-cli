@@ -165,7 +165,10 @@ func TestUntrusted_FieldsMarked(t *testing.T) {
 // marker would tell a client the data fields are data too. Marking names
 // is «разработка»'s, 1.4. The list only shrinks: a new tool that answers a
 // cloud name with no marker fails the test, and so does a line whose tool
-// is marked now or no longer answers the name.
+// is marked now or no longer answers the name. A delete is here for its
+// preview, which names the resource it would delete. metrics_scrape answers
+// the body of the cloud's answer as it is (exposition): workload text, like
+// a log, for untrustedFields — reported to «разработка» with this list.
 var namesUnmarked = map[string]bool{
 	"ar_delete":            true,
 	"ar_get":               true,
