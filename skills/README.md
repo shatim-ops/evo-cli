@@ -69,11 +69,11 @@ evo: скилл — текст, который агент исполняет. П
 `evo-postgres`; `evo-cleanup` нужны все (`--toolsets all`): агент скажет об
 этом в конце установки, и так же — `evo-scenarios`.
 
-**Копированием с тега** (вручную; `v1.3.0` замените на версию из
+**Копированием с тега** (вручную; `v1.3.1` замените на версию из
 `evo version`):
 
 ```sh
-git clone --branch v1.3.0 --depth 1 https://github.com/shatim-ops/evo-cli /tmp/evo-cli
+git clone --branch v1.3.1 --depth 1 https://github.com/shatim-ops/evo-cli /tmp/evo-cli
 cp -r /tmp/evo-cli/skills/evo-* <каталог скиллов агента>/
 evo agent setup --client claude-code --scope user --skill --dry-run
 ```
@@ -90,8 +90,8 @@ evo agent setup --client claude-code --scope user --skill --dry-run
 **Установщиком `skills`** (Node.js), по одному скиллу с тега:
 
 ```sh
-npx skills add https://github.com/shatim-ops/evo-cli/tree/v1.3.0/skills/evo-scenarios
-npx skills add https://github.com/shatim-ops/evo-cli/tree/v1.3.0/skills/evo-deploy
+npx skills add https://github.com/shatim-ops/evo-cli/tree/v1.3.1/skills/evo-scenarios
+npx skills add https://github.com/shatim-ops/evo-cli/tree/v1.3.1/skills/evo-deploy
 ```
 
 и так же `evo-vm`, `evo-postgres`, `evo-cleanup`. Установщик спрашивает,
