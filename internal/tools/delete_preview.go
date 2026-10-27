@@ -40,8 +40,7 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	// for a while, and a second DELETE of it is a 500 FailedPrecondition
 	// (Grok live run on 1.3.0, N1). It is gone: already_deleted, without the
 	// question and without a DELETE (D26).
-	switch strings.ToUpper(status) {
-	case "ERASED", "DELETED":
+	if statusGone(status) {
 		return answered(s.deleteFailed(tool, id, clierrors.New(clierrors.CodeNotFound,
 			i18n.Tf("%s is %s", "%s в состоянии %s", label, status), "")))
 	}
