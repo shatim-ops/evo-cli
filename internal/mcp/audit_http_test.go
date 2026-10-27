@@ -12,7 +12,8 @@ import (
 
 // A POST body larger than maxMessageSize is refused with 413 before it is
 // parsed: without MaxBytesReader a client could make the server buffer any
-// amount of memory (the batch limit only counts messages that were decoded).
+// amount of memory (the batch limit only counts messages that were decoded)
+// (H12).
 func TestAudit_HTTPBodySizeLimited(t *testing.T) {
 	ts, _ := newHTTPTest(t, HTTPOptions{BearerToken: testToken})
 

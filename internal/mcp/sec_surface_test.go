@@ -315,7 +315,7 @@ func TestSec_HTTPBatchSizeLimited(t *testing.T) {
 }
 
 // Tool calls over HTTP are bounded: the ones over the limit are refused at
-// once instead of piling up goroutines and cloud requests.
+// once instead of piling up goroutines and cloud requests (H8).
 func TestSec_HTTPConcurrentToolCallsLimited(t *testing.T) {
 	s := newTestServer()
 	release := make(chan struct{})
