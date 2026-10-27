@@ -406,7 +406,7 @@ func newMCPHealthcheckCmd() *cobra.Command {
 			}
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
-				return fmt.Errorf("healthcheck: %w", err)
+				return fmt.Errorf(i18n.T("healthcheck: %w", "проверка состояния: %w"), err)
 			}
 			defer resp.Body.Close()
 			_, _ = io.Copy(io.Discard, resp.Body)

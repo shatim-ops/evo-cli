@@ -95,7 +95,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	// --- Flavor ---
 	flavors, err := cloud.ListFlavors(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list flavors: %w", err)
+		return nil, fmt.Errorf(i18n.T("list flavors: %w", "список flavor: %w"), err)
 	}
 	flavor, fwarn, err := selectFlavor(flavors, p)
 	if err != nil {
@@ -137,7 +137,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	// --- Subnet (zone-matched) ---
 	subnets, err := cloud.ListSubnets(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("list subnets: %w", err)
+		return nil, fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
 	}
 	subnet := pickSubnet(subnets, zone.ID, zone.Name)
 	if subnet == nil {
@@ -153,7 +153,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	// provision — a VM without a group is billed and unreachable by SSH.
 	sgs, err := cloud.ListSecurityGroups(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("list security groups: %w", err)
+		return nil, fmt.Errorf(i18n.T("list security groups: %w", "список групп безопасности: %w"), err)
 	}
 	i := provision.PickSecurityGroup(sgs, zone.ID, zone.Name)
 	if i < 0 {
@@ -324,7 +324,7 @@ func selectImage(ctx context.Context, cloud provision.CloudAPI, projectID, want 
 func pickImage(ctx context.Context, cloud provision.CloudAPI, projectID, want string) (provision.Image, bool, error) {
 	images, err := cloud.ListImages(ctx)
 	if err != nil {
-		return provision.Image{}, false, fmt.Errorf("list images: %w", err)
+		return provision.Image{}, false, fmt.Errorf(i18n.T("list images: %w", "список образов: %w"), err)
 	}
 	if want != "" {
 		for _, img := range images {

@@ -125,14 +125,10 @@ func ruleArg(k string, p map[string]any, v any) error {
 	if n, ok := numberValue(v); ok {
 		shown := strconv.FormatFloat(n, 'f', -1, 64)
 		if min, ok := p["minimum"].(int); ok && n < float64(min) {
-			return clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("%s %s is below the minimum %d", "%s %s меньше минимума %d", k, shown, min),
-				ruleHint(k, p))
+			return ruleErr(k, p, i18n.Tf("%s %s is below the minimum %d", "%s %s меньше минимума %d", k, shown, min))
 		}
 		if max, ok := p["maximum"].(int); ok && n > float64(max) {
-			return clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("%s %s is above the maximum %d", "%s %s больше максимума %d", k, shown, max),
-				ruleHint(k, p))
+			return ruleErr(k, p, i18n.Tf("%s %s is above the maximum %d", "%s %s больше максимума %d", k, shown, max))
 		}
 	}
 	s, ok := v.(string)
@@ -142,18 +138,36 @@ func ruleArg(k string, p map[string]any, v any) error {
 	switch p["format"] {
 	case "uuid":
 		if !isUUID(s) {
-			return clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("%s %q is not an id: it is a UUID", "%s %q — не id: он задаётся UUID", k, s),
-				ruleHint(k, p))
+			return ruleErr(k, p, i18n.Tf("%s %q is not an id: it is a UUID", "%s %q — не id: он задаётся UUID", k, s))
 		}
 	case "cidr":
 		if _, err := netip.ParsePrefix(s); err != nil {
-			return clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("%s %q is not a CIDR (address/prefix length, e.g. 10.0.0.0/16)", "%s %q — не CIDR (адрес/длина префикса, например 10.0.0.0/16)", k, s),
-				ruleHint(k, p))
+			return ruleErr(k, p, i18n.Tf("%s %q is not a CIDR (address/prefix length, e.g. 10.0.0.0/16)", "%s %q — не CIDR (адрес/длина префикса, например 10.0.0.0/16)", k, s))
 		}
 	}
 	return nil
+}
+
+// ruleError is a USAGE refusal of a schema rule (D36). errAnswer is the
+// only place that turns Arg and Format into answer fields, so the CLI can
+// name its flag or positional without parsing the text (G130-35).
+type ruleError struct {
+	Arg, Format string
+	ce          *clierrors.CLIError
+}
+
+func (e *ruleError) Error() string { return e.ce.Error() }
+func (e *ruleError) Unwrap() error { return e.ce }
+
+func ruleErr(k string, p map[string]any, msg string) error {
+	re := &ruleError{
+		Arg: k,
+		ce:  clierrors.New(clierrors.CodeUsage, msg, ruleHint(k, p)),
+	}
+	if f, ok := p["format"].(string); ok && f != "" {
+		re.Format = f
+	}
+	return re
 }
 
 // argRefused reports whether the static rules of tool's schema refuse v

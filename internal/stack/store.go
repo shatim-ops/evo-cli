@@ -209,6 +209,10 @@ type Job struct {
 	Steps     []*Step           `json:"steps"`
 	Outputs   map[string]string `json:"outputs"` // stepkey -> resource id; plus extras like lb_external_ip
 	Error     string            `json:"error,omitempty"`
+	// Deleting are the steps whose deletion the last stack_destroy saw
+	// accepted but not finished (Postgres, NLB, …): the job is not done
+	// with until a destroy finds them gone.
+	Deleting []string `json:"deleting,omitempty"`
 }
 
 // --- Persistence ---
@@ -219,7 +223,8 @@ type Job struct {
 func jobsDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return "", fmt.Errorf("no home directory (HOME is not set) for the stack jobs (~/.evo/stack-jobs)")
+		return "", errors.New(i18n.T("no home directory (HOME is not set) for the stack jobs (~/.evo/stack-jobs)",
+			"нет домашнего каталога (HOME не задан) для заданий стека (~/.evo/stack-jobs)"))
 	}
 	return filepath.Join(config.DataDir(home), "stack-jobs"), nil
 }
@@ -410,13 +415,13 @@ var jobIDRe = regexp.MustCompile(`^stk-[0-9a-f]{10}$`)
 // uuidRe matches a UUID (vm.image by id goes to provision as image_id).
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// LoadJob reads a job from disk.
 // LockJob takes the job's file lock, across processes: two MCP servers
 // (stdio and HTTP) on one stack-jobs directory would otherwise both see a
 // step pending and create it twice. It waits up to maxWait.
 func LockJob(id string, maxWait time.Duration) (unlock func(), err error) {
 	if !jobIDRe.MatchString(id) {
-		return nil, fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", id)
+		return nil, fmt.Errorf(i18n.T("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)",
+			"неверный job_id %q (нужен stk-<10 шестнадцатеричных цифр>, как его возвращает stack_plan)"), id)
 	}
 	dir, err := jobsDir()
 	if err != nil {
@@ -424,17 +429,20 @@ func LockJob(id string, maxWait time.Duration) (unlock func(), err error) {
 	}
 	unlock, err = state.FileLock(filepath.Join(dir, id+".lock"), maxWait)
 	if errors.Is(err, state.ErrFileLocked) {
-		return nil, fmt.Errorf("job %s is being changed by another evo process (another MCP server?); try again when it finishes", id)
+		return nil, fmt.Errorf(i18n.T("job %s is being changed by another evo process (another MCP server?); try again when it finishes",
+			"задание %s меняет другой процесс evo (другой MCP-сервер?); повторите, когда он закончит"), id)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("lock job %s: %w", id, err)
+		return nil, fmt.Errorf(i18n.T("lock job %s: %w", "блокировка задания %s: %w"), id, err)
 	}
 	return unlock, nil
 }
 
+// LoadJob reads a job from disk.
 func LoadJob(id string) (*Job, error) {
 	if !jobIDRe.MatchString(id) {
-		return nil, fmt.Errorf("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)", id)
+		return nil, fmt.Errorf(i18n.T("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)",
+			"неверный job_id %q (нужен stk-<10 шестнадцатеричных цифр>, как его возвращает stack_plan)"), id)
 	}
 	dir, err := jobsDir()
 	if err != nil {
@@ -451,7 +459,7 @@ func LoadJob(id string) (*Job, error) {
 	}
 	var j Job
 	if err := json.Unmarshal(data, &j); err != nil {
-		return nil, fmt.Errorf("parse job %s: %w", id, err)
+		return nil, fmt.Errorf(i18n.T("parse job %s: %w", "разбор задания %s: %w"), id, err)
 	}
 	return &j, nil
 }
@@ -745,7 +753,8 @@ func (j *Job) CheckDeps() error {
 	for _, st := range j.Steps {
 		for _, d := range st.DependsOn {
 			if byKey[d] == nil {
-				return fmt.Errorf("step %q depends on %q, which this stack does not have (nlb.target must name a step such as \"vm\"; dns without an explicit target needs nlb)", st.Key, d)
+				return fmt.Errorf(i18n.T("step %q depends on %q, which this stack does not have (nlb.target must name a step such as \"vm\"; dns without an explicit target needs nlb)",
+					"шаг %q зависит от %q, которого в этом стеке нет (nlb.target должен называть шаг, например \"vm\"; dns без явной цели требует nlb)"), st.Key, d)
 			}
 		}
 	}
@@ -759,7 +768,7 @@ func (j *Job) CheckDeps() error {
 	visit = func(key string, path []string) error {
 		switch state[key] {
 		case inPath:
-			return fmt.Errorf("dependency cycle: %s", strings.Join(append(path, key), " → "))
+			return fmt.Errorf(i18n.T("dependency cycle: %s", "цикл зависимостей: %s"), strings.Join(append(path, key), " → "))
 		case finished:
 			return nil
 		}

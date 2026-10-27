@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -90,7 +91,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	if pollTimeout <= 0 {
 		pollTimeout = DefaultPollTimeout
 	}
-	start := time.Now()
+	start := clock.Now()
 	if show != nil && show.Wait != nil {
 		defer show.Wait.Done()
 	}
@@ -100,7 +101,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	if lookErr != nil {
 		// Unknown is not "absent": creating now could make a second
 		// billed VM next to one a lost answer already created (QA H5).
-		return nil, fmt.Errorf("cannot check whether VM %q already exists (%w); nothing was created — retry deploy_apply", plan.VM.Name, lookErr)
+		return nil, fmt.Errorf(i18n.T("cannot check whether VM %q already exists (%w); nothing was created — retry deploy_apply", "не удалось проверить, есть ли уже ВМ %q (%w); ничего не создано — повторите deploy_apply"), plan.VM.Name, lookErr)
 	}
 	if existing != nil {
 		if provision.VMFailed(existing.Status) {
@@ -134,7 +135,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			PublicIP:     ip,
 			FloatingIPID: fipID,
 			SSH:          sshString(plan.SSH.Login, ip),
-			ElapsedSec:   int(time.Since(start).Seconds()),
+			ElapsedSec:   int(clock.Since(start).Seconds()),
 			Note:         "VM already existed — adopted (idempotent), nothing recreated; it is " + existing.Status + ": start it in the Cloud.ru console, then call deploy_apply again (or delete it with destroy)",
 		}, nil
 	}
@@ -209,17 +210,17 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		// taken since the check above): then the VM by that name is
 		// another one (release audit, L-01).
 		if provision.CreateRejected(err) {
-			return nil, fmt.Errorf("create VM: %w", err)
+			return nil, fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err)
 		}
 		if found := provision.FindCreatedVM(cloud, plan.ProjectID, plan.VM.Name, createStart); found != nil {
 			return &ApplyResult{
 					VMID: found.ID, Status: "interrupted",
-					ElapsedSec: int(time.Since(start).Seconds()),
+					ElapsedSec: int(clock.Since(start).Seconds()),
 				}, fmt.Errorf("VM %s was created, but the create call failed; it is billed — "+
 					"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
 					"or delete it with destroy: %w", found.ID, err)
 		}
-		return nil, fmt.Errorf("create VM: %w", err)
+		return nil, fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err)
 	}
 
 	show.done(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", plan.VM.Name, vm.ID))
@@ -237,7 +238,7 @@ func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *
 	interrupted := func(ip, fipID string) (*ApplyResult, error) {
 		return &ApplyResult{
 				VMID: vm.ID, Status: "interrupted", PublicIP: ip, FloatingIPID: fipID,
-				ElapsedSec: int(time.Since(start).Seconds()),
+				ElapsedSec: int(clock.Since(start).Seconds()),
 			}, fmt.Errorf("VM %s was created, but deploy_apply was interrupted; it is still running — "+
 				"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
 				"check it with vm_get, or delete it with destroy: %w", vm.ID, ctx.Err())
@@ -267,7 +268,7 @@ poll:
 		case <-deadline:
 			return &ApplyResult{
 				VMID: vm.ID, Status: "timeout", Password: password,
-				ElapsedSec: int(time.Since(start).Seconds()),
+				ElapsedSec: int(clock.Since(start).Seconds()),
 				Note:       fmt.Sprintf("VM did not reach running within %s; check status later with the status tool", pollTimeout),
 			}, nil
 		case <-ticker.C:
@@ -286,7 +287,7 @@ poll:
 			if provision.VMFailed(cur.Status) {
 				return &ApplyResult{
 					VMID: vm.ID, Status: "error", Password: password,
-					ElapsedSec: int(time.Since(start).Seconds()),
+					ElapsedSec: int(clock.Since(start).Seconds()),
 					Note:       "VM entered state " + cur.Status + "; destroy it and retry",
 				}, nil
 			}
@@ -339,7 +340,7 @@ poll:
 		FloatingIPID: fipID,
 		SSH:          sshString(plan.SSH.Login, ip),
 		Password:     password,
-		ElapsedSec:   int(time.Since(start).Seconds()),
+		ElapsedSec:   int(clock.Since(start).Seconds()),
 		Note:         joinNotes(note, fipNote, sshNote, opened.Note()),
 		Ports:        ports,
 	}, nil

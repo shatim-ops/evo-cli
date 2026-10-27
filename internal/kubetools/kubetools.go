@@ -16,6 +16,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // resolve finds a kubectl/helm binary even when PATH is minimal (the MCP server
@@ -64,7 +66,7 @@ func run(ctx context.Context, kubeconfig, stdin string, timeout time.Duration, n
 		err = cerr
 	}
 	if err != nil {
-		return "", fmt.Errorf("write kubeconfig: %w", err)
+		return "", fmt.Errorf(i18n.T("write kubeconfig: %w", "запись kubeconfig: %w"), err)
 	}
 
 	cctx, cancel := context.WithTimeout(ctx, timeout)
@@ -78,7 +80,7 @@ func run(ctx context.Context, kubeconfig, stdin string, timeout time.Duration, n
 	if cctx.Err() == context.DeadlineExceeded {
 		// Wrapped: the tool answer reads it as the cluster not answering
 		// in time (API_UNREACHABLE), not as a refused call.
-		return string(out), fmt.Errorf("%s timed out after %s: %w", name, timeout, context.DeadlineExceeded)
+		return string(out), fmt.Errorf(i18n.T("%s timed out after %s: %w", "%s: тайм-аут после %s: %w"), name, timeout, context.DeadlineExceeded)
 	}
 	return string(out), err
 }

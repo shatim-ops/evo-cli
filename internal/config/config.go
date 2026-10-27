@@ -253,7 +253,7 @@ func resolve(opts Options) (Config, map[string]string, error) {
 			if stderrors.As(err, &ce) {
 				return Config{}, nil, err
 			}
-			return Config{}, nil, fmt.Errorf("flag %s: %w", key, err)
+			return Config{}, nil, fmt.Errorf(i18n.T("flag %s: %w", "флаг %s: %w"), key, err)
 		}
 		origins[key] = OriginFlag
 	}

@@ -71,7 +71,7 @@ func privateSDDL(dir bool) (string, error) {
 func currentUserSID() (string, error) {
 	tu, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
-		return "", fmt.Errorf("current user: %w", err)
+		return "", fmt.Errorf(i18n.T("current user: %w", "текущий пользователь: %w"), err)
 	}
 	return tu.User.Sid.String(), nil
 }
@@ -105,7 +105,7 @@ func privateAttributes(dir bool) (*windows.SecurityAttributes, error) {
 	}
 	sd, err := windows.SecurityDescriptorFromString(sddl)
 	if err != nil {
-		return nil, fmt.Errorf("security descriptor: %w", err)
+		return nil, fmt.Errorf(i18n.T("security descriptor: %w", "дескриптор безопасности: %w"), err)
 	}
 	sa := &windows.SecurityAttributes{SecurityDescriptor: sd}
 	sa.Length = uint32(unsafe.Sizeof(*sa))

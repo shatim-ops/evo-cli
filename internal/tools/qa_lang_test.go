@@ -76,9 +76,7 @@ func englishPhrase(s string) string {
 // service clients — part 2 of englishWraps). The list only shrinks: a
 // tool not here fails the test, and so does a line whose tool answers
 // in Russian.
-var apiErrorEnglishLeft = map[string]bool{
-	"deploy_plan": true,
-}
+var apiErrorEnglishLeft = map[string]bool{}
 
 // cloudSegment marks where an API_ERROR leaves evo's words for the
 // cloud's: the service and status the client names («dns API 500»,

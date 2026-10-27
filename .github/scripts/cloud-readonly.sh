@@ -238,6 +238,33 @@ st=$(resp 4 | j -r '.result.content[0].text | fromjson? | select(.existed == fal
 if [ "$st" = already_deleted ]; then ok "stdio: release_floating_ip <нет такого>" "already_deleted, existed false"; else bad "stdio: release_floating_ip <нет такого>" "status $st"; fi
 
 echo "== MCP по HTTP"
+# D45 (1.3.1): токен короче 32 символов на адресе, который видит сеть, —
+# сервер не стартует (CONFIG_INVALID, код 2) и порт не слушается; на
+# loopback — старт с предупреждением. short — не секрет: тестовая строка.
+short='short-ci-token'
+set +e
+MCP_BEARER_TOKEN=$short timeout 10 evo mcp --http 0.0.0.0:18082 --allow-project "$PROJECT" >/dev/null 2>"$tmp/http-short.log"
+rc=$?
+set -e
+if [ "$rc" = 2 ] && ! curl -fs -o /dev/null --max-time 2 http://127.0.0.1:18082/healthz; then
+	ok "http: короткий токен на 0.0.0.0" "не стартует, код 2"
+else
+	bad "http: короткий токен на 0.0.0.0" "код $rc (ждём 2; 124 — сервер слушал до тайм-аута)"
+fi
+MCP_BEARER_TOKEN=$short evo mcp --http 127.0.0.1:18083 --allow-project "$PROJECT" 2>"$tmp/http-loop.log" &
+loop_pid=$!
+for _ in $(seq 1 20); do
+	curl -fs -o /dev/null http://127.0.0.1:18083/healthz && break
+	sleep 0.5
+done
+if curl -fs -o /dev/null http://127.0.0.1:18083/healthz && grep -q 'shorter than 32\|короче 32' "$tmp/http-loop.log"; then
+	ok "http: короткий токен на loopback" "старт с предупреждением"
+else
+	bad "http: короткий токен на loopback" "сервер не поднялся или нет предупреждения"
+fi
+kill "$loop_pid" 2>/dev/null || true
+wait "$loop_pid" 2>/dev/null || true
+
 token=$(openssl rand -hex 32)
 MCP_BEARER_TOKEN=$token evo mcp --http 127.0.0.1:18080 --allow-project "$PROJECT" 2>"$tmp/http-a.log" &
 MCP_BEARER_TOKEN=$token evo mcp --http 127.0.0.1:18081 --allow-project 00000000-0000-4000-8000-000000000000 2>"$tmp/http-b.log" &

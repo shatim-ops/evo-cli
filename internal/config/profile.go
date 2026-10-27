@@ -149,7 +149,7 @@ func MigrateLegacyDir() (string, error) {
 	tmp := filepath.Join(base, "."+appDir+".migrate-"+strconv.Itoa(os.Getpid()))
 	_ = os.RemoveAll(tmp)
 	if err := MkdirPrivate(tmp); err != nil {
-		return "", fmt.Errorf("create %s: %w", tmp, err)
+		return "", fmt.Errorf(i18n.T("create %s: %w", "создание %s: %w"), tmp, err)
 	}
 	defer os.RemoveAll(tmp) // no-op after the rename
 	copied := 0
@@ -160,14 +160,14 @@ func MigrateLegacyDir() (string, error) {
 			continue
 		}
 		if err != nil {
-			return "", fmt.Errorf("read %s: %w", src, err)
+			return "", fmt.Errorf(i18n.T("read %s: %w", "чтение %s: %w"), src, err)
 		}
 		if !st.Mode().IsRegular() {
 			return "", fmt.Errorf("%s is not a regular file", src)
 		}
 		data, err := os.ReadFile(src)
 		if err != nil {
-			return "", fmt.Errorf("read %s: %w", src, err)
+			return "", fmt.Errorf(i18n.T("read %s: %w", "чтение %s: %w"), src, err)
 		}
 		if err := WriteFilePrivate(filepath.Join(tmp, name), data); err != nil {
 			return "", err
@@ -178,7 +178,7 @@ func MigrateLegacyDir() (string, error) {
 		if exists(dir) { // another process got there first
 			return "", nil
 		}
-		return "", fmt.Errorf("create %s: %w", dir, err)
+		return "", fmt.Errorf(i18n.T("create %s: %w", "создание %s: %w"), dir, err)
 	}
 	if copied == 0 {
 		return "", nil
@@ -368,7 +368,7 @@ func lockProfiles() (unlock func(), err error) {
 		return nil, NoConfigDir()
 	}
 	if err := MkdirPrivate(dir); err != nil {
-		return nil, fmt.Errorf("create %s: %w", dir, err)
+		return nil, fmt.Errorf(i18n.T("create %s: %w", "создание %s: %w"), dir, err)
 	}
 	// An OS file lock, not a file that exists while held: it goes away
 	// with the process, so there is no stale lock to guess about. Taking
@@ -377,7 +377,7 @@ func lockProfiles() (unlock func(), err error) {
 	path := filepath.Join(dir, lockName)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("lock %s: %w", path, err)
+		return nil, fmt.Errorf(i18n.T("lock %s: %w", "блокировка %s: %w"), path, err)
 	}
 	deadline := time.Now().Add(lockWait)
 	for {
@@ -390,7 +390,7 @@ func lockProfiles() (unlock func(), err error) {
 		}
 		if !errors.Is(err, ErrLocked) {
 			_ = f.Close()
-			return nil, fmt.Errorf("lock %s: %w", path, err)
+			return nil, fmt.Errorf(i18n.T("lock %s: %w", "блокировка %s: %w"), path, err)
 		}
 		if time.Now().After(deadline) {
 			_ = f.Close()
@@ -475,7 +475,7 @@ func DeleteProfile(name string) error {
 	if path := TokenCachePath(name); path == "" {
 		return nil
 	} else if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove token cache: %w", err)
+		return fmt.Errorf(i18n.T("remove token cache: %w", "удаление кэша токена: %w"), err)
 	}
 	return nil
 }
@@ -575,7 +575,7 @@ func WriteFilePrivate(path string, data []byte) error {
 func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := MkdirPrivate(dir); err != nil {
-		return fmt.Errorf("create %s: %w", dir, err)
+		return fmt.Errorf(i18n.T("create %s: %w", "создание %s: %w"), dir, err)
 	}
 	createTemp := os.CreateTemp
 	if !LooseMode(perm) {
@@ -583,23 +583,23 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	}
 	tmp, err := createTemp(dir, "."+filepath.Base(path)+".*")
 	if err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
+		return fmt.Errorf(i18n.T("write %s: %w", "запись %s: %w"), path, err)
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op after a successful rename
 	if err := tmp.Chmod(perm); err != nil && PermissionsEnforced() {
 		tmp.Close()
-		return fmt.Errorf("chmod %s: %w", tmpName, err)
+		return fmt.Errorf(i18n.T("chmod %s: %w", "смена прав %s: %w"), tmpName, err)
 	}
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
-		return fmt.Errorf("write %s: %w", path, err)
+		return fmt.Errorf(i18n.T("write %s: %w", "запись %s: %w"), path, err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
+		return fmt.Errorf(i18n.T("write %s: %w", "запись %s: %w"), path, err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
+		return fmt.Errorf(i18n.T("write %s: %w", "запись %s: %w"), path, err)
 	}
 	return nil
 }

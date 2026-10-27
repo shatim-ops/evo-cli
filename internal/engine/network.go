@@ -7,6 +7,7 @@ package engine
 import (
 	"context"
 	crand "crypto/rand"
+	stderrors "errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -142,10 +143,27 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneRef string) 
 // FIP is billed, so deploy and the MCP provision refuse before creating
 // anything.
 func NoSubnetError(zoneName, zoneID string) error {
-	return clerrors.New(clerrors.CodeConfigInvalid,
+	// Name what to pass first (subnet_id / region); the console only when
+	// the project has no subnet in any zone (G130-27). The tool answer that
+	// surfaces this error may add "missing": ["subnet_id"] so the CLI words
+	// the hint with --subnet-id.
+	return &noSubnetError{ce: clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(zoneName, zoneID)),
-		i18n.T("Create a network and a subnet in this zone in the Cloud.ru console, or pick another zone with 'evo init'.",
-			"Создайте сеть и подсеть в этой зоне в консоли Cloud.ru или выберите другую зону ('evo init')."))
+		i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); if the project has no subnet in any zone, create one in the Cloud.ru console.",
+			"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))}
+}
+
+// noSubnetError is NoSubnetError's type so a tool answer can tell it apart
+// and add "missing" without copying CLIError.Details.
+type noSubnetError struct{ ce *clerrors.CLIError }
+
+func (e *noSubnetError) Error() string { return e.ce.Error() }
+func (e *noSubnetError) Unwrap() error { return e.ce }
+
+// IsNoSubnet reports whether err is NoSubnetError (or wraps one).
+func IsNoSubnet(err error) bool {
+	var e *noSubnetError
+	return stderrors.As(err, &e)
 }
 
 // SubnetNotInProjectError: subnet_id names a subnet the project's list does

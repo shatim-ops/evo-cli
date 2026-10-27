@@ -135,6 +135,23 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 	return zones[0].ID, zones[0].Name, nil
 }
 
+// subnetMissingError is "no subnet of the project in this zone". The plan
+// answers it with missing=subnet_id so the CLI words the hint with
+// --subnet-id (G130-27); CLIError.Details are not used.
+type subnetMissingError struct{ error }
+
+func (e *subnetMissingError) Unwrap() error { return e.error }
+
+// dbaasSubnetErr is the plan answer of a failed dbaasSubnet: a missing
+// subnet names missing=subnet_id; any other error refuses the plan as is.
+func dbaasSubnetErr(err error) (*Plan, error) {
+	var sm *subnetMissingError
+	if errors.As(err, &sm) {
+		return answered(errAnswer(err, map[string]any{"missing": []string{"subnet_id"}}), true), nil
+	}
+	return nil, err
+}
+
 // dbaasSubnet picks the subnet of a new Kafka/Redis cluster first and takes
 // the zone from it: the create request carries only the subnet, so the
 // cluster lives in the subnet's zone, and its specification must be one of
@@ -193,8 +210,10 @@ func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, 
 		if i := provision.PickSubnet(subs, zid, shown); i >= 0 && provision.SubnetInZone(subs[i], zid, shown) {
 			return subs[i].ID, zid, shown, nil
 		}
-		return "", "", "", clierrors.New(clierrors.CodeUsage, i18n.Tf("no subnet of the project in zone %s", "в зоне %s нет подсети проекта", shown),
-			i18n.T("Pass subnet_id, or create a subnet in this zone in the Cloud.ru console.", "Передайте subnet_id или создайте подсеть в этой зоне в консоли Cloud.ru."))
+		return "", "", "", &subnetMissingError{clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("no subnet of the project in zone %s", "в зоне %s нет подсети проекта", shown),
+			i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); if the project has no subnet in any zone, create one in the Cloud.ru console.",
+				"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))}
 	default:
 		for _, z := range engine.PreferredZoneFirst(provision.OpenZones(zones)) {
 			if i := provision.PickSubnet(subs, z.ID, z.Name); i >= 0 && provision.SubnetInZone(subs[i], z.ID, z.Name) {
@@ -338,7 +357,7 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 	// are listed for it.
 	subnetID, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
 	if err != nil {
-		return nil, err
+		return dbaasSubnetErr(err)
 	}
 	specs, err := cli.ListSpecifications(ctx, versionID, zoneID)
 	if err != nil {
