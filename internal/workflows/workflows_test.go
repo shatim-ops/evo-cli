@@ -382,6 +382,22 @@ func TestWorkflows_CIChecksImageQuotaSkip(t *testing.T) {
 	}
 }
 
+// Every offline test of a CI script (.github/scripts/*_test.sh) runs in
+// ci: a test that no job runs guards nothing (dbaas_delete_test.sh, 1.3.1:
+// the repeated delete of a DBaaS cluster in ERASED, D44).
+func TestWorkflows_ScriptTestsRun(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("..", "..", ".github", "scripts", "*_test.sh"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no script tests found: %v", err)
+	}
+	ci := readWorkflows(t)["ci.yml"]
+	for _, f := range files {
+		if name := ".github/scripts/" + filepath.Base(f); !runsStep(ci, name) {
+			t.Errorf("ci: %s is not run", name)
+		}
+	}
+}
+
 // Every week main's tests run three times in a random order under -race on
 // the three OSes, and a red run opens an issue (process audit 1.2.1, PR 10):
 // a race or an order dependency that shows once in a few runs is caught
