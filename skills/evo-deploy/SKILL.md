@@ -3,7 +3,7 @@ name: evo-deploy
 description: Deploy a docker-compose project to a Cloud.ru Evolution VM with evo, update it, check its status and logs, and tear it down. Use for "deploy this app", "put this compose project on a server", "redeploy", "show the logs", "remove the stand". Not for a bare VM without an app (use evo-vm) and not for Kubernetes.
 license: Apache-2.0
 metadata:
-  evo-version: "1.3"
+  evo-version: "1.4"
   evo-mode: human-in-the-loop
 ---
 
