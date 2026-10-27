@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -205,7 +206,7 @@ func probe(ctx context.Context, name, rawURL string, verbose bool) DoctorCheck {
 	if err != nil {
 		return DoctorCheck{Name: name, Status: CheckFail, Detail: err.Error()}
 	}
-	start := time.Now()
+	start := clock.Now()
 	resp, err := probeClient.Do(req)
 	if err != nil {
 		detail := i18n.Tf("%s unreachable: %v", "%s недоступен: %v", u.Host, err)
@@ -216,7 +217,7 @@ func probe(ctx context.Context, name, rawURL string, verbose bool) DoctorCheck {
 		return DoctorCheck{Name: name, Status: CheckFail, Detail: detail}
 	}
 	resp.Body.Close()
-	took := latencyText(time.Since(start))
+	took := latencyText(clock.Since(start))
 	detail := i18n.Tf("%s reachable (%s)", "%s доступен (%s)", u.Host, took)
 	if verbose {
 		detail = i18n.Tf("%s reachable (HTTP %d, %s)", "%s доступен (HTTP %d, %s)", u.Host, resp.StatusCode, took)

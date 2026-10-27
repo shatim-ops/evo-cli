@@ -878,13 +878,13 @@ const fipProgressEvery = 6
 // the FIP exists, even when the wait for it fails, so the caller can record
 // it for destroy. progress (may be nil) receives human-readable status.
 func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, progress func(string), vmID, projectID, azID string) (string, string, error) {
-	start := time.Now()
+	start := clock.Now()
 	report := func(format string, args ...any) {
 		if progress != nil {
 			progress(fmt.Sprintf(format, args...))
 		}
 	}
-	elapsed := func() time.Duration { return time.Since(start).Round(time.Second) }
+	elapsed := func() time.Duration { return clock.Since(start).Round(time.Second) }
 
 	// Poll until the primary interface reaches "created" state.
 	// Cloud.ru returns 422 "interface_can_not_be_changed_from_current_state"
@@ -1309,7 +1309,8 @@ func needsFloatingIP(rec *state.DeploymentRecord) bool {
 func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, maxRetries int) error {
 	var lastErr error
 	t := e.timings()
-	start, lastReport := time.Now(), time.Now()
+	// start times the waits; shown, the duration the reports print.
+	start, lastReport, shown := time.Now(), time.Now(), clock.Now()
 	noted := false
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		err := e.Deployer.Connect(ctx, ip, 22, user, e.SSHKeyPEM, knownHostKey)
@@ -1321,7 +1322,7 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 		// wait for an active VM does, so it does not look hung (QA r4 Q13).
 		if time.Since(lastReport) >= time.Minute {
 			e.Printer.StepDone(i18n.Tf("waiting for SSH on %s (%s elapsed: %s)", "ожидание SSH на %s (прошло %s: %s)",
-				ip, time.Since(start).Round(time.Second), errLine(err)))
+				ip, clock.Since(shown).Round(time.Second), errLine(err)))
 			lastReport = time.Now()
 		}
 		// Past the usual few minutes, say once why deploy still waits and
@@ -1421,8 +1422,8 @@ func installNotes(out string) []string {
 // Timings.DockerWaitTimeout: first-boot cloud-init may still hold the apt lock.
 func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) error {
 	t := e.timings()
-	start := time.Now()
-	deadline := start.Add(t.DockerWaitTimeout)
+	deadline := time.Now().Add(t.DockerWaitTimeout)
+	start := clock.Now()
 	installCmd := bootstrap.InstallCommand(user)
 
 	e.Printer.StepDone(i18n.T("Preparing Docker on the VM (a fresh VM takes a few minutes)...",
@@ -1479,7 +1480,7 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		}
 		msg := i18n.Tf("Docker not ready yet (attempt %d, %s elapsed: %s), retrying...",
 			"Docker ещё не готов (попытка %d, прошло %s: %s), повтор...",
-			attempt, time.Since(start).Round(time.Second), errLine(err))
+			attempt, clock.Since(start).Round(time.Second), errLine(err))
 		if l := lastLines(lastOut, 1); l != "" {
 			msg += i18n.Tf(" Last line of the install: %s", " Последняя строка установки: %s", clipLine(l))
 		}

@@ -4,7 +4,8 @@
 
 // Package clock is the clock of the values evo derives from the time of a
 // call and puts into an answer: the default name of a VM or a plan, the
-// name of a boot floating IP. Two calls that should answer alike (a
+// name of a boot floating IP, a duration an answer or a progress line
+// prints. Two calls that should answer alike (a
 // command and its tool, a server with --read-only and one without) differ
 // there by the time alone, and the parity tests compare them with these
 // values masked. A clock that tests move makes a value that slips past the
@@ -17,3 +18,7 @@ import "time"
 
 // Now is the time of a call for the values above.
 var Now = time.Now
+
+// Since is the time elapsed since t, a reading of Now: the duration an
+// answer or a progress line prints.
+func Since(t time.Time) time.Duration { return Now().Sub(t) }

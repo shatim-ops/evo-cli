@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -114,6 +116,13 @@ func TestVMCreate_MCPProgressIsTheStderrStages(t *testing.T) {
 	russian(t)
 	setupCLI(t)
 	withVMCreateCloud(t)
+	// The durations the stages print are read on clock: a stopped clock
+	// prints the same in both runs, whatever second the wall clock turns
+	// between them (Windows, «0с» and «1с»).
+	stopped := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	old := clock.Now
+	clock.Now = func() time.Time { return stopped }
+	t.Cleanup(func() { clock.Now = old })
 	code, out, errOut := runCLI(t, "", append([]string{"--yes"}, vmCreateArgs...)...)
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s\n%s", code, out, errOut)

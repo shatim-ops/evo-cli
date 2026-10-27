@@ -14,21 +14,18 @@ import (
 	"testing"
 )
 
-// The reasons a measure of the wall clock in production code gives.
+// The reasons a measure of the wall clock in production code gives. A
+// duration evo puts into its output — an answer, a progress line, a line
+// of stderr — is none of them: it goes through clock.Since, so that two
+// runs of one operation answer alike. Measured with time.Since, the CLI
+// and MCP runs of one vm create printed «готова: … 0с» and «… 1с» (#380,
+// Windows: the duration is rounded to the second).
 const (
 	// A wait, a deadline, an interval between reports, a TTL: the wall
 	// clock is the point of it.
 	wallWait = "wait or deadline"
 	// A line of the server's log, not an answer.
 	wallLog = "log"
-	// A duration evo puts into its output — an answer, a progress line, a
-	// line of stderr: a value of the time of the call, which goes through
-	// internal/clock (CLAUDE.md §5), so that two runs of one operation
-	// answer alike. Measured with time.Since, the CLI and MCP runs of one
-	// vm create printed «готова: … 0с» and «… 1с» (#380, Windows: the
-	// duration is rounded to the second). The fix is «разработка»'s
-	// (clock.Since); the list only shrinks.
-	wallInOutput = "duration in the output: through internal/clock"
 )
 
 // wallClockReads are the functions of production code that measure the
@@ -41,21 +38,12 @@ var wallClockReads = map[string]struct {
 	n   int
 	why string
 }{
-	"internal/deployplan/apply.go\tApplyWithTimeout": {2, wallInOutput}, // elapsed_sec of the answer
-	"internal/deployplan/apply.go\tfinishApply":      {4, wallInOutput}, // elapsed_sec of the answer
-	"internal/engine/deploy.go\tassignFloatingIP":    {1, wallInOutput}, // progress lines
 	// The interval between reports and the slow-SSH note are waits; the
-	// report itself prints the duration.
-	"internal/engine/deploy.go\tEngine.waitForSSH":       {3, wallInOutput},
-	"internal/engine/deploy.go\tEngine.prepareDocker":    {1, wallInOutput}, // retry line
-	"internal/engine/destroy.go\tEngine.waitAndDeleteVM": {2, wallInOutput}, // interval, and its report
-	"internal/engine/waitline.go\tWaitLine.Elapsed":      {1, wallInOutput}, // «ВМ … активна (Nс)»
-	"internal/mcp/http.go\tHTTPHandler.dispatch":         {1, wallLog},      // duration_ms of the log
-	"internal/mcp/http.go\tHTTPHandler.touchSession":     {1, wallWait},     // TTL of the session
-	"internal/tools/tools.go\tRegistry.provisionVM":      {1, wallInOutput}, // «ВМ … готова: …, Nс» (#380)
-	"internal/tools/tools_auth.go\tprobe":                {1, wallInOutput}, // latency of doctor
-	"internal/verify/verify.go\tprobe":                   {2, wallInOutput}, // latency_ms of the answer
-	"internal/verify/verify.go\tget":                     {1, wallInOutput}, // latency_ms of the answer
+	// report itself prints its duration through internal/clock.
+	"internal/engine/deploy.go\tEngine.waitForSSH":       {2, wallWait},
+	"internal/engine/destroy.go\tEngine.waitAndDeleteVM": {1, wallWait}, // interval between reports
+	"internal/mcp/http.go\tHTTPHandler.dispatch":         {1, wallLog},  // duration_ms of the log
+	"internal/mcp/http.go\tHTTPHandler.touchSession":     {1, wallWait}, // TTL of the session
 }
 
 // A value of the time that goes into an answer goes through internal/clock
