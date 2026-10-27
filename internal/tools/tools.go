@@ -1781,7 +1781,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	if watched {
 		eng.Printer = pp
 	}
-	started := time.Now()
+	started := clock.Now()
 	pp.Step(0, 0, i18n.Tf("Creating VM %s…", "Создаю ВМ %s…", vmName))
 
 	// Auth
@@ -2216,7 +2216,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					}
 					res["warning"] = note
 				}
-				pp.Success(vmReadyText(vmName, firstNonEmptyStr(zoneName, region), publicIP, sshCmd, time.Since(started)))
+				pp.Success(vmReadyText(vmName, firstNonEmptyStr(zoneName, region), publicIP, sshCmd, clock.Since(started)))
 				return toJSON(res), false
 			}
 			wait.State(updated.Status)

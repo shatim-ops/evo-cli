@@ -7,6 +7,7 @@ package engine
 import (
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
@@ -36,7 +37,7 @@ func NewWaitLine(p *output.Printer, every time.Duration, text func(elapsed, stat
 	if p.Live() {
 		every = vmLiveRefresh
 	}
-	return &WaitLine{p: p, text: text, start: time.Now(), tick: time.NewTicker(every)}
+	return &WaitLine{p: p, text: text, start: clock.Now(), tick: time.NewTicker(every)}
 }
 
 // VMWaitLine is the wait of a new VM for becoming active, in the words of
@@ -69,7 +70,7 @@ func (w *WaitLine) State(s string) {
 }
 
 // Elapsed is the time since the wait started.
-func (w *WaitLine) Elapsed() time.Duration { return time.Since(w.start) }
+func (w *WaitLine) Elapsed() time.Duration { return clock.Since(w.start) }
 
 // Done stops the line and erases it from the terminal. It may be called
 // more than once.

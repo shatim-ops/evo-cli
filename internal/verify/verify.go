@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/clock"
 )
 
 // ProbeResult holds the outcome of a single health check. Its JSON is the
@@ -61,12 +63,12 @@ func Check(ctx context.Context, ip string, ports []int, timeout time.Duration) [
 
 func probe(ctx context.Context, ip string, port int, timeout time.Duration) ProbeResult {
 	// Is anything listening? A closed port is unhealthy whatever it serves.
-	start := time.Now()
+	start := clock.Now()
 	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
 	if err != nil {
-		return ProbeResult{Port: port, Latency: time.Since(start), Error: err.Error()}
+		return ProbeResult{Port: port, Latency: clock.Since(start), Error: err.Error()}
 	}
-	tcpLatency := time.Since(start)
+	tcpLatency := clock.Since(start)
 	_ = conn.Close()
 
 	result, err := httpProbe(ctx, ip, port, timeout)
@@ -129,9 +131,9 @@ func get(ctx context.Context, scheme, ip string, port int, timeout time.Duration
 		return result, err
 	}
 
-	start := time.Now()
+	start := clock.Now()
 	resp, err := client.Do(req)
-	result.Latency = time.Since(start)
+	result.Latency = clock.Since(start)
 
 	if err != nil {
 		result.Error = err.Error()
