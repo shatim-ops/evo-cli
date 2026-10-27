@@ -67,6 +67,7 @@ var notGates = map[string]string{
 	"internal/cli/tools.go: buildToolArgs":                 "refuses --arg confirmed: the CLI confirms with --yes or the prompt",
 	"internal/cli/tools.go: takesConfirmed":                "the schema of the tool: does it take confirmed",
 	"internal/tools/descriptions_ru.go: argDescriptionsRU": "the Russian description of the argument",
+	"internal/tools/journal.go: journaled":                 "records consent in the session journal (D46); decides nothing",
 	"internal/tools/registry.go: takesConsent":             "the schema of the tool: tools.NeedsConsent",
 }
 

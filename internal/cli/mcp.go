@@ -19,6 +19,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/journal"
 	clog "github.com/shatim-ops/evo-cli/internal/log"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -223,6 +224,7 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, re
 					"--auth и --allow-secret-export действуют только для транспорта HTTP"),
 				i18n.T("Add --http ADDR, e.g. --http 127.0.0.1:8080", "Добавьте --http ADDR, например --http 127.0.0.1:8080"))
 		}
+		journal.Begin(journal.SurfaceMCPStdio, currentVersion().Version)
 		return runMCPStdio(cmd.Context(), srv)
 	}
 
@@ -238,6 +240,7 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, re
 		logger.Warn("no --allow-project: a client can pass project_id to deploy/provision and work in any project the key sees; " +
 			"limit it with --allow-project <UUID> or use a project-level key")
 	}
+	journal.Begin(journal.SurfaceMCPHTTP, currentVersion().Version)
 	return srv.ListenAndServe(cmd.Context(), httpAddr, mcp.HTTPOptions{
 		BearerToken:       token,
 		AllowSecretExport: allowSecretExport,

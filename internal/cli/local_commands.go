@@ -37,6 +37,11 @@ var localCommands = []localCommand{
 	{"evo agent", "группа: agent setup и agent skill — локальные"},
 	{"evo agent setup", "пишет настройки MCP-клиента (и правила для агента) в файлы на машине пользователя: у сервера MCP такого действия по природе нет"},
 	{"evo agent skill", "печатает правила работы с evo для агента (docs/agent-skill.md), собранные из реестра; к облаку не обращается"},
+	{"evo diag", "журнал сессии evo (D46) — файл на машине, где стоит evo; клиенту MCP-сервера до него дела нет"},
+	{"evo diag on", "включает журнал сессии в config.yaml"},
+	{"evo diag off", "выключает журнал сессии в config.yaml"},
+	{"evo diag status", "читает файл журнала сессии"},
+	{"evo diag export", "копирует файл журнала сессии для передачи"},
 	{"evo crew", "титры"},
 	{"evo help", "справка cobra"},
 }

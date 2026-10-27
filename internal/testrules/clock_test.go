@@ -52,6 +52,7 @@ var wallClockReads = map[string]struct {
 	"internal/engine/waitline.go\tWaitLine.Elapsed":      {1, wallInOutput}, // «ВМ … активна (Nс)»
 	"internal/mcp/http.go\tHTTPHandler.dispatch":         {1, wallLog},      // duration_ms of the log
 	"internal/mcp/http.go\tHTTPHandler.touchSession":     {1, wallWait},     // TTL of the session
+	"internal/tools/journal.go\tjournaled":               {1, wallLog},      // ms of the session journal (D46)
 	"internal/tools/tools.go\tRegistry.provisionVM":      {1, wallInOutput}, // «ВМ … готова: …, Nс» (#380)
 	"internal/tools/tools_auth.go\tprobe":                {1, wallInOutput}, // latency of doctor
 	"internal/verify/verify.go\tprobe":                   {2, wallInOutput}, // latency_ms of the answer

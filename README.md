@@ -294,6 +294,7 @@ evo disk delete 1b2c… </dev/null; echo $?   # 3: без терминала и 
 | [docs/tools.md](docs/tools.md) | каталог всех инструментов MCP и `evo tools`: группа, команда CLI, меняет ли, обязательные аргументы, описание по-английски и по-русски |
 | [docs/exit-codes.md](docs/exit-codes.md) | коды выхода и формат ошибок `--json` |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | типовые ошибки и что приложить к обращению |
+| [docs/journal.md](docs/journal.md) | журнал сессии для догфуда: `evo diag on/status/export`, что записывается и чего нет |
 | [docs/RELEASING.md](docs/RELEASING.md) | для сопровождающих: выпуск релиза |
 
 ## Поддержка
