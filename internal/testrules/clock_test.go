@@ -49,7 +49,8 @@ var wallClockReads = map[string]struct {
 	"internal/auth/token.go\tToken.IsValid":              {1, wallWait}, // the token's TTL against a minimum
 	// token_ttl_seconds of whoami and the TTL of doctor's line: two calls
 	// of whoami answer 3600 and 3599 (TestJournal_AnswerSameOnOffAndBroken,
-	// Windows, #408).
+	// Windows, #408). The line goes with the mask of the TTL in
+	// journalVolatileRE (internal/tools), which then compares it again.
 	"internal/auth/token.go\tToken.TTL":                         {1, wallInAnswer},
 	"internal/deployplan/apply.go\twaitForSSHPort":              {2, wallWait},
 	"internal/tools/opwait.go\twaitForOpJSON":                   {1, wallWait},
