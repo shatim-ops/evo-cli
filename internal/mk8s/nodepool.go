@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // --- Node pool types (v3) ---
@@ -70,7 +72,7 @@ func (c *Client) CreateNodePool(ctx context.Context, req CreateNodePoolReq) (*Op
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }
@@ -94,7 +96,7 @@ func (c *Client) ListNodePools(ctx context.Context, clusterID string) ([]map[str
 			NextPageToken string           `json:"nextPageToken"`
 		}
 		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf("parse node pools: %w", err)
+			return "", fmt.Errorf(i18n.T("parse node pools: %w", "разбор групп узлов: %w"), err)
 		}
 		out = append(out, r.NodePools...)
 		return r.NextPageToken, nil

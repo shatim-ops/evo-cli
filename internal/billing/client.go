@@ -92,7 +92,7 @@ func (c *Client) get(ctx context.Context, u string) ([]byte, int, error) {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("billing request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("billing request failed: %w", "запрос к billing не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -170,7 +170,7 @@ func (c *Client) Balance(ctx context.Context) (map[string]any, error) {
 	}
 	var out map[string]any
 	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("parse balance: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse balance: %w", "разбор баланса: %w"), err)
 	}
 	return out, nil
 }
@@ -217,7 +217,7 @@ func (c *Client) Consumption(ctx context.Context, startISO, endISO string) ([]ma
 			NextPageToken string           `json:"next_page_token"`
 		}
 		if err := json.Unmarshal(data, &out); err != nil {
-			return "", fmt.Errorf("parse consumption: %w", err)
+			return "", fmt.Errorf(i18n.T("parse consumption: %w", "разбор потребления: %w"), err)
 		}
 		all = append(all, out.Consumptions...)
 		return out.NextPageToken, nil

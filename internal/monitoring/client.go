@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 const defaultBaseURL = "https://monitoring.api.cloud.ru"
@@ -63,7 +64,7 @@ func (c *Client) do(ctx context.Context, path string, q url.Values) ([]byte, int
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("monitoring request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("monitoring request failed: %w", "запрос к monitoring не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)

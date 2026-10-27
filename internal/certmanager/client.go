@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -74,7 +75,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("certmanager request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("certmanager request failed: %w", "запрос к certmanager не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -108,7 +109,7 @@ func (c *Client) decode(data []byte, status int, out any) error {
 		return nil
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("parse certmanager response: %w", err)
+		return fmt.Errorf(i18n.T("parse certmanager response: %w", "разбор ответа certmanager: %w"), err)
 	}
 	return nil
 }
