@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/journal"
 )
 
 // evo diag on turns the journal on in config.yaml; a command of the CLI is
@@ -52,6 +54,10 @@ func TestDiag_OnRecordStatusExport(t *testing.T) {
 	if strings.Contains(string(data), secretish) || !strings.Contains(string(data), `"surface":"cli"`) ||
 		!strings.Contains(string(data), `"tool":"secret_create"`) || !strings.Contains(string(data), `"preview":true`) {
 		t.Fatalf("journal:\n%s", data)
+	}
+	var rec journal.Record
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(data))), &rec); err != nil || strings.Join(rec.Args, ",") != "path,value" {
+		t.Errorf("record: %+v (%v), want the names path and value", rec, err)
 	}
 	out := filepath.Join(t.TempDir(), "j.jsonl")
 	if code, _, errOut := runCLI(t, "", "diag", "export", "--out", out); code != 0 {

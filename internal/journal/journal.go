@@ -225,12 +225,23 @@ type Summary struct {
 	Full bool `json:"full"`
 }
 
-// Describe reads the journal file. No file is an empty journal.
+// Describe reads the journal file, under its lock: a record being written
+// is not half read. No file is an empty journal.
 func Describe() (Summary, error) {
-	s := Summary{Enabled: config.JournalEnabled(), Path: Path(), Limit: Limit}
-	if s.Path == "" {
-		return s, config.NoConfigDir()
+	if Path() == "" {
+		return Summary{Path: "", Limit: Limit}, config.NoConfigDir()
 	}
+	unlock, err := lock(filepath.Dir(Path()))
+	if err != nil {
+		return Summary{Path: Path(), Limit: Limit}, err
+	}
+	defer unlock()
+	return describe()
+}
+
+// describe is Describe under the lock the caller holds.
+func describe() (Summary, error) {
+	s := Summary{Enabled: config.JournalEnabled(), Path: Path(), Limit: Limit}
 	f, err := os.Open(s.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
@@ -276,7 +287,7 @@ func Export(dst string) (Summary, error) {
 		return Summary{}, err
 	}
 	defer unlock()
-	s, err := Describe()
+	s, err := describe()
 	if err != nil {
 		return s, err
 	}
