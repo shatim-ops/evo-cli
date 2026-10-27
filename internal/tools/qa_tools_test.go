@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -25,7 +26,7 @@ import (
 type staticToken struct{}
 
 func (staticToken) Token(context.Context) (auth.Token, error) {
-	return auth.Token{Value: "a.eyJzdWIiOiJ4In0.c", ExpiresAt: time.Now().Add(time.Hour)}, nil
+	return auth.Token{Value: "a.eyJzdWIiOiJ4In0.c", ExpiresAt: clock.Now().Add(time.Hour)}, nil
 }
 
 // recorder answers every Cloud.ru API call with one JSON body and records

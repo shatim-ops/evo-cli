@@ -4,7 +4,11 @@
 
 package auth
 
-import "time"
+import (
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/clock"
+)
 
 // Token represents an IAM bearer token.
 type Token struct {
@@ -17,7 +21,9 @@ func (t Token) IsValid(minTTL time.Duration) bool {
 	return time.Until(t.ExpiresAt) > minTTL
 }
 
-// TTL returns the remaining time until expiration.
+// TTL returns the remaining time until expiration. It goes into answers
+// (whoami, doctor), so it is read on internal/clock; IsValid, a deadline,
+// keeps the wall clock.
 func (t Token) TTL() time.Duration {
-	return time.Until(t.ExpiresAt)
+	return t.ExpiresAt.Sub(clock.Now())
 }
