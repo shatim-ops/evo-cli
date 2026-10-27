@@ -27,8 +27,13 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
 - Tool groups `deploy,vm,vpc,image,auth`.
 - The compose file in the working directory, or its path. evo keeps the
   deployment in `.evo/` of that directory: run every command there.
-- An Ubuntu or Debian image. Astra Linux, Alt and RED OS are refused: Docker
-  cannot be installed there.
+- An Ubuntu or Debian image, named: `image` (a name from
+  `evo image list`) or `image_id` in `.evo.yaml`, or `--image`. `deploy`
+  has no default image: without one it is `CONFIG_INVALID` before anything
+  is created. Astra Linux, Alt and RED OS are refused: Docker cannot be
+  installed there.
+- The VM is named `evo-<project_name>`: `project_name` of `.evo.yaml`,
+  else the name of the directory. `deploy` takes no name.
 
 ## Procedure
 
@@ -40,13 +45,16 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
    `deploy_apply` creates a VM without the app. The compose project goes
    through `deploy`.
 2. Preview: `evo deploy --dry-run --json` (with `-f <file>`, `--flavor`,
-   `--image` if needed) / `deploy` with `compose_file` and no `confirmed`.
+   and `--image` unless `.evo.yaml` sets the image) / `deploy` with
+   `compose_file` and no `confirmed`.
    The preview names the VM, flavor, zone, image, disk, the ports of the
    compose file, the security group and the monthly price.
 3. Stop and ask: show the person the preview: what is created, the price,
    the zone, and that the ports published by the compose file are opened
    from `0.0.0.0/0` in a security group shared by every VM of the zone.
-   Go on only after their explicit yes.
+   Go on only after their explicit yes. Open no port beyond the compose
+   file for the app; one the person asks for is `evo-vm` (`open_ports`
+   with `cidr`), and a source of `0.0.0.0/0` needs its own yes.
 4. Deploy: `evo deploy --yes --json` / `deploy` with `confirmed: true`. It
    creates the VM, attaches a public IP, uploads the compose files over SSH
    and runs `docker compose up -d`; it waits for all of it. Take `vm_id` and
@@ -118,5 +126,7 @@ After any interruption start from `evo deploy list --json` / `list` and
 - Never call `deploy` with `confirmed: true` or `--yes` before the person
   saw the preview and said yes.
 - Never use `deploy_apply` for a compose project.
+- Never ask for the yes without saying that the ports open from
+  `0.0.0.0/0` in the zone's shared group.
 - Never run `deploy` from another directory to touch this deployment.
 - Never repeat a password from an answer in the chat.

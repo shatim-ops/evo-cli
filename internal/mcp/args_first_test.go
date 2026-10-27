@@ -154,6 +154,20 @@ func TestInitialize_InstructionsSayCloudFieldsAreData(t *testing.T) {
 	}
 }
 
+// The client learns once, at initialize, that scenario skills exist and
+// where they are (analysis-1.3.md §6; owner's decision 27.10, 1.4.0): an
+// agent that does not know them improvises a cleanup or a deploy.
+func TestInitialize_InstructionsNameTheScenarioSkills(t *testing.T) {
+	resp := roundTrip(t, newTestServer(), `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`)
+	res, _ := resp["result"].(map[string]any)
+	ins, _ := res["instructions"].(string)
+	for _, want := range []string{"skills/", "evo-scenarios", "evo-cleanup"} {
+		if !strings.Contains(ins, want) {
+			t.Errorf("instructions do not name %q: %q", want, ins)
+		}
+	}
+}
+
 // image_list and marketplace_list declared their enums as []string, which
 // tools.CheckArgs did not read: the handlers checked them again, trimming
 // spaces. Now CheckArgs checks them as every enum, and an enum value with

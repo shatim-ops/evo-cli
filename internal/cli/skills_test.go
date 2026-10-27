@@ -473,3 +473,51 @@ func TestSkills_NothingForbidden(t *testing.T) {
 		}
 	}
 }
+
+// What the live run of Grok on 1.3.0 found the skills to say wrong, against
+// the code (G130-01, -09, -10, -16, -25, -27, -29): the wrong claim may not
+// come back, and the right one stays.
+func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
+	bodies := map[string]string{}
+	for _, s := range readSkills(t) {
+		bodies[s.name] = strings.Join(strings.Fields(strings.Join(s.body, " ")), " ")
+	}
+	for _, c := range []struct {
+		skill, finding string
+		must, mustNot  []string
+	}{
+		// The inventory is the prefix; the rest of the project is one line,
+		// never a row of the table to delete; the lists need every group.
+		{"evo-cleanup", "G130-01",
+			[]string{"`--toolsets all`", "never a row of the table"},
+			[]string{"or every group of the resources concerned"}},
+		// deploy has no default image (engine.BootImage: CONFIG_INVALID);
+		// the VM is named evo-<project_name> (vmNameFor); the compose file's
+		// ports open from 0.0.0.0/0 in the zone's shared group.
+		{"evo-deploy", "G130-09, -10, -29",
+			[]string{"has no default image", "`evo-<project_name>`", "`0.0.0.0/0`"},
+			[]string{"`--image` if needed)"}},
+		// pg_create's default subnet is the zone's (pickDBaaSSubnet), and
+		// evo gives no price for PostgreSQL.
+		{"evo-postgres", "G130-25, -27",
+			[]string{"the main subnet of the profile's zone", "`tariff_url`"},
+			[]string{"the first subnet of the project", "low-cost", "the cheapest"}},
+		// With --allow-project a resource that is gone answers NOT_FOUND
+		// (H9 b), not already_deleted.
+		{"evo-scenarios", "G130-16",
+			[]string{"a server without `--allow-project`"},
+			nil},
+	} {
+		b := bodies[c.skill]
+		for _, w := range c.must {
+			if !strings.Contains(b, w) {
+				t.Errorf("skills/%s (%s): must say %q", c.skill, c.finding, w)
+			}
+		}
+		for _, w := range c.mustNot {
+			if strings.Contains(b, w) {
+				t.Errorf("skills/%s (%s): says %q, which the code does not do", c.skill, c.finding, w)
+			}
+		}
+	}
+}
