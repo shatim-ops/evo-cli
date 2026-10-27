@@ -134,7 +134,7 @@ func New(factory EngineFactory) *Registry {
 				r.unchecked = map[string]Handler{}
 			}
 			r.unchecked[t.Name] = checkedCreateName(t.Name, h)
-			r.handlers[t.Name] = checkedArgs(t.Name, t.InputSchema, r.unchecked[t.Name])
+			r.handlers[t.Name] = outer(t.Name, t.InputSchema, r.unchecked[t.Name])
 		}
 		t.Handler = r.handlers[t.Name]
 	}
@@ -172,7 +172,7 @@ func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
 	}
 	t, _ := r.Lookup(name)
 	r.unchecked[name] = wrap(next)
-	h := checkedArgs(name, t.InputSchema, r.unchecked[name])
+	h := outer(name, t.InputSchema, r.unchecked[name])
 	r.handlers[name] = h
 	for i := range r.tools {
 		if r.tools[i].Name == name {

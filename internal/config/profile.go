@@ -56,6 +56,10 @@ type Credentials struct {
 }
 
 type settingsFile struct {
+	// Journal: the session journal of evo is on (D46, internal/journal).
+	// It belongs to the machine, not to a profile: one file for the whole
+	// dogfood, whatever profile a call uses.
+	Journal  bool               `yaml:"journal,omitempty"`
 	Profiles map[string]Profile `yaml:"profiles"`
 }
 
@@ -474,6 +478,30 @@ func DeleteProfile(name string) error {
 		return fmt.Errorf(i18n.T("remove token cache: %w", "удаление кэша токена: %w"), err)
 	}
 	return nil
+}
+
+// JournalEnabled reports whether the session journal is on in config.yaml
+// (D46). A file that cannot be read keeps it off: the journal never stands
+// in the way of a call.
+func JournalEnabled() bool {
+	s, err := readSettingsFile()
+	return err == nil && s.Journal
+}
+
+// SetJournal turns the session journal on or off in config.yaml, keeping
+// the profiles.
+func SetJournal(on bool) error {
+	unlock, err := lockProfiles()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	s, err := readSettingsFile()
+	if err != nil {
+		return err
+	}
+	s.Journal = on
+	return writeYAML(SettingsPath(), s)
 }
 
 // ProfileSummary describes a stored profile without its secrets.
