@@ -58,6 +58,9 @@ func answersIn(t *testing.T, mode journalMode) map[string]string {
 		text, isErr, pan := contractCall(tl, contractArgs(tl), contractCallLimit)
 		rt.take()
 		if pan != "" {
+			// A panic is an answer too: one in a mode of the journal and not
+			// in another is a difference.
+			out[tl.Name] = "panic"
 			continue
 		}
 		if isErr {
@@ -92,13 +95,18 @@ func TestJournal_AnswerSameOnOffAndBroken(t *testing.T) {
 	}
 }
 
-// A journal that is off leaves nothing: no file, no lock — a call of every
-// tool in a session that began.
+// A journal that is off leaves nothing: after a call of every tool in a
+// session that began, the configuration directory holds only what turning
+// the journal off wrote — config.yaml and its lock.
 func TestJournal_OffLeavesNoTrace(t *testing.T) {
 	answersIn(t, journalOff)
-	for _, name := range []string{"journal.jsonl", "journal.lock"} {
-		if _, err := os.Lstat(filepath.Join(filepath.Dir(journal.Path()), name)); err == nil {
-			t.Errorf("the journal is off, yet %s is there", name)
+	entries, err := os.ReadDir(filepath.Dir(journal.Path()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if n := e.Name(); n != "config.yaml" && n != ".lock" {
+			t.Errorf("the journal is off, yet %s is in the configuration directory", n)
 		}
 	}
 }
@@ -117,7 +125,9 @@ func TestJournal_NoValueOfAnyTool(t *testing.T) {
 	text := string(data)
 	reg := New(nil)
 	names := map[string]bool{}
-	values := map[string]string{contractID: "the cloud's id"}
+	// What the cloud of the contract world answers (contractRT, kind 200):
+	// its id and its status — nothing of an answer goes in either.
+	values := map[string]string{contractID: "the cloud's id", "ACTIVE": "the cloud's status"}
 	for _, tl := range reg.Tools() {
 		names[tl.Name] = true
 		props, _ := tl.InputSchema["properties"].(map[string]any)
