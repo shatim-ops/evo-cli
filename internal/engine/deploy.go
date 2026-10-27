@@ -1422,6 +1422,7 @@ func installNotes(out string) []string {
 // Timings.DockerWaitTimeout: first-boot cloud-init may still hold the apt lock.
 func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) error {
 	t := e.timings()
+	// deadline bounds the wait; start times the duration the retry line prints.
 	deadline := time.Now().Add(t.DockerWaitTimeout)
 	start := clock.Now()
 	installCmd := bootstrap.InstallCommand(user)
