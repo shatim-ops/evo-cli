@@ -1,0 +1,148 @@
+name: Находка догфуда 1.4.0
+description: Находка участника волны догфуда на стабильном evo 1.4.0 — ошибка, недостающая функция, поведение платформы, документация, вопрос.
+title: "[догфуд] "
+labels: ["отзыв"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Репозиторий публичный. Замените в тексте ID проектов, ВМ и ресурсов, IP-адреса, Key ID, имена ваших ресурсов и доменов на `<uuid>`, `<ip>`, `<имя>`. Ключи и секреты не вставляйте никогда.
+
+        **Файл журнала evo сюда не прикладывайте.** Он идёт во внутренний канал волны — заявкой Jira SM. Здесь — только его sha256 и номер заявки: по ним разбор найдёт файл, а данные проекта не попадут в открытый доступ.
+
+        Уязвимость — не сюда: **Security → Report a vulnerability** (приватный отчёт, `SECURITY.md`). Одна находка — одно issue; если такое уже есть — комментарий к нему.
+  - type: dropdown
+    id: wave
+    attributes:
+      label: Волна
+      options:
+        - "1.4.0"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Версия
+      description: Вывод `evo version` (первая строка).
+      placeholder: evo CMCP 1.4.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: ОС
+      options:
+        - "macOS"
+        - "Windows"
+        - "Linux"
+        - "Windows + WSL"
+        - "Docker-образ evo"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Как запускали
+      options:
+        - CLI в терминале
+        - MCP через AI-агента (Claude Code, Cursor и др.)
+        - MCP в Cloud.ru AI Agents
+        - Docker-образ
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Область
+      description: Раздел протокола догфуда (docs/internal/dogfood-protocol.md).
+      options:
+        - "Установка, configure, doctor"
+        - "Развёртывание compose (deploy, status, logs, destroy)"
+        - "ВМ и диски"
+        - "Образы и Marketplace"
+        - "Сеть: VPC, группы безопасности, floating IP, SNAT"
+        - "Балансировщик NLB"
+        - "DNS"
+        - "Kubernetes"
+        - "PostgreSQL"
+        - "Kafka и Redis"
+        - "Object Storage (S3)"
+        - "Секреты и сертификаты"
+        - "Container Apps и Artifact Registry"
+        - "Мониторинг, биллинг, аудит, IAM"
+        - "Стеки stack_*"
+        - "MCP-агент (Cursor, Claude Code и др.)"
+        - "Другое"
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Тип
+      description: Как вы это видите; окончательный тип ставит разбор.
+      options:
+        - "Ошибка evo"
+        - "Не хватает функции"
+        - "Поведение платформы Cloud.ru"
+        - "Документация"
+        - "Вопрос «как сделать»"
+    validations:
+      required: true
+  - type: dropdown
+    id: money
+    attributes:
+      label: Ресурсы и деньги
+      description: Осталось ли в облаке что-то платное из-за этой находки. Проверьте `evo vm list`, `evo vpc fips`, `evo disk list`.
+      options:
+        - Ничего лишнего не создано
+        - Создан лишний ресурс (дубль)
+        - Ресурс остался после удаления или ошибки
+        - Не знаю
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Команда или запрос агенту
+      description: Что именно запускали или о чём просили агента.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Что произошло
+      description: Вывод и код выхода (`echo $?`). Для MCP — ответ инструмента. ID и IP замените.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что ожидали
+    validations:
+      required: true
+  - type: input
+    id: journal-sha
+    attributes:
+      label: sha256 журнала
+      description: "Файл журнала evo за период находки: `sha256sum <файл>` (Linux), `shasum -a 256 <файл>` (macOS), `Get-FileHash <файл>` (Windows). Сам файл — в заявку внутреннего канала."
+      placeholder: 64 шестнадцатеричных символа
+    validations:
+      required: true
+  - type: input
+    id: ticket
+    attributes:
+      label: Заявка во внутреннем канале
+      description: Номер заявки Jira SM, к которой приложен файл журнала, — только номер, без адреса.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Проверка
+      options:
+        - label: В тексте нет ключей, секретов, реальных ID, IP и имён ресурсов
+          required: true
+        - label: Файл журнала не приложен к этому issue — он в заявке внутреннего канала
+          required: true
