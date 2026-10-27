@@ -33,14 +33,14 @@ evo version
 
 | Переменная | Что задаёт | По умолчанию |
 |---|---|---|
-| `CLOUDRU_VM_VERSION` | тег релиза, например `v1.3.0` | последний стабильный; pre-release (`-rc.N`) надо назвать явно |
+| `CLOUDRU_VM_VERSION` | тег релиза, например `v1.3.1` | последний стабильный; pre-release (`-rc.N`) надо назвать явно |
 | `INSTALL_DIR` | каталог для бинаря | `~/.local/bin`, под root `/usr/local/bin` |
 | `CLOUDRU_VM_BASE_URL` | откуда качать вместо GitHub (зеркало); ожидается `<base>/<тег>/<файл>` | GitHub Releases |
 
 ```sh
 # конкретная версия, в свой каталог
 curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh \
-  | CLOUDRU_VM_VERSION=v1.3.0 INSTALL_DIR="$HOME/bin" sh
+  | CLOUDRU_VM_VERSION=v1.3.1 INSTALL_DIR="$HOME/bin" sh
 ```
 
 Без `CLOUDRU_VM_VERSION` скрипт ставит последний стабильный релиз; кандидаты
@@ -111,7 +111,7 @@ v2.0, см. [rename.md](rename.md)). Нужен он,
 Rekor. Ключей у проекта нет — проверяется *кто* подписал (identity workflow).
 
 ```sh
-V=v1.3.0
+V=v1.3.1
 cosign verify-blob --bundle checksums.txt.sigstore.json \
   --certificate-identity "https://github.com/shatim-ops/evo-cli/.github/workflows/release.yml@refs/tags/$V" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
