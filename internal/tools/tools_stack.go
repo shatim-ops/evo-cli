@@ -1087,13 +1087,26 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		if err := s.checkJobProject(job); err != nil {
 			return errResult(err), true
 		}
-		// Its resources were deleted by an earlier stack_destroy: nothing to
-		// ask about (D26, G130-31; D41). confirmed=true runs the teardown
-		// again, for deletions the cloud was still finishing.
-		if job.Status == "destroyed" {
+		// Its resources were deleted by an earlier stack_destroy and none
+		// was still being deleted: nothing to ask about (D26, G130-31; D41).
+		if job.Status == "destroyed" && len(job.Deleting) == 0 {
 			return toJSON(map[string]any{"status": "already_destroyed", "job_id": id,
-				"note": i18n.T("The stack was destroyed earlier. To re-check deletions still in progress, call stack_destroy again with confirmed=true.",
-					"Стек удалён раньше. Чтобы перепроверить удаления, которые ещё идут, вызовите stack_destroy снова с confirmed=true.")}), false
+				"note": i18n.T("The stack was destroyed earlier; its deletions were all finished.",
+					"Стек удалён раньше; все его удаления завершены.")}), false
+		}
+		// Deletions the cloud was still finishing: the question again, so
+		// that the CLI's --yes, which calls this preview first, gets to the
+		// confirmed call that re-checks them, as MCP does (cloud-e2e 1.3.1).
+		if job.Status == "destroyed" {
+			res := make([]map[string]any, 0, len(job.Deleting))
+			for _, st := range job.Steps {
+				if slices.Contains(job.Deleting, st.Key) {
+					res = append(res, map[string]any{"step": st.Key, "status": "deleting", "id": job.Outputs[st.Key]})
+				}
+			}
+			return toJSON(map[string]any{"status": "confirmation_required", "resources": res,
+				"message": i18n.Tf("stack %s was destroyed, but the cloud was still deleting %d resource(s) listed in resources; stack_destroy checks them again and deletes what is left.",
+					"стек %s удалён, но облако ещё удаляло ресурсы (%d), перечисленные в resources; stack_destroy проверит их снова и удалит, что осталось.", id, len(res))}), true
 		}
 		var res []map[string]any
 		for _, st := range job.Steps {
@@ -1216,7 +1229,7 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	// A job with a failed deletion still holds resources: "destroyed" would
 	// hide it from the duplicate warning of stack_plan. Calling stack_destroy
 	// again retries; what is gone already counts as deleted.
-	job.Status = "destroyed"
+	job.Status, job.Deleting = "destroyed", deleting
 	if len(failed) > 0 {
 		job.Status = "destroy_failed"
 	}

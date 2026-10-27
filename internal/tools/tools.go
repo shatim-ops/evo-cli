@@ -1335,7 +1335,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_destroy",
-			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved. status=destroyed means every deletion was accepted: the VM, secrets and S3 objects are gone, while the async resources listed in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes (Postgres ~5 min seen live) — check them with pg_list, k8s_list and the like. A job destroyed already answers status already_destroyed without the question; confirmed=true runs the teardown again.",
+			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved. status=destroyed means every deletion was accepted: the VM, secrets and S3 objects are gone, while the async resources listed in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes (Postgres ~5 min seen live) — check them with pg_list, k8s_list and the like. A destroyed job answers already_destroyed without the question once nothing is left in deleting; until then the preview asks again and confirmed=true re-checks those deletions.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id. Required."),
 				"confirmed": confirmedProp(),
