@@ -156,3 +156,93 @@ func TestUntrusted_FieldsMarked(t *testing.T) {
 		t.Errorf("an answer without the fields got the marker: %s", text)
 	}
 }
+
+// namesUnmarked are the tools whose answer carries a name from the cloud —
+// in its data fields, as the cloud has it — with no "_untrusted" in the
+// answer. A name is text anyone with access to the project writes, and a
+// security group named with an instruction to the agent reached an agent
+// in a live run (27.10): quoteCloud keeps it out of evo's own words, the
+// marker would tell a client the data fields are data too. Marking names
+// is «разработка»'s, 1.4. The list only shrinks: a new tool that answers a
+// cloud name with no marker fails the test, and so does a line whose tool
+// is marked now or no longer answers the name. A delete is here for its
+// preview, which names the resource it would delete. metrics_scrape answers
+// the body of the cloud's answer as it is (exposition): workload text, like
+// a log, for untrustedFields — reported to «разработка» with this list.
+var namesUnmarked = map[string]bool{
+	"ar_delete":            true,
+	"ar_get":               true,
+	"ar_list":              true,
+	"ca_get":               true,
+	"ca_list":              true,
+	"cert_get":             true,
+	"cert_list":            true,
+	"cert_operation":       true,
+	"cert_usage":           true,
+	"disk_list":            true,
+	"dns_record_get":       true,
+	"dns_records":          true,
+	"dns_zone_get":         true,
+	"dns_zones":            true,
+	"image_list":           true,
+	"k8s_delete":           true,
+	"k8s_get":              true,
+	"k8s_list":             true,
+	"k8s_options":          true,
+	"kafka_delete":         true,
+	"kafka_get":            true,
+	"kafka_list":           true,
+	"kafka_specs":          true,
+	"lb_delete":            true,
+	"lb_get":               true,
+	"list_disk_types":      true,
+	"list_flavors":         true,
+	"list_floating_ips":    true,
+	"list_images":          true,
+	"list_security_groups": true,
+	"list_subnets":         true,
+	"list_zones":           true,
+	"marketplace_list":     true,
+	"metrics_scrape":       true,
+	"pg_list":              true,
+	"redis_delete":         true,
+	"redis_get":            true,
+	"redis_list":           true,
+	"redis_specs":          true,
+	"secret_get":           true,
+	"secret_list":          true,
+	"snat_delete":          true,
+	"snat_list":            true,
+	"tg_delete":            true,
+	"tg_get":               true,
+	"vm_list":              true,
+	"vpc_delete":           true,
+	"vpc_get":              true,
+}
+
+// Every answer that carries hostileName says "_untrusted", outside
+// namesUnmarked (the world of TestUntrustedNames_OneLineInText: every list
+// and every read of every service names its one resource hostileName).
+func TestUntrustedNames_Marked(t *testing.T) {
+	faultToolsIsolate(t)
+	api := &oddAPI{status: http.StatusOK, body: hostileBody()}
+	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
+	cloud.SetToken("t")
+	r := raRegistry(t, api, cloud, nil)
+	carries := map[string]bool{}
+	for _, tl := range r.Tools() {
+		_, text, _ := callNamed(t, r, tl.Name, requiredArgs(tl))
+		if !strings.Contains(text, hostileMarker) || strings.Contains(text, `"_untrusted"`) {
+			continue
+		}
+		carries[tl.Name] = true
+		if !namesUnmarked[tl.Name] {
+			t.Errorf("%s answers a name from the cloud with no _untrusted in the answer", tl.Name)
+		}
+	}
+	for name := range namesUnmarked {
+		if !carries[name] {
+			t.Errorf("namesUnmarked names %s, whose answer is marked now or carries no cloud name: remove the line", name)
+		}
+	}
+}
