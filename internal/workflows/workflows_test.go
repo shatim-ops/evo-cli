@@ -433,6 +433,36 @@ func TestWorkflows_SmokeBearerTokenLong(t *testing.T) {
 	if !runsStep(ws["release.yml"], ".github/scripts/mcp-smoke.sh") || !runsStep(ws["ci.yml"], ".github/scripts/mcp-smoke.sh") {
 		t.Error("ci and release must run the same smoke script, .github/scripts/mcp-smoke.sh")
 	}
+	// H11 is checked on a server of the image with --read-only beside the
+	// smoke's own (S2, 1.4.0), in ci and in release alike.
+	for _, name := range []string{"ci.yml", "release.yml"} {
+		if !runsStep(ws[name], "--read-only") || !runsStep(ws[name], "MCP_SMOKE_READONLY=http://localhost:8081 .github/scripts/mcp-smoke.sh") {
+			t.Errorf("%s: the smoke runs without the --read-only server (MCP_SMOKE_READONLY)", name)
+		}
+	}
+}
+
+// The files of the profile hold the key: on Windows their privacy is an
+// ACL, which the mode bits of Linux and macOS do not show. cloud-readonly-os
+// reads it with icacls on Windows after configure and fails on a grant to
+// Everyone, Users or Authenticated Users (S2, 1.4.0).
+func TestWorkflows_WindowsProfileACLChecked(t *testing.T) {
+	steps := readWorkflows(t)["cloud-readonly-os.yml"].Jobs["readonly"].Steps
+	configure, acl := -1, -1
+	for i, s := range steps {
+		if strings.Contains(s.Run, "evo configure") {
+			configure = i
+		}
+		if strings.Contains(s.Run, "icacls") {
+			acl = i
+			if !strings.Contains(s.If, "Windows") || !strings.Contains(s.Run, "credentials.yaml") || !strings.Contains(s.Run, "Everyone") {
+				t.Errorf("cloud-readonly-os: the ACL step runs on Windows over credentials.yaml and fails on Everyone; has if %q", s.If)
+			}
+		}
+	}
+	if acl < 0 || acl < configure {
+		t.Errorf("cloud-readonly-os: no icacls step after configure (configure %d, icacls %d)", configure, acl)
+	}
 }
 
 // Every offline test of a CI script (.github/scripts/*_test.sh) runs in

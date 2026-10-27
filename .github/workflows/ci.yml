@@ -279,12 +279,14 @@ jobs:
       - name: smoke-тест по HTTP
         run: |
           docker run -d --name mcp -e MCP_BEARER_TOKEN=ci-token-0123456789abcdef0123456789abcdef -p 8080:8080 evo:ci
+          # Второй — с --read-only (H11): смоук проверяет его отказ.
+          docker run -d --name mcp-ro -e MCP_BEARER_TOKEN=ci-token-0123456789abcdef0123456789abcdef -p 8081:8080 evo:ci mcp --http :8080 --read-only
           # Тот же скрипт вызывает release.yml (релизный аудит, R-01).
-          .github/scripts/mcp-smoke.sh http://localhost:8080 ci-token-0123456789abcdef0123456789abcdef
+          MCP_SMOKE_READONLY=http://localhost:8081 .github/scripts/mcp-smoke.sh http://localhost:8080 ci-token-0123456789abcdef0123456789abcdef
 
           # HEALTHCHECK образа — тем же бинарём, без shell и curl.
           docker exec mcp /usr/local/bin/evo mcp healthcheck
 
       - name: логи контейнера
         if: always()
-        run: docker logs mcp || true
+        run: docker logs mcp || true; docker logs mcp-ro || true
