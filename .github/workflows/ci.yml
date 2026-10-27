@@ -101,6 +101,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/e2e_quota_test.sh
 
+      # Удаление кластеров DBaaS cloud-e2e (dbaas-delete.sh) на поддельном evo:
+      # ERASED — удалён, повтор — already_deleted, FAILED — сразу ошибка (D44).
+      - name: dbaas-delete.sh на поддельном evo
+        if: runner.os == 'Linux'
+        run: .github/scripts/dbaas_delete_test.sh
+
       # install.sh — установщик evo; internal/bootstrap/install.sh ставит Docker
       # на ВМ (release audit, REL-13); скрипты CI — .github/scripts.
       - name: shellcheck

@@ -441,11 +441,16 @@ area_disk() {
 	# проект диска сверяется по списку проекта, как у ВМ (vm_get, область mcp).
 	row "allow-project: диск" skip "нет чтения диска по id; проверка по списку — как у vm_get (область mcp)"
 
+	# N3 (1.3.1): disk_attach сразу после disk_create сам ждёт готовности
+	# диска; живой диск 27.10 был готов через 149 с, а attach ждал 2 мин и
+	# получал 422 «no openstack_id». Сколько ушло от create до attached —
+	# строкой отчёта.
+	local t0=$SECONDS
 	must disk_attach disk_attach --arg disk_id="$data" --arg vm="$vm" || return 1
 	# disk_has ФИЛЬТР — jq -e по disk_list, $id — диск данных, $vm — имя ВМ.
 	disk_has() { evo tools call disk_list --json | jq -e --arg id "$data" --arg vm "$vm" "$1" >/dev/null; }
 	if poll 180 10 disk_has '.disks[] | select(.id == $id) | (.attached_to // []) | length > 0'; then
-		ok disk_attach "диск в attached_to ВМ"
+		ok disk_attach "диск в attached_to ВМ, $((SECONDS - t0)) с от ответа disk_create, без 422"
 		cov disk_attach
 	else
 		bad disk_attach "за 3 мин диск не подключён"
