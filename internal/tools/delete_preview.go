@@ -6,9 +6,11 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -34,6 +36,14 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	if name != "" {
 		label = fmt.Sprintf("%s (%s)", quoteCloud(name), id)
 	}
+	// Deleted earlier: Cloud.ru keeps a DBaaS cluster readable in ERASED
+	// for a while, and a second DELETE of it is a 500 FailedPrecondition
+	// (Grok live run on 1.3.0, N1). It is gone: already_deleted, without the
+	// question and without a DELETE (D26).
+	if statusGone(status) {
+		return answered(s.deleteFailed(tool, id, clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("%s is %s", "%s в состоянии %s", label, status), "")))
+	}
 	out := map[string]any{
 		"message": i18n.Tf(en, ru, label),
 		"target":  map[string]any{"id": id, "name": name, "status": status},
@@ -48,6 +58,23 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	case "FAILED", "ERROR":
 		// kafka_delete of a FAILED cluster met a bare 500 (G13-19).
 		out["warning"] = i18n.Tf("it is in %s: ", "он в состоянии %s: ", status) + failedDeleteNote(id)
+		// A refusal after the question says what the preview said: the
+		// platform does not delete it, the console or support do — not the
+		// platform's bare 500 (N2; CLAUDE.md §6, axis 3).
+		return &Plan{Preview: out, Execute: func(ctx context.Context) (string, bool) {
+			text, isErr := execute(ctx)
+			if !isErr {
+				return text, isErr
+			}
+			var m map[string]any
+			if json.Unmarshal([]byte(text), &m) != nil {
+				return text, isErr
+			}
+			m["resource_status"] = status
+			m["hint"] = i18n.Tf("Cloud.ru does not delete a resource in %s through its API: delete it in the Cloud.ru console, or contact Cloud.ru support with its id %s.",
+				"Cloud.ru не удаляет ресурс в состоянии %s через API: удалите его в консоли Cloud.ru или обратитесь в поддержку Cloud.ru с его id %s.", status, id)
+			return toJSON(m), true
+		}}
 	}
 	return &Plan{Preview: out, Execute: execute}
 }

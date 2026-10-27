@@ -19,6 +19,7 @@ import (
 	"github.com/minio/minio-go/v7"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -111,5 +112,35 @@ func TestUncodedReason_AuditExamples(t *testing.T) {
 	_, text, isErr = callNamed(t, r, "image_create", map[string]any{"name": "img1", "disk_id": "d", "image_metadata": "nope", "confirmed": true})
 	if !isErr || !strings.Contains(text, `"reason": "USAGE"`) || !strings.Contains(text, "image_metadata") {
 		t.Errorf("image_create image_metadata=nope: %s", text)
+	}
+}
+
+// A service client that could not read the API's answer wraps the JSON
+// error as "parse <what>: …"; in the Russian CLI the wrap is
+// "разбор <что>: …" (i18n.T, 1.3.1). Both are the cloud answering wrong —
+// API_ERROR, exit 5 — and a local file that does not parse stays the
+// caller's. The reason must not depend on the language of the CLI: with
+// the English pattern only, a gateway's HTML page in the Russian CLI was
+// USAGE, exit 1 (review of #354).
+func TestUncodedReason_ParseWrapInBothLanguages(t *testing.T) {
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	syntax := &json.SyntaxError{Offset: 1}
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		for _, tt := range []struct {
+			name string
+			err  error
+			want string
+		}{
+			{"service client", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), syntax), clierrors.CodeAPIError},
+			{"service client, field", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), "zones", syntax), clierrors.CodeAPIError},
+			{"wrapped again", fmt.Errorf(i18n.T("list versions: %w", "список версий: %w"),
+				fmt.Errorf(i18n.T("parse response: %w", "разбор ответа: %w"), syntax)), clierrors.CodeAPIError},
+			{"local job file", fmt.Errorf("parse job %s: %w", "abc-1", syntax), clierrors.CodeUsage},
+		} {
+			if got := uncodedReason(tt.err, nil); got != tt.want {
+				t.Errorf("%s/%s: %q → %s, want %s", lang, tt.name, tt.err, got, tt.want)
+			}
+		}
 	}
 }

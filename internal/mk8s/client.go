@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -79,7 +80,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("mk8s request failed: %w", err)
+		return nil, 0, fmt.Errorf(i18n.T("mk8s request failed: %w", "запрос к mk8s не удался: %w"), err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -215,7 +216,7 @@ func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
 			NextPageToken string    `json:"nextPageToken"`
 		}
 		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf("parse clusters: %w", err)
+			return "", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), err)
 		}
 		all = append(all, r.Clusters...)
 		return r.NextPageToken, nil
@@ -237,7 +238,7 @@ func (c *Client) GetCluster(ctx context.Context, id string) (map[string]any, err
 	}
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("parse cluster: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse cluster: %w", "разбор кластера: %w"), err)
 	}
 	return m, nil
 }
@@ -256,7 +257,7 @@ func (c *Client) CreateCluster(ctx context.Context, req CreateClusterReq) (*Oper
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }
@@ -293,7 +294,7 @@ func (c *Client) GetKubeConfig(ctx context.Context, id, network string) (string,
 		Config string `json:"config"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
-		return "", fmt.Errorf("parse kubeconfig: %w", err)
+		return "", fmt.Errorf(i18n.T("parse kubeconfig: %w", "разбор kubeconfig: %w"), err)
 	}
 	return r.Config, nil
 }
@@ -309,7 +310,7 @@ func (c *Client) ProductConfiguration(ctx context.Context) (*ProductConfig, erro
 	}
 	var pc ProductConfig
 	if err := json.Unmarshal(data, &pc); err != nil {
-		return nil, fmt.Errorf("parse product configuration: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse product configuration: %w", "разбор конфигурации продукта: %w"), err)
 	}
 	return &pc, nil
 }
@@ -325,7 +326,7 @@ func (c *Client) GetOperation(ctx context.Context, id string) (*Operation, error
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
-		return nil, fmt.Errorf("parse operation: %w", err)
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
 	}
 	return &op, nil
 }
