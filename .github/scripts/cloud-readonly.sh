@@ -390,4 +390,29 @@ fi
 # Журнал сервера: одна строка на вызов, аргументы — никогда.
 if grep -q 'cluster_id\|{{.data}}' "$tmp/http-a.log"; then bad "http: журнал без аргументов" "аргументы в stderr сервера"; else ok "http: журнал без аргументов" "строк: $(wc -l <"$tmp/http-a.log" | tr -d ' ')"; fi
 
+# E5 (1.4.0): форма ответа monitoring и audit (response_shape.sh). Не FAIL:
+# сменившаяся форма — поведение платформы, строка реестра расхождений, а
+# не дефект evo. Нужны KEY_ID и SECRET шага.
+# shellcheck source-path=SCRIPTDIR source=response_shape.sh
+. "$(dirname "$0")/response_shape.sh"
+iam=
+if [ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ]; then
+	iam=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+		curl -sS --max-time 30 -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
+		j -r '.access_token // .accessToken // empty')
+fi
+if [ -n "$iam" ]; then
+	[ -z "${GITHUB_ACTIONS:-}" ] || echo "::add-mask::$iam"
+	for svc in monitoring audit; do
+		case "$svc" in
+		monitoring) url="https://monitoring.api.cloud.ru/v1/$PROJECT/export_metrics" ;;
+		audit) url="https://audit.api.cloud.ru/events/list/$PROJECT" ;;
+		esac
+		IFS=$'\t' read -r verdict details < <(response_shape "$url" "$iam")
+		if [ "$verdict" = ok ]; then ok "форма ответа: $svc" "$details"; else warn "форма ответа: $svc" "$details"; fi
+	done
+else
+	skip "форма ответа: monitoring, audit" "нет KEY_ID и SECRET шага или токена IAM"
+fi
+
 exit "$failed"

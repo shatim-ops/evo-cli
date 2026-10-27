@@ -132,6 +132,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/evo_wrapper_test.sh
 
+      # Форма ответа сервиса в публичном логе cloud-readonly (E5): JSON — ok,
+      # иное — warn, тело через redact.sed, без URL.
+      - name: response_shape.sh на локальном сервере
+        if: runner.os == 'Linux'
+        run: .github/scripts/response_shape_test.sh
+
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
         if: runner.os == 'Linux'
