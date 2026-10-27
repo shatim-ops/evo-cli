@@ -3,7 +3,7 @@ name: evo-vm
 description: Create a Cloud.ru Evolution VM with a public IP using evo, open or close its ports, attach or release a floating IP, and delete the VM. Use for "create a VM", "give me a server", "open port 8080", "close the port", "give the VM a public address", "delete the VM". Not for deploying a docker-compose app (use evo-deploy).
 license: Apache-2.0
 metadata:
-  evo-version: "1.3"
+  evo-version: "1.4"
   evo-mode: human-in-the-loop
 ---
 
