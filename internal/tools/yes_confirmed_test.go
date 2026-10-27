@@ -16,11 +16,7 @@ import (
 // call with confirmed=true answers otherwise — "tool: world" → the work
 // item that fixes it. The list only shrinks: a call not here fails the
 // test, and so does a line whose call answers alike now.
-var yesDiffers = map[string]string{
-	// The preview of a destroyed job is already_destroyed; confirmed=true
-	// destroys it again and answers destroyed (found by this test, 1.4.0).
-	"stack_destroy: destroyed job": "«1.4 — разработка»: confirmed=true on a destroyed job answers already_destroyed (D26)",
-}
+var yesDiffers = map[string]string{}
 
 // finalPreviewKinds are the answers of the contract world a preview can
 // take as final: the cloud's success, refusals and failures.

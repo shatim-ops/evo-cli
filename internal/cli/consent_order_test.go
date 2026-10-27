@@ -28,9 +28,7 @@ import (
 // that fixes it (W3…W6; the decisions of 1.3.1, D39…D42, with their PR).
 // The list only shrinks: a case not here fails the test, and so does a line
 // whose call no longer fails that way.
-var lateRefusals = map[string]string{
-	"stack_apply: job_id=absent id": "«1.4 — разработка»: an absent job is NOT_FOUND before the question (found 1.4.0, consentAbsentEvoID)",
-}
+var lateRefusals = map[string]string{}
 
 // jobStarts answer a refused write as a success by design: the call starts
 // a job, and the step's refusal is the job's state, not the call's answer.
