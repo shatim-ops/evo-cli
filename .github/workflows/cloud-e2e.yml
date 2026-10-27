@@ -174,7 +174,7 @@ jobs:
       - name: журнал evo — diag-check --public
         if: ${{ !cancelled() }}
         run: |
-          command -v evo >/dev/null || { echo "evo не собран — журнала нет"; exit 0; }
+          command -v evo >/dev/null || { echo "::warning::evo не собран — журнал не проверен"; exit 0; }
           evo diag export --out "$RUNNER_TEMP/evo-journal.jsonl" >/dev/null
           python3 scripts/diag-check.py --public "$RUNNER_TEMP/evo-journal.jsonl"
 
@@ -525,7 +525,7 @@ jobs:
       - name: журнал evo — diag-check --public
         if: ${{ !cancelled() }}
         run: |
-          command -v evo >/dev/null || { echo "evo не собран — журнала нет"; exit 0; }
+          command -v evo >/dev/null || { echo "::warning::evo не собран — журнал не проверен"; exit 0; }
           evo diag export --out "$RUNNER_TEMP/evo-journal.jsonl" >/dev/null
           python3 scripts/diag-check.py --public "$RUNNER_TEMP/evo-journal.jsonl"
 

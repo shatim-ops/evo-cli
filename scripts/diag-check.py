@@ -121,11 +121,11 @@ def check(data, public=False, sha=None):
         first = first or r.get("time", "")
         last = r.get("time", last)
     if public:
+        # Every line of each kind, so that one pass finds all of them.
         for what, pat in PUBLIC:
-            for i, line in enumerate(lines, 1):
-                if pat.search(line):
-                    bad.append(f"line {i}: {what} in the journal — it must not go public")
-                    break
+            hit = [str(i) for i, line in enumerate(lines, 1) if pat.search(line)]
+            if hit:
+                bad.append(f"line {', '.join(hit)}: {what} in the journal — it must not go public")
     summary = {
         "sha256": digest, "bytes": len(data), "records": records, "sessions": len(sessions),
         "versions": sorted(v for v in versions if isinstance(v, str)), "tools": len(tools),

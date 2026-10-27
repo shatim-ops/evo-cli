@@ -67,6 +67,8 @@ case("UUID, public", journal(rec(tool="vm_list", ms=1, bytes=1, session=uuid)), 
 case("IPv4, public", journal(rec(tool="vm_list", ms=1, bytes=1, os="203.0.113.7")), False, public=True, want="IPv4")
 case("host, public", journal(rec(tool="vm_list", ms=1, bytes=1, evo="api.example.com")), False, public=True, want="host name")
 case("e-mail, public", journal(rec(tool="vm_list", ms=1, bytes=1, evo="a@b.example")), False, public=True, want="e-mail")
+case("every line of a kind, public", journal(rec(tool="vm_list", ms=1, bytes=1), rec(tool="vm_list", ms=1, bytes=1, session=uuid),
+     rec(tool="vm_list", ms=1, bytes=1), rec(tool="vm_list", ms=1, bytes=1, session=uuid)), False, public=True, want="line 2, 4: UUID")
 case("version is no IP", journal(rec(tool="vm_list", ms=1, bytes=1, evo="1.4.0")), True, public=True)
 
 sys.exit(fail)

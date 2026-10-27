@@ -482,15 +482,18 @@ func TestWorkflows_ScriptTestsRun(t *testing.T) {
 		}
 	}
 	// The offline tests of the repository's scripts (scripts/*-test.py:
-	// changelog, specs, diag-check) run in some workflow.
+	// changelog, specs, diag-check) run on a pull request — in ci.yml or in
+	// a workflow of their own with paths, as api-contract — so that a change
+	// of the script is checked before the merge, not only on a schedule.
 	py, _ := filepath.Glob(filepath.Join("..", "..", "scripts", "*-test.py"))
 	for _, f := range py {
 		name, run := "scripts/"+filepath.Base(f), false
 		for _, w := range ws {
-			run = run || runsStep(w, name)
+			_, pr := w.On["pull_request"]
+			run = run || (pr && runsStep(w, name))
 		}
 		if !run {
-			t.Errorf("%s is run by no workflow", name)
+			t.Errorf("%s is run by no workflow of a pull request", name)
 		}
 	}
 }
