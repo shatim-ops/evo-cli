@@ -24,7 +24,7 @@ var yesDiffers = map[string]string{
 
 // finalPreviewKinds are the answers of the contract world a preview can
 // take as final: the cloud's success, refusals and failures.
-var finalPreviewKinds = []string{"200", "400", "403", "404", "409", "422", "429", "500", "502", "html", "empty"}
+var finalPreviewKinds = []string{"200", "400", "401", "403", "404", "409", "422", "429", "500", "502", "html", "empty"}
 
 // yesDiff compares a call's preview with the same call confirmed: "" when
 // the preview asks (the CLI then makes the confirmed call itself) or both
