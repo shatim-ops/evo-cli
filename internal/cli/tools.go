@@ -781,16 +781,24 @@ func argLines(m map[string]any) []string {
 // tool's own hint fits them, and a USAGE refusal without one points to
 // 'evo tools describe'. A command passes its flags: a USAGE refusal points
 // to its help, and an input the call lacks — the "missing" of the answer,
-// by argument — is named by the command's flag. 'evo vm create' without a
-// zone was sent to 'evo tools describe provision' and told about the MCP
-// server's CLOUDRU_REGION (dogfood 1.2.0). The reason and the exit code
-// are the tool's either way: only the hint is the surface's.
+// by argument — is named by the command's flag. A schema-rule refusal
+// ("argument" of the answer) is named by the flag or positional and
+// --help, not by inputSchema (G130-35). 'evo vm create' without a zone was
+// sent to 'evo tools describe provision' and told about the MCP server's
+// CLOUDRU_REGION (dogfood 1.2.0). The reason and the exit code are the
+// tool's either way: only the hint is the surface's.
 type toolHints struct {
 	// usage is the hint of a USAGE refusal that has none of its own.
 	usage string
-	// flag is the command's flag for a tool argument ("--region"); nil
-	// keeps the tool's hint.
+	// help is the command's help path ("evo vpc fip-release --help"); ""
+	// keeps the tool's hint for a schema-rule refusal.
+	help string
+	// flag is the command's flag name for a tool argument ("region" →
+	// used as "--region"); nil keeps the tool's hint.
 	flag func(arg string) string
+	// how names a tool argument for a schema-rule hint: "--subnet-id" or
+	// the positional "id"; nil keeps the tool's hint.
+	how func(arg string) string
 }
 
 // callHints are the hints of 'evo tools call <tool>'.
@@ -801,7 +809,41 @@ func callHints(tool string) toolHints {
 // commandHints are the hints of the command cmd; flag names its flag for a
 // tool argument (nil: the tool's hint stays).
 func commandHints(cmd *cobra.Command, flag func(arg string) string) toolHints {
-	return toolHints{usage: argsHint(cmd.CommandPath() + " --help"), flag: flag}
+	help := cmd.CommandPath() + " --help"
+	return toolHints{
+		usage: argsHint(help),
+		help:  help,
+		flag:  flag,
+		how: func(arg string) string {
+			if flag == nil {
+				return arg
+			}
+			return "--" + flag(arg)
+		},
+	}
+}
+
+// treeCommandHints are commandHints with positionals named without a
+// leading "--" (fip-release's id is [id], not --id).
+func treeCommandHints(cmd *cobra.Command, c treeCmd) toolHints {
+	pos := map[string]bool{}
+	for _, p := range parsePositionals(c.Args) {
+		for _, n := range p.names {
+			pos[n] = true
+		}
+	}
+	help := cmd.CommandPath() + " --help"
+	return toolHints{
+		usage: argsHint(help),
+		help:  help,
+		flag:  c.flagName,
+		how: func(arg string) string {
+			if pos[arg] {
+				return strings.ReplaceAll(arg, "_", "-")
+			}
+			return "--" + c.flagName(arg)
+		},
+	}
 }
 
 func argsHint(help string) string {
@@ -820,6 +862,10 @@ var missingInputHints = map[string]func(flag string) string{
 		return i18n.Tf("Pass %[1]s (list: evo image list), e.g. %[1]s Ubuntu-24.04.",
 			"Задайте %[1]s (список: evo image list), например %[1]s Ubuntu-24.04.", flag)
 	},
+	"subnet_id": func(flag string) string {
+		return i18n.Tf("Pass %[1]s (list: evo vpc subnets) or another zone with --region; if the project has no subnet in any zone, create one in the Cloud.ru console.",
+			"Задайте %[1]s (список: evo vpc subnets) или другую зону через --region; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru.", flag)
+	},
 }
 
 // missingInputHint is the CLI's hint for the first input of missing (the
@@ -836,6 +882,24 @@ func missingInputHint(missing any, h toolHints) string {
 		}
 	}
 	return ""
+}
+
+// argumentHint is the CLI's hint for a schema-rule refusal that names the
+// argument (and optionally its format) in the answer: the tool's hint
+// points at inputSchema, which the CLI user has not (G130-35).
+func argumentHint(argument, format string, h toolHints) string {
+	if h.how == nil || h.help == "" || argument == "" {
+		return ""
+	}
+	how := h.how(argument)
+	switch format {
+	case "uuid":
+		return i18n.Tf("Pass a UUID in %s; see '%s'.", "Передайте UUID в %s; см. '%s'.", how, h.help)
+	case "cidr":
+		return i18n.Tf("Pass a CIDR in %s; see '%s'.", "Передайте CIDR в %s; см. '%s'.", how, h.help)
+	default:
+		return i18n.Tf("Check %s; see '%s'.", "Проверьте %s; см. '%s'.", how, h.help)
+	}
 }
 
 // toolError maps a tool's error answer to a CLIError, as the same failure
@@ -860,6 +924,11 @@ func toolError(name, text string, h toolHints) error {
 		reason, _ = m["reason"].(string)
 		hint, _ = m["hint"].(string)
 		if cli := missingInputHint(m["missing"], h); cli != "" {
+			hint = cli
+		}
+		arg, _ := m["argument"].(string)
+		format, _ := m["format"].(string)
+		if cli := argumentHint(arg, format, h); cli != "" {
 			hint = cli
 		}
 		details = answerDetails(m, msgKey)

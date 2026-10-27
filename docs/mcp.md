@@ -853,7 +853,7 @@ evo mcp --http :8080 --allow-project <UUID-1> --allow-project <UUID-2>
   не читает — состояние ресурса покажет его `*_get` или `*_list`.
 
 Ресурс не из разрешённых проектов отвечается так же, как ресурс, которого
-нет: `NOT_FOUND`, «… is not found in the projects of this server
+нет: `NOT_FOUND`, «… is deleted or not in the projects of this server
 (--allow-project); nothing was done» с подсказкой, из какого `*_list` взять
 id. Ответ один и тот же для ресурса другого проекта и для уже удалённого и
 проекта не называет: перебором id клиент сервера не узнает ни что ресурс
