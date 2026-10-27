@@ -104,7 +104,8 @@ func TestProgress_Stdio(t *testing.T) {
 }
 
 // Over HTTP the stages go on the SSE stream of the call; a client that
-// takes plain JSON gets the answer only, as there is nowhere to send them.
+// takes plain JSON gets the answer only, as there is nowhere to send them
+// (H13).
 // The password H7 masks in the answer is in no stage either.
 func TestProgress_HTTP(t *testing.T) {
 	cloud := &provisionCloud{}
