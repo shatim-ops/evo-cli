@@ -147,6 +147,9 @@ jobs:
       - name: Чтения CLI, инструменты, MCP stdio и HTTP
         env:
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          # Токен IAM для формы ответа monitoring и audit (E5).
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
           # Ключ Object Storage (<tenant_id>:<Key ID>, docs/auth.md): без
           # него s3_buckets — CONFIG_INVALID и только предупреждение.
           CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
