@@ -8,11 +8,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // LockJob checks the id before it builds a path from it, and a held lock
 // makes a second LockJob fail with a message an agent can act on.
 func TestLockJob(t *testing.T) {
+	defer i18n.SetLang(i18n.Lang())
+	i18n.SetLang(i18n.EN) // the English text; TestStackErrorsSpeakCLILanguage has both
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

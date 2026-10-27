@@ -42,7 +42,6 @@ var englishWraps = map[string]string{
 	"internal/deployplan": "1.3.1, part 3",
 	"internal/kubetools":  "1.3.1, part 3",
 	"internal/mcp":        "stays: the MCP server speaks English (internal/cli/mcp.go sets i18n.EN; D6)",
-	"internal/stack":      "1.3.1, with D41 («1.3 — разработка») or after it",
 }
 
 // copiedWraps are the wraps whose ru in i18n.T is the en copied —
