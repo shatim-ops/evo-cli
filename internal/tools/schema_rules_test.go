@@ -172,7 +172,8 @@ const (
 	// (stack, checked by its store).
 	idOfEvo = "evo's own id, not a UUID"
 	// The description does not say what the id is, though cert_delete.id
-	// is a UUID (G13-21): which form the service takes is not checked.
+	// is a UUID (G13-21): which form the service takes is for the
+	// api-probe of 1.4.
 	idUnknown = "form of the id not checked"
 )
 
@@ -275,7 +276,7 @@ func TestArgs_IDsDeclareTheirFormat(t *testing.T) {
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for arg, pv := range props {
 			p, _ := pv.(map[string]any)
-			if typ, _ := p["type"].(string); typ != "string" || arg != "id" && !strings.HasSuffix(arg, "_id") {
+			if typ, _ := p["type"].(string); typ != "string" || (arg != "id" && !strings.HasSuffix(arg, "_id")) {
 				continue
 			}
 			key := tl.Name + "." + arg
