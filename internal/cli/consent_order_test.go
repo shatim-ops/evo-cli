@@ -28,7 +28,9 @@ import (
 // that fixes it (W3…W6; the decisions of 1.3.1, D39…D42, with their PR).
 // The list only shrinks: a case not here fails the test, and so does a line
 // whose call no longer fails that way.
-var lateRefusals = map[string]string{}
+var lateRefusals = map[string]string{
+	"stack_apply: job_id=absent id": "«1.4 — разработка»: an absent job is NOT_FOUND before the question (found 1.4.0, consentAbsentEvoID)",
+}
 
 // jobStarts answer a refused write as a success by design: the call starts
 // a job, and the step's refusal is the job's state, not the call's answer.
@@ -174,6 +176,8 @@ func consentCases(tl tools.Tool, base map[string]any) []consentCase {
 		}
 		if v, _ := base[k].(string); looksParityID(v) {
 			with("absent id", k, consentAbsentID)
+		} else if absent := consentAbsentEvoID(v); absent != "" {
+			with("absent id", k, absent)
 		}
 		if _, ok := p["format"]; ok {
 			with("bad", k, "bad")
@@ -188,6 +192,21 @@ func consentCases(tl tools.Tool, base map[string]any) []consentCase {
 		out = append(out, consentCase{name: "world: " + n, args: copyArgs(base), world: consentWorlds[n]})
 	}
 	return out
+}
+
+// consentAbsentEvoID is an id of evo's own (a stack job stk-<10 hex>, a
+// plan plan-<12 hex>) of the same form as v that no job or plan has, or ""
+// when v is none: the job of stack_apply is read from the local store, not
+// the cloud, and an absent one is as sure a refusal as a 404 (1.4.0: it
+// asked for consent to a billable apply, then answered NOT_FOUND).
+func consentAbsentEvoID(v string) string {
+	switch {
+	case strings.HasPrefix(v, "stk-"):
+		return "stk-00000000ad"
+	case strings.HasPrefix(v, "plan-"):
+		return "plan-0000000000ad"
+	}
+	return ""
 }
 
 // looksParityID: an id of the world (parityVM, the zone, the cluster).
