@@ -54,9 +54,28 @@ jobs:
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
           printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
 
+      # Права файлов профиля на Windows — ACL, а не биты режима: файлы с
+      # ключом доступны только владельцу (и системе, администраторам), не
+      # Everyone, Users, Authenticated Users (S2, 1.4.0). В лог — только
+      # вердикт, без имён учётных записей.
+      - name: ACL файлов профиля (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          for f in credentials.yaml config.yaml; do
+            p=$(cygpath -w "$CLOUDRU_CONFIG_DIR/$f")
+            [ -f "$CLOUDRU_CONFIG_DIR/$f" ] || { echo "::error::нет $f после configure"; exit 1; }
+            if icacls "$p" | grep -Eiq 'Everyone|BUILTIN\\Users|Authenticated Users'; then
+              echo "::error::$f доступен не только владельцу (icacls)"; exit 1
+            fi
+            echo "$f: только владелец"
+          done
+
       - name: Чтения CLI, инструменты, MCP stdio и HTTP
         env:
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          # Токен IAM для формы ответа monitoring и audit (E5).
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
           CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
           CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
         run: .github/scripts/cloud-readonly.sh
