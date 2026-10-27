@@ -435,6 +435,38 @@ func TestWorkflows_SmokeBearerTokenLong(t *testing.T) {
 	}
 }
 
+// 1.4.0 ships without an rc (owner's decision 27.10): the session journal
+// of the live runs is checked instead. In the cloud-e2e jobs that call evo
+// against the cloud, the journal is on from the first call after configure
+// to the end, and its last step runs diag-check.py --public on it even when
+// a step before failed.
+func TestWorkflows_CloudE2EJournalChecked(t *testing.T) {
+	jobs := readWorkflows(t)["cloud-e2e.yml"].Jobs
+	for _, name := range []string{"readonly", "live"} {
+		steps := jobs[name].Steps
+		on, configure, check := -1, -1, -1
+		for i, s := range steps {
+			switch {
+			case strings.Contains(s.Run, "evo configure"):
+				configure = i
+			case strings.Contains(s.Run, "evo diag on"):
+				on = i
+			case strings.Contains(s.Run, "scripts/diag-check.py --public"):
+				check = i
+				if !strings.Contains(s.If, "!cancelled()") {
+					t.Errorf("cloud-e2e/%s: the journal check needs if: !cancelled(), has %q", name, s.If)
+				}
+			}
+		}
+		if on != configure+1 || configure < 0 {
+			t.Errorf("cloud-e2e/%s: the journal goes on right after configure (configure step %d, diag on step %d)", name, configure, on)
+		}
+		if check != len(steps)-1 {
+			t.Errorf("cloud-e2e/%s: diag-check --public is the last step (step %d of %d)", name, check, len(steps))
+		}
+	}
+}
+
 // Every offline test of a CI script (.github/scripts/*_test.sh) runs in
 // ci: a test that no job runs guards nothing (dbaas_delete_test.sh, 1.3.1:
 // the repeated delete of a DBaaS cluster in ERASED, D44).
@@ -443,10 +475,22 @@ func TestWorkflows_ScriptTestsRun(t *testing.T) {
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no script tests found: %v", err)
 	}
-	ci := readWorkflows(t)["ci.yml"]
+	ws := readWorkflows(t)
 	for _, f := range files {
-		if name := ".github/scripts/" + filepath.Base(f); !runsStep(ci, name) {
+		if name := ".github/scripts/" + filepath.Base(f); !runsStep(ws["ci.yml"], name) {
 			t.Errorf("ci: %s is not run", name)
+		}
+	}
+	// The offline tests of the repository's scripts (scripts/*-test.py:
+	// changelog, specs, diag-check) run in some workflow.
+	py, _ := filepath.Glob(filepath.Join("..", "..", "scripts", "*-test.py"))
+	for _, f := range py {
+		name, run := "scripts/"+filepath.Base(f), false
+		for _, w := range ws {
+			run = run || runsStep(w, name)
+		}
+		if !run {
+			t.Errorf("%s is run by no workflow", name)
 		}
 	}
 }
