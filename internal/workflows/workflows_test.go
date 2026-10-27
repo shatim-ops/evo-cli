@@ -382,12 +382,14 @@ func TestWorkflows_CIChecksImageQuotaSkip(t *testing.T) {
 	}
 }
 
-// smokeTokenLen is minBearerTokenLen of internal/cli/mcp.go: a shorter
-// MCP_BEARER_TOKEN on an address open to the network (the container's
-// -p 8080:8080) is CONFIG_INVALID, and the server does not start (D45).
-const smokeTokenLen = 32
-
-var smokeToken = regexp.MustCompile(`MCP_BEARER_TOKEN=([^\s"'$]+)`)
+var (
+	smokeToken = regexp.MustCompile(`MCP_BEARER_TOKEN=([^\s"'$]+)`)
+	// minBearerTokenLen of internal/cli/mcp.go: a shorter MCP_BEARER_TOKEN
+	// on an address open to the network (the container's -p 8080:8080) is
+	// CONFIG_INVALID, and the server does not start (D45). Read from the
+	// source, so the test follows the server's bound.
+	minBearerConst = regexp.MustCompile(`(?m)^const minBearerTokenLen = (\d+)$`)
+)
 
 // The HTTP smoke of the image starts the server with a literal token: in
 // ci on every PR, in release only on a tag. A token shorter than the
@@ -397,6 +399,15 @@ var smokeToken = regexp.MustCompile(`MCP_BEARER_TOKEN=([^\s"'$]+)`)
 // mcp-smoke.sh call passes that same token, and release runs the script ci
 // runs.
 func TestWorkflows_SmokeBearerTokenLong(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "cli", "mcp.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := minBearerConst.FindSubmatch(src)
+	if m == nil {
+		t.Fatal("internal/cli/mcp.go: no const minBearerTokenLen — the bound moved, update the test")
+	}
+	smokeTokenLen, _ := strconv.Atoi(string(m[1]))
 	ws := readWorkflows(t)
 	found := 0
 	for name, w := range ws {
