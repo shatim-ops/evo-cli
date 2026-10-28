@@ -592,7 +592,7 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 
-		var opened, skipped, failed []string
+		var opened, skipped, skippedWider, failed []string
 		// Why each port failed: the answer said status ok with failed ports and
 		// no reason, exit 0, when every rule was refused (QA 20.10, QA-3).
 		failures := map[string]string{}
@@ -600,8 +600,11 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 		openedHere := map[int]bool{}
 		for _, p := range ports {
 			pr := fmt.Sprintf("%d:%d", p, p)
-			if covered, _ := sgrules.Coverage(rules, proto, p, cidr); covered || openedHere[p] {
+			if covered, wider := sgrules.Coverage(rules, proto, p, cidr); covered || openedHere[p] {
 				skipped = append(skipped, strconv.Itoa(p))
+				if wider {
+					skippedWider = append(skippedWider, strconv.Itoa(p))
+				}
 				continue
 			}
 			rule := provision.SGRule{
@@ -632,6 +635,10 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 			"opened":         opened,
 			"already_open":   skipped,
 			"failed":         failed,
+		}
+		if len(skippedWider) > 0 {
+			// As the preview said it (already_open_wider).
+			res["already_open_wider"] = skippedWider
 		}
 		if firstErr == nil {
 			return toJSON(res), false

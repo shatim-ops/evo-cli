@@ -122,6 +122,10 @@ func TestOpenPorts_AlreadyOpenCountsTheSource(t *testing.T) {
 	if opened, _ := m["opened"].([]any); len(opened) != 1 || opened[0] != "80" {
 		t.Errorf("opened %v, want [80]", m["opened"])
 	}
+	// The answer says what the preview said: 8080 was let in by a wider rule.
+	if wider, _ := m["already_open_wider"].([]any); len(wider) != 1 || wider[0] != "8080" {
+		t.Errorf("already_open_wider after the call %v, want [8080], as the preview", m["already_open_wider"])
+	}
 	// The same source and port as a rule there: open already, as before.
 	m, _, _ = callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80)}, "cidr": "10.0.0.0/8"})
 	if already, _ := m["already_open"].([]any); len(already) != 1 || already[0] != "80" {
