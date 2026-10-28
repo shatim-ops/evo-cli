@@ -1665,7 +1665,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 			if err != nil {
 				return false, err
 			}
-			return c.Gate(ctx, answer, redeploy)
+			return c.ask(ctx, answer, redeploy)
 		},
 	})
 	if err != nil {
@@ -2438,7 +2438,7 @@ func (s *Registry) destroyLive(ctx context.Context, c *Caller) (string, bool) {
 	eng.Printer = c.Printer
 	err = eng.Destroy(ctx, engine.DestroyOptions{DryRun: c.DryRun,
 		Gate: func(ctx context.Context, p confirm.Preview) (bool, error) {
-			return c.Gate(ctx, destroyAnswer(p, s.deploymentProject()), &p)
+			return c.ask(ctx, destroyAnswer(p, s.deploymentProject()), &p)
 		}})
 	if err != nil {
 		fields := map[string]any{}
