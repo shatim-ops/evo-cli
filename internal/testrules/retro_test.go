@@ -47,8 +47,6 @@ var retroKnown = map[string]string{
 	"1.3.1 «разработка»: R2 a cost without a number":                 "the first retro, written before R2; stays as it is",
 	"1.4.0 «разработка»: R2 a cost without a number":                 "written before R2: «десятки пробуждений» is no number; stays as it is",
 	"1.4.0 «разработка»: R3 #396 again without the owner's decision": "two problems of one PR (a Qwen answer missed, the preview of stack_destroy), not a repeat",
-	"1.3.1 «релиз»: R4 «пример, до 1.4.0» after 1.4.0 is out":        "release, summary of 1.4.1: keep it as a rule or a check, or drop it",
-	"1.3.1 «разработка»: R4 «пример, до 1.4.0» after 1.4.0 is out":   "release, summary of 1.4.1: keep it as a rule or a check, or drop it",
 }
 
 var (
