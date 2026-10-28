@@ -89,8 +89,10 @@ func (r *Registry) completionOf(tool, arg string) (completion, bool) {
 	if _, no := noCompletion[tool][arg]; no {
 		return completion{}, false
 	}
-	if c, ok := toolRefs[tool][arg]; ok && r.listable(c.list) {
-		return c, true
+	// The tool's own declaration decides: its list or none, never the
+	// list valueRefs has for the same name in another product.
+	if c, ok := toolRefs[tool][arg]; ok {
+		return c, r.listable(c.list)
 	}
 	if c, ok := valueRefs[arg]; ok && r.listable(c.list) {
 		return c, true
