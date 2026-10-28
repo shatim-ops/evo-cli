@@ -482,38 +482,55 @@ func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
 	for _, s := range readSkills(t) {
 		bodies[s.name] = strings.Join(strings.Fields(strings.Join(s.body, " ")), " ")
 	}
+	tests := testFuncs(t)
+	gaps := 0
 	for _, c := range []struct {
 		skill, finding string
 		must, mustNot  []string
+		// proof are the tests that the code does what must says (С9,
+		// audit blind-spots-1.5 FB15-48: a skill promises nothing the code
+		// does not do); noProof says why there is none — a line to the
+		// agent, not a claim of the code, or «пробел:» with the test that
+		// is missing (the list of gaps only shrinks).
+		proof   []string
+		noProof string
 	}{
 		// The inventory is the prefix; the rest of the project is one line,
 		// never a row of the table to delete; the lists need every group.
 		{"evo-cleanup", "G130-01",
 			[]string{"`--toolsets all`", "never a row of the table"},
-			[]string{"or every group of the resources concerned"}},
+			[]string{"or every group of the resources concerned"},
+			nil, "указание агенту, а не утверждение о коде"},
 		// The VM of a deployment is in the inventory by the prefix too:
 		// deploy names it evo-<project_name> (M2 HTTP T4), and a deployment
 		// of another project in a working directory is never a row (review
 		// of the release on #445: production VMs in the table).
 		{"evo-cleanup", "M2 T4",
 			[]string{"`vm_name` starts with `evo-<prefix>`"},
-			[]string{"the VMs of the deployments `status` and `list` found"}},
+			[]string{"the VMs of the deployments `status` and `list` found"},
+			[]string{"TestDeploy_VMNameFromDirectoryIsAHostname"}, ""},
 		// deploy has no default image (engine.BootImage: CONFIG_INVALID);
 		// the VM is named evo-<project_name> (vmNameFor); the compose file's
 		// ports open from 0.0.0.0/0 in the zone's shared group.
 		{"evo-deploy", "G130-09, -10, -29",
 			[]string{"has no default image", "`evo-<project_name>`", "`0.0.0.0/0`"},
-			[]string{"`--image` if needed)"}},
+			[]string{"`--image` if needed)"},
+			// No image: the world «config without CLOUDRU_IMAGE_ID» refuses
+			// before the question, no image is picked for the person.
+			[]string{"TestDeploy_VMNameFromDirectoryIsAHostname", "TestConsent_RefusalWithoutWriteComesBeforeTheQuestion",
+				"TestOpen_PortOpensForAnyAddressInTheGivenGroup"}, ""},
 		// pg_create's default subnet is the zone's (pickDBaaSSubnet), and
 		// evo gives no price for PostgreSQL.
 		{"evo-postgres", "G130-25, -27",
 			[]string{"the main subnet of the profile's zone", "`tariff_url`"},
-			[]string{"the first subnet of the project", "low-cost", "the cheapest"}},
+			[]string{"the first subnet of the project", "low-cost", "the cheapest"},
+			[]string{"TestDbaasSubnet_MainSubnetOfTheProfilesZone", "TestPgCreate_PreviewGivesTheTariffNotAPrice"}, ""},
 		// With --allow-project a resource that is gone answers NOT_FOUND
 		// (H9 b), not already_deleted.
 		{"evo-scenarios", "G130-16",
 			[]string{"a server without `--allow-project`"},
-			nil},
+			nil,
+			[]string{"TestAlreadyDeleted_BoundServerKeepsNotFound"}, ""},
 	} {
 		b := bodies[c.skill]
 		for _, w := range c.must {
@@ -526,5 +543,50 @@ func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
 				t.Errorf("skills/%s (%s): says %q, which the code does not do", c.skill, c.finding, w)
 			}
 		}
+		for _, p := range c.proof {
+			if !tests[p] {
+				t.Errorf("skills/%s (%s): proof %s is no test of the repository", c.skill, c.finding, p)
+			}
+		}
+		switch {
+		case len(c.proof) == 0 && c.noProof == "":
+			t.Errorf("skills/%s (%s): no proof that the code does it, and no why", c.skill, c.finding)
+		case strings.HasPrefix(c.noProof, "пробел:"):
+			gaps++
+		}
 	}
+	// The gaps only shrink: a test that proves a line takes it off.
+	if gaps > skillProofGaps {
+		t.Errorf("skills: %d promises without a proof, %d before: a new promise comes with its test", gaps, skillProofGaps)
+	} else if gaps < skillProofGaps {
+		t.Errorf("skills: %d promises without a proof, fewer than %d: lower skillProofGaps", gaps, skillProofGaps)
+	}
+}
+
+// skillProofGaps is the number of promises of the skills with no test that
+// the code keeps them (С9); only shrinks.
+const skillProofGaps = 0
+
+// testFuncs are the names of the test functions of the repository.
+func testFuncs(t *testing.T) map[string]bool {
+	t.Helper()
+	names := map[string]bool{}
+	fn := regexp.MustCompile(`(?m)^func (Test[A-Za-z0-9_]+)\(`)
+	err := filepath.WalkDir(filepath.Join("..", ".."), func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, m := range fn.FindAllSubmatch(b, -1) {
+			names[string(m[1])] = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return names
 }

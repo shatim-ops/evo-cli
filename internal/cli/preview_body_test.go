@@ -1,0 +1,313 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
+package cli
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/state"
+)
+
+// The class of a value evo sends that its preview does not name (release
+// plan 1.5, С1; audit blind-spots-1.5 §9): what the person agrees to
+// without seeing it.
+const (
+	unnamedAccess = "доступ" // opens the resource to the internet or another party
+	unnamedPrice  = "цена"   // what is paid for: size, count, retention
+	unnamedWork   = "работа" // whether the resource works as meant
+	unnamedNoise  = "шум"    // a form of what the preview already says: an id of a named thing, a name evo makes
+	unnamedSecret = "секрет" // never in a preview: the test checks it is not there
+)
+
+// bodyUnnamed are the values the confirmed call sends the cloud that its
+// preview does not name — "tool path" with the class and why. The list
+// only shrinks: the preview of С4 («разработка», access first) names the
+// value and the line goes; a line whose value the preview names now, or
+// that is not sent any more, fails the test. Secret lines stay: the value
+// must not reach the preview.
+var bodyUnnamed = map[string]struct{ class, why string }{
+	"ar_create isPublic":     {unnamedAccess, "реестр закрытый по умолчанию; превью не говорит"},
+	"ar_create registryType": {unnamedWork, "тип реестра DOCKER по умолчанию"},
+
+	"ca_deploy configuration.ingress.publiclyAccessible": {unnamedAccess, "приложение доступно из интернета (дыра в согласии, аудит §9; не находка FB15)"},
+	"ca_deploy template.containers.containerPort":        {unnamedWork, "порт контейнера по умолчанию"},
+	"ca_deploy template.protocol":                        {unnamedWork, "протокол http_1 по умолчанию"},
+	"ca_deploy template.scaling.maxInstanceCount":        {unnamedPrice, "предел экземпляров по умолчанию"},
+	"ca_deploy template.scaling.minInstanceCount":        {unnamedPrice, "0 — приложение засыпает (холодный старт)"},
+
+	"deploy availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
+	"deploy interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
+	"deploy name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
+	"deploy description":          {unnamedNoise, "подпись правила «evo: port N»"},
+	"deploy direction":            {unnamedNoise, "правило входящее"},
+	"deploy ether_type":           {unnamedNoise, "IPv4"},
+	"deploy ip_protocol":          {unnamedWork, "порты compose открываются только как TCP"},
+	"deploy port_range":           {unnamedNoise, "порты compose в форме API"},
+	"deploy remote_ip_prefix":     {unnamedAccess, "порты открываются для 0.0.0.0/0 в общей группе зоны"},
+
+	"deploy_apply availability_zone_id": {unnamedNoise, "id зоны плана"},
+	"deploy_apply interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
+	"deploy_apply name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
+
+	"disk_attach vm_id":                {unnamedNoise, "id ВМ, которую превью называет по имени"},
+	"disk_create availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
+	"disk_create disk_type_name":       {unnamedPrice, "тип диска SSD по умолчанию (FB15-6)"},
+	"disk_create size":                 {unnamedNoise, "size_gb в форме API"},
+	"disk_detach vm_id":                {unnamedNoise, "id ВМ, которую превью называет по имени"},
+	"disk_resize size":                 {unnamedNoise, "size_gb в форме API"},
+
+	"dns_record_create public_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
+	"dns_record_create ttl":            {unnamedWork, "TTL 300 по умолчанию"},
+	"dns_record_create type":           {unnamedNoise, "тип записи в нижнем регистре API"},
+	"dns_record_create values":         {unnamedNoise, "value в форме API"},
+
+	"fip_attach interface_id": {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
+	"fip_attach name":         {unnamedNoise, "имя адреса при привязке"},
+
+	"image_create availability_zones.availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
+
+	"k8s_add_addon appVersion":  {unnamedWork, "версия плагина, которую выбрал evo"},
+	"k8s_add_addon resolveMode": {unnamedWork, "конфликты ресурсов не разрешаются"},
+
+	"k8s_add_nodepool machineConfiguration.disk.size":       {unnamedPrice, "диск узла 20 ГБ по умолчанию (FB15-41)"},
+	"k8s_add_nodepool machineConfiguration.flavorId":        {unnamedNoise, "id flavor, который превью называет по имени"},
+	"k8s_add_nodepool networkConfiguration.nodesSubnetId":   {unnamedWork, "подсеть узлов, которую выбрал evo"},
+	"k8s_add_nodepool networkConfiguration.securityGroupId": {unnamedAccess, "группа безопасности узлов, которую выбрал evo"},
+	"k8s_add_nodepool scalePolicy.fixedScale.count":         {unnamedPrice, "2 узла по умолчанию (FB15-41)"},
+	"k8s_add_nodepool updateConfiguration.strategy":         {unnamedWork, "обновление узлов по одному"},
+
+	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId":    {unnamedNoise, "id flavor мастеров, который превью называет по имени"},
+	"k8s_create controlPlaneConfiguration.sizingConfiguration.masterCount": {unnamedWork, "один мастер — без отказоустойчивости"},
+	"k8s_create controlPlaneConfiguration.zones":                           {unnamedNoise, "id зоны, которую превью называет по имени"},
+	"k8s_create controlPlaneConfiguration.version":                         {unnamedWork, "версия Kubernetes, которую выбрал evo"},
+	"k8s_create networkConfiguration.kubeApiInternet":                      {unnamedAccess, "API кластера доступен из интернета (FB15-41)"},
+	"k8s_create networkConfiguration.privateVipSubnetId":                   {unnamedWork, "подсеть API кластера, которую выбрал evo"},
+
+	"kafka_create cruise_control_enabled":                {unnamedWork, "Cruise Control выключен"},
+	"kafka_create cruise_control_rebalance_auto_enabled": {unnamedWork, "авторебаланс выключен"},
+	"kafka_create ui_enabled":                            {unnamedAccess, "веб-интерфейс Kafka (FB15-35)"},
+
+	"lb_create external_address_spec.allocate":         {unnamedAccess, "публичный адрес балансировщика"},
+	"lb_create rules.health_check.healthy_threshold":   {unnamedWork, "проверка здоровья цели по умолчанию"},
+	"lb_create rules.health_check.interval":            {unnamedWork, "проверка здоровья цели по умолчанию"},
+	"lb_create rules.health_check.timeout":             {unnamedWork, "проверка здоровья цели по умолчанию"},
+	"lb_create rules.health_check.unhealthy_threshold": {unnamedWork, "проверка здоровья цели по умолчанию"},
+	"lb_create rules.listeners.name":                   {unnamedNoise, "имя listener, которое evo даёт само"},
+	"lb_create rules.listeners.target_port":            {unnamedWork, "порт цели равен порту listener"},
+	"lb_create availability_zone_specs.subnet_ids":     {unnamedWork, "подсеть балансировщика, которую выбрал evo"},
+	"lb_create rules.name":                             {unnamedNoise, "имя правила, которое evo даёт само"},
+
+	"open_ports description":      {unnamedNoise, "подпись правила"},
+	"open_ports direction":        {unnamedNoise, "правило входящее"},
+	"open_ports ether_type":       {unnamedNoise, "IPv4"},
+	"open_ports ip_protocol":      {unnamedWork, "порты открываются только как TCP"},
+	"open_ports port_range":       {unnamedNoise, "порты в форме API"},
+	"open_ports remote_ip_prefix": {unnamedAccess, "источник 0.0.0.0/0 по умолчанию (FB15-16)"},
+
+	"pg_create backup.retention_policy_days": {unnamedPrice, "копии хранятся 14 дней (FB15-32)"},
+	"pg_create backup.schedule":              {unnamedWork, "расписание копий по умолчанию (FB15-32)"},
+	"pg_create subnet_ids":                   {unnamedWork, "подсеть кластера, которую выбрал evo (основная подсеть зоны)"},
+	"pg_create storage.pg_data_gb":           {unnamedPrice, "хранилище по умолчанию"},
+
+	"provision availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
+	"provision interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
+	"provision name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
+
+	"secret_add_version payload": {unnamedSecret, "значение секрета"},
+	"secret_create payload":      {unnamedSecret, "значение секрета"},
+
+	"stack_apply name": {unnamedNoise, "имя версии задания"},
+
+	"vpc_route_create nextHop.virtualMachine.interface.id":      {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
+	"vpc_route_create nextHop.virtualMachine.virtualMachine.id": {unnamedNoise, "id ВМ, которую превью называет по имени"},
+}
+
+// bodyUnnamedEverywhere are fields no preview names, one line for every
+// tool that sends them.
+var bodyUnnamedEverywhere = map[string]struct{ class, why string }{
+	// The project of the profile or the key: no preview names it, though a
+	// wrong project is the costliest mistake of a create.
+	"projectid": {unnamedWork, "проект профиля или ключа; превью его не называет"},
+}
+
+// Release plan 1.5, С1 (audit blind-spots-1.5, §9: «the preview does not
+// say what evo chose»): every value the confirmed call of a mutating tool
+// sends the cloud is named in its preview with the same value — a key of
+// the preview (any depth, any of snake_case or camelCase) or an argument of
+// the call — or is a line of bodyUnnamed with its class. A secret is the
+// other way round: its value is never in the preview. On the world of
+// TestParity_JSONEqualsTool: every mutating tool with the arguments of
+// parityArgs.
+func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
+	w, fake := withJSONWorld(t)
+	cases, _, _ := jsonCases(t)
+	reg := newRegistry()
+	seen, tools := map[string]bool{}, map[string]bool{}
+	var bad []string
+	byClass := map[string]int{}
+	for _, c := range cases {
+		if !c.tool.Mutating || tools[c.tool.Name] || c.state != "" {
+			continue
+		}
+		tools[c.tool.Name] = true
+		tl, _ := reg.Lookup(c.tool.Name)
+		call := func(confirmed bool) (string, []string) {
+			args := copyArgs(c.args)
+			done := func() {}
+			if c.setup != nil {
+				extra, d := c.setup(t, w)
+				for k, v := range extra {
+					args[k] = v
+				}
+				done = d
+			}
+			if confirmed {
+				args["confirmed"] = true
+			}
+			fake.reset()
+			newProcess()
+			flagJSON, flagDryRun, flagYes = false, false, false
+			text, _ := tl.Handler(context.Background(), args)
+			writes := fake.takeWrites()
+			done()
+			_ = os.Remove(state.DefaultPath(w.dir))
+			return text, writes
+		}
+		preview, _ := call(false)
+		_, writes := call(true)
+		named := namedValues(preview, c.args)
+		for _, wr := range writes {
+			body := writeBody(wr)
+			for path, value := range body {
+				key := c.tool.Name + " " + path
+				last := path[strings.LastIndex(path, ".")+1:]
+				if d, ok := bodyUnnamed[key]; ok && d.class == unnamedSecret {
+					seen[key] = true
+					// The API takes it base64: the preview has neither form.
+					plain, _ := base64.StdEncoding.DecodeString(value)
+					if strings.Contains(preview, value) || len(plain) > 0 && strings.Contains(preview, string(plain)) {
+						bad = append(bad, key+": the secret value is in the preview")
+					}
+					continue
+				}
+				if named[normKey(last)][value] {
+					continue
+				}
+				if d, ok := bodyUnnamedEverywhere[normKey(last)]; ok {
+					if !seen[key] {
+						byClass[d.class]++
+					}
+					seen[key], seen["* "+normKey(last)] = true, true
+					continue
+				}
+				if d, ok := bodyUnnamed[key]; ok {
+					if !seen[key] {
+						byClass[d.class]++
+					}
+					seen[key] = true
+					continue
+				}
+				bad = append(bad, fmt.Sprintf("%s = %s: sent, not in the preview — name it there, or a line of bodyUnnamed with its class", key, value))
+			}
+		}
+	}
+	for _, tl := range reg.Tools() {
+		if tl.Mutating && !tools[tl.Name] {
+			bad = append(bad, tl.Name+": a mutating tool without a case in parityArgs")
+		}
+	}
+	for key, d := range bodyUnnamed {
+		switch {
+		case !seen[key]:
+			bad = append(bad, key+": in bodyUnnamed, but sent named or not sent: remove the line")
+		case d.why == "":
+			bad = append(bad, key+": a line without why")
+		}
+		switch d.class {
+		case unnamedAccess, unnamedPrice, unnamedWork, unnamedNoise, unnamedSecret:
+		default:
+			bad = append(bad, fmt.Sprintf("%s: class %q", key, d.class))
+		}
+	}
+	for seg := range bodyUnnamedEverywhere {
+		if !seen["* "+seg] {
+			bad = append(bad, seg+": in bodyUnnamedEverywhere, but no tool sends it unnamed: remove the line")
+		}
+	}
+	t.Logf("mutating tools: %d; values not in the preview by class: %v", len(tools), byClass)
+	if len(bad) > 0 {
+		sort.Strings(bad)
+		t.Fatal(strings.Join(bad, "\n"))
+	}
+}
+
+// writeBody is the JSON body of a write recorded by jsonFake ("METHOD
+// url body") as leaf paths (arrays without an index) and values; nil for a
+// body that is not a JSON object.
+func writeBody(write string) map[string]string {
+	i := strings.Index(write, " {")
+	if i < 0 {
+		return nil
+	}
+	var v any
+	if json.Unmarshal([]byte(write[i+1:]), &v) != nil {
+		return nil
+	}
+	out := map[string]string{}
+	leaves(v, "", func(path, value string) { out[path] = value })
+	return out
+}
+
+// namedValues are the values the preview and the arguments of the call
+// name, by key in one form (normKey).
+func namedValues(preview string, args map[string]any) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	add := func(path, value string) {
+		k := normKey(path[strings.LastIndex(path, ".")+1:])
+		if out[k] == nil {
+			out[k] = map[string]bool{}
+		}
+		out[k][value] = true
+	}
+	var v any
+	if json.Unmarshal([]byte(preview), &v) == nil {
+		leaves(v, "", add)
+	}
+	for k, a := range args {
+		leaves(a, k, add)
+	}
+	return out
+}
+
+func leaves(v any, path string, f func(path, value string)) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, e := range x {
+			p := k
+			if path != "" {
+				p = path + "." + k
+			}
+			leaves(e, p, f)
+		}
+	case []any:
+		for _, e := range x {
+			leaves(e, path, f)
+		}
+	default:
+		f(path, fmt.Sprint(x))
+	}
+}
+
+// normKey is a key in one form: snake_case and camelCase alike.
+func normKey(k string) string {
+	return strings.ToLower(strings.NewReplacer("_", "", "-", "").Replace(k))
+}
