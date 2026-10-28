@@ -491,6 +491,13 @@ func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
 		{"evo-cleanup", "G130-01",
 			[]string{"`--toolsets all`", "never a row of the table"},
 			[]string{"or every group of the resources concerned"}},
+		// The VM of a deployment is in the inventory by the prefix too:
+		// deploy names it evo-<project_name> (M2 HTTP T4), and a deployment
+		// of another project in a working directory is never a row (review
+		// of the release on #445: production VMs in the table).
+		{"evo-cleanup", "M2 T4",
+			[]string{"`vm_name` starts with `evo-<prefix>`"},
+			[]string{"the VMs of the deployments `status` and `list` found"}},
 		// deploy has no default image (engine.BootImage: CONFIG_INVALID);
 		// the VM is named evo-<project_name> (vmNameFor); the compose file's
 		// ports open from 0.0.0.0/0 in the zone's shared group.
