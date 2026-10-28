@@ -26,7 +26,7 @@ another evo and go on only if they say so.
 | The person asks for | Skill | Tool groups (`--toolsets`) |
 |---|---|---|
 | deploy an app or a compose project, update it, its logs | `evo-deploy` | `deploy,vm,vpc,image,auth`; a domain: `dns` |
-| a VM, open or close a port, a public IP | `evo-vm` | `vm,deploy,vpc,image,auth` |
+| a VM, open or close a port, a public IP | `evo-vm` | `vm,deploy,vpc,image,auth`; a domain: `dns` |
 | PostgreSQL, a database, a user, a connection string | `evo-postgres` | `pg,vpc,auth` |
 | remove everything, what is left, what it costs | `evo-cleanup` | `all` |
 | Kafka | none: tools `kafka_*` | `kafka,vpc,auth` |
