@@ -20,6 +20,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
 )
 
 // Resources of a CreatePreview.
@@ -551,13 +552,20 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 		if p.PublicIP != nil {
 			lines = append(lines, publicIPLine(*p.PublicIP))
 		}
+		source := sgrules.Anywhere
+		for _, prm := range p.Params {
+			if prm.Key == "ports_source" {
+				source = paramValue(prm.Value)
+			}
+		}
 		for _, prm := range p.Params {
 			v := paramValue(prm.Value)
 			switch {
-			case v == "":
+			case v == "", prm.Key == "ports_source":
+				// The source is said on the line of the ports.
 			case prm.Key == "ports":
-				lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to 0.0.0.0/0 in the VM's security group (shared by every VM in it); destroy closes them",
-					"%s открываются для 0.0.0.0/0 в группе безопасности ВМ (она общая для всех ВМ в ней); destroy их закроет", v))
+				lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to %s in the VM's security group (shared by every VM in it); destroy closes them",
+					"%s открываются для %s в группе безопасности ВМ (она общая для всех ВМ в ней); destroy их закроет", v, source))
 			case prm.Key == "image_metadata":
 				lines = append(lines, previewLabel("fields", "поля")+i18n.Tf("%s of the image, as given", "%s — поля образа с заданными значениями", v))
 			default:

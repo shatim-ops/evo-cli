@@ -128,11 +128,11 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		for _, p := range udpPorts {
 			ps = append(ps, fmt.Sprintf("%d/udp", p))
 		}
-		lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to 0.0.0.0/0 in security group %s (shared by every VM in it); "+
+		lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to %s in security group %s (shared by every VM in it); "+
 			"ports already open there are left as they are, destroy deletes only the rules this deploy creates",
-			"%s открываются для 0.0.0.0/0 в группе безопасности %s (она общая для всех ВМ в ней); "+
+			"%s открываются для %s в группе безопасности %s (она общая для всех ВМ в ней); "+
 				"уже открытые остаются как есть, destroy удалит только правила, которые создаст этот deploy",
-			strings.Join(ps, ","), network.SecurityGroup))
+			strings.Join(ps, ","), sgrules.Anywhere, network.SecurityGroup))
 	}
 	lines = append(lines, vmCostLines(cost, vm.Flavor.VCPUs > 0)...)
 

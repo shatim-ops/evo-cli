@@ -44,7 +44,6 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"deploy ether_type":           {unnamedNoise, "IPv4"},
 	"deploy ip_protocol":          {unnamedWork, "порты compose открываются только как TCP"},
 	"deploy port_range":           {unnamedNoise, "порты compose в форме API"},
-	"deploy remote_ip_prefix":     {unnamedAccess, "порты открываются для 0.0.0.0/0 в общей группе зоны"},
 
 	"deploy_apply availability_zone_id": {unnamedNoise, "id зоны плана"},
 	"deploy_apply interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
@@ -75,12 +74,10 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"lb_create rules.listeners.target_port": {unnamedWork, "порт цели равен порту listener"},
 	"lb_create rules.name":                  {unnamedNoise, "имя правила, которое evo даёт само"},
 
-	"open_ports description":      {unnamedNoise, "подпись правила"},
-	"open_ports direction":        {unnamedNoise, "правило входящее"},
-	"open_ports ether_type":       {unnamedNoise, "IPv4"},
-	"open_ports ip_protocol":      {unnamedWork, "порты открываются только как TCP"},
-	"open_ports port_range":       {unnamedNoise, "порты в форме API"},
-	"open_ports remote_ip_prefix": {unnamedAccess, "источник 0.0.0.0/0 по умолчанию (FB15-16)"},
+	"open_ports description": {unnamedNoise, "подпись правила"},
+	"open_ports direction":   {unnamedNoise, "правило входящее"},
+	"open_ports ether_type":  {unnamedNoise, "IPv4"},
+	"open_ports port_range":  {unnamedNoise, "порты в форме API"},
 
 	"provision availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
 	"provision interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
@@ -115,6 +112,10 @@ var bodyNamedAs = map[string]string{
 	"pg_create storage.pg_data_gb":                       "storage_gb",
 	"pg_create backup.schedule":                          "backup_schedule",
 	"pg_create backup.retention_policy_days":             "backup_retention_days",
+
+	"open_ports remote_ip_prefix": "cidr",
+	"open_ports ip_protocol":      "protocol",
+	"deploy remote_ip_prefix":     "ports_source",
 }
 
 // bodyUnnamedEverywhere are fields no preview names, one line for every
