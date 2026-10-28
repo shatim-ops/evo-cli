@@ -12,8 +12,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // refusedState is a state in which the platform refuses the delete of a
@@ -30,8 +28,8 @@ type refusedState struct {
 
 // deleteRefusals declares, for every delete of deleteTargets, the states in
 // which the platform refuses it (CLAUDE.md §6, axis 3: such an answer says
-// so and names the way out — support, the console — and is no success and
-// no bare API_ERROR). A delete with none known says why: the list is
+// so and names the way out — support, the console — and is no success). A
+// delete with none known says why: the list is
 // closed, so a new delete without a line fails the build.
 var deleteRefusals = map[string]struct {
 	states []refusedState
@@ -103,10 +101,10 @@ var waysOut = map[bool][]string{
 // CLAUDE.md §6, axis 3: «Удалить нельзя — ответ говорит это прямо и
 // называет путь (поддержка, консоль), а не выглядит успехом». Every
 // declared refusal: the resource is there in the state, the delete with
-// consent meets the platform's refusal, and the answer is an error, not
-// the bare API_ERROR of an unknown failure, with a hint that names the way
-// out — to wait, of a passing state; support or the console, of a final
-// one. Release plan 1.5, «мир „платформа отвергает удаление в состоянии
+// consent meets the platform's refusal, and the answer is an error with
+// a hint that names the way out — to wait, of a passing state; support or
+// the console, of a final one. Its reason stays API_ERROR: a new one would
+// be a breaking change (owner's decision 28.10, #455, option (б)). Release plan 1.5, «мир „платформа отвергает удаление в состоянии
 // X“»; live: DB-17 (Kafka in DEPLOYING and FAILED), DB-21 (PostgreSQL in
 // FAILED).
 func TestDelete_RefusedInStateSaysSoAndTheWayOut(t *testing.T) {
@@ -137,9 +135,6 @@ func TestDelete_RefusedInStateSaysSoAndTheWayOut(t *testing.T) {
 			if !isErr {
 				t.Errorf("%s: the platform refused the delete, the answer is a success: %s", where, clipText(text))
 				continue
-			}
-			if m["reason"] == clerrors.CodeAPIError {
-				t.Errorf("%s: answers the bare API_ERROR of an unknown failure; a refusal in a state is known: %s", where, clipText(text))
 			}
 			hint, _ := m["hint"].(string)
 			named := false
