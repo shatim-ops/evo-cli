@@ -369,6 +369,9 @@ CI `main` за 1.4.0 (27.10, `ci` на push): красный один раз —
 
 | Что | PR |
 |---|---|
+| 1.4.1, п. 0: красные тесты до продуктовых PR — W8 «значения по умолчанию из конфигурации нет» и «нет пустой подстановки», ответ на запрос с `id`, `ExpiresAt` без монотонной части, `error_reasons` шага стека, мир «401 Jwt is expired» в долгой сессии | ветка `process/1.4.1-invariants` → «разработка» |
+| Проба IAM: `expires_in` против `exp`/`iat`, сдвиг часов раннера | #436 |
+| Цель J по `grok-diag-*.jsonl` (счёт без строк журналов) | `evo-internal`, `runs/grok-live-1.4.0/journal-j.md` |
 | FB140-6: мир паритета CLI на остановленных часах (`stoppedClock` вместо `jumpingClock`, как в `internal/tools`), `previewToken` от `clock.Now`; маски TTL (`tokenTTL`, удаление `token_expires_at` и `token_ttl_seconds` в `TestEngineCommands_WhoamiDoctorOverHTTP`) убраны; храповик `TestParityWorld_TokenTTLIsExact` — ровно 3600 по stdio и HTTP | этот PR |
 
 Отклонение от аудита: он не учёл, что мир держал не стенку, а прыгающие
@@ -436,6 +439,7 @@ job, трещотка) или строка бэклога с версией; у�
 | 2 (1.4.1) | Гипотезы аудита 1.4.0 — тестом до правки: ответ MCP ждёт до 2 с при занятой `journal.lock`; `journal_full` на сотни байт раньше 16 МБ; файл журнала без версии формата | аудит Fable 1.4.0 (#417) |
 | 2 (1.4.1) | Входы прогона cloud-e2e в `display_title` (еженедельный против ручного); один прогон со всеми наборами на кандидате тега | ретро «релиз · 1.3.1»: еженедельный прогон принят за `cleanup_only` |
 | 2 (1.4.0) | cloud-e2e в ru.AZ-2: тайм-аут SSH 2 из 2 (27.10, OPS-1b) — отчёт печатает состояние ВМ перед тайм-аутом | строка бэклога «os-smoke: при таймауте SSH печатать состояние ВМ» — та же причина, теперь и в `e2e` |
+| 3 | Мир стека без стенки: дедлайн `stack_status` на фейковых часах или `stackCrankInterval` в тестах; новый тест стека не ждёт бюджет `wait_seconds` (минимум 1 с) | 28.10: `TestQA_StackStatusHonoursShortBudget` и `TestStackVMStep_ForeignVMWithSameNameIsNotAdopted` ждут по 1,01 с; `stackCrankInterval` создана для тестов, но ни один её не укорачивает |
 | 3 | Общий фейк `faultCloud` вместо двух копий (`internal/engine`, `internal/tools`, по 852 строки) | от «1.3 — разработки»; сейчас копии сверяет `fault_copies_test.go`, правка одной без другой роняет тест — вынести в тестовый пакет |
 
 ## Инструменты
