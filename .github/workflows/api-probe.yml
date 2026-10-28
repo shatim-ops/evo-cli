@@ -6,7 +6,7 @@ name: api-probe
 # параметров camelCase/snake_case, вложенные поля зоны и IP, каталог образов,
 # расчёт цены, каталог плагинов mk8s, списки и спецификации Kafka/Redis,
 # группы узлов mk8s, диски evo без ВМ, признаки подсетей, SNAT-шлюзы и их
-# адреса, имена claims токена; открытые вопросы реестра
+# адреса, имена claims токена и его срок (G140-3); открытые вопросы реестра
 # (evo-internal: discrepancies/cloudru-discrepancies.md, «Что проверить пробой»: P13, P15,
 # P20, P23–P28) — потребление и договор, команда протокола догфуда
 # billing_consumption, версии сертификата, брокеры Kafka, предел размера
@@ -77,6 +77,10 @@ jobs:
           echo "iam_token: http=$code keys=$(printf '%s' "$body" | jq -c 'keys')" \
             "expires_in=$(printf '%s' "$body" | jq -c '.expires_in // .expiresIn // null | type')"
           TOKEN=$(printf '%s' "$body" | jq -r '.access_token // .accessToken // empty')
+          # G140-3: срок, который называет IAM, и часы раннера в момент
+          # обмена — для сверки с exp/iat ниже (только длительности).
+          EXPIRES_IN=$(printf '%s' "$body" | jq -r '.expires_in // .expiresIn // empty')
+          ISSUED_AT=$(date +%s)
           [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
           echo "::add-mask::$TOKEN"
           unset body resp
@@ -166,6 +170,9 @@ jobs:
           while [ $(( ${#p} % 4 )) -ne 0 ]; do p="$p="; done
           claims=$(printf '%s' "$p" | base64 -d 2>/dev/null || true)
           echo "token_claims: $(printf '%s' "$claims" | jq -c --arg p "$PROJECT" '{keys: keys, project_id_matches: (.project_id == $p), has_customer_id: has("customer_id"), ttl_s: (if (.exp | type) == "number" and (.iat | type) == "number" then .exp - .iat else null end)}' 2>/dev/null || echo 'не JWT')"
+          # G140-3: срок по expires_in против exp токена и сдвиг часов
+          # раннера против iat — только длительности в секундах.
+          echo "token_lifetime: $(printf '%s' "$claims" | jq -c --arg e "$EXPIRES_IN" --argjson now "$ISSUED_AT" '{expires_in: ($e | tonumber? // null), exp_minus_iat: (if (.exp | type) == "number" and (.iat | type) == "number" then .exp - .iat else null end), exp_minus_runner_now: (if (.exp | type) == "number" then .exp - $now else null end), iat_minus_runner_now: (if (.iat | type) == "number" then .iat - $now else null end), has_nbf: has("nbf")}' 2>/dev/null || echo 'не JWT')"
           unset p claims
 
           echo "== grpc-gateway: projectId (спецификация) против project_id (сейчас)"
