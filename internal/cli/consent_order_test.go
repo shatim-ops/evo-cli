@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -47,6 +49,9 @@ const consentAbsentID = "00000000-0000-4000-8000-0000000000ad"
 type consentWorld struct {
 	cloud  func(provision.CloudAPI) provision.CloudAPI
 	answer func(r *http.Request) *http.Response
+	// env sets variables of the configuration for the call: "" unsets the
+	// default an argument falls back to (configDefaultWorlds).
+	env map[string]string
 	// refusedBy names the tools that can see the broken precondition by a
 	// read and must refuse before the question, though the platform's own
 	// refusal comes only with the write (the test world refuses every
@@ -83,6 +88,24 @@ var consentWorlds = map[string]consentWorld{
 		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","name":"old","size":100,"state":"available"}`)
 	}},
 }
+
+// configDefaults are the variables of the configuration (config.envMapping)
+// a write falls back to when its call names no value: the image, the zone,
+// the flavor and the size of the disk of a VM. Each is a variant of the
+// world in which it is not set (G140-1, G140-2: deploy over MCP without an
+// image or a zone asked for consent, then failed on "no boot image").
+var configDefaults = []string{"CLOUDRU_IMAGE_ID", "CLOUDRU_REGION", "CLOUDRU_FLAVOR", "CLOUDRU_DISK_SIZE"}
+
+func init() {
+	for _, v := range configDefaults {
+		consentWorlds["config without "+v] = consentWorld{env: map[string]string{v: ""}}
+	}
+}
+
+// emptySubstitution finds a value that was empty where a message names it
+// ("no subnet for zone  in the project", G140-2): two spaces in a row or
+// empty quotes.
+var emptySubstitution = regexp.MustCompile(`\S  +\S|""|''|«»|\(\)`)
 
 type noSubnetCloud struct{ provision.CloudAPI }
 
@@ -283,6 +306,19 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			setupDone := done
 			done = func() { toolEngine = inner; setupDone() }
 		}
+		for k, v := range c.world.env {
+			old, had := os.LookupEnv(k)
+			_ = os.Setenv(k, v)
+			envDone := done
+			done = func() {
+				if had {
+					_ = os.Setenv(k, old)
+				} else {
+					_ = os.Unsetenv(k)
+				}
+				envDone()
+			}
+		}
 		if confirmed {
 			a["confirmed"] = true
 		}
@@ -307,6 +343,14 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 	}
 
 	found := map[string]string{}
+	// A refusal names what is missing, not an empty value in its place.
+	emptyIn := func(key string, ans map[string]any) {
+		for _, f := range []string{"error", "hint"} {
+			if msg, _ := ans[f].(string); emptySubstitution.MatchString(msg) {
+				found[key+": empty value in "+f] = clipLine(msg)
+			}
+		}
+	}
 	for _, tl := range newRegistry().Tools() {
 		base, ok := parityArgs[tl.Name]
 		if !ok || !tools.NeedsConsent(tl, base) {
@@ -321,6 +365,7 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 				continue
 			}
 			after, failed, writes := call(tl, c, true)
+			emptyIn(key+" (after consent)", after)
 			if writes > 0 && !failed && jobStarts[tl.Name] == "" {
 				// The world refused the write: a success is a resource
 				// that is not there, or not the call's (K1 after the
@@ -333,6 +378,7 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			}
 			reason, _ := after["reason"].(string)
 			before, _, _ := call(tl, c, false)
+			emptyIn(key, before)
 			switch {
 			case before["status"] == "confirmation_required":
 				found[key] = fmt.Sprintf("asks for consent, then fails with %s: %s", reason, clipLine(fmt.Sprint(after["error"])))
