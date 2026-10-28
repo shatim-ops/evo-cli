@@ -35,7 +35,8 @@ type workflow struct {
 		Uses           string `yaml:"uses"`
 		RunsOn         string `yaml:"runs-on"`
 		Strategy       struct {
-			Matrix map[string]any `yaml:"matrix"`
+			Matrix      map[string]any `yaml:"matrix"`
+			MaxParallel int            `yaml:"max-parallel"`
 		} `yaml:"strategy"`
 		Env map[string]string `yaml:"env"`
 		// ContinueOnError: a job whose failure does not fail the run.
@@ -1325,5 +1326,43 @@ func TestWorkflows_EvoErrPrintsTheRedactedReason(t *testing.T) {
 	}
 	if got := run(strings.Repeat("x", 500)); len(got) > 300 {
 		t.Errorf("not cut to 300: %d", len(got))
+	}
+}
+
+// The probe of the Go runtime crash on Windows (release plan 1.5, #493)
+// runs a variant of ci.yml's go test on windows-latest many times, the CI
+// command whole: the crash comes only under its load (14 of 828 attempts
+// of test (windows-latest) on 22–28.10, none in 192 runs of internal/tools
+// alone). At most six jobs at once — the runners of the other sessions
+// stay free; no secrets, read only; the weekly race does not run with it.
+func TestWorkflows_WindowsCIProbe(t *testing.T) {
+	w := weeklyWorkflow(t, "weekly-race.yml")
+	d, _ := w.On["workflow_dispatch"].(map[string]any)
+	in, _ := d["inputs"].(map[string]any)
+	p, _ := in["windows_ci_probe"].(map[string]any)
+	if p["type"] != "choice" || fmt.Sprint(p["options"]) != "[none together split norace]" || p["default"] != "none" {
+		t.Fatalf("weekly-race: windows_ci_probe is not the choice of the arms of ci-probe-loop.sh: %v", p)
+	}
+	if !strings.Contains(w.Jobs["race"].If, "(inputs.windows_ci_probe || 'none') == 'none'") {
+		t.Errorf("weekly-race: the race job runs with the CI probe: if %q", w.Jobs["race"].If)
+	}
+	j, ok := w.Jobs["ci-probe"]
+	if !ok || j.RunsOn != "windows-latest" || !strings.Contains(j.If, "(inputs.windows_ci_probe || 'none') != 'none'") {
+		t.Fatalf("weekly-race: no ci-probe job on windows-latest behind the input (runs-on %q, if %q)", j.RunsOn, j.If)
+	}
+	if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["contents"] != "read" {
+		t.Errorf("weekly-race: ci-probe permissions %v, want contents: read only", j.Permissions)
+	}
+	if n := j.Strategy.MaxParallel; n < 1 || n > 6 {
+		t.Errorf("weekly-race: ci-probe max-parallel %d, want 1–6", n)
+	}
+	found := false
+	for _, s := range j.Steps {
+		if strings.Contains(s.Run, "ci-probe-loop.sh \"$ARM\"") && strings.Contains(s.Env["ARM"], "inputs.windows_ci_probe") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("weekly-race: ci-probe does not run ci-probe-loop.sh with the arm through env")
 	}
 }
