@@ -35,13 +35,11 @@ const (
 // that is not sent any more, fails the test. Secret lines stay: the value
 // must not reach the preview.
 var bodyUnnamed = map[string]struct{ class, why string }{
-	"ar_create isPublic": {unnamedAccess, "реестр закрытый по умолчанию; превью не говорит"},
 
-	"ca_deploy configuration.ingress.publiclyAccessible": {unnamedAccess, "приложение доступно из интернета (FB15-35-класс)"},
-	"ca_deploy template.containers.containerPort":        {unnamedWork, "порт контейнера по умолчанию"},
-	"ca_deploy template.protocol":                        {unnamedWork, "протокол http_1 по умолчанию"},
-	"ca_deploy template.scaling.maxInstanceCount":        {unnamedPrice, "предел экземпляров по умолчанию"},
-	"ca_deploy template.scaling.minInstanceCount":        {unnamedPrice, "0 — приложение засыпает (холодный старт)"},
+	"ca_deploy template.containers.containerPort": {unnamedWork, "порт контейнера по умолчанию"},
+	"ca_deploy template.protocol":                 {unnamedWork, "протокол http_1 по умолчанию"},
+	"ca_deploy template.scaling.maxInstanceCount": {unnamedPrice, "предел экземпляров по умолчанию"},
+	"ca_deploy template.scaling.minInstanceCount": {unnamedPrice, "0 — приложение засыпает (холодный старт)"},
 
 	"deploy availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
 	"deploy interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
@@ -84,14 +82,11 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": {unnamedNoise, "id flavor мастеров, который превью называет по имени"},
 	"k8s_create controlPlaneConfiguration.zones":                        {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"k8s_create networkConfiguration.kubeApiInternet":                   {unnamedAccess, "API кластера доступен из интернета (FB15-41)"},
 	"k8s_create networkConfiguration.privateVipSubnetId":                {unnamedWork, "подсеть API кластера, которую выбрал evo"},
 
 	"kafka_create cruise_control_enabled":                {unnamedWork, "Cruise Control выключен"},
 	"kafka_create cruise_control_rebalance_auto_enabled": {unnamedWork, "авторебаланс выключен"},
-	"kafka_create ui_enabled":                            {unnamedAccess, "веб-интерфейс Kafka (FB15-35)"},
 
-	"lb_create external_address_spec.allocate":         {unnamedAccess, "публичный адрес балансировщика"},
 	"lb_create rules.health_check.healthy_threshold":   {unnamedWork, "проверка здоровья цели по умолчанию"},
 	"lb_create rules.health_check.interval":            {unnamedWork, "проверка здоровья цели по умолчанию"},
 	"lb_create rules.health_check.timeout":             {unnamedWork, "проверка здоровья цели по умолчанию"},
@@ -124,6 +119,15 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"vpc_route_create nextHop.virtualMachine.interface.id":      {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
 	"vpc_route_create nextHop.virtualMachine.virtualMachine.id": {unnamedNoise, "id ВМ, которую превью называет по имени"},
+}
+
+// bodyNamedAs are the values the preview names under the argument of the
+// tool they come from, not under the API's word: "tool path" → the key.
+// The value must match, as for any key; a line no write reaches fails.
+var bodyNamedAs = map[string]string{
+	"ar_create isPublic": "public",
+	"ca_deploy configuration.ingress.publiclyAccessible": "public",
+	"lb_create external_address_spec.allocate":           "external",
 }
 
 // bodyUnnamedEverywhere are fields no preview names, one line for every
@@ -197,6 +201,10 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 				if named[normKey(last)][value] {
 					continue
 				}
+				if as, ok := bodyNamedAs[key]; ok && named[normKey(as)][value] {
+					seen[key] = true
+					continue
+				}
 				if d, ok := bodyUnnamedEverywhere[normKey(last)]; ok {
 					if !seen[key] {
 						byClass[d.class]++
@@ -231,6 +239,11 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 		case unnamedAccess, unnamedPrice, unnamedWork, unnamedNoise, unnamedSecret:
 		default:
 			bad = append(bad, fmt.Sprintf("%s: class %q", key, d.class))
+		}
+	}
+	for key := range bodyNamedAs {
+		if !seen[key] {
+			bad = append(bad, key+": in bodyNamedAs, but not sent or not named so: remove the line")
 		}
 	}
 	for seg := range bodyUnnamedEverywhere {
