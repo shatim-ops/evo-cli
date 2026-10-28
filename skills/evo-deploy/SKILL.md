@@ -67,6 +67,46 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
    it says `unchanged: true` and the confirmed call changes nothing (`force`
    redeploys anyway). An update also waits for the person's yes.
 
+## Domain and HTTPS
+
+HTTPS ends on the VM: the load balancer of evo (`lb_create`) is L4 TCP and
+takes no certificate. Put a reverse proxy that gets its own certificate in
+the compose project, for example Caddy:
+
+```yaml
+services:
+  app:
+    image: <the app>          # no published ports: Caddy reaches it inside
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+volumes:
+  caddy_data: {}
+```
+
+with a `Caddyfile` of one line per site: `<domain> { reverse_proxy
+app:<port> }`.
+
+1. The person names the domain and confirms its DNS: either the domain's
+   zone is in Cloud.ru DNS (`evo dns zones --json` / `dns_zones` lists it,
+   and the registrar points the domain to it), or they add the record at
+   their DNS provider themselves.
+2. Deploy as above. Ports 80 and 443 of the compose file open from
+   `0.0.0.0/0`: say so before the yes, as for every port of the compose
+   file. The certificate authority reaches the VM on them.
+3. The A record (tool group `dns`): preview `evo dns record-create <zone_id> <host>
+   --record-type a --value <public IP> --dry-run --json` /
+   `dns_record_create` with `zone_id`, `name` (`@` for the domain itself),
+   `record_type: a`, `value` and no `confirmed`. Stop and ask, then
+   `--yes` / `confirmed: true`.
+4. Caddy asks for the certificate when the name resolves to the VM; until
+   then the site answers on HTTP only, and `logs` of the service `caddy`
+   say why. Waiting for DNS can take up to the record's `ttl` and longer at
+   the person's resolver.
+
 ## Stop and ask
 
 - Before step 4, every time, new VM or update: show the preview, wait for

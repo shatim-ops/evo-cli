@@ -69,6 +69,16 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
    already, is `USAGE` before the question; the address already on this VM
    is `already_attached`.
 
+## Domain and HTTPS
+
+HTTPS ends on the VM: the load balancer of evo (`lb_create`) is L4 TCP and
+takes no certificate. Run a reverse proxy that gets its own certificate on
+the VM (Caddy, as in section «Domain and HTTPS» of skill `evo-deploy`);
+open 80 and 443 with `open_ports` (step 5): the certificate authority
+reaches them from `0.0.0.0/0`, so that source needs its own yes. Then the
+A record of the domain with `dns_record_create` (tool group `dns`), as in
+`evo-deploy`.
+
 ## Stop and ask
 
 - Before every call with `confirmed: true` or `--yes`: `provision`,
