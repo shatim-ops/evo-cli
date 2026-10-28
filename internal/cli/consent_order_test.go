@@ -75,7 +75,7 @@ var consentWorlds = map[string]consentWorld{
 		refusedBy: []string{"provision", "deploy"}},
 	// The flavor of the configuration is not in the catalogue: provision
 	// and deploy read the catalogue for the preview, so they know the call
-	// fails, as of the image (#469, #470).
+	// fails, as of the image (#469, #470, D50).
 	"flavor not in the catalogue": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return noFlavorCloud{c} },
 		refusedBy: []string{"provision", "deploy"}},
 	// The path of secret_create is taken: the create's 4xx is a refusal,
