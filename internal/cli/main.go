@@ -355,6 +355,7 @@ func newRootCmd() *cobra.Command {
 		newDiagCmd(),
 	)
 	cmd.AddCommand(newTreeCmds(cmd)...)
+	registerEngineCompletions(cmd)
 	applyExamples(cmd)
 	groupCommands(cmd)
 	localizeHelp(cmd)

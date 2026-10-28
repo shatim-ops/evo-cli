@@ -50,6 +50,7 @@ var wallClockReads = map[string]struct {
 	"internal/mcp/http.go\tHTTPHandler.dispatch":                {1, wallLog},  // duration_ms of the log
 	"internal/mcp/http.go\tHTTPHandler.touchSession":            {1, wallWait}, // TTL of the session
 	"internal/tools/journal.go\tjournaled":                      {1, wallLog},  // ms of the session journal (D46)
+	"internal/tools/completion.go\treadCompletionCache":         {1, wallWait}, // TTL of the Tab cache
 }
 
 // A value of the time that goes into an answer goes through internal/clock
