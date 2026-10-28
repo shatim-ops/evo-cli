@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -355,5 +356,63 @@ func TestToolsCall_NoZoneNotAskedEvenAtTerminal(t *testing.T) {
 	}
 	if want == 0 || !strings.Contains(wantErr, "zone") && !strings.Contains(wantErr, "зон") {
 		t.Fatalf("without a terminal: exit %d, want the refusal for the zone:\n%s", want, wantErr)
+	}
+}
+
+// loginCloud is exampleCloud whose image declares its login user, as a
+// Cloud.ru Linux image does: deploy gets past the image to the zone.
+type loginCloud struct{ exampleCloud }
+
+func (loginCloud) GetImage(_ context.Context, id string) (*provision.ImageDetail, error) {
+	return &provision.ImageDetail{ID: id, Name: "Ubuntu-24.04", MinDisk: 20, MetadataFields: []provision.ImageMetadataField{
+		{Name: "name", FieldType: "linux_login", DefaultValue: "user1", MandatoryGroup: "name"}}}, nil
+}
+
+// evo deploy is the second command that asks for the zone (callEngineTool,
+// askMissingZone): at a terminal the question, the zone chosen in the
+// profile and the call again with it; without a terminal and with --yes
+// the refusal, no question, the profile untouched (D15, D48). The world
+// has no subnet, so deploy cannot take a zone from one, and the call again
+// stops at «no subnet for zone ru.AZ-1» — the zone chosen reached it.
+// Release plan 1.5, a new surface (§0, rule 3): vm create was tested, the
+// deploy path was not.
+func TestDeploy_NoZoneAskedAtTerminal(t *testing.T) {
+	fc := setupCLI(t)
+	fc.zones = `[{"id":"` + pvZone + `","name":"ru.AZ-1","enabled":true}]`
+	withCloud(t, noSubnetCloud{loginCloud{exampleCloud{}}})
+	t.Setenv("CLOUDRU_REGION", "")
+	t.Setenv("CLOUDRU_IMAGE_ID", "")
+	saveProfile(t, "default", "11111111-1111-1111-1111-111111111111")
+	if err := os.WriteFile("docker-compose.yml", []byte("services:\n  web:\n    image: nginx\n    ports: [\"80:80\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".evo.yaml", []byte("image: Ubuntu-24.04\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		tty  bool
+		args []string
+	}{
+		"no terminal": {false, []string{"deploy", "--dry-run"}},
+		"--yes":       {true, []string{"--yes", "deploy", "--dry-run"}},
+	} {
+		newProcess()
+		stdinIsTerminal = func() bool { return c.tty }
+		code, _, stderr := runCLI(t, "\n\n", c.args...)
+		prof, _, _, _ := config.LoadProfile("default")
+		if code != clerrors.ExitAuth || strings.Contains(stderr, "Choose a zone") || prof.Region != "" ||
+			!strings.Contains(stderr, "no availability zone is set") {
+			t.Errorf("%s: exit %d, region %q, want the refusal for the zone (2) and no question:\n%s", name, code, prof.Region, stderr)
+		}
+	}
+	newProcess()
+	stdinIsTerminal = func() bool { return true }
+	_, _, stderr := runCLI(t, "\n\n", "deploy", "--dry-run")
+	prof, _, _, _ := config.LoadProfile("default")
+	if !strings.Contains(stderr, "Choose a zone (number, name or ID) [1]: ") || prof.Region != pvZone {
+		t.Errorf("terminal: region %q, want ru.AZ-1 (%s) asked and saved:\n%s", prof.Region, pvZone, stderr)
+	}
+	if strings.Contains(stderr, "no availability zone is set") || !strings.Contains(stderr, "no subnet for zone ru.AZ-1") {
+		t.Errorf("terminal: the zone chosen did not reach the call again:\n%s", stderr)
 	}
 }
