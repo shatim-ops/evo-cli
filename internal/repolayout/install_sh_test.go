@@ -101,7 +101,9 @@ func TestInstallSh_CompletionFilesAndUninstall(t *testing.T) {
 
 	run := func(args ...string) string {
 		t.Helper()
-		cmd := exec.Command("sh", append([]string{filepath.Join("..", "..", "install.sh")}, args...)...)
+		// umask 0: the modes of the files are install.sh's, not the umask's.
+		cmd := exec.Command("sh", "-c", `umask 0; exec sh "$0" "$@"`, filepath.Join("..", "..", "install.sh"))
+		cmd.Args = append(cmd.Args, args...)
 		cmd.Env = append(os.Environ(),
 			"HOME="+home, "XDG_DATA_HOME=", "XDG_CONFIG_HOME=",
 			"INSTALL_DIR="+filepath.Join(tmp, "bin"),
@@ -124,6 +126,10 @@ func TestInstallSh_CompletionFilesAndUninstall(t *testing.T) {
 			got, err := os.ReadFile(path)
 			if err != nil || string(got) != "# evo completion for "+sh+"\n" {
 				t.Errorf("run %d: %s: %q, %v — want evo's %s completion\n%s", i+1, path, got, err, sh, out)
+			}
+			// 0644 whatever the umask: nobody else writes what the shell runs.
+			if fi, err := os.Stat(path); err == nil && fi.Mode().Perm() != 0o644 {
+				t.Errorf("run %d: %s: mode %v, want 0644", i+1, path, fi.Mode().Perm())
 			}
 		}
 	}

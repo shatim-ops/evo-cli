@@ -130,6 +130,7 @@ install_completions() {
 	bin=$1
 	completion_files | while read -r sh file; do
 		if mkdir -p "$(dirname "$file")" && "$bin" completion "$sh" >"$file.new" 2>/dev/null; then
+			chmod 0644 "$file.new"
 			mv -f "$file.new" "$file"
 			say "Автодополнение $sh: $file"
 		else
@@ -137,14 +138,25 @@ install_completions() {
 			say "автодополнение $sh не установлено: $file"
 		fi
 	done
+	# Строки для профиля — с полным путём: каталога установки может не быть
+	# в PATH, и профиль не должен падать на «evo: command not found».
 	if command -v zsh >/dev/null 2>&1 && ! completion_files | grep -q '^zsh '; then
-		say "Автодополнение zsh: добавьте в ~/.zshrc строку  source <($BINARY completion zsh)"
+		say "Автодополнение zsh: добавьте в ~/.zshrc строку  source <($bin completion zsh)"
 	fi
 	if command -v pwsh >/dev/null 2>&1; then
-		say "Автодополнение PowerShell: добавьте в \$PROFILE строку  $BINARY completion powershell | Out-String | Invoke-Expression"
+		say "Автодополнение PowerShell: добавьте в \$PROFILE строку  $bin completion powershell | Out-String | Invoke-Expression"
 	fi
 	if completion_files | grep -q '^bash '; then
-		say "bash находит автодополнение с пакетом bash-completion; меню стрелками и прочая настройка — docs/install.md"
+		found=""
+		for f in /usr/share/bash-completion/bash_completion /etc/bash_completion \
+			/opt/homebrew/etc/profile.d/bash_completion.sh /usr/local/etc/profile.d/bash_completion.sh; do
+			[ -r "$f" ] && found=1
+		done
+		if [ -n "$found" ]; then
+			say "bash: автодополнение подхватит пакет bash-completion в новой оболочке"
+		else
+			say "bash: пакет bash-completion не найден — без него bash файл автодополнения не прочитает; установите пакет"
+		fi
 	fi
 }
 
