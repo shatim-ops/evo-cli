@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"weak"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -80,7 +81,55 @@ func NewIAMProvider(creds Credentials, client *http.Client, cache TokenCache) *I
 	if client == nil {
 		client = &http.Client{Timeout: 60 * time.Second, Transport: httpretry.UserAgent(nil)}
 	}
-	return &IAMProvider{creds: creds, client: client, cache: cache, sleep: sleepCtx}
+	p := &IAMProvider{creds: creds, client: client, cache: cache, sleep: sleepCtx}
+	register(p)
+	return p
+}
+
+// live holds every provider of the process, weakly: a token a Cloud.ru
+// service answered 401 to is dropped by the provider that holds it,
+// wherever that provider was made (tokenProvider of the CLI and evo mcp,
+// configure, a test world), and a provider nobody uses any more is not
+// kept alive by the list.
+var (
+	liveMu sync.Mutex
+	live   []weak.Pointer[IAMProvider]
+)
+
+func init() { httpretry.OnTokenRejected(forgetRejected) }
+
+func register(p *IAMProvider) {
+	liveMu.Lock()
+	defer liveMu.Unlock()
+	live = append(alive(), weak.Make(p))
+}
+
+// alive drops the providers already collected from live; liveMu is held.
+func alive() []weak.Pointer[IAMProvider] {
+	kept := live[:0]
+	for _, w := range live {
+		if w.Value() != nil {
+			kept = append(kept, w)
+		}
+	}
+	return kept
+}
+
+// forgetRejected is told by httpretry the bearer token of a request a
+// service answered 401 to (G140-3): every live provider forgets it.
+func forgetRejected(token string) {
+	liveMu.Lock()
+	live = alive()
+	list := make([]*IAMProvider, 0, len(live))
+	for _, w := range live {
+		if p := w.Value(); p != nil {
+			list = append(list, p)
+		}
+	}
+	liveMu.Unlock()
+	for _, p := range list {
+		p.Forget(token)
+	}
 }
 
 // KeyID returns the key ID the provider authenticates with.
