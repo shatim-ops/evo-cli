@@ -3,7 +3,7 @@ name: evo-scenarios
 description: Choose which evo scenario skill and tool groups to use for a multi-step task on Cloud.ru Evolution (deploy an app, a VM with ports, PostgreSQL, cleanup). Not the rules of evo; those are in the built-in skill evo.
 license: Apache-2.0
 metadata:
-  evo-version: "1.4"
+  evo-version: "1.5"
   evo-mode: human-in-the-loop
 ---
 

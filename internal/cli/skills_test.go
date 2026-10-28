@@ -35,7 +35,7 @@ const skillRouter = "evo-scenarios"
 // skillVersionWant is metadata.evo-version of every skill: the major.minor
 // of evo they are written for. The release changes it with the minor
 // (docs/RELEASING.md).
-const skillVersionWant = "1.4"
+const skillVersionWant = "1.5"
 
 // skillOneWordTools are tool names without "_" the text may name in
 // backticks (spec §8.2): they are checked against the registry like the

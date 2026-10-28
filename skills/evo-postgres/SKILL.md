@@ -3,7 +3,7 @@ name: evo-postgres
 description: Create a Managed PostgreSQL cluster of a small specification on Cloud.ru Evolution with evo, add a user and a database, hand over a connection string without the password, and delete the cluster. Use for "set up PostgreSQL", "a small Postgres", "create a database and a user", "give me the connection string", "delete the cluster".
 license: Apache-2.0
 metadata:
-  evo-version: "1.4"
+  evo-version: "1.5"
   evo-mode: human-in-the-loop
 ---
 
