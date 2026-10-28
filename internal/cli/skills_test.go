@@ -515,14 +515,16 @@ func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
 		{"evo-deploy", "G130-09, -10, -29",
 			[]string{"has no default image", "`evo-<project_name>`", "`0.0.0.0/0`"},
 			[]string{"`--image` if needed)"},
-			[]string{"TestDeploy_VMNameFromDirectoryIsAHostname"},
-			"пробел: нет теста «deploy без образа — CONFIG_INVALID до вопроса» и «порты compose открываются для 0.0.0.0/0 в общей группе зоны»"},
+			// No image: the world «config without CLOUDRU_IMAGE_ID» refuses
+			// before the question, no image is picked for the person.
+			[]string{"TestDeploy_VMNameFromDirectoryIsAHostname", "TestConsent_RefusalWithoutWriteComesBeforeTheQuestion",
+				"TestOpen_PortOpensForAnyAddressInTheGivenGroup"}, ""},
 		// pg_create's default subnet is the zone's (pickDBaaSSubnet), and
 		// evo gives no price for PostgreSQL.
 		{"evo-postgres", "G130-25, -27",
 			[]string{"the main subnet of the profile's zone", "`tariff_url`"},
 			[]string{"the first subnet of the project", "low-cost", "the cheapest"},
-			nil, "пробел: TestDbaasSubnet_SkipsAndRefusesClosedZone держит подсеть открытой зоны, а не «основную подсеть зоны профиля»; теста «превью pg_create — tariff_url без цены» нет"},
+			[]string{"TestDbaasSubnet_MainSubnetOfTheProfilesZone", "TestPgCreate_PreviewGivesTheTariffNotAPrice"}, ""},
 		// With --allow-project a resource that is gone answers NOT_FOUND
 		// (H9 b), not already_deleted.
 		{"evo-scenarios", "G130-16",
@@ -563,7 +565,7 @@ func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
 
 // skillProofGaps is the number of promises of the skills with no test that
 // the code keeps them (С9); only shrinks.
-const skillProofGaps = 2
+const skillProofGaps = 0
 
 // testFuncs are the names of the test functions of the repository.
 func testFuncs(t *testing.T) map[string]bool {

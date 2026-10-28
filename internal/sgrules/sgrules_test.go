@@ -325,3 +325,21 @@ func (*fakeCloud) PriceCalculation(context.Context, string, provision.PriceCalcu
 // errNoPriceAPI — ответ подделок на PriceCalculation: расчёт цены не
 // получен, превью и план показывают оценку по карте, как раньше.
 var errNoPriceAPI = stderrors.New("price-calculation: not in this fake")
+
+// What the skills say of a deploy (skills/evo-deploy, G130-29; С9 proof):
+// a port of the compose file opens for any address — 0.0.0.0/0, ingress —
+// in the group it is given, the VM's group, which every VM in it shares.
+// Open is the one way deploy, provision and deploy_apply open ports.
+func TestOpen_PortOpensForAnyAddressInTheGivenGroup(t *testing.T) {
+	f := newFake()
+	var rec state.DeploymentRecord
+	Open(context.Background(), f, "proj", "sg-shared", []int{80}, []int{53}, desc, &rec)
+	if len(f.rules) != 1 || len(f.rules["sg-shared"]) != 2 {
+		t.Fatalf("rules %+v, want two in sg-shared only", f.rules)
+	}
+	for _, r := range f.rules["sg-shared"] {
+		if r.RemoteIPPrefix != "0.0.0.0/0" || r.Direction != "ingress" {
+			t.Errorf("rule %+v: want ingress from 0.0.0.0/0", r)
+		}
+	}
+}
