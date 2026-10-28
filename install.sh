@@ -13,6 +13,13 @@
 #   CLOUDRU_VM_BASE_URL откуда качать вместо GitHub (зеркало, проверка
 #                       скрипта); ожидается <base>/<тег>/<файл>
 #
+# Автодополнение по Tab ставится туда, где оболочка находит его сама, без
+# правки её конфигов: fish, bash (нужен пакет bash-completion), zsh — если
+# в $fpath есть каталог в домашнем каталоге. Иначе (и для PowerShell)
+# скрипт печатает строку для профиля. Удалить evo и эти файлы:
+#
+#   curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | sh -s -- --uninstall
+#
 # Скрипт сверяет sha256 архива с checksums.txt релиза. Если в PATH есть
 # cosign, он же проверяет подпись checksums.txt (keyless, identity —
 # release.yml этого репозитория). Windows: см. README, раздел «Установка».
@@ -89,7 +96,79 @@ sha256_of() {
 	fi
 }
 
+install_dir() {
+	dir=${INSTALL_DIR:-}
+	if [ -z "$dir" ]; then
+		if [ "$(id -u)" -eq 0 ]; then dir=/usr/local/bin; else dir="$HOME/.local/bin"; fi
+	fi
+	echo "$dir"
+}
+
+# Файлы автодополнения evo, по строке «оболочка путь»: только туда, где
+# оболочка их находит без правки конфигов. Установка пишет их, повторная —
+# перезаписывает, --uninstall убирает; чужих файлов скрипт не трогает.
+completion_files() {
+	data=${XDG_DATA_HOME:-$HOME/.local/share}
+	conf=${XDG_CONFIG_HOME:-$HOME/.config}
+	if command -v fish >/dev/null 2>&1 || [ -d "$conf/fish" ]; then
+		echo "fish $conf/fish/completions/$BINARY.fish"
+	fi
+	if command -v bash >/dev/null 2>&1; then
+		echo "bash $data/bash-completion/completions/$BINARY"
+	fi
+	if command -v zsh >/dev/null 2>&1; then
+		# shellcheck disable=SC2016 # $fpath и $HOME раскрывает zsh
+		zdir=$(zsh -c 'for d in $fpath; do case $d in $HOME/*) if [ -d "$d" ] && [ -w "$d" ]; then print -r -- "$d"; break; fi ;; esac; done' 2>/dev/null </dev/null) || zdir=""
+		if [ -n "$zdir" ]; then echo "zsh $zdir/_$BINARY"; fi
+	fi
+}
+
+# install_completions bin: файлы автодополнения из установленного бинаря;
+# сбой не мешает установке. Оболочкам без такого каталога — строка для
+# профиля.
+install_completions() {
+	bin=$1
+	completion_files | while read -r sh file; do
+		if mkdir -p "$(dirname "$file")" && "$bin" completion "$sh" >"$file.new" 2>/dev/null; then
+			mv -f "$file.new" "$file"
+			say "Автодополнение $sh: $file"
+		else
+			rm -f "$file.new"
+			say "автодополнение $sh не установлено: $file"
+		fi
+	done
+	if command -v zsh >/dev/null 2>&1 && ! completion_files | grep -q '^zsh '; then
+		say "Автодополнение zsh: добавьте в ~/.zshrc строку  source <($BINARY completion zsh)"
+	fi
+	if command -v pwsh >/dev/null 2>&1; then
+		say "Автодополнение PowerShell: добавьте в \$PROFILE строку  $BINARY completion powershell | Out-String | Invoke-Expression"
+	fi
+	if completion_files | grep -q '^bash '; then
+		say "bash находит автодополнение с пакетом bash-completion; меню стрелками и прочая настройка — docs/install.md"
+	fi
+}
+
+uninstall() {
+	dir=$(install_dir)
+	for b in "$BINARY" "$LEGACY_ALIAS"; do
+		if [ -e "$dir/$b" ]; then
+			rm -f "$dir/$b"
+			say "Удалено: $dir/$b"
+		fi
+	done
+	completion_files | while read -r _ file; do
+		if [ -e "$file" ]; then
+			rm -f "$file"
+			say "Удалено: $file"
+		fi
+	done
+}
+
 main() {
+	if [ "${1:-}" = "--uninstall" ]; then
+		uninstall
+		return
+	fi
 	need uname
 	need tar
 	os=$(detect_os)
@@ -169,10 +248,7 @@ main() {
 	# shellcheck disable=SC2086 # bins — список имён без пробелов
 	tar -xzf "$tmp/$archive" -C "$tmp" $bins
 
-	dir=${INSTALL_DIR:-}
-	if [ -z "$dir" ]; then
-		if [ "$(id -u)" -eq 0 ]; then dir=/usr/local/bin; else dir="$HOME/.local/bin"; fi
-	fi
+	dir=$(install_dir)
 	mkdir -p "$dir"
 	# Через временное имя: запущенный старый бинарь не ломается на середине.
 	for b in $bins; do
@@ -192,6 +268,10 @@ main() {
 	*) say "Каталога $dir нет в PATH. Добавьте в профиль оболочки: export PATH=\"$dir:\$PATH\"" ;;
 	esac
 	"$dir/$main_bin" version >&2 || true
+	# Релиз до переименования автодополнения под именем evo не даёт.
+	if [ "$main_bin" = "$BINARY" ]; then
+		install_completions "$dir/$BINARY"
+	fi
 }
 
 main "$@"
