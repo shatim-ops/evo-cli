@@ -35,3 +35,22 @@ func TestPgCreate_PreviewGivesTheTariffNotAPrice(t *testing.T) {
 		}
 	}
 }
+
+// What the skills say of HTTPS (skills/evo-deploy, evo-vm, #514; С9
+// proof): the load balancer of evo takes no certificate — lb_create has no
+// argument of a certificate or of TLS, so HTTPS ends on the VM.
+func TestLBCreate_TakesNoCertificate(t *testing.T) {
+	tl, ok := newRegistry().Lookup("lb_create")
+	if !ok {
+		t.Fatal("no tool lb_create")
+	}
+	props, _ := tl.InputSchema["properties"].(map[string]any)
+	if len(props) == 0 {
+		t.Fatal("lb_create has no arguments: the schema moved, update the test")
+	}
+	for arg := range props {
+		if a := strings.ToLower(arg); strings.Contains(a, "cert") || strings.Contains(a, "tls") || strings.Contains(a, "https") {
+			t.Errorf("lb_create takes %s: the skills say HTTPS ends on the VM — change them with the code", arg)
+		}
+	}
+}

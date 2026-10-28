@@ -544,6 +544,22 @@ func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
 			[]string{"TestKafka_NoTopicOrUserTools", "TestDescriptions_SayWhatIsBuilt"}, ""},
 		// With --allow-project a resource that is gone answers NOT_FOUND
 		// (H9 b), not already_deleted.
+		// HTTPS ends on the VM: the balancer takes no certificate; the
+		// ports of the proxy open from 0.0.0.0/0 (#514).
+		{"evo-deploy", "#514 HTTPS",
+			[]string{"is L4 TCP and takes no certificate", "Ports 80 and 443 of the compose file open from `0.0.0.0/0`"},
+			nil,
+			[]string{"TestLBCreate_TakesNoCertificate", "TestOpen_PortOpensForAnyAddressInTheGivenGroup"}, ""},
+		{"evo-vm", "#514 HTTPS",
+			[]string{"is L4 TCP and takes no certificate"},
+			nil,
+			[]string{"TestLBCreate_TakesNoCertificate"}, ""},
+		// Kafka has no tools for topics and users; Redis STANDALONE is one
+		// host (#514).
+		{"evo-scenarios", "#514 routes",
+			[]string{"evo has no tools for topics and users", "`STANDALONE` for one host"},
+			nil,
+			[]string{"TestKafka_NoTopicOrUserTools", "TestRedisCreate_StandalonePreviewShowsOneHost"}, ""},
 		{"evo-scenarios", "G130-16",
 			[]string{"a server without `--allow-project`"},
 			nil,
