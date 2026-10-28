@@ -21,7 +21,7 @@ func TestRedact_EnvPairNamesAndURLs(t *testing.T) {
 		"DB_PASSWORD": true, "JWT_SECRET": true, "API_KEY": true, // roots, as before
 		"GITHUB_TOKEN": true, "BOT_TOKEN": true, "DB_PASS": true, "SMTP_PASS": true,
 		"MYSQL_PWD": true, "CREDENTIALS": true, "AWS_ACCESS_KEY": true, "SESSION_KEY": true,
-		"ENCRYPTION_KEY": true, "SSH_KEY": true,
+		"ENCRYPTION_KEY": true, "SSH_KEY": true, "DB_PASSES": true, "MYSQL_PWDS": true,
 		"PORT": false, "LOG_LEVEL": false, "PUBLIC_KEY": false, "SSH_PUBLIC_KEY": false,
 		"ACCESS_KEY_ID": false, "TOKEN_URL": false, "PASSWORD_POLICY": false,
 	} {
@@ -43,5 +43,23 @@ func TestRedact_EnvPairNamesAndURLs(t *testing.T) {
 		if got := !strings.Contains(out, secret); got != masked {
 			t.Errorf("DATABASE_URL=%s: masked=%v, want %v:\n%s", value, got, masked, out)
 		}
+	}
+	// A value that is not a string is masked by the name alone, and the
+	// path is named in redacted: a number, and every string inside an object.
+	for _, value := range []string{`20261028`, `{"nested":"20261028"}`} {
+		body := `{"env":[{"name":"GITHUB_TOKEN","value":` + value + `}]}`
+		out := redactSecrets("ca_get", body, wording{mask: "***"})
+		if strings.Contains(out, "20261028") || !strings.Contains(out, "env[].value") {
+			t.Errorf("GITHUB_TOKEN=%s: not masked or not named:\n%s", value, out)
+		}
+	}
+	if out := redactSecrets("ca_get", `{"env":[{"name":"GITHUB_TOKEN","value":null}]}`, wording{mask: "***"}); !strings.Contains(out, "null") {
+		t.Errorf("GITHUB_TOKEN=null: null is no credential and stays:\n%s", out)
+	}
+	// A URL with a password is masked under a name HTTPNonSecretFields
+	// excepts too, and the path is named in redacted.
+	out := redactSecrets("ca_get", `{"env":[{"name":"PASSWORD_POLICY","value":"postgres://app:`+secret+`@db:5432/app"}]}`, wording{mask: "***"})
+	if strings.Contains(out, secret) || !strings.Contains(out, "env[].value") {
+		t.Errorf("PASSWORD_POLICY=<url with password>: not masked or not named:\n%s", out)
 	}
 }

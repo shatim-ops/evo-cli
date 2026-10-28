@@ -234,13 +234,17 @@ const pairValue = "value"
 // names its secret in words a JSON key does not (GITHUB_TOKEN, DB_PASS,
 // MYSQL_PWD, AWS_ACCESS_KEY; Fable audit 1.5, FB15-44). Only the last
 // word counts — TOKEN_URL is where a token is asked for — and a public key
-// is none.
-var pairSecretWords = []string{"token", "tokens", "pass", "pwd", "credential", "credentials", "key", "keys"}
+// is none: only a name that ends in PUBLIC_KEY, so MY_PUBLIC_API_KEY is
+// masked (an API key named public is not known to be one; D24, the safe
+// side).
+var pairSecretWords = []string{"token", "tokens", "pass", "passes", "pwd", "pwds", "credential", "credentials", "key", "keys"}
 
 // pairSecret reports whether a pair named name holds a credential in value:
 // the name holds a root of a key (hasRoot) or ends in pairSecretWords, not
 // excepted by HTTPNonSecretFields; or the value is a URL with a password in
-// it (postgres://app:…@db), whatever the name (DATABASE_URL).
+// it (postgres://app:…@db), whatever the name (DATABASE_URL) — a URL with a
+// password is masked before the exceptions of HTTPNonSecretFields are
+// asked, so no exception keeps it.
 func (m *masking) pairSecret(name string, value any) bool {
 	if s, ok := value.(string); ok {
 		if u, err := url.Parse(s); err == nil && u.User != nil {
