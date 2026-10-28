@@ -64,7 +64,6 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"image_create will_create.zone":                   {unnamedWork, "зона по умолчанию: регион профиля, иначе зона диска"},
 	"k8s_add_addon preview.project_from":              {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"k8s_add_addon version_from":                      {unnamedWork, "версия плагина — последняя"},
-	"k8s_add_addon warnings":                          {unnamedWork, "предупреждение «готовность узлов не проверена» видит только агент"},
 	"k8s_add_nodepool preview.project_from":           {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"k8s_create preview.project_from":                 {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"kafka_create will_create.specification_id":       {unnamedNoise, "id того, что превью называет по имени"},
