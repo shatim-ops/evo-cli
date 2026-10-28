@@ -231,10 +231,20 @@ func (s *Registry) adoptVM(ctx context.Context, job *stack.Job, st *stack.Step, 
 		s.finalizeStep(ctx, job, st, id)
 	default:
 		st.ResourceID = id
-		st.Status = "error"
-		job.Error = fmt.Sprintf("%s: VM %s found in state %q (kept for stack_destroy)", st.Key, id, state)
-		job.Status = "error"
+		failStep(job, st, clierrors.CodeVMProvisionFailed, fmt.Sprintf("%s: VM %s found in state %q (kept for stack_destroy)", st.Key, id, state))
 	}
+}
+
+// failStep ends a step and its job in error: msg is the job's error, reason
+// the class of what ended it (a code of internal/errors; "" — the tool
+// answered none — is API_ERROR), which stack_status names in error_reasons
+// (G140-5). Every step that ends in error ends here.
+func failStep(job *stack.Job, st *stack.Step, reason, msg string) {
+	if reason == "" {
+		reason = clierrors.CodeAPIError
+	}
+	st.Status, st.Reason = "error", reason
+	job.Error, job.Status = msg, "error"
 }
 
 // maxStepAttempts bounds create retries per step (transient-error tolerance).
@@ -298,9 +308,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 			case "waiting":
 				if st.ReadyKind == "op" {
 					if st.OpID == "" {
-						st.Status = "error"
-						job.Error = st.Key + ": missing operation id"
-						job.Status = "error"
+						failStep(job, st, clierrors.CodeAPIError, st.Key+": missing operation id")
 						return
 					}
 					op, err := s.callTool(ctx, st.PollTool, map[string]any{"operation_id": st.OpID})
@@ -314,9 +322,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						// failed server-side). Treat that as terminal, don't proceed.
 						if oe, ok := op["error"].(map[string]any); ok && oe != nil {
 							msg, _ := oe["message"].(string)
-							st.Status = "error"
-							job.Error = fmt.Sprintf("%s: operation failed: %v", st.Key, msg)
-							job.Status = "error"
+							failStep(job, st, clierrors.CodeAPIError, fmt.Sprintf("%s: operation failed: %v", st.Key, msg))
 							return
 						}
 						// The name finds what the operation made; the create's
@@ -357,9 +363,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 							case isTerminalFail(status):
 								// FAILED/ERROR/ERASED — never reaches READY; fail the
 								// job instead of polling forever.
-								st.Status = "error"
-								job.Error = fmt.Sprintf("%s: cluster reached terminal status %s", st.Key, status)
-								job.Status = "error"
+								failStep(job, st, clierrors.CodeAPIError, fmt.Sprintf("%s: cluster reached terminal status %s", st.Key, status))
 								return
 							default:
 								st.Detail = "status=" + status
@@ -412,10 +416,9 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						continue // pending: the next pass checks again
 					}
 					if id != "" {
-						st.Status = "error"
 						f, _ := stepFinder(st)
-						job.Error = fmt.Sprintf("%s: %q is already taken by an existing resource (%s) — rename it in the manifest, or remove the existing one", st.Key, f.name, id)
-						job.Status = "error"
+						// A taken name, as a create refuses one (D28).
+						failStep(job, st, clierrors.CodeUsage, fmt.Sprintf("%s: %q is already taken by an existing resource (%s) — rename it in the manifest, or remove the existing one", st.Key, f.name, id))
 						return
 					}
 				}
@@ -438,19 +441,16 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				if err != nil {
 					st.Attempts++
 					st.Detail = err.Error()
-					// The class of the refusal, as its tool answered it:
-					// stack_status names it for a step that ends in error
-					// (G140-5).
-					st.Reason, _ = res["reason"].(string)
+					// The class of the refusal, as its tool answered it, for
+					// the branches below that end the step on it (G140-5).
+					reason, _ := res["reason"].(string)
 					// The tool named what it made although the call failed
 					// (provision: a VM in error_creating or not active in
 					// time). It exists and is billed: record it for
 					// stack_destroy and stop — a retry would create another.
 					if id := createdID(st.Tool, res); id != "" {
 						st.ResourceID = id
-						st.Status = "error"
-						job.Error = fmt.Sprintf("%s: %s (resource %s kept for stack_destroy)", st.Key, err.Error(), id)
-						job.Status = "error"
+						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s kept for stack_destroy)", st.Key, err.Error(), id))
 						return
 					}
 					// The tool refused a name a resource already has
@@ -464,10 +464,8 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// through with its answer lost leaves its resource
 					// named here, for the user to keep or delete.
 					if ex := firstStr(res, "existing_id"); ex != "" && !resumed {
-						st.Status = "error"
-						job.Error = fmt.Sprintf("%s: %s — rename it in the manifest, or remove the existing one (%s); "+
-							"if an earlier attempt of this step created it, delete it or keep it: the stack does not adopt it by name", st.Key, err.Error(), ex)
-						job.Status = "error"
+						failStep(job, st, reason, fmt.Sprintf("%s: %s — rename it in the manifest, or remove the existing one (%s); "+
+							"if an earlier attempt of this step created it, delete it or keep it: the stack does not adopt it by name", st.Key, err.Error(), ex))
 						return
 					}
 					// The cloud refused the create on purpose — the call is
@@ -478,9 +476,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// a refusal after an attempt whose answer was lost may be
 					// that attempt's own resource, found by name below.
 					if !resumed && st.Attempts == 1 && createRefused(res, err) {
-						st.Status = "error"
-						job.Error = fmt.Sprintf("%s: %s", st.Key, err.Error())
-						job.Status = "error"
+						failStep(job, st, reason, fmt.Sprintf("%s: %s", st.Key, err.Error()))
 						return
 					}
 					// Reconcile before retrying: a create can fail the RESPONSE yet
@@ -488,7 +484,6 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// applied it). If the resource now exists by name, ADOPT it — never
 					// blindly retry a create (that would double-provision).
 					if id, state := s.findStepResource(ctx, st); id != "" {
-						st.Reason = "" // what the step meets now is the resource, not the refusal
 						if st.Tool == "provision" {
 							s.adoptVM(ctx, job, st, id, state)
 							if job.Status == "error" {
@@ -502,9 +497,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					}
 					// Genuinely not created → retry on a later crank, bounded.
 					if st.Attempts >= maxStepAttempts {
-						st.Status = "error"
-						job.Error = fmt.Sprintf("%s: %s (after %d attempts)", st.Key, err.Error(), st.Attempts)
-						job.Status = "error"
+						failStep(job, st, reason, fmt.Sprintf("%s: %s (after %d attempts)", st.Key, err.Error(), st.Attempts))
 						return
 					}
 					continue // stay pending, no progress → retried next stack_status crank
@@ -520,9 +513,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						id, _ = s.findStepResource(ctx, st)
 					}
 					if id == "" {
-						st.Status = "error"
-						job.Error = fmt.Sprintf("%s: %s answered no id of what it made, and its name finds nothing", st.Key, st.Tool)
-						job.Status = "error"
+						failStep(job, st, clierrors.CodeAPIError, fmt.Sprintf("%s: %s answered no id of what it made, and its name finds nothing", st.Key, st.Tool))
 						return
 					}
 					job.Outputs[st.Key] = id
