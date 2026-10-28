@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -69,9 +70,7 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"kafka_create will_create.specification_id":       {unnamedNoise, "id того, что превью называет по имени"},
 	"lb_create will_create.target_group_id":           {unnamedNoise, "id того, что превью называет по имени"},
 	"lb_create will_create.vpc_id":                    {unnamedNoise, "id того, что превью называет по имени"},
-	"pg_create preview.params.backup_enabled":         {unnamedWork, "копии включены"},
 	"pg_create preview.project_from":                  {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
-	"pg_create will_create.backup_enabled":            {unnamedWork, "копии включены"},
 	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами"},
 	"pg_create will_create.zone":                      {unnamedWork, "зона кластера"},
 	"provision preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена; человеку — месячная"},
@@ -229,7 +228,7 @@ type humanMiss struct{ path, value string }
 
 // humanMisses are the values of details the human text does not show: a
 // string or a number not in it, true/false whose label (the key, in any of
-// its forms) is not on any line. A params entry {key, value} counts as the
+// its forms, or its engine.ParamLabel) is not on any line. A params entry {key, value} counts as the
 // value of its key. Form keys (previewForm) are skipped.
 func humanMisses(details any, human string) []humanMiss {
 	flat := normKey(strings.Join(strings.Fields(human), ""))
@@ -259,8 +258,11 @@ func humanMisses(details any, human string) []humanMiss {
 				walk(e, path)
 			}
 		case bool:
+			// The label is the key, or the words the preview shows for it
+			// (engine.ParamLabel: «API извне» for kube_api_internet).
 			label := path[strings.LastIndex(path, ".")+1:]
-			if !strings.Contains(flat, normKey(label)) {
+			shown := normKey(strings.Join(strings.Fields(engine.ParamLabel(label)), ""))
+			if !strings.Contains(flat, normKey(label)) && !strings.Contains(flat, shown) {
 				out = append(out, humanMiss{path, fmt.Sprint(x)})
 			}
 		case nil:
@@ -294,5 +296,10 @@ func TestHumanMisses_ParamsBoolsAndForm(t *testing.T) {
 	// zone and kube_api_internet are not; message is the form.
 	if got, want := fmt.Sprint(misses), "[{kube_api_internet true} {preview.params.zone ru.AZ-1}]"; got != want {
 		t.Errorf("humanMisses = %s, want %s", got, want)
+	}
+	// A flag shown under the words of its label, not its key, is shown.
+	human = "  " + engine.ParamLabel("kube_api_internet") + ": yes\n"
+	if misses := humanMisses(map[string]any{"kube_api_internet": true}, human); len(misses) != 0 {
+		t.Errorf("humanMisses = %v under the label %q", misses, engine.ParamLabel("kube_api_internet"))
 	}
 }

@@ -35,14 +35,11 @@ const (
 // that is not sent any more, fails the test. Secret lines stay: the value
 // must not reach the preview.
 var bodyUnnamed = map[string]struct{ class, why string }{
-	"ar_create isPublic":     {unnamedAccess, "реестр закрытый по умолчанию; превью не говорит"},
-	"ar_create registryType": {unnamedWork, "тип реестра DOCKER по умолчанию"},
 
-	"ca_deploy configuration.ingress.publiclyAccessible": {unnamedAccess, "приложение доступно из интернета (дыра в согласии, аудит §9; не находка FB15)"},
-	"ca_deploy template.containers.containerPort":        {unnamedWork, "порт контейнера по умолчанию"},
-	"ca_deploy template.protocol":                        {unnamedWork, "протокол http_1 по умолчанию"},
-	"ca_deploy template.scaling.maxInstanceCount":        {unnamedPrice, "предел экземпляров по умолчанию"},
-	"ca_deploy template.scaling.minInstanceCount":        {unnamedPrice, "0 — приложение засыпает (холодный старт)"},
+	"ca_deploy template.containers.containerPort": {unnamedWork, "порт контейнера по умолчанию"},
+	"ca_deploy template.protocol":                 {unnamedWork, "протокол http_1 по умолчанию"},
+	"ca_deploy template.scaling.maxInstanceCount": {unnamedPrice, "предел экземпляров по умолчанию"},
+	"ca_deploy template.scaling.minInstanceCount": {unnamedPrice, "0 — приложение засыпает (холодный старт)"},
 
 	"deploy availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
 	"deploy interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
@@ -78,25 +75,18 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"k8s_add_addon appVersion":  {unnamedWork, "версия плагина, которую выбрал evo"},
 	"k8s_add_addon resolveMode": {unnamedWork, "конфликты ресурсов не разрешаются"},
 
-	"k8s_add_nodepool machineConfiguration.disk.size":       {unnamedPrice, "диск узла 20 ГБ по умолчанию (FB15-41)"},
-	"k8s_add_nodepool machineConfiguration.flavorId":        {unnamedNoise, "id flavor, который превью называет по имени"},
-	"k8s_add_nodepool networkConfiguration.nodesSubnetId":   {unnamedWork, "подсеть узлов, которую выбрал evo"},
-	"k8s_add_nodepool networkConfiguration.securityGroupId": {unnamedAccess, "группа безопасности узлов, которую выбрал evo"},
-	"k8s_add_nodepool scalePolicy.fixedScale.count":         {unnamedPrice, "2 узла по умолчанию (FB15-41)"},
-	"k8s_add_nodepool updateConfiguration.strategy":         {unnamedWork, "обновление узлов по одному"},
+	"k8s_add_nodepool machineConfiguration.disk.size": {unnamedPrice, "диск узла 20 ГБ по умолчанию (FB15-41)"},
+	"k8s_add_nodepool machineConfiguration.flavorId":  {unnamedNoise, "id flavor, который превью называет по имени"},
+	"k8s_add_nodepool scalePolicy.fixedScale.count":   {unnamedPrice, "2 узла по умолчанию (FB15-41)"},
+	"k8s_add_nodepool updateConfiguration.strategy":   {unnamedWork, "обновление узлов по одному"},
 
-	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId":    {unnamedNoise, "id flavor мастеров, который превью называет по имени"},
-	"k8s_create controlPlaneConfiguration.sizingConfiguration.masterCount": {unnamedWork, "один мастер — без отказоустойчивости"},
-	"k8s_create controlPlaneConfiguration.zones":                           {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"k8s_create controlPlaneConfiguration.version":                         {unnamedWork, "версия Kubernetes, которую выбрал evo"},
-	"k8s_create networkConfiguration.kubeApiInternet":                      {unnamedAccess, "API кластера доступен из интернета (FB15-41)"},
-	"k8s_create networkConfiguration.privateVipSubnetId":                   {unnamedWork, "подсеть API кластера, которую выбрал evo"},
+	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": {unnamedNoise, "id flavor мастеров, который превью называет по имени"},
+	"k8s_create controlPlaneConfiguration.zones":                        {unnamedNoise, "id зоны, которую превью называет по имени"},
+	"k8s_create networkConfiguration.privateVipSubnetId":                {unnamedWork, "подсеть API кластера, которую выбрал evo"},
 
 	"kafka_create cruise_control_enabled":                {unnamedWork, "Cruise Control выключен"},
 	"kafka_create cruise_control_rebalance_auto_enabled": {unnamedWork, "авторебаланс выключен"},
-	"kafka_create ui_enabled":                            {unnamedAccess, "веб-интерфейс Kafka (FB15-35)"},
 
-	"lb_create external_address_spec.allocate":         {unnamedAccess, "публичный адрес балансировщика"},
 	"lb_create rules.health_check.healthy_threshold":   {unnamedWork, "проверка здоровья цели по умолчанию"},
 	"lb_create rules.health_check.interval":            {unnamedWork, "проверка здоровья цели по умолчанию"},
 	"lb_create rules.health_check.timeout":             {unnamedWork, "проверка здоровья цели по умолчанию"},
@@ -129,6 +119,15 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"vpc_route_create nextHop.virtualMachine.interface.id":      {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
 	"vpc_route_create nextHop.virtualMachine.virtualMachine.id": {unnamedNoise, "id ВМ, которую превью называет по имени"},
+}
+
+// bodyNamedAs are the values the preview names under the argument of the
+// tool they come from, not under the API's word: "tool path" → the key.
+// The value must match, as for any key; a line no write reaches fails.
+var bodyNamedAs = map[string]string{
+	"ar_create isPublic": "public",
+	"ca_deploy configuration.ingress.publiclyAccessible": "public",
+	"lb_create external_address_spec.allocate":           "external",
 }
 
 // bodyUnnamedEverywhere are fields no preview names, one line for every
@@ -202,6 +201,10 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 				if named[normKey(last)][value] {
 					continue
 				}
+				if as, ok := bodyNamedAs[key]; ok && named[normKey(as)][value] {
+					seen[key] = true
+					continue
+				}
 				if d, ok := bodyUnnamedEverywhere[normKey(last)]; ok {
 					if !seen[key] {
 						byClass[d.class]++
@@ -236,6 +239,11 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 		case unnamedAccess, unnamedPrice, unnamedWork, unnamedNoise, unnamedSecret:
 		default:
 			bad = append(bad, fmt.Sprintf("%s: class %q", key, d.class))
+		}
+	}
+	for key := range bodyNamedAs {
+		if !seen[key] {
+			bad = append(bad, key+": in bodyNamedAs, but not sent or not named so: remove the line")
 		}
 	}
 	for seg := range bodyUnnamedEverywhere {
@@ -281,11 +289,33 @@ func namedValues(preview string, args map[string]any) map[string]map[string]bool
 	var v any
 	if json.Unmarshal([]byte(preview), &v) == nil {
 		leaves(v, "", add)
+		params(v, add)
 	}
 	for k, a := range args {
 		leaves(a, k, add)
 	}
 	return out
+}
+
+// params names the parameters of a preview (engine.PreviewParam, a list of
+// {"key": k, "value": v}) by their keys: the value v under the key k.
+func params(v any, add func(path, value string)) {
+	switch x := v.(type) {
+	case map[string]any:
+		if k, ok := x["key"].(string); ok && len(x) == 2 {
+			if val, ok := x["value"]; ok {
+				leaves(val, k, add)
+				return
+			}
+		}
+		for _, e := range x {
+			params(e, add)
+		}
+	case []any:
+		for _, e := range x {
+			params(e, add)
+		}
+	}
 }
 
 func leaves(v any, path string, f func(path, value string)) {

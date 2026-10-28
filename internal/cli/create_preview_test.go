@@ -342,9 +342,9 @@ func TestDeployApplyPreview_ShowsThePlan(t *testing.T) {
 	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ProjectID: pvProject, ExpiresAt: time.Now().Add(time.Hour),
 		VM: deployplan.VMSpec{Name: "web",
 			Flavor: deployplan.FlavorSpec{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4, Share: "1:10"},
-			Image: deployplan.RefSpec{ID: pvImage, Name: "Ubuntu 22.04"},
-			Zone:  deployplan.RefSpec{ID: pvZone, Name: "ru.AZ-1"},
-			Disk:  deployplan.DiskSpec{SizeGB: 20, Type: "SSD"}},
+			Image:  deployplan.RefSpec{ID: pvImage, Name: "Ubuntu 22.04"},
+			Zone:   deployplan.RefSpec{ID: pvZone, Name: "ru.AZ-1"},
+			Disk:   deployplan.DiskSpec{SizeGB: 20, Type: "SSD"}},
 		Network: deployplan.NetworkSpec{FloatingIP: true},
 		Ports:   []int{80, 443},
 		Cost:    pricing.Estimate{Currency: "RUB", ComputeMonthlyRub: 1000, DiskMonthlyRub: 234.5, TotalMonthlyRub: 1234.5, Source: "estimate: rate-card"}}
