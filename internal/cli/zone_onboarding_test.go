@@ -14,6 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -260,6 +261,28 @@ func TestTreeArgs_ExtraArgumentsNamed(t *testing.T) {
 	want := `evo vm create: нужно <name>, передано аргументов: 3; лишние аргументы: "UUID:", "00000000-0000-4000-8000…" — пропущен флаг?`
 	if code != clerrors.ExitGeneral || !strings.Contains(errOut, want) {
 		t.Errorf("exit %d:\n%s\nwant %s", code, errOut, want)
+	}
+}
+
+// Догфуд 28.10: отказы, видные без записи, приходят одним ответом. CLI в
+// тексте называет каждый — первый как ошибку (её код выхода), остальные
+// строками ниже, у каждого своя подсказка; в --json они в details.refusals.
+func TestVMCreate_AllRefusalsShown(t *testing.T) {
+	russian(t)
+	withCloud(t, exampleCloud{})
+	t.Setenv("CLOUDRU_REGION", "")
+	t.Setenv("CLOUDRU_IMAGE_ID", "")
+	stdinIsTerminal = func() bool { return false }
+	_, errOut, ce := execTree(t, "vm", "create", "my-vm")
+	if ce == nil || ce.Code != clerrors.CodeUsage || !strings.HasSuffix(ce.Message, "не задан образ (image или image_id)") {
+		t.Fatalf("vm create: %+v\n%s", ce, errOut)
+	}
+	var out, stderr bytes.Buffer
+	handleError(output.NewWithWriters(&out, &stderr, output.ModePlain, false), ce)
+	text := stderr.String()
+	if !strings.Contains(text, "не задан образ") || !strings.Contains(text, "не задана зона доступности") ||
+		!strings.Contains(text, "--image") || !strings.Contains(text, "--region") {
+		t.Errorf("text: want both refusals and the hint of each flag:\n%s", text)
 	}
 }
 
