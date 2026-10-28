@@ -6927,7 +6927,7 @@ evo redis [flags]
 ```text
 Создать кластер Managed Redis (платно, асинхронно).
 
-Создать кластер Managed Redis. Имя, которое уже носит кластер проекта ('evo redis list'), отклоняется. evo подбирает версию (последнюю), подсеть (как для Kafka) и по ней — зону кластера, конфигурацию этой зоны (по --specification-id или по --cpu и --ram; если подходящей нет — ошибка со списком конфигураций). Тип MASTER_REPLICA (по умолчанию): в каждом шарде мастер и две реплики, все в зоне подсети — Single-AZ; API до сих пор отклонял STANDALONE.
+Создать кластер Managed Redis. Имя, которое уже носит кластер проекта ('evo redis list'), отклоняется. evo подбирает версию (последнюю), подсеть (как для Kafka) и по ней — зону кластера, конфигурацию этой зоны (по --specification-id или по --cpu и --ram; если подходящей нет — ошибка со списком конфигураций). Тип MASTER_REPLICA (по умолчанию): в каждом шарде мастер и две реплики, все в зоне подсети — Single-AZ; STANDALONE — один узел в шарде.
 
 --replicas здесь — реплики БЕЗ мастера (поле replicas запроса на создание, 2), а сведения о кластере ('evo redis get <cluster-id>', 'evo redis list') показывают replicas как число узлов в шарде вместе с мастером (3). Кластер платный. Операция асинхронная: ход — 'evo redis operation <operation-id>'.
 
@@ -6959,7 +6959,7 @@ evo redis create <name> [flags]
       --specification-id string   UUID конфигурации (список: evo redis specs). Необязателен, если заданы --cpu и --ram
       --storage-gb int            Размер диска, ГБ (по умолчанию — минимум конфигурации)
       --subnet-id string          UUID подсети (список: evo vpc subnets). По умолчанию — основная подсеть зоны из настроек. Кластер создаётся в зоне подсети
-      --type string               MASTER_REPLICA (по умолчанию) или STANDALONE (API пока его отклоняет)
+      --type string               MASTER_REPLICA (по умолчанию) или STANDALONE (один узел в шарде)
       --version-id string         UUID версии Redis (список: evo redis versions). По умолчанию — последняя
 ```
 
