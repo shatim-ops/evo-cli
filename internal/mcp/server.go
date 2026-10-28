@@ -375,6 +375,11 @@ func (s *Server) readStdio(serve context.Context, stop context.CancelCauseFunc, 
 				case m.req.Method == "notifications/cancelled":
 					s.inflight.cancelRequest("", m.req.Params)
 					ln.msgs[i] = incoming{} // handled; nothing to answer
+					if !m.req.isNotification() {
+						// Sent with an id it is a request: handled here,
+						// answered as Server.call answers it.
+						ln.msgs[i] = incoming{answer: s.ok(m.req, map[string]any{})}
+					}
 				case m.req.Method == "tools/call" && !m.req.isNotification():
 					ctx, call, done := s.inflight.begin(serve, "", m.req.ID)
 					if ln.calls == nil {
@@ -422,8 +427,8 @@ func (s *Server) answerLine(serve context.Context, ln stdioLine, notify func(any
 	var out []*rpcResponse
 	for _, m := range ln.msgs {
 		switch {
-		case m.bad != nil:
-			out = append(out, m.bad)
+		case m.answer != nil:
+			out = append(out, m.answer)
 		case m.req != nil:
 			ctx := serve
 			c, registered := ln.calls[m.req]
@@ -471,12 +476,15 @@ func readLine(r *bufio.Reader, max int) (line []byte, tooLong bool, err error) {
 	}
 }
 
-// incoming is one decoded message: a request (or notification) to dispatch,
-// or the error answer to a message that is not one. Both are nil for a
-// response from the client, which needs no answer.
+// incoming is one decoded message: a request (or notification) to
+// dispatch, or its answer made already — the error answer to a message
+// that is not one, or (stdio) the answer to notifications/cancelled sent
+// with an id, which the reader handles itself. Both are nil for a response
+// from the client, and for a notification handled already: neither needs
+// an answer.
 type incoming struct {
-	req *rpcRequest
-	bad *rpcResponse
+	req    *rpcRequest
+	answer *rpcResponse
 }
 
 // decodeMessages splits a stdio line or an HTTP body into messages; batch
@@ -487,7 +495,7 @@ func decodeMessages(data []byte) (msgs []incoming, batch bool) {
 	// a bad byte and the call would go to the cloud with another string
 	// (break r3b, R3B-4): such a line is not a message.
 	if !utf8.Valid(data) || !json.Valid(data) {
-		return []incoming{{bad: errorResponse(nullID, codeParseError, "parse error")}}, false
+		return []incoming{{answer: errorResponse(nullID, codeParseError, "parse error")}}, false
 	}
 	if data[0] != '[' {
 		return []incoming{decodeMessage(data)}, false
@@ -495,7 +503,7 @@ func decodeMessages(data []byte) (msgs []incoming, batch bool) {
 	var raw []json.RawMessage
 	_ = json.Unmarshal(data, &raw) // valid JSON starting with '['
 	if len(raw) == 0 {
-		return []incoming{{bad: errorResponse(nullID, codeInvalidReq, "invalid request: empty batch")}}, false
+		return []incoming{{answer: errorResponse(nullID, codeInvalidReq, "invalid request: empty batch")}}, false
 	}
 	for _, m := range raw {
 		msgs = append(msgs, decodeMessage(m))
@@ -507,7 +515,7 @@ func decodeMessages(data []byte) (msgs []incoming, batch bool) {
 func decodeMessage(raw json.RawMessage) incoming {
 	var req rpcRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
-		return incoming{bad: errorResponse(nullID, codeInvalidReq, "invalid request: not a JSON-RPC message object")}
+		return incoming{answer: errorResponse(nullID, codeInvalidReq, "invalid request: not a JSON-RPC message object")}
 	}
 	if req.Method == "" {
 		if len(req.Result) > 0 || len(req.Error) > 0 {
@@ -517,7 +525,7 @@ func decodeMessage(raw json.RawMessage) incoming {
 		if len(id) == 0 {
 			id = nullID
 		}
-		return incoming{bad: errorResponse(id, codeInvalidReq, "invalid request: method is required")}
+		return incoming{answer: errorResponse(id, codeInvalidReq, "invalid request: method is required")}
 	}
 	return incoming{req: &req}
 }
@@ -546,8 +554,10 @@ func (s *Server) call(ctx context.Context, scope string, req *rpcRequest) *rpcRe
 		return s.ok(req, s.initializeResult(req.Params))
 
 	case "notifications/initialized", "initialized":
-		// Client acknowledgement; no response.
-		return nil
+		// Client acknowledgement: handle drops the answer of a
+		// notification; sent with an id it is a request, and a client
+		// that waits for the answer must get one (JSON-RPC 2.0, §4).
+		return s.ok(req, map[string]any{})
 
 	case "ping":
 		return s.ok(req, map[string]any{})
@@ -560,7 +570,7 @@ func (s *Server) call(ctx context.Context, scope string, req *rpcRequest) *rpcRe
 
 	case "notifications/cancelled":
 		s.inflight.cancelRequest(scope, req.Params)
-		return nil
+		return s.ok(req, map[string]any{})
 
 	default:
 		return s.fail(req, codeMethodNotFound, "method not found: "+req.Method)
