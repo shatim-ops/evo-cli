@@ -12,9 +12,10 @@ import (
 )
 
 // refArg is an argument that names a resource or an entry of a catalogue:
-// an id, or one of the names valueRefs completes, or the key of an
-// object. A name of a new resource ("name") is not one.
-var refArg = regexp.MustCompile(`(_id|_ids)$|^(region|zone|flavor|image|bucket|path|key|cluster|registry|repository|secret)$`)
+// an id (_id or _ids at the end or before another word: none in the
+// middle today, Qwen on #483), or one of the names valueRefs completes, or
+// the key of an object. A name of a new resource ("name") is not one.
+var refArg = regexp.MustCompile(`_ids?(_|$)|^(region|zone|flavor|image|bucket|path|key|cluster|registry|repository|secret)$`)
 
 // Why a reference is not completed, when it is not.
 const (
