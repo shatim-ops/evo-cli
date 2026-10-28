@@ -444,6 +444,11 @@ func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project 
 	}
 
 	if flavor != "" && flavor != "auto" {
+		// A flavor the catalogue has not is refused first, as the preview
+		// refuses it (#470): before the image and the network are read.
+		if _, err := e.flavorAPIName(ctx, flavor); err != nil {
+			return "", err
+		}
 		return flavor, nil
 	}
 

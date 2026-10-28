@@ -225,6 +225,9 @@ func zoneRegistry(t *testing.T, cloud provision.CloudAPI, cfg config.Config) *Re
 		if v, ok := o["ImageID"].(string); ok {
 			c.ImageID = v
 		}
+		if v, ok := o["Flavor"].(string); ok {
+			c.Flavor = v
+		}
 		return &engine.Engine{
 			Config: c, Auth: staticToken{}, Cloud: cloud,
 			Printer:  output.NewWithWriter(&bytes.Buffer{}, output.ModeText, false),
