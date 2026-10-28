@@ -39,8 +39,9 @@ type contractRT struct {
 	mu   sync.Mutex
 	reqs []string
 	kind string
-	// body replaces the answer of kind "200" when set.
-	body string
+	// body replaces the answer of kind "200" when set; writeBody replaces
+	// it for a write (not GET or HEAD), when set.
+	body, writeBody string
 }
 
 func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -50,6 +51,9 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	c.mu.Lock()
 	c.reqs = append(c.reqs, r.Method+" "+r.URL.Host+r.URL.Path)
 	kind, override := c.kind, c.body
+	if c.writeBody != "" && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		override = c.writeBody
+	}
 	c.mu.Unlock()
 	if kind == "conn" {
 		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}

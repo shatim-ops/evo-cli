@@ -211,11 +211,13 @@ jobs:
           if [ -n "$dead" ]; then echo "недостижимый код:"; echo "$dead"; exit 1; fi
 
   # Проба ubuntu-latest (с 24.10.2026 — ubuntu-26.04, другие coreutils):
-  # обёртка evo, Ctrl-C через timeout -s INT. Прогон не роняет: итог —
-  # решение о переходе job test (TestWorkflows_CILinuxImageIsPinned).
+  # обёртка evo, Ctrl-C через timeout -s INT. Прогон не роняет и не красит:
+  # итог — ::notice в summary, по нему решают о переходе job test
+  # (TestWorkflows_CILinuxImageIsPinned). Красного по замыслу нет
+  # (TestWorkflows_NoRedByDesign): красный job — всегда сбой, который
+  # разбирают.
   wrapper-ubuntu-latest:
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -227,7 +229,12 @@ jobs:
           sed --version | head -1
           readlink -f "$(command -v timeout)"
       - name: обёртка evo с маской stderr
-        run: .github/scripts/evo_wrapper_test.sh
+        run: |
+          if .github/scripts/evo_wrapper_test.sh; then
+            echo "::notice title=ubuntu-latest::обёртка evo проходит на $(lsb_release -ds 2>/dev/null || echo ubuntu-latest) — job test можно переводить"
+          else
+            echo "::notice title=ubuntu-latest::обёртка evo не проходит на $(lsb_release -ds 2>/dev/null || echo ubuntu-latest) — job test остаётся на ubuntu-24.04"
+          fi
 
   # Класс изменения PR по путям и чек-лист проверок сверх CI в summary
   # прогона (аудит процессов 1.2.1, П5 и PR 8): политика, секреты,
