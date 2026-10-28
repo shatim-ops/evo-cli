@@ -510,7 +510,7 @@ func (s *Registry) registerTools() {
 				"port":          intProp("Container port the app listens on (default 8080). Reserved by the platform and refused: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092."),
 				"privileged":    boolProp("Run the container in privileged mode, as root (default false: it runs as UID 1000). Only for images that must run as root; the preview says so."),
 				"public":        boolPropTrue("Expose a public URL (default true)."),
-				"min_instances": intProp("Minimum instances (default 0 = scale to zero); at most max_instances."),
+				"min_instances": intProp("Minimum instances (default 0 = scale to zero); at most max_instances. Above 0 the instances run, and are billed, all the time, idle or not."),
 				"max_instances": intProp("Maximum instances (default 1, at least 1)."),
 				"env":           map[string]any{"type": "object", "description": "Environment variables as a name→value object.", "additionalProperties": map[string]any{"type": "string"}},
 				"description":   strProp("Optional description."),
@@ -744,7 +744,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Refuses a name an existing cluster has (redis_list). Resolves version (latest), subnet (as kafka_create) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram; none matching is a USAGE error with the list). type MASTER_REPLICA (default: a master and two replicas per shard, all in the subnet's zone — Single-AZ) or STANDALONE (one host per shard). replicas here is the replicas WITHOUT the master (the create request's field, 2); redis_get/redis_list report replicas as hosts per shard, the master included (3). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
+			Description: "Create a Managed Redis cluster. Refuses a name an existing cluster has (redis_list). Resolves version (latest), subnet (as kafka_create) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram; none matching is a USAGE error with the list). type MASTER_REPLICA (default: a master and two replicas per shard — three billed hosts per shard, all in the subnet's zone — Single-AZ) or STANDALONE (one host per shard). replicas here is the replicas WITHOUT the master (the create request's field, 2); redis_get/redis_list report replicas as hosts per shard, the master included (3). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name. Required."),
 				"version_id":       strProp("Redis version UUID (from redis_versions). Optional; default = latest."),
@@ -886,7 +886,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "lb_create",
-			Description: "Create an L4 load balancer fronting a target group. Resolves vpc_id (from the target group), the zone (zone, else the zone of subnet_id, else of the target group's VMs, else the configured region; none is refused) and the subnet (the zone's main subnet of that VPC), and builds a rule with a listener (port→target_port) + TCP health check. external=true (default) allocates a public IP. Without confirmed=true returns a preview only. Mutation (BILLABLE, async): requires confirmed=true. Poll lb_operation.",
+			Description: "Create an L4 TCP load balancer fronting a target group: it forwards TCP and terminates no TLS (no certificate is bound to it; HTTPS ends on the VM). Resolves vpc_id (from the target group), the zone (zone, else the zone of subnet_id, else of the target group's VMs, else the configured region; none is refused) and the subnet (the zone's main subnet of that VPC), and builds a rule with a listener (port→target_port) + TCP health check. external=true (default) allocates a public IP. Without confirmed=true returns a preview only. Mutation (BILLABLE, async): requires confirmed=true. Poll lb_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":            strProp("Load balancer name. Required."),
 				"target_group_id": strProp("Target group UUID (from tg_list/tg_create) to balance traffic to. Required."),
@@ -917,7 +917,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_create",
-			Description: "Create a new VPC (virtual private cloud) (async). Mutation: requires confirmed=true after the user approves.",
+			Description: "Create a new VPC (virtual private cloud) (async). It creates the VPC only: a subnet is created separately (in the console; evo has no subnet create yet), and lb_create refuses a VPC without one. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("VPC name. Required."),
 				"description": strProp("Optional description."),
@@ -1176,7 +1176,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_list",
-			Description: "Certificate Manager — list TLS certificates in the project (read-only). Filter by name/dns_name/common_name/type/state. Use to find a cert for an HTTPS load balancer / site.",
+			Description: "Certificate Manager — list TLS certificates in the project (read-only). Filter by name/dns_name/common_name/type/state. Use to find a cert for a site; TLS ends on the VM or app that serves it — the load balancer is L4 TCP without TLS.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Name or part of the certificate name (optional)."),
 				"dns_name":    strProp("One of the certificate's DNS names, e.g. shkrbkv.ru (optional)."),
@@ -1192,7 +1192,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_issue_le",
-			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). This is the path for HTTPS on a site (e.g. shkrbkv.ru): issue → bind to the LB listener. ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true. Mutation: requires confirmed=true after the user approves.",
+			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). The certificate goes to the application: the load balancer (lb_create) is L4 TCP and terminates no TLS, so HTTPS ends on the VM (a web server such as Caddy or nginx holds the certificate, or issues its own). ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Display name for the certificate. Required."),
 				"dns_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"]. Required."},
