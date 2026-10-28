@@ -48,7 +48,7 @@ func (c *vmCreateCloud) note(m string) {
 }
 
 func (*vmCreateCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
-	return []*provision.Flavor{{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4}}, nil
+	return []*provision.Flavor{{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{}}}, nil
 }
 func (*vmCreateCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
 	return []*provision.Subnet{{ID: vcSubnet, Name: "subnet_ru.AZ-1"}}, nil

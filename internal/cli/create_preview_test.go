@@ -48,9 +48,12 @@ type previewCloud struct {
 func (previewCloud) SetToken(string) {}
 func (previewCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	return []*provision.Flavor{
-		{ID: "00000000-0000-0000-0000-0000000000f0", Name: "free-tier1", VCPUs: 1, RAMGB: 1, FreeTier: true},
-		{ID: "00000000-0000-0000-0000-0000000000e5", Name: "lowcost10-4-8", VCPUs: 4, RAMGB: 8},
-		{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4},
+		{ID: "00000000-0000-0000-0000-0000000000f0", Name: "free-tier1", VCPUs: 1, RAMGB: 1, FreeTier: true, Share: "1:1", GPU: new(int), Type: &provision.FlavorType{},
+			Zones: []provision.FlavorZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: true, Available: true}}},
+		{ID: "00000000-0000-0000-0000-0000000000e5", Name: "lowcost10-4-8", VCPUs: 4, RAMGB: 8, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{},
+			Zones: []provision.FlavorZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: true, Available: true}}},
+		{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{},
+			Zones: []provision.FlavorZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: true, Available: true}}},
 	}, nil
 }
 func (previewCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
@@ -167,7 +170,7 @@ func TestVMCreatePreview_Russian(t *testing.T) {
 		"План: создать ВМ web (lowcost10-2-4) в зоне ru.AZ-1\n",
 		"  Будет создано: ВМ web, загрузочный диск 20 ГБ, floating IP\n",
 		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
-		"  flavor:     lowcost10-2-4 (2 vCPU, 4 ГБ RAM)\n",
+		"  flavor:     lowcost10-2-4 (2 vCPU, доля vCPU 1:10, 4 ГБ RAM)\n",
 		"  зона:       ru.AZ-1 (" + pvZone + ")\n",
 		"  образ:      Ubuntu 22.04 (" + pvImage + ")\n",
 		"  диск:       загрузочный, 20 ГБ (цена по тарифу SSD)\n", // raised to the image's min_disk
@@ -192,7 +195,7 @@ func TestVMCreatePreview_English(t *testing.T) {
 		"Dry run: would create VM web (lowcost10-2-4) in ru.AZ-1:\n",
 		"  Will create: VM web, a 20 GB boot disk\n",
 		"  project:   " + pvProject + " (from CLOUDRU_PROJECT_ID)\n",
-		"  flavor:    lowcost10-2-4 (2 vCPU, 4 GB RAM)\n",
+		"  flavor:    lowcost10-2-4 (2 vCPU, vCPU share 1:10, 4 GB RAM)\n",
 		"  zone:      ru.AZ-1 (" + pvZone + ")\n",
 		"  image:     Ubuntu 22.04 (" + pvImage + ")\n",
 		"  disk:      20 GB boot disk (priced at the SSD rate)\n",
@@ -338,7 +341,7 @@ func TestDeployApplyPreview_ShowsThePlan(t *testing.T) {
 	dir := t.TempDir()
 	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ProjectID: pvProject, ExpiresAt: time.Now().Add(time.Hour),
 		VM: deployplan.VMSpec{Name: "web",
-			Flavor: deployplan.FlavorSpec{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4},
+			Flavor: deployplan.FlavorSpec{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4, Share: "1:10"},
 			Image:  deployplan.RefSpec{ID: pvImage, Name: "Ubuntu 22.04"},
 			Zone:   deployplan.RefSpec{ID: pvZone, Name: "ru.AZ-1"},
 			Disk:   deployplan.DiskSpec{SizeGB: 20, Type: "SSD"}},
@@ -367,7 +370,7 @@ func TestDeployApplyPreview_ShowsThePlan(t *testing.T) {
 		"План: создать ВМ web (lowcost10-2-4) в зоне ru.AZ-1\n",
 		"  Будет создано: ВМ web, загрузочный диск 20 ГБ, floating IP\n",
 		"  проект:     " + pvProject + " (из плана)\n",
-		"  flavor:     lowcost10-2-4 (2 vCPU, 4 ГБ RAM)\n",
+		"  flavor:     lowcost10-2-4 (2 vCPU, доля vCPU 1:10, 4 ГБ RAM)\n",
 		"  образ:      Ubuntu 22.04 (" + pvImage + ")\n",
 		"  порты:      80,443 открываются для 0.0.0.0/0",
 		"  цена:       ~1234.50 RUB в месяц (вычисления 1000.00 + диск 234.50), оценка по тарифной карте evo, а не счёт\n",

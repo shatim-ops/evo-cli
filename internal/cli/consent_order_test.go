@@ -136,7 +136,7 @@ func (noImageCloud) GetImage(_ context.Context, id string) (*provision.ImageDeta
 type noFlavorCloud struct{ provision.CloudAPI }
 
 func (noFlavorCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
-	return []*provision.Flavor{{ID: consentOtherID, Name: "other-1-1", VCPUs: 1, RAMGB: 1}}, nil
+	return []*provision.Flavor{{ID: consentOtherID, Name: "other-1-1", VCPUs: 1, RAMGB: 1, Share: "1:1", GPU: new(int), Type: &provision.FlavorType{}}}, nil
 }
 
 // consentOtherID is a resource of the world the call did not make.

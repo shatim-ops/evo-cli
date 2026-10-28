@@ -340,7 +340,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		if err == nil {
 			for _, f := range flavors {
 				if f.ID == id {
-					vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB, FreeTier: f.FreeTier}
+					vm.Flavor = deployplan.SpecOf(f)
 					break
 				}
 			}
@@ -817,25 +817,32 @@ var paramLabels = map[string]struct {
 	"public":            {"public access", "доступ из интернета", false},
 	"external":          {"public address", "публичный адрес", false},
 	"ui_enabled":        {"Kafka UI", "Kafka UI", false},
-	"cluster_sa_id":     {"account", "аккаунт", false},
-	"cluster_id":        {"cluster", "кластер", false},
-	"product":           {"product", "продукт", false},
-	"region":            {"region", "регион", false},
-	"attach_to":         {"attach to", "к ВМ", false},
-	"disk_id":           {"disk", "диск", false},
-	"description":       {"about", "описание", false},
-	"cluster_name":      {"cluster name", "имя кластера", false},
-	"addon_version":     {"addon version", "версия плагина", false},
-	"support":           {"support", "поддержка", false},
-	"namespace":         {"namespace", "пространство имён", false},
-	"requires_kube":     {"needs Kubernetes", "нужен Kubernetes", false},
-	"cluster_version":   {"cluster Kubernetes", "Kubernetes кластера", false},
-	"requires_workers":  {"needs ready nodes", "нужно готовых узлов", false},
-	"worker_nodes":      {"nodes in pools", "узлов в группах", false},
-	"installed":         {"already installed", "уже установлен", false},
-	"billable":          {"billable addon", "платный плагин", false},
-	"resolve_mode":      {"on conflict", "при конфликте", false},
-	"config_keys":       {"settings", "настройки", false},
+
+	"cruise_control_enabled":                {"Cruise Control", "Cruise Control", false},
+	"cruise_control_rebalance_auto_enabled": {"auto-rebalance", "авторебаланс", false},
+	"backup_schedule":                       {"backup schedule (cron)", "расписание бэкапов (cron)", false},
+	"backup_retention_days":                 {"backups kept, days", "бэкапы хранятся, дней", false},
+	"health_check":                          {"health check", "проверка здоровья", false},
+	"protocol":                              {"protocol", "протокол", false},
+	"cluster_sa_id":                         {"account", "аккаунт", false},
+	"cluster_id":                            {"cluster", "кластер", false},
+	"product":                               {"product", "продукт", false},
+	"region":                                {"region", "регион", false},
+	"attach_to":                             {"attach to", "к ВМ", false},
+	"disk_id":                               {"disk", "диск", false},
+	"description":                           {"about", "описание", false},
+	"cluster_name":                          {"cluster name", "имя кластера", false},
+	"addon_version":                         {"addon version", "версия плагина", false},
+	"support":                               {"support", "поддержка", false},
+	"namespace":                             {"namespace", "пространство имён", false},
+	"requires_kube":                         {"needs Kubernetes", "нужен Kubernetes", false},
+	"cluster_version":                       {"cluster Kubernetes", "Kubernetes кластера", false},
+	"requires_workers":                      {"needs ready nodes", "нужно готовых узлов", false},
+	"worker_nodes":                          {"nodes in pools", "узлов в группах", false},
+	"installed":                             {"already installed", "уже установлен", false},
+	"billable":                              {"billable addon", "платный плагин", false},
+	"resolve_mode":                          {"on conflict", "при конфликте", false},
+	"config_keys":                           {"settings", "настройки", false},
 }
 
 // notCheckedLabels name what a k8s_addon preview could not check (its
@@ -917,6 +924,17 @@ func paramValue(v any) string {
 			parts = append(parts, paramValue(e))
 		}
 		return strings.Join(parts, ",")
+	case map[string]any:
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, strings.ReplaceAll(k, "_", "-")+" "+paramValue(x[k]))
+		}
+		return strings.Join(parts, ", ")
 	}
 	return fmt.Sprint(v)
 }

@@ -44,7 +44,7 @@ func (*provisionCloud) ListAvailabilityZones(context.Context) ([]*provision.Avai
 	return nil, nil
 }
 func (*provisionCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
-	return []*provision.Flavor{{ID: "00000000-0000-4000-8000-0000000000f1", Name: "lowcost10-1-1", VCPUs: 1, RAMGB: 1}}, nil
+	return []*provision.Flavor{{ID: "00000000-0000-4000-8000-0000000000f1", Name: "lowcost10-1-1", VCPUs: 1, RAMGB: 1, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{}}}, nil
 }
 func (*provisionCloud) GetImage(context.Context, string) (*provision.ImageDetail, error) {
 	return &provision.ImageDetail{ID: "00000000-0000-4000-8000-0000000000a1", Name: "Ubuntu-24.04", MetadataFields: []provision.ImageMetadataField{

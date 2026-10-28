@@ -199,7 +199,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 
 	vm := VMSpec{
 		Name:   name,
-		Flavor: FlavorSpec{ID: flavor.ID, Name: flavor.Name, VCPUs: flavor.VCPUs, RAMGB: flavor.RAMGB, FreeTier: flavor.FreeTier},
+		Flavor: SpecOf(&flavor),
 		Image:  RefSpec{ID: image.ID, Name: image.Name},
 		Zone:   RefSpec{ID: zone.ID, Name: zone.Name},
 		Disk:   DiskSpec{SizeGB: diskGB, Type: diskName, TypeID: diskID},
@@ -453,4 +453,14 @@ func sanitizeName(s string) string {
 		out = out[:32]
 	}
 	return out
+}
+
+// SpecOf is the FlavorSpec of a flavor of the catalogue: one place for
+// every preview and plan that names it.
+func SpecOf(f *provision.Flavor) FlavorSpec {
+	s := FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB, FreeTier: f.FreeTier, Share: f.Share, Spot: f.Spot()}
+	if f.GPU != nil {
+		s.GPU = *f.GPU
+	}
+	return s
 }

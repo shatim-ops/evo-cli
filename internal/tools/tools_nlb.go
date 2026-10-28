@@ -302,6 +302,9 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 	}
 	targetPort := pgInt(args, "target_port", port)
 	hcPort := pgInt(args, "hc_port", targetPort)
+	// The check evo sets on the target: the preview names it (С4), the
+	// rule sends it.
+	healthCheck := map[string]any{"interval": "10s", "timeout": "5s", "healthy_threshold": 3, "unhealthy_threshold": 3}
 	external := true
 	if v, ok := args["external"].(bool); ok {
 		external = v
@@ -362,8 +365,8 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 		"target_group_id": tgID,
 		"listeners":       []map[string]any{{"name": fmt.Sprintf("lst-%d", port), "port": port, "target_port": targetPort}},
 		"health_check": map[string]any{
-			"port": hcPort, "timeout": "5s", "interval": "10s",
-			"unhealthy_threshold": 3, "healthy_threshold": 3, "tcp": map[string]any{},
+			"port": hcPort, "timeout": healthCheck["timeout"], "interval": healthCheck["interval"],
+			"unhealthy_threshold": healthCheck["unhealthy_threshold"], "healthy_threshold": healthCheck["healthy_threshold"], "tcp": map[string]any{},
 		},
 	}
 	body := map[string]any{
@@ -383,6 +386,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 		"name": name, "vpc_id": vpcID, "target_group_id": tgID,
 		"listener": fmt.Sprintf("%d→%d", port, targetPort), "health_check_port": hcPort,
 		"subnet_id": subnetID, "zone": firstNonEmptyStr(zone.Name, zone.ID), "external": external,
+		"health_check": healthCheck,
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		out := map[string]any{
@@ -391,7 +395,7 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 				"lb_create создаёт ПЛАТНЫЙ балансировщик L4 (асинхронно)."),
 			"will_create": willCreate,
 			"preview": willPreview(engine.ResourceLB, name, firstNonEmptyStr(zone.Name, zone.ID), willCreate,
-				[]string{"listener", "health_check_port", "external", "subnet_id"}, warnings...),
+				[]string{"listener", "health_check_port", "health_check", "external", "subnet_id"}, warnings...),
 		}
 		if len(warnings) > 0 {
 			out["warnings"] = warnings

@@ -43,6 +43,12 @@ type FlavorSpec struct {
 	// FreeTier: the flavor of the free tier — the API's zero price for it
 	// is the price, not a failure (QuoteVM).
 	FreeTier bool `json:"free_tier,omitempty"`
+	// Share, GPU and Spot are what the catalogue says beyond the size
+	// (release plan 1.5, С5): the guaranteed share of a vCPU ("1:10"), the
+	// GPUs, an interruptible type; zero when it does not say them.
+	Share string `json:"cpu_share,omitempty"`
+	GPU   int    `json:"gpu,omitempty"`
+	Spot  bool   `json:"spot,omitempty"`
 }
 
 // RefSpec is an id+name reference (image, zone).

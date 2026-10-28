@@ -445,6 +445,7 @@ func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any)
 		Preview: map[string]any{
 			"message": i18n.Tf("dns_record_create adds a %s-record %q → %v (ttl %d) in %s zone %s (async).",
 				"dns_record_create добавляет запись %s %q → %v (ttl %d) в зону (%s) %s (асинхронно).", rtype, name, vals, ttl, vis, zoneID),
+			"will_create": map[string]any{"name": name, "type": rtype, "values": vals, "ttl": ttl},
 		},
 		Execute: func(ctx context.Context) (string, bool) {
 			body := map[string]any{

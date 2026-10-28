@@ -36,8 +36,8 @@ func (planCloud) ListAvailabilityZones(context.Context) ([]*provision.Availabili
 }
 func (planCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	return []*provision.Flavor{
-		{ID: "fl-small", Name: "lowcost10-1-1", VCPUs: 1, RAMGB: 1},
-		{ID: "fl-big", Name: "gen-4-8", VCPUs: 4, RAMGB: 8},
+		{ID: "fl-small", Name: "lowcost10-1-1", VCPUs: 1, RAMGB: 1, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{}},
+		{ID: "fl-big", Name: "gen-4-8", VCPUs: 4, RAMGB: 8, Share: "1:1", GPU: new(int), Type: &provision.FlavorType{}},
 	}, nil
 }
 func (planCloud) ListImages(_ context.Context, f ...provision.ImageFilter) ([]*provision.Image, error) {

@@ -66,7 +66,7 @@ func (c *cancelCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 
 func (*cancelCloud) SetToken(string) {}
 func (*cancelCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
-	return []*provision.Flavor{{ID: "fl-1", Name: "lowcost10-1-1", VCPUs: 1, RAMGB: 1}}, nil
+	return []*provision.Flavor{{ID: "fl-1", Name: "lowcost10-1-1", VCPUs: 1, RAMGB: 1, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{}}}, nil
 }
 func (*cancelCloud) GetImage(context.Context, string) (*provision.ImageDetail, error) {
 	return &provision.ImageDetail{ID: "img-1", Name: "ubuntu"}, nil

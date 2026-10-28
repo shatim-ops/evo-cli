@@ -152,6 +152,8 @@ var columnHeaderRU = map[string]string{
 	"vcpus":           "vCPU",
 	"ram_gb":          "RAM, ГБ",
 	"est_monthly_rub": "≈ руб./мес",
+	"cpu_share":       "Доля vCPU",
+	"spot":            "Spot",
 	"free_tier":       "Бесплатный уровень",
 	"size_gb":         "Размер, ГБ",
 	"disk_type":       "Тип",
@@ -162,7 +164,7 @@ var columnHeaderRU = map[string]string{
 // listNoteRU is the Russian text of a note a tool puts under its list, by
 // its English text (the MCP answer keeps the English one).
 var listNoteRU = map[string]string{
-	"est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price": "Цена — оценка по тарифам, с диском SSD 10 ГБ; это не счёт.",
+	"est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price; cpu_share is the guaranteed share of a vCPU: 1:1 — 100%, 1:3 — 30%, 1:10 — 10% (the Cloud.ru specification)": "Цена — оценка по тарифам, с диском SSD 10 ГБ; это не счёт. Доля vCPU — гарантированная доля ядра: 1:1 — 100 %, 1:3 — 30 %, 1:10 — 10 % (спецификация Cloud.ru).",
 }
 
 // noteLabelRU names the other notes under a list.
