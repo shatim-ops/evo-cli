@@ -145,6 +145,39 @@ Authenticode**.
   «Подробнее» → «Выполнить в любом случае». Или до первого запуска, после
   проверки хэша: `Unblock-File .\evo.exe`.
 
+## Автодополнение по Tab
+
+Tab дополняет команды и флаги, а с 1.5 — и значения, которые ссылаются на
+ресурсы облака: зону (`--region ru.`+Tab), flavor, образ, подсеть, VPC,
+бакет, путь секрета, проект, id и имена ресурсов в `get`, `delete`,
+`attach` (`evo disk delete `+Tab — диски проекта с именами). Набранное
+начало сужает список (`--image Ubu`+Tab — только Ubuntu).
+
+Значения читаются тем же списком, что и `evo … list`: только чтение, без
+согласия и без записи в журнал (`evo diag`); значения секретов не
+читаются. Список хранится несколько минут в каталоге кэша evo (только id и
+имена, файл `0600`), поэтому повторный Tab не идёт в облако. Облако не
+ответило за 1,5 с — список пуст, оболочка не зависает. Без ключа и проекта
+(`evo configure` не выполнен) Tab значений молчит.
+
+Подключение — скрипт для своей оболочки:
+
+```sh
+# bash (нужен пакет bash-completion)
+evo completion bash > ~/.local/share/bash-completion/completions/evo
+# zsh: каталог из $fpath, куда у вас есть запись, например
+evo completion zsh > "${fpath[1]}/_evo"
+# fish
+evo completion fish > ~/.config/fish/completions/evo.fish
+# PowerShell: скрипт в $HOME и строка «. $HOME\evo.ps1» в профиле ($PROFILE)
+evo completion powershell > $HOME\evo.ps1
+```
+
+Выбор из списка стрелками — настройка самой оболочки: zsh —
+`zstyle ':completion:*' menu select` в `~/.zshrc`; PowerShell —
+`Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete` в профиле;
+bash — `bind 'TAB:menu-complete'` в `~/.bashrc`. fish показывает меню сам.
+
 ## kubectl и helm
 
 Почти все команды работают без внешних программ: API Cloud.ru и SSH

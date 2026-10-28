@@ -184,7 +184,7 @@ func newTreeCmds(root *cobra.Command) []*cobra.Command {
 		}
 		for _, c := range g.Cmds {
 			t, _ := reg.Lookup(c.Tool)
-			leaf := newTreeLeaf(c, t)
+			leaf := newTreeLeaf(reg, c, t)
 			if parent == nil {
 				out = append(out, leaf)
 				continue
@@ -260,7 +260,7 @@ func (c treeCmd) flagArgs(t tools.Tool) []param {
 	return out
 }
 
-func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
+func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 	pos := parsePositionals(c.Args)
 	use := []string{c.Verb}
 	minArgs, maxArgs := 0, 0
@@ -430,6 +430,16 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 			return err
 		}
 		return c.show(cmdPrinter(cmd), cmd.OutOrStdout(), text)
+	}
+	// Tab: the values of the arguments that name a resource (release plan
+	// 1.5), as the registry declares them.
+	flags := make(map[string]string, len(flagArgs))
+	for _, p := range flagArgs {
+		flags[c.flagName(p.Name)] = p.Name
+	}
+	registerFlagCompletions(reg, cmd, t.Name, flags)
+	if len(pos) > 0 {
+		cmd.ValidArgsFunction = positionalCompletion(reg, t.Name, pos)
 	}
 	return cmd
 }
