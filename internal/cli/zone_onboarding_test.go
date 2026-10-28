@@ -332,3 +332,28 @@ func TestVMCreate_NoZoneAskedAtTerminal(t *testing.T) {
 		t.Errorf("terminal: the zone chosen did not reach the call:\n%s", stderr)
 	}
 }
+
+// The question of the zone is a tree command's (vm create, deploy): evo
+// tools call is the CLI's MCP call, and at a terminal too it answers what
+// MCP answers — the refusal, no question, no profile written (CLAUDE.md
+// §1: the answer of the command is the tool's; release plan 1.5, a new
+// surface, §0 rule 3).
+func TestToolsCall_NoZoneNotAskedEvenAtTerminal(t *testing.T) {
+	fc := setupCLI(t)
+	fc.zones = `[{"id":"` + pvZone + `","name":"ru.AZ-1","enabled":true}]`
+	withCloud(t, exampleCloud{})
+	t.Setenv("CLOUDRU_REGION", "")
+	saveProfile(t, "default", "11111111-1111-1111-1111-111111111111")
+	call := []string{"tools", "call", "provision", "--arg", "name=my-vm", "--arg", "image=Ubuntu-24.04", "--arg", "flavor=lowcost10-2-4"}
+	stdinIsTerminal = func() bool { return false }
+	want, _, wantErr := runCLI(t, "", call...)
+	stdinIsTerminal = func() bool { return true }
+	code, _, stderr := runCLI(t, "\n\n", call...)
+	prof, _, _, _ := config.LoadProfile("default")
+	if code != want || strings.Contains(stderr, "Choose a zone") || prof.Region != "" {
+		t.Errorf("terminal: exit %d (without one %d), region %q — want the same refusal and no question:\n%s", code, want, prof.Region, stderr)
+	}
+	if want == 0 || !strings.Contains(wantErr, "zone") && !strings.Contains(wantErr, "зон") {
+		t.Fatalf("without a terminal: exit %d, want the refusal for the zone:\n%s", want, wantErr)
+	}
+}
