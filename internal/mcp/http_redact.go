@@ -7,6 +7,7 @@ package mcp
 import (
 	"encoding/json"
 	"io"
+	"net/url"
 	"slices"
 	"strings"
 	"unicode"
@@ -228,6 +229,43 @@ var pairNames = []string{"name", "key"}
 // pairValue is the field that holds the value of a name/value pair.
 const pairValue = "value"
 
+// pairSecretWords are the last words that make the name of a name/value
+// pair a credential beyond the roots of a key: an environment variable
+// names its secret in words a JSON key does not (GITHUB_TOKEN, DB_PASS,
+// MYSQL_PWD, AWS_ACCESS_KEY; Fable audit 1.5, FB15-44). Only the last
+// word counts — TOKEN_URL is where a token is asked for — and a public key
+// is none: only a name that ends in PUBLIC_KEY, so MY_PUBLIC_API_KEY is
+// masked (an API key named public is not known to be one; D24, the safe
+// side).
+var pairSecretWords = []string{"token", "tokens", "pass", "passes", "pwd", "pwds", "credential", "credentials", "key", "keys"}
+
+// pairSecret reports whether a pair named name holds a credential in value:
+// the name holds a root of a key (hasRoot) or ends in pairSecretWords, not
+// excepted by HTTPNonSecretFields; or the value is a URL with a password in
+// it (postgres://app:…@db), whatever the name (DATABASE_URL) — a URL with a
+// password is masked before the exceptions of HTTPNonSecretFields are
+// asked, so no exception keeps it.
+func (m *masking) pairSecret(name string, value any) bool {
+	if s, ok := value.(string); ok {
+		if u, err := url.Parse(s); err == nil && u.User != nil {
+			if _, has := u.User.Password(); has {
+				return true
+			}
+		}
+	}
+	if nonSecret(m.tool, name, value) {
+		return false
+	}
+	if hasRoot(name) {
+		return true
+	}
+	words := keyWords(name)
+	if len(words) == 0 || !slices.Contains(pairSecretWords, words[len(words)-1]) {
+		return false
+	}
+	return len(words) < 2 || words[len(words)-2] != "public"
+}
+
 // minEchoLen is the length, in characters, from which echoes looks for a
 // masked value elsewhere in the result. A shorter value is a common word
 // ("ok", "true", "debug", "admin") that unrelated fields hold too; it is
@@ -390,10 +428,9 @@ func (m *masking) walk(v any, path string) any {
 }
 
 // secretPair returns the value fields (pairValue) of object o if it is a
-// name/value pair (pairNames) whose name is a credential key by the rules
-// of a key: a root of HTTPSecretFields, not excepted by
-// HTTPNonSecretFields. The fields are matched by normKey; an object with
-// both value and Value has both masked.
+// name/value pair (pairNames) that holds a credential (pairSecret). The
+// fields are matched by normKey; an object with both value and Value has
+// both masked.
 func (m *masking) secretPair(o map[string]any) []string {
 	var names, values []string
 	for k, x := range o {
@@ -408,7 +445,7 @@ func (m *masking) secretPair(o map[string]any) []string {
 	}
 	var out []string
 	for _, k := range values {
-		if slices.ContainsFunc(names, func(name string) bool { return hasRoot(name) && !nonSecret(m.tool, name, o[k]) }) {
+		if slices.ContainsFunc(names, func(name string) bool { return m.pairSecret(name, o[k]) }) {
 			out = append(out, k)
 		}
 	}
