@@ -35,8 +35,7 @@ const (
 // that is not sent any more, fails the test. Secret lines stay: the value
 // must not reach the preview.
 var bodyUnnamed = map[string]struct{ class, why string }{
-	"ar_create isPublic":     {unnamedAccess, "реестр закрытый по умолчанию; превью не говорит"},
-	"ar_create registryType": {unnamedWork, "тип реестра DOCKER по умолчанию"},
+	"ar_create isPublic": {unnamedAccess, "реестр закрытый по умолчанию; превью не говорит"},
 
 	"ca_deploy configuration.ingress.publiclyAccessible": {unnamedAccess, "приложение доступно из интернета (FB15-35-класс)"},
 	"ca_deploy template.containers.containerPort":        {unnamedWork, "порт контейнера по умолчанию"},
@@ -78,19 +77,15 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"k8s_add_addon appVersion":  {unnamedWork, "версия плагина, которую выбрал evo"},
 	"k8s_add_addon resolveMode": {unnamedWork, "конфликты ресурсов не разрешаются"},
 
-	"k8s_add_nodepool machineConfiguration.disk.size":       {unnamedPrice, "диск узла 20 ГБ по умолчанию (FB15-41)"},
-	"k8s_add_nodepool machineConfiguration.flavorId":        {unnamedNoise, "id flavor, который превью называет по имени"},
-	"k8s_add_nodepool networkConfiguration.nodesSubnetId":   {unnamedWork, "подсеть узлов, которую выбрал evo"},
-	"k8s_add_nodepool networkConfiguration.securityGroupId": {unnamedAccess, "группа безопасности узлов, которую выбрал evo"},
-	"k8s_add_nodepool scalePolicy.fixedScale.count":         {unnamedPrice, "2 узла по умолчанию (FB15-41)"},
-	"k8s_add_nodepool updateConfiguration.strategy":         {unnamedWork, "обновление узлов по одному"},
+	"k8s_add_nodepool machineConfiguration.disk.size": {unnamedPrice, "диск узла 20 ГБ по умолчанию (FB15-41)"},
+	"k8s_add_nodepool machineConfiguration.flavorId":  {unnamedNoise, "id flavor, который превью называет по имени"},
+	"k8s_add_nodepool scalePolicy.fixedScale.count":   {unnamedPrice, "2 узла по умолчанию (FB15-41)"},
+	"k8s_add_nodepool updateConfiguration.strategy":   {unnamedWork, "обновление узлов по одному"},
 
-	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId":    {unnamedNoise, "id flavor мастеров, который превью называет по имени"},
-	"k8s_create controlPlaneConfiguration.sizingConfiguration.masterCount": {unnamedWork, "один мастер — без отказоустойчивости"},
-	"k8s_create controlPlaneConfiguration.zones":                           {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"k8s_create controlPlaneConfiguration.version":                         {unnamedWork, "версия Kubernetes, которую выбрал evo"},
-	"k8s_create networkConfiguration.kubeApiInternet":                      {unnamedAccess, "API кластера доступен из интернета (FB15-41)"},
-	"k8s_create networkConfiguration.privateVipSubnetId":                   {unnamedWork, "подсеть API кластера, которую выбрал evo"},
+	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": {unnamedNoise, "id flavor мастеров, который превью называет по имени"},
+	"k8s_create controlPlaneConfiguration.zones":                        {unnamedNoise, "id зоны, которую превью называет по имени"},
+	"k8s_create networkConfiguration.kubeApiInternet":                   {unnamedAccess, "API кластера доступен из интернета (FB15-41)"},
+	"k8s_create networkConfiguration.privateVipSubnetId":                {unnamedWork, "подсеть API кластера, которую выбрал evo"},
 
 	"kafka_create cruise_control_enabled":                {unnamedWork, "Cruise Control выключен"},
 	"kafka_create cruise_control_rebalance_auto_enabled": {unnamedWork, "авторебаланс выключен"},
@@ -281,11 +276,33 @@ func namedValues(preview string, args map[string]any) map[string]map[string]bool
 	var v any
 	if json.Unmarshal([]byte(preview), &v) == nil {
 		leaves(v, "", add)
+		params(v, add)
 	}
 	for k, a := range args {
 		leaves(a, k, add)
 	}
 	return out
+}
+
+// params names the parameters of a preview (engine.PreviewParam, a list of
+// {"key": k, "value": v}) by their keys: the value v under the key k.
+func params(v any, add func(path, value string)) {
+	switch x := v.(type) {
+	case map[string]any:
+		if k, ok := x["key"].(string); ok && len(x) == 2 {
+			if val, ok := x["value"]; ok {
+				leaves(val, k, add)
+				return
+			}
+		}
+		for _, e := range x {
+			params(e, add)
+		}
+	case []any:
+		for _, e := range x {
+			params(e, add)
+		}
+	}
 }
 
 func leaves(v any, path string, f func(path, value string)) {
