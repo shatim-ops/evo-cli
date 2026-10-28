@@ -371,6 +371,7 @@ CI `main` за 1.4.0 (27.10, `ci` на push): красный один раз —
 |---|---|
 | 1.4.1, п. 0: красные тесты до продуктовых PR — W8 «значения по умолчанию из конфигурации нет» и «нет пустой подстановки», ответ на запрос с `id`, `ExpiresAt` без монотонной части, `error_reasons` шага стека, мир «401 Jwt is expired» в долгой сессии | ветка `process/1.4.1-invariants` → «разработка» |
 | Проба IAM: `expires_in` против `exp`/`iat`, сдвиг часов раннера — совпадают, 0 с (run 40669740261; реестр, «Снятые вопросы») | #436 |
+| 1.5, «ресурс был до нас»: `TestCreate_NeverTakesWhatWasThereBefore` — каждый create с поиском по имени (`createdIDs.list`, `lostCreate`), имя занято давно, ответ записи потерян: не называет чужой ресурс своим; присваивают сейчас `disk_create`, `dns_zone_create`, `image_create`, `secret_create` (`takenAdopts`) — «разработке»; мир не доводит до записи `dns_record_create`, `k8s_add_nodepool`, `lb_create` (`takenNotReached`) | этот PR |
 | 1.4.1, п. 11: инвариант уборки `TestSkills_InventoryIsOnlyTheirs` — скилл, который удаляет найденное, берёт в инвентарь только своё (префикс; ВМ развёртывания с `vm_name` `evo-<prefix>`), источники только читают; ошибочный текст #445 (1a8a308) роняет тест | этот PR |
 | Ретро R1–R6: `TestRetro_Rules`, `TestRetro_OneTemplate`; исторические нарушения 1.3.1 и 1.4.0 — в `retroKnown` (сокращается) | этот PR |
 | Гипотеза аудита: занятая `journal.lock` задерживает ответ на 2 с — подтверждена тестом | ветка `process/journal-hypotheses` → «разработка» |
