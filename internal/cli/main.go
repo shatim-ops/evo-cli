@@ -656,6 +656,17 @@ func handleError(p *output.Printer, err error) {
 		return
 	}
 	p.Errorf("%s", message)
+	// The other refusals of the call, found with the first (a tool's
+	// refusals): each on a line of its own; the hint below covers them.
+	if refusals, _ := details["refusals"].([]any); len(refusals) > 1 {
+		for _, r := range refusals[1:] {
+			if m, _ := r.(map[string]any); m != nil {
+				if e, _ := m["error"].(string); e != "" {
+					p.Errorf("%s", e)
+				}
+			}
+		}
+	}
 	if pw, _ := details["password"].(string); pw != "" {
 		p.Errorf("%s", vmPasswordLine(pw))
 	}

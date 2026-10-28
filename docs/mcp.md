@@ -127,7 +127,10 @@ kubectl (`~/.kube/kuberc`: алиасы, значения флагов по ум
 
 У части ошибок есть свои поля: `vm_id` у `provision`, когда ВМ уже создана
 (её надо удалить); `missing` у `provision` и `deploy` без образа или зоны — имя
-аргумента (`["image"]`, `["region"]`); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
+аргумента (`["image"]`, `["region"]`, оба, если нет обоих); `refusals` —
+когда отказов, видных без записи, несколько (нет образа и зоны; образа нет
+в каталоге и у зоны нет подсети): каждый `{reason, error, hint}` по порядку
+проверок, первый совпадает с `reason`, `error` и `hint` ответа (с 1.5); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
 `k8s_helm`. `provision`, не дождавшийся ВМ, отвечает `"status":"timeout"`
 с теми же `reason` и `error`. Отказ политики HTTP (`secret_value`,
 `cert_private_key`, `k8s_kubeconfig` с токеном, путь вне рабочего каталога)
@@ -135,6 +138,15 @@ kubectl (`~/.kube/kuberc`: алиасы, значения флагов по ум
 сервер занят (уже идут 32 вызова инструментов) — `SERVER_BUSY`: это лимит
 самого `evo mcp --http`, в Cloud.ru запрос не уходил, повторите позже. Ответ
 `confirmation_required` — не ошибка, поля `reason` у него нет.
+
+Пример `refusals`: `provision` без образа и зоны (тексты сокращены).
+
+```json
+{"status":"error","reason":"USAGE","error":"no image is set (image or image_id)","hint":"…",
+ "missing":["image","region"],
+ "refusals":[{"reason":"USAGE","error":"no image is set (image or image_id)","hint":"…"},
+             {"reason":"CONFIG_INVALID","error":"no availability zone is set (region)…","hint":"…"}]}
+```
 
 Неизвестный инструмент (и инструмент вне `--toolsets`) — ошибка протокола
 JSON-RPC `-32602` с сообщением `Unknown tool: <имя>`, как требует MCP
