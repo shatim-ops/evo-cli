@@ -66,7 +66,7 @@ done
 {
 	echo "### $arm: прогонов $n, сбоев рантайма $crashes, падений тестов $fails"
 	echo
-	echo "$(go version)"
+	go version
 	if [ -n "$rows" ]; then
 		echo
 		echo "| прогон | время | сигнатура и пакеты |"
