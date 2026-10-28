@@ -76,7 +76,7 @@ var refUncompleted = map[string]struct{ why, item string }{
 	"redis_create specification_id":    {why: refGap, item: completionGapItem},
 }
 
-const completionGapItem = "release plan 1.5, Tab: references listed but not declared"
+const completionGapItem = "release plan 1.5, «Tab: ссылки, у которых список есть, а объявления дополнения нет»"
 
 // Release plan 1.5, Tab in the whole CLI: an argument that references a
 // resource or an entry of a catalogue is completed (completionOf: valueRefs,
