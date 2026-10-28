@@ -456,19 +456,61 @@ func (s *Registry) handleListFlavors(ctx context.Context, args map[string]any) (
 	provision.SortFlavors(flavors)
 	out := make([]map[string]any, 0, len(flavors))
 	for _, f := range flavors {
+		if !flavorMatches(f, args) {
+			continue
+		}
 		est := pricing.EstimateFor(f.Name, f.VCPUs, f.RAMGB, 10, "SSD")
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"name":            f.Name,
 			"vcpus":           f.VCPUs,
 			"ram_gb":          f.RAMGB,
 			"free_tier":       f.FreeTier,
 			"est_monthly_rub": est.TotalMonthlyRub,
-		})
+		}
+		// Only what the catalogue sent (С5): no field, no key.
+		if f.Share != "" {
+			row["cpu_share"] = f.Share
+		}
+		if f.GPU != nil {
+			row["gpu"] = *f.GPU
+		}
+		if f.Type != nil {
+			row["spot"] = f.Spot()
+		}
+		if z := f.ZoneNames(); z != nil {
+			row["zones"] = z
+		}
+		out = append(out, row)
 	}
 	return toJSON(map[string]any{
 		"flavors": out,
-		"note":    "est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price",
+		"note":    "est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price; cpu_share is the guaranteed share of a vCPU: 1:1 — 100%, 1:3 — 30%, 1:10 — 10% (the Cloud.ru specification)",
 	}), false
+}
+
+// flavorMatches reports whether f passes the filters of list_flavors: each
+// one set keeps only the flavors whose catalogue entry says so — a flavor
+// the catalogue says nothing of on the point does not pass it.
+func flavorMatches(f *provision.Flavor, args map[string]any) bool {
+	if n := intArg(args, "cpu", 0); n > 0 && f.VCPUs != n {
+		return false
+	}
+	if n := intArg(args, "ram", 0); n > 0 && f.RAMGB != n {
+		return false
+	}
+	if s := stringArg(args, "share"); s != "" && f.Share != s {
+		return false
+	}
+	if z := stringArg(args, "zone"); z != "" && !slices.Contains(f.ZoneNames(), z) {
+		return false
+	}
+	if g, ok := args["gpu"].(bool); ok && (f.GPU == nil || (*f.GPU > 0) != g) {
+		return false
+	}
+	if s, ok := args["spot"].(bool); ok && (f.Type == nil || f.Spot() != s) {
+		return false
+	}
+	return true
 }
 
 // handleListDiskTypes lists disk types (id + name).

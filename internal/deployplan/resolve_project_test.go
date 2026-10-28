@@ -32,7 +32,7 @@ func (c *projectViewCloud) ListAvailabilityZones(context.Context) ([]*provision.
 	return []*provision.AvailabilityZone{{ID: "00000000-0000-0000-0000-00000000a002", Name: "ru.AZ-2"}}, nil
 }
 func (c *projectViewCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
-	return []*provision.Flavor{{ID: "00000000-0000-0000-0000-00000000f001", Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4}}, nil
+	return []*provision.Flavor{{ID: "00000000-0000-0000-0000-00000000f001", Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{}}}, nil
 }
 func (c *projectViewCloud) ListImages(_ context.Context, f ...provision.ImageFilter) ([]*provision.Image, error) {
 	if len(f) == 0 || f[0].ProjectID == "" {

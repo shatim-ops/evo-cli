@@ -88,7 +88,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
 		for _, f := range flavors {
 			if f.Name == req.FlavorName || f.ID == req.FlavorName {
-				vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB, FreeTier: f.FreeTier}
+				vm.Flavor = deployplan.SpecOf(f)
 				break
 			}
 		}
@@ -155,11 +155,24 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 	}
 }
 
-// flavorText is the flavor of a preview: its name and, when known, its size.
+// flavorText is the flavor of a preview: its name and, when known, its
+// size, the guaranteed share of a vCPU, the GPUs and spot — each only as
+// the catalogue says it (С5: no field, no word).
 func flavorText(f deployplan.FlavorSpec) string {
 	s := f.Name
 	if f.VCPUs > 0 {
-		s += i18n.Tf(" (%d vCPU, %d GB RAM)", " (%d vCPU, %d ГБ RAM)", f.VCPUs, f.RAMGB)
+		s += i18n.Tf(" (%d vCPU", " (%d vCPU", f.VCPUs)
+		if f.Share != "" {
+			s += i18n.Tf(", vCPU share %s", ", доля vCPU %s", f.Share)
+		}
+		s += i18n.Tf(", %d GB RAM", ", %d ГБ RAM", f.RAMGB)
+		if f.GPU > 0 {
+			s += i18n.Tf(", %d GPU", ", %d GPU", f.GPU)
+		}
+		s += ")"
+	}
+	if f.Spot {
+		s += i18n.T(", spot: the VM may be stopped by the platform", ", spot: платформа может остановить ВМ")
 	}
 	return s
 }

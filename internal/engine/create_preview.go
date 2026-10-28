@@ -339,7 +339,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		if err == nil {
 			for _, f := range flavors {
 				if f.ID == id {
-					vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB, FreeTier: f.FreeTier}
+					vm.Flavor = deployplan.SpecOf(f)
 					break
 				}
 			}

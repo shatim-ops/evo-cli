@@ -73,6 +73,9 @@ type faultCloud struct {
 	mu  sync.Mutex
 	seq int
 	log []string
+	// flavors, when set, is the catalogue in place of the one flavor of
+	// the world (a variant: release plan 1.5, С3).
+	flavors []*provision.Flavor
 	// point is the armed failure. n is the global 1-based call number
 	// (failAt). op+nth is the nth call of that method (failNth). sticky
 	// keeps firing from that call on (a token that stays expired).
@@ -640,7 +643,11 @@ func (c *faultCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	if err := c.gate("ListFlavors"); err != nil {
 		return nil, err
 	}
-	return []*provision.Flavor{{ID: faultFlavor, Name: "low-1-1", VCPUs: 1, RAMGB: 1}}, nil
+	if c.flavors != nil {
+		return c.flavors, nil
+	}
+	return []*provision.Flavor{{ID: faultFlavor, Name: "low-1-1", VCPUs: 1, RAMGB: 1, Share: "1:1", GPU: new(int), Type: &provision.FlavorType{},
+		Zones: []provision.FlavorZone{{ID: faultZone, Name: "ru.AZ-1", Enabled: true, Available: true}}}}, nil
 }
 
 func (c *faultCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
