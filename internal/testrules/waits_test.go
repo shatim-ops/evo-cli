@@ -50,21 +50,21 @@ var silentWaits = map[string]struct{ why, item string }{
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {why: silentLoop},
 	// deploy_apply says «Waiting for SSH on <ip>…» once before it, then
 	// waits up to SSHPortWait (2 min) silent (review of Qwen on #456).
-	"internal/deployplan/apply.go\twaitForSSHPort": {why: silentGap, item: "release plan 1.5, axis 2: the wait for the SSH port of deploy_apply says it is still waiting"},
+	"internal/deployplan/apply.go\twaitForSSHPort": {why: silentGap, item: "release plan 1.5, «Ожидания без хода (ось 2)» (#457)"},
 	// destroy vm_id over MCP waits up to destroyPollTimeout (2 min) for the
 	// VM to be gone, silent: no line, no state of the VM.
-	"internal/engine/deploy.go\tEngine.waitVMGone": {why: silentGap, item: "release plan 1.5, axis 2: the wait for a deleted VM says its state"},
+	"internal/engine/deploy.go\tEngine.waitVMGone": {why: silentGap, item: "release plan 1.5, «Ожидания без хода (ось 2)» (#457)"},
 	// After a Ctrl-C during the create, up to 3 lookups 2 s apart, said
 	// before («Looking for floating IP … made before the interruption»).
 	"internal/engine/deploy.go\tEngine.findBootFIP": {why: silentShort},
 	// deploy waits up to fipSettleTimeout (1 min) for a boot FIP being
 	// created, and up to 12 polls 5 s apart for the boot FIP to be in use,
 	// silent until the end.
-	"internal/engine/deploy.go\tEngine.settledBootFIP": {why: silentGap, item: "release plan 1.5, axis 2: the waits for the boot floating IP of deploy say its state"},
-	"internal/engine/deploy.go\tEngine.waitBootFIP":    {why: silentGap, item: "release plan 1.5, axis 2: the waits for the boot floating IP of deploy say its state"},
-	// provision with the person's keys repeats SSH up to 4 times, 10 s
+	"internal/engine/deploy.go\tEngine.settledBootFIP": {why: silentGap, item: "release plan 1.5, «Ожидания без хода (ось 2)» (#457)"},
+	"internal/engine/deploy.go\tEngine.waitBootFIP":    {why: silentGap, item: "release plan 1.5, «Ожидания без хода (ось 2)» (#457)"},
+	// deploy_apply with the person's keys repeats SSH up to 4 times, 10 s
 	// apart (30 s), silent.
-	"internal/tools/userkeys.go\tappendUserKeys": {why: silentGap, item: "release plan 1.5, axis 2: the repeats of SSH for the person's keys say so"},
+	"internal/tools/userkeys.go\tappendUserKeys": {why: silentGap, item: "release plan 1.5, «Ожидания без хода (ось 2)» (#457)"},
 }
 
 // waitCalls are the calls that make a loop a wait. A loop that only
