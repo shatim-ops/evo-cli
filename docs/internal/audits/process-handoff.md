@@ -380,6 +380,7 @@ CI `main` за 1.4.0 (27.10, `ci` на push): красный один раз —
 | Гипотеза аудита: занятая `journal.lock` задерживает ответ на 2 с — подтверждена тестом | ветка `process/journal-hypotheses` → «разработка» |
 | Цель J по `grok-diag-*.jsonl` (счёт без строк журналов) | `evo-internal`, `runs/grok-live-1.4.0/journal-j.md` |
 | FB140-6: мир паритета CLI на остановленных часах (`stoppedClock` вместо `jumpingClock`, как в `internal/tools`), `previewToken` от `clock.Now`; маски TTL (`tokenTTL`, удаление `token_expires_at` и `token_ttl_seconds` в `TestEngineCommands_WhoamiDoctorOverHTTP`) убраны; храповик `TestParityWorld_TokenTTLIsExact` — ровно 3600 по stdio и HTTP | этот PR |
+| 1.5, Tab (новая поверхность, §0 правило 3): `TestCompletion_EveryReferenceIsCompletedOrSaysWhy` — каждый аргумент-ссылка (`*_id`, `zone`, `flavor`, `bucket`, `key`…) дополняется (`valueRefs`, `idArgs`) или объявлен в `noCompletion` / `refUncompleted` с причиной (вернул вызов, нужен родитель, нет списка, пробел); 10 пробелов «перечислено, не объявлено» — «разработке» | этот PR |
 
 Отклонение от аудита: он не учёл, что мир держал не стенку, а прыгающие
 часы `jumpingClock` (#190) — они роняли неприкрытое маской время всегда.
