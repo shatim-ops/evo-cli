@@ -9,7 +9,7 @@
 2. Бриф Windows-добора на кандидате 1.4.1 (`evo-internal`, `briefs/grok-windows-1.4.1.md`) — отправить Grok, когда «релиз» назовёт коммит кандидата.
 3. Тест «`journal.lock` не держит ответ» — 1.4.1, п. 10, у «разработки» (ветка `process/journal-hypotheses`); версия формата журнала — 1.5 с D43, тест после выбора формы.
 4. Входы cloud-e2e в `display_title`; один прогон со всеми наборами на кандидате тега.
-5. 1.5: проба Redis STANDALONE (cloud-e2e с уборкой, разрешена); храповик ответов списков с `metrics_scrape`.
+5. 1.5: проба Redis STANDALONE (G140-6) — job `redis-standalone-probe` cloud-e2e (вход `redis_standalone_probe`), PR этой ветки; запуск — по одобрению владельца в окружении cloud-e2e. Храповик ответов списков с `metrics_scrape`.
 
 ## Ждёт решения
 
