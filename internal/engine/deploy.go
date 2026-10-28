@@ -1077,7 +1077,12 @@ func (t Timings) settlePolls() int {
 // when none could be reserved (nil).
 func (e *Engine) settledBootFIP(ctx context.Context, fip *provision.FloatingIP, projectID string) *provision.FloatingIP {
 	t := e.timings()
+	last := ""
 	for poll := 0; poll < t.settlePolls() && !fip.Available() && !strings.HasPrefix(fip.State, "error"); poll++ {
+		if fip.State != last {
+			last = fip.State
+			e.Printer.Step(0, 0, i18n.Tf("Floating IP %s: %s, waiting until it is ready…", "Floating IP %s: %s, жду, пока он будет готов…", fip.IPAddress, fip.State))
+		}
 		select {
 		case <-ctx.Done():
 			return fip
@@ -1200,12 +1205,17 @@ func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) err
 // platform did not attach it, it is attached to the primary interface now.
 func (e *Engine) waitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmID, projectID string) (string, string, error) {
 	t := e.timings()
+	last := ""
 	for attempt := 0; attempt < 12; attempt++ {
 		if f, err := e.Cloud.GetFloatingIP(ctx, fip.ID); err == nil && f != nil {
 			fip = f
 			if f.State == "in_use" || f.State == "active" {
 				return f.IPAddress, f.ID, nil
 			}
+		}
+		if fip.State != last {
+			last = fip.State
+			e.Printer.Step(0, 0, i18n.Tf("Floating IP %s: %s, waiting until it is attached to the VM…", "Floating IP %s: %s, жду, пока он привяжется к ВМ…", fip.IPAddress, fip.State))
 		}
 		select {
 		case <-ctx.Done():
@@ -1798,12 +1808,19 @@ func (e *Engine) ReleaseBootFIP(fip *provision.FloatingIP, projectID string) err
 func (e *Engine) waitVMGone(ctx context.Context, vmID string) bool {
 	t := e.timings()
 	deadline := time.Now().Add(t.DestroyPollTimeout)
+	last := ""
 	for time.Now().Before(deadline) {
-		if _, err := e.Cloud.GetVM(ctx, vmID); err != nil {
+		vm, err := e.Cloud.GetVM(ctx, vmID)
+		if err != nil {
 			var ce *clerrors.CLIError
 			if stderrors.As(err, &ce) && ce.Code == clerrors.CodeVMNotFound {
 				return true
 			}
+		} else if vm != nil && vm.Status != last {
+			// The wait says the VM's state when it changes (CLAUDE.md §6,
+			// axis 2), not only that time passes.
+			last = vm.Status
+			e.Printer.Step(0, 0, i18n.Tf("VM %s: %s, waiting until it is deleted…", "ВМ %s: %s, жду, пока она удалится…", vmID, vm.Status))
 		}
 		select {
 		case <-ctx.Done():

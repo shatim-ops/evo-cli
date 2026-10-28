@@ -139,6 +139,17 @@ func progressOf(ctx context.Context) (*output.Printer, bool) {
 	return silent, false
 }
 
+// logAndProgress is a printer of an engine's lines onto w (the log the
+// answer carries) and, when someone watches the call, onto its progress
+// (progressOf) as well: a wait of the engine says its state on both
+// surfaces (CLAUDE.md §6, axis 2).
+func logAndProgress(ctx context.Context, w io.Writer) *output.Printer {
+	if pp, watched := progressOf(ctx); watched {
+		w = io.MultiWriter(w, pp.Writer())
+	}
+	return output.NewWithWriter(w, output.ModeText, false)
+}
+
 // stepOf is ctx for a tool a tool calls (callTool: the steps of a stack):
 // the step is not the call the person or the MCP client made, so it has no
 // Caller and no progress of its own — its progress and its error are the

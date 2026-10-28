@@ -317,7 +317,7 @@ poll:
 	sshNote := ""
 	if ip != "" {
 		show.done(i18n.Tf("Waiting for SSH on %s…", "Жду SSH на %s…", ip))
-		if waitForSSHPort(ctx, ip, SSHPortWait) {
+		if waitForSSHPort(ctx, ip, SSHPortWait, show) {
 			sshNote = "SSH port 22 is open — connect now with the ssh command above."
 		} else {
 			sshNote = "VM is up but SSH port 22 was not reachable yet — wait ~1 min and retry the same ssh command. The VM is still booting; do NOT blame security groups, do NOT recreate the VM."
@@ -351,9 +351,22 @@ poll:
 var SSHPortWait = 120 * time.Second
 
 // waitForSSHPort polls TCP port 22 on ip until it accepts a connection or the
-// timeout elapses. Returns true if the port became reachable.
-func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration) bool {
+// timeout elapses. Returns true if the port became reachable. It says the
+// port's state on show when it changes — refused while sshd is not up yet,
+// no answer while the VM boots (CLAUDE.md §6, axis 2).
+func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration, show *Progress) bool {
 	deadline := time.Now().Add(timeout)
+	last := ""
+	report := func(err error) {
+		state := i18n.T("refused", "отказ в соединении")
+		if ne := net.Error(nil); errors.As(err, &ne) && ne.Timeout() {
+			state = i18n.T("no answer", "нет ответа")
+		}
+		if state != last {
+			last = state
+			show.step(i18n.Tf("SSH on %s: %s, the VM is still booting; waiting…", "SSH на %s: %s, ВМ ещё загружается; жду…", ip, state))
+		}
+	}
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
@@ -366,6 +379,7 @@ func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration) bool 
 			_ = conn.Close()
 			return true
 		}
+		report(err)
 		select {
 		case <-ctx.Done():
 			return false

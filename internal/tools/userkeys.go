@@ -16,6 +16,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -154,9 +155,14 @@ func appendUserKeys(ctx context.Context, host, login string, agentKeyPEM []byte,
 
 	script := userKeysScript(keys)
 
+	// Each retry says why the last attempt failed and which one comes, in
+	// the CLI and over MCP alike (CLAUDE.md §6, axis 2).
+	pp, _ := progressOf(ctx)
 	var lastErr error
 	for attempt := 0; attempt < 4; attempt++ {
 		if attempt > 0 {
+			pp.Step(0, 0, i18n.Tf("SSH to %s for the keys: %v; retry %d of 3 in 10 s…",
+				"SSH на %s для ключей: %v; повтор %d из 3 через 10 с…", host, lastErr, attempt))
 			select {
 			case <-ctx.Done():
 				return "", ctx.Err()
