@@ -261,3 +261,50 @@ func TestTreeArgs_ExtraArgumentsNamed(t *testing.T) {
 		t.Errorf("exit %d:\n%s\nwant %s", code, errOut, want)
 	}
 }
+
+// Догфуд 28.10: evo vm create без зоны в терминале падал отказом. Теперь
+// человек у терминала получает вопрос evo configure (открытые зоны, ru.AZ-2
+// первой и по умолчанию; закрытая не предлагается), выбранная зона идёт в
+// вызов и — по «да» — в профиль. Без терминала и с --yes — прежний отказ CONFIG_INVALID: зона не
+// выбирается молча (D15, D48), профиль не меняется.
+func TestVMCreate_NoZoneAskedAtTerminal(t *testing.T) {
+	fc := setupCLI(t)
+	// The tool's engine is the example world (no network), whose subnet is
+	// in pvZone; the zone question reads the zones as configure does, from
+	// the fake compute: pvZone open, ru.AZ-3 closed.
+	fc.zones = `[{"id":"` + pvZone + `","name":"ru.AZ-1","enabled":true},` +
+		`{"id":"` + zoneAZ3 + `","name":"ru.AZ-3","enabled":false}]`
+	withCloud(t, exampleCloud{})
+	t.Setenv("CLOUDRU_REGION", "")
+	saveProfile(t, "default", "11111111-1111-1111-1111-111111111111")
+	create := []string{"vm", "create", "my-vm", "--image", "Ubuntu-24.04", "--flavor", "lowcost10-2-4", "--dry-run"}
+
+	for name, c := range map[string]struct {
+		tty  bool
+		args []string
+	}{
+		"no terminal": {false, create},
+		"--yes":       {true, append([]string{"--yes"}, create...)},
+	} {
+		stdinIsTerminal = func() bool { return c.tty }
+		code, _, stderr := runCLI(t, "\n\n", c.args...)
+		prof, _, _, _ := config.LoadProfile("default")
+		if code != clerrors.ExitAuth || strings.Contains(stderr, "Choose a zone") || prof.Region != "" {
+			t.Errorf("%s: exit %d, region %q, want the refusal (2) and no question:\n%s", name, code, prof.Region, stderr)
+		}
+	}
+
+	stdinIsTerminal = func() bool { return true }
+	code, stdout, stderr := runCLI(t, "\n\n", create...)
+	prof, _, _, _ := config.LoadProfile("default")
+	if code != 0 || !strings.Contains(stdout, pvZone) {
+		t.Errorf("terminal: exit %d, want the preview in the zone chosen:\n%s%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, " 1) ru.AZ-1") || !strings.Contains(stderr, "Choose a zone (number, name or ID) [1]: ") ||
+		!strings.Contains(stderr, "Keep this zone in profile default") || prof.Region != pvZone {
+		t.Errorf("terminal: region %q, want ru.AZ-1 (%s) asked and saved:\n%s", prof.Region, pvZone, stderr)
+	}
+	if strings.Contains(stderr, "no availability zone is set") {
+		t.Errorf("terminal: the zone chosen did not reach the call:\n%s", stderr)
+	}
+}

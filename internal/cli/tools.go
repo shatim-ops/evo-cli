@@ -668,6 +668,18 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 	}
 
 	text, isErr := t.Handler(ctx, args)
+	if isErr && human {
+		// A command at a terminal asks for the zone the call lacks and
+		// calls again with it (askMissingZone); a script keeps the refusal.
+		zone, ok, err := askMissingZone(ctx, cmd, text)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			args["region"] = zone
+			text, isErr = t.Handler(ctx, args)
+		}
+	}
 	if resp := parseObject(text); resp["status"] == "confirmation_required" {
 		preview := toolPreview(t.Name, resp)
 		if human {
