@@ -266,7 +266,7 @@ func TestVMCreatePreview_JSONIsAdditive(t *testing.T) {
 
 func TestDiskCreatePreview_Russian(t *testing.T) {
 	russian(t)
-	withPreviewCloud(t)
+	withCloud(t, noDisksCloud{previewCloud{}})
 	_, errOut, code := execCLI(t, "disk", "create", "data", "--size-gb", "20")
 	if code != clerrors.ExitConfirmationRequired {
 		t.Fatalf("exit %d, want 3:\n%s", code, errOut)
@@ -284,6 +284,12 @@ func TestDiskCreatePreview_Russian(t *testing.T) {
 		t.Errorf("the tool's text left in the preview:\n%s", errOut)
 	}
 }
+
+// noDisksCloud is a project without disks: a new disk's name is free, so
+// the preview is reached (a taken name is refused before it, D49).
+type noDisksCloud struct{ previewCloud }
+
+func (noDisksCloud) ListDisks(context.Context, string) ([]map[string]any, error) { return nil, nil }
 
 // A billable command without a rate card: header, project, zone and the
 // key parameters, and that the cluster is paid, with its tariff — not a

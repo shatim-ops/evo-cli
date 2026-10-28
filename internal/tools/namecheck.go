@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -48,6 +49,22 @@ func statusGone(status string) bool {
 		return true
 	}
 	return false
+}
+
+// nameFree is the refusal of a create whose name a listed resource already
+// has (takenName), before the question: USAGE with existing_id
+// (nameTakenResult), and true; "" and false when the name is free. A list
+// that cannot be read refuses the call too: the create could not tell a
+// resource it made from one that was there before (lostCreate, D28, D49).
+func nameFree(ctx context.Context, list func(context.Context) ([]map[string]any, error), kind, name, getHint string) (string, bool) {
+	items, err := list(ctx)
+	if err != nil {
+		return errResult(fmt.Errorf(i18n.T("check the name is free: %w", "проверка, что имя свободно: %w"), err)), true
+	}
+	if id, st, ok := takenName(items, name); ok {
+		return nameTakenResult(kind, name, id, st, getHint)
+	}
+	return "", false
 }
 
 // nameTakenResult is the answer of a create tool whose name is in use: USAGE

@@ -82,10 +82,11 @@ func TestLostCreate_RefusalIsAnErrorNotCreating(t *testing.T) {
 	}
 }
 
-// The same through the handler and the HTTP fault world, which refuses a
-// second secret of a path with 409 as the Secret Manager does: the answer
-// is an error with the API's reason, not a "creating" with the id of the
-// secret that was there before (G130-15).
+// The same through the handler and the HTTP fault world: a path taken
+// before the call is refused before the question, USAGE with the existing
+// id (D49) — never a "creating" with the id of the secret that was there
+// before (G130-15). A path taken between that check and the write meets
+// the API's 409, an error with its reason (D42, the cases above).
 func TestSecretCreate_TakenPathIsAnErrorNotCreating(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -95,8 +96,8 @@ func TestSecretCreate_TakenPathIsAnErrorNotCreating(t *testing.T) {
 	r := faultAPIRegistry(t, a)
 	text, isErr := r.handlers["secret_create"](ctx, map[string]any{"path": "app/db", "value": "x", "confirmed": true})
 	m := parseAnswer(t, text)
-	if !isErr || m["reason"] != clierrors.CodeAPIError {
-		t.Errorf("secret_create on a taken path: isErr=%v reason=%v, want an API_ERROR: %s", isErr, m["reason"], text)
+	if !isErr || m["reason"] != clierrors.CodeUsage || m["existing_id"] != "00000000-0000-4000-8000-0000000000a1" {
+		t.Errorf("secret_create on a taken path: isErr=%v reason=%v, want USAGE with existing_id: %s", isErr, m["reason"], text)
 	}
 	if strings.Contains(text, "is billed") || m["status"] == "creating" {
 		t.Errorf("the API's refusal read as a lost answer: %s", text)

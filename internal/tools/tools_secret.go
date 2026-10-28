@@ -101,6 +101,23 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 	if err := plainName("secret", "name", path[strings.LastIndex(path, "/")+1:]); err != nil {
 		return errResult(err), true
 	}
+	cli, err := s.secretClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	// A secret is found by its path: the list's name of it. A path taken
+	// before the call is refused before the question (D49), so a lost
+	// answer's secret found by the path is the call's own.
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		items, err := cli.List(ctx)
+		for _, it := range items {
+			it["name"] = it["path"]
+		}
+		return items, err
+	}
+	if ans, refused := nameFree(ctx, list, i18n.T("secret", "секрет"), path, "secret_get path"); refused {
+		return ans, true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -109,10 +126,6 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 			// The path only: the value never goes into a preview.
 			"preview": willPreview(engine.ResourceSecret, path, "", nil, nil),
 		}), true
-	}
-	cli, err := s.secretClient(ctx)
-	if err != nil {
-		return errResult(err), true
 	}
 	body := map[string]any{
 		"projectId": cli.ProjectID(),
@@ -129,14 +142,6 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 	if err != nil || secretID(res) == "" {
 		if err == nil {
 			err = noID("secret")
-		}
-		// A secret is found by its path: the list's name of it.
-		list := func(ctx context.Context) ([]map[string]any, error) {
-			items, err := cli.List(ctx)
-			for _, it := range items {
-				it["name"] = it["path"]
-			}
-			return items, err
 		}
 		return lostCreate(ctx, "secret_create", list, i18n.T("secret", "секрет"), path, nil, "secret_get path", fmt.Errorf(i18n.T("create secret: %w", "создание секрета: %w"), err))
 	}

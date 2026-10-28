@@ -77,6 +77,12 @@ func (*cancelCloud) ListImages(context.Context, ...provision.ImageFilter) ([]*pr
 
 // ListAvailabilityZones lists the zone "z" the tests' configurations name:
 // a zone the list lacks is refused before anything is created (CUR122-4).
+// ListImagesInProject: the project has no image of its own, so a new
+// image's name is free (D49).
+func (*cancelCloud) ListImagesInProject(context.Context, string) ([]*provision.Image, error) {
+	return nil, nil
+}
+
 func (*cancelCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
 	return []*provision.AvailabilityZone{{ID: "z"}}, nil
 }

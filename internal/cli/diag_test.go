@@ -6,6 +6,9 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,11 +17,33 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/journal"
 )
 
+// noSecretsRT answers the list of secrets with none and passes the rest on.
+type noSecretsRT struct{ next http.RoundTripper }
+
+func (rt noSecretsRT) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Host != "secretmanager.api.cloud.ru" {
+		return rt.next.RoundTrip(r)
+	}
+	if r.Method != http.MethodGet {
+		return nil, fmt.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+	}
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"secrets":[]}`)), Request: r}, nil
+}
+
 // evo diag on turns the journal on in config.yaml; a command of the CLI is
 // then a record of the "cli" surface, status counts it, and export copies
 // the file without values (D46). Off, nothing is written.
 func TestDiag_OnRecordStatusExport(t *testing.T) {
 	setupCLI(t)
+	// A project without secrets: the path is free, so the call reaches
+	// its preview (a taken path is refused before it, D49).
+	t.Setenv("CLOUDRU_KEY_ID", "00000000000000000000000000000000")
+	t.Setenv("CLOUDRU_SECRET", "00000000000000000000000000000000")
+	t.Setenv("CLOUDRU_PROJECT_ID", "11111111-1111-1111-1111-111111111111")
+	old := http.DefaultTransport
+	http.DefaultTransport = noSecretsRT{old}
+	t.Cleanup(func() { http.DefaultTransport = old })
 	const secretish = "value-that-must-not-leak-0123"
 	runCLI(t, "", "tools", "call", "secret_create", "--arg", "path=app/db", "--arg", "value="+secretish)
 	status := func() map[string]any {

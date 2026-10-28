@@ -73,14 +73,15 @@ var consentWorlds = map[string]consentWorld{
 	// fails (G130-02, D39).
 	"image not in the catalogue": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return noImageCloud{c} },
 		refusedBy: []string{"provision", "deploy"}},
-	// The path of secret_create is taken: the create's 4xx is a refusal,
-	// and the secret found by the path is not the call's (G130-15, D42).
+	// The path of secret_create is taken: secret_create reads the list
+	// before the question and refuses the taken path (D49; was the
+	// create's 4xx after it, G130-15, D42).
 	"secret path taken": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "secretmanager.api.cloud.ru" || r.URL.Path != "/v2/secret" {
 			return nil
 		}
 		return consentJSON(http.StatusOK, `{"secrets":[{"id":"`+consentOtherID+`","path":"app/db"}]}`)
-	}},
+	}, refusedBy: []string{"secret_create"}},
 	"disk larger than requested": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 			return nil
