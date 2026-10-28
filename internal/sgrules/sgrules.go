@@ -152,8 +152,8 @@ func portRange(s string) (lo, hi int, ok bool) {
 	return lo, hi, err1 == nil && err2 == nil && lo <= hi
 }
 
-// anywhere is the source deploy opens its ports to.
-const anywhere = "0.0.0.0/0"
+// Anywhere is the source deploy opens its ports to; its preview names it.
+const Anywhere = "0.0.0.0/0"
 
 // Open adds an ingress rule from 0.0.0.0/0 to group sgID for each tcp and
 // udp port that no rule opens yet. rec gets the group, the ports it needs,
@@ -196,7 +196,7 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 			addPort(rec, key)
 			pr := fmt.Sprintf("%d:%d", p, p)
 			label := Label(key)
-			if covered, _ := Coverage(rules, set.proto, p, anywhere); covered || openedHere[key] {
+			if covered, _ := Coverage(rules, set.proto, p, Anywhere); covered || openedHere[key] {
 				res.AlreadyOpen = append(res.AlreadyOpen, label)
 				if !ownsPort(rec, key) {
 					addKey(&rec.PortsAlreadyOpen, key)
@@ -209,7 +209,7 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 				EtherType:      "IPv4",
 				IPProtocol:     set.proto,
 				PortRange:      pr,
-				RemoteIPPrefix: anywhere,
+				RemoteIPPrefix: Anywhere,
 				Description:    describe(label),
 			}
 			created, err := cloud.AddSecurityGroupRule(ctx, sgID, projectID, rule)

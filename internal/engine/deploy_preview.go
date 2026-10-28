@@ -18,6 +18,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/sizer"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -116,6 +117,9 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 		ports = append(ports, fmt.Sprintf("%d/udp", port))
 	}
 	p.Add("ports", strings.Join(ports, ","))
+	if len(ports) > 0 {
+		p.Add("ports_source", sgrules.Anywhere)
+	}
 	// The flavor deploy takes (resolveFlavor): the one given, else the
 	// smallest that fits the compose file's services.
 	pick := func(flavors []*provision.Flavor) (string, error) {
@@ -179,6 +183,7 @@ func PlanPreview(plan *deployplan.Plan) *CreatePreview {
 			ports[i] = fmt.Sprint(port)
 		}
 		p.Add("ports", strings.Join(ports, ","))
+		p.Add("ports_source", sgrules.Anywhere)
 	}
 	p.Add("product", plan.Product)
 	return p
