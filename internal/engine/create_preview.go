@@ -340,54 +340,62 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 			}
 		}
 	}
+	// The refusals the reads find come together, in the order of the
+	// checks — the image, then the network — so the call names them all at
+	// once (clierrors.Refusals, dogfood 28.10).
 	cat := images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}
-	checked, marketplace := false, false
-	if vm.Image.ID == "" && vm.Image.Name != "" {
-		// image by name: the call resolves it the same way. The catalogue
-		// without the image, or with several, refuses the preview as the
-		// call would refuse after the question (G130-02, D39).
-		img, err := cat.Resolve(ctx, vm.Image.Name)
-		if imageDecided(err) {
-			return err
-		}
-		if err == nil {
-			if img.NotInProject {
-				return images.NotInProjectError(img.Name)
+	marketplace := false
+	imageErr := func() error {
+		checked := false
+		if vm.Image.ID == "" && vm.Image.Name != "" {
+			// image by name: the call resolves it the same way. The
+			// catalogue without the image, or with several, refuses the
+			// preview as the call would refuse after the question
+			// (G130-02, D39).
+			img, err := cat.Resolve(ctx, vm.Image.Name)
+			if imageDecided(err) {
+				return err
 			}
-			vm.Image.ID, vm.Image.Name, checked = img.ID, img.Name, true
-			marketplace = img.Type == provision.ImageTypeMarketplace
-		}
-	}
-	if vm.Image.ID != "" {
-		img, err := e.Cloud.GetImage(ctx, vm.Image.ID)
-		if imageDecided(err) {
-			return images.NotFoundError(vm.Image.ID)
-		}
-		if err == nil {
-			if !checked {
-				cat.MarkInProject(ctx, img)
+			if err == nil {
 				if img.NotInProject {
 					return images.NotInProjectError(img.Name)
 				}
-			}
-			if img.Name != "" {
-				vm.Image.Name = img.Name
-			}
-			if img.Type != "" {
+				vm.Image.ID, vm.Image.Name, checked = img.ID, img.Name, true
 				marketplace = img.Type == provision.ImageTypeMarketplace
 			}
-			vm.Disk.SizeGB, _ = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
 		}
-	}
+		if vm.Image.ID != "" {
+			img, err := e.Cloud.GetImage(ctx, vm.Image.ID)
+			if imageDecided(err) {
+				return images.NotFoundError(vm.Image.ID)
+			}
+			if err == nil {
+				if !checked {
+					cat.MarkInProject(ctx, img)
+					if img.NotInProject {
+						return images.NotInProjectError(img.Name)
+					}
+				}
+				if img.Name != "" {
+					vm.Image.Name = img.Name
+				}
+				if img.Type != "" {
+					marketplace = img.Type == provision.ImageTypeMarketplace
+				}
+				vm.Disk.SizeGB, _ = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
+			}
+		}
+		return nil
+	}()
 	p.priceFromAPI(ctx, e.Cloud, marketplace)
 	priced = true
-	if !network {
-		return nil
+	var networkErr error
+	if network {
+		nctx, ncancel := context.WithTimeout(parent, networkCheckTimeout)
+		defer ncancel()
+		p.NetworkCheck, networkErr = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
 	}
-	nctx, ncancel := context.WithTimeout(parent, networkCheckTimeout)
-	defer ncancel()
-	p.NetworkCheck, err = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
-	return err
+	return clerrors.Join(imageErr, networkErr)
 }
 
 // imageDecided reports an image lookup the catalogue answered: no such

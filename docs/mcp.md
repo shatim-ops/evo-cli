@@ -127,7 +127,10 @@ kubectl (`~/.kube/kuberc`: алиасы, значения флагов по ум
 
 У части ошибок есть свои поля: `vm_id` у `provision`, когда ВМ уже создана
 (её надо удалить); `missing` у `provision` и `deploy` без образа или зоны — имя
-аргумента (`["image"]`, `["region"]`); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
+аргумента (`["image"]`, `["region"]`, оба, если нет обоих); `refusals` —
+когда отказов, видных без записи, несколько (нет образа и зоны; образа нет
+в каталоге и у зоны нет подсети): каждый `{reason, error, hint}` по порядку
+проверок, первый совпадает с `reason`, `error` и `hint` ответа (с 1.5); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
 `k8s_helm`. `provision`, не дождавшийся ВМ, отвечает `"status":"timeout"`
 с теми же `reason` и `error`. Отказ политики HTTP (`secret_value`,
 `cert_private_key`, `k8s_kubeconfig` с токеном, путь вне рабочего каталога)

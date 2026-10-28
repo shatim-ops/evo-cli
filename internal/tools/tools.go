@@ -1737,8 +1737,8 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	if err != nil {
 		return nil, err
 	}
-	if arg, err := provisionInputError(eng); err != nil {
-		return answered(errAnswer(err, map[string]any{"missing": []string{arg}}), true), nil
+	if missing, err := provisionInputError(eng); err != nil {
+		return answered(errAnswer(err, map[string]any{"missing": missing}), true), nil
 	}
 	noPublicIP, _ := args["no_public_ip"].(bool)
 	// The configuration names the project, the zone and the image; the
@@ -3302,6 +3302,20 @@ func errAnswer(err error, fields map[string]any) string {
 	if _, ok := res["status"]; !ok {
 		res["status"] = "error"
 	}
+	// Several refusals of one call: the first is the answer's error, each
+	// is in refusals (clierrors.Refusals).
+	if all := clierrors.All(err); len(all) > 1 {
+		refusals := make([]map[string]any, len(all))
+		for i, e := range all {
+			r, m, h := errReason(e, res)
+			refusals[i] = map[string]any{"reason": r, "error": m}
+			if h != "" {
+				refusals[i]["hint"] = h
+			}
+		}
+		res["refusals"] = refusals
+		err = all[0]
+	}
 	reason, msg, hint := errReason(err, res)
 	if hint != "" {
 		res["hint"] = hint
@@ -3462,7 +3476,9 @@ func willPreview(resource, name, zone string, will map[string]any, keys []string
 }
 
 // provisionInputError is the refusal of a provision that names no image or
-// no zone, with the argument the call lacks; nil when both are set. The
+// no zone — both when both are missing, in one answer (Refusals: the image
+// first, as before) — with the arguments the call lacks; nil when both
+// are set. The
 // VM cannot be created whatever the person answers, so the preview refuses
 // it before it asks for consent, as the call with confirmed=true does — the
 // one check of both (dogfood 1.2.0: the preview said «не задано: зона»,
@@ -3472,20 +3488,23 @@ func willPreview(resource, name, zone string, will map[string]any, keys []string
 // configure --region); the image is the call's own (USAGE, as it was). The
 // hint names the arguments and the server's settings, for an agent; the
 // CLI names its own flags instead, from the argument (toolError).
-func provisionInputError(eng *engine.Engine) (arg string, err error) {
-	switch {
-	case eng.ImageRef() == "":
-		return "image", clierrors.New(clierrors.CodeUsage,
+func provisionInputError(eng *engine.Engine) (args []string, err error) {
+	var errs []error
+	if eng.ImageRef() == "" {
+		args = append(args, "image")
+		errs = append(errs, clierrors.New(clierrors.CodeUsage,
 			i18n.T("no image is set (image or image_id)", "не задан образ (image или image_id)"),
 			i18n.T("Pass image: a name such as Ubuntu-24.04 or a UUID (image_list), or image_id; the server has no CLOUDRU_IMAGE_ID to default to.",
-				"Передайте image — имя (например, Ubuntu-24.04) или UUID (image_list) — или image_id: у сервера не задан CLOUDRU_IMAGE_ID."))
-	case eng.Config.Region == "":
-		return "region", clierrors.New(clierrors.CodeConfigInvalid,
+				"Передайте image — имя (например, Ubuntu-24.04) или UUID (image_list) — или image_id: у сервера не задан CLOUDRU_IMAGE_ID.")))
+	}
+	if eng.Config.Region == "" {
+		args = append(args, "region")
+		errs = append(errs, clierrors.New(clierrors.CodeConfigInvalid,
 			i18n.T("no availability zone is set (region)", "не задана зона доступности (region)"),
 			i18n.T("Pass region: a zone name such as ru.AZ-2 or its UUID (list_zones); the server has no CLOUDRU_REGION to default to.",
-				"Передайте region — имя зоны (например, ru.AZ-2) или её UUID (list_zones): у сервера не задан CLOUDRU_REGION."))
+				"Передайте region — имя зоны (например, ru.AZ-2) или её UUID (list_zones): у сервера не задан CLOUDRU_REGION.")))
 	}
-	return "", nil
+	return args, clierrors.Join(errs...)
 }
 
 // resolveVMZone resolves the zone of a new VM — eng.Config.Region: the region

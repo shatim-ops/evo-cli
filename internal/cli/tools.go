@@ -868,20 +868,22 @@ var missingInputHints = map[string]func(flag string) string{
 	},
 }
 
-// missingInputHint is the CLI's hint for the first input of missing (the
-// "missing" of an answer) it has one for, "" otherwise.
+// missingInputHint is the CLI's hint for each input of missing (the
+// "missing" of an answer) it has one for, one after another — a call that
+// lacks several names them all (Refusals) — "" when it has none.
 func missingInputHint(missing any, h toolHints) string {
 	if h.flag == nil {
 		return ""
 	}
 	args, _ := missing.([]any)
+	var hints []string
 	for _, a := range args {
 		name, _ := a.(string)
 		if hint, ok := missingInputHints[name]; ok {
-			return hint("--" + h.flag(name))
+			hints = append(hints, hint("--"+h.flag(name)))
 		}
 	}
-	return ""
+	return strings.Join(hints, " ")
 }
 
 // argumentHint is the CLI's hint for a schema-rule refusal that names the
