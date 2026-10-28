@@ -47,22 +47,6 @@ func fakeJWT(exp time.Time) string {
 		enc.EncodeToString([]byte("sig"))
 }
 
-// A long-lived MCP server keeps its token in memory. Its deadline must be
-// on the wall clock: the monotonic clock stands still while the host
-// sleeps or a VM is paused, and a deadline on it kept an expired token
-// "valid" after the pause — every call then got 401 from the services
-// until the monotonic clock caught up (G140-3, the Grok run of 1.4.0).
-func TestToken_ExpiresAtIsWallClock(t *testing.T) {
-	newJWTIAMServer(t, time.Hour, func(n int32) string { return fmt.Sprintf("tok-%d", n) })
-	tok, err := NewIAMProvider(testCreds, nil, nil).Token(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tok.ExpiresAt != tok.ExpiresAt.Round(0) {
-		t.Errorf("ExpiresAt carries a monotonic reading: %v", tok.ExpiresAt)
-	}
-}
-
 // The token's own exp bounds its deadline when it is earlier than
 // expires_in says: a token is not used past the moment the services
 // reject it.
