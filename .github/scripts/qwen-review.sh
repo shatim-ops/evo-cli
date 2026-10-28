@@ -51,18 +51,30 @@ if ! git fetch --no-tags --quiet origin \
   git fetch --no-tags --quiet origin "+refs/heads/$base:refs/review/base" "+$head:refs/review/head" ||
     fail "git не получил базу \`$base\` или голову PR \`${head:0:7}\` — перезапустите командой \`/qwen review\`."
 fi
-# Само при открытии — только продуктовый PR («(продукт» в заголовке, CLAUDE.md
-# §5) и PR, который меняет .github/: там ошибка PR «(процесс)» стоит дороже
-# всего (решение владельца #485, П1 (б); #372). Команда /qwen review — на
-# любом PR.
+# Само при открытии ревью идёт на всё, кроме PR, который меняет только тесты
+# и документы (*_test.go, *.md, docs/) и не трогает .github/ и
+# internal/workflows/ (правила безопасности workflows). Продуктовый PR
+# определяется по изменению (CLAUDE.md §5), «(продукт» в заголовке — ещё
+# один повод. Решение владельца #485, П1 (б); #372. Команда /qwen review —
+# на любом PR.
 if [ -z "${COMMENT_ID:-}" ]; then
   case "$(jq -r .title "$work/pr.json")" in
     *"(продукт"*) ;;
     *)
-      # Not «git diff | grep -q»: with pipefail, grep leaving early
-      # would SIGPIPE git and read as «no .github/ changes».
-      if [ -z "$(git diff --name-only refs/review/base...refs/review/head -- .github/)" ]; then
-        echo "PR без «(продукт» в заголовке и без правок .github/ — ревью Qwen не запускается (#485, П1)"
+      # Not «git diff | while»: with pipefail an early exit of the reader
+      # would SIGPIPE git; the names are read whole first.
+      changed=$(git diff --name-only refs/review/base...refs/review/head)
+      review=""
+      [ -n "$changed" ] || review=1 # an empty diff is reported below
+      while IFS= read -r f; do
+        case "$f" in
+          .github/* | internal/workflows/*) review=1 ;;
+          *_test.go | *.md | docs/*) ;;
+          *) review=1 ;;
+        esac
+      done <<<"$changed"
+      if [ -z "$review" ]; then
+        echo "PR меняет только тесты и документы, без .github/ и internal/workflows/ — ревью Qwen не запускается (#485, П1)"
         exit 0
       fi
       ;;
@@ -139,7 +151,9 @@ Markdown, по-русски. Первая строка — вердикт одн
 Затем: путь к дефекту (какой вызов или ввод → что ломается) и предлагаемое
 исправление. Находка без пути к дефекту — не находка: всё такое и всё сверх
 пяти — в конце, в разделе «Гипотезы», по одной строке на пункт; на гипотезы
-автор не обязан отвечать. Ссылайся только на строки, которые есть в diff.
+автор не обязан отвечать. Исключение из лимита: critical и high, а также всё
+о секретах и ключах, согласии на платное или разрушительное действие и
+workflows с секретами — всегда находкой, даже сверх пяти. Ссылайся только на строки, которые есть в diff.
 Нет находок — так и напиши, не придумывай.
 Опирайся на контекст проекта: решения из DECISIONS не оспаривай без ссылки
 на пункт; факты об API Cloud.ru из review-context важнее твоих общих знаний

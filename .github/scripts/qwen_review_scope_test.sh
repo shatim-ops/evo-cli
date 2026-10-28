@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Проверка, на каких PR qwen-review.sh запускается сам (решение владельца
-# #485, П1 (б)): продуктовый PR («(продукт» в заголовке) и PR, который
-# меняет .github/, — да; остальные PR «(процесс)» — нет, без комментария;
-# команда /qwen review (COMMENT_ID) — на любом PR. git и gh подменены:
+# #485, П1 (б)): на всех, кроме PR, где только тесты и документы и нет
+# .github/ и internal/workflows/ — там без ревью и без комментария; код
+# продукта под меткой «(процесс)» — ревью (§5: по изменению); команда
+# /qwen review (COMMENT_ID) — на любом PR. git и gh подменены:
 # пройдя отбор, скрипт пишет «diff пустой» — значит, ревью пошло.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -12,9 +13,7 @@ mkdir "$work/bin"
 cat >"$work/bin/git" <<'SH'
 #!/usr/bin/env bash
 case "$*" in
-  "diff --name-only"*) # как git: только пути под pathspec после --
-    spec=${!#}
-    for f in $FAKE_NAMES; do case "$f" in "$spec"*) echo "$f" ;; esac; done ;;
+  "diff --name-only"*) printf '%s\n' $FAKE_NAMES ;;
   fetch*|diff*) ;;
 esac
 SH
@@ -37,7 +36,9 @@ run() { # ИМЯ заголовок пути ждём(review|skip) [COMMENT_ID]
   if [ "$got" = "$4" ]; then echo "ok   $1"; else echo "FAIL $1: $got, ждали $4"; fail=1; fi
 }
 run "продуктовый PR" "Tab (продукт, 1.5)" "internal/tools/completion.go" review
-run "процесс, только тесты" "Инвариант (процесс)" "internal/tools/x_test.go docs/a.md" skip
+run "процесс, только тесты и документы" "Инвариант (процесс)" "internal/tools/x_test.go docs/a.md README.md" skip
 run "процесс, правит .github/" "CI (процесс)" ".github/workflows/ci.yml" review
+run "процесс, тест правил workflows" "Инвариант (процесс)" "internal/workflows/x_test.go" review
+run "код продукта под меткой «(процесс)»" "Правка (процесс)" "internal/tools/x_test.go internal/tools/tools_s3.go" review
 run "процесс, команда /qwen review" "Инвариант (процесс)" "internal/tools/x_test.go" review 123
 exit "$fail"
