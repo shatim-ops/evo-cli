@@ -12,6 +12,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -186,5 +187,39 @@ func TestCreateImageReqValidatedLocally(t *testing.T) {
 	}
 	if _, err := a.CreateImage(context.Background(), provision.CreateImageReq{DiskID: "d"}); err == nil {
 		t.Fatal("без name должна быть локальная ошибка")
+	}
+}
+
+// imagesCloud is a project whose image list is images.
+type imagesCloud struct {
+	cancelCloud
+	images []*provision.Image
+}
+
+func (c *imagesCloud) ListImagesInProject(context.Context, string) ([]*provision.Image, error) {
+	return c.images, nil
+}
+
+// D49: the name of an image is taken by the project's own (private) image
+// only — a catalogue image of the same name does not stop the create, the
+// project's own refuses it before the question with its id.
+func TestImageCreate_NameTakenByOwnImageOnly(t *testing.T) {
+	cloud := &imagesCloud{cancelCloud: cancelCloud{cancel: func() {}}, images: []*provision.Image{
+		{ID: "00000000-0000-4000-8000-0000000000c1", Name: "img", Type: "public", Status: "active"},
+	}}
+	s := New(func(map[string]any) (*engine.Engine, error) {
+		return &engine.Engine{Config: config.Config{ProjectID: "p", KeyID: "k", Secret: "s"}, Auth: staticToken{}, Cloud: cloud}, nil
+	})
+	args := map[string]any{"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000"}
+	if got := callTool(t, s.handleImageCreate, args); got["status"] != "confirmation_required" {
+		t.Fatalf("a catalogue image of the name refused the create: %v", got)
+	}
+
+	cloud.images = append(cloud.images, &provision.Image{ID: "00000000-0000-4000-8000-0000000000c2", Name: "img", Type: "Private", Status: "active"})
+	text, isErr := s.handleImageCreate(context.Background(), args)
+	var got map[string]any
+	_ = json.Unmarshal([]byte(text), &got)
+	if !isErr || got["reason"] != clierrors.CodeUsage || got["existing_id"] != "00000000-0000-4000-8000-0000000000c2" {
+		t.Errorf("the project's own image of the name: want USAGE with its id before the question: %s", text)
 	}
 }
