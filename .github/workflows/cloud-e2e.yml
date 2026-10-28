@@ -62,6 +62,10 @@ on:
         description: "Also run DBaaS live (billable, up to ~3 h): creates and deletes minimal PostgreSQL, Kafka and Redis clusters evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis"
         type: boolean
         default: false
+      redis_standalone_probe:
+        description: "Probe G140-6 (billable, up to ~2.5 h): raw POST of a Redis STANDALONE cluster evo-e2e-redis-sa with replicas 0, without the field, 1 — the first accepted is created, read and deleted"
+        type: boolean
+        default: false
       disk_smoke:
         description: "Live: VM via provision, disk create/attach/resize/detach/delete, image from the boot disk (image_create/image_delete), destroy (~30 min)"
         type: boolean
@@ -95,7 +99,7 @@ on:
         type: boolean
         default: false
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no network interface left) and print project quotas"
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis, evo-e2e-redis-sa; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no network interface left) and print project quotas"
         type: boolean
         default: false
 
@@ -763,8 +767,8 @@ jobs:
   # и ни одно, пока идёт прогон
   # (есть ВМ evo-e2e-*): описание «evo: …» ставит любой evo deploy/vm create,
   # и правило ВМ пользователя иначе не отличить (e2e_rules_sweep.sh).
-  # Кластеры DBaaS — только evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis
-  # (проект общий: у внешнего аудитора — audit-*). ID и IP маскируются.
+  # Кластеры DBaaS — только evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis,
+  # evo-e2e-redis-sa (проба G140-6; проект общий: у внешнего аудитора — audit-*). ID и IP маскируются.
   cleanup:
     environment: cloud-e2e
     if: ${{ inputs.cleanup_only }}
@@ -848,7 +852,7 @@ jobs:
       # Три вида параллельно: подряд отказы «ещё создаётся» (до 120 мин на
       # каждый) не уложились бы в таймаут job. Строки лога с префиксом вида,
       # ::add-mask:: и ::error:: — без него.
-      - name: Кластеры DBaaS evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis
+      - name: Кластеры DBaaS evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis, evo-e2e-redis-sa
         if: always()
         run: |
           pids=()
@@ -856,6 +860,8 @@ jobs:
             LOG_PREFIX="[$k] " .github/scripts/dbaas-delete.sh "$k" "evo-e2e-$k" &
             pids+=("$!")
           done
+          LOG_PREFIX="[redis-sa] " .github/scripts/dbaas-delete.sh redis evo-e2e-redis-sa &
+          pids+=("$!")
           rc=0
           for p in "${pids[@]}"; do wait "$p" || rc=1; done
           exit "$rc"
@@ -1749,3 +1755,99 @@ jobs:
       - name: Удаление кластера (всегда)
         if: always()
         run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
+
+  # Проба G140-6 (Grok 1.4.0; реестр к DB-3/DB-11), разрешена владельцем
+  # (#432, Р8): evo шлёт для STANDALONE replicas=0, платформа отвечает 400
+  # «replicas must be positive». Прямой POST /v1/clusters с телом из превью
+  # evo — replicas 0, без поля, 1; первый принятый создаёт кластер
+  # evo-e2e-redis-sa, его читает redis_get (тип, хосты), удаляет
+  # dbaas-delete.sh всегда. Итог — строки «G140-6 проба: …» в логе.
+  redis-standalone-probe:
+    environment: cloud-e2e
+    if: ${{ inputs.redis_standalone_probe && !inputs.cleanup_only }}
+    runs-on: ubuntu-24.04
+    # Создание до 50 мин, удаление: отказы «ещё создаётся» до 120 мин
+    # (dbaas-delete.sh), как у dbaas-redis.
+    timeout-minutes: 240
+    env:
+      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      CLUSTER: evo-e2e-redis-sa
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+
+      - name: Проверка входов
+        run: |
+          printf '%s' "$ZONE" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' ||
+            { echo "::error::недопустимое значение входа: $ZONE"; exit 1; }
+
+      - name: Сборка
+        run: .github/scripts/build_evo.sh
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      - name: Зона открыта, кластера evo-e2e-redis-sa нет до прогона
+        run: |
+          z=$(evo tools call list_zones --json | jq -c --arg n "$ZONE" '[.zones[] | select(.name == $n)][0] // empty')
+          [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
+          [ "$(jq -r '.enabled' <<<"$z")" != false ] ||
+            { echo "::error::зона $ZONE закрыта (enabled=false) — запустите с другой зоной (вход zone)"; exit 1; }
+          zid=$(jq -r '.id' <<<"$z")
+          echo "::add-mask::$zid"
+          echo "ZONE_ID=$zid" >> "$GITHUB_ENV"
+          n=$(evo tools call redis_list --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
+          [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
+          echo "зона $ZONE открыта, кластера $CLUSTER нет"
+
+      - name: POST STANDALONE (G140-6, проба)
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: .github/scripts/redis-standalone-probe.sh
+
+      # Что создал принятый вариант: STANDALONE с replicas 1 может оказаться
+      # мастером с репликой — тогда правка evo не «replicas 1», а вопрос
+      # платформе. Только чтение; job не роняет.
+      - name: Что создано (redis_get, до 50 мин)
+        if: env.PROBE_ACCEPTED != ''
+        continue-on-error: true
+        run: |
+          start=$(date +%s)
+          while :; do
+            if [ -z "${CLUSTER_ID:-}" ]; then
+              CLUSTER_ID=$(evo tools call redis_list --json | jq -r --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n) | .id][0] // empty')
+              [ -z "$CLUSTER_ID" ] || echo "::add-mask::$CLUSTER_ID"
+            fi
+            st="?"
+            if [ -n "$CLUSTER_ID" ]; then
+              evo tools call redis_get --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/get.json" 2>/dev/null &&
+                st=$(jq -r '(.status // "?") | tostring | ascii_upcase' "$RUNNER_TEMP/get.json")
+            fi
+            echo "$(( ($(date +%s) - start) / 60 )) мин: ${CLUSTER_ID:+кластер есть, }$st"
+            case "$st" in READY|RUNNING|*FAIL*|*ERROR*) break ;; esac
+            [ $(( $(date +%s) - start )) -lt 3000 ] || break
+            sleep 60
+          done
+          [ -s "$RUNNER_TEMP/get.json" ] || { echo "G140-6 проба: кластер не прочитан"; exit 0; }
+          echo "G140-6 проба: создан вариант $PROBE_ACCEPTED — $(jq -c '{status, type, shards, replicas, redis_hosts: ((.redis_hosts // []) | length)}' "$RUNNER_TEMP/get.json")"
+
+      - name: Удаление кластера (всегда)
+        if: always()
+        run: .github/scripts/dbaas-delete.sh redis "$CLUSTER"
