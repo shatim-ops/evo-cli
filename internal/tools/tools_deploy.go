@@ -484,7 +484,7 @@ func (s *Registry) handleListFlavors(ctx context.Context, args map[string]any) (
 	}
 	return toJSON(map[string]any{
 		"flavors": out,
-		"note":    "est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price",
+		"note":    "est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price; cpu_share is the guaranteed share of a vCPU: 1:1 — 100%, 1:3 — 30%, 1:10 — 10% (the Cloud.ru specification)",
 	}), false
 }
 
