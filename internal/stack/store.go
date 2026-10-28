@@ -188,6 +188,10 @@ type Step struct {
 	ResourceID string `json:"resource_id,omitempty"`
 	Attempts   int    `json:"attempts,omitempty"` // create retries used (transient-error tolerance)
 	Detail     string `json:"detail,omitempty"`
+	// Reason is the reason the step's tool answered its last failed call
+	// (a code of internal/errors): stack_status names it for a step in
+	// error (error_reasons, G140-5).
+	Reason string `json:"reason,omitempty"`
 	// Interrupted marks a create cut off by a cancelled call: it may have
 	// reached the cloud, so the next crank looks for the resource before
 	// creating it again.
@@ -897,8 +901,12 @@ func (j *Job) Compact() map[string]any {
 		out["error"] = j.Error
 	}
 	// What a step met and how many creates it used: a step that stays
-	// pending or ends in error says why (G130-04, D41).
-	details, attempts := map[string]string{}, map[string]int{}
+	// pending or ends in error says why (G130-04, D41); one in error also
+	// says the class of its tool's refusal, so an agent tells what it can
+	// fix without reading the text (G140-5). Not "reason": that key is the
+	// error answer's (TestParity_ErrorReasonEqualsTool), and this answer is
+	// a status.
+	details, attempts, reasons := map[string]string{}, map[string]int{}, map[string]string{}
 	for _, s := range j.Steps {
 		if s.Detail != "" && s.Status != "done" {
 			details[s.Key] = s.Detail
@@ -906,9 +914,15 @@ func (j *Job) Compact() map[string]any {
 		if s.Attempts > 0 {
 			attempts[s.Key] = s.Attempts
 		}
+		if s.Reason != "" && s.Status == "error" {
+			reasons[s.Key] = s.Reason
+		}
 	}
 	if len(details) > 0 {
 		out["details"] = details
+	}
+	if len(reasons) > 0 {
+		out["error_reasons"] = reasons
 	}
 	if len(attempts) > 0 {
 		out["attempts"] = attempts

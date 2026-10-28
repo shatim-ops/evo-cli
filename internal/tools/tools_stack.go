@@ -438,6 +438,10 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				if err != nil {
 					st.Attempts++
 					st.Detail = err.Error()
+					// The class of the refusal, as its tool answered it:
+					// stack_status names it for a step that ends in error
+					// (G140-5).
+					st.Reason, _ = res["reason"].(string)
 					// The tool named what it made although the call failed
 					// (provision: a VM in error_creating or not active in
 					// time). It exists and is billed: record it for
@@ -484,6 +488,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// applied it). If the resource now exists by name, ADOPT it — never
 					// blindly retry a create (that would double-provision).
 					if id, state := s.findStepResource(ctx, st); id != "" {
+						st.Reason = "" // what the step meets now is the resource, not the refusal
 						if st.Tool == "provision" {
 							s.adoptVM(ctx, job, st, id, state)
 							if job.Status == "error" {
