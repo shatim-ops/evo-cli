@@ -107,6 +107,15 @@ func TestCompletion_DeclarationsHold(t *testing.T) {
 			t.Errorf("valueRefs[%s]: %s is not a read without a required argument", arg, c.list)
 		}
 	}
+	for tool, args := range toolRefs {
+		tl, ok := r.Lookup(tool)
+		props, _ := tl.InputSchema["properties"].(map[string]any)
+		for arg, c := range args {
+			if _, has := props[arg]; !ok || !has || !r.listable(c.list) {
+				t.Errorf("toolRefs[%s][%s]: the tool's argument completed from %s, a read without a required argument", tool, arg, c.list)
+			}
+		}
+	}
 	for tool, args := range noCompletion {
 		tl, ok := r.Lookup(tool)
 		if !ok {
@@ -145,5 +154,17 @@ func TestCompletionItems_TakesTheListWithTheField(t *testing.T) {
 	items := completionItems(`{"a_notes":[{"text":"x"}],"zones":[{"id":"z1","name":"ru.AZ-1"}]}`, "name")
 	if len(items) != 1 || items[0]["name"] != "ru.AZ-1" {
 		t.Errorf("items %v, want the zones", items)
+	}
+}
+
+// A reference toolRefs declares completes from its list: the nodes'
+// subnet of a node pool from the project's subnets, ids with their names.
+func TestComplete_ToolRefFromItsList(t *testing.T) {
+	cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}},
+		subnets: []*provision.Subnet{{ID: "00000000-0000-4000-8000-0000000000e1", Name: "nodes", AvailabilityZoneID: "z"}}}
+	r := completionRegistry(t, cloud, completionCfg)
+	got := r.Complete(context.Background(), "k8s_add_nodepool", "nodes_subnet_id", "")
+	if len(got) != 1 || got[0].Value != "00000000-0000-4000-8000-0000000000e1" || got[0].Note != "nodes" {
+		t.Errorf("nodes_subnet_id+Tab: %v, want the subnet with its name", got)
 	}
 }

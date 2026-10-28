@@ -62,22 +62,7 @@ var refUncompleted = map[string]struct{ why, item string }{
 	"vpc_route_create next_hop_interface_id":    {why: refNoList},
 	"vpc_route_create next_hop_magic_router_id": {why: refNoList},
 	"vpc_route_create next_hop_vip_id":          {why: refNoList},
-	// list_subnets, iam_service_accounts, *_versions and *_specs list
-	// them; valueRefs is by name, and version_id and specification_id name
-	// a different list in each product.
-	"k8s_add_nodepool nodes_subnet_id": {why: refGap, item: completionGapItem},
-	"k8s_create cluster_sa_id":         {why: refGap, item: completionGapItem},
-	"k8s_plan cluster_sa_id":           {why: refGap, item: completionGapItem},
-	"kafka_create version_id":          {why: refGap, item: completionGapItem},
-	"kafka_specs version_id":           {why: refGap, item: completionGapItem},
-	"redis_create version_id":          {why: refGap, item: completionGapItem},
-	"redis_specs version_id":           {why: refGap, item: completionGapItem},
-	"kafka_create specification_id":    {why: refGap, item: completionGapItem},
-	"pg_create specification_id":       {why: refGap, item: completionGapItem},
-	"redis_create specification_id":    {why: refGap, item: completionGapItem},
 }
-
-const completionGapItem = "release plan 1.5, «Tab: ссылки, у которых список есть, а объявления дополнения нет»"
 
 // Release plan 1.5, Tab in the whole CLI: an argument that references a
 // resource or an entry of a catalogue is completed (completionOf: valueRefs,
