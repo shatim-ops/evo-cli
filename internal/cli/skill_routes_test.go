@@ -19,10 +19,6 @@ import (
 var routeToolOutside = map[string]string{
 	"deploy an app or a compose project, update it, its logs: lb_create": "named to say HTTPS is not there: the balancer is L4 TCP, takes no certificate",
 	"a VM, open or close a port, a public IP: lb_create":                 "named to say HTTPS is not there: the balancer is L4 TCP, takes no certificate",
-	// The step names the group itself ("tool group `dns`"); the row of
-	// the table does not, as the row of evo-deploy does ("a domain:
-	// `dns`") — a gap of the text, «разработке».
-	"a VM, open or close a port, a public IP: dns_record_create": "пробел: строка таблицы без «a domain: `dns`»",
 }
 
 // Release plan 1.5, coverage of the surfaces (С9, #514): the table of
