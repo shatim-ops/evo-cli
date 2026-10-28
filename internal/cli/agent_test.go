@@ -827,3 +827,29 @@ func TestAgentSkill_AlreadyDeleted(t *testing.T) {
 		}
 	}
 }
+
+// The rules tell the agent to narrow the two answers that weigh the most:
+// image_list without query is the whole catalogue (10 of 10 calls of the
+// Gemini run), metrics_scrape without match the whole snapshot (2.9 MB,
+// 84 % of the bytes of the Grok run of 1.4.0). The arguments the rule
+// names are the tools' own, so a renamed one fails here.
+func TestAgentSkill_NarrowsBigAnswers(t *testing.T) {
+	root := newRootCmd()
+	reg := newRegistry()
+	for _, readOnly := range []bool{false, true} {
+		skill := agentSkill(root, readOnly)
+		for tool, arg := range map[string]string{"image_list": "query", "metrics_scrape": "match"} {
+			if !strings.Contains(skill, "`"+tool+"` only with `"+arg+"`") {
+				t.Errorf("read-only=%v: the rules do not say to call %s only with %s", readOnly, tool, arg)
+			}
+			tl, ok := reg.Lookup(tool)
+			if !ok {
+				t.Fatalf("no tool %s", tool)
+			}
+			props, _ := tl.InputSchema["properties"].(map[string]any)
+			if _, ok := props[arg]; !ok {
+				t.Errorf("%s has no argument %s, which the rules name", tool, arg)
+			}
+		}
+	}
+}

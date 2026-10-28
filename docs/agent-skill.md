@@ -33,6 +33,11 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
    `"existed": false`, exit code 0. A repeat is safe, but a mistyped id reads
    the same: when it matters that the resource was there, check the id with its
    list command.
+10. Big answers cost your context: call `image_list` only with `query` (a part
+   of the name, e.g. `ubuntu`) — never the whole catalogue; a VM takes its
+   image by name (`--image Ubuntu-24.04`) with no catalogue at all. Call
+   `metrics_scrape` only with `match` (a metric name): without it the answer
+   is the whole snapshot, megabytes.
 
 ## Exit codes
 
