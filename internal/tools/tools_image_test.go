@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -41,9 +43,11 @@ func TestImageCreateRequiresArgs(t *testing.T) {
 }
 
 // Создание образа — платная операция, поэтому подтверждение обязано
-// запрашиваться ДО обращения к облаку, а не после.
+// запрашиваться ДО создания в облаке, а не после. До вопроса — только
+// чтение: занято ли имя среди образов проекта (D49).
 func TestImageCreateAsksConfirmationBeforeCloud(t *testing.T) {
-	s := newTestServer()
+	cloud := &cancelCloud{cancel: func() {}}
+	s, _ := cancelRegistry(t, cloud)
 	got := callTool(t, s.handleImageCreate, map[string]any{
 		"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000",
 	})
@@ -59,7 +63,11 @@ func TestImageCreateAsksConfirmationBeforeCloud(t *testing.T) {
 // не должно называть источник зоны, которого может не быть: регион в конфиге
 // задан не всегда, и тогда зона берётся с исходного диска.
 func TestImageCreatePreviewDoesNotPromiseConfiguredRegion(t *testing.T) {
-	s := newTestServer()
+	// A configuration without a zone: the preview cannot name one.
+	s := New(func(map[string]any) (*engine.Engine, error) {
+		return &engine.Engine{Config: config.Config{ProjectID: "p", KeyID: "k", Secret: "s"}, Auth: staticToken{},
+			Cloud: &cancelCloud{cancel: func() {}}}, nil
+	})
 
 	got := callTool(t, s.handleImageCreate, map[string]any{
 		"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000",

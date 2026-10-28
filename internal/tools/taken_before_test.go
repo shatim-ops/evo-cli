@@ -48,12 +48,7 @@ var takenArgs = map[string]map[string]any{
 // takenAdopts are the creates known to take the resource that was there
 // before them for the one they made, when their answer is lost: the work
 // item that fixes each. The list only shrinks.
-var takenAdopts = map[string]string{
-	"disk_create":     "release plan 1.5, «ресурс был до нас»: a name taken before the call",
-	"dns_zone_create": "release plan 1.5, «ресурс был до нас»: a name taken before the call",
-	"image_create":    "release plan 1.5, «ресурс был до нас»: a name taken before the call",
-	"secret_create":   "release plan 1.5, «ресурс был до нас»: a path taken before the call (D42)",
-}
+var takenAdopts = map[string]string{}
 
 // takenNotReached are the creates the world cannot bring to their write
 // yet, with why: each is a case the test does not see until the world

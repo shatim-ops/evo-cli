@@ -198,6 +198,20 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 		return usageT("'domain' is required (FQDN, e.g. 'example.com.')", "нужен 'domain' (FQDN, например 'example.com.')"), true
 	}
 	vis := dnsVisibility(args)
+	cli, err := s.dnsClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	name := stringArg(args, "name")
+	if name == "" {
+		name = domain
+	}
+	// A name taken before the call is refused before the question (D49),
+	// so a lost answer's zone found by the name is the call's own.
+	list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListZones(ctx, vis) }
+	if ans, refused := nameFree(ctx, list, i18n.T("DNS zone", "зона DNS"), name, "dns_zones"); refused {
+		return ans, true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -206,14 +220,6 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 			"preview": willPreview(engine.ResourceDNSZone, domain, "", map[string]any{"name": stringArg(args, "name"), "visibility": vis},
 				[]string{"name", "visibility"}, dnsDelegationWarning(vis)),
 		}), true
-	}
-	cli, err := s.dnsClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	name := stringArg(args, "name")
-	if name == "" {
-		name = domain
 	}
 	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "domain": domain}
 	if d := stringArg(args, "description"); d != "" {
@@ -224,7 +230,6 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 		if err == nil {
 			err = noID("operation")
 		}
-		list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListZones(ctx, vis) }
 		return lostCreate(ctx, "dns_zone_create", list, i18n.T("DNS zone", "зона DNS"), name, nil, "dns_zone_get zone_id", fmt.Errorf(i18n.T("create zone: %w", "создание зоны: %w"), err))
 	}
 	out := map[string]any{"status": "creating", "visibility": vis, "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id); then dns_zones for the id (public zones return a verification_token to delegate)."}
