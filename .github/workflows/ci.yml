@@ -156,10 +156,22 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/qwen_review_fetch_test.sh
 
+      # На каких PR ревью Qwen приходит само (#485, П1 (б)): продуктовый PR и
+      # PR, который меняет .github/; /qwen review — на любом.
+      - name: qwen-review.sh — какие PR ревьюит
+        if: runner.os == 'Linux'
+        run: .github/scripts/qwen_review_scope_test.sh
+
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
         if: runner.os == 'Linux'
         run: .github/scripts/classify_test.sh
+
+      # Шаг 6 RELEASING: передача до следующего слияния — скрипт на
+      # временном репозитории.
+      - name: handoff_check.sh на временном репозитории
+        if: runner.os == 'Linux'
+        run: .github/scripts/handoff_check_test.sh
 
       # Метки отзывов по полям форм Issues: таблицы скрипта совпадают с формами.
       - name: issue_labels.py на образцах форм
@@ -282,6 +294,24 @@ jobs:
           if git diff "$BASE...HEAD" -- CHANGELOG.md changelog.d/ | grep -q '^+### Миграция'; then MIGRATION=1; fi
           git diff --name-only "$BASE...HEAD" | MIGRATION=$MIGRATION .github/scripts/classify.sh |
             .github/scripts/classify_summary.sh >> "$GITHUB_STEP_SUMMARY"
+
+  # Шаг 6 docs/RELEASING.md: после тега до передачи дел
+  # (handoff/<версия>.md) PR в main не сливается; релизный PR (новый раздел
+  # выпуска в CHANGELOG.md) проходит. Ретро 1.4.1: три PR слиты до передачи.
+  handoff:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # CHANGELOG.md базы PR — из её коммита.
+          fetch-depth: 0
+      - name: передача последней версии есть
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: .github/scripts/handoff_check.sh "$BASE"
 
   # Образ MCP-сервера для Marketplace: сборка и smoke-тест по HTTP. Кредов
   # Cloud.ru не нужно: initialize и tools/list в облако не ходят.

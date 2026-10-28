@@ -132,10 +132,11 @@ func TestWorkflows_EventTextNeverInRunScripts(t *testing.T) {
 	}
 }
 
-// The review of Qwen is part of every PR's cycle (CLAUDE.md §4): it starts
+// The review of Qwen is part of a PR's cycle (CLAUDE.md §4): it starts
 // when the PR is opened or leaves draft, not by hand (process audit 1.2.1,
-// PR 2); the command /qwen review repeats it.
-func TestWorkflows_QwenReviewsEveryPR(t *testing.T) {
+// PR 2); the command /qwen review repeats it. Which PRs it reviews by
+// itself is the script's choice (TestWorkflows_QwenReviewScope, #485).
+func TestWorkflows_QwenReviewsOnOpening(t *testing.T) {
 	w, ok := readWorkflows(t)["qwen-review.yml"]
 	if !ok {
 		t.Fatal("no qwen-review.yml")

@@ -19,7 +19,7 @@ SH
 cat >"$work/bin/gh" <<'SH'
 #!/usr/bin/env bash
 case "$1 $2" in
-  "pr view") echo '{"title":"t","body":"","baseRefName":"main","headRefOid":"abcdef0123456789abcdef0123456789abcdef01"}' ;;
+  "pr view") echo '{"title":"t (продукт, 1.5)","body":"","baseRefName":"main","headRefOid":"abcdef0123456789abcdef0123456789abcdef01"}' ;;
   "pr comment") while [ $# -gt 0 ]; do [ "$1" = --body-file ] && cat "$2" >>"$FAKE_POST"; shift; done ;;
 esac
 SH

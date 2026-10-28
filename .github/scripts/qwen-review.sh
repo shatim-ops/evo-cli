@@ -51,6 +51,36 @@ if ! git fetch --no-tags --quiet origin \
   git fetch --no-tags --quiet origin "+refs/heads/$base:refs/review/base" "+$head:refs/review/head" ||
     fail "git не получил базу \`$base\` или голову PR \`${head:0:7}\` — перезапустите командой \`/qwen review\`."
 fi
+# Само при открытии ревью идёт на всё, кроме PR, который меняет только тесты
+# и документы (*_test.go, *.md, docs/) и не трогает .github/ и
+# internal/workflows/ (правила безопасности workflows). Продуктовый PR
+# определяется по изменению (CLAUDE.md §5), «(продукт» в заголовке — ещё
+# один повод. Решение владельца #485, П1 (б); #372. Команда /qwen review —
+# на любом PR.
+if [ -z "${COMMENT_ID:-}" ]; then
+  case "$(jq -r .title "$work/pr.json")" in
+    *"(продукт"*) ;;
+    *)
+      # Not «git diff | while»: with pipefail an early exit of the reader
+      # would SIGPIPE git; the names are read whole first.
+      changed=$(git diff --name-only refs/review/base...refs/review/head)
+      review=""
+      [ -n "$changed" ] || review=1 # an empty diff is reported below
+      while IFS= read -r f; do
+        case "$f" in
+          .github/* | internal/workflows/*) review=1 ;;
+          *_test.go | *.md | docs/*) ;;
+          *) review=1 ;;
+        esac
+      done <<<"$changed"
+      if [ -z "$review" ]; then
+        echo "PR меняет только тесты и документы, без .github/ и internal/workflows/ — ревью Qwen не запускается (#485, П1)"
+        exit 0
+      fi
+      ;;
+  esac
+fi
+
 git diff --no-color --find-renames refs/review/base...refs/review/head -- . \
   ':(exclude)go.sum' ':(exclude)specs/**' >"$work/diff.full"
 [ -s "$work/diff.full" ] || fail 'diff пустой: PR ничего не меняет относительно базы.'
@@ -116,11 +146,15 @@ jq -n \
   def rules: "
 ## Формат ответа
 Markdown, по-русски. Первая строка — вердикт одной фразой.
-Дальше находки по убыванию серьёзности, каждая отдельным пунктом:
-**[critical|high|medium|low]** `путь:строка` — суть. Затем: путь к дефекту
-(какой вызов или ввод → что ломается) и предлагаемое исправление.
-Ссылайся только на строки, которые есть в diff. Нет пути к дефекту — пометь
-находку как гипотезу. Нет находок — так и напиши, не придумывай.
+Дальше — не больше пяти находок, самые серьёзные, по убыванию, каждая
+отдельным пунктом: **[critical|high|medium|low]** `путь:строка` — суть.
+Затем: путь к дефекту (какой вызов или ввод → что ломается) и предлагаемое
+исправление. Находка без пути к дефекту — не находка: всё такое и всё сверх
+пяти — в конце, в разделе «Гипотезы», по одной строке на пункт; на гипотезы
+автор не обязан отвечать. Исключение из лимита: critical и high, а также всё
+о секретах и ключах, согласии на платное или разрушительное действие и
+workflows с секретами — всегда находкой, даже сверх пяти. Ссылайся только на строки, которые есть в diff.
+Нет находок — так и напиши, не придумывай.
 Опирайся на контекст проекта: решения из DECISIONS не оспаривай без ссылки
 на пункт; факты об API Cloud.ru из review-context важнее твоих общих знаний
 об облаках. Изменённые файлы даны целиком — читай код вокруг правок, но

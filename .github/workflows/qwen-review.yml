@@ -1,8 +1,10 @@
 name: qwen-review
 
 # Ревью PR моделью Qwen из Cloud.ru Foundation Models: само при открытии PR
-# и при выходе из черновика (часть цикла каждой правки, CLAUDE.md §4), и
-# повтором по команде `/qwen review` в комментарии к PR. У job есть секрет
+# и при выходе из черновика (CLAUDE.md §4) — у любого PR, кроме того, что
+# меняет только тесты и документы без .github/ и internal/workflows/ (отбор —
+# в qwen-review.sh, #485), и повтором по команде `/qwen review` в комментарии
+# к любому PR. У job есть секрет
 # CLOUDRU_FM_API_KEY, поэтому код PR не выполняется: pull_request_target и
 # issue_comment работают на ветке по умолчанию — скрипт и review-guide
 # берутся из main, а PR читается только как данные (git diff). Не
