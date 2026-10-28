@@ -473,6 +473,9 @@ func (p *addonPlan) preview(clusterID, resolveMode string, configKeys []string) 
 	if len(p.notChecked) > 0 {
 		cp.Add("not_checked", p.notChecked)
 	}
+	// What the plan warns of goes where every preview's warnings go, so
+	// the person sees it too (С2: the CLI shows the preview).
+	cp.Warnings = append(cp.Warnings, p.warnings...)
 	cp.Price()
 	return cp
 }
