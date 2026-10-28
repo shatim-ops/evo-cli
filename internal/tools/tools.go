@@ -1546,7 +1546,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 				return errResult(err), true
 			}
 			var buf bytes.Buffer
-			eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
+			eng.Printer = logAndProgress(ctx, &buf)
 
 			force, _ := args["force"].(bool)
 			opts := engine.DeployOptions{
@@ -2642,6 +2642,11 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		// The wait for the VM to be gone (WaitVMGone) says the VM's state
+		// to whoever watches the call, as provision's wait does.
+		if pp, watched := progressOf(ctx); watched {
+			eng.Printer = pp
+		}
 
 		if alreadyGone {
 			// Nothing to delete in the cloud.
