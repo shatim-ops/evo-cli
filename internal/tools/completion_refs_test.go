@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"context"
 	"regexp"
 	"sort"
 	"testing"
@@ -129,5 +130,26 @@ func TestCompletion_EveryReferenceIsCompletedOrSaysWhy(t *testing.T) {
 	}
 	if !seen["vm_get vm_id"] {
 		t.Fatal("vm_get vm_id is not among the references: refArg moved, update the test")
+	}
+}
+
+// Tab reads, it does not call: no record in the journal (D46) — a person
+// pressing Tab ten times would otherwise fill it with lists they never
+// ran (completion.go: «Nothing here … goes to the journal»).
+func TestComplete_WritesNoJournal(t *testing.T) {
+	cloud := &zonesCloud{cancelCloud: cancelCloud{cancel: func() {}}}
+	r := completionRegistry(t, cloud, completionCfg)
+	journalOn(t)
+	if got := r.Complete(context.Background(), "provision", "region", ""); len(got) == 0 {
+		t.Fatal("Tab offered nothing: the test proves nothing")
+	}
+	if recs := journalRecords(t); len(recs) != 0 {
+		t.Errorf("Tab wrote %d journal records: %+v", len(recs), recs)
+	}
+	// The journal is on: a call through the handler is recorded.
+	tl, _ := r.Lookup("list_zones")
+	tl.Handler(context.Background(), map[string]any{})
+	if recs := journalRecords(t); len(recs) != 1 {
+		t.Errorf("a call of list_zones: %d records, want 1 — the journal is not on in this test", len(recs))
 	}
 }
