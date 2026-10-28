@@ -1,0 +1,465 @@
+{
+  "ar_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "registry_id",
+      "list": "ar_list",
+      "delete": "ar_delete"
+    }
+  },
+  "ar_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "id",
+      "no_refusal": "no refusal seen live (register, 28.10)"
+    }
+  },
+  "ca_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "name",
+      "no_refusal": "no refusal seen live; a repeat during the deletion is a new operation (CAP-4)"
+    }
+  },
+  "ca_deploy": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "name",
+      "list": "ca_list",
+      "delete": "ca_delete"
+    }
+  },
+  "ca_start": {
+    "destructive": false
+  },
+  "ca_stop": {
+    "destructive": false
+  },
+  "cert_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "id",
+      "no_refusal": "no refusal seen live (register, 28.10)"
+    }
+  },
+  "cert_import": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "certificate.id",
+      "list": "cert_list",
+      "delete": "cert_delete"
+    }
+  },
+  "cert_issue_le": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "certificate_id",
+      "list": "cert_list",
+      "delete": "cert_delete"
+    }
+  },
+  "cert_renew": {
+    "destructive": false
+  },
+  "close_ports": {
+    "destructive": false,
+    "deletes": {
+      "arg": "ports",
+      "parent": "security_group",
+      "no_refusal": "a rule has no state"
+    }
+  },
+  "deploy": {
+    "destructive": false,
+    "creates": {
+      "id": "vm_id",
+      "delete": "destroy"
+    }
+  },
+  "deploy_apply": {
+    "destructive": false,
+    "creates": {
+      "id": "vm_id",
+      "delete": "destroy"
+    }
+  },
+  "destroy": {
+    "destructive": true,
+    "deletes": {
+      "arg": "vm_id",
+      "refusals": [
+        "creating (CMP-7)"
+      ]
+    }
+  },
+  "disk_attach": {
+    "destructive": false
+  },
+  "disk_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "disk.id",
+      "list": "disk_list",
+      "delete": "disk_delete"
+    }
+  },
+  "disk_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "disk_id",
+      "no_refusal": "an attached disk is refused before the question (disk_delete reads it)"
+    }
+  },
+  "disk_detach": {
+    "destructive": false
+  },
+  "disk_resize": {
+    "destructive": false
+  },
+  "dns_record_create": {
+    "destructive": false,
+    "taken": "not reached: the world's zone is in no list of zones",
+    "creates": {
+      "id": "record_id",
+      "list": "dns_records",
+      "delete": "dns_record_delete"
+    }
+  },
+  "dns_record_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "record_id",
+      "no_refusal": "a record has no state"
+    }
+  },
+  "dns_zone_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "zone_id",
+      "list": "dns_zones",
+      "delete": "dns_zone_delete"
+    }
+  },
+  "dns_zone_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "id",
+      "no_refusal": "a zone in creating is deleted, slowly (NET-13): no refusal"
+    }
+  },
+  "fip_attach": {
+    "destructive": false
+  },
+  "image_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "image.id",
+      "list": "image_list",
+      "delete": "image_delete"
+    }
+  },
+  "image_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "image_id",
+      "no_refusal": "no refusal seen live (register, 28.10)"
+    }
+  },
+  "k8s_add_addon": {
+    "destructive": true,
+    "creates": {
+      "none": "an addon of a cluster, known by its name; it goes with the cluster"
+    }
+  },
+  "k8s_add_nodepool": {
+    "destructive": false,
+    "taken": "not reached: the world has no catalogue of flavors",
+    "creates": {
+      "id": "nodepool_id",
+      "list": "k8s_nodepools"
+    }
+  },
+  "k8s_apply": {
+    "destructive": true
+  },
+  "k8s_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "cluster_id",
+      "list": "k8s_list",
+      "delete": "k8s_delete"
+    }
+  },
+  "k8s_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "cluster_id",
+      "no_refusal": "no refusal seen live (register, 28.10)"
+    }
+  },
+  "k8s_helm": {
+    "destructive": true
+  },
+  "k8s_kubectl": {
+    "destructive": true
+  },
+  "kafka_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "cluster_id",
+      "list": "kafka_list",
+      "delete": "kafka_delete"
+    }
+  },
+  "kafka_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "cluster_id",
+      "refusals": [
+        "DEPLOYING (DB-17)",
+        "FAILED (DB-17)"
+      ]
+    }
+  },
+  "lb_create": {
+    "destructive": false,
+    "taken": "not reached: the world's zone is in no list of zones",
+    "creates": {
+      "id": "lb_id",
+      "list": "lb_list",
+      "delete": "lb_delete"
+    }
+  },
+  "lb_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "id",
+      "no_refusal": "no refusal seen live (register, 28.10)"
+    }
+  },
+  "open_ports": {
+    "destructive": false
+  },
+  "pg_backup_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "backup_id",
+      "list": "pg_backups"
+    }
+  },
+  "pg_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "cluster_id",
+      "list": "pg_list",
+      "delete": "pg_delete"
+    }
+  },
+  "pg_db_create": {
+    "destructive": false,
+    "creates": {
+      "id": "name",
+      "delete": "pg_db_delete"
+    }
+  },
+  "pg_db_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "name",
+      "parent": "cluster_id",
+      "no_refusal": "lives in a cluster: the cluster's state is pg_delete's"
+    }
+  },
+  "pg_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "id",
+      "refusals": [
+        "FAILED (DB-21)"
+      ]
+    }
+  },
+  "pg_user_create": {
+    "destructive": false,
+    "creates": {
+      "id": "name",
+      "delete": "pg_user_delete"
+    }
+  },
+  "pg_user_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "name",
+      "parent": "cluster_id",
+      "no_refusal": "lives in a cluster: the cluster's state is pg_delete's"
+    }
+  },
+  "provision": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "vm_id",
+      "list": "vm_list",
+      "delete": "destroy"
+    }
+  },
+  "redis_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "cluster_id",
+      "list": "redis_list",
+      "delete": "redis_delete"
+    }
+  },
+  "redis_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "cluster_id",
+      "refusals": [
+        "DEPLOYING (DB-19)"
+      ]
+    }
+  },
+  "release_floating_ip": {
+    "destructive": true,
+    "deletes": {
+      "arg": "id",
+      "refusals": [
+        "error_deleting (NET-7)"
+      ]
+    }
+  },
+  "s3_bucket_create": {
+    "destructive": false,
+    "creates": {
+      "id": "bucket",
+      "delete": "s3_bucket_delete"
+    }
+  },
+  "s3_bucket_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "bucket",
+      "no_refusal": "a bucket with objects is refused before the question (D26 world: s3Parity)"
+    }
+  },
+  "s3_put": {
+    "destructive": true,
+    "creates": {
+      "id": "key",
+      "delete": "s3_rm"
+    }
+  },
+  "s3_rm": {
+    "destructive": true,
+    "deletes": {
+      "arg": "key",
+      "parent": "bucket",
+      "no_refusal": "an object has no state"
+    }
+  },
+  "secret_add_version": {
+    "destructive": false
+  },
+  "secret_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "path",
+      "list": "secret_list",
+      "delete": "secret_delete"
+    }
+  },
+  "secret_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "path",
+      "no_refusal": "no refusal seen live (register, 28.10)"
+    }
+  },
+  "snat_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "nat_gateway.id",
+      "list": "snat_list",
+      "delete": "snat_delete"
+    }
+  },
+  "snat_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "id",
+      "refusals": [
+        "creating (NET-11)"
+      ]
+    }
+  },
+  "stack_apply": {
+    "destructive": false
+  },
+  "stack_destroy": {
+    "destructive": true
+  },
+  "tg_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "tg_id",
+      "list": "tg_list",
+      "delete": "tg_delete"
+    }
+  },
+  "tg_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "id",
+      "no_refusal": "no refusal seen live (register, 28.10)"
+    }
+  },
+  "vpc_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "vpc_id",
+      "list": "vpc_list",
+      "delete": "vpc_delete"
+    }
+  },
+  "vpc_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "id",
+      "no_refusal": "no refusal seen live (register, 28.10)"
+    }
+  },
+  "vpc_route_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "route_id",
+      "list": "vpc_routes",
+      "delete": "vpc_route_delete"
+    }
+  },
+  "vpc_route_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "route_id",
+      "parent": "vpc_id",
+      "no_refusal": "a route has no state"
+    }
+  }
+}
