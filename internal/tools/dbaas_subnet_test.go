@@ -65,3 +65,26 @@ func TestDbaasSubnet_SkipsAndRefusesClosedZone(t *testing.T) {
 		}
 	}
 }
+
+// What the skills say of pg_create (skills/evo-postgres, G130-25; С9
+// proof): without subnet_id the cluster goes to the main subnet of the
+// profile's zone — not the first subnet of the project, not another
+// subnet of that zone.
+func TestDbaasSubnet_MainSubnetOfTheProfilesZone(t *testing.T) {
+	zones := []*provision.AvailabilityZone{{ID: raAZ1, Name: "ru.AZ-1"}, {ID: raAZ2, Name: "ru.AZ-2"}}
+	// The first subnet of the project is not the main one, and without a
+	// region evo would take ru.AZ-2 first: only the profile's zone gives
+	// sn-az1-main.
+	subnets := []*provision.Subnet{
+		{ID: "sn-az1-app", Name: "app", AvailabilityZoneID: raAZ1, VPCID: "vpc-1"},
+		{ID: "sn-az2-main", Name: "Default_ru.AZ-2", AvailabilityZoneID: raAZ2, VPCID: "vpc-1", Default: true},
+		{ID: "sn-az1-main", Name: "Default_ru.AZ-1", AvailabilityZoneID: raAZ1, VPCID: "vpc-1", Default: true},
+	}
+	for _, region := range []string{raAZ1, "ru.AZ-1"} {
+		eng := &engine.Engine{Config: config.Config{ProjectID: dbaasProject, Region: region}, Cloud: zoneCloud{zones: zones, subnets: subnets}}
+		id, _, zone, err := dbaasSubnet(context.Background(), eng, "")
+		if err != nil || id != "sn-az1-main" || zone != "ru.AZ-1" {
+			t.Errorf("region %s: subnet = %s in %s (%v), want sn-az1-main, the main subnet of the profile's ru.AZ-1", region, id, zone, err)
+		}
+	}
+}
