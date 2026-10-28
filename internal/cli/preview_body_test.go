@@ -38,7 +38,7 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"ar_create isPublic":     {unnamedAccess, "реестр закрытый по умолчанию; превью не говорит"},
 	"ar_create registryType": {unnamedWork, "тип реестра DOCKER по умолчанию"},
 
-	"ca_deploy configuration.ingress.publiclyAccessible": {unnamedAccess, "приложение доступно из интернета (FB15-35-класс)"},
+	"ca_deploy configuration.ingress.publiclyAccessible": {unnamedAccess, "приложение доступно из интернета (дыра в согласии, аудит §9; не находка FB15)"},
 	"ca_deploy template.containers.containerPort":        {unnamedWork, "порт контейнера по умолчанию"},
 	"ca_deploy template.protocol":                        {unnamedWork, "протокол http_1 по умолчанию"},
 	"ca_deploy template.scaling.maxInstanceCount":        {unnamedPrice, "предел экземпляров по умолчанию"},
