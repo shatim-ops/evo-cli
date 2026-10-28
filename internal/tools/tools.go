@@ -1527,13 +1527,15 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 	return s.engineGated(ctx, "deploy", args,
 		func(c *Caller) (string, bool) { return s.deployLive(ctx, args, overrides, c) },
 		func() (string, bool) {
+			// An engine that cannot be built fails the confirmed call too:
+			// refused here, not answered with a preview (D48).
 			eng, err := s.newEngine(overrides)
 			if err != nil {
-				eng = nil
+				return errResult(err), true
 			}
 			answer, err := s.deployAnswer(ctx, args, eng)
 			if err != nil {
-				return errResult(err), true
+				return errAnswer(err, deployFields(err, nil)), true
 			}
 			return answer, true
 		},
@@ -1565,7 +1567,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 				}
 			}
 			if deployErr != nil {
-				return errAnswer(deployErr, result), true
+				return errAnswer(deployErr, deployFields(deployErr, result)), true
 			}
 			result["status"] = "ok"
 			return toJSON(result), false
@@ -1581,9 +1583,9 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 // The same compose file running there asks for consent as in v1.1, and
 // says it (unchanged: true): the confirmed call changes nothing. evo
 // deploy asks nothing then; bringing the two together would change an
-// exit code, which waits for v2.0. eng is the engine of the call, nil when none
-// could be built (nothing is read then). An error is a refusal the reads
-// found.
+// exit code, which waits for v2.0. eng is the engine of the call. An error
+// is a refusal the reads found, or a setting a new VM lacks
+// (engine.DeployInputError, D48).
 func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *engine.Engine) (string, error) {
 	will := withProject(previewArgs(args, "compose_file", "flavor", "region", "image_id", "disk_size", "force"),
 		firstNonEmptyStr(stringArg(args, "project_id"), s.projectID(ctx)))
@@ -1595,9 +1597,6 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		"message": i18n.T("deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). preview has the new VM and its monthly cost.",
 			"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). В preview — новая ВМ и её цена в месяц."),
 		"will_deploy": will,
-	}
-	if eng == nil {
-		return toJSON(answer), nil
 	}
 	force, _ := args["force"].(bool)
 	if u := eng.DeployUpdateOf(force); u != nil {
@@ -1670,9 +1669,24 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 		},
 	})
 	if err != nil {
-		return failed(ctx, err, nil), true
+		return failed(ctx, err, deployFields(err, nil)), true
 	}
 	return toJSON(map[string]any{"status": "ok"}), false
+}
+
+// deployFields adds to fields of a deploy error answer the argument of a
+// setting a new VM lacks (engine.MissingSetting): "missing", as provision
+// names it (D15, D48), so the CLI words the hint with its flag.
+func deployFields(err error, fields map[string]any) map[string]any {
+	arg := engine.MissingSetting(err)
+	if arg == "" {
+		return fields
+	}
+	if fields == nil {
+		fields = map[string]any{}
+	}
+	fields["missing"] = []string{arg}
+	return fields
 }
 
 // planProvision plans a provision (D35): the call's own mistakes, the

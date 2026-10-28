@@ -55,9 +55,10 @@ func (c *hiddenImageCloud) CreateVM(ctx context.Context, req provision.CreateVMR
 func imageRegistry(t *testing.T, cloud provision.CloudAPI) *Registry {
 	t.Helper()
 	dir := t.TempDir()
+	compose := writeTestCompose(t)
 	return New(func(o map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
-		cfg := config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s"}
+		cfg := config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s", ComposeFile: compose}
 		if v, ok := o["Image"].(string); ok {
 			cfg.ImageID, cfg.Image = "", v
 		}
