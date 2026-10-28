@@ -180,9 +180,10 @@ func execTree(t *testing.T, args ...string) (string, string, *clerrors.CLIError)
 // Без зоны evo vm create и evo tools call provision (как MCP provision)
 // отказывают до превью и до вопроса: тот же reason и код выхода (2,
 // CONFIG_INVALID — зона, как проект, это настройка), без
-// confirmation_required. Подсказка — слова своей поверхности: команда
-// называет свой флаг и evo configure --region, tools call — аргумент
-// инструмента.
+// confirmation_required. Подсказка и сообщение — слова своей поверхности:
+// команда называет свой флаг и evo configure --region и не называет
+// инструмент MCP (догфуд 28.10: «provision: не задана зона…»), tools call
+// — аргумент инструмента и его имя.
 func TestVMCreate_NoZoneRefusedBeforeConsent(t *testing.T) {
 	russian(t)
 	withCloud(t, exampleCloud{})
@@ -191,7 +192,7 @@ func TestVMCreate_NoZoneRefusedBeforeConsent(t *testing.T) {
 
 	_, errOut, ce := execTree(t, example...)
 	if ce == nil || ce.Code != clerrors.CodeConfigInvalid || clerrors.ExitCode(ce) != clerrors.ExitAuth ||
-		ce.Message != "provision: не задана зона доступности (region)" ||
+		ce.Message != "не задана зона доступности (region)" ||
 		ce.Hint != "Задайте --region (список: evo vm zones) или evo configure --region <зона>." {
 		t.Fatalf("vm create: %+v\n%s", ce, errOut)
 	}
@@ -200,7 +201,7 @@ func TestVMCreate_NoZoneRefusedBeforeConsent(t *testing.T) {
 	}
 
 	_, _, call := execTree(t, "tools", "call", "provision", "--arg", "name=my-vm", "--arg", "image=Ubuntu-24.04")
-	if call == nil || call.Code != ce.Code || call.Message != ce.Message ||
+	if call == nil || call.Code != ce.Code || call.Message != "provision: "+ce.Message ||
 		!strings.Contains(call.Hint, "list_zones") || !strings.Contains(call.Hint, "CLOUDRU_REGION") {
 		t.Errorf("tools call: %+v", call)
 	}
@@ -208,7 +209,7 @@ func TestVMCreate_NoZoneRefusedBeforeConsent(t *testing.T) {
 	// Without an image: USAGE (exit 1), the command's own flag.
 	t.Setenv("CLOUDRU_IMAGE_ID", "")
 	_, _, ce = execTree(t, "vm", "create", "my-vm", "--region", "ru.AZ-1")
-	if ce == nil || ce.Code != clerrors.CodeUsage || ce.Message != "provision: не задан образ (image или image_id)" ||
+	if ce == nil || ce.Code != clerrors.CodeUsage || ce.Message != "не задан образ (image или image_id)" ||
 		ce.Hint != "Задайте --image (список: evo image list), например --image Ubuntu-24.04." {
 		t.Errorf("no image: %+v", ce)
 	}
@@ -243,10 +244,10 @@ func TestToolError_UsageHintNamesTheCaller(t *testing.T) {
 	}
 	const text = `{"status":"error","reason":"USAGE","error":"bad argument"}`
 	var ce *clerrors.CLIError
-	if !errors.As(toolError("provision", text, commandHints(cmd, nil)), &ce) || ce.Hint != "Check the arguments: 'evo vm create --help'." {
+	if !errors.As(toolError(text, commandHints(cmd, nil)), &ce) || ce.Hint != "Check the arguments: 'evo vm create --help'." {
 		t.Errorf("command: %+v", ce)
 	}
-	if !errors.As(toolError("provision", text, callHints("provision")), &ce) || ce.Hint != "Check the arguments: 'evo tools describe provision'." {
+	if !errors.As(toolError(text, callHints("provision")), &ce) || ce.Hint != "Check the arguments: 'evo tools describe provision'." {
 		t.Errorf("tools call: %+v", ce)
 	}
 }

@@ -76,7 +76,7 @@ func TestCLI_FormatHintsSpeakCLILanguage(t *testing.T) {
 			}
 			// tools call: inputSchema stays.
 			var ce *clerrors.CLIError
-			if !errors.As(toolError(tl.Name, text, callHints(tl.Name)), &ce) {
+			if !errors.As(toolError(text, callHints(tl.Name)), &ce) {
 				t.Errorf("%s.%s: tools call: %+v", tl.Name, arg, ce)
 				continue
 			}
@@ -97,7 +97,7 @@ func TestCLI_FormatHintsSpeakCLILanguage(t *testing.T) {
 			}
 			c := treeCmd{CLISpec: tl.CLI, Tool: tl.Name}
 			hints := treeCommandHints(cmd, c)
-			if !errors.As(toolError(tl.Name, text, hints), &ce) {
+			if !errors.As(toolError(text, hints), &ce) {
 				t.Errorf("%s.%s command: %+v", tl.Name, arg, ce)
 				continue
 			}

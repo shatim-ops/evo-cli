@@ -548,7 +548,7 @@ func configureZones(ctx context.Context, eng *engine.Engine) ([]*provision.Avail
 	}
 	text, isErr := t.Handler(ctx, map[string]any{})
 	if isErr {
-		return nil, toolError(t.Name, text, toolHints{})
+		return nil, toolError(text, toolHints{})
 	}
 	var answer struct {
 		Zones []*provision.AvailabilityZone `json:"zones"`

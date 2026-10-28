@@ -29,7 +29,7 @@ func TestHandleError_JSONDetails(t *testing.T) {
 	envelope := func(text string) map[string]any {
 		t.Helper()
 		var out, errOut bytes.Buffer
-		handleError(output.NewWithWriters(&out, &errOut, output.ModeJSON, false), toolError("provision", text, callHints("provision")))
+		handleError(output.NewWithWriters(&out, &errOut, output.ModeJSON, false), toolError(text, callHints("provision")))
 		if out.Len() != 0 {
 			t.Errorf("stdout: %q", out.String())
 		}
@@ -70,7 +70,7 @@ func TestHandleError_TextPassword(t *testing.T) {
 	i18n.SetLang(i18n.RU)
 	t.Cleanup(func() { i18n.SetLang(prev) })
 	var out, errOut bytes.Buffer
-	handleError(output.NewWithWriters(&out, &errOut, output.ModePlain, false), toolError("provision", leftVMAnswer, callHints("provision")))
+	handleError(output.NewWithWriters(&out, &errOut, output.ModePlain, false), toolError(leftVMAnswer, callHints("provision")))
 	if !strings.Contains(errOut.String(), vmPasswordLine("Pw-123")) {
 		t.Errorf("stderr:\n%s", errOut.String())
 	}

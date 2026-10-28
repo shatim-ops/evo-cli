@@ -117,7 +117,7 @@ func callEngineTool(cmd *cobra.Command, tool string, args map[string]any, c *too
 	if c.Err != nil {
 		return text, withAccessDenied(c.Err, text)
 	}
-	return text, toolError(tool, text, commandHints(cmd, nil))
+	return text, toolError(text, commandHints(cmd, nil))
 }
 
 // withAccessDenied is err, the engine's error of the command, with the
@@ -544,7 +544,7 @@ func newProjectListCmd() *cobra.Command {
 				text = toJSONText(map[string]any{"projects": nil, "active": cfg.ProjectID, "note": tools.ScopeText(0, false)})
 			case !isCLIError(c.Err):
 				// No answer (the network): the tool's error, with its code.
-				return toolError("org_projects", text, commandHints(cmd, nil))
+				return toolError(text, commandHints(cmd, nil))
 			default:
 				return err
 			}
