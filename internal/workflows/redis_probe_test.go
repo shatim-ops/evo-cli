@@ -90,6 +90,7 @@ func TestWorkflows_RedisStandaloneProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	misuse := 0
 	for _, l := range strings.Split(strings.ReplaceAll(string(b), "\\\n", " "), "\n") {
 		if strings.HasPrefix(strings.TrimSpace(l), "#") {
 			continue
@@ -97,6 +98,10 @@ func TestWorkflows_RedisStandaloneProbe(t *testing.T) {
 		if strings.Contains(l, "curl ") && strings.Contains(l, "-X") &&
 			!strings.Contains(l, "/auth/token") && !strings.Contains(l, `-X POST "$api/v1/clusters"`) {
 			t.Errorf("redis-standalone-probe.sh writes to the API beyond POST /v1/clusters: %s", strings.TrimSpace(l))
+		}
+		// The only failing exit is a misuse: a name outside evo-e2e-*.
+		if strings.Contains(l, "exit 2") {
+			misuse++
 		}
 		if strings.Contains(l, "exit 1") || strings.Contains(l, "::error::") {
 			t.Errorf("redis-standalone-probe.sh fails the step: %s", strings.TrimSpace(l))
@@ -114,5 +119,8 @@ func TestWorkflows_RedisStandaloneProbe(t *testing.T) {
 		if strings.Contains(l, "curl ") && !strings.Contains(l, "2>/dev/null") {
 			t.Errorf("redis-standalone-probe.sh lets curl's errors into the log: %s", strings.TrimSpace(l))
 		}
+	}
+	if misuse != 1 {
+		t.Errorf("redis-standalone-probe.sh exits 2 on %d lines: only the guard of the name, evo-e2e-*, fails the step", misuse)
 	}
 }

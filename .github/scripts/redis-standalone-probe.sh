@@ -92,6 +92,14 @@ show() { # КОД — поля ответа и текст ошибки
 	echo "http=$1, поля $keys${msg:+, «$msg»}"
 }
 
+setenv() { # ИМЯ ЗНАЧЕНИЕ — в env следующих шагов job; вне Actions — в лог
+	if [ -n "${GITHUB_ENV:-}" ]; then
+		echo "$1=$2" >>"$GITHUB_ENV"
+	else
+		echo "(вне GitHub Actions: $1 не передан следующим шагам)"
+	fi
+}
+
 names=("replicas 0 (как evo)" "без поля replicas" "replicas 1")
 edits=('.replicas = 0' 'del(.replicas)' '.replicas = 1')
 codes=()
@@ -107,15 +115,13 @@ for i in 0 1 2; do
 		# не нашёлся — следующий шаг ищет кластер по имени.
 		id=$(jq -r '.resource_id // .resourceId // .cluster_id // empty' "$out" 2>/dev/null) || id=
 		[ -z "$id" ] || echo "::add-mask::$id"
-		if [ -n "${GITHUB_ENV:-}" ]; then
-			echo "PROBE_ACCEPTED=$accepted" >>"$GITHUB_ENV"
-			[ -z "$id" ] || echo "CLUSTER_ID=$id" >>"$GITHUB_ENV"
-		fi
+		setenv PROBE_ACCEPTED "$accepted"
+		[ -z "$id" ] || setenv CLUSTER_ID "$id"
 		break
 		;;
 	000)
 		# Запрос не дошёл: принят ли он, неизвестно — дальше не создаём.
-		echo "PROBE_ACCEPTED=unknown" >>"${GITHUB_ENV:-/dev/null}"
+		setenv PROBE_ACCEPTED unknown
 		break
 		;;
 	esac
