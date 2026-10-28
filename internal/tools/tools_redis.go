@@ -187,7 +187,7 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 	return &Plan{Preview: out, Execute: func(ctx context.Context) (string, bool) {
 		body := map[string]any{
 			"name": name, "project_id": cli.ProjectID(), "version_id": versionID,
-			"specification_id": specID, "storage_gb": storage, "shards": shards, "replicas": replicas, "type": rtype,
+			"specification_id": specID, "storage_gb": storage, "shards": shards, "replicas": redisAPIReplicas(rtype, replicas), "type": rtype,
 		}
 		// Use the DEPRECATED singular subnet_id, NOT subnet_ids[]: the Redis backend
 		// panics (divide-by-zero) when given the subnet_ids array (it mishandles
@@ -207,6 +207,20 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 		return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
 			"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}), false
 	}}, nil
+}
+
+// redisAPIReplicas is the create request's replicas of a cluster whose
+// shard has replicas replicas without the master. The API counts them so
+// for MASTER_REPLICA (2 makes a master and two replicas), but for
+// STANDALONE it takes the hosts of a shard: 0 and no field are 400
+// «replicas must be positive», 1 makes the one host (G140-6, register
+// DB-3; cloud-e2e redis standalone probe, 1 of 1). evo sent 0, and no
+// STANDALONE cluster could be made through it.
+func redisAPIReplicas(rtype string, replicas int) int {
+	if rtype == redisStandalone {
+		return replicas + 1
+	}
+	return replicas
 }
 
 // Redis cluster types of the API (openapi-redis.yaml, type).

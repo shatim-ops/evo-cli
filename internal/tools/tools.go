@@ -744,7 +744,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Refuses a name an existing cluster has (redis_list). Resolves version (latest), subnet (as kafka_create) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram; none matching is a USAGE error with the list). type MASTER_REPLICA (default: a master and two replicas per shard, all in the subnet's zone — Single-AZ; the API has rejected STANDALONE). replicas here is the replicas WITHOUT the master (the create request's field, 2); redis_get/redis_list report replicas as hosts per shard, the master included (3). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
+			Description: "Create a Managed Redis cluster. Refuses a name an existing cluster has (redis_list). Resolves version (latest), subnet (as kafka_create) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram; none matching is a USAGE error with the list). type MASTER_REPLICA (default: a master and two replicas per shard, all in the subnet's zone — Single-AZ) or STANDALONE (one host per shard). replicas here is the replicas WITHOUT the master (the create request's field, 2); redis_get/redis_list report replicas as hosts per shard, the master included (3). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name. Required."),
 				"version_id":       strProp("Redis version UUID (from redis_versions). Optional; default = latest."),
@@ -753,8 +753,8 @@ func (s *Registry) registerTools() {
 				"ram":              intProp("RAM GB — with cpu."),
 				"storage_gb":       atLeast(1, intProp("Disk size GB. Optional; default = spec minimum.")),
 				"shards":           intProp("Shard count 1-8 (default 1)."),
-				"replicas":         intProp("Replicas per shard WITHOUT the master — the create request's replicas field. MASTER_REPLICA takes 2 (the default: a master and two replicas, 3 hosts — what redis_get then reports as replicas); STANDALONE takes 0."),
-				"type":             enumProp("MASTER_REPLICA (default) or STANDALONE (rejected by the API so far).", "MASTER_REPLICA", "STANDALONE"),
+				"replicas":         intProp("Replicas per shard WITHOUT the master — the create request's replicas field. MASTER_REPLICA takes 2 (the default: a master and two replicas, 3 hosts — what redis_get then reports as replicas); STANDALONE takes 0 (one host; redis_get reports replicas 1)."),
+				"type":             enumProp("MASTER_REPLICA (default) or STANDALONE (one host per shard).", "MASTER_REPLICA", "STANDALONE"),
 				"subnet_id":        strProp("Subnet UUID (from list_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
 				"description":      strProp("Optional description."),
 				"confirmed":        confirmedProp(),
