@@ -559,23 +559,20 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 	if err != nil {
 		return nil, err
 	}
-	// The group list carries no rules: read them, as deploy does.
-	existing := map[string]bool{}
-	if rules, e := eng.Cloud.ListSecurityGroupRules(ctx, target.ID); e == nil {
-		for _, r := range rules {
-			// Keyed by protocol too: an open tcp port is not an open udp
-			// one (release audit, L-25).
-			if r.Direction == "ingress" && r.PortRange != "" {
-				existing[r.IPProtocol+" "+r.PortRange] = true
-			}
-		}
-	}
-	willOpen, alreadyOpen := []string{}, []string{}
+	// The group list carries no rules: read them, as deploy does. A port
+	// is open already when a rule lets it in from cidr or wider, of the
+	// protocol (release audit, L-25) — one rule with deploy (D52).
+	rules, _ := eng.Cloud.ListSecurityGroupRules(ctx, target.ID)
+	willOpen, alreadyOpen, wider := []string{}, []string{}, []string{}
 	for _, p := range ports {
-		if existing[fmt.Sprintf("%s %d:%d", proto, p, p)] {
-			alreadyOpen = append(alreadyOpen, strconv.Itoa(p))
-		} else {
+		switch covered, w := sgrules.Coverage(rules, proto, p, cidr); {
+		case !covered:
 			willOpen = append(willOpen, strconv.Itoa(p))
+		case w:
+			wider = append(wider, strconv.Itoa(p))
+			fallthrough
+		default:
+			alreadyOpen = append(alreadyOpen, strconv.Itoa(p))
 		}
 	}
 	preview := map[string]any{
@@ -588,17 +585,26 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 		"will_open":      willOpen,
 		"already_open":   alreadyOpen,
 	}
+	if len(wider) > 0 {
+		// Open by a rule wider than asked (a range, any protocol, a wider
+		// source): said, and no second rule made.
+		preview["already_open_wider"] = wider
+	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 
-		var opened, skipped, failed []string
+		var opened, skipped, skippedWider, failed []string
 		// Why each port failed: the answer said status ok with failed ports and
 		// no reason, exit 0, when every rule was refused (QA 20.10, QA-3).
 		failures := map[string]string{}
 		var firstErr error
+		openedHere := map[int]bool{}
 		for _, p := range ports {
 			pr := fmt.Sprintf("%d:%d", p, p)
-			if existing[proto+" "+pr] {
+			if covered, wider := sgrules.Coverage(rules, proto, p, cidr); covered || openedHere[p] {
 				skipped = append(skipped, strconv.Itoa(p))
+				if wider {
+					skippedWider = append(skippedWider, strconv.Itoa(p))
+				}
 				continue
 			}
 			rule := provision.SGRule{
@@ -618,7 +624,7 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 			} else {
 				opened = append(opened, strconv.Itoa(p))
 				// Open now: the port is not opened a second time (R4-19).
-				existing[proto+" "+pr] = true
+				openedHere[p] = true
 			}
 		}
 		res := map[string]any{
@@ -629,6 +635,10 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 			"opened":         opened,
 			"already_open":   skipped,
 			"failed":         failed,
+		}
+		if len(skippedWider) > 0 {
+			// As the preview said it (already_open_wider).
+			res["already_open_wider"] = skippedWider
 		}
 		if firstErr == nil {
 			return toJSON(res), false

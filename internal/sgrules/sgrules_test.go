@@ -326,6 +326,37 @@ func (*fakeCloud) PriceCalculation(context.Context, string, provision.PriceCalcu
 // получен, превью и план показывают оценку по карте, как раньше.
 var errNoPriceAPI = stderrors.New("price-calculation: not in this fake")
 
+// D52 (FB15-16): one answer to «does a rule there let proto/port in from
+// cidr» for deploy and open_ports: an active ingress rule of the protocol
+// (or any) whose range holds the port and whose source is the same or
+// wider. A rule whose answer names no source counts as before (no field —
+// as before).
+func TestCoverage(t *testing.T) {
+	rule := func(proto, rng, src string) *provision.SGRule {
+		return &provision.SGRule{Direction: "ingress", IPProtocol: proto, PortRange: rng, RemoteIPPrefix: src}
+	}
+	for name, c := range map[string]struct {
+		r              *provision.SGRule
+		cidr           string
+		covered, wider bool
+	}{
+		"same":                 {rule("tcp", "80:80", "0.0.0.0/0"), "0.0.0.0/0", true, false},
+		"narrower source":      {rule("tcp", "80:80", "10.0.0.0/8"), "0.0.0.0/0", false, false},
+		"wider source":         {rule("tcp", "80:80", "0.0.0.0/0"), "10.0.0.0/8", true, true},
+		"range holds the port": {rule("tcp", "1:65535", "0.0.0.0/0"), "0.0.0.0/0", true, true},
+		"any protocol":         {rule("any", "80:80", "0.0.0.0/0"), "0.0.0.0/0", true, true},
+		"other protocol":       {rule("udp", "80:80", "0.0.0.0/0"), "0.0.0.0/0", false, false},
+		"no source prefix":     {rule("tcp", "80:80", ""), "0.0.0.0/0", true, false},
+		"egress":               {&provision.SGRule{Direction: "egress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0"}, "0.0.0.0/0", false, false},
+		"being deleted":        {&provision.SGRule{Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0", State: "deleting"}, "0.0.0.0/0", false, false},
+	} {
+		covered, wider := Coverage([]*provision.SGRule{c.r}, "tcp", 80, c.cidr)
+		if covered != c.covered || wider != c.wider {
+			t.Errorf("%s: covered=%v wider=%v, want %v %v", name, covered, wider, c.covered, c.wider)
+		}
+	}
+}
+
 // What the skills say of a deploy (skills/evo-deploy, G130-29; С9 proof):
 // a port of the compose file opens for any address — 0.0.0.0/0, ingress —
 // in the group it is given, the VM's group, which every VM in it shares.

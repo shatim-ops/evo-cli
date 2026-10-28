@@ -18,6 +18,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -92,6 +93,68 @@ type OpenResult struct {
 // inactive rule states: such a rule does not (or soon will not) open a port.
 var inactive = map[string]bool{"deleting": true, "error": true, "error_creating": true, "error_deleting": true}
 
+// Coverage reports whether a rule of rules already lets proto/port in from
+// cidr, and whether it does so wider than asked (a range around the port,
+// any protocol, a wider source) — one answer for deploy (Open) and
+// open_ports, before the question and after it (D52, FB15-16). A rule
+// counts when it is an active ingress rule of the protocol or of any,
+// its range holds the port, and its source prefix holds cidr. A rule whose
+// answer names no source prefix counts as before D52: what the API sends
+// for «from anywhere» is not verified live, and a second rule for every
+// port of every deploy would cost more than the gap (no field — as before).
+func Coverage(rules []*provision.SGRule, proto string, port int, cidr string) (covered, wider bool) {
+	want, err := netip.ParsePrefix(cidr)
+	if err != nil {
+		// A bare address is the prefix of that one address.
+		a, aerr := netip.ParseAddr(cidr)
+		if aerr != nil {
+			return false, false
+		}
+		want = netip.PrefixFrom(a, a.BitLen())
+	}
+	exact := fmt.Sprintf("%d:%d", port, port)
+	for _, r := range rules {
+		if r == nil || r.Direction != "ingress" || inactive[r.State] {
+			continue
+		}
+		rp := strings.ToLower(r.IPProtocol)
+		if rp != proto && rp != "" && rp != "any" {
+			continue
+		}
+		lo, hi, ok := portRange(r.PortRange)
+		if !ok || port < lo || port > hi {
+			continue
+		}
+		sameSource := r.RemoteIPPrefix == ""
+		if !sameSource {
+			src, err := netip.ParsePrefix(r.RemoteIPPrefix)
+			if err != nil || src.Bits() > want.Bits() || !src.Contains(want.Addr()) {
+				continue
+			}
+			sameSource = src.Bits() == want.Bits()
+		}
+		if rp == proto && r.PortRange == exact && sameSource {
+			return true, false
+		}
+		covered, wider = true, true
+	}
+	return covered, wider
+}
+
+// portRange reads a rule's "from:to" (or one port).
+func portRange(s string) (lo, hi int, ok bool) {
+	a, b, found := strings.Cut(s, ":")
+	if !found {
+		b = a
+	}
+	lo, err1 := strconv.Atoi(strings.TrimSpace(a))
+	hi, err2 := strconv.Atoi(strings.TrimSpace(b))
+	return lo, hi, err1 == nil && err2 == nil && lo <= hi
+}
+
+// anywhere is the source deploy opens its ports to.
+const anywhere = "0.0.0.0/0"
+
 // Open adds an ingress rule from 0.0.0.0/0 to group sgID for each tcp and
 // udp port that no rule opens yet. rec gets the group, the ports it needs,
 // and the rules created here; rules that were already there are not
@@ -108,24 +171,14 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 		return res
 	}
 
-	// Keyed by protocol and range: a udp rule on 53 does not open tcp 53. A
-	// rule without a protocol (or "any") covers both.
-	existing := map[string]bool{}
+	// A port is open already when a rule lets it in from anywhere
+	// (Coverage); one opened here is not opened a second time.
 	before := map[string]bool{}
 	rules, listErr := cloud.ListSecurityGroupRules(ctx, sgID)
 	for _, r := range rules {
 		before[r.ID] = true
-		if r.Direction != "ingress" || r.PortRange == "" || inactive[r.State] {
-			continue
-		}
-		switch proto := strings.ToLower(r.IPProtocol); proto {
-		case "", "any":
-			existing["tcp "+r.PortRange] = true
-			existing["udp "+r.PortRange] = true
-		default:
-			existing[proto+" "+r.PortRange] = true
-		}
 	}
+	openedHere := map[string]bool{}
 
 	// errored: the create failed without a refusal (lost answer, 5xx): the
 	// rule may exist, and is adopted if the listing shows it (QA r3 R6).
@@ -143,20 +196,20 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 			addPort(rec, key)
 			pr := fmt.Sprintf("%d:%d", p, p)
 			label := Label(key)
-			if existing[set.proto+" "+pr] {
+			if covered, _ := Coverage(rules, set.proto, p, anywhere); covered || openedHere[key] {
 				res.AlreadyOpen = append(res.AlreadyOpen, label)
 				if !ownsPort(rec, key) {
 					addKey(&rec.PortsAlreadyOpen, key)
 				}
 				continue
 			}
-			existing[set.proto+" "+pr] = true
+			openedHere[key] = true
 			rule := provision.SGRule{
 				Direction:      "ingress",
 				EtherType:      "IPv4",
 				IPProtocol:     set.proto,
 				PortRange:      pr,
-				RemoteIPPrefix: "0.0.0.0/0",
+				RemoteIPPrefix: anywhere,
 				Description:    describe(label),
 			}
 			created, err := cloud.AddSecurityGroupRule(ctx, sgID, projectID, rule)
