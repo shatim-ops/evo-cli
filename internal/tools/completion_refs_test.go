@@ -12,9 +12,10 @@ import (
 )
 
 // refArg is an argument that names a resource or an entry of a catalogue:
-// an id, or one of the names valueRefs completes, or the key of an
-// object. A name of a new resource ("name") is not one.
-var refArg = regexp.MustCompile(`(_id|_ids)$|^(region|zone|flavor|image|bucket|path|key|cluster|registry|repository|secret)$`)
+// an id (_id or _ids at the end or before another word: none in the
+// middle today, Qwen on #483), or one of the names valueRefs completes, or
+// the key of an object. A name of a new resource ("name") is not one.
+var refArg = regexp.MustCompile(`_ids?(_|$)|^(region|zone|flavor|image|bucket|path|key|cluster|registry|repository|secret)$`)
 
 // Why a reference is not completed, when it is not.
 const (
@@ -136,5 +137,19 @@ func TestComplete_WritesNoJournal(t *testing.T) {
 	tl.Handler(context.Background(), map[string]any{})
 	if recs := journalRecords(t); len(recs) != 1 {
 		t.Errorf("a call of list_zones: %d records, want 1 — the journal is not on in this test", len(recs))
+	}
+}
+
+// refArg takes an id wherever _id ends a word of the name, and nothing
+// that only begins with "id" (Qwen on #494: the wider match is the point).
+func TestRefArg_IDsAnywhereInTheName(t *testing.T) {
+	for arg, want := range map[string]bool{
+		"vm_id": true, "subnet_ids": true, "next_hop_vip_id": true,
+		"source_id_list": true, "vm_ids_extra": true,
+		"zone": true, "name": false, "provider_identity": false, "idle_timeout": false, "vm_idx": false,
+	} {
+		if got := refArg.MatchString(arg); got != want {
+			t.Errorf("refArg(%q) = %v, want %v", arg, got, want)
+		}
 	}
 }

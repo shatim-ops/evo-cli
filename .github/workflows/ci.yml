@@ -162,6 +162,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/qwen_review_scope_test.sh
 
+      # Сбой рантайма Go на Windows (#493): сигнатуры случаев CI узнаются,
+      # падение теста и стек через internal/config — нет.
+      - name: go_runtime_crash.sh на образцах вывода go test
+        if: runner.os == 'Linux'
+        run: .github/scripts/go_runtime_crash_test.sh
+
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
         if: runner.os == 'Linux'

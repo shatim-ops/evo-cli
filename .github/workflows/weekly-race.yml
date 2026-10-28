@@ -20,12 +20,20 @@ on:
         description: "Только проба GC на Windows (матрица осей, tools)"
         type: boolean
         default: false
+      # Строка плана 1.5 «Падение рантайма Go на Windows» (#493): вариант
+      # команды go test job Windows ci.yml, много прогонов — только job
+      # ci-probe ниже.
+      windows_ci_probe:
+        description: "Только проба варианта CI на Windows (ci-probe-loop.sh)"
+        type: choice
+        options: [none, together, split, norace]
+        default: none
 
 permissions: {}
 
 jobs:
   race:
-    if: github.ref == 'refs/heads/main' && !inputs.windows_gc_probe
+    if: github.ref == 'refs/heads/main' && !inputs.windows_gc_probe && (inputs.windows_ci_probe || 'none') == 'none'
     strategy:
       fail-fast: false
       matrix:
@@ -115,6 +123,45 @@ jobs:
         shell: bash
         run: bash .github/scripts/gc-probe-matrix.sh ./internal/tools/
         env:
+          GOTOOLCHAIN: local
+
+  # Сбой рантайма Go на Windows бывает только под нагрузкой CI: 14 из 828
+  # попыток test (windows-latest) 22–28.10, все в internal/tools, а
+  # gc-probe (tools один) — 0 из 192. ci-probe гоняет вариант команды CI
+  # целиком: шесть job по 50 прогонов, не больше шести сразу — раннеры
+  # остальных сессий не занимаются все. Итог — строка и таблица сбоев в
+  # сводке каждого job. Запуск — вручную, с любой ветки: секретов и записи
+  # нет.
+  ci-probe:
+    if: github.event_name == 'workflow_dispatch' && (inputs.windows_ci_probe || 'none') != 'none'
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    runs-on: windows-latest
+    # 50 прогонов по ~3,5 мин.
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    steps:
+      - name: git без перевода строк
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Та же версия, что в ci.yml.
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+
+      - name: 50 прогонов варианта
+        shell: bash
+        run: bash .github/scripts/ci-probe-loop.sh "$ARM" 50
+        env:
+          ARM: ${{ inputs.windows_ci_probe }}
           GOTOOLCHAIN: local
 
   # Красное — в issue (weekly-issue.yml).
