@@ -48,33 +48,33 @@ var writeRules = map[string]struct{ world, why, item string }{
 	"DELETE /api/v1/vms/{vm_id} 404": {why: ruleAbsentID},
 	// A VM in creating (CMP-7): destroy reads the VM for its preview, and
 	// asks for consent before it meets the refusal.
-	"DELETE /api/v1/vms/{vm_id} 409": {why: ruleGap, item: "release plan 1.5, worlds of 4xx: a VM still being created"},
-	"DELETE /api/v1/vms/{vm_id} 422": {why: ruleGap, item: "release plan 1.5, worlds of 4xx: a VM still being created"},
+	"DELETE /api/v1/vms/{vm_id} 409": {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
+	"DELETE /api/v1/vms/{vm_id} 422": {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 
-	"POST /api/v1/images 409":                          {why: ruleGap, item: "release plan 1.5, worlds of 4xx: an image name taken"},
-	"POST /api/v1/images 422":                          {why: ruleGap, item: "release plan 1.5, worlds of 4xx: the rule of the spec's 422, to find"},
+	"POST /api/v1/images 409":                          {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
+	"POST /api/v1/images 422":                          {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"DELETE /api/v1/images/{image_id} 404":             {why: ruleAbsentID},
-	"POST /api/v1/floating-ips 422":                    {why: ruleGap, item: "release plan 1.5, worlds of 4xx: the rule of the spec's 422, to find"},
+	"POST /api/v1/floating-ips 422":                    {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"PUT /api/v1/floating-ips/{floating_ip_id} 404":    {why: ruleAbsentID},
 	"PUT /api/v1/floating-ips/{floating_ip_id} 422":    {world: "floating IP in use"},
 	"DELETE /api/v1/floating-ips/{floating_ip_id} 404": {why: ruleAbsentID},
 	// error_deleting (NET-7): readable before the question.
-	"DELETE /api/v1/floating-ips/{floating_ip_id} 422": {why: ruleGap, item: "release plan 1.5, worlds of 4xx: a floating IP in error_deleting"},
+	"DELETE /api/v1/floating-ips/{floating_ip_id} 422": {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 
 	"DELETE /api/v1/security-groups/{security_group_id}/rules/{security_group_rule_id} 404": {why: ruleAbsentID},
 
-	"POST /api/v1/disks 409":                  {why: ruleGap, item: "release plan 1.5, worlds of 4xx: a disk name taken"},
-	"POST /api/v1/disks 422":                  {why: ruleGap, item: "release plan 1.5, worlds of 4xx: the rule of the spec's 422, to find"},
+	"POST /api/v1/disks 409":                  {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
+	"POST /api/v1/disks 422":                  {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"POST /api/v1/disks/{disk_id}/attach 404": {why: ruleAbsentID},
 	// «Disk has no openstack_id» (CMP-15): disk_attach waits for the disk.
 	"POST /api/v1/disks/{disk_id}/attach 422": {why: ruleWaited},
 	"POST /api/v1/disks/{disk_id}/detach 404": {why: ruleAbsentID},
-	"POST /api/v1/disks/{disk_id}/detach 422": {why: ruleGap, item: "release plan 1.5, worlds of 4xx: a disk not attached to the VM"},
+	"POST /api/v1/disks/{disk_id}/detach 422": {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"PUT /api/v1/disks/{disk_id} 404":         {why: ruleAbsentID},
 	"PUT /api/v1/disks/{disk_id} 422":         {world: "disk larger than requested"},
 	"DELETE /api/v1/disks/{disk_id} 404":      {why: ruleAbsentID},
 
-	"POST /api/v1/nat-gateways 422":                    {why: ruleGap, item: "release plan 1.5, worlds of 4xx: the rule of the spec's 422, to find"},
+	"POST /api/v1/nat-gateways 422":                    {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"DELETE /api/v1/nat-gateways/{nat_gateway_id} 404": {why: ruleAbsentID},
 
 	"POST /api/v1/projects/{project_id}/price-calculation 422": {why: ruleRead},
