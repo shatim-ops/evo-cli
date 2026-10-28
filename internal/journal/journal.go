@@ -131,15 +131,24 @@ func Write(r Record) {
 	_ = appendRecord(r)
 }
 
-// lockWait bounds the wait for another process writing a record.
-var lockWait = 2 * time.Second
+// writeWait bounds the wait of Write for another process holding the
+// journal: a writer of one record holds it for well under this, an export
+// or a status (Describe) for longer, and then this record is lost rather
+// than the answer held up — Write runs before the call answers (D46: the
+// journal never changes a call; it waited two seconds before 1.4.1).
+// readWait is the wait of evo diag status and export, which a person runs
+// and which answer nothing else.
+var (
+	writeWait = 100 * time.Millisecond
+	readWait  = 2 * time.Second
+)
 
 func appendRecord(r Record) error {
 	path := Path()
 	if path == "" {
 		return config.NoConfigDir()
 	}
-	unlock, err := lock(filepath.Dir(path))
+	unlock, err := lock(filepath.Dir(path), writeWait)
 	if err != nil {
 		return err
 	}
@@ -187,9 +196,9 @@ func endsFull(path string, size int64) (bool, error) {
 	return bytes.Contains(tail, []byte(`"event":"`+EventFull+`"`)), nil
 }
 
-// lock takes the OS lock of the journal in dir, waiting for another writer
-// (a CLI call beside an MCP server) a little.
-func lock(dir string) (unlock func(), err error) {
+// lock takes the OS lock of the journal in dir, waiting up to wait for
+// another process holding it (a CLI call beside an MCP server).
+func lock(dir string, wait time.Duration) (unlock func(), err error) {
 	if err := config.MkdirPrivate(dir); err != nil {
 		return nil, err
 	}
@@ -197,7 +206,7 @@ func lock(dir string) (unlock func(), err error) {
 	if err != nil {
 		return nil, err
 	}
-	deadline := time.Now().Add(lockWait)
+	deadline := time.Now().Add(wait)
 	for {
 		err := config.LockFile(f)
 		if err == nil {
@@ -231,7 +240,7 @@ func Describe() (Summary, error) {
 	if Path() == "" {
 		return Summary{Path: "", Limit: Limit}, config.NoConfigDir()
 	}
-	unlock, err := lock(filepath.Dir(Path()))
+	unlock, err := lock(filepath.Dir(Path()), readWait)
 	if err != nil {
 		return Summary{Path: Path(), Limit: Limit}, err
 	}
@@ -282,7 +291,7 @@ func Export(dst string) (Summary, error) {
 	if Path() == "" {
 		return Summary{}, config.NoConfigDir()
 	}
-	unlock, err := lock(filepath.Dir(Path()))
+	unlock, err := lock(filepath.Dir(Path()), readWait)
 	if err != nil {
 		return Summary{}, err
 	}
