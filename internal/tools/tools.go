@@ -242,8 +242,15 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "list_flavors",
-			Description: "List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each. Use a flavor name as the 'flavor' argument for deploy_plan in manual mode.",
-			InputSchema: objSchema(nil),
+			Description: "List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each, and what the catalogue says beyond the size: cpu_share (the guaranteed share of a vCPU: 1:10 is 10% of a core), gpu, spot (interruptible), zones (where a VM can be created). A key the catalogue does not send is left out. The filters keep only the flavors whose catalogue entry says so. Use a flavor name as the 'flavor' argument for deploy_plan in manual mode.",
+			InputSchema: objSchema(map[string]any{
+				"cpu":   atLeast(1, intProp("Only flavors with this many vCPUs.")),
+				"ram":   atLeast(1, intProp("Only flavors with this much RAM, GB.")),
+				"share": strProp("Only flavors with this guaranteed share of a vCPU, as the catalogue writes it: 1:1, 1:3, 1:10."),
+				"zone":  strProp("Only flavors a VM can be created with in this zone (a name of list_zones)."),
+				"gpu":   boolProp("true: only flavors with a GPU; false: only flavors without one."),
+				"spot":  boolProp("true: only spot (interruptible) flavors; false: only the others."),
+			}),
 		},
 		{
 			Name:        "list_disk_types",

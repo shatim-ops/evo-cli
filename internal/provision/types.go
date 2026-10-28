@@ -257,6 +257,47 @@ type Flavor struct {
 	RAMGB    int    `json:"ram"`
 	DiskGB   int    `json:"disk_gb,omitempty"`
 	FreeTier bool   `json:"free_tier"`
+	// GPU, Share and the rest are what FlavorSchema says beyond the size
+	// (release plan 1.5, С5; FB15-1, FB15-3): the guaranteed share of a
+	// vCPU as the API writes it ("1:10" — 10 % of a core), the GPUs, the
+	// type (spot), the zones. Empty when the answer does not carry them:
+	// evo claims nothing it was not told.
+	GPU   *int         `json:"gpu,omitempty"`
+	Share string       `json:"oversubscription,omitempty"`
+	Type  *FlavorType  `json:"flavor_type,omitempty"`
+	Zones []FlavorZone `json:"availability_zones,omitempty"`
+}
+
+// FlavorType is the part of FlavorTypeSchema evo reads.
+type FlavorType struct {
+	IsSpot bool `json:"is_spot"`
+}
+
+// FlavorZone is a zone of a flavor (AvailabilityZoneFlavorSchema).
+type FlavorZone struct {
+	ID        string `json:"availability_zone_id"`
+	Name      string `json:"availability_zone_name"`
+	Enabled   bool   `json:"enabled"`
+	Available bool   `json:"available"`
+}
+
+// Spot reports whether the flavor's type makes interruptible VMs.
+func (f *Flavor) Spot() bool { return f.Type != nil && f.Type.IsSpot }
+
+// ZoneNames are the zones a VM of the flavor can be created in: enabled
+// and available; empty when it names zones and none is, nil when the
+// answer names no zones.
+func (f *Flavor) ZoneNames() []string {
+	if f.Zones == nil {
+		return nil
+	}
+	out := []string{}
+	for _, z := range f.Zones {
+		if z.Enabled && z.Available {
+			out = append(out, z.Name)
+		}
+	}
+	return out
 }
 
 // Image types of the catalogue (GET /api/v1/images?type=…).

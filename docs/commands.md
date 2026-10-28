@@ -8960,7 +8960,7 @@ evo vm [flags]
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo vm create](#evo-vm-create)	 - Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip)
 * [evo vm delete](#evo-vm-delete)	 - Удалить ВМ и все данные на ней (безвозвратно)
-* [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цены за месяц
+* [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц
 * [evo vm get](#evo-vm-get)	 - ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы
 * [evo vm list](#evo-vm-list)	 - Список ВМ проекта: id, имя, состояние, зона, время создания
 * [evo vm zones](#evo-vm-zones)	 - Зоны доступности (UUID и имя)
@@ -9092,14 +9092,14 @@ evo vm delete <vm-id|name> [flags]
 
 ## evo vm flavors
 
-Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цены за месяц
+Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц
 
 ### Synopsis
 
 ```text
-Flavor ВМ: vCPU, RAM, бесплатный уровень, оценка цены за месяц.
+Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц.
 
-Flavor ВМ: имя, vCPU, RAM, признак бесплатного уровня и оценка цены за месяц. Имя flavor передаётся в --flavor команд 'evo vm create' и 'evo deploy'. Только чтение.
+Flavor ВМ: имя, vCPU, RAM, признак бесплатного уровня и оценка цены за месяц, а также то, что каталог говорит сверх размера: cpu_share — гарантированная доля vCPU (1:10 — 10 % ядра), gpu, spot (прерываемая ВМ), zones — зоны, где ВМ можно создать. Поля, которых каталог не прислал, не выводятся. Фильтры оставляют только flavor, о которых каталог говорит это. Имя flavor передаётся в --flavor команд 'evo vm create' и 'evo deploy'. Только чтение.
 
 Вызывает инструмент list_flavors (подробнее: 'evo tools describe list_flavors').
 ```
@@ -9111,7 +9111,13 @@ evo vm flavors [flags]
 ### Options
 
 ```
-  -h, --help   Справка по flavors
+      --cpu int        Только flavor с таким числом vCPU
+      --gpu            true — только flavor с GPU, false — только без GPU
+  -h, --help           Справка по flavors
+      --ram int        Только flavor с таким объёмом RAM, ГБ
+      --share string   Только flavor с такой гарантированной долей vCPU, как её пишет каталог: 1:1, 1:3, 1:10
+      --spot           true — только прерываемые (spot) flavor, false — только остальные
+      --zone string    Только flavor, с которыми ВМ можно создать в этой зоне (имя из evo vm zones)
 ```
 
 ### Options inherited from parent commands

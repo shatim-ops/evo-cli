@@ -454,7 +454,7 @@ func TestRenderAnswer_RussianTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(buf.String(), "\n")
-	if h := strings.Join(strings.Fields(lines[0]), " "); h != "Имя vCPU RAM, ГБ ≈ руб./мес Бесплатный уровень" {
+	if h := strings.Join(strings.Fields(lines[0]), " "); h != "Имя vCPU Доля vCPU RAM, ГБ GPU Spot ≈ руб./мес Бесплатный уровень" {
 		t.Errorf("header: %q", h)
 	}
 	if r := strings.Fields(lines[1]); strings.Join(r, " ") != "gen-1-1 1 1 512.3 нет" {

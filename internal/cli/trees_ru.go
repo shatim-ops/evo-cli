@@ -152,6 +152,8 @@ var columnHeaderRU = map[string]string{
 	"vcpus":           "vCPU",
 	"ram_gb":          "RAM, ГБ",
 	"est_monthly_rub": "≈ руб./мес",
+	"cpu_share":       "Доля vCPU",
+	"spot":            "Spot",
 	"free_tier":       "Бесплатный уровень",
 	"size_gb":         "Размер, ГБ",
 	"disk_type":       "Тип",

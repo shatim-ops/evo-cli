@@ -75,7 +75,7 @@ var cliSpecs = map[string]CLISpec{
 	"provision":    {Group: "vm", Verb: "create", Args: []string{"name"}, Rename: map[string]string{"image_metadata": "meta", "ports": "port"}, Pairs: map[string]bool{"image_metadata": true}, Render: "vm-created"},
 	"destroy":      {Group: "vm", Verb: "delete", Args: []string{"vm_id|name"}},
 	"list_zones":   {Group: "vm", Verb: "zones"},
-	"list_flavors": {Group: "vm", Verb: "flavors", Columns: []string{"name", "vcpus", "ram_gb", "est_monthly_rub", "free_tier"}},
+	"list_flavors": {Group: "vm", Verb: "flavors", Columns: []string{"name", "vcpus", "cpu_share", "ram_gb", "gpu", "spot", "est_monthly_rub", "free_tier"}},
 
 	// image
 	"image_list": {Group: "image", Verb: "list", Args: []string{"query?"}, Render: "image-list"},
