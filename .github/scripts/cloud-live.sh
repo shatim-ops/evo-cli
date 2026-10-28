@@ -473,9 +473,14 @@ area_disk() {
 		row "disk_resize подключённого" отказ "state $st: код $rc, $reason: $(printf '%s' "$why" | grep -oE '"code":"[a-z_]+"' | head -1)"
 	fi
 
+	# После resize диск снова в переходном состоянии (extending): detach в
+	# нём — 422 disk_can_not_be_detached_from_current_state (cloud-e2e
+	# кандидата 1.5, run 142, #521). Ждём то же, что перед resize.
+	poll 300 10 settled || true
+	ok "состояние перед disk_detach" "$st"
 	must disk_detach disk_detach --arg disk_id="$data" --arg vm="$vm" || return 1
 	if poll 180 10 disk_has '.disks[] | select(.id == $id) | ((.attached_to // []) | length) == 0 and .state == "available"'; then
-		ok disk_detach "available"
+		ok disk_detach "available (до detach: $st)"
 		cov disk_detach
 	else bad disk_detach "за 3 мин не available"; fi
 
