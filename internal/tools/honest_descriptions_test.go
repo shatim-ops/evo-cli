@@ -7,6 +7,7 @@ package tools
 import (
 	"strings"
 	"testing"
+	"unicode"
 )
 
 // Fable audit 1.5 (release plan 1.5, С8): a description promises what the
@@ -35,25 +36,34 @@ func TestDescriptions_SayWhatIsBuilt(t *testing.T) {
 		return en, tl.DescriptionRU + ru
 	}
 	for _, c := range []struct {
-		tool        string
-		want, never []string // lower case, in English and Russian
+		tool string
+		// want and never are lower case; a word in Cyrillic is looked for
+		// in the Russian text, any other in the English one, so each
+		// language says it by itself.
+		want, never []string
 	}{
-		{"cert_issue_le", []string{"tls", "vm", "вм"}, []string{"bind to the lb listener", "привязка к обработчику балансировщика"}},
+		{"cert_issue_le", []string{"tls", "vm", "вм", "tls-сертификат"}, []string{"bind to the lb listener", "привязка к обработчику балансировщика"}},
 		{"cert_list", []string{"vm", "вм"}, []string{"https load balancer", "https-балансировщика"}},
-		{"lb_create", []string{"l4 tcp", "tls", "vm", "вм"}, nil},
+		{"lb_create", []string{"l4 tcp", "tls", "vm", "вм", "tls не завершает"}, nil},
 		{"vpc_create", []string{"subnet", "подсет"}, nil},
 		{"redis_create", []string{"three billed hosts", "три платных узла"}, nil},
 		{"ca_deploy", []string{"billed", "оплачива"}, nil},
 	} {
 		en, ru := text(c.tool)
-		both := strings.ToLower(en + " " + ru)
+		en, ru = strings.ToLower(en), strings.ToLower(ru)
+		in := func(w string) string {
+			if strings.ContainsFunc(w, func(r rune) bool { return unicode.Is(unicode.Cyrillic, r) }) {
+				return ru
+			}
+			return en
+		}
 		for _, w := range c.want {
-			if !strings.Contains(both, w) {
+			if !strings.Contains(in(w), w) {
 				t.Errorf("%s: the description does not say %q", c.tool, w)
 			}
 		}
 		for _, w := range c.never {
-			if strings.Contains(both, w) {
+			if strings.Contains(in(w), w) {
 				t.Errorf("%s: the description promises %q, which the product does not do", c.tool, w)
 			}
 		}
