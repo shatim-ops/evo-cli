@@ -19,7 +19,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -572,21 +571,21 @@ func withParityWorld(t *testing.T) parityWorld {
 			t.Errorf("parity world: no fixture for %s — add it to the fixtures, parityAnswers or, for a list that stays empty, parityEmptyLists", req)
 		}
 	})
-	jumpingClock(t)
+	stoppedClock(t)
 	return parityWorld{dir: home, rt: rt}
 }
 
-// jumpingClock moves clock.Now an hour, a minute and a second at each
-// reading: two calls the parity tests compare never see the same second,
-// minute or hour, so a value of the time that the comparison does not
-// mask (sameVolatile, roSame) differs every run, not once a minute
-// boundary falls between the calls under -race (TestReadOnly_EveryTool,
-// 1.2.2, #190).
-func jumpingClock(t *testing.T) {
-	var n atomic.Int64
-	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+// stoppedClock stops clock.Now at one moment for the whole test: two calls
+// the parity tests compare read the same time, so a value of the time in
+// an answer (a default name, the TTL of the token, a duration) is the same
+// in both, not masked, and a minute boundary between the calls under -race
+// changes nothing (TestReadOnly_EveryTool, 1.2.2, #190). The world of
+// internal/tools stops it the same way (TestJournal_AnswerSameOnOffAndBroken);
+// a value that still differs reads the wall clock (FB140-6).
+func stoppedClock(t *testing.T) {
+	stopped := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	old := clock.Now
-	clock.Now = func() time.Time { return base.Add(time.Duration(n.Add(1)) * (time.Hour + time.Minute + time.Second)) }
+	clock.Now = func() time.Time { return stopped }
 	t.Cleanup(func() { clock.Now = old })
 }
 

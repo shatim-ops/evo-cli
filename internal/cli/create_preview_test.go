@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -35,7 +36,7 @@ const (
 type previewToken struct{}
 
 func (previewToken) Token(context.Context) (auth.Token, error) {
-	return auth.Token{Value: "fake-token", ExpiresAt: time.Now().Add(time.Hour)}, nil
+	return auth.Token{Value: "fake-token", ExpiresAt: clock.Now().Add(time.Hour)}, nil
 }
 
 // previewCloud answers the reads of the previews; any other call (a create)
