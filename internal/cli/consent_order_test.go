@@ -73,6 +73,11 @@ var consentWorlds = map[string]consentWorld{
 	// fails (G130-02, D39).
 	"image not in the catalogue": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return noImageCloud{c} },
 		refusedBy: []string{"provision", "deploy"}},
+	// The flavor of the configuration is not in the catalogue: provision
+	// and deploy read the catalogue for the preview, so they know the call
+	// fails, as of the image (#469, #470).
+	"flavor not in the catalogue": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return noFlavorCloud{c} },
+		refusedBy: []string{"provision", "deploy"}},
 	// The path of secret_create is taken: the create's 4xx is a refusal,
 	// and the secret found by the path is not the call's (G130-15, D42).
 	"secret path taken": {answer: func(r *http.Request) *http.Response {
@@ -122,6 +127,14 @@ func (noImageCloud) ListImagesInProject(context.Context, string) ([]*provision.I
 
 func (noImageCloud) GetImage(_ context.Context, id string) (*provision.ImageDetail, error) {
 	return nil, clierrors.New(clierrors.CodeNotFound, "HTTP 404: image "+id+" not found", "")
+}
+
+// noFlavorCloud has one flavor, not the configuration's: its catalogue
+// answers, and the name asked for is not in it.
+type noFlavorCloud struct{ provision.CloudAPI }
+
+func (noFlavorCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
+	return []*provision.Flavor{{ID: consentOtherID, Name: "other-1-1", VCPUs: 1, RAMGB: 1}}, nil
 }
 
 // consentOtherID is a resource of the world the call did not make.
