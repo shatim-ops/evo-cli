@@ -111,6 +111,19 @@ func callEngineTool(cmd *cobra.Command, tool string, args map[string]any, c *too
 		return "", fmt.Errorf("no tool %s", tool)
 	}
 	text, isErr := t.Handler(tools.WithCaller(cmd.Context(), c), args)
+	if isErr {
+		// evo deploy at a terminal asks for the zone it lacks, as evo vm
+		// create does (askMissingZone), and runs again with it.
+		zone, ok, err := askMissingZone(cmd.Context(), cmd, text)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			args["region"] = zone
+			c.Err = nil
+			text, isErr = t.Handler(tools.WithCaller(cmd.Context(), c), args)
+		}
+	}
 	if !isErr {
 		return text, nil
 	}
