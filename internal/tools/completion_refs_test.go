@@ -139,3 +139,17 @@ func TestComplete_WritesNoJournal(t *testing.T) {
 		t.Errorf("a call of list_zones: %d records, want 1 — the journal is not on in this test", len(recs))
 	}
 }
+
+// refArg takes an id wherever _id ends a word of the name, and nothing
+// that only begins with "id" (Qwen on #494: the wider match is the point).
+func TestRefArg_IDsAnywhereInTheName(t *testing.T) {
+	for arg, want := range map[string]bool{
+		"vm_id": true, "subnet_ids": true, "next_hop_vip_id": true,
+		"source_id_list": true, "vm_ids_extra": true,
+		"zone": true, "name": false, "provider_identity": false, "idle_timeout": false, "vm_idx": false,
+	} {
+		if got := refArg.MatchString(arg); got != want {
+			t.Errorf("refArg(%q) = %v, want %v", arg, got, want)
+		}
+	}
+}
