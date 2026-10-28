@@ -194,7 +194,8 @@ var stackJobID = regexp.MustCompile(`stk-[0-9a-f]{10}`)
 func sameJobID(s string) string { return stackJobID.ReplaceAllString(s, "stk-<id>") }
 
 // withEmptyCloud: a key and a project, a token without IAM, and every API
-// answering 200 with an empty list.
+// answering 200 with an empty list, on the stopped clock of the parity
+// worlds (stoppedClock).
 func withEmptyCloud(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
@@ -210,6 +211,7 @@ func withEmptyCloud(t *testing.T) {
 	old := toolEngine
 	toolEngine = emptyCloudEngine
 	t.Cleanup(func() { toolEngine = old })
+	stoppedClock(t)
 }
 
 func emptyCloudEngine(o map[string]any) (*engine.Engine, error) {
@@ -480,5 +482,27 @@ func TestTreeArgs_ProjectIDFilter(t *testing.T) {
 				t.Errorf("evo %s: the root --project-id is set too (%q)", strings.Join(argv, " "), flagProjectID)
 			}
 		}
+	}
+}
+
+// The empty cloud is a parity world too: its token's TTL is the same in
+// every process, so the clock is stopped as in the others. On a moving
+// clock the TTL of the token (ExpiresAt − now, two readings) was 3599 on
+// Linux and 3600 or 3599 on Windows, whose timer moves in ticks of about
+// 15.6 ms — evo whoami --json ≠ evo tools call whoami on #490; doctor
+// says the same TTL in its credentials check ("valid for 59m0s").
+func TestParityWorld_EmptyCloudTokenTTLIsExact(t *testing.T) {
+	withEmptyCloud(t)
+	_, out, errOut := runCLI(t, "", "whoami", "--json")
+	var m map[string]any
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatalf("whoami --json: %v\n%s\n%s", err, out, errOut)
+	}
+	if ttl, _ := m["token_ttl_seconds"].(float64); ttl != 3600 {
+		t.Errorf("whoami in the empty cloud: token_ttl_seconds = %v, want 3600 — the world's clock moves", m["token_ttl_seconds"])
+	}
+	_, out, errOut = runCLI(t, "", "tools", "call", "doctor", "--json")
+	if !strings.Contains(out, "valid for 1h0m0s") {
+		t.Errorf("doctor in the empty cloud: the token is not valid for exactly 1h — the world's clock moves\n%s\n%s", out, errOut)
 	}
 }
