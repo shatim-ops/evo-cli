@@ -687,7 +687,7 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 		text, isErr = t.Handler(ctx, confirmed)
 	}
 	if isErr {
-		return text, toolError(t.Name, text, hints)
+		return text, toolError(text, hints)
 	}
 	return text, nil
 }
@@ -799,11 +799,16 @@ type toolHints struct {
 	// how names a tool argument for a schema-rule hint: "--subnet-id" or
 	// the positional "id"; nil keeps the tool's hint.
 	how func(arg string) string
+	// prefix heads the message: the tool for 'evo tools call <tool>', which
+	// the person typed; "" for a command, whose error is in the words of
+	// the CLI, not of MCP (dogfood 28.10: "provision: no availability
+	// zone…" for evo vm create).
+	prefix string
 }
 
 // callHints are the hints of 'evo tools call <tool>'.
 func callHints(tool string) toolHints {
-	return toolHints{usage: argsHint("evo tools describe " + tool)}
+	return toolHints{usage: argsHint("evo tools describe " + tool), prefix: tool}
 }
 
 // commandHints are the hints of the command cmd; flag names its flag for a
@@ -909,7 +914,7 @@ func argumentHint(argument, format string, h toolHints) string {
 // answer is kept, unless the CLI names the input the call lacks in its own
 // terms (toolHints). An answer without a code gives 4 when it says
 // something was not found, and API_ERROR (5) otherwise.
-func toolError(name, text string, h toolHints) error {
+func toolError(text string, h toolHints) error {
 	msg := text
 	var reason, hint string
 	var details map[string]any
@@ -956,7 +961,10 @@ func toolError(name, text string, h toolHints) error {
 				"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET.")
 		}
 	}
-	ce := clerrors.New(code, name+": "+msg, hint)
+	if h.prefix != "" {
+		msg = h.prefix + ": " + msg
+	}
+	ce := clerrors.New(code, msg, hint)
 	ce.Details = details
 	return ce
 }

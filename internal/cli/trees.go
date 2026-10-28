@@ -410,7 +410,7 @@ func newTreeLeaf(c treeCmd, t tools.Tool) *cobra.Command {
 		// and positionals, not inputSchema (G130-35).
 		hints := treeCommandHints(cmd, c)
 		if err := tools.CheckArgs(t, callArgs); err != nil {
-			return toolError(t.Name, tools.ErrResult(err), hints)
+			return toolError(tools.ErrResult(err), hints)
 		}
 		text, err := invokeTool(cmd.Context(), cmd, t, callArgs, true, hints)
 		if flagJSON {
