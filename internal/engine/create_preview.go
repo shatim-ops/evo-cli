@@ -847,14 +847,20 @@ func paramLine(prm PreviewParam) string {
 	if v == "" {
 		return ""
 	}
-	l, ok := paramLabels[prm.Key]
-	if !ok {
-		return previewLabel(strings.ReplaceAll(prm.Key, "_", "-"), strings.ReplaceAll(prm.Key, "_", "-")) + v
-	}
-	if l.gb {
+	if paramLabels[prm.Key].gb {
 		v += i18n.T(" GB", " ГБ")
 	}
-	return previewLabel(l.en, l.ru) + v
+	label := ParamLabel(prm.Key)
+	return previewLabel(label, label) + v
+}
+
+// ParamLabel is the label a person sees for the preview parameter key, in
+// the language of the output: its paramLabels entry, else the key itself.
+func ParamLabel(key string) string {
+	if l, ok := paramLabels[key]; ok {
+		return i18n.T(l.en, l.ru)
+	}
+	return strings.ReplaceAll(key, "_", "-")
 }
 
 // notCheckedLine is the not_checked parameter in words.
