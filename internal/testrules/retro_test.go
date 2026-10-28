@@ -49,8 +49,6 @@ var retroKnown = map[string]string{
 	"1.4.0 «разработка»: R3 #396 again without the owner's decision": "two problems of one PR (a Qwen answer missed, the preview of stack_destroy), not a repeat",
 	"1.3.1 «релиз»: R4 «пример, до 1.4.0» after 1.4.0 is out":        "release, summary of 1.4.1: keep it as a rule or a check, or drop it",
 	"1.3.1 «разработка»: R4 «пример, до 1.4.0» after 1.4.0 is out":   "release, summary of 1.4.1: keep it as a rule or a check, or drop it",
-	"1.3.1: R5 the count in handoff/1.3.1.md is not the journal's":   "release: counted by hand; the journal gives 17 — 4, 1, 5, 4, 1, 2",
-	"1.4.0: R5 the count in handoff/1.4.0.md is not the journal's":   "release: «Повтор: нет» counted as an item, four backlog items for three; the journal gives 15 — 1, 5, 3, 4, 2, 0",
 }
 
 var (
