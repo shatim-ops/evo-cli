@@ -149,6 +149,12 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 		}
 	}
 
+	// A name taken before the call: refused before the question, so a lost
+	// answer's disk found by the name is the call's own (D49).
+	list := func(ctx context.Context) ([]map[string]any, error) { return eng.Cloud.ListDisks(ctx, pid) }
+	if ans, refused := nameFree(ctx, list, i18n.T("disk", "диск"), name, "disk_list"); refused {
+		return ans, true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		preview, err := s.completePreview(ctx, eng, diskCreatePreview(eng, req, attachTo, stringArg(args, "zone")))
 		if err != nil {
@@ -171,7 +177,6 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 		if err == nil {
 			err = noID("disk")
 		}
-		list := func(ctx context.Context) ([]map[string]any, error) { return eng.Cloud.ListDisks(ctx, pid) }
 		return lostCreate(ctx, "disk_create", list, i18n.T("disk", "диск"), name, nil, "disk_list", fmt.Errorf(i18n.T("create disk: %w", "создание диска: %w"), err))
 	}
 	res := map[string]any{"status": "created", "disk": disk}

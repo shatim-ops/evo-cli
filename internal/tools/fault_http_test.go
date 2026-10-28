@@ -50,7 +50,7 @@ type faultAPI struct {
 // the collection, its id and name.
 type faultResource struct {
 	host, path, ID, Name string
-	// Type is a DNS record's type.
+	// Type is a DNS record's type, or an image's (private).
 	Type string
 	// before: the world held it before the call; not the call's to name.
 	before bool
@@ -313,6 +313,9 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		a.next++
 		c := faultResource{host: host, path: path, ID: fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x500+a.next), Name: body.Name, Type: body.Type}
+		if path == "/api/v1/images" {
+			c.Type = provision.ImageTypePrivate // an image the project made is its own
+		}
 		a.made = append(a.made, c)
 		op := fmt.Sprintf("op-%d", a.next)
 		a.mu.Unlock()

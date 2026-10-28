@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -100,13 +101,34 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 		}
 	}
 
-	// The gate comes before authentication so an unapproved call never reaches
-	// the cloud at all — the same order every other mutating tool uses. The zone
-	// is therefore echoed as asked for, not as resolved. When none was asked
-	// for, the preview states the rule rather than naming a source it cannot
-	// check here: claiming "configured region" is wrong whenever no region is
-	// configured, and this preview is what an operator approves a paid action on.
+	// The zone is echoed as asked for, not as resolved: when none was asked
+	// for, the preview states the rule rather than naming a source it
+	// cannot check here — claiming "configured region" is wrong whenever no
+	// region is configured, and this preview is what an operator approves
+	// a paid action on.
 	zoneRef := stringArg(args, "zone")
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	req.ProjectID = eng.Config.ProjectID
+	// The project's own images (private): a name taken before the call is
+	// refused before the question (D49), so a lost answer's image found by
+	// the name is the call's own. A catalogue image of the same name is not
+	// the project's and takes no name of it.
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		images, err := eng.Cloud.ListImagesInProject(ctx, req.ProjectID)
+		listed := make([]map[string]any, 0, len(images))
+		for _, im := range images {
+			if strings.EqualFold(im.Type, provision.ImageTypePrivate) {
+				listed = append(listed, map[string]any{"id": im.ID, "name": im.Name, "status": im.Status})
+			}
+		}
+		return listed, err
+	}
+	if ans, refused := nameFree(ctx, list, i18n.T("image", "образ"), name, "image_list type=private"); refused {
+		return ans, true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
@@ -122,12 +144,6 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 			},
 		}), true
 	}
-
-	eng, err := s.authedEngine(ctx, nil)
-	if err != nil {
-		return errResult(err), true
-	}
-	req.ProjectID = eng.Config.ProjectID
 
 	// An image belongs in the zone of the disk it is made from, so that disk is
 	// the default when neither an explicit zone nor a configured one exists.
@@ -150,14 +166,6 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	if id, _ := img["id"].(string); err != nil || id == "" {
 		if err == nil {
 			err = noID("image")
-		}
-		list := func(ctx context.Context) ([]map[string]any, error) {
-			images, err := eng.Cloud.ListImagesInProject(ctx, req.ProjectID)
-			listed := make([]map[string]any, 0, len(images))
-			for _, im := range images {
-				listed = append(listed, map[string]any{"id": im.ID, "name": im.Name})
-			}
-			return listed, err
 		}
 		return lostCreate(ctx, "image_create", list, i18n.T("image", "образ"), name, nil, "image_get id", fmt.Errorf(i18n.T("create image: %w", "создание образа: %w"), err))
 	}
