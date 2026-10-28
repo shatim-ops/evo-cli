@@ -36,11 +36,6 @@ const (
 // must not reach the preview.
 var bodyUnnamed = map[string]struct{ class, why string }{
 
-	"ca_deploy template.containers.containerPort": {unnamedWork, "порт контейнера по умолчанию"},
-	"ca_deploy template.protocol":                 {unnamedWork, "протокол http_1 по умолчанию"},
-	"ca_deploy template.scaling.maxInstanceCount": {unnamedPrice, "предел экземпляров по умолчанию"},
-	"ca_deploy template.scaling.minInstanceCount": {unnamedPrice, "0 — приложение засыпает (холодный старт)"},
-
 	"deploy availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
 	"deploy interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
 	"deploy name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
@@ -57,44 +52,28 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"disk_attach vm_id":                {unnamedNoise, "id ВМ, которую превью называет по имени"},
 	"disk_create availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"disk_create disk_type_name":       {unnamedPrice, "тип диска SSD по умолчанию (FB15-6)"},
 	"disk_create size":                 {unnamedNoise, "size_gb в форме API"},
 	"disk_detach vm_id":                {unnamedNoise, "id ВМ, которую превью называет по имени"},
 	"disk_resize size":                 {unnamedNoise, "size_gb в форме API"},
 
 	"dns_record_create public_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"dns_record_create ttl":            {unnamedWork, "TTL 300 по умолчанию"},
-	"dns_record_create type":           {unnamedNoise, "тип записи в нижнем регистре API"},
-	"dns_record_create values":         {unnamedNoise, "value в форме API"},
 
 	"fip_attach interface_id": {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
 	"fip_attach name":         {unnamedNoise, "имя адреса при привязке"},
 
 	"image_create availability_zones.availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
 
-	"k8s_add_addon appVersion":  {unnamedWork, "версия плагина, которую выбрал evo"},
 	"k8s_add_addon resolveMode": {unnamedWork, "конфликты ресурсов не разрешаются"},
 
-	"k8s_add_nodepool machineConfiguration.disk.size": {unnamedPrice, "диск узла 20 ГБ по умолчанию (FB15-41)"},
-	"k8s_add_nodepool machineConfiguration.flavorId":  {unnamedNoise, "id flavor, который превью называет по имени"},
-	"k8s_add_nodepool scalePolicy.fixedScale.count":   {unnamedPrice, "2 узла по умолчанию (FB15-41)"},
-	"k8s_add_nodepool updateConfiguration.strategy":   {unnamedWork, "обновление узлов по одному"},
+	"k8s_add_nodepool updateConfiguration.strategy":  {unnamedWork, "обновление узлов по одному (ROLLING_UPDATE)"},
+	"k8s_add_nodepool machineConfiguration.flavorId": {unnamedNoise, "id flavor, который превью называет по имени"},
 
 	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": {unnamedNoise, "id flavor мастеров, который превью называет по имени"},
 	"k8s_create controlPlaneConfiguration.zones":                        {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"k8s_create networkConfiguration.privateVipSubnetId":                {unnamedWork, "подсеть API кластера, которую выбрал evo"},
 
-	"kafka_create cruise_control_enabled":                {unnamedWork, "Cruise Control выключен"},
-	"kafka_create cruise_control_rebalance_auto_enabled": {unnamedWork, "авторебаланс выключен"},
-
-	"lb_create rules.health_check.healthy_threshold":   {unnamedWork, "проверка здоровья цели по умолчанию"},
-	"lb_create rules.health_check.interval":            {unnamedWork, "проверка здоровья цели по умолчанию"},
-	"lb_create rules.health_check.timeout":             {unnamedWork, "проверка здоровья цели по умолчанию"},
-	"lb_create rules.health_check.unhealthy_threshold": {unnamedWork, "проверка здоровья цели по умолчанию"},
-	"lb_create rules.listeners.name":                   {unnamedNoise, "имя listener, которое evo даёт само"},
-	"lb_create rules.listeners.target_port":            {unnamedWork, "порт цели равен порту listener"},
-	"lb_create availability_zone_specs.subnet_ids":     {unnamedWork, "подсеть балансировщика, которую выбрал evo"},
-	"lb_create rules.name":                             {unnamedNoise, "имя правила, которое evo даёт само"},
+	"lb_create rules.listeners.name":        {unnamedNoise, "имя listener, которое evo даёт само"},
+	"lb_create rules.listeners.target_port": {unnamedWork, "порт цели равен порту listener"},
+	"lb_create rules.name":                  {unnamedNoise, "имя правила, которое evo даёт само"},
 
 	"open_ports description":      {unnamedNoise, "подпись правила"},
 	"open_ports direction":        {unnamedNoise, "правило входящее"},
@@ -102,11 +81,6 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"open_ports ip_protocol":      {unnamedWork, "порты открываются только как TCP"},
 	"open_ports port_range":       {unnamedNoise, "порты в форме API"},
 	"open_ports remote_ip_prefix": {unnamedAccess, "источник 0.0.0.0/0 по умолчанию (FB15-16)"},
-
-	"pg_create backup.retention_policy_days": {unnamedPrice, "копии хранятся 14 дней (FB15-32)"},
-	"pg_create backup.schedule":              {unnamedWork, "расписание копий по умолчанию (FB15-32)"},
-	"pg_create subnet_ids":                   {unnamedWork, "подсеть кластера, которую выбрал evo (основная подсеть зоны)"},
-	"pg_create storage.pg_data_gb":           {unnamedPrice, "хранилище по умолчанию"},
 
 	"provision availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
 	"provision interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
@@ -128,6 +102,19 @@ var bodyNamedAs = map[string]string{
 	"ar_create isPublic": "public",
 	"ca_deploy configuration.ingress.publiclyAccessible": "public",
 	"lb_create external_address_spec.allocate":           "external",
+
+	"ca_deploy template.containers.containerPort":        "port",
+	"ca_deploy template.scaling.maxInstanceCount":        "max_instances",
+	"ca_deploy template.scaling.minInstanceCount":        "min_instances",
+	"disk_create disk_type_name":                         "type",
+	"k8s_add_addon appVersion":                           "version",
+	"k8s_add_nodepool machineConfiguration.disk.size":    "disk_gb",
+	"k8s_create networkConfiguration.privateVipSubnetId": "subnet_id",
+	"lb_create availability_zone_specs.subnet_ids":       "subnet_id",
+	"pg_create subnet_ids":                               "subnet_id",
+	"pg_create storage.pg_data_gb":                       "storage_gb",
+	"pg_create backup.schedule":                          "backup_schedule",
+	"pg_create backup.retention_policy_days":             "backup_retention_days",
 }
 
 // bodyUnnamedEverywhere are fields no preview names, one line for every

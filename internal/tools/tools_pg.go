@@ -416,6 +416,12 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 		"initial_database": initialDB,
 		"backup_enabled":   backupEnabled,
 	}
+	// What is kept and how long is billed (FB15-32): the schedule and the
+	// retention evo sends, defaults included.
+	if backupSpec != nil {
+		willCreate["backup_schedule"] = backupSpec["schedule"]
+		willCreate["backup_retention_days"] = backupSpec["retention_policy_days"]
+	}
 	priced, err := s.completePreview(ctx, eng, pgCreatePreview(eng.Config, willCreate))
 	if err != nil {
 		return nil, err
@@ -720,7 +726,7 @@ func pgCreatePreview(cfg config.Config, will map[string]any) engine.CreatePrevie
 	p := engine.CreatePreview{Resource: engine.ResourcePGCluster, Name: name,
 		ProjectID: cfg.ProjectID, ProjectFrom: cfg.ProjectOrigin}
 	for _, k := range []string{"version", "cpu", "memory_gb", "storage_gb", "instances", "deployment_mode",
-		"subnet_id", "initial_database", "backup_enabled"} {
+		"subnet_id", "initial_database", "backup_enabled", "backup_schedule", "backup_retention_days"} {
 		p.Add(k, will[k])
 	}
 	p.Price()

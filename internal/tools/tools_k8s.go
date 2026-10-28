@@ -570,9 +570,13 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		sgID = sgs[i].ID
 	}
 
+	// The number of nodes and the size of their disks are billed: the
+	// preview names them, defaults included (FB15-41).
+	count := intArg(args, "count", 2)
+	diskSize := intArg(args, "disk_gb", 20)
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sNodePool, name, args,
-			map[string]any{"flavor": flavor.Name, "cpu": flavor.CPU, "ram_gb": flavor.RAM,
+			map[string]any{"flavor": flavor.Name, "cpu": flavor.CPU, "ram_gb": flavor.RAM, "count": count, "disk_gb": diskSize,
 				"zone": zone.name, "nodes_subnet_id": nodesSubnetID, "security_group_id": sgID}))
 		if err != nil {
 			return errResult(err), true
@@ -584,9 +588,6 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 			"preview": preview,
 		}), true
 	}
-
-	count := intArg(args, "count", 2)
-	diskSize := intArg(args, "disk_gb", 20)
 
 	req := mk8s.CreateNodePoolReq{
 		ClusterID:            clusterID,
@@ -855,7 +856,7 @@ func k8sPreview(resource, name string, args, resolved map[string]any) engine.Cre
 	}
 	p.Add("cluster_id", stringArg(args, "cluster_id"))
 	skip := []string{"name", "zone", "cluster_id"}
-	for _, k := range []string{"flavor", "cpu", "ram_gb", "version", "master_count", "subnet_id", "nodes_subnet_id", "security_group_id", "kube_api_internet"} {
+	for _, k := range []string{"flavor", "cpu", "ram_gb", "count", "disk_gb", "version", "master_count", "subnet_id", "nodes_subnet_id", "security_group_id", "kube_api_internet"} {
 		if v, ok := resolved[k]; ok {
 			p.Add(k, v)
 			skip = append(skip, k)
