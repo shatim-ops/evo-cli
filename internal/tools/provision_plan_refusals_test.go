@@ -238,3 +238,67 @@ func TestDeploy_UnknownImageRefusedBeforePreview(t *testing.T) {
 		})
 	}
 }
+
+// #470 (а): a flavor the catalogue has not (dogfood 28.10: --flavor
+// lowoct10-2-4) is refused before the question, as an image is (D39):
+// NOT_FOUND, with the flavors to pick from — not a preview with a price
+// and the refusal after the consent.
+func TestProvision_UnknownFlavorRefusedBeforePreview(t *testing.T) {
+	images := []*provision.Image{{ID: catalogUbuntu24, Name: "Ubuntu-24.04", DisplayName: "Ubuntu 24.04", Status: "active"}}
+	for _, confirmed := range []bool{false, true} {
+		t.Run("confirmed="+boolText(confirmed), func(t *testing.T) {
+			cloud := &imageShelfCloud{cancelCloud: cancelCloud{cancel: func() {}}, images: images}
+			r := zoneRegistry(t, cloud, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
+			text, isErr := r.handlers["provision"](context.Background(),
+				map[string]any{"name": "web", "image": "Ubuntu-24.04", "flavor": "lowoct10-2-4", "confirmed": confirmed})
+			var m map[string]any
+			if err := json.Unmarshal([]byte(text), &m); err != nil {
+				t.Fatalf("answer is not JSON: %v: %s", err, text)
+			}
+			if !isErr || m["reason"] != clierrors.CodeNotFound || !strings.Contains(text, "lowoct10-2-4") || !strings.Contains(text, "lowcost10-1-1") {
+				t.Errorf("isErr=%v reason=%v, want NOT_FOUND naming the flavor and the ones there are: %s", isErr, m["reason"], text)
+			}
+			if hint, _ := m["hint"].(string); !strings.Contains(hint, "evo vm flavors") {
+				t.Errorf("hint %q: want where to find the flavors", hint)
+			}
+			if strings.Contains(text, "confirmation_required") || len(cloud.mutations) > 0 || cloud.creates > 0 {
+				t.Errorf("a preview or a write for a flavor the catalogue does not have: %s", text)
+			}
+		})
+	}
+	// A flavor by name of the catalogue, and auto, go through.
+	for _, f := range []string{"lowcost10-1-1", "auto"} {
+		cloud := &imageShelfCloud{cancelCloud: cancelCloud{cancel: func() {}}, images: images}
+		r := zoneRegistry(t, cloud, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
+		if text, _ := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "image": "Ubuntu-24.04", "flavor": f}); !strings.Contains(text, "confirmation_required") {
+			t.Errorf("flavor %s must reach the preview: %s", f, text)
+		}
+	}
+}
+
+// #470 (а): deploy refuses a flavor the catalogue has not before the
+// question and after it with one answer, provision's (engine.flavorNotFound):
+// NOT_FOUND, and nothing changed in the cloud.
+func TestDeploy_UnknownFlavorRefusedBeforePreview(t *testing.T) {
+	compose := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(compose, []byte("services:\n  web:\n    image: nginx\n    ports: [\"80:80\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, confirmed := range []bool{false, true} {
+		t.Run("confirmed="+boolText(confirmed), func(t *testing.T) {
+			cloud := &shelfZoneCloud{
+				otherZoneCloud: otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}},
+					subnets: []*provision.Subnet{{ID: "sn-3", Name: "Default_ru.AZ-3", AvailabilityZoneID: "z", Default: true}},
+					groups:  []*provision.SecurityGroup{{ID: "sg-3", Name: "SSH-access_ru.AZ-3", AvailabilityZoneID: "z"}}},
+				images: []*provision.Image{{ID: catalogUbuntu24, Name: "Ubuntu-24.04", DisplayName: "Ubuntu 24.04", Status: "active"}}}
+			r := zoneRegistry(t, cloud, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s", ComposeFile: compose})
+			m, text, isErr := callNamed(t, r, "deploy", map[string]any{"image": "Ubuntu-24.04", "flavor": "lowoct10-2-4", "confirmed": confirmed})
+			if !isErr || m["reason"] != clierrors.CodeNotFound || !strings.Contains(text, "lowoct10-2-4") {
+				t.Errorf("deploy with an unknown flavor: want NOT_FOUND, got %s", text)
+			}
+			if len(cloud.mutations) > 0 {
+				t.Errorf("the cloud was changed: %v", cloud.mutations)
+			}
+		})
+	}
+}

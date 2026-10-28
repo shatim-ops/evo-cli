@@ -330,8 +330,13 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 			return PickVMFlavor(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name))
 		}
 	}
+	var flavorErr error
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
-		if id, err := pick(flavors); err == nil {
+		id, err := pick(flavors)
+		if ce := (*clerrors.CLIError)(nil); errors.As(err, &ce) && ce.Code == clerrors.CodeNotFound {
+			flavorErr = err
+		}
+		if err == nil {
 			for _, f := range flavors {
 				if f.ID == id {
 					vm.Flavor = deployplan.FlavorSpec{ID: f.ID, Name: f.Name, VCPUs: f.VCPUs, RAMGB: f.RAMGB, FreeTier: f.FreeTier}
@@ -341,8 +346,9 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		}
 	}
 	// The refusals the reads find come together, in the order of the
-	// checks — the image, then the network — so the call names them all at
-	// once (clierrors.Refusals, dogfood 28.10).
+	// checks — the flavor (the call picks it first), the image, then the
+	// network — so the call names them all at once (clierrors.Refusals,
+	// dogfood 28.10).
 	cat := images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}
 	marketplace := false
 	imageErr := func() error {
@@ -395,7 +401,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		defer ncancel()
 		p.NetworkCheck, networkErr = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
 	}
-	return clerrors.Join(imageErr, networkErr)
+	return clerrors.Join(flavorErr, imageErr, networkErr)
 }
 
 // imageDecided reports an image lookup the catalogue answered: no such
@@ -423,11 +429,7 @@ func PickVMFlavor(flavors []*provision.Flavor, want string) (string, error) {
 		if isUUID(want) {
 			return want, nil
 		}
-		names := make([]string, len(flavors))
-		for i, f := range flavors {
-			names[i] = f.Name + " (" + f.ID + ")"
-		}
-		return "", fmt.Errorf("flavor %q not found. Available: %s", want, strings.Join(names, ", "))
+		return "", flavorNotFound(want, flavors)
 	}
 	smallest := func(keep func(*provision.Flavor) bool) *provision.Flavor {
 		var best *provision.Flavor
@@ -451,6 +453,19 @@ func PickVMFlavor(flavors []*provision.Flavor, want string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// flavorNotFound is the refusal of a flavor the catalogue has not, one for
+// provision and deploy, before the question and after it: the catalogue
+// answered, so the call fails, as for an image (#470, D39).
+func flavorNotFound(ref string, flavors []*provision.Flavor) error {
+	names := make([]string, len(flavors))
+	for i, f := range flavors {
+		names[i] = f.Name + " (" + f.ID + ")"
+	}
+	return clerrors.New(clerrors.CodeNotFound,
+		i18n.Tf("flavor %q not found. Available: %s", "flavor %q не найден. Есть: %s", ref, strings.Join(names, ", ")),
+		i18n.T("Pick one of 'evo vm flavors', or auto.", "Выберите один из 'evo vm flavors' или auto."))
 }
 
 func isUUID(s string) bool {

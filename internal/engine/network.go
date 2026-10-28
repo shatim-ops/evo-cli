@@ -446,10 +446,7 @@ func (e *Engine) flavorAPIName(ctx context.Context, ref string) (string, error) 
 			return f.Name, nil
 		}
 	}
-	return "", clerrors.New(clerrors.CodeConfigInvalid,
-		i18n.Tf("flavor %q not found", "flavor %q не найден", ref),
-		i18n.T("Use 'flavor: auto' or a flavor name from the Cloud.ru console.",
-			"Укажите 'flavor: auto' или имя flavor из консоли Cloud.ru ('evo vm flavors')."))
+	return "", flavorNotFound(ref, flavors)
 }
 
 // randomPassword satisfies the image's complexity rules: one of each class,
