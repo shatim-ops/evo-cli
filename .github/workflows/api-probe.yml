@@ -172,6 +172,9 @@ jobs:
           echo "token_claims: $(printf '%s' "$claims" | jq -c --arg p "$PROJECT" '{keys: keys, project_id_matches: (.project_id == $p), has_customer_id: has("customer_id"), ttl_s: (if (.exp | type) == "number" and (.iat | type) == "number" then .exp - .iat else null end)}' 2>/dev/null || echo 'не JWT')"
           # G140-3: срок по expires_in против exp токена и сдвиг часов
           # раннера против iat — только длительности в секундах.
+          # Знаки: iat_minus_runner_now > 0 — часы раннера отстают от IAM;
+          # exp_minus_runner_now < expires_in на десятки секунд и больше —
+          # раннер считает токен старше, чем IAM (часы раннера впереди).
           echo "token_lifetime: $(printf '%s' "$claims" | jq -c --arg e "$EXPIRES_IN" --argjson now "$ISSUED_AT" '{expires_in: ($e | tonumber? // null), exp_minus_iat: (if (.exp | type) == "number" and (.iat | type) == "number" then .exp - .iat else null end), exp_minus_runner_now: (if (.exp | type) == "number" then .exp - $now else null end), iat_minus_runner_now: (if (.iat | type) == "number" then .iat - $now else null end), has_nbf: has("nbf")}' 2>/dev/null || echo 'не JWT')"
           unset p claims
 
