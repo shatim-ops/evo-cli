@@ -168,6 +168,13 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		}
 		return clerrors.ProjectRequired()
 	}
+	// Nor without an image or a zone: settings too, refused before the
+	// token as the project is (D48).
+	if isNewDeploy {
+		if err := e.DeployInputError(); err != nil {
+			return err
+		}
+	}
 
 	// Step 1: Auth (must happen before any API calls).
 	e.Printer.Step(1, totalSteps, i18n.T("Authenticating...", "Аутентификация..."))

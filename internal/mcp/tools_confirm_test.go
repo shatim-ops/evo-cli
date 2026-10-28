@@ -33,19 +33,14 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		tool string
 		args map[string]any
 		want string // what the preview must name
-		// engines: how many engines one preview builds. The previews of a
-		// VM name the project it goes to (QA P6) and complete what they
-		// create with reads (owner's decision Q6, spec REQ-7): deploy with
-		// one engine for the project and one for the new VM. With no
-		// engine (here) nothing is read; the previews write nothing
-		// (TestContract_GatePreviewDoesNotWrite). provision is not here:
-		// without a configuration that names the project, the image and
-		// the zone it refuses before its preview (internal/tools,
-		// TestProvision_NoZoneOrImageRefusedBeforePreview); with one its
-		// preview comes first (TestProvision_ZoneByName).
+		// engines: how many engines one preview builds; the previews write
+		// nothing (TestContract_GatePreviewDoesNotWrite). provision and
+		// deploy are not here: an engine that cannot be built, or a
+		// configuration that names no project, image or zone, fails their
+		// call whatever the answer, so they refuse before the preview
+		// (D15, D48; TestNewGates_DeployWithoutEngineRefuses below).
 		engines int
 	}{
-		{"deploy", map[string]any{"flavor": "lowcost10-2-4"}, "lowcost10-2-4", 2},
 		{"ca_start", map[string]any{"name": "app-1"}, "app-1", 0},
 		{"ca_stop", map[string]any{"name": "app-1"}, "app-1", 0},
 		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", 0},
@@ -96,6 +91,19 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 				t.Fatalf("confirmed call did not proceed to the action: %s", out)
 			}
 		})
+	}
+}
+
+// deploy without an engine fails its confirmed call too: the preview
+// refuses it with the factory's error instead of asking for consent (D48;
+// it was a preview without a price).
+func TestNewGates_DeployWithoutEngineRefuses(t *testing.T) {
+	s := New(func(map[string]any) (*engine.Engine, error) {
+		return nil, errors.New("no engine in tests")
+	}, "test")
+	out, isErr := s.handlers["deploy"](context.Background(), map[string]any{"flavor": "lowcost10-2-4"})
+	if !isErr || strings.Contains(out, "confirmation_required") || !strings.Contains(out, "no engine in tests") {
+		t.Fatalf("deploy without an engine: want the factory's error before the question, got %s", out)
 	}
 }
 

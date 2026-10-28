@@ -35,11 +35,30 @@ var errNoSize = errors.New("no compose file to size the VM by")
 // resolves its network on its own). nil when the directory already has a
 // deployment (or its state cannot be read): deploy then updates that VM and
 // creates no new one, so there is nothing to price. The error is a refusal
-// the reads found: an image the project cannot use.
+// the reads found, an image the project cannot use, or a setting a new VM
+// needs and none gives (DeployInputError).
 func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 	sf, err := state.Read(state.DefaultPath(e.StateDir))
 	if err != nil || sf.ActiveDeployment() != nil {
 		return nil, nil
+	}
+	// What Deploy refuses before its question, the preview refuses in the
+	// same order (D48): the compose file, then, with the key at hand, the
+	// project and the image — a new VM without them fails whatever the
+	// answer — and the zone with the network (previewNetwork). Without the
+	// key the preview shows what is known and names what is missing (D31):
+	// the key is needed to create, not to look.
+	project, err := compose.Parse(e.Config.ComposeFile)
+	if err != nil {
+		return nil, err
+	}
+	if e.Config.KeyID != "" && e.Config.Secret != "" {
+		if e.Config.ProjectID == "" {
+			return nil, clerrors.ProjectRequired()
+		}
+		if err := e.DeployInputError(); err != nil {
+			return nil, err
+		}
 	}
 	cfg := e.Config
 	projectName := cfg.ProjectName
@@ -89,28 +108,19 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 			p.Missing = append(p.Missing, m.name)
 		}
 	}
-	project, perr := compose.Parse(cfg.ComposeFile)
-	if perr != nil {
-		project = nil
+	ports := make([]string, 0, len(project.Ports)+len(project.UDPPorts))
+	for _, port := range project.Ports {
+		ports = append(ports, fmt.Sprint(port))
 	}
-	if project != nil {
-		ports := make([]string, 0, len(project.Ports)+len(project.UDPPorts))
-		for _, port := range project.Ports {
-			ports = append(ports, fmt.Sprint(port))
-		}
-		for _, port := range project.UDPPorts {
-			ports = append(ports, fmt.Sprintf("%d/udp", port))
-		}
-		p.Add("ports", strings.Join(ports, ","))
+	for _, port := range project.UDPPorts {
+		ports = append(ports, fmt.Sprintf("%d/udp", port))
 	}
+	p.Add("ports", strings.Join(ports, ","))
 	// The flavor deploy takes (resolveFlavor): the one given, else the
 	// smallest that fits the compose file's services.
 	pick := func(flavors []*provision.Flavor) (string, error) {
 		if want := firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name); want != "" {
 			return PickVMFlavor(flavors, want)
-		}
-		if project == nil {
-			return "", errNoSize
 		}
 		list := make([]provision.Flavor, len(flavors))
 		for i, f := range flavors {
@@ -181,7 +191,7 @@ func PlanPreview(plan *deployplan.Plan) *CreatePreview {
 // its own step, with the warnings deploy prints there (not here: the
 // preview has no output of its own).
 func (e *Engine) previewNetwork(ctx context.Context, p *CreatePreview) error {
-	if p.VM == nil || p.ProjectID == "" || p.VM.Zone.ID == "" || e.Auth == nil || e.Cloud == nil {
+	if p.VM == nil || p.ProjectID == "" || e.Auth == nil || e.Cloud == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, networkCheckTimeout)

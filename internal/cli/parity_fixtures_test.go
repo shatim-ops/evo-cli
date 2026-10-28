@@ -532,7 +532,8 @@ const parityNIC = "00000000-0000-4000-8000-0000000000f1"
 
 // computeParity: the compute API beyond previewCloud — the VM with its
 // interface (tg_create picks it), the project's disk and SNAT gateway
-// (disk_delete and snat_delete look them up); nil for the rest.
+// (disk_delete and snat_delete look them up; image_create takes the zone
+// of the disk, which the API always names); nil for the rest.
 func computeParity(r *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	switch r.URL.Path {
@@ -540,7 +541,7 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","state":"running","interfaces":[{"id":"`+parityNIC+`","type":"regular","ip_address":"192.0.2.5"}]}`)
 	case "/api/v1/disks":
 		if r.Method != http.MethodPost {
-			_, _ = io.WriteString(w, `{"items":[{"id":"`+parityVM+`","name":"old","size":20}],"total":1}`)
+			_, _ = io.WriteString(w, `{"items":[{"id":"`+parityVM+`","name":"old","size":20,"availability_zone":{"id":"`+pvZone+`"}}],"total":1}`)
 			break
 		}
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"data","size":20,"status":"creating"}`)

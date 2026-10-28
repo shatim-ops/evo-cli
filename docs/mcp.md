@@ -126,7 +126,7 @@ kubectl (`~/.kube/kuberc`: алиасы, значения флагов по ум
 схемы элементы массива JSON (`[80,"x"]` для `ports` — `USAGE`).
 
 У части ошибок есть свои поля: `vm_id` у `provision`, когда ВМ уже создана
-(её надо удалить); `missing` у `provision` без образа или зоны — имя
+(её надо удалить); `missing` у `provision` и `deploy` без образа или зоны — имя
 аргумента (`["image"]`, `["region"]`); `output` и `stage` у `k8s_kubectl`, `k8s_apply`,
 `k8s_helm`. `provision`, не дождавшийся ВМ, отвечает `"status":"timeout"`
 с теми же `reason` и `error`. Отказ политики HTTP (`secret_value`,
@@ -552,7 +552,12 @@ evo сверяет каждый поиск с каталогом проекта 
 отказывает сразу, до превью и без `confirmation_required`: без образа —
 `USAGE`, без зоны — `CONFIG_INVALID`, без проекта — `CONFIG_INVALID`, так же
 и с `confirmed=true` (с 1.2.1; раньше превью называло их в `preview.missing`,
-а отказ приходил после согласия). `deploy` по-прежнему ждёт UUID зоны.
+а отказ приходил после согласия). `deploy` новой ВМ — так же, в порядке
+`evo deploy` (с 1.4.1, D48): compose-файла нет — `COMPOSE_NOT_FOUND`; без
+проекта — `CONFIG_INVALID`; без образа — `CONFIG_INVALID` с `missing`; без
+зоны — тоже, если у проекта нет единственной подсети с неизвестной зоной,
+которую `deploy` берёт, как раньше. Зону `deploy` понимает и по имени
+(`resolveNetwork`).
 
 `provision` дополнительно принимает:
 

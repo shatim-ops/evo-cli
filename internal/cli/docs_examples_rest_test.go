@@ -604,6 +604,11 @@ func TestDocsExamples_ImageNotInProjectPreview(t *testing.T) {
 			args := []string{"--json", "tools", "call", tool, "--arg", "image=" + imgID(1)}
 			if tool == "provision" {
 				args = append(args, "--arg", "name=web")
+			} else {
+				// deploy reads its compose file first (D48).
+				compose := filepath.Join(t.TempDir(), "docker-compose.yml")
+				writeFile(t, compose, "services:\n  web:\n    image: nginx\n    ports: [\"80:80\"]\n")
+				t.Setenv("CLOUDRU_COMPOSE_FILE", compose)
 			}
 			out, errOut, code := execCLI(t, args...)
 			body := out + errOut

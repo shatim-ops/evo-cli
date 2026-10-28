@@ -105,10 +105,11 @@ func (c *cancelCloud) CreateVM(_ context.Context, req provision.CreateVMRequest)
 func cancelRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) {
 	t.Helper()
 	dir := t.TempDir()
+	compose := writeTestCompose(t)
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
-			Config:    config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s"},
+			Config:    config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s", ComposeFile: compose},
 			Auth:      staticToken{},
 			Cloud:     cloud,
 			Printer:   output.NewWithWriter(&buf, output.ModeText, false),
@@ -118,6 +119,17 @@ func cancelRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) 
 		}, nil
 	})
 	return r, dir
+}
+
+// writeTestCompose writes a compose file of one web service: deploy reads
+// it before its preview, as before its question (D48).
+func writeTestCompose(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(path, []byte("services:\n  web:\n    image: nginx\n    ports: [\"80:80\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func stateHasVM(t *testing.T, dir, vmID string) *state.DeploymentRecord {
