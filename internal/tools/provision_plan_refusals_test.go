@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -266,6 +267,16 @@ func TestProvision_UnknownFlavorRefusedBeforePreview(t *testing.T) {
 			}
 		})
 	}
+	// With an image the catalogue has not too: both, the flavor first —
+	// the call picks it before the image.
+	cloud := &imageShelfCloud{cancelCloud: cancelCloud{cancel: func() {}}, images: images}
+	r := zoneRegistry(t, cloud, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
+	m, text, _ := callNamed(t, r, "provision", map[string]any{"name": "web", "image": "NoSuch-1.0", "flavor": "lowoct10-2-4"})
+	refusals, _ := m["refusals"].([]any)
+	if len(refusals) != 2 || !strings.Contains(fmt.Sprint(refusals[0]), "lowoct10-2-4") {
+		t.Errorf("unknown flavor and image: want both, the flavor's first: %s", text)
+	}
+
 	// A flavor by name of the catalogue, and auto, go through.
 	for _, f := range []string{"lowcost10-1-1", "auto"} {
 		cloud := &imageShelfCloud{cancelCloud: cancelCloud{cancel: func() {}}, images: images}
