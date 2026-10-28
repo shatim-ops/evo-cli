@@ -48,35 +48,56 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 		"message": i18n.Tf(en, ru, label),
 		"target":  map[string]any{"id": id, "name": name, "status": status},
 	}
-	// Cloud.ru refuses to delete a DBaaS cluster that is still being
-	// created (400/500 FailedPrecondition, register DB-17, CRD-B15): said
-	// before the confirmation, not after (release audit re-run, N-09).
+	if warning, _ := stateWayOut(status, id); warning != "" {
+		out["warning"] = warning
+	}
+	return &Plan{Preview: out, Execute: withWayOut(execute, status, id)}
+}
+
+// stateWayOut is what the preview warns of, and the hint of the refusal,
+// when Cloud.ru refuses to delete a resource in status; "" for a status
+// it deletes in. One place for every delete (CLAUDE.md §6, axis 3): a
+// refusal says so and names the way out. Still being created (DEPLOYING,
+// CREATING: register DB-17, DB-19, NET-11, CRD-B15) ends by itself — wait
+// and delete again; FAILED, ERROR, error_deleting (DB-21, NET-7, G13-19)
+// do not — the console or support (N2).
+func stateWayOut(status, id string) (warning, hint string) {
 	switch strings.ToUpper(status) {
 	case "DEPLOYING", "CREATING", "PROVISIONING":
-		out["warning"] = i18n.Tf("it is still being created (%s): Cloud.ru refuses the delete until it is ready",
-			"он ещё создаётся (%s): Cloud.ru не удалит его, пока он не будет готов", status)
-	case "FAILED", "ERROR":
-		// kafka_delete of a FAILED cluster met a bare 500 (G13-19).
-		out["warning"] = i18n.Tf("it is in %s: ", "он в состоянии %s: ", status) + failedDeleteNote(id)
-		// A refusal after the question says what the preview said: the
-		// platform does not delete it, the console or support do — not the
-		// platform's bare 500 (N2; CLAUDE.md §6, axis 3).
-		return &Plan{Preview: out, Execute: func(ctx context.Context) (string, bool) {
-			text, isErr := execute(ctx)
-			if !isErr {
-				return text, isErr
-			}
-			var m map[string]any
-			if json.Unmarshal([]byte(text), &m) != nil {
-				return text, isErr
-			}
-			m["resource_status"] = status
-			m["hint"] = i18n.Tf("Cloud.ru does not delete a resource in %s through its API: delete it in the Cloud.ru console, or contact Cloud.ru support with its id %s.",
+		return i18n.Tf("it is still being created (%s): Cloud.ru refuses the delete until it is ready",
+				"он ещё создаётся (%s): Cloud.ru не удалит его, пока он не будет готов", status),
+			i18n.Tf("Cloud.ru does not delete a resource while it is being created (%s): wait until it is ready, then delete it again.",
+				"Cloud.ru не удаляет ресурс, пока он создаётся (%s): дождитесь, пока он будет готов, и повторите удаление.", status)
+	case "FAILED", "ERROR", "ERROR_DELETING":
+		return i18n.Tf("it is in %s: ", "он в состоянии %s: ", status) + failedDeleteNote(id),
+			i18n.Tf("Cloud.ru does not delete a resource in %s through its API: delete it in the Cloud.ru console, or contact Cloud.ru support with its id %s.",
 				"Cloud.ru не удаляет ресурс в состоянии %s через API: удалите его в консоли Cloud.ru или обратитесь в поддержку Cloud.ru с его id %s.", status, id)
-			return toJSON(m), true
-		}}
 	}
-	return &Plan{Preview: out, Execute: execute}
+	return "", ""
+}
+
+// withWayOut is execute whose refusal, of a resource read in status
+// before the question, says what the preview said: the status and the way
+// out (stateWayOut), not the platform's bare error. The reason stays the
+// platform's (owner's decision 28.10, #455, option (б)).
+func withWayOut(execute func(context.Context) (string, bool), status, id string) func(context.Context) (string, bool) {
+	_, hint := stateWayOut(status, id)
+	if hint == "" {
+		return execute
+	}
+	return func(ctx context.Context) (string, bool) {
+		text, isErr := execute(ctx)
+		if !isErr {
+			return text, isErr
+		}
+		var m map[string]any
+		if json.Unmarshal([]byte(text), &m) != nil {
+			return text, isErr
+		}
+		m["resource_status"] = status
+		m["hint"] = hint
+		return toJSON(m), true
+	}
 }
 
 // failedDeleteNote is what to do when Cloud.ru refuses to delete a
