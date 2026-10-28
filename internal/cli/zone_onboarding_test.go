@@ -181,9 +181,10 @@ func execTree(t *testing.T, args ...string) (string, string, *clerrors.CLIError)
 // Без зоны evo vm create и evo tools call provision (как MCP provision)
 // отказывают до превью и до вопроса: тот же reason и код выхода (2,
 // CONFIG_INVALID — зона, как проект, это настройка), без
-// confirmation_required. Подсказка — слова своей поверхности: команда
-// называет свой флаг и evo configure --region, tools call — аргумент
-// инструмента.
+// confirmation_required. Подсказка и сообщение — слова своей поверхности:
+// команда называет свой флаг и evo configure --region и не называет
+// инструмент MCP (догфуд 28.10: «provision: не задана зона…»), tools call
+// — аргумент инструмента и его имя.
 func TestVMCreate_NoZoneRefusedBeforeConsent(t *testing.T) {
 	russian(t)
 	withCloud(t, exampleCloud{})
@@ -192,7 +193,7 @@ func TestVMCreate_NoZoneRefusedBeforeConsent(t *testing.T) {
 
 	_, errOut, ce := execTree(t, example...)
 	if ce == nil || ce.Code != clerrors.CodeConfigInvalid || clerrors.ExitCode(ce) != clerrors.ExitAuth ||
-		ce.Message != "provision: не задана зона доступности (region)" ||
+		ce.Message != "не задана зона доступности (region)" ||
 		ce.Hint != "Задайте --region (список: evo vm zones) или evo configure --region <зона>." {
 		t.Fatalf("vm create: %+v\n%s", ce, errOut)
 	}
@@ -201,7 +202,7 @@ func TestVMCreate_NoZoneRefusedBeforeConsent(t *testing.T) {
 	}
 
 	_, _, call := execTree(t, "tools", "call", "provision", "--arg", "name=my-vm", "--arg", "image=Ubuntu-24.04")
-	if call == nil || call.Code != ce.Code || call.Message != ce.Message ||
+	if call == nil || call.Code != ce.Code || call.Message != "provision: "+ce.Message ||
 		!strings.Contains(call.Hint, "list_zones") || !strings.Contains(call.Hint, "CLOUDRU_REGION") {
 		t.Errorf("tools call: %+v", call)
 	}
@@ -209,7 +210,7 @@ func TestVMCreate_NoZoneRefusedBeforeConsent(t *testing.T) {
 	// Without an image: USAGE (exit 1), the command's own flag.
 	t.Setenv("CLOUDRU_IMAGE_ID", "")
 	_, _, ce = execTree(t, "vm", "create", "my-vm", "--region", "ru.AZ-1")
-	if ce == nil || ce.Code != clerrors.CodeUsage || ce.Message != "provision: не задан образ (image или image_id)" ||
+	if ce == nil || ce.Code != clerrors.CodeUsage || ce.Message != "не задан образ (image или image_id)" ||
 		ce.Hint != "Задайте --image (список: evo image list), например --image Ubuntu-24.04." {
 		t.Errorf("no image: %+v", ce)
 	}
@@ -244,10 +245,10 @@ func TestToolError_UsageHintNamesTheCaller(t *testing.T) {
 	}
 	const text = `{"status":"error","reason":"USAGE","error":"bad argument"}`
 	var ce *clerrors.CLIError
-	if !errors.As(toolError("provision", text, commandHints(cmd, nil)), &ce) || ce.Hint != "Check the arguments: 'evo vm create --help'." {
+	if !errors.As(toolError(text, commandHints(cmd, nil)), &ce) || ce.Hint != "Check the arguments: 'evo vm create --help'." {
 		t.Errorf("command: %+v", ce)
 	}
-	if !errors.As(toolError("provision", text, callHints("provision")), &ce) || ce.Hint != "Check the arguments: 'evo tools describe provision'." {
+	if !errors.As(toolError(text, callHints("provision")), &ce) || ce.Hint != "Check the arguments: 'evo tools describe provision'." {
 		t.Errorf("tools call: %+v", ce)
 	}
 }
@@ -282,5 +283,52 @@ func TestVMCreate_AllRefusalsShown(t *testing.T) {
 	if !strings.Contains(text, "не задан образ") || !strings.Contains(text, "не задана зона доступности") ||
 		!strings.Contains(text, "--image") || !strings.Contains(text, "--region") {
 		t.Errorf("text: want both refusals and the hint of each flag:\n%s", text)
+	}
+}
+
+// Догфуд 28.10: evo vm create без зоны в терминале падал отказом. Теперь
+// человек у терминала получает вопрос evo configure (открытые зоны, ru.AZ-2
+// первой и по умолчанию; закрытая не предлагается), выбранная зона идёт в
+// вызов и — по «да» — в профиль. Без терминала и с --yes — прежний отказ CONFIG_INVALID: зона не
+// выбирается молча (D15, D48), профиль не меняется.
+func TestVMCreate_NoZoneAskedAtTerminal(t *testing.T) {
+	fc := setupCLI(t)
+	// The tool's engine is the example world (no network), whose subnet is
+	// in pvZone; the zone question reads the zones as configure does, from
+	// the fake compute: pvZone open, ru.AZ-3 closed.
+	fc.zones = `[{"id":"` + pvZone + `","name":"ru.AZ-1","enabled":true},` +
+		`{"id":"` + zoneAZ3 + `","name":"ru.AZ-3","enabled":false}]`
+	withCloud(t, exampleCloud{})
+	t.Setenv("CLOUDRU_REGION", "")
+	saveProfile(t, "default", "11111111-1111-1111-1111-111111111111")
+	create := []string{"vm", "create", "my-vm", "--image", "Ubuntu-24.04", "--flavor", "lowcost10-2-4", "--dry-run"}
+
+	for name, c := range map[string]struct {
+		tty  bool
+		args []string
+	}{
+		"no terminal": {false, create},
+		"--yes":       {true, append([]string{"--yes"}, create...)},
+	} {
+		stdinIsTerminal = func() bool { return c.tty }
+		code, _, stderr := runCLI(t, "\n\n", c.args...)
+		prof, _, _, _ := config.LoadProfile("default")
+		if code != clerrors.ExitAuth || strings.Contains(stderr, "Choose a zone") || prof.Region != "" {
+			t.Errorf("%s: exit %d, region %q, want the refusal (2) and no question:\n%s", name, code, prof.Region, stderr)
+		}
+	}
+
+	stdinIsTerminal = func() bool { return true }
+	code, stdout, stderr := runCLI(t, "\n\n", create...)
+	prof, _, _, _ := config.LoadProfile("default")
+	if code != 0 || !strings.Contains(stdout, pvZone) {
+		t.Errorf("terminal: exit %d, want the preview in the zone chosen:\n%s%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, " 1) ru.AZ-1") || !strings.Contains(stderr, "Choose a zone (number, name or ID) [1]: ") ||
+		!strings.Contains(stderr, "Keep this zone in profile default") || prof.Region != pvZone {
+		t.Errorf("terminal: region %q, want ru.AZ-1 (%s) asked and saved:\n%s", prof.Region, pvZone, stderr)
+	}
+	if strings.Contains(stderr, "no availability zone is set") {
+		t.Errorf("terminal: the zone chosen did not reach the call:\n%s", stderr)
 	}
 }

@@ -13,7 +13,8 @@ import (
 // all of them come in one answer, not one per run (dogfood 28.10, axis 1
 // of CLAUDE.md §6). The first, in the order of the checks, is the call's
 // error — its code, exit code and hint, as when it was the only one —
-// because errors.As finds it first.
+// because errors.As finds it first. errors.Is, by contrast, matches any
+// of them.
 type Refusals []error
 
 func (r Refusals) Error() string {

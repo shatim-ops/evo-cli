@@ -154,9 +154,11 @@ func flagText(v any) string {
 var errHint = regexp.MustCompile(`,"hint":"(?:[^"\\]|\\.)*"`)
 
 // sameRefusal: the same stderr, the words of the hints aside; a hint on
-// one side has one on the other.
-func sameRefusal(treeErr, callErr string) bool {
-	treeErr, callErr = sameConsent(treeErr), sameConsent(callErr)
+// one side has one on the other. 'evo tools call <tool>' heads its message
+// with the tool the person typed, a command does not (toolHints.prefix):
+// the prefix is the other part a surface words for itself.
+func sameRefusal(tool, treeErr, callErr string) bool {
+	treeErr, callErr = sameConsent(treeErr), sameConsent(strings.ReplaceAll(callErr, `"message":"`+tool+`: `, `"message":"`))
 	return errHint.ReplaceAllString(treeErr, "") == errHint.ReplaceAllString(callErr, "") &&
 		len(errHint.FindAllString(treeErr, -1)) == len(errHint.FindAllString(callErr, -1))
 }
@@ -236,7 +238,7 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 		newProcess()
 		callCode, callOut, callErr := runCLI(t, "", append(append([]string{}, pc.call...), extra...)...)
 		treeOut, callOut = sameVolatile(treeOut), sameVolatile(callOut)
-		if treeCode != callCode || treeOut != callOut || !sameRefusal(treeErr, callErr) {
+		if treeCode != callCode || treeOut != callOut || !sameRefusal(pc.tool.Name, treeErr, callErr) {
 			bad = append(bad, fmt.Sprintf("evo %s ≠ evo tools call %s:\n  tree: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
 				strings.Join(pc.tree, " "), strings.Join(pc.call[2:], " "),
 				treeCode, clipLine(treeOut), clipLine(treeErr), callCode, clipLine(callOut), clipLine(callErr)))

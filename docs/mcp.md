@@ -139,6 +139,15 @@ kubectl (`~/.kube/kuberc`: алиасы, значения флагов по ум
 самого `evo mcp --http`, в Cloud.ru запрос не уходил, повторите позже. Ответ
 `confirmation_required` — не ошибка, поля `reason` у него нет.
 
+Пример `refusals`: `provision` без образа и зоны (тексты сокращены).
+
+```json
+{"status":"error","reason":"USAGE","error":"no image is set (image or image_id)","hint":"…",
+ "missing":["image","region"],
+ "refusals":[{"reason":"USAGE","error":"no image is set (image or image_id)","hint":"…"},
+             {"reason":"CONFIG_INVALID","error":"no availability zone is set (region)…","hint":"…"}]}
+```
+
 Неизвестный инструмент (и инструмент вне `--toolsets`) — ошибка протокола
 JSON-RPC `-32602` с сообщением `Unknown tool: <имя>`, как требует MCP
 2025-06-18, а не результат с `isError`.

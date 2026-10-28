@@ -111,13 +111,26 @@ func callEngineTool(cmd *cobra.Command, tool string, args map[string]any, c *too
 		return "", fmt.Errorf("no tool %s", tool)
 	}
 	text, isErr := t.Handler(tools.WithCaller(cmd.Context(), c), args)
+	if isErr {
+		// evo deploy at a terminal asks for the zone it lacks, as evo vm
+		// create does (askMissingZone), and runs again with it.
+		zone, ok, err := askMissingZone(cmd.Context(), cmd, text)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			args["region"] = zone
+			c.Err = nil
+			text, isErr = t.Handler(tools.WithCaller(cmd.Context(), c), args)
+		}
+	}
 	if !isErr {
 		return text, nil
 	}
 	if c.Err != nil {
 		return text, withAccessDenied(c.Err, text)
 	}
-	return text, toolError(tool, text, commandHints(cmd, nil))
+	return text, toolError(text, commandHints(cmd, nil))
 }
 
 // withAccessDenied is err, the engine's error of the command, with the
@@ -544,7 +557,7 @@ func newProjectListCmd() *cobra.Command {
 				text = toJSONText(map[string]any{"projects": nil, "active": cfg.ProjectID, "note": tools.ScopeText(0, false)})
 			case !isCLIError(c.Err):
 				// No answer (the network): the tool's error, with its code.
-				return toolError("org_projects", text, commandHints(cmd, nil))
+				return toolError(text, commandHints(cmd, nil))
 			default:
 				return err
 			}
