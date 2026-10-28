@@ -50,6 +50,14 @@ func TestToolsList_DescriptionLimits(t *testing.T) {
 // audit 1.2.1, PR 5). Bytes, not time: the same on any runner.
 const maxToolsListBytes = 160 << 10
 
+// toolsListBytes is the size of tools/list now (28.10, 155 tools, about 29
+// thousand tokens); toolsListSlack is how much it may shrink before the
+// number must follow.
+const (
+	toolsListBytes = 116098
+	toolsListSlack = 1024
+)
+
 func TestToolsList_SizeBudget(t *testing.T) {
 	tools := New(nilFactory, "test").ListTools()
 	b, err := json.Marshal(tools)
@@ -58,6 +66,16 @@ func TestToolsList_SizeBudget(t *testing.T) {
 	}
 	if len(b) > maxToolsListBytes {
 		t.Errorf("tools/list: %d bytes for %d tools, budget %d: split into toolsets or shorten the descriptions", len(b), len(tools), maxToolsListBytes)
+	}
+	// The ratchet under the budget (process backlog P7, release plan 1.5):
+	// tools/list does not grow by the way. A PR that makes it larger raises
+	// toolsListBytes in its diff, with why in its description; one that
+	// makes it smaller by more than toolsListSlack lowers it.
+	switch n := len(b); {
+	case n > toolsListBytes:
+		t.Errorf("tools/list grew to %d bytes from %d (+%d): raise toolsListBytes in this PR and say why in its description, or shorten", n, toolsListBytes, n-toolsListBytes)
+	case n < toolsListBytes-toolsListSlack:
+		t.Errorf("tools/list shrank to %d bytes from %d: lower toolsListBytes to %d — the ratchet keeps what was won", n, toolsListBytes, n)
 	}
 	t.Logf("tools/list: %d bytes for %d tools, budget %d", len(b), len(tools), maxToolsListBytes)
 }
