@@ -151,6 +151,7 @@ func caDeployPreview(req containerapp.CreateContainerReq) map[string]any {
 		"port":          c.ContainerPort,
 		"cpu":           c.Resources.CPU,
 		"memory":        c.Resources.Memory,
+		"protocol":      req.Template.Protocol,
 		"public":        req.Configuration.Ingress.PubliclyAccessible,
 		"min_instances": req.Template.Scaling.MinInstanceCount,
 		"max_instances": req.Template.Scaling.MaxInstanceCount,
@@ -195,7 +196,7 @@ func (s *Registry) planCaDeploy(ctx context.Context, args map[string]any) (*Plan
 	preview := map[string]any{"message": msg,
 		"will_create": will,
 		"preview": willPreview(engine.ResourceCAApp, name, "", will,
-			[]string{"image", "port", "cpu", "memory", "public", "min_instances", "max_instances", "runs_as", "env"}, warning),
+			[]string{"image", "port", "protocol", "cpu", "memory", "public", "min_instances", "max_instances", "runs_as", "env"}, warning),
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		cli, err := s.caClient(ctx)

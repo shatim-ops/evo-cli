@@ -386,12 +386,14 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
 		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gib": storage, "brokers": brokers, "subnet_id": subnetID,
-		"availability_zone": zone, "ui_enabled": boolArg(args, "ui_enabled", false)}
+		"availability_zone": zone, "ui_enabled": boolArg(args, "ui_enabled", false),
+		"cruise_control_enabled": false, "cruise_control_rebalance_auto_enabled": false}
 	out := map[string]any{"message": i18n.T("kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes).",
 		"kafka_create создаёт ПЛАТНЫЙ кластер Managed Kafka (асинхронно, несколько минут)."),
 		"will_create": willCreate,
 		"preview": willPreview(engine.ResourceKafka, name, zone, willCreate,
-			[]string{"version_id", "cpu", "memory_gb", "storage_gib", "brokers", "subnet_id", "ui_enabled"}, brokersNote)}
+			[]string{"version_id", "cpu", "memory_gb", "storage_gib", "brokers", "subnet_id", "ui_enabled",
+				"cruise_control_enabled", "cruise_control_rebalance_auto_enabled"}, brokersNote)}
 	if brokersNote != "" {
 		out["warning"] = brokersNote
 	}
@@ -399,8 +401,8 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 		body := map[string]any{
 			"name": name, "project_id": cli.ProjectID(), "version_id": versionID,
 			"specification_id": specID, "subnet_id": subnetID, "storage_gib": storage, "brokers": brokers,
-			"ui_enabled": willCreate["ui_enabled"], "cruise_control_enabled": false,
-			"cruise_control_rebalance_auto_enabled": false,
+			"ui_enabled": willCreate["ui_enabled"], "cruise_control_enabled": willCreate["cruise_control_enabled"],
+			"cruise_control_rebalance_auto_enabled": willCreate["cruise_control_rebalance_auto_enabled"],
 		}
 		if d := stringArg(args, "description"); d != "" {
 			body["description"] = d
