@@ -1250,14 +1250,32 @@ func TestWorkflows_CILinuxImageIsPinned(t *testing.T) {
 		for _, s := range j.Steps {
 			if strings.Contains(s.Run, ".github/scripts/evo_wrapper_test.sh") {
 				probe = true
-				if !j.ContinueOnError {
-					t.Errorf("ci %s: the probe of ubuntu-latest fails the run (continue-on-error: true)", name)
+				// The result is a notice either way: the probe fails
+				// neither the run nor its check.
+				if !strings.Contains(s.Run, "if .github/scripts/evo_wrapper_test.sh; then") || strings.Count(s.Run, "::notice") != 2 {
+					t.Errorf("ci %s: the probe of ubuntu-latest does not turn its result into a ::notice", name)
 				}
 			}
 		}
 	}
 	if !probe {
 		t.Error("ci: no job runs evo_wrapper_test.sh on ubuntu-latest")
+	}
+}
+
+// A red check is a failure someone looks into, never a state a job is in
+// by design: the probe of ubuntu-latest was a job with continue-on-error,
+// red on every PR and on main, and each red PR got a comment saying so
+// (1.4.1: #430, #436, #438, #452). A job does not fail and pass at once; a
+// probe gives its result as a ::notice. A step may still go on after its
+// own failure: its job stays green.
+func TestWorkflows_NoRedByDesign(t *testing.T) {
+	for f, w := range readWorkflows(t) {
+		for name, j := range w.Jobs {
+			if j.ContinueOnError {
+				t.Errorf("%s %s: continue-on-error on the job — red by design; a probe reports with ::notice and passes", f, name)
+			}
+		}
 	}
 }
 
