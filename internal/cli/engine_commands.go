@@ -212,7 +212,7 @@ compose file changed (with --force, even if it did not).`, `Развернуть
 			values := map[string]any{"compose-file": composeFile, "flavor": flavor, "region": region, "project-id": projectID,
 				"image-id": imageID, "image": image, "disk-size": float64(diskSize), "force": force}
 			callArgs := engineArgs(cmd, "evo deploy", values)
-			c := &tools.Caller{Printer: cmdPrinter(cmd), Gate: engineGate(cmd, "deploy", flagYes, nonInteractive),
+			c := &tools.Caller{Printer: cmdPrinter(cmd), Gate: engineGate(cmd, "deploy", flagYes, nonInteractive), Yes: flagYes,
 				DryRun: flagDryRun, NonInteractive: nonInteractive}
 			_, err := callEngineTool(cmd, "deploy", callArgs, c)
 			return err
@@ -389,7 +389,7 @@ on the VM's disks is lost.`, `Удалить ВМ развёртывания и�
 				cmdPrinter(cmd).Warning(i18n.T("destroy --force is deprecated: use --yes",
 					"destroy --force устарел: используйте --yes"))
 			}
-			c := &tools.Caller{Printer: cmdPrinter(cmd), Gate: engineGate(cmd, "destroy", force || flagYes, false), DryRun: flagDryRun}
+			c := &tools.Caller{Printer: cmdPrinter(cmd), Gate: engineGate(cmd, "destroy", force || flagYes, false), Yes: force || flagYes, DryRun: flagDryRun}
 			_, err := callEngineTool(cmd, "destroy", map[string]any{}, c)
 			return err
 		},

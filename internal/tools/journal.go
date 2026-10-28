@@ -55,6 +55,13 @@ func journaled(name string, schema map[string]any, next Handler) Handler {
 				rec.Reason = journalReason(ans.Reason)
 			}
 		}
+		// An engine command (evo deploy, evo destroy) asks at the engine's
+		// gate, and its call carries no confirmed: the consent and the
+		// dry run are the Caller's (FB140-1).
+		if c := liveCaller(ctx); c != nil && depth == 0 {
+			rec.Confirmed = rec.Confirmed || c.consented()
+			rec.Preview = rec.Preview || c.DryRun
+		}
 		journal.Write(rec)
 		return text, isErr
 	}

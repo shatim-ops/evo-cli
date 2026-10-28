@@ -55,6 +55,10 @@ type Caller struct {
 	// when the answer has them (the preview of a new VM). Without a Gate
 	// the tool gates on confirmed=true.
 	Gate func(ctx context.Context, answer string, human *confirm.Preview) (bool, error)
+	// Yes is consent given in advance (--yes; destroy --force): the call
+	// is the one MCP makes with confirmed=true (TestParity_YesEqualsConfirmed),
+	// whether or not the engine finds anything to ask about.
+	Yes bool
 	// DryRun is the command's --dry-run: nothing is locked or changed.
 	DryRun bool
 	// NonInteractive is deploy --non-interactive: never prompt, Ctrl-C
@@ -74,6 +78,25 @@ type Caller struct {
 	Doctor func(own []DoctorCheck) []DoctorCheck
 	// Err is set to the error of an error answer.
 	Err error
+
+	// answeredYes is set when Gate answered yes (ask).
+	answeredYes bool
+}
+
+// ask is Gate, noting a yes: the tools call it, never Gate itself, so the
+// journal knows the consent the engine's gate got (consented, FB140-1).
+func (c *Caller) ask(ctx context.Context, answer string, human *confirm.Preview) (bool, error) {
+	ok, err := c.Gate(ctx, answer, human)
+	if ok && err == nil {
+		c.answeredYes = true
+	}
+	return ok, err
+}
+
+// consented reports whether the person consented to the call: in advance
+// (Yes) or at the gate. --dry-run only looks, so it never consents.
+func (c *Caller) consented() bool {
+	return !c.DryRun && (c.Yes || c.answeredYes)
 }
 
 type callerKey struct{}
