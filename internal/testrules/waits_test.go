@@ -25,9 +25,8 @@ const (
 	// Not a wait for the cloud: the loop of a server or a poll whose
 	// answer is the report.
 	silentLoop = "not a wait for a resource"
-	// The caller says what is waited for before the wait, and the thing
-	// waited for has no state to say (a TCP port).
-	silentCallerSays = "the caller says what it waits for; no state to say"
+	// A few seconds, said before the loop.
+	silentShort = "a few seconds, said before the loop"
 	// A gap of axis 2: the wait is silent and should not be — the line of
 	// the release plan that fixes it.
 	silentGap = "gap"
@@ -49,17 +48,28 @@ var silentWaits = map[string]struct{ why, item string }{
 	"internal/mcp/server.go\tServer.RunContext":            {why: silentLoop},
 	// stack_status answers the state of the job: its answer is the report.
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {why: silentLoop},
-	// deploy_apply says «Waiting for SSH on <ip>…» before it.
-	"internal/deployplan/apply.go\twaitForSSHPort": {why: silentCallerSays},
+	// deploy_apply says «Waiting for SSH on <ip>…» once before it, then
+	// waits up to SSHPortWait (2 min) silent (review of Qwen on #456).
+	"internal/deployplan/apply.go\twaitForSSHPort": {why: silentGap, item: "release plan 1.5, axis 2: the wait for the SSH port of deploy_apply says it is still waiting"},
 	// destroy vm_id over MCP waits up to destroyPollTimeout (2 min) for the
 	// VM to be gone, silent: no line, no state of the VM.
 	"internal/engine/deploy.go\tEngine.waitVMGone": {why: silentGap, item: "release plan 1.5, axis 2: the wait for a deleted VM says its state"},
+	// After a Ctrl-C during the create, up to 3 lookups 2 s apart, said
+	// before («Looking for floating IP … made before the interruption»).
+	"internal/engine/deploy.go\tEngine.findBootFIP": {why: silentShort},
+	// deploy waits up to fipSettleTimeout (1 min) for a boot FIP being
+	// created, and up to 12 polls 5 s apart for the boot FIP to be in use,
+	// silent until the end.
+	"internal/engine/deploy.go\tEngine.settledBootFIP": {why: silentGap, item: "release plan 1.5, axis 2: the waits for the boot floating IP of deploy say its state"},
+	"internal/engine/deploy.go\tEngine.waitBootFIP":    {why: silentGap, item: "release plan 1.5, axis 2: the waits for the boot floating IP of deploy say its state"},
 	// provision with the person's keys repeats SSH up to 4 times, 10 s
-	// apart, silent.
+	// apart (30 s), silent.
 	"internal/tools/userkeys.go\tappendUserKeys": {why: silentGap, item: "release plan 1.5, axis 2: the repeats of SSH for the person's keys say so"},
 }
 
-// waitCalls are the calls that make a loop a wait.
+// waitCalls are the calls that make a loop a wait. A loop that only
+// receives from a channel or ctx.Done() is not seen: the waits of evo go
+// through time.After or a timer (the select of each also takes ctx).
 var waitCalls = map[string]bool{"After": true, "Sleep": true, "NewTimer": true, "NewTicker": true, "Tick": true}
 
 // reportCalls are the calls that say what a wait waits for: the steps and
@@ -91,27 +101,31 @@ func TestWaits_SayWhatTheyWaitFor(t *testing.T) {
 			if !ok || fd.Body == nil {
 				continue
 			}
-			waits, reports := false, false
+			// A wait reports when the loop that waits says something: a
+			// line before the loop alone leaves the wait silent.
+			silentLoop := false
 			ast.Inspect(fd.Body, func(n ast.Node) bool {
-				if loop, ok := n.(*ast.ForStmt); ok {
-					ast.Inspect(loop.Body, func(m ast.Node) bool {
-						if s, ok := callFun(m).(*ast.SelectorExpr); ok && waitCalls[s.Sel.Name] {
-							if id, ok := s.X.(*ast.Ident); ok && id.Name == "time" {
-								waits = true
-							}
+				loop, ok := n.(*ast.ForStmt)
+				if !ok {
+					return true
+				}
+				waits, reports := false, false
+				ast.Inspect(loop.Body, func(m ast.Node) bool {
+					switch f := callFun(m).(type) {
+					case *ast.SelectorExpr:
+						if id, ok := f.X.(*ast.Ident); ok && id.Name == "time" && waitCalls[f.Sel.Name] {
+							waits = true
 						}
-						return true
-					})
-				}
-				switch f := callFun(n).(type) {
-				case *ast.SelectorExpr:
-					reports = reports || reportCalls[f.Sel.Name]
-				case *ast.Ident:
-					reports = reports || reportCalls[f.Name]
-				}
+						reports = reports || reportCalls[f.Sel.Name]
+					case *ast.Ident:
+						reports = reports || reportCalls[f.Name]
+					}
+					return true
+				})
+				silentLoop = silentLoop || waits && !reports
 				return true
 			})
-			if waits && !reports {
+			if silentLoop {
 				silent[filepath.ToSlash(rel)+"\t"+funcName(fd)] = true
 			}
 		}
