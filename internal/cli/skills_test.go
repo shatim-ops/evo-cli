@@ -525,6 +525,23 @@ func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
 			[]string{"the main subnet of the profile's zone", "`tariff_url`"},
 			[]string{"the first subnet of the project", "low-cost", "the cheapest"},
 			[]string{"TestDbaasSubnet_MainSubnetOfTheProfilesZone", "TestPgCreate_PreviewGivesTheTariffNotAPrice"}, ""},
+		// С9 (FB15-20): HTTPS ends on the VM — the balancer is L4 TCP; the
+		// ports of the compose file open from 0.0.0.0/0, 80 and 443 too.
+		// What Caddy does is the agent's guide, not evo's code.
+		{"evo-deploy", "С9, FB15-20",
+			[]string{"the load balancer of evo (`lb_create`) is L4 TCP and takes no certificate", "Ports 80 and 443 of the compose file open from `0.0.0.0/0`"},
+			[]string{"binds the certificate to the load balancer"},
+			[]string{"TestDescriptions_SayWhatIsBuilt", "TestOpen_PortOpensForAnyAddressInTheGivenGroup"}, ""},
+		{"evo-vm", "С9, FB15-20",
+			[]string{"the load balancer of evo (`lb_create`) is L4 TCP and takes no certificate"},
+			nil,
+			[]string{"TestDescriptions_SayWhatIsBuilt"}, ""},
+		// С9: the routes of Kafka, Redis and Kubernetes; Kafka's topics and
+		// users are the console's, Redis MASTER_REPLICA is three hosts.
+		{"evo-scenarios", "С9",
+			[]string{"evo has no tools for topics and users", "the default `MASTER_REPLICA` is three billed hosts per shard"},
+			nil,
+			[]string{"TestKafka_NoTopicOrUserTools", "TestDescriptions_SayWhatIsBuilt"}, ""},
 		// With --allow-project a resource that is gone answers NOT_FOUND
 		// (H9 b), not already_deleted.
 		{"evo-scenarios", "G130-16",

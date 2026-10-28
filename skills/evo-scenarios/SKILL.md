@@ -25,10 +25,13 @@ another evo and go on only if they say so.
 
 | The person asks for | Skill | Tool groups (`--toolsets`) |
 |---|---|---|
-| deploy an app or a compose project, update it, its logs | `evo-deploy` | `deploy,vm,vpc,image,auth` |
+| deploy an app or a compose project, update it, its logs | `evo-deploy` | `deploy,vm,vpc,image,auth`; a domain: `dns` |
 | a VM, open or close a port, a public IP | `evo-vm` | `vm,deploy,vpc,image,auth` |
 | PostgreSQL, a database, a user, a connection string | `evo-postgres` | `pg,vpc,auth` |
 | remove everything, what is left, what it costs | `evo-cleanup` | `all` |
+| Kafka | none: tools `kafka_*` | `kafka,vpc,auth` |
+| Redis | none: tools `redis_*` | `redis,vpc,auth` |
+| Kubernetes | none: tools `k8s_*` | `k8s,vpc,auth` |
 | only look, change nothing | none: a server started with `--read-only` | — |
 
 The groups are those of `evo mcp --toolsets` and `evo agent setup
@@ -36,6 +39,21 @@ The groups are those of `evo mcp --toolsets` and `evo agent setup
 it has no `pg` and no `auth` (`doctor`). Without a group its tools are not
 listed; in the CLI every command works. Ask the person to add a group; do
 not change the client's settings yourself.
+
+Kafka, Redis and Kubernetes have no skill of this set; their tools follow
+the rules of the built-in skill, and the routes are:
+
+- Kafka: `kafka_versions`, `kafka_specs`, preview and create with
+  `kafka_create`, wait with `kafka_operation`, read with `kafka_get`.
+  evo has no tools for topics and users: the person makes them in the
+  Cloud.ru console.
+- Redis: `redis_versions`, `redis_specs`, `redis_create` (`type`
+  `STANDALONE` for one host; the default `MASTER_REPLICA` is three billed
+  hosts per shard), `redis_operation`, `redis_get`.
+- Kubernetes: `k8s_options`, `k8s_plan`, `k8s_create`, then
+  `k8s_add_nodepool` for the nodes (a cluster without nodes runs nothing),
+  `k8s_kubeconfig`; `k8s_kubectl`, `k8s_apply`, `k8s_helm` act in the
+  cluster.
 
 ## 3. Names that confuse
 
