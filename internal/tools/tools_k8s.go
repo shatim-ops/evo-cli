@@ -141,6 +141,7 @@ func (p k8sPlan) resolved() map[string]any {
 		"zone": p.zone, "subnet_id": p.req.NetworkConfiguration.PrivateVipSubnetID,
 		"flavor": p.flavor.Name, "cpu": p.flavor.CPU, "ram_gb": p.flavor.RAM,
 		"version": cp.Version, "master_count": cp.SizingConfiguration.MasterCount,
+		"kube_api_internet": p.req.NetworkConfiguration.KubeApiInternet,
 	}
 }
 
@@ -854,7 +855,7 @@ func k8sPreview(resource, name string, args, resolved map[string]any) engine.Cre
 	}
 	p.Add("cluster_id", stringArg(args, "cluster_id"))
 	skip := []string{"name", "zone", "cluster_id"}
-	for _, k := range []string{"flavor", "cpu", "ram_gb", "version", "master_count", "subnet_id", "nodes_subnet_id", "security_group_id"} {
+	for _, k := range []string{"flavor", "cpu", "ram_gb", "version", "master_count", "subnet_id", "nodes_subnet_id", "security_group_id", "kube_api_internet"} {
 		if v, ok := resolved[k]; ok {
 			p.Add(k, v)
 			skip = append(skip, k)
