@@ -120,10 +120,30 @@ func TestCompletion_DeclarationsHold(t *testing.T) {
 			}
 		}
 	}
+	// Every kind's list is a tool (a typo would leave its ids without Tab).
+	for tool, args := range idArgs {
+		for _, a := range args {
+			if a.kind == nil || a.kind.listTool == "" {
+				continue
+			}
+			if _, ok := r.Lookup(a.kind.listTool); !ok {
+				t.Errorf("idArgs[%s] %s: the list %s of its kind is no tool", tool, a.name, a.kind.listTool)
+			}
+		}
+	}
 	// Mutating and secret tools are never read for Tab.
 	for _, tl := range r.Tools() {
 		if (tl.Mutating || IsSensitive(tl)) && r.listable(tl.Name) {
 			t.Errorf("%s would be called for Tab", tl.Name)
 		}
+	}
+}
+
+// The list Tab takes is the one whose items carry the value, not another
+// list beside it in the answer (Qwen review of #478).
+func TestCompletionItems_TakesTheListWithTheField(t *testing.T) {
+	items := completionItems(`{"a_notes":[{"text":"x"}],"zones":[{"id":"z1","name":"ru.AZ-1"}]}`, "name")
+	if len(items) != 1 || items[0]["name"] != "ru.AZ-1" {
+		t.Errorf("items %v, want the zones", items)
 	}
 }

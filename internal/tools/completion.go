@@ -138,7 +138,7 @@ func (r *Registry) Complete(ctx context.Context, tool, arg, prefix string) []Can
 		if isErr {
 			return nil
 		}
-		items = completionItems(text)
+		items = completionItems(text, c.field)
 		writeCompletionCache(path, items)
 	}
 	var out []Candidate
@@ -163,10 +163,12 @@ func (r *Registry) Complete(ctx context.Context, tool, arg, prefix string) []Can
 	return out
 }
 
-// completionItems are the id, name and path of each item of the first
-// list in a list tool's answer: only those, never another field (a
-// secret's value is not in secret_list, and would not be kept either).
-func completionItems(text string) []map[string]string {
+// completionItems are the id, name and path of each item of the list in a
+// list tool's answer whose items carry field (the first such, by key): only
+// those, never another field (a secret's value is not in secret_list, and
+// would not be kept either). Another list beside it (notes, warnings) is
+// not taken for it.
+func completionItems(text, field string) []map[string]string {
 	var m map[string]any
 	if json.Unmarshal([]byte(text), &m) != nil {
 		return nil
@@ -195,8 +197,10 @@ func completionItems(text string) []map[string]string {
 			}
 			items = append(items, it)
 		}
-		if items != nil {
-			return items
+		for _, it := range items {
+			if it[field] != "" {
+				return items
+			}
 		}
 	}
 	return nil
