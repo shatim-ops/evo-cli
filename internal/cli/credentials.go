@@ -11,6 +11,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -84,4 +85,22 @@ func tokenProvider(cfg config.Config) *auth.IAMProvider {
 	)
 	providers[key] = p
 	return p
+}
+
+// A token a Cloud.ru service answered 401 to is dropped by the provider
+// that holds it: the next call exchanges the key again, instead of the
+// MCP server sending the same token to every call until its deadline
+// (G140-3).
+func init() { httpretry.OnTokenRejected(forgetRejectedToken) }
+
+func forgetRejectedToken(token string) {
+	providersMu.Lock()
+	list := make([]*auth.IAMProvider, 0, len(providers))
+	for _, p := range providers {
+		list = append(list, p)
+	}
+	providersMu.Unlock()
+	for _, p := range list {
+		p.Forget(token)
+	}
 }

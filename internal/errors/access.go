@@ -12,10 +12,13 @@ import "github.com/shatim-ops/evo-cli/internal/i18n"
 // Compute reports them as AUTH_EXPIRED / AUTH_FAILED; the other services as
 // API_ERROR (docs/exit-codes.md), and before these hints said neither.
 
-// TokenRejectedHint is the hint of a 401 from a service.
+// TokenRejectedHint is the hint of a 401 from a service. evo has dropped
+// the rejected token by then (httpretry.OnTokenRejected): a token that
+// expired is replaced on the next call, and only a 401 that comes again
+// points at the key.
 func TokenRejectedHint() string {
-	return i18n.T("The key may have been deleted or expired, or the service account disabled. Check the access key with 'evo doctor', or run 'evo configure' again.",
-		"Ключ мог быть удалён или истечь, а сервисный аккаунт — выключен. Проверьте ключ доступа командой 'evo doctor' или заново выполните 'evo configure'.")
+	return i18n.T("The token may have expired: evo has dropped it and gets a new one on the next call — repeat the command. If the 401 comes again, the key may have been deleted or expired, or the service account disabled: check the access key with 'evo doctor', or run 'evo configure' again.",
+		"Токен мог истечь: evo сбросил его и получит новый при следующем вызове — повторите команду. Если 401 повторяется, ключ мог быть удалён или истечь, а сервисный аккаунт — выключен: проверьте ключ доступа командой 'evo doctor' или заново выполните 'evo configure'.")
 }
 
 // NoRoleHint is the hint of a 403 from a service: the key is valid, the

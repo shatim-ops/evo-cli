@@ -344,3 +344,47 @@ func (r retryAfterRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	return resp, err
 }
+
+// A 401 to a request with a bearer token names that token to
+// OnTokenRejected, through both transports every Cloud.ru client uses: the
+// provider drops it, and the next call exchanges the key again (G140-3).
+// Other answers, and a 401 to a request without a bearer token (the IAM
+// exchange itself), name nothing.
+func TestTokenRejectedIsReported(t *testing.T) {
+	var got []string
+	OnTokenRejected(func(tok string) { got = append(got, tok) })
+	t.Cleanup(func() { OnTokenRejected(nil) })
+	status := http.StatusUnauthorized
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(srv.Close)
+
+	for name, rt := range map[string]http.RoundTripper{
+		"Transport": &Transport{}, "UserAgent": UserAgent(nil),
+	} {
+		got = nil
+		do := func(auth string) {
+			req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
+			if auth != "" {
+				req.Header.Set("Authorization", auth)
+			}
+			resp, err := rt.RoundTrip(req)
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			resp.Body.Close()
+		}
+		status = http.StatusUnauthorized
+		do("Bearer expired-token")
+		do("")
+		do("Basic dXNlcjpwYXNz")
+		status = http.StatusForbidden
+		do("Bearer valid-token")
+		status = http.StatusOK
+		do("Bearer valid-token")
+		if len(got) != 1 || got[0] != "expired-token" {
+			t.Errorf("%s: reported %q, want only [expired-token]", name, got)
+		}
+	}
+}

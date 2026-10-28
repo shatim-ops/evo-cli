@@ -7,8 +7,10 @@ package auth
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -128,8 +130,9 @@ func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
 		return Token{}, err
 	}
 
-	// Pre-flight: reject tokens with very short TTL.
-	if tok.TTL() < minAcceptableTTL {
+	// Pre-flight: reject tokens with very short TTL. A deadline, so on the
+	// wall clock (IsValid); TTL only prints what is left (FB140-5).
+	if !tok.IsValid(minAcceptableTTL) {
 		return Token{}, clerrors.New(
 			clerrors.CodeAuthExpired,
 			i18n.Tf("token TTL too short: %s remaining", "срок жизни токена слишком мал: осталось %s", tok.TTL().Truncate(time.Second)),
@@ -255,8 +258,57 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 		)
 	}
 
-	return Token{
-		Value:     result.AccessToken,
-		ExpiresAt: time.Now().Add(time.Duration(result.ExpiresIn) * time.Second),
-	}, false, nil
+	expires := time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+	if exp, ok := jwtExpiry(result.AccessToken); ok && exp.Before(expires) {
+		expires = exp
+	}
+	// Round(0) drops the monotonic reading: the deadline is the wall
+	// clock's. The monotonic clock stands still while the host sleeps or a
+	// VM is paused, and a long-lived MCP server kept an expired token as
+	// valid after the pause (G140-3).
+	return Token{Value: result.AccessToken, ExpiresAt: expires.Round(0)}, false, nil
+}
+
+// jwtExpiry is the exp claim of a JWT access token, read without checking
+// the signature: it only bounds how long evo keeps the token, never
+// whether it is trusted. ok is false for a token that is not a JWT or has
+// no exp.
+func jwtExpiry(token string) (time.Time, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return time.Time{}, false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return time.Time{}, false
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if json.Unmarshal(payload, &claims) != nil || claims.Exp <= 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(claims.Exp, 0), true
+}
+
+// Forget drops value, a token a Cloud.ru service answered 401 to, from the
+// memory and the file cache, so the next Token exchanges the key again
+// instead of sending the same token until its deadline. A token the
+// provider no longer holds (it has been refreshed since) is left alone.
+func (p *IAMProvider) Forget(value string) {
+	if value == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.cached != nil && p.cached.Value == value {
+		p.cached = nil
+	}
+	if p.cache == nil {
+		return
+	}
+	key := CacheKey(p.creds)
+	if tok, ok := p.cache.Load(key); ok && tok.Value == value {
+		_ = p.cache.Delete(key)
+	}
 }
