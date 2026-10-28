@@ -104,6 +104,8 @@ func TestContractMap_IsTheDeclarations(t *testing.T) {
 		return
 	}
 	old, err := os.ReadFile(filepath.FromSlash(contractMapPath))
+	// A Windows checkout may hold the file with CRLF (as docs_test does).
+	old = bytes.ReplaceAll(old, []byte("\r\n"), []byte("\n"))
 	if err != nil || !bytes.Equal(old, b) {
 		t.Errorf("docs/internal/contract-map.json is not what the declarations say: go test ./internal/tools -run TestContractMap -update-contract-map")
 	}
