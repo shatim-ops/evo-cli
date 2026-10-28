@@ -63,9 +63,9 @@ func TestAdapterErrors_Russian(t *testing.T) {
 		{
 			status: http.StatusUnauthorized, code: clierrors.CodeAuthExpired,
 			msgRU:  "API Cloud.ru отклонил токен (401)",
-			hintRU: "Ключ мог быть удалён или истечь, а сервисный аккаунт — выключен. Проверьте ключ доступа командой 'evo doctor' или заново выполните 'evo configure'.",
+			hintRU: "Токен мог истечь: evo сбросил его и получит новый при следующем вызове — повторите команду. Если 401 повторяется, ключ мог быть удалён или истечь, а сервисный аккаунт — выключен: проверьте ключ доступа командой 'evo doctor' или заново выполните 'evo configure'.",
 			msgEN:  "Cloud.ru API rejected the token (401)",
-			hintEN: "The key may have been deleted or expired, or the service account disabled. Check the access key with 'evo doctor', or run 'evo configure' again.",
+			hintEN: "The token may have expired: evo has dropped it and gets a new one on the next call — repeat the command. If the 401 comes again, the key may have been deleted or expired, or the service account disabled: check the access key with 'evo doctor', or run 'evo configure' again.",
 			call: func(a *CloudRuAdapter) error {
 				_, err := a.GetVM(context.Background(), "vm-1")
 				return err

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -89,7 +90,38 @@ func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	return HTMLAsBadGateway(resp), nil
+	return answer(req, resp), nil
+}
+
+// tokenRejected is told the bearer token of a request a Cloud.ru API
+// answered 401 to (OnTokenRejected).
+var tokenRejected atomic.Pointer[func(token string)]
+
+// OnTokenRejected sets f to be told the bearer token of every request a
+// Cloud.ru API answers 401 to, whichever client sent it: the token
+// provider drops that token, so the next call exchanges the key again
+// instead of sending a token the services reject until its deadline
+// (G140-3). nil stops it.
+func OnTokenRejected(f func(token string)) {
+	if f == nil {
+		tokenRejected.Store(nil)
+		return
+	}
+	tokenRejected.Store(&f)
+}
+
+// answer is the response both transports return: an HTML page as a 502
+// (HTMLAsBadGateway), and a 401 to a bearer token reported to
+// OnTokenRejected.
+func answer(req *http.Request, resp *http.Response) *http.Response {
+	if resp.StatusCode == http.StatusUnauthorized {
+		if tok, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer "); ok {
+			if f := tokenRejected.Load(); f != nil {
+				(*f)(tok)
+			}
+		}
+	}
+	return HTMLAsBadGateway(resp)
 }
 
 // HTMLAsBadGateway turns a 2xx answer with an HTML page into a 502: the
@@ -170,7 +202,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 					resp.StatusCode == http.StatusGatewayTimeout ||
 					slices.Contains(t.Policy.ReadStatuses, resp.StatusCode)))
 			if !retry || last {
-				return HTMLAsBadGateway(resp), nil
+				return answer(req, resp), nil
 			}
 			if d, ok := retryAfter(resp.Header.Get("Retry-After")); ok && !t.Policy.BackoffOnly {
 				wait = d

@@ -782,3 +782,39 @@ func TestConfigure_ProjectIDMustBeUUID(t *testing.T) {
 		t.Error("credentials written although configure failed")
 	}
 }
+
+// A service answering 401 to the token the MCP server holds makes the next
+// call exchange the key again: the process-wide provider drops the token
+// from memory and from the file cache (G140-3; 55 calls in a row got 401
+// in the Grok run of 1.4.0).
+func TestTokenProvider_RejectedTokenIsExchangedAgain(t *testing.T) {
+	fc := setupCLI(t)
+	cfg := config.Config{Profile: "default", KeyID: fakeKeyID, Secret: fakeSecret}
+	p := tokenProvider(cfg)
+	tok, err := p.Token(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Token(t.Context()); err != nil || fc.iamCalls.Load() != 1 {
+		t.Fatalf("a held token was exchanged again: %d exchanges, %v", fc.iamCalls.Load(), err)
+	}
+
+	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"message":"Jwt is expired"}`, http.StatusUnauthorized)
+	}))
+	t.Cleanup(service.Close)
+	req, _ := http.NewRequest(http.MethodGet, service.URL, nil)
+	req.Header.Set("Authorization", "Bearer "+tok.Value)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if _, err := tokenProvider(cfg).Token(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if fc.iamCalls.Load() != 2 {
+		t.Errorf("after a 401 the rejected token was sent again: %d exchanges, want 2", fc.iamCalls.Load())
+	}
+}

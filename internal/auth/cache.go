@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"time"
 
@@ -21,6 +23,8 @@ import (
 type TokenCache interface {
 	Load(keyID string) (Token, bool)
 	Store(keyID string, tok Token) error
+	// Delete removes the token of keyID; a token of another key stays.
+	Delete(keyID string) error
 }
 
 // FileCache stores one token in a JSON file with mode 0600.
@@ -55,6 +59,17 @@ func (c FileCache) Store(keyID string, tok Token) error {
 		return err
 	}
 	return config.WriteFilePrivate(c.Path, data)
+}
+
+// Delete removes the file when it holds the token of keyID.
+func (c FileCache) Delete(keyID string) error {
+	if _, ok := c.Load(keyID); !ok {
+		return nil
+	}
+	if err := os.Remove(c.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // CacheKey binds a cached token to the whole credential, not just the key
