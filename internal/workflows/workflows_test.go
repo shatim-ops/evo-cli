@@ -1366,3 +1366,37 @@ func TestWorkflows_WindowsCIProbe(t *testing.T) {
 		t.Error("weekly-race: ci-probe does not run ci-probe-loop.sh with the arm through env")
 	}
 }
+
+// The live area disk changes the data disk only from a settled state: after
+// attach and after resize the disk passes through attaching or extending,
+// and a change in it is 422 disk_can_not_be_changed_from_current_state
+// (run 39152048559) or disk_can_not_be_detached_from_current_state (cloud-e2e
+// of the 1.5 candidate, run 142, #521). Every disk_resize and disk_detach of
+// the data disk follows a poll of settled (or of state available) after
+// the change before it.
+func TestWorkflows_LiveDiskChangesFromASettledState(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "cloud-live.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(b), "\n")
+	change := regexp.MustCompile(`\b(disk_attach|disk_resize|disk_detach)\b.*--arg disk_id="\$data"`)
+	settledSince, changes := true, 0
+	for i, l := range lines {
+		switch {
+		// A poll of settled, or one that waits for state available.
+		case strings.Contains(l, "poll") && (strings.Contains(l, "settled") || strings.Contains(l, `.state == "available"`)):
+			settledSince = true
+		case change.MatchString(l) && !strings.HasPrefix(strings.TrimSpace(l), "#"):
+			changes++
+			op := change.FindStringSubmatch(l)[1]
+			if op != "disk_attach" && !settledSince {
+				t.Errorf("cloud-live.sh:%d: %s of the data disk right after another change, with no poll of settled between", i+1, op)
+			}
+			settledSince = false
+		}
+	}
+	if changes < 3 {
+		t.Fatalf("cloud-live.sh: %d changes of the data disk found: the area moved, update the test", changes)
+	}
+}
