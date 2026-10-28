@@ -94,3 +94,37 @@ func TestPreviewThatReadsTheCloud_NoKeyBeforeTheQuestion(t *testing.T) {
 		}
 	}
 }
+
+// FB15-16, D52: a rule counts as «already open» only when it lets the port
+// in from the source asked for, or wider. A rule from 10.0.0.0/8 on 80 left
+// a request from 0.0.0.0/0 unopened with status ok — the service was out of
+// reach; a range rule from anywhere that holds the port is open already,
+// wider, and no second rule is made.
+func TestOpenPorts_AlreadyOpenCountsTheSource(t *testing.T) {
+	cloud := &faultCloud{rules: []provision.SGRule{
+		{ID: faultID(0x72), Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "10.0.0.0/8"},
+		{ID: faultID(0x73), Direction: "ingress", IPProtocol: "tcp", PortRange: "8000:9000", RemoteIPPrefix: "0.0.0.0/0"},
+	}}
+	r, _ := faultToolsRegistry(t, cloud)
+	args := map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(8080)}}
+	m, _, _ := callNamed(t, r, "open_ports", args)
+	if open, _ := m["will_open"].([]any); len(open) != 1 || open[0] != "80" {
+		t.Errorf("will_open %v, want [80]: a rule from 10.0.0.0/8 does not open 80 to 0.0.0.0/0", m["will_open"])
+	}
+	if wider, _ := m["already_open_wider"].([]any); len(wider) != 1 || wider[0] != "8080" {
+		t.Errorf("already_open_wider %v, want [8080]: 8000:9000 from anywhere holds it", m["already_open_wider"])
+	}
+	args["confirmed"] = true
+	m, _, isErr := callNamed(t, r, "open_ports", args)
+	if isErr || m["status"] != "ok" {
+		t.Fatalf("open_ports: %v", m)
+	}
+	if opened, _ := m["opened"].([]any); len(opened) != 1 || opened[0] != "80" {
+		t.Errorf("opened %v, want [80]", m["opened"])
+	}
+	// The same source and port as a rule there: open already, as before.
+	m, _, _ = callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80)}, "cidr": "10.0.0.0/8"})
+	if already, _ := m["already_open"].([]any); len(already) != 1 || already[0] != "80" {
+		t.Errorf("already_open %v, want [80] from the same source", m["already_open"])
+	}
+}
