@@ -278,8 +278,8 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("batch of %d messages: at most %d per request", len(msgs), httpMaxBatch)))
 		return
 	}
-	if !batch && msgs[0].bad != nil {
-		writeJSON(w, http.StatusBadRequest, msgs[0].bad)
+	if !batch && msgs[0].answer != nil {
+		writeJSON(w, http.StatusBadRequest, msgs[0].answer)
 		return
 	}
 	var reqs []*rpcRequest
@@ -320,7 +320,7 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 	// Responses and notifications only: nothing to answer.
 	hasRequest := false
 	for _, m := range msgs {
-		if m.bad != nil || (m.req != nil && !m.req.isNotification()) {
+		if m.answer != nil || (m.req != nil && !m.req.isNotification()) {
 			hasRequest = true
 		}
 	}
@@ -345,8 +345,8 @@ func (h *HTTPHandler) post(w http.ResponseWriter, r *http.Request) {
 	// the POST needs a body, and the client ignores it (MCP).
 	var out []*rpcResponse
 	for _, m := range msgs {
-		if m.bad != nil {
-			out = append(out, m.bad)
+		if m.answer != nil {
+			out = append(out, m.answer)
 		} else if m.req != nil {
 			if resp, _ := h.dispatch(ctx, scope, m.req); resp != nil {
 				out = append(out, resp)
