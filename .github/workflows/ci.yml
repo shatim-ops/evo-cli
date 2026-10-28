@@ -156,6 +156,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/qwen_review_fetch_test.sh
 
+      # На каких PR ревью Qwen приходит само (#485, П1 (б)): продуктовый PR и
+      # PR, который меняет .github/; /qwen review — на любом.
+      - name: qwen-review.sh — какие PR ревьюит
+        if: runner.os == 'Linux'
+        run: .github/scripts/qwen_review_scope_test.sh
+
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
         if: runner.os == 'Linux'
