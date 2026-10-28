@@ -6954,7 +6954,7 @@ evo redis create <name> [flags]
       --description string        Описание (необязательно)
   -h, --help                      Справка по create
       --ram int                   RAM, ГБ — вместе с --cpu
-      --replicas int              Реплики в шарде БЕЗ мастера — поле replicas запроса на создание. Для MASTER_REPLICA — 2 (по умолчанию: мастер и две реплики, всего 3 узла — это число сведения о кластере показывают как replicas); для STANDALONE — 0
+      --replicas int              Реплики в шарде БЕЗ мастера — поле replicas запроса на создание. Для MASTER_REPLICA — 2 (по умолчанию: мастер и две реплики, всего 3 узла — это число сведения о кластере показывают как replicas); для STANDALONE — 0 (один узел; сведения о кластере покажут replicas 1)
       --shards int                Число шардов, 1–8 (по умолчанию 1)
       --specification-id string   UUID конфигурации (список: evo redis specs). Необязателен, если заданы --cpu и --ram
       --storage-gb int            Размер диска, ГБ (по умолчанию — минимум конфигурации)

@@ -753,7 +753,7 @@ func (s *Registry) registerTools() {
 				"ram":              intProp("RAM GB — with cpu."),
 				"storage_gb":       atLeast(1, intProp("Disk size GB. Optional; default = spec minimum.")),
 				"shards":           intProp("Shard count 1-8 (default 1)."),
-				"replicas":         intProp("Replicas per shard WITHOUT the master — the create request's replicas field. MASTER_REPLICA takes 2 (the default: a master and two replicas, 3 hosts — what redis_get then reports as replicas); STANDALONE takes 0."),
+				"replicas":         intProp("Replicas per shard WITHOUT the master — the create request's replicas field. MASTER_REPLICA takes 2 (the default: a master and two replicas, 3 hosts — what redis_get then reports as replicas); STANDALONE takes 0 (one host; redis_get reports replicas 1)."),
 				"type":             enumProp("MASTER_REPLICA (default) or STANDALONE (one host per shard).", "MASTER_REPLICA", "STANDALONE"),
 				"subnet_id":        strProp("Subnet UUID (from list_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
 				"description":      strProp("Optional description."),

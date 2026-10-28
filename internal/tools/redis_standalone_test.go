@@ -31,3 +31,19 @@ func TestRedisCreate_StandaloneSendsWhatTheAPICreates(t *testing.T) {
 		t.Errorf("POST /v1/clusters for STANDALONE: the API creates it with replicas 1 only (DB-3), the body is %s", body)
 	}
 }
+
+// The preview of the same call: the argument as given (replicas 0, the
+// replicas without the master) and one host per shard — what redis_get
+// reports after the create (replicas 1).
+func TestRedisCreate_StandalonePreviewShowsOneHost(t *testing.T) {
+	f := &apiFake{own: dbaasCreateOK}
+	r := apiFakeRegistry(t, f)
+	m, text, _ := callNamed(t, r, "redis_create", map[string]any{"name": "cache", "type": "STANDALONE", "cpu": 2, "ram": 4})
+	will, _ := m["will_create"].(map[string]any)
+	if m["status"] != "confirmation_required" || will["replicas"] != float64(0) || will["hosts_per_shard"] != float64(1) {
+		t.Errorf("STANDALONE preview: want replicas 0 and one host per shard: %s", text)
+	}
+	if _, ok := f.posted("redis.api.cloud.ru/v1/clusters"); ok {
+		t.Error("the preview created a cluster")
+	}
+}
