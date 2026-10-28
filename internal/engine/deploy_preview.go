@@ -44,10 +44,10 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 	}
 	// What Deploy refuses before its question, the preview refuses in the
 	// same order (D48): the compose file, then, with the key at hand, the
-	// project, the image and the zone — a new VM without them fails
-	// whatever the answer. Without the key the preview shows what is known
-	// and names what is missing (D31): the key is needed to create, not to
-	// look.
+	// project and the image — a new VM without them fails whatever the
+	// answer — and the zone with the network (previewNetwork). Without the
+	// key the preview shows what is known and names what is missing (D31):
+	// the key is needed to create, not to look.
 	project, err := compose.Parse(e.Config.ComposeFile)
 	if err != nil {
 		return nil, err
@@ -191,7 +191,7 @@ func PlanPreview(plan *deployplan.Plan) *CreatePreview {
 // its own step, with the warnings deploy prints there (not here: the
 // preview has no output of its own).
 func (e *Engine) previewNetwork(ctx context.Context, p *CreatePreview) error {
-	if p.VM == nil || p.ProjectID == "" || p.VM.Zone.ID == "" || e.Auth == nil || e.Cloud == nil {
+	if p.VM == nil || p.ProjectID == "" || e.Auth == nil || e.Cloud == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, networkCheckTimeout)

@@ -554,8 +554,10 @@ evo сверяет каждый поиск с каталогом проекта 
 и с `confirmed=true` (с 1.2.1; раньше превью называло их в `preview.missing`,
 а отказ приходил после согласия). `deploy` новой ВМ — так же, в порядке
 `evo deploy` (с 1.4.1, D48): compose-файла нет — `COMPOSE_NOT_FOUND`; без
-проекта — `CONFIG_INVALID`; без образа или зоны — `CONFIG_INVALID` с
-`missing`. Зону `deploy` тоже понимает по имени (`resolveNetwork`).
+проекта — `CONFIG_INVALID`; без образа — `CONFIG_INVALID` с `missing`; без
+зоны — тоже, если у проекта нет единственной подсети с неизвестной зоной,
+которую `deploy` берёт, как раньше. Зону `deploy` понимает и по имени
+(`resolveNetwork`).
 
 `provision` дополнительно принимает:
 

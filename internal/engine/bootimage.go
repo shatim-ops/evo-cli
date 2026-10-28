@@ -86,17 +86,17 @@ func MissingSetting(err error) string {
 	return ""
 }
 
-// DeployInputError refuses a new VM of deploy without an image or a zone.
-// Neither is read from the cloud: the call fails whatever the person
-// answers, so it is refused before the question, on every surface — the
-// preview of the tool, its confirmed call and evo deploy alike (D48, the
-// rule of D15 for provision). The zone is never picked silently (D15).
+// DeployInputError refuses a new VM of deploy without an image: no read
+// can give one, so the call fails whatever the person answers, and it is
+// refused before the question on every surface — the preview of the tool,
+// its confirmed call and evo deploy alike (D48, the rule of D15 for
+// provision). An image that is set but not found is the catalogue's
+// refusal (BootImage: NOT_FOUND), not this one. A zone that is not set is
+// resolveNetwork's to refuse: deploy still takes the only subnet of a
+// project whose zone is unknown (owner's decision 28.10: not in 1.4.1).
 func (e *Engine) DeployInputError() error {
-	switch {
-	case e.ImageRef() == "":
+	if e.ImageRef() == "" {
 		return errNoBootImage()
-	case e.Config.Region == "":
-		return errNoZone()
 	}
 	return nil
 }

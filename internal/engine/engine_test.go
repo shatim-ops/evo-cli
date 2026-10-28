@@ -446,7 +446,6 @@ func newTestEngine(t *testing.T, cloud *mockCloudAPI, deployer *mockDeployer) (*
 			ProjectID: "00000000-0000-0000-0000-000000000001",
 			ImageID:   "00000000-0000-0000-0000-000000000002",
 			DiskSize:  10,
-			Region:    testZoneID,
 		},
 		Auth:      &mockTokenProvider{token: auth.Token{Value: "test-token", ExpiresAt: time.Now().Add(time.Hour)}},
 		Cloud:     cloud,

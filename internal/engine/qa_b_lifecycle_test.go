@@ -27,7 +27,7 @@ func qaBEngine(t *testing.T, cloud *mockCloudAPI) (*Engine, string, *bytes.Buffe
 	dir := t.TempDir()
 	var out bytes.Buffer
 	e := &Engine{
-		Config: config.Config{ProjectID: "00000000-0000-0000-0000-000000000001", ImageID: "00000000-0000-0000-0000-000000000002", DiskSize: 10, Region: testZoneID},
+		Config: config.Config{ProjectID: "00000000-0000-0000-0000-000000000001", ImageID: "00000000-0000-0000-0000-000000000002", DiskSize: 10},
 		Auth:   &mockTokenProvider{token: auth.Token{Value: "t", ExpiresAt: time.Now().Add(time.Hour)}},
 		Cloud:  cloud, Deployer: newMockDeployer(),
 		Printer:   output.NewWithWriter(&out, output.ModePlain, false),

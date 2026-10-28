@@ -94,6 +94,11 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneRef string) 
 			e.Printer.Warning(subnetNoDNSWarning(subnets[sn].Name))
 		}
 	} else {
+		if zoneRef == "" {
+			// No zone and no subnet of an unknown zone to take: the zone
+			// is the setting to fix, not a subnet of zone "" (G140-2).
+			return n, errNoZone()
+		}
 		return n, NoSubnetError(n.ZoneName, zoneID)
 	}
 
