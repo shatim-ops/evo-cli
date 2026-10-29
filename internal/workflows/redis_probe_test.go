@@ -41,8 +41,10 @@ func TestWorkflows_CleanupKnowsEveryCluster(t *testing.T) {
 			continue
 		}
 		found++
-		if !kinds[c] && !strings.Contains(cleanup, `"`+c+`"`) && !strings.Contains(cleanup, " "+c+" ") {
-			t.Errorf("cloud-e2e job %s creates cluster %s, which cleanup_only does not delete", name, c)
+		for _, n := range clusterNames(t, c) {
+			if !kinds[n] && !strings.Contains(cleanup, `"`+n+`"`) && !strings.Contains(cleanup, " "+n+" ") {
+				t.Errorf("cloud-e2e job %s creates cluster %s, which cleanup_only does not delete", name, n)
+			}
 		}
 		own := false
 		for _, s := range j.Steps {
@@ -55,6 +57,37 @@ func TestWorkflows_CleanupKnowsEveryCluster(t *testing.T) {
 	if found == 0 {
 		t.Fatal("no job of cloud-e2e has env CLUSTER: the jobs moved, update the test")
 	}
+}
+
+// clusterInput is a cluster name a job takes from an input of the
+// workflow: ${{ inputs.<name> || '<default>' }}.
+var clusterInput = regexp.MustCompile(`^\$\{\{ inputs\.([a-z_]+) \|\| '([a-z0-9-]+)' \}\}$`)
+
+// clusterNames is every name the env CLUSTER of a job can take: the name
+// itself, or the default and every option of the choice input it reads.
+func clusterNames(t *testing.T, c string) []string {
+	t.Helper()
+	m := clusterInput.FindStringSubmatch(c)
+	if m == nil {
+		if strings.Contains(c, "${{") {
+			t.Errorf("cluster %q: an expression other than ${{ inputs.<choice> || '<default>' }}", c)
+		}
+		return []string{c}
+	}
+	on := readWorkflows(t)["cloud-e2e.yml"].On
+	dispatch, _ := on["workflow_dispatch"].(map[string]any)
+	inputs, _ := dispatch["inputs"].(map[string]any)
+	in, _ := inputs[m[1]].(map[string]any)
+	opts, _ := in["options"].([]any)
+	if in["type"] != "choice" || len(opts) == 0 {
+		t.Errorf("cluster %q: input %s is not a choice — cleanup_only cannot know the name", c, m[1])
+		return []string{m[2]}
+	}
+	names := []string{m[2]}
+	for _, o := range opts {
+		names = append(names, o.(string))
+	}
+	return names
 }
 
 // The probe of G140-6 creates what the API accepts and is a record, not a
