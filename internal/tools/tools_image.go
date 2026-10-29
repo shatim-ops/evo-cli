@@ -101,11 +101,11 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 		}
 	}
 
-	// will_create echoes the zone as asked for: when none was asked for,
-	// it states the rule — claiming "configured region" is wrong whenever
-	// no region is configured, and this preview is what an operator
-	// approves a paid action on. The preview's zone is the one resolved
-	// below, before the question.
+	// The zone is resolved below, before the question: will_create and the
+	// preview name the zone the image goes to — the one asked for, the
+	// configured one or the source disk's — not a rule ("configured
+	// region" was wrong whenever no region is configured, and this preview
+	// is what an operator approves a paid action on).
 	zoneRef := stringArg(args, "zone")
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -165,7 +165,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 			"preview": willPreview(engine.ResourceImage, name, firstNonEmptyStr(zoneName, zoneID), args, []string{"disk_id", "min_cpu", "min_ram", "min_disk"}),
 			"will_create": map[string]any{
 				"name": name, "from_disk": diskID,
-				"zone":    firstNonEmptyStr(zoneRef, "not given: configured region, else the source disk's zone"),
+				"zone":    firstNonEmptyStr(zoneRef, zoneName, zoneID),
 				"min_cpu": req.MinCPU, "min_ram": req.MinRAM, "min_disk": req.MinDisk,
 				"has_user_data_template": req.UserDataTemplate != "",
 				"metadata_fields":        len(req.ImageMetadata),

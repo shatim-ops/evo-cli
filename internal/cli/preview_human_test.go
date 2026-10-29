@@ -61,7 +61,6 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"disk_create preview.project_from":                {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"disk_resize preview.project_from":                {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"image_create will_create.has_user_data_template": {unnamedWork, "есть ли шаблон cloud-init"},
-	"image_create will_create.zone":                   {unnamedWork, "зона по умолчанию: регион профиля, иначе зона диска"},
 	"k8s_add_addon preview.project_from":              {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"k8s_add_addon version_from":                      {unnamedWork, "версия плагина — последняя"},
 	"k8s_add_nodepool preview.project_from":           {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},

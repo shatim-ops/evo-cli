@@ -80,8 +80,9 @@ func TestImageCreatePreviewDoesNotPromiseConfiguredRegion(t *testing.T) {
 	if zone == "configured region" {
 		t.Fatal("превью обещает настроенный регион, хотя его может не быть")
 	}
-	if !strings.Contains(zone, "disk") {
-		t.Fatalf("превью не упоминает запасной вариант — зону диска: %q", zone)
+	// Без зоны в конфиге превью называет зону исходного диска — факт, а не правило.
+	if zone != "00000000-0000-0000-0000-0000000000a2" {
+		t.Fatalf("превью не называет зону исходного диска: %q", zone)
 	}
 
 	// Явно заданная зона должна возвращаться как есть.

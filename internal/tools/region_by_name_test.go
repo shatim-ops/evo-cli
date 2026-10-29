@@ -77,7 +77,7 @@ func TestCreate_ConfiguredZoneByName(t *testing.T) {
 	region = "ru.AZ-9"
 	for _, c := range cases {
 		m, text, isErr := callNamed(t, r, c.tool, c.args)
-		if !isErr || m["status"] == "confirmation_required" || len(rt.bodies) != 0 {
+		if !isErr || m["status"] == "confirmation_required" || m["reason"] != "USAGE" || len(rt.bodies) != 0 {
 			t.Errorf("%s with zone ru.AZ-9 configured: want a refusal before the question: %s", c.tool, clip(text))
 		}
 	}
