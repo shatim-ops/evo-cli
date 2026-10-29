@@ -394,6 +394,9 @@ type diskCloud struct {
 }
 
 func (*diskCloud) SetToken(string) {}
+func (c *diskCloud) GetDisk(_ context.Context, id string) (map[string]any, error) {
+	return map[string]any{"id": id, "state": c.state()}, nil
+}
 func (*diskCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
 	return []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "web", Region: "z"}}, nil
 }
@@ -451,12 +454,14 @@ func TestDiskAttach_WaitsForNewDisk(t *testing.T) {
 	stuck := &diskCloud{stuck: "creating"}
 	r, _ = fastRegistry(t, stuck, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
 	m, text, isErr = callNamed(t, r, "disk_attach", map[string]any{"disk_id": "d-1", "vm": "web", "confirmed": true})
-	if !isErr || stuck.attached || m["reason"] != "API_ERROR" || !strings.Contains(text, "did not become available") {
+	// A disk that stays creating is refused before the question with its
+	// state (D53), not after consent.
+	if !isErr || stuck.attached || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, "creating") {
 		t.Fatalf("disk never available: %s", text)
 	}
 
 	// Другая ошибка привязки — без ожидания: список дисков не читается.
-	busy := &diskCloud{readyAt: 1, attachErr: clerrors.New(clerrors.CodeAPIError, "API returned status 422: busy", "")}
+	busy := &diskCloud{stuck: "available", attachErr: clerrors.New(clerrors.CodeAPIError, "API returned status 422: busy", "")}
 	r, _ = fastRegistry(t, busy, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
 	if _, text, isErr := callNamed(t, r, "disk_attach", map[string]any{"disk_id": "d-1", "vm": "web", "confirmed": true}); !isErr || busy.lists != 0 {
 		t.Fatalf("other attach error waited (%d polls): %s", busy.lists, text)

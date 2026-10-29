@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -179,19 +180,48 @@ func TestAlreadyDeleted_RepeatedDeleteIsDeleted(t *testing.T) {
 }
 
 // namesTarget: the answer names the target as the call did — the same
-// value, or for a list (ports) a text that names each element.
+// value, or for a list (ports) every element, compared as a whole: port
+// 80 is not named by 8080 (a substring found it there, Qwen on #315).
 func namesTarget(answer, arg any) bool {
 	list, ok := arg.([]any)
 	if !ok {
 		return answer == arg
 	}
-	text := fmt.Sprint(answer)
+	named := map[string]bool{}
+	if as, ok := answer.([]any); ok {
+		for _, a := range as {
+			named[fmt.Sprint(a)] = true
+		}
+	} else {
+		for _, w := range strings.FieldsFunc(fmt.Sprint(answer), func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_'
+		}) {
+			named[w] = true
+		}
+	}
 	for _, v := range list {
-		if !strings.Contains(text, fmt.Sprint(v)) {
+		if !named[fmt.Sprint(v)] {
 			return false
 		}
 	}
 	return true
+}
+
+func TestNamesTarget_ElementsAreWhole(t *testing.T) {
+	for _, c := range []struct {
+		answer, arg any
+		want        bool
+	}{
+		{"80, 443", []any{80, 443}, true},
+		{[]any{80.0, 443.0}, []any{80.0}, true},
+		{"8080", []any{80}, false},
+		{[]any{8080.0}, []any{80.0}, false},
+		{"vm-1", "vm-1", true},
+	} {
+		if got := namesTarget(c.answer, c.arg); got != c.want {
+			t.Errorf("namesTarget(%v, %v) = %v, want %v", c.answer, c.arg, got, c.want)
+		}
+	}
 }
 
 // A parent that is not there is the call's error, not a repeat: NOT_FOUND.

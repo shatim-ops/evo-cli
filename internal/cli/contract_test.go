@@ -301,6 +301,7 @@ func TestContract_TreeJSONSuccess(t *testing.T) {
 	t.Setenv("EVO_LANG", "en")
 	installContractTransport(t, 200, `{"items":[],"total":0,"vms":[],"disks":[],"images":[],"subnets":[],"availability_zones":[],"disk_types":[]}`)
 	old := toolEngine
+	stoppedClock(t)
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
 		e, err := buildEngine(o)
 		if err != nil {
