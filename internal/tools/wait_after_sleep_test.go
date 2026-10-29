@@ -83,7 +83,7 @@ func (c *sleptCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 // sleepWorldOut are the tools with wait_seconds this world does not
 // drive, each with the reason.
 var sleepWorldOut = map[string]string{
-	"stack_status": "advances a stack of many steps, not one operation; the world of a stack is its own",
+	"stack_status": "advances a stack of many steps, not one operation: its world is TestStackStatus_GoesOnAfterOneRefusedToken",
 }
 
 // sleepBreaksWait are the waits a 401 after the sleep still ends with an
