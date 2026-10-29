@@ -69,7 +69,7 @@ var writeRules = map[string]struct{ world, why, item string }{
 	// «Disk has no openstack_id» (CMP-15): disk_attach waits for the disk.
 	"POST /api/v1/disks/{disk_id}/attach 422": {why: ruleWaited},
 	"POST /api/v1/disks/{disk_id}/detach 404": {why: ruleAbsentID},
-	"POST /api/v1/disks/{disk_id}/detach 422": {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
+	"POST /api/v1/disks/{disk_id}/detach 422": {world: "disk in a transient state"},
 	"PUT /api/v1/disks/{disk_id} 404":         {why: ruleAbsentID},
 	"PUT /api/v1/disks/{disk_id} 422":         {world: "disk larger than requested"},
 	"DELETE /api/v1/disks/{disk_id} 404":      {why: ruleAbsentID},
