@@ -156,6 +156,11 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/redact_test.sh
 
+      # Храповик размера tools/list (tools-list.yml, #597, п. 12).
+      - name: tools_list_growth.sh на образцах
+        if: runner.os == 'Linux'
+        run: .github/scripts/tools_list_growth_test.sh
+
       # Обёртка evo публичных логов cloud-e2e и api-probe (build_evo.sh):
       # stderr — через redact.sed, stdout, код выхода и Ctrl-C — как у evo.
       - name: обёртка evo с маской stderr
