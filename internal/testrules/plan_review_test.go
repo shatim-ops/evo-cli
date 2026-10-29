@@ -42,7 +42,7 @@ var (
 	planReviewNew     = regexp.MustCompile(`^- Новое за сессию: строк \d+`)
 	planReviewIssue   = regexp.MustCompile(`^- Решения владельца: (?:#\d+|нет отстающих)`)
 	planReviewRef     = regexp.MustCompile("`release-plan\\.md:\\d+`|#\\d+")
-	planReviewDefault = regexp.MustCompile(`^(?:держим|в \d+\.\d+(?:\.\d+)?|снять)\b`)
+	planReviewDefault = regexp.MustCompile(`^(?:держим|в \d+\.\d+(?:\.\d+)?|снять)(?:$|[\s,])`)
 )
 
 type planReview struct {
