@@ -51,34 +51,33 @@ if ! git fetch --no-tags --quiet origin \
   git fetch --no-tags --quiet origin "+refs/heads/$base:refs/review/base" "+$head:refs/review/head" ||
     fail "git не получил базу \`$base\` или голову PR \`${head:0:7}\` — перезапустите командой \`/qwen review\`."
 fi
-# Само при открытии ревью идёт на всё, кроме PR, который меняет только тесты
-# и документы (*_test.go, *.md, docs/) и не трогает .github/ и
-# internal/workflows/ (правила безопасности workflows). Продуктовый PR
-# определяется по изменению (CLAUDE.md §5), «(продукт» в заголовке — ещё
-# один повод. Решение владельца #485, П1 (б); #372. Команда /qwen review —
-# на любом PR.
+# Само при открытии ревью идёт только на PR, который трогает правила
+# безопасности workflows (.github/, internal/workflows/) или код секретов и
+# согласия (sensitivePaths ниже); остальное — командой /qwen review на любом
+# PR (решение владельца 29.10: принималось 0–31 % находок, аудит #578, п. 9;
+# прежде — #485, П1 (б)). Тесты этого кода (*_test.go) ревью сами не зовут.
+# Новый файл секретов или согласия — строка здесь
+# (TestWorkflows_QwenScopeCoversSensitiveCode).
 if [ -z "${COMMENT_ID:-}" ]; then
-  case "$(jq -r .title "$work/pr.json")" in
-    *"(продукт"*) ;;
-    *)
-      # Not «git diff | while»: with pipefail an early exit of the reader
-      # would SIGPIPE git; the names are read whole first.
-      changed=$(git diff --name-only refs/review/base...refs/review/head)
-      review=""
-      [ -n "$changed" ] || review=1 # an empty diff is reported below
-      while IFS= read -r f; do
-        case "$f" in
-          .github/* | internal/workflows/*) review=1 ;;
-          *_test.go | *.md | docs/*) ;;
-          *) review=1 ;;
-        esac
-      done <<<"$changed"
-      if [ -z "$review" ]; then
-        echo "PR меняет только тесты и документы, без .github/ и internal/workflows/ — ревью Qwen не запускается (#485, П1)"
-        exit 0
-      fi
-      ;;
-  esac
+  # Not «git diff | while»: with pipefail an early exit of the reader
+  # would SIGPIPE git; the names are read whole first.
+  changed=$(git diff --name-only refs/review/base...refs/review/head)
+  review=""
+  [ -n "$changed" ] || review=1 # an empty diff is reported below
+  while IFS= read -r f; do
+    case "$f" in
+      # sensitivePaths: workflows with secrets, then secrets and consent.
+      .github/* | internal/workflows/*) review=1 ;;
+      *_test.go) ;;
+      internal/auth/* | internal/confirm/* | internal/config/* | \
+        internal/tools/gate.go | internal/tools/tools_secret.go | internal/tools/untrusted.go | \
+        internal/mcp/http_policy.go | internal/mcp/http_redact.go | internal/mcp/http_kube.go) review=1 ;;
+    esac
+  done <<<"$changed"
+  if [ -z "$review" ]; then
+    echo "PR не трогает .github/, internal/workflows/ и код секретов и согласия — ревью Qwen само не запускается; по запросу — /qwen review (решение владельца 29.10)"
+    exit 0
+  fi
 fi
 
 git diff --no-color --find-renames refs/review/base...refs/review/head -- . \
