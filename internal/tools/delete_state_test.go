@@ -8,6 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -109,7 +112,7 @@ func TestDeletePlan_FailedRefusalSaysWhereToDelete(t *testing.T) {
 func TestDeletePlan_WayOutOnlyForTheRefusal(t *testing.T) {
 	r := newTestServer()
 	id := "00000000-0000-4000-8000-0000000000fa"
-	for _, status := range []string{"FAILED", "CREATING"} {
+	for _, status := range []string{"FAILED", "ERROR", "ERROR_DELETING", "CREATING", "DEPLOYING", "PROVISIONING"} {
 		for _, code := range []string{clierrors.CodeAuthRequired, clierrors.CodeAuthExpired, clierrors.CodeAuthFailed,
 			clierrors.CodeAPIRateLimited, clierrors.CodeAPIUnreachable} {
 			own := "the hint of " + code
@@ -129,6 +132,28 @@ func TestDeletePlan_WayOutOnlyForTheRefusal(t *testing.T) {
 			if m["hint"] != own || m["resource_status"] != nil {
 				t.Errorf("%s in %s: hint %q, resource_status %v; want the hint of the reason, not of the status", code, status, m["hint"], m["resource_status"])
 			}
+		}
+	}
+}
+
+// notTheState names every reason of the key and of the connection: a
+// new AUTH_* or API_* code of internal/errors is placed by a line here, so
+// it does not get the hint of a status by default (FB150-2, review of #539).
+func TestNotTheState_EveryKeyAndConnectionReason(t *testing.T) {
+	theRefusal := map[string]string{
+		clierrors.CodeAPIError: "the platform's refusal: the status explains it",
+	}
+	src, err := os.ReadFile(filepath.Join("..", "errors", "codes.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	codes := regexp.MustCompile(`= "((?:AUTH|API)_[A-Z_]+)"`).FindAllStringSubmatch(string(src), -1)
+	if len(codes) == 0 {
+		t.Fatal("no AUTH_* or API_* code in internal/errors/codes.go")
+	}
+	for _, c := range codes {
+		if !notTheState[c[1]] && theRefusal[c[1]] == "" {
+			t.Errorf("%s: neither in notTheState nor a refusal the status explains", c[1])
 		}
 	}
 }
