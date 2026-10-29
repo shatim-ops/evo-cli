@@ -27,6 +27,9 @@ func TestDiskDelete_AttachedRefusedBeforeTheQuestion(t *testing.T) {
 	}{
 		{"boot disk", `[{"id":"` + liveID + `","name":"web","primary":true,"state":"running"}]`, []string{"web", "destroy"}},
 		{"data disk", `[{"id":"` + liveID + `","name":"web","primary":false,"state":"running"}]`, []string{"web", "disk_detach"}},
+		// A shared disk on two VMs: the way out for each (review Qwen #601).
+		{"two VMs", `[{"id":"` + liveID + `","name":"web","primary":true},{"id":"00000000-0000-4000-8000-0000000000e9","name":"db","primary":false}]`,
+			[]string{"web", "db", "destroy", "disk_detach"}},
 	} {
 		for _, confirmed := range []bool{false, true} {
 			f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
@@ -41,6 +44,21 @@ func TestDiskDelete_AttachedRefusedBeforeTheQuestion(t *testing.T) {
 			hint, _ := m["hint"].(string)
 			if !isErr || m["reason"] != clerrors.CodeUsage || m["status"] == "confirmation_required" {
 				t.Errorf("%s (confirmed=%v): want USAGE before the question: %s", c.label, confirmed, text)
+			}
+			// The VMs are a data field of the answer, marked untrusted.
+			vms, _ := m["attached_vms"].([]any)
+			first, _ := func() (map[string]any, bool) {
+				if len(vms) == 0 {
+					return nil, false
+				}
+				v, ok := vms[0].(map[string]any)
+				return v, ok
+			}()
+			if first["id"] != liveID || first["name"] != "web" || first["primary"] == nil {
+				t.Errorf("%s: attached_vms %v", c.label, m["attached_vms"])
+			}
+			if u, _ := m["_untrusted"].([]any); len(u) != 1 || u[0] != "attached_vms" {
+				t.Errorf("%s: _untrusted %v", c.label, m["_untrusted"])
 			}
 			for _, w := range c.want {
 				if !strings.Contains(text, w) {
