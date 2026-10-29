@@ -30,7 +30,11 @@ import (
 // that fixes it (W3…W6; the decisions of 1.3.1, D39…D42, with their PR).
 // The list only shrinks: a case not here fails the test, and so does a line
 // whose call no longer fails that way.
-var lateRefusals = map[string]string{}
+var lateRefusals = map[string]string{
+	"disk_attach: world: disk in a transient state": "release plan 1.6, «Изменение диска в переходном состоянии» (#521): «разработка»",
+	"disk_detach: world: disk in a transient state": "release plan 1.6, «Изменение диска в переходном состоянии» (#521): «разработка»",
+	"disk_resize: world: disk in a transient state": "release plan 1.6, «Изменение диска в переходном состоянии» (#521): «разработка»",
+}
 
 // jobStarts answer a refused write as a success by design: the call starts
 // a job, and the step's refusal is the job's state, not the call's answer.
@@ -57,6 +61,9 @@ type consentWorld struct {
 	// refusal comes only with the write (the test world refuses every
 	// write, so a refusal after consent alone does not show them).
 	refusedBy []string
+	// names is what the refusal of refusedBy says (the state of the
+	// resource), so that the agent knows to wait, not to fix an argument.
+	names string
 }
 
 var consentWorlds = map[string]consentWorld{
@@ -88,6 +95,24 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, `{"secrets":[{"id":"`+consentOtherID+`","path":"app/db"}]}`)
 	}, refusedBy: []string{"secret_create"}},
+	// The disk is still changing (cloud-e2e of the 1.5 candidate, run 142,
+	// #521: disk_detach a second after disk_resize, 422
+	// disk_can_not_be_detached_from_current_state after consent): the
+	// tools that change a disk read its state before the question and
+	// refuse with it.
+	"disk in a transient state": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" {
+			return nil
+		}
+		disk := `{"id":"` + parityVM + `","name":"data","size":20,"state":"extending"}`
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/api/v1/disks/"):
+			return consentJSON(http.StatusOK, disk)
+		case r.URL.Path == "/api/v1/disks":
+			return consentJSON(http.StatusOK, `{"items":[`+disk+`],"total":1}`)
+		}
+		return nil
+	}, refusedBy: []string{"disk_attach", "disk_detach", "disk_resize"}, names: "extending"},
 	"disk larger than requested": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 			return nil
@@ -374,8 +399,13 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		for _, c := range consentCases(tl, base) {
 			key := tl.Name + ": " + c.name
 			if slices.Contains(c.world.refusedBy, tl.Name) {
-				if before, _, _ := call(tl, c, false); before["status"] == "confirmation_required" {
+				before, _, _ := call(tl, c, false)
+				msg := fmt.Sprint(before["error"], " ", before["hint"])
+				switch {
+				case before["status"] == "confirmation_required":
 					found[key] = "asks for consent in a world it can read as refusing the write"
+				case c.world.names != "" && !strings.Contains(msg, c.world.names):
+					found[key] = fmt.Sprintf("refuses without naming %q: %s", c.world.names, clipLine(msg))
 				}
 				continue
 			}

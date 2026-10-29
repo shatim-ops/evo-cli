@@ -135,6 +135,7 @@ func withImageCloud(t *testing.T) imageCloud {
 	t.Setenv("CLOUDRU_REGION", "")
 	cloud := newImageCloud()
 	old := toolEngine
+	stoppedClock(t)
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
 		e, err := buildEngine(o)
 		if err != nil {

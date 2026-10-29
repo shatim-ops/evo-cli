@@ -26,6 +26,7 @@ func withMarketplace(t *testing.T, mk8s http.RoundTripper) imageCloud {
 	oldRT := http.DefaultTransport
 	http.DefaultTransport = mk8s
 	old := toolEngine
+	stoppedClock(t)
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
 		e, err := buildEngine(o)
 		if err != nil {
