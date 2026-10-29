@@ -15,10 +15,14 @@ echo "tools/list: база $base байт, голова $head байт ($( ((gro
 [ "$growth" -le 0 ] && exit 0
 
 want="tools/list: +$growth байт, потому что "
-if grep -qF -- "$want" <<<"${BODY:-}" &&
-	grep -F -- "$want" <<<"${BODY:-}" | grep -qE "потому что +[^ ]"; then
-	echo "описание PR объясняет рост"
-	exit 0
-fi
-echo "::error::tools/list вырос на $growth байт: добавьте в описание PR строку «${want}<причина>» — или сократите описания"
+# Причина — не отписка: не короче 10 знаков после «потому что».
+while IFS= read -r line; do
+	reason=${line#*"$want"}
+	reason=${reason#"${reason%%[![:space:]]*}"}
+	if [ "${#reason}" -ge 10 ]; then
+		echo "описание PR объясняет рост"
+		exit 0
+	fi
+done < <(grep -F -- "$want" <<<"${BODY:-}" || true)
+echo "::error::tools/list вырос на $growth байт: добавьте в описание PR строку «${want}<причина, не короче 10 знаков>» — или сократите описания"
 exit 1
