@@ -85,8 +85,17 @@ var noCompletion = map[string]map[string]string{
 	"ca_deploy":        {"image": "a container image of Artifact Registry, not a VM image of image_list (FB150-1)"},
 }
 
-// completionOf is how (tool, arg) is completed, if it is.
+// completionOf is how (tool, arg) is completed, if it is; an argument of
+// refArgs takes a name (D57), so names are offered too.
 func (r *Registry) completionOf(tool, arg string) (completion, bool) {
+	c, ok := r.completionDeclared(tool, arg)
+	if ok && takesName(tool, arg) {
+		c.byName = true
+	}
+	return c, ok
+}
+
+func (r *Registry) completionDeclared(tool, arg string) (completion, bool) {
 	if _, no := noCompletion[tool][arg]; no {
 		return completion{}, false
 	}
