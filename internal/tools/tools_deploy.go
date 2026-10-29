@@ -916,7 +916,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	preview := map[string]any{"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
 		"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
 	}
-	if warning, _ := stateWayOut(state, fipID); warning != "" {
+	if warning, _ := engine.DeleteWayOut(state, fipID); warning != "" {
 		preview["warning"] = warning
 	}
 	return &Plan{Preview: preview, Execute: withWayOut(func(ctx context.Context) (string, bool) {

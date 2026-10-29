@@ -165,14 +165,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			stateFile.UpsertDeployment(*active)
 			_ = state.Write(statePath, stateFile)
 			if st := provision.HTTPStatus(err); st == http.StatusConflict || st == http.StatusUnprocessableEntity {
-				return clerrors.Wrap(clerrors.CodeAPIError,
-					i18n.Tf("VM %s cannot be deleted in its current state", "ВМ %s нельзя удалить в её текущем состоянии", active.VMID),
-					i18n.Tf("It is probably still being created or changing state (waited %s). Wait until it is running "+
-						"(Cloud.ru console, or 'evo vm get %s') and re-run 'evo destroy': the record is kept, nothing is lost.",
-						"Вероятно, она ещё создаётся или меняет состояние (ждали %s). Дождитесь, пока она заработает "+
-							"(консоль Cloud.ru или 'evo vm get %s'), и повторите 'evo destroy': запись сохранена, ничего не потеряно.",
-						e.timings().DeletableWaitTimeout, active.VMID),
-					err)
+				return e.refusedVMDelete(ctx, active.VMID, err)
 			}
 			return err
 		}
@@ -565,4 +558,33 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
 		}
 	}
 	return err
+}
+
+// refusedVMDelete is the answer to a VM Cloud.ru would not delete within the
+// wait (409 or 422): the state the VM is read in now and the way out of it
+// (DeleteWayOut, one place with the deletes of the tools), not a guess
+// (release plan 1.6, #558: a VM read in deleting was answered «probably
+// still being created»). The record is kept, so a re-run picks it up.
+func (e *Engine) refusedVMDelete(ctx context.Context, vmID string, err error) error {
+	kept := i18n.T(" The deployment record is kept.", " Запись развёртывания сохранена.")
+	status := ""
+	if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
+		status = vm.Status
+	}
+	if status == "" {
+		return clerrors.Wrap(clerrors.CodeAPIError,
+			i18n.Tf("VM %s cannot be deleted in its current state, and its state could not be read", "ВМ %s нельзя удалить в её текущем состоянии, а её состояние прочитать не удалось", vmID),
+			i18n.Tf("Read it with 'evo vm get %s' (or in the Cloud.ru console) and re-run 'evo destroy' once it is running.",
+				"Прочитайте её состояние ('evo vm get %s' или консоль Cloud.ru) и повторите 'evo destroy', когда она будет работать.", vmID)+kept,
+			err)
+	}
+	_, hint := DeleteWayOut(status, vmID)
+	if hint == "" {
+		hint = i18n.Tf("Cloud.ru refused the delete in this state (waited %s): re-run 'evo destroy' once the VM is running ('evo vm get %s').",
+			"Cloud.ru отказал в удалении в этом состоянии (ждали %s): повторите 'evo destroy', когда ВМ будет работать ('evo vm get %s').",
+			e.timings().DeletableWaitTimeout, vmID)
+	}
+	return clerrors.Wrap(clerrors.CodeAPIError,
+		i18n.Tf("VM %s cannot be deleted in state %s", "ВМ %s нельзя удалить в состоянии %s", vmID, status),
+		hint+kept, err)
 }

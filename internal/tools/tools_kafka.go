@@ -467,7 +467,7 @@ func (s *Registry) planKafkaDelete(ctx context.Context, args map[string]any) (*P
 					// created (register DB-17) and of a FAILED one (G13-19).
 					return errResult(clierrors.New(clierrors.CodeAPIError, msg, i18n.T(
 						"Cloud.ru refuses to delete a cluster still being created or in FAILED. Still being created (DEPLOYING): wait until kafka_get shows it READY, then call kafka_delete again. In FAILED: ",
-						"Cloud.ru не удаляет кластер, который ещё создаётся или в FAILED. Ещё создаётся (DEPLOYING): дождитесь READY в kafka_get и повторите kafka_delete. В FAILED: ")+failedDeleteNote(id))), true
+						"Cloud.ru не удаляет кластер, который ещё создаётся или в FAILED. Ещё создаётся (DEPLOYING): дождитесь READY в kafka_get и повторите kafka_delete. В FAILED: ")+engine.FailedDeleteNote(id))), true
 				}
 				return s.deleteFailed("kafka_delete", id, fmt.Errorf(i18n.T("delete cluster: %w", "удаление кластера: %w"), err))
 			}
