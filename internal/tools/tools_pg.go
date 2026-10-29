@@ -334,6 +334,9 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 		return nil, fmt.Errorf(i18n.T("list versions: %w", "список версий: %w"), err)
 	}
 	version := stringArg(args, "version")
+	if err := notInCatalogue(i18n.T("PostgreSQL version", "версии PostgreSQL"), version, listed(versions, "name"), "pg_versions"); err != nil {
+		return nil, err
+	}
 	if version == "" {
 		version = pickLatestVersion(versions)
 	}
