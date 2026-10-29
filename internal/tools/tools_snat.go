@@ -15,10 +15,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
-// resolveSnatZone turns an optional zone name / explicit availability_zone_id
+// resolveZone turns an optional zone name / explicit availability_zone_id
 // into a concrete zone UUID, defaulting to the configured region (the AZ the
 // deploy stack targets). Returns the zone id.
-func (s *Registry) resolveSnatZone(ctx context.Context, args map[string]any) (id, name string, err error) {
+func (s *Registry) resolveZone(ctx context.Context, args map[string]any) (id, name string, err error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return "", "", err
@@ -36,9 +36,15 @@ func (s *Registry) resolveSnatZone(ctx context.Context, args map[string]any) (id
 		}
 		return "", "", fmt.Errorf(i18n.T("availability zone %q not found", "зона доступности %q не найдена"), name)
 	}
-	// The id given, else the configured region (CLOUDRU_REGION = the AZ
-	// UUID); its name for the preview of the billable gateway (FB123-2),
-	// none when the zones cannot be read.
+	// The id given, else the configured region, by its UUID or its name
+	// (resolveVMZone, as a VM's: its name went out as the id, P-Z1); its
+	// name for the preview of the billable gateway (FB123-2), none when
+	// the zones cannot be read.
+	if stringArg(args, "availability_zone_id") == "" {
+		if _, _, err := resolveVMZone(ctx, eng); err != nil {
+			return "", "", err
+		}
+	}
 	id = firstNonEmptyStr(stringArg(args, "availability_zone_id"), eng.Config.Region)
 	if id == "" {
 		return "", "", errors.New(i18n.T("no zone: pass 'zone' (name) or 'availability_zone_id', or set the region", "зона не задана: передайте 'zone' (имя) или 'availability_zone_id' либо задайте region"))
@@ -88,7 +94,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	if err := provision.ValidName(i18n.T("SNAT gateway", "SNAT-шлюза"), name); err != nil {
 		return errResult(err), true
 	}
-	zoneID, zoneName, err := s.resolveSnatZone(ctx, args)
+	zoneID, zoneName, err := s.resolveZone(ctx, args)
 	if err != nil {
 		return errResult(err), true
 	}

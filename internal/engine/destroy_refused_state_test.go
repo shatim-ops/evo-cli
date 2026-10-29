@@ -1,0 +1,93 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
+package engine
+
+import (
+	"context"
+	stderrors "errors"
+	"strings"
+	"testing"
+	"time"
+
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+)
+
+// Release plan 1.6 (#558; Fable on run 147, register OPS-18): a VM the
+// platform does not delete answered «it is probably still being created …
+// wait until it is running», though the VM was read in deleting. The
+// refusal names the state it read and the way out of it (DeleteWayOut, one
+// place with the deletes of the tools): deleting or an error — the console
+// or support; still being created — wait and re-run. The reason stays
+// API_ERROR and the record is kept.
+func TestDestroy_RefusedDeleteNamesTheStateAndTheWayOut(t *testing.T) {
+	for status, want := range map[string][]string{
+		"deleting":       {"deleting", "support"},
+		"error":          {"error", "console"},
+		"failed":         {"failed", "console"},
+		"error_deleting": {"error_deleting", "support"},
+		"creating":       {"creating", "again"},
+	} {
+		eng, cloud, _ := destroyFixture(t, runningRecord())
+		cloud.deleteVMFn = func(context.Context, string) error {
+			return clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
+				&provision.StatusError{Status: 409, Body: `{"code":"vm_can_not_be_deleted"}`})
+		}
+		cloud.getVMFn = func(_ context.Context, id string) (*provision.VM, error) {
+			return &provision.VM{ID: id, Status: status}, nil
+		}
+		err := eng.Destroy(context.Background(), DestroyOptions{Force: true})
+		var ce *clerrors.CLIError
+		if !stderrors.As(err, &ce) || ce.Code != clerrors.CodeAPIError {
+			t.Fatalf("%s: Destroy = %v, want API_ERROR", status, err)
+		}
+		text := ce.Message + " " + ce.Hint
+		for _, w := range want {
+			if !strings.Contains(text, w) {
+				t.Errorf("%s: %q does not say %q", status, text, w)
+			}
+		}
+		if strings.Contains(text, "probably") {
+			t.Errorf("%s: %q guesses the state it read", status, text)
+		}
+		// A state the VM does not leave by itself: its floating IP stays
+		// billed, and the hint says how to release it once the VM is gone
+		// (E11, Grok rc.1). A passing state re-runs destroy, which releases it.
+		final := status == "error" || status == "failed" || status == "error_deleting"
+		if names := strings.Contains(text, "fip-release") && strings.Contains(text, "fip-9"); names != final {
+			t.Errorf("%s: names the floating IP's release = %v, want %v: %q", status, names, final, text)
+		}
+		if a := readActive(t, eng.StateDir); a == nil || a.Status != "running" {
+			t.Errorf("%s: record after the refusal = %+v, want unchanged", status, a)
+		}
+	}
+}
+
+// The read after the wait fails (5xx): the refusal names the last state the
+// wait read, not «could not be read» after minutes of waiting (review of
+// #565).
+func TestDestroy_RefusedDeleteFallsBackToTheStateTheWaitRead(t *testing.T) {
+	eng, cloud, _ := destroyFixture(t, runningRecord())
+	eng.Timings.DeletableWaitTimeout = 50 * time.Millisecond
+	// The VM reads as deleting until the deletes stop; the read after the
+	// last refused delete fails.
+	deletes := 0
+	cloud.deleteVMFn = func(context.Context, string) error {
+		deletes++
+		return clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
+			&provision.StatusError{Status: 409, Body: `{"code":"vm_can_not_be_deleted"}`})
+	}
+	cloud.getVMFn = func(_ context.Context, id string) (*provision.VM, error) {
+		if deletes < 2 {
+			return &provision.VM{ID: id, Status: "deleting"}, nil
+		}
+		return nil, clerrors.New(clerrors.CodeAPIError, "HTTP 502", "")
+	}
+	err := eng.Destroy(context.Background(), DestroyOptions{Force: true})
+	var ce *clerrors.CLIError
+	if !stderrors.As(err, &ce) || !strings.Contains(ce.Message, "deleting") {
+		t.Fatalf("Destroy = %v, want the state the wait read (deleting)", err)
+	}
+}

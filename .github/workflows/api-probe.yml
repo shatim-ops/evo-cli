@@ -851,6 +851,12 @@ jobs:
           # shellcheck disable=SC2016 # $fl, $z, $a, $x — переменные jq
           probe p46_zone_consistency  "$M/v3/productConfiguration?projectId=$PROJECT" '[.flavors[]?] as $fl | [.zones[]? as $z | ($z.availableFlavors // []) as $a | {zone: $z.name, zone_keys: ($z | keys), n: ($a | length), elem: (if ($a | length) > 0 then ($a[0] | type) else "empty" end), elem_keys: (if ($a[0] | type) == "object" then ($a[0] | keys) else null end), by_flavor_id: ([$a[] | select(. as $x | $fl | any(.flavorId == $x))] | length), by_name: ([$a[] | select(. as $x | $fl | any(.name == $x))] | length), by_any_field: ([$a[] | select(. as $x | $fl | any(.. | strings | . == $x))] | length), state_available: ([$fl[] | select(any(.availabilityZones[]?; ((.zoneId != null and .zoneId == $z.zoneId) or (.zoneName != null and .zoneName == $z.name)) and .flavorZoneState == "AVAILABLE"))] | length)}]'
 
+          # api-probe 30: state_available = 0 во всех зонах — значения
+          # flavorZoneState не «AVAILABLE» или zoneId зоны и flavor
+          # различаются. Значения перечисления и счётчики, без ID.
+          # shellcheck disable=SC2016 # $fl, $z — переменные jq
+          probe p46_zone_states       "$M/v3/productConfiguration?projectId=$PROJECT" '[.flavors[]?] as $fl | {states: ([$fl[] | .availabilityZones[]? | .flavorZoneState | tostring] | group_by(.) | map({(.[0]): length}) | add), zones: [.zones[]? as $z | {zone: $z.name, by_zone_id: ([$fl[] | .availabilityZones[]? | select(.zoneId != null and .zoneId == $z.zoneId)] | length), by_zone_name: ([$fl[] | .availabilityZones[]? | select(.zoneName != null and .zoneName == $z.name)] | length)}]}'
+
           echo "== D52: remote_ip_prefix правил ingress без группы-источника"
           sg_ids=$(get "$C/security-groups?$P&limit=100" | jq -r '.items[]?.id' 2>/dev/null || true)
           printf '%s\n' "$sg_ids" | mask

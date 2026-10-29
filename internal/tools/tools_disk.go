@@ -132,6 +132,11 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 			return errResult(fmt.Errorf(i18n.T("zone %q not found", "зона %q не найдена"), z)), true
 		}
 	} else {
+		// The configured zone, by its UUID or its name (resolveVMZone, as
+		// a VM's): its name went out as availability_zone_id (P-Z1).
+		if _, _, err := resolveVMZone(ctx, eng); err != nil {
+			return errResult(err), true
+		}
 		zoneID = eng.Config.Region
 	}
 

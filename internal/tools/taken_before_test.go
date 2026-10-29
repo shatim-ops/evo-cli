@@ -42,6 +42,7 @@ var takenArgs = map[string]map[string]any{
 	"snat_create":       {"name": "web", "availability_zone_id": contractID},
 	"tg_create":         {"name": "web", "vm_id": contractID},
 	"vpc_create":        {"name": "web"},
+	"subnet_create":     {"name": "web", "cidr": "10.10.0.0/24", "vpc_id": takenBefore, "availability_zone_id": takenBefore},
 	"vpc_route_create":  {"vpc_id": contractID, "subnet": "192.0.2.0/24", "next_hop_vm_id": contractID, "next_hop_interface_id": contractID},
 }
 

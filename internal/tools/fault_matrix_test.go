@@ -112,6 +112,9 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("ca_deploy", map[string]any{"name": "evo-c", "image": "nginx:1.27", "confirmed": true}),
 	apiCase("dns_zone_create", map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}),
 	apiCase("vpc_create", map[string]any{"name": "evo-v", "confirmed": true}),
+	// The subnet goes into the VPC of the world (vpc_route_create's).
+	apiCase("subnet_create", map[string]any{"name": "evo-sn", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1", "vpc_id": faultVPC, "confirmed": true},
+		faultResource{host: "vpc.api.cloud.ru", path: "/v1/vpcs", ID: faultVPC, Name: "net", before: true}),
 	apiCase("secret_create", map[string]any{"path": "evo-s", "value": "x", "confirmed": true}),
 	apiCase("disk_create", map[string]any{"name": "evo-d", "size_gb": 10, "zone": "ru.AZ-1", "confirmed": true}),
 	apiCase("k8s_create", map[string]any{"name": "evo-kc", "zone": "ru.AZ-1", "cluster_sa_id": "sa-1", "confirmed": true}),
@@ -282,6 +285,7 @@ var faultMatrixOut = map[string]string{
 	"pg_db_delete": faultOutRemoves, "pg_delete": faultOutRemoves, "pg_user_delete": faultOutRemoves,
 	"redis_delete": faultOutRemoves, "release_floating_ip": faultOutRemoves, "s3_bucket_delete": faultOutRemoves,
 	"s3_rm": faultOutRemoves, "secret_delete": faultOutRemoves, "snat_delete": faultOutRemoves,
+	"subnet_delete": faultOutRemoves,
 	"stack_destroy": faultOutRemoves, "tg_delete": faultOutRemoves, "vpc_delete": faultOutRemoves,
 	"vpc_route_delete": faultOutRemoves,
 

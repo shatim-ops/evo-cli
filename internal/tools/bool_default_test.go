@@ -25,6 +25,7 @@ var boolDefaultsTrue = map[string][]string{
 	"force":             {"secret_delete"},
 	"public":            {"ca_deploy"},
 	"external":          {"lb_create"},
+	"routed_network":    {"subnet_create"},
 	"refresh":           {"status"},
 }
 

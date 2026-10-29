@@ -213,6 +213,7 @@ var namesUnmarked = map[string]bool{
 	"secret_list":          true,
 	"snat_delete":          true,
 	"snat_list":            true,
+	"subnet_delete":        true,
 	"tg_delete":            true,
 	"tg_get":               true,
 	"vm_list":              true,

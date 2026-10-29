@@ -109,6 +109,19 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return nil
 	}, refusedBy: []string{"disk_attach", "disk_detach", "disk_resize"}, names: "extending"},
+	// The network of subnet_create overlaps a subnet of the VPC (the
+	// spec's 409): subnet_create reads the project's subnets before the
+	// question and refuses it.
+	"subnet overlaps the VPC's": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return overlapSubnetCloud{c} },
+		refusedBy: []string{"subnet_create"}},
+	// Resources are still in the subnet (can_delete false; the spec's
+	// 405 on DELETE): subnet_delete reads it before the question.
+	"subnet with resources": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/subnets/") {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","name":"sub","state":"created","can_delete":false}`)
+	}, refusedBy: []string{"subnet_delete"}},
 	// The disk is the boot disk of a VM (final of the Grok wave on rc.1,
 	// the cleanup of the harness 18:38: 422 primary_disk_not_deleted after
 	// consent, D59): disk_delete reads the disk for D26 before the
@@ -192,6 +205,15 @@ func (busyFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.Float
 
 func (noSubnetCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
 	return nil, nil
+}
+
+// overlapSubnetCloud has, next to the world's subnets, one of the default
+// VPC whose network is subnet_create's (parityArgs).
+type overlapSubnetCloud struct{ provision.CloudAPI }
+
+func (c overlapSubnetCloud) ListSubnets(ctx context.Context, projectID string) ([]*provision.Subnet, error) {
+	subs, err := c.CloudAPI.ListSubnets(ctx, projectID)
+	return append(subs, &provision.Subnet{ID: consentOtherID, Name: "other", SubnetAddress: "10.10.0.0/16", VPCID: parityVM}), err
 }
 
 func consentJSON(status int, body string) *http.Response {

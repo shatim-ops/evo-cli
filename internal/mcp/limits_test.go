@@ -54,7 +54,7 @@ const maxToolsListBytes = 160 << 10
 // thousand tokens); toolsListSlack is how much it may shrink before the
 // number must follow.
 const (
-	toolsListBytes = 117848
+	toolsListBytes = 120274
 	toolsListSlack = 1024
 )
 

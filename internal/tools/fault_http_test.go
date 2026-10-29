@@ -70,6 +70,7 @@ var faultCollections = map[string]struct {
 	"/v1/clusters":         {field: "clusters", async: true},
 	"/v1/registries":       {field: "registries", async: true},
 	"/api/v1/nat-gateways": {field: "items"},
+	"/api/v1/subnets":      {field: "items"},
 	"/v2/containers":       {field: "data", async: true, unique: true},
 	"/v1/publicZones":      {field: "zones", async: true, unique: true},
 	"/v1/vpcs":             {field: "vpcs", async: true},
@@ -263,8 +264,19 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		a.serveS3(w, r)
 	case path == "/api/v1/availability-zones":
 		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}]}`)
-	case path == "/api/v1/subnets":
-		_, _ = io.WriteString(w, `{"items":[{"id":"sn-1","name":"Default_ru.AZ-1","default":true,"vpc_id":"vpc-1","availability_zone_id":"`+zoneAZ1+`","availability_zone":{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}}],"total":1}`)
+	case path == "/api/v1/subnets" && r.Method == http.MethodGet:
+		// The zone's default subnet, and the ones subnet_create made.
+		items := []map[string]any{{"id": "sn-1", "name": "Default_ru.AZ-1", "default": true, "vpc_id": "vpc-1", "availability_zone_id": zoneAZ1,
+			"availability_zone": map[string]any{"id": zoneAZ1, "name": "ru.AZ-1"}}}
+		a.mu.Lock()
+		for _, c := range a.made {
+			if c.host == host && c.path == path {
+				items = append(items, map[string]any{"id": c.ID, "name": c.Name, "state": "created"})
+			}
+		}
+		a.mu.Unlock()
+		b, _ := json.Marshal(map[string]any{"items": items, "total": len(items)})
+		_, _ = w.Write(b)
 	case path == "/v1/versions":
 		_, _ = io.WriteString(w, `{"versions":[{"id":"v1","name":"1"}]}`)
 	case path == "/v3/productConfiguration":
