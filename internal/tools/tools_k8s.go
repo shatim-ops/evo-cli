@@ -203,8 +203,16 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8s
 		return k8sPlan{}, err
 	}
 
-	// Version: explicit, else newest STABLE, else first available.
+	// Version: explicit (one of a channel's, D54), else newest STABLE,
+	// else first available.
 	version := stringArg(args, "version")
+	var channelVersions []string
+	for _, ch := range pc.Channels {
+		channelVersions = append(channelVersions, ch.AvailableVersions...)
+	}
+	if err := notInCatalogue(i18n.T("Kubernetes version", "версии Kubernetes"), version, channelVersions, "k8s_options"); err != nil {
+		return k8sPlan{}, err
+	}
 	if version == "" {
 		for _, ch := range pc.Channels {
 			if strings.Contains(ch.Channel, "STABLE") && len(ch.AvailableVersions) > 0 {

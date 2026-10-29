@@ -271,7 +271,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "list_floating_ips",
-			Description: "List Cloud.ru floating IPs (address, state, whether available to attach,, zone when the API names it). Read-only.",
+			Description: "List Cloud.ru floating IPs (address, state, whether available to attach, zone when the API names it). Read-only.",
 			InputSchema: objSchema(nil),
 		},
 		{
