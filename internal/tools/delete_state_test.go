@@ -100,3 +100,35 @@ func TestDeletePlan_FailedRefusalSaysWhereToDelete(t *testing.T) {
 		t.Errorf("an accepted delete of a FAILED cluster: %s", text)
 	}
 }
+
+// Full audit 1.5, FB150-2: the way out of a status is the answer to the
+// platform's refusal only. An expired key (401), a missing role (403), a
+// rate limit (429) or a cut connection on the DELETE of a resource read in
+// FAILED or CREATING keeps the hint of its own reason: «delete it in the
+// console» does not fix an expired key.
+func TestDeletePlan_WayOutOnlyForTheRefusal(t *testing.T) {
+	r := newTestServer()
+	id := "00000000-0000-4000-8000-0000000000fa"
+	for _, status := range []string{"FAILED", "CREATING"} {
+		for _, code := range []string{clierrors.CodeAuthRequired, clierrors.CodeAuthExpired, clierrors.CodeAuthFailed,
+			clierrors.CodeAPIRateLimited, clierrors.CodeAPIUnreachable} {
+			own := "the hint of " + code
+			p := r.deletePlan("kafka_delete", "kafka_delete deletes %s.", "kafka_delete удаляет %s.", id,
+				func() (map[string]any, error) { return map[string]any{"id": id, "status": status}, nil },
+				func(context.Context) (string, bool) {
+					return errResult(clierrors.New(code, "delete cluster: "+code, own)), true
+				})
+			if p.Execute == nil {
+				t.Fatalf("%s: no execute", status)
+			}
+			text, _ := p.Execute(context.Background())
+			var m map[string]any
+			if err := json.Unmarshal([]byte(text), &m); err != nil {
+				t.Fatal(err)
+			}
+			if m["hint"] != own || m["resource_status"] != nil {
+				t.Errorf("%s in %s: hint %q, resource_status %v; want the hint of the reason, not of the status", code, status, m["hint"], m["resource_status"])
+			}
+		}
+	}
+}

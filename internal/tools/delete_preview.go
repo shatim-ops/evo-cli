@@ -76,10 +76,23 @@ func stateWayOut(status, id string) (warning, hint string) {
 	return "", ""
 }
 
+// notTheState are the reasons of an error that the status of the resource
+// does not explain: the key, the role, the rate limit, the connection. Their
+// own hint stays (FB150-2): «delete it in the console» does not fix an
+// expired key.
+var notTheState = map[string]bool{
+	clierrors.CodeAuthRequired:   true,
+	clierrors.CodeAuthExpired:    true,
+	clierrors.CodeAuthFailed:     true,
+	clierrors.CodeAPIRateLimited: true,
+	clierrors.CodeAPIUnreachable: true,
+}
+
 // withWayOut is execute whose refusal, of a resource read in status
 // before the question, says what the preview said: the status and the way
 // out (stateWayOut), not the platform's bare error. The reason stays the
-// platform's (owner's decision 28.10, #455, option (б)).
+// platform's (owner's decision 28.10, #455, option (б)); an error the
+// status does not explain (notTheState) keeps its own hint.
 func withWayOut(execute func(context.Context) (string, bool), status, id string) func(context.Context) (string, bool) {
 	_, hint := stateWayOut(status, id)
 	if hint == "" {
@@ -92,6 +105,9 @@ func withWayOut(execute func(context.Context) (string, bool), status, id string)
 		}
 		var m map[string]any
 		if json.Unmarshal([]byte(text), &m) != nil {
+			return text, isErr
+		}
+		if reason, _ := m["reason"].(string); notTheState[reason] {
 			return text, isErr
 		}
 		m["resource_status"] = status
