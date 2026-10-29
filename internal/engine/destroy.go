@@ -524,8 +524,8 @@ func explainDeleteRefusal(vmID string, err error) error {
 		err)
 }
 
-func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
-	err := e.Cloud.DeleteVM(ctx, vmID)
+func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) (err error) {
+	err = e.Cloud.DeleteVM(ctx, vmID)
 	if err == nil || !isNotDeletableYet(err) {
 		return err
 	}
@@ -533,10 +533,25 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
 	start := time.Now()
 	deadline := start.Add(t.DeletableWaitTimeout)
 	shown := clock.Now() // the duration the reports print
-	e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet (still being created or changing state); waiting up to %s...",
-		"ВМ %s пока нельзя удалить (ещё создаётся или меняет состояние); ждём до %s...",
-		vmID, t.DeletableWaitTimeout))
+	// The state it is read in now, not a guess (#558): the line of the wait
+	// names it, and the refusal falls back to it (refusedVMDelete).
+	lastSeen := ""
+	if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
+		lastSeen = vm.Status
+	}
+	if lastSeen != "" {
+		e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet (state %s); waiting up to %s...",
+			"ВМ %s пока нельзя удалить (состояние %s); ждём до %s...", vmID, lastSeen, t.DeletableWaitTimeout))
+	} else {
+		e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet; waiting up to %s...",
+			"ВМ %s пока нельзя удалить; ждём до %s...", vmID, t.DeletableWaitTimeout))
+	}
 	lastReport := start
+	defer func() {
+		if err != nil && lastSeen != "" {
+			err = &seenStateError{status: lastSeen, err: err}
+		}
+	}()
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
@@ -551,7 +566,7 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
 			lastReport = time.Now()
 			status := i18n.T("unknown (the status request failed)", "неизвестно (запрос состояния не удался)")
 			if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
-				status = vm.Status
+				status, lastSeen = vm.Status, vm.Status
 			}
 			e.Printer.StepDone(i18n.Tf("still waiting: VM is %s (%s elapsed)", "всё ещё ждём: состояние ВМ — %s (прошло %s)",
 				status, clock.Since(shown).Round(time.Second)))
@@ -570,6 +585,8 @@ func (e *Engine) refusedVMDelete(ctx context.Context, vmID string, err error) er
 	status := ""
 	if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
 		status = vm.Status
+	} else if se := (*seenStateError)(nil); stderrors.As(err, &se) {
+		status = se.status // the read now failed: the last one of the wait
 	}
 	if status == "" {
 		return clerrors.Wrap(clerrors.CodeAPIError,
@@ -588,3 +605,13 @@ func (e *Engine) refusedVMDelete(ctx context.Context, vmID string, err error) er
 		i18n.Tf("VM %s cannot be deleted in state %s", "ВМ %s нельзя удалить в состоянии %s", vmID, status),
 		hint+kept, err)
 }
+
+// seenStateError is the refusal of a VM delete with the last state the
+// wait read, for when the read after it fails (refusedVMDelete).
+type seenStateError struct {
+	status string
+	err    error
+}
+
+func (e *seenStateError) Error() string { return e.err.Error() }
+func (e *seenStateError) Unwrap() error { return e.err }

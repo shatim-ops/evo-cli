@@ -9,6 +9,7 @@ import (
 	stderrors "errors"
 	"strings"
 	"testing"
+	"time"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -23,9 +24,11 @@ import (
 // API_ERROR and the record is kept.
 func TestDestroy_RefusedDeleteNamesTheStateAndTheWayOut(t *testing.T) {
 	for status, want := range map[string][]string{
-		"deleting": {"deleting", "support"},
-		"error":    {"error", "console"},
-		"creating": {"creating", "again"},
+		"deleting":       {"deleting", "support"},
+		"error":          {"error", "console"},
+		"failed":         {"failed", "console"},
+		"error_deleting": {"error_deleting", "support"},
+		"creating":       {"creating", "again"},
 	} {
 		eng, cloud, _ := destroyFixture(t, runningRecord())
 		cloud.deleteVMFn = func(context.Context, string) error {
@@ -52,5 +55,32 @@ func TestDestroy_RefusedDeleteNamesTheStateAndTheWayOut(t *testing.T) {
 		if a := readActive(t, eng.StateDir); a == nil || a.Status != "running" {
 			t.Errorf("%s: record after the refusal = %+v, want unchanged", status, a)
 		}
+	}
+}
+
+// The read after the wait fails (5xx): the refusal names the last state the
+// wait read, not «could not be read» after minutes of waiting (review of
+// #565).
+func TestDestroy_RefusedDeleteFallsBackToTheStateTheWaitRead(t *testing.T) {
+	eng, cloud, _ := destroyFixture(t, runningRecord())
+	eng.Timings.DeletableWaitTimeout = 50 * time.Millisecond
+	// The VM reads as deleting until the deletes stop; the read after the
+	// last refused delete fails.
+	deletes := 0
+	cloud.deleteVMFn = func(context.Context, string) error {
+		deletes++
+		return clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
+			&provision.StatusError{Status: 409, Body: `{"code":"vm_can_not_be_deleted"}`})
+	}
+	cloud.getVMFn = func(_ context.Context, id string) (*provision.VM, error) {
+		if deletes < 2 {
+			return &provision.VM{ID: id, Status: "deleting"}, nil
+		}
+		return nil, clerrors.New(clerrors.CodeAPIError, "HTTP 502", "")
+	}
+	err := eng.Destroy(context.Background(), DestroyOptions{Force: true})
+	var ce *clerrors.CLIError
+	if !stderrors.As(err, &ce) || !strings.Contains(ce.Message, "deleting") {
+		t.Fatalf("Destroy = %v, want the state the wait read (deleting)", err)
 	}
 }
