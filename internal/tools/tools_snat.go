@@ -36,9 +36,15 @@ func (s *Registry) resolveZone(ctx context.Context, args map[string]any) (id, na
 		}
 		return "", "", fmt.Errorf(i18n.T("availability zone %q not found", "зона доступности %q не найдена"), name)
 	}
-	// The id given, else the configured region (CLOUDRU_REGION = the AZ
-	// UUID); its name for the preview of the billable gateway (FB123-2),
-	// none when the zones cannot be read.
+	// The id given, else the configured region, by its UUID or its name
+	// (resolveVMZone, as a VM's: its name went out as the id, P-Z1); its
+	// name for the preview of the billable gateway (FB123-2), none when
+	// the zones cannot be read.
+	if stringArg(args, "availability_zone_id") == "" {
+		if _, _, err := resolveVMZone(ctx, eng); err != nil {
+			return "", "", err
+		}
+	}
 	id = firstNonEmptyStr(stringArg(args, "availability_zone_id"), eng.Config.Region)
 	if id == "" {
 		return "", "", errors.New(i18n.T("no zone: pass 'zone' (name) or 'availability_zone_id', or set the region", "зона не задана: передайте 'zone' (имя) или 'availability_zone_id' либо задайте region"))

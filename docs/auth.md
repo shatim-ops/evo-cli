@@ -231,7 +231,7 @@ profiles:
 |---|---|---|
 | `CLOUDRU_PROJECT_ID` | UUID проекта. Нужен и для чтений, и для создания ресурсов проекта (`vm list`, `vpc subnets`, `k8s list`, `pg list`, секреты, …): без него — `CONFIG_INVALID`, код `2`, запрос в облако не уходит. Без проекта работают каталоги (зоны, флейворы, образы, Marketplace, типы дисков), `org_projects`, `org_quotas`, `billing_*` с договором (`CLOUDRU_AGREEMENT_ID`), Object Storage и локальные `status`/`list` | `--project-id` / `project_id` |
 | `EVOLUTION_PROJECT_ID` | то же (имя AI Agents); `CLOUDRU_PROJECT_ID` важнее | — |
-| `CLOUDRU_REGION` | зона доступности (`evo vm zones`): UUID; `evo vm create`, `evo deploy`, MCP `provision`, `deploy` и стеки понимают и имя (`ru.AZ-2`) | `--region` / `region` |
+| `CLOUDRU_REGION` | зона доступности (`evo vm zones`): имя (`ru.AZ-2`) или UUID; имя, которого нет в списке зон, — отказ до вопроса о согласии (`USAGE`, код 1) | `--region` / `region` |
 | `CLOUDRU_IMAGE_ID` | UUID загрузочного образа для `deploy` (`evo image list`, `evo image get <имя>`) | `deploy --image-id` / `image_id` (по имени или UUID — `deploy --image` / `image:`) |
 | `CLOUDRU_FLAVOR` | конфигурация ВМ, например `lowcost10-2-4`; `auto` — подобрать (по умолчанию) | `deploy --flavor` / `flavor` |
 | `CLOUDRU_DISK_SIZE` | размер загрузочного диска, ГБ (по умолчанию 10) | `deploy --disk-size` / `disk_size` |
