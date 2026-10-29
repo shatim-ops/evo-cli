@@ -855,6 +855,7 @@ var paramLabels = map[string]struct {
 	"backup_retention_days":                 {"backups kept, days", "бэкапы хранятся, дней", false},
 	"health_check":                          {"health check", "проверка здоровья", false},
 	"protocol":                              {"protocol", "протокол", false},
+	"kms_key_id":                            {"KMS key", "ключ KMS", false},
 	"cluster_sa_id":                         {"account", "аккаунт", false},
 	"cluster_id":                            {"cluster", "кластер", false},
 	"product":                               {"product", "продукт", false},
