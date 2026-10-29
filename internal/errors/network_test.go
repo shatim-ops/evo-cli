@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -135,5 +136,33 @@ func TestPrefix_KeepsCodeOutOfTheText(t *testing.T) {
 	plain := clierrors.Prefix("list zones: ", stderrors.New("boom"))
 	if plain.Error() != "list zones: boom" {
 		t.Errorf("plain: %q", plain)
+	}
+}
+
+// Grok rc.1 (final report, candidate): a request Cloud.ru did not answer
+// within the client's timeout (60 s for compute) said «check your network
+// connection» — the network was fine, the platform was slow. The timeout of
+// the client names the host and says to retry later; a write keeps its own
+// hint («it may have reached Cloud.ru», the adapter's).
+func TestNetworkHint_ClientTimeout(t *testing.T) {
+	defer i18n.SetLang(i18n.Lang())
+	noProxy(t)
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-block }))
+	defer srv.Close()
+	defer close(block)
+	_, err := (&http.Client{Timeout: 50 * time.Millisecond}).Get(srv.URL)
+	if err == nil {
+		t.Fatal("the request did not time out")
+	}
+	for _, tt := range []struct{ lang, want string }{
+		{"ru", "127.0.0.1 не ответил"},
+		{"en", "127.0.0.1 did not answer"},
+	} {
+		i18n.SetLang(tt.lang)
+		hint := clierrors.NetworkHint(err, fallback)
+		if !strings.Contains(hint, tt.want) || hint == fallback {
+			t.Errorf("%s: hint %q", tt.lang, hint)
+		}
 	}
 }
