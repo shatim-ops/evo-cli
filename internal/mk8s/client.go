@@ -190,6 +190,10 @@ type Flavor struct {
 	CPU      int    `json:"cpu"`
 	RAM      int    `json:"ram"`
 	GPU      int    `json:"gpu"`
+	// Purpose is what the flavor is for: CONTROLPLANE (masters) or
+	// DATAPLANE (nodes) (FlavorConfiguration.purpose); "" when the
+	// catalogue does not say.
+	Purpose string `json:"purpose,omitempty"`
 }
 
 // --- Operations ---
