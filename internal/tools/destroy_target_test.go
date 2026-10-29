@@ -24,6 +24,7 @@ import (
 type targetCloud struct {
 	provision.CloudAPI
 	deleteErr   error
+	vmStatus    string // "" reads as creating
 	vmGone      bool
 	fipTries    int
 	releasedFIP string
@@ -44,7 +45,7 @@ func (c *targetCloud) GetVM(context.Context, string) (*provision.VM, error) {
 	if c.vmGone {
 		return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")
 	}
-	return &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Status: "creating"}, nil
+	return &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Status: firstNonEmptyStr(c.vmStatus, "creating")}, nil
 }
 func (c *targetCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	c.fipTries++
@@ -230,5 +231,30 @@ func TestDestroyTargeted_RecordOfAnotherProject(t *testing.T) {
 	sf, _ = state.Read(path)
 	if a := sf.ActiveDeployment(); a == nil || a.VMID != "0000a1a1-0000-4000-8000-000000000001" {
 		t.Errorf("record dropped: %+v", sf.Deployments)
+	}
+}
+
+// Release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#558,
+// E11 of the Grok rc.1 run): destroy by vm_id answered «still being
+// created or changing state … call again in a minute» for a VM read in
+// error_deleting, which will not go by itself. The answer names the state
+// it read and the way out (engine.DeleteWayOut, as the CLI destroy), and
+// the floating IP that stays billed: released with evo vpc fip-release
+// once the VM is gone. The VM's FIP is not touched.
+func TestDestroyTargeted_RefusedForGoodNamesTheWayOutAndTheFIP(t *testing.T) {
+	cloud := &targetCloud{vmStatus: "error_deleting", deleteErr: clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
+		&provision.StatusError{Status: 409, Body: `{"code":"vm_can_not_be_deleted"}`})}
+	r, _ := targetRegistry(t, cloud)
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
+	for _, want := range []string{"error_deleting", "support", "fip-release", "fip-1"} {
+		if !isErr || !strings.Contains(text, want) {
+			t.Errorf("answer does not say %q: %s", want, text)
+		}
+	}
+	if strings.Contains(text, "still being created") {
+		t.Errorf("answer guesses the state it read: %s", text)
+	}
+	if cloud.fipTries != 0 {
+		t.Errorf("FIP touched while the VM still exists")
 	}
 }
