@@ -332,6 +332,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		}
 	}
 	var flavorErr error
+	var picked *provision.Flavor
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
 		id, err := pick(flavors)
 		if ce := (*clerrors.CLIError)(nil); errors.As(err, &ce) && ce.Code == clerrors.CodeNotFound {
@@ -340,7 +341,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		if err == nil {
 			for _, f := range flavors {
 				if f.ID == id {
-					vm.Flavor = deployplan.SpecOf(f)
+					vm.Flavor, picked = deployplan.SpecOf(f), f
 					break
 				}
 			}
@@ -352,6 +353,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	// dogfood 28.10).
 	cat := images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}
 	marketplace := false
+	var image *provision.ImageDetail
 	imageErr := func() error {
 		checked := false
 		if vm.Image.ID == "" && vm.Image.Name != "" {
@@ -390,10 +392,12 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 					marketplace = img.Type == provision.ImageTypeMarketplace
 				}
 				vm.Disk.SizeGB, _ = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
+				image = img
 			}
 		}
 		return nil
 	}()
+	p.addCatalogueLines(picked, image)
 	p.priceFromAPI(ctx, e.Cloud, marketplace)
 	priced = true
 	var networkErr error
@@ -403,6 +407,33 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		p.NetworkCheck, networkErr = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
 	}
 	return clerrors.Join(flavorErr, imageErr, networkErr)
+}
+
+// addCatalogueLines says what the catalogue says of the VM's flavor and
+// image that the call does not check yet (D54 before the probes P35, P36;
+// FB15-2, FB15-5): the zones a VM of the flavor can be created in, and the
+// image's minimum vCPU and RAM. Only from the catalogue's fields: a flavor
+// that names no zones, an image without minimums add nothing.
+func (p *CreatePreview) addCatalogueLines(f *provision.Flavor, img *provision.ImageDetail) {
+	if f != nil {
+		if z := f.ZoneNames(); z != nil {
+			// As the answer decodes it ([]any), the same in-process and
+			// after JSON.
+			zones := make([]any, len(z))
+			for i, n := range z {
+				zones[i] = n
+			}
+			p.Add("flavor_zones", zones)
+		}
+	}
+	if img != nil {
+		if img.MinCPU > 0 {
+			p.Add("image_min_cpu", img.MinCPU)
+		}
+		if img.MinRAM > 0 {
+			p.Add("image_min_ram_gb", img.MinRAM)
+		}
+	}
 }
 
 // imageDecided reports an image lookup the catalogue answered: no such
@@ -844,6 +875,10 @@ var paramLabels = map[string]struct {
 	"billable":                              {"billable addon", "платный плагин", false},
 	"resolve_mode":                          {"on conflict", "при конфликте", false},
 	"config_keys":                           {"settings", "настройки", false},
+	"flavor_zones":                          {"flavor zones", "зоны flavor", false},
+	"image_min_cpu":                         {"image minimum, vCPU", "минимум образа, vCPU", false},
+	"image_min_ram_gb":                      {"image minimum, RAM", "минимум образа, RAM", true},
+	"interface_types":                       {"target interface types", "типы интерфейсов целей", false},
 }
 
 // notCheckedLabels name what a k8s_addon preview could not check (its
