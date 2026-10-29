@@ -35,6 +35,9 @@ func TestWorkflows_QwenReviewScope(t *testing.T) {
 // comes by itself.
 var sensitiveCode = map[string]string{
 	"internal/tools/gate.go":         "func (r *Registry) gated(",
+	"internal/tools/registry.go":     "var sensitiveTools =",
+	"internal/journal/journal.go":    "func Write(",
+	"internal/mcp/http.go":           "func (h *HTTPHandler) authorized(",
 	"internal/tools/untrusted.go":    "func markUntrusted(",
 	"internal/mcp/http_redact.go":    "func redactSecrets(",
 	"internal/tools/tools_secret.go": "",

@@ -70,7 +70,8 @@ if [ -z "${COMMENT_ID:-}" ]; then
       .github/* | internal/workflows/*) review=1 ;;
       *_test.go) ;;
       internal/auth/* | internal/confirm/* | internal/config/* | \
-        internal/tools/gate.go | internal/tools/tools_secret.go | internal/tools/untrusted.go | \
+        internal/tools/gate.go | internal/tools/registry.go | internal/tools/tools_secret.go | \
+        internal/tools/untrusted.go | internal/journal/journal.go | internal/mcp/http.go | \
         internal/mcp/http_policy.go | internal/mcp/http_redact.go | internal/mcp/http_kube.go) review=1 ;;
     esac
   done <<<"$changed"

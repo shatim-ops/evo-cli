@@ -37,6 +37,9 @@ run() { # ИМЯ заголовок пути ждём(review|skip) [COMMENT_ID]
 run "продуктовый PR без секретов и согласия" "Tab (продукт, 1.5)" "internal/tools/completion.go" skip
 run "продуктовый PR: гейт согласия" "Гейт (продукт, 1.6)" "internal/tools/completion.go internal/tools/gate.go" review
 run "продуктовый PR: маскирование HTTP" "H7 (продукт, 1.6)" "internal/mcp/http_redact.go" review
+run "продуктовый PR: объявления согласия" "Согласие (продукт, 1.6)" "internal/tools/registry.go" review
+run "продуктовый PR: токен HTTP" "H1 (продукт, 1.6)" "internal/mcp/http.go" review
+run "продуктовый PR: журнал" "Журнал (продукт, 1.6)" "internal/journal/journal.go" review
 run "продуктовый PR: ключи" "Ключ (продукт, 1.6)" "internal/auth/iam.go" review
 run "только тесты кода согласия" "Инвариант (процесс)" "internal/tools/gate_test.go" skip
 run "процесс, только тесты и документы" "Инвариант (процесс)" "internal/tools/x_test.go docs/a.md README.md" skip
