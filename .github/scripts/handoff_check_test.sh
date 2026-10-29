@@ -24,10 +24,12 @@ check() { # имя, ожидаемый код
 check "передача последней версии есть" 0
 log $'## [1.4.1] — 2026-10-28\n\n## [1.4.0] — 2026-10-27\n'
 check "релизный PR: новый раздел выпуска" 0
-git add -A && git commit -qm release && base=$(git rev-parse HEAD)
+# Коммит выпуска — за трое суток до тега: окно считается от тега (tag.yml
+# ставит аннотированный, git tag -a), а не от коммита.
+git add -A && GIT_COMMITTER_DATE="$(date -d '-3 days' -R)" git commit -qm release && base=$(git rev-parse HEAD)
 check "PR после тега без передачи" 1
-git tag v1.4.1
-tagged=$(git for-each-ref --format='%(creatordate:unix)' refs/tags/v1.4.1)
+git tag -a v1.4.1 -m v1.4.1
+tagged=$(date +%s)
 HANDOFF_NOW=$((tagged + 23 * 3600)) check "без передачи, 23 часа после тега" 1
 HANDOFF_NOW=$((tagged + 25 * 3600)) check "без передачи, 25 часов после тега: окно закрыто" 0
 touch docs/internal/handoff/1.4.1.md
