@@ -735,7 +735,8 @@ func runsStep(w workflow, cmd string) bool {
 // checksums.txt failed with "failed to persist metadata" (release of
 // v1.5.0-rc.1, run 40809664915). With the cache made first, they all write
 // the same bytes. Every job of release.yml that runs goreleaser release
-// runs cosign initialize after the installer of cosign and before it.
+// runs cosign initialize after the installer of cosign and before it; the
+// job image signs once (cosign sign by digest), with no race to guard.
 func TestWorkflows_ReleaseInitializesTUFBeforeSigning(t *testing.T) {
 	jobs := 0
 	for name, j := range readWorkflows(t)["release.yml"].Jobs {
@@ -744,7 +745,7 @@ func TestWorkflows_ReleaseInitializesTUFBeforeSigning(t *testing.T) {
 			switch {
 			case strings.HasPrefix(s.Uses, "sigstore/cosign-installer@"):
 				installer = i
-			case strings.TrimSpace(s.Run) == "cosign initialize":
+			case strings.HasPrefix(strings.TrimSpace(s.Run), "cosign initialize"):
 				initialize = i
 			case strings.HasPrefix(s.Uses, "goreleaser/goreleaser-action@") && strings.HasPrefix(fmt.Sprint(s.With["args"]), "release"):
 				release = i
