@@ -336,6 +336,7 @@ jobs:
   # Шаг 6 docs/RELEASING.md: после тега до передачи дел
   # (handoff/<версия>.md) PR в main не сливается; релизный PR (новый раздел
   # выпуска в CHANGELOG.md) проходит. Ретро 1.4.1: три PR слиты до передачи.
+  # Окно — 24 часа после тега (#578): тег приходит с fetch-depth: 0.
   handoff:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
