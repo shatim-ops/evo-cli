@@ -325,15 +325,24 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 
 	// Run docker compose up. Streamed, not Exec: pulling images can take
 	// longer than Exec's 120 s limit. Progress goes to stderr in text mode.
-	var progress io.Writer = e.Printer.ErrWriter()
+	// The last lines go with a failure in every mode: with --json the
+	// output goes nowhere else (#558). They are the workload's words: the
+	// tool marks the field untrusted.
+	tail := newTailWriter(composeTailLines)
+	var progress io.Writer = io.MultiWriter(e.Printer.ErrWriter(), tail)
 	if e.Printer.IsJSON() {
-		progress = io.Discard
+		progress = tail
 	}
 	if err := e.Deployer.ExecStream(ctx, fmt.Sprintf("cd %s && docker compose -f docker-compose.yml up -d", remoteComposeDir), progress, progress); err != nil {
-		return clerrors.Wrap(clerrors.CodeSSHTimeout,
+		ce := clerrors.Wrap(clerrors.CodeSSHTimeout,
 			i18n.T("docker compose up failed", "docker compose up завершился ошибкой"),
 			i18n.T("Check your compose file and service logs on the VM.", "Проверьте compose-файл и журналы сервисов на ВМ."),
 			err)
+		if out := tail.String(); out != "" {
+			ce.Details = map[string]any{"output": out}
+			ce.Hint += i18n.T(" The last lines of docker compose up are in output.", " Последние строки docker compose up — в output.")
+		}
+		return ce
 	}
 	e.Printer.StepDone(i18n.T("Application deployed", "Приложение развёрнуто"))
 
