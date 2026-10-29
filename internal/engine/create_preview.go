@@ -843,6 +843,11 @@ var paramLabels = map[string]struct {
 	"billable":                              {"billable addon", "платный плагин", false},
 	"resolve_mode":                          {"on conflict", "при конфликте", false},
 	"config_keys":                           {"settings", "настройки", false},
+	"target_group_id":                       {"target group", "группа целей", false},
+	"target_group_name":                     {"target group name", "имя группы целей", false},
+	"targets":                               {"targets", "цели", false},
+	"vpc_id":                                {"VPC", "VPC", false},
+	"vpc_name":                              {"VPC name", "имя VPC", false},
 }
 
 // notCheckedLabels name what a k8s_addon preview could not check (its

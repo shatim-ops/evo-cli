@@ -1445,7 +1445,7 @@ func (s *Registry) registerTools() {
 		"lb_list":              s.handleLbList,
 		"lb_get":               s.handleLbGet,
 		"lb_operation":         s.handleLbOperation,
-		"lb_create":            s.handleLbCreate,
+		"lb_create":            s.gated("lb_create", s.planLbCreate),
 		"lb_delete":            s.gated("lb_delete", s.planLbDelete),
 		"tg_list":              s.handleTgList,
 		"tg_get":               s.handleTgGet,

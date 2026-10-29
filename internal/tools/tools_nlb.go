@@ -228,23 +228,27 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 	if id, st, ok := takenName(existing, name); ok {
 		return nameTakenResult(i18n.T("target group", "целевая группа"), name, id, st, "tg_list")
 	}
-	// Auto-resolve interface_id from the VM when the caller only gave vm_id — the
-	// agent has no standalone tool to fetch a VM's network interface, and without
-	// this it flails (ssh/raw API). NLB targets need the VM's regular VPC-subnet
-	// interface; GetVMDetail returns it.
+	// Each target VM is read: its name goes to the preview (the person
+	// agrees to which VMs take the traffic, audit cli-ids-1.6, §3.2), and
+	// interface_id is resolved when the caller only gave vm_id — the
+	// agent has no standalone tool to fetch a VM's network interface, and
+	// without this it flails (ssh/raw API). NLB targets need the VM's
+	// regular VPC-subnet interface; GetVMDetail returns it.
+	named := make([]map[string]any, 0, len(specs))
 	for i, sp := range specs {
+		vmid, _ := sp["id"].(string)
+		det, e := eng.Cloud.GetVMDetail(ctx, vmid)
+		if e != nil {
+			return errResult(fmt.Errorf(i18n.T("resolve interface for vm %s: %w", "разрешение интерфейса ВМ %s: %w"), vmid, e)), true
+		}
 		if ifid, _ := sp["interface_id"].(string); ifid == "" {
-			vmid, _ := sp["id"].(string)
-			det, e := eng.Cloud.GetVMDetail(ctx, vmid)
-			if e != nil {
-				return errResult(fmt.Errorf(i18n.T("resolve interface for vm %s: %w", "разрешение интерфейса ВМ %s: %w"), vmid, e)), true
-			}
 			ifid := pickVMInterface(det)
 			if ifid == "" {
 				return errResult(fmt.Errorf(i18n.T("vm %s has no usable network interface (NLB targets need a private VPC-subnet VM — provision with no_public_ip)", "у ВМ %s нет подходящего сетевого интерфейса (цель балансировщика — ВМ в подсети VPC без публичного IP: provision с no_public_ip)"), vmid)), true
 			}
 			specs[i]["interface_id"] = ifid
 		}
+		named = append(named, map[string]any{"id": vmid, "name": det.Name, "interface_id": specs[i]["interface_id"]})
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
@@ -252,7 +256,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 			"message": i18n.Tf("tg_create creates target group %q with %d target(s).",
 				"tg_create создаёт группу целей %q (целей: %d).", name, len(specs)),
 			"targets": specs,
-			"preview": willPreview(engine.ResourceTargetGroup, name, "", map[string]any{"targets": len(specs)}, []string{"targets"}),
+			"preview": willPreview(engine.ResourceTargetGroup, name, "", map[string]any{"targets": named}, []string{"targets"}),
 		}), true
 	}
 	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "target_vm_specs": specs}
@@ -293,12 +297,16 @@ func (s *Registry) planTgDelete(ctx context.Context, args map[string]any) (*Plan
 
 // --- Load balancer create/delete ---
 
-func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (string, bool) {
+// planLbCreate plans the create of a load balancer (gate.go). The preview
+// names the target group and the VPC by name as well as by id: the group
+// is read before the question, and the person agrees to what the
+// balancer serves (audit cli-ids-1.6, §3.2).
+func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	tgID := stringArg(args, "target_group_id")
 	port := pgInt(args, "port", 0)
 	if name == "" || tgID == "" || port == 0 {
-		return usageT("'name', 'target_group_id' and 'port' are required", "нужны 'name', 'target_group_id' и 'port'"), true
+		return nil, usageErr("'name', 'target_group_id' and 'port' are required", "нужны 'name', 'target_group_id' и 'port'")
 	}
 	targetPort := pgInt(args, "target_port", port)
 	hcPort := pgInt(args, "hc_port", targetPort)
@@ -312,42 +320,42 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 
 	cli, eng, err := s.nlbClientEng(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// A second balancer of the same name is a second bill: refused before
 	// the consent, as every other create (DECISIONS D21).
 	existing, err := cli.ListNLB(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list load balancers: %w", "проверка, что имя свободно: список балансировщиков: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list load balancers: %w", "проверка, что имя свободно: список балансировщиков: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult(i18n.T("load balancer", "балансировщик"), name, id, st, "lb_list")
+		return answered(nameTakenResult(i18n.T("load balancer", "балансировщик"), name, id, st, "lb_list")), nil
 	}
 
 	// VPC: explicit, else inherit from the target group (LB must share its
 	// VPC). The group's VMs also name the zone the balancer serves.
 	tg, e := cli.GetTargetGroup(ctx, tgID)
 	if e != nil {
-		return errResult(fmt.Errorf(i18n.T("read target group %s: %w", "чтение целевой группы %s: %w"), tgID, e)), true
+		return nil, fmt.Errorf(i18n.T("read target group %s: %w", "чтение целевой группы %s: %w"), tgID, e)
 	}
 	tgVPC, _ := tg["vpc_id"].(string)
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID != "" && tgVPC != "" && vpcID != tgVPC {
 		// The balancer shares its target group's VPC (release audit
 		// re-run, N-01).
-		return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+		return nil, clierrors.New(clierrors.CodeConfigInvalid,
 			i18n.Tf("target group %s is in VPC %s, not in vpc_id %s; nothing was created", "целевая группа %s в VPC %s, а не в vpc_id %s; ничего не создано", tgID, tgVPC, vpcID),
-			i18n.T("Omit vpc_id (the balancer takes its target group's VPC) or pass a target group of that VPC.", "Не указывайте vpc_id (балансировщик возьмёт VPC целевой группы) или передайте целевую группу этой VPC."))), true
+			i18n.T("Omit vpc_id (the balancer takes its target group's VPC) or pass a target group of that VPC.", "Не указывайте vpc_id (балансировщик возьмёт VPC целевой группы) или передайте целевую группу этой VPC."))
 	}
 	if vpcID == "" {
 		vpcID = tgVPC
 	}
 	if vpcID == "" {
-		return errResult(errors.New(i18n.T("could not resolve vpc_id — pass it explicitly", "не удалось определить vpc_id — передайте его"))), true
+		return nil, errors.New(i18n.T("could not resolve vpc_id — pass it explicitly", "не удалось определить vpc_id — передайте его"))
 	}
 	zone, subnetID, warnings, err := lbZoneAndSubnet(ctx, eng, args, tg, vpcID)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 
 	// AZ spec requires exactly one of {id, name} (nlb API 400 otherwise);
@@ -388,34 +396,53 @@ func (s *Registry) handleLbCreate(ctx context.Context, args map[string]any) (str
 		"subnet_id": subnetID, "zone": firstNonEmptyStr(zone.Name, zone.ID), "external": external,
 		"health_check": healthCheck,
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		out := map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("lb_create provisions a BILLABLE L4 load balancer (async).",
-				"lb_create создаёт ПЛАТНЫЙ балансировщик L4 (асинхронно)."),
-			"will_create": willCreate,
-			"preview": willPreview(engine.ResourceLB, name, firstNonEmptyStr(zone.Name, zone.ID), willCreate,
-				[]string{"listener", "health_check_port", "health_check", "external", "subnet_id"}, warnings...),
-		}
-		if len(warnings) > 0 {
-			out["warnings"] = warnings
-		}
-		return toJSON(out), true
+	tgName, _ := tg["name"].(string)
+	preview := willPreview(engine.ResourceLB, name, firstNonEmptyStr(zone.Name, zone.ID), willCreate,
+		[]string{"listener", "health_check_port", "health_check", "external", "subnet_id"}, warnings...)
+	preview.Add("target_group_id", tgID)
+	preview.Add("target_group_name", tgName)
+	preview.Add("vpc_id", vpcID)
+	preview.Add("vpc_name", s.vpcName(ctx, vpcID))
+	out := map[string]any{
+		"message": i18n.T("lb_create provisions a BILLABLE L4 load balancer (async).",
+			"lb_create создаёт ПЛАТНЫЙ балансировщик L4 (асинхронно)."),
+		"will_create": willCreate,
+		"preview":     preview,
 	}
-	op, err := cli.CreateNLB(ctx, body)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+	if len(warnings) > 0 {
+		out["warnings"] = warnings
+	}
+	return &Plan{Preview: out, Execute: func(ctx context.Context) (string, bool) {
+		op, err := cli.CreateNLB(ctx, body)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "lb_create", cli.ListNLB, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf(i18n.T("create load balancer: %w", "создание балансировщика: %w"), err))
 		}
-		return lostCreate(ctx, "lb_create", cli.ListNLB, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf(i18n.T("create load balancer: %w", "создание балансировщика: %w"), err))
+		out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": "Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING."}
+		// The balancer's id is in the create's answer: named at once (fault
+		// matrix, process audit 1.2.1; as pg_create, N-07).
+		if op.ResourceID != "" {
+			out["lb_id"] = op.ResourceID
+		}
+		return toJSON(out), false
+	}}, nil
+}
+
+// vpcName is the name of VPC id for a preview, "" when it cannot be read:
+// the id stays named either way.
+func (s *Registry) vpcName(ctx context.Context, id string) string {
+	cli, err := s.vpcClient(ctx)
+	if err != nil {
+		return ""
 	}
-	out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": "Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING."}
-	// The balancer's id is in the create's answer: named at once (fault
-	// matrix, process audit 1.2.1; as pg_create, N-07).
-	if op.ResourceID != "" {
-		out["lb_id"] = op.ResourceID
+	m, err := cli.GetVPC(ctx, id)
+	if err != nil {
+		return ""
 	}
-	return toJSON(out), false
+	name, _ := m["name"].(string)
+	return name
 }
 
 // lbZoneAndSubnet picks the zone the balancer serves and its subnet there.

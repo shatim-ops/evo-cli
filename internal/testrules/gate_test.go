@@ -42,7 +42,6 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_kube.go: handleK8sApply":           "1.5",
 	"internal/tools/tools_kube.go: handleK8sHelm":            "1.5",
 	"internal/tools/tools_kube.go: handleK8sKubectl":         "1.5",
-	"internal/tools/tools_nlb.go: handleLbCreate":            "1.5",
 	"internal/tools/tools_nlb.go: handleTgCreate":            "1.5",
 	"internal/tools/tools_pg.go: handlePgBackupCreate":       "1.5",
 	"internal/tools/tools_pg.go: handlePgDbCreate":           "1.5",
@@ -60,7 +59,7 @@ var inlineGates = map[string]string{
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 31
+const inlineGatesLeft = 30
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{
