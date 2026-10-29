@@ -20,28 +20,7 @@ import (
 // yet, → the work item that names it. The list only shrinks: a create not
 // here whose preview leaves the project out fails the test, and so does a
 // line whose preview names it.
-var previewNoProject = map[string]string{
-	"ar_create":         "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"ca_deploy":         "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"cert_import":       "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"cert_issue_le":     "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"dns_record_create": "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"dns_zone_create":   "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"image_create":      "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"kafka_create":      "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"lb_create":         "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"pg_backup_create":  "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"pg_db_create":      "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"pg_user_create":    "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"redis_create":      "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"s3_bucket_create":  "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"s3_put":            "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"secret_create":     "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"snat_create":       "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"tg_create":         "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"vpc_create":        "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-	"vpc_route_create":  "release plan 1.6, «Превью create называет проект» (П6): «разработка»",
-}
+var previewNoProject = map[string]string{}
 
 // Release plan 1.6, «Превью create называет проект» (coverage-1.5.md, П6):
 // a create in the wrong project is the costliest mistake of a create, and
