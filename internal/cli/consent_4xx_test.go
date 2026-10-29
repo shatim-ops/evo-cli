@@ -73,6 +73,7 @@ var writeRules = map[string]struct{ world, why, item string }{
 	"PUT /api/v1/disks/{disk_id} 404":         {why: ruleAbsentID},
 	"PUT /api/v1/disks/{disk_id} 422":         {world: "disk larger than requested"},
 	"DELETE /api/v1/disks/{disk_id} 404":      {why: ruleAbsentID},
+	"DELETE /api/v1/disks/{disk_id} 422":      {world: "disk attached to a VM"},
 
 	"POST /api/v1/nat-gateways 422":                    {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"DELETE /api/v1/nat-gateways/{nat_gateway_id} 404": {why: ruleAbsentID},

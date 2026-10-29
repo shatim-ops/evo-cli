@@ -109,6 +109,14 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return nil
 	}, refusedBy: []string{"disk_attach", "disk_detach", "disk_resize"}, names: "extending"},
+	// A VM still has the disk (D59; Cloud.ru: 422 «Primary disk can not be
+	// deleted without vm»): disk_delete reads the disk before the question.
+	"disk attached to a VM": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","name":"old","state":"in_use","vms":[{"id":"`+consentOtherID+`","name":"web","primary":true}]}`)
+	}, refusedBy: []string{"disk_delete"}},
 	"disk larger than requested": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 			return nil

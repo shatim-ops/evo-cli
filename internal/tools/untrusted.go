@@ -27,6 +27,9 @@ var untrustedFields = map[string][]string{
 	"logs":        {"log"},
 	"ca_logs":     {"logs"},
 	"k8s_kubectl": {"output"},
+	// The VMs a disk is attached to, as the cloud names them: the refusal
+	// of disk_delete (D59) names them for the way out.
+	"disk_delete": {"attached_vms"},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of
