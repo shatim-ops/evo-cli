@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # go test job ci (решения владельца #370, вариант 1, и #493):
-#   - на Windows — два прохода: все пакеты, кроме internal/tools, затем
+#   - на Windows в pull request — только пакеты с кодом Windows
+#     (windowsPRPackages); иначе — два прохода: все пакеты, кроме internal/tools, затем
 #     internal/tools один. Сбой рантайма Go приходил только под нагрузкой
 #     параллельных пакетов: 14 из 828 попыток 22–28.10, все в internal/tools;
 #     так — 0 из 300 (проба ci-probe, run 40740766759, #494). Это обход, а
@@ -20,7 +21,16 @@ logs=$(mktemp -d)
 trap 'rm -rf "$logs"' EXIT
 tools=$(go list ./internal/tools)
 
-if [ "${RUNNER_OS:-}" = Windows ]; then
+# windowsPRPackages — пакеты с кодом Windows (*_windows.go, runtime.GOOS):
+# на pull request Windows гоняет только их, всё — main, ночной прогон и
+# выпуск (решение владельца 29.10, аудит #578, п. 10: сбой рантайма Go на
+# Windows — 14 из 828 попыток, а свой код Windows — три пакета). Список
+# держит TestWorkflows_WindowsPRCoversWindowsCode.
+windowsPRPackages=(./internal/cli ./internal/config ./internal/journal)
+
+if [ "${RUNNER_OS:-}" = Windows ] && [ "${GITHUB_EVENT_NAME:-}" = pull_request ]; then
+	passes=("${windowsPRPackages[*]}")
+elif [ "${RUNNER_OS:-}" = Windows ]; then
 	# shellcheck disable=SC2207 # import paths have no spaces
 	rest=($(go list ./... | grep -vxF "$tools"))
 	passes=("${rest[*]}" "$tools")

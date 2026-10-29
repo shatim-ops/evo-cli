@@ -108,6 +108,7 @@ func withVMCreateCloud(t *testing.T) *vmCreateCloud {
 	t.Setenv("CLOUDRU_FLAVOR", "")
 	cloud := &vmCreateCloud{imageCloud: newImageCloud()}
 	old := toolEngine
+	stoppedClock(t)
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
 		e, err := buildEngine(o)
 		if err != nil {
