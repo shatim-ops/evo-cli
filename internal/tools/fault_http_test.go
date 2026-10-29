@@ -264,6 +264,9 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		a.serveS3(w, r)
 	case path == "/api/v1/availability-zones":
 		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}]}`)
+	case path == "/api/v1/vms/"+faultTargetVM:
+		// The VM tg_create targets: its preview names it.
+		_, _ = io.WriteString(w, `{"id":"`+faultTargetVM+`","name":"web","state":"running","interfaces":[{"id":"`+faultNIC+`","type":"regular"}]}`)
 	case path == "/api/v1/subnets" && r.Method == http.MethodGet:
 		// The zone's default subnet, and the ones subnet_create made.
 		items := []map[string]any{{"id": "sn-1", "name": "Default_ru.AZ-1", "default": true, "vpc_id": "vpc-1", "availability_zone_id": zoneAZ1,

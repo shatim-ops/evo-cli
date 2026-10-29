@@ -1,0 +1,14 @@
+# Мутации инвариантов (план 1.6, «Мутационная проверка инвариантов»): job
+# weekly-mutation ломает объявленное в продуктовом коде и требует красного у
+# названного теста. Мутация, которую тест не видит, — строка бэклога
+# «Процесса» (process-handoff.md), а не повод убрать строку отсюда.
+# Поля через табуляцию: id, файл, найти (ровно одно вхождение), заменить,
+# пакет, -run. Найти и заменить — буквально, без переводов строк.
+# -run — имена функций тестов верхнего уровня (подтест t.Run не указывается:
+# TestWorkflows_MutationsApply сверяет -run только с функциями Test*).
+# TestWorkflows_MutationsApply сверяет на каждом PR, что «найти» встречается
+# в файле ровно один раз, а тест из -run существует.
+access-denied-flag	internal/tools/tools.go	res["access_denied"] = true	res["access_denied"] = false	./internal/tools	^TestAccessDenied_HintNamesTheCredentialOfTheService$
+d52-any-source	internal/sgrules/sgrules.go	sameSource := r.RemoteIPPrefix == ""	sameSource := false	./internal/sgrules	.
+d53-transient-disk	internal/tools/tools_disk.go	if st, _ := d["state"].(string); !diskTransient[st] {	if st, _ := d["state"].(string); st != "" || !diskTransient[st] {	./internal/cli	^TestConsent_RefusalWithoutWriteComesBeforeTheQuestion$
+d26-already-deleted	internal/tools/delete_gone.go	"status":  "already_deleted",	"status":  "deleted",	./internal/tools	^TestAlreadyDeleted_

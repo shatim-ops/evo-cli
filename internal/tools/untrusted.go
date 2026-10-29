@@ -30,6 +30,9 @@ var untrustedFields = map[string][]string{
 	// deploy: the output of docker compose up — its log over MCP, the last
 	// lines of a failure (#558).
 	"deploy": {"log", "output"},
+	// The VMs a disk is attached to, as the cloud names them: the refusal
+	// of disk_delete (D59) names them for the way out.
+	"disk_delete": {"attached_vms"},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of

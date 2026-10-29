@@ -30,9 +30,7 @@ import (
 // that fixes it (W3…W6; the decisions of 1.3.1, D39…D42, with their PR).
 // The list only shrinks: a case not here fails the test, and so does a line
 // whose call no longer fails that way.
-var lateRefusals = map[string]string{
-	"disk_delete: world: disk in use by a VM": "release plan 1.6, «Удаление подключённого или загрузочного диска» (D59): «разработка»",
-}
+var lateRefusals = map[string]string{}
 
 // jobStarts answer a refused write as a success by design: the call starts
 // a job, and the step's refusal is the job's state, not the call's answer.
