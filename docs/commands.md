@@ -4243,9 +4243,9 @@ evo k8s add-nodepool <cluster-id> [flags]
       --flavor string              Flavor узлов (список: evo k8s options); заменяет --cpu и --ram-gb
   -h, --help                       Справка по add-nodepool
       --name string                Имя группы узлов, 4–60 символов (по умолчанию nodepool-1)
-      --nodes-subnet-id string     UUID подсети рабочих узлов (по умолчанию — подходящая подсеть зоны)
+      --nodes-subnet-id string     UUID или имя подсети рабочих узлов (по умолчанию — подходящая подсеть зоны)
       --ram-gb int                 RAM узла, ГБ, для автоподбора flavor (по умолчанию 4)
-      --security-group-id string   UUID группы безопасности узлов (по умолчанию — группа зоны с доступом по SSH)
+      --security-group-id string   UUID или имя группы безопасности узлов (по умолчанию — группа зоны с доступом по SSH)
       --zone string                Зона (по умолчанию — зона мастер-узлов кластера; если кластер её не сообщает — отказ)
 ```
 
@@ -4443,7 +4443,7 @@ evo k8s create [flags]
       --name string            Имя кластера (как в evo k8s plan)
       --product string         Назначение кластера (как в evo k8s plan)
       --ram-gb int             RAM мастер-узла, ГБ (как в evo k8s plan)
-      --subnet-id string       UUID подсети для VIP мастер-узлов, в зоне кластера (как в evo k8s plan)
+      --subnet-id string       UUID или имя подсети для VIP мастер-узлов, в зоне кластера (как в evo k8s plan)
       --version string         Версия Kubernetes (как в evo k8s plan)
       --zone string            Зона: имя или UUID (как в evo k8s plan)
 ```
@@ -4852,7 +4852,7 @@ evo k8s plan [flags]
       --name string            Имя кластера, 3–60 символов (по умолчанию k8s-<значение --product>)
       --product string         Назначение кластера (используется в имени)
       --ram-gb int             RAM мастер-узла, ГБ, для автоподбора flavor (по умолчанию 4)
-      --subnet-id string       UUID подсети для приватного VIP мастер-узлов, в зоне кластера (по умолчанию — основная подсеть зоны). Подсеть другой зоны отклоняется
+      --subnet-id string       UUID или имя подсети для приватного VIP мастер-узлов, в зоне кластера (по умолчанию — основная подсеть зоны). Подсеть другой зоны отклоняется
       --version string         Версия Kubernetes, например v1.34.6 (по умолчанию — новейшая STABLE; список: evo k8s options)
       --zone string            Зона доступности мастер-узлов: имя или UUID, например ru.AZ-2 (по умолчанию — зона --subnet-id, иначе зона по умолчанию сервиса)
 ```
@@ -4949,7 +4949,7 @@ evo kafka create <name> [flags]
       --ram int                   RAM, ГБ — вместе с --cpu
       --specification-id string   UUID конфигурации (список: evo kafka specs). Необязателен, если заданы --cpu и --ram
       --storage-gib int           Размер диска, ГиБ (по умолчанию — минимум конфигурации)
-      --subnet-id string          UUID подсети (список: evo vpc subnets). По умолчанию — основная подсеть зоны из настроек. Кластер создаётся в зоне подсети
+      --subnet-id string          UUID или имя подсети (список: evo vpc subnets). По умолчанию — основная подсеть зоны из настроек. Кластер создаётся в зоне подсети
       --ui-enabled                Включить Kafka UI (по умолчанию false)
       --version-id string         UUID версии Kafka (список: evo kafka versions). По умолчанию — последняя
 ```
@@ -5334,7 +5334,7 @@ evo lb create <name> [flags]
       --hc-port int              Порт проверки состояния (по умолчанию — --target-port)
   -h, --help                     Справка по create
       --port int                 Порт обработчика, на который балансировщик принимает трафик (обязательный)
-      --subnet-id string         UUID подсети в зоне балансировщика (по умолчанию — основная подсеть зоны в VPC балансировщика)
+      --subnet-id string         UUID или имя подсети в зоне балансировщика (по умолчанию — основная подсеть зоны в VPC балансировщика)
       --target-group-id string   UUID группы целей, на которую балансировщик распределяет трафик (список: evo tg list), обязательный
       --target-port int          Порт на целях, куда перенаправляется трафик (по умолчанию — --port)
       --vpc-id string            UUID VPC (по умолчанию — VPC группы целей)
@@ -6217,7 +6217,7 @@ evo pg create <name> [flags]
       --ram int                     RAM, ГБ — вместе с --cpu для автоподбора конфигурации
       --specification-id string     UUID конфигурации (список: evo pg specs). Необязателен, если заданы --cpu и --ram
       --storage-gb int              Размер основного диска данных, ГБ (по умолчанию — минимум конфигурации)
-      --subnet-id string            UUID подсети, определяет зону доступности (по умолчанию — первая подсеть проекта)
+      --subnet-id string            UUID или имя подсети, определяет зону доступности (по умолчанию — первая подсеть проекта)
       --version string              Версия PostgreSQL (список: evo pg versions; по умолчанию — последняя)
 ```
 
@@ -6962,7 +6962,7 @@ evo redis create <name> [flags]
       --shards int                Число шардов, 1–8 (по умолчанию 1)
       --specification-id string   UUID конфигурации (список: evo redis specs). Необязателен, если заданы --cpu и --ram
       --storage-gb int            Размер диска, ГБ (по умолчанию — минимум конфигурации)
-      --subnet-id string          UUID подсети (список: evo vpc subnets). По умолчанию — основная подсеть зоны из настроек. Кластер создаётся в зоне подсети
+      --subnet-id string          UUID или имя подсети (список: evo vpc subnets). По умолчанию — основная подсеть зоны из настроек. Кластер создаётся в зоне подсети
       --type string               MASTER_REPLICA (по умолчанию) или STANDALONE (один узел в шарде)
       --version-id string         UUID версии Redis (список: evo redis versions). По умолчанию — последняя
 ```
@@ -9023,7 +9023,7 @@ evo vm create <name> [flags]
       --meta stringArray   Поле метаданных образа, например admin_password=… — обязательные поля, которые evo не заполняет сам (evo image get <образ>). Перекрывает заполненное evo; поле, которого в образе нет, отклоняется (поле=значение, флаг повторяется; значение может содержать '='. поле=- читает значение из stdin (не больше одного поля), поле=@файл — из файла без завершающего перевода строки: так пароль не попадает в командную строку и историю оболочки)
       --no-public-ip       Приватная ВМ: без floating IP, интерфейс типа regular — для узлов за балансировщиком и внутренних серверов
       --port stringArray   Входящий порт, открываемый в группе безопасности ВМ для 0.0.0.0/0: 80, 8080/tcp, 53/udp (по умолчанию tcp). Группа общая для ВМ зоны; evo vm delete удаляет правила, созданные evo (флаг повторяется или значения через запятую)
-      --subnet-id string   UUID подсети для интерфейса (по умолчанию — подсеть в зоне ВМ; список: evo vpc subnets)
+      --subnet-id string   UUID или имя подсети для интерфейса (по умолчанию — подсеть в зоне ВМ; список: evo vpc subnets)
 ```
 
 ### Options inherited from parent commands
@@ -10045,7 +10045,7 @@ evo vpc subnet-delete <subnet-id> [flags]
 ```text
 Подсети: UUID, имя, зона доступности.
 
-Подсети проекта: UUID, имя, зона доступности. UUID подсети передаётся в --subnet-id, например 'evo vm create --subnet-id <UUID>'. Только чтение.
+Подсети проекта: UUID, имя, зона доступности. UUID или имя подсети передаётся в --subnet-id, например 'evo vm create --subnet-id <UUID или имя>'. Только чтение.
 
 Вызывает инструмент list_subnets (подробнее: 'evo tools describe list_subnets').
 ```

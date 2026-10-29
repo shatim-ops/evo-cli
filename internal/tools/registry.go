@@ -124,6 +124,11 @@ func New(factory EngineFactory) *Registry {
 		if h := r.handlers[t.Name]; h != nil {
 			// Inside requireProject: the check's engine sees its mark.
 			h = r.boundToProjects(*t, h)
+			// Inside requireProject too: the list of a name is the call's
+			// project's; outside boundToProjects: it checks the id.
+			if refs := refArgs[t.Name]; refs != nil {
+				h = r.resolveRefs(refs, h)
+			}
 			if projectTools[t.Name] {
 				h = r.requireProject(h)
 			}
