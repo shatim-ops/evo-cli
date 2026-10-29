@@ -61,15 +61,12 @@ var sleepWaits = map[string]struct{ test, why, item string }{
 	"internal/tools/tools_disk.go\twaitDiskAvailable":           {test: "TestDiskWait_GoesOnAfterOneRefusedToken"},
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {test: "TestStackStatus_GoesOnAfterOneRefusedToken"},
 
-	// The paths of a failure or an interruption: the fault world's deploy
-	// and destroy do not take them.
-	"internal/engine/deploy.go\tassignFloatingIP":      {why: sleepGap, item: "process-handoff, backlog 1.6: the machine sleeping, paths of failure"},
-	"internal/engine/deploy.go\tEngine.findBootFIP":    {why: sleepGap, item: "process-handoff, backlog 1.6: the machine sleeping, paths of failure"},
-	"internal/engine/deploy.go\tEngine.releaseBootFIP": {why: sleepGap, item: "process-handoff, backlog 1.6: the machine sleeping, paths of failure"},
-	"internal/engine/deploy.go\tEngine.waitVMGone":     {why: sleepGap, item: "process-handoff, backlog 1.6: the machine sleeping, paths of failure"},
-	// The VM of the fault world runs at its create: deploy_apply does not
-	// enter its wait (the wait skips a failed poll).
-	"internal/deployplan/apply.go\tfinishApply": {why: sleepGap, item: "process-handoff, backlog 1.6: the machine sleeping, paths of failure"},
+	// The paths of a failure or an interruption.
+	"internal/engine/deploy.go\tassignFloatingIP":      {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
+	"internal/engine/deploy.go\tEngine.findBootFIP":    {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
+	"internal/engine/deploy.go\tEngine.releaseBootFIP": {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
+	"internal/engine/deploy.go\tEngine.waitVMGone":     {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
+	"internal/deployplan/apply.go\tfinishApply":        {test: "TestApply_VMWaitGoesOnAfterOneRefusedToken"},
 }
 
 // sleepHelpers are the functions a wait of evo calls to wait: a poll
