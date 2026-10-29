@@ -99,14 +99,15 @@ on:
         type: boolean
         default: false
       pg_cluster:
-        description: "Name of the PostgreSQL cluster of dbaas-pg: evo-e2e-pg2 when evo-e2e-pg is stuck in FAILED and Cloud.ru deletes it later by itself (DB-21, 29.10)"
+        description: "Name of the PostgreSQL cluster of dbaas-pg: evo-e2e-pg2, evo-e2e-pg3 when the earlier names are stuck in FAILED and Cloud.ru deletes them later by itself (DB-21, 29.10)"
         type: choice
         options:
           - evo-e2e-pg
           - evo-e2e-pg2
+          - evo-e2e-pg3
         default: evo-e2e-pg
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-pg2, evo-e2e-kafka, evo-e2e-redis, evo-e2e-redis-sa; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no network interface left) and print project quotas"
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-pg2, evo-e2e-pg3, evo-e2e-kafka, evo-e2e-redis, evo-e2e-redis-sa; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no network interface left) and print project quotas"
         type: boolean
         default: false
 
@@ -774,7 +775,7 @@ jobs:
   # и ни одно, пока идёт прогон
   # (есть ВМ evo-e2e-*): описание «evo: …» ставит любой evo deploy/vm create,
   # и правило ВМ пользователя иначе не отличить (e2e_rules_sweep.sh).
-  # Кластеры DBaaS — только evo-e2e-pg, evo-e2e-pg2 (вход pg_cluster), evo-e2e-kafka, evo-e2e-redis,
+  # Кластеры DBaaS — только evo-e2e-pg, evo-e2e-pg2, evo-e2e-pg3 (вход pg_cluster), evo-e2e-kafka, evo-e2e-redis,
   # evo-e2e-redis-sa (проба G140-6; проект общий: у внешнего аудитора — audit-*). ID и IP маскируются.
   cleanup:
     environment: cloud-e2e
@@ -859,7 +860,7 @@ jobs:
       # Три вида параллельно: подряд отказы «ещё создаётся» (до 120 мин на
       # каждый) не уложились бы в таймаут job. Строки лога с префиксом вида,
       # ::add-mask:: и ::error:: — без него.
-      - name: Кластеры DBaaS evo-e2e-pg, evo-e2e-pg2, evo-e2e-kafka, evo-e2e-redis, evo-e2e-redis-sa
+      - name: Кластеры DBaaS evo-e2e-pg, evo-e2e-pg2, evo-e2e-pg3, evo-e2e-kafka, evo-e2e-redis, evo-e2e-redis-sa
         if: always()
         run: |
           pids=()
@@ -870,6 +871,8 @@ jobs:
           LOG_PREFIX="[redis-sa] " .github/scripts/dbaas-delete.sh redis evo-e2e-redis-sa &
           pids+=("$!")
           LOG_PREFIX="[pg2] " .github/scripts/dbaas-delete.sh pg evo-e2e-pg2 &
+          pids+=("$!")
+          LOG_PREFIX="[pg3] " .github/scripts/dbaas-delete.sh pg evo-e2e-pg3 &
           pids+=("$!")
           rc=0
           for p in "${pids[@]}"; do wait "$p" || rc=1; done
