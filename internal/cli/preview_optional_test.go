@@ -61,21 +61,8 @@ var optionalLeftOut = map[string]string{
 // plan that names them. The list only shrinks: an argument not here fails
 // the test, and so does a line whose argument the preview names now.
 var optionalUnnamed = map[string]string{
-	"cert_import description":              "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"cert_import intermediate_certificate": "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"cert_issue_le description":            "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"dns_zone_create description":          "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"image_create description":             "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"image_create display_name":            "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"image_create user_data_template":      "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"kafka_create description":             "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"lb_create target_port":                "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"pg_create description":                "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"pg_db_create lc_collate":              "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"pg_db_create lc_ctype":                "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"redis_create description":             "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"vpc_create description":               "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
-	"vpc_route_create description":         "release plan 1.6, «Превью называет заданные необязательные аргументы» (С1, второй набор): «разработка»",
+	"cert_import intermediate_certificate": "release plan, backlog 1.7, «Превью называет многострочный аргумент» (PEM, шаблон cloud-init — не текстом целиком в вопрос): «разработка», правило теста — «Процесс»",
+	"image_create user_data_template":      "release plan, backlog 1.7, «Превью называет многострочный аргумент» (PEM, шаблон cloud-init — не текстом целиком в вопрос): «разработка», правило теста — «Процесс»",
 }
 
 // optionalValue is a value of an optional argument from its schema: the
