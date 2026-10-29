@@ -82,6 +82,7 @@ var noCompletion = map[string]map[string]string{
 	"k8s_plan":         {"flavor": "a control-plane flavor of k8s_options, not a VM flavor"},
 	"k8s_add_nodepool": {"flavor": "a node flavor of k8s_options, not a VM flavor"},
 	"secret_create":    {"path": "the path of a new secret: an existing one is refused (D49)"},
+	"ca_deploy":        {"image": "a container image of Artifact Registry, not a VM image of image_list (FB150-1)"},
 }
 
 // completionOf is how (tool, arg) is completed, if it is.

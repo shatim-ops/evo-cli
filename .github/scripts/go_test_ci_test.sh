@@ -39,7 +39,7 @@ chmod +x "$work/bin/go"
 case_() {
 	local name=$1 os=$2 want=$3 retry=$4 rc got calls
 	shift 4
-	PATH="$work/bin:$PATH" RUNNER_OS=$os GITHUB_OUTPUT="$FAKE_DIR/output" \
+	PATH="$work/bin:$PATH" RUNNER_OS=$os GITHUB_EVENT_NAME=${EVENT:-push} GITHUB_OUTPUT="$FAKE_DIR/output" \
 		"$here/go_test_ci.sh" go test -race -count=1 -shuffle=off >"$FAKE_DIR/out" 2>&1
 	rc=$?
 	got=$(sed -n 's/^retry=//p' "$FAKE_DIR/output" 2>/dev/null)
@@ -71,6 +71,12 @@ case_ linux Linux 0 "" "$flags ./..."
 
 fresh windows
 case_ windows Windows 0 "" "$rest" "$alone"
+
+# Pull request на Windows — только пакеты с кодом Windows; Linux — всё.
+fresh windows-pr
+EVENT=pull_request case_ windows-pr Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/journal"
+fresh linux-pr
+EVENT=pull_request case_ linux-pr Linux 0 "" "$flags ./..."
 
 # Сбой рантайма в internal/tools: код 0, tools — к повтору.
 fresh crash

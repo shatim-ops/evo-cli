@@ -10,6 +10,11 @@ on:
   pull_request:
   # Вызывается из release.yml перед сборкой релиза.
   workflow_call:
+  # Ночью — полная матрица, Windows целиком: на pull request Windows гоняет
+  # только пакеты с кодом Windows (go_test_ci.sh, windowsPRPackages; решение
+  # владельца 29.10, аудит #578, п. 10).
+  schedule:
+    - cron: "23 1 * * *"
 
 # Новый push в PR отменяет его идущую проверку; main и релиз
 # (workflow_call из release.yml) не отменяются никогда.
@@ -331,6 +336,7 @@ jobs:
   # Шаг 6 docs/RELEASING.md: после тега до передачи дел
   # (handoff/<версия>.md) PR в main не сливается; релизный PR (новый раздел
   # выпуска в CHANGELOG.md) проходит. Ретро 1.4.1: три PR слиты до передачи.
+  # Окно — 24 часа после тега (#578): тег приходит с fetch-depth: 0.
   handoff:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

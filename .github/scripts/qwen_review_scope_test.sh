@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Проверка, на каких PR qwen-review.sh запускается сам (решение владельца
-# #485, П1 (б)): на всех, кроме PR, где только тесты и документы и нет
-# .github/ и internal/workflows/ — там без ревью и без комментария; код
-# продукта под меткой «(процесс)» — ревью (§5: по изменению); команда
-# /qwen review (COMMENT_ID) — на любом PR. git и gh подменены:
+# 29.10, аудит #578, п. 9): только на PR, который трогает .github/,
+# internal/workflows/ или код секретов и согласия; остальное — без ревью и
+# без комментария; команда /qwen review (COMMENT_ID) — на любом PR. git и gh подменены:
 # пройдя отбор, скрипт пишет «diff пустой» — значит, ревью пошло.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -35,10 +34,16 @@ run() { # ИМЯ заголовок пути ждём(review|skip) [COMMENT_ID]
   ! grep -q 'diff пустой' "$work/post" || got=review
   if [ "$got" = "$4" ]; then echo "ok   $1"; else echo "FAIL $1: $got, ждали $4"; fail=1; fi
 }
-run "продуктовый PR" "Tab (продукт, 1.5)" "internal/tools/completion.go" review
+run "продуктовый PR без секретов и согласия" "Tab (продукт, 1.5)" "internal/tools/completion.go" skip
+run "продуктовый PR: гейт согласия" "Гейт (продукт, 1.6)" "internal/tools/completion.go internal/tools/gate.go" review
+run "продуктовый PR: маскирование HTTP" "H7 (продукт, 1.6)" "internal/mcp/http_redact.go" review
+run "продуктовый PR: объявления согласия" "Согласие (продукт, 1.6)" "internal/tools/registry.go" review
+run "продуктовый PR: токен HTTP" "H1 (продукт, 1.6)" "internal/mcp/http.go" review
+run "продуктовый PR: журнал" "Журнал (продукт, 1.6)" "internal/journal/journal.go" review
+run "продуктовый PR: ключи" "Ключ (продукт, 1.6)" "internal/auth/iam.go" review
+run "только тесты кода согласия" "Инвариант (процесс)" "internal/tools/gate_test.go" skip
 run "процесс, только тесты и документы" "Инвариант (процесс)" "internal/tools/x_test.go docs/a.md README.md" skip
 run "процесс, правит .github/" "CI (процесс)" ".github/workflows/ci.yml" review
 run "процесс, тест правил workflows" "Инвариант (процесс)" "internal/workflows/x_test.go" review
-run "код продукта под меткой «(процесс)»" "Правка (процесс)" "internal/tools/x_test.go internal/tools/tools_s3.go" review
-run "процесс, команда /qwen review" "Инвариант (процесс)" "internal/tools/x_test.go" review 123
+run "команда /qwen review на любом PR" "Tab (продукт, 1.5)" "internal/tools/completion.go" review 123
 exit "$fail"
