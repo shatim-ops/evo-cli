@@ -82,9 +82,28 @@ jobs:
       # fixed order (process audit 1.2.1, PR 4). The value is put in by
       # Actions, not the shell: Windows runs this step in PowerShell, where
       # "$SHUFFLE" is a PowerShell variable, empty (CI of #196).
-      - run: go test -race -count=1 -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} ./...
+      #
+      # go_test_ci.sh (#370, вариант 1; #493): на Windows internal/tools идёт
+      # один после остальных пакетов — сбой рантайма Go приходил только под
+      # их нагрузкой (14 из 828 попыток, так — 0 из 300, #494); сбой
+      # рантайма без падения теста — retry с упавшими пакетами и один шаг
+      # повтора ниже, второй сбой — красный. Шаги повтора за неделю считает
+      # weekly-race (go_runtime_crash_week.sh).
+      - id: gotest
+        name: go test
+        shell: bash
+        run: .github/scripts/go_test_ci.sh go test -race -count=1 -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }}
         env:
           GORACE: atexit_sleep_ms=0
+      - name: "go test: повтор после сбоя рантайма Go"
+        if: steps.gotest.outputs.retry != ''
+        shell: bash
+        run: |
+          # shellcheck disable=SC2086 # the package list is split on purpose
+          go test -race -count=1 -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} $RETRY
+        env:
+          GORACE: atexit_sleep_ms=0
+          RETRY: ${{ steps.gotest.outputs.retry }}
 
       # Конфиг релиза проверяется на каждом PR, а не впервые на теге.
       - name: goreleaser check
@@ -167,6 +186,14 @@ jobs:
       - name: go_runtime_crash.sh на образцах вывода go test
         if: runner.os == 'Linux'
         run: .github/scripts/go_runtime_crash_test.sh
+
+      # Шаг go test (#370): split на Windows, повтор только сбоя рантайма,
+      # счёт повторов за неделю — на поддельных go и gh.
+      - name: go_test_ci.sh и go_runtime_crash_week.sh на поддельных go и gh
+        if: runner.os == 'Linux'
+        run: |
+          .github/scripts/go_test_ci_test.sh
+          .github/scripts/go_runtime_crash_week_test.sh
 
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
