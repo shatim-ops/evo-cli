@@ -101,11 +101,11 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 		}
 	}
 
-	// The zone is echoed as asked for, not as resolved: when none was asked
-	// for, the preview states the rule rather than naming a source it
-	// cannot check here — claiming "configured region" is wrong whenever no
-	// region is configured, and this preview is what an operator approves
-	// a paid action on.
+	// will_create echoes the zone as asked for: when none was asked for,
+	// it states the rule — claiming "configured region" is wrong whenever
+	// no region is configured, and this preview is what an operator
+	// approves a paid action on. The preview's zone is the one resolved
+	// below, before the question.
 	zoneRef := stringArg(args, "zone")
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
@@ -129,26 +129,22 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	if ans, refused := nameFree(ctx, list, i18n.T("image", "образ"), name, "image_list type=private"); refused {
 		return ans, true
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("image_create makes a billable image from a disk.",
-				"image_create создаёт платный образ из диска."),
-			"preview": willPreview(engine.ResourceImage, name, zoneRef, args, []string{"disk_id", "min_cpu", "min_ram", "min_disk"}),
-			"will_create": map[string]any{
-				"name": name, "from_disk": diskID,
-				"zone":    firstNonEmptyStr(zoneRef, "not given: configured region, else the source disk's zone"),
-				"min_cpu": req.MinCPU, "min_ram": req.MinRAM, "min_disk": req.MinDisk,
-				"has_user_data_template": req.UserDataTemplate != "",
-				"metadata_fields":        len(req.ImageMetadata),
-			},
-		}), true
+	// The zone, resolved before the question so that a zone that is not
+	// there is refused before it (class D15, P-Z1): the one asked for, else
+	// the configured one by its UUID or its name (resolveVMZone, as a
+	// VM's), else the source disk's — an image belongs in the zone of the
+	// disk it is made from; without that the request went out with an
+	// empty availability_zone_id and the platform answered 422.
+	zoneName := zoneRef
+	if zoneRef == "" {
+		zone, _, err := resolveVMZone(ctx, eng)
+		if err != nil {
+			return errResult(err), true
+		}
+		if zone != nil {
+			zoneName = zone.Name
+		}
 	}
-
-	// An image belongs in the zone of the disk it is made from, so that disk is
-	// the default when neither an explicit zone nor a configured one exists.
-	// Without this the request went out with an empty availability_zone_id and
-	// the platform answered 422.
 	fallback := eng.Config.Region
 	if zoneRef == "" && fallback == "" {
 		fallback, err = s.zoneOfDisk(ctx, eng, diskID)
@@ -161,6 +157,21 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 		return errResult(err), true
 	}
 	req.AvailZones = []provision.ImageAZTarget{{AvailabilityZoneID: zoneID}}
+	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+		return toJSON(map[string]any{
+			"status": "confirmation_required",
+			"message": i18n.T("image_create makes a billable image from a disk.",
+				"image_create создаёт платный образ из диска."),
+			"preview": willPreview(engine.ResourceImage, name, firstNonEmptyStr(zoneName, zoneID), args, []string{"disk_id", "min_cpu", "min_ram", "min_disk"}),
+			"will_create": map[string]any{
+				"name": name, "from_disk": diskID,
+				"zone":    firstNonEmptyStr(zoneRef, "not given: configured region, else the source disk's zone"),
+				"min_cpu": req.MinCPU, "min_ram": req.MinRAM, "min_disk": req.MinDisk,
+				"has_user_data_template": req.UserDataTemplate != "",
+				"metadata_fields":        len(req.ImageMetadata),
+			},
+		}), true
+	}
 
 	img, err := eng.Cloud.CreateImage(ctx, req)
 	if id, _ := img["id"].(string); err != nil || id == "" {
