@@ -31,10 +31,7 @@ import (
 // The list only shrinks: a case not here fails the test, and so does a line
 // whose call no longer fails that way.
 var lateRefusals = map[string]string{
-	"disk_attach: world: disk in a transient state": "release plan 1.6, «Изменение диска в переходном состоянии» (#521): «разработка»",
-	"disk_detach: world: disk in a transient state": "release plan 1.6, «Изменение диска в переходном состоянии» (#521): «разработка»",
-	"disk_resize: world: disk in a transient state": "release plan 1.6, «Изменение диска в переходном состоянии» (#521): «разработка»",
-	"disk_delete: world: disk in use by a VM":       "release plan 1.6, «Удаление подключённого или загрузочного диска» (D59): «разработка»",
+	"disk_delete: world: disk in use by a VM": "release plan 1.6, «Удаление подключённого или загрузочного диска» (D59): «разработка»",
 }
 
 // jobStarts answer a refused write as a success by design: the call starts
