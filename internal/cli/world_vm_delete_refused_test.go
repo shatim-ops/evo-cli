@@ -17,19 +17,7 @@ import (
 // check" → the work item of the release plan that fixes it. The list only
 // shrinks: a miss not here fails the test, and so does a line whose check
 // passes.
-var refusedVMDeleteMisses = map[string]string{
-	"evo vm delete, deleting: names the state":                             "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo vm delete, deleting: does not guess":                              "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo vm delete, error_deleting: names the state":                       "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo vm delete, error_deleting: does not guess":                        "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo vm delete, error_deleting: names support":                         "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo destroy (deployment recorded), deleting: names the state":         "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo destroy (deployment recorded), deleting: does not guess":          "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo destroy (deployment recorded), error_deleting: names the state":   "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo destroy (deployment recorded), error_deleting: does not guess":    "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo destroy (deployment recorded), error_deleting: names support":     "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-	"evo destroy (deployment recorded), error_deleting: names fip-release": "release plan 1.6, «destroy ВМ, которую платформа не удаляет» (#565): «разработка»",
-}
+var refusedVMDeleteMisses = map[string]string{}
 
 // CLAUDE.md §6, axis 3: a VM the platform does not delete is not a success
 // and not a guess. Cloud.ru answered DELETE /vms/{id} with 409 while the VM
