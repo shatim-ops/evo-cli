@@ -451,13 +451,15 @@ evo agent skill [flags]
 ```
   evo agent skill
   evo agent skill --read-only > AGENTS.md
+  evo agent skill --group pg
 ```
 
 ### Options
 
 ```
-  -h, --help        Справка по skill
-      --read-only   Правила агента, который ничего не меняет в облаке, в том числе через CLI
+      --group string   Напечатать карточку группы инструментов: инструменты, команды, откуда id, чем удаляется созданное
+  -h, --help           Справка по skill
+      --read-only      Правила агента, который ничего не меняет в облаке, в том числе через CLI
 ```
 
 ### Options inherited from parent commands
