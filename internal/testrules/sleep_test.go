@@ -58,7 +58,7 @@ var sleepWaits = map[string]struct{ test, why, item string }{
 	"internal/engine/destroy.go\tEngine.waitAndDeleteVM":        {test: "TestSleep_OneRefusedTokenAfterTheWriteDoesNotEndTheCommand"},
 	"internal/tools/tools.go\tRegistry.provisionVM":             {test: "TestFault_OneRefusedTokenAfterTheWrite"},
 	"internal/tools/opwait.go\twaitForOpJSON":                   {test: "TestWait_TakesANewTokenAfterTheSleep"},
-	"internal/tools/tools_disk.go\twaitDiskAvailable":           {test: "TestDiskWait_GoesOnAfterOneRefusedToken"},
+	"internal/tools/tools_disk.go\twaitDisk":                    {test: "TestDiskWait_GoesOnAfterOneRefusedToken"},
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {test: "TestStackStatus_GoesOnAfterOneRefusedToken"},
 
 	// The paths of a failure or an interruption.
