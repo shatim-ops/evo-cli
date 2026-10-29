@@ -430,9 +430,11 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 	}}, nil
 }
 
-// vpcName is the name of VPC id for a preview, "" when it cannot be read:
-// the id stays named either way.
+// vpcName is the name of VPC id for a preview, "" when it cannot be read
+// within engine.PreviewLookupTimeout: the id stays named either way.
 func (s *Registry) vpcName(ctx context.Context, id string) string {
+	ctx, cancel := context.WithTimeout(ctx, engine.PreviewLookupTimeout)
+	defer cancel()
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return ""
