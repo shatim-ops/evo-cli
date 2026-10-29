@@ -13,11 +13,13 @@ import (
 )
 
 // The plan review (owner's decision 29.10, docs/internal/handoff/README.md,
-// «Сводка плана»): a release session that closes writes, next to its
-// retro, what of the plan is done, what lags behind and what to do with
-// it; the owner decides the lagging rows in one issue with a default for
-// each. These checks hold what the template asks: a review for each retro
-// of «релиз» from planReviewSince on (S1); the counts of the version and of
+// «Сводка плана»): every release session that closes writes what of the
+// plan is done, what lags behind and what to do with it; the owner decides
+// the lagging rows in one issue with a default for each. The retro is one
+// per role and version (owner's decision 29.10, #578), so a review is told
+// by its own heading, not paired with a retro. These checks hold what the
+// template asks: a version with a retro of «релиз» from planReviewSince on
+// has a review, and no two reviews share a heading (S1); the counts of the version and of
 // the next one, what the session added and the owner's issue (S2); a row
 // that names its plan line and ends in a default from the closed list
 // (S3); at most planReviewMaxRows rows, so that the owner reads it (S4).
@@ -26,13 +28,6 @@ const (
 	planReviewSince   = "1.5"
 	planReviewMaxRows = 12
 )
-
-// planReviewKnown are retros of «релиз» written before the review: the
-// version and the parentheses of the heading → why there is no review.
-// The list only shrinks.
-var planReviewKnown = map[string]string{
-	"1.5 (29.10.2026)": "session 1 of 1.5 closed before the owner's decision of 29.10",
-}
 
 var (
 	planReviewHeading = regexp.MustCompile(`^### Сводка плана «релиз · ([^»]+)» (\(.*\))$`)
@@ -48,6 +43,7 @@ var (
 type planReview struct {
 	key   string // version and the parentheses of the heading
 	lines []string
+	twice bool // another review has the same heading
 }
 
 // planReviews reads the reviews and the retros of «релиз» of each journal.
@@ -70,7 +66,8 @@ func planReviews(t *testing.T, dir string) (reviews map[string]planReview, retro
 			}
 			if m := planReviewHeading.FindStringSubmatch(l); m != nil {
 				cur = m[1] + " " + m[2]
-				reviews[cur] = planReview{key: cur}
+				_, seen := reviews[cur]
+				reviews[cur] = planReview{key: cur, twice: seen}
 				continue
 			}
 			if cur != "" {
@@ -86,28 +83,22 @@ func planReviews(t *testing.T, dir string) (reviews map[string]planReview, retro
 func TestPlanReview_Rules(t *testing.T) {
 	dir := filepath.Join("..", "..", "docs", "internal", "handoff")
 	reviews, retros := planReviews(t, dir)
-	found := map[string]bool{}
+	reviewed := map[string]bool{}
+	for key := range reviews {
+		version, _, _ := strings.Cut(key, " ")
+		reviewed[version] = true
+	}
 	for _, key := range retros {
 		version, _, _ := strings.Cut(key, " ")
-		if versionLess(version, planReviewSince) {
-			continue
-		}
-		if _, ok := reviews[key]; ok {
-			continue
-		}
-		found[key] = true
-		if planReviewKnown[key] == "" {
-			t.Errorf("S1: the retro «релиз · %s» has no «### Сводка плана «релиз · %s» %s» next to it (handoff/README.md, «Сводка плана»)",
-				version, version, strings.TrimPrefix(key, version+" "))
-		}
-	}
-	for k := range planReviewKnown {
-		if !found[k] {
-			t.Errorf("planReviewKnown names %q, which has a review now or no retro: remove the line", k)
+		if !versionLess(version, planReviewSince) && !reviewed[version] {
+			t.Errorf("S1: «релиз · %s» has a retro and no «### Сводка плана «релиз · %s» (<дата, сессия>)» (handoff/README.md, «Сводка плана»)", version, version)
 		}
 	}
 
 	for key, r := range reviews {
+		if r.twice {
+			t.Errorf("S1 %s: two reviews share the heading — name the session in the parentheses", key)
+		}
 		need := map[string]*regexp.Regexp{
 			"the counts of the version": planReviewCount,
 			"the counts of the next":    planReviewNext,
