@@ -52,6 +52,7 @@ var createNames = map[string]createName{
 	"s3_bucket_create":  {args: []string{"bucket"}, rule: "bucketNameRe and the S3 client's rule"},
 	"secret_create":     {args: []string{"path"}, what: "secret", whRU: "секрет"},
 	"snat_create":       {args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"},
+	"subnet_create":     {args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"},
 	"tg_create":         {args: []string{"name"}, what: "target group", whRU: "целевая группа"},
 	"vpc_create":        {args: []string{"name"}, what: "VPC", whRU: "VPC"},
 }

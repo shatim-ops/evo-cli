@@ -36,7 +36,7 @@ skill `evo-scenarios`, section 5.
 1. Inventory. In every working directory with `.evo/`: `evo status --json`
    / `status` and `evo deploy list --json` / `list`. Then the lists of
    `references/delete-map.md`: `vm_list`, `disk_list`, `list_floating_ips`,
-   `snat_list`, `vpc_list` and `vpc_routes`, `lb_list`, `tg_list`,
+   `snat_list`, `vpc_list`, `vpc_routes` and `list_subnets`, `lb_list`, `tg_list`,
    `dns_zones` and `dns_records`, `pg_list`, `kafka_list`, `redis_list`,
    `k8s_list`, `s3_buckets` and `s3_ls`, `secret_list`, `cert_list`,
    `ar_list`, `ca_list`, `image_list` with `type: private`. The inventory
@@ -55,7 +55,7 @@ skill `evo-scenarios`, section 5.
    stays. Wait for the person's yes.
 4. Delete in the order of `references/delete-map.md`: deployments, DNS,
    load balancers and target groups, Kubernetes, VMs, free disks, free
-   floating IPs, SNAT gateways, database clusters, routes, VPCs, S3 objects
+   floating IPs, SNAT gateways, database clusters, routes, subnets, VPCs, S3 objects
    and buckets, container apps, secrets, certificates, registries, own
    images.
 5. Each delete: its preview first; one yes from step 3 covers the rows of

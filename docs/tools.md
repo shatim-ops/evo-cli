@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (155) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo (157) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -279,6 +279,8 @@
 |---|---|---|---|---|---|
 | `fip_attach` | `evo vpc fip-attach` | да | `fip`, `vm` | Bind an existing FREE floating IP to a VM's primary interface, giving it a public address. | Привязать свободный floating IP к основному интерфейсу ВМ |
 | `list_subnets` | `evo vpc subnets` | нет | — | List Cloud.ru subnets (UUID, name, availability zone). | Подсети: UUID, имя, зона доступности |
+| `subnet_create` | `evo vpc subnet-create` | да | `name`, `cidr` | Create a subnet in a VPC: a private IPv4 network (cidr, e.g. | Создать подсеть в VPC |
+| `subnet_delete` | `evo vpc subnet-delete` | удаляет | `subnet_id` | Delete a subnet by id (from list_subnets). | Удалить подсеть |
 | `list_security_groups` | `evo vpc security-groups` | нет | — | List Cloud.ru security groups (UUID, name, availability zone). | Группы безопасности (с --rules — вместе с правилами) |
 | `list_floating_ips` | `evo vpc fips` | нет | — | List Cloud.ru floating IPs (address, state, whether available to attach, zone when the API names it). | Floating IP: адрес, состояние, свободен ли |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |

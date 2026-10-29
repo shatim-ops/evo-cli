@@ -263,6 +263,29 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(nil),
 		},
 		{
+			Name:        "subnet_create",
+			Description: "Create a subnet in a VPC: a private IPv4 network (cidr, e.g. 10.10.0.0/24, mask /8../29) in one availability zone. The VPC is 'vpc_id', else the project's default VPC; the zone is 'zone' (name) or 'availability_zone_id', else the configured region. Routed by default (routed_network=false: isolated, no traffic beyond the subnet). Refused before the question: a name or a network the VPC already has, a VPC not in the project. Without confirmed=true this returns a preview only. Mutation: requires confirmed=true after the user approves. Delete it with subnet_delete.",
+			InputSchema: objSchema(map[string]any{
+				"name":                 strProp("Subnet name (required): a Latin letter first, then letters, digits, '.', '-', '_'."),
+				"cidr":                 cidrProp("Private IPv4 network by its base address with a mask /8../29, e.g. 10.10.0.0/24 (required)."),
+				"vpc_id":               uuidProp("VPC UUID (from vpc_list). Optional: the project's default VPC."),
+				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-1'). Optional; defaults to the configured region."),
+				"availability_zone_id": uuidProp("Availability-zone UUID (alternative to 'zone')."),
+				"routed_network":       boolPropTrue("Routed subnet (default true); false makes it isolated."),
+				"dns_servers":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "DNS server IPv4 addresses. Optional: the platform's."},
+				"description":          strProp("Description. Optional."),
+				"confirmed":            confirmedProp(),
+			}, "name", "cidr"),
+		},
+		{
+			Name:        "subnet_delete",
+			Description: "Delete a subnet by id (from list_subnets). A subnet with VMs, balancers or clusters in it is refused before the question. Mutation: requires confirmed=true after the user approves.",
+			InputSchema: objSchema(map[string]any{
+				"subnet_id": uuidProp("Subnet UUID (from list_subnets). Required."),
+				"confirmed": confirmedProp(),
+			}, "subnet_id"),
+		},
+		{
 			Name:        "list_security_groups",
 			Description: "List Cloud.ru security groups (UUID, name, availability zone). Read-only. With rules=true each group carries its rules (id, direction, protocol, port range, source, description, state).",
 			InputSchema: objSchema(map[string]any{
@@ -1380,6 +1403,8 @@ func (s *Registry) registerTools() {
 		"snat_list":            s.handleSnatList,
 		"snat_create":          s.handleSnatCreate,
 		"snat_delete":          s.gated("snat_delete", s.planSnatDelete),
+		"subnet_create":        s.gated("subnet_create", s.planSubnetCreate),
+		"subnet_delete":        s.gated("subnet_delete", s.planSubnetDelete),
 		"k8s_list":             s.handleK8sList,
 		"k8s_get":              s.handleK8sGet,
 		"k8s_options":          s.handleK8sOptions,

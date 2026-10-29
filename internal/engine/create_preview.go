@@ -45,6 +45,7 @@ const (
 	ResourceS3Object    = "s3_object"
 	ResourceSecret      = "secret"
 	ResourceStack       = "stack"
+	ResourceSubnet      = "subnet"
 	ResourceTargetGroup = "target_group"
 	ResourceVPC         = "vpc"
 	ResourceVPCRoute    = "vpc_route"
@@ -62,8 +63,8 @@ type CreatePreview struct {
 	// Resource is what is created: vm, disk, disk_resize, pg_cluster,
 	// k8s_cluster, k8s_nodepool, k8s_addon, s3_bucket, ar_registry, ca_app,
 	// kafka_cluster, load_balancer, redis_cluster, snat_gateway, dns_zone,
-	// image, pg_backup, s3_object, secret, stack, target_group, vpc or
-	// vpc_route.
+	// image, pg_backup, s3_object, secret, stack, subnet, target_group, vpc
+	// or vpc_route.
 	Resource string `json:"resource"`
 	Name     string `json:"name,omitempty"`
 	// ProjectFrom is where the project comes from: profile, project, env,
@@ -174,11 +175,12 @@ var tariffs = map[string]string{
 	// product's tariff, with noTariffLine.
 	ResourcePGBackup:    tariffsBase + "managed-postgresql",
 	ResourceTargetGroup: tariffsBase + "load-balancer",
-	// Evolution publishes no tariff of an image, a secret or a VPC (10.2026):
-	// the index of its tariffs, with noTariffLine; a stack's resources each
-	// go by their own.
+	// Evolution publishes no tariff of an image, a secret, a VPC or a
+	// subnet (10.2026): the index of its tariffs, with noTariffLine; a
+	// stack's resources each go by their own.
 	ResourceImage:    tariffsBase + "index",
 	ResourceSecret:   tariffsBase + "index",
+	ResourceSubnet:   tariffsBase + "index",
 	ResourceVPC:      tariffsBase + "index",
 	ResourceVPCRoute: tariffsBase + "index",
 	ResourceStack:    tariffsBase + "index",
@@ -191,6 +193,7 @@ var tariffNotes = map[string]string{
 	ResourceStack:       stackNotPriced,
 	ResourceImage:       noTariffLine,
 	ResourceSecret:      noTariffLine,
+	ResourceSubnet:      noTariffLine,
 	ResourceVPC:         noTariffLine,
 	ResourceVPCRoute:    noTariffLine,
 	ResourcePGBackup:    noTariffLine,
@@ -701,6 +704,8 @@ func createSummary(p CreatePreview, zone string) string {
 		return i18n.Tf("create the resources of stack job %s", "создать ресурсы задания стека %s", p.Name)
 	case ResourceTargetGroup:
 		return i18n.Tf("create target group %s", "создать группу целей %s", p.Name)
+	case ResourceSubnet:
+		return i18n.Tf("create subnet %s", "создать подсеть %s", p.Name) + inZone
 	case ResourceVPC:
 		return i18n.Tf("create VPC %s", "создать VPC %s", p.Name)
 	case ResourceVPCRoute:
@@ -769,6 +774,8 @@ func createdLine(p CreatePreview) string {
 			"ресурсы задания стека %s (их перечисляет stack_plan)", p.Name))
 	case ResourceTargetGroup:
 		what = append(what, i18n.Tf("load balancer target group %s", "группа целей балансировщика %s", p.Name))
+	case ResourceSubnet:
+		what = append(what, i18n.Tf("subnet %s", "подсеть %s", p.Name))
 	case ResourceVPC:
 		what = append(what, i18n.Tf("VPC %s", "VPC %s", p.Name))
 	case ResourceVPCRoute:
@@ -875,6 +882,12 @@ var paramLabels = map[string]struct {
 	"billable":                              {"billable addon", "платный плагин", false},
 	"resolve_mode":                          {"on conflict", "при конфликте", false},
 	"config_keys":                           {"settings", "настройки", false},
+	"cidr":                                  {"CIDR", "CIDR", false},
+	"prefix_length":                         {"mask", "маска", false},
+	"vpc_id":                                {"VPC", "VPC", false},
+	"vpc_name":                              {"VPC name", "имя VPC", false},
+	"routed_network":                        {"routed", "маршрутизируемая", false},
+	"dns_servers":                           {"DNS servers", "DNS-серверы", false},
 	"flavor_zones":                          {"flavor zones", "зоны flavor", false},
 	"image_min_cpu":                         {"image minimum, vCPU", "минимум образа, vCPU", false},
 	"image_min_ram_gb":                      {"image minimum, RAM", "минимум образа, RAM", true},

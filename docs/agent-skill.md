@@ -95,7 +95,7 @@ of a group before its first change.
 | `snat` | `evo snat …` | 3 | 2 |
 | `stack` | `evo stack …` | 4 | 2 |
 | `vm` | `evo vm …` | 5 | 1 |
-| `vpc` | `evo vpc …` | 13 | 6 |
+| `vpc` | `evo vpc …` | 15 | 8 |
 
 ## Examples
 

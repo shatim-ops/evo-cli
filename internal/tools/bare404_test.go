@@ -26,7 +26,7 @@ var bare404Gone = map[string]bool{
 	"dns_record_delete": true, "dns_zone_delete": true, "image_delete": true,
 	"k8s_delete": true, "kafka_delete": true, "lb_delete": true, "pg_delete": true,
 	"redis_delete": true, "release_floating_ip": true, "s3_bucket_delete": true, "secret_delete": true,
-	"snat_delete": true, "tg_delete": true, "vpc_delete": true,
+	"snat_delete": true, "subnet_delete": true, "tg_delete": true, "vpc_delete": true,
 }
 
 // bare404Unreached are the deletes of deleteTargets whose confirmed call

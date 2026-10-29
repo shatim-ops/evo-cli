@@ -373,13 +373,14 @@ func TestTrees_JSONToolErrorNotOnStdout(t *testing.T) {
 // and an unset flag is not passed at all (the tool's own default applies).
 func TestTrees_BoolDefaultTrue(t *testing.T) {
 	want := map[string]bool{ // "group verb --flag"
-		"vm delete --release-ip":         true,
-		"k8s plan --kube-api-internet":   true,
-		"k8s create --kube-api-internet": true,
-		"k8s kubeconfig --embed-token":   true,
-		"secret delete --force":          true,
-		"lb create --external":           true,
-		"ca deploy --public":             true,
+		"vm delete --release-ip":             true,
+		"k8s plan --kube-api-internet":       true,
+		"k8s create --kube-api-internet":     true,
+		"k8s kubeconfig --embed-token":       true,
+		"secret delete --force":              true,
+		"lb create --external":               true,
+		"ca deploy --public":                 true,
+		"vpc subnet-create --routed-network": true,
 	}
 	reg := tools.New(nil)
 	for _, g := range allTreeGroups() {

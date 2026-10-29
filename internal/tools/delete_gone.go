@@ -51,6 +51,7 @@ var deleteTargets = map[string]deleteTarget{
 	"s3_rm":               {arg: "key", parent: "bucket", what: "object", whRU: "объект"},
 	"secret_delete":       {arg: "path", what: "secret", whRU: "секрет"},
 	"snat_delete":         {arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"},
+	"subnet_delete":       {arg: "subnet_id", what: "subnet", whRU: "подсеть"},
 	"tg_delete":           {arg: "id", what: "target group", whRU: "группа целей"},
 	"vpc_delete":          {arg: "id", what: "VPC", whRU: "VPC"},
 	"vpc_route_delete":    {arg: "route_id", parent: "vpc_id", what: "route", whRU: "маршрут"},
