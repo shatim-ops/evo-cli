@@ -89,7 +89,7 @@ var parityArgs = map[string]map[string]any{
 	"vpc_route_delete":     {"vpc_id": parityVM, "route_id": parityVM},
 	"snat_create":          {"name": "nat-new", "availability_zone_id": pvZone},
 	"snat_delete":          {"id": parityVM},
-	"subnet_create":        {"name": "sub-new", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1"},
+	"subnet_create":        {"name": "sub-new", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1", "dns_servers": []any{"192.0.2.53"}},
 	"subnet_delete":        {"subnet_id": parityVM},
 	// k8s
 	"k8s_create":         {"name": "k8s-web", "zone": pvZone, "cluster_sa_id": parityVM},
