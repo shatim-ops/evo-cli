@@ -171,7 +171,10 @@ func TestStackStatus_GoesOnAfterOneRefusedToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	var creates int
-	create := func(context.Context, map[string]any) (string, bool) { creates++; return toJSON(map[string]any{}), false }
+	create := func(context.Context, map[string]any) (string, bool) {
+		creates++
+		return toJSON(map[string]any{}), false
+	}
 	r.handlers["vpc_create"], r.handlers["pg_create"] = create, create
 	op, opCalls := refusedOnce(map[string]any{"id": "op-1", "done": true})
 	pg, pgCalls := refusedOnce(map[string]any{"id": "pg-1", "status": "READY"})
