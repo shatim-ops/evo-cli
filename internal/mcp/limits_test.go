@@ -50,11 +50,11 @@ func TestToolsList_DescriptionLimits(t *testing.T) {
 // audit 1.2.1, PR 5). Bytes, not time: the same on any runner.
 const maxToolsListBytes = 160 << 10
 
-// toolsListBytes is the size of tools/list now (29.10, 157 tools, about 30
+// toolsListBytes is the size of tools/list now (29.10, 155 tools, about 29
 // thousand tokens); toolsListSlack is how much it may shrink before the
 // number must follow.
 const (
-	toolsListBytes = 119998
+	toolsListBytes = 120166
 	toolsListSlack = 1024
 )
 

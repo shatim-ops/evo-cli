@@ -236,6 +236,45 @@ type SGRule struct {
 type DiskType struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// The limits, the zones and the speed of the type
+	// (PublicDiskTypeResponse); nil when the answer does not name them.
+	MinSize     *int            `json:"min_size,omitempty"`
+	MaxSize     *int            `json:"max_size,omitempty"`
+	FreeTier    *bool           `json:"free_tier,omitempty"`
+	Zones       []DiskTypeZone  `json:"availability_zones,omitempty"`
+	SpeedLimits []DiskTypeSpeed `json:"speed_limits,omitempty"`
+}
+
+// DiskTypeZone is a zone of a disk type
+// (PublicAvailabilityZoneDiskTypeResponse).
+type DiskTypeZone struct {
+	ID      string `json:"availability_zone_id"`
+	Name    string `json:"availability_zone_name"`
+	Enabled bool   `json:"enabled"`
+}
+
+// DiskTypeSpeed is a speed limit of a disk type by the disk's size
+// (SpeedLimit): the units are the specification's, as given.
+type DiskTypeSpeed struct {
+	Size      int `json:"size"`
+	LimitBW   int `json:"limit_bw"`
+	LimitRate int `json:"limit_rate"`
+}
+
+// ZoneNames are the zones a disk of the type can be created in: the
+// enabled ones; empty when it names zones and none is, nil when the answer
+// names no zones.
+func (d *DiskType) ZoneNames() []string {
+	if d.Zones == nil {
+		return nil
+	}
+	out := []string{}
+	for _, z := range d.Zones {
+		if z.Enabled {
+			out = append(out, z.Name)
+		}
+	}
+	return out
 }
 
 // AvailabilityZone represents a Cloud.ru availability zone.
@@ -501,6 +540,9 @@ type FloatingIP struct {
 	// floating_ip_address_is_used_by_nat_gateway; docs, «Публичные
 	// IP-адреса», FAQ).
 	NATGateway json.RawMessage `json:"nat_gateway,omitempty"`
+	// Zone is the zone of the address (PublicFloatingIpResponse.
+	// availability_zone); nil when the answer does not name it.
+	Zone *ZoneRef `json:"availability_zone,omitempty"`
 }
 
 // BoundTo reports whether the answer names vmID — a VM, or its interface —

@@ -453,13 +453,15 @@ evo agent skill [flags]
 ```
   evo agent skill
   evo agent skill --read-only > AGENTS.md
+  evo agent skill --group pg
 ```
 
 ### Options
 
 ```
-  -h, --help        Справка по skill
-      --read-only   Правила агента, который ничего не меняет в облаке, в том числе через CLI
+      --group string   Напечатать карточку группы инструментов: инструменты, команды, откуда id, чем удаляется созданное
+  -h, --help           Справка по skill
+      --read-only      Правила агента, который ничего не меняет в облаке, в том числе через CLI
 ```
 
 ### Options inherited from parent commands
@@ -3148,7 +3150,7 @@ evo disk resize <disk-id> [flags]
 ```text
 Типы дисков (UUID и имя, например SSD или HDD).
 
-Типы дисков: UUID и имя (например, SSD или HDD). Имя или UUID типа передаётся в --disk-type команды 'evo disk create'. Только чтение.
+Типы дисков: UUID и имя (например, SSD или HDD), а если каталог их называет — min_size_gb и max_size_gb, free_tier, зоны, где тип включён, и speed_limits (скорость по размеру диска, в единицах спецификации Cloud.ru). Имя или UUID типа передаётся в --disk-type команды 'evo disk create'. Только чтение.
 
 Вызывает инструмент list_disk_types (подробнее: 'evo tools describe list_disk_types').
 ```
@@ -4788,7 +4790,7 @@ evo k8s nodepools <cluster-id> [flags]
 ```text
 Версии Kubernetes, flavor узлов и зоны для кластеров.
 
-Доступные версии Kubernetes (по каналам выпуска), flavor узлов и зоны для кластеров Managed Kubernetes. Только чтение. Нужны, чтобы задать флаги 'evo k8s plan' вручную.
+Доступные версии Kubernetes (по каналам выпуска), flavor узлов и зоны для кластеров Managed Kubernetes; назначение flavor (CONTROLPLANE — мастера, DATAPLANE — узлы), если каталог его называет. Только чтение. Нужны, чтобы задать флаги 'evo k8s plan' вручную.
 
 Вызывает инструмент k8s_options (подробнее: 'evo tools describe k8s_options').
 ```
@@ -9555,7 +9557,7 @@ Floating IP: адрес, состояние, свободен ли
 ```text
 Floating IP: адрес, состояние, свободен ли.
 
-Публичные IP-адреса (floating IP) проекта: адрес, состояние, свободен ли адрес для привязки. Только чтение.
+Публичные IP-адреса (floating IP) проекта: адрес, состояние, свободен ли адрес для привязки, а если API её называет — зона адреса: адрес привязывается к ВМ своей зоны. Только чтение.
 
 Вызывает инструмент list_floating_ips (подробнее: 'evo tools describe list_floating_ips').
 ```

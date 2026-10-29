@@ -560,6 +560,11 @@ func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
 			[]string{"evo has no tools for topics and users", "`STANDALONE` for one host"},
 			nil,
 			[]string{"TestKafka_NoTopicOrUserTools", "TestRedisCreate_StandalonePreviewShowsOneHost"}, ""},
+		// Every group has a card from the registry (#515, option A, layer B).
+		{"evo-scenarios", "#515 cards",
+			[]string{"`evo agent skill --group <group> --json`"},
+			nil,
+			[]string{"TestAgentSkill_GroupPrintsTheCard", "TestGroupCards_CoverEveryToolFromTheDeclarations"}, ""},
 		{"evo-scenarios", "G130-16",
 			[]string{"a server without `--allow-project`"},
 			nil,

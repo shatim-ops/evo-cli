@@ -31,9 +31,7 @@ import (
 // The list only shrinks: a case not here fails the test, and so does a line
 // whose call no longer fails that way.
 var lateRefusals = map[string]string{
-	"disk_attach: world: disk in a transient state": "release plan 1.6, «Изменение диска в переходном состоянии» (#521): «разработка»",
-	"disk_detach: world: disk in a transient state": "release plan 1.6, «Изменение диска в переходном состоянии» (#521): «разработка»",
-	"disk_resize: world: disk in a transient state": "release plan 1.6, «Изменение диска в переходном состоянии» (#521): «разработка»",
+	"disk_delete: world: disk in use by a VM": "release plan 1.6, «Удаление подключённого или загрузочного диска» (D59): «разработка»",
 }
 
 // jobStarts answer a refused write as a success by design: the call starts
@@ -126,6 +124,25 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","name":"sub","state":"created","can_delete":false}`)
 	}, refusedBy: []string{"subnet_delete"}},
+	// The disk is the boot disk of a VM (final of the Grok wave on rc.1,
+	// the cleanup of the harness 18:38: 422 primary_disk_not_deleted after
+	// consent, D59): disk_delete reads the disk for D26 before the
+	// question, and its vms name the VM, so it refuses before it and names
+	// the VM to remove first.
+	"disk in use by a VM": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" {
+			return nil
+		}
+		disk := `{"id":"` + parityVM + `","name":"boot","size":20,"state":"in_use","bootable":true,` +
+			`"vms":[{"id":"` + consentOtherID + `","name":"web-in-use"}]}`
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/api/v1/disks/"):
+			return consentJSON(http.StatusOK, disk)
+		case r.URL.Path == "/api/v1/disks":
+			return consentJSON(http.StatusOK, `{"items":[`+disk+`],"total":1}`)
+		}
+		return nil
+	}, refusedBy: []string{"disk_delete"}, names: "web-in-use"},
 	"disk larger than requested": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 			return nil

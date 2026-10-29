@@ -216,8 +216,9 @@ var toolsRU = map[string]toolRU{
 	},
 	"list_disk_types": {
 		Short: "Типы дисков (UUID и имя, например SSD или HDD)",
-		Long: "Типы дисков: UUID и имя (например, SSD или HDD). Имя или UUID типа передаётся в --disk-type " +
-			"команды 'evo disk create'. Только чтение.",
+		Long: "Типы дисков: UUID и имя (например, SSD или HDD), а если каталог их называет — min_size_gb и max_size_gb, " +
+			"free_tier, зоны, где тип включён, и speed_limits (скорость по размеру диска, в единицах спецификации Cloud.ru). " +
+			"Имя или UUID типа передаётся в --disk-type команды 'evo disk create'. Только чтение.",
 	},
 	"disk_create": {
 		Short: "Создать диск (с --attach-to — в зоне ВМ и сразу подключить)",
@@ -359,8 +360,8 @@ var toolsRU = map[string]toolRU{
 	},
 	"list_floating_ips": {
 		Short: "Floating IP: адрес, состояние, свободен ли",
-		Long: "Публичные IP-адреса (floating IP) проекта: адрес, состояние, свободен ли адрес для привязки. " +
-			"Только чтение.",
+		Long: "Публичные IP-адреса (floating IP) проекта: адрес, состояние, свободен ли адрес для привязки, " +
+			"а если API её называет — зона адреса: адрес привязывается к ВМ своей зоны. Только чтение.",
 	},
 	"fip_attach": {
 		Short: "Привязать свободный floating IP к основному интерфейсу ВМ",
@@ -398,7 +399,8 @@ var toolsRU = map[string]toolRU{
 	},
 	"k8s_options": {
 		Short: "Версии Kubernetes, flavor узлов и зоны для кластеров",
-		Long: "Доступные версии Kubernetes (по каналам выпуска), flavor узлов и зоны для кластеров Managed Kubernetes. " +
+		Long: "Доступные версии Kubernetes (по каналам выпуска), flavor узлов и зоны для кластеров Managed Kubernetes; " +
+			"назначение flavor (CONTROLPLANE — мастера, DATAPLANE — узлы), если каталог его называет. " +
 			"Только чтение. Нужны, чтобы задать флаги 'evo k8s plan' вручную.",
 	},
 	"k8s_plan": {

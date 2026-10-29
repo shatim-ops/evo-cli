@@ -525,7 +525,25 @@ func (s *Registry) handleListDiskTypes(ctx context.Context, args map[string]any)
 	}
 	out := make([]map[string]any, 0, len(dts))
 	for _, d := range dts {
-		out = append(out, map[string]any{"id": d.ID, "name": d.Name})
+		row := map[string]any{"id": d.ID, "name": d.Name}
+		// Only what the catalogue sent (С5): no field, no key (D54,
+		// FB15-6: what a disk of the type may be, before it is asked for).
+		if d.MinSize != nil {
+			row["min_size_gb"] = *d.MinSize
+		}
+		if d.MaxSize != nil {
+			row["max_size_gb"] = *d.MaxSize
+		}
+		if d.FreeTier != nil {
+			row["free_tier"] = *d.FreeTier
+		}
+		if z := d.ZoneNames(); z != nil {
+			row["zones"] = z
+		}
+		if d.SpeedLimits != nil {
+			row["speed_limits"] = d.SpeedLimits
+		}
+		out = append(out, row)
 	}
 	return toJSON(map[string]any{"disk_types": out}), false
 }
@@ -944,14 +962,20 @@ func (s *Registry) handleListFloatingIPs(ctx context.Context, args map[string]an
 	}
 	out := make([]map[string]any, 0, len(fips))
 	for _, f := range fips {
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"id":          f.ID,
 			"name":        f.Name,
 			"ip_address":  f.IPAddress,
 			"state":       f.State,
 			"available":   f.Available(),
 			"nat_gateway": f.OnNATGateway(),
-		})
+		}
+		// The zone only as the answer names it (D54, FB15-18): an address
+		// binds to a VM of its own zone.
+		if f.Zone != nil && f.Zone.Name != "" {
+			row["zone"] = f.Zone.Name
+		}
+		out = append(out, row)
 	}
 	return toJSON(map[string]any{"floating_ips": out}), false
 }

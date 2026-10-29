@@ -177,6 +177,12 @@ a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+
 
 ## Tool groups
 
+The card of a group — its tools and commands, where an id comes from, what
+deletes what a create made, what to wait with — is `+"`evo agent skill --group <group> --json`"+`;
+`+"`evo agent setup --skill`"+` also writes the cards of the agent's groups into `+"`cards/`"+`
+next to this file, where the client keeps the rules as a skill. Read the card
+of a group before its first change.
+
 | Group | Commands | Tools | Change the cloud |
 |---|---|---|---|
 `, skillVersion(), head, consent, strings.Join(untrusted, ", "), strings.Join(raw, ", "), quote(skillLocalCommands), clerrors.ExitOK,
