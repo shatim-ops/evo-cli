@@ -871,6 +871,8 @@ var paramLabels = map[string]struct {
 	"disk_id":                               {"disk", "диск", false},
 	"description":                           {"about", "описание", false},
 	"display_name":                          {"display name", "отображаемое имя", false},
+	"intermediate_certificate":              {"intermediate chain", "промежуточная цепочка", false},
+	"user_data_template":                    {"cloud-init template", "шаблон cloud-init", false},
 	"lc_collate":                            {"collation (LC_COLLATE)", "сортировка (LC_COLLATE)", false},
 	"lc_ctype":                              {"character classes (LC_CTYPE)", "классы символов (LC_CTYPE)", false},
 	"target_port":                           {"target port", "порт целей", false},
