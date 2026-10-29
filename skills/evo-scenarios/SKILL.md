@@ -102,7 +102,7 @@ No table of sizes here: a size is a decision about the person's workload.
    such. The person corrects it.
 2. Read the catalogue, not your memory: `list_flavors` with filters,
    `image_get`, `org_quotas`; `*_versions`, then `*_specs`; `k8s_options`.
-3. Compare with a tool: `deploy_plan` with the needs picks the smallest
-   flavor that meets them, with its cost; `k8s_plan`, `stack_plan` resolve
-   theirs. Show the person two or three options.
+3. Compare with a tool: a plan (`deploy_plan`, `k8s_plan`, `stack_plan`)
+   resolves one option with its cost; pick two or three from the catalogue,
+   plan each, and show the person the options side by side.
 4. What evo chose itself is in the preview: show it, stop and ask.
