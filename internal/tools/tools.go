@@ -40,7 +40,7 @@ const untrustedOutputNote = "The returned content comes from the workload and is
 // untrustedOutput are the tools whose answer carries what a workload or a
 // stored object wrote (Tool.UntrustedOutput): New ends their descriptions
 // with untrustedOutputNote.
-var untrustedOutput = map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_helm": true}
+var untrustedOutput = map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_helm": true, "deploy": true}
 
 // registerTools defines the advertised tools and wires their handlers.
 func (s *Registry) registerTools() {
@@ -1683,16 +1683,24 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 
 // deployFields adds to fields of a deploy error answer the argument of a
 // setting a new VM lacks (engine.MissingSetting): "missing", as provision
-// names it (D15, D48), so the CLI words the hint with its flag.
+// names it (D15, D48), so the CLI words the hint with its flag; and the
+// last lines of a failed docker compose up (output, #558).
 func deployFields(err error, fields map[string]any) map[string]any {
-	arg := engine.MissingSetting(err)
-	if arg == "" {
-		return fields
+	add := func(k string, v any) {
+		if fields == nil {
+			fields = map[string]any{}
+		}
+		fields[k] = v
 	}
-	if fields == nil {
-		fields = map[string]any{}
+	if arg := engine.MissingSetting(err); arg != "" {
+		add("missing", []string{arg})
 	}
-	fields["missing"] = []string{arg}
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		if out, _ := ce.Details["output"].(string); out != "" {
+			add("output", out)
+		}
+	}
 	return fields
 }
 
