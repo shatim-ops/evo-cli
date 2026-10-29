@@ -727,6 +727,42 @@ func runsStep(w workflow, cmd string) bool {
 	return false
 }
 
+// The trust root of cosign keyless (the TUF cache in ~/.sigstore) is made
+// before goreleaser signs: goreleaser runs its signs blocks at once, and
+// every cosign process writes root.json to that cache as it starts
+// (go-tuf updater.New) and reads it back. On a cold cache one process wrote
+// the embedded root while another wrote the updated one, and the sign of
+// checksums.txt failed with "failed to persist metadata" (release of
+// v1.5.0-rc.1, run 40809664915). With the cache made first, they all write
+// the same bytes. Every job of release.yml that runs goreleaser release
+// runs cosign initialize after the installer of cosign and before it.
+func TestWorkflows_ReleaseInitializesTUFBeforeSigning(t *testing.T) {
+	jobs := 0
+	for name, j := range readWorkflows(t)["release.yml"].Jobs {
+		installer, initialize, release := -1, -1, -1
+		for i, s := range j.Steps {
+			switch {
+			case strings.HasPrefix(s.Uses, "sigstore/cosign-installer@"):
+				installer = i
+			case strings.TrimSpace(s.Run) == "cosign initialize":
+				initialize = i
+			case strings.HasPrefix(s.Uses, "goreleaser/goreleaser-action@") && strings.HasPrefix(fmt.Sprint(s.With["args"]), "release"):
+				release = i
+			}
+		}
+		if release < 0 {
+			continue
+		}
+		jobs++
+		if installer < 0 || initialize < installer || initialize > release {
+			t.Errorf("release.yml: job %s runs goreleaser release (step %d) with cosign initialize at %d and its installer at %d: initialize after the installer, before goreleaser", name, release, initialize, installer)
+		}
+	}
+	if jobs == 0 {
+		t.Fatal("release.yml: no job runs goreleaser release: the job moved, update the test")
+	}
+}
+
 // A release proves where it came from (process audit 1.2.1, 6.4; owner's
 // decision В8): every archive has an SBOM listed in the signed
 // checksums.txt, every file in checksums.txt has a provenance attestation
