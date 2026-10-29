@@ -78,7 +78,7 @@ evo. Где источника нет — пометка «допущение»,
 | 4. Проверка ключа | `evo whoami` | профиль, маскированный Key ID, проект, `token_source` | `docs/auth.md` |
 | 5. Окружение | `evo doctor` и `evo doctor --json` | таблица проверок; код 0. За корпоративным прокси — зафиксировать, что прошло и что нет | `docs/troubleshooting.md` |
 | 6. Первое чтение | `evo vm list`, `evo vm zones`, `evo vm flavors` | таблицы; `vm zones` показывает, какие зоны принимают новые ресурсы | README |
-| 7. MCP и встроенные правила | `evo agent setup --client claude-code --scope user --skill --dry-run`, затем то же с `--yes`; Cursor — `--client cursor` в каталоге проекта | запись `evo` в конфигурации клиента и встроенный скилл `evo`; агент видит 155 инструментов без `--toolsets` | `docs/mcp.md`, `docs/agent-skill.md` |
+| 7. MCP и встроенные правила | `evo agent setup --client claude-code --scope user --skill --dry-run`, затем то же с `--yes`; Cursor — `--client cursor` в каталоге проекта | запись `evo` в конфигурации клиента и встроенный скилл `evo`; агент видит 157 инструментов без `--toolsets` | `docs/mcp.md`, `docs/agent-skill.md` |
 | 8. Сценарные скиллы | промпт «Попросите агента» из `skills/README.md` в `main`; затем новая сессия агента и вопрос «какие evo-скиллы ты видишь?» | агент клонирует тег `v1.3.0`; видны пять `evo-*` и встроенный `evo` | `skills/README.md` |
 | 9. Агент | «покажи мои ВМ», затем «создай ВМ» | `vm_list`; на создание — превью с ценой и вопрос, ВМ не создана | `docs/mcp.md` |
 | 10. Отказ без согласия | `evo vm create df-t1 --image Ubuntu-24.04 </dev/null; echo $?` | превью в stderr, ничего не создано, код `3` | `docs/exit-codes.md` |
@@ -206,7 +206,7 @@ evo. Где источника нет — пометка «допущение»,
 ### 2.15 MCP-агент
 
 - **Что:** те же области через Claude Code, Cursor и другие клиенты; HTTP-режим и Docker-образ — по желанию, `docs/mcp.md`.
-- **Чего ждать:** изменяющий инструмент без `confirmed=true` возвращает `confirmation_required` и превью; `--toolsets deploy,vm,vpc` — агент видит 27 инструментов; без `--toolsets` — все 155 инструментов; `evo mcp --read-only` — ни одного изменения.
+- **Чего ждать:** изменяющий инструмент без `confirmed=true` возвращает `confirmation_required` и превью; `--toolsets deploy,vm,vpc` — агент видит 29 инструментов; без `--toolsets` — все 157 инструментов; `evo mcp --read-only` — ни одного изменения.
 - **Известное:** `confirmation_required` приходит с `isError: true` (D9); по HTTP часть инструментов отключена (H1–H13 в `docs/mcp.md`); клиент может повторить вызов по своему таймауту.
 
 ## 3. Каталог сценариев

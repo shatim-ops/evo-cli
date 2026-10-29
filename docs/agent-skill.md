@@ -89,7 +89,7 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
 | `snat` | `evo snat …` | 3 | 2 |
 | `stack` | `evo stack …` | 4 | 2 |
 | `vm` | `evo vm …` | 5 | 1 |
-| `vpc` | `evo vpc …` | 13 | 6 |
+| `vpc` | `evo vpc …` | 15 | 8 |
 
 ## Examples
 

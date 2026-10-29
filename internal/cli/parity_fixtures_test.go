@@ -28,8 +28,9 @@ import (
 // TestParity_JSONEqualsTool, TestParity_NewCommandsJSONEqualsToolsCall):
 // the arguments of each tool, what some need on disk first, and one fixture
 // per API host with the least the previews read (spec.md R2). Every ID is
-// fake (00000000-…), every address in 192.0.2.0/24 or 203.0.113.0/24,
-// every domain example.com.
+// fake (00000000-…), every address in 192.0.2.0/24 or 203.0.113.0/24 —
+// but a new subnet's network, which the API takes only private
+// (10.10.0.0/24) — every domain example.com.
 
 // parityArgs are the arguments of every tool, as an agent would pass them:
 // one table for the previews of the tools that ask for consent (Mutating or
@@ -88,6 +89,8 @@ var parityArgs = map[string]map[string]any{
 	"vpc_route_delete":     {"vpc_id": parityVM, "route_id": parityVM},
 	"snat_create":          {"name": "nat-new", "availability_zone_id": pvZone},
 	"snat_delete":          {"id": parityVM},
+	"subnet_create":        {"name": "sub-new", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1"},
+	"subnet_delete":        {"subnet_id": parityVM},
 	// k8s
 	"k8s_create":         {"name": "k8s-web", "zone": pvZone, "cluster_sa_id": parityVM},
 	"k8s_plan":           {"name": "k8s-web", "zone": pvZone, "cluster_sa_id": parityVM},
@@ -485,6 +488,10 @@ var parityAnswers = map[string]string{
 	"GET nlb.api.cloud.ru/v2/targetGroups/{id}":         parityObject,
 	"GET secretmanager.api.cloud.ru/v2/secret/app/db":   `{"secret":{"id":"` + parityVM + `","path":"app/db"}}`,
 	"GET vpc.api.cloud.ru/v1/vpcs/{id}":                 parityObject,
+	// The project's default VPC: subnet_create puts its subnet there.
+	"GET vpc.api.cloud.ru/v1/vpcs":                    `{"vpcs":[{"id":"` + parityVM + `","name":"default","default":true}],"total":1}`,
+	"GET compute.api.cloud.ru/api/v1/subnets/{id}":    `{"id":"` + parityVM + `","name":"sub","state":"created","can_delete":true}`,
+	"DELETE compute.api.cloud.ru/api/v1/subnets/{id}": `{}`,
 	// Writes: the operation or the empty body the API answers with.
 	"DELETE certificatemanager.api.cloud.ru/v1/certificate/{id}":     jsonOp,
 	"POST certificatemanager.api.cloud.ru/v1/certificate/{id}:renew": jsonOp,
@@ -524,7 +531,6 @@ var parityEmptyLists = map[string]string{
 	"GET organization.api.cloud.ru/v3/quotas/usages":                   "no quota usage rows",
 	"GET secretmanager.api.cloud.ru/v2/secret":                         "no secret yet: secret_create's path is free",
 	"GET secretmanager.api.cloud.ru/v2/version/app/db":                 "no version of the secret: secret_value finds none",
-	"GET vpc.api.cloud.ru/v1/vpcs":                                     "no VPC yet: vpc_create's name is free",
 }
 
 // parityNIC is the network interface of the VM parityVM.
@@ -545,6 +551,9 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 			break
 		}
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"data","size":20,"status":"creating"}`)
+	case "/api/v1/subnets":
+		// The list is previewCloud's; the create answers the new subnet.
+		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"sub-new","state":"creating"}`)
 	case "/api/v1/nat-gateways":
 		if r.Method == http.MethodPost {
 			_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"nat-new","status":"CREATING"}`)

@@ -58,8 +58,8 @@ func TestToolsList_JSONHasEveryTool(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &list); err != nil {
 		t.Fatalf("not JSON: %v", err)
 	}
-	if len(list) != 155 {
-		t.Errorf("%d tools, want 155 (147 + vm_list + image_list + 3 k8s addon tools + marketplace_list + whoami, doctor)", len(list))
+	if len(list) != 157 {
+		t.Errorf("%d tools, want 157 (149 + vm_list + image_list + 3 k8s addon tools + marketplace_list + whoami, doctor)", len(list))
 	}
 	for _, tl := range list {
 		if tl.Group == "" || tl.Description == "" {

@@ -16,7 +16,7 @@ import (
 var allResources = []string{ResourceVM, ResourceDisk, ResourceDiskResize, ResourcePGCluster,
 	ResourceK8sCluster, ResourceK8sNodePool, ResourceK8sAddon, ResourceS3Bucket, ResourceARRegistry, ResourceCAApp,
 	ResourceKafka, ResourceLB, ResourceRedis, ResourceSNAT, ResourceDNSZone, ResourceImage, ResourcePGBackup,
-	ResourceS3Object, ResourceSecret, ResourceStack, ResourceTargetGroup, ResourceVPC, ResourceVPCRoute}
+	ResourceS3Object, ResourceSecret, ResourceStack, ResourceSubnet, ResourceTargetGroup, ResourceVPC, ResourceVPCRoute}
 
 func TestTariffs_EveryResource(t *testing.T) {
 	if len(tariffs) != len(allResources) {
@@ -60,7 +60,7 @@ func TestPrice_UnpricedLinksTariff(t *testing.T) {
 // person would take for the tariff's: a wrong link is worse than none
 // (release-plan 1.3, A5). Counted as billable (owner's decision 22.10). A stack points to stack_plan, its resources.
 func TestPrice_NoTariffLineSaysSo(t *testing.T) {
-	for r, want := range map[string]string{ResourceImage: noTariffLine, ResourceSecret: noTariffLine, ResourceVPC: noTariffLine,
+	for r, want := range map[string]string{ResourceImage: noTariffLine, ResourceSecret: noTariffLine, ResourceSubnet: noTariffLine, ResourceVPC: noTariffLine,
 		ResourceVPCRoute: noTariffLine, ResourcePGBackup: noTariffLine, ResourceTargetGroup: noTariffLine, ResourceStack: stackNotPriced} {
 		p := CreatePreview{Resource: r, Name: "x"}
 		p.Price()
