@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -45,6 +46,7 @@ func newAgentCmd() *cobra.Command {
 
 func newAgentSkillCmd() *cobra.Command {
 	var readOnly bool
+	var group string
 	cmd := &cobra.Command{
 		Use:   "skill",
 		Short: i18n.T("Print the rules of evo for an AI agent (SKILL.md)", "Правила работы с evo для ИИ-агента (SKILL.md)"),
@@ -67,16 +69,28 @@ CLI: их пишет 'evo agent setup --read-only --skill'.
 
 'evo agent setup --skill' кладёт их туда, где их читает клиент.`),
 		Example: `  evo agent skill
-  evo agent skill --read-only > AGENTS.md`,
+  evo agent skill --read-only > AGENTS.md
+  evo agent skill --group pg`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if p := cmdPrinter(cmd); p.IsJSON() {
-				return p.JSON(map[string]string{"skill": agentSkill(cmd.Root(), readOnly)})
+			text := agentSkill(cmd.Root(), readOnly)
+			if cmd.Flags().Changed("group") {
+				card, ok := tools.GroupCard(group)
+				if !ok {
+					return clerrors.New(clerrors.CodeUsage, i18n.Tf("unknown group %q", "неизвестная группа %q", group),
+						i18n.Tf("Groups: %s.", "Группы: %s.", strings.Join(tools.Groups(), ", ")))
+				}
+				text = card
 			}
-			_, err := io.WriteString(cmd.OutOrStdout(), agentSkill(cmd.Root(), readOnly))
+			if p := cmdPrinter(cmd); p.IsJSON() {
+				return p.JSON(map[string]string{"skill": text})
+			}
+			_, err := io.WriteString(cmd.OutOrStdout(), text)
 			return err
 		},
 	}
+	cmd.Flags().StringVar(&group, "group", "", i18n.T("Print the card of a tool group instead: its tools, commands, where ids come from, what deletes what a create makes",
+		"Напечатать карточку группы инструментов: инструменты, команды, откуда id, чем удаляется созданное"))
 	cmd.Flags().BoolVar(&readOnly, "read-only", false, i18n.T("The rules of an agent that changes nothing in the cloud, through the CLI too",
 		"Правила агента, который ничего не меняет в облаке, в том числе через CLI"))
 	return cmd
@@ -380,7 +394,7 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 	if o.skill {
 		rules = cmd.Root()
 	}
-	targets, err := c.targets(scope, entry, rules, srv.readOnly)
+	targets, err := c.targets(scope, entry, rules, srv.readOnly, srv.toolsets)
 	if err != nil {
 		return err
 	}
@@ -499,8 +513,10 @@ func applyAgentChanges(cmd *cobra.Command, printer *output.Printer, c agentClien
 
 // targets are the files to write: the client's configuration and, given
 // the command tree to build them from, its rules — those of a read-only
-// agent for a read-only server.
-func (c agentClient) targets(scope agentScope, e agentconf.Entry, rules *cobra.Command, readOnly bool) ([]agentTarget, error) {
+// agent for a read-only server — and, where the rules are a skill of their
+// own, the cards of the groups the agent sees (toolsets; nil: every group)
+// in cards/ next to it (#515, layer B).
+func (c agentClient) targets(scope agentScope, e agentconf.Entry, rules *cobra.Command, readOnly bool, toolsets []string) ([]agentTarget, error) {
 	path, err := c.config[scope].path()
 	if err != nil {
 		return nil, err
@@ -527,7 +543,22 @@ func (c agentClient) targets(scope agentScope, e agentconf.Entry, rules *cobra.C
 			return agentconf.Whole(old, []byte(agentSkill(rules, readOnly))), nil
 		}
 	}
-	return append(out, agentTarget{path: path, mode: 0o644, merge: merge, generated: true}), nil
+	out = append(out, agentTarget{path: path, mode: 0o644, merge: merge, generated: true})
+	if !sf.whole {
+		return out, nil
+	}
+	if toolsets == nil {
+		toolsets = tools.Groups()
+	}
+	for _, g := range toolsets {
+		card, ok := tools.GroupCard(g)
+		if !ok {
+			continue
+		}
+		out = append(out, agentTarget{path: filepath.Join(filepath.Dir(path), "cards", g+".md"), mode: 0o644, generated: true,
+			merge: func(old []byte) (agentconf.Result, error) { return agentconf.Whole(old, []byte(card)), nil }})
+	}
+	return out, nil
 }
 
 // readChange reads the target and puts evo's part in. A UTF-8 byte order

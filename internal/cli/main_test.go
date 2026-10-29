@@ -21,6 +21,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/state"
+	"github.com/spf13/pflag"
 )
 
 // TestMain runs the tests in English: they assert the English texts.
@@ -246,19 +247,32 @@ func TestRun_CommandsWithoutVMCreateNoSSHKey(t *testing.T) {
 
 // The global flags live for one run: --profile ci of one CLI run made the
 // next test that builds an engine without run() read a profile it never
-// saved (TestContract_EveryPreviewPricedOrListed on main under -shuffle).
+// saved (TestContract_EveryPreviewPricedOrListed on main under -shuffle);
+// --project-id and --region, missing from a hand-written list of this
+// test, did the same with the project (#322). Every persistent flag of the
+// root is given a value, and every one is back at its default after the
+// run: a new global flag is in the test without a line here.
 func TestRun_GlobalFlagsDoNotOutliveTheRun(t *testing.T) {
 	t.Setenv("CLOUDRU_CONFIG_DIR", t.TempDir())
-	runCLI(t, "", "--profile", "ci", "--json", "--yes", "--dry-run", "--verbose", "--no-color",
-		"--project-id", "p-flag", "--region", "z-flag", "version")
-	if flagProfile != "" || flagJSON || flagYes || flagDryRun || flagVerbose || flagNoColor {
-		t.Errorf("after the run: profile %q json %v yes %v dry-run %v verbose %v no-color %v",
-			flagProfile, flagJSON, flagYes, flagDryRun, flagVerbose, flagNoColor)
+	flags := newRootCmd().PersistentFlags()
+	var args []string
+	flags.VisitAll(func(f *pflag.Flag) {
+		switch f.Value.Type() {
+		case "bool":
+			args = append(args, "--"+f.Name)
+		case "string":
+			args = append(args, "--"+f.Name, "x-"+f.Name)
+		default:
+			t.Errorf("--%s: a global flag of type %s; give it a value here", f.Name, f.Value.Type())
+		}
+	})
+	if len(args) == 0 {
+		t.Fatal("the root has no persistent flags: the test checks nothing")
 	}
-	// The scope flags too: an engine built after the run took the project of
-	// the run before (TestDeployDryRunKeepsV11Keys after
-	// TestWhoamiDoctor_ProjectFlag, -shuffle 1792844402228420628 on main).
-	if flagProjectID != "" || flagRegion != "" {
-		t.Errorf("after the run: project-id %q region %q", flagProjectID, flagRegion)
-	}
+	runCLI(t, "", append(args, "version")...)
+	flags.VisitAll(func(f *pflag.Flag) {
+		if got := f.Value.String(); got != f.DefValue {
+			t.Errorf("after the run: --%s is %q, not its default %q", f.Name, got, f.DefValue)
+		}
+	})
 }

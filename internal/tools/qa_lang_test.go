@@ -230,18 +230,78 @@ type langCall struct {
 // complaints: in ru an English phrase, in en Cyrillic, in the message or
 // the hint of a local refusal.
 func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad map[string]string, n int, left map[string]bool) {
+	i18n.SetLang(lang)
+	bad = map[string]string{}
+	left = map[string]bool{}
+	var mu sync.Mutex
+	n = walkAnswers(t, kind, edit, func(c langCall, m map[string]any) {
+		reason, _ := m["reason"].(string)
+		var fields map[string]string
+		switch {
+		case m["status"] == "confirmation_required":
+			// The question before a change: its message and
+			// warning are in the CLI's language too (break r4,
+			// R4-20: «provision creates a billable VM…» in ru).
+			reason = "confirmation_required"
+			msg, _ := m["message"].(string)
+			warn, _ := m["warning"].(string)
+			fields = map[string]string{"message": msg, "warning": warn}
+		case reason == clerrors.CodeUsage || reason == clerrors.CodeConfigInvalid || reason == clerrors.CodeNotFound:
+			msg, _ := m["error"].(string)
+			hint, _ := m["hint"].(string)
+			fields = map[string]string{"error": msg, "hint": hint}
+		case reason == clerrors.CodeAPIError:
+			// The cloud's own text is the cloud's; what evo puts
+			// before it is evo's (#319, D6).
+			msg, _ := m["error"].(string)
+			fields = map[string]string{"error prefix": apiErrorPrefix(msg)}
+		default:
+			return
+		}
+		for field, s := range fields {
+			what := ""
+			switch {
+			case field == "error prefix" && lang == i18n.RU:
+				what = latinSegment(s)
+			case lang == i18n.RU:
+				what = englishPhrase(s)
+			case hasCyrillic(s):
+				what = "cyrillic"
+			}
+			if what == "" {
+				continue
+			}
+			if field == "error prefix" && apiErrorEnglishLeft[c.tool] {
+				mu.Lock()
+				left[c.tool] = true
+				mu.Unlock()
+				continue
+			}
+			key := fmt.Sprintf("%s %s %s: %s", c.tool, reason, field, s)
+			mu.Lock()
+			if _, ok := bad[key]; !ok {
+				b, _ := json.Marshal(c.args)
+				bad[key] = fmt.Sprintf("[%s] args=%.200s", what, b)
+			}
+			mu.Unlock()
+		}
+	})
+	return bad, n, left
+}
+
+// walkAnswers calls every tool of a registry whose cloud answers every
+// request as kind (contractRT), its configuration edited by edit, with each
+// of its langArgSets, and hands each JSON object answer to check (called
+// from several goroutines). It returns the number of calls.
+func walkAnswers(t *testing.T, kind string, edit func(*config.Config), check func(c langCall, m map[string]any)) int {
 	rt := &contractRT{kind: kind}
 	reg := contractRegCfg(t, rt, edit)
-	i18n.SetLang(lang)
 	var calls []langCall
 	for _, tl := range reg.Tools() {
 		for _, a := range langArgSets(tl) {
 			calls = append(calls, langCall{tl.Name, a})
 		}
 	}
-	bad = map[string]string{}
-	left = map[string]bool{}
-	var mu sync.Mutex
 	ch := make(chan langCall)
 	var wg sync.WaitGroup
 	for w := 0; w < 16; w++ {
@@ -258,56 +318,7 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 				if json.Unmarshal([]byte(text), &m) != nil {
 					continue
 				}
-				reason, _ := m["reason"].(string)
-				var fields map[string]string
-				switch {
-				case m["status"] == "confirmation_required":
-					// The question before a change: its message and
-					// warning are in the CLI's language too (break r4,
-					// R4-20: «provision creates a billable VM…» in ru).
-					reason = "confirmation_required"
-					msg, _ := m["message"].(string)
-					warn, _ := m["warning"].(string)
-					fields = map[string]string{"message": msg, "warning": warn}
-				case reason == clerrors.CodeUsage || reason == clerrors.CodeConfigInvalid || reason == clerrors.CodeNotFound:
-					msg, _ := m["error"].(string)
-					hint, _ := m["hint"].(string)
-					fields = map[string]string{"error": msg, "hint": hint}
-				case reason == clerrors.CodeAPIError:
-					// The cloud's own text is the cloud's; what evo puts
-					// before it is evo's (#319, D6).
-					msg, _ := m["error"].(string)
-					fields = map[string]string{"error prefix": apiErrorPrefix(msg)}
-				default:
-					continue
-				}
-				for field, s := range fields {
-					what := ""
-					switch {
-					case field == "error prefix" && lang == i18n.RU:
-						what = latinSegment(s)
-					case lang == i18n.RU:
-						what = englishPhrase(s)
-					case hasCyrillic(s):
-						what = "cyrillic"
-					}
-					if what == "" {
-						continue
-					}
-					if field == "error prefix" && apiErrorEnglishLeft[c.tool] {
-						mu.Lock()
-						left[c.tool] = true
-						mu.Unlock()
-						continue
-					}
-					key := fmt.Sprintf("%s %s %s: %s", c.tool, reason, field, s)
-					mu.Lock()
-					if _, ok := bad[key]; !ok {
-						b, _ := json.Marshal(c.args)
-						bad[key] = fmt.Sprintf("[%s] args=%.200s", what, b)
-					}
-					mu.Unlock()
-				}
+				check(c, m)
 			}
 		}()
 	}
@@ -316,7 +327,7 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 	}
 	close(ch)
 	wg.Wait()
-	return bad, len(calls), left
+	return len(calls)
 }
 
 func TestQA11_ToolErrorsSpeakCLILanguage(t *testing.T) {

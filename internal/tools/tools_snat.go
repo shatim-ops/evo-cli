@@ -15,10 +15,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
-// resolveSnatZone turns an optional zone name / explicit availability_zone_id
+// resolveZone turns an optional zone name / explicit availability_zone_id
 // into a concrete zone UUID, defaulting to the configured region (the AZ the
 // deploy stack targets). Returns the zone id.
-func (s *Registry) resolveSnatZone(ctx context.Context, args map[string]any) (id, name string, err error) {
+func (s *Registry) resolveZone(ctx context.Context, args map[string]any) (id, name string, err error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return "", "", err
@@ -36,9 +36,15 @@ func (s *Registry) resolveSnatZone(ctx context.Context, args map[string]any) (id
 		}
 		return "", "", fmt.Errorf(i18n.T("availability zone %q not found", "зона доступности %q не найдена"), name)
 	}
-	// The id given, else the configured region (CLOUDRU_REGION = the AZ
-	// UUID); its name for the preview of the billable gateway (FB123-2),
-	// none when the zones cannot be read.
+	// The id given, else the configured region, by its UUID or its name
+	// (resolveVMZone, as a VM's: its name went out as the id, P-Z1); its
+	// name for the preview of the billable gateway (FB123-2), none when
+	// the zones cannot be read.
+	if stringArg(args, "availability_zone_id") == "" {
+		if _, _, err := resolveVMZone(ctx, eng); err != nil {
+			return "", "", err
+		}
+	}
 	id = firstNonEmptyStr(stringArg(args, "availability_zone_id"), eng.Config.Region)
 	if id == "" {
 		return "", "", errors.New(i18n.T("no zone: pass 'zone' (name) or 'availability_zone_id', or set the region", "зона не задана: передайте 'zone' (имя) или 'availability_zone_id' либо задайте region"))
@@ -71,7 +77,7 @@ func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (str
 			"name":                 g["name"],
 			"nat_type":             g["nat_type"],
 			"status":               firstNonNil(g["status"], g["state"]),
-			"availability_zone_id": firstNonNil(g["availability_zone_id"], nested(g, "availability_zone", "id")),
+			"availability_zone_id": gatewayZoneID(g),
 			"availability_zone":    firstNonNil(g["availability_zone_name"], nested(g, "availability_zone", "name")),
 		})
 	}
@@ -88,7 +94,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	if err := provision.ValidName(i18n.T("SNAT gateway", "SNAT-шлюза"), name); err != nil {
 		return errResult(err), true
 	}
-	zoneID, zoneName, err := s.resolveSnatZone(ctx, args)
+	zoneID, zoneName, err := s.resolveZone(ctx, args)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -108,6 +114,12 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	}
 	if id, st, ok := takenName(existing, name); ok {
 		return nameTakenResult(i18n.T("SNAT gateway", "шлюз SNAT"), name, id, st, "snat_list")
+	}
+	if id, ok := gatewayInZone(existing, zoneID); ok {
+		return errAnswer(clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("zone %s already has SNAT gateway %s: the zone's router takes one, and Cloud.ru refuses a second", "в зоне %s уже есть шлюз SNAT %s: у маршрутизатора зоны он один, второй Cloud.ru не создаст", firstNonEmptyStr(zoneName, zoneID), id),
+			i18n.Tf("Use it (snat_get id=%s) — VMs of the zone go out through it — or delete it first.", "Используйте его (snat_get id=%s) — ВМ зоны выходят через него, — или сначала удалите.", id)),
+			map[string]any{"existing_id": id}), true
 	}
 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
@@ -194,4 +206,25 @@ func nested(m map[string]any, key, field string) any {
 		return o[field]
 	}
 	return nil
+}
+
+// gatewayInZone is the SNAT gateway of the list in zone zoneID: a zone's
+// router takes one, and a second was refused after consent (422 «Router
+// already …», D54, FB15-17). Only a gateway whose answer names its zone
+// counts; one that does not decides nothing.
+func gatewayInZone(gateways []map[string]any, zoneID string) (string, bool) {
+	for _, g := range gateways {
+		if id, _ := gatewayZoneID(g).(string); id != "" && id == zoneID {
+			gid, _ := g["id"].(string)
+			return gid, true
+		}
+	}
+	return "", false
+}
+
+// gatewayZoneID is the zone of a gateway as an answer names it: flat
+// (availability_zone_id) or nested (availability_zone.id); one reading for
+// snat_list and gatewayInZone.
+func gatewayZoneID(g map[string]any) any {
+	return firstNonNil(g["availability_zone_id"], nested(g, "availability_zone", "id"))
 }

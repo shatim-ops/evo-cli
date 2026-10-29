@@ -750,6 +750,140 @@ jobs:
             done
           done
 
+      # Первый блок 1.6, только чтение (строка плана «Пробы только на
+      # чтение…», #496, #570): слепые зоны 1.5 (docs/internal/audits/
+      # blind-spots-1.5.md §9.1 — P34, P35, P37, P38, P40, P43, P46), что
+      # API отдаёт в remote_ip_prefix правила «откуда угодно» (D52, #504) и
+      # имена ссылок (audits/cli-ids-1.6.md §11 — P-N1, P-N2, P-K1, P-D1,
+      # P-A1). Печатаются коды HTTP, пути полей без значений, счётчики,
+      # признаки и публичные имена каталога (flavor, зоны, purpose); ID
+      # маскируются, весь вывод — через redact.sed. POST — только
+      # price-calculation, он лишь считает.
+      - name: Первый блок 1.6 (P34–P46, D52, P-N1…P-A1)
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] ||
+            { echo "::error::нет секретов CLOUDRU_KEY_ID / CLOUDRU_SECRET / CLOUDRU_PROJECT_ID"; exit 1; }
+          echo "::add-mask::$PROJECT"
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token \
+              -H 'Content-Type: application/json' --data-binary @- |
+            jq -r '.access_token // .accessToken // empty' || true)
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          C=https://compute.api.cloud.ru/api/v1
+          P="project_id=$PROJECT"
+          get() { curl -sS -H "Authorization: Bearer $TOKEN" "$1" 2>/dev/null || true; }
+          probe() {
+            local name=$1 url=$2 filter=$3 r c b
+            r=$(curl -sS -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "$url" || true)
+            c=${r##*$'\n'}; b=${r%$'\n'*}
+            printf '%-28s http=%s %s\n' "$name" "$c" "$(printf '%s' "$b" | jq -c "$filter" 2>/dev/null || echo 'не JSON')" | redact
+          }
+          # mask — каждая непустая строка stdin маскируется в логе.
+          mask() { local id; while read -r id; do [ -z "$id" ] || echo "::add-mask::$id"; done; }
+          # Пути полей ответа без значений: «a.b[].c».
+          fields='[paths(scalars) | map(if type == "number" then "[]" else . end) | join(".")] | unique'
+
+          echo "== P34: доля vCPU, GPU и spot у flavor; цена при разной доле"
+          probe p34_flavor_fields     "$C/flavors?limit=100" '{n: ([.items[]?] | length), oversubscription: ([.items[]? | select(has("oversubscription"))] | length), gpu: ([.items[]? | select((.gpu // 0) > 0)] | length), spot_field: ([.items[]? | select(.flavor_type | objects | has("is_spot"))] | length), spot: ([.items[]? | select(.flavor_type.is_spot? == true)] | length), zones_field: ([.items[]? | select(has("availability_zones"))] | length), group_types: ([.items[]? | .flavor_type.display_group_type? // empty] | unique)}'
+          probe p34_share_by_prefix   "$C/flavors?limit=100" '[.items[]? | {prefix: ((.name // "?") | sub("[0-9-].*$"; "")), share: (.oversubscription // null)}] | group_by(.) | map(.[0] + {n: length})'
+          flavors=$(get "$C/flavors?limit=100")
+          disk=$(get "$C/disk-types?$P" | jq -r '(.items? // .)[0].id // empty' 2>/dev/null || true)
+          # Пара flavor одного размера с разной долей: наименьший размер, где
+          # долей больше одной.
+          pair=$(printf '%s' "$flavors" | jq -r '[.items[]? | select((.gpu // 0) == 0 and .oversubscription != null)] | group_by([.cpu, .ram]) | map(select((map(.oversubscription) | unique | length) > 1)) | sort_by(.[0].cpu, .[0].ram) | .[0] // empty | (min_by(.oversubscription) | .id), (max_by(.oversubscription) | .id)' 2>/dev/null || true)
+          printf '%s\n%s\n' "$disk" "$pair" | mask
+          read -r fa fb <<<"$(printf '%s' "$pair" | tr '\n' ' ')" || true
+          if [ -n "${fa:-}" ] && [ -n "${fb:-}" ] && [ -n "$disk" ]; then
+            cost() {
+              jq -n --arg f "$1" --arg d "$disk" '{total_count: 1, flavor_id: $f, disks: [{disk_type_id: $d, size: 10}]}' |
+                curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- "$C/projects/$PROJECT/price-calculation" |
+                jq -r '.flavor // empty' 2>/dev/null || true
+            }
+            a=$(cost "$fa"); b=$(cost "$fb")
+            printf '%s' "$flavors" | jq -c --arg a "$fa" --arg b "$fb" --arg pa "$a" --arg pb "$b" '([.items[] | select(.id == $a) | {name, share: .oversubscription}] | first) as $fa | ([.items[] | select(.id == $b) | {name, share: .oversubscription}] | first) as $fb | {a: $fa, b: $fb, flavor_price_a_over_b: (if ($pa | tonumber? // 0) > 0 and ($pb | tonumber? // 0) > 0 then (($pa | tonumber) / ($pb | tonumber) * 100 | round / 100) else null end)}' | sed 's/^/p34_price_ratio              /' | redact
+          else
+            echo "p34_price_ratio: нет пары flavor одного размера с разной долей или типа диска — расчёт пропущен"
+          fi
+
+          echo "== P35: flavor в зоне — фильтр availability_zone_id и availability_zones[].available"
+          zones=$(get "$C/availability-zones" | jq -c '[(.items? // .)[]? | {id, name}]' 2>/dev/null || echo '[]')
+          printf '%s' "$zones" | jq -r '.[].id' | mask || true
+          all=$(printf '%s' "$flavors" | jq -c '[.items[]?.name] | sort')
+          probe p35_zone_item_keys    "$C/flavors?limit=100" '[.items[]? | .availability_zones[]? | keys] | unique'
+          probe p35_unavailable       "$C/flavors?limit=100" '{flavors_with_unavailable_zone: ([.items[]? | select(any(.availability_zones[]?; .available == false or .enabled == false))] | length)}'
+          for row in $(printf '%s' "$zones" | jq -r '.[] | "\(.id)|\(.name)"'); do
+            id=${row%%|*}; zn=${row#*|}
+            printf '%s' "$(get "$C/flavors?limit=100&availability_zone_id=$id")" | jq -c --argjson all "$all" --arg z "$zn" '[.items[]?.name] | sort as $in | {zone: $z, n: ($in | length), of: ($all | length), missing: ($all - $in)}' 2>/dev/null | sed 's/^/p35_zone                     /' | redact || echo "p35_zone $zn: не JSON"
+          done
+
+          echo "== P37: квоты проекта ключом проекта"
+          O=https://organization.api.cloud.ru
+          probe p37_usages_project    "$O/v3/quotas/usages?subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT&subject_ids=$PROJECT&page_size=200" '{top: (if type == "object" then keys else type end), n: ([.. | objects | select(has("resource_type_code"))] | length), codes: ([.. | objects | .resource_type_code? // empty] | unique), message: ((.message // null) | if . == null then null else tostring | .[0:160] end)}'
+          probe p37_resource_types    "$O/v3/quotas/resourceTypes" '{top: (if type == "object" then keys else type end), n: ([.. | objects | select(has("code"))] | length), item_keys: ([.. | objects | select(has("code")) | keys] | first // null)}'
+
+          # P38: тип и состояние подсетей печатает subnet_flags выше (type,
+          # state по зонам); здесь — только техническая подсеть счётчиком.
+          echo "== P38: технические подсети и подсети не в created"
+          probe p38_subnets           "$C/subnets?$P&limit=100" '{n: ([.items[]?] | length), technical: ([.items[]? | select((.type // "") | test("technical"))] | length), not_created: ([.items[]? | select((.state // "created") != "created")] | length)}'
+
+          echo "== P40: зона у floating IP"
+          probe p40_fip_fields        "$C/floating-ips?$P&limit=100" "[.items[]? | $fields] | add // [] | unique"
+          probe p40_fip_zone          "$C/floating-ips?$P&limit=100" '{n: ([.items[]?] | length), with_zone: ([.items[]? | select(.availability_zone != null)] | length)}'
+
+          echo "== P43: приватные зоны DNS и привязка к VPC"
+          probe p43_private_zones     "https://dns.api.cloud.ru/v1/privateZones?project_id=$PROJECT" '{n: ([(.zones // .items // [])[]?] | length), vpc_keys: ([(.zones // .items // [])[]? | keys[] | select(test("vpc"; "i"))] | unique), without_vpc: ([(.zones // .items // [])[]? | select(((.linkedVpcIds // .linked_vpc_ids // []) | length) == 0)] | length)}'
+
+          echo "== P46: каталог mk8s — SOLD_OUT и purpose"
+          M=https://mk8s.api.cloud.ru
+          probe p46_flavor_fields     "$M/v3/productConfiguration?projectId=$PROJECT" "[.flavors[]? | $fields] | add // [] | unique"
+          probe p46_sold_out          "$M/v3/productConfiguration?projectId=$PROJECT" '{flavors: ([.flavors[]?] | length), sold_out_paths: ([paths(. == "SOLD_OUT") | map(if type == "number" then "[]" else . end) | join(".")] | unique), sold_out: ([.. | strings | select(. == "SOLD_OUT")] | length), purpose: ([.flavors[]? | .purpose? // empty] | group_by(.) | map({(.[0] | tostring): length}) | add)}'
+          # api-probe 28, 29: ни одно значение availableFlavors не совпало с
+          # flavorId — печатаем тип элемента и с каким полем flavor оно
+          # совпадает (без значений; у объекта — имена его полей), и число
+          # flavor с AVAILABLE в зоне.
+          # shellcheck disable=SC2016 # $fl, $z, $a, $x — переменные jq
+          probe p46_zone_consistency  "$M/v3/productConfiguration?projectId=$PROJECT" '[.flavors[]?] as $fl | [.zones[]? as $z | ($z.availableFlavors // []) as $a | {zone: $z.name, zone_keys: ($z | keys), n: ($a | length), elem: (if ($a | length) > 0 then ($a[0] | type) else "empty" end), elem_keys: (if ($a[0] | type) == "object" then ($a[0] | keys) else null end), by_flavor_id: ([$a[] | select(. as $x | $fl | any(.flavorId == $x))] | length), by_name: ([$a[] | select(. as $x | $fl | any(.name == $x))] | length), by_any_field: ([$a[] | select(. as $x | $fl | any(.. | strings | . == $x))] | length), state_available: ([$fl[] | select(any(.availabilityZones[]?; ((.zoneId != null and .zoneId == $z.zoneId) or (.zoneName != null and .zoneName == $z.name)) and .flavorZoneState == "AVAILABLE"))] | length)}]'
+
+          # api-probe 30: state_available = 0 во всех зонах — значения
+          # flavorZoneState не «AVAILABLE» или zoneId зоны и flavor
+          # различаются. Значения перечисления и счётчики, без ID.
+          # shellcheck disable=SC2016 # $fl, $z — переменные jq
+          probe p46_zone_states       "$M/v3/productConfiguration?projectId=$PROJECT" '[.flavors[]?] as $fl | {states: ([$fl[] | .availabilityZones[]? | .flavorZoneState | tostring] | group_by(.) | map({(.[0]): length}) | add), zones: [.zones[]? as $z | {zone: $z.name, by_zone_id: ([$fl[] | .availabilityZones[]? | select(.zoneId != null and .zoneId == $z.zoneId)] | length), by_zone_name: ([$fl[] | .availabilityZones[]? | select(.zoneName != null and .zoneName == $z.name)] | length)}]}'
+
+          echo "== D52: remote_ip_prefix правил ingress без группы-источника"
+          sg_ids=$(get "$C/security-groups?$P&limit=100" | jq -r '.items[]?.id' 2>/dev/null || true)
+          printf '%s\n' "$sg_ids" | mask
+          for id in $sg_ids; do
+            get "$C/security-groups/$id/rules?limit=100"
+          done | jq -sc '[.[] | (.items? // .)[]? | select(.direction == "ingress" and ((.remote_group_id // .remote_group // null) == null))] | map({key: has("remote_ip_prefix"), prefix: (.remote_ip_prefix | if . == null then "null" elif . == "" then "empty" elif . == "0.0.0.0/0" then "world_v4" elif . == "::/0" then "world_v6" else "other" end)}) | group_by(.) | map(.[0] + {n: length})' 2>/dev/null | sed 's/^/d52_remote_ip_prefix         /' | redact || echo "d52_remote_ip_prefix: не JSON"
+
+          echo "== P-N1, P-N2: зона группы безопасности; уникальность имени подсети"
+          probe pn1_sg_zone_keys      "$C/security-groups?$P&limit=100" '{n: ([.items[]?] | length), zone_keys: ([.items[]? | .availability_zone | objects | keys] | unique)}'
+          # shellcheck disable=SC2016 # $f, $s, $d — переменные jq
+          probe pn2_subnet_names      "$C/subnets?$P&limit=100" '[.items[]? | {name, zone: (.availability_zone.name // "?")}] as $s | ($s | group_by(.name) | map(select(length > 1))) as $d | {n: ($s | length), names: ($s | map(.name) | unique | length), duplicated_names: ($d | length), duplicates_across_zones: ($d | map(select((map(.zone) | unique | length) > 1)) | length), duplicates_in_one_zone: ($d | map(select((map(.zone) | unique | length) < length)) | length)}'
+
+          echo "== P-K1, P-D1: поля ссылок в get кластеров"
+          k=$(get "$M/v3/clusters?projectId=$PROJECT" | jq -r '(.clusters // .items // [])[0].id // empty' 2>/dev/null || true)
+          printf '%s\n' "$k" | mask
+          if [ -n "$k" ]; then probe pk1_k8s_get_fields "$M/v3/clusters/$k" "$fields"; else echo "pk1_k8s_get_fields: кластеров k8s нет — пропущено"; fi
+          for svc in postgresql kafka redis; do
+            h=https://$svc.api.cloud.ru
+            d=$(get "$h/v1/clusters?project_id=$PROJECT" | jq -r '(.clusters // .items // [])[0].id // empty' 2>/dev/null || true)
+            printf '%s\n' "$d" | mask
+            if [ -n "$d" ]; then probe "pd1_${svc}_get_fields" "$h/v1/clusters/$d" "$fields"; else echo "pd1_${svc}_get_fields: кластеров нет — пропущено"; fi
+          done
+
+          echo "== P-A1: имена ресурсов в событиях аудита"
+          end=$(date -u +%Y-%m-%dT%H:%M:%SZ); start=$(date -u -d '-24 hours' +%Y-%m-%dT%H:%M:%SZ)
+          probe pa1_event_fields      "https://audit.api.cloud.ru/events/list/$PROJECT?start=$start&end=$end&limit=20" "{n: ([(.events // .items // [])[]?] | length), fields: ([(.events // .items // [])[]? | $fields] | add // [] | unique), name_fields: ([(.events // .items // [])[]? | $fields] | add // [] | unique | map(select(test(\"name\"; \"i\"))))}"
+
       # Ключ cloud-readonly должен только читать: роль «Наблюдатель проекта»
       # тянет за собой роли *.user сервисов, и что они разрешают, по
       # документации не видно. Здесь — запросы на изменение, которые ничего

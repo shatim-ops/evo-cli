@@ -123,7 +123,7 @@
   },
   "dns_record_create": {
     "destructive": false,
-    "taken": "not reached: the world's zone is in no list of zones",
+    "taken": "checked",
     "creates": {
       "id": "record_id",
       "list": "dns_records",
@@ -180,7 +180,7 @@
   },
   "k8s_add_nodepool": {
     "destructive": false,
-    "taken": "not reached: the world has no catalogue of flavors",
+    "taken": "checked",
     "creates": {
       "id": "nodepool_id",
       "list": "k8s_nodepools"
@@ -232,7 +232,7 @@
   },
   "lb_create": {
     "destructive": false,
-    "taken": "not reached: the world's zone is in no list of zones",
+    "taken": "checked",
     "creates": {
       "id": "lb_id",
       "list": "lb_list",
@@ -412,6 +412,22 @@
   },
   "stack_destroy": {
     "destructive": true
+  },
+  "subnet_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "subnet_id",
+      "list": "list_subnets",
+      "delete": "subnet_delete"
+    }
+  },
+  "subnet_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "subnet_id",
+      "no_refusal": "a subnet with resources in it is refused before the question (can_delete); the spec's 422 by state not seen live"
+    }
   },
   "tg_create": {
     "destructive": false,

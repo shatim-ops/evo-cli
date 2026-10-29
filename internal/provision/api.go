@@ -29,6 +29,10 @@ type CloudAPI interface {
 	// Project-scoped discovery (Cloud.ru requires project_id on these endpoints).
 	ListDiskTypes(ctx context.Context, projectID string) ([]*DiskType, error)
 	ListSubnets(ctx context.Context, projectID string) ([]*Subnet, error)
+	// Subnets — create, read one (can_delete) and delete.
+	CreateSubnet(ctx context.Context, req CreateSubnetRequest) (map[string]any, error)
+	GetSubnet(ctx context.Context, id string) (map[string]any, error)
+	DeleteSubnet(ctx context.Context, id, projectID string) error
 	ListSecurityGroups(ctx context.Context, projectID string) ([]*SecurityGroup, error)
 	ListFloatingIPs(ctx context.Context, projectID string) ([]*FloatingIP, error)
 	// AttachFloatingIP binds an existing floating IP to a VM interface (PUT).

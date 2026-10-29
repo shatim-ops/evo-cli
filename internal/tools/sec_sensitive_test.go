@@ -76,7 +76,7 @@ func TestSecretValue_ConfirmedReturnsValue(t *testing.T) {
 // недоверенные данные. Остальные описания этой фразы не несут. Признак —
 // объявление UntrustedOutput, фраза описания следует из него.
 func TestUntrustedOutputNote(t *testing.T) {
-	want := map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_helm": true}
+	want := map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_helm": true, "deploy": true}
 	for _, tl := range New(nil).Tools() {
 		if tl.UntrustedOutput != want[tl.Name] {
 			t.Errorf("%s: UntrustedOutput=%v, want %v", tl.Name, tl.UntrustedOutput, want[tl.Name])

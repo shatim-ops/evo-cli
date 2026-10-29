@@ -127,6 +127,9 @@ func New(factory EngineFactory) *Registry {
 			if projectTools[t.Name] {
 				h = r.requireProject(h)
 			}
+			if _, ok := createdIDs[t.Name]; ok {
+				h = r.namedProject(h)
+			}
 			if f := untrustedFields[t.Name]; f != nil {
 				h = markUntrusted(f, h)
 			}
@@ -305,6 +308,8 @@ var groupByName = map[string]string{
 	"list_disk_types": "disk",
 
 	"list_subnets":         "vpc",
+	"subnet_create":        "vpc",
+	"subnet_delete":        "vpc",
 	"list_security_groups": "vpc",
 	"list_floating_ips":    "vpc",
 	"release_floating_ip":  "vpc",
@@ -371,7 +376,7 @@ func groupOf(name string) string {
 // is engineFor's: the builders of the handlers' engines and clients use it.
 var projectTools = map[string]bool{
 	"vm_list": true, "list_subnets": true, "list_security_groups": true, "list_floating_ips": true,
-	"disk_list": true, "disk_create": true, "image_create": true, "snat_list": true, "snat_create": true,
+	"disk_list": true, "disk_create": true, "image_create": true, "snat_list": true, "snat_create": true, "subnet_create": true,
 	"deploy_plan": true, "provision": true,
 	"vpc_list": true, "vpc_create": true, "vpc_route_create": true,
 	"k8s_list": true, "k8s_plan": true, "k8s_create": true,

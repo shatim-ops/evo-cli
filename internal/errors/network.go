@@ -29,6 +29,7 @@ var ProxyFunc = http.ProxyFromEnvironment
 //   - a request that went through a proxy: which one, and that NO_PROXY
 //     exists;
 //   - a host name that did not resolve, without a proxy;
+//   - the client's timeout: the service did not answer in time;
 //   - else fallback (also for a cancelled request).
 //
 // The hint used to be "check your network connection" for all of them, and
@@ -69,6 +70,17 @@ func NetworkHint(err error, fallback string) string {
 	if stderrors.As(err, &dns) && dns.IsNotFound {
 		return i18n.Tf("The name %s did not resolve: check the network and DNS. A network that reaches the internet only through a proxy needs HTTPS_PROXY.",
 			"Имя %s не найдено в DNS: проверьте сеть и DNS. Если в интернет можно выйти только через прокси, задайте его в HTTPS_PROXY.", dns.Name)
+	}
+	// The client's own timeout: the connection was made or tried, and the
+	// service did not answer in time. The network may be fine; «check your
+	// network connection» sent the person to the wrong place (Grok rc.1).
+	var timeout net.Error
+	if stderrors.Is(err, context.DeadlineExceeded) || stderrors.As(err, &timeout) && timeout.Timeout() {
+		if host == "" {
+			host = "Cloud.ru"
+		}
+		return i18n.Tf("%s did not answer in time: the network may be fine and the service slow. Retry later; if it keeps happening, check the network.",
+			"%s не ответил вовремя: сеть может быть в порядке, а сервис — медленным. Повторите позже; если повторяется — проверьте сеть.", host)
 	}
 	return fallback
 }

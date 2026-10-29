@@ -220,6 +220,8 @@
     - [evo vpc route-delete](#evo-vpc-route-delete)
     - [evo vpc routes](#evo-vpc-routes)
     - [evo vpc security-groups](#evo-vpc-security-groups)
+    - [evo vpc subnet-create](#evo-vpc-subnet-create)
+    - [evo vpc subnet-delete](#evo-vpc-subnet-delete)
     - [evo vpc subnets](#evo-vpc-subnets)
   - [evo whoami](#evo-whoami)
 
@@ -451,13 +453,15 @@ evo agent skill [flags]
 ```
   evo agent skill
   evo agent skill --read-only > AGENTS.md
+  evo agent skill --group pg
 ```
 
 ### Options
 
 ```
-  -h, --help        Справка по skill
-      --read-only   Правила агента, который ничего не меняет в облаке, в том числе через CLI
+      --group string   Напечатать карточку группы инструментов: инструменты, команды, откуда id, чем удаляется созданное
+  -h, --help           Справка по skill
+      --read-only      Правила агента, который ничего не меняет в облаке, в том числе через CLI
 ```
 
 ### Options inherited from parent commands
@@ -3146,7 +3150,7 @@ evo disk resize <disk-id> [flags]
 ```text
 Типы дисков (UUID и имя, например SSD или HDD).
 
-Типы дисков: UUID и имя (например, SSD или HDD). Имя или UUID типа передаётся в --disk-type команды 'evo disk create'. Только чтение.
+Типы дисков: UUID и имя (например, SSD или HDD), а если каталог их называет — min_size_gb и max_size_gb, free_tier, зоны, где тип включён, и speed_limits (скорость по размеру диска, в единицах спецификации Cloud.ru). Имя или UUID типа передаётся в --disk-type команды 'evo disk create'. Только чтение.
 
 Вызывает инструмент list_disk_types (подробнее: 'evo tools describe list_disk_types').
 ```
@@ -4786,7 +4790,7 @@ evo k8s nodepools <cluster-id> [flags]
 ```text
 Версии Kubernetes, flavor узлов и зоны для кластеров.
 
-Доступные версии Kubernetes (по каналам выпуска), flavor узлов и зоны для кластеров Managed Kubernetes. Только чтение. Нужны, чтобы задать флаги 'evo k8s plan' вручную.
+Доступные версии Kubernetes (по каналам выпуска), flavor узлов и зоны для кластеров Managed Kubernetes; назначение flavor (CONTROLPLANE — мастера, DATAPLANE — узлы), если каталог его называет. Только чтение. Нужны, чтобы задать флаги 'evo k8s plan' вручную.
 
 Вызывает инструмент k8s_options (подробнее: 'evo tools describe k8s_options').
 ```
@@ -9319,6 +9323,8 @@ evo vpc [flags]
 * [evo vpc route-delete](#evo-vpc-route-delete)	 - Удалить статический маршрут из VPC (асинхронно)
 * [evo vpc routes](#evo-vpc-routes)	 - Статические маршруты VPC
 * [evo vpc security-groups](#evo-vpc-security-groups)	 - Группы безопасности (с --rules — вместе с правилами)
+* [evo vpc subnet-create](#evo-vpc-subnet-create)	 - Создать подсеть в VPC
+* [evo vpc subnet-delete](#evo-vpc-subnet-delete)	 - Удалить подсеть
 * [evo vpc subnets](#evo-vpc-subnets)	 - Подсети: UUID, имя, зона доступности
 
 ## evo vpc close-ports
@@ -9551,7 +9557,7 @@ Floating IP: адрес, состояние, свободен ли
 ```text
 Floating IP: адрес, состояние, свободен ли.
 
-Публичные IP-адреса (floating IP) проекта: адрес, состояние, свободен ли адрес для привязки. Только чтение.
+Публичные IP-адреса (floating IP) проекта: адрес, состояние, свободен ли адрес для привязки, а если API её называет — зона адреса: адрес привязывается к ВМ своей зоны. Только чтение.
 
 Вызывает инструмент list_floating_ips (подробнее: 'evo tools describe list_floating_ips').
 ```
@@ -9918,6 +9924,99 @@ evo vpc security-groups [flags]
 ```
   -h, --help    Справка по security-groups
       --rules   Вывести и правила каждой группы (по одному запросу к API на группу)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+
+## evo vpc subnet-create
+
+Создать подсеть в VPC
+
+### Synopsis
+
+```text
+Создать подсеть в VPC.
+
+Создать подсеть в VPC: частную сеть IPv4 (--cidr, например 10.10.0.0/24, маска от /8 до /29) в одной зоне доступности. VPC — --vpc-id, иначе VPC проекта по умолчанию; зона — --zone (имя) или --availability-zone-id, иначе зона из настроек. Подсеть маршрутизируемая; --routed-network=false делает её изолированной: трафик за её пределы не уходит. До вопроса отказывает имя или сеть, которые в VPC уже есть, и VPC не из проекта. Удалить — 'evo vpc subnet-delete'.
+
+Вызывает инструмент subnet_create (подробнее: 'evo tools describe subnet_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vpc subnet-create <name> [flags]
+```
+
+### Options
+
+```
+      --availability-zone-id string   UUID зоны доступности (вместо --zone)
+      --cidr string                   Частная сеть IPv4 базовым адресом с маской от /8 до /29, например 10.10.0.0/24 (обязательный)
+      --description string            Описание подсети
+      --dns-servers stringArray       Адреса DNS-серверов IPv4; по умолчанию — серверы платформы (флаг повторяется или значения через запятую)
+  -h, --help                          Справка по subnet-create
+      --routed-network                Маршрутизируемая подсеть; false — изолированная Выключить: --routed-network=false (по умолчанию true)
+      --vpc-id string                 UUID VPC (список: evo vpc list); по умолчанию — VPC проекта по умолчанию
+      --zone string                   ИМЯ зоны доступности, например ru.AZ-1; по умолчанию — зона из настроек
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+
+## evo vpc subnet-delete
+
+Удалить подсеть
+
+### Synopsis
+
+```text
+Удалить подсеть.
+
+Удалить подсеть по id (список: 'evo vpc subnets'). Подсеть, в которой ещё есть ВМ, балансировщики или кластеры, отказывает до вопроса.
+
+Вызывает инструмент subnet_delete (подробнее: 'evo tools describe subnet_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vpc subnet-delete <subnet-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по subnet-delete
 ```
 
 ### Options inherited from parent commands

@@ -128,26 +128,45 @@ func callEngineTool(cmd *cobra.Command, tool string, args map[string]any, c *too
 		return text, nil
 	}
 	if c.Err != nil {
-		return text, withAccessDenied(c.Err, text)
+		return text, withAnswerDetails(c.Err, text)
 	}
 	return text, toolError(text, commandHints(cmd, nil))
 }
 
-// withAccessDenied is err, the engine's error of the command, with the
-// access_denied and http_status of the tool's answer text in its details:
-// a refusal of rights says so as the answer of any other command does
-// (toolError, answerDetails).
-func withAccessDenied(err error, text string) error {
+// withAnswerDetails is err, the engine's error of the command, with what
+// the tool's answer text adds to it: access_denied and http_status — a
+// refusal of rights says so as the answer of any other command does
+// (toolError, answerDetails) — and the fields the answer marks untrusted,
+// with the marker (_untrusted): the workload's words stay marked in --json
+// as over MCP (#558: the last lines of docker compose up).
+func withAnswerDetails(err error, text string) error {
 	m := parseObject(text)
 	var ce *clerrors.CLIError
-	if m["access_denied"] != true || !stderrors.As(err, &ce) {
+	if m == nil || !stderrors.As(err, &ce) {
 		return err
 	}
-	details := make(map[string]any, len(ce.Details)+2)
+	add := map[string]any{}
+	if m["access_denied"] == true {
+		add["access_denied"], add["http_status"] = m["access_denied"], m["http_status"]
+	}
+	if marked, ok := m["_untrusted"].([]any); ok && len(marked) > 0 {
+		add["_untrusted"] = marked
+		for _, f := range marked {
+			if k, _ := f.(string); k != "" {
+				add[k] = m[k]
+			}
+		}
+	}
+	if len(add) == 0 {
+		return err
+	}
+	details := make(map[string]any, len(ce.Details)+len(add))
 	for k, v := range ce.Details {
 		details[k] = v
 	}
-	details["access_denied"], details["http_status"] = m["access_denied"], m["http_status"]
+	for k, v := range add {
+		details[k] = v
+	}
 	ce.Details = details // the call's own error: the message and its context stay
 	return err
 }

@@ -45,6 +45,7 @@ const (
 	ResourceS3Object    = "s3_object"
 	ResourceSecret      = "secret"
 	ResourceStack       = "stack"
+	ResourceSubnet      = "subnet"
 	ResourceTargetGroup = "target_group"
 	ResourceVPC         = "vpc"
 	ResourceVPCRoute    = "vpc_route"
@@ -62,8 +63,8 @@ type CreatePreview struct {
 	// Resource is what is created: vm, disk, disk_resize, pg_cluster,
 	// k8s_cluster, k8s_nodepool, k8s_addon, s3_bucket, ar_registry, ca_app,
 	// kafka_cluster, load_balancer, redis_cluster, snat_gateway, dns_zone,
-	// image, pg_backup, s3_object, secret, stack, target_group, vpc or
-	// vpc_route.
+	// image, pg_backup, s3_object, secret, stack, subnet, target_group, vpc
+	// or vpc_route.
 	Resource string `json:"resource"`
 	Name     string `json:"name,omitempty"`
 	// ProjectFrom is where the project comes from: profile, project, env,
@@ -174,11 +175,12 @@ var tariffs = map[string]string{
 	// product's tariff, with noTariffLine.
 	ResourcePGBackup:    tariffsBase + "managed-postgresql",
 	ResourceTargetGroup: tariffsBase + "load-balancer",
-	// Evolution publishes no tariff of an image, a secret or a VPC (10.2026):
-	// the index of its tariffs, with noTariffLine; a stack's resources each
-	// go by their own.
+	// Evolution publishes no tariff of an image, a secret, a VPC or a
+	// subnet (10.2026): the index of its tariffs, with noTariffLine; a
+	// stack's resources each go by their own.
 	ResourceImage:    tariffsBase + "index",
 	ResourceSecret:   tariffsBase + "index",
+	ResourceSubnet:   tariffsBase + "index",
 	ResourceVPC:      tariffsBase + "index",
 	ResourceVPCRoute: tariffsBase + "index",
 	ResourceStack:    tariffsBase + "index",
@@ -191,6 +193,7 @@ var tariffNotes = map[string]string{
 	ResourceStack:       stackNotPriced,
 	ResourceImage:       noTariffLine,
 	ResourceSecret:      noTariffLine,
+	ResourceSubnet:      noTariffLine,
 	ResourceVPC:         noTariffLine,
 	ResourceVPCRoute:    noTariffLine,
 	ResourcePGBackup:    noTariffLine,
@@ -332,6 +335,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		}
 	}
 	var flavorErr error
+	var picked *provision.Flavor
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
 		id, err := pick(flavors)
 		if ce := (*clerrors.CLIError)(nil); errors.As(err, &ce) && ce.Code == clerrors.CodeNotFound {
@@ -340,7 +344,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		if err == nil {
 			for _, f := range flavors {
 				if f.ID == id {
-					vm.Flavor = deployplan.SpecOf(f)
+					vm.Flavor, picked = deployplan.SpecOf(f), f
 					break
 				}
 			}
@@ -352,6 +356,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	// dogfood 28.10).
 	cat := images.Catalog{Cloud: e.Cloud, ProjectID: p.ProjectID}
 	marketplace := false
+	var image *provision.ImageDetail
 	imageErr := func() error {
 		checked := false
 		if vm.Image.ID == "" && vm.Image.Name != "" {
@@ -390,10 +395,12 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 					marketplace = img.Type == provision.ImageTypeMarketplace
 				}
 				vm.Disk.SizeGB, _ = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
+				image = img
 			}
 		}
 		return nil
 	}()
+	p.addCatalogueLines(picked, image)
 	p.priceFromAPI(ctx, e.Cloud, marketplace)
 	priced = true
 	var networkErr error
@@ -403,6 +410,33 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		p.NetworkCheck, networkErr = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
 	}
 	return clerrors.Join(flavorErr, imageErr, networkErr)
+}
+
+// addCatalogueLines says what the catalogue says of the VM's flavor and
+// image that the call does not check yet (D54 before the probes P35, P36;
+// FB15-2, FB15-5): the zones a VM of the flavor can be created in, and the
+// image's minimum vCPU and RAM. Only from the catalogue's fields: a flavor
+// that names no zones, an image without minimums add nothing.
+func (p *CreatePreview) addCatalogueLines(f *provision.Flavor, img *provision.ImageDetail) {
+	if f != nil {
+		if z := f.ZoneNames(); z != nil {
+			// As the answer decodes it ([]any), the same in-process and
+			// after JSON.
+			zones := make([]any, len(z))
+			for i, n := range z {
+				zones[i] = n
+			}
+			p.Add("flavor_zones", zones)
+		}
+	}
+	if img != nil {
+		if img.MinCPU > 0 {
+			p.Add("image_min_cpu", img.MinCPU)
+		}
+		if img.MinRAM > 0 {
+			p.Add("image_min_ram_gb", img.MinRAM)
+		}
+	}
 }
 
 // imageDecided reports an image lookup the catalogue answered: no such
@@ -670,6 +704,8 @@ func createSummary(p CreatePreview, zone string) string {
 		return i18n.Tf("create the resources of stack job %s", "создать ресурсы задания стека %s", p.Name)
 	case ResourceTargetGroup:
 		return i18n.Tf("create target group %s", "создать группу целей %s", p.Name)
+	case ResourceSubnet:
+		return i18n.Tf("create subnet %s", "создать подсеть %s", p.Name) + inZone
 	case ResourceVPC:
 		return i18n.Tf("create VPC %s", "создать VPC %s", p.Name)
 	case ResourceVPCRoute:
@@ -738,6 +774,8 @@ func createdLine(p CreatePreview) string {
 			"ресурсы задания стека %s (их перечисляет stack_plan)", p.Name))
 	case ResourceTargetGroup:
 		what = append(what, i18n.Tf("load balancer target group %s", "группа целей балансировщика %s", p.Name))
+	case ResourceSubnet:
+		what = append(what, i18n.Tf("subnet %s", "подсеть %s", p.Name))
 	case ResourceVPC:
 		what = append(what, i18n.Tf("VPC %s", "VPC %s", p.Name))
 	case ResourceVPCRoute:
@@ -824,6 +862,7 @@ var paramLabels = map[string]struct {
 	"backup_retention_days":                 {"backups kept, days", "бэкапы хранятся, дней", false},
 	"health_check":                          {"health check", "проверка здоровья", false},
 	"protocol":                              {"protocol", "протокол", false},
+	"kms_key_id":                            {"KMS key", "ключ KMS", false},
 	"cluster_sa_id":                         {"account", "аккаунт", false},
 	"cluster_id":                            {"cluster", "кластер", false},
 	"product":                               {"product", "продукт", false},
@@ -843,6 +882,16 @@ var paramLabels = map[string]struct {
 	"billable":                              {"billable addon", "платный плагин", false},
 	"resolve_mode":                          {"on conflict", "при конфликте", false},
 	"config_keys":                           {"settings", "настройки", false},
+	"cidr":                                  {"CIDR", "CIDR", false},
+	"prefix_length":                         {"mask", "маска", false},
+	"vpc_id":                                {"VPC", "VPC", false},
+	"vpc_name":                              {"VPC name", "имя VPC", false},
+	"routed_network":                        {"routed", "маршрутизируемая", false},
+	"dns_servers":                           {"DNS servers", "DNS-серверы", false},
+	"flavor_zones":                          {"flavor zones", "зоны flavor", false},
+	"image_min_cpu":                         {"image minimum, vCPU", "минимум образа, vCPU", false},
+	"image_min_ram_gb":                      {"image minimum, RAM", "минимум образа, RAM", true},
+	"interface_types":                       {"target interface types", "типы интерфейсов целей", false},
 }
 
 // notCheckedLabels name what a k8s_addon preview could not check (its

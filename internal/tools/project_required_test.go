@@ -99,7 +99,7 @@ func fullArgs(tl Tool) map[string]any {
 	}
 	// Values the tools' own checks accept (release audit L-28, L-34, L-14),
 	// so the call reaches the project check.
-	overrides := map[string]any{"port": float64(8080), "replicas": float64(2), "since": "1h", "resolve_mode": "NONE"}
+	overrides := map[string]any{"port": float64(8080), "replicas": float64(2), "since": "1h", "resolve_mode": "NONE", "dns_servers": []any{"192.0.2.53"}}
 	for k, v := range overrides {
 		if _, ok := args[k]; ok {
 			args[k] = v

@@ -128,8 +128,16 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 	}
 
 	versionID := stringArg(args, "version_id")
-	if versionID == "" {
-		vers, e := cli.ListVersions(ctx, url.Values{})
+	vers, e := cli.ListVersions(ctx, url.Values{})
+	if versionID != "" {
+		// D54: an id the list has not is refused before the question; a
+		// list not read decides nothing.
+		if e == nil {
+			if err := notInCatalogue(i18n.T("Redis version", "версии Redis"), versionID, listed(vers, "id"), "redis_versions"); err != nil {
+				return nil, err
+			}
+		}
+	} else {
 		if e != nil {
 			return nil, fmt.Errorf(i18n.T("list versions: %w", "список версий: %w"), e)
 		}

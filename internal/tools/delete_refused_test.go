@@ -66,6 +66,7 @@ var deleteRefusals = map[string]struct {
 	"s3_bucket_delete":  {none: "a bucket with objects is refused before the question (D26 world: s3Parity)"},
 	"s3_rm":             {none: "an object has no state"},
 	"secret_delete":     {none: "no refusal seen live (register, 28.10)"},
+	"subnet_delete":     {none: "a subnet with resources in it is refused before the question (can_delete); the spec's 422 by state not seen live"},
 	"tg_delete":         {none: "no refusal seen live (register, 28.10)"},
 	"vpc_delete":        {none: "no refusal seen live (register, 28.10)"},
 	"vpc_route_delete":  {none: "a route has no state"},

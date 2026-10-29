@@ -198,6 +198,17 @@ func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, 
 				picked = s
 			}
 		}
+		if picked == nil && len(subs) > 0 {
+			// D54: the project's subnets were read and this is not one of
+			// them — the create would fail after the question.
+			ids := make([]string, len(subs))
+			for i, sn := range subs {
+				ids[i] = sn.ID
+			}
+			if err := notInCatalogue(i18n.T("subnet", "подсети"), subnetArg, ids, "list_subnets"); err != nil {
+				return "", "", "", err
+			}
+		}
 		if picked == nil || picked.AvailabilityZoneID == "" {
 			zid, shown, zerr := dbaasZone(ctx, eng, "")
 			return subnetArg, zid, shown, zerr
@@ -342,8 +353,16 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 	}
 
 	versionID := stringArg(args, "version_id")
-	if versionID == "" {
-		vers, e := cli.ListVersions(ctx, kafkaQuery())
+	vers, e := cli.ListVersions(ctx, kafkaQuery())
+	if versionID != "" {
+		// D54: an id the list has not is refused before the question; a
+		// list not read decides nothing.
+		if e == nil {
+			if err := notInCatalogue(i18n.T("Kafka version", "версии Kafka"), versionID, listed(vers, "id"), "kafka_versions"); err != nil {
+				return nil, err
+			}
+		}
+	} else {
 		if e != nil {
 			return nil, fmt.Errorf(i18n.T("list versions: %w", "список версий: %w"), e)
 		}
@@ -467,7 +486,7 @@ func (s *Registry) planKafkaDelete(ctx context.Context, args map[string]any) (*P
 					// created (register DB-17) and of a FAILED one (G13-19).
 					return errResult(clierrors.New(clierrors.CodeAPIError, msg, i18n.T(
 						"Cloud.ru refuses to delete a cluster still being created or in FAILED. Still being created (DEPLOYING): wait until kafka_get shows it READY, then call kafka_delete again. In FAILED: ",
-						"Cloud.ru не удаляет кластер, который ещё создаётся или в FAILED. Ещё создаётся (DEPLOYING): дождитесь READY в kafka_get и повторите kafka_delete. В FAILED: ")+failedDeleteNote(id))), true
+						"Cloud.ru не удаляет кластер, который ещё создаётся или в FAILED. Ещё создаётся (DEPLOYING): дождитесь READY в kafka_get и повторите kafka_delete. В FAILED: ")+engine.FailedDeleteNote(id))), true
 				}
 				return s.deleteFailed("kafka_delete", id, fmt.Errorf(i18n.T("delete cluster: %w", "удаление кластера: %w"), err))
 			}
