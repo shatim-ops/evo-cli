@@ -227,18 +227,41 @@ const diskReadyTimeout = 5 * time.Minute
 // most diskReadyTimeout (or Timings.VMPollTimeout when shorter). A disk in
 // an error state ends the wait at once.
 func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectID string) error {
+	last, timeout, err := waitDisk(ctx, eng, diskID, projectID, diskReadyTimeout,
+		i18n.T("Disk %s: %s, waiting until it is available…", "Диск %s: %s, жду, пока он станет доступен…"),
+		func(st string) (bool, error) {
+			switch {
+			case st == "available":
+				return true, nil
+			case strings.HasPrefix(st, "error"):
+				return true, fmt.Errorf("the disk is in state %s", st)
+			}
+			return false, nil
+		})
+	if timeout > 0 {
+		return fmt.Errorf("the disk did not become available within %s (state %s)", timeout, last)
+	}
+	return err
+}
+
+// waitDisk polls disk_list until done says the disk's state ends the wait,
+// at the VM poll interval (Engine.Timings.VMPollInterval, 5 s by default),
+// for at most limit (or Timings.VMPollTimeout when shorter); it returns
+// the last state read and, when the wait ran out, how long it waited. The wait says the disk's state when it changes, in
+// the CLI and over MCP alike (waiting: a format of the disk and its state),
+// so a wait is not silent (CLAUDE.md §6, axis 2).
+func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string, limit time.Duration,
+	waiting string, done func(state string) (bool, error)) (last string, timedOut time.Duration, err error) {
 	every := 5 * time.Second
 	if eng.Timings.VMPollInterval > 0 {
 		every = eng.Timings.VMPollInterval
 	}
-	timeout := diskReadyTimeout
+	timeout := limit
 	if t := eng.Timings.VMPollTimeout; t > 0 && t < timeout {
 		timeout = t
 	}
 	deadline := time.Now().Add(timeout)
-	last := "unknown"
-	// The wait says the disk's state when it changes, in the CLI and over
-	// MCP alike, so a wait of minutes is not silent (CLAUDE.md §6, axis 2).
+	last = "unknown"
 	pp, _ := progressOf(ctx)
 	for {
 		if disks, err := eng.Cloud.ListDisks(ctx, projectID); err == nil {
@@ -247,63 +270,103 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 					continue
 				}
 				st, _ := d["state"].(string)
-				if st != last && st != "available" {
-					pp.Step(0, 0, i18n.Tf("Disk %s: %s, waiting until it is available…", "Диск %s: %s, жду, пока он станет доступен…", diskID, st))
+				ok, err := done(st)
+				if st != last && !ok {
+					pp.Step(0, 0, fmt.Sprintf(waiting, diskID, st))
 				}
 				last = st
-				switch {
-				case st == "available":
-					return nil
-				case strings.HasPrefix(st, "error"):
-					return fmt.Errorf("the disk is in state %s", st)
+				if ok {
+					return st, 0, err
 				}
 			}
 		}
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("the disk did not become available within %s (state %s)", timeout, last)
+			return last, timeout, nil
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return last, 0, ctx.Err()
 		case <-time.After(every):
 		}
 	}
 }
 
-// handleDiskAttach attaches an existing disk to a VM.
-func (s *Registry) handleDiskAttach(ctx context.Context, args map[string]any) (string, bool) {
+// diskTransient are the states of a disk the platform changes on its own
+// and refuses to attach, detach or resize it in (422
+// disk_can_not_be_detached_from_current_state: cloud-e2e of the 1.5
+// candidate, run 142, #521). Any other state — known or not — is left to
+// the platform, as before D53.
+var diskTransient = map[string]bool{"attaching": true, "detaching": true, "extending": true, "creating": true}
+
+// diskSettleTimeout bounds the wait before the question for a disk in a
+// transient state (D53, the owner's answer to #542: 30 s, under the call
+// timeout of MCP clients).
+const diskSettleTimeout = 30 * time.Second
+
+// settledDisk reads the disk before the question of disk_attach,
+// disk_detach and disk_resize (D53): a disk in a transient state is waited
+// for, saying its state, for at most diskSettleTimeout; one that does not
+// settle is refused before the question with its state and what to do,
+// not by the platform after consent. It returns the disk as last read.
+func settledDisk(ctx context.Context, eng *engine.Engine, diskID string) (map[string]any, error) {
+	d, err := eng.Cloud.GetDisk(ctx, diskID)
+	if err != nil {
+		return nil, err
+	}
+	if st, _ := d["state"].(string); !diskTransient[st] {
+		return d, nil
+	}
+	last, timedOut, err := waitDisk(ctx, eng, diskID, eng.Config.ProjectID, diskSettleTimeout,
+		i18n.T("Disk %s: %s, waiting until it settles…", "Диск %s: %s, жду, пока состояние устоится…"),
+		func(st string) (bool, error) { return !diskTransient[st], nil })
+	switch {
+	case err != nil:
+		return nil, err
+	case timedOut > 0:
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("disk %s is in state %s: it cannot be changed until the state settles", "диск %s в состоянии %s: менять его можно, когда состояние устоится", diskID, last),
+			i18n.T("Repeat the call when disk_list shows the disk available or in_use.", "Повторите вызов, когда disk_list покажет диск в available или in_use."))
+	}
+	return eng.Cloud.GetDisk(ctx, diskID)
+}
+
+// planDiskAttach plans the attach of an existing disk to a VM (gate.go):
+// the VM and the disk's state are read before the question (D53).
+func (s *Registry) planDiskAttach(ctx context.Context, args map[string]any) (*Plan, error) {
 	diskID := stringArg(args, "disk_id")
 	vmRef := stringArg(args, "vm")
 	if diskID == "" || vmRef == "" {
-		return usageT("'disk_id' and 'vm' are required", "нужны 'disk_id' и 'vm'"), true
-	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.T("disk_attach changes a VM.",
-			"disk_attach меняет ВМ.")}), true
+		return nil, usageErr("'disk_id' and 'vm' are required", "нужны 'disk_id' и 'vm'")
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	vmID, _, err := s.resolveVM(ctx, vmRef, eng.Config.ProjectID)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	r, err := eng.Cloud.AttachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
-	if err != nil && diskNotReady(err) {
-		// A disk just created is not attachable yet: 422 "Disk has no
-		// openstack_id" (CMP-15; live run 18.10 — disk_attach right after
-		// disk_create). Wait until it is available, as disk_create
-		// attach_to does (L-24), and attach once more.
-		if werr := waitDiskAvailable(ctx, eng, diskID, eng.Config.ProjectID); werr != nil {
-			return errResult(fmt.Errorf(i18n.T("attach disk: %w (waited for the new disk: %v)", "привязка диска: %w (ожидание нового диска: %v)"), err, werr)), true
-		}
-		r, err = eng.Cloud.AttachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
+	if _, err := settledDisk(ctx, eng, diskID); err != nil {
+		return nil, err
 	}
-	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("attach disk: %w", "привязка диска: %w"), err)), true
-	}
-	return toJSON(map[string]any{"status": "attached", "result": r}), false
+	return &Plan{Preview: map[string]any{"message": i18n.T("disk_attach changes a VM.", "disk_attach меняет ВМ.")},
+		Execute: func(ctx context.Context) (string, bool) {
+			r, err := eng.Cloud.AttachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
+			if err != nil && diskNotReady(err) {
+				// A disk just created is not attachable yet: 422 "Disk has no
+				// openstack_id" (CMP-15; live run 18.10 — disk_attach right after
+				// disk_create). Wait until it is available, as disk_create
+				// attach_to does (L-24), and attach once more.
+				if werr := waitDiskAvailable(ctx, eng, diskID, eng.Config.ProjectID); werr != nil {
+					return errResult(fmt.Errorf(i18n.T("attach disk: %w (waited for the new disk: %v)", "привязка диска: %w (ожидание нового диска: %v)"), err, werr)), true
+				}
+				r, err = eng.Cloud.AttachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
+			}
+			if err != nil {
+				return errResult(fmt.Errorf(i18n.T("attach disk: %w", "привязка диска: %w"), err)), true
+			}
+			return toJSON(map[string]any{"status": "attached", "result": r}), false
+		}}, nil
 }
 
 // diskNotReady: the attach was refused because the disk is not ready yet
@@ -313,30 +376,33 @@ func diskNotReady(err error) bool {
 	return errors.As(err, &se) && se.Status == http.StatusUnprocessableEntity && strings.Contains(strings.ToLower(se.Body), "openstack_id")
 }
 
-// handleDiskDetach detaches a disk from a VM.
-func (s *Registry) handleDiskDetach(ctx context.Context, args map[string]any) (string, bool) {
+// planDiskDetach plans the detach of a disk from a VM (gate.go): the VM
+// and the disk's state are read before the question (D53).
+func (s *Registry) planDiskDetach(ctx context.Context, args map[string]any) (*Plan, error) {
 	diskID := stringArg(args, "disk_id")
 	vmRef := stringArg(args, "vm")
 	if diskID == "" || vmRef == "" {
-		return usageT("'disk_id' and 'vm' are required", "нужны 'disk_id' и 'vm'"), true
-	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.T("disk_detach changes a VM.",
-			"disk_detach меняет ВМ.")}), true
+		return nil, usageErr("'disk_id' and 'vm' are required", "нужны 'disk_id' и 'vm'")
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	vmID, _, err := s.resolveVM(ctx, vmRef, eng.Config.ProjectID)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	r, err := eng.Cloud.DetachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
-	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("detach disk: %w", "отвязка диска: %w"), err)), true
+	if _, err := settledDisk(ctx, eng, diskID); err != nil {
+		return nil, err
 	}
-	return toJSON(map[string]any{"status": "detached", "result": r}), false
+	return &Plan{Preview: map[string]any{"message": i18n.T("disk_detach changes a VM.", "disk_detach меняет ВМ.")},
+		Execute: func(ctx context.Context) (string, bool) {
+			r, err := eng.Cloud.DetachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
+			if err != nil {
+				return errResult(fmt.Errorf(i18n.T("detach disk: %w", "отвязка диска: %w"), err)), true
+			}
+			return toJSON(map[string]any{"status": "detached", "result": r}), false
+		}}, nil
 }
 
 // planDiskResize plans the growth of a disk in place (PUT {size}, gate.go).
@@ -362,8 +428,9 @@ func (s *Registry) planDiskResize(ctx context.Context, args map[string]any) (*Pl
 		return nil, err
 	}
 	// The disk before the question: a shrink the API refuses, the same
-	// size changes nothing — both failed after consent (G13-3, W5).
-	d, err := eng.Cloud.GetDisk(ctx, diskID)
+	// size changes nothing — both failed after consent (G13-3, W5); a
+	// transient state is waited for or refused (D53).
+	d, err := settledDisk(ctx, eng, diskID)
 	if err != nil {
 		return nil, err
 	}
