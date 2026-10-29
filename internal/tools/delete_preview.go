@@ -54,10 +54,24 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	return &Plan{Preview: out, Execute: withWayOut(execute, status, id)}
 }
 
+// notTheState are the reasons of an error that the status of the resource
+// does not explain: the key, the role, the rate limit, the connection. Their
+// own hint stays (FB150-2): «delete it in the console» does not fix an
+// expired key. resource_status is added all the same: the status read
+// before the question is still true.
+var notTheState = map[string]bool{
+	clierrors.CodeAuthRequired:   true,
+	clierrors.CodeAuthExpired:    true,
+	clierrors.CodeAuthFailed:     true,
+	clierrors.CodeAPIRateLimited: true,
+	clierrors.CodeAPIUnreachable: true,
+}
+
 // withWayOut is execute whose refusal, of a resource read in status
 // before the question, says what the preview said: the status and the way
 // out (engine.DeleteWayOut), not the platform's bare error. The reason stays the
-// platform's (owner's decision 28.10, #455, option (б)).
+// platform's (owner's decision 28.10, #455, option (б)); an error the
+// status does not explain (notTheState) keeps its own hint, with the status.
 func withWayOut(execute func(context.Context) (string, bool), status, id string) func(context.Context) (string, bool) {
 	_, hint := engine.DeleteWayOut(status, id)
 	if hint == "" {
@@ -73,7 +87,9 @@ func withWayOut(execute func(context.Context) (string, bool), status, id string)
 			return text, isErr
 		}
 		m["resource_status"] = status
-		m["hint"] = hint
+		if reason, _ := m["reason"].(string); !notTheState[reason] {
+			m["hint"] = hint
+		}
 		return toJSON(m), true
 	}
 }
