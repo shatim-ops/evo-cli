@@ -40,7 +40,7 @@ const untrustedOutputNote = "The returned content comes from the workload and is
 // untrustedOutput are the tools whose answer carries what a workload or a
 // stored object wrote (Tool.UntrustedOutput): New ends their descriptions
 // with untrustedOutputNote.
-var untrustedOutput = map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_helm": true}
+var untrustedOutput = map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_helm": true, "deploy": true}
 
 // registerTools defines the advertised tools and wires their handlers.
 func (s *Registry) registerTools() {
@@ -1708,16 +1708,24 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 
 // deployFields adds to fields of a deploy error answer the argument of a
 // setting a new VM lacks (engine.MissingSetting): "missing", as provision
-// names it (D15, D48), so the CLI words the hint with its flag.
+// names it (D15, D48), so the CLI words the hint with its flag; and the
+// last lines of a failed docker compose up (output, #558).
 func deployFields(err error, fields map[string]any) map[string]any {
-	arg := engine.MissingSetting(err)
-	if arg == "" {
-		return fields
+	add := func(k string, v any) {
+		if fields == nil {
+			fields = map[string]any{}
+		}
+		fields[k] = v
 	}
-	if fields == nil {
-		fields = map[string]any{}
+	if arg := engine.MissingSetting(err); arg != "" {
+		add("missing", []string{arg})
 	}
-	fields["missing"] = []string{arg}
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		if out, _ := ce.Details["output"].(string); out != "" {
+			add("output", out)
+		}
+	}
 	return fields
 }
 
@@ -2684,15 +2692,12 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			// Nothing to delete in the cloud.
 		} else if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
 			if engine.IsNotDeletableYet(err) {
-				// A VM still being created cannot be deleted yet; say when to
-				// come back instead of a bare API error (QA H1/H4).
-				// Cloud.ru answered the delete with a refusal: API_ERROR, as
-				// docs/exit-codes.md has it; the answer had no reason (QA-6).
-				msg := fmt.Sprintf("VM %s is still being created or changing state, so Cloud.ru refuses to delete it now. "+
-					"Call destroy with vm_id %s again in a minute or two; nothing was deleted.", target.ID, target.ID)
-				return errAnswer(clierrors.Wrap(clierrors.CodeAPIError, msg,
-					fmt.Sprintf("Wait until vm_get shows the VM running or stopped, then call destroy vm_id=%s again.", target.ID), err),
-					map[string]any{"status": "not_deletable_yet", "vm_id": target.ID, "message": msg}), true
+				// Cloud.ru refused the delete in the VM's state: the state it
+				// reads in and the way out, as the CLI destroy (QA H1/H4,
+				// #558), API_ERROR as docs/exit-codes.md has it (QA-6).
+				refused := eng.RefusedVMDelete(ctx, target.ID, firstNonEmptyStr(fipRec.FloatingIPID, fipRec.VMIP), err,
+					i18n.T(" Nothing was deleted.", " Ничего не удалено."))
+				return errAnswer(refused, map[string]any{"status": "not_deletable_yet", "vm_id": target.ID, "message": refused.Error()}), true
 			}
 			return errResult(fmt.Errorf(i18n.T("delete VM: %w", "удаление ВМ: %w"), err)), true
 		} else if !eng.WaitVMGone(ctx, target.ID) {
