@@ -28,7 +28,9 @@ else
 	passes=(./...)
 fi
 
-red=0 retry="" i=0 notes=()
+# notes — строки, не массив: пустой массив под set -u в bash 3.2 (macOS)
+# — «unbound variable».
+red=0 retry="" i=0 notes=""
 for pkgs in "${passes[@]}"; do
 	i=$((i + 1))
 	log="$logs/$i.log"
@@ -45,12 +47,12 @@ for pkgs in "${passes[@]}"; do
 		red=1
 		continue
 	fi
-	notes+=("сбой рантайма Go (#370): ${sig%% |*} — повтор: $failed")
+	notes+="::warning::сбой рантайма Go (#370): ${sig%% |*} — повтор: $failed"$'\n'
 	retry="${retry:+$retry }$failed"
 done
 
 [ "$red" = 0 ] || exit 1
-for n in "${notes[@]}"; do echo "::warning::$n"; done
+printf '%s' "$notes"
 if [ -n "$retry" ]; then
 	echo "retry=$retry" >>"${GITHUB_OUTPUT:-/dev/null}"
 fi
