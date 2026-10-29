@@ -108,7 +108,9 @@ func TestDeletePlan_FailedRefusalSaysWhereToDelete(t *testing.T) {
 // platform's refusal only. An expired key (401), a missing role (403), a
 // rate limit (429) or a cut connection on the DELETE of a resource read in
 // FAILED or CREATING keeps the hint of its own reason: «delete it in the
-// console» does not fix an expired key.
+// console» does not fix an expired key. resource_status stays: the status
+// read before the question is still true, and 1.5 answers with it, so
+// dropping it would be a breaking change.
 func TestDeletePlan_WayOutOnlyForTheRefusal(t *testing.T) {
 	r := newTestServer()
 	id := "00000000-0000-4000-8000-0000000000fa"
@@ -129,8 +131,8 @@ func TestDeletePlan_WayOutOnlyForTheRefusal(t *testing.T) {
 			if err := json.Unmarshal([]byte(text), &m); err != nil {
 				t.Fatal(err)
 			}
-			if m["hint"] != own || m["resource_status"] != nil {
-				t.Errorf("%s in %s: hint %q, resource_status %v; want the hint of the reason, not of the status", code, status, m["hint"], m["resource_status"])
+			if m["hint"] != own || m["resource_status"] != status {
+				t.Errorf("%s in %s: hint %q, resource_status %v; want the hint of the reason and the status read before the question", code, status, m["hint"], m["resource_status"])
 			}
 		}
 	}
