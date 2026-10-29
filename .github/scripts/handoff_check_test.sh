@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Проверка handoff_check.sh на временном репозитории: релизный PR, PR после
-# тега без передачи и с ней, X.Y.0 с передачей X.Y.md.
+# тега без передачи и с ней, окно передачи в 24 часа, X.Y.0 с передачей X.Y.md.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 fail=0
@@ -26,6 +26,10 @@ log $'## [1.4.1] — 2026-10-28\n\n## [1.4.0] — 2026-10-27\n'
 check "релизный PR: новый раздел выпуска" 0
 git add -A && git commit -qm release && base=$(git rev-parse HEAD)
 check "PR после тега без передачи" 1
+git tag v1.4.1
+tagged=$(git for-each-ref --format='%(creatordate:unix)' refs/tags/v1.4.1)
+HANDOFF_NOW=$((tagged + 23 * 3600)) check "без передачи, 23 часа после тега" 1
+HANDOFF_NOW=$((tagged + 25 * 3600)) check "без передачи, 25 часов после тега: окно закрыто" 0
 touch docs/internal/handoff/1.4.1.md
 check "PR с передачей" 0
 log $'## [1.5.0] — 2026-11-01\n\n## [1.4.1] — 2026-10-28\n'
