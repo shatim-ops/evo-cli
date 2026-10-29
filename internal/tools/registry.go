@@ -135,6 +135,9 @@ func New(factory EngineFactory) *Registry {
 			if _, ok := createdIDs[t.Name]; ok {
 				h = r.namedProject(h)
 			}
+			if keys := echoedArgs[t.Name]; keys != nil {
+				h = namedArgs(keys, h)
+			}
 			if f := untrustedFields[t.Name]; f != nil {
 				h = markUntrusted(f, h)
 			}
