@@ -54,24 +54,43 @@ command -v evo >/dev/null || {
 	exit 1
 }
 out="${RUNNER_TEMP:-/tmp}/dbaas-del-$kind.json"
+err="${RUNNER_TEMP:-/tmp}/dbaas-del-$kind.err"
 poll=${DBAAS_POLL:-60}
+
+# delete_call [--yes] — <kind>_delete кластера $id с --json: ответ — stdout в
+# $ans, код — $rc; ошибка evo — {"error":{reason,message,hint}} в stderr,
+# stdout тогда пуст (QA-12): из неё $reason и $text. Ветки «ещё создаётся»
+# и FAILED читали ошибку из stdout и не срабатывали ни разу (run 144, #525).
+delete_call() {
+	set +e
+	evo "$@" tools call "${kind}_delete" --arg cluster_id="$id" --json >"$out" 2>"$err"
+	rc=$?
+	set -e
+	ans=$(cat "$out")
+	local e
+	e=$(jq -cR 'fromjson? | .error? | select(type == "object")' "$err" 2>/dev/null | sed -n 1p) || e=
+	if [ -n "$e" ]; then
+		reason=$(jq -r '.reason // "-"' <<<"$e")
+		text=$(jq -r '[(.message // ""), (.hint // "")] | join(" ")' <<<"$e")
+	else
+		# Не JSON в stderr — его начало: причина не теряется молча.
+		reason=-
+		text=$(head -c 2000 "$err" 2>/dev/null | tr '\n\r' '  ') || text=
+	fi
+}
 
 # Повтор удаления каждого виденного кластера без согласия: already_deleted,
 # existed false (D44, D26); код не 0 — хотя бы один ответил иначе.
 repeat_deleted() {
-	local id rc ans st ex bad=0
+	local id st ex bad=0
 	for id in "${!seen[@]}"; do
-		set +e
-		evo tools call "${kind}_delete" --arg cluster_id="$id" --json >"$out" 2>/dev/null
-		rc=$?
-		set -e
-		ans=$(cat "$out")
+		delete_call
 		st=$(jq -r '.status // "-"' <<<"$ans" 2>/dev/null || echo -)
 		ex=$(jq -r '.existed | tostring' <<<"$ans" 2>/dev/null || echo -)
 		if [ "$rc" = 0 ] && [ "$st" = already_deleted ] && [ "$ex" = false ]; then
 			say "повтор удаления: already_deleted, existed false"
 		else
-			say "повтор удаления: код $rc, status $st, existed $ex, reason $(jq -r '.reason // "-"' <<<"$ans" 2>/dev/null || echo -)"
+			say "повтор удаления: код $rc, status $st, existed $ex, reason $reason"
 			echo "::error::повтор ${kind}_delete удалённого кластера $name — не already_deleted (D44, D26)"
 			bad=1
 		fi
@@ -119,14 +138,8 @@ while :; do
 			[ -n "$id" ] || continue
 			case "$st" in DELET*) accepted[$id]=1 ;; esac
 			[ -z "${accepted[$id]:-}" ] || continue
-			set +e
-			evo --yes tools call "${kind}_delete" --arg cluster_id="$id" --json >"$out" 2>/dev/null
-			rc=$?
-			set -e
-			ans=$(cat "$out")
+			delete_call --yes
 			dst=$(jq -r '.status // "-"' <<<"$ans" 2>/dev/null || echo -)
-			reason=$(jq -r '.reason // "-"' <<<"$ans" 2>/dev/null || echo -)
-			text=$(jq -r '[(.error // ""), (.hint // "")] | join(" ")' <<<"$ans" 2>/dev/null || true)
 			if [ "$rc" = 0 ] && [ "$dst" = deleting ]; then
 				say "удаление ($st): принято"
 				accepted[$id]=1

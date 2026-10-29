@@ -9,8 +9,12 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 # Поддельный evo: tools call <kind>_list — следующий файл list.N (последний
-# повторяется); <kind>_delete с --yes — del-yes.json и код del-yes.rc, без
-# него — del-preview.json и del-preview.rc. Каждый вызов — строка в calls.
+# повторяется); <kind>_delete с --yes — следующий del-yes.N (последний
+# повторяется) с кодом del-yes.N.rc, без него — del-preview.json и
+# del-preview.rc. Как настоящий evo с --json: код 0 — ответ в stdout, иначе
+# ошибка {"error":…} в stderr и пустой stdout (QA-12; #525: скрипт читал
+# ошибку из stdout, а поддельный evo её туда и писал). Каждый вызов —
+# строка в calls.
 mkdir -p "$work/bin"
 cat >"$work/bin/evo" <<'EOF'
 #!/usr/bin/env bash
@@ -27,9 +31,16 @@ case "$tool" in
 	cat "$f"
 	;;
 *_delete)
-	if [ "$yes" = 1 ]; then cat "$d/del-yes.json"; exit "$(cat "$d/del-yes.rc")"; fi
-	cat "$d/del-preview.json"
-	exit "$(cat "$d/del-preview.rc")"
+	if [ "$yes" = 1 ]; then
+		m=$(cat "$d/m" 2>/dev/null || echo 0)
+		f="$d/del-yes.$m"
+		[ -f "$f.rc" ] && echo $((m + 1)) >"$d/m" || f="$d/del-yes.$((m - 1))"
+	else
+		f="$d/del-preview"
+	fi
+	rc=$(cat "$f.rc")
+	if [ "$rc" = 0 ]; then cat "$f.json"; else cat "$f.json" >&2; fi
+	exit "$rc"
 	;;
 esac
 EOF
@@ -55,8 +66,8 @@ run() {
 fresh() {
 	export FAKE_DIR="$work/$1"
 	mkdir -p "$FAKE_DIR"
-	printf '{"status":"deleting","id":"a"}' >"$FAKE_DIR/del-yes.json"
-	echo 0 >"$FAKE_DIR/del-yes.rc"
+	printf '{"status":"deleting","id":"a"}' >"$FAKE_DIR/del-yes.0.json"
+	echo 0 >"$FAKE_DIR/del-yes.0.rc"
 	printf '{"status":"already_deleted","existed":false,"cluster_id":"a"}' >"$FAKE_DIR/del-preview.json"
 	echo 0 >"$FAKE_DIR/del-preview.rc"
 }
@@ -77,23 +88,42 @@ run vanished 0 1 "$running" "$none"
 # Повтор ERASED ответил превью с вопросом (1.3.0: confirmation_required) —
 # код 3, а кластер не удаляется второй раз.
 fresh asks
-printf '{"status":"confirmation_required"}' >"$FAKE_DIR/del-preview.json"
+printf '{"error":{"code":3,"reason":"CONFIRMATION_REQUIRED","message":"confirmation required"}}' >"$FAKE_DIR/del-preview.json"
 echo 3 >"$FAKE_DIR/del-preview.rc"
 run asks 3 1 "$running" "$erased"
 
 # FAILED: отказ с путём — код 1 сразу, одно удаление, без повторов.
 fresh failed
-printf '{"status":"error","reason":"API_ERROR","error":"delete cluster: dbaas API 500","hint":"Cloud.ru does not delete a FAILED cluster: delete it in the Cloud.ru console or contact support"}' >"$FAKE_DIR/del-yes.json"
-echo 5 >"$FAKE_DIR/del-yes.rc"
+printf '{"error":{"code":5,"reason":"API_ERROR","message":"delete cluster: dbaas API 500","hint":"Cloud.ru does not delete a FAILED cluster: delete it in the Cloud.ru console or contact support"}}' >"$FAKE_DIR/del-yes.0.json"
+echo 5 >"$FAKE_DIR/del-yes.0.rc"
 run failed 1 1 "$failed"
 grep -q 'путь — в ответе evo' "$FAKE_DIR/out" || { echo "FAIL failed: нет строки о пути в ответе"; fail=1; }
 
 # FAILED без пути в ответе — тоже код 1, и ошибка говорит, что пути нет.
 fresh failed-nopath
-printf '{"status":"error","reason":"API_ERROR","error":"delete cluster: dbaas API 500"}' >"$FAKE_DIR/del-yes.json"
-echo 5 >"$FAKE_DIR/del-yes.rc"
+printf '{"error":{"code":5,"reason":"API_ERROR","message":"delete cluster: dbaas API 500"}}' >"$FAKE_DIR/del-yes.0.json"
+echo 5 >"$FAKE_DIR/del-yes.0.rc"
 run failed-nopath 1 1 "$failed"
 grep -q 'не называет путь' "$FAKE_DIR/out" || { echo "FAIL failed-nopath: нет строки «не называет путь»"; fail=1; }
+
+# Кластер ещё создаётся (DEPLOYING): Cloud.ru отказывает FailedPrecondition
+# (ошибка — в stderr), скрипт повторяет; второе удаление принято, кластер
+# ERASED — код 0, два удаления с --yes (#525: ветка не срабатывала ни разу).
+deploying='{"clusters":[{"id":"a","name":"evo-e2e-kafka","status":"DEPLOYING"}]}'
+fresh creating
+printf '{"error":{"code":5,"reason":"API_ERROR","message":"delete cluster: dbaas API 400: FailedPrecondition: cluster is DEPLOYING"}}' >"$FAKE_DIR/del-yes.0.json"
+echo 5 >"$FAKE_DIR/del-yes.0.rc"
+printf '{"status":"deleting","id":"a"}' >"$FAKE_DIR/del-yes.1.json"
+echo 0 >"$FAKE_DIR/del-yes.1.rc"
+run creating 0 2 "$deploying" "$deploying" "$erased"
+grep -q 'ещё создаётся' "$FAKE_DIR/out" || { echo "FAIL creating: нет строки «ещё создаётся»"; fail=1; }
+
+# Уже нет (NOT_FOUND в stderr): принято без повторов.
+fresh notfound
+printf '{"error":{"code":4,"reason":"NOT_FOUND","message":"cluster not found"}}' >"$FAKE_DIR/del-yes.0.json"
+echo 4 >"$FAKE_DIR/del-yes.0.rc"
+run notfound 0 1 "$running" "$none"
+grep -q 'кластера уже нет' "$FAKE_DIR/out" || { echo "FAIL notfound: нет строки «кластера уже нет»"; fail=1; }
 
 # Кластеров нет с самого начала: ни удаления, ни повтора.
 fresh empty
