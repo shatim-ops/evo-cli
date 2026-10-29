@@ -109,7 +109,12 @@ func (s *Registry) handleK8sOptions(ctx context.Context, args map[string]any) (s
 	flavors := make([]map[string]any, 0, len(pc.Flavors))
 	for _, f := range pc.Flavors {
 		if f.GPU == 0 {
-			flavors = append(flavors, map[string]any{"flavor_id": f.FlavorID, "name": f.Name, "cpu": f.CPU, "ram": f.RAM})
+			row := map[string]any{"flavor_id": f.FlavorID, "name": f.Name, "cpu": f.CPU, "ram": f.RAM}
+			// Only what the catalogue sent (D54, FB15-40).
+			if f.Purpose != "" {
+				row["purpose"] = f.Purpose
+			}
+			flavors = append(flavors, row)
 		}
 	}
 	zones := make([]string, 0, len(pc.Zones))
