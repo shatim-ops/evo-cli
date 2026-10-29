@@ -56,8 +56,6 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"k8s_add_nodepool preview.project_from":           {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"k8s_create preview.project_from":                 {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"kafka_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM)"},
-	"lb_create will_create.target_group_id":           {unnamedWork, "группа целей не названа по имени — #583"},
-	"lb_create will_create.vpc_id":                    {unnamedWork, "VPC не назван по имени — #583"},
 	"pg_create preview.project_from":                  {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами"},
 	"pg_create will_create.zone":                      {unnamedWork, "зона кластера"},
@@ -69,7 +67,6 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"provision will_create.region":                    {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"provision will_create.subnet_id":                 {unnamedWork, "подсеть не названа по имени — план 1.6, «Линия CLI»: подсеть в восьми превью"},
 	"redis_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM)"},
-	"tg_create targets.interface_id":                  {unnamedWork, "ВМ-цель не названа по имени — #583"},
 }
 
 // Release plan 1.5, С2: what the agent sees in a preview (preview.details,
