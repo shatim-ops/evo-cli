@@ -254,7 +254,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "list_disk_types",
-			Description: "List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD). Use a name as the 'disk_type' argument for deploy_plan in manual mode.",
+			Description: "List available Cloud.ru disk types (UUID + name, e.g. SSD/HDD) and, when the catalogue names them, min/max_size_gb, free_tier, zones, speed_limits. Use a name as the 'disk_type' argument for deploy_plan in manual mode.",
 			InputSchema: objSchema(nil),
 		},
 		{
@@ -271,7 +271,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "list_floating_ips",
-			Description: "List Cloud.ru floating IPs (address, state, whether available to attach). Read-only.",
+			Description: "List Cloud.ru floating IPs (address, state, whether available to attach,, zone when the API names it). Read-only.",
 			InputSchema: objSchema(nil),
 		},
 		{
@@ -308,7 +308,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_options",
-			Description: "List available Kubernetes versions (by release channel), node flavors and zones for mk8s. Read-only. Use before k8s_plan in manual mode.",
+			Description: "List available Kubernetes versions (by release channel), node flavors and zones for mk8s; a flavor's purpose (CONTROLPLANE/DATAPLANE) when named. Read-only. Use before k8s_plan in manual mode.",
 			InputSchema: objSchema(nil),
 		},
 		{
