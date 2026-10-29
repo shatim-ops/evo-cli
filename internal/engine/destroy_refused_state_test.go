@@ -52,6 +52,13 @@ func TestDestroy_RefusedDeleteNamesTheStateAndTheWayOut(t *testing.T) {
 		if strings.Contains(text, "probably") {
 			t.Errorf("%s: %q guesses the state it read", status, text)
 		}
+		// A state the VM does not leave by itself: its floating IP stays
+		// billed, and the hint says how to release it once the VM is gone
+		// (E11, Grok rc.1). A passing state re-runs destroy, which releases it.
+		final := status == "error" || status == "failed" || status == "error_deleting"
+		if names := strings.Contains(text, "fip-release") && strings.Contains(text, "fip-9"); names != final {
+			t.Errorf("%s: names the floating IP's release = %v, want %v: %q", status, names, final, text)
+		}
 		if a := readActive(t, eng.StateDir); a == nil || a.Status != "running" {
 			t.Errorf("%s: record after the refusal = %+v, want unchanged", status, a)
 		}

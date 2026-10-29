@@ -165,7 +165,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			stateFile.UpsertDeployment(*active)
 			_ = state.Write(statePath, stateFile)
 			if st := provision.HTTPStatus(err); st == http.StatusConflict || st == http.StatusUnprocessableEntity {
-				return e.refusedVMDelete(ctx, active.VMID, err)
+				return e.RefusedVMDelete(ctx, active.VMID, fipRef(active), err, i18n.T(" The deployment record is kept.", " Запись развёртывания сохранена."))
 			}
 			return err
 		}
@@ -575,13 +575,15 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) (err error) {
 	return err
 }
 
-// refusedVMDelete is the answer to a VM Cloud.ru would not delete within the
-// wait (409 or 422): the state the VM is read in now and the way out of it
-// (DeleteWayOut, one place with the deletes of the tools), not a guess
-// (release plan 1.6, #558: a VM read in deleting was answered «probably
-// still being created»). The record is kept, so a re-run picks it up.
-func (e *Engine) refusedVMDelete(ctx context.Context, vmID string, err error) error {
-	kept := i18n.T(" The deployment record is kept.", " Запись развёртывания сохранена.")
+// RefusedVMDelete is the answer to a VM Cloud.ru would not delete (409 or
+// 422), by the CLI destroy and the destroy tool by vm_id alike: the state
+// the VM is read in now and the way out of it (DeleteWayOut, one place with
+// the deletes of the tools), not a guess (release plan 1.6, #558: a VM read
+// in deleting was answered «probably still being created»). In a state it
+// does not leave by itself, the hint names its floating IP fip (id or
+// address, "" for none), which stays billed until released (E11, Grok
+// rc.1). kept is what the caller keeps, appended to the hint.
+func (e *Engine) RefusedVMDelete(ctx context.Context, vmID, fip string, err error, kept string) error {
 	status := ""
 	if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
 		status = vm.Status
@@ -596,6 +598,10 @@ func (e *Engine) refusedVMDelete(ctx context.Context, vmID string, err error) er
 			err)
 	}
 	_, hint := DeleteWayOut(status, vmID)
+	if fip != "" && FinalDeleteState(status) {
+		hint += i18n.Tf(" Its floating IP %s stays bound to it and billed: once the VM is gone, release it with 'evo vpc fip-release %s' (release_floating_ip).",
+			" Её floating IP %s остаётся привязанным и оплачивается: когда ВМ не станет, освободите его — 'evo vpc fip-release %s' (release_floating_ip).", fip, fip)
+	}
 	if hint == "" {
 		hint = i18n.Tf("Cloud.ru refused the delete in this state (waited %s): re-run 'evo destroy' once the VM is running ('evo vm get %s').",
 			"Cloud.ru отказал в удалении в этом состоянии (ждали %s): повторите 'evo destroy', когда ВМ будет работать ('evo vm get %s').",
@@ -615,3 +621,12 @@ type seenStateError struct {
 
 func (e *seenStateError) Error() string { return e.err.Error() }
 func (e *seenStateError) Unwrap() error { return e.err }
+
+// fipRef is how a record names its floating IP for a hint: its id, else
+// its address; "" when it has none.
+func fipRef(rec *state.DeploymentRecord) string {
+	if rec.FloatingIPID != "" {
+		return rec.FloatingIPID
+	}
+	return rec.VMIP
+}
