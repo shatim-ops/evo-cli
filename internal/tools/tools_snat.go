@@ -109,6 +109,12 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	if id, st, ok := takenName(existing, name); ok {
 		return nameTakenResult(i18n.T("SNAT gateway", "шлюз SNAT"), name, id, st, "snat_list")
 	}
+	if id, ok := gatewayInZone(existing, zoneID); ok {
+		return errAnswer(clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("zone %s already has SNAT gateway %s: the zone's router takes one, and Cloud.ru refuses a second", "в зоне %s уже есть шлюз SNAT %s: у маршрутизатора зоны он один, второй Cloud.ru не создаст", firstNonEmptyStr(zoneName, zoneID), id),
+			i18n.Tf("Use it (snat_get id=%s) — VMs of the zone go out through it — or delete it first.", "Используйте его (snat_get id=%s) — ВМ зоны выходят через него, — или сначала удалите.", id)),
+			map[string]any{"existing_id": id}), true
+	}
 
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		will := map[string]any{
@@ -194,4 +200,19 @@ func nested(m map[string]any, key, field string) any {
 		return o[field]
 	}
 	return nil
+}
+
+// gatewayInZone is the SNAT gateway of the list in zone zoneID: a zone's
+// router takes one, and a second was refused after consent (422 «Router
+// already …», D54, FB15-17). Only a gateway whose answer names its zone
+// counts; one that does not decides nothing.
+func gatewayInZone(gateways []map[string]any, zoneID string) (string, bool) {
+	for _, g := range gateways {
+		z, _ := g["availability_zone"].(map[string]any)
+		if id, _ := z["id"].(string); id != "" && id == zoneID {
+			gid, _ := g["id"].(string)
+			return gid, true
+		}
+	}
+	return "", false
 }
