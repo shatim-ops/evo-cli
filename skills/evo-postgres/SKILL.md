@@ -1,6 +1,6 @@
 ---
 name: evo-postgres
-description: Create a Managed PostgreSQL cluster of a small specification on Cloud.ru Evolution with evo, add a user and a database, hand over a connection string without the password, and delete the cluster. Use for "set up PostgreSQL", "a small Postgres", "create a database and a user", "give me the connection string", "delete the cluster".
+description: Create a Managed PostgreSQL cluster of a specification the person picks on Cloud.ru Evolution with evo, add a user and a database, hand over a connection string without the password, and delete the cluster. Use for "set up PostgreSQL", "a small Postgres", "create a database and a user", "give me the connection string", "delete the cluster".
 license: Apache-2.0
 metadata:
   evo-version: "1.5"
@@ -33,11 +33,14 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
 ## Procedure
 
 1. Versions: `evo pg versions --json` / `pg_versions`. Specifications:
-   `evo pg specs --version 17 --json` / `pg_specs` with `version`. For a
-   small cluster, take the `standard` specification with the fewest `cpu`,
-   then the least `memory_gb`; `min_storage_gb` is its least storage. evo
-   has no PostgreSQL prices: do not name one; the person compares on the
-   page of `tariff_url`.
+   `evo pg specs --version 17 --json` / `pg_specs` with `version`. The size
+   is the person's: state what the workload needs (cpu, memory, storage,
+   nodes) and where that comes from — the product's documentation, the
+   person, your own estimate said as such — then show the person two or
+   three specifications of the list that meet it, and let them pick (skill
+   `evo-scenarios`, section 7). `min_storage_gb` is a specification's least
+   storage. evo has no PostgreSQL prices: do not name one; the person
+   compares on the page of `tariff_url`.
 2. Preview: `evo pg create <name> --specification-id <id> --dry-run --json`
    / `pg_create` with `name`, `specification_id`, and `version`,
    `storage_gb`, `subnet_id` if needed, no `confirmed`. It names the

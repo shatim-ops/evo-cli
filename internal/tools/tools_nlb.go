@@ -18,23 +18,35 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
-// pickVMInterface returns the ID of a VM's network interface to use as an NLB
-// target — the primary one if flagged, else the first with a non-empty ID.
-func pickVMInterface(det *provision.VMDetail) string {
+// pickVMInterface returns a VM's network interface to use as an NLB
+// target — the primary one if flagged, else the first with a non-empty ID;
+// nil when there is none.
+func pickVMInterface(det *provision.VMDetail) *provision.VMInterface {
 	if det == nil {
-		return ""
+		return nil
 	}
-	for _, ni := range det.Interfaces {
+	for i, ni := range det.Interfaces {
 		if ni.Primary && ni.ID != "" {
-			return ni.ID
+			return &det.Interfaces[i]
 		}
 	}
-	for _, ni := range det.Interfaces {
+	for i, ni := range det.Interfaces {
 		if ni.ID != "" {
-			return ni.ID
+			return &det.Interfaces[i]
 		}
 	}
-	return ""
+	return nil
+}
+
+// tgPreview is the preview of tg_create: the targets, each VM by id and
+// name, and the types of the interfaces it resolved, by VM.
+func tgPreview(name string, targets []map[string]any, ifaceTypes map[string]any) engine.CreatePreview {
+	will := map[string]any{"targets": targets}
+	keys := []string{"targets"}
+	if len(ifaceTypes) > 0 {
+		will["interface_types"], keys = ifaceTypes, append(keys, "interface_types")
+	}
+	return willPreview(engine.ResourceTargetGroup, name, "", will, keys)
 }
 
 func (s *Registry) nlbClient(ctx context.Context) (*nlb.Client, error) {
@@ -234,7 +246,11 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 	// agent has no standalone tool to fetch a VM's network interface, and
 	// without this it flails (ssh/raw API). NLB targets need the VM's
 	// regular VPC-subnet interface; GetVMDetail returns it.
+	// The type of each interface resolved: the preview names it (D54 before
+	// the probe P41, FB15-21) — a direct_ip interface is a public VM's, not
+	// the private target a balancer needs; the body does not carry it.
 	named := make([]map[string]any, 0, len(specs))
+	ifaceTypes := map[string]any{}
 	for i, sp := range specs {
 		vmid, _ := sp["id"].(string)
 		det, e := eng.Cloud.GetVMDetail(ctx, vmid)
@@ -242,11 +258,14 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 			return errResult(fmt.Errorf(i18n.T("resolve interface for vm %s: %w", "разрешение интерфейса ВМ %s: %w"), vmid, e)), true
 		}
 		if ifid, _ := sp["interface_id"].(string); ifid == "" {
-			ifid := pickVMInterface(det)
-			if ifid == "" {
+			ni := pickVMInterface(det)
+			if ni == nil {
 				return errResult(fmt.Errorf(i18n.T("vm %s has no usable network interface (NLB targets need a private VPC-subnet VM — provision with no_public_ip)", "у ВМ %s нет подходящего сетевого интерфейса (цель балансировщика — ВМ в подсети VPC без публичного IP: provision с no_public_ip)"), vmid)), true
 			}
-			specs[i]["interface_id"] = ifid
+			specs[i]["interface_id"] = ni.ID
+			if ni.Type != "" {
+				ifaceTypes[vmid] = ni.Type
+			}
 		}
 		named = append(named, map[string]any{"id": vmid, "name": det.Name, "interface_id": specs[i]["interface_id"]})
 	}
@@ -256,7 +275,7 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 			"message": i18n.Tf("tg_create creates target group %q with %d target(s).",
 				"tg_create создаёт группу целей %q (целей: %d).", name, len(specs)),
 			"targets": specs,
-			"preview": willPreview(engine.ResourceTargetGroup, name, "", map[string]any{"targets": named}, []string{"targets"}),
+			"preview": tgPreview(name, named, ifaceTypes),
 		}), true
 	}
 	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "target_vm_specs": specs}
