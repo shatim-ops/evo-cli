@@ -844,8 +844,11 @@ jobs:
           M=https://mk8s.api.cloud.ru
           probe p46_flavor_fields     "$M/v3/productConfiguration?projectId=$PROJECT" "[.flavors[]? | $fields] | add // [] | unique"
           probe p46_sold_out          "$M/v3/productConfiguration?projectId=$PROJECT" '{flavors: ([.flavors[]?] | length), sold_out_paths: ([paths(. == "SOLD_OUT") | map(if type == "number" then "[]" else . end) | join(".")] | unique), sold_out: ([.. | strings | select(. == "SOLD_OUT")] | length), purpose: ([.flavors[]? | .purpose? // empty] | group_by(.) | map({(.[0] | tostring): length}) | add)}'
-          # shellcheck disable=SC2016 # $f, $s, $d — переменные jq
-          probe p46_zone_consistency  "$M/v3/productConfiguration?projectId=$PROJECT" '([.flavors[]?.flavorId] | unique) as $f | [.zones[]? | {zone: .name, available: ((.availableFlavors // []) | length), unknown: (((.availableFlavors // []) - $f) | length)}]'
+          # api-probe 28, 29: ни одно значение availableFlavors не совпало с
+          # flavorId — печатаем тип элемента и с каким полем flavor оно
+          # совпадает (без значений), и число flavor с AVAILABLE в зоне.
+          # shellcheck disable=SC2016 # $fl, $z, $a, $x — переменные jq
+          probe p46_zone_consistency  "$M/v3/productConfiguration?projectId=$PROJECT" '[.flavors[]?] as $fl | [.zones[]? as $z | ($z.availableFlavors // []) as $a | {zone: $z.name, zone_keys: ($z | keys), n: ($a | length), elem: ($a[0] | type), by_flavor_id: ([$a[] | select(. as $x | $fl | any(.flavorId == $x))] | length), by_name: ([$a[] | select(. as $x | $fl | any(.name == $x))] | length), by_any_field: ([$a[] | select(. as $x | $fl | any(.. | strings | . == $x))] | length), state_available: ([$fl[] | select(any(.availabilityZones[]?; (.zoneId == $z.zoneId or .zoneName == $z.name) and .flavorZoneState == "AVAILABLE"))] | length)}]'
 
           echo "== D52: remote_ip_prefix правил ingress без группы-источника"
           sg_ids=$(get "$C/security-groups?$P&limit=100" | jq -r '.items[]?.id' 2>/dev/null || true)
