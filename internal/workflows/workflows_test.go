@@ -42,13 +42,15 @@ type workflow struct {
 		// ContinueOnError: a job whose failure does not fail the run.
 		ContinueOnError bool `yaml:"continue-on-error"`
 		Steps           []struct {
-			ID   string            `yaml:"id"`
-			Name string            `yaml:"name"`
-			If   string            `yaml:"if"`
-			Uses string            `yaml:"uses"`
-			Run  string            `yaml:"run"`
-			With map[string]any    `yaml:"with"`
-			Env  map[string]string `yaml:"env"`
+			ID   string `yaml:"id"`
+			Name string `yaml:"name"`
+			If   string `yaml:"if"`
+			Uses string `yaml:"uses"`
+			Run  string `yaml:"run"`
+			// Shell: bash on Windows too, not PowerShell.
+			Shell string            `yaml:"shell"`
+			With  map[string]any    `yaml:"with"`
+			Env   map[string]string `yaml:"env"`
 			// ContinueOnError: a step whose failure does not fail the job.
 			ContinueOnError bool `yaml:"continue-on-error"`
 		} `yaml:"steps"`
@@ -727,6 +729,43 @@ func runsStep(w workflow, cmd string) bool {
 	return false
 }
 
+// The trust root of cosign keyless (the TUF cache in ~/.sigstore) is made
+// before goreleaser signs: goreleaser runs its signs blocks at once, and
+// every cosign process writes root.json to that cache as it starts
+// (go-tuf updater.New) and reads it back. On a cold cache one process wrote
+// the embedded root while another wrote the updated one, and the sign of
+// checksums.txt failed with "failed to persist metadata" (release of
+// v1.5.0-rc.1, run 40809664915). With the cache made first, they all write
+// the same bytes. Every job of release.yml that runs goreleaser release
+// runs cosign initialize after the installer of cosign and before it; the
+// job image signs once (cosign sign by digest), with no race to guard.
+func TestWorkflows_ReleaseInitializesTUFBeforeSigning(t *testing.T) {
+	jobs := 0
+	for name, j := range readWorkflows(t)["release.yml"].Jobs {
+		installer, initialize, release := -1, -1, -1
+		for i, s := range j.Steps {
+			switch {
+			case strings.HasPrefix(s.Uses, "sigstore/cosign-installer@"):
+				installer = i
+			case strings.HasPrefix(strings.TrimSpace(s.Run), "cosign initialize"):
+				initialize = i
+			case strings.HasPrefix(s.Uses, "goreleaser/goreleaser-action@") && strings.HasPrefix(fmt.Sprint(s.With["args"]), "release"):
+				release = i
+			}
+		}
+		if release < 0 {
+			continue
+		}
+		jobs++
+		if installer < 0 || initialize < installer || initialize > release {
+			t.Errorf("release.yml: job %s runs goreleaser release (step %d) with cosign initialize at %d and its installer at %d: initialize after the installer, before goreleaser", name, release, initialize, installer)
+		}
+	}
+	if jobs == 0 {
+		t.Fatal("release.yml: no job runs goreleaser release: the job moved, update the test")
+	}
+}
+
 // A release proves where it came from (process audit 1.2.1, 6.4; owner's
 // decision В8): every archive has an SBOM listed in the signed
 // checksums.txt, every file in checksums.txt has a provenance attestation
@@ -1364,6 +1403,64 @@ func TestWorkflows_WindowsCIProbe(t *testing.T) {
 	}
 	if !found {
 		t.Error("weekly-race: ci-probe does not run ci-probe-loop.sh with the arm through env")
+	}
+}
+
+// The Go runtime crash on Windows (#493, #370 variant 1): the go test of
+// ci goes through go_test_ci.sh — internal/tools alone after the other
+// packages on Windows (0 crashes in 300 runs against 14 in 828, #494) —
+// and a crash with no failed test gets one retry of its packages, a step of
+// its own, so that a second crash is red and the week counts the retries:
+// weekly-race reads the steps of that name (go_runtime_crash_week.sh) and is
+// red from the threshold on.
+func TestWorkflows_RuntimeCrashRetriedOnceAndCounted(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "go_runtime_crash_week.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^step='([^']+)'`).FindSubmatch(b)
+	if m == nil {
+		t.Fatal("go_runtime_crash_week.sh: no step='…': the name of the retry step moved, update the test")
+	}
+	retryName := string(m[1])
+	ws := readWorkflows(t)
+	steps := ws["ci.yml"].Jobs["test"].Steps
+	i := -1
+	for k, s := range steps {
+		if s.ID == "gotest" {
+			i = k
+		}
+	}
+	if i < 0 || i+1 >= len(steps) {
+		t.Fatal("ci: no step gotest followed by its retry")
+	}
+	g, r := steps[i], steps[i+1]
+	if !strings.HasPrefix(g.Run, ".github/scripts/go_test_ci.sh go test -race ") || g.Shell != "bash" {
+		t.Errorf("ci: step gotest runs %q in shell %q, want go_test_ci.sh go test -race … in bash", g.Run, g.Shell)
+	}
+	if r.Name != retryName || r.If != "steps.gotest.outputs.retry != ''" || r.Shell != "bash" ||
+		r.Env["RETRY"] != "${{ steps.gotest.outputs.retry }}" || !strings.Contains(r.Run, "go test -race") || !strings.Contains(r.Run, "$RETRY") {
+		t.Errorf("ci: the step after gotest is not the retry of its packages named %q: %+v", retryName, r)
+	}
+	if g.Env["GORACE"] != r.Env["GORACE"] {
+		t.Errorf("ci: the retry runs with GORACE %q, the step gotest with %q", r.Env["GORACE"], g.Env["GORACE"])
+	}
+	w := weeklyWorkflow(t, "weekly-race.yml")
+	j, ok := w.Jobs["runtime-crashes"]
+	if !ok || j.If != w.Jobs["race"].If {
+		t.Fatalf("weekly-race: no job runtime-crashes on the schedule of race (if %q)", j.If)
+	}
+	if p, _ := j.Permissions.(map[string]any); len(p) != 2 || p["actions"] != "read" || p["contents"] != "read" {
+		t.Errorf("weekly-race: runtime-crashes permissions %v, want actions and contents read only", j.Permissions)
+	}
+	found := false
+	for _, s := range j.Steps {
+		if strings.HasPrefix(s.Run, ".github/scripts/go_runtime_crash_week.sh ") && s.Env["GH_TOKEN"] == "${{ github.token }}" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("weekly-race: runtime-crashes does not run go_runtime_crash_week.sh with the token of the run")
 	}
 }
 

@@ -70,6 +70,26 @@ jobs:
         if: runner.os == 'Windows'
         run: go test -count=20 -shuffle=on ./internal/engine/ ./internal/tools/
 
+  # Сбои рантайма Go за неделю (#370, вариант 1): шаг повтора ci.yml
+  # выполнялся — случай; 3 и больше за 7 дней — красный (issue, как у race):
+  # обход split (#494) больше не держит, нужен разбор, а не повторы. «До»
+  # split — 14 случаев за неделю 22–28.10, после — ждём 0.
+  runtime-crashes:
+    if: github.ref == 'refs/heads/main' && !inputs.windows_gc_probe && (inputs.windows_ci_probe || 'none') == 'none'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: сбои рантайма Go за неделю
+        run: .github/scripts/go_runtime_crash_week.sh 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   # Падения рантайма Go на Windows (#226, #219, #267, #278, #293, #331).
   # Первые два запуска (run 40135541445, 40163378381): ACL в
   # internal/config — не причина (config ×200 ok); internal/tools с

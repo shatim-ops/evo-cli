@@ -70,6 +70,17 @@ jobs:
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      # Кэш TUF (~/.sigstore) — до goreleaser. Блоки signs идут параллельно,
+      # и каждый процесс cosign при старте пишет root.json в кэш и сверяет
+      # прочитанное (go-tuf updater.New). На пустом кэше один записал
+      # встроенный root, другой — обновлённый, и подпись checksums.txt
+      # упала: «failed to persist metadata» (v1.5.0-rc.1, run 40809664915).
+      # С готовым кэшем все пишут одно и то же. Остаётся гонка, если Sigstore
+      # перевыпустит метаданные TUF за те ~40 с, что идут подписи; снимает её
+      # только последовательная подпись (#530).
+      - name: cosign initialize
+        run: cosign initialize
+
       # syft пишет SBOM архивов (sboms в .goreleaser.yaml). go install
       # сверяет модуль с базой контрольных сумм Go, и в job, которая может
       # получить OIDC-токен этого workflow, не появляется ещё одна action.
