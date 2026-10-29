@@ -108,6 +108,7 @@ var bodyNamedAs = map[string]string{
 	"k8s_add_nodepool machineConfiguration.disk.size":    "disk_gb",
 	"k8s_create networkConfiguration.privateVipSubnetId": "subnet_id",
 	"lb_create availability_zone_specs.subnet_ids":       "subnet_id",
+	"subnet_create subnet_address":                       "cidr",
 	"pg_create subnet_ids":                               "subnet_id",
 	"pg_create storage.pg_data_gb":                       "storage_gb",
 	"pg_create backup.schedule":                          "backup_schedule",

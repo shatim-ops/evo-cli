@@ -27,6 +27,9 @@ var untrustedFields = map[string][]string{
 	"logs":        {"log"},
 	"ca_logs":     {"logs"},
 	"k8s_kubectl": {"output"},
+	// deploy: the output of docker compose up — its log over MCP, the last
+	// lines of a failure (#558).
+	"deploy": {"log", "output"},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of

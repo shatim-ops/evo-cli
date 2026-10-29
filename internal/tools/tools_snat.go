@@ -15,10 +15,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
-// resolveSnatZone turns an optional zone name / explicit availability_zone_id
+// resolveZone turns an optional zone name / explicit availability_zone_id
 // into a concrete zone UUID, defaulting to the configured region (the AZ the
 // deploy stack targets). Returns the zone id.
-func (s *Registry) resolveSnatZone(ctx context.Context, args map[string]any) (id, name string, err error) {
+func (s *Registry) resolveZone(ctx context.Context, args map[string]any) (id, name string, err error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return "", "", err
@@ -88,7 +88,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	if err := provision.ValidName(i18n.T("SNAT gateway", "SNAT-шлюза"), name); err != nil {
 		return errResult(err), true
 	}
-	zoneID, zoneName, err := s.resolveSnatZone(ctx, args)
+	zoneID, zoneName, err := s.resolveZone(ctx, args)
 	if err != nil {
 		return errResult(err), true
 	}

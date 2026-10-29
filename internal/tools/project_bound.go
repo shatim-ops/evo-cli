@@ -102,6 +102,8 @@ var idArgs = map[string][]idArg{
 	"disk_delete":         {{name: "disk_id", kind: kindDisk}},
 	"snat_create":         {{name: "availability_zone_id", why: whyCatalogue}},
 	"snat_delete":         {{name: "id", kind: kindNAT}},
+	"subnet_create":       {{name: "vpc_id", kind: kindVPC}, {name: "availability_zone_id", why: whyCatalogue}},
+	"subnet_delete":       {{name: "subnet_id", kind: kindSubnet}},
 
 	// Managed Kubernetes.
 	"k8s_get":          {{name: "cluster_id", kind: kindK8s}},

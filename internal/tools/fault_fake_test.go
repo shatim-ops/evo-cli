@@ -786,6 +786,15 @@ func (c *faultCloud) ResizeDisk(context.Context, string, int, string) (map[strin
 	return nil, c.gate("ResizeDisk")
 }
 func (c *faultCloud) DeleteDisk(context.Context, string, string) error { return c.gate("DeleteDisk") }
+func (c *faultCloud) CreateSubnet(context.Context, provision.CreateSubnetRequest) (map[string]any, error) {
+	return nil, c.gate("CreateSubnet")
+}
+func (c *faultCloud) GetSubnet(context.Context, string) (map[string]any, error) {
+	return nil, c.gate("GetSubnet")
+}
+func (c *faultCloud) DeleteSubnet(context.Context, string, string) error {
+	return c.gate("DeleteSubnet")
+}
 
 func (c *faultCloud) liveVMs() []faultVM {
 	c.mu.Lock()

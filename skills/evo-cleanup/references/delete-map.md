@@ -21,14 +21,15 @@ resource is gone) or with its `*_get` (`NOT_FOUND`).
 | 12 | Kafka cluster | `kafka_list` | `kafka_delete` / `evo kafka delete` | `cluster_id` |
 | 13 | Redis cluster | `redis_list` | `redis_delete` / `evo redis delete` | `cluster_id` |
 | 14 | static route | `vpc_routes` | `vpc_route_delete` / `evo vpc route-delete` | `vpc_id`, `route_id` |
-| 15 | VPC | `vpc_list` | `vpc_delete` / `evo vpc delete` | `id` |
-| 16 | S3 object | `s3_ls` | `s3_rm` / `evo s3 rm` | `bucket`, `key` |
-| 17 | S3 bucket, empty | `s3_buckets` | `s3_bucket_delete` / `evo s3 bucket-delete` | `bucket` |
-| 18 | container app | `ca_list` | `ca_delete` / `evo ca delete` | `name` |
-| 19 | secret | `secret_list` | `secret_delete` / `evo secret delete` | `path` |
-| 20 | certificate | `cert_list` | `cert_delete` / `evo cert delete` | `id` |
-| 21 | artifact registry | `ar_list` | `ar_delete` / `evo ar delete` | `id` |
-| 22 | own image | `image_list` with `type: private` | `image_delete` / `evo image delete` | `image_id` |
+| 15 | subnet | `list_subnets` | `subnet_delete` / `evo vpc subnet-delete` | `subnet_id` |
+| 16 | VPC | `vpc_list` | `vpc_delete` / `evo vpc delete` | `id` |
+| 17 | S3 object | `s3_ls` | `s3_rm` / `evo s3 rm` | `bucket`, `key` |
+| 18 | S3 bucket, empty | `s3_buckets` | `s3_bucket_delete` / `evo s3 bucket-delete` | `bucket` |
+| 19 | container app | `ca_list` | `ca_delete` / `evo ca delete` | `name` |
+| 20 | secret | `secret_list` | `secret_delete` / `evo secret delete` | `path` |
+| 21 | certificate | `cert_list` | `cert_delete` / `evo cert delete` | `id` |
+| 22 | artifact registry | `ar_list` | `ar_delete` / `evo ar delete` | `id` |
+| 23 | own image | `image_list` with `type: private` | `image_delete` / `evo image delete` | `image_id` |
 
 Notes:
 
@@ -36,6 +37,8 @@ Notes:
   (`pg_db_delete`, `pg_user_delete`) only when the cluster stays.
 - A bucket with objects is refused (`USAGE`) before the question: delete
   its objects first.
+- A subnet with VMs, balancers or clusters in it is refused before the
+  question (`can_delete` false): delete them first.
 - A floating IP in use by a VM or a SNAT gateway is refused: it goes with
   the VM (`release_ip`) or the gateway.
 - A cluster in FAILED may not be deletable through the API (DB-21,

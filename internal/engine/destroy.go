@@ -165,14 +165,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			stateFile.UpsertDeployment(*active)
 			_ = state.Write(statePath, stateFile)
 			if st := provision.HTTPStatus(err); st == http.StatusConflict || st == http.StatusUnprocessableEntity {
-				return clerrors.Wrap(clerrors.CodeAPIError,
-					i18n.Tf("VM %s cannot be deleted in its current state", "ВМ %s нельзя удалить в её текущем состоянии", active.VMID),
-					i18n.Tf("It is probably still being created or changing state (waited %s). Wait until it is running "+
-						"(Cloud.ru console, or 'evo vm get %s') and re-run 'evo destroy': the record is kept, nothing is lost.",
-						"Вероятно, она ещё создаётся или меняет состояние (ждали %s). Дождитесь, пока она заработает "+
-							"(консоль Cloud.ru или 'evo vm get %s'), и повторите 'evo destroy': запись сохранена, ничего не потеряно.",
-						e.timings().DeletableWaitTimeout, active.VMID),
-					err)
+				return e.RefusedVMDelete(ctx, active.VMID, fipRef(active), err, i18n.T(" The deployment record is kept.", " Запись развёртывания сохранена."))
 			}
 			return err
 		}
@@ -531,8 +524,8 @@ func explainDeleteRefusal(vmID string, err error) error {
 		err)
 }
 
-func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
-	err := e.Cloud.DeleteVM(ctx, vmID)
+func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) (err error) {
+	err = e.Cloud.DeleteVM(ctx, vmID)
 	if err == nil || !isNotDeletableYet(err) {
 		return err
 	}
@@ -540,10 +533,25 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
 	start := time.Now()
 	deadline := start.Add(t.DeletableWaitTimeout)
 	shown := clock.Now() // the duration the reports print
-	e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet (still being created or changing state); waiting up to %s...",
-		"ВМ %s пока нельзя удалить (ещё создаётся или меняет состояние); ждём до %s...",
-		vmID, t.DeletableWaitTimeout))
+	// The state it is read in now, not a guess (#558): the line of the wait
+	// names it, and the refusal falls back to it (refusedVMDelete).
+	lastSeen := ""
+	if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
+		lastSeen = vm.Status
+	}
+	if lastSeen != "" {
+		e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet (state %s); waiting up to %s...",
+			"ВМ %s пока нельзя удалить (состояние %s); ждём до %s...", vmID, lastSeen, t.DeletableWaitTimeout))
+	} else {
+		e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet; waiting up to %s...",
+			"ВМ %s пока нельзя удалить; ждём до %s...", vmID, t.DeletableWaitTimeout))
+	}
 	lastReport := start
+	defer func() {
+		if err != nil && lastSeen != "" {
+			err = &seenStateError{status: lastSeen, err: err}
+		}
+	}()
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
@@ -558,11 +566,67 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) error {
 			lastReport = time.Now()
 			status := i18n.T("unknown (the status request failed)", "неизвестно (запрос состояния не удался)")
 			if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
-				status = vm.Status
+				status, lastSeen = vm.Status, vm.Status
 			}
 			e.Printer.StepDone(i18n.Tf("still waiting: VM is %s (%s elapsed)", "всё ещё ждём: состояние ВМ — %s (прошло %s)",
 				status, clock.Since(shown).Round(time.Second)))
 		}
 	}
 	return err
+}
+
+// RefusedVMDelete is the answer to a VM Cloud.ru would not delete (409 or
+// 422), by the CLI destroy and the destroy tool by vm_id alike: the state
+// the VM is read in now and the way out of it (DeleteWayOut, one place with
+// the deletes of the tools), not a guess (release plan 1.6, #558: a VM read
+// in deleting was answered «probably still being created»). In a state it
+// does not leave by itself, the hint names its floating IP fip (id or
+// address, "" for none), which stays billed until released (E11, Grok
+// rc.1). kept is what the caller keeps, appended to the hint.
+func (e *Engine) RefusedVMDelete(ctx context.Context, vmID, fip string, err error, kept string) error {
+	status := ""
+	if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
+		status = vm.Status
+	} else if se := (*seenStateError)(nil); stderrors.As(err, &se) {
+		status = se.status // the read now failed: the last one of the wait
+	}
+	if status == "" {
+		return clerrors.Wrap(clerrors.CodeAPIError,
+			i18n.Tf("VM %s cannot be deleted in its current state, and its state could not be read", "ВМ %s нельзя удалить в её текущем состоянии, а её состояние прочитать не удалось", vmID),
+			i18n.Tf("Read it with 'evo vm get %s' (or in the Cloud.ru console) and re-run 'evo destroy' once it is running.",
+				"Прочитайте её состояние ('evo vm get %s' или консоль Cloud.ru) и повторите 'evo destroy', когда она будет работать.", vmID)+kept,
+			err)
+	}
+	_, hint := DeleteWayOut(status, vmID)
+	if fip != "" && FinalDeleteState(status) {
+		hint += i18n.Tf(" Its floating IP %s stays bound to it and billed: once the VM is gone, release it with 'evo vpc fip-release %s' (release_floating_ip).",
+			" Её floating IP %s остаётся привязанным и оплачивается: когда ВМ не станет, освободите его — 'evo vpc fip-release %s' (release_floating_ip).", fip, fip)
+	}
+	if hint == "" {
+		hint = i18n.Tf("Cloud.ru refused the delete in this state (waited %s): re-run 'evo destroy' once the VM is running ('evo vm get %s').",
+			"Cloud.ru отказал в удалении в этом состоянии (ждали %s): повторите 'evo destroy', когда ВМ будет работать ('evo vm get %s').",
+			e.timings().DeletableWaitTimeout, vmID)
+	}
+	return clerrors.Wrap(clerrors.CodeAPIError,
+		i18n.Tf("VM %s cannot be deleted in state %s", "ВМ %s нельзя удалить в состоянии %s", vmID, status),
+		hint+kept, err)
+}
+
+// seenStateError is the refusal of a VM delete with the last state the
+// wait read, for when the read after it fails (refusedVMDelete).
+type seenStateError struct {
+	status string
+	err    error
+}
+
+func (e *seenStateError) Error() string { return e.err.Error() }
+func (e *seenStateError) Unwrap() error { return e.err }
+
+// fipRef is how a record names its floating IP for a hint: its id, else
+// its address; "" when it has none.
+func fipRef(rec *state.DeploymentRecord) string {
+	if rec.FloatingIPID != "" {
+		return rec.FloatingIPID
+	}
+	return rec.VMIP
 }
