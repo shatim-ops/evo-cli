@@ -65,9 +65,11 @@ func TestImageCreateAsksConfirmationBeforeCloud(t *testing.T) {
 // задан не всегда, и тогда зона берётся с исходного диска.
 func TestImageCreatePreviewDoesNotPromiseConfiguredRegion(t *testing.T) {
 	// A configuration without a zone: the preview cannot name one.
+	// The source disk and the zones: the zone is resolved before the
+	// question (P-Z1), from the disk when nothing names one.
 	s := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: config.Config{ProjectID: "p", KeyID: "k", Secret: "s"}, Auth: staticToken{},
-			Cloud: &cancelCloud{cancel: func() {}}}, nil
+			Cloud: diskZoneCloud{&cancelCloud{cancel: func() {}}}}, nil
 	})
 
 	got := callTool(t, s.handleImageCreate, map[string]any{
@@ -78,8 +80,9 @@ func TestImageCreatePreviewDoesNotPromiseConfiguredRegion(t *testing.T) {
 	if zone == "configured region" {
 		t.Fatal("превью обещает настроенный регион, хотя его может не быть")
 	}
-	if !strings.Contains(zone, "disk") {
-		t.Fatalf("превью не упоминает запасной вариант — зону диска: %q", zone)
+	// Без зоны в конфиге превью называет зону исходного диска — факт, а не правило.
+	if zone != "00000000-0000-0000-0000-0000000000a2" {
+		t.Fatalf("превью не называет зону исходного диска: %q", zone)
 	}
 
 	// Явно заданная зона должна возвращаться как есть.
@@ -222,4 +225,24 @@ func TestImageCreate_NameTakenByOwnImageOnly(t *testing.T) {
 	if !isErr || got["reason"] != clierrors.CodeUsage || got["existing_id"] != "00000000-0000-4000-8000-0000000000c2" {
 		t.Errorf("the project's own image of the name: want USAGE with its id before the question: %s", text)
 	}
+}
+
+// diskZoneCloud has the source disk of image_create in ru.AZ-2.
+type diskZoneCloud struct{ *cancelCloud }
+
+// The source disk of imagesCloud is diskZoneCloud's.
+func (c *imagesCloud) ListDisks(ctx context.Context, p string) ([]map[string]any, error) {
+	return diskZoneCloud{}.ListDisks(ctx, p)
+}
+
+func (c *imagesCloud) ListAvailabilityZones(ctx context.Context) ([]*provision.AvailabilityZone, error) {
+	return diskZoneCloud{}.ListAvailabilityZones(ctx)
+}
+
+func (diskZoneCloud) ListDisks(context.Context, string) ([]map[string]any, error) {
+	return []map[string]any{{"id": "00000000-0000-0000-0000-000000000000", "availability_zone": map[string]any{"id": "00000000-0000-0000-0000-0000000000a2", "name": "ru.AZ-2"}}}, nil
+}
+
+func (diskZoneCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
+	return []*provision.AvailabilityZone{{ID: "00000000-0000-0000-0000-0000000000a2", Name: "ru.AZ-2"}}, nil
 }
