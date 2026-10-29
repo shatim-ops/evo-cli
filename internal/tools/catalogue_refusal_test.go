@@ -162,14 +162,17 @@ func TestSnatCreate_SecondGatewayInTheZoneRefusedBeforeTheQuestion(t *testing.T)
 		}
 		return m
 	}
-	for _, confirmed := range []bool{false, true} {
-		c := &natCloud{faultCloud: &faultCloud{}, gateways: []map[string]any{gw("g-1", faultZone)}}
-		m, text, isErr := callNamed(t, natRegistry(t, c), "snat_create", map[string]any{"name": "nat", "confirmed": confirmed})
-		if !isErr || m["reason"] != clierrors.CodeUsage || m["existing_id"] != "g-1" {
-			t.Errorf("confirmed=%v: %s", confirmed, text)
-		}
-		if c.seen["CreateNATGateway"] > 0 {
-			t.Errorf("confirmed=%v: created a second gateway", confirmed)
+	flat := map[string]any{"id": "g-1", "name": "gw-flat", "availability_zone_id": faultZone}
+	for _, gws := range [][]map[string]any{{gw("g-1", faultZone)}, {flat}} {
+		for _, confirmed := range []bool{false, true} {
+			c := &natCloud{faultCloud: &faultCloud{}, gateways: gws}
+			m, text, isErr := callNamed(t, natRegistry(t, c), "snat_create", map[string]any{"name": "nat", "confirmed": confirmed})
+			if !isErr || m["reason"] != clierrors.CodeUsage || m["existing_id"] != "g-1" {
+				t.Errorf("confirmed=%v: %s", confirmed, text)
+			}
+			if c.seen["CreateNATGateway"] > 0 {
+				t.Errorf("confirmed=%v: created a second gateway", confirmed)
+			}
 		}
 	}
 	for label, gws := range map[string][]map[string]any{

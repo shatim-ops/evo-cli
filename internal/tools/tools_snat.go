@@ -71,7 +71,7 @@ func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (str
 			"name":                 g["name"],
 			"nat_type":             g["nat_type"],
 			"status":               firstNonNil(g["status"], g["state"]),
-			"availability_zone_id": firstNonNil(g["availability_zone_id"], nested(g, "availability_zone", "id")),
+			"availability_zone_id": gatewayZoneID(g),
 			"availability_zone":    firstNonNil(g["availability_zone_name"], nested(g, "availability_zone", "name")),
 		})
 	}
@@ -208,11 +208,17 @@ func nested(m map[string]any, key, field string) any {
 // counts; one that does not decides nothing.
 func gatewayInZone(gateways []map[string]any, zoneID string) (string, bool) {
 	for _, g := range gateways {
-		z, _ := g["availability_zone"].(map[string]any)
-		if id, _ := z["id"].(string); id != "" && id == zoneID {
+		if id, _ := gatewayZoneID(g).(string); id != "" && id == zoneID {
 			gid, _ := g["id"].(string)
 			return gid, true
 		}
 	}
 	return "", false
+}
+
+// gatewayZoneID is the zone of a gateway as an answer names it: flat
+// (availability_zone_id) or nested (availability_zone.id); one reading for
+// snat_list and gatewayInZone.
+func gatewayZoneID(g map[string]any) any {
+	return firstNonNil(g["availability_zone_id"], nested(g, "availability_zone", "id"))
 }
