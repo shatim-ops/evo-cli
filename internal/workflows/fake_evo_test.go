@@ -17,8 +17,9 @@ import (
 )
 
 // ownFakeEvo is a script test that writes an evo of its own: a file evo
-// under a directory it puts on PATH (cat > "$dir/bin/evo" <<…).
-var ownFakeEvo = regexp.MustCompile(`>\s*"?\$[^"\s]*/evo"?\s*<<`)
+// under a directory it puts on PATH (cat > "$dir/bin/evo" <<…, or a path
+// written out: cat > /tmp/bin/evo <<…).
+var ownFakeEvo = regexp.MustCompile(`>\s*"?[^"\s<>]*/evo"?\s*<<`)
 
 // The checks of the scripts of cloud-e2e (.github/scripts/*_test.sh) put
 // one fake evo on PATH, fake_evo.sh, in the format of the real one: a
@@ -82,8 +83,10 @@ fake_evo_answer pg_delete.yes 0 0 '{"status":"deleting"}'`
 		}
 		return code, stdout.String(), stderr.String()
 	}
-	if code, out, errOut := call("tools", "call", "pg_list", "--json"); code != 0 || !strings.Contains(out, "clusters") || errOut != "" {
-		t.Errorf("success: exit %d, stdout %q, stderr %q; want 0, the answer on stdout", code, out, errOut)
+	for i := 1; i <= 3; i++ { // one answer: the calls after it repeat it
+		if code, out, errOut := call("tools", "call", "pg_list", "--json"); code != 0 || !strings.Contains(out, "clusters") || errOut != "" {
+			t.Errorf("success, call %d: exit %d, stdout %q, stderr %q; want 0, the answer on stdout", i, code, out, errOut)
+		}
 	}
 	if code, out, errOut := call("tools", "call", "pg_delete", "--arg", "cluster_id=a", "--json"); code != 5 || out != "" || !strings.Contains(errOut, `"error"`) {
 		t.Errorf("error: exit %d, stdout %q, stderr %q; want 5, stdout empty, the error on stderr", code, out, errOut)
@@ -91,7 +94,13 @@ fake_evo_answer pg_delete.yes 0 0 '{"status":"deleting"}'`
 	if code, out, _ := call("--yes", "tools", "call", "pg_delete", "--json"); code != 0 || !strings.Contains(out, "deleting") {
 		t.Errorf("--yes: exit %d, stdout %q; want the answer of pg_delete.yes", code, out)
 	}
-	if code, out, errOut := call("tools", "call", "vm_list", "--json"); code == 0 || out != "" || !strings.Contains(errOut, "no answer") {
-		t.Errorf("no answer: exit %d, stdout %q, stderr %q; want an error", code, out, errOut)
+	if code, out, errOut := call("tools", "call", "vm_list", "--json"); code == 0 || out != "" || !strings.Contains(errOut, "no answer for vm_list call 0") {
+		t.Errorf("no answer: exit %d, stdout %q, stderr %q; want an error naming the call", code, out, errOut)
+	}
+	// N with a leading zero would name a file no call reads.
+	bad := exec.Command("bash", "-c", `. "$1" && fake_evo_answer pg_get 00 0 '{}'`, "bad", lib)
+	bad.Env = append(os.Environ(), "FAKE_DIR="+dir)
+	if out, err := bad.CombinedOutput(); err == nil || !strings.Contains(string(out), "N is 0, 1, 2") {
+		t.Errorf("fake_evo_answer with N 00: %v %q; want a refusal", err, out)
 	}
 }

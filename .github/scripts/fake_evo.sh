@@ -11,7 +11,10 @@
 #   инструмента, с нуля; вызов после последнего файла повторяет последний;
 #   <инструмент>.yes.<N>.* — вызов с --yes, когда такие файлы есть.
 # Каждый вызов — строка «<инструмент> yes=0|1» в $FAKE_DIR/evo-calls. Вызов
-# без файла ответа — ошибка USAGE (код 2): проверка не задала ответ.
+# без файла ответа — ошибка USAGE (код 2): проверка не задала ответ. Вызовы
+# одного инструмента — по очереди: счётчик ответов без блокировки, как и
+# скрипты, которые проверки запускают (параллельно — разные инструменты).
+# Ответ не проверяется на JSON: мусор вместо ответа — тоже случай проверки.
 
 fake_evo_install() {
 	mkdir -p "$1"
@@ -35,7 +38,7 @@ if [ -f "$d/$key.$n.json" ]; then
 elif [ "$n" -gt 0 ]; then
 	n=$((n - 1))
 else
-	printf '{"error":{"code":2,"reason":"USAGE","message":"fake evo: no answer for %s"}}\n' "$key" >&2
+	printf '{"error":{"code":2,"reason":"USAGE","message":"fake evo: no answer for %s call %s"}}\n' "$key" "$n" >&2
 	exit 2
 fi
 rc=$(cat "$d/$key.$n.rc" 2>/dev/null || echo 0)
@@ -47,6 +50,12 @@ EOF
 
 # fake_evo_answer ИНСТРУМЕНТ N КОД JSON — ответ N-го вызова.
 fake_evo_answer() {
+	case $2 in
+	'' | *[!0-9]* | 0?*)
+		echo "fake_evo_answer: N is 0, 1, 2… — got '$2'" >&2
+		return 1
+		;;
+	esac
 	printf '%s\n' "$4" >"$FAKE_DIR/$1.$2.json"
 	echo "$3" >"$FAKE_DIR/$1.$2.rc"
 }
