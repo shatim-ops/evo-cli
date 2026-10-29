@@ -123,7 +123,7 @@
   },
   "dns_record_create": {
     "destructive": false,
-    "taken": "not reached: the world's zone is in no list of zones",
+    "taken": "checked",
     "creates": {
       "id": "record_id",
       "list": "dns_records",
@@ -180,7 +180,7 @@
   },
   "k8s_add_nodepool": {
     "destructive": false,
-    "taken": "not reached: the world has no catalogue of flavors",
+    "taken": "checked",
     "creates": {
       "id": "nodepool_id",
       "list": "k8s_nodepools"
@@ -232,7 +232,7 @@
   },
   "lb_create": {
     "destructive": false,
-    "taken": "not reached: the world's zone is in no list of zones",
+    "taken": "checked",
     "creates": {
       "id": "lb_id",
       "list": "lb_list",

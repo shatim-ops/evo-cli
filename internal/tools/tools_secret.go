@@ -118,13 +118,23 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 	if ans, refused := nameFree(ctx, list, i18n.T("secret", "секрет"), path, "secret_get path"); refused {
 		return ans, true
 	}
+	// What is sent beside the value, named before the question: the key
+	// the secret is encrypted with and the description (FB150-5). The
+	// value never goes into a preview.
+	will := map[string]any{"path": path}
+	if d := stringArg(args, "description"); d != "" {
+		will["description"] = d
+	}
+	if k := stringArg(args, "kms_key_id"); k != "" {
+		will["kms_key_id"] = k
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.Tf("secret_create stores a new secret at %q. (The value is never echoed back.)",
 				"secret_create сохраняет новый секрет по пути %q. (Значение в ответе не возвращается.)", path),
-			// The path only: the value never goes into a preview.
-			"preview": willPreview(engine.ResourceSecret, path, "", nil, nil),
+			"will_create": will,
+			"preview":     willPreview(engine.ResourceSecret, path, "", will, []string{"kms_key_id", "description"}),
 		}), true
 	}
 	body := map[string]any{
@@ -132,10 +142,10 @@ func (s *Registry) handleSecretCreate(ctx context.Context, args map[string]any) 
 		"path":      path,
 		"payload":   base64.StdEncoding.EncodeToString([]byte(value)),
 	}
-	if d := stringArg(args, "description"); d != "" {
+	if d, ok := will["description"]; ok {
 		body["description"] = d
 	}
-	if k := stringArg(args, "kms_key_id"); k != "" {
+	if k, ok := will["kms_key_id"]; ok {
 		body["kmsKeyId"] = k
 	}
 	res, err := cli.Create(ctx, body)
