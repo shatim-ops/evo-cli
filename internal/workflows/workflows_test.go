@@ -1400,3 +1400,51 @@ func TestWorkflows_LiveDiskChangesFromASettledState(t *testing.T) {
 		t.Fatalf("cloud-live.sh: %d changes of the data disk found: the area moved, update the test", changes)
 	}
 }
+
+// An error of evo with --json is {"error":{reason,message,hint}} in stderr,
+// and stdout is empty (QA-12): a script that throws stderr away and reads
+// .reason, .error or .hint of the answer reads nothing. It cost three runs:
+// pg_create (run 40118457142), the probe of DB-22 (run 40093421741), and
+// dbaas-delete.sh (run 144, #525), whose branches «still being created» and
+// FAILED never fired. No call of evo with --json and 2>/dev/null is followed,
+// before the next call of evo, by a read of those fields.
+func TestWorkflows_EvoErrorIsReadFromStderr(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("..", "..", ".github", "scripts", "*.sh"))
+	if err != nil || len(files) == 0 {
+		t.Fatal("no scripts in .github/scripts")
+	}
+	// 2>/dev/null of evo itself: before the first pipe, with no 2>&1 (a
+	// 2>/dev/null after the pipe is jq's).
+	discards := regexp.MustCompile(`\bevo\b[^|]*--json[^|]*2>/dev/null`)
+	evoCall := regexp.MustCompile(`\bevo\b.*\btools call\b|\bevo --`)
+	errField := regexp.MustCompile(`\.(reason|error|hint)\b`)
+	checked := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.sh") {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(string(b), "\n")
+		for i, l := range lines {
+			if !discards.MatchString(l) || strings.Contains(l, "2>&1") || strings.HasPrefix(strings.TrimSpace(l), "#") {
+				continue
+			}
+			checked++
+			for j := i; j < len(lines) && j < i+15; j++ {
+				if j > i && evoCall.MatchString(lines[j]) {
+					break
+				}
+				if strings.Contains(lines[j], "jq") && errField.MatchString(lines[j]) {
+					t.Errorf("%s:%d: the error of the evo call at line %d is read from stdout, but its stderr is thrown away (2>/dev/null): read {\"error\":…} from stderr (evo_err.sh)", filepath.Base(f), j+1, i+1)
+					break
+				}
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no call of evo with --json and 2>/dev/null found: the pattern moved, update the test")
+	}
+}
