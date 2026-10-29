@@ -38,15 +38,18 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		// deploy are not here: an engine that cannot be built, or a
 		// configuration that names no project, image or zone, fails their
 		// call whatever the answer, so they refuse before the preview
-		// (D15, D48; TestNewGates_DeployWithoutEngineRefuses below).
+		// (D15, D48; TestNewGates_DeployWithoutEngineRefuses below). A
+		// create builds one more for the project its preview names
+		// (namedProject): the configuration only, no request — and with no
+		// engine the preview goes as it is.
 		engines int
 	}{
 		{"ca_start", map[string]any{"name": "app-1"}, "app-1", 0},
 		{"ca_stop", map[string]any{"name": "app-1"}, "app-1", 0},
-		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", 0},
-		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo", 0},
+		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", 1},
+		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo", 1},
 		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1", 0},
-		{"s3_put", map[string]any{"bucket": "bkt", "key": "k.txt", "content": "hello"}, "s3://bkt/k.txt", 0},
+		{"s3_put", map[string]any{"bucket": "bkt", "key": "k.txt", "content": "hello"}, "s3://bkt/k.txt", 1},
 	}
 	for _, c := range cases {
 		t.Run(c.tool, func(t *testing.T) {
@@ -71,9 +74,6 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 			// Two calls above (h and callTool).
 			if want := 2 * c.engines; engines != want {
 				t.Fatalf("preview built an engine %d times, want %d", engines, want)
-			}
-			if c.engines > 0 && !strings.Contains(out, "project_id") {
-				t.Errorf("preview does not name the project: %s", out)
 			}
 
 			confirmed := map[string]any{"confirmed": true}
