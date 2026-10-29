@@ -5,30 +5,8 @@
 package tools
 
 import (
-	"encoding/json"
 	"testing"
 )
-
-// previewParams are the key parameters of a preview answer, by key.
-func previewParams(t *testing.T, text string) map[string]any {
-	t.Helper()
-	var m struct {
-		Preview struct {
-			Params []struct {
-				Key   string `json:"key"`
-				Value any    `json:"value"`
-			} `json:"params"`
-		} `json:"preview"`
-	}
-	if err := json.Unmarshal([]byte(text), &m); err != nil {
-		t.Fatalf("not JSON: %s", text)
-	}
-	out := map[string]any{}
-	for _, p := range m.Preview.Params {
-		out[p.Key] = p.Value
-	}
-	return out
-}
 
 // Audit cli-ids-1.6, §3.2 (consent gap): the preview of lb_create named
 // neither the target group nor the VPC the billable balancer serves, and
@@ -37,15 +15,15 @@ func previewParams(t *testing.T, text string) map[string]any {
 func TestLbTgCreate_PreviewNamesWhatTheyServe(t *testing.T) {
 	a := &faultAPI{made: []faultResource{{host: "vpc.api.cloud.ru", path: "/v1/vpcs", ID: "vpc-1", Name: "net", before: true}}}
 	r := faultAPIRegistry(t, a)
-	m, text, _ := callNamed(t, r, "lb_create", map[string]any{"name": "evo-lb", "target_group_id": "tg-1", "port": float64(80), "zone": "ru.AZ-1"})
-	p := previewParams(t, text)
+	m, _, _ := callNamed(t, r, "lb_create", map[string]any{"name": "evo-lb", "target_group_id": "tg-1", "port": float64(80), "zone": "ru.AZ-1"})
+	p := previewParams(t, m)
 	if m["status"] != "confirmation_required" || p["target_group_id"] != "tg-1" || p["target_group_name"] != "tg" ||
 		p["vpc_id"] != "vpc-1" || p["vpc_name"] != "net" {
 		t.Errorf("lb_create preview does not name its target group and VPC: %v", p)
 	}
 
-	m, text, _ = callNamed(t, r, "tg_create", map[string]any{"name": "evo-tg", "targets": []any{map[string]any{"id": faultTargetVM, "interface_id": faultNIC}}})
-	p = previewParams(t, text)
+	m, _, _ = callNamed(t, r, "tg_create", map[string]any{"name": "evo-tg", "targets": []any{map[string]any{"id": faultTargetVM, "interface_id": faultNIC}}})
+	p = previewParams(t, m)
 	targets, _ := p["targets"].([]any)
 	first, _ := func() (map[string]any, bool) {
 		if len(targets) != 1 {
