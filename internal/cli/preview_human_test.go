@@ -80,7 +80,6 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"provision will_create.region":                    {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"provision will_create.subnet_id":                 {unnamedNoise, "id того, что превью называет по имени"},
 	"redis_create will_create.specification_id":       {unnamedNoise, "id того, что превью называет по имени"},
-	"tg_create targets.id":                            {unnamedNoise, "id того, что превью называет по имени"},
 	"tg_create targets.interface_id":                  {unnamedNoise, "id того, что превью называет по имени"},
 }
 
