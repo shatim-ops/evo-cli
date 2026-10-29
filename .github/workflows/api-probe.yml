@@ -848,8 +848,9 @@ jobs:
           probe p46_zone_consistency  "$M/v3/productConfiguration?projectId=$PROJECT" '([.flavors[]?.flavorId] | unique) as $f | [.zones[]? | {zone: .name, available: ((.availableFlavors // []) | length), unknown: (((.availableFlavors // []) - $f) | length)}]'
 
           echo "== D52: remote_ip_prefix правил ingress без группы-источника"
-          get "$C/security-groups?$P&limit=100" | jq -r '.items[]?.id' 2>/dev/null | mask || true
-          for id in $(get "$C/security-groups?$P&limit=100" | jq -r '.items[]?.id' 2>/dev/null); do
+          sg_ids=$(get "$C/security-groups?$P&limit=100" | jq -r '.items[]?.id' 2>/dev/null || true)
+          printf '%s\n' "$sg_ids" | mask
+          for id in $sg_ids; do
             get "$C/security-groups/$id/rules?limit=100"
           done | jq -sc '[.[] | (.items? // .)[]? | select(.direction == "ingress" and ((.remote_group_id // .remote_group // null) == null))] | map({key: has("remote_ip_prefix"), prefix: (.remote_ip_prefix | if . == null then "null" elif . == "" then "empty" elif . == "0.0.0.0/0" then "world_v4" elif . == "::/0" then "world_v6" else "other" end)}) | group_by(.) | map(.[0] + {n: length})' 2>/dev/null | sed 's/^/d52_remote_ip_prefix         /' | redact || echo "d52_remote_ip_prefix: не JSON"
 
