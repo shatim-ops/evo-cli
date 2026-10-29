@@ -37,16 +37,8 @@ var previewForm = map[string]string{
 // function, D). A line the human preview shows now fails the test.
 var humanUnnamed = map[string]struct{ class, why string }{
 	"deploy preview.project_from":                     {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
-	"deploy preview.security_group.id":                {unnamedNoise, "id того, что превью называет по имени"},
-	"deploy preview.subnet_id":                        {unnamedNoise, "id того, что превью называет по имени"},
-	"deploy preview.vm.disk.type_id":                  {unnamedNoise, "id того, что превью называет по имени"},
-	"deploy preview.vm.flavor.id":                     {unnamedNoise, "id того, что превью называет по имени"},
 	"deploy project_from":                             {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
-	"deploy security_group.id":                        {unnamedNoise, "id того, что превью называет по имени"},
-	"deploy subnet_id":                                {unnamedNoise, "id того, что превью называет по имени"},
 	"deploy update":                                   {unnamedWork, "обновит ли deploy существующую ВМ"},
-	"deploy vm.disk.type_id":                          {unnamedNoise, "id того, что превью называет по имени"},
-	"deploy vm.flavor.id":                             {unnamedNoise, "id того, что превью называет по имени"},
 	"deploy will_deploy.compose_file":                 {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"deploy will_deploy.disk_size":                    {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"deploy will_deploy.flavor":                       {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
@@ -54,10 +46,8 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"deploy will_deploy.image_id":                     {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"deploy will_deploy.region":                       {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"deploy_apply expires_at":                         {unnamedNoise, "срок плана"},
-	"deploy_apply plan_id":                            {unnamedNoise, "id того, что превью называет по имени"},
+	"deploy_apply plan_id":                            {unnamedNoise, "id плана: у плана нет имени"},
 	"deploy_apply preview.cost.hourly_rub":            {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"deploy_apply preview.vm.disk.type_id":            {unnamedNoise, "id того, что превью называет по имени"},
-	"deploy_apply preview.vm.flavor.id":               {unnamedNoise, "id того, что превью называет по имени"},
 	"disk_create preview.project_from":                {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"disk_resize preview.project_from":                {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"image_create will_create.has_user_data_template": {unnamedWork, "есть ли шаблон cloud-init"},
@@ -65,22 +55,21 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"k8s_add_addon version_from":                      {unnamedWork, "версия плагина — последняя"},
 	"k8s_add_nodepool preview.project_from":           {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"k8s_create preview.project_from":                 {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
-	"kafka_create will_create.specification_id":       {unnamedNoise, "id того, что превью называет по имени"},
-	"lb_create will_create.target_group_id":           {unnamedNoise, "id того, что превью называет по имени"},
-	"lb_create will_create.vpc_id":                    {unnamedNoise, "id того, что превью называет по имени"},
+	"kafka_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM)"},
+	"lb_create will_create.target_group_id":           {unnamedWork, "группа целей не названа по имени — #583"},
+	"lb_create will_create.vpc_id":                    {unnamedWork, "VPC не назван по имени — #583"},
 	"pg_create preview.project_from":                  {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами"},
 	"pg_create will_create.zone":                      {unnamedWork, "зона кластера"},
 	"provision preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена; человеку — месячная"},
 	"provision preview.project_from":                  {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
-	"provision preview.vm.flavor.id":                  {unnamedNoise, "id того, что превью называет по имени"},
 	"provision will_create.disk_size":                 {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"provision will_create.flavor":                    {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"provision will_create.image_id":                  {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"provision will_create.region":                    {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
-	"provision will_create.subnet_id":                 {unnamedNoise, "id того, что превью называет по имени"},
-	"redis_create will_create.specification_id":       {unnamedNoise, "id того, что превью называет по имени"},
-	"tg_create targets.interface_id":                  {unnamedNoise, "id того, что превью называет по имени"},
+	"provision will_create.subnet_id":                 {unnamedWork, "подсеть не названа по имени — план 1.6, «Линия CLI»: подсеть в восьми превью"},
+	"redis_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM)"},
+	"tg_create targets.interface_id":                  {unnamedWork, "ВМ-цель не названа по имени — #583"},
 }
 
 // Release plan 1.5, С2: what the agent sees in a preview (preview.details,
@@ -99,6 +88,7 @@ func TestPreview_HumanShowsEveryValue(t *testing.T) {
 	cases, _, _ := jsonCases(t)
 	reg := newRegistry()
 	tools, seen := map[string]bool{}, map[string]bool{}
+	verified := map[string]bool{}
 	var bad []string
 	byClass := map[string]int{}
 	for _, c := range cases {
@@ -149,6 +139,12 @@ func TestPreview_HumanShowsEveryValue(t *testing.T) {
 			}
 			for _, miss := range humanMisses(env.Preview.Details, human) {
 				key := c.tool.Name + " " + miss.path
+				// An id whose thing the person sees by its name is shown:
+				// checked, not declared.
+				if namedBySibling(env.Preview.Details, miss.path, miss.value, human) {
+					verified[key] = true
+					continue
+				}
 				if d, ok := humanUnnamed[key]; ok {
 					if !seen[key] {
 						byClass[d.class]++
@@ -181,8 +177,13 @@ func TestPreview_HumanShowsEveryValue(t *testing.T) {
 		}
 	}
 	for key, d := range humanUnnamed {
-		if !seen[key] {
+		switch {
+		case verified[key]:
+			bad = append(bad, key+": in humanUnnamed, but the human preview names its thing (namedBySibling): remove the line")
+		case !seen[key]:
 			bad = append(bad, key+": in humanUnnamed, but the human preview shows it: remove the line")
+		case d.why == namedByName:
+			bad = append(bad, key+": declared «"+namedByName+"», but the preview's details have no name of it the person sees — show the name, or a line of another class")
 		}
 		switch d.class {
 		case unnamedAccess, unnamedPrice, unnamedWork, unnamedNoise:
@@ -201,6 +202,53 @@ func TestPreview_HumanShowsEveryValue(t *testing.T) {
 }
 
 var ansi = regexp.MustCompile("\x1b\\[")
+
+// namedByName is the why a line of humanUnnamed may no longer give: an id
+// whose thing the preview names by name is checked (namedBySibling).
+const namedByName = "id того, что превью называет по имени"
+
+// namedBySibling reports whether the id at path in details (a key "id" or
+// "<thing>_id") is the id of a thing the human preview names: anywhere in
+// details, the same id has beside it its name — "name" or "display_name"
+// beside "id", "<thing>_name" or "<thing>" beside "<thing>_id" — and the
+// human preview shows that name.
+func namedBySibling(details any, path, value, human string) bool {
+	last := path[strings.LastIndex(path, ".")+1:]
+	if last != "id" && !strings.HasSuffix(last, "_id") {
+		return false
+	}
+	shown := false
+	var visit func(v any)
+	visit = func(v any) {
+		switch x := v.(type) {
+		case []any:
+			for _, e := range x {
+				visit(e)
+			}
+		case map[string]any:
+			for k, e := range x {
+				if id, _ := e.(string); id == value {
+					var names []string
+					switch {
+					case k == "id":
+						names = []string{"name", "display_name"}
+					case strings.HasSuffix(k, "_id"):
+						base := strings.TrimSuffix(k, "_id")
+						names = []string{base + "_name", base}
+					}
+					for _, n := range names {
+						if s, ok := x[n].(string); ok && s != "" && s != value && strings.Contains(human, s) {
+							shown = true
+						}
+					}
+				}
+				visit(e)
+			}
+		}
+	}
+	visit(details)
+	return shown
+}
 
 // humanVolatile reads as one the ids each call makes anew: a job of a
 // stack gets a new name in each run, as a plan does (sameVolatile).
@@ -298,5 +346,34 @@ func TestHumanMisses_ParamsBoolsAndForm(t *testing.T) {
 	human = "  " + engine.ParamLabel("kube_api_internet") + ": yes\n"
 	if misses := humanMisses(map[string]any{"kube_api_internet": true}, human); len(misses) != 0 {
 		t.Errorf("humanMisses = %v under the label %q", misses, engine.ParamLabel("kube_api_internet"))
+	}
+}
+
+func TestNamedBySibling_ChecksTheNameIsShown(t *testing.T) {
+	details := map[string]any{
+		"vm":        map[string]any{"flavor": map[string]any{"id": "f-1", "name": "lowcost10-2-4"}},
+		"subnet_id": "sn-1",
+		"preview":   map[string]any{"subnet_id": "sn-1", "subnet_name": "Default_ru.AZ-1"},
+		"plan_id":   "plan-1",
+		"vpc_id":    "vpc-1",
+		"vpc":       "vpc-1",
+	}
+	human := "flavor: lowcost10-2-4\nsubnet: Default_ru.AZ-1\n"
+	for _, c := range []struct {
+		path, value string
+		want        bool
+	}{
+		{"vm.flavor.id", "f-1", true},        // the name beside it is shown
+		{"subnet_id", "sn-1", true},          // the same id is named elsewhere
+		{"plan_id", "plan-1", false},         // no name anywhere
+		{"vpc_id", "vpc-1", false},           // "<thing>" is the id itself, not a name
+		{"vm.flavor.name", "lowcost", false}, // not an id
+	} {
+		if got := namedBySibling(details, c.path, c.value, human); got != c.want {
+			t.Errorf("namedBySibling(%s) = %v, want %v", c.path, got, c.want)
+		}
+	}
+	if namedBySibling(details, "vm.flavor.id", "f-1", "flavor: other\n") {
+		t.Error("namedBySibling: the name is not in the human text, yet named")
 	}
 }
