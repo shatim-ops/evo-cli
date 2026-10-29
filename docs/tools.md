@@ -137,7 +137,7 @@
 |---|---|---|---|---|---|
 | `k8s_list` | `evo k8s list` | нет | — | List Managed Kubernetes (mk8s) clusters in the project (id, name, status). | Кластеры Managed Kubernetes проекта |
 | `k8s_get` | `evo k8s get` | нет | `cluster_id` | Get a Managed Kubernetes cluster by id (full details incl. | Кластер Managed Kubernetes по ID |
-| `k8s_options` | `evo k8s options` | нет | — | List available Kubernetes versions (by release channel), node flavors and zones for mk8s. | Версии Kubernetes, flavor узлов и зоны для кластеров |
+| `k8s_options` | `evo k8s options` | нет | — | List available Kubernetes versions (by release channel), node flavors and zones for mk8s; a flavor's purpose (CONTROLPLANE/DATAPLANE) when named. | Версии Kubernetes, flavor узлов и зоны для кластеров |
 | `k8s_plan` | `evo k8s plan` | нет | — | STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. | Шаг 1: рассчитать конфигурацию кластера, ничего не создавая |
 | `k8s_create` | `evo k8s create` | да | — | STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. | Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут) |
 | `k8s_kubeconfig` | `evo k8s kubeconfig` | нет | `cluster_id` | Get the kubeconfig for a Managed Kubernetes cluster. | kubeconfig кластера (по умолчанию со встроенным токеном примерно на час) |
@@ -280,7 +280,7 @@
 | `fip_attach` | `evo vpc fip-attach` | да | `fip`, `vm` | Bind an existing FREE floating IP to a VM's primary interface, giving it a public address. | Привязать свободный floating IP к основному интерфейсу ВМ |
 | `list_subnets` | `evo vpc subnets` | нет | — | List Cloud.ru subnets (UUID, name, availability zone). | Подсети: UUID, имя, зона доступности |
 | `list_security_groups` | `evo vpc security-groups` | нет | — | List Cloud.ru security groups (UUID, name, availability zone). | Группы безопасности (с --rules — вместе с правилами) |
-| `list_floating_ips` | `evo vpc fips` | нет | — | List Cloud.ru floating IPs (address, state, whether available to attach). | Floating IP: адрес, состояние, свободен ли |
+| `list_floating_ips` | `evo vpc fips` | нет | — | List Cloud.ru floating IPs (address, state, whether available to attach,, zone when the API names it). | Floating IP: адрес, состояние, свободен ли |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |
 | `vpc_list` | `evo vpc list` | нет | — | List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). | Список VPC проекта |
 | `vpc_get` | `evo vpc get` | нет | `id` | Get full details of one VPC by id (from vpc_list). | VPC по ID: все сведения |
