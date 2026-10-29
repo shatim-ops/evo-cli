@@ -71,6 +71,7 @@ func withAddonAPI(t *testing.T) *addonAPI {
 	oldRT := http.DefaultTransport
 	http.DefaultTransport = api
 	old := toolEngine
+	stoppedClock(t)
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
 		e, err := buildEngine(o)
 		if err != nil {

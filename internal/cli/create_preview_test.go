@@ -125,6 +125,7 @@ func withCloud(t *testing.T, cloud provision.CloudAPI) {
 	t.Setenv("CLOUDRU_FLAVOR", "")
 	t.Setenv("CLOUDRU_DISK_SIZE", "")
 	old := toolEngine
+	stoppedClock(t)
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
 		e, err := buildEngine(o)
 		if err != nil {
@@ -352,6 +353,7 @@ func TestDeployApplyPreview_ShowsThePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := toolEngine
+	stoppedClock(t)
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
 		e, err := buildEngine(o)
 		if err != nil {
