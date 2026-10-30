@@ -8,6 +8,8 @@
 #
 # Причины провала:
 #   - вход неверен: зона не имя, слово dbaas_services не pg, kafka, redis;
+#     слово probes не access, nodes, p36, p41, p44, p45; access, nodes или
+#     p45 без dbaas_smoke и pg (проба DBaaS не пойдёт);
 #   - зона джоба не найдена или закрыта (enabled=false);
 #   - в зоне джоба у проекта нет подсети или группы безопасности;
 #   - имя этого прогона (…-$RUN) уже занято ВМ или кластером;
@@ -21,7 +23,8 @@
 #
 # Окружение — входы workflow: ZONE, K8S_ZONE, PG_ZONE, KAFKA_ZONE,
 # REDIS_ZONE (пусто — ZONE), OS_SMOKE, K8S_SMOKE, DBAAS_SMOKE, DBAAS_SERVICES,
-# REDIS_SA (true/false); RUN — суффикс прогона; PROJECT — для org_quotas.
+# REDIS_SA (true/false), PROBES (платные пробы плана cloud-e2e rc.1 1.6);
+# RUN — суффикс прогона; PROJECT — для org_quotas.
 # Лог публичный: печатаются имена зон и ресурсов evo-e2e-*, коды квот и
 # числа; ID — никогда.
 set -euo pipefail
@@ -73,6 +76,18 @@ if [ "${REDIS_SA:-}" = true ]; then
 	plan+=("redis-sa $(zone_of "${REDIS_ZONE:-}")")
 	cluster_kinds[redis]=1
 fi
+
+# Пробы: слова известны; пробы DBaaS — при джобе dbaas-pg.
+read -ra probe_words <<<"${PROBES:-}"
+for w in ${probe_words[@]+"${probe_words[@]}"}; do
+	case "$w" in
+	p36 | p41 | p44) ;;
+	access | nodes | p45)
+		[ -n "${cluster_kinds[pg]:-}" ] || fail "probes: «$w» — проба джоба dbaas-pg, а он не идёт (dbaas_smoke и pg в dbaas_services)"
+		;;
+	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45" ;;
+	esac
+done
 
 # Зоны прогона: «зона» → «джоб, джоб».
 declare -A jobs_in=()

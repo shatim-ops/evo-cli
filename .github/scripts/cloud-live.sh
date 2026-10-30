@@ -249,7 +249,7 @@ KINDS="ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert"
 area_kinds() {
 	case "$1" in
 	disk) echo "vm fip disk image" ;;
-	net) echo "lb tg vm snat fip route subnet vpc" ;;
+	net) echo "lb tg vm snat fip disk route subnet vpc" ;;
 	dns) echo "dns" ;;
 	s3) echo "s3" ;;
 	secrets) echo "secret cert" ;;
@@ -418,6 +418,96 @@ finish() {
 }
 trap finish EXIT
 
+# probe_on СЛОВО — платная проба включена входом probes (план cloud-e2e
+# rc.1 1.6): p36, p41, p44.
+probe_on() { case " ${PROBES:-} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+# api МЕТОД URL [ТЕЛО] — прямой запрос к API с токеном IAM ($TOKEN, под
+# маской): ответ в $tmp/api.json, код HTTP в $code; тело — через stdin, не
+# в argv. Ни ответ, ни тело в лог не идут.
+api() {
+	if [ -n "${3:-}" ]; then
+		code=$(printf '%s' "$3" | curl -sS -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
+			-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || code=000
+	else
+		code=$(curl -sS -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" 2>/dev/null) || code=000
+	fi
+}
+# api_why — текст ошибки ответа api, через redact.sed и обрезанный.
+api_why() { jq -r '[.code?, .message?, .detail?, .error?] | map(select(. != null) | tostring) | join(": ")' "$tmp/api.json" 2>/dev/null | redact | cut -c1-200; }
+
+# Проба P36 (пункт Д; FB15-5): что отвечает платформа на создание ВМ с
+# flavor меньше min_cpu образа — 4xx до создания или ВМ в
+# error_creating/running. evo такой вызов отвергает до вопроса (D54), поэтому
+# — прямой POST /api/v1.1/vms, поля по имени (flavor_name, image_name,
+# subnet_name, availability_zone_name, disk_type_name): ID в теле только
+# проекта. Итог — строка «P36: …» (ответ платформы, не провал); созданную ВМ
+# убирает уборка области по префиксу.
+probe_p36() {
+	local zid=$1 fl vcpus img sn dt body vst=
+	iam_token || { gap P36 "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap P36 "нет PROJECT"; return 0; }
+	read -r fl vcpus < <(evo tools call list_flavors --arg zone="$ZONE" --arg gpu=false --arg spot=false --json 2>/dev/null |
+		jq -r '[.flavors[]? | select((.vcpus // 0) > 0)] | sort_by(.vcpus, .ram_gb) | .[0] // {} | "\(.name // "") \(.vcpus // 0)"') || true
+	[ -n "${fl:-}" ] || { gap P36 "flavor в $ZONE не прочитан"; return 0; }
+	img=
+	for t in marketplace public; do
+		img=$(evo tools call image_list --arg type="$t" --json 2>/dev/null |
+			jq -r --argjson c "$vcpus" '[.images[]? | select((.min_cpu // 0) > $c and ((.name // "") | test("^[a-zA-Z][a-zA-Z0-9._-]{0,63}$"))) | .name][0] // empty') || true
+		[ -z "$img" ] || break
+	done
+	[ -n "$img" ] || { gap P36 "в image_list нет образа с min_cpu больше $vcpus у $fl"; return 0; }
+	sn=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | select(.availability_zone_id == $z) | .name // "" | select(. != "")][0] // empty')
+	dt=$(evo tools call list_disk_types --json 2>/dev/null | jq -r '[.disk_types[]? | .name // "" | select(ascii_downcase == "ssd")][0] // "SSD"') || dt=SSD
+	[ -n "$sn" ] || { gap P36 "нет подсети в $ZONE"; return 0; }
+	body=$(jq -nc --arg p "$PROJECT" --arg n "$prefix-p36" --arg z "$ZONE" --arg f "$fl" --arg i "$img" --arg s "$sn" --arg d "$dt" \
+		'[{project_id: $p, name: $n, availability_zone_name: $z, flavor_name: $f, image_name: $i,
+		   disks: [{name: ($n + "-boot"), size: 50, disk_type_name: $d}],
+		   interfaces: [{type: "regular", subnet_name: $s, interface_security_enabled: false}]}]')
+	api POST https://compute.api.cloud.ru/api/v1.1/vms "$body"
+	case "$code" in
+	2??)
+		vm_st() { vst=$(evo tools call vm_get --arg name="$prefix-p36" --json 2>/dev/null | jq -r '.state // empty'); case "$vst" in "" | creating | *pending*) return 1 ;; esac; }
+		poll 300 15 vm_st || true
+		ok "P36: flavor $fl ($vcpus vCPU) ниже min_cpu образа $img" "принято (HTTP $code), ВМ: ${vst:-не появилась за 5 мин}"
+		;;
+	*) ok "P36: flavor $fl ($vcpus vCPU) ниже min_cpu образа $img" "отказ HTTP $code: $(api_why)" ;;
+	esac
+}
+
+# Проба P41 (пункт Е; FB15-21): что отвечает платформа на группу целей с
+# ВМ, у которой интерфейс direct_ip (публичный адрес на интерфейсе, а не
+# через FIP). evo tg_create такую цель пускает (превью называет тип), а ВМ
+# с direct_ip evo не создаёт — прямой POST /api/v1.1/vms. Итог — строка
+# «P41: …» (ответ платформы, не провал); группу и ВМ убирает уборка.
+probe_p41() {
+	local body vid vst=
+	iam_token || { gap P41 "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap P41 "нет PROJECT"; return 0; }
+	body=$(jq -nc --arg p "$PROJECT" --arg n "$prefix-p41" --arg z "$ZONE" --arg f "$FLAVOR" --arg i "$IMAGE" \
+		'[{project_id: $p, name: $n, availability_zone_name: $z, flavor_name: $f, image_name: $i,
+		   disks: [{name: ($n + "-boot"), size: 20, disk_type_name: "SSD"}],
+		   interfaces: [{type: "direct_ip", interface_security_enabled: false}]}]')
+	api POST https://compute.api.cloud.ru/api/v1.1/vms "$body"
+	case "$code" in 2??) ;; *)
+		gap "P41: ВМ с direct_ip" "не создана, HTTP $code: $(api_why)"
+		return 0
+		;;
+	esac
+	vm_st() { vst=$(evo tools call vm_get --arg name="$prefix-p41" --json 2>/dev/null | jq -r '.state // empty'); [ "$vst" = running ]; }
+	if ! poll 600 15 vm_st; then
+		gap "P41: ВМ с direct_ip" "не running за 10 мин (${vst:-нет})"
+		return 0
+	fi
+	vid=$(evo tools call vm_get --arg name="$prefix-p41" --json | jq -r '.id // empty')
+	mask "$vid"
+	tc tg_create --arg name="$prefix-p41tg" --arg vm_id="$vid"
+	if [ "$rc" != 0 ]; then
+		ok "P41: tg_create с целью direct_ip" "отказ: код $rc, $reason: $(printf '%s' "$why" | cut -c1-200)"
+	elif opwait lb "$(j -r .operation_id)" 900; then
+		ok "P41: tg_create с целью direct_ip" "принято, операция done"
+	else ok "P41: tg_create с целью direct_ip" "операция с ошибкой: $why"; fi
+}
+
 # --- Области ----------------------------------------------------------------
 
 # ВМ, диски, образ из загрузочного диска.
@@ -426,6 +516,7 @@ area_disk() {
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/disk" && cd "$tmp/disk"
+	! probe_on p36 || probe_p36 "$zid"
 	vm="$prefix-vm"
 	must provision provision --arg name="$vm" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" || return 1
 	vm_ip=$(j -r '.vm_ip // empty')
@@ -625,6 +716,7 @@ area_net() {
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/net" && cd "$tmp/net"
+	! probe_on p41 || probe_p41
 
 	must vpc_create vpc_create --arg name="$prefix-vpc" --arg description="evo e2e live run" || return 1
 	op=$(j -r .operation_id)
@@ -948,6 +1040,30 @@ area_secrets() {
 	if poll 120 10 gone secret "$path"; then ok secret_delete "секрета нет"; cov secret_delete; else bad secret_delete "секрет в списке"; fi
 	tc secret_value --arg path="$path"
 	[ "$rc" != 0 ] && ok "secret_value удалённого" "код $rc, $reason" || bad "secret_value удалённого" "значение вернулось"
+	# Проба P44 (пункт Ж; FB15-28): секрет в папке $prefix, которой не было,
+	# создан (выше) — остаётся ли папка после удаления секрета. Осталась —
+	# строка и удаление папки прямым DELETE (у evo инструмента папок нет).
+	# Папка — только своя: путь собран из префикса прогона области secrets
+	# (evo-e2e-secrets-<run>, run — [a-z0-9]), чужую папку проекта DELETE не
+	# задевает (удаление чужого — только владелец, CLAUDE.md §4).
+	if probe_on p44; then
+		case "$prefix" in evo-e2e-secrets-[a-z0-9]*) ;; *)
+			bad P44 "префикс $prefix не evo-e2e-secrets-<run> — папку не трогаю"
+			return 1
+			;;
+		esac
+		if iam_token && [ -n "${PROJECT:-}" ]; then
+			api GET "https://secretmanager.api.cloud.ru/v2/folder/$prefix?projectId=$PROJECT"
+			case "$code" in
+			200)
+				api DELETE "https://secretmanager.api.cloud.ru/v2/folder/$prefix?projectId=$PROJECT"
+				ok "P44: папка после удаления секрета" "осталась (HTTP 200); удаление папки — HTTP $code"
+				;;
+			404) ok "P44: папка после удаления секрета" "нет (HTTP 404)" ;;
+			*) ok "P44: папка после удаления секрета" "HTTP $code: $(api_why)" ;;
+			esac
+		else gap P44 "нет токена IAM или PROJECT"; fi
+	fi
 
 	# Самоподписанный сертификат (cert_import берёт Base64 от PEM).
 	openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=$prefix.test" \

@@ -72,6 +72,17 @@ has many "ru.AZ-3 (pg): зона закрыта"
 has many "ru.AZ-9 (kafka): зоны нет"
 has many "причин: 3"
 
+# Пробы: неизвестное слово и проба dbaas-pg без него — провал, обе причины;
+# p36, p41, p44 без DBaaS — не причина (причин ровно 2); известные слова
+# при dbaas-pg — можно.
+fresh probes
+run probes 1 PROBES='p36 p41 p44 nodes p99'
+has probes "probes: «p99» — не access"
+has probes "probes: «nodes» — проба джоба dbaas-pg"
+has probes "причин: 2"
+fresh probesok
+run probesok 0 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES='access nodes p36 p41 p44 p45'
+
 # Зона прогона без подсети и группы — провал; открытая зона ru.AZ-1 без
 # них, куда прогон не идёт, — строка «перезапуск туда не выйдет».
 fresh nosubnet
