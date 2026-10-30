@@ -66,3 +66,14 @@ func PassingDeleteState(status string) bool {
 	}
 	return false
 }
+
+// DeletingState reports whether status is Cloud.ru's own delete under way
+// (DELETING, ERASING): a delete of the resource has nothing to send and is
+// answered without the question, as a repeat of a delete (D61, D26).
+func DeletingState(status string) bool {
+	switch strings.ToUpper(status) {
+	case "DELETING", "ERASING":
+		return true
+	}
+	return false
+}

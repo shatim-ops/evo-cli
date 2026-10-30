@@ -48,6 +48,9 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	if refused := passingRefusal(label, id, status, target); refused != nil {
 		return refused
 	}
+	if deleting := alreadyDeleting(label, status, target); deleting != nil {
+		return deleting
+	}
 	out := map[string]any{
 		"message": i18n.Tf(en, ru, label),
 		"target":  target,
@@ -72,6 +75,24 @@ func passingRefusal(label, id, status string, target map[string]any) *Plan {
 		i18n.Tf("%s is still being created (%s): Cloud.ru does not delete it until it is ready; nothing was done",
 			"%s ещё создаётся (%s): Cloud.ru не удалит его, пока он не будет готов; ничего не сделано", label, status), hint),
 		map[string]any{"resource_status": status, "target": target}), true)
+}
+
+// alreadyDeleting is the answer of a delete of a resource Cloud.ru is
+// already deleting (engine.DeletingState): nothing to send and nothing to
+// ask — status deleting, exit code 0, as a repeated delete is answered
+// (D61, D26); nil in any other status.
+func alreadyDeleting(label, status string, target map[string]any) *Plan {
+	if !engine.DeletingState(status) {
+		return nil
+	}
+	return answered(toJSON(map[string]any{
+		"status":           "deleting",
+		"already_deleting": true,
+		"resource_status":  status,
+		"target":           target,
+		"message": i18n.Tf("%s is already being deleted by Cloud.ru (%s); nothing was sent — check later that it is gone",
+			"%s уже удаляется Cloud.ru (%s); ничего не отправлено — позже проверьте, что его нет", label, status),
+	}), false)
 }
 
 // notTheState are the reasons of an error that the status of the resource

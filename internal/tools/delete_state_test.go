@@ -190,3 +190,33 @@ func TestDeletePlan_PassingStateRefusedBeforeTheQuestion(t *testing.T) {
 		}
 	}
 }
+
+// D61 (#621, option A, «DEPLOYING, ERASING…»): a resource Cloud.ru is
+// already deleting (DELETING, ERASING) is answered without the question and
+// without a DELETE — status deleting, already_deleting, exit code 0 — as a
+// repeated delete is (D26); before, the question was asked (DELETING with a
+// warning, ERASING with none) and Cloud.ru answered after it.
+func TestDeletePlan_DeletingStateAnsweredWithoutTheQuestion(t *testing.T) {
+	r := newTestServer()
+	id := "00000000-0000-4000-8000-0000000000fc"
+	for _, status := range []string{"DELETING", "ERASING", "deleting"} {
+		deleted := false
+		p := r.deletePlan("pg_delete", "pg_delete deletes %s.", "pg_delete удаляет %s.", id,
+			func() (map[string]any, error) { return map[string]any{"id": id, "name": "pg-1", "status": status}, nil },
+			func(context.Context) (string, bool) {
+				deleted = true
+				return toJSON(map[string]any{"status": "deleting"}), false
+			})
+		if p.Execute != nil || p.Preview != nil {
+			t.Errorf("%s: the delete asks the question", status)
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(p.answer), &m); err != nil {
+			t.Fatal(err)
+		}
+		if p.answerErr || m["status"] != "deleting" || m["already_deleting"] != true || m["resource_status"] != status || deleted {
+			t.Errorf("%s: want status deleting without the question and no DELETE: %s", status, p.answer)
+		}
+	}
+}
