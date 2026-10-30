@@ -57,7 +57,7 @@ func TestRootHelp_GroupsInOrderAndExitCodesLast(t *testing.T) {
 }
 
 // Корневая справка заканчивается приветствием (поручение владельца 30.10,
-// rc.2 1.6), а не ссылками на Telegram: контакт автора — в evo version.
+// rc.2 1.6, п. 28), а не ссылками на Telegram.
 func TestRootHelp_Welcome(t *testing.T) {
 	long := newRootCmd().Long
 	if !strings.HasSuffix(long, "Добро пожаловать в Cloud.ru") && !strings.HasSuffix(long, "Welcome to Cloud.ru") {
@@ -65,5 +65,10 @@ func TestRootHelp_Welcome(t *testing.T) {
 	}
 	if strings.Contains(long, "t.me/") {
 		t.Errorf("в корневой справке ссылка на Telegram: %q", long)
+	}
+	// И в тексте evo version: обратная связь — Issues (README); поле
+	// feedback в --json остаётся до 2.0 (#686).
+	if crew := crewText(); strings.Contains(crew, "t.me/") {
+		t.Errorf("в тексте evo version ссылка на Telegram: %q", crew)
 	}
 }

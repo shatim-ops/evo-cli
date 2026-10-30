@@ -113,10 +113,8 @@ func crewText() string {
 	return i18n.Tf(`%s
 Made by %s.
 Thanks to everyone who tested it and sent the output of what broke.
-Feedback: %s
 `, `%s
 Придумал и собрал %s.
 Спасибо всем, кто тестировал и присылал вывод того, что сломалось.
-Обратная связь: %s
-`, product.Name, i18n.T(product.AuthorEN, product.Author), product.FeedbackContact)
+`, product.Name, i18n.T(product.AuthorEN, product.Author))
 }
