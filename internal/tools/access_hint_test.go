@@ -31,9 +31,7 @@ var accessRoleWords = []string{"role", "роль", "роли"}
 // the work item of the release plan that fixes it. The list only shrinks: a
 // group not here fails the test, and so does a line whose group's 403
 // names its credential.
-var accessHintMisses = map[string]string{
-	"s3": "release plan 1.6, «Три формы одним PR» (Ц-3 агентного аудита rc.1): «разработка»",
-}
+var accessHintMisses = map[string]string{}
 
 // Ц-3 of the agent's audit of rc.1: `evo s3 buckets` refused with Access
 // Denied answered «the service account lacks a role … or project_id is

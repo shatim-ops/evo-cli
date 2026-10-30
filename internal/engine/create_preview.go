@@ -94,6 +94,8 @@ type CreatePreview struct {
 	// priced (tariffs): a billable resource never goes without a price
 	// and without where to find one.
 	TariffURL string `json:"tariff_url,omitempty"`
+	// Quota: the project's quotas were not checked, and why (D60).
+	Quota *QuotaCheck `json:"quota,omitempty"`
 	// NetworkCheck: what the preview found wrong with the VM's subnet and
 	// security group (CompletePreview).
 	NetworkCheck *NetworkCheck `json:"network_check,omitempty"`
@@ -409,6 +411,9 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		defer ncancel()
 		p.NetworkCheck, networkErr = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
 	}
+	qctx, qcancel := context.WithTimeout(parent, PreviewLookupTimeout)
+	defer qcancel()
+	p.Quota = e.quotaCheck(qctx, p.ProjectID)
 	return clerrors.Join(flavorErr, imageErr, networkErr)
 }
 
@@ -636,6 +641,9 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 			i18n.T(": the call will fail without it", ": без этого команда завершится ошибкой"))
 	}
 	lines = append(lines, createCostLines(p)...)
+	if l := p.Quota.line(); l != "" {
+		lines = append(lines, l)
+	}
 	for _, w := range append(p.NetworkCheck.lines(), p.Warnings...) {
 		lines = append(lines, previewLabel("warning", "внимание")+w)
 	}
@@ -871,6 +879,8 @@ var paramLabels = map[string]struct {
 	"disk_id":                               {"disk", "диск", false},
 	"description":                           {"about", "описание", false},
 	"display_name":                          {"display name", "отображаемое имя", false},
+	"intermediate_certificate":              {"intermediate chain", "промежуточная цепочка", false},
+	"user_data_template":                    {"cloud-init template", "шаблон cloud-init", false},
 	"lc_collate":                            {"collation (LC_COLLATE)", "сортировка (LC_COLLATE)", false},
 	"lc_ctype":                              {"character classes (LC_CTYPE)", "классы символов (LC_CTYPE)", false},
 	"target_port":                           {"target port", "порт целей", false},

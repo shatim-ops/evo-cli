@@ -40,7 +40,7 @@ var errNoSize = errors.New("no compose file to size the VM by")
 // needs and none gives (DeployInputError).
 func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 	sf, err := state.Read(state.DefaultPath(e.StateDir))
-	if err != nil || sf.ActiveDeployment() != nil {
+	if err != nil || sf.ActiveComposeDeployment() != nil {
 		return nil, nil
 	}
 	// What Deploy refuses before its question, the preview refuses in the

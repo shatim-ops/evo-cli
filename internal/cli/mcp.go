@@ -413,6 +413,9 @@ func newMCPHealthcheckCmd() *cobra.Command {
 			if resp.StatusCode != http.StatusOK {
 				return fmt.Errorf("healthcheck: %s returned %s", url, resp.Status)
 			}
+			if flagJSON {
+				return output.NewWithWriter(cmd.OutOrStdout(), output.ModeJSON, false).JSON(map[string]string{"status": "ok", "url": url})
+			}
 			return nil
 		},
 	}

@@ -559,7 +559,7 @@ func TestDoctor_NoProjectIsAConfigError(t *testing.T) {
 				t.Errorf("config check: %q", c.Detail)
 			}
 		case "project_id":
-			found = c.Status == tools.CheckFail && strings.Contains(c.Detail, "evo configure --project-id")
+			found = c.Status == tools.CheckFail && strings.Contains(c.Detail, "evo project use")
 		}
 	}
 	if !found || got.OK {

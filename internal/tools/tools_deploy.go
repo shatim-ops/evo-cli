@@ -931,6 +931,9 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
 	}
 
+	if refused := passingRefusal(fipIP, fipID, state, map[string]any{"id": fipID, "ip_address": fipIP, "status": state}); refused != nil {
+		return refused, nil
+	}
 	preview := map[string]any{"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
 		"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
 	}

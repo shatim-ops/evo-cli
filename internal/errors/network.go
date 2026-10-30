@@ -140,3 +140,10 @@ func transportCause(err error) string {
 	}
 	return err.Error()
 }
+
+// RouteNotFoundHint is the hint of a 404 the service did not write (D63):
+// the address evo called is not served, and the resource was not checked.
+func RouteNotFoundHint() string {
+	return i18n.T("Cloud.ru does not serve the address evo called: the API may have moved — update evo, and check the base URL if the configuration overrides it. The resource was not checked: find it in the list before relying on it being gone.",
+		"Cloud.ru не обслуживает адрес, по которому обратился evo: API мог переехать — обновите evo и проверьте базовый адрес, если он задан в настройках. Ресурс не проверен: найдите его в списке, прежде чем считать его удалённым.")
+}

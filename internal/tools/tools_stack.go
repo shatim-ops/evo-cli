@@ -587,6 +587,17 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	if m.Name == "" {
 		return usageT("manifest.name is required", "нужен manifest.name"), true
 	}
+	// A public record on a balancer without an external address points at
+	// an address the internet does not reach: the stack would look done
+	// and serve nothing (D64, FB15-47). The default of nlb.external stays.
+	// Read nothing: refused before the cloud is asked.
+	if d := m.DNS; d != nil && (d.Target == "" || d.Target == "lb") && m.NLB != nil && !m.NLB.External {
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			i18n.T("manifest.dns.target=lb points the record at the balancer, but manifest.nlb.external is not set: the balancer gets no external address and the record would point at an address the internet does not reach; nothing was planned",
+				"manifest.dns.target=lb направляет запись на балансировщик, но manifest.nlb.external не задан: у балансировщика не будет внешнего адреса, и запись укажет на адрес, недоступный из интернета; план не создан"),
+			i18n.T("Set manifest.nlb.external: true, or give manifest.dns.target an address.",
+				"Задайте manifest.nlb.external: true или укажите адрес в manifest.dns.target."))), true
+	}
 	// Validate + normalize the manifest BEFORE planning, so a malformed field
 	// fails fast at plan time (nothing created) instead of wedging the stack in
 	// "error" mid-deploy after other resources are already live.
@@ -1207,9 +1218,15 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		if res, e := s.callTool(ctx, tool, dargs); e != nil {
 			msg := e.Error()
 			reason, _ := res["reason"].(string)
-			if reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound ||
-				strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") ||
-				strings.Contains(strings.ToLower(msg), "not found") || strings.Contains(msg, "не найден") {
+			// The code decides; the text only for an answer without one: a
+			// 404 the service did not write is API_ERROR and names the 404
+			// in its message (D63).
+			gone := reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound
+			if reason == "" {
+				gone = strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") ||
+					strings.Contains(strings.ToLower(msg), "not found") || strings.Contains(msg, "не найден")
+			}
+			if gone {
 				deleted = append(deleted, label+" (already gone)")
 			} else {
 				failed = append(failed, label+": "+msg)

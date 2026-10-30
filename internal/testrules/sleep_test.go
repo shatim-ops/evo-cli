@@ -40,7 +40,7 @@ var sleepWaits = map[string]struct{ test, why, item string }{
 	"internal/journal/journal.go\tlock":                    {why: sleepNoToken},
 	"internal/state/lock.go\tFileLock":                     {why: sleepNoToken},
 	"internal/state/lock.go\tLockWait":                     {why: sleepNoToken},
-	"internal/httpretry/httpretry.go\tTransport.RoundTrip": {why: sleepNoToken},
+	"internal/httpretry/httpretry.go\tTransport.roundTrip": {why: sleepNoToken},
 	"internal/mcp/server.go\tServer.RunContext":            {test: "TestStdio_CallSurvivesTheProcessStopped"},
 	"internal/mk8s/kubeconfig.go\tFetchOIDCToken":          {why: sleepNoToken}, // the repeat of one exchange of the token itself
 	"internal/tools/userkeys.go\tappendUserKeys":           {why: sleepNoToken},

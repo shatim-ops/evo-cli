@@ -28,6 +28,7 @@ var previewForm = map[string]string{
 	"key":       "the name of a params entry: the line's label",
 	"cost_note": "«cost: not estimated by evo…» says it in words",
 	"source":    "where the cost comes from: «estimate» on the cost line",
+	"reason":    "why the quota was not checked (D60): «quota: not checked (project key)» says it in words",
 }
 
 // humanUnnamed are the values of a preview's details that its human form

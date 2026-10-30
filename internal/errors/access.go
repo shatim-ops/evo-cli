@@ -29,3 +29,11 @@ func NoRoleHint() string {
 		"Ключ принят, но у сервисного аккаунта нет роли для этой операции в проекте (или project_id — чужой проект). "+
 			"Выдайте роль в консоли Cloud.ru: «Пользователи» → «Сервисные аккаунты» → аккаунт; какие роли нужны — docs/auth.md, раздел «Роли».")
 }
+
+// S3AccessHint is the hint of a 403 from Object Storage: S3 is reached
+// with keys of its own, not the role of the service account (Ц-3 of the
+// agent's audit of rc.1: the cause was the tenant_id of the access key).
+func S3AccessHint() string {
+	return i18n.T("Object Storage refused the request: it is reached with the S3 keys, not the key of evo. Check CLOUDRU_S3_ACCESS_KEY (or access_key of the profile's s3 section) — <tenant_id>:<Key ID>, the tenant_id from the console: Object Storage → Parameters — and CLOUDRU_S3_SECRET_KEY, then that the service account of the S3 key has an Object Storage role (s3e.*); docs/auth.md, «Ключи Object Storage (S3)».",
+		"Object Storage отказал: он принимает ключи S3, а не ключ evo. Проверьте CLOUDRU_S3_ACCESS_KEY (или access_key в разделе s3 профиля) — <tenant_id>:<Key ID>, tenant_id — в консоли: «Object Storage» → «Параметры» — и CLOUDRU_S3_SECRET_KEY, затем что у сервисного аккаунта ключа S3 есть роль Object Storage (s3e.*); docs/auth.md, раздел «Ключи Object Storage (S3)».")
+}

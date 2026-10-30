@@ -22,7 +22,7 @@ import (
 // the console or support.
 func DeleteWayOut(status, id string) (warning, hint string) {
 	switch up := strings.ToUpper(status); {
-	case up == "DEPLOYING" || up == "CREATING" || up == "PROVISIONING":
+	case PassingDeleteState(status):
 		return i18n.Tf("it is still being created (%s): Cloud.ru refuses the delete until it is ready",
 				"он ещё создаётся (%s): Cloud.ru не удалит его, пока он не будет готов", status),
 			i18n.Tf("Cloud.ru does not delete a resource while it is being created (%s): wait until it is ready, then delete it again.",
@@ -54,3 +54,26 @@ var finalDeleteStates = map[string]bool{"FAILED": true, "ERROR": true, "ERROR_DE
 
 // FinalDeleteState reports whether status is one of finalDeleteStates.
 func FinalDeleteState(status string) bool { return finalDeleteStates[strings.ToUpper(status)] }
+
+// PassingDeleteState reports whether status is one a resource leaves by
+// itself — still being created — and Cloud.ru does not delete it in: the
+// way out is to wait (DeleteWayOut), and a delete is refused before its
+// question (D61).
+func PassingDeleteState(status string) bool {
+	switch strings.ToUpper(status) {
+	case "DEPLOYING", "CREATING", "PROVISIONING":
+		return true
+	}
+	return false
+}
+
+// DeletingState reports whether status is Cloud.ru's own delete under way
+// (DELETING, ERASING): a delete of the resource has nothing to send and is
+// answered without the question, as a repeat of a delete (D61, D26).
+func DeletingState(status string) bool {
+	switch strings.ToUpper(status) {
+	case "DELETING", "ERASING":
+		return true
+	}
+	return false
+}

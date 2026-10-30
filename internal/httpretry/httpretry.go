@@ -9,6 +9,9 @@
 package httpretry
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"io"
 	"mime"
 	"net/http"
@@ -57,6 +60,10 @@ type Policy struct {
 	// BackoffOnly ignores Retry-After: the waits stay the doubling backoff
 	// (an API whose Retry-After would hold a create for minutes).
 	BackoffOnly bool
+	// Keep404 leaves a 404 without the service's body as it is
+	// (RouteNotFoundAsBadGateway): an API that answers 404 to a property
+	// of the key rather than to a resource, in a form not probed.
+	Keep404 bool
 }
 
 // NewClient returns an http.Client with this transport. timeout covers all
@@ -110,6 +117,41 @@ func OnTokenRejected(f func(token string)) {
 	tokenRejected.Store(&f)
 }
 
+// tokenRenewed is asked for the token that replaces a refused one
+// (OnTokenRenewed).
+var tokenRenewed atomic.Pointer[func(ctx context.Context, token string) (string, bool)]
+
+// OnTokenRenewed sets f to be asked, for the bearer token a service
+// refused, the token that replaces it: a new one from the provider that
+// issued it, and the request goes once more with that. A service client takes its token once, when it is built; after
+// the machine slept the services refuse it, and a wait would end with
+// the 401 of one poll while the operation goes on (process backlog 1.6,
+// priority 1). nil stops it.
+func OnTokenRenewed(f func(ctx context.Context, token string) (string, bool)) {
+	if f == nil {
+		tokenRenewed.Store(nil)
+		return
+	}
+	tokenRenewed.Store(&f)
+}
+
+// renewedToken is req with the bearer token its provider renewed, or req
+// as it is.
+func renewedToken(req *http.Request) *http.Request {
+	tok, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
+	f := tokenRenewed.Load()
+	if !ok || f == nil {
+		return req
+	}
+	fresh, ok := (*f)(req.Context(), tok)
+	if !ok || fresh == tok {
+		return req
+	}
+	r := req.Clone(req.Context())
+	r.Header.Set("Authorization", "Bearer "+fresh)
+	return r
+}
+
 // answer is the response both transports return: an HTML page as a 502
 // (HTMLAsBadGateway), and a 401 to a bearer token reported to
 // OnTokenRejected.
@@ -140,9 +182,84 @@ func HTMLAsBadGateway(resp *http.Response) *http.Response {
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	resp.Body.Close()
-	body := `{"message":"Cloud.ru answered an HTML page with HTTP ` + strconv.Itoa(resp.StatusCode) + ` instead of the API's answer"}`
+	return badGateway(resp, `{"message":"Cloud.ru answered an HTML page with HTTP `+strconv.Itoa(resp.StatusCode)+` instead of the API's answer"}`)
+}
+
+// RouteNotFoundAsBadGateway turns a 404 the service did not write into a
+// 502 (D63): a route or an address that is not there, not a resource that
+// is gone. Read as «not found», a moved API answered a delete with
+// already_deleted while the resource lived on (E1). The service's 404 is
+// JSON: an array (compute) or an object with its code and message (VPC,
+// NLB, DNS, mk8s, AR, Secret Manager; api-probe 33 and 34, 2 of 2). The
+// gateway's is empty, HTML, plain text, {"error_msg": …} (VPC, NLB,
+// Container Apps), or grpc-gateway's routing error — code 5 with the
+// message "Not Found" and nothing else (DNS, mk8s, AR), which no service
+// gives a resource. A HEAD has no body to tell them by and stays a 404.
+func RouteNotFoundAsBadGateway(req *http.Request, resp *http.Response) *http.Response {
+	if resp.StatusCode != http.StatusNotFound || req.Method == http.MethodHead {
+		return resp
+	}
+	head, _ := io.ReadAll(io.LimitReader(resp.Body, maxServiceBody))
+	// A gateway's answer is short: one that fills the read is the service's.
+	if len(head) == maxServiceBody || serviceNotFound(head) {
+		resp.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(head), resp.Body), resp.Body}
+		return resp
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
+	return badGateway(resp, `{"message":"Cloud.ru answered 404 without the service's answer: `+routeNotFound+`"}`)
+}
+
+// routeNotFound is how the 502 of RouteNotFoundAsBadGateway says what it is.
+const routeNotFound = "the route or the address of the service is not there, and the resource was not checked"
+
+// RouteNotFound reports whether err carries the answer of
+// RouteNotFoundAsBadGateway: whatever the client wrapped it in, its message
+// keeps the body.
+func RouteNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), routeNotFound)
+}
+
+// Replaced is the header of an answer the transport wrote in place of the
+// API's (HTMLAsBadGateway, RouteNotFoundAsBadGateway): a 502 that was not
+// repeated, whatever its method.
+const Replaced = "Evo-Replaced-Answer"
+
+// maxServiceBody is how much of a 404 serviceNotFound reads.
+const maxServiceBody = 64 << 10
+
+// serviceNotFound reports whether body is a service's answer to a resource
+// that is not there (RouteNotFoundAsBadGateway).
+func serviceNotFound(body []byte) bool {
+	body = bytes.TrimSpace(body)
+	if len(body) > 0 && body[0] == '[' {
+		return json.Valid(body)
+	}
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(body, &obj) != nil {
+		return false
+	}
+	_, code := obj["code"]
+	_, message := obj["message"]
+	if _, gw := obj["error_msg"]; gw && !code && !message {
+		return false
+	}
+	var routing struct {
+		Code    json.Number `json:"code"`
+		Message string      `json:"message"`
+	}
+	_ = json.Unmarshal(body, &routing)
+	return routing.Code != "5" || routing.Message != http.StatusText(http.StatusNotFound)
+}
+
+// badGateway is resp replaced by a 502 with body, a JSON message.
+func badGateway(resp *http.Response, body string) *http.Response {
 	h := resp.Header.Clone()
 	h.Set("Content-Type", "application/json")
+	h.Set(Replaced, "1")
 	h.Del("Content-Length")
 	return &http.Response{
 		Status:        "502 Bad Gateway",
@@ -171,6 +288,33 @@ func withUserAgent(req *http.Request) *http.Request {
 // RoundTrip implements http.RoundTripper.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = withUserAgent(req)
+	resp, err := t.roundTrip(req)
+	if err == nil && !t.Policy.Keep404 {
+		resp = RouteNotFoundAsBadGateway(req, resp)
+	}
+	if err != nil || resp.StatusCode != http.StatusUnauthorized {
+		return resp, err
+	}
+	// A refused token (answer has reported it) is tried once with the
+	// one its provider renews: a 401 applied nothing. Refused again, it is
+	// the key's, and the 401 is the answer.
+	again := renewedToken(req)
+	if again == req || (req.Body != nil && req.Body != http.NoBody && req.GetBody == nil) {
+		return resp, nil
+	}
+	if req.Body != nil && req.Body != http.NoBody {
+		body, err := req.GetBody()
+		if err != nil {
+			return resp, nil
+		}
+		again.Body = body
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
+	return t.roundTrip(again)
+}
+
+func (t *Transport) roundTrip(req *http.Request) (*http.Response, error) {
 	backoff := t.Backoff
 	if backoff <= 0 {
 		backoff = time.Second

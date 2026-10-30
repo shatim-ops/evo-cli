@@ -408,9 +408,10 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // k8sProductConfiguration is the catalogue of Managed Kubernetes of the
-// parity worlds: one zone, one flavor, one version.
+// parity worlds: one zone, one flavor, one version. A zone names its
+// flavors by name, as the platform does (K8S-16, platform-answers.json).
 const k8sProductConfiguration = `{"defaultZone":"` + pvZone + `","defaultChannel":"stable","defaultDiskType":"SSD",` +
-	`"zones":[{"zoneId":"` + pvZone + `","name":"ru.AZ-1","availableFlavors":["` + pvFlavor + `"]}],` +
+	`"zones":[{"zoneId":"` + pvZone + `","name":"ru.AZ-1","availableFlavors":["gen-2-4"]}],` +
 	`"flavors":[{"flavorId":"` + pvFlavor + `","name":"gen-2-4","cpu":2,"ram":4}],` +
 	`"channels":[{"channel":"stable","availableVersions":["v1.31.4"]}]}`
 
@@ -529,6 +530,7 @@ var parityEmptyLists = map[string]string{
 	"GET organization.api.cloud.ru/v2/consumption":                     "no consumption in the period",
 	"GET organization.api.cloud.ru/v3/projects":                        "no other project: org_projects empty",
 	"GET organization.api.cloud.ru/v3/quotas/usages":                   "no quota usage rows",
+	"GET organization.api.cloud.ru/v3/quotas/resourceTypes":            "no quota types: rows keep their codes",
 	"GET secretmanager.api.cloud.ru/v2/secret":                         "no secret yet: secret_create's path is free",
 	"GET secretmanager.api.cloud.ru/v2/version/app/db":                 "no version of the secret: secret_value finds none",
 }

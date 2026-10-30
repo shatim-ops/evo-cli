@@ -60,9 +60,15 @@ var optionalLeftOut = map[string]string{
 // unnamed by the preview: "tool argument" → the work item of the release
 // plan that names them. The list only shrinks: an argument not here fails
 // the test, and so does a line whose argument the preview names now.
-var optionalUnnamed = map[string]string{
-	"cert_import intermediate_certificate": "release plan, backlog 1.7, «Превью называет многострочный аргумент» (PEM, шаблон cloud-init — не текстом целиком в вопрос): «разработка», правило теста — «Процесс»",
-	"image_create user_data_template":      "release plan, backlog 1.7, «Превью называет многострочный аргумент» (PEM, шаблон cloud-init — не текстом целиком в вопрос): «разработка», правило теста — «Процесс»",
+var optionalUnnamed = map[string]string{}
+
+// optionalSummarized are the optional arguments the preview names by a
+// summary under their own key, not by the text sent (tools.summarizedArgs:
+// a PEM chain, a cloud-init template are too long for a line of the
+// question): the summary carries the SHA-256 of what goes.
+var optionalSummarized = map[string]bool{
+	"cert_import intermediate_certificate": true,
+	"image_create user_data_template":      true,
 }
 
 // optionalValue is a value of an optional argument from its schema: the
@@ -158,6 +164,9 @@ func TestPreview_NamesEveryOptionalArgument(t *testing.T) {
 					if normKey(a) != last || fmt.Sprint(full[a]) != value || named[last][value] {
 						continue
 					}
+					if optionalSummarized[c.tool.Name+" "+a] && summarized(named[last]) {
+						continue
+					}
 					found[c.tool.Name+" "+a] = value
 				}
 			}
@@ -190,6 +199,16 @@ func TestPreview_NamesEveryOptionalArgument(t *testing.T) {
 		t.Fatal(strings.Join(bad, "\n"))
 	}
 	w.rt.takeUnknown()
+}
+
+// summarized: a value of the key is a summary with a SHA-256.
+func summarized(values map[string]bool) bool {
+	for v := range values {
+		if strings.Contains(v, "SHA-256 ") {
+			return true
+		}
+	}
+	return false
 }
 
 // fullOptionalArgs is base with every optional argument of tl set, and the

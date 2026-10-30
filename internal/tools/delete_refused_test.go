@@ -72,6 +72,12 @@ var deleteRefusals = map[string]struct {
 	"vpc_route_delete":  {none: "a route has no state"},
 }
 
+// passingWaited are the deletes that wait for a resource still being
+// created rather than refuse before the question (D61), and why.
+var passingWaited = map[string]string{
+	"destroy": "a VM in creating is ready in about a minute: destroy waits for it to become deletable (DeletableWaitTimeout), as D53 waits for a disk",
+}
+
 // refusingWorld has the resource liveID in state s, in its own answer and
 // in every list, and refuses every write the way the platform does in s.
 func refusingWorld(s refusedState, writes *atomic.Int32) func(http.ResponseWriter, *http.Request) bool {
@@ -102,8 +108,9 @@ var waysOut = map[bool][]string{
 // CLAUDE.md §6, axis 3: «Удалить нельзя — ответ говорит это прямо и
 // называет путь (поддержка, консоль), а не выглядит успехом». Every
 // declared refusal: the resource is there in the state, the delete with
-// consent meets the platform's refusal, and the answer is an error with
-// a hint that names the way out — to wait, of a passing state; support or
+// consent meets the platform's refusal — or, in a passing state, is
+// refused before the question (D61) — and the answer is an error with a
+// hint that names the way out — to wait, of a passing state; support or
 // the console, of a final one. Its reason stays API_ERROR: a new one would
 // be a breaking change (owner's decision 28.10, #455, option (б)). Release plan 1.5, «мир „платформа отвергает удаление в состоянии
 // X“»; live: DB-17 (Kafka in DEPLOYING and FAILED), DB-21 (PostgreSQL in
@@ -136,6 +143,15 @@ func TestDelete_RefusedInStateSaysSoAndTheWayOut(t *testing.T) {
 			if !isErr {
 				t.Errorf("%s: the platform refused the delete, the answer is a success: %s", where, clipText(text))
 				continue
+			}
+			// A passing state is refused before the question, with no
+			// write (D61), save the waits of passingWaited.
+			if why, waits := passingWaited[name]; s.passing && !waits {
+				if m["reason"] != "USAGE" || writes.Load() != 0 {
+					t.Errorf("%s: a resource still being created — want USAGE before the question and no write (D61), got %v with %d writes", where, m["reason"], writes.Load())
+				}
+			} else if s.passing && why == "" {
+				t.Errorf("%s: passingWaited declares no reason", name)
 			}
 			hint, _ := m["hint"].(string)
 			named := false

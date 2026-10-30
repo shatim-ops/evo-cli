@@ -74,11 +74,7 @@ var localJSONExempt = map[string]string{
 // → the work item of the release plan that fixes it. The list only
 // shrinks: a miss not here fails the test, and so does a line whose
 // command answers JSON.
-var localJSONMisses = map[string]string{
-	"evo init":            "release plan 1.6, «Три формы одним PR» (Ц-9 агентного аудита rc.1): «разработка»",
-	"evo crew":            "release plan 1.6, «Линия CLI» — свой вывод у всех команд: «разработка»",
-	"evo mcp healthcheck": "release plan 1.6, «Линия CLI» — свой вывод у всех команд: «разработка»",
-}
+var localJSONMisses = map[string]string{}
 
 const localJSONProject = "00000000-0000-4000-8000-0000000000c1"
 

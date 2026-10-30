@@ -99,6 +99,10 @@ func newCrewCmd() *cobra.Command {
 		Args:   cobra.NoArgs,
 		Short:  i18n.T("Who made evo", "Кто сделал evo"),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if flagJSON {
+				return output.NewWithWriter(cmd.OutOrStdout(), output.ModeJSON, false).JSON(map[string]string{
+					"product": product.Name, "author": i18n.T(product.AuthorEN, product.Author), "feedback": product.FeedbackContact})
+			}
 			_, err := fmt.Fprint(cmd.OutOrStdout(), crewText())
 			return err
 		},

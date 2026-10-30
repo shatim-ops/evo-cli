@@ -1,0 +1,50 @@
+name: tools-list
+
+# Храповик размера tools/list (решение владельца 29.10, #597, п. 12): в коде
+# только потолок (maxToolsListBytes в internal/mcp/limits_test.go); здесь —
+# рост tools/list головы PR против общей базы (merge-base с main). Вырос —
+# в описании PR строка «tools/list: +N байт, потому что …» с точным N.
+# Отдельный workflow, а не шаг ci.yml: правка описания (edited) перезапускает
+# только эту проверку. Код PR собирается без секретов; описание PR — через
+# env, не в тексте скрипта (internal/workflows).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions: {}
+
+concurrency:
+  group: tools-list-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  growth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Нужна база PR, чтобы найти merge-base.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Та же версия, что в ci.yml; поднимать вместе.
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+
+      - name: рост tools/list против базы
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          base=$(git merge-base "$BASE" HEAD)
+          git worktree add -q "$RUNNER_TEMP/base" "$base"
+          (cd "$RUNNER_TEMP/base" && go build -o "$RUNNER_TEMP/evo-base" ./cmd/evo)
+          go build -o "$RUNNER_TEMP/evo-head" ./cmd/evo
+          .github/scripts/tools_list.sh "$RUNNER_TEMP/evo-base" > "$RUNNER_TEMP/base.json"
+          .github/scripts/tools_list.sh "$RUNNER_TEMP/evo-head" > "$RUNNER_TEMP/head.json"
+          .github/scripts/tools_list_growth.sh "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json"
