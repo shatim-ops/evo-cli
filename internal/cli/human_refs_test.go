@@ -21,6 +21,8 @@ import (
 // plan that names them; "* field" is the field in any tool. The list only
 // shrinks: a bare UUID not here fails the test, and so does a line no
 // output carries.
+// Closes by 1.8: a line lives at most two versions (release plan 1.6,
+// «храповики со сроком»; TestMisses_HaveADeadline).
 var bareRefs = map[string]string{
 	"* project_id":                              "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
 	"billing_consumption agreement_id":          "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
