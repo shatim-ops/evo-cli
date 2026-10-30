@@ -16,11 +16,7 @@ import (
 // by.
 // Closes by 1.8: a line lives at most two versions (release plan 1.6,
 // «храповики со сроком»; TestMisses_HaveADeadline).
-var liveWorldDrift = map[string]string{
-	// CMP-25: the world goes with the fix of ZoneNames (internal/provision,
-	// TestFlavor_ZonesFromTheLiveAnswer).
-	"compute-flavors (go faultCloud): items.[].availability_zones.[].available is sent by the world, not by the platform": "release plan 1.6, «Зоны flavor по живому ответу» (CMP-25): «разработка»",
-}
+var liveWorldDrift = map[string]string{}
 
 // Release plan 1.6, «Миры из живых ответов», step 2: the worlds of the
 // tools that answer through provision.CloudAPI keep to the live form of the
