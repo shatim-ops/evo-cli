@@ -78,7 +78,7 @@ func parseTariffPage(page string) (tariffSnapshot, error) {
 		if m := tariffInForce.FindStringSubmatch(l); m != nil && s.InForce == "" {
 			s.InForce = m[1]
 		}
-		if !tariffRowNo.MatchString(l) || i+6 >= len(lines) {
+		if !tariffRowNo.MatchString(l) || i+5 >= len(lines) {
 			continue
 		}
 		r := tariffRate{Name: lines[i+1], Unit: lines[i+2], Period: lines[i+3], WithVAT: lines[i+4], WithoutVAT: lines[i+5]}
