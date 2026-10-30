@@ -503,22 +503,5 @@ func (s *Registry) handleKafkaOperation(ctx context.Context, args map[string]any
 	if err != nil {
 		return errResult(err), true
 	}
-	if w := pgInt(args, "wait_seconds", 0); w > 0 {
-		m, err := waitForOpJSON(ctx, w, func(ctx context.Context) (map[string]any, error) {
-			op, err := cli.GetOperation(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-			return opToMap(op), nil
-		})
-		if err != nil {
-			return errResult(err), true
-		}
-		return toJSON(m), false
-	}
-	op, err := cli.GetOperation(ctx, id)
-	if err != nil {
-		return errResult(err), true
-	}
-	return toJSON(op), false
+	return s.operation(ctx, "kafka_operation", args, func(ctx context.Context) (any, error) { return cli.GetOperation(ctx, id) })
 }
