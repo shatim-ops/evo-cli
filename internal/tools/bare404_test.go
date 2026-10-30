@@ -32,6 +32,8 @@ var bare404Kinds = []string{"404html", "404empty", "404text", "404errormsg", "40
 // code 5 (httpretry.RouteNotFoundAsBadGateway, one point for the clients of
 // the services); the list only shrinks — a delete not here fails the test,
 // and so does a line whose delete no longer does it.
+// Closes by 1.8: a line lives at most two versions (release plan 1.6,
+// «храповики со сроком»; TestMisses_HaveADeadline).
 var bare404Gone = map[string]bool{"s3_bucket_delete": true}
 
 // bare404Outside are the deletes D63 does not reach, each with why: their

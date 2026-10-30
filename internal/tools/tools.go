@@ -642,7 +642,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_get",
-			Description: "Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status. Read-only.",
+			Description: "Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status, access (placed in its subnets; no public-access parameter). Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"id":         uuidProp("PostgreSQL cluster UUID (from pg_list). Required (alias: cluster_id)."),
 				"cluster_id": uuidProp("Alias for id."),
@@ -662,7 +662,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation.",
+			Description: "Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation. The cluster is placed in its subnet; the API takes no public-access parameter, evo sets up none.",
 			InputSchema: objSchema(map[string]any{
 				"name":                  strProp("Cluster name (required)."),
 				"version":               strProp("PostgreSQL version (from pg_versions). Optional; default = latest."),

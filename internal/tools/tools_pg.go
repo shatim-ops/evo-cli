@@ -158,8 +158,16 @@ func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string
 	if err != nil {
 		return errResult(err), true
 	}
+	m["access"] = pgAccess
 	return toJSON(m), false
 }
+
+// pgAccess is what evo knows of the access to a PostgreSQL cluster (Ц-21,
+// Ц-24; CLAUDE.md §6, axis 4): CreateClusterRequest of the specification
+// takes subnet_ids and no parameter of access. Facts of the call only:
+// where the cluster is reachable from is the platform's behaviour, a probe
+// of cloud-e2e (DB-5), not the specification's.
+const pgAccess = "placed in the subnets of subnet_ids; the PostgreSQL API takes no public-access parameter; evo sets up none"
 
 // --- Reference ---
 
@@ -716,6 +724,7 @@ func pgCreatePreview(cfg config.Config, will map[string]any) engine.CreatePrevie
 		"subnet_id", "initial_database", "backup_enabled", "backup_schedule", "backup_retention_days"} {
 		p.Add(k, will[k])
 	}
+	p.Add("access", pgAccess)
 	if cpu, ram := pgInt(will, "cpu", 0), pgInt(will, "memory_gb", 0); cpu > 0 && ram > 0 {
 		p.PG = &pricing.PGSize{CPU: cpu, RAMGB: ram, StorageGB: pgInt(will, "storage_gb", 0), Instances: pgInt(will, "instances", 1)}
 	}
