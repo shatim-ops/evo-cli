@@ -1263,9 +1263,12 @@ area_pgnet() {
 	host=$(printf '%s' "$cs" | grep -oE 'host=[^ ;,]+' | head -1 | cut -d= -f2)
 	[ -n "$host" ] || host=$(printf '%s' "$cs" | grep -oE '@[^:/@ ]+' | head -1 | cut -c2-)
 	[ -n "$host" ] || host=$(printf '%s' "$cs" | grep -oE '^[A-Za-z0-9.-]+(:[0-9]+)?$' | cut -d: -f1)
+	[ -n "$host" ] || host=$(printf '%s' "$cs" | sed -nE 's#^[a-z]+://([^:/@?]+).*#\1#p' | head -1)
 	mask "$host"
 	if [ -z "$host" ]; then
-		gap "DB-5: адрес кластера" "connection_string не разобран (тип $(j -r '.connection_string | type'))"
+		# Форма строки без значений (буквы и цифры — x) и ключи ответа: по
+		# ним следующий прогон разберёт адрес (run 150 — «не разобран»).
+		gap "DB-5: адрес кластера" "connection_string не разобран: форма «$(printf '%s' "$cs" | tr 'A-Za-z0-9' 'x' | tr -s 'x' | cut -c1-120)», ключи pg_get $(j -c 'keys' | cut -c1-300)"
 		return 0
 	fi
 	sname=$(evo tools call list_subnets --json | jq -r --arg id "$PG_SUBNET_ID" '[.subnets[]? | select(.id == $id) | .name // ""][0] // ""')
