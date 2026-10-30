@@ -44,14 +44,34 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 		return answered(s.deleteFailed(tool, id, clierrors.New(clierrors.CodeNotFound,
 			i18n.Tf("%s is %s", "%s в состоянии %s", label, status), "")))
 	}
+	target := map[string]any{"id": id, "name": name, "status": status}
+	if refused := passingRefusal(label, id, status, target); refused != nil {
+		return refused
+	}
 	out := map[string]any{
 		"message": i18n.Tf(en, ru, label),
-		"target":  map[string]any{"id": id, "name": name, "status": status},
+		"target":  target,
 	}
 	if warning, _ := engine.DeleteWayOut(status, id); warning != "" {
 		out["warning"] = warning
 	}
 	return &Plan{Preview: out, Execute: withWayOut(execute, status, id)}
+}
+
+// passingRefusal is the answer of a delete of a resource still being
+// created (engine.PassingDeleteState): Cloud.ru refuses it until the
+// resource is ready, so it is refused before the question — USAGE, exit
+// code 1, the way out is to wait (D61); nil in any other status. target
+// names the resource in the answer.
+func passingRefusal(label, id, status string, target map[string]any) *Plan {
+	if !engine.PassingDeleteState(status) {
+		return nil
+	}
+	_, hint := engine.DeleteWayOut(status, id)
+	return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("%s is still being created (%s): Cloud.ru does not delete it until it is ready; nothing was done",
+			"%s ещё создаётся (%s): Cloud.ru не удалит его, пока он не будет готов; ничего не сделано", label, status), hint),
+		map[string]any{"resource_status": status, "target": target}), true)
 }
 
 // notTheState are the reasons of an error that the status of the resource
