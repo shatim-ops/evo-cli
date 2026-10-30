@@ -647,7 +647,7 @@ func (c *faultCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 		return c.flavors, nil
 	}
 	return []*provision.Flavor{{ID: faultFlavor, Name: "low-1-1", VCPUs: 1, RAMGB: 1, Share: "1:1", GPU: new(int), Type: &provision.FlavorType{},
-		Zones: []provision.FlavorZone{{ID: faultZone, Name: "ru.AZ-1", Enabled: true, Available: true}}}}, nil
+		Zones: []provision.FlavorZone{{ID: faultZone, Name: "ru.AZ-1", Enabled: true}}}}, nil
 }
 
 func (c *faultCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {

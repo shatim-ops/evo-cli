@@ -11,7 +11,7 @@ import (
 
 // liveZonesMiss is the work item that makes a flavor of the live answer
 // name its zones; "" once ZoneNames does.
-var liveZonesMiss = "release plan 1.6, «Зоны flavor по живому ответу» (CMP-25): «разработка»"
+var liveZonesMiss = ""
 
 // Register CMP-25 (api-probe 28 and 29, 2 of 2): the live answer of GET
 // /api/v1/flavors has no availability_zones[].available and no
