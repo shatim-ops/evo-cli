@@ -970,6 +970,40 @@ jobs:
             gone "route:${host%%.*}" "https://$host/evo-probe-no-route/$NOID"
           done
 
+      # Решение владельца 30.10 (#597, п. 25): cloud-e2e run 150 — приватная
+      # зона, привязанная к VPC по умолчанию (D65), получила код 13 платформы;
+      # по документации Cloud.ru в VPC должен быть DNS-сервер. Есть ли он в
+      # VPC по умолчанию проекта прогона. Только GET; печатаются коды HTTP,
+      # количества, признаки и состояния — без ID.
+      - name: DNS-серверы в VPC по умолчанию (п. 25, D65)
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PROJECT"
+          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token \
+              -H 'Content-Type: application/json' --data-binary @- |
+            jq -r '.access_token // .accessToken // empty')
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          v="$RUNNER_TEMP/vpcs.json" d="$RUNNER_TEMP/dns.json"
+          vc=$(curl -sS -o "$v" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://vpc.api.cloud.ru/v1/vpcs?project_id=$PROJECT" || echo 000)
+          dc=$(curl -sS -o "$d" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://dns.api.cloud.ru/v1/dnsServers?projectId=$PROJECT&pageSize=100" || echo 000)
+          echo "vpcs: http $vc, всего $(jq '.vpcs | length' "$v" 2>/dev/null || echo ?), по умолчанию $(jq '[.vpcs[]? | select(.default == true)] | length' "$v" 2>/dev/null || echo ?)"
+          echo "dnsServers: http $dc, ключи $(jq -c 'keys' "$d" 2>/dev/null || echo ?), серверов $(jq '.servers | length' "$d" 2>/dev/null || echo ?)"
+          [ "$dc" = 200 ] || echo "dnsServers: $(jq -c '{code, message}' "$d" 2>/dev/null | redact | cut -c1-200)"
+          # Одна страница: список длиннее 100 — итог не «нет», а «список не полон».
+          [ -z "$(jq -r '.nextPageToken // empty' "$d" 2>/dev/null)" ] || echo "dnsServers: список не полон (есть nextPageToken) — итог ниже — нижняя граница"
+          # По серверу: в VPC ли по умолчанию, состояние, используется ли.
+          jq -r --slurpfile vp "$v" '($vp[0].vpcs // [] | map(select(.default == true) | .id)) as $def
+            | .servers[]? | "сервер: в VPC по умолчанию \(.vpcId as $x | $x != null and ($def | index($x) != null)), state \(.state // "?"), usedIn \(.usedIn // [] | length)"' "$d" 2>/dev/null || true
+          n=$(jq -r --slurpfile vp "$v" '($vp[0].vpcs // [] | map(select(.default == true) | .id)) as $def | [.servers[]? | select(.vpcId as $x | $x != null and ($def | index($x) != null))] | length' "$d" 2>/dev/null || echo "?")
+          echo "ИТОГ п. 25: DNS-серверов в VPC по умолчанию — $n"
+
       - name: Права ключа (изменения должны быть запрещены)
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
