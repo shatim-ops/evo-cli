@@ -348,14 +348,14 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	vm := p.VM
 	if pick == nil {
 		pick = func(flavors []*provision.Flavor) (string, error) {
-			return PickVMFlavor(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name))
+			return PickVMFlavorIn(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name), &vm.Zone)
 		}
 	}
 	var flavorErr error
 	var picked *provision.Flavor
 	if flavors, err := e.Cloud.ListFlavors(ctx); err == nil {
 		id, err := pick(flavors)
-		if ce := (*clerrors.CLIError)(nil); errors.As(err, &ce) && ce.Code == clerrors.CodeNotFound {
+		if ce := (*clerrors.CLIError)(nil); errors.As(err, &ce) && (ce.Code == clerrors.CodeNotFound || ce.Code == clerrors.CodeUsage) {
 			flavorErr = err
 		}
 		if err == nil {
@@ -430,6 +430,44 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	defer qcancel()
 	p.Quota = e.quotaCheck(qctx, p.ProjectID)
 	return clerrors.Join(flavorErr, imageErr, networkErr)
+}
+
+// FlavorOutOfZone is provision.FlavorOutOfZone for the zone of a preview
+// (D67): nil zone is no decision.
+func FlavorOutOfZone(f *provision.Flavor, zone *deployplan.RefSpec) error {
+	if zone == nil {
+		return nil
+	}
+	return provision.FlavorOutOfZone(f, zone.ID, zone.Name)
+}
+
+// FlavorsInZone is provision.FlavorsInZone for the zone of a preview.
+func FlavorsInZone(flavors []*provision.Flavor, zone *deployplan.RefSpec) []*provision.Flavor {
+	if zone == nil {
+		return flavors
+	}
+	return provision.FlavorsInZone(flavors, zone.ID, zone.Name)
+}
+
+// PickVMFlavorIn is PickVMFlavor for a VM in zone: the automatic pick
+// ("" or "auto") takes a flavor of the zone (FlavorsInZone); the flavor
+// picked or named out of the zone is refused (FlavorOutOfZone) — the same in
+// the preview and in the create.
+func PickVMFlavorIn(flavors []*provision.Flavor, want string, zone *deployplan.RefSpec) (string, error) {
+	pool := flavors
+	if want == "" || want == "auto" {
+		pool = FlavorsInZone(flavors, zone)
+	}
+	id, err := PickVMFlavor(pool, want)
+	if err != nil {
+		return "", err
+	}
+	for _, f := range flavors {
+		if f.ID == id {
+			return id, FlavorOutOfZone(f, zone)
+		}
+	}
+	return id, nil
 }
 
 // addCatalogueLines says what the catalogue says of the VM's flavor and

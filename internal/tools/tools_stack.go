@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -760,6 +761,20 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 	}
 	if err := provision.ClosedZoneError(zones, zone.ID); err != nil {
 		return nil, err
+	}
+	// A flavor named by the manifest (normalizeManifest found it) not in
+	// the VM's zone: refused here, as provision refuses it (D67).
+	if vm.Flavor != "" && vm.Flavor != "auto" {
+		if flavors, err := eng.Cloud.ListFlavors(ctx); err == nil {
+			for _, f := range flavors {
+				if f.Name == vm.Flavor || f.ID == vm.Flavor {
+					if err := engine.FlavorOutOfZone(f, &deployplan.RefSpec{ID: zone.ID, Name: zone.Name}); err != nil {
+						return nil, clierrors.Prefix("vm.flavor: ", err)
+					}
+					break
+				}
+			}
+		}
 	}
 	vm.Image, vm.Zone = img.ID, zone.ID
 	return map[string]any{"image": firstNonEmptyStr(img.Name, img.ID), "image_id": img.ID,

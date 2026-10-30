@@ -82,6 +82,12 @@ var consentWorlds = map[string]consentWorld{
 	// (the world's default) takes the catalogue's own and fails nothing.
 	"flavor not in the catalogue": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return noFlavorCloud{c} },
 		env: map[string]string{"CLOUDRU_FLAVOR": "lowcost10-2-4"}, refusedBy: []string{"provision", "deploy"}},
+	// The flavor of the configuration is in the catalogue, but not in the
+	// zone of the call (agent run C2 on rc.2, Ц-12; D67): provision and
+	// deploy read the flavor's zones for the preview, so they know the
+	// call fails.
+	"flavor of another zone": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return otherZoneFlavorCloud{c} },
+		env: map[string]string{"CLOUDRU_FLAVOR": "lowcost10-2-4"}, refusedBy: []string{"provision", "deploy"}},
 	// The path of secret_create is taken: secret_create reads the list
 	// before the question and refuses the taken path (D49; was the
 	// create's 4xx after it, G130-15, D42).
@@ -190,6 +196,15 @@ type noFlavorCloud struct{ provision.CloudAPI }
 
 func (noFlavorCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	return []*provision.Flavor{{ID: consentOtherID, Name: "other-1-1", VCPUs: 1, RAMGB: 1, Share: "1:1", GPU: new(int), Type: &provision.FlavorType{}}}, nil
+}
+
+// otherZoneFlavorCloud has the flavor of the call only in a zone of no
+// call of the world.
+type otherZoneFlavorCloud struct{ provision.CloudAPI }
+
+func (otherZoneFlavorCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
+	return []*provision.Flavor{{ID: consentOtherID, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{},
+		Zones: []provision.FlavorZone{{ID: "00000000-0000-4000-8000-0000000000b9", Name: "ru.AZ-9", Enabled: true}}}}, nil
 }
 
 // consentOtherID is a resource of the world the call did not make.
@@ -443,6 +458,14 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 					found[key] = "asks for consent in a world it can read as refusing the write"
 				case c.world.names != "" && !strings.Contains(msg, c.world.names):
 					found[key] = fmt.Sprintf("refuses without naming %q: %s", c.world.names, clipLine(msg))
+				default:
+					// The call with confirmed=true in the same world: the
+					// same refusal, and no write (Fable, FB160-15 — MCP
+					// deploy went past its preview's refusal).
+					after, _, writes := call(tl, c, true)
+					if writes > 0 || after["reason"] != before["reason"] {
+						found[key+" (confirmed)"] = fmt.Sprintf("refuses with %v before the question, with %v and %d writes after consent", before["reason"], after["reason"], writes)
+					}
 				}
 				continue
 			}
