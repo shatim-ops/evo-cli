@@ -338,8 +338,8 @@ func hintUnexpectedFormat() string {
 }
 
 func hintUnexpectedFormatVerbose() string {
-	return i18n.T("API returned unexpected format — run with --verbose to debug",
-		"API вернул ответ в неожиданном формате — подробности покажет --verbose")
+	return i18n.T("API returned unexpected format — the verbose mode of evo shows the answer",
+		"API вернул ответ в неожиданном формате — подробный режим evo покажет ответ")
 }
 
 func hintCheckRequest() string {

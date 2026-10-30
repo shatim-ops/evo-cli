@@ -121,6 +121,11 @@ func uncodedHint(err error, reason string) string {
 		case http.StatusUnauthorized:
 			return clierrors.TokenRejectedHint()
 		case http.StatusForbidden:
+			// Object Storage is reached with keys of its own (Ц-3).
+			var se minio.ErrorResponse
+			if stderrors.As(err, &se) {
+				return clierrors.S3AccessHint()
+			}
 			return clierrors.NoRoleHint()
 		}
 	}

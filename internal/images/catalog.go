@@ -516,8 +516,8 @@ func NotInProjectError(image string) error {
 	return clierrors.New(clierrors.CodeNotFound,
 		i18n.Tf("image %q is in the Cloud.ru catalogue but not available to the project: the API will not create a VM from it",
 			"образ %q есть в каталоге Cloud.ru, но недоступен проекту: создать из него ВМ API не даст", image),
-		i18n.T("Images the project can use: evo image list <query> (the unavailable ones are hidden; --all shows them marked). A Marketplace product probably has to be connected to the project first (unverified).",
-			"Образы, доступные проекту: evo image list <запрос> (недоступные скрыты; --all покажет их с пометкой). Продукт Marketplace, вероятно, сначала нужно подключить к проекту (не проверено)."))
+		i18n.T("Images the project can use: evo image list <query> (the unavailable ones are hidden; asked for all, they are shown marked). A Marketplace product probably has to be connected to the project first (unverified).",
+			"Образы, доступные проекту: evo image list <запрос> (недоступные скрыты; если запросить все, они видны с пометкой). Продукт Marketplace, вероятно, сначала нужно подключить к проекту (не проверено)."))
 }
 
 // ZoneShort is a zone name without its region prefix: "ru.AZ-1" → "AZ-1".
