@@ -172,7 +172,10 @@ func TestDeletePlan_PassingStateRefusedBeforeTheQuestion(t *testing.T) {
 		deleted := false
 		p := r.deletePlan("kafka_delete", "kafka_delete deletes %s.", "kafka_delete удаляет %s.", id,
 			func() (map[string]any, error) { return map[string]any{"id": id, "name": "kf-1", "status": status}, nil },
-			func(context.Context) (string, bool) { deleted = true; return toJSON(map[string]any{"status": "deleting"}), false })
+			func(context.Context) (string, bool) {
+				deleted = true
+				return toJSON(map[string]any{"status": "deleting"}), false
+			})
 		if p.Execute != nil || p.Preview != nil {
 			t.Errorf("%s: the delete asks the question", status)
 			continue
