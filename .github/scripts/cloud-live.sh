@@ -198,6 +198,8 @@ lst() {
 			r=$(evo tools call vpc_routes --arg vpc_id="$v" --json 2>"$tmp/lst.err") || return 1
 			jq -r --arg v "$v" --arg c "$ROUTE_CIDRS" '($c | split(" ")) as $cs | .routes[]? | select(.subnet as $n | $cs | index($n)) | "\($v) \(.id)\troute \(.subnet)"' <<<"$r"
 		done ;;
+	subnet) out=$(evo tools call list_subnets --json 2>"$tmp/lst.err") &&
+		jq -r --arg p "$p" '.subnets[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	vpc) out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.vpcs[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	dns) out=$(evo tools call dns_zones --json 2>"$tmp/lst.err") &&
@@ -228,6 +230,7 @@ del() {
 	disk) tc disk_delete --arg disk_id="$id" ;;
 	image) tc image_delete --arg image_id="$id" ;;
 	route) tc vpc_route_delete --arg vpc_id="${id%% *}" --arg route_id="${id#* }" ;;
+	subnet) tc subnet_delete --arg subnet_id="$id" ;;
 	vpc) tc vpc_delete --arg id="$id" ;;
 	dns) tc dns_zone_delete --arg type="${id%% *}" --arg id="${id#* }" ;;
 	s3)
@@ -239,14 +242,14 @@ del() {
 	cert) tc cert_delete --arg id="$id" ;;
 	esac
 }
-KINDS="ca ar lb tg vm snat fip disk image route vpc dns s3 secret cert"
+KINDS="ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert"
 # area_kinds ОБЛАСТЬ — виды ресурсов, которые область создаёт: её уборка
 # читает только их (список одного вида бывает медленным: ar_list 18.10 —
 # ~9,5 мин). Маршрут тестовой сети — только у net.
 area_kinds() {
 	case "$1" in
 	disk) echo "vm fip disk image" ;;
-	net) echo "lb tg vm snat fip route vpc" ;;
+	net) echo "lb tg vm snat fip route subnet vpc" ;;
 	dns) echo "dns" ;;
 	s3) echo "s3" ;;
 	secrets) echo "secret cert" ;;
@@ -431,7 +434,21 @@ area_disk() {
 	ok provision "$(j -r .status), диск $(j -r .disk_gb) ГБ"
 	cov provision
 
-	must disk_create disk_create --arg name="$prefix-data" --arg size_gb=10 --arg zone="$ZONE" || return 1
+	# D58 (1.6): зона из настроек по имени. CLOUDRU_REGION с именем зоны,
+	# которой нет, — отказ до вопроса (USAGE), диска нет; диск данных —
+	# без аргумента zone, зона — CLOUDRU_REGION=$ZONE по имени (раньше имя
+	# уходило в availability_zone_id и платформа отвергала его после «да»).
+	local region_was=${CLOUDRU_REGION-} region_set=${CLOUDRU_REGION+x}
+	export CLOUDRU_REGION="$ZONE-no-such-zone"
+	tc disk_create --arg name="$prefix-nozone" --arg size_gb=10
+	if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(lst disk "$prefix-nozone")" ]; then
+		ok "disk_create: зоны с таким именем нет" "USAGE до вопроса, диска нет (D58)"
+	else bad "disk_create: зоны с таким именем нет" "код $rc, $reason; дисков $prefix-nozone: $(lst disk "$prefix-nozone" | wc -l)"; fi
+	export CLOUDRU_REGION="$ZONE"
+	tc disk_create --arg name="$prefix-data" --arg size_gb=10
+	if [ -n "$region_set" ]; then export CLOUDRU_REGION="$region_was"; else unset CLOUDRU_REGION; fi
+	[ "$rc" = 0 ] || { bad "disk_create, зона из CLOUDRU_REGION по имени" "код $rc, $reason: $why"; return 1; }
+	ok "disk_create: зона из CLOUDRU_REGION по имени" "создан — ушёл UUID (D58)"
 	local t0=$SECONDS # ответ disk_create: от него — время до attached (N3)
 	data=$(j -r '.disk_id // .disk.id // empty')
 	mask "$data"
@@ -463,6 +480,12 @@ area_disk() {
 	settled() { st=$(dstate); case "$st" in attaching | detaching | extending | creating | "") return 1 ;; *) return 0 ;; esac; }
 	poll 300 10 settled || true
 	ok "состояние подключённого диска" "$st"
+	# D59 (1.6): удаление подключённого диска — отказ до вопроса (USAGE), и
+	# с --yes; диск на месте и подключён.
+	tc disk_delete --arg disk_id="$data"
+	if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && disk_has '.disks[] | select(.id == $id) | (.attached_to // []) | length > 0'; then
+		ok "disk_delete подключённого" "USAGE до вопроса, диск подключён (D59)"
+	else bad "disk_delete подключённого" "код $rc, $reason; диск в attached_to: $(disk_has '.disks[] | select(.id == $id) | (.attached_to // []) | length > 0' && echo да || echo нет)"; return 1; fi
 	tc disk_resize --arg disk_id="$data" --arg size_gb=20
 	if [ "$rc" = 0 ]; then
 		if poll 180 10 disk_has '.disks[] | select(.id == $id) | .size_gb == 20'; then
@@ -563,6 +586,38 @@ area_disk() {
 	# загрузочный диск отключён от ВМ — его удаляет уборка (disk_delete)
 }
 
+# subnet_steps VPC — subnet_create и subnet_delete (1.6, #567: новые
+# create и delete входят в живой прогон своей версии, CLAUDE.md §5) в
+# пустом VPC прогона: создание видно в list_subnets; второе имя — отказ
+# до вопроса (USAGE), второй подсети нет; удаление (подсеть, которая ещё
+# создаётся, — USAGE до вопроса, D61: повтор до 5 мин); подсети нет в
+# list_subnets; повтор удаления — already_deleted (D26). Сеть 10.255.254.0/24
+# — в новом VPC, ни с чем не пересекается.
+subnet_steps() {
+	local v=$1 sn sname="$prefix-sn"
+	must subnet_create subnet_create --arg name="$sname" --arg cidr=10.255.254.0/24 --arg vpc_id="$v" --arg zone="$ZONE" || return 0
+	sn=$(j -r '.subnet_id // empty')
+	mask "$sn"
+	[ -n "$sn" ] || { bad subnet_create "нет subnet_id в ответе"; return 0; }
+	sn_listed() { evo tools call list_subnets --json | jq -e --arg id "$sn" 'any(.subnets[]?; .id == $id)' >/dev/null; }
+	if poll 120 10 sn_listed; then ok subnet_create "подсеть в list_subnets"; else bad subnet_create "подсети нет в list_subnets за 2 мин"; fi
+	tc subnet_create --arg name="$sname" --arg cidr=10.255.253.0/24 --arg vpc_id="$v" --arg zone="$ZONE"
+	if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ "$(lst subnet "$sname" | wc -l)" = 1 ]; then
+		ok "subnet_create с занятым именем" "USAGE до вопроса, подсеть одна"
+	else bad "subnet_create с занятым именем" "код $rc, $reason; подсетей $sname: $(lst subnet "$sname" | wc -l)"; fi
+	sn_del() { tc subnet_delete --arg subnet_id="$sn"; [ "$rc" = 0 ]; }
+	if poll 300 15 sn_del; then
+		if poll 300 15 sh -c "evo tools call list_subnets --json | jq -e --arg id '$sn' '(.subnets | type) == \"array\" and (any(.subnets[]; .id == \$id) | not)' >/dev/null"; then
+			ok subnet_delete "подсети нет в list_subnets"
+			cov subnet_create subnet_delete
+		else bad subnet_delete "подсеть в list_subnets через 5 мин"; fi
+	else bad subnet_delete "код $rc, $reason: $why"; return 0; fi
+	tc subnet_delete --arg subnet_id="$sn"
+	if [ "$rc" = 0 ] && [ "$(j -r '.status // empty')" = already_deleted ]; then
+		ok "subnet_delete повтор" already_deleted
+	else bad "subnet_delete повтор" "код $rc, status $(j -r '.status // empty'), $reason"; fi
+}
+
 # Сеть: VPC, ВМ без публичного IP за балансировщиком, FIP, правило, маршрут, SNAT.
 area_net() {
 	local zid a b fip fip_ip tg lb sg vpc dvpc ifc op n
@@ -579,6 +634,7 @@ area_net() {
 		cov vpc_create
 		if [ -n "$vpc" ] && must vpc_get vpc_get --arg id="$vpc"; then ok vpc_get "$(j -r '.name == "'"$prefix-vpc"'"')"; fi
 		[ -z "$vpc" ] || bound_check vpc_get "$(jq -cn --arg i "$vpc" '{id: $i}')" "allow-project: vpc_get"
+		[ -z "$vpc" ] || subnet_steps "$vpc"
 		if [ -n "$vpc" ] && must vpc_delete vpc_delete --arg id="$vpc"; then
 			if opwait vpc "$(j -r .operation_id)" 600 && poll 300 15 gone vpc "$prefix-vpc"; then
 				ok vpc_delete "VPC нет в vpc_list"
@@ -604,9 +660,28 @@ area_net() {
 	# адрес назван не префиксом ВМ B: уборка освобождает fip-<префикс>*, этот — по id
 	echo "$fip" >"$tmp/fip_id"
 
-	# ВМ B без публичного IP — цель балансировщика.
+	# D57 (1.6): подсеть по имени. Имени, которого нет, — отказ до вопроса
+	# (USAGE), ВМ нет; ВМ B создаётся с подсетью зоны по имени (имя
+	# единственное в проекте — два совпадения D57 отвергает): платформа
+	# приняла бы имя в поле id только как 4xx, так что созданная ВМ значит,
+	# что ушёл UUID.
+	tc provision --arg name="$prefix-nosn" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg subnet_id="$prefix-no-such-subnet"
+	if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(lst vm "$prefix-nosn")" ]; then
+		ok "provision: подсети с таким именем нет" "USAGE до вопроса, ВМ нет (D57)"
+	else bad "provision: подсети с таким именем нет" "код $rc, $reason; ВМ $prefix-nosn: $(lst vm "$prefix-nosn" | wc -l)"; fi
+	local snname
+	snname=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | .name // "" | select(. != "")] as $all
+		| [.subnets[]? | select(.availability_zone_id == $z) | .name // "" | select(. != "") | select(. as $n | [$all[] | ascii_downcase | select(. == ($n | ascii_downcase))] | length == 1)][0] // empty')
+
+	# ВМ B без публичного IP — цель балансировщика; подсеть — по имени (D57).
 	b="$prefix-b"
-	must "provision no_public_ip" provision --arg name="$b" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true || return 1
+	if [ -z "$snname" ]; then
+		gap "provision: подсеть по имени" "в $ZONE нет подсети с единственным в проекте именем"
+		must "provision no_public_ip" provision --arg name="$b" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true || return 1
+	else
+		must "provision no_public_ip, подсеть по имени" provision --arg name="$b" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true --arg subnet_id="$snname" || return 1
+		ok "provision: подсеть по имени" "ВМ создана — ушёл UUID (D57)"
+	fi
 	mask "$(j -r '.vm_id // empty')"
 	if [ "$(j -r .private)" = true ]; then
 		ok "provision no_public_ip" "private"
@@ -992,6 +1067,16 @@ area_stack() {
 		secrets: [{path: ($n + "/token"), value: $s}],
 		nlb: {name: ($n + "-lb"), port: 80, external: false}
 	}}' >"$tmp/m.json"
+	# D64 (1.6): тот же стек с публичной записью DNS на внутренний
+	# балансировщик (dns.target по умолчанию — lb, nlb.external: false) —
+	# отказ stack_plan до вопроса (USAGE) и до чтений облака, задания нет.
+	# zone_id — нулевой UUID: проверка идёт раньше, чем evo читает зону.
+	jq '.manifest.dns = {zone_id: "00000000-0000-0000-0000-000000000000", name: "app"}' "$tmp/m.json" >"$tmp/m-dns.json"
+	tc stack_plan --args-file "$tmp/m-dns.json"
+	rm -f "$tmp/m-dns.json"
+	if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(j -r '.job_id // empty')" ]; then
+		ok "stack_plan: DNS на внутренний балансировщик" "USAGE до вопроса, задания нет (D64)"
+	else bad "stack_plan: DNS на внутренний балансировщик" "код $rc, $reason, job_id: $(j -r 'if .job_id then "есть" else "нет" end')"; fi
 	must stack_plan stack_plan --args-file "$tmp/m.json" || return 1
 	rm -f "$tmp/m.json"
 	job=$(j -r .job_id)
