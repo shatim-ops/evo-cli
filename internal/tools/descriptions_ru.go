@@ -304,7 +304,7 @@ var toolsRU = map[string]toolRU{
 	"vpc_operation": {
 		Short: "Состояние асинхронной операции VPC",
 		Long: "Состояние асинхронной операции VPC по id — его возвращают 'evo vpc create', 'evo vpc delete', " +
-			"'evo vpc route-create' и 'evo vpc route-delete': done — завершена ли операция, error — ошибка. С --wait-seconds " +
+			"'evo vpc route-create' и 'evo vpc route-delete': done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds " +
 			"команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
 			"operation_id": "UUID операции (обязательный)",
@@ -664,7 +664,7 @@ var toolsRU = map[string]toolRU{
 	"pg_operation": {
 		Short: "Состояние асинхронной операции PostgreSQL",
 		Long: "Состояние асинхронной операции Managed PostgreSQL по id — его возвращают 'evo pg create', " +
-			"'evo pg delete' и 'evo pg backup-create': done — завершена ли операция, error — ошибка. С --wait-seconds " +
+			"'evo pg delete' и 'evo pg backup-create': done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds " +
 			"команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
 			"operation_id": "UUID операции (обязательный)",
@@ -894,7 +894,7 @@ var toolsRU = map[string]toolRU{
 	"dns_operation": {
 		Short: "Состояние асинхронной операции DNS",
 		Long: "Состояние асинхронной операции DNS по id — его возвращают создание и удаление зон и записей DNS: " +
-			"done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N " +
+			"done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N " +
 			"секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
 			"operation_id": "UUID операции (обязательный)",
@@ -1042,7 +1042,7 @@ var toolsRU = map[string]toolRU{
 	"cert_operation": {
 		Short: "Состояние асинхронной операции Certificate Manager",
 		Long: "Состояние асинхронной операции Certificate Manager (выпуск или перевыпуск сертификата) по id: " +
-			"опрашивайте, пока не станет done=true. С --wait-seconds команда сама ждёт завершения до N секунд и " +
+			"опрашивайте, пока не станет done=true; elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N секунд и " +
 			"выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
 			"operation_id": "id операции выпуска или перевыпуска сертификата (обязательный)",
@@ -1068,7 +1068,7 @@ var toolsRU = map[string]toolRU{
 	"lb_operation": {
 		Short: "Состояние асинхронной операции балансировщика",
 		Long: "Состояние асинхронной операции балансировщика по id — его возвращают создание и удаление " +
-			"балансировщиков и групп целей: done — завершена ли операция, error — ошибка. С --wait-seconds " +
+			"балансировщиков и групп целей: done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds " +
 			"команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
 			"operation_id": "UUID операции (обязательный)",
@@ -1260,7 +1260,7 @@ var toolsRU = map[string]toolRU{
 	"kafka_operation": {
 		Short: "Состояние асинхронной операции Kafka",
 		Long: "Состояние асинхронной операции Managed Kafka по id — его возвращают создание и удаление кластера: " +
-			"done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N " +
+			"done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N " +
 			"секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
 			"operation_id": "UUID операции (обязательный)",
@@ -1337,7 +1337,7 @@ var toolsRU = map[string]toolRU{
 	"redis_operation": {
 		Short: "Состояние асинхронной операции Redis",
 		Long: "Состояние асинхронной операции Managed Redis по id — его возвращают создание и удаление кластера: " +
-			"done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт завершения до N " +
+			"done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N " +
 			"секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
 			"operation_id": "UUID операции (обязательный)",
@@ -1385,7 +1385,7 @@ var toolsRU = map[string]toolRU{
 	"ar_operation": {
 		Short: "Состояние асинхронной операции Artifact Registry",
 		Long: "Состояние асинхронной операции Artifact Registry по id — его возвращают создание и удаление " +
-			"реестра: done — завершена ли операция, error — ошибка. С --wait-seconds команда сама ждёт " +
+			"реестра: done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт " +
 			"завершения до N секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
 			"operation_id": "UUID операции (обязательный)",

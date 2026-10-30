@@ -691,7 +691,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_operation",
-			Description: "Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). Returns {done, error}. Read-only.",
+			Description: "Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"operation_id": strProp("Operation UUID. Required."),
 				"wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of the agent re-checking every few seconds. Omit for a single instant check."),
@@ -747,7 +747,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_operation",
-			Description: "Poll a Managed Kafka async operation by id (from kafka_create/kafka_delete). Returns {done, error}. Read-only.",
+			Description: "Poll a Managed Kafka async operation by id (from kafka_create/kafka_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
 		},
 		{
@@ -801,7 +801,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_operation",
-			Description: "Poll a Managed Redis async operation by id (from redis_create/redis_delete). Returns {done, error}. Read-only.",
+			Description: "Poll a Managed Redis async operation by id (from redis_create/redis_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
 		},
 		{
@@ -886,7 +886,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "lb_operation",
-			Description: "Poll a Load Balancer async operation by id (from lb_create/lb_delete/tg_create/tg_delete). Returns {done, error}. Read-only.",
+			Description: "Poll a Load Balancer async operation by id (from lb_create/lb_delete/tg_create/tg_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
 		},
 		{
@@ -965,7 +965,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_operation",
-			Description: "Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). Returns {done, error}. Read-only.",
+			Description: "Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
 		},
 		{
@@ -1032,7 +1032,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_operation",
-			Description: "Poll a DNS async operation by id (from dns_zone_create/delete, dns_record_create/delete). Returns {done, error}. Read-only.",
+			Description: "Poll a DNS async operation by id (from dns_zone_create/delete, dns_record_create/delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
 		},
 		{
@@ -1153,7 +1153,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ar_operation",
-			Description: "Poll an Artifact Registry async operation by id (from ar_create/ar_delete). Returns {done, error}. Read-only.",
+			Description: "Poll an Artifact Registry async operation by id (from ar_create/ar_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
 		},
 		{
@@ -1278,7 +1278,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_operation",
-			Description: "Certificate Manager — poll an async operation (issue/renew) by id until done=true. Read-only.",
+			Description: "Certificate Manager — poll an async operation (issue/renew) by id until done=true. Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation id from cert_issue_le/cert_renew. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
 		},
 		{
