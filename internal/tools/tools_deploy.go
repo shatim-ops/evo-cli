@@ -571,7 +571,12 @@ func (s *Registry) handleListSubnets(ctx context.Context, args map[string]any) (
 	}
 	out := make([]map[string]any, 0, len(subnets))
 	for _, s := range subnets {
-		out = append(out, map[string]any{"id": s.ID, "name": s.Name, "availability_zone_id": s.AvailabilityZoneID})
+		item := map[string]any{"id": s.ID, "name": s.Name, "availability_zone_id": s.AvailabilityZoneID}
+		// The name of the zone, read with the subnet (Линия CLI).
+		if s.AvailabilityZoneName != "" {
+			item["availability_zone_name"] = s.AvailabilityZoneName
+		}
+		out = append(out, item)
 	}
 	return toJSON(map[string]any{"subnets": out}), false
 }
@@ -591,6 +596,9 @@ func (s *Registry) handleListSecurityGroups(ctx context.Context, args map[string
 	out := make([]map[string]any, 0, len(sgs))
 	for _, g := range sgs {
 		item := map[string]any{"id": g.ID, "name": g.Name, "availability_zone_id": g.AvailabilityZoneID}
+		if g.AvailabilityZoneName != "" {
+			item["availability_zone_name"] = g.AvailabilityZoneName
+		}
 		if withRules {
 			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, g.ID)
 			if err != nil {
