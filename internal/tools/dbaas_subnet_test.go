@@ -47,7 +47,7 @@ func TestDbaasSubnet_SkipsAndRefusesClosedZone(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	id, _, zone, err := dbaasSubnet(ctx, eng(subnets), "")
+	id, _, _, zone, err := dbaasSubnet(ctx, eng(subnets), "")
 	if err != nil || id != "sn-2" || zone != "ru.AZ-2" {
 		t.Errorf("default subnet = %s in %s (%v), want sn-2 in the open ru.AZ-2", id, zone, err)
 	}
@@ -59,7 +59,7 @@ func TestDbaasSubnet_SkipsAndRefusesClosedZone(t *testing.T) {
 		{"only a subnet of the closed zone", subnets[:1], ""},
 		{"explicit subnet of the closed zone", subnets, "sn-1"},
 	} {
-		_, _, _, err := dbaasSubnet(ctx, eng(c.subs), c.arg)
+		_, _, _, _, err := dbaasSubnet(ctx, eng(c.subs), c.arg)
 		if ce, ok := err.(*clierrors.CLIError); !ok || ce.Code != clierrors.CodeConfigInvalid {
 			t.Errorf("%s: %v, want CONFIG_INVALID", c.label, err)
 		}
@@ -82,7 +82,7 @@ func TestDbaasSubnet_MainSubnetOfTheProfilesZone(t *testing.T) {
 	}
 	for _, region := range []string{raAZ1, "ru.AZ-1"} {
 		eng := &engine.Engine{Config: config.Config{ProjectID: dbaasProject, Region: region}, Cloud: zoneCloud{zones: zones, subnets: subnets}}
-		id, _, zone, err := dbaasSubnet(context.Background(), eng, "")
+		id, _, _, zone, err := dbaasSubnet(context.Background(), eng, "")
 		if err != nil || id != "sn-az1-main" || zone != "ru.AZ-1" {
 			t.Errorf("region %s: subnet = %s in %s (%v), want sn-az1-main, the main subnet of the profile's ru.AZ-1", region, id, zone, err)
 		}

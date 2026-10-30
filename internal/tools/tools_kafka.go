@@ -158,27 +158,28 @@ func dbaasSubnetErr(err error) (*Plan, error) {
 // that zone (a flavor may be missing in a zone). subnet_id as given; else
 // in the configured region the zone's main subnet (provision.PickSubnet);
 // without a region the first zone with a subnet, ru.AZ-2 first (as evo
-// init). Returns the subnet, the zone UUID and the zone to show.
-func dbaasSubnet(ctx context.Context, eng *engine.Engine, subnetArg string) (subnetID, zoneID, zoneShown string, err error) {
+// init). Returns the subnet, its name as the list of the project's subnets
+// gives it ("" when not read), the zone UUID and the zone to show.
+func dbaasSubnet(ctx context.Context, eng *engine.Engine, subnetArg string) (subnetID, subnetName, zoneID, zoneShown string, err error) {
 	zones, _ := eng.Cloud.ListAvailabilityZones(ctx)
-	subnetID, zoneID, zoneShown, err = pickDBaaSSubnet(ctx, eng, subnetArg, zones)
+	subnetID, subnetName, zoneID, zoneShown, err = pickDBaaSSubnet(ctx, eng, subnetArg, zones)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
 	}
 	// A cluster in a zone closed for new resources never comes up and, for
 	// PostgreSQL, ends FAILED, which the API does not delete (register
 	// DB-21, OPS-10; final audit, N-06).
 	if cerr := provision.ClosedZoneError(zones, zoneID); cerr != nil {
-		return "", "", "", cerr
+		return "", "", "", "", cerr
 	}
-	return subnetID, zoneID, zoneShown, nil
+	return subnetID, subnetName, zoneID, zoneShown, nil
 }
 
-func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, zones []*provision.AvailabilityZone) (subnetID, zoneID, zoneShown string, err error) {
+func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, zones []*provision.AvailabilityZone) (subnetID, subnetName, zoneID, zoneShown string, err error) {
 	subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
 	if err != nil || len(subs) == 0 {
 		if subnetArg == "" {
-			return "", "", "", errors.New(i18n.T("resolve subnet: no subnet of the project could be read; pass subnet_id explicitly", "выбор подсети: не прочитано ни одной подсети проекта; передайте subnet_id"))
+			return "", "", "", "", errors.New(i18n.T("resolve subnet: no subnet of the project could be read; pass subnet_id explicitly", "выбор подсети: не прочитано ни одной подсети проекта; передайте subnet_id"))
 		}
 		subs = nil
 	}
@@ -206,38 +207,42 @@ func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, 
 				ids[i] = sn.ID
 			}
 			if err := notInCatalogue(i18n.T("subnet", "подсети"), subnetArg, ids, "list_subnets"); err != nil {
-				return "", "", "", err
+				return "", "", "", "", err
 			}
 		}
 		if picked == nil || picked.AvailabilityZoneID == "" {
 			zid, shown, zerr := dbaasZone(ctx, eng, "")
-			return subnetArg, zid, shown, zerr
+			name := ""
+			if picked != nil {
+				name = picked.Name
+			}
+			return subnetArg, name, zid, shown, zerr
 		}
 	case eng.Config.Region != "":
 		zid, shown, zerr := dbaasZone(ctx, eng, "")
 		if zerr != nil {
-			return "", "", "", zerr
+			return "", "", "", "", zerr
 		}
 		if i := provision.PickSubnet(subs, zid, shown); i >= 0 && provision.SubnetInZone(subs[i], zid, shown) {
-			return subs[i].ID, zid, shown, nil
+			return subs[i].ID, subs[i].Name, zid, shown, nil
 		}
-		return "", "", "", &subnetMissingError{clierrors.New(clierrors.CodeUsage,
+		return "", "", "", "", &subnetMissingError{clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("no subnet of the project in zone %s", "в зоне %s нет подсети проекта", shown),
 			i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); if the project has no subnet in any zone, create one in the Cloud.ru console.",
 				"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))}
 	default:
 		for _, z := range engine.PreferredZoneFirst(provision.OpenZones(zones)) {
 			if i := provision.PickSubnet(subs, z.ID, z.Name); i >= 0 && provision.SubnetInZone(subs[i], z.ID, z.Name) {
-				return subs[i].ID, z.ID, z.Name, nil
+				return subs[i].ID, subs[i].Name, z.ID, z.Name, nil
 			}
 		}
 		picked = subs[0]
 	}
 	if picked.AvailabilityZoneID == "" {
 		zid, shown, zerr := dbaasZone(ctx, eng, "")
-		return picked.ID, zid, shown, zerr
+		return picked.ID, picked.Name, zid, shown, zerr
 	}
-	return picked.ID, picked.AvailabilityZoneID, zoneName(picked.AvailabilityZoneID), nil
+	return picked.ID, picked.Name, picked.AvailabilityZoneID, zoneName(picked.AvailabilityZoneID), nil
 }
 
 func (s *Registry) kafkaClientEng(ctx context.Context) (*dbaas.Client, *engine.Engine, error) {
@@ -374,7 +379,7 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 
 	// The subnet first: its zone is the cluster's, and the specifications
 	// are listed for it.
-	subnetID, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
+	subnetID, subnetName, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
 	if err != nil {
 		return dbaasSubnetErr(err)
 	}
@@ -407,11 +412,14 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gib": storage, "brokers": brokers, "subnet_id": subnetID,
 		"availability_zone": zone, "ui_enabled": boolArg(args, "ui_enabled", false),
 		"cruise_control_enabled": false, "cruise_control_rebalance_auto_enabled": false}
+	if subnetName != "" {
+		willCreate["subnet_name"] = subnetName
+	}
 	out := map[string]any{"message": i18n.T("kafka_create provisions a BILLABLE Managed Kafka cluster (async, ~minutes).",
 		"kafka_create создаёт ПЛАТНЫЙ кластер Managed Kafka (асинхронно, несколько минут)."),
 		"will_create": willCreate,
 		"preview": willPreview(engine.ResourceKafka, name, zone, willCreate,
-			[]string{"version_id", "cpu", "memory_gb", "storage_gib", "brokers", "subnet_id", "ui_enabled",
+			[]string{"version_id", "cpu", "memory_gb", "storage_gib", "brokers", "subnet_id", "subnet_name", "ui_enabled",
 				"cruise_control_enabled", "cruise_control_rebalance_auto_enabled"}, brokersNote)}
 	if brokersNote != "" {
 		out["warning"] = brokersNote

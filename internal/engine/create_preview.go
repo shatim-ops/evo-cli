@@ -607,12 +607,12 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 			lines = append(lines, publicIPLine(*p.PublicIP))
 		}
 		source := sgrules.Anywhere
-		for _, prm := range p.Params {
+		for _, prm := range namedParams(p.Params) {
 			if prm.Key == "ports_source" {
 				source = paramValue(prm.Value)
 			}
 		}
-		for _, prm := range p.Params {
+		for _, prm := range namedParams(p.Params) {
 			v := paramValue(prm.Value)
 			switch {
 			case v == "", prm.Key == "ports_source":
@@ -637,7 +637,7 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 			}
 			lines = append(lines, previewLabel("disk", "диск")+size)
 		}
-		for _, prm := range p.Params {
+		for _, prm := range namedParams(p.Params) {
 			if l := paramLine(prm); l != "" {
 				lines = append(lines, l)
 			}
@@ -941,6 +941,40 @@ var notCheckedLabels = map[string]struct{ en, ru string }{
 }
 
 // paramLine is one parameter as "label: value"; "" for an empty value.
+// namedParams are params as a person reads them: a reference "<x>_id"
+// whose thing the preview names ("<x>_name" beside it) is one parameter
+// «name (id)» (release plan 1.6, «Линия CLI»), as the CLI shows an answer
+// (cli.refValue); the JSON preview keeps both.
+func namedParams(params []PreviewParam) []PreviewParam {
+	names := map[string]string{}
+	for _, prm := range params {
+		if base, ok := strings.CutSuffix(prm.Key, "_name"); ok {
+			if v, _ := prm.Value.(string); v != "" {
+				names[base] = v
+			}
+		}
+	}
+	ids := map[string]bool{}
+	for _, prm := range params {
+		if base, ok := strings.CutSuffix(prm.Key, "_id"); ok && names[base] != "" {
+			ids[base] = true
+		}
+	}
+	out := make([]PreviewParam, 0, len(params))
+	for _, prm := range params {
+		if base, ok := strings.CutSuffix(prm.Key, "_name"); ok && ids[base] {
+			continue
+		}
+		if base, ok := strings.CutSuffix(prm.Key, "_id"); ok && ids[base] {
+			if id, _ := prm.Value.(string); id != "" && id != names[base] {
+				prm.Value = names[base] + " (" + id + ")"
+			}
+		}
+		out = append(out, prm)
+	}
+	return out
+}
+
 func paramLine(prm PreviewParam) string {
 	if prm.Key == "not_checked" {
 		return notCheckedLine(prm.Value)

@@ -172,7 +172,7 @@ func TestK8sAddAddon_ConfirmationAndConfigFile(t *testing.T) {
 	t.Logf("\n%s", errOut)
 	assertHas(t, errOut, []string{
 		"Будет установлено: плагин cert-manager в кластер",
-		"имя кластера: k8s-dev",
+		"кластер:    k8s-dev (" + addonClusterID + ")",
 		"версия:     v1.14.0",
 		"пространство имён: cert-manager",
 		"нужен Kubernetes: >=1.26.0-0",
