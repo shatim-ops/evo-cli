@@ -103,6 +103,10 @@ type Operation struct {
 	ResourceID string          `json:"resource_id,omitempty"`
 	Done       bool            `json:"done"`
 	Error      *OperationError `json:"error,omitempty"`
+	// CreatedAt and UpdatedAt are the operation's times, RFC 3339, as the
+	// specification names them (tools: elapsed_sec of *_operation).
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // OperationError is google.rpc.Status.

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -72,6 +73,36 @@ func TestListFlavors_ShareGPUSpotZonesAndFilters(t *testing.T) {
 	} {
 		if got, _ := names(c.args); got != c.want {
 			t.Errorf("list_flavors %v = %s, want %s", c.args, got, c.want)
+		}
+	}
+}
+
+// Ц-5, FB15-10: the rate card prices a vCPU at one rate whatever its share,
+// so the estimate of a flavor with a share other than 1:1 (and no rate of
+// its own in the card) says it does not count the share, and the answer
+// names the tariff with the true rates. A 1:1 flavor, or one the catalogue
+// gives no share, has no such note.
+func TestListFlavors_EstimateSaysItIgnoresTheShare(t *testing.T) {
+	cloud := &faultCloud{flavors: []*provision.Flavor{
+		{ID: "f1", Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4, Share: "1:10"},
+		{ID: "f2", Name: "low-2-4", VCPUs: 2, RAMGB: 4, Share: "1:3"},
+		{ID: "f3", Name: "gen-2-4", VCPUs: 2, RAMGB: 4, Share: "1:1"},
+		{ID: "f4", Name: "bare-2-4", VCPUs: 2, RAMGB: 4},
+	}}
+	r, _ := faultToolsRegistry(t, cloud)
+	m, text, isErr := callNamed(t, r, "list_flavors", map[string]any{})
+	if isErr {
+		t.Fatalf("list_flavors: %s", text)
+	}
+	if u, _ := m["tariff_url"].(string); u != engine.TariffURL(engine.ResourceVM) || u == "" {
+		t.Errorf("tariff_url %v, want the Compute tariff", m["tariff_url"])
+	}
+	for _, row := range m["flavors"].([]any) {
+		o := row.(map[string]any)
+		_, noted := o["est_note"]
+		want := o["name"] == "lowcost10-2-4" || o["name"] == "low-2-4"
+		if noted != want {
+			t.Errorf("%s: est_note %v, want one: %v", o["name"], o["est_note"], want)
 		}
 	}
 }

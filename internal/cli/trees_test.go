@@ -7,6 +7,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -448,7 +449,7 @@ func TestRenderAnswer_RussianTree(t *testing.T) {
 	flavors := treeCmdOf(t, "vm", "flavors")
 	text := `{"flavors":[{"name":"gen-1-1","vcpus":1,"ram_gb":1,"free_tier":false,"est_monthly_rub":512.3},` +
 		`{"name":"free-1-1","vcpus":1,"ram_gb":1,"free_tier":true,"est_monthly_rub":0}],` +
-		`"note":"est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price; cpu_share is the guaranteed share of a vCPU: 1:1 — 100%, 1:3 — 30%, 1:10 — 10% (the Cloud.ru specification)"}`
+		`"note":` + strconv.Quote(tools.FlavorsNote) + `,"tariff_url":"https://example.org/tariff"}`
 	var buf bytes.Buffer
 	p := output.NewWithWriter(&buf, output.ModePlain, false)
 	if err := flavors.show(p, &buf, text); err != nil {
@@ -471,6 +472,10 @@ func TestRenderAnswer_RussianTree(t *testing.T) {
 	// specification, not evo's arithmetic.
 	if !strings.Contains(buf.String(), "1:1 — 100 %, 1:3 — 30 %, 1:10 — 10 % (спецификация Cloud.ru)") {
 		t.Errorf("legend of the vCPU share:\n%s", buf.String())
+	}
+	// Ц-5: the tariff of the true rates of a shared vCPU, under the table.
+	if !strings.Contains(buf.String(), "Тарифы: https://example.org/tariff") {
+		t.Errorf("tariff_url:\n%s", buf.String())
 	}
 
 	// A table without Russian titles keeps the keys of the tool, in

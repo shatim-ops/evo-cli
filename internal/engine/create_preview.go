@@ -155,6 +155,10 @@ const tariffsBase = "https://cloud.ru/documents/tariffs/evolution/"
 // (TestTariffs_EveryResource keeps the list whole). A preview evo cannot
 // price links the tariff: «не оценивается: у evo нет тарифа» read as
 // «free» before a paid cluster was created (dogfood 1.2.1).
+// TariffURL is the public tariff of a resource kind (Resource*), "" for a
+// kind not listed.
+func TariffURL(resource string) string { return tariffs[resource] }
+
 var tariffs = map[string]string{
 	ResourceVM:          tariffsBase + "evolution-compute",
 	ResourceDisk:        tariffsBase + "evolution-compute",
