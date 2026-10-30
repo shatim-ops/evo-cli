@@ -220,6 +220,9 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 	switch {
 	case vis == "private":
 		id, vname, err := s.projectVPC(ctx, stringArg(args, "vpc_id"))
+		if err == nil {
+			err = dnsServerIn(ctx, cli, id, vname)
+		}
 		if err != nil {
 			return errResult(err), true
 		}
@@ -258,6 +261,29 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 		out["zone_id"] = op.ResourceID
 	}
 	return toJSON(out), false
+}
+
+// dnsServerIn refuses a private zone's VPC without a DNS server of
+// Evolution DNS: the zone is linked to a VPC through one — «предварительно
+// создайте в этой сети хотя бы один DNS-сервер» (Evolution DNS, «Приватные
+// зоны») — and the platform fails the create of a zone linked to a VPC
+// without one (cloud-e2e run 150: code 13, no zone). evo does not create
+// DNS servers: the hint names the console.
+func dnsServerIn(ctx context.Context, cli *dns.Client, vpcID, vpcName string) error {
+	servers, err := cli.ListServers(ctx)
+	if err != nil {
+		return fmt.Errorf(i18n.T("list DNS servers: %w", "список DNS-серверов: %w"), err)
+	}
+	for _, sv := range servers {
+		if v, _ := sv["vpcId"].(string); v == vpcID {
+			return nil
+		}
+	}
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("VPC %s (%s) has no DNS server of Evolution DNS: a private zone resolves in a VPC only through one",
+			"в VPC %s (%s) нет DNS-сервера Evolution DNS: приватная зона разрешается в VPC только через него", vpcName, vpcID),
+		i18n.T("Create a DNS server in this VPC in the console (Evolution DNS → DNS servers), or pass vpc_id of a VPC that has one.",
+			"Создайте DNS-сервер в этой VPC в личном кабинете (Evolution DNS → DNS-серверы) или передайте vpc_id VPC, где он есть."))
 }
 
 func (s *Registry) planDnsZoneDelete(ctx context.Context, args map[string]any) (*Plan, error) {

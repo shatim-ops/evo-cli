@@ -16,19 +16,33 @@ import (
 )
 
 // dnsVPCAPI is the zones of DNS over the VPCs of subnetAPI: no zone yet; a
-// zone create is recorded and answers an operation.
+// zone create is recorded and answers an operation; the DNS servers are
+// those of servers (nil: one in each VPC of subnetAPI).
 type dnsVPCAPI struct {
 	*subnetAPI
-	mu   sync.Mutex
-	zone map[string]any // the body of the zone create
+	mu      sync.Mutex
+	zone    map[string]any // the body of the zone create
+	servers []string       // the VPC of each DNS server
 }
 
 func (a *dnsVPCAPI) RoundTrip(r *http.Request) (*http.Response, error) {
+	rec := httptest.NewRecorder()
+	rec.Header().Set("Content-Type", "application/json")
+	if r.URL.Path == "/v1/dnsServers" {
+		vpcs := a.servers
+		if vpcs == nil {
+			vpcs = []string{subnetVPC, subnetOtherVP}
+		}
+		var items []string
+		for i, v := range vpcs {
+			items = append(items, fmt.Sprintf(`{"id":"dns-%d","vpcId":%q,"subnetId":"sn-%d","ip":"10.0.0.%d"}`, i, v, i, i+2))
+		}
+		_, _ = fmt.Fprintf(rec, `{"servers":[%s]}`, strings.Join(items, ","))
+		return rec.Result(), nil
+	}
 	if !strings.HasSuffix(r.URL.Path, "Zones") {
 		return a.subnetAPI.RoundTrip(r)
 	}
-	rec := httptest.NewRecorder()
-	rec.Header().Set("Content-Type", "application/json")
 	if r.Method == http.MethodPost {
 		raw, _ := io.ReadAll(r.Body)
 		a.mu.Lock()
@@ -73,12 +87,21 @@ func TestDNSZoneCreate_PrivateZoneLinksAVPC(t *testing.T) {
 		name, reason string
 		args         map[string]any
 		vpcs         string
+		servers      []string
 	}{
-		{"no default VPC", "USAGE", map[string]any{"domain": "corp.internal.", "type": "private"}, fmt.Sprintf(`[{"id":%q,"name":"other","default":false}]`, subnetOtherVP)},
-		{"a VPC not of the project", "NOT_FOUND", map[string]any{"domain": "corp.internal.", "type": "private", "vpc_id": "00000000-0000-4000-8000-0000000000ff"}, ""},
-		{"a public zone with a VPC", "USAGE", map[string]any{"domain": "example.com.", "vpc_id": subnetVPC}, ""},
+		{"no default VPC", "USAGE", map[string]any{"domain": "corp.internal.", "type": "private"}, fmt.Sprintf(`[{"id":%q,"name":"other","default":false}]`, subnetOtherVP), nil},
+		{"a VPC not of the project", "NOT_FOUND", map[string]any{"domain": "corp.internal.", "type": "private", "vpc_id": "00000000-0000-4000-8000-0000000000ff"}, "", nil},
+		{"a public zone with a VPC", "USAGE", map[string]any{"domain": "example.com.", "vpc_id": subnetVPC}, "", nil},
+		// A zone links to a VPC through its DNS server: «предварительно
+		// создайте в этой сети хотя бы один DNS-сервер» (Evolution DNS,
+		// «Приватные зоны»); without one the platform fails the create
+		// (cloud-e2e run 150, code 13).
+		{"the default VPC without a DNS server", "USAGE", map[string]any{"domain": "corp.internal.", "type": "private"}, "", []string{subnetOtherVP}},
+		{"vpc_id without a DNS server", "USAGE", map[string]any{"domain": "corp.internal.", "type": "private", "vpc_id": subnetOtherVP}, "", []string{subnetVPC}},
+		{"no DNS server in the project", "USAGE", map[string]any{"domain": "corp.internal.", "type": "private"}, "", []string{}},
 	} {
 		api.zone = nil
+		api.servers = c.servers
 		if c.vpcs != "" {
 			api.vpcs = c.vpcs
 		}
