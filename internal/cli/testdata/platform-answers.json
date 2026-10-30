@@ -42,6 +42,33 @@
     }
   },
   {
+    "id": "compute-flavors",
+    "request": "GET https://compute.api.cloud.ru/api/v1/flavors?limit=100",
+    "status": 200,
+    "source": "api-probe 28, 29 (P34, P35), evo-internal CMP-25",
+    "recorded": "2026-10-29",
+    "paths": {
+      "items.[].flavor_type.display_group_type": "?",
+      "items.[].availability_zones.[].availability_zone_id": "?",
+      "items.[].availability_zones.[].availability_zone_name": "?",
+      "items.[].availability_zones.[].default": "?",
+      "items.[].availability_zones.[].enabled": "?",
+      "items.[].availability_zones.[].state": "?"
+    },
+    "open": [
+      "total",
+      "items.[].id",
+      "items.[].name",
+      "items.[].cpu",
+      "items.[].ram",
+      "items.[].gpu",
+      "items.[].disk_gb",
+      "items.[].free_tier",
+      "items.[].oversubscription"
+    ],
+    "skip": "the worlds answer flavors through provision.CloudAPI (previewCloud): TestPlatformAnswers_GoWorldsKeepTheLiveForm"
+  },
+  {
     "id": "compute-floating-ips",
     "request": "GET https://compute.api.cloud.ru/api/v1/floating-ips?project_id={project}&limit=100",
     "status": 200,
@@ -74,7 +101,7 @@
       "limit",
       "offset"
     ],
-    "skip": "the worlds answer floating IPs through provision.CloudAPI (freeFIPCloud, busyFIPCloud), not over HTTP: the check of Go answers is the next step of the line"
+    "skip": "the worlds answer floating IPs through provision.CloudAPI (freeFIPCloud, busyFIPCloud): TestPlatformAnswers_GoWorldsKeepTheLiveForm"
   },
   {
     "id": "postgresql-cluster-get",
