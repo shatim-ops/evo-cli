@@ -65,6 +65,11 @@
   Стало: такой манифест — `USAGE`, код 1, до вопроса, задание не создаётся; подсказка называет `nlb.external: true`. Умолчание `nlb.external` прежнее: стеки без `dns` и `dns` с адресом в `target` ведут себя как раньше.
   Что поменять: добавьте `"external": true` в `nlb` манифеста или укажите адрес в `dns.target`.
 
+- **`evo dns zone-delete` и MCP `dns_zone_delete`: приватная зона со связями — отказ до согласия, удаление ждёт итог своей операции** (DECISIONS D66).
+  Было: удаление приватной зоны, связанной с VPC, отвечало `status: deleting`, код 0, а Cloud.ru зону не удалял — она оставалась `ok`; любое удаление зоны отвечало `deleting`, не читая итог операции.
+  Стало: зона с непустым `linkedVpcIds` — `USAGE`, код 1, до вопроса, без записи; ответ называет VPC и путь «снимите связи зоны в личном кабинете: Evolution DNS → зона → Связи». Удаление зоны без связей ждёт свою операцию до 60 с: готово — `status: deleted`; ошибка операции — `API_ERROR`, код 5, с текстом Cloud.ru; не дождались — `deleting` и `operation_id`, как раньше; ожидание, прерванное вызывающим (Ctrl-C, отмена клиента MCP), — ошибка, как у ожидания `dns_operation`. Имена VPC в отказах — в кавычках, на одной строке.
+  Что поменять: скрипт, который ждал `deleting` и опрашивал `dns_operation`, принимает и `deleted`; зону, созданную `dns_zone_create` с VPC (D65), удаляют после снятия связей в личном кабинете.
+
 ### Добавлено
 
 - **Списки называют то, что каталог говорит о выборе** (D54, до проб; аудит «слепые зоны» 1.5: FB15-6, FB15-18, FB15-40).
@@ -137,6 +142,10 @@
 - **Скиллы: размер выбирает человек по каталогу, а не скилл** (#515, вариант А, слой C).
   - `evo-scenarios`: новый раздел «Sizing» — агент называет потребность и её источник, читает каталог (`list_flavors`, `*_specs`, `k8s_options`), сравнивает инструментом (`deploy_plan`, `k8s_plan`, `stack_plan`) и показывает человеку два-три варианта. Маршрут на карточку группы — `evo agent skill --group <группа> --json`. Маршруты Kafka, Redis и Kubernetes короче: список инструментов даёт карточка.
   - `evo-postgres`: убрано правило «бери стандартную спецификацию с наименьшими cpu и памятью». Человек выбирает из двух-трёх подходящих спецификаций.
+
+- **`evo --help` группирует команды по продуктам Cloud.ru Evolution под их официальными именами**: «Evolution Compute, Evolution Disk» (`vm`, `image`, `marketplace`, `disk`) — первой, затем «Evolution VPC, Evolution DNS, Evolution Load Balancer, SNAT-шлюзы», «Evolution Managed Kubernetes», «Evolution Artifact Registry, Evolution Container Apps», «Evolution Managed PostgreSQL, Evolution Managed Redis, Evolution Managed Kafka», «Evolution Object Storage», «Secret Management, Certificate Manager», «Мониторинг, аудит, биллинг, доступ»; сценарии evo (`init`, `deploy`, `status`, `logs`, `verify`, `destroy`, `stack`) — после продуктов. Шапка справки: «Управление ресурсами Cloud.ru Evolution: …; развёртывание compose-проектов». Было: первой шла группа «Развёртывание compose-проекта».
+
+- **`evo --help` заканчивается строкой «Добро пожаловать в Cloud.ru»** (en: «Welcome to Cloud.ru») вместо ссылок на Telegram автора и чат тестировщиков; текст скрытой команды `evo crew` больше не называет Telegram. Обратная связь — в Issues репозитория (README). Поле `feedback` в `evo crew --json` осталось.
 
 ### Исправлено
 
