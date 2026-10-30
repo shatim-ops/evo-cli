@@ -26,7 +26,9 @@ func TestPreview_SaysTheQuotaWasNotChecked(t *testing.T) {
 		reason string
 		line   string
 	}{
-		{"project key", func(context.Context, auth.TokenProvider, string) error { return fmt.Errorf("403: %w", ErrQuotasForbidden) }, QuotaProjectKey, "quota:     not checked (project key)"},
+		{"project key", func(context.Context, auth.TokenProvider, string) error {
+			return fmt.Errorf("403: %w", ErrQuotasForbidden)
+		}, QuotaProjectKey, "quota:     not checked (project key)"},
 		{"read failed", func(context.Context, auth.TokenProvider, string) error { return errors.New("connection reset") }, QuotaNotRead, "not checked (not read)"},
 		{"readable", func(context.Context, auth.TokenProvider, string) error { return nil }, QuotaNotMapped, "not checked (evo does not match quota types yet)"},
 		{"no probe", nil, "", ""},
