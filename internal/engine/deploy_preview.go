@@ -126,6 +126,7 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 		if want := firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name); want != "" {
 			return PickVMFlavor(flavors, want)
 		}
+		flavors = FlavorsInZone(flavors, &vm.Zone)
 		list := make([]provision.Flavor, len(flavors))
 		for i, f := range flavors {
 			list[i] = *f

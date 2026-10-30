@@ -1876,7 +1876,11 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	if err != nil {
 		return errResult(fmt.Errorf(i18n.T("list flavors: %w", "список flavor: %w"), err)), true
 	}
-	if picked, err := engine.PickVMFlavor(flavors, flavorID); err != nil {
+	var zoneOf *deployplan.RefSpec
+	if zone != nil {
+		zoneOf = &deployplan.RefSpec{ID: zone.ID, Name: zone.Name}
+	}
+	if picked, err := engine.PickVMFlavorIn(flavors, flavorID, zoneOf); err != nil {
 		return errResult(err), true
 	} else if picked != "" {
 		flavorID = picked

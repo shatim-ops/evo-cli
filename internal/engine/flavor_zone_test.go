@@ -5,6 +5,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -46,5 +47,36 @@ func TestFlavorOutOfZone(t *testing.T) {
 		case c.want && (!errors.As(err, &ce) || ce.Code != clerrors.CodeUsage || !strings.Contains(err.Error(), "ru.AZ-2")):
 			t.Errorf("%s: want USAGE naming the flavor's zones, got %v", c.name, err)
 		}
+	}
+}
+
+// D67: deploy without a flavor picks one of the zone of the VM, the same
+// in its preview and in the create: the smallest flavor of another zone is
+// passed over, not refused.
+func TestDeploy_AutoFlavorOfTheZone(t *testing.T) {
+	zoned := func(m *mockCloudAPI) {
+		m.listFlavorsFn = func(context.Context) ([]*provision.Flavor, error) {
+			return []*provision.Flavor{
+				{ID: "f-small", Name: "small", VCPUs: 2, RAMGB: 2, Zones: []provision.FlavorZone{{ID: "az-2", Name: "ru-moscow-2", Enabled: true}}},
+				{ID: "f-medium", Name: "medium", VCPUs: 4, RAMGB: 4, Zones: []provision.FlavorZone{{ID: "az-1", Name: "ru-moscow-1", Enabled: true}}},
+			}, nil
+		}
+	}
+	eng, cloud, opts, stdout, _ := newDeployForConfirm(t)
+	zoned(cloud)
+	opts.Flavor, opts.DryRun = "", true
+	if err := eng.Deploy(context.Background(), opts); err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if out := stdout.String(); !strings.Contains(out, "medium") || strings.Contains(out, "small (") {
+		t.Errorf("the preview does not name medium, the flavor of az-1:\n%s", out)
+	}
+
+	eng, cloud, opts, _, _ = newDeployForConfirm(t)
+	zoned(cloud)
+	opts.Flavor, opts.Yes = "", true
+	_ = eng.Deploy(context.Background(), opts)
+	if !cloud.createCalled || firstNonEmpty(cloud.createReq.FlavorName, cloud.createReq.FlavorID) != "f-medium" && cloud.createReq.FlavorName != "medium" {
+		t.Errorf("the create sends flavor %q %q, want medium", cloud.createReq.FlavorName, cloud.createReq.FlavorID)
 	}
 }

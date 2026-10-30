@@ -23,6 +23,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
@@ -476,6 +477,11 @@ func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project 
 	if err != nil {
 		return "", err
 	}
+
+	// The flavors of the zone of the VM, as the preview picks (D67): the
+	// region is a name or a UUID.
+	region := firstNonEmpty(opts.Region, e.Config.Region)
+	flavors = FlavorsInZone(flavors, &deployplan.RefSpec{ID: region, Name: region})
 
 	// Convert []*Flavor to []Flavor for sizer.Match.
 	flavorList := make([]provision.Flavor, len(flavors))

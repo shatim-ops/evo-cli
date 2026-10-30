@@ -349,7 +349,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	vm := p.VM
 	if pick == nil {
 		pick = func(flavors []*provision.Flavor) (string, error) {
-			return PickVMFlavor(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name))
+			return PickVMFlavorIn(flavors, firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name), &vm.Zone)
 		}
 	}
 	var flavorErr error
@@ -462,6 +462,34 @@ func FlavorOutOfZone(f *provision.Flavor, zone *deployplan.RefSpec) error {
 			"flavor %s недоступен в зоне %s: ВМ с ним создаётся в %s", f.Name, where, strings.Join(names, ", ")),
 		i18n.Tf("Pick a flavor of zone %s (list_flavors zone=%s, 'evo vm flavors --zone %s') or one of the flavor's zones.",
 			"Выберите flavor зоны %s (list_flavors zone=%s, 'evo vm flavors --zone %s') или одну из зон flavor.", where, where, where))
+}
+
+// FlavorsInZone are the flavors evo picks from by itself (auto) for a VM
+// in zone: those FlavorOutOfZone lets through — the zone's, and those that
+// name no zones (D54). A flavor the user did not choose is not refused for
+// evo's choice (D67); none left is the whole list, and FlavorOutOfZone
+// refuses the pick.
+func FlavorsInZone(flavors []*provision.Flavor, zone *deployplan.RefSpec) []*provision.Flavor {
+	var out []*provision.Flavor
+	for _, f := range flavors {
+		if FlavorOutOfZone(f, zone) == nil {
+			out = append(out, f)
+		}
+	}
+	if len(out) == 0 {
+		return flavors
+	}
+	return out
+}
+
+// PickVMFlavorIn is PickVMFlavor for a VM in zone: the automatic pick
+// ("" or "auto") takes a flavor of the zone (FlavorsInZone); a flavor the
+// call names is as named.
+func PickVMFlavorIn(flavors []*provision.Flavor, want string, zone *deployplan.RefSpec) (string, error) {
+	if want == "" || want == "auto" {
+		flavors = FlavorsInZone(flavors, zone)
+	}
+	return PickVMFlavor(flavors, want)
 }
 
 // addCatalogueLines says what the catalogue says of the VM's flavor and
