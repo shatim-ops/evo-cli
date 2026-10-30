@@ -50,12 +50,12 @@ func subnetCIDR(cidr string) (netip.Prefix, error) {
 	return p, nil
 }
 
-// subnetVPC is the VPC of a new subnet: vpc_id when the call gives one —
-// a VPC of the project — else the project's one default VPC. evo sends it
-// either way, so the preview names the VPC the subnet goes to; two VPCs
-// marked default are no default (the first of the list would depend on
-// its order).
-func (s *Registry) subnetVPC(ctx context.Context, vpcID string) (id, name string, err error) {
+// projectVPC is the VPC a new subnet goes to, or a new private DNS zone is
+// linked to: vpc_id when the call gives one — a VPC of the project — else
+// the project's one default VPC. evo sends it either way, so the preview
+// names the VPC; two VPCs marked default are no default (the first of the
+// list would depend on its order).
+func (s *Registry) projectVPC(ctx context.Context, vpcID string) (id, name string, err error) {
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return "", "", err
@@ -90,7 +90,7 @@ func (s *Registry) subnetVPC(ctx context.Context, vpcID string) (id, name string
 			i18n.T("vpc_list lists the project's VPCs.", "VPC проекта — в выводе vpc_list."))
 	case len(vpcs) == 0:
 		return "", "", clierrors.New(clierrors.CodeUsage,
-			i18n.T("the project has no VPC to put the subnet in", "в проекте нет VPC для подсети"),
+			i18n.T("the project has no VPC", "в проекте нет VPC"),
 			i18n.T("Create one with vpc_create, then pass its id as vpc_id.", "Создайте VPC через vpc_create и передайте его id в vpc_id."))
 	}
 	return "", "", clierrors.New(clierrors.CodeUsage,
@@ -175,7 +175,7 @@ func (s *Registry) planSubnetCreate(ctx context.Context, args map[string]any) (*
 			return nil, err
 		}
 	}
-	vpcID, vpcName, err := s.subnetVPC(ctx, stringArg(args, "vpc_id"))
+	vpcID, vpcName, err := s.projectVPC(ctx, stringArg(args, "vpc_id"))
 	if err != nil {
 		return nil, err
 	}

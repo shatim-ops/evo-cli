@@ -941,33 +941,47 @@ var notCheckedLabels = map[string]struct{ en, ru string }{
 }
 
 // paramLine is one parameter as "label: value"; "" for an empty value.
-// namedParams are params as a person reads them: a reference "<x>_id"
-// whose thing the preview names ("<x>_name" beside it) is one parameter
-// «name (id)» (release plan 1.6, «Линия CLI»), as the CLI shows an answer
-// (cli.refValue); the JSON preview keeps both.
-func namedParams(params []PreviewParam) []PreviewParam {
-	names := map[string]string{}
-	for _, prm := range params {
-		if base, ok := strings.CutSuffix(prm.Key, "_name"); ok {
-			if v, _ := prm.Value.(string); v != "" {
-				names[base] = v
-			}
-		}
+// RefName is the name a thing referenced as "<base>_id" has in m:
+// "<base>_name", else "<base>" when it is a name, not the same id (release
+// plan 1.6, «Линия CLI»). One rule for an answer (cli.refValue) and a
+// preview (namedParams).
+func RefName(m map[string]any, base string) string {
+	if name, _ := m[base+"_name"].(string); name != "" {
+		return name
 	}
-	ids := map[string]bool{}
+	name, _ := m[base].(string)
+	return name
+}
+
+// namedParams are params as a person reads them: a reference "<x>_id"
+// whose thing the preview names (RefName) is one parameter «name (id)»,
+// as the CLI shows an answer (cli.refValue); the JSON preview keeps both.
+func namedParams(params []PreviewParam) []PreviewParam {
+	m := map[string]any{}
 	for _, prm := range params {
-		if base, ok := strings.CutSuffix(prm.Key, "_id"); ok && names[base] != "" {
-			ids[base] = true
+		m[prm.Key] = prm.Value
+	}
+	merged := map[string]bool{} // the keys of the names shown with their id
+	for _, prm := range params {
+		base, ok := strings.CutSuffix(prm.Key, "_id")
+		id, _ := prm.Value.(string)
+		if name := RefName(m, base); ok && id != "" && name != "" && name != id {
+			if _, has := m[base+"_name"].(string); has {
+				merged[base+"_name"] = true
+			} else {
+				merged[base] = true
+			}
 		}
 	}
 	out := make([]PreviewParam, 0, len(params))
 	for _, prm := range params {
-		if base, ok := strings.CutSuffix(prm.Key, "_name"); ok && ids[base] {
+		if merged[prm.Key] {
 			continue
 		}
-		if base, ok := strings.CutSuffix(prm.Key, "_id"); ok && ids[base] {
-			if id, _ := prm.Value.(string); id != "" && id != names[base] {
-				prm.Value = names[base] + " (" + id + ")"
+		if base, ok := strings.CutSuffix(prm.Key, "_id"); ok {
+			id, _ := prm.Value.(string)
+			if name := RefName(m, base); id != "" && name != "" && name != id {
+				prm.Value = name + " (" + id + ")"
 			}
 		}
 		out = append(out, prm)

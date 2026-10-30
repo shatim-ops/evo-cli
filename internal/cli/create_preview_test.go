@@ -320,7 +320,7 @@ func TestK8sCreatePreview_NoPrice(t *testing.T) {
 		"  RAM:        4 ГБ\n",
 		"  версия:     v1.31.4\n",
 		"  мастеров:   3\n",
-		"  подсеть:    00000000-0000-0000-0000-0000000000d1\n",
+		"  подсеть:    Default_ru.AZ-1 (00000000-0000-0000-0000-0000000000d1)\n",
 		"  API извне:  нет\n",
 		"  цена:       evo её не рассчитывает, ресурс платный: тариф https://cloud.ru/documents/tariffs/evolution/managed-kubernetes\n",
 	})
