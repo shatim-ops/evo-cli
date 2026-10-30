@@ -315,46 +315,29 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 
 // quotaTypes are the name, the unit and the product of each quota type
 // by its code, from the catalogue of quota types (FB15-8); nil when it is
-// not read — the rows keep their codes. The catalogue's list is the
-// array of its answer (organization api.op.v3.yaml, v3QuotaResourceType:
-// code, name, product_name, unit).
+// not read — the rows keep their codes. The catalogue is one answer, not
+// paged (organization api.op.v3.yaml, v3ListQuotaResourceTypesResponse:
+// resource_types of v3QuotaResourceType — code, name, product_name, unit).
 func (s *Registry) quotaTypes(ctx context.Context) map[string]map[string]any {
-	const url = "https://organization.api.cloud.ru/v3/quotas/resourceTypes?page_size=200"
-	out := map[string]map[string]any{}
-	err := pager.All("organization: quota types", func(token string) (string, error) {
-		u := url
-		if token != "" {
-			u += "&page_token=" + neturl.QueryEscape(token)
-		}
-		m, err := s.adminGET(ctx, u)
-		if err != nil {
-			return "", err
-		}
-		for _, v := range m {
-			items, ok := v.([]any)
-			if !ok {
-				continue
-			}
-			for _, x := range items {
-				t, _ := x.(map[string]any)
-				code, _ := t["code"].(string)
-				if code == "" {
-					continue
-				}
-				named := map[string]any{}
-				for field, key := range map[string]string{"name": "name", "unit": "unit", "product_name": "product"} {
-					if v, _ := t[field].(string); v != "" {
-						named[key] = v
-					}
-				}
-				out[code] = named
-			}
-		}
-		next, _ := m["next_page_token"].(string)
-		return next, nil
-	})
+	m, err := s.adminGET(ctx, "https://organization.api.cloud.ru/v3/quotas/resourceTypes")
 	if err != nil {
 		return nil
+	}
+	items, _ := m["resource_types"].([]any)
+	out := map[string]map[string]any{}
+	for _, x := range items {
+		t, _ := x.(map[string]any)
+		code, _ := t["code"].(string)
+		if code == "" {
+			continue
+		}
+		named := map[string]any{}
+		for field, key := range map[string]string{"name": "name", "unit": "unit", "product_name": "product"} {
+			if v, _ := t[field].(string); v != "" {
+				named[key] = v
+			}
+		}
+		out[code] = named
 	}
 	return out
 }
