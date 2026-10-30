@@ -939,10 +939,7 @@ area_net() {
 
 # DNS: приватная зона, запись A, удаление. Каждый вызов по зоне — с
 # type=private: по умолчанию инструменты идут в API публичных зон.
-# dns_delete_op ЧТО — итог операции удаления из последнего ответа (j):
-# строка, а не провал (провал — объект остался в списке). Операция с ошибкой
-# или не done — её состояние пробой: run 151 (30.10) зона после ~40
-# принятых удалений осталась «ok», а итог операции не читался.
+
 # dnslink_state КОГДА ЗОНА — связи приватной зоны и DNS-сервера evo-e2e-dns
 # (п. 27): state и число linkedVpcIds зоны, usedIn сервера и упоминает ли
 # usedIn эту зону; код HTTP чтения зоны — в $zcode. Печатаются количества
@@ -964,35 +961,45 @@ dnslink_state() {
 # Проба п. 27 (решение владельца 30.10, #597, п. 27; run 151): приватная
 # зона, привязанная к VPC с DNS-сервером, — DELETE принят, зона остаётся
 # «ok»; консоль требует снять связи. Перед обычным удалением зоны области:
-# H3 — DELETE со связями и итог его операции; H1 — снимает ли PATCH
-# linkedVpcIds: [] связь с VPC; H2 — снимается ли при этом связь с
+# D66 — dns_zone_delete со связями отказывает до вопроса (USAGE, без записи;
+# до слияния D66 evo шлёт DELETE — строка это и скажет); H3 — прямой DELETE
+# со связями и итог его операции (evo с D66 его не шлёт); H1 — снимает ли
+# PATCH linkedVpcIds: [] связь с VPC; H2 — снимается ли при этом связь с
 # DNS-сервером (usedIn). У evo PATCH зоны нет — прямой запрос. Проба, не
-# проверка: строки, а не FAIL; зона дальше удаляется обычным шагом области,
-# не удалится — FAIL «зона в списке» и уборка, путь — консоль.
+# проверка: строки, а не FAIL. Зона дальше удаляется обычным шагом области;
+# связи не снялись — он отказывает (D66): FAIL и остаток, путь — консоль
+# (снять связи и удалить).
 probe_dnslink() {
-	local zid=$1 op
+	local zid=$1
 	iam_token && [ -n "${PROJECT:-}" ] || { gap "п. 27" "нет токена IAM или PROJECT"; return 0; }
 	dnslink_state "до" "$zid"
 	tc dns_zone_delete --arg id="$zid" --arg type=private
-	if [ "$rc" = 0 ]; then
-		op=$(j -r '.operation_id // empty')
-		mask "$op"
-		if opwait dns "$op" 300; then row "п. 27 H3: DELETE со связями" "done" "операция без ошибки"
-		else row "п. 27 H3: DELETE со связями" ошибка "$why"; fi
-	else row "п. 27 H3: DELETE со связями" отказ "код $rc, $reason: $why"; fi
+	row "п. 27 D66: dns_zone_delete со связями" "$([ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && echo отказ || echo "код $rc")" "$reason: $(printf '%s' "$why" | cut -c1-160)"
+	api DELETE "https://dns.api.cloud.ru/v1/privateZones/$zid"
+	dnslink_op "п. 27 H3: DELETE со связями"
 	dnslink_state "после DELETE" "$zid"
 	[ "$zcode" != 404 ] || return 0
 	api PATCH "https://dns.api.cloud.ru/v1/privateZones/$zid" '{"linkedVpcIds":[]}'
-	if [ "${code#2}" != "$code" ]; then
-		op=$(jq -r '.id // empty' "$tmp/api.json")
-		mask "$op"
-		if [ -z "$op" ]; then row "п. 27 PATCH linkedVpcIds: []" "HTTP $code" "без операции, ключи $(jq -c 'keys' "$tmp/api.json")"
-		elif opwait dns "$op" 300; then row "п. 27 PATCH linkedVpcIds: []" "HTTP $code" "операция done"
-		else row "п. 27 PATCH linkedVpcIds: []" "HTTP $code" "операция: $why"; fi
-	else row "п. 27 PATCH linkedVpcIds: []" "HTTP $code" "$(api_why)"; fi
+	dnslink_op "п. 27 H1: PATCH linkedVpcIds: []"
 	dnslink_state "после PATCH" "$zid"
 }
 
+# dnslink_op СТРОКА — итог прямого запроса api пробы п. 27: код HTTP и
+# итог операции из ответа (.id), или текст ошибки.
+dnslink_op() {
+	local op
+	if [ "${code#2}" = "$code" ]; then row "$1" "HTTP $code" "$(api_why)"; return 0; fi
+	op=$(jq -r '.id // empty' "$tmp/api.json")
+	mask "$op"
+	if [ -z "$op" ]; then row "$1" "HTTP $code" "без операции, ключи $(jq -c 'keys' "$tmp/api.json")"
+	elif opwait dns "$op" 300; then row "$1" "HTTP $code" "операция done без ошибки"
+	else row "$1" "HTTP $code" "операция: $why"; fi
+}
+
+# dns_delete_op ЧТО — итог операции удаления из последнего ответа (j):
+# строка, а не провал (провал — объект остался в списке). Операция с ошибкой
+# или не done — её состояние пробой: run 151 (30.10) зона после ~40
+# принятых удалений осталась «ok», а итог операции не читался.
 dns_delete_op() {
 	local op
 	op=$(j -r '.operation_id // empty')
