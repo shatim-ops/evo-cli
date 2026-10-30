@@ -13,10 +13,14 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// The root --help lists the commands by scenario, not by alphabet: a
-// newcomer sees "deploy a compose project" first and the resource trees
-// next, as gh shows CORE before ADDITIONAL COMMANDS and kubectl Basic before
-// Cluster Management (review r5 U5). The exit codes go after the list.
+// The root --help lists the commands by the sections of the Cloud.ru
+// service catalog (cloud.ru/docs, «Документация по сервисам»), cloud
+// resources first and Infrastructure (VMs, images) first of them; the
+// scenarios of evo (a compose project, a stack) follow the resources
+// (owner's decision 30.10, #597, item 30; before: review r5 U5, compose
+// first). A section without a catalog name has a plain one. The catalog is
+// published in Russian: the English titles are its translation. The exit
+// codes go after the list.
 
 func init() {
 	cobra.AddTemplateFunc("exitCodesHelp", clerrors.ExitCodesHelp)
@@ -28,16 +32,26 @@ var commandGroups = []struct {
 	id, en, ru string
 	cmds       []string
 }{
-	{"compose", "Deploy a compose project:", "Развёртывание compose-проекта:",
-		[]string{"init", "deploy", "status", "logs", "verify", "destroy"}},
-	{"resources", "Project resources:", "Ресурсы проекта:",
-		[]string{"vm", "image", "marketplace", "disk", "vpc", "k8s", "pg", "s3", "secret", "stack", "list-zones"}},
-	{"network", "Network services:", "Сетевые сервисы:",
-		[]string{"dns", "cert", "lb", "tg", "snat"}},
-	{"services", "Managed services:", "Управляемые сервисы:",
-		[]string{"kafka", "redis", "ar", "ca"}},
-	{"account", "Costs, audit and monitoring:", "Затраты, аудит и мониторинг:",
-		[]string{"billing", "audit", "org", "iam", "metrics"}},
+	{"infra", "Infrastructure:", "Инфраструктура:",
+		[]string{"vm", "image", "marketplace", "list-zones"}},
+	{"network", "Network:", "Сеть:",
+		[]string{"vpc", "dns", "lb", "tg", "snat"}},
+	{"storage", "Data storage:", "Хранение данных:",
+		[]string{"disk", "s3"}},
+	{"containers", "Containers:", "Контейнеры:",
+		[]string{"k8s", "ca", "ar"}},
+	{"databases", "Databases:", "Базы данных:",
+		[]string{"pg", "redis"}},
+	{"brokers", "Message brokers:", "Брокеры сообщений:",
+		[]string{"kafka"}},
+	{"security", "Security:", "Безопасность:",
+		[]string{"secret", "cert"}},
+	{"monitoring", "Monitoring and management:", "Мониторинг и управление:",
+		[]string{"metrics", "audit"}},
+	{"account", "Administration:", "Администрирование:",
+		[]string{"billing", "org", "iam"}},
+	{"scenarios", "Scenarios: a compose project, a stack:", "Сценарии: compose-проект, стек:",
+		[]string{"init", "deploy", "status", "logs", "verify", "destroy", "stack"}},
 	{"setup", "Setup:", "Настройка:",
 		[]string{"configure", "project", "whoami", "doctor", "diag", "version", "completion", "help"}},
 	{"agents", "For AI agents:", "Для ИИ-агентов:",

@@ -36,7 +36,8 @@ func TestRussian_RootHelp(t *testing.T) {
 	for _, want := range []string{
 		"Коды выхода:\n  0    успех",
 		"Использование:\n  evo [команда]",
-		"Развёртывание compose-проекта:",
+		"Инфраструктура:",
+		"Сценарии: compose-проект, стек:",
 		"  deploy      Развернуть docker-compose проект на ВМ Cloud.ru\n",
 		"  vm          Виртуальные машины\n",
 		"  help        Справка по любой команде\n",
