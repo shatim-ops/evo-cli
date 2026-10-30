@@ -14,4 +14,4 @@ d53-transient-disk	internal/tools/tools_disk.go	if st, _ := d["state"].(string);
 d26-already-deleted	internal/tools/delete_gone.go	"status":  "already_deleted",	"status":  "deleted",	./internal/tools	^TestAlreadyDeleted_
 # c31: текст движка (bootimage.go) доходит до агента ответом инструмента deploy —
 # его и сверяет инвариант Ц-31 в internal/tools, поэтому пакеты разные.
-c31-new-flag	internal/engine/bootimage.go	or pass --image.",	or pass --image or --zone.",	./internal/tools	^TestToolAnswers_NameNoCLIFlag$
+c31-new-flag	internal/engine/bootimage.go	or pass image in the call.",	or pass --image.",	./internal/tools	^TestToolAnswers_NameNoCLIFlag$

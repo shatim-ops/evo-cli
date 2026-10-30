@@ -125,8 +125,9 @@ func TestProjectTools_NoProjectIsConfigInvalidBeforeAnyRequest(t *testing.T) {
 			t.Errorf("%s without a project sent %v", name, reqs)
 		}
 	}
-	// Подсказка называет все три способа задать проект.
-	for _, s := range []string{"evo configure --project-id", "CLOUDRU_PROJECT_ID", "evo project use"} {
+	// Подсказка называет все три способа задать проект — без флага CLI:
+	// тот же текст идёт агенту (Ц-31, D48).
+	for _, s := range []string{"evo project use", "CLOUDRU_PROJECT_ID", "project_id"} {
 		if !strings.Contains(want.Hint, s) {
 			t.Errorf("hint %q does not name %s", want.Hint, s)
 		}

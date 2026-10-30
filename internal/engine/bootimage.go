@@ -53,15 +53,15 @@ func (e *Engine) BootImage(ctx context.Context, projectID string) (*provision.Im
 func errNoBootImage() error {
 	return &MissingSettingError{Arg: "image", ce: clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.T("no boot image: image and image_id are not set", "не задан образ: нет ни image, ни image_id"),
-		i18n.T("Set image (a name from 'evo image list') or image_id in .evo.yaml ('evo init' picks one), or pass --image.",
-			"Задайте image (имя из 'evo image list') или image_id в .evo.yaml ('evo init' выберет образ сам) или передайте --image."))}
+		i18n.T("Set image (a name from 'evo image list') or image_id in .evo.yaml ('evo init' picks one), or pass image in the call.",
+			"Задайте image (имя из 'evo image list') или image_id в .evo.yaml ('evo init' выберет образ сам) или передайте image в вызове."))}
 }
 
 func errNoZone() error {
 	return &MissingSettingError{Arg: "region", ce: clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.T("no availability zone is set (region)", "не задана зона доступности (region)"),
-		i18n.T("Set region in .evo.yaml or the profile (evo configure --region <zone>), or pass --region: a zone name such as ru.AZ-2 or its UUID (evo vm zones).",
-			"Задайте region в .evo.yaml или в профиле (evo configure --region <зона>) или передайте --region — имя зоны (например, ru.AZ-2) или её UUID (evo vm zones)."))}
+		i18n.T("Set region in .evo.yaml or the profile ('evo configure'), or pass region in the call: a zone name such as ru.AZ-2 or its UUID (evo vm zones).",
+			"Задайте region в .evo.yaml или в профиле ('evo configure') или передайте region в вызове — имя зоны (например, ru.AZ-2) или её UUID (evo vm zones)."))}
 }
 
 // MissingSettingError is a setting a new VM of deploy cannot do without,
