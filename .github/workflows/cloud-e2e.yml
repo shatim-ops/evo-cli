@@ -85,7 +85,7 @@ on:
         description: "Which DBaaS jobs dbaas_smoke runs: pg, kafka, redis, separated by spaces"
         default: "pg kafka redis"
       probes:
-        description: "Billable probes of the platform, separated by spaces (plan cloud-e2e rc.1 1.6): access — dbaas-pg VMs in the cluster's subnet and in another subnet of the VPC probe TCP 5432 (DB-5, ~30 min more); nodes — the dbaas-pg cluster with 2 nodes and 100 GB, its storage per node read later from billing_consumption (cleanup_only prints it); p36 — disk: raw VM create with a flavor below the image's min_cpu; p41 — net: tg_create with a direct_ip VM target; p44 — secrets: a secret in a folder that does not exist; p45 — dbaas-pg: pg_create with backup_schedule @daily and */5 (a cluster the platform accepts is deleted)"
+        description: "Billable probes of the platform, separated by spaces (plan cloud-e2e rc.1 1.6): access — dbaas-pg VMs in the cluster's subnet and in another subnet of the VPC probe TCP 5432 (DB-5, ~30 min more); nodes — the dbaas-pg cluster with 2 nodes and 100 GB, its storage per node read later from billing_consumption (cleanup_only prints it); p36 — disk: raw VM create with a flavor below the image's min_cpu; p41 — net: tg_create with a direct_ip VM target; p44 — secrets: a secret in a folder that does not exist; p45 — dbaas-pg: pg_create with backup_schedule @daily and */5 (a cluster the platform accepts is deleted); dnslink — dns: before the zone delete, DELETE with links and its operation, PATCH linkedVpcIds [] and links read before and after (owner decision #597 p. 27)"
         default: ""
       redis_standalone_probe:
         description: "Probe G140-6 (billable, up to ~2.5 h): raw POST of a Redis STANDALONE cluster evo-e2e-redis-sa-<run> with replicas 0, without the field, 1 — the first accepted is created, read and deleted"
@@ -1363,7 +1363,7 @@ jobs:
           read -ra words <<<"${PROBES:-}"
           for w in ${words[@]+"${words[@]}"}; do
             case "$w" in
-              access | p36 | p41 | p44 | p45) ;;
+              access | p36 | p41 | p44 | p45 | dnslink) ;;
               nodes) extra=(--arg instances=2 --arg storage_gb="$(jq -r '[(.min_storage_gb // 0), 100] | max' <<<"$spec")") ;;
               *) echo "::error::probes: «$w» — неизвестное слово (preflight их проверяет)"; exit 1 ;;
             esac
