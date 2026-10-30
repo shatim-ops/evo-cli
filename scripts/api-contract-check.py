@@ -375,10 +375,8 @@ def check_request(spec, req):
     # --- fields of impact (CLAUDE.md §6, axis 4): each is a field of the body ---
     impact = req.get("impact") or {}
     if impact and bs is not None:
-        top = (bs.get("items") or {}) if bs.get("type") == "array" else bs
-        props, _, _ = merge_schema(top)
         for f in sorted(impact):
-            if f not in props:
+            if walk(bs, f) is None:
                 add("error", f"impact-unknown:{f}", f"поле влияния `{f}` не описано в теле запроса — опечатка или поле убрали")
 
     # --- response fields read ---

@@ -67,6 +67,10 @@ paths:
                 size: {type: integer}
                 state: {type: string, readOnly: true}
                 encrypted: {type: boolean}
+                options:
+                  type: object
+                  properties:
+                    fast: {type: boolean}
       responses:
         "200": {description: ok}
 """
@@ -132,7 +136,8 @@ class FieldRatchet(unittest.TestCase):
         req[0]["reads"] += ["size", "network.subnet", "tags[]", "zone.id"]
         req[0]["accepted"] = {"field-new:network.vpc": "the VPC is named by the subnet"}
         req[1]["body"] += ["size"]
-        req[1]["accepted"] = {"field-new:encrypted": "evo creates unencrypted things (declared, #496)"}
+        req[1]["accepted"] = {"field-new:encrypted": "evo creates unencrypted things (declared, #496)",
+                              "field-new:options": "evo leaves the options to the platform's defaults"}
         rc, out, _ = self.run_check()
         self.assertEqual(rc, 0, out)
         self.assertNotIn("[error", out)
@@ -148,9 +153,13 @@ class FieldRatchet(unittest.TestCase):
         # A field of impact the body of the spec does not have: an error.
         req = self.contract["services"][0]["requests"][1]
         req["impact"] = {"size": "цена", "encrypt": "безопасность; пропуск: план"}
+        req["impact"].update({"options.fast": "работа", "options.nope": "работа"})
         _, out, _ = self.run_check()
         self.assertIn("impact-unknown:encrypt", out)
         self.assertNotIn("impact-unknown:size", out)
+        # A nested field is looked up through the schema, as body-unknown.
+        self.assertNotIn("impact-unknown:options.fast", out)
+        self.assertIn("impact-unknown:options.nope", out)
 
     def test_update(self):
         rc, out, written = self.run_check("--update-fields")
