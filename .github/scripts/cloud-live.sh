@@ -938,6 +938,21 @@ area_net() {
 
 # DNS: приватная зона, запись A, удаление. Каждый вызов по зоне — с
 # type=private: по умолчанию инструменты идут в API публичных зон.
+# dns_delete_op ЧТО — итог операции удаления из последнего ответа (j):
+# строка, а не провал (провал — объект остался в списке). Операция с ошибкой
+# или не done — её состояние пробой: run 151 (30.10) зона после ~40
+# принятых удалений осталась «ok», а итог операции не читался.
+dns_delete_op() {
+	local op
+	op=$(j -r '.operation_id // empty')
+	[ -n "$op" ] || { row "dns_operation удаления $1" "нет id" "в ответе нет operation_id"; return 0; }
+	mask "$op"
+	if opwait dns "$op" 300; then ok "dns_operation удаления $1" "done"; else
+		row "dns_operation удаления $1" "не done" "за 5 мин: $why"
+		probe_dns_op "$op"
+	fi
+}
+
 area_dns() {
 	local domain="$prefix.test." zid rid op nv
 	# D65 (1.6, #676; решение владельца #597, п. 25): приватная зона к VPC
@@ -994,11 +1009,11 @@ area_dns() {
 	must dns_record_get dns_record_get --arg record_id="$rid" --arg type=private && ok dns_record_get "ttl $(j -r '.ttl // "?"')"
 	bound_check dns_record_get "$(jq -cn --arg i "$rid" '{record_id: $i, type: "private"}')" "allow-project: dns_record_get" own
 	must dns_record_delete dns_record_delete --arg record_id="$rid" --arg type=private || return 1
-	opwait dns "$(j -r .operation_id)" 300 || true
+	dns_delete_op записи
 	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" 'any(.records[]; .id == $id) | not' >/dev/null; }
 	if poll 300 15 norec; then ok dns_record_delete "записи нет"; cov dns_record_delete; else bad dns_record_delete "запись осталась через 5 мин"; fi
 	must dns_zone_delete dns_zone_delete --arg id="$zid" --arg type=private || return 1
-	opwait dns "$(j -r .operation_id)" 300 || true
+	dns_delete_op зоны
 	# приватная зона 18.10 удалялась ~11,5 мин (run 39160570296)
 	local t0=$SECONDS
 	if poll 1500 20 gone dns "$prefix"; then
