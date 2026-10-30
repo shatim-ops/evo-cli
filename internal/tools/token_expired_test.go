@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -67,6 +68,9 @@ func TestTokenRefusedAsExpired_NextCallExchangesAnew(t *testing.T) {
 	t.Cleanup(func() { http.DefaultTransport = old })
 	cache := auth.FileCache{Path: filepath.Join(t.TempDir(), "token.json")}
 	p := auth.NewIAMProvider(auth.Credentials{KeyID: "k", Secret: "s"}, nil, cache)
+	// Held for the test, as cli.tokenProvider holds it for the process:
+	// the renewal of a refused token finds live providers only (weak).
+	t.Cleanup(func() { runtime.KeepAlive(p) })
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
