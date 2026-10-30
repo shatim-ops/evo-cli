@@ -140,7 +140,13 @@ func TestDeleteSecurityGroupRule_Errors(t *testing.T) {
 		status int
 		code   string
 	}{{http.StatusNotFound, clierrors.CodeNotFound}, {http.StatusUnprocessableEntity, clierrors.CodeAPIError}} {
-		srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(tc.status) })
+		srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			if tc.status == http.StatusNotFound {
+				computeNotFound(w, r)
+				return
+			}
+			w.WriteHeader(tc.status)
+		})
 		err := a.DeleteSecurityGroupRule(context.Background(), "sg-1", "rule-7")
 		srv.Close()
 		var ce *clierrors.CLIError

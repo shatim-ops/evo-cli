@@ -23,6 +23,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -3369,6 +3370,11 @@ func errAnswer(err error, fields map[string]any) string {
 		err = all[0]
 	}
 	reason, msg, hint := errReason(err, res)
+	if httpretry.RouteNotFound(err) {
+		// Whatever the client says of a 5xx: the address, not the
+		// service's state (D63).
+		hint = clierrors.RouteNotFoundHint()
+	}
 	if hint != "" {
 		res["hint"] = hint
 	}
