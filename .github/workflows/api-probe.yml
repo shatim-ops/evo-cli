@@ -996,10 +996,12 @@ jobs:
           echo "vpcs: http $vc, всего $(jq '.vpcs | length' "$v" 2>/dev/null || echo ?), по умолчанию $(jq '[.vpcs[]? | select(.default == true)] | length' "$v" 2>/dev/null || echo ?)"
           echo "dnsServers: http $dc, ключи $(jq -c 'keys' "$d" 2>/dev/null || echo ?), серверов $(jq '.servers | length' "$d" 2>/dev/null || echo ?)"
           [ "$dc" = 200 ] || echo "dnsServers: $(jq -c '{code, message}' "$d" 2>/dev/null | redact | cut -c1-200)"
+          # Одна страница: список длиннее 100 — итог не «нет», а «список не полон».
+          [ -z "$(jq -r '.nextPageToken // empty' "$d" 2>/dev/null)" ] || echo "dnsServers: список не полон (есть nextPageToken) — итог ниже — нижняя граница"
           # По серверу: в VPC ли по умолчанию, состояние, используется ли.
           jq -r --slurpfile vp "$v" '($vp[0].vpcs // [] | map(select(.default == true) | .id)) as $def
-            | .servers[]? | "сервер: в VPC по умолчанию \((.vpcId // "") as $x | $def | index($x) != null), state \(.state // "?"), usedIn \(.usedIn // [] | length)"' "$d" 2>/dev/null || true
-          n=$(jq -r --slurpfile vp "$v" '($vp[0].vpcs // [] | map(select(.default == true) | .id)) as $def | [.servers[]? | select((.vpcId // "") as $x | $def | index($x) != null)] | length' "$d" 2>/dev/null || echo "?")
+            | .servers[]? | "сервер: в VPC по умолчанию \(.vpcId as $x | $x != null and ($def | index($x) != null)), state \(.state // "?"), usedIn \(.usedIn // [] | length)"' "$d" 2>/dev/null || true
+          n=$(jq -r --slurpfile vp "$v" '($vp[0].vpcs // [] | map(select(.default == true) | .id)) as $def | [.servers[]? | select(.vpcId as $x | $x != null and ($def | index($x) != null))] | length' "$d" 2>/dev/null || echo "?")
           echo "ИТОГ п. 25: DNS-серверов в VPC по умолчанию — $n"
 
       - name: Права ключа (изменения должны быть запрещены)
