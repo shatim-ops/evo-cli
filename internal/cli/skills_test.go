@@ -520,11 +520,11 @@ func TestSkills_SayWhatTheCodeDoes(t *testing.T) {
 			[]string{"TestDeploy_VMNameFromDirectoryIsAHostname", "TestConsent_RefusalWithoutWriteComesBeforeTheQuestion",
 				"TestOpen_PortOpensForAnyAddressInTheGivenGroup"}, ""},
 		// pg_create's default subnet is the zone's (pickDBaaSSubnet), and
-		// evo gives no price for PostgreSQL.
-		{"evo-postgres", "G130-25, -27",
-			[]string{"the main subnet of the profile's zone", "`tariff_url`"},
-			[]string{"the first subnet of the project", "low-cost", "the cheapest"},
-			[]string{"TestDbaasSubnet_MainSubnetOfTheProfilesZone", "TestPgCreate_PreviewGivesTheTariffNotAPrice"}, ""},
+		// its preview estimates the price by the tariff (Ц-10, 1.6).
+		{"evo-postgres", "G130-25, -27; Ц-10",
+			[]string{"the main subnet of the profile's zone", "`tariff_url`", "an estimate by the tariff of Managed PostgreSQL"},
+			[]string{"the first subnet of the project", "low-cost", "the cheapest", "evo has no PostgreSQL prices", "gives no price for PostgreSQL"},
+			[]string{"TestDbaasSubnet_MainSubnetOfTheProfilesZone", "TestPgCreate_PreviewGivesAnEstimateByTheTariff"}, ""},
 		// С9 (FB15-20): HTTPS ends on the VM — the balancer is L4 TCP; the
 		// ports of the compose file open from 0.0.0.0/0, 80 and 443 too.
 		// What Caddy does is the agent's guide, not evo's code.

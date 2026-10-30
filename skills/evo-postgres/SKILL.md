@@ -39,18 +39,20 @@ delete answers: skill `evo-scenarios`, sections 4 and 5.
    person, your own estimate said as such — then show the person two or
    three specifications of the list that meet it, and let them pick (skill
    `evo-scenarios`, section 7). `min_storage_gb` is a specification's least
-   storage. evo has no PostgreSQL prices: do not name one; the person
-   compares on the page of `tariff_url`.
+   storage. A specification's price is in the preview of step 2 — an
+   estimate by the tariff of its date; the rates are on `tariff_url`.
 2. Preview: `evo pg create <name> --specification-id <id> --dry-run --json`
    / `pg_create` with `name`, `specification_id`, and `version`,
    `storage_gb`, `subnet_id` if needed, no `confirmed`. It names the
    version, cpu, memory, storage, nodes, subnet, the initial database and
-   backups. evo gives no price for PostgreSQL: the preview has `tariff_url`,
-   the Cloud.ru tariff page. A taken name, or storage below the
+   backups, and `cost`: an estimate by the tariff of Managed PostgreSQL
+   (`cost_note` names its date), with VAT, storage counted on each node;
+   `tariff_url` is the tariff page. Say it is an estimate, not a bill. A
+   taken name, or storage below the
    specification's minimum, is `USAGE` before any question.
 3. Stop and ask: show the person the configuration, storage, subnet and
    zone, that automatic backups are on (they cannot be turned off later;
-   `no_backup` only at creation), and the tariff link. Go on only after
+   `no_backup` only at creation), the estimate and the tariff link. Go on only after
    their explicit yes.
 4. Create: `evo pg create <name> --specification-id <id> --yes --json` /
    `pg_create` with `confirmed: true`. It returns `operation_id`.
