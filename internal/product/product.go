@@ -23,12 +23,10 @@ const (
 	TitleRU = Name + " — CLI и MCP-сервер для Cloud.ru Evolution"
 )
 
-// Feedback goes to the author and the testers' chat in Telegram; shown in
-// evo --help and README.
-const (
-	FeedbackContact = "https://t.me/shatim"
-	FeedbackChat    = "https://t.me/+SYvXziA4G9c1Y2Ni"
-)
+// FeedbackContact is the author in Telegram: the feedback field of
+// evo version --json, kept until 2.0 (dropping a field of --json is
+// breaking; backlog 2.0, #686).
+const FeedbackContact = "https://t.me/shatim"
 
 // Author is who made evo. It is in evo version, the hidden "evo crew",
 // NOTICE (Apache 2.0, section 4(d): a redistribution keeps NOTICE) and the

@@ -1,8 +1,8 @@
 # evo CMCP — CLI и MCP-сервер для Cloud.ru Evolution
 
 **CREW edition** — редакция для тестирования внутри Cloud.ru и сбора
-обратной связи: в Telegram [@shatim](https://t.me/shatim) и в
-[чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni). Команда — `evo`.
+обратной связи: в [Issues](https://github.com/shatim-ops/evo-cli/issues/new/choose)
+этого репозитория. Команда — `evo`.
 
 Уязвимость — не в Issues, а приватным отчётом: [SECURITY.md](SECURITY.md).
 
@@ -347,8 +347,6 @@ evo disk delete 1b2c… </dev/null; echo $?   # 3: без терминала и 
 Key ID и имена ресурсов на `<uuid>`, `<ip>`, `<имя>`, ключи не вставляйте
 никогда. Приложите `evo version` и `evo doctor` — подробнее в
 [docs/troubleshooting.md](docs/troubleshooting.md#обращение-в-поддержку).
-Быстрые вопросы — в Telegram [@shatim](https://t.me/shatim) и в
-[чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni).
 
 ## Сборка из исходников
 
