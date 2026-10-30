@@ -66,9 +66,9 @@ func TestRootHelp_Welcome(t *testing.T) {
 	if strings.Contains(long, "t.me/") {
 		t.Errorf("в корневой справке ссылка на Telegram: %q", long)
 	}
-	// И в тексте evo version: обратная связь — Issues (README); поле
-	// feedback в --json остаётся до 2.0 (#686).
+	// И в тексте скрытой evo crew: обратная связь — Issues (README); поле
+	// feedback в evo crew --json остаётся до 2.0 (#686).
 	if crew := crewText(); strings.Contains(crew, "t.me/") {
-		t.Errorf("в тексте evo version ссылка на Telegram: %q", crew)
+		t.Errorf("в тексте evo crew ссылка на Telegram: %q", crew)
 	}
 }
