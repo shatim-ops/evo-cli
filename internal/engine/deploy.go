@@ -23,6 +23,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
@@ -459,41 +460,76 @@ func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project 
 	if flavor == "" {
 		flavor = e.Config.Flavor
 	}
+	flavors, err := e.Cloud.ListFlavors(ctx)
+	if err != nil {
+		return "", fmt.Errorf(i18n.T("list flavors: %w", "список flavor: %w"), err)
+	}
+	// The zone of the VM resolved as the create resolves it (ResolveZone:
+	// a UUID, or a name in any case), so the flavor is checked against the
+	// zone the VM goes to, as the preview checks it (D67; Fable, FB160-15,
+	// FB160-16): a flavor named or picked out of the zone stops here, before
+	// anything is created.
+	zone := e.deployZone(ctx, firstNonEmpty(opts.Region, e.Config.Region))
 
 	if flavor != "" && flavor != "auto" {
 		// A flavor the catalogue has not is refused first, as the preview
 		// refuses it (#470): before the image and the network are read.
-		if _, err := e.flavorAPIName(ctx, flavor); err != nil {
-			return "", err
+		for _, f := range flavors {
+			if f.ID == flavor || f.Name == flavor {
+				return flavor, FlavorOutOfZone(f, zone)
+			}
 		}
-		return flavor, nil
+		return "", flavorNotFound(flavor, flavors)
 	}
 
-	// Auto-size: estimate resources, then match against available flavors.
-	estimated := sizer.EstimateFromServices(project.Services)
-
-	flavors, err := e.Cloud.ListFlavors(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	// Convert []*Flavor to []Flavor for sizer.Match.
-	flavorList := make([]provision.Flavor, len(flavors))
-	for i, f := range flavors {
-		flavorList[i] = *f
-	}
-
-	match := sizer.Match(estimated, flavorList)
+	// Auto-size: estimate resources, then match against the flavors of the
+	// zone.
+	match := sizeFlavor(project, flavors, zone)
 	if match == nil {
 		return "", clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.T("no suitable flavor found for the workload", "не найден flavor, подходящий под нагрузку"),
 			i18n.T("Specify a flavor explicitly with --flavor.", "Задайте flavor явно: --flavor."))
 	}
+	if err := FlavorOutOfZone(match, zone); err != nil {
+		return "", err
+	}
 
 	e.Printer.StepDone(i18n.Tf("Recommended flavor: %s (%d vCPU, %d GB RAM)", "Подобран flavor: %s (%d vCPU, %d ГБ RAM)",
-		match.Flavor.Name, match.Flavor.VCPUs, match.Flavor.RAMGB))
+		match.Name, match.VCPUs, match.RAMGB))
 
-	return match.Flavor.ID, nil
+	return match.ID, nil
+}
+
+// sizeFlavor is the flavor deploy picks for the compose file's services
+// among the flavors of zone (FlavorsInZone): the preview's pick and the
+// create's are one. nil when none fits.
+func sizeFlavor(project *compose.Project, flavors []*provision.Flavor, zone *deployplan.RefSpec) *provision.Flavor {
+	flavors = FlavorsInZone(flavors, zone)
+	list := make([]provision.Flavor, len(flavors))
+	for i, f := range flavors {
+		list[i] = *f
+	}
+	match := sizer.Match(sizer.EstimateFromServices(project.Services), list)
+	if match == nil {
+		return nil
+	}
+	for _, f := range flavors {
+		if f.ID == match.Flavor.ID {
+			return f
+		}
+	}
+	return &match.Flavor
+}
+
+// deployZone is the zone of region (a UUID or a name) as the create
+// resolves it; a zone the list does not name, or a list that cannot be
+// read, is the region as given — compared by ID and, in any case, by name.
+func (e *Engine) deployZone(ctx context.Context, region string) *deployplan.RefSpec {
+	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	if z, zerr := ResolveZoneRef(zones, err, region); zerr == nil && z != nil {
+		return &deployplan.RefSpec{ID: z.ID, Name: z.Name}
+	}
+	return &deployplan.RefSpec{ID: region, Name: region}
 }
 
 // provisionVM creates a new VM and waits for it to become active.
