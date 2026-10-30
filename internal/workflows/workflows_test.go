@@ -28,13 +28,17 @@ type workflow struct {
 		Group            string `yaml:"group"`
 		CancelInProgress string `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
+	Env  map[string]string `yaml:"env"`
 	Jobs map[string]struct {
 		If             string `yaml:"if"`
 		TimeoutMinutes int    `yaml:"timeout-minutes"`
 		Permissions    any    `yaml:"permissions"`
 		Uses           string `yaml:"uses"`
 		RunsOn         string `yaml:"runs-on"`
-		Strategy       struct {
+		// Needs: a job name or a list of them.
+		Needs       any    `yaml:"needs"`
+		Environment string `yaml:"environment"`
+		Strategy    struct {
 			Matrix      map[string]any `yaml:"matrix"`
 			MaxParallel int            `yaml:"max-parallel"`
 		} `yaml:"strategy"`
