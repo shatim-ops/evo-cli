@@ -9,7 +9,7 @@
 # Живые прогоны изменяющих инструментов evo на настоящем Cloud.ru, по одной
 # области за вызов: cloud-live.sh ОБЛАСТЬ. Области: disk, net, dns, s3,
 # secrets, ca, stack, mcp — их вызывает job live в cloud-e2e.yml после evo
-# configure; sweep ПРЕФИКС [ОБЛАСТЬ] — удалить ресурсы с именами ПРЕФИКС*
+# configure; pgnet — job dbaas-pg (вход pg_probes: access); sweep ПРЕФИКС [ОБЛАСТЬ] — удалить ресурсы с именами ПРЕФИКС*
 # всех видов этого скрипта или только видов области (job cleanup, префикс
 # evo-e2e-; страховка job live).
 #
@@ -33,7 +33,7 @@
 # shellcheck disable=SC2015,SC2016,SC2329
 set -euo pipefail
 
-area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp или sweep ПРЕФИКС}
+area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet или sweep ПРЕФИКС}
 here=$(cd "$(dirname "$0")" && pwd)
 ZONE=${ZONE:-ru.AZ-2}
 IMAGE=${IMAGE:-ubuntu-22.04}
@@ -256,6 +256,7 @@ area_kinds() {
 	ca) echo "ca ar" ;;
 	stack) echo "lb tg vm fip secret" ;;
 	mcp) echo "vm fip" ;;
+	pgnet) echo "vm fip subnet" ;;
 	*) echo "${KINDS/route /}" ;;
 	esac
 }
@@ -1121,6 +1122,90 @@ area_stack() {
 	# остатки (ВМ, балансировщик, группа, секрет) проверяет уборка по префиксу
 }
 
+# Откуда доступен кластер PostgreSQL (реестр DB-5: документация говорит
+# то «из той же подсети», то «из той же VPC»; план cloud-e2e rc.1 1.6,
+# пункт А). Job dbaas-pg, кластер READY: PG_CLUSTER_ID и PG_SUBNET_ID —
+# кластер и его подсеть. ВМ A — в подсети кластера, ВМ B — в новой подсети
+# основного VPC проекта (subnet_create без vpc_id); с каждой — TCP на 5432
+# адреса из connection_string, три попытки. Итог — строки «N из 3»: это
+# ответ платформы, а не evo, и не провал; провал — шаги evo (ВМ, подсеть,
+# удаление). Подсеть кластера не основная (не Default_<зона>) — VPC не
+# сверен: не покрыто. Вывод о платформе — из двух прогонов (CLAUDE.md §0).
+area_pgnet() {
+	local zid cs host sname other cidr a b ip_a ip_b user n
+	[ -n "${PG_CLUSTER_ID:-}" ] && [ -n "${PG_SUBNET_ID:-}" ] || { bad pgnet "нет PG_CLUSTER_ID или PG_SUBNET_ID"; return 1; }
+	mask "$PG_CLUSTER_ID" "$PG_SUBNET_ID"
+	zid=$(zone_id)
+	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
+	mkdir -p "$tmp/pgnet" && cd "$tmp/pgnet"
+
+	must pg_get pg_get --arg cluster_id="$PG_CLUSTER_ID" || return 1
+	cs=$(j -r '.connection_string // empty')
+	host=$(printf '%s' "$cs" | grep -oE 'host=[^ ;,]+' | head -1 | cut -d= -f2)
+	[ -n "$host" ] || host=$(printf '%s' "$cs" | grep -oE '@[^:/@ ]+' | head -1 | cut -c2-)
+	[ -n "$host" ] || host=$(printf '%s' "$cs" | grep -oE '^[A-Za-z0-9.-]+(:[0-9]+)?$' | cut -d: -f1)
+	mask "$host"
+	if [ -z "$host" ]; then
+		gap "DB-5: адрес кластера" "connection_string не разобран (тип $(j -r '.connection_string | type'))"
+		return 0
+	fi
+	sname=$(evo tools call list_subnets --json | jq -r --arg id "$PG_SUBNET_ID" '[.subnets[]? | select(.id == $id) | .name // ""][0] // ""')
+	case "$sname" in Default_*) ;; *)
+		gap "DB-5: подсеть кластера" "не основная подсеть зоны — её VPC прогон не сверяет"
+		return 0
+		;;
+	esac
+
+	for cidr in 10.254.240.0/28 10.254.241.0/28 10.254.242.0/28; do
+		tc subnet_create --arg name="$prefix-sn" --arg cidr="$cidr" --arg zone="$ZONE"
+		[ "$rc" = 0 ] && break
+		row "subnet_create $cidr" отказ "код $rc, $reason: $(printf '%s' "$why" | cut -c1-160)"
+	done
+	[ "$rc" = 0 ] || { bad "subnet_create (вторая подсеть VPC)" "три сети отвергнуты"; return 1; }
+	other=$(j -r '.subnet_id // empty')
+	mask "$other"
+	ok "subnet_create (вторая подсеть VPC)" "$cidr"
+
+	a="$prefix-a"
+	b="$prefix-b"
+	must "provision в подсети кластера" provision --arg name="$a" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg subnet_id="$PG_SUBNET_ID" || return 1
+	ip_a=$(j -r '.vm_ip // empty')
+	user=$(j -r '.ssh_user // "user1"')
+	mask "$(j -r '.vm_id // empty')" "$ip_a"
+	must "provision в другой подсети" provision --arg name="$b" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg subnet_id="$other" || return 1
+	ip_b=$(j -r '.vm_ip // empty')
+	mask "$(j -r '.vm_id // empty')" "$ip_b"
+	[ -n "$ip_a" ] && [ -n "$ip_b" ] || { bad provision "нет vm_ip у ВМ"; return 1; }
+	cov provision
+
+	# reach IP — TCP на 5432 кластера с ВМ: «N из 3» в $n.
+	reach() {
+		local ip=$1 i
+		n=0
+		if ! poll 600 15 ssh -i .evo/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+			-o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=10 "$user@$ip" true 2>/dev/null; then
+			n=-
+			return 0
+		fi
+		for i in 1 2 3; do
+			if ssh -i .evo/id_ed25519 -o BatchMode=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=10 "$user@$ip" \
+				"timeout 5 bash -c '</dev/tcp/$host/5432'" 2>/dev/null; then n=$((n + 1)); fi
+			[ "$i" = 3 ] || sleep 10
+		done
+	}
+	reach "$ip_a"
+	if [ "$n" = - ]; then bad "SSH к ВМ в подсети кластера" "не поднялся за 10 мин"; else ok "DB-5: доступ из подсети кластера" "TCP 5432: $n из 3"; fi
+	reach "$ip_b"
+	if [ "$n" = - ]; then bad "SSH к ВМ в другой подсети" "не поднялся за 10 мин"; else ok "DB-5: доступ из другой подсети того же VPC" "TCP 5432: $n из 3"; fi
+
+	must "destroy ВМ A" destroy --arg name="$a" || return 1
+	must "destroy ВМ B" destroy --arg name="$b" || return 1
+	cov destroy
+	sn_del() { tc subnet_delete --arg subnet_id="$other"; [ "$rc" = 0 ]; }
+	if poll 600 15 sn_del; then ok "subnet_delete (вторая подсеть)" "$(j -r '.status // empty')"; else bad "subnet_delete (вторая подсеть)" "код $rc, $reason: $why"; fi
+	# остатки (ВМ, адреса, подсеть) проверяет уборка по префиксу
+}
+
 # MCP по stdio (deploy_plan → deploy_apply → deploy → destroy) и по HTTP
 # (provision → destroy), гейт подтверждения на обоих.
 area_mcp() {
@@ -1230,7 +1315,7 @@ area_mcp() {
 }
 
 case "$area" in
-disk | net | dns | s3 | secrets | ca | stack | mcp)
+disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet)
 	echo "== $area: префикс $prefix"
 	{
 		echo
