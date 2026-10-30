@@ -2,7 +2,7 @@
 # Проверка pg-schedule-probe.sh (job ci) на поддельном evo и поддельном
 # dbaas-delete.sh: отказ платформы — строка «P45: … отказ» с reason, без
 # удаления; принятое расписание — удаление по имени evo-e2e-pgsch<N>-…;
-# удаление не прошло — код 1; CLUSTER не evo-e2e-pg-* — код 2. Облака нет.
+# удаление не прошло — код 1 и второго кластера нет; CLUSTER не evo-e2e-pg-* — код 2. Облака нет.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 fail=0
@@ -52,6 +52,9 @@ grep -qx 'evo-e2e-pgsch1-r7a1' "$work/accepted/deleted" 2>/dev/null || { echo "F
 
 case_ notdeleted 1 1 '{"status":"creating"}' 0 '{"status":"creating"}' 0
 has notdeleted "не удалён"
+# Первый кластер не удалён — второго pg_create нет.
+n=$(grep -c '^pg_create yes=1' "$work/notdeleted/evo-calls")
+[ "$n" = 1 ] || { echo "FAIL notdeleted: pg_create вызван $n раз, ждём 1"; fail=1; }
 
 set +e
 CLUSTER=prod-db SPEC_ID=s SUBNET_ID=n "$here/pg-schedule-probe.sh" >/dev/null 2>&1

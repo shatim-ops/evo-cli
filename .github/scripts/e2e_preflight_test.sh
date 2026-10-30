@@ -73,9 +73,10 @@ has many "ru.AZ-9 (kafka): зоны нет"
 has many "причин: 3"
 
 # Пробы: неизвестное слово и проба dbaas-pg без него — провал, обе причины;
-# известные слова при dbaas-pg — можно.
+# p36, p41, p44 без DBaaS — не причина (причин ровно 2); известные слова
+# при dbaas-pg — можно.
 fresh probes
-run probes 1 PROBES='p36 nodes p99'
+run probes 1 PROBES='p36 p41 p44 nodes p99'
 has probes "probes: «p99» — не access"
 has probes "probes: «nodes» — проба джоба dbaas-pg"
 has probes "причин: 2"
