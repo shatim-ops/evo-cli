@@ -229,10 +229,17 @@ func TestBackoffDefault(t *testing.T) {
 	}
 }
 
+// computeNotFound answers as compute does a resource that is not there: a
+// 404 with a JSON array (api-probe 33 and 34). A 404 without it is a route
+// that is not there (D63, httpretry.RouteNotFoundAsBadGateway).
+func computeNotFound(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write([]byte(`[{"message":"not found"}]`))
+}
+
 func TestNotFound(t *testing.T) {
-	srv, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	})
+	srv, adapter := setupTestServer(computeNotFound)
 	defer srv.Close()
 
 	_, err := adapter.GetVM(context.Background(), "vm-nonexistent")
@@ -253,7 +260,7 @@ func TestNotFound(t *testing.T) {
 // VM_NOT_FOUND ("delete disk: VM_NOT_FOUND"); a VM path keeps
 // VM_NOT_FOUND. Both exit with 4.
 func TestNotFound_CodeByPath(t *testing.T) {
-	srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotFound) })
+	srv, a := setupTestServer(computeNotFound)
 	defer srv.Close()
 	ctx := context.Background()
 	for name, tc := range map[string]struct {

@@ -1218,9 +1218,15 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		if res, e := s.callTool(ctx, tool, dargs); e != nil {
 			msg := e.Error()
 			reason, _ := res["reason"].(string)
-			if reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound ||
-				strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") ||
-				strings.Contains(strings.ToLower(msg), "not found") || strings.Contains(msg, "не найден") {
+			// The code decides; the text only for an answer without one: a
+			// 404 the service did not write is API_ERROR and names the 404
+			// in its message (D63).
+			gone := reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound
+			if reason == "" {
+				gone = strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") ||
+					strings.Contains(strings.ToLower(msg), "not found") || strings.Contains(msg, "не найден")
+			}
+			if gone {
 				deleted = append(deleted, label+" (already gone)")
 			} else {
 				failed = append(failed, label+": "+msg)
