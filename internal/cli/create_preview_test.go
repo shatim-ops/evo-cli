@@ -49,11 +49,11 @@ func (previewCloud) SetToken(string) {}
 func (previewCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	return []*provision.Flavor{
 		{ID: "00000000-0000-0000-0000-0000000000f0", Name: "free-tier1", VCPUs: 1, RAMGB: 1, FreeTier: true, Share: "1:1", GPU: new(int), Type: &provision.FlavorType{},
-			Zones: []provision.FlavorZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: true, Available: true}}},
+			Zones: []provision.FlavorZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: true}}},
 		{ID: "00000000-0000-0000-0000-0000000000e5", Name: "lowcost10-4-8", VCPUs: 4, RAMGB: 8, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{},
-			Zones: []provision.FlavorZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: true, Available: true}}},
+			Zones: []provision.FlavorZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: true}}},
 		{ID: pvFlavor, Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4, Share: "1:10", GPU: new(int), Type: &provision.FlavorType{},
-			Zones: []provision.FlavorZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: true, Available: true}}},
+			Zones: []provision.FlavorZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: true}}},
 	}, nil
 }
 func (previewCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
