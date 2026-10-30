@@ -102,6 +102,18 @@ func englishProse(s string) string {
 	return ""
 }
 
+// productNames reports whether title is a list of product names of
+// Cloud.ru: each one an "Evolution …" product or one of the names the
+// documentation gives without the prefix.
+func productNames(title string) bool {
+	for _, name := range strings.Split(strings.TrimSuffix(title, ":"), ", ") {
+		if !strings.HasPrefix(name, "Evolution ") && name != "Secret Management" && name != "Certificate Manager" {
+			return false
+		}
+	}
+	return true
+}
+
 func hasCyrillic(s string) bool {
 	return strings.IndexFunc(s, func(r rune) bool { return unicode.Is(unicode.Cyrillic, r) }) >= 0
 }
@@ -133,8 +145,10 @@ func TestHelp_RussianEverywhere(t *testing.T) {
 
 	russian(t)
 	root := newRootCmd()
+	// A group may be titled by products of Cloud.ru under their official
+	// names (#597, item 30), Latin by design; any other title is Russian.
 	for _, g := range root.Groups() {
-		if !hasCyrillic(g.Title) {
+		if !hasCyrillic(g.Title) && !productNames(g.Title) {
 			t.Errorf("group %s: English title %q", g.ID, g.Title)
 		}
 	}

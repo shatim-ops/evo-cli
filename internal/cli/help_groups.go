@@ -13,10 +13,14 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// The root --help lists the commands by scenario, not by alphabet: a
-// newcomer sees "deploy a compose project" first and the resource trees
-// next, as gh shows CORE before ADDITIONAL COMMANDS and kubectl Basic before
-// Cluster Management (review r5 U5). The exit codes go after the list.
+// The root --help lists the commands by the products of Cloud.ru
+// Evolution, so a newcomer sees which services evo reaches: the title of a
+// group is the official name of its product, or the names of several; a
+// group without one has a plain title. The cloud products come first,
+// Evolution Compute first of them; the scenarios of evo (a compose project,
+// a stack) follow (owner's decision 30.10, #597, item 30; before: review
+// r5 U5, compose first). The sources of the names are in PR #688. The exit
+// codes go after the list.
 
 func init() {
 	cobra.AddTemplateFunc("exitCodesHelp", clerrors.ExitCodesHelp)
@@ -28,16 +32,26 @@ var commandGroups = []struct {
 	id, en, ru string
 	cmds       []string
 }{
-	{"compose", "Deploy a compose project:", "Развёртывание compose-проекта:",
-		[]string{"init", "deploy", "status", "logs", "verify", "destroy"}},
-	{"resources", "Project resources:", "Ресурсы проекта:",
-		[]string{"vm", "image", "marketplace", "disk", "vpc", "k8s", "pg", "s3", "secret", "stack", "list-zones"}},
-	{"network", "Network services:", "Сетевые сервисы:",
-		[]string{"dns", "cert", "lb", "tg", "snat"}},
-	{"services", "Managed services:", "Управляемые сервисы:",
-		[]string{"kafka", "redis", "ar", "ca"}},
-	{"account", "Costs, audit and monitoring:", "Затраты, аудит и мониторинг:",
-		[]string{"billing", "audit", "org", "iam", "metrics"}},
+	{"compute", "Evolution Compute, Evolution Disk:", "Evolution Compute, Evolution Disk:",
+		[]string{"vm", "image", "marketplace", "disk", "list-zones"}},
+	{"network", "Evolution VPC, Evolution DNS, Evolution Load Balancer, SNAT gateways:",
+		"Evolution VPC, Evolution DNS, Evolution Load Balancer, SNAT-шлюзы:",
+		[]string{"vpc", "dns", "lb", "tg", "snat"}},
+	{"kubernetes", "Evolution Managed Kubernetes:", "Evolution Managed Kubernetes:",
+		[]string{"k8s"}},
+	{"containers", "Evolution Artifact Registry, Evolution Container Apps:", "Evolution Artifact Registry, Evolution Container Apps:",
+		[]string{"ar", "ca"}},
+	{"databases", "Evolution Managed PostgreSQL, Evolution Managed Redis, Evolution Managed Kafka:",
+		"Evolution Managed PostgreSQL, Evolution Managed Redis, Evolution Managed Kafka:",
+		[]string{"pg", "redis", "kafka"}},
+	{"storage", "Evolution Object Storage:", "Evolution Object Storage:",
+		[]string{"s3"}},
+	{"security", "Secret Management, Certificate Manager:", "Secret Management, Certificate Manager:",
+		[]string{"secret", "cert"}},
+	{"account", "Monitoring, audit, billing, access:", "Мониторинг, аудит, биллинг, доступ:",
+		[]string{"metrics", "audit", "billing", "org", "iam"}},
+	{"scenarios", "Scenarios: a compose project, a stack:", "Сценарии: compose-проект, стек:",
+		[]string{"init", "deploy", "status", "logs", "verify", "destroy", "stack"}},
 	{"setup", "Setup:", "Настройка:",
 		[]string{"configure", "project", "whoami", "doctor", "diag", "version", "completion", "help"}},
 	{"agents", "For AI agents:", "Для ИИ-агентов:",

@@ -234,8 +234,8 @@ evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и de
 ```text
 evo CMCP — CLI и MCP-сервер для Cloud.ru Evolution
 
-Развёртывание docker-compose проектов на ВМ и управление ресурсами облака:
-ВМ, диски, сети, Kubernetes, PostgreSQL, Object Storage, секреты.
+Управление ресурсами Cloud.ru Evolution: ВМ, сети, диски, Kubernetes, базы данных,
+Object Storage, секреты; развёртывание compose-проектов.
 
 Сообщения по-английски: EVO_LANG=en.
 
