@@ -104,6 +104,11 @@ fake_evo_answer kafka_delete.yes 0 5 '{"error":{"code":5,"reason":"API_ERROR","m
 fake_evo_answer kafka_delete.yes 1 0 '{"status":"deleting","id":"b"}'
 CLUSTER='evo-e2e-*' run prefix 1 2 "$two" "$two_erased"
 
+# По префиксу один старый evo-e2e-kafka в FAILED: одно удаление, код 1.
+fresh prefix-old
+fake_evo_answer kafka_delete.yes 0 5 '{"error":{"code":5,"reason":"API_ERROR","message":"delete cluster: dbaas API 500","hint":"Cloud.ru does not delete a FAILED cluster: delete it in the Cloud.ru console or contact support"}}'
+CLUSTER='evo-e2e-*' run prefix-old 1 1 "$failed"
+
 # Префикс без «evo-e2e-» — отказ, ничего не вызывается.
 fresh prefix-foreign
 CLUSTER='evo-*' run prefix-foreign 2 0 "$two"

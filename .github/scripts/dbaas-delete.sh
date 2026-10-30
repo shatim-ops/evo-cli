@@ -165,7 +165,9 @@ while :; do
 		while read -r id st; do
 			[ -n "$id" ] || continue
 			case "$st" in DELET*) accepted[$id]=1 ;; esac
-			[ -z "${accepted[$id]:-}" ] && [ -z "${stuck[$id]:-}" ] || continue
+			if [ -n "${accepted[$id]:-}" ] || [ -n "${stuck[$id]:-}" ]; then
+				continue
+			fi
 			delete_call --yes
 			dst=$(jq -r '.status // "-"' <<<"$ans" 2>/dev/null || echo -)
 			if [ "$rc" = 0 ] && [ "$dst" = deleting ]; then
