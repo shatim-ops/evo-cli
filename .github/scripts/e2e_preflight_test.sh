@@ -38,7 +38,7 @@ run() {
 	set +e
 	env PATH="$work/bin:$PATH" RUN=r7a1 PROJECT=p ZONE=ru.AZ-2 K8S_ZONE= PG_ZONE= KAFKA_ZONE= REDIS_ZONE= \
 		OS_SMOKE=false K8S_SMOKE=false DBAAS_SMOKE=false DBAAS_SERVICES='pg kafka redis' REDIS_SA=false \
-		GITHUB_STEP_SUMMARY="$FAKE_DIR/summary" "$@" "$here/e2e-preflight.sh" >"$FAKE_DIR/out" 2>&1
+		GITHUB_STEP_SUMMARY="$FAKE_DIR/summary" RUNNER_TEMP="$FAKE_DIR" "$@" "$here/e2e-preflight.sh" >"$FAKE_DIR/out" 2>&1
 	rc=$?
 	set -e
 	if [ "$rc" != "$want" ]; then
@@ -113,7 +113,7 @@ has noquota "квоты не прочитаны"
 fresh noread
 fake_evo_answer list_zones 0 5 '{"error":{"code":5,"reason":"API_ERROR","message":"boom"}}'
 run noread 1
-has noread "list_zones не прочитан"
+has noread "list_zones не прочитан — проверку не провести: API_ERROR: boom"
 
 [ "$fail" = 0 ] && echo "e2e-preflight: ok"
 exit "$fail"

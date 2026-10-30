@@ -16,6 +16,9 @@ import (
 
 var (
 	cleanupKinds = regexp.MustCompile(`for k in ([a-z0-9 ]+);`)
+	// preflightCall is a call of a tool in e2e-preflight.sh: «call VAR
+	// tool», «evo tools call tool», «"${k}_list"» as k_list.
+	preflightCall = regexp.MustCompile(`(?:\bcall [a-z]+ |evo tools call )"?(?:\$\{k\})?([a-z0-9_]+)`)
 	// probeSecret is what names the project's resources, or opens them.
 	probeSecret = regexp.MustCompile(`\$\{?(id|token|v|ZONE_ID|PROJECT|CLUSTER_ID)\b`)
 )
@@ -194,6 +197,24 @@ func TestWorkflows_E2EJobsWaitForPreflight(t *testing.T) {
 		if !slices.Contains(needs, "preflight") {
 			t.Errorf("cloud-e2e job %s writes to the cloud without needs: preflight (needs %v)", name, needs)
 		}
+	}
+	// The script reads: every tool it calls is a list or the quotas.
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "e2e-preflight.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := preflightCall.FindAllStringSubmatch(string(b), -1)
+	if len(calls) < 5 {
+		t.Errorf("e2e-preflight.sh: %d calls of tools found — the check sees nothing, update preflightCall", len(calls))
+	}
+	for _, m := range calls {
+		tool := m[1]
+		if !strings.HasPrefix(tool, "list_") && !strings.HasSuffix(tool, "_list") && tool != "org_quotas" {
+			t.Errorf("e2e-preflight.sh calls %s: only lists and org_quotas", tool)
+		}
+	}
+	if strings.Contains(string(b), "--yes") {
+		t.Error("e2e-preflight.sh confirms a change (--yes)")
 	}
 	ci := false
 	for _, j := range ws["ci.yml"].Jobs {

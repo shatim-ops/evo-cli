@@ -32,15 +32,17 @@ fail() { reasons+=("$1"); }
 note() { notes+=("$1"); }
 
 # call ПЕРЕМЕННАЯ ИНСТРУМЕНТ [АРГУМЕНТЫ] — ответ в ПЕРЕМЕННУЮ; не прочитан —
-# причина и пусто. Не $(call …): причина из подоболочки потерялась бы.
+# причина с ошибкой evo (evo_err.sh: reason и текст через redact.sed) и
+# пусто. Не $(call …): причина из подоболочки потерялась бы.
+err="${RUNNER_TEMP:-/tmp}/e2e-preflight.err"
 call() {
 	local var=$1 out
 	shift
-	if out=$(evo tools call "$@" --json 2>/dev/null) && jq -e 'type == "object"' <<<"$out" >/dev/null 2>&1; then
+	if out=$(evo tools call "$@" --json 2>"$err") && jq -e 'type == "object"' <<<"$out" >/dev/null 2>&1; then
 		printf -v "$var" '%s' "$out"
 	else
 		printf -v "$var" ''
-		fail "$1 не прочитан — проверку не провести"
+		fail "$1 не прочитан — проверку не провести: $("$(dirname "$0")/evo_err.sh" "$err")"
 	fi
 }
 
@@ -111,7 +113,9 @@ if [ -n "$zones" ] && [ -n "$subnets" ] && [ -n "$groups" ]; then
 		has group "$id" "$z" || fail "$z (${jobs_in[$z]}): нет группы безопасности проекта в зоне — создайте SSH-access_$z или возьмите другую зону"
 	done
 	while read -r id z; do
-		[ -n "$id" ] && [ -z "${jobs_in[$z]:-}" ] || continue
+		if [ -z "$id" ] || [ -n "${jobs_in[$z]:-}" ]; then
+			continue
+		fi
 		miss=()
 		has subnet "$id" "$z" || miss+=("подсети")
 		has group "$id" "$z" || miss+=("группы безопасности")
