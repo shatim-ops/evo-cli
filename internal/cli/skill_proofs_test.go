@@ -9,12 +9,15 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/pricing"
 )
 
-// What the skills say of pg_create (skills/evo-postgres, G130-27; С9
-// proof): evo names no price for PostgreSQL — its preview gives the
-// tariff's page (tariff_url) and no sum of rubles.
-func TestPgCreate_PreviewGivesTheTariffNotAPrice(t *testing.T) {
+// What the skills say of pg_create (skills/evo-postgres; Ц-10, owner's
+// decision 29.10, #570 «b»): the preview prices the cluster by the tariff
+// of Managed PostgreSQL — cost, a note with the tariff's date — and gives
+// the tariff's page (tariff_url).
+func TestPgCreate_PreviewGivesAnEstimateByTheTariff(t *testing.T) {
 	withJSONWorld(t)
 	tl, _ := newRegistry().Lookup("pg_create")
 	newProcess()
@@ -29,10 +32,12 @@ func TestPgCreate_PreviewGivesTheTariffNotAPrice(t *testing.T) {
 	if u, _ := answer.Preview["tariff_url"].(string); !strings.HasPrefix(u, "https://cloud.ru/") {
 		t.Errorf("the preview has no tariff_url of cloud.ru: %v", answer.Preview["tariff_url"])
 	}
-	for _, k := range []string{"cost", "est_monthly_rub", "monthly_rub", "hourly_rub"} {
-		if strings.Contains(text, `"`+k+`"`) {
-			t.Errorf("the preview names a price (%s): %s", k, clipLine(text))
-		}
+	cost, _ := answer.Preview["cost"].(map[string]any)
+	if m, _ := cost["total_monthly_rub"].(float64); m <= 0 {
+		t.Errorf("the preview has no estimate: %s", clipLine(text))
+	}
+	if n, _ := answer.Preview["cost_note"].(string); !strings.Contains(n, pricing.PGTariffDate) {
+		t.Errorf("cost_note %q does not name the tariff's date", n)
 	}
 }
 

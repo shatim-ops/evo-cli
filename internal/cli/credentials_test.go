@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"weak"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -817,4 +818,35 @@ func TestTokenProvider_RejectedTokenIsExchangedAgain(t *testing.T) {
 	if fc.iamCalls.Load() != 2 {
 		t.Errorf("after a 401 the rejected token was sent again: %d exchanges, want 2", fc.iamCalls.Load())
 	}
+}
+
+// The renewal of a refused token reaches only the providers someone holds
+// (auth keeps weak references): the engines of the CLI and of evo mcp, over
+// stdio and HTTP alike, take theirs from tokenProvider, which holds it for
+// the process. Dropped by the engine, the provider is still there for the
+// next wait, and the same one (one exchange per token's life).
+func TestTokenProvider_LivesForTheProcess(t *testing.T) {
+	setupCLI(t)
+	eng, err := buildEngine(map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := eng.Config
+	p, ok := eng.Auth.(*auth.IAMProvider)
+	if !ok {
+		t.Fatalf("the engine of the CLI and evo mcp signs in with %T, not the provider of the process", eng.Auth)
+	}
+	w := weak.Make(p)
+	eng, p = nil, nil
+	for range 3 {
+		runtime.GC()
+	}
+	held := w.Value()
+	if held == nil {
+		t.Fatal("the provider was collected once the engine was dropped: a wait would lose the renewal of its token")
+	}
+	if tokenProvider(cfg) != held {
+		t.Error("the next engine gets another provider")
+	}
+	_ = eng
 }
