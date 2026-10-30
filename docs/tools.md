@@ -196,7 +196,7 @@
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
 | `pg_list` | `evo pg list` | нет | — | List Managed PostgreSQL clusters in the project (id, name, status, version, health). | Кластеры Managed PostgreSQL проекта |
-| `pg_get` | `evo pg get` | нет | `id` или `cluster_id` | Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status, access (private: from … | Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние |
+| `pg_get` | `evo pg get` | нет | `id` или `cluster_id` | Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status, access (placed in its … | Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние |
 | `pg_versions` | `evo pg versions` | нет | — | List available Managed PostgreSQL versions (e.g. | Доступные версии PostgreSQL |
 | `pg_specs` | `evo pg specs` | нет | — | List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard\|business, min_storage_gb) for a version. | Конфигурации кластера PostgreSQL для версии: CPU, память, минимальный объём |
 | `pg_create` | `evo pg create` | да | `name` | Create a Managed PostgreSQL cluster. | Создать кластер PostgreSQL (платно, асинхронно) |

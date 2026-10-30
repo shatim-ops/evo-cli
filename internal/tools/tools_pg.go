@@ -161,11 +161,12 @@ func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string
 	return toJSON(m), false
 }
 
-// pgAccess is where a PostgreSQL cluster is reachable from (Ц-21, Ц-24;
-// CLAUDE.md §6, axis 4): CreateClusterRequest of the specification takes
-// subnet_ids and no parameter of access, so evo states what it creates
-// rather than leave an agent to guess a public address.
-const pgAccess = "private: from the subnets of subnet_ids; the PostgreSQL API takes no public-access parameter, and evo sets none up"
+// pgAccess is what evo knows of the access to a PostgreSQL cluster (Ц-21,
+// Ц-24; CLAUDE.md §6, axis 4): CreateClusterRequest of the specification
+// takes subnet_ids and no parameter of access. Facts of the call only:
+// where the cluster is reachable from is the platform's behaviour, a probe
+// of cloud-e2e (DB-5), not the specification's.
+const pgAccess = "placed in the subnets of subnet_ids; the PostgreSQL API takes no public-access parameter; evo sets up none"
 
 // --- Reference ---
 
