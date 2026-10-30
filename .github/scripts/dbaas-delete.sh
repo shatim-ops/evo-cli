@@ -4,7 +4,10 @@
 # и cleanup (cleanup_only) в cloud-e2e.yml после evo configure.
 #
 # Трогает только кластеры с именем ровно ИМЯ, и ИМЯ обязано начинаться с
-# evo-e2e- (проект общий: у внешнего аудитора — audit-*). Каждый найденный
+# evo-e2e- (проект общий: у внешнего аудитора — audit-*). ИМЯ со «*» в конце
+# — префикс: cleanup_only убирает evo-e2e-* всех прогонов (у каждого прогона
+# своё имя с суффиксом). Кластер в FAILED тогда не мешает удалить остальные:
+# ошибка о нём, удаление прочих, код 1 в конце. Каждый найденный
 # кластер удаляется (evo --yes tools call <kind>_delete). Кластер, который
 # ещё создаётся, Cloud.ru удалять отказывается: PostgreSQL и Redis — 400
 # FailedPrecondition, Kafka — 500 «failed to get delete meta» (реестр DB-17,
@@ -30,6 +33,10 @@
 # DBAAS_POLL (необязательно) — пауза между опросами, с; 60 по умолчанию
 # (офлайн-тест dbaas_delete_test.sh ставит 0).
 #
+# DBAAS_ONCE=true — прогон отменён: одна попытка удаления каждого кластера,
+# без повторов и ожидания (run 147 с повторами до 120 мин не отменялся без
+# force cancel); остаток уберёт cleanup_only. Код 0 — все удаления приняты.
+#
 # Код выхода: 0 — кластеров с этим именем нет; 1 — остались; 3 — не
 # осталось, но повтор удаления ответил не already_deleted.
 set -euo pipefail
@@ -44,6 +51,16 @@ esac
 case "$name" in evo-e2e-*) ;; *)
 	echo "::error::имя $name не evo-e2e-*: такие кластеры этот скрипт не трогает"
 	exit 2
+	;;
+esac
+prefix=
+case "$name" in
+*\*) case "${name%\*}" in *\*)
+	echo "::error::в имени $name «*» не только в конце"
+	exit 2
+	;;
+esac
+	prefix=${name%\*}
 	;;
 esac
 redact_sed="$(dirname "$0")/redact.sed"
@@ -101,7 +118,7 @@ repeat_deleted() {
 # [{id, status}] кластеров с этим именем; код не 0 — список не прочитан.
 clusters() {
 	evo tools call "${kind}_list" --json 2>/dev/null |
-		jq -ce --arg n "$name" 'if (.clusters | type) == "array" then [.clusters[] | select(.name == $n) | {id, status: ((.status // "?") | tostring | ascii_upcase)}] else error("нет clusters") end' 2>/dev/null
+		jq -ce --arg n "$name" --arg p "$prefix" 'if (.clusters | type) == "array" then [.clusters[] | select(if $p == "" then .name == $n else ((.name // "") | startswith($p)) end) | {id, status: ((.status // "?") | tostring | ascii_upcase)}] else error("нет clusters") end' 2>/dev/null
 }
 
 start=$(date +%s)
@@ -109,7 +126,8 @@ retry_until=$((start + 7200)) # отказы «ещё создаётся» — �
 wait_until=0                  # после того как все удаления приняты — 30 мин
 read_ok=0                     # список хоть раз прочитан
 declare -A accepted=()
-declare -A seen=() # id всех кластеров с этим именем, виденных в списке
+declare -A seen=()  # id всех кластеров с этим именем, виденных в списке
+declare -A stuck=() # id кластеров в FAILED: Cloud.ru их не удаляет (DB-21)
 while :; do
 	now=$(date +%s)
 	min=$(((now - start) / 60))
@@ -128,7 +146,17 @@ while :; do
 		done
 		say "$min мин: кластеров $name: $(jq length <<<"$list"), статусы $(jq -c '[.[].status]' <<<"$list")"
 		list=$(jq -c '[.[] | select(.status != "ERASED" and .status != "DELETED")]' <<<"$list")
-		if [ "$(jq length <<<"$list")" = 0 ]; then
+		live=$list
+		for id in "${!stuck[@]}"; do
+			live=$(jq -c --arg i "$id" '[.[] | select(.id != $i)]' <<<"$live")
+		done
+		if [ "$(jq length <<<"$live")" = 0 ]; then
+			for id in "${!stuck[@]}"; do unset "seen[$id]"; done
+			if [ "${#stuck[@]}" != 0 ]; then
+				say "кластеров $name нет, кроме FAILED: ${#stuck[@]}"
+				repeat_deleted || true
+				exit 1
+			fi
 			say "кластеров $name нет (в списке — только ERASED или DELETED, если есть)"
 			repeat_deleted || exit 3
 			exit 0
@@ -137,7 +165,9 @@ while :; do
 		while read -r id st; do
 			[ -n "$id" ] || continue
 			case "$st" in DELET*) accepted[$id]=1 ;; esac
-			[ -z "${accepted[$id]:-}" ] || continue
+			if [ -n "${accepted[$id]:-}" ] || [ -n "${stuck[$id]:-}" ]; then
+				continue
+			fi
 			delete_call --yes
 			dst=$(jq -r '.status // "-"' <<<"$ans" 2>/dev/null || echo -)
 			if [ "$rc" = 0 ] && [ "$dst" = deleting ]; then
@@ -153,11 +183,11 @@ while :; do
 				else
 					echo "::error::кластер $name FAILED: ответ evo не называет путь — консоль или поддержку (D44)"
 				fi
-				exit 1
+				stuck[$id]=1
 			elif grep -qi 'force flag' <<<"$text"; then
 				say "удаление ($st): код $rc, reason $reason: $(redact <<<"$text" | cut -c1-300)"
 				echo "::error::кластер $name FAILED: удалите в консоли Cloud.ru (реестр DB-21)"
-				exit 1
+				stuck[$id]=1
 			elif grep -Eqi 'FailedPrecondition|failed to get delete meta|DEPLOYING|still being created' <<<"$text"; then
 				say "удаление ($st): Cloud.ru отказал — кластер ещё создаётся (DB-17, DB-19), повтор через 60 с"
 				pending=$((pending + 1))
@@ -165,7 +195,15 @@ while :; do
 				say "удаление ($st): код $rc, reason $reason: $(redact <<<"$text" | cut -c1-300)"
 				pending=$((pending + 1))
 			fi
-		done < <(jq -r '.[] | "\(.id) \(.status)"' <<<"$list")
+		done < <(jq -r '.[] | "\(.id) \(.status)"' <<<"$live")
+		if [ "${DBAAS_ONCE:-}" = true ]; then
+			if [ "$pending" = 0 ] && [ "${#stuck[@]}" = 0 ]; then
+				say "прогон отменён: одна попытка — удаление принято, ожидания нет"
+				exit 0
+			fi
+			echo "::error::прогон отменён: одна попытка удаления $name, не принято: $pending, FAILED: ${#stuck[@]} — остаток уберёт cleanup_only"
+			exit 1
+		fi
 		if [ "$pending" = 0 ] && [ "$wait_until" = 0 ]; then
 			wait_until=$((now + 1800))
 		fi
