@@ -60,7 +60,16 @@ func (a *subnetAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		a.mu.Lock()
 		a.writes = append(a.writes, "POST")
 		_ = json.Unmarshal(raw, &a.body)
+		_, both := a.body["prefix_length"]
+		both = both && a.body["subnet_address"] != nil
 		a.mu.Unlock()
+		// The platform takes the network or its size, not both (cloud-e2e
+		// run 150, rc.1 1.6).
+		if both {
+			rec.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = io.WriteString(rec, `{"detail":"Either subnet_address or prefix_length should be submitted, not both"}`)
+			break
+		}
 		rec.WriteHeader(http.StatusCreated)
 		_, _ = fmt.Fprintf(rec, `{"id":%q,"name":"web","state":"creating","subnet_address":"10.10.0.0/24","vpc_id":%q}`, subnetNew, subnetVPC)
 	case r.URL.Path == "/api/v1/subnets/"+subnetOld && a.gone:
@@ -114,12 +123,17 @@ func TestSubnetCreate_PreviewNamesWhatThePostSends(t *testing.T) {
 	if isErr || m["status"] != "created" || m["subnet_id"] != subnetNew {
 		t.Fatalf("create: %s", text)
 	}
-	want := map[string]any{"name": "web", "subnet_address": "10.10.0.0/24", "prefix_length": float64(24),
+	want := map[string]any{"name": "web", "subnet_address": "10.10.0.0/24",
 		"vpc_id": subnetVPC, "availability_zone_id": subnetZone, "project_id": raProject, "routed_network": true}
 	for k, v := range want {
 		if api.body[k] != v {
 			t.Errorf("POST %s = %v, want %v (body %v)", k, api.body[k], v, api.body)
 		}
+	}
+	// The mask is the CIDR's: prefix_length is the size of a network the
+	// platform picks, and with subnet_address it is refused (run 150).
+	if _, ok := api.body["prefix_length"]; ok {
+		t.Errorf("POST sends prefix_length beside subnet_address: %v", api.body)
 	}
 }
 

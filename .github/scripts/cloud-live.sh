@@ -250,7 +250,7 @@ area_kinds() {
 	case "$1" in
 	disk) echo "vm fip disk image" ;;
 	net) echo "lb tg vm snat fip disk route subnet vpc" ;;
-	dns) echo "dns" ;;
+	dns) echo "dns vpc" ;;
 	s3) echo "s3" ;;
 	secrets) echo "secret cert" ;;
 	ca) echo "ca ar" ;;
@@ -753,14 +753,15 @@ area_net() {
 	# адрес назван не префиксом ВМ B: уборка освобождает fip-<префикс>*, этот — по id
 	echo "$fip" >"$tmp/fip_id"
 
-	# D57 (1.6): подсеть по имени. Имени, которого нет, — отказ до вопроса
-	# (USAGE), ВМ нет; ВМ B создаётся с подсетью зоны по имени (имя
+	# D57 (1.6): подсеть по имени. Имени, которого нет, — отказ до записи с
+	# прежним reason обработчика (CONFIG_INVALID «не из проекта», код 2; D57:
+	# «отказ и reason не меняются»), ВМ нет; ВМ B создаётся с подсетью зоны по имени (имя
 	# единственное в проекте — два совпадения D57 отвергает): платформа
 	# приняла бы имя в поле id только как 4xx, так что созданная ВМ значит,
 	# что ушёл UUID.
 	tc provision --arg name="$prefix-nosn" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg subnet_id="$prefix-no-such-subnet"
-	if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(lst vm "$prefix-nosn")" ]; then
-		ok "provision: подсети с таким именем нет" "USAGE до вопроса, ВМ нет (D57)"
+	if [ "$rc" = 2 ] && [ "${reason%%,*}" = CONFIG_INVALID ] && [ -z "$(lst vm "$prefix-nosn")" ]; then
+		ok "provision: подсети с таким именем нет" "CONFIG_INVALID до записи, ВМ нет (D57)"
 	else bad "provision: подсети с таким именем нет" "код $rc, $reason; ВМ $prefix-nosn: $(lst vm "$prefix-nosn" | wc -l)"; fi
 	local snname
 	snname=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | .name // "" | select(. != "")] as $all
@@ -938,8 +939,39 @@ area_net() {
 
 # DNS: приватная зона, запись A, удаление. Каждый вызов по зоне — с
 # type=private: по умолчанию инструменты идут в API публичных зон.
+# dns_delete_op ЧТО — итог операции удаления из последнего ответа (j):
+# строка, а не провал (провал — объект остался в списке). Операция с ошибкой
+# или не done — её состояние пробой: run 151 (30.10) зона после ~40
+# принятых удалений осталась «ok», а итог операции не читался.
+dns_delete_op() {
+	local op
+	op=$(j -r '.operation_id // empty')
+	[ -n "$op" ] || { row "dns_operation удаления $1" "нет id" "в ответе нет operation_id"; return 0; }
+	mask "$op"
+	if opwait dns "$op" 300; then ok "dns_operation удаления $1" "done"; else
+		row "dns_operation удаления $1" "не done" "за 5 мин: $why"
+		probe_dns_op "$op"
+	fi
+}
+
 area_dns() {
-	local domain="$prefix.test." zid rid op
+	local domain="$prefix.test." zid rid op nv
+	# D65 (1.6, #676; решение владельца #597, п. 25): приватная зона к VPC
+	# без DNS-сервера — отказ до вопроса (USAGE), зоны нет. Пустой VPC
+	# прогона DNS-сервера не имеет; он удаляется сразу после проверки.
+	must "vpc_create (без DNS-сервера)" vpc_create --arg name="$prefix-nodns" --arg description="evo e2e live run" || return 1
+	if opwait vpc "$(j -r .operation_id)" 600; then
+		nv=$res_id
+		[ -n "$nv" ] || nv=$(lst vpc "$prefix-nodns" | cut -f1 | head -1)
+		mask "$nv"
+		tc dns_zone_create --arg domain="$prefix-nodns.test." --arg type=private --arg vpc_id="$nv"
+		if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(lst dns "$prefix-nodns")" ]; then
+			ok "dns_zone_create: VPC без DNS-сервера" "USAGE до вопроса, зоны нет (D65)"
+		else bad "dns_zone_create: VPC без DNS-сервера" "код $rc, $reason; зон $prefix-nodns: $(lst dns "$prefix-nodns" | wc -l)"; fi
+		if [ -n "$nv" ] && must "vpc_delete (без DNS-сервера)" vpc_delete --arg id="$nv"; then
+			opwait vpc "$(j -r .operation_id)" 600 || bad "vpc_delete (без DNS-сервера)" "$why"
+		fi
+	else bad "vpc_create (без DNS-сервера)" "$why"; fi
 	must dns_zone_create dns_zone_create --arg domain="$domain" --arg type=private --arg description="evo e2e live run" || return 1
 	op=$(j -r .operation_id)
 	cov dns_zone_create
@@ -978,11 +1010,11 @@ area_dns() {
 	must dns_record_get dns_record_get --arg record_id="$rid" --arg type=private && ok dns_record_get "ttl $(j -r '.ttl // "?"')"
 	bound_check dns_record_get "$(jq -cn --arg i "$rid" '{record_id: $i, type: "private"}')" "allow-project: dns_record_get" own
 	must dns_record_delete dns_record_delete --arg record_id="$rid" --arg type=private || return 1
-	opwait dns "$(j -r .operation_id)" 300 || true
+	dns_delete_op записи
 	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" 'any(.records[]; .id == $id) | not' >/dev/null; }
 	if poll 300 15 norec; then ok dns_record_delete "записи нет"; cov dns_record_delete; else bad dns_record_delete "запись осталась через 5 мин"; fi
 	must dns_zone_delete dns_zone_delete --arg id="$zid" --arg type=private || return 1
-	opwait dns "$(j -r .operation_id)" 300 || true
+	dns_delete_op зоны
 	# приватная зона 18.10 удалялась ~11,5 мин (run 39160570296)
 	local t0=$SECONDS
 	if poll 1500 20 gone dns "$prefix"; then

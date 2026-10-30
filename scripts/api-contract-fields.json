@@ -1529,6 +1529,23 @@
   "dns DELETE /v1/privateZones/{privateZoneId}": [],
   "dns DELETE /v1/publicRecordsSole/{publicRecordId}": [],
   "dns DELETE /v1/publicZones/{publicZoneId}": [],
+  "dns GET /v1/dnsServers": [
+   "nextPageToken",
+   "servers[]",
+   "servers[].availabilityZoneId",
+   "servers[].createAt",
+   "servers[].description",
+   "servers[].id",
+   "servers[].ipAddress",
+   "servers[].name",
+   "servers[].state",
+   "servers[].subnetId",
+   "servers[].updatedAt",
+   "servers[].usedIn[]",
+   "servers[].usedIn[].linkId",
+   "servers[].usedIn[].productCode",
+   "servers[].vpcId"
+  ],
   "dns GET /v1/operations/{operationId}": [
    "createdAt",
    "description",

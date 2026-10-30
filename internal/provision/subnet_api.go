@@ -13,15 +13,16 @@ import (
 
 // CreateSubnetRequest mirrors POST /api/v1/subnets
 // (PublicSubnetCreateRequest, additionalProperties: false; the project is
-// in the body, the spec has no project_id query here). The spec calls
-// subnet_address a "CIDR address" and takes the mask in prefix_length as
-// well: evo sends the CIDR and its mask, the same network either way.
+// in the body, the spec has no project_id query here). subnet_address is
+// the network with its mask; prefix_length is the size of a network the
+// platform picks, and the two together are refused with 422 «Either
+// subnet_address or prefix_length should be submitted, not both»
+// (cloud-e2e run 150): evo sends the CIDR alone.
 type CreateSubnetRequest struct {
 	Name               string   `json:"name"`
 	ProjectID          string   `json:"project_id"`
 	VPCID              string   `json:"vpc_id"`
 	SubnetAddress      string   `json:"subnet_address"`
-	PrefixLength       int      `json:"prefix_length"`
 	AvailabilityZoneID string   `json:"availability_zone_id"`
 	RoutedNetwork      bool     `json:"routed_network"`
 	DNSServers         []string `json:"dns_servers,omitempty"`
