@@ -5,29 +5,46 @@
 package tools
 
 import (
+	"encoding/json"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
+
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
-// bare404Kinds are the 404 answers the product did not write: a gateway's
-// HTML page, an empty body — a route or an address that is not there, not
-// a resource that is gone (FB13-3, E1).
-var bare404Kinds = []string{"404html", "404empty"}
+// jsonText is s as it reads inside a JSON string.
+func jsonText(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b[1 : len(b)-1])
+}
+
+// bare404Kinds are the 404 answers the product did not write — a route or
+// an address that is not there, not a resource that is gone (FB13-3, E1):
+// a gateway's HTML page, an empty body, plain text (compute), {"error_msg"}
+// (VPC, NLB, Container Apps) and grpc-gateway's routing error (DNS, mk8s,
+// AR; api-probe 33 and 34).
+var bare404Kinds = []string{"404html", "404empty", "404text", "404errormsg", "404route"}
 
 // bare404Gone are the deletes that read a 404 without the product's body as
-// the resource gone and answer already_deleted. E1 (1.5) makes it
-// API_ERROR, code 5, with the hint «the route or the address of the
-// service», in one point (isGone); the list only shrinks — a delete not
-// here fails the test, and so does a line whose delete no longer does it.
-var bare404Gone = map[string]bool{
-	"ar_delete": true, "ca_delete": true, "cert_delete": true, "disk_delete": true,
-	"dns_record_delete": true, "dns_zone_delete": true, "image_delete": true,
-	"k8s_delete": true, "kafka_delete": true, "lb_delete": true, "pg_delete": true,
-	"redis_delete": true, "release_floating_ip": true, "s3_bucket_delete": true, "secret_delete": true,
-	"snat_delete": true, "subnet_delete": true, "tg_delete": true, "vpc_delete": true,
+// the resource gone and answer already_deleted. D63 makes it API_ERROR,
+// code 5 (httpretry.RouteNotFoundAsBadGateway, one point for the clients of
+// the services); the list only shrinks — a delete not here fails the test,
+// and so does a line whose delete no longer does it.
+var bare404Gone = map[string]bool{"s3_bucket_delete": true}
+
+// bare404Outside are the deletes D63 does not reach, each with why: their
+// 404 is not answered API_ERROR with the hint of the address.
+var bare404Outside = map[string]string{
+	"s3_bucket_delete": s3Outside,
+	"s3_rm":            s3Outside,
 }
+
+// s3Outside: S3 is not a client of httpretry.Transport — minio reads the
+// XML of the answer and gives a 404 without it a code itself (NoSuchBucket),
+// and its HEAD has no body to tell a route by. Not in the probe of D63.
+const s3Outside = "S3: minio, not httpretry.Transport; not in the probe of D63"
 
 // bare404Unreached are the deletes of deleteTargets whose confirmed call
 // with the contract arguments reaches no request in the contract world, so
@@ -75,8 +92,13 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 				t.Errorf("%s %s panicked", name, kind)
 				continue
 			}
-			if _, status := contractReason(text); status == "already_deleted" {
+			reason, status := contractReason(text)
+			if status == "already_deleted" {
 				found[name] = kind
+			} else if bare404Outside[name] == "" && (reason != clierrors.CodeAPIError || !strings.Contains(text, jsonText(clierrors.RouteNotFoundHint()))) {
+				// D63: code 5 and the hint of the address, not of the
+				// service's state.
+				t.Errorf("%s %s: reason %s, want API_ERROR with the hint of the address: %.300s", name, kind, reason, text)
 			}
 		}
 	}
@@ -92,6 +114,11 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 		}
 		if kind := found[name]; kind != "" && !bare404Gone[name] {
 			t.Errorf("%s: a 404 without the service's body (%s) answers already_deleted — a missing route is not a deleted resource (E1)", name, kind)
+		}
+	}
+	for name := range bare404Outside {
+		if _, ok := deleteTargets[name]; !ok {
+			t.Errorf("bare404Outside names %s, which deleteTargets does not declare: remove the line", name)
 		}
 	}
 	for name := range bare404Gone {

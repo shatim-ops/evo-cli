@@ -249,6 +249,20 @@ func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 	if !isErr || !strings.Contains(text, `"destroy_failed"`) {
 		t.Fatalf("a failed VM deletion was taken for a deleted VM: %s", text)
 	}
+
+	// A 404 the service did not write (D63) is an address, not a gone VM,
+	// though its message names the 404.
+	r.handlers["destroy"] = func(context.Context, map[string]any) (string, bool) {
+		return errResult(clerrors.New(clerrors.CodeAPIError, `destroy VM vm-1: API returned status 502: {"message":"Cloud.ru answered 404 without the service's answer: the route or the address of the service is not there, and the resource was not checked"}`, "")), true
+	}
+	j.Status, j.Deleting = "destroyed", []string{"vm"}
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr = r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	if !isErr || !strings.Contains(text, `"destroy_failed"`) {
+		t.Fatalf("a 404 of the route was taken for a deleted VM: %s", text)
+	}
 }
 
 // job_id становится именем файла: "../x" читал JSON вне каталога заданий,
