@@ -1141,6 +1141,9 @@ area_pgnet() {
 
 	must pg_get pg_get --arg cluster_id="$PG_CLUSTER_ID" || return 1
 	cs=$(j -r '.connection_string // empty')
+	# Строка подключения бывает с паролем (postgresql://user:pass@host…):
+	# в лог она не идёт (печатается только её тип), маска — второй рубеж.
+	mask "$cs"
 	host=$(printf '%s' "$cs" | grep -oE 'host=[^ ;,]+' | head -1 | cut -d= -f2)
 	[ -n "$host" ] || host=$(printf '%s' "$cs" | grep -oE '@[^:/@ ]+' | head -1 | cut -c2-)
 	[ -n "$host" ] || host=$(printf '%s' "$cs" | grep -oE '^[A-Za-z0-9.-]+(:[0-9]+)?$' | cut -d: -f1)
