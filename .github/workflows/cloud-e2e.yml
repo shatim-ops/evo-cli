@@ -1386,6 +1386,12 @@ jobs:
           echo "кластеров $CLUSTER в pg_list: $n"
           [ "$n" = 1 ] || { echo "::error::кластеров $CLUSTER в pg_list: $n, ждали 1 (L-32)"; exit 1; }
 
+      # D61 (1.6): удаление кластера, который ещё создаётся, — отказ до
+      # вопроса (USAGE, код 1) и с --yes; кластер на месте. Уже готов — «не
+      # покрыто», не провал (план cloud-e2e rc.1 1.6, пункт Г).
+      - name: Удаление создающегося кластера — отказ до вопроса (D61)
+        run: .github/scripts/dbaas-passing-delete.sh "$KIND" "$CLUSTER_ID"
+
       - name: Кластер READY (до 60 мин)
         run: |
           start=$(date +%s)
@@ -1656,6 +1662,12 @@ jobs:
           echo "кластеров $CLUSTER в kafka_list: $n"
           [ "$n" = 1 ] || { echo "::error::кластеров $CLUSTER в kafka_list: $n, ждали 1 (L-32)"; exit 1; }
 
+      # D61 (1.6): удаление кластера, который ещё создаётся, — отказ до
+      # вопроса (USAGE, код 1) и с --yes; кластер на месте. Уже готов — «не
+      # покрыто», не провал (план cloud-e2e rc.1 1.6, пункт Г).
+      - name: Удаление создающегося кластера — отказ до вопроса (D61)
+        run: .github/scripts/dbaas-passing-delete.sh "$KIND" "$CLUSTER_ID"
+
       - name: Кластер READY (до 75 мин)
         run: |
           start=$(date +%s)
@@ -1810,6 +1822,12 @@ jobs:
           n=$(evo tools call redis_list --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
           echo "кластеров $CLUSTER в redis_list: $n"
           [ "$n" = 1 ] || { echo "::error::кластеров $CLUSTER в redis_list: $n, ждали 1 (L-32)"; exit 1; }
+
+      # D61 (1.6): удаление кластера, который ещё создаётся, — отказ до
+      # вопроса (USAGE, код 1) и с --yes; кластер на месте. Уже готов — «не
+      # покрыто», не провал (план cloud-e2e rc.1 1.6, пункт Г).
+      - name: Удаление создающегося кластера — отказ до вопроса (D61)
+        run: .github/scripts/dbaas-passing-delete.sh "$KIND" "$CLUSTER_ID"
 
       - name: Кластер READY (до 50 мин)
         run: |

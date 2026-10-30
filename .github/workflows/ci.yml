@@ -131,6 +131,12 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 300 .github/scripts/dbaas_delete_test.sh
 
+      # D61 вживую (dbaas-passing-delete.sh) на поддельном evo: отказ USAGE —
+      # 1 из 1, удаление принято — провал, кластер уже готов — не покрыто.
+      - name: dbaas-passing-delete.sh на поддельном evo
+        if: runner.os == 'Linux'
+        run: timeout 60 .github/scripts/dbaas_passing_delete_test.sh
+
       # Проверка до прогона cloud-e2e (e2e-preflight.sh) на поддельном evo:
       # все причины — одним отчётом, остатки — строками, не провалом.
       - name: e2e-preflight.sh на поддельном evo
