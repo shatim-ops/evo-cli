@@ -597,3 +597,17 @@ func TestRenderAnswer_ReferenceNamedByItsBase(t *testing.T) {
 		t.Errorf("object:\n%s", out)
 	}
 }
+
+// A key that holds the id itself (provision: flavor, region) with
+// "<key>_name" beside it reads «name (id)», and the name has no row.
+func TestRenderAnswer_KeyHoldingTheID(t *testing.T) {
+	var buf bytes.Buffer
+	p := output.NewWithWriter(&buf, output.ModePlain, false)
+	if err := renderAnswer(p, &buf, `{"status":"ok","region":"z1","region_name":"ru.AZ-1"}`, tableView{}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "ru.AZ-1 (z1)") || strings.Contains(out, "region_name") {
+		t.Errorf("object:\n%s", out)
+	}
+}

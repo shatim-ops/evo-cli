@@ -904,10 +904,16 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 // keeps both fields as they are.
 func refValue(m map[string]any, k string) any {
 	id, _ := m[k].(string)
-	if base, ok := strings.CutSuffix(k, "_id"); ok && id != "" {
+	if id == "" {
+		return m[k]
+	}
+	if base, ok := strings.CutSuffix(k, "_id"); ok {
 		if name := engine.RefName(m, base); name != "" && name != id {
 			return name + " (" + id + ")"
 		}
+	} else if name, _ := m[k+"_name"].(string); name != "" && name != id {
+		// A key that holds the id itself (provision: flavor, region).
+		return name + " (" + id + ")"
 	}
 	return m[k]
 }
@@ -915,11 +921,18 @@ func refValue(m map[string]any, k string) any {
 // namedRef reports whether key k of m is the name of a reference refValue
 // shows with its id: its own row would repeat it.
 func namedRef(m map[string]any, k string) bool {
-	base := strings.TrimSuffix(k, "_name")
-	id, _ := m[base+"_id"].(string)
 	name, _ := m[k].(string)
-	return id != "" && name != "" && name != id && engine.RefName(m, base) == name &&
-		(k == base+"_name" || k == base)
+	if name == "" {
+		return false
+	}
+	base := strings.TrimSuffix(k, "_name")
+	if id, _ := m[base+"_id"].(string); id != "" && name != id && engine.RefName(m, base) == name &&
+		(k == base+"_name" || k == base) {
+		return true
+	}
+	// The name of a key that holds the id itself (refValue).
+	id, _ := m[base].(string)
+	return k == base+"_name" && id != "" && id != name && m[base+"_id"] == nil
 }
 
 // listNoteFields are the text fields a list answer may carry next to its
