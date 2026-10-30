@@ -54,6 +54,10 @@ type IAMProvider struct {
 	mu        sync.Mutex
 	cached    *Token
 	exchanges int
+	// issued are the tokens this provider handed out: a request a service
+	// refused with one of them goes again with the provider's current
+	// token (renewRefused).
+	issued map[string]bool
 }
 
 // Retries of the token exchange. Corporate proxies and flaky links reset
@@ -96,7 +100,10 @@ var (
 	live   []weak.Pointer[IAMProvider]
 )
 
-func init() { httpretry.OnTokenRejected(forgetRejected) }
+func init() {
+	httpretry.OnTokenRejected(forgetRejected)
+	httpretry.OnTokenRenewed(renewRefused)
+}
 
 func register(p *IAMProvider) {
 	liveMu.Lock()
@@ -130,6 +137,35 @@ func forgetRejected(token string) {
 	for _, p := range list {
 		p.Forget(token)
 	}
+}
+
+// renewRefused is asked by httpretry for the token that replaces token, a
+// refused one: the provider that issued it gives its current token, a new
+// one if token was its current (Forget has dropped it).
+func renewRefused(ctx context.Context, token string) (string, bool) {
+	liveMu.Lock()
+	live = alive()
+	list := make([]*IAMProvider, 0, len(live))
+	for _, w := range live {
+		if p := w.Value(); p != nil {
+			list = append(list, p)
+		}
+	}
+	liveMu.Unlock()
+	for _, p := range list {
+		p.mu.Lock()
+		mine := p.issued[token]
+		p.mu.Unlock()
+		if !mine {
+			continue
+		}
+		tok, err := p.Token(ctx)
+		if err != nil || tok.Value == token {
+			return "", false
+		}
+		return tok.Value, true
+	}
+	return "", false
 }
 
 // KeyID returns the key ID the provider authenticates with.
@@ -169,7 +205,7 @@ func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
 	}
 	if p.cache != nil {
 		if tok, ok := p.cache.Load(CacheKey(p.creds)); ok && tok.IsValid(refreshTTL) {
-			p.cached = &tok
+			p.keep(tok)
 			return tok, nil
 		}
 	}
@@ -190,13 +226,24 @@ func (p *IAMProvider) Token(ctx context.Context) (Token, error) {
 		)
 	}
 
-	p.cached = &tok
+	p.keep(tok)
 	if p.cache != nil {
 		// The cache only saves IAM round trips; failing to write it must
 		// not fail the command.
 		_ = p.cache.Store(CacheKey(p.creds), tok)
 	}
 	return tok, nil
+}
+
+// keep makes tok the provider's current token and one it issued; p.mu is
+// held.
+func (p *IAMProvider) keep(tok Token) {
+	p.cached = &tok
+	// A few at most: one per hour of a long session, one per sleep.
+	if p.issued == nil || len(p.issued) >= 16 {
+		p.issued = map[string]bool{}
+	}
+	p.issued[tok.Value] = true
 }
 
 // exchange obtains a token, retrying transport errors and 5xx responses
