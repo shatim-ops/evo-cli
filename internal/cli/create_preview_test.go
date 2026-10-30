@@ -70,10 +70,10 @@ func (previewCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskTyp
 }
 
 func (previewCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
-	return []*provision.Subnet{{ID: "00000000-0000-0000-0000-0000000000d1", Name: "Default_ru.AZ-1", AvailabilityZoneID: pvZone, Default: true}}, nil
+	return []*provision.Subnet{{ID: "00000000-0000-0000-0000-0000000000d1", Name: "Default_ru.AZ-1", AvailabilityZoneID: pvZone, AvailabilityZoneName: "ru.AZ-1", Default: true}}, nil
 }
 func (previewCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
-	return []*provision.SecurityGroup{{ID: "00000000-0000-0000-0000-0000000000c1", Name: "SSH-access_ru.AZ-1", AvailabilityZoneID: pvZone, Default: true,
+	return []*provision.SecurityGroup{{ID: "00000000-0000-0000-0000-0000000000c1", Name: "SSH-access_ru.AZ-1", AvailabilityZoneID: pvZone, AvailabilityZoneName: "ru.AZ-1", Default: true,
 		Rules: []provision.SGRule{
 			{Direction: "ingress", IPProtocol: "tcp", PortRange: "22:22", RemoteIPPrefix: "0.0.0.0/0"},
 			{Direction: "egress", IPProtocol: "any", RemoteIPPrefix: "0.0.0.0/0"},

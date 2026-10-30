@@ -143,8 +143,11 @@ type Subnet struct {
 	ID                 string `json:"id"`
 	Name               string `json:"name"`
 	AvailabilityZoneID string `json:"availability_zone_id"`
-	SubnetAddress      string `json:"subnet_address,omitempty"`
-	VPCID              string `json:"vpc_id,omitempty"`
+	// AvailabilityZoneName is the name of the zone the answer gives with
+	// its id (availability_zone{id,name}): a person reads the zone by it.
+	AvailabilityZoneName string `json:"-"`
+	SubnetAddress        string `json:"subnet_address,omitempty"`
+	VPCID                string `json:"vpc_id,omitempty"`
 	// Default: the zone's main subnet (PublicSubnetListItemResponse.default).
 	Default bool `json:"default,omitempty"`
 	// RoutedNetwork: a routed subnet; a floating IP binds only to an
@@ -183,6 +186,9 @@ func (s *Subnet) UnmarshalJSON(b []byte) error {
 	if s.AvailabilityZoneID == "" && r.AvailabilityZone != nil {
 		s.AvailabilityZoneID = r.AvailabilityZone.ID
 	}
+	if s.AvailabilityZoneName == "" && r.AvailabilityZone != nil && r.AvailabilityZone.ID == s.AvailabilityZoneID {
+		s.AvailabilityZoneName = r.AvailabilityZone.Name
+	}
 	return nil
 }
 
@@ -193,6 +199,9 @@ type SecurityGroup struct {
 	ID                 string `json:"id"`
 	Name               string `json:"name"`
 	AvailabilityZoneID string `json:"availability_zone_id,omitempty"`
+	// AvailabilityZoneName: as Subnet's (P-N1: a group's zone is
+	// {id, name, enabled}).
+	AvailabilityZoneName string `json:"-"`
 	// Default: the zone's default group (API field "default").
 	Default bool     `json:"default,omitempty"`
 	Rules   []SGRule `json:"rules,omitempty"`
@@ -212,6 +221,9 @@ func (g *SecurityGroup) UnmarshalJSON(b []byte) error {
 	*g = SecurityGroup(r.plain)
 	if g.AvailabilityZoneID == "" && r.AvailabilityZone != nil {
 		g.AvailabilityZoneID = r.AvailabilityZone.ID
+	}
+	if g.AvailabilityZoneName == "" && r.AvailabilityZone != nil && r.AvailabilityZone.ID == g.AvailabilityZoneID {
+		g.AvailabilityZoneName = r.AvailabilityZone.Name
 	}
 	return nil
 }

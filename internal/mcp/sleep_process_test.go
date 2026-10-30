@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +59,9 @@ func TestSleepChild(t *testing.T) {
 	}
 	http.DefaultTransport = toCloud{addr: addr}
 	p := auth.NewIAMProvider(auth.Credentials{KeyID: "k", Secret: "s"}, nil, auth.FileCache{Path: filepath.Join(t.TempDir(), "token.json")})
+	// Held for the test, as cli.tokenProvider holds it for the process:
+	// the renewal of a refused token finds live providers only (weak).
+	t.Cleanup(func() { runtime.KeepAlive(p) })
 	s := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: "00000000-0000-0000-0000-0000000000f1", KeyID: "k", Secret: "s"},
