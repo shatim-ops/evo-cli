@@ -18,7 +18,7 @@ import (
 // has no such keys), and takes the filters an agent sizes with.
 func TestListFlavors_ShareGPUSpotZonesAndFilters(t *testing.T) {
 	zone := func(name string, ok bool) provision.FlavorZone {
-		return provision.FlavorZone{ID: "id-" + name, Name: name, Enabled: true, Available: ok}
+		return provision.FlavorZone{ID: "id-" + name, Name: name, Enabled: true, Available: &ok}
 	}
 	gpus := func(n int) *int { return &n }
 	cloud := &faultCloud{flavors: []*provision.Flavor{

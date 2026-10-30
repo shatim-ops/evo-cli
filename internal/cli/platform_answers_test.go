@@ -18,11 +18,7 @@ import (
 // so does a line the worlds no longer drift by.
 // Closes by 1.8: a line lives at most two versions (release plan 1.6,
 // «храповики со сроком»; TestMisses_HaveADeadline).
-var worldDrift = map[string]string{
-	// CMP-25: the platform sends no «available» of a zone of a flavor; the
-	// world goes with the fix of ZoneNames (TestFlavor_ZonesFromTheLiveAnswer).
-	"compute-flavors (go previewCloud): items.[].availability_zones.[].available is sent by the world, not by the platform": "release plan 1.6, «Зоны flavor по живому ответу» (CMP-25): «разработка»",
-}
+var worldDrift = map[string]string{}
 
 // Release plan 1.6, «Миры из живых ответов»: ≈50 % of the defects that
 // escaped the tests were a wrong model of the platform in the worlds. For

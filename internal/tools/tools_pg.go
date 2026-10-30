@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -392,7 +393,7 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 	// region's, else a subnet of an open zone (ru.AZ-2 first) — as Kafka
 	// and Redis. It was the project's first subnet of any zone, a closed
 	// one included (final audit, N-06).
-	subnetID, _, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
+	subnetID, subnetName, _, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
 	if err != nil {
 		return dbaasSubnetErr(err)
 	}
@@ -410,6 +411,9 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 		"zone":             zone,
 		"initial_database": initialDB,
 		"backup_enabled":   backupEnabled,
+	}
+	if subnetName != "" {
+		willCreate["subnet_name"] = subnetName
 	}
 	// What is kept and how long is billed (FB15-32): the schedule and the
 	// retention evo sends, defaults included.
@@ -720,8 +724,13 @@ func pgCreatePreview(cfg config.Config, will map[string]any) engine.CreatePrevie
 	name, _ := will["name"].(string)
 	p := engine.CreatePreview{Resource: engine.ResourcePGCluster, Name: name,
 		ProjectID: cfg.ProjectID, ProjectFrom: cfg.ProjectOrigin}
+	// The zone evo picked with the subnet, as kafka_create and redis_create
+	// name theirs.
+	if z, _ := will["zone"].(string); z != "" {
+		p.Zone = &deployplan.RefSpec{Name: z}
+	}
 	for _, k := range []string{"version", "cpu", "memory_gb", "storage_gb", "instances", "deployment_mode",
-		"subnet_id", "initial_database", "backup_enabled", "backup_schedule", "backup_retention_days"} {
+		"subnet_id", "subnet_name", "initial_database", "backup_enabled", "backup_schedule", "backup_retention_days"} {
 		p.Add(k, will[k])
 	}
 	p.Add("access", pgAccess)

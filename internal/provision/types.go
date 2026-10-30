@@ -326,25 +326,34 @@ type FlavorType struct {
 
 // FlavorZone is a zone of a flavor (AvailabilityZoneFlavorSchema).
 type FlavorZone struct {
-	ID        string `json:"availability_zone_id"`
-	Name      string `json:"availability_zone_name"`
-	Enabled   bool   `json:"enabled"`
-	Available bool   `json:"available"`
+	ID      string `json:"availability_zone_id"`
+	Name    string `json:"availability_zone_name"`
+	Enabled bool   `json:"enabled"`
+	// Available is the zone's «available» when the answer has it: the
+	// specification makes it required, the platform sends none (CMP-25,
+	// api-probe 28 and 29, 2 of 2). nil is not «unavailable».
+	Available *bool `json:"available,omitempty"`
+	// State is the zone's FlavorState: created, creating, deleting,
+	// error_creating, error_deleting (the specification); "" when not sent.
+	State string `json:"state,omitempty"`
 }
 
 // Spot reports whether the flavor's type makes interruptible VMs.
 func (f *Flavor) Spot() bool { return f.Type != nil && f.Type.IsSpot }
 
-// ZoneNames are the zones a VM of the flavor can be created in: enabled
-// and available; empty when it names zones and none is, nil when the
-// answer names no zones.
+// ZoneNames are the zones a VM of the flavor can be created in: enabled,
+// not marked unavailable (the platform sends no «available», CMP-25), and
+// created — a flavor still being created or deleted in a zone, or failed
+// there, is not one to promise (the values the platform sends are not
+// probed yet: the specification's FlavorState). Empty when it names zones
+// and none is, nil when the answer names no zones.
 func (f *Flavor) ZoneNames() []string {
 	if f.Zones == nil {
 		return nil
 	}
 	out := []string{}
 	for _, z := range f.Zones {
-		if z.Enabled && z.Available {
+		if z.Enabled && (z.Available == nil || *z.Available) && (z.State == "" || z.State == "created") {
 			out = append(out, z.Name)
 		}
 	}

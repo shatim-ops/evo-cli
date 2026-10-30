@@ -73,7 +73,7 @@ func previewParams(t *testing.T, m map[string]any) map[string]any {
 // P35, P36.
 func TestVMPreview_SaysFlavorZonesAndImageMinimum(t *testing.T) {
 	zone := func(name string, ok bool) provision.FlavorZone {
-		return provision.FlavorZone{ID: "id-" + name, Name: name, Enabled: true, Available: ok}
+		return provision.FlavorZone{ID: "id-" + name, Name: name, Enabled: true, Available: &ok}
 	}
 	withZones := &minImageCloud{faultCloud: &faultCloud{flavors: []*provision.Flavor{{ID: faultFlavor, Name: "low-1-1", VCPUs: 1, RAMGB: 1,
 		Zones: []provision.FlavorZone{zone("ru.AZ-1", true), zone("ru.AZ-2", false)}}}}, minCPU: 2, minRAM: 4}

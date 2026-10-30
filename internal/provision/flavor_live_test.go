@@ -11,7 +11,7 @@ import (
 
 // liveZonesMiss is the work item that makes a flavor of the live answer
 // name its zones; "" once ZoneNames does.
-var liveZonesMiss = "release plan 1.6, «Зоны flavor по живому ответу» (CMP-25): «разработка»"
+var liveZonesMiss = ""
 
 // Register CMP-25 (api-probe 28 and 29, 2 of 2): the live answer of GET
 // /api/v1/flavors has no availability_zones[].available and no
@@ -43,5 +43,17 @@ func TestFlavor_ZonesFromTheLiveAnswer(t *testing.T) {
 		t.Errorf("liveZonesMiss names %q, and the live flavor names its zone now: set it to \"\"", liveZonesMiss)
 	case !right:
 		t.Logf("known: %s — ZoneNames %q on the live form", liveZonesMiss, got)
+	}
+}
+
+// A zone whose flavor is not created there (creating, deleting, an error
+// of either — FlavorState of the specification) is not one a VM can be
+// created in: the preview must not promise it (axis 1).
+func TestFlavor_ZoneNotCreatedIsNoZone(t *testing.T) {
+	for _, state := range []string{"creating", "deleting", "error_creating", "error_deleting"} {
+		f := Flavor{Zones: []FlavorZone{{Name: "ru.AZ-1", Enabled: true, State: "created"}, {Name: "ru.AZ-2", Enabled: true, State: state}}}
+		if got := f.ZoneNames(); len(got) != 1 || got[0] != "ru.AZ-1" {
+			t.Errorf("state %s: zones %q, want [ru.AZ-1]", state, got)
+		}
 	}
 }

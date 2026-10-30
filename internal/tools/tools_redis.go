@@ -149,7 +149,7 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 
 	// The subnet first: its zone is the cluster's, and the specifications
 	// are listed for it.
-	subnetID, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
+	subnetID, subnetName, zoneID, zone, err := dbaasSubnet(ctx, eng, stringArg(args, "subnet_id"))
 	if err != nil {
 		return dbaasSubnetErr(err)
 	}
@@ -177,6 +177,9 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
 		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gb": storage, "shards": shards, "replicas": replicas,
 		"hosts_per_shard": replicas + 1, "type": rtype, "subnet_id": subnetID, "availability_zone": zone}
+	if subnetName != "" {
+		willCreate["subnet_name"] = subnetName
+	}
 	warn := ""
 	if rtype == redisMasterReplica {
 		// Docs (Redis, «Создание кластера»): Master/Replica is a master and
@@ -188,7 +191,7 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 		"redis_create создаёт ПЛАТНЫЙ кластер Managed Redis (асинхронно, несколько минут)."),
 		"will_create": willCreate,
 		"preview": willPreview(engine.ResourceRedis, name, zone, willCreate,
-			[]string{"version_id", "type", "cpu", "memory_gb", "storage_gb", "shards", "hosts_per_shard", "subnet_id"}, warn)}
+			[]string{"version_id", "type", "cpu", "memory_gb", "storage_gb", "shards", "hosts_per_shard", "subnet_id", "subnet_name"}, warn)}
 	if warn != "" {
 		out["warning"] = warn
 	}
