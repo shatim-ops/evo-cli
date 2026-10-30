@@ -36,6 +36,10 @@ type Engine struct {
 
 	// Timings overrides poll/retry waits; zero fields keep production defaults.
 	Timings Timings
+	// QuotaProbe reads the project's quotas for the preview of a VM (D60):
+	// nil — the preview says nothing of them; ErrQuotasForbidden — the key
+	// reads none.
+	QuotaProbe func(ctx context.Context, tp auth.TokenProvider, projectID string) error
 	// Probe runs post-deploy health checks; nil means verify.Check.
 	Probe func(ctx context.Context, ip string, ports []int, timeout time.Duration) []verify.ProbeResult
 }

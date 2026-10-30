@@ -530,6 +530,7 @@ var parityEmptyLists = map[string]string{
 	"GET organization.api.cloud.ru/v2/consumption":                     "no consumption in the period",
 	"GET organization.api.cloud.ru/v3/projects":                        "no other project: org_projects empty",
 	"GET organization.api.cloud.ru/v3/quotas/usages":                   "no quota usage rows",
+	"GET organization.api.cloud.ru/v3/quotas/resourceTypes":            "no quota types: rows keep their codes",
 	"GET secretmanager.api.cloud.ru/v2/secret":                         "no secret yet: secret_create's path is free",
 	"GET secretmanager.api.cloud.ru/v2/version/app/db":                 "no version of the secret: secret_value finds none",
 }

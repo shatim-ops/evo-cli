@@ -189,7 +189,7 @@
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
 | `org_projects` | `evo org projects` | нет | — | List Cloud.ru projects visible to the caller (id, name, status, org unit) and the active project (active). | Проекты Cloud.ru, которые видит ключ доступа |
-| `org_quotas` | `evo org quotas` | нет | — | List quota usages (resource, limit, current usage) — for capacity planning. | Квоты: ресурс, лимит, текущее использование |
+| `org_quotas` | `evo org quotas` | нет | — | List quota usages (resource code, its name, unit and product where the quota-type catalogue names them, limit, current usage) — for capacity planning. | Квоты: ресурс, лимит, текущее использование |
 
 ## pg
 
