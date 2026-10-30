@@ -36,3 +36,13 @@ func TestNamedParams_HumanOnly(t *testing.T) {
 		t.Errorf("JSON params %v: want vpc_id v1 and vpc_name main, apart", got)
 	}
 }
+
+// A reference whose name is the key without "_id" (flavor beside
+// flavor_id, as k8s answers it) reads «name (id)» too; the name's own
+// line goes.
+func TestNamedParams_NameWithoutSuffix(t *testing.T) {
+	got := namedParams([]PreviewParam{{Key: "flavor", Value: "gen-2-4"}, {Key: "flavor_id", Value: "f1"}, {Key: "zone", Value: "ru.AZ-1"}})
+	if len(got) != 2 || got[0].Key != "flavor_id" || got[0].Value != "gen-2-4 (f1)" || got[1].Key != "zone" {
+		t.Errorf("params %+v", got)
+	}
+}

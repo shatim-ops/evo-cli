@@ -1012,12 +1012,13 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zone_create",
-			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone is internal. Mutation: requires confirmed=true after the user approves.",
+			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone resolves only in the VPC it is linked to: vpc_id, else the project's default VPC (named in the preview). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"domain":      strProp("Zone FQDN, e.g. 'example.com.' (required)."),
 				"name":        strProp("Zone display name. Optional; default = domain."),
 				"type":        enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
 				"description": strProp("Optional zone description."),
+				"vpc_id":      uuidProp("Private zone: the VPC it is linked to (resolves in). Optional; default = the project's default VPC."),
 				"confirmed":   confirmedProp(),
 			}, "domain"),
 		},
@@ -2253,6 +2254,14 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					// destroy find it only from the directory evo ran in.
 					"state_dir": config.DataDir(eng.StateDir),
 				}
+				// Names read with the catalogue and the zones (Линия CLI):
+				// a person sees «name (id)».
+				if n := flavorNameOf(flavors, flavorID); n != "" {
+					res["flavor_name"] = n
+				}
+				if zoneName != "" {
+					res["region_name"] = zoneName
+				}
 				if deployKey {
 					res["ssh"] = sshCmd
 				}
@@ -3435,6 +3444,16 @@ func isUUID(s string) bool {
 }
 
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// flavorNameOf is the name of flavor id in the catalogue, "" when not in it.
+func flavorNameOf(flavors []*provision.Flavor, id string) string {
+	for _, f := range flavors {
+		if f.ID == id {
+			return f.Name
+		}
+	}
+	return ""
+}
 
 // provisionPreview is what provision would create, from the call and the
 // configuration only: the zone (zone: the listed zone of cfg.Region, nil

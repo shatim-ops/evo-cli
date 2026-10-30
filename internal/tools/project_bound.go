@@ -161,6 +161,7 @@ var idArgs = map[string][]idArg{
 	"vpc_route_delete": {{name: "vpc_id", kind: kindVPC}, {name: "route_id", why: whyInParent}},
 
 	// DNS.
+	"dns_zone_create":   {{name: "vpc_id", kind: kindVPC}},
 	"dns_zone_get":      {{name: "id", kind: kindDNSZone}},
 	"dns_zone_delete":   {{name: "id", kind: kindDNSZone}},
 	"dns_records":       {{name: "zone_id", kind: kindDNSZone}},

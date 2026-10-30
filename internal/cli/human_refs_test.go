@@ -21,24 +21,17 @@ import (
 // plan that names them; "* field" is the field in any tool. The list only
 // shrinks: a bare UUID not here fails the test, and so does a line no
 // output carries.
+// Closes by 1.8: a line lives at most two versions (release plan 1.6,
+// «храповики со сроком»; TestMisses_HaveADeadline).
 var bareRefs = map[string]string{
-	"* project_id":                              "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"billing_consumption agreement_id":          "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"billing_finops agreement_id":               "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"deploy_apply subnet_id":                    "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"fip_attach interface_id":                   "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"k8s_add_nodepool flavor_id":                "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"k8s_add_nodepool params.nodes_subnet_id":   "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"k8s_add_nodepool params.security_group_id": "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"k8s_create params.subnet_id":               "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"k8s_options zone":                          "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"k8s_plan flavor_id":                        "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"k8s_plan subnet_id":                        "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"lb_create params.subnet_id":                "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"provision flavor":                          "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"provision region":                          "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"stack_apply vpc":                           "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"tg_create interface_id":                    "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
+	"* project_id":                     "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
+	"billing_consumption agreement_id": "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
+	"billing_finops agreement_id":      "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
+	"deploy_apply subnet_id":           "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
+	"fip_attach interface_id":          "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
+	"k8s_options zone":                 "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
+	"stack_apply vpc":                  "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
+	"tg_create interface_id":           "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
 }
 
 // notRefs are the UUIDs of the human output that are no reference: "tool

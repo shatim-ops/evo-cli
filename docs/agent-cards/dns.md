@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `dns_zones` | `evo dns zones` | reads |  |
 | `dns_zone_get` | `evo dns zone-get` | reads | `id` ← `dns_zones` |
-| `dns_zone_create` | `evo dns zone-create` | creates: id in `zone_id`; found with `dns_zones`; deleted with `dns_zone_delete` |  |
+| `dns_zone_create` | `evo dns zone-create` | creates: id in `zone_id`; found with `dns_zones`; deleted with `dns_zone_delete` | `vpc_id` ← `vpc_list` |
 | `dns_zone_delete` | `evo dns zone-delete` | deletes; a repeat answers `already_deleted` | `id` ← `dns_zones` |
 | `dns_operation` | `evo dns operation` | reads |  |
 | `dns_records` | `evo dns records` | reads | `zone_id` ← `dns_zones` |

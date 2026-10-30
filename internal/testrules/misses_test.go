@@ -125,7 +125,7 @@ func missLists(t *testing.T, root string) []missList {
 				if doc == nil {
 					doc = g.Doc
 				}
-				if doc == nil || !strings.Contains(doc.Text(), "only shrinks") || len(vs.Values) != 1 {
+				if doc == nil || !isMissList(doc.Text()) || len(vs.Values) != 1 {
 					continue
 				}
 				cl, ok := vs.Values[0].(*ast.CompositeLit)
@@ -158,6 +158,12 @@ func missLists(t *testing.T, root string) []missList {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].where+out[i].name < out[j].where+out[j].name })
 	return out
+}
+
+// isMissList: the doc comment says the list «only shrinks», on one line or
+// wrapped (bareRefs wrapped it and was not seen, 1.6).
+func isMissList(doc string) bool {
+	return strings.Contains(strings.Join(strings.Fields(doc), " "), "only shrinks")
 }
 
 func parseDeadline(s string) [2]int {
@@ -204,6 +210,9 @@ func versionText(v [2]int) string {
 func TestMisses_DeadlineParts(t *testing.T) {
 	if got := parseDeadline("only shrinks.\nCloses by 1.8 (release plan 1.6)."); got != [2]int{1, 8} {
 		t.Errorf("parseDeadline: %v", got)
+	}
+	if !isMissList("The list only\nshrinks: a bare UUID not here fails") {
+		t.Error("isMissList: a wrapped «only shrinks» is a list of misses")
 	}
 	if got := parseDeadline(`"release plan 1.6, «Линия CLI»: «разработка»"`); got != [2]int{} {
 		t.Errorf("a work item is not a deadline: %v", got)
