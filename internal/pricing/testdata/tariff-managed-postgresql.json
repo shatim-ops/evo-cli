@@ -1,0 +1,13 @@
+{
+  "_comment": "Снимок публичного тарифа Cloud.ru «Evolution Managed PostgreSQL» (Приложение №7.EVO.4), с которого evo берёт ставки цены PostgreSQL до согласия (release plan 1.6, «Цена PostgreSQL до согласия»; решение владельца 29.10, #570). TestLive_TariffPageMatchesSnapshot (EVO_LIVE_TARIFFS=1, job contract раз в неделю и вручную перед rc) сверяет страницу с ним: новая версия или другая ставка — красный, карта pricing и снимок обновляются вместе. Цены — руб. с НДС и без, как на странице.",
+  "url": "https://cloud.ru/documents/tariffs/evolution/managed-postgresql",
+  "version": "260918",
+  "in_force": "28 сентября 2026 г.",
+  "rates": [
+    {"name": "Вычислительные ресурсы Evolution Managed PostgreSQL тип Бизнес 1 vCPU", "unit": "шт.", "period": "час", "with_vat": "1,49145", "without_vat": "1,2225"},
+    {"name": "Вычислительные ресурсы Evolution Managed PostgreSQL тип Бизнес 1 ГБ RAM", "unit": "шт.", "period": "час", "with_vat": "0,4026", "without_vat": "0,33"},
+    {"name": "Вычислительные ресурсы Evolution Managed PostgreSQL тип Стандарт 1 vCPU", "unit": "шт.", "period": "час", "with_vat": "1,49145", "without_vat": "1,2225"},
+    {"name": "Вычислительные ресурсы Evolution Managed PostgreSQL тип Стандарт 1 ГБ RAM", "unit": "шт.", "period": "час", "with_vat": "0,4026", "without_vat": "0,33"},
+    {"name": "Хранилище на сетевых SSD дисках Evolution Managed PostgreSQL", "unit": "ГБ", "period": "час", "with_vat": "0,016836", "without_vat": "0,0138"}
+  ]
+}
