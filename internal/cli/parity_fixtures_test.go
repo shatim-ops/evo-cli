@@ -546,7 +546,7 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	switch r.URL.Path {
 	case "/api/v1/vms/" + parityVM:
-		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","state":"running","interfaces":[{"id":"`+parityNIC+`","type":"regular","ip_address":"192.0.2.5"}]}`)
+		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","state":"running","interfaces":[{"id":"`+parityNIC+`","name":"eth0","type":"regular","ip_address":"192.0.2.5"}]}`)
 	case "/api/v1/disks":
 		if r.Method != http.MethodPost {
 			_, _ = io.WriteString(w, `{"items":[{"id":"`+parityVM+`","name":"old","size":20,"availability_zone":{"id":"`+pvZone+`"}}],"total":1}`)

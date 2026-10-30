@@ -106,7 +106,7 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			// The VM of parityVM with its primary interface, ready: the
 			// floating IP of provision and deploy goes there.
 			return write(`{"id":"` + parityVM + `","name":"web","state":"running","interfaces":[{"id":"` + parityNIC +
-				`","type":"regular","ip_address":"192.0.2.5","primary":true,"state":"created"}]}`)
+				`","name":"eth0","type":"regular","ip_address":"192.0.2.5","primary":true,"state":"created"}]}`)
 		case p == "/api/v1/vms/"+parityVM && r.Method == http.MethodDelete:
 			f.mu.Lock()
 			f.vmGone = true

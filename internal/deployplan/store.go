@@ -75,7 +75,10 @@ type VMSpec struct {
 
 // NetworkSpec is the resolved network configuration.
 type NetworkSpec struct {
-	SubnetID        string `json:"subnet_id"`
+	SubnetID string `json:"subnet_id"`
+	// SubnetName is the subnet's name as deploy_plan read it, for the
+	// preview of deploy_apply (Линия CLI); empty in plans saved before 1.6.
+	SubnetName      string `json:"subnet_name,omitempty"`
 	SecurityGroupID string `json:"security_group_id"`
 	FloatingIP      bool   `json:"floating_ip"`
 	AttachFIPID     string `json:"attach_fip_id,omitempty"`

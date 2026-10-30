@@ -23,15 +23,16 @@ import (
 // output carries.
 // Closes by 1.8: a line lives at most two versions (release plan 1.6,
 // «храповики со сроком»; TestMisses_HaveADeadline).
-var bareRefs = map[string]string{
-	"* project_id":                     "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"billing_consumption agreement_id": "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"billing_finops agreement_id":      "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"deploy_apply subnet_id":           "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"fip_attach interface_id":          "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"k8s_options zone":                 "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"stack_apply vpc":                  "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"tg_create interface_id":           "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
+var bareRefs = map[string]string{}
+
+// unnamedRefs are the references whose name evo does not read, each with
+// why (release plan 1.6, «Линия CLI»: «не прочитано — объявлено»). A
+// person sees the bare id, and the declaration says why it stays so. A
+// line no output carries fails the test, as in bareRefs.
+var unnamedRefs = map[string]string{
+	"* project_id":                     "the name of a project is read by the Organization API with a key of the organization; a project's key gets 400 there (handleOrgProjects), and every tool would pay that call for a name",
+	"billing_consumption agreement_id": "the billing API has no read of an agreement: agreement_id is only its filter (billing/swagger.yaml), so there is no name to read",
+	"billing_finops agreement_id":      "the billing API has no read of an agreement: agreement_id is only its filter (billing/swagger.yaml), so there is no name to read",
 }
 
 // notRefs are the UUIDs of the human output that are no reference: "tool
@@ -51,6 +52,7 @@ var notRefs = map[string]string{
 	"provision message":              "own id: the VM provision made, in its message",
 	"provision vm_id":                "own id: what provision made",
 	"redis_create cluster_id":        "own id: what redis_create made",
+	"stack_apply vpc":                "own id: outputs are the ids of what the stack's steps made, by step key",
 	"status vm_id":                   "own id: the VM of the deployment status describes",
 	"vpc_create vpc_id":              "own id: what vpc_create made",
 }
@@ -137,6 +139,7 @@ func TestHuman_NoBareReferenceUUID(t *testing.T) {
 		}
 	}
 	found := map[string]string{}
+	declared := map[string]bool{} // the lines of unnamedRefs some output carries
 	for i, cl := range calls {
 		_, human, given := run(cl)
 		own, _, field := refIndex(answers[i])
@@ -165,6 +168,14 @@ func TestHuman_NoBareReferenceUUID(t *testing.T) {
 				if notRefs[k] != "" || notRefs["* "+f] != "" {
 					continue
 				}
+				if unnamedRefs[k] != "" {
+					declared[k] = true
+					continue
+				}
+				if unnamedRefs["* "+f] != "" {
+					declared["* "+f] = true
+					continue
+				}
 				if _, ok := found[k]; !ok {
 					found[k] = cl.label + ": " + clipLine(strings.TrimSpace(l))
 				}
@@ -185,6 +196,11 @@ func TestHuman_NoBareReferenceUUID(t *testing.T) {
 		}
 		if bareRefs[k] == "" {
 			bad = append(bad, k+": a bare UUID in the human output — "+found[k])
+		}
+	}
+	for k := range unnamedRefs {
+		if !declared[k] {
+			bad = append(bad, "unnamedRefs names "+k+", which no human output carries bare: remove the line")
 		}
 	}
 	for k := range bareRefs {
