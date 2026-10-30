@@ -943,6 +943,56 @@ area_net() {
 # строка, а не провал (провал — объект остался в списке). Операция с ошибкой
 # или не done — её состояние пробой: run 151 (30.10) зона после ~40
 # принятых удалений осталась «ok», а итог операции не читался.
+# dnslink_state КОГДА ЗОНА — связи приватной зоны и DNS-сервера evo-e2e-dns
+# (п. 27): state и число linkedVpcIds зоны, usedIn сервера и упоминает ли
+# usedIn эту зону; код HTTP чтения зоны — в $zcode. Печатаются количества
+# и признаки, ID — никогда.
+dnslink_state() {
+	local zs ss
+	api GET "https://dns.api.cloud.ru/v1/privateZones/$2"
+	zcode=$code
+	if [ "$code" = 200 ]; then
+		zs="зона: state $(jq -r '.state // "?"' "$tmp/api.json"), linkedVpcIds $(jq '.linkedVpcIds // [] | length' "$tmp/api.json")"
+	else zs="зона: HTTP $code"; fi
+	api GET "https://dns.api.cloud.ru/v1/dnsServers?projectId=$PROJECT&pageSize=100"
+	if [ "$code" = 200 ]; then
+		ss="сервер evo-e2e-dns: $(jq -c --arg z "$2" '[.servers[]? | select(.name == "evo-e2e-dns")][0] // null | if . == null then "нет" else {usedIn: (.usedIn // [] | length), keys: ((.usedIn // [])[0] // {} | keys), zone: ([(.usedIn // [])[] | tostring | contains($z)] | any)} end' "$tmp/api.json")"
+	else ss="dnsServers: HTTP $code"; fi
+	row "п. 27: связи $1" чтение "$zs; $ss"
+}
+
+# Проба п. 27 (решение владельца 30.10, #597, п. 27; run 151): приватная
+# зона, привязанная к VPC с DNS-сервером, — DELETE принят, зона остаётся
+# «ok»; консоль требует снять связи. Перед обычным удалением зоны области:
+# H3 — DELETE со связями и итог его операции; H1 — снимает ли PATCH
+# linkedVpcIds: [] связь с VPC; H2 — снимается ли при этом связь с
+# DNS-сервером (usedIn). У evo PATCH зоны нет — прямой запрос. Проба, не
+# проверка: строки, а не FAIL; зона дальше удаляется обычным шагом области,
+# не удалится — FAIL «зона в списке» и уборка, путь — консоль.
+probe_dnslink() {
+	local zid=$1 op
+	iam_token && [ -n "${PROJECT:-}" ] || { gap "п. 27" "нет токена IAM или PROJECT"; return 0; }
+	dnslink_state "до" "$zid"
+	tc dns_zone_delete --arg id="$zid" --arg type=private
+	if [ "$rc" = 0 ]; then
+		op=$(j -r '.operation_id // empty')
+		mask "$op"
+		if opwait dns "$op" 300; then row "п. 27 H3: DELETE со связями" "done" "операция без ошибки"
+		else row "п. 27 H3: DELETE со связями" ошибка "$why"; fi
+	else row "п. 27 H3: DELETE со связями" отказ "код $rc, $reason: $why"; fi
+	dnslink_state "после DELETE" "$zid"
+	[ "$zcode" != 404 ] || return 0
+	api PATCH "https://dns.api.cloud.ru/v1/privateZones/$zid" '{"linkedVpcIds":[]}'
+	if [ "${code#2}" != "$code" ]; then
+		op=$(jq -r '.id // empty' "$tmp/api.json")
+		mask "$op"
+		if [ -z "$op" ]; then row "п. 27 PATCH linkedVpcIds: []" "HTTP $code" "без операции, ключи $(jq -c 'keys' "$tmp/api.json")"
+		elif opwait dns "$op" 300; then row "п. 27 PATCH linkedVpcIds: []" "HTTP $code" "операция done"
+		else row "п. 27 PATCH linkedVpcIds: []" "HTTP $code" "операция: $why"; fi
+	else row "п. 27 PATCH linkedVpcIds: []" "HTTP $code" "$(api_why)"; fi
+	dnslink_state "после PATCH" "$zid"
+}
+
 dns_delete_op() {
 	local op
 	op=$(j -r '.operation_id // empty')
@@ -1013,6 +1063,7 @@ area_dns() {
 	dns_delete_op записи
 	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" 'any(.records[]; .id == $id) | not' >/dev/null; }
 	if poll 300 15 norec; then ok dns_record_delete "записи нет"; cov dns_record_delete; else bad dns_record_delete "запись осталась через 5 мин"; fi
+	! probe_on dnslink || probe_dnslink "$zid"
 	must dns_zone_delete dns_zone_delete --arg id="$zid" --arg type=private || return 1
 	dns_delete_op зоны
 	# приватная зона 18.10 удалялась ~11,5 мин (run 39160570296)

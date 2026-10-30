@@ -975,7 +975,7 @@ jobs:
       # по документации Cloud.ru в VPC должен быть DNS-сервер. Есть ли он в
       # VPC по умолчанию проекта прогона. Только GET; печатаются коды HTTP,
       # количества, признаки и состояния — без ID.
-      - name: DNS-серверы в VPC по умолчанию (п. 25, D65)
+      - name: DNS-серверы в VPC по умолчанию и зоны прогонов (пп. 25–26, D65)
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
@@ -1003,6 +1003,15 @@ jobs:
             | .servers[]? | "сервер: в VPC по умолчанию \(.vpcId as $x | $x != null and ($def | index($x) != null)), state \(.state // "?"), usedIn \(.usedIn // [] | length)"' "$d" 2>/dev/null || true
           n=$(jq -r --slurpfile vp "$v" '($vp[0].vpcs // [] | map(select(.default == true) | .id)) as $def | [.servers[]? | select(.vpcId as $x | $x != null and ($def | index($x) != null))] | length' "$d" 2>/dev/null || echo "?")
           echo "ИТОГ п. 25: DNS-серверов в VPC по умолчанию — $n"
+          # Решение владельца 30.10 (#597, п. 26): приватные зоны прогонов
+          # (evo-e2e-*) — остались ли после уборки. Печатаются домен (имя
+          # прогона, не ID), state и число связанных VPC.
+          z="$RUNNER_TEMP/zones.json"
+          zc=$(curl -sS -o "$z" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://dns.api.cloud.ru/v1/privateZones?projectId=$PROJECT&pageSize=100" || echo 000)
+          echo "privateZones: http $zc, зон $(jq '.zones | length' "$z" 2>/dev/null || echo ?)"
+          [ -z "$(jq -r '.nextPageToken // empty' "$z" 2>/dev/null)" ] || echo "privateZones: список не полон (есть nextPageToken)"
+          jq -r '.zones[]? | select((.domain // .name // "") | startswith("evo-e2e-")) | "зона прогона: \(.domain // .name), state \(.state // "?"), linkedVpcIds \(.linkedVpcIds // [] | length)"' "$z" 2>/dev/null || true
+          echo "ИТОГ п. 26: приватных зон evo-e2e-* — $(jq '[.zones[]? | select((.domain // .name // "") | startswith("evo-e2e-"))] | length' "$z" 2>/dev/null || echo ?)"
 
       - name: Права ключа (изменения должны быть запрещены)
         env:
