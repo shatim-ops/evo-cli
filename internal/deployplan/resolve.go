@@ -216,6 +216,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		VM:        vm,
 		Network: NetworkSpec{
 			SubnetID:        subnetID,
+			SubnetName:      subnet.Name,
 			SecurityGroupID: sgID,
 			FloatingIP:      wantFIP,
 			AttachFIPID:     attachFIPID,

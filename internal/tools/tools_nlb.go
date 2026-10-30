@@ -250,7 +250,15 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 				ifaceTypes[vmid] = ni.Type
 			}
 		}
-		named = append(named, map[string]any{"id": vmid, "name": det.Name, "interface_id": specs[i]["interface_id"]})
+		target := map[string]any{"id": vmid, "name": det.Name, "interface_id": specs[i]["interface_id"]}
+		// The interface's name, read with the VM (Линия CLI); the body of
+		// the create (specs) takes none.
+		for _, itf := range det.Interfaces {
+			if itf.ID == specs[i]["interface_id"] && itf.Name != "" {
+				target["interface_name"] = itf.Name
+			}
+		}
+		named = append(named, target)
 	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{

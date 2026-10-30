@@ -173,7 +173,7 @@ func PlanPreview(plan *deployplan.Plan) *CreatePreview {
 	cost := plan.Cost
 	p := &CreatePreview{Resource: ResourceVM, Name: vm.Name,
 		ProjectID: plan.ProjectID, ProjectFrom: originPlan, VM: &vm, PublicIP: &public,
-		SubnetID: plan.Network.SubnetID, Cost: &cost, CostNote: costNote}
+		SubnetID: plan.Network.SubnetID, SubnetName: plan.Network.SubnetName, Cost: &cost, CostNote: costNote}
 	if cost.Source == pricing.SourceAPI {
 		p.CostNote = apiCostNote
 	}

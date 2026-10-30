@@ -236,15 +236,15 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("get vm detail: %w", "данные ВМ: %w"), err)
 	}
-	ifaceID := ""
+	ifaceID, ifaceName := "", ""
 	for _, itf := range detail.Interfaces {
 		if itf.Primary {
-			ifaceID = itf.ID
+			ifaceID, ifaceName = itf.ID, itf.Name
 			break
 		}
 	}
 	if ifaceID == "" && len(detail.Interfaces) > 0 {
-		ifaceID = detail.Interfaces[0].ID
+		ifaceID, ifaceName = detail.Interfaces[0].ID, detail.Interfaces[0].Name
 	}
 	if ifaceID == "" {
 		return nil, fmt.Errorf(i18n.T("VM %s has no interface to attach to", "у ВМ %s нет интерфейса для привязки"), vmRef)
@@ -293,7 +293,12 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 			if err != nil {
 				return errResult(fmt.Errorf(i18n.T("attach floating ip: %w", "привязка floating IP: %w"), err)), true
 			}
-			return toJSON(map[string]any{"status": "attached", "floating_ip": res, "vm_id": vmID, "interface_id": ifaceID}), false
+			out := map[string]any{"status": "attached", "floating_ip": res, "vm_id": vmID, "interface_id": ifaceID}
+			// The interface's name, read with the VM (Линия CLI).
+			if ifaceName != "" {
+				out["interface_name"] = ifaceName
+			}
+			return toJSON(out), false
 		},
 	}, nil
 }
