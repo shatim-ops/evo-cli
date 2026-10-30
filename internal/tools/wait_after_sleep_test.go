@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -107,6 +108,11 @@ func sleepWorld(t *testing.T, c *sleptCloud) *Registry {
 	t.Cleanup(func() { opWaitFirstDelay = oldDelay })
 	cache := auth.FileCache{Path: filepath.Join(t.TempDir(), "token.json")}
 	p := auth.NewIAMProvider(auth.Credentials{KeyID: "k", Secret: "s"}, nil, cache)
+	// The CLI and evo mcp hold their provider for the process
+	// (cli.tokenProvider); here only the engine closure holds it, and a
+	// handler done with the registry leaves it to the collector mid-wait —
+	// its weak entry gone, no provider renews the refused token.
+	t.Cleanup(func() { runtime.KeepAlive(p) })
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
