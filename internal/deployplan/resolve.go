@@ -97,8 +97,18 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("list flavors: %w", "список flavor: %w"), err)
 	}
-	flavor, fwarn, err := selectFlavor(flavors, p)
+	// The flavor of the zone (D67; Fable, FB160-17): a flavor the call
+	// names out of the zone is refused before the plan is written, the
+	// automatic pick is among the zone's.
+	flavor, fwarn, err := selectFlavor(provision.FlavorsInZone(flavors, zone.ID, zone.Name), p)
 	if err != nil {
+		if f := flavorNamed(flavors, p.Flavor); f != nil {
+			flavor, err = *f, nil
+		} else {
+			return nil, err
+		}
+	}
+	if err := provision.FlavorOutOfZone(&flavor, zone.ID, zone.Name); err != nil {
 		return nil, err
 	}
 	warnings = append(warnings, fwarn...)
@@ -244,6 +254,17 @@ func EstimateVM(vm VMSpec) pricing.Estimate {
 
 // selectFlavor validates an explicit flavor by name, or auto-sizes from CPU/RAM,
 // or falls back to a sane default. Free-tier flavors are skipped for auto-size.
+// flavorNamed is the flavor of the catalogue named name, nil for none or
+// for no name.
+func flavorNamed(flavors []*provision.Flavor, name string) *provision.Flavor {
+	for _, f := range flavors {
+		if name != "" && f.Name == name {
+			return f
+		}
+	}
+	return nil
+}
+
 func selectFlavor(flavors []*provision.Flavor, p Params) (provision.Flavor, []string, error) {
 	var warnings []string
 	byName := func(name string) *provision.Flavor {

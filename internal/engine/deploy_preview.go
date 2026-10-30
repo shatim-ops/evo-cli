@@ -19,7 +19,6 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
-	"github.com/shatim-ops/evo-cli/internal/sizer"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -124,18 +123,13 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 	// smallest that fits the compose file's services.
 	pick := func(flavors []*provision.Flavor) (string, error) {
 		if want := firstNonEmpty(vm.Flavor.ID, vm.Flavor.Name); want != "" {
-			return PickVMFlavor(flavors, want)
+			return PickVMFlavorIn(flavors, want, &vm.Zone)
 		}
-		flavors = FlavorsInZone(flavors, &vm.Zone)
-		list := make([]provision.Flavor, len(flavors))
-		for i, f := range flavors {
-			list[i] = *f
-		}
-		match := sizer.Match(sizer.EstimateFromServices(project.Services), list)
+		match := sizeFlavor(project, flavors, &vm.Zone)
 		if match == nil {
 			return "", errNoSize
 		}
-		return match.Flavor.ID, nil
+		return match.ID, FlavorOutOfZone(match, &vm.Zone)
 	}
 	if err := e.completePreview(ctx, p, pick, false); err != nil {
 		return nil, err

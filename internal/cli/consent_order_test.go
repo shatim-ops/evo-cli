@@ -458,6 +458,14 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 					found[key] = "asks for consent in a world it can read as refusing the write"
 				case c.world.names != "" && !strings.Contains(msg, c.world.names):
 					found[key] = fmt.Sprintf("refuses without naming %q: %s", c.world.names, clipLine(msg))
+				default:
+					// The call with confirmed=true in the same world: the
+					// same refusal, and no write (Fable, FB160-15 — MCP
+					// deploy went past its preview's refusal).
+					after, _, writes := call(tl, c, true)
+					if writes > 0 || after["reason"] != before["reason"] {
+						found[key+" (confirmed)"] = fmt.Sprintf("refuses with %v before the question, with %v and %d writes after consent", before["reason"], after["reason"], writes)
+					}
 				}
 				continue
 			}
