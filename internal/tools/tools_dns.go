@@ -300,10 +300,14 @@ func (s *Registry) planDnsZoneDelete(ctx context.Context, args map[string]any) (
 		return answered(s.deleteFailed("dns_zone_delete", id, err)), nil
 	}
 	// With type the zone was not looked up: a zone that is not there
-	// is already deleted (D26).
-	if stringArg(args, "type") != "" {
-		if _, err := cli.GetZone(ctx, vis, id); err != nil {
+	// is already deleted (D26). A private zone is read for its links.
+	if stringArg(args, "type") != "" || vis == "private" {
+		zone, err := cli.GetZone(ctx, vis, id)
+		if err != nil {
 			return answered(s.deleteFailed("dns_zone_delete", id, err)), nil
+		}
+		if err := s.dnsZoneLinked(ctx, zone); err != nil {
+			return nil, err
 		}
 	}
 	preview := map[string]any{"message": i18n.Tf("dns_zone_delete PERMANENTLY deletes %s zone %s and its records (async).",
@@ -313,8 +317,76 @@ func (s *Registry) planDnsZoneDelete(ctx context.Context, args map[string]any) (
 		if err != nil {
 			return s.deleteFailed("dns_zone_delete", id, fmt.Errorf(i18n.T("delete zone: %w", "удаление зоны: %w"), err))
 		}
-		return toJSON(map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}), false
+		return dnsZoneDeleted(ctx, cli, vis, id, op)
 	}}, nil
+}
+
+// dnsZoneDeleteWait is how long, in seconds, dns_zone_delete waits for the
+// operation of its delete. A variable only so that tests can shorten it.
+var dnsZoneDeleteWait = 60
+
+// dnsZoneDeleted is the answer of the delete of zone id whose operation is
+// op (D66): the operation is read until it ends, within dnsZoneDeleteWait —
+// done is deleted, an error is a refusal with Cloud.ru's text (axis 3:
+// «deleted» is a zone that is gone), an operation still running or one
+// that cannot be read is deleting with its id, as before.
+func dnsZoneDeleted(ctx context.Context, cli *dns.Client, vis, id string, op *dns.Operation) (string, bool) {
+	deleting := map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}
+	m, err := waitForOpJSON(ctx, dnsZoneDeleteWait, func(ctx context.Context) (map[string]any, error) {
+		got, err := cli.GetOperation(ctx, op.ID)
+		if err != nil {
+			return nil, err
+		}
+		return opToMap(got), nil
+	})
+	if err != nil || m == nil {
+		return toJSON(deleting), false
+	}
+	if e, _ := m["error"].(map[string]any); e != nil {
+		return errResult(clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("Cloud.ru did not delete DNS zone %s: %v (code %v, operation %s)", "Cloud.ru не удалил зону DNS %s: %v (код %v, операция %s)",
+				id, e["message"], e["code"], op.ID),
+			i18n.T("dns_zone_get shows the zone; its links (VPCs, DNS servers) are removed in the console: Evolution DNS → the zone → Links.",
+				"Зона — в выводе dns_zone_get; связи зоны (VPC, DNS-серверы) снимаются в личном кабинете: Evolution DNS → зона → Связи."))), true
+	}
+	if done, _ := m["done"].(bool); !done {
+		return toJSON(deleting), false
+	}
+	return toJSON(map[string]any{"status": "deleted", "visibility": vis, "id": id, "operation_id": op.ID}), false
+}
+
+// dnsZoneLinked refuses the delete of a private zone linked to VPCs (D66):
+// Cloud.ru does not delete a zone with links — the console asks to remove
+// them first — yet its API takes the DELETE and the zone stays (cloud-e2e
+// run 151). evo does not remove links: the refusal names the VPCs and the
+// console's way.
+func (s *Registry) dnsZoneLinked(ctx context.Context, zone map[string]any) error {
+	raw, _ := zone["linkedVpcIds"].([]any)
+	if len(raw) == 0 {
+		return nil
+	}
+	names := map[string]string{}
+	if cli, err := s.vpcClient(ctx); err == nil {
+		if vpcs, err := cli.ListVPCs(ctx); err == nil {
+			for _, v := range vpcs {
+				vid, _ := v["id"].(string)
+				names[vid], _ = v["name"].(string)
+			}
+		}
+	}
+	linked := make([]string, 0, len(raw))
+	for _, v := range raw {
+		vid := fmt.Sprint(v)
+		if n := names[vid]; n != "" {
+			vid = n + " (" + vid + ")"
+		}
+		linked = append(linked, vid)
+	}
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("DNS zone %v is linked to VPC %s: Cloud.ru does not delete a zone with links",
+			"зона DNS %v связана с VPC %s: Cloud.ru не удаляет зону со связями", zone["id"], strings.Join(linked, ", ")),
+		i18n.T("Remove the zone's links in the console (Evolution DNS → the zone → Links), then delete it again.",
+			"Снимите связи зоны в личном кабинете (Evolution DNS → зона → Связи) и удалите её снова."))
 }
 
 // --- Operations ---
