@@ -135,23 +135,27 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			strings.Join(ps, ","), sgrules.Anywhere, network.SecurityGroup))
 	}
 	lines = append(lines, vmCostLines(cost, vm.Flavor.VCPUs > 0)...)
-
+	quota := e.quotaCheck(ctx, req.ProjectID)
+	if l := quota.line(); l != "" {
+		lines = append(lines, l)
+	}
+	details := map[string]any{
+		"project_id":     req.ProjectID,
+		"project_from":   e.projectFrom(nil),
+		"vm":             vm,
+		"floating_ip":    true,
+		"subnet_id":      network.SubnetID,
+		"security_group": map[string]string{"id": network.SecurityGroupID, "name": network.SecurityGroup},
+		"open_ports":     ports,
+		"open_udp_ports": udpPorts,
+		"cost":           cost,
+		"cost_note":      costNoteFor(cost),
+	}
 	return confirm.Preview{
 		Action:  "deploy",
 		Summary: i18n.Tf("create VM %s (%s) in %s", "создать ВМ %s (%s) в зоне %s", vm.Name, vm.Flavor.Name, vm.Zone.Name),
 		Lines:   lines,
-		Details: map[string]any{
-			"project_id":     req.ProjectID,
-			"project_from":   e.projectFrom(nil),
-			"vm":             vm,
-			"floating_ip":    true,
-			"subnet_id":      network.SubnetID,
-			"security_group": map[string]string{"id": network.SecurityGroupID, "name": network.SecurityGroup},
-			"open_ports":     ports,
-			"open_udp_ports": udpPorts,
-			"cost":           cost,
-			"cost_note":      costNoteFor(cost),
-		},
+		Details: details,
 	}
 }
 
