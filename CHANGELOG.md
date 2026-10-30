@@ -70,6 +70,11 @@
   Стало: зона с непустым `linkedVpcIds` — `USAGE`, код 1, до вопроса, без записи; ответ называет VPC и путь «снимите связи зоны в личном кабинете: Evolution DNS → зона → Связи». Удаление зоны без связей ждёт свою операцию до 60 с: готово — `status: deleted`; ошибка операции — `API_ERROR`, код 5, с текстом Cloud.ru; не дождались — `deleting` и `operation_id`, как раньше; ожидание, прерванное вызывающим (Ctrl-C, отмена клиента MCP), — ошибка, как у ожидания `dns_operation`. Имена VPC в отказах — в кавычках, на одной строке.
   Что поменять: скрипт, который ждал `deleting` и опрашивал `dns_operation`, принимает и `deleted`; зону, созданную `dns_zone_create` с VPC (D65), удаляют после снятия связей в личном кабинете.
 
+- **`evo vm create`, `evo deploy` и MCP `provision`, `deploy`, `deploy_plan`, `stack_plan`: flavor, которого нет в зоне создания, — отказ до согласия** (DECISIONS D67).
+  Было: превью называло зоны flavor (`flavor_zones`), но при зоне не из их числа вызов доходил до вопроса о согласии (код 3 без `--yes`), а создание отвергала платформа; `deploy_plan` записывал план с таким flavor, и `deploy_apply` падал на создании; MCP `deploy` с `confirmed=true` доходил до создания.
+  Стало: каталог называет зоны flavor, зоны вызова (UUID или имя в любом регистре) среди них нет — `USAGE`, код 1, до вопроса и без записи, в том числе с `confirmed=true`; `deploy_plan` — `USAGE` до записи плана. Ошибка называет зоны flavor, подсказка — `evo vm flavors --zone <зона>` (MCP `list_flavors zone=…`). Flavor без зон в ответе каталога — как раньше.
+  Что поменять: выбрать flavor зоны или зону flavor; скрипт, который ждал код 3, получает код 1.
+
 ### Добавлено
 
 - **Списки называют то, что каталог говорит о выборе** (D54, до проб; аудит «слепые зоны» 1.5: FB15-6, FB15-18, FB15-40).
@@ -146,6 +151,8 @@
 - **`evo --help` группирует команды по продуктам Cloud.ru Evolution под их официальными именами**: «Evolution Compute, Evolution Disk» (`vm`, `image`, `marketplace`, `disk`) — первой, затем «Evolution VPC, Evolution DNS, Evolution Load Balancer, SNAT-шлюзы», «Evolution Managed Kubernetes», «Evolution Artifact Registry, Evolution Container Apps», «Evolution Managed PostgreSQL, Evolution Managed Redis, Evolution Managed Kafka», «Evolution Object Storage», «Secret Management, Certificate Manager», «Мониторинг, аудит, биллинг, доступ»; сценарии evo (`init`, `deploy`, `status`, `logs`, `verify`, `destroy`, `stack`) — после продуктов. Шапка справки: «Управление ресурсами Cloud.ru Evolution: …; развёртывание compose-проектов». Было: первой шла группа «Развёртывание compose-проекта».
 
 - **`evo --help` заканчивается строкой «Добро пожаловать в Cloud.ru»** (en: «Welcome to Cloud.ru») вместо ссылок на Telegram автора и чат тестировщиков; текст скрытой команды `evo crew` больше не называет Telegram. Обратная связь — в Issues репозитория (README). Поле `feedback` в `evo crew --json` осталось.
+
+- **`evo vm create`, `evo deploy` и MCP `provision`, `deploy`, `deploy_plan` без заданного flavor подбирают flavor зоны создания; превью называет выбранный flavor** (DECISIONS D67). Шаг ВМ `stack_apply` подбирает так же. Было: автоподбор брал наименьший подходящий flavor каталога, даже если его нет в зоне, — создание отвергала платформа. Стало: подбор идёт среди flavor зоны (и flavor без зон в ответе каталога); если в зоне нет ни одного — отказ D67.
 
 ### Исправлено
 
