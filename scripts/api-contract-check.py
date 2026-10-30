@@ -30,6 +30,24 @@ Literals that are no request, and templates whose segment is picked at run
 time, go to "code_coverage" in the contract (ignore / expand, with a
 reason). --code-only runs just this part and needs no specs.
 
+With the field baseline scripts/api-contract-fields.json (the names of the
+fields of every GET answer and every request body of the contract at the
+last update, no more of the spec) it also reports, per request:
+
+  field-new     a field the spec has and the baseline does not, that evo
+                neither reads nor sends: `error` until evo reads it, or the
+                request accepts "field-new:<field>" with a reason (release
+                plan 1.6, the ratchet of the specs; «полнота ресурса», #496).
+                Ignored without a declaration: deprecated fields, *_at and
+                display* names, the fields of a mini reference ({id, name}),
+                readOnly fields of a body. A new object is reported once,
+                not with every field under it.
+  field-gone    a field of the baseline the spec no longer has: `info`
+  field-baseline-missing  a request without a baseline: `warn`
+
+--update-fields rewrites the baseline from the specs, once the new fields
+are read or accepted (a version's step, or a PR that reads a new field).
+
 Findings are `error` (the request contradicts the spec), `warn` (the spec
 says nothing, or the code reads a field the spec does not have) or `info`.
 Each request may carry "accepted": {"<finding id>": "<why>"} for known,
@@ -40,6 +58,7 @@ in CI.
 
 Usage: python3 scripts/api-contract-check.py [--specs .cache/cloudru-specs]
            [--contract scripts/api-contract.json] [--root .] [--code-only]
+           [--fields scripts/api-contract-fields.json] [--update-fields]
            [--markdown]
 """
 import argparse
@@ -175,6 +194,87 @@ def walk(schema, dotted):
                 return None
             cur = cur.get("items") or {}
     return cur
+
+
+def schema_fields(schema, prefix="", depth=0):
+    """Every field path of schema, as `a.b[].c`, with its flags: readOnly,
+    deprecated, and mini (a field of an object with no more than id and
+    name). A top-level array is entered without `[]`, as walk() does."""
+    out = {}
+    if not isinstance(schema, dict) or depth > 8 or schema.get("x-recursive"):
+        return out
+    if depth == 0 and schema.get("type") == "array":
+        schema = schema.get("items") or {}
+    for v in variants(schema):
+        props, _, _ = merge_schema(v)
+        mini = depth > 0 and set(props) <= {"id", "name"}
+        for name, sub in props.items():
+            if not isinstance(sub, dict):
+                continue
+            path = prefix + name
+            inner = sub
+            while isinstance(inner, dict) and (inner.get("type") == "array" or "items" in inner) and not inner.get("properties"):
+                path += "[]"
+                inner = inner.get("items") or {}
+            out.setdefault(path, {"readOnly": bool(sub.get("readOnly")), "deprecated": bool(sub.get("deprecated")), "mini": mini})
+            for k, meta in schema_fields(inner, path + ".", depth + 1).items():
+                out.setdefault(k, meta)
+    return out
+
+
+def request_fields(spec, req):
+    """The fields of a request the baseline keeps: the answer of a GET, the
+    body of any other method. None when the spec has no such operation."""
+    _, _, op = spec.operation(req["method"], req["path"])
+    if op is None:
+        return None
+    schema = success_schema(op) if req["method"] == "GET" else body_schema(op)
+    return schema_fields(schema) if schema else {}
+
+
+def request_key(svc, req):
+    return f"{svc['name']} {req['method']} {req['path']}"
+
+
+TIME_RE = re.compile(r"(_at|At)$")
+DISPLAY_RE = re.compile(r"^display[_A-Z]")
+
+
+def ignored_field(path, meta, body):
+    last = path.rstrip("[]").split(".")[-1].rstrip("[]")
+    return (meta["deprecated"] or meta["mini"] or (body and meta["readOnly"])
+            or bool(TIME_RE.search(last)) or bool(DISPLAY_RE.match(last)))
+
+
+def check_fields(svc, req, current, baseline):
+    """field-new / field-gone / field-baseline-missing of one request."""
+    out = []
+    key = request_key(svc, req)
+    if current is None:
+        return out
+    if key not in baseline:
+        out.append(["warn", "field-baseline-missing", "у запроса нет эталона полей — обновите его (--update-fields)"])
+        return out
+    known = set(baseline[key])
+    used = set(req.get("reads", [])) | set(req.get("body", []))
+    body = req["method"] != "GET"
+    reported = []
+    for path in sorted(current):
+        if path in known:
+            continue
+        if any(path.startswith(r + ".") or path.startswith(r + "[]") for r in reported):
+            continue
+        if path in used or any(u.startswith(path + ".") or u.startswith(path + "[]") for u in used):
+            continue
+        if ignored_field(path, current[path], body):
+            continue
+        reported.append(path)
+        where = "тела запроса" if body else "ответа"
+        out.append(["error", f"field-new:{path}",
+                    f"новое поле {where} `{path}` после прошлого эталона: evo его не {'шлёт' if body else 'читает'} — прочитать или объявить accepted с причиной"])
+    for path in sorted(known - set(current)):
+        out.append(["info", f"field-gone:{path}", f"поля `{path}` в спецификации больше нет"])
+    return out
 
 
 def param_schema(p):
@@ -555,6 +655,11 @@ def check_code_ref(req, used):
     return []
 
 
+FIELDS_COMMENT = ("Эталон полей спецификаций Cloud.ru для храповика field-new (scripts/api-contract-check.py): "
+                  "по каждому запросу описи — пути полей ответа GET или тела запроса, только имена. "
+                  "Обновляется флагом --update-fields, когда новые поля прочитаны или объявлены accepted.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--specs", default=".cache/cloudru-specs")
@@ -564,7 +669,16 @@ def main():
     ap.add_argument("--code-only", action="store_true",
                     help="only check that every request of the code is in the contract (no specs needed)")
     ap.add_argument("--markdown", action="store_true", help="print a markdown table instead of plain lines")
+    ap.add_argument("--fields", default=os.path.join(os.path.dirname(__file__), "api-contract-fields.json"),
+                    help="the baseline of the fields of the specs (field-new)")
+    ap.add_argument("--update-fields", action="store_true", help="rewrite the baseline of the fields from the specs")
     args = ap.parse_args()
+    try:
+        baseline_doc = json.load(open(args.fields, encoding="utf-8"))
+    except FileNotFoundError:
+        baseline_doc = {}
+    baseline = baseline_doc.get("requests") or {}
+    fresh = {}
 
     contract = json.load(open(args.contract, encoding="utf-8"))
     rows, used = check_coverage(contract, args.root)
@@ -597,7 +711,19 @@ def main():
             continue
         spec = Spec(files[0])
         for req in svc["requests"]:
-            emit(svc, req, check_code_ref(req, used) + check_request(spec, req))
+            current = request_fields(spec, req)
+            # No operation in the spec (path-missing): an empty baseline, so
+            # the operation's fields are new once the spec has it.
+            fresh[request_key(svc, req)] = sorted(current or {})
+            fields = [] if args.update_fields else check_fields(svc, req, current, baseline)
+            emit(svc, req, check_code_ref(req, used) + check_request(spec, req) + fields)
+
+    if args.update_fields and not args.code_only:
+        doc = {"_comment": baseline_doc.get("_comment") or FIELDS_COMMENT, "requests": dict(sorted(fresh.items()))}
+        with open(args.fields, "w", encoding="utf-8") as f:
+            json.dump(doc, f, ensure_ascii=False, indent=1)
+            f.write("\n")
+        print(f"эталон полей: {len(fresh)} запросов → {args.fields}", file=sys.stderr)
 
     if args.markdown:
         print("| сервис | запрос | код | уровень | проверка | детали |")
