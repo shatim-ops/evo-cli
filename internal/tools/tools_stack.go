@@ -587,6 +587,17 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	if m.Name == "" {
 		return usageT("manifest.name is required", "нужен manifest.name"), true
 	}
+	// A public record on a balancer without an external address points at
+	// an address the internet does not reach: the stack would look done
+	// and serve nothing (D64, FB15-47). The default of nlb.external stays.
+	// Read nothing: refused before the cloud is asked.
+	if d := m.DNS; d != nil && (d.Target == "" || d.Target == "lb") && m.NLB != nil && !m.NLB.External {
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			i18n.T("manifest.dns.target=lb points the record at the balancer, but manifest.nlb.external is not set: the balancer gets no external address and the record would point at an address the internet does not reach; nothing was planned",
+				"manifest.dns.target=lb направляет запись на балансировщик, но manifest.nlb.external не задан: у балансировщика не будет внешнего адреса, и запись укажет на адрес, недоступный из интернета; план не создан"),
+			i18n.T("Set manifest.nlb.external: true, or give manifest.dns.target an address.",
+				"Задайте manifest.nlb.external: true или укажите адрес в manifest.dns.target."))), true
+	}
 	// Validate + normalize the manifest BEFORE planning, so a malformed field
 	// fails fast at plan time (nothing created) instead of wedging the stack in
 	// "error" mid-deploy after other resources are already live.
