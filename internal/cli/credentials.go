@@ -56,6 +56,13 @@ func printWarnings(p *output.Printer, warnings []string) {
 	}
 }
 
+// providers hold the token providers for the life of the process: the
+// CLI, evo mcp over stdio and over HTTP all build their engines through
+// tokenProvider (buildEngine). auth keeps only weak references to the
+// providers it renews a refused token with (httpretry.OnTokenRenewed): a
+// provider no one holds here would be collected in the middle of a wait,
+// and the wait would end on the 401 the renewal is there to absorb
+// (TestTokenProvider_LivesForTheProcess).
 var (
 	providersMu sync.Mutex
 	providers   = map[string]*auth.IAMProvider{}
