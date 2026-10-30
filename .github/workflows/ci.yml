@@ -137,6 +137,12 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 60 .github/scripts/dbaas_passing_delete_test.sh
 
+      # Проба P45 (pg-schedule-probe.sh) на поддельных evo и dbaas-delete.sh:
+      # отказ — строка, принятый кластер удаляется, не удалён — код 1.
+      - name: pg-schedule-probe.sh на поддельном evo
+        if: runner.os == 'Linux'
+        run: timeout 60 .github/scripts/pg_schedule_probe_test.sh
+
       # Проверка до прогона cloud-e2e (e2e-preflight.sh) на поддельном evo:
       # все причины — одним отчётом, остатки — строками, не провалом.
       - name: e2e-preflight.sh на поддельном evo
