@@ -929,7 +929,6 @@ var paramLabels = map[string]struct {
 	"vpc_id":                                {"VPC", "VPC", false},
 	"vpc_name":                              {"VPC name", "имя VPC", false},
 	"cidr":                                  {"CIDR", "CIDR", false},
-	"prefix_length":                         {"mask", "маска", false},
 	"routed_network":                        {"routed", "маршрутизируемая", false},
 	"dns_servers":                           {"DNS servers", "DNS-серверы", false},
 	"flavor_zones":                          {"flavor zones", "зоны flavor", false},

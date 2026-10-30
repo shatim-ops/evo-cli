@@ -554,7 +554,16 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 		}
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"data","size":20,"status":"creating"}`)
 	case "/api/v1/subnets":
-		// The list is previewCloud's; the create answers the new subnet.
+		// The list is previewCloud's; the create answers the new subnet,
+		// and refuses the network and its size together, as the platform
+		// does (cloud-e2e run 150).
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if _, size := body["prefix_length"]; size && body["subnet_address"] != nil {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = io.WriteString(w, `{"detail":"Either subnet_address or prefix_length should be submitted, not both"}`)
+			break
+		}
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"sub-new","state":"creating"}`)
 	case "/api/v1/nat-gateways":
 		if r.Method == http.MethodPost {
