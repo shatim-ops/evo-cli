@@ -73,6 +73,7 @@ var writeRules = map[string]struct{ world, why, item string }{
 	"PUT /api/v1/disks/{disk_id} 404":         {why: ruleAbsentID},
 	"PUT /api/v1/disks/{disk_id} 422":         {world: "disk larger than requested"},
 	"DELETE /api/v1/disks/{disk_id} 404":      {why: ruleAbsentID},
+	"DELETE /api/v1/disks/{disk_id} 422":      {world: "disk in use by a VM"},
 
 	"POST /api/v1/subnets 409": {world: "subnet overlaps the VPC's"},
 	// A closed zone, a quota: no read tells them all yet.

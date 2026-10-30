@@ -1,0 +1,106 @@
+[
+  {
+    "id": "mk8s-product-configuration",
+    "request": "GET https://mk8s.api.cloud.ru/v3/productConfiguration?projectId={project}",
+    "status": 200,
+    "source": "api-probe 30, 31, 32 (P46), evo-internal K8S-15, K8S-16",
+    "recorded": "2026-10-29",
+    "paths": {
+      "zones.[].zoneId": "?",
+      "zones.[].name": "?",
+      "zones.[].availableFlavors.[]": "name",
+      "flavors.[].flavorId": "?",
+      "flavors.[].name": "?",
+      "flavors.[].cpu": "?",
+      "flavors.[].ram": "?",
+      "flavors.[].gpu": "?",
+      "flavors.[].infraType": "?",
+      "flavors.[].infraTypeDisplayName": "?",
+      "flavors.[].oversubscription": "?",
+      "flavors.[].purpose": "?",
+      "flavors.[].zones.[]": "?",
+      "flavors.[].availabilityZones.[].zoneId": "?",
+      "flavors.[].availabilityZones.[].zoneName": "?",
+      "flavors.[].availabilityZones.[].flavorZoneState": "?"
+    },
+    "open": [
+      "defaultZone",
+      "defaultChannel",
+      "defaultDiskType",
+      "channels",
+      "diskTypes"
+    ],
+    "enums": {
+      "flavors.[].purpose": [
+        "FLAVOR_PURPOSE_CONTROLPLANE",
+        "FLAVOR_PURPOSE_DATAPLANE"
+      ],
+      "flavors.[].availabilityZones.[].flavorZoneState": [
+        "FLAVOR_ZONE_STATE_AVAILABLE",
+        "FLAVOR_ZONE_STATE_SOLD_OUT"
+      ]
+    }
+  },
+  {
+    "id": "compute-floating-ips",
+    "request": "GET https://compute.api.cloud.ru/api/v1/floating-ips?project_id={project}&limit=100",
+    "status": 200,
+    "source": "api-probe 28, 29 (P40)",
+    "recorded": "2026-10-29",
+    "paths": {
+      "items.[].availability_zone.enabled": "?",
+      "items.[].availability_zone.id": "?",
+      "items.[].availability_zone.name": "?",
+      "items.[].created_time": "?",
+      "items.[].description": "?",
+      "items.[].id": "?",
+      "items.[].interface.id": "?",
+      "items.[].interface.interface_security_enabled": "?",
+      "items.[].interface.ip_address": "?",
+      "items.[].interface.name": "?",
+      "items.[].interface.primary": "?",
+      "items.[].interface.state": "?",
+      "items.[].interface.type": "?",
+      "items.[].ip_address": "?",
+      "items.[].modified_time": "?",
+      "items.[].name": "?",
+      "items.[].state": "?",
+      "items.[].vm.id": "?",
+      "items.[].vm.name": "?",
+      "items.[].vm.state": "?"
+    },
+    "open": [
+      "total",
+      "limit",
+      "offset"
+    ],
+    "skip": "the worlds answer floating IPs through provision.CloudAPI (freeFIPCloud, busyFIPCloud), not over HTTP: the check of Go answers is the next step of the line"
+  },
+  {
+    "id": "postgresql-cluster-get",
+    "request": "GET https://postgresql.api.cloud.ru/v1/clusters/{id}",
+    "status": 200,
+    "source": "api-probe 28, 29 (P-D1)",
+    "recorded": "2026-10-29",
+    "paths": {
+      "backup.retention_policy_days": "?",
+      "backup.schedule": "?",
+      "connection_string": "?",
+      "created_at": "?",
+      "created_by": "?",
+      "description": "?",
+      "health": "?",
+      "id": "?",
+      "instances": "?",
+      "name": "?",
+      "project_id": "?",
+      "specification_id": "?",
+      "status": "?",
+      "storage.pg_data_gb": "?",
+      "storage.pg_wal_gb": "?",
+      "subnet_id": "?",
+      "subnet_ids.[]": "?",
+      "version": "?"
+    }
+  }
+]

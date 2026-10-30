@@ -479,8 +479,12 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 	}
 	// A disk that is not in the project is already deleted (D26): the
 	// preview asked consent for any id.
-	if _, err := eng.Cloud.GetDisk(ctx, diskID); err != nil {
+	disk, err := eng.Cloud.GetDisk(ctx, diskID)
+	if err != nil {
 		return answered(s.deleteFailed("disk_delete", diskID, err)), nil
+	}
+	if vms, err := diskAttachedError(diskID, disk); err != nil {
+		return answered(errAnswer(err, map[string]any{"disk_id": diskID, "attached_vms": vms}), true), nil
 	}
 	preview := map[string]any{"message": i18n.Tf("disk_delete permanently destroys disk %s and its data.",
 		"disk_delete безвозвратно удаляет диск %s и его данные.", diskID)}
@@ -490,6 +494,45 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 		}
 		return toJSON(map[string]any{"status": "deleted", "disk_id": diskID}), false
 	}}, nil
+}
+
+// diskAttachedError refuses the delete of a disk a VM still has (D59):
+// Cloud.ru answers it with 422 after consent («Primary disk can not be
+// deleted without vm»), and the disk's VMs are in the GetDisk answer the
+// plan reads anyway. The hint names the way out per VM: a boot disk goes
+// with its VM (destroy), a data disk is detached first (disk_detach); vms
+// are the VMs, for the answer's attached_vms (untrustedFields). nil for a
+// disk no VM has.
+func diskAttachedError(diskID string, disk map[string]any) ([]map[string]any, error) {
+	list, _ := disk["vms"].([]any)
+	var names, ways []string
+	var vms []map[string]any
+	for _, v := range list {
+		vm, _ := v.(map[string]any)
+		if vm == nil {
+			continue
+		}
+		id, _ := vm["id"].(string)
+		name, _ := vm["name"].(string)
+		primary, _ := vm["primary"].(bool)
+		vms = append(vms, map[string]any{"id": id, "name": name, "primary": primary})
+		label := quoteCloud(firstNonEmptyStr(name, id))
+		names = append(names, label)
+		if primary {
+			ways = append(ways, i18n.Tf("It is the boot disk of VM %s: delete the VM with destroy vm_id=%s ('evo vm delete %s'), its boot disk goes with it.",
+				"Это загрузочный диск ВМ %s: удалите ВМ — destroy vm_id=%s ('evo vm delete %s'), загрузочный диск уйдёт вместе с ней.", label, id, id))
+		} else {
+			ways = append(ways, i18n.Tf("Detach it from VM %s with disk_detach disk_id=%s vm=%s ('evo disk detach %s --vm %s'), then delete it.",
+				"Отключите его от ВМ %s — disk_detach disk_id=%s vm=%s ('evo disk detach %s --vm %s'), затем удалите.", label, diskID, id, diskID, id))
+		}
+	}
+	if len(names) == 0 {
+		return nil, nil
+	}
+	return vms, clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("disk %s is attached to VM %s: Cloud.ru does not delete an attached disk; nothing was deleted",
+			"диск %s подключён к ВМ %s: Cloud.ru не удаляет подключённый диск; ничего не удалено", diskID, strings.Join(names, ", ")),
+		strings.Join(ways, " "))
 }
 
 // diskCreatePreview is the preview of disk_create: the disk as resolved,

@@ -158,13 +158,15 @@ func TestCompletionItems_TakesTheListWithTheField(t *testing.T) {
 }
 
 // A reference toolRefs declares completes from its list: the nodes'
-// subnet of a node pool from the project's subnets, ids with their names.
+// subnet of a node pool from the project's subnets, ids with their names,
+// and the names themselves: the argument takes one (refArgs, D57).
 func TestComplete_ToolRefFromItsList(t *testing.T) {
 	cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}},
 		subnets: []*provision.Subnet{{ID: "00000000-0000-4000-8000-0000000000e1", Name: "nodes", AvailabilityZoneID: "z"}}}
 	r := completionRegistry(t, cloud, completionCfg)
 	got := r.Complete(context.Background(), "k8s_add_nodepool", "nodes_subnet_id", "")
-	if len(got) != 1 || got[0].Value != "00000000-0000-4000-8000-0000000000e1" || got[0].Note != "nodes" {
-		t.Errorf("nodes_subnet_id+Tab: %v, want the subnet with its name", got)
+	if len(got) != 2 || got[0].Value != "00000000-0000-4000-8000-0000000000e1" || got[0].Note != "nodes" ||
+		got[1].Value != "nodes" || got[1].Note != "00000000-0000-4000-8000-0000000000e1" {
+		t.Errorf("nodes_subnet_id+Tab: %v, want the subnet's id with its name and its name with its id", got)
 	}
 }

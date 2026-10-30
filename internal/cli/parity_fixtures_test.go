@@ -408,9 +408,10 @@ func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // k8sProductConfiguration is the catalogue of Managed Kubernetes of the
-// parity worlds: one zone, one flavor, one version.
+// parity worlds: one zone, one flavor, one version. A zone names its
+// flavors by name, as the platform does (K8S-16, platform-answers.json).
 const k8sProductConfiguration = `{"defaultZone":"` + pvZone + `","defaultChannel":"stable","defaultDiskType":"SSD",` +
-	`"zones":[{"zoneId":"` + pvZone + `","name":"ru.AZ-1","availableFlavors":["` + pvFlavor + `"]}],` +
+	`"zones":[{"zoneId":"` + pvZone + `","name":"ru.AZ-1","availableFlavors":["gen-2-4"]}],` +
 	`"flavors":[{"flavorId":"` + pvFlavor + `","name":"gen-2-4","cpu":2,"ram":4}],` +
 	`"channels":[{"channel":"stable","availableVersions":["v1.31.4"]}]}`
 
