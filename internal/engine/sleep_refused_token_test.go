@@ -47,9 +47,7 @@ func readsAfterWrite(log []string, from int) []int {
 // still ends the command, "command<TAB>call" → why. Development 1.6 takes a
 // line out when the read takes a new token and goes on; a line whose read
 // already goes on fails the test.
-var oneRefusalEnds = map[string]string{
-	"deploy\tGetVM": "the VM wait stops at the first 401 with AUTH_EXPIRED «the key was refused» (R3A-4); provision of MCP goes on (its wait skips a failed poll)",
-}
+var oneRefusalEnds = map[string]string{}
 
 // The machine evo runs on sleeps in the middle of a command (CLAUDE.md
 // §6, axes 2 and 3; process backlog 1.6, priority 1): after it wakes, the
@@ -202,9 +200,7 @@ var sleepPaths = []sleepPath{
 // oneRefusalEndsPath are the waits of sleepPaths where one refused token
 // still ends the wait, "function<TAB>call" → why; a line whose wait goes
 // on fails the test.
-var oneRefusalEndsPath = map[string]string{
-	"releaseBootFIP\tDeleteFloatingIP": "a refused delete is warned of at once («delete it in the Cloud.ru console»): the address stays billed; only «from current state» is retried",
-}
+var oneRefusalEndsPath = map[string]string{}
 
 // The waits on the paths of failure and interruption — the floating IP
 // after boot, the VM going after a Ctrl-C, the boot address looked up and

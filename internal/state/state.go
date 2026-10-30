@@ -218,6 +218,21 @@ func (f *File) ActiveDeployment() *DeploymentRecord {
 	return nil
 }
 
+// SourceProvision is DeploymentRecord.Source of a VM of provision.
+const SourceProvision = "provision"
+
+// ActiveComposeDeployment returns the first deployment not destroyed that
+// deploy works on — not the VM of provision (Source), which runs no
+// compose file (D62) — or nil.
+func (f *File) ActiveComposeDeployment() *DeploymentRecord {
+	for i := range f.Deployments {
+		if f.Deployments[i].Status != "destroyed" && f.Deployments[i].Source != SourceProvision {
+			return &f.Deployments[i]
+		}
+	}
+	return nil
+}
+
 // ActiveDeployments returns every deployment not destroyed, in file order.
 // A directory normally holds one; provision (evo vm create) adds a record of
 // its own VM next to a deploy's.

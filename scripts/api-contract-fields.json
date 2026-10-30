@@ -2523,6 +2523,13 @@
    "projects[].status",
    "projects[].updated_at"
   ],
+  "organization GET /v3/quotas/resourceTypes": [
+   "resource_types[]",
+   "resource_types[].code",
+   "resource_types[].name",
+   "resource_types[].product_name",
+   "resource_types[].unit"
+  ],
   "organization GET /v3/quotas/usages": [
    "next_page_token",
    "usages[]",

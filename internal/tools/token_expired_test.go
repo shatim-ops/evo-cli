@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 
@@ -54,11 +53,13 @@ func (c *expiringCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // G140-3, plan 1.4.1 item 1: a service that refuses the token as expired
-// ends that call, and the next call of the same session (one provider, as
-// tokenProvider keeps per process for evo mcp) exchanges the key anew — it
-// does not hold the refused token, from memory or the file, until its
-// expiry by evo's own clock (the Grok run of 1.4.0: 401 "Jwt is expired"
-// 43 times in a row in one MCP session).
+// does not leave the session holding it — from memory or the file, until
+// its expiry by evo's own clock (the Grok run of 1.4.0: 401 "Jwt is
+// expired" 43 times in a row in one MCP session). Since 1.6 (the machine
+// that slept, process backlog 1.6, priority 1) the refused call itself
+// goes once more with the token the provider exchanges anew, and the next
+// call of the session (one provider, as tokenProvider keeps per process
+// for evo mcp) takes that token without another exchange.
 func TestTokenRefusedAsExpired_NextCallExchangesAnew(t *testing.T) {
 	c := &expiringCloud{}
 	old := http.DefaultTransport
@@ -75,11 +76,11 @@ func TestTokenRefusedAsExpired_NextCallExchangesAnew(t *testing.T) {
 		}, nil
 	})
 	first, failed := r.handlers["k8s_list"](context.Background(), map[string]any{})
-	if !failed || !strings.Contains(first, "401") {
-		t.Fatalf("the world's first call should meet the 401: %s", first)
+	if failed || c.exchanges != 2 {
+		t.Fatalf("a call refused with 401 \"Jwt is expired\" should go once more with a new token (%d exchanges of the key): %s", c.exchanges, first)
 	}
 	second, failed := r.handlers["k8s_list"](context.Background(), map[string]any{})
-	if failed {
-		t.Errorf("the call after a 401 \"Jwt is expired\" fails again (%d exchanges of the key): evo holds the refused token — %s", c.exchanges, second)
+	if failed || c.exchanges != 2 {
+		t.Errorf("the call after a 401 \"Jwt is expired\" (%d exchanges of the key): evo holds the refused token, or exchanges the key for each call — %s", c.exchanges, second)
 	}
 }
