@@ -5,9 +5,11 @@
 package workflows
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -148,6 +150,59 @@ func TestWorkflows_E2ENamesCarryTheRun(t *testing.T) {
 		if strings.Contains(string(b), gone) {
 			t.Errorf("cloud-e2e: %s — a fixed name, not one of the run", gone)
 		}
+	}
+}
+
+// Release 1.5 retro, run 147 and 148: jobs failed after the owner's approval
+// and hours of waiting on what one read would have shown (names taken, a
+// zone without a subnet). Every job of cloud-e2e that writes to the cloud
+// (environment cloud-e2e) but cleanup_only waits for preflight, which only
+// reads (the read-only key on main) and runs e2e-preflight.sh, tested in ci.
+func TestWorkflows_E2EJobsWaitForPreflight(t *testing.T) {
+	ws := readWorkflows(t)
+	jobs := ws["cloud-e2e.yml"].Jobs
+	pf, ok := jobs["preflight"]
+	if !ok {
+		t.Fatal("cloud-e2e: no job preflight")
+	}
+	runs := false
+	for _, s := range pf.Steps {
+		runs = runs || strings.Contains(s.Run, "e2e-preflight.sh")
+		if strings.Contains(s.Run, "--yes") {
+			t.Errorf("preflight, %s: confirms a change", s.Name)
+		}
+	}
+	if !runs {
+		t.Error("preflight does not run e2e-preflight.sh")
+	}
+	if !strings.Contains(pf.Environment, "'cloud-readonly'") {
+		t.Errorf("preflight: environment %q, want the read-only key on main", pf.Environment)
+	}
+	for name, j := range jobs {
+		if j.Environment != "cloud-e2e" || name == "cleanup" {
+			continue
+		}
+		var needs []string
+		switch n := j.Needs.(type) {
+		case string:
+			needs = []string{n}
+		case []any:
+			for _, x := range n {
+				needs = append(needs, fmt.Sprint(x))
+			}
+		}
+		if !slices.Contains(needs, "preflight") {
+			t.Errorf("cloud-e2e job %s writes to the cloud without needs: preflight (needs %v)", name, needs)
+		}
+	}
+	ci := false
+	for _, j := range ws["ci.yml"].Jobs {
+		for _, s := range j.Steps {
+			ci = ci || strings.Contains(s.Run, "e2e_preflight_test.sh")
+		}
+	}
+	if !ci {
+		t.Error("ci: e2e-preflight.sh is not tested (e2e_preflight_test.sh)")
 	}
 }
 
