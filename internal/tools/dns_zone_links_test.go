@@ -5,6 +5,8 @@
 package tools
 
 import (
+	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"slices"
@@ -21,6 +23,12 @@ const (
 // dnsLinksFake is one private zone linked to the VPCs of linked, and the
 // operation of its delete as op answers it.
 func dnsLinksFake(linked, op string) *apiFake {
+	return dnsLinksFakeOnOp(linked, op, nil)
+}
+
+// dnsLinksFakeOnOp is dnsLinksFake that calls onOp when the operation is
+// read.
+func dnsLinksFakeOnOp(linked, op string, onOp func()) *apiFake {
 	return &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
 		p := r.URL.Path
 		switch {
@@ -37,6 +45,9 @@ func dnsLinksFake(linked, op string) *apiFake {
 		case r.Method == http.MethodDelete && p == "/v1/privateZones/"+dnsPrivZone:
 			_, _ = io.WriteString(w, `{"id":"`+dnsDeleteOp+`","done":false}`)
 		case r.Method == http.MethodGet && p == "/v1/operations/"+dnsDeleteOp:
+			if onOp != nil {
+				onOp()
+			}
 			_, _ = io.WriteString(w, op)
 		default:
 			http.Error(w, `{"message":"no such path"}`, http.StatusNotFound)
@@ -89,5 +100,25 @@ func TestDNSZoneDelete_LinksAndTheOperation(t *testing.T) {
 		case c.status != "" && (isErr || m["status"] != c.status || !strings.Contains(text, c.text)):
 			t.Errorf("%s: want status %s: %s", c.name, c.status, text)
 		}
+	}
+}
+
+// A wait for the delete the caller cancelled (Ctrl-C, the MCP client's
+// cancel) is an error, as the wait of *_operation is (errResult of the
+// cancel), not deleting with exit code 0 (FB160-11, Fable audit 1.6).
+func TestDNSZoneDelete_CancelledWaitIsAnError(t *testing.T) {
+	first := opWaitFirstDelay
+	opWaitFirstDelay = time.Hour
+	t.Cleanup(func() { opWaitFirstDelay = first })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := dnsLinksFakeOnOp("", `{"id":"`+dnsDeleteOp+`","done":false}`, cancel)
+	r := apiFakeRegistry(t, f)
+	tl, _ := r.Lookup("dns_zone_delete")
+	text, isErr := tl.Handler(ctx, map[string]any{"id": dnsPrivZone, "confirmed": true})
+	var m map[string]any
+	_ = json.Unmarshal([]byte(text), &m)
+	if !isErr || m["status"] != "error" || m["error"] != context.Canceled.Error() {
+		t.Errorf("a cancelled wait: want the error of the cancel, got %s", text)
 	}
 }

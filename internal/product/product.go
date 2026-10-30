@@ -23,8 +23,8 @@ const (
 	TitleRU = Name + " — CLI и MCP-сервер для Cloud.ru Evolution"
 )
 
-// FeedbackContact is the author in Telegram: the feedback field of
-// evo version --json, kept until 2.0 (dropping a field of --json is
+// FeedbackContact is the author in Telegram: the feedback field of the
+// hidden evo crew --json, kept until 2.0 (dropping a field of --json is
 // breaking; backlog 2.0, #686).
 const FeedbackContact = "https://t.me/shatim"
 
