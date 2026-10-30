@@ -28,12 +28,7 @@ var cliFlag = regexp.MustCompile(`(?:^|[\s'"(])(--[a-z][a-z0-9-]+)`)
 // of a missing boot image), so the list names the flag, not the tool. The
 // list only shrinks: a flag not here fails the test, and so does a line
 // whose flag no answer carries.
-var toolHintFlagMisses = map[string]string{
-	"--image":      "release plan 1.6, «Три формы одним PR» (Ц-31 агентного аудита rc.1): «разработка»",
-	"--project-id": "release plan 1.6, «Три формы одним PR» (Ц-31 агентного аудита rc.1): «разработка»",
-	"--verbose":    "release plan 1.6, «Три формы одним PR» (Ц-31 агентного аудита rc.1): «разработка»",
-	"--all":        "release plan 1.6, «Три формы одним PR» (Ц-31 агентного аудита rc.1): «разработка»",
-}
+var toolHintFlagMisses = map[string]string{}
 
 // Ц-31 of the agent's audit of rc.1: deploy over MCP without an image
 // answered «… or pass --image»; the agent has no flags, it has the

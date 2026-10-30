@@ -119,8 +119,8 @@ func ErrNoAgreement() error {
 	return clierrors.New(clierrors.CodeConfigInvalid,
 		i18n.T("neither a project nor a billing agreement is set (project_id, CLOUDRU_AGREEMENT_ID)",
 			"не задан ни проект, ни договор (project_id, CLOUDRU_AGREEMENT_ID)"),
-		i18n.T("Consumption of a project needs the project: 'evo configure --project-id <UUID>', CLOUDRU_PROJECT_ID or the argument project_id (the key's role: project administrator, platform.project.admin). For the whole agreement set CLOUDRU_AGREEMENT_ID (seen only by organization and cost administrators: "+DocAgreementID+"); see docs/auth.md.",
-			"Для расхода проекта задайте проект: 'evo configure --project-id <UUID>', CLOUDRU_PROJECT_ID или аргумент project_id (роль ключа — администратор проекта, platform.project.admin). Для всего договора задайте CLOUDRU_AGREEMENT_ID (его видят только администратор организации и администратор затрат: "+DocAgreementID+"); см. docs/auth.md."))
+		i18n.T("Consumption of a project needs the project: 'evo project use <UUID|name>', CLOUDRU_PROJECT_ID or the argument project_id (the key's role: project administrator, platform.project.admin). For the whole agreement set CLOUDRU_AGREEMENT_ID (seen only by organization and cost administrators: "+DocAgreementID+"); see docs/auth.md.",
+			"Для расхода проекта задайте проект: 'evo project use <UUID|имя>', CLOUDRU_PROJECT_ID или аргумент project_id (роль ключа — администратор проекта, platform.project.admin). Для всего договора задайте CLOUDRU_AGREEMENT_ID (его видят только администратор организации и администратор затрат: "+DocAgreementID+"); см. docs/auth.md."))
 }
 
 // ErrBalanceNoAgreement is the error of a balance call without an agreement

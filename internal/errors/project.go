@@ -13,6 +13,6 @@ import "github.com/shatim-ops/evo-cli/internal/i18n"
 func ProjectRequired() *CLIError {
 	return New(CodeConfigInvalid,
 		i18n.T("no project is set (project_id)", "не задан проект (project_id)"),
-		i18n.T("Set it: 'evo configure --project-id <UUID>', CLOUDRU_PROJECT_ID, or 'evo project use <UUID|name>'. The project UUID is in the Cloud.ru console.",
-			"Задайте проект: 'evo configure --project-id <UUID>', CLOUDRU_PROJECT_ID или 'evo project use <UUID|имя>'. UUID проекта — в консоли Cloud.ru."))
+		i18n.T("Set it: 'evo project use <UUID|name>' (kept in the profile), CLOUDRU_PROJECT_ID, or the project_id of the call. The project UUID is in the Cloud.ru console.",
+			"Задайте проект: 'evo project use <UUID|имя>' (сохранится в профиле), CLOUDRU_PROJECT_ID или project_id вызова. UUID проекта — в консоли Cloud.ru."))
 }

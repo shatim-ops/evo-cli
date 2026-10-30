@@ -1,0 +1,5 @@
+### Исправлено
+
+- **Отказ Object Storage (403) называет ключи S3, а не роль сервисного аккаунта.** Было: `evo s3 …` и инструменты `s3_*` при Access Denied советовали выдать роль сервисному аккаунту ключа evo, хотя S3 принимает свои ключи. Стало: подсказка называет `CLOUDRU_S3_ACCESS_KEY` (`<tenant_id>:<Key ID>`, где взять `tenant_id`), `CLOUDRU_S3_SECRET_KEY` и роль Object Storage (`s3e.*`) у аккаунта ключа S3.
+- **Подсказки инструментов MCP не называют флаги CLI.** Было: агент получал «передайте --image», «evo configure --project-id <UUID>», «run with --verbose», «--all покажет их» — флагов у него нет. Стало: подсказка называет аргумент вызова (`image`, `region`, `project_id`) или команду без флага (`evo project use`); CLI по-прежнему называет свои флаги для недостающего образа и зоны.
+- **`evo init --json`, `evo crew --json` и `evo mcp healthcheck --json` отвечают JSON.** Было: `evo init --json` создавал `.evo.yaml` с кодом 0 и пустым stdout. Стало: `{"status":"created","path":…,"zone":…,"image":…}` (или `"exists"`); у `crew` и `healthcheck` — свой объект.

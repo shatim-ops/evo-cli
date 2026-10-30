@@ -39,6 +39,9 @@ type InitOptions struct {
 // Ubuntu (else Debian) image and prints what it chose.
 func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	if _, err := os.Stat(opts.Path); err == nil {
+		if e.Printer.IsJSON() {
+			return e.Printer.JSON(map[string]any{"status": "exists", "path": opts.Path})
+		}
 		e.Printer.Warning(opts.Path + i18n.T(" already exists. Skipping.", " уже существует, файл не изменён."))
 		return nil
 	}
@@ -129,6 +132,16 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 		return fmt.Errorf(i18n.T("failed to create config: %w", "не удалось создать файл настроек: %w"), err)
 	}
 
+	// --json: what was written, one object (Ц-9 of the agent's audit of
+	// rc.1: init succeeded with an empty stdout).
+	if e.Printer.IsJSON() {
+		out := map[string]any{"status": "created", "path": opts.Path,
+			"zone": map[string]string{"id": zone.ID, "name": zone.Name}, "image": map[string]string{"id": image.ID, "name": image.Name}}
+		if e.Config.ProjectID != "" {
+			out["project_id"] = e.Config.ProjectID
+		}
+		return e.Printer.JSON(out)
+	}
 	e.Printer.Success(i18n.T("Created ", "Создан ") + opts.Path)
 	if e.Config.ProjectID == "" {
 		e.Printer.Hint(i18n.Tf("Set project_id in %s, then run 'evo deploy'.", "Впишите project_id в %s и выполните 'evo deploy'.", opts.Path))
