@@ -55,3 +55,15 @@ func TestRootHelp_GroupsInOrderAndExitCodesLast(t *testing.T) {
 		t.Errorf("exit codes belong to the root help only:\n%s", sub)
 	}
 }
+
+// Корневая справка заканчивается приветствием (поручение владельца 30.10,
+// rc.2 1.6), а не ссылками на Telegram: контакт автора — в evo version.
+func TestRootHelp_Welcome(t *testing.T) {
+	long := newRootCmd().Long
+	if !strings.HasSuffix(long, "Добро пожаловать в Cloud.ru") && !strings.HasSuffix(long, "Welcome to Cloud.ru") {
+		t.Errorf("корневая справка не заканчивается приветствием: %q", long)
+	}
+	if strings.Contains(long, "t.me/") {
+		t.Errorf("в корневой справке ссылка на Telegram: %q", long)
+	}
+}

@@ -239,7 +239,7 @@ evo CMCP — CLI и MCP-сервер для Cloud.ru Evolution
 
 Сообщения по-английски: EVO_LANG=en.
 
-Обратная связь: Telegram https://t.me/shatim, чат тестировщиков https://t.me/+SYvXziA4G9c1Y2Ni
+Добро пожаловать в Cloud.ru
 ```
 
 ### Options
