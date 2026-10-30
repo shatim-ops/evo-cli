@@ -281,7 +281,7 @@ func dnsServerIn(ctx context.Context, cli *dns.Client, vpcID, vpcName string) er
 	}
 	return clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("VPC %s (%s) has no DNS server of Evolution DNS: a private zone resolves in a VPC only through one",
-			"в VPC %s (%s) нет DNS-сервера Evolution DNS: приватная зона разрешается в VPC только через него", vpcName, vpcID),
+			"в VPC %s (%s) нет DNS-сервера Evolution DNS: приватная зона разрешается в VPC только через него", quoteCloud(vpcName), vpcID),
 		i18n.T("Create a DNS server in this VPC in the console (Evolution DNS → DNS servers), or pass vpc_id of a VPC that has one.",
 			"Создайте DNS-сервер в этой VPC в личном кабинете (Evolution DNS → DNS-серверы) или передайте vpc_id VPC, где он есть."))
 }
@@ -328,8 +328,9 @@ var dnsZoneDeleteWait = 60
 // dnsZoneDeleted is the answer of the delete of zone id whose operation is
 // op (D66): the operation is read until it ends, within dnsZoneDeleteWait —
 // done is deleted, an error is a refusal with Cloud.ru's text (axis 3:
-// «deleted» is a zone that is gone), an operation still running or one
-// that cannot be read is deleting with its id, as before.
+// «deleted» is a zone that is gone), a wait the caller cancelled is
+// interrupted (as *_operation's wait_seconds), an operation still running or
+// one that cannot be read is deleting with its id, as before.
 func dnsZoneDeleted(ctx context.Context, cli *dns.Client, vis, id string, op *dns.Operation) (string, bool) {
 	deleting := map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}
 	m, err := waitForOpJSON(ctx, dnsZoneDeleteWait, func(ctx context.Context) (map[string]any, error) {
@@ -339,6 +340,9 @@ func dnsZoneDeleted(ctx context.Context, cli *dns.Client, vis, id string, op *dn
 		}
 		return opToMap(got), nil
 	})
+	if errors.Is(err, context.Canceled) {
+		return errResult(err), true
+	}
 	if err != nil || m == nil {
 		return toJSON(deleting), false
 	}
@@ -378,7 +382,7 @@ func (s *Registry) dnsZoneLinked(ctx context.Context, zone map[string]any) error
 	for _, v := range raw {
 		vid := fmt.Sprint(v)
 		if n := names[vid]; n != "" {
-			vid = n + " (" + vid + ")"
+			vid = quoteCloud(n) + " (" + vid + ")"
 		}
 		linked = append(linked, vid)
 	}
