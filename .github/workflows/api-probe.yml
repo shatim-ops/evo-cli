@@ -12,9 +12,11 @@ name: api-probe
 # billing_consumption, версии сертификата, брокеры Kafka, предел размера
 # диска, расписание резервных копий PostgreSQL, параметр resource у токена
 # IAM; Data Platform до кода (P29–P33, DP-1…DP-17) — путь, аутентификация,
-# пагинация, справочники, статусы и операции. Ничего не создаёт и не удаляет: всё — GET, кроме POST
-# price-calculation, который только считает стоимость, и обмена ключа на
-# токен.
+# пагинация, справочники, статусы и операции; 404 продуктов на DELETE
+# несуществующего id (D63). Ничего не создаёт и не удаляет: всё — GET, кроме POST
+# price-calculation, который только считает стоимость, обмена ключа на
+# токен и DELETE заведомо несуществующего $NOID ключом наблюдателя
+# (TestWorkflows_APIProbeChangesNothing).
 #
 # Репозиторий публичный, лог виден всем: печатаются только коды HTTP, имена
 # полей, количества и признаки — никаких значений, ID, адресов и токенов. Исключение —
@@ -894,6 +896,80 @@ jobs:
       # проверку прав; 2xx — ключ может менять, шаг падает. Имя в теле —
       # evo-e2e-*, чтобы cleanup из cloud-e2e нашёл ресурс, если он всё же
       # появится.
+      # D63 (#623): голый 404 у удаления — маршрут, а не ресурс, и не
+      # already_deleted (E1). Что каждый продукт отвечает на DELETE
+      # несуществующего id (тот путь, что шлёт evo) и что — на путь, которого
+      # нет (контроль: 404 шлюза или маршрутизатора). Только несуществующий
+      # $NOID и ключ наблюдателя: удалять нечего и нечем. Продукт, который
+      # проверяет права раньше id, отвечает 403 — форма его 404 этим ключом
+      # не видна. В лог — код, тип тела и ключи JSON; текст — через redact,
+      # до 120 символов.
+      - name: 404 продуктов (D63)
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PROJECT"
+          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token \
+              -H 'Content-Type: application/json' --data-binary @- |
+            jq -r '.access_token // .accessToken // empty')
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          NOID=00000000-0000-4000-8000-000000000000
+          h="$RUNNER_TEMP/p404.h" b="$RUNNER_TEMP/p404.b"
+          # gone NAME URL — DELETE несуществующего: код, Content-Type, тело
+          # (пусто, JSON с ключами и code/message, HTML, текст).
+          # shellcheck disable=SC2016 # $m — переменная jq
+          gone() {
+            local name=$1 url=$2 c ct kind
+            c=$(curl -sS -o "$b" -D "$h" -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" "$url" 2>/dev/null || echo 000)
+            ct=$(grep -i '^content-type:' "$h" 2>/dev/null | tail -1 | cut -d: -f2- | tr -d ' \r' | cut -d';' -f1)
+            if [ ! -s "$b" ]; then
+              kind=empty
+            elif jq -e . "$b" >/dev/null 2>&1; then
+              kind="json $(jq -c '(if type == "object" then keys else type end) as $k | {keys: $k, code: (.code? // .error?.code? // null), m: ((.message? // .error?.message? // .detail? // "") | tostring | .[0:120])}' "$b" 2>/dev/null)"
+            elif grep -qi '<html\|<!doctype' "$b"; then
+              kind="html $(wc -c <"$b") байт"
+            else
+              kind="text $(head -c 120 "$b" | tr '\n\r' '  ')"
+            fi
+            printf '%-26s http=%s type=%s %s\n' "$name" "$c" "${ct:-—}" "$kind" | redact
+          }
+          C=https://compute.api.cloud.ru/api/v1
+          Q="project_id=$PROJECT"
+          echo "== DELETE несуществующего id (путь evo)"
+          gone vm                   "$C/vms/$NOID?$Q"
+          gone disk                 "$C/disks/$NOID?$Q"
+          gone floating_ip          "$C/floating-ips/$NOID?$Q"
+          gone image                "$C/images/$NOID?$Q"
+          gone subnet               "$C/subnets/$NOID?$Q"
+          gone nat_gateway          "$C/nat-gateways/$NOID?$Q"
+          gone sg_rule              "$C/security-groups/$NOID/rules/$NOID?$Q"
+          gone vpc                  "https://vpc.api.cloud.ru/v1/vpcs/$NOID?$Q"
+          gone vpc_route            "https://vpc.api.cloud.ru/v1/vpcs/$NOID/routes/static/$NOID?$Q"
+          gone nlb                  "https://nlb.api.cloud.ru/v2/networkLoadBalancers/$NOID?$Q"
+          gone nlb_target_group     "https://nlb.api.cloud.ru/v2/targetGroups/$NOID?$Q"
+          gone dns_private_zone     "https://dns.api.cloud.ru/v1/privateZones/$NOID"
+          gone dns_public_zone      "https://dns.api.cloud.ru/v1/publicZones/$NOID"
+          gone mk8s_cluster         "https://mk8s.api.cloud.ru/v3/clusters/$NOID"
+          gone postgresql_cluster   "https://postgresql.api.cloud.ru/v1/clusters/$NOID"
+          gone kafka_cluster        "https://kafka.api.cloud.ru/v1/clusters/$NOID"
+          gone redis_cluster        "https://redis.api.cloud.ru/v1/clusters/$NOID"
+          gone secret               "https://secretmanager.api.cloud.ru/v2/secret/evo-probe-$NOID?$Q"
+          gone certificate          "https://certificatemanager.api.cloud.ru/v1/certificate/$NOID"
+          gone ar_registry          "https://ar.api.cloud.ru/v1/registries/$NOID?$Q"
+          gone container_app        "https://containers.api.cloud.ru/v2/containers/evo-probe-noid"
+          echo "== DELETE пути, которого нет (контроль: 404 маршрута)"
+          for host in compute.api.cloud.ru/api/v1 vpc.api.cloud.ru/v1 nlb.api.cloud.ru/v2 dns.api.cloud.ru/v1 \
+            mk8s.api.cloud.ru/v3 postgresql.api.cloud.ru/v1 kafka.api.cloud.ru/v1 redis.api.cloud.ru/v1 \
+            secretmanager.api.cloud.ru/v2 certificatemanager.api.cloud.ru/v1 ar.api.cloud.ru/v1 containers.api.cloud.ru/v2; do
+            gone "route:${host%%.*}" "https://$host/evo-probe-no-route/$NOID"
+          done
+
       - name: Права ключа (изменения должны быть запрещены)
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
