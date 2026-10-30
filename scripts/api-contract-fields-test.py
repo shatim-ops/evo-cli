@@ -144,6 +144,14 @@ class FieldRatchet(unittest.TestCase):
         self.assertIn("field-gone:old_field", out)
         self.assertIn("field-baseline-missing", out)
 
+    def test_impact_unknown(self):
+        # A field of impact the body of the spec does not have: an error.
+        req = self.contract["services"][0]["requests"][1]
+        req["impact"] = {"size": "цена", "encrypt": "безопасность; пропуск: план"}
+        _, out, _ = self.run_check()
+        self.assertIn("impact-unknown:encrypt", out)
+        self.assertNotIn("impact-unknown:size", out)
+
     def test_update(self):
         rc, out, written = self.run_check("--update-fields")
         self.assertEqual(rc, 0, out)
