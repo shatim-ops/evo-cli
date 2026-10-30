@@ -36,8 +36,6 @@ var bareRefs = map[string]string{
 	"k8s_plan subnet_id":                        "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
 	"kafka_create params.subnet_id":             "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
 	"lb_create params.subnet_id":                "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"list_security_groups availability_zone_id": "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
-	"list_subnets availability_zone_id":         "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
 	"pg_create params.subnet_id":                "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
 	"provision flavor":                          "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
 	"provision region":                          "release plan 1.6, «Линия CLI»: имя ссылки рядом с id, человеку — «имя (id)»: «разработка»",
