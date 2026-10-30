@@ -93,3 +93,33 @@ func testExists(t *testing.T, dir, run string) bool {
 	}
 	return false
 }
+
+// Release plan 1.6, «храповики со сроком»: the deadlines of the lists of
+// misses fail a weekly run, not a PR — EVO_MISS_DEADLINE=1 only there.
+func TestWorkflows_WeeklyMisses(t *testing.T) {
+	w := weeklyWorkflow(t, "weekly-misses.yml")
+	if !runsStep(w, "-run '^TestMisses_HaveADeadline$'") {
+		t.Error("weekly-misses: no step runs TestMisses_HaveADeadline")
+	}
+	strict := false
+	for _, j := range w.Jobs {
+		for _, s := range j.Steps {
+			strict = strict || strings.Contains(s.Run, "TestMisses_HaveADeadline") && s.Env["EVO_MISS_DEADLINE"] == "1"
+		}
+	}
+	if !strict {
+		t.Error("weekly-misses: TestMisses_HaveADeadline without EVO_MISS_DEADLINE=1 only logs")
+	}
+	for name, wf := range readWorkflows(t) {
+		if name == "weekly-misses.yml" {
+			continue
+		}
+		for _, j := range wf.Jobs {
+			for _, s := range j.Steps {
+				if s.Env["EVO_MISS_DEADLINE"] != "" || strings.Contains(s.Run, "EVO_MISS_DEADLINE") {
+					t.Errorf("%s, %s: the deadlines fail the weekly run only", name, s.Name)
+				}
+			}
+		}
+	}
+}

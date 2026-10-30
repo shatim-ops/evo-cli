@@ -37,6 +37,8 @@ const (
 // list and without a line here fails the build, and so does a line whose
 // argument is completed now or is gone (CLAUDE.md §0, rule 3: a new
 // surface, Tab, release plan 1.5).
+// Closes by 1.8: a line lives at most two versions (release plan 1.6,
+// «храповики со сроком»; TestMisses_HaveADeadline).
 var refUncompleted = map[string]struct{ why, item string }{
 	"ar_operation operation_id":                 {why: refReturned},
 	"cert_operation operation_id":               {why: refReturned},

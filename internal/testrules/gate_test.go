@@ -24,6 +24,8 @@ const gateFile = "internal/tools/gate.go"
 // handler onto the gate. The list only shrinks: a read not here fails the
 // test, so does a line with no read, and inlineGatesLeft is lowered with
 // each line removed (G13-3, class K1).
+// Closes by 1.8: a line lives at most two versions (release plan 1.6,
+// «храповики со сроком»; TestMisses_HaveADeadline).
 var inlineGates = map[string]string{
 	"internal/tools/tools_ar.go: handleArCreate":             "1.5",
 	"internal/tools/tools_ca.go: handleCaStartStop":          "1.5",

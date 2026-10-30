@@ -36,6 +36,8 @@ var previewForm = map[string]string{
 // list only shrinks: the human preview shows the value and the line goes
 // (С2; the line of CLI in 1.6 builds the lines from the details in one
 // function, D). A line the human preview shows now fails the test.
+// Closes by 1.8: a line lives at most two versions (release plan 1.6,
+// «храповики со сроком»; TestMisses_HaveADeadline).
 var humanUnnamed = map[string]struct{ class, why string }{
 	"deploy preview.project_from":                     {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"deploy project_from":                             {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
