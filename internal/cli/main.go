@@ -292,10 +292,10 @@ func newRootCmd() *cobra.Command {
 		Use: "evo",
 		Short: product.Name + i18n.T(": CLI and MCP server for VMs, networks, k8s, PostgreSQL and deploy of compose projects",
 			": CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов"),
-		Long: i18n.T(product.TitleEN, product.TitleRU) + "\n\n" + i18n.T("Deploy of docker-compose projects to VMs and management of cloud resources:\n"+
-			"VMs, disks, networks, Kubernetes, PostgreSQL, Object Storage, secrets.",
-			"Развёртывание docker-compose проектов на ВМ и управление ресурсами облака:\n"+
-				"ВМ, диски, сети, Kubernetes, PostgreSQL, Object Storage, секреты.\n\n"+
+		Long: i18n.T(product.TitleEN, product.TitleRU) + "\n\n" + i18n.T("Management of Cloud.ru Evolution resources: VMs, networks, disks, Kubernetes,\n"+
+			"databases, Object Storage, secrets; deploy of compose projects.",
+			"Управление ресурсами Cloud.ru Evolution: ВМ, сети, диски, Kubernetes, базы данных,\n"+
+				"Object Storage, секреты; развёртывание compose-проектов.\n\n"+
 				"Сообщения по-английски: EVO_LANG=en.") +
 			"\n\n" + i18n.T("Welcome to Cloud.ru", "Добро пожаловать в Cloud.ru"),
 		// evo --version prints what 'evo version' prints (benchmark: every

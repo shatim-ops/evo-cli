@@ -13,13 +13,13 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// The root --help lists the commands by the sections of the Cloud.ru
-// service catalog (cloud.ru/docs, «Документация по сервисам»), cloud
-// resources first and Infrastructure (VMs, images) first of them; the
-// scenarios of evo (a compose project, a stack) follow the resources
-// (owner's decision 30.10, #597, item 30; before: review r5 U5, compose
-// first). A section without a catalog name has a plain one. The catalog is
-// published in Russian: the English titles are its translation. The exit
+// The root --help lists the commands by the products of Cloud.ru
+// Evolution, so a newcomer sees which services evo reaches: the title of a
+// group is the official name of its product, or the names of several; a
+// group without one has a plain title. The cloud products come first,
+// Evolution Compute first of them; the scenarios of evo (a compose project,
+// a stack) follow (owner's decision 30.10, #597, item 30; before: review
+// r5 U5, compose first). The sources of the names are in PR #688. The exit
 // codes go after the list.
 
 func init() {
@@ -32,24 +32,24 @@ var commandGroups = []struct {
 	id, en, ru string
 	cmds       []string
 }{
-	{"infra", "Infrastructure:", "Инфраструктура:",
-		[]string{"vm", "image", "marketplace", "list-zones"}},
-	{"network", "Network:", "Сеть:",
+	{"compute", "Evolution Compute, Evolution Disk:", "Evolution Compute, Evolution Disk:",
+		[]string{"vm", "image", "marketplace", "disk", "list-zones"}},
+	{"network", "Evolution VPC, Evolution DNS, Evolution Load Balancer, SNAT gateways:",
+		"Evolution VPC, Evolution DNS, Evolution Load Balancer, SNAT-шлюзы:",
 		[]string{"vpc", "dns", "lb", "tg", "snat"}},
-	{"storage", "Data storage:", "Хранение данных:",
-		[]string{"disk", "s3"}},
-	{"containers", "Containers:", "Контейнеры:",
-		[]string{"k8s", "ca", "ar"}},
-	{"databases", "Databases:", "Базы данных:",
-		[]string{"pg", "redis"}},
-	{"brokers", "Message brokers:", "Брокеры сообщений:",
-		[]string{"kafka"}},
-	{"security", "Security:", "Безопасность:",
+	{"kubernetes", "Evolution Managed Kubernetes:", "Evolution Managed Kubernetes:",
+		[]string{"k8s"}},
+	{"containers", "Evolution Artifact Registry, Evolution Container Apps:", "Evolution Artifact Registry, Evolution Container Apps:",
+		[]string{"ar", "ca"}},
+	{"databases", "Evolution Managed PostgreSQL, Evolution Managed Redis, Evolution Managed Kafka:",
+		"Evolution Managed PostgreSQL, Evolution Managed Redis, Evolution Managed Kafka:",
+		[]string{"pg", "redis", "kafka"}},
+	{"storage", "Evolution Object Storage:", "Evolution Object Storage:",
+		[]string{"s3"}},
+	{"security", "Secret Management, Certificate Manager:", "Secret Management, Certificate Manager:",
 		[]string{"secret", "cert"}},
-	{"monitoring", "Monitoring and management:", "Мониторинг и управление:",
-		[]string{"metrics", "audit"}},
-	{"account", "Administration:", "Администрирование:",
-		[]string{"billing", "org", "iam"}},
+	{"account", "Monitoring, audit, billing, access:", "Мониторинг, аудит, биллинг, доступ:",
+		[]string{"metrics", "audit", "billing", "org", "iam"}},
 	{"scenarios", "Scenarios: a compose project, a stack:", "Сценарии: compose-проект, стек:",
 		[]string{"init", "deploy", "status", "logs", "verify", "destroy", "stack"}},
 	{"setup", "Setup:", "Настройка:",
