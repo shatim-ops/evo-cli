@@ -107,7 +107,7 @@
 | `dns_zones` | `evo dns zones` | нет | — | List Evolution DNS zones in the project (both public and private), with id, name, domain, visibility, state (and confirm_state of a public zone), valid … | Зоны DNS проекта: публичные и приватные |
 | `dns_zone_get` | `evo dns zone-get` | нет | `id` | Get full details of one DNS zone by id (from dns_zones). | Зона DNS по ID: все сведения |
 | `dns_zone_create` | `evo dns zone-create` | да | `domain` | Create a DNS zone. | Создать зону DNS: публичную или приватную |
-| `dns_zone_delete` | `evo dns zone-delete` | удаляет | `id` | Delete a DNS zone by id (from dns_zones) AND its records (async). | Удалить зону DNS вместе с её записями (асинхронно) |
+| `dns_zone_delete` | `evo dns zone-delete` | удаляет | `id` | Delete a DNS zone by id (from dns_zones) AND its records. | Удалить зону DNS вместе с её записями |
 | `dns_operation` | `evo dns operation` | нет | `operation_id` | Poll a DNS async operation by id (from dns_zone_create/delete, dns_record_create/delete). | Состояние асинхронной операции DNS |
 | `dns_records` | `evo dns records` | нет | `zone_id` | List resource records of a DNS zone (id, name, type, values, ttl). | Записи зоны DNS |
 | `dns_record_get` | `evo dns record-get` | нет | `record_id` | Get one DNS record by id (from dns_records). | Запись DNS по ID |

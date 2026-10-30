@@ -3218,7 +3218,7 @@ evo dns [flags]
 * [evo dns record-get](#evo-dns-record-get)	 - Запись DNS по ID
 * [evo dns records](#evo-dns-records)	 - Записи зоны DNS
 * [evo dns zone-create](#evo-dns-zone-create)	 - Создать зону DNS: публичную или приватную
-* [evo dns zone-delete](#evo-dns-zone-delete)	 - Удалить зону DNS вместе с её записями (асинхронно)
+* [evo dns zone-delete](#evo-dns-zone-delete)	 - Удалить зону DNS вместе с её записями
 * [evo dns zone-get](#evo-dns-zone-get)	 - Зона DNS по ID: все сведения
 * [evo dns zones](#evo-dns-zones)	 - Зоны DNS проекта: публичные и приватные
 
@@ -3532,14 +3532,14 @@ evo dns zone-create <domain> [flags]
 
 ## evo dns zone-delete
 
-Удалить зону DNS вместе с её записями (асинхронно)
+Удалить зону DNS вместе с её записями
 
 ### Synopsis
 
 ```text
-Удалить зону DNS вместе с её записями (асинхронно).
+Удалить зону DNS вместе с её записями.
 
-Удалить зону DNS по id (список: 'evo dns zones') вместе с её записями. Операция асинхронная. Видимость зоны (--type public или private) указывать не обязательно: evo определяет её по id зоны.
+Удалить зону DNS по id (список: 'evo dns zones') вместе с её записями. Видимость зоны (--type public или private) указывать не обязательно: evo определяет её по id зоны. Приватную зону, связанную с VPC, evo не удаляет: Cloud.ru удаляет её только после снятия связей в личном кабинете. evo ждёт удаления до 60 с: ответ deleted или deleting с operation_id (evo dns operation).
 
 Вызывает инструмент dns_zone_delete (подробнее: 'evo tools describe dns_zone_delete').
 
