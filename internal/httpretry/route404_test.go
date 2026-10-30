@@ -5,6 +5,7 @@
 package httpretry
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -62,3 +63,29 @@ func TestRouteNotFoundAsBadGateway(t *testing.T) {
 type rtFunc func(*http.Request) (*http.Response, error)
 
 func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// FB160-1 (audit of Fable 1.6): the answer to the request sent again with
+// the renewed token goes through RouteNotFoundAsBadGateway too — a 404 the
+// service did not write after a 401 is a route, not a gone resource (D63),
+// whichever path of RoundTrip the answer took.
+func TestRouteNotFoundAfterTheRenewedToken(t *testing.T) {
+	OnTokenRenewed(func(_ context.Context, tok string) (string, bool) { return tok + "-new", true })
+	t.Cleanup(func() { OnTokenRenewed(nil) })
+	rt := rtFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Header.Get("Authorization") == "Bearer old" {
+			return &http.Response{StatusCode: http.StatusUnauthorized, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{}")), Request: r}, nil
+		}
+		return &http.Response{StatusCode: http.StatusNotFound, Header: http.Header{"Content-Type": {"text/plain"}},
+			Body: io.NopCloser(strings.NewReader("404 page not found")), Request: r}, nil
+	})
+	req, _ := http.NewRequest(http.MethodDelete, "https://api.example/v1/things/x", nil)
+	req.Header.Set("Authorization", "Bearer old")
+	resp, err := (&Transport{Base: rt}).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway || resp.Header.Get(Replaced) == "" {
+		t.Errorf("after the renewed token: status %d, %s %q; want 502 replaced", resp.StatusCode, Replaced, resp.Header.Get(Replaced))
+	}
+}

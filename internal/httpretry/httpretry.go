@@ -288,10 +288,19 @@ func withUserAgent(req *http.Request) *http.Request {
 // RoundTrip implements http.RoundTripper.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = withUserAgent(req)
-	resp, err := t.roundTrip(req)
+	resp, err := t.renewing(req)
+	// The answer RoundTrip gives, whichever way it came — the first one or
+	// the one to the renewed token (FB160-1) — is read for a 404 the
+	// service did not write (D63).
 	if err == nil && !t.Policy.Keep404 {
 		resp = RouteNotFoundAsBadGateway(req, resp)
 	}
+	return resp, err
+}
+
+// renewing is roundTrip with one more try of a refused token, renewed.
+func (t *Transport) renewing(req *http.Request) (*http.Response, error) {
+	resp, err := t.roundTrip(req)
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
 		return resp, err
 	}
