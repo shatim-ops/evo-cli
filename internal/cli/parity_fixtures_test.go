@@ -490,7 +490,10 @@ var parityAnswers = map[string]string{
 	"GET secretmanager.api.cloud.ru/v2/secret/app/db":   `{"secret":{"id":"` + parityVM + `","path":"app/db"}}`,
 	"GET vpc.api.cloud.ru/v1/vpcs/{id}":                 parityObject,
 	// The project's default VPC: subnet_create puts its subnet there.
-	"GET vpc.api.cloud.ru/v1/vpcs":                    `{"vpcs":[{"id":"` + parityVM + `","name":"default","default":true}],"total":1}`,
+	"GET vpc.api.cloud.ru/v1/vpcs": `{"vpcs":[{"id":"` + parityVM + `","name":"default","default":true}],"total":1}`,
+	// A DNS server in the default VPC: dns_zone_create links a private zone
+	// to it.
+	"GET dns.api.cloud.ru/v1/dnsServers":              `{"servers":[{"id":"dns-1","vpcId":"` + parityVM + `","subnetId":"sub-1"}]}`,
 	"GET compute.api.cloud.ru/api/v1/subnets/{id}":    `{"id":"` + parityVM + `","name":"sub","state":"created","can_delete":true}`,
 	"DELETE compute.api.cloud.ru/api/v1/subnets/{id}": `{}`,
 	// Writes: the operation or the empty body the API answers with.

@@ -247,6 +247,17 @@ func (c *Client) DeleteZone(ctx context.Context, visibility, id string) (*Operat
 	return c.doOperation(ctx, http.MethodDelete, "/v1/"+zoneResource(visibility)+"/"+url.PathEscape(id), nil)
 }
 
+// ListServers lists the project's DNS servers of Evolution DNS: a private
+// zone resolves in a VPC only through one of them (dns/openapi.yaml,
+// v1DnsServer.vpcId).
+func (c *Client) ListServers(ctx context.Context) ([]map[string]any, error) {
+	q := url.Values{}
+	if c.projectID != "" {
+		q.Set("project_id", c.projectID)
+	}
+	return c.getList(ctx, "/v1/dnsServers", q, "servers")
+}
+
 // --- Records ---
 
 func (c *Client) ListRecords(ctx context.Context, visibility, zoneID string) ([]map[string]any, error) {

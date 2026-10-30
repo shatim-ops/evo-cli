@@ -120,6 +120,8 @@
          "accepted": {"body-required:projectId": "см. POST /v1/publicZones", "body-unknown:project_id": "см. POST /v1/publicZones"}},
         {"method": "DELETE", "path": "/v1/publicZones/{publicZoneId}", "code": "internal/dns/client.go:242", "reads": ["id", "done"]},
         {"method": "DELETE", "path": "/v1/privateZones/{privateZoneId}", "code": "internal/dns/client.go:242", "reads": ["id", "done"]},
+        {"method": "GET", "path": "/v1/dnsServers", "code": "internal/dns/client.go:258", "query": ["project_id", "pageToken"], "paginates": true, "reads": ["servers[].vpcId", "nextPageToken"],
+         "accepted": {"query-required:projectId": "см. publicZones", "query-unknown:project_id": "см. publicZones"}},
         {"method": "GET", "path": "/v1/publicRecordsSole", "code": "internal/dns/client.go:228", "query": ["public_zone_id", "pageToken"], "paginates": true, "reads": ["records[].id", "records[].name", "records[].type", "records[].values", "records[].ttl", "nextPageToken"],
          "accepted": {"query-required:publicZoneId": "код шлёт snake_case — подтвердить вживую", "query-unknown:public_zone_id": "см. publicZoneId"}},
         {"method": "GET", "path": "/v1/privateRecordsSole", "code": "internal/dns/client.go:228", "query": ["private_zone_id", "pageToken"], "paginates": true, "reads": ["records[].id", "records[].name", "records[].type", "records[].values", "records[].ttl", "nextPageToken"],
