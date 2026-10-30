@@ -151,3 +151,24 @@ func TestWorkflows_CreatesDeclareImpact(t *testing.T) {
 	}
 	t.Logf("fields of impact evo does not send and no one decided (пропуск): %d", gaps)
 }
+
+// Release plan 1.6, «Цена PostgreSQL до согласия»: the tariff evo prices by
+// is checked against the public page once a week and by hand before a
+// release candidate — in job contract, not in a PR, whose code does not
+// change the tariff.
+func TestWorkflows_ContractChecksTheTariff(t *testing.T) {
+	j := readWorkflows(t)["api-contract.yml"].Jobs["contract"]
+	for _, s := range j.Steps {
+		if !strings.Contains(s.Run, "-run '^TestLive_TariffPageMatchesSnapshot$'") {
+			continue
+		}
+		if s.Env["EVO_LIVE_TARIFFS"] != "1" {
+			t.Errorf("api-contract, %s: without EVO_LIVE_TARIFFS=1 the check skips", s.Name)
+		}
+		if !strings.Contains(s.If, "schedule") || !strings.Contains(s.If, "workflow_dispatch") || strings.Contains(s.If, "pull_request") {
+			t.Errorf("api-contract, %s: runs on %q, want the schedule and workflow_dispatch only", s.Name, s.If)
+		}
+		return
+	}
+	t.Error("api-contract: no step checks the tariff of PostgreSQL (TestLive_TariffPageMatchesSnapshot)")
+}
