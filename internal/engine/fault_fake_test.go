@@ -523,8 +523,9 @@ func (c *faultCloud) ListFloatingIPs(context.Context, string) ([]*provision.Floa
 		}
 		fip := &provision.FloatingIP{ID: f.ID, Name: f.Name, IPAddress: f.IP, State: c.readStateLocked(f)}
 		if f.VMID != "" {
-			// The VM it is bound to, as the API's list names it (vm).
-			fip.VM = json.RawMessage(strconv.Quote(f.VMID))
+			// The VM it is bound to, as the API's list names it: an object
+			// (vm.id, vm.name, vm.state; api-probe 28, 29, P40).
+			fip.VM = json.RawMessage(`{"id":` + strconv.Quote(f.VMID) + `}`)
 		}
 		out = append(out, fip)
 	}
