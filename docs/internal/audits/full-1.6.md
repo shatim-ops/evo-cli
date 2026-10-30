@@ -526,3 +526,147 @@ run 153; справка облака не касается. Пробелы, не
   `operation_id` уже начатого удаления теряются (до #691 были в `deleting`).
   Путь найти зону остаётся (`dns_zones`, `dns_zone_get`). Правка — одна точка:
   `errAnswer` с этими полями; код и `reason` не меняются.
+
+## Дополнение: #696 (D67)
+
+**Вердикт (голова eb07be00, после правок по находкам): блокеров тега нет;
+FB160-15, 16, 17, 18, 20 закрыты — кандидат rc.3 на коммите слияния #696
+ставить можно.** Первый проход — по голове 2439f431 (12 файлов, +311/−3), он
+нашёл две находки средней тяжести в самом решении (превью отказывало, а
+исполнение `deploy` создавало); второй — по eb07be00 (15 файлов, +522/−33 от
+`origin/main` dd3bef21). Режим — только чтение, без сети; тесты и пробы
+гонялись в отдельных worktree, пробы удалены. Новые находки второго прохода —
+низкие (FB160-21…23), 1.7.
+
+**Проверки (eb07be00).** `gofmt -l` — пусто; `go vet ./...` (linux,
+`GOOS=windows`) — чисто; `go test -race ./internal/engine ./internal/tools
+./internal/cli ./internal/deployplan ./internal/provision` — ok; `go test
+./...` — 45 пакетов ok, падений нет; `changelog.py check` — ok. В добавленных
+строках — UUID нулевой формы и имена зон мира (`ru.AZ-9`, `ru-moscow-*`);
+реальных ID, IP, ключей нет. Часы правка не трогает (чтения идут в
+`PreviewLookupTimeout` превью, как раньше). Те же проверки на 2439f431 — тоже
+зелёные.
+
+**Код (eb07be00).**
+- Одна точка правила — `provision.FlavorOutOfZone` и `provision.FlavorsInZone`
+  (`internal/provision/zone.go`): зона — UUID или имя без учёта регистра
+  (`EqualFold`, как `ResolveZone`); `engine.FlavorOutOfZone`/`FlavorsInZone` —
+  обёртки над `RefSpec`, `deployplan.Resolve` зовёт `provision` напрямую (цикл
+  импорта `engine` → `deployplan` обойдён переносом). Второй копии правила
+  нет: все вызовы — `PickVMFlavorIn` (provision, превью и исполнение;
+  `DeployPreview` для явного flavor), `sizeFlavor` + `FlavorOutOfZone`
+  (`deploy`: превью `DeployPreview` и исполнение `resolveFlavor` — общая
+  функция подбора), `deployplan.Resolve` (`deploy_plan`), `normalizeStackVM`
+  (`stack_plan`); `addCatalogueLines` и `list_flavors` читают `ZoneNames`
+  только для вывода и фильтра (см. FB160-23).
+- Превью и исполнение — один flavor, проверено пробами в мирах без сети:
+  `provision` — одна `resolveVMZone` и один `PickVMFlavorIn` в превью и в
+  `provisionVM`; `deploy` — `DeployPreview` и `resolveFlavor` при зоне
+  `ru-moscow-1`, `RU-MOSCOW-1`, UUID и пустой дают один и тот же flavor
+  (`medium`/`medium`/`medium`; без зоны — `small`/`small`, фильтра нет);
+  MCP `deploy confirmed=true` в мире «flavor of another zone» — `USAGE`, та же
+  ошибка, записей нет (на 2439f431 были `POST /floating-ips`, `POST /vms`);
+  `evo deploy --yes` — `USAGE`, код 1, записей нет; `deploy_plan` manual с
+  flavor чужой зоны — `USAGE`, план не записан; `deploy_apply` исполняет
+  план с flavor, который `Resolve` уже проверил; стек — `stack_plan` отказывает
+  в `normalizeStackVM`, шаг `vm` идёт через `provision` (`gated` строит план и
+  при `confirmed=true`), auto там — `PickVMFlavorIn` с зоной шага.
+- Ложных отказов нет: зона только из конфига — `resolveVMZone` (provision),
+  `deployZone` → `ResolveZoneRef` (deploy), `planDefaults` → `ResolveZone`
+  (deploy_plan), `ResolveZone` (stack); UUID — сравнение по id; регистр —
+  `EqualFold` (проба: `TestFlavorOutOfZone`, «the zone by name in another
+  case»); flavor без зон в ответе — пропускается и в фильтр входит (проба:
+  явный `small` без зон при `RU-MOSCOW-1` создаётся, `TestStackPlan_…`
+  `any-1`); вызов без зоны — решения нет. Auto без единого flavor зоны —
+  `USAGE` до создания и в `deploy --yes` (проба), не тихий выбор чужой зоны.
+- Отказ — `USAGE`, код 1, текст называет зоны flavor, подсказка —
+  `list_flavors zone=…` / `evo vm flavors --zone …` (аргумент и флаг есть);
+  `completePreview` считает `USAGE` выбора отказом наравне с `NOT_FOUND`.
+  Кавычки `quoteCloud` не нужны: имена flavor и зон — каталог платформы, не
+  имена участников проекта; так же их пишут `flavorNotFound` (D50) и
+  `ClosedZoneError`.
+
+**Тесты падают без правки** (eb07be00, откат по одному): `EqualFold → ==` в
+`provision` — `TestFlavorOutOfZone`; `return flavor, nil` для явного flavor в
+`resolveFlavor` — `TestDeploy_FlavorZoneInTheCreate` и инвариант мира
+«(confirmed)»: «refuses with USAGE before the question, with AUTH_FAILED and
+2 writes after consent» — ровно FB160-15, инвариант п. 5 ловит;
+`deploy_preview.go` с `main` — `TestDeployPreview_AutoFlavorIsTheCreates`
+(«preview names small, create sends medium»); `deployplan/resolve.go` с
+`main` — `TestResolve_FlavorOfTheZone` (оба случая); без
+`FlavorOutOfZone` после `selectFlavor` — его явный случай; без
+`FlavorOutOfZone` в `PickVMFlavorIn` — мир «flavor of another zone»
+(`provision`, `deploy`); без `USAGE` в `completePreview` — тот же мир. Первый
+проход (2439f431): `FlavorOutOfZone → nil`, вызов в `completePreview`,
+`tools_stack.go`, `tools.go`, `PickVMFlavorIn` превью, `deploy.go` — каждый
+откат ронял свой тест. Два хунка тестом не держатся — FB160-21, FB160-22.
+
+**Ломающее.** Строка 1.6.0 `RELEASING.md`, D67 в `DECISIONS.md` и «Миграция»
+`changelog.d/flavor-zone.md` согласованы между собой и с кодом: `provision`
+(`evo vm create`), `deploy` (и `confirmed=true`), `deploy_plan`, `stack_plan`;
+`USAGE`, код 1, до вопроса и без записи; зона — UUID или имя в любом регистре;
+«поля нет» — как раньше; автоподбор — в «Изменено», не ломающее, текст
+FB160-20 исправлен («шаг ВМ `stack_apply` подбирает так же»). Для
+пользователя: без `--yes` код 3 → 1; `--yes`/`confirmed=true` — отказ
+платформы после «да» → код 1 до вопроса; `deploy_plan` — план с
+невыполнимым flavor → `USAGE` без плана; auto в зоне без наименьшего flavor
+каталога — ошибка платформы → успех с flavor зоны. Фраза RELEASING
+«`deploy_apply` падал ошибкой без `reason`» — не проверял (гипотеза: отказ
+платформы на `POST /vms` шёл бы через `errAnswer` с `reason` `API_ERROR`;
+без `reason` была ошибка самого `deploy_plan` на flavor не из каталога).
+Гейт согласия и секреты правка не трогает.
+
+### Находки
+
+Закрыты в eb07be00: **FB160-15** (MCP `deploy confirmed=true` шёл к созданию —
+`resolveFlavor` разрешает зону и проверяет flavor, явный и auto; проба —
+записей нет), **FB160-16** (регистр зоны — `EqualFold` в
+`provision.FlavorOutOfZone` и разрешённая зона в `resolveFlavor`; проба —
+превью и создание совпадают), **FB160-17** (`deploy_plan` — `FlavorsInZone`
+и `FlavorOutOfZone` в `deployplan.Resolve` до записи плана;
+`TestResolve_FlavorOfTheZone`), **FB160-18** (`DeployPreview` держит
+`TestDeployPreview_AutoFlavorIsTheCreates`), **FB160-20** (текст «Изменено»).
+Инвариант п. 5 первого прохода — второй вызов с `confirmed=true` в мирах
+`refusedBy` — добавлен в `TestConsent_RefusalWithoutWriteComesBeforeTheQuestion`
+и ловит FB160-15 (откат c). Открыт: **FB160-19** (двойной `ListFlavors` в
+`stack_plan`; 1.7).
+
+- **FB160-21 (низкая; 1.7).** `deployZone` (`internal/engine/deploy.go`,
+  `resolveFlavor`) читает `ListAvailabilityZones` второй раз за `deploy`
+  (`resolveNetwork` читает снова) и дублирует защиту `EqualFold`: откат
+  любого из двух по отдельности оставляет `TestDeploy_FlavorZoneInTheCreate`
+  зелёным (регистр закрывает и сырой `RefSpec{region, region}` через
+  `EqualFold`), тест падает лишь без обоих; хунк `deployZone` своего теста не
+  имеет (§4). Правка: отдать разрешённую зону в `resolveNetwork` (одно
+  чтение) или убрать `deployZone`, оставив `EqualFold`.
+- **FB160-22 (низкая; §4, «Процессу» мир).** Отказ auto-подбора вне зоны в
+  исполнении — `FlavorOutOfZone(match, zone)` (`deploy.go:493`) и
+  `FlavorOutOfZone` выбранного в `PickVMFlavorIn` для auto — не держит ни
+  один тест: откат (d) зелёный целиком. Случай — «в зоне нет ни одного
+  подходящего flavor, `FlavorsInZone` вернула весь список»: код отказывает
+  верно (проба: `deploy --yes`, auto, зона без flavor — `USAGE`, создания
+  нет), но мир согласия моделирует только явный `CLOUDRU_FLAVOR`. Тест: мир
+  «no flavor of the zone» с `refusedBy: provision, deploy` (auto) — тогда
+  инвариант п. 5 покроет и `confirmed=true`.
+- **FB160-23 (низкая; 1.7).** Фильтр `list_flavors zone=` / `evo vm flavors
+  --zone` (`flavorMatches`, `internal/tools/tools_deploy.go:515`) сравнивает
+  имя зоны точно и только имя — вторая, более узкая мера «flavor в зоне»
+  рядом с `provision.FlavorOutOfZone`: `--zone RU.AZ-1` или UUID зоны молча
+  дают пустой список. Подсказка D67 называет зону канонически (разрешённую),
+  так что из отказа путь работает; было и до #696. Правка — тот же
+  `provision.FlavorsInZone(flavors, "", z)` в фильтре.
+
+**Гипотезы (не проверял вживую).** Код отказа платформы на создание ВМ с flavor
+чужой зоны — 422 → `API_ERROR`, код 5 (как в триаже Ц-12). Фраза RELEASING о
+`deploy_apply` «без `reason`» — см. «Ломающее».
+
+**Сверка охвата rc.3 («Процесс · 1.6», v1.6.0-rc.2..b4a65a3a):** одно
+продуктовое изменение — D67 (#696). Тесты, падающие без правки: мир согласия
+«flavor of another zone» для `provision` и `deploy` с инвариантом
+`confirmed=true` (тот же отказ, записей нет); `engine/flavor_zone_test` (явный,
+авто, зона исполнения и превью); `deployplan/flavor_zone_test`,
+`tools/stack_flavor_zone_test`, `cli/flavor_auto_zone_test`. Пробел FB160-22
+закрывает мир «no flavor of the zone» (#700, «(процесс)», после тега; проверено
+мутацией). Вживую путь отказа не проверяется — записи нет; обычный `deploy` с
+подбором flavor в зоне — cloud-e2e run 156. Остальные коммиты диапазона —
+процесс и документы.
