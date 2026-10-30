@@ -2254,6 +2254,14 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					// destroy find it only from the directory evo ran in.
 					"state_dir": config.DataDir(eng.StateDir),
 				}
+				// Names read with the catalogue and the zones (Линия CLI):
+				// a person sees «name (id)».
+				if n := flavorNameOf(flavors, flavorID); n != "" {
+					res["flavor_name"] = n
+				}
+				if zoneName != "" {
+					res["region_name"] = zoneName
+				}
 				if deployKey {
 					res["ssh"] = sshCmd
 				}
@@ -3436,6 +3444,16 @@ func isUUID(s string) bool {
 }
 
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// flavorNameOf is the name of flavor id in the catalogue, "" when not in it.
+func flavorNameOf(flavors []*provision.Flavor, id string) string {
+	for _, f := range flavors {
+		if f.ID == id {
+			return f.Name
+		}
+	}
+	return ""
+}
 
 // provisionPreview is what provision would create, from the call and the
 // configuration only: the zone (zone: the listed zone of cfg.Region, nil

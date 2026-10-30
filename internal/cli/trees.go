@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -897,16 +898,22 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 }
 
 // refValue is the value of key k of m for a person: a reference "<x>_id"
-// whose thing the answer names ("<x>_name" beside it) reads «name (id)»
-// (release plan 1.6, «Линия CLI»; audits/cli-ids-1.6.md §7): a bare UUID
-// does not say which subnet or zone it is. The JSON answer keeps both
-// fields as they are.
+// whose thing the answer names ("<x>_name", else "<x>", beside it) reads
+// «name (id)» (release plan 1.6, «Линия CLI»; audits/cli-ids-1.6.md §7):
+// a bare UUID does not say which subnet or zone it is. The JSON answer
+// keeps both fields as they are.
 func refValue(m map[string]any, k string) any {
 	id, _ := m[k].(string)
-	if base, ok := strings.CutSuffix(k, "_id"); ok && id != "" {
-		if name, _ := m[base+"_name"].(string); name != "" && name != id {
+	if id == "" {
+		return m[k]
+	}
+	if base, ok := strings.CutSuffix(k, "_id"); ok {
+		if name := engine.RefName(m, base); name != "" && name != id {
 			return name + " (" + id + ")"
 		}
+	} else if name, _ := m[k+"_name"].(string); name != "" && name != id {
+		// A key that holds the id itself (provision: flavor, region).
+		return name + " (" + id + ")"
 	}
 	return m[k]
 }
@@ -914,13 +921,18 @@ func refValue(m map[string]any, k string) any {
 // namedRef reports whether key k of m is the name of a reference refValue
 // shows with its id: its own row would repeat it.
 func namedRef(m map[string]any, k string) bool {
-	base, ok := strings.CutSuffix(k, "_name")
-	if !ok {
+	name, _ := m[k].(string)
+	if name == "" {
 		return false
 	}
-	name, _ := m[k].(string)
-	id, _ := m[base+"_id"].(string)
-	return name != "" && id != "" && name != id
+	base := strings.TrimSuffix(k, "_name")
+	if id, _ := m[base+"_id"].(string); id != "" && name != id && engine.RefName(m, base) == name &&
+		(k == base+"_name" || k == base) {
+		return true
+	}
+	// The name of a key that holds the id itself (refValue).
+	id, _ := m[base].(string)
+	return k == base+"_name" && id != "" && id != name && m[base+"_id"] == nil
 }
 
 // listNoteFields are the text fields a list answer may carry next to its
