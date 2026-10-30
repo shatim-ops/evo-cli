@@ -579,7 +579,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "org_quotas",
-			Description: "List quota usages (resource, limit, current usage) — for capacity planning. Read-only. Optionally scope to a project_id. (May be permission-limited depending on the service account's rights.)",
+			Description: "List quota usages (resource code, its name, unit and product where the quota-type catalogue names them, limit, current usage) — for capacity planning. Read-only. Optionally scope to a project_id. (May be permission-limited depending on the service account's rights.)",
 			InputSchema: objSchema(map[string]any{"project_id": strProp("Project UUID to scope quotas to (optional).")}),
 		},
 		{

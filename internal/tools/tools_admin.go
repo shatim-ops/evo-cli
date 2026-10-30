@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/pager"
@@ -231,13 +232,32 @@ func orgHTTPError(he *adminHTTPError) error {
 	return clierrors.Wrap(code, "Organization API: "+he.Error(), hint, he)
 }
 
+// quotaUsagesURL is the quota usages of the organization API, of the
+// project when projectID is set.
+func quotaUsagesURL(projectID string) string {
+	url := "https://organization.api.cloud.ru/v3/quotas/usages?page_size=200"
+	if projectID != "" {
+		url += "&subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT&subject_ids=" + neturl.QueryEscape(projectID)
+	}
+	return url
+}
+
+// QuotaProbe is engine.Engine.QuotaProbe: it reads the project's
+// quota usages as org_quotas does; a 403 is engine.ErrQuotasForbidden — a
+// key of a project reads none (P37, D60).
+func QuotaProbe(ctx context.Context, tp auth.TokenProvider, projectID string) error {
+	_, err := tokenGET(ctx, tp, quotaUsagesURL(projectID))
+	var he *adminHTTPError
+	if errors.As(err, &he) && he.Status == http.StatusForbidden {
+		return fmt.Errorf("%w: %s", engine.ErrQuotasForbidden, he.Msg)
+	}
+	return err
+}
+
 // handleOrgQuotas lists quota usages (limits vs usage) — useful for capacity
 // planning. Requires the caller to have customer/project quota permissions.
 func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (string, bool) {
-	url := "https://organization.api.cloud.ru/v3/quotas/usages?page_size=200"
-	if pid := stringArg(args, "project_id"); pid != "" {
-		url += "&subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT&subject_ids=" + neturl.QueryEscape(pid)
-	}
+	url := quotaUsagesURL(stringArg(args, "project_id"))
 	// Every page (#98): next_page_token in the answer, page_token in the
 	// next request (api.op.v3.yaml).
 	var raw []any
@@ -274,15 +294,67 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 		}
 		return errResult(err), true
 	}
+	types := s.quotaTypes(ctx)
 	out := make([]map[string]any, 0, len(raw))
 	for _, x := range raw {
 		u, _ := x.(map[string]any)
 		if u == nil {
 			continue
 		}
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"resource": u["resource_type_code"], "limit": u["individual_limit"], "usage": u["individual_usage"],
-		})
+		}
+		code, _ := u["resource_type_code"].(string)
+		for k, v := range types[code] {
+			row[k] = v
+		}
+		out = append(out, row)
 	}
 	return toJSON(map[string]any{"quota_usages": out}), false
+}
+
+// quotaTypes are the name, the unit and the product of each quota type
+// by its code, from the catalogue of quota types (FB15-8); nil when it is
+// not read — the rows keep their codes. The catalogue's list is the
+// array of its answer (organization api.op.v3.yaml, v3QuotaResourceType:
+// code, name, product_name, unit).
+func (s *Registry) quotaTypes(ctx context.Context) map[string]map[string]any {
+	const url = "https://organization.api.cloud.ru/v3/quotas/resourceTypes?page_size=200"
+	out := map[string]map[string]any{}
+	err := pager.All("organization: quota types", func(token string) (string, error) {
+		u := url
+		if token != "" {
+			u += "&page_token=" + neturl.QueryEscape(token)
+		}
+		m, err := s.adminGET(ctx, u)
+		if err != nil {
+			return "", err
+		}
+		for _, v := range m {
+			items, ok := v.([]any)
+			if !ok {
+				continue
+			}
+			for _, x := range items {
+				t, _ := x.(map[string]any)
+				code, _ := t["code"].(string)
+				if code == "" {
+					continue
+				}
+				named := map[string]any{}
+				for field, key := range map[string]string{"name": "name", "unit": "unit", "product_name": "product"} {
+					if v, _ := t[field].(string); v != "" {
+						named[key] = v
+					}
+				}
+				out[code] = named
+			}
+		}
+		next, _ := m["next_page_token"].(string)
+		return next, nil
+	})
+	if err != nil {
+		return nil
+	}
+	return out
 }
