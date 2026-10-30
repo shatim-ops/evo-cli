@@ -1043,7 +1043,15 @@ area_secrets() {
 	# Проба P44 (пункт Ж; FB15-28): секрет в папке $prefix, которой не было,
 	# создан (выше) — остаётся ли папка после удаления секрета. Осталась —
 	# строка и удаление папки прямым DELETE (у evo инструмента папок нет).
+	# Папка — только своя: путь собран из префикса прогона области secrets
+	# (evo-e2e-secrets-<run>, run — [a-z0-9]), чужую папку проекта DELETE не
+	# задевает (удаление чужого — только владелец, CLAUDE.md §4).
 	if probe_on p44; then
+		case "$prefix" in evo-e2e-secrets-[a-z0-9]*) ;; *)
+			bad P44 "префикс $prefix не evo-e2e-secrets-<run> — папку не трогаю"
+			return 1
+			;;
+		esac
 		if iam_token && [ -n "${PROJECT:-}" ]; then
 			api GET "https://secretmanager.api.cloud.ru/v2/folder/$prefix?projectId=$PROJECT"
 			case "$code" in
