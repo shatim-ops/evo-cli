@@ -157,8 +157,15 @@ func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string
 	if err != nil {
 		return errResult(err), true
 	}
+	m["access"] = pgAccess
 	return toJSON(m), false
 }
+
+// pgAccess is where a PostgreSQL cluster is reachable from (Ц-21, Ц-24;
+// CLAUDE.md §6, axis 4): CreateClusterRequest of the specification takes
+// subnet_ids and no parameter of access, so evo states what it creates
+// rather than leave an agent to guess a public address.
+const pgAccess = "private: from the subnets of subnet_ids; the PostgreSQL API takes no public-access parameter, and evo sets none up"
 
 // --- Reference ---
 
@@ -732,6 +739,7 @@ func pgCreatePreview(cfg config.Config, will map[string]any) engine.CreatePrevie
 		"subnet_id", "initial_database", "backup_enabled", "backup_schedule", "backup_retention_days"} {
 		p.Add(k, will[k])
 	}
+	p.Add("access", pgAccess)
 	p.Price()
 	return p
 }
