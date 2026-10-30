@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -365,6 +366,9 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 					break
 				}
 			}
+			if flavorErr == nil && picked != nil {
+				flavorErr = FlavorOutOfZone(picked, &vm.Zone)
+			}
 		}
 	}
 	// The refusals the reads find come together, in the order of the
@@ -430,6 +434,34 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	defer qcancel()
 	p.Quota = e.quotaCheck(qctx, p.ProjectID)
 	return clerrors.Join(flavorErr, imageErr, networkErr)
+}
+
+// FlavorOutOfZone refuses a VM of flavor f in zone (D67; agent run C2 on
+// rc.2, Ц-12): the catalogue names the zones a VM of the flavor can be
+// created in (ZoneNames), and the zone of the call, by id or name, is none
+// of them. USAGE, as D54's second SNAT gateway: the flavor and the zone are
+// both there, the call pairs them wrong, and the way out is an argument. A
+// flavor that names no zones, or no zone it is available in, and a call
+// without a zone are no decision (D54): the call goes as before. Sold out
+// in a zone (state) is not known before the probe of 1.7.
+func FlavorOutOfZone(f *provision.Flavor, zone *deployplan.RefSpec) error {
+	names := f.ZoneNames()
+	if len(names) == 0 || zone == nil || (zone.ID == "" && zone.Name == "") {
+		return nil
+	}
+	for _, z := range f.Zones {
+		if (zone.ID != "" && z.ID == zone.ID) || (zone.Name != "" && z.Name == zone.Name) {
+			if slices.Contains(names, z.Name) {
+				return nil
+			}
+		}
+	}
+	where := firstNonEmpty(zone.Name, zone.ID)
+	return clerrors.New(clerrors.CodeUsage,
+		i18n.Tf("flavor %s is not available in zone %s: a VM of it can be created in %s",
+			"flavor %s недоступен в зоне %s: ВМ с ним создаётся в %s", f.Name, where, strings.Join(names, ", ")),
+		i18n.Tf("Pick a flavor of zone %s (list_flavors zone=%s, 'evo vm flavors --zone %s') or one of the flavor's zones.",
+			"Выберите flavor зоны %s (list_flavors zone=%s, 'evo vm flavors --zone %s') или одну из зон flavor.", where, where, where))
 }
 
 // addCatalogueLines says what the catalogue says of the VM's flavor and
