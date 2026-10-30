@@ -297,7 +297,7 @@ func newRootCmd() *cobra.Command {
 			"Развёртывание docker-compose проектов на ВМ и управление ресурсами облака:\n"+
 				"ВМ, диски, сети, Kubernetes, PostgreSQL, Object Storage, секреты.\n\n"+
 				"Сообщения по-английски: EVO_LANG=en.") +
-			"\n\n" + i18n.T("Feedback: Telegram ", "Обратная связь: Telegram ") + product.FeedbackContact + i18n.T(", testers' chat ", ", чат тестировщиков ") + product.FeedbackChat,
+			"\n\n" + i18n.T("Welcome to Cloud.ru", "Добро пожаловать в Cloud.ru"),
 		// evo --version prints what 'evo version' prints (benchmark: every
 		// CLI there has the flag).
 		Version: currentVersion().Version,

@@ -604,9 +604,8 @@ CLI. Изменяющий инструмент без `confirmed=true` возв�
 
 1. `evo doctor` — чаще всего он называет причину сам.
 2. [troubleshooting.md](troubleshooting.md) — типовые ошибки по кодам.
-3. Ошибка или отзыв об `evo` — в Telegram [@shatim](https://t.me/shatim) и в
-   [чат тестировщиков](https://t.me/+SYvXziA4G9c1Y2Ni), ошибку можно завести и
-   в [Issues](https://github.com/shatim-ops/evo-cli/issues);
+3. Ошибка, отзыв или вопрос об `evo` — в
+   [Issues](https://github.com/shatim-ops/evo-cli/issues/new/choose) по форме;
    проблемы облака (квоты, ресурс в ошибке) — поддержка Cloud.ru.
 
 К обращению приложите `evo version --json`, `evo doctor --json` (секретов там
