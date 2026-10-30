@@ -72,8 +72,15 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		return err
 	}
 
-	existing := stateFile.ActiveDeployment()
+	existing := stateFile.ActiveComposeDeployment()
 	isNewDeploy := existing == nil
+	// Another project's compose file is never sent to this VM (D62).
+	if err := composeRefusal(existing, opts.ComposeFile); err != nil {
+		return err
+	}
+	if w := composeUnknown(existing, opts.ComposeFile); w != "" && !isNewDeploy {
+		e.Printer.Warning(w)
+	}
 
 	// A destroy that stopped half-way (VM deleted, floating IP not yet
 	// released) keeps the record for its retry; there is no VM to reuse.
@@ -220,6 +227,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		// once and saved with the record.
 		rec = e.withNames(ctx, *existing, nil, true)
 		rec.ComposeHash = project.Hash
+		rec.ComposePath = composePath(opts.ComposeFile)
 		rec.ExposedPorts = project.Ports
 		rec.UpdatedAt = time.Now()
 		if rec.VMIP == "" && rec.VMID != "" {
@@ -429,10 +437,10 @@ type DeployUpdate struct {
 // without confirmed=true.
 func (e *Engine) DeployUpdateOf(force bool) *DeployUpdate {
 	sf, err := state.Read(state.DefaultPath(e.StateDir))
-	if err != nil || sf.ActiveDeployment() == nil {
+	if err != nil || sf.ActiveComposeDeployment() == nil {
 		return nil
 	}
-	existing := sf.ActiveDeployment()
+	existing := sf.ActiveComposeDeployment()
 	u := &DeployUpdate{Deployment: *existing, ProjectID: e.projectOf(existing), Creates: redeployCreates(existing)}
 	if project, err := compose.Parse(e.Config.ComposeFile); err == nil {
 		changed := existing.ComposeHash != project.Hash
@@ -692,6 +700,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		SSHUser:      sshUser,
 		Status:       "creating",
 		ComposeHash:  project.Hash,
+		ComposePath:  composePath(opts.ComposeFile),
 		ExposedPorts: project.Ports,
 		// Saved now: a re-run after an interruption opens the ports here.
 		SecurityGroupID:   network.SecurityGroupID,
