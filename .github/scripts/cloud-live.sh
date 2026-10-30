@@ -9,7 +9,7 @@
 # Живые прогоны изменяющих инструментов evo на настоящем Cloud.ru, по одной
 # области за вызов: cloud-live.sh ОБЛАСТЬ. Области: disk, net, dns, s3,
 # secrets, ca, stack, mcp — их вызывает job live в cloud-e2e.yml после evo
-# configure; pgnet — job dbaas-pg (вход pg_probes: access); sweep ПРЕФИКС [ОБЛАСТЬ] — удалить ресурсы с именами ПРЕФИКС*
+# configure; pgnet — job dbaas-pg (вход probes: access); sweep ПРЕФИКС [ОБЛАСТЬ] — удалить ресурсы с именами ПРЕФИКС*
 # всех видов этого скрипта или только видов области (job cleanup, префикс
 # evo-e2e-; страховка job live).
 #

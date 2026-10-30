@@ -84,8 +84,8 @@ on:
       dbaas_services:
         description: "Which DBaaS jobs dbaas_smoke runs: pg, kafka, redis, separated by spaces"
         default: "pg kafka redis"
-      pg_probes:
-        description: "dbaas-pg extras, separated by spaces (plan cloud-e2e rc.1 1.6): access — VMs in the cluster's subnet and in another subnet of the VPC probe TCP 5432 (DB-5, ~30 min more); nodes — the cluster with 2 nodes and 100 GB, its storage per node read later from billing_consumption (cleanup_only prints it)"
+      probes:
+        description: "Billable probes of the platform, separated by spaces (plan cloud-e2e rc.1 1.6): access — dbaas-pg VMs in the cluster's subnet and in another subnet of the VPC probe TCP 5432 (DB-5, ~30 min more); nodes — the dbaas-pg cluster with 2 nodes and 100 GB, its storage per node read later from billing_consumption (cleanup_only prints it)"
         default: ""
       redis_standalone_probe:
         description: "Probe G140-6 (billable, up to ~2.5 h): raw POST of a Redis STANDALONE cluster evo-e2e-redis-sa-<run> with replicas 0, without the field, 1 — the first accepted is created, read and deleted"
@@ -904,7 +904,7 @@ jobs:
 
       # Пункт Б плана cloud-e2e rc.1 1.6: счёт PostgreSQL за 3 дня по
       # сервису и ресурсу (только чтение) — сверить с тарифом, считается ли
-      # хранилище на каждом узле кластера с pg_probes nodes. Строки — имя
+      # хранилище на каждом узле кластера с probes: nodes. Строки — имя
       # сервиса и ресурса через redact.sed и суммы; ключу без роли
       # администратора проекта — предупреждение, не провал.
       - name: Счёт PostgreSQL за 3 дня (только чтение)
@@ -1285,7 +1285,7 @@ jobs:
       ZONE: ${{ inputs.pg_zone || inputs.zone || 'ru.AZ-2' }}
       KIND: pg
       CLUSTER: evo-e2e-pg-r${{ github.run_number }}a${{ github.run_attempt }}
-      PG_PROBES: ${{ inputs.pg_probes }}
+      PROBES: ${{ inputs.probes }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     defaults:
       run:
@@ -1353,17 +1353,17 @@ jobs:
           echo "::add-mask::$spec_id"
           echo "::add-mask::$subnet"
           { echo "SPEC_ID=$spec_id"; echo "SUBNET_ID=$subnet"; } >> "$GITHUB_ENV"
-          # pg_probes (вход): access — шаг DB-5 ниже; nodes — пункт Б плана
+          # probes (вход): access — шаг DB-5 ниже; nodes — пункт Б плана
           # cloud-e2e rc.1 1.6: 2 узла и 100 ГБ (не меньше минимума
           # спецификации), чтобы счёт показал, считается ли хранилище на
           # каждом узле (cleanup_only печатает счёт PostgreSQL прогонов).
           extra=()
-          read -ra words <<<"${PG_PROBES:-}"
+          read -ra words <<<"${PROBES:-}"
           for w in ${words[@]+"${words[@]}"}; do
             case "$w" in
               access) ;;
               nodes) extra=(--arg instances=2 --arg storage_gb="$(jq -r '[(.min_storage_gb // 0), 100] | max' <<<"$spec")") ;;
-              *) echo "::error::pg_probes: «$w» — не access и не nodes"; exit 1 ;;
+              *) echo "::error::probes: «$w» — не access и не nodes"; exit 1 ;;
             esac
           done
           [ "${#extra[@]}" = 0 ] || echo "пункт Б: узлов 2, хранилище $(jq -r '[(.min_storage_gb // 0), 100] | max' <<<"$spec") ГБ, create в $(date -u +%H:%M) UTC"
@@ -1451,14 +1451,14 @@ jobs:
       # 5432 («N из 3»); область pgnet cloud-live.sh, уборка — её trap и
       # страховка ниже.
       - name: Откуда доступен кластер (DB-5)
-        if: contains(format(' {0} ', inputs.pg_probes), ' access ')
+        if: contains(format(' {0} ', inputs.probes), ' access ')
         env:
           IMAGE: ${{ inputs.image || 'ubuntu-22.04' }}
           FLAVOR: ${{ inputs.flavor || 'lowcost10-2-4' }}
         run: PG_CLUSTER_ID="$CLUSTER_ID" PG_SUBNET_ID="$SUBNET_ID" .github/scripts/cloud-live.sh pgnet
 
       - name: Уборка pgnet (страховка)
-        if: always() && contains(format(' {0} ', inputs.pg_probes), ' access ')
+        if: always() && contains(format(' {0} ', inputs.probes), ' access ')
         run: .github/scripts/cloud-live.sh sweep "evo-e2e-pgnet-$(printf '%s' "$RUN" | tr -cd 'a-z0-9' | cut -c1-16)" pgnet
 
       # Пароль — из букв и цифр с заглавной, строчной, цифрой и спецсимволом
