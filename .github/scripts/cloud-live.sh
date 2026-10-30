@@ -250,7 +250,7 @@ area_kinds() {
 	case "$1" in
 	disk) echo "vm fip disk image" ;;
 	net) echo "lb tg vm snat fip disk route subnet vpc" ;;
-	dns) echo "dns" ;;
+	dns) echo "dns vpc" ;;
 	s3) echo "s3" ;;
 	secrets) echo "secret cert" ;;
 	ca) echo "ca ar" ;;
@@ -753,14 +753,15 @@ area_net() {
 	# адрес назван не префиксом ВМ B: уборка освобождает fip-<префикс>*, этот — по id
 	echo "$fip" >"$tmp/fip_id"
 
-	# D57 (1.6): подсеть по имени. Имени, которого нет, — отказ до вопроса
-	# (USAGE), ВМ нет; ВМ B создаётся с подсетью зоны по имени (имя
+	# D57 (1.6): подсеть по имени. Имени, которого нет, — отказ до записи с
+	# прежним reason обработчика (CONFIG_INVALID «не из проекта», код 2; D57:
+	# «отказ и reason не меняются»), ВМ нет; ВМ B создаётся с подсетью зоны по имени (имя
 	# единственное в проекте — два совпадения D57 отвергает): платформа
 	# приняла бы имя в поле id только как 4xx, так что созданная ВМ значит,
 	# что ушёл UUID.
 	tc provision --arg name="$prefix-nosn" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg subnet_id="$prefix-no-such-subnet"
-	if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(lst vm "$prefix-nosn")" ]; then
-		ok "provision: подсети с таким именем нет" "USAGE до вопроса, ВМ нет (D57)"
+	if [ "$rc" = 2 ] && [ "${reason%%,*}" = CONFIG_INVALID ] && [ -z "$(lst vm "$prefix-nosn")" ]; then
+		ok "provision: подсети с таким именем нет" "CONFIG_INVALID до записи, ВМ нет (D57)"
 	else bad "provision: подсети с таким именем нет" "код $rc, $reason; ВМ $prefix-nosn: $(lst vm "$prefix-nosn" | wc -l)"; fi
 	local snname
 	snname=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | .name // "" | select(. != "")] as $all
@@ -938,8 +939,96 @@ area_net() {
 
 # DNS: приватная зона, запись A, удаление. Каждый вызов по зоне — с
 # type=private: по умолчанию инструменты идут в API публичных зон.
+
+# dnslink_state КОГДА ЗОНА — связи приватной зоны и DNS-сервера evo-e2e-dns
+# (п. 27): state и число linkedVpcIds зоны, usedIn сервера и упоминает ли
+# usedIn эту зону; код HTTP чтения зоны — в $zcode. Печатаются количества
+# и признаки, ID — никогда.
+dnslink_state() {
+	local zs ss
+	api GET "https://dns.api.cloud.ru/v1/privateZones/$2"
+	zcode=$code
+	if [ "$code" = 200 ]; then
+		zs="зона: state $(jq -r '.state // "?"' "$tmp/api.json"), linkedVpcIds $(jq '.linkedVpcIds // [] | length' "$tmp/api.json")"
+	else zs="зона: HTTP $code"; fi
+	api GET "https://dns.api.cloud.ru/v1/dnsServers?projectId=$PROJECT&pageSize=100"
+	if [ "$code" = 200 ]; then
+		ss="сервер evo-e2e-dns: $(jq -c --arg z "$2" '[.servers[]? | select(.name == "evo-e2e-dns")][0] // null | if . == null then "нет" else {usedIn: (.usedIn // [] | length), keys: ((.usedIn // [])[0] // {} | keys), zone: ([(.usedIn // [])[] | tostring | contains($z)] | any)} end' "$tmp/api.json")"
+	else ss="dnsServers: HTTP $code"; fi
+	row "п. 27: связи $1" чтение "$zs; $ss"
+}
+
+# Проба п. 27 (решение владельца 30.10, #597, п. 27; run 151): приватная
+# зона, привязанная к VPC с DNS-сервером, — DELETE принят, зона остаётся
+# «ok»; консоль требует снять связи. Перед обычным удалением зоны области:
+# D66 — dns_zone_delete со связями отказывает до вопроса (USAGE, без записи;
+# до слияния D66 evo шлёт DELETE — строка это и скажет); H3 — прямой DELETE
+# со связями и итог его операции (evo с D66 его не шлёт); H1 — снимает ли
+# PATCH linkedVpcIds: [] связь с VPC; H2 — снимается ли при этом связь с
+# DNS-сервером (usedIn). У evo PATCH зоны нет — прямой запрос. Проба, не
+# проверка: строки, а не FAIL. Зона дальше удаляется обычным шагом области;
+# связи не снялись — он отказывает (D66): FAIL и остаток, путь — консоль
+# (снять связи и удалить).
+probe_dnslink() {
+	local zid=$1
+	iam_token && [ -n "${PROJECT:-}" ] || { gap "п. 27" "нет токена IAM или PROJECT"; return 0; }
+	dnslink_state "до" "$zid"
+	tc dns_zone_delete --arg id="$zid" --arg type=private
+	row "п. 27 D66: dns_zone_delete со связями" "$([ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && echo отказ || echo "код $rc")" "$reason: $(printf '%s' "$why" | cut -c1-160)"
+	api DELETE "https://dns.api.cloud.ru/v1/privateZones/$zid"
+	dnslink_op "п. 27 H3: DELETE со связями"
+	dnslink_state "после DELETE" "$zid"
+	[ "$zcode" != 404 ] || return 0
+	api PATCH "https://dns.api.cloud.ru/v1/privateZones/$zid" '{"linkedVpcIds":[]}'
+	dnslink_op "п. 27 H1: PATCH linkedVpcIds: []"
+	dnslink_state "после PATCH" "$zid"
+}
+
+# dnslink_op СТРОКА — итог прямого запроса api пробы п. 27: код HTTP и
+# итог операции из ответа (.id), или текст ошибки.
+dnslink_op() {
+	local op
+	if [ "${code#2}" = "$code" ]; then row "$1" "HTTP $code" "$(api_why)"; return 0; fi
+	op=$(jq -r '.id // empty' "$tmp/api.json")
+	mask "$op"
+	if [ -z "$op" ]; then row "$1" "HTTP $code" "без операции, ключи $(jq -c 'keys' "$tmp/api.json")"
+	elif opwait dns "$op" 300; then row "$1" "HTTP $code" "операция done без ошибки"
+	else row "$1" "HTTP $code" "операция: $why"; fi
+}
+
+# dns_delete_op ЧТО — итог операции удаления из последнего ответа (j):
+# строка, а не провал (провал — объект остался в списке). Операция с ошибкой
+# или не done — её состояние пробой: run 151 (30.10) зона после ~40
+# принятых удалений осталась «ok», а итог операции не читался.
+dns_delete_op() {
+	local op
+	op=$(j -r '.operation_id // empty')
+	[ -n "$op" ] || { row "dns_operation удаления $1" "нет id" "в ответе нет operation_id"; return 0; }
+	mask "$op"
+	if opwait dns "$op" 300; then ok "dns_operation удаления $1" "done"; else
+		row "dns_operation удаления $1" "не done" "за 5 мин: $why"
+		probe_dns_op "$op"
+	fi
+}
+
 area_dns() {
-	local domain="$prefix.test." zid rid op
+	local domain="$prefix.test." zid rid op nv
+	# D65 (1.6, #676; решение владельца #597, п. 25): приватная зона к VPC
+	# без DNS-сервера — отказ до вопроса (USAGE), зоны нет. Пустой VPC
+	# прогона DNS-сервера не имеет; он удаляется сразу после проверки.
+	must "vpc_create (без DNS-сервера)" vpc_create --arg name="$prefix-nodns" --arg description="evo e2e live run" || return 1
+	if opwait vpc "$(j -r .operation_id)" 600; then
+		nv=$res_id
+		[ -n "$nv" ] || nv=$(lst vpc "$prefix-nodns" | cut -f1 | head -1)
+		mask "$nv"
+		tc dns_zone_create --arg domain="$prefix-nodns.test." --arg type=private --arg vpc_id="$nv"
+		if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(lst dns "$prefix-nodns")" ]; then
+			ok "dns_zone_create: VPC без DNS-сервера" "USAGE до вопроса, зоны нет (D65)"
+		else bad "dns_zone_create: VPC без DNS-сервера" "код $rc, $reason; зон $prefix-nodns: $(lst dns "$prefix-nodns" | wc -l)"; fi
+		if [ -n "$nv" ] && must "vpc_delete (без DNS-сервера)" vpc_delete --arg id="$nv"; then
+			opwait vpc "$(j -r .operation_id)" 600 || bad "vpc_delete (без DNS-сервера)" "$why"
+		fi
+	else bad "vpc_create (без DNS-сервера)" "$why"; fi
 	must dns_zone_create dns_zone_create --arg domain="$domain" --arg type=private --arg description="evo e2e live run" || return 1
 	op=$(j -r .operation_id)
 	cov dns_zone_create
@@ -978,11 +1067,12 @@ area_dns() {
 	must dns_record_get dns_record_get --arg record_id="$rid" --arg type=private && ok dns_record_get "ttl $(j -r '.ttl // "?"')"
 	bound_check dns_record_get "$(jq -cn --arg i "$rid" '{record_id: $i, type: "private"}')" "allow-project: dns_record_get" own
 	must dns_record_delete dns_record_delete --arg record_id="$rid" --arg type=private || return 1
-	opwait dns "$(j -r .operation_id)" 300 || true
+	dns_delete_op записи
 	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" 'any(.records[]; .id == $id) | not' >/dev/null; }
 	if poll 300 15 norec; then ok dns_record_delete "записи нет"; cov dns_record_delete; else bad dns_record_delete "запись осталась через 5 мин"; fi
+	! probe_on dnslink || probe_dnslink "$zid"
 	must dns_zone_delete dns_zone_delete --arg id="$zid" --arg type=private || return 1
-	opwait dns "$(j -r .operation_id)" 300 || true
+	dns_delete_op зоны
 	# приватная зона 18.10 удалялась ~11,5 мин (run 39160570296)
 	local t0=$SECONDS
 	if poll 1500 20 gone dns "$prefix"; then
@@ -1263,9 +1353,12 @@ area_pgnet() {
 	host=$(printf '%s' "$cs" | grep -oE 'host=[^ ;,]+' | head -1 | cut -d= -f2)
 	[ -n "$host" ] || host=$(printf '%s' "$cs" | grep -oE '@[^:/@ ]+' | head -1 | cut -c2-)
 	[ -n "$host" ] || host=$(printf '%s' "$cs" | grep -oE '^[A-Za-z0-9.-]+(:[0-9]+)?$' | cut -d: -f1)
+	[ -n "$host" ] || host=$(printf '%s' "$cs" | sed -nE 's#^[a-z]+://([^:/@?]+).*#\1#p' | head -1)
 	mask "$host"
 	if [ -z "$host" ]; then
-		gap "DB-5: адрес кластера" "connection_string не разобран (тип $(j -r '.connection_string | type'))"
+		# Форма строки без значений (буквы и цифры — x) и ключи ответа: по
+		# ним следующий прогон разберёт адрес (run 150 — «не разобран»).
+		gap "DB-5: адрес кластера" "connection_string не разобран: форма «$(printf '%s' "$cs" | tr 'A-Za-z0-9' 'x' | tr -s 'x' | cut -c1-120)», ключи pg_get $(j -c 'keys' | cut -c1-300)"
 		return 0
 	fi
 	sname=$(evo tools call list_subnets --json | jq -r --arg id "$PG_SUBNET_ID" '[.subnets[]? | select(.id == $id) | .name // ""][0] // ""')

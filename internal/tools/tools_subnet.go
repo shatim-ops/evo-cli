@@ -199,12 +199,11 @@ func (s *Registry) planSubnetCreate(ctx context.Context, args map[string]any) (*
 				"Выберите сеть, которая не пересекается с подсетями VPC (list_subnets)."))
 	}
 	req := provision.CreateSubnetRequest{Name: name, ProjectID: pid, VPCID: vpcID, SubnetAddress: cidr.String(),
-		PrefixLength: cidr.Bits(), AvailabilityZoneID: zoneID, RoutedNetwork: routed, DNSServers: dns,
+		AvailabilityZoneID: zoneID, RoutedNetwork: routed, DNSServers: dns,
 		Description: stringArg(args, "description")}
 	preview := engine.CreatePreview{Resource: engine.ResourceSubnet, Name: name, ProjectID: pid,
 		Zone: &deployplan.RefSpec{ID: zoneID, Name: zoneName}}
 	preview.Add("cidr", req.SubnetAddress)
-	preview.Add("prefix_length", req.PrefixLength)
 	preview.Add("availability_zone_id", zoneID)
 	preview.Add("vpc_id", vpcID)
 	preview.Add("vpc_name", vpcName)

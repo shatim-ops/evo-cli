@@ -1024,7 +1024,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zone_delete",
-			Description: "Delete a DNS zone by id (from dns_zones) AND its records (async). type (public|private) is optional: evo finds it by the zone id. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a DNS zone by id (from dns_zones) AND its records. type (public|private) is optional: evo finds it by the zone id. A private zone linked to VPCs is refused: Cloud.ru deletes it only once its links are removed in the console. Waits up to 60 s: deleted, or deleting with operation_id (dns_operation). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("Zone UUID (from dns_zones). Required."),
 				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
