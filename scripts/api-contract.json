@@ -344,8 +344,10 @@
       "spec": "organization+iam/api.op.v3.yaml",
       "requests": [
         {"method": "GET", "path": "/v3/projects", "code": "internal/cli/configure.go:37", "query": ["page_token"], "paginates": true, "reads": ["projects[].id", "projects[].name", "projects[].status", "projects[].organization_unit_id", "next_page_token"], "statuses": [400, 401, 403]},
-        {"method": "GET", "path": "/v3/quotas/usages", "code": "internal/tools/tools_admin.go:237", "query": ["page_size=200", "subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT", "subject_ids", "page_token"], "paginates": true,
-         "reads": ["usages[].resource_type_code", "usages[].individual_limit", "usages[].individual_usage", "next_page_token"], "statuses": [403]}
+        {"method": "GET", "path": "/v3/quotas/usages", "code": "internal/tools/tools_admin.go:238", "query": ["page_size=200", "subject_type_codes=QUOTA_SUBJECT_TYPE_PROJECT", "subject_ids", "page_token"], "paginates": true,
+         "reads": ["usages[].resource_type_code", "usages[].individual_limit", "usages[].individual_usage", "next_page_token"], "statuses": [403]},
+        {"method": "GET", "path": "/v3/quotas/resourceTypes", "code": "internal/tools/tools_admin.go:322",
+         "reads": ["resource_types[].code", "resource_types[].name", "resource_types[].product_name", "resource_types[].unit"], "statuses": [403]}
       ]
     },
     {

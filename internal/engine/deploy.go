@@ -782,6 +782,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		return rec, err
 	}
 
+	var vmPollRefusals refusals
 	for {
 		select {
 		case sig := <-sigCh:
@@ -795,12 +796,15 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			wait.Show()
 		case <-pollTick:
 			updated, err := e.Cloud.GetVM(ctx, vm.ID)
+			keyRefused := vmPollRefusals.keyRefused(err)
 			if err != nil {
 				// An expired or refused key does not get better by waiting
 				// out the timeout: stop now with its code (exit 2). The VM
-				// is in the state already (break r3a R3A-4).
-				if r := clerrors.Reason(err); r == clerrors.CodeAuthExpired || r == clerrors.CodeAuthFailed {
-					return rec, clerrors.Wrap(r,
+				// is in the state already (break r3a R3A-4). One refused
+				// token is the sleep's, not the key's: the next poll takes
+				// a new one (refusals).
+				if keyRefused {
+					return rec, clerrors.Wrap(clerrors.Reason(err),
 						i18n.Tf("VM %s was created, but checking it failed: the key was refused (%v)",
 							"ВМ %s создана, но проверить её не удалось: ключ отклонён (%v)", vm.ID, err),
 						i18n.Tf("VM %s is billed and recorded in the state. Check the key ('evo whoami'), then run 'evo deploy' again to finish, or 'evo destroy' to delete it.",
@@ -1202,10 +1206,15 @@ func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) err
 	t := e.timings()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(t.settlePolls())*t.FIPPollInterval+30*time.Second)
 	defer cancel()
+	var refused refusals
 	for try := 0; ; try++ {
 		err := e.Cloud.DeleteFloatingIP(ctx, fip.ID, projectID)
 		if err == nil {
 			return nil
+		}
+		// One refused token after a sleep: the next try takes a new one.
+		if refusedToken(err) && !refused.keyRefused(err) {
+			continue
 		}
 		if provision.NotInCurrentState(err) && try < t.settlePolls() {
 			if try == 0 {

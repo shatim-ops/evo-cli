@@ -93,16 +93,7 @@ var sleepWorldOut = map[string]string{
 // the sleep dropped is the transport's: a poll is a GET, repeated
 // (httpretry, TestTransportErrorRetriedOnGet), on every client
 // (TestNoHandBuiltTransport).
-var sleepBreaksWait = map[string]string{
-	"ar_operation":    "the wait passes the 401 of one poll up (waitForOpJSON returns the first error of fetch)",
-	"cert_operation":  "the wait passes the 401 of one poll up (waitForOpJSON returns the first error of fetch)",
-	"dns_operation":   "the wait passes the 401 of one poll up (waitForOpJSON returns the first error of fetch)",
-	"kafka_operation": "the wait passes the 401 of one poll up (waitForOpJSON returns the first error of fetch)",
-	"lb_operation":    "the wait passes the 401 of one poll up (waitForOpJSON returns the first error of fetch)",
-	"pg_operation":    "the wait passes the 401 of one poll up (waitForOpJSON returns the first error of fetch)",
-	"redis_operation": "the wait passes the 401 of one poll up (waitForOpJSON returns the first error of fetch)",
-	"vpc_operation":   "the wait passes the 401 of one poll up (waitForOpJSON returns the first error of fetch)",
-}
+var sleepBreaksWait = map[string]string{}
 
 // sleepWorld returns a registry whose engine signs in through IAM on c,
 // as the CLI and evo mcp do (one provider per process).

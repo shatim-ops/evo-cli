@@ -43,7 +43,7 @@ var silentWaits = map[string]struct{ why, item string }{
 	"internal/journal/journal.go\tlock":                    {why: silentLock},
 	"internal/state/lock.go\tFileLock":                     {why: silentLock},
 	"internal/state/lock.go\tLockWait":                     {why: silentLock},
-	"internal/httpretry/httpretry.go\tTransport.RoundTrip": {why: silentRetry},
+	"internal/httpretry/httpretry.go\tTransport.roundTrip": {why: silentRetry},
 	"internal/mk8s/kubeconfig.go\tFetchOIDCToken":          {why: silentRetry},
 	"internal/mcp/server.go\tServer.RunContext":            {why: silentLoop},
 	// stack_status answers the state of the job: its answer is the report.

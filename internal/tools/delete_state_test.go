@@ -107,14 +107,14 @@ func TestDeletePlan_FailedRefusalSaysWhereToDelete(t *testing.T) {
 // Full audit 1.5, FB150-2: the way out of a status is the answer to the
 // platform's refusal only. An expired key (401), a missing role (403), a
 // rate limit (429) or a cut connection on the DELETE of a resource read in
-// FAILED or CREATING keeps the hint of its own reason: «delete it in the
+// FAILED keeps the hint of its own reason: «delete it in the
 // console» does not fix an expired key. resource_status stays: the status
 // read before the question is still true, and 1.5 answers with it, so
 // dropping it would be a breaking change.
 func TestDeletePlan_WayOutOnlyForTheRefusal(t *testing.T) {
 	r := newTestServer()
 	id := "00000000-0000-4000-8000-0000000000fa"
-	for _, status := range []string{"FAILED", "ERROR", "ERROR_DELETING", "CREATING", "DEPLOYING", "PROVISIONING"} {
+	for _, status := range []string{"FAILED", "ERROR", "ERROR_DELETING"} {
 		for _, code := range []string{clierrors.CodeAuthRequired, clierrors.CodeAuthExpired, clierrors.CodeAuthFailed,
 			clierrors.CodeAPIRateLimited, clierrors.CodeAPIUnreachable} {
 			own := "the hint of " + code
@@ -156,6 +156,67 @@ func TestNotTheState_EveryKeyAndConnectionReason(t *testing.T) {
 	for _, c := range codes {
 		if !notTheState[c[1]] && theRefusal[c[1]] == "" {
 			t.Errorf("%s: neither in notTheState nor a refusal the status explains", c[1])
+		}
+	}
+}
+
+// D61 (#621, option A): a resource still being created (DEPLOYING,
+// CREATING, PROVISIONING) is refused before the question — USAGE, exit
+// code 1, its status in the answer and the way out «wait» — and nothing
+// is deleted; before 1.6 the question was asked and Cloud.ru refused
+// after it (DB-17, DB-19, NET-11).
+func TestDeletePlan_PassingStateRefusedBeforeTheQuestion(t *testing.T) {
+	r := newTestServer()
+	id := "00000000-0000-4000-8000-0000000000fb"
+	for _, status := range []string{"DEPLOYING", "CREATING", "PROVISIONING", "creating"} {
+		deleted := false
+		p := r.deletePlan("kafka_delete", "kafka_delete deletes %s.", "kafka_delete удаляет %s.", id,
+			func() (map[string]any, error) { return map[string]any{"id": id, "name": "kf-1", "status": status}, nil },
+			func(context.Context) (string, bool) {
+				deleted = true
+				return toJSON(map[string]any{"status": "deleting"}), false
+			})
+		if p.Execute != nil || p.Preview != nil {
+			t.Errorf("%s: the delete asks the question", status)
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(p.answer), &m); err != nil {
+			t.Fatal(err)
+		}
+		hint, _ := m["hint"].(string)
+		if !p.answerErr || m["reason"] != clierrors.CodeUsage || m["resource_status"] != status || !strings.Contains(hint, "wait") || deleted {
+			t.Errorf("%s: want USAGE before the question with the status and «wait», nothing deleted: %s", status, p.answer)
+		}
+	}
+}
+
+// D61 (#621, option A, «DEPLOYING, ERASING…»): a resource Cloud.ru is
+// already deleting (DELETING, ERASING) is answered without the question and
+// without a DELETE — status deleting, already_deleting, exit code 0 — as a
+// repeated delete is (D26); before, the question was asked (DELETING with a
+// warning, ERASING with none) and Cloud.ru answered after it.
+func TestDeletePlan_DeletingStateAnsweredWithoutTheQuestion(t *testing.T) {
+	r := newTestServer()
+	id := "00000000-0000-4000-8000-0000000000fc"
+	for _, status := range []string{"DELETING", "ERASING", "deleting"} {
+		deleted := false
+		p := r.deletePlan("pg_delete", "pg_delete deletes %s.", "pg_delete удаляет %s.", id,
+			func() (map[string]any, error) { return map[string]any{"id": id, "name": "pg-1", "status": status}, nil },
+			func(context.Context) (string, bool) {
+				deleted = true
+				return toJSON(map[string]any{"status": "deleting"}), false
+			})
+		if p.Execute != nil || p.Preview != nil {
+			t.Errorf("%s: the delete asks the question", status)
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(p.answer), &m); err != nil {
+			t.Fatal(err)
+		}
+		if p.answerErr || m["status"] != "deleting" || m["already_deleting"] != true || m["resource_status"] != status || deleted {
+			t.Errorf("%s: want status deleting without the question and no DELETE: %s", status, p.answer)
 		}
 	}
 }
