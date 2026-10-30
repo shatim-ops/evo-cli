@@ -73,6 +73,11 @@ type Estimate struct {
 // live 16.10.2026): a license is not in the price.
 const SourceAPI = "price-calculation API (Cloud.ru); image license not included"
 
+// SourceVCPURAM is the Source of an estimate by the card's rates of a vCPU
+// and a GB of RAM: one rate of a vCPU, whatever share of a core it
+// guarantees.
+const SourceVCPURAM = "estimate: rate-card (vCPU+RAM); not a billed price"
+
 // Breakdown is the components of an API price, in roubles per Period. The
 // API does not say the period of its components: Period is "month" or "hour"
 // when they add up to total_price_month or total_price_hour, "unknown"
@@ -196,7 +201,7 @@ func EstimateFor(flavorName string, vcpus, ramGB int, diskGB int, diskType strin
 	c := load()
 
 	var hourly float64
-	source := "estimate: rate-card (vCPU+RAM); not a billed price"
+	source := SourceVCPURAM
 	if v, ok := c.FlavorHourly[flavorName]; ok {
 		hourly = v
 		source = "estimate: rate-card (flavor); not a billed price"

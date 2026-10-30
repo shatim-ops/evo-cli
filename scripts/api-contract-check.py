@@ -44,6 +44,9 @@ last update, no more of the spec) it also reports, per request:
                 not with every field under it.
   field-gone    a field of the baseline the spec no longer has: `info`
   field-baseline-missing  a request without a baseline: `warn`
+  impact-unknown  a field of "impact" (the fields of a create that bear on
+                  its price, work or security) the body of the spec does
+                  not have: `error`
 
 --update-fields rewrites the baseline from the specs, once the new fields
 are read or accepted (a version's step, or a PR that reads a new field).
@@ -368,6 +371,13 @@ def check_request(spec, req):
         props, required, _ = merge_schema(bs)
         if required:
             add("error", "body-missing", f"спецификация требует тело с полями {sorted(required)}")
+
+    # --- fields of impact (CLAUDE.md §6, axis 4): each is a field of the body ---
+    impact = req.get("impact") or {}
+    if impact and bs is not None:
+        for f in sorted(impact):
+            if walk(bs, f) is None:
+                add("error", f"impact-unknown:{f}", f"поле влияния `{f}` не описано в теле запроса — опечатка или поле убрали")
 
     # --- response fields read ---
     rs = success_schema(op)
