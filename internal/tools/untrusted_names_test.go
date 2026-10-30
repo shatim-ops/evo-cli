@@ -169,6 +169,8 @@ func TestUntrusted_FieldsMarked(t *testing.T) {
 // preview, which names the resource it would delete. metrics_scrape answers
 // the body of the cloud's answer as it is (exposition): workload text, like
 // a log, for untrustedFields — reported to «разработка» with this list.
+// Closes by 1.8: a line lives at most two versions (release plan 1.6,
+// «храповики со сроком»; TestMisses_HaveADeadline).
 var namesUnmarked = map[string]bool{
 	"ar_delete":            true,
 	"ar_get":               true,

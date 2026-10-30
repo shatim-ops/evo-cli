@@ -1,0 +1,47 @@
+name: weekly-misses
+
+# Сроки перечней пропусков раз в неделю (план 1.6, «храповики со сроком»;
+# решение владельца 29.10, #578): строка перечня «only shrinks», срок
+# которой («Closes by 1.N») уже достигнут выпущенной версией (CHANGELOG.md),
+# — красный прогон и issue (weekly-issue.yml), а не красный PR. В PR тот же
+# тест только пишет в лог, сколько строк и какие просрочены.
+# Время — UTC, воскресенье 05:47 по Москве.
+
+on:
+  schedule:
+    - cron: "47 2 * * 0"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  deadlines:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Та же версия, что в ci.yml; поднимать вместе.
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+
+      - name: Сроки перечней пропусков
+        env:
+          EVO_MISS_DEADLINE: "1"
+        run: go test ./internal/testrules/ -count=1 -run '^TestMisses_HaveADeadline$' -v
+
+  report:
+    needs: deadlines
+    if: failure()
+    permissions:
+      issues: write
+    uses: ./.github/workflows/weekly-issue.yml
+    with:
+      title: "weekly-misses: просрочены строки перечней пропусков"
+      what: "Строки перечней «only shrinks» живут дольше срока «Closes by 1.N» — выпущенная версия его достигла. Какие — в логе job (TestMisses_HaveADeadline). Строку закрывает её хозяин («разработка» или «Процесс»); перенос срока — решение «релиза» строкой плана."
