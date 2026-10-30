@@ -753,14 +753,15 @@ area_net() {
 	# адрес назван не префиксом ВМ B: уборка освобождает fip-<префикс>*, этот — по id
 	echo "$fip" >"$tmp/fip_id"
 
-	# D57 (1.6): подсеть по имени. Имени, которого нет, — отказ до вопроса
-	# (USAGE), ВМ нет; ВМ B создаётся с подсетью зоны по имени (имя
+	# D57 (1.6): подсеть по имени. Имени, которого нет, — отказ до записи с
+	# прежним reason обработчика (CONFIG_INVALID «не из проекта», код 2; D57:
+	# «отказ и reason не меняются»), ВМ нет; ВМ B создаётся с подсетью зоны по имени (имя
 	# единственное в проекте — два совпадения D57 отвергает): платформа
 	# приняла бы имя в поле id только как 4xx, так что созданная ВМ значит,
 	# что ушёл UUID.
 	tc provision --arg name="$prefix-nosn" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg subnet_id="$prefix-no-such-subnet"
-	if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(lst vm "$prefix-nosn")" ]; then
-		ok "provision: подсети с таким именем нет" "USAGE до вопроса, ВМ нет (D57)"
+	if [ "$rc" = 2 ] && [ "${reason%%,*}" = CONFIG_INVALID ] && [ -z "$(lst vm "$prefix-nosn")" ]; then
+		ok "provision: подсети с таким именем нет" "CONFIG_INVALID до записи, ВМ нет (D57)"
 	else bad "provision: подсети с таким именем нет" "код $rc, $reason; ВМ $prefix-nosn: $(lst vm "$prefix-nosn" | wc -l)"; fi
 	local snname
 	snname=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | .name // "" | select(. != "")] as $all
