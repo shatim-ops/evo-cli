@@ -355,7 +355,7 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 	if vpcID == "" {
 		return nil, errors.New(i18n.T("could not resolve vpc_id — pass it explicitly", "не удалось определить vpc_id — передайте его"))
 	}
-	zone, subnetID, warnings, err := lbZoneAndSubnet(ctx, eng, args, tg, vpcID)
+	zone, subnetID, subnetName, warnings, err := lbZoneAndSubnet(ctx, eng, args, tg, vpcID)
 	if err != nil {
 		return nil, err
 	}
@@ -398,9 +398,12 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		"subnet_id": subnetID, "zone": firstNonEmptyStr(zone.Name, zone.ID), "external": external,
 		"health_check": healthCheck,
 	}
+	if subnetName != "" {
+		willCreate["subnet_name"] = subnetName
+	}
 	tgName, _ := tg["name"].(string)
 	preview := willPreview(engine.ResourceLB, name, firstNonEmptyStr(zone.Name, zone.ID), willCreate,
-		[]string{"listener", "health_check_port", "health_check", "external", "subnet_id"}, warnings...)
+		[]string{"listener", "health_check_port", "health_check", "external", "subnet_id", "subnet_name"}, warnings...)
 	preview.Add("target_group_id", tgID)
 	preview.Add("target_group_name", tgName)
 	preview.Add("vpc_id", vpcID)
@@ -457,15 +460,17 @@ func (s *Registry) vpcName(ctx context.Context, id string) string {
 // configuration the request went with an empty availability_zone_specs[0]
 // (API 400), and the subnet was the project's first one, of any zone and
 // VPC (release audit, L-26).
-func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[string]any, vpcID string) (provision.AvailabilityZone, string, []string, error) {
+// lbZoneAndSubnet's subnet name is the one the list of the project's
+// subnets gives (Линия CLI): read here, not again.
+func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[string]any, vpcID string) (provision.AvailabilityZone, string, string, []string, error) {
 	var none provision.AvailabilityZone
 	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
 	if err != nil {
-		return none, "", nil, fmt.Errorf(i18n.T("list availability zones: %w", "список зон доступности: %w"), err)
+		return none, "", "", nil, fmt.Errorf(i18n.T("list availability zones: %w", "список зон доступности: %w"), err)
 	}
 	subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
 	if err != nil {
-		return none, "", nil, fmt.Errorf(i18n.T("resolve subnet: %w", "выбор подсети: %w"), err)
+		return none, "", "", nil, fmt.Errorf(i18n.T("resolve subnet: %w", "выбор подсети: %w"), err)
 	}
 	find := func(ref string) *provision.AvailabilityZone {
 		for _, z := range zones {
@@ -484,7 +489,7 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 			}
 		}
 		if subnet == nil {
-			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
+			return none, "", "", nil, clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
 				i18n.T("Take a subnet ID from list_subnets, or omit subnet_id: the zone's main subnet of the balancer's VPC is taken.", "Возьмите ID подсети из list_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны в VPC балансировщика."))
 		}
 	}
@@ -494,7 +499,7 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	from := ""
 	if ref := stringArg(args, "zone"); ref != "" {
 		if zone = find(ref); zone == nil {
-			return none, "", nil, clierrors.New(clierrors.CodeUsage, i18n.Tf("availability zone %q not found", "зона доступности %q не найдена", ref),
+			return none, "", "", nil, clierrors.New(clierrors.CodeUsage, i18n.Tf("availability zone %q not found", "зона доступности %q не найдена", ref),
 				i18n.T("See list_zones (evo list-zones) for the zone names.", "Имена зон — в выводе list_zones (evo list-zones)."))
 		}
 		from = "zone"
@@ -538,7 +543,7 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 		}
 	}
 	if zone == nil {
-		return none, "", nil, clierrors.New(clierrors.CodeUsage,
+		return none, "", "", nil, clierrors.New(clierrors.CodeUsage,
 			i18n.T("cannot tell the balancer's availability zone: the target group names no zone of its VMs and no region is configured", "зона доступности балансировщика неизвестна: в целевой группе нет зоны её ВМ, и region не задан"),
 			i18n.T("Pass zone (name or UUID, see list_zones) or subnet_id.", "Передайте zone (имя или UUID, см. list_zones) или subnet_id."))
 	}
@@ -547,16 +552,16 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 		// A subnet of another VPC went to the API as is and got a 400
 		// without the field (Grok review of PR #89, the class of L-26).
 		if subnet.VPCID != "" && vpcID != "" && subnet.VPCID != vpcID {
-			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
+			return none, "", "", nil, clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("subnet %s is not in VPC %s of the balancer; nothing was created", "подсеть %s не в VPC %s балансировщика; ничего не создано", subnetID, vpcID),
 				i18n.T("Pass a subnet of that VPC (list_subnets), or omit subnet_id.", "Передайте подсеть этой VPC (list_subnets) или не указывайте subnet_id."))
 		}
 		if from != "subnet_id" && !provision.SubnetInZone(subnet, zone.ID, zone.Name) {
-			return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
+			return none, "", "", nil, clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("subnet %s is not in zone %s; nothing was created", "подсеть %s не в зоне %s; ничего не создано", subnetID, firstNonEmptyStr(zone.Name, zone.ID)),
 				i18n.T("Pass a subnet of that zone (list_subnets), or omit subnet_id.", "Передайте подсеть этой зоны (list_subnets) или не указывайте subnet_id."))
 		}
-		return *zone, subnetID, warnings, nil
+		return *zone, subnetID, subnet.Name, warnings, nil
 	}
 	var inVPC []*provision.Subnet
 	for _, sn := range subs {
@@ -566,12 +571,12 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	}
 	i := provision.PickSubnet(inVPC, zone.ID, zone.Name)
 	if i < 0 {
-		return none, "", nil, clierrors.New(clierrors.CodeConfigInvalid,
+		return none, "", "", nil, clierrors.New(clierrors.CodeConfigInvalid,
 			i18n.Tf("no subnet of VPC %s in zone %s for the balancer; nothing was created", "в зоне %s нет подсети VPC %s для балансировщика; ничего не создано", vpcID, firstNonEmptyStr(zone.Name, zone.ID)),
 			i18n.T("Pass subnet_id (list: list_subnets) of a subnet in that zone and VPC, or another zone; if the project has no subnet in any zone, create one in the Cloud.ru console.",
 				"Передайте subnet_id (список: list_subnets) подсети этой зоны и VPC или другую зону; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
 	}
-	return *zone, inVPC[i].ID, warnings, nil
+	return *zone, inVPC[i].ID, inVPC[i].Name, warnings, nil
 }
 
 func (s *Registry) planLbDelete(ctx context.Context, args map[string]any) (*Plan, error) {

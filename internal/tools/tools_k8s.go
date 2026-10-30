@@ -132,10 +132,12 @@ func (s *Registry) handleK8sOptions(ctx context.Context, args map[string]any) (s
 // k8sPlan is a resolved cluster create: the request, the names of its zone
 // and flavor, and the warnings of the resolution.
 type k8sPlan struct {
-	req      mk8s.CreateClusterReq
-	zone     string
-	flavor   mk8s.Flavor
-	warnings []string
+	req  mk8s.CreateClusterReq
+	zone string
+	// subnetName is the VIP subnet's name, read with it (Линия CLI).
+	subnetName string
+	flavor     mk8s.Flavor
+	warnings   []string
 }
 
 // resolved is what the plan settles that the arguments may leave open, for
@@ -143,7 +145,7 @@ type k8sPlan struct {
 func (p k8sPlan) resolved() map[string]any {
 	cp := p.req.ControlPlaneConfiguration
 	return map[string]any{
-		"zone": p.zone, "subnet_id": p.req.NetworkConfiguration.PrivateVipSubnetID,
+		"zone": p.zone, "subnet_id": p.req.NetworkConfiguration.PrivateVipSubnetID, "subnet_name": p.subnetName,
 		"flavor": p.flavor.Name, "cpu": p.flavor.CPU, "ram_gb": p.flavor.RAM,
 		"version": cp.Version, "master_count": cp.SizingConfiguration.MasterCount,
 		"kube_api_internet": p.req.NetworkConfiguration.KubeApiInternet,
@@ -248,7 +250,7 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8s
 	if err != nil {
 		return k8sPlan{}, err
 	}
-	subnetID, err := s.k8sVIPSubnet(ctx, pid, stringArg(args, "subnet_id"), zone)
+	subnetID, subnetName, err := s.k8sVIPSubnet(ctx, pid, stringArg(args, "subnet_id"), zone)
 	if err != nil {
 		return k8sPlan{}, err
 	}
@@ -280,7 +282,7 @@ func (s *Registry) resolveK8sPlan(ctx context.Context, args map[string]any) (k8s
 		NetworkConfiguration:  mk8s.NetworkConfiguration{PrivateVipSubnetID: subnetID, KubeApiInternet: kubeApiInternet},
 		IdentityConfiguration: mk8s.IdentityConfiguration{ClusterSaID: clusterSaID},
 	}
-	return k8sPlan{req: req, zone: zone.name, flavor: flavor, warnings: warnings}, nil
+	return k8sPlan{req: req, zone: zone.name, subnetName: subnetName, flavor: flavor, warnings: warnings}, nil
 }
 
 // handleK8sPlan resolves and shows the cluster config without creating it.
@@ -301,6 +303,7 @@ func (s *Registry) handleK8sPlan(ctx context.Context, args map[string]any) (stri
 		"flavor":            plan.flavor.Name,
 		"flavor_id":         req.ControlPlaneConfiguration.SizingConfiguration.FlavorID,
 		"subnet_id":         req.NetworkConfiguration.PrivateVipSubnetID,
+		"subnet_name":       plan.subnetName,
 		"cluster_sa_id":     req.IdentityConfiguration.ClusterSaID,
 		"kube_api_internet": req.NetworkConfiguration.KubeApiInternet,
 		"warnings":          plan.warnings,
@@ -752,14 +755,14 @@ func (s *Registry) subnetZoneID(ctx context.Context, pid, subnetID string) strin
 // and the VIP to another, and the cluster's nodes stayed NotReady; the
 // lookup used to fall back to the project's first subnet of any zone
 // (release audit, L-08).
-func (s *Registry) k8sVIPSubnet(ctx context.Context, pid, subnetID string, zone k8sZoneRef) (string, error) {
+func (s *Registry) k8sVIPSubnet(ctx context.Context, pid, subnetID string, zone k8sZoneRef) (id, name string, err error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	subs, err := eng.Cloud.ListSubnets(ctx, pid)
 	if err != nil {
-		return "", fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
+		return "", "", fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
 	}
 	if subnetID != "" {
 		for _, sn := range subs {
@@ -767,23 +770,26 @@ func (s *Registry) k8sVIPSubnet(ctx context.Context, pid, subnetID string, zone 
 				continue
 			}
 			if !provision.SubnetInZone(sn, zone.computeID, zone.name) {
-				return "", clierrors.New(clierrors.CodeConfigInvalid,
+				return "", "", clierrors.New(clierrors.CodeConfigInvalid,
 					i18n.Tf("subnet %s is not in zone %s, where the control plane goes; nothing was created", "подсеть %s не в зоне %s, где будут мастер-узлы; ничего не создано", subnetID, zone.name),
 					i18n.T("Pass a subnet of that zone (list_subnets), or pass zone = the subnet's zone.", "Передайте подсеть этой зоны (list_subnets) или zone — зону подсети."))
 			}
-			return subnetID, nil
+			return subnetID, sn.Name, nil
 		}
-		return "", clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
+		return "", "", clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
 			i18n.T("Take a subnet ID from list_subnets, or omit subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из list_subnets или не указывайте subnet_id: возьмётся основная подсеть зоны."))
 	}
 	if i := provision.PickSubnet(subs, zone.computeID, zone.name); i >= 0 {
-		return subs[i].ID, nil
+		return subs[i].ID, subs[i].Name, nil
 	}
-	return "", clierrors.New(clierrors.CodeConfigInvalid,
+	return "", "", clierrors.New(clierrors.CodeConfigInvalid,
 		i18n.Tf("no subnet in zone %s for the control-plane VIP; nothing was created", "в зоне %s нет подсети для VIP мастер-узлов; ничего не создано", zone.name),
 		i18n.T("Pass subnet_id (list: list_subnets) or another zone; if the project has no subnet in any zone, create one in the Cloud.ru console.",
 			"Передайте subnet_id (список: list_subnets) или другую зону; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
 }
+
+// k8sVIPSubnet also gives the subnet's name as the list gives it (Линия
+// CLI), read here, not again.
 
 // clusterZoneID is the zone ID of the cluster's control plane
 // (controlPlane.zones[0] of GET /v3/clusters/{id}), "" when the cluster
@@ -869,7 +875,7 @@ func k8sPreview(resource, name string, args, resolved map[string]any) engine.Cre
 	}
 	p.Add("cluster_id", stringArg(args, "cluster_id"))
 	skip := []string{"name", "zone", "cluster_id"}
-	for _, k := range []string{"flavor", "cpu", "ram_gb", "count", "disk_gb", "version", "master_count", "subnet_id", "nodes_subnet_id", "security_group_id", "kube_api_internet"} {
+	for _, k := range []string{"flavor", "cpu", "ram_gb", "count", "disk_gb", "version", "master_count", "subnet_id", "subnet_name", "nodes_subnet_id", "security_group_id", "kube_api_internet"} {
 		if v, ok := resolved[k]; ok {
 			p.Add(k, v)
 			skip = append(skip, k)
