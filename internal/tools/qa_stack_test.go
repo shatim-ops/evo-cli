@@ -130,7 +130,7 @@ func TestQA_StackPlanRejectsBrokenDependencies(t *testing.T) {
 	}
 
 	var manifest map[string]any
-	_ = json.Unmarshal([]byte(`{"name":"ok","vm":{"name":"v","image":"Ubuntu-24.04","zone":"ru.AZ-1"},"nlb":{"name":"lb","port":80},"dns":{"zone_id":"z","name":"www"}}`), &manifest)
+	_ = json.Unmarshal([]byte(`{"name":"ok","vm":{"name":"v","image":"Ubuntu-24.04","zone":"ru.AZ-1"},"nlb":{"name":"lb","port":80,"external":true},"dns":{"zone_id":"z","name":"www"}}`), &manifest)
 	if got := callTool(t, r.handleStackPlan, map[string]any{"manifest": manifest}); got["status"] != "planned" {
 		t.Errorf("valid stack: %v", got)
 	}

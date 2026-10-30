@@ -9,6 +9,7 @@
 package httpretry
 
 import (
+	"context"
 	"io"
 	"mime"
 	"net/http"
@@ -110,6 +111,41 @@ func OnTokenRejected(f func(token string)) {
 	tokenRejected.Store(&f)
 }
 
+// tokenRenewed is asked for the token that replaces a refused one
+// (OnTokenRenewed).
+var tokenRenewed atomic.Pointer[func(ctx context.Context, token string) (string, bool)]
+
+// OnTokenRenewed sets f to be asked, for the bearer token a service
+// refused, the token that replaces it: a new one from the provider that
+// issued it, and the request goes once more with that. A service client takes its token once, when it is built; after
+// the machine slept the services refuse it, and a wait would end with
+// the 401 of one poll while the operation goes on (process backlog 1.6,
+// priority 1). nil stops it.
+func OnTokenRenewed(f func(ctx context.Context, token string) (string, bool)) {
+	if f == nil {
+		tokenRenewed.Store(nil)
+		return
+	}
+	tokenRenewed.Store(&f)
+}
+
+// renewedToken is req with the bearer token its provider renewed, or req
+// as it is.
+func renewedToken(req *http.Request) *http.Request {
+	tok, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
+	f := tokenRenewed.Load()
+	if !ok || f == nil {
+		return req
+	}
+	fresh, ok := (*f)(req.Context(), tok)
+	if !ok || fresh == tok {
+		return req
+	}
+	r := req.Clone(req.Context())
+	r.Header.Set("Authorization", "Bearer "+fresh)
+	return r
+}
+
 // answer is the response both transports return: an HTML page as a 502
 // (HTMLAsBadGateway), and a 401 to a bearer token reported to
 // OnTokenRejected.
@@ -171,6 +207,30 @@ func withUserAgent(req *http.Request) *http.Request {
 // RoundTrip implements http.RoundTripper.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = withUserAgent(req)
+	resp, err := t.roundTrip(req)
+	if err != nil || resp.StatusCode != http.StatusUnauthorized {
+		return resp, err
+	}
+	// A refused token (answer has reported it) is tried once with the
+	// one its provider renews: a 401 applied nothing. Refused again, it is
+	// the key's, and the 401 is the answer.
+	again := renewedToken(req)
+	if again == req || (req.Body != nil && req.Body != http.NoBody && req.GetBody == nil) {
+		return resp, nil
+	}
+	if req.Body != nil && req.Body != http.NoBody {
+		body, err := req.GetBody()
+		if err != nil {
+			return resp, nil
+		}
+		again.Body = body
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
+	return t.roundTrip(again)
+}
+
+func (t *Transport) roundTrip(req *http.Request) (*http.Response, error) {
 	backoff := t.Backoff
 	if backoff <= 0 {
 		backoff = time.Second

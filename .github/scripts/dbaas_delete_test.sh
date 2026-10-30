@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Проверка dbaas-delete.sh (job ci) на поддельном evo: ERASED и пропавший из
 # списка кластер — удалён, повтор удаления без согласия — already_deleted
-# (D44, D26); FAILED — сразу ошибка, без повторов 120 мин (D44). Облака нет.
+# (D44, D26); FAILED — сразу ошибка, без повторов 120 мин (D44); по префиксу
+# (уборка cleanup_only) FAILED не мешает удалить остальные; DBAAS_ONCE (отмена
+# прогона) — одна попытка, без ожидания. Облака нет.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 fail=0
@@ -16,13 +18,14 @@ trap 'rm -rf "$work"' EXIT
 fake_evo_install "$work/bin"
 
 # run ИМЯ КОД_ВЫХОДА ЧИСЛО_ВЫЗОВОВ_С_YES СПИСОК.0 [СПИСОК.1 …] — ответы
-# kafka_delete уже положены в $FAKE_DIR (fresh).
+# kafka_delete уже положены в $FAKE_DIR (fresh). CLUSTER — второй аргумент
+# скрипта (имя или префикс со «*»), ONCE — DBAAS_ONCE.
 run() {
 	local name=$1 want=$2 yes=$3 i=0 rc got
 	shift 3
 	for l in "$@"; do fake_evo_answer kafka_list "$i" 0 "$l"; i=$((i + 1)); done
 	set +e
-	PATH="$work/bin:$PATH" DBAAS_POLL=0 RUNNER_TEMP="$FAKE_DIR" "$here/dbaas-delete.sh" kafka evo-e2e-kafka >"$FAKE_DIR/out" 2>&1
+	PATH="$work/bin:$PATH" DBAAS_POLL=0 DBAAS_ONCE="${ONCE:-}" RUNNER_TEMP="$FAKE_DIR" "$here/dbaas-delete.sh" kafka "${CLUSTER:-evo-e2e-kafka}" >"$FAKE_DIR/out" 2>&1
 	rc=$?
 	set -e
 	got=$(grep -c 'yes=1' "$FAKE_DIR/evo-calls" 2>/dev/null || true)
@@ -90,6 +93,36 @@ grep -q 'кластера уже нет' "$FAKE_DIR/out" || { echo "FAIL notfoun
 fresh empty
 run empty 0 0 "$none"
 if grep -q '_delete' "$FAKE_DIR/evo-calls"; then echo "FAIL empty: был вызов удаления"; fail=1; fi
+
+# Уборка по префиксу: старый evo-e2e-kafka в FAILED (DB-17) не мешает
+# удалить кластер прогона evo-e2e-kafka-r7a1; чужой audit-kafka не трогается.
+# Код 1 — FAILED остался, оба удаления с --yes сделаны.
+two='{"clusters":[{"id":"a","name":"evo-e2e-kafka","status":"FAILED"},{"id":"b","name":"evo-e2e-kafka-r7a1","status":"RUNNING"},{"id":"c","name":"audit-kafka","status":"RUNNING"}]}'
+two_erased='{"clusters":[{"id":"a","name":"evo-e2e-kafka","status":"FAILED"},{"id":"b","name":"evo-e2e-kafka-r7a1","status":"ERASED"},{"id":"c","name":"audit-kafka","status":"RUNNING"}]}'
+fresh prefix
+fake_evo_answer kafka_delete.yes 0 5 '{"error":{"code":5,"reason":"API_ERROR","message":"delete cluster: dbaas API 500","hint":"Cloud.ru does not delete a FAILED cluster: delete it in the Cloud.ru console or contact support"}}'
+fake_evo_answer kafka_delete.yes 1 0 '{"status":"deleting","id":"b"}'
+CLUSTER='evo-e2e-*' run prefix 1 2 "$two" "$two_erased"
+
+# По префиксу один старый evo-e2e-kafka в FAILED: одно удаление, код 1.
+fresh prefix-old
+fake_evo_answer kafka_delete.yes 0 5 '{"error":{"code":5,"reason":"API_ERROR","message":"delete cluster: dbaas API 500","hint":"Cloud.ru does not delete a FAILED cluster: delete it in the Cloud.ru console or contact support"}}'
+CLUSTER='evo-e2e-*' run prefix-old 1 1 "$failed"
+
+# Префикс без «evo-e2e-» — отказ, ничего не вызывается.
+fresh prefix-foreign
+CLUSTER='evo-*' run prefix-foreign 2 0 "$two"
+
+# Отмена прогона (DBAAS_ONCE): кластер ещё создаётся — одна попытка, код 1,
+# без повторов раз в 60 с до 120 мин (run 147 не отменялся без force cancel).
+fresh once
+fake_evo_answer kafka_delete.yes 0 5 '{"error":{"code":5,"reason":"API_ERROR","message":"delete cluster: dbaas API 400: FailedPrecondition: cluster is DEPLOYING"}}'
+ONCE=true run once 1 1 "$deploying" "$deploying" "$erased"
+grep -q 'одна попытка' "$FAKE_DIR/out" || { echo "FAIL once: нет строки «одна попытка»"; fail=1; }
+
+# Отмена прогона, удаление принято — код 0 сразу, без ожидания 30 мин.
+fresh once-accepted
+ONCE=true run once-accepted 0 1 "$running" "$running"
 
 [ "$fail" = 0 ] && echo "dbaas-delete: ok"
 exit "$fail"

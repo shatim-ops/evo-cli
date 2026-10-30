@@ -47,7 +47,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized), assigns a public floating IP, uploads compose files over SSH and runs 'docker compose up -d'. Reuses the existing VM and skips unchanged deploys unless force is set. Requires a Cloud.ru access key (a profile from 'evo configure', or CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves, for a new VM and for an update of the existing one alike; without it returns a preview only (update: true with vm_id and compose_changed for an update). With the same compose file already running and force unset there is nothing to do: the preview says unchanged: true, and the confirmed call changes nothing.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized) with a public floating IP, uploads compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM; skips an unchanged deploy unless force is set. Works in the directory evo runs in (MCP: where the server started); another compose file than its deployment's is refused before the question. Needs a Cloud.ru key (profile or CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves, for a new VM and for an update of the existing one alike; without it returns a preview only (update: true with vm_id and compose_changed for an update). With the same compose file already running and force unset there is nothing to do: the preview says unchanged: true, and the confirmed call changes nothing.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
 				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
@@ -579,7 +579,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "org_quotas",
-			Description: "List quota usages (resource, limit, current usage) — for capacity planning. Read-only. Optionally scope to a project_id. (May be permission-limited depending on the service account's rights.)",
+			Description: "List quota usages (resource code, its name, unit and product where the quota-type catalogue names them, limit, current usage) — for capacity planning. Read-only. Optionally scope to a project_id. (May be permission-limited depending on the service account's rights.)",
 			InputSchema: objSchema(map[string]any{"project_id": strProp("Project UUID to scope quotas to (optional).")}),
 		},
 		{
@@ -1594,7 +1594,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 
 			result := map[string]any{"log": buf.String()}
 			if sf, e := state.Read(state.DefaultPath(eng.StateDir)); e == nil {
-				if active := sf.ActiveDeployment(); active != nil {
+				if active := sf.ActiveComposeDeployment(); active != nil {
 					result["deployment"] = active
 				}
 			}
@@ -1629,6 +1629,15 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		"message": i18n.T("deploy creates a billable VM with a public floating IP when there is no deployment yet (otherwise it updates the existing VM). preview has the new VM and its monthly cost.",
 			"deploy создаёт платную ВМ с публичным floating IP, если развёртывания ещё нет (иначе обновляет существующую ВМ). В preview — новая ВМ и её цена в месяц."),
 		"will_deploy": will,
+	}
+	// Another project's compose file is refused before the question; a
+	// record that names none is warned of (D62).
+	warning, err := eng.DeployComposeCheck()
+	if err != nil {
+		return "", err
+	}
+	if warning != "" {
+		answer["warning"] = warning
 	}
 	force, _ := args["force"].(bool)
 	if u := eng.DeployUpdateOf(force); u != nil {
@@ -2060,6 +2069,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				ID:                 vmID,
 				VMID:               vmID,
 				VMIP:               publicIP,
+				Source:             state.SourceProvision,
 				ProjectID:          projectID,
 				VMFlavor:           flavorID,
 				Region:             region,

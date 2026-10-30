@@ -416,6 +416,9 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 		// for the VM to become active (default config.DefaultTimeout, the
 		// engine's own default).
 		Timings: engine.Timings{VMPollTimeout: time.Duration(cfg.Timeout) * time.Second},
+		// The preview of a VM says whether the project's quotas were
+		// checked (D60).
+		QuotaProbe: tools.QuotaProbe,
 		// Created on first use: list-zones and friends leave no key behind.
 		SSHKeyLoader: func() ([]byte, string, error) {
 			priv, pub, err := loadOrGenerateSSHKey(cwd)
