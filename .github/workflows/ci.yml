@@ -131,6 +131,12 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 300 .github/scripts/dbaas_delete_test.sh
 
+      # Проверка до прогона cloud-e2e (e2e-preflight.sh) на поддельном evo:
+      # все причины — одним отчётом, остатки — строками, не провалом.
+      - name: e2e-preflight.sh на поддельном evo
+        if: runner.os == 'Linux'
+        run: timeout 120 .github/scripts/e2e_preflight_test.sh
+
       # install.sh — установщик evo; internal/bootstrap/install.sh ставит Docker
       # на ВМ (release audit, REL-13); скрипты CI — .github/scripts.
       - name: shellcheck
