@@ -27,6 +27,7 @@ var gatedPreviewArgs = map[string]func(a map[string]any){
 	"destroy":             func(a map[string]any) { delete(a, "vm_id"); delete(a, "name") }, // the current deployment
 	"image_create":        func(a map[string]any) { delete(a, "image_metadata") },
 	"disk_create":         func(a map[string]any) { delete(a, "attach_to") },
+	"dns_zone_create":     func(a map[string]any) { delete(a, "vpc_id") }, // a public zone takes no VPC
 	"release_floating_ip": func(a map[string]any) { delete(a, "ip_address") },
 	"tg_create":           func(a map[string]any) { delete(a, "targets") },
 	"vpc_route_create": func(a map[string]any) {
