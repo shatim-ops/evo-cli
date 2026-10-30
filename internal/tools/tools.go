@@ -1012,12 +1012,13 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zone_create",
-			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone is internal. Mutation: requires confirmed=true after the user approves.",
+			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone resolves only in the VPC it is linked to: vpc_id, else the project's default VPC (named in the preview). Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"domain":      strProp("Zone FQDN, e.g. 'example.com.' (required)."),
 				"name":        strProp("Zone display name. Optional; default = domain."),
 				"type":        enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
 				"description": strProp("Optional zone description."),
+				"vpc_id":      uuidProp("Private zone: the VPC it is linked to (resolves in). Optional; default = the project's default VPC."),
 				"confirmed":   confirmedProp(),
 			}, "domain"),
 		},

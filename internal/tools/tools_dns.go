@@ -212,16 +212,35 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 	if ans, refused := nameFree(ctx, list, i18n.T("DNS zone", "зона DNS"), name, "dns_zones"); refused {
 		return ans, true
 	}
+	// A private zone resolves only in the VPCs linked to it (release plan
+	// 1.6, #597 п. 15; axis 4): evo links the VPC of vpc_id, else the
+	// project's default one, and names it before the question.
+	will := map[string]any{"name": stringArg(args, "name"), "visibility": vis}
+	var vpcID string
+	switch {
+	case vis == "private":
+		id, vname, err := s.projectVPC(ctx, stringArg(args, "vpc_id"))
+		if err != nil {
+			return errResult(err), true
+		}
+		vpcID, will["vpc_id"], will["vpc_name"] = id, id, vname
+	case stringArg(args, "vpc_id") != "":
+		return usageT("vpc_id links a private zone (type=private); a public zone is served on the internet, not in a VPC",
+			"vpc_id привязывает приватную зону (type=private); публичная зона обслуживается в интернете, а не в VPC"), true
+	}
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		return toJSON(map[string]any{
 			"status": "confirmation_required",
 			"message": i18n.Tf("dns_zone_create creates a %s DNS zone for %q (async). A public zone needs domain-ownership delegation to serve traffic.",
 				"dns_zone_create создаёт зону DNS (%s) для %q (асинхронно). Публичная зона обслуживает запросы только после делегирования домена.", vis, domain),
-			"preview": willPreview(engine.ResourceDNSZone, domain, "", map[string]any{"name": stringArg(args, "name"), "visibility": vis},
-				[]string{"name", "visibility"}, dnsDelegationWarning(vis)),
+			"preview": willPreview(engine.ResourceDNSZone, domain, "", will,
+				[]string{"name", "visibility", "vpc_id", "vpc_name"}, dnsDelegationWarning(vis)),
 		}), true
 	}
 	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "domain": domain}
+	if vpcID != "" {
+		body["linkedVpcIds"] = []string{vpcID}
+	}
 	if d := stringArg(args, "description"); d != "" {
 		body["description"] = d
 	}
