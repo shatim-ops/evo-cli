@@ -116,7 +116,7 @@
         {"method": "GET", "path": "/v1/privateZones/{privateZoneId}", "code": "internal/dns/client.go:232", "reads": ["id", "domain", "state"]},
         {"method": "POST", "path": "/v1/publicZones", "code": "internal/dns/client.go:237", "creates": ["dns_zone_create"], "impact": {"domain": "работа"}, "body": ["project_id", "name", "domain", "description"], "reads": ["id", "resource_id", "done", "error.message"],
          "accepted": {"body-required:projectId": "protojson принимает proto-имя project_id — подтвердить вживую", "body-unknown:project_id": "см. projectId"}},
-        {"method": "POST", "path": "/v1/privateZones", "code": "internal/dns/client.go:237", "creates": ["dns_zone_create"], "impact": {"domain": "работа", "linkedVpcIds": "работа; пропуск: release plan 1.6, «полнота ресурса» (#496): решение «разработки» — приватная зона без VPC нигде не разрешается"}, "body": ["project_id", "name", "domain", "description"], "reads": ["id", "resource_id", "done", "error.message"],
+        {"method": "POST", "path": "/v1/privateZones", "code": "internal/dns/client.go:237", "creates": ["dns_zone_create"], "impact": {"domain": "работа", "linkedVpcIds": "работа"}, "body": ["project_id", "name", "domain", "description", "linkedVpcIds"], "reads": ["id", "resource_id", "done", "error.message"],
          "accepted": {"body-required:projectId": "см. POST /v1/publicZones", "body-unknown:project_id": "см. POST /v1/publicZones"}},
         {"method": "DELETE", "path": "/v1/publicZones/{publicZoneId}", "code": "internal/dns/client.go:242", "reads": ["id", "done"]},
         {"method": "DELETE", "path": "/v1/privateZones/{privateZoneId}", "code": "internal/dns/client.go:242", "reads": ["id", "done"]},
