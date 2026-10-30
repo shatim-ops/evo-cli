@@ -28,6 +28,7 @@ type workflow struct {
 		Group            string `yaml:"group"`
 		CancelInProgress string `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
+	Env  map[string]string `yaml:"env"`
 	Jobs map[string]struct {
 		If             string `yaml:"if"`
 		TimeoutMinutes int    `yaml:"timeout-minutes"`
