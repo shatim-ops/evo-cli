@@ -464,7 +464,7 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 		return nil, clierrors.New(notFoundCode(path), i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
 			i18n.T("Verify the resource ID and API endpoint", "Проверьте ID ресурса и адрес API"))
 
-	case resp.StatusCode >= 500 && resp.StatusCode < 600 && method == http.MethodGet:
+	case resp.StatusCode >= 500 && resp.StatusCode < 600 && method == http.MethodGet && resp.Header.Get(httpretry.Replaced) == "":
 		// A read the transport repeated (computeRetry) and still failed.
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()

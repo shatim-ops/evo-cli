@@ -44,7 +44,9 @@ func tokenGET(ctx context.Context, tp auth.TokenProvider, rawurl string) (map[st
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok.Value)
-	cl := httpretry.NewClient(30 * time.Second)
+	// The Organization API answers 404 to a key that cannot list projects
+	// (handleOrgProjects), in a form not probed: it stays a 404.
+	cl := &http.Client{Timeout: 30 * time.Second, Transport: &httpretry.Transport{Policy: httpretry.Policy{Keep404: true}}}
 	resp, err := cl.Do(req)
 	if err != nil {
 		return nil, err
