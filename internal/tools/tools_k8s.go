@@ -118,14 +118,20 @@ func (s *Registry) handleK8sOptions(ctx context.Context, args map[string]any) (s
 		}
 	}
 	zones := make([]string, 0, len(pc.Zones))
+	defaults := map[string]any{"zone": pc.DefaultZone, "channel": pc.DefaultChannel, "disk_type": pc.DefaultDiskType}
 	for _, z := range pc.Zones {
 		zones = append(zones, z.Name)
+		// The default zone is an id; its name is in the same answer (Линия
+		// CLI).
+		if z.ZoneID == pc.DefaultZone && z.Name != "" {
+			defaults["zone_name"] = z.Name
+		}
 	}
 	return toJSON(map[string]any{
 		"versions_by_channel": versions,
 		"flavors":             flavors,
 		"zones":               zones,
-		"defaults":            map[string]any{"zone": pc.DefaultZone, "channel": pc.DefaultChannel, "disk_type": pc.DefaultDiskType},
+		"defaults":            defaults,
 	}), false
 }
 
