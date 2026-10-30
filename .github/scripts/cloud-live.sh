@@ -250,7 +250,7 @@ area_kinds() {
 	case "$1" in
 	disk) echo "vm fip disk image" ;;
 	net) echo "lb tg vm snat fip disk route subnet vpc" ;;
-	dns) echo "dns" ;;
+	dns) echo "dns vpc" ;;
 	s3) echo "s3" ;;
 	secrets) echo "secret cert" ;;
 	ca) echo "ca ar" ;;
@@ -939,7 +939,23 @@ area_net() {
 # DNS: приватная зона, запись A, удаление. Каждый вызов по зоне — с
 # type=private: по умолчанию инструменты идут в API публичных зон.
 area_dns() {
-	local domain="$prefix.test." zid rid op
+	local domain="$prefix.test." zid rid op nv
+	# D65 (1.6, #676; решение владельца #597, п. 25): приватная зона к VPC
+	# без DNS-сервера — отказ до вопроса (USAGE), зоны нет. Пустой VPC
+	# прогона DNS-сервера не имеет; он удаляется сразу после проверки.
+	must "vpc_create (без DNS-сервера)" vpc_create --arg name="$prefix-nodns" --arg description="evo e2e live run" || return 1
+	if opwait vpc "$(j -r .operation_id)" 600; then
+		nv=$res_id
+		[ -n "$nv" ] || nv=$(lst vpc "$prefix-nodns" | cut -f1 | head -1)
+		mask "$nv"
+		tc dns_zone_create --arg domain="$prefix-nodns.test." --arg type=private --arg vpc_id="$nv"
+		if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(lst dns "$prefix-nodns")" ]; then
+			ok "dns_zone_create: VPC без DNS-сервера" "USAGE до вопроса, зоны нет (D65)"
+		else bad "dns_zone_create: VPC без DNS-сервера" "код $rc, $reason; зон $prefix-nodns: $(lst dns "$prefix-nodns" | wc -l)"; fi
+		if [ -n "$nv" ] && must "vpc_delete (без DNS-сервера)" vpc_delete --arg id="$nv"; then
+			opwait vpc "$(j -r .operation_id)" 600 || bad "vpc_delete (без DNS-сервера)" "$why"
+		fi
+	else bad "vpc_create (без DNS-сервера)" "$why"; fi
 	must dns_zone_create dns_zone_create --arg domain="$domain" --arg type=private --arg description="evo e2e live run" || return 1
 	op=$(j -r .operation_id)
 	cov dns_zone_create
