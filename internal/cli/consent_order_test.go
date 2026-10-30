@@ -88,6 +88,11 @@ var consentWorlds = map[string]consentWorld{
 	// call fails.
 	"flavor of another zone": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return otherZoneFlavorCloud{c} },
 		env: map[string]string{"CLOUDRU_FLAVOR": "lowcost10-2-4"}, refusedBy: []string{"provision", "deploy"}},
+	// No flavor is set, and no flavor of the catalogue is in the zone of
+	// the call: evo's own choice has nothing to pick, and provision and
+	// deploy refuse before the question (D67; Fable, FB160-22).
+	"no flavor of the zone": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return otherZoneFlavorCloud{c} },
+		env: map[string]string{"CLOUDRU_FLAVOR": ""}, refusedBy: []string{"provision", "deploy"}},
 	// The path of secret_create is taken: secret_create reads the list
 	// before the question and refuses the taken path (D49; was the
 	// create's 4xx after it, G130-15, D42).
