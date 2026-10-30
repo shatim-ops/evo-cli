@@ -11,14 +11,21 @@ name: cloud-e2e
 # имени, заходит по SSH и удаляет их. Job k8s-smoke (вход k8s_smoke) —
 # кластер Managed Kubernetes с плагином, затем его удаление. Job'ы dbaas-pg,
 # dbaas-kafka, dbaas-redis (вход dbaas_smoke) параллельно создают
-# минимальные кластеры PostgreSQL, Kafka и Redis (evo-e2e-pg, evo-e2e-kafka,
-# evo-e2e-redis), проверяют их и удаляют. Job live (входы disk_smoke,
+# минимальные кластеры PostgreSQL, Kafka и Redis (evo-e2e-pg-<прогон>,
+# evo-e2e-kafka-<прогон>, evo-e2e-redis-<прогон>; вход dbaas_services — какие
+# из трёх), проверяют их и удаляют. Job live (входы disk_smoke,
 # net_smoke, dns_smoke, s3_smoke, secrets_smoke, ca_smoke, stack_smoke,
 # mcp_smoke) — по job на область, параллельно: изменяющие инструменты вживую
 # с удалением за собой (.github/scripts/cloud-live.sh). Job cleanup (вход
 # cleanup_only) ничего не создаёт и удаляет остатки прошлых прогонов, в том
 # числе эти кластеры и ресурсы live. Проект общий: трогаются только ресурсы с
 # именами evo-e2e-*.
+#
+# Имена ресурсов — с суффиксом прогона RUN (r<номер>a<попытка>): остаток
+# прошлого прогона, который платформа не удаляет (кластер в FAILED, DB-21,
+# DB-17; ВМ в «Ошибке», OPS-18), не занимает имя следующего (run 147, 148).
+# Зона — по джобу: вход zone — для всех, k8s_zone, pg_zone, kafka_zone,
+# redis_zone — для своего сервиса, чтобы проба одного не уводила остальные.
 #
 # Секреты репозитория (Settings → Secrets and variables → Actions):
 #   CLOUDRU_KEY_ID, CLOUDRU_SECRET — ключ тестового сервисного аккаунта
@@ -39,8 +46,20 @@ on:
   workflow_dispatch:
     inputs:
       zone:
-        description: "Availability zone name (ru.AZ-1 зависал в creating 14.10.2026)"
+        description: "Availability zone name for every job without a zone of its own (k8s_zone, pg_zone, kafka_zone, redis_zone)"
         default: "ru.AZ-2"
+      k8s_zone:
+        description: "Zone of k8s-smoke; empty — zone"
+        default: ""
+      pg_zone:
+        description: "Zone of dbaas-pg; empty — zone"
+        default: ""
+      kafka_zone:
+        description: "Zone of dbaas-kafka; empty — zone"
+        default: ""
+      redis_zone:
+        description: "Zone of dbaas-redis and redis-standalone-probe; empty — zone"
+        default: ""
       flavor:
         description: "Flavor name"
         default: "lowcost10-2-4"
@@ -59,11 +78,14 @@ on:
         type: boolean
         default: false
       dbaas_smoke:
-        description: "Also run DBaaS live (billable, up to ~3 h): creates and deletes minimal PostgreSQL, Kafka and Redis clusters evo-e2e-pg, evo-e2e-kafka, evo-e2e-redis"
+        description: "Also run DBaaS live (billable, up to ~3 h): creates and deletes minimal clusters of dbaas_services, named evo-e2e-<kind>-<run>"
         type: boolean
         default: false
+      dbaas_services:
+        description: "Which DBaaS jobs dbaas_smoke runs: pg, kafka, redis, separated by spaces"
+        default: "pg kafka redis"
       redis_standalone_probe:
-        description: "Probe G140-6 (billable, up to ~2.5 h): raw POST of a Redis STANDALONE cluster evo-e2e-redis-sa with replicas 0, without the field, 1 — the first accepted is created, read and deleted"
+        description: "Probe G140-6 (billable, up to ~2.5 h): raw POST of a Redis STANDALONE cluster evo-e2e-redis-sa-<run> with replicas 0, without the field, 1 — the first accepted is created, read and deleted"
         type: boolean
         default: false
       disk_smoke:
@@ -98,16 +120,8 @@ on:
         description: "Live: MCP stdio deploy_plan → deploy_apply → deploy → destroy vm_id; MCP HTTP provision → destroy; release_floating_ip (~30 min)"
         type: boolean
         default: false
-      pg_cluster:
-        description: "Name of the PostgreSQL cluster of dbaas-pg: evo-e2e-pg2, evo-e2e-pg3 when the earlier names are stuck in FAILED and Cloud.ru deletes them later by itself (DB-21, 29.10)"
-        type: choice
-        options:
-          - evo-e2e-pg
-          - evo-e2e-pg2
-          - evo-e2e-pg3
-        default: evo-e2e-pg
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; clusters evo-e2e-k8s, evo-e2e-pg, evo-e2e-pg2, evo-e2e-pg3, evo-e2e-kafka, evo-e2e-redis, evo-e2e-redis-sa; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no network interface left) and print project quotas"
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; Kubernetes, PostgreSQL, Kafka and Redis clusters evo-e2e-*; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no network interface left) and print project quotas"
         type: boolean
         default: false
 
@@ -117,6 +131,11 @@ concurrency:
 
 permissions:
   contents: read
+
+# Суффикс прогона в именах ресурсов. В env job'а контекста env нет: CLUSTER
+# и VM повторяют это выражение (TestWorkflows_E2ENamesCarryTheRun).
+env:
+  RUN: r${{ github.run_number }}a${{ github.run_attempt }}
 
 jobs:
   # Без платных ресурсов: чтения API через CLI, все инструменты только для
@@ -271,8 +290,10 @@ jobs:
           image_id=$(evo list-images --json | jq -r --arg n "$IMAGE" '[.[] | select(.name==$n)][0].id')
           [ -n "$zone_id" ] && [ "$zone_id" != null ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
           [ -n "$image_id" ] && [ "$image_id" != null ] || { echo "::error::образ $IMAGE не найден"; exit 1; }
-          sed -i -e "s|^region:.*|region: $zone_id|" -e "s|^image_id:.*|image_id: $image_id|" -e "s|^flavor:.*|flavor: $FLAVOR|" .evo.yaml
-          grep -E '^(region|image_id|flavor):' .evo.yaml | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
+          sed -i -e "s|^region:.*|region: $zone_id|" -e "s|^image_id:.*|image_id: $image_id|" -e "s|^flavor:.*|flavor: $FLAVOR|" -e "/^project_name:/d" .evo.yaml
+          # ВМ — evo-e2e-app-$RUN: имя проекта с суффиксом прогона.
+          echo "project_name: e2e-app-$RUN" >> .evo.yaml
+          grep -E '^(region|image_id|flavor|project_name):' .evo.yaml | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
 
       - name: deploy --dry-run (ничего не создаёт)
         working-directory: e2e-app
@@ -330,41 +351,41 @@ jobs:
           for _ in 1 2; do evo destroy --yes 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" && break; sleep 30; done
           jq -e '.deployments | length == 0' .evo/state.json
 
-      # Страховка: ВМ evo-e2e-app и её floating IP («fip-evo-e2e-app-…») не
+      # Страховка: ВМ evo-e2e-app-$RUN и её floating IP («fip-evo-e2e-app-$RUN-…») не
       # должны пережить прогон, даже если state потерян (15.10.2026 ВМ
       # зависла в creating, destroy сдался, раннер унёс state — ВМ и FIP
       # остались платными). Ищет по имени в проекте, удаляет, при остатке —
       # ошибка с ID, чтобы удалить вручную.
-      - name: Сирот evo-e2e-app нет (всегда)
+      - name: Сирот evo-e2e-app-<прогон> нет (всегда)
         if: always()
         run: |
           cd e2e-app 2>/dev/null || { echo "проект не создан"; exit 0; }
-          vms() { evo tools call vm_list --json | jq -r '[.vms[]? | select(.name=="evo-e2e-app") | .id] | join(" ")'; }
+          vms() { evo tools call vm_list --json | jq -r --arg n "evo-e2e-app-$RUN" '[.vms[]? | select(.name==$n) | .id] | join(" ")'; }
           for i in 1 2 3 4 5 6; do
             ids=$(vms)
             [ -z "$ids" ] && break
             for id in $ids; do echo "::add-mask::$id"; done
-            echo "осталась ВМ evo-e2e-app — удаляю (попытка $i)"
+            echo "осталась ВМ evo-e2e-app-$RUN — удаляю (попытка $i)"
             for id in $ids; do
               evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring)}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | cut -c1-260 || true
             done
             sleep 60
           done
           for id in $(evo tools call list_floating_ips --json |
-            jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-app-")) and .available) | .id'); do
+            jq -r --arg p "fip-evo-e2e-app-$RUN-" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
             evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring)}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | cut -c1-260 || true
           done
           left=$(vms)
-          [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app ($left) — удалите её в консоли Cloud.ru"; exit 1; }
+          [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app-$RUN ($left) — удалите её в консоли Cloud.ru"; exit 1; }
 
-      # Загрузочный диск ВМ (evo-e2e-app-boot) после destroy: DELETE ВМ идёт
+      # Загрузочный диск ВМ (evo-e2e-app-$RUN-boot) после destroy: DELETE ВМ идёт
       # без delete_attachments, а документация говорит, что диски можно
       # оставить и они оплачиваются (реестр CMP-11). Только чтение: диск не
       # удаляется. Диск в deleting ждём до 3 мин; ошибка API — предупреждение,
       # не провал; провал — если после destroy остался диск без ВМ.
-      - name: Дисков evo-e2e-app без ВМ нет (всегда)
+      - name: Дисков evo-e2e-app-<прогон> без ВМ нет (всегда)
         if: always()
         run: |
           [ -d e2e-app ] || { echo "проект не создан"; exit 0; }
@@ -373,15 +394,15 @@ jobs:
             if ! out=$(evo tools call disk_list --json 2>/dev/null); then
               echo "::warning::disk_list не прочитан — проверка дисков пропущена"; exit 0
             fi
-            left=$(jq -c '[.disks[]? | select(((.name // "") | startswith("evo-e2e-app")) and (((.attached_to // []) | length) == 0)) | {name, state, size_gb}]' <<<"$out") ||
+            left=$(jq -c --arg p "evo-e2e-app-$RUN" '[.disks[]? | select(((.name // "") | startswith($p)) and (((.attached_to // []) | length) == 0)) | {name, state, size_gb}]' <<<"$out") ||
               { echo "::warning::ответ disk_list не разобран — проверка дисков пропущена"; exit 0; }
-            [ "$left" = "[]" ] && { echo "дисков evo-e2e-app без ВМ нет"; exit 0; }
+            [ "$left" = "[]" ] && { echo "дисков evo-e2e-app-$RUN без ВМ нет"; exit 0; }
             [ "$(jq '[.[] | select(.state != "deleting")] | length' <<<"$left")" = 0 ] || break
             echo "диск ещё удаляется (попытка $i): $left"
             sleep 30
           done
           echo "диски без ВМ: $left"
-          echo "::error::после destroy остался диск evo-e2e-app без ВМ — он оплачивается (CMP-11); удалите его в консоли Cloud.ru или 'evo disk delete'"
+          echo "::error::после destroy остался диск evo-e2e-app-$RUN без ВМ — он оплачивается (CMP-11); удалите его в консоли Cloud.ru или 'evo disk delete'"
           exit 1
 
       # Если правила «evo:» для 80 в группе до deploy не было, его создал
@@ -472,7 +493,6 @@ jobs:
       IMAGE: ${{ inputs.image || 'ubuntu-22.04' }}
       CLOUDRU_TIMEOUT: ${{ inputs.timeout || '1200' }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
-      RUN: ${{ github.run_id }}${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -582,7 +602,7 @@ jobs:
       ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
       FLAVOR: ${{ inputs.flavor || 'lowcost10-2-4' }}
       IMAGE: ${{ matrix.image }}
-      VM: ${{ matrix.vm }}
+      VM: ${{ matrix.vm }}-r${{ github.run_number }}a${{ github.run_attempt }}
       OS_ID: ${{ matrix.os_id }}
       # Записи матрицы идут параллельно и открывают порт в одной общей
       # группе зоны: у каждой свой порт, иначе вторая получит already_open,
@@ -775,8 +795,9 @@ jobs:
   # и ни одно, пока идёт прогон
   # (есть ВМ evo-e2e-*): описание «evo: …» ставит любой evo deploy/vm create,
   # и правило ВМ пользователя иначе не отличить (e2e_rules_sweep.sh).
-  # Кластеры DBaaS — только evo-e2e-pg, evo-e2e-pg2, evo-e2e-pg3 (вход pg_cluster), evo-e2e-kafka, evo-e2e-redis,
-  # evo-e2e-redis-sa (проба G140-6; проект общий: у внешнего аудитора — audit-*). ID и IP маскируются.
+  # Кластеры — по префиксу evo-e2e-: имена всех прогонов (с суффиксом RUN) и
+  # старые без него (evo-e2e-pg2, evo-e2e-kafka…); проект общий: у внешнего
+  # аудитора — audit-*. ID и IP маскируются.
   cleanup:
     environment: cloud-e2e
     if: ${{ inputs.cleanup_only }}
@@ -840,40 +861,34 @@ jobs:
           echo "::error::ВМ evo-e2e-* не удалились за 15 минут"
           exit 1
 
-      - name: Кластеры evo-e2e-k8s
+      - name: Кластеры Kubernetes evo-e2e-*
         if: always()
         run: |
-          ids=$(evo tools call k8s_list --json | jq -r '.clusters[]? | select(.name == "evo-e2e-k8s") | .id')
-          [ -n "$ids" ] || { echo "кластеров evo-e2e-k8s нет"; exit 0; }
+          ids=$(evo tools call k8s_list --json | jq -r '.clusters[]? | select((.name // "") | startswith("evo-e2e-")) | .id')
+          [ -n "$ids" ] || { echo "кластеров evo-e2e-* нет"; exit 0; }
           for id in $ids; do
             echo "::add-mask::$id"
             evo --json --yes k8s delete "$id" | jq -c '{status}' || true
           done
           for _ in $(seq 1 30); do
-            left=$(evo tools call k8s_list --json | jq '[.clusters[]? | select(.name == "evo-e2e-k8s")] | length')
+            left=$(evo tools call k8s_list --json | jq '[.clusters[]? | select((.name // "") | startswith("evo-e2e-"))] | length')
             [ "$left" = 0 ] && { echo "кластеры удалены"; exit 0; }
             sleep 60
           done
-          echo "::error::кластеры evo-e2e-k8s не удалились за 30 минут"
+          echo "::error::кластеры Kubernetes evo-e2e-* не удалились за 30 минут"
           exit 1
 
       # Три вида параллельно: подряд отказы «ещё создаётся» (до 120 мин на
       # каждый) не уложились бы в таймаут job. Строки лога с префиксом вида,
       # ::add-mask:: и ::error:: — без него.
-      - name: Кластеры DBaaS evo-e2e-pg, evo-e2e-pg2, evo-e2e-pg3, evo-e2e-kafka, evo-e2e-redis, evo-e2e-redis-sa
+      - name: Кластеры DBaaS evo-e2e-*
         if: always()
         run: |
           pids=()
           for k in pg kafka redis; do
-            LOG_PREFIX="[$k] " .github/scripts/dbaas-delete.sh "$k" "evo-e2e-$k" &
+            LOG_PREFIX="[$k] " .github/scripts/dbaas-delete.sh "$k" 'evo-e2e-*' &
             pids+=("$!")
           done
-          LOG_PREFIX="[redis-sa] " .github/scripts/dbaas-delete.sh redis evo-e2e-redis-sa &
-          pids+=("$!")
-          LOG_PREFIX="[pg2] " .github/scripts/dbaas-delete.sh pg evo-e2e-pg2 &
-          pids+=("$!")
-          LOG_PREFIX="[pg3] " .github/scripts/dbaas-delete.sh pg evo-e2e-pg3 &
-          pids+=("$!")
           rc=0
           for p in "${pids[@]}"; do wait "$p" || rc=1; done
           exit "$rc"
@@ -945,8 +960,8 @@ jobs:
     # оборвался по таймауту до удаления кластера.
     timeout-minutes: 180
     env:
-      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
-      CLUSTER: evo-e2e-k8s
+      ZONE: ${{ inputs.k8s_zone || inputs.zone || 'ru.AZ-2' }}
+      CLUSTER: evo-e2e-k8s-r${{ github.run_number }}a${{ github.run_attempt }}
       ADDON: cert-manager
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     defaults:
@@ -979,7 +994,7 @@ jobs:
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
           printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
 
-      - name: Кластера evo-e2e-k8s нет до прогона
+      - name: Кластера evo-e2e-k8s-<прогон> нет до прогона
         run: |
           n=$(evo tools call k8s_list --json | jq --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n)] | length')
           [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
@@ -1156,6 +1171,9 @@ jobs:
 
       - name: Удаление кластера (всегда)
         if: always()
+        env:
+          # Отмена прогона — одна попытка удаления, без ожидания 30 мин.
+          ONCE: ${{ job.status == 'cancelled' }}
         run: |
           ids=$(evo tools call k8s_list --json | jq -r --arg n "$CLUSTER" '.clusters[]? | select(.name == $n) | .id')
           [ -n "$ids" ] || { echo "кластера $CLUSTER нет"; exit 0; }
@@ -1163,6 +1181,7 @@ jobs:
             echo "::add-mask::$id"
             evo --json --yes k8s delete "$id" | jq -c '{status}' || true
           done
+          [ "$ONCE" != true ] || { echo "::warning::прогон отменён: одна попытка удаления $CLUSTER — остаток уберёт cleanup_only"; exit 0; }
           start=$(date +%s)
           while :; do
             left=$(evo tools call k8s_list --json | jq -c --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n) | .status]')
@@ -1182,16 +1201,16 @@ jobs:
   # redact.sed.
   dbaas-pg:
     environment: cloud-e2e
-    if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
+    if: ${{ inputs.dbaas_smoke && contains(format(' {0} ', inputs.dbaas_services), ' pg ') && !inputs.cleanup_only }}
     runs-on: ubuntu-24.04
     # Создание до 60 мин, проверки до ~20, удаление: отказы «ещё создаётся»
     # до 120 мин и ожидание до 30 — запас, чтобы job не оборвался до
     # удаления кластера.
     timeout-minutes: 300
     env:
-      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      ZONE: ${{ inputs.pg_zone || inputs.zone || 'ru.AZ-2' }}
       KIND: pg
-      CLUSTER: ${{ inputs.pg_cluster || 'evo-e2e-pg' }}
+      CLUSTER: evo-e2e-pg-r${{ github.run_number }}a${{ github.run_attempt }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     defaults:
       run:
@@ -1452,6 +1471,9 @@ jobs:
 
       - name: Удаление кластера (всегда)
         if: always()
+        env:
+          # Отмена прогона — одна попытка удаления (dbaas-delete.sh).
+          DBAAS_ONCE: ${{ job.status == 'cancelled' }}
         run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
 
       # Реестр DB-22 (G13-27): что отвечают список копий evo и API после
@@ -1468,15 +1490,15 @@ jobs:
 
   dbaas-kafka:
     environment: cloud-e2e
-    if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
+    if: ${{ inputs.dbaas_smoke && contains(format(' {0} ', inputs.dbaas_services), ' kafka ') && !inputs.cleanup_only }}
     runs-on: ubuntu-24.04
     # Создание до 75 мин (живое — 37–39, DB-10), проверки — минуты,
     # удаление: отказы «ещё создаётся» до 120 мин и ожидание до 30.
     timeout-minutes: 300
     env:
-      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      ZONE: ${{ inputs.kafka_zone || inputs.zone || 'ru.AZ-2' }}
       KIND: kafka
-      CLUSTER: evo-e2e-kafka
+      CLUSTER: evo-e2e-kafka-r${{ github.run_number }}a${{ github.run_attempt }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     defaults:
       run:
@@ -1508,7 +1530,7 @@ jobs:
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
           printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
 
-      - name: Зона открыта, кластера evo-e2e-kafka нет до прогона
+      - name: Зона открыта, кластера evo-e2e-kafka-<прогон> нет до прогона
         run: |
           z=$(evo tools call list_zones --json | jq -c --arg n "$ZONE" '[.zones[] | select(.name == $n)][0] // empty')
           [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
@@ -1616,19 +1638,22 @@ jobs:
 
       - name: Удаление кластера (всегда)
         if: always()
+        env:
+          # Отмена прогона — одна попытка удаления (dbaas-delete.sh).
+          DBAAS_ONCE: ${{ job.status == 'cancelled' }}
         run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
 
   dbaas-redis:
     environment: cloud-e2e
-    if: ${{ inputs.dbaas_smoke && !inputs.cleanup_only }}
+    if: ${{ inputs.dbaas_smoke && contains(format(' {0} ', inputs.dbaas_services), ' redis ') && !inputs.cleanup_only }}
     runs-on: ubuntu-24.04
     # Создание до 50 мин (живое — ~27, DB-12), удаление: отказы «ещё
     # создаётся» до 120 мин и ожидание до 30.
     timeout-minutes: 300
     env:
-      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
+      ZONE: ${{ inputs.redis_zone || inputs.zone || 'ru.AZ-2' }}
       KIND: redis
-      CLUSTER: evo-e2e-redis
+      CLUSTER: evo-e2e-redis-r${{ github.run_number }}a${{ github.run_attempt }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     defaults:
       run:
@@ -1660,7 +1685,7 @@ jobs:
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
           printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
 
-      - name: Зона открыта, кластера evo-e2e-redis нет до прогона
+      - name: Зона открыта, кластера evo-e2e-redis-<прогон> нет до прогона
         run: |
           z=$(evo tools call list_zones --json | jq -c --arg n "$ZONE" '[.zones[] | select(.name == $n)][0] // empty')
           [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
@@ -1766,6 +1791,9 @@ jobs:
 
       - name: Удаление кластера (всегда)
         if: always()
+        env:
+          # Отмена прогона — одна попытка удаления (dbaas-delete.sh).
+          DBAAS_ONCE: ${{ job.status == 'cancelled' }}
         run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
 
   # Проба G140-6 (Grok 1.4.0; реестр к DB-3/DB-11), разрешена владельцем
@@ -1782,8 +1810,8 @@ jobs:
     # (dbaas-delete.sh), как у dbaas-redis.
     timeout-minutes: 240
     env:
-      ZONE: ${{ inputs.zone || 'ru.AZ-2' }}
-      CLUSTER: evo-e2e-redis-sa
+      ZONE: ${{ inputs.redis_zone || inputs.zone || 'ru.AZ-2' }}
+      CLUSTER: evo-e2e-redis-sa-r${{ github.run_number }}a${{ github.run_attempt }}
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     defaults:
       run:
@@ -1814,7 +1842,7 @@ jobs:
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
           printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
 
-      - name: Зона открыта, кластера evo-e2e-redis-sa нет до прогона
+      - name: Зона открыта, кластера evo-e2e-redis-sa-<прогон> нет до прогона
         run: |
           z=$(evo tools call list_zones --json | jq -c --arg n "$ZONE" '[.zones[] | select(.name == $n)][0] // empty')
           [ -n "$z" ] || { echo "::error::зона $ZONE не найдена"; exit 1; }
@@ -1862,4 +1890,7 @@ jobs:
 
       - name: Удаление кластера (всегда)
         if: always()
+        env:
+          # Отмена прогона — одна попытка удаления (dbaas-delete.sh).
+          DBAAS_ONCE: ${{ job.status == 'cancelled' }}
         run: .github/scripts/dbaas-delete.sh redis "$CLUSTER"
