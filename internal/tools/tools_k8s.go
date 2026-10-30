@@ -559,11 +559,11 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	if err != nil {
 		return errResult(err), true
 	}
-	nodesSubnetID, err := s.k8sNodesSubnet(ctx, pid, stringArg(args, "nodes_subnet_id"), zone)
+	nodesSubnetID, nodesSubnetName, err := s.k8sNodesSubnet(ctx, pid, stringArg(args, "nodes_subnet_id"), zone)
 	if err != nil {
 		return errResult(err), true
 	}
-	sgID := stringArg(args, "security_group_id")
+	sgID, sgName := stringArg(args, "security_group_id"), ""
 	if sgID == "" {
 		eng, e := s.authedEngine(ctx, nil)
 		if e != nil {
@@ -583,7 +583,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 				i18n.Tf("no security group of the project in zone %s for the node pool; nothing was created", "в зоне %s нет группы безопасности проекта для группы узлов; ничего не создано", zone.name),
 				i18n.T("Pass security_group_id (list_security_groups), or create a group in this zone in the Cloud.ru console.", "Передайте security_group_id (list_security_groups) или создайте группу в этой зоне в консоли Cloud.ru."))), true
 		}
-		sgID = sgs[i].ID
+		sgID, sgName = sgs[i].ID, sgs[i].Name
 	}
 
 	// The number of nodes and the size of their disks are billed: the
@@ -593,7 +593,8 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	if confirmed, _ := args["confirmed"].(bool); !confirmed {
 		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sNodePool, name, args,
 			map[string]any{"flavor": flavor.Name, "cpu": flavor.CPU, "ram_gb": flavor.RAM, "count": count, "disk_gb": diskSize,
-				"zone": zone.name, "nodes_subnet_id": nodesSubnetID, "security_group_id": sgID}))
+				"zone": zone.name, "nodes_subnet_id": nodesSubnetID, "nodes_subnet_name": nodesSubnetName,
+				"security_group_id": sgID, "security_group_name": sgName}))
 		if err != nil {
 			return errResult(err), true
 		}
@@ -622,7 +623,7 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	}
 	return toJSON(map[string]any{
 		"status": "creating", "node_pool": name, "nodepool_id": op.ResourceID, "cluster_id": clusterID,
-		"operation_id": op.ID, "count": count, "flavor_id": flavor.FlavorID,
+		"operation_id": op.ID, "count": count, "flavor_id": flavor.FlavorID, "flavor": flavor.Name,
 		"note": i18n.T("Node pool is provisioning (async). Poll k8s_nodepools. NB: if Cloud.ru returns 503 'no healthy upstream' it's a transient backend outage — retry.",
 			fmt.Sprintf("Группа узлов создаётся (асинхронно). Проверяйте evo k8s nodepools %s. Если Cloud.ru отвечает 503 «no healthy upstream», это временный сбой сервиса — повторите.", clusterID)),
 	}), false
@@ -812,33 +813,33 @@ func clusterZoneID(ctx context.Context, cli *mk8s.Client, clusterID string) (str
 // (refused when it is in another zone than the pool's), else the zone's
 // main subnet; no subnet in the zone is CONFIG_INVALID instead of the
 // project's first subnet of any zone.
-func (s *Registry) k8sNodesSubnet(ctx context.Context, pid, subnetID string, zone k8sZoneRef) (string, error) {
+func (s *Registry) k8sNodesSubnet(ctx context.Context, pid, subnetID string, zone k8sZoneRef) (id, name string, err error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	subs, err := eng.Cloud.ListSubnets(ctx, pid)
 	if err != nil {
-		return "", fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
+		return "", "", fmt.Errorf(i18n.T("list subnets: %w", "список подсетей: %w"), err)
 	}
 	if subnetID != "" {
 		for _, sn := range subs {
 			if sn.ID == subnetID {
 				if !provision.SubnetInZone(sn, zone.computeID, zone.name) {
-					return "", clierrors.New(clierrors.CodeConfigInvalid,
+					return "", "", clierrors.New(clierrors.CodeConfigInvalid,
 						i18n.Tf("subnet %s is not in zone %s of the node pool; nothing was created", "подсеть %s не в зоне %s группы узлов; ничего не создано", subnetID, zone.name),
 						i18n.T("Pass a subnet of that zone (list_subnets), or pass zone = the subnet's zone.", "Передайте подсеть этой зоны (list_subnets) или zone — зону подсети."))
 				}
-				return subnetID, nil
+				return subnetID, sn.Name, nil
 			}
 		}
-		return "", clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
+		return "", "", clierrors.New(clierrors.CodeConfigInvalid, i18n.Tf("subnet %s is not in the project", "подсети %s нет в проекте", subnetID),
 			i18n.T("Take a subnet ID from list_subnets, or omit nodes_subnet_id: the zone's main subnet is taken.", "Возьмите ID подсети из list_subnets или не указывайте nodes_subnet_id: возьмётся основная подсеть зоны."))
 	}
 	if i := provision.PickSubnet(subs, zone.computeID, zone.name); i >= 0 {
-		return subs[i].ID, nil
+		return subs[i].ID, subs[i].Name, nil
 	}
-	return "", clierrors.New(clierrors.CodeConfigInvalid,
+	return "", "", clierrors.New(clierrors.CodeConfigInvalid,
 		i18n.Tf("no subnet in zone %s for the node pool; nothing was created", "в зоне %s нет подсети для группы узлов; ничего не создано", zone.name),
 		i18n.T("Pass nodes_subnet_id (list: list_subnets) or another zone; if the project has no subnet in any zone, create one in the Cloud.ru console.",
 			"Передайте nodes_subnet_id (список: list_subnets) или другую зону; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
@@ -875,7 +876,7 @@ func k8sPreview(resource, name string, args, resolved map[string]any) engine.Cre
 	}
 	p.Add("cluster_id", stringArg(args, "cluster_id"))
 	skip := []string{"name", "zone", "cluster_id"}
-	for _, k := range []string{"flavor", "cpu", "ram_gb", "count", "disk_gb", "version", "master_count", "subnet_id", "subnet_name", "nodes_subnet_id", "security_group_id", "kube_api_internet"} {
+	for _, k := range []string{"flavor", "cpu", "ram_gb", "count", "disk_gb", "version", "master_count", "subnet_id", "subnet_name", "nodes_subnet_id", "nodes_subnet_name", "security_group_id", "security_group_name", "kube_api_internet"} {
 		if v, ok := resolved[k]; ok {
 			p.Add(k, v)
 			skip = append(skip, k)

@@ -583,3 +583,17 @@ func TestRenderAnswer_ReferenceByNameAndID(t *testing.T) {
 		t.Errorf("object:\n%s", buf.String())
 	}
 }
+
+// The name of a reference may be the key without "_id" (k8s_plan: flavor
+// beside flavor_id): «gen-2-4 (f1)», and no row of its own.
+func TestRenderAnswer_ReferenceNamedByItsBase(t *testing.T) {
+	var buf bytes.Buffer
+	p := output.NewWithWriter(&buf, output.ModePlain, false)
+	if err := renderAnswer(p, &buf, `{"name":"k","flavor":"gen-2-4","flavor_id":"f1"}`, tableView{}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "gen-2-4 (f1)") || strings.Count(out, "gen-2-4") != 1 {
+		t.Errorf("object:\n%s", out)
+	}
+}

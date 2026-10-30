@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -897,14 +898,14 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 }
 
 // refValue is the value of key k of m for a person: a reference "<x>_id"
-// whose thing the answer names ("<x>_name" beside it) reads «name (id)»
-// (release plan 1.6, «Линия CLI»; audits/cli-ids-1.6.md §7): a bare UUID
-// does not say which subnet or zone it is. The JSON answer keeps both
-// fields as they are.
+// whose thing the answer names ("<x>_name", else "<x>", beside it) reads
+// «name (id)» (release plan 1.6, «Линия CLI»; audits/cli-ids-1.6.md §7):
+// a bare UUID does not say which subnet or zone it is. The JSON answer
+// keeps both fields as they are.
 func refValue(m map[string]any, k string) any {
 	id, _ := m[k].(string)
 	if base, ok := strings.CutSuffix(k, "_id"); ok && id != "" {
-		if name, _ := m[base+"_name"].(string); name != "" && name != id {
+		if name := engine.RefName(m, base); name != "" && name != id {
 			return name + " (" + id + ")"
 		}
 	}
@@ -914,13 +915,11 @@ func refValue(m map[string]any, k string) any {
 // namedRef reports whether key k of m is the name of a reference refValue
 // shows with its id: its own row would repeat it.
 func namedRef(m map[string]any, k string) bool {
-	base, ok := strings.CutSuffix(k, "_name")
-	if !ok {
-		return false
-	}
-	name, _ := m[k].(string)
+	base := strings.TrimSuffix(k, "_name")
 	id, _ := m[base+"_id"].(string)
-	return name != "" && id != "" && name != id
+	name, _ := m[k].(string)
+	return id != "" && name != "" && name != id && engine.RefName(m, base) == name &&
+		(k == base+"_name" || k == base)
 }
 
 // listNoteFields are the text fields a list answer may carry next to its
