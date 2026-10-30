@@ -201,7 +201,7 @@ def schema_fields(schema, prefix="", depth=0):
     deprecated, and mini (a field of an object with no more than id and
     name). A top-level array is entered without `[]`, as walk() does."""
     out = {}
-    if not isinstance(schema, dict) or depth > 8 or schema.get("x-recursive"):
+    if not isinstance(schema, dict) or depth > 12 or schema.get("x-recursive"):
         return out
     if depth == 0 and schema.get("type") == "array":
         schema = schema.get("items") or {}

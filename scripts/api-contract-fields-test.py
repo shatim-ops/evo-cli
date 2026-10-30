@@ -125,7 +125,7 @@ class FieldRatchet(unittest.TestCase):
         self.assertIn("field-new:encrypted", out)
         self.assertNotIn("field-new:state", out)
         # zone itself is an object of a mini reference: new, reported.
-        self.assertIn("field-new:zone ", out)
+        self.assertRegex(out, r"field-new:zone\b(?!\.)")
 
     def test_read_or_accepted(self):
         req = self.contract["services"][0]["requests"]
