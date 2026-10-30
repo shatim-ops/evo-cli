@@ -255,7 +255,7 @@ func (c jsonCloud) ListVMsInProject(ctx context.Context, project string) ([]*pro
 
 func (c jsonCloud) ListSecurityGroups(ctx context.Context, project string) ([]*provision.SecurityGroup, error) {
 	groups, err := c.parityCloud.ListSecurityGroups(ctx, project)
-	return append(groups, &provision.SecurityGroup{ID: parityVM, Name: "web", AvailabilityZoneID: pvZone}), err
+	return append(groups, &provision.SecurityGroup{ID: parityVM, Name: "web", AvailabilityZoneID: pvZone, AvailabilityZoneName: "ru.AZ-1"}), err
 }
 
 func (jsonCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {

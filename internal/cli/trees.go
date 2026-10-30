@@ -875,8 +875,8 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 	keys := sortedKeys(m)
 	rows := make([][]string, 0, len(keys))
 	for _, k := range keys {
-		if _, sec := sections[k]; !sec {
-			rows = append(rows, []string{k, view.cell(m[k], 0)})
+		if _, sec := sections[k]; !sec && !namedRef(m, k) {
+			rows = append(rows, []string{k, view.cell(refValue(m, k), 0)})
 		}
 	}
 	if len(rows) > 0 {
@@ -894,6 +894,33 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 		}
 	}
 	return nil
+}
+
+// refValue is the value of key k of m for a person: a reference "<x>_id"
+// whose thing the answer names ("<x>_name" beside it) reads «name (id)»
+// (release plan 1.6, «Линия CLI»; audits/cli-ids-1.6.md §7): a bare UUID
+// does not say which subnet or zone it is. The JSON answer keeps both
+// fields as they are.
+func refValue(m map[string]any, k string) any {
+	id, _ := m[k].(string)
+	if base, ok := strings.CutSuffix(k, "_id"); ok && id != "" {
+		if name, _ := m[base+"_name"].(string); name != "" && name != id {
+			return name + " (" + id + ")"
+		}
+	}
+	return m[k]
+}
+
+// namedRef reports whether key k of m is the name of a reference refValue
+// shows with its id: its own row would repeat it.
+func namedRef(m map[string]any, k string) bool {
+	base, ok := strings.CutSuffix(k, "_name")
+	if !ok {
+		return false
+	}
+	name, _ := m[k].(string)
+	id, _ := m[base+"_id"].(string)
+	return name != "" && id != "" && name != id
 }
 
 // listNoteFields are the text fields a list answer may carry next to its
@@ -965,7 +992,7 @@ func renderList(p *output.Printer, w io.Writer, rows []any, view tableView) {
 		m, _ := r.(map[string]any)
 		line := make([]string, len(columns))
 		for i, c := range columns {
-			line[i] = view.cell(m[c], 40)
+			line[i] = view.cell(refValue(m, c), 40)
 		}
 		out = append(out, line)
 	}

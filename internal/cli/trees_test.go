@@ -560,3 +560,26 @@ func TestRenderAnswer_TreesOfV11(t *testing.T) {
 		}
 	}
 }
+
+// Release plan 1.6, «Линия CLI»: a reference whose thing the answer names
+// ("<x>_name" beside "<x>_id") reads «name (id)» in a table and in a
+// FIELD/VALUE table, and its name is not a row of its own.
+func TestRenderAnswer_ReferenceByNameAndID(t *testing.T) {
+	var buf bytes.Buffer
+	p := output.NewWithWriter(&buf, output.ModePlain, false)
+	list := `{"subnets":[{"id":"s1","name":"web","availability_zone_id":"z1","availability_zone_name":"ru.AZ-1"}]}`
+	if err := renderAnswer(p, &buf, list, tableView{Columns: []string{"id", "name", "availability_zone_id"}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "ru.AZ-1 (z1)") {
+		t.Errorf("list:\n%s", buf.String())
+	}
+	buf.Reset()
+	obj := `{"id":"s1","name":"web","availability_zone_id":"z1","availability_zone_name":"ru.AZ-1"}`
+	if err := renderAnswer(p, &buf, obj, tableView{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "ru.AZ-1 (z1)") || strings.Contains(buf.String(), "availability_zone_name") {
+		t.Errorf("object:\n%s", buf.String())
+	}
+}
