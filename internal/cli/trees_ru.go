@@ -4,7 +4,11 @@
 
 package cli
 
-import "maps"
+import (
+	"maps"
+
+	"github.com/shatim-ops/evo-cli/internal/tools"
+)
 
 // The tree commands are made from the tools. A tool is described in English
 // for the agent (MCP) and in Russian for the CLI, both in the registry
@@ -164,8 +168,8 @@ var columnHeaderRU = map[string]string{
 // listNoteRU is the Russian text of a note a tool puts under its list, by
 // its English text (the MCP answer keeps the English one).
 var listNoteRU = map[string]string{
-	"est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price; cpu_share is the guaranteed share of a vCPU: 1:1 — 100%, 1:3 — 30%, 1:10 — 10% (the Cloud.ru specification)": "Цена — оценка по тарифам, с диском SSD 10 ГБ; это не счёт. Доля vCPU — гарантированная доля ядра: 1:1 — 100 %, 1:3 — 30 %, 1:10 — 10 % (спецификация Cloud.ru).",
+	tools.FlavorsNote: "Цена — оценка по тарифам, с диском SSD 10 ГБ; это не счёт. Доля vCPU — гарантированная доля ядра: 1:1 — 100 %, 1:3 — 30 %, 1:10 — 10 % (спецификация Cloud.ru). У flavor с долей не 1:1 оценка долю не учитывает — точные ставки в тарифах.",
 }
 
 // noteLabelRU names the other notes under a list.
-var noteLabelRU = map[string]string{"note": "Примечание", "warning": "Предупреждение", "hint": "Подсказка"}
+var noteLabelRU = map[string]string{"note": "Примечание", "warning": "Предупреждение", "hint": "Подсказка", "tariff_url": "Тарифы"}

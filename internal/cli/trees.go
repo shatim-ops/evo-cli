@@ -897,8 +897,9 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 }
 
 // listNoteFields are the text fields a list answer may carry next to its
-// list (list_flavors: a note on prices); they are printed under the table.
-var listNoteFields = map[string]bool{"note": true, "warning": true, "hint": true}
+// list (list_flavors: a note on prices and the tariff); they are printed
+// under the table.
+var listNoteFields = map[string]bool{"note": true, "warning": true, "hint": true, "tariff_url": true}
 
 // findList returns the rows of a list answer: a top-level array, or the
 // only array field of an object whose other fields are numbers (count,

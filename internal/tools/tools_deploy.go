@@ -440,6 +440,10 @@ func mergeRules(a, b []state.SGRule) []state.SGRule {
 	return out
 }
 
+// FlavorsNote is the note of list_flavors; the CLI translates it by this
+// text (cli.listNoteRU).
+const FlavorsNote = "est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price; cpu_share is the guaranteed share of a vCPU: 1:1 — 100%, 1:3 — 30%, 1:10 — 10% (the Cloud.ru specification); est_note marks an estimate that does not count the share"
+
 // handleListFlavors lists flavors with a monthly cost estimate each.
 func (s *Registry) handleListFlavors(ctx context.Context, args map[string]any) (string, bool) {
 	eng, err := s.authedEngine(ctx, nil)
@@ -471,6 +475,11 @@ func (s *Registry) handleListFlavors(ctx context.Context, args map[string]any) (
 		if f.Share != "" {
 			row["cpu_share"] = f.Share
 		}
+		// The card prices a vCPU at one rate: a share below a core is
+		// priced as a whole one (Ц-5, FB15-10).
+		if f.Share != "" && f.Share != "1:1" && est.Source == pricing.SourceVCPURAM {
+			row["est_note"] = "estimate without the vCPU share: the tariff prices a shared vCPU lower (tariff_url)"
+		}
 		if f.GPU != nil {
 			row["gpu"] = *f.GPU
 		}
@@ -484,7 +493,9 @@ func (s *Registry) handleListFlavors(ctx context.Context, args map[string]any) (
 	}
 	return toJSON(map[string]any{
 		"flavors": out,
-		"note":    "est_monthly_rub is a rate-card estimate incl. 10GB SSD, not a billed price; cpu_share is the guaranteed share of a vCPU: 1:1 — 100%, 1:3 — 30%, 1:10 — 10% (the Cloud.ru specification)",
+		"note":    FlavorsNote,
+		// The rates of a shared vCPU, which the estimate does not know.
+		"tariff_url": engine.TariffURL(engine.ResourceVM),
 	}), false
 }
 
