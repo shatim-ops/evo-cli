@@ -5,13 +5,13 @@
 
 ## Очередь
 
-1. Миры из живых ответов (#581, порядок «1.6 — релиза» 29.10): каталог ответов платформы из api-probe вместо придуманных фикстур — первый урок P46/CMP-25 (`FLAVOR_ZONE_STATE_*`, нет `is_spot`/`available`).
-2. Одна декларация инструмента и храповики со сроком (#581).
-3. #610 (храповик `tools/list`, #597 п. 12) — повторить `/qwen review`, Foundation Models отвечал 503; #614 (мутация Ц-31) — CI.
-4. Объявленные пропуски для «разработки» 1.6 (правка удаляет строки): `lateRefusals` (D59), `refusedVMDeleteMisses` (снят #565), `localJSONMisses`, `toolHintFlagMisses`, `accessHintMisses` (Ц-9, Ц-31, Ц-3), `optionalUnnamed` (С1, #597 п. 10), `previewNoProject`, `sleepBreaksWait`, `oneRefusalEnds`, `oneRefusalEndsPath`.
+1. Миры из живых ответов, шаг 2 (#581): Go-ответы миров (`provision.CloudAPI`) против каталога `platform-answers.json`; первый урок — CMP-25. Шаг 3 — после шва транспорта (#224) и «да» владельца.
+2. cloud-e2e rc.1 (по «да»): по счёту (`billing_consumption`) — считается ли хранилище PG на каждом узле (evo берёт верхнюю оценку; «релиз» 30.10).
+3. После PR цены PG «разработки»: `process-handoff.md`, С9 — `TestPgCreate_PreviewGivesAnEstimateByTheTariff`.
+4. Пропуски «разработки» 1.6: `bareRefs` (#628), `impact` `linkedVpcIds` (#640), `lateRefusals`, `localJSONMisses`, `toolHintFlagMisses`, `accessHintMisses`, `optionalUnnamed`; срок перечней — «Closes by 1.8» (#645).
 5. Бриф агентного прогона Claude 1.6 (`evo-internal/briefs/claude-agent-1.6.0.md`) — запуск по «да» владельца после тега `v1.6.0-rc.1`.
 6. DB-5, копии `pg_backups` после `pg_delete`, пробы записи P36, P41 — cloud-e2e, «не сейчас» (#597, п. 3).
-7. Неделя `runtime-crashes` (#529) и первый `weekly-mutation` — воскресенье; выжившая мутация — строка бэклога.
+7. Воскресенье: `weekly-mutation`, `weekly-misses`, `runtime-crashes`; красный — строка бэклога.
 8. cloud-e2e приоритета 3 — со следующим Approve; общий `faultCloud` — начало 1.7.
 
 ## Ждёт решения
