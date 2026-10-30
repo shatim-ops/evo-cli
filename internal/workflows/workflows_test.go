@@ -35,7 +35,10 @@ type workflow struct {
 		Permissions    any    `yaml:"permissions"`
 		Uses           string `yaml:"uses"`
 		RunsOn         string `yaml:"runs-on"`
-		Strategy       struct {
+		// Needs: a job name or a list of them.
+		Needs       any    `yaml:"needs"`
+		Environment string `yaml:"environment"`
+		Strategy    struct {
 			Matrix      map[string]any `yaml:"matrix"`
 			MaxParallel int            `yaml:"max-parallel"`
 		} `yaml:"strategy"`
