@@ -6,10 +6,10 @@
 ## Очередь
 
 1. Миры из живых ответов, шаг 3 (#581) — после шва транспорта (#224) и «да» владельца; шаг 2 закрыт (#649, #651; CMP-25 — #655).
-2. cloud-e2e rc.1 (по «да»): по счёту (`billing_consumption`) — считается ли хранилище PG на каждом узле (evo берёт верхнюю оценку; «релиз» 30.10).
+2. cloud-e2e rc.1 — «да» владельца (#597, п. 20); сценарии в `main` (#661, #663, #666): запуск после тега rc.1 с `probes: access nodes p36 p41 p44 p45`, Approve — владелец. После прогона — отчёт `evo-internal/runs/cloud-e2e-rc-1.6.0.md` («N из M»), расхождения — в реестр; счёт PG по узлам (`probes: nodes`) — через сутки, `cleanup_only`.
 3. Пропуски «разработки» 1.6: `bareRefs` (#628), `impact` `linkedVpcIds` (#640), `lateRefusals`, `localJSONMisses`, `toolHintFlagMisses`, `accessHintMisses`, `optionalUnnamed`; срок перечней — «Closes by 1.8» (#645).
-4. Бриф агентного прогона Claude 1.6 (`evo-internal/briefs/claude-agent-1.6.0.md`) — запуск по «да» владельца после тега `v1.6.0-rc.1`.
-5. DB-5, копии `pg_backups` после `pg_delete`, пробы записи P36, P41 — cloud-e2e, «не сейчас» (#597, п. 3).
+4. Сверка охвата 1.6 на кандидате (`audits/coverage-1.6.md`, черновик — #659): diff `v1.5.0..<кандидат>`, D65 (#660).
+5. Бриф агентного прогона Claude 1.6 (`evo-internal/briefs/claude-agent-1.6.0.md`) — запуск по «да» владельца после тега `v1.6.0-rc.1`.
 6. Воскресенье: `weekly-mutation`, `weekly-misses`, `runtime-crashes`; красный — строка бэклога.
 7. cloud-e2e приоритета 3 — со следующим Approve; общий `faultCloud` — начало 1.7.
 
