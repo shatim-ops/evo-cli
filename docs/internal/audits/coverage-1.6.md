@@ -1,11 +1,12 @@
-# Сверка охвата тестов с поверхностью 1.6 (черновик, 30.10.2026)
+# Сверка охвата тестов с поверхностью 1.6 (кандидат ee1287d, 30.10.2026)
 
 «Процесс · 1.6» по `CLAUDE.md` §0, правило 3, и шагу 0
 `docs/RELEASING.md`: каждая новая поверхность 1.6 держится инвариантом на
 свой риск — тестом, который поймает следующий такой же случай, а не только
-этот. **Черновик по `main` 591a758** (после #651); на кандидате rc.1
-обновляется по diff `v1.5.0..<кандидат>`. Продуктовые PR — с меткой
-«(продукт, 1.6)», 35 штук.
+этот. **Финал на кандидате ee1287d** (#664, последний продуктовый PR;
+черновик — по 591a758, #659): diff `v1.5.0..ee1287d`, продуктовые PR с
+меткой «(продукт, 1.6)» — 38 штук; после черновика добавились #660
+(D65), #662 и #664 (Линия CLI, шаги 3 и 4).
 
 Колонка «класс» — да, если тест ловит новый инструмент, команду или случай
 того же рода без правки теста (закрытый перечень, обход реестра, общий
@@ -20,13 +21,13 @@
 | Цена PostgreSQL до согласия по тарифу | #650, #644 | `TestPgCreate_PreviewGivesAnEstimateByTheTariff` (обещание скилла), `TestPGCreatePreview_PricedByTheTariff`, `TestEstimatePG_ByTheTariffSnapshot`; снимок тарифа против публичной страницы — `TestLive_TariffPageMatchesSnapshot` (job `contract`, раз в неделю и вручную перед rc) | точка: тарифная карта есть только у PostgreSQL; Kafka и Redis — «evo цены не даёт» (`tariff_url`), пробел П1 |
 | Доступ PostgreSQL: откуда доступен кластер (ось 4) | #648 | `TestPG_AccessIsNamed` (превью `pg_create` и ответ `pg_get`) | **точка** — пробел П2; текст держится на документации, которая противоречит себе (DB-5 в реестре, `evo-internal`) |
 | Зоны flavor по живому ответу (CMP-25) | #655, #649, #651 | `TestFlavor_ZonesFromTheLiveAnswer`, `TestFlavor_ZoneNotCreatedIsNoZone`; класс — миры против каталога живых ответов: `TestPlatformAnswers_GoWorldsKeepTheLiveForm` (`cli`), `…ToolsWorlds…`, `…EngineWorlds…`, перечни расхождений пусты | да: поле, которого платформа не шлёт, в мире — красный |
-| Линия CLI: «имя (id)», зона подсетей и групп | #653, #654 | `TestRenderAnswer_ReferenceByNameAndID`, `TestNamedParams_HumanOnly`, `TestZoneNameReadWithItsID`; «в человеческом выводе нет голого UUID ссылки» — перечень `bareRefs` (36 строк, «Closes by 1.8» — этот PR); С2 `TestPreview_HumanShowsEveryValue` (`humanUnnamed` 31) | да, по перечню; шаги линии — «разработке», строка плана |
+| Линия CLI: «имя (id)», зона подсетей и групп | #653, #654, #662, #664 | `TestRenderAnswer_ReferenceByNameAndID`, `TestRenderAnswer_ReferenceNamedByItsBase`, `TestRenderAnswer_KeyHoldingTheID`, `TestNamedParams_HumanOnly`, `TestNamedParams_NameWithoutSuffix`, `TestZoneNameReadWithItsID`; «в человеческом выводе нет голого UUID ссылки» — перечень `bareRefs` **пуст** (был 36, «Closes by 1.8» — #659); три ссылки без имени объявлены с причиной в `unnamedRefs` (`* project_id` — имя проекта читает только ключ организации; `agreement_id` у `billing_consumption`, `billing_finops` — у API нет чтения договора); С2 `TestPreview_HumanShowsEveryValue` (`humanUnnamed` 31) | да: новый голый UUID в человеческом выводе — красный |
 | D60: квота в превью ВМ «не проверена» | #630 | `TestPreview_SaysTheQuotaWasNotChecked`, `TestOrgQuotas_NameAndUnitOfEachQuota` | точка по смыслу (только ВМ: `engine.QuotaCheck` зовут `completePreview` и `deploy`); других create с квотой в D60 нет |
 | D61: удаление ресурса, который ещё создаётся, — отказ до вопроса | #633 | `TestDeletePlan_PassingStateRefusedBeforeTheQuestion`, `TestDeletePlan_DeletingStateAnsweredWithoutTheQuestion`, `TestDelete_RefusedInStateSaysSoAndTheWayOut` (все удаления `deletePlan`, «passing» — `USAGE` без записи) | да |
 | D62: `deploy` чужого compose-файла | #634 | `TestDeploy_AnotherProjectsComposeIsRefused` | точка — один инструмент, одна проверка `composeRefusal`; класса нет |
 | D63: 404 без ответа сервиса — `API_ERROR` | #639 | `TestRouteNotFoundAsBadGateway` (транспорт), `TestAlreadyDeleted_Bare404IsNotGone` (каждое удаление `deleteTargets` в мире каждого вида голого 404; `bare404Gone` 1 строка — S3) | да |
 | D64: DNS стека на внутренний балансировщик | #637 | `TestStackPlan_DNSOnAnInternalBalancerRefused` | точка — один манифест, одна проверка |
-| D65 | — | номера нет ни в `DECISIONS.md`, ни резервом | — (на кандидате сверить снова) |
+| D65: приватная зона DNS привязана к VPC (`linkedVpcIds`), без VPC — отказ до вопроса | #660 | `TestDNSZoneCreate_PrivateZoneLinksAVPC`; тело записи — С1 `TestPreview_NamesWhatTheWriteSends` (обход всех create); поле в `impact` храповика спецификаций (#640) | точка по правилу (одна приватная зона); класс «поле влияния, которое evo не шлёт» — храповик `impact` в job `contract` |
 
 ## Остальная поверхность 1.6
 
@@ -61,18 +62,26 @@
 | П3 | D58: зона по имени проверена у трёх названных create; обхода реестра нет — новый create, который берёт зону из настроек, тест не увидит | имя зоны уйдёт в поле id у нового create (класс D15) | обход реестра: каждый create, который берёт зону из настроек, в мире `CLOUDRU_REGION=<имя>` шлёт UUID |
 | П4 | `TestMisses_HaveADeadline` (#645) не видел перечень, у которого «only shrinks» перенесено на новую строку: `bareRefs` (36 строк) шёл без срока | перечень пропусков живёт вечно | **закрыт этим PR**: `isMissList` по нормализованному тексту, проверка в `TestMisses_DeadlineParts`; `bareRefs` — «Closes by 1.8» |
 
-## Перечни пропусков на 30.10 (`TestMisses_HaveADeadline`)
+## Перечни пропусков на ee1287d (`TestMisses_HaveADeadline`)
 
-27 перечней, 281 строка, просроченных 0 (выпущено 1.5). Наибольшие:
-`idWithoutFormat` 82, `namesUnmarked` 49, `bodyUnnamed` 40, `bareRefs` 36,
-`humanUnnamed` 31, `inlineGates` 28, `refUncompleted` 25. Пусты:
-`lateRefusals`, `optionalUnnamed`, `previewNoProject`, `accessHintMisses`,
+27 перечней, 264 строки (черновик — 281), просроченных 0 (выпущено 1.5).
+Наибольшие: `idWithoutFormat` 82, `namesUnmarked` 49, `bodyUnnamed` 40,
+`humanUnnamed` 31, `inlineGates` 28, `refUncompleted` 25; срок у всех —
+1.8. Пусты 18, среди них `bareRefs` (−36, Линия CLI), `lateRefusals`,
+`optionalUnnamed`, `previewNoProject`, `accessHintMisses`,
 `toolHintFlagMisses`, `localJSONMisses`, `takenAdopts`, `takenNotReached`,
 `liveWorldDrift` (оба), `worldDrift`.
 
-## На кандидате
+## Живой прогон кандидата
 
-- diff `v1.5.0..<кандидат>`: новые продуктовые PR после 591a758 — строкой
-  в таблицу;
-- D65 и следующие номера — по `DECISIONS.md`;
-- счёт перечней — заново, прогоном `TestMisses_HaveADeadline -v`.
+Новые create и delete 1.6 и ломающие правила вживую — сценарии cloud-e2e
+rc.1 (решение владельца #597, п. 20; #661, #663, #666): `subnet_create` и
+`subnet_delete` (область `net`), D61 (джобы DBaaS), D57, D58, D59, D64
+(`net`, `disk`, `stack`); D65 — область `dns` (приватная зона в проекте с
+VPC). Итог «N из M» — отчёт прогона в `evo-internal`.
+
+## Итог
+
+Ни один пробел не блокирует кандидат: поверхности 1.6 держатся
+инвариантом-классом или точечным тестом; П1–П3 — бэклог процесса,
+кандидат 1.7; П4 закрыт (#659).
