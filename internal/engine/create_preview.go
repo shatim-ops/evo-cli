@@ -94,6 +94,9 @@ type CreatePreview struct {
 	// priced (tariffs): a billable resource never goes without a price
 	// and without where to find one.
 	TariffURL string `json:"tariff_url,omitempty"`
+	// PG is the size of a PostgreSQL cluster Price prices by its tariff;
+	// its values are in Params already.
+	PG *pricing.PGSize `json:"-"`
 	// Quota: the project's quotas were not checked, and why (D60).
 	Quota *QuotaCheck `json:"quota,omitempty"`
 	// NetworkCheck: what the preview found wrong with the VM's subnet and
@@ -155,10 +158,6 @@ const tariffsBase = "https://cloud.ru/documents/tariffs/evolution/"
 // (TestTariffs_EveryResource keeps the list whole). A preview evo cannot
 // price links the tariff: «не оценивается: у evo нет тарифа» read as
 // «free» before a paid cluster was created (dogfood 1.2.1).
-// TariffURL is the public tariff of a resource kind (Resource*), "" for a
-// kind not listed.
-func TariffURL(resource string) string { return tariffs[resource] }
-
 var tariffs = map[string]string{
 	ResourceVM:          tariffsBase + "evolution-compute",
 	ResourceDisk:        tariffsBase + "evolution-compute",
@@ -192,6 +191,10 @@ var tariffs = map[string]string{
 	ResourceStack:    tariffsBase + "index",
 }
 
+// TariffURL is the public tariff of a resource kind (Resource*), "" for a
+// kind not listed.
+func TariffURL(resource string) string { return tariffs[resource] }
+
 // tariffNotes are the notes of the resources tariff_url does not price as
 // it does the others; the rest go with notPriced.
 var tariffNotes = map[string]string{
@@ -214,6 +217,8 @@ const (
 	// its price: the note says the line is not there.
 	noTariffLine   = "not priced by evo: no line of the tariffs at tariff_url names this resource; count it as billable"
 	stackNotPriced = "not priced by evo: each resource of the stack is billed by its own tariff (stack_plan lists them; tariffs at tariff_url)"
+	// pgCostNote: the estimate of a PostgreSQL cluster by its tariff.
+	pgCostNote = "estimate by the tariff at tariff_url of " + pricing.PGTariffDate + ", with VAT; not a bill"
 )
 
 // Price sets the cost estimate where evo can make one: a VM of a known
@@ -228,6 +233,12 @@ func (p *CreatePreview) Price() {
 	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0:
 		cost := pricing.EstimateFor("", 0, 0, p.Disk.SizeGB, p.Disk.Type)
 		p.Cost = &cost
+	case p.Resource == ResourcePGCluster && p.PG != nil && p.PG.CPU > 0 && p.PG.RAMGB > 0:
+		// By the public tariff, which may move: the note names its date and
+		// the preview its page (Ц-10).
+		cost := pricing.EstimatePG(*p.PG)
+		p.Cost, p.CostNote, p.TariffURL = &cost, pgCostNote, tariffs[p.Resource]
+		return
 	}
 	if p.Cost != nil {
 		p.CostNote = costNote
@@ -804,6 +815,12 @@ func createCostLines(p CreatePreview) []string {
 	if p.Cost != nil {
 		if p.Resource == ResourceVM {
 			return vmCostLines(*p.Cost, true)
+		}
+		if p.Resource == ResourcePGCluster {
+			c := p.Cost
+			return []string{previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month: nodes %.2f, storage %.2f (~%.4f %s/hour); estimate by the tariff of %s, not a bill: %s",
+				"~%.2f %s в месяц: узлы %.2f, хранилище %.2f (~%.4f %s в час); оценка по тарифу от %s, не счёт: %s",
+				c.TotalMonthlyRub, c.Currency, c.ComputeMonthlyRub, c.DiskMonthlyRub, c.TotalHourlyRub, c.Currency, pricing.PGTariffDate, p.TariffURL)}
 		}
 		return []string{previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (disk), %s", "~%.2f %s в месяц (диск), %s",
 			p.Cost.TotalMonthlyRub, p.Cost.Currency, costNoteText())}

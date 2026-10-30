@@ -17,6 +17,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/postgresql"
+	"github.com/shatim-ops/evo-cli/internal/pricing"
 )
 
 // specMenuCap caps how many specifications the need_specification menu returns.
@@ -713,8 +714,8 @@ func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any
 	return toJSON(out), false
 }
 
-// pgCreatePreview is the preview of pg_create: the cluster as resolved.
-// evo has no rate card for Managed PostgreSQL: the preview links its tariff (Price).
+// pgCreatePreview is the preview of pg_create: the cluster as resolved,
+// priced by the tariff of Managed PostgreSQL (Price) when its size is known.
 func pgCreatePreview(cfg config.Config, will map[string]any) engine.CreatePreview {
 	name, _ := will["name"].(string)
 	p := engine.CreatePreview{Resource: engine.ResourcePGCluster, Name: name,
@@ -724,6 +725,9 @@ func pgCreatePreview(cfg config.Config, will map[string]any) engine.CreatePrevie
 		p.Add(k, will[k])
 	}
 	p.Add("access", pgAccess)
+	if cpu, ram := pgInt(will, "cpu", 0), pgInt(will, "memory_gb", 0); cpu > 0 && ram > 0 {
+		p.PG = &pricing.PGSize{CPU: cpu, RAMGB: ram, StorageGB: pgInt(will, "storage_gb", 0), Instances: pgInt(will, "instances", 1)}
+	}
 	p.Price()
 	return p
 }

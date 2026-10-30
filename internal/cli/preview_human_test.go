@@ -63,6 +63,7 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами"},
 	"pg_create will_create.zone":                      {unnamedWork, "зона кластера"},
 	"provision preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена; человеку — месячная"},
+	"pg_create preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена узлов; человеку — месячная и полная почасовая"},
 	"provision preview.project_from":                  {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"provision will_create.disk_size":                 {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
 	"provision will_create.flavor":                    {unnamedNoise, "«по умолчанию: окружение, профиль или автоподбор» — превью называет выбранное"},
