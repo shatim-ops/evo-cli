@@ -1,3 +1,0 @@
-### Изменено
-
-- **Превью create называет заданные необязательные аргументы, которые evo отправляет в облако:** `description` у `cert_import`, `cert_issue_le`, `dns_zone_create`, `image_create`, `kafka_create`, `pg_create`, `redis_create`, `vpc_create`, `vpc_route_create`; `display_name` у `image_create`; `lc_collate` и `lc_ctype` у `pg_db_create`; `target_port` у `lb_create`. Раньше значение уходило в запрос, но в превью и в вопросе о согласии его не было. Теперь оно есть в `preview.params` (или рядом с `message`, если объекта превью нет), а `--dry-run` и вопрос о согласии показывают его строкой. Это новые поля; `reason` и коды выхода не меняются.

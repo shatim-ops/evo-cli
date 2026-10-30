@@ -3,7 +3,7 @@ name: evo-cleanup
 description: Find and remove the Cloud.ru Evolution resources a test or a project created with evo, by a name prefix, in dependency order, and report what was removed, what was already gone and what is left and costs money. Use for "clean up after the test", "remove everything with prefix X", "what is left and what does it cost". Not as a step of another scenario; each scenario skill has its own cleanup.
 license: Apache-2.0
 metadata:
-  evo-version: "1.5"
+  evo-version: "1.6"
   evo-mode: human-in-the-loop
 ---
 
