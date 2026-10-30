@@ -76,6 +76,17 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	case "404empty":
 		code = 404
 		body = ""
+	case "404text":
+		// The gateway of compute on a path that is not there: text/plain,
+		// a JSON string (api-probe 33, 34; the text was not printed).
+		code = 404
+		hdr.Set("Content-Type", "text/plain")
+		body = `"404 page not found"`
+	case "404errormsg":
+		// The gateway of VPC, NLB, Container Apps on a path that is not
+		// there: {"error_msg"} (api-probe 33, 34; the text was not printed).
+		code = 404
+		body = `{"error_msg":"Not Found"}`
 	default:
 		code, _ = strconv.Atoi(kind)
 		if code == 0 {

@@ -12,9 +12,12 @@ import (
 )
 
 // bare404Kinds are the 404 answers the product did not write: a gateway's
-// HTML page, an empty body — a route or an address that is not there, not
-// a resource that is gone (FB13-3, E1).
-var bare404Kinds = []string{"404html", "404empty"}
+// HTML page, an empty body, the text/plain of compute's gateway and the
+// {"error_msg"} of the gateway of VPC, NLB and Container Apps (api-probe 33,
+// 34: on a path that is not there) — a route or an address that is not
+// there, not a resource that is gone (FB13-3, E1). No product answers a
+// resource that is not there so (D63, the same runs).
+var bare404Kinds = []string{"404html", "404empty", "404text", "404errormsg"}
 
 // bare404Gone are the deletes that read a 404 without the product's body as
 // the resource gone and answer already_deleted. E1 (1.5) makes it
@@ -47,6 +50,7 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 	rt := &contractRT{}
 	reg := contractReg(t, rt)
 	found := map[string]string{}
+	byKind := map[string]int{}
 	reached := map[string]bool{}
 	names := make([]string, 0, len(deleteTargets))
 	for name := range deleteTargets {
@@ -77,6 +81,7 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 			}
 			if _, status := contractReason(text); status == "already_deleted" {
 				found[name] = kind
+				byKind[kind]++
 			}
 		}
 	}
@@ -94,6 +99,7 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 			t.Errorf("%s: a 404 without the service's body (%s) answers already_deleted — a missing route is not a deleted resource (E1)", name, kind)
 		}
 	}
+	t.Logf("deletes that read a bare 404 as gone, by kind: %v", byKind)
 	for name := range bare404Gone {
 		if found[name] == "" {
 			t.Errorf("bare404Gone names %s, which no longer reads a bare 404 as gone: remove the line", name)
