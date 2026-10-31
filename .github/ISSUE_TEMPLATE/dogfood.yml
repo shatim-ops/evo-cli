@@ -1,30 +1,52 @@
-name: Находка догфуда 1.4.0
-description: Находка участника волны догфуда на стабильном evo 1.4.0 — ошибка, недостающая функция, поведение платформы, документация, вопрос.
-title: "[догфуд] "
+name: "Отчёт о сценарии (догфуд 1.6)"
+description: "Прошли сценарий волны догфуда 1.6 — с любым исходом. Ошибку по ходу заведите отдельно формой «Ошибка» и дайте ссылку."
+title: "[сценарий] "
+# Только «отзыв»: форма не ставит метку, которой нет в репозитории, — остальные
+# ставит по полям .github/scripts/issue_labels.py (workflow issue-labels).
 labels: ["отзыв"]
 body:
   - type: markdown
     attributes:
       value: |
-        Репозиторий публичный. Замените в тексте ID проектов, ВМ и ресурсов, IP-адреса, Key ID, имена ваших ресурсов и доменов на `<uuid>`, `<ip>`, `<имя>`. Ключи и секреты не вставляйте никогда.
+        Репозиторий публичный. Замените в тексте ID проектов, ВМ и ресурсов, IP-адреса, Key ID, имена хостов и ресурсов на `<проект>`, `<id ВМ>`, `<IP>`, `<имя>`. Ключи, секреты, токены и пароли не вставляйте никогда. Имена коллег, внутренние ссылки и номера заявок — тоже не сюда.
 
-        **Файл журнала evo сюда не прикладывайте.** Он идёт во внутренний канал волны — заявкой Jira SM. Здесь — только его sha256 и номер заявки: по ним разбор найдёт файл, а данные проекта не попадут в открытый доступ.
-
-        Уязвимость — не сюда: **Security → Report a vulnerability** (приватный отчёт, `SECURITY.md`). Одна находка — одно issue; если такое уже есть — комментарий к нему.
+        Уязвимость — обход согласия, утечка секрета, доступ к чужому проекту — не сюда, а приватным отчётом: **Security → Report a vulnerability** ([SECURITY.md](https://github.com/shatim-ops/evo-cli/blob/main/SECURITY.md)). Похоже на платформу Cloud.ru, а не на evo, — отметьте это и опишите только то, что сделал evo.
   - type: dropdown
     id: wave
     attributes:
       label: Волна
       options:
-        - "1.4.0"
+        - "Догфуд 1.6"
+    validations:
+      required: true
+  - type: dropdown
+    id: scenario
+    attributes:
+      label: Сценарий
+      options:
+        - "С0 — ядро: установка, ключ, агент, скиллы"
+        - "С1 — развернуть compose и дать ссылку"
+        - "С2 — ВМ с публичным адресом и портом"
+        - "С3 — PostgreSQL"
+        - "С4 — убрать всё созданное"
+        - "С5 — что запущено и сколько стоит"
+        - "С6 — сеть без консоли"
+        - "С7 — невыполнимое: отказ без вопроса"
+        - "С8 — ничего платного без превью"
+        - "С9 — обрыв и повтор"
+        - "С10 — сон ноутбука"
+        - "С11 — Windows и корпоративный прокси"
+        - "С12 — долгая операция: Kubernetes, Kafka или Redis"
+        - "С13 — своя задача"
+        - "С14 — передача между вами и агентом"
     validations:
       required: true
   - type: input
     id: version
     attributes:
       label: Версия
-      description: Вывод `evo version` (первая строка).
-      placeholder: evo CMCP 1.4.0
+      description: "Первая строка `evo version`."
+      placeholder: "evo CMCP 1.6.0"
     validations:
       required: true
   - type: dropdown
@@ -40,101 +62,148 @@ body:
     validations:
       required: true
   - type: dropdown
+    id: track
+    attributes:
+      label: Трек
+      options:
+        - "Т1 — вы, без агента, CLI"
+        - "Т2 — агент, только MCP"
+        - "Т3 — агент, только CLI"
+        - "Т4 — агент, MCP и CLI"
+        - "Т5 — вы и агент вместе"
+    validations:
+      required: true
+  - type: dropdown
+    id: skills
+    attributes:
+      label: Скиллы
+      options:
+        - "Со скиллами"
+        - "Только карточки"
+        - "— (Т1, без агента)"
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Клиент агента и модель
+      placeholder: "Claude Code + Sonnet 5.5"
+    validations:
+      required: false
+  - type: dropdown
+    id: confirm
+    attributes:
+      label: Режим подтверждения в клиенте
+      options:
+        - "Спрашивает каждый вызов"
+        - "Разрешено для evo"
+        - "Автоматический"
+        - "— (Т1, без агента)"
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Итог
+      options:
+        - "Получилось"
+        - "Частично"
+        - "Не получилось"
+    validations:
+      required: true
+  - type: input
+    id: calls
+    attributes:
+      label: Вызовов или команд до результата
+      description: "Для Т1 — и сколько раз открывали `--help` или документацию."
+    validations:
+      required: true
+  - type: textarea
+    id: route
+    attributes:
+      label: Ошибки маршрута
+      description: "Агент пошёл не туда; в Т1 — не та команда, не тот флаг. Нет — «нет»."
+    validations:
+      required: true
+  - type: textarea
     id: surface
     attributes:
-      label: Как запускали
-      options:
-        - CLI в терминале
-        - MCP через AI-агента (Claude Code, Cursor и др.)
-        - MCP в Cloud.ru AI Agents
-        - Docker-образ
+      label: Поверхность по шагам
+      description: "Т4 — MCP или CLI на каждом шаге; Т2 — был ли вызов терминала."
+    validations:
+      required: false
+  - type: textarea
+    id: consent
+    attributes:
+      label: Согласия
+      description: "Сколько раз спросил; было ли превью перед каждым; подтверждал ли агент сам без вас."
+    validations:
+      required: true
+  - type: textarea
+    id: refusals
+    attributes:
+      label: Отказы до вопроса
+      description: "Был ли; понятно ли, что делать дальше."
+    validations:
+      required: false
+  - type: textarea
+    id: leftovers
+    attributes:
+      label: Что осталось после уборки
+      description: "Без ID: вид и имя с префиксом. Ничего — «ничего»."
     validations:
       required: true
   - type: dropdown
-    id: area
+    id: password
     attributes:
-      label: Область
-      description: Раздел протокола догфуда (docs/internal/dogfood-protocol.md).
+      label: Пароль появился в чате
       options:
-        - "Установка, configure, doctor"
-        - "Развёртывание compose (deploy, status, logs, destroy)"
-        - "ВМ и диски"
-        - "Образы и Marketplace"
-        - "Сеть: VPC, группы безопасности, floating IP, SNAT"
-        - "Балансировщик NLB"
-        - "DNS"
-        - "Kubernetes"
-        - "PostgreSQL"
-        - "Kafka и Redis"
-        - "Object Storage (S3)"
-        - "Секреты и сертификаты"
-        - "Container Apps и Artifact Registry"
-        - "Мониторинг, биллинг, аудит, IAM"
-        - "Стеки stack_*"
-        - "MCP-агент (Cursor, Claude Code и др.)"
-        - "Другое"
+        - "Нет"
+        - "Да"
+        - "Пароля не было"
     validations:
       required: true
-  - type: dropdown
-    id: kind
+  - type: input
+    id: minutes
     attributes:
-      label: Тип
-      description: Как вы это видите; окончательный тип ставит разбор.
-      options:
-        - "Ошибка evo"
-        - "Не хватает функции"
-        - "Поведение платформы Cloud.ru"
-        - "Документация"
-        - "Вопрос «как сделать»"
+      label: Минут на сценарий
     validations:
       required: true
+  - type: textarea
+    id: unclear
+    attributes:
+      label: Что было непонятно
+    validations:
+      required: false
   - type: dropdown
     id: money
     attributes:
       label: Ресурсы и деньги
-      description: Осталось ли в облаке что-то платное из-за этой находки. Проверьте `evo vm list`, `evo vpc fips`, `evo disk list`.
       options:
-        - Ничего лишнего не создано
-        - Создан лишний ресурс (дубль)
-        - Ресурс остался после удаления или ошибки
-        - Не знаю
+        - "Ничего лишнего не создано"
+        - "Создан лишний ресурс (дубль)"
+        - "Ресурс остался после удаления или ошибки"
+        - "Не знаю"
     validations:
       required: true
-  - type: textarea
-    id: command
+  - type: dropdown
+    id: security
     attributes:
-      label: Команда или запрос агенту
-      description: Что именно запускали или о чём просили агента.
-      render: shell
+      label: Безопасность
+      options:
+        - "Нет"
+        - "Да: секрет в выводе, действие без согласия, лишние права"
+        - "Не знаю"
     validations:
       required: true
-  - type: textarea
-    id: actual
+  - type: dropdown
+    id: journal
     attributes:
-      label: Что произошло
-      description: Вывод и код выхода (`echo $?`). Для MCP — ответ инструмента. ID и IP замените.
-      render: text
-    validations:
-      required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: Что ожидали
-    validations:
-      required: true
-  - type: input
-    id: journal-sha
-    attributes:
-      label: sha256 журнала
-      description: "Файл журнала evo за период находки: `sha256sum <файл>` (Linux), `shasum -a 256 <файл>` (macOS), `Get-FileHash <файл>` (Windows). Сам файл — в заявку внутреннего канала."
-      placeholder: 64 шестнадцатеричных символа
-    validations:
-      required: true
-  - type: input
-    id: ticket
-    attributes:
-      label: Заявка во внутреннем канале
-      description: Номер заявки Jira SM, к которой приложен файл журнала, — только номер, без адреса.
+      label: Журнал evo diag export
+      description: "Журнал `evo diag export` к issue не прикладывайте: в публичном репозитории ему не место. Сохраните файл у себя и отметьте, что он есть, — если понадобится, его попросят в личном сообщении."
+      options:
+        - "Есть, сохранён у меня"
+        - "Нет"
     validations:
       required: true
   - type: checkboxes
@@ -143,6 +212,4 @@ body:
       label: Проверка
       options:
         - label: В тексте нет ключей, секретов, реальных ID, IP и имён ресурсов
-          required: true
-        - label: Файл журнала не приложен к этому issue — он в заявке внутреннего канала
           required: true

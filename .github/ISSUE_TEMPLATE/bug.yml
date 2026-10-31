@@ -1,18 +1,22 @@
-name: Ошибка CLI
-description: Команда или инструмент MCP сработали не так, как ожидалось, или облако повело себя странно.
+name: "Ошибка"
+description: "Сработало не так, как ожидалось: ресурс остался, деньги без превью, отказ после «да», ответ не совпал с ожиданием."
 title: "[bug] "
-labels: ["отзыв", "ошибка"]
+# Только «отзыв»: форма не ставит метку, которой нет в репозитории, — остальные
+# ставит по полям .github/scripts/issue_labels.py (workflow issue-labels).
+labels: ["отзыв"]
 body:
   - type: markdown
     attributes:
       value: |
-        Репозиторий публичный. Перед отправкой замените в выводе ID проектов, ВМ и ресурсов, IP-адреса, Key ID, имена ваших ресурсов и доменов на `<uuid>`, `<ip>`, `<имя>`. Ключи и секреты не вставляйте никогда. Одна проблема — одно issue; если такое уже есть — комментарий к нему.
+        Репозиторий публичный. Замените в тексте ID проектов, ВМ и ресурсов, IP-адреса, Key ID, имена хостов и ресурсов на `<проект>`, `<id ВМ>`, `<IP>`, `<имя>`. Ключи, секреты, токены и пароли не вставляйте никогда. Имена коллег, внутренние ссылки и номера заявок — тоже не сюда.
+
+        Уязвимость — обход согласия, утечка секрета, доступ к чужому проекту — не сюда, а приватным отчётом: **Security → Report a vulnerability** ([SECURITY.md](https://github.com/shatim-ops/evo-cli/blob/main/SECURITY.md)). Похоже на платформу Cloud.ru, а не на evo, — отметьте это и опишите только то, что сделал evo.
   - type: input
     id: version
     attributes:
       label: Версия
-      description: Вывод `evo version` (первая строка).
-      placeholder: evo CMCP 1.2.3
+      description: "Первая строка `evo version`."
+      placeholder: "evo CMCP 1.6.0"
     validations:
       required: true
   - type: dropdown
@@ -31,24 +35,43 @@ body:
     id: env
     attributes:
       label: Окружение
-      description: Оболочка, сеть (корпоративный прокси или нет), для MCP — клиент и модель.
-      placeholder: zsh; корпоративный прокси; Cursor + Claude Sonnet
-  - type: dropdown
-    id: surface
-    attributes:
-      label: Как запускали
-      options:
-        - CLI в терминале
-        - MCP через AI-агента (Claude Code, Cursor и др.)
-        - MCP в Cloud.ru AI Agents
-        - Docker-образ
+      description: "Оболочка; для агента — клиент, модель и режим подтверждения."
+      placeholder: "zsh; Cursor + Claude Sonnet; спрашивает каждый вызов"
     validations:
       required: true
+  - type: dropdown
+    id: proxy
+    attributes:
+      label: Корпоративный прокси
+      options:
+        - "Нет"
+        - "Да"
+    validations:
+      required: true
+  - type: dropdown
+    id: track
+    attributes:
+      label: Трек
+      options:
+        - "Т1 — вы, без агента, CLI"
+        - "Т2 — агент, только MCP"
+        - "Т3 — агент, только CLI"
+        - "Т4 — агент, MCP и CLI"
+        - "Т5 — вы и агент вместе"
+        - "Вне волны догфуда"
+    validations:
+      required: true
+  - type: input
+    id: where-in-wave
+    attributes:
+      label: Сценарий и шаг или строка каталога
+      placeholder: "С3, шаг 2 · vpc-05 · X-04"
+    validations:
+      required: false
   - type: dropdown
     id: area
     attributes:
       label: Область
-      description: Раздел протокола догфуда (docs/internal/dogfood-protocol.md).
       options:
         - "Установка, configure, doctor"
         - "Развёртывание compose (deploy, status, logs, destroy)"
@@ -73,23 +96,32 @@ body:
     id: where
     attributes:
       label: Где, по-вашему, проблема
-      description: «Платформа» — если ошибку вернул API Cloud.ru или так же ведёт себя консоль.
       options:
-        - В CLI
-        - В платформе Cloud.ru
-        - Не знаю
+        - "В evo"
+        - "В платформе Cloud.ru"
+        - "Не знаю"
     validations:
       required: true
   - type: dropdown
     id: money
     attributes:
       label: Ресурсы и деньги
-      description: Осталось ли в облаке что-то платное из-за этой ошибки. Проверьте `evo vm list`, `evo vpc fips`, `evo disk list`.
+      description: "Осталось ли в облаке что-то платное. Проверьте `evo vm list`, `evo vpc fips`, `evo disk list`."
       options:
-        - Ничего лишнего не создано
-        - Создан лишний ресурс (дубль)
-        - Ресурс остался после удаления или ошибки
-        - Не знаю
+        - "Ничего лишнего не создано"
+        - "Создан лишний ресурс (дубль)"
+        - "Ресурс остался после удаления или ошибки"
+        - "Не знаю"
+    validations:
+      required: true
+  - type: dropdown
+    id: security
+    attributes:
+      label: Безопасность
+      options:
+        - "Нет"
+        - "Да: секрет в выводе, действие без согласия, лишние права"
+        - "Не знаю"
     validations:
       required: true
   - type: dropdown
@@ -97,15 +129,16 @@ body:
     attributes:
       label: Повторяется
       options:
-        - Всегда
-        - Иногда
-        - Один раз
-        - Не проверял
+        - "Всегда"
+        - "Иногда"
+        - "Один раз"
+        - "Не проверял"
+    validations:
+      required: true
   - type: textarea
     id: command
     attributes:
-      label: Команда или запрос агенту
-      description: Что именно запускали или о чём просили агента.
+      label: Точная команда или фраза агенту
       render: shell
     validations:
       required: true
@@ -113,7 +146,7 @@ body:
     id: actual
     attributes:
       label: Что произошло
-      description: Вывод и код выхода (`echo $?`). Для MCP — ответ инструмента. ID и IP замените.
+      description: "Вывод и код выхода (`echo $?`); для агента — ответ инструмента. ID и IP замените."
       render: text
     validations:
       required: true
@@ -127,8 +160,20 @@ body:
     id: doctor
     attributes:
       label: evo doctor
-      description: Вывод `evo doctor` (для CLI — обязательно). ID проекта замените.
+      description: "Вывод `evo doctor` (для CLI — обязательно). ID проекта замените."
       render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: journal
+    attributes:
+      label: Журнал evo diag export
+      description: "Журнал `evo diag export` к issue не прикладывайте: в публичном репозитории ему не место. Сохраните файл у себя и отметьте, что он есть, — если понадобится, его попросят в личном сообщении."
+      options:
+        - "Есть, сохранён у меня"
+        - "Нет"
+    validations:
+      required: true
   - type: checkboxes
     id: privacy
     attributes:

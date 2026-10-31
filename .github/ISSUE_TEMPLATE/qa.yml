@@ -1,0 +1,129 @@
+name: "Отчёт QA"
+description: "Комитет QA: прошли группу каталога возможностей целиком. Каждую находку — отдельно формой «Ошибка» или «Идея», здесь — ссылки."
+title: "[qa] "
+# Только «отзыв»: форма не ставит метку, которой нет в репозитории, — остальные
+# ставит по полям .github/scripts/issue_labels.py (workflow issue-labels).
+labels: ["отзыв"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Репозиторий публичный. Замените в тексте ID проектов, ВМ и ресурсов, IP-адреса, Key ID, имена хостов и ресурсов на `<проект>`, `<id ВМ>`, `<IP>`, `<имя>`. Ключи, секреты, токены и пароли не вставляйте никогда. Имена коллег, внутренние ссылки и номера заявок — тоже не сюда.
+
+        Уязвимость — обход согласия, утечка секрета, доступ к чужому проекту — не сюда, а приватным отчётом: **Security → Report a vulnerability** ([SECURITY.md](https://github.com/shatim-ops/evo-cli/blob/main/SECURITY.md)). Похоже на платформу Cloud.ru, а не на evo, — отметьте это и опишите только то, что сделал evo.
+  - type: dropdown
+    id: wave
+    attributes:
+      label: Волна
+      options:
+        - "Комитет QA"
+    validations:
+      required: true
+  - type: input
+    id: group
+    attributes:
+      label: Группа каталога
+      description: "Префикс строк каталога: vm, vpc, pg, X и т. д."
+      placeholder: "vpc"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Версия
+      description: "Первая строка `evo version`."
+      placeholder: "evo CMCP 1.6.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: ОС
+      options:
+        - "macOS"
+        - "Windows"
+        - "Linux"
+        - "Windows + WSL"
+        - "Docker-образ evo"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Окружение
+      description: "Оболочка; прокси да или нет; для агента — клиент, модель и режим подтверждения."
+    validations:
+      required: true
+  - type: dropdown
+    id: qa-surface
+    attributes:
+      label: Поверхность
+      options:
+        - "CLI"
+        - "Агент"
+        - "CLI и агент"
+    validations:
+      required: true
+  - type: input
+    id: passed
+    attributes:
+      label: Строк пройдено
+    validations:
+      required: true
+  - type: input
+    id: remarks
+    attributes:
+      label: Строк с замечаниями
+    validations:
+      required: true
+  - type: textarea
+    id: issues
+    attributes:
+      label: Issue с находками
+      description: "Номера issue «Ошибка» и «Идея» по этой группе: #123, #124."
+    validations:
+      required: false
+  - type: textarea
+    id: unclear
+    attributes:
+      label: Что было непонятно
+    validations:
+      required: false
+  - type: dropdown
+    id: money
+    attributes:
+      label: Ресурсы и деньги
+      options:
+        - "Ничего лишнего не создано"
+        - "Создан лишний ресурс (дубль)"
+        - "Ресурс остался после удаления или ошибки"
+        - "Не знаю"
+    validations:
+      required: true
+  - type: dropdown
+    id: security
+    attributes:
+      label: Безопасность
+      options:
+        - "Нет"
+        - "Да: секрет в выводе, действие без согласия, лишние права"
+        - "Не знаю"
+    validations:
+      required: true
+  - type: dropdown
+    id: journal
+    attributes:
+      label: Журнал evo diag export
+      description: "Журнал `evo diag export` к issue не прикладывайте: в публичном репозитории ему не место. Сохраните файл у себя и отметьте, что он есть, — если понадобится, его попросят в личном сообщении."
+      options:
+        - "Есть, сохранён у меня"
+        - "Нет"
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Проверка
+      options:
+        - label: В тексте нет ключей, секретов, реальных ID, IP и имён ресурсов
+          required: true
