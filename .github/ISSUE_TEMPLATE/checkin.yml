@@ -1,27 +1,42 @@
-name: Чек-ин догфуда
-description: Раз в неделю и в конце волны, 3 минуты. Не ошибка и не идея — для них свои формы.
+name: "Чек-ин"
+description: "Первый день, неделя, итог волны — 3 минуты. Не ошибка и не идея — для них свои формы."
 title: "[чек-ин] "
-labels: ["чек-ин"]
+# Только «отзыв»: форма не ставит метку, которой нет в репозитории, — остальные
+# ставит по полям .github/scripts/issue_labels.py (workflow issue-labels).
+labels: ["отзыв"]
 body:
   - type: markdown
     attributes:
       value: |
-        Первый чек-ин — в день получения ключа, после обязательного ядра (раздел 1 протокола). Дальше — по пятницам и в конце волны. На чек-ин не отвечают: из них собираются покрытие, расход и уборка волны. Ошибку отсюда заведите отдельным issue по форме «Ошибка CLI» и дайте ссылку.
+        Первый чек-ин — в день получения ключа, после ядра (С0). Дальше — по пятницам и в конце волны. На чек-ин не отвечают: из них собираются покрытие, расход и уборка волны. Ошибку отсюда заведите отдельно формой «Ошибка» и дайте ссылку.
+
+        Репозиторий публичный. Замените в тексте ID проектов, ВМ и ресурсов, IP-адреса, Key ID, имена хостов и ресурсов на `<проект>`, `<id ВМ>`, `<IP>`, `<имя>`. Ключи, секреты, токены и пароли не вставляйте никогда. Имена коллег, внутренние ссылки и номера заявок — тоже не сюда.
+
+        Уязвимость — обход согласия, утечка секрета, доступ к чужому проекту — не сюда, а приватным отчётом: **Security → Report a vulnerability** ([SECURITY.md](https://github.com/shatim-ops/evo-cli/blob/main/SECURITY.md)). Похоже на платформу Cloud.ru, а не на evo, — отметьте это и опишите только то, что сделал evo.
+  - type: dropdown
+    id: wave
+    attributes:
+      label: Волна
+      options:
+        - "Догфуд 1.6"
+    validations:
+      required: true
   - type: dropdown
     id: period
     attributes:
       label: Период
       options:
-        - Первый день (профиль и ядро)
-        - Неделя
-        - Итог волны
+        - "Первый день"
+        - "Неделя"
+        - "Итог волны"
     validations:
       required: true
   - type: input
     id: version
     attributes:
       label: Версия
-      description: Первая строка `evo version`.
+      description: "Первая строка `evo version`."
+      placeholder: "evo CMCP 1.6.0"
     validations:
       required: true
   - type: dropdown
@@ -40,62 +55,50 @@ body:
     id: env
     attributes:
       label: Окружение
-      description: Оболочка, сеть (корпоративный прокси или нет), MCP-клиент и модель.
-      placeholder: PowerShell; без прокси; Claude Code + Opus
+      description: "Оболочка, сеть (корпоративный прокси или нет), клиент агента и модель."
+      placeholder: "PowerShell; без прокси; Claude Code + Opus"
     validations:
       required: true
   - type: dropdown
     id: skills
     attributes:
-      label: Сценарные скиллы
-      description: Были ли у агента скиллы из каталога `skills/` (evo-scenarios и др.). Встроенные правила `evo agent setup --skill` — не они.
+      label: Скиллы
       options:
-        - Со скиллами
-        - Без скиллов
-        - Без агента (только CLI)
+        - "Со скиллами"
+        - "Только карточки"
+        - "Только CLI"
     validations:
       required: true
-  - type: checkboxes
-    id: areas
+  - type: dropdown
+    id: sees-skills
     attributes:
-      label: Области
-      description: Что пробовали за период — и то, что сработало, тоже.
+      label: Видит ли агент evo-* и карточки
       options:
-        - label: "Установка, configure, doctor"
-        - label: "Развёртывание compose (deploy, status, logs, destroy)"
-        - label: "ВМ и диски"
-        - label: "Образы и Marketplace"
-        - label: "Сеть: VPC, группы безопасности, floating IP, SNAT"
-        - label: "Балансировщик NLB"
-        - label: "DNS"
-        - label: "Kubernetes"
-        - label: "PostgreSQL"
-        - label: "Kafka и Redis"
-        - label: "Object Storage (S3)"
-        - label: "Секреты и сертификаты"
-        - label: "Container Apps и Artifact Registry"
-        - label: "Мониторинг, биллинг, аудит, IAM"
-        - label: "Стеки stack_*"
-        - label: "MCP-агент (Cursor, Claude Code и др.)"
+        - "Да"
+        - "Нет"
+        - "Не проверял"
+        - "— (не первый день или без агента)"
+    validations:
+      required: true
+  - type: input
+    id: scenarios
+    attributes:
+      label: Сценарии за период
+      placeholder: "С0, С1, С3"
+    validations:
+      required: true
   - type: input
     id: core_minutes
     attributes:
-      label: Минут до первой команды
-      description: Только для первого дня — от скачивания до первого `evo vm list`.
-  - type: textarea
-    id: worked
-    attributes:
-      label: Что получилось
-  - type: textarea
-    id: unclear
-    attributes:
-      label: Что было непонятно или неудобно
-      description: Коротко; ошибки — ссылкой на issue.
+      label: Минут от скачивания до evo vm list
+      description: "Только «Первый день»."
+    validations:
+      required: false
   - type: input
     id: spend
     attributes:
       label: Расход за период, ₽
-      description: Из `evo tools call billing_consumption` или консоли «Контроль затрат». Если billing не ответил — так и напишите.
+      description: "`evo billing consumption`, поле `total_with_nds`."
     validations:
       required: true
   - type: dropdown
@@ -103,10 +106,10 @@ body:
     attributes:
       label: Остались ли ресурсы
       options:
-        - Нет, всё убрано
-        - Да, работают намеренно
-        - Да, не удаляются (ID в отдельном issue)
-        - Не знаю
+        - "Нет, всё убрано"
+        - "Да, удаляю"
+        - "Да, не удаляются (ссылка на issue «Ошибка»)"
+        - "Не знаю"
     validations:
       required: true
   - type: dropdown
@@ -121,13 +124,19 @@ body:
         - "1"
     validations:
       required: true
+  - type: input
+    id: rating-why
+    attributes:
+      label: Одна фраза к оценке
+    validations:
+      required: false
   - type: dropdown
     id: continue
     attributes:
       label: Дальше
       options:
-        - Продолжу
-        - Не продолжу
+        - "Продолжу"
+        - "Не продолжу"
     validations:
       required: true
   - type: checkboxes

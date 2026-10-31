@@ -10,14 +10,17 @@ matched against fixed answers, never executed, and only labels from the
 tables below are ever set.
 
 Prefixed labels (area, OS) follow the body when it is edited. Flags
-(platform, money, question, the dogfood wave) are only added: the triage
+(platform, money, security, question, the dogfood wave or the QA
+committee) are only added: the triage
 session may set them by hand, and an edit must not take them off. A form
 cannot set a label the repository lacks, so the wave's label comes from
 here, created on its first use.
 
-Check-ins (checkin.yml) get no labels here: the form sets "чек-ин", not
-"отзыв", so the workflow skips them, and their "Области" are counted by
-the triage summary, not labelled.
+Every form sets only "отзыв", the one label the repository is sure to
+have: GitHub drops a label of a form the repository lacks. The kind of the
+form (ошибка, идея, вопрос, чек-ин), the wave (догфуд-1.6, qa) and the flags
+come from here and are created on first use. A check-in gets its kind and
+wave only: the triage summary counts it, area and OS are not labelled.
 
 Usage: issue_labels.py            reads NUMBER, BODY, LABELS (JSON list)
                                   from the environment and calls gh
@@ -58,14 +61,31 @@ FLAGS = {
     ("Где, по-вашему, проблема", "В платформе Cloud.ru"): "платформа",
     ("Ресурсы и деньги", "Создан лишний ресурс (дубль)"): "деньги",
     ("Ресурсы и деньги", "Ресурс остался после удаления или ошибки"): "деньги",
+    ("Безопасность", "Да: секрет в выводе, действие без согласия, лишние права"): "безопасность",
+    ("Что это", "Идея"): "идея",
+    ("Что это", "Неудобство"): "идея",
     ("Что это", "Вопрос, ответа на который нет в документации"): "вопрос",
-    # Находка догфуда (dogfood.yml): метка волны и «Тип» участника.
+    # The wave of a dogfood report, a check-in or a QA report.
+    ("Волна", "Догфуд 1.6"): "догфуд-1.6",
+    ("Волна", "Комитет QA"): "qa",
+}
+# LEGACY are answers of FLAGS no form offers any more: issues of an earlier
+# wave keep their labels when edited. The test checks every other answer of
+# FLAGS against the forms.
+LEGACY = {
     ("Волна", "1.4.0"): "догфуд",
     ("Тип", "Поведение платформы Cloud.ru"): "платформа",
     ("Тип", "Вопрос «как сделать»"): "вопрос",
 }
+FLAGS.update(LEGACY)
+# MARKS label a form by a heading only it has: a form cannot set a label the
+# repository lacks, so each carries only "отзыв" and the kind comes from
+# here (the test checks each heading is in exactly one form).
+MARKS = {"Повторяется": "ошибка", "Период": "чек-ин"}
+# A check-in is counted by the triage summary, not labelled by area or OS.
+CHECKIN = "Период"
 PREFIXES = ("обл: ", "ос: ")
-COLORS = {"обл: ": "c5def5", "ос: ": "e4e669", "платформа": "f9d0c4", "деньги": "b60205", "вопрос": "d876e3", "догфуд": "0e8a16"}
+COLORS = {"обл: ": "c5def5", "ос: ": "e4e669", "платформа": "f9d0c4", "деньги": "b60205", "вопрос": "d876e3", "догфуд": "0e8a16", "qa": "1d76db", "безопасность": "5319e7", "ошибка": "d73a4a", "идея": "a2eeef", "чек-ин": "bfdadc"}
 
 
 def fields(body):
@@ -84,11 +104,13 @@ def fields(body):
 def wanted(body):
     f = fields(body)
     prefixed = set()
-    if f.get("Область") in AREA:
-        prefixed.add(AREA[f["Область"]])
-    if f.get("ОС") in OS:
-        prefixed.add(OS[f["ОС"]])
+    if CHECKIN not in f:
+        if f.get("Область") in AREA:
+            prefixed.add(AREA[f["Область"]])
+        if f.get("ОС") in OS:
+            prefixed.add(OS[f["ОС"]])
     flags = {label for (field, answer), label in FLAGS.items() if f.get(field) == answer}
+    flags |= {label for heading, label in MARKS.items() if heading in f}
     return prefixed, flags
 
 

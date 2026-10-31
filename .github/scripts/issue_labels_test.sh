@@ -15,10 +15,10 @@ check() {
 	if [ "$got" = "$want" ]; then echo "ok   $name"; else echo "FAIL $name: got '$got', want '$want'"; fail=1; fi
 }
 
-check "ошибка: область, ОС, платформа, деньги" 'деньги|обл: Kubernetes|ос: Windows|платформа' <<'B'
+check "ошибка: область, ОС, платформа, деньги, безопасность" 'безопасность|деньги|обл: Kubernetes|ос: Windows|ошибка|платформа' <<'B'
 ### Версия
 
-evo 1.0.4
+evo CMCP 1.6.0
 
 ### ОС
 
@@ -35,9 +35,17 @@ Kubernetes
 ### Ресурсы и деньги
 
 Ресурс остался после удаления или ошибки
+
+### Безопасность
+
+Да: секрет в выводе, действие без согласия, лишние права
+
+### Повторяется
+
+Всегда
 B
 
-check "ошибка в CLI без денег" 'обл: сеть|ос: macOS' <<'B'
+check "ошибка в evo без денег" 'обл: сеть|ос: macOS|ошибка' <<'B'
 ### ОС
 
 macOS
@@ -48,11 +56,33 @@ macOS
 
 ### Где, по-вашему, проблема
 
-В CLI
+В evo
 
 ### Ресурсы и деньги
 
 Ничего лишнего не создано
+
+### Безопасность
+
+Нет
+
+### Повторяется
+
+Один раз
+B
+
+check "идея" 'идея|обл: DNS' <<'B'
+### Что это
+
+Неудобство
+
+### Трек
+
+Т2 — агент, только MCP
+
+### Область
+
+DNS
 B
 
 check "вопрос" 'вопрос|обл: MCP' <<'B'
@@ -65,40 +95,72 @@ check "вопрос" 'вопрос|обл: MCP' <<'B'
 MCP-агент (Cursor, Claude Code и др.)
 B
 
-check "догфуд: волна, платформа, деньги" 'деньги|догфуд|обл: PostgreSQL|ос: Linux|платформа' <<'B'
+check "отчёт о сценарии: волна, деньги" 'деньги|догфуд-1.6|ос: Linux' <<'B'
 ### Волна
 
-1.4.0
+Догфуд 1.6
+
+### Сценарий
+
+С4 — убрать всё созданное
 
 ### ОС
 
 Linux
 
-### Область
+### Ресурсы и деньги
 
-PostgreSQL
+Создан лишний ресурс (дубль)
 
-### Тип
+### Безопасность
 
-Поведение платформы Cloud.ru
+Не знаю
+B
+
+check "отчёт QA" 'qa|ос: macOS' <<'B'
+### Волна
+
+Комитет QA
+
+### Группа каталога
+
+vpc
+
+### ОС
+
+macOS
 
 ### Ресурсы и деньги
 
-Ресурс остался после удаления или ошибки
+Ничего лишнего не создано
 B
 
-check "догфуд: вопрос" 'вопрос|догфуд|обл: MCP' <<'B'
+check "чек-ин: только вид и волна" 'догфуд-1.6|чек-ин' <<'B'
+### Волна
+
+Догфуд 1.6
+
+### Период
+
+Неделя
+
+### ОС
+
+Windows
+
+### Область
+
+DNS
+B
+
+check "issue волны 1.4.0 при правке сохраняет метки" 'догфуд|платформа' <<'B'
 ### Волна
 
 1.4.0
 
-### Область
-
-MCP-агент (Cursor, Claude Code и др.)
-
 ### Тип
 
-Вопрос «как сделать»
+Поведение платформы Cloud.ru
 B
 
 check "чужой текст не даёт меток" '' <<'B'
@@ -115,25 +177,67 @@ admin; gh issue close 1
 деньги
 B
 
-# The answers in the tables must be the forms' options word for word:
-# a form edited alone would silently stop getting labels.
+# The tables against the forms, word for word: a form edited alone would
+# silently stop getting labels.
 if python3 - <<'PY'
-import json, re, sys
+import glob, json, os, re, sys
 sys.path.insert(0, ".")
 import issue_labels as il
-def options(form):
-    return set(json.loads(m) for m in re.findall(r'^ +- (?:label: )?("[^"]*")$', open(form, encoding="utf-8").read(), re.M))
+
+def parse(path):
+    """The labels of a form and its fields with their options, from the
+    layout of these forms (no YAML module on the runner)."""
+    labels, fields, cur = None, {}, None
+    for line in open(path, encoding="utf-8"):
+        line = line.rstrip("\n")
+        val = lambda v: json.loads(v) if v.startswith('"') else v
+        if line.startswith("labels:"):
+            labels = json.loads(line.split(":", 1)[1])
+        elif line.startswith("  - type:"):
+            cur = None
+        elif m := re.match(r"^      label: (.+)$", line):
+            cur = val(m.group(1).strip())
+            fields[cur] = []
+        elif cur is not None and (m := re.match(r"^        - (?:label: )?(.+)$", line)):
+            fields[cur].append(val(m.group(1).strip()))
+    return {"labels": labels, "fields": fields}
+
+forms = {os.path.basename(f): parse(f)
+         for f in sorted(glob.glob("../ISSUE_TEMPLATE/*.yml")) if not f.endswith("config.yml")}
 miss = []
-for form, table in (("bug.yml", il.AREA), ("idea.yml", il.AREA), ("dogfood.yml", il.AREA),
-                    ("bug.yml", il.OS), ("checkin.yml", il.OS), ("dogfood.yml", il.OS)):
-    have = options("../ISSUE_TEMPLATE/" + form)
-    miss += [f"{form}: {k}" for k in table if k not in have]
-# Every answer a flag reads is an option of some form.
-def answers(form):  # options with or without quotes
-    lines = re.findall(r'^ +- (?:label: )?(.+?)\s*$', open(form, encoding="utf-8").read(), re.M)
-    return set(json.loads(l) if l.startswith('"') else l for l in lines)
-every = set().union(*(answers("../ISSUE_TEMPLATE/" + f) for f in ("bug.yml", "idea.yml", "checkin.yml", "dogfood.yml")))
-miss += [f"флаг {field}: {answer}" for field, answer in il.FLAGS if answer not in every]
+def fields(form):
+    return form["fields"]
+answers = {}
+for name, form in forms.items():
+    # GitHub drops a label of a form the repository lacks; "отзыв" is the one
+    # it has, the rest come from the script.
+    if form.get("labels") != ["отзыв"]:
+        miss.append(f"{name}: labels {form.get('labels')}, want [\"отзыв\"]")
+    for label, opts in fields(form).items():
+        answers.setdefault(label, set()).update(opts)
+    f = fields(form)
+    for table, field in ((il.AREA, "Область"), (il.OS, "ОС")):
+        if field in f and set(table) != set(f[field]):
+            miss.append(f"{name}: {field} differs from the table")
+    # Every form gets a kind: a mark, or a field whose every answer has the
+    # same flag.
+    kinds = {l for h, l in il.MARKS.items() if h in f}
+    for fl, opts in f.items():
+        got = {il.FLAGS.get((fl, o)) for o in opts}
+        if opts and len(got) == 1 and None not in got:
+            kinds |= got
+    if not kinds and name != "dogfood.yml":
+        miss.append(f"{name}: no kind label (MARKS or a single-answer flag)")
+for (field, answer) in il.FLAGS:
+    legacy = (field, answer) in il.LEGACY
+    if legacy and answer in answers.get(field, ()):
+        miss.append(f"LEGACY {field}: {answer} — снова вариант формы")
+    if not legacy and answer not in answers.get(field, ()):
+        miss.append(f"флаг {field}: {answer} — нет в формах")
+for heading in il.MARKS:
+    n = sum(heading in fields(f) for f in forms.values())
+    if n != 1:
+        miss.append(f"MARKS {heading}: в {n} формах, нужна одна")
 print("\n".join(miss)); sys.exit(1 if miss else 0)
 PY
 then echo "ok   таблицы совпадают с формами"; else echo "FAIL таблицы и формы разошлись"; fail=1; fi
