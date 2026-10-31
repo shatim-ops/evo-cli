@@ -70,7 +70,7 @@ CLI показывает тот же `message` и вместо неё подск
 кластера; у них нет `readOnlyHint` и `idempotentHint`, `destructiveHint:
 false` (с 1.3). Аннотации — подсказка, гейт
 `confirmed=true` от них не зависит. CLI ведёт себя так же (`--yes`, `--dry-run`, код выхода `3`, см.
-[README](../README.md#подтверждения)).
+[guide.md](guide.md#8-подтверждения)).
 
 `k8s_kubectl` без подтверждения выполняет только чтения (`get`, `describe`,
 `logs`, …). В любом транспорте он отклоняет (`USAGE`) флаги, которые
