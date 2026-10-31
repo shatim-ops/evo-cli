@@ -17,7 +17,7 @@
 
 ## Ждёт решения
 
-- D69: `destroy`, `stack_destroy`, `k8s_kubectl`, `k8s_helm` — через «релиз».
+- D69: `destroy`, `stack_destroy` — через «релиз»; `k8s_kubectl`, `k8s_helm` — в D69 (#717, п. 6).
 
 - Правило ретро 1.7 «после слияния сверять `git log origin/main..<ветка>`» (#711) — «да» владельца.
 - cloud-e2e на теге: правило окружения или запуск с `main` (#675).
