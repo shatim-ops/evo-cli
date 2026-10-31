@@ -7,7 +7,7 @@
 
 Стоп на код до «го» владельца (#719): только чтение и планы.
 
-1. Блок A — D69: план — `briefs/d69.md`; PR 1 — точка бюджета, `deploy_apply`, `INTERRUPTED`; затем `provision`, `stack_apply`, `deploy`, `k8s_helm` и `k8s_kubectl`.
+1. Блок A — D69: план — `briefs/d69.md`; PR 1 — точка бюджета, `deploy_apply`, `INTERRUPTED`; затем `provision`, `stack_apply`, `deploy`, `k8s_helm` и `k8s_kubectl`, `destroy` и `stack_destroy`.
 2. Блоки B, C, D (#717) — после A: хвост 1.6 (пакет отказов D50, единый автоподбор flavor, итог асинхронных удалений, FB160-19), D68.
 
 ## Ждёт решения
