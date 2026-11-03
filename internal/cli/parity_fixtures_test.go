@@ -351,6 +351,12 @@ type parityRT struct {
 	// unknown are the requests no fixture answers (parityAnswers,
 	// parityEmptyLists): withParityWorld fails the test on them.
 	unknown map[string]bool
+	// gone is a container app the call deleted: the next read of it is a
+	// 404, so that ca_delete, which reads the app until it is gone (D74),
+	// does not wait as in production; the read after that sees the world
+	// as it was, as every other resource of the world, which a delete does
+	// not remove.
+	gone map[string]bool
 }
 
 // takeWrites returns the writes recorded since the last call.
@@ -363,10 +369,25 @@ func (p *parityRT) takeWrites() []string {
 }
 
 func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
+	app := r.URL.Host == "containers.api.cloud.ru" && strings.Count(r.URL.Path, "/") == 3
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		p.mu.Lock()
 		p.writes = append(p.writes, r.Method+" "+r.URL.Host+r.URL.Path)
+		if app && r.Method == http.MethodDelete {
+			if p.gone == nil {
+				p.gone = map[string]bool{}
+			}
+			p.gone[r.URL.Path] = true
+		}
 		p.mu.Unlock()
+	} else if app {
+		p.mu.Lock()
+		gone := p.gone[r.URL.Path]
+		delete(p.gone, r.URL.Path)
+		p.mu.Unlock()
+		if gone {
+			return contractRT{status: http.StatusNotFound, body: `{"message":"container not found"}`}.RoundTrip(r)
+		}
 	}
 	if p.extra != nil {
 		if resp, err := p.extra(r); resp != nil || err != nil {
