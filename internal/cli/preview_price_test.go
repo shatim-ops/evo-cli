@@ -106,10 +106,10 @@ func TestContract_EveryPreviewPricedOrListed(t *testing.T) {
 // 1.7, C: each resource the preview creates has a class of its price
 // (price_classes), and the class holds what it says — priced has its own
 // part of the cost above zero (D17: a silent «0» is money spent blind),
-// zero_at_create
-// names what the tariff bills by use and where (note, tariff_url), and
-// paid_unpriced is said as such. A preview of a tool that creates nothing
-// (noPriceInPreview) has no classes; any other has at least one.
+// zero_at_create names what the tariff bills by use and where (note,
+// tariff_url), and paid_unpriced says why evo has no price (note). A
+// preview of a tool that creates nothing (noPriceInPreview) has no
+// classes; any other has at least one.
 func priceClassProblems(name string, p map[string]any) []string {
 	var bad []string
 	lines, _ := p["price_classes"].([]any)
@@ -138,6 +138,12 @@ func priceClassProblems(name string, p map[string]any) []string {
 				bad = append(bad, name+": "+r+" costs nothing at creation, but the preview does not say what the tariff bills (note) or where (tariff_url)")
 			}
 		case "paid_unpriced":
+			// The note says why evo has no price (priceClasses' why). A kind
+			// with no line there answers paid_unpriced too — with no note,
+			// so a kind nobody declared fails here, through the answer.
+			if note == "" {
+				bad = append(bad, name+": "+r+" is billable without a price, but the preview does not say why (note): declare its kind in priceClasses")
+			}
 		default:
 			bad = append(bad, fmt.Sprintf("%s: %s has the class %v, not one of priced, zero_at_create, paid_unpriced", name, r, m["class"]))
 		}
