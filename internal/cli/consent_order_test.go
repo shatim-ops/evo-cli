@@ -30,7 +30,10 @@ import (
 // that fixes it (W3…W6; the decisions of 1.3.1, D39…D42, with their PR).
 // The list only shrinks: a case not here fails the test, and so does a line
 // whose call no longer fails that way.
-var lateRefusals = map[string]string{}
+var lateRefusals = map[string]string{
+	"s3_bucket_create: world: no S3 keys": "release plan 1.7, F5a: the s3_* group on the shared planner of consent (gated). Closes by 1.7",
+	"s3_put: world: no S3 keys":           "release plan 1.7, F5a: the s3_* group on the shared planner of consent (gated). Closes by 1.7",
+}
 
 // jobStarts answer a refused write as a success by design: the call starts
 // a job, and the step's refusal is the job's state, not the call's answer.
@@ -63,6 +66,11 @@ type consentWorld struct {
 }
 
 var consentWorlds = map[string]consentWorld{
+	// The profile has no S3 keys (agent runs of Grok on 1.6.0, F5a): the
+	// S3 tools know it from the configuration, before the question; the
+	// write would fail on the client, without a request.
+	"no S3 keys": {env: map[string]string{"CLOUDRU_S3_ACCESS_KEY": "", "CLOUDRU_S3_SECRET_KEY": ""},
+		refusedBy: []string{"s3_bucket_create", "s3_put", "s3_rm", "s3_bucket_delete"}, names: "S3"},
 	// provision, deploy and the creates that pick the zone's subnet.
 	"zone without subnet": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return noSubnetCloud{c} }},
 	// disk_resize asks for 50 GB: the disk has 100, a shrink the API
