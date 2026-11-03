@@ -7,6 +7,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -65,7 +66,7 @@ func (*listingCancelCloud) GetFloatingIP(ctx context.Context, id string) (*provi
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &provision.FloatingIP{ID: id, IPAddress: "203.0.113.9", State: "attached"}, nil
+	return &provision.FloatingIP{ID: id, IPAddress: "203.0.113.9", State: "in_use"}, nil
 }
 
 // AddSecurityGroupRule: запрос с отменённым контекстом не уходит, как у
@@ -105,10 +106,11 @@ func TestCancel_ProvisionRepeatAfterCancelMakesNoSecondVM(t *testing.T) {
 	if cloud.creates != 1 {
 		t.Fatalf("повтор после отмены создал ВМ ещё раз: CreateVM вызван %d раз; ответ: %s", cloud.creates, text)
 	}
-	// Повтор отказывает 409 → USAGE и называет имя: подсказка ведёт к ВМ
-	// прерванного вызова (vm_get), а не к новому create.
-	if !strings.Contains(text, "USAGE") || !strings.Contains(text, "web") {
-		t.Errorf("повтор не говорит, что ВМ с этим именем уже есть: %s", text)
+	// Повтор подхватывает ВМ прерванного вызова — её запись creating в
+	// этом каталоге — и доделывает её (D69), а не отказывает 409.
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil || m["status"] != "ok" || m["vm_id"] != cloud.made[0].ID {
+		t.Errorf("повтор не доделал ВМ прерванного вызова: %s", text)
 	}
 }
 

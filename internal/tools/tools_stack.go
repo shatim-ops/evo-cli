@@ -430,6 +430,13 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				// stack_apply was confirmed for the whole stack. Jobs planned
 				// before provision and s3_put got their gates lack the flag.
 				args["confirmed"] = true
+				if st.Tool == "provision" {
+					// The step waits for its VM in the call, as before D69:
+					// a provision cut by the budget answers creating, which
+					// the step would take as a VM made (release plan 1.7,
+					// D69 PR 3: the step takes creating as in progress).
+					args["wait"] = true
+				}
 				res, err := s.callTool(ctx, st.Tool, args)
 				if err != nil && ctx.Err() != nil {
 					// Cancelled mid-create: not a failed attempt. Keep the id
