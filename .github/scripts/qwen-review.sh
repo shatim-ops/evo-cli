@@ -58,25 +58,50 @@ fi
 # прежде — #485, П1 (б)). Тесты этого кода (*_test.go) ревью сами не зовут.
 # Новый файл секретов или согласия — строка здесь
 # (TestWorkflows_QwenScopeCoversSensitiveCode).
-if [ -z "${COMMENT_ID:-}" ]; then
-  # Not «git diff | while»: with pipefail an early exit of the reader
-  # would SIGPIPE git; the names are read whole first.
-  changed=$(git diff --name-only refs/review/base...refs/review/head)
-  review=""
-  [ -n "$changed" ] || review=1 # an empty diff is reported below
+# sensitive reads path names on stdin and says whether one of them is in
+# the scope of the review that comes by itself (sensitivePaths).
+sensitive() {
+  local f found=""
   while IFS= read -r f; do
     case "$f" in
       # sensitivePaths: workflows with secrets, then secrets and consent.
-      .github/* | internal/workflows/*) review=1 ;;
+      .github/* | internal/workflows/*) found=1 ;;
       *_test.go) ;;
       internal/auth/* | internal/confirm/* | internal/config/* | \
         internal/tools/gate.go | internal/tools/registry.go | internal/tools/tools_secret.go | \
         internal/tools/untrusted.go | internal/journal/journal.go | internal/mcp/http.go | \
-        internal/mcp/http_policy.go | internal/mcp/http_redact.go | internal/mcp/http_kube.go) review=1 ;;
+        internal/mcp/http_policy.go | internal/mcp/http_redact.go | internal/mcp/http_kube.go) found=1 ;;
     esac
-  done <<<"$changed"
+  done
+  [ -n "$found" ]
+}
+if [ -z "${COMMENT_ID:-}" ]; then
+  # Not «git diff | while»: with pipefail an early exit of the reader
+  # would SIGPIPE git; the names are read whole first.
+  changed=$(git diff --name-only refs/review/base...refs/review/head)
+  scope=$changed
+  # A push to the PR (synchronize, owner's decision 03.11, refining #578):
+  # the review comes when the push changes a path the PR changes and that
+  # path is sensitive. A merge of the base into the branch changes the
+  # base's files too; those are not the PR's, so not in its diff, and do
+  # not count. A push git cannot read (a force-push over a commit gone)
+  # falls back to the PR's diff.
+  if [ "${ACTION:-}" = synchronize ]; then
+    if [[ "${BEFORE:-}" =~ ^[0-9a-f]{40}$ && "${AFTER:-}" =~ ^[0-9a-f]{40}$ && "$BEFORE" != 0000000000000000000000000000000000000000 ]] &&
+      git fetch --no-tags --quiet origin "+$BEFORE:refs/review/before" "+$AFTER:refs/review/after"; then
+      pushed=$(git diff --name-only refs/review/before refs/review/after)
+      scope=$(comm -12 <(sort -u <<<"$changed") <(sort -u <<<"$pushed"))
+    fi
+  fi
+  review=""
+  [ -n "$changed" ] || review=1 # an empty diff is reported below
+  if sensitive <<<"$scope"; then review=1; fi
   if [ -z "$review" ]; then
-    echo "PR не трогает .github/, internal/workflows/ и код секретов и согласия — ревью Qwen само не запускается; по запросу — /qwen review (решение владельца 29.10)"
+    if [ "${ACTION:-}" = synchronize ]; then
+      echo "push не меняет в PR .github/, internal/workflows/ и код секретов и согласия — ревью Qwen само не запускается; по запросу — /qwen review (решение владельца 03.11)"
+    else
+      echo "PR не трогает .github/, internal/workflows/ и код секретов и согласия — ревью Qwen само не запускается; по запросу — /qwen review (решение владельца 29.10)"
+    fi
     exit 0
   fi
 fi
