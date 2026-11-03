@@ -309,6 +309,7 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 			}()
 			select {
 			case a := <-got:
+				checkNoTerminalCodes(t, name, a.text)
 				if _, listed := mcpOverBudget[name]; listed {
 					return // a line the call no longer needs: the check below
 				}
@@ -319,7 +320,8 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 				over[name] = "slow world"
 				cancel()
 				select {
-				case <-got:
+				case a := <-got:
+					checkNoTerminalCodes(t, name, a.text)
 				case <-time.After(10 * budgetWatch):
 					t.Fatalf("%s did not end after its context was cancelled", name)
 				}
@@ -383,4 +385,20 @@ func budgetAnswerProblem(w budgetWait, text string, isErr bool) string {
 		}
 	}
 	return "its next step names no tool of the registry"
+}
+
+// terminalCode is what only a terminal reads: a carriage return that
+// redraws a line, an escape sequence (colour, cursor).
+var terminalCode = strings.NewReplacer("\r", "\\r", "\x1b", "\\x1b")
+
+// F9 (agent runs of Grok on 1.6.0; release plan 1.7): no answer of an MCP
+// tool carries a carriage return or an ANSI escape — the spinner of a
+// printer that writes to a buffer, not a terminal, read by the model as
+// text. The slow world runs through the waits that redraw their line; the
+// fault matrix through every billable tool's path (TestFault_Matrix).
+func checkNoTerminalCodes(t *testing.T, tool, text string) {
+	t.Helper()
+	if strings.ContainsAny(text, "\r\x1b") {
+		t.Errorf("%s: the answer carries a terminal's codes (F9): %s", tool, terminalCode.Replace(text))
+	}
 }
