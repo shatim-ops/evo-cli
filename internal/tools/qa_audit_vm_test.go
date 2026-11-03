@@ -7,12 +7,14 @@ package tools
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -353,11 +355,22 @@ type goneRuleCloud struct{ *goneCloud }
 
 func (*goneRuleCloud) DeleteSecurityGroupRule(context.Context, string, string) error { return nil }
 
-// A-005: то же у destroy текущего развёртывания (MCP) — partial, не ok.
+// A-005: то же у destroy текущего развёртывания — partial, не ok. Без
+// цели его вызывает 'evo destroy' с терминалом (Caller): подтверждённый
+// вызов без терминала называет цель (P2), и A-005 по MCP держит вызов с
+// vm_id выше.
 func TestAudit_DestroyCurrentUnconfirmedIsPartial(t *testing.T) {
 	cloud := &stuckTargetCloud{}
 	r, dir := targetRegistry(t, cloud)
-	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"confirmed": true})
+	var shown bytes.Buffer
+	ctx := WithCaller(context.Background(), &Caller{Printer: output.NewWithWriter(&shown, output.ModePlain, false),
+		Gate: func(context.Context, string, *confirm.Preview) (bool, error) { return true, nil }})
+	tl, _ := r.Lookup("destroy")
+	text, isErr := tl.Handler(ctx, map[string]any{})
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil {
+		t.Fatalf("not JSON: %s", text)
+	}
 	if !isErr || m["status"] != "partial" || m["reason"] != "API_ERROR" {
 		t.Fatalf("want partial API_ERROR, got %s", text)
 	}
