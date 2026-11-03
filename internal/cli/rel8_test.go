@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
@@ -31,10 +33,10 @@ func (d *deadRT) RoundTrip(*http.Request) (*http.Response, error) {
 func TestRel8_DeployWithoutProjectBeforeToken(t *testing.T) {
 	setupCLI(t)
 	rt := &deadRT{}
-	oldRT, oldProxy := http.DefaultTransport, clerrors.ProxyFunc
-	http.DefaultTransport = rt
+	oldRT, oldProxy := httpretry.DefaultBase, clerrors.ProxyFunc
+	httpretry.DefaultBase = rt
 	clerrors.ProxyFunc = func(*http.Request) (*url.URL, error) { return nil, nil }
-	t.Cleanup(func() { http.DefaultTransport, clerrors.ProxyFunc = oldRT, oldProxy })
+	t.Cleanup(func() { httpretry.DefaultBase, clerrors.ProxyFunc = oldRT, oldProxy })
 	saveProfile(t, "default", "")
 	if err := os.WriteFile("docker-compose.yml", []byte("services:\n  web:\n    image: nginx\n    ports: [\"80:80\"]\n"), 0o600); err != nil {
 		t.Fatal(err)

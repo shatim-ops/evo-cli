@@ -20,6 +20,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -89,7 +90,7 @@ const (
 	raMissingLB   = "00000000-0000-4000-8000-0000000000b8"
 )
 
-// raAPI — mk8s, nlb и Container Apps за http.DefaultTransport.
+// raAPI — mk8s, nlb и Container Apps за httpretry.DefaultBase.
 type raAPI struct {
 	mu        sync.Mutex
 	reqs      []string
@@ -188,9 +189,9 @@ func (f *raAPI) postCount() int {
 // raRegistry takes any fake API: the fuzzers answer with their own bytes.
 func raRegistry(tb testing.TB, api http.RoundTripper, cloud provision.CloudAPI, cfg func(*config.Config)) *Registry {
 	tb.Helper()
-	old := http.DefaultTransport
-	http.DefaultTransport = api
-	tb.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = api
+	tb.Cleanup(func() { httpretry.DefaultBase = old })
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		c := config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"}

@@ -18,6 +18,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -80,9 +81,9 @@ func goneRegistry(t *testing.T) *Registry {
 	t.Helper()
 	stackHome(t)
 	f := &apiFake{own: goneWorld}
-	old := http.DefaultTransport
-	http.DefaultTransport = f
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = f
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	dir := t.TempDir()
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
@@ -332,9 +333,9 @@ func liveDelete(t *testing.T, name string, args map[string]any) string {
 // apiFakeS3Registry is apiFakeRegistry with S3 keys.
 func apiFakeS3Registry(t *testing.T, f *apiFake) *Registry {
 	t.Helper()
-	old := http.DefaultTransport
-	http.DefaultTransport = f
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = f
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{

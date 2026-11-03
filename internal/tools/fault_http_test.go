@@ -22,6 +22,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -450,9 +451,9 @@ func (a *faultAPI) statusLocked() string {
 func faultAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 	t.Helper()
 	faultToolsIsolate(t)
-	old := http.DefaultTransport
-	http.DefaultTransport = a
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = a
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: a}, "")
 	cloud.Backoff = time.Millisecond
 	return New(func(map[string]any) (*engine.Engine, error) {

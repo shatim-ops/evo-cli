@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
@@ -70,10 +72,10 @@ func (p *pgTrip) take() []string {
 
 func installPGTrip(t *testing.T) *pgTrip {
 	t.Helper()
-	trip := &pgTrip{base: http.DefaultTransport}
-	prev := http.DefaultTransport
-	http.DefaultTransport = trip
-	t.Cleanup(func() { http.DefaultTransport = prev })
+	trip := &pgTrip{base: httpretry.DefaultBase}
+	prev := httpretry.DefaultBase
+	httpretry.DefaultBase = trip
+	t.Cleanup(func() { httpretry.DefaultBase = prev })
 	return trip
 }
 

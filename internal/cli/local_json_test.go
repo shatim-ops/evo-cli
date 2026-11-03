@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
@@ -86,10 +88,10 @@ const localJSONProject = "00000000-0000-4000-8000-0000000000c1"
 // the commands of a tool — TestParity_JSONEqualsTool).
 func TestContract_LocalCommandsAnswerJSON(t *testing.T) {
 	setupCLI(t)
-	oldRT, oldProxy := http.DefaultTransport, clerrors.ProxyFunc
-	http.DefaultTransport = localJSONCloud{}
+	oldRT, oldProxy := httpretry.DefaultBase, clerrors.ProxyFunc
+	httpretry.DefaultBase = localJSONCloud{}
 	clerrors.ProxyFunc = func(*http.Request) (*url.URL, error) { return nil, nil }
-	t.Cleanup(func() { http.DefaultTransport, clerrors.ProxyFunc = oldRT, oldProxy })
+	t.Cleanup(func() { httpretry.DefaultBase, clerrors.ProxyFunc = oldRT, oldProxy })
 	saveProfile(t, "default", localJSONProject)
 	saveProfile(t, "other", localJSONProject)
 	writeFile(t, "docker-compose.yml", "services:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"80:80\"\n")

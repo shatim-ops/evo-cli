@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -493,9 +493,9 @@ func TestAudit_DiskCreateAttachFailsIsPartial(t *testing.T) {
 func TestAudit_ServiceDeletePreviewsNameTheResource(t *testing.T) {
 	const id = "00000000-0000-0000-0000-000000000001"
 	rec := &recorder{body: `{"id":"` + id + `","name":"prod-db","status":"RUNNING"}`}
-	old := http.DefaultTransport
-	http.DefaultTransport = rec
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = rec
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	r, _ := fastRegistry(t, &targetCloud{}, config.Config{ProjectID: id, Region: id, KeyID: "k", Secret: "s"})
 	for tool, arg := range map[string]string{"k8s_delete": "cluster_id", "pg_delete": "id", "kafka_delete": "cluster_id",
 		"redis_delete": "cluster_id", "ar_delete": "id"} {

@@ -13,6 +13,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -46,9 +47,9 @@ func TestProjectBound_VMGetByNameInVMID(t *testing.T) {
 // server" — a broken setup hid under "no such resource".
 func TestProjectBound_FactoryErrorIsItsOwn(t *testing.T) {
 	f := &ownerFake{}
-	old := http.DefaultTransport
-	http.DefaultTransport = f
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = f
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	dir := t.TempDir()
 	r := New(func(over map[string]any) (*engine.Engine, error) {
 		p := ownProject

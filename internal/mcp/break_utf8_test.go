@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -23,9 +24,9 @@ import (
 // other query, answering success (break r3b, R3B-4). Now the line is a
 // parse error and nothing goes to the cloud.
 func TestUTF8_InvalidLineNotSent(t *testing.T) {
-	old := http.DefaultTransport
+	old := httpretry.DefaultBase
 	var urls []string
-	http.DefaultTransport = roundTripper(func(r *http.Request) (*http.Response, error) {
+	httpretry.DefaultBase = roundTripper(func(r *http.Request) (*http.Response, error) {
 		urls = append(urls, r.URL.RequestURI())
 		h := make(http.Header)
 		h.Set("Content-Type", "application/json")
@@ -33,10 +34,10 @@ func TestUTF8_InvalidLineNotSent(t *testing.T) {
 		body := `{"items":[],"total":0}`
 		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(body)), ContentLength: int64(len(body)), Request: r}, nil
 	})
-	t.Cleanup(func() { http.DefaultTransport = old })
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 
 	s := New(func(map[string]any) (*engine.Engine, error) {
-		cloud := provision.NewCloudRuAdapter(&http.Client{Transport: http.DefaultTransport}, "")
+		cloud := provision.NewCloudRuAdapter(&http.Client{Transport: httpretry.DefaultBase}, "")
 		return &engine.Engine{
 			Config: config.Config{ProjectID: "00000000-0000-4000-8000-000000000001"},
 			Auth:   breakToken{},

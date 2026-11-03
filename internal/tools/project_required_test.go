@@ -14,6 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -33,9 +34,9 @@ func noProjectRegistry(t *testing.T) (*Registry, *recorder) {
 	t.Setenv("USERPROFILE", home)
 	const id = "00000000-0000-0000-0000-000000000001"
 	rec := &recorder{body: `{"id":"` + id + `","name":"x","items":[{"id":"` + id + `","name":"ru.AZ-2"}],"total":1,"projects":[]}`}
-	old := http.DefaultTransport
-	http.DefaultTransport = rec
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = rec
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	s3srv := httptest.NewServer(rec)
 	t.Cleanup(s3srv.Close)
 	dir := t.TempDir()
