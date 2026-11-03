@@ -11,13 +11,19 @@ set -euo pipefail
 TITLE="main красный: ci"
 MAX_FAILS=20
 
-open=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+# The open issues of exactly this title: the search narrows, the title
+# decides (a search is by words, not by the whole title).
+all=$(gh issue list --state open --search "\"$TITLE\" in:title" --limit 100 --json number,title \
+  --jq ".[] | select(.title == \"$TITLE\") | .number")
+open=$(head -n 1 <<<"$all")
 
 if [ "$CONCLUSION" = success ]; then
-  if [ -n "$open" ]; then
-    gh issue comment "$open" --body "Зелёный прогон $RUN_URL (\`${HEAD_SHA:0:8}\`): main снова зелёный."
-    gh issue close "$open"
-  fi
+  # Every one of them: a duplicate made by hand is closed too.
+  while read -r n; do
+    [ -n "$n" ] || continue
+    gh issue comment "$n" --body "Зелёный прогон $RUN_URL (\`${HEAD_SHA:0:8}\`): main снова зелёный."
+    gh issue close "$n"
+  done <<<"$all"
   exit 0
 fi
 [ "$CONCLUSION" = failure ] || exit 0
@@ -33,8 +39,13 @@ trap 'rm -f "$body"' EXIT
   while IFS=$'\t' read -r id name; do
     [ -n "$id" ] || continue
     printf -- '- **%s**\n' "$name"
-    fails=$(gh api "repos/$GH_REPO/actions/jobs/$id/logs" 2>/dev/null |
-      sed -En 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z ?//; /--- FAIL/p' | head -n "$MAX_FAILS" || true)
+    # The log read whole first: a refused read (403, 404, a rate limit) is
+    # named as such, not taken for a log without failed tests.
+    if ! log=$(gh api "repos/$GH_REPO/actions/jobs/$id/logs" 2>/dev/null); then
+      printf '  (лог job не получен — смотрите его в прогоне)\n'
+      continue
+    fi
+    fails=$(sed -En 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z ?//; /--- FAIL/p' <<<"$log" | head -n "$MAX_FAILS" || true)
     if [ -n "$fails" ]; then
       printf '\n```\n%s\n```\n' "$fails"
     else

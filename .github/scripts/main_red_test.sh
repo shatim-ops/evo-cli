@@ -12,14 +12,14 @@ cat >"$work/bin/gh" <<'SH'
 #!/usr/bin/env bash
 echo "$*" >>"$FAKE_CALLS"
 case "$1 $2" in
-  "issue list") printf '%s\n' "$FAKE_OPEN" ;;
+  "issue list") for n in $FAKE_OPEN; do printf '%s\n' "$n"; done ;;
   "issue create" | "issue comment")
     while [ $# -gt 0 ]; do [ "$1" = --body-file ] && cat "$2" >>"$FAKE_BODY"; [ "$1" = --body ] && printf '%s\n' "$2" >>"$FAKE_BODY"; shift; done ;;
   "issue close") ;;
   api*)
     case "$2" in
       */jobs\?*) printf '%b' "$FAKE_JOBS" ;;
-      */logs) printf '%b' "$FAKE_LOG" ;;
+      */logs) [ -z "${FAKE_NO_LOG:-}" ] || exit 1; printf '%b' "$FAKE_LOG" ;;
     esac ;;
 esac
 SH
@@ -29,7 +29,7 @@ run() { # ИМЯ исход открытое ждём…
   : >"$work/calls"
   : >"$work/body"
   PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" FAKE_BODY="$work/body" FAKE_OPEN="$3" \
-    FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" \
+    FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" \
     GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" HEAD_SHA=0123456789abcdef \
     "$here/main_red.sh" >/dev/null 2>&1 || { echo "FAIL $1: скрипт упал"; fail=1; return; }
   local name=$1
@@ -61,4 +61,9 @@ run "зелёный, issue нет — тишина" success "" \
   "nocalls:issue comment" "nocalls:issue create" "nocalls:issue close"
 run "cancelled — тишина" cancelled 7 \
   "nocalls:issue comment" "nocalls:issue create" "nocalls:issue close"
+FAKE_JOBS='103\ttest (macos-latest)\n' FAKE_NO_LOG=1 \
+  run "красный, лог не получен — так и сказано" failure "" \
+  "calls:issue create" "body:**test (macos-latest)**" "body:лог job не получен" "nocalls:issue close"
+run "зелёный, два открытых — закрывает оба" success "7 8" \
+  "calls:issue close 7" "calls:issue close 8" "nocalls:issue create"
 exit "$fail"
