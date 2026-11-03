@@ -26,7 +26,7 @@ func diskAnswer(t *testing.T, call func() (string, bool)) map[string]any {
 // of an MCP call (D69): not an error — the disk, its state, and disk_attach
 // to finish with the consent this call was given.
 func TestDiskCreate_AttachAtTheLimitGoesOnWithDiskAttach(t *testing.T) {
-	r := budgeted(budgetAPIRegistry(t, &faultAPI{slow: true}))
+	r := progressed(budgetAPIRegistry(t, &faultAPI{slow: true}))
 	m := diskAnswer(t, func() (string, bool) {
 		return r.handlers["disk_create"](context.Background(),
 			map[string]any{"name": "data", "size_gb": 10, "attach_to": faultTargetVM, "confirmed": true})
@@ -43,7 +43,7 @@ func TestDiskCreate_AttachAtTheLimitGoesOnWithDiskAttach(t *testing.T) {
 // disk's state and the same call again (D53, D69).
 func TestDiskAttach_UnsettledAtTheLimitAsksNothingYet(t *testing.T) {
 	a := &faultAPI{slow: true, made: []faultResource{{host: "compute.api.cloud.ru", path: "/api/v1/disks", ID: faultDisk, Name: "data", before: true}}}
-	r := budgeted(budgetAPIRegistry(t, a))
+	r := progressed(budgetAPIRegistry(t, a))
 	args := map[string]any{"disk_id": faultDisk, "vm": faultTargetVM}
 	m := diskAnswer(t, func() (string, bool) { return r.handlers["disk_attach"](context.Background(), args) })
 	if m["status"] != "creating" || m["next_tool"] != "disk_attach" {

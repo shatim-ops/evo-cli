@@ -23,7 +23,8 @@ func provisionWorld(t *testing.T) (*faultCloud, string, *Registry) {
 	faultToolsIsolate(t)
 	cloud := &faultCloud{slow: true, imagePassword: true}
 	dir := t.TempDir()
-	return cloud, dir, budgeted(budgetComputeRegistry(t, cloud, dir, provisionTimings()))
+	// The repeats finish the VM within a call (#793).
+	return cloud, dir, progressed(budgetComputeRegistry(t, cloud, dir, provisionTimings()))
 }
 
 // provisionTimings polls at once and waits for the VM as long as production
@@ -121,7 +122,7 @@ func TestD69_ProvisionWaitFalseDoesNotWait(t *testing.T) {
 	// wall-clock: a fraction of the production wait for the VM (minutes);
 	// wait=false waits for nothing. budgetWatch (1 s) did not hold on a
 	// slow Windows runner under -race (#793).
-	case <-time.After(10 * time.Second):
+	case <-time.After(progressWatch):
 		t.Fatal("wait=false waited for the VM")
 	}
 }

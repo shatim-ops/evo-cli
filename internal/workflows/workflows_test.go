@@ -191,7 +191,9 @@ func TestWorkflows_CIOncePerChange(t *testing.T) {
 	if b, _ := push["branches"].([]any); len(b) != 1 || b[0] != "main" {
 		t.Errorf("ci: push branches %v, want [main]", push["branches"])
 	}
-	for _, ev := range []string{"pull_request", "workflow_call"} {
+	// workflow_dispatch: the full matrix of main on a branch, Windows
+	// whole, before the merge (#793).
+	for _, ev := range []string{"pull_request", "workflow_call", "workflow_dispatch"} {
 		if _, ok := w.On[ev]; !ok {
 			t.Errorf("ci: no %s", ev)
 		}
