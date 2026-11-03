@@ -149,7 +149,8 @@ var mcpWaits = map[string]budgetWait{
 				t.Fatal(err)
 			}
 		}),
-	"destroy": computeBudget("destroy", map[string]any{"confirmed": true}, false,
+	// Named, as a confirmed call without a terminal must (P2).
+	"destroy": computeBudget("destroy", map[string]any{"name": "web", "confirmed": true}, false,
 		func(t *testing.T, r *Registry, _ string) {
 			if text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true}); isErr {
 				t.Fatalf("provision before destroy: %s", text)
