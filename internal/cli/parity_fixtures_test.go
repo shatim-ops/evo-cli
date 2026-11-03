@@ -41,7 +41,7 @@ import (
 // which may replace an argument here (stack_apply: the job it plans).
 var parityArgs = map[string]map[string]any{
 	// vm, deploy
-	"provision":    {"name": "web"},
+	"provision":    {"name": "app"}, // web is the world's VM: a taken name is refused (D73)
 	"destroy":      {"vm_id": parityVM},
 	"deploy":       {},
 	"deploy_apply": {"plan_id": "plan-0123456789ab"},
