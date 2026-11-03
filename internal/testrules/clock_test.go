@@ -45,7 +45,9 @@ var wallClockReads = map[string]struct {
 	"internal/engine/destroy.go\tEngine.waitAndDeleteVM":        {1, wallWait}, // interval between reports
 	"internal/auth/token.go\tToken.IsValid":                     {1, wallWait}, // the token's TTL against a minimum
 	"internal/deployplan/apply.go\twaitForSSHPort":              {2, wallWait},
+	"internal/deployplan/apply.go\tfinishApply":                 {2, wallWait}, // D69: the end of the call's budget
 	"internal/tools/opwait.go\twaitForOpJSON":                   {1, wallWait},
+	"internal/tools/registry.go\tbudgetLeft":                    {1, wallWait}, // D69: what is left of the call budget
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {1, wallWait}, // the budget of one poll
 	"internal/mcp/http.go\tHTTPHandler.dispatch":                {1, wallLog},  // duration_ms of the log
 	"internal/mcp/http.go\tHTTPHandler.touchSession":            {1, wallWait}, // TTL of the session

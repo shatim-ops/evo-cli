@@ -211,7 +211,7 @@ func TestStdio_CallSurvivesTheProcessStopped(t *testing.T) {
 				_ = cmd.Wait()
 			}()
 
-			call := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"pg_operation","arguments":{"operation_id":"op-1","wait_seconds":60}}}` + "\n"
+			call := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"pg_operation","arguments":{"operation_id":"op-1","wait_seconds":45}}}` + "\n"
 			if _, err := io.WriteString(stdin, call); err != nil {
 				t.Fatal(err)
 			}
@@ -230,7 +230,7 @@ func TestStdio_CallSurvivesTheProcessStopped(t *testing.T) {
 			var line string
 			select {
 			case line = <-answers:
-			// wall-clock: the call waits up to wait_seconds (60 s); a hung
+			// wall-clock: the call waits up to wait_seconds (45 s, the most its schema takes); a hung
 			// call would hold it to the end, an answer comes seconds after
 			// SIGCONT.
 			case <-time.After(stopFor + 20*time.Second):

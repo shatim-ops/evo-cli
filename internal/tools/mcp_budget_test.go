@@ -21,9 +21,12 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
-// mcpBudgetSeconds is D69's limit of one MCP call (docs/internal/briefs/
-// d69.md §2); MCPCallBudget of the registry once PR 1 of 1.7 brings it.
-const mcpBudgetSeconds = 45
+// mcpBudgetSeconds is D69's limit of one MCP call (MCPCallBudget).
+var mcpBudgetSeconds = MCPCallBudget.Seconds()
+
+// worldBudget is the budget of a call in the slow world: a share of
+// budgetWatch, so that a call held to it answers before the watch.
+const worldBudget = budgetWatch / 4
 
 // budgetWatch is how long a call of the slow world may run before it
 // counts as one that waits the cloud out.
@@ -64,6 +67,12 @@ func budgetComputeRegistry(t *testing.T, cloud *faultCloud, dir string, timings 
 	})
 }
 
+// budgeted is r with the budget of an MCP call in the slow world.
+func budgeted(r *Registry) *Registry {
+	r.SetCallBudget(worldBudget)
+	return r
+}
+
 // budgetAPIRegistry is faultAPIRegistry with the production intervals.
 func budgetAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 	t.Helper()
@@ -99,7 +108,7 @@ func computeBudget(tool string, args map[string]any, noDial bool, setup func(t *
 		cloud.mu.Lock()
 		cloud.slow = true
 		cloud.mu.Unlock()
-		r := budgetComputeRegistry(t, cloud, dir, engine.Timings{})
+		r := budgeted(budgetComputeRegistry(t, cloud, dir, engine.Timings{}))
 		return func(ctx context.Context) (string, bool) { return r.handlers[tool](ctx, args) }, nil
 	}}
 }
@@ -109,7 +118,7 @@ func computeBudget(tool string, args map[string]any, noDial bool, setup func(t *
 func apiBudget(tool string, args map[string]any, made ...faultResource) budgetWait {
 	return budgetWait{run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
 		a := &faultAPI{slow: true, made: append([]faultResource(nil), made...)}
-		r := budgetAPIRegistry(t, a)
+		r := budgeted(budgetAPIRegistry(t, a))
 		return func(ctx context.Context) (string, bool) { return r.handlers[tool](ctx, args) }, nil
 	}}
 }
@@ -117,7 +126,7 @@ func apiBudget(tool string, args map[string]any, made ...faultResource) budgetWa
 // opBudget is a *_operation call that asks to wait longer than the budget
 // for an operation that never ends.
 func opBudget(tool string) budgetWait {
-	w := apiBudget(tool, map[string]any{"operation_id": "op-1", "wait_seconds": 300})
+	w := apiBudget(tool, map[string]any{"operation_id": "op-1", "wait_seconds": int(mcpBudgetSeconds)})
 	w.done = func(m map[string]any) string {
 		if m["done"] != false {
 			return "an operation that runs on is not done: false"
@@ -158,7 +167,7 @@ var mcpWaits = map[string]budgetWait{
 	"deploy":        {static: "the engine waits for the VM up to VMPollTimeout (25 min), then SSH and Docker (engine/timings.go)", over: true},
 	"stack_apply":   {static: "a VM step runs provision in the call (callTool), which waits for the VM up to VMPollTimeout (25 min)", over: true},
 	"stack_destroy": {static: "runs destroy in the call (callTool): DestroyPollTimeout 2 min, DeletableWaitTimeout 10 min (engine/timings.go)", over: true},
-	"stack_status":  {static: "the handler waits at most 20 s (tools_stack.go): within the budget; its schema promises 240 (mcpOverBudget)"},
+	"stack_status":  {static: "the handler waits at most 20 s (tools_stack.go), as its schema says: within the budget"},
 	"k8s_kubectl":   {static: "kubectl runs up to 90 s (tools_kube.go, docs/mcp.md)", over: true},
 	"k8s_helm":      {static: "helm runs up to 9 min with --wait (tools_kube.go)", over: true},
 	"disk_create":   {static: "with vm, waits for the new disk to be available (diskReadyTimeout 5 min; tools_disk.go) before the attach", over: true},
@@ -173,26 +182,15 @@ var mcpWaits = map[string]budgetWait{
 // 1.7, block A; process plan 1.7 §1: red before PR 1 of D69, each PR of
 // D69 takes its lines out).
 var mcpOverBudget = map[string]string{
-	"provision":       "waits for the VM up to VMPollTimeout (25 min)",
-	"deploy_apply":    "waits for the VM, then SSH",
-	"destroy":         "waits for the VM to be gone: DestroyPollTimeout 2 min",
-	"deploy":          "waits for the VM, SSH and Docker",
-	"stack_apply":     "a VM step waits for the VM",
-	"stack_destroy":   "destroy waits for the VM to be gone",
-	"stack_status":    "schema: wait_seconds without a maximum ≤ 45 (it promises 240)",
-	"k8s_kubectl":     "kubectl up to 90 s",
-	"k8s_helm":        "helm up to 9 min",
-	"dns_zone_delete": "waits for the operation of its delete up to 60 s (D66)",
-	"disk_create":     "with vm: waits for the disk up to 5 min",
-	"disk_attach":     "waits for the disk to settle up to 30 s before the question, then to be available up to 5 min",
-	"ar_operation":    "wait_seconds up to 300; schema without a maximum ≤ 45",
-	"cert_operation":  "wait_seconds up to 300; schema without a maximum ≤ 45",
-	"dns_operation":   "wait_seconds up to 300; schema without a maximum ≤ 45",
-	"kafka_operation": "wait_seconds up to 300; schema without a maximum ≤ 45",
-	"lb_operation":    "wait_seconds up to 300; schema without a maximum ≤ 45",
-	"pg_operation":    "wait_seconds up to 300; schema without a maximum ≤ 45",
-	"redis_operation": "wait_seconds up to 300; schema without a maximum ≤ 45",
-	"vpc_operation":   "wait_seconds up to 300; schema without a maximum ≤ 45",
+	"provision":     "waits for the VM up to VMPollTimeout (25 min)",
+	"destroy":       "waits for the VM to be gone: DestroyPollTimeout 2 min",
+	"deploy":        "waits for the VM, SSH and Docker",
+	"stack_apply":   "a VM step waits for the VM",
+	"stack_destroy": "destroy waits for the VM to be gone",
+	"k8s_kubectl":   "kubectl up to 90 s",
+	"k8s_helm":      "helm up to 9 min",
+	"disk_create":   "with vm: waits for the disk up to 5 min",
+	"disk_attach":   "waits for the disk to settle up to 30 s before the question, then to be available up to 5 min",
 }
 
 // waitProps are the schema properties by which an agent asks a tool to
@@ -262,8 +260,8 @@ func TestMCP_BudgetCoversTheWaits(t *testing.T) {
 // "CREATING", a deleted VM "deleting", production intervals — a call of a
 // tool that waits answers within budgetWatch with the honest state of the
 // call, or its tool is a line of mcpOverBudget. A line the call no longer
-// needs fails too: the list only shrinks. Until the registry has its
-// budget (SetCallBudget, PR 1 of D69) the check is the watch alone.
+// needs fails too: the list only shrinks. The world's registry has the
+// budget of an MCP call (SetCallBudget, worldBudget).
 func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 	prev := deployplan.SSHPortWait
 	deployplan.SSHPortWait = time.Millisecond

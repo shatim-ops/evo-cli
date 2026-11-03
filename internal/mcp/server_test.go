@@ -296,3 +296,12 @@ func TestSingleLineFraming(t *testing.T) {
 		t.Errorf("response must be a single line, found %d newlines", bytes.Count(data, []byte("\n")))
 	}
 }
+
+// D69: every call of evo mcp is held to MCPCallBudget (H14); the CLI builds
+// its own registry and waits as before.
+func TestServer_HasTheCallBudget(t *testing.T) {
+	s := New(nil, "test")
+	if got := s.reg.CallBudget(); got != tools.MCPCallBudget {
+		t.Errorf("call budget %v, want %v", got, tools.MCPCallBudget)
+	}
+}

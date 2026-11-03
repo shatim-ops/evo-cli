@@ -45,7 +45,7 @@ func TestApply_VMWaitGoesOnAfterOneRefusedToken(t *testing.T) {
 	t.Cleanup(func() { pollInterval = old })
 	cloud := &sleptVMCloud{}
 	plan := &Plan{Product: "wiki", VM: VMSpec{Name: "wiki-1"}, Network: NetworkSpec{SecurityGroupID: "sg-1"}, Ports: []int{80}}
-	res, err := ApplyWithTimeout(context.Background(), cloud, plan, time.Second, nil)
+	res, err := ApplyWithTimeout(context.Background(), cloud, plan, time.Second, time.Time{}, nil)
 	if cloud.polls < 3 {
 		t.Fatalf("the world did not reach the refusal (%d polls): it checks nothing — %+v %v", cloud.polls, res, err)
 	}

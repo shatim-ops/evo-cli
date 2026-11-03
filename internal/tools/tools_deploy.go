@@ -328,16 +328,30 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	show := &deployplan.Progress{P: pp, Wait: eng.VMWaitLine(pp), Ports: func(r sgrules.OpenResult, rec *state.DeploymentRecord) {
 		engine.ShowOpenedPorts(pp, r, rec, cmp.Or(rec.SecurityGroupName, rec.SecurityGroupID))
 	}}
-	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.VMPollTimeout(), show)
+	// The wait of an MCP call ends with its budget, of wait=false at once
+	// (D69); the CLI waits as before.
+	var until time.Time
+	if left, capped := s.waitLeft(ctx, args); capped {
+		// wall-clock: the end of the call's wait, D69.
+		until = time.Now().Add(left)
+	}
+	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.VMPollTimeout(), until, show)
 	if err != nil {
 		// Interrupted after the VM was created: record it, so status and
 		// destroy see it; the plan stays for a retry, which adopts the VM.
+		var fields map[string]any
 		if res != nil && res.VMID != "" {
 			if rerr := recordDeployment(eng.StateDir, plan, res, "creating"); rerr != nil {
 				err = fmt.Errorf(i18n.T("%w (VM %s is not in the state either: %v)", "%w (ВМ %s тоже нет в state: %v)"), err, res.VMID, rerr)
 			}
+			// The VM, the plan that finishes it and its password, which
+			// the repeat does not give (D69).
+			fields = map[string]any{"vm_id": res.VMID, "plan_id": planID}
+			if res.Password != "" {
+				fields["password"] = res.Password
+			}
 		}
-		return errResult(err), true
+		return errAnswer(err, fields), true
 	}
 
 	// Record the VM in local state so status/list/destroy work on it. The
@@ -358,6 +372,18 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	switch res.Status {
 	case "running":
 		deployplan.Delete(eng.StateDir, planID)
+	case "creating":
+		// Cut by the call's budget or wait=false: not an error, the state
+		// so far and the plan to repeat, which finishes the VM (D69).
+		out := map[string]any{"status": "creating", "vm_id": res.VMID, "vm_status": res.VMStatus, "plan_id": planID,
+			"elapsed_sec": res.ElapsedSec,
+			"next":        fmt.Sprintf("The VM is still being created. Call deploy_apply with plan_id %s and confirmed=true again: it adopts this VM (no second one), waits and finishes it (public IP, SSH, ports); vm_get vm_id=%s shows its state.", planID, res.VMID)}
+		nextStep(out, "deploy_apply", map[string]any{"plan_id": planID, "confirmed": true})
+		if res.Password != "" {
+			out["password"] = res.Password
+			out["next"] = out["next"].(string) + " The VM password is in this answer only: give it to the user now, the repeat does not show it."
+		}
+		return toJSON(out), false
 	case "error":
 		deployplan.Delete(eng.StateDir, planID)
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,

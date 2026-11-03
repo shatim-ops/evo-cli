@@ -47,7 +47,7 @@ func TestApply_ShowsItsStages(t *testing.T) {
 	var opened []string
 	show := &Progress{P: output.NewWithWriter(&buf, output.ModePlain, false), Wait: wait,
 		Ports: func(r sgrules.OpenResult, _ *state.DeploymentRecord) { opened = r.Opened }}
-	if _, err := ApplyWithTimeout(context.Background(), cloud, plan, 0, show); err != nil {
+	if _, err := ApplyWithTimeout(context.Background(), cloud, plan, 0, time.Time{}, show); err != nil {
 		t.Fatal(err)
 	}
 	at, out := 0, buf.String()
@@ -65,7 +65,7 @@ func TestApply_ShowsItsStages(t *testing.T) {
 		t.Errorf("the wait for the VM: states %v, done %v", wait.states, wait.done)
 	}
 
-	if _, err := ApplyWithTimeout(context.Background(), &portsCloud{}, plan, 0, nil); err != nil {
+	if _, err := ApplyWithTimeout(context.Background(), &portsCloud{}, plan, 0, time.Time{}, nil); err != nil {
 		t.Errorf("without a Progress: %v", err)
 	}
 }

@@ -5,8 +5,11 @@
 package cli
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // Тексты для модели (P10, решение владельца 31.10). evo mcp без --toolsets
@@ -46,5 +49,21 @@ func TestAgentSkill_ReadOnlyTask(t *testing.T) {
 	_, stdout, _ := runCLI(t, "", "agent", "skill")
 	if !strings.Contains(stdout, "only reads") || !strings.Contains(stdout, "--read-only") {
 		t.Errorf("the rules do not send a read-only task to evo mcp --read-only:\n%s", stdout)
+	}
+}
+
+// D69: a tool's answer INTERRUPTED is the exit code and reason of an
+// interrupted command, with the answer's fields kept.
+func TestToolError_InterruptedIs130(t *testing.T) {
+	err := toolError(`{"status":"error","reason":"INTERRUPTED","error":"context canceled","vm_id":"vm-1"}`, toolHints{})
+	if got := clerrors.ExitCode(err); got != clerrors.ExitInterrupted {
+		t.Errorf("exit code %d, want %d", got, clerrors.ExitInterrupted)
+	}
+	if got := clerrors.Reason(err); got != clerrors.ReasonInterrupted {
+		t.Errorf("reason %q", got)
+	}
+	var ce *clerrors.CLIError
+	if !errors.As(err, &ce) || ce.Details["vm_id"] != "vm-1" {
+		t.Errorf("the answer's fields are lost: %v", err)
 	}
 }
