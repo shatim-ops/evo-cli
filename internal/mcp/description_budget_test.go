@@ -40,7 +40,7 @@ var toolsOverBudget = map[string]int{
 	"kafka_create":     2030,
 	"lb_create":        2076,
 	"marketplace_list": 1708,
-	"pg_create":        2486,
+	"pg_create":        2480,
 	"provision":        3299,
 	"redis_create":     2367,
 	"subnet_create":    1813,

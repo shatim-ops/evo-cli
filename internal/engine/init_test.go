@@ -7,6 +7,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"strings"
@@ -257,5 +258,49 @@ func TestPreferredZoneFirst(t *testing.T) {
 	other := []*provision.AvailabilityZone{{Name: "kz.AZ-1"}, {Name: "kz.AZ-2"}}
 	if got := names(PreferredZoneFirst(other)); got != "kz.AZ-1,kz.AZ-2" {
 		t.Errorf("order without ru.AZ-2 = %s", got)
+	}
+}
+
+// evo init writes project_name: the VM of deploy is evo-<project_name>, and
+// the person (and the agent, by the skill evo-deploy) sees the name in
+// .evo.yaml instead of guessing it from the directory (agent run C2, Ц-6).
+// The name is the directory's, as deploy takes without it, so a deploy
+// after init names the same VM as before.
+func TestInit_WritesProjectName(t *testing.T) {
+	eng, path, _ := initEngine(t)
+	if err := eng.Init(context.Background(), InitOptions{Path: path, NonInteractive: true}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Read back as YAML: a directory named like a number ("001") is
+	// quoted, so the name stays a string.
+	var cfg struct {
+		ProjectName string `yaml:"project_name"`
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("config is not YAML: %v\n%s", err, data)
+	}
+	if want := filepath.Base(filepath.Dir(path)); cfg.ProjectName != want {
+		t.Errorf("project_name %q, want the directory's %q:\n%s", cfg.ProjectName, want, data)
+	}
+}
+
+// A name YAML would read as another type or structure is quoted, so it
+// reads back as the same string, on one line; a plain one is not quoted.
+func TestYAMLScalar_KeepsAString(t *testing.T) {
+	for _, in := range []string{"shop", "001", "yes", "a: b", "my-app_2", "#tag", "x\ny"} {
+		out := yamlScalar(in)
+		var back string
+		if err := yaml.Unmarshal([]byte("k: "+out), &struct {
+			K *string `yaml:"k"`
+		}{&back}); err != nil || strings.Contains(out, "\n") || back != strings.ReplaceAll(in, "\n", " ") {
+			t.Errorf("yamlScalar(%q) = %s: reads back %q (%v)", in, out, back, err)
+		}
+	}
+	if got := yamlScalar("shop"); got != "shop" {
+		t.Errorf("yamlScalar(shop) = %s, want it plain", got)
 	}
 }

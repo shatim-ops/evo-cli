@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -125,7 +126,10 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	if e.Config.ProjectID != "" {
 		projectLine = "project_id: " + e.Config.ProjectID
 	}
-	content := fmt.Sprintf(i18n.T(initTemplateEN, initTemplateRU),
+	// The name deploy takes without project_name (the directory's), so
+	// the VM is the same with the line as without it; written, it is in
+	// sight (agent run C2, Ц-6).
+	content := fmt.Sprintf(i18n.T(initTemplateEN, initTemplateRU), yamlScalar(initProjectName(opts.Path)),
 		yamlComment(zone.ID), yamlComment(zone.Name), imageLine, projectLine)
 
 	if err := os.WriteFile(opts.Path, []byte(content), 0o644); err != nil {
@@ -247,6 +251,9 @@ func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZ
 const initTemplateRU = `# Настройки evo
 # Подробнее: https://github.com/shatim-ops/evo-cli
 
+# Имя проекта: ВМ, которую создаёт deploy, называется evo-<project_name>
+project_name: %s
+
 # Зона доступности (evo list-zones)
 region: %s  # %s
 
@@ -276,6 +283,9 @@ timeout: 600
 
 const initTemplateEN = `# evo configuration
 # See: https://github.com/shatim-ops/evo-cli
+
+# Project name: the VM deploy creates is named evo-<project_name>
+project_name: %s
 
 # Availability zone (evo list-zones)
 region: %s  # %s
@@ -379,6 +389,27 @@ func deployableImages(images []*provision.Image) []*provision.Image {
 // yamlComment keeps a value from the cloud on its own line of the generated
 // config: a zone or image name with a newline would otherwise add keys
 // (compose_file, flavor, ...) to the user's project file.
+// initProjectName is the project_name init writes: the name of the
+// directory the configuration is in, as deploy takes it without one.
+func initProjectName(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	return filepath.Base(filepath.Dir(path))
+}
+
+// yamlScalar is s as a YAML scalar on one line, quoted where YAML would
+// read it as another type (a name like "001" or "yes") or another
+// structure ("a: b"). A line break cannot be in a directory's name a
+// person picks; it is a space here, so the value stays one line.
+func yamlScalar(s string) string {
+	b, err := yaml.Marshal(yamlComment(s))
+	if err != nil {
+		return strconv.Quote(s)
+	}
+	return strings.TrimSuffix(string(b), "\n")
+}
+
 func yamlComment(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
