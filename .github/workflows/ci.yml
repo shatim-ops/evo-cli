@@ -32,12 +32,62 @@ permissions:
   contents: read
 
 jobs:
+  # ОС матрицы test. PR, который меняет только docs/internal/*.md, — без
+  # macOS (CLAUDE.md §4, решение владельца 03.11, #800): у GitHub не больше 5
+  # macOS-задач одновременно, лишние снимаются без запуска, а PR плана и
+  # решений — около половины потока. Решает classify.sh (строка macos=), как
+  # и класс PR; push в main, ночь, выпуск и ручной запуск — полная матрица.
+  # Здесь выполняется код PR, но решает он только матрицу своего же PR, и
+  # main после слияния всё равно гоняет macOS.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      macos: ${{ steps.paths.outputs.macos }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+          # Нужна база PR, чтобы взять diff base...head.
+          fetch-depth: 0
+      # --no-renames: переименование кода в docs/internal/*.md — два пути,
+      # старый не docs/internal, и macOS остаётся.
+      - name: macOS нужен
+        id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo macos=yes >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --no-renames --name-only "$BASE...HEAD" | .github/scripts/classify.sh | grep '^macos=' >> "$GITHUB_OUTPUT"
+
+  # Обязательная проверка test (macos-latest) на PR без macOS: успех с
+  # причиной, а не «ожидает» — ruleset main ждёт её по имени. Имя — только
+  # когда job идёт: пропущенный, он не выдаёт себя за настоящий macOS.
+  test-macos-skipped:
+    needs: scope
+    if: needs.scope.outputs.macos == 'no'
+    name: ${{ needs.scope.outputs.macos == 'no' && 'test (macos-latest)' || 'macOS в матрице test' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: macOS не нужен
+        run: echo "PR меняет только docs/internal/*.md — macOS не запускается (CLAUDE.md §4); на main — полная матрица."
+
   test:
+    needs: scope
+    # Упал или не ответил scope — полная матрица, а не пропуск test:
+    # пропущенная обязательная проверка считается пройденной.
+    if: ${{ !cancelled() }}
     strategy:
       # Падение на одной ОС не должно скрывать результат остальных.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ fromJSON(needs.scope.outputs.macos == 'no' && '["ubuntu-latest","windows-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
     # Linux — ubuntu-24.04, не ubuntu-latest: на ubuntu-26.04 (ubuntu-latest
     # с 24.10.2026) evo_wrapper_test.sh упал 2 из 2 на теге v1.3.0-rc.2 при
     # зелёном том же коммите на ubuntu-24. Имя job прежнее — на него

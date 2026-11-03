@@ -457,7 +457,10 @@ func (s *Registry) planK8sDelete(ctx context.Context, args map[string]any) (*Pla
 			if err != nil {
 				return s.deleteFailed("k8s_delete", id, err)
 			}
-			return toJSON(map[string]any{"status": "deleting", "cluster_id": id, "operation_id": op.ID}), false
+			// No k8s_operation: k8s_get shows the cluster until it is gone.
+			w := opWatch("k8s_delete", id, map[string]any{"cluster_id": id}, op.ID, "", cli.GetOperation)
+			w.next, w.nextArgs = "k8s_get", map[string]any{"cluster_id": id}
+			return deleteOutcome(ctx, args, w)
 		}), nil
 }
 

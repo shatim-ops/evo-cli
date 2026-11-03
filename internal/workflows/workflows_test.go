@@ -30,6 +30,8 @@ type workflow struct {
 	} `yaml:"concurrency"`
 	Env  map[string]string `yaml:"env"`
 	Jobs map[string]struct {
+		// Name: the check's name, when the job sets its own.
+		Name           string `yaml:"name"`
 		If             string `yaml:"if"`
 		TimeoutMinutes int    `yaml:"timeout-minutes"`
 		Permissions    any    `yaml:"permissions"`

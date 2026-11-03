@@ -142,7 +142,7 @@ func (s *Registry) planArDelete(ctx context.Context, args map[string]any) (*Plan
 			if err != nil {
 				return s.deleteFailed("ar_delete", id, fmt.Errorf(i18n.T("delete registry: %w", "удаление реестра: %w"), err))
 			}
-			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+			return deleteOutcome(ctx, args, opWatch("ar_delete", id, map[string]any{"id": id}, op.ID, "ar_operation", cli.GetOperation))
 		}), nil
 }
 
