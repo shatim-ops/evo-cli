@@ -75,7 +75,7 @@ func (e *Engine) confirmOptions(yes, dryRun, noPrompt bool) confirm.Options {
 // deploy_plan prices it (deployplan.PriceVM: the price-calculation API, else
 // the rate card). Lookups of names are best effort: the preview falls back
 // to the IDs rather than failing the deploy.
-func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, diskTypeID string, network vmNetwork, ports, udpPorts []int) confirm.Preview {
+func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, diskTypeID string, network vmNetwork, ports, udpPorts []int, cidr string) confirm.Preview {
 	vm := deployplan.VMSpec{
 		Name:   req.Name,
 		Flavor: deployplan.FlavorSpec{Name: req.FlavorName},
@@ -120,24 +120,19 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			network.SubnetName, network.SecurityGroup),
 		publicIPLine(true),
 	}
-	if len(ports)+len(udpPorts) > 0 {
-		ps := make([]string, 0, len(ports)+len(udpPorts))
-		for _, p := range ports {
-			ps = append(ps, fmt.Sprint(p))
-		}
-		for _, p := range udpPorts {
-			ps = append(ps, fmt.Sprintf("%d/udp", p))
-		}
-		lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to %s in security group %s (shared by every VM in it); "+
-			"ports already open there are left as they are, destroy deletes only the rules this deploy creates",
-			"%s открываются для %s в группе безопасности %s (она общая для всех ВМ в ней); "+
-				"уже открытые остаются как есть, destroy удалит только правила, которые создаст этот deploy",
-			strings.Join(ps, ","), sgrules.Anywhere, network.SecurityGroup))
+	var exposed CreatePreview
+	exposed.AddPorts(ports, udpPorts, cidr)
+	exposed.PortsGroup(network.SecurityGroup)
+	if len(exposed.Params) > 0 {
+		lines = append(lines, portsLine(paramValue(exposed.Params[0].Value), sgrules.Source(cidr), network.SecurityGroup))
 	}
 	lines = append(lines, vmCostLines(cost, vm.Flavor.VCPUs > 0)...)
 	quota := e.quotaCheck(ctx, req.ProjectID)
 	if l := quota.line(); l != "" {
 		lines = append(lines, l)
+	}
+	for _, w := range exposed.Warnings {
+		lines = append(lines, previewLabel("warning", "внимание")+w)
 	}
 	details := map[string]any{
 		"project_id":     req.ProjectID,

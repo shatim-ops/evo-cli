@@ -30,7 +30,7 @@ func (c lostRuleCloud) AddSecurityGroupRule(ctx context.Context, sg, p string, r
 func TestQAr3_Open_LostAnswerAdoptsRuleByDescription(t *testing.T) {
 	cloud := lostRuleCloud{newFake()}
 	var rec state.DeploymentRecord
-	res := Open(context.Background(), cloud, "p", "sg", []int{80}, nil, func(l string) string { return "evo: port " + l }, &rec)
+	res := Open(context.Background(), cloud, "p", "sg", []int{80}, nil, "", func(l string) string { return "evo: port " + l }, &rec)
 	if len(rec.OpenedRules) != 1 || len(res.Opened) != 1 || len(res.Failed) != 0 {
 		t.Fatalf("Open = %+v, rules %v; want the lost rule adopted", res, rec.OpenedRules)
 	}
@@ -45,7 +45,7 @@ func (c refusedCloud) AddSecurityGroupRule(context.Context, string, string, prov
 
 func TestQAr3_Open_RefusedRuleFails(t *testing.T) {
 	var rec state.DeploymentRecord
-	res := Open(context.Background(), refusedCloud{newFake()}, "p", "sg", []int{80}, nil, func(l string) string { return "evo: port " + l }, &rec)
+	res := Open(context.Background(), refusedCloud{newFake()}, "p", "sg", []int{80}, nil, "", func(l string) string { return "evo: port " + l }, &rec)
 	if len(res.Failed) != 1 || len(rec.OpenedRules) != 0 {
 		t.Fatalf("Open = %+v, rules %v; want failed", res, rec.OpenedRules)
 	}
