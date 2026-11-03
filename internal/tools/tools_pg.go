@@ -159,7 +159,7 @@ func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string
 	if err != nil {
 		return errResult(err), true
 	}
-	m["access"] = pgAccess
+	m["access"] = pgAccess()
 	return toJSON(m), false
 }
 
@@ -168,7 +168,10 @@ func (s *Registry) handlePgGet(ctx context.Context, args map[string]any) (string
 // takes subnet_ids and no parameter of access. Facts of the call only:
 // where the cluster is reachable from is the platform's behaviour, a probe
 // of cloud-e2e (DB-5), not the specification's.
-const pgAccess = "placed in the subnets of subnet_ids; the PostgreSQL API takes no public-access parameter; evo sets up none"
+func pgAccess() string {
+	return i18n.T("placed in the subnets of subnet_ids; the PostgreSQL API takes no public-access parameter; evo sets up none",
+		"размещён в подсетях subnet_ids; API PostgreSQL не принимает параметра публичного доступа; evo его не настраивает")
+}
 
 // --- Reference ---
 
@@ -733,7 +736,7 @@ func pgCreatePreview(cfg config.Config, will map[string]any) engine.CreatePrevie
 		"subnet_id", "subnet_name", "initial_database", "backup_enabled", "backup_schedule", "backup_retention_days"} {
 		p.Add(k, will[k])
 	}
-	p.Add("access", pgAccess)
+	p.Add("access", pgAccess())
 	if cpu, ram := pgInt(will, "cpu", 0), pgInt(will, "memory_gb", 0); cpu > 0 && ram > 0 {
 		p.PG = &pricing.PGSize{CPU: cpu, RAMGB: ram, StorageGB: pgInt(will, "storage_gb", 0), Instances: pgInt(will, "instances", 1)}
 	}

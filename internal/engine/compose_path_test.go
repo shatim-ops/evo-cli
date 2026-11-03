@@ -7,7 +7,9 @@ package engine
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -91,4 +93,37 @@ func TestDeploy_AnotherProjectsComposeIsRefused(t *testing.T) {
 			t.Errorf("deploy updated the VM of provision instead of making its own")
 		}
 	})
+}
+
+// FB160-8 (audit of Fable 1.6): the same compose file under another name —
+// through a symbolic link, or in another case on a file system that does
+// not tell cases apart (macOS, Windows) — was refused as another project's
+// (D62). The paths are compared as the files they name.
+func TestComposeRefusal_SameFileUnderAnotherName(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need a privilege on Windows")
+	}
+	dir := t.TempDir()
+	real := filepath.Join(dir, "app", "docker-compose.yml")
+	if err := os.MkdirAll(filepath.Dir(real), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(real, []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(filepath.Join(dir, "app"), link); err != nil {
+		t.Fatal(err)
+	}
+	rec := &state.DeploymentRecord{ID: "d1", ComposePath: real}
+	if err := composeRefusal(rec, filepath.Join(link, "docker-compose.yml")); err != nil {
+		t.Errorf("the same file through a link is refused: %v", err)
+	}
+	other := filepath.Join(dir, "other.yml")
+	if err := os.WriteFile(other, []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := composeRefusal(rec, other); err == nil {
+		t.Error("another file is not refused")
+	}
 }

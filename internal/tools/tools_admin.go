@@ -44,10 +44,7 @@ func tokenGET(ctx context.Context, tp auth.TokenProvider, rawurl string) (map[st
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok.Value)
-	// The Organization API answers 404 to a key that cannot list projects
-	// (handleOrgProjects), in a form not probed: it stays a 404.
-	cl := &http.Client{Timeout: 30 * time.Second, Transport: &httpretry.Transport{Policy: httpretry.Policy{Keep404: true}}}
-	resp, err := cl.Do(req)
+	resp, err := OrgClient(30 * time.Second).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -342,4 +339,14 @@ func (s *Registry) quotaTypes(ctx context.Context) map[string]map[string]any {
 		out[code] = named
 	}
 	return out
+}
+
+// OrgClient is the HTTP client of the Organization API, for every reader of
+// it (the tools of org and evo configure): the Organization API answers 404
+// to a key that cannot list projects (handleOrgProjects), in a form not
+// probed, so a 404 stays a 404 (D63, Keep404) — one policy, not two
+// (FB160-3). It repeats a GET on a dropped connection or a 502/503/504, as
+// the service clients do.
+func OrgClient(timeout time.Duration) *http.Client {
+	return &http.Client{Timeout: timeout, Transport: &httpretry.Transport{Policy: httpretry.Policy{Keep404: true}}}
 }
