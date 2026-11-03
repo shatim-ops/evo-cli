@@ -85,7 +85,9 @@ func TestD69_ProvisionFIPWaitIsInTheBudget(t *testing.T) {
 	timings := provisionTimings()
 	timings.FIPPollInterval = time.Hour
 	dir := t.TempDir()
-	r := budgeted(budgetComputeRegistry(t, cloud, dir, timings))
+	// The VM must be active before the bound: the bound is to come in the
+	// wait for the floating IP (#793).
+	r := progressed(budgetComputeRegistry(t, cloud, dir, timings))
 	done := make(chan string, 1)
 	go func() {
 		text, _ := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
@@ -108,10 +110,9 @@ func TestD69_ProvisionFIPWaitIsInTheBudget(t *testing.T) {
 		if err != nil || len(sf.Deployments) != 1 || sf.Deployments[0].FloatingIPID != fips[0].ID {
 			t.Errorf("the floating IP is not recorded with the VM: %+v %v", sf, err)
 		}
-	// wall-clock: four times the world's budget (budgetWatch is 1/45 of
-	// D69's 45 s): a wait for the floating IP the budget does not end
-	// runs for hours.
-	case <-time.After(budgetWatch):
+	// wall-clock: progressWatch, ten times the budget: a wait for the
+	// floating IP the budget does not end runs for hours.
+	case <-time.After(progressWatch):
 		t.Fatal("the wait for the floating IP outlives the budget")
 	}
 }
