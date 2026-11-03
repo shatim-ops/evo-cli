@@ -273,6 +273,19 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		a.serveS3(w, r)
 	case path == "/api/v1/availability-zones":
 		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}]}`)
+	case strings.HasPrefix(path, "/api/v1/disks/") && strings.HasSuffix(path, "/attach") && r.Method == http.MethodPost:
+		// A disk still being created is not attachable yet (CMP-15).
+		a.mu.Lock()
+		slow := a.slow
+		a.mu.Unlock()
+		if slow {
+			http.Error(w, `{"message":"Disk has no openstack_id"}`, http.StatusUnprocessableEntity)
+			return
+		}
+		_, _ = io.WriteString(w, `{}`)
+	case path == "/api/v1/vms" && r.Method == http.MethodGet:
+		// The VM a disk is attached to (disk_create attach_to, disk_attach).
+		_, _ = io.WriteString(w, `{"items":[{"id":"`+faultTargetVM+`","name":"web","state":"running","availability_zone":{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}}],"total":1}`)
 	case path == "/api/v1/vms/"+faultTargetVM:
 		// The VM tg_create targets: its preview names it.
 		_, _ = io.WriteString(w, `{"id":"`+faultTargetVM+`","name":"web","state":"running","interfaces":[{"id":"`+faultNIC+`","type":"regular"}]}`)
@@ -317,6 +330,8 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 				item := map[string]any{"id": c.ID, "name": c.Name, "path": c.Name, "subnet": c.Name, "type": strings.ToUpper(c.Type), "status": a.statusLocked()}
 				if a.slow {
 					item["state"] = "creating" // a disk's field (waitDisk)
+				} else if path == "/api/v1/disks" {
+					item["state"] = "available"
 				}
 				items = append(items, item)
 			}
@@ -437,9 +452,13 @@ func (a *faultAPI) writeItem(w http.ResponseWriter, host, path string) bool {
 		return false
 	}
 	c := a.made[k]
-	status := a.statusLocked()
+	status, slow := a.statusLocked(), a.slow
 	a.mu.Unlock()
 	obj := `{"id":"` + c.ID + `","name":"` + c.Name + `","status":"` + status + `"}`
+	if slow {
+		// A disk's field, as the list has it (waitDisk, settledDisk).
+		obj = `{"id":"` + c.ID + `","name":"` + c.Name + `","status":"` + status + `","state":"creating"}`
+	}
 	if c.path == "/v2/secret" {
 		obj = `{"secret":` + obj + `}` // Secret Manager nests it
 	}
