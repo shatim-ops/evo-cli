@@ -267,7 +267,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "subnet_create",
-			Description: "Create a subnet in a VPC: a private IPv4 network (cidr, e.g. 10.10.0.0/24, mask /8../29) in one availability zone. The VPC is 'vpc_id', else the project's default VPC; the zone is 'zone' (name) or 'availability_zone_id', else the configured region. Routed by default (routed_network=false: isolated, no traffic beyond the subnet). Refused before the question: a name or a network the VPC already has, a VPC not in the project. Without confirmed=true this returns a preview only. Mutation: requires confirmed=true after the user approves. Delete it with subnet_delete.",
+			Description: "Create a subnet in a VPC: a private IPv4 network (cidr, e.g. 10.10.0.0/24, mask /8../29) in one availability zone. The VPC is 'vpc_id', else the project's default VPC; the zone is 'zone' (name) or 'availability_zone_id', else the configured region. Routed by default (routed_network=false: isolated). Refused before the question: a name or a network the VPC already has, a VPC not in the project. Without confirmed=true this returns a preview only. Mutation: requires confirmed=true after the user approves. Delete it with subnet_delete.",
 			InputSchema: objSchema(map[string]any{
 				"name":                 strProp("Subnet name (required): a Latin letter first, then letters, digits, '.', '-', '_'."),
 				"cidr":                 cidrProp("Private IPv4 network by its base address with a mask /8../29, e.g. 10.10.0.0/24 (required)."),
@@ -275,7 +275,7 @@ func (s *Registry) registerTools() {
 				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-1'). Optional; defaults to the configured region."),
 				"availability_zone_id": uuidProp("Availability-zone UUID (alternative to 'zone')."),
 				"routed_network":       boolPropTrue("Routed subnet (default true); false makes it isolated."),
-				"dns_servers":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "DNS server IPv4 addresses. Optional: the platform's."},
+				"dns_servers":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "DNS server IPv4 addresses. Omitted: none, names do not resolve on its VMs."},
 				"description":          strProp("Description. Optional."),
 				"confirmed":            confirmedProp(),
 			}, "name", "cidr"),
