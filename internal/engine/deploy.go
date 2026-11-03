@@ -943,6 +943,10 @@ func (e *Engine) assignFloatingIP(ctx context.Context, vmID, projectID, azID str
 // fipProgressEvery is how many polls pass between progress lines.
 const fipProgressEvery = 6
 
+// fipLookupAfterCut bounds the search for a floating IP whose create a
+// cancelled call may have made: one list request.
+const fipLookupAfterCut = 10 * time.Second
+
 // assignFloatingIP creates a floating IP and attaches it to the VM's primary
 // interface. It returns the address and the FIP ID; the ID is set as soon as
 // the FIP exists, even when the wait for it fails, so the caller can record
@@ -1013,6 +1017,19 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 	report("%s", i18n.T("Creating floating IP...", "Создание floating IP..."))
 	var fip *provision.FloatingIP
 	var err error
+	// cut answers a call that ended after a create was sent: the cloud may
+	// have made the floating IP, billed, with the answer lost. It is found
+	// by its name under a context of its own, so the caller records it and
+	// destroy releases it (the budget of an MCP call, D69, ends calls here
+	// as a cancel did; CLAUDE.md §6, axis 3).
+	cut := func() (string, string, error) {
+		lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fipLookupAfterCut)
+		defer cancel()
+		if found := findFloatingIPByName(lctx, cloud, projectID, fipName(vmID)); found != nil {
+			return found.IPAddress, found.ID, ctx.Err()
+		}
+		return "", "", ctx.Err()
+	}
 	for attempt := 0; attempt < 5; attempt++ {
 		fip, err = cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
 			Name:               fipName(vmID),
@@ -1024,12 +1041,12 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 			break
 		}
 		if ctx.Err() != nil {
-			return "", "", ctx.Err()
+			return cut()
 		}
 		report(i18n.T("Creating floating IP failed (%v), retrying", "Не удалось создать floating IP (%v), повтор"), err)
 		select {
 		case <-ctx.Done():
-			return "", "", ctx.Err()
+			return cut()
 		case <-time.After(t.FIPRetryInterval):
 		}
 	}

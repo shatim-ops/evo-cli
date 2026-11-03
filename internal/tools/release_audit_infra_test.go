@@ -583,7 +583,9 @@ func TestStackDestroy_ReportsAsyncDeletions(t *testing.T) {
 	}
 
 	tl, _ := r.Lookup("stack_apply")
-	if strings.Contains(tl.Description, "Returns immediately") || !strings.Contains(tl.Description, "block") {
+	// What the call waits for, honestly: the CLI waits for a VM, MCP answers
+	// within D69's budget (it said "Returns immediately" while it blocked).
+	if strings.Contains(tl.Description, "Returns immediately") || !strings.Contains(tl.Description, "the CLI waits for the VM") || !strings.Contains(tl.Description, "~45 s") {
 		t.Errorf("stack_apply description: %s", tl.Description)
 	}
 	tl, _ = r.Lookup("stack_destroy")
