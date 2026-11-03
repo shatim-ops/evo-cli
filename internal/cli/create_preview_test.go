@@ -328,7 +328,7 @@ func TestK8sCreatePreview_NoPrice(t *testing.T) {
 		"  мастеров:   3\n",
 		"  подсеть:    Default_ru.AZ-1 (00000000-0000-0000-0000-0000000000d1)\n",
 		"  API извне:  нет\n",
-		"  цена:       evo её не рассчитывает, ресурс платный: тариф https://cloud.ru/documents/tariffs/evolution/managed-kubernetes\n",
+		"  цена:       цена неизвестна, ресурс платный: тариф https://cloud.ru/documents/tariffs/evolution/managed-kubernetes\n",
 	})
 	assertNoJargon(t, errOut)
 	if strings.Contains(errOut, "k8s_plan") || strings.Contains(errOut, "billable") {

@@ -87,6 +87,9 @@ type CreatePreview struct {
 	// image_id, region): the call will fail without them.
 	Missing []string          `json:"missing,omitempty"`
 	Cost    *pricing.Estimate `json:"cost,omitempty"`
+	// PriceClasses: the class of the price of every resource the preview
+	// creates (price_class.go), one line per resource.
+	PriceClasses []ResourcePrice `json:"price_classes,omitempty"`
 	// CostNote says where Cost comes from (the price-calculation API, or
 	// the rate card: an estimate), or why there is none.
 	CostNote string `json:"cost_note,omitempty"`
@@ -209,13 +212,15 @@ var tariffNotes = map[string]string{
 	ResourceTargetGroup: noTariffLine,
 }
 
-// The notes of a preview without a price.
+// The notes of a preview without a price: «price unknown, billable»
+// (paid_unpriced) or «nothing at creation, billed by use» (zero_at_create).
 const (
-	notPriced      = "not priced by evo: the resource is billable; its rates are at tariff_url"
+	notPriced      = "price unknown, the resource is billable: its rates are at tariff_url"
+	zeroAtCreate   = "nothing at creation; its use is billed by the tariff at tariff_url"
 	addonNotPriced = "no price of its own: the addon runs on the cluster's nodes, billed by the rates at tariff_url"
 	// A link to a page that does not price the resource must not read as
 	// its price: the note says the line is not there.
-	noTariffLine   = "not priced by evo: no line of the tariffs at tariff_url names this resource; count it as billable"
+	noTariffLine   = "price unknown, the resource is billable: no line of the tariffs at tariff_url names it"
 	stackNotPriced = "not priced by evo: each resource of the stack is billed by its own tariff (stack_plan lists them; tariffs at tariff_url)"
 	// pgCostNote: the estimate of a PostgreSQL cluster by its tariff.
 	pgCostNote = "estimate by the tariff at tariff_url of " + pricing.PGTariffDate + ", with VAT; not a bill"
@@ -226,6 +231,7 @@ const (
 // the note says the resource is billable and TariffURL where its rates are.
 func (p *CreatePreview) Price() {
 	p.Cost, p.TariffURL = nil, ""
+	defer p.setPriceClasses()
 	switch {
 	case p.Resource == ResourceVM && p.VM != nil && p.VM.Flavor.VCPUs > 0:
 		cost := deployplan.EstimateVM(*p.VM, p.PublicIP == nil || *p.PublicIP)
@@ -247,6 +253,9 @@ func (p *CreatePreview) Price() {
 	p.CostNote, p.TariffURL = notPriced, tariffs[p.Resource]
 	if n, ok := tariffNotes[p.Resource]; ok {
 		p.CostNote = n
+	}
+	if priceClasses[p.Resource].zero != "" {
+		p.CostNote = zeroAtCreate
 	}
 	if p.Resource == ResourceVM && p.VM != nil {
 		p.CostNote = "not estimated: flavor size unknown"
@@ -283,6 +292,7 @@ func (p *CreatePreview) priceFromAPI(ctx context.Context, cloud provision.CloudA
 	if marketplace && p.Cost != nil {
 		p.Cost.LicenseNote = deployplan.LicenseNote(*p.Cost)
 	}
+	p.setPriceClasses()
 }
 
 // PreviewLookupTimeout bounds the lookups of a preview (CompletePreview,
@@ -805,12 +815,16 @@ func createdLine(p CreatePreview) string {
 	var what []string
 	switch p.Resource {
 	case ResourceVM:
-		what = append(what, i18n.Tf("VM %s", "ВМ %s", p.Name))
-		if p.VM != nil && p.VM.Disk.SizeGB > 0 {
-			what = append(what, i18n.Tf("a %d GB boot disk", "загрузочный диск %d ГБ", p.VM.Disk.SizeGB))
-		}
-		if p.PublicIP == nil || *p.PublicIP {
-			what = append(what, i18n.T("a floating IP", "floating IP"))
+		// The same resources as its price_classes (createdResources).
+		for _, r := range createdResources(p) {
+			switch r {
+			case ResourceVM:
+				what = append(what, i18n.Tf("VM %s", "ВМ %s", p.Name))
+			case ResourceDisk:
+				what = append(what, i18n.Tf("a %d GB boot disk", "загрузочный диск %d ГБ", p.VM.Disk.SizeGB))
+			case ResourceFloatingIP:
+				what = append(what, i18n.T("a floating IP", "floating IP"))
+			}
 		}
 	case ResourceDisk:
 		what = append(what, i18n.Tf("disk %s", "диск %s", p.Name))
@@ -898,18 +912,21 @@ func createCostLines(p CreatePreview) []string {
 			"не оценена: размер flavor неизвестен (см. 'evo vm flavors')")}
 	}
 	switch p.CostNote {
+	case zeroAtCreate:
+		return []string{previewLabel("cost", "цена") + i18n.Tf("0 at creation; billed by use — %s: tariff %s",
+			"при создании 0 ₽; оплата по использованию — %s: тариф %s", classOf(p.Resource, p).Note, p.TariffURL)}
 	case addonNotPriced:
 		return []string{previewLabel("cost", "цена") + i18n.Tf("none of its own: the addon runs on the cluster's nodes, billed by the tariff %s",
 			"своей нет: плагин работает на узлах кластера, они оплачиваются по тарифу %s", p.TariffURL)}
 	case noTariffLine:
-		return []string{previewLabel("cost", "цена") + i18n.Tf("not estimated by evo: no line of the tariffs %s names this resource; count it as billable",
-			"evo её не рассчитывает: в тарифах %s строки для этого ресурса нет; считайте его платным", p.TariffURL)}
+		return []string{previewLabel("cost", "цена") + i18n.Tf("price unknown, the resource is billable: no line of the tariffs %s names it",
+			"цена неизвестна, ресурс платный: в тарифах %s строки для него нет", p.TariffURL)}
 	case stackNotPriced:
 		return []string{previewLabel("cost", "цена") + i18n.Tf("not estimated by evo: each resource of the stack by its own tariff (see stack_plan), tariffs %s",
 			"evo её не рассчитывает: каждый ресурс стека — по своему тарифу (см. stack_plan), тарифы %s", p.TariffURL)}
 	}
-	return []string{previewLabel("cost", "цена") + i18n.Tf("not estimated by evo, the resource is billable: tariff %s",
-		"evo её не рассчитывает, ресурс платный: тариф %s", p.TariffURL)}
+	return []string{previewLabel("cost", "цена") + i18n.Tf("price unknown, the resource is billable: tariff %s",
+		"цена неизвестна, ресурс платный: тариф %s", p.TariffURL)}
 }
 
 func missingText(m string) string {
