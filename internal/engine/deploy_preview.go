@@ -165,6 +165,7 @@ func PlanPreview(plan *deployplan.Plan) *CreatePreview {
 	p.AddPorts(plan.Ports, nil, plan.PortsSource)
 	p.PortsGroup(firstNonEmpty(plan.Network.SecurityGroupName, plan.Network.SecurityGroupID))
 	p.Add("product", plan.Product)
+	p.setPriceClasses()
 	return p
 }
 

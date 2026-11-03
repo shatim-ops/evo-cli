@@ -1,0 +1,118 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
+package engine
+
+import (
+	"encoding/json"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
+)
+
+// Release plan 1.7, C (the owner's decision 31.10): every resource a
+// preview creates has a class of its price — priced (the preview's cost
+// has it), zero_at_create (0 at creation, billed by use, with what the
+// tariff bills and its page) or paid_unpriced (billable, its price
+// unknown). One line per resource the preview creates, from the list its
+// «Will create» line is made of; a kind without a declared class fails
+// this test (and is billable without a price in production).
+func TestPriceClasses_EveryKindDeclared(t *testing.T) {
+	kinds := append([]string{ResourceFloatingIP}, allResources...)
+	if len(priceClasses) != len(kinds) {
+		t.Errorf("priceClasses has %d entries, the kinds are %d", len(priceClasses), len(kinds))
+	}
+	for _, r := range kinds {
+		d, ok := priceClasses[r]
+		if !ok {
+			t.Errorf("%s: no class", r)
+			continue
+		}
+		if n := btoi(d.priceable) + btoi(d.zero != "") + btoi(d.why != ""); n != 1 {
+			t.Errorf("%s: declare exactly one of priceable, zero, why: %+v", r, d)
+		}
+	}
+	// A kind without a line is billable without a price in production (no
+	// panic in the person's terminal); the list above fails the build for
+	// it.
+	if got := classOf("no_such_kind", CreatePreview{}); got.Class != PricePaidUnpriced || got.Note != "" {
+		t.Errorf("a kind without a class: %+v, want paid_unpriced without a note", got)
+	}
+	// Every declared kind that has no price says why (the review of
+	// «Процесс · 1.7»: the reason is the agent's, axis 4, and an
+	// undeclared kind is told by its empty note).
+	for _, r := range kinds {
+		if c := classOf(r, CreatePreview{Resource: r}); c.Class != PricePriced && c.Note == "" {
+			t.Errorf("%s: %+v without a note", r, c)
+		}
+	}
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func TestPriceClasses_OneLinePerResource(t *testing.T) {
+	no := false
+	vm := deployplan.VMSpec{Flavor: deployplan.FlavorSpec{Name: "f", VCPUs: 2, RAMGB: 4}, Disk: deployplan.DiskSpec{SizeGB: 20, Type: "SSD"}}
+	unsized := deployplan.VMSpec{Disk: deployplan.DiskSpec{SizeGB: 20, Type: "SSD"}}
+	for _, c := range []struct {
+		name string
+		p    CreatePreview
+		want []ResourcePrice
+	}{
+		{"VM with a public address", CreatePreview{Resource: ResourceVM, VM: &vm},
+			[]ResourcePrice{{Resource: ResourceVM, Class: PricePriced}, {Resource: ResourceDisk, Class: PricePriced}, {Resource: ResourceFloatingIP, Class: PricePriced}}},
+		{"VM without one", CreatePreview{Resource: ResourceVM, VM: &vm, PublicIP: &no},
+			[]ResourcePrice{{Resource: ResourceVM, Class: PricePriced}, {Resource: ResourceDisk, Class: PricePriced}}},
+		{"VM of an unknown size", CreatePreview{Resource: ResourceVM, VM: &unsized},
+			[]ResourcePrice{{Resource: ResourceVM, Class: PricePaidUnpriced, Note: "the flavor size is unknown"},
+				{Resource: ResourceDisk, Class: PricePaidUnpriced, Note: "the flavor size is unknown"},
+				{Resource: ResourceFloatingIP, Class: PricePaidUnpriced, Note: "the flavor size is unknown"}}},
+		{"subnet", CreatePreview{Resource: ResourceSubnet, Name: "s"}, []ResourcePrice{{Resource: ResourceSubnet, Class: PricePaidUnpriced, Note: "no line of the tariffs names it"}}},
+	} {
+		c.p.Price()
+		if !reflect.DeepEqual(c.p.PriceClasses, c.want) {
+			t.Errorf("%s: price_classes %+v, want %+v", c.name, c.p.PriceClasses, c.want)
+		}
+	}
+
+	// A part the cost does not have is not priced by the cost of the whole
+	// (the review of «Процесс · 1.7»): a floating IP without its share.
+	p0 := CreatePreview{Resource: ResourceVM, VM: &vm}
+	p0.Price()
+	p0.Cost.FloatingIPMonthlyRub = 0
+	p0.setPriceClasses()
+	if got := p0.PriceClasses[2]; got.Resource != ResourceFloatingIP || got.Class != PricePaidUnpriced || got.Note == "" {
+		t.Errorf("a floating IP without its share: %+v, want paid_unpriced", got)
+	}
+
+	// A bucket costs nothing at its creation: the tariff bills its storage,
+	// operations and traffic. The note says so, with the tariff's page.
+	p := CreatePreview{Resource: ResourceS3Bucket, Name: "b"}
+	p.Price()
+	if len(p.PriceClasses) != 1 || p.PriceClasses[0].Class != PriceZeroAtCreate || p.PriceClasses[0].Note == "" || p.TariffURL == "" {
+		t.Fatalf("bucket: %+v, tariff %q", p.PriceClasses, p.TariffURL)
+	}
+	line := strings.Join(createCostLines(p), "\n")
+	if !strings.Contains(line, "0") || !strings.Contains(line, p.PriceClasses[0].Note) || !strings.Contains(line, p.TariffURL) {
+		t.Errorf("bucket cost line %q", line)
+	}
+	b, _ := json.Marshal(p)
+	if !strings.Contains(string(b), `"price_classes":[{"resource":"s3_bucket","class":"zero_at_create"`) {
+		t.Errorf("JSON: %s", b)
+	}
+	// A billable resource without a price says it is billable.
+	p = CreatePreview{Resource: ResourceSubnet, Name: "s"}
+	p.Price()
+	if line := strings.Join(createCostLines(p), "\n"); !strings.Contains(line, "billable") || strings.Contains(line, "free") ||
+		!strings.Contains(line, p.PriceClasses[0].Note) {
+		t.Errorf("subnet cost line %q: want billable and why (%q)", line, p.PriceClasses[0].Note)
+	}
+}
