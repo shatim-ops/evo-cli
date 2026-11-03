@@ -70,7 +70,8 @@ run_install
 check "T5: повторная установка — блок в ~/.zshrc один" test "$(blocks)" -eq 1
 # Редактор добавил пробел в конце метки и сохранил файл с CRLF: повторная
 # установка находит блок и заменяет его, а не дописывает второй (Qwen, #775).
-sed 's/^\(# >>> evo.*\)$/\1 /; s/^\(# <<< evo <<<\)$/\1\r/' "$rc" >"$rc.edited" && cat "$rc.edited" >"$rc" && rm -f "$rc.edited"
+cr=$(printf '\r')
+sed "s/^\(# >>> evo.*\)\$/\1 /; s/^\(# <<< evo <<<\)\$/\1$cr/" "$rc" >"$rc.edited" && cat "$rc.edited" >"$rc" && rm -f "$rc.edited"
 run_install
 check "T5: метки с пробелом и \\r в конце — блок в ~/.zshrc один" test "$(blocks)" -eq 1
 run_install --uninstall
@@ -102,7 +103,7 @@ sh_install() {
 	while [ $# -gt 0 ] && [ "$1" != -- ]; do envs+=("$1"); shift; done
 	[ "${1:-}" = -- ] && shift
 	env -i PATH="${pre_path:-}$work/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$h" SHELL="$zsh" INSTALL_DIR="$work/bin" \
-		CLOUDRU_VM_VERSION=v9.9.9 CLOUDRU_VM_BASE_URL="file://$work/rel" "${envs[@]}" sh "$root/install.sh" "$@" >"$work/install.log" 2>&1
+		CLOUDRU_VM_VERSION=v9.9.9 CLOUDRU_VM_BASE_URL="file://$work/rel" ${envs[@]+"${envs[@]}"} sh "$root/install.sh" "$@" >"$work/install.log" 2>&1
 }
 for start in "a" ""; do
 	h="$work/home-edge"
