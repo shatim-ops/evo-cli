@@ -18,8 +18,8 @@ import (
 // has it), zero_at_create (0 at creation, billed by use, with what the
 // tariff bills and its page) or paid_unpriced (billable, its price
 // unknown). One line per resource the preview creates, from the list its
-// «Will create» line is made of; a kind without a declared class is a
-// panic of the one point, not a default.
+// «Will create» line is made of; a kind without a declared class fails
+// this test (and is billable without a price in production).
 func TestPriceClasses_EveryKindDeclared(t *testing.T) {
 	kinds := append([]string{ResourceFloatingIP}, allResources...)
 	if len(priceClasses) != len(kinds) {
@@ -35,12 +35,12 @@ func TestPriceClasses_EveryKindDeclared(t *testing.T) {
 			t.Errorf("%s: declare exactly one of priceable, zero, why: %+v", r, d)
 		}
 	}
-	defer func() {
-		if recover() == nil {
-			t.Error("a kind without a class: want a panic")
-		}
-	}()
-	classOf("no_such_kind", CreatePreview{})
+	// A kind without a line is billable without a price in production (no
+	// panic in the person's terminal); the list above fails the build for
+	// it.
+	if got := classOf("no_such_kind", CreatePreview{}); got.Class != PricePaidUnpriced {
+		t.Errorf("a kind without a class: %+v, want paid_unpriced", got)
+	}
 }
 
 func btoi(b bool) int {

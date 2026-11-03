@@ -54,9 +54,10 @@ type priceDecl struct {
 }
 
 // priceClasses are the classes of the kinds of resources previews create
-// (TestPriceClasses_EveryKindDeclared keeps the list whole). There is no
-// default: a kind without a line is a panic of classOf, so a new kind gets
-// a class by a decision, not by falling through.
+// (TestPriceClasses_EveryKindDeclared keeps the list whole: a new kind of
+// allResources without a line fails the build, so it gets a class by a
+// decision). classOf answers a kind without a line as paid_unpriced, the
+// cautious side, rather than fail the CLI in the person's terminal.
 var priceClasses = map[string]priceDecl{
 	ResourceVM:         {priceable: true},
 	ResourceDisk:       {priceable: true},
@@ -98,7 +99,9 @@ var priceClasses = map[string]priceDecl{
 func classOf(r string, p CreatePreview) ResourcePrice {
 	d, ok := priceClasses[r]
 	if !ok {
-		panic("engine: no price class of " + r + ": declare it in priceClasses")
+		// Not declared: billable without a price, the cautious side; the
+		// test of the list fails the build for it.
+		return ResourcePrice{Resource: r, Class: PricePaidUnpriced}
 	}
 	switch {
 	case d.priceable && share(r, p) > 0:
