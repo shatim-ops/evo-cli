@@ -88,7 +88,13 @@ func TestAudit_Provision_FIPAttachFailsIsPartial(t *testing.T) {
 // provision минуту назад), повтор получает 409.
 type nameTakenCloud struct{ cancelCloud }
 
-func (*nameTakenCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+// ListVMsInProject: the VM of the name appears after the check before the
+// question (D73) — made in between, the remainder D73 accepts — so the
+// create meets the 409.
+func (c *nameTakenCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	if c.creates == 0 {
+		return nil, nil
+	}
 	return []*provision.VM{{ID: "vm-first", Name: "web", CreatedAt: time.Now().Add(-time.Minute)}}, nil
 }
 

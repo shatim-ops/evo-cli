@@ -193,7 +193,7 @@ func TestContract_PreviewPriceInTool(t *testing.T) {
 		tool, name, flavor string
 		args               map[string]any
 	}{
-		{"provision", "web", "lowcost10-2-4", map[string]any{"name": "web"}},
+		{"provision", "app", "lowcost10-2-4", map[string]any{"name": "app"}},
 		{"deploy", "evo-", "free-tier1", map[string]any{}}, // evo-<directory>, as evo deploy names it
 	} {
 		got := stdioDetails(t, srv.stdio, c.tool, c.args)
@@ -213,12 +213,12 @@ func TestContract_PreviewPriceInTool(t *testing.T) {
 	}
 
 	newProcess()
-	code, out, errOut := runCLI(t, "", "vm", "create", "web", "--dry-run", "--json")
+	code, out, errOut := runCLI(t, "", "vm", "create", "app", "--dry-run", "--json")
 	cli, ok := dryRunDetails(out)
 	if code != 0 || !ok {
-		t.Fatalf("evo vm create web --dry-run --json: exit %d %s %s", code, out, errOut)
+		t.Fatalf("evo vm create app --dry-run --json: exit %d %s %s", code, out, errOut)
 	}
-	if mcpPreview := stdioDetails(t, srv.stdio, "provision", map[string]any{"name": "web"}); !reflect.DeepEqual(cli, mcpPreview) {
+	if mcpPreview := stdioDetails(t, srv.stdio, "provision", map[string]any{"name": "app"}); !reflect.DeepEqual(cli, mcpPreview) {
 		t.Errorf("evo vm create ≠ MCP provision: %s", valueDiff(cli, mcpPreview))
 	}
 
