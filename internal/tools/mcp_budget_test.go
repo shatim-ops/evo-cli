@@ -278,8 +278,8 @@ var mcpWaits = map[string]budgetWait{
 	"stack_status": {static: "the handler waits at most 20 s (tools_stack.go), as its schema says: within the budget"},
 	"k8s_kubectl":  {run: kubeBudget("k8s_kubectl", map[string]any{"cluster_id": faultCluster, "args": "rollout status deployment/web -n app"})},
 	"k8s_helm":     {run: kubeBudget("k8s_helm", map[string]any{"cluster_id": faultCluster, "action": "install", "release": "web", "chart": "repo/web", "namespace": "app", "confirmed": true})},
-	"disk_create":  {static: "with vm, waits for the new disk to be available (diskReadyTimeout 5 min; tools_disk.go) before the attach", over: true},
-	"disk_attach":  {static: "waits for the disk to settle (diskSettleTimeout 30 s) before the question, then to be available (diskReadyTimeout 5 min; tools_disk.go)", over: true},
+	"disk_create":  apiBudget("disk_create", map[string]any{"name": "data", "size_gb": 10, "attach_to": faultTargetVM, "confirmed": true}),
+	"disk_attach":  apiBudget("disk_attach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, faultResource{host: "compute.api.cloud.ru", path: "/api/v1/disks", ID: faultDisk, Name: "data", before: true}),
 	"disk_detach":  {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
 	"disk_resize":  {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
 }
@@ -289,10 +289,7 @@ var mcpWaits = map[string]budgetWait{
 // agent ask for a longer wait. It only shrinks. Closes by 1.7 (release plan
 // 1.7, block A; process plan 1.7 §1: red before PR 1 of D69, each PR of
 // D69 takes its lines out).
-var mcpOverBudget = map[string]string{
-	"disk_create": "with vm: waits for the disk up to 5 min",
-	"disk_attach": "waits for the disk to settle up to 30 s before the question, then to be available up to 5 min",
-}
+var mcpOverBudget = map[string]string{}
 
 // waitProps are the schema properties by which an agent asks a tool to
 // wait, in seconds.
