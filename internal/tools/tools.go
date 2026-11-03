@@ -661,18 +661,18 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Without confirmed=true returns a preview only. Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves. Poll the returned operation_id with pg_operation. The cluster is placed in its subnet; the API takes no public-access parameter, evo sets up none.",
+			Description: "Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves; without it, a preview. Poll the returned operation_id with pg_operation. The cluster is placed in its subnet; the API takes no public-access parameter, evo sets up none.",
 			InputSchema: objSchema(map[string]any{
 				"name":                  strProp("Cluster name (required)."),
-				"version":               strProp("PostgreSQL version (from pg_versions). Optional; default = latest."),
+				"version":               strProp("PostgreSQL version (from pg_versions). Default: latest."),
 				"specification_id":      strProp("Specification UUID (from pg_specs). Optional if cpu+ram given."),
-				"cpu":                   intProp("vCPU count — used to auto-pick a specification when specification_id is omitted."),
+				"cpu":                   intProp("vCPU count: picks a specification without specification_id."),
 				"ram":                   intProp("RAM in GB — used with cpu to auto-pick a specification."),
-				"storage_gb":            atLeast(1, intProp("Main data disk size in GB. Optional; default = specification minimum.")),
+				"storage_gb":            atLeast(1, intProp("Main data disk size in GB. Default: specification minimum.")),
 				"instances":             atLeast(1, intProp("Number of nodes (1-2 standard, 1-3 business: checked against the spec's max_hosts). Default 1.")),
-				"subnet_id":             strProp("Subnet UUID or name (defines the AZ). Optional; default = first project subnet."),
-				"initial_database":      strProp("Name of the default database to create. Default 'defaultdb'."),
-				"description":           strProp("Optional cluster description."),
+				"subnet_id":             strProp("Subnet UUID or name (defines the AZ). Default: first project subnet."),
+				"initial_database":      strProp("Name of the database created with the cluster (default 'defaultdb'). It takes no owner: for a database your user owns, pg_db_create with owner."),
+				"description":           strProp("Cluster description."),
 				"no_backup":             boolProp("Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'."),
 				"backup_schedule":       strProp("CRON schedule for automatic backups (default '0 3 * * 0' = weekly Sun 03:00; min once per 6h)."),
 				"backup_retention_days": inRange(1, 30, intProp("Retention for automatic backups in days (default 14, max 30).")),
@@ -3471,10 +3471,6 @@ func intArg(args map[string]any, key string, def int) int {
 	return def
 }
 
-// toJSON marshals v to an indented JSON string for tool output.
-// previewArgs echoes the given arguments for a confirmation preview; an
-// argument that was not passed is shown as coming from the defaults
-// (env/config or auto).
 // withProject names the project in a preview, resolved as the call will
 // resolve it: with a key that sees several projects the user must see where
 // the VM is created (QA P6).
@@ -3501,18 +3497,21 @@ func (s *Registry) deploymentProject() string {
 	return eng.Config.ProjectID
 }
 
+// previewArgs echoes the arguments of keys the call was given, for a
+// confirmation preview. An argument not given is left out: what evo takes
+// for it the preview names (preview.vm), and a placeholder beside it only
+// said the same less exactly (agent run C2, Ф-3).
 func previewArgs(args map[string]any, keys ...string) map[string]any {
 	out := make(map[string]any, len(keys))
 	for _, k := range keys {
 		if v, ok := args[k]; ok && v != nil && v != "" {
 			out[k] = v
-		} else {
-			out[k] = "default (env/config or auto)"
 		}
 	}
 	return out
 }
 
+// toJSON marshals v to an indented JSON string for tool output.
 func toJSON(v any) string {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {

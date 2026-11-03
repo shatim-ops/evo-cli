@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -125,7 +126,10 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	if e.Config.ProjectID != "" {
 		projectLine = "project_id: " + e.Config.ProjectID
 	}
-	content := fmt.Sprintf(i18n.T(initTemplateEN, initTemplateRU),
+	// The name deploy takes without project_name (the directory's), so
+	// the VM is the same with the line as without it; written, it is in
+	// sight (agent run C2, Ц-6).
+	content := fmt.Sprintf(i18n.T(initTemplateEN, initTemplateRU), yamlScalar(initProjectName(opts.Path)),
 		yamlComment(zone.ID), yamlComment(zone.Name), imageLine, projectLine)
 
 	if err := os.WriteFile(opts.Path, []byte(content), 0o644); err != nil {
@@ -151,10 +155,12 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	return nil
 }
 
-// preferredZone is the default zone of init: offered first and taken
-// without a terminal. 15.10.2026 ru.AZ-1 failed three cloud-e2e runs in a row
-// (a VM 10–20 min in creating, error_creating, no SSH after boot) while
-// ru.AZ-2 passed every one; the API lists ru.AZ-1 first.
+// preferredZone is the zone Kafka and Redis take when none is given
+// (kafka_specs, redis_specs and their creates): offered first because on
+// 15.10.2026 ru.AZ-1 failed three cloud-e2e runs in a row and ru.AZ-2
+// passed. evo init no longer takes it (agent run C2, Ц-7: one idea of «the
+// default zone» with the platform, DefaultZoneFirst); whether the
+// products of DBaaS take DefaultZoneFirst too is the release's question.
 const preferredZone = "ru.AZ-2"
 
 // PreferredZoneFirst moves preferredZone to the front, keeping the order of
@@ -171,11 +177,26 @@ func PreferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.Availa
 	return zones
 }
 
+// defaultZone reports the zone the zone list marks default, while it takes
+// new resources: a closed zone is no default for a new VM (ru.AZ-1 on
+// 29.10, OPS-19).
+func defaultZone(z *provision.AvailabilityZone) bool { return z.Default && !z.Closed() }
+
+// DefaultZoneFirst moves the zone the zone list marks default (defaultZone)
+// to the front, keeping the order of the rest; a list without one is
+// returned in the API's order. The one idea of «the default zone» evo
+// has, with evo vm zones (agent run C2, Ц-7). The input is not changed.
+func DefaultZoneFirst(zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
+	out := append([]*provision.AvailabilityZone(nil), zones...)
+	sort.SliceStable(out, func(i, j int) bool { return defaultZone(out[i]) && !defaultZone(out[j]) })
+	return out
+}
+
 // ZoneChoices are the zones offered for new VMs, best first — by evo init
 // and by evo configure, which ask for the zone the same way: the zones that
 // take new resources (a closed one is named in a warning), then in the
-// order of initZones (a zone with a subnet of the project first, ru.AZ-2
-// among them).
+// order of initZones (the platform's default zone, then the zones with a
+// subnet of the project).
 func (e *Engine) ZoneChoices(ctx context.Context, zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
 	if open := provision.OpenZones(zones); len(open) < len(zones) {
 		for _, z := range zones {
@@ -192,13 +213,16 @@ func (e *Engine) ZoneChoices(ctx context.Context, zones []*provision.Availabilit
 // initZones orders the zones for init: first a zone where the project has
 // a subnet — deploy cannot plug a VM in elsewhere, and a new project has
 // one only in ru.AZ-1 (docs, «Подсети»: Default_ru.AZ-1 is created
-// automatically). Among them ru.AZ-2 (preferredZone) if it has one, else a
-// zone with the project's main subnet (the API's default flag), else the
-// first; then the other zones. It says why when preferredZone is not
-// first, and warns when no zone has a subnet. Without a project or the
-// subnet list the order is PreferredZoneFirst.
+// automatically). Among them the zone the zone list marks default (the one
+// evo vm zones names, while it takes new resources: ZoneChoices drops a
+// closed one), else the zone of the project's main subnet, else the first;
+// then the other zones. One idea of «the default zone» with the platform,
+// and no preference from one day's runs (agent run C2, Ц-7). It says why
+// when the default zone is not first, and warns when no zone has a subnet.
+// Without a project or the subnet list the default zone goes first.
 func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
-	zones = PreferredZoneFirst(zones)
+	marked := defaultZone
+	zones = DefaultZoneFirst(zones)
 	if e.Config.ProjectID == "" {
 		return zones
 	}
@@ -214,7 +238,7 @@ func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZ
 			}
 		}
 		switch {
-		case has && z.Name == preferredZone:
+		case has && marked(z):
 			return 0
 		case has && main:
 			return 1
@@ -229,11 +253,11 @@ func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZ
 	case rank(zones[0]) == 3:
 		e.Printer.Warning(i18n.T("the project has no subnet in any zone: a new VM cannot be plugged in. Create a subnet in the Cloud.ru console (Network → Subnets), then choose the zone again",
 			"в проекте нет подсети ни в одной зоне: новую ВМ не подключить к сети. Создайте подсеть в консоли Cloud.ru (Сеть → Подсети) и выберите зону снова"))
-	case zones[0].Name != preferredZone:
+	case !marked(zones[0]):
 		for _, z := range zones {
-			if z.Name == preferredZone {
-				e.Printer.Hint(i18n.Tf("%s is not offered first: the project has no subnet there; %s has one",
-					"%s не предлагается первой: в ней нет подсети проекта; подсеть есть в %s", preferredZone, zones[0].Name))
+			if marked(z) {
+				e.Printer.Hint(i18n.Tf("%s (the default zone of the zone list) is not offered first: the project has no subnet there; %s has one",
+					"%s (зона по умолчанию в списке зон) не предлагается первой: в ней нет подсети проекта; подсеть есть в %s", z.Name, zones[0].Name))
 				break
 			}
 		}
@@ -246,6 +270,9 @@ func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZ
 // line.
 const initTemplateRU = `# Настройки evo
 # Подробнее: https://github.com/shatim-ops/evo-cli
+
+# Имя проекта: ВМ, которую создаёт deploy, называется evo-<project_name>
+project_name: %s
 
 # Зона доступности (evo list-zones)
 region: %s  # %s
@@ -276,6 +303,9 @@ timeout: 600
 
 const initTemplateEN = `# evo configuration
 # See: https://github.com/shatim-ops/evo-cli
+
+# Project name: the VM deploy creates is named evo-<project_name>
+project_name: %s
 
 # Availability zone (evo list-zones)
 region: %s  # %s
@@ -379,6 +409,27 @@ func deployableImages(images []*provision.Image) []*provision.Image {
 // yamlComment keeps a value from the cloud on its own line of the generated
 // config: a zone or image name with a newline would otherwise add keys
 // (compose_file, flavor, ...) to the user's project file.
+// initProjectName is the project_name init writes: the name of the
+// directory the configuration is in, as deploy takes it without one.
+func initProjectName(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	return filepath.Base(filepath.Dir(path))
+}
+
+// yamlScalar is s as a YAML scalar on one line, quoted where YAML would
+// read it as another type (a name like "001" or "yes") or another
+// structure ("a: b"). A line break cannot be in a directory's name a
+// person picks; it is a space here, so the value stays one line.
+func yamlScalar(s string) string {
+	b, err := yaml.Marshal(yamlComment(s))
+	if err != nil {
+		return strconv.Quote(s)
+	}
+	return strings.TrimSuffix(string(b), "\n")
+}
+
 func yamlComment(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
