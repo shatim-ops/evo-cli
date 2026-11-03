@@ -96,6 +96,10 @@ var faultCollections = map[string]struct {
 	"/v1/clusters/" + faultPGCluster + "/backups": {field: "backups", async: true},
 }
 
+// faultOIDCPath is the path of Cloud.ru IAM's token exchange
+// (mk8s.DefaultOIDCTokenURL), the cluster token of kubectl and helm.
+const faultOIDCPath = "/auth/system/openid/token"
+
 // faultPGCluster is the PostgreSQL cluster of pg_backup_create, faultVPC
 // the VPC of vpc_route_create.
 const (
@@ -291,6 +295,12 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"defaultZone":"ru.AZ-1","zones":[{"zoneId":"mk-az1","name":"ru.AZ-1"}],
 			"flavors":[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}],
 			"channels":[{"channel":"STABLE","availableVersions":["v1.34.6"]}]}`)
+	case strings.HasPrefix(path, "/v3/clusters/") && strings.HasSuffix(path, ":getKubeConfig"):
+		// The kubeconfig of a cluster k8s_kubectl and k8s_helm act in:
+		// its user exchanges the access key at Cloud.ru IAM (faultOIDCPath).
+		_, _ = io.WriteString(w, `{"config":"apiVersion: v1\nkind: Config\nclusters:\n- name: c\n  cluster:\n    server: https://k8s.invalid\ncontexts:\n- name: c\n  context:\n    cluster: c\n    user: u\ncurrent-context: c\nusers:\n- name: u\n  user:\n    exec:\n      command: cloudlogin\n      args: [\"get-token\"]\n"}`)
+	case path == faultOIDCPath:
+		_, _ = io.WriteString(w, `{"access_token":"fault-kube-token"}`)
 	case strings.HasPrefix(path, "/v3/clusters/"):
 		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v3/clusters/")+`","controlPlane":{"zones":["mk-az1"]}}`)
 	case path == "/api/v1/security-groups":
