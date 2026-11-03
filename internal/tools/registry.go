@@ -141,10 +141,20 @@ func (r *Registry) withCallStart(ctx context.Context) context.Context {
 // long as the work takes), else what is left of the budget of the
 // outermost call (budgetLeft).
 func (r *Registry) waitLeft(ctx context.Context, args map[string]any) (time.Duration, bool) {
-	if w, given := args["wait"].(bool); given {
-		return 0, !w
+	if waitOff(args) {
+		return 0, true
+	}
+	if _, given := args["wait"].(bool); given {
+		return 0, false
 	}
 	return budgetLeft(ctx)
+}
+
+// waitOff reports whether the call asked not to wait for the cloud at all
+// (wait=false): the one reading of the argument wait.
+func waitOff(args map[string]any) bool {
+	w, given := args["wait"].(bool)
+	return given && !w
 }
 
 // budgetLeft is what is left of the budget of the call ctx belongs to, and

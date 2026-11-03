@@ -88,12 +88,12 @@ func TestDNSZoneDelete_LinksAndTheOperation(t *testing.T) {
 		{"failed", `{"id":"` + dnsDeleteOp + `","done":true,"error":{"code":9,"message":"zone has links"}}`, "", "API_ERROR", "zone has links", 30},
 		{"not done in the wait", `{"id":"` + dnsDeleteOp + `","done":false}`, "deleting", "", dnsDeleteOp, 0},
 	} {
-		wait := dnsZoneDeleteWait
-		dnsZoneDeleteWait = c.wait
+		wait := deleteOutcomeWait
+		deleteOutcomeWait = c.wait
 		f := dnsLinksFake("", c.op)
 		r := apiFakeRegistry(t, f)
 		m, text, isErr := callNamed(t, r, "dns_zone_delete", map[string]any{"id": dnsPrivZone, "confirmed": true})
-		dnsZoneDeleteWait = wait
+		deleteOutcomeWait = wait
 		switch {
 		case c.reason != "" && (!isErr || m["reason"] != c.reason || !strings.Contains(text, c.text)):
 			t.Errorf("%s: want %s with %q: %s", c.name, c.reason, c.text, text)
