@@ -242,7 +242,7 @@ func (s *Registry) planCaDelete(ctx context.Context, args map[string]any) (*Plan
 		}
 		// Container Apps has no operation to read: the app is read until it
 		// is gone.
-		return deleteOutcome(ctx, goneWatch("ca_delete", name, map[string]any{"name": name}, op.ID, "ca_get",
+		return deleteOutcome(ctx, args, goneWatch("ca_delete", name, map[string]any{"name": name}, op.ID, "ca_get",
 			func(ctx context.Context) (map[string]any, error) { return cli.Get(ctx, name) }))
 	}}, nil
 }

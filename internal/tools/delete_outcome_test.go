@@ -38,6 +38,7 @@ func TestDeleteOutcome_OperationErrorIsARefusal(t *testing.T) {
 			tl, _ := reg.Lookup(name)
 			args := contractArgs(tl)
 			args["confirmed"] = true
+			delete(args, "wait") // the default: wait for the outcome
 			text, isErr, _ := contractCall(tl, args, 5*time.Second)
 			var m map[string]any
 			_ = json.Unmarshal([]byte(text), &m)
@@ -117,5 +118,41 @@ func TestDeleteOutcome_ContainerAppReadsTheApp(t *testing.T) {
 		if c.status == "deleting" && m["next_tool"] != "ca_get" {
 			t.Errorf("%s: want ca_get as the next step, got %s", c.name, text)
 		}
+	}
+}
+
+// D74, the owner's decision 03.11 (a script deleting many must keep its
+// speed): wait=false answers deleting with the operation_id as soon as the
+// cloud took the DELETE, reading nothing after it — the same argument wait
+// as provision and deploy_apply, in the schema of each of the ten, so the
+// CLI has --wait=false.
+func TestDeleteOutcome_WaitFalseDoesNotWait(t *testing.T) {
+	first := opWaitFirstDelay
+	opWaitFirstDelay = time.Millisecond
+	t.Cleanup(func() { opWaitFirstDelay = first })
+	for _, name := range append([]string{"ca_delete"}, deleteOutcomeTools...) {
+		t.Run(name, func(t *testing.T) {
+			rt := &contractRT{kind: "200"} // the operation is done: a read would answer deleted
+			reg := contractReg(t, rt)
+			tl, _ := reg.Lookup(name)
+			if _, ok := schemaProps(tl)["wait"]; !ok {
+				t.Fatalf("%s: no argument wait in the schema", name)
+			}
+			args := contractArgs(tl)
+			args["confirmed"], args["wait"] = true, false
+			text, isErr, _ := contractCall(tl, args, 5*time.Second)
+			var m map[string]any
+			_ = json.Unmarshal([]byte(text), &m)
+			if isErr || m["status"] != "deleting" || m["operation_id"] == nil || m["next_tool"] == nil {
+				t.Errorf("wait=false: want deleting with operation_id and the next step, got %.500s", text)
+			}
+			rt.mu.Lock()
+			defer rt.mu.Unlock()
+			for i, req := range rt.reqs {
+				if strings.HasPrefix(req, "DELETE ") && len(rt.reqs) > i+1 {
+					t.Errorf("wait=false: requests after the DELETE: %v", rt.reqs[i+1:])
+				}
+			}
+		})
 	}
 }

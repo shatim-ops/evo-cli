@@ -301,7 +301,7 @@ func (s *Registry) planTgDelete(ctx context.Context, args map[string]any) (*Plan
 			if err != nil {
 				return s.deleteFailed("tg_delete", id, fmt.Errorf(i18n.T("delete target group: %w", "удаление целевой группы: %w"), err))
 			}
-			return deleteOutcome(ctx, opWatch("tg_delete", id, map[string]any{"id": id}, op.ID, "lb_operation", cli.GetOperation))
+			return deleteOutcome(ctx, args, opWatch("tg_delete", id, map[string]any{"id": id}, op.ID, "lb_operation", cli.GetOperation))
 		}), nil
 }
 
@@ -604,6 +604,6 @@ func (s *Registry) planLbDelete(ctx context.Context, args map[string]any) (*Plan
 			if err != nil {
 				return s.deleteFailed("lb_delete", id, fmt.Errorf(i18n.T("delete load balancer: %w", "удаление балансировщика: %w"), err))
 			}
-			return deleteOutcome(ctx, opWatch("lb_delete", id, map[string]any{"id": id}, op.ID, "lb_operation", cli.GetOperation))
+			return deleteOutcome(ctx, args, opWatch("lb_delete", id, map[string]any{"id": id}, op.ID, "lb_operation", cli.GetOperation))
 		}), nil
 }

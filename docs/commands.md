@@ -605,6 +605,7 @@ evo ar delete <id> [flags]
 
 ```
   -h, --help   Справка по delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands
@@ -1106,6 +1107,7 @@ evo ca delete <name> [flags]
 
 ```
   -h, --help   Справка по delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands
@@ -3408,6 +3410,7 @@ evo dns record-delete <record-id> [flags]
 ```
   -h, --help          Справка по record-delete
       --type string   Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
+      --wait          Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands
@@ -4540,6 +4543,7 @@ evo k8s delete <cluster-id> [flags]
 
 ```
   -h, --help   Справка по delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands
@@ -5053,6 +5057,7 @@ evo kafka delete <cluster-id> [flags]
 
 ```
   -h, --help   Справка по delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands
@@ -5440,6 +5445,7 @@ evo lb delete <id> [flags]
 
 ```
   -h, --help   Справка по delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands
@@ -6443,6 +6449,7 @@ evo pg delete <cluster-id> [flags]
 
 ```
   -h, --help   Справка по delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands
@@ -7066,6 +7073,7 @@ evo redis delete <cluster-id> [flags]
 
 ```
   -h, --help   Справка по delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands
@@ -8581,6 +8589,7 @@ evo tg delete <id> [flags]
 
 ```
   -h, --help   Справка по delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands
@@ -9495,6 +9504,7 @@ evo vpc delete <id> [flags]
 
 ```
   -h, --help   Справка по delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
 ```
 
 ### Options inherited from parent commands

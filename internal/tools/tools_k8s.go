@@ -460,7 +460,7 @@ func (s *Registry) planK8sDelete(ctx context.Context, args map[string]any) (*Pla
 			// No k8s_operation: k8s_get shows the cluster until it is gone.
 			w := opWatch("k8s_delete", id, map[string]any{"cluster_id": id}, op.ID, "", cli.GetOperation)
 			w.next, w.nextArgs = "k8s_get", map[string]any{"cluster_id": id}
-			return deleteOutcome(ctx, w)
+			return deleteOutcome(ctx, args, w)
 		}), nil
 }
 

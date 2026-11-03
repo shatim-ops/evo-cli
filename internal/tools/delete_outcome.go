@@ -46,10 +46,16 @@ type deleteWatch struct {
 // operation. A variable only so that tests can shorten it.
 var deleteOutcomeWait = opWaitMaxSeconds
 
-// deleteOutcome is the answer of the delete w after the wait for its end.
-func deleteOutcome(ctx context.Context, w deleteWatch) (string, bool) {
+// deleteOutcome is the answer of the delete w after the wait for its end;
+// with wait=false in the call's args it is deleting at once, reading
+// nothing (a script deleting many keeps its speed; the owner's decision
+// 03.11).
+func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (string, bool) {
 	fields := map[string]any{"operation_id": w.opID}
 	maps.Copy(fields, w.ident)
+	if waitOff(args) {
+		return deleting(fields, w)
+	}
 	m, err := waitForOpJSON(ctx, deleteOutcomeWait, w.read)
 	if errors.Is(err, context.Canceled) {
 		// The delete is started: the answer names it (FB160-14).
@@ -64,6 +70,12 @@ func deleteOutcome(ctx context.Context, w deleteWatch) (string, bool) {
 			return toJSON(fields), false
 		}
 	}
+	return deleting(fields, w)
+}
+
+// deleting is the answer of the delete w still under way: its fields and
+// the tool that shows its end.
+func deleting(fields map[string]any, w deleteWatch) (string, bool) {
 	fields["status"] = "deleting"
 	fields["next"] = fmt.Sprintf("%s %s shows when the delete ends", w.next, argsLine(w.nextArgs))
 	nextStep(fields, w.next, w.nextArgs)

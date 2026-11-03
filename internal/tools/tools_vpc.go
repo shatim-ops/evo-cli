@@ -131,7 +131,7 @@ func (s *Registry) planVpcDelete(ctx context.Context, args map[string]any) (*Pla
 			if err != nil {
 				return s.deleteFailed("vpc_delete", id, fmt.Errorf(i18n.T("delete vpc: %w", "удаление vpc: %w"), err))
 			}
-			return deleteOutcome(ctx, opWatch("vpc_delete", id, map[string]any{"id": id}, op.ID, "vpc_operation", cli.GetOperation))
+			return deleteOutcome(ctx, args, opWatch("vpc_delete", id, map[string]any{"id": id}, op.ID, "vpc_operation", cli.GetOperation))
 		}), nil
 }
 

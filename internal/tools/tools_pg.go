@@ -502,7 +502,7 @@ func (s *Registry) planPgDelete(ctx context.Context, args map[string]any) (*Plan
 				}
 				return s.deleteFailed("pg_delete", id, fmt.Errorf(i18n.T("delete cluster: %w", "удаление кластера: %w"), err))
 			}
-			return deleteOutcome(ctx, opWatch("pg_delete", id, map[string]any{"id": id}, op.ID, "pg_operation", cli.GetOperation))
+			return deleteOutcome(ctx, args, opWatch("pg_delete", id, map[string]any{"id": id}, op.ID, "pg_operation", cli.GetOperation))
 		}), nil
 }
 

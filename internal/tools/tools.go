@@ -379,6 +379,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": uuidProp("Cluster UUID."),
 				"confirmed":  confirmedProp(),
+				"wait":       boolProp(deleteWaitDesc),
 			}, "cluster_id"),
 		},
 		{
@@ -550,7 +551,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "ca_delete",
 			Description: "Delete a Container App by name. REQUIRES confirmed=true after the user approves. Async.",
-			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp()}, "name"),
+			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp(), "wait": boolProp(deleteWaitDesc)}, "name"),
 		},
 		{
 			Name:        "ca_logs",
@@ -686,6 +687,7 @@ func (s *Registry) registerTools() {
 				"id":         uuidProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
 				"cluster_id": uuidProp("Alias for id."),
 				"confirmed":  confirmedProp(),
+				"wait":       boolProp(deleteWaitDesc),
 			}),
 		},
 		{
@@ -742,6 +744,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": uuidProp("Cluster UUID (from kafka_list). Required."),
 				"confirmed":  confirmedProp(),
+				"wait":       boolProp(deleteWaitDesc),
 			}, "cluster_id"),
 		},
 		{
@@ -796,6 +799,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": uuidProp("Cluster UUID (from redis_list). Required."),
 				"confirmed":  confirmedProp(),
+				"wait":       boolProp(deleteWaitDesc),
 			}, "cluster_id"),
 		},
 		{
@@ -912,7 +916,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "tg_delete",
 			Description: "Delete a target group by id (from tg_list). Mutation (async): requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"id": uuidProp("Target group UUID. Required."), "confirmed": confirmedProp()}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("Target group UUID. Required."), "confirmed": confirmedProp(), "wait": boolProp(deleteWaitDesc)}, "id"),
 		},
 		{
 			Name:        "lb_create",
@@ -933,7 +937,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "lb_delete",
 			Description: "Delete a load balancer by id (from lb_list). Mutation (async): requires confirmed=true after the user approves.",
-			InputSchema: objSchema(map[string]any{"id": uuidProp("Load balancer UUID. Required."), "confirmed": confirmedProp()}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("Load balancer UUID. Required."), "confirmed": confirmedProp(), "wait": boolProp(deleteWaitDesc)}, "id"),
 		},
 		{
 			Name:        "vpc_list",
@@ -960,6 +964,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("VPC UUID (from vpc_list). Required."),
 				"confirmed": confirmedProp(),
+				"wait":      boolProp(deleteWaitDesc),
 			}, "id"),
 		},
 		{
@@ -1072,6 +1077,7 @@ func (s *Registry) registerTools() {
 				"record_id": uuidProp("Record UUID (from dns_records). Required."),
 				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed": confirmedProp(),
+				"wait":      boolProp(deleteWaitDesc),
 			}, "record_id"),
 		},
 		{
@@ -1149,6 +1155,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("Registry UUID (from ar_list). Required."),
 				"confirmed": confirmedProp(),
+				"wait":      boolProp(deleteWaitDesc),
 			}, "id"),
 		},
 		{
@@ -3335,6 +3342,10 @@ const readOnlyTaskNote = "For a task that only reads, the person can run the ser
 
 // readOnlyTaskNoteRU is readOnlyTaskNote in the CLI's Russian.
 const readOnlyTaskNoteRU = "Для задачи только на чтение человек может запустить сервер с evo mcp --read-only: такой сервер ничего не меняет в облаке."
+
+// deleteWaitDesc is the wait argument of a delete that reads its outcome
+// (D74).
+const deleteWaitDesc = "Optional. false: answer deleting at once, not reading the outcome. Default: wait for it up to ~45 s."
 
 // waitDesc is the wait argument of a tool that waits for what it creates
 // (D69): over MCP the call answers within MCPCallBudget, in the CLI it

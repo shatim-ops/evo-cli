@@ -355,8 +355,16 @@ type parityRT struct {
 	// 404, so that ca_delete, which reads the app until it is gone (D74),
 	// does not wait as in production; the read after that sees the world
 	// as it was, as every other resource of the world, which a delete does
-	// not remove.
+	// not remove. A delete with wait=false reads nothing after it: the test
+	// starts the next call with newCall.
 	gone map[string]bool
+}
+
+// newCall forgets what the last call deleted (gone).
+func (p *parityRT) newCall() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.gone = nil
 }
 
 // takeWrites returns the writes recorded since the last call.
@@ -518,6 +526,12 @@ var parityAnswers = map[string]string{
 	"GET compute.api.cloud.ru/api/v1/subnets/{id}":    `{"id":"` + parityVM + `","name":"sub","state":"created","can_delete":true}`,
 	"DELETE compute.api.cloud.ru/api/v1/subnets/{id}": `{}`,
 	// Writes: the operation or the empty body the API answers with.
+	"DELETE ar.api.cloud.ru/v1/registries/{id}":                      jsonOp,
+	"DELETE containers.api.cloud.ru/v2/containers/app":               jsonOp,
+	"DELETE dns.api.cloud.ru/v1/publicRecordsSole/{id}":              jsonOp,
+	"DELETE nlb.api.cloud.ru/v2/networkLoadBalancers/{id}":           jsonOp,
+	"DELETE nlb.api.cloud.ru/v2/targetGroups/{id}":                   jsonOp,
+	"DELETE vpc.api.cloud.ru/v1/vpcs/{id}":                           jsonOp,
 	"DELETE certificatemanager.api.cloud.ru/v1/certificate/{id}":     jsonOp,
 	"POST certificatemanager.api.cloud.ru/v1/certificate/{id}:renew": jsonOp,
 	"DELETE compute.api.cloud.ru/api/v1/disks/{id}":                  `{}`,

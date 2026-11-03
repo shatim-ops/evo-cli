@@ -303,7 +303,8 @@ var toolsRU = map[string]toolRU{
 		Long: "Удалить VPC по id (список: 'evo vpc list'). Сначала удалите его подсети и другие ресурсы. " +
 			"Операция асинхронная: ход — 'evo vpc operation <operation-id>'.",
 		Args: map[string]string{
-			"id": "UUID VPC (список: evo vpc list), обязательный",
+			"wait": deleteWaitRU,
+			"id":   "UUID VPC (список: evo vpc list), обязательный",
 		},
 	},
 	"vpc_operation": {
@@ -451,6 +452,7 @@ var toolsRU = map[string]toolRU{
 		Short: "Удалить кластер Managed Kubernetes (асинхронно)",
 		Long:  "Удалить кластер Managed Kubernetes безвозвратно. Операция асинхронная.",
 		Args: map[string]string{
+			"wait":       deleteWaitRU,
 			"cluster_id": "UUID кластера",
 		},
 	},
@@ -661,6 +663,7 @@ var toolsRU = map[string]toolRU{
 		Long: "Удалить кластер Managed PostgreSQL по id (список: 'evo pg list') вместе с данными и всеми резервными " +
 			"копиями — восстановить их нельзя. Операция асинхронная.",
 		Args: map[string]string{
+			"wait":       deleteWaitRU,
 			"cluster_id": "То же, что id",
 			"id":         "UUID кластера (список: evo pg list), обязательный (синоним: cluster_id)",
 		},
@@ -942,6 +945,7 @@ var toolsRU = map[string]toolRU{
 		Short: "Удалить запись DNS (асинхронно)",
 		Long:  "Удалить запись DNS по id (список: 'evo dns records <zone-id>'). Операция асинхронная.",
 		Args: map[string]string{
+			"wait":      deleteWaitRU,
 			"record_id": "UUID записи (список: evo dns records <zone-id>), обязательный",
 			"type":      "Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id",
 		},
@@ -1107,7 +1111,8 @@ var toolsRU = map[string]toolRU{
 		Short: "Удалить группу целей (асинхронно)",
 		Long:  "Удалить группу целей по id (список: 'evo tg list'). Операция асинхронная.",
 		Args: map[string]string{
-			"id": "UUID группы целей (обязательный)",
+			"wait": deleteWaitRU,
+			"id":   "UUID группы целей (обязательный)",
 		},
 	},
 	"lb_create": {
@@ -1136,7 +1141,8 @@ var toolsRU = map[string]toolRU{
 		Short: "Удалить балансировщик (асинхронно)",
 		Long:  "Удалить балансировщик по id (список: 'evo lb list'). Операция асинхронная.",
 		Args: map[string]string{
-			"id": "UUID балансировщика (обязательный)",
+			"wait": deleteWaitRU,
+			"id":   "UUID балансировщика (обязательный)",
 		},
 	},
 
@@ -1256,6 +1262,7 @@ var toolsRU = map[string]toolRU{
 		Short: "Удалить кластер Kafka вместе с данными (асинхронно)",
 		Long:  "Удалить кластер Managed Kafka по id вместе с данными. Операция асинхронная.",
 		Args: map[string]string{
+			"wait":       deleteWaitRU,
 			"cluster_id": "UUID кластера (список: evo kafka list), обязательный",
 		},
 	},
@@ -1332,6 +1339,7 @@ var toolsRU = map[string]toolRU{
 		Short: "Удалить кластер Redis вместе с данными (асинхронно)",
 		Long:  "Удалить кластер Managed Redis по id вместе с данными. Операция асинхронная.",
 		Args: map[string]string{
+			"wait":       deleteWaitRU,
 			"cluster_id": "UUID кластера (список: evo redis list), обязательный",
 		},
 	},
@@ -1379,7 +1387,8 @@ var toolsRU = map[string]toolRU{
 		Long: "Удалить реестр Artifact Registry по id (список: 'evo ar list') вместе с его артефактами. " +
 			"Операция асинхронная.",
 		Args: map[string]string{
-			"id": "UUID реестра (список: evo ar list), обязательный",
+			"wait": deleteWaitRU,
+			"id":   "UUID реестра (список: evo ar list), обязательный",
 		},
 	},
 	"ar_operation": {
@@ -1436,6 +1445,7 @@ var toolsRU = map[string]toolRU{
 		Short: "Удалить приложение Container Apps (асинхронно)",
 		Long:  "Удалить приложение Container Apps по имени. Операция асинхронная.",
 		Args: map[string]string{
+			"wait": deleteWaitRU,
 			"name": "Имя приложения",
 		},
 	},
@@ -1839,3 +1849,8 @@ var toolsRU = map[string]toolRU{
 			"строки.",
 	},
 }
+
+// deleteWaitRU is the wait argument of a delete that reads its outcome
+// (D74).
+const deleteWaitRU = "Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; " +
+	"--wait=false — ответ deleting с operation_id сразу, без чтения итога"
