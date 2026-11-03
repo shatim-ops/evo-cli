@@ -374,7 +374,7 @@ func (e *Engine) labeledRules(ctx context.Context, sf *state.File, rec *state.De
 func (e *Engine) closeLabeled(ctx context.Context, labeled []sgrules.Planned) sgrules.CloseResult {
 	res := sgrules.CloseLabeled(ctx, e.Cloud, labeled)
 	if len(res.Closed) > 0 {
-		e.Printer.StepDone(i18n.Tf("Closed ports %s labelled for the VM in the security group", "Закрыты порты %s, помеченные для ВМ, в группе безопасности", strings.Join(res.Closed, ",")))
+		e.Printer.StepDone(i18n.Tf("Closed the security group rules labelled for the VM: ports %s", "Закрыты правила группы безопасности, помеченные для ВМ: порты %s", strings.Join(res.Closed, ", ")))
 	}
 	if len(res.Failed) > 0 {
 		e.Printer.Warning(i18n.Tf("Could not delete the security group rules labelled for the VM for ports %s: delete them in the Cloud.ru console, or call destroy with this VM's id again.",

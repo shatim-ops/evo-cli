@@ -405,6 +405,7 @@ type Planned struct {
 	Rule     state.SGRule
 	KeptFor  string // ID of the deployment that still needs it; empty: delete
 	RecordID string // the deployment the rule belongs to; "" for one found by its label
+	VMID     string // the VM of the label of a rule found by it (FindLabeled)
 }
 
 // Plan lists what Close would do with the rules of the given deployments.

@@ -63,12 +63,12 @@ func TestFindLabeled_OnlyTheVMsRulesNoRecordHolds(t *testing.T) {
 
 	f.deleteErr[found[1].Rule.ID] = errors.New("API 503")
 	res := CloseLabeled(context.Background(), f, found)
-	if strings.Join(res.Closed, ",") != "80" || len(res.Failed) != 1 || !strings.HasPrefix(res.Failed[0], "53/udp: ") {
+	if strings.Join(res.Closed, ",") != "80 (vm vm-1)" || len(res.Failed) != 1 || !strings.HasPrefix(res.Failed[0], "53/udp (vm vm-1): ") {
 		t.Errorf("closed %v, failed %v; want 80 closed and 53/udp reported", res.Closed, res.Failed)
 	}
 	// A rule gone meanwhile is closed, as Close counts it.
-	gone := CloseLabeled(context.Background(), f, []Planned{{Rule: state.SGRule{SecurityGroupID: "sg-a", ID: "no-such", Port: "9/tcp"}}})
-	if strings.Join(gone.Closed, ",") != "9" {
+	gone := CloseLabeled(context.Background(), f, []Planned{{Rule: state.SGRule{SecurityGroupID: "sg-a", ID: "no-such", Port: "9/tcp"}, VMID: "vm-1"}})
+	if strings.Join(gone.Closed, ",") != "9 (vm vm-1)" {
 		t.Errorf("a rule already gone: %+v, want closed", gone)
 	}
 }

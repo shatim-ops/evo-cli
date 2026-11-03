@@ -74,7 +74,7 @@ func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID 
 				continue
 			}
 			lo, _, _ := portRange(r.PortRange)
-			out = append(out, Planned{Rule: state.SGRule{ID: r.ID, SecurityGroupID: g.ID, Port: PortKey(strings.ToLower(r.IPProtocol), lo)}})
+			out = append(out, Planned{Rule: state.SGRule{ID: r.ID, SecurityGroupID: g.ID, Port: PortKey(strings.ToLower(r.IPProtocol), lo)}, VMID: vmID})
 		}
 	}
 	return out, nil
@@ -87,7 +87,9 @@ func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID 
 func CloseLabeled(ctx context.Context, cloud provision.CloudAPI, rules []Planned) CloseResult {
 	var res CloseResult
 	for _, p := range rules {
-		label := Label(p.Rule.Port)
+		// The port and the VM of its label: the agent of another folder
+		// whose port went finds why (P6).
+		label := Label(p.Rule.Port) + " (vm " + p.VMID + ")"
 		err := cloud.DeleteSecurityGroupRule(ctx, p.Rule.SecurityGroupID, p.Rule.ID)
 		var cliErr *clerrors.CLIError
 		if err == nil || (stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound)) {

@@ -311,7 +311,7 @@ func TestDestroy_ClosesTheVMsLabelledRules(t *testing.T) {
 	if strings.Join(cloud.deletedRules, ",") != "sg-1/rule-80,sg-1/rule-53,sg-1/rule-b" {
 		t.Errorf("deleted = %v", cloud.deletedRules)
 	}
-	if !strings.Contains(out.String(), "Closed ports 8443 labelled for the VM") {
+	if !strings.Contains(out.String(), "Closed the security group rules labelled for the VM: ports 8443 (vm "+rec.VMID+")") {
 		t.Errorf("output:\n%s", out.String())
 	}
 }
