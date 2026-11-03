@@ -911,19 +911,12 @@ func createCostLines(p CreatePreview) []string {
 		return []string{previewLabel("cost", "цена") + i18n.T("not estimated: the flavor size is unknown (see 'evo vm flavors')",
 			"не оценена: размер flavor неизвестен (см. 'evo vm flavors')")}
 	}
-	switch p.CostNote {
-	case zeroAtCreate:
+	if c := classOf(p.Resource, p); c.Class == PriceZeroAtCreate {
 		return []string{previewLabel("cost", "цена") + i18n.Tf("0 at creation; billed by use — %s: tariff %s",
-			"при создании 0 ₽; оплата по использованию — %s: тариф %s", classOf(p.Resource, p).Note, p.TariffURL)}
-	case addonNotPriced:
-		return []string{previewLabel("cost", "цена") + i18n.Tf("none of its own: the addon runs on the cluster's nodes, billed by the tariff %s",
-			"своей нет: плагин работает на узлах кластера, они оплачиваются по тарифу %s", p.TariffURL)}
-	case noTariffLine:
-		return []string{previewLabel("cost", "цена") + i18n.Tf("price unknown, the resource is billable: no line of the tariffs %s names it",
-			"цена неизвестна, ресурс платный: в тарифах %s строки для него нет", p.TariffURL)}
-	case stackNotPriced:
-		return []string{previewLabel("cost", "цена") + i18n.Tf("not estimated by evo: each resource of the stack by its own tariff (see stack_plan), tariffs %s",
-			"evo её не рассчитывает: каждый ресурс стека — по своему тарифу (см. stack_plan), тарифы %s", p.TariffURL)}
+			"при создании 0 ₽; оплата по использованию — %s: тариф %s", c.Note, p.TariffURL)}
+	} else if c.Note != "" {
+		return []string{previewLabel("cost", "цена") + i18n.Tf("price unknown, the resource is billable: %s; tariff %s",
+			"цена неизвестна, ресурс платный: %s; тариф %s", c.Note, p.TariffURL)}
 	}
 	return []string{previewLabel("cost", "цена") + i18n.Tf("price unknown, the resource is billable: tariff %s",
 		"цена неизвестна, ресурс платный: тариф %s", p.TariffURL)}

@@ -35,7 +35,9 @@ const ResourceFloatingIP = "floating_ip"
 type ResourcePrice struct {
 	Resource string     `json:"resource"`
 	Class    PriceClass `json:"class"`
-	// Note is what the tariff bills by use (zero_at_create).
+	// Note is what the tariff bills by use (zero_at_create), or why evo
+	// has no price of a billable resource (paid_unpriced). Every declared
+	// kind has one; a kind priceClasses does not declare has none.
 	Note string `json:"note,omitempty"`
 }
 
@@ -48,9 +50,9 @@ type priceDecl struct {
 	// nothing at creation, in English and Russian: zero_at_create. Only
 	// where the tariff of Cloud.ru says so.
 	zero, zeroRU string
-	// why says why evo has no price of a billable resource:
-	// paid_unpriced.
-	why string
+	// why says why evo has no price of a billable resource, in English
+	// and Russian: paid_unpriced, the note of its line.
+	why, whyRU string
 }
 
 // priceClasses are the classes of the kinds of resources previews create
@@ -68,28 +70,48 @@ var priceClasses = map[string]priceDecl{
 	// Storage): an empty bucket costs nothing.
 	ResourceS3Bucket: {zero: "storage, operations and outgoing traffic of the bucket",
 		zeroRU: "хранение, операции и исходящий трафик бакета"},
-	ResourceDiskResize:  {why: "evo does not price the growth of a disk"},
-	ResourceK8sCluster:  {why: "no price of Managed Kubernetes before the calculator (D17)"},
-	ResourceK8sNodePool: {why: "no price of Managed Kubernetes before the calculator (D17)"},
-	ResourceK8sAddon:    {why: "the addon runs on the cluster's nodes, billed by their tariff"},
-	ResourceARRegistry:  {why: "evo has no price of Artifact Registry"},
-	ResourceCAApp:       {why: "evo has no price of Container Apps"},
-	ResourceKafka:       {why: "no price of Managed Kafka before the calculator (D17)"},
-	ResourceLB:          {why: "evo has no price of a load balancer"},
-	ResourceRedis:       {why: "no price of Managed Redis before the calculator (D17)"},
-	ResourceSNAT:        {why: "evo has no price of a SNAT gateway"},
-	ResourceDNSZone:     {why: "evo has no price of Evolution DNS"},
-	ResourceS3Object:    {why: "its storage and the upload are billed by the tariff of Object Storage"},
+	ResourceDiskResize: {why: "evo does not price the growth of a disk",
+		whyRU: "evo не считает цену увеличения диска"},
+	ResourceK8sCluster: {why: "no price of Managed Kubernetes before the calculator (D17)",
+		whyRU: "цены Managed Kubernetes нет до калькулятора (D17)"},
+	ResourceK8sNodePool: {why: "no price of Managed Kubernetes before the calculator (D17)",
+		whyRU: "цены Managed Kubernetes нет до калькулятора (D17)"},
+	ResourceK8sAddon: {why: "the addon runs on the cluster's nodes, billed by their tariff",
+		whyRU: "плагин работает на узлах кластера, они оплачиваются по своему тарифу"},
+	ResourceARRegistry: {why: "evo has no price of Artifact Registry",
+		whyRU: "у evo нет цены Artifact Registry"},
+	ResourceCAApp: {why: "evo has no price of Container Apps",
+		whyRU: "у evo нет цены Container Apps"},
+	ResourceKafka: {why: "no price of Managed Kafka before the calculator (D17)",
+		whyRU: "цены Managed Kafka нет до калькулятора (D17)"},
+	ResourceLB: {why: "evo has no price of a load balancer",
+		whyRU: "у evo нет цены балансировщика"},
+	ResourceRedis: {why: "no price of Managed Redis before the calculator (D17)",
+		whyRU: "цены Managed Redis нет до калькулятора (D17)"},
+	ResourceSNAT: {why: "evo has no price of a SNAT gateway",
+		whyRU: "у evo нет цены шлюза SNAT"},
+	ResourceDNSZone: {why: "evo has no price of Evolution DNS",
+		whyRU: "у evo нет цены Evolution DNS"},
+	ResourceS3Object: {why: "its storage and the upload are billed by the tariff of Object Storage",
+		whyRU: "хранение и загрузка оплачиваются по тарифу Object Storage"},
 	// No line of the tariffs names these: «count it as billable» rather
 	// than a «0» no tariff states (owner's decisions 22.10 and 31.10).
-	ResourceImage:       {why: "no line of the tariffs names it"},
-	ResourceSecret:      {why: "no line of the tariffs names it"},
-	ResourceSubnet:      {why: "no line of the tariffs names it"},
-	ResourceVPC:         {why: "no line of the tariffs names it"},
-	ResourceVPCRoute:    {why: "no line of the tariffs names it"},
-	ResourcePGBackup:    {why: "no line of the tariffs names it"},
-	ResourceTargetGroup: {why: "no line of the tariffs names it"},
-	ResourceStack:       {why: "each resource of the stack by its own tariff (stack_plan lists them)"},
+	ResourceImage: {why: "no line of the tariffs names it",
+		whyRU: "в тарифах строки для него нет"},
+	ResourceSecret: {why: "no line of the tariffs names it",
+		whyRU: "в тарифах строки для него нет"},
+	ResourceSubnet: {why: "no line of the tariffs names it",
+		whyRU: "в тарифах строки для него нет"},
+	ResourceVPC: {why: "no line of the tariffs names it",
+		whyRU: "в тарифах строки для него нет"},
+	ResourceVPCRoute: {why: "no line of the tariffs names it",
+		whyRU: "в тарифах строки для него нет"},
+	ResourcePGBackup: {why: "no line of the tariffs names it",
+		whyRU: "в тарифах строки для него нет"},
+	ResourceTargetGroup: {why: "no line of the tariffs names it",
+		whyRU: "в тарифах строки для него нет"},
+	ResourceStack: {why: "each resource of the stack by its own tariff (stack_plan lists them)",
+		whyRU: "каждый ресурс стека — по своему тарифу (их перечисляет stack_plan)"},
 }
 
 // classOf is the class of the price of resource r of preview p, after its
@@ -99,8 +121,9 @@ var priceClasses = map[string]priceDecl{
 func classOf(r string, p CreatePreview) ResourcePrice {
 	d, ok := priceClasses[r]
 	if !ok {
-		// Not declared: billable without a price, the cautious side; the
-		// test of the list fails the build for it.
+		// Not declared: billable without a price, the cautious side, and
+		// without a note — the tests of the list and of the previews fail
+		// the build for it.
 		return ResourcePrice{Resource: r, Class: PricePaidUnpriced}
 	}
 	switch {
@@ -108,8 +131,23 @@ func classOf(r string, p CreatePreview) ResourcePrice {
 		return ResourcePrice{Resource: r, Class: PricePriced}
 	case d.zero != "":
 		return ResourcePrice{Resource: r, Class: PriceZeroAtCreate, Note: i18n.T(d.zero, d.zeroRU)}
+	case d.why != "":
+		return ResourcePrice{Resource: r, Class: PricePaidUnpriced, Note: i18n.T(d.why, d.whyRU)}
 	}
-	return ResourcePrice{Resource: r, Class: PricePaidUnpriced}
+	return ResourcePrice{Resource: r, Class: PricePaidUnpriced, Note: unpricedNote(p)}
+}
+
+// unpricedNote is why a priceable resource of preview p has no price: the
+// preview has no cost (the size it is priced by is unknown), or its cost
+// has no part of it.
+func unpricedNote(p CreatePreview) string {
+	switch {
+	case p.Cost != nil:
+		return i18n.T("the cost has no part of it", "в цене нет его доли")
+	case p.Resource == ResourceVM:
+		return i18n.T("the flavor size is unknown", "размер flavor неизвестен")
+	}
+	return i18n.T("its size is unknown", "его размер неизвестен")
 }
 
 // share is the part of preview p's monthly cost that is resource r's. An
