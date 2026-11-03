@@ -613,7 +613,7 @@ func diskCreatePreview(eng *engine.Engine, req provision.CreateDiskReq, attachTo
 	}
 	p := engine.CreatePreview{Resource: engine.ResourceDisk, Name: req.Name,
 		ProjectID: req.ProjectID, ProjectFrom: eng.Config.ProjectOrigin, Zone: zone,
-		Disk: &deployplan.DiskSpec{SizeGB: req.Size, Type: firstNonEmptyStr(req.DiskTypeName, req.DiskTypeID)}}
+		Disk: &deployplan.DiskSpec{SizeGB: req.Size, Type: firstNonEmptyStr(req.DiskTypeName, req.DiskTypeID), TypeID: req.DiskTypeID}}
 	p.Add("attach_to", attachTo)
 	p.Price()
 	return p

@@ -231,7 +231,7 @@ func (p *CreatePreview) Price() {
 		cost := deployplan.EstimateVM(*p.VM)
 		p.Cost = &cost
 	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0:
-		cost := pricing.EstimateFor("", 0, 0, p.Disk.SizeGB, p.Disk.Type)
+		cost := pricing.EstimateDisk(p.Disk.SizeGB, p.Disk.Type)
 		p.Cost = &cost
 	case p.Resource == ResourcePGCluster && p.PG != nil && p.PG.CPU > 0 && p.PG.RAMGB > 0:
 		// By the public tariff, which may move: the note names its date and
@@ -253,20 +253,30 @@ func (p *CreatePreview) Price() {
 	}
 }
 
-// priceFromAPI prices a VM preview that has talked to the cloud: the
-// price-calculation API's price (deployplan.QuoteVM) in place of the
-// rate-card estimate of Price, or, when the API gives none, the estimate
-// with the reason (PriceAPIError).
+// priceFromAPI prices a VM or a disk preview that has talked to the cloud:
+// the price-calculation API's price (deployplan.QuoteVM, QuoteDisk) in place
+// of the rate-card estimate of Price, or, when the API gives none, the
+// estimate with the reason (PriceAPIError).
 func (p *CreatePreview) priceFromAPI(ctx context.Context, cloud provision.CloudAPI, marketplace bool) {
 	p.Price()
-	if p.Resource != ResourceVM || p.VM == nil {
+	var cost pricing.Estimate
+	var err error
+	switch {
+	case p.Resource == ResourceVM && p.VM != nil:
+		cost, err = deployplan.QuoteVM(ctx, cloud, deployplan.PriceInput{ProjectID: p.ProjectID, VM: *p.VM,
+			PublicIP: p.PublicIP == nil || *p.PublicIP})
+	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0:
+		cost, err = deployplan.QuoteDisk(ctx, cloud, p.ProjectID, *p.Disk)
+	default:
 		return
 	}
-	cost, err := deployplan.QuoteVM(ctx, cloud, deployplan.PriceInput{ProjectID: p.ProjectID, VM: *p.VM,
-		PublicIP: p.PublicIP == nil || *p.PublicIP})
 	switch {
 	case err == nil:
-		p.Cost, p.CostNote, p.TariffURL = &cost, apiCostNote, ""
+		note := apiCostNote
+		if cost.Source == pricing.SourceAPIDisk {
+			note = apiDiskCostNote
+		}
+		p.Cost, p.CostNote, p.TariffURL = &cost, note, ""
 	case p.Cost != nil:
 		p.Cost.PriceAPIError = err.Error()
 	}
@@ -321,7 +331,8 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		zone = &p.VM.Zone
 	}
 	needZone := zone != nil && zone.ID != "" && (zone.Name == "" || zone.Name == zone.ID)
-	if (!needZone && p.VM == nil) || e.Auth == nil || e.Cloud == nil {
+	disk := p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0
+	if (!needZone && p.VM == nil && !disk) || e.Auth == nil || e.Cloud == nil {
 		return nil
 	}
 	parent := ctx
@@ -343,6 +354,10 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		}
 	}
 	if p.VM == nil {
+		if disk {
+			p.priceFromAPI(ctx, e.Cloud, false)
+			priced = true
+		}
 		return nil
 	}
 	vm := p.VM
@@ -866,8 +881,13 @@ func createCostLines(p CreatePreview) []string {
 				"~%.2f %s в месяц: узлы %.2f, хранилище %.2f (~%.4f %s в час); оценка по тарифу от %s, не счёт: %s",
 				c.TotalMonthlyRub, c.Currency, c.ComputeMonthlyRub, c.DiskMonthlyRub, c.TotalHourlyRub, c.Currency, pricing.PGTariffDate, p.TariffURL)}
 		}
-		return []string{previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (disk), %s", "~%.2f %s в месяц (диск), %s",
-			p.Cost.TotalMonthlyRub, p.Cost.Currency, costNoteText())}
+		lines := []string{previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (disk), %s", "~%.2f %s в месяц (диск), %s",
+			p.Cost.TotalMonthlyRub, p.Cost.Currency, costNoteFor(*p.Cost))}
+		if p.Cost.PriceAPIError != "" {
+			lines = append(lines, previewLabel("API price", "цена API")+i18n.Tf("none (%s), the estimate is shown",
+				"не получена (%s), показана оценка", p.Cost.PriceAPIError))
+		}
+		return lines
 	}
 	if p.Resource == ResourceVM {
 		return []string{previewLabel("cost", "цена") + i18n.T("not estimated: the flavor size is unknown (see 'evo vm flavors')",

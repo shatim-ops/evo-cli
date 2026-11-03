@@ -181,7 +181,7 @@ func TestVMCreatePreview_Russian(t *testing.T) {
 		"  образ:      Ubuntu 22.04 (" + pvImage + ")\n",
 		"  диск:       загрузочный, 20 ГБ (цена по тарифу SSD)\n", // raised to the image's min_disk
 		"  внешний IP: будет создан и привязан floating IP\n",
-		"  цена:       ~2184.00 RUB в месяц (вычисления 2044.00 + диск 140.00), оценка по тарифной карте evo, а не счёт\n",
+		"  цена:       ~2272.40 RUB в месяц (вычисления 2044.00 + диск 228.40), оценка по тарифной карте evo, а не счёт\n",
 		"  цена API:   не получена (price-calculation: not in this fake), показана оценка\n",
 		"provision не выполняется: нужно подтверждение, а stdin — не терминал",
 	})
@@ -206,7 +206,7 @@ func TestVMCreatePreview_English(t *testing.T) {
 		"  image:     Ubuntu 22.04 (" + pvImage + ")\n",
 		"  disk:      20 GB boot disk (priced at the SSD rate)\n",
 		"  public IP: none (private VM, no floating IP)\n",
-		"  cost:      ~2184.00 RUB/month (compute 2044.00 + disk 140.00), evo rate-card estimate, not a bill\n",
+		"  cost:      ~2272.40 RUB/month (compute 2044.00 + disk 228.40), evo rate-card estimate, not a bill\n",
 		"  API price: none (price-calculation: not in this fake), the estimate is shown\n",
 	})
 	assertNoJargon(t, out)
@@ -267,7 +267,7 @@ func TestVMCreatePreview_JSONIsAdditive(t *testing.T) {
 		t.Fatalf("existing keys changed: %s", out)
 	}
 	p := d.Preview
-	if p.VM == nil || p.VM.Flavor.VCPUs != 2 || p.VM.Zone.Name != "ru.AZ-1" || p.Cost == nil || p.Cost.TotalMonthlyRub != 2184 ||
+	if p.VM == nil || p.VM.Flavor.VCPUs != 2 || p.VM.Zone.Name != "ru.AZ-1" || p.Cost == nil || p.Cost.TotalMonthlyRub != 2272.4 ||
 		p.ProjectID != pvProject || p.ProjectFrom != "env" {
 		t.Fatalf("preview not completed: %s", out)
 	}
@@ -286,7 +286,8 @@ func TestDiskCreatePreview_Russian(t *testing.T) {
 		"  проект:     " + pvProject + " (из CLOUDRU_PROJECT_ID)\n",
 		"  зона:       ru.AZ-1 (" + pvZone + ")\n",
 		"  диск:       20 ГБ, тип SSD\n",
-		"  цена:       ~140.00 RUB в месяц (диск), оценка по тарифной карте evo, а не счёт\n",
+		"  цена:       ~228.40 RUB в месяц (диск), оценка по тарифной карте evo, а не счёт\n",
+		"  цена API:   не получена (price-calculation: not in this fake), показана оценка\n",
 	})
 	assertNoJargon(t, errOut)
 	if strings.Contains(errOut, "disk_create makes") || strings.Contains(errOut, "zone_id") {
