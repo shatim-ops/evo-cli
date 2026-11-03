@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/stack"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // D69, PR 3: the VM step of a stack takes provision's creating as a VM in
@@ -83,7 +84,8 @@ func TestD69_ProvisionFIPWaitIsInTheBudget(t *testing.T) {
 	cloud := &faultCloud{fipDown: true}
 	timings := provisionTimings()
 	timings.FIPPollInterval = time.Hour
-	r := budgeted(budgetComputeRegistry(t, cloud, t.TempDir(), timings))
+	dir := t.TempDir()
+	r := budgeted(budgetComputeRegistry(t, cloud, dir, timings))
 	done := make(chan string, 1)
 	go func() {
 		text, _ := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
@@ -94,6 +96,17 @@ func TestD69_ProvisionFIPWaitIsInTheBudget(t *testing.T) {
 		m := decode(t, text)
 		if m["status"] != "creating" || m["vm_status"] != "active" || m["next_tool"] != "provision" {
 			t.Errorf("want creating with the VM active and the next step: %s", text)
+		}
+		// One floating IP, the boot one, recorded for destroy (Qwen on #759).
+		cloud.mu.Lock()
+		fips := append([]faultFIP(nil), cloud.fips...)
+		cloud.mu.Unlock()
+		if len(fips) != 1 {
+			t.Fatalf("%d floating IPs made, want 1: %+v", len(fips), fips)
+		}
+		sf, err := state.Read(state.DefaultPath(dir))
+		if err != nil || len(sf.Deployments) != 1 || sf.Deployments[0].FloatingIPID != fips[0].ID {
+			t.Errorf("the floating IP is not recorded with the VM: %+v %v", sf, err)
 		}
 	// wall-clock: four times the world's budget (budgetWatch is 1/45 of
 	// D69's 45 s): a wait for the floating IP the budget does not end
