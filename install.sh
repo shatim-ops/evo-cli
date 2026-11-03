@@ -156,23 +156,42 @@ zshrc_lines() {
 	printf '%s\n' 'if (( $+functions[compdef] )); then autoload -Uz _evo && compdef _evo evo; else autoload -Uz compinit && compinit; fi'
 }
 
+# zshrc_marks: awk, который сравнивает строку rc с метками, не глядя на
+# пробелы и \r в её конце (редактор мог их добавить или сохранить файл с
+# CRLF): иначе метка не нашлась бы, и повторная установка удвоила бы блок.
+ZSHRC_AWK_MARK='function mark(l) { sub(/[ \t\r]+$/, "", l); return l }'
+
+# zshrc_has_block rc: есть ли в rc блок evo.
+zshrc_has_block() {
+	[ -f "$1" ] && awk -v b="$ZSHRC_BEGIN" "$ZSHRC_AWK_MARK"' mark($0) == b { found = 1; exit } END { exit !found }' "$1"
+}
+
 # zshrc_unblock rc: убрать блок evo из rc, если он есть; права и ссылка
-# файла остаются (запись поверх, а не замена файла).
+# файла остаются (запись поверх, а не замена файла). До записи — копия
+# rc.evo-backup: запись поверх не атомарна, и при сбое посередине файл
+# восстанавливается из копии; после удачной записи копия удаляется.
 zshrc_unblock() {
 	rc=$1
-	[ -f "$rc" ] && grep -qF "$ZSHRC_BEGIN" "$rc" || return 0
+	zshrc_has_block "$rc" || return 0
 	tmp="$rc.evo.$$"
+	bak="$rc.evo-backup"
 	# С блоком уходит и пустая строка перед ним, которую дописала установка:
 	# после --uninstall файл тот же, что до установки.
-	awk -v b="$ZSHRC_BEGIN" -v e="$ZSHRC_END" '
-		$0 == b { skip = 1; held = 0; next }
-		skip { if ($0 == e) skip = 0; next }
+	awk -v b="$ZSHRC_BEGIN" -v e="$ZSHRC_END" "$ZSHRC_AWK_MARK"'
+		mark($0) == b { skip = 1; held = 0; next }
+		skip { if (mark($0) == e) skip = 0; next }
 		held { print ""; held = 0 }
 		$0 == "" { held = 1; next }
 		{ print }
-		END { if (held) print "" }' "$rc" >"$tmp" &&
-		cat "$tmp" >"$rc"
+		END { if (held) print "" }' "$rc" >"$tmp" || { rm -f "$tmp"; return 1; }
+	cp "$rc" "$bak" || { rm -f "$tmp"; return 1; }
+	if cat "$tmp" >"$rc"; then
+		rm -f "$tmp" "$bak"
+		return 0
+	fi
 	rm -f "$tmp"
+	say "install.sh: $rc записан не полностью; его копия до правки — $bak"
+	return 1
 }
 
 # zshrc_block bin: для zsh, у которого _evo лежит в своём каталоге
@@ -190,7 +209,7 @@ zshrc_block() {
 		zshrc_lines "$site" | while IFS= read -r l; do say "  $l"; done
 		return 0
 	fi
-	zshrc_unblock "$rc"
+	zshrc_unblock "$rc" || return 0
 	if { printf '\n%s\n' "$ZSHRC_BEGIN" && zshrc_lines "$site" && printf '%s\n' "$ZSHRC_END"; } >>"$rc"; then
 		say "Автодополнение zsh: блок evo в $rc (каталог $site в \$fpath). Убрать: install.sh --uninstall; не трогать ~/.zshrc: EVO_ZSHRC=0"
 	else
@@ -249,8 +268,7 @@ uninstall() {
 		fi
 	done
 	rc="${ZDOTDIR:-$HOME}/.zshrc"
-	if [ -f "$rc" ] && grep -qF "$ZSHRC_BEGIN" "$rc"; then
-		zshrc_unblock "$rc"
+	if zshrc_has_block "$rc" && zshrc_unblock "$rc"; then
 		say "Удалено: блок evo из $rc"
 	fi
 }

@@ -68,6 +68,11 @@ comps=$(env -i PATH="$work/bin:/usr/bin:/bin" HOME="$work/home" SHELL="$zsh" "$z
 check "T6: после второго compinit _comps[evo] не пусто" test -n "$comps"
 run_install
 check "T5: повторная установка — блок в ~/.zshrc один" test "$(blocks)" -eq 1
+# Редактор добавил пробел в конце метки и сохранил файл с CRLF: повторная
+# установка находит блок и заменяет его, а не дописывает второй (Qwen, #775).
+sed 's/^\(# >>> evo.*\)$/\1 /; s/^\(# <<< evo <<<\)$/\1\r/' "$rc" >"$rc.edited" && cat "$rc.edited" >"$rc" && rm -f "$rc.edited"
+run_install
+check "T5: метки с пробелом и \\r в конце — блок в ~/.zshrc один" test "$(blocks)" -eq 1
 run_install --uninstall
 check "T5: --uninstall убирает _evo" test ! -e "$site/_evo"
 check "T5: --uninstall убирает блок из ~/.zshrc" test "$(blocks)" -eq 0
