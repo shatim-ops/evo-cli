@@ -51,7 +51,7 @@ while :; do sleep 0.02; done
 func newVM(t *testing.T, withFlock bool) localVM {
 	t.Helper()
 	home, bin := t.TempDir(), t.TempDir()
-	tools := []string{"sh", "mkdir", "cat", "sed", "awk", "base64", "tail", "setsid", "nohup", "rm", "sleep", "printf"}
+	tools := []string{"sh", "mkdir", "cat", "sed", "awk", "base64", "tail", "setsid", "nohup", "rm", "sleep", "printf", "mv"}
 	if withFlock {
 		tools = append(tools, "flock")
 	}
@@ -224,4 +224,119 @@ func TestStage_None(t *testing.T) {
 	if st := read(t, Over(vm), "compose-up"); st.State != "none" {
 		t.Errorf("never started: %+v", st)
 	}
+}
+
+// The check of start (held) takes the lock for an instant; the stage's own
+// process must not give up when it meets that instant — it waits for the
+// lock («1.7 — релиз» on #769: 2 of 300 starts read lost under load). Here
+// another holder keeps the lock while the stage starts: the stage waits,
+// then runs.
+func TestStage_RunWaitsForTheLockAStatusCheckHolds(t *testing.T) {
+	vm := newVM(t, true)
+	d := filepath.Join(vm.home, ".evo", "stage", "compose-up")
+	if err := os.MkdirAll(d, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	flock, err := exec.LookPath("flock")
+	if err != nil {
+		t.Skip("no flock")
+	}
+	holder := exec.Command(flock, filepath.Join(d, "lock"), "sleep", "0.5")
+	if err := holder.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = holder.Wait() })
+	waitFor(t, "the other holder to take the lock", func() bool {
+		return exec.Command(flock, "-n", filepath.Join(d, "lock"), "true").Run() != nil
+	})
+	r := Over(vm)
+	if _, err := r.Start(context.Background(), "compose-up", "in1", "docker compose up -d"); err != nil {
+		t.Fatal(err)
+	}
+	_ = holder.Wait()
+	pid := vm.dockerPID(t)
+	if st := read(t, r, "compose-up"); st.State != "running" {
+		t.Fatalf("the stage gave up on a held lock: %+v", st)
+	}
+	_ = syscall.Kill(pid, syscall.SIGUSR1)
+	waitFor(t, "the stage to end", func() bool { return read(t, r, "compose-up").State == "done" })
+}
+
+// Two starts at once: the second finds the first's stage and starts
+// nothing; the first's script and log are its own («1.7 — релиз» on #769).
+func TestStage_TwoStartsAtOnceRunOneStage(t *testing.T) {
+	forEachLock(t, func(t *testing.T, vm localVM) {
+		r := Over(vm)
+		got := make(chan bool, 2)
+		for _, in := range []string{"in1", "in2"} {
+			go func() {
+				started, err := r.Start(context.Background(), "compose-up", in, "docker compose up -d")
+				if err != nil {
+					t.Error(err)
+				}
+				got <- started
+			}()
+		}
+		a, b := <-got, <-got
+		if a == b {
+			t.Fatalf("two starts at once: started %v and %v, want one", a, b)
+		}
+		pid := vm.dockerPID(t)
+		_ = syscall.Kill(pid, syscall.SIGUSR1)
+		waitFor(t, "the stage to end", func() bool { return read(t, r, "compose-up").State == "done" })
+		if st := read(t, r, "compose-up"); !strings.Contains(st.LogTail, "finished") {
+			t.Errorf("the log of the stage that ran was cut: %+v", st)
+		}
+	})
+}
+
+// The stage's files are its user's only: the script and the log may hold
+// what the compose project prints («1.7 — релиз» on #769).
+func TestStage_FilesAreTheUsersOnly(t *testing.T) {
+	vm := newVM(t, true)
+	r := Over(vm)
+	if _, err := r.Start(context.Background(), "compose-up", "in1", "docker compose up -d"); err != nil {
+		t.Fatal(err)
+	}
+	_ = syscall.Kill(vm.dockerPID(t), syscall.SIGUSR1)
+	waitFor(t, "the stage to end", func() bool { return read(t, r, "compose-up").State == "done" })
+	for _, f := range []string{"script", "log", "input", "state"} {
+		fi, err := os.Stat(filepath.Join(vm.home, ".evo", "stage", "compose-up", f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm()&0o077 != 0 {
+			t.Errorf("%s is %v: readable by others", f, fi.Mode().Perm())
+		}
+	}
+}
+
+// The stage script is put in anew by each call while a stage runs from it:
+// it is written aside and moved in — a new file, never the running one
+// rewritten in place («1.7 — релиз» on #769).
+func TestStage_TheScriptIsReplacedNotRewritten(t *testing.T) {
+	vm := newVM(t, true)
+	r := Over(vm)
+	if _, err := r.Start(context.Background(), "compose-up", "in1", "docker compose up -d"); err != nil {
+		t.Fatal(err)
+	}
+	pid := vm.dockerPID(t)
+	path := filepath.Join(vm.home, ".evo", "stage", "evo-stage.sh")
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read(t, r, "compose-up")
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(before, after) {
+		t.Error("the script the stage runs from was rewritten in place")
+	}
+	if after.Mode().Perm()&0o077 != 0 {
+		t.Errorf("the script is %v: readable by others", after.Mode().Perm())
+	}
+	_ = syscall.Kill(pid, syscall.SIGUSR1)
+	waitFor(t, "the stage to end", func() bool { return read(t, r, "compose-up").State == "done" })
 }

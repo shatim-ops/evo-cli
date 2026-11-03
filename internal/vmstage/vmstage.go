@@ -68,8 +68,10 @@ func command(args ...string) string {
 	for i, a := range args {
 		quoted[i] = "'" + a + "'"
 	}
-	return `mkdir -p "$HOME/.evo/stage" && printf %s ` + base64.StdEncoding.EncodeToString([]byte(stageScript)) +
-		` | base64 -d >"$HOME/.evo/stage/evo-stage.sh" && sh "$HOME/.evo/stage/evo-stage.sh" ` + strings.Join(quoted, " ")
+	// Written aside and moved in: a stage that runs reads the script
+	// while the next call puts it in again.
+	return `umask 077 && mkdir -p "$HOME/.evo/stage" && printf %s ` + base64.StdEncoding.EncodeToString([]byte(stageScript)) +
+		` | base64 -d >"$HOME/.evo/stage/evo-stage.sh.$$" && mv -f "$HOME/.evo/stage/evo-stage.sh.$$" "$HOME/.evo/stage/evo-stage.sh" && sh "$HOME/.evo/stage/evo-stage.sh" ` + strings.Join(quoted, " ")
 }
 
 func checkName(name, input string) error {
