@@ -19,7 +19,7 @@ import (
 // server holds one record: it is USAGE «name the target from the preview».
 // The preview without a target stays as it was: it names the record.
 // A call with no live caller (MCP; `evo tools call destroy --yes`) is the
-// one the rule holds for.
+// one the rule holds for (H15 in docs/mcp.md).
 func TestDestroy_ConfirmedWithoutTargetOverMCPIsUsage(t *testing.T) {
 	cloud := &faultCloud{}
 	r, _ := faultToolsRegistry(t, cloud)
