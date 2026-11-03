@@ -1354,7 +1354,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_apply",
-			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the user approved the cost. The call starts the steps that are ready and returns a compact status; it can block for minutes, because a VM step (provision) waits for the VM to become active (~3 min seen live) while the async resources (Postgres, Kafka, Redis, k8s, NLB) only start. Then poll stack_status(job_id) until status=done. You do NOT orchestrate the resources yourself.",
+			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the user approved the cost. The call starts the steps that are ready and returns a compact status: over MCP within ~45 s — a VM step whose VM is still coming up stays pending (details: creating) and stack_status finishes it; the CLI waits for the VM (~3 min seen live). The async resources (Postgres, Kafka, Redis, k8s, NLB) only start. passwords{step} is the password evo generated for a step's VM, in that answer only. Then poll stack_status(job_id) until status=done. You do NOT orchestrate the resources yourself.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id from stack_plan. Required."),
 				"confirmed": confirmedProp(),
@@ -1362,7 +1362,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_status",
-			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], details{step: reason} of a step that is not done, error_reasons{step: reason code of what ended it, e.g. USAGE, NOT_FOUND, API_ERROR} of a step in error, attempts{step: n}, outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs; lb_external_ip is there only for a balancer with a public address) or status=error. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
+			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], details{step: reason} of a step that is not done, error_reasons{step: reason code of what ended it, e.g. USAGE, NOT_FOUND, API_ERROR} of a step in error, attempts{step: n}, outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}, passwords{step} of a VM evo generated, in that answer only}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs; lb_external_ip is there only for a balancer with a public address) or status=error. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":       strProp("Job id. Required."),
 				"wait_seconds": inRange(1, stackStatusMaxWait, intProp("How long this call may block while advancing, in seconds (default and at most 20). Fewer calls for a long deploy.")),
@@ -2214,12 +2214,23 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	// The budget of an MCP call, or wait=false (D69): the VM is answered
 	// as it is then, and the repeat of the call finishes it.
 	var budget <-chan time.Time
+	// fipCtx is ctx ended by the budget too: the wait for the floating IP
+	// after the VM is active is part of the call.
+	fipCtx := ctx
 	if left, capped := s.waitLeft(ctx, args); capped {
 		cut := time.NewTimer(left)
 		defer cut.Stop()
 		budget = cut.C
+		var cancel context.CancelFunc
+		fipCtx, cancel = context.WithTimeout(ctx, left)
+		defer cancel()
 	}
 	vmStatus := "creating"
+	// cutShort is the answer of a call the budget ended: the VM as it is.
+	cutShort := func() (string, bool) {
+		serr := saveState(vm.ID, "creating", "")
+		return toJSON(provisionCreating(args, vm.ID, vmName, vmStatus, password, int(clock.Since(started).Seconds()), notInState(vm.ID, serr))), false
+	}
 
 	for {
 		select {
@@ -2228,8 +2239,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 			if updated, err := eng.Cloud.GetVM(ctx, vm.ID); err == nil && updated.Status != "" {
 				vmStatus = updated.Status
 			}
-			serr := saveState(vm.ID, "creating", "")
-			return toJSON(provisionCreating(args, vm.ID, vmName, vmStatus, password, int(clock.Since(started).Seconds()), notInState(vm.ID, serr))), false
+			return cutShort()
 		case <-deadline:
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
@@ -2244,6 +2254,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				continue
 			}
 			if updated.Status == "active" || updated.Status == "running" {
+				vmStatus = updated.Status
 				pp.StepDone(i18n.Tf("VM %s active (%s)", "ВМ %s активна (%s)", vmName, engine.ElapsedText(wait.Elapsed())))
 				// Assign a floating (public) IP unless a private VM was requested.
 				publicIP := ""
@@ -2253,16 +2264,22 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				var fipErr error
 				switch {
 				case bootFIP != nil:
-					ip, id, err := eng.WaitBootFIP(ctx, bootFIP, vm.ID, projectID)
+					ip, id, err := eng.WaitBootFIP(fipCtx, bootFIP, vm.ID, projectID)
 					publicIP, fipID, fipErr = ip, firstNonEmptyStr(id, fipID), err
 				case !noPublicIP:
 					// The FIP made after boot is recorded too, so destroy
 					// releases it even when attaching it failed.
-					ip, id, err := eng.AssignFloatingIP(ctx, vm.ID, projectID, region)
+					ip, id, err := eng.AssignFloatingIP(fipCtx, vm.ID, projectID, region)
 					publicIP, fipID, fipErr = ip, id, err
 				}
 				if ctx.Err() != nil {
 					return interrupted(publicIP)
+				}
+				if fipCtx.Err() != nil {
+					// The budget ended the wait for the address: the
+					// repeat adopts the VM and waits for it again (its
+					// floating IP is recorded, fipID).
+					return cutShort()
 				}
 				if fipErr != nil {
 					publicIP = ""

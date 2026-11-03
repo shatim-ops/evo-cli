@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -430,13 +431,6 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				// stack_apply was confirmed for the whole stack. Jobs planned
 				// before provision and s3_put got their gates lack the flag.
 				args["confirmed"] = true
-				if st.Tool == "provision" {
-					// The step waits for its VM in the call, as before D69:
-					// a provision cut by the budget answers creating, which
-					// the step would take as a VM made (release plan 1.7,
-					// D69 PR 3: the step takes creating as in progress).
-					args["wait"] = true
-				}
 				res, err := s.callTool(ctx, st.Tool, args)
 				if err != nil && ctx.Err() != nil {
 					// Cancelled mid-create: not a failed attempt. Keep the id
@@ -509,6 +503,21 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						return
 					}
 					continue // stay pending, no progress → retried next stack_status crank
+				}
+				// The password evo made for the step's VM: in the answer of
+				// this crank only, kept nowhere (FB121-7).
+				if pw := firstStr(res, "password"); pw != "" {
+					job.ShowPassword(st.Key, pw)
+				}
+				if st.Tool == "provision" && firstStr(res, "status") == "creating" {
+					// The VM is made and still coming up when the call's
+					// budget ended (D69): neither made nor failed. The step
+					// stays pending with its VM, for stack_destroy; the next
+					// crank repeats provision, which adopts the VM and
+					// finishes it. No attempt is used.
+					st.ResourceID = firstStr(res, "vm_id")
+					st.Detail = fmt.Sprintf("VM %s is %s; the next stack_status finishes it", st.ResourceID, firstStr(res, "vm_status"))
+					continue
 				}
 				if st.ReadyKind == "" {
 					// synchronous — capture what it made (createdIDs) and
@@ -1070,29 +1079,39 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 		waitBudget = 1
 	}
 	deadline := time.Now().Add(time.Duration(waitBudget) * time.Second)
+	// The VM passwords of every crank of this call: each crank reloads the
+	// job, and the answer of the call shows them once (FB121-7).
+	shown := map[string]string{}
+	compact := func(job *stack.Job) map[string]any {
+		for step, pw := range shown {
+			job.ShowPassword(step, pw)
+		}
+		return job.Compact()
+	}
 	for {
 		// Reloaded on every crank: another call may have advanced it.
 		job, err := s.crankJob(ctx, id)
 		if err != nil {
 			return errResult(err), true
 		}
+		maps.Copy(shown, job.Passwords())
 		if job.Status == "planned" {
-			out := job.Compact()
+			out := compact(job)
 			out["note"] = "Not started: call stack_apply with this job_id and confirmed=true after the user approved the plan. stack_status only reports progress."
 			return toJSON(out), false
 		}
 		if job.Status != "running" {
-			return toJSON(job.Compact()), false // terminal (done/error)
+			return toJSON(compact(job)), false // terminal (done/error)
 		}
 		if s.readOnly {
-			out := job.Compact()
+			out := compact(job)
 			out["note"] = "Not advanced: this server runs with --read-only and acts on no consent, the one stack_apply was given included. " +
 				"The cloud goes on with the steps already started; a server without --read-only advances the job when it polls it."
 			return toJSON(out), false
 		}
 		rem := time.Until(deadline)
 		if rem <= 0 {
-			return toJSON(job.Compact()), false // budget exhausted — agent polls again
+			return toJSON(compact(job)), false // budget exhausted — agent polls again
 		}
 		select {
 		case <-ctx.Done():

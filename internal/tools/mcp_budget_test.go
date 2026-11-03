@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -170,11 +171,39 @@ func stackDestroyBudget() budgetWait {
 	}}
 }
 
+// stackBudget is stack_apply of a stack with a VM in the slow cloud: the VM
+// step's provision spends the budget of the outer call (D69 §2) and answers
+// creating, which the step keeps as a VM in progress (D69 PR 3).
+func stackBudget() budgetWait {
+	return budgetWait{run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
+		faultToolsIsolate(t)
+		stackHome(t)
+		r := budgeted(budgetComputeRegistry(t, &faultCloud{slow: true}, t.TempDir(), engine.Timings{}))
+		j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
+		return func(ctx context.Context) (string, bool) {
+			return r.handlers["stack_apply"](ctx, map[string]any{"job_id": j.ID, "confirmed": true})
+		}, nil
+	}, done: func(m map[string]any) string {
+		details, _ := m["details"].(map[string]any)
+		vm, _ := details["vm"].(string)
+		switch {
+		case m["status"] != "running":
+			return "the stack is not running"
+		case !strings.Contains(vm, "creating"):
+			return "the VM step does not say its VM is creating"
+		case !strings.Contains(fmt.Sprint(m["note"]), "stack_status"):
+			return "it names no next step (stack_status)"
+		}
+		return ""
+	}}
+}
+
 // mcpWaits are the tools of the MCP registry that can wait for the cloud:
 // those a wait of production code reaches (budgetReach in
 // internal/testrules, from sleepWaits) and those whose schema takes a wait
 // (wait_seconds). TestMCP_BudgetCoversTheWaits keeps the list whole.
 var mcpWaits = map[string]budgetWait{
+	"stack_apply":   stackBudget(),
 	"stack_destroy": stackDestroyBudget(),
 	"provision":     computeBudget("provision", map[string]any{"name": "web", "confirmed": true}, false, nil),
 	"deploy_apply": computeBudget("deploy_apply", map[string]any{"plan_id": "plan-0123456789ab", "confirmed": true}, true,
@@ -201,7 +230,6 @@ var mcpWaits = map[string]budgetWait{
 
 	// No world of the slow cloud reaches these yet: what the code shows.
 	"deploy":       {static: "the engine waits for the VM up to VMPollTimeout (25 min), then SSH and Docker (engine/timings.go)", over: true},
-	"stack_apply":  {static: "a VM step runs provision in the call (callTool), which waits for the VM up to VMPollTimeout (25 min)", over: true},
 	"stack_status": {static: "the handler waits at most 20 s (tools_stack.go), as its schema says: within the budget"},
 	"k8s_kubectl":  {static: "kubectl runs up to 90 s (tools_kube.go, docs/mcp.md)", over: true},
 	"k8s_helm":     {static: "helm runs up to 9 min with --wait (tools_kube.go)", over: true},
@@ -218,7 +246,6 @@ var mcpWaits = map[string]budgetWait{
 // D69 takes its lines out).
 var mcpOverBudget = map[string]string{
 	"deploy":      "waits for the VM, SSH and Docker",
-	"stack_apply": "a VM step waits for the VM",
 	"k8s_kubectl": "kubectl up to 90 s",
 	"k8s_helm":    "helm up to 9 min",
 	"disk_create": "with vm: waits for the disk up to 5 min",
