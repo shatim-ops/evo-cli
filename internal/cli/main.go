@@ -369,6 +369,7 @@ func newRootCmd() *cobra.Command {
 			zshMenuOfEvo(c)
 		}
 	}
+	tabNoFiles(cmd)
 
 	return cmd
 }
