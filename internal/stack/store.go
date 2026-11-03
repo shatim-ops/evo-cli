@@ -206,6 +206,10 @@ type Job struct {
 	ID       string   `json:"id"`
 	Manifest Manifest `json:"manifest"`
 	Status   string   `json:"status"` // running|done|error|destroying|destroyed
+	// passwords are the VM passwords evo made in this crank, by step: the
+	// answer of the crank shows them once (Compact), the job file never
+	// holds them (FB121-7).
+	passwords map[string]string
 	// ProjectID is the Cloud.ru project the stack was planned in: its step
 	// tools run in the server's project, so apply, status and destroy refuse
 	// a server on another one. Empty in jobs from older versions.
@@ -874,6 +878,18 @@ func EstimateCost(m Manifest) map[string]any {
 }
 
 // Compact returns a small status view for the agent (no per-step payloads).
+// ShowPassword puts the password evo made for the VM of step into the
+// answer of this crank (Compact) and nowhere else.
+func (j *Job) ShowPassword(step, password string) {
+	if j.passwords == nil {
+		j.passwords = map[string]string{}
+	}
+	j.passwords[step] = password
+}
+
+// Passwords are the passwords ShowPassword gave this crank, by step.
+func (j *Job) Passwords() map[string]string { return j.passwords }
+
 func (j *Job) Compact() map[string]any {
 	var done, pending, running []string
 	for _, s := range j.Steps {
@@ -896,6 +912,10 @@ func (j *Job) Compact() map[string]any {
 	}
 	if j.ProjectID != "" {
 		out["project_id"] = j.ProjectID
+	}
+	if len(j.passwords) > 0 {
+		out["passwords"] = j.passwords
+		out["passwords_note"] = "The passwords evo generated for the VMs of these steps, in this answer only: give them to the user now, evo keeps them nowhere."
 	}
 	if j.Error != "" {
 		out["error"] = j.Error

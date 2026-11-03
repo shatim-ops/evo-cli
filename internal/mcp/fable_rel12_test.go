@@ -156,3 +156,13 @@ func TestFable_REL12_6_LogsFollow(t *testing.T) {
 		}
 	}
 }
+
+// H7: the VM passwords of a stack's steps (passwords{step}, D69 PR 3) are
+// masked over HTTP as provision's password is: the root "password" names
+// the field.
+func TestHTTPRedact_StackPasswords(t *testing.T) {
+	out := redactSecrets("stack_status", `{"passwords":{"vm":"pw-made-once"},"status":"running"}`, httpWording)
+	if strings.Contains(out, "pw-made-once") {
+		t.Errorf("the password of a stack's VM goes out over HTTP: %s", out)
+	}
+}
