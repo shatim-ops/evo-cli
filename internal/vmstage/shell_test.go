@@ -8,11 +8,13 @@ package vmstage
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -37,12 +39,13 @@ func (v localVM) Exec(ctx context.Context, cmd string) (string, error) {
 }
 
 // stubDocker is the docker the stage runs: it writes its pid, then runs
-// until SIGUSR1 (done) or exits with the code in $HOME/docker.exit.
+// until SIGUSR1 (done) or exits with the code in $HOME/docker.exit. The
+// trap comes before the pid: a test signals as soon as it reads the pid.
 const stubDocker = `#!/bin/sh
-echo $$ >"$HOME/docker.pid"
+trap 'echo finished; exit 0' USR1
 echo pulling
 if [ -f "$HOME/docker.exit" ]; then exit "$(cat "$HOME/docker.exit")"; fi
-trap 'echo finished; exit 0' USR1
+echo $$ >"$HOME/docker.pid"
 while :; do sleep 0.02; done
 `
 
@@ -339,4 +342,59 @@ func TestStage_TheScriptIsReplacedNotRewritten(t *testing.T) {
 	}
 	_ = syscall.Kill(pid, syscall.SIGUSR1)
 	waitFor(t, "the stage to end", func() bool { return read(t, r, "compose-up").State == "done" })
+}
+
+// Many stages start at once on a loaded machine, each read over and over
+// until it ends: none reads lost, none reads without a state — the start
+// takes the lock the stage holds, the markers are written aside and moved
+// in, a lock found free is checked against the marker read again
+// («1.7 — релиз» on #769: 3 of 300 read lost; CI read state= empty while
+// the stage wrote it). -short runs 50.
+func TestStage_ManyAtOnceNoneLostNoneUnread(t *testing.T) {
+	n := 300
+	if testing.Short() {
+		n = 50
+	}
+	forEachLock(t, func(t *testing.T, vm localVM) {
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		var bad []string
+		fail := func(s string) {
+			mu.Lock()
+			bad = append(bad, s)
+			mu.Unlock()
+		}
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				r := Over(localVM{home: t.TempDir(), path: vm.path})
+				if _, err := r.Start(context.Background(), "s1", "in", "sleep 0.3"); err != nil {
+					fail("start: " + err.Error())
+					return
+				}
+				// wall-clock: the stage sleeps 0.3 s; the bound only ends
+				// a broken run.
+				deadline := time.Now().Add(30 * time.Second)
+				for time.Now().Before(deadline) {
+					st, err := r.Read(context.Background(), "s1")
+					switch {
+					case err != nil:
+						fail(err.Error())
+						return
+					case st.State == "done":
+						return
+					case st.State != "running":
+						fail(fmt.Sprintf("%+v", st))
+						return
+					}
+				}
+				fail("did not end")
+			}()
+		}
+		wg.Wait()
+		if len(bad) > 0 {
+			t.Errorf("%d of %d stages read wrong, the first: %s", len(bad), n, bad[0])
+		}
+	})
 }

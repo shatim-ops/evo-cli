@@ -49,6 +49,30 @@ held() {
 	fi
 }
 
+# put FILE VALUE: the marker written aside and moved in — a status that
+# reads it meanwhile sees the old value or the new, never an empty file.
+put() {
+	printf '%s\n' "$2" >"$d/$1.$$" && mv -f "$d/$1.$$" "$d/$1"
+}
+
+marker() {
+	s=$(cat "$d/state" 2>/dev/null)
+	[ -n "$s" ] || s=none
+	echo "$s"
+}
+
+# state: the marker; running with no holder is lost. The stage writes its
+# end before it lets the lock go, so a lock found free is checked against
+# the marker read again: the stage may have ended in between.
+state() {
+	s=$(marker)
+	if [ "$s" = running ] && ! held; then
+		s=$(marker)
+		[ "$s" != running ] || s=lost
+	fi
+	echo "$s"
+}
+
 # own DIR: names this process the owner of the lock directory DIR.
 own() {
 	echo "$$ $(cat /proc/sys/kernel/random/boot_id) $(starttime $$)" >"$1/owner"
@@ -76,14 +100,6 @@ start_lock() {
 	trap 'rm -rf "$d/start.lockdir"' EXIT
 }
 
-state() {
-	s=$(cat "$d/state" 2>/dev/null || echo none)
-	if [ "$s" = running ] && ! held; then
-		s=lost
-	fi
-	echo "$s"
-}
-
 case $cmd in
 status)
 	echo "state=$(state)"
@@ -98,42 +114,49 @@ start)
 		echo started=false
 		exit 0
 	fi
-	# A lock directory whose owner is gone is left from a killed stage.
-	if [ -d "$d/lockdir" ] && ! owner_alive "$d/lockdir"; then
-		rm -rf "$d/lockdir"
+	# The stage's lock is taken here, before the stage starts, and goes
+	# with it: no moment where the stage is marked running and no process
+	# holds it. flock: the descriptor the stage inherits (a stage that
+	# ends lets it go a moment after its marker: wait for it). Without
+	# flock: the directory, its owner the stage's process.
+	if command -v flock >/dev/null 2>&1; then
+		exec 9>>"$d/lock"
+		flock -w 30 9 || exit 1
+	else
+		# A lock directory whose owner is gone is left from a killed stage.
+		if [ -d "$d/lockdir" ] && ! owner_alive "$d/lockdir"; then
+			rm -rf "$d/lockdir"
+		fi
+		i=0
+		until mkdir "$d/lockdir" 2>/dev/null; do
+			[ $i -lt 600 ] || exit 1
+			sleep 0.05
+			i=$((i + 1))
+		done
 	fi
 	printf %s "$3" >"$d/input"
 	printf %s "$4" | base64 -d >"$d/script"
 	: >"$d/log"
 	rm -f "$d/exit"
-	echo running >"$d/state"
+	put state running
 	# The stage does not hold the turn of starts (descriptor 7).
 	setsid nohup sh "$self" run "$name" </dev/null >/dev/null 2>&1 7>&- &
-	# Started once its process holds the lock, or ended already.
-	i=0
-	while [ $i -lt 100 ] && ! held && [ "$(cat "$d/state")" = running ]; do
-		sleep 0.05
-		i=$((i + 1))
-	done
+	if ! command -v flock >/dev/null 2>&1; then
+		# setsid and nohup exec: $! is the stage's process. A stage
+		# already over took the directory away: nothing to own.
+		echo "$! $(cat /proc/sys/kernel/random/boot_id) $(starttime $!)" >"$d/lockdir/owner" 2>/dev/null || true
+	fi
 	echo started=true
 	;;
 run)
-	if command -v flock >/dev/null 2>&1; then
-		exec 9>>"$d/lock"
-		# A check of the state (held) takes the lock for an instant:
-		# wait it out rather than give up.
-		flock -w 30 9 || exit 0
-	else
-		mkdir "$d/lockdir" 2>/dev/null || exit 0
-		own "$d/lockdir"
-	fi
+	# The lock is the start's, inherited (descriptor 9) or the directory.
 	sh "$d/script" >>"$d/log" 2>&1
 	ec=$?
-	echo "$ec" >"$d/exit"
+	put exit "$ec"
 	if [ "$ec" = 0 ]; then
-		echo done >"$d/state"
+		put state done
 	else
-		echo failed >"$d/state"
+		put state failed
 	fi
 	rm -rf "$d/lockdir"
 	;;
