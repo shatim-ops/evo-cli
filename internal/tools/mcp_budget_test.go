@@ -31,6 +31,9 @@ var mcpBudgetSeconds = MCPCallBudget.Seconds()
 
 // worldBudget is the budget of a call in the slow world: a share of
 // budgetWatch, so that a call held to it answers before the watch.
+// wall-clock: the tests of this world read only that a call answered in
+// time with a state not final, never how far it got; a world that needs a
+// call to make progress has its own budget (sshBudget, #793).
 const worldBudget = budgetWatch / 4
 
 // budgetWatch is how long a call of the slow world may run before it
@@ -249,7 +252,7 @@ var mcpWaits = map[string]budgetWait{
 	// The VM is made, the compose-up stage goes on on the VM (D69 variant
 	// C; the world of TestDeployStage_OnceAndNotCutShort).
 	"deploy": {run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
-		r := stageRegistry(t, newStageVM())
+		r := stageRegistry(t, newStageVM(), worldBudget)
 		return func(ctx context.Context) (string, bool) {
 			return r.handlers["deploy"](ctx, map[string]any{"confirmed": true})
 		}, nil
