@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -44,6 +45,9 @@ type faultAPI struct {
 
 	made []faultResource
 	next int
+	// slow keeps every operation running and every resource "CREATING":
+	// the slow cloud of D69's world (mcp_budget_test.go).
+	slow bool
 }
 
 // faultResource is a billable resource of a collection: host and path of
@@ -299,7 +303,11 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		items := []map[string]any{}
 		for _, c := range a.made {
 			if c.host == host && c.path == path {
-				items = append(items, map[string]any{"id": c.ID, "name": c.Name, "path": c.Name, "subnet": c.Name, "type": strings.ToUpper(c.Type), "status": "RUNNING"})
+				item := map[string]any{"id": c.ID, "name": c.Name, "path": c.Name, "subnet": c.Name, "type": strings.ToUpper(c.Type), "status": a.statusLocked()}
+				if a.slow {
+					item["state"] = "creating" // a disk's field (waitDisk)
+				}
+				items = append(items, item)
 			}
 		}
 		a.mu.Unlock()
@@ -357,8 +365,12 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		op := fmt.Sprintf("op-%d", a.next)
 		a.mu.Unlock()
 		_, _ = io.WriteString(w, `{"id":"`+op+`","done":false}`)
-	case strings.HasPrefix(path, "/v1/operations/"):
-		_, _ = io.WriteString(w, `{"id":"`+strings.TrimPrefix(path, "/v1/operations/")+`","done":true}`)
+	case strings.HasPrefix(path, "/v1/operations/"), strings.HasPrefix(path, "/v1/operation/"),
+		strings.HasPrefix(path, "/v2/operations/"), strings.HasPrefix(path, "/v1/vpcs/operations/"):
+		a.mu.Lock()
+		done := !a.slow
+		a.mu.Unlock()
+		_, _ = io.WriteString(w, `{"id":"`+path[strings.LastIndex(path, "/")+1:]+`","done":`+strconv.FormatBool(done)+`}`)
 	case r.Method == http.MethodDelete && a.remove(host, path):
 		_, _ = io.WriteString(w, `{}`)
 	case r.Method == http.MethodGet && a.writeItem(w, host, path):
@@ -414,13 +426,23 @@ func (a *faultAPI) writeItem(w http.ResponseWriter, host, path string) bool {
 		return false
 	}
 	c := a.made[k]
+	status := a.statusLocked()
 	a.mu.Unlock()
-	obj := `{"id":"` + c.ID + `","name":"` + c.Name + `","status":"RUNNING"}`
+	obj := `{"id":"` + c.ID + `","name":"` + c.Name + `","status":"` + status + `"}`
 	if c.path == "/v2/secret" {
 		obj = `{"secret":` + obj + `}` // Secret Manager nests it
 	}
 	_, _ = io.WriteString(w, obj)
 	return true
+}
+
+// statusLocked is the status every resource of the world reads with. The
+// caller holds a.mu.
+func (a *faultAPI) statusLocked() string {
+	if a.slow {
+		return "CREATING"
+	}
+	return "RUNNING"
 }
 
 // faultAPIRegistry is a registry whose every service, compute included,
