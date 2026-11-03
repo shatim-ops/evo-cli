@@ -398,3 +398,88 @@ func TestStage_ManyAtOnceNoneLostNoneUnread(t *testing.T) {
 		}
 	})
 }
+
+// The lock is the stage's shell's, not its children's: a child that
+// outlives a killed stage (a process docker compose left) does not hold
+// it, and the stage reads lost, not running for ever («1.7 — релиз»,
+// check of #769, B2).
+func TestStage_AChildThatOutlivesTheStageDoesNotHoldItsLock(t *testing.T) {
+	vm := newVM(t, true)
+	r := Over(vm)
+	script := `sleep 30 & echo $! >"$HOME/child.pid"; echo $PPID >"$HOME/run.pid"; echo $$ >"$HOME/script.pid"; wait`
+	if _, err := r.Start(context.Background(), "compose-up", "in1", script); err != nil {
+		t.Fatal(err)
+	}
+	pids := map[string]int{}
+	for _, f := range []string{"child", "run", "script"} {
+		waitFor(t, f+".pid", func() bool {
+			b, err := os.ReadFile(filepath.Join(vm.home, f+".pid"))
+			pids[f], _ = strconv.Atoi(strings.TrimSpace(string(b)))
+			return err == nil && pids[f] > 0
+		})
+	}
+	t.Cleanup(func() { _ = syscall.Kill(pids["child"], syscall.SIGKILL) })
+	_ = syscall.Kill(pids["run"], syscall.SIGKILL)
+	_ = syscall.Kill(pids["script"], syscall.SIGKILL)
+	waitFor(t, "the stage to read lost", func() bool { return read(t, r, "compose-up").State == "lost" })
+}
+
+// Without flock the lock directory names its owner before the stage is
+// marked running: a status read while the start is still launching the
+// stage does not read lost («1.7 — релиз», check of #769, B4). The
+// launch is slowed by a setsid that waits.
+func TestStage_LockDirectoryHasItsOwnerBeforeRunning(t *testing.T) {
+	vm := newVM(t, false)
+	real, err := os.Readlink(filepath.Join(vm.path, "setsid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	slow := "#!/bin/sh\nsleep 0.5\nexec " + real + " \"$@\"\n"
+	if err := os.Remove(filepath.Join(vm.path, "setsid")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vm.path, "setsid"), []byte(slow), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := Over(vm)
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.Start(context.Background(), "s1", "in", "sleep 1")
+		done <- err
+	}()
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+			return
+		default:
+		}
+		if st := read(t, r, "s1"); st.State == "lost" {
+			t.Fatalf("read lost while the start launched the stage: %+v", st)
+		}
+	}
+}
+
+// SIGTERM stops a stage — the way out the CHANGELOG names (pkill): the
+// start does not leave the stage ignoring it.
+func TestStage_TermStopsTheStage(t *testing.T) {
+	vm := newVM(t, true)
+	r := Over(vm)
+	if _, err := r.Start(context.Background(), "compose-up", "in1", "docker compose up -d"); err != nil {
+		t.Fatal(err)
+	}
+	pid := vm.dockerPID(t)
+	pgid, err := syscall.Getpgid(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the stage to stop", func() bool {
+		st := read(t, r, "compose-up").State
+		return st == "lost" || st == "failed"
+	})
+}

@@ -342,11 +342,12 @@ func TestDeployStage_OnceAndNotCutShort(t *testing.T) {
 
 // A forced deploy whose bound came in compose up has started it: the next
 // step repeats the call without force, or each repeat would start compose
-// up again and deploy would never end («1.7 — релиз» on #769). Before
-// compose up, force stays: the forced run has not started yet.
+// up again and deploy would never end («1.7 — релиз» on #769); so after
+// it (verify). Before compose up, force stays: the forced run has not
+// started yet.
 func TestDeployInProgress_NextArgsDropForceOnceComposeUpStarted(t *testing.T) {
 	args := map[string]any{"confirmed": true, "force": true, "compose_file": "docker-compose.yml"}
-	for phase, keep := range map[string]bool{"compose-up": false, "docker": true, "vm": true, "ssh": true} {
+	for phase, keep := range map[string]bool{"compose-up": false, "verify": false, "docker": true, "vm": true, "ssh": true, "upload": true} {
 		got := deployInProgress(map[string]any{}, &engine.InProgress{Phase: phase, Detail: "running"}, args)
 		next, _ := got["next_args"].(map[string]any)
 		if _, has := next["force"]; has != keep {

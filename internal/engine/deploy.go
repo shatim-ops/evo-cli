@@ -48,7 +48,7 @@ const (
 
 // Deploy orchestrates the full deploy lifecycle.
 func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) {
-	e.until, e.phase = opts.Until, ""
+	e.until, e.boundFrom, e.phase = opts.Until, time.Now(), ""
 	caller := ctx
 	defer func() { retErr = e.atBound(caller, retErr) }()
 	// Stage 1: Parse compose file.
@@ -1691,11 +1691,13 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 				return nil
 			}
 		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
+		// A refused key or a changed host key first: it is the answer
+		// even when the bound cut the call at the same time.
 		if isFatalSSHError(err) {
 			return err
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 		lastErr, lastOut = err, out.String()
 		if bootstrap.Permanent(lastOut) {
@@ -1722,11 +1724,11 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		}
 		// A failed attempt may have lost the connection.
 		if err := e.reconnect(ctx, ip, user, hostKey); err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
 			if isFatalSSHError(err) {
 				return err
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
 		}
 	}

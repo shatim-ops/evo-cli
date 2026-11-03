@@ -62,10 +62,11 @@ func (e *Engine) bounded(ctx context.Context) (context.Context, context.CancelFu
 // InProgress of the step it was in (e.phase): an error that came once the
 // bound had come is the step cut by its deadline, and the same deploy again
 // goes on from there. A cancel of ctx — Ctrl-C, the MCP client — stays an
-// error.
+// error, and so does a refusal another call repeats: a refused key, a
+// changed host key.
 func (e *Engine) atBound(ctx context.Context, err error) error {
 	var going *InProgress
-	if err == nil || stderrors.As(err, &going) || ctx.Err() != nil || e.phase == "" || !e.past() {
+	if err == nil || stderrors.As(err, &going) || isFatalSSHError(err) || ctx.Err() != nil || e.phase == "" || !e.past() {
 		return err
 	}
 	return &InProgress{Phase: e.phase, Detail: errLine(err)}
@@ -81,6 +82,17 @@ func (e *Engine) past() bool {
 func stageInput(parts ...string) string {
 	h := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(h[:12])
+}
+
+// stageStartMargin: a stage is not started with less of the bound left —
+// the end of the call could cut its start between the marker and the
+// process; the next call starts it. A bound shorter than nine margins (a
+// test world's) keeps a ninth of itself.
+const stageStartMargin = 5 * time.Second
+
+// startMargin is stageStartMargin for the bound of this deploy.
+func (e *Engine) startMargin() time.Duration {
+	return min(stageStartMargin, e.until.Sub(e.boundFrom)/9)
 }
 
 // errStageWait: the stage still ran at the limit of runStage's wait.
@@ -108,6 +120,9 @@ func (e *Engine) runStage(ctx context.Context, name, input, script string, limit
 	// A start detaches the stage at once; bounded by limit too, so one
 	// that cannot (a VM where it runs in the session) ends with it.
 	start := func() error {
+		if !e.until.IsZero() && time.Until(e.until) < e.startMargin() {
+			return &InProgress{Phase: name, Detail: "starting"}
+		}
 		sctx := ctx
 		if !limit.IsZero() {
 			var cancel context.CancelFunc

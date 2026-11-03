@@ -75,7 +75,8 @@ state() {
 
 # own DIR: names this process the owner of the lock directory DIR.
 own() {
-	echo "$$ $(cat /proc/sys/kernel/random/boot_id) $(starttime $$)" >"$1/owner"
+	echo "$$ $(cat /proc/sys/kernel/random/boot_id) $(starttime $$)" >"$1/owner.$$" &&
+		mv -f "$1/owner.$$" "$1/owner"
 }
 
 # start_lock: the turn of this start — two starts at once would write the
@@ -111,6 +112,11 @@ status)
 	tail -c 16384 "$d/log" 2>/dev/null | tail -n 20 || true
 	;;
 start)
+	# The end of the SSH session (a hang-up) does not cut the start
+	# between the marker and the stage's process. HUP only: an ignored
+	# signal goes to the stage, which nohup makes ignore HUP anyway, and
+	# TERM stays what stops it (pkill).
+	trap '' HUP
 	start_lock
 	if [ "$(state)" = running ]; then
 		echo started=false
@@ -135,6 +141,9 @@ start)
 			sleep 0.05
 			i=$((i + 1))
 		done
+		# This start owns it until the stage's process does: the
+		# directory has an owner before the stage is marked running.
+		own "$d/lockdir"
 	fi
 	printf %s "$3" >"$d/input"
 	printf %s "$4" | base64 -d >"$d/script"
@@ -146,13 +155,16 @@ start)
 	if ! command -v flock >/dev/null 2>&1; then
 		# setsid and nohup exec: $! is the stage's process. A stage
 		# already over took the directory away: nothing to own.
-		echo "$! $(cat /proc/sys/kernel/random/boot_id) $(starttime $!)" >"$d/lockdir/owner" 2>/dev/null || true
+		{ echo "$! $(cat /proc/sys/kernel/random/boot_id) $(starttime $!)" >"$d/lockdir/owner.$$" &&
+			mv -f "$d/lockdir/owner.$$" "$d/lockdir/owner"; } 2>/dev/null || true
 	fi
 	echo started=true
 	;;
 run)
-	# The lock is the start's, inherited (descriptor 9) or the directory.
-	sh "$d/script" >>"$d/log" 2>&1
+	# The lock is the start's, inherited (descriptor 9) or the directory,
+	# and this shell's only: the script's children do not get it, so a
+	# child left after the stage was killed does not keep it running.
+	sh "$d/script" 9>&- >>"$d/log" 2>&1
 	ec=$?
 	put exit "$ec"
 	if [ "$ec" = 0 ]; then

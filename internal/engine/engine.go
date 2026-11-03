@@ -49,6 +49,9 @@ type Engine struct {
 
 	// until is DeployOptions.Until of the deploy that runs.
 	until time.Time
+	// boundFrom is when that deploy began: the bound's length is
+	// until - boundFrom.
+	boundFrom time.Time
 	// phase is the step of the deploy that runs, as InProgress names it:
 	// a step cut by the bound is going on from there (atBound).
 	phase string

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/bootstrap"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/vmstage"
@@ -309,5 +310,72 @@ func TestDeploy_RepeatWaitsForTheCreatingVMBeforeTheFloatingIP(t *testing.T) {
 	var going *InProgress
 	if !stderrors.As(err, &going) || going.Phase != "vm" || going.Detail != "creating" {
 		t.Fatalf("err = %v, want InProgress vm creating", err)
+	}
+}
+
+// A permanent SSH refusal — the key refused, the host key changed — that
+// comes once the bound has come is the refusal, not a deploy going on: a
+// repeat answers the same («1.7 — релиз», check of #769, B3).
+func TestDeploy_BoundDoesNotHideAPermanentSSHRefusal(t *testing.T) {
+	for _, code := range []string{clerrors.CodeSSHAuthFailed, clerrors.CodeSSHHostKeyChanged} {
+		t.Run(code, func(t *testing.T) {
+			dep := newMockDeployer()
+			var mu sync.Mutex
+			connects := 0
+			until := time.Now().Add(50 * time.Millisecond)
+			dep.hold = func(ctx context.Context, op string) error {
+				if op != "connect" {
+					return nil
+				}
+				mu.Lock()
+				connects++
+				n := connects
+				mu.Unlock()
+				if n < 2 {
+					return nil
+				}
+				// The reconnect after the install: refused once the bound has come.
+				<-ctx.Done()
+				return clerrors.New(code, "refused", "")
+			}
+			eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+			opts := newDeployOpts(t, dir)
+			opts.Until = until
+			err := deployBounded(t, eng, opts)
+			if clerrors.Reason(err) != code {
+				t.Fatalf("err = %v, want %s", err, code)
+			}
+		})
+	}
+}
+
+// A stage is not started in the last seconds of the bound: the end of the
+// call could cut the start between its marker and its process, and the
+// stage would read lost («1.7 — релиз», check of #769, B1).
+func TestDeploy_NoStageStartsInTheLastSecondsOfTheBound(t *testing.T) {
+	stages := &heldStages{}
+	dep := newMockDeployer()
+	until := time.Now().Add(200 * time.Millisecond)
+	// SSH answers with 10 ms of the bound left: less than its margin
+	// (200 ms / 9).
+	dep.hold = func(_ context.Context, op string) error {
+		if op == "connect" {
+			<-time.After(time.Until(until) - 10*time.Millisecond)
+		}
+		return nil
+	}
+	eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+	eng.Stages = stages
+	opts := newDeployOpts(t, dir)
+	opts.Until = until
+	err := deployBounded(t, eng, opts)
+	var going *InProgress
+	if !stderrors.As(err, &going) {
+		t.Fatalf("err = %v, want InProgress", err)
+	}
+	stages.mu.Lock()
+	defer stages.mu.Unlock()
+	if len(stages.others) != 0 || stages.starts != 0 {
+		t.Errorf("a stage started in the margin of the bound: others %v, compose-up starts %d", stages.others, stages.starts)
 	}
 }
