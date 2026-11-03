@@ -176,6 +176,7 @@ func faultRun(t *testing.T, c faultMatrixCase, k int, kind string) (faultWorld, 
 	}
 	start := time.Now()
 	text, _ := r.handlers[c.tool](ctx, c.args)
+	checkNoTerminalCodes(t, c.tool, text)
 	// The world's Timings are milliseconds.
 	// wall-clock: half the production floating IP poll (fipPollWait).
 	if d := time.Since(start); d > fipPollWait/2 {
