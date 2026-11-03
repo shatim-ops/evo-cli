@@ -152,6 +152,11 @@ mkdir -p "$h/zd" && printf 'zd\n' >"$h/zd/.zshrc"
 sh_install "$h" ZDOTDIR="$h/zd"
 check "T5: ZDOTDIR — блок в \$ZDOTDIR/.zshrc" grep -q '^# >>> evo' "$h/zd/.zshrc"
 check "T5: ZDOTDIR — ~/.zshrc не создан" test ! -e "$h/.zshrc"
+# T6 с ZDOTDIR: zsh читает $ZDOTDIR/.zshrc, блок оттуда даёт привязку
+# после второго compinit, как без ZDOTDIR.
+# shellcheck disable=SC2016 # ${_comps[evo]} раскрывает zsh, не bash
+zcomps=$(env -i PATH="$work/bin:/usr/bin:/bin" HOME="$h" ZDOTDIR="$h/zd" SHELL="$zsh" "$zsh" -i -c 'autoload -Uz compinit; compinit; compinit; print -r -- ${_comps[evo]}' 2>/dev/null </dev/null || true)
+check "T6: ZDOTDIR — после второго compinit _comps[evo] не пусто" test -n "$zcomps"
 sh_install "$h" ZDOTDIR="$h/zd" -- --uninstall
 check "T5: ZDOTDIR — --uninstall убирает блок" test "$(cat "$h/zd/.zshrc")" = zd
 
