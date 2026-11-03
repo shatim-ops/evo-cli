@@ -234,6 +234,17 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/handoff_check_test.sh
 
+      # Стресс замка этапа на ВМ (vmstage, #769, #777): одновременные
+      # старты под нагрузкой всех CPU. Отдельным шагом после go test, а не
+      # внутри него: нагрузка в go test ./... отнимала бы CPU у тестов с
+      # таймингами соседних пакетов.
+      - name: "go test: стресс замка этапа под нагрузкой"
+        if: runner.os == 'Linux'
+        run: go test -race -count=1 -run '^TestStage_ManyAtOnceNoneLostNoneUnread$' ./internal/vmstage/
+        env:
+          EVO_STAGE_STRESS: "1"
+          GORACE: atexit_sleep_ms=0
+
       # Tab в zsh после install.sh (#718, T5–T6): _evo в site-functions,
       # один блок в ~/.zshrc, привязка после второго compinit — на
       # настоящем zsh macOS, временном HOME и локальном выпуске, без сети.

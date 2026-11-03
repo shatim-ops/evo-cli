@@ -351,18 +351,23 @@ func TestStage_TheScriptIsReplacedNotRewritten(t *testing.T) {
 // takes the lock the stage holds, the markers are written aside and moved
 // in, a lock found free is checked against the marker read again
 // («1.7 — релиз» on #769: 3 of 300 read lost; CI read state= empty while
-// the stage wrote it). The load is the test's own (cpuLoad), not the
-// runner's luck; a stage that sleeps and one that ends at once (true), so
-// a start that loses its stage between the marker and the run is seen
-// either way. 200 a case (four cases: ~20 s on 4 CPUs under -race; the
-// stage.sh of 9adf5019 reads 3–8 of 200 lost here); -short runs 50.
+// the stage wrote it). A stage that sleeps and one that ends at once
+// (true), so a start that loses its stage between the marker and the run
+// is seen either way. With EVO_STAGE_STRESS=1 the load is the test's own
+// (cpuLoad: every CPU busy), not the runner's luck — CI runs it so in a
+// step of its own, never inside go test ./..., where it would starve the
+// timed tests of the packages beside it («1.7 — релиз» on #777). 200 a
+// case; under the load on 4 CPUs the stage.sh before the fix of #769
+// (9adf5019, the first commit of its branch) reads 3–8 of 200 lost.
+// -short runs 50.
 func TestStage_ManyAtOnceNoneLostNoneUnread(t *testing.T) {
 	n := 200
 	if testing.Short() {
 		n = 50
 	}
-	stopLoad := cpuLoad()
-	defer stopLoad()
+	if os.Getenv("EVO_STAGE_STRESS") == "1" {
+		defer cpuLoad()()
+	}
 	for _, script := range []string{"sleep 0.3", "true"} {
 		t.Run(script, func(t *testing.T) {
 			forEachLock(t, func(t *testing.T, vm localVM) {
