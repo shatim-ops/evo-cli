@@ -100,6 +100,13 @@ func TestNewGates_S3PutWithoutSettingsRefuses(t *testing.T) {
 	if !isErr || strings.Contains(out, "confirmation_required") {
 		t.Fatalf("s3_put without S3 settings: want a refusal before the question, got %s", out)
 	}
+	// An engine whose profile has no S3 keys: the refusal says what to fix
+	// (CONFIG_INVALID, as the CLI's exit 2), still before the question.
+	s = New(func(map[string]any) (*engine.Engine, error) { return &engine.Engine{}, nil }, "test")
+	out, isErr = s.handlers["s3_put"](context.Background(), map[string]any{"bucket": "bkt", "key": "k.txt", "content": "hello"})
+	if !isErr || strings.Contains(out, "confirmation_required") || !strings.Contains(out, `"CONFIG_INVALID"`) {
+		t.Fatalf("s3_put with a profile without S3 keys: want CONFIG_INVALID before the question, got %s", out)
+	}
 }
 
 // deploy without an engine fails its confirmed call too: the preview
