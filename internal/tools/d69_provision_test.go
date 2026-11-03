@@ -158,3 +158,39 @@ func mustCallErr(t *testing.T, r *Registry, tool string, args map[string]any) st
 	}
 	return text
 }
+
+// The repeat adopts the VM by the id its record holds, not by the name: a
+// VM of the name made between the calls by someone else is not adopted
+// (D73: state ↔ cloud). Here the recorded VM is gone and another VM has
+// its name — the record is dropped, the create meets the 409 of the taken
+// name, and the other VM is left as it is.
+func TestD69_ProvisionAdoptsByTheRecordedIDNotTheName(t *testing.T) {
+	cloud, dir, r := provisionWorld(t)
+	first := decode(t, mustCall(t, r, "provision", map[string]any{"name": "web", "confirmed": true}))
+	cloud.mu.Lock()
+	for i := range cloud.vms {
+		if cloud.vms[i].ID == first["vm_id"] {
+			cloud.vms[i].gone = true
+		}
+	}
+	foreign := faultVM{ID: faultID(0x77), Name: "web", Status: "active", CreatedAt: time.Now()}
+	cloud.vms = append(cloud.vms, foreign)
+	cloud.mu.Unlock()
+
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	m := decode(t, text)
+	if !isErr || m["reason"] != "USAGE" || m["vm_id"] == foreign.ID {
+		t.Fatalf("a VM of the name with another id is adopted, or the taken name is not refused: %s", text)
+	}
+	for _, vm := range cloud.liveVMs() {
+		if vm.ID == foreign.ID && vm.Status != "active" {
+			t.Errorf("the other VM was touched: %+v", vm)
+		}
+	}
+	sf, _ := state.Read(state.DefaultPath(dir))
+	for _, d := range sf.Deployments {
+		if d.VMID == foreign.ID || d.VMID == first["vm_id"] {
+			t.Errorf("the state holds %s: the other VM is not this folder's, the gone one is dropped", d.VMID)
+		}
+	}
+}
