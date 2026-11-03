@@ -10,6 +10,10 @@ set -euo pipefail
 : "${GH_REPO:?}" "${RUN_ID:?}" "${RUN_URL:?}" "${CONCLUSION:?}" "${HEAD_SHA:?}"
 TITLE="main красный: ci"
 MAX_FAILS=20
+# The log of a job is read up to LOG_TRIES times, LOG_RETRY_SLEEP seconds
+# apart (the tests set no sleep).
+LOG_TRIES=${LOG_TRIES:-6}
+LOG_RETRY_SLEEP=${LOG_RETRY_SLEEP:-10}
 
 # The open issues of exactly this title: the search narrows, the title
 # decides (a search is by words, not by the whole title).
@@ -28,8 +32,8 @@ if [ "$CONCLUSION" = success ]; then
 fi
 [ "$CONCLUSION" = failure ] || exit 0
 
-body=$(mktemp)
-trap 'rm -f "$body"' EXIT
+body=$(mktemp) err=$(mktemp)
+trap 'rm -f "$body" "$err"' EXIT
 {
   printf 'Прогон %s (`%s`) красный.\n\n' "$RUN_URL" "${HEAD_SHA:0:8}"
   # Not «gh … | while»: with pipefail an early exit of the reader would
@@ -40,8 +44,19 @@ trap 'rm -f "$body"' EXIT
     [ -n "$id" ] || continue
     printf -- '- **%s**\n' "$name"
     # The log read whole first: a refused read (403, 404, a rate limit) is
-    # named as such, not taken for a log without failed tests.
-    if ! log=$(gh api "repos/$GH_REPO/actions/jobs/$id/logs" 2>/dev/null); then
+    # named as such, not taken for a log without failed tests. The log of a
+    # job just ended may not be served yet: the read is tried again, and
+    # why it was refused goes to this job's log (gh's error, no log text).
+    log='' got=0
+    for try in $(seq 1 "$LOG_TRIES"); do
+      if log=$(gh api "repos/$GH_REPO/actions/jobs/$id/logs" 2>"$err"); then
+        got=1
+        break
+      fi
+      [ "$try" = "$LOG_TRIES" ] || sleep "$LOG_RETRY_SLEEP"
+    done
+    if [ "$got" = 0 ]; then
+      echo "::warning title=main-red::лог job $id не получен за $LOG_TRIES попыток: $(head -c 300 "$err" | tr '\n' ' ')" >&2
       printf '  (лог job не получен — смотрите его в прогоне)\n'
       continue
     fi

@@ -19,7 +19,13 @@ case "$1 $2" in
   api*)
     case "$2" in
       */jobs\?*) printf '%b' "$FAKE_JOBS" ;;
-      */logs) [ -z "${FAKE_NO_LOG:-}" ] || exit 1; printf '%b' "$FAKE_LOG" ;;
+      */logs)
+        [ -z "${FAKE_NO_LOG:-}" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
+        # FAKE_LOG_LATE=N: the first N reads are refused, as for a log not
+        # served yet.
+        n=$(( $(cat "$FAKE_READS" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$FAKE_READS"
+        [ "$n" -gt "${FAKE_LOG_LATE:-0}" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
+        printf '%b' "$FAKE_LOG" ;;
     esac ;;
 esac
 SH
@@ -28,10 +34,12 @@ fail=0
 run() { # ИМЯ исход открытое ждём…
   : >"$work/calls"
   : >"$work/body"
+  rm -f "$work/reads"
   PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" FAKE_BODY="$work/body" FAKE_OPEN="$3" \
     FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" \
+    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" LOG_RETRY_SLEEP=0 \
     GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" HEAD_SHA=0123456789abcdef \
-    "$here/main_red.sh" >/dev/null 2>&1 || { echo "FAIL $1: скрипт упал"; fail=1; return; }
+    "$here/main_red.sh" >/dev/null 2>"$work/stderr" || { echo "FAIL $1: скрипт упал"; cat "$work/stderr"; fail=1; return; }
   local name=$1
   shift 3
   local ok=1
@@ -40,6 +48,7 @@ run() { # ИМЯ исход открытое ждём…
       calls:*) grep -q -- "${want#calls:}" "$work/calls" || ok=0 ;;
       nocalls:*) ! grep -q -- "${want#nocalls:}" "$work/calls" || ok=0 ;;
       body:*) grep -qF -- "${want#body:}" "$work/body" || ok=0 ;;
+      stderr:*) grep -qF -- "${want#stderr:}" "$work/stderr" || ok=0 ;;
     esac
   done
   if [ "$ok" = 1 ]; then echo "ok   $name"; else echo "FAIL $name"; cat "$work/calls" "$work/body"; fail=1; fi
@@ -63,7 +72,11 @@ run "cancelled — тишина" cancelled 7 \
   "nocalls:issue comment" "nocalls:issue create" "nocalls:issue close"
 FAKE_JOBS='103\ttest (macos-latest)\n' FAKE_NO_LOG=1 \
   run "красный, лог не получен — так и сказано" failure "" \
-  "calls:issue create" "body:**test (macos-latest)**" "body:лог job не получен" "nocalls:issue close"
+  "calls:issue create" "body:**test (macos-latest)**" "body:лог job не получен" "nocalls:issue close" \
+  "stderr:HTTP 404: Not Found"
+FAKE_JOBS='105\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestLate\n' FAKE_LOG_LATE=2 \
+  run "лог выложен не сразу — третья попытка его читает" failure "" \
+  "calls:issue create" "body:--- FAIL: TestLate" "nocalls:issue close"
 run "зелёный, два открытых — закрывает оба" success "7 8" \
   "calls:issue close 7" "calls:issue close 8" "nocalls:issue create"
 exit "$fail"
