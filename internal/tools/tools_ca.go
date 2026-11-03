@@ -240,7 +240,10 @@ func (s *Registry) planCaDelete(ctx context.Context, args map[string]any) (*Plan
 		if err != nil {
 			return s.deleteFailed("ca_delete", name, err)
 		}
-		return toJSON(map[string]any{"status": "deleting", "name": name, "operation_id": op.ID}), false
+		// Container Apps has no operation to read: the app is read until it
+		// is gone.
+		return deleteOutcome(ctx, args, goneWatch("ca_delete", name, map[string]any{"name": name}, op.ID, "ca_get",
+			func(ctx context.Context) (map[string]any, error) { return cli.Get(ctx, name) }))
 	}}, nil
 }
 

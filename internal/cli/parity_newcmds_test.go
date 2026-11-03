@@ -207,7 +207,9 @@ func withEmptyCloud(t *testing.T) {
 	t.Setenv("CLOUDRU_SECRET", "00000000000000000000000000000000")
 	t.Setenv("EVO_LANG", "en")
 	t.Chdir(home)
-	installContractTransport(t, 200, `{"items":[],"total":0}`)
+	// Every list is empty and every operation is done: a delete reads its
+	// operation (D74), and one never done would wait as in production.
+	installContractTransport(t, 200, `{"items":[],"total":0,"done":true}`)
 	old := toolEngine
 	toolEngine = emptyCloudEngine
 	t.Cleanup(func() { toolEngine = old })
