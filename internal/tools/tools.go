@@ -2452,6 +2452,17 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 			if err != nil {
 				return errResult(err), true
 			}
+			// Confirmed with no terminal (MCP, 'evo tools call destroy
+			// --yes'): the call names its target. confirmed alone deleted
+			// whatever the server's folder recorded, which the caller may
+			// never have seen (P2, Grok G2-3 on 1.6.0).
+			if vmID := recordedTarget(eng.StateDir); vmID != "" {
+				return errResult(clierrors.New(clierrors.CodeUsage,
+					i18n.T("destroy without vm_id or name deletes nothing when confirmed without a terminal: name the target from the preview",
+						"destroy без vm_id или name с подтверждением без терминала ничего не удаляет: назовите цель из превью"),
+					i18n.Tf("Call destroy with vm_id %s and confirmed=true ('evo tools call destroy --arg vm_id=%s --yes'); destroy without arguments shows what it deletes.",
+						"Вызовите destroy с vm_id %s и confirmed=true ('evo tools call destroy --arg vm_id=%s --yes'); destroy без аргументов показывает, что он удалит.", vmID, vmID))), true
+			}
 			var buf bytes.Buffer
 			eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
 
@@ -2466,6 +2477,18 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 			}
 			return toJSON(map[string]any{"status": "ok", "log": buf.String()}), false
 		})
+}
+
+// recordedTarget is the VM of the one deployment the folder dir records,
+// the target destroy without vm_id or name would delete; empty when there
+// is none (only port rules an earlier destroy left) or several (the engine
+// refuses those itself).
+func recordedTarget(dir string) string {
+	sf, err := state.Read(state.DefaultPath(dir))
+	if err != nil || len(sf.ActiveDeployments()) != 1 {
+		return ""
+	}
+	return sf.ActiveDeployment().VMID
 }
 
 // destroyAnswer is the answer of destroy without confirmed=true for the
@@ -2715,15 +2738,23 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		if alreadyGone {
 			// Nothing to delete in the cloud.
 		} else if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
-			if engine.IsNotDeletableYet(err) {
+			var gone *clierrors.CLIError
+			if stderrors.As(err, &gone) && gone.Code == clierrors.CodeVMNotFound {
+				// Gone between the list and the DELETE, which names the
+				// project, so the 404 is this project's: already deleted, as
+				// the engine's destroy takes it, and the rest is cleaned up
+				// (D26).
+				alreadyGone = true
+			} else if engine.IsNotDeletableYet(err) {
 				// Cloud.ru refused the delete in the VM's state: the state it
 				// reads in and the way out, as the CLI destroy (QA H1/H4,
 				// #558), API_ERROR as docs/exit-codes.md has it (QA-6).
 				refused := eng.RefusedVMDelete(ctx, target.ID, firstNonEmptyStr(fipRec.FloatingIPID, fipRec.VMIP), err,
 					i18n.T(" Nothing was deleted.", " Ничего не удалено."))
 				return errAnswer(refused, map[string]any{"status": "not_deletable_yet", "vm_id": target.ID, "message": refused.Error()}), true
+			} else {
+				return errResult(fmt.Errorf(i18n.T("delete VM: %w", "удаление ВМ: %w"), err)), true
 			}
-			return errResult(fmt.Errorf(i18n.T("delete VM: %w", "удаление ВМ: %w"), err)), true
 		} else if !eng.WaitVMGone(ctx, target.ID) {
 			// The delete was accepted, but the VM is still listed: its floating
 			// IP stays attached and its ports may still serve. The record stays

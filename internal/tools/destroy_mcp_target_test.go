@@ -8,6 +8,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // P2 (agent runs of Grok on 1.6.0, G2-3; release plan 1.7, owner's
@@ -28,8 +31,10 @@ func TestDestroy_ConfirmedWithoutTargetOverMCPIsUsage(t *testing.T) {
 	}
 	vmID := cloud.liveVMs()[0].ID
 
-	preview, isErr := r.handlers["destroy"](context.Background(), map[string]any{})
-	if isErr || !strings.Contains(preview, vmID) {
+	// A preview is confirmation_required, which answers isError like every
+	// gate's preview (gate.go).
+	preview, _ := r.handlers["destroy"](context.Background(), map[string]any{})
+	if faultJSON(t, preview)["status"] != "confirmation_required" || !strings.Contains(preview, vmID) {
 		t.Errorf("the preview without a target names the record's VM %s, as before:\n%s", vmID, preview)
 	}
 
@@ -54,5 +59,30 @@ func TestDestroy_ConfirmedWithoutTargetOverMCPIsUsage(t *testing.T) {
 	text, isErr = r.handlers["destroy"](context.Background(), map[string]any{"vm_id": vmID, "confirmed": true})
 	if isErr {
 		t.Errorf("destroy with vm_id: %s", text)
+	}
+}
+
+// The VM goes between the list and the DELETE (DELETE in the project is
+// 404): already deleted, as the engine's destroy takes it, and the rest is
+// cleaned up — the floating IP released, the record dropped (D26). P2 sends
+// MCP to this path for the deployment 'evo destroy' deletes; it answered
+// VM_NOT_FOUND there while 'evo destroy' answered success
+// (TestParity_ErrorReasonEqualsTool, HTTP 404).
+func TestDestroy_TargetGoneAtTheDeleteIsAlreadyDeleted(t *testing.T) {
+	cloud := &targetCloud{deleteErr: clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")}
+	r, dir := targetRegistry(t, cloud)
+	m, text, isErr := callNamed(t, r, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
+	if isErr || m["status"] != "already_deleted" {
+		t.Fatalf("want already_deleted: %s", text)
+	}
+	if cloud.releasedFIP != "fip-1" {
+		t.Errorf("the floating IP stays billed: released %q", cloud.releasedFIP)
+	}
+	sf, err := state.Read(state.DefaultPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := sf.ActiveDeployment(); a != nil {
+		t.Errorf("record left: %+v", a)
 	}
 }
