@@ -1307,6 +1307,10 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	if len(deleting) > 0 {
 		out["deleting"] = deleting
 		out["note"] = "Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names."
+		// The same call checks them again and finishes what waits for
+		// them — a VM's floating IP and record (D69).
+		out["next"] = fmt.Sprintf("Call stack_destroy with job_id %s and confirmed=true again until 'deleting' is empty.", id)
+		nextStep(out, "stack_destroy", map[string]any{"job_id": id, "confirmed": true})
 	}
 	if len(failed) > 0 {
 		// Every error answer has a reason (docs/mcp.md «Ошибки»). This one

@@ -1,0 +1,6 @@
+### Миграция
+
+- **`destroy` по MCP отвечает не позже ~45 с: ВМ, которую облако ещё удаляет, — `deleting`, а не ошибка** (DECISIONS D69).
+  Было: `destroy` с `vm_id` или `name` ждал, пока ВМ исчезнет, до 2 мин в одном вызове — клиент MCP обрывал его раньше; не дождался — `status: partial`, `API_ERROR`, код 5. Повтор при ВМ в `deleting` слал второй DELETE, а Cloud.ru отвечает на него 409.
+  Стало: по MCP ожидание кончается с пределом вызова — ответ **не ошибкой**: `status: deleting`, `vm_id`, `name`, `vm_status`, `floating_ip` (адрес остаётся до исчезновения ВМ) и следующий шаг — `next`, `next_tool: destroy`, `next_args` (`vm_id`, `confirmed`, и `release_ip`, если он был). Запись остаётся `destroying` с адресом. Повтор при ВМ в `deleting` второй DELETE не шлёт, ждёт её и, когда её нет, освобождает адрес, закрывает порты и снимает запись (`already_deleted`). `stack_destroy` с ВМ в `deleting` отвечает, как и для других асинхронных удалений, `deleting: [vm]`, и теперь с `next_tool: stack_destroy`. CLI ждёт, как раньше; `partial` после 2 мин остаётся.
+  Что поменять: агент, который ждал от `destroy` по MCP только удаление или ошибку, читает `status: deleting` и вызывает `next_tool` с `next_args`, пока ответ не станет `already_deleted` или `ok`.
