@@ -439,7 +439,9 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	if network {
 		nctx, ncancel := context.WithTimeout(parent, networkCheckTimeout)
 		defer ncancel()
-		p.NetworkCheck, networkErr = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
+		var group string
+		p.NetworkCheck, group, networkErr = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
+		p.PortsGroup(group)
 	}
 	qctx, qcancel := context.WithTimeout(parent, PreviewLookupTimeout)
 	defer qcancel()
@@ -665,20 +667,22 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 		if p.PublicIP != nil {
 			lines = append(lines, publicIPLine(*p.PublicIP))
 		}
-		source := sgrules.Anywhere
+		source, group := sgrules.Anywhere, ""
 		for _, prm := range namedParams(p.Params) {
-			if prm.Key == "ports_source" {
+			switch prm.Key {
+			case "ports_source":
 				source = paramValue(prm.Value)
+			case "ports_group":
+				group = paramValue(prm.Value)
 			}
 		}
 		for _, prm := range namedParams(p.Params) {
 			v := paramValue(prm.Value)
 			switch {
-			case v == "", prm.Key == "ports_source":
-				// The source is said on the line of the ports.
+			case v == "", prm.Key == "ports_source", prm.Key == "ports_group":
+				// The source and the group are said on the line of the ports.
 			case prm.Key == "ports":
-				lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to %s in the VM's security group (shared by every VM in it); destroy closes them",
-					"%s открываются для %s в группе безопасности ВМ (она общая для всех ВМ в ней); destroy их закроет", v, source))
+				lines = append(lines, portsLine(v, source, group))
 			case prm.Key == "image_metadata":
 				lines = append(lines, previewLabel("fields", "поля")+i18n.Tf("%s of the image, as given", "%s — поля образа с заданными значениями", v))
 			default:

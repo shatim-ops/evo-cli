@@ -258,7 +258,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		// the compose file publishes new ones: open what is missing. Records
 		// from before security_group_id existed have no group to open in.
 		if rec.SecurityGroupID != "" {
-			e.openPorts(ctx, e.projectOf(&rec), rec.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
+			e.openPorts(ctx, e.projectOf(&rec), rec.SecurityGroupID, project.Ports, project.UDPPorts, opts.Cidr, &rec)
 			stateFile.UpsertDeployment(rec)
 			_ = state.Write(statePath, stateFile)
 		}
@@ -687,7 +687,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if opts.Gate != nil {
 		proceed, err = opts.Gate(ctx, nil)
 	} else {
-		proceed, err = confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, diskType.ID, network, project.Ports, project.UDPPorts), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+		proceed, err = confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, diskType.ID, network, project.Ports, project.UDPPorts, opts.Cidr), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
 	}
 	if err != nil {
 		return state.DeploymentRecord{}, err
@@ -927,7 +927,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 					e.Printer.StepDone(i18n.Tf("Public IP: %s", "Внешний IP: %s", publicIP))
 				}
 				// The rule IDs go to state at once: destroy deletes them.
-				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
+				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports, project.UDPPorts, opts.Cidr, &rec)
 				stateFile.UpsertDeployment(rec)
 				_ = state.Write(statePath, stateFile)
 				return rec, nil

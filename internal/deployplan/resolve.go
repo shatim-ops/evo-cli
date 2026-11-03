@@ -19,6 +19,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
 )
 
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-`)
@@ -27,13 +28,16 @@ var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-`)
 // DiskGB) drive flavor/disk selection; in manual mode the explicit *Override
 // fields are used. Empty fields fall back to documented defaults.
 type Params struct {
-	Name        string
-	Product     string
-	Mode        string // "auto" | "manual"
-	CPU         int    // requirement (auto-size)
-	RAMGB       int    // requirement (auto-size)
-	DiskGB      int
-	Ports       []int // product ports to open in the security group (e.g. 80,443)
+	Name    string
+	Product string
+	Mode    string // "auto" | "manual"
+	CPU     int    // requirement (auto-size)
+	RAMGB   int    // requirement (auto-size)
+	DiskGB  int
+	Ports   []int // product ports to open in the security group (e.g. 80,443)
+	// Cidr is the source the rules of Ports let in (sgrules.Source:
+	// 0.0.0.0/0 when empty, P5).
+	Cidr        string
 	ComposeFile string
 	ExternalIP  bool
 
@@ -177,8 +181,10 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	if rules, re := provision.GroupRules(ctx, cloud, sgs[i]); re == nil {
 		warnings = append(warnings, provision.CheckVMGroupRules(rules, subnet.DefaultGateway).Warnings(sgs[i].Name)...)
 	}
-	if len(p.Ports) > 0 {
-		warnings = append(warnings, fmt.Sprintf("ports %v will be opened (ingress, 0.0.0.0/0) on the shared security group of this zone — other VMs later placed in it would share those open ports", p.Ports))
+	// A port besides the web's open to anyone (P5, G2-2): the plan names
+	// the group and the source, and warns of it.
+	if w := sgrules.WideOpen(p.Ports, nil, p.Cidr); w != "" {
+		warnings = append(warnings, w)
 	}
 
 	// --- Floating IP: evo's own, created at apply. A free FIP of the user
@@ -225,13 +231,15 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 		ProjectID: projectID,
 		VM:        vm,
 		Network: NetworkSpec{
-			SubnetID:        subnetID,
-			SubnetName:      subnet.Name,
-			SecurityGroupID: sgID,
-			FloatingIP:      wantFIP,
-			AttachFIPID:     attachFIPID,
+			SubnetID:          subnetID,
+			SubnetName:        subnet.Name,
+			SecurityGroupID:   sgID,
+			SecurityGroupName: sgs[i].Name,
+			FloatingIP:        wantFIP,
+			AttachFIPID:       attachFIPID,
 		},
 		Ports:           p.Ports,
+		PortsSource:     sgrules.Source(p.Cidr),
 		SSH:             SSHSpec{Login: login, KeyName: keyName},
 		Cost:            PriceVM(ctx, cloud, PriceInput{ProjectID: projectID, VM: vm, PublicIP: wantFIP, Marketplace: image.Type == provision.ImageTypeMarketplace}),
 		Warnings:        warnings,

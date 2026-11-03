@@ -116,6 +116,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	if _, ok := args["ports"]; ok {
 		params.Ports = ports
 	}
+	overlayString(args, "cidr", &params.Cidr)
 	if _, ok := args["image_metadata"]; ok {
 		meta, err := metadataArg(args, "image_metadata")
 		if err != nil {
@@ -171,7 +172,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		"product":          plan.Product,
 		"mode":             plan.Mode,
 		"vm":               plan.VM,
-		"network":          map[string]any{"floating_ip": plan.Network.FloatingIP, "open_ports": plan.Ports},
+		"network":          planNetworkView(plan),
 		"ssh":              plan.SSH,
 		"cost":             plan.Cost,
 		"warnings":         plan.Warnings,
@@ -1039,4 +1040,17 @@ func (s *Registry) handleListFloatingIPs(ctx context.Context, args map[string]an
 		out = append(out, row)
 	}
 	return toJSON(map[string]any{"floating_ips": out}), false
+}
+
+// planNetworkView is the network of deploy_plan's answer: the floating IP
+// and, with ports, the ones it opens, the source and the zone's shared
+// group they open in (P5).
+func planNetworkView(plan *deployplan.Plan) map[string]any {
+	view := map[string]any{"floating_ip": plan.Network.FloatingIP, "open_ports": plan.Ports}
+	if len(plan.Ports) > 0 {
+		view["ports_source"] = sgrules.Source(plan.PortsSource)
+		view["security_group"] = firstNonEmptyStr(plan.Network.SecurityGroupName, plan.Network.SecurityGroupID)
+		view["security_group_shared"] = true
+	}
+	return view
 }

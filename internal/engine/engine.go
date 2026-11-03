@@ -66,6 +66,10 @@ type DeployOptions struct {
 	NonInteractive bool // never prompt; creating a VM then needs Yes
 	Yes            bool // consent to create the VM given in advance (--yes)
 	DryRun         bool // show what would be created and its cost, then stop
+	// Cidr is the source the rules of the ports deploy opens let in
+	// (sgrules.Source: 0.0.0.0/0 when empty, P5); rules already there
+	// stay as they are.
+	Cidr string
 	// Gate, when set, asks for consent where Deploy would call confirm.Ask
 	// with its own preview: the deploy tool sets it for 'evo deploy', which
 	// shows the preview of the tool's answer (spec REQ-4, REQ-6). redeploy
