@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
@@ -23,8 +25,8 @@ func withMarketplace(t *testing.T, mk8s http.RoundTripper) imageCloud {
 	t.Setenv("CLOUDRU_PROJECT_ID", pvProject)
 	t.Setenv("CLOUDRU_REGION", "")
 	cloud := newImageCloud()
-	oldRT := http.DefaultTransport
-	http.DefaultTransport = mk8s
+	oldRT := httpretry.DefaultBase
+	httpretry.DefaultBase = mk8s
 	old := toolEngine
 	stoppedClock(t)
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
@@ -35,7 +37,7 @@ func withMarketplace(t *testing.T, mk8s http.RoundTripper) imageCloud {
 		e.Auth, e.Cloud = previewToken{}, cloud
 		return e, nil
 	}
-	t.Cleanup(func() { toolEngine, http.DefaultTransport = old, oldRT })
+	t.Cleanup(func() { toolEngine, httpretry.DefaultBase = old, oldRT })
 	return cloud
 }
 

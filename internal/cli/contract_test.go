@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/tools"
@@ -333,9 +335,9 @@ func TestContract_TreeJSONSuccess(t *testing.T) {
 
 func installContractTransport(t *testing.T, status int, body string) {
 	t.Helper()
-	old := http.DefaultTransport
-	http.DefaultTransport = contractRT{status: status, body: body}
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = contractRT{status: status, body: body}
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 }
 
 type contractRT struct {

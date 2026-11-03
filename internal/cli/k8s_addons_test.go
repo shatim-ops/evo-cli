@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
@@ -68,8 +70,8 @@ func withAddonAPI(t *testing.T) *addonAPI {
 	t.Helper()
 	t.Setenv("CLOUDRU_PROJECT_ID", pvProject)
 	api := &addonAPI{}
-	oldRT := http.DefaultTransport
-	http.DefaultTransport = api
+	oldRT := httpretry.DefaultBase
+	httpretry.DefaultBase = api
 	old := toolEngine
 	stoppedClock(t)
 	toolEngine = func(o map[string]any) (*engine.Engine, error) {
@@ -80,7 +82,7 @@ func withAddonAPI(t *testing.T) *addonAPI {
 		e.Auth = previewToken{}
 		return e, nil
 	}
-	t.Cleanup(func() { toolEngine, http.DefaultTransport = old, oldRT })
+	t.Cleanup(func() { toolEngine, httpretry.DefaultBase = old, oldRT })
 	return api
 }
 

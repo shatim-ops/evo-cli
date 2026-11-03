@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // docs/mcp.md, the protocol-version line: the server answers the version the
@@ -68,13 +69,13 @@ func TestContract_InitializeIsOptional(t *testing.T) {
 // Two JSON values on one line are not one message (json.Valid fails): one
 // parse error, and the cloud is not called. CR LF is a newline.
 func TestContract_StdioFraming(t *testing.T) {
-	old := http.DefaultTransport
+	old := httpretry.DefaultBase
 	var n int
-	http.DefaultTransport = roundTripper(func(*http.Request) (*http.Response, error) {
+	httpretry.DefaultBase = roundTripper(func(*http.Request) (*http.Response, error) {
 		n++
 		return &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader("x")), Header: http.Header{}}, nil
 	})
-	t.Cleanup(func() { http.DefaultTransport = old })
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 
 	got := runLines(t, newTestServer(),
 		`{"jsonrpc":"2.0","id":1,"method":"ping"}{"jsonrpc":"2.0","id":2,"method":"ping"}`,

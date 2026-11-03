@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -76,10 +78,10 @@ func (c *newcomerRT) requests() []string {
 func newcomer(t *testing.T, rt *newcomerRT) {
 	t.Helper()
 	setupCLI(t)
-	oldRT, oldProxy := http.DefaultTransport, clerrors.ProxyFunc
-	http.DefaultTransport = rt
+	oldRT, oldProxy := httpretry.DefaultBase, clerrors.ProxyFunc
+	httpretry.DefaultBase = rt
 	clerrors.ProxyFunc = func(*http.Request) (*url.URL, error) { return nil, nil }
-	t.Cleanup(func() { http.DefaultTransport, clerrors.ProxyFunc = oldRT, oldProxy })
+	t.Cleanup(func() { httpretry.DefaultBase, clerrors.ProxyFunc = oldRT, oldProxy })
 }
 
 type jsonErr struct {

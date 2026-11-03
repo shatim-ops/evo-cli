@@ -21,6 +21,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -65,9 +66,9 @@ func (c *refusingVPC) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func refusingVPCRegistry(t *testing.T, c *refusingVPC) *Registry {
 	t.Helper()
-	old := http.DefaultTransport
-	http.DefaultTransport = c
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = c
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	cache := auth.FileCache{Path: filepath.Join(t.TempDir(), "token.json")}
 	p := auth.NewIAMProvider(auth.Credentials{KeyID: "k", Secret: "s"}, nil, cache)
 	// Held for the test, as cli.tokenProvider holds it for the process:

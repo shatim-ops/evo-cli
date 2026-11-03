@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 )
 
@@ -68,10 +70,10 @@ func (c *consumptionTrip) count() int {
 // consumptionTrip.
 func installConsumptionTrip(t *testing.T) *consumptionTrip {
 	t.Helper()
-	trip := &consumptionTrip{base: http.DefaultTransport}
-	prev := http.DefaultTransport
-	http.DefaultTransport = trip
-	t.Cleanup(func() { http.DefaultTransport = prev })
+	trip := &consumptionTrip{base: httpretry.DefaultBase}
+	prev := httpretry.DefaultBase
+	httpretry.DefaultBase = trip
+	t.Cleanup(func() { httpretry.DefaultBase = prev })
 	return trip
 }
 

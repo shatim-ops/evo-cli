@@ -15,6 +15,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -50,9 +51,9 @@ func TestCreate_ConfiguredZoneByName(t *testing.T) {
 	faultToolsIsolate(t)
 	a := &faultAPI{made: []faultResource{{host: "compute.api.cloud.ru", path: "/api/v1/disks", ID: "00000000-0000-4000-8000-0000000000d7", Name: "src", before: true}}}
 	rt := &postBodies{next: a, bodies: map[string]map[string]any{}}
-	old := http.DefaultTransport
-	http.DefaultTransport = rt
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = rt
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: rt}, "")
 	cloud.Backoff = time.Millisecond
 	region := "ru.AZ-1"
