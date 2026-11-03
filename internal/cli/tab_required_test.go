@@ -16,32 +16,7 @@ import (
 // tabRequiredMisses are the commands whose Tab on "-" does not put the
 // required flags first: the tool → true. It only shrinks. Closes by 1.7
 // (release plan 1.7, block B, Tab, T2, #718).
-var tabRequiredMisses = map[string]bool{
-	"billing_consumption": true,
-	"ca_deploy":           true,
-	"cert_import":         true,
-	"cert_issue_le":       true,
-	"close_ports":         true,
-	"disk_attach":         true,
-	"disk_create":         true,
-	"disk_detach":         true,
-	"disk_resize":         true,
-	"dns_record_create":   true,
-	"fip_attach":          true,
-	"image_create":        true,
-	"k8s_apply":           true,
-	"lb_create":           true,
-	"open_ports":          true,
-	"pg_db_create":        true,
-	"pg_user_create":      true,
-	"release_floating_ip": true,
-	"secret_add_version":  true,
-	"secret_create":       true,
-	"stack_plan":          true,
-	"subnet_create":       true,
-	"tg_create":           true,
-	"vpc_route_create":    true,
-}
+var tabRequiredMisses = map[string]bool{}
 
 // requiredFlags are the flags of the arguments a call of tl must have —
 // the schema's required and the sets of RequiredOneOf — that are flags of

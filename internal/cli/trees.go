@@ -439,8 +439,9 @@ func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 		flags[c.flagName(p.Name)] = p.Name
 	}
 	registerFlagCompletions(reg, cmd, t.Name, flags)
+	markTabRequired(cmd, t, flags)
 	if len(pos) > 0 {
-		cmd.ValidArgsFunction = positionalCompletion(reg, t.Name, pos)
+		cmd.ValidArgsFunction = positionalCompletion(reg, t, pos)
 	}
 	return cmd
 }

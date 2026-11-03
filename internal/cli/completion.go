@@ -52,18 +52,75 @@ func registerFlagCompletions(reg *tools.Registry, cmd *cobra.Command, tool strin
 
 // positionalCompletion completes the positional arguments of a tree
 // command: the one at the cursor, by the first of its names the registry
-// completes ("vm_id|name": vm_id).
-func positionalCompletion(reg *tools.Registry, tool string, pos []positional) cobra.CompletionFunc {
+// completes ("vm_id|name": vm_id). A positional the registry declares a
+// path (CLISpec.Files) gets the shell's files; any other, nothing to
+// complete gets no files either (tabNoFiles).
+func positionalCompletion(reg *tools.Registry, t tools.Tool, pos []positional) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		if len(args) >= len(pos) || pos[len(args)].rest {
-			return nil, cobra.ShellCompDirectiveDefault
+		if len(args) >= len(pos) {
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		for _, name := range pos[len(args)].names {
-			if reg.Completes(tool, name) {
-				return completeValues(tool, name)(cmd, args, toComplete)
+			if reg.Completes(t.Name, name) {
+				return completeValues(t.Name, name)(cmd, args, toComplete)
 			}
 		}
-		return nil, cobra.ShellCompDirectiveDefault
+		for _, name := range pos[len(args)].names {
+			if t.CLI.Files[name] {
+				return nil, cobra.ShellCompDirectiveDefault
+			}
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+// tabRequired is the value of cobra's "required" annotation that evo puts
+// on the flags a call needs: cobra's Tab on "-" offers the annotated flags
+// first and alone while any is unset, and only the value "true" makes cobra
+// refuse the run itself — evo's refusal stays the tool's (tools.CheckArgs),
+// one check on both surfaces (#718, T2).
+const tabRequired = "evo"
+
+// markTabRequired annotates the flags of cmd whose arguments a call of t
+// must have — the schema's required and the sets of RequiredOneOf, as the
+// registry declares them; flags maps a flag to its tool argument.
+func markTabRequired(cmd *cobra.Command, t tools.Tool, flags map[string]string) {
+	need := map[string]bool{}
+	if req, ok := t.InputSchema["required"].([]string); ok {
+		for _, a := range req {
+			need[a] = true
+		}
+	}
+	if req, ok := t.InputSchema["required"].([]any); ok {
+		for _, a := range req {
+			if s, ok := a.(string); ok {
+				need[s] = true
+			}
+		}
+	}
+	for _, set := range t.RequiredOneOf {
+		for _, a := range set {
+			need[a] = true
+		}
+	}
+	for flag, arg := range flags {
+		if need[arg] && arg != "confirmed" && cmd.Flags().Lookup(flag) != nil {
+			_ = cmd.Flags().SetAnnotation(flag, cobra.BashCompOneRequiredFlag, []string{tabRequired})
+		}
+	}
+}
+
+// tabNoFiles is the one point of Tab's default (#718, T1): a command that
+// does not complete its arguments itself says there is nothing to complete
+// (ShellCompDirectiveNoFileComp) instead of cobra's fallback to the
+// shell's files. Files come only where the registry declares a path
+// (positionalCompletion).
+func tabNoFiles(c *cobra.Command) {
+	if c.ValidArgsFunction == nil && len(c.ValidArgs) == 0 {
+		c.ValidArgsFunction = cobra.NoFileCompletions
+	}
+	for _, s := range c.Commands() {
+		tabNoFiles(s)
 	}
 }
 
