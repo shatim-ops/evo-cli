@@ -368,6 +368,7 @@ func newRootCmd() *cobra.Command {
 			asGroup(c)
 		}
 	}
+	tabNoFiles(cmd)
 
 	return cmd
 }
