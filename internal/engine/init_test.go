@@ -7,6 +7,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,9 +66,10 @@ func initEngine(t *testing.T) (*Engine, string, *bytes.Buffer) {
 	return eng, filepath.Join(dir, ".evo.yaml"), &out
 }
 
-// --non-interactive: ru.AZ-2 (listed second by the API), newest plain Ubuntu,
-// choice printed; no UUID is baked into the binary.
-func TestInit_NonInteractiveTakesPreferredZoneAndImage(t *testing.T) {
+// --non-interactive: the zone with the project's main subnet (no zone of
+// the list is marked default), the newest plain Ubuntu, choice printed; no
+// UUID is baked into the binary.
+func TestInit_NonInteractiveTakesDefaultZoneAndImage(t *testing.T) {
 	withPromptStdin(t, strings.NewReader("2\n"), true) // a terminal, but the flag wins
 	eng, path, out := initEngine(t)
 
@@ -79,37 +81,53 @@ func TestInit_NonInteractiveTakesPreferredZoneAndImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := string(data)
-	for _, want := range []string{"region: az-2-id  # ru.AZ-2", "image_id: u2404  # Ubuntu-24.04",
+	for _, want := range []string{"region: az-1-id  # ru.AZ-1", "image_id: u2404  # Ubuntu-24.04",
 		"project_id: 00000000-0000-0000-0000-000000000001"} {
 		if !strings.Contains(cfg, want) {
 			t.Errorf("config lacks %q:\n%s", want, cfg)
 		}
 	}
-	for _, want := range []string{"Zone: ru.AZ-2 (az-2-id)", "Image: Ubuntu-24.04 (u2404)"} {
+	for _, want := range []string{"Zone: ru.AZ-1 (az-1-id)", "Image: Ubuntu-24.04 (u2404)"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("choice not printed (%q):\n%s", want, out.String())
 		}
 	}
 }
 
-// Зона init — та, где у проекта есть подсеть: в новом проекте подсеть
-// Default_ru.AZ-1 создаётся только в ru.AZ-1 (документация «Подсети»), и
-// deploy в ru.AZ-2 остановился бы на «нет подсети». ru.AZ-2 — если подсеть
-// есть и там.
+// The zone of init is the platform's own default (the zone list marks it)
+// when it takes new resources and the project has a subnet there; else
+// the zone of the project's main subnet; else any zone with a subnet of
+// the project — deploy cannot plug a VM in elsewhere. One idea of «the
+// default zone» with evo vm zones, and none from one day's runs (agent
+// run C2, Ц-7; the release's choice 03.11). A new project has a subnet
+// only in ru.AZ-1 (docs, «Подсети»: Default_ru.AZ-1).
 func TestInit_ZoneWithSubnet(t *testing.T) {
+	closed := false
+	both := []*provision.Subnet{{ID: "sn-1", Name: "Default_ru.AZ-1", AvailabilityZoneID: "az-1-id", Default: true},
+		{ID: "sn-2", Name: "app", AvailabilityZoneID: "az-2-id"}}
 	for _, tc := range []struct {
 		name    string
+		zones   []*provision.AvailabilityZone
 		subnets []*provision.Subnet
 		want    string
 		say     string
 	}{
-		{"подсеть только в ru.AZ-1", []*provision.Subnet{{ID: "sn-1", Name: "Default_ru.AZ-1", AvailabilityZoneID: "az-1-id", Default: true}},
-			"region: az-1-id", "ru.AZ-2 is not offered first"},
-		{"подсети в обеих зонах — ru.AZ-2", nil, "region: az-2-id", ""},
-		{"подсетей нет — ru.AZ-2 и предупреждение", []*provision.Subnet{}, "region: az-2-id", "no subnet in any zone"},
+		{"подсеть только в ru.AZ-1", nil, []*provision.Subnet{both[0]}, "region: az-1-id", ""},
+		{"подсети в обеих зонах — зона основной подсети", nil, nil, "region: az-1-id", ""},
+		{"подсетей нет — первая зона и предупреждение", nil, []*provision.Subnet{}, "region: az-1-id", "no subnet in any zone"},
+		{"зона по умолчанию платформы — она", []*provision.AvailabilityZone{{ID: "az-1-id", Name: "ru.AZ-1"}, {ID: "az-2-id", Name: "ru.AZ-2", Default: true}},
+			both, "region: az-2-id", ""},
+		{"зона по умолчанию закрыта — следующая включённая", []*provision.AvailabilityZone{{ID: "az-1-id", Name: "ru.AZ-1"}, {ID: "az-2-id", Name: "ru.AZ-2", Default: true, Enabled: &closed}},
+			both, "region: az-1-id", "zone ru.AZ-2 is closed"},
+		{"зона по умолчанию без подсети проекта — с подсетью, и почему", []*provision.AvailabilityZone{{ID: "az-1-id", Name: "ru.AZ-1"}, {ID: "az-2-id", Name: "ru.AZ-2", Default: true}},
+			[]*provision.Subnet{both[0]}, "region: az-1-id", "ru.AZ-2 (the default zone of the zone list) is not offered first"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			eng, path, out := initEngine(t)
+			if tc.zones != nil {
+				zs := tc.zones
+				eng.Cloud.(*mockCloudAPI).listAvailabilityZonesFn = func(context.Context) ([]*provision.AvailabilityZone, error) { return zs, nil }
+			}
 			if tc.subnets != nil {
 				sn := tc.subnets
 				eng.Cloud.(*mockCloudAPI).listSubnetsFn = func(context.Context, string) ([]*provision.Subnet, error) { return sn, nil }
@@ -174,11 +192,12 @@ func TestInit_InteractiveChoice(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	data, _ := os.ReadFile(path)
-	// ru.AZ-2 is offered first, so "2" picks ru.AZ-1.
-	if !strings.Contains(string(data), "region: az-1-id") {
+	// ru.AZ-1, the zone of the main subnet, is offered first, so "2" picks
+	// ru.AZ-2.
+	if !strings.Contains(string(data), "region: az-2-id") {
 		t.Errorf("zone choice ignored:\n%s", data)
 	}
-	if !strings.Contains(out.String(), "1) ru.AZ-2") || !strings.Contains(out.String(), "2) ru.AZ-1") {
+	if !strings.Contains(out.String(), "1) ru.AZ-1") || !strings.Contains(out.String(), "2) ru.AZ-2") {
 		t.Errorf("options not listed:\n%s", out.String())
 	}
 }
@@ -238,6 +257,50 @@ func TestInit_ExistingConfigUntouched(t *testing.T) {
 	}
 }
 
+// evo init writes project_name: the VM of deploy is evo-<project_name>, and
+// the person (and the agent, by the skill evo-deploy) sees the name in
+// .evo.yaml instead of guessing it from the directory (agent run C2, Ц-6).
+// The name is the directory's, as deploy takes without it, so a deploy
+// after init names the same VM as before.
+func TestInit_WritesProjectName(t *testing.T) {
+	eng, path, _ := initEngine(t)
+	if err := eng.Init(context.Background(), InitOptions{Path: path, NonInteractive: true}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Read back as YAML: a directory named like a number ("001") is
+	// quoted, so the name stays a string.
+	var cfg struct {
+		ProjectName string `yaml:"project_name"`
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("config is not YAML: %v\n%s", err, data)
+	}
+	if want := filepath.Base(filepath.Dir(path)); cfg.ProjectName != want {
+		t.Errorf("project_name %q, want the directory's %q:\n%s", cfg.ProjectName, want, data)
+	}
+}
+
+// A name YAML would read as another type or structure is quoted, so it
+// reads back as the same string, on one line; a plain one is not quoted.
+func TestYAMLScalar_KeepsAString(t *testing.T) {
+	for _, in := range []string{"shop", "001", "yes", "a: b", "my-app_2", "#tag", "x\ny"} {
+		out := yamlScalar(in)
+		var back string
+		if err := yaml.Unmarshal([]byte("k: "+out), &struct {
+			K *string `yaml:"k"`
+		}{&back}); err != nil || strings.Contains(out, "\n") || back != strings.ReplaceAll(in, "\n", " ") {
+			t.Errorf("yamlScalar(%q) = %s: reads back %q (%v)", in, out, back, err)
+		}
+	}
+	if got := yamlScalar("shop"); got != "shop" {
+		t.Errorf("yamlScalar(shop) = %s, want it plain", got)
+	}
+}
+
 // Without ru.AZ-2 the API order stays: the first zone is the default.
 func TestPreferredZoneFirst(t *testing.T) {
 	names := func(zs []*provision.AvailabilityZone) string {
@@ -257,5 +320,35 @@ func TestPreferredZoneFirst(t *testing.T) {
 	other := []*provision.AvailabilityZone{{Name: "kz.AZ-1"}, {Name: "kz.AZ-2"}}
 	if got := names(PreferredZoneFirst(other)); got != "kz.AZ-1,kz.AZ-2" {
 		t.Errorf("order without ru.AZ-2 = %s", got)
+	}
+}
+
+// The zone list's default goes first while it takes new resources; a
+// closed default is no default; without one the API's order stays; the
+// input is not changed (agent run C2, Ц-7).
+func TestDefaultZoneFirst(t *testing.T) {
+	names := func(zs []*provision.AvailabilityZone) string {
+		var n []string
+		for _, z := range zs {
+			n = append(n, z.Name)
+		}
+		return strings.Join(n, ",")
+	}
+	closed := false
+	for _, tc := range []struct {
+		in   []*provision.AvailabilityZone
+		want string
+	}{
+		{[]*provision.AvailabilityZone{{Name: "ru.AZ-1"}, {Name: "ru.AZ-2"}, {Name: "ru.AZ-3", Default: true}}, "ru.AZ-3,ru.AZ-1,ru.AZ-2"},
+		{[]*provision.AvailabilityZone{{Name: "ru.AZ-1", Default: true, Enabled: &closed}, {Name: "ru.AZ-2"}}, "ru.AZ-1,ru.AZ-2"},
+		{[]*provision.AvailabilityZone{{Name: "ru.AZ-2"}, {Name: "ru.AZ-1"}}, "ru.AZ-2,ru.AZ-1"},
+	} {
+		before := names(tc.in)
+		if got := names(DefaultZoneFirst(tc.in)); got != tc.want {
+			t.Errorf("DefaultZoneFirst(%s) = %s, want %s", before, got, tc.want)
+		}
+		if names(tc.in) != before {
+			t.Errorf("input changed: %s", names(tc.in))
+		}
 	}
 }

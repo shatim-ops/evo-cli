@@ -141,8 +141,11 @@ func TestWorkflows_EventTextNeverInRunScripts(t *testing.T) {
 
 // The review of Qwen is part of a PR's cycle (CLAUDE.md §4): it starts
 // when the PR is opened or leaves draft, not by hand (process audit 1.2.1,
-// PR 2); the command /qwen review repeats it. Which PRs it reviews by
-// itself is the script's choice (TestWorkflows_QwenReviewScope, #485).
+// PR 2), and on a push to it (synchronize: a PR that became sensitive after
+// opening was left without review, #777; owner's decision 03.11); the
+// command /qwen review repeats it. Which PRs and pushes it reviews by
+// itself is the script's choice (TestWorkflows_QwenReviewScope, #485): the
+// script gets what the push changed — the SHAs of the event, through env.
 func TestWorkflows_QwenReviewsOnOpening(t *testing.T) {
 	w, ok := readWorkflows(t)["qwen-review.yml"]
 	if !ok {
@@ -150,9 +153,18 @@ func TestWorkflows_QwenReviewsOnOpening(t *testing.T) {
 	}
 	trig, _ := w.On["pull_request_target"].(map[string]any)
 	types, _ := trig["types"].([]any)
-	for _, want := range []string{"opened", "ready_for_review"} {
+	for _, want := range []string{"opened", "ready_for_review", "synchronize"} {
 		if !slices.Contains(types, any(want)) {
 			t.Errorf("qwen-review: pull_request_target types %v, want %s", types, want)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "qwen-review.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ACTION: ${{ github.event.action }}", "BEFORE: ${{ github.event.before }}", "AFTER: ${{ github.event.after }}"} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("qwen-review: the script does not get %s — a push would be judged by the PR's diff, not by what it changed", want)
 		}
 	}
 	for _, j := range w.Jobs {

@@ -33,14 +33,16 @@ const (
 	zoneAZ3 = "00000000-0000-4000-8000-0000000000a3"
 )
 
-// zoneList: ru.AZ-1 и ru.AZ-2 открыты, ru.AZ-3 закрыта для новых ресурсов.
+// zoneList: ru.AZ-1 и ru.AZ-2 открыты, ru.AZ-2 список помечает зоной по
+// умолчанию, ru.AZ-3 закрыта для новых ресурсов.
 const zoneList = `[{"id":"` + zoneAZ1 + `","name":"ru.AZ-1","enabled":true},` +
-	`{"id":"` + zoneAZ2 + `","name":"ru.AZ-2","enabled":true},` +
+	`{"id":"` + zoneAZ2 + `","name":"ru.AZ-2","enabled":true,"default":true},` +
 	`{"id":"` + zoneAZ3 + `","name":"ru.AZ-3","enabled":false}]`
 
 // Интерактивный configure спрашивает зону после проекта — как evo init:
-// открытые зоны (закрытая названа в предупреждении), ru.AZ-2 первой и по
-// умолчанию; Enter берёт показанную, ответ — номер, имя или ID; в профиль
+// открытые зоны (закрытая названа в предупреждении), первой и по умолчанию —
+// зона, которую помечает список зон (ru.AZ-2; Ц-7 прогона C2: одно понятие
+// с evo vm zones); Enter берёт показанную, ответ — номер, имя или ID; в профиль
 // пишется UUID. Повтор предлагает текущую зону.
 func TestConfigure_InteractiveAsksZone(t *testing.T) {
 	fc := setupCLI(t)
@@ -77,7 +79,8 @@ func TestConfigure_InteractiveAsksZone(t *testing.T) {
 }
 
 // Подсеть у нового проекта есть только в ru.AZ-1 (Default_ru.AZ-1): её зона
-// предлагается первой, как в evo init, — ВМ в зоне без подсети не создать.
+// предлагается первой, как в evo init, хотя список зон помечает ru.AZ-2, —
+// ВМ в зоне без подсети не создать; подсказка говорит почему.
 func TestConfigure_InteractiveZoneWithSubnetFirst(t *testing.T) {
 	fc := setupCLI(t)
 	fc.zones = zoneList
@@ -86,7 +89,7 @@ func TestConfigure_InteractiveZoneWithSubnetFirst(t *testing.T) {
 	readPassword = func() ([]byte, error) { return []byte(fakeSecret), nil }
 	code, stdout, stderr := runCLI(t, fakeKeyID+"\n\n", "configure")
 	prof, _, _, _ := config.LoadProfile("default")
-	if code != 0 || prof.Region != zoneAZ1 || !strings.Contains(stderr, " 1) ru.AZ-1") || !strings.Contains(stderr, "ru.AZ-2 is not offered first") {
+	if code != 0 || prof.Region != zoneAZ1 || !strings.Contains(stderr, " 1) ru.AZ-1") || !strings.Contains(stderr, "ru.AZ-2 (the default zone of the zone list) is not offered first") {
 		t.Errorf("exit %d, region %q: %s%s", code, prof.Region, stdout, stderr)
 	}
 }

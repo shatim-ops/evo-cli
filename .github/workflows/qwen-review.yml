@@ -3,8 +3,10 @@ name: qwen-review
 # Ревью PR моделью Qwen из Cloud.ru Foundation Models: само при открытии PR
 # и при выходе из черновика (CLAUDE.md §4) — у PR, который трогает .github/,
 # internal/workflows/ или код секретов и согласия (отбор — в qwen-review.sh,
-# решение владельца 29.10, #578), и по команде `/qwen review` в комментарии
-# к любому PR. У job есть секрет
+# решение владельца 29.10, #578); само и на push в PR, если push меняет
+# такой путь из diff PR (решение владельца 03.11, уточнение #578: PR,
+# ставший чувствительным после открытия, оставался без ревью, #777); и по
+# команде `/qwen review` в комментарии к любому PR. У job есть секрет
 # CLOUDRU_FM_API_KEY, поэтому код PR не выполняется: pull_request_target и
 # issue_comment работают на ветке по умолчанию — скрипт и review-guide
 # берутся из main, а PR читается только как данные (git diff). Не
@@ -18,7 +20,7 @@ name: qwen-review
 
 on:
   pull_request_target:
-    types: [opened, ready_for_review]
+    types: [opened, ready_for_review, synchronize]
   issue_comment:
     types: [created]
 
@@ -56,5 +58,10 @@ jobs:
           MODEL: ${{ vars.QWEN_MODEL || 'Qwen/Qwen3.5-397B-A17B' }}
           PR: ${{ github.event.pull_request.number || github.event.issue.number }}
           COMMENT_ID: ${{ github.event.comment.id }}
+          # synchronize: what the push changed — SHAs read as data (git
+          # diff), never checked out or run.
+          ACTION: ${{ github.event.action }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
           REPO: ${{ github.repository }}
         run: .github/scripts/qwen-review.sh

@@ -57,6 +57,10 @@ func TestPreview_SaysTheQuotaWasNotChecked(t *testing.T) {
 			t.Errorf("%s: preview quota %+v without a probe", c.name, p.Quota)
 		case c.reason != "" && (p.Quota == nil || p.Quota.Checked || p.Quota.Reason != c.reason):
 			t.Errorf("%s: preview quota %+v, want not checked, %s", c.name, p.Quota, c.reason)
+		case c.reason != "" && (p.Quota.Note == "" || !strings.Contains(c.line, p.Quota.Note)):
+			// The agent reads --json: the note is the human line's text,
+			// not only the code of the reason (agent run C2, Ц-1).
+			t.Errorf("%s: preview quota note %q, want the text of %q", c.name, p.Quota.Note, c.line)
 		}
 	}
 }
