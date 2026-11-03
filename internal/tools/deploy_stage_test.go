@@ -201,7 +201,7 @@ func (v *stageVM) ExecStream(ctx context.Context, cmd string, stdout, _ io.Write
 }
 
 // stageRegistry is the compute fault world with the stage VM, budget as
-// the D69 budget of an MCP call, and the world's short intervals: sshBudget
+// the D69 budget of an MCP call, and the world's short intervals: progressBudget
 // for a test that reads how far a call got, worldBudget for one that reads
 // only that it answered in time (#793).
 func stageRegistry(t *testing.T, vm *stageVM, budget time.Duration) *Registry {
@@ -232,7 +232,7 @@ func stageRegistry(t *testing.T, vm *stageVM, budget time.Duration) *Registry {
 	return r
 }
 
-// deployCall is one call of deploy over MCP, bounded by sshWatch: its
+// deployCall is one call of deploy over MCP, bounded by progressWatch: its
 // answer, or "" when it did not answer in time.
 func deployCall(t *testing.T, r *Registry) string {
 	t.Helper()
@@ -246,7 +246,7 @@ func deployCall(t *testing.T, r *Registry) string {
 	select {
 	case text := <-got:
 		return text
-	case <-time.After(sshWatch):
+	case <-time.After(progressWatch):
 		cancel()
 		<-got
 		return ""
@@ -283,7 +283,7 @@ func TestDeployStage_OnceAndNotCutShort(t *testing.T) {
 	var broken []string
 	{
 		vm := newStageVM()
-		r := stageRegistry(t, vm, sshBudget)
+		r := stageRegistry(t, vm, progressBudget)
 		first := deployCall(t, r)
 		vm.mu.Lock()
 		died, starts := vm.diedWithCall, vm.starts
@@ -318,7 +318,7 @@ func TestDeployStage_OnceAndNotCutShort(t *testing.T) {
 	}
 	{
 		vm := newStageVM()
-		r := stageRegistry(t, vm, sshBudget)
+		r := stageRegistry(t, vm, progressBudget)
 		if first := deployCall(t, r); first == "" {
 			broken = append(broken, "(4) deploy did not answer within the budget of the call")
 		} else {

@@ -32,8 +32,9 @@ var mcpBudgetSeconds = MCPCallBudget.Seconds()
 // worldBudget is the budget of a call in the slow world: a share of
 // budgetWatch, so that a call held to it answers before the watch.
 // wall-clock: the tests of this world read only that a call answered in
-// time with a state not final, never how far it got; a world that needs a
-// call to make progress has its own budget (sshBudget, #793).
+// time with a state not final, never how far it got; a test that needs a
+// call to make progress — a VM made, a stage started, a step reached, in
+// the test or in its setup — has progressBudget (progressed, #793).
 const worldBudget = budgetWatch / 4
 
 // budgetWatch is how long a call of the slow world may run before it
@@ -118,6 +119,25 @@ func budgetComputeRegistry(t *testing.T, cloud *faultCloud, dir string, timings 
 // budgeted is r with the budget of an MCP call in the slow world.
 func budgeted(r *Registry) *Registry {
 	r.SetCallBudget(worldBudget)
+	return r
+}
+
+// progressBudget is the budget of an MCP call in a test that reads how far
+// the call got, and progressWatch how long such a call may take before it
+// counts as one that waits out a step of production (the VM, Docker, SSH:
+// minutes). 250 ms (worldBudget) did not hold on a slow Windows runner
+// under -race: the VM, the stage, the setup's provision did not get where
+// the test looked (#793); 1 s does with a margin.
+// wall-clock: a margin for the steps of a call, which take milliseconds;
+// the watch is a fraction of the production waits it tells apart.
+const (
+	progressBudget = time.Second
+	progressWatch  = 10 * time.Second
+)
+
+// progressed is r with progressBudget.
+func progressed(r *Registry) *Registry {
+	r.SetCallBudget(progressBudget)
 	return r
 }
 

@@ -15,6 +15,10 @@ on:
   # владельца 29.10, аудит #578, п. 10).
   schedule:
     - cron: "23 1 * * *"
+  # Вручную на ветке PR — полная матрица, Windows целиком, до слияния: PR
+  # гоняет на Windows только пакеты с кодом Windows, и тесты, медленные на
+  # Windows, краснели только на main (#789, #793). Запускает автор PR.
+  workflow_dispatch:
 
 # Новый push в PR отменяет его идущую проверку; main и релиз
 # (workflow_call из release.yml) не отменяются никогда.
@@ -251,6 +255,12 @@ jobs:
       - name: install.sh и Tab в zsh
         if: runner.os == 'macOS'
         run: .github/scripts/install_zsh_test.sh
+
+      # Сигнал «main красный» (main-red.yml): красный прогон заводит или
+      # дописывает issue, зелёный закрывает — на поддельном gh.
+      - name: main_red.sh на поддельном gh
+        if: runner.os == 'Linux'
+        run: .github/scripts/main_red_test.sh
 
       # Метки отзывов по полям форм Issues: таблицы скрипта совпадают с формами.
       - name: issue_labels.py на образцах форм
