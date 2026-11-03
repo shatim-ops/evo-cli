@@ -5,6 +5,7 @@
 package engine
 
 import (
+	"os"
 	"path/filepath"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -21,13 +22,27 @@ func composePath(file string) string {
 	return filepath.Clean(file)
 }
 
+// sameComposeFile reports whether the recorded path and the path of this
+// call name one file: as written, or as the files they name (os.SameFile:
+// through symbolic links, and in another case on a file system that does
+// not tell cases apart, as macOS and Windows by default) — the same file
+// under another name was refused as another project's (FB160-8).
+func sameComposeFile(recorded, path string) bool {
+	if recorded == path {
+		return true
+	}
+	a, errA := os.Stat(recorded)
+	b, errB := os.Stat(path)
+	return errA == nil && errB == nil && os.SameFile(a, b)
+}
+
 // composeRefusal refuses, before the question, a deploy of compose file
 // file to the VM of rec when rec runs another one (D62): an MCP server
 // started in one directory, an agent working on another project, and the
 // compose file of one sent to the VM of the other. nil when rec runs file,
 // or records no path (a record from before 1.6: composeUnknown warns).
 func composeRefusal(rec *state.DeploymentRecord, file string) error {
-	if rec == nil || rec.ComposePath == "" || rec.ComposePath == composePath(file) {
+	if rec == nil || rec.ComposePath == "" || sameComposeFile(rec.ComposePath, composePath(file)) {
 		return nil
 	}
 	return clerrors.New(clerrors.CodeUsage,
