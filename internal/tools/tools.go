@@ -2346,8 +2346,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				portsNote := ""
 				// sgIDs always holds the zone's group: provision refuses without one.
 				if len(tcpPorts)+len(udpPorts) > 0 {
-					res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts, stringArg(args, "cidr"),
-						func(label string) string { return "evo: port " + label }, &ports)
+					res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts, stringArg(args, "cidr"), vm.ID, &ports)
 					opened = &res
 					portsNote = res.Note()
 					engine.ShowOpenedPorts(pp, res, &ports, firstNonEmptyStr(sgName, sgIDs[0]))
@@ -2768,6 +2767,11 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					"nothing was deleted and its local record is kept — call destroy again", vmID, gerr)
 			}
 		}
+		if target == nil && vmID != "" && len(labeledRules(ctx, eng, statePath, projectID, vmID)) > 0 {
+			// The VM is gone, and rules labelled for it are left (P6):
+			// opened for it from another folder. Its delete closes them.
+			target, alreadyGone = &provision.VM{ID: vmID}, true
+		}
 		if target == nil {
 			// Neither the cloud nor this directory has the VM: already
 			// deleted, exit 0, as any repeated delete (D26; it was
@@ -2810,6 +2814,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		rulesPlanned = sgrules.Plan(sf, ids...)
 	}
+	// The rules labelled for the VM that no record here holds (P6): this
+	// delete closes them too, once the VM is gone.
+	labeled := labeledRules(ctx, eng, statePath, projectID, target.ID)
+	rulesPlanned = append(rulesPlanned, labeled...)
 	releaseIP := true
 	if v, ok := args["release_ip"].(bool); ok {
 		releaseIP = v
@@ -2972,6 +2980,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			}
 			return nil
 		})
+		rules.Add(sgrules.CloseLabeled(ctx, eng.Cloud, labeled))
 
 		out := map[string]any{
 			"status":     "ok",
@@ -3071,7 +3080,11 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 			ports = append(ports, fmt.Sprintf("keep port %s in security group %s (still needed by deployment %s)", sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID, p.KeptFor))
 			continue
 		}
-		ports = append(ports, fmt.Sprintf("delete rule %s (port %s) in security group %s", p.Rule.ID, sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID))
+		line := fmt.Sprintf("delete rule %s (port %s) in security group %s", p.Rule.ID, sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID)
+		if p.RecordID == "" {
+			line += " (labelled for this VM, not recorded in this folder)"
+		}
+		ports = append(ports, line)
 	}
 	if len(ports) > 0 {
 		out["port_rules"] = ports
@@ -3875,4 +3888,21 @@ func listZones(ctx context.Context, eng *engine.Engine) ([]*provision.Availabili
 	}
 	eng.Cloud.SetToken(tok.Value)
 	return eng.Cloud.ListAvailabilityZones(ctx)
+}
+
+// labeledRules are the rules labelled for the VM vmID that no record of the
+// folder's state holds (sgrules.FindLabeled, P6), read within the time of a
+// preview's lookups. An unread list or state finds none: the rules stay.
+func labeledRules(ctx context.Context, eng *engine.Engine, statePath, projectID, vmID string) []sgrules.Planned {
+	if eng.Cloud == nil {
+		return nil
+	}
+	sf, err := state.Read(statePath)
+	if err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, engine.PreviewLookupTimeout)
+	defer cancel()
+	found, _ := sgrules.FindLabeled(ctx, eng.Cloud, projectID, vmID, sf)
+	return found
 }

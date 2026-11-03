@@ -361,8 +361,7 @@ poll:
 	// --- Open the product's ports in the security group (auto). Same code
 	// as the CLI deploy: the rules created are recorded for destroy. ---
 	var ports state.DeploymentRecord
-	opened := sgrules.Open(ctx, cloud, plan.ProjectID, plan.Network.SecurityGroupID, plan.Ports, nil, plan.PortsSource,
-		func(label string) string { return fmt.Sprintf("auto: %s port %s", plan.Product, label) }, &ports)
+	opened := sgrules.Open(ctx, cloud, plan.ProjectID, plan.Network.SecurityGroupID, plan.Ports, nil, plan.PortsSource, vm.ID, &ports)
 	if show != nil && show.Ports != nil {
 		show.Ports(opened, &ports)
 	}

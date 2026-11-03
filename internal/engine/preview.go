@@ -314,11 +314,11 @@ type destroyResource struct {
 
 // rulePreview lists the port rules destroy deletes or keeps for the given
 // deployments, with a warning about the group being shared.
-func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
+func rulePreview(sf *state.File, ids []string, labeled []sgrules.Planned) ([]destroyResource, []string) {
 	var res []destroyResource
 	var lines []string
 	deleting := false
-	for _, p := range sgrules.Plan(sf, ids...) {
+	for _, p := range append(sgrules.Plan(sf, ids...), labeled...) {
 		label := sgrules.Label(p.Rule.Port)
 		if p.KeptFor != "" {
 			note := i18n.T("still needed by deployment ", "нужно развёртыванию ") + p.KeptFor
@@ -331,7 +331,12 @@ func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
 		r := destroyResource{Type: "security_group_rule", ID: p.Rule.ID, Address: p.Rule.Port, Action: "delete"}
 		line := i18n.Tf("delete the rule %s opening port %s in security group %s",
 			"удалить правило %s, которое открывает порт %s в группе безопасности %s", p.Rule.ID, label, p.Rule.SecurityGroupID)
-		if rec := sf.FindDeployment(p.RecordID); rec != nil && rec.Status == "destroyed" {
+		if p.RecordID == "" {
+			// Found by the VM's label (P6): opened for this VM from
+			// another folder, or kept by none.
+			r.Note = i18n.T("labelled for this VM, not recorded in this folder", "помечено для этой ВМ, в этой папке не записано")
+			line += " (" + r.Note + ")"
+		} else if rec := sf.FindDeployment(p.RecordID); rec != nil && rec.Status == "destroyed" {
 			r.Note = i18n.T("left by an earlier destroy", "осталось от прошлого destroy")
 			line += " (" + r.Note + ")"
 		}
@@ -352,7 +357,7 @@ func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
 // pendingRulesPreview is the preview of a destroy that only finishes the
 // rules an earlier destroy could not delete.
 func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
-	res, lines := rulePreview(sf, pending)
+	res, lines := rulePreview(sf, pending, nil)
 	return confirm.Preview{
 		Action: "destroy",
 		Summary: i18n.T("delete security group rules left by an earlier destroy",
@@ -363,7 +368,7 @@ func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 }
 
 // destroyPreview lists what destroy deletes and what it leaves behind.
-func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, project, from string) confirm.Preview {
+func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, labeled []sgrules.Planned, project, from string) confirm.Preview {
 	res := []destroyResource{
 		{Type: "vm", ID: rec.VMID, Name: rec.VMName, Address: rec.VMIP, Action: "delete",
 			Note: i18n.T("all data on its disks is lost", "все данные на её дисках будут потеряны")},
@@ -378,7 +383,7 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		res = append(res, destroyResource{Type: "floating_ip", ID: rec.FloatingIPID, Address: rec.VMIP, Action: "release"})
 		lines = append(lines, i18n.Tf("release floating IP %s", "освободить floating IP %s", fipLabel(rec.VMIP, rec.FloatingIPID)))
 	}
-	ruleRes, ruleLines := rulePreview(sf, append([]string{rec.ID}, pending...))
+	ruleRes, ruleLines := rulePreview(sf, append([]string{rec.ID}, pending...), labeled)
 	res = append(res, ruleRes...)
 	lines = append(lines, ruleLines...)
 	for _, key := range rec.PortsAlreadyOpen {

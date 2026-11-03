@@ -193,10 +193,10 @@ func WideOpen(tcp, udp []int, cidr string) string {
 // Open adds an ingress rule from cidr (Anywhere when empty) to group sgID
 // for each tcp and udp port that no rule opens yet. rec gets the group, the ports it needs,
 // and the rules created here; rules that were already there are not
-// recorded as its own. describe makes the rule description from a port
-// label. Failures are reported, not returned: the VM works and the ports
-// can be opened in the console.
-func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string, tcp, udp []int, cidr string, describe func(label string) string, rec *state.DeploymentRecord) OpenResult {
+// recorded as its own. Each rule is labelled for vmID (RuleLabel), so a
+// delete of the VM from any folder finds it (P6). Failures are reported,
+// not returned: the VM works and the ports can be opened in the console.
+func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string, tcp, udp []int, cidr, vmID string, rec *state.DeploymentRecord) OpenResult {
 	var res OpenResult
 	source := Source(cidr)
 	if sgID == "" {
@@ -246,7 +246,7 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 				IPProtocol:     set.proto,
 				PortRange:      pr,
 				RemoteIPPrefix: source,
-				Description:    describe(label),
+				Description:    RuleLabel(label, vmID),
 			}
 			created, err := cloud.AddSecurityGroupRule(ctx, sgID, projectID, rule)
 			if err != nil {
@@ -404,7 +404,7 @@ func neededBy(sf *state.File, exceptID, sgID, key string) *state.DeploymentRecor
 type Planned struct {
 	Rule     state.SGRule
 	KeptFor  string // ID of the deployment that still needs it; empty: delete
-	RecordID string // the deployment the rule belongs to
+	RecordID string // the deployment the rule belongs to; "" for one found by its label
 }
 
 // Plan lists what Close would do with the rules of the given deployments.

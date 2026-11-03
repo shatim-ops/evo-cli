@@ -63,7 +63,7 @@ func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, err
 		return confirm.Preview{}, false, err
 	}
 	shown := e.withNames(ctx, *active, nil, true)
-	return destroyPreview(&shown, sf, pending, e.projectOf(active), e.projectFrom(active)), true, nil
+	return destroyPreview(&shown, sf, pending, e.labeledRules(ctx, sf, active), e.projectOf(active), e.projectFrom(active)), true, nil
 }
 
 // Destroy tears down the active deployment.
@@ -116,7 +116,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
-	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, e.projectOf(active), e.projectFrom(active)))
+	labeled := e.labeledRules(ctx, stateFile, active)
+	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, labeled, e.projectOf(active), e.projectFrom(active)))
 	if err != nil {
 		return err
 	}
@@ -244,6 +245,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	for _, id := range append([]string{active.ID}, pending...) {
 		sgrules.Retire(stateFile, id)
 	}
+	// The rules labelled for the VM that the preview named and no record
+	// here holds (P6): opened for it from another folder.
+	rules.Add(e.closeLabeled(ctx, labeled))
 	if err := state.Write(statePath, stateFile); err != nil {
 		return err
 	}
@@ -349,6 +353,34 @@ func (e *Engine) NothingToDestroy() (map[string]any, bool) {
 		return nil, false
 	}
 	return noDeploymentAnswer(), true
+}
+
+// labeledRules are the rules labelled for the VM of rec that no record of
+// sf holds (sgrules.FindLabeled, P6): what destroy closes beside the
+// rules rec records. Read within the time of a preview's lookups; an
+// unread list finds none, and the rules stay as they were.
+func (e *Engine) labeledRules(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) []sgrules.Planned {
+	if e.Cloud == nil || rec == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
+	defer cancel()
+	found, _ := sgrules.FindLabeled(ctx, e.Cloud, e.projectOf(rec), rec.VMID, sf)
+	return found
+}
+
+// closeLabeled deletes the rules labeledRules found, once their VM is gone,
+// and says it as closeRules does.
+func (e *Engine) closeLabeled(ctx context.Context, labeled []sgrules.Planned) sgrules.CloseResult {
+	res := sgrules.CloseLabeled(ctx, e.Cloud, labeled)
+	if len(res.Closed) > 0 {
+		e.Printer.StepDone(i18n.Tf("Closed ports %s labelled for the VM in the security group", "Закрыты порты %s, помеченные для ВМ, в группе безопасности", strings.Join(res.Closed, ",")))
+	}
+	if len(res.Failed) > 0 {
+		e.Printer.Warning(i18n.Tf("Could not delete the security group rules labelled for the VM for ports %s: delete them in the Cloud.ru console, or call destroy with this VM's id again.",
+			"Не удалось удалить правила группы безопасности, помеченные для ВМ, для портов %s: удалите их в консоли Cloud.ru или повторите destroy с id этой ВМ.", strings.Join(res.Failed, "; ")))
+	}
+	return res
 }
 
 // closeRules deletes the port rules the given deployments created and

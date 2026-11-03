@@ -72,8 +72,6 @@ func (f *fakeCloud) DeleteSecurityGroupRule(_ context.Context, sg, id string) er
 	return clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
 }
 
-func desc(label string) string { return "evo: port " + label }
-
 // Only rules Open creates become the deployment's own; a port that a rule
 // already opened (by anyone) is needed, but not owned.
 func TestOpen_RecordsOnlyCreatedRules(t *testing.T) {
@@ -84,7 +82,7 @@ func TestOpen_RecordsOnlyCreatedRules(t *testing.T) {
 		{ID: "dying", Direction: "ingress", IPProtocol: "tcp", PortRange: "8080:8080", State: "deleting"},
 	}
 	var rec state.DeploymentRecord
-	res := Open(context.Background(), f, "proj", "sg-1", []int{80, 443, 8080}, []int{53}, "", desc, &rec)
+	res := Open(context.Background(), f, "proj", "sg-1", []int{80, 443, 8080}, []int{53}, "", "vm-1", &rec)
 
 	if !reflect.DeepEqual(res.Opened, []string{"80", "8080", "53/udp"}) || !reflect.DeepEqual(res.AlreadyOpen, []string{"443"}) {
 		t.Errorf("result %+v", res)
@@ -111,8 +109,8 @@ func TestOpen_RecordsOnlyCreatedRules(t *testing.T) {
 func TestOpen_RerunCreatesNothing(t *testing.T) {
 	f := newFake()
 	var rec state.DeploymentRecord
-	Open(context.Background(), f, "", "sg-1", []int{80}, nil, "", desc, &rec)
-	res := Open(context.Background(), f, "", "sg-1", []int{80}, nil, "", desc, &rec)
+	Open(context.Background(), f, "", "sg-1", []int{80}, nil, "", "vm-1", &rec)
+	res := Open(context.Background(), f, "", "sg-1", []int{80}, nil, "", "vm-1", &rec)
 	if len(res.Opened) != 0 || len(f.rules["sg-1"]) != 1 || len(rec.OpenedRules) != 1 || len(rec.SecurityGroupPorts) != 1 {
 		t.Errorf("res %+v rules %v rec %+v", res, f.rules, rec)
 	}
@@ -125,7 +123,7 @@ func TestOpen_NoIDInAnswerLooksTheRuleUp(t *testing.T) {
 	f.noID = true
 	f.rules["sg-1"] = []provision.SGRule{{ID: "foreign", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", Description: "evo: port 80", State: "deleting"}}
 	var rec state.DeploymentRecord
-	res := Open(context.Background(), f, "", "sg-1", []int{80}, nil, "", desc, &rec)
+	res := Open(context.Background(), f, "", "sg-1", []int{80}, nil, "", "vm-1", &rec)
 	if len(rec.OpenedRules) != 1 || rec.OpenedRules[0].ID != "r1" || len(res.Untracked) != 0 {
 		t.Errorf("rec %+v res %+v", rec.OpenedRules, res)
 	}
@@ -138,7 +136,7 @@ func TestOpen_NoIDAndNoListingIsUntracked(t *testing.T) {
 	f.noID = true
 	f.listErr = stderrors.New("list down")
 	var rec state.DeploymentRecord
-	res := Open(context.Background(), f, "", "sg-1", []int{80}, nil, "", desc, &rec)
+	res := Open(context.Background(), f, "", "sg-1", []int{80}, nil, "", "vm-1", &rec)
 	if len(rec.OpenedRules) != 0 || !reflect.DeepEqual(res.Untracked, []string{"80"}) || !reflect.DeepEqual(res.Opened, []string{"80"}) {
 		t.Errorf("rec %+v res %+v", rec.OpenedRules, res)
 	}
@@ -148,7 +146,7 @@ func TestOpen_FailureIsReported(t *testing.T) {
 	f := newFake()
 	f.addErr["80:80"] = stderrors.New("quota")
 	var rec state.DeploymentRecord
-	res := Open(context.Background(), f, "", "sg-1", []int{80, 81}, nil, "", desc, &rec)
+	res := Open(context.Background(), f, "", "sg-1", []int{80, 81}, nil, "", "vm-1", &rec)
 	if !reflect.DeepEqual(res.Failed, []string{"80"}) || len(rec.OpenedRules) != 1 {
 		t.Errorf("res %+v rec %+v", res, rec.OpenedRules)
 	}
@@ -159,7 +157,7 @@ func TestOpen_FailureIsReported(t *testing.T) {
 
 func TestOpen_NoGroupDoesNothing(t *testing.T) {
 	var rec state.DeploymentRecord
-	res := Open(context.Background(), nil, "", "", []int{80}, nil, "", desc, &rec)
+	res := Open(context.Background(), nil, "", "", []int{80}, nil, "", "vm-1", &rec)
 	if res.Note() != "" || rec.SecurityGroupID != "" || len(rec.SecurityGroupPorts) != 0 {
 		t.Errorf("res %+v rec %+v", res, rec)
 	}
@@ -364,7 +362,7 @@ func TestCoverage(t *testing.T) {
 func TestOpen_PortOpensForAnyAddressInTheGivenGroup(t *testing.T) {
 	f := newFake()
 	var rec state.DeploymentRecord
-	Open(context.Background(), f, "proj", "sg-shared", []int{80}, []int{53}, "", desc, &rec)
+	Open(context.Background(), f, "proj", "sg-shared", []int{80}, []int{53}, "", "vm-1", &rec)
 	if len(f.rules) != 1 || len(f.rules["sg-shared"]) != 2 {
 		t.Fatalf("rules %+v, want two in sg-shared only", f.rules)
 	}
