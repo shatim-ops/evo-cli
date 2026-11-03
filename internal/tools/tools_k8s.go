@@ -794,8 +794,7 @@ func (s *Registry) k8sVIPSubnet(ctx context.Context, pid, subnetID string, zone 
 	}
 	return "", "", clierrors.New(clierrors.CodeConfigInvalid,
 		i18n.Tf("no subnet in zone %s for the control-plane VIP; nothing was created", "в зоне %s нет подсети для VIP мастер-узлов; ничего не создано", zone.name),
-		i18n.T("Pass subnet_id (list: list_subnets) or another zone; if the project has no subnet in any zone, create one in the Cloud.ru console.",
-			"Передайте subnet_id (список: list_subnets) или другую зону; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
+		i18n.T("Pass subnet_id (list: list_subnets) or another zone; ", "Передайте subnet_id (список: list_subnets) или другую зону; ")+engine.NoSubnetAnywhere())
 }
 
 // k8sVIPSubnet also gives the subnet's name as the list gives it (Линия
@@ -850,8 +849,7 @@ func (s *Registry) k8sNodesSubnet(ctx context.Context, pid, subnetID string, zon
 	}
 	return "", "", clierrors.New(clierrors.CodeConfigInvalid,
 		i18n.Tf("no subnet in zone %s for the node pool; nothing was created", "в зоне %s нет подсети для группы узлов; ничего не создано", zone.name),
-		i18n.T("Pass nodes_subnet_id (list: list_subnets) or another zone; if the project has no subnet in any zone, create one in the Cloud.ru console.",
-			"Передайте nodes_subnet_id (список: list_subnets) или другую зону; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))
+		i18n.T("Pass nodes_subnet_id (list: list_subnets) or another zone; ", "Передайте nodes_subnet_id (список: list_subnets) или другую зону; ")+engine.NoSubnetAnywhere())
 }
 
 func firstNonEmptyStr(vals ...string) string {

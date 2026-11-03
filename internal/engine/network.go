@@ -154,8 +154,16 @@ func NoSubnetError(zoneName, zoneID string) error {
 	// the hint with --subnet-id.
 	return &noSubnetError{ce: clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(zoneName, zoneID)),
-		i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); if the project has no subnet in any zone, create one in the Cloud.ru console.",
-			"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))}
+		i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); ", "Передайте subnet_id (список: list_subnets) или другую зону (region); ")+NoSubnetAnywhere())}
+}
+
+// NoSubnetAnywhere ends a hint for a zone without a subnet: what to do
+// when the project has a subnet in no zone. evo creates subnets itself
+// (subnet_create, 1.6), not only the console (F17, agent runs of Grok on
+// 1.6.0).
+func NoSubnetAnywhere() string {
+	return i18n.T("if the project has no subnet in any zone, create one (subnet_create).",
+		"если в проекте нет подсети ни в одной зоне — создайте её (subnet_create).")
 }
 
 // noSubnetError is NoSubnetError's type so a tool answer can tell it apart

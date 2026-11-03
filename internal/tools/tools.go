@@ -272,7 +272,7 @@ func (s *Registry) registerTools() {
 				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-1'). Optional; defaults to the configured region."),
 				"availability_zone_id": uuidProp("Availability-zone UUID (alternative to 'zone')."),
 				"routed_network":       boolPropTrue("Routed subnet (default true); false makes it isolated."),
-				"dns_servers":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "DNS server IPv4 addresses. Optional: the platform's."},
+				"dns_servers":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "DNS server IPv4 addresses. Omitted: the subnet gets none, so names do not resolve on its VMs."},
 				"description":          strProp("Description. Optional."),
 				"confirmed":            confirmedProp(),
 			}, "name", "cidr"),

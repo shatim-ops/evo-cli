@@ -10034,7 +10034,7 @@ evo vpc subnet-create <name> [flags]
       --availability-zone-id string   UUID зоны доступности (вместо --zone)
       --cidr string                   Частная сеть IPv4 базовым адресом с маской от /8 до /29, например 10.10.0.0/24 (обязательный)
       --description string            Описание подсети
-      --dns-servers stringArray       Адреса DNS-серверов IPv4; по умолчанию — серверы платформы (флаг повторяется или значения через запятую)
+      --dns-servers stringArray       Адреса DNS-серверов IPv4; без них у подсети DNS-серверов не будет и имена на её ВМ не разрешатся (флаг повторяется или значения через запятую)
   -h, --help                          Справка по subnet-create
       --routed-network                Маршрутизируемая подсеть; false — изолированная Выключить: --routed-network=false (по умолчанию true)
       --vpc-id string                 UUID VPC (список: evo vpc list); по умолчанию — VPC проекта по умолчанию

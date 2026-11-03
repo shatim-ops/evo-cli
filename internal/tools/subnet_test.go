@@ -236,3 +236,42 @@ func TestSubnetDelete(t *testing.T) {
 		t.Errorf("gone: %s (writes %v)", text, api.writes)
 	}
 }
+
+// F8 (agent runs of Grok on 1.6.0, 5 of 5 subnets): evo sends no
+// dns_servers when the call names none, and the subnet gets none — names
+// do not resolve on its VMs. The preview says so before the question:
+// dns_servers as an empty list and a warning that names the argument; with
+// dns_servers the preview names them and warns of nothing.
+func TestSubnetCreate_PreviewWarnsOfNoDNS(t *testing.T) {
+	api := newSubnetAPI()
+	r := subnetRegistry(t, api)
+	_, text, _ := callNamed(t, r, "subnet_create", map[string]any{"name": "web", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1"})
+	var ans struct {
+		Preview struct {
+			Params []struct {
+				Key   string `json:"key"`
+				Value any    `json:"value"`
+			} `json:"params"`
+			Warnings []string `json:"warnings"`
+		} `json:"preview"`
+	}
+	if err := json.Unmarshal([]byte(text), &ans); err != nil {
+		t.Fatalf("%v: %s", err, text)
+	}
+	named := false
+	for _, p := range ans.Preview.Params {
+		if l, ok := p.Value.([]any); p.Key == "dns_servers" && ok && len(l) == 0 {
+			named = true
+		}
+	}
+	if !named || len(ans.Preview.Warnings) != 1 || !strings.Contains(ans.Preview.Warnings[0], "dns_servers") ||
+		strings.Contains(ans.Preview.Warnings[0], "--") {
+		t.Errorf("no dns_servers: want them named empty and a warning naming the argument: %s", text)
+	}
+
+	_, text, _ = callNamed(t, r, "subnet_create", map[string]any{"name": "web", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1",
+		"dns_servers": []any{"10.10.0.2"}})
+	if !strings.Contains(text, "10.10.0.2") || strings.Contains(text, `"warnings"`) {
+		t.Errorf("with dns_servers: want them named and no warning: %s", text)
+	}
+}
