@@ -113,9 +113,12 @@ func TestTrees_ConfirmationAndUsage(t *testing.T) {
 		args []string
 		want int
 	}{
-		{[]string{"s3", "bucket-create", "bk1"}, clerrors.ExitConfirmationRequired},
-		{[]string{"s3", "bucket-create", "bk1", "--dry-run"}, clerrors.ExitOK},
-		{[]string{"s3", "bucket-create", "bk1", "--yes"}, clerrors.ExitAuth}, // past the gate, no credentials
+		// No S3 keys: the call cannot run, so it is refused before the
+		// question and the dry run (CONFIG_INVALID, exit 2; release plan
+		// 1.7, F5a — it was exit 3 and the refusal after consent).
+		{[]string{"s3", "bucket-create", "bk1"}, clerrors.ExitAuth},
+		{[]string{"s3", "bucket-create", "bk1", "--dry-run"}, clerrors.ExitAuth},
+		{[]string{"s3", "bucket-create", "bk1", "--yes"}, clerrors.ExitAuth},
 		// The preview names the VM, so it looks it up first: no project, no
 		// question (release audit, R-04). So does disk delete's (D26).
 		{[]string{"vm", "delete", "web"}, clerrors.ExitAuth},
@@ -136,6 +139,28 @@ func TestTrees_ConfirmationAndUsage(t *testing.T) {
 	if !strings.Contains(errOut, "--size-gb") {
 		t.Errorf("missing flag not named: %s", errOut)
 	}
+	// With S3 keys the call can run: the question, and the dry run's
+	// preview (no request: the preview reads nothing of S3).
+	withS3Keys(t)
+	for _, c := range []struct {
+		args []string
+		want int
+	}{
+		{[]string{"s3", "bucket-create", "bk1"}, clerrors.ExitConfirmationRequired},
+		{[]string{"s3", "bucket-create", "bk1", "--dry-run"}, clerrors.ExitOK},
+	} {
+		if _, errOut, code := execCLI(t, c.args...); code != c.want {
+			t.Errorf("with S3 keys, %v: exit %d, want %d (%s)", c.args, code, c.want, errOut)
+		}
+	}
+}
+
+// withS3Keys gives the call S3 keys of the test (no real ones): an S3 tool
+// can then run, and asks for consent before it writes.
+func withS3Keys(t *testing.T) {
+	t.Helper()
+	t.Setenv("CLOUDRU_S3_ACCESS_KEY", "test-access")
+	t.Setenv("CLOUDRU_S3_SECRET_KEY", "test-secret")
 }
 
 // findLeaf returns the built command for "group verb".
@@ -339,6 +364,7 @@ func TestRenderAnswer_NotesAndSections(t *testing.T) {
 // Превью подтверждения и --dry-run по-прежнему идут в stdout.
 func TestTrees_JSONToolErrorNotOnStdout(t *testing.T) {
 	setupCLI(t)
+	withS3Keys(t)
 	cases := []struct {
 		args   []string
 		code   int
