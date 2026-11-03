@@ -203,6 +203,14 @@ func stackBudget() budgetWait {
 // internal/testrules, from sleepWaits) and those whose schema takes a wait
 // (wait_seconds). TestMCP_BudgetCoversTheWaits keeps the list whole.
 var mcpWaits = map[string]budgetWait{
+	// The VM is made, the compose-up stage goes on on the VM (D69 variant
+	// C; the world of TestDeployStage_OnceAndNotCutShort).
+	"deploy": {run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
+		r := stageRegistry(t, newStageVM())
+		return func(ctx context.Context) (string, bool) {
+			return r.handlers["deploy"](ctx, map[string]any{"confirmed": true})
+		}, nil
+	}},
 	"stack_apply":   stackBudget(),
 	"stack_destroy": stackDestroyBudget(),
 	"provision":     computeBudget("provision", map[string]any{"name": "web", "confirmed": true}, false, nil),
@@ -229,7 +237,6 @@ var mcpWaits = map[string]budgetWait{
 		faultResource{host: "dns.api.cloud.ru", path: "/v1/publicZones", ID: "00000000-0000-4000-8000-0000000000a7", Name: "example.com.", before: true}),
 
 	// No world of the slow cloud reaches these yet: what the code shows.
-	"deploy":       {static: "the engine waits for the VM up to VMPollTimeout (25 min), then SSH and Docker (engine/timings.go)", over: true},
 	"stack_status": {static: "the handler waits at most 20 s (tools_stack.go), as its schema says: within the budget"},
 	"k8s_kubectl":  {static: "kubectl runs up to 90 s (tools_kube.go, docs/mcp.md)", over: true},
 	"k8s_helm":     {static: "helm runs up to 9 min with --wait (tools_kube.go)", over: true},
@@ -245,7 +252,6 @@ var mcpWaits = map[string]budgetWait{
 // 1.7, block A; process plan 1.7 §1: red before PR 1 of D69, each PR of
 // D69 takes its lines out).
 var mcpOverBudget = map[string]string{
-	"deploy":      "waits for the VM, SSH and Docker",
 	"k8s_kubectl": "kubectl up to 90 s",
 	"k8s_helm":    "helm up to 9 min",
 	"disk_create": "with vm: waits for the disk up to 5 min",

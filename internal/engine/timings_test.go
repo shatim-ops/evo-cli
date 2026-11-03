@@ -40,6 +40,7 @@ func TestTimings_ZeroMeansProductionDefaults(t *testing.T) {
 		VerifyTimeout:      10 * time.Second,
 
 		DockerPollInterval:  10 * time.Second,
+		StagePollInterval:   3 * time.Second,
 		DockerWaitTimeout:   15 * time.Minute,
 		DestroyPollInterval: 3 * time.Second,
 		DestroyPollTimeout:  2 * time.Minute,

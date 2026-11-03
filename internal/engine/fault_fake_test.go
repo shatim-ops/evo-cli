@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
 
 // Fault kinds for faultCloud.failAt. "lost" and "empty" apply on creates:
@@ -902,6 +904,55 @@ type faultDeployer struct {
 	uploads  int
 	composes int
 	connects int
+	stages   syncStages
+}
+
+// Start and Read make the deployer the Runner of its stages (vmstage):
+// a stage runs at once over ExecStream (syncStages).
+func (d *faultDeployer) Start(ctx context.Context, name, input, script string) (bool, error) {
+	return d.stages.start(ctx, d, name, input, script)
+}
+func (d *faultDeployer) Read(_ context.Context, name string) (vmstage.Stage, error) {
+	return d.stages.read(name), nil
+}
+
+// syncStages is the Runner of a fake VM without detached processes: a
+// stage runs at once over the deployer's ExecStream, done or failed by
+// the time Start returns, its output the log; an error of ExecStream is a
+// failed stage (a stage has an exit code and a log, no session error).
+type syncStages struct {
+	mu  sync.Mutex
+	got map[string]vmstage.Stage
+}
+
+func (s *syncStages) start(ctx context.Context, d interface {
+	ExecStream(context.Context, string, io.Writer, io.Writer) error
+}, name, input, script string) (bool, error) {
+	var out strings.Builder
+	err := d.ExecStream(ctx, script, &out, &out)
+	if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+		return false, ctx.Err()
+	}
+	st := vmstage.Stage{State: "done", Input: input, LogTail: out.String()}
+	if err != nil {
+		st.State, st.Exit = "failed", 1
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.got == nil {
+		s.got = map[string]vmstage.Stage{}
+	}
+	s.got[name] = st
+	return true, nil
+}
+
+func (s *syncStages) read(name string) vmstage.Stage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if st, ok := s.got[name]; ok {
+		return st
+	}
+	return vmstage.Stage{State: "none"}
 }
 
 func (d *faultDeployer) failAt(op, kind string) {

@@ -49,8 +49,10 @@ var sleepWaits = map[string]struct{ test, why, item string }{
 	"internal/mcp/http.go\tHTTPHandler.stream":             {why: sleepNoToken},
 	"internal/engine/deploy.go\tEngine.waitForSSH":         {why: sleepNoToken},
 	"internal/engine/deploy.go\tEngine.prepareDocker":      {why: sleepNoToken},
+	"internal/engine/stage.go\tEngine.runStage":            {why: sleepNoToken}, // reads a stage on the VM over SSH
 
 	"internal/engine/deploy.go\tEngine.provisionVM":             {test: "TestSleep_OneRefusedTokenAfterTheWriteDoesNotEndTheCommand"},
+	"internal/engine/deploy.go\tEngine.awaitCreated":            {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
 	"internal/engine/deploy.go\tEngine.waitBootFIP":             {test: "TestSleep_OneRefusedTokenAfterTheWriteDoesNotEndTheCommand"},
 	"internal/engine/deploy.go\tEngine.settledBootFIP":          {test: "TestSleep_OneRefusedTokenAfterTheWriteDoesNotEndTheCommand"},
 	"internal/engine/destroy.go\tEngine.Destroy":                {test: "TestSleep_OneRefusedTokenAfterTheWriteDoesNotEndTheCommand"},

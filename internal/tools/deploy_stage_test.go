@@ -21,18 +21,19 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/verify"
+	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
 
 // stageVM is the VM of deploy's long stage (docker compose up) as the
 // variant C of D69 sees it (owner's decision 03.11): the stage runs on the
 // VM, apart from the call that started it, and a call that comes again
-// reads how it goes. The world knows the stage by what the VM runs, not by
-// the commands evo chooses: docker compose … up starts the stage; docker
-// compose … down, stop or kill, or a kill, stops it. Started over a
-// command that waits for it (ExecStream, or Exec without detaching), the
-// stage is the SSH session's: it dies with the session — the end of the
-// call. A detached start (nohup, setsid, systemd-run, a trailing "&")
-// keeps running until the test ends it.
+// reads how it goes. evo runs the stage through vmstage.Runner (Start,
+// Read), which stageVM is: the compose-up stage runs until the test ends
+// it; any other stage (the Docker install) is done at once. A compose up
+// over the session itself (Exec, ExecStream) is the SSH session's: it dies
+// with the session — the end of the call — and the counters show it.
+// That the real Runner keeps a stage going past the session is the stage
+// script's, tested on a real shell (internal/vmstage).
 type stageVM struct {
 	mu sync.Mutex
 	// running: the stage is going; done: it ended, ok or not.
@@ -43,8 +44,12 @@ type stageVM struct {
 	starts, startedWhileRunning, stops, diedWithCall int
 	// lost: a stage was going and no one holds it now.
 	lost bool
+	// input: what the compose-up stage was started for.
+	input string
 	// release ends the going stage.
 	release chan struct{}
+	// others: the inputs of the other stages, done at once.
+	others map[string]string
 }
 
 // state is what the marker of the stage says (stageStatus).
@@ -85,19 +90,51 @@ func (v *stageVM) lose() {
 	}
 }
 
-// stageUp and stageStop are the commands that start and stop the stage,
-// whatever flags evo gives docker compose (-f, -d). stageStatus is the
-// read of the stage's marker: the one form of command the world and PR 4
-// of D69 agree on (an "evo-stage status" in it), answered with the state
-// the marker has — running, done, failed, lost (a marker of a going stage
-// without its holder, the flock free), or none. PR 4 may give the read
-// another form: it changes stageStatus with it and says so in its PR
-// (CLAUDE.md §0, rule 3).
+// stageUp and stageStop are the commands that start and stop the stage
+// over the session, whatever flags evo gives docker compose (-f, -d).
 var (
-	stageStatus = regexp.MustCompile(`\bevo-stage\b.*\bstatus\b`)
-	stageUp     = regexp.MustCompile(`\bcompose\b.*\bup\b`)
-	stageStop   = regexp.MustCompile(`\bcompose\b.*\b(down|stop|kill)\b|\b(pkill|kill)\b`)
+	stageUp   = regexp.MustCompile(`\bcompose\b.*\bup\b`)
+	stageStop = regexp.MustCompile(`\bcompose\b.*\b(down|stop|kill)\b|\b(pkill|kill)\b`)
 )
+
+// Start is vmstage.Runner's: the compose-up stage starts unless it goes
+// (a start over a going one is counted, and starts nothing); any other
+// stage is done at once.
+func (v *stageVM) Start(_ context.Context, name, input, _ string) (bool, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if name != "compose-up" {
+		if v.others == nil {
+			v.others = map[string]string{}
+		}
+		v.others[name] = input
+		return true, nil
+	}
+	if v.running {
+		v.startedWhileRunning++
+		return false, nil
+	}
+	v.starts++
+	v.running, v.done, v.lost, v.input = true, false, false, input
+	return true, nil
+}
+
+// Read is vmstage.Runner's: the compose-up stage as the VM has it.
+func (v *stageVM) Read(_ context.Context, name string) (vmstage.Stage, error) {
+	if name != "compose-up" {
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		if input, ok := v.others[name]; ok {
+			return vmstage.Stage{State: "done", Input: input}, nil
+		}
+		return vmstage.Stage{State: "none"}, nil
+	}
+	st := vmstage.Stage{State: v.state(), LogTail: "web-1  | pulling"}
+	v.mu.Lock()
+	st.Input = v.input
+	v.mu.Unlock()
+	return st, nil
+}
 
 func detached(cmd string) bool {
 	return strings.Contains(cmd, "nohup") || strings.Contains(cmd, "setsid") ||
@@ -151,9 +188,6 @@ func (v *stageVM) Close() error                                                 
 func (v *stageVM) Exec(ctx context.Context, cmd string) (string, error) {
 	if strings.Contains(cmd, "compose version") {
 		return "Docker Compose version v2.24.0", nil
-	}
-	if stageStatus.MatchString(cmd) {
-		return v.state() + "\n", nil
 	}
 	return "", v.command(ctx, cmd, true)
 }
@@ -225,11 +259,8 @@ func deployStatus(text string) string {
 }
 
 // deployStagePending holds the stage invariant while PR 4 of D69 is not
-// in: the tool → what is missing. It only shrinks. Closes by 1.7 (release
-// plan 1.7, block A: the stage detached on the VM, PR 4 of D69).
-var deployStagePending = map[string]string{
-	"deploy": "the stage runs in the call's SSH session: the call waits it out past the budget, and the stage dies with the call",
-}
+// in: the tool → what is missing. It only shrinks. Closed by PR 4 of D69.
+var deployStagePending = map[string]string{}
 
 // The stage of deploy on the VM under D69 (variant C, owner's decision
 // 03.11; release plan 1.7, block A, the line of «Процесс»). A call answers
@@ -306,5 +337,27 @@ func TestDeployStage_OnceAndNotCutShort(t *testing.T) {
 		}
 	default:
 		t.Logf("deploy, pending (Closes by 1.7): %s", strings.Join(broken, "; "))
+	}
+}
+
+// A forced deploy whose bound came in compose up has started it: the next
+// step repeats the call without force, or each repeat would start compose
+// up again and deploy would never end («1.7 — релиз» on #769); so after
+// it (verify). Before compose up, force stays: the forced run has not
+// started yet.
+func TestDeployInProgress_NextArgsDropForceOnceComposeUpStarted(t *testing.T) {
+	args := map[string]any{"confirmed": true, "force": true, "compose_file": "docker-compose.yml"}
+	for phase, keep := range map[string]bool{"compose-up": false, "verify": false, "docker": true, "vm": true, "ssh": true, "upload": true} {
+		got := deployInProgress(map[string]any{}, &engine.InProgress{Phase: phase, Detail: "running"}, args)
+		next, _ := got["next_args"].(map[string]any)
+		if _, has := next["force"]; has != keep {
+			t.Errorf("%s: next_args %v, force kept = %v, want %v", phase, next, has, keep)
+		}
+		if next["compose_file"] != "docker-compose.yml" {
+			t.Errorf("%s: next_args lost an argument: %v", phase, next)
+		}
+	}
+	if _, ok := args["force"]; !ok {
+		t.Error("the call's own args were changed")
 	}
 }
