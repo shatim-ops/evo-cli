@@ -58,6 +58,7 @@ check "T5: _evo в $site" test -f "$site/_evo"
 check "T5: ~/.zshrc добавляет $site в \$fpath одним блоком" test "$(blocks)" -eq 1
 # compinit без -u, как в ~/.zshrc у людей: каталог, который install.sh
 # создаёт, проходит проверку безопасности compaudit.
+# shellcheck disable=SC2016 # ${_comps[evo]} раскрывает zsh, не bash
 comps=$(env -i PATH="$work/bin:/usr/bin:/bin" HOME="$work/home" SHELL="$zsh" "$zsh" -i -c 'autoload -Uz compinit; compinit; compinit; print -r -- ${_comps[evo]}' 2>/dev/null </dev/null || true)
 check "T6: после второго compinit _comps[evo] не пусто" test -n "$comps"
 run_install
