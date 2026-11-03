@@ -62,7 +62,7 @@ trap 'rm -f "$body" "$err"' EXIT
       sleep "$LOG_RETRY_SLEEP"
     done
     if [ "$got" = 0 ]; then
-      echo "::warning title=main-red::лог job $id не получен за $try попыток: $(head -c 300 "$err" | tr '\n' ' ')" >&2
+      echo "::warning title=main-red::лог job $id не получен за $try из $LOG_TRIES попыток, ${SECONDS} с из бюджета $LOG_WAIT с: $(head -c 300 "$err" | tr '\n' ' ')" >&2
       printf '  (лог job не получен — смотрите его в прогоне)\n'
       continue
     fi

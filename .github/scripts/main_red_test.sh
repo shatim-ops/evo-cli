@@ -73,13 +73,13 @@ run "cancelled — тишина" cancelled 7 \
 FAKE_JOBS='103\ttest (macos-latest)\n' FAKE_NO_LOG=1 \
   run "красный, лог не получен — так и сказано" failure "" \
   "calls:issue create" "body:**test (macos-latest)**" "body:лог job не получен" "nocalls:issue close" \
-  "stderr:HTTP 404: Not Found"
+  "stderr:HTTP 404: Not Found" "stderr:за 6 из 6 попыток"
 FAKE_JOBS='105\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestLate\n' FAKE_LOG_LATE=2 \
   run "лог выложен не сразу — третья попытка его читает" failure "" \
   "calls:issue create" "body:--- FAIL: TestLate" "nocalls:issue close"
 FAKE_JOBS='106\ta\n107\tb\n' FAKE_NO_LOG=1 LOG_WAIT=0 \
   run "логов нет, бюджет ожидания кончился — issue всё равно заводится" failure "" \
-  "calls:issue create" "body:**a**" "body:**b**" "stderr:за 1 попыток"
+  "calls:issue create" "body:**a**" "body:**b**" "stderr:за 1 из 6 попыток" "stderr:из бюджета 0 с"
 run "зелёный, два открытых — закрывает оба" success "7 8" \
   "calls:issue close 7" "calls:issue close 8" "nocalls:issue create"
 exit "$fail"
