@@ -112,6 +112,9 @@ type faultCloud struct {
 	// fipReadDelay makes each read and delete of a floating IP take this
 	// long: a slow API, or a coarse timer (Windows ticks ~15.6 ms, CI #283).
 	fipReadDelay time.Duration
+	// slow keeps every VM "creating" and a deleted one "deleting": the
+	// slow cloud of D69's world, where a call can end only by its budget.
+	slow bool
 }
 
 type faultVM struct {
@@ -344,7 +347,7 @@ func (c *faultCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) 
 	if c.noDial {
 		ip = ""
 	}
-	return &provision.VM{ID: vm.ID, Name: vm.Name, Status: "active", CreatedAt: vm.CreatedAt, PublicIP: ip}, nil
+	return &provision.VM{ID: vm.ID, Name: vm.Name, Status: vm.Status, CreatedAt: vm.CreatedAt, PublicIP: ip}, nil
 }
 
 func (c *faultCloud) storeVM(req provision.CreateVMRequest) (faultVM, bool) {
@@ -363,7 +366,11 @@ func (c *faultCloud) storeVM(req provision.CreateVMRequest) (faultVM, bool) {
 	if len(req.Interfaces) > 0 {
 		fipID = req.Interfaces[0].AttachExternalIPID
 	}
-	vm := faultVM{ID: id, Name: req.Name, Status: "active", CreatedAt: time.Now(), FIPID: fipID}
+	status := "active"
+	if c.slow {
+		status = "creating"
+	}
+	vm := faultVM{ID: id, Name: req.Name, Status: status, CreatedAt: time.Now(), FIPID: fipID}
 	c.vms = append(c.vms, vm)
 	if fipID != "" {
 		for i := range c.fips {
@@ -417,6 +424,10 @@ func (c *faultCloud) DeleteVM(_ context.Context, id string) error {
 	}
 	for i := range c.vms {
 		if c.vms[i].ID == id {
+			if c.slow {
+				c.vms[i].Status = "deleting"
+				return nil
+			}
 			c.vms[i].gone = true
 			return nil
 		}
