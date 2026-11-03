@@ -1055,9 +1055,9 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 	// silent mid-deploy. Capping at 20s keeps every poll quick and abortable; the
 	// agent simply re-polls (cheap: compact O(1) status; empty inter-poll turns are
 	// handled by the reasoning-only retry). wait_seconds is clamped, not honored.
-	waitBudget := pgInt(args, "wait_seconds", 20)
-	if waitBudget > 20 {
-		waitBudget = 20
+	waitBudget := pgInt(args, "wait_seconds", stackStatusMaxWait)
+	if waitBudget > stackStatusMaxWait {
+		waitBudget = stackStatusMaxWait
 	}
 	if waitBudget < 1 {
 		waitBudget = 1

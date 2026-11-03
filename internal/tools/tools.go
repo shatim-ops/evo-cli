@@ -235,10 +235,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_apply",
-			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: if a VM with the plan's name already exists it is adopted, not duplicated. Returns vm_id, public_ip, ssh and (once) the generated password.",
+			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: if a VM with the plan's name already exists it is adopted, not duplicated. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
 				"plan_id":   strProp("The plan_id returned by deploy_plan."),
 				"confirmed": confirmedProp(),
+				"wait":      boolProp(waitDesc),
 			}, "plan_id"),
 		},
 		{
@@ -694,7 +695,7 @@ func (s *Registry) registerTools() {
 			Description: "Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"operation_id": strProp("Operation UUID. Required."),
-				"wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of the agent re-checking every few seconds. Omit for a single instant check."),
+				"wait_seconds": opWaitProp(),
 			}, "operation_id"),
 		},
 		{
@@ -748,7 +749,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "kafka_operation",
 			Description: "Poll a Managed Kafka async operation by id (from kafka_create/kafka_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "redis_list",
@@ -802,7 +803,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "redis_operation",
 			Description: "Poll a Managed Redis async operation by id (from redis_create/redis_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "pg_databases",
@@ -887,7 +888,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "lb_operation",
 			Description: "Poll a Load Balancer async operation by id (from lb_create/lb_delete/tg_create/tg_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "tg_list",
@@ -966,7 +967,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "vpc_operation",
 			Description: "Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "vpc_routes",
@@ -1034,7 +1035,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "dns_operation",
 			Description: "Poll a DNS async operation by id (from dns_zone_create/delete, dns_record_create/delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "dns_records",
@@ -1155,7 +1156,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "ar_operation",
 			Description: "Poll an Artifact Registry async operation by id (from ar_create/ar_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "billing_balance",
@@ -1280,7 +1281,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "cert_operation",
 			Description: "Certificate Manager — poll an async operation (issue/renew) by id until done=true. Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation id from cert_issue_le/cert_renew. Required."), "wait_seconds": intProp("Optional: poll up to N seconds (capped 300) with backoff and return the FINAL state in ONE call — instead of re-checking every few seconds. Omit for a single instant check.")}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation id from cert_issue_le/cert_renew. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "s3_buckets",
@@ -1362,7 +1363,7 @@ func (s *Registry) registerTools() {
 			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], details{step: reason} of a step that is not done, error_reasons{step: reason code of what ended it, e.g. USAGE, NOT_FOUND, API_ERROR} of a step in error, attempts{step: n}, outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs; lb_external_ip is there only for a balancer with a public address) or status=error. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":       strProp("Job id. Required."),
-				"wait_seconds": intProp("How long this call may block while advancing (default 90, max 240). Fewer calls for a long deploy."),
+				"wait_seconds": inRange(1, stackStatusMaxWait, intProp("How long this call may block while advancing, in seconds (default and at most 20). Fewer calls for a long deploy.")),
 			}, "job_id"),
 		},
 		{
@@ -2154,8 +2155,8 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	interrupted := func(publicIP string) (string, bool) {
 		serr := saveState(vm.ID, "creating", publicIP)
 		pp.Hint(vmLeftNote(vm.ID, ""))
-		return errAnswer(fmt.Errorf("VM %s was created, but provision was interrupted (%v); it is still running and recorded in the state — "+
-			"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, ctx.Err(), vm.ID, notInState(vm.ID, serr)),
+		return errAnswer(fmt.Errorf("VM %s was created, but provision was interrupted (%w); it is still running and recorded in the state — "+
+			"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, context.Canceled, vm.ID, notInState(vm.ID, serr)),
 			leftFields(map[string]any{})), true
 	}
 
@@ -3129,6 +3130,12 @@ func atLeast(min int, p map[string]any) map[string]any {
 	return p
 }
 
+// opWaitProp is the wait_seconds of every *_operation tool: within D69's
+// budget of an MCP call, a static rule of the schema (D36).
+func opWaitProp() map[string]any {
+	return inRange(0, opWaitMaxSeconds, intProp(fmt.Sprintf("Optional: poll up to N seconds (at most %d) with backoff and return the FINAL state in ONE call — instead of the agent re-checking every few seconds. Omit for a single instant check.", opWaitMaxSeconds)))
+}
+
 func inRange(min, max int, p map[string]any) map[string]any {
 	p["minimum"], p["maximum"] = min, max
 	return p
@@ -3156,6 +3163,11 @@ const readOnlyTaskNote = "For a task that only reads, the person can run the ser
 
 // readOnlyTaskNoteRU is readOnlyTaskNote in the CLI's Russian.
 const readOnlyTaskNoteRU = "Для задачи только на чтение человек может запустить сервер с evo mcp --read-only: такой сервер ничего не меняет в облаке."
+
+// waitDesc is the wait argument of a tool that waits for what it creates
+// (D69): over MCP the call answers within MCPCallBudget, in the CLI it
+// waits until the work ends.
+const waitDesc = "Optional. Omitted: an MCP call answers within ~45 s — status creating with the state so far, next_tool and next_args to repeat — and the CLI waits until the VM runs. false: answer as soon as the cloud took the create. true: wait until the VM runs (raise the client's tool timeout, e.g. MCP_TOOL_TIMEOUT)."
 
 const confirmedDesc = "Omit it to get the preview; set true only after the person approved that preview."
 
@@ -3460,6 +3472,12 @@ func errAnswer(err error, fields map[string]any) string {
 // other fields, which uncodedReason reads too.
 func errReason(err error, fields map[string]any) (reason, msg, hint string) {
 	msg = err.Error()
+	// A call the caller cancelled (Ctrl-C, the MCP client's cancel, the
+	// server stopping) is INTERRUPTED on both surfaces, whatever request
+	// it broke off: not the network, and no hint to check it (D69).
+	if stderrors.Is(err, context.Canceled) {
+		return clierrors.ReasonInterrupted, msg, ""
+	}
 	var ce *clierrors.CLIError
 	if stderrors.As(err, &ce) {
 		if clierrors.IsCode(ce.Code) {

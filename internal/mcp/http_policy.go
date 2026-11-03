@@ -91,6 +91,9 @@ var HTTPRestrictions = []Restriction{
 	{ID: "H13",
 		Where: "internal/mcp/http.go", Symbol: "withNotifier(ctx, notify)",
 		Summary: "the progress of a long call (notifications/progress) goes on the SSE stream of its tools/call only: a client that takes the answer as plain JSON gets none"},
+	{ID: "H14", StdioToo: true,
+		Where: "internal/mcp/server.go", Symbol: "SetCallBudget(tools.MCPCallBudget)",
+		Summary: "a call waits for the cloud at most ~45 s (MCPCallBudget, D69): what is not done by then answers with its state so far and the next step (status creating, next, next_tool, next_args), wait_seconds takes at most 45; wait=true lifts it; the CLI waits as before"},
 }
 
 // wording words the refusals (and the mask of H7) of a restriction a

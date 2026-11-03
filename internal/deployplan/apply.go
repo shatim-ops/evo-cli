@@ -41,8 +41,11 @@ type ApplyResult struct {
 	FloatingIPID string `json:"floating_ip_id,omitempty"`
 	SSH          string `json:"ssh,omitempty"`
 	Password     string `json:"password,omitempty"` // shown ONCE; not persisted
-	ElapsedSec   int    `json:"elapsed_sec"`
-	Note         string `json:"note,omitempty"`
+	// VMStatus is the VM's state when the apply stopped waiting for it
+	// (Status "creating", D69).
+	VMStatus   string `json:"vm_status,omitempty"`
+	ElapsedSec int    `json:"elapsed_sec"`
+	Note       string `json:"note,omitempty"`
 
 	// Ports is what Apply recorded about the security group: the group, the
 	// ports the VM needs and the rules Apply created (the caller keeps them
@@ -84,10 +87,13 @@ func (p *Progress) done(msg string) {
 
 // ApplyWithTimeout executes a resolved plan, waiting at most pollTimeout for
 // the VM to run (CLOUDRU_TIMEOUT through the engine's timings; zero means
-// the default), and shows it on show. It is idempotent: if a VM with the
+// the default), and shows it on show. until, when set, ends every wait of
+// the apply (the budget of an MCP call or wait=false, D69): a VM still
+// being made then is Status "creating", with VMStatus, for a repeat of the
+// same plan to finish. It is idempotent: if a VM with the
 // plan's name already exists, it adopts that VM instead of creating a
 // duplicate.
-func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan, pollTimeout time.Duration, show *Progress) (*ApplyResult, error) {
+func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan, pollTimeout time.Duration, until time.Time, show *Progress) (*ApplyResult, error) {
 	if pollTimeout <= 0 {
 		pollTimeout = DefaultPollTimeout
 	}
@@ -125,7 +131,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		switch existing.Status {
 		case "", "running", "active", "creating", "building", "starting", "pending":
 			show.step(i18n.Tf("Adopting VM %s: it already exists…", "Беру ВМ %s: она уже есть…", plan.VM.Name))
-			return finishApply(ctx, cloud, plan, existing, "", start, pollTimeout, show,
+			return finishApply(ctx, cloud, plan, existing, "", start, pollTimeout, until, show,
 				"VM already existed — adopted (idempotent), nothing recreated")
 		}
 		ip, fipID := attachedFloatingIP(ctx, cloud, existing.ID)
@@ -224,13 +230,13 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	}
 
 	show.done(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", plan.VM.Name, vm.ID))
-	return finishApply(ctx, cloud, plan, vm, password, start, pollTimeout, show, "")
+	return finishApply(ctx, cloud, plan, vm, password, start, pollTimeout, until, show, "")
 }
 
 // finishApply waits for the VM to run, then gives it its floating IP, waits
 // for SSH and opens the plan's ports — for a VM just created and for one a
 // retry adopts. note goes first in the answer's note.
-func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *provision.VM, password string, start time.Time, pollTimeout time.Duration, show *Progress, note string) (*ApplyResult, error) {
+func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *provision.VM, password string, start time.Time, pollTimeout time.Duration, until time.Time, show *Progress, note string) (*ApplyResult, error) {
 	// Cancelled from here on (the MCP client went away or cancelled the
 	// call): the VM exists and is billed. The result names it, so the
 	// caller can record it in the state, together with an error that says
@@ -238,6 +244,9 @@ func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *
 	interrupted := func(ip, fipID string) (*ApplyResult, error) {
 		return &ApplyResult{
 				VMID: vm.ID, Status: "interrupted", PublicIP: ip, FloatingIPID: fipID,
+				// Made for this VM and kept nowhere: the repeat that adopts
+				// the VM cannot give it (D69).
+				Password:   password,
 				ElapsedSec: int(clock.Since(start).Seconds()),
 			}, fmt.Errorf("VM %s was created, but deploy_apply was interrupted; it is still running — "+
 				"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
@@ -250,6 +259,12 @@ func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *
 		status = "running"
 	}
 	deadline := time.After(pollTimeout)
+	// The budget of the call (D69), when it ends before pollTimeout.
+	var budget <-chan time.Time
+	if !until.IsZero() {
+		budget = time.After(time.Until(until))
+	}
+	vmStatus := vm.Status
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	var shown <-chan time.Time // the wait's own ticks, when it is shown
@@ -265,6 +280,13 @@ poll:
 		case <-ctx.Done():
 			// The VM exists: say which, or nobody will find it.
 			return interrupted("", "")
+		case <-budget:
+			// The VM is still being made: its state so far, and the
+			// password, which the repeat that adopts the VM cannot give.
+			return &ApplyResult{
+				VMID: vm.ID, Status: "creating", VMStatus: vmStatus, Password: password,
+				ElapsedSec: int(clock.Since(start).Seconds()),
+			}, nil
 		case <-deadline:
 			return &ApplyResult{
 				VMID: vm.ID, Status: "timeout", Password: password,
@@ -276,6 +298,7 @@ poll:
 			if e != nil {
 				continue
 			}
+			vmStatus = cur.Status
 			if shown != nil {
 				show.Wait.State(cur.Status)
 			}
@@ -317,7 +340,11 @@ poll:
 	sshNote := ""
 	if ip != "" {
 		show.done(i18n.Tf("Waiting for SSH on %s…", "Жду SSH на %s…", ip))
-		if waitForSSHPort(ctx, ip, SSHPortWait, show) {
+		sshWait := SSHPortWait
+		if !until.IsZero() {
+			sshWait = min(sshWait, time.Until(until))
+		}
+		if waitForSSHPort(ctx, ip, sshWait, show) {
 			sshNote = "SSH port 22 is open — connect now with the ssh command above."
 		} else {
 			sshNote = "VM is up but SSH port 22 was not reachable yet — wait ~1 min and retry the same ssh command. The VM is still booting; do NOT blame security groups, do NOT recreate the VM."

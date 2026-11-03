@@ -64,7 +64,7 @@ func (applyCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provisi
 func TestApply_CancelledAfterCreate_NamesTheVM(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := ApplyWithTimeout(ctx, applyCloud{}, &Plan{VM: VMSpec{Name: "x"}}, 0, nil)
+	_, err := ApplyWithTimeout(ctx, applyCloud{}, &Plan{VM: VMSpec{Name: "x"}}, 0, time.Time{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "vm-made") {
 		t.Fatalf("Apply = %v, want an error naming vm-made", err)
 	}
@@ -142,7 +142,7 @@ func (c *lostAnswerCloud) ListVMsInProject(context.Context, string) ([]*provisio
 // The create call fails but the VM exists: the result names it, so
 // deploy_apply records it and a retry adopts it.
 func TestApply_CreateFailsButVMExists_NamesTheVM(t *testing.T) {
-	res, err := ApplyWithTimeout(context.Background(), &lostAnswerCloud{}, &Plan{ProjectID: "p", VM: VMSpec{Name: "x"}}, 0, nil)
+	res, err := ApplyWithTimeout(context.Background(), &lostAnswerCloud{}, &Plan{ProjectID: "p", VM: VMSpec{Name: "x"}}, 0, time.Time{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "vm-lost") {
 		t.Fatalf("Apply = %v, want an error naming vm-lost", err)
 	}
@@ -175,7 +175,7 @@ func (c *existingCloud) CreateVM(context.Context, provision.CreateVMRequest) (*p
 // creating a second one (QA H5).
 func TestApply_AdoptsExistingVMInProject(t *testing.T) {
 	c := &existingCloud{}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}}, 0, nil)
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}}, 0, time.Time{}, nil)
 	if c.creates != 0 {
 		t.Fatalf("CreateVM called %d times, want 0 (the VM exists)", c.creates)
 	}
@@ -194,7 +194,7 @@ func TestApply_LookupFails_CreatesNothing(t *testing.T) {
 	i18n.SetLang(i18n.EN)
 	t.Cleanup(func() { i18n.SetLang(lang) })
 	c := &existingCloud{listErr: errors.New("502 bad gateway")}
-	_, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}}, 0, nil)
+	_, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}}, 0, time.Time{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "nothing was created") {
 		t.Fatalf("Apply = %v, want a lookup error", err)
 	}

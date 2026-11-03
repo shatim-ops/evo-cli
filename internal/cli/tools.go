@@ -980,6 +980,11 @@ func toolError(text string, h toolHints) error {
 	}
 	ce := clerrors.New(code, msg, hint)
 	ce.Details = details
+	if reason == clerrors.ReasonInterrupted {
+		// The tool was cancelled (D69): exit code 130, reason INTERRUPTED,
+		// as a command the person interrupted.
+		return fmt.Errorf("%w: %w", context.Canceled, ce)
+	}
 	return ce
 }
 
