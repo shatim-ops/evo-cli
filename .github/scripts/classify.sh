@@ -8,10 +8,14 @@
 #   classes=<классы через пробел>
 #   before=<области cloud-e2e до слияния: дешёвые — ВМ, DNS, S3, секреты>
 #   after=<области после слияния из main: остальные, k8s и DBaaS>
-# Порог «до/после» — решение владельца В5 (22.10).
+#   macos=<yes | no: no — только если все пути — docs/internal/*.md>
+# Порог «до/после» — решение владельца В5 (22.10). macos=no снимает
+# test (macos-latest) с PR (CLAUDE.md §4, решение владельца 03.11: у GitHub
+# не больше 5 macOS-задач одновременно); пустой список — macos=yes.
 set -euo pipefail
 
 declare -A cls=() before=() after=()
+macos=''
 add() { cls[$1]=1; }
 area() {
 	case $1 in
@@ -22,6 +26,10 @@ area() {
 
 while IFS= read -r p; do
 	[ -n "$p" ] || continue
+	case $p in
+	docs/internal/*.md) macos=${macos:-no} ;;
+	*) macos=yes ;;
+	esac
 	case $p in
 	*_test.go) add tests; continue ;;
 	*.md) add docs; continue ;;
@@ -64,3 +72,5 @@ keys() { printf '%s\n' "$@" | sed '/^$/d' | sort | tr '\n' ' ' | sed 's/ $//'; }
 echo "classes=$(keys "${!cls[@]}")"
 echo "before=$(keys "${!before[@]}")"
 echo "after=$(keys "${!after[@]}")"
+# No paths at all: nothing shows the PR is only internal docs.
+echo "macos=${macos:-yes}"

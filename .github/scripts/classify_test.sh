@@ -6,7 +6,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 fail=0
 check() { # имя, ожидаемый вывод, пути через пробел [, MIGRATION [, REGISTRY]]
 	local got
-	got=$(tr ' ' '\n' <<<"$3" | MIGRATION=${4:-} REGISTRY=${5:-} "$here/classify.sh")
+	got=$(tr ' ' '\n' <<<"$3" | MIGRATION=${4:-} REGISTRY=${5:-} "$here/classify.sh" | grep -v '^macos=')
 	if [ "$got" = "$2" ]; then echo "ok   $1"; else
 		echo "FAIL $1"; echo "  ждали: $2" | tr '\n' '|'; echo; echo "  вышло: $got" | tr '\n' '|'; echo
 		fail=1
@@ -27,6 +27,23 @@ check "секреты и mcp" "classes=secrets${nl}before=${nl}after=mcp" "inter
 check "зависимости и CI" "classes=ci deps${nl}before=${nl}after=" "go.mod go.sum .github/workflows/ci.yml"
 check "ломающее" "classes=breaking docs${nl}before=${nl}after=" "CHANGELOG.md" 1
 check "пусто" "classes=${nl}before=${nl}after=" ""
+# macOS на PR (CLAUDE.md §4, решение владельца 03.11, #800): снимается, только
+# если все пути — docs/internal/*.md; любой другой путь или пустой список —
+# macOS есть.
+mac() { # имя, ожидаемое yes|no, пути через пробел
+	local got
+	got=$(tr ' ' '\n' <<<"$3" | "$here/classify.sh" | sed -n 's/^macos=//p')
+	if [ "$got" = "$2" ]; then echo "ok   $1"; else echo "FAIL $1: ждали macos=$2, вышло «$got»"; fail=1; fi
+}
+mac "macOS: план" no "docs/internal/release-plan.md"
+mac "macOS: вложенные docs/internal" no "docs/internal/state/process.md docs/internal/handoff/1.7.md"
+mac "macOS: docs вне internal" yes "docs/internal/release-plan.md docs/mcp.md"
+mac "macOS: CLAUDE.md" yes "CLAUDE.md docs/internal/release-plan.md"
+mac "macOS: .github" yes "docs/internal/release-plan.md .github/workflows/ci.yml"
+mac "macOS: код после docs/internal" yes "docs/internal/release-plan.md internal/engine/deploy.go docs/internal/x.md"
+mac "macOS: не .md в docs/internal" yes "docs/internal/audits/plan.png"
+mac "macOS: тест в docs/internal" yes "docs/internal/x_test.go"
+mac "macOS: пусто" yes ""
 # Чек-лист: области превращаются во флажки cloud-e2e, тесты — без пунктов.
 has() { # имя, пути через пробел, ожидаемые строки чек-листа
 	local name=$1 paths=$2 summary want
