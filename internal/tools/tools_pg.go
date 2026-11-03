@@ -502,7 +502,7 @@ func (s *Registry) planPgDelete(ctx context.Context, args map[string]any) (*Plan
 				}
 				return s.deleteFailed("pg_delete", id, fmt.Errorf(i18n.T("delete cluster: %w", "удаление кластера: %w"), err))
 			}
-			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id) until done=true."}), false
+			return deleteOutcome(ctx, opWatch("pg_delete", id, map[string]any{"id": id}, op.ID, "pg_operation", cli.GetOperation))
 		}), nil
 }
 

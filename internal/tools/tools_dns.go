@@ -321,45 +321,13 @@ func (s *Registry) planDnsZoneDelete(ctx context.Context, args map[string]any) (
 	}}, nil
 }
 
-// dnsZoneDeleteWait is how long, in seconds, dns_zone_delete waits for the
-// operation of its delete. A variable only so that tests can shorten it.
-var dnsZoneDeleteWait = 60
-
 // dnsZoneDeleted is the answer of the delete of zone id whose operation is
-// op (D66): the operation is read until it ends, within dnsZoneDeleteWait —
-// done is deleted, an error is a refusal with Cloud.ru's text (axis 3:
-// «deleted» is a zone that is gone), a wait the caller cancelled is
-// interrupted (as *_operation's wait_seconds), an operation still running or
-// one that cannot be read is deleting with its id, as before.
+// op (D66, D74): deleteOutcome, with the zone's links named after a refusal.
 func dnsZoneDeleted(ctx context.Context, cli *dns.Client, vis, id string, op *dns.Operation) (string, bool) {
-	deleting := map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID,
-		"next": fmt.Sprintf("dns_operation operation_id=%s wait_seconds=%d shows when the delete ends", op.ID, opWaitMaxSeconds)}
-	nextStep(deleting, "dns_operation", map[string]any{"operation_id": op.ID, "wait_seconds": opWaitMaxSeconds})
-	m, err := waitForOpJSON(ctx, dnsZoneDeleteWait, func(ctx context.Context) (map[string]any, error) {
-		got, err := cli.GetOperation(ctx, op.ID)
-		if err != nil {
-			return nil, err
-		}
-		return opToMap(got), nil
-	})
-	if errors.Is(err, context.Canceled) {
-		// The delete is started: the answer names it (FB160-14).
-		return errAnswer(err, map[string]any{"id": id, "visibility": vis, "operation_id": op.ID}), true
-	}
-	if err != nil || m == nil {
-		return toJSON(deleting), false
-	}
-	if e, _ := m["error"].(map[string]any); e != nil {
-		return errResult(clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("Cloud.ru did not delete DNS zone %s: %v (code %v, operation %s)", "Cloud.ru не удалил зону DNS %s: %v (код %v, операция %s)",
-				id, e["message"], e["code"], op.ID),
-			i18n.T("dns_zone_get shows the zone; its links (VPCs, DNS servers) are removed in the console: Evolution DNS → the zone → Links.",
-				"Зона — в выводе dns_zone_get; связи зоны (VPC, DNS-серверы) снимаются в личном кабинете: Evolution DNS → зона → Связи."))), true
-	}
-	if done, _ := m["done"].(bool); !done {
-		return toJSON(deleting), false
-	}
-	return toJSON(map[string]any{"status": "deleted", "visibility": vis, "id": id, "operation_id": op.ID}), false
+	w := opWatch("dns_zone_delete", id, map[string]any{"id": id, "visibility": vis}, op.ID, "dns_operation", cli.GetOperation)
+	w.hintEN = "dns_zone_get shows the zone; its links (VPCs, DNS servers) are removed in the console: Evolution DNS → the zone → Links."
+	w.hintRU = "Зона — в выводе dns_zone_get; связи зоны (VPC, DNS-серверы) снимаются в личном кабинете: Evolution DNS → зона → Связи."
+	return deleteOutcome(ctx, w)
 }
 
 // dnsZoneLinked refuses the delete of a private zone linked to VPCs (D66):
@@ -605,6 +573,6 @@ func (s *Registry) planDnsRecordDelete(ctx context.Context, args map[string]any)
 		if err != nil {
 			return s.deleteFailed("dns_record_delete", id, fmt.Errorf(i18n.T("delete record: %w", "удаление записи: %w"), err))
 		}
-		return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+		return deleteOutcome(ctx, opWatch("dns_record_delete", id, map[string]any{"id": id}, op.ID, "dns_operation", cli.GetOperation))
 	}}, nil
 }

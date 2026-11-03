@@ -890,7 +890,7 @@ var toolsRU = map[string]toolRU{
 		Long: "Удалить зону DNS по id (список: 'evo dns zones') вместе с её записями. Видимость зоны " +
 			"(--type public или private) указывать не обязательно: evo определяет её по id зоны. Приватную зону, " +
 			"связанную с VPC, evo не удаляет: Cloud.ru удаляет её только после снятия связей в личном кабинете. " +
-			"evo ждёт удаления до 60 с: ответ deleted или deleting с operation_id (evo dns operation).",
+			"evo ждёт удаления до 45 с: ответ deleted или deleting с operation_id (evo dns operation).",
 		Args: map[string]string{
 			"id":   "UUID зоны (список: evo dns zones), обязательный",
 			"type": "Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id",

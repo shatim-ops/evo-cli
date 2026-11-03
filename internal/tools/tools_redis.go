@@ -293,7 +293,7 @@ func (s *Registry) planRedisDelete(ctx context.Context, args map[string]any) (*P
 			if err != nil {
 				return s.deleteFailed("redis_delete", id, fmt.Errorf(i18n.T("delete cluster: %w", "удаление кластера: %w"), err))
 			}
-			return toJSON(map[string]any{"status": "deleting", "id": id, "operation_id": op.ID}), false
+			return deleteOutcome(ctx, opWatch("redis_delete", id, map[string]any{"id": id}, op.ID, "redis_operation", cli.GetOperation))
 		}), nil
 }
 

@@ -180,9 +180,10 @@ func TestAllowProject_ResourceByIDNotBound(t *testing.T) {
 	if isErr {
 		t.Fatalf("CLI pg_delete: %s", text)
 	}
-	// The plan reads the cluster (the gate, D35), then the DELETE: no
-	// lookup of its project.
-	if got := trip.take(); len(got) != 2 || got[0] != "GET /v1/clusters/"+clusterOther || got[1] != "DELETE /v1/clusters/"+clusterOther {
-		t.Errorf("CLI pg_delete: requests %v, want its plan's GET and the DELETE", got)
+	// The plan reads the cluster (the gate, D35), then the DELETE and its
+	// operation (D74): no lookup of its project.
+	if got := trip.take(); len(got) != 3 || got[0] != "GET /v1/clusters/"+clusterOther || got[1] != "DELETE /v1/clusters/"+clusterOther ||
+		!strings.HasPrefix(got[2], "GET /v1/operations/") {
+		t.Errorf("CLI pg_delete: requests %v, want its plan's GET, the DELETE and the read of its operation", got)
 	}
 }
