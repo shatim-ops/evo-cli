@@ -97,43 +97,45 @@ func (s *Registry) handleS3Get(ctx context.Context, args map[string]any) (string
 	return toJSON(out), false
 }
 
-func (s *Registry) handleS3Put(ctx context.Context, args map[string]any) (string, bool) {
+// planS3Put plans s3_put (D35, release plan 1.7 F5a): the arguments and
+// the S3 settings of the profile before the question — without keys the
+// upload cannot run, and the refusal came after consent.
+func (s *Registry) planS3Put(_ context.Context, args map[string]any) (*Plan, error) {
 	bucket := stringArg(args, "bucket")
 	key := stringArg(args, "key")
 	if bucket == "" || key == "" {
-		return usageT("'bucket' and 'key' are required", "нужны 'bucket' и 'key'"), true
+		return nil, usageErr("'bucket' and 'key' are required", "нужны 'bucket' и 'key'")
 	}
 	if err := s3.CheckBucketName(bucket); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// Body from inline text (content) or base64 (content_base64).
 	var data []byte
 	if b64 := stringArg(args, "content_base64"); b64 != "" {
 		d, err := base64.StdEncoding.DecodeString(b64)
 		if err != nil {
-			return errResult(fmt.Errorf(i18n.T("invalid content_base64: %w", "content_base64 — не base64: %w"), err)), true
+			return nil, fmt.Errorf(i18n.T("invalid content_base64: %w", "content_base64 — не base64: %w"), err)
 		}
 		data = d
 	} else {
 		data = []byte(stringArg(args, "content"))
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("s3_put will upload %d bytes to s3://%s/%s, overwriting the object if it exists.",
-				"s3_put загрузит %d байт в s3://%s/%s и перезапишет объект, если он есть.", len(data), bucket, key),
-			"preview": willPreview(engine.ResourceS3Object, "s3://"+bucket+"/"+key, "", map[string]any{"size_bytes": len(data)}, []string{"size_bytes"}),
-		}), true
-	}
 	cli, err := s.s3Client()
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	n, err := cli.PutObject(ctx, bucket, key, data, stringArg(args, "content_type"))
-	if err != nil {
-		return errResult(err), true
+	preview := map[string]any{
+		"message": i18n.Tf("s3_put will upload %d bytes to s3://%s/%s, overwriting the object if it exists.",
+			"s3_put загрузит %d байт в s3://%s/%s и перезапишет объект, если он есть.", len(data), bucket, key),
+		"preview": willPreview(engine.ResourceS3Object, "s3://"+bucket+"/"+key, "", map[string]any{"size_bytes": len(data)}, []string{"size_bytes"}),
 	}
-	return toJSON(map[string]any{"status": "ok", "bucket": bucket, "key": key, "size": n}), false
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		n, err := cli.PutObject(ctx, bucket, key, data, stringArg(args, "content_type"))
+		if err != nil {
+			return errResult(err), true
+		}
+		return toJSON(map[string]any{"status": "ok", "bucket": bucket, "key": key, "size": n}), false
+	}}, nil
 }
 
 func (s *Registry) planS3Rm(ctx context.Context, args map[string]any) (*Plan, error) {
@@ -172,35 +174,40 @@ func (s *Registry) planS3Rm(ctx context.Context, args map[string]any) (*Plan, er
 	}}, nil
 }
 
-func (s *Registry) handleS3BucketCreate(ctx context.Context, args map[string]any) (string, bool) {
+// planS3BucketCreate plans s3_bucket_create (D35, release plan 1.7 F5a):
+// the name by the schema's rule (QA-15) and the S3 settings of the
+// profile before the question — without keys the create cannot run, and
+// the refusal came after consent.
+func (s *Registry) planS3BucketCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	bucket := stringArg(args, "bucket")
 	if bucket == "" {
-		return usageT("'bucket' is required (the new bucket name)", "нужен 'bucket' — имя нового бакета"), true
+		return nil, usageErr("'bucket' is required (the new bucket name)", "нужен 'bucket' — имя нового бакета")
 	}
-	// The rule the schema states, before the preview (QA-15).
 	if err := bucketName(bucket); err != nil {
-		return errResult(err), true
-	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		preview, err := s.completePreview(ctx, nil, s3BucketPreview(bucket, stringArg(args, "region")))
-		if err != nil {
-			return errResult(err), true
-		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("s3_bucket_create creates bucket %q (billable storage).",
-				"s3_bucket_create создаёт бакет %q (хранение платное).", bucket),
-			"preview": preview,
-		}), true
+		return nil, err
 	}
 	cli, err := s.s3Client()
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if err := cli.MakeBucket(ctx, bucket, stringArg(args, "region")); err != nil {
-		return errResult(err), true
+	region := stringArg(args, "region")
+	preview, err := s.completePreview(ctx, nil, s3BucketPreview(bucket, region))
+	if err != nil {
+		return nil, err
 	}
-	return toJSON(map[string]any{"status": "created", "bucket": bucket}), false
+	return &Plan{
+		Preview: map[string]any{
+			"message": i18n.Tf("s3_bucket_create creates bucket %q (billable storage).",
+				"s3_bucket_create создаёт бакет %q (хранение платное).", bucket),
+			"preview": preview,
+		},
+		Execute: func(ctx context.Context) (string, bool) {
+			if err := cli.MakeBucket(ctx, bucket, region); err != nil {
+				return errResult(err), true
+			}
+			return toJSON(map[string]any{"status": "created", "bucket": bucket}), false
+		},
+	}, nil
 }
 
 // planS3BucketDelete plans s3_bucket_delete (D35): a bucket that is not
