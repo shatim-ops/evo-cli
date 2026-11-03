@@ -30,10 +30,7 @@ import (
 // that fixes it (W3…W6; the decisions of 1.3.1, D39…D42, with their PR).
 // The list only shrinks: a case not here fails the test, and so does a line
 // whose call no longer fails that way.
-var lateRefusals = map[string]string{
-	"s3_bucket_create: world: no S3 keys": "release plan 1.7, F5a: the s3_* group on the shared planner of consent (gated). Closes by 1.7",
-	"s3_put: world: no S3 keys":           "release plan 1.7, F5a: the s3_* group on the shared planner of consent (gated). Closes by 1.7",
-}
+var lateRefusals = map[string]string{}
 
 // jobStarts answer a refused write as a success by design: the call starts
 // a job, and the step's refusal is the job's state, not the call's answer.
