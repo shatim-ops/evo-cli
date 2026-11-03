@@ -30,12 +30,22 @@ starttime() {
 
 # owner_alive DIR: the process named in the lock directory DIR runs — the
 # same pid, boot and start time, so a pid reused after a reboot is not
-# taken for it.
+# taken for it. The start hands the directory to the stage's process: an
+# owner found gone is read again, and a new one checked.
 owner_alive() {
-	[ -f "$1/owner" ] || return 1
-	read -r pid boot start <"$1/owner" || return 1
-	[ "$boot" = "$(cat /proc/sys/kernel/random/boot_id)" ] || return 1
-	[ -n "$start" ] && [ "$(starttime "$pid")" = "$start" ]
+	o1=$(cat "$1/owner" 2>/dev/null)
+	is_alive "$o1" && return 0
+	o2=$(cat "$1/owner" 2>/dev/null)
+	[ "$o2" != "$o1" ] && is_alive "$o2"
+}
+
+# is_alive "PID BOOT START": that process runs.
+is_alive() {
+	[ -n "$1" ] || return 1
+	set -- $1
+	[ $# -eq 3 ] || return 1
+	[ "$2" = "$(cat /proc/sys/kernel/random/boot_id)" ] || return 1
+	[ "$(starttime "$1")" = "$3" ]
 }
 
 # held: a process runs the stage.
