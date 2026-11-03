@@ -29,7 +29,9 @@ import (
 // language themselves.
 func TestMain(m *testing.M) {
 	i18n.SetLang("en")
-	os.Exit(m.Run())
+	code := m.Run()
+	removeFakeEvos()
+	os.Exit(code)
 }
 
 func TestHandleError_WrappedCLIErrorKeepsHint(t *testing.T) {

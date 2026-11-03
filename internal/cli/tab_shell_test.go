@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -52,31 +53,94 @@ func TestTab_ZshScriptSetsTheMenuUnlessThePersonHasOne(t *testing.T) {
 	}
 }
 
-// fakeEvoInPath builds into dir an evo whose build information records
-// version v the way a release stamps it (-ldflags -X main.version=v): evo
-// doctor reads the version from the file, it never runs it. On Windows
-// evo.exe, as PATHEXT finds it. It returns its path.
-func fakeEvoInPath(t *testing.T, dir, v string) string {
+// fakeEvos are the fake evo built for the package, by version: go build
+// takes seconds on a Windows runner, so each version is built once and
+// copied into the directory a test puts in PATH. TestMain removes the
+// directory (removeFakeEvos).
+var fakeEvos struct {
+	sync.Mutex
+	dir   string
+	built map[string]string
+}
+
+// removeFakeEvos removes the fake evo the package built.
+func removeFakeEvos() {
+	fakeEvos.Lock()
+	defer fakeEvos.Unlock()
+	if fakeEvos.dir != "" {
+		_ = os.RemoveAll(fakeEvos.dir)
+	}
+}
+
+// fakeEvoName is the file name PATH resolves as evo: evo.exe on Windows,
+// as PATHEXT finds it.
+func fakeEvoName() string {
+	if runtime.GOOS == "windows" {
+		return "evo.exe"
+	}
+	return "evo"
+}
+
+// builtFakeEvo builds, once per package, an evo whose build information
+// records version v the way a release stamps it (-ldflags -X
+// main.version=v), and returns its path.
+func builtFakeEvo(t *testing.T, v string) string {
 	t.Helper()
-	src := t.TempDir()
+	fakeEvos.Lock()
+	defer fakeEvos.Unlock()
+	if p, ok := fakeEvos.built[v]; ok {
+		return p
+	}
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		// T7 has no other cover: on CI a missing go fails the run instead
+		// of dropping the check without a word (as 753e04ff).
+		if os.Getenv("CI") != "" {
+			t.Fatal("no go on the CI runner: a fake evo cannot be built, T7 is not tested")
+		}
+		t.Skip("no go in PATH: a fake evo cannot be built")
+	}
+	if fakeEvos.dir == "" {
+		if fakeEvos.dir, err = os.MkdirTemp("", "fakeevo"); err != nil {
+			t.Fatal(err)
+		}
+		fakeEvos.built = map[string]string{}
+	}
+	src := filepath.Join(fakeEvos.dir, "src")
 	for name, body := range map[string]string{
 		"go.mod":  "module example.com/fakeevo\n\ngo 1.21\n",
 		"main.go": "package main\n\nvar version = \"dev\"\n\nfunc main() { println(version) }\n",
 	} {
+		if err := os.MkdirAll(src, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(src, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	name := "evo"
-	if runtime.GOOS == "windows" {
-		name = "evo.exe"
-	}
-	path := filepath.Join(dir, name)
-	build := exec.Command("go", "build", "-o", path, "-ldflags", "-X main.version="+v, ".")
+	path := filepath.Join(fakeEvos.dir, v, fakeEvoName())
+	build := exec.Command(goBin, "build", "-o", path, "-ldflags", "-X main.version="+v, ".")
 	build.Dir = src
 	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build a fake evo %s: %v\n%s", v, err, out)
+	}
+	fakeEvos.built[v] = path
+	return path
+}
+
+// fakeEvoInPath puts into dir an evo whose build information records
+// version v (builtFakeEvo): evo doctor reads the version from the file, it
+// never runs it. It returns its path.
+func fakeEvoInPath(t *testing.T, dir, v string) string {
+	t.Helper()
+	body, err := os.ReadFile(builtFakeEvo(t, v))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, fakeEvoName())
+	if err := os.WriteFile(path, body, 0o755); err != nil {
+		t.Fatal(err)
 	}
 	return path
 }
