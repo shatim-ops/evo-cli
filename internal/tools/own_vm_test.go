@@ -112,3 +112,29 @@ func TestProvision_ANameTakenBySomeoneElseIsRefusedBeforeTheQuestion(t *testing.
 	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web"})
 	ownRefusal(t, "provision", text, isErr, vm.ID)
 }
+
+// D73, the second part: destroy by vm_id of a VM this folder records, but
+// one an evo before 1.7 adopted (made long before its record), refuses
+// before the question — the record held by an adoption is not a VM evo
+// made; the person deletes it if it is theirs. A VM made with its record
+// goes as before.
+func TestDestroyTargeted_ARecordOfAnAdoptedVMIsNotDeleted(t *testing.T) {
+	recorded := time.Now().Add(-time.Hour)
+	vm := &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "wiki-1", Status: "running",
+		CreatedAt: recorded.Add(-24 * time.Hour)}
+	cloud := &sgCloud{vm: vm}
+	r, dir := sgRegistry(t, cloud)
+	writeRecords(t, dir, state.DeploymentRecord{ID: vm.ID, VMID: vm.ID, VMName: vm.Name, Status: "running", CreatedAt: recorded})
+	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": vm.ID})
+	var m map[string]any
+	_ = json.Unmarshal([]byte(text), &m)
+	if !isErr || m["reason"] != "USAGE" || m["status"] == "confirmation_required" {
+		t.Fatalf("an adopted VM's destroy: want USAGE before the question: %s", text)
+	}
+	if hint, _ := m["hint"].(string); !strings.Contains(hint, "vm_delete") {
+		t.Errorf("the hint names no way out for the person (vm_delete): %s", text)
+	}
+	if sf, err := state.Read(state.DefaultPath(dir)); err != nil || len(sf.Deployments) != 1 {
+		t.Errorf("the record is not kept: %+v", sf)
+	}
+}

@@ -2563,7 +2563,11 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 			// What 'evo destroy' lists before it asks (spec REQ-4): the VM by
 			// name, its floating IP, the port rules and the record.
 			if eng, err := s.newEngine(nil); err == nil && eng != nil {
-				if p, ok := eng.DestroyPreview(ctx); ok {
+				p, ok, err := eng.DestroyPreview(ctx)
+				if err != nil {
+					return errResult(err), true
+				}
+				if ok {
 					return destroyAnswer(p, s.deploymentProject()), true
 				}
 			}
@@ -2784,6 +2788,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		var ids []string
 		for _, d := range sf.Deployments {
 			if d.VMID == target.ID {
+				// A record of a VM evo did not make is not destroy's (D73).
+				if err := engine.AdoptedVM(d, target); err != nil {
+					return nil, err
+				}
 				recordedHere = true
 				ids = append(ids, d.ID)
 				if d.FloatingIPID != "" {
