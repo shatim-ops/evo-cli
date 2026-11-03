@@ -211,8 +211,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 		if errors.As(err, &lim) {
 			// The disk is the call's (D49): disk_attach finishes it, with
 			// the consent this call was given.
-			answer := diskAtLimitAnswer(lim, diskID, "it is attached once available.", "disk_attach",
-				map[string]any{"disk_id": diskID, "vm": attachTo, "confirmed": true})
+			answer := diskAtLimitAnswer(lim, diskID, "it is attached once available.", "disk_attach", diskAttachArgs(diskID, attachTo))
 			answer["disk"] = disk
 			return toJSON(answer), false
 		}
@@ -227,6 +226,10 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	// (creating; C2, Ц-14).
 	if d, err := eng.Cloud.GetDisk(ctx, diskID); err == nil {
 		res["disk"] = d
+	} else {
+		// Not the create's "creating" without a word (axis 2).
+		delete(res, "disk")
+		res["disk_note"] = fmt.Sprintf("The disk is attached; its state after the attach was not read (%v): disk_list shows it.", err)
 	}
 	res["note"] = "Disk created and attached. On the VM: partition/format the new device (e.g. mkfs.ext4 /dev/vdX) and mount it — attaching does NOT grow the existing filesystem."
 	return toJSON(res), false
@@ -334,6 +337,14 @@ func diskAtLimitAnswer(lim *diskAtLimit, diskID, why, tool string, nextArgs map[
 	return answer
 }
 
+// diskAttachArgs are the arguments of disk_attach that go on with the
+// attach of disk diskID to VM vm, with the consent the call was given: the
+// next step of disk_create attach_to and of disk_attach at the limit of an
+// MCP call (D69).
+func diskAttachArgs(diskID, vm string) map[string]any {
+	return map[string]any{"disk_id": diskID, "vm": vm, "confirmed": true}
+}
+
 // settlingPlan is the plan of tool whose disk did not settle by the limit
 // of an MCP call (D53, D69): no question yet — the disk's state and the same
 // call again.
@@ -414,7 +425,7 @@ func (s *Registry) planDiskAttach(ctx context.Context, args map[string]any) (*Pl
 				if werr := waitDiskAvailable(ctx, eng, diskID, eng.Config.ProjectID); werr != nil {
 					var lim *diskAtLimit
 					if errors.As(werr, &lim) {
-						return toJSON(diskAtLimitAnswer(lim, diskID, "it is attached once available.", "disk_attach", maps.Clone(args))), false
+						return toJSON(diskAtLimitAnswer(lim, diskID, "it is attached once available.", "disk_attach", diskAttachArgs(diskID, vmRef))), false
 					}
 					return errResult(fmt.Errorf(i18n.T("attach disk: %w (waited for the new disk: %v)", "привязка диска: %w (ожидание нового диска: %v)"), err, werr)), true
 				}

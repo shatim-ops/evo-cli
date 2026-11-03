@@ -51,6 +51,11 @@ type budgetWait struct {
 	done func(m map[string]any) string
 }
 
+// slowDisk is the disk of disk_attach, disk_detach and disk_resize in the
+// slow world: the cloud keeps it "creating", a state it does not settle
+// from (D53).
+var slowDisk = faultResource{host: "compute.api.cloud.ru", path: "/api/v1/disks", ID: faultDisk, Name: "data", before: true}
+
 // faultCluster is the Managed Kubernetes cluster of kubectl and helm in the
 // slow world.
 const faultCluster = "00000000-0000-4000-8000-0000000000c1"
@@ -279,9 +284,9 @@ var mcpWaits = map[string]budgetWait{
 	"k8s_kubectl":  {run: kubeBudget("k8s_kubectl", map[string]any{"cluster_id": faultCluster, "args": "rollout status deployment/web -n app"})},
 	"k8s_helm":     {run: kubeBudget("k8s_helm", map[string]any{"cluster_id": faultCluster, "action": "install", "release": "web", "chart": "repo/web", "namespace": "app", "confirmed": true})},
 	"disk_create":  apiBudget("disk_create", map[string]any{"name": "data", "size_gb": 10, "attach_to": faultTargetVM, "confirmed": true}),
-	"disk_attach":  apiBudget("disk_attach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, faultResource{host: "compute.api.cloud.ru", path: "/api/v1/disks", ID: faultDisk, Name: "data", before: true}),
-	"disk_detach":  {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
-	"disk_resize":  {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
+	"disk_attach":  apiBudget("disk_attach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
+	"disk_detach":  apiBudget("disk_detach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
+	"disk_resize":  apiBudget("disk_resize", map[string]any{"disk_id": faultDisk, "size_gb": 20, "confirmed": true}, slowDisk),
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,

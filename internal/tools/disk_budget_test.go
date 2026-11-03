@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -81,5 +82,30 @@ func TestDiskCreate_ReadsTheDiskAfterTheAttach(t *testing.T) {
 	}
 	if attached < 0 || !read {
 		t.Errorf("the disk is not read after the attach: %v", log)
+	}
+}
+
+// The read after the attach fails: the answer says so (disk_note) instead
+// of the create's "creating" (Qwen on #781).
+func TestDiskCreate_AFailedReadAfterTheAttachSaysSo(t *testing.T) {
+	args := map[string]any{"name": "data", "size_gb": 10, "attach_to": faultTargetVM, "confirmed": true}
+	happy := &faultAPI{}
+	_, _ = budgetAPIRegistry(t, happy).handlers["disk_create"](context.Background(), args)
+	k := 0
+	for i, op := range happy.callLog() {
+		if strings.HasSuffix(op, "/attach") {
+			k = i + 2 // the read after it, 1-based
+		}
+	}
+	if k == 0 {
+		t.Fatalf("no attach: %v", happy.callLog())
+	}
+	a := &faultAPI{}
+	a.failAt(k, faultReject)
+	m := diskAnswer(t, func() (string, bool) {
+		return budgetAPIRegistry(t, a).handlers["disk_create"](context.Background(), args)
+	})
+	if _, has := m["disk"]; has || !strings.Contains(fmt.Sprint(m["disk_note"]), "not read") {
+		t.Errorf("a failed read after the attach: %v (calls %v)", m, a.callLog())
 	}
 }
