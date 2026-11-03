@@ -7,19 +7,18 @@ package cli
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
 // tabShellPending are the parts of Tab in the shell that are not there
 // yet: the part → what is missing. It only shrinks. Closes by 1.7 (release
 // plan 1.7, block B, Tab, #718: T4, T7).
-var tabShellPending = map[string]string{
-	"zsh menu":   "evo completion zsh sets no menu of the candidates (zstyle … menu yes select)",
-	"second evo": "evo doctor does not name another evo in PATH",
-}
+var tabShellPending = map[string]string{}
 
 // zshMenu is the style T4 sets, and zshMenuGuard the read of the person's
 // own one it is set under.
@@ -54,16 +53,110 @@ func TestTab_ZshScriptSetsTheMenuUnlessThePersonHasOne(t *testing.T) {
 	}
 }
 
-// fakeEvoInPath writes into dir an evo that answers version v: a shell script,
-// on Windows a .cmd that PATHEXT finds as evo. It returns its path.
+// fakeEvos are the fake evo built for the package, by version: go build
+// takes seconds on a Windows runner, so each version is built once and
+// copied into the directory a test puts in PATH. TestMain removes the
+// directory (removeFakeEvos).
+var fakeEvos struct {
+	sync.Mutex
+	dir   string
+	built map[string]string
+}
+
+// removeFakeEvos removes the fake evo the package built.
+func removeFakeEvos() {
+	fakeEvos.Lock()
+	defer fakeEvos.Unlock()
+	if fakeEvos.dir != "" {
+		_ = os.RemoveAll(fakeEvos.dir)
+	}
+}
+
+// fakeEvoName is the file name PATH resolves as evo: evo.exe on Windows,
+// as PATHEXT finds it.
+func fakeEvoName() string {
+	if runtime.GOOS == "windows" {
+		return "evo.exe"
+	}
+	return "evo"
+}
+
+// builtFakeEvo builds, once per package, an evo stamped with version v
+// (-ldflags -X main.version=v), and returns its path. Built with -trimpath,
+// as a release is, its build information records no -ldflags: a release's
+// version is the main module's, from its git tag, which this module
+// outside git has not.
+func builtFakeEvo(t *testing.T, v string, trimpath bool) string {
+	t.Helper()
+	fakeEvos.Lock()
+	defer fakeEvos.Unlock()
+	key := v
+	if trimpath {
+		key += "-trimpath"
+	}
+	if p, ok := fakeEvos.built[key]; ok {
+		return p
+	}
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		// T7 has no other cover: on CI a missing go fails the run instead
+		// of dropping the check without a word (as 753e04ff).
+		if os.Getenv("CI") != "" {
+			t.Fatal("no go on the CI runner: a fake evo cannot be built, T7 is not tested")
+		}
+		t.Skip("no go in PATH: a fake evo cannot be built")
+	}
+	if fakeEvos.dir == "" {
+		if fakeEvos.dir, err = os.MkdirTemp("", "fakeevo"); err != nil {
+			t.Fatal(err)
+		}
+		fakeEvos.built = map[string]string{}
+	}
+	src := filepath.Join(fakeEvos.dir, "src")
+	for name, body := range map[string]string{
+		"go.mod":  "module example.com/fakeevo\n\ngo 1.21\n",
+		"main.go": "package main\n\nvar version = \"dev\"\n\nfunc main() { println(version) }\n",
+	} {
+		if err := os.MkdirAll(src, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(src, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(fakeEvos.dir, key, fakeEvoName())
+	args := []string{"build", "-o", path, "-ldflags", "-X main.version=" + v}
+	if trimpath {
+		args = append(args, "-trimpath")
+	}
+	build := exec.Command(goBin, append(args, ".")...)
+	build.Dir = src
+	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=", "CGO_ENABLED=0")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build a fake evo %s: %v\n%s", v, err, out)
+	}
+	fakeEvos.built[key] = path
+	return path
+}
+
+// fakeEvoInPath puts into dir an evo whose build information records
+// version v (builtFakeEvo): evo doctor reads the version from the file, it
+// never runs it. It returns its path.
 func fakeEvoInPath(t *testing.T, dir, v string) string {
 	t.Helper()
-	name, body := "evo", "#!/bin/sh\necho 'evo version "+v+"'\necho '{\"version\":\""+v+"\"}'\n"
-	if runtime.GOOS == "windows" {
-		name, body = "evo.cmd", "@echo off\r\necho evo version "+v+"\r\necho {\"version\":\""+v+"\"}\r\n"
+	return copyFakeEvo(t, dir, builtFakeEvo(t, v, false))
+}
+
+// copyFakeEvo copies the built evo at built into dir, under the name PATH
+// resolves as evo, and returns its path.
+func copyFakeEvo(t *testing.T, dir, built string) string {
+	t.Helper()
+	body, err := os.ReadFile(built)
+	if err != nil {
+		t.Fatal(err)
 	}
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+	path := filepath.Join(dir, fakeEvoName())
+	if err := os.WriteFile(path, body, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -72,7 +165,7 @@ func fakeEvoInPath(t *testing.T, dir, v string) string {
 // T7 (#718; process plan 1.7 §5): with two evo in PATH the shell runs one
 // and completes from it, the person upgrades the other — evo doctor names
 // every other evo in PATH with its version. The world: two fake evo, each
-// answering its version; on Windows each an evo.cmd, found by PATHEXT as a
+// built with its version; on Windows each an evo.exe, found by PATHEXT as a
 // second evo.exe would be.
 func TestDoctor_NamesAnotherEvoInPath(t *testing.T) {
 	var dirs, paths []string
