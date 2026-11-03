@@ -90,6 +90,11 @@ func TestWaitForSSH_SlowNoteOnce(t *testing.T) {
 	if !strings.Contains(out.String(), "evo keeps trying (5 attempts in all)") {
 		t.Errorf("note:\n%s", out.String())
 	}
+	// Both ends: the network evo runs in may let no SSH out, and the note
+	// says how to check it (agent run C2, Ц-8).
+	if !strings.Contains(out.String(), "The network evo runs in may also let no SSH out") || !strings.Contains(out.String(), "nc -vz 192.0.2.10 22") {
+		t.Errorf("the note does not name the network evo runs in:\n%s", out.String())
+	}
 }
 
 // A re-run on a VM that SSH never reached (an earlier ssh_timeout) waits

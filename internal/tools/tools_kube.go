@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"strings"
@@ -175,11 +176,34 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 	if err != nil {
 		return errResult(err), true
 	}
-	out, err := kubetools.Kubectl(ctx, kc, "", 90*time.Second, fields...)
+	timeout, capped := callBound(ctx, 90*time.Second)
+	out, err := kubetools.Kubectl(ctx, kc, "", timeout, fields...)
+	if capped && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return toJSON(kubectlAtLimit(out, verb, args)), false
+	}
 	if err != nil {
 		return errAnswer(err, map[string]any{"output": out}), true
 	}
 	return toJSON(map[string]any{"status": "ok", "output": out}), false
+}
+
+// kubectlAtLimit is the answer of kubectl stopped at the limit of an MCP
+// call (D69): not an error — what it printed so far, and what holds. What
+// it sent the cluster before (an apply, a delete) goes on there; a command
+// that waits (rollout status, wait, logs -f) is repeated, a change is
+// checked with a read.
+func kubectlAtLimit(out, verb string, args map[string]any) map[string]any {
+	answer := map[string]any{
+		"status": "stopped_at_limit",
+		"output": out,
+	}
+	if kubectlReadOnly(strings.Fields(stringArg(args, "args"))) {
+		answer["next"] = fmt.Sprintf("kubectl %s was stopped at the time limit of an MCP call; it reads and changes nothing. Call k8s_kubectl again: a command that waits (rollout status, wait, logs -f) goes on from the cluster's state; give it --timeout under 40s to answer within one call.", verb)
+		nextStep(answer, "k8s_kubectl", maps.Clone(args))
+		return answer
+	}
+	answer["next"] = fmt.Sprintf("kubectl %s was stopped at the time limit of an MCP call. What it sent the cluster before that goes on there; check the result with a read (k8s_kubectl \"get …\") before you repeat the change.", verb)
+	return answer
 }
 
 // handleK8sApply applies a manifest (YAML/JSON) to the cluster. Mutation → confirmed.
@@ -295,11 +319,22 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 		if i := strings.Index(chart, "/"); i > 0 {
 			repoName = chart[:i]
 		}
-		if out, e := kubetools.Helm(ctx, kc, 60*time.Second, "repo", "add", repoName, repoURL, "--force-update"); e != nil {
-			return errAnswer(e, map[string]any{"stage": "repo add", "output": out}), true
-		}
-		if out, e := kubetools.Helm(ctx, kc, 90*time.Second, "repo", "update"); e != nil {
-			return errAnswer(e, map[string]any{"stage": "repo update", "output": out}), true
+		for _, st := range []struct {
+			name string
+			own  time.Duration
+			args []string
+		}{
+			{"repo add", 60 * time.Second, []string{"repo", "add", repoName, repoURL, "--force-update"}},
+			{"repo update", 90 * time.Second, []string{"repo", "update"}},
+		} {
+			timeout, capped := callBound(ctx, st.own)
+			out, e := kubetools.Helm(ctx, kc, timeout, st.args...)
+			if capped && errors.Is(e, context.DeadlineExceeded) && ctx.Err() == nil {
+				return toJSON(helmAtLimit(out, st.name, args)), false
+			}
+			if e != nil {
+				return errAnswer(e, map[string]any{"stage": st.name, "output": out}), true
+			}
 		}
 	}
 
@@ -338,7 +373,16 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 				}
 			}
 		}
-		hargs = append(hargs, "--wait", "--timeout", "8m")
+		// The CLI waits for the pods as before (H14). An MCP call does not
+		// (D69): helm answers once the cluster took the manifests, the
+		// answer says deploying, and the next step reads the release; its
+		// own --timeout (hooks) ends within the call's budget, so helm ends
+		// a hook itself rather than being killed mid-operation.
+		if t, capped := callBound(ctx, helmWaitTimeout); capped {
+			hargs = append(hargs, "--timeout", (t - min(t/10, 3*time.Second)).Round(time.Second).String())
+		} else {
+			hargs = append(hargs, "--wait", "--timeout", "8m")
+		}
 	case "uninstall", "delete":
 		hargs = []string{"uninstall", release}
 		if ns != "" {
@@ -353,13 +397,57 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 		}
 	}
 
-	timeout := 120 * time.Second
+	own := 120 * time.Second
 	if action == "install" || action == "upgrade" {
-		timeout = 9 * time.Minute // --wait can take a while pulling images
+		own = helmWaitTimeout // --wait can take a while pulling images
 	}
+	timeout, capped := callBound(ctx, own)
 	out, err := kubetools.Helm(ctx, kc, timeout, hargs...)
+	if capped && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return toJSON(helmAtLimit(out, action, args)), false
+	}
 	if err != nil {
 		return errAnswer(err, map[string]any{"output": out}), true
 	}
+	if capped && (action == "install" || action == "upgrade") {
+		answer := map[string]any{"status": "deploying", "action": action, "output": out,
+			"next": fmt.Sprintf("helm %s: the cluster took the release's manifests (helm says deployed); its pods may still be starting — deployed does not mean ready. Read the release with k8s_helm action=status, and the pods with k8s_kubectl \"get pods -n <namespace>\".", action)}
+		nextStep(answer, "k8s_helm", helmStatusArgs(args))
+		return toJSON(answer), false
+	}
 	return toJSON(map[string]any{"status": "ok", "action": action, "output": out}), false
+}
+
+// helmWaitTimeout bounds helm install and upgrade in the CLI: --wait
+// --timeout 8m and a minute to answer.
+const helmWaitTimeout = 9 * time.Minute
+
+// helmStatusArgs are the arguments of k8s_helm that read the release of
+// args.
+func helmStatusArgs(args map[string]any) map[string]any {
+	next := map[string]any{"cluster_id": stringArg(args, "cluster_id"), "action": "status", "release": stringArg(args, "release")}
+	if ns := stringArg(args, "namespace"); ns != "" {
+		next["namespace"] = ns
+	}
+	return next
+}
+
+// helmAtLimit is the answer of helm stopped at the limit of an MCP call
+// (D69): not an error — what it printed so far; a release the stop may
+// have left mid-operation is read next.
+func helmAtLimit(out, stage string, args map[string]any) map[string]any {
+	answer := map[string]any{"status": "stopped_at_limit", "stage": stage, "output": out}
+	switch action := strings.ToLower(stringArg(args, "action")); {
+	case strings.HasPrefix(stage, "repo "):
+		// Before helm touched the cluster: the same call again.
+		answer["next"] = fmt.Sprintf("helm %s was stopped at the time limit of an MCP call, before the release was touched. Call k8s_helm again with the same arguments.", stage)
+		nextStep(answer, "k8s_helm", maps.Clone(args))
+	case action == "list" || action == "status":
+		answer["next"] = fmt.Sprintf("helm %s was stopped at the time limit of an MCP call; it changes nothing. Call k8s_helm again.", action)
+		nextStep(answer, "k8s_helm", maps.Clone(args))
+	default:
+		answer["next"] = fmt.Sprintf("helm (%s) was stopped at the time limit of an MCP call; the release may be left mid-operation. Read it with k8s_helm action=status: a release in pending-install or pending-upgrade is ended with helm rollback or uninstall.", stage)
+		nextStep(answer, "k8s_helm", helmStatusArgs(args))
+	}
+	return answer
 }

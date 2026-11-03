@@ -10,6 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -46,6 +49,46 @@ type budgetWait struct {
 	// done reads an answer given in time: "" when it is the honest state of
 	// a call cut by the budget (D69 §2, axis 2), else what is wrong.
 	done func(m map[string]any) string
+}
+
+// slowDisk is the disk of disk_attach, disk_detach and disk_resize in the
+// slow world: the cloud keeps it "creating", a state it does not settle
+// from (D53).
+var slowDisk = faultResource{host: "compute.api.cloud.ru", path: "/api/v1/disks", ID: faultDisk, Name: "data", before: true}
+
+// faultCluster is the Managed Kubernetes cluster of kubectl and helm in the
+// slow world.
+const faultCluster = "00000000-0000-4000-8000-0000000000c1"
+
+// kubeBudget is a call of tool (k8s_kubectl, k8s_helm) in a cluster whose
+// kubectl and helm never end (a rollout that does not finish, a chart
+// whose pods do not come up): the binaries of the slow world on PATH,
+// which print a line and wait until they are stopped. Linux and macOS:
+// they are shell scripts.
+func kubeBudget(tool string, args map[string]any) func(t *testing.T) (func(ctx context.Context) (string, bool), func()) {
+	return func(t *testing.T) (func(ctx context.Context) (string, bool), func()) {
+		r := budgeted(kubeWorld(t, `echo "$(basename "$0"): waiting"; exec sleep 600`))
+		return func(ctx context.Context) (string, bool) { return r.handlers[tool](ctx, args) }, nil
+	}
+}
+
+// kubeWorld is the API world with kubectl and helm on PATH that run body
+// (sh); each writes its arguments, one per line, to $KUBE_ARGS/<name>.
+func kubeWorld(t *testing.T, body string) *Registry {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("kubectl and helm of the world are shell scripts")
+	}
+	bin := t.TempDir()
+	for _, name := range []string{"kubectl", "helm"} {
+		script := "#!/bin/sh\nprintf '%s\\n' \"$@\" >\"$KUBE_ARGS/" + name + "\"\n" + body + "\n"
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("KUBE_ARGS", t.TempDir())
+	return budgetAPIRegistry(t, &faultAPI{slow: true})
 }
 
 // budgetComputeRegistry is the compute fault world with the production
@@ -238,12 +281,12 @@ var mcpWaits = map[string]budgetWait{
 
 	// No world of the slow cloud reaches these yet: what the code shows.
 	"stack_status": {static: "the handler waits at most 20 s (tools_stack.go), as its schema says: within the budget"},
-	"k8s_kubectl":  {static: "kubectl runs up to 90 s (tools_kube.go, docs/mcp.md)", over: true},
-	"k8s_helm":     {static: "helm runs up to 9 min with --wait (tools_kube.go)", over: true},
-	"disk_create":  {static: "with vm, waits for the new disk to be available (diskReadyTimeout 5 min; tools_disk.go) before the attach", over: true},
-	"disk_attach":  {static: "waits for the disk to settle (diskSettleTimeout 30 s) before the question, then to be available (diskReadyTimeout 5 min; tools_disk.go)", over: true},
-	"disk_detach":  {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
-	"disk_resize":  {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
+	"k8s_kubectl":  {run: kubeBudget("k8s_kubectl", map[string]any{"cluster_id": faultCluster, "args": "rollout status deployment/web -n app"})},
+	"k8s_helm":     {run: kubeBudget("k8s_helm", map[string]any{"cluster_id": faultCluster, "action": "install", "release": "web", "chart": "repo/web", "namespace": "app", "confirmed": true})},
+	"disk_create":  apiBudget("disk_create", map[string]any{"name": "data", "size_gb": 10, "attach_to": faultTargetVM, "confirmed": true}),
+	"disk_attach":  apiBudget("disk_attach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
+	"disk_detach":  apiBudget("disk_detach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
+	"disk_resize":  apiBudget("disk_resize", map[string]any{"disk_id": faultDisk, "size_gb": 20, "confirmed": true}, slowDisk),
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,
@@ -251,12 +294,7 @@ var mcpWaits = map[string]budgetWait{
 // agent ask for a longer wait. It only shrinks. Closes by 1.7 (release plan
 // 1.7, block A; process plan 1.7 §1: red before PR 1 of D69, each PR of
 // D69 takes its lines out).
-var mcpOverBudget = map[string]string{
-	"k8s_kubectl": "kubectl up to 90 s",
-	"k8s_helm":    "helm up to 9 min",
-	"disk_create": "with vm: waits for the disk up to 5 min",
-	"disk_attach": "waits for the disk to settle up to 30 s before the question, then to be available up to 5 min",
-}
+var mcpOverBudget = map[string]string{}
 
 // waitProps are the schema properties by which an agent asks a tool to
 // wait, in seconds.

@@ -9,7 +9,7 @@
 `tools.go` — предупреждаем друг друга, порядок слияний — «релиз». По одному PR,
 `main` перед каждым; rc.1 — после A–D.
 
-1. A: D69 — осталось `k8s_kubectl`/`k8s_helm`, `disk_create`/`disk_attach`.
+1. A: D69 — `k8s_kubectl`/`k8s_helm` (#778), `disk_create`/`disk_attach` с Ц-14 (следующий PR, ветка `claude/d69-disk`).
 2. Из B: D73, P5, P6, превью `deploy` и проба TCP/22 (M2), находки Fable #696.
 3. D: D68, подсказки без удаления, P13.
 4. C: цена k8s и PG, P3.

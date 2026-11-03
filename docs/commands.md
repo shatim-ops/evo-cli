@@ -6262,7 +6262,7 @@ evo pg create <name> [flags]
       --cpu int                     Число vCPU — для автоподбора конфигурации, если --specification-id не задан
       --description string          Описание кластера (необязательно)
   -h, --help                        Справка по create
-      --initial-database string     Имя базы данных, которая создаётся вместе с кластером (по умолчанию defaultdb)
+      --initial-database string     Имя базы данных, которая создаётся вместе с кластером (по умолчанию defaultdb). Владельца для неё API не принимает: базу, которой владеет ваш пользователь, создайте через 'evo pg user-create', затем 'evo pg db-create --owner'
       --instances int               Число узлов: 1–2 для standard, 1–3 для business (проверяется по конфигурации). По умолчанию 1
       --no-backup                   Без автоматических резервных копий. По умолчанию они включены, и после создания кластера это не изменить; кластер без резервных копий отклоняет evo pg backup-create и evo pg backups с ошибкой 'backup disabled'
       --ram int                     RAM, ГБ — вместе с --cpu для автоподбора конфигурации
