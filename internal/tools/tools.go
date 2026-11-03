@@ -126,7 +126,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "destroy",
-			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM (e.g. an orphan from a failed deploy), pass vm_id or name: the preview names the VM (id, name, zone, status, address) and the floating IP and port rules that go with it; a VM that is not there is already deleted (status already_deleted, existed false; check the id against vm_list if it matters), and a name several VMs share is refused (USAGE with the candidates — pass vm_id). By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy. A deletion Cloud.ru accepted but did not confirm is status partial (an error): the floating IP, the rules and the record stay until destroy is called again.",
+			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM, pass vm_id or name: the preview names the VM (id, name, zone, status, address) and the floating IP and port rules that go with it; a VM that is not there is already deleted (status already_deleted, existed false), and a name several VMs share is refused (USAGE with the candidates — pass vm_id). By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy. A deletion Cloud.ru accepted but did not confirm is status partial (an error), one still going when an MCP call ends (~45 s) is status deleting with next_tool: the floating IP, the rules and the record stay until destroy is called again.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":      uuidProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
 				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
@@ -2841,8 +2841,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			eng.Printer = pp
 		}
 
-		if alreadyGone {
-			// Nothing to delete in the cloud.
+		if alreadyGone || strings.EqualFold(target.Status, "deleting") {
+			// Nothing to delete in the cloud, or the delete of an earlier
+			// call still going: Cloud.ru refuses another DELETE then with
+			// 409 (OPS-18), and the wait below is what the repeat is for.
 		} else if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
 			var gone *clierrors.CLIError
 			if stderrors.As(err, &gone) && gone.Code == clierrors.CodeVMNotFound {
@@ -2861,13 +2863,28 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			} else {
 				return errResult(fmt.Errorf(i18n.T("delete VM: %w", "удаление ВМ: %w"), err)), true
 			}
-		} else if !eng.WaitVMGone(ctx, target.ID) {
-			// The delete was accepted, but the VM is still listed: its floating
-			// IP stays attached and its ports may still serve. The record stays
-			// (destroying, with the FIP) and nothing else is released until a
-			// re-run sees the VM gone; the answer is partial, not ok (release
-			// audit, A-005, L-11).
-			return destroyUnconfirmed(statePath, projectID, target, &fipRec, releaseIP && hasFIP, !releaseIP && hasFIP), true
+		}
+		if !alreadyGone {
+			// The wait ends with the budget of an MCP call too (D69).
+			waitCtx := ctx
+			if left, capped := budgetLeft(ctx); capped {
+				var cancel context.CancelFunc
+				waitCtx, cancel = context.WithTimeout(ctx, left)
+				defer cancel()
+			}
+			if !eng.WaitVMGone(waitCtx, target.ID) {
+				if ctx.Err() == nil && waitCtx.Err() != nil {
+					// The budget ended the wait, not the cloud: the VM is
+					// being deleted, the repeat waits for it again.
+					return destroyDeleting(ctx, eng, statePath, projectID, target, &fipRec, releaseIP && hasFIP, args), false
+				}
+				// The delete was accepted, but the VM is still listed: its
+				// floating IP stays attached and its ports may still serve.
+				// The record stays (destroying, with the FIP) and nothing
+				// else is released until a re-run sees the VM gone; the
+				// answer is partial, not ok (release audit, A-005, L-11).
+				return destroyUnconfirmed(statePath, projectID, target, &fipRec, releaseIP && hasFIP, !releaseIP && hasFIP), true
+			}
 		}
 
 		// The floating IP first, as the CLI destroy does: it stays attached until
@@ -3056,8 +3073,70 @@ func fipLeftAnswer(err error, fip *provision.FloatingIP, fipErr error) string {
 // release_ip=true would release the address the user kept (Cursor review of
 // PR #89).
 func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRec *state.DeploymentRecord, keepFIP, keepAsked bool) string {
+	recorded, stateErr := markDestroying(statePath, projectID, target, fipRec, keepFIP)
+	msg := fmt.Sprintf("VM %s: Cloud.ru accepted the delete, but the VM is still listed, so the deletion is not confirmed; "+
+		"its floating IP and port rules are kept for now", target.ID)
+	hint := fmt.Sprintf("While the VM exists, it and its floating IP are billed. Check it with vm_get %s, then call destroy with vm_id %s again: once the VM is gone it releases the floating IP and closes the ports.", target.ID, target.ID)
+	if keepAsked {
+		hint = fmt.Sprintf("While the VM exists, it is billed. Check it with vm_get %s, then call destroy with vm_id %s and release_ip=false again: once the VM is gone it closes the ports and keeps the floating IP.", target.ID, target.ID)
+	}
+	switch {
+	case stateErr != nil:
+		msg += fmt.Sprintf(" (WARNING: the local state was not updated: %v)", stateErr)
+	case recorded:
+		msg += " and its local record stays (status destroying)"
+	default:
+		// Nothing recorded here and no FIP found: a re-run after the VM is
+		// gone would be VM_NOT_FOUND, there is nothing left to clean up.
+		hint = fmt.Sprintf("Check it with vm_get %s: once it is VM_NOT_FOUND the deletion is done, nothing else needs a destroy.", target.ID)
+	}
+	fields := map[string]any{"status": "partial", "vm_id": target.ID, "name": target.Name}
+	if keepFIP {
+		fields["floating_ip"] = "kept until the VM is gone: " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
+	}
+	return errAnswer(clierrors.New(clierrors.CodeAPIError, msg, hint), fields)
+}
+
+// destroyDeleting is the answer of destroy whose wait for the VM to go the
+// budget of an MCP call ended (D69): not an error and not deleted — the VM
+// is being deleted, its floating IP and record stay (markDestroying), and
+// the next step is the same call, which waits for it and then releases the
+// rest.
+func destroyDeleting(ctx context.Context, eng *engine.Engine, statePath, projectID string, target *provision.VM, fipRec *state.DeploymentRecord, keepFIP bool, args map[string]any) string {
+	_, stateErr := markDestroying(statePath, projectID, target, fipRec, keepFIP)
+	vmStatus := firstNonEmptyStr(target.Status, "deleting")
+	if vm, err := eng.Cloud.GetVM(ctx, target.ID); err == nil && vm.Status != "" {
+		vmStatus = vm.Status
+	}
+	out := map[string]any{"status": "deleting", "vm_id": target.ID, "name": target.Name, "vm_status": vmStatus,
+		"next": fmt.Sprintf("Cloud.ru is deleting VM %s; it is billed until it is gone. Call destroy with vm_id %s and confirmed=true again: it waits for the VM, then releases its floating IP and port rules and drops the record.", target.ID, target.ID)}
+	if keepFIP {
+		out["floating_ip"] = "kept until the VM is gone: " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
+	}
+	if stateErr != nil {
+		out["warning"] = fmt.Sprintf("the local state was not updated: %v", stateErr)
+	}
+	// The call found the VM deleting already: a repeat. A VM can stay in
+	// DELETING (OPS-18), and repeating would go on for ever while it is
+	// billed: the way out of DeleteWayOut, the one for every delete.
+	if _, way := engine.DeleteWayOut(target.Status, target.ID); way != "" && strings.EqualFold(target.Status, "deleting") {
+		out["way_out"] = way
+		out["next"] = out["next"].(string) + " " + way
+	}
+	repeat := map[string]any{"vm_id": target.ID, "confirmed": true}
+	if v, ok := args["release_ip"]; ok {
+		repeat["release_ip"] = v
+	}
+	nextStep(out, "destroy", repeat)
+	return toJSON(out)
+}
+
+// markDestroying marks the record of target destroying, with its floating
+// IP when keepFIP, or records it so when only its floating IP was found:
+// a re-run after the VM is gone releases what it held. recorded: a record
+// holds it now.
+func markDestroying(statePath, projectID string, target *provision.VM, fipRec *state.DeploymentRecord, keepFIP bool) (recorded bool, _ error) {
 	now := time.Now()
-	recorded := false
 	stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
 		marked := false
 		for _, d := range sf.Deployments {
@@ -3081,27 +3160,7 @@ func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRe
 		recorded = marked || keepFIP
 		return nil
 	})
-	msg := fmt.Sprintf("VM %s: Cloud.ru accepted the delete, but the VM is still listed, so the deletion is not confirmed; "+
-		"its floating IP and port rules are kept for now", target.ID)
-	hint := fmt.Sprintf("While the VM exists, it and its floating IP are billed. Check it with vm_get %s, then call destroy with vm_id %s again: once the VM is gone it releases the floating IP and closes the ports.", target.ID, target.ID)
-	if keepAsked {
-		hint = fmt.Sprintf("While the VM exists, it is billed. Check it with vm_get %s, then call destroy with vm_id %s and release_ip=false again: once the VM is gone it closes the ports and keeps the floating IP.", target.ID, target.ID)
-	}
-	switch {
-	case stateErr != nil:
-		msg += fmt.Sprintf(" (WARNING: the local state was not updated: %v)", stateErr)
-	case recorded:
-		msg += " and its local record stays (status destroying)"
-	default:
-		// Nothing recorded here and no FIP found: a re-run after the VM is
-		// gone would be VM_NOT_FOUND, there is nothing left to clean up.
-		hint = fmt.Sprintf("Check it with vm_get %s: once it is VM_NOT_FOUND the deletion is done, nothing else needs a destroy.", target.ID)
-	}
-	fields := map[string]any{"status": "partial", "vm_id": target.ID, "name": target.Name}
-	if keepFIP {
-		fields["floating_ip"] = "kept until the VM is gone: " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
-	}
-	return errAnswer(clierrors.New(clierrors.CodeAPIError, msg, hint), fields)
+	return recorded, stateErr
 }
 
 // provisionNoPublicIP is the answer of a provision whose VM is active but
