@@ -118,9 +118,10 @@ func TestD69_ProvisionWaitFalseDoesNotWait(t *testing.T) {
 		if m := decode(t, text); m["status"] != "creating" || m["next_tool"] != "provision" {
 			t.Errorf("wait=false: want creating with the next step: %s", text)
 		}
-	// wall-clock: a share (1/45) of D69's 45 s budget; wait=false waits
-	// for nothing.
-	case <-time.After(budgetWatch):
+	// wall-clock: a fraction of the production wait for the VM (minutes);
+	// wait=false waits for nothing. budgetWatch (1 s) did not hold on a
+	// slow Windows runner under -race (#793).
+	case <-time.After(10 * time.Second):
 		t.Fatal("wait=false waited for the VM")
 	}
 }

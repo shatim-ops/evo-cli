@@ -109,6 +109,19 @@ func firstWords(cmd string) string {
 	return strings.Join(f[:min(len(f), 3)], " ")
 }
 
+// sshBudget is the budget of an MCP call in this world, and sshWatch how
+// long a call may take before it counts as one that waits out a step of
+// production (Docker: 15 min, SSH: minutes). A call must make progress
+// within the budget — create the VM, start the stage — or the chain of
+// repeats never ends: 250 ms (worldBudget) did not hold on a slow Windows
+// runner under -race (#793), 1 s does with a margin.
+// wall-clock: a margin for the steps of a call, which take milliseconds;
+// the watch is a fraction of the production waits it tells apart.
+const (
+	sshBudget = time.Second
+	sshWatch  = 10 * time.Second
+)
+
 // sshBudgetRegistry is the stage world with the budget of an MCP call and
 // the timeouts of production: an SSH step the budget does not bound runs
 // to its own timeout (Docker: 15 min), not to a short one of the world.
@@ -122,7 +135,7 @@ func sshBudgetRegistry(t *testing.T, vm *slowSSHVM) *Registry {
 	timings.VMPollTimeout, timings.FIPSettleTimeout, timings.DockerWaitTimeout = 0, 0, 0
 	timings.DockerPollInterval, timings.SSHRetryInterval = 0, 0
 	// A few reads of a going stage per call, not one per millisecond.
-	timings.StagePollInterval = worldBudget / 4
+	timings.StagePollInterval = sshBudget / 4
 	compose := writeTestCompose(t)
 	dir := t.TempDir()
 	cloud := &faultCloud{}
@@ -144,14 +157,14 @@ func sshBudgetRegistry(t *testing.T, vm *slowSSHVM) *Registry {
 			},
 		}, nil
 	})
-	r.SetCallBudget(worldBudget)
+	r.SetCallBudget(sshBudget)
 	return r
 }
 
 // deployChain calls deploy over MCP as an agent does: the first call with
 // args, each next one with the answer's next_args while it says deploying,
 // the stage on the VM ending between two calls. Each call is held to
-// budgetWatch. It returns the answers; "" is a call that did not answer in
+// sshWatch. It returns the answers; "" is a call that did not answer in
 // time, and the chain stops there.
 func deployChain(t *testing.T, r *Registry, vm *stageVM, args map[string]any, calls int) []string {
 	t.Helper()
@@ -166,7 +179,7 @@ func deployChain(t *testing.T, r *Registry, vm *stageVM, args map[string]any, ca
 		var text string
 		select {
 		case text = <-got:
-		case <-time.After(budgetWatch):
+		case <-time.After(sshWatch):
 			cancel()
 			<-got
 		}
@@ -210,7 +223,7 @@ func deployStageStarts(vm *stageVM) int {
 // first call to the end, the agent repeating it by next_args — then hangs
 // each of them in turn, one per run (a run of the same call — the reads
 // of a going stage — once): the call that meets it answers within
-// budgetWatch with the state so far (deploying, its next step), and the
+// sshWatch with the state so far (deploying, its next step), and the
 // chain of repeats still ends. A new SSH step of deploy is in the walk by
 // itself: the world counts calls, it names none.
 func TestDeploySSH_EachStepUnderTheBudget(t *testing.T) {
