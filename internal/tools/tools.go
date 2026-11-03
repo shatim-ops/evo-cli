@@ -63,11 +63,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "provision",
-			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. A subnet and a security group are attached. " +
-				"The image is 'image' (name, display name or UUID, resolved like image_get: ambiguous → USAGE with candidates, none → NOT_FOUND) or 'image_id' (UUID). Any OS image the project can use works (Astra Linux, Alt, RED OS too); one it cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
+			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. " +
+				"The image is 'image' (name or UUID, resolved as image_get does) or 'image_id' (UUID). Any OS image the project can use works; one it cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
 				"evo fills image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else refused before anything is created. " +
 				"No image or region: refused before the preview ('missing' names it). " +
 				"Returns ssh (deploy-key login), password (generated; this answer only), state_dir (key, state). " +
+				"Over MCP a VM not running in ~45 s answers status creating (password, next_tool/next_args): the same call again finishes it. " +
 				"For docker-compose use 'deploy'.",
 			InputSchema: objSchema(map[string]any{
 				"name":       strProp("VM name (e.g. 'hermes-agent')."),
@@ -84,6 +85,7 @@ func (s *Registry) registerTools() {
 				"subnet_id":    strProp("Subnet UUID or name for the interface (default: a subnet in the target zone)."),
 				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
 				"confirmed":    confirmedProp(),
+				"wait":         boolProp(waitDesc),
 			}),
 		},
 		{
@@ -1823,13 +1825,27 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 		will["image_metadata_fields"] = sortedMetaKeys(metaValues)
 	}
 	will["public_ip"] = !noPublicIP
+	answer := map[string]any{
+		"message": i18n.T("provision creates a billable VM (and a public floating IP unless no_public_ip=true). preview has the VM and its monthly cost.",
+			"provision создаёт платную ВМ (и публичный floating IP, если не задано no_public_ip=true). В preview — ВМ и её цена в месяц."),
+		"will_create": will,
+		"preview":     preview,
+	}
+	// The repeat of a call its budget cut (D69) finishes that VM: the
+	// question names it, as the call adopts it (creatingVM).
+	actx, cancel := context.WithTimeout(ctx, engine.PreviewLookupTimeout)
+	rec, vm, err := creatingVM(actx, eng, stringArg(args, "name"), false)
+	cancel()
+	if err != nil {
+		return nil, err
+	}
+	if vm != nil {
+		answer["adopts"] = map[string]any{"vm_id": rec.VMID, "vm_status": vm.Status}
+		answer["message"] = i18n.Tf("provision finishes VM %s (%s), which an earlier call of this name left creating in this folder: no second VM is created; it waits for the VM, then gives it its public IP and ports. preview has the VM and its monthly cost.",
+			"provision доделывает ВМ %s (%s), которую прошлый вызов с этим именем оставил создаваться в этом каталоге: второй ВМ не будет; он дождётся ВМ и даст ей внешний IP и порты. В preview — ВМ и её цена в месяц.", rec.VMID, vm.Status)
+	}
 	return &Plan{
-		Preview: map[string]any{
-			"message": i18n.T("provision creates a billable VM (and a public floating IP unless no_public_ip=true). preview has the VM and its monthly cost.",
-				"provision создаёт платную ВМ (и публичный floating IP, если не задано no_public_ip=true). В preview — ВМ и её цена в месяц."),
-			"will_create": will,
-			"preview":     preview,
-		},
+		Preview: answer,
 		Execute: func(ctx context.Context) (string, bool) {
 			return s.provisionVM(ctx, eng, args, metaValues, tcpPorts, udpPorts)
 		},
@@ -1899,6 +1915,13 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	if err := eng.EnsureSSHKey(); err != nil {
 		return errResult(err), true
 	}
+	// A VM an earlier provision of this name left creating in this folder
+	// (D69: cut by its call's budget or wait=false) is adopted and
+	// finished, not created again; its password went out in that answer.
+	adoptRec, adopted, err := creatingVM(ctx, eng, stringArg(args, "name"), true)
+	if err != nil {
+		return errResult(err), true
+	}
 	// image_metadata by the image's declared fields (internal/images, the
 	// same rules as the CLI deploy and deploy_apply). An EMPTY public_key
 	// triggers a 500, and so does a trailing newline (the keygen appends
@@ -1924,7 +1947,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	if err != nil {
 		return errResult(err), true
 	}
-	if len(filled.Missing) > 0 {
+	if len(filled.Missing) > 0 && adopted == nil {
 		return errResult(images.MissingError(clierrors.CodeUsage, filled.Missing,
 			i18n.T(`image_metadata {"%[1]s": "<value>"} (evo vm create: --meta %[1]s=<value>)`,
 				`image_metadata {"%[1]s": "<значение>"} (evo vm create: --meta %[1]s=<значение>)`))), true
@@ -1932,6 +1955,12 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	sshUser := filled.Login
 	if sshUser == "" {
 		sshUser = "user1"
+	}
+	createdAt := time.Now()
+	if adopted != nil {
+		// The VM booted with the first call's metadata: its login, and a
+		// password this call does not know.
+		password, sshUser, createdAt = "", firstNonEmptyStr(adoptRec.SSHUser, sshUser), adoptRec.CreatedAt
 	}
 
 	// Resolve a subnet + security group for the network interface. Omitting the
@@ -2048,7 +2077,10 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	// that boots offline can spend 10+ minutes on mirror timeouts before
 	// sshd starts. A FIP that cannot be reserved now is attached after boot.
 	var bootFIP *provision.FloatingIP
-	if !noPublicIP {
+	if adopted != nil && adoptRec.FloatingIPID != "" {
+		// The boot FIP the first call made: waited for below, not made again.
+		bootFIP = &provision.FloatingIP{ID: adoptRec.FloatingIPID}
+	} else if !noPublicIP && adopted == nil {
 		bootFIP, err = eng.CreateBootFIP(ctx, projectID, region, vmName)
 		if err != nil {
 			return errResult(err), true
@@ -2076,6 +2108,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				ID:                 vmID,
 				VMID:               vmID,
 				VMIP:               publicIP,
+				VMName:             vmName,
 				Source:             state.SourceProvision,
 				ProjectID:          projectID,
 				VMFlavor:           flavorID,
@@ -2086,7 +2119,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				SecurityGroupID:    ports.SecurityGroupID,
 				SecurityGroupPorts: ports.SecurityGroupPorts,
 				OpenedRules:        ports.OpenedRules,
-				CreatedAt:          time.Now(),
+				CreatedAt:          createdAt,
 				UpdatedAt:          time.Now(),
 			})
 			return nil
@@ -2100,42 +2133,48 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		return fmt.Sprintf(" WARNING: the state file could not be saved (%v), so VM %s is NOT in the state and destroy will not find it — delete it in the Cloud.ru console when it is no longer needed.", err, vmID)
 	}
 
-	createStart := time.Now()
-	vm, err := provision.CreateVMChecked(ctx, eng.Cloud, req)
-	if err != nil && provision.CreateRejected(err) {
-		// The API refused the create: this call made no VM. A VM found by
-		// the name now is another one (a 409 for a name already taken) —
-		// it is not adopted and its record is not touched; the boot FIP
-		// made for this call is released (release audit, L-01).
-		fipErr := eng.ReleaseBootFIP(bootFIP, projectID)
-		if provision.IsNameTaken(err) {
-			return fipLeftAnswer(clierrors.Wrap(clierrors.CodeUsage,
-				i18n.Tf("a VM named %s already exists in this project (Cloud.ru answered 409); no VM was created", "ВМ с именем %s в проекте уже есть (Cloud.ru ответил 409); ВМ не создана", vmName),
-				// The Russian hint is the CLI's (MCP speaks English, D6): a
-				// repeat after Ctrl-C lands here, and the VM is the one the
-				// interrupted run is still creating.
-				i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.",
-					"Проверьте её: evo vm get %s — если это ВМ прерванного запуска, она ещё создаётся; иначе укажите другое имя или удалите её: evo vm delete %s.", vmName, vmName), err), bootFIP, fipErr), true
+	vm := adopted
+	if vm != nil {
+		pp.StepDone(i18n.Tf("VM %s (id %s), which an earlier call left creating, is adopted: no second VM", "ВМ %s (id %s), которую оставил создаваться прошлый вызов, подхвачена: второй ВМ не будет", vmName, vm.ID))
+	} else {
+		createStart := time.Now()
+		created, err := provision.CreateVMChecked(ctx, eng.Cloud, req)
+		if err != nil && provision.CreateRejected(err) {
+			// The API refused the create: this call made no VM. A VM found by
+			// the name now is another one (a 409 for a name already taken) —
+			// it is not adopted and its record is not touched; the boot FIP
+			// made for this call is released (release audit, L-01).
+			fipErr := eng.ReleaseBootFIP(bootFIP, projectID)
+			if provision.IsNameTaken(err) {
+				return fipLeftAnswer(clierrors.Wrap(clierrors.CodeUsage,
+					i18n.Tf("a VM named %s already exists in this project (Cloud.ru answered 409); no VM was created", "ВМ с именем %s в проекте уже есть (Cloud.ru ответил 409); ВМ не создана", vmName),
+					// The Russian hint is the CLI's (MCP speaks English, D6): a
+					// repeat after Ctrl-C lands here, and the VM is the one the
+					// interrupted run is still creating.
+					i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.",
+						"Проверьте её: evo vm get %s — если это ВМ прерванного запуска, она ещё создаётся; иначе укажите другое имя или удалите её: evo vm delete %s.", vmName, vmName), err), bootFIP, fipErr), true
+			}
+			return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, fipErr), true
 		}
-		return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, fipErr), true
-	}
-	if err != nil {
-		// The VM can exist although the call failed (timeout, cancel, a
-		// lost answer): then it is billed and holds the FIP — record it.
-		if found := provision.FindCreatedVM(eng.Cloud, projectID, vmName, createStart); found != nil {
-			serr := saveState(found.ID, "creating", "")
-			pp.Hint(vmLeftNote(found.ID, ""))
-			return errAnswer(fmt.Errorf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
-				"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
-				map[string]any{"vm_id": found.ID}), true
+		if err != nil {
+			// The VM can exist although the call failed (timeout, cancel, a
+			// lost answer): then it is billed and holds the FIP — record it.
+			if found := provision.FindCreatedVM(eng.Cloud, projectID, vmName, createStart); found != nil {
+				serr := saveState(found.ID, "creating", "")
+				pp.Hint(vmLeftNote(found.ID, ""))
+				return errAnswer(fmt.Errorf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
+					"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
+					map[string]any{"vm_id": found.ID}), true
+			}
+			return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, eng.ReleaseBootFIP(bootFIP, projectID)), true
 		}
-		return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, eng.ReleaseBootFIP(bootFIP, projectID)), true
+		// Recorded at once, as the CLI deploy does: a hard stop during the wait
+		// below (kill, OOM) must not leave the VM and its boot FIP billed with no
+		// record (QA r3 R5). The later saves update it.
+		vm = created
+		_ = saveState(vm.ID, "creating", "")
+		pp.StepDone(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", vmName, vm.ID))
 	}
-	// Recorded at once, as the CLI deploy does: a hard stop during the wait
-	// below (kill, OOM) must not leave the VM and its boot FIP billed with no
-	// record (QA r3 R5). The later saves update it.
-	_ = saveState(vm.ID, "creating", "")
-	pp.StepDone(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", vmName, vm.ID))
 
 	// leftFields are the fields of an answer that leaves the VM coming up
 	// without the call (timeout, cancel): the VM, and the password evo
@@ -2172,9 +2211,25 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	// The wait in deploy's words; closed on every way out.
 	wait := eng.VMWaitLine(pp)
 	defer wait.Done()
+	// The budget of an MCP call, or wait=false (D69): the VM is answered
+	// as it is then, and the repeat of the call finishes it.
+	var budget <-chan time.Time
+	if left, capped := s.waitLeft(ctx, args); capped {
+		cut := time.NewTimer(left)
+		defer cut.Stop()
+		budget = cut.C
+	}
+	vmStatus := "creating"
 
 	for {
 		select {
+		case <-budget:
+			// The state now, not the one of the last tick (axis 2).
+			if updated, err := eng.Cloud.GetVM(ctx, vm.ID); err == nil && updated.Status != "" {
+				vmStatus = updated.Status
+			}
+			serr := saveState(vm.ID, "creating", "")
+			return toJSON(provisionCreating(args, vm.ID, vmName, vmStatus, password, int(clock.Since(started).Seconds()), notInState(vm.ID, serr))), false
 		case <-deadline:
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
@@ -2301,6 +2356,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				pp.Success(vmReadyText(vmName, firstNonEmptyStr(zoneName, region), publicIP, sshCmd, clock.Since(started)))
 				return toJSON(res), false
 			}
+			vmStatus = updated.Status
 			wait.State(updated.Status)
 			if provision.VMFailed(updated.Status) {
 				// Billed with its boot FIP: record both so destroy finds
