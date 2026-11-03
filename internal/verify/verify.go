@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // ProbeResult holds the outcome of a single health check. Its JSON is the
@@ -115,9 +116,10 @@ func get(ctx context.Context, scheme, ip string, port int, timeout time.Duration
 	client := &http.Client{
 		Timeout:       timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport:     httpretry.DefaultBase,
 	}
 	if scheme == "https" {
-		tr := http.DefaultTransport.(*http.Transport).Clone()
+		tr := httpretry.NewBaseTransport()
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // liveness probe of an IP
 		client.Transport = tr
 		defer tr.CloseIdleConnections()

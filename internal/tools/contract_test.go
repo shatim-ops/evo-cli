@@ -22,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -139,9 +140,9 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", home)
 	t.Setenv("EVO_LANG", "en")
-	old := http.DefaultTransport
-	http.DefaultTransport = rt
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = rt
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	s3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp, err := rt.RoundTrip(r)
 		if err != nil {

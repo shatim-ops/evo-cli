@@ -13,6 +13,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -76,9 +77,9 @@ func erasedRegistry(t *testing.T, own func(http.ResponseWriter, *http.Request) b
 	t.Helper()
 	stackHome(t)
 	f := &apiFake{own: own}
-	old := http.DefaultTransport
-	http.DefaultTransport = f
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = f
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	dir := t.TempDir()
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer

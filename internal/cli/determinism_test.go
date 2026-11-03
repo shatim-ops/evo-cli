@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -309,7 +311,7 @@ func TestDeterminism_ListOrderDoesNotChangeTheAnswer(t *testing.T) {
 		out := map[string]string{}
 		t.Run(map[bool]string{false: "full", true: "sparse"}[o.sparse]+"/"+map[bool]string{false: "api-order", true: "reversed"}[o.reversed], func(t *testing.T) {
 			w, fake := withJSONWorld(t)
-			http.DefaultTransport = twinRT{o: o, base: w.rt}
+			httpretry.DefaultBase = twinRT{o: o, base: w.rt}
 			world := toolEngine
 			toolEngine = func(opts map[string]any) (*engine.Engine, error) {
 				e, err := world(opts)

@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/billing"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -55,9 +56,9 @@ func (f fakeBilling) RoundTrip(r *http.Request) (*http.Response, error) {
 func billingRegistry(t *testing.T, project string, status int, body string) (*Registry, *[]url.Values) {
 	t.Helper()
 	calls := &[]url.Values{}
-	old := http.DefaultTransport
-	http.DefaultTransport = fakeBilling{status: status, body: body, mu: &sync.Mutex{}, calls: calls}
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = fakeBilling{status: status, body: body, mu: &sync.Mutex{}, calls: calls}
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
@@ -269,7 +270,7 @@ func TestBilling_ProjectBoundNoAgreementBalance(t *testing.T) {
 	t.Setenv("CLOUDRU_AGREEMENT_ID", "agr-1")
 	r, _ := billingRegistry(t, addonProject, 200, billingRows)
 	fake := &agreementFake{}
-	http.DefaultTransport = fake
+	httpretry.DefaultBase = fake
 
 	// Not bound: the balance is read, as documented.
 	if m, text, isErr := callNamed(t, r, "billing_balance", nil); isErr || m["balance"] != 52340.5 {
@@ -348,7 +349,7 @@ func TestBilling_SumsWithVAT(t *testing.T) {
  {"servname":"Compute","resource_name":"vm-1","amount":100,"amount_nds":120},
  {"servname":"Disks","amount":50,"amount_nds":60}]}`
 	prev := `{"consumptions":[{"servname":"Compute","resource_name":"vm-1","amount":40,"amount_nds":48}]}`
-	http.DefaultTransport = fakeBilling{status: 200, mu: &sync.Mutex{}, calls: &[]url.Values{},
+	httpretry.DefaultBase = fakeBilling{status: 200, mu: &sync.Mutex{}, calls: &[]url.Values{},
 		byStart: map[string]string{"2026-10-01T00:00:00Z": cur, "2026-09-29T00:00:00Z": prev}}
 	m, text, isErr = callNamed(t, r, "billing_finops", map[string]any{"start": "2026-10-01", "end": "2026-10-02"})
 	if isErr {

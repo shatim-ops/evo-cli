@@ -28,6 +28,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -57,7 +58,7 @@ func TestSleepChild(t *testing.T) {
 	if addr == "" {
 		t.Skip("the child of TestStdio_CallSurvivesTheProcessStopped")
 	}
-	http.DefaultTransport = toCloud{addr: addr}
+	httpretry.DefaultBase = toCloud{addr: addr}
 	p := auth.NewIAMProvider(auth.Credentials{KeyID: "k", Secret: "s"}, nil, auth.FileCache{Path: filepath.Join(t.TempDir(), "token.json")})
 	// Held for the test, as cli.tokenProvider holds it for the process:
 	// the renewal of a refused token finds live providers only (weak).

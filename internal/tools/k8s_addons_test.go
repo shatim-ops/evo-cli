@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -106,12 +107,12 @@ func (f *fakeMK8s) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 // addonRegistry — реестр с ключом, проектом и поддельным mk8s вместо
-// http.DefaultTransport (клиент mk8s ходит через него).
+// httpretry.DefaultBase (клиент mk8s ходит через него).
 func addonRegistry(t *testing.T, f *fakeMK8s) *Registry {
 	t.Helper()
-	old := http.DefaultTransport
-	http.DefaultTransport = f
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = f
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
