@@ -138,6 +138,39 @@ func opBudget(tool string) budgetWait {
 	return w
 }
 
+// stackDestroyBudget is stack_destroy of a stack whose VM the cloud then
+// deletes slowly: the VM step's destroy spends the budget of the outer call
+// and answers deleting, which stack_destroy lists with its next step.
+func stackDestroyBudget() budgetWait {
+	return budgetWait{run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
+		faultToolsIsolate(t)
+		stackHome(t)
+		cloud := &faultCloud{}
+		dir := t.TempDir()
+		j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
+		setup := budgetComputeRegistry(t, cloud, dir, faultToolsTimings())
+		if text, isErr := setup.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
+			t.Fatalf("stack_apply before stack_destroy: %s", text)
+		}
+		cloud.mu.Lock()
+		cloud.slow = true
+		cloud.mu.Unlock()
+		r := budgeted(budgetComputeRegistry(t, cloud, dir, engine.Timings{}))
+		return func(ctx context.Context) (string, bool) {
+			return r.handlers["stack_destroy"](ctx, map[string]any{"job_id": j.ID, "confirmed": true})
+		}, nil
+	}, done: func(m map[string]any) string {
+		deleting, _ := m["deleting"].([]any)
+		switch {
+		case len(deleting) != 1 || deleting[0] != "vm":
+			return "the VM is not in deleting"
+		case m["next_tool"] != "stack_destroy":
+			return "its next step is not stack_destroy"
+		}
+		return ""
+	}}
+}
+
 // stackBudget is stack_apply of a stack with a VM in the slow cloud: the VM
 // step's provision spends the budget of the outer call (D69 §2) and answers
 // creating, which the step keeps as a VM in progress (D69 PR 3).
@@ -170,8 +203,9 @@ func stackBudget() budgetWait {
 // internal/testrules, from sleepWaits) and those whose schema takes a wait
 // (wait_seconds). TestMCP_BudgetCoversTheWaits keeps the list whole.
 var mcpWaits = map[string]budgetWait{
-	"stack_apply": stackBudget(),
-	"provision":   computeBudget("provision", map[string]any{"name": "web", "confirmed": true}, false, nil),
+	"stack_apply":   stackBudget(),
+	"stack_destroy": stackDestroyBudget(),
+	"provision":     computeBudget("provision", map[string]any{"name": "web", "confirmed": true}, false, nil),
 	"deploy_apply": computeBudget("deploy_apply", map[string]any{"plan_id": "plan-0123456789ab", "confirmed": true}, true,
 		func(t *testing.T, _ *Registry, dir string) {
 			if err := deployplan.Save(dir, faultPlan()); err != nil {
@@ -195,15 +229,14 @@ var mcpWaits = map[string]budgetWait{
 		faultResource{host: "dns.api.cloud.ru", path: "/v1/publicZones", ID: "00000000-0000-4000-8000-0000000000a7", Name: "example.com.", before: true}),
 
 	// No world of the slow cloud reaches these yet: what the code shows.
-	"deploy":        {static: "the engine waits for the VM up to VMPollTimeout (25 min), then SSH and Docker (engine/timings.go)", over: true},
-	"stack_destroy": {static: "runs destroy in the call (callTool): DestroyPollTimeout 2 min, DeletableWaitTimeout 10 min (engine/timings.go)", over: true},
-	"stack_status":  {static: "the handler waits at most 20 s (tools_stack.go), as its schema says: within the budget"},
-	"k8s_kubectl":   {static: "kubectl runs up to 90 s (tools_kube.go, docs/mcp.md)", over: true},
-	"k8s_helm":      {static: "helm runs up to 9 min with --wait (tools_kube.go)", over: true},
-	"disk_create":   {static: "with vm, waits for the new disk to be available (diskReadyTimeout 5 min; tools_disk.go) before the attach", over: true},
-	"disk_attach":   {static: "waits for the disk to settle (diskSettleTimeout 30 s) before the question, then to be available (diskReadyTimeout 5 min; tools_disk.go)", over: true},
-	"disk_detach":   {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
-	"disk_resize":   {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
+	"deploy":       {static: "the engine waits for the VM up to VMPollTimeout (25 min), then SSH and Docker (engine/timings.go)", over: true},
+	"stack_status": {static: "the handler waits at most 20 s (tools_stack.go), as its schema says: within the budget"},
+	"k8s_kubectl":  {static: "kubectl runs up to 90 s (tools_kube.go, docs/mcp.md)", over: true},
+	"k8s_helm":     {static: "helm runs up to 9 min with --wait (tools_kube.go)", over: true},
+	"disk_create":  {static: "with vm, waits for the new disk to be available (diskReadyTimeout 5 min; tools_disk.go) before the attach", over: true},
+	"disk_attach":  {static: "waits for the disk to settle (diskSettleTimeout 30 s) before the question, then to be available (diskReadyTimeout 5 min; tools_disk.go)", over: true},
+	"disk_detach":  {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
+	"disk_resize":  {static: "waits for the disk to settle before the question (diskSettleTimeout 30 s; tools_disk.go): within the budget alone, not with the requests around it"},
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,
@@ -212,13 +245,11 @@ var mcpWaits = map[string]budgetWait{
 // 1.7, block A; process plan 1.7 §1: red before PR 1 of D69, each PR of
 // D69 takes its lines out).
 var mcpOverBudget = map[string]string{
-	"destroy":       "waits for the VM to be gone: DestroyPollTimeout 2 min",
-	"deploy":        "waits for the VM, SSH and Docker",
-	"stack_destroy": "destroy waits for the VM to be gone",
-	"k8s_kubectl":   "kubectl up to 90 s",
-	"k8s_helm":      "helm up to 9 min",
-	"disk_create":   "with vm: waits for the disk up to 5 min",
-	"disk_attach":   "waits for the disk to settle up to 30 s before the question, then to be available up to 5 min",
+	"deploy":      "waits for the VM, SSH and Docker",
+	"k8s_kubectl": "kubectl up to 90 s",
+	"k8s_helm":    "helm up to 9 min",
+	"disk_create": "with vm: waits for the disk up to 5 min",
+	"disk_attach": "waits for the disk to settle up to 30 s before the question, then to be available up to 5 min",
 }
 
 // waitProps are the schema properties by which an agent asks a tool to
