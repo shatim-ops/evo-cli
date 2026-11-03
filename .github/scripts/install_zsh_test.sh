@@ -17,7 +17,7 @@
 #       $fpath, которую человек добавит сам; --uninstall убирает _evo.
 set -euo pipefail
 
-PENDING=1
+PENDING=0
 
 zsh=$(command -v zsh) || { echo "install_zsh_test: нет zsh" >&2; exit 1; }
 root=$(git rev-parse --show-toplevel)
@@ -68,6 +68,12 @@ comps=$(env -i PATH="$work/bin:/usr/bin:/bin" HOME="$work/home" SHELL="$zsh" "$z
 check "T6: после второго compinit _comps[evo] не пусто" test -n "$comps"
 run_install
 check "T5: повторная установка — блок в ~/.zshrc один" test "$(blocks)" -eq 1
+# Редактор добавил пробел в конце метки и сохранил файл с CRLF: повторная
+# установка находит блок и заменяет его, а не дописывает второй (Qwen, #775).
+cr=$(printf '\r')
+sed "s/^\(# >>> evo.*\)\$/\1 /; s/^\(# <<< evo <<<\)\$/\1$cr/" "$rc" >"$rc.edited" && cat "$rc.edited" >"$rc" && rm -f "$rc.edited"
+run_install
+check "T5: метки с пробелом и \\r в конце — блок в ~/.zshrc один" test "$(blocks)" -eq 1
 run_install --uninstall
 check "T5: --uninstall убирает _evo" test ! -e "$site/_evo"
 check "T5: --uninstall убирает блок из ~/.zshrc" test "$(blocks)" -eq 0
@@ -86,6 +92,68 @@ check "T5: EVO_ZSHRC=0 — install.sh печатает строку, котор�
 run_install --uninstall
 check "T5: EVO_ZSHRC=0, --uninstall убирает _evo" test ! -e "$site/_evo"
 check "T5: EVO_ZSHRC=0, --uninstall не трогает ~/.zshrc без блока" cmp -s "$rc" "$work/zshrc.before"
+
+# Блок без пустой строки перед ним и блок в начале файла: --uninstall
+# убирает строки между метками, файл — байт в байт прежний (#775).
+# sh_install home [env…] [-- args…] — install.sh в home с zsh по умолчанию.
+sh_install() {
+	local h=$1
+	shift
+	local envs=()
+	while [ $# -gt 0 ] && [ "$1" != -- ]; do envs+=("$1"); shift; done
+	[ "${1:-}" = -- ] && shift
+	env -i PATH="${pre_path:-}$work/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$h" SHELL="$zsh" INSTALL_DIR="$work/bin" \
+		CLOUDRU_VM_VERSION=v9.9.9 CLOUDRU_VM_BASE_URL="file://$work/rel" ${envs[@]+"${envs[@]}"} sh "$root/install.sh" "$@" >"$work/install.log" 2>&1
+}
+for start in "a" ""; do
+	h="$work/home-edge"
+	rm -rf "$h" && mkdir -p "$h"
+	if [ -n "$start" ]; then printf '%s\n' "$start" >"$h/.zshrc"; else : >"$h/.zshrc"; fi
+	cp "$h/.zshrc" "$work/edge.before"
+	sh_install "$h"
+	# Пустую строку перед блоком человек убрал.
+	awk 'NR > 1 && prev == "" && /^# >>> evo/ { lines[n - 1] = $0; prev = $0; next } { lines[n++] = $0; prev = $0 } END { for (i = 0; i < n; i++) print lines[i] }' "$h/.zshrc" >"$h/.zshrc.x" && cat "$h/.zshrc.x" >"$h/.zshrc" && rm -f "$h/.zshrc.x"
+	sh_install "$h" -- --uninstall
+	check "T5: блок без пустой строки перед ним (файл «${start:-пустой}») — --uninstall возвращает файл байт в байт" cmp -s "$h/.zshrc" "$work/edge.before"
+done
+
+# Конечную метку человек стёр: блок повреждён — ни --uninstall, ни повторная
+# установка файл не трогают и называют, что убрать вручную.
+h="$work/home-broken"
+mkdir -p "$h" && printf 'top\n' >"$h/.zshrc"
+sh_install "$h"
+grep -v '^# <<< evo <<<' "$h/.zshrc" >"$h/.zshrc.x" && printf 'after\n' >>"$h/.zshrc.x" && cat "$h/.zshrc.x" >"$h/.zshrc" && rm -f "$h/.zshrc.x"
+cp "$h/.zshrc" "$work/broken.before"
+if sh_install "$h" -- --uninstall; then failed+=("T5: повреждённый блок — --uninstall отказывает"); fi
+check "T5: повреждённый блок — --uninstall называет его" grep -q 'повреждён' "$work/install.log"
+check "T5: повреждённый блок — --uninstall не трогает ~/.zshrc" cmp -s "$h/.zshrc" "$work/broken.before"
+if sh_install "$h"; then failed+=("T5: повреждённый блок — установка отказывает"); fi
+check "T5: повреждённый блок — установка не трогает ~/.zshrc" cmp -s "$h/.zshrc" "$work/broken.before"
+
+# Запись ~/.zshrc оборвалась (подменённый cat падает после того, как
+# оболочка обрезала файл): копия остаётся, путь к ней назван, код — ошибка.
+h="$work/home-failwrite"
+mkdir -p "$h" "$work/failbin" && printf 'mine\n' >"$h/.zshrc"
+cp "$h/.zshrc" "$work/failwrite.before"
+sh_install "$h"
+cat >"$work/failbin/cat" <<'FAKE'
+#!/bin/sh
+case "${1:-}" in *.evo.*) exit 1 ;; esac
+exec /bin/cat "$@"
+FAKE
+chmod +x "$work/failbin/cat"
+if pre_path="$work/failbin:" sh_install "$h" -- --uninstall; then failed+=("T5: сбой записи — --uninstall отказывает"); fi
+check "T5: сбой записи — путь копии в выводе" grep -q "$h/.zshrc.evo-backup" "$work/install.log"
+check "T5: сбой записи — копия хранит файл с блоком" grep -q '^mine$' "$h/.zshrc.evo-backup"
+
+# ZDOTDIR: блок — в $ZDOTDIR/.zshrc, ~/.zshrc не создаётся.
+h="$work/home-zdot"
+mkdir -p "$h/zd" && printf 'zd\n' >"$h/zd/.zshrc"
+sh_install "$h" ZDOTDIR="$h/zd"
+check "T5: ZDOTDIR — блок в \$ZDOTDIR/.zshrc" grep -q '^# >>> evo' "$h/zd/.zshrc"
+check "T5: ZDOTDIR — ~/.zshrc не создан" test ! -e "$h/.zshrc"
+sh_install "$h" ZDOTDIR="$h/zd" -- --uninstall
+check "T5: ZDOTDIR — --uninstall убирает блок" test "$(cat "$h/zd/.zshrc")" = zd
 
 if [ "$PENDING" = 1 ]; then
 	if [ ${#failed[@]} -eq 0 ]; then
