@@ -256,6 +256,12 @@ jobs:
         if: runner.os == 'macOS'
         run: .github/scripts/install_zsh_test.sh
 
+      # Сигнал «main красный» (main-red.yml): красный прогон заводит или
+      # дописывает issue, зелёный закрывает — на поддельном gh.
+      - name: main_red.sh на поддельном gh
+        if: runner.os == 'Linux'
+        run: .github/scripts/main_red_test.sh
+
       # Метки отзывов по полям форм Issues: таблицы скрипта совпадают с формами.
       - name: issue_labels.py на образцах форм
         if: runner.os == 'Linux'
