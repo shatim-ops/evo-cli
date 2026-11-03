@@ -46,6 +46,11 @@ type previewCloud struct {
 }
 
 func (previewCloud) SetToken(string) {}
+
+// ListVMsInProject: имя ВМ свободно (D73 проверяет его до вопроса).
+func (previewCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return nil, nil
+}
 func (previewCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	return []*provision.Flavor{
 		{ID: "00000000-0000-0000-0000-0000000000f0", Name: "free-tier1", VCPUs: 1, RAMGB: 1, FreeTier: true, Share: "1:1", GPU: new(int), Type: &provision.FlavorType{},

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -108,6 +109,12 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		// Unknown is not "absent": creating now could make a second
 		// billed VM next to one a lost answer already created (QA H5).
 		return nil, fmt.Errorf(i18n.T("cannot check whether VM %q already exists (%w); nothing was created — retry deploy_apply", "не удалось проверить, есть ли уже ВМ %q (%w); ничего не создано — повторите deploy_apply"), plan.VM.Name, lookErr)
+	}
+	if existing != nil && !ownVM(plan, existing) {
+		// Someone else's VM with the plan's name: never adopted (D73) — it
+		// would get a billed floating IP, the plan's ports and a record
+		// that destroy deletes it by.
+		return nil, &ForeignVMError{ID: existing.ID, Name: existing.Name, Status: existing.Status}
 	}
 	if existing != nil {
 		if provision.VMFailed(existing.Status) {
@@ -505,6 +512,23 @@ func joinNotes(notes ...string) string {
 		}
 	}
 	return strings.Join(parts, "; ")
+}
+
+// ownVM reports whether vm, which has the plan's name, is the plan's to
+// adopt (D73): the folder's state records it, or it was made after the
+// plan — the VM of a create of this plan whose answer was lost.
+func ownVM(plan *Plan, vm *provision.VM) bool {
+	return slices.Contains(plan.Owned, vm.ID) || provision.MadeSince(vm, plan.CreatedAt)
+}
+
+// ForeignVMError refuses a plan whose VM name another VM has, one the
+// folder did not make (D73): its id goes into the answer (existing_id).
+type ForeignVMError struct {
+	ID, Name, Status string
+}
+
+func (e *ForeignVMError) Error() string {
+	return fmt.Sprintf("a VM named %q already exists (id %s, status %s), and this folder's evo did not create it (its state does not record it); nothing was created", e.Name, e.ID, e.Status)
 }
 
 // findVMByName looks the plan's VM up in its project. GET /vms without a

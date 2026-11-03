@@ -7,6 +7,7 @@ package tools
 import (
 	"cmp"
 	"context"
+	stderrors "errors"
 	"fmt"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"path/filepath"
@@ -149,6 +150,11 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	plan, err := deployplan.Resolve(ctx, eng.Cloud, eng.Config.ProjectID, resolved)
 	if err != nil {
 		return errResult(err), true
+	}
+	// A name another VM has is refused now, not at deploy_apply: only the
+	// folder's own VM is planned again (D73).
+	if ans, refused := vmNameFree(ctx, eng, plan.VM.Name, ownIn(folderVMs(eng))); refused {
+		return ans, true
 	}
 	// A patch (base_plan_id) starts from what the caller asked, not from
 	// the defaults filled in: "cpu: 4" on top of a configured flavor must
@@ -335,7 +341,13 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		// wall-clock: the end of the call's wait, D69.
 		until = time.Now().Add(left)
 	}
+	// Only the folder's own VM is adopted (D73).
+	plan.Owned = folderVMs(eng)
 	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.VMPollTimeout(), until, show)
+	var foreign *deployplan.ForeignVMError
+	if stderrors.As(err, &foreign) {
+		return foreignVMResult(foreign.Name, foreign.ID, foreign.Status)
+	}
 	if err != nil {
 		// Interrupted after the VM was created: record it, so status and
 		// destroy see it; the plan stays for a retry, which adopts the VM.

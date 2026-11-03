@@ -36,7 +36,10 @@ var durationUnits = map[string]time.Duration{
 // docker, not where the test held, on a PR that did not touch deploy). A
 // positive d under minTestBound fails unless the line or the one above it
 // says why with "wall-clock:" — the same rule as TestNoUnguardedWallClockBounds,
-// for a bound the code reads instead of one the test compares.
+// for a bound the code reads instead of one the test compares. The budget
+// of an MCP call a test gives a registry (SetCallBudget) is the same bound
+// (#793: a world of 250 ms did not reach its stage on a slow Windows
+// runner); a named constant passes when its declaration says why.
 func TestTests_NoShortBoundFromNow(t *testing.T) {
 	root := filepath.Join("..", "..")
 	var bad []string
@@ -85,18 +88,22 @@ func shortBoundsIn(t *testing.T, root, dir string) []string {
 		files, names = append(files, f), append(names, p)
 	}
 	consts := map[string]time.Duration{}
-	for _, f := range files {
-		for _, decl := range f.Decls {
-			gd, ok := decl.(*ast.GenDecl)
-			if !ok || gd.Tok != token.CONST {
-				continue
-			}
-			for _, spec := range gd.Specs {
-				vs := spec.(*ast.ValueSpec)
-				for i, n := range vs.Names {
-					if i < len(vs.Values) {
-						if v, ok := durationOf(vs.Values[i], consts); ok {
-							consts[n.Name] = v
+	declared := map[string]bool{} // constants whose declaration says why, wall-clock:
+	for range 2 {                 // a constant may be made of one declared after it
+		for _, f := range files {
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.CONST {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs := spec.(*ast.ValueSpec)
+					why := strings.Contains(gd.Doc.Text()+vs.Doc.Text()+vs.Comment.Text(), "wall-clock:")
+					for i, n := range vs.Names {
+						if i < len(vs.Values) {
+							if v, ok := durationOf(vs.Values[i], consts); ok {
+								consts[n.Name], declared[n.Name] = v, why
+							}
 						}
 					}
 				}
@@ -112,11 +119,23 @@ func shortBoundsIn(t *testing.T, root, dir string) []string {
 		lines := strings.Split(string(src), "\n")
 		ast.Inspect(f, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
-			if !ok || len(call.Args) != 1 || !isNowAdd(call) {
+			if !ok || len(call.Args) != 1 {
+				return true
+			}
+			what := ""
+			switch {
+			case isNowAdd(call):
+				what = "from time.Now()"
+			case isCallBudget(call):
+				what = "as the budget of an MCP call (SetCallBudget)"
+			default:
 				return true
 			}
 			v, ok := durationOf(call.Args[0], consts)
 			if !ok || v <= 0 || v >= minTestBound {
+				return true
+			}
+			if id, isConst := call.Args[0].(*ast.Ident); isConst && declared[id.Name] {
 				return true
 			}
 			line := fset.Position(call.Pos()).Line
@@ -124,12 +143,19 @@ func shortBoundsIn(t *testing.T, root, dir string) []string {
 				return true
 			}
 			rel, _ := filepath.Rel(root, names[i])
-			bad = append(bad, filepath.ToSlash(rel)+":"+strconv.Itoa(line)+": a bound of "+v.String()+" from time.Now(): under "+minTestBound.String()+
+			bad = append(bad, filepath.ToSlash(rel)+":"+strconv.Itoa(line)+": a bound of "+v.String()+" "+what+": under "+minTestBound.String()+
 				" the code under test may not reach the point the test holds on a loaded runner (#789); give it minTestBound or more, or say why with \"wall-clock:\"")
 			return true
 		})
 	}
 	return bad
+}
+
+// isCallBudget reports whether call is r.SetCallBudget(…): the bound of
+// every call of a registry, from the call's start.
+func isCallBudget(call *ast.CallExpr) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	return ok && sel.Sel.Name == "SetCallBudget"
 }
 
 // isNowAdd reports whether call is time.Now().Add(…).

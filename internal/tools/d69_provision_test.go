@@ -118,9 +118,10 @@ func TestD69_ProvisionWaitFalseDoesNotWait(t *testing.T) {
 		if m := decode(t, text); m["status"] != "creating" || m["next_tool"] != "provision" {
 			t.Errorf("wait=false: want creating with the next step: %s", text)
 		}
-	// wall-clock: a share (1/45) of D69's 45 s budget; wait=false waits
-	// for nothing.
-	case <-time.After(budgetWatch):
+	// wall-clock: a fraction of the production wait for the VM (minutes);
+	// wait=false waits for nothing. budgetWatch (1 s) did not hold on a
+	// slow Windows runner under -race (#793).
+	case <-time.After(10 * time.Second):
 		t.Fatal("wait=false waited for the VM")
 	}
 }
@@ -162,8 +163,10 @@ func mustCallErr(t *testing.T, r *Registry, tool string, args map[string]any) st
 // The repeat adopts the VM by the id its record holds, not by the name: a
 // VM of the name made between the calls by someone else is not adopted
 // (D73: state ↔ cloud). Here the recorded VM is gone and another VM has
-// its name — the record is dropped, the create meets the 409 of the taken
-// name, and the other VM is left as it is.
+// its name — the taken name is refused before the question (D73; before,
+// the create met the 409), the other VM is left as it is and never
+// recorded. The gone VM's record stays until a call that writes: the plan
+// before the question writes nothing (creatingVM).
 func TestD69_ProvisionAdoptsByTheRecordedIDNotTheName(t *testing.T) {
 	cloud, dir, r := provisionWorld(t)
 	first := decode(t, mustCall(t, r, "provision", map[string]any{"name": "web", "confirmed": true}))
@@ -189,8 +192,8 @@ func TestD69_ProvisionAdoptsByTheRecordedIDNotTheName(t *testing.T) {
 	}
 	sf, _ := state.Read(state.DefaultPath(dir))
 	for _, d := range sf.Deployments {
-		if d.VMID == foreign.ID || d.VMID == first["vm_id"] {
-			t.Errorf("the state holds %s: the other VM is not this folder's, the gone one is dropped", d.VMID)
+		if d.VMID == foreign.ID {
+			t.Errorf("the state holds %s: the other VM is not this folder's", d.VMID)
 		}
 	}
 }
