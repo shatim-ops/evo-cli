@@ -82,7 +82,7 @@ cp "$rc" "$work/zshrc.before"
 run_install
 check "T5: EVO_ZSHRC=0 — _evo в $site" test -f "$site/_evo"
 check "T5: EVO_ZSHRC=0 — ~/.zshrc не тронут" cmp -s "$rc" "$work/zshrc.before"
-check "T5: EVO_ZSHRC=0 — install.sh печатает строку с \$fpath для ~/.zshrc" grep -q 'fpath' "$work/install.log"
+check "T5: EVO_ZSHRC=0 — install.sh печатает строку, которая добавляет site-functions в \$fpath" grep -q 'fpath.*zsh/site-functions' "$work/install.log"
 run_install --uninstall
 check "T5: EVO_ZSHRC=0, --uninstall убирает _evo" test ! -e "$site/_evo"
 check "T5: EVO_ZSHRC=0, --uninstall не трогает ~/.zshrc без блока" cmp -s "$rc" "$work/zshrc.before"
