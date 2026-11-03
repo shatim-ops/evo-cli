@@ -2388,7 +2388,7 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 		return failed(ctx, err, nil), true
 	}
 	var buf bytes.Buffer
-	eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
+	eng.Printer = bufferPrinter(&buf)
 
 	opts := engine.LogsOptions{
 		Service: stringArg(args, "service"),
@@ -2465,7 +2465,7 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 						"Вызовите destroy с vm_id %s и confirmed=true ('evo tools call destroy --arg vm_id=%s --yes'); destroy без аргументов показывает, что он удалит.", vmID, vmID))), true
 			}
 			var buf bytes.Buffer
-			eng.Printer = output.NewWithWriter(&buf, output.ModeText, false)
+			eng.Printer = bufferPrinter(&buf)
 
 			if err := eng.Destroy(ctx, engine.DestroyOptions{Force: true}); err != nil {
 				fields := logField(buf.String())
