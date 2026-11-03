@@ -26,6 +26,8 @@ area() {
 
 while IFS= read -r p; do
 	[ -n "$p" ] || continue
+	# macOS is off only if every path is internal docs: the first such path
+	# sets no, any other path sets yes for good (no never replaces yes).
 	case $p in
 	docs/internal/*.md) macos=${macos:-no} ;;
 	*) macos=yes ;;
