@@ -184,7 +184,6 @@ var mcpWaits = map[string]budgetWait{
 // 1.7, block A; process plan 1.7 §1: red before PR 1 of D69, each PR of
 // D69 takes its lines out).
 var mcpOverBudget = map[string]string{
-	"provision":     "waits for the VM up to VMPollTimeout (25 min)",
 	"destroy":       "waits for the VM to be gone: DestroyPollTimeout 2 min",
 	"deploy":        "waits for the VM, SSH and Docker",
 	"stack_apply":   "a VM step waits for the VM",

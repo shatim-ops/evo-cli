@@ -99,6 +99,9 @@ type faultCloud struct {
 
 	// fipDown keeps every floating IP in state "down" and rejects attach.
 	fipDown bool
+	// imagePassword gives the image a linux_password field: evo generates
+	// the VM's password (the D69 tests of its answers).
+	imagePassword bool
 	// deleteVM / deleteFIP / deleteRule override the next delete, once.
 	deleteVM   int // 404 or 409
 	deleteFIP  int
@@ -685,14 +688,18 @@ func (c *faultCloud) GetImage(context.Context, string) (*provision.ImageDetail, 
 	if err := c.gate("GetImage"); err != nil {
 		return nil, err
 	}
-	return &provision.ImageDetail{
+	img := &provision.ImageDetail{
 		ID: faultImage, Name: "ubuntu-22.04", DisplayName: "Ubuntu 22.04", OS: "linux",
 		MetadataFields: []provision.ImageMetadataField{
 			{ID: "mf-1", Name: "ssh_key", MandatoryGroup: "ssh"},
 			{ID: "mf-2", Name: "hostname"},
 			{ID: "mf-3", Name: "name", MandatoryGroup: "name", DefaultValue: "user1"},
 		},
-	}, nil
+	}
+	if c.imagePassword {
+		img.MetadataFields = append(img.MetadataFields, provision.ImageMetadataField{ID: "mf-4", Name: "linux_password", FieldType: "linux_password"})
+	}
+	return img, nil
 }
 
 func (c *faultCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
