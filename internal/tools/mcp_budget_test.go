@@ -29,19 +29,23 @@ import (
 // mcpBudgetSeconds is D69's limit of one MCP call (MCPCallBudget).
 var mcpBudgetSeconds = MCPCallBudget.Seconds()
 
-// worldBudget is the budget of a call in the slow world: a share of
+// worldBudget is the budget of a call in the slow world, well under
 // budgetWatch, so that a call held to it answers before the watch.
 // wall-clock: the tests of this world read only that a call answered in
 // time with a state not final, never how far it got; a test that needs a
 // call to make progress — a VM made, a stage started, a step reached, in
 // the test or in its setup — has progressBudget (progressed, #793).
-const worldBudget = budgetWatch / 4
+const worldBudget = 250 * time.Millisecond
 
 // budgetWatch is how long a call of the slow world may run before it
-// counts as one that waits the cloud out.
-// wall-clock: a share (1/45) of D69's 45 s budget; an answer that does not
-// wait comes in milliseconds (the fault matrix's creates: 0.2–1.3 ms).
-const budgetWatch = time.Second
+// counts as one that waits the cloud out: a call that does wait it out
+// waits the hours the world is set to, and one held to worldBudget ends
+// at it. The margin is the loaded runner's: stack_apply ended at its
+// 250 ms locally (5 of 5 under -race) but answered past a watch of 1 s on
+// Windows (main, f9552ec2, #813).
+// wall-clock: a margin over worldBudget, not a wait — a call that answers
+// is not waited out.
+const budgetWatch = 4 * time.Second
 
 // budgetWait is how a tool that can wait is held to D69's limit: a call in
 // the slow world (run), or what the code shows when no world reaches it
