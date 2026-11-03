@@ -366,6 +366,7 @@ func newRootCmd() *cobra.Command {
 	for _, c := range cmd.Commands() {
 		if c.Name() == "completion" {
 			asGroup(c)
+			zshMenuOfEvo(c)
 		}
 	}
 	tabNoFiles(cmd)

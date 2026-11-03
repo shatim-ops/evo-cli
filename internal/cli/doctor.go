@@ -80,6 +80,7 @@ func doctorLocal(own []tools.DoctorCheck) []tools.DoctorCheck {
 		Name: "version", Status: tools.CheckOK,
 		Detail: fmt.Sprintf("evo %s %s/%s", version, runtime.GOOS, runtime.GOARCH),
 	}}
+	checks = append(checks, otherEvoChecks()...)
 	checks = append(checks, fileChecks()...)
 	checks = append(checks, own...)
 	for _, bin := range []string{"kubectl", "helm"} {

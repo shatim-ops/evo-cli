@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"strings"
 
@@ -140,5 +141,50 @@ func registerEngineCompletions(root *cobra.Command) {
 	}
 	for _, flag := range []string{"region", "project-id"} {
 		_ = root.RegisterFlagCompletionFunc(flag, completeValues("", strings.ReplaceAll(flag, "-", "_")))
+	}
+}
+
+// zshMenuStyle is what evo completion zsh adds before the script calls _evo
+// (#718, T4): the arrows choose among the candidates of evo, as Tab Tab
+// does in bash — only for evo, and only when the person has no style of
+// their own for it (zstyle -L reads it).
+const zshMenuStyle = `# evo: choose a candidate with the arrows, unless you have your own style for evo.
+if [[ -z "$(zstyle -L ':completion:*:*:evo:*' menu)" ]]; then
+    zstyle ':completion:*:*:evo:*' menu yes select
+fi
+
+`
+
+// zshCallMark starts the end of cobra's zsh script: the call of _evo when
+// the script is loaded as the function's file.
+const zshCallMark = "# don't run the completion function when being source-ed or eval-ed"
+
+// zshMenuOfEvo makes evo completion zsh (a subcommand of completion) write
+// zshMenuStyle into cobra's script, before its call of _evo: so the first
+// Tab already has the menu. cobra's own run writes to the output the
+// command had when it was made, so the script is generated here.
+func zshMenuOfEvo(completion *cobra.Command) {
+	for _, z := range completion.Commands() {
+		if z.Name() != "zsh" {
+			continue
+		}
+		z.RunE = func(cmd *cobra.Command, _ []string) error {
+			var buf bytes.Buffer
+			gen := cmd.Root().GenZshCompletion
+			if noDesc, _ := cmd.Flags().GetBool("no-descriptions"); noDesc {
+				gen = cmd.Root().GenZshCompletionNoDesc
+			}
+			if err := gen(&buf); err != nil {
+				return err
+			}
+			script := buf.String()
+			if i := strings.Index(script, zshCallMark); i >= 0 {
+				script = script[:i] + zshMenuStyle + script[i:]
+			} else {
+				script += "\n" + zshMenuStyle
+			}
+			_, err := cmd.OutOrStdout().Write([]byte(script))
+			return err
+		}
 	}
 }
