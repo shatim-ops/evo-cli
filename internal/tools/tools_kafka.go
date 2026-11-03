@@ -228,8 +228,7 @@ func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, 
 		}
 		return "", "", "", "", &subnetMissingError{clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("no subnet of the project in zone %s", "в зоне %s нет подсети проекта", shown),
-			i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); if the project has no subnet in any zone, create one in the Cloud.ru console.",
-				"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))}
+			i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); ", "Передайте subnet_id (список: list_subnets) или другую зону (region); ")+engine.NoSubnetAnywhere())}
 	default:
 		for _, z := range engine.PreferredZoneFirst(provision.OpenZones(zones)) {
 			if i := provision.PickSubnet(subs, z.ID, z.Name); i >= 0 && provision.SubnetInZone(subs[i], z.ID, z.Name) {

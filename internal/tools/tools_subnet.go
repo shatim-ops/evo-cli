@@ -208,8 +208,13 @@ func (s *Registry) planSubnetCreate(ctx context.Context, args map[string]any) (*
 	preview.Add("vpc_id", vpcID)
 	preview.Add("vpc_name", vpcName)
 	preview.Add("routed_network", routed)
-	if len(dns) > 0 {
-		preview.Add("dns_servers", dns)
+	// Without dns_servers evo sends none and the subnet has none (F8,
+	// agent runs of Grok on 1.6.0, 5 of 5): said before the question.
+	preview.Add("dns_servers", append([]string{}, dns...)) // [] rather than null
+	if len(dns) == 0 {
+		preview.Warnings = append(preview.Warnings, i18n.T(
+			"no dns_servers: the subnet gets no DNS servers, so names do not resolve on its VMs (package installs fail); pass dns_servers, e.g. those of the VPC's default subnet (list_subnets)",
+			"нет dns_servers: у подсети не будет DNS-серверов, и имена на её ВМ не разрешатся (установка пакетов не пройдёт); передайте dns_servers, например как у подсети VPC по умолчанию (list_subnets)"))
 	}
 	preview.Add("description", req.Description)
 	preview.Price()

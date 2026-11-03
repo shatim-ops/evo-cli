@@ -92,19 +92,46 @@ var priceClasses = map[string]priceDecl{
 }
 
 // classOf is the class of the price of resource r of preview p, after its
-// Price: a priceable resource is priced when the preview has a cost.
+// Price: a priceable resource is priced when the preview's cost has its own
+// share, not only a cost of the whole (a floating IP the estimate left out
+// is not priced by the VM's price).
 func classOf(r string, p CreatePreview) ResourcePrice {
 	d, ok := priceClasses[r]
 	if !ok {
 		panic("engine: no price class of " + r + ": declare it in priceClasses")
 	}
 	switch {
-	case d.priceable && p.Cost != nil:
+	case d.priceable && share(r, p) > 0:
 		return ResourcePrice{Resource: r, Class: PricePriced}
 	case d.zero != "":
 		return ResourcePrice{Resource: r, Class: PriceZeroAtCreate, Note: i18n.T(d.zero, d.zeroRU)}
 	}
 	return ResourcePrice{Resource: r, Class: PricePaidUnpriced}
+}
+
+// share is the part of preview p's monthly cost that is resource r's. An
+// API price whose parts do not add up to its total (Breakdown "unknown")
+// names no parts: its total is the share of the preview's own resource.
+func share(r string, p CreatePreview) float64 {
+	c := p.Cost
+	if c == nil {
+		return 0
+	}
+	if c.Breakdown != nil && c.Breakdown.Period == "unknown" {
+		if r == p.Resource {
+			return c.TotalMonthlyRub
+		}
+		return 0
+	}
+	switch r {
+	case ResourceVM, ResourcePGCluster:
+		return c.ComputeMonthlyRub
+	case ResourceDisk:
+		return c.DiskMonthlyRub
+	case ResourceFloatingIP:
+		return c.FloatingIPMonthlyRub
+	}
+	return c.TotalMonthlyRub
 }
 
 // createdResources are the resources preview p creates, in the order its

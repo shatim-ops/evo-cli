@@ -127,9 +127,15 @@ and sizes, no values.`,
 			}
 			s, err := journal.Export(out)
 			if errors.Is(err, journal.ErrEmpty) {
+				// The hint follows the journal's state: on right after 'evo
+				// diag on' it has nothing yet (F23, agent runs of Grok on 1.6.0).
+				hint := i18n.T("Turn it on with 'evo diag on' and work as usual.", "Включите его: 'evo diag on', и работайте как обычно.")
+				if s.Enabled {
+					hint = i18n.T("The journal is on and records the calls from now on: work as usual, then export.",
+						"Журнал включён и записывает вызовы с этого момента: работайте как обычно, затем выгрузите.")
+				}
 				return clerrors.New(clerrors.CodeNotFound,
-					i18n.Tf("the session journal is empty (%s)", "журнал сессии пуст (%s)", s.Path),
-					i18n.T("Turn it on with 'evo diag on' and work as usual.", "Включите его: 'evo diag on', и работайте как обычно."))
+					i18n.Tf("the session journal is empty (%s)", "журнал сессии пуст (%s)", s.Path), hint)
 			}
 			if err != nil {
 				return err

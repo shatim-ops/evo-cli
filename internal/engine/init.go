@@ -251,8 +251,8 @@ func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZ
 	switch {
 	case len(zones) == 0:
 	case rank(zones[0]) == 3:
-		e.Printer.Warning(i18n.T("the project has no subnet in any zone: a new VM cannot be plugged in. Create a subnet in the Cloud.ru console (Network → Subnets), then choose the zone again",
-			"в проекте нет подсети ни в одной зоне: новую ВМ не подключить к сети. Создайте подсеть в консоли Cloud.ru (Сеть → Подсети) и выберите зону снова"))
+		e.Printer.Warning(i18n.T("the project has no subnet in any zone: a new VM cannot be plugged in. Create a subnet (evo vpc subnet-create), then choose the zone again",
+			"в проекте нет подсети ни в одной зоне: новую ВМ не подключить к сети. Создайте подсеть (evo vpc subnet-create) и выберите зону снова"))
 	case !marked(zones[0]):
 		for _, z := range zones {
 			if marked(z) {

@@ -73,6 +73,16 @@ func TestPriceClasses_OneLinePerResource(t *testing.T) {
 		}
 	}
 
+	// A part the cost does not have is not priced by the cost of the whole
+	// (the review of «Процесс · 1.7»): a floating IP without its share.
+	p0 := CreatePreview{Resource: ResourceVM, VM: &vm}
+	p0.Price()
+	p0.Cost.FloatingIPMonthlyRub = 0
+	p0.setPriceClasses()
+	if got := p0.PriceClasses[2]; got.Resource != ResourceFloatingIP || got.Class != PricePaidUnpriced {
+		t.Errorf("a floating IP without its share: %+v, want paid_unpriced", got)
+	}
+
 	// A bucket costs nothing at its creation: the tariff bills its storage,
 	// operations and traffic. The note says so, with the tariff's page.
 	p := CreatePreview{Resource: ResourceS3Bucket, Name: "b"}
