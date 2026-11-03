@@ -122,7 +122,7 @@ func priceDisk(ctx context.Context, cloud provision.CloudAPI, projectID string, 
 func PriceVM(ctx context.Context, cloud provision.CloudAPI, in PriceInput) pricing.Estimate {
 	cost, err := QuoteVM(ctx, cloud, in)
 	if err != nil {
-		cost = EstimateVM(in.VM)
+		cost = EstimateVM(in.VM, in.PublicIP)
 		cost.PriceAPIError = err.Error()
 	}
 	if in.Marketplace {

@@ -228,7 +228,7 @@ func (p *CreatePreview) Price() {
 	p.Cost, p.TariffURL = nil, ""
 	switch {
 	case p.Resource == ResourceVM && p.VM != nil && p.VM.Flavor.VCPUs > 0:
-		cost := deployplan.EstimateVM(*p.VM)
+		cost := deployplan.EstimateVM(*p.VM, p.PublicIP == nil || *p.PublicIP)
 		p.Cost = &cost
 	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0:
 		cost := pricing.EstimateDisk(p.Disk.SizeGB, p.Disk.Type)

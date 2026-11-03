@@ -181,7 +181,7 @@ func TestVMCreatePreview_Russian(t *testing.T) {
 		"  образ:      Ubuntu 22.04 (" + pvImage + ")\n",
 		"  диск:       загрузочный, 20 ГБ (цена по тарифу SSD)\n", // raised to the image's min_disk
 		"  внешний IP: будет создан и привязан floating IP\n",
-		"  цена:       ~2272.40 RUB в месяц (вычисления 2044.00 + диск 228.40), оценка по тарифной карте evo, а не счёт\n",
+		"  цена:       ~2421.73 RUB в месяц (вычисления 2044.00 + диск 228.40 + floating IP 149.33), оценка по тарифной карте evo, а не счёт\n",
 		"  цена API:   не получена (price-calculation: not in this fake), показана оценка\n",
 		"provision не выполняется: нужно подтверждение, а stdin — не терминал",
 	})
@@ -267,7 +267,7 @@ func TestVMCreatePreview_JSONIsAdditive(t *testing.T) {
 		t.Fatalf("existing keys changed: %s", out)
 	}
 	p := d.Preview
-	if p.VM == nil || p.VM.Flavor.VCPUs != 2 || p.VM.Zone.Name != "ru.AZ-1" || p.Cost == nil || p.Cost.TotalMonthlyRub != 2272.4 ||
+	if p.VM == nil || p.VM.Flavor.VCPUs != 2 || p.VM.Zone.Name != "ru.AZ-1" || p.Cost == nil || p.Cost.TotalMonthlyRub != 2421.73 ||
 		p.ProjectID != pvProject || p.ProjectFrom != "env" {
 		t.Fatalf("preview not completed: %s", out)
 	}
