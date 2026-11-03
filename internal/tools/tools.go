@@ -48,7 +48,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized) with a public floating IP, uploads compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM; skips an unchanged deploy unless force is set. Works in the directory evo runs in (MCP: where the server started); another compose file than its deployment's is refused before the question. Needs a Cloud.ru key (profile or CLOUDRU_KEY_ID/CLOUDRU_SECRET) and project_id/region/image_id via env, config, or arguments. Mutation (billable when it creates a VM): requires confirmed=true after the user approves, for a new VM and for an update of the existing one alike; without it returns a preview only (update: true with vm_id and compose_changed for an update). With the same compose file already running and force unset there is nothing to do: the preview says unchanged: true, and the confirmed call changes nothing.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized) with a public floating IP, uploads compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM; skips an unchanged deploy unless force is set. Works in the directory evo runs in (MCP: where the server started); another compose file than its deployment's is refused before the question. Needs a Cloud.ru key and project_id/region/image_id (env, config or arguments). Billable when it creates a VM; a new VM and an update alike take confirmed=true, without it a preview (an update: update: true, vm_id, compose_changed). With the same compose file already running and force unset there is nothing to do: the preview says unchanged: true, and the confirmed call changes nothing. The VM is named evo-<project_name> (project_name of .evo.yaml, else the directory); deploy takes no name, deploy_plan does.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
 				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
@@ -1159,12 +1159,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_balance",
-			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway.",
+			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway. " + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
 			Name:        "billing_consumption",
-			Description: "Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. Aggregated by service: total (excluding VAT, sum of amount), total_with_nds (including VAT, sum of amount_nds), records, by_service sorted by cost (excluding VAT) with cost_with_nds (including VAT). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). Use for FinOps/cost analysis.",
+			Description: "Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. Aggregated by service: total (excluding VAT, sum of amount), total_with_nds (including VAT, sum of amount_nds), records, by_service sorted by cost (excluding VAT) with cost_with_nds (including VAT). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). Use for FinOps/cost analysis. " + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Required."),
 				"end":        strProp("End date YYYY-MM-DD (default = start)."),
@@ -1173,7 +1173,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_finops",
-			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Costs exclude VAT (amount); total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it (amount_nds); runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks.",
+			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Costs exclude VAT (amount); total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it (amount_nds); runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks. " + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
 				"end":        strProp("End date YYYY-MM-DD. Optional; default = today."),
@@ -3118,7 +3118,15 @@ func cidrProp(desc string) map[string]any {
 // confirmedDesc describes the confirmed argument of every gated tool. One
 // text for all of them (there were 15 wordings of the same rule), so the
 // schema says the same thing everywhere; the gate itself is in each handler.
-const confirmedDesc = "Must be true — set only after the user approved."
+// readOnlyTaskNote ends the description of a read a task may need and
+// nothing else: a FinOps task of the LLM run on 1.6.0 went on to delete
+// (G2-17). The server's --read-only is the person's to set.
+const readOnlyTaskNote = "For a task that only reads, the person can run the server with evo mcp --read-only: it makes no change in the cloud."
+
+// readOnlyTaskNoteRU is readOnlyTaskNote in the CLI's Russian.
+const readOnlyTaskNoteRU = "Для задачи только на чтение человек может запустить сервер с evo mcp --read-only: такой сервер ничего не меняет в облаке."
+
+const confirmedDesc = "Omit it to get the preview; set true only after the person approved that preview."
 
 // confirmedProp is the confirmed argument of a gated tool.
 func confirmedProp() map[string]any { return boolProp(confirmedDesc) }

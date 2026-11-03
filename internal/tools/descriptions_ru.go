@@ -1475,7 +1475,7 @@ var toolsRU = map[string]toolRU{
 			"к проекту (evo mcp --allow-project), отказывает: CONFIG_INVALID. Запрос идёт к " +
 			"billing.api.cloud.ru/v1/agreement/{agreement_id}; этого метода нет в опубликованных спецификациях " +
 			"API Cloud.ru, поэтому он работает по возможности и может измениться без предупреждения. Так " +
-			"проверяют, на сколько ещё хватит баланса.",
+			"проверяют, на сколько ещё хватит баланса. " + readOnlyTaskNoteRU,
 	},
 	"billing_consumption": {
 		Short: "Стоимость потребления за период по сервисам: по договору или по проекту",
@@ -1483,7 +1483,7 @@ var toolsRU = map[string]toolRU{
 			"поле scope в ответе говорит, по чему. Сводка по сервисам: total (без НДС, сумма amount), " +
 			"total_with_nds (с НДС, сумма amount_nds), records, by_service — по убыванию стоимости (без НДС), с cost_with_nds (с НДС). " +
 			"Только чтение. Роли: для договора — администратор организации или администратор затрат; для проекта " +
-			"— администратор проекта (platform.project.admin). Для FinOps и анализа затрат.",
+			"— администратор проекта (platform.project.admin). Для FinOps и анализа затрат. " + readOnlyTaskNoteRU,
 		Args: map[string]string{
 			"end": "Дата окончания, ГГГГ-ММ-ДД (по умолчанию — дата начала)",
 			"project_id": "UUID проекта, чьё потребление прочитать (по умолчанию — текущий проект, если CLOUDRU_AGREEMENT_ID " +
@@ -1499,7 +1499,7 @@ var toolsRU = map[string]toolRU{
 			"prev_with_nds/now_with_nds в anomalies — с НДС (amount_nds); запас и бюджет — по затратам без НДС. " +
 			"Отбор — как у 'evo billing consumption'; без CLOUDRU_AGREEMENT_ID баланс и запас " +
 			"неизвестны. Перенесён из finops_report.py. Для анализа затрат, предупреждений о запасе и проверки " +
-			"бюджета.",
+			"бюджета. " + readOnlyTaskNoteRU,
 		Args: map[string]string{
 			"budget": "Месячный бюджет, руб.: прогноз расходов за месяц сравнивается с ним (необязательно)",
 			"days":   "Длина окна в днях, если дата начала не задана: 1–366 (по умолчанию 30)",
@@ -1788,7 +1788,8 @@ var toolsRU = map[string]toolRU{
 			"Нужен ключ доступа Cloud.ru (профиль из 'evo configure' или CLOUDRU_KEY_ID и " +
 			"CLOUDRU_SECRET), а проект, зона и образ — из переменных окружения, настроек или аргументов. Платно, " +
 			"если создаётся ВМ. Подтверждение нужно и для новой ВМ, и для обновления существующей; если работает " +
-			"тот же compose-файл и --force не задан, делать нечего: в превью unchanged: true, вызов с подтверждением ничего не изменит.",
+			"тот же compose-файл и --force не задан, делать нечего: в превью unchanged: true, вызов с подтверждением ничего не изменит. " +
+			"ВМ называется evo-<project_name> (project_name из .evo.yaml, иначе имя каталога); имя задаёт не deploy, а 'evo deploy plan'.",
 		Args: map[string]string{
 			"compose_file": "Путь к файлу docker-compose (по умолчанию docker-compose.yml)",
 			"disk_size":    "Размер загрузочного диска, ГБ (по умолчанию 10, но не меньше минимума образа)",
