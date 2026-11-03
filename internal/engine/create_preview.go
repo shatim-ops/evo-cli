@@ -907,6 +907,7 @@ var paramLabels = map[string]struct {
 	gb     bool
 }{
 	"version":           {"version", "версия", false},
+	"access":            {"access", "доступ", false},
 	"cpu":               {"vCPU", "vCPU", false},
 	"memory_gb":         {"RAM", "RAM", true},
 	"size_bytes":        {"size, bytes", "размер, байт", false},
