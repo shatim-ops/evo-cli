@@ -18,7 +18,7 @@ set -euo pipefail
 
 PENDING=1
 
-command -v zsh >/dev/null 2>&1 || { echo "install_zsh_test: нет zsh" >&2; exit 1; }
+zsh=$(command -v zsh) || { echo "install_zsh_test: нет zsh" >&2; exit 1; }
 root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -35,7 +35,7 @@ if command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum "$work/rel/v9.9.9/
 echo "$sum  $archive" >"$work/rel/v9.9.9/checksums.txt"
 
 run_install() {
-	env -i PATH="$work/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$work/home" INSTALL_DIR="$work/bin" \
+	env -i PATH="$work/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$work/home" SHELL="$zsh" INSTALL_DIR="$work/bin" \
 		CLOUDRU_VM_VERSION=v9.9.9 CLOUDRU_VM_BASE_URL="file://$work/rel" sh "$root/install.sh" "$@" >"$work/install.log" 2>&1 ||
 		{ cat "$work/install.log" >&2; return 1; }
 }
@@ -56,7 +56,9 @@ blocks() {
 run_install
 check "T5: _evo в $site" test -f "$site/_evo"
 check "T5: ~/.zshrc добавляет $site в \$fpath одним блоком" test "$(blocks)" -eq 1
-comps=$(env -i PATH="$work/bin:/usr/bin:/bin" HOME="$work/home" zsh -i -c 'autoload -Uz compinit; compinit -u; compinit -u; print -r -- ${_comps[evo]}' 2>/dev/null </dev/null || true)
+# compinit без -u, как в ~/.zshrc у людей: каталог, который install.sh
+# создаёт, проходит проверку безопасности compaudit.
+comps=$(env -i PATH="$work/bin:/usr/bin:/bin" HOME="$work/home" SHELL="$zsh" "$zsh" -i -c 'autoload -Uz compinit; compinit; compinit; print -r -- ${_comps[evo]}' 2>/dev/null </dev/null || true)
 check "T6: после второго compinit _comps[evo] не пусто" test -n "$comps"
 run_install
 check "T5: повторная установка — блок в ~/.zshrc один" test "$(blocks)" -eq 1
