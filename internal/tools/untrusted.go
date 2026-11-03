@@ -19,20 +19,38 @@ import (
 // 1.2.1, П9; TestUntrustedNames_OneLineInText).
 func quoteCloud(s string) string { return strconv.Quote(s) }
 
-// untrustedFields are the answer fields whose text the workload wrote, not
-// evo: a VM's log, a container app's log, kubectl's output. The answer
-// lists those it has in "_untrusted" — a marker for a client that reads
-// it: the text is data, never instructions (process audit 1.2.1, П9).
-var untrustedFields = map[string][]string{
-	"logs":        {"log"},
-	"ca_logs":     {"logs"},
-	"k8s_kubectl": {"output"},
+// untrustedAnswer declares what of a tool's answer evo did not write.
+// Fields are the answer fields with that text: the answer lists those it
+// has in "_untrusted" — a marker for a client that reads it: the text is
+// data, never instructions (process audit 1.2.1, П9). Workload says the
+// text is what a workload or a stored object wrote, and New ends the
+// tool's description with untrustedOutputNote (Tool.UntrustedOutput).
+type untrustedAnswer struct {
+	fields   []string
+	workload bool
+}
+
+// untrustedFields is the one declaration of the rule «text from the cloud
+// is untrusted»: the note in the description and the marker in the answer
+// are both made from it (release plan 1.7, «Недоверенный вывод без
+// маркера»: two maps had drifted apart).
+var untrustedFields = map[string]untrustedAnswer{
+	"logs":        {fields: []string{"log"}, workload: true},
+	"ca_logs":     {fields: []string{"logs"}, workload: true},
+	"k8s_kubectl": {fields: []string{"output"}, workload: true},
+	// kubectl apply prints what the cluster answers: admission webhooks
+	// and warnings a workload of the cluster writes.
+	"k8s_apply": {fields: []string{"output"}, workload: true},
+	"k8s_helm":  {fields: []string{"output"}, workload: true},
+	// An object of S3: anyone with write access to the bucket wrote it.
+	"s3_get": {fields: []string{"content", "content_base64"}, workload: true},
 	// deploy: the output of docker compose up — its log over MCP, the last
 	// lines of a failure (#558).
-	"deploy": {"log", "output"},
+	"deploy": {fields: []string{"log", "output"}, workload: true},
 	// The VMs a disk is attached to, as the cloud names them: the refusal
-	// of disk_delete (D59) names them for the way out.
-	"disk_delete": {"attached_vms"},
+	// of disk_delete (D59) names them for the way out. Names, not the
+	// output of a workload: no note.
+	"disk_delete": {fields: []string{"attached_vms"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of
