@@ -161,18 +161,32 @@ zshrc_lines() {
 # CRLF): иначе метка не нашлась бы, и повторная установка удвоила бы блок.
 ZSHRC_AWK_MARK='function mark(l) { sub(/[ \t\r]+$/, "", l); return l }'
 
-# zshrc_has_block rc: есть ли в rc блок evo.
-zshrc_has_block() {
-	[ -f "$1" ] && awk -v b="$ZSHRC_BEGIN" "$ZSHRC_AWK_MARK"' mark($0) == b { found = 1; exit } END { exit !found }' "$1"
+# zshrc_state rc: блок evo в rc — none (его нет), ok (обе метки) или
+# broken (начальная метка без конечной: человек стёр её, и всё ниже
+# начальной метки выглядело бы блоком).
+zshrc_state() {
+	[ -f "$1" ] || { echo none; return; }
+	awk -v b="$ZSHRC_BEGIN" -v e="$ZSHRC_END" "$ZSHRC_AWK_MARK"'
+		mark($0) == b { open = 1; seen = 1; next }
+		open && mark($0) == e { open = 0 }
+		END { print (!seen ? "none" : open ? "broken" : "ok") }' "$1"
 }
 
 # zshrc_unblock rc: убрать блок evo из rc, если он есть; права и ссылка
-# файла остаются (запись поверх, а не замена файла). До записи — копия
-# rc.evo-backup: запись поверх не атомарна, и при сбое посередине файл
-# восстанавливается из копии; после удачной записи копия удаляется.
+# файла остаются (запись поверх, а не mv на место, который заменил бы
+# ссылку dotfiles файлом и сбросил права). Запись поверх сначала обрезает
+# файл, поэтому до неё — копия rc.evo-backup, а удаляется копия только
+# после удачной записи; при сбое копия остаётся, путь к ней назван. Блок
+# без конечной метки не трогается: ошибка с просьбой убрать его вручную.
 zshrc_unblock() {
 	rc=$1
-	zshrc_has_block "$rc" || return 0
+	case $(zshrc_state "$rc") in
+	none) return 0 ;;
+	broken)
+		say "install.sh: блок evo в $rc повреждён (нет строки «$ZSHRC_END»); файл не тронут — уберите строки блока вручную"
+		return 1
+		;;
+	esac
 	tmp="$rc.evo.$$"
 	bak="$rc.evo-backup"
 	# С блоком уходит и пустая строка перед ним, которую дописала установка:
@@ -184,13 +198,17 @@ zshrc_unblock() {
 		$0 == "" { held = 1; next }
 		{ print }
 		END { if (held) print "" }' "$rc" >"$tmp" || { rm -f "$tmp"; return 1; }
-	cp "$rc" "$bak" || { rm -f "$tmp"; return 1; }
+	if ! cp "$rc" "$bak"; then
+		rm -f "$tmp"
+		say "install.sh: копия $rc не сделана; файл не тронут"
+		return 1
+	fi
 	if cat "$tmp" >"$rc"; then
 		rm -f "$tmp" "$bak"
 		return 0
 	fi
 	rm -f "$tmp"
-	say "install.sh: $rc записан не полностью; его копия до правки — $bak"
+	say "install.sh: $rc не записан; ваша копия — $bak"
 	return 1
 }
 
@@ -209,7 +227,7 @@ zshrc_block() {
 		zshrc_lines "$site" | while IFS= read -r l; do say "  $l"; done
 		return 0
 	fi
-	zshrc_unblock "$rc" || return 0
+	zshrc_unblock "$rc" || exit 1
 	if { printf '\n%s\n' "$ZSHRC_BEGIN" && zshrc_lines "$site" && printf '%s\n' "$ZSHRC_END"; } >>"$rc"; then
 		say "Автодополнение zsh: блок evo в $rc (каталог $site в \$fpath). Убрать: install.sh --uninstall; не трогать ~/.zshrc: EVO_ZSHRC=0"
 	else
@@ -268,7 +286,8 @@ uninstall() {
 		fi
 	done
 	rc="${ZDOTDIR:-$HOME}/.zshrc"
-	if zshrc_has_block "$rc" && zshrc_unblock "$rc"; then
+	if [ "$(zshrc_state "$rc")" != none ]; then
+		zshrc_unblock "$rc" || exit 1
 		say "Удалено: блок evo из $rc"
 	fi
 }
