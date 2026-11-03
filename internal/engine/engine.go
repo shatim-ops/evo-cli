@@ -43,6 +43,11 @@ type Engine struct {
 	QuotaProbe func(ctx context.Context, tp auth.TokenProvider, projectID string) error
 	// Probe runs post-deploy health checks; nil means verify.Check.
 	Probe func(ctx context.Context, ip string, ports []int, timeout time.Duration) []verify.ProbeResult
+	// SSHDial probes port 22 of a VM before the question of an update
+	// (ReachSSH, M2): DialSSH in the CLI and the server; nil, no probe.
+	SSHDial func(ctx context.Context, addr string) error
+	// sshReached remembers ReachSSH per address within one call.
+	sshReached map[string]error
 	// Stages runs the long stages of deploy on the VM (vmstage); nil: the
 	// Deployer, when it runs stages itself, else vmstage.Over(Deployer).
 	Stages vmstage.Runner

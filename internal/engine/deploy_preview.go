@@ -106,6 +106,7 @@ func (e *Engine) DeployPreview(ctx context.Context, cidr string) (*CreatePreview
 		}
 	}
 	p.AddPorts(project.Ports, project.UDPPorts, cidr)
+	p.Add("upload", SSHUpload(""))
 	// The flavor deploy takes (resolveFlavor): the one given, else the
 	// smallest that fits the compose file's services.
 	pick := func(flavors []*provision.Flavor) (string, error) {

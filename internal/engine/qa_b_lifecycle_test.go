@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"context"
 	stderrors "errors"
+	"net"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -99,5 +101,31 @@ func TestQAB_Redeploy_PrivateVMAsksBeforeFIP(t *testing.T) {
 	sf, _ := state.Read(state.DefaultPath(dir))
 	if *creates != 1 || sf.ActiveDeployment().FloatingIPID != "fip-new" {
 		t.Fatalf("с --yes: FIP создан %d раз, запись %+v", *creates, sf.ActiveDeployment())
+	}
+}
+
+// M2: the preview of an update says what the upload needs of this host's
+// network, and warns before the question when port 22 of the VM does not
+// answer from here; a dry run probes, and changes nothing.
+func TestRedeploy_PreviewProbesPort22(t *testing.T) {
+	cloud := &mockCloudAPI{}
+	e, dir, out := qaBEngine(t, cloud)
+	var dialed []string
+	e.SSHDial = func(_ context.Context, addr string) error {
+		dialed = append(dialed, addr)
+		return &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+	}
+	writeRecord(t, dir, state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", VMIP: "203.0.113.8", ProjectID: e.Config.ProjectID, Region: "az-1", SSHUser: "user1", Status: "running"})
+	opts := DeployOptions{ComposeFile: writeComposeFile(t, dir), Flavor: "small", NonInteractive: true, DryRun: true}
+	if err := e.Deploy(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"outbound TCP 22 to 203.0.113.8", "port 22 does not answer from this host (ssh_reachable: false, refused)", "TCP 22 of 203.0.113.8 does not answer from this host (refused)", "nc -vz 203.0.113.8 22"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("the preview lacks %q:\n%s", want, out.String())
+		}
+	}
+	if strings.Join(dialed, ",") != "203.0.113.8:22" {
+		t.Errorf("dialed %v", dialed)
 	}
 }
