@@ -25,11 +25,7 @@ var bufferPrinterScope = []string{"internal/tools", "internal/engine", "internal
 // onto a buffer an answer carries: "file<TAB>function" → the answer. It only
 // shrinks. Closes by 1.7 (release plan 1.7, F9: the printer into a buffer is
 // ModePlain, one point).
-var textPrinterMisses = map[string]string{
-	"internal/tools/caller.go\tlogAndProgress":        "the log of deploy's answer",
-	"internal/tools/tools.go\tRegistry.handleLogs":    "the log logs answers",
-	"internal/tools/tools.go\tRegistry.handleDestroy": "the log of destroy's answer",
-}
+var textPrinterMisses = map[string]string{}
 
 // F9 (agent runs of Grok on 1.6.0, release plan 1.7): a printer evo makes
 // outside the CLI writes to a buffer, so it is never in output.ModeText — a
