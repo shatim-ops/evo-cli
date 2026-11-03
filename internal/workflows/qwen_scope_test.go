@@ -15,14 +15,18 @@ import (
 // the workflows (.github/, internal/workflows/) or the code of secrets and
 // consent; /qwen review runs on any; critical, high and secrets, consent and
 // workflows are findings beyond the cap of five (owner's decision 29.10,
-// audit #578, item 9; before — #485, П1 (б)). ci tests the choice with git
-// and gh faked (qwen_review_scope_test.sh), and the script holds it.
+// audit #578, item 9; before — #485, П1 (б)); on a push to a PR it comes
+// when the push changes a sensitive path of the PR's diff — a merge of the
+// base does not count (owner's decision 03.11, refining #578). ci tests the
+// choice with git and gh faked (qwen_review_scope_test.sh), and the script
+// holds it.
 func TestWorkflows_QwenReviewScope(t *testing.T) {
 	if !runsStep(readWorkflows(t)["ci.yml"], ".github/scripts/qwen_review_scope_test.sh") {
 		t.Error("ci: which PRs Qwen reviews is not tested (qwen_review_scope_test.sh)")
 	}
 	s := qwenScript(t)
-	for _, want := range []string{".github/* | internal/workflows/*) review=1", "*_test.go) ;;",
+	for _, want := range []string{".github/* | internal/workflows/*) found=1", "*_test.go) ;;",
+		`comm -12 <(sort -u <<<"$changed") <(sort -u <<<"$pushed")`,
 		`"${COMMENT_ID:-}"`, "не больше пяти находок", "«Гипотезы»", "всегда находкой, даже сверх пяти"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("qwen-review.sh: no %s — the scope or the cap of #485 is gone", want)

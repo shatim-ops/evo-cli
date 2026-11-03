@@ -33,6 +33,20 @@ const (
 type QuotaCheck struct {
 	Checked bool   `json:"checked"`
 	Reason  string `json:"reason,omitempty"`
+	// Note is the reason as text — what the human preview says; the agent
+	// reads --json and the answer of MCP, not the code alone (agent run
+	// C2, Ц-1).
+	Note string `json:"note,omitempty"`
+}
+
+// newQuotaCheck is the check not made, for reason, with its note.
+func newQuotaCheck(reason string) *QuotaCheck {
+	why := map[string]string{
+		QuotaProjectKey: i18n.T("project key", "ключ проекта"),
+		QuotaNotRead:    i18n.T("not read", "не прочитана"),
+		QuotaNotMapped:  i18n.T("evo does not match quota types yet", "evo пока не сверяет типы квот"),
+	}[reason]
+	return &QuotaCheck{Reason: reason, Note: i18n.Tf("not checked (%s)", "не проверена (%s)", why)}
 }
 
 // quotaCheck asks QuotaProbe whether the project's quotas can be read; nil
@@ -43,11 +57,11 @@ func (e *Engine) quotaCheck(ctx context.Context, projectID string) *QuotaCheck {
 	}
 	switch err := e.QuotaProbe(ctx, e.Auth, projectID); {
 	case err == nil:
-		return &QuotaCheck{Reason: QuotaNotMapped}
+		return newQuotaCheck(QuotaNotMapped)
 	case errors.Is(err, ErrQuotasForbidden):
-		return &QuotaCheck{Reason: QuotaProjectKey}
+		return newQuotaCheck(QuotaProjectKey)
 	default:
-		return &QuotaCheck{Reason: QuotaNotRead}
+		return newQuotaCheck(QuotaNotRead)
 	}
 }
 
@@ -56,10 +70,5 @@ func (q *QuotaCheck) line() string {
 	if q == nil || q.Checked {
 		return ""
 	}
-	why := map[string]string{
-		QuotaProjectKey: i18n.T("project key", "ключ проекта"),
-		QuotaNotRead:    i18n.T("not read", "не прочитана"),
-		QuotaNotMapped:  i18n.T("evo does not match quota types yet", "evo пока не сверяет типы квот"),
-	}[q.Reason]
-	return previewLabel("quota", "квота") + i18n.Tf("not checked (%s)", "не проверена (%s)", why)
+	return previewLabel("quota", "квота") + q.Note
 }

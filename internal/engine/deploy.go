@@ -1539,10 +1539,15 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 		// Past the usual few minutes, say once why deploy still waits and
 		// what that may mean (cloud-e2e 16-18.10.2026, register OPS-1).
 		if !noted && time.Since(start) >= t.SSHSlowNote {
+			// Two ends: the VM's first boot, and the network evo runs in —
+			// outbound port 22 closed there looks the same (agent run C2,
+			// Ц-8: the agent's sandbox let no SSH out).
 			e.Printer.Warning(i18n.Tf("SSH on %s does not answer yet. A new VM usually answers within 2-5 minutes; on Cloud.ru its first boot "+
-				"sometimes does not bring the network up, and then SSH never answers. evo keeps trying (%d attempts in all).",
+				"sometimes does not bring the network up, and then SSH never answers. The network evo runs in may also let no SSH out "+
+				"(outbound port 22 closed by a corporate firewall, a VPN or an agent's sandbox): check with nc -vz %s 22. evo keeps trying (%d attempts in all).",
 				"SSH на %s пока не отвечает. Новая ВМ обычно отвечает за 2–5 минут; на Cloud.ru первая загрузка иногда "+
-					"не поднимает сеть, и тогда SSH не ответит вовсе. evo продолжает попытки (всего %d).", ip, maxRetries))
+					"не поднимает сеть, и тогда SSH не ответит вовсе. Не выпускать SSH может и сеть, где запущен evo "+
+					"(исходящий порт 22 закрыт корпоративным межсетевым экраном, VPN или песочницей агента): проверка — nc -vz %s 22. evo продолжает попытки (всего %d).", ip, ip, maxRetries))
 			noted = true
 		}
 
