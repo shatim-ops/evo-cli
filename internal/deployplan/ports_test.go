@@ -48,7 +48,7 @@ func TestApply_ReturnsCreatedRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cloud.added) != 1 || cloud.added[0].Description != "auto: wiki port 80" {
+	if len(cloud.added) != 1 || cloud.added[0].Description != "evo: port 80 (vm vm-made)" {
 		t.Fatalf("added = %+v", cloud.added)
 	}
 	if res.Ports.SecurityGroupID != "sg-1" || len(res.Ports.OpenedRules) != 1 ||

@@ -17,6 +17,7 @@ import (
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -283,5 +284,57 @@ func TestDeployPreview_SaysDestroyClosesPorts(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String()+eng.Printer.Writer().(*bytes.Buffer).String(), "destroy closes only the rules it creates") {
 		t.Errorf("preview:\n%s", stderr.String())
+	}
+}
+
+// P6: beside the rules its record holds, evo destroy closes the rules
+// labelled for its VM that no record here holds (opened for the VM from
+// another folder): named in the preview before the question, deleted after
+// the VM. The record's own rules, already counted, are not found twice.
+func TestDestroy_ClosesTheVMsLabelledRules(t *testing.T) {
+	rec := rulesRecord()
+	eng, cloud, out := destroyFixture(t, rec)
+	cloud.listSecurityGroupsFn = func(context.Context, string) ([]*provision.SecurityGroup, error) {
+		return []*provision.SecurityGroup{{ID: "sg-1", Rules: []provision.SGRule{
+			{ID: "rule-80", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", Description: sgrules.RuleLabel("80", rec.VMID)},
+			{ID: "rule-b", Direction: "ingress", IPProtocol: "tcp", PortRange: "8443:8443", Description: sgrules.RuleLabel("8443", rec.VMID)},
+			{ID: "rule-x", Direction: "ingress", IPProtocol: "tcp", PortRange: "9000:9000", Description: sgrules.RuleLabel("9000", "another-vm")},
+		}}}, nil
+	}
+	p, ok, err := eng.DestroyPreview(context.Background())
+	if err != nil || !ok || !strings.Contains(strings.Join(p.Lines, "\n"), "rule-b") || strings.Contains(strings.Join(p.Lines, "\n"), "rule-x") {
+		t.Fatalf("preview (%v, %v) does not name exactly the labelled rule:\n%s", ok, err, strings.Join(p.Lines, "\n"))
+	}
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if strings.Join(cloud.deletedRules, ",") != "sg-1/rule-80,sg-1/rule-53,sg-1/rule-b" {
+		t.Errorf("deleted = %v", cloud.deletedRules)
+	}
+	if !strings.Contains(out.String(), "Closed the security group rules labelled for the VM: ports 8443 (vm "+rec.VMID+")") {
+		t.Errorf("output:\n%s", out.String())
+	}
+}
+
+// A group list that cannot be read is not "no labelled rules": the preview
+// and the answer of evo destroy say they were not all checked, and the VM
+// and the record's own rules still go.
+func TestDestroy_AnUnreadRuleListIsSaid(t *testing.T) {
+	eng, cloud, out := destroyFixture(t, rulesRecord())
+	cloud.listSecurityGroupsFn = func(context.Context, string) ([]*provision.SecurityGroup, error) {
+		return nil, clerrors.New(clerrors.CodeAPIError, "API returned status 503", "")
+	}
+	p, _, err := eng.DestroyPreview(context.Background())
+	if err != nil || !strings.Contains(strings.Join(p.Lines, "\n"), "not all checked (API_ERROR)") {
+		t.Fatalf("preview (%v):\n%s", err, strings.Join(p.Lines, "\n"))
+	}
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if strings.Join(cloud.deletedRules, ",") != "sg-1/rule-80,sg-1/rule-53" {
+		t.Errorf("the record's own rules: deleted %v", cloud.deletedRules)
+	}
+	if !strings.Contains(out.String(), "not all checked (API_ERROR)") {
+		t.Errorf("output:\n%s", out.String())
 	}
 }

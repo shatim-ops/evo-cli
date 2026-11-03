@@ -23,7 +23,7 @@ func TestOpen_OpensToTheSourceGiven(t *testing.T) {
 		{ID: "any-443", Direction: "ingress", IPProtocol: "tcp", PortRange: "443:443", RemoteIPPrefix: Anywhere},
 	}
 	var rec state.DeploymentRecord
-	res := Open(context.Background(), f, "proj", "sg-1", []int{22, 443, 5432}, nil, "10.0.0.0/8", desc, &rec)
+	res := Open(context.Background(), f, "proj", "sg-1", []int{22, 443, 5432}, nil, "10.0.0.0/8", "vm-1", &rec)
 	if strings.Join(res.Opened, ",") != "22,5432" || strings.Join(res.AlreadyOpen, ",") != "443" {
 		t.Fatalf("opened %v, already open %v; want 22,5432 opened and 443 (open wider) left", res.Opened, res.AlreadyOpen)
 	}
@@ -35,7 +35,7 @@ func TestOpen_OpensToTheSourceGiven(t *testing.T) {
 
 	g := newFake()
 	var rec2 state.DeploymentRecord
-	Open(context.Background(), g, "proj", "sg-1", []int{80}, nil, "", desc, &rec2)
+	Open(context.Background(), g, "proj", "sg-1", []int{80}, nil, "", "vm-1", &rec2)
 	if got := g.rules["sg-1"][0].RemoteIPPrefix; got != Anywhere {
 		t.Errorf("without a cidr the rule opens to %q, want %s", got, Anywhere)
 	}

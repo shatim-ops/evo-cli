@@ -402,8 +402,7 @@ func zoneText(name, id string) string {
 // anything is created. Failures are reported, not fatal: the VM exists and
 // the ports can be opened in the console.
 func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp []int, cidr string, rec *state.DeploymentRecord) {
-	res := sgrules.Open(ctx, e.Cloud, projectID, sgID, tcp, udp, cidr,
-		func(label string) string { return "evo: port " + label }, rec)
+	res := sgrules.Open(ctx, e.Cloud, projectID, sgID, tcp, udp, cidr, rec.VMID, rec)
 	group := rec.SecurityGroupName
 	if group == "" {
 		group = sgID

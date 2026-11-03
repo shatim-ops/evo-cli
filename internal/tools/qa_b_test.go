@@ -63,6 +63,11 @@ type foreignVMCloud struct {
 }
 
 func (*foreignVMCloud) SetToken(string) {}
+
+// ListSecurityGroups: no rules labelled for the VM (P6).
+func (*foreignVMCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return nil, nil
+}
 func (*foreignVMCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
 	return []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000009", Name: "user-vm", FloatingIP: "198.51.100.7"}}, nil
 }
