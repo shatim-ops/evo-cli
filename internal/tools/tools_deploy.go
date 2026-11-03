@@ -349,6 +349,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 			fields = map[string]any{"vm_id": res.VMID, "plan_id": planID}
 			if res.Password != "" {
 				fields["password"] = res.Password
+				fields["note"] = strings.TrimSpace(passwordOnce)
 			}
 		}
 		return errAnswer(err, fields), true
@@ -381,7 +382,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		nextStep(out, "deploy_apply", map[string]any{"plan_id": planID, "confirmed": true})
 		if res.Password != "" {
 			out["password"] = res.Password
-			out["next"] = out["next"].(string) + " The VM password is in this answer only: give it to the user now, the repeat does not show it."
+			out["next"] = out["next"].(string) + passwordOnce
 		}
 		return toJSON(out), false
 	case "error":
@@ -397,7 +398,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		hint := fmt.Sprintf("Call deploy_apply again with the same plan_id %s in a few minutes: it adopts the VM and finishes it (IP, SSH, ports); it is billed meanwhile, destroy (vm_id %s) deletes it.", planID, res.VMID)
 		if res.Password != "" {
 			fields["password"] = res.Password
-			hint += " The VM password is in this answer only: give it to the user now, the retry does not show it."
+			hint += passwordOnce
 		}
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
 			i18n.Tf("VM %s is not running yet: %s", "ВМ %s ещё не запущена: %s", res.VMID, res.Note), hint), fields), true
