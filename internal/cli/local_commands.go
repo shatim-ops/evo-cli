@@ -18,6 +18,7 @@ var localCommands = []localCommand{
 	{"evo configure", "пишет ключ доступа в профиль на диске той машины, где стоит evo; MCP-клиент ключей не передаёт по контракту (docs/mcp.md)"},
 	{"evo configure list", "читает профили с диска"},
 	{"evo configure delete", "удаляет профиль с диска"},
+	{"evo configure s3", "пишет ключи S3 в профиль на диске той машины, где стоит evo, из его ключа доступа; MCP-клиент ключей не передаёт по контракту (docs/mcp.md)"},
 	{"evo project", "группа: project use — локальная, project list — команда org_projects"},
 	{"evo project use", "пишет проект в профиль на диске"},
 	{"evo init", "интерактивно выбирает зону и образ и пишет .evo.yaml в текущий каталог"},

@@ -34,8 +34,11 @@ var localJSONCases = map[string]localJSONCase{
 	"evo configure":        {args: []string{"--key-id", fakeKeyID, "--secret-stdin", "--project-id", localJSONProject}, stdin: fakeSecret, ok: true},
 	"evo configure list":   {ok: true},
 	"evo configure delete": {args: []string{"other"}, ok: true},
-	"evo project use":      {args: []string{localJSONProject}, ok: true},
-	"evo init":             {args: []string{"--non-interactive"}, ok: true},
+	// The profile the test saves first (saveProfile): the S3 keys from its
+	// access key.
+	"evo configure s3": {args: []string{"--tenant-id", "t-1"}, ok: true},
+	"evo project use":  {args: []string{localJSONProject}, ok: true},
+	"evo init":         {args: []string{"--non-interactive"}, ok: true},
 	// No deployment recorded: the error is the form checked; the TCP
 	// checks of a recorded one need a host (engine tests).
 	"evo verify":  {ok: false},
