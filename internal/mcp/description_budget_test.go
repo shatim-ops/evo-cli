@@ -28,7 +28,7 @@ const toolBudget = 1500
 // in 1.8).
 var toolsOverBudget = map[string]int{
 	"ca_deploy":        2264,
-	"deploy":           2170,
+	"deploy":           2167,
 	"deploy_plan":      3535,
 	"destroy":          1637,
 	"image_create":     2911,

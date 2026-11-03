@@ -26,6 +26,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
+	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
 
 // The fake world of TestParity_JSONEqualsTool: the world of the previews
@@ -275,6 +276,23 @@ func (parityDeployer) ExecStream(_ context.Context, _ string, stdout, _ io.Write
 	return err
 }
 func (parityDeployer) Close() error { return nil }
+
+// parityStages are the inputs the stages of parityDeployer last ran for.
+var parityStages sync.Map
+
+// Start and Read: a stage of the VM (vmstage) is done at once, as every
+// command of this VM succeeds.
+func (parityDeployer) Start(_ context.Context, name, input, _ string) (bool, error) {
+	parityStages.Store(name, input)
+	return true, nil
+}
+func (parityDeployer) Read(_ context.Context, name string) (vmstage.Stage, error) {
+	input, ok := parityStages.Load(name)
+	if !ok {
+		return vmstage.Stage{State: "none"}, nil
+	}
+	return vmstage.Stage{State: "done", Input: input.(string), LogTail: "web-1  | ready"}, nil
+}
 
 // withJSONWorld is withParityWorld with the fixtures of the answers, the
 // keys of Object Storage and the billing agreement, kubectl and helm that

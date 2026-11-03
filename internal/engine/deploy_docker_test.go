@@ -115,9 +115,17 @@ func TestDeploy_DockerInstallRetries(t *testing.T) {
 // DockerWaitTimeout, and the record is marked so a plain re-run retries.
 func TestDeploy_DockerTimeoutMarksStateAndRerunRetries(t *testing.T) {
 	dep := newMockDeployer()
+	// The install's own stderr is in its log; the stage ends with its exit
+	// code (vmstage, D69 variant C).
+	dep.streamOut = func(cmd string) string {
+		if strings.Contains(cmd, "base64 -d") {
+			return "curl: (6) Could not resolve host: get.docker.com\n"
+		}
+		return ""
+	}
 	dep.streamHook = func(_ context.Context, cmd string) error {
 		if strings.Contains(cmd, "base64 -d") {
-			return stderrors.New("curl: (6) Could not resolve host: get.docker.com")
+			return stderrors.New("exit status 6")
 		}
 		return nil
 	}
@@ -130,9 +138,9 @@ func TestDeploy_DockerTimeoutMarksStateAndRerunRetries(t *testing.T) {
 	if !stderrors.As(err, &cliErr) || cliErr.Code != clerrors.CodeSSHTimeout || !strings.Contains(cliErr.Message, "Docker is not ready") {
 		t.Fatalf("err = %v, want SSH_TIMEOUT 'Docker is not ready'", err)
 	}
-	// The install printed nothing: the hint names how the last attempt
-	// ended, or there is nothing to diagnose (QA r4 Q14, run #24).
-	if !strings.Contains(cliErr.Hint, "Last attempt ended with: curl: (6) Could not resolve host") {
+	// The hint names how the last attempt ended (QA r4 Q14, run #24), and
+	// what it printed.
+	if !strings.Contains(cliErr.Hint, "Last attempt ended with: exit status 1") || !strings.Contains(cliErr.Hint, "curl: (6) Could not resolve host") {
 		t.Errorf("hint lacks the last attempt's error:\n%s", cliErr.Hint)
 	}
 	if a := readActive(t, dir); a == nil || a.Status != "docker_failed" {

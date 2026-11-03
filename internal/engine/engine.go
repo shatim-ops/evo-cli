@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/verify"
+	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
 
 // Engine orchestrates all CLI operations.
@@ -42,6 +43,12 @@ type Engine struct {
 	QuotaProbe func(ctx context.Context, tp auth.TokenProvider, projectID string) error
 	// Probe runs post-deploy health checks; nil means verify.Check.
 	Probe func(ctx context.Context, ip string, ports []int, timeout time.Duration) []verify.ProbeResult
+	// Stages runs the long stages of deploy on the VM (vmstage); nil: the
+	// Deployer, when it runs stages itself, else vmstage.Over(Deployer).
+	Stages vmstage.Runner
+
+	// until is DeployOptions.Until of the deploy that runs.
+	until time.Time
 }
 
 // DeployOptions holds parameters for the deploy command.
@@ -59,6 +66,10 @@ type DeployOptions struct {
 	// is the engine's words for an update of the existing VM, nil for a new
 	// VM, whose preview the tool makes itself.
 	Gate func(ctx context.Context, redeploy *confirm.Preview) (bool, error)
+	// Until bounds the waits of deploy for the cloud and the VM (D69: the
+	// budget of an MCP call); zero, the CLI: none. Past it, Deploy returns
+	// *InProgress with what goes on, and the stages on the VM go on.
+	Until time.Time
 }
 
 // EnsureSSHKey fills SSHKeyPEM/SSHPubKey from SSHKeyLoader unless they are

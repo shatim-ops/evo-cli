@@ -9,7 +9,6 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -49,6 +48,7 @@ const (
 
 // Deploy orchestrates the full deploy lifecycle.
 func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) {
+	e.until = opts.Until
 	// Stage 1: Parse compose file.
 	project, err := compose.Parse(opts.ComposeFile)
 	if err != nil {
@@ -332,22 +332,36 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		return err
 	}
 
-	// Run docker compose up. Streamed, not Exec: pulling images can take
-	// longer than Exec's 120 s limit. Progress goes to stderr in text mode.
-	// The last lines go with a failure in every mode: with --json the
-	// output goes nowhere else (#558). They are the workload's words: the
-	// tool marks the field untrusted.
-	tail := newTailWriter(composeTailLines)
-	var progress io.Writer = io.MultiWriter(e.Printer.ErrWriter(), tail)
-	if e.Printer.IsJSON() {
-		progress = tail
+	// Run docker compose up: a stage on the VM, apart from this session
+	// (vmstage, D69 variant C) — pulling images takes minutes, and the end
+	// of the session (the budget of an MCP call, a lost connection) does
+	// not cut it; the next deploy reads it. Its input is the compose file:
+	// a stage done for this one is not run again. The last lines go with a
+	// failure in every mode: with --json the output goes nowhere else
+	// (#558). They are the workload's words: the tool marks the field
+	// untrusted.
+	composeUp := fmt.Sprintf("cd %s && docker compose -f docker-compose.yml up -d", remoteComposeDir)
+	composeInput := stageInput(composeUp, string(composeData))
+	if opts.Force {
+		// --force (force): compose up runs again with the same compose
+		// file, as it did before the stage — the stage done for this
+		// input is not taken for it.
+		composeInput = stageInput(composeInput, time.Now().String())
 	}
-	if err := e.Deployer.ExecStream(ctx, fmt.Sprintf("cd %s && docker compose -f docker-compose.yml up -d", remoteComposeDir), progress, progress); err != nil {
+	st, err := e.runStage(ctx, "compose-up", composeInput, composeUp, time.Time{})
+	if err == nil && st.State == "failed" {
+		err = fmt.Errorf("exit status %d", st.Exit)
+	}
+	if err != nil {
+		var going *InProgress
+		if stderrors.As(err, &going) || ctx.Err() != nil {
+			return err
+		}
 		ce := clerrors.Wrap(clerrors.CodeSSHTimeout,
 			i18n.T("docker compose up failed", "docker compose up завершился ошибкой"),
 			i18n.T("Check your compose file and service logs on the VM.", "Проверьте compose-файл и журналы сервисов на ВМ."),
 			err)
-		if out := tail.String(); out != "" {
+		if out := lastLines(st.LogTail, composeTailLines); out != "" {
 			ce.Details = map[string]any{"output": out}
 			ce.Hint += i18n.T(" The last lines of docker compose up are in output.", " Последние строки docker compose up — в output.")
 		}
@@ -819,10 +833,19 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	}
 
 	var vmPollRefusals refusals
+	// The bound of the deploy (D69): the VM is in the state as creating;
+	// the next deploy takes it and goes on.
+	var bound <-chan time.Time
+	if !e.until.IsZero() {
+		bound = time.After(time.Until(e.until))
+	}
+	vmState := "creating"
 	for {
 		select {
 		case sig := <-sigCh:
 			return interrupted(sig.String())
+		case <-bound:
+			return rec, &InProgress{Phase: "vm", Detail: vmState}
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
 				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", vm.ID, t.VMPollTimeout),
@@ -850,6 +873,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
 				continue
 			}
+			vmState = updated.Status
 			if updated.Status != "active" && updated.Status != "running" {
 				wait.State(updated.Status)
 			}
@@ -1443,11 +1467,19 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 				return err
 			}
 		}
+		// The bound of the deploy (D69): the next deploy waits on.
+		if e.past() {
+			return &InProgress{Phase: "ssh", Detail: errLine(err)}
+		}
 
+		wait := t.SSHRetryInterval
+		if !e.until.IsZero() {
+			wait = min(wait, time.Until(e.until))
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(t.SSHRetryInterval):
+		case <-time.After(wait):
 		}
 	}
 	// evo does not reboot or recreate the VM by itself: both are the
@@ -1542,10 +1574,18 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	// until the deadline (break r4, R4-15, R4-17).
 	permanent := false
 	for attempt := 1; ; attempt++ {
-		var out bytes.Buffer
-		attemptCtx, cancel := context.WithDeadline(ctx, deadline)
-		err := e.Deployer.ExecStream(attemptCtx, installCmd, &out, &out)
-		cancel()
+		// The install is a stage on the VM (vmstage, D69 variant C): the
+		// end of this session does not cut apt midway, and a later deploy
+		// reads it; one done for this install is not run again.
+		st, err := e.runStage(ctx, "docker", stageInput(installCmd), installCmd, deadline)
+		var going *InProgress
+		if stderrors.As(err, &going) {
+			return err
+		}
+		if err == nil && st.State == "failed" {
+			err = fmt.Errorf("exit status %d", st.Exit)
+		}
+		out := bytes.NewBufferString(st.LogTail)
 		if err == nil {
 			// Group membership is fixed at login: reconnect so the docker
 			// group the script may have just added applies.

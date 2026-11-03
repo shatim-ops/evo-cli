@@ -23,6 +23,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/verify"
+	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
 
 // --- Mocks ---
@@ -280,6 +281,7 @@ type mockDeployer struct {
 	execCalls       []string
 	closeCalled     bool
 	uploadedFiles   []deploy.FileEntry
+	stages          syncStages
 }
 
 func newMockDeployer() *mockDeployer {
@@ -329,6 +331,14 @@ func (m *mockDeployer) Exec(_ context.Context, cmd string) (string, error) {
 }
 
 // ExecStream records the call like Exec and writes the scripted result.
+// Start and Read: the stages of the fake VM run at once (syncStages).
+func (m *mockDeployer) Start(ctx context.Context, name, input, script string) (bool, error) {
+	return m.stages.start(ctx, m, name, input, script)
+}
+func (m *mockDeployer) Read(_ context.Context, name string) (vmstage.Stage, error) {
+	return m.stages.read(name), nil
+}
+
 func (m *mockDeployer) ExecStream(ctx context.Context, cmd string, stdout, _ io.Writer) error {
 	if m.streamOut != nil {
 		_, _ = io.WriteString(stdout, m.streamOut(cmd))

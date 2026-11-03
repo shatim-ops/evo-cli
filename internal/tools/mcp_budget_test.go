@@ -170,6 +170,14 @@ func stackBudget() budgetWait {
 // internal/testrules, from sleepWaits) and those whose schema takes a wait
 // (wait_seconds). TestMCP_BudgetCoversTheWaits keeps the list whole.
 var mcpWaits = map[string]budgetWait{
+	// The VM is made, the compose-up stage goes on on the VM (D69 variant
+	// C; the world of TestDeployStage_OnceAndNotCutShort).
+	"deploy": {run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
+		r := stageRegistry(t, newStageVM())
+		return func(ctx context.Context) (string, bool) {
+			return r.handlers["deploy"](ctx, map[string]any{"confirmed": true})
+		}, nil
+	}},
 	"stack_apply": stackBudget(),
 	"provision":   computeBudget("provision", map[string]any{"name": "web", "confirmed": true}, false, nil),
 	"deploy_apply": computeBudget("deploy_apply", map[string]any{"plan_id": "plan-0123456789ab", "confirmed": true}, true,
@@ -195,7 +203,6 @@ var mcpWaits = map[string]budgetWait{
 		faultResource{host: "dns.api.cloud.ru", path: "/v1/publicZones", ID: "00000000-0000-4000-8000-0000000000a7", Name: "example.com.", before: true}),
 
 	// No world of the slow cloud reaches these yet: what the code shows.
-	"deploy":        {static: "the engine waits for the VM up to VMPollTimeout (25 min), then SSH and Docker (engine/timings.go)", over: true},
 	"stack_destroy": {static: "runs destroy in the call (callTool): DestroyPollTimeout 2 min, DeletableWaitTimeout 10 min (engine/timings.go)", over: true},
 	"stack_status":  {static: "the handler waits at most 20 s (tools_stack.go), as its schema says: within the budget"},
 	"k8s_kubectl":   {static: "kubectl runs up to 90 s (tools_kube.go, docs/mcp.md)", over: true},
@@ -213,7 +220,6 @@ var mcpWaits = map[string]budgetWait{
 // D69 takes its lines out).
 var mcpOverBudget = map[string]string{
 	"destroy":       "waits for the VM to be gone: DestroyPollTimeout 2 min",
-	"deploy":        "waits for the VM, SSH and Docker",
 	"stack_destroy": "destroy waits for the VM to be gone",
 	"k8s_kubectl":   "kubectl up to 90 s",
 	"k8s_helm":      "helm up to 9 min",

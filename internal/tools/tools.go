@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"sort"
 	"strconv"
@@ -48,7 +49,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Provisions a VM (auto-sized) with a public floating IP, uploads compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM; skips an unchanged deploy unless force is set. Works in the directory evo runs in (MCP: where the server started); another compose file than its deployment's is refused before the question. Needs a Cloud.ru key and project_id/region/image_id (env, config or arguments). Billable when it creates a VM; a new VM and an update alike take confirmed=true, without it a preview (an update: update: true, vm_id, compose_changed). With the same compose file already running and force unset there is nothing to do: the preview says unchanged: true, and the confirmed call changes nothing. The VM is named evo-<project_name> (project_name of .evo.yaml, else the directory); deploy takes no name, deploy_plan does.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Creates a VM (auto-sized, public floating IP), uploads the compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM. Works in the directory evo runs in (MCP: where the server started); another compose file than its deployment's is refused before the question. Needs a key and project_id/region/image_id (env, config or arguments). Billable when it creates a VM; a new VM and an update alike take confirmed=true, without it a preview (an update: update: true, vm_id, compose_changed). The same compose file running and force unset: nothing to do (preview unchanged: true; the confirmed call changes nothing). The VM is named evo-<project_name> (project_name of .evo.yaml, else the directory); deploy takes no name, deploy_plan does. Over MCP: within ~45 s, status deploying, phase, next_tool while the VM or its stages run.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
 				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
@@ -1594,6 +1595,11 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 				NonInteractive: true,
 				Yes:            true, // confirmed above
 			}
+			// The budget of an MCP call (D69): what goes on past it is
+			// answered as it is, the stages on the VM go on (vmstage).
+			if left, capped := budgetLeft(ctx); capped {
+				opts.Until = time.Now().Add(left)
+			}
 
 			deployErr := eng.Deploy(ctx, opts)
 
@@ -1603,12 +1609,38 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 					result["deployment"] = active
 				}
 			}
+			var going *engine.InProgress
+			if stderrors.As(deployErr, &going) {
+				return toJSON(deployInProgress(result, going, args)), false
+			}
 			if deployErr != nil {
 				return errAnswer(deployErr, deployFields(deployErr, result)), true
 			}
 			result["status"] = "ok"
 			return toJSON(result), false
 		})
+}
+
+// deployInProgress is the answer of deploy whose budget of an MCP call
+// ended while the cloud or the VM still worked (D69, variant C): not an
+// error — status deploying, the phase (the VM being created, SSH not up
+// yet, or a stage on the VM, which goes on without the call), and the same
+// call as the next step, which goes on from there. The last line of a
+// stage's log is the workload's: in output, marked untrusted, not in next.
+func deployInProgress(result map[string]any, going *engine.InProgress, args map[string]any) map[string]any {
+	result["status"] = "deploying"
+	result["phase"] = going.Phase
+	switch going.Phase {
+	case "vm", "ssh":
+		result["phase_state"] = going.Detail
+	default:
+		result["output"] = going.Detail
+	}
+	repeat := maps.Clone(args)
+	repeat["confirmed"] = true
+	result["next"] = fmt.Sprintf("Deploy is still in progress (%s). Call deploy again with the same arguments: it takes the VM in the state and goes on from there; a stage on the VM goes on without the call and is not run twice.", going.Phase)
+	nextStep(result, "deploy", repeat)
+	return result
 }
 
 // deployAnswer is the answer of deploy without confirmed=true: what it is
