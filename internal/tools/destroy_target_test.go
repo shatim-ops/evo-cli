@@ -59,6 +59,12 @@ func (*targetCloud) ListSecurityGroupRules(context.Context, string) ([]*provisio
 	return nil, nil
 }
 
+// ListSecurityGroups: destroy looks for the rules labelled for the VM (P6);
+// this project has none.
+func (*targetCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return nil, nil
+}
+
 func targetRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) {
 	t.Helper()
 	dir := t.TempDir()

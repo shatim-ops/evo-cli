@@ -30,7 +30,7 @@ var toolsOverBudget = map[string]int{
 	"ca_deploy":        2264,
 	"deploy":           2165,
 	"deploy_plan":      3521,
-	"destroy":          1636,
+	"destroy":          1627,
 	"image_create":     2911,
 	"image_list":       1594,
 	"k8s_add_addon":    2307,

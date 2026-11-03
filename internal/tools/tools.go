@@ -123,7 +123,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "destroy",
-			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM, pass vm_id or name: the preview names the VM (id, name, zone, status, address) and the floating IP and port rules that go with it; a VM that is not there is already deleted (status already_deleted, existed false), and a name several VMs share is refused (USAGE with the candidates — pass vm_id). By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy. A deletion Cloud.ru accepted but did not confirm is status partial (an error), one still going when an MCP call ends (~45 s) is status deleting with next_tool: the floating IP, the rules and the record stay until destroy is called again.",
+			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). No arguments: the current local deployment. For a SPECIFIC VM pass vm_id or name: the preview names the VM (id, name, zone, status, address) and the floating IP and port rules that go with it; a VM that is not there is already deleted (status already_deleted, existed false), and a name several VMs share is refused (USAGE with the candidates — pass vm_id). The VM's floating IP is released too (release_ip). After the VM go the port rules evo opened for it (labelled with its id, from any folder), unless a local deployment still needs the port: a VM of another folder relying on one loses it. A rule not deleted is reported, retried by the next destroy. A deletion Cloud.ru accepted but did not confirm is status partial (an error), one still going when an MCP call ends (~45 s) is status deleting with next_tool: the floating IP, the rules and the record stay until destroy is called again.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":      uuidProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
 				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
@@ -2346,8 +2346,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				portsNote := ""
 				// sgIDs always holds the zone's group: provision refuses without one.
 				if len(tcpPorts)+len(udpPorts) > 0 {
-					res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts, stringArg(args, "cidr"),
-						func(label string) string { return "evo: port " + label }, &ports)
+					res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts, stringArg(args, "cidr"), vm.ID, &ports)
 					opened = &res
 					portsNote = res.Note()
 					engine.ShowOpenedPorts(pp, res, &ports, firstNonEmptyStr(sgName, sgIDs[0]))
@@ -2768,6 +2767,16 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					"nothing was deleted and its local record is kept — call destroy again", vmID, gerr)
 			}
 		}
+		if target == nil && vmID != "" {
+			// The VM is gone, and rules labelled for it may be left (P6):
+			// opened for it from another folder. Its delete closes them,
+			// or says they could not be checked.
+			if sf, serr := state.Read(statePath); serr == nil {
+				if found, ferr := eng.LabeledRules(ctx, sf, projectID, vmID, "", ""); len(found) > 0 || ferr != nil {
+					target, alreadyGone = &provision.VM{ID: vmID}, true
+				}
+			}
+		}
 		if target == nil {
 			// Neither the cloud nor this directory has the VM: already
 			// deleted, exit 0, as any repeated delete (D26; it was
@@ -2810,6 +2819,19 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		rulesPlanned = sgrules.Plan(sf, ids...)
 	}
+	// The rules labelled for the VM that no record here holds (P6): this
+	// delete closes them too, once the VM is gone. A VM still there has
+	// only its zone's groups read; a gone one, every group.
+	var labeled []sgrules.Planned
+	var uncheckedErr error
+	if sf, serr := state.Read(statePath); serr == nil {
+		zoneID, zoneName := "", ""
+		if !alreadyGone && target.AvailabilityZone != nil {
+			zoneID, zoneName = target.AvailabilityZone.ID, target.AvailabilityZone.Name
+		}
+		labeled, uncheckedErr = eng.LabeledRules(ctx, sf, projectID, target.ID, zoneID, zoneName)
+	}
+	rulesPlanned = append(rulesPlanned, labeled...)
 	releaseIP := true
 	if v, ok := args["release_ip"].(bool); ok {
 		releaseIP = v
@@ -2863,6 +2885,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
+	if uncheckedErr != nil {
+		preview["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
+		preview["message"] = fmt.Sprint(preview["message"]) + "; " + engine.UncheckedRules(uncheckedErr)
+	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		// The wait for the VM to be gone (WaitVMGone) says the VM's state
 		// to whoever watches the call, as provision's wait does.
@@ -2972,6 +2998,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			}
 			return nil
 		})
+		rules.Add(sgrules.CloseLabeled(ctx, eng.Cloud, labeled))
 
 		out := map[string]any{
 			"status":     "ok",
@@ -2989,6 +3016,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
+		}
+		if uncheckedErr != nil {
+			msg += "; " + engine.UncheckedRules(uncheckedErr)
+			out["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
 		}
 		if stateErr != nil {
 			// The VM is gone; only the local bookkeeping is stale. Say so rather
@@ -3071,7 +3102,11 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 			ports = append(ports, fmt.Sprintf("keep port %s in security group %s (still needed by deployment %s)", sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID, p.KeptFor))
 			continue
 		}
-		ports = append(ports, fmt.Sprintf("delete rule %s (port %s) in security group %s", p.Rule.ID, sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID))
+		line := fmt.Sprintf("delete rule %s (port %s) in security group %s", p.Rule.ID, sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID)
+		if p.RecordID == "" {
+			line += " (labelled for this VM, not recorded in this folder)"
+		}
+		ports = append(ports, line)
 	}
 	if len(ports) > 0 {
 		out["port_rules"] = ports
