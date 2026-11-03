@@ -78,6 +78,7 @@ func TestContract_EveryPreviewPricedOrListed(t *testing.T) {
 				bad = append(bad, tl.Name+": the preview holds the value of "+k)
 			}
 		}
+		bad = append(bad, priceClassProblems(tl.Name, p)...)
 		_, cost := p["cost"]
 		tariff, _ := p["tariff_url"].(string)
 		priced := cost || tariff != ""
@@ -99,4 +100,61 @@ func TestContract_EveryPreviewPricedOrListed(t *testing.T) {
 		sort.Strings(bad)
 		t.Fatal(strings.Join(bad, "\n"))
 	}
+}
+
+// priceClassProblems is how the preview p of tool name fails release plan
+// 1.7, C: each resource the preview creates has a class of its price
+// (price_classes), and the class holds what it says — priced has its own
+// part of the cost above zero (D17: a silent «0» is money spent blind),
+// zero_at_create
+// names what the tariff bills by use and where (note, tariff_url), and
+// paid_unpriced is said as such. A preview of a tool that creates nothing
+// (noPriceInPreview) has no classes; any other has at least one.
+func priceClassProblems(name string, p map[string]any) []string {
+	var bad []string
+	lines, _ := p["price_classes"].([]any)
+	if _, listed := noPriceInPreview[name]; listed {
+		if len(lines) > 0 {
+			bad = append(bad, name+": creates nothing (noPriceInPreview), but its preview has price_classes")
+		}
+		return bad
+	}
+	if len(lines) == 0 {
+		return append(bad, name+": the preview names no class of the price of what it creates (price_classes)")
+	}
+	tariff, _ := p["tariff_url"].(string)
+	for _, l := range lines {
+		m, _ := l.(map[string]any)
+		r, _ := m["resource"].(string)
+		note, _ := m["note"].(string)
+		switch m["class"] {
+		case "priced":
+			c, _ := p["cost"].(map[string]any)
+			if v, _ := c[costPart(r)].(float64); v <= 0 {
+				bad = append(bad, fmt.Sprintf("%s: %s is priced, but the preview's cost has no %s above zero: %v", name, r, costPart(r), p["cost"]))
+			}
+		case "zero_at_create":
+			if note == "" || tariff == "" {
+				bad = append(bad, name+": "+r+" costs nothing at creation, but the preview does not say what the tariff bills (note) or where (tariff_url)")
+			}
+		case "paid_unpriced":
+		default:
+			bad = append(bad, fmt.Sprintf("%s: %s has the class %v, not one of priced, zero_at_create, paid_unpriced", name, r, m["class"]))
+		}
+		if r == "" {
+			bad = append(bad, name+": a line of price_classes names no resource")
+		}
+	}
+	return bad
+}
+
+// costPart is the field of a preview's cost that holds the monthly price of
+// resource r: a priced resource has its own part, so a VM priced with no
+// price of its floating IP fails, not passes on the VM's sum.
+func costPart(r string) string {
+	switch r {
+	case "vm", "pg_cluster":
+		return "compute_monthly_rub"
+	}
+	return r + "_monthly_rub"
 }
