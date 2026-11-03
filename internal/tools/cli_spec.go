@@ -40,8 +40,9 @@ type CLISpec struct {
 	// (--meta admin_password=…) instead of one JSON object.
 	Pairs map[string]bool
 	// Files are tool arguments whose flag names a file holding the value
-	// ("-": stdin), read and checked against the argument's type:
-	// k8s add-addon --config settings.json.
+	// ("-": stdin): evo reads its content into the argument and checks it
+	// against the argument's type (k8s add-addon --config settings.json).
+	// Not Paths: an argument is in one of the two.
 	Files map[string]bool
 	// SecretFiles are string arguments that hold a secret (a password, a
 	// private key). Beside the flag of the value, which keeps its meaning,
@@ -50,6 +51,12 @@ type CLISpec struct {
 	// that the secret stays out of argv and the shell history. The tool
 	// gets the same argument either way; one of the two flags, not both.
 	SecretFiles map[string]bool
+	// Paths are tool arguments whose value is itself a path on this
+	// machine: the argument carries the path, and the tool opens the file
+	// itself (deploy plan --compose-file). Tab offers the shell's files
+	// there, as at Files (#718). The CLI's alone: not in the schema the
+	// agent reads. Not Files: an argument is in one of the two.
+	Paths map[string]bool
 	// Columns are the table columns of a list answer (default: picked from
 	// the rows).
 	Columns []string
@@ -272,7 +279,7 @@ var cliSpecs = map[string]CLISpec{
 	// evo deploy, which is a command with an action of its own and a group
 	// at once (spec.md R7): 'evo deploy' deploys, 'evo deploy plan' plans.
 	// The trees add them to evo deploy instead of a second root deploy.
-	"deploy_plan":  {Group: "deploy", Verb: "plan", Rename: map[string]string{"image_metadata": "meta", "ports": "port"}, Pairs: map[string]bool{"image_metadata": true}},
+	"deploy_plan":  {Group: "deploy", Verb: "plan", Rename: map[string]string{"image_metadata": "meta", "ports": "port"}, Pairs: map[string]bool{"image_metadata": true}, Paths: map[string]bool{"compose_file": true}},
 	"deploy_apply": {Group: "deploy", Verb: "apply", Args: []string{"plan_id"}},
 	"list":         {Group: "deploy", Verb: "list", Columns: []string{"id", "vm_name", "vm_ip", "status", "flavor_name", "created_at"}},
 	// org projects; evo project list is its alias (internal/cli).
