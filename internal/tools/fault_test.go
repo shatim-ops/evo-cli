@@ -24,6 +24,9 @@ func faultPlan() *deployplan.Plan {
 	return &deployplan.Plan{
 		PlanID:    "plan-0123456789ab",
 		ProjectID: faultProject,
+		// When deploy_plan made it (Resolve): a VM made after it is the
+		// plan's own (D73).
+		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 		VM: deployplan.VMSpec{
 			Name:   "web",

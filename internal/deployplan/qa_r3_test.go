@@ -33,7 +33,7 @@ func (c *adoptFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloati
 // id for the state, instead of creating a second one.
 func TestQAr3_Apply_AdoptUsesAttachedFIP(t *testing.T) {
 	c := &adoptFIPCloud{}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0, time.Time{}, nil)
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0, time.Time{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func (c *lostFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.Fl
 // the user is never taken.
 func TestQAr3_Apply_LostFIPCreateFoundByName(t *testing.T) {
 	c := &lostFIPCloud{}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0, time.Time{}, nil)
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0, time.Time{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func (c *noIDFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloatin
 // deploy does (TestFault_Deploy_EmptyBootFIPIDIsAdoptedByName).
 func TestApply_FIPCreateWithoutIDFoundByName(t *testing.T) {
 	c := &noIDFIPCloud{}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0, time.Time{}, nil)
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, 0, time.Time{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func (c *unlistedFIPCloud) ListFloatingIPs(context.Context, string) ([]*provisio
 // adopts the VM with the address on it, never to the console, where a
 // second billed address would be attached (Qwen review of #211).
 func TestApply_LostFIPUnlistedRetryNotConsole(t *testing.T) {
-	_, _, note := ensureFloatingIP(context.Background(), &unlistedFIPCloud{}, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
+	_, _, note := ensureFloatingIP(context.Background(), &unlistedFIPCloud{}, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
 	if !strings.Contains(note, "deploy_apply again") || strings.Contains(note, "console") {
 		t.Fatalf("note %q: want deploy_apply again, not the console", note)
 	}
@@ -130,11 +130,11 @@ func (c *zoneCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, e
 
 func TestQAr3_Apply_AdoptChecksZoneAndState(t *testing.T) {
 	other := &zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "running", Region: "zone-A"}}
-	if res, err := ApplyWithTimeout(context.Background(), other, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0, time.Time{}, nil); err == nil {
+	if res, err := ApplyWithTimeout(context.Background(), other, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0, time.Time{}, nil); err == nil {
 		t.Fatalf("VM of another zone adopted: %+v", res)
 	}
 	stopped := &zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "stopped", Region: "zone-B"}}
-	res, err := ApplyWithTimeout(context.Background(), stopped, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0, time.Time{}, nil)
+	res, err := ApplyWithTimeout(context.Background(), stopped, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x", Zone: RefSpec{ID: "zone-B"}}}, 0, time.Time{}, nil)
 	if err != nil || res.Status != "stopped" {
 		t.Fatalf("stopped VM: %+v, %v; want status stopped", res, err)
 	}
@@ -180,7 +180,7 @@ func TestQAB_Apply_AdoptCreatingVMWaitsThenFinishes(t *testing.T) {
 	pollInterval = time.Millisecond
 	defer func() { pollInterval = old }()
 	c := &adoptCreatingCloud{}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"},
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"},
 		Network: NetworkSpec{FloatingIP: true, SecurityGroupID: "sg-1"}, Ports: []int{80}}, time.Second, time.Time{}, nil)
 	if err != nil || res.Status != "running" || res.PublicIP != "203.0.113.20" || c.fipCreates != 1 || c.rules != 1 {
 		t.Fatalf("err=%v res=%+v fip=%d rules=%d", err, res, c.fipCreates, c.rules)
@@ -205,7 +205,7 @@ func (c *stoppedFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloa
 
 func TestQAB_Apply_AdoptStoppedVMCreatesNoFIP(t *testing.T) {
 	c := &stoppedFIPCloud{zoneCloud: zoneCloud{vm: &provision.VM{ID: "vm-old", Name: "x", Status: "stopped"}}}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"},
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"},
 		Network: NetworkSpec{FloatingIP: true}}, 0, time.Time{}, nil)
 	if err != nil || res.Status != "stopped" || c.fipCreates != 0 || res.PublicIP != "203.0.113.9" {
 		t.Fatalf("err=%v res=%+v fipCreates=%d", err, res, c.fipCreates)
@@ -227,7 +227,7 @@ func (c *orphanOnlyFIPCloud) ListFloatingIPs(context.Context, string) ([]*provis
 // the note sends the user to deploy_apply again, which adopts the VM with
 // the address it has.
 func TestApply_LostFIPOrphanByNameNotTaken(t *testing.T) {
-	ip, id, note := ensureFloatingIP(context.Background(), &orphanOnlyFIPCloud{}, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
+	ip, id, note := ensureFloatingIP(context.Background(), &orphanOnlyFIPCloud{}, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
 	if ip != "" || id != "" || !strings.Contains(note, "deploy_apply again") {
 		t.Errorf("orphan taken: ip %q id %q note %q", ip, id, note)
 	}
@@ -258,7 +258,7 @@ func TestApply_LostFIPOwnTakenInEveryForm(t *testing.T) {
 		"being created":  {ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "creating"},
 	} {
 		c := &ownLostFIPCloud{fip: f}
-		ip, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
+		ip, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old")
 		if id != "fip-made" || ip != "203.0.113.7" {
 			t.Errorf("%s: ip %q id %q, want fip-made recorded", label, ip, id)
 		}
@@ -266,7 +266,7 @@ func TestApply_LostFIPOwnTakenInEveryForm(t *testing.T) {
 	// Bound to another VM's interface: not this VM's.
 	c := &ownLostFIPCloud{fip: provision.FloatingIP{ID: "fip-other", Name: "x-fip", IPAddress: "203.0.113.8", State: "in_use",
 		Interface: json.RawMessage(`{"id":"if-9"}`), VM: json.RawMessage(`{"id":"vm-9"}`)}}
-	if _, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old"); id != "" {
+	if _, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old"); id != "" {
 		t.Errorf("another VM's address taken: %q", id)
 	}
 }

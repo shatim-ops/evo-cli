@@ -171,11 +171,11 @@ func (c *existingCloud) CreateVM(context.Context, provision.CreateVMRequest) (*p
 	return &provision.VM{ID: "vm-second"}, nil
 }
 
-// A retried deploy_apply adopts the VM of the plan's project instead of
-// creating a second one (QA H5).
+// A retried deploy_apply adopts the VM of the plan's project — its own,
+// recorded by the folder (D73) — instead of creating a second one (QA H5).
 func TestApply_AdoptsExistingVMInProject(t *testing.T) {
 	c := &existingCloud{}
-	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}}, 0, time.Time{}, nil)
+	res, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}}, 0, time.Time{}, nil)
 	if c.creates != 0 {
 		t.Fatalf("CreateVM called %d times, want 0 (the VM exists)", c.creates)
 	}
@@ -194,7 +194,7 @@ func TestApply_LookupFails_CreatesNothing(t *testing.T) {
 	i18n.SetLang(i18n.EN)
 	t.Cleanup(func() { i18n.SetLang(lang) })
 	c := &existingCloud{listErr: errors.New("502 bad gateway")}
-	_, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", VM: VMSpec{Name: "x"}}, 0, time.Time{}, nil)
+	_, err := ApplyWithTimeout(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}}, 0, time.Time{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "nothing was created") {
 		t.Fatalf("Apply = %v, want a lookup error", err)
 	}

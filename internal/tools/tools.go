@@ -233,7 +233,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_apply",
-			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: if a VM with the plan's name already exists it is adopted, not duplicated. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
+			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
 				"plan_id":   strProp("The plan_id returned by deploy_plan."),
 				"confirmed": confirmedProp(),
@@ -1868,6 +1868,16 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	cancel()
 	if err != nil {
 		return nil, err
+	}
+	// Any other VM with the name is refused now (D73): before, the create
+	// went out after consent and Cloud.ru answered 409.
+	if vm == nil {
+		lctx, cancel := context.WithTimeout(ctx, engine.PreviewLookupTimeout)
+		ans, refused := vmNameFree(lctx, eng, stringArg(args, "name"), func(string) bool { return false })
+		cancel()
+		if refused {
+			return answered(ans, true), nil
+		}
 	}
 	if vm != nil {
 		answer["adopts"] = map[string]any{"vm_id": rec.VMID, "vm_status": vm.Status}

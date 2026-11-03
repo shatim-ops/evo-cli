@@ -107,6 +107,11 @@ type Plan struct {
 	Warnings        []string         `json:"warnings"`
 	ComposeRequired bool             `json:"compose_required"`
 
+	// Owned are the VMs the folder's state records (D73): Apply adopts a VM
+	// with the plan's name only if it is one of them or was made after the
+	// plan (a lost answer of its create). Filled by the caller, not saved.
+	Owned []string `json:"-"`
+
 	// Internal fields needed by Apply (persisted, no secrets).
 	ComposeFile  string            `json:"compose_file,omitempty"`
 	MetaFields   []string          `json:"meta_fields,omitempty"`   // image_metadata password fields generated at apply (older plans: also name/hostname/public_key)

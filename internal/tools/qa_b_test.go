@@ -163,6 +163,8 @@ func TestQAB_DeployApply_TimeoutGivesPassword(t *testing.T) {
 func TestQAB_DeployApply_StoppedVMSaysStartIt(t *testing.T) {
 	cloud := &sgCloud{vm: &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "wiki-1", Status: "stopped"}}
 	r, dir := sgRegistry(t, cloud)
+	// The folder's own VM, recorded by its first apply (D73).
+	writeRecords(t, dir, state.DeploymentRecord{ID: cloud.vm.ID, VMID: cloud.vm.ID, VMName: cloud.vm.Name, Status: "running"})
 	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ExpiresAt: time.Now().Add(time.Hour), Product: "wiki",
 		VM: deployplan.VMSpec{Name: "wiki-1"}, Network: deployplan.NetworkSpec{SecurityGroupID: "sg-1"}}
 	if err := deployplan.Save(dir, plan); err != nil {
