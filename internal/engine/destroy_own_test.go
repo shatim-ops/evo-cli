@@ -6,6 +6,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -62,6 +63,62 @@ func TestDestroy_ARecordOfAnAdoptedVMIsNotDeleted(t *testing.T) {
 			}
 			// Before the question: the preview is refused the same way.
 			if _, _, perr := e.DestroyPreview(context.Background()); clerrors.Reason(perr) != clerrors.CodeUsage {
+				t.Errorf("the preview of destroy: %v, want the same refusal", perr)
+			}
+		})
+	}
+}
+
+// The check is a read before a delete: a VM it cannot read (a timeout, a
+// 5xx) refuses destroy before the question and keeps the record — a delete
+// after a failed check would take the very VM D73 guards. The error keeps
+// its class; a VM the cloud no longer has goes on to already_deleted (D26),
+// and a key the cloud refuses is left to the call that needs it.
+func TestDestroy_AnUnreadCheckRefusesTheDelete(t *testing.T) {
+	recorded := time.Now().Add(-time.Hour)
+	for _, tc := range []struct {
+		name    string
+		getErr  error
+		refused string // the reason; "" — destroy goes on as before
+	}{
+		{"a 5xx", clerrors.New(clerrors.CodeAPIError, "API 503", ""), clerrors.CodeAPIError},
+		{"a timeout", context.DeadlineExceeded, clerrors.ReasonGeneral},
+		{"the VM is gone", clerrors.New(clerrors.CodeVMNotFound, "not found", ""), ""},
+		{"the key is refused", clerrors.New(clerrors.CodeAuthFailed, "401", ""), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			deleted := 0
+			cloud := &mockCloudAPI{
+				getVMFn: func(context.Context, string) (*provision.VM, error) {
+					if deleted > 0 {
+						return nil, clerrors.New(clerrors.CodeVMNotFound, "not found", "")
+					}
+					return nil, tc.getErr
+				},
+				deleteVMFn: func(context.Context, string) error { deleted++; return nil },
+			}
+			e, dir, _ := qaBEngine(t, cloud)
+			writeRecord(t, dir, state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", VMName: "web", ProjectID: e.Config.ProjectID,
+				Status: "running", CreatedAt: recorded})
+			_, _, perr := e.DestroyPreview(context.Background())
+			err := e.Destroy(context.Background(), DestroyOptions{Force: true})
+			if tc.refused == "" {
+				if perr != nil {
+					t.Errorf("the preview: %v, want none", perr)
+				}
+				return
+			}
+			if clerrors.Reason(err) != tc.refused || deleted != 0 {
+				t.Fatalf("err %v (%s), deletes %d; want %s and no delete", err, clerrors.Reason(err), deleted, tc.refused)
+			}
+			var ce *clerrors.CLIError
+			if !errors.As(err, &ce) || ce.Hint == "" {
+				t.Errorf("the refusal names no way out: %v", err)
+			}
+			if a := readActive(t, dir); a == nil || a.VMID != "vm-1" || a.Status != "running" {
+				t.Errorf("the record is not kept as it was: %+v", a)
+			}
+			if clerrors.Reason(perr) != tc.refused {
 				t.Errorf("the preview of destroy: %v, want the same refusal", perr)
 			}
 		})

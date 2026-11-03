@@ -6,6 +6,7 @@ package engine
 
 import (
 	"context"
+	stderrors "errors"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -18,8 +19,11 @@ import (
 // name — deploy_apply took any VM of the plan's name and recorded it — is
 // made long before its record (provision.MadeSince). The refusal comes
 // before the question and keeps the record; deleting the VM is the
-// person's own decision. A VM it cannot read, or a record or VM without a
-// time, is left to destroy as before.
+// person's own decision. A record or VM without a time is left to destroy
+// as before; so is a VM the cloud no longer has (already_deleted, D26) and
+// a key the cloud refuses (the call that needs it is refused for the key).
+// Any other failed read refuses: a delete after a check that did not run
+// would take the VM D73 guards.
 func (e *Engine) AdoptedRecord(ctx context.Context, rec state.DeploymentRecord) error {
 	if rec.VMID == "" || rec.CreatedAt.IsZero() || e.Auth == nil || e.Cloud == nil {
 		return nil
@@ -28,14 +32,40 @@ func (e *Engine) AdoptedRecord(ctx context.Context, rec state.DeploymentRecord) 
 	defer cancel()
 	tok, err := e.Auth.Token(cctx)
 	if err != nil {
-		return nil
+		return uncheckedRecord(rec, err)
 	}
 	e.Cloud.SetToken(tok.Value)
 	vm, err := e.Cloud.GetVM(cctx, rec.VMID)
 	if err != nil {
-		return nil
+		return uncheckedRecord(rec, err)
 	}
 	return AdoptedVM(rec, vm)
+}
+
+// uncheckedRecord is the answer of AdoptedRecord when its read failed: nil
+// for a VM the cloud no longer has and for a key it refuses, else a refusal
+// that keeps the class and the hint of the error.
+func uncheckedRecord(rec state.DeploymentRecord, err error) error {
+	switch clerrors.Reason(err) {
+	case clerrors.CodeVMNotFound, clerrors.CodeNotFound,
+		clerrors.CodeAuthFailed, clerrors.CodeAuthExpired, clerrors.CodeAuthRequired:
+		return nil
+	case clerrors.ReasonInterrupted:
+		return err
+	}
+	prefix := i18n.Tf("could not check that VM %s was made by this folder's evo, so nothing was deleted and the record is kept: ",
+		"не удалось проверить, что ВМ %s создал evo этой папки, поэтому ничего не удалено, запись сохранена: ", rec.VMID)
+	retry := i18n.T("The check only reads the VM: run the same call again in a minute.",
+		"Проверка только читает ВМ: повторите тот же вызов через минуту.")
+	var ce *clerrors.CLIError
+	if stderrors.As(err, &ce) {
+		hint := ce.Hint
+		if hint == "" {
+			hint = retry
+		}
+		return clerrors.Wrap(ce.Code, prefix+ce.Message, hint, err)
+	}
+	return clerrors.Wrap("", prefix+err.Error(), clerrors.NetworkHint(err, retry), err)
 }
 
 // AdoptedVM is the rule of AdoptedRecord for a VM already read: the
