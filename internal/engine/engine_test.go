@@ -282,6 +282,10 @@ type mockDeployer struct {
 	closeCalled     bool
 	uploadedFiles   []deploy.FileEntry
 	stages          syncStages
+	// hold runs first in Connect, Upload and Exec (op: "connect",
+	// "upload", "exec <cmd>"); a non-nil error is returned: a slow or
+	// hanging SSH of a test.
+	hold func(ctx context.Context, op string) error
 }
 
 func newMockDeployer() *mockDeployer {
@@ -292,7 +296,12 @@ func newMockDeployer() *mockDeployer {
 	}
 }
 
-func (m *mockDeployer) Connect(_ context.Context, host string, port int, user string, keyPEM []byte, knownHostKey string) error {
+func (m *mockDeployer) Connect(ctx context.Context, host string, port int, user string, keyPEM []byte, knownHostKey string) error {
+	if m.hold != nil {
+		if err := m.hold(ctx, "connect"); err != nil {
+			return err
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.connectCalled = true
@@ -309,7 +318,12 @@ func (m *mockDeployer) HostKeyFingerprint() string {
 	return m.hostFingerprint
 }
 
-func (m *mockDeployer) Upload(_ context.Context, files []deploy.FileEntry) error {
+func (m *mockDeployer) Upload(ctx context.Context, files []deploy.FileEntry) error {
+	if m.hold != nil {
+		if err := m.hold(ctx, "upload"); err != nil {
+			return err
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.uploadCalled = true
@@ -317,7 +331,12 @@ func (m *mockDeployer) Upload(_ context.Context, files []deploy.FileEntry) error
 	return m.uploadErr
 }
 
-func (m *mockDeployer) Exec(_ context.Context, cmd string) (string, error) {
+func (m *mockDeployer) Exec(ctx context.Context, cmd string) (string, error) {
+	if m.hold != nil {
+		if err := m.hold(ctx, "exec "+cmd); err != nil {
+			return "", err
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.execCalls = append(m.execCalls, cmd)

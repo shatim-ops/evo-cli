@@ -1625,14 +1625,17 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 func deployInProgress(result map[string]any, going *engine.InProgress, args map[string]any) map[string]any {
 	result["status"] = "deploying"
 	result["phase"] = going.Phase
-	switch going.Phase {
-	case "vm", "ssh":
-		result["phase_state"] = going.Detail
-	default:
-		result["output"] = going.Detail
+	result["phase_state"] = going.Detail
+	if going.Output != "" {
+		result["output"] = going.Output
 	}
 	repeat := maps.Clone(args)
 	repeat["confirmed"] = true
+	if going.Phase == "compose-up" {
+		// The forced compose up has started: the repeat takes it, and
+		// with force it would start another (#769).
+		delete(repeat, "force")
+	}
 	result["next"] = fmt.Sprintf("Deploy is still in progress (%s). Call deploy again with the same arguments: it takes the VM in the state and goes on from there; a stage on the VM goes on without the call and is not run twice.", going.Phase)
 	nextStep(result, "deploy", repeat)
 	return result

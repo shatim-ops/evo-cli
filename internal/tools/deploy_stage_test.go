@@ -339,3 +339,24 @@ func TestDeployStage_OnceAndNotCutShort(t *testing.T) {
 		t.Logf("deploy, pending (Closes by 1.7): %s", strings.Join(broken, "; "))
 	}
 }
+
+// A forced deploy whose bound came in compose up has started it: the next
+// step repeats the call without force, or each repeat would start compose
+// up again and deploy would never end («1.7 — релиз» on #769). Before
+// compose up, force stays: the forced run has not started yet.
+func TestDeployInProgress_NextArgsDropForceOnceComposeUpStarted(t *testing.T) {
+	args := map[string]any{"confirmed": true, "force": true, "compose_file": "docker-compose.yml"}
+	for phase, keep := range map[string]bool{"compose-up": false, "docker": true, "vm": true, "ssh": true} {
+		got := deployInProgress(map[string]any{}, &engine.InProgress{Phase: phase, Detail: "running"}, args)
+		next, _ := got["next_args"].(map[string]any)
+		if _, has := next["force"]; has != keep {
+			t.Errorf("%s: next_args %v, force kept = %v, want %v", phase, next, has, keep)
+		}
+		if next["compose_file"] != "docker-compose.yml" {
+			t.Errorf("%s: next_args lost an argument: %v", phase, next)
+		}
+	}
+	if _, ok := args["force"]; !ok {
+		t.Error("the call's own args were changed")
+	}
+}
