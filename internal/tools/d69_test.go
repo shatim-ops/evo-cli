@@ -130,9 +130,10 @@ func TestD69_WaitFalseDoesNotWait(t *testing.T) {
 		if m := decode(t, text); m["status"] != "creating" {
 			t.Errorf("wait=false: want creating: %s", text)
 		}
-	// wall-clock: a share (1/45) of D69's 45 s budget; wait=false waits
-	// for nothing.
-	case <-time.After(budgetWatch):
+	// wall-clock: a fraction of the production wait for the VM (minutes);
+	// wait=false waits for nothing. A second did not hold provision's on a
+	// slow Windows runner under -race (#793).
+	case <-time.After(progressWatch):
 		t.Fatal("wait=false waited for the VM")
 	}
 	sf, err := state.Read(state.DefaultPath(dir))
