@@ -106,7 +106,9 @@ status)
 	echo "exit=$(cat "$d/exit" 2>/dev/null)"
 	echo "input=$(cat "$d/input" 2>/dev/null)"
 	echo "--log--"
-	tail -n 20 "$d/log" 2>/dev/null || true
+	# The end of the log only: a progress bar of a pull is one line of
+	# megabytes.
+	tail -c 16384 "$d/log" 2>/dev/null | tail -n 20 || true
 	;;
 start)
 	start_lock

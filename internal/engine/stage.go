@@ -101,6 +101,7 @@ func (e *Engine) runStage(ctx context.Context, name, input, script string, limit
 	if err != nil {
 		return st, err
 	}
+	st.LogTail = terminalTail(st.LogTail)
 	if st.State == "lost" {
 		return st, e.restartLost(ctx, r, name, input, script, st)
 	}
@@ -127,6 +128,7 @@ func (e *Engine) runStage(ctx context.Context, name, input, script string, limit
 		if st, err = r.Read(ctx, name); err != nil {
 			return st, err
 		}
+		st.LogTail = terminalTail(st.LogTail)
 		if l := lastLines(st.LogTail, 1); l != "" && l != shown {
 			e.Printer.Step(0, 0, clipLine(l))
 			shown = l
@@ -163,6 +165,16 @@ func (e *Engine) runStage(ctx context.Context, name, input, script string, limit
 		case <-time.After(wait):
 		}
 	}
+}
+
+// terminalTail is the end of a stage's log as a terminal shows it: a line
+// rewritten with \r (a progress bar of docker pull) is its last state, a
+// long line is cut, and UTF-8 stays whole — what the stream of the session
+// gave before the stage (#566).
+func terminalTail(log string) string {
+	w := newTailWriter(composeTailLines)
+	_, _ = w.Write([]byte(log))
+	return w.String()
 }
 
 // restartLost starts again the stage the VM lost and answers what happened:
