@@ -234,6 +234,13 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/handoff_check_test.sh
 
+      # Tab в zsh после install.sh (#718, T5–T6): _evo в site-functions,
+      # один блок в ~/.zshrc, привязка после второго compinit — на
+      # настоящем zsh macOS, временном HOME и локальном выпуске, без сети.
+      - name: install.sh и Tab в zsh
+        if: runner.os == 'macOS'
+        run: .github/scripts/install_zsh_test.sh
+
       # Метки отзывов по полям форм Issues: таблицы скрипта совпадают с формами.
       - name: issue_labels.py на образцах форм
         if: runner.os == 'Linux'
