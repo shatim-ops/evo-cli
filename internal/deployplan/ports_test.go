@@ -62,3 +62,23 @@ func TestApply_ReturnsCreatedRules(t *testing.T) {
 		t.Errorf("note = %q", res.Note)
 	}
 }
+
+// P5 (G2-2): deploy_apply opens the plan's ports to the source the plan
+// was made with; a plan saved before 1.7 has none and opens them to
+// 0.0.0.0/0, as it was made.
+func TestApply_OpensToThePlansSource(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	t.Cleanup(func() { pollInterval = old })
+	for _, tc := range []struct{ source, want string }{{"10.0.0.0/8", "10.0.0.0/8"}, {"", "0.0.0.0/0"}} {
+		cloud := &portsCloud{}
+		plan := &Plan{Product: "db", VM: VMSpec{Name: "db-1"}, Network: NetworkSpec{SecurityGroupID: "sg-1"},
+			Ports: []int{5432}, PortsSource: tc.source}
+		if _, err := ApplyWithTimeout(context.Background(), cloud, plan, 0, time.Time{}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if len(cloud.added) != 1 || cloud.added[0].RemoteIPPrefix != tc.want {
+			t.Errorf("source %q: rules %+v, want one from %s", tc.source, cloud.added, tc.want)
+		}
+	}
+}

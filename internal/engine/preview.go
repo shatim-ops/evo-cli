@@ -33,10 +33,17 @@ func costNoteText() string {
 	return i18n.T(costNote, "оценка по тарифной карте evo, а не счёт")
 }
 
+// apiDiskCostNote goes next to a price of a disk alone from the
+// price-calculation API: no image, so no license to leave out.
+const apiDiskCostNote = "Cloud.ru price-calculation API, not a bill"
+
 // costNoteFor is the note of a price, by its source.
 func costNoteFor(cost pricing.Estimate) string {
-	if cost.Source == pricing.SourceAPI {
+	switch cost.Source {
+	case pricing.SourceAPI:
 		return i18n.T(apiCostNote, "по API расчёта цены Cloud.ru, а не счёт; без лицензии образа")
+	case pricing.SourceAPIDisk:
+		return i18n.T(apiDiskCostNote, "по API расчёта цены Cloud.ru, а не счёт")
 	}
 	return costNoteText()
 }
@@ -75,7 +82,7 @@ func (e *Engine) confirmOptions(yes, dryRun, noPrompt bool) confirm.Options {
 // deploy_plan prices it (deployplan.PriceVM: the price-calculation API, else
 // the rate card). Lookups of names are best effort: the preview falls back
 // to the IDs rather than failing the deploy.
-func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, diskTypeID string, network vmNetwork, ports, udpPorts []int) confirm.Preview {
+func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, diskTypeID string, network vmNetwork, ports, udpPorts []int, cidr string) confirm.Preview {
 	vm := deployplan.VMSpec{
 		Name:   req.Name,
 		Flavor: deployplan.FlavorSpec{Name: req.FlavorName},
@@ -120,24 +127,19 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			network.SubnetName, network.SecurityGroup),
 		publicIPLine(true),
 	}
-	if len(ports)+len(udpPorts) > 0 {
-		ps := make([]string, 0, len(ports)+len(udpPorts))
-		for _, p := range ports {
-			ps = append(ps, fmt.Sprint(p))
-		}
-		for _, p := range udpPorts {
-			ps = append(ps, fmt.Sprintf("%d/udp", p))
-		}
-		lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to %s in security group %s (shared by every VM in it); "+
-			"ports already open there are left as they are, destroy deletes only the rules this deploy creates",
-			"%s открываются для %s в группе безопасности %s (она общая для всех ВМ в ней); "+
-				"уже открытые остаются как есть, destroy удалит только правила, которые создаст этот deploy",
-			strings.Join(ps, ","), sgrules.Anywhere, network.SecurityGroup))
+	var exposed CreatePreview
+	exposed.AddPorts(ports, udpPorts, cidr)
+	exposed.PortsGroup(network.SecurityGroup)
+	if len(exposed.Params) > 0 {
+		lines = append(lines, portsLine(paramValue(exposed.Params[0].Value), sgrules.Source(cidr), network.SecurityGroup))
 	}
 	lines = append(lines, vmCostLines(cost, vm.Flavor.VCPUs > 0)...)
 	quota := e.quotaCheck(ctx, req.ProjectID)
 	if l := quota.line(); l != "" {
 		lines = append(lines, l)
+	}
+	for _, w := range exposed.Warnings {
+		lines = append(lines, previewLabel("warning", "внимание")+w)
 	}
 	details := map[string]any{
 		"project_id":     req.ProjectID,
@@ -205,9 +207,12 @@ func vmCostLines(cost pricing.Estimate, sizeKnown bool) []string {
 	if cost.Source == pricing.SourceAPI {
 		lines = append(lines, apiCostLine(cost))
 	} else {
-		line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (compute %.2f + disk %.2f), %s",
-			"~%.2f %s в месяц (вычисления %.2f + диск %.2f), %s",
-			cost.TotalMonthlyRub, cost.Currency, cost.ComputeMonthlyRub, cost.DiskMonthlyRub, costNoteText())
+		parts := i18n.Tf("compute %.2f + disk %.2f", "вычисления %.2f + диск %.2f", cost.ComputeMonthlyRub, cost.DiskMonthlyRub)
+		if cost.FloatingIPMonthlyRub > 0 {
+			parts += i18n.Tf(" + floating IP %.2f", " + floating IP %.2f", cost.FloatingIPMonthlyRub)
+		}
+		line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (%s), %s", "~%.2f %s в месяц (%s), %s",
+			cost.TotalMonthlyRub, cost.Currency, parts, costNoteText())
 		if !sizeKnown {
 			line += i18n.T("; flavor size unknown, compute may be missing from the total",
 				"; размер flavor неизвестен, вычисления могут не войти в итог")

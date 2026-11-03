@@ -48,7 +48,7 @@ func TestPreview_SaysTheQuotaWasNotChecked(t *testing.T) {
 			t.Errorf("%s: the human preview lacks %q:\n%s", c.name, c.line, out)
 		}
 		eng.Config.ComposeFile, eng.Config.Flavor, eng.Config.Region = opts.ComposeFile, opts.Flavor, opts.Region
-		p, err := eng.DeployPreview(context.Background())
+		p, err := eng.DeployPreview(context.Background(), "")
 		if err != nil || p == nil {
 			t.Fatalf("%s: %v %v", c.name, p, err)
 		}

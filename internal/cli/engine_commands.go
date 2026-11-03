@@ -49,7 +49,7 @@ type engineCommand struct {
 var engineCommands = []engineCommand{
 	{Path: "evo deploy", Tool: "deploy",
 		Flags: map[string]string{"compose-file": "compose_file", "flavor": "flavor", "region": "region", "project-id": "project_id",
-			"image-id": "image_id", "image": "image", "disk-size": "disk_size", "force": "force"},
+			"image-id": "image_id", "image": "image", "disk-size": "disk_size", "force": "force", "cidr": "cidr"},
 		CLIOnly: map[string]string{"non-interactive": "не спрашивать на терминале ни согласия, ни об удалении ВМ после Ctrl-C: у MCP нет терминала, согласие в нём — confirmed"}},
 	{Path: "evo status", Tool: "status",
 		// --no-refresh is refresh=false.
@@ -207,6 +207,7 @@ func newDeployCmd() *cobra.Command {
 		image          string
 		diskSize       int
 		force          bool
+		cidr           string
 		nonInteractive bool
 	)
 
@@ -242,7 +243,7 @@ compose file changed (with --force, even if it did not).`, `Развернуть
 					i18n.T("Keep one: --image takes a name or a UUID.", "Оставьте один: --image принимает имя или UUID."))
 			}
 			values := map[string]any{"compose-file": composeFile, "flavor": flavor, "region": region, "project-id": projectID,
-				"image-id": imageID, "image": image, "disk-size": float64(diskSize), "force": force}
+				"image-id": imageID, "image": image, "disk-size": float64(diskSize), "force": force, "cidr": cidr}
 			callArgs := engineArgs(cmd, "evo deploy", values)
 			c := &tools.Caller{Printer: cmdPrinter(cmd), Gate: engineGate(cmd, "deploy", flagYes, nonInteractive), Yes: flagYes,
 				DryRun: flagDryRun, NonInteractive: nonInteractive}
@@ -262,6 +263,8 @@ compose file changed (with --force, even if it did not).`, `Развернуть
 	cmd.Flags().IntVar(&diskSize, "disk-size", 0, i18n.T("Boot disk size in GB (default: 10)", "Размер загрузочного диска, ГБ (по умолчанию 10)"))
 	cmd.Flags().BoolVar(&force, "force", false, i18n.T("Force redeploy even if compose hash unchanged",
 		"Развернуть заново, даже если compose-файл не изменился"))
+	cmd.Flags().StringVar(&cidr, "cidr", "", i18n.T("Source CIDR of the port rules (default 0.0.0.0/0)",
+		"CIDR источника правил портов (по умолчанию 0.0.0.0/0 — откуда угодно)"))
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Never prompt; creating a VM, and updating the VM of an existing deployment, then requires --yes",
 		"Никогда не спрашивать; тогда и для создания ВМ, и для обновления ВМ развёртывания нужен --yes"))
 

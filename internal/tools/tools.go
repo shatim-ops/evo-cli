@@ -44,42 +44,44 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Creates a VM (auto-sized, public floating IP), uploads the compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM. Works in the directory evo runs in (MCP: where the server started); another compose file than its deployment's is refused before the question. Needs a key and project_id/region/image_id (env, config or arguments). Billable when it creates a VM; a new VM and an update alike take confirmed=true, without it a preview (an update: update: true, vm_id, compose_changed). The same compose file running and force unset: nothing to do (preview unchanged: true; the confirmed call changes nothing). The VM is named evo-<project_name> (project_name of .evo.yaml, else the directory); deploy takes no name, deploy_plan does. Over MCP: within ~45 s, status deploying, phase, next_tool while the VM or its stages run.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Creates a VM (auto-sized, public floating IP), uploads the compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM. Works in evo's directory (MCP: the server's); another compose file than its deployment's is refused before the question. Needs a key, project_id, region, image_id (env, config or arguments). Billable when it creates a VM; a new VM and an update alike take confirmed=true, without it a preview (an update: update: true, vm_id, compose_changed). The same compose file running and force unset: nothing to do (preview unchanged: true). The VM is named evo-<project_name> (.evo.yaml, else the directory); no name argument. Over MCP: within ~45 s, status deploying, phase, next_tool while the VM or its stages run.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
-				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
+				"flavor":       strProp("VM flavor, or 'auto': the smallest that fits (default)."),
 				"region":       strProp("Availability zone UUID (see list_zones)."),
 				"project_id":   strProp("Cloud.ru project UUID."),
 				"image_id":     strProp("Boot image UUID (see image_list, image_get)."),
 				"image":        strProp("Boot image by exact name, display name or UUID (Ubuntu or Debian: Astra Linux, Alt and RED OS are refused, Docker cannot be installed there). Use it or image_id, not both."),
 				"disk_size":    atLeast(0, intProp("Boot disk size in GB (default: 10, raised to the image's min_disk).")),
 				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
+				"cidr":         cidrProp(portsCidrDesc),
 				"confirmed":    confirmedProp(),
 			}),
 		},
 		{
 			Name: "provision",
-			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. " +
-				"The image is 'image' (name or UUID, resolved as image_get does) or 'image_id' (UUID). Any OS image the project can use works; one it cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
+			Description: "Provision a bare Cloud.ru VM. Billable: requires confirmed=true after the user approves; without it a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. " +
+				"The image is 'image' (name or UUID, resolved as image_get does) or 'image_id' (UUID). An image the project cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
 				"evo fills image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else refused before anything is created. " +
 				"No image or region: refused before the preview ('missing' names it). " +
 				"Returns ssh (deploy-key login), password (generated; this answer only), state_dir (key, state). " +
 				"Over MCP a VM not running in ~45 s answers status creating (password, next_tool/next_args): the same call again finishes it. " +
-				"For docker-compose use 'deploy'.",
+				"docker-compose: use 'deploy'.",
 			InputSchema: objSchema(map[string]any{
-				"name":       strProp("VM name (e.g. 'hermes-agent')."),
+				"name":       strProp("VM name."),
 				"flavor":     strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
 				"region":     strProp("Availability zone: a name such as 'ru.AZ-2' or a UUID (see list_zones). Default: the server's CLOUDRU_REGION."),
 				"project_id": strProp("Cloud.ru project UUID."),
 				"image":      strProp("Boot image by exact name, display name or UUID (see image_list, image_get), e.g. 'Ubuntu-24.04'. Use it or image_id, not both."),
 				"image_id":   strProp("Boot image UUID (see image_list, image_get)."),
 				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
-					"description": "Values of the image's metadata fields by name, e.g. {\"admin_password\": \"…\"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused."},
+					"description": "Values of the image's metadata fields by name, e.g. {\"admin_password\": \"…\"}: the mandatory ones evo cannot fill (image_get: fields_required); they override evo's. An undeclared field is refused."},
 				"ports": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
-					"description": "Inbound ports to open in the VM's security group from 0.0.0.0/0, e.g. [\"80\", \"8080/tcp\", \"53/udp\"] (tcp by default). The group is shared by the zone's VMs; destroy deletes the rules evo created."},
+					"description": "Inbound ports to open in the VM's security group from cidr, e.g. [\"80\", \"8080/tcp\", \"53/udp\"] (tcp by default). The group is shared by the zone's VMs; destroy deletes the rules evo created."},
+				"cidr":         cidrProp(portsCidrDesc),
 				"disk_size":    atLeast(0, intProp("Boot disk size in GB (default: 10, raised to the image's min_disk).")),
 				"subnet_id":    strProp("Subnet UUID or name for the interface (default: a subnet in the target zone)."),
-				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
+				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). For load-balancer targets and internal nodes."),
 				"confirmed":    confirmedProp(),
 				"wait":         boolProp(waitDesc),
 			}),
@@ -209,15 +211,16 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_plan",
-			Description: "STEP 1 of the deploy wizard (read-only, creates nothing). Resolves a full VM configuration — flavor, image, zone, disk, network, SSH — and returns it together with its MONTHLY COST and a plan_id (cost.source: the Cloud.ru price-calculation API, or a rate-card estimate when the API gives no price; an image license is never included). In 'auto' mode pass the product's requirements (cpu/ram_gb/disk_gb from its README) and defaults fill the rest; in 'manual' mode pass explicit choices (flavor/zone/image/disk_type). Show the returned plan + cost to the user for approval, then call deploy_apply with the plan_id.",
+			Description: "STEP 1 of the deploy wizard (read-only, creates nothing). Resolves a full VM configuration (flavor, image, zone, disk, network, SSH) and returns it with its MONTHLY COST and a plan_id (cost.source: the Cloud.ru price-calculation API, or a rate-card estimate when the API gives no price; an image license is never included). In 'auto' mode pass the product's requirements (cpu/ram_gb/disk_gb from its README) and defaults fill the rest; in 'manual' mode pass explicit choices (flavor/zone/image/disk_type). Show the returned plan + cost to the user for approval, then call deploy_apply with the plan_id.",
 			InputSchema: objSchema(map[string]any{
-				"base_plan_id": strProp("Optional: a prior plan_id to PATCH. Starts from that plan's parameters and overlays only the fields you pass here (e.g. just disk_gb), returning a fresh plan_id. Lets the user tweak one value without restating everything."),
+				"base_plan_id": strProp("Optional: a prior plan_id to PATCH: its parameters with only the fields you pass here overlaid (e.g. just disk_gb), as a fresh plan_id."),
 				"product":      strProp("Product/app name being deployed (used for the VM name and reporting)."),
 				"mode":         strProp("'auto' (defaults + requirements) or 'manual' (explicit choices). Default: auto."),
 				"cpu":          intProp("Required vCPUs (auto-size picks the smallest fitting flavor)."),
 				"ram_gb":       intProp("Required RAM in GB (auto-size)."),
 				"disk_gb":      intProp("Boot disk size in GB (default: 10)."),
-				"ports":        map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Product ports to open in the VM's security group (e.g. [80,443] for a web server, from the README). deploy_apply opens them automatically; destroy deletes the rules it created."},
+				"ports":        map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Product ports to open in the VM's security group from cidr (e.g. [80,443] for a web server). deploy_apply opens them; destroy deletes the rules it created."},
+				"cidr":         cidrProp(portsCidrDesc),
 				"name":         strProp("Explicit VM name (default: <product>-<timestamp>)."),
 				"compose_file": strProp("Path to a docker-compose.yml if this is a compose deploy (sets compose_required). With it an Astra Linux, Alt or RED OS image is refused (USAGE, no plan): Docker's install script does not support them."),
 				"external_ip":  boolProp("Attach a public floating IP (default: true)."),
@@ -1597,6 +1600,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 				Force:          force,
 				NonInteractive: true,
 				Yes:            true, // confirmed above
+				Cidr:           stringArg(args, "cidr"),
 			}
 			// The budget of an MCP call (D69): what goes on past it is
 			// answered as it is, the stages on the VM go on (vmstage).
@@ -1710,7 +1714,7 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 	// The VM deploy would create, with the reads of provision's preview
 	// (spec REQ-7).
 	answer["update"] = false
-	p, err := eng.DeployPreview(ctx)
+	p, err := eng.DeployPreview(ctx, stringArg(args, "cidr"))
 	if err != nil {
 		return "", err
 	}
@@ -1744,6 +1748,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 		Force:          force,
 		NonInteractive: c.NonInteractive,
 		DryRun:         c.DryRun,
+		Cidr:           stringArg(args, "cidr"),
 		Gate: func(ctx context.Context, redeploy *confirm.Preview) (bool, error) {
 			answer, err := s.deployAnswer(ctx, args, eng)
 			if err != nil {
@@ -2341,7 +2346,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				portsNote := ""
 				// sgIDs always holds the zone's group: provision refuses without one.
 				if len(tcpPorts)+len(udpPorts) > 0 {
-					res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts,
+					res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts, stringArg(args, "cidr"),
 						func(label string) string { return "evo: port " + label }, &ports)
 					opened = &res
 					portsNote = res.Note()
@@ -3335,6 +3340,10 @@ func uuidProp(desc string) map[string]any {
 	return p
 }
 
+// portsCidrDesc is the cidr of the tools that open the ports of a VM
+// (provision, deploy, deploy_plan; P5).
+const portsCidrDesc = "Source CIDR of the port rules (default 0.0.0.0/0)."
+
 func cidrProp(desc string) map[string]any {
 	p := strProp(desc)
 	p["format"] = "cidr"
@@ -3748,8 +3757,8 @@ func provisionPreview(cfg config.Config, zone *provision.AvailabilityZone, args 
 	// the image, as provision itself does.
 	vm.Disk.SizeGB, _ = provision.BootDiskGB(cfg.DiskSize, 0)
 	p.VM = &vm
-	if tcp, udp, err := sgrules.ParsePorts(portSpecs(args["ports"])); err == nil && len(tcp)+len(udp) > 0 {
-		p.Add("ports", strings.Join(portLabels(tcp, udp), ","))
+	if tcp, udp, err := sgrules.ParsePorts(portSpecs(args["ports"])); err == nil {
+		p.AddPorts(tcp, udp, stringArg(args, "cidr"))
 	}
 	if meta, err := metadataArg(args, "image_metadata"); err == nil && len(meta) > 0 {
 		p.Add("image_metadata", strings.Join(sortedMetaKeys(meta), ","))

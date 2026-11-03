@@ -125,7 +125,7 @@ func TestDeployPreview_AutoFlavorIsTheCreates(t *testing.T) {
 		}, nil
 	}
 	eng.Config.ComposeFile, eng.Config.Region, eng.Config.Flavor = opts.ComposeFile, "ru-moscow-1", ""
-	p, err := eng.DeployPreview(context.Background())
+	p, err := eng.DeployPreview(context.Background(), "")
 	if err != nil || p == nil || p.VM == nil {
 		t.Fatalf("preview: %v %+v", err, p)
 	}

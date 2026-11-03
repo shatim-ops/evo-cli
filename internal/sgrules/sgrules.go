@@ -152,17 +152,53 @@ func portRange(s string) (lo, hi int, ok bool) {
 	return lo, hi, err1 == nil && err2 == nil && lo <= hi
 }
 
-// Anywhere is the source deploy opens its ports to; its preview names it.
+// Anywhere is the source deploy opens its ports to unless told another
+// (cidr); its preview names it.
 const Anywhere = "0.0.0.0/0"
 
-// Open adds an ingress rule from 0.0.0.0/0 to group sgID for each tcp and
-// udp port that no rule opens yet. rec gets the group, the ports it needs,
+// Source is the source the rules of a call open its ports to: cidr, or
+// Anywhere when none is given.
+func Source(cidr string) string {
+	if cidr = strings.TrimSpace(cidr); cidr != "" {
+		return cidr
+	}
+	return Anywhere
+}
+
+// WideOpen is the warning of a call that opens to anyone (Anywhere) a port
+// other than the web's 80 and 443 (G2-2): a database or SSH port open to
+// the internet is rarely meant. Empty when there is none. No refusal: the
+// person decides, and cidr is the way to narrow it.
+func WideOpen(tcp, udp []int, cidr string) string {
+	if Source(cidr) != Anywhere {
+		return ""
+	}
+	var labels []string
+	for _, p := range tcp {
+		if p != 80 && p != 443 {
+			labels = append(labels, Label(PortKey("tcp", p)))
+		}
+	}
+	for _, p := range udp {
+		labels = append(labels, Label(PortKey("udp", p)))
+	}
+	if len(labels) == 0 {
+		return ""
+	}
+	return i18n.Tf("ports %s would be open to anyone on the internet (%s); if only some addresses need them, give their range in cidr",
+		"порты %s будут открыты всему интернету (%s); если они нужны только некоторым адресам, задайте их диапазон в cidr",
+		strings.Join(labels, ","), Anywhere)
+}
+
+// Open adds an ingress rule from cidr (Anywhere when empty) to group sgID
+// for each tcp and udp port that no rule opens yet. rec gets the group, the ports it needs,
 // and the rules created here; rules that were already there are not
 // recorded as its own. describe makes the rule description from a port
 // label. Failures are reported, not returned: the VM works and the ports
 // can be opened in the console.
-func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string, tcp, udp []int, describe func(label string) string, rec *state.DeploymentRecord) OpenResult {
+func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string, tcp, udp []int, cidr string, describe func(label string) string, rec *state.DeploymentRecord) OpenResult {
 	var res OpenResult
+	source := Source(cidr)
 	if sgID == "" {
 		return res
 	}
@@ -171,7 +207,7 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 		return res
 	}
 
-	// A port is open already when a rule lets it in from anywhere
+	// A port is open already when a rule lets it in from source or wider
 	// (Coverage); one opened here is not opened a second time.
 	before := map[string]bool{}
 	rules, listErr := cloud.ListSecurityGroupRules(ctx, sgID)
@@ -196,7 +232,7 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 			addPort(rec, key)
 			pr := fmt.Sprintf("%d:%d", p, p)
 			label := Label(key)
-			if covered, _ := Coverage(rules, set.proto, p, Anywhere); covered || openedHere[key] {
+			if covered, _ := Coverage(rules, set.proto, p, source); covered || openedHere[key] {
 				res.AlreadyOpen = append(res.AlreadyOpen, label)
 				if !ownsPort(rec, key) {
 					addKey(&rec.PortsAlreadyOpen, key)
@@ -209,7 +245,7 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 				EtherType:      "IPv4",
 				IPProtocol:     set.proto,
 				PortRange:      pr,
-				RemoteIPPrefix: Anywhere,
+				RemoteIPPrefix: source,
 				Description:    describe(label),
 			}
 			created, err := cloud.AddSecurityGroupRule(ctx, sgID, projectID, rule)

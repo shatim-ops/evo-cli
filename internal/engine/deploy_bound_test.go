@@ -76,23 +76,36 @@ func untilCtx(ctx context.Context) error {
 // milliseconds; the bound itself is what the hold waits for.
 const testBound = time.Second
 
-// boundWatch is how long a bounded deploy of these tests may take: a
-// deploy that waits for its own timeouts takes the hour they are set to
-// (wall-clock: a margin over testBound, not a wait).
+// finishBound is the bound of a call a test expects to end the deploy, not
+// to leave it in progress: testBound is the point a hold waits for, and a
+// deploy that must finish within it fails on a slow runner (#813: engine
+// took 76 s on Windows against 17–26 s, and the repeat after --force came
+// to its bound in verify).
+// wall-clock: a margin for a call that ends in milliseconds, never waited
+// out — the deploy ends long before it.
+const finishBound = time.Minute
+
+// boundWatch is how long past its bound a deploy of these tests may take:
+// a deploy that waits for its own timeouts takes the hour they are set to
+// (wall-clock: a margin over the bound, not a wait).
 const boundWatch = 5 * time.Second
 
 // deployBounded runs eng.Deploy with opts and fails the test when it does
-// not end within boundWatch.
+// not end within boundWatch past the bound of opts.
 func deployBounded(t *testing.T, eng *Engine, opts DeployOptions) error {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	watch := boundWatch
+	if !opts.Until.IsZero() {
+		watch += time.Until(opts.Until)
+	}
 	got := make(chan error, 1)
 	go func() { got <- eng.Deploy(ctx, opts) }()
 	select {
 	case err := <-got:
 		return err
-	case <-time.After(boundWatch):
+	case <-time.After(watch):
 		cancel()
 		<-got
 		t.Fatalf("deploy did not end at its bound (D69): it waits past it")
@@ -248,22 +261,23 @@ func TestDeploy_ForceRunsComposeUpOnceAcrossRepeats(t *testing.T) {
 	stages := &heldStages{}
 	eng, dir := newTestEngine(t, &mockCloudAPI{}, newMockDeployer())
 	eng.Stages = stages
-	call := func(force bool) error {
+	call := func(force bool, bound time.Duration) error {
 		opts := newDeployOpts(t, dir)
 		opts.Force = force
-		opts.Until = time.Now().Add(testBound)
+		opts.Until = time.Now().Add(bound)
 		return deployBounded(t, eng, opts)
 	}
 	var going *InProgress
-	if err := call(false); !stderrors.As(err, &going) || going.Phase != "compose-up" {
+	if err := call(false, testBound); !stderrors.As(err, &going) || going.Phase != "compose-up" {
 		t.Fatalf("first: %v, want InProgress compose-up", err)
 	}
 	stages.finish()
-	if err := call(true); !stderrors.As(err, &going) || going.Phase != "compose-up" {
+	if err := call(true, testBound); !stderrors.As(err, &going) || going.Phase != "compose-up" {
 		t.Fatalf("--force: %v, want compose up started again", err)
 	}
 	stages.finish()
-	if err := call(false); err != nil {
+	// The repeat ends the deploy: its bound is not the point of the test.
+	if err := call(false, finishBound); err != nil {
 		t.Fatalf("the repeat after --force: %v", err)
 	}
 	if stages.starts != 2 {
