@@ -263,6 +263,7 @@ profiles:
 | `NO_COLOR` | если задана и не пуста — без цвета, как `--no-color` ([no-color.org](https://no-color.org)) |
 | `TERM` | `TERM=dumb` — без цвета |
 | `EVO_LANG` | язык сообщений CLI: по умолчанию русский, `EVO_LANG=en` (или `en_US` и т. п.) — английский. `LANG` и `LC_*` не учитываются. `evo mcp` всегда отвечает по-английски |
+| `PATH`, `PATHEXT` | только `evo doctor`: называет каждый другой `evo` в `PATH` (в Windows — с расширениями `PATHEXT`) с его версией — оболочка запускает и дополняет первый в `PATH`, а обновить могли другой |
 
 Переменные `CLOUDRU_*` и `MCP_BEARER_TOKEN` **не передаются** в дочерние
 `kubectl` и `helm`.

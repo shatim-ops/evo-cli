@@ -16,10 +16,7 @@ import (
 // tabShellPending are the parts of Tab in the shell that are not there
 // yet: the part → what is missing. It only shrinks. Closes by 1.7 (release
 // plan 1.7, block B, Tab, #718: T4, T7).
-var tabShellPending = map[string]string{
-	"zsh menu":   "evo completion zsh sets no menu of the candidates (zstyle … menu yes select)",
-	"second evo": "evo doctor does not name another evo in PATH",
-}
+var tabShellPending = map[string]string{}
 
 // zshMenu is the style T4 sets, and zshMenuGuard the read of the person's
 // own one it is set under.
