@@ -159,6 +159,22 @@ func budgetLeft(ctx context.Context) (time.Duration, bool) {
 	return max(time.Until(until), 0), true
 }
 
+// callBound is how long a step of this call may run: its own limit, or —
+// in an MCP call (D69) — what is left of the call's budget, less a tenth
+// (at most 2 s) to answer; capped says the budget set it. One point for the
+// steps that run their own clock: kubectl, helm, the waits for a disk.
+func callBound(ctx context.Context, own time.Duration) (time.Duration, bool) {
+	left, ok := budgetLeft(ctx)
+	if !ok {
+		return own, false
+	}
+	t := left - min(left/10, 2*time.Second)
+	if t >= own {
+		return own, false
+	}
+	return t, true
+}
+
 // budgeted stamps a call with its start (withCallStart).
 func (r *Registry) budgeted(next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {

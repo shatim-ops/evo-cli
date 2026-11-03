@@ -176,7 +176,7 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 	if err != nil {
 		return errResult(err), true
 	}
-	timeout, capped := kubeTimeout(ctx, 90*time.Second)
+	timeout, capped := callBound(ctx, 90*time.Second)
 	out, err := kubetools.Kubectl(ctx, kc, "", timeout, fields...)
 	if capped && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 		return toJSON(kubectlAtLimit(out, verb, args)), false
@@ -185,21 +185,6 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 		return errAnswer(err, map[string]any{"output": out}), true
 	}
 	return toJSON(map[string]any{"status": "ok", "output": out}), false
-}
-
-// kubeTimeout is how long a kubectl or helm run of this call may take: its
-// own limit, or — in an MCP call (D69) — what is left of the call's budget,
-// less a tenth (at most 2 s) to answer; capped says the budget set it.
-func kubeTimeout(ctx context.Context, own time.Duration) (time.Duration, bool) {
-	left, ok := budgetLeft(ctx)
-	if !ok {
-		return own, false
-	}
-	t := left - min(left/10, 2*time.Second)
-	if t >= own {
-		return own, false
-	}
-	return t, true
 }
 
 // kubectlAtLimit is the answer of kubectl stopped at the limit of an MCP
@@ -342,7 +327,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 			{"repo add", 60 * time.Second, []string{"repo", "add", repoName, repoURL, "--force-update"}},
 			{"repo update", 90 * time.Second, []string{"repo", "update"}},
 		} {
-			timeout, capped := kubeTimeout(ctx, st.own)
+			timeout, capped := callBound(ctx, st.own)
 			out, e := kubetools.Helm(ctx, kc, timeout, st.args...)
 			if capped && errors.Is(e, context.DeadlineExceeded) && ctx.Err() == nil {
 				return toJSON(helmAtLimit(out, st.name, args)), false
@@ -393,7 +378,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 		// answer says deploying, and the next step reads the release; its
 		// own --timeout (hooks) ends within the call's budget, so helm ends
 		// a hook itself rather than being killed mid-operation.
-		if t, capped := kubeTimeout(ctx, helmWaitTimeout); capped {
+		if t, capped := callBound(ctx, helmWaitTimeout); capped {
 			hargs = append(hargs, "--timeout", (t - min(t/10, 3*time.Second)).Round(time.Second).String())
 		} else {
 			hargs = append(hargs, "--wait", "--timeout", "8m")
@@ -416,7 +401,7 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	if action == "install" || action == "upgrade" {
 		own = helmWaitTimeout // --wait can take a while pulling images
 	}
-	timeout, capped := kubeTimeout(ctx, own)
+	timeout, capped := callBound(ctx, own)
 	out, err := kubetools.Helm(ctx, kc, timeout, hargs...)
 	if capped && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 		return toJSON(helmAtLimit(out, action, args)), false
