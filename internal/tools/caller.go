@@ -147,7 +147,15 @@ func logAndProgress(ctx context.Context, w io.Writer) *output.Printer {
 	if pp, watched := progressOf(ctx); watched {
 		w = io.MultiWriter(w, pp.Writer())
 	}
-	return output.NewWithWriter(w, output.ModeText, false)
+	return bufferPrinter(w)
+}
+
+// bufferPrinter is a printer of an engine's lines onto w, which an answer
+// or a call's progress carries and no terminal shows: plain, so a wait
+// prints a line now and then instead of redrawing one with "\r" the model
+// reads in the answer (F9, agent runs of Grok on 1.6.0).
+func bufferPrinter(w io.Writer) *output.Printer {
+	return output.NewWithWriter(w, output.ModePlain, false)
 }
 
 // stepOf is ctx for a tool a tool calls (callTool: the steps of a stack):
