@@ -18,6 +18,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -63,9 +64,9 @@ func (c *expiringCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 // for evo mcp) takes that token without another exchange.
 func TestTokenRefusedAsExpired_NextCallExchangesAnew(t *testing.T) {
 	c := &expiringCloud{}
-	old := http.DefaultTransport
-	http.DefaultTransport = c
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = c
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	cache := auth.FileCache{Path: filepath.Join(t.TempDir(), "token.json")}
 	p := auth.NewIAMProvider(auth.Credentials{KeyID: "k", Secret: "s"}, nil, cache)
 	// Held for the test, as cli.tokenProvider holds it for the process:

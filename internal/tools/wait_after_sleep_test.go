@@ -22,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -100,9 +101,9 @@ var sleepBreaksWait = map[string]string{}
 // as the CLI and evo mcp do (one provider per process).
 func sleepWorld(t *testing.T, c *sleptCloud) *Registry {
 	t.Helper()
-	old := http.DefaultTransport
-	http.DefaultTransport = c
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = c
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	oldDelay := opWaitFirstDelay
 	opWaitFirstDelay = time.Millisecond
 	t.Cleanup(func() { opWaitFirstDelay = oldDelay })

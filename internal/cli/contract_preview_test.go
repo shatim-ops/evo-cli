@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
@@ -542,8 +544,8 @@ func withParityWorld(t *testing.T) parityWorld {
 	t.Setenv("CLOUDRU_S3_SECRET_KEY", "parity-secret")
 	t.Chdir(home)
 	rt := &parityRT{addon: &addonAPI{}}
-	oldRT := http.DefaultTransport
-	http.DefaultTransport = rt
+	oldRT := httpretry.DefaultBase
+	httpretry.DefaultBase = rt
 	compute := provision.NewCloudRuAdapter(&http.Client{Transport: rt}, "")
 	compute.SetToken("fake-token")
 	old := toolEngine
@@ -564,7 +566,7 @@ func withParityWorld(t *testing.T) parityWorld {
 		return e, nil
 	}
 	t.Cleanup(func() {
-		toolEngine, http.DefaultTransport = old, oldRT
+		toolEngine, httpretry.DefaultBase = old, oldRT
 		// A request without a fixture would get the empty list and a tool
 		// that misreads it would still pass parity (delta audit 1.2.3).
 		for _, req := range rt.takeUnknown() {

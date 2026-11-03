@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -65,9 +66,9 @@ func (downMK8s) RoundTrip(*http.Request) (*http.Response, error) {
 
 func marketRegistry(t *testing.T, cloud marketCloud, rt http.RoundTripper) *Registry {
 	t.Helper()
-	old := http.DefaultTransport
-	http.DefaultTransport = rt
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = rt
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{

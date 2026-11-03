@@ -25,6 +25,33 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
+// HTTP/2 health check of the base transport: a connection that read
+// nothing for h2ReadIdle is pinged, and one that does not answer the ping
+// in h2PingTimeout is closed, so the next request dials again. Without it a
+// long-lived server (evo mcp) kept a connection that died behind a proxy,
+// and every call on it waited for its client's timeout (60 s) until the
+// server was restarted (LLM run of Grok on 1.6.0, G2-6).
+const (
+	h2ReadIdle    = 30 * time.Second
+	h2PingTimeout = 15 * time.Second
+)
+
+// NewBaseTransport is a new transport with the settings of
+// http.DefaultTransport (the proxy of the environment, dial and TLS
+// timeouts, HTTP/2) and the health check of an HTTP/2 connection. Each call
+// makes its own, for a caller that changes it (verify's TLS).
+func NewBaseTransport() *http.Transport {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.HTTP2 = &http.HTTP2Config{SendPingTimeout: h2ReadIdle, PingTimeout: h2PingTimeout}
+	return tr
+}
+
+// DefaultBase is the transport under every HTTP client of evo that sets no
+// Base of its own: the retrying Transport, UserAgent and the clients built
+// on them. It is read at each request, so a test that answers for the cloud
+// replaces it alone.
+var DefaultBase http.RoundTripper = NewBaseTransport()
+
 const (
 	// MaxRetries is the number of repeats after the first attempt.
 	MaxRetries = 3
@@ -43,7 +70,7 @@ const (
 // Waits double from Backoff (1 s by default); a Retry-After of up to 30 s
 // replaces the wait. The request context stops the waits.
 type Transport struct {
-	Base    http.RoundTripper // nil: http.DefaultTransport
+	Base    http.RoundTripper // nil: DefaultBase
 	Backoff time.Duration     // first wait; 0: 1 s
 	Policy  Policy            // what is repeated besides the above
 }
@@ -76,12 +103,12 @@ func (t *Transport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return http.DefaultTransport
+	return DefaultBase
 }
 
 func readMethod(m string) bool { return m == http.MethodGet || m == http.MethodHead }
 
-// UserAgent wraps base (nil: http.DefaultTransport) so that a request
+// UserAgent wraps base (nil: DefaultBase) so that a request
 // without a User-Agent carries evo's (product.UserAgent). For the clients
 // that keep their own retry loop: the compute adapter and IAM.
 func UserAgent(base http.RoundTripper) http.RoundTripper { return uaTransport{base} }
@@ -91,7 +118,7 @@ type uaTransport struct{ base http.RoundTripper }
 func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	base := t.base
 	if base == nil {
-		base = http.DefaultTransport
+		base = DefaultBase
 	}
 	resp, err := base.RoundTrip(withUserAgent(req))
 	if err != nil {

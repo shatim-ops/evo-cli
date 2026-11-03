@@ -19,6 +19,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/journal"
 	clog "github.com/shatim-ops/evo-cli/internal/log"
@@ -421,7 +422,7 @@ func newMCPHealthcheckCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := (&http.Client{Transport: httpretry.DefaultBase}).Do(req)
 			if err != nil {
 				return fmt.Errorf(i18n.T("healthcheck: %w", "проверка состояния: %w"), err)
 			}

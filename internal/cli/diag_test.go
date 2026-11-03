@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+
 	"github.com/shatim-ops/evo-cli/internal/journal"
 )
 
@@ -41,9 +43,9 @@ func TestDiag_OnRecordStatusExport(t *testing.T) {
 	t.Setenv("CLOUDRU_KEY_ID", "00000000000000000000000000000000")
 	t.Setenv("CLOUDRU_SECRET", "00000000000000000000000000000000")
 	t.Setenv("CLOUDRU_PROJECT_ID", "11111111-1111-1111-1111-111111111111")
-	old := http.DefaultTransport
-	http.DefaultTransport = noSecretsRT{old}
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = noSecretsRT{old}
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	const secretish = "value-that-must-not-leak-0123"
 	runCLI(t, "", "tools", "call", "secret_create", "--arg", "path=app/db", "--arg", "value="+secretish)
 	status := func() map[string]any {

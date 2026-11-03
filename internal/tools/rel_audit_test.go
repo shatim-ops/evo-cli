@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -31,9 +32,9 @@ func (u unreachableIAM) Token(context.Context) (auth.Token, error) {
 // deadIAMRegistry: a project and a key are set, IAM does not answer.
 func deadIAMRegistry(t *testing.T, f *apiFake) (*Registry, *atomic.Int32) {
 	t.Helper()
-	old := http.DefaultTransport
-	http.DefaultTransport = f
-	t.Cleanup(func() { http.DefaultTransport = old })
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = f
+	t.Cleanup(func() { httpretry.DefaultBase = old })
 	n := &atomic.Int32{}
 	dir := t.TempDir()
 	return New(func(map[string]any) (*engine.Engine, error) {

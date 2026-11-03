@@ -49,7 +49,7 @@ const gatedPreviewBody = `{"items":[{"id":"` + contractID + `","name":"web","sta
 // gatedPreviewFixtures drive the tools whose preview needs answers of their
 // own API that the generic sweep has not (the addon catalogue, the DBaaS
 // specifications): each builds its registry on its fake (which takes
-// http.DefaultTransport) and returns the tool's answer.
+// httpretry.DefaultBase) and returns the tool's answer.
 var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	// A delete asks consent for what the cloud has; what it does not have
 	// is already deleted (D26): these look their resource up in its list.
@@ -281,7 +281,7 @@ func TestContract_PreviewMessageHasNoConfirmedHint(t *testing.T) {
 		}
 		rt.body = ""
 	}
-	// The fixtures take http.DefaultTransport: after the sweep.
+	// The fixtures take httpretry.DefaultBase: after the sweep.
 	for _, lang := range []string{i18n.EN, i18n.RU} {
 		i18n.SetLang(lang)
 		for name, run := range gatedPreviewFixtures {
