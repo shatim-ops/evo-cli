@@ -56,7 +56,7 @@ func registerFlagCompletions(reg *tools.Registry, cmd *cobra.Command, tool strin
 // treeCompletion is Tab on an argument of a tree command (#718): the
 // positional at the cursor, by the first of its names the registry
 // completes ("vm_id|name": vm_id), the shell's files only where the
-// registry declares it a path (CLISpec.Files). Past the positionals, on an
+// registry declares it a path (CLISpec.Files, CLISpec.Paths). Past the positionals, on an
 // empty word, the flags the call still lacks — the required first, then
 // the others — with a line of ActiveHelp: what is still required, or that
 // the call is ready to run.
@@ -69,7 +69,7 @@ func treeCompletion(reg *tools.Registry, t tools.Tool, pos []positional, flags m
 				}
 			}
 			for _, name := range pos[len(args)].names {
-				if t.CLI.Files[name] {
+				if t.CLI.Files[name] || t.CLI.Paths[name] {
 					return nil, cobra.ShellCompDirectiveDefault
 				}
 			}
@@ -157,7 +157,7 @@ func flagsToGo(cmd *cobra.Command, t tools.Tool, flags map[string]string) []cobr
 
 // registerFlagHints completes the value of each flag of cmd's tool
 // arguments that the registry does not complete: files where it declares a
-// path (CLISpec.Files), the closed list of the schema (enum), nothing
+// path (CLISpec.Files, CLISpec.Paths), the closed list of the schema (enum), nothing
 // otherwise — a free value (a name, a size, a port) — with its description
 // and bounds as ActiveHelp, as the help shows them from the schema.
 func registerFlagHints(reg *tools.Registry, cmd *cobra.Command, t tools.Tool, flags map[string]string) {
@@ -166,7 +166,7 @@ func registerFlagHints(reg *tools.Registry, cmd *cobra.Command, t tools.Tool, fl
 		if f == nil || reg.Completes(t.Name, arg) || f.Value.Type() == "bool" {
 			continue
 		}
-		if t.CLI.Files[arg] {
+		if t.CLI.Files[arg] || t.CLI.Paths[arg] {
 			_ = cmd.RegisterFlagCompletionFunc(flag, func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
 				return nil, cobra.ShellCompDirectiveDefault
 			})

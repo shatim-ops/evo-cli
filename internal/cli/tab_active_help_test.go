@@ -111,7 +111,8 @@ func TestTab_FlagValueEnumOrHint(t *testing.T) {
 // #718, the owner's decision: files only where the registry declares a
 // path — the value of a flag too. Every flag of every tool command: Tab on
 // its value offers the shell's files iff the registry declares the
-// argument a path (CLISpec.Files, or the file flag of CLISpec.SecretFiles).
+// argument a path (CLISpec.Files and CLISpec.Paths, or the file flag of
+// CLISpec.SecretFiles).
 func TestTab_FlagValueFilesOnlyAtPaths(t *testing.T) {
 	_, _ = withJSONWorld(t)
 	reg := newRegistry()
@@ -139,6 +140,9 @@ func TestTab_FlagValueFilesOnlyAtPaths(t *testing.T) {
 		for a := range tl.CLI.SecretFiles {
 			paths[secretFileFlag(flagOf(a))] = true
 		}
+		for a := range tl.CLI.Paths {
+			paths[flagOf(a)] = true
+		}
 		cmd.LocalNonPersistentFlags().VisitAll(func(f *pflag.Flag) {
 			if f.Value.Type() == "bool" || f.Hidden {
 				return
@@ -158,4 +162,14 @@ func TestTab_FlagValueFilesOnlyAtPaths(t *testing.T) {
 		t.Fatalf("%d flags checked: the walk sees nothing", checked)
 	}
 	_ = cobra.ShellCompDirectiveDefault
+}
+
+// deploy plan --compose-file is a path the tool reads (CLISpec.Paths): Tab
+// on its value offers the files, as before #718 — the one flag of a tool
+// command that took a path and was declared none.
+func TestTab_ComposeFileStillOffersFiles(t *testing.T) {
+	_, _ = withJSONWorld(t)
+	if _, _, directive := tabOut(t, "deploy", "plan", "--compose-file", ""); !tabOffersFiles(directive) {
+		t.Errorf("deploy plan --compose-file <Tab>: want the files, got %s", directive)
+	}
 }
