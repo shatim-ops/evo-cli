@@ -125,7 +125,7 @@ func checkHostileAnswer(t *testing.T, r *Registry, name string, args map[string]
 	_ = json.Unmarshal([]byte(text), &m)
 	// A field of workload text without the declaration is a tool
 	// that forgot untrustedFields.
-	if top, ok := m.(map[string]any); ok && untrustedFields[name] == nil {
+	if top, ok := m.(map[string]any); ok && untrustedFields[name].fields == nil {
 		for _, f := range workloadFields {
 			if _, has := top[f]; has {
 				t.Errorf("%s answers %q, the workload's text, but untrustedFields does not declare it", name, f)

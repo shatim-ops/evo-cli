@@ -32,7 +32,7 @@ func TestDeploy_ComposeOutputGoesWithTheErrorUntrusted(t *testing.T) {
 	if !tl.UntrustedOutput {
 		t.Error("deploy is not marked as returning the workload's output")
 	}
-	h := markUntrusted(untrustedFields["deploy"], func(context.Context, map[string]any) (string, bool) {
+	h := markUntrusted(untrustedFields["deploy"].fields, func(context.Context, map[string]any) (string, bool) {
 		return errAnswer(ce, fields), true
 	})
 	text, _ := h(context.Background(), nil)
