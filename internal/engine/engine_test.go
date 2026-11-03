@@ -23,6 +23,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/verify"
+	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
 
 // --- Mocks ---
@@ -280,6 +281,11 @@ type mockDeployer struct {
 	execCalls       []string
 	closeCalled     bool
 	uploadedFiles   []deploy.FileEntry
+	stages          syncStages
+	// hold runs first in Connect, Upload and Exec (op: "connect",
+	// "upload", "exec <cmd>"); a non-nil error is returned: a slow or
+	// hanging SSH of a test.
+	hold func(ctx context.Context, op string) error
 }
 
 func newMockDeployer() *mockDeployer {
@@ -290,7 +296,12 @@ func newMockDeployer() *mockDeployer {
 	}
 }
 
-func (m *mockDeployer) Connect(_ context.Context, host string, port int, user string, keyPEM []byte, knownHostKey string) error {
+func (m *mockDeployer) Connect(ctx context.Context, host string, port int, user string, keyPEM []byte, knownHostKey string) error {
+	if m.hold != nil {
+		if err := m.hold(ctx, "connect"); err != nil {
+			return err
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.connectCalled = true
@@ -307,7 +318,12 @@ func (m *mockDeployer) HostKeyFingerprint() string {
 	return m.hostFingerprint
 }
 
-func (m *mockDeployer) Upload(_ context.Context, files []deploy.FileEntry) error {
+func (m *mockDeployer) Upload(ctx context.Context, files []deploy.FileEntry) error {
+	if m.hold != nil {
+		if err := m.hold(ctx, "upload"); err != nil {
+			return err
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.uploadCalled = true
@@ -315,7 +331,12 @@ func (m *mockDeployer) Upload(_ context.Context, files []deploy.FileEntry) error
 	return m.uploadErr
 }
 
-func (m *mockDeployer) Exec(_ context.Context, cmd string) (string, error) {
+func (m *mockDeployer) Exec(ctx context.Context, cmd string) (string, error) {
+	if m.hold != nil {
+		if err := m.hold(ctx, "exec "+cmd); err != nil {
+			return "", err
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.execCalls = append(m.execCalls, cmd)
@@ -329,6 +350,14 @@ func (m *mockDeployer) Exec(_ context.Context, cmd string) (string, error) {
 }
 
 // ExecStream records the call like Exec and writes the scripted result.
+// Start and Read: the stages of the fake VM run at once (syncStages).
+func (m *mockDeployer) Start(ctx context.Context, name, input, script string) (bool, error) {
+	return m.stages.start(ctx, m, name, input, script)
+}
+func (m *mockDeployer) Read(_ context.Context, name string) (vmstage.Stage, error) {
+	return m.stages.read(name), nil
+}
+
 func (m *mockDeployer) ExecStream(ctx context.Context, cmd string, stdout, _ io.Writer) error {
 	if m.streamOut != nil {
 		_, _ = io.WriteString(stdout, m.streamOut(cmd))

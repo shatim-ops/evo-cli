@@ -20,6 +20,7 @@ import (
 // tool reaches says so with an empty list.
 var budgetReach = map[string][]string{
 	"internal/engine/deploy.go\tEngine.provisionVM":             {"deploy"},
+	"internal/engine/deploy.go\tEngine.awaitCreated":            {"deploy"},
 	"internal/engine/deploy.go\tEngine.waitBootFIP":             {"deploy", "provision", "stack_apply"},
 	"internal/engine/deploy.go\tEngine.settledBootFIP":          {"deploy", "provision", "stack_apply"},
 	"internal/engine/destroy.go\tEngine.Destroy":                {"destroy", "stack_destroy"},

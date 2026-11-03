@@ -608,7 +608,7 @@ var parityTimings = engine.Timings{
 	IfacePollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond, FIPLookupInterval: time.Millisecond,
 	FIPPollInterval: time.Millisecond, FIPSettleTimeout: 20 * time.Millisecond, SSHRetryInterval: time.Millisecond, SSHSlowNote: time.Second,
 	SettleDelay: time.Millisecond, VerifyTimeout: 50 * time.Millisecond,
-	DockerPollInterval: time.Millisecond, DockerWaitTimeout: time.Second,
+	DockerPollInterval: time.Millisecond, DockerWaitTimeout: time.Second, StagePollInterval: time.Millisecond,
 	DestroyPollInterval: time.Millisecond, DestroyPollTimeout: time.Second,
 	DeletableWaitTimeout: time.Second, DeletablePollInterval: time.Millisecond,
 	StatusRefreshTimeout: time.Second,

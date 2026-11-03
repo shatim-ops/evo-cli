@@ -25,6 +25,7 @@ const (
 	verifySettleDelay     = 2 * time.Second
 	verifyTimeout         = 10 * time.Second
 	dockerPollInterval    = 10 * time.Second
+	stagePollInterval     = 3 * time.Second  // reads of a stage on the VM (vmstage) while it runs
 	dockerWaitTimeout     = 15 * time.Minute // cloud-init, then the image mirror and, when it fails, the official one
 	sshSlowNote           = 5 * time.Minute  // a new VM usually answers SSH in 2-5 minutes
 	destroyPollInterval   = 3 * time.Second
@@ -56,6 +57,7 @@ type Timings struct {
 	VerifyTimeout      time.Duration // per-port HTTP probe timeout
 
 	DockerPollInterval  time.Duration // between checks that cloud-init has installed Docker
+	StagePollInterval   time.Duration // between reads of a stage on the VM while it runs (vmstage)
 	DockerWaitTimeout   time.Duration // give up waiting for Docker on a new VM
 	DestroyPollInterval time.Duration // GetVM polling until a deleted VM is gone
 	DestroyPollTimeout  time.Duration // stop waiting for the deletion to be confirmed
@@ -86,6 +88,7 @@ func (t Timings) withDefaults() Timings {
 	def(&t.SettleDelay, verifySettleDelay)
 	def(&t.VerifyTimeout, verifyTimeout)
 	def(&t.DockerPollInterval, dockerPollInterval)
+	def(&t.StagePollInterval, stagePollInterval)
 	def(&t.DockerWaitTimeout, dockerWaitTimeout)
 	def(&t.DestroyPollInterval, destroyPollInterval)
 	def(&t.DestroyPollTimeout, destroyPollTimeout)

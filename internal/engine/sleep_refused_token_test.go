@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // computeRead is a call of the compute world that reads; computeWrite one
@@ -184,6 +185,17 @@ var sleepPaths = []sleepPath{
 			cancel()
 			f := e.findBootFIP(ctx, faultProject, made.(*provision.FloatingIP).Name)
 			return f != nil && f.ID == made.(*provision.FloatingIP).ID
+		},
+	},
+	{
+		// A deploy whose bound came while the VM was created (D69): the
+		// next one waits for it to be active.
+		name:  "awaitCreated",
+		setup: func(t *testing.T, c *faultCloud) any { return sleepVM(t, c) },
+		run: func(e *Engine, c *faultCloud, made any) bool {
+			rec := state.DeploymentRecord{ID: made.(*provision.VM).ID, VMID: made.(*provision.VM).ID, Status: "creating"}
+			sf := &state.File{Version: 1}
+			return e.awaitCreated(context.Background(), &rec, sf, state.DefaultPath(e.StateDir)) == nil && rec.Status == "provisioned"
 		},
 	},
 	{

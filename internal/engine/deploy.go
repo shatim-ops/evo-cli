@@ -9,7 +9,6 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -49,6 +48,9 @@ const (
 
 // Deploy orchestrates the full deploy lifecycle.
 func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) {
+	e.until, e.boundFrom, e.phase = opts.Until, time.Now(), ""
+	caller := ctx
+	defer func() { retErr = e.atBound(caller, retErr) }()
 	// Stage 1: Parse compose file.
 	project, err := compose.Parse(opts.ComposeFile)
 	if err != nil {
@@ -217,13 +219,20 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			return nil
 		}
 		if vmID := rec.VMID; vmID != "" {
-			defer func() { retErr = e.vmLeftRunning(ctx, retErr, vmID) }()
+			defer func() { retErr = e.vmLeftRunning(caller, retErr, vmID) }()
 		}
 		if err != nil {
 			return err
 		}
-	} else {
+	}
+	// From here every step ends with the bound of the deploy (D69); the
+	// create of the VM above does not: a create cut midway is a VM
+	// without a record.
+	ctx, cancel := e.bounded(ctx)
+	defer cancel()
+	if !isNewDeploy {
 		e.Printer.Step(3, totalSteps, i18n.T("Reusing existing VM...", "Используется существующая ВМ..."))
+		e.phase = "vm"
 		// Records from before v1.0.1 have no names: they are looked up
 		// once and saved with the record.
 		rec = e.withNames(ctx, *existing, nil, true)
@@ -231,6 +240,13 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		rec.ComposePath = composePath(opts.ComposeFile)
 		rec.ExposedPorts = project.Ports
 		rec.UpdatedAt = time.Now()
+		// A deploy whose bound came while the VM was created left it
+		// creating: wait for it before its floating IP and SSH.
+		if existing.Status == "creating" {
+			if err := e.awaitCreated(ctx, &rec, stateFile, statePath); err != nil {
+				return err
+			}
+		}
 		if rec.VMIP == "" && rec.VMID != "" {
 			// The floating IP failed on an earlier run: try again instead
 			// of failing on "no public IP" on every re-run.
@@ -328,26 +344,39 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	files := []deploy.FileEntry{
 		{RemotePath: remoteComposeFile, Content: composeData},
 	}
+	e.phase = "upload"
 	if err := e.Deployer.Upload(ctx, files); err != nil {
 		return err
 	}
 
-	// Run docker compose up. Streamed, not Exec: pulling images can take
-	// longer than Exec's 120 s limit. Progress goes to stderr in text mode.
-	// The last lines go with a failure in every mode: with --json the
-	// output goes nowhere else (#558). They are the workload's words: the
-	// tool marks the field untrusted.
-	tail := newTailWriter(composeTailLines)
-	var progress io.Writer = io.MultiWriter(e.Printer.ErrWriter(), tail)
-	if e.Printer.IsJSON() {
-		progress = tail
+	// Run docker compose up: a stage on the VM, apart from this session
+	// (vmstage, D69 variant C) — pulling images takes minutes, and the end
+	// of the session (the budget of an MCP call, a lost connection) does
+	// not cut it; the next deploy reads it. Its input is the compose file:
+	// a stage done for this one is not run again. The last lines go with a
+	// failure in every mode: with --json the output goes nowhere else
+	// (#558). They are the workload's words: the tool marks the field
+	// untrusted.
+	composeUp := fmt.Sprintf("cd %s && docker compose -f docker-compose.yml up -d", remoteComposeDir)
+	// --force (force) runs compose up again with the same compose file, as
+	// it did before the stage: the stage done for this input is not taken
+	// for it. Its repeat after the bound goes without force (the tool's
+	// next_args) and takes the stage this one started.
+	composeInput := stageInput(composeUp, string(composeData))
+	st, err := e.runStage(ctx, "compose-up", composeInput, composeUp, time.Time{}, opts.Force)
+	if err == nil && st.State == "failed" {
+		err = fmt.Errorf("exit status %d", st.Exit)
 	}
-	if err := e.Deployer.ExecStream(ctx, fmt.Sprintf("cd %s && docker compose -f docker-compose.yml up -d", remoteComposeDir), progress, progress); err != nil {
+	if err != nil {
+		var going *InProgress
+		if stderrors.As(err, &going) || ctx.Err() != nil {
+			return err
+		}
 		ce := clerrors.Wrap(clerrors.CodeSSHTimeout,
 			i18n.T("docker compose up failed", "docker compose up завершился ошибкой"),
 			i18n.T("Check your compose file and service logs on the VM.", "Проверьте compose-файл и журналы сервисов на ВМ."),
 			err)
-		if out := tail.String(); out != "" {
+		if out := lastLines(st.LogTail, composeTailLines); out != "" {
 			ce.Details = map[string]any{"output": out}
 			ce.Hint += i18n.T(" The last lines of docker compose up are in output.", " Последние строки docker compose up — в output.")
 		}
@@ -366,6 +395,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	// Step 5: Verify.
 	var results []verify.ProbeResult
 	e.Printer.Step(5, totalSteps, i18n.T("Verifying health...", "Проверка работоспособности..."))
+	e.phase = "verify"
 	if len(project.Ports) > 0 {
 		// Give containers a moment to start.
 		t := e.timings()
@@ -534,6 +564,7 @@ func (e *Engine) deployZone(ctx context.Context, region string) *deployplan.RefS
 
 // provisionVM creates a new VM and waits for it to become active.
 func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile *state.File, statePath string, project *compose.Project, region string) (state.DeploymentRecord, error) {
+	e.phase = "vm"
 	e.Printer.Step(3, totalSteps, i18n.T("Provisioning VM...", "Создание ВМ..."))
 
 	// The project before anything is asked of the cloud: the hint of every
@@ -819,10 +850,19 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	}
 
 	var vmPollRefusals refusals
+	// The bound of the deploy (D69): the VM is in the state as creating;
+	// the next deploy takes it and goes on.
+	var bound <-chan time.Time
+	if !e.until.IsZero() {
+		bound = time.After(time.Until(e.until))
+	}
+	vmState := "creating"
 	for {
 		select {
 		case sig := <-sigCh:
 			return interrupted(sig.String())
+		case <-bound:
+			return rec, &InProgress{Phase: "vm", Detail: vmState}
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
 				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", vm.ID, t.VMPollTimeout),
@@ -850,6 +890,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
 				continue
 			}
+			vmState = updated.Status
 			if updated.Status != "active" && updated.Status != "running" {
 				wait.State(updated.Status)
 			}
@@ -857,7 +898,10 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			case "active", "running":
 				e.Printer.StepDone(i18n.Tf("VM %s active (%s)", "ВМ %s активна (%s)", vmText(&rec), ElapsedText(wait.Elapsed())))
 
-				// The floating (public) IP: attached at creation, or now.
+				// The floating (public) IP: attached at creation, or now —
+				// within the bound of the deploy (D69).
+				ctx, cancel := e.bounded(ctx)
+				defer cancel()
 				var publicIP, fipID string
 				if bootFIP != nil {
 					publicIP, fipID, err = e.waitBootFIP(ctx, bootFIP, vm.ID, projectID)
@@ -1401,6 +1445,70 @@ func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRec
 	}
 }
 
+// awaitCreated waits for the VM of a record left creating — a deploy whose
+// bound came while the cloud created it (D69) — to be active, as
+// provisionVM does, before the reuse path gives it a floating IP and SSH:
+// the cloud refuses to attach an address to a VM still being created
+// («1.7 — релиз» on #769). The bound ends the wait as InProgress vm; a VM
+// that failed is recorded as error, as provisionVM records it.
+func (e *Engine) awaitCreated(ctx context.Context, rec *state.DeploymentRecord, stateFile *state.File, statePath string) error {
+	t := e.timings()
+	timeout := time.After(t.VMPollTimeout)
+	tick, stop := newPollTicker(t.VMPollInterval)
+	defer stop()
+	vmState := "creating"
+	var refused refusals
+	for {
+		select {
+		case <-ctx.Done():
+			if stderrors.Is(ctx.Err(), context.DeadlineExceeded) && e.past() {
+				return &InProgress{Phase: "vm", Detail: vmState}
+			}
+			return ctx.Err()
+		case <-timeout:
+			return clerrors.New(clerrors.CodeVMProvisionFailed,
+				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", rec.VMID, t.VMPollTimeout),
+				i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
+					"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", rec.VMID))
+		case <-tick:
+			vm, err := e.Cloud.GetVM(ctx, rec.VMID)
+			// One refused token is the sleep's; two, the key's (refusals).
+			if refused.keyRefused(err) {
+				return clerrors.Wrap(clerrors.Reason(err),
+					i18n.Tf("checking VM %s failed: the key was refused (%v)", "проверить ВМ %s не удалось: ключ отклонён (%v)", rec.VMID, err),
+					i18n.Tf("VM %s is billed and recorded in the state. Check the key ('evo whoami'), then run 'evo deploy' again to finish.",
+						"ВМ %s тарифицируется и записана в state. Проверьте ключ ('evo whoami') и повторите 'evo deploy', чтобы завершить.", rec.VMID),
+					err)
+			}
+			if err != nil {
+				if ctx.Err() != nil {
+					continue // the case above answers it
+				}
+				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
+				continue
+			}
+			vmState = vm.Status
+			switch {
+			case vm.Status == "active" || vm.Status == "running":
+				rec.Status = "provisioned"
+				rec.UpdatedAt = time.Now()
+				stateFile.UpsertDeployment(*rec)
+				_ = state.Write(statePath, stateFile)
+				e.Printer.StepDone(i18n.Tf("VM %s active", "ВМ %s активна", vmText(rec)))
+				return nil
+			case provision.VMFailed(vm.Status):
+				rec.Status = "error"
+				rec.UpdatedAt = time.Now()
+				stateFile.UpsertDeployment(*rec)
+				_ = state.Write(statePath, stateFile)
+				return clerrors.New(clerrors.CodeVMProvisionFailed,
+					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", rec.VMID, vm.Status),
+					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru."))
+			}
+		}
+	}
+}
+
 // needsFloatingIP: the record has neither an address nor a recorded floating
 // IP, so a re-run creates one (recoverFloatingIP).
 func needsFloatingIP(rec *state.DeploymentRecord) bool {
@@ -1409,6 +1517,7 @@ func needsFloatingIP(rec *state.DeploymentRecord) bool {
 
 // waitForSSH retries SSH connection until the VM is reachable.
 func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, maxRetries int) error {
+	e.phase = "ssh"
 	var lastErr error
 	t := e.timings()
 	// start times the waits; shown, the duration the reports print.
@@ -1443,11 +1552,19 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 				return err
 			}
 		}
+		// The bound of the deploy (D69): the next deploy waits on.
+		if e.past() {
+			return &InProgress{Phase: "ssh", Detail: errLine(err)}
+		}
 
+		wait := t.SSHRetryInterval
+		if !e.until.IsZero() {
+			wait = min(wait, time.Until(e.until))
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(t.SSHRetryInterval):
+		case <-time.After(wait):
 		}
 	}
 	// evo does not reboot or recreate the VM by itself: both are the
@@ -1523,6 +1640,7 @@ func installNotes(out string) []string {
 // Docker it only checks the docker group and /opt/app. Retries until
 // Timings.DockerWaitTimeout: first-boot cloud-init may still hold the apt lock.
 func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) error {
+	e.phase = "docker"
 	t := e.timings()
 	// deadline bounds the wait; start times the duration the retry line prints.
 	deadline := time.Now().Add(t.DockerWaitTimeout)
@@ -1542,10 +1660,19 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	// until the deadline (break r4, R4-15, R4-17).
 	permanent := false
 	for attempt := 1; ; attempt++ {
-		var out bytes.Buffer
-		attemptCtx, cancel := context.WithDeadline(ctx, deadline)
-		err := e.Deployer.ExecStream(attemptCtx, installCmd, &out, &out)
-		cancel()
+		// The install is a stage on the VM (vmstage, D69 variant C): the
+		// end of this session does not cut apt midway, and a later deploy
+		// reads it; one done for this install is not run again — but by
+		// the next attempt of this call, after Docker was not ready.
+		st, err := e.runStage(ctx, "docker", stageInput(installCmd), installCmd, deadline, attempt > 1)
+		var going *InProgress
+		if stderrors.As(err, &going) {
+			return err
+		}
+		if err == nil && st.State == "failed" {
+			err = fmt.Errorf("exit status %d", st.Exit)
+		}
+		out := bytes.NewBufferString(st.LogTail)
 		if err == nil {
 			// Group membership is fixed at login: reconnect so the docker
 			// group the script may have just added applies.
@@ -1564,11 +1691,13 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 				return nil
 			}
 		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
+		// A refused key or a changed host key first: it is the answer
+		// even when the bound cut the call at the same time.
 		if isFatalSSHError(err) {
 			return err
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 		lastErr, lastOut = err, out.String()
 		if bootstrap.Permanent(lastOut) {
@@ -1595,11 +1724,11 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 		}
 		// A failed attempt may have lost the connection.
 		if err := e.reconnect(ctx, ip, user, hostKey); err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
 			if isFatalSSHError(err) {
 				return err
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
 		}
 	}

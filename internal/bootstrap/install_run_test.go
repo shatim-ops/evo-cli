@@ -483,3 +483,32 @@ func TestPermanent_Lines(t *testing.T) {
 		}
 	}
 }
+
+// D69, variant C: the install is a stage on the VM that a reboot or a kill
+// can cut midway, and the next start runs the script again. It first
+// finishes what dpkg left half-configured, then installs — before any
+// apt-get install — and every apt-get waits for the lock another apt holds
+// (DPkg::Lock::Timeout) instead of failing on it at once (condition 3 of
+// «1.7 — релиз» for PR 4 of D69: the hypothesis of the brief, tested
+// before the change).
+func TestInstallRun_ARestartFinishesDpkgFirstAndWaitsForTheLock(t *testing.T) {
+	r := runInstall(t, vm{osRelease: ubuntu2204, files: cloudruUbuntu})
+	if !r.ok {
+		t.Fatalf("install failed:\n%s", r.out)
+	}
+	configure, install := -1, -1
+	for i, c := range r.calls {
+		if configure < 0 && strings.HasPrefix(c, "dpkg ") && strings.Contains(c, "--configure -a") {
+			configure = i
+		}
+		if install < 0 && strings.HasPrefix(c, "apt-get ") && strings.Contains(c, " install ") {
+			install = i
+		}
+		if strings.HasPrefix(c, "apt-get ") && !strings.Contains(c, "DPkg::Lock::Timeout=") {
+			t.Errorf("apt-get without a wait for the lock: %s", c)
+		}
+	}
+	if configure < 0 || install < 0 || configure > install {
+		t.Errorf("dpkg --configure -a (call %d) is not before apt-get install (call %d): %q", configure, install, r.calls)
+	}
+}
