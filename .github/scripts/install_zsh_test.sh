@@ -17,7 +17,7 @@
 #       $fpath, которую человек добавит сам; --uninstall убирает _evo.
 set -euo pipefail
 
-PENDING=1
+PENDING=0
 
 zsh=$(command -v zsh) || { echo "install_zsh_test: нет zsh" >&2; exit 1; }
 root=$(git rev-parse --show-toplevel)

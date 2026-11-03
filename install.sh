@@ -13,10 +13,16 @@
 #   CLOUDRU_VM_BASE_URL откуда качать вместо GitHub (зеркало, проверка
 #                       скрипта); ожидается <base>/<тег>/<файл>
 #
+#   EVO_ZSHRC           0 — не трогать ~/.zshrc (см. ниже)
+#
 # Автодополнение по Tab ставится туда, где оболочка находит его сама, без
 # правки её конфигов: fish, bash (нужен пакет bash-completion), zsh — если
-# в $fpath есть каталог в домашнем каталоге. Иначе (и для PowerShell)
-# скрипт печатает строку для профиля. Удалить evo и эти файлы:
+# в $fpath есть каталог в домашнем каталоге. Иначе для zsh _evo ложится в
+# ${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions, и в конец ~/.zshrc
+# дописывается блок между метками «# >>> evo» и «# <<< evo <<<»: каталог в
+# $fpath и подключение _evo. Повторная установка заменяет блок, а не
+# удваивает; EVO_ZSHRC=0 — ~/.zshrc не трогать, а напечатать строки.
+# PowerShell — строка для профиля. Удалить evo, эти файлы и блок:
 #
 #   curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | sh -s -- --uninstall
 #
@@ -119,7 +125,77 @@ completion_files() {
 	if command -v zsh >/dev/null 2>&1; then
 		# shellcheck disable=SC2016 # $fpath и $HOME раскрывает zsh
 		zdir=$(zsh -c 'for d in $fpath; do case $d in $HOME/*) if [ -d "$d" ] && [ -w "$d" ]; then print -r -- "$d"; break; fi ;; esac; done' 2>/dev/null </dev/null) || zdir=""
-		if [ -n "$zdir" ]; then echo "zsh $zdir/_$BINARY"; fi
+		# Каталога в $fpath нет — свой, его в $fpath добавляет блок
+		# ~/.zshrc (zshrc_block).
+		if [ -z "$zdir" ]; then zdir=$(zsh_site); fi
+		echo "zsh $zdir/_$BINARY"
+	fi
+}
+
+# zsh_site: каталог _evo, когда в $fpath нет каталога в домашнем.
+zsh_site() {
+	echo "${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions"
+}
+
+# Метки блока evo в ~/.zshrc: по ним повторная установка заменяет блок, а
+# --uninstall его убирает; строки вне меток скрипт не трогает.
+ZSHRC_BEGIN="# >>> evo: автодополнение (install.sh; убрать: install.sh --uninstall; не трогать: EVO_ZSHRC=0) >>>"
+ZSHRC_END="# <<< evo <<<"
+
+# zshrc_lines dir: строки, которые добавляют dir в $fpath и подключают
+# _evo — после compinit человека (compdef) или своим compinit.
+zshrc_lines() {
+	# shellcheck disable=SC2016 # $HOME раскрывает zsh при чтении ~/.zshrc
+	case $1 in
+	"$HOME"/*) d='$HOME'${1#"$HOME"} ;;
+	*) d=$1 ;;
+	esac
+	# shellcheck disable=SC2016 # $fpath раскрывает zsh
+	printf 'fpath=("%s" $fpath)\n' "$d"
+	# shellcheck disable=SC2016 # $+functions раскрывает zsh
+	printf '%s\n' 'if (( $+functions[compdef] )); then autoload -Uz _evo && compdef _evo evo; else autoload -Uz compinit && compinit; fi'
+}
+
+# zshrc_unblock rc: убрать блок evo из rc, если он есть; права и ссылка
+# файла остаются (запись поверх, а не замена файла).
+zshrc_unblock() {
+	rc=$1
+	[ -f "$rc" ] && grep -qF "$ZSHRC_BEGIN" "$rc" || return 0
+	tmp="$rc.evo.$$"
+	# С блоком уходит и пустая строка перед ним, которую дописала установка:
+	# после --uninstall файл тот же, что до установки.
+	awk -v b="$ZSHRC_BEGIN" -v e="$ZSHRC_END" '
+		$0 == b { skip = 1; held = 0; next }
+		skip { if ($0 == e) skip = 0; next }
+		held { print ""; held = 0 }
+		$0 == "" { held = 1; next }
+		{ print }
+		END { if (held) print "" }' "$rc" >"$tmp" &&
+		cat "$tmp" >"$rc"
+	rm -f "$tmp"
+}
+
+# zshrc_block bin: для zsh, у которого _evo лежит в своём каталоге
+# (zsh_site), — блок в конце ~/.zshrc, который добавляет каталог в $fpath;
+# повторная установка заменяет блок. EVO_ZSHRC=0 — ~/.zshrc не трогать,
+# напечатать строки, которые человек добавит сам.
+zshrc_block() {
+	command -v zsh >/dev/null 2>&1 || return 0
+	site=$(zsh_site)
+	completion_files | grep -qF "zsh $site/" || return 0
+	case "${SHELL:-}" in */zsh) ;; *) return 0 ;; esac
+	rc="${ZDOTDIR:-$HOME}/.zshrc"
+	if [ "${EVO_ZSHRC:-}" = 0 ]; then
+		say "Автодополнение zsh: EVO_ZSHRC=0, ~/.zshrc не тронут; добавьте в него строки:"
+		zshrc_lines "$site" | while IFS= read -r l; do say "  $l"; done
+		return 0
+	fi
+	zshrc_unblock "$rc"
+	if { printf '\n%s\n' "$ZSHRC_BEGIN" && zshrc_lines "$site" && printf '%s\n' "$ZSHRC_END"; } >>"$rc"; then
+		say "Автодополнение zsh: блок evo в $rc (каталог $site в \$fpath). Убрать: install.sh --uninstall; не трогать ~/.zshrc: EVO_ZSHRC=0"
+	else
+		say "автодополнение zsh: $rc не записан; добавьте в него строки:"
+		zshrc_lines "$site" | while IFS= read -r l; do say "  $l"; done
 	fi
 }
 
@@ -140,9 +216,7 @@ install_completions() {
 	done
 	# Строки для профиля — с полным путём: каталога установки может не быть
 	# в PATH, и профиль не должен падать на «evo: command not found».
-	if command -v zsh >/dev/null 2>&1 && ! completion_files | grep -q '^zsh '; then
-		say "Автодополнение zsh: добавьте в ~/.zshrc строку  source <($bin completion zsh)"
-	fi
+	zshrc_block
 	if command -v pwsh >/dev/null 2>&1; then
 		say "Автодополнение PowerShell: добавьте в \$PROFILE строку  $bin completion powershell | Out-String | Invoke-Expression"
 	fi
@@ -174,6 +248,11 @@ uninstall() {
 			say "Удалено: $file"
 		fi
 	done
+	rc="${ZDOTDIR:-$HOME}/.zshrc"
+	if [ -f "$rc" ] && grep -qF "$ZSHRC_BEGIN" "$rc"; then
+		zshrc_unblock "$rc"
+		say "Удалено: блок evo из $rc"
+	fi
 }
 
 main() {
