@@ -11,9 +11,10 @@
 #       zsh -i -c 'compinit; compinit; print -r -- ${_comps[evo]}' не пусто.
 # Шаг CI — на macOS (zsh там есть всегда). Пока PENDING=1, правки
 # install.sh нет, и проверка ждёт, что хотя бы одно условие не выполнено:
-# строка снимается правкой «разработки» (Closes by 1.7). Переменная,
-# которой человек отключает правку ~/.zshrc, — её выбор; проверка
-# добавится с ней.
+# строка снимается правкой «разработки» (Closes by 1.7).
+#   T5  EVO_ZSHRC=0 (вид EVO_ACTIVE_HELP=0, #718): _evo ложится в
+#       site-functions, ~/.zshrc не тронут, install.sh печатает строку с
+#       $fpath, которую человек добавит сам; --uninstall убирает _evo.
 set -euo pipefail
 
 PENDING=1
@@ -26,7 +27,7 @@ trap 'rm -rf "$work"' EXIT
 case "$(uname -s)" in Linux) os=linux ;; Darwin) os=darwin ;; *) echo "ОС $(uname -s)" >&2; exit 1 ;; esac
 case "$(uname -m)" in x86_64 | amd64) arch=amd64 ;; aarch64 | arm64) arch=arm64 ;; *) echo "arch $(uname -m)" >&2; exit 1 ;; esac
 
-mkdir -p "$work/pkg" "$work/rel/v9.9.9" "$work/home" "$work/bin"
+mkdir -p "$work/pkg" "$work/rel/v9.9.9" "$work/home" "$work/home-off" "$work/bin"
 (cd "$root" && go build -o "$work/pkg/evo" ./cmd/evo)
 cp "$work/pkg/evo" "$work/pkg/cloudru-vm"
 archive="evo_9.9.9_${os}_${arch}.tar.gz"
@@ -34,8 +35,12 @@ tar -czf "$work/rel/v9.9.9/$archive" -C "$work/pkg" evo cloudru-vm
 if command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum "$work/rel/v9.9.9/$archive" | cut -d' ' -f1); else sum=$(shasum -a 256 "$work/rel/v9.9.9/$archive" | cut -d' ' -f1); fi
 echo "$sum  $archive" >"$work/rel/v9.9.9/checksums.txt"
 
+# home и zshrc_env — HOME установки и значение EVO_ZSHRC (пусто — правка
+# ~/.zshrc по умолчанию).
+home="$work/home"
+zshrc_env=
 run_install() {
-	env -i PATH="$work/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$work/home" SHELL="$zsh" INSTALL_DIR="$work/bin" \
+	env -i PATH="$work/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$home" SHELL="$zsh" INSTALL_DIR="$work/bin" EVO_ZSHRC="$zshrc_env" \
 		CLOUDRU_VM_VERSION=v9.9.9 CLOUDRU_VM_BASE_URL="file://$work/rel" sh "$root/install.sh" "$@" >"$work/install.log" 2>&1 ||
 		{ cat "$work/install.log" >&2; return 1; }
 }
@@ -66,6 +71,21 @@ check "T5: повторная установка — блок в ~/.zshrc оди
 run_install --uninstall
 check "T5: --uninstall убирает _evo" test ! -e "$site/_evo"
 check "T5: --uninstall убирает блок из ~/.zshrc" test "$(blocks)" -eq 0
+
+# EVO_ZSHRC=0: ~/.zshrc человека остаётся байт в байт.
+home="$work/home-off"
+zshrc_env=0
+site="$home/.local/share/zsh/site-functions"
+rc="$home/.zshrc"
+printf '# свой ~/.zshrc\nautoload -Uz compinit && compinit\n' >"$rc"
+cp "$rc" "$work/zshrc.before"
+run_install
+check "T5: EVO_ZSHRC=0 — _evo в $site" test -f "$site/_evo"
+check "T5: EVO_ZSHRC=0 — ~/.zshrc не тронут" cmp -s "$rc" "$work/zshrc.before"
+check "T5: EVO_ZSHRC=0 — install.sh печатает строку, которая добавляет site-functions в \$fpath" grep -q 'fpath.*zsh/site-functions' "$work/install.log"
+run_install --uninstall
+check "T5: EVO_ZSHRC=0, --uninstall убирает _evo" test ! -e "$site/_evo"
+check "T5: EVO_ZSHRC=0, --uninstall не трогает ~/.zshrc без блока" cmp -s "$rc" "$work/zshrc.before"
 
 if [ "$PENDING" = 1 ]; then
 	if [ ${#failed[@]} -eq 0 ]; then
