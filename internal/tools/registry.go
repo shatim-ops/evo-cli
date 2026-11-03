@@ -67,7 +67,7 @@ type Tool struct {
 	RequiredOneOf [][]string `json:"-"`
 	// UntrustedOutput: the answer carries what a workload or a stored
 	// object wrote (logs, kubectl output, S3 objects), which the agent must
-	// not take for instructions (untrustedOutput).
+	// not take for instructions (untrustedFields).
 	UntrustedOutput bool `json:"-"`
 	// CLI is the tool's command in the CLI (cliSpecs).
 	CLI     CLISpec `json:"-"`
@@ -176,7 +176,7 @@ func New(factory EngineFactory) *Registry {
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
 		t.RequiredOneOf = requiredOneOf[t.Name]
-		if t.UntrustedOutput = untrustedOutput[t.Name]; t.UntrustedOutput {
+		if t.UntrustedOutput = untrustedFields[t.Name].workload; t.UntrustedOutput {
 			t.Description += " " + untrustedOutputNote
 		}
 		t.CLI = cliSpecs[t.Name]
@@ -200,7 +200,7 @@ func New(factory EngineFactory) *Registry {
 			if keys := echoedArgs[t.Name]; keys != nil {
 				h = namedArgs(keys, h)
 			}
-			if f := untrustedFields[t.Name]; f != nil {
+			if f := untrustedFields[t.Name].fields; f != nil {
 				h = markUntrusted(f, h)
 			}
 			if r.unchecked == nil {
