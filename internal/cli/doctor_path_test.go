@@ -57,3 +57,20 @@ func TestDoctor_OtherEvoIsNotRun(t *testing.T) {
 		t.Errorf("evo doctor ran %s", evo)
 	}
 }
+
+// A release is built with -trimpath, and its build information then has no
+// -ldflags: its version is the main module's, from the git tag. A build
+// with -trimpath and no tag has no version to read — doctor names the
+// file, says the version is not read, and runs nothing.
+func TestDoctor_OtherEvoTrimpathWithoutTag(t *testing.T) {
+	dir := t.TempDir()
+	evo := copyFakeEvo(t, dir, builtFakeEvo(t, "9.8.4", true))
+	t.Setenv("PATH", dir)
+	checks := otherEvoChecks()
+	if len(checks) != 1 || !strings.Contains(checks[0].Detail, evo) {
+		t.Fatalf("want one check naming %s, got %+v", evo, checks)
+	}
+	if strings.Contains(checks[0].Detail, "9.8.4") || !strings.Contains(checks[0].Detail, "version not read") {
+		t.Errorf("a -trimpath build records no -ldflags: want «version not read», got %s", checks[0].Detail)
+	}
+}

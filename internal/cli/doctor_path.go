@@ -86,13 +86,16 @@ func sameFile(p string) string {
 	return p
 }
 
-// ldflagsVersion is the version a release stamps (-X main.version=…,
-// .goreleaser.yaml) as the build settings record it.
+// ldflagsVersion is the version -X main.version=… stamps, as the build
+// settings record it. Only a local build has it: a release is built with
+// -trimpath (.goreleaser.yaml), and then Go records no -ldflags.
 var ldflagsVersion = regexp.MustCompile(`-X[= ]main\.version=([^\s'"]+)`)
 
 // evoVersionOf reads the version of the evo at path from its build
 // information, without running it: the file may be anyone's, and a run
-// would hand it the environment — the keys of evo among it (§4). A file
+// would hand it the environment — the keys of evo among it (§4). A release
+// has it as the main module's version, which Go (1.24 and later) takes
+// from the git tag of the build; a local build — from -ldflags. A file
 // that is no Go binary, or has no version, is named without one.
 func evoVersionOf(path string) string {
 	bi, err := buildinfo.ReadFile(path)

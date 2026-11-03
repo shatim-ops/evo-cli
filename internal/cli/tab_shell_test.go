@@ -81,14 +81,20 @@ func fakeEvoName() string {
 	return "evo"
 }
 
-// builtFakeEvo builds, once per package, an evo whose build information
-// records version v the way a release stamps it (-ldflags -X
-// main.version=v), and returns its path.
-func builtFakeEvo(t *testing.T, v string) string {
+// builtFakeEvo builds, once per package, an evo stamped with version v
+// (-ldflags -X main.version=v), and returns its path. Built with -trimpath,
+// as a release is, its build information records no -ldflags: a release's
+// version is the main module's, from its git tag, which this module
+// outside git has not.
+func builtFakeEvo(t *testing.T, v string, trimpath bool) string {
 	t.Helper()
 	fakeEvos.Lock()
 	defer fakeEvos.Unlock()
-	if p, ok := fakeEvos.built[v]; ok {
+	key := v
+	if trimpath {
+		key += "-trimpath"
+	}
+	if p, ok := fakeEvos.built[key]; ok {
 		return p
 	}
 	goBin, err := exec.LookPath("go")
@@ -118,14 +124,18 @@ func builtFakeEvo(t *testing.T, v string) string {
 			t.Fatal(err)
 		}
 	}
-	path := filepath.Join(fakeEvos.dir, v, fakeEvoName())
-	build := exec.Command(goBin, "build", "-o", path, "-ldflags", "-X main.version="+v, ".")
+	path := filepath.Join(fakeEvos.dir, key, fakeEvoName())
+	args := []string{"build", "-o", path, "-ldflags", "-X main.version=" + v}
+	if trimpath {
+		args = append(args, "-trimpath")
+	}
+	build := exec.Command(goBin, append(args, ".")...)
 	build.Dir = src
 	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build a fake evo %s: %v\n%s", v, err, out)
 	}
-	fakeEvos.built[v] = path
+	fakeEvos.built[key] = path
 	return path
 }
 
@@ -134,7 +144,14 @@ func builtFakeEvo(t *testing.T, v string) string {
 // never runs it. It returns its path.
 func fakeEvoInPath(t *testing.T, dir, v string) string {
 	t.Helper()
-	body, err := os.ReadFile(builtFakeEvo(t, v))
+	return copyFakeEvo(t, dir, builtFakeEvo(t, v, false))
+}
+
+// copyFakeEvo copies the built evo at built into dir, under the name PATH
+// resolves as evo, and returns its path.
+func copyFakeEvo(t *testing.T, dir, built string) string {
+	t.Helper()
+	body, err := os.ReadFile(built)
 	if err != nil {
 		t.Fatal(err)
 	}
