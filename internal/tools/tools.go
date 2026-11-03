@@ -453,7 +453,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_helm",
-			Description: "Drive Helm on a cluster: action=install|upgrade|uninstall|list|status. install/upgrade are idempotent (helm upgrade --install --wait). Optionally add a chart repo via repo_url. Pass values (inline YAML) and/or set (array of key=value). Mutating actions require confirmed=true. Ideal for standard products (e.g. kube-prometheus-stack, databases). NB: nodes need egress (snat_create) to pull chart images; size the node pool for the chart (monitoring stacks want ≥8GB nodes).",
+			Description: "Drive Helm on a cluster: action=install|upgrade|uninstall|list|status. install/upgrade are idempotent (helm upgrade --install); over MCP they do not wait for the pods: status deploying, then action=status. repo_url adds a chart repo first. Pass values (inline YAML) and/or set (array of key=value). Mutating actions require confirmed=true. NB: nodes need egress (snat_create) to pull chart images; size the node pool for the chart (monitoring stacks want ≥8GB nodes).",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),

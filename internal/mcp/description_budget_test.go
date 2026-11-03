@@ -35,7 +35,7 @@ var toolsOverBudget = map[string]int{
 	"image_list":       1594,
 	"k8s_add_addon":    2307,
 	"k8s_add_nodepool": 1694,
-	"k8s_helm":         1798,
+	"k8s_helm":         1792,
 	"k8s_plan":         1739,
 	"kafka_create":     2030,
 	"lb_create":        2076,
