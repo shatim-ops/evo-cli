@@ -59,6 +59,8 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
   secret. It bounds the server only: the evo CLI with the same key still
   changes the cloud. An agent nobody watches also needs a key whose service
   account has only a viewer role.
+- A task that only reads (costs, inventory, logs) needs no change: ask the
+  person to run the server with `--read-only` for it.
 - `evo agent setup --client <client>` connects evo to an MCP client, with the
   groups `deploy,vm,vpc,disk,image` by default.
 

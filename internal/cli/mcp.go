@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -216,6 +217,11 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, re
 	if readOnly {
 		srv.SetReadOnly()
 	}
+	if len(toolsets) == 0 {
+		// The stderr of both transports: over stdio it is no protocol
+		// channel, and the HTTP server logs there too.
+		clog.New(cmd.ErrOrStderr(), flagVerbose).Warn(toolsetsWarning(srv.ListTools()))
+	}
 
 	if httpAddr == "" {
 		if cmd.Flags().Changed("auth") || allowSecretExport {
@@ -246,6 +252,17 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, re
 		AllowSecretExport: allowSecretExport,
 		Logger:            logger.Logger,
 	}, nil)
+}
+
+// toolsetsWarning is the warning of evo mcp without --toolsets: every tool
+// goes to the client in every session, and its schemas cost the model's
+// context on each request (~30 thousand tokens a request in the LLM run of
+// Grok on 1.6.0).
+func toolsetsWarning(listed []mcp.Tool) string {
+	b, _ := json.Marshal(listed)
+	return fmt.Sprintf("no --toolsets: all %d tools (~%d KB of descriptions and schemas) go to the client in every session; "+
+		"show only the groups of the task with --toolsets <groups> (evo agent setup uses %s)",
+		len(listed), (len(b)+512)/1024, strings.Join(defaultToolsets, ","))
 }
 
 // newMCPServer is the server of evo mcp on the projects of --allow-project

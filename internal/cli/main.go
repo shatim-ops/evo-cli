@@ -328,8 +328,8 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, i18n.T("Disable colored output", "Без цвета"))
 	cmd.PersistentFlags().StringVar(&flagProfile, "profile", "", i18n.T("Credentials profile (default: $CLOUDRU_PROFILE or \"default\")",
 		"Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или \"default\")"))
-	cmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, i18n.T("Confirm operations that create paid resources or delete data, without a prompt",
-		"Подтвердить без вопроса операции, которые создают платные ресурсы или удаляют данные"))
+	cmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, i18n.T("The person's consent, given in advance, to operations that create paid resources or delete data: no prompt. An agent does not add it on its own",
+		"Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит"))
 	cmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, i18n.T("Show what would be created or deleted (with a cost estimate) and exit",
 		"Показать, что будет создано или удалено (с оценкой цены), и выйти"))
 	addScopeFlags(cmd)
