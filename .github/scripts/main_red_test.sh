@@ -37,7 +37,7 @@ run() { # ИМЯ исход открытое ждём…
   rm -f "$work/reads"
   PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" FAKE_BODY="$work/body" FAKE_OPEN="$3" \
     FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" \
-    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" LOG_RETRY_SLEEP=0 \
+    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" LOG_RETRY_SLEEP=0 LOG_WAIT="${LOG_WAIT:-120}" \
     GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" HEAD_SHA=0123456789abcdef \
     "$here/main_red.sh" >/dev/null 2>"$work/stderr" || { echo "FAIL $1: скрипт упал"; cat "$work/stderr"; fail=1; return; }
   local name=$1
@@ -77,6 +77,9 @@ FAKE_JOBS='103\ttest (macos-latest)\n' FAKE_NO_LOG=1 \
 FAKE_JOBS='105\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestLate\n' FAKE_LOG_LATE=2 \
   run "лог выложен не сразу — третья попытка его читает" failure "" \
   "calls:issue create" "body:--- FAIL: TestLate" "nocalls:issue close"
+FAKE_JOBS='106\ta\n107\tb\n' FAKE_NO_LOG=1 LOG_WAIT=0 \
+  run "логов нет, бюджет ожидания кончился — issue всё равно заводится" failure "" \
+  "calls:issue create" "body:**a**" "body:**b**" "stderr:за 1 попыток"
 run "зелёный, два открытых — закрывает оба" success "7 8" \
   "calls:issue close 7" "calls:issue close 8" "nocalls:issue create"
 exit "$fail"
