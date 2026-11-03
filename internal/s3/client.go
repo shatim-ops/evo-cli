@@ -48,7 +48,11 @@ func New(cfg Config) (*Client, error) {
 		// A configuration problem, not an API error: exit 2, like a missing
 		// Cloud.ru key.
 		return nil, clierrors.New(clierrors.CodeConfigInvalid,
-			i18n.T("S3 credentials not configured (set CLOUDRU_S3_ACCESS_KEY / CLOUDRU_S3_SECRET_KEY, or the s3 section of the profile)", "не заданы ключи S3 (CLOUDRU_S3_ACCESS_KEY / CLOUDRU_S3_SECRET_KEY или раздел s3 профиля)"), "")
+			i18n.T("S3 credentials not configured (set CLOUDRU_S3_ACCESS_KEY / CLOUDRU_S3_SECRET_KEY, or the s3 section of the profile)", "не заданы ключи S3 (CLOUDRU_S3_ACCESS_KEY / CLOUDRU_S3_SECRET_KEY или раздел s3 профиля)"),
+			// How to set them (agent run M2, Ц-10: the refusal named the
+			// variables only, and configure had no word of S3).
+			i18n.T("The person sets them from the profile's access key and the tenant ID of Object Storage (console: Object Storage, API settings) with evo configure s3; see docs/auth.md, the S3 keys.",
+				"Их задаёт человек из ключа доступа профиля и tenant ID Object Storage (консоль: Object Storage → Параметры работы с API) командой evo configure s3; подробнее — docs/auth.md, «Ключи Object Storage (S3)»."))
 	}
 	endpoint := cfg.Endpoint
 	if endpoint == "" {

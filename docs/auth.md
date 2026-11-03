@@ -174,7 +174,11 @@ evo configure delete staging
 - аккаунту нужна роль Object Storage: `s3e.viewer` для чтения, `s3e.editor`
   для записи.
 
-`configure` их не спрашивает: задайте переменными
+Проще всего — из ключа профиля: `evo configure s3 --tenant-id <tenant_id>`
+пишет секцию `s3` профиля (`access_key` — `<tenant_id>:<Key ID>`, `secret_key` —
+Key Secret того же ключа; `endpoint` и `region` остаются прежними), секрет
+второй раз не вводится. Проверка — `evo s3 buckets`. Без ключа в профиле
+команда отказывает: сначала `evo configure`. Иначе — переменными
 `CLOUDRU_S3_*` (таблица ниже) или секцией `s3` профиля в `credentials.yaml`:
 
 ```yaml

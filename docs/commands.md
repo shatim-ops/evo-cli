@@ -58,6 +58,7 @@
   - [evo configure](#evo-configure)
     - [evo configure delete](#evo-configure-delete)
     - [evo configure list](#evo-configure-list)
+    - [evo configure s3](#evo-configure-s3)
   - [evo deploy](#evo-deploy)
     - [evo deploy apply](#evo-deploy-apply)
     - [evo deploy list](#evo-deploy-list)
@@ -2299,6 +2300,7 @@ evo configure [flags]
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 * [evo configure delete](#evo-configure-delete)	 - Удалить сохранённый профиль и его токен из кэша
 * [evo configure list](#evo-configure-list)	 - Сохранённые профили
+* [evo configure s3](#evo-configure-s3)	 - Ключи S3 профиля из его ключа доступа и tenant ID
 
 ## evo configure delete
 
@@ -2347,6 +2349,50 @@ evo configure list [flags]
 
 ```
   -h, --help   Справка по list
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo configure](#evo-configure)	 - Ключ доступа, проект и зона по умолчанию для профиля
+
+## evo configure s3
+
+> Локальная команда: пишет ключи S3 в профиль на диске той машины, где стоит evo, из его ключа доступа; MCP-клиент ключей не передаёт по контракту (docs/mcp.md).
+
+Ключи S3 профиля из его ключа доступа и tenant ID
+
+### Synopsis
+
+```text
+Ключи S3 профиля (инструменты s3_* и evo s3) из его ключа доступа:
+Object Storage принимает тот же ключ — access_key <tenant_id>:<Key ID>,
+secret_key — Key Secret. tenant ID — в консоли: «Хранение данных → Object
+Storage → Параметры работы с API». Аккаунту нужна роль Object Storage
+(s3e.viewer для чтения, s3e.editor для записи). Проверка: evo s3 buckets.
+```
+
+```
+evo configure s3 [flags]
+```
+
+### Options
+
+```
+  -h, --help               Справка по s3
+      --tenant-id string   tenant ID Object Storage (консоль: Object Storage → Параметры работы с API); обязательный
 ```
 
 ### Options inherited from parent commands
