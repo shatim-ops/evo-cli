@@ -43,7 +43,7 @@ var toolsOverBudget = map[string]int{
 	"pg_create":        2480,
 	"provision":        3298,
 	"redis_create":     2367,
-	"subnet_create":    1813,
+	"subnet_create":    1805,
 }
 
 // P13 and D68 (release plan 1.7; agent runs of Grok on 1.6.0): D68 moves

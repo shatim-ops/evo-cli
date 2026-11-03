@@ -100,3 +100,23 @@ func TestDiag_OnRecordStatusExport(t *testing.T) {
 		t.Error("diag off")
 	}
 }
+
+// F23 (agent runs of Grok on 1.6.0): an export right after 'evo diag on'
+// found the journal empty and said to turn it on. The hint follows the
+// journal's state: on — work as usual, then export; off — turn it on. The
+// code stays NOT_FOUND.
+func TestDiag_ExportEmptyHintFollowsTheState(t *testing.T) {
+	setupCLI(t)
+	dir := t.TempDir()
+	code, _, errOut := runCLI(t, "", "diag", "export", "--out", filepath.Join(dir, "off.jsonl"))
+	if code != 4 || !strings.Contains(errOut, "evo diag on") {
+		t.Errorf("off: exit %d, want 4 and to turn it on: %s", code, errOut)
+	}
+	if code, _, errOut := runCLI(t, "", "diag", "on"); code != 0 {
+		t.Fatalf("diag on: %s", errOut)
+	}
+	code, _, errOut = runCLI(t, "", "diag", "export", "--out", filepath.Join(dir, "on.jsonl"))
+	if code != 4 || strings.Contains(errOut, "evo diag on") || !strings.Contains(errOut, "is on") {
+		t.Errorf("on: exit %d, want 4 and that it is on: %s", code, errOut)
+	}
+}

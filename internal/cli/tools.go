@@ -880,8 +880,8 @@ var missingInputHints = map[string]func(flag string) string{
 			"Задайте %[1]s (список: evo image list), например %[1]s Ubuntu-24.04.", flag)
 	},
 	"subnet_id": func(flag string) string {
-		return i18n.Tf("Pass %[1]s (list: evo vpc subnets) or another zone with --region; if the project has no subnet in any zone, create one in the Cloud.ru console.",
-			"Задайте %[1]s (список: evo vpc subnets) или другую зону через --region; если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru.", flag)
+		return i18n.Tf("Pass %[1]s (list: evo vpc subnets) or another zone with --region; if the project has no subnet in any zone, create one: evo vpc subnet-create.",
+			"Задайте %[1]s (список: evo vpc subnets) или другую зону через --region; если в проекте нет подсети ни в одной зоне — создайте её: evo vpc subnet-create.", flag)
 	},
 }
 
