@@ -3084,6 +3084,13 @@ func destroyDeleting(ctx context.Context, eng *engine.Engine, statePath, project
 	if stateErr != nil {
 		out["warning"] = fmt.Sprintf("the local state was not updated: %v", stateErr)
 	}
+	// The call found the VM deleting already: a repeat. A VM can stay in
+	// DELETING (OPS-18), and repeating would go on for ever while it is
+	// billed: the way out of DeleteWayOut, the one for every delete.
+	if _, way := engine.DeleteWayOut(target.Status, target.ID); way != "" && strings.EqualFold(target.Status, "deleting") {
+		out["way_out"] = way
+		out["next"] = out["next"].(string) + " " + way
+	}
 	repeat := map[string]any{"vm_id": target.ID, "confirmed": true}
 	if v, ok := args["release_ip"]; ok {
 		repeat["release_ip"] = v

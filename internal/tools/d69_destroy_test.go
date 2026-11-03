@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +61,9 @@ func TestD69_DestroyAnswersDeletingWithTheNextStep(t *testing.T) {
 	if m["next_tool"] != "destroy" {
 		t.Errorf("next_tool %v, want destroy: %s", m["next_tool"], text)
 	}
+	if _, ok := m["way_out"]; ok {
+		t.Errorf("the first answer, the delete just sent, names a way out: %s", text)
+	}
 	if args, _ := m["next_args"].(map[string]any); args["vm_id"] != vmID || args["confirmed"] != true {
 		t.Errorf("next_args do not repeat the delete: %v", args)
 	}
@@ -83,8 +87,16 @@ func TestD69_DestroyAnswersDeletingWithTheNextStep(t *testing.T) {
 	// second DELETE (Cloud.ru refuses one with 409 in deleting, OPS-18).
 	before := deleteCalls(cloud)
 	text, isErr = r.handlers["destroy"](context.Background(), map[string]any{"vm_id": vmID, "confirmed": true})
-	if m := decode(t, text); isErr || m["status"] != "deleting" {
+	m = decode(t, text)
+	if isErr || m["status"] != "deleting" {
 		t.Fatalf("repeat while deleting: %s", text)
+	}
+	// A VM that stays in deleting is a loop for an agent repeating the
+	// call: the repeat names the way out of DeleteWayOut, the console or
+	// support with the VM's id (OPS-18; axis 3).
+	if way, _ := m["way_out"].(string); !strings.Contains(way, "support") || !strings.Contains(way, vmID) ||
+		!strings.Contains(fmt.Sprint(m["next"]), way) {
+		t.Errorf("the repeat that finds the VM deleting names no way out: %s", text)
 	}
 	if n := deleteCalls(cloud) - before; n != 0 {
 		t.Errorf("the repeat sent %d DELETE of a VM already deleting", n)
