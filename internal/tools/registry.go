@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -102,6 +103,67 @@ type Registry struct {
 	projectBound bool
 	// ops are the operations this bound registry started (kindOperation).
 	ops operationSet
+	// callBudget: SetCallBudget; 0 — a call waits as long as its work
+	// takes (the CLI).
+	callBudget time.Duration
+}
+
+// MCPCallBudget is how long a call of evo mcp may wait for the cloud before
+// it answers with the state of what it started (D69): MCP clients often
+// break a call off at 60 s (Claude Code's default MCP_TOOL_TIMEOUT).
+const MCPCallBudget = 45 * time.Second
+
+// SetCallBudget bounds the wait of every call of the registry for the
+// cloud: a call that has not seen its work end answers within d of its
+// start with the state so far and the next step (D69). The CLI sets none
+// and waits as before (H14); a call's wait argument overrides it. evo mcp
+// sets MCPCallBudget. Call it before the registry serves calls.
+func (r *Registry) SetCallBudget(d time.Duration) { r.callBudget = d }
+
+// CallBudget is the budget SetCallBudget set, 0 without one.
+func (r *Registry) CallBudget() time.Duration { return r.callBudget }
+
+type callUntilKey struct{}
+
+// withCallStart is ctx with the end of the budget of the outermost call: a
+// tool a tool calls (a step of a stack) spends the budget of the call it is
+// a step of. Without a budget ctx is as it was.
+func (r *Registry) withCallStart(ctx context.Context) context.Context {
+	if _, ok := ctx.Value(callUntilKey{}).(time.Time); ok || r.callBudget <= 0 {
+		return ctx
+	}
+	// wall-clock: the end of D69's budget of the call.
+	return context.WithValue(ctx, callUntilKey{}, time.Now().Add(r.callBudget))
+}
+
+// waitLeft is how long the call may still wait for the cloud, and whether
+// it is bounded at all: the argument wait (false — not at all, true — as
+// long as the work takes), else what is left of the budget of the
+// outermost call (budgetLeft).
+func (r *Registry) waitLeft(ctx context.Context, args map[string]any) (time.Duration, bool) {
+	if w, given := args["wait"].(bool); given {
+		return 0, !w
+	}
+	return budgetLeft(ctx)
+}
+
+// budgetLeft is what is left of the budget of the call ctx belongs to, and
+// whether it has one (withCallStart): the bound of every wait for the
+// cloud inside the call, the waits of operations included.
+func budgetLeft(ctx context.Context) (time.Duration, bool) {
+	until, ok := ctx.Value(callUntilKey{}).(time.Time)
+	if !ok {
+		return 0, false
+	}
+	// wall-clock: D69's budget is a bound on the wall clock of the call.
+	return max(time.Until(until), 0), true
+}
+
+// budgeted stamps a call with its start (withCallStart).
+func (r *Registry) budgeted(next Handler) Handler {
+	return func(ctx context.Context, args map[string]any) (string, bool) {
+		return next(r.withCallStart(ctx), args)
+	}
 }
 
 // New builds the registry. factory is called by handlers that need an
@@ -145,7 +207,7 @@ func New(factory EngineFactory) *Registry {
 				r.unchecked = map[string]Handler{}
 			}
 			r.unchecked[t.Name] = checkedCreateName(t.Name, h)
-			r.handlers[t.Name] = outer(t.Name, t.InputSchema, r.unchecked[t.Name])
+			r.handlers[t.Name] = r.budgeted(outer(t.Name, t.InputSchema, r.unchecked[t.Name]))
 		}
 		t.Handler = r.handlers[t.Name]
 	}
@@ -183,7 +245,7 @@ func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
 	}
 	t, _ := r.Lookup(name)
 	r.unchecked[name] = wrap(next)
-	h := outer(name, t.InputSchema, r.unchecked[name])
+	h := r.budgeted(outer(name, t.InputSchema, r.unchecked[name]))
 	r.handlers[name] = h
 	for i := range r.tools {
 		if r.tools[i].Name == name {

@@ -153,6 +153,9 @@ func New(factory EngineFactory, version string) *Server {
 		handlers: map[string]toolHandler{},
 		reg:      tools.New(factory),
 	}
+	// A call answers within D69's budget with the state of what it started:
+	// MCP clients break long calls off (H14); the CLI waits as before.
+	s.reg.SetCallBudget(tools.MCPCallBudget)
 	// The tools live in internal/tools, shared with the CLI; this package is
 	// only the transport.
 	for _, t := range s.reg.Tools() {

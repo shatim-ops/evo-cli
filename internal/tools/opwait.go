@@ -22,7 +22,17 @@ import (
 // raw get/list every 2-3s. Single resource → optional capped wait here; multi-step
 // orchestration → stack_status owns the waiting. No blocking beyond the cap.
 
-const opWaitMaxSeconds = 300
+// opWaitMaxSeconds is the longest wait_seconds of an *_operation tool: D69's
+// budget of an MCP call (MCPCallBudget), in the schema (opWaitProp).
+const opWaitMaxSeconds = int(MCPCallBudget / time.Second)
+
+// opWaitDescRU is wait_seconds of the *_operation tools in the CLI's
+// Russian (opWaitProp).
+var opWaitDescRU = fmt.Sprintf("Ждать итогового состояния до N секунд (не больше %d), опрашивая операцию с нарастающим интервалом. "+
+	"Без флага — одна проверка", opWaitMaxSeconds)
+
+// stackStatusMaxWait is the longest wait of one stack_status call.
+const stackStatusMaxWait = 20
 
 // opWaitFirstDelay is the first poll interval of waitForOpJSON. A variable only
 // so that tests can shorten it; production code never changes it.
@@ -85,6 +95,13 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 		waitSeconds = opWaitMaxSeconds
 	}
 	deadline := time.Now().Add(time.Duration(waitSeconds) * time.Second)
+	// Within the budget of the call (D69): an MCP call answers with the
+	// operation's state so far, and the agent asks again.
+	if left, capped := budgetLeft(ctx); capped {
+		if until := time.Now().Add(left); until.Before(deadline) {
+			deadline = until
+		}
+	}
 	delay := opWaitFirstDelay
 	pp, _ := progressOf(ctx)
 	wait := engine.NewWaitLine(pp, 0, func(elapsed, state string) string {
@@ -160,4 +177,12 @@ func stillRunning(m map[string]any, waitSeconds int) map[string]any {
 	out["still_running"] = true
 	out["note"] = fmt.Sprintf("not done after waiting %d s; call again (wait_seconds) to keep waiting", waitSeconds)
 	return out
+}
+
+// nextStep puts into an answer that a budget or wait=false cut short the
+// tool to call next and its arguments (D69): the machine's next step,
+// beside the text of "next" for the person.
+func nextStep(answer map[string]any, tool string, args map[string]any) {
+	answer["next_tool"] = tool
+	answer["next_args"] = args
 }

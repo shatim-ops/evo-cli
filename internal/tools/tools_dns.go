@@ -332,7 +332,9 @@ var dnsZoneDeleteWait = 60
 // interrupted (as *_operation's wait_seconds), an operation still running or
 // one that cannot be read is deleting with its id, as before.
 func dnsZoneDeleted(ctx context.Context, cli *dns.Client, vis, id string, op *dns.Operation) (string, bool) {
-	deleting := map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID}
+	deleting := map[string]any{"status": "deleting", "visibility": vis, "id": id, "operation_id": op.ID,
+		"next": fmt.Sprintf("dns_operation operation_id=%s wait_seconds=%d shows when the delete ends", op.ID, opWaitMaxSeconds)}
+	nextStep(deleting, "dns_operation", map[string]any{"operation_id": op.ID, "wait_seconds": opWaitMaxSeconds})
 	m, err := waitForOpJSON(ctx, dnsZoneDeleteWait, func(ctx context.Context) (map[string]any, error) {
 		got, err := cli.GetOperation(ctx, op.ID)
 		if err != nil {
@@ -341,7 +343,8 @@ func dnsZoneDeleted(ctx context.Context, cli *dns.Client, vis, id string, op *dn
 		return opToMap(got), nil
 	})
 	if errors.Is(err, context.Canceled) {
-		return errResult(err), true
+		// The delete is started: the answer names it (FB160-14).
+		return errAnswer(err, map[string]any{"id": id, "visibility": vis, "operation_id": op.ID}), true
 	}
 	if err != nil || m == nil {
 		return toJSON(deleting), false

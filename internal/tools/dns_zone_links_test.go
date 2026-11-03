@@ -121,4 +121,9 @@ func TestDNSZoneDelete_CancelledWaitIsAnError(t *testing.T) {
 	if !isErr || m["status"] != "error" || m["error"] != context.Canceled.Error() {
 		t.Errorf("a cancelled wait: want the error of the cancel, got %s", text)
 	}
+	// D69: a cancel is INTERRUPTED, and the answer names the delete already
+	// started (FB160-14).
+	if m["reason"] != "INTERRUPTED" || m["id"] != dnsPrivZone || m["visibility"] == nil || m["operation_id"] != dnsDeleteOp {
+		t.Errorf("a cancelled wait: want INTERRUPTED with id, visibility and operation_id, got %s", text)
+	}
 }
