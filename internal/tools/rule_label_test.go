@@ -132,3 +132,41 @@ func TestDestroyTargeted_ClosesTheVMsLabelledRulesFromAnotherFolder(t *testing.T
 		}
 	})
 }
+
+// unreadRulesCloud answers 503 for the rules of the groups.
+type unreadRulesCloud struct{ *labelCloud }
+
+func (*unreadRulesCloud) ListSecurityGroupRules(context.Context, string) ([]*provision.SGRule, error) {
+	return nil, clerrors.New(clerrors.CodeAPIError, "API returned status 503", "")
+}
+
+// A rule list that cannot be read is not "no rules" (axis 3): the preview
+// and the answer say the labelled rules were not all checked, with the
+// class of the error and the way to close them; the VM's delete goes on —
+// the clean-up comes first. A VM already gone answers the same, not a bare
+// already_deleted.
+func TestDestroyTargeted_AnUnreadRuleListIsSaid(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		listed bool
+	}{{"the VM deleted by this call", true}, {"the VM already gone", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			cloud := &unreadRulesCloud{newLabelCloud(tc.listed)}
+			r := folderB(t, cloud)
+			preview, _ := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": labelVMID})
+			if !strings.Contains(preview, `"labelled_rules_unchecked": "API_ERROR"`) || !strings.Contains(preview, "not all checked") {
+				t.Fatalf("the preview does not say the rules were not checked:\n%s", preview)
+			}
+			text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": labelVMID, "confirmed": true})
+			if isErr {
+				t.Fatalf("the VM's delete must go on: %s", text)
+			}
+			if !strings.Contains(text, `"labelled_rules_unchecked": "API_ERROR"`) || !strings.Contains(text, "repeat the same call with the VM's id") {
+				t.Errorf("the answer does not say the rules were not checked: %s", text)
+			}
+			if tc.listed && !cloud.vmGone {
+				t.Error("the VM was not deleted")
+			}
+		})
+	}
+}

@@ -37,11 +37,14 @@ func labelVM(desc string) string {
 
 // FindLabeled reads the rules of the project's security groups and returns
 // the ingress rules labelled for vmID that no record of sf holds (P6), as
-// Planned deletes with no RecordID. A
-// rule a record holds goes by that record (Close): kept for another
-// deployment, or marked for the next destroy. Reads only; an unread list
-// is the error, and nothing is found then.
-func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID string, sf *state.File) ([]Planned, error) {
+// Planned deletes with no RecordID. A rule a record holds goes by that
+// record (Close): kept for another deployment, or marked for the next
+// destroy. zoneID or zoneName, when the VM's zone is known (the VM still
+// there), limits the reads to that zone's groups — the VM's ports open in
+// its zone's group; a VM already gone has every group read. Reads only. A
+// list it could not read is the error, beside what the other groups gave:
+// the caller says the rules were not all checked.
+func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID, zoneID, zoneName string, sf *state.File) ([]Planned, error) {
 	if vmID == "" || cloud == nil {
 		return nil, nil
 	}
@@ -58,26 +61,40 @@ func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID 
 		return nil, err
 	}
 	var out []Planned
+	var firstErr error
 	for _, g := range groups {
-		if g == nil {
+		if g == nil || !inZone(g, zoneID, zoneName) {
 			continue
 		}
 		rules, err := cloud.ListSecurityGroupRules(ctx, g.ID)
 		if err != nil {
-			return nil, err
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
 		for _, r := range rules {
-			if r == nil || r.ID == "" || held[r.ID] || r.Direction != "ingress" || labelVM(r.Description) != vmID {
-				continue
-			}
-			if inactive[r.State] {
+			if r == nil || r.ID == "" || held[r.ID] || r.Direction != "ingress" || labelVM(r.Description) != vmID || inactive[r.State] {
 				continue
 			}
 			lo, _, _ := portRange(r.PortRange)
 			out = append(out, Planned{Rule: state.SGRule{ID: r.ID, SecurityGroupID: g.ID, Port: PortKey(strings.ToLower(r.IPProtocol), lo)}, VMID: vmID})
 		}
 	}
-	return out, nil
+	return out, firstErr
+}
+
+// inZone: group g is in the zone given, or no zone is given, or g names
+// none (it is read rather than missed).
+func inZone(g *provision.SecurityGroup, zoneID, zoneName string) bool {
+	if zoneID == "" && zoneName == "" {
+		return true
+	}
+	if g.AvailabilityZoneID == "" && g.AvailabilityZoneName == "" {
+		return true
+	}
+	return (zoneID != "" && (g.AvailabilityZoneID == zoneID || strings.EqualFold(g.AvailabilityZoneName, zoneID))) ||
+		(zoneName != "" && (strings.EqualFold(g.AvailabilityZoneName, zoneName) || g.AvailabilityZoneID == zoneName))
 }
 
 // CloseLabeled deletes the rules FindLabeled found, once their VM is gone

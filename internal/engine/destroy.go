@@ -63,7 +63,8 @@ func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, err
 		return confirm.Preview{}, false, err
 	}
 	shown := e.withNames(ctx, *active, nil, true)
-	return destroyPreview(&shown, sf, pending, e.labeledRules(ctx, sf, active), e.projectOf(active), e.projectFrom(active)), true, nil
+	labeled, uncheckedErr := e.labeledRules(ctx, sf, active)
+	return destroyPreview(&shown, sf, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active)), true, nil
 }
 
 // Destroy tears down the active deployment.
@@ -116,8 +117,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
-	labeled := e.labeledRules(ctx, stateFile, active)
-	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, labeled, e.projectOf(active), e.projectFrom(active)))
+	labeled, uncheckedErr := e.labeledRules(ctx, stateFile, active)
+	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active)))
 	if err != nil {
 		return err
 	}
@@ -248,6 +249,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// The rules labelled for the VM that the preview named and no record
 	// here holds (P6): opened for it from another folder.
 	rules.Add(e.closeLabeled(ctx, labeled))
+	if uncheckedErr != nil {
+		e.Printer.Warning(UncheckedRules(uncheckedErr))
+	}
 	if err := state.Write(statePath, stateFile); err != nil {
 		return err
 	}
@@ -259,6 +263,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
+		}
+		if uncheckedErr != nil {
+			out["labelled_rules_unchecked"] = clerrors.Reason(uncheckedErr)
 		}
 		if len(left) > 0 {
 			out["ports_left_open"] = left
@@ -355,18 +362,35 @@ func (e *Engine) NothingToDestroy() (map[string]any, bool) {
 	return noDeploymentAnswer(), true
 }
 
-// labeledRules are the rules labelled for the VM of rec that no record of
-// sf holds (sgrules.FindLabeled, P6): what destroy closes beside the
-// rules rec records. Read within the time of a preview's lookups; an
-// unread list finds none, and the rules stay as they were.
-func (e *Engine) labeledRules(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) []sgrules.Planned {
-	if e.Cloud == nil || rec == nil {
-		return nil
+// LabeledRules are the rules labelled for the VM vmID that no record of
+// sf holds (sgrules.FindLabeled, P6): what a delete of the VM closes beside
+// the rules its records hold. zoneID or zoneName, the VM's zone when known,
+// limits the reads to that zone's groups. Read within the time of a
+// preview's lookups. The error is a list not read: the answer says the
+// rules were not checked (UncheckedRules), and the VM's delete goes on.
+func (e *Engine) LabeledRules(ctx context.Context, sf *state.File, projectID, vmID, zoneID, zoneName string) ([]sgrules.Planned, error) {
+	if e.Cloud == nil {
+		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
 	defer cancel()
-	found, _ := sgrules.FindLabeled(ctx, e.Cloud, e.projectOf(rec), rec.VMID, sf)
-	return found
+	return sgrules.FindLabeled(ctx, e.Cloud, projectID, vmID, zoneID, zoneName, sf)
+}
+
+// UncheckedRules says that the rules labelled for the VM were not all
+// checked, and why (the class of the error): the same words in the
+// preview and the answer of every delete of a VM, CLI and MCP.
+func UncheckedRules(err error) string {
+	return i18n.Tf("the security group rules labelled for the VM were not all checked (%s); to close them, repeat the same call with the VM's id",
+		"правила группы безопасности с меткой ВМ проверены не все (%s); чтобы закрыть их, повторите тот же вызов с id ВМ", clerrors.Reason(err))
+}
+
+// labeledRules is LabeledRules for the VM of rec, in its zone.
+func (e *Engine) labeledRules(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) ([]sgrules.Planned, error) {
+	if rec == nil {
+		return nil, nil
+	}
+	return e.LabeledRules(ctx, sf, e.projectOf(rec), rec.VMID, rec.Region, rec.ZoneName)
 }
 
 // closeLabeled deletes the rules labeledRules found, once their VM is gone,

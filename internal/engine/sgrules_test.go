@@ -315,3 +315,26 @@ func TestDestroy_ClosesTheVMsLabelledRules(t *testing.T) {
 		t.Errorf("output:\n%s", out.String())
 	}
 }
+
+// A group list that cannot be read is not "no labelled rules": the preview
+// and the answer of evo destroy say they were not all checked, and the VM
+// and the record's own rules still go.
+func TestDestroy_AnUnreadRuleListIsSaid(t *testing.T) {
+	eng, cloud, out := destroyFixture(t, rulesRecord())
+	cloud.listSecurityGroupsFn = func(context.Context, string) ([]*provision.SecurityGroup, error) {
+		return nil, clerrors.New(clerrors.CodeAPIError, "API returned status 503", "")
+	}
+	p, _, err := eng.DestroyPreview(context.Background())
+	if err != nil || !strings.Contains(strings.Join(p.Lines, "\n"), "not all checked (API_ERROR)") {
+		t.Fatalf("preview (%v):\n%s", err, strings.Join(p.Lines, "\n"))
+	}
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if strings.Join(cloud.deletedRules, ",") != "sg-1/rule-80,sg-1/rule-53" {
+		t.Errorf("the record's own rules: deleted %v", cloud.deletedRules)
+	}
+	if !strings.Contains(out.String(), "not all checked (API_ERROR)") {
+		t.Errorf("output:\n%s", out.String())
+	}
+}

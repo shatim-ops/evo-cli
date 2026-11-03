@@ -14,6 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -368,7 +369,7 @@ func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 }
 
 // destroyPreview lists what destroy deletes and what it leaves behind.
-func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, labeled []sgrules.Planned, project, from string) confirm.Preview {
+func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, labeled []sgrules.Planned, unchecked error, project, from string) confirm.Preview {
 	res := []destroyResource{
 		{Type: "vm", ID: rec.VMID, Name: rec.VMName, Address: rec.VMIP, Action: "delete",
 			Note: i18n.T("all data on its disks is lost", "все данные на её дисках будут потеряны")},
@@ -386,6 +387,10 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 	ruleRes, ruleLines := rulePreview(sf, append([]string{rec.ID}, pending...), labeled)
 	res = append(res, ruleRes...)
 	lines = append(lines, ruleLines...)
+	if unchecked != nil {
+		res = append(res, destroyResource{Type: "security_group_rule", Action: "unchecked", Note: clerrors.Reason(unchecked)})
+		lines = append(lines, previewLabel("warning", "внимание")+UncheckedRules(unchecked))
+	}
 	for _, key := range rec.PortsAlreadyOpen {
 		note := i18n.T("not opened by this deploy", "открывался не этим deploy")
 		res = append(res, destroyResource{Type: "security_group_rule", Address: key, Action: "keep", Note: note})

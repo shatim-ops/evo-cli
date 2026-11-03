@@ -49,7 +49,7 @@ func TestFindLabeled_OnlyTheVMsRulesNoRecordHolds(t *testing.T) {
 	sf := &state.File{Deployments: []state.DeploymentRecord{{ID: "d-2", Status: "running",
 		OpenedRules: []state.SGRule{{ID: "held", SecurityGroupID: "sg-b", Port: "8080/tcp"}}}}}
 
-	found, err := FindLabeled(context.Background(), groupsCloud{f}, "p", "vm-1", sf)
+	found, err := FindLabeled(context.Background(), groupsCloud{f}, "p", "vm-1", "", "", sf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,5 +86,45 @@ func TestLabelVM(t *testing.T) {
 		if got := labelVM(desc); got != want {
 			t.Errorf("labelVM(%q) = %q, want %q", desc, got, want)
 		}
+	}
+}
+
+// zonedGroups lists sg-a in zone z-1 and sg-b in z-2; ListSecurityGroupRules
+// of a group in failing answers 503.
+type zonedGroups struct {
+	*fakeCloud
+	failing string
+	read    []string
+}
+
+func (c *zonedGroups) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return []*provision.SecurityGroup{{ID: "sg-a", AvailabilityZoneID: "z-1"}, {ID: "sg-b", AvailabilityZoneID: "z-2"}}, nil
+}
+func (c *zonedGroups) ListSecurityGroupRules(ctx context.Context, sg string) ([]*provision.SGRule, error) {
+	c.read = append(c.read, sg)
+	if sg == c.failing {
+		return nil, errors.New("API 503")
+	}
+	return c.fakeCloud.ListSecurityGroupRules(ctx, sg)
+}
+
+// The VM's zone known, only its groups are read (the VM's ports open in
+// its zone's group); a group that cannot be read is the error beside what
+// the others gave — the caller says the rules were not all checked.
+func TestFindLabeled_ZoneAndAnUnreadGroup(t *testing.T) {
+	f := newFake()
+	f.rules["sg-a"] = []provision.SGRule{{ID: "a", Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", Description: RuleLabel("80", "vm-1")}}
+	f.rules["sg-b"] = []provision.SGRule{{ID: "b", Direction: "ingress", IPProtocol: "tcp", PortRange: "81:81", Description: RuleLabel("81", "vm-1")}}
+
+	c := &zonedGroups{fakeCloud: f}
+	found, err := FindLabeled(context.Background(), c, "p", "vm-1", "z-1", "", nil)
+	if err != nil || len(found) != 1 || found[0].Rule.ID != "a" || strings.Join(c.read, ",") != "sg-a" {
+		t.Errorf("in zone z-1: found %+v, err %v, read %v; want rule a, sg-a only", found, err, c.read)
+	}
+
+	c = &zonedGroups{fakeCloud: f, failing: "sg-a"}
+	found, err = FindLabeled(context.Background(), c, "p", "vm-1", "", "", nil)
+	if err == nil || len(found) != 1 || found[0].Rule.ID != "b" {
+		t.Errorf("sg-a unread: found %+v, err %v; want rule b and the error", found, err)
 	}
 }

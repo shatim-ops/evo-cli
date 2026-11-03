@@ -2767,10 +2767,15 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					"nothing was deleted and its local record is kept — call destroy again", vmID, gerr)
 			}
 		}
-		if target == nil && vmID != "" && len(labeledRules(ctx, eng, statePath, projectID, vmID)) > 0 {
-			// The VM is gone, and rules labelled for it are left (P6):
-			// opened for it from another folder. Its delete closes them.
-			target, alreadyGone = &provision.VM{ID: vmID}, true
+		if target == nil && vmID != "" {
+			// The VM is gone, and rules labelled for it may be left (P6):
+			// opened for it from another folder. Its delete closes them,
+			// or says they could not be checked.
+			if sf, serr := state.Read(statePath); serr == nil {
+				if found, ferr := eng.LabeledRules(ctx, sf, projectID, vmID, "", ""); len(found) > 0 || ferr != nil {
+					target, alreadyGone = &provision.VM{ID: vmID}, true
+				}
+			}
 		}
 		if target == nil {
 			// Neither the cloud nor this directory has the VM: already
@@ -2815,8 +2820,17 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		rulesPlanned = sgrules.Plan(sf, ids...)
 	}
 	// The rules labelled for the VM that no record here holds (P6): this
-	// delete closes them too, once the VM is gone.
-	labeled := labeledRules(ctx, eng, statePath, projectID, target.ID)
+	// delete closes them too, once the VM is gone. A VM still there has
+	// only its zone's groups read; a gone one, every group.
+	var labeled []sgrules.Planned
+	var uncheckedErr error
+	if sf, serr := state.Read(statePath); serr == nil {
+		zoneID, zoneName := "", ""
+		if !alreadyGone && target.AvailabilityZone != nil {
+			zoneID, zoneName = target.AvailabilityZone.ID, target.AvailabilityZone.Name
+		}
+		labeled, uncheckedErr = eng.LabeledRules(ctx, sf, projectID, target.ID, zoneID, zoneName)
+	}
 	rulesPlanned = append(rulesPlanned, labeled...)
 	releaseIP := true
 	if v, ok := args["release_ip"].(bool); ok {
@@ -2871,6 +2885,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
+	if uncheckedErr != nil {
+		preview["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
+		preview["message"] = fmt.Sprint(preview["message"]) + "; " + engine.UncheckedRules(uncheckedErr)
+	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		// The wait for the VM to be gone (WaitVMGone) says the VM's state
 		// to whoever watches the call, as provision's wait does.
@@ -2998,6 +3016,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
+		}
+		if uncheckedErr != nil {
+			msg += "; " + engine.UncheckedRules(uncheckedErr)
+			out["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
 		}
 		if stateErr != nil {
 			// The VM is gone; only the local bookkeeping is stale. Say so rather
@@ -3888,21 +3910,4 @@ func listZones(ctx context.Context, eng *engine.Engine) ([]*provision.Availabili
 	}
 	eng.Cloud.SetToken(tok.Value)
 	return eng.Cloud.ListAvailabilityZones(ctx)
-}
-
-// labeledRules are the rules labelled for the VM vmID that no record of the
-// folder's state holds (sgrules.FindLabeled, P6), read within the time of a
-// preview's lookups. An unread list or state finds none: the rules stay.
-func labeledRules(ctx context.Context, eng *engine.Engine, statePath, projectID, vmID string) []sgrules.Planned {
-	if eng.Cloud == nil {
-		return nil
-	}
-	sf, err := state.Read(statePath)
-	if err != nil {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(ctx, engine.PreviewLookupTimeout)
-	defer cancel()
-	found, _ := sgrules.FindLabeled(ctx, eng.Cloud, projectID, vmID, sf)
-	return found
 }
