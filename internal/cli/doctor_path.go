@@ -5,23 +5,16 @@
 package cli
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
+	"debug/buildinfo"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
-
-// otherEvoTimeout bounds the run of another evo for its version: doctor
-// must answer even when that file hangs.
-const otherEvoTimeout = 3 * time.Second
 
 // otherEvoChecks names every evo in PATH that is not this one, with its
 // version (#718, T7): the shell runs and completes from the first evo in
@@ -93,25 +86,28 @@ func sameFile(p string) string {
 	return p
 }
 
-// evoVersionOf runs path version --json and reads its version; an evo too
-// old for --json answers its first line.
+// ldflagsVersion is the version a release stamps (-X main.version=…,
+// .goreleaser.yaml) as the build settings record it.
+var ldflagsVersion = regexp.MustCompile(`-X[= ]main\.version=([^\s'"]+)`)
+
+// evoVersionOf reads the version of the evo at path from its build
+// information, without running it: the file may be anyone's, and a run
+// would hand it the environment — the keys of evo among it (§4). A file
+// that is no Go binary, or has no version, is named without one.
 func evoVersionOf(path string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), otherEvoTimeout)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, path, "version", "--json").Output()
-	if i := bytes.IndexByte(out, '{'); i >= 0 {
-		var v struct {
-			Version string `json:"version"`
-		}
-		if json.Unmarshal(bytes.TrimSpace(out[i:]), &v) == nil && v.Version != "" {
-			return i18n.Tf("version %s", "версия %s", v.Version)
-		}
-	}
-	if line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n"); line != "" {
-		return strings.TrimSpace(line)
-	}
+	bi, err := buildinfo.ReadFile(path)
 	if err != nil {
-		return i18n.Tf("version not read: %v", "версия не прочитана: %v", err)
+		return i18n.T("version not read: not a Go binary", "версия не прочитана: не исполняемый файл Go")
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "-ldflags" {
+			if m := ldflagsVersion.FindStringSubmatch(s.Value); m != nil {
+				return i18n.Tf("version %s", "версия %s", m[1])
+			}
+		}
+	}
+	if v := bi.Main.Version; v != "" && v != "(devel)" {
+		return i18n.Tf("version %s", "версия %s", v)
 	}
 	return i18n.T("version not read", "версия не прочитана")
 }

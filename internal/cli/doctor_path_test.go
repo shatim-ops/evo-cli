@@ -30,3 +30,30 @@ func TestDoctor_OtherEvoLinkedTwiceNamedOnce(t *testing.T) {
 		t.Fatalf("want one check naming %s and its version, got %+v", filepath.Join(b, "evo"), checks)
 	}
 }
+
+// evo doctor names another evo without running it: a file named evo lower
+// in PATH may be anyone's, and a run would hand it the environment with
+// the keys of evo. The world: an evo that, run, leaves a mark — doctor
+// names it, the mark is not there.
+func TestDoctor_OtherEvoIsNotRun(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a shell script is not an evo PATHEXT finds")
+	}
+	dir := t.TempDir()
+	mark := filepath.Join(t.TempDir(), "ran")
+	evo := filepath.Join(dir, "evo")
+	if err := os.WriteFile(evo, []byte("#!/bin/sh\ntouch '"+mark+"'\necho 'evo version 9.9.9'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	checks := otherEvoChecks()
+	if len(checks) != 1 || !strings.Contains(checks[0].Detail, evo) {
+		t.Fatalf("want one check naming %s, got %+v", evo, checks)
+	}
+	if strings.Contains(checks[0].Detail, "9.9.9") {
+		t.Errorf("the version came from a run of the file: %s", checks[0].Detail)
+	}
+	if _, err := os.Stat(mark); err == nil {
+		t.Errorf("evo doctor ran %s", evo)
+	}
+}

@@ -7,6 +7,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -51,17 +52,31 @@ func TestTab_ZshScriptSetsTheMenuUnlessThePersonHasOne(t *testing.T) {
 	}
 }
 
-// fakeEvoInPath writes into dir an evo that answers version v: a shell script,
-// on Windows a .cmd that PATHEXT finds as evo. It returns its path.
+// fakeEvoInPath builds into dir an evo whose build information records
+// version v the way a release stamps it (-ldflags -X main.version=v): evo
+// doctor reads the version from the file, it never runs it. On Windows
+// evo.exe, as PATHEXT finds it. It returns its path.
 func fakeEvoInPath(t *testing.T, dir, v string) string {
 	t.Helper()
-	name, body := "evo", "#!/bin/sh\necho 'evo version "+v+"'\necho '{\"version\":\""+v+"\"}'\n"
+	src := t.TempDir()
+	for name, body := range map[string]string{
+		"go.mod":  "module example.com/fakeevo\n\ngo 1.21\n",
+		"main.go": "package main\n\nvar version = \"dev\"\n\nfunc main() { println(version) }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(src, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	name := "evo"
 	if runtime.GOOS == "windows" {
-		name, body = "evo.cmd", "@echo off\r\necho evo version "+v+"\r\necho {\"version\":\""+v+"\"}\r\n"
+		name = "evo.exe"
 	}
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
+	build := exec.Command("go", "build", "-o", path, "-ldflags", "-X main.version="+v, ".")
+	build.Dir = src
+	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=", "CGO_ENABLED=0")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build a fake evo %s: %v\n%s", v, err, out)
 	}
 	return path
 }
@@ -69,7 +84,7 @@ func fakeEvoInPath(t *testing.T, dir, v string) string {
 // T7 (#718; process plan 1.7 §5): with two evo in PATH the shell runs one
 // and completes from it, the person upgrades the other — evo doctor names
 // every other evo in PATH with its version. The world: two fake evo, each
-// answering its version; on Windows each an evo.cmd, found by PATHEXT as a
+// built with its version; on Windows each an evo.exe, found by PATHEXT as a
 // second evo.exe would be.
 func TestDoctor_NamesAnotherEvoInPath(t *testing.T) {
 	var dirs, paths []string
