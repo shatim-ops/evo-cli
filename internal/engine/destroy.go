@@ -43,23 +43,27 @@ func (e *Engine) destroyGate(ctx context.Context, opts DestroyOptions, p confirm
 // as it is: the VM of the deployment (named after the cloud's lists), its
 // floating IP and port rules, or the port rules an earlier destroy left.
 // False when destroy would ask nothing: no deployment, or several (it
-// refuses then). Reads only; the destroy tool answers it without
-// confirmed=true.
-func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool) {
+// refuses then); an error when it refuses before the question (D73).
+// Reads only; the destroy tool answers it without confirmed=true.
+func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, error) {
 	sf, err := state.Read(state.DefaultPath(e.StateDir))
 	if err != nil {
-		return confirm.Preview{}, false
+		return confirm.Preview{}, false, nil
 	}
 	pending := sgrules.Pending(sf)
 	active := sf.ActiveDeployment()
 	switch {
 	case active == nil && len(pending) > 0:
-		return pendingRulesPreview(sf, pending), true
+		return pendingRulesPreview(sf, pending), true, nil
 	case active == nil || len(sf.ActiveDeployments()) > 1:
-		return confirm.Preview{}, false
+		return confirm.Preview{}, false, nil
+	}
+	// A VM evo did not make is refused before the question (D73).
+	if err := e.AdoptedRecord(ctx, *active); err != nil {
+		return confirm.Preview{}, false, err
 	}
 	shown := e.withNames(ctx, *active, nil, true)
-	return destroyPreview(&shown, sf, pending, e.projectOf(active), e.projectFrom(active)), true
+	return destroyPreview(&shown, sf, pending, e.projectOf(active), e.projectFrom(active)), true, nil
 }
 
 // Destroy tears down the active deployment.
@@ -97,6 +101,11 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// the person sees success. Each one goes by its own ID.
 	if all := stateFile.ActiveDeployments(); len(all) > 1 {
 		return severalDeployments(all)
+	}
+
+	// A VM evo did not make is refused before the question (D73).
+	if err := e.AdoptedRecord(ctx, *active); err != nil {
+		return err
 	}
 
 	e.Printer.Step(1, 3, i18n.T("Reading deployment info...", "Чтение сведений о развёртывании..."))
