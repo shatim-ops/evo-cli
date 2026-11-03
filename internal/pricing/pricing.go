@@ -15,7 +15,8 @@
 //	  "vcpu_hourly": 0.60,
 //	  "ram_gb_hourly": 0.40,
 //	  "disk_ssd_gb_monthly": 11.42,
-//	  "disk_hdd_gb_monthly": 3.0
+//	  "disk_hdd_gb_monthly": 3.0,
+//	  "floating_ip_monthly": 149.33
 //	}
 //
 // Any field present in the file overrides the built-in default.
@@ -147,12 +148,13 @@ func near(sum, total float64) bool {
 
 // card holds the (overridable) rate card.
 type card struct {
-	Currency         string             `json:"currency"`
-	FlavorHourly     map[string]float64 `json:"flavor_hourly"`
-	VCPUHourly       float64            `json:"vcpu_hourly"`
-	RAMGBHourly      float64            `json:"ram_gb_hourly"`
-	DiskSSDGBMonthly float64            `json:"disk_ssd_gb_monthly"`
-	DiskHDDGBMonthly float64            `json:"disk_hdd_gb_monthly"`
+	Currency          string             `json:"currency"`
+	FlavorHourly      map[string]float64 `json:"flavor_hourly"`
+	VCPUHourly        float64            `json:"vcpu_hourly"`
+	RAMGBHourly       float64            `json:"ram_gb_hourly"`
+	DiskSSDGBMonthly  float64            `json:"disk_ssd_gb_monthly"`
+	DiskHDDGBMonthly  float64            `json:"disk_hdd_gb_monthly"`
+	FloatingIPMonthly float64            `json:"floating_ip_monthly"`
 }
 
 func defaultCard() card {
@@ -167,6 +169,9 @@ func defaultCard() card {
 		// under). The HDD rate is not seen live.
 		DiskSSDGBMonthly: 11.42,
 		DiskHDDGBMonthly: 3.0,
+		// The floating IP rate the price-calculation API answers: 0.204
+		// per hour, a month of 732 hours (seen in the same runs).
+		FloatingIPMonthly: 149.33,
 	}
 }
 
@@ -203,6 +208,9 @@ func load() card {
 	if override.DiskHDDGBMonthly > 0 {
 		c.DiskHDDGBMonthly = override.DiskHDDGBMonthly
 	}
+	if override.FloatingIPMonthly > 0 {
+		c.FloatingIPMonthly = override.FloatingIPMonthly
+	}
 	return c
 }
 
@@ -236,6 +244,15 @@ func EstimateFor(flavorName string, vcpus, ramGB int, diskGB int, diskType strin
 		TotalMonthlyRub:   round2(computeMonthly + diskMonthly),
 		Source:            source,
 	}
+}
+
+// WithFloatingIP is estimate e with a floating IP created with the VM, at
+// the card's rate: its own field and in the total.
+func (e Estimate) WithFloatingIP() Estimate {
+	fip := load().FloatingIPMonthly
+	e.FloatingIPMonthlyRub = round2(fip)
+	e.TotalMonthlyRub = round2(e.TotalMonthlyRub + fip)
+	return e
 }
 
 // EstimateDisk is the rate card's estimate of a disk alone: diskGB at the

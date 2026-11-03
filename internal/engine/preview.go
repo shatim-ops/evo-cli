@@ -207,9 +207,12 @@ func vmCostLines(cost pricing.Estimate, sizeKnown bool) []string {
 	if cost.Source == pricing.SourceAPI {
 		lines = append(lines, apiCostLine(cost))
 	} else {
-		line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (compute %.2f + disk %.2f), %s",
-			"~%.2f %s в месяц (вычисления %.2f + диск %.2f), %s",
-			cost.TotalMonthlyRub, cost.Currency, cost.ComputeMonthlyRub, cost.DiskMonthlyRub, costNoteText())
+		parts := i18n.Tf("compute %.2f + disk %.2f", "вычисления %.2f + диск %.2f", cost.ComputeMonthlyRub, cost.DiskMonthlyRub)
+		if cost.FloatingIPMonthlyRub > 0 {
+			parts += i18n.Tf(" + floating IP %.2f", " + floating IP %.2f", cost.FloatingIPMonthlyRub)
+		}
+		line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (%s), %s", "~%.2f %s в месяц (%s), %s",
+			cost.TotalMonthlyRub, cost.Currency, parts, costNoteText())
 		if !sizeKnown {
 			line += i18n.T("; flavor size unknown, compute may be missing from the total",
 				"; размер flavor неизвестен, вычисления могут не войти в итог")

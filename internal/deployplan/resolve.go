@@ -255,9 +255,14 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 
 // EstimateVM is the rate-card estimate for a resolved VM: the price of
 // deploy_plan and of the CLI previews (PriceVM) when the price-calculation
-// API gives none, so they never disagree about the price.
-func EstimateVM(vm VMSpec) pricing.Estimate {
-	return pricing.EstimateFor(vm.Flavor.Name, vm.Flavor.VCPUs, vm.Flavor.RAMGB, vm.Disk.SizeGB, vm.Disk.Type)
+// API gives none, so they never disagree about the price. publicIP adds the
+// floating IP created with the VM, as the API's price has it.
+func EstimateVM(vm VMSpec, publicIP bool) pricing.Estimate {
+	e := pricing.EstimateFor(vm.Flavor.Name, vm.Flavor.VCPUs, vm.Flavor.RAMGB, vm.Disk.SizeGB, vm.Disk.Type)
+	if publicIP {
+		e = e.WithFloatingIP()
+	}
+	return e
 }
 
 // selectFlavor validates an explicit flavor by name, or auto-sizes from CPU/RAM,

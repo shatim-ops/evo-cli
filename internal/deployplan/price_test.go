@@ -113,7 +113,7 @@ func TestResolve_Price422FallsBackToEstimate(t *testing.T) {
 	plan := resolvePlan(t, cloud)
 
 	c := plan.Cost
-	want := EstimateVM(plan.VM)
+	want := EstimateVM(plan.VM, true)
 	if !strings.HasPrefix(c.Source, "estimate: rate-card") || c.TotalMonthlyRub != want.TotalMonthlyRub || c.Breakdown != nil {
 		t.Errorf("cost %+v, want the estimate %+v", c, want)
 	}
@@ -142,7 +142,7 @@ func TestPriceVM_TimeoutFallsBack(t *testing.T) {
 	if d := time.Since(start); d > old/2 {
 		t.Errorf("waited %s", d)
 	}
-	if c.Source == pricing.SourceAPI || c.TotalMonthlyRub != EstimateVM(vm).TotalMonthlyRub {
+	if c.Source == pricing.SourceAPI || c.TotalMonthlyRub != EstimateVM(vm, true).TotalMonthlyRub {
 		t.Errorf("cost %+v, want the estimate", c)
 	}
 	if !strings.Contains(c.PriceAPIError, "50ms") {
@@ -185,7 +185,7 @@ func TestPriceVM_ZeroPriceFallsBack(t *testing.T) {
 	}}
 	vm := VMSpec{Flavor: FlavorSpec{ID: "fl-1", Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4}, Disk: DiskSpec{SizeGB: 20, Type: "SSD"}}
 	c := PriceVM(context.Background(), cloud, PriceInput{ProjectID: "proj-1", VM: vm})
-	if c.Source == pricing.SourceAPI || c.TotalMonthlyRub != EstimateVM(vm).TotalMonthlyRub || !(strings.Contains(c.PriceAPIError, "zero price") || strings.Contains(c.PriceAPIError, "нулевой ценой")) {
+	if c.Source == pricing.SourceAPI || c.TotalMonthlyRub != EstimateVM(vm, false).TotalMonthlyRub || !(strings.Contains(c.PriceAPIError, "zero price") || strings.Contains(c.PriceAPIError, "нулевой ценой")) {
 		t.Errorf("cost %+v, want the estimate with the reason", c)
 	}
 }
