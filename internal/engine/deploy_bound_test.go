@@ -31,7 +31,7 @@ func TestDeploy_BoundEndsTheWaitForTheVMInProgress(t *testing.T) {
 	eng.Timings.VMPollInterval = time.Millisecond
 	eng.Timings.VMPollTimeout = time.Hour
 	opts := newDeployOpts(t, dir)
-	opts.Until = time.Now().Add(50 * time.Millisecond)
+	opts.Until = time.Now().Add(testBound)
 
 	err := eng.Deploy(context.Background(), opts)
 	var going *InProgress
@@ -48,11 +48,13 @@ func TestDeploy_BoundEndsTheWaitForSSHInProgress(t *testing.T) {
 	dep := newMockDeployer()
 	dep.connectErr = stderrors.New("ssh: connection refused")
 	eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
-	eng.Timings.SSHRetryInterval = time.Millisecond
+	// Between attempts an hour: the bound, not the attempts running out
+	// (60 at 1 ms ended in 60 ms, before a bound of testBound), ends the wait.
+	eng.Timings.SSHRetryInterval = time.Hour
 	opts := newDeployOpts(t, dir)
-	opts.Until = time.Now().Add(50 * time.Millisecond)
+	opts.Until = time.Now().Add(testBound)
 
-	err := eng.Deploy(context.Background(), opts)
+	err := deployBounded(t, eng, opts)
 	var going *InProgress
 	if !stderrors.As(err, &going) || going.Phase != "ssh" {
 		t.Fatalf("err = %v, want InProgress ssh", err)
@@ -65,9 +67,18 @@ func untilCtx(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// boundWatch is how long a bounded deploy of these tests may take: the
-// bound is 50 ms; a deploy that waits for its own timeouts takes the hour
-// they are set to (wall-clock: a margin over the bound, not a wait).
+// testBound is the bound of a deploy in these tests, from its start: the
+// steps before the point a test holds — the VM, SSH, the Docker install —
+// take milliseconds, and must not reach the bound before it. 50 ms did not
+// hold on a loaded runner under -race (#789: the bound came in vm or docker,
+// not where the test held).
+// wall-clock: a margin for the steps before the hold, which end in
+// milliseconds; the bound itself is what the hold waits for.
+const testBound = time.Second
+
+// boundWatch is how long a bounded deploy of these tests may take: a
+// deploy that waits for its own timeouts takes the hour they are set to
+// (wall-clock: a margin over testBound, not a wait).
 const boundWatch = 5 * time.Second
 
 // deployBounded runs eng.Deploy with opts and fails the test when it does
@@ -110,7 +121,7 @@ func TestDeploy_BoundEndsAHangingStepInProgress(t *testing.T) {
 			eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
 			eng.Timings.DockerWaitTimeout = time.Hour
 			opts := newDeployOpts(t, dir)
-			opts.Until = time.Now().Add(50 * time.Millisecond)
+			opts.Until = time.Now().Add(testBound)
 
 			err := deployBounded(t, eng, opts)
 			var going *InProgress
@@ -135,7 +146,7 @@ func TestDeploy_BoundEndsTheWaitForDockerReadyInProgress(t *testing.T) {
 	eng.Timings.DockerPollInterval = time.Hour
 	eng.Timings.DockerWaitTimeout = time.Hour
 	opts := newDeployOpts(t, dir)
-	opts.Until = time.Now().Add(50 * time.Millisecond)
+	opts.Until = time.Now().Add(testBound)
 
 	err := deployBounded(t, eng, opts)
 	var going *InProgress
@@ -240,7 +251,7 @@ func TestDeploy_ForceRunsComposeUpOnceAcrossRepeats(t *testing.T) {
 	call := func(force bool) error {
 		opts := newDeployOpts(t, dir)
 		opts.Force = force
-		opts.Until = time.Now().Add(50 * time.Millisecond)
+		opts.Until = time.Now().Add(testBound)
 		return deployBounded(t, eng, opts)
 	}
 	var going *InProgress
@@ -305,7 +316,7 @@ func TestDeploy_RepeatWaitsForTheCreatingVMBeforeTheFloatingIP(t *testing.T) {
 	e2.Timings.VMPollTimeout = time.Hour
 	writeRecord(t, dir2, state.DeploymentRecord{ID: "vm-new", VMID: "vm-new", ProjectID: e2.Config.ProjectID, Region: "az-1", SSHUser: "user1", Status: "creating"})
 	opts = newDeployOpts(t, dir2)
-	opts.Until = time.Now().Add(50 * time.Millisecond)
+	opts.Until = time.Now().Add(testBound)
 	err := deployBounded(t, e2, opts)
 	var going *InProgress
 	if !stderrors.As(err, &going) || going.Phase != "vm" || going.Detail != "creating" {
@@ -322,7 +333,7 @@ func TestDeploy_BoundDoesNotHideAPermanentSSHRefusal(t *testing.T) {
 			dep := newMockDeployer()
 			var mu sync.Mutex
 			connects := 0
-			until := time.Now().Add(50 * time.Millisecond)
+			until := time.Now().Add(testBound)
 			dep.hold = func(ctx context.Context, op string) error {
 				if op != "connect" {
 					return nil
@@ -355,9 +366,9 @@ func TestDeploy_BoundDoesNotHideAPermanentSSHRefusal(t *testing.T) {
 func TestDeploy_NoStageStartsInTheLastSecondsOfTheBound(t *testing.T) {
 	stages := &heldStages{}
 	dep := newMockDeployer()
-	until := time.Now().Add(200 * time.Millisecond)
+	until := time.Now().Add(testBound)
 	// SSH answers with 10 ms of the bound left: less than its margin
-	// (200 ms / 9).
+	// (testBound / 9).
 	dep.hold = func(_ context.Context, op string) error {
 		if op == "connect" {
 			<-time.After(time.Until(until) - 10*time.Millisecond)
