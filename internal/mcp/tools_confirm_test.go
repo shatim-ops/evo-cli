@@ -18,11 +18,6 @@ import (
 // confirmed=true — пойти дальше. Первый вызов не должен доходить даже до
 // сборки движка (а значит, до облака).
 func TestNewGates_PreviewFirstThenAction(t *testing.T) {
-	// s3_put строит клиента из окружения, а не через движок: без ключей он
-	// отказывает локально, не выходя в сеть.
-	t.Setenv("CLOUDRU_S3_ACCESS_KEY", "")
-	t.Setenv("CLOUDRU_S3_SECRET_KEY", "")
-
 	var engines int
 	s := New(func(map[string]any) (*engine.Engine, error) {
 		engines++
@@ -49,7 +44,6 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", 1},
 		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo", 1},
 		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1", 0},
-		{"s3_put", map[string]any{"bucket": "bkt", "key": "k.txt", "content": "hello"}, "s3://bkt/k.txt", 1},
 	}
 	for _, c := range cases {
 		t.Run(c.tool, func(t *testing.T) {
@@ -84,13 +78,34 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 			if strings.Contains(out, "confirmation_required") {
 				t.Fatalf("confirmed call still asks for confirmation: %s", out)
 			}
-			// s3_put reads its credentials from the profile through the
-			// engine, like every other gated tool: reaching the engine
-			// factory is reaching the action.
+			// The action builds the engine, like every other gated tool:
+			// reaching the engine factory is reaching the action.
 			if engines == 0 {
 				t.Fatalf("confirmed call did not proceed to the action: %s", out)
 			}
 		})
+	}
+}
+
+// s3_put reads its S3 settings from the profile through the engine: with
+// none it cannot upload, and it refuses before the question (D35, release
+// plan 1.7, F5a; it asked, and the upload failed after consent).
+func TestNewGates_S3PutWithoutSettingsRefuses(t *testing.T) {
+	t.Setenv("CLOUDRU_S3_ACCESS_KEY", "")
+	t.Setenv("CLOUDRU_S3_SECRET_KEY", "")
+	s := New(func(map[string]any) (*engine.Engine, error) {
+		return nil, errors.New("no engine in tests")
+	}, "test")
+	out, isErr := s.handlers["s3_put"](context.Background(), map[string]any{"bucket": "bkt", "key": "k.txt", "content": "hello"})
+	if !isErr || strings.Contains(out, "confirmation_required") {
+		t.Fatalf("s3_put without S3 settings: want a refusal before the question, got %s", out)
+	}
+	// An engine whose profile has no S3 keys: the refusal says what to fix
+	// (CONFIG_INVALID, as the CLI's exit 2), still before the question.
+	s = New(func(map[string]any) (*engine.Engine, error) { return &engine.Engine{}, nil }, "test")
+	out, isErr = s.handlers["s3_put"](context.Background(), map[string]any{"bucket": "bkt", "key": "k.txt", "content": "hello"})
+	if !isErr || strings.Contains(out, "confirmation_required") || !strings.Contains(out, `"CONFIG_INVALID"`) {
+		t.Fatalf("s3_put with a profile without S3 keys: want CONFIG_INVALID before the question, got %s", out)
 	}
 }
 
