@@ -55,7 +55,7 @@ var ownRecords = map[string]bool{
 // sideRecordArgs are cases besides parityArgs' that make a side record the
 // parity case does not: provision with a port opens a rule.
 var sideRecordArgs = map[string][]map[string]any{
-	"provision": {{"name": "web", "ports": []any{"8080"}}},
+	"provision": {{"name": "app", "ports": []any{"8080"}}},
 }
 
 // sideRecordMisses are the side records a preview does not name:

@@ -36,14 +36,19 @@ func FindCreatedVM(cloud CloudAPI, projectID, name string, since time.Time) *VM 
 		return nil
 	}
 	for _, vm := range vms {
-		if vm == nil || vm.ID == "" || vm.Name != name || vm.CreatedAt.IsZero() {
-			continue
-		}
-		if vm.CreatedAt.After(since.Add(-createdVMClockSkew)) {
+		if vm != nil && vm.ID != "" && vm.Name == name && MadeSince(vm, since) {
 			return vm
 		}
 	}
 	return nil
+}
+
+// MadeSince reports whether vm was made after since, by its created_time,
+// with createdVMClockSkew for the clocks of evo and the cloud: the one rule
+// of «this call (or plan) made it» (FindCreatedVM; deploy_apply, D73). A VM
+// without a created_time is not taken for one.
+func MadeSince(vm *VM, since time.Time) bool {
+	return vm != nil && !vm.CreatedAt.IsZero() && !since.IsZero() && vm.CreatedAt.After(since.Add(-createdVMClockSkew))
 }
 
 // CreateVMChecked is cloud.CreateVM whose success must name the VM. An

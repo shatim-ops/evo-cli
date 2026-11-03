@@ -20,7 +20,8 @@ import (
 // of the call waits for it again without a second DELETE.
 
 // destroyWorld is a VM made by provision in a cloud that then deletes
-// slowly, with a budgeted registry.
+// slowly, with a budgeted registry: the provision of the setup has
+// progressBudget (it must finish), destroy then worldBudget (#793).
 func destroyWorld(t *testing.T) (*faultCloud, string, *Registry, string) {
 	t.Helper()
 	faultToolsIsolate(t)
@@ -29,12 +30,13 @@ func destroyWorld(t *testing.T) (*faultCloud, string, *Registry, string) {
 	timings := provisionTimings()
 	timings.DestroyPollInterval = time.Millisecond
 	timings.DestroyPollTimeout = time.Hour
-	r := budgeted(budgetComputeRegistry(t, cloud, dir, timings))
+	r := progressed(budgetComputeRegistry(t, cloud, dir, timings))
 	m := decode(t, mustCall(t, r, "provision", map[string]any{"name": "web", "confirmed": true}))
 	vmID, _ := m["vm_id"].(string)
 	if m["status"] != "ok" || vmID == "" {
 		t.Fatalf("provision: %v", m)
 	}
+	budgeted(r)
 	cloud.mu.Lock()
 	cloud.slow = true
 	cloud.mu.Unlock()

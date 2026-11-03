@@ -167,7 +167,9 @@ func TestListSecurityGroups_Rules(t *testing.T) {
 // The VM is up but the state cannot be written: the answer names the VM
 // and the plan stays, so a retry adopts the VM instead of losing it.
 func TestDeployApply_StateNotWritable_NamesVMAndKeepsPlan(t *testing.T) {
-	cloud := &sgCloud{vm: &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "wiki-1", Status: "running"}}
+	// The plan's own VM, made after it (D73): the state that would record
+	// it cannot be read.
+	cloud := &sgCloud{vm: &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "wiki-1", Status: "running", CreatedAt: time.Now()}}
 	r, dir := sgRegistry(t, cloud)
 	if err := os.MkdirAll(filepath.Dir(state.DefaultPath(dir)), 0o700); err != nil {
 		t.Fatal(err)
@@ -175,7 +177,7 @@ func TestDeployApply_StateNotWritable_NamesVMAndKeepsPlan(t *testing.T) {
 	if err := os.WriteFile(state.DefaultPath(dir), []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ExpiresAt: time.Now().Add(time.Hour), Product: "wiki",
+	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", CreatedAt: time.Now().Add(-time.Minute), ExpiresAt: time.Now().Add(time.Hour), Product: "wiki",
 		VM: deployplan.VMSpec{Name: "wiki-1"}, Network: deployplan.NetworkSpec{SecurityGroupID: "sg-1"}}
 	if err := deployplan.Save(dir, plan); err != nil {
 		t.Fatal(err)

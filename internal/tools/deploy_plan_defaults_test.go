@@ -146,3 +146,8 @@ func TestDeployPlan_DefaultsFromConfig(t *testing.T) {
 		})
 	}
 }
+
+// ListVMsInProject: no VM has the plan's name (D73 checks it).
+func (planCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return nil, nil
+}

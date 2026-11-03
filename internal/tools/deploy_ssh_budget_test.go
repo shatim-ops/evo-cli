@@ -109,20 +109,20 @@ func firstWords(cmd string) string {
 	return strings.Join(f[:min(len(f), 3)], " ")
 }
 
-// sshBudgetRegistry is the stage world with the budget of an MCP call and
+// progressBudgetRegistry is the stage world with the budget of an MCP call and
 // the timeouts of production: an SSH step the budget does not bound runs
 // to its own timeout (Docker: 15 min), not to a short one of the world.
 // The intervals of the SSH side are production's too — a wait between two
 // attempts that the budget does not end lasts seconds, not a millisecond;
 // a deploy that goes well never waits them. The cloud's stay short.
-func sshBudgetRegistry(t *testing.T, vm *slowSSHVM) *Registry {
+func progressBudgetRegistry(t *testing.T, vm *slowSSHVM) *Registry {
 	t.Helper()
 	faultToolsIsolate(t)
 	timings := faultToolsTimings()
 	timings.VMPollTimeout, timings.FIPSettleTimeout, timings.DockerWaitTimeout = 0, 0, 0
 	timings.DockerPollInterval, timings.SSHRetryInterval = 0, 0
 	// A few reads of a going stage per call, not one per millisecond.
-	timings.StagePollInterval = worldBudget / 4
+	timings.StagePollInterval = progressBudget / 4
 	compose := writeTestCompose(t)
 	dir := t.TempDir()
 	cloud := &faultCloud{}
@@ -144,14 +144,14 @@ func sshBudgetRegistry(t *testing.T, vm *slowSSHVM) *Registry {
 			},
 		}, nil
 	})
-	r.SetCallBudget(worldBudget)
+	r.SetCallBudget(progressBudget)
 	return r
 }
 
 // deployChain calls deploy over MCP as an agent does: the first call with
 // args, each next one with the answer's next_args while it says deploying,
 // the stage on the VM ending between two calls. Each call is held to
-// budgetWatch. It returns the answers; "" is a call that did not answer in
+// progressWatch. It returns the answers; "" is a call that did not answer in
 // time, and the chain stops there.
 func deployChain(t *testing.T, r *Registry, vm *stageVM, args map[string]any, calls int) []string {
 	t.Helper()
@@ -166,7 +166,7 @@ func deployChain(t *testing.T, r *Registry, vm *stageVM, args map[string]any, ca
 		var text string
 		select {
 		case text = <-got:
-		case <-time.After(budgetWatch):
+		case <-time.After(progressWatch):
 			cancel()
 			<-got
 		}
@@ -210,13 +210,13 @@ func deployStageStarts(vm *stageVM) int {
 // first call to the end, the agent repeating it by next_args — then hangs
 // each of them in turn, one per run (a run of the same call — the reads
 // of a going stage — once): the call that meets it answers within
-// budgetWatch with the state so far (deploying, its next step), and the
+// progressWatch with the state so far (deploying, its next step), and the
 // chain of repeats still ends. A new SSH step of deploy is in the walk by
 // itself: the world counts calls, it names none.
 func TestDeploySSH_EachStepUnderTheBudget(t *testing.T) {
 	const chain = 8
 	rec := &slowSSHVM{stageVM: newStageVM()}
-	answers := deployChain(t, sshBudgetRegistry(t, rec), rec.stageVM, map[string]any{"confirmed": true}, chain)
+	answers := deployChain(t, progressBudgetRegistry(t, rec), rec.stageVM, map[string]any{"confirmed": true}, chain)
 	if last := answers[len(answers)-1]; last == "" || deployStatus(last) == "deploying" {
 		t.Fatalf("the world's deploy does not end in %d calls: %v", chain, chainStatuses(answers))
 	}
@@ -233,7 +233,7 @@ func TestDeploySSH_EachStepUnderTheBudget(t *testing.T) {
 		}
 		t.Run(strconv.Itoa(n)+" "+op, func(t *testing.T) {
 			vm := &slowSSHVM{stageVM: newStageVM(), hang: n}
-			answers := deployChain(t, sshBudgetRegistry(t, vm), vm.stageVM, map[string]any{"confirmed": true}, chain)
+			answers := deployChain(t, progressBudgetRegistry(t, vm), vm.stageVM, map[string]any{"confirmed": true}, chain)
 			for k, text := range answers {
 				if text == "" {
 					t.Fatalf("call %d did not answer within the budget (D69) with SSH call %d (%s) hanging", k+1, n, op)
@@ -261,7 +261,7 @@ func TestDeploySSH_EachStepUnderTheBudget(t *testing.T) {
 // the call (15 min).
 func TestDeploySSH_DockerNeverReadyUnderTheBudget(t *testing.T) {
 	vm := &slowSSHVM{stageVM: newStageVM(), notReady: true}
-	answers := deployChain(t, sshBudgetRegistry(t, vm), vm.stageVM, map[string]any{"confirmed": true}, 3)
+	answers := deployChain(t, progressBudgetRegistry(t, vm), vm.stageVM, map[string]any{"confirmed": true}, 3)
 	for k, text := range answers {
 		if text == "" {
 			t.Fatalf("call %d did not answer within the budget (D69) while Docker is never ready", k+1)
@@ -279,7 +279,7 @@ func TestDeploySSH_DockerNeverReadyUnderTheBudget(t *testing.T) {
 // ends — no repeat starts it again («1.7 — релиз» on #769).
 func TestDeploySSH_ForceStartsComposeUpOnceAcrossRepeats(t *testing.T) {
 	vm := &slowSSHVM{stageVM: newStageVM()}
-	r := sshBudgetRegistry(t, vm)
+	r := progressBudgetRegistry(t, vm)
 	if a := deployChain(t, r, vm.stageVM, map[string]any{"confirmed": true}, 8); deployStatus(a[len(a)-1]) == "deploying" || a[len(a)-1] == "" {
 		t.Fatalf("the first deploy does not end: %v", chainStatuses(a))
 	}

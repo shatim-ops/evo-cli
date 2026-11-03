@@ -104,7 +104,10 @@ type agentSetupOptions struct {
 	httpURL  string
 	print    string
 	skill    bool
-	force    bool
+	// skillOnly: write the rules alone, never the client's entry (agent
+	// run M2, Ц-1: a server already set up with other toolsets).
+	skillOnly bool
+	force     bool
 	// readOnlySet: --read-only was given, so the client's default does
 	// not count.
 	readOnlySet bool
@@ -142,6 +145,8 @@ func newAgentSetupCmd() *cobra.Command {
 		"Напечатать запись в формате json или toml и ничего не записывать (для клиента не из списка)"))
 	f.BoolVar(&o.skill, "skill", false, i18n.T("Also write the rules of evo for the agent (SKILL.md or a section of AGENTS.md)",
 		"Записать и правила работы с evo для агента (SKILL.md или раздел AGENTS.md)"))
+	f.BoolVar(&o.skillOnly, "skill-only", false, i18n.T("Write only the rules of evo for the agent; leave the client's evo entry as it is",
+		"Записать только правила работы с evo для агента; запись evo в настройках клиента не трогать"))
 	f.BoolVar(&o.force, "force", false, i18n.T("Replace an evo entry that differs from this one",
 		"Заменить запись evo, которая отличается от этой"))
 	_ = cmd.RegisterFlagCompletionFunc("client", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
@@ -198,7 +203,8 @@ server; the file names $%s instead of holding the token.
 --skill also writes the rules of evo for the agent ('evo agent skill'):
 .claude/skills/evo/SKILL.md for claude-code, a section of AGENTS.md (GEMINI.md
 for gemini) for the others. The rules are evo's: the next run puts the rules
-of this evo there, without --force.`,
+of this evo there, without --force. --skill-only writes the rules alone and
+leaves the client's evo entry as it is (a server set up with other toolsets).`,
 		`Добавить MCP-сервер evo в файл настроек MCP-клиента.
 
 Файл дополняется, а не перезаписывается: другие серверы и ключи остаются как
@@ -225,7 +231,9 @@ of this evo there, without --force.`,
 --skill дополнительно записывает правила работы с evo для агента ('evo agent
 skill'): .claude/skills/evo/SKILL.md для claude-code, раздел AGENTS.md
 (GEMINI.md для gemini) для остальных. Правила принадлежат evo: следующий
-запуск кладёт туда правила этой версии evo, без --force.`,
+запуск кладёт туда правила этой версии evo, без --force. --skill-only пишет только
+правила и оставляет запись evo в настройках клиента как есть (сервер, уже
+подключённый с другими группами инструментов).`,
 		strings.TrimRight(rows.String(), "\n"), strings.Join(defaultToolsets, ","), envBearerToken)
 }
 
@@ -357,6 +365,11 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 			i18n.Tf("Clients: %s. Another one: --client cursor --print json gives the common mcpServers form.",
 				"Клиенты: %s. Для другого клиента: --client cursor --print json даёт общий формат mcpServers.", strings.Join(clientNames(), ", ")))
 	}
+	if o.skillOnly && o.force {
+		return clerrors.New(clerrors.CodeUsage, i18n.T("--skill-only leaves the client's entry, --force replaces it", "--skill-only оставляет запись клиента, а --force её заменяет"),
+			i18n.T("Pass one of them.", "Передайте один из них."))
+	}
+	o.skill = o.skill || o.skillOnly
 	srv, err := o.server(c)
 	if err != nil {
 		return err
@@ -378,9 +391,9 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 	if err != nil {
 		return err
 	}
-	if srv.spec.url == "" {
+	if srv.spec.url == "" && !o.skillOnly {
 		// The client starts evo here, with this machine's key: without one
-		// every tool call would fail.
+		// every tool call would fail. --skill-only writes no entry.
 		cfg, err := resolveConfig(printer, map[string]any{})
 		if err != nil {
 			return err
@@ -400,6 +413,9 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 	}
 	changes := make([]agentChange, 0, len(targets))
 	for _, t := range targets {
+		if o.skillOnly && !t.generated {
+			continue // the client's entry: --skill-only leaves it
+		}
 		ch, err := readChange(t)
 		if err != nil {
 			return err
@@ -484,8 +500,8 @@ func applyAgentChanges(cmd *cobra.Command, printer *output.Printer, c agentClien
 	if conflict != "" {
 		return false, clerrors.New(clerrors.CodeUsage,
 			i18n.Tf("%s already holds a different evo entry", "в %s уже есть другая запись evo", conflict),
-			i18n.T("The diff shows what --force writes: re-run with --force to replace the entry (--dry-run --force to see it again).",
-				"diff показывает, что запишет --force: повторите с --force, чтобы заменить запись (--dry-run --force — посмотреть ещё раз)."))
+			i18n.T("The client's entry is left as it is. To write only the rules of evo for the agent: --skill-only. To replace the entry with the one the diff shows: --force (--dry-run --force to see it again).",
+				"Запись клиента не тронута. Поставить только правила работы с evo для агента — --skill-only. Заменить запись на ту, что в diff, — --force (--dry-run --force — посмотреть ещё раз)."))
 	}
 	if len(pending) == 0 {
 		return false, nil
