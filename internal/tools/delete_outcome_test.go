@@ -122,7 +122,8 @@ func TestDeleteOutcome_ContainerAppReadsTheApp(t *testing.T) {
 }
 
 // D74, the owner's decision 03.11 (a script deleting many must keep its
-// speed): wait=false answers deleting with the operation_id as soon as the
+// speed): wait=false of the ten and of dns_zone_delete (D66, on the same
+// point) answers deleting with the operation_id as soon as the
 // cloud took the DELETE, reading nothing after it — the same argument wait
 // as provision and deploy_apply, in the schema of each of the ten, so the
 // CLI has --wait=false.
@@ -130,7 +131,7 @@ func TestDeleteOutcome_WaitFalseDoesNotWait(t *testing.T) {
 	first := opWaitFirstDelay
 	opWaitFirstDelay = time.Millisecond
 	t.Cleanup(func() { opWaitFirstDelay = first })
-	for _, name := range append([]string{"ca_delete"}, deleteOutcomeTools...) {
+	for _, name := range append([]string{"ca_delete", "dns_zone_delete"}, deleteOutcomeTools...) {
 		t.Run(name, func(t *testing.T) {
 			rt := &contractRT{kind: "200"} // the operation is done: a read would answer deleted
 			reg := contractReg(t, rt)

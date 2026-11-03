@@ -895,6 +895,7 @@ var toolsRU = map[string]toolRU{
 			"связанную с VPC, evo не удаляет: Cloud.ru удаляет её только после снятия связей в личном кабинете. " +
 			"evo ждёт удаления до 45 с: ответ deleted или deleting с operation_id (evo dns operation).",
 		Args: map[string]string{
+			"wait": deleteWaitRU,
 			"id":   "UUID зоны (список: evo dns zones), обязательный",
 			"type": "Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id",
 		},

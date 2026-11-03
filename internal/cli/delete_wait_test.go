@@ -13,14 +13,14 @@ import (
 )
 
 // D74 (the owner's decision 03.11): each of the ten deletes that read their
-// outcome takes --wait=false, from the schema's argument wait, and answers
+// outcome, and dns_zone_delete (D66) on the same point, takes --wait=false, from the schema's argument wait, and answers
 // at once as 'evo tools call' with wait=false does: deleting with the
 // operation_id, exit 0.
 func TestDeleteWaitFalse_TreeEqualsToolsCall(t *testing.T) {
 	w := withParityWorld(t)
 	reg := tools.New(nil)
 	deletes := map[string]bool{"ar_delete": true, "ca_delete": true, "dns_record_delete": true, "k8s_delete": true,
-		"kafka_delete": true, "lb_delete": true, "tg_delete": true, "pg_delete": true, "redis_delete": true, "vpc_delete": true}
+		"kafka_delete": true, "lb_delete": true, "tg_delete": true, "pg_delete": true, "redis_delete": true, "vpc_delete": true, "dns_zone_delete": true}
 	seen := 0
 	for _, g := range allTreeGroups() {
 		for _, c := range g.Cmds {

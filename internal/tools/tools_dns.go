@@ -317,17 +317,17 @@ func (s *Registry) planDnsZoneDelete(ctx context.Context, args map[string]any) (
 		if err != nil {
 			return s.deleteFailed("dns_zone_delete", id, fmt.Errorf(i18n.T("delete zone: %w", "удаление зоны: %w"), err))
 		}
-		return dnsZoneDeleted(ctx, cli, vis, id, op)
+		return dnsZoneDeleted(ctx, args, cli, vis, id, op)
 	}}, nil
 }
 
 // dnsZoneDeleted is the answer of the delete of zone id whose operation is
 // op (D66, D74): deleteOutcome, with the zone's links named after a refusal.
-func dnsZoneDeleted(ctx context.Context, cli *dns.Client, vis, id string, op *dns.Operation) (string, bool) {
+func dnsZoneDeleted(ctx context.Context, args map[string]any, cli *dns.Client, vis, id string, op *dns.Operation) (string, bool) {
 	w := opWatch("dns_zone_delete", id, map[string]any{"id": id, "visibility": vis}, op.ID, "dns_operation", cli.GetOperation)
 	w.hintEN = "dns_zone_get shows the zone; its links (VPCs, DNS servers) are removed in the console: Evolution DNS → the zone → Links."
 	w.hintRU = "Зона — в выводе dns_zone_get; связи зоны (VPC, DNS-серверы) снимаются в личном кабинете: Evolution DNS → зона → Связи."
-	return deleteOutcome(ctx, nil, w)
+	return deleteOutcome(ctx, args, w)
 }
 
 // dnsZoneLinked refuses the delete of a private zone linked to VPCs (D66):

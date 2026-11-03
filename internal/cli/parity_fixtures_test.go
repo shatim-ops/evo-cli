@@ -529,6 +529,7 @@ var parityAnswers = map[string]string{
 	"DELETE ar.api.cloud.ru/v1/registries/{id}":                      jsonOp,
 	"DELETE containers.api.cloud.ru/v2/containers/app":               jsonOp,
 	"DELETE dns.api.cloud.ru/v1/publicRecordsSole/{id}":              jsonOp,
+	"DELETE dns.api.cloud.ru/v1/publicZones/{id}":                    jsonOp,
 	"DELETE nlb.api.cloud.ru/v2/networkLoadBalancers/{id}":           jsonOp,
 	"DELETE nlb.api.cloud.ru/v2/targetGroups/{id}":                   jsonOp,
 	"DELETE vpc.api.cloud.ru/v1/vpcs/{id}":                           jsonOp,

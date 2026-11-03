@@ -1033,6 +1033,7 @@ func (s *Registry) registerTools() {
 				"id":        uuidProp("Zone UUID (from dns_zones). Required."),
 				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
 				"confirmed": confirmedProp(),
+				"wait":      boolProp(deleteWaitDesc),
 			}, "id"),
 		},
 		{
