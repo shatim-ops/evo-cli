@@ -58,6 +58,12 @@ func newVM(t *testing.T, withFlock bool) localVM {
 	for _, tool := range tools {
 		p, err := exec.LookPath(tool)
 		if err != nil {
+			// The wrapper has no other cover: on CI a missing tool fails
+			// the run instead of dropping the invariant without a word
+			// («Процесс · 1.7»).
+			if os.Getenv("CI") != "" {
+				t.Fatalf("no %s on the CI runner: the stage script is not tested", tool)
+			}
 			t.Skipf("no %s on this machine", tool)
 		}
 		if err := os.Symlink(p, filepath.Join(bin, tool)); err != nil {
