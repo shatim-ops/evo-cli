@@ -162,9 +162,9 @@ func defaultCard() card {
 		VCPUHourly:   0.60,
 		RAMGBHourly:  0.40,
 		// The SSD rate the price-calculation API answers: 0.0156 per GB
-		// and hour, a month of 732 hours (seen live 30.10.2026 in two
-		// zones; the card had 7.0, ~39 % under, agent run C2 on 1.6.0).
-		// The HDD rate is not seen live.
+		// and hour, a month of 732 hours (seen in a live run of 17.10.2026
+		// and in the agent run C2 of 30.10.2026; the card had 7.0, ~39 %
+		// under). The HDD rate is not seen live.
 		DiskSSDGBMonthly: 11.42,
 		DiskHDDGBMonthly: 3.0,
 	}
