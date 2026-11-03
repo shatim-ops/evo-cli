@@ -12,9 +12,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -349,54 +351,82 @@ func TestStage_TheScriptIsReplacedNotRewritten(t *testing.T) {
 // takes the lock the stage holds, the markers are written aside and moved
 // in, a lock found free is checked against the marker read again
 // («1.7 — релиз» on #769: 3 of 300 read lost; CI read state= empty while
-// the stage wrote it). -short runs 50.
+// the stage wrote it). The load is the test's own (cpuLoad), not the
+// runner's luck; a stage that sleeps and one that ends at once (true), so
+// a start that loses its stage between the marker and the run is seen
+// either way. 200 a case (four cases: ~20 s on 4 CPUs under -race; the
+// stage.sh of 9adf5019 reads 3–8 of 200 lost here); -short runs 50.
 func TestStage_ManyAtOnceNoneLostNoneUnread(t *testing.T) {
-	n := 300
+	n := 200
 	if testing.Short() {
 		n = 50
 	}
-	forEachLock(t, func(t *testing.T, vm localVM) {
-		var wg sync.WaitGroup
-		var mu sync.Mutex
-		var bad []string
-		fail := func(s string) {
-			mu.Lock()
-			bad = append(bad, s)
-			mu.Unlock()
-		}
-		for i := 0; i < n; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				r := Over(localVM{home: t.TempDir(), path: vm.path})
-				if _, err := r.Start(context.Background(), "s1", "in", "sleep 0.3"); err != nil {
-					fail("start: " + err.Error())
-					return
+	stopLoad := cpuLoad()
+	defer stopLoad()
+	for _, script := range []string{"sleep 0.3", "true"} {
+		t.Run(script, func(t *testing.T) {
+			forEachLock(t, func(t *testing.T, vm localVM) {
+				var wg sync.WaitGroup
+				var mu sync.Mutex
+				var bad []string
+				fail := func(s string) {
+					mu.Lock()
+					bad = append(bad, s)
+					mu.Unlock()
 				}
-				// wall-clock: the stage sleeps 0.3 s; the bound only ends
-				// a broken run.
-				deadline := time.Now().Add(30 * time.Second)
-				for time.Now().Before(deadline) {
-					st, err := r.Read(context.Background(), "s1")
-					switch {
-					case err != nil:
-						fail(err.Error())
-						return
-					case st.State == "done":
-						return
-					case st.State != "running":
-						fail(fmt.Sprintf("%+v", st))
-						return
-					}
+				for i := 0; i < n; i++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						r := Over(localVM{home: t.TempDir(), path: vm.path})
+						if _, err := r.Start(context.Background(), "s1", "in", script); err != nil {
+							fail("start: " + err.Error())
+							return
+						}
+						// wall-clock: the stage sleeps 0.3 s at most; the
+						// bound only ends a broken run.
+						deadline := time.Now().Add(30 * time.Second)
+						for time.Now().Before(deadline) {
+							st, err := r.Read(context.Background(), "s1")
+							switch {
+							case err != nil:
+								fail(err.Error())
+								return
+							case st.State == "done":
+								return
+							case st.State == "lost" && st.LogTail == "" && st.Exit == 0:
+								fail(fmt.Sprintf("lost before it ran — no exit, empty log: the start's run left without the stage (#769): %+v", st))
+								return
+							case st.State != "running":
+								fail(fmt.Sprintf("%+v", st))
+								return
+							}
+						}
+						fail("did not end")
+					}()
 				}
-				fail("did not end")
-			}()
-		}
-		wg.Wait()
-		if len(bad) > 0 {
-			t.Errorf("%d of %d stages read wrong, the first: %s", len(bad), n, bad[0])
-		}
-	})
+				wg.Wait()
+				if len(bad) > 0 {
+					t.Errorf("%d of %d stages read wrong, the first: %s", len(bad), n, bad[0])
+				}
+			})
+		})
+	}
+}
+
+// cpuLoad keeps every CPU of the machine busy until the returned stop: the
+// load under which the starts of the stages race (the repro of «1.7 —
+// релиз» on #769 ran four busy loops on four CPUs).
+func cpuLoad() (stop func()) {
+	var done atomic.Bool
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go func() {
+			for !done.Load() {
+				// busy: the load is the point
+			}
+		}()
+	}
+	return func() { done.Store(true) }
 }
 
 // The lock is the stage's shell's, not its children's: a child that
