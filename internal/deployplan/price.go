@@ -50,14 +50,11 @@ func QuoteVM(ctx context.Context, cloud provision.CloudAPI, in PriceInput) (pric
 
 	req := provision.PriceCalculationRequest{TotalCount: 1, FlavorID: in.VM.Flavor.ID, ImageID: in.VM.Image.ID}
 	if d := in.VM.Disk; d.SizeGB > 0 {
-		id := d.TypeID
-		if id == "" {
-			var err error
-			if id, err = diskTypeID(ctx, cloud, in.ProjectID, d.Type); err != nil {
-				return pricing.Estimate{}, priceError(ctx, err)
-			}
+		disk, err := priceDisk(ctx, cloud, in.ProjectID, d)
+		if err != nil {
+			return pricing.Estimate{}, priceError(ctx, err)
 		}
-		req.Disks = []provision.PriceDisk{{DiskTypeID: id, Size: d.SizeGB}}
+		req.Disks = []provision.PriceDisk{disk}
 	}
 	if in.PublicIP {
 		req.FloatingIPs = []provision.PriceFloatingIP{{Action: "new", Count: 1}}
@@ -74,6 +71,49 @@ func QuoteVM(ctx context.Context, cloud provision.CloudAPI, in PriceInput) (pric
 		return pricing.Estimate{}, fmt.Errorf("%s", i18n.T("the API answered a zero price", "API ответил нулевой ценой"))
 	}
 	return pricing.FromCalculation(*pc), nil
+}
+
+// QuoteDisk is the price of a disk alone from the price-calculation API of
+// Cloud.ru, asked within priceTimeout: the request carries the disk only
+// (the specification requires total_count alone; a request of disks only
+// answers, api-probe P15). The error says, in the language of the CLI, why
+// there is no price.
+func QuoteDisk(ctx context.Context, cloud provision.CloudAPI, projectID string, d DiskSpec) (pricing.Estimate, error) {
+	switch {
+	case cloud == nil:
+		return pricing.Estimate{}, errors.New(i18n.T("no connection to Cloud.ru", "нет подключения к Cloud.ru"))
+	case projectID == "":
+		return pricing.Estimate{}, errors.New(i18n.T("project not set", "проект не задан"))
+	}
+	ctx, cancel := context.WithTimeout(ctx, priceTimeout)
+	defer cancel()
+	disk, err := priceDisk(ctx, cloud, projectID, d)
+	if err != nil {
+		return pricing.Estimate{}, priceError(ctx, err)
+	}
+	pc, err := cloud.PriceCalculation(ctx, projectID, provision.PriceCalculationRequest{TotalCount: 1, Disks: []provision.PriceDisk{disk}})
+	if err != nil {
+		return pricing.Estimate{}, priceError(ctx, err)
+	}
+	if pc.TotalPriceMonth <= 0 && pc.TotalPriceHour <= 0 {
+		return pricing.Estimate{}, fmt.Errorf("%s", i18n.T("the API answered a zero price", "API ответил нулевой ценой"))
+	}
+	cost := pricing.FromCalculation(*pc)
+	cost.Source = pricing.SourceAPIDisk
+	return cost, nil
+}
+
+// priceDisk is disk d of a price calculation: its type's UUID, looked up by
+// name when d has none.
+func priceDisk(ctx context.Context, cloud provision.CloudAPI, projectID string, d DiskSpec) (provision.PriceDisk, error) {
+	id := d.TypeID
+	if id == "" {
+		var err error
+		if id, err = diskTypeID(ctx, cloud, projectID, d.Type); err != nil {
+			return provision.PriceDisk{}, err
+		}
+	}
+	return provision.PriceDisk{DiskTypeID: id, Size: d.SizeGB}, nil
 }
 
 // PriceVM is the price of a VM for a plan or a preview: the API's

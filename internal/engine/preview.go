@@ -33,10 +33,17 @@ func costNoteText() string {
 	return i18n.T(costNote, "оценка по тарифной карте evo, а не счёт")
 }
 
+// apiDiskCostNote goes next to a price of a disk alone from the
+// price-calculation API: no image, so no license to leave out.
+const apiDiskCostNote = "Cloud.ru price-calculation API, not a bill"
+
 // costNoteFor is the note of a price, by its source.
 func costNoteFor(cost pricing.Estimate) string {
-	if cost.Source == pricing.SourceAPI {
+	switch cost.Source {
+	case pricing.SourceAPI:
 		return i18n.T(apiCostNote, "по API расчёта цены Cloud.ru, а не счёт; без лицензии образа")
+	case pricing.SourceAPIDisk:
+		return i18n.T(apiDiskCostNote, "по API расчёта цены Cloud.ru, а не счёт")
 	}
 	return costNoteText()
 }

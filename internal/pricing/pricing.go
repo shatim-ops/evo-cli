@@ -14,7 +14,7 @@
 //	  "flavor_hourly": { "lowcost10-2-4": 2.80 },
 //	  "vcpu_hourly": 0.60,
 //	  "ram_gb_hourly": 0.40,
-//	  "disk_ssd_gb_monthly": 7.0,
+//	  "disk_ssd_gb_monthly": 11.42,
 //	  "disk_hdd_gb_monthly": 3.0
 //	}
 //
@@ -72,6 +72,14 @@ type Estimate struct {
 // answers 0 for the image of every image (marketplace ones included, seen
 // live 16.10.2026): a license is not in the price.
 const SourceAPI = "price-calculation API (Cloud.ru); image license not included"
+
+// SourceAPIDisk is the Source of a price of a disk alone from the
+// price-calculation API: no image, so no image license to leave out.
+const SourceAPIDisk = "price-calculation API (Cloud.ru)"
+
+// SourceDiskCard is the Source of an estimate of a disk alone by the card's
+// rate of a GB.
+const SourceDiskCard = "estimate: rate-card (disk GB); not a billed price"
 
 // SourceVCPURAM is the Source of an estimate by the card's rates of a vCPU
 // and a GB of RAM: one rate of a vCPU, whatever share of a core it
@@ -149,11 +157,15 @@ type card struct {
 
 func defaultCard() card {
 	return card{
-		Currency:         "RUB",
-		FlavorHourly:     map[string]float64{},
-		VCPUHourly:       0.60,
-		RAMGBHourly:      0.40,
-		DiskSSDGBMonthly: 7.0,
+		Currency:     "RUB",
+		FlavorHourly: map[string]float64{},
+		VCPUHourly:   0.60,
+		RAMGBHourly:  0.40,
+		// The SSD rate the price-calculation API answers: 0.0156 per GB
+		// and hour, a month of 732 hours (seen in a live run of 17.10.2026
+		// and in the agent run C2 of 30.10.2026; the card had 7.0, ~39 %
+		// under). The HDD rate is not seen live.
+		DiskSSDGBMonthly: 11.42,
 		DiskHDDGBMonthly: 3.0,
 	}
 }
@@ -224,6 +236,14 @@ func EstimateFor(flavorName string, vcpus, ramGB int, diskGB int, diskType strin
 		TotalMonthlyRub:   round2(computeMonthly + diskMonthly),
 		Source:            source,
 	}
+}
+
+// EstimateDisk is the rate card's estimate of a disk alone: diskGB at the
+// card's rate of its type.
+func EstimateDisk(diskGB int, diskType string) Estimate {
+	e := EstimateFor("", 0, 0, diskGB, diskType)
+	e.Source = SourceDiskCard
+	return e
 }
 
 func round2(f float64) float64 {
