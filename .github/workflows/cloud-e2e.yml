@@ -1644,8 +1644,9 @@ jobs:
           op=$(jq -r '.operation_id // empty' "$RUNNER_TEMP/r.json")
           if [ -n "$op" ]; then
             echo "::add-mask::$op"
-            for _ in $(seq 1 10); do
-              call pg_operation --arg operation_id="$op" --arg wait_seconds=60
+            # wait_seconds — не больше 45 (maximum схемы, D69): 14 × 45 с ≈ 10 мин
+            for _ in $(seq 1 14); do
+              call pg_operation --arg operation_id="$op" --arg wait_seconds=45
               [ "$(jq -r .done "$RUNNER_TEMP/r.json")" = true ] && break
             done
             jq -c '{done, error: (.error != null)}' "$RUNNER_TEMP/r.json"
