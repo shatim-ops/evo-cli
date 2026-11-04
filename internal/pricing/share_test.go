@@ -20,7 +20,9 @@ import (
 // flavors of 1 vCPU and 1 or 2 GB of each share: the ratio of the API to
 // the card of before, 0.60 a vCPU and 0.40 a GB an hour, times that card.
 func TestEstimateFor_PricesTheVCPUShare(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	before := func(vcpus, ramGB int) float64 { return (0.60*float64(vcpus) + 0.40*float64(ramGB)) * hoursPerMonth }
 	for _, c := range []struct {
 		share        string
@@ -54,6 +56,7 @@ func TestEstimateFor_PricesTheVCPUShare(t *testing.T) {
 func TestEstimateFor_ShareRatesOverride(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	dir := config.DataDir(home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
