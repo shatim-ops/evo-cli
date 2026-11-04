@@ -258,10 +258,16 @@ jobs:
         run: timeout 180 .github/scripts/deploy_cut_test.sh
 
       # k8s_helm по MCP (cloud-e2e, job k8s-smoke, D69): deploying, затем
-      # status deployed, каждый сеанс в пределе.
+      # status deployed, каждый сеанс в пределе; режим pods — поды Ready.
       - name: k8s_helm_mcp.sh с заглушкой evo mcp
         if: runner.os == 'Linux'
         run: timeout 120 .github/scripts/k8s_helm_mcp_test.sh
+
+      # Клиент evo mcp по stdio (k8s_helm_mcp.sh, area_mcp): следование
+      # next_tool до ответа не в работе, обрыв сеанса по пределу.
+      - name: mcp_stdio.sh с заглушкой evo mcp
+        if: runner.os == 'Linux'
+        run: timeout 120 .github/scripts/mcp_stdio_test.sh
 
       # Отказ Foundation Models в ревью Qwen: на 401/403/404 — строка без
       # тела ответа (комментарий публичный, E7).

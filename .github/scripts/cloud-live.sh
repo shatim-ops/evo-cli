@@ -53,8 +53,14 @@ ROUTE_CIDRS="198.18.255.0/24 10.255.255.0/24"
 RULE_CIDR=198.18.255.1/32
 RULE_PORT=18085
 MCP_PORT=8086
+# Предел сеанса evo mcp по stdio в area_mcp: ~45 с вызова (D69) и запас на
+# старт; повторов по next_tool — до MCP_FOLLOW_MAX (паузы MCP_FOLLOW_SLEEP).
+MCP_LIMIT=${MCP_LIMIT:-75}
+MCP_FOLLOW_MAX=${MCP_FOLLOW_MAX:-60}
 
 redact() { sed -E -f "$here/redact.sed"; }
+# shellcheck source-path=SCRIPTDIR source=mcp_stdio.sh
+. "$here/mcp_stdio.sh"
 mask() {
 	local v
 	for v in "$@"; do
@@ -1419,27 +1425,34 @@ area_pgnet() {
 }
 
 # MCP по stdio (deploy_plan → deploy_apply → deploy → destroy) и по HTTP
-# (provision → destroy), гейт подтверждения на обоих.
+# (provision → destroy), гейт подтверждения на обоих. По stdio каждый вызов —
+# свой сеанс (mcp_stdio.sh) в пределе MCP_LIMIT: deploy_apply и deploy по
+# MCP не ждут ВМ дольше ~45 с (D69, H14) — ответ creating или deploying со
+# следующим шагом, area следует ему до готовности (mcp_follow), как агент.
 area_mcp() {
-	local zid id=10 vm="$prefix-vm" ip token sess vid
+	local zid vm="$prefix-vm" ip token sess vid
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/mcp" && cd "$tmp/mcp"
 	printf 'services:\n  web:\n    image: nginx:alpine\n    ports:\n      - "%s:80"\n' "$MCP_PORT" >docker-compose.yml
-	# stdio ИМЯ АРГУМЕНТЫ_JSON — один сеанс MCP (initialize + вызов), ответ
-	# инструмента (текст) в $tmp/r.json, isError в $iserr. План deploy_plan
-	# живёт в файле каталога — следующий сеанс его видит, как у клиента после
-	# перезапуска.
+	# Ответ инструмента — в $tmp/r.json (его читает j), isError — в $iserr.
+	# План deploy_plan живёт в файле каталога — следующий сеанс его видит,
+	# как у клиента после перезапуска.
+	local MCP_WORK=$tmp MCP_TOOLSETS='' MCP_SESSION_LIMIT=$((MCP_LIMIT + 30))
+	export MCP_WORK MCP_TOOLSETS MCP_SESSION_LIMIT
 	stdio() {
-		id=$((id + 1))
-		printf '%s\n' \
-			'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"cloud-live","version":"1"}}}' \
-			'{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-			"$(jq -cn --arg n "$1" --argjson a "$2" --argjson i "$id" '{jsonrpc:"2.0", id:$i, method:"tools/call", params:{name:$n, arguments:$a}}')" |
-			timeout 2400 evo mcp >"$tmp/stdio" 2>/dev/null || true
-		jq -c --argjson i "$id" 'select(.id == $i) | .result' "$tmp/stdio" >"$tmp/res" 2>/dev/null || true
-		iserr=$(jq -r '.isError // false' "$tmp/res" 2>/dev/null || echo "?")
-		jq -r '.content[0].text // empty' "$tmp/res" >"$tmp/r.json" 2>/dev/null || : >"$tmp/r.json"
+		mcp_call "$@"
+		iserr=$MCP_ISERR
+		[ "$MCP_TOOK" -le "$MCP_LIMIT" ] || bad "stdio $1: предел вызова" "сеанс $MCP_TOOK с — дольше $MCP_LIMIT с (D69)"
+	}
+	# follow ИМЯ АРГУМЕНТЫ — вызов и повторы по next_tool до ответа не в
+	# работе; каждый сеанс в пределе, следующий шаг — тот же инструмент.
+	follow() {
+		mcp_follow "$1" "$2" "$MCP_FOLLOW_MAX"
+		iserr=$MCP_ISERR
+		echo "stdio $1: вызовов $MCP_CALLS, самый долгий сеанс $MCP_MAXTOOK с, итог $MCP_FOLLOW, status $(j -r '.status // "-"')"
+		[ "$MCP_MAXTOOK" -le "$MCP_LIMIT" ] || bad "stdio $1: предел вызова" "сеанс $MCP_MAXTOOK с — дольше $MCP_LIMIT с (D69)"
+		[ "$MCP_FOLLOW" = "done" ] || bad "stdio $1: следующий шаг" "$MCP_FOLLOW после $MCP_CALLS вызовов: $(j -c '{status, next_tool}' | redact)"
 	}
 	stdio deploy_plan "$(jq -cn --arg n "$vm" --arg z "$ZONE" --arg i "$IMAGE" --arg f "$FLAVOR" --argjson p "$MCP_PORT" \
 		'{mode:"manual", name:$n, product:"evo-e2e", zone:$z, image:$i, flavor:$f, compose_file:"docker-compose.yml", ports:[$p]}')"
@@ -1448,19 +1461,19 @@ area_mcp() {
 	[ "$iserr" = false ] && [ -n "$plan" ] && ok "stdio deploy_plan" "₽/мес $(j -r '.cost.total_monthly_rub // "?"')" || { bad "stdio deploy_plan" "isError $iserr, $(j -r '.reason // .error // empty' | redact | cut -c1-200)"; return 1; }
 	stdio deploy_apply "$(jq -cn --arg p "$plan" '{plan_id:$p}')"
 	[ "$(j -r .status)" = confirmation_required ] && [ -z "$(lst vm "$vm")" ] && ok "stdio deploy_apply без confirmed" "confirmation_required, ВМ нет" || bad "stdio deploy_apply без confirmed" "status $(j -r .status)"
-	stdio deploy_apply "$(jq -cn --arg p "$plan" '{plan_id:$p, confirmed:true}')"
+	follow deploy_apply "$(jq -cn --arg p "$plan" '{plan_id:$p, confirmed:true}')"
 	vid=$(j -r '.vm_id // empty')
 	ip=$(j -r '.public_ip // empty')
 	mask "$vid" "$ip"
-	[ "$iserr" = false ] && [ -n "$vid" ] && ok "stdio deploy_apply" "status $(j -r .status), $(j -r .elapsed_sec) с" && cov deploy_apply || { bad "stdio deploy_apply" "isError $iserr, $(j -r '.reason // .error // empty' | redact | cut -c1-200)"; return 1; }
-	stdio deploy "$(jq -cn --arg r "$zid" --arg i "$IMAGE" --arg f "$FLAVOR" '{confirmed:true, region:$r, image:$i, flavor:$f}')"
-	if [ "$iserr" = false ]; then
+	[ "$iserr" = false ] && [ -n "$vid" ] && [ "$(j -r .status)" != creating ] && ok "stdio deploy_apply" "status $(j -r .status), вызовов $MCP_CALLS" && cov deploy_apply || { bad "stdio deploy_apply" "isError $iserr, $(j -r '.reason // .error // empty' | redact | cut -c1-200)"; return 1; }
+	follow deploy "$(jq -cn --arg r "$zid" --arg i "$IMAGE" --arg f "$FLAVOR" '{confirmed:true, region:$r, image:$i, flavor:$f}')"
+	if [ "$iserr" = false ] && [ "$(j -r .status)" = ok ]; then
 		cov deploy
 		ip=${ip:-$(evo tools call vm_get --arg vm_id="$vid" --json | jq -r '.public_ip // empty')}
 		mask "$ip"
 		if poll 300 10 sh -c "curl -fsS --max-time 10 'http://$ip:$MCP_PORT/' | grep -qi nginx"; then ok "stdio deploy" "HTTP $MCP_PORT: nginx"; else bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин"; fi
 		[ "$(lst vm "$vm" | wc -l)" = 1 ] && ok "deploy после deploy_apply" "та же ВМ, второй нет" || bad "deploy после deploy_apply" "ВМ с именем $vm: $(lst vm "$vm" | wc -l); всего ВМ $prefix*: $(lst vm "$prefix" | wc -l)"
-	else bad "stdio deploy" "$(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"; fi
+	else bad "stdio deploy" "status $(j -r '.status // "-"'), $(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"; fi
 	bound_check vm_get "$(jq -cn --arg v "$vid" '{vm_id: $v}')" "allow-project: vm_get" own
 	stdio status '{}'
 	[ "$iserr" = false ] && ok "stdio status" "$(j -r '.status // .health // "?"')" || bad "stdio status" "isError"
