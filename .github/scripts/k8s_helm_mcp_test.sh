@@ -31,6 +31,8 @@ for line in sys.stdin:
     if name == "k8s_helm" and a["action"] == "install":
         if mode == "slow":
             time.sleep(2)
+        if mode == "hang":
+            time.sleep(5)
         if mode == "install-error":
             err, r = True, {"error": "helm: boom", "reason": "API_ERROR"}
         else:
@@ -69,6 +71,10 @@ run() {
 run ok ok 0
 run install-error install-error 1
 run slow slow 1 1
+# Сеанс дольше предела + 30 с: timeout обрывает evo mcp (124); MCP_LIMIT=-28
+# даёт timeout 2 с.
+run hang hang 1 -28
+grep -q 'install: isError тайм-аут сеанса' "$work/hang/out" || { echo "FAIL hang: нет «тайм-аут сеанса»"; sed 's/^/  /' "$work/hang/out"; fail=1; }
 run never-deployed never 1
 run cm-stays cm-stays 1
 # Порядок вызовов успешного случая — как у агента по следующему шагу.

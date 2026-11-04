@@ -26,7 +26,7 @@ MCP_LIMIT=${MCP_LIMIT:-75}
 STATUS_SLEEP=${STATUS_SLEEP:-10}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-fail=0 id=10 iserr= took=
+fail=0 id=10 iserr='' took=''
 err() { echo "::error::k8s_helm по MCP: $*"; fail=1; }
 
 # call ИМЯ АРГУМЕНТЫ_JSON — ответ инструмента (текст) в $work/r.json,
@@ -39,10 +39,13 @@ call() {
 		'{"jsonrpc":"2.0","method":"notifications/initialized"}' \
 		"$(jq -cn --arg n "$1" --argjson a "$2" --argjson i "$id" '{jsonrpc:"2.0", id:$i, method:"tools/call", params:{name:$n, arguments:$a}}')" |
 		timeout $((MCP_LIMIT + 30)) evo mcp --toolsets k8s >"$work/out" 2>/dev/null
+	local rc=$?
 	took=$((SECONDS - t0))
 	jq -c --argjson i "$id" 'select(.id == $i) | .result' "$work/out" >"$work/res" 2>/dev/null
 	iserr=$(jq -r '.isError // false' "$work/res" 2>/dev/null)
 	[ -n "$iserr" ] || iserr="нет ответа"
+	# 124 — сеанс оборвал timeout: не ответ сервера, а его отсутствие.
+	[ "$rc" != 124 ] || iserr="тайм-аут сеанса"
 	jq -r '.content[0].text // empty' "$work/res" >"$work/r.json" 2>/dev/null || : >"$work/r.json"
 }
 j() { jq "$@" "$work/r.json" 2>/dev/null; }

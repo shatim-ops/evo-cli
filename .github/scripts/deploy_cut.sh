@@ -33,7 +33,7 @@ err() { echo "::error::deploy с обрывом: $*"; fail=1; }
 evo deploy --yes >deploy1.txt 2>&1 &
 pid=$!
 kh="${RUNNER_TEMP:-/tmp}/deploy-cut-kh"
-ip= user= caught= start=$SECONDS
+ip='' user='' caught='' start=$SECONDS
 sshlog="${RUNNER_TEMP:-/tmp}/deploy-cut-ssh.err"
 # vm_ssh КОМАНДА — команда на ВМ ключом развёртывания; stdout, код ssh;
 # stderr последнего вызова — в $sshlog (ssh_why). Ключ хоста — при первом
@@ -70,7 +70,7 @@ if [ -n "$caught" ]; then
 	wait "$pid"
 	rc=$?
 	redact <deploy1.txt | tail -5
-	[ "$rc" = 130 ] && echo "обрыв: код 130" || err "обрыв (SIGINT): код $rc, ожидался 130"
+	if [ "$rc" = 130 ]; then echo "обрыв: код 130"; else err "обрыв (SIGINT): код $rc, ожидался 130"; fi
 	sleep 5
 	# status скрипта этапа: running с держателем flock — процесс жив;
 	# running без держателя — lost.
@@ -80,8 +80,11 @@ if [ -n "$caught" ]; then
 	running | done) ;;
 	*) err "этап $caught после обрыва — ${st:-не прочитан${sshlog:+ (ssh: $(ssh_why))}}, ожидался running или done" ;;
 	esac
+	# Команды — для ВМ: $ раскрывает её shell, а не этот.
+	# shellcheck disable=SC2016
 	tools=$(vm_ssh 'for c in setsid flock base64 nohup; do command -v "$c" >/dev/null && printf "%s=есть " "$c" || printf "%s=нет " "$c"; done')
 	echo "образ: $tools"
+	# shellcheck disable=SC2016
 	kup=$(vm_ssh 'loginctl show-user "$(id -un)" -p KillUserProcesses 2>/dev/null || grep -h "^KillUserProcesses" /etc/systemd/logind.conf /etc/systemd/logind.conf.d/*.conf 2>/dev/null')
 	echo "logind: ${kup:-KillUserProcesses не задан (по умолчанию no)}"
 else
