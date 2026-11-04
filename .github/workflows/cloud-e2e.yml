@@ -86,6 +86,10 @@ on:
         description: "Also run Managed Kubernetes live (billable, ~60 min): cluster → one-node pool → evo k8s kubectl → cert-manager install with evo k8s add-addon and its pods → delete"
         type: boolean
         default: false
+      k8s_pod_chart:
+        description: "With k8s_smoke: a chart with a pod from an image (nginx:alpine) over MCP — install, status deployed, pods Ready, uninstall, no pods; a SNAT gateway evo-e2e-k8s-snat-<run> for the step if the zone has none, deleted after it (+10 min, SNAT ~1 h)"
+        type: boolean
+        default: false
       dbaas_smoke:
         description: "Also run DBaaS live (billable, up to ~3 h): creates and deletes minimal clusters of dbaas_services, named evo-e2e-<kind>-<run>"
         type: boolean
@@ -1049,6 +1053,7 @@ jobs:
     env:
       ZONE: ${{ inputs.k8s_zone || inputs.zone || 'ru.AZ-2' }}
       CLUSTER: evo-e2e-k8s-r${{ github.run_number }}a${{ github.run_attempt }}
+      SNAT_NAME: evo-e2e-k8s-snat-r${{ github.run_number }}a${{ github.run_attempt }}
       ADDON: cert-manager
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
     defaults:
@@ -1213,6 +1218,64 @@ jobs:
       # локальный, из шага выше.
       - name: k8s_helm и k8s_kubectl по MCP с пределом вызова
         run: .github/scripts/k8s_helm_mcp.sh "$CLUSTER_ID" "$RUNNER_TEMP/chart"
+
+      # Пункт А плана cloud-e2e rc 1.7 («да» владельца 04.11): под из образа
+      # тянется через SNAT зоны — шлюз создаётся на время шага, только если
+      # в зоне его нет (один на зону; чужой не трогаем), и удаляется после.
+      - name: SNAT зоны на время шага с подом (если шлюза нет)
+        if: ${{ inputs.k8s_pod_chart }}
+        run: |
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          n=$(evo tools call snat_list --json | jq --arg z "$ZONE" '[.nat_gateways[]? | select(.availability_zone == $z or .availability_zone_id == $z)] | length')
+          if [ "$n" != 0 ]; then echo "в $ZONE уже есть SNAT-шлюз ($n) — не создаётся и не удаляется"; exit 0; fi
+          # Шлюз в зоне один: job live (net_smoke) того же прогона может
+          # создать свой между чтением и созданием. Тогда отказ — не провал:
+          # шлюз в зоне есть, он не наш — не удаляется.
+          if ! evo --yes tools call snat_create --arg name="$SNAT_NAME" --arg zone="$ZONE" --json > "$RUNNER_TEMP/snat.json" 2>"$RUNNER_TEMP/snat.err"; then
+            n=$(evo tools call snat_list --json | jq --arg z "$ZONE" --arg me "$SNAT_NAME" '[.nat_gateways[]? | select((.availability_zone == $z or .availability_zone_id == $z) and .name != $me)] | length')
+            [ "$n" != 0 ] || { echo "::error::snat_create: $(redact < "$RUNNER_TEMP/snat.err" | tail -c 300 | tr '\n' ' ')"; exit 1; }
+            echo "::warning::snat_create отклонён: в $ZONE уже есть другой шлюз ($n), например job live этого прогона — он не наш и не удаляется"
+            exit 0
+          fi
+          start=$(date +%s)
+          while :; do
+            row=$(evo tools call snat_list --json | jq -c --arg n "$SNAT_NAME" '[.nat_gateways[]? | select(.name == $n)][0] // {}')
+            id=$(jq -r '.id // empty' <<<"$row")
+            st=$(jq -r '.status // "?"' <<<"$row")
+            [ -z "$id" ] || { echo "::add-mask::$id"; echo "SNAT_ID=$id" >> "$GITHUB_ENV"; }
+            echo "$(( ($(date +%s) - start) / 60 )) мин: SNAT $st"
+            case "$st" in
+              *creat* | *CREAT* | *pending* | *PENDING* | "?") ;;
+              *ERROR* | *error* | *FAIL* | *fail*) echo "::error::SNAT: $st"; exit 1 ;;
+              *) break ;;
+            esac
+            [ $(( $(date +%s) - start )) -lt 600 ] || { echo "::error::SNAT не готов за 10 мин"; exit 1; }
+            sleep 15
+          done
+
+      - name: Под из образа по MCP (install → deployed → поды Ready → uninstall)
+        if: ${{ inputs.k8s_pod_chart }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/podchart/templates"
+          printf 'apiVersion: v2\nname: evo-e2e-pod\nversion: 0.1.0\n' > "$RUNNER_TEMP/podchart/Chart.yaml"
+          printf '%s\n' 'apiVersion: apps/v1' 'kind: Deployment' 'metadata:' '  name: evo-e2e-pod' 'spec:' '  replicas: 1' \
+            '  selector:' '    matchLabels:' '      app: evo-e2e-pod' '  template:' '    metadata:' '      labels:' '        app: evo-e2e-pod' \
+            '    spec:' '      containers:' '        - name: web' '          image: nginx:alpine' '          ports:' '            - containerPort: 80' \
+            > "$RUNNER_TEMP/podchart/templates/deploy.yaml"
+          .github/scripts/k8s_helm_mcp.sh "$CLUSTER_ID" "$RUNNER_TEMP/podchart" pods
+
+      # Шлюз, созданный шагом выше, — по id; его нет (зона со своим шлюзом,
+      # шаг не дошёл) — ничего. Остаток с именем evo-e2e-* уберёт cleanup_only.
+      - name: Удаление SNAT шага (всегда)
+        if: ${{ always() && env.SNAT_ID != '' }}
+        run: |
+          evo --yes tools call snat_delete --arg id="$SNAT_ID" --json | jq -c '{status}' || true
+          start=$(date +%s)
+          until [ "$(evo tools call snat_list --json | jq --arg id "$SNAT_ID" '[.nat_gateways[]? | select(.id == $id)] | length')" = 0 ]; do
+            [ $(( $(date +%s) - start )) -lt 300 ] || { echo "::error::SNAT $SNAT_NAME не удалился за 5 мин — удалите его в консоли Cloud.ru или cleanup_only"; exit 1; }
+            sleep 15
+          done
+          echo "SNAT удалён"
 
       # Поды плагина: Ready=True у подов без владельца Job (поды Job,
       # например cert-manager-startupapicheck, не учитываются).
