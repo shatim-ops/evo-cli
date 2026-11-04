@@ -1013,6 +1013,85 @@ jobs:
           jq -r '.zones[]? | select((.domain // .name // "") | startswith("evo-e2e-")) | "зона прогона: \(.domain // .name), state \(.state // "?"), linkedVpcIds \(.linkedVpcIds // [] | length)"' "$z" 2>/dev/null || true
           echo "ИТОГ п. 26: приватных зон evo-e2e-* — $(jq '[.zones[]? | select((.domain // .name // "") | startswith("evo-e2e-"))] | length' "$z" 2>/dev/null || echo ?)"
 
+      # P49 (BIL-9, F10): цена compute price-calculation против карты evo —
+      # по одному flavor каждой доли vCPU (1:1, 1:3, 1:10) на трёх размерах
+      # RAM, floating IP и SSD 1 ГБ. POST только считает. Ответ читает
+      # pricing.FromCalculation, карта — pricing (.github/scripts/pricecard),
+      # в лог — только отношение «API / карта», без цен: лог публичный.
+      # P50 (D17): калькулятор api.cloud.ru/calculator/v2/prices/<продукт>
+      # для Managed Kubernetes и PostgreSQL — какие имена продуктов он знает,
+      # параметры, ключи и единицы ответа; только GET, без значений цен.
+      # Решение владельца 04.11: две пробы, по два прогона.
+      - name: Цены (P49, P50)
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PROJECT"
+          redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
+          TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+            curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token \
+              -H 'Content-Type: application/json' --data-binary @- |
+            jq -r '.access_token // .accessToken // empty' || true)
+          [ -n "$TOKEN" ] || { echo "::error::нет токена"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          C=https://compute.api.cloud.ru/api/v1
+          P="project_id=$PROJECT"
+          go build -o "$RUNNER_TEMP/pricecard" ./.github/scripts/pricecard
+
+          echo "== P49 (BIL-9, F10): price-calculation / карта evo"
+          flavors=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/flavors?limit=100" || true)
+          disks=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/disk-types?$P" || true)
+          ssd=$(printf '%s' "$disks" | jq -r '[(.items? // .)[] | select((.name // "") | test("ssd"; "i"))][0].id // empty' 2>/dev/null || true)
+          # По доле: наименьший cpu, у которого есть flavor этой доли, и до
+          # трёх размеров RAM на нём (без GPU и spot).
+          picks=$(printf '%s' "$flavors" | jq -c '[.items[]? | select((.gpu // 0) == 0 and (.flavor_type.is_spot // false) == false and .oversubscription != null)] | group_by(.oversubscription)[] | (min_by(.cpu).cpu) as $c | [.[] | select(.cpu == $c)] | unique_by(.ram) | sort_by(.ram)[:3][] | {id, name, cpu, ram, share: .oversubscription}' 2>/dev/null || true)
+          one=$(printf '%s' "$picks" | head -1 | jq -r '.id // empty')
+          printf '%s\n' "$ssd" "$(printf '%s' "$picks" | jq -r '.id')" | while read -r id; do [ -z "$id" ] || echo "::add-mask::$id"; done
+          ask() { # тело запроса на stdin → «код<TAB>тело» одной строкой
+            local r b
+            r=$(curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}' "$C/projects/$PROJECT/price-calculation" 2>/dev/null || true)
+            # Пустое тело или не JSON — null: --argjson ниже не должен упасть.
+            b=$(printf '%s' "${r%$'\n'*}" | jq -c . 2>/dev/null | head -1 || true)
+            printf '%s\t%s' "${r##*$'\n'}" "${b:-null}"
+          }
+          {
+            while read -r f; do
+              [ -n "$f" ] || continue
+              id=$(printf '%s' "$f" | jq -r .id)
+              IFS=$'\t' read -r c b <<<"$(jq -n --arg f "$id" '{total_count: 1, flavor_id: $f}' | ask)"
+              printf '%s' "$f" | jq -c --arg c "$c" --argjson b "$b" '{item: "flavor_\(.share)_\(.cpu)x\(.ram)", kind: "flavor", name, cpu, ram, share, http: $c, answer: $b}'
+            done <<<"$picks"
+            if [ -n "$one" ]; then
+              IFS=$'\t' read -r c b <<<"$(jq -n --arg f "$one" '{total_count: 1, flavor_id: $f, floating_ips: [{floating_ip_action: "new", count: 1}]}' | ask)"
+              jq -nc --arg c "$c" --argjson b "$b" '{item: "floating_ip", kind: "floating_ip", http: $c, answer: $b}'
+              if [ -n "$ssd" ]; then
+                IFS=$'\t' read -r c b <<<"$(jq -n --arg f "$one" --arg d "$ssd" '{total_count: 1, flavor_id: $f, disks: [{disk_type_id: $d, size: 1}]}' | ask)"
+                jq -nc --arg c "$c" --argjson b "$b" '{item: "ssd_1gb", kind: "ssd_gb", http: $c, answer: $b}'
+              fi
+            fi
+          } | "$RUNNER_TEMP/pricecard" | sed 's/^/p49 /' | redact
+          [ -n "$one" ] || echo "p49: нет flavor с долей vCPU — расчёт пропущен"
+          unset flavors disks picks
+
+          echo "== P50 (D17): калькулятор, имена продуктов, ключи и единицы"
+          K=https://api.cloud.ru/calculator/v2/prices
+          # Ключи и единицы без цен: числа — «число»; строка-идентификатор
+          # (имя продукта, код, единица: до 40 знаков [A-Za-z0-9_.:/-]) — как
+          # есть, это публичный каталог; прочие строки — «строка». У массива —
+          # длина и форма первого элемента.
+          shape='def sh: if type == "object" then with_entries(.value |= sh) elif type == "array" then (if length == 0 then [] else [length, (.[0] | sh)] end) elif type == "number" then "число" elif type == "string" then (if test("^[A-Za-z0-9_.:/-]{1,40}$") then . else "строка" end) else type end; sh'
+          for prod in "" mk8s managed-kubernetes kubernetes k8s postgresql managed-postgresql dbaas-postgresql postgres; do
+            for auth in bearer none; do
+              h=(); [ "$auth" = bearer ] && h=(-H "Authorization: Bearer $TOKEN")
+              r=$(curl -sS "${h[@]}" -w '\n%{http_code}' "$K/$prod" 2>/dev/null || true)
+              c=${r##*$'\n'}; b=${r%$'\n'*}
+              printf 'p50 %-22s auth=%-6s http=%s %s\n' "${prod:-(список)}" "$auth" "$c" "$(printf '%s' "$b" | jq -c "$shape" 2>/dev/null | head -c 1500 || printf 'не JSON: %.80s' "$b")" | redact
+            done
+          done
+
       - name: Права ключа (изменения должны быть запрещены)
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
