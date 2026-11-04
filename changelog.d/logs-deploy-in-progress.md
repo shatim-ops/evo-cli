@@ -1,0 +1,6 @@
+### Миграция
+
+- **`evo logs`, MCP `logs` и `evo verify` для развёртывания, которое `deploy` ещё не закончил, отвечают `DEPLOY_IN_PROGRESS`, а не ошибкой SSH или сервиса** (DECISIONS D76; cloud-e2e rc.1).
+  - Было: `logs` всегда шёл на ВМ по SSH, а `verify` проверял порты, в каком бы состоянии ни была запись. Пока `deploy` создаёт или настраивает ВМ, это давало ложные причины. Запись `creating` или `provisioned`: ключ на ВМ ещё не лёг, `logs` отвечал `SSH_AUTH_FAILED`. Запись `deploying`: Docker ещё не стоит, ответ `SSH_TIMEOUT` с советом проверить контейнеры. `verify` в этих состояниях отвечал `UNHEALTHY`. Код выхода — 1.
+  - Стало: при записи `creating`, `provisioned` или `deploying` `logs` не идёт по SSH, а `verify` не проверяет порты. Ответ — `DEPLOY_IN_PROGRESS`, код выхода 1, как раньше, с `deployment_status` (статус записи) и следующим шагом `next_tool: deploy` (`next_args: {}`): повтор `deploy` продолжает с того места, где остановился. После развёртывания всё как раньше: отказ SSH — `SSH_AUTH_FAILED`, неответивший сервис — `UNHEALTHY`.
+  - Что поменять: скрипт, который ловил `SSH_AUTH_FAILED`, `SSH_TIMEOUT` или `UNHEALTHY` сразу после `deploy`, проверяет и `reason == "DEPLOY_IN_PROGRESS"`: это не сбой, а `deploy`, который нужно довести до конца.
