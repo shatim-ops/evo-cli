@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Проверка main_red.sh (workflow main-red): красный прогон ci на main
 # заводит issue «main красный: ci» с упавшими job и строками «--- FAIL» или
-# дописывает открытое, зелёный — закрывает открытое, прочие исходы
+# дописывает открытое (у ночного cloud-e2e — своё issue), зелёный — закрывает
+# открытое, прочие исходы
 # (cancelled) ничего не трогают. gh подменён: он пишет, что у него просили.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -31,14 +32,14 @@ esac
 SH
 chmod +x "$work/bin/gh"
 fail=0
-run() { # ИМЯ исход открытое ждём…
+run() { # ИМЯ исход открытое ждём… (WORKFLOW — ci, если не задан)
   : >"$work/calls"
   : >"$work/body"
   rm -f "$work/reads"
   PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" FAKE_BODY="$work/body" FAKE_OPEN="$3" \
     FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" \
     FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" LOG_RETRY_SLEEP=0 LOG_WAIT="${LOG_WAIT:-120}" \
-    GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" HEAD_SHA=0123456789abcdef \
+    WORKFLOW="${WORKFLOW:-ci}" GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" HEAD_SHA=0123456789abcdef \
     "$here/main_red.sh" >/dev/null 2>"$work/stderr" || { echo "FAIL $1: скрипт упал"; cat "$work/stderr"; fail=1; return; }
   local name=$1
   shift 3
@@ -82,4 +83,7 @@ FAKE_JOBS='106\ta\n107\tb\n' FAKE_NO_LOG=1 LOG_WAIT=0 \
   "calls:issue create" "body:**a**" "body:**b**" "stderr:за 1 из 6 попыток" "stderr:из бюджета 0 с"
 run "зелёный, два открытых — закрывает оба" success "7 8" \
   "calls:issue close 7" "calls:issue close 8" "nocalls:issue create"
+FAKE_JOBS='104\treadonly\n' FAKE_LOG='FAIL\n' WORKFLOW=cloud-e2e \
+  run "ночной cloud-e2e красный — своё issue" failure "" \
+  "calls:issue create --title main красный: cloud-e2e" "body:**readonly**"
 exit "$fail"

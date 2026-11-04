@@ -3,15 +3,16 @@ name: main-red
 # Красный push-прогон ci на main — в issue, а не в тишину (бэклог
 # «Процесса» 1.7, #796): на PR Windows гоняет только пакеты с кодом Windows
 # (#578, п. 10), и main был красным 6 прогонов из 6 после #769, пока это не
-# заметили вручную (#789, #793). Одно открытое issue «main красный: ci» —
+# заметили вручную (#789, #793). Одно открытое issue «main красный: <workflow>» —
 # красный прогон его заводит или дописывает (job и строки «--- FAIL»),
-# зелёный закрывает. Ночная полная матрица (schedule) — так же. Код PR
+# зелёный закрывает. Ночная полная матрица ci и ночные чтения cloud-e2e
+# (schedule; ручные запуски cloud-e2e не отслеживаются) — так же. Код PR
 # здесь не выполняется: workflow_run идёт на ветке по умолчанию, скрипт —
 # из main; данные прогона — через env (internal/workflows).
 
 on:
   workflow_run:
-    workflows: [ci]
+    workflows: [ci, cloud-e2e]
     types: [completed]
     branches: [main]
 
@@ -43,4 +44,5 @@ jobs:
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
         run: .github/scripts/main_red.sh

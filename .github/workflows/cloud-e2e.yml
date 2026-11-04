@@ -39,10 +39,19 @@ name: cloud-e2e
 # наблюдателя), без одобрения. Пуша в e2e/** как триггера больше нет: с ним
 # код из ветки запускался с ключом без чьего-либо решения.
 
+# Каждую ночь из main — только job readonly (план 1.7, #717, п. 4): ключ
+# наблюдателя, ничего не создаёт и не тратит, поэтому без одобрения; job с
+# ключом изменений и с ресурсами по расписанию не идут
+# (TestWorkflows_NightlyCloudIsReadOnly). Своя группа concurrency: прогон,
+# который ждёт одобрения, не держит ночные чтения, и наоборот. Красный
+# ночной прогон — в issue «main красный: cloud-e2e» (main-red.yml).
 # Образ раннера — ubuntu-24.04, не ubuntu-latest (26.04 с 24.10.2026):
 # обёртка evo и Ctrl-C через timeout -s INT проверены на 24.04; переход —
 # по job wrapper-ubuntu-latest в ci.yml (TestWorkflows_CILinuxImageIsPinned).
 on:
+  # 05:41 по Москве: после ночной матрицы ci (01:23 UTC).
+  schedule:
+    - cron: "41 2 * * *"
   workflow_dispatch:
     inputs:
       zone:
@@ -129,7 +138,7 @@ on:
         default: false
 
 concurrency:
-  group: cloud-e2e
+  group: ${{ github.event_name == 'schedule' && 'cloud-readonly-nightly' || 'cloud-e2e' }}
   cancel-in-progress: false
 
 permissions:
@@ -151,7 +160,7 @@ jobs:
   # ветки — окружение cloud-e2e.
   preflight:
     environment: ${{ github.ref == 'refs/heads/main' && 'cloud-readonly' || 'cloud-e2e' }}
-    if: ${{ !inputs.cleanup_only }}
+    if: ${{ github.event_name != 'schedule' && !inputs.cleanup_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -274,7 +283,7 @@ jobs:
   e2e:
     needs: preflight
     environment: cloud-e2e
-    if: ${{ !inputs.cleanup_only }}
+    if: ${{ github.event_name != 'schedule' && !inputs.cleanup_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -492,7 +501,7 @@ jobs:
   # владельца В5): с main их нет, с ветки PR — те, что нужно проверить до
   # слияния. Без секретов и окружения: только разбор входов и путей.
   live-plan:
-    if: ${{ !inputs.cleanup_only }}
+    if: ${{ github.event_name != 'schedule' && !inputs.cleanup_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
