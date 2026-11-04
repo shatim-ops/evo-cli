@@ -262,6 +262,13 @@ func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.Ap
 			CreatedAt:          now,
 			UpdatedAt:          now,
 		}
+		// The record is as old as the plan the VM was made by, not the end
+		// of the wait for it: a VM slow to SSH would be older than its own
+		// record, and D73 would refuse its destroy (FB170-1). The plan's
+		// time is the one ownVM took the VM as the plan's by.
+		if !plan.CreatedAt.IsZero() && plan.CreatedAt.Before(now) {
+			rec.CreatedAt = plan.CreatedAt
+		}
 		// An adopted VM opens nothing now: the rules an earlier apply
 		// created stay with it, so destroy still deletes them.
 		if old := sf.FindDeployment(res.VMID); old != nil {
