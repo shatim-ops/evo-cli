@@ -49,6 +49,25 @@ func (c raCloud) ListSecurityGroups(context.Context, string) ([]*provision.Secur
 }
 
 func (raCloud) SetToken(string) {}
+
+// ListFlavors: one flavor of the zones of the world, for the preview of the
+// VM a stack plan prices (stack_plan reads provision's own preview).
+// PriceCalculation does not answer in this world: the VM is priced by the
+// rate card, as provision prices it when the API is silent.
+func (raCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+	return nil, fmt.Errorf("price-calculation: not in this world")
+}
+
+// ListVMsInProject: no VM, so the name of a stack's VM is free.
+func (raCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) { return nil, nil }
+
+func (raCloud) ListDiskTypes(context.Context, string) ([]*provision.DiskType, error) {
+	return nil, fmt.Errorf("disk types: not in this world")
+}
+
+func (raCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
+	return []*provision.Flavor{{ID: "00000000-0000-0000-0000-0000000000f1", Name: "gen-2-4", VCPUs: 2, RAMGB: 4, Share: "1:1"}}, nil
+}
 func (raCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
 	return []*provision.AvailabilityZone{{ID: raAZ1, Name: "ru.AZ-1"}, {ID: raAZ2, Name: "ru.AZ-2"}}, nil
 }
