@@ -131,11 +131,13 @@ poll() {
 }
 # opwait ВИД OPERATION_ID СЕКУНД — ждать done=true операции <вид>_operation;
 # ID ресурса — в $res_id. Код 1 — не дождались или операция с ошибкой.
+# wait_seconds — не больше maximum схемы (45, D69): больше — USAGE, а не
+# ожидание (rc.1 1.7, run 41814931228); держит TestScripts_ArgsWithinSchema.
 opwait() {
 	local kind=$1 op=$2 until=$(($(date +%s) + $3))
 	res_id=
 	while :; do
-		tc "${kind}_operation" --arg operation_id="$op" --arg wait_seconds=120
+		tc "${kind}_operation" --arg operation_id="$op" --arg wait_seconds=45
 		if [ "$rc" = 0 ] && [ "$(j -r .done)" = true ]; then
 			res_id=$(j -r '.resourceId // .resource_id // empty')
 			mask "$res_id"
@@ -643,13 +645,21 @@ area_disk() {
 
 	# Образ из загрузочного диска: ВМ выключается изнутри (vm stop в evo нет,
 	# BACKLOG [04]), диск отключается, затем image_create.
+	# stderr ssh — в $tmp/ssh.err: причина провала в лог через redact.sed
+	# (адрес маскируется), а не «не поднялся» без класса (rc.1 1.7).
 	ssh_vm() {
 		ssh -i .evo/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-			-o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=10 "$user@$vm_ip" "$@"
+			-o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=10 "$user@$vm_ip" "$@" 2>"$tmp/ssh.err"
 	}
-	if ! poll 600 15 ssh_vm true 2>/dev/null; then bad "SSH к ВМ" "не поднялся за 10 мин"; return 1; fi
-	ssh_vm 'sudo shutdown -h +0' >/dev/null 2>&1 || true
 	vm_state() { evo tools call vm_get --arg name="$vm" --json 2>/dev/null | jq -r '.state // empty'; }
+	if ! poll 600 15 ssh_vm true; then
+		local tcp=закрыт key=нет
+		timeout 5 bash -c "</dev/tcp/$vm_ip/22" 2>/dev/null && tcp=открыт
+		[ -s .evo/id_ed25519 ] && key=есть
+		bad "SSH к ВМ" "не поднялся за 10 мин: ssh — $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200); TCP/22 $tcp; ключ .evo/id_ed25519 $key; пользователь $user; ВМ $(vm_state)"
+		return 1
+	fi
+	ssh_vm 'sudo shutdown -h +0' >/dev/null || true
 	stopped() { st=$(vm_state); case "$st" in stopped | shutoff | SHUTOFF | STOPPED) return 0 ;; *) return 1 ;; esac; }
 	if poll 300 10 stopped; then ok "ВМ выключена изнутри" "state $st"; else
 		bad "ВМ выключена изнутри" "state $(vm_state) через 5 мин"
@@ -1299,7 +1309,8 @@ area_stack() {
 	st=$(j -r .status)
 	local until=$(($(date +%s) + 2700))
 	while [ "$st" != "done" ] && [ "$st" != error ] && [ "$(date +%s)" -lt "$until" ]; do
-		tc stack_status --arg job_id="$job" --arg wait_seconds=240
+		# wait_seconds — не больше 20 (maximum схемы stack_status, D69)
+		tc stack_status --arg job_id="$job" --arg wait_seconds=20
 		st=$(j -r '.status // "?"')
 		echo "stack_status: $st, готово $(j -r '.done | length'), идёт $(j -r '.running | length'), ждёт $(j -r '.pending | length')" | redact
 	done
@@ -1509,14 +1520,30 @@ area_mcp() {
 		iserr=$(jq -r 'if .result == null then "?" else (.result.isError == true | tostring) end' "$tmp/res9" 2>/dev/null || echo "?")
 		jq -r '.result.content[0].text // empty' "$tmp/res9" >"$tmp/r.json" 2>/dev/null || : >"$tmp/r.json"
 	}
+	# hfollow ИМЯ АРГУМЕНТЫ — hcall и повторы по next_tool, пока ответ
+	# creating/deploying/deleting того же инструмента (D69, H14: по HTTP —
+	# тот же предел ~45 с); $hcalls — сколько вызовов.
+	hfollow() {
+		local name=$1 args=$2
+		hcalls=0
+		while :; do
+			hcall "$name" "$args"
+			hcalls=$((hcalls + 1))
+			case "$iserr/$(j -r '.status // empty')" in false/creating | false/deploying | false/deleting) ;; *) return 0 ;; esac
+			[ "$(j -r '.next_tool // empty')" = "$name" ] || return 0
+			args=$(j -c '.next_args // empty')
+			[ -n "$args" ] && [ "$hcalls" -lt "$MCP_FOLLOW_MAX" ] || return 0
+			sleep 5
+		done
+	}
 	local hvm="$prefix-http"
 	hcall provision "$(jq -cn --arg n "$hvm" --arg r "$zid" --arg i "$IMAGE" --arg f "$FLAVOR" '{name:$n, region:$r, image:$i, flavor:$f}')"
 	[ "$(j -r .status)" = confirmation_required ] && [ -z "$(lst vm "$hvm")" ] && ok "http provision без confirmed" "confirmation_required, ВМ нет" || bad "http provision без confirmed" "status $(j -r .status)"
-	hcall provision "$(jq -cn --arg n "$hvm" --arg r "$zid" --arg i "$IMAGE" --arg f "$FLAVOR" '{name:$n, region:$r, image:$i, flavor:$f, confirmed:true}')"
+	hfollow provision "$(jq -cn --arg n "$hvm" --arg r "$zid" --arg i "$IMAGE" --arg f "$FLAVOR" '{name:$n, region:$r, image:$i, flavor:$f, confirmed:true}')"
 	mask "$(j -r '.vm_id // empty')" "$(j -r '.vm_ip // empty')"
-	[ "$iserr" = false ] && [ "$(j -r .status)" = ok ] && ok "http provision" "ВМ создана" && cov provision || bad "http provision" "isError $iserr, $(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"
-	hcall destroy "$(jq -cn --arg n "$hvm" '{name:$n, confirmed:true}')"
-	[ "$iserr" = false ] && ok "http destroy name" "$(j -r .status)" || bad "http destroy name" "isError $iserr, $(j -r '.reason // "-"')"
+	[ "$iserr" = false ] && [ "$(j -r .status)" = ok ] && ok "http provision" "ВМ создана, вызовов $hcalls" && cov provision || bad "http provision" "isError $iserr, $(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"
+	hfollow destroy "$(jq -cn --arg n "$hvm" '{name:$n, confirmed:true}')"
+	[ "$iserr" = false ] && ok "http destroy name" "$(j -r .status), вызовов $hcalls" || bad "http destroy name" "isError $iserr, $(j -r '.reason // "-"')"
 	if poll 600 20 gone vm "$hvm"; then ok "http: ВМ удалена" ""; else bad "http: ВМ удалена" "в vm_list через 10 мин"; fi
 	kill "$http_pid" 2>/dev/null || true
 
