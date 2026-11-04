@@ -263,6 +263,12 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 120 .github/scripts/k8s_helm_mcp_test.sh
 
+      # Диагностика SSH cloud-e2e (e2e, область disk): адрес, floating IP,
+      # правило TCP/22, ответ порта — без адресов и id в выводе.
+      - name: ssh_diag.sh с заглушкой evo
+        if: runner.os == 'Linux'
+        run: timeout 120 .github/scripts/ssh_diag_test.sh
+
       # Клиент evo mcp по stdio (k8s_helm_mcp.sh, area_mcp): следование
       # next_tool до ответа не в работе, обрыв сеанса по пределу.
       - name: mcp_stdio.sh с заглушкой evo mcp
