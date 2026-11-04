@@ -20,17 +20,14 @@ import (
 var descriptionWords = map[string]string{
 	"access_ru":                           "part of a group name, SSH-access_ru.AZ-2",
 	"admin_password":                      "a field of an image's metadata, filled by --meta",
-	"authorized_keys":                     "the file on the VM",
 	"connection_string":                   "a field of the PostgreSQL API answer, passed on as is",
 	"cpu_usage":                           "a metric of Cloud.ru Monitoring",
 	"finops_report":                       "the script billing_finops ports",
 	"free_tier_disk_resize_is_prohibited": "an error code of the compute API",
-	"invalid_disk_state_to_create_image":  "an error code of the compute API",
 	"is_required":                         "a field the image API rejects in image_metadata",
 	"kafka_hosts":                         "a field of the Kafka API answer, passed on as is",
 	"node_load1":                          "a metric of Cloud.ru Monitoring",
 	"redis_hosts":                         "a field of the Redis API answer, passed on as is",
-	"too_long":                            "an error code of the compute API",
 }
 
 // Release plan 1.5, С9 (audit blind-spots-1.5, FB15-20, 48): what a tool's

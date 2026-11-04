@@ -21,12 +21,12 @@ import (
 func imageListSchema() map[string]any {
 	// The values as enumProp lists them, so checkedArgs refuses others
 	// (a []string enum it did not read, G13-1).
-	typ := enumProp("Only this type: public (OS images), marketplace (products of the Cloud.ru Marketplace) or private (images of the project). Default: all three.", images.Types...)
+	typ := enumProp("Only this type. Default: all three.", images.Types...)
 	return objSchema(map[string]any{
-		"query": strProp("Substring of the image name or display name, case-insensitive (e.g. 'astra', 'ubuntu'). Default: the whole catalogue."),
+		"query": strProp("Substring of the name or display name, case-insensitive, e.g. 'ubuntu'. Default: the whole catalogue."),
 		"type":  typ,
-		"zone":  strProp("Only images ready in this availability zone: name ('ru.AZ-1', 'AZ-1') or UUID."),
-		"all":   boolProp("Also show catalogue images ready in no zone and those the project cannot use (hidden by default: the shared catalogue carries test and broken images, and images a VM of this project cannot be created from — these come with available_in_project=false)."),
+		"zone":  strProp("Only images ready in this availability zone: name or UUID."),
+		"all":   boolProp("Also show the hidden images (the shared catalogue carries test and broken ones)."),
 	})
 }
 
