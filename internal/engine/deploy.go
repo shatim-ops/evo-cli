@@ -557,12 +557,28 @@ func sizeFlavor(project *compose.Project, flavors []*provision.Flavor, zone *dep
 // deployZone is the zone of region (a UUID or a name) as the create
 // resolves it; a zone the list does not name, or a list that cannot be
 // read, is the region as given — compared by ID and, in any case, by name.
+// The list is the one resolveNetwork reads next (zoneList).
 func (e *Engine) deployZone(ctx context.Context, region string) *deployplan.RefSpec {
-	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	zones, err := e.zoneList(ctx)
 	if z, zerr := ResolveZoneRef(zones, err, region); zerr == nil && z != nil {
 		return &deployplan.RefSpec{ID: z.ID, Name: z.Name}
 	}
 	return &deployplan.RefSpec{ID: region, Name: region}
+}
+
+// zoneList is the project's zone list, read once per call: the flavor's
+// zone (deployZone) and the network's (resolveNetwork) resolve against
+// the same list (FB160-21). A list that could not be read is not kept: the
+// next reader asks again.
+func (e *Engine) zoneList(ctx context.Context) ([]*provision.AvailabilityZone, error) {
+	if e.zones != nil {
+		return e.zones, nil
+	}
+	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	if err == nil {
+		e.zones = zones
+	}
+	return zones, err
 }
 
 // provisionVM creates a new VM and waits for it to become active.

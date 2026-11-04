@@ -552,7 +552,8 @@ func flavorMatches(f *provision.Flavor, args map[string]any) bool {
 	if s := stringArg(args, "share"); s != "" && f.Share != s {
 		return false
 	}
-	if z := stringArg(args, "zone"); z != "" && !slices.Contains(f.ZoneNames(), z) {
+	// The zone by its name in any case or its id, as D67 matches it.
+	if z := stringArg(args, "zone"); z != "" && !provision.AvailableIn(f, z, z) {
 		return false
 	}
 	if g, ok := args["gpu"].(bool); ok && (f.GPU == nil || (*f.GPU > 0) != g) {

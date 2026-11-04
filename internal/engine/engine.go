@@ -48,6 +48,8 @@ type Engine struct {
 	SSHDial func(ctx context.Context, addr string) error
 	// sshReached remembers ReachSSH per address within one call.
 	sshReached map[string]error
+	// zones is the zone list of the call, once read (zoneList).
+	zones []*provision.AvailabilityZone
 	// Stages runs the long stages of deploy on the VM (vmstage); nil: the
 	// Deployer, when it runs stages itself, else vmstage.Over(Deployer).
 	Stages vmstage.Runner

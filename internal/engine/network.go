@@ -69,7 +69,7 @@ func ResolveZoneRef(zones []*provision.AvailabilityZone, listErr error, ref stri
 // or its name (ResolveZoneRef); n.ZoneID is its UUID.
 func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneRef string) (vmNetwork, error) {
 	n := vmNetwork{ZoneID: zoneRef}
-	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	zones, err := e.zoneList(ctx)
 	zone, err := ResolveZoneRef(zones, err, zoneRef)
 	if err != nil {
 		return n, err
