@@ -61,9 +61,10 @@ func TestToolsList_SizeBudget(t *testing.T) {
 	}
 	// The ratchet under the budget is not a number here (it made every PR
 	// that touches a description conflict with the one before it): the
-	// workflow tools-list.yml compares tools/list of the PR with its base
-	// and wants «tools/list: +N байт, потому что …» in the description when
-	// it grows (owner's decision 29.10, #597, item 12).
+	// workflow tools-list.yml compares tools/list of the PR with its base,
+	// puts the growth in the run's summary, and wants «tools/list: рост —
+	// <причина>» in the description when it grows (owner's decisions 29.10,
+	// #597, item 12, and 04.11); it runs this test on the PR's head.
 	t.Logf("tools/list: %d bytes for %d tools, budget %d", len(b), len(tools), maxToolsListBytes)
 }
 
