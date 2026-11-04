@@ -25,21 +25,40 @@ import (
 // Any other failed read refuses: a delete after a check that did not run
 // would take the VM D73 guards.
 func (e *Engine) AdoptedRecord(ctx context.Context, rec state.DeploymentRecord) error {
+	_, _, err := e.checkedRecord(ctx, rec)
+	return err
+}
+
+// checkedRecord is AdoptedRecord with what its read gave, for the
+// provenance of the preview (ProvenanceOf): the VM it read, nil when it
+// read none, and the error of a read it let pass (a key the cloud refuses;
+// a VM the cloud no longer has is no error: the record still names it).
+func (e *Engine) checkedRecord(ctx context.Context, rec state.DeploymentRecord) (vm *provision.VM, passed, err error) {
 	if rec.VMID == "" || rec.CreatedAt.IsZero() || e.Auth == nil || e.Cloud == nil {
-		return nil
+		return nil, nil, nil
 	}
 	cctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
 	defer cancel()
 	tok, err := e.Auth.Token(cctx)
 	if err != nil {
-		return uncheckedRecord(rec, err)
+		return nil, passedRead(err), uncheckedRecord(rec, err)
 	}
 	e.Cloud.SetToken(tok.Value)
-	vm, err := e.Cloud.GetVM(cctx, rec.VMID)
+	vm, err = e.Cloud.GetVM(cctx, rec.VMID)
 	if err != nil {
-		return uncheckedRecord(rec, err)
+		return nil, passedRead(err), uncheckedRecord(rec, err)
 	}
-	return AdoptedVM(rec, vm)
+	return vm, nil, AdoptedVM(rec, vm)
+}
+
+// passedRead is err when uncheckedRecord lets it pass for a key the cloud
+// refuses; nil for any other.
+func passedRead(err error) error {
+	switch clerrors.Reason(err) {
+	case clerrors.CodeAuthFailed, clerrors.CodeAuthExpired, clerrors.CodeAuthRequired:
+		return err
+	}
+	return nil
 }
 
 // uncheckedRecord is the answer of AdoptedRecord when its read failed: nil
@@ -69,9 +88,10 @@ func uncheckedRecord(rec state.DeploymentRecord, err error) error {
 }
 
 // AdoptedVM is the rule of AdoptedRecord for a VM already read: the
-// record's VM made before it, beyond the clocks' skew.
+// record's VM made before it, beyond the clocks' skew (madeBeforeRecord,
+// which ProvenanceOf answers by too).
 func AdoptedVM(rec state.DeploymentRecord, vm *provision.VM) error {
-	if rec.CreatedAt.IsZero() || vm == nil || vm.CreatedAt.IsZero() || provision.MadeSince(vm, rec.CreatedAt) {
+	if vm == nil || !madeBeforeRecord(rec, vm.CreatedAt) {
 		return nil
 	}
 	return clerrors.New(clerrors.CodeUsage,

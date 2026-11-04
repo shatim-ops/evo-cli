@@ -2811,7 +2811,8 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	fipRec := state.DeploymentRecord{VMID: target.ID}
 	recordedHere := false
 	var rulesPlanned []sgrules.Planned
-	if sf, err := state.Read(statePath); err == nil {
+	sf, readErr := state.Read(statePath)
+	if readErr == nil {
 		var ids []string
 		for _, d := range sf.Deployments {
 			if d.VMID == target.ID {
@@ -2898,6 +2899,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
+	preview["provenance"] = engine.ProvenanceOf(engine.ProvenanceVM, target.ID, target.CreatedAt, nil, sf, readErr)
 	if uncheckedErr != nil {
 		preview["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
 		preview["message"] = fmt.Sprint(preview["message"]) + "; " + engine.UncheckedRules(uncheckedErr)

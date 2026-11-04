@@ -1000,6 +1000,9 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	if warning, _ := engine.DeleteWayOut(state, fipID); warning != "" {
 		preview["warning"] = warning
 	}
+	// The cloud gives no time a floating IP was made: a recorded one is
+	// the folder's, as AdoptedVM takes a VM without a time (P3).
+	preview["provenance"] = folderProvenance(eng.StateDir, engine.ProvenanceFloatingIP, fipID, time.Time{})
 	return &Plan{Preview: preview, Execute: withWayOut(func(ctx context.Context) (string, bool) {
 		if err := eng.Cloud.DeleteFloatingIP(ctx, fipID, projectID); err != nil {
 			return s.deleteFailed("release_floating_ip", fipID, fmt.Errorf(i18n.T("release floating IP: %w", "освобождение floating IP: %w"), err))
@@ -1011,6 +1014,13 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 			"message":  fmt.Sprintf("floating IP %s released", fipIP),
 		}), false
 	}, state, fipID)}, nil
+}
+
+// folderProvenance is engine.ProvenanceOf by the state of the folder dir,
+// as it reads: an unread state is said in the answer, not failed on.
+func folderProvenance(dir, kind, id string, made time.Time) engine.Provenance {
+	sf, err := state.Read(state.DefaultPath(dir))
+	return engine.ProvenanceOf(kind, id, made, nil, sf, err)
 }
 
 // handleListFloatingIPs lists floating IPs (address, state, availability).

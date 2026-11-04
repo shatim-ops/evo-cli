@@ -731,8 +731,24 @@ func toolPreview(name string, resp map[string]any) confirm.Preview {
 			rest[k] = v
 		}
 	}
+	// Whether evo made what a delete takes (P3), in words.
+	if prov, ok := provenanceOf(resp); ok {
+		p.Lines = append(p.Lines, engine.ProvenanceLine(prov))
+		delete(rest, "provenance")
+	}
 	p.Lines = append(p.Lines, argLines(rest)...)
 	return p
+}
+
+// provenanceOf is the "provenance" of a delete preview resp, when it has
+// one (engine.ProvenanceOf).
+func provenanceOf(resp map[string]any) (engine.Provenance, bool) {
+	var prov engine.Provenance
+	b, err := json.Marshal(resp["provenance"])
+	if err != nil || json.Unmarshal(b, &prov) != nil || prov.CreatedByEvo == "" {
+		return engine.Provenance{}, false
+	}
+	return prov, true
 }
 
 // createPreview is the human preview of a billable tool: the "preview"
