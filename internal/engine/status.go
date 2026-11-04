@@ -223,8 +223,8 @@ func ShowStatus(p *output.Printer, st DeploymentStatus, refreshed bool) {
 			strings.Join(others, "; ")))
 	}
 	if check.NotFound {
-		p.Hint(i18n.T("The record is stale: the VM was deleted outside evo. 'evo destroy' removes it and releases its floating IP and port rules.",
-			"Запись устарела: ВМ удалили вне evo. 'evo destroy' уберёт запись и освободит её floating IP и правила портов."))
+		p.Hint(i18n.T("The record is stale: the VM was deleted outside evo. Ask the person whether to run 'evo destroy': it removes the record and releases its floating IP and port rules.",
+			"Запись устарела: ВМ удалили вне evo. Спросите человека, выполнить ли 'evo destroy': он уберёт запись и освободит её floating IP и правила портов."))
 	}
 }
 

@@ -697,7 +697,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	// Warn if a prior job for this stack name still holds resources — applying now
 	// would create duplicates (double billing). Point the user at stack_destroy.
 	if orphans := stack.FindResourcefulJobs(m.Name, job.ID); len(orphans) > 0 {
-		out["warning"] = fmt.Sprintf("%d earlier job(s) for stack %q still hold resources — applying THIS plan will create DUPLICATES. Run stack_destroy on them first.", len(orphans), m.Name)
+		out["warning"] = fmt.Sprintf("%d earlier job(s) for stack %q still hold resources — applying THIS plan will create DUPLICATES. Whether to destroy them first (stack_destroy) — ask the person.", len(orphans), m.Name)
 		out["existing_jobs"] = orphans
 	}
 	return toJSON(out), false
@@ -718,13 +718,13 @@ func (s *Registry) checkStackSecrets(ctx context.Context, m *stack.Manifest) err
 		if holders := stack.SecretHolders(sc.Path, ""); len(holders) > 0 {
 			return clierrors.New(clierrors.CodeUsage,
 				i18n.Tf("secrets[%d]: the path %q belongs to stack job %s", "secrets[%d]: путь %q принадлежит заданию стека %s", i, sc.Path, strings.Join(holders, ", ")),
-				i18n.T("Pick another secret path in the manifest, or stack_destroy that job first.",
-					"Укажите в манифесте другой путь секрета или сначала выполните stack_destroy этого задания."))
+				i18n.T("Pick another secret path in the manifest; whether to destroy that job first (stack_destroy) — ask the person.",
+					"Укажите в манифесте другой путь секрета; удалять ли сначала это задание (stack_destroy) — спросите человека."))
 		}
 		_, err := cli.Get(ctx, sc.Path)
 		if err == nil {
 			return clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("secrets[%d]: the secret %q already exists; the stack would take it over, and stack_destroy would delete it", "secrets[%d]: секрет %q уже есть; стек присвоил бы его, а stack_destroy удалил бы", i, sc.Path),
+				i18n.Tf("secrets[%d]: the secret %q already exists; the stack would take it over, and stack_destroy would delete it — ask the person whether it may", "secrets[%d]: секрет %q уже есть; стек присвоил бы его, а stack_destroy удалил бы — спросите человека, можно ли", i, sc.Path),
 				i18n.T("Pick another secret path in the manifest.", "Укажите в манифесте другой путь секрета."))
 		}
 		if !isGone(err) {
@@ -903,8 +903,8 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 			if o.Key == m.S3[i].Key {
 				return nil, nil, clierrors.New(clierrors.CodeUsage,
 					i18n.Tf("s3[%d]: the object s3://%s/%s already exists; the stack would overwrite it, and stack_destroy would delete it", "s3[%d]: объект s3://%s/%s уже есть; стек перезаписал бы его, а stack_destroy удалил бы", i, m.S3[i].Bucket, m.S3[i].Key),
-					i18n.T("Pick another s3 key in the manifest, or remove the object (s3_rm) if the stack is to own it.",
-						"Укажите в манифесте другой ключ s3 или удалите объект (s3_rm), если он должен принадлежать стеку."))
+					i18n.T("Pick another s3 key in the manifest; whether to remove the object (s3_rm) so the stack owns it — ask the person.",
+						"Укажите в манифесте другой ключ s3; удалять ли объект (s3_rm), чтобы он принадлежал стеку, — спросите человека."))
 			}
 		}
 		notes = append(notes, fmt.Sprintf("%s/%s", m.S3[i].Bucket, m.S3[i].Key))

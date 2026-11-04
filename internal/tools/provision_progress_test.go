@@ -251,7 +251,8 @@ func TestProvisionProgress_JSONQuiet(t *testing.T) {
 }
 
 // Повтор после Ctrl-C получает 409: по-русски (это CLI — MCP говорит
-// по-английски, D6) подсказка ведёт к evo vm get, ответ MCP прежний.
+// по-английски, D6) подсказка ведёт к evo vm get и другому имени, без
+// удаления; ответ MCP прежний.
 func TestProvision_NameTaken409HintSpeaksCLI(t *testing.T) {
 	taken := func() *nameTakenCloud {
 		return &nameTakenCloud{cancelCloud{createErr: clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
@@ -261,8 +262,10 @@ func TestProvision_NameTaken409HintSpeaksCLI(t *testing.T) {
 	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
 	r, _ := fastRegistry(t, taken(), provisionCfg)
 	m, text, _ := callNamed(t, r, "provision", map[string]any{"name": "web", "confirmed": true})
-	if h, _ := m["hint"].(string); !strings.Contains(h, "evo vm get web") || !strings.Contains(h, "evo vm delete web") {
-		t.Errorf("hint = %q, want evo vm get / evo vm delete: %s", h, text)
+	// A taken name: another name, not a delete — the VM may be someone
+	// else's (release plan 1.7, block D; P1).
+	if h, _ := m["hint"].(string); !strings.Contains(h, "evo vm get web") || strings.Contains(h, "delete") || strings.Contains(h, "удал") {
+		t.Errorf("hint = %q, want evo vm get and no delete: %s", h, text)
 	}
 	i18n.SetLang(i18n.EN)
 	r, _ = fastRegistry(t, taken(), provisionCfg)
