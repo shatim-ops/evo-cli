@@ -27,6 +27,7 @@ n = int(open(f + "/calls").read()) + 1 if os.path.exists(f + "/calls") else 1
 open(f + "/calls", "w").write(str(n))
 mode = open(f + "/mode").read().strip()
 def on_int(*_):
+    open(f + "/cut", "w").write("1")
     if mode == "lost":
         open(f + "/stage", "w").write("lost")
     sys.exit(int(os.environ.get("INT_CODE", "130")))
@@ -47,6 +48,10 @@ cat >"$work/bin/ssh" <<'SH'
 #!/usr/bin/env bash
 cmd=${*: -1}
 st=$(cat "$FAKE_DIR/stage" 2>/dev/null || echo none)
+if grep -q ssh-down "$FAKE_DIR/mode" && [ -f "$FAKE_DIR/calls" ] && [ "$st" = running ] && [ -f "$FAKE_DIR/cut" ]; then
+	echo "ssh: connect to host 203.0.113.7 port 22: Connection timed out" >&2
+	exit 255
+fi
 case "$cmd" in
 *"/docker/state"*) echo "$st" ;;
 *"/compose-up/state"*) echo none ;;
@@ -78,6 +83,9 @@ run lost-after-cut lost 1
 run int-not-130 running 1 1
 run repeat-lost relost 1
 run deploy-before-caught fast 0
+run ssh-down-after-cut ssh-down 1
+grep -q 'ssh: connect to host <ip> port 22: Connection timed out' "$work/ssh-down-after-cut/out" ||
+	{ echo "FAIL ssh-down-after-cut: нет причины ssh (через маску)"; sed 's/^/  /' "$work/ssh-down-after-cut/out"; fail=1; }
 grep -q '::warning::' "$work/deploy-before-caught/out" ||
 	{ echo "FAIL deploy-before-caught: нет предупреждения"; fail=1; }
 ! grep -q '203.0.113.7' "$work/cut-and-repeat/out" ||

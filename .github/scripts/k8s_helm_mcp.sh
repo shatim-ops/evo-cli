@@ -38,7 +38,7 @@ call() {
 		'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"cloud-e2e","version":"1"}}}' \
 		'{"jsonrpc":"2.0","method":"notifications/initialized"}' \
 		"$(jq -cn --arg n "$1" --argjson a "$2" --argjson i "$id" '{jsonrpc:"2.0", id:$i, method:"tools/call", params:{name:$n, arguments:$a}}')" |
-		timeout 300 evo mcp --toolsets k8s >"$work/out" 2>/dev/null
+		timeout $((MCP_LIMIT + 30)) evo mcp --toolsets k8s >"$work/out" 2>/dev/null
 	took=$((SECONDS - t0))
 	jq -c --argjson i "$id" 'select(.id == $i) | .result' "$work/out" >"$work/res" 2>/dev/null
 	iserr=$(jq -r '.isError // false' "$work/res" 2>/dev/null)

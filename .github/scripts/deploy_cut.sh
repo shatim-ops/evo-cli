@@ -34,11 +34,17 @@ evo deploy --yes >deploy1.txt 2>&1 &
 pid=$!
 kh="${RUNNER_TEMP:-/tmp}/deploy-cut-kh"
 ip= user= caught= start=$SECONDS
-# vm_ssh КОМАНДА — команда на ВМ ключом развёртывания; stdout, код ssh.
+sshlog="${RUNNER_TEMP:-/tmp}/deploy-cut-ssh.err"
+# vm_ssh КОМАНДА — команда на ВМ ключом развёртывания; stdout, код ssh;
+# stderr последнего вызова — в $sshlog (ssh_why). Ключ хоста — при первом
+# входе, как у самого evo: ВМ создана этим прогоном, файл known_hosts —
+# свой на прогон.
 vm_ssh() {
 	ssh -i .evo/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
-		-o UserKnownHostsFile="$kh" "$user@$ip" "$1" 2>/dev/null
+		-o UserKnownHostsFile="$kh" "$user@$ip" "$1" 2>"$sshlog"
 }
+# ssh_why — последняя строка stderr ssh через маску: почему ВМ не ответила.
+ssh_why() { tail -1 "$sshlog" 2>/dev/null | redact | cut -c1-200; }
 while kill -0 "$pid" 2>/dev/null && [ $((SECONDS - start)) -lt "$CUT_WAIT" ]; do
 	if [ -z "$ip" ] && [ -s .evo/state.json ]; then
 		ip=$(jq -r '.deployments[0].vm_ip // empty' .evo/state.json 2>/dev/null)
@@ -72,7 +78,7 @@ if [ -n "$caught" ]; then
 	echo "этап $caught после обрыва: ${st:-не прочитан}"
 	case "$st" in
 	running | done) ;;
-	*) err "этап $caught после обрыва — ${st:-не прочитан}, ожидался running или done" ;;
+	*) err "этап $caught после обрыва — ${st:-не прочитан${sshlog:+ (ssh: $(ssh_why))}}, ожидался running или done" ;;
 	esac
 	tools=$(vm_ssh 'for c in setsid flock base64 nohup; do command -v "$c" >/dev/null && printf "%s=есть " "$c" || printf "%s=нет " "$c"; done')
 	echo "образ: $tools"
@@ -83,7 +89,7 @@ else
 		kill -INT "$pid"
 		wait "$pid"
 		redact <deploy1.txt | tail -20
-		err "этап на ВМ не пойман за $CUT_WAIT с, evo deploy оборван"
+		err "этап на ВМ не пойман за $CUT_WAIT с, evo deploy оборван; ssh: $(ssh_why)"
 	else
 		wait "$pid"
 		rc=$?
