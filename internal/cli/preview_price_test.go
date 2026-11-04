@@ -45,6 +45,39 @@ var noPriceInPreview = map[string]string{
 // A preview never carries the value of a secret argument
 // (CLISpec.SecretFiles): secret_create's names the path only.
 func TestContract_EveryPreviewPricedOrListed(t *testing.T) {
+	var bad []string
+	eachPreview(t, func(tl tools.Tool, p map[string]any) {
+		bad = append(bad, priceClassProblems(tl.Name, p)...)
+		_, cost := p["cost"]
+		tariff, _ := p["tariff_url"].(string)
+		priced := cost || tariff != ""
+		_, listed := noPriceInPreview[tl.Name]
+		switch {
+		case priced && listed:
+			bad = append(bad, tl.Name+": the preview has a price now; take it out of noPriceInPreview")
+		case !priced && !listed:
+			bad = append(bad, tl.Name+": the preview shows neither cost nor tariff_url; price it or list it in noPriceInPreview with the reason")
+		}
+	})
+	reg := tools.New(nil)
+	for name := range noPriceInPreview {
+		if tl, ok := reg.Lookup(name); !ok || !tl.Mutating {
+			bad = append(bad, name+": in noPriceInPreview, but no tool that asks for consent")
+		}
+	}
+	if len(bad) > 0 {
+		sort.Strings(bad)
+		t.Fatal(strings.Join(bad, "\n"))
+	}
+}
+
+// eachPreview calls fn with the preview of each tool that asks for
+// consent, on the parity world (parityArgs, paritySetup): one pass over
+// the registry for the invariants that read what a preview says. A tool
+// without a preview there fails the test; a preview that holds the value
+// of a secret argument does too.
+func eachPreview(t *testing.T, fn func(tl tools.Tool, p map[string]any)) {
+	t.Helper()
 	world := withParityWorld(t)
 	fakeKubeBinaries(t)
 	srv := parityServers(t)
@@ -78,23 +111,7 @@ func TestContract_EveryPreviewPricedOrListed(t *testing.T) {
 				bad = append(bad, tl.Name+": the preview holds the value of "+k)
 			}
 		}
-		bad = append(bad, priceClassProblems(tl.Name, p)...)
-		_, cost := p["cost"]
-		tariff, _ := p["tariff_url"].(string)
-		priced := cost || tariff != ""
-		_, listed := noPriceInPreview[tl.Name]
-		switch {
-		case priced && listed:
-			bad = append(bad, tl.Name+": the preview has a price now; take it out of noPriceInPreview")
-		case !priced && !listed:
-			bad = append(bad, tl.Name+": the preview shows neither cost nor tariff_url; price it or list it in noPriceInPreview with the reason")
-		}
-	}
-	reg := tools.New(nil)
-	for name := range noPriceInPreview {
-		if tl, ok := reg.Lookup(name); !ok || !tl.Mutating {
-			bad = append(bad, name+": in noPriceInPreview, but no tool that asks for consent")
-		}
+		fn(tl, p)
 	}
 	if len(bad) > 0 {
 		sort.Strings(bad)

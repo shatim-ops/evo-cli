@@ -245,6 +245,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/response_shape_test.sh
 
+      # Форма ответа калькулятора в публичном логе api-probe (P50): ключи и
+      # единицы без цен, тело не JSON — одной строкой.
+      - name: json_shape.sh на образцах
+        if: runner.os == 'Linux'
+        run: .github/scripts/json_shape_test.sh
+
       # deploy с обрывом посреди этапа на ВМ (cloud-e2e, job e2e, D69):
       # обрыв — 130, этап жив, повтор без «прервался на ВМ».
       - name: deploy_cut.sh с заглушками evo и ssh

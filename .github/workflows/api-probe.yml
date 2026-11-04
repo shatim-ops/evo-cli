@@ -1078,17 +1078,14 @@ jobs:
 
           echo "== P50 (D17): калькулятор, имена продуктов, ключи и единицы"
           K=https://api.cloud.ru/calculator/v2/prices
-          # Ключи и единицы без цен: числа — «число»; строка-идентификатор
-          # (имя продукта, код, единица: до 40 знаков [A-Za-z0-9_.:/-]) — как
-          # есть, это публичный каталог; прочие строки — «строка». У массива —
-          # длина и форма первого элемента.
-          shape='def sh: if type == "object" then with_entries(.value |= sh) elif type == "array" then (if length == 0 then [] else [length, (.[0] | sh)] end) elif type == "number" then "число" elif type == "string" then (if test("^[A-Za-z0-9_.:/-]{1,40}$") then . else "строка" end) else type end; sh'
+          # Ключи и единицы без цен — json_shape.sh.
+          . "$GITHUB_WORKSPACE/.github/scripts/json_shape.sh"
           for prod in "" mk8s managed-kubernetes kubernetes k8s postgresql managed-postgresql dbaas-postgresql postgres; do
             for auth in bearer none; do
               h=(); [ "$auth" = bearer ] && h=(-H "Authorization: Bearer $TOKEN")
               r=$(curl -sS "${h[@]}" -w '\n%{http_code}' "$K/$prod" 2>/dev/null || true)
               c=${r##*$'\n'}; b=${r%$'\n'*}
-              printf 'p50 %-22s auth=%-6s http=%s %s\n' "${prod:-(список)}" "$auth" "$c" "$(printf '%s' "$b" | jq -c "$shape" 2>/dev/null | head -c 1500 || printf 'не JSON: %.80s' "$b")" | redact
+              printf 'p50 %-22s auth=%-6s http=%s %s\n' "${prod:-(список)}" "$auth" "$c" "$(printf '%s' "$b" | json_shape)" | redact
             done
           done
 
