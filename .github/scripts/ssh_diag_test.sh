@@ -47,7 +47,7 @@ kill "$listener" 2>/dev/null; wait "$listener" 2>/dev/null || true
 listener=
 run closed '{"id":"'$vm'","state":"running","public_ip":"127.0.0.2","interfaces":[]}' "$sg"
 want closed "адрес другой"
-want closed "TCP/22 с раннера — отказ"
+want closed "TCP/22 с раннера — отказ: Connection refused"
 run novm "" "$sg"
 want novm "ВМ vm_get не прочитан"
 ! grep -q '0000-4000' "$work"/*/out || { echo "FAIL: id в выводе"; fail=1; }

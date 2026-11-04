@@ -17,7 +17,8 @@
 #     узкий префикс redact.sed маскирует): в группе SG_ID (deploy
 #     пишет её в state), иначе в группах SSH-access_* (provision без своей
 #     группы ставит ВМ туда);
-#   порт — TCP/22 с раннера: открыт, отказ (RST) или нет ответа.
+#   порт — TCP/22 с раннера: открыт, отказ с причиной (Connection refused,
+#     No route to host…) или нет ответа.
 # Вывод — через redact.sed (ID и адреса маскируются), код выхода — 0:
 # диагностика не меняет итог шага.
 here=$(cd "$(dirname "$0")" && pwd)
@@ -55,11 +56,13 @@ else
 	rule="list_security_groups не прочитан"
 fi
 
-timeout "$TCP_WAIT" bash -c "</dev/tcp/$ip/$SSH_PORT" 2>/dev/null
+# Отказ — с текстом ошибки соединения: «Connection refused» (RST) и
+# «No route to host» (ICMP) — разные классы, одна метка их скрыла бы.
+err=$(timeout "$TCP_WAIT" bash -c "</dev/tcp/$ip/$SSH_PORT" 2>&1 >/dev/null)
 case $? in
 0) port="открыт" ;;
 124) port="нет ответа за $TCP_WAIT с" ;;
-*) port="отказ (соединение сброшено)" ;;
+*) port="отказ: $(printf '%s' "$err" | grep -oE '[A-Z][a-z]+( [a-z]+)*$' | tail -1)" ;;
 esac
 
 printf 'SSH-диагностика: ВМ %s; адрес %s; интерфейсы %s; группа — %s; TCP/22 с раннера — %s\n' \
