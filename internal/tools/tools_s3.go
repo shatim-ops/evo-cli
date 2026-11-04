@@ -234,8 +234,8 @@ func (s *Registry) planS3BucketDelete(ctx context.Context, args map[string]any) 
 		return nil, clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("bucket %q is not empty, and S3 deletes only an empty bucket; nothing was deleted",
 				"бакет %q не пуст, а S3 удаляет только пустой бакет; ничего не удалено", bucket),
-			i18n.Tf("List its objects with s3_ls bucket=%[1]s (evo s3 ls %[1]s), delete them with s3_rm, then delete the bucket.",
-				"Объекты бакета — в s3_ls bucket=%[1]s (evo s3 ls %[1]s); удалите их через s3_rm, затем удалите бакет.", bucket))
+			i18n.Tf("List its objects with s3_ls bucket=%[1]s (evo s3 ls %[1]s): only an empty bucket goes; whether to delete its objects (s3_rm) — ask the person.",
+				"Объекты бакета — в s3_ls bucket=%[1]s (evo s3 ls %[1]s): удаляется только пустой бакет; удалять ли объекты (s3_rm) — спросите человека.", bucket))
 	}
 	return &Plan{
 		Preview: map[string]any{

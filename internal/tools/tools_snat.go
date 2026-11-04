@@ -152,7 +152,7 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	return toJSON(map[string]any{
 		"status":      "created",
 		"nat_gateway": gw,
-		"note":        "SNAT gateway created — private-subnet nodes in this zone now have outbound internet. Delete it with snat_delete when no longer needed (it's billable).",
+		"note":        "SNAT gateway created — private-subnet nodes in this zone now have outbound internet. It is billable; whether and when to delete it (snat_delete) — ask the person.",
 	}), false
 }
 

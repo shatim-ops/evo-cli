@@ -117,7 +117,7 @@ internal/stack	job %s not found: %w
 internal/stack	lock job %s: %w
 internal/stack	parse job %s: %w
 internal/tools	%w (VM %s is not in the state either: %v)
-internal/tools	%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — release it with release_floating_ip
+internal/tools	%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — ask the person whether to release it (release_floating_ip)
 internal/tools	add version: %w
 internal/tools	attach disk: %w
 internal/tools	attach disk: %w (waited for the new disk: %v)
