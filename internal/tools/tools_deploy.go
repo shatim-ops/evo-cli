@@ -503,7 +503,7 @@ func (s *Registry) handleListFlavors(ctx context.Context, args map[string]any) (
 		if !flavorMatches(f, args) {
 			continue
 		}
-		est := pricing.EstimateFor(f.Name, f.VCPUs, f.RAMGB, 10, "SSD")
+		est := pricing.EstimateFor(f.Name, f.Share, f.VCPUs, f.RAMGB, 10, "SSD")
 		row := map[string]any{
 			"name":            f.Name,
 			"vcpus":           f.VCPUs,

@@ -40,6 +40,8 @@ var previewForm = map[string]string{
 // Closes by 1.8: a line lives at most two versions (release plan 1.6,
 // «храповики со сроком»; TestMisses_HaveADeadline).
 var humanUnnamed = map[string]struct{ class, why string }{
+	"deploy cost.hourly_rub":                          {unnamedPrice, "почасовая цена; человеку — месячная"},
+	"deploy preview.cost.hourly_rub":                  {unnamedPrice, "почасовая цена; человеку — месячная"},
 	"deploy preview.project_from":                     {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"deploy project_from":                             {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"deploy update":                                   {unnamedWork, "обновит ли deploy существующую ВМ"},

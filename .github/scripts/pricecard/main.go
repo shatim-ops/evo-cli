@@ -83,7 +83,7 @@ func compare(in item) out {
 	switch in.Kind {
 	case "flavor":
 		api = e.ComputeMonthlyRub
-		card = pricing.EstimateFor(in.Name, in.CPU, in.RAM, 0, "").ComputeMonthlyRub
+		card = pricing.EstimateFor(in.Name, in.Share, in.CPU, in.RAM, 0, "").ComputeMonthlyRub
 	case "floating_ip":
 		api = e.FloatingIPMonthlyRub
 		card = pricing.Estimate{}.WithFloatingIP().FloatingIPMonthlyRub

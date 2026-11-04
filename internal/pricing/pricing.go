@@ -12,6 +12,7 @@
 //	{
 //	  "currency": "RUB",
 //	  "flavor_hourly": { "lowcost10-2-4": 2.80 },
+//	  "share_hourly": { "1:10": { "vcpu": 0.33, "ram_gb": 0.08 } },
 //	  "vcpu_hourly": 0.60,
 //	  "ram_gb_hourly": 0.40,
 //	  "disk_ssd_gb_monthly": 11.42,
@@ -84,8 +85,12 @@ const SourceDiskCard = "estimate: rate-card (disk GB); not a billed price"
 
 // SourceVCPURAM is the Source of an estimate by the card's rates of a vCPU
 // and a GB of RAM: one rate of a vCPU, whatever share of a core it
-// guarantees.
+// guarantees (a flavor of a share the card has no rates of).
 const SourceVCPURAM = "estimate: rate-card (vCPU+RAM); not a billed price"
+
+// SourceVCPUShare is the Source of an estimate by the card's rates of a
+// vCPU of the flavor's share of a core and of a GB of RAM.
+const SourceVCPUShare = "estimate: rate-card (vCPU by its share + RAM, price-calculation of 04.11.2026); not a billed price"
 
 // Breakdown is the components of an API price, in roubles per Period. The
 // API does not say the period of its components: Period is "month" or "hour"
@@ -150,6 +155,7 @@ func near(sum, total float64) bool {
 type card struct {
 	Currency          string             `json:"currency"`
 	FlavorHourly      map[string]float64 `json:"flavor_hourly"`
+	ShareHourly       map[string]rates   `json:"share_hourly"`
 	VCPUHourly        float64            `json:"vcpu_hourly"`
 	RAMGBHourly       float64            `json:"ram_gb_hourly"`
 	DiskSSDGBMonthly  float64            `json:"disk_ssd_gb_monthly"`
@@ -157,12 +163,33 @@ type card struct {
 	FloatingIPMonthly float64            `json:"floating_ip_monthly"`
 }
 
+// rates are the hourly rates of a vCPU and of a GB of RAM of one share of a
+// core.
+type rates struct {
+	VCPU  float64 `json:"vcpu"`
+	RAMGB float64 `json:"ram_gb"`
+}
+
 func defaultCard() card {
 	return card{
 		Currency:     "RUB",
 		FlavorHourly: map[string]float64{},
-		VCPUHourly:   0.60,
-		RAMGBHourly:  0.40,
+		// The rates of each share of a core (the guaranteed share of a
+		// vCPU, FlavorSchema's oversubscription): the monthly compute the
+		// price-calculation API answers for the flavors of 1 vCPU and 1 or
+		// 2 GB of the share, read back to a vCPU and a GB an hour of a
+		// 730-hour month (probe P49, two runs of 04.11.2026; release plan
+		// 1.7, F10). Two flavors a share: the rates fit them, a size
+		// further away is an extrapolation. The public tariff names no
+		// rate by share.
+		ShareHourly: map[string]rates{
+			"1:1":  {VCPU: 0.9898, RAMGB: 0.2376},
+			"1:3":  {VCPU: 0.3801, RAMGB: 0.2534},
+			"1:10": {VCPU: 0.3299, RAMGB: 0.0792},
+		},
+		// A flavor of a share the card has no rates of (or of none).
+		VCPUHourly:  0.60,
+		RAMGBHourly: 0.40,
 		// The SSD rate the price-calculation API answers: 0.0156 per GB
 		// and hour, a month of 732 hours (seen in a live run of 17.10.2026
 		// and in the agent run C2 of 30.10.2026; the card had 7.0, ~39 %
@@ -196,6 +223,11 @@ func load() card {
 	for k, v := range override.FlavorHourly {
 		c.FlavorHourly[k] = v
 	}
+	for k, v := range override.ShareHourly {
+		if v.VCPU > 0 && v.RAMGB > 0 {
+			c.ShareHourly[k] = v
+		}
+	}
 	if override.VCPUHourly > 0 {
 		c.VCPUHourly = override.VCPUHourly
 	}
@@ -214,10 +246,12 @@ func load() card {
 	return c
 }
 
-// Estimate computes a cost estimate for a flavor + disk. flavorName may be
-// empty (then vCPU/RAM rates are used); diskType is matched case-insensitively
-// against "ssd"/"hdd".
-func EstimateFor(flavorName string, vcpus, ramGB int, diskGB int, diskType string) Estimate {
+// EstimateFor computes a cost estimate for a flavor + disk: by the card's
+// rate of the flavor's name, else by the rates of its share of a core
+// ("1:10", as the catalogue writes it), else by the rates of a vCPU and a
+// GB of RAM. flavorName and share may be empty; diskType is matched
+// case-insensitively against "ssd"/"hdd".
+func EstimateFor(flavorName, share string, vcpus, ramGB int, diskGB int, diskType string) Estimate {
 	c := load()
 
 	var hourly float64
@@ -225,6 +259,9 @@ func EstimateFor(flavorName string, vcpus, ramGB int, diskGB int, diskType strin
 	if v, ok := c.FlavorHourly[flavorName]; ok {
 		hourly = v
 		source = "estimate: rate-card (flavor); not a billed price"
+	} else if r, ok := c.ShareHourly[share]; ok {
+		hourly = float64(vcpus)*r.VCPU + float64(ramGB)*r.RAMGB
+		source = SourceVCPUShare
 	} else {
 		hourly = float64(vcpus)*c.VCPUHourly + float64(ramGB)*c.RAMGBHourly
 	}
@@ -258,7 +295,7 @@ func (e Estimate) WithFloatingIP() Estimate {
 // EstimateDisk is the rate card's estimate of a disk alone: diskGB at the
 // card's rate of its type.
 func EstimateDisk(diskGB int, diskType string) Estimate {
-	e := EstimateFor("", 0, 0, diskGB, diskType)
+	e := EstimateFor("", "", 0, 0, diskGB, diskType)
 	e.Source = SourceDiskCard
 	return e
 }
