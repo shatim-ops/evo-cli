@@ -200,7 +200,10 @@ var parityArgs = map[string]map[string]any{
 	"s3_get":           {"bucket": "bucket-web", "key": "k.txt"},
 	// stack: the job of apply, destroy and status comes from paritySetup;
 	// the id here is what a command line without one gets.
-	"stack_plan":    {"manifest": map[string]any{"name": "s", "vpc": map[string]any{"name": "v"}}},
+	// stack_plan: a priced line (PostgreSQL by the tariff, its size given)
+	// beside one without a price (VPC) — the cost invariant reads both.
+	"stack_plan": {"manifest": map[string]any{"name": "s", "vpc": map[string]any{"name": "v"},
+		"postgres": map[string]any{"name": "p", "cpu": 2, "ram": 8, "storage_gb": 20}}},
 	"stack_apply":   {"job_id": "stk-0123456789"},
 	"stack_destroy": {"job_id": "stk-0123456789"},
 	"stack_status":  {"job_id": "stk-0123456789"},
