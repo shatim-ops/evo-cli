@@ -1788,6 +1788,10 @@ func deployFields(err error, fields map[string]any) map[string]any {
 		if out, _ := ce.Details["output"].(string); out != "" {
 			add("output", out)
 		}
+		// The VM whose name deploy's VM would take (FB170-2, D73).
+		if id, _ := ce.Details["existing_id"].(string); id != "" {
+			add("existing_id", id)
+		}
 	}
 	return fields
 }
