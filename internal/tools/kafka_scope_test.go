@@ -16,7 +16,7 @@ import (
 func TestKafka_NoTopicOrUserTools(t *testing.T) {
 	for _, tl := range New(nil).Tools() {
 		if strings.HasPrefix(tl.Name, "kafka_") && (strings.Contains(tl.Name, "topic") || strings.Contains(tl.Name, "user")) {
-			t.Errorf("%s: a Kafka topic or user tool — change skills/evo-scenarios, which sends the person to the console", tl.Name)
+			t.Errorf("%s: a Kafka topic or user tool — change the note of the kafka card (tools.cardNotes), which sends the person to the console", tl.Name)
 		}
 	}
 }

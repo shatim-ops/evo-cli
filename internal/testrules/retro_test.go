@@ -49,6 +49,8 @@ var retroKnown = map[string]string{
 	"1.3.1 «разработка»: R2 a cost without a number":                 "the first retro, written before R2; stays as it is",
 	"1.4.0 «разработка»: R2 a cost without a number":                 "written before R2: «десятки пробуждений» is no number; stays as it is",
 	"1.4.0 «разработка»: R3 #396 again without the owner's decision": "two problems of one PR (a Qwen answer missed, the preview of stack_destroy), not a repeat",
+	"1.4.1 «разработка»: R2 a test that is not there":                "TestSkills_SayWhatTheCodeDoes and TestSkills_InventoryIsOnlyTheirs went with skills/ (D68, 1.7); the retro stays as it is",
+	"1.4.1 «Процесс»: R2 a test that is not there":                   "TestSkills_SayWhatTheCodeDoes and TestSkills_InventoryIsOnlyTheirs went with skills/ (D68, 1.7); the retro stays as it is",
 }
 
 var (

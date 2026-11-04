@@ -127,17 +127,14 @@ func TestLayout_RootListed(t *testing.T) {
 	}
 }
 
-// skillFile matches what skills/ may hold (docs/internal/skills/spec.md,
-// §3.2 and §8): its README, and per skill SKILL.md, README.md and
-// references/*.md. Anything else — a script, an image, a nested skill — is
-// installed into the agent's directory with the skill and is not reviewed
-// as text. The names of the skills are checked in internal/cli.
-var skillFile = regexp.MustCompile(`^skills/(README\.md|[a-z0-9-]+/(SKILL\.md|README\.md|references/[^/]+\.md))$`)
-
-func TestLayout_SkillsHoldOnlyText(t *testing.T) {
+// D68: the scenario skills left the product (owner's decisions 30.10 and
+// 03.11); their knowledge is in the descriptions, the cards and the
+// built-in skill. A file under skills/ would be a skill back without a
+// decision.
+func TestLayout_NoScenarioSkills(t *testing.T) {
 	for _, p := range files(t) {
-		if strings.HasPrefix(p, "skills/") && !skillFile.MatchString(p) {
-			t.Errorf("%s: skills/ holds only README.md and per skill SKILL.md, README.md, references/*.md (spec §3.2)", p)
+		if strings.HasPrefix(p, "skills/") {
+			t.Errorf("%s: skills/ is gone (D68): a scenario skill is a decision of the owner, its facts go into the registry", p)
 		}
 	}
 }
@@ -192,27 +189,6 @@ func TestLayout_IsSpec(t *testing.T) {
 	for _, c := range cases {
 		if got := isSpec(c.path, []byte(c.body)); got != c.want {
 			t.Errorf("isSpec(%s) = %v, want %v", c.path, got, c.want)
-		}
-	}
-}
-
-func TestLayout_SkillFile(t *testing.T) {
-	cases := map[string]bool{
-		"skills/README.md":                       true,
-		"skills/evo-vm/SKILL.md":                 true,
-		"skills/evo-vm/README.md":                true,
-		"skills/evo-vm/references/delete-map.md": true,
-		"skills/SKILL.md":                        false,
-		"skills/evo-vm/run.sh":                   false,
-		"skills/evo-vm/references/check.py":      false,
-		"skills/evo-vm/references/deep/x.md":     false,
-		"skills/evo-vm/evo-sub/SKILL.md":         false,
-		"skills/Evo-VM/SKILL.md":                 false,
-		"skills/evo-vm/references/logo.png":      false,
-	}
-	for p, want := range cases {
-		if got := skillFile.MatchString(p); got != want {
-			t.Errorf("skillFile(%s) = %v, want %v", p, got, want)
 		}
 	}
 }
