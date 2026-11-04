@@ -240,7 +240,14 @@ del() {
 	route) tc vpc_route_delete --arg vpc_id="${id%% *}" --arg route_id="${id#* }" ;;
 	subnet) tc subnet_delete --arg subnet_id="$id" ;;
 	vpc) tc vpc_delete --arg id="$id" ;;
-	dns) tc dns_zone_delete --arg type="${id%% *}" --arg id="${id#* }" ;;
+	dns)
+		# Связь с VPC (D66) — отвязка и повтор, а не тот же USAGE 20 мин.
+		tc dns_zone_delete --arg type="${id%% *}" --arg id="${id#* }"
+		if dns_linked && [ "${id%% *}" = private ]; then
+			if dns_unlink "${id#* }"; then
+				tc dns_zone_delete --arg type="${id%% *}" --arg id="${id#* }"
+			else echo "отвязка зоны от VPC: $why"; fi
+		fi ;;
 	s3)
 		local k
 		evo tools call s3_ls --arg bucket="$id" --json 2>/dev/null | jq -r '.objects[]?.key' >"$tmp/keys" || true
@@ -443,6 +450,23 @@ api() {
 # api_why — текст ошибки ответа api, через redact.sed и обрезанный.
 api_why() { jq -r '[.code?, .message?, .detail?, .error?] | map(select(. != null) | tostring) | join(": ")' "$tmp/api.json" 2>/dev/null | redact | cut -c1-200; }
 
+# dns_linked — последний ответ tc — отказ D66 «зона связана с VPC»: USAGE
+# до вопроса, а не сбой (зона без vpc_id связана с VPC по умолчанию, D65).
+dns_linked() { [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && printf '%s' "$why" | grep -q 'связан'; }
+# dns_unlink ID — снять связи приватной зоны с VPC (PATCH linkedVpcIds: []
+# в API DNS) и дождаться операции: evo этого не делает (D66 отказывает с
+# путём; отвязка самим dns_zone_delete — бэклог 1.8), а без отвязки зону
+# не удалить ни сценарию, ни уборке (rc.1 и rc.2 1.7: зона осталась, уборка
+# 20 мин повторяла тот же USAGE). Код 1 — не отвязана, причина в $why.
+dns_unlink() {
+	local op
+	iam_token || { why="нет токена IAM (KEY_ID, SECRET)"; return 1; }
+	api PATCH "https://dns.api.cloud.ru/v1/privateZones/$1" '{"linkedVpcIds":[]}'
+	[ "${code#2}" != "$code" ] || { why="PATCH linkedVpcIds: HTTP $code: $(api_why)"; return 1; }
+	op=$(jq -r '.id // empty' "$tmp/api.json")
+	[ -z "$op" ] || { mask "$op"; opwait dns "$op" 300; }
+}
+
 # Проба P36 (пункт Д; FB15-5): что отвечает платформа на создание ВМ с
 # flavor меньше min_cpu образа — 4xx до создания или ВМ в
 # error_creating/running. evo такой вызов отвергает до вопроса (D54), поэтому
@@ -520,7 +544,7 @@ probe_p41() {
 
 # ВМ, диски, образ из загрузочного диска.
 area_disk() {
-	local zid vm vm_ip user data boot img st=
+	local zid vm vm_ip vid user data boot img st=
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/disk" && cd "$tmp/disk"
@@ -529,7 +553,8 @@ area_disk() {
 	must provision provision --arg name="$vm" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" || return 1
 	vm_ip=$(j -r '.vm_ip // empty')
 	user=$(j -r '.ssh_user // "user1"')
-	mask "$(j -r '.vm_id // empty')" "$vm_ip"
+	vid=$(j -r '.vm_id // empty')
+	mask "$vid" "$vm_ip"
 	[ -n "$vm_ip" ] || { bad provision "нет vm_ip: $(j -r .status)"; return 1; }
 	ok provision "$(j -r .status), диск $(j -r .disk_gb) ГБ"
 	cov provision
@@ -653,10 +678,12 @@ area_disk() {
 	}
 	vm_state() { evo tools call vm_get --arg name="$vm" --json 2>/dev/null | jq -r '.state // empty'; }
 	if ! poll 600 15 ssh_vm true; then
-		local tcp=закрыт key=нет
-		timeout 5 bash -c "</dev/tcp/$vm_ip/22" 2>/dev/null && tcp=открыт
+		# Факты сети — ssh_diag.sh (общий с job e2e): адрес и floating IP,
+		# правило TCP/22 в группе, ответ порта (rc.2 1.7: 2 из 2 «timed out»).
+		local key=нет
 		[ -s .evo/id_ed25519 ] && key=есть
-		bad "SSH к ВМ" "не поднялся за 10 мин: ssh — $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200); TCP/22 $tcp; ключ .evo/id_ed25519 $key; пользователь $user; ВМ $(vm_state)"
+		[ -z "$vid" ] || "$here/ssh_diag.sh" "$vid" "$vm_ip"
+		bad "SSH к ВМ" "не поднялся за 10 мин: ssh — $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200); ключ .evo/id_ed25519 $key; пользователь $user; ВМ $(vm_state)"
 		return 1
 	fi
 	ssh_vm 'sudo shutdown -h +0' >/dev/null || true
@@ -1087,7 +1114,20 @@ area_dns() {
 	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" 'any(.records[]; .id == $id) | not' >/dev/null; }
 	if poll 300 15 norec; then ok dns_record_delete "записи нет"; cov dns_record_delete; else bad dns_record_delete "запись осталась через 5 мин"; fi
 	! probe_on dnslink || probe_dnslink "$zid"
-	must dns_zone_delete dns_zone_delete --arg id="$zid" --arg type=private || return 1
+	# Зона без vpc_id связана с VPC по умолчанию (D65), её удаление — отказ
+	# до вопроса (D66): это проверка, а не провал; затем отвязка и удаление.
+	tc dns_zone_delete --arg id="$zid" --arg type=private
+	if dns_linked; then
+		ok "dns_zone_delete со связью с VPC" "USAGE до вопроса (D66)"
+		if dns_unlink "$zid"; then ok "отвязка зоны от VPC (API, PATCH linkedVpcIds)" "done"; else
+			bad "отвязка зоны от VPC (API, PATCH linkedVpcIds)" "$why"
+			return 1
+		fi
+		must dns_zone_delete dns_zone_delete --arg id="$zid" --arg type=private || return 1
+	elif [ "$rc" != 0 ]; then
+		bad dns_zone_delete "код $rc, $reason: $why"
+		return 1
+	fi
 	dns_delete_op зоны
 	# приватная зона 18.10 удалялась ~11,5 мин (run 39160570296)
 	local t0=$SECONDS

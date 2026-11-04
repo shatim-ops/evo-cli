@@ -388,6 +388,20 @@ jobs:
         run: |
           "$GITHUB_WORKSPACE/.github/scripts/deploy_cut.sh"
 
+      # deploy упал (rc.2 1.7: SSH_TIMEOUT) — факты сети одной строкой:
+      # адрес и floating IP, правило TCP/22 в группе deploy, ответ порта.
+      - name: SSH-диагностика при провале deploy
+        if: failure() && hashFiles('e2e-app/.evo/state.json') != ''
+        working-directory: e2e-app
+        run: |
+          vid=$(jq -r '.deployments[0].vm_id // empty' .evo/state.json)
+          ip=$(jq -r '.deployments[0].vm_ip // empty' .evo/state.json)
+          sg=$(jq -r '.deployments[0].security_group_id // empty' .evo/state.json)
+          [ -n "$vid" ] && [ -n "$ip" ] || { echo "в state нет ВМ — SSH не диагностируется"; exit 0; }
+          echo "::add-mask::$vid"
+          echo "::add-mask::$ip"
+          "$GITHUB_WORKSPACE/.github/scripts/ssh_diag.sh" "$vid" "$ip" "$sg"
+
       - name: Группа и правила deploy в state
         # и после упавшего deploy: ВМ и правила могли создаться, проверка
         # их удаления ниже опирается на SG_ID
