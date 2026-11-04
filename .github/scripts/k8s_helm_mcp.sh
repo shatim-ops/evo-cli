@@ -22,6 +22,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 redact() { sed -E -f "$here/redact.sed"; }
 cluster=${1:?id кластера}
 chart=${2:?каталог чарта}
+# Скрипт id не печатает; маска — на случай текста ошибки, который его назовёт.
+echo "::add-mask::$cluster"
 MCP_LIMIT=${MCP_LIMIT:-75}
 STATUS_SLEEP=${STATUS_SLEEP:-10}
 work=$(mktemp -d)

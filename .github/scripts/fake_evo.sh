@@ -81,6 +81,7 @@ fake_evo_answer() {
 # дочернем bash не встаёт (настоящий evo ставит обработчик сам,
 # signal.NotifyContext).
 fake_evo_run() {
+	mkdir -p "$FAKE_DIR"
 	cat >"$FAKE_DIR/$1.run"
 	chmod +x "$FAKE_DIR/$1.run"
 }

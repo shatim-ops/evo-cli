@@ -84,6 +84,6 @@ k8s_kubectl get configmap evo-e2e-helm -n default -o json
 k8s_helm uninstall
 k8s_kubectl get configmap evo-e2e-helm -n default -o json'
 [ "$(cat "$work/ok/calls")" = "$want" ] || { printf 'FAIL ok: вызовы\n%s\n' "$(cat "$work/ok/calls")"; fail=1; }
-! grep -q 00000000-0000-4000-8000-0000000000c1 "$work/ok/out" || { echo "FAIL ok: id кластера в логе"; fail=1; }
+! grep -v '^::add-mask::' "$work/ok/out" | grep -q 00000000-0000-4000-8000-0000000000c1 || { echo "FAIL ok: id кластера в логе"; fail=1; }
 [ "$fail" = 0 ] && echo "k8s_helm_mcp: ok"
 exit "$fail"

@@ -86,7 +86,7 @@ run deploy-before-caught fast 0
 run ssh-down-after-cut ssh-down 1
 grep -q 'ssh: connect to host <ip> port 22: Connection timed out' "$work/ssh-down-after-cut/out" ||
 	{ echo "FAIL ssh-down-after-cut: нет причины ssh (через маску)"; sed 's/^/  /' "$work/ssh-down-after-cut/out"; fail=1; }
-grep -q '::warning::' "$work/deploy-before-caught/out" ||
+grep -q '::warning::deploy с обрывом: deploy кончился' "$work/deploy-before-caught/out" ||
 	{ echo "FAIL deploy-before-caught: нет предупреждения"; fail=1; }
 ! grep -q '203.0.113.7' "$work/cut-and-repeat/out" ||
 	grep -q '::add-mask::203.0.113.7' "$work/cut-and-repeat/out" ||
