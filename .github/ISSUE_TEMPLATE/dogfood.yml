@@ -24,7 +24,7 @@ body:
     attributes:
       label: Сценарий
       options:
-        - "С0 — ядро: установка, ключ, агент, скиллы"
+        - "С0 — ядро: установка, ключ, агент, правила evo"
         - "С1 — развернуть compose и дать ссылку"
         - "С2 — ВМ с публичным адресом и портом"
         - "С3 — PostgreSQL"
@@ -76,10 +76,11 @@ body:
   - type: dropdown
     id: skills
     attributes:
-      label: Скиллы
+      label: Как агент знает evo
+      description: "Сценарных скиллов evo-* больше нет (1.7, D68): их знание — в описаниях инструментов, карточках групп и правилах, которые пишет `evo agent setup --skill`."
       options:
-        - "Со скиллами"
-        - "Только карточки"
+        - "С правилами evo (`evo agent setup --skill`)"
+        - "Голый `evo mcp`, без правил"
         - "— (Т1, без агента)"
     validations:
       required: true
