@@ -121,7 +121,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			return &ApplyResult{
 				VMID:   existing.ID,
 				Status: "error",
-				Note:   "a VM with this name already exists in error state; destroy it first, then retry",
+				Note:   "a VM with this name already exists in error state; whether to delete it (destroy) before a retry — ask the person",
 			}, nil
 		}
 		// Adopt only the plan's own VM: one with the same name in another

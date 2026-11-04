@@ -2196,7 +2196,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		if err == nil {
 			return ""
 		}
-		return fmt.Sprintf(" WARNING: the state file could not be saved (%v), so VM %s is NOT in the state and destroy will not find it — delete it in the Cloud.ru console when it is no longer needed.", err, vmID)
+		return fmt.Sprintf(" WARNING: the state file could not be saved (%v), so VM %s is NOT in the state and destroy will not find it by this folder; whether and when to delete it (by its id, or in the Cloud.ru console) — ask the person.", err, vmID)
 	}
 
 	vm := adopted
@@ -2217,8 +2217,8 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					// The Russian hint is the CLI's (MCP speaks English, D6): a
 					// repeat after Ctrl-C lands here, and the VM is the one the
 					// interrupted run is still creating.
-					i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.",
-						"Проверьте её: evo vm get %s — если это ВМ прерванного запуска, она ещё создаётся; иначе укажите другое имя или удалите её: evo vm delete %s.", vmName, vmName), err), bootFIP, fipErr), true
+					i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name.",
+						"Проверьте её: evo vm get %s — если это ВМ прерванного запуска, она ещё создаётся; иначе укажите другое имя.", vmName), err), bootFIP, fipErr), true
 			}
 			return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, fipErr), true
 		}
@@ -2310,7 +2310,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
 			pp.Hint(vmLeftNote(vm.ID, "") + i18n.T("; to wait longer next time: CLOUDRU_TIMEOUT (seconds)", "; ждать дольше: CLOUDRU_TIMEOUT (в секундах)"))
-			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s); to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
+			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get; whether to delete it (destroy vm_id %s) — ask the person; to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
 				leftFields(map[string]any{"status": "timeout"})), true
 		case <-wait.C():
 			wait.Show()
@@ -2451,9 +2451,9 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				pp.Hint(vmLeftNote(vm.ID, updated.Status))
 				fipNote := ""
 				if fipID != "" {
-					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; destroy releases it.", ip)
+					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; a destroy of the VM releases it — ask the person before deleting.", ip)
 				}
-				return errAnswer(fmt.Errorf("VM %s entered state %s. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
+				return errAnswer(fmt.Errorf("VM %s entered state %s. It is recorded in the state; whether to delete it (destroy vm_id %s) — ask the person.%s%s",
 					vm.ID, updated.Status, vm.ID, fipNote, notInState(vm.ID, serr)),
 					map[string]any{"vm_id": vm.ID, "floating_ip_id": fipID}), true
 			}
@@ -3134,7 +3134,7 @@ func fipLeftAnswer(err error, fip *provision.FloatingIP, fipErr error) string {
 	if fipErr == nil || fip == nil {
 		return errResult(err)
 	}
-	return errAnswer(fmt.Errorf(i18n.T("%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — release it with release_floating_ip", "%w; floating IP %s (%s), созданный для этой ВМ, НЕ освобождён (%v) и тарифицируется — освободите его через release_floating_ip"),
+	return errAnswer(fmt.Errorf(i18n.T("%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — ask the person whether to release it (release_floating_ip)", "%w; floating IP %s (%s), созданный для этой ВМ, НЕ освобождён (%v) и тарифицируется — спросите человека, освободить ли его (release_floating_ip)"),
 		err, fip.IPAddress, fip.ID, fipErr), map[string]any{"floating_ip_id": fip.ID, "floating_ip": fip.IPAddress})
 }
 
@@ -3252,7 +3252,7 @@ func provisionNoPublicIP(res map[string]any, vmID, fipID string, fipErr error) s
 	}
 	fipNote := ""
 	if fipID != "" {
-		fipNote = fmt.Sprintf(" Its floating IP %s is recorded in the state and destroy releases it.", fipID)
+		fipNote = fmt.Sprintf(" Its floating IP %s is recorded in the state: a destroy of the VM releases it — ask the person before deleting.", fipID)
 	}
 	res["status"] = "partial"
 	res["vm_ip"] = ""
@@ -3263,7 +3263,7 @@ func provisionNoPublicIP(res map[string]any, vmID, fipID string, fipErr error) s
 	}
 	return errAnswer(clierrors.Wrap(code,
 		fmt.Sprintf("VM %s is active, but its public IP was not attached (%v)", vmID, fipErr),
-		fmt.Sprintf("Attach a free address with fip_attach (vm %s; addresses from list_floating_ips), or delete the VM with destroy vm_id=%s.", vmID, vmID),
+		fmt.Sprintf("Attach a free address with fip_attach (vm %s; addresses from list_floating_ips); whether to delete the VM instead (destroy vm_id=%s) — ask the person.", vmID, vmID),
 		fipErr), res)
 }
 

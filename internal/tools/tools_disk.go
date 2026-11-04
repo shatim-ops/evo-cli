@@ -201,7 +201,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 		res["status"] = "partial"
 		return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
 			fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, diskID, attachTo, err),
-			fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available, or delete it with disk_delete.", diskID, attachTo), err), res), true
+			fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.", diskID, attachTo), err), res), true
 	}
 	if diskID == "" {
 		return partial(fmt.Errorf("the create response has no disk id"))
@@ -588,8 +588,8 @@ func diskAttachedError(diskID string, disk map[string]any) ([]map[string]any, er
 		label := quoteCloud(firstNonEmptyStr(name, id))
 		names = append(names, label)
 		if primary {
-			ways = append(ways, i18n.Tf("It is the boot disk of VM %s: delete the VM with destroy vm_id=%s ('evo vm delete %s'), its boot disk goes with it.",
-				"Это загрузочный диск ВМ %s: удалите ВМ — destroy vm_id=%s ('evo vm delete %s'), загрузочный диск уйдёт вместе с ней.", label, id, id))
+			ways = append(ways, i18n.Tf("It is the boot disk of VM %s: it goes with the VM (destroy vm_id=%s, 'evo vm delete %s') — whether to delete the VM, ask the person.",
+				"Это загрузочный диск ВМ %s: он уходит вместе с ВМ (destroy vm_id=%s, 'evo vm delete %s') — удалять ли ВМ, спросите человека.", label, id, id))
 		} else {
 			ways = append(ways, i18n.Tf("Detach it from VM %s with disk_detach disk_id=%s vm=%s ('evo disk detach %s --vm %s'), then delete it.",
 				"Отключите его от ВМ %s — disk_detach disk_id=%s vm=%s ('evo disk detach %s --vm %s'), затем удалите.", label, diskID, id, diskID, id))
