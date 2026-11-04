@@ -13,3 +13,7 @@
 | `ca_logs` | `evo ca logs` | reads |  |
 | `ca_start` | `evo ca start` | changes |  |
 | `ca_stop` | `evo ca stop` | changes |  |
+
+## Notes
+
+- A Container App's `name` is an RFC 1123 label: lowercase letters, digits and '-', 1-63 characters.

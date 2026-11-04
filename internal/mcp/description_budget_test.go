@@ -27,23 +27,9 @@ const toolBudget = 1500
 // budget of bytes per description; what P13 does not reach in 1.7 goes on
 // in 1.8).
 var toolsOverBudget = map[string]int{
-	"ca_deploy":        2264,
-	"deploy":           2164,
-	"deploy_plan":      3521,
-	"destroy":          1627,
-	"image_create":     2911,
-	"image_list":       1594,
-	"k8s_add_addon":    2307,
-	"k8s_add_nodepool": 1694,
-	"k8s_helm":         1792,
-	"k8s_plan":         1739,
-	"kafka_create":     2030,
-	"lb_create":        2076,
-	"marketplace_list": 1708,
-	"pg_create":        2466,
-	"provision":        3298,
-	"redis_create":     2367,
-	"subnet_create":    1805,
+	"deploy_plan": 2750,
+	"pg_create":   1676,
+	"provision":   2367,
 }
 
 // P13 and D68 (release plan 1.7; agent runs of Grok on 1.6.0): D68 moves
