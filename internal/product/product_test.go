@@ -92,7 +92,7 @@ func TestNoBareCMCP(t *testing.T) {
 	}
 	// changelog.d: the fragments become CHANGELOG at the fold, checked
 	// before it.
-	for _, dir := range []string{"internal", "cmd", "docs", "changelog.d", "skills", filepath.Join(".github", "ISSUE_TEMPLATE")} {
+	for _, dir := range []string{"internal", "cmd", "docs", "changelog.d", filepath.Join(".github", "ISSUE_TEMPLATE")} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err

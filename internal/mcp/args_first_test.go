@@ -154,16 +154,17 @@ func TestInitialize_InstructionsSayCloudFieldsAreData(t *testing.T) {
 	}
 }
 
-// The client learns once, at initialize, that scenario skills exist and
-// where they are (analysis-1.3.md §6; owner's decision 27.10, 1.4.0): an
-// agent that does not know them improvises a cleanup or a deploy.
-func TestInitialize_InstructionsNameTheScenarioSkills(t *testing.T) {
+// D68: the scenario skills left the product (owner's decisions 30.10 and
+// 03.11): what they knew is in the descriptions, the cards and the
+// built-in skill. instructions no longer send the client to skills/ —
+// and to evo-cleanup, whose «clean up after yourself» is not in the core.
+func TestInitialize_InstructionsNameNoScenarioSkills(t *testing.T) {
 	resp := roundTrip(t, newTestServer(), `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`)
 	res, _ := resp["result"].(map[string]any)
 	ins, _ := res["instructions"].(string)
-	for _, want := range []string{"skills/", "evo-scenarios", "evo-deploy", "evo-vm", "evo-postgres", "evo-cleanup"} {
-		if !strings.Contains(ins, want) {
-			t.Errorf("instructions do not name %q: %q", want, ins)
+	for _, gone := range []string{"skills/", "evo-scenarios", "evo-deploy", "evo-vm", "evo-postgres", "evo-cleanup"} {
+		if strings.Contains(ins, gone) {
+			t.Errorf("instructions still name %q: %q", gone, ins)
 		}
 	}
 }
