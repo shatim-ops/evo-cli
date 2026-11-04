@@ -29,6 +29,11 @@ type interruptCloud struct {
 	fipErr      error // DeleteFloatingIP fails with it, if set
 }
 
+// No VM has the deployment's name: it is free (FB170-2).
+func (c *interruptCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+	return nil, nil
+}
+
 // The deleted VM is gone at once.
 func (c *interruptCloud) GetVM(context.Context, string) (*provision.VM, error) {
 	return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")

@@ -65,6 +65,22 @@ func (e *Engine) DeployPreview(ctx context.Context, cidr string) (*CreatePreview
 	public := true
 	p := &CreatePreview{Resource: ResourceVM, Name: vmNameFor(projectName),
 		ProjectID: cfg.ProjectID, ProjectFrom: cfg.ProjectOrigin, PublicIP: &public}
+	// The name of the new VM another VM of the project has: refused on the
+	// preview, as Deploy refuses it before its question (FB170-2, D73).
+	// Without a key or a token nothing is read.
+	if cfg.KeyID != "" && cfg.Secret != "" && e.Auth != nil && e.Cloud != nil {
+		lctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
+		tok, terr := e.Auth.Token(lctx)
+		if terr == nil {
+			e.Cloud.SetToken(tok.Value)
+			terr = e.deployNameFree(lctx, cfg.ProjectID, p.Name, sf)
+			if terr != nil && lctx.Err() == nil {
+				cancel()
+				return nil, terr
+			}
+		}
+		cancel()
+	}
 	vm := deployplan.VMSpec{Name: p.Name,
 		Zone: deployplan.RefSpec{ID: cfg.Region},
 		Disk: deployplan.DiskSpec{Type: "SSD"}}

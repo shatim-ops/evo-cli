@@ -6,7 +6,6 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"slices"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -36,25 +35,12 @@ func folderVMs(eng *engine.Engine) []string {
 // says which VMs are the call's to take — those pass. A list that cannot
 // be read refuses the call too: the name cannot be told free.
 func vmNameFree(ctx context.Context, eng *engine.Engine, name string, own func(id string) bool) (string, bool) {
-	// An engine without a cloud (the preview of a server without a key)
-	// reads nothing, as completePreview.
-	if name == "" || eng.Cloud == nil {
-		return "", false
+	vm, err := engine.ForeignVMNamed(ctx, eng.Cloud, eng.Config.ProjectID, name, own)
+	if err != nil {
+		return errResult(err), true
 	}
-	vms, err := eng.Cloud.ListVMsInProject(ctx, eng.Config.ProjectID)
-	switch reason := clierrors.Reason(err); {
-	case err == nil:
-	case reason == clierrors.CodeAuthFailed || reason == clierrors.CodeAuthExpired || reason == clierrors.CodeAuthRequired:
-		// No key that reads the project: the preview shows what is known
-		// without the cloud, and the call itself is refused for the key.
-		return "", false
-	default:
-		return errResult(fmt.Errorf(i18n.T("check the VM name is free: %w", "проверка, что имя ВМ свободно: %w"), err)), true
-	}
-	for _, vm := range vms {
-		if vm != nil && vm.Name == name && !own(vm.ID) {
-			return foreignVMResult(name, vm.ID, vm.Status)
-		}
+	if vm != nil {
+		return foreignVMResult(name, vm.ID, vm.Status)
 	}
 	return "", false
 }

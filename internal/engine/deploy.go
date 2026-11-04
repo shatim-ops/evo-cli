@@ -605,6 +605,12 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		projectName = filepath.Base(e.StateDir)
 	}
 	vmName := vmNameFor(projectName)
+	// A VM of the project with this name, one this folder did not make, is
+	// refused here, before the question (FB170-2, D73): the create would
+	// get a 409 after the consent.
+	if err := e.deployNameFree(ctx, projectID, vmName, stateFile); err != nil {
+		return state.DeploymentRecord{}, err
+	}
 
 	// The image with its metadata fields: image_id by UUID, image by name
 	// (images.Resolve). Not found or ambiguous stops here, before anything
@@ -750,9 +756,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			return state.DeploymentRecord{}, clerrors.Wrap(clerrors.CodeConfigInvalid,
 				i18n.Tf("a VM named %s already exists in the project (Cloud.ru answered 409); %s",
 					"ВМ с именем %s в проекте уже есть (Cloud.ru ответил 409); %s", vmName, created),
-				i18n.Tf("Check it with 'evo vm get %s'. If it is not this directory's deployment, delete it ('evo vm delete %s') or deploy from a directory with another name.",
-					"Проверьте её: 'evo vm get %s'. Если это не развёртывание этого каталога, удалите её ('evo vm delete %s') или разверните из каталога с другим именем.", vmName, vmName),
-				createErr)
+				deployNameHint(), createErr)
 		}
 		return state.DeploymentRecord{}, createErr
 	}
