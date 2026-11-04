@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -54,6 +55,9 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	out := map[string]any{
 		"message": i18n.Tf(en, ru, label),
 		"target":  target,
+		// A kind the folder's state does not record: unknown, said by the
+		// one rule of every delete preview (P3).
+		"provenance": engine.ProvenanceOf(deleteTargets[tool].what, id, time.Time{}, nil, nil, nil),
 	}
 	if warning, _ := engine.DeleteWayOut(status, id); warning != "" {
 		out["warning"] = warning

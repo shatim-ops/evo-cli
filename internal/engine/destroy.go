@@ -59,12 +59,13 @@ func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, err
 		return confirm.Preview{}, false, nil
 	}
 	// A VM evo did not make is refused before the question (D73).
-	if err := e.AdoptedRecord(ctx, *active); err != nil {
+	vm, passed, err := e.checkedRecord(ctx, *active)
+	if err != nil {
 		return confirm.Preview{}, false, err
 	}
 	shown := e.withNames(ctx, *active, nil, true)
 	labeled, uncheckedErr := e.labeledRules(ctx, sf, active)
-	return destroyPreview(&shown, sf, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active)), true, nil
+	return destroyPreview(&shown, sf, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active), madeAt(vm), passed), true, nil
 }
 
 // Destroy tears down the active deployment.
@@ -105,7 +106,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 
 	// A VM evo did not make is refused before the question (D73).
-	if err := e.AdoptedRecord(ctx, *active); err != nil {
+	vm, passed, err := e.checkedRecord(ctx, *active)
+	if err != nil {
 		return err
 	}
 
@@ -118,7 +120,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
 	labeled, uncheckedErr := e.labeledRules(ctx, stateFile, active)
-	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active)))
+	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active), madeAt(vm), passed))
 	if err != nil {
 		return err
 	}

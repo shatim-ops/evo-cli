@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -387,7 +388,7 @@ func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 }
 
 // destroyPreview lists what destroy deletes and what it leaves behind.
-func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, labeled []sgrules.Planned, unchecked error, project, from string) confirm.Preview {
+func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, labeled []sgrules.Planned, unchecked error, project, from string, made time.Time, madeErr error) confirm.Preview {
 	res := []destroyResource{
 		{Type: "vm", ID: rec.VMID, Name: rec.VMName, Address: rec.VMIP, Action: "delete",
 			Note: i18n.T("all data on its disks is lost", "все данные на её дисках будут потеряны")},
@@ -396,6 +397,10 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		previewLabel("project", "проект") + projectText(project, from),
 		i18n.Tf("delete VM %s and all data on its disks", "удалить ВМ %s и все данные на её дисках", vmText(rec)),
 	}
+	// Whether this folder's evo made the VM (P3): information, not a
+	// boundary.
+	prov := ProvenanceOf(ProvenanceVM, rec.VMID, made, madeErr, sf, nil)
+	lines = append(lines, ProvenanceLine(prov))
 	if rec.VMIP != "" || rec.FloatingIPID != "" {
 		// The public address of a deployed VM is a floating IP; destroy
 		// releases it after the VM (by floating_ip_id, else by address).
@@ -426,8 +431,16 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		Action:  "destroy",
 		Summary: summary,
 		Lines:   lines,
-		Details: map[string]any{"project_id": project, "project_from": from, "resources": res},
+		Details: map[string]any{"project_id": project, "project_from": from, "resources": res, "provenance": prov},
 	}
+}
+
+// madeAt is the time the cloud made vm; zero when it was not read.
+func madeAt(vm *provision.VM) time.Time {
+	if vm == nil {
+		return time.Time{}
+	}
+	return vm.CreatedAt
 }
 
 // projectText names the project in a preview and where it comes from: with
