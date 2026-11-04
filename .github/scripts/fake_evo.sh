@@ -15,12 +15,27 @@
 # одного инструмента — по очереди: счётчик ответов без блокировки, как и
 # скрипты, которые проверки запускают (параллельно — разные инструменты).
 # Ответ не проверяется на JSON: мусор вместо ответа — тоже случай проверки.
+# Команда, кроме tools call (evo deploy, evo destroy…), — исполняемый
+# $FAKE_DIR/<команда>.run с аргументами вызова (fake_evo_run): долгий
+# процесс с обработчиком SIGINT, файлы проекта. Сценария нет — USAGE.
 
 fake_evo_install() {
 	mkdir -p "$1"
 	cat >"$1/evo" <<'EOF'
 #!/usr/bin/env bash
 d=${FAKE_DIR:?FAKE_DIR is not set}
+for a in "$@"; do
+	case $a in
+	-*) ;;
+	tools) break ;;
+	*)
+		echo "$a" >>"$d/evo-calls"
+		[ -x "$d/$a.run" ] && exec "$d/$a.run" "$@"
+		printf '{"error":{"code":2,"reason":"USAGE","message":"fake evo: no run for %s"}}\n' "$a" >&2
+		exit 2
+		;;
+	esac
+done
 yes=0 tool=
 while [ $# -gt 0 ]; do
 	case $1 in
@@ -58,4 +73,14 @@ fake_evo_answer() {
 	esac
 	printf '%s\n' "$4" >"$FAKE_DIR/$1.$2.json"
 	echo "$3" >"$FAKE_DIR/$1.$2.rc"
+}
+
+# fake_evo_run КОМАНДА — сценарий команды КОМАНДА со stdin: evo КОМАНДА …
+# исполняет его с аргументами вызова. Заглушке, которая ловит SIGINT, нужен
+# не bash: фоновый запуск bash игнорирует SIGINT, и trap на него в
+# дочернем bash не встаёт (настоящий evo ставит обработчик сам,
+# signal.NotifyContext).
+fake_evo_run() {
+	cat >"$FAKE_DIR/$1.run"
+	chmod +x "$FAKE_DIR/$1.run"
 }

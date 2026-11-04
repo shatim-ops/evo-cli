@@ -245,6 +245,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/response_shape_test.sh
 
+      # deploy с обрывом посреди этапа на ВМ (cloud-e2e, job e2e, D69):
+      # обрыв — 130, этап жив, повтор без «прервался на ВМ».
+      - name: deploy_cut.sh с заглушками evo и ssh
+        if: runner.os == 'Linux'
+        run: timeout 180 .github/scripts/deploy_cut_test.sh
+
       # Отказ Foundation Models в ревью Qwen: на 401/403/404 — строка без
       # тела ответа (комментарий публичный, E7).
       - name: fm_error.sh на образцах ответов
