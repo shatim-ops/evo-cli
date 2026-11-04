@@ -78,7 +78,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `deploy` | `evo deploy` | да | — | Deploy the local docker-compose project to a Cloud.ru VM evo-<project_name> (.evo.yaml or the directory): uploads the compose files over SSH and runs them; the … | Развернуть локальный проект docker-compose на ВМ Cloud.ru |
+| `deploy` | `evo deploy` | да | — | Deploy the local docker-compose project to a Cloud.ru VM evo-<project_name> (.evo.yaml or the directory), billable when it creates one: uploads the compose … | Развернуть локальный проект docker-compose на ВМ Cloud.ru |
 | `status` | `evo status` | нет | — | Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports, from the local state. | Состояние текущего развёртывания |
 | `list` | `evo deploy list` | нет | — | List all recorded deployments for this project (VM IP, status, flavor, creation time). | Локальные записи развёртываний этого проекта |
 | `logs` | `evo logs` | нет | — | Retrieve container logs from the deployed VM via 'docker compose logs' over SSH. | Журналы контейнеров развёрнутой ВМ |

@@ -44,7 +44,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM evo-<project_name> (.evo.yaml or the directory): uploads the compose files over SSH and runs them; the compose ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: the server's) and refuses another deployment's compose file. An update takes confirmed=true too (preview: compose_changed).",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM evo-<project_name> (.evo.yaml or the directory), billable when it creates one: uploads the compose files over SSH, runs them; its ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: the server's), refuses another deployment's compose file. An update takes confirmed=true too (preview: compose_changed).",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Compose file (default docker-compose.yml)."),
 				"flavor":       strProp("VM flavor or 'auto' (default)."),
