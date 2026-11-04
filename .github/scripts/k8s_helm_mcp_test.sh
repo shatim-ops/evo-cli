@@ -109,7 +109,10 @@ k8s_kubectl get pods -l app=evo-e2e-pod -n default -o json
 k8s_helm uninstall
 k8s_kubectl get pods -l app=evo-e2e-pod -n default -o json'
 [ "$(cat "$work/pods-ok/calls")" = "$want" ] || { printf 'FAIL pods-ok: вызовы\n%s\n' "$(cat "$work/pods-ok/calls")"; fail=1; }
-[ "$(cat "$work/pods-ok/release")" = evo-e2e-pod ] && [ "$(cat "$work/ok/release")" = evo-e2e-mcp ] || { echo "FAIL: релизы режимов"; fail=1; }
+if [ "$(cat "$work/pods-ok/release")" != evo-e2e-pod ] || [ "$(cat "$work/ok/release")" != evo-e2e-mcp ]; then
+	echo "FAIL: релизы режимов"
+	fail=1
+fi
 grep -q 'поды Ready → uninstall' "$work/pods-ok/out" || { echo "FAIL pods-ok: нет итога"; sed 's/^/  /' "$work/pods-ok/out"; fail=1; }
 [ "$fail" = 0 ] && echo "k8s_helm_mcp: ok"
 exit "$fail"
