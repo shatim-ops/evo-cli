@@ -69,7 +69,7 @@ func ResolveZoneRef(zones []*provision.AvailabilityZone, listErr error, ref stri
 // or its name (ResolveZoneRef); n.ZoneID is its UUID.
 func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneRef string) (vmNetwork, error) {
 	n := vmNetwork{ZoneID: zoneRef}
-	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	zones, err := e.zoneList(ctx)
 	zone, err := ResolveZoneRef(zones, err, zoneRef)
 	if err != nil {
 		return n, err
@@ -154,8 +154,16 @@ func NoSubnetError(zoneName, zoneID string) error {
 	// the hint with --subnet-id.
 	return &noSubnetError{ce: clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("no subnet for zone %s in the project", "в проекте нет подсети для зоны %s", zoneText(zoneName, zoneID)),
-		i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); if the project has no subnet in any zone, create one in the Cloud.ru console.",
-			"Передайте subnet_id (список: list_subnets) или другую зону (region); если в проекте нет подсети ни в одной зоне — создайте её в консоли Cloud.ru."))}
+		i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); ", "Передайте subnet_id (список: list_subnets) или другую зону (region); ")+NoSubnetAnywhere())}
+}
+
+// NoSubnetAnywhere ends a hint for a zone without a subnet: what to do
+// when the project has a subnet in no zone. evo creates subnets itself
+// (subnet_create, 1.6), not only the console (F17, agent runs of Grok on
+// 1.6.0).
+func NoSubnetAnywhere() string {
+	return i18n.T("if the project has no subnet in any zone, create one (subnet_create).",
+		"если в проекте нет подсети ни в одной зоне — создайте её (subnet_create).")
 }
 
 // noSubnetError is NoSubnetError's type so a tool answer can tell it apart
@@ -270,13 +278,15 @@ type NetworkCheck struct {
 
 // checkNetwork resolves the subnet and the group as provision does (the
 // zone's main subnet or subnet_id; the zone's default group) and checks
-// them; nil when nothing is wrong or nothing could be read. A zone the
+// them; nil when nothing is wrong or nothing could be read. The name is
+// the group's, "" when it could not be read: the preview names it where
+// the ports open (P5). A zone the
 // lists show without a subnet or a group is the error provision refuses
 // with (NoSubnetError, NoSecurityGroupError): the preview refuses it before
 // the question, as an image the project cannot use (D35, G13-3).
-func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, subnetID string) (*NetworkCheck, error) {
+func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, subnetID string) (*NetworkCheck, string, error) {
 	if projectID == "" || zoneID == "" {
-		return nil, nil
+		return nil, "", nil
 	}
 	var c NetworkCheck
 	gateway := ""
@@ -289,10 +299,10 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 		}
 		sn, err := SubnetForVM(subnets, zones, zoneID, zoneName, subnetID)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		if sn == nil && subnetID == "" {
-			return nil, NoSubnetError(zoneName, zoneID)
+			return nil, "", NoSubnetError(zoneName, zoneID)
 		}
 		if sn != nil {
 			gateway = sn.DefaultGateway
@@ -303,9 +313,11 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 	}
 	sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID)
 	if err == nil && provision.PickSecurityGroup(sgs, zoneID, zoneName) < 0 {
-		return nil, NoSecurityGroupError(zoneName, zoneID)
+		return nil, "", NoSecurityGroupError(zoneName, zoneID)
 	}
+	group := ""
 	if g := pickGroup(ctx, e, projectID, zoneID, zoneName); g != nil {
+		group = g.Name
 		if rules, err := provision.GroupRules(ctx, e.Cloud, g); err == nil {
 			gaps := provision.CheckVMGroupRules(rules, gateway)
 			if gaps.NoSSH || gaps.NoSystemEgress {
@@ -314,9 +326,9 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 		}
 	}
 	if c == (NetworkCheck{}) {
-		return nil, nil
+		return nil, group, nil
 	}
-	return &c, nil
+	return &c, group, nil
 }
 
 // pickGroup is the zone's group provision takes; nil when the list
@@ -389,9 +401,8 @@ func zoneText(name, id string) string {
 // shared by every VM placed in it — the deploy preview says so before
 // anything is created. Failures are reported, not fatal: the VM exists and
 // the ports can be opened in the console.
-func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp []int, rec *state.DeploymentRecord) {
-	res := sgrules.Open(ctx, e.Cloud, projectID, sgID, tcp, udp,
-		func(label string) string { return "evo: port " + label }, rec)
+func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp []int, cidr string, rec *state.DeploymentRecord) {
+	res := sgrules.Open(ctx, e.Cloud, projectID, sgID, tcp, udp, cidr, rec.VMID, rec)
 	group := rec.SecurityGroupName
 	if group == "" {
 		group = sgID

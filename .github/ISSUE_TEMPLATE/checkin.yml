@@ -62,17 +62,18 @@ body:
   - type: dropdown
     id: skills
     attributes:
-      label: Скиллы
+      label: Как агент знает evo
+      description: "Сценарных скиллов evo-* больше нет (1.7, D68): их знание — в описаниях инструментов, карточках групп и правилах, которые пишет `evo agent setup --skill`."
       options:
-        - "Со скиллами"
-        - "Только карточки"
+        - "С правилами evo (`evo agent setup --skill`)"
+        - "Голый `evo mcp`, без правил"
         - "Только CLI"
     validations:
       required: true
   - type: dropdown
     id: sees-skills
     attributes:
-      label: Видит ли агент evo-* и карточки
+      label: Видит ли агент правила evo и карточки групп
       options:
         - "Да"
         - "Нет"

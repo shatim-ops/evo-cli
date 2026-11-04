@@ -60,34 +60,38 @@ func (s *Registry) operation(ctx context.Context, tool string, args map[string]a
 	if err != nil {
 		return errResult(err), true
 	}
-	if sec, ok := operationElapsed(m); ok {
-		m["elapsed_sec"] = sec
-	}
+	addElapsed(m)
 	s.addResourceStatus(ctx, tool, m)
 	return toJSON(m), false
 }
 
-// operationElapsed is how long the operation m has run, in whole seconds:
-// from its creation to its last update once done, to now while it runs.
-// The services name the times created_at/updated_at (DBaaS, NLB) or
-// createdAt/updatedAt (VPC, DNS, AR, Certificate Manager); all eight
-// specifications carry them. ok is false when the answer has no creation
-// time the clock can read.
-func operationElapsed(m map[string]any) (int, bool) {
+// addElapsed puts into the answer m of an operation how long it has run,
+// in whole seconds (elapsed_sec): from its creation to its last update once
+// done, to now while it runs. The services name the times
+// created_at/updated_at (DBaaS, NLB) or createdAt/updatedAt (VPC, DNS, AR,
+// Certificate Manager). Without the time of its creation, or done without
+// the time of its end, there is no elapsed_sec but a note of why: a done
+// operation counted to now went on «running» at every read (FB160-4).
+func addElapsed(m map[string]any) {
 	created, ok := operationTime(m, "created_at", "createdAt")
 	if !ok {
-		return 0, false
+		m["elapsed_note"] = i18n.T("the operation carries no time of its creation", "операция не несёт времени создания")
+		return
 	}
 	end := clock.Now()
 	if done, _ := m["done"].(bool); done {
-		if updated, ok := operationTime(m, "updated_at", "updatedAt"); ok {
-			end = updated
+		updated, ok := operationTime(m, "updated_at", "updatedAt")
+		if !ok {
+			m["elapsed_note"] = i18n.T("the operation is done and carries no time of its end", "операция завершена и не несёт времени окончания")
+			return
 		}
+		end = updated
 	}
-	if end.Before(created) {
-		return 0, true
+	sec := 0
+	if !end.Before(created) {
+		sec = int(end.Sub(created) / time.Second)
 	}
-	return int(end.Sub(created) / time.Second), true
+	m["elapsed_sec"] = sec
 }
 
 func operationTime(m map[string]any, keys ...string) (time.Time, bool) {

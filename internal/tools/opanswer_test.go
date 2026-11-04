@@ -91,3 +91,32 @@ func TestOperation_ElapsedAndResourceStatus(t *testing.T) {
 		}
 	}
 }
+
+// FB160-4 (audit of Fable 1.6): a done operation without the time of its
+// end did not stop: elapsed_sec counted to now at every read. Such an
+// answer has no elapsed_sec, and says why (elapsed_note); so does an
+// operation without the time of its creation, which had neither.
+func TestOperation_ElapsedOnlyWhereTheTimesAre(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		m        map[string]any
+		wantSec  bool
+		wantNote bool
+	}{
+		{"done with both times", map[string]any{"done": true, "created_at": "2026-11-03T10:00:00Z", "updated_at": "2026-11-03T10:01:30Z"}, true, false},
+		{"running", map[string]any{"done": false, "createdAt": "2026-11-03T10:00:00Z"}, true, false},
+		{"done without its end", map[string]any{"done": true, "created_at": "2026-11-03T10:00:00Z"}, false, true},
+		{"without its creation", map[string]any{"done": false}, false, true},
+	} {
+		addElapsed(tc.m)
+		_, sec := tc.m["elapsed_sec"]
+		_, note := tc.m["elapsed_note"]
+		if sec != tc.wantSec || note != tc.wantNote {
+			t.Errorf("%s: elapsed_sec %v (want %v), elapsed_note %v (want %v): %v", tc.name, sec, tc.wantSec, note, tc.wantNote, tc.m)
+		}
+	}
+	m := map[string]any{"done": true, "created_at": "2026-11-03T10:00:00Z", "updated_at": "2026-11-03T10:01:30Z"}
+	if addElapsed(m); m["elapsed_sec"] != 90 {
+		t.Errorf("done: elapsed_sec %v, want 90", m["elapsed_sec"])
+	}
+}

@@ -106,10 +106,20 @@ func TestDeploy_FlavorZoneInTheCreate(t *testing.T) {
 
 	eng, cloud, opts, _, _ = newDeployForConfirm(t)
 	zoned(cloud)
+	// The flavor's zone and the network's are one read of the zone list
+	// (FB160-21): the flavor checked against the zone the VM goes to.
+	reads := 0
+	cloud.listAvailabilityZonesFn = func(context.Context) ([]*provision.AvailabilityZone, error) {
+		reads++
+		return []*provision.AvailabilityZone{{ID: "az-1", Name: "ru-moscow-1"}, {ID: "az-2", Name: "ru-moscow-2"}}, nil
+	}
 	opts.Region, opts.Flavor, opts.Yes = "RU-MOSCOW-1", "", true
 	_ = eng.Deploy(context.Background(), opts)
 	if got := firstNonEmpty(cloud.createReq.FlavorName, cloud.createReq.FlavorID); got != "medium" && got != "f-medium" {
 		t.Errorf("auto in RU-MOSCOW-1 creates with %q, want medium", got)
+	}
+	if reads != 1 {
+		t.Errorf("the create read the zone list %d times, want once", reads)
 	}
 }
 
@@ -125,7 +135,7 @@ func TestDeployPreview_AutoFlavorIsTheCreates(t *testing.T) {
 		}, nil
 	}
 	eng.Config.ComposeFile, eng.Config.Region, eng.Config.Flavor = opts.ComposeFile, "ru-moscow-1", ""
-	p, err := eng.DeployPreview(context.Background())
+	p, err := eng.DeployPreview(context.Background(), "")
 	if err != nil || p == nil || p.VM == nil {
 		t.Fatalf("preview: %v %+v", err, p)
 	}

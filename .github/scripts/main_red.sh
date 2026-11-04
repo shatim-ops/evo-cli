@@ -11,6 +11,13 @@ set -euo pipefail
 : "${GH_REPO:?}" "${RUN_ID:?}" "${RUN_URL:?}" "${CONCLUSION:?}" "${HEAD_SHA:?}" "${WORKFLOW:?}"
 TITLE="main красный: $WORKFLOW"
 MAX_FAILS=20
+# The log of a job is read up to LOG_TRIES times, LOG_RETRY_SLEEP seconds
+# apart (the tests set no sleep), and the waits of all the jobs together
+# stop at LOG_WAIT seconds: many red jobs whose logs never come must not
+# outlast the job's timeout-minutes, which would leave no issue at all.
+LOG_TRIES=${LOG_TRIES:-6}
+LOG_RETRY_SLEEP=${LOG_RETRY_SLEEP:-10}
+LOG_WAIT=${LOG_WAIT:-120}
 
 # The open issues of exactly this title: the search narrows, the title
 # decides (a search is by words, not by the whole title).
@@ -29,8 +36,8 @@ if [ "$CONCLUSION" = success ]; then
 fi
 [ "$CONCLUSION" = failure ] || exit 0
 
-body=$(mktemp)
-trap 'rm -f "$body"' EXIT
+body=$(mktemp) err=$(mktemp)
+trap 'rm -f "$body" "$err"' EXIT
 {
   printf 'Прогон %s (`%s`) красный.\n\n' "$RUN_URL" "${HEAD_SHA:0:8}"
   # Not «gh … | while»: with pipefail an early exit of the reader would
@@ -41,8 +48,22 @@ trap 'rm -f "$body"' EXIT
     [ -n "$id" ] || continue
     printf -- '- **%s**\n' "$name"
     # The log read whole first: a refused read (403, 404, a rate limit) is
-    # named as such, not taken for a log without failed tests.
-    if ! log=$(gh api "repos/$GH_REPO/actions/jobs/$id/logs" 2>/dev/null); then
+    # named as such, not taken for a log without failed tests. The log of a
+    # job just ended may not be served yet: the read is tried again, and
+    # why it was refused goes to this job's log (gh's error, no log text).
+    log='' got=0
+    for try in $(seq 1 "$LOG_TRIES"); do
+      if log=$(gh api "repos/$GH_REPO/actions/jobs/$id/logs" 2>"$err"); then
+        got=1
+        break
+      fi
+      if [ "$try" = "$LOG_TRIES" ] || [ "$SECONDS" -ge "$LOG_WAIT" ]; then
+        break
+      fi
+      sleep "$LOG_RETRY_SLEEP"
+    done
+    if [ "$got" = 0 ]; then
+      echo "::warning title=main-red::лог job $id не получен за $try из $LOG_TRIES попыток, ${SECONDS} с из бюджета $LOG_WAIT с: $(head -c 300 "$err" | tr '\n' ' ')" >&2
       printf '  (лог job не получен — смотрите его в прогоне)\n'
       continue
     fi

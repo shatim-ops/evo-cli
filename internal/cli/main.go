@@ -421,6 +421,9 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 		// The preview of a VM says whether the project's quotas were
 		// checked (D60).
 		QuotaProbe: tools.QuotaProbe,
+		// Port 22 of the VM from here before the question of an update
+		// (M2).
+		SSHDial: engine.DialSSH,
 		// Created on first use: list-zones and friends leave no key behind.
 		SSHKeyLoader: func() ([]byte, string, error) {
 			priv, pub, err := loadOrGenerateSSHKey(cwd)

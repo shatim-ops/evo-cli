@@ -243,7 +243,7 @@ func TestVMCreate_PreviewShowsPortsAndFieldNames(t *testing.T) {
 	t.Logf("\n%s", errOut)
 	assertHas(t, errOut, []string{
 		"  образ:      OpensearchDashboards (" + imgID(5) + ")\n",
-		"  порты:      443 открываются для 0.0.0.0/0 в группе безопасности ВМ",
+		"  порты:      443 открываются для 0.0.0.0/0 в группе безопасности Default_ru.AZ-1 — общей группе зоны",
 		"  поля:       opensearch_password — поля образа с заданными значениями\n",
 	})
 	if strings.Contains(errOut, "s3cret-value") {

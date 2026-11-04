@@ -14,8 +14,9 @@
 //	  "flavor_hourly": { "lowcost10-2-4": 2.80 },
 //	  "vcpu_hourly": 0.60,
 //	  "ram_gb_hourly": 0.40,
-//	  "disk_ssd_gb_monthly": 7.0,
-//	  "disk_hdd_gb_monthly": 3.0
+//	  "disk_ssd_gb_monthly": 11.42,
+//	  "disk_hdd_gb_monthly": 3.0,
+//	  "floating_ip_monthly": 149.33
 //	}
 //
 // Any field present in the file overrides the built-in default.
@@ -72,6 +73,14 @@ type Estimate struct {
 // answers 0 for the image of every image (marketplace ones included, seen
 // live 16.10.2026): a license is not in the price.
 const SourceAPI = "price-calculation API (Cloud.ru); image license not included"
+
+// SourceAPIDisk is the Source of a price of a disk alone from the
+// price-calculation API: no image, so no image license to leave out.
+const SourceAPIDisk = "price-calculation API (Cloud.ru)"
+
+// SourceDiskCard is the Source of an estimate of a disk alone by the card's
+// rate of a GB.
+const SourceDiskCard = "estimate: rate-card (disk GB); not a billed price"
 
 // SourceVCPURAM is the Source of an estimate by the card's rates of a vCPU
 // and a GB of RAM: one rate of a vCPU, whatever share of a core it
@@ -139,22 +148,30 @@ func near(sum, total float64) bool {
 
 // card holds the (overridable) rate card.
 type card struct {
-	Currency         string             `json:"currency"`
-	FlavorHourly     map[string]float64 `json:"flavor_hourly"`
-	VCPUHourly       float64            `json:"vcpu_hourly"`
-	RAMGBHourly      float64            `json:"ram_gb_hourly"`
-	DiskSSDGBMonthly float64            `json:"disk_ssd_gb_monthly"`
-	DiskHDDGBMonthly float64            `json:"disk_hdd_gb_monthly"`
+	Currency          string             `json:"currency"`
+	FlavorHourly      map[string]float64 `json:"flavor_hourly"`
+	VCPUHourly        float64            `json:"vcpu_hourly"`
+	RAMGBHourly       float64            `json:"ram_gb_hourly"`
+	DiskSSDGBMonthly  float64            `json:"disk_ssd_gb_monthly"`
+	DiskHDDGBMonthly  float64            `json:"disk_hdd_gb_monthly"`
+	FloatingIPMonthly float64            `json:"floating_ip_monthly"`
 }
 
 func defaultCard() card {
 	return card{
-		Currency:         "RUB",
-		FlavorHourly:     map[string]float64{},
-		VCPUHourly:       0.60,
-		RAMGBHourly:      0.40,
-		DiskSSDGBMonthly: 7.0,
+		Currency:     "RUB",
+		FlavorHourly: map[string]float64{},
+		VCPUHourly:   0.60,
+		RAMGBHourly:  0.40,
+		// The SSD rate the price-calculation API answers: 0.0156 per GB
+		// and hour, a month of 732 hours (seen in a live run of 17.10.2026
+		// and in the agent run C2 of 30.10.2026; the card had 7.0, ~39 %
+		// under). The HDD rate is not seen live.
+		DiskSSDGBMonthly: 11.42,
 		DiskHDDGBMonthly: 3.0,
+		// The floating IP rate the price-calculation API answers: 0.204
+		// per hour, a month of 732 hours (seen in the same runs).
+		FloatingIPMonthly: 149.33,
 	}
 }
 
@@ -191,6 +208,9 @@ func load() card {
 	if override.DiskHDDGBMonthly > 0 {
 		c.DiskHDDGBMonthly = override.DiskHDDGBMonthly
 	}
+	if override.FloatingIPMonthly > 0 {
+		c.FloatingIPMonthly = override.FloatingIPMonthly
+	}
 	return c
 }
 
@@ -224,6 +244,23 @@ func EstimateFor(flavorName string, vcpus, ramGB int, diskGB int, diskType strin
 		TotalMonthlyRub:   round2(computeMonthly + diskMonthly),
 		Source:            source,
 	}
+}
+
+// WithFloatingIP is estimate e with a floating IP created with the VM, at
+// the card's rate: its own field and in the total.
+func (e Estimate) WithFloatingIP() Estimate {
+	fip := load().FloatingIPMonthly
+	e.FloatingIPMonthlyRub = round2(fip)
+	e.TotalMonthlyRub = round2(e.TotalMonthlyRub + fip)
+	return e
+}
+
+// EstimateDisk is the rate card's estimate of a disk alone: diskGB at the
+// card's rate of its type.
+func EstimateDisk(diskGB int, diskType string) Estimate {
+	e := EstimateFor("", 0, 0, diskGB, diskType)
+	e.Source = SourceDiskCard
+	return e
 }
 
 func round2(f float64) float64 {

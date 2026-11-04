@@ -14,6 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -33,10 +34,17 @@ func costNoteText() string {
 	return i18n.T(costNote, "оценка по тарифной карте evo, а не счёт")
 }
 
+// apiDiskCostNote goes next to a price of a disk alone from the
+// price-calculation API: no image, so no license to leave out.
+const apiDiskCostNote = "Cloud.ru price-calculation API, not a bill"
+
 // costNoteFor is the note of a price, by its source.
 func costNoteFor(cost pricing.Estimate) string {
-	if cost.Source == pricing.SourceAPI {
+	switch cost.Source {
+	case pricing.SourceAPI:
 		return i18n.T(apiCostNote, "по API расчёта цены Cloud.ru, а не счёт; без лицензии образа")
+	case pricing.SourceAPIDisk:
+		return i18n.T(apiDiskCostNote, "по API расчёта цены Cloud.ru, а не счёт")
 	}
 	return costNoteText()
 }
@@ -75,7 +83,7 @@ func (e *Engine) confirmOptions(yes, dryRun, noPrompt bool) confirm.Options {
 // deploy_plan prices it (deployplan.PriceVM: the price-calculation API, else
 // the rate card). Lookups of names are best effort: the preview falls back
 // to the IDs rather than failing the deploy.
-func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, diskTypeID string, network vmNetwork, ports, udpPorts []int) confirm.Preview {
+func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMRequest, img *provision.ImageDetail, diskTypeID string, network vmNetwork, ports, udpPorts []int, cidr string) confirm.Preview {
 	vm := deployplan.VMSpec{
 		Name:   req.Name,
 		Flavor: deployplan.FlavorSpec{Name: req.FlavorName},
@@ -93,7 +101,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			}
 		}
 	}
-	if zones, err := e.Cloud.ListAvailabilityZones(ctx); err == nil {
+	if zones, err := e.zoneList(ctx); err == nil {
 		for _, z := range zones {
 			if z.ID == req.AvailabilityZoneID {
 				vm.Zone.Name = z.Name
@@ -119,25 +127,21 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		previewLabel("network", "сеть") + i18n.Tf("subnet %s, security group %s", "подсеть %s, группа безопасности %s",
 			network.SubnetName, network.SecurityGroup),
 		publicIPLine(true),
+		previewLabel("upload", "загрузка") + SSHUpload(""),
 	}
-	if len(ports)+len(udpPorts) > 0 {
-		ps := make([]string, 0, len(ports)+len(udpPorts))
-		for _, p := range ports {
-			ps = append(ps, fmt.Sprint(p))
-		}
-		for _, p := range udpPorts {
-			ps = append(ps, fmt.Sprintf("%d/udp", p))
-		}
-		lines = append(lines, previewLabel("ports", "порты")+i18n.Tf("%s opened to %s in security group %s (shared by every VM in it); "+
-			"ports already open there are left as they are, destroy deletes only the rules this deploy creates",
-			"%s открываются для %s в группе безопасности %s (она общая для всех ВМ в ней); "+
-				"уже открытые остаются как есть, destroy удалит только правила, которые создаст этот deploy",
-			strings.Join(ps, ","), sgrules.Anywhere, network.SecurityGroup))
+	var exposed CreatePreview
+	exposed.AddPorts(ports, udpPorts, cidr)
+	exposed.PortsGroup(network.SecurityGroup)
+	if len(exposed.Params) > 0 {
+		lines = append(lines, portsLine(paramValue(exposed.Params[0].Value), sgrules.Source(cidr), network.SecurityGroup))
 	}
 	lines = append(lines, vmCostLines(cost, vm.Flavor.VCPUs > 0)...)
 	quota := e.quotaCheck(ctx, req.ProjectID)
 	if l := quota.line(); l != "" {
 		lines = append(lines, l)
+	}
+	for _, w := range exposed.Warnings {
+		lines = append(lines, previewLabel("warning", "внимание")+w)
 	}
 	details := map[string]any{
 		"project_id":     req.ProjectID,
@@ -205,9 +209,12 @@ func vmCostLines(cost pricing.Estimate, sizeKnown bool) []string {
 	if cost.Source == pricing.SourceAPI {
 		lines = append(lines, apiCostLine(cost))
 	} else {
-		line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (compute %.2f + disk %.2f), %s",
-			"~%.2f %s в месяц (вычисления %.2f + диск %.2f), %s",
-			cost.TotalMonthlyRub, cost.Currency, cost.ComputeMonthlyRub, cost.DiskMonthlyRub, costNoteText())
+		parts := i18n.Tf("compute %.2f + disk %.2f", "вычисления %.2f + диск %.2f", cost.ComputeMonthlyRub, cost.DiskMonthlyRub)
+		if cost.FloatingIPMonthlyRub > 0 {
+			parts += i18n.Tf(" + floating IP %.2f", " + floating IP %.2f", cost.FloatingIPMonthlyRub)
+		}
+		line := previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (%s), %s", "~%.2f %s в месяц (%s), %s",
+			cost.TotalMonthlyRub, cost.Currency, parts, costNoteText())
 		if !sizeKnown {
 			line += i18n.T("; flavor size unknown, compute may be missing from the total",
 				"; размер flavor неизвестен, вычисления могут не войти в итог")
@@ -254,11 +261,12 @@ func redeployCreates(rec *state.DeploymentRecord) []string {
 // composeChanged: the compose file is not the deployed one — else the
 // update is --force, or (force false) the retry of a deploy that did not
 // finish.
-func redeployPreview(rec *state.DeploymentRecord, project, from string, composeChanged, force bool) confirm.Preview {
+func redeployPreview(rec *state.DeploymentRecord, project, from string, composeChanged, force, probed bool, reach error) confirm.Preview {
 	lines := []string{
 		previewLabel("project", "проект") + projectText(project, from),
 		i18n.T("upload the compose file to the existing VM and run 'docker compose up -d'",
 			"загрузить compose-файл на существующую ВМ и выполнить 'docker compose up -d'"),
+		previewLabel("upload", "загрузка") + SSHUpload(rec.VMIP),
 	}
 	switch {
 	case composeChanged:
@@ -282,6 +290,20 @@ func redeployPreview(rec *state.DeploymentRecord, project, from string, composeC
 			"ещё не открытые порты compose-файла открываются в группе безопасности %s"+
 				"; уже открытые остаются как есть, destroy удалит только правила, которые создаст deploy", groupText(rec)))
 	}
+	details := map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": creates,
+		"update": true, "compose_changed": composeChanged, "upload": SSHUpload(rec.VMIP)}
+	if probed {
+		details["ssh_reachable"] = reach == nil
+		if reach != nil {
+			details["ssh_probe_error"] = SSHProbeClass(reach)
+			lines = append(lines, previewLabel("ssh", "ssh")+i18n.Tf("port 22 does not answer from this host (ssh_reachable: false, %s)",
+				"порт 22 не отвечает с этого хоста (ssh_reachable: false, %s)", SSHProbeClass(reach)),
+				previewLabel("warning", "внимание")+SSHUnreachable(rec.VMIP, reach))
+		} else {
+			lines = append(lines, previewLabel("ssh", "ssh")+i18n.T("port 22 answers from this host (ssh_reachable: true)",
+				"порт 22 отвечает с этого хоста (ssh_reachable: true)"))
+		}
+	}
 	summary := i18n.Tf("update VM %s", "обновить ВМ %s", vmText(rec))
 	if rec.VMIP != "" {
 		summary += ", " + rec.VMIP
@@ -290,8 +312,7 @@ func redeployPreview(rec *state.DeploymentRecord, project, from string, composeC
 		Action:  "deploy",
 		Summary: summary,
 		Lines:   lines,
-		Details: map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": creates,
-			"update": true, "compose_changed": composeChanged},
+		Details: details,
 	}
 }
 
@@ -312,11 +333,11 @@ type destroyResource struct {
 
 // rulePreview lists the port rules destroy deletes or keeps for the given
 // deployments, with a warning about the group being shared.
-func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
+func rulePreview(sf *state.File, ids []string, labeled []sgrules.Planned) ([]destroyResource, []string) {
 	var res []destroyResource
 	var lines []string
 	deleting := false
-	for _, p := range sgrules.Plan(sf, ids...) {
+	for _, p := range append(sgrules.Plan(sf, ids...), labeled...) {
 		label := sgrules.Label(p.Rule.Port)
 		if p.KeptFor != "" {
 			note := i18n.T("still needed by deployment ", "нужно развёртыванию ") + p.KeptFor
@@ -329,7 +350,12 @@ func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
 		r := destroyResource{Type: "security_group_rule", ID: p.Rule.ID, Address: p.Rule.Port, Action: "delete"}
 		line := i18n.Tf("delete the rule %s opening port %s in security group %s",
 			"удалить правило %s, которое открывает порт %s в группе безопасности %s", p.Rule.ID, label, p.Rule.SecurityGroupID)
-		if rec := sf.FindDeployment(p.RecordID); rec != nil && rec.Status == "destroyed" {
+		if p.RecordID == "" {
+			// Found by the VM's label (P6): opened for this VM from
+			// another folder, or kept by none.
+			r.Note = i18n.T("labelled for this VM, not recorded in this folder", "помечено для этой ВМ, в этой папке не записано")
+			line += " (" + r.Note + ")"
+		} else if rec := sf.FindDeployment(p.RecordID); rec != nil && rec.Status == "destroyed" {
 			r.Note = i18n.T("left by an earlier destroy", "осталось от прошлого destroy")
 			line += " (" + r.Note + ")"
 		}
@@ -350,7 +376,7 @@ func rulePreview(sf *state.File, ids []string) ([]destroyResource, []string) {
 // pendingRulesPreview is the preview of a destroy that only finishes the
 // rules an earlier destroy could not delete.
 func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
-	res, lines := rulePreview(sf, pending)
+	res, lines := rulePreview(sf, pending, nil)
 	return confirm.Preview{
 		Action: "destroy",
 		Summary: i18n.T("delete security group rules left by an earlier destroy",
@@ -361,7 +387,7 @@ func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 }
 
 // destroyPreview lists what destroy deletes and what it leaves behind.
-func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, project, from string) confirm.Preview {
+func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, labeled []sgrules.Planned, unchecked error, project, from string) confirm.Preview {
 	res := []destroyResource{
 		{Type: "vm", ID: rec.VMID, Name: rec.VMName, Address: rec.VMIP, Action: "delete",
 			Note: i18n.T("all data on its disks is lost", "все данные на её дисках будут потеряны")},
@@ -376,9 +402,13 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		res = append(res, destroyResource{Type: "floating_ip", ID: rec.FloatingIPID, Address: rec.VMIP, Action: "release"})
 		lines = append(lines, i18n.Tf("release floating IP %s", "освободить floating IP %s", fipLabel(rec.VMIP, rec.FloatingIPID)))
 	}
-	ruleRes, ruleLines := rulePreview(sf, append([]string{rec.ID}, pending...))
+	ruleRes, ruleLines := rulePreview(sf, append([]string{rec.ID}, pending...), labeled)
 	res = append(res, ruleRes...)
 	lines = append(lines, ruleLines...)
+	if unchecked != nil {
+		res = append(res, destroyResource{Type: "security_group_rule", Action: "unchecked", Note: clerrors.Reason(unchecked)})
+		lines = append(lines, previewLabel("warning", "внимание")+UncheckedRules(unchecked))
+	}
 	for _, key := range rec.PortsAlreadyOpen {
 		note := i18n.T("not opened by this deploy", "открывался не этим deploy")
 		res = append(res, destroyResource{Type: "security_group_rule", Address: key, Action: "keep", Note: note})

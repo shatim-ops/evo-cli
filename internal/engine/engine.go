@@ -43,6 +43,13 @@ type Engine struct {
 	QuotaProbe func(ctx context.Context, tp auth.TokenProvider, projectID string) error
 	// Probe runs post-deploy health checks; nil means verify.Check.
 	Probe func(ctx context.Context, ip string, ports []int, timeout time.Duration) []verify.ProbeResult
+	// SSHDial probes port 22 of a VM before the question of an update
+	// (ReachSSH, M2): DialSSH in the CLI and the server; nil, no probe.
+	SSHDial func(ctx context.Context, addr string) error
+	// sshReached remembers ReachSSH per address within one call.
+	sshReached map[string]error
+	// zones is the zone list of the call, once read (zoneList).
+	zones []*provision.AvailabilityZone
 	// Stages runs the long stages of deploy on the VM (vmstage); nil: the
 	// Deployer, when it runs stages itself, else vmstage.Over(Deployer).
 	Stages vmstage.Runner
@@ -66,6 +73,10 @@ type DeployOptions struct {
 	NonInteractive bool // never prompt; creating a VM then needs Yes
 	Yes            bool // consent to create the VM given in advance (--yes)
 	DryRun         bool // show what would be created and its cost, then stop
+	// Cidr is the source the rules of the ports deploy opens let in
+	// (sgrules.Source: 0.0.0.0/0 when empty, P5); rules already there
+	// stay as they are.
+	Cidr string
 	// Gate, when set, asks for consent where Deploy would call confirm.Ask
 	// with its own preview: the deploy tool sets it for 'evo deploy', which
 	// shows the preview of the tool's answer (spec REQ-4, REQ-6). redeploy

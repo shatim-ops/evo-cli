@@ -25,7 +25,6 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
-	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/pager"
@@ -36,10 +35,11 @@ import (
 // orgProjectsURL lists the projects visible to the service account.
 var orgProjectsURL = "https://organization.api.cloud.ru/v3/projects"
 
-// orgClient repeats the project list GET on a dropped connection or a
-// 502/503/504, as the service clients do: one network blip made
-// 'evo project list' fail at once (cloud-e2e readonly, 18.10.2026).
-var orgClient = httpretry.NewClient(60 * time.Second)
+// orgClient reads the project list: the client of the Organization API
+// (tools.OrgClient — one policy of 404 with the org tools, FB160-3), which
+// repeats the GET on a dropped connection: one network blip made 'evo
+// project list' fail at once (cloud-e2e readonly, 18.10.2026).
+var orgClient = tools.OrgClient(60 * time.Second)
 
 // Terminal access, replaceable in tests.
 var (

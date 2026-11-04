@@ -44,42 +44,41 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Creates a VM (auto-sized, public floating IP), uploads the compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM. Works in the directory evo runs in (MCP: where the server started); another compose file than its deployment's is refused before the question. Needs a key and project_id/region/image_id (env, config or arguments). Billable when it creates a VM; a new VM and an update alike take confirmed=true, without it a preview (an update: update: true, vm_id, compose_changed). The same compose file running and force unset: nothing to do (preview unchanged: true; the confirmed call changes nothing). The VM is named evo-<project_name> (project_name of .evo.yaml, else the directory); deploy takes no name, deploy_plan does. Over MCP: within ~45 s, status deploying, phase, next_tool while the VM or its stages run.",
+			Description: "Deploy the local compose project to a VM evo-<project_name> (.evo.yaml or the directory), billable when it creates one, with a public floating IP: uploads the compose files over SSH, runs them; its ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: the server's), refuses another deployment's compose file. Updates take confirmed=true too (preview: compose_changed).",
 			InputSchema: objSchema(map[string]any{
-				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
-				"flavor":       strProp("VM flavor, or 'auto' to pick the smallest that fits (default: auto)."),
-				"region":       strProp("Availability zone UUID (see list_zones)."),
-				"project_id":   strProp("Cloud.ru project UUID."),
-				"image_id":     strProp("Boot image UUID (see image_list, image_get)."),
-				"image":        strProp("Boot image by exact name, display name or UUID (Ubuntu or Debian: Astra Linux, Alt and RED OS are refused, Docker cannot be installed there). Use it or image_id, not both."),
-				"disk_size":    atLeast(0, intProp("Boot disk size in GB (default: 10, raised to the image's min_disk).")),
-				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
+				"compose_file": strProp("Compose file (default docker-compose.yml)."),
+				"flavor":       strProp("VM flavor or 'auto' (default)."),
+				"region":       strProp("Zone UUID."),
+				"project_id":   strProp("Project UUID."),
+				"image_id":     strProp("Boot image UUID."),
+				"image":        strProp("Boot image, Ubuntu or Debian (not Astra Linux, Alt, RED OS)."),
+				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10, or min_disk).")),
+				"force":        boolProp("Redeploy unchanged compose."),
+				"cidr":         cidrProp(portsCidrDesc),
 				"confirmed":    confirmedProp(),
 			}),
 		},
 		{
 			Name: "provision",
-			Description: "Provision a bare Cloud.ru VM. Mutation (billable): requires confirmed=true after the user approves; without it returns a preview only. A public floating IP by default; no_public_ip=true makes a PRIVATE VM (subnet only), the valid load-balancer target. " +
-				"The image is 'image' (name or UUID, resolved as image_get does) or 'image_id' (UUID). Any OS image the project can use works; one it cannot use (image_list: available_in_project=false) is NOT_FOUND before anything is created. " +
-				"evo fills image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata, else refused before anything is created. " +
-				"No image or region: refused before the preview ('missing' names it). " +
-				"Returns ssh (deploy-key login), password (generated; this answer only), state_dir (key, state). " +
-				"Over MCP a VM not running in ~45 s answers status creating (password, next_tool/next_args): the same call again finishes it. " +
-				"For docker-compose use 'deploy'.",
+			Description: "Provision a bare Cloud.ru VM (docker-compose: use 'deploy'), billable: confirmed=true. Public floating IP unless no_public_ip. " +
+				"evo fills the image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata. " +
+				"Refused before anything is created: no image or region ('missing' names it), an image the project cannot use, a mandatory field not given. " +
+				"Returns ssh, password (generated; this answer only), state_dir (key, state).",
 			InputSchema: objSchema(map[string]any{
-				"name":       strProp("VM name (e.g. 'hermes-agent')."),
-				"flavor":     strProp("VM flavor name or UUID (e.g. 'lowcost10-2-4'). Default: auto (smallest lowcost, not free-tier)."),
-				"region":     strProp("Availability zone: a name such as 'ru.AZ-2' or a UUID (see list_zones). Default: the server's CLOUDRU_REGION."),
-				"project_id": strProp("Cloud.ru project UUID."),
-				"image":      strProp("Boot image by exact name, display name or UUID (see image_list, image_get), e.g. 'Ubuntu-24.04'. Use it or image_id, not both."),
-				"image_id":   strProp("Boot image UUID (see image_list, image_get)."),
+				"name":       strProp("VM name."),
+				"flavor":     strProp("Flavor name or UUID. Default: smallest lowcost, not free-tier."),
+				"region":     strProp("Availability zone name or UUID. Default: the server's CLOUDRU_REGION."),
+				"project_id": strProp("Project UUID."),
+				"image":      strProp("Boot image name or UUID, e.g. 'Ubuntu-24.04'. Not with image_id."),
+				"image_id":   strProp("Boot image UUID."),
 				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
-					"description": "Values of the image's metadata fields by name, e.g. {\"admin_password\": \"…\"} — the mandatory ones evo cannot fill (image_get: fields_required). They override what evo fills. A field the image does not declare is refused."},
+					"description": "Image metadata fields by name, e.g. {\"admin_password\": \"...\"}; they override evo's. An undeclared field is refused."},
 				"ports": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
-					"description": "Inbound ports to open in the VM's security group from 0.0.0.0/0, e.g. [\"80\", \"8080/tcp\", \"53/udp\"] (tcp by default). The group is shared by the zone's VMs; destroy deletes the rules evo created."},
-				"disk_size":    atLeast(0, intProp("Boot disk size in GB (default: 10, raised to the image's min_disk).")),
-				"subnet_id":    strProp("Subnet UUID or name for the interface (default: a subnet in the target zone)."),
-				"no_public_ip": boolProp("Create a PRIVATE VM (no floating IP, interface type 'regular'). Use for load-balancer targets / internal-only nodes."),
+					"description": "Inbound ports to open from cidr, e.g. [\"80\", \"53/udp\"] (tcp by default), in the zone's shared security group; destroy deletes the rules evo created."},
+				"cidr":         cidrProp(portsCidrDesc),
+				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10, raised to the image's min_disk).")),
+				"subnet_id":    strProp("Subnet UUID or name (default: one in the zone)."),
+				"no_public_ip": boolProp("Private VM, no floating IP: a load-balancer target or an internal node."),
 				"confirmed":    confirmedProp(),
 				"wait":         boolProp(waitDesc),
 			}),
@@ -121,10 +120,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "destroy",
-			Description: "Permanently delete a VM and all data on it (irreversible). ALWAYS requires confirmed=true (user approval). With no arguments, deletes the current local deployment. To delete a SPECIFIC VM, pass vm_id or name: the preview names the VM (id, name, zone, status, address) and the floating IP and port rules that go with it; a VM that is not there is already deleted (status already_deleted, existed false), and a name several VMs share is refused (USAGE with the candidates — pass vm_id). By default the VM's floating IP is released too (release_ip). The security group rules its deploy/deploy_apply created are deleted after the VM, unless another deployment in the local state still needs the port; a rule that cannot be deleted is reported and retried by the next destroy. A deletion Cloud.ru accepted but did not confirm is status partial (an error), one still going when an MCP call ends (~45 s) is status deleting with next_tool: the floating IP, the rules and the record stay until destroy is called again.",
+			Description: "Permanently delete a VM and all data on it. No arguments: the current local deployment; else vm_id or name (a name several VMs share is refused: pass vm_id). The preview names the VM, its floating IP and the port rules evo opened for it (from any folder); they go too, unless a local deployment still needs the port: a VM of another folder relying on one loses it. A rule not deleted is reported and retried by the next destroy. Status partial or deleting: the IP, the rules and the record stay until destroy is called again.",
 			InputSchema: objSchema(map[string]any{
-				"vm_id":      uuidProp("Delete this specific VM by UUID (see the list tool / vms). Requires confirmed=true."),
-				"name":       strProp("Delete a specific VM by name (alternative to vm_id). Requires confirmed=true."),
+				"vm_id":      uuidProp("VM UUID."),
+				"name":       strProp("VM name (instead of vm_id)."),
 				"confirmed":  confirmedProp(),
 				"release_ip": boolPropTrue("Also release the VM's floating IP (default: true)."),
 			}),
@@ -136,10 +135,9 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "image_list",
-			Description: "Search the VM image catalogue: OS images (type public), Cloud.ru Marketplace products (marketplace) and the project's own images (private). " +
-				"query matches a substring of the name or display_name, case-insensitive. Images ready in no zone and images of the shared catalogue the project cannot use are hidden unless all=true (then the latter carry available_in_project=false; hidden_not_in_project counts the hidden ones). " +
-				"Compact rows {id, name, display_name, type, zones_ready, min_disk_gb}, public first; total counts the matches before hiding. " +
-				"Next: image_get for the fields a VM from the image needs; the id goes to provision or deploy as image_id.",
+			Description: "Search the VM image catalogue: OS images (type public), Marketplace products (marketplace), the project's own images (private). " +
+				"Images ready in no zone or that the project cannot use are hidden unless all=true (then with available_in_project=false). " +
+				"Rows {id, name, display_name, type, zones_ready, min_disk_gb}. Next: image_get for the fields a VM from the image needs.",
 			InputSchema: imageListSchema(),
 		},
 		{
@@ -154,26 +152,23 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "image_create",
-			Description: "Create a reusable VM image FROM A BOOTABLE DISK — the final step of producing a distributable image (e.g. a Marketplace product): provision a VM, install the product, clean it up, stop the VM, then capture its boot disk here. " +
-				"The disk must be bootable AND detached — power the VM off, detach the boot disk with disk_detach, and wait until disk_list reports state 'available'. Stopping the VM is not enough: while the disk is attached the API answers invalid_disk_state_to_create_image. " +
-				"For a Marketplace image also pass user_data_template (cloud-init Jinja) plus image_metadata declaring every {{ var }} the template uses — that is how a buyer's SSH key or password reaches the guest. " +
-				"Building is asynchronous (~0.7 GB/min): poll image_get until ready=true. Mutation (billable storage): requires confirmed=true.",
+			Description: "Create a VM image from a bootable disk (billable storage). The disk must be detached: disk_detach, then disk_list state 'available'. " +
+				"A Marketplace image needs user_data_template and image_metadata for its every {{ var }}. Async: poll image_get until ready=true.",
 			InputSchema: objSchema(map[string]any{
-				"name":               strProp("Image name (technical, unique in the project)."),
-				"disk_id":            strProp("UUID of the bootable source disk (from disk_list)."),
-				"display_name":       strProp("Human-readable name shown in the console."),
-				"description":        strProp("Free-text description, MAX 255 characters (the API rejects longer with too_long). Keep it to product, pinned version and digest; legal disclaimers belong in the Marketplace listing, not here."),
-				"zone":               strProp("Availability zone name or UUID to build the image in. Defaults to the configured region, and to the source disk's own zone when no region is configured. Must match the disk's zone."),
-				"min_cpu":            atLeast(0, intProp("Minimum vCPUs a VM needs to boot this image.")),
-				"min_ram":            atLeast(0, intProp("Minimum RAM in GB.")),
-				"min_disk":           atLeast(0, intProp("Minimum boot disk in GB — must be >= the image size, or VMs cannot be created from it.")),
-				"user_data_template": strProp("cloud-init template (Jinja) rendered when a VM is created from this image. Required for Marketplace images."),
+				"name":               strProp("Image name, unique in the project."),
+				"disk_id":            strProp("Source disk UUID."),
+				"display_name":       strProp("Console name."),
+				"description":        strProp("At most 255 characters."),
+				"zone":               strProp("Zone name or UUID; must be the disk's."),
+				"min_cpu":            atLeast(0, intProp("Minimum vCPUs.")),
+				"min_ram":            atLeast(0, intProp("Minimum RAM, GB.")),
+				"min_disk":           atLeast(0, intProp("Minimum boot disk, GB: at least the image size.")),
+				"user_data_template": strProp("cloud-init template (Jinja)."),
 				"image_metadata": map[string]any{
 					"type":  "array",
 					"items": map[string]any{"type": "object"},
-					"description": "Fields the buyer fills in, substituted into user_data_template; declare every {{ var }} the template uses. " +
-						"Entry: {name, display_name, display_position, field_type, default_value, sensitive, mandatory_group}; display_name and display_position are REQUIRED, 'id'/'is_required' are rejected (the write schema differs from image_get's). " +
-						"field_type: public_key, linux_password, linux_login, hostname, flag; put public_key and linux_password in one mandatory_group ('authentication') so either gives access.",
+					"description": "Buyer fields for user_data_template, each {name, display_name, display_position, field_type, ...}: " +
+						"display_name and display_position required, id and is_required rejected.",
 				},
 				"confirmed": confirmedProp(),
 			}, "name", "disk_id"),
@@ -209,31 +204,32 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_plan",
-			Description: "STEP 1 of the deploy wizard (read-only, creates nothing). Resolves a full VM configuration — flavor, image, zone, disk, network, SSH — and returns it together with its MONTHLY COST and a plan_id (cost.source: the Cloud.ru price-calculation API, or a rate-card estimate when the API gives no price; an image license is never included). In 'auto' mode pass the product's requirements (cpu/ram_gb/disk_gb from its README) and defaults fill the rest; in 'manual' mode pass explicit choices (flavor/zone/image/disk_type). Show the returned plan + cost to the user for approval, then call deploy_apply with the plan_id.",
+			Description: "Step 1 of the deploy wizard, read-only: resolves a VM configuration (flavor, image, zone, disk, network, SSH) with its monthly cost and a plan_id (cost.source: the Cloud.ru price API, else a rate-card estimate; an image license is never included). auto mode: pass the product's cpu/ram_gb/disk_gb, defaults fill the rest; manual: flavor, zone, image, disk_type. Show the plan and its cost to the person, then deploy_apply with the plan_id.",
 			InputSchema: objSchema(map[string]any{
-				"base_plan_id": strProp("Optional: a prior plan_id to PATCH. Starts from that plan's parameters and overlays only the fields you pass here (e.g. just disk_gb), returning a fresh plan_id. Lets the user tweak one value without restating everything."),
-				"product":      strProp("Product/app name being deployed (used for the VM name and reporting)."),
-				"mode":         strProp("'auto' (defaults + requirements) or 'manual' (explicit choices). Default: auto."),
-				"cpu":          intProp("Required vCPUs (auto-size picks the smallest fitting flavor)."),
-				"ram_gb":       intProp("Required RAM in GB (auto-size)."),
-				"disk_gb":      intProp("Boot disk size in GB (default: 10)."),
-				"ports":        map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Product ports to open in the VM's security group (e.g. [80,443] for a web server, from the README). deploy_apply opens them automatically; destroy deletes the rules it created."},
-				"name":         strProp("Explicit VM name (default: <product>-<timestamp>)."),
-				"compose_file": strProp("Path to a docker-compose.yml if this is a compose deploy (sets compose_required). With it an Astra Linux, Alt or RED OS image is refused (USAGE, no plan): Docker's install script does not support them."),
-				"external_ip":  boolProp("Attach a public floating IP (default: true)."),
-				"flavor":       strProp("manual: exact flavor name (see list_flavors). Default: the configured flavor (profile, .evo.yaml, CLOUDRU_FLAVOR) unless cpu/ram_gb are given, else auto-sized."),
-				"zone":         strProp("manual: availability zone name or UUID (see list_zones). Default: the configured region (profile, .evo.yaml, CLOUDRU_REGION), else ru.AZ-2."),
-				"image":        strProp("manual: image name or UUID (see image_list). Default: the configured image or image_id (profile, .evo.yaml), else Ubuntu 24.04."),
-				"disk_type":    strProp("manual: disk type name, e.g. 'SSD' (see list_disk_types)."),
-				"login":        strProp("Login user for the VM (default: user1)."),
-				"ssh_key":      strProp("Full SSH public key to inject (e.g. 'ssh-ed25519 AAAA... user'). If omitted, evo's own deploy key of the working directory (.evo/id_ed25519.pub) is injected, so the agent can SSH in; add the user's key to authorized_keys afterwards."),
+				"base_plan_id": strProp("A prior plan_id to change: its parameters with only the fields given here overlaid, as a new plan_id."),
+				"product":      strProp("Product name (names the VM)."),
+				"mode":         strProp("'auto' (default) or 'manual'."),
+				"cpu":          intProp("vCPUs needed (auto picks the smallest fitting flavor)."),
+				"ram_gb":       intProp("RAM needed, GB."),
+				"disk_gb":      intProp("Boot disk, GB (default 10)."),
+				"ports":        map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports deploy_apply opens from cidr in the zone's shared security group, e.g. [80,443]; destroy deletes the rules it created."},
+				"cidr":         cidrProp(portsCidrDesc),
+				"name":         strProp("VM name (default: <product>-<timestamp>)."),
+				"compose_file": strProp("docker-compose.yml of a compose deploy (sets compose_required); with it an Astra Linux, Alt or RED OS image is refused: no Docker for them."),
+				"external_ip":  boolProp("Attach a public floating IP (default true)."),
+				"flavor":       strProp("manual: flavor name. Default: the configured flavor unless cpu/ram_gb are given, else auto-sized."),
+				"zone":         strProp("manual: zone name or UUID. Default: the configured region, else ru.AZ-2."),
+				"image":        strProp("manual: image name or UUID. Default: the configured image, else Ubuntu 24.04."),
+				"disk_type":    strProp("manual: disk type name, e.g. 'SSD'."),
+				"login":        strProp("VM login (default user1)."),
+				"ssh_key":      strProp("SSH public key. Omitted: evo's deploy key of the directory (.evo/id_ed25519.pub), so the agent can SSH in; add the person's key afterwards."),
 				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
-					"description": "Values of the image's metadata fields by name — the mandatory ones evo cannot fill (image_get: fields_required). Without them the plan is refused. Kept in the local plan file until deploy_apply."},
+					"description": "The image's mandatory metadata fields evo cannot fill (image_get: fields_required), by name; without them the plan is refused. Kept in the local plan file."},
 			}),
 		},
 		{
 			Name:        "deploy_apply",
-			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
+			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. It creates the VM without the application: a compose project goes through deploy. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
 				"plan_id":   strProp("The plan_id returned by deploy_plan."),
 				"confirmed": confirmedProp(),
@@ -264,16 +260,16 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "subnet_create",
-			Description: "Create a subnet in a VPC: a private IPv4 network (cidr, e.g. 10.10.0.0/24, mask /8../29) in one availability zone. The VPC is 'vpc_id', else the project's default VPC; the zone is 'zone' (name) or 'availability_zone_id', else the configured region. Routed by default (routed_network=false: isolated, no traffic beyond the subnet). Refused before the question: a name or a network the VPC already has, a VPC not in the project. Without confirmed=true this returns a preview only. Mutation: requires confirmed=true after the user approves. Delete it with subnet_delete.",
+			Description: "Create a subnet: a private IPv4 network in one zone of a VPC. Refused before the question: a name or a network the VPC already has, a VPC not in the project.",
 			InputSchema: objSchema(map[string]any{
-				"name":                 strProp("Subnet name (required): a Latin letter first, then letters, digits, '.', '-', '_'."),
-				"cidr":                 cidrProp("Private IPv4 network by its base address with a mask /8../29, e.g. 10.10.0.0/24 (required)."),
-				"vpc_id":               uuidProp("VPC UUID (from vpc_list). Optional: the project's default VPC."),
-				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-1'). Optional; defaults to the configured region."),
-				"availability_zone_id": uuidProp("Availability-zone UUID (alternative to 'zone')."),
-				"routed_network":       boolPropTrue("Routed subnet (default true); false makes it isolated."),
-				"dns_servers":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "DNS server IPv4 addresses. Optional: the platform's."},
-				"description":          strProp("Description. Optional."),
+				"name":                 strProp("Subnet name: a Latin letter first, then letters, digits, '.', '-', '_'."),
+				"cidr":                 cidrProp("Network with a mask /8../29, e.g. 10.10.0.0/24."),
+				"vpc_id":               uuidProp("VPC UUID (default: the project's default VPC)."),
+				"zone":                 strProp("Zone name, e.g. 'ru.AZ-1' (default: the configured region)."),
+				"availability_zone_id": uuidProp("Zone UUID, instead of zone."),
+				"routed_network":       boolPropTrue("Routed (default true); false: isolated."),
+				"dns_servers":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "DNS server IPv4 addresses; none: names do not resolve on its VMs."},
+				"description":          strProp("Description."),
 				"confirmed":            confirmedProp(),
 			}, "name", "cidr"),
 		},
@@ -304,7 +300,7 @@ func (s *Registry) registerTools() {
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
-				"cidr":           cidrProp("Source CIDR (default 0.0.0.0/0 = anywhere)."),
+				"cidr":           cidrProp("Source CIDR (default 0.0.0.0/0 = anywhere): ask the person which source."),
 				"confirmed":      confirmedProp(),
 			}, "security_group", "ports"),
 		},
@@ -336,18 +332,18 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_plan",
-			Description: "STEP 1 for Managed Kubernetes: resolve a cluster config (k8s version, control-plane flavor, master count, subnet, service account) WITHOUT creating anything. Show it to the user, then call k8s_create with the same args + confirmed=true.",
+			Description: "Step 1 for Managed Kubernetes: resolve a cluster config (version, control-plane flavor, master count, subnet, service account) without creating anything. Show it to the person, then k8s_create with the same args.",
 			InputSchema: objSchema(map[string]any{
-				"product":           strProp("What the cluster is for (used for the name)."),
-				"name":              strProp("Cluster name (3-60; default k8s-<product>)."),
-				"version":           strProp("Kubernetes version, e.g. v1.34.6 (default: newest STABLE; see k8s_options)."),
-				"flavor":            strProp("Control-plane flavor name (see k8s_options); overrides cpu/ram_gb."),
-				"cpu":               intProp("Control-plane vCPUs for auto flavor pick (default 2)."),
-				"ram_gb":            intProp("Control-plane RAM GB for auto flavor pick (default 4)."),
-				"master_count":      intProp("Control-plane node count: 1, 3 or 5 (default 1); any other value is refused."),
-				"zone":              strProp("Availability zone of the control plane, name or UUID, e.g. ru.AZ-2 (default: the zone of subnet_id, else the default of productConfiguration)."),
-				"subnet_id":         strProp("Subnet UUID or name for the control-plane private VIP, of the cluster's zone (default: the zone's main subnet). A subnet of another zone is refused."),
-				"cluster_sa_id":     strProp("Cluster service-account UUID (default: the agent's own service account)."),
+				"product":           strProp("What the cluster is for (names it)."),
+				"name":              strProp("Cluster name, 3-60 (default k8s-<product>)."),
+				"version":           strProp("Kubernetes version, e.g. v1.34.6 (default: newest STABLE)."),
+				"flavor":            strProp("Control-plane flavor (k8s_options); overrides cpu/ram_gb."),
+				"cpu":               intProp("Control-plane vCPUs (default 2)."),
+				"ram_gb":            intProp("Control-plane RAM, GB (default 4)."),
+				"master_count":      intProp("Control-plane nodes: 1, 3 or 5 (default 1)."),
+				"zone":              strProp("Control-plane zone, name or UUID (default: subnet_id's, else the platform's)."),
+				"subnet_id":         strProp("Subnet UUID or name of the cluster's zone, for the control-plane VIP (default: the zone's main subnet)."),
+				"cluster_sa_id":     strProp("Cluster service-account UUID (default: the agent's own)."),
 				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 			}),
 		},
@@ -389,18 +385,18 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_add_nodepool",
-			Description: "Add a worker node pool to a Managed Kubernetes cluster (workers to run pods — a fresh cluster has none). REQUIRES confirmed=true after the user approves (billable). Async. Auto-resolves flavor (cpu/ram or name), nodes subnet and security group. NB: Cloud.ru's node-pool backend occasionally returns 503 'no healthy upstream' (transient outage) — just retry.",
+			Description: "Add a worker node pool to a Managed Kubernetes cluster (pods need workers; a fresh cluster has none). Billable, async. A 503 'no healthy upstream' of the node-pool backend is transient: retry.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id":        strProp("Cluster UUID (from k8s_list)."),
-				"name":              strProp("Node pool name, 4-60 (default nodepool-1)."),
-				"count":             atLeast(1, intProp("Number of worker nodes (fixed scale, default 2).")),
-				"flavor":            strProp("Node flavor name (see k8s_options); overrides cpu/ram_gb."),
-				"cpu":               atLeast(1, intProp("Node vCPUs for auto flavor (default 2).")),
-				"ram_gb":            atLeast(1, intProp("Node RAM GB for auto flavor (default 4).")),
-				"disk_gb":           atLeast(10, intProp("Node disk GB, min 10 (default 20).")),
-				"zone":              strProp("Zone name (default: the zone of the cluster's control plane; refused when the cluster does not report it)."),
-				"nodes_subnet_id":   strProp("Subnet UUID or name for worker nodes (default auto zone-matched)."),
-				"security_group_id": strProp("Security group UUID or name for nodes (default auto zone-matched SSH-access)."),
+				"cluster_id":        strProp("Cluster UUID."),
+				"name":              strProp("Pool name, 4-60 (default nodepool-1)."),
+				"count":             atLeast(1, intProp("Worker nodes, fixed (default 2).")),
+				"flavor":            strProp("Node flavor (k8s_options); overrides cpu/ram_gb."),
+				"cpu":               atLeast(1, intProp("Node vCPUs (default 2).")),
+				"ram_gb":            atLeast(1, intProp("Node RAM, GB (default 4).")),
+				"disk_gb":           atLeast(10, intProp("Node disk, GB (default 20).")),
+				"zone":              strProp("Zone name (default: the control plane's; refused when the cluster does not report it)."),
+				"nodes_subnet_id":   strProp("Subnet UUID or name (default: one of the zone)."),
+				"security_group_id": strProp("Security group UUID or name (default: the zone's SSH-access)."),
 				"confirmed":         confirmedProp(),
 			}, "cluster_id"),
 		},
@@ -423,13 +419,13 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_add_addon",
-			Description: "Install a Managed Kubernetes addon release into a cluster. REQUIRES confirmed=true after the user approves. Without it only reads and returns a preview: the version picked (default: newest ACTIVE), namespace, the release's requirements and the cluster checks (Kubernetes version against kube_versions, node pools against ready_workers; what cannot be determined is listed in not_checked, a certain mismatch refuses with USAGE). Async: answers status installing with operation_id / cluster_addon_id; readiness: k8s_kubectl args=\"get pods -n <namespace>\" (or -A) until the addon's pods are Running and Ready (pods of a Job, e.g. cert-manager-startupapicheck, end Completed). Pods stuck in ImagePullBackOff may mean the cluster has no internet egress: Cloud.ru needs a public SNAT gateway in the nodes' zone for the cluster and pods to reach the internet. resolve_mode OVERWRITE may replace objects already in the cluster.",
+			Description: "Install a Managed Kubernetes addon release into a cluster. The preview only reads: the version picked, namespace, the release's requirements and the cluster checks (Kubernetes version, ready workers); what cannot be checked is in not_checked, a certain mismatch is refused. Async: status installing with operation_id; ready when the addon's pods run (k8s_kubectl get pods -n <namespace>). Pods in ImagePullBackOff may mean the cluster has no internet egress (snat_create).",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id":   strProp("Cluster UUID (from k8s_list)."),
-				"name":         strProp("Addon name from k8s_addons."),
-				"version":      strProp("Release version: the app version from k8s_addon_versions. The API installs by app version and picks the addon_version itself, so an addon_version is accepted only when it is the newest of its app version. Default: newest ACTIVE."),
-				"config":       map[string]any{"type": "object", "description": "Addon configuration matching the release's configuration schema (k8s_addon_versions full=true). A JSON object; a string holding a JSON object is accepted too. Cloud.ru substitutes {{clusterID}}, {{clusterName}}, {{productInstanceID}}, {{nodeCIDR}} and {{serviceCIDR}} in it. Default: the API reuses the addon's last configuration in the cluster (the addon's defaults on a first install)."},
-				"resolve_mode": strProp("What to do with objects of the addon already in the cluster (installed by hand): NONE keeps them, the install may then fail; OVERWRITE resets them to the recommended values. Default NONE."),
+				"cluster_id":   strProp("Cluster UUID."),
+				"name":         strProp("Addon name (k8s_addons)."),
+				"version":      strProp("App version from k8s_addon_versions; an addon_version only if the newest of its app version. Default: newest ACTIVE."),
+				"config":       map[string]any{"type": "object", "description": "Configuration per the release's schema (k8s_addon_versions full=true), a JSON object or a string of one. Default: the addon's last configuration in the cluster, else its defaults."},
+				"resolve_mode": strProp("Objects of the addon already in the cluster: NONE (default) keeps them, the install may then fail; OVERWRITE replaces them."),
 				"confirmed":    confirmedProp(),
 			}, "cluster_id", "name"),
 		},
@@ -454,17 +450,17 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_helm",
-			Description: "Drive Helm on a cluster: action=install|upgrade|uninstall|list|status. install/upgrade are idempotent (helm upgrade --install); over MCP they do not wait for the pods: status deploying, then action=status. repo_url adds a chart repo first. Pass values (inline YAML) and/or set (array of key=value). Mutating actions require confirmed=true. NB: nodes need egress (snat_create) to pull chart images; size the node pool for the chart (monitoring stacks want ≥8GB nodes).",
+			Description: "Run Helm on a cluster. install/upgrade are idempotent (helm upgrade --install); over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),
-				"release":    strProp("Helm release name (install/upgrade/uninstall/status)."),
-				"chart":      strProp("Chart ref, e.g. 'prometheus-community/kube-prometheus-stack' (install/upgrade)."),
-				"repo_url":   strProp("Chart repo URL to add+update first; repo name taken from the chart's '<repo>/' prefix."),
-				"namespace":  strProp("Target namespace (created on install/upgrade)."),
-				"version":    strProp("Chart version (optional; default latest)."),
-				"values":     strProp("Inline values.yaml content (optional)."),
-				"set":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Array of 'key=value' Helm --set overrides (optional)."},
+				"release":    strProp("Release name (all but list)."),
+				"chart":      strProp("Chart ref, e.g. 'bitnami/nginx' (install/upgrade)."),
+				"repo_url":   strProp("Chart repo URL to add first, named by the chart's prefix."),
+				"namespace":  strProp("Namespace (created on install/upgrade)."),
+				"version":    strProp("Chart version (default latest)."),
+				"values":     strProp("Inline values.yaml."),
+				"set":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "'key=value' --set overrides."},
 				"confirmed":  confirmedPropNote("Only for install/upgrade/uninstall."),
 			}, "cluster_id", "action"),
 		},
@@ -532,19 +528,19 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ca_deploy",
-			Description: "Deploy (create+run) a Container App from a container image — serverless, scales to zero when idle. REQUIRES confirmed=true after the user approves; the preview (will_create) lists every setting, including whether the container runs as root. The name, port and instance counts are checked before the gate. Async: returns operation_id; use ca_get for status + public URL. Ideal for stateless web services/APIs without managing a VM.",
+			Description: "Deploy a serverless Container App from an image; the preview lists every setting, root included. Async: ca_get gives its status and URL.",
 			InputSchema: objSchema(map[string]any{
-				"name":          strProp("Container app name: an RFC 1123 label (lowercase letters, digits and '-', 1-63 characters), unique."),
-				"image":         strProp("Container image URI from Artifact Registry of this project (or a public registry of another project), linux/amd64, e.g. <registry>.cr.cloud.ru/<repository>:<tag>. The app must listen on 0.0.0.0:$PORT."),
-				"cpu":           strProp("CPU request, e.g. '0.1', '1' (default 0.1)."),
-				"memory":        strProp("Memory request, e.g. '256Mi', '1Gi' (default 256Mi)."),
-				"port":          intProp("Container port the app listens on (default 8080). Reserved by the platform and refused: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090, 9091, 9092."),
-				"privileged":    boolProp("Run the container in privileged mode, as root (default false: it runs as UID 1000). Only for images that must run as root; the preview says so."),
-				"public":        boolPropTrue("Expose a public URL (default true)."),
-				"min_instances": intProp("Minimum instances (default 0 = scale to zero); at most max_instances. Above 0 the instances run, and are billed, all the time, idle or not."),
-				"max_instances": intProp("Maximum instances (default 1, at least 1)."),
-				"env":           map[string]any{"type": "object", "description": "Environment variables as a name→value object.", "additionalProperties": map[string]any{"type": "string"}},
-				"description":   strProp("Optional description."),
+				"name":          strProp("App name, unique: an RFC 1123 label."),
+				"image":         strProp("Image URI (this project's Artifact Registry or a public one), linux/amd64, listening on 0.0.0.0:$PORT."),
+				"cpu":           strProp("CPU, e.g. '1' (default 0.1)."),
+				"memory":        strProp("Memory, e.g. '1Gi' (default 256Mi)."),
+				"port":          intProp("Container port (default 8080). Refused: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090-9092."),
+				"privileged":    boolProp("Run as root, privileged (default false)."),
+				"public":        boolPropTrue("Public URL (default true)."),
+				"min_instances": intProp("Minimum instances (default 0: scale to zero). Above 0 they run, and are billed, all the time."),
+				"max_instances": intProp("Maximum instances (default 1)."),
+				"env":           map[string]any{"type": "object", "description": "Environment variables by name.", "additionalProperties": map[string]any{"type": "string"}},
+				"description":   strProp("Description."),
 				"confirmed":     confirmedProp(),
 			}, "name", "image"),
 		},
@@ -662,21 +658,21 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves; without it, a preview. Poll the returned operation_id with pg_operation. The cluster is placed in its subnet; the API takes no public-access parameter, evo sets up none.",
+			Description: "Create a Managed PostgreSQL cluster, billable. Refuses a name an existing cluster has. Default subnet: the main subnet of the profile's zone. No public access: the API takes no such parameter.",
 			InputSchema: objSchema(map[string]any{
-				"name":                  strProp("Cluster name (required)."),
-				"version":               strProp("PostgreSQL version (from pg_versions). Default: latest."),
-				"specification_id":      strProp("Specification UUID (from pg_specs). Optional if cpu+ram given."),
-				"cpu":                   intProp("vCPU count: picks a specification without specification_id."),
-				"ram":                   intProp("RAM in GB — used with cpu to auto-pick a specification."),
-				"storage_gb":            atLeast(1, intProp("Main data disk size in GB. Default: specification minimum.")),
-				"instances":             atLeast(1, intProp("Number of nodes (1-2 standard, 1-3 business: checked against the spec's max_hosts). Default 1.")),
-				"subnet_id":             strProp("Subnet UUID or name (defines the AZ). Default: first project subnet."),
-				"initial_database":      strProp("Name of the database created with the cluster (default 'defaultdb'). It takes no owner: for a database your user owns, pg_db_create with owner."),
-				"description":           strProp("Cluster description."),
-				"no_backup":             boolProp("Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'."),
-				"backup_schedule":       strProp("CRON schedule for automatic backups (default '0 3 * * 0' = weekly Sun 03:00; min once per 6h)."),
-				"backup_retention_days": inRange(1, 30, intProp("Retention for automatic backups in days (default 14, max 30).")),
+				"name":                  strProp("Cluster name."),
+				"version":               strProp("PostgreSQL version. Default: latest."),
+				"specification_id":      strProp("Specification UUID, or cpu and ram."),
+				"cpu":                   intProp("vCPU, with ram: picks the spec."),
+				"ram":                   intProp("RAM, GB, with cpu."),
+				"storage_gb":            atLeast(1, intProp("Data disk, GB. Default: the spec minimum.")),
+				"instances":             atLeast(1, intProp("Nodes: 1-2 standard, 1-3 business (default 1).")),
+				"subnet_id":             strProp("Subnet UUID or name; sets the zone."),
+				"initial_database":      strProp("Database made with the cluster (default 'defaultdb'), with no owner: an owned one is pg_db_create."),
+				"description":           strProp("Description."),
+				"no_backup":             boolProp("Disable automatic backups (on by default): CANNOT be toggled after creation."),
+				"backup_schedule":       strProp("Backup CRON (default '0 3 * * 0'; at most every 6h)."),
+				"backup_retention_days": inRange(1, 30, intProp("Backup retention, days (default 14).")),
 				"confirmed":             confirmedProp(),
 			}, "name"),
 		},
@@ -723,18 +719,18 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster. Refuses a name an existing cluster has (kafka_list). Resolves version (latest), subnet (the main subnet of the configured zone, else of the first zone that has one, ru.AZ-2 first) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram; none matching is a USAGE error with the list), storage (spec minimum) and brokers (spec min_brokers; the live API lists none, then 1 — no replication). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll kafka_operation.",
+			Description: "Create a Managed Kafka cluster, billable. Refuses a name an existing cluster has. Default subnet: the main subnet of the configured zone, else of the first zone with one (ru.AZ-2 first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication.",
 			InputSchema: objSchema(map[string]any{
-				"name":             strProp("Cluster name (2-63 chars). Required."),
-				"version_id":       strProp("Kafka version UUID (from kafka_versions). Optional; default = latest."),
-				"specification_id": strProp("Specification UUID (from kafka_specs). Optional if cpu+ram given."),
-				"cpu":              intProp("vCPU — auto-picks a spec when specification_id omitted."),
-				"ram":              intProp("RAM GB — with cpu."),
-				"storage_gib":      atLeast(1, intProp("Disk size GiB. Optional; default = spec minimum.")),
-				"brokers":          intProp("Broker count. Optional; default = the spec's min_brokers, else 1 (a single broker: no replication; pass 3 for a replicated cluster). Checked against the spec's min/max_brokers when it has them."),
+				"name":             strProp("Cluster name, 2-63 characters."),
+				"version_id":       strProp("Kafka version UUID. Default: latest."),
+				"specification_id": strProp("Specification UUID, or cpu and ram."),
+				"cpu":              intProp("vCPU, with ram: picks the spec."),
+				"ram":              intProp("RAM, GB, with cpu."),
+				"storage_gib":      atLeast(1, intProp("Disk, GiB. Default: the spec minimum.")),
+				"brokers":          intProp("Broker count, 3 for a replicated cluster; checked against the spec's min/max_brokers when it has them."),
 				"ui_enabled":       boolProp("Enable the Kafka UI (default false)."),
-				"subnet_id":        strProp("Subnet UUID or name (from list_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
-				"description":      strProp("Optional description."),
+				"subnet_id":        strProp("Subnet UUID or name."),
+				"description":      strProp("Description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),
 		},
@@ -777,19 +773,19 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Refuses a name an existing cluster has (redis_list). Resolves version (latest), subnet (as kafka_create) and the cluster's zone from it, specification of that zone (by specification_id or cpu+ram; none matching is a USAGE error with the list). type MASTER_REPLICA (default: a master and two replicas per shard — three billed hosts per shard, all in the subnet's zone — Single-AZ) or STANDALONE (one host per shard). replicas here is the replicas WITHOUT the master (the create request's field, 2); redis_get/redis_list report replicas as hosts per shard, the master included (3). Without confirmed=true returns a preview. Mutation (BILLABLE, async): confirmed=true after the user approves; poll redis_operation.",
+			Description: "Create a Managed Redis cluster, billable. Refuses a name an existing cluster has. All hosts go to the subnet's zone (default: the configured zone's main subnet, else another zone's). MASTER_REPLICA (default): a master and two replicas, three billed hosts per shard; STANDALONE: one host.",
 			InputSchema: objSchema(map[string]any{
-				"name":             strProp("Cluster name. Required."),
-				"version_id":       strProp("Redis version UUID (from redis_versions). Optional; default = latest."),
-				"specification_id": strProp("Specification UUID (from redis_specs). Optional if cpu+ram given."),
-				"cpu":              intProp("vCPU — auto-picks a spec when specification_id omitted."),
-				"ram":              intProp("RAM GB — with cpu."),
-				"storage_gb":       atLeast(1, intProp("Disk size GB. Optional; default = spec minimum.")),
-				"shards":           intProp("Shard count 1-8 (default 1)."),
-				"replicas":         intProp("Replicas per shard WITHOUT the master — the create request's replicas field. MASTER_REPLICA takes 2 (the default: a master and two replicas, 3 hosts — what redis_get then reports as replicas); STANDALONE takes 0 (one host; redis_get reports replicas 1)."),
-				"type":             enumProp("MASTER_REPLICA (default) or STANDALONE (one host per shard).", "MASTER_REPLICA", "STANDALONE"),
-				"subnet_id":        strProp("Subnet UUID or name (from list_subnets). Optional; default = the main subnet of the configured zone. The cluster goes to the subnet's zone."),
-				"description":      strProp("Optional description."),
+				"name":             strProp("Cluster name."),
+				"version_id":       strProp("Redis version UUID. Default: latest."),
+				"specification_id": strProp("Specification UUID, or cpu and ram."),
+				"cpu":              intProp("vCPU, with ram: picks the spec."),
+				"ram":              intProp("RAM, GB, with cpu."),
+				"storage_gb":       atLeast(1, intProp("Disk, GB. Default: the spec minimum.")),
+				"shards":           intProp("Shards, 1-8 (default 1)."),
+				"replicas":         intProp("Replicas per shard WITHOUT the master: 2 for MASTER_REPLICA (default), 0 for STANDALONE; redis_get counts the master too."),
+				"type":             enumProp("Default: MASTER_REPLICA.", "MASTER_REPLICA", "STANDALONE"),
+				"subnet_id":        strProp("Subnet UUID or name."),
+				"description":      strProp("Description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),
 		},
@@ -816,7 +812,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_db_create",
-			Description: "Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
+			Description: "Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The preview does not check the name is free (pg_databases).",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
@@ -844,7 +840,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_user_create",
-			Description: "Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The password is never echoed back.",
+			Description: "Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The preview does not check the name is free (pg_users). The password is never echoed back.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
@@ -920,17 +916,17 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "lb_create",
-			Description: "Create an L4 TCP load balancer fronting a target group: it forwards TCP and terminates no TLS (no certificate is bound to it; HTTPS ends on the VM). Resolves vpc_id (from the target group), the zone (zone, else the zone of subnet_id, else of the target group's VMs, else the configured region; none is refused) and the subnet (the zone's main subnet of that VPC), and builds a rule with a listener (port→target_port) + TCP health check. external=true (default) allocates a public IP. Without confirmed=true returns a preview only. Mutation (BILLABLE, async): requires confirmed=true. Poll lb_operation.",
+			Description: "Create an L4 TCP load balancer in front of a target group, billable: it forwards TCP and terminates no TLS (HTTPS ends on the VM). A listener on port to target_port with a TCP health check. Zone: zone, else subnet_id's, else the target group's VMs', else the configured region; none is refused.",
 			InputSchema: objSchema(map[string]any{
-				"name":            strProp("Load balancer name. Required."),
-				"target_group_id": strProp("Target group UUID (from tg_list/tg_create) to balance traffic to. Required."),
-				"port":            inRange(1, 65535, intProp("Listener port the balancer accepts traffic on. Required.")),
-				"target_port":     inRange(1, 65535, intProp("Port on the targets to forward to. Default = port.")),
-				"hc_port":         inRange(1, 65535, intProp("Health-check port. Default = target_port.")),
-				"external":        boolPropTrue("Allocate a public IP (default true). Set false for an internal-only balancer."),
-				"vpc_id":          strProp("VPC UUID. Optional; default = the target group's VPC."),
-				"zone":            strProp("Availability zone the balancer serves, name or UUID (see list_zones). Optional; default = the zone of subnet_id, else of the target group's VMs, else the configured region."),
-				"subnet_id":       strProp("Subnet UUID or name for the balancer's AZ. Optional; default = the zone's main subnet in the balancer's VPC."),
+				"name":            strProp("Balancer name."),
+				"target_group_id": strProp("Target group UUID."),
+				"port":            inRange(1, 65535, intProp("Listener port.")),
+				"target_port":     inRange(1, 65535, intProp("Target port (default: port).")),
+				"hc_port":         inRange(1, 65535, intProp("Health-check port (default: target_port).")),
+				"external":        boolPropTrue("Allocate a public IP (default true); false: internal only."),
+				"vpc_id":          strProp("VPC UUID (default: the target group's)."),
+				"zone":            strProp("Zone name or UUID."),
+				"subnet_id":       strProp("Subnet UUID or name (default: the zone's main subnet of the VPC)."),
 				"confirmed":       confirmedProp(),
 			}, "name", "target_group_id", "port"),
 		},
@@ -1597,6 +1593,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 				Force:          force,
 				NonInteractive: true,
 				Yes:            true, // confirmed above
+				Cidr:           stringArg(args, "cidr"),
 			}
 			// The budget of an MCP call (D69): what goes on past it is
 			// answered as it is, the stages on the VM go on (vmstage).
@@ -1696,6 +1693,19 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		}
 		answer["project_id"] = u.ProjectID
 		answer["creates"] = u.Creates
+		// What the update needs of this host's network, and port 22 of
+		// the VM probed from here before the question (M2). A warning,
+		// not a refusal: the VM may be booting, the person decides.
+		answer["upload"] = engine.SSHUpload(rec.VMIP)
+		if !u.Unchanged {
+			if probed, reach := eng.ReachSSH(ctx, rec.VMIP); probed {
+				answer["ssh_reachable"] = reach == nil
+				if reach != nil {
+					answer["ssh_probe_error"] = engine.SSHProbeClass(reach)
+					answer["warnings"] = []string{engine.SSHUnreachable(rec.VMIP, reach)}
+				}
+			}
+		}
 		if u.ComposeChanged != nil {
 			answer["compose_changed"] = *u.ComposeChanged
 		}
@@ -1710,7 +1720,7 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 	// The VM deploy would create, with the reads of provision's preview
 	// (spec REQ-7).
 	answer["update"] = false
-	p, err := eng.DeployPreview(ctx)
+	p, err := eng.DeployPreview(ctx, stringArg(args, "cidr"))
 	if err != nil {
 		return "", err
 	}
@@ -1744,6 +1754,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 		Force:          force,
 		NonInteractive: c.NonInteractive,
 		DryRun:         c.DryRun,
+		Cidr:           stringArg(args, "cidr"),
 		Gate: func(ctx context.Context, redeploy *confirm.Preview) (bool, error) {
 			answer, err := s.deployAnswer(ctx, args, eng)
 			if err != nil {
@@ -2178,7 +2189,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		if err == nil {
 			return ""
 		}
-		return fmt.Sprintf(" WARNING: the state file could not be saved (%v), so VM %s is NOT in the state and destroy will not find it — delete it in the Cloud.ru console when it is no longer needed.", err, vmID)
+		return fmt.Sprintf(" WARNING: the state file could not be saved (%v), so VM %s is NOT in the state and destroy will not find it by this folder; whether and when to delete it (by its id, or in the Cloud.ru console) — ask the person.", err, vmID)
 	}
 
 	vm := adopted
@@ -2199,8 +2210,8 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					// The Russian hint is the CLI's (MCP speaks English, D6): a
 					// repeat after Ctrl-C lands here, and the VM is the one the
 					// interrupted run is still creating.
-					i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name, or delete it with destroy name=%s.",
-						"Проверьте её: evo vm get %s — если это ВМ прерванного запуска, она ещё создаётся; иначе укажите другое имя или удалите её: evo vm delete %s.", vmName, vmName), err), bootFIP, fipErr), true
+					i18n.Tf("Check that VM with vm_get %s (or vm_list); pass another name.",
+						"Проверьте её: evo vm get %s — если это ВМ прерванного запуска, она ещё создаётся; иначе укажите другое имя.", vmName), err), bootFIP, fipErr), true
 			}
 			return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, fipErr), true
 		}
@@ -2292,7 +2303,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
 			pp.Hint(vmLeftNote(vm.ID, "") + i18n.T("; to wait longer next time: CLOUDRU_TIMEOUT (seconds)", "; ждать дольше: CLOUDRU_TIMEOUT (в секундах)"))
-			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get, delete it with destroy (vm_id %s); to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
+			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get; whether to delete it (destroy vm_id %s) — ask the person; to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
 				leftFields(map[string]any{"status": "timeout"})), true
 		case <-wait.C():
 			wait.Show()
@@ -2341,8 +2352,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				portsNote := ""
 				// sgIDs always holds the zone's group: provision refuses without one.
 				if len(tcpPorts)+len(udpPorts) > 0 {
-					res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts,
-						func(label string) string { return "evo: port " + label }, &ports)
+					res := sgrules.Open(ctx, eng.Cloud, projectID, sgIDs[0], tcpPorts, udpPorts, stringArg(args, "cidr"), vm.ID, &ports)
 					opened = &res
 					portsNote = res.Note()
 					engine.ShowOpenedPorts(pp, res, &ports, firstNonEmptyStr(sgName, sgIDs[0]))
@@ -2434,9 +2444,9 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				pp.Hint(vmLeftNote(vm.ID, updated.Status))
 				fipNote := ""
 				if fipID != "" {
-					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; destroy releases it.", ip)
+					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; a destroy of the VM releases it — ask the person before deleting.", ip)
 				}
-				return errAnswer(fmt.Errorf("VM %s entered state %s. It is recorded in the state: delete it with destroy (vm_id %s).%s%s",
+				return errAnswer(fmt.Errorf("VM %s entered state %s. It is recorded in the state; whether to delete it (destroy vm_id %s) — ask the person.%s%s",
 					vm.ID, updated.Status, vm.ID, fipNote, notInState(vm.ID, serr)),
 					map[string]any{"vm_id": vm.ID, "floating_ip_id": fipID}), true
 			}
@@ -2563,7 +2573,11 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 			// What 'evo destroy' lists before it asks (spec REQ-4): the VM by
 			// name, its floating IP, the port rules and the record.
 			if eng, err := s.newEngine(nil); err == nil && eng != nil {
-				if p, ok := eng.DestroyPreview(ctx); ok {
+				p, ok, err := eng.DestroyPreview(ctx)
+				if err != nil {
+					return errResult(err), true
+				}
+				if ok {
 					return destroyAnswer(p, s.deploymentProject()), true
 				}
 			}
@@ -2759,6 +2773,16 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					"nothing was deleted and its local record is kept — call destroy again", vmID, gerr)
 			}
 		}
+		if target == nil && vmID != "" {
+			// The VM is gone, and rules labelled for it may be left (P6):
+			// opened for it from another folder. Its delete closes them,
+			// or says they could not be checked.
+			if sf, serr := state.Read(statePath); serr == nil {
+				if found, ferr := eng.LabeledRules(ctx, sf, projectID, vmID, "", ""); len(found) > 0 || ferr != nil {
+					target, alreadyGone = &provision.VM{ID: vmID}, true
+				}
+			}
+		}
 		if target == nil {
 			// Neither the cloud nor this directory has the VM: already
 			// deleted, exit 0, as any repeated delete (D26; it was
@@ -2784,6 +2808,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		var ids []string
 		for _, d := range sf.Deployments {
 			if d.VMID == target.ID {
+				// A record of a VM evo did not make is not destroy's (D73).
+				if err := engine.AdoptedVM(d, target); err != nil {
+					return nil, err
+				}
 				recordedHere = true
 				ids = append(ids, d.ID)
 				if d.FloatingIPID != "" {
@@ -2797,6 +2825,19 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		rulesPlanned = sgrules.Plan(sf, ids...)
 	}
+	// The rules labelled for the VM that no record here holds (P6): this
+	// delete closes them too, once the VM is gone. A VM still there has
+	// only its zone's groups read; a gone one, every group.
+	var labeled []sgrules.Planned
+	var uncheckedErr error
+	if sf, serr := state.Read(statePath); serr == nil {
+		zoneID, zoneName := "", ""
+		if !alreadyGone && target.AvailabilityZone != nil {
+			zoneID, zoneName = target.AvailabilityZone.ID, target.AvailabilityZone.Name
+		}
+		labeled, uncheckedErr = eng.LabeledRules(ctx, sf, projectID, target.ID, zoneID, zoneName)
+	}
+	rulesPlanned = append(rulesPlanned, labeled...)
 	releaseIP := true
 	if v, ok := args["release_ip"].(bool); ok {
 		releaseIP = v
@@ -2850,6 +2891,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
+	if uncheckedErr != nil {
+		preview["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
+		preview["message"] = fmt.Sprint(preview["message"]) + "; " + engine.UncheckedRules(uncheckedErr)
+	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		// The wait for the VM to be gone (WaitVMGone) says the VM's state
 		// to whoever watches the call, as provision's wait does.
@@ -2959,6 +3004,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			}
 			return nil
 		})
+		rules.Add(sgrules.CloseLabeled(ctx, eng.Cloud, labeled))
 
 		out := map[string]any{
 			"status":     "ok",
@@ -2976,6 +3022,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
+		}
+		if uncheckedErr != nil {
+			msg += "; " + engine.UncheckedRules(uncheckedErr)
+			out["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
 		}
 		if stateErr != nil {
 			// The VM is gone; only the local bookkeeping is stale. Say so rather
@@ -3058,7 +3108,11 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 			ports = append(ports, fmt.Sprintf("keep port %s in security group %s (still needed by deployment %s)", sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID, p.KeptFor))
 			continue
 		}
-		ports = append(ports, fmt.Sprintf("delete rule %s (port %s) in security group %s", p.Rule.ID, sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID))
+		line := fmt.Sprintf("delete rule %s (port %s) in security group %s", p.Rule.ID, sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID)
+		if p.RecordID == "" {
+			line += " (labelled for this VM, not recorded in this folder)"
+		}
+		ports = append(ports, line)
 	}
 	if len(ports) > 0 {
 		out["port_rules"] = ports
@@ -3073,7 +3127,7 @@ func fipLeftAnswer(err error, fip *provision.FloatingIP, fipErr error) string {
 	if fipErr == nil || fip == nil {
 		return errResult(err)
 	}
-	return errAnswer(fmt.Errorf(i18n.T("%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — release it with release_floating_ip", "%w; floating IP %s (%s), созданный для этой ВМ, НЕ освобождён (%v) и тарифицируется — освободите его через release_floating_ip"),
+	return errAnswer(fmt.Errorf(i18n.T("%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — ask the person whether to release it (release_floating_ip)", "%w; floating IP %s (%s), созданный для этой ВМ, НЕ освобождён (%v) и тарифицируется — спросите человека, освободить ли его (release_floating_ip)"),
 		err, fip.IPAddress, fip.ID, fipErr), map[string]any{"floating_ip_id": fip.ID, "floating_ip": fip.IPAddress})
 }
 
@@ -3191,7 +3245,7 @@ func provisionNoPublicIP(res map[string]any, vmID, fipID string, fipErr error) s
 	}
 	fipNote := ""
 	if fipID != "" {
-		fipNote = fmt.Sprintf(" Its floating IP %s is recorded in the state and destroy releases it.", fipID)
+		fipNote = fmt.Sprintf(" Its floating IP %s is recorded in the state: a destroy of the VM releases it — ask the person before deleting.", fipID)
 	}
 	res["status"] = "partial"
 	res["vm_ip"] = ""
@@ -3202,7 +3256,7 @@ func provisionNoPublicIP(res map[string]any, vmID, fipID string, fipErr error) s
 	}
 	return errAnswer(clierrors.Wrap(code,
 		fmt.Sprintf("VM %s is active, but its public IP was not attached (%v)", vmID, fipErr),
-		fmt.Sprintf("Attach a free address with fip_attach (vm %s; addresses from list_floating_ips), or delete the VM with destroy vm_id=%s.", vmID, vmID),
+		fmt.Sprintf("Attach a free address with fip_attach (vm %s; addresses from list_floating_ips); whether to delete the VM instead (destroy vm_id=%s) — ask the person.", vmID, vmID),
 		fipErr), res)
 }
 
@@ -3327,6 +3381,10 @@ func uuidProp(desc string) map[string]any {
 	return p
 }
 
+// portsCidrDesc is the cidr of the tools that open the ports of a VM
+// (provision, deploy, deploy_plan; P5).
+const portsCidrDesc = "Source CIDR of the port rules (default 0.0.0.0/0)."
+
 func cidrProp(desc string) map[string]any {
 	p := strProp(desc)
 	p["format"] = "cidr"
@@ -3351,7 +3409,7 @@ const deleteWaitDesc = "Optional. false: answer deleting at once, not reading th
 // waitDesc is the wait argument of a tool that waits for what it creates
 // (D69): over MCP the call answers within MCPCallBudget, in the CLI it
 // waits until the work ends.
-const waitDesc = "Optional. Omitted: an MCP call answers within ~45 s — status creating with the state so far, next_tool and next_args to repeat — and the CLI waits until the VM runs. false: answer as soon as the cloud took the create. true: wait until the VM runs (raise the client's tool timeout, e.g. MCP_TOOL_TIMEOUT)."
+const waitDesc = "Omitted: over MCP answers within ~45 s (status creating), the CLI waits until the VM runs. false: answer once the cloud took the create. true: wait until it runs (raise the client's tool timeout)."
 
 const confirmedDesc = "Omit it to get the preview; set true only after the person approved that preview."
 
@@ -3740,8 +3798,8 @@ func provisionPreview(cfg config.Config, zone *provision.AvailabilityZone, args 
 	// the image, as provision itself does.
 	vm.Disk.SizeGB, _ = provision.BootDiskGB(cfg.DiskSize, 0)
 	p.VM = &vm
-	if tcp, udp, err := sgrules.ParsePorts(portSpecs(args["ports"])); err == nil && len(tcp)+len(udp) > 0 {
-		p.Add("ports", strings.Join(portLabels(tcp, udp), ","))
+	if tcp, udp, err := sgrules.ParsePorts(portSpecs(args["ports"])); err == nil {
+		p.AddPorts(tcp, udp, stringArg(args, "cidr"))
 	}
 	if meta, err := metadataArg(args, "image_metadata"); err == nil && len(meta) > 0 {
 		p.Add("image_metadata", strings.Join(sortedMetaKeys(meta), ","))

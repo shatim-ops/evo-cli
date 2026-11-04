@@ -121,7 +121,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			return &ApplyResult{
 				VMID:   existing.ID,
 				Status: "error",
-				Note:   "a VM with this name already exists in error state; destroy it first, then retry",
+				Note:   "a VM with this name already exists in error state; whether to delete it (destroy) before a retry — ask the person",
 			}, nil
 		}
 		// Adopt only the plan's own VM: one with the same name in another
@@ -361,8 +361,7 @@ poll:
 	// --- Open the product's ports in the security group (auto). Same code
 	// as the CLI deploy: the rules created are recorded for destroy. ---
 	var ports state.DeploymentRecord
-	opened := sgrules.Open(ctx, cloud, plan.ProjectID, plan.Network.SecurityGroupID, plan.Ports, nil,
-		func(label string) string { return fmt.Sprintf("auto: %s port %s", plan.Product, label) }, &ports)
+	opened := sgrules.Open(ctx, cloud, plan.ProjectID, plan.Network.SecurityGroupID, plan.Ports, nil, plan.PortsSource, vm.ID, &ports)
 	if show != nil && show.Ports != nil {
 		show.Ports(opened, &ports)
 	}

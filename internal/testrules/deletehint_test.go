@@ -70,27 +70,7 @@ var deleteHintScope = []string{"internal/tools", "internal/engine", "internal/de
 // the next step and do not leave it to the person: "file<TAB>function<TAB>
 // tool" → why it is a miss. It only shrinks. Closes by 1.7 (release plan
 // 1.7, block D; owner's decision 03.11, #732).
-var deleteHintMisses = map[string]string{
-	"internal/deployplan/apply.go\tApplyWithTimeout\tdestroy":            "a VM of the name in error state: «destroy it first, then retry»",
-	"internal/engine/deploy.go\tDeploy\tdestroy":                         "«Run 'evo destroy' to finish it», «Delete it with 'evo destroy'»",
-	"internal/engine/deploy.go\tcreateBootFIP\trelease_floating_ip":      "quota of floating IPs: «Delete a floating IP you no longer need»",
-	"internal/engine/deploy.go\thandleInterrupt\tdestroy":                "«Use 'evo destroy' to clean up if needed»",
-	"internal/engine/deploy.go\tprovisionVM\tdestroy":                    "«or 'evo destroy' to delete it»",
-	"internal/engine/deploy.go\tvmStillRunningHint\tdestroy":             "«Use 'evo destroy --yes' to delete it»",
-	"internal/engine/status.go\tShowStatus\tdestroy":                     "a stale record: «'evo destroy' removes it and releases its floating IP»",
-	"internal/tools/tools.go\tfipLeftAnswer\trelease_floating_ip":        "«release it with release_floating_ip»",
-	"internal/tools/tools.go\tprovisionNoPublicIP\tdestroy":              "«or delete the VM with destroy»",
-	"internal/tools/tools.go\tprovisionVM\tdestroy":                      "a taken name: «or delete it with destroy name=…» (the VM may be someone else's: P1)",
-	"internal/tools/tools_deploy.go\tplanReleaseFloatingIP\tdestroy":     "a floating IP in use: «delete the VM (destroy)» — a larger delete than asked",
-	"internal/tools/tools_deploy.go\tplanReleaseFloatingIP\tsnat_delete": "a floating IP of a SNAT gateway: «Delete the SNAT gateway» — a larger delete than asked",
-	"internal/tools/tools_disk.go\tdiskAttachedError\tdestroy":           "a boot disk: «delete the VM with destroy» — a larger delete than asked",
-	"internal/tools/tools_disk.go\thandleDiskCreate\tdisk_delete":        "«or delete it with disk_delete»",
-	"internal/tools/tools_s3.go\tplanS3BucketDelete\ts3_rm":              "a bucket with objects: «delete them with s3_rm» — a larger delete than asked",
-	"internal/tools/tools_snat.go\thandleSnatCreate\tsnat_delete":        "«Delete it with snat_delete when no longer needed»",
-	"internal/tools/tools_stack.go\tcheckStackSecrets\tstack_destroy":    "a taken secret path: «or stack_destroy that job first»",
-	"internal/tools/tools_stack.go\thandleStackPlan\tstack_destroy":      "earlier jobs: «Run stack_destroy on them first»",
-	"internal/tools/tools_stack.go\tnormalizeManifest\ts3_rm":            "a taken s3 key: «or remove the object (s3_rm)»",
-}
+var deleteHintMisses = map[string]string{}
 
 // Release plan 1.7, block D (owner's decision 03.11, #732: «убери за собой»
 // is not in the core; the agent creates, the person decides what to

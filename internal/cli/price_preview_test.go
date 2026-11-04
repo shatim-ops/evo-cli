@@ -111,7 +111,7 @@ func TestVMCreatePreview_Price422FallsBack(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	assertHas(t, out, []string{
-		"  cost:      ~2184.00 RUB/month (compute 2044.00 + disk 140.00), evo rate-card estimate, not a bill\n",
+		"  cost:      ~2421.73 RUB/month (compute 2044.00 + disk 228.40 + floating IP 149.33), evo rate-card estimate, not a bill\n",
 		"  API price: none (HTTP 422: sku_list[1]: (sku_identifier: cannot be blank.).), the estimate is shown\n",
 	})
 }

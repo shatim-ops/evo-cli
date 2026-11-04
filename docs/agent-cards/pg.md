@@ -23,3 +23,11 @@
 | `pg_backup_create` | `evo pg backup-create` | creates: id in `backup_id`; found with `pg_backups` | `cluster_id` ← `pg_list` |
 
 A change of this group that answers an `operation_id` runs on: wait for it with `pg_operation` and its `wait_seconds`, not by polling a list.
+
+## Notes
+
+- A cluster made with `no_backup` refuses `pg_backup_create` and `pg_backups` with 'backup disabled'.
+- The cost in the preview of `pg_create` is an estimate by the tariff of its date (`cost_note`), not a bill; the rates are on `tariff_url`.
+- A zone with no capacity refuses `pg_create` with `API_RATE_LIMITED` (`ResourceExhausted`, DB-23): later or another zone (`subnet_id`), not the same call in a loop.
+- A cluster in FAILED cannot be deleted through the API (DB-21): the answer is an error with `resource_status` and a hint (the console, Cloud.ru support), not a success; a repeat changes nothing.
+- `pg_backups` of a deleted cluster answers an error (DB-22).

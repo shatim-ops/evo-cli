@@ -15,3 +15,10 @@
 | `deploy_apply` | `evo deploy apply` | creates: id in `vm_id`; deleted with `destroy` |  |
 | `open_ports` | `evo vpc open-ports` | changes |  |
 | `close_ports` | `evo vpc close-ports` | deletes; a repeat answers `already_deleted` |  |
+
+## Notes
+
+- `deploy` reaches the VM over SSH: outbound port 22 must be open from the machine evo runs on.
+- One `deploy` at a time in a directory: another answers `STATE_LOCKED`; wait for the first.
+- The defaults of `deploy_plan` (flavor, zone, image) come from the profile, `.evo.yaml` and `CLOUDRU_FLAVOR`, `CLOUDRU_REGION`.
+- `destroy` answers status `partial` (an error) when Cloud.ru accepted the deletion but did not confirm it, and over MCP `deleting` with `next_tool` when it still runs at ~45 s.

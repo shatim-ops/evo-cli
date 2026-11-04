@@ -28,6 +28,7 @@ var previewForm = map[string]string{
 	"key":       "the name of a params entry: the line's label",
 	"cost_note": "«cost: not estimated by evo…» says it in words",
 	"source":    "where the cost comes from: «estimate» on the cost line",
+	"class":     "the class of a resource's price: the cost line says it in words (the price, «0 at creation», «price unknown, billable»)",
 	"reason":    "why the quota was not checked (D60): «quota: not checked (project key)» says it in words",
 }
 

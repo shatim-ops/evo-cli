@@ -18,19 +18,19 @@ import (
 // in the trees (provision with image, k8s_add_addon with name): no unified
 // install tool (PR #65).
 
-const marketplaceListDescription = "Read-only: what Cloud.ru offers to deploy, in one list: shared-catalogue VM images (OS images and Marketplace products, not the project's own) and Managed Kubernetes addons. " +
-	"kind: vm-os (public images and marketplace images named after an OS family, e.g. Ubuntu, Astra, RED OS — a heuristic), vm-app (other marketplace images), k8s-addon. " +
-	"Images the project cannot use or ready in no zone are hidden unless all=true (hidden_not_in_project, hidden_not_ready). " +
-	"Rows {kind, name, display_name, id, billable (addons only; an image's price is unknown), available_in_project, ready, deploy{cli, tool, args}}: deploy is provision with args.image, or k8s_add_addon with args.name (plus cluster_id; versions: k8s_addon_versions); no deploy for an image the project cannot use. " +
-	"counts: rows per kind; total: matches before hiding. If one catalogue cannot be read, the other is answered with warnings[]."
+const marketplaceListDescription = "Read-only: what Cloud.ru offers to deploy, in one list: shared-catalogue VM images and Managed Kubernetes addons. " +
+	"vm-os is a heuristic: public images and marketplace images named after an OS family. " +
+	"Images the project cannot use or ready in no zone are hidden unless all=true. " +
+	"A row's deploy{cli, tool, args} is provision with args.image, or k8s_add_addon with args.name plus cluster_id; none for an image the project cannot use. " +
+	"billable: addons only (an image's price is unknown). If one catalogue cannot be read, the other comes with warnings[]."
 
 func marketplaceListSchema() map[string]any {
 	// As enumProp lists them, so checkedArgs refuses others (G13-1).
-	kind := enumProp("Only this kind: vm-os (OS images), vm-app (Marketplace products on a VM) or k8s-addon (Managed Kubernetes addons). Default: all three; a VM kind does not read the addon catalogue and k8s-addon not the image one.", marketplace.Kinds...)
+	kind := enumProp("Only this kind: vm-os (OS images), vm-app (Marketplace products on a VM) or k8s-addon. Default: all three.", marketplace.Kinds...)
 	return objSchema(map[string]any{
-		"query": strProp("Substring of the name or display name (addons: also the description), case-insensitive, e.g. 'astra', 'nginx', 'cert'. Default: everything."),
+		"query": strProp("Substring of the name or display name (addons: also the description), case-insensitive. Default: everything."),
 		"kind":  kind,
-		"all":   boolProp("Also show the images hidden by default: those the project cannot use (available_in_project=false, no deploy) and those ready in no zone (ready=false)."),
+		"all":   boolProp("Also show the hidden images (available_in_project=false or ready=false)."),
 	})
 }
 

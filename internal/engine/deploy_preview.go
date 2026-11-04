@@ -7,10 +7,8 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"path/filepath"
-	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
@@ -18,7 +16,6 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
-	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -37,7 +34,7 @@ var errNoSize = errors.New("no compose file to size the VM by")
 // creates no new one, so there is nothing to price. The error is a refusal
 // the reads found, an image the project cannot use, or a setting a new VM
 // needs and none gives (DeployInputError).
-func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
+func (e *Engine) DeployPreview(ctx context.Context, cidr string) (*CreatePreview, error) {
 	sf, err := state.Read(state.DefaultPath(e.StateDir))
 	if err != nil || sf.ActiveComposeDeployment() != nil {
 		return nil, nil
@@ -108,17 +105,8 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 			p.Missing = append(p.Missing, m.name)
 		}
 	}
-	ports := make([]string, 0, len(project.Ports)+len(project.UDPPorts))
-	for _, port := range project.Ports {
-		ports = append(ports, fmt.Sprint(port))
-	}
-	for _, port := range project.UDPPorts {
-		ports = append(ports, fmt.Sprintf("%d/udp", port))
-	}
-	p.Add("ports", strings.Join(ports, ","))
-	if len(ports) > 0 {
-		p.Add("ports_source", sgrules.Anywhere)
-	}
+	p.AddPorts(project.Ports, project.UDPPorts, cidr)
+	p.Add("upload", SSHUpload(""))
 	// The flavor deploy takes (resolveFlavor): the one given, else the
 	// smallest that fits the compose file's services.
 	pick := func(flavors []*provision.Flavor) (string, error) {
@@ -136,6 +124,9 @@ func (e *Engine) DeployPreview(ctx context.Context) (*CreatePreview, error) {
 	}
 	if err := e.previewNetwork(ctx, p); err != nil {
 		return nil, err
+	}
+	if p.SecurityGroup != nil {
+		p.PortsGroup(firstNonEmpty(p.SecurityGroup.Name, p.SecurityGroup.ID))
 	}
 	return p, nil
 }
@@ -160,8 +151,8 @@ func (e *Engine) zoneOfPreview(ctx context.Context, ref string) (*provision.Avai
 // ports and the monthly price the plan was quoted. It is made from the plan
 // alone, with no lookup and no new quote: the user approves the plan
 // deploy_apply executes, at the price deploy_plan showed (break 1.2,
-// B12-8). The security group stays out, as in deploy_plan's answer: the
-// plan keeps its id only, and a name-less group would be a placeholder.
+// B12-8). The ports name their group by the name the plan kept (by its id
+// for a plan made before 1.7) and the source the plan was made with (P5).
 func PlanPreview(plan *deployplan.Plan) *CreatePreview {
 	vm := plan.VM
 	public := plan.Network.FloatingIP
@@ -172,15 +163,10 @@ func PlanPreview(plan *deployplan.Plan) *CreatePreview {
 	if cost.Source == pricing.SourceAPI {
 		p.CostNote = apiCostNote
 	}
-	if len(plan.Ports) > 0 {
-		ports := make([]string, len(plan.Ports))
-		for i, port := range plan.Ports {
-			ports[i] = fmt.Sprint(port)
-		}
-		p.Add("ports", strings.Join(ports, ","))
-		p.Add("ports_source", sgrules.Anywhere)
-	}
+	p.AddPorts(plan.Ports, nil, plan.PortsSource)
+	p.PortsGroup(firstNonEmpty(plan.Network.SecurityGroupName, plan.Network.SecurityGroupID))
 	p.Add("product", plan.Product)
+	p.setPriceClasses()
 	return p
 }
 

@@ -21,3 +21,10 @@
 | `k8s_kubectl` | `evo k8s kubectl` | changes | `cluster_id` ← `k8s_list` |
 | `k8s_apply` | `evo k8s apply` | changes | `cluster_id` ← `k8s_list` |
 | `k8s_helm` | `evo k8s helm` | changes | `cluster_id` ← `k8s_list` |
+
+## Notes
+
+- A cluster reaches the internet only through a public SNAT gateway in the nodes' zone (`snat_create`): without one images and charts are not pulled, pods stay in ImagePullBackOff.
+- A chart needs nodes of its size: monitoring stacks want nodes of 8 GB or more.
+- An addon is ready when its pods are Running and Ready; the pods of a Job (e.g. cert-manager-startupapicheck) end Completed.
+- Cloud.ru substitutes {{clusterID}}, {{clusterName}}, {{productInstanceID}}, {{nodeCIDR}} and {{serviceCIDR}} in the `config` of `k8s_add_addon`; the API installs an addon by app version and picks the addon_version itself.

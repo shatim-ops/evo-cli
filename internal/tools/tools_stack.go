@@ -618,7 +618,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	// Validate + normalize the manifest BEFORE planning, so a malformed field
 	// fails fast at plan time (nothing created) instead of wedging the stack in
 	// "error" mid-deploy after other resources are already live.
-	s3Notes, err := s.normalizeManifest(ctx, &m)
+	s3Notes, flavor, err := s.normalizeManifest(ctx, &m)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -627,7 +627,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	}
 	var vmNote map[string]any
 	if m.VM != nil {
-		if vmNote, err = s.normalizeStackVM(ctx, m.VM); err != nil {
+		if vmNote, err = s.normalizeStackVM(ctx, m.VM, flavor); err != nil {
 			return errResult(err), true
 		}
 	}
@@ -697,7 +697,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	// Warn if a prior job for this stack name still holds resources — applying now
 	// would create duplicates (double billing). Point the user at stack_destroy.
 	if orphans := stack.FindResourcefulJobs(m.Name, job.ID); len(orphans) > 0 {
-		out["warning"] = fmt.Sprintf("%d earlier job(s) for stack %q still hold resources — applying THIS plan will create DUPLICATES. Run stack_destroy on them first.", len(orphans), m.Name)
+		out["warning"] = fmt.Sprintf("%d earlier job(s) for stack %q still hold resources — applying THIS plan will create DUPLICATES. Whether to destroy them first (stack_destroy) — ask the person.", len(orphans), m.Name)
 		out["existing_jobs"] = orphans
 	}
 	return toJSON(out), false
@@ -718,13 +718,13 @@ func (s *Registry) checkStackSecrets(ctx context.Context, m *stack.Manifest) err
 		if holders := stack.SecretHolders(sc.Path, ""); len(holders) > 0 {
 			return clierrors.New(clierrors.CodeUsage,
 				i18n.Tf("secrets[%d]: the path %q belongs to stack job %s", "secrets[%d]: путь %q принадлежит заданию стека %s", i, sc.Path, strings.Join(holders, ", ")),
-				i18n.T("Pick another secret path in the manifest, or stack_destroy that job first.",
-					"Укажите в манифесте другой путь секрета или сначала выполните stack_destroy этого задания."))
+				i18n.T("Pick another secret path in the manifest; whether to destroy that job first (stack_destroy) — ask the person.",
+					"Укажите в манифесте другой путь секрета; удалять ли сначала это задание (stack_destroy) — спросите человека."))
 		}
 		_, err := cli.Get(ctx, sc.Path)
 		if err == nil {
 			return clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("secrets[%d]: the secret %q already exists; the stack would take it over, and stack_destroy would delete it", "secrets[%d]: секрет %q уже есть; стек присвоил бы его, а stack_destroy удалил бы", i, sc.Path),
+				i18n.Tf("secrets[%d]: the secret %q already exists; the stack would take it over, and stack_destroy would delete it — ask the person whether it may", "secrets[%d]: секрет %q уже есть; стек присвоил бы его, а stack_destroy удалил бы — спросите человека, можно ли", i, sc.Path),
 				i18n.T("Pick another secret path in the manifest.", "Укажите в манифесте другой путь секрета."))
 		}
 		if !isGone(err) {
@@ -741,7 +741,7 @@ func (s *Registry) checkStackSecrets(ctx context.Context, m *stack.Manifest) err
 // refused here, before anything is created: the vm step used to fail
 // after the earlier steps were live (release audit, L-36). Returns what
 // the plan shows for the VM.
-func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[string]any, error) {
+func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec, flavor *provision.Flavor) (map[string]any, error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("validate vm: %w", "проверка vm: %w"), err)
@@ -778,18 +778,13 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 	if err := provision.ClosedZoneError(zones, zone.ID); err != nil {
 		return nil, err
 	}
-	// A flavor named by the manifest (normalizeManifest found it) not in
-	// the VM's zone: refused here, as provision refuses it (D67).
-	if vm.Flavor != "" && vm.Flavor != "auto" {
-		if flavors, err := eng.Cloud.ListFlavors(ctx); err == nil {
-			for _, f := range flavors {
-				if f.Name == vm.Flavor || f.ID == vm.Flavor {
-					if err := engine.FlavorOutOfZone(f, &deployplan.RefSpec{ID: zone.ID, Name: zone.Name}); err != nil {
-						return nil, clierrors.Prefix("vm.flavor: ", err)
-					}
-					break
-				}
-			}
+	// A flavor named by the manifest not in the VM's zone: refused here, as
+	// provision refuses it (D67). The flavor is the one normalizeManifest
+	// found in its read of the catalogue (FB160-19): no second read, and so
+	// no read that fails into a skipped check.
+	if flavor != nil {
+		if err := engine.FlavorOutOfZone(flavor, &deployplan.RefSpec{ID: zone.ID, Name: zone.Name}); err != nil {
+			return nil, clierrors.Prefix("vm.flavor: ", err)
 		}
 	}
 	vm.Image, vm.Zone = img.ID, zone.ID
@@ -803,12 +798,15 @@ func (s *Registry) normalizeStackVM(ctx context.Context, vm *stack.VMSpec) (map[
 // that an empty s3 bucket produced (s3_put needs bucket+key → 4 retries → the
 // job goes "error" though snat/secret/vm already deployed).
 //
-// It returns per-object s3 notes (the resolved bucket/key) for transparency.
+// It returns per-object s3 notes (the resolved bucket/key) for transparency,
+// and the catalogue's entry of the flavor the manifest names (nil for auto
+// or none), for the zone check of normalizeStackVM.
 // The project's buckets are listed once: an object without a bucket takes
 // the only one, and a bucket the manifest names must be among them — the
 // stack does not create buckets, and its s3 step failed after the steps
 // before it were created (G13-13, W7).
-func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]string, error) {
+func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]string, *provision.Flavor, error) {
+	var flavor *provision.Flavor
 	// --- VM flavor: validate at plan time so a bad name fails fast here rather
 	// than mid-apply. A non-existent flavor (e.g. "performance-2-4") otherwise
 	// passes planning, then the VM step 500s during apply — and by then earlier
@@ -817,28 +815,27 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 	if m.VM != nil && m.VM.Flavor != "" && m.VM.Flavor != "auto" {
 		eng, err := s.authedEngine(ctx, nil)
 		if err != nil {
-			return nil, fmt.Errorf(i18n.T("validate vm.flavor: %w", "проверка vm.flavor: %w"), err)
+			return nil, nil, fmt.Errorf(i18n.T("validate vm.flavor: %w", "проверка vm.flavor: %w"), err)
 		}
 		flavors, err := eng.Cloud.ListFlavors(ctx)
 		if err != nil {
-			return nil, fmt.Errorf(i18n.T("validate vm.flavor: %w", "проверка vm.flavor: %w"), err)
+			return nil, nil, fmt.Errorf(i18n.T("validate vm.flavor: %w", "проверка vm.flavor: %w"), err)
 		}
-		found := false
 		names := make([]string, 0, len(flavors))
 		for _, f := range flavors {
 			if f.Name == m.VM.Flavor || f.ID == m.VM.Flavor {
-				found = true
+				flavor = f
 				break
 			}
 			names = append(names, f.Name)
 		}
-		if !found {
-			return nil, fmt.Errorf(i18n.T("vm.flavor %q does not exist in this project. Pick a real one (see list_flavors) — available: %s", "vm.flavor %q в проекте нет. Выберите существующую конфигурацию (см. list_flavors) — доступны: %s"), m.VM.Flavor, strings.Join(names[:min(len(names), 14)], ", "))
+		if flavor == nil {
+			return nil, nil, fmt.Errorf(i18n.T("vm.flavor %q does not exist in this project. Pick a real one (see list_flavors) — available: %s", "vm.flavor %q в проекте нет. Выберите существующую конфигурацию (см. list_flavors) — доступны: %s"), m.VM.Flavor, strings.Join(names[:min(len(names), 14)], ", "))
 		}
 	}
 
 	if len(m.S3) == 0 {
-		return nil, nil
+		return nil, flavor, nil
 	}
 
 	// The project's buckets, listed once.
@@ -867,31 +864,31 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 	notes := make([]string, 0, len(m.S3))
 	for i := range m.S3 {
 		if m.S3[i].Key == "" {
-			return nil, fmt.Errorf(i18n.T("s3[%d].key is required (the object path inside the bucket, e.g. \"config/app.yaml\")", "нужен s3[%d].key — путь объекта в бакете, например \"config/app.yaml\""), i)
+			return nil, nil, fmt.Errorf(i18n.T("s3[%d].key is required (the object path inside the bucket, e.g. \"config/app.yaml\")", "нужен s3[%d].key — путь объекта в бакете, например \"config/app.yaml\""), i)
 		}
 		if m.S3[i].Bucket == "" {
 			if err := fetch(); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			switch len(buckets) {
 			case 0:
-				return nil, fmt.Errorf(i18n.T("s3[%d].bucket is empty and this project has no S3 bucket — create one (s3_buckets to check) or set s3[%d].bucket", "s3[%d].bucket пуст, а в проекте нет бакета S3 — создайте бакет (проверка — s3_buckets) или задайте s3[%d].bucket"), i, i)
+				return nil, nil, fmt.Errorf(i18n.T("s3[%d].bucket is empty and this project has no S3 bucket — create one (s3_buckets to check) or set s3[%d].bucket", "s3[%d].bucket пуст, а в проекте нет бакета S3 — создайте бакет (проверка — s3_buckets) или задайте s3[%d].bucket"), i, i)
 			case 1:
 				m.S3[i].Bucket = buckets[0]
 			default:
-				return nil, fmt.Errorf(i18n.T("s3[%d].bucket is empty and this project has %d buckets %v — set s3[%d].bucket explicitly", "s3[%d].bucket пуст, а в проекте %d бакетов %v — задайте s3[%d].bucket"), i, len(buckets), buckets, i)
+				return nil, nil, fmt.Errorf(i18n.T("s3[%d].bucket is empty and this project has %d buckets %v — set s3[%d].bucket explicitly", "s3[%d].bucket пуст, а в проекте %d бакетов %v — задайте s3[%d].bucket"), i, len(buckets), buckets, i)
 			}
 		}
 		// A name S3 cannot take fails the s3 step after the steps before it
 		// were created: refused here, before the consent (D19).
 		if err := s3.CheckBucketName(m.S3[i].Bucket); err != nil {
-			return nil, clierrors.Prefix(fmt.Sprintf("s3[%d].bucket: ", i), err)
+			return nil, nil, clierrors.Prefix(fmt.Sprintf("s3[%d].bucket: ", i), err)
 		}
 		if err := fetch(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !slices.Contains(buckets, m.S3[i].Bucket) {
-			return nil, clierrors.New(clierrors.CodeNotFound,
+			return nil, nil, clierrors.New(clierrors.CodeNotFound,
 				i18n.Tf("s3[%d].bucket %q is not in this project, and a stack does not create buckets", "бакета s3[%d].bucket %q в проекте нет, а стек бакеты не создаёт", i, m.S3[i].Bucket),
 				i18n.T("Create it with s3_bucket_create (evo s3 bucket-create) or name one of s3_buckets, then plan again.",
 					"Создайте его через s3_bucket_create (evo s3 bucket-create) или укажите бакет из s3_buckets и спланируйте снова."))
@@ -900,19 +897,19 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 		// would overwrite it and stack_destroy delete it (G130-03, D41).
 		objs, err := cli.ListObjects(ctx, m.S3[i].Bucket, m.S3[i].Key, 0)
 		if err != nil {
-			return nil, fmt.Errorf(i18n.T("s3[%d]: list objects: %w", "s3[%d]: список объектов: %w"), i, err)
+			return nil, nil, fmt.Errorf(i18n.T("s3[%d]: list objects: %w", "s3[%d]: список объектов: %w"), i, err)
 		}
 		for _, o := range objs {
 			if o.Key == m.S3[i].Key {
-				return nil, clierrors.New(clierrors.CodeUsage,
+				return nil, nil, clierrors.New(clierrors.CodeUsage,
 					i18n.Tf("s3[%d]: the object s3://%s/%s already exists; the stack would overwrite it, and stack_destroy would delete it", "s3[%d]: объект s3://%s/%s уже есть; стек перезаписал бы его, а stack_destroy удалил бы", i, m.S3[i].Bucket, m.S3[i].Key),
-					i18n.T("Pick another s3 key in the manifest, or remove the object (s3_rm) if the stack is to own it.",
-						"Укажите в манифесте другой ключ s3 или удалите объект (s3_rm), если он должен принадлежать стеку."))
+					i18n.T("Pick another s3 key in the manifest; whether to remove the object (s3_rm) so the stack owns it — ask the person.",
+						"Укажите в манифесте другой ключ s3; удалять ли объект (s3_rm), чтобы он принадлежал стеку, — спросите человека."))
 			}
 		}
 		notes = append(notes, fmt.Sprintf("%s/%s", m.S3[i].Bucket, m.S3[i].Key))
 	}
-	return notes, nil
+	return notes, flavor, nil
 }
 
 func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (string, bool) {

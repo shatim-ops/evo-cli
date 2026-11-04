@@ -90,7 +90,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	if !isNewDeploy && existing.Status == "destroying" {
 		return clerrors.New(clerrors.CodeVMProvisionFailed,
 			i18n.Tf("deployment %s is being destroyed", "развёртывание %s в процессе удаления", existing.ID),
-			i18n.T("Run 'evo destroy' to finish it, then deploy again.", "Завершите удаление командой 'evo destroy', затем разверните заново."))
+			i18n.T("Ask the person whether to finish its delete ('evo destroy'), then deploy again.", "Спросите человека, завершить ли удаление ('evo destroy'), затем разверните заново."))
 	}
 	// A VM that went to error_creating is not reused: it never boots, and a
 	// re-run would give it a billed floating IP and retry SSH in a loop
@@ -99,8 +99,8 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	if !isNewDeploy && existing.Status == "error" {
 		return clerrors.New(clerrors.CodeVMProvisionFailed,
 			i18n.Tf("VM %s of this deployment is in an error state", "ВМ %s этого развёртывания в состоянии ошибки", existing.VMID),
-			i18n.T("Delete it with 'evo destroy', then deploy again (in another zone if it repeats).",
-				"Удалите её командой 'evo destroy' и разверните заново (если повторится — в другой зоне)."))
+			i18n.T("Ask the person whether to delete it ('evo destroy'), then deploy again (in another zone if it repeats).",
+				"Спросите человека, удалить ли её ('evo destroy'), и разверните заново (если повторится — в другой зоне)."))
 	}
 	// One directory holds one deployment: never send this compose file to
 	// a VM of another project, nor open its ports there.
@@ -108,8 +108,8 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		return clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.Tf("this directory already has deployment %s in project %s, not in %s",
 				"в этом каталоге уже есть развёртывание %s в проекте %s, а не в %s", existing.ID, existing.ProjectID, e.Config.ProjectID),
-			i18n.Tf("Update it with --project-id %s, or run 'evo destroy' first and deploy to the new project.",
-				"Обновите его с --project-id %s или сначала выполните 'evo destroy' и разверните в новом проекте.", existing.ProjectID))
+			i18n.Tf("Update it with --project-id %s; to deploy to the new project instead, ask the person whether to delete it first ('evo destroy').",
+				"Обновите его с --project-id %s; чтобы развернуть в новом проекте, спросите человека, удалить ли его сначала ('evo destroy').", existing.ProjectID))
 	}
 
 	// Skip only a deployment that finished: after an SSH or Docker failure the
@@ -137,8 +137,11 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 				e.Printer.Warning(w)
 			}
 		}
+		// Port 22 from here, before the question (M2): the update uploads
+		// over SSH and would wait for it after consent.
+		probed, reach := e.ReachSSH(ctx, existing.VMIP)
 		proceed, err := e.redeployGate(ctx, opts, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing),
-			existing.ComposeHash != project.Hash, opts.Force))
+			existing.ComposeHash != project.Hash, opts.Force, probed, reach))
 		if err != nil {
 			return err
 		}
@@ -258,7 +261,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		// the compose file publishes new ones: open what is missing. Records
 		// from before security_group_id existed have no group to open in.
 		if rec.SecurityGroupID != "" {
-			e.openPorts(ctx, e.projectOf(&rec), rec.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
+			e.openPorts(ctx, e.projectOf(&rec), rec.SecurityGroupID, project.Ports, project.UDPPorts, opts.Cidr, &rec)
 			stateFile.UpsertDeployment(rec)
 			_ = state.Write(statePath, stateFile)
 		}
@@ -554,12 +557,28 @@ func sizeFlavor(project *compose.Project, flavors []*provision.Flavor, zone *dep
 // deployZone is the zone of region (a UUID or a name) as the create
 // resolves it; a zone the list does not name, or a list that cannot be
 // read, is the region as given — compared by ID and, in any case, by name.
+// The list is the one resolveNetwork reads next (zoneList).
 func (e *Engine) deployZone(ctx context.Context, region string) *deployplan.RefSpec {
-	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	zones, err := e.zoneList(ctx)
 	if z, zerr := ResolveZoneRef(zones, err, region); zerr == nil && z != nil {
 		return &deployplan.RefSpec{ID: z.ID, Name: z.Name}
 	}
 	return &deployplan.RefSpec{ID: region, Name: region}
+}
+
+// zoneList is the project's zone list, read once per call: the flavor's
+// zone (deployZone) and the network's (resolveNetwork) resolve against
+// the same list (FB160-21). A list that could not be read is not kept: the
+// next reader asks again.
+func (e *Engine) zoneList(ctx context.Context) ([]*provision.AvailabilityZone, error) {
+	if e.zones != nil {
+		return e.zones, nil
+	}
+	zones, err := e.Cloud.ListAvailabilityZones(ctx)
+	if err == nil {
+		e.zones = zones
+	}
+	return zones, err
 }
 
 // provisionVM creates a new VM and waits for it to become active.
@@ -687,7 +706,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if opts.Gate != nil {
 		proceed, err = opts.Gate(ctx, nil)
 	} else {
-		proceed, err = confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, diskType.ID, network, project.Ports, project.UDPPorts), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
+		proceed, err = confirm.Ask(ctx, e.deployPreview(ctx, req, imgDetail, diskType.ID, network, project.Ports, project.UDPPorts, opts.Cidr), e.confirmOptions(opts.Yes, opts.DryRun, opts.NonInteractive))
 	}
 	if err != nil {
 		return state.DeploymentRecord{}, err
@@ -796,8 +815,8 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	if createErr != nil {
 		return rec, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 			i18n.Tf("VM %s was created, but the create call failed", "ВМ %s создана, но запрос на создание завершился ошибкой", vm.ID),
-			i18n.Tf("VM %s is billed and recorded in the state: run 'evo deploy' again to finish it, or 'evo destroy' to delete it.",
-				"ВМ %s тарифицируется и записана в state: повторите 'evo deploy', чтобы завершить развёртывание, или удалите её: 'evo destroy'.", vm.ID),
+			i18n.Tf("VM %s is billed and recorded in the state: run 'evo deploy' again to finish it; whether to delete it instead ('evo destroy') — ask the person.",
+				"ВМ %s тарифицируется и записана в state: повторите 'evo deploy', чтобы завершить развёртывание; удалять ли её ('evo destroy') — спросите человека.", vm.ID),
 			createErr)
 	}
 
@@ -829,8 +848,8 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			if !gone && ferr == nil {
 				// Deletion accepted but not confirmed: keep the record, or
 				// a VM stuck in deleting would be billed without a trace.
-				ferr = stderrors.New(i18n.Tf("deletion of VM %s is not confirmed yet; run 'evo destroy' to finish",
-					"удаление ВМ %s ещё не подтверждено; завершите его командой 'evo destroy'", vm.ID))
+				ferr = stderrors.New(i18n.Tf("deletion of VM %s is not confirmed yet; ask the person whether to finish it ('evo destroy')",
+					"удаление ВМ %s ещё не подтверждено; спросите человека, завершить ли его ('evo destroy')", vm.ID))
 			}
 			if ferr != nil {
 				e.Printer.Warning(ferr.Error())
@@ -883,8 +902,8 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 					return rec, clerrors.Wrap(clerrors.Reason(err),
 						i18n.Tf("VM %s was created, but checking it failed: the key was refused (%v)",
 							"ВМ %s создана, но проверить её не удалось: ключ отклонён (%v)", vm.ID, err),
-						i18n.Tf("VM %s is billed and recorded in the state. Check the key ('evo whoami'), then run 'evo deploy' again to finish, or 'evo destroy' to delete it.",
-							"ВМ %s тарифицируется и записана в state. Проверьте ключ ('evo whoami') и повторите 'evo deploy', чтобы завершить, или удалите её: 'evo destroy'.", vm.ID),
+						i18n.Tf("VM %s is billed and recorded in the state. Check the key ('evo whoami'), then run 'evo deploy' again to finish; whether to delete it instead ('evo destroy') — ask the person.",
+							"ВМ %s тарифицируется и записана в state. Проверьте ключ ('evo whoami') и повторите 'evo deploy', чтобы завершить; удалять ли её ('evo destroy') — спросите человека.", vm.ID),
 						err)
 				}
 				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
@@ -927,7 +946,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 					e.Printer.StepDone(i18n.Tf("Public IP: %s", "Внешний IP: %s", publicIP))
 				}
 				// The rule IDs go to state at once: destroy deletes them.
-				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports, project.UDPPorts, &rec)
+				e.openPorts(ctx, projectID, network.SecurityGroupID, project.Ports, project.UDPPorts, opts.Cidr, &rec)
 				stateFile.UpsertDeployment(rec)
 				_ = state.Write(statePath, stateFile)
 				return rec, nil
@@ -1171,8 +1190,8 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 			return nil, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 				i18n.T("no public IP can be reserved: the floating IP quota is exhausted",
 					"не удалось зарезервировать внешний IP: квота floating IP исчерпана"),
-				i18n.T("Nothing was created. Delete a floating IP you no longer need (list_floating_ips / release_floating_ip) or raise the quota in the Cloud.ru console, then retry.",
-					"Ничего не создано. Освободите ненужный floating IP ('evo vpc fips', 'evo vpc fip-release') или увеличьте квоту в консоли Cloud.ru и повторите."),
+				i18n.T("Nothing was created. Raise the quota in the Cloud.ru console, or ask the person which floating IP may be released (list_floating_ips / release_floating_ip), then retry.",
+					"Ничего не создано. Увеличьте квоту в консоли Cloud.ru или спросите человека, какой floating IP можно освободить ('evo vpc fips', 'evo vpc fip-release'), и повторите."),
 				err)
 		}
 		if ctx.Err() == nil {
@@ -1937,8 +1956,8 @@ func deployInterrupted() string {
 }
 
 func vmStillRunningHint(vmID string) string {
-	return i18n.Tf("VM %s was created and is still running. Use 'evo destroy --yes' to delete it.",
-		"ВМ %s создана и работает. Удалить её: 'evo destroy --yes'.", vmID)
+	return i18n.Tf("VM %s was created and is still running (billed); whether to delete it ('evo destroy --yes') — ask the person.",
+		"ВМ %s создана и работает (тарифицируется); удалять ли её ('evo destroy --yes') — спросите человека.", vmID)
 }
 
 // handleInterrupt handles SIGINT/SIGTERM (or a cancelled context) after VM
@@ -1977,8 +1996,8 @@ func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) (
 
 	return deleted, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 		i18n.T("deployment interrupted by signal", "развёртывание прервано сигналом"),
-		i18n.Tf("VM %s was created. Use 'evo destroy' to clean up if needed.",
-			"ВМ %s была создана. Если она осталась, удалите её: 'evo destroy'.", vmID),
+		i18n.Tf("VM %s was created and may be billed; whether to delete it ('evo destroy') — ask the person.",
+			"ВМ %s была создана и может тарифицироваться; удалять ли её ('evo destroy') — спросите человека.", vmID),
 		context.Canceled)
 }
 

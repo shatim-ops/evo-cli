@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -49,5 +50,38 @@ func TestStackPlan_FlavorOfAnotherZone(t *testing.T) {
 		if _, text, isErr := plan(ok); isErr {
 			t.Errorf("%s: refused: %s", ok, text)
 		}
+	}
+}
+
+// flakyFlavorCloud reads the catalogue once; a second read fails.
+type flakyFlavorCloud struct {
+	zonedFlavorCloud
+	reads *int
+}
+
+func (c flakyFlavorCloud) ListFlavors(ctx context.Context) ([]*provision.Flavor, error) {
+	*c.reads++
+	if *c.reads > 1 {
+		return nil, errors.New("API 503")
+	}
+	return c.zonedFlavorCloud.ListFlavors(ctx)
+}
+
+// FB160-19: the zone check of the VM's flavor uses the flavor the
+// manifest's validation found — one read of the catalogue. A second read
+// that failed used to skip the check silently and plan a VM whose flavor
+// is not in its zone.
+func TestStackPlan_FlavorZoneCheckIsNotSkippedByASecondRead(t *testing.T) {
+	stackHome(t)
+	reads := 0
+	r := raRegistry(t, &raAPI{}, flakyFlavorCloud{zonedFlavorCloud{raCloud{subnets: raSubnets()}}, &reads}, nil)
+	var mf map[string]any
+	if err := json.Unmarshal([]byte(`{"name":"s","vm":{"image":"Ubuntu-24.04","zone":"ru.AZ-1","flavor":"gpu-1"}}`), &mf); err != nil {
+		t.Fatal(err)
+	}
+	m, text, _ := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf})
+	wantReason(t, "gpu-1 in ru.AZ-1", m, text, "USAGE")
+	if reads != 1 {
+		t.Errorf("the catalogue was read %d times, want once", reads)
 	}
 }

@@ -80,8 +80,11 @@ type NetworkSpec struct {
 	// preview of deploy_apply (Линия CLI); empty in plans saved before 1.6.
 	SubnetName      string `json:"subnet_name,omitempty"`
 	SecurityGroupID string `json:"security_group_id"`
-	FloatingIP      bool   `json:"floating_ip"`
-	AttachFIPID     string `json:"attach_fip_id,omitempty"`
+	// SecurityGroupName is the group's name as deploy_plan read it, for
+	// the preview of deploy_apply (P5); empty in plans saved before 1.7.
+	SecurityGroupName string `json:"security_group_name,omitempty"`
+	FloatingIP        bool   `json:"floating_ip"`
+	AttachFIPID       string `json:"attach_fip_id,omitempty"`
 }
 
 // SSHSpec describes how the user will log in.
@@ -99,9 +102,12 @@ type Plan struct {
 	Mode      string    `json:"mode"`
 	ProjectID string    `json:"project_id"`
 
-	VM              VMSpec           `json:"vm"`
-	Network         NetworkSpec      `json:"network"`
-	Ports           []int            `json:"ports,omitempty"` // product ports to open in the SG
+	VM      VMSpec      `json:"vm"`
+	Network NetworkSpec `json:"network"`
+	Ports   []int       `json:"ports,omitempty"` // product ports to open in the SG
+	// PortsSource is the source the rules of Ports let in (P5); empty in
+	// plans saved before 1.7: 0.0.0.0/0, as they were made.
+	PortsSource     string           `json:"ports_source,omitempty"`
 	SSH             SSHSpec          `json:"ssh"`
 	Cost            pricing.Estimate `json:"cost"`
 	Warnings        []string         `json:"warnings"`

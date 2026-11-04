@@ -116,6 +116,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	if _, ok := args["ports"]; ok {
 		params.Ports = ports
 	}
+	overlayString(args, "cidr", &params.Cidr)
 	if _, ok := args["image_metadata"]; ok {
 		meta, err := metadataArg(args, "image_metadata")
 		if err != nil {
@@ -171,7 +172,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		"product":          plan.Product,
 		"mode":             plan.Mode,
 		"vm":               plan.VM,
-		"network":          map[string]any{"floating_ip": plan.Network.FloatingIP, "open_ports": plan.Ports},
+		"network":          planNetworkView(plan),
 		"ssh":              plan.SSH,
 		"cost":             plan.Cost,
 		"warnings":         plan.Warnings,
@@ -551,7 +552,8 @@ func flavorMatches(f *provision.Flavor, args map[string]any) bool {
 	if s := stringArg(args, "share"); s != "" && f.Share != s {
 		return false
 	}
-	if z := stringArg(args, "zone"); z != "" && !slices.Contains(f.ZoneNames(), z) {
+	// The zone by its name in any case or its id, as D67 matches it.
+	if z := stringArg(args, "zone"); z != "" && !provision.AvailableIn(f, z, z) {
 		return false
 	}
 	if g, ok := args["gpu"].(bool); ok && (f.GPU == nil || (*f.GPU > 0) != g) {
@@ -975,17 +977,17 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	// Both refusals come before the consent: the call cannot go through
 	// whatever the person answers (A6, D31).
 	if onNAT {
-		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway — it is released with the gateway (snat_delete); not released", fipIP, fipID)
+		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway and is released with it (snat_delete) — whether to delete the gateway, ask the person; not released", fipIP, fipID)
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
-			i18n.T("Delete the SNAT gateway with snat_delete: its floating IP goes with it.", "Удалите SNAT-шлюз через snat_delete: его floating IP освободится вместе с ним.")),
+			i18n.T("It goes with its SNAT gateway: whether to delete the gateway (snat_delete) — ask the person.", "Он освободится вместе с SNAT-шлюзом: удалять ли шлюз (snat_delete) — спросите человека.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
 	}
 
 	// Safety: never release an IP that is attached to a VM.
 	if state == "in_use" {
-		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it or destroy the VM first; not released", fipIP, fipID)
+		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it from the VM first; not released", fipIP, fipID)
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
-			i18n.T("Detach it from the VM, or delete the VM (destroy), then release it.", "Отвяжите его от ВМ или удалите ВМ (destroy), затем освободите.")),
+			i18n.T("Detach it from the VM, then release it.", "Отвяжите его от ВМ, затем освободите.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
 	}
 
@@ -1039,4 +1041,17 @@ func (s *Registry) handleListFloatingIPs(ctx context.Context, args map[string]an
 		out = append(out, row)
 	}
 	return toJSON(map[string]any{"floating_ips": out}), false
+}
+
+// planNetworkView is the network of deploy_plan's answer: the floating IP
+// and, with ports, the ones it opens, the source and the zone's shared
+// group they open in (P5).
+func planNetworkView(plan *deployplan.Plan) map[string]any {
+	view := map[string]any{"floating_ip": plan.Network.FloatingIP, "open_ports": plan.Ports}
+	if len(plan.Ports) > 0 {
+		view["ports_source"] = sgrules.Source(plan.PortsSource)
+		view["security_group"] = firstNonEmptyStr(plan.Network.SecurityGroupName, plan.Network.SecurityGroupID)
+		view["security_group_shared"] = true
+	}
+	return view
 }

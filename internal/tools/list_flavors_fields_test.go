@@ -67,6 +67,10 @@ func TestListFlavors_ShareGPUSpotZonesAndFilters(t *testing.T) {
 	}{
 		{map[string]any{"share": "1:10"}, "[lowcost10-2-4]"},
 		{map[string]any{"zone": "ru.AZ-2"}, "[gen-2-4]"},
+		// The zone as list_zones and D67 take it: by name in any case, or
+		// by its id (FB160-23); a flavor that names no zones does not pass.
+		{map[string]any{"zone": "ru.az-2"}, "[gen-2-4]"},
+		{map[string]any{"zone": "id-ru.AZ-2"}, "[gen-2-4]"},
 		{map[string]any{"gpu": true}, "[gpu-8-64]"},
 		{map[string]any{"cpu": float64(2), "ram": float64(4), "share": "1:1", "gpu": false}, "[gen-2-4 spot-2-4]"},
 		{map[string]any{"spot": false, "share": "1:1"}, "[gen-2-4]"},

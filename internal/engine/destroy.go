@@ -43,23 +43,28 @@ func (e *Engine) destroyGate(ctx context.Context, opts DestroyOptions, p confirm
 // as it is: the VM of the deployment (named after the cloud's lists), its
 // floating IP and port rules, or the port rules an earlier destroy left.
 // False when destroy would ask nothing: no deployment, or several (it
-// refuses then). Reads only; the destroy tool answers it without
-// confirmed=true.
-func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool) {
+// refuses then); an error when it refuses before the question (D73).
+// Reads only; the destroy tool answers it without confirmed=true.
+func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, error) {
 	sf, err := state.Read(state.DefaultPath(e.StateDir))
 	if err != nil {
-		return confirm.Preview{}, false
+		return confirm.Preview{}, false, nil
 	}
 	pending := sgrules.Pending(sf)
 	active := sf.ActiveDeployment()
 	switch {
 	case active == nil && len(pending) > 0:
-		return pendingRulesPreview(sf, pending), true
+		return pendingRulesPreview(sf, pending), true, nil
 	case active == nil || len(sf.ActiveDeployments()) > 1:
-		return confirm.Preview{}, false
+		return confirm.Preview{}, false, nil
+	}
+	// A VM evo did not make is refused before the question (D73).
+	if err := e.AdoptedRecord(ctx, *active); err != nil {
+		return confirm.Preview{}, false, err
 	}
 	shown := e.withNames(ctx, *active, nil, true)
-	return destroyPreview(&shown, sf, pending, e.projectOf(active), e.projectFrom(active)), true
+	labeled, uncheckedErr := e.labeledRules(ctx, sf, active)
+	return destroyPreview(&shown, sf, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active)), true, nil
 }
 
 // Destroy tears down the active deployment.
@@ -99,6 +104,11 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		return severalDeployments(all)
 	}
 
+	// A VM evo did not make is refused before the question (D73).
+	if err := e.AdoptedRecord(ctx, *active); err != nil {
+		return err
+	}
+
 	e.Printer.Step(1, 3, i18n.T("Reading deployment info...", "Чтение сведений о развёртывании..."))
 	// The names, not only the UUIDs: with several VMs the person approving
 	// must see which one goes (first real run, v1.0.1).
@@ -107,7 +117,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
-	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, e.projectOf(active), e.projectFrom(active)))
+	labeled, uncheckedErr := e.labeledRules(ctx, stateFile, active)
+	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active)))
 	if err != nil {
 		return err
 	}
@@ -235,6 +246,12 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	for _, id := range append([]string{active.ID}, pending...) {
 		sgrules.Retire(stateFile, id)
 	}
+	// The rules labelled for the VM that the preview named and no record
+	// here holds (P6): opened for it from another folder.
+	rules.Add(e.closeLabeled(ctx, labeled))
+	if uncheckedErr != nil {
+		e.Printer.Warning(UncheckedRules(uncheckedErr))
+	}
 	if err := state.Write(statePath, stateFile); err != nil {
 		return err
 	}
@@ -246,6 +263,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
+		}
+		if uncheckedErr != nil {
+			out["labelled_rules_unchecked"] = clerrors.Reason(uncheckedErr)
 		}
 		if len(left) > 0 {
 			out["ports_left_open"] = left
@@ -340,6 +360,51 @@ func (e *Engine) NothingToDestroy() (map[string]any, bool) {
 		return nil, false
 	}
 	return noDeploymentAnswer(), true
+}
+
+// LabeledRules are the rules labelled for the VM vmID that no record of
+// sf holds (sgrules.FindLabeled, P6): what a delete of the VM closes beside
+// the rules its records hold. zoneID or zoneName, the VM's zone when known,
+// limits the reads to that zone's groups. Read within the time of a
+// preview's lookups. The error is a list not read: the answer says the
+// rules were not checked (UncheckedRules), and the VM's delete goes on.
+func (e *Engine) LabeledRules(ctx context.Context, sf *state.File, projectID, vmID, zoneID, zoneName string) ([]sgrules.Planned, error) {
+	if e.Cloud == nil {
+		return nil, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
+	defer cancel()
+	return sgrules.FindLabeled(ctx, e.Cloud, projectID, vmID, zoneID, zoneName, sf)
+}
+
+// UncheckedRules says that the rules labelled for the VM were not all
+// checked, and why (the class of the error): the same words in the
+// preview and the answer of every delete of a VM, CLI and MCP.
+func UncheckedRules(err error) string {
+	return i18n.Tf("the security group rules labelled for the VM were not all checked (%s); to close them, repeat the same call with the VM's id",
+		"правила группы безопасности с меткой ВМ проверены не все (%s); чтобы закрыть их, повторите тот же вызов с id ВМ", clerrors.Reason(err))
+}
+
+// labeledRules is LabeledRules for the VM of rec, in its zone.
+func (e *Engine) labeledRules(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) ([]sgrules.Planned, error) {
+	if rec == nil {
+		return nil, nil
+	}
+	return e.LabeledRules(ctx, sf, e.projectOf(rec), rec.VMID, rec.Region, rec.ZoneName)
+}
+
+// closeLabeled deletes the rules labeledRules found, once their VM is gone,
+// and says it as closeRules does.
+func (e *Engine) closeLabeled(ctx context.Context, labeled []sgrules.Planned) sgrules.CloseResult {
+	res := sgrules.CloseLabeled(ctx, e.Cloud, labeled)
+	if len(res.Closed) > 0 {
+		e.Printer.StepDone(i18n.Tf("Closed the security group rules labelled for the VM: ports %s", "Закрыты правила группы безопасности, помеченные для ВМ: порты %s", strings.Join(res.Closed, ", ")))
+	}
+	if len(res.Failed) > 0 {
+		e.Printer.Warning(i18n.Tf("Could not delete the security group rules labelled for the VM for ports %s: delete them in the Cloud.ru console, or call destroy with this VM's id again.",
+			"Не удалось удалить правила группы безопасности, помеченные для ВМ, для портов %s: удалите их в консоли Cloud.ru или повторите destroy с id этой ВМ.", strings.Join(res.Failed, "; ")))
+	}
+	return res
 }
 
 // closeRules deletes the port rules the given deployments created and
