@@ -81,17 +81,18 @@ func TestListFlavors_ShareGPUSpotZonesAndFilters(t *testing.T) {
 	}
 }
 
-// Ц-5, FB15-10: the rate card prices a vCPU at one rate whatever its share,
-// so the estimate of a flavor with a share other than 1:1 (and no rate of
-// its own in the card) says it does not count the share, and the answer
-// names the tariff with the true rates. A 1:1 flavor, or one the catalogue
-// gives no share, has no such note.
+// Ц-5, FB15-10, F10: the rate card prices a vCPU by its share of a core
+// where it has the share's rates (1:1, 1:3, 1:10 — probe P49); the estimate
+// of a flavor of a share it has no rates of says it does not count the
+// share, and the answer names the tariff with the true rates. A flavor the
+// catalogue gives no share has no such note.
 func TestListFlavors_EstimateSaysItIgnoresTheShare(t *testing.T) {
 	cloud := &faultCloud{flavors: []*provision.Flavor{
 		{ID: "f1", Name: "lowcost10-2-4", VCPUs: 2, RAMGB: 4, Share: "1:10"},
 		{ID: "f2", Name: "low-2-4", VCPUs: 2, RAMGB: 4, Share: "1:3"},
 		{ID: "f3", Name: "gen-2-4", VCPUs: 2, RAMGB: 4, Share: "1:1"},
 		{ID: "f4", Name: "bare-2-4", VCPUs: 2, RAMGB: 4},
+		{ID: "f5", Name: "half-2-4", VCPUs: 2, RAMGB: 4, Share: "1:2"},
 	}}
 	r, _ := faultToolsRegistry(t, cloud)
 	m, text, isErr := callNamed(t, r, "list_flavors", map[string]any{})
@@ -101,12 +102,19 @@ func TestListFlavors_EstimateSaysItIgnoresTheShare(t *testing.T) {
 	if u, _ := m["tariff_url"].(string); u != engine.TariffURL(engine.ResourceVM) || u == "" {
 		t.Errorf("tariff_url %v, want the Compute tariff", m["tariff_url"])
 	}
+	est := map[any]float64{}
 	for _, row := range m["flavors"].([]any) {
 		o := row.(map[string]any)
+		est[o["name"]], _ = o["est_monthly_rub"].(float64)
 		_, noted := o["est_note"]
-		want := o["name"] == "lowcost10-2-4" || o["name"] == "low-2-4"
+		want := o["name"] == "half-2-4"
 		if noted != want {
 			t.Errorf("%s: est_note %v, want one: %v", o["name"], o["est_note"], want)
 		}
+	}
+	// The same size costs less the smaller the share of a core it gets.
+	if !(est["lowcost10-2-4"] < est["low-2-4"] && est["low-2-4"] < est["gen-2-4"]) {
+		t.Errorf("2 vCPU 4 GB by share 1:10, 1:3, 1:1: %v, %v, %v ₽/month, want each below the next",
+			est["lowcost10-2-4"], est["low-2-4"], est["gen-2-4"])
 	}
 }

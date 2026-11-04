@@ -15,11 +15,9 @@ import (
 
 // flavorShareMisses are the vCPU shares the list of flavors prices without
 // the share (its row has est_note): cpu_share → why. It only shrinks.
-// Closes by 1.7 (release plan 1.7, F10: the card with the share of a vCPU,
-// P34, and its date).
-var flavorShareMisses = map[string]string{
-	"1:10": "the card prices a vCPU at one rate: a share below a core is priced as a whole one",
-}
+// Empty since 1.7 (release plan 1.7, F10: the card has the rates of each
+// share, probe P49 of 04.11.2026).
+var flavorShareMisses = map[string]string{}
 
 // F10 (agent runs of Grok on 1.6.0; release plan 1.7): the price of a
 // flavor in the list of flavors (vm flavors, list_flavors) is the price the

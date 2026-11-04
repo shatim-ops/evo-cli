@@ -258,7 +258,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 // API gives none, so they never disagree about the price. publicIP adds the
 // floating IP created with the VM, as the API's price has it.
 func EstimateVM(vm VMSpec, publicIP bool) pricing.Estimate {
-	e := pricing.EstimateFor(vm.Flavor.Name, vm.Flavor.VCPUs, vm.Flavor.RAMGB, vm.Disk.SizeGB, vm.Disk.Type)
+	e := pricing.EstimateFor(vm.Flavor.Name, vm.Flavor.Share, vm.Flavor.VCPUs, vm.Flavor.RAMGB, vm.Disk.SizeGB, vm.Disk.Type)
 	if publicIP {
 		e = e.WithFloatingIP()
 	}
