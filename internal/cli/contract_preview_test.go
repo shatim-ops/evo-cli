@@ -616,6 +616,12 @@ var parityTimings = engine.Timings{
 
 func stdioDetails(t *testing.T, s *mcp.Server, name string, args map[string]any) map[string]any {
 	t.Helper()
+	return toolTextDetails(t, name, stdioRaw(t, s, name, args))
+}
+
+// stdioRaw is the raw answer of one tools/call to name over stdio.
+func stdioRaw(t *testing.T, s *mcp.Server, name string, args map[string]any) []byte {
+	t.Helper()
 	flagJSON, flagDryRun, flagYes = false, false, false
 	body, _ := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -625,7 +631,7 @@ func stdioDetails(t *testing.T, s *mcp.Server, name string, args map[string]any)
 	if err := s.Run(bytes.NewReader(append(body, '\n')), out); err != nil {
 		t.Fatalf("%s stdio: %v", name, err)
 	}
-	return toolTextDetails(t, name, out.Bytes())
+	return out.Bytes()
 }
 
 func httpDetails(t *testing.T, ts *httptest.Server, name string, args map[string]any) map[string]any {
@@ -653,6 +659,20 @@ func httpDetails(t *testing.T, ts *httptest.Server, name string, args map[string
 
 func toolTextDetails(t *testing.T, name string, raw []byte) map[string]any {
 	t.Helper()
+	obj, err := toolTextObject(raw)
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return obj
+}
+
+// toolTextObject is the object a tools/call answer carries in its text,
+// without the approval field the server adds to every
+// confirmation_required answer (docs/mcp.md «Подтверждения»; the CLI
+// envelope does not have it, and it is not part of preview.details). An
+// answer that is not a tool result, or whose text is not an object (logs
+// print lines), is an error.
+func toolTextObject(raw []byte) (map[string]any, error) {
 	var resp struct {
 		Result struct {
 			Content []struct {
@@ -664,17 +684,14 @@ func toolTextDetails(t *testing.T, name string, raw []byte) map[string]any {
 		} `json:"error"`
 	}
 	if json.Unmarshal(raw, &resp) != nil || resp.Error != nil || len(resp.Result.Content) == 0 {
-		t.Fatalf("%s: not a tool result: %s", name, clipLine(string(raw)))
+		return nil, fmt.Errorf("not a tool result: %s", clipLine(string(raw)))
 	}
 	var obj map[string]any
 	if json.Unmarshal([]byte(resp.Result.Content[0].Text), &obj) != nil {
-		t.Fatalf("%s: tool text is not an object: %s", name, clipLine(resp.Result.Content[0].Text))
+		return nil, fmt.Errorf("tool text is not an object: %s", clipLine(resp.Result.Content[0].Text))
 	}
-	// docs/mcp.md «Подтверждения»: the server adds approval to every
-	// confirmation_required answer. The CLI envelope does not. The field is
-	// not part of preview.details.
 	delete(obj, "approval")
-	return obj
+	return obj, nil
 }
 
 func parityDiff(name string, got map[string]map[string]any) string {
