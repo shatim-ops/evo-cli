@@ -70,8 +70,7 @@ var deleteHintScope = []string{"internal/tools", "internal/engine", "internal/de
 // the next step and do not leave it to the person: "file<TAB>function<TAB>
 // tool" → why it is a miss. It only shrinks. Closes by 1.7 (release plan
 // 1.7, block D; owner's decision 03.11, #732).
-var deleteHintMisses = map[string]string{
-}
+var deleteHintMisses = map[string]string{}
 
 // Release plan 1.7, block D (owner's decision 03.11, #732: «убери за собой»
 // is not in the core; the agent creates, the person decides what to
