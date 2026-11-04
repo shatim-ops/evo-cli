@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
 	"net/http"
 	"slices"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
+	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/s3"
 	"github.com/shatim-ops/evo-cli/internal/stack"
@@ -677,7 +679,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		"job_id":     job.ID,
 		"project_id": job.ProjectID,
 		"steps":      steps,
-		"cost":       stack.EstimateCost(m),
+		"cost":       s.stackCost(ctx, job),
 		// The instruction about consent, in next as deploy_plan has it
 		// (A9, decision 21.10).
 		"next": "The stack is BILLABLE: show the user the steps and the cost, and on explicit approval call stack_apply with this job_id and confirmed=true.",
@@ -701,6 +703,106 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		out["existing_jobs"] = orphans
 	}
 	return toJSON(out), false
+}
+
+// stackKinds are the kinds of the resources the steps of a stack create,
+// by the step's tool: the class of each one's price is its kind's
+// (engine price classes). A step tool without a line here fails
+// TestStackPlan_EveryStepHasAKind.
+var stackKinds = map[string]string{
+	"vpc_create":        engine.ResourceVPC,
+	"pg_create":         engine.ResourcePGCluster,
+	"kafka_create":      engine.ResourceKafka,
+	"redis_create":      engine.ResourceRedis,
+	"k8s_create":        engine.ResourceK8sCluster,
+	"ar_create":         engine.ResourceARRegistry,
+	"snat_create":       engine.ResourceSNAT,
+	"secret_create":     engine.ResourceSecret,
+	"s3_put":            engine.ResourceS3Object,
+	"provision":         engine.ResourceVM,
+	"tg_create":         engine.ResourceTargetGroup,
+	"lb_create":         engine.ResourceLB,
+	"dns_record_create": engine.ResourceDNSRecord,
+}
+
+// stackCost is the price of the resources of stack job j, as their own
+// create tools name it (owner's decision 04.11): the VM and the
+// PostgreSQL cluster by the preview of provision and of pg_create — the
+// price-calculation API, else the rate card, and the tariff of
+// PostgreSQL — and every other resource by the class of its kind. A
+// resource without a price has no sum, only why; the total adds the
+// priced ones and the note says what it leaves out. The planners only
+// read; a planner that refuses (the VM's name taken, no subnet) leaves
+// its resource without a price here, and the step refuses at apply as it
+// would.
+func (s *Registry) stackCost(ctx context.Context, j *stack.Job) map[string]any {
+	planners := map[string]Planner{"provision": s.planProvision, "pg_create": s.planPgCreate}
+	lines := []map[string]any{}
+	var total float64
+	unpriced := 0
+	for _, st := range j.Steps {
+		kind, ok := stackKinds[st.Tool]
+		if !ok {
+			continue
+		}
+		p := engine.CreatePreview{Resource: kind, Name: st.Key}
+		if plan := planners[st.Tool]; plan != nil {
+			// A planner reads, it never executes: the step's confirmed is
+			// the gate's, not the planner's.
+			if pl, err := plan(ctx, maps.Clone(st.Args)); err == nil && pl.Execute != nil {
+				if pv, ok := pl.Preview["preview"].(engine.CreatePreview); ok {
+					p = pv
+				}
+			}
+		}
+		if p.PriceClasses == nil {
+			switch kind {
+			case engine.ResourceVM:
+				noPublicIP, _ := st.Args["no_public_ip"].(bool)
+				public := !noPublicIP
+				p.PublicIP = &public
+			case engine.ResourcePGCluster:
+				// The size the manifest names, priced by the same tariff as
+				// pg_create's preview; without all of it, no price.
+				if cpu, ram, gb := pgInt(st.Args, "cpu", 0), pgInt(st.Args, "ram", 0), pgInt(st.Args, "storage_gb", 0); cpu > 0 && ram > 0 && gb > 0 {
+					p.PG = &pricing.PGSize{CPU: cpu, RAMGB: ram, StorageGB: gb, Instances: 1}
+				}
+			}
+			p.Price()
+		}
+		for _, c := range p.PriceClasses {
+			line := map[string]any{"component": st.Key, "resource": c.Resource, "class": c.Class}
+			if c.Note != "" {
+				line["note"] = c.Note
+			}
+			switch c.Class {
+			case engine.PricePriced:
+				rub := p.MonthlyRub(c.Resource)
+				line["monthly_rub"], line["source"] = rub, p.Cost.Source
+				total += rub
+			case engine.PricePaidUnpriced:
+				unpriced++
+				fallthrough
+			default:
+				if p.TariffURL != "" {
+					line["tariff_url"] = p.TariffURL
+				}
+			}
+			lines = append(lines, line)
+		}
+	}
+	note := i18n.T("the price-calculation API, the rate card and the tariffs; not a bill (billing_finops after apply)",
+		"API расчёта цены, тарифная карта и тарифы; не счёт (billing_finops после apply)")
+	if unpriced > 0 {
+		note = i18n.Tf("total of the priced resources only: %d billable resource(s) have no price (class paid_unpriced; the line says why); ",
+			"итог — только ресурсы с ценой: у %d платных ресурсов цены нет (класс paid_unpriced; почему — в строке); ", unpriced) + note
+	}
+	return map[string]any{
+		"currency":          "RUB",
+		"total_monthly_rub": math.Round(total*100) / 100,
+		"by_component":      lines,
+		"note":              note,
+	}
 }
 
 // checkStackSecrets refuses a secret path that is not free: one the Secret

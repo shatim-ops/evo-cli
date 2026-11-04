@@ -21,7 +21,7 @@ import (
 // «Will create» line is made of; a kind without a declared class fails
 // this test (and is billable without a price in production).
 func TestPriceClasses_EveryKindDeclared(t *testing.T) {
-	kinds := append([]string{ResourceFloatingIP}, allResources...)
+	kinds := append([]string{ResourceFloatingIP, ResourceDNSRecord}, allResources...)
 	if len(priceClasses) != len(kinds) {
 		t.Errorf("priceClasses has %d entries, the kinds are %d", len(priceClasses), len(kinds))
 	}
