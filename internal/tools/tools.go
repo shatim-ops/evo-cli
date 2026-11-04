@@ -44,7 +44,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM evo-<project_name> (.evo.yaml or the directory), billable when it creates one: uploads the compose files over SSH, runs them; its ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: the server's), refuses another deployment's compose file. An update takes confirmed=true too (preview: compose_changed).",
+			Description: "Deploy the local compose project to a VM evo-<project_name> (.evo.yaml or the directory), billable when it creates one, with a public floating IP: uploads the compose files over SSH, runs them; its ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: the server's), refuses another deployment's compose file. Updates take confirmed=true too (preview: compose_changed).",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Compose file (default docker-compose.yml)."),
 				"flavor":       strProp("VM flavor or 'auto' (default)."),
@@ -53,7 +53,7 @@ func (s *Registry) registerTools() {
 				"image_id":     strProp("Boot image UUID."),
 				"image":        strProp("Boot image, Ubuntu or Debian (not Astra Linux, Alt, RED OS)."),
 				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10, or min_disk).")),
-				"force":        boolProp("Redeploy an unchanged compose file."),
+				"force":        boolProp("Redeploy unchanged compose."),
 				"cidr":         cidrProp(portsCidrDesc),
 				"confirmed":    confirmedProp(),
 			}),

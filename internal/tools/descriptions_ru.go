@@ -1697,7 +1697,7 @@ var toolsRU = map[string]toolRU{
 	"deploy": {
 		Short: "Развернуть локальный проект docker-compose на ВМ Cloud.ru",
 		Long: "Развернуть локальный проект docker-compose на ВМ Cloud.ru evo-<project_name> (project_name из .evo.yaml, " +
-			"иначе имя каталога), платно, если создаёт ВМ: загрузить файлы compose по SSH и запустить их; порты compose открываются для --cidr в " +
+			"иначе имя каталога), платно, если создаёт ВМ (с публичным floating IP): загрузить файлы compose по SSH и запустить их; порты compose открываются для --cidr в " +
 			"общей группе безопасности зоны. Проект — каталог, где запущен evo (у сервера MCP — каталог его запуска); " +
 			"compose-файл другого развёртывания отклоняется. Подтверждение нужно и для обновления (в превью — compose_changed).",
 		Args: map[string]string{

@@ -31,7 +31,7 @@ type skillPlace struct {
 // sections, which D68 drops: owner's decisions 03.11) that have their place:
 // "skill§section§the first 60 characters of the item" → the place.
 var skillKnowledge = map[string]skillPlace{
-	"evo-deploy§Use this skill when§The person wants an app from a `docker-compose.yml` running ":                                 {tool: "deploy", phrase: "Deploy the local docker-compose project to a Cloud.ru VM"},
+	"evo-deploy§Use this skill when§The person wants an app from a `docker-compose.yml` running ":                                 {tool: "deploy", phrase: "Deploy the local compose project to a VM"},
 	"evo-deploy§Use this skill when§Not for a bare VM, ports or a public IP alone: use `evo-vm`.":                                 {why: whyRouting},
 	"evo-deploy§Use this skill when§Not for Kubernetes: this set has no skill for it.":                                            {why: whyRouting},
 	"evo-deploy§Prerequisites§`evo doctor --json` (tool `doctor`, group `auth`) passes: ke":                                       {tool: "doctor", phrase: "Check the setup the tools use"},
