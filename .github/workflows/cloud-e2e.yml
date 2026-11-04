@@ -1228,8 +1228,15 @@ jobs:
           redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
           n=$(evo tools call snat_list --json | jq --arg z "$ZONE" '[.nat_gateways[]? | select(.availability_zone == $z or .availability_zone_id == $z)] | length')
           if [ "$n" != 0 ]; then echo "в $ZONE уже есть SNAT-шлюз ($n) — не создаётся и не удаляется"; exit 0; fi
-          evo --yes tools call snat_create --arg name="$SNAT_NAME" --arg zone="$ZONE" --json > "$RUNNER_TEMP/snat.json" 2>"$RUNNER_TEMP/snat.err" ||
-            { echo "::error::snat_create: $(redact < "$RUNNER_TEMP/snat.err" | tail -c 300 | tr '\n' ' ')"; exit 1; }
+          # Шлюз в зоне один: job live (net_smoke) того же прогона может
+          # создать свой между чтением и созданием. Тогда отказ — не провал:
+          # шлюз в зоне есть, он не наш — не удаляется.
+          if ! evo --yes tools call snat_create --arg name="$SNAT_NAME" --arg zone="$ZONE" --json > "$RUNNER_TEMP/snat.json" 2>"$RUNNER_TEMP/snat.err"; then
+            n=$(evo tools call snat_list --json | jq --arg z "$ZONE" --arg me "$SNAT_NAME" '[.nat_gateways[]? | select((.availability_zone == $z or .availability_zone_id == $z) and .name != $me)] | length')
+            [ "$n" != 0 ] || { echo "::error::snat_create: $(redact < "$RUNNER_TEMP/snat.err" | tail -c 300 | tr '\n' ' ')"; exit 1; }
+            echo "::warning::snat_create отклонён: в $ZONE уже есть другой шлюз ($n), например job live этого прогона — он не наш и не удаляется"
+            exit 0
+          fi
           start=$(date +%s)
           while :; do
             row=$(evo tools call snat_list --json | jq -c --arg n "$SNAT_NAME" '[.nat_gateways[]? | select(.name == $n)][0] // {}')
