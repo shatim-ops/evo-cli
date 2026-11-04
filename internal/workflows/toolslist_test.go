@@ -6,10 +6,10 @@ package workflows
 
 import "testing"
 
-// The ratchet of tools/list (owner's decision 29.10, #597, item 12): no
-// number in the code; a workflow of the pull request, rerun when its
-// description is edited, compares tools/list of the head with its base and
-// wants the line that explains a growth. The head is the merge commit the
+// The ratchet of tools/list (owner's decisions 29.10, #597, item 12, and
+// 04.11): no number in the code; a workflow of the pull request, rerun when
+// its description is edited, compares tools/list of the head with its base,
+// counts the growth itself and wants the line with its reason. The head is the merge commit the
 // event checks out, and its base is that commit's first parent: the base
 // branch as the merge saw it. base.sha of the event may be older (run on
 // #649: +157 bytes main had gained, not the PR), and a merge-base with it
@@ -24,7 +24,10 @@ func TestWorkflows_ToolsListGrowthChecked(t *testing.T) {
 	if !slicesContain(types, "edited") || !slicesContain(types, "synchronize") {
 		t.Errorf("tools-list: pull_request types %v, want edited and synchronize among them", types)
 	}
-	for _, want := range []string{"git rev-parse HEAD^1", ".github/scripts/tools_list_growth.sh"} {
+	// The ceilings are the tests of internal/mcp, run on the head: one
+	// point, not a copy here (owner's decision 04.11).
+	for _, want := range []string{"git rev-parse HEAD^1", ".github/scripts/tools_list_growth.sh",
+		"go test ./internal/mcp -run '^(TestToolsList_SizeBudget|TestToolsList_DescriptionLimits)$'"} {
 		if !runsStep(w, want) {
 			t.Errorf("tools-list: no step runs %s", want)
 		}

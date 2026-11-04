@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Проверка tools_list_growth.sh на образцах: рост без строки, со строкой,
-# с неверным числом, без причины, уменьшение.
+# Проверка tools_list_growth.sh на образцах: рост без строки, со строкой
+# причины, без причины, уменьшение; число роста — в summary прогона.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 dir=$(mktemp -d)
@@ -18,12 +18,17 @@ check() { # имя, ожидаемый код, описание PR, база, г
 }
 check "рост без строки" 1 "Правка описаний." "$dir/base.json" "$dir/head.json"
 check "рост со строкой" 0 "Текст.
-tools/list: +$grow байт, потому что новый инструмент b" "$dir/base.json" "$dir/head.json"
-check "неверное число" 1 "tools/list: +1 байт, потому что b" "$dir/base.json" "$dir/head.json"
-check "без причины" 1 "tools/list: +$grow байт, потому что " "$dir/base.json" "$dir/head.json"
-check "отписка" 1 "tools/list: +$grow байт, потому что ." "$dir/base.json" "$dir/head.json"
+tools/list: рост — новый инструмент b" "$dir/base.json" "$dir/head.json"
+check "без причины" 1 "tools/list: рост — " "$dir/base.json" "$dir/head.json"
+check "отписка" 1 "tools/list: рост — ." "$dir/base.json" "$dir/head.json"
+check "старая форма с числом — не та строка" 1 "tools/list: +$grow байт, потому что новый инструмент b" "$dir/base.json" "$dir/head.json"
 check "спецсимволы в описании" 0 "\$(id) \`x\` [a-z]* \\n
-tools/list: +$grow байт, потому что новый инструмент b, \$HOME" "$dir/base.json" "$dir/head.json"
+tools/list: рост — новый инструмент b, \$HOME" "$dir/base.json" "$dir/head.json"
 check "уменьшение" 0 "" "$dir/head.json" "$dir/base.json"
 check "без изменений" 0 "" "$dir/base.json" "$dir/base.json"
+# Число считает проверка: оно в summary прогона, человеку его писать не нужно.
+sum=$(mktemp)
+BODY="tools/list: рост — новый инструмент b" GITHUB_STEP_SUMMARY=$sum "$here/tools_list_growth.sh" "$dir/base.json" "$dir/head.json" >/dev/null
+if grep -qF -- "+$grow байт" "$sum"; then echo "ok   число роста — в summary"; else echo "FAIL число роста не в summary: $(cat "$sum")"; fail=1; fi
+rm -f "$sum"
 exit $fail
