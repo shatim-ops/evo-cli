@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Красный прогон ci на main — в одно открытое issue, зелёный его закрывает;
+# Красный прогон ci или ночного cloud-e2e на main — в одно открытое issue
+# своего workflow, зелёный его закрывает;
 # вызывается из .github/workflows/main-red.yml. Данные прогона — env, код PR
 # не выполняется. Строки «--- FAIL» берутся из логов упавших job как есть:
 # это вывод тестов этого репозитория.
@@ -7,8 +8,8 @@
 # shellcheck disable=SC2016
 set -euo pipefail
 
-: "${GH_REPO:?}" "${RUN_ID:?}" "${RUN_URL:?}" "${CONCLUSION:?}" "${HEAD_SHA:?}"
-TITLE="main красный: ci"
+: "${GH_REPO:?}" "${RUN_ID:?}" "${RUN_URL:?}" "${CONCLUSION:?}" "${HEAD_SHA:?}" "${WORKFLOW:?}"
+TITLE="main красный: $WORKFLOW"
 MAX_FAILS=20
 # The log of a job is read up to LOG_TRIES times, LOG_RETRY_SLEEP seconds
 # apart (the tests set no sleep), and the waits of all the jobs together
