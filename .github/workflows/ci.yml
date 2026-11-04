@@ -245,6 +245,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/response_shape_test.sh
 
+      # Форма ответа калькулятора в публичном логе api-probe (P50): ключи и
+      # единицы без цен, тело не JSON — одной строкой.
+      - name: json_shape.sh на образцах
+        if: runner.os == 'Linux'
+        run: .github/scripts/json_shape_test.sh
+
       # Отказ Foundation Models в ревью Qwen: на 401/403/404 — строка без
       # тела ответа (комментарий публичный, E7).
       - name: fm_error.sh на образцах ответов
