@@ -251,6 +251,12 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 180 .github/scripts/deploy_cut_test.sh
 
+      # k8s_helm по MCP (cloud-e2e, job k8s-smoke, D69): deploying, затем
+      # status deployed, каждый сеанс в пределе.
+      - name: k8s_helm_mcp.sh с заглушкой evo mcp
+        if: runner.os == 'Linux'
+        run: timeout 120 .github/scripts/k8s_helm_mcp_test.sh
+
       # Отказ Foundation Models в ревью Qwen: на 401/403/404 — строка без
       # тела ответа (комментарий публичный, E7).
       - name: fm_error.sh на образцах ответов
