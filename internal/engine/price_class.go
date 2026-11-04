@@ -5,6 +5,8 @@
 package engine
 
 import (
+	"math"
+
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -29,6 +31,10 @@ const (
 // ResourceFloatingIP is the floating IP a VM preview creates with the VM:
 // a line of its price_classes, not a preview of its own.
 const ResourceFloatingIP = "floating_ip"
+
+// ResourceDNSRecord is the DNS record a stack creates in a zone: a line of
+// stack_plan's cost, not a preview of its own.
+const ResourceDNSRecord = "dns_record"
 
 // ResourcePrice is the class of the price of one resource a preview
 // creates.
@@ -91,6 +97,8 @@ var priceClasses = map[string]priceDecl{
 	ResourceSNAT: {why: "evo has no price of a SNAT gateway",
 		whyRU: "у evo нет цены шлюза SNAT"},
 	ResourceDNSZone: {why: "evo has no price of Evolution DNS",
+		whyRU: "у evo нет цены Evolution DNS"},
+	ResourceDNSRecord: {why: "evo has no price of Evolution DNS",
 		whyRU: "у evo нет цены Evolution DNS"},
 	ResourceS3Object: {why: "its storage and the upload are billed by the tariff of Object Storage",
 		whyRU: "хранение и загрузка оплачиваются по тарифу Object Storage"},
@@ -173,6 +181,16 @@ func share(r string, p CreatePreview) float64 {
 		return c.FloatingIPMonthlyRub
 	}
 	return c.TotalMonthlyRub
+}
+
+// MonthlyRub is the part of preview p's monthly cost that is resource r's,
+// when r is priced (its line in p's price_classes); 0 otherwise, which a
+// caller does not show as a price.
+func (p CreatePreview) MonthlyRub(r string) float64 {
+	if classOf(r, p).Class != PricePriced {
+		return 0
+	}
+	return math.Round(share(r, p)*100) / 100
 }
 
 // createdResources are the resources preview p creates, in the order its
