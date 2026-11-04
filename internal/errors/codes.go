@@ -23,6 +23,9 @@ const (
 	CodeStateCorrupted    = "STATE_CORRUPTED"
 	CodeStateLocked       = "STATE_LOCKED" // another deploy/destroy holds the state lock; exit 1
 	CodeUnhealthy         = "UNHEALTHY"    // verify: a service did not answer; exit 1
+	// CodeDeployInProgress: logs or verify of a deployment deploy has not
+	// finished (D76); exit 1.
+	CodeDeployInProgress = "DEPLOY_IN_PROGRESS"
 	// CodeServerBusy: evo mcp --http refused a tool call over its own limit
 	// of concurrent calls; Cloud.ru was not asked (release audit, L-03).
 	CodeServerBusy = "SERVER_BUSY" // exit 1
@@ -46,7 +49,7 @@ var knownCodes = map[string]bool{
 	CodeSSHTimeout: true, CodeSSHAuthFailed: true, CodeSSHHostKeyChanged: true,
 	CodeComposeInvalid: true, CodeComposeNotFound: true,
 	CodeConfigInvalid: true, CodeStateCorrupted: true, CodeStateLocked: true,
-	CodeUnhealthy: true, CodeConfirmationRequired: true, CodeUsage: true,
+	CodeUnhealthy: true, CodeDeployInProgress: true, CodeConfirmationRequired: true, CodeUsage: true,
 	CodeNotFound: true, CodeServerBusy: true,
 }
 

@@ -42,6 +42,11 @@ func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
 			i18n.T("no active deployment", "активного развёртывания нет"),
 			deployFirst())
 	}
+	// A deployment deploy has not finished has no logs yet, and SSH may
+	// not take the key yet: said as such, not as a failure of SSH (D76).
+	if err := deployUnfinished(active); err != nil {
+		return err
+	}
 
 	// Auth.
 	tok, err := e.Auth.Token(ctx)

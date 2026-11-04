@@ -2537,7 +2537,17 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 		opts.Follow = c.Follow
 	}
 	if err := eng.Logs(ctx, opts); err != nil {
-		return failed(ctx, err, logField(buf.String())), true
+		fields := logField(buf.String())
+		// A deployment deploy has not finished: its status and deploy as
+		// the next step, in the answer as in the CLI's (D76).
+		var ue *engine.DeployUnfinishedError
+		if stderrors.As(err, &ue) {
+			var ce *clierrors.CLIError
+			if stderrors.As(err, &ce) {
+				maps.Copy(fields, ce.Details)
+			}
+		}
+		return failed(ctx, err, fields), true
 	}
 	return buf.String(), false
 }
