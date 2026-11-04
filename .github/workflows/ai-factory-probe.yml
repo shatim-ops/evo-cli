@@ -1,0 +1,94 @@
+name: ai-factory-probe
+
+# Живое сравнение MCP-серверов AI Factory и evo (решение владельца 04.11,
+# строка плана 1.7 «Живое сравнение MCP-серверов AI Factory и evo…», #844;
+# анализ по документации — evo-internal#106). Фаза discover: открыт ли
+# адрес без токена и с чужим (Q1), tools/list со схемами (Q3), чтения list_*
+# без аргументов (Q2, Q10) — ничего не пишется. Сценарии с записью —
+# следующей фазой, по схемам из этой.
+#
+# Секреты — окружение ai-factory-probe (одобрение владельца на каждый
+# запуск, только main): AIF_<S>_URL и AIF_<S>_TOKEN серверов REPO, S3, AR,
+# IAM, K8S, AIF_AUTH_SCHEME, EVO_INTERNAL_PUSH_TOKEN (только evo-internal,
+# Contents: write). Публичный лог — счётчики и классы; сырой отчёт —
+# в ветку evo-internal probe/ai-factory-<run> после сверки со всеми
+# секретами окружения (условия владельца 04.11).
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ai-factory-probe
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    # Только main: код этого прогона — код main, ветка PR сюда не попадает.
+    if: github.ref == 'refs/heads/main'
+    environment: ai-factory-probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+      - name: Сборка evo
+        run: .github/scripts/build_evo.sh
+
+      # Сторона evo: те же группы, что у серверов AI Factory (k8s, s3, ar,
+      # iam), — офлайн, без ключа.
+      - name: evo — инструменты групп k8s, s3, ar, iam
+        run: |
+          mkdir -p "$RUNNER_TEMP/aif/evo"
+          evo tools list --json > "$RUNNER_TEMP/aif/evo/tools.json"
+          jq -r '[.[] | select(.group == "k8s" or .group == "s3" or .group == "ar" or .group == "iam")] | group_by(.group)[] | "evo \(.[0].group): инструментов \(length), изменяющих \([.[] | select(.mutating)] | length)"' "$RUNNER_TEMP/aif/evo/tools.json"
+
+      - name: AI Factory — доступ, tools/list, чтения (discover)
+        env:
+          AIF_REPO_URL: ${{ secrets.AIF_REPO_URL }}
+          AIF_REPO_TOKEN: ${{ secrets.AIF_REPO_TOKEN }}
+          AIF_S3_URL: ${{ secrets.AIF_S3_URL }}
+          AIF_S3_TOKEN: ${{ secrets.AIF_S3_TOKEN }}
+          AIF_AR_URL: ${{ secrets.AIF_AR_URL }}
+          AIF_AR_TOKEN: ${{ secrets.AIF_AR_TOKEN }}
+          AIF_IAM_URL: ${{ secrets.AIF_IAM_URL }}
+          AIF_IAM_TOKEN: ${{ secrets.AIF_IAM_TOKEN }}
+          AIF_K8S_URL: ${{ secrets.AIF_K8S_URL }}
+          AIF_K8S_TOKEN: ${{ secrets.AIF_K8S_TOKEN }}
+          AIF_AUTH_SCHEME: ${{ secrets.AIF_AUTH_SCHEME }}
+        run: python3 -I .github/scripts/aif_probe.py discover "$RUNNER_TEMP/aif"
+
+      # До push — сверка отчёта со значениями всех секретов окружения;
+      # нашлось — job красный, push не идёт.
+      - name: Отчёт без секретов
+        env:
+          AIF_REPO_URL: ${{ secrets.AIF_REPO_URL }}
+          AIF_REPO_TOKEN: ${{ secrets.AIF_REPO_TOKEN }}
+          AIF_S3_URL: ${{ secrets.AIF_S3_URL }}
+          AIF_S3_TOKEN: ${{ secrets.AIF_S3_TOKEN }}
+          AIF_AR_URL: ${{ secrets.AIF_AR_URL }}
+          AIF_AR_TOKEN: ${{ secrets.AIF_AR_TOKEN }}
+          AIF_IAM_URL: ${{ secrets.AIF_IAM_URL }}
+          AIF_IAM_TOKEN: ${{ secrets.AIF_IAM_TOKEN }}
+          AIF_K8S_URL: ${{ secrets.AIF_K8S_URL }}
+          AIF_K8S_TOKEN: ${{ secrets.AIF_K8S_TOKEN }}
+          AIF_AUTH_SCHEME: ${{ secrets.AIF_AUTH_SCHEME }}
+          EVO_INTERNAL_PUSH_TOKEN: ${{ secrets.EVO_INTERNAL_PUSH_TOKEN }}
+        run: >-
+          .github/scripts/aif_secret_scan.sh "$RUNNER_TEMP/aif"
+          AIF_REPO_URL AIF_REPO_TOKEN AIF_S3_URL AIF_S3_TOKEN AIF_AR_URL AIF_AR_TOKEN
+          AIF_IAM_URL AIF_IAM_TOKEN AIF_K8S_URL AIF_K8S_TOKEN AIF_AUTH_SCHEME
+          EVO_INTERNAL_PUSH_TOKEN
+
+      - name: Сырой отчёт — в evo-internal, ветка probe/ai-factory-<run>
+        env:
+          EVO_INTERNAL_PUSH_TOKEN: ${{ secrets.EVO_INTERNAL_PUSH_TOKEN }}
+          RUN: ${{ github.run_id }}
+        run: .github/scripts/aif_push.sh "$RUNNER_TEMP/aif" "$RUN"

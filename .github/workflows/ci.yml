@@ -251,6 +251,16 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/json_shape_test.sh
 
+      # ai-factory-probe: клиент MCP на локальных серверах (классы и
+      # счётчики в логе, только чтения), сверка отчёта со значениями
+      # секретов, push только в ветку probe/ai-factory-<run>.
+      - name: aif_probe.py, aif_secret_scan.sh, aif_push.sh на образцах
+        if: runner.os == 'Linux'
+        run: |
+          timeout 60 .github/scripts/aif_probe_test.sh
+          .github/scripts/aif_secret_scan_test.sh
+          timeout 60 .github/scripts/aif_push_test.sh
+
       # Отказ Foundation Models в ревью Qwen: на 401/403/404 — строка без
       # тела ответа (комментарий публичный, E7).
       - name: fm_error.sh на образцах ответов
