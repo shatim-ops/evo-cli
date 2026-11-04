@@ -1700,6 +1700,19 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		}
 		answer["project_id"] = u.ProjectID
 		answer["creates"] = u.Creates
+		// What the update needs of this host's network, and port 22 of
+		// the VM probed from here before the question (M2). A warning,
+		// not a refusal: the VM may be booting, the person decides.
+		answer["upload"] = engine.SSHUpload(rec.VMIP)
+		if !u.Unchanged {
+			if probed, reach := eng.ReachSSH(ctx, rec.VMIP); probed {
+				answer["ssh_reachable"] = reach == nil
+				if reach != nil {
+					answer["ssh_probe_error"] = engine.SSHProbeClass(reach)
+					answer["warnings"] = []string{engine.SSHUnreachable(rec.VMIP, reach)}
+				}
+			}
+		}
 		if u.ComposeChanged != nil {
 			answer["compose_changed"] = *u.ComposeChanged
 		}

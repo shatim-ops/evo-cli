@@ -127,6 +127,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		previewLabel("network", "сеть") + i18n.Tf("subnet %s, security group %s", "подсеть %s, группа безопасности %s",
 			network.SubnetName, network.SecurityGroup),
 		publicIPLine(true),
+		previewLabel("upload", "загрузка") + SSHUpload(""),
 	}
 	var exposed CreatePreview
 	exposed.AddPorts(ports, udpPorts, cidr)
@@ -260,11 +261,12 @@ func redeployCreates(rec *state.DeploymentRecord) []string {
 // composeChanged: the compose file is not the deployed one — else the
 // update is --force, or (force false) the retry of a deploy that did not
 // finish.
-func redeployPreview(rec *state.DeploymentRecord, project, from string, composeChanged, force bool) confirm.Preview {
+func redeployPreview(rec *state.DeploymentRecord, project, from string, composeChanged, force, probed bool, reach error) confirm.Preview {
 	lines := []string{
 		previewLabel("project", "проект") + projectText(project, from),
 		i18n.T("upload the compose file to the existing VM and run 'docker compose up -d'",
 			"загрузить compose-файл на существующую ВМ и выполнить 'docker compose up -d'"),
+		previewLabel("upload", "загрузка") + SSHUpload(rec.VMIP),
 	}
 	switch {
 	case composeChanged:
@@ -288,6 +290,20 @@ func redeployPreview(rec *state.DeploymentRecord, project, from string, composeC
 			"ещё не открытые порты compose-файла открываются в группе безопасности %s"+
 				"; уже открытые остаются как есть, destroy удалит только правила, которые создаст deploy", groupText(rec)))
 	}
+	details := map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": creates,
+		"update": true, "compose_changed": composeChanged, "upload": SSHUpload(rec.VMIP)}
+	if probed {
+		details["ssh_reachable"] = reach == nil
+		if reach != nil {
+			details["ssh_probe_error"] = SSHProbeClass(reach)
+			lines = append(lines, previewLabel("ssh", "ssh")+i18n.Tf("port 22 does not answer from this host (ssh_reachable: false, %s)",
+				"порт 22 не отвечает с этого хоста (ssh_reachable: false, %s)", SSHProbeClass(reach)),
+				previewLabel("warning", "внимание")+SSHUnreachable(rec.VMIP, reach))
+		} else {
+			lines = append(lines, previewLabel("ssh", "ssh")+i18n.T("port 22 answers from this host (ssh_reachable: true)",
+				"порт 22 отвечает с этого хоста (ssh_reachable: true)"))
+		}
+	}
 	summary := i18n.Tf("update VM %s", "обновить ВМ %s", vmText(rec))
 	if rec.VMIP != "" {
 		summary += ", " + rec.VMIP
@@ -296,8 +312,7 @@ func redeployPreview(rec *state.DeploymentRecord, project, from string, composeC
 		Action:  "deploy",
 		Summary: summary,
 		Lines:   lines,
-		Details: map[string]any{"project_id": project, "vm_id": rec.VMID, "vm_ip": rec.VMIP, "creates": creates,
-			"update": true, "compose_changed": composeChanged},
+		Details: details,
 	}
 }
 

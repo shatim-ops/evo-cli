@@ -137,8 +137,11 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 				e.Printer.Warning(w)
 			}
 		}
+		// Port 22 from here, before the question (M2): the update uploads
+		// over SSH and would wait for it after consent.
+		probed, reach := e.ReachSSH(ctx, existing.VMIP)
 		proceed, err := e.redeployGate(ctx, opts, redeployPreview(existing, e.projectOf(existing), e.projectFrom(existing),
-			existing.ComposeHash != project.Hash, opts.Force))
+			existing.ComposeHash != project.Hash, opts.Force, probed, reach))
 		if err != nil {
 			return err
 		}
