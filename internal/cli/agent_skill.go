@@ -177,6 +177,37 @@ a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+
 - `+"`evo agent setup --client <client>`"+` connects evo to an MCP client, with the
   groups `+"`%s`"+` by default.
 
+## Waiting
+
+- Over MCP a long call (a VM, a deploy) answers within ~45 s with its state so
+  far: call `+"`next_tool`"+` with `+"`next_args`"+` to go on. The CLI waits.
+- A change that answers an `+"`operation_id`"+` runs on: wait with its group's
+  `+"`*_operation`"+` and `+"`wait_seconds`"+`, again while `+"`done`"+` is false.
+- Progress comes as `+"`notifications/progress`"+` when the call sent a
+  `+"`progressToken`"+`; over HTTP only on an SSE stream.
+- Read the state of one resource with its `+"`*_get`"+` (or `+"`status`"+`), not by
+  scanning a list.
+- No change of state after 10 checks of a VM, or 20 of a cluster: stop and ask
+  the person whether to wait longer.
+
+## Secrets
+
+- A `+"`password`"+` in an answer is its only copy: give it to the person and never
+  repeat it in the chat, a command line or a log.
+- In the CLI a secret goes in its file flag (`+"`--password-file`"+`, `+"`-`"+` for stdin),
+  never on the command line.
+
+## Sizing
+
+- A size is the person's decision: say what the workload needs (cpu, memory,
+  disk, nodes) and where that comes from — the product's documentation, the
+  person, or your own estimate said as such.
+- Read the catalogue, not your memory: `+"`list_flavors`"+` with filters, `+"`image_get`"+`,
+  `+"`org_quotas`"+`; `+"`*_versions`"+`, then `+"`*_specs`"+`; `+"`k8s_options`"+`.
+- Compare with a plan (`+"`deploy_plan`"+`, `+"`k8s_plan`"+`, `+"`stack_plan`"+`): plan two or three
+  options of the catalogue and show them side by side with their cost.
+- What evo chose itself is in the preview: show it to the person.
+
 ## Tool groups
 
 The card of a group — its tools and commands, where an id comes from, what

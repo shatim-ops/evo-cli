@@ -44,16 +44,16 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Creates a VM (auto-sized, public floating IP), uploads the compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM. Works in evo's directory (MCP: the server's); another compose file than its deployment's is refused before the question. Needs a key, project_id, region, image_id (env, config or arguments). Billable when it creates a VM; a new VM and an update alike take confirmed=true, without it a preview (an update: update: true, vm_id, compose_changed). The same compose file running and force unset: nothing to do (preview unchanged: true). The VM is named evo-<project_name> (.evo.yaml, else the directory); no name argument. Over MCP: within ~45 s, status deploying, phase, next_tool while the VM or its stages run.",
+			Description: "Deploy the local docker-compose project to a Cloud.ru VM. Creates a VM (auto-sized, public floating IP), opens the compose ports (cidr) in the zone's shared security group, uploads the compose files over SSH, runs 'docker compose up -d'. Reuses the existing VM. Works in evo's directory (MCP: the server's); a compose file not its deployment's is refused before the question. Needs a key, project_id, region, image_id (env, config or arguments). Billable when it creates a VM; a new VM and an update alike take confirmed=true, else a preview (an update: update: true, vm_id, compose_changed). Same compose file running, force unset: nothing to do (unchanged: true). VM name: evo-<project_name> (.evo.yaml, else the directory), no argument. Over MCP: within ~45 s, status deploying, phase, next_tool while the VM or its stages run.",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Path to the docker-compose file (default: docker-compose.yml)."),
 				"flavor":       strProp("VM flavor, or 'auto': the smallest that fits (default)."),
 				"region":       strProp("Availability zone UUID (see list_zones)."),
 				"project_id":   strProp("Cloud.ru project UUID."),
 				"image_id":     strProp("Boot image UUID (see image_list, image_get)."),
-				"image":        strProp("Boot image by exact name, display name or UUID (Ubuntu or Debian: Astra Linux, Alt and RED OS are refused, Docker cannot be installed there). Use it or image_id, not both."),
+				"image":        strProp("Boot image by exact name, display name or UUID (Ubuntu or Debian; Astra Linux, Alt, RED OS are refused: no Docker for them). Use it or image_id, not both."),
 				"disk_size":    atLeast(0, intProp("Boot disk size in GB (default: 10, raised to the image's min_disk).")),
-				"force":        boolProp("Redeploy even if the compose hash is unchanged."),
+				"force":        boolProp("Redeploy an unchanged compose file."),
 				"cidr":         cidrProp(portsCidrDesc),
 				"confirmed":    confirmedProp(),
 			}),
@@ -236,7 +236,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_apply",
-			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
+			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. It creates the VM without the application: a compose project goes through deploy. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
 				"plan_id":   strProp("The plan_id returned by deploy_plan."),
 				"confirmed": confirmedProp(),
@@ -307,7 +307,7 @@ func (s *Registry) registerTools() {
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
-				"cidr":           cidrProp("Source CIDR (default 0.0.0.0/0 = anywhere)."),
+				"cidr":           cidrProp("Source CIDR (default 0.0.0.0/0 = anywhere): ask the person which source."),
 				"confirmed":      confirmedProp(),
 			}, "security_group", "ports"),
 		},
@@ -665,7 +665,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: first project subnet). Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves; without it, a preview. Poll the returned operation_id with pg_operation. The cluster is placed in its subnet; the API takes no public-access parameter, evo sets up none.",
+			Description: "Create a Managed PostgreSQL cluster. Refuses a name an existing cluster has (pg_list). Resolves version (default: latest), specification (by specification_id OR cpu+ram; none matching is a USAGE error with the list), storage (default: spec minimum), and subnet (default: the main subnet of the profile's zone). Mutation (BILLABLE, async ~minutes): requires confirmed=true after the user approves; without it, a preview. Poll the returned operation_id with pg_operation. The cluster is placed in its subnet; the API takes no public-access parameter, evo sets up none.",
 			InputSchema: objSchema(map[string]any{
 				"name":                  strProp("Cluster name (required)."),
 				"version":               strProp("PostgreSQL version (from pg_versions). Default: latest."),
@@ -674,7 +674,7 @@ func (s *Registry) registerTools() {
 				"ram":                   intProp("RAM in GB — used with cpu to auto-pick a specification."),
 				"storage_gb":            atLeast(1, intProp("Main data disk size in GB. Default: specification minimum.")),
 				"instances":             atLeast(1, intProp("Number of nodes (1-2 standard, 1-3 business: checked against the spec's max_hosts). Default 1.")),
-				"subnet_id":             strProp("Subnet UUID or name (defines the AZ). Default: first project subnet."),
+				"subnet_id":             strProp("Subnet UUID or name (defines the AZ)."),
 				"initial_database":      strProp("Name of the database created with the cluster (default 'defaultdb'). It takes no owner: for a database your user owns, pg_db_create with owner."),
 				"description":           strProp("Cluster description."),
 				"no_backup":             boolProp("Disable automatic backups. Backups are ENABLED by default and CANNOT be toggled after creation; a cluster without backups rejects pg_backup_create/pg_backups with 'backup disabled'."),
@@ -819,7 +819,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_db_create",
-			Description: "Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
+			Description: "Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The preview does not check the name is free (pg_databases).",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
@@ -847,7 +847,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_user_create",
-			Description: "Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The password is never echoed back.",
+			Description: "Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The preview does not check the name is free (pg_users). The password is never echoed back.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),

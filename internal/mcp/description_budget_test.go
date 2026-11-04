@@ -28,7 +28,7 @@ const toolBudget = 1500
 // in 1.8).
 var toolsOverBudget = map[string]int{
 	"ca_deploy":        2264,
-	"deploy":           2165,
+	"deploy":           2164,
 	"deploy_plan":      3521,
 	"destroy":          1627,
 	"image_create":     2911,
@@ -40,7 +40,7 @@ var toolsOverBudget = map[string]int{
 	"kafka_create":     2030,
 	"lb_create":        2076,
 	"marketplace_list": 1708,
-	"pg_create":        2480,
+	"pg_create":        2466,
 	"provision":        3298,
 	"redis_create":     2367,
 	"subnet_create":    1805,

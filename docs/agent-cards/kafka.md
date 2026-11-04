@@ -15,3 +15,7 @@
 | `kafka_operation` | `evo kafka operation` | reads |  |
 
 A change of this group that answers an `operation_id` runs on: wait for it with `kafka_operation` and its `wait_seconds`, not by polling a list.
+
+## Notes
+
+- evo has no tools for topics and users: the console makes them.
