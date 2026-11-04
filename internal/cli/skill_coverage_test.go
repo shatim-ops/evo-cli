@@ -31,7 +31,7 @@ type skillPlace struct {
 // sections, which D68 drops: owner's decisions 03.11) that have their place:
 // "skill§section§the first 60 characters of the item" → the place.
 var skillKnowledge = map[string]skillPlace{
-	"evo-deploy§Use this skill when§The person wants an app from a `docker-compose.yml` running ":                                 {tool: "deploy", phrase: "Deploy the local docker-compose project to a Cloud.ru VM"},
+	"evo-deploy§Use this skill when§The person wants an app from a `docker-compose.yml` running ":                                 {tool: "deploy", phrase: "Deploy the local compose project to a VM"},
 	"evo-deploy§Use this skill when§Not for a bare VM, ports or a public IP alone: use `evo-vm`.":                                 {why: whyRouting},
 	"evo-deploy§Use this skill when§Not for Kubernetes: this set has no skill for it.":                                            {why: whyRouting},
 	"evo-deploy§Prerequisites§`evo doctor --json` (tool `doctor`, group `auth`) passes: ke":                                       {tool: "doctor", phrase: "Check the setup the tools use"},
@@ -71,7 +71,7 @@ var skillKnowledge = map[string]skillPlace{
 	"evo-postgres§Procedure§Versions: `evo pg versions --json` / `pg_versions`. Specific":                                         {builtin: true, phrase: "A size is the person's decision"},
 	"evo-postgres§Procedure§Preview: `evo pg create <name> --specification-id <id> --dry":                                         {card: "pg", phrase: "an estimate by the tariff of its date"},
 	"evo-postgres§Procedure§Stop and ask: show the person the configuration, storage, su":                                         {tool: "pg_create", phrase: "CANNOT be toggled after creation"},
-	"evo-postgres§Procedure§Create: `evo pg create <name> --specification-id <id> --yes ":                                         {tool: "pg_create", phrase: "Poll the returned operation_id with pg_operation"},
+	"evo-postgres§Procedure§Create: `evo pg create <name> --specification-id <id> --yes ":                                         {card: "pg", phrase: "wait for it with `pg_operation`"},
 	"evo-postgres§Procedure§Wait: `evo pg operation <operation-id> --wait-seconds 300 --":                                         {card: "pg", phrase: "wait for it with `pg_operation`"},
 	"evo-postgres§Procedure§User: first check `evo pg users <cluster-id> --json` / `pg_u":                                         {tool: "pg_user_create", phrase: "The preview does not check the name is free (pg_users)"},
 	"evo-postgres§Procedure§Database: first check `evo pg databases <cluster-id> --json`":                                         {tool: "pg_db_create", phrase: "The preview does not check the name is free (pg_databases)"},
@@ -117,7 +117,7 @@ var skillKnowledge = map[string]skillPlace{
 	"evo-vm§Procedure§Public address: `evo vm get <name> --json` / `vm_get` gives ":                                               {tool: "fip_attach", phrase: "Pick a free address from list_floating_ips"},
 	"evo-vm§Stop and ask§Before every call with `confirmed: true` or `--yes`: `provis":                                            {builtin: true, phrase: "Consent comes only from the person"},
 	"evo-vm§Stop and ask§`open_ports` from `0.0.0.0/0` needs its own yes, named as su":                                            {tool: "open_ports", phrase: "ask the person which source"},
-	"evo-vm§Waiting§`provision` waits for the VM in the call. Over MCP watch":                                                     {tool: "provision", phrase: "Over MCP a VM not running in ~45 s"},
+	"evo-vm§Waiting§`provision` waits for the VM in the call. Over MCP watch":                                                     {builtin: true, phrase: "Over MCP a long call (a VM, a deploy) answers within ~45 s"},
 	"evo-vm§Waiting§If `vm_get` shows the same state for 10 checks, stop and ask":                                                 {builtin: true, phrase: "10 checks of a VM"},
 	"evo-vm§Known platform limits§G1: a security group is shared by the VMs of a zone; a rule ":                                   {tool: "open_ports", phrase: "security groups are shared per availability zone"},
 	"evo-vm§Known platform limits§The generated password is returned once, in the create answe":                                   {tool: "provision", phrase: "password (generated; this answer only)"},

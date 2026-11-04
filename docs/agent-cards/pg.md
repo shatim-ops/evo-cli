@@ -26,6 +26,7 @@ A change of this group that answers an `operation_id` runs on: wait for it with 
 
 ## Notes
 
+- A cluster made with `no_backup` refuses `pg_backup_create` and `pg_backups` with 'backup disabled'.
 - The cost in the preview of `pg_create` is an estimate by the tariff of its date (`cost_note`), not a bill; the rates are on `tariff_url`.
 - A zone with no capacity refuses `pg_create` with `API_RATE_LIMITED` (`ResourceExhausted`, DB-23): later or another zone (`subnet_id`), not the same call in a loop.
 - A cluster in FAILED cannot be deleted through the API (DB-21): the answer is an error with `resource_status` and a hint (the console, Cloud.ru support), not a success; a repeat changes nothing.

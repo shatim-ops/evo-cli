@@ -20,3 +20,5 @@
 
 - `deploy` reaches the VM over SSH: outbound port 22 must be open from the machine evo runs on.
 - One `deploy` at a time in a directory: another answers `STATE_LOCKED`; wait for the first.
+- The defaults of `deploy_plan` (flavor, zone, image) come from the profile, `.evo.yaml` and `CLOUDRU_FLAVOR`, `CLOUDRU_REGION`.
+- `destroy` answers status `partial` (an error) when Cloud.ru accepted the deletion but did not confirm it, and over MCP `deleting` with `next_tool` when it still runs at ~45 s.
