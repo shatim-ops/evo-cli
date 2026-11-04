@@ -376,10 +376,13 @@ jobs:
         working-directory: e2e-app
         run: evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-before.json"
 
-      - name: deploy --yes
+      # Путь CLI тоже идёт через этапы на ВМ (D69, вариант C): deploy
+      # обрывается посреди этапа, этап на ВМ жив, повтор доделывает
+      # (строка плана 1.7 «cloud-e2e deploy на rc.1 обязателен»).
+      - name: deploy --yes с обрывом посреди этапа и повтором
         working-directory: e2e-app
         run: |
-          evo deploy --yes 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
+          "$GITHUB_WORKSPACE/.github/scripts/deploy_cut.sh"
 
       - name: Группа и правила deploy в state
         # и после упавшего deploy: ВМ и правила могли создаться, проверка
@@ -1203,6 +1206,13 @@ jobs:
           jq -c '{status, action}' "$RUNNER_TEMP/t.json"
           [ -z "$(cm_value evo-e2e-helm)" ] || { echo "::error::k8s_helm uninstall: ConfigMap релиза остался"; exit 1; }
           echo "k8s_helm: install → list → uninstall"
+
+      # По MCP install не ждёт подов (D69, H14): deploying и следующий шаг,
+      # затем action=status — deployed; каждый сеанс evo mcp — в пределе
+      # (строка плана 1.7 «cloud-e2e k8s-smoke на rc.1»). Чарт — тот же
+      # локальный, из шага выше.
+      - name: k8s_helm и k8s_kubectl по MCP с пределом вызова
+        run: .github/scripts/k8s_helm_mcp.sh "$CLUSTER_ID" "$RUNNER_TEMP/chart"
 
       # Поды плагина: Ready=True у подов без владельца Job (поды Job,
       # например cert-manager-startupapicheck, не учитываются).

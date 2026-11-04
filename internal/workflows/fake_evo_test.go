@@ -97,6 +97,19 @@ fake_evo_answer pg_delete.yes 0 0 '{"status":"deleting"}'`
 	if code, out, errOut := call("tools", "call", "vm_list", "--json"); code == 0 || out != "" || !strings.Contains(errOut, "no answer for vm_list call 0") {
 		t.Errorf("no answer: exit %d, stdout %q, stderr %q; want an error naming the call", code, out, errOut)
 	}
+	// A command other than tools call runs its script, with the call's
+	// arguments; without one it is an error, not an empty success.
+	run := exec.Command("bash", "-c", `. "$1" && printf '#!/bin/sh\necho "deploy $*"\nexit 7\n' | fake_evo_run deploy`, "run", lib)
+	run.Env = append(os.Environ(), "FAKE_DIR="+dir)
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Fatalf("fake_evo_run: %v\n%s", err, out)
+	}
+	if code, out, _ := call("deploy", "--yes"); code != 7 || out != "deploy deploy --yes\n" {
+		t.Errorf("deploy: exit %d, stdout %q; want 7 and its script's output", code, out)
+	}
+	if code, out, errOut := call("--json", "destroy", "--yes"); code != 2 || out != "" || !strings.Contains(errOut, "no run for destroy") {
+		t.Errorf("no run: exit %d, stdout %q, stderr %q; want an error naming the command", code, out, errOut)
+	}
 	// N with a leading zero would name a file no call reads.
 	bad := exec.Command("bash", "-c", `. "$1" && fake_evo_answer pg_get 00 0 '{}'`, "bad", lib)
 	bad.Env = append(os.Environ(), "FAKE_DIR="+dir)
