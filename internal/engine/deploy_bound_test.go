@@ -8,6 +8,7 @@ import (
 	"context"
 	stderrors "errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -90,6 +91,30 @@ const finishBound = time.Minute
 // (wall-clock: a margin over the bound, not a wait).
 const boundWatch = 5 * time.Second
 
+// maxTestBound is the largest bound boundedUntilHeld gives a case.
+// wall-clock: a margin for a loaded runner; a case that reaches its hold
+// ends at testBound on a quiet one.
+const maxTestBound = 8 * time.Second
+
+// boundedUntilHeld runs a case with the bound testBound, doubled up to
+// maxTestBound while the case ends before it reached the step it holds:
+// on a loaded runner the steps before the hold can outlast the bound
+// (#789, #813; Windows -race, run 41799151202 of 04.11: the bound came in
+// vm or in docker starting), and the bound then ends a step the case does
+// not test. A case that reached its hold is judged as it is; one that never
+// does fails its own check.
+func boundedUntilHeld(t *testing.T, run func(bound time.Duration, held *atomic.Bool) error) error {
+	t.Helper()
+	for bound := testBound; ; bound *= 2 {
+		var held atomic.Bool
+		err := run(bound, &held)
+		if held.Load() || bound >= maxTestBound {
+			return err
+		}
+		t.Logf("the bound of %v came before the hold: once more with %v", bound, 2*bound)
+	}
+}
+
 // deployBounded runs eng.Deploy with opts and fails the test when it does
 // not end within boundWatch past the bound of opts.
 func deployBounded(t *testing.T, eng *Engine, opts DeployOptions) error {
@@ -124,19 +149,21 @@ func TestDeploy_BoundEndsAHangingStepInProgress(t *testing.T) {
 		{"upload", "upload"},
 	} {
 		t.Run(tc.op, func(t *testing.T) {
-			dep := newMockDeployer()
-			dep.hold = func(ctx context.Context, op string) error {
-				if op == tc.op {
-					return untilCtx(ctx)
+			err := boundedUntilHeld(t, func(bound time.Duration, held *atomic.Bool) error {
+				dep := newMockDeployer()
+				dep.hold = func(ctx context.Context, op string) error {
+					if op == tc.op {
+						held.Store(true)
+						return untilCtx(ctx)
+					}
+					return nil
 				}
-				return nil
-			}
-			eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
-			eng.Timings.DockerWaitTimeout = time.Hour
-			opts := newDeployOpts(t, dir)
-			opts.Until = time.Now().Add(testBound)
-
-			err := deployBounded(t, eng, opts)
+				eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+				eng.Timings.DockerWaitTimeout = time.Hour
+				opts := newDeployOpts(t, dir)
+				opts.Until = time.Now().Add(bound)
+				return deployBounded(t, eng, opts)
+			})
 			var going *InProgress
 			if !stderrors.As(err, &going) || going.Phase != tc.phase {
 				t.Fatalf("err = %v, want InProgress %s", err, tc.phase)
@@ -344,29 +371,31 @@ func TestDeploy_RepeatWaitsForTheCreatingVMBeforeTheFloatingIP(t *testing.T) {
 func TestDeploy_BoundDoesNotHideAPermanentSSHRefusal(t *testing.T) {
 	for _, code := range []string{clerrors.CodeSSHAuthFailed, clerrors.CodeSSHHostKeyChanged} {
 		t.Run(code, func(t *testing.T) {
-			dep := newMockDeployer()
-			var mu sync.Mutex
-			connects := 0
-			until := time.Now().Add(testBound)
-			dep.hold = func(ctx context.Context, op string) error {
-				if op != "connect" {
-					return nil
+			err := boundedUntilHeld(t, func(bound time.Duration, held *atomic.Bool) error {
+				dep := newMockDeployer()
+				var mu sync.Mutex
+				connects := 0
+				dep.hold = func(ctx context.Context, op string) error {
+					if op != "connect" {
+						return nil
+					}
+					mu.Lock()
+					connects++
+					n := connects
+					mu.Unlock()
+					if n < 2 {
+						return nil
+					}
+					// The reconnect after the install: refused once the bound has come.
+					held.Store(true)
+					<-ctx.Done()
+					return clerrors.New(code, "refused", "")
 				}
-				mu.Lock()
-				connects++
-				n := connects
-				mu.Unlock()
-				if n < 2 {
-					return nil
-				}
-				// The reconnect after the install: refused once the bound has come.
-				<-ctx.Done()
-				return clerrors.New(code, "refused", "")
-			}
-			eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
-			opts := newDeployOpts(t, dir)
-			opts.Until = until
-			err := deployBounded(t, eng, opts)
+				eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+				opts := newDeployOpts(t, dir)
+				opts.Until = time.Now().Add(bound)
+				return deployBounded(t, eng, opts)
+			})
 			if clerrors.Reason(err) != code {
 				t.Fatalf("err = %v, want %s", err, code)
 			}
