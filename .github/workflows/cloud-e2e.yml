@@ -381,7 +381,8 @@ jobs:
       # (строка плана 1.7 «cloud-e2e deploy на rc.1 обязателен»).
       - name: deploy --yes с обрывом посреди этапа и повтором
         working-directory: e2e-app
-        run: "$GITHUB_WORKSPACE/.github/scripts/deploy_cut.sh"
+        run: |
+          "$GITHUB_WORKSPACE/.github/scripts/deploy_cut.sh"
 
       - name: Группа и правила deploy в state
         # и после упавшего deploy: ВМ и правила могли создаться, проверка
