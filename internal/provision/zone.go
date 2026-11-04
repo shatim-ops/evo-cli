@@ -109,15 +109,8 @@ func ResolveZone(zones []*AvailabilityZone, ref string) (*AvailabilityZone, erro
 // probe of 1.7.
 func FlavorOutOfZone(f *Flavor, zoneID, zoneName string) error {
 	names := f.ZoneNames()
-	if len(names) == 0 || (zoneID == "" && zoneName == "") {
+	if len(names) == 0 || (zoneID == "" && zoneName == "") || AvailableIn(f, zoneID, zoneName) {
 		return nil
-	}
-	for _, z := range f.Zones {
-		if (zoneID != "" && z.ID == zoneID) || (zoneName != "" && strings.EqualFold(z.Name, zoneName)) {
-			if slices.Contains(names, z.Name) {
-				return nil
-			}
-		}
 	}
 	where := zoneName
 	if where == "" {
@@ -128,6 +121,22 @@ func FlavorOutOfZone(f *Flavor, zoneID, zoneName string) error {
 			"flavor %s недоступен в зоне %s: ВМ с ним создаётся в %s", f.Name, where, strings.Join(names, ", ")),
 		i18n.Tf("Pick a flavor of zone %s (list_flavors zone=%s, 'evo vm flavors --zone %s') or one of the flavor's zones.",
 			"Выберите flavor зоны %s (list_flavors zone=%s, 'evo vm flavors --zone %s') или одну из зон flavor.", where, where, where))
+}
+
+// AvailableIn reports whether the catalogue says a VM of f can be created
+// in the zone: by its id, or its name in any case. A flavor that names no
+// zones is not (FlavorOutOfZone lets it through as no decision, D54;
+// list_flavors zone= does not, FB160-23).
+func AvailableIn(f *Flavor, zoneID, zoneName string) bool {
+	names := f.ZoneNames()
+	for _, z := range f.Zones {
+		if (zoneID != "" && z.ID == zoneID) || (zoneName != "" && strings.EqualFold(z.Name, zoneName)) {
+			if slices.Contains(names, z.Name) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // FlavorsInZone are the flavors evo picks from by itself (auto) for a VM

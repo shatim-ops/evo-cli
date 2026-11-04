@@ -101,7 +101,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 			}
 		}
 	}
-	if zones, err := e.Cloud.ListAvailabilityZones(ctx); err == nil {
+	if zones, err := e.zoneList(ctx); err == nil {
 		for _, z := range zones {
 			if z.ID == req.AvailabilityZoneID {
 				vm.Zone.Name = z.Name
