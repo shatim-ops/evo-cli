@@ -15,8 +15,9 @@ import (
 // its ids come from, what a create makes and what deletes it, and what to
 // wait with — all from the registry's declarations (createdIDs,
 // deleteTargets, idArgs, the group's operation tool), so it cannot drift
-// from the code. English, as the rules of the evo skill it goes with; the
-// form of consent is said there, once. false for a group that is not.
+// from the code — and the group's notes (cardNotes). English, as the rules
+// of the evo skill it goes with; the form of consent is said there, once.
+// false for a group that is not.
 func GroupCard(group string) (string, bool) {
 	if !slices.Contains(Groups(), group) {
 		return "", false
@@ -44,7 +45,31 @@ func GroupCard(group string) (string, bool) {
 		fmt.Fprintf(&b, "\nA change of this group that answers an `operation_id` runs on: wait for it with `%s_operation` "+
 			"and its `wait_seconds`, not by polling a list.\n", group)
 	}
+	if notes := cardNotes[group]; len(notes) > 0 {
+		b.WriteString("\n## Notes\n\n- " + strings.Join(notes, "\n- ") + "\n")
+	}
 	return b.String(), true
+}
+
+// cardNotes are what the declarations of a group cannot say: the limits of
+// the platform its calls meet and the order of its calls, a short line
+// each (D68: the facts of the scenario skills, which leave the product). A
+// fact without which a call is wrong or dangerous is the tool's description
+// instead; a recipe of a task is neither.
+var cardNotes = map[string][]string{
+	"deploy": {
+		"`deploy` reaches the VM over SSH: outbound port 22 must be open from the machine evo runs on.",
+		"One `deploy` at a time in a directory: another answers `STATE_LOCKED`; wait for the first.",
+	},
+	"kafka": {
+		"evo has no tools for topics and users: the console makes them.",
+	},
+	"pg": {
+		"The cost in the preview of `pg_create` is an estimate by the tariff of its date (`cost_note`), not a bill; the rates are on `tariff_url`.",
+		"A zone with no capacity refuses `pg_create` with `API_RATE_LIMITED` (`ResourceExhausted`, DB-23): later or another zone (`subnet_id`), not the same call in a loop.",
+		"A cluster in FAILED cannot be deleted through the API (DB-21): the answer is an error with `resource_status` and a hint (the console, Cloud.ru support), not a success; a repeat changes nothing.",
+		"`pg_backups` of a deleted cluster answers an error (DB-22).",
+	},
 }
 
 // cardDoes is what a tool does, as the declarations say it.

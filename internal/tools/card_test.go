@@ -60,3 +60,31 @@ func TestGroupCards_SayWhereAnIDComesFrom(t *testing.T) {
 		t.Errorf("pg: the card does not say cluster_id comes from pg_list:\n%s", card)
 	}
 }
+
+// D68: the notes of a group (cardNotes) — the facts of the scenario skills
+// a declaration cannot say — are in its card, under Notes; a note of a
+// group that is not would be read by nobody. A note carries no form of
+// consent either (TestGroupCards_CoverEveryToolFromTheDeclarations).
+func TestGroupCards_PrintTheirNotes(t *testing.T) {
+	if len(cardNotes) == 0 {
+		t.Fatal("no notes in cardNotes: the test sees nothing")
+	}
+	for g, notes := range cardNotes {
+		card, ok := GroupCard(g)
+		if !ok {
+			t.Errorf("cardNotes: %s is not a group", g)
+			continue
+		}
+		if !strings.Contains(card, "\n## Notes\n") {
+			t.Errorf("%s: the card has no Notes section:\n%s", g, card)
+		}
+		for _, n := range notes {
+			if !strings.Contains(card, "\n- "+n+"\n") {
+				t.Errorf("%s: the card does not print the note %q", g, n)
+			}
+		}
+	}
+	if card, _ := GroupCard("vm"); strings.Contains(card, "## Notes") {
+		t.Errorf("vm: a Notes section with no notes:\n%s", card)
+	}
+}
