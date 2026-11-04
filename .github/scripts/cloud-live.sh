@@ -544,7 +544,7 @@ probe_p41() {
 
 # ВМ, диски, образ из загрузочного диска.
 area_disk() {
-	local zid vm vm_ip vid user data boot img st=
+	local zid vm vm_ip vid user data boot img st='' early warn
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/disk" && cd "$tmp/disk"
@@ -558,6 +558,30 @@ area_disk() {
 	[ -n "$vm_ip" ] || { bad provision "нет vm_ip: $(j -r .status)"; return 1; }
 	ok provision "$(j -r .status), диск $(j -r .disk_gb) ГБ"
 	cov provision
+	warn=$(j -c '.warning // .warnings // empty' | redact | cut -c1-300)
+	row "provision: предупреждение" "$([ -n "$warn" ] && echo есть || echo нет)" "$warn"
+
+	# stderr ssh — в $tmp/ssh.err: причина провала в лог через redact.sed
+	# (адрес маскируется), а не «не поднялся» без класса (rc.1 1.7).
+	ssh_vm() {
+		ssh -i .evo/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+			-o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=10 "$user@$vm_ip" "$@" 2>"$tmp/ssh.err"
+	}
+	vm_state() { evo tools call vm_get --arg name="$vm" --json 2>/dev/null | jq -r '.state // empty'; }
+	# Проба (решение владельца 04.11, «проба, потом решаем»; rc.2 1.7: SSH к
+	# ВМ disk — 3 из 3 «port 22: Connection timed out» в двух зонах, ВМ
+	# deploy в той же зоне доступна): отвечает ли SSH сразу после provision,
+	# до операций с диском. Исход финальной проверки ниже различает (а)
+	# «отвечал сразу, после дисков перестал» и (б) «не отвечал сразу».
+	local t0=$SECONDS
+	if poll 600 15 ssh_vm true; then
+		early="отвечал через $((SECONDS - t0)) с"
+		row "SSH сразу после provision" ok "$early"
+	else
+		early="не отвечал 10 мин"
+		row "SSH сразу после provision" "нет" "ssh — $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200); ВМ $(vm_state)"
+		[ -z "$vid" ] || "$here/ssh_diag.sh" "$vid" "$vm_ip"
+	fi
 
 	# D58 (1.6): зона из настроек по имени. CLOUDRU_REGION с именем зоны,
 	# которой нет, — отказ до вопроса (USAGE), диска нет; диск данных —
@@ -670,20 +694,15 @@ area_disk() {
 
 	# Образ из загрузочного диска: ВМ выключается изнутри (vm stop в evo нет,
 	# BACKLOG [04]), диск отключается, затем image_create.
-	# stderr ssh — в $tmp/ssh.err: причина провала в лог через redact.sed
-	# (адрес маскируется), а не «не поднялся» без класса (rc.1 1.7).
-	ssh_vm() {
-		ssh -i .evo/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-			-o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=10 "$user@$vm_ip" "$@" 2>"$tmp/ssh.err"
-	}
-	vm_state() { evo tools call vm_get --arg name="$vm" --json 2>/dev/null | jq -r '.state // empty'; }
 	if ! poll 600 15 ssh_vm true; then
 		# Факты сети — ssh_diag.sh (общий с job e2e): адрес и floating IP,
 		# правило TCP/22 в группе, ответ порта (rc.2 1.7: 2 из 2 «timed out»).
 		local key=нет
 		[ -s .evo/id_ed25519 ] && key=есть
 		[ -z "$vid" ] || "$here/ssh_diag.sh" "$vid" "$vm_ip"
-		bad "SSH к ВМ" "не поднялся за 10 мин: ssh — $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200); ключ .evo/id_ed25519 $key; пользователь $user; ВМ $(vm_state)"
+		# (а) — сразу после provision отвечал, после дисков нет; (б) — не
+		# отвечал и сразу.
+		bad "SSH к ВМ" "не поднялся за 10 мин ($([ "${early%% *}" = отвечал ] && echo "а: после операций с диском" || echo "б: не отвечал и сразу после provision"); сразу — $early): ssh — $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200); ключ .evo/id_ed25519 $key; пользователь $user; ВМ $(vm_state)"
 		return 1
 	fi
 	ssh_vm 'sudo shutdown -h +0' >/dev/null || true
