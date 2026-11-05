@@ -57,8 +57,8 @@ func RecordedIn(sf *state.File) func(id string) bool {
 // has: deploy's VM is evo-<project_name>, so another project_name; a
 // delete is the person's own decision (#829, FB170-2).
 func deployNameHint() string {
-	return i18n.T("deploy names its VM evo-<project_name>: set another project_name in .evo.yaml, or deploy from a directory with another name. If the VM is yours and you no longer need it, delete it yourself.",
-		"deploy называет ВМ evo-<project_name>: задайте другой project_name в .evo.yaml или разверните из каталога с другим именем. Если ВМ ваша и больше не нужна, удалите её сами.")
+	return i18n.T("deploy names its VM evo-<project_name>: set another project_name in .evo.yaml, or deploy from a directory with another name. Whether to delete that VM, ask the person: it may be someone else's.",
+		"deploy называет ВМ evo-<project_name>: задайте другой project_name в .evo.yaml или разверните из каталога с другим именем. Удалять ли ту ВМ, спросите человека: она может быть чужой.")
 }
 
 // foreignDeployVM is deploy's refusal, before the question, of the VM name
