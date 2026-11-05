@@ -134,6 +134,13 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 			return errResult(fmt.Errorf(i18n.T("zone %q not found", "зона %q не найдена"), z)), true
 		}
 	} else {
+		// No zone anywhere is refused before the preview, as provision's
+		// (D86, D15): the preview showed an empty zone, and the create went
+		// out without one.
+		if eng.Config.Region == "" {
+			err := engine.NoZoneError("zone")
+			return errAnswer(err, deployFields(err, nil)), true
+		}
 		// The configured zone, by its UUID or its name (resolveVMZone, as
 		// a VM's): its name went out as availability_zone_id (P-Z1).
 		if _, _, err := resolveVMZone(ctx, eng); err != nil {

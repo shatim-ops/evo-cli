@@ -671,12 +671,12 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 	if isErr && human {
 		// A command at a terminal asks for the zone the call lacks and
 		// calls again with it (askMissingZone); a script keeps the refusal.
-		zone, ok, err := askMissingZone(ctx, cmd, text)
+		arg, zone, ok, err := askMissingZone(ctx, cmd, text)
 		if err != nil {
 			return "", err
 		}
 		if ok {
-			args["region"] = zone
+			args[arg] = zone
 			text, isErr = t.Handler(ctx, args)
 		}
 	}
@@ -887,10 +887,9 @@ func argsHint(help string) string {
 // tool argument, with the command's flag for it: what the tool's hint says
 // to an agent (the argument, the server's settings), in the CLI's terms.
 var missingInputHints = map[string]func(flag string) string{
-	"region": func(flag string) string {
-		return i18n.Tf("Pass %s (list: evo vm zones), or keep a zone in the profile: evo configure --region <zone>.",
-			"Задайте %s (список: evo vm zones) или evo configure --region <зона>.", flag)
-	},
+	"region": zoneHint,
+	// disk_create's zone (D86): the same setting by another argument.
+	"zone": zoneHint,
 	"image": func(flag string) string {
 		return i18n.Tf("Pass %[1]s (list: evo image list), e.g. %[1]s Ubuntu-24.04.",
 			"Задайте %[1]s (список: evo image list), например %[1]s Ubuntu-24.04.", flag)
@@ -899,6 +898,12 @@ var missingInputHints = map[string]func(flag string) string{
 		return i18n.Tf("Pass %[1]s (list: evo vpc subnets) or another zone with --region; if the project has no subnet in any zone, create one: evo vpc subnet-create.",
 			"Задайте %[1]s (список: evo vpc subnets) или другую зону через --region; если в проекте нет подсети ни в одной зоне — создайте её: evo vpc subnet-create.", flag)
 	},
+}
+
+// zoneHint is the CLI's hint for the zone a call lacks, by its flag.
+func zoneHint(flag string) string {
+	return i18n.Tf("Pass %s (list: evo vm zones), or keep a zone in the profile: evo configure --region <zone>.",
+		"Задайте %s (список: evo vm zones) или evo configure --region <зона>.", flag)
 }
 
 // missingInputHint is the CLI's hint for each input of missing (the
