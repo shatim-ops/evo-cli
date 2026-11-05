@@ -25,9 +25,15 @@ var loopbackRoutes = map[string]bool{
 	"POST /cancel":  true,
 }
 
-// loopbackCSP is the policy of every page: nothing loads, no script, the
-// form goes to the loopback alone, no frame.
-const loopbackCSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"
+// loopbackCSP is the policy of every page: nothing loads but the fonts of
+// the loopback itself (SB Sans, embedded: TestFonts_ServedByTheLoopback),
+// no script, the form goes to the loopback alone, no frame.
+const loopbackCSP = "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; form-action 'self'; frame-ancestors 'none'"
+
+// ownFont is the one url() a page may carry: a face the loopback serves
+// from the binary. GET /fonts/<face>.woff2 of a real face is the only
+// route beside loopbackRoutes; any other /fonts/ path is 404 like the rest.
+var ownFont = regexp.MustCompile(`url\(/fonts/[A-Za-z]+\.woff2\)`)
 
 // offSite finds in a page what loads or links another origin: a script, a
 // stylesheet or image, url() and @import of CSS, and an address of a link,
@@ -114,8 +120,9 @@ func TestLoopback_ClosedSurface(t *testing.T) {
 					if r.header.Get("X-Frame-Options") != "DENY" {
 						t.Errorf("%s: X-Frame-Options %q", r.what, r.header.Get("X-Frame-Options"))
 					}
+					body := ownFont.ReplaceAllString(r.body, "")
 					for _, re := range offSite {
-						if m := re.FindString(r.body); m != "" {
+						if m := re.FindString(body); m != "" {
 							t.Errorf("%s: the page loads or links another origin: %q", r.what, m)
 						}
 					}
