@@ -247,15 +247,19 @@ func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.Ap
 	return state.Update(state.DefaultPath(stateDir), stateLockWait, func(sf *state.File) error {
 		now := time.Now()
 		rec := state.DeploymentRecord{
-			ID:                 res.VMID,
-			VMID:               res.VMID,
-			VMIP:               res.PublicIP,
-			FloatingIPID:       res.FloatingIPID,
-			ProjectID:          plan.ProjectID,
-			VMFlavor:           plan.VM.Flavor.Name,
-			Region:             plan.VM.Zone.ID,
-			SSHUser:            plan.SSH.Login,
-			Status:             status,
+			ID:           res.VMID,
+			VMID:         res.VMID,
+			VMIP:         res.PublicIP,
+			FloatingIPID: res.FloatingIPID,
+			ProjectID:    plan.ProjectID,
+			VMFlavor:     plan.VM.Flavor.Name,
+			Region:       plan.VM.Zone.ID,
+			SSHUser:      plan.SSH.Login,
+			Status:       status,
+			// Its way on, when unfinished, is deploy_apply with its plan
+			// (D82, R-35).
+			Source:             state.SourceDeployApply,
+			PlanID:             plan.PlanID,
 			SecurityGroupID:    res.Ports.SecurityGroupID,
 			SecurityGroupPorts: res.Ports.SecurityGroupPorts,
 			OpenedRules:        res.Ports.OpenedRules,
