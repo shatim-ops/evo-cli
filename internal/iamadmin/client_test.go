@@ -27,6 +27,7 @@ const (
 	project = "00000000-0000-4000-8000-0000000000a1"
 	saID    = "00000000-0000-4000-8000-0000000000c1"
 	token   = "TOKEN-VALUE-MUST-NOT-LEAVE"
+	secret  = "SECRET-VALUE-MUST-NOT-LEAVE"
 )
 
 type world struct {
@@ -72,6 +73,15 @@ func (w *world) serve(rw http.ResponseWriter, r *http.Request) {
 	if w.status != 0 {
 		rw.WriteHeader(w.status)
 		fmt.Fprintf(rw, `{"code":%d,"message":"refused by the world"}`, w.status)
+		return
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/api/v2/serviceAccounts/"+saID+"/accessKeys" {
+		key := map[string]any{}
+		for k, v := range map[string]any{"id": "ak-1", "keyId": "KEYID1", "secret": secret, "description": "evo login",
+			"expiredAt": "2026-12-05T00:00:00Z", "createdAt": "2026-11-05T00:00:00Z", "serviceAccountId": saID} {
+			key[w.key(k)] = v
+		}
+		_ = json.NewEncoder(rw).Encode(map[string]any{w.key("accessKeys"): []any{key}})
 		return
 	}
 	if r.Method != http.MethodGet || r.URL.Path != "/api/v3/permissions" {
@@ -201,5 +211,34 @@ func TestErrors(t *testing.T) {
 		if strings.Contains(text, token) || !strings.Contains(err.Error(), fmt.Sprintf("iam API %d", st)) {
 			t.Errorf("%d: %q", st, text)
 		}
+	}
+}
+
+// The list of keys carries each key's secret; what the client returns has
+// no field for it (R-43). Both spellings; the path is the spec's.
+func TestAccessKeys_NoSecret(t *testing.T) {
+	for _, snake := range []bool{false, true} {
+		w := &world{snake: snake}
+		keys, err := w.client(t).AccessKeys(context.Background(), saID)
+		if err != nil {
+			t.Fatalf("snake=%v: %v", snake, err)
+		}
+		if len(keys) != 1 || keys[0] != (AccessKey{ID: "ak-1", KeyID: "KEYID1", ExpiredAt: "2026-12-05T00:00:00Z"}) {
+			t.Fatalf("snake=%v: keys %+v", snake, keys)
+		}
+		if b, _ := json.Marshal(keys); strings.Contains(string(b), secret) || strings.Contains(string(b), token) {
+			t.Fatalf("snake=%v: a secret left the client: %s", snake, b)
+		}
+	}
+	// The service account's id is a segment of the path: anything but an
+	// id is refused before the request.
+	w := &world{}
+	for _, v := range []string{"../permissions", "..", ".", "a/b", "", "x y", "a.b"} {
+		if _, err := w.client(t).AccessKeys(context.Background(), v); err == nil {
+			t.Errorf("service account %q accepted", v)
+		}
+	}
+	if len(w.asked) != 0 {
+		t.Errorf("%d requests for refused ids", len(w.asked))
 	}
 }

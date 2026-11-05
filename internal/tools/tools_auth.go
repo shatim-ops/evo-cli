@@ -99,7 +99,72 @@ func (s *Registry) handleWhoami(ctx context.Context, _ map[string]any) (string, 
 	if note != "" {
 		out["roles_note"] = note
 	}
+	// The term of the key, read here and in doctor only (R-26): a person
+	// issues the next key, and the agent learns when it has to ask one.
+	term, termNote := keyTerm(ctx, eng.Auth, tok, cfg.KeyID)
+	if !term.IsZero() {
+		out["key_expires_at"] = term.UTC().Format(time.RFC3339)
+		if keyExpiresSoon(term) {
+			out["key_expires_soon"] = true
+		}
+	} else {
+		out["key_term_note"] = termNote
+	}
 	return toJSON(out), false
+}
+
+// keyTermWarning is how long before its term a key is said to expire.
+const keyTermWarning = 5 * 24 * time.Hour
+
+// keyExpiresSoon reports whether the key's term is within keyTermWarning
+// of now (the answer's value: clock).
+func keyExpiresSoon(term time.Time) bool { return term.Sub(clock.Now()) <= keyTermWarning }
+
+// keyTerm is the term of the key keyID: the expiredAt of the access key of
+// the key's service account — the token's sub — with that keyId (A0-3).
+// It is zero when unknown, and note then says why: IAM did not tell (no
+// right to read the keys), the key is not in the list, it has no term.
+func keyTerm(ctx context.Context, tp auth.TokenProvider, tok auth.Token, keyID string) (term time.Time, note string) {
+	sub := jwtSub(tok.Value)
+	if sub == "" {
+		return time.Time{}, i18n.T("unknown: the IAM token names no service account", "неизвестен: токен IAM не называет сервисный аккаунт")
+	}
+	ctx, cancel := context.WithTimeout(ctx, doctorProbeTimeout)
+	defer cancel()
+	keys, err := iamadmin.New(tp, "").AccessKeys(ctx, sub)
+	if err != nil {
+		return time.Time{}, i18n.Tf("unknown: IAM did not tell it (%s)", "неизвестен: IAM его не сообщил (%s)", CheckDetail(err))
+	}
+	for _, k := range keys {
+		if k.KeyID != keyID {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, k.ExpiredAt)
+		if k.ExpiredAt == "" || err != nil {
+			return time.Time{}, i18n.T("unknown: IAM names no term of the key (no term)", "неизвестен: IAM не называет срок ключа (no term)")
+		}
+		return t, ""
+	}
+	return time.Time{}, i18n.T("unknown: the key is not in the list of its service account's keys (not in the list)",
+		"неизвестен: ключа нет в списке ключей его сервисного аккаунта (not in the list)")
+}
+
+// keyTermCheck is doctor's check of the key's term: a warning within
+// keyTermWarning, with the way — a person issues a new key — and
+// «unknown» (skip) when IAM does not tell it; never a failure.
+func keyTermCheck(ctx context.Context, tp auth.TokenProvider, tok auth.Token, keyID string) DoctorCheck {
+	term, note := keyTerm(ctx, tp, tok, keyID)
+	switch {
+	case term.IsZero():
+		return DoctorCheck{Name: "key term", Status: CheckSkip, Detail: note}
+	case keyExpiresSoon(term):
+		return DoctorCheck{Name: "key term", Status: CheckWarn,
+			Detail: i18n.Tf("the key expires %s: a person issues a new one before that — 'evo login' or a new key in the console (Users → Service accounts)",
+				"ключ истекает %s: новый выпускает человек до этого срока — 'evo login' или новый ключ в консоли («Пользователи» → «Сервисные аккаунты»)",
+				term.UTC().Format(time.RFC3339))}
+	}
+	return DoctorCheck{Name: "key term", Status: CheckOK,
+		Detail: i18n.Tf("the key is valid until %s", "ключ действует до %s", term.UTC().Format(time.RFC3339))}
 }
 
 // keyRole is a role of the key on the project as whoami names it.
@@ -218,7 +283,8 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		checks = append(checks, DoctorCheck{Name: "credentials", Status: CheckOK,
 			Detail: i18n.Tf("key %s: %s, valid for %s", "ключ %s: %s, действует ещё %s",
 				config.MaskKeyID(eng.Config.KeyID), src, tok.TTL().Truncate(time.Minute))})
-		checks = append(checks, keyScopeCheck(ctx, eng.Auth), keyRolesCheck(ctx, eng.Auth, tok, eng.Config.ProjectID))
+		checks = append(checks, keyScopeCheck(ctx, eng.Auth), keyRolesCheck(ctx, eng.Auth, tok, eng.Config.ProjectID),
+			keyTermCheck(ctx, eng.Auth, tok, eng.Config.KeyID))
 	}
 	return checks
 }

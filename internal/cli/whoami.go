@@ -24,14 +24,14 @@ func newWhoamiCmd() *cobra.Command {
 		Use:   "whoami",
 		Short: i18n.T("Show the active profile and check its credentials", "Активный профиль и проверка его ключа"),
 		Long: i18n.T(`Exchange the access key of the active profile for an IAM token and show
-the profile, the key ID (masked), the project, the token expiry and the
-key's roles on the project (or why they are unknown).
+the profile, the key ID (masked), the project, the token expiry, the
+key's roles on the project and its term (or why they are unknown).
 
 A valid token cached by an earlier command is reused; IAM is not contacted
 again until it is about to expire. Exits with 2 when the credentials are
 missing or rejected.`, `Обменять ключ доступа активного профиля на токен IAM и показать профиль,
-Key ID (маскированный), проект, срок действия токена и роли ключа на проекте
-(или почему они неизвестны).
+Key ID (маскированный), проект, срок действия токена, роли ключа на проекте
+и его срок (или почему они неизвестны).
 
 Действующий токен, сохранённый предыдущей командой, используется повторно:
 к IAM команда обращается, только когда срок токена подходит к концу. Код
@@ -69,7 +69,10 @@ func showWhoami(p *output.Printer, text string) error {
 			Name      string `json:"name"`
 			ExpiresAt string `json:"expires_at"`
 		} `json:"roles"`
-		RolesNote string `json:"roles_note"`
+		RolesNote      string `json:"roles_note"`
+		KeyExpiresAt   string `json:"key_expires_at"`
+		KeyExpiresSoon bool   `json:"key_expires_soon"`
+		KeyTermNote    string `json:"key_term_note"`
 	}
 	if err := json.Unmarshal([]byte(text), &a); err != nil {
 		return err
@@ -110,6 +113,17 @@ func showWhoami(p *output.Printer, text string) error {
 	}
 	if roles != "" {
 		fmt.Fprintf(w, i18n.T("Roles:       %s\n", "Роли:        %s\n"), roles)
+	}
+	term := a.KeyTermNote
+	if a.KeyExpiresAt != "" {
+		term = i18n.Tf("valid until %s", "действует до %s", a.KeyExpiresAt)
+	}
+	if term != "" {
+		fmt.Fprintf(w, i18n.T("Key term:    %s\n", "Срок ключа:  %s\n"), term)
+	}
+	if a.KeyExpiresSoon {
+		p.Warning(i18n.Tf("the access key expires %s: a person issues a new one before that — 'evo login' or a new key in the console",
+			"ключ доступа истекает %s: новый выпускает человек до этого срока — 'evo login' или новый ключ в консоли", a.KeyExpiresAt))
 	}
 	if a.ProjectID == "" {
 		// The hint of the commands that refuse without a project.
