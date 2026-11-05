@@ -94,6 +94,12 @@ func TestWorkflows_DevBuildIsNoRelease(t *testing.T) {
 	if j.Environment != "" {
 		t.Errorf("dev-build: environment %q — no secrets of an environment", j.Environment)
 	}
+	// A secret reaches a step by the job's or the workflow's env too.
+	for where, env := range map[string]map[string]string{"the job's env": j.Env, "the env of ci.yml": ci.Env} {
+		if strings.Contains(fmt.Sprint(env), "secrets.") {
+			t.Errorf("dev-build: %s reads a secret: %v", where, env)
+		}
+	}
 	uploads := 0
 	for _, s := range j.Steps {
 		text := s.Run + fmt.Sprint(s.With) + fmt.Sprint(s.Env)
