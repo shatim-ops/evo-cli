@@ -16,11 +16,12 @@ import (
 // state file docs/internal/state/<file>.md: what a new session of the role
 // reads first, a slice of now, not its history (owner's decision 27.10,
 // 1.4.0).
-var stateRoles = []string{"release", "development", "process", "product"}
+// «Риск-менеджмент» — the pilot of 1.8 (owner's decision 03.11, CLAUDE.md §0).
+var stateRoles = []string{"release", "development", "process", "product", "risk"}
 
 // stateMissing are the roles whose file is not written yet, each with the
 // PR that writes it. The list only shrinks: a line whose file is there
-// fails the test.
+// fails the test. Closes by 1.8.
 var stateMissing = map[string]string{}
 
 // stateSections are the headings of a state file, in this order, after the

@@ -30,31 +30,67 @@ import (
 // does not answer until its context ends, as a connect to a VM that drops
 // the packets, an upload or a command that never returns. notReady makes
 // the check that Docker is ready fail on every call, as a VM whose Docker
-// never comes up. The other calls are the stage VM's.
+// never comes up. silent makes every connect wait connectWait (or its
+// context) and fail as a timeout: SSH that never answers, as an outbound
+// port 22 closed where evo runs. unreachable fails every SSH call at once,
+// uncounted: what a test reads between two calls (logs) does not move the
+// walk. The other calls are the stage VM's.
 type slowSSHVM struct {
 	*stageVM
-	mu       sync.Mutex
-	n, hang  int
-	hung     bool
-	ops      []string
-	notReady bool
+	mu          sync.Mutex
+	n, hang     int
+	hung        bool
+	ops         []string
+	notReady    bool
+	silent      bool
+	connectWait time.Duration
+	unreachable bool
 }
+
+// errSSHSilent is a connect to a VM whose SSH never answers.
+var errSSHSilent = errors.New("dial tcp 192.0.2.10:22: i/o timeout")
 
 // call counts an SSH call and holds it when it is the one to hang.
 func (v *slowSSHVM) call(ctx context.Context, op string) error {
 	v.mu.Lock()
+	if v.unreachable {
+		v.mu.Unlock()
+		return errSSHSilent
+	}
 	v.n++
 	v.ops = append(v.ops, op)
 	held := v.n == v.hang
 	if held {
 		v.hung = true
 	}
+	silent := v.silent && op == "connect"
 	v.mu.Unlock()
 	if held {
 		<-ctx.Done()
 		return ctx.Err()
 	}
+	if silent {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(v.connectWait):
+			return errSSHSilent
+		}
+	}
 	return nil
+}
+
+// reading runs read with every SSH call failing at once and uncounted.
+func (v *slowSSHVM) reading(read func()) {
+	v.mu.Lock()
+	v.unreachable = true
+	v.mu.Unlock()
+	defer func() {
+		v.mu.Lock()
+		v.unreachable = false
+		v.mu.Unlock()
+	}()
+	read()
 }
 
 func (v *slowSSHVM) Connect(ctx context.Context, host string, port int, user string, key []byte, known string) error {
@@ -114,8 +150,9 @@ func firstWords(cmd string) string {
 // to its own timeout (Docker: 15 min), not to a short one of the world.
 // The intervals of the SSH side are production's too — a wait between two
 // attempts that the budget does not end lasts seconds, not a millisecond;
-// a deploy that goes well never waits them. The cloud's stay short.
-func progressBudgetRegistry(t *testing.T, vm *slowSSHVM) *Registry {
+// a deploy that goes well never waits them. The cloud's stay short. tune
+// changes the timings of the world (a test that reads a note of a wait).
+func progressBudgetRegistry(t *testing.T, vm *slowSSHVM, tune ...func(*engine.Timings)) *Registry {
 	t.Helper()
 	faultToolsIsolate(t)
 	timings := faultToolsTimings()
@@ -123,6 +160,9 @@ func progressBudgetRegistry(t *testing.T, vm *slowSSHVM) *Registry {
 	timings.DockerPollInterval, timings.SSHRetryInterval = 0, 0
 	// A few reads of a going stage per call, not one per millisecond.
 	timings.StagePollInterval = progressBudget / 4
+	for _, f := range tune {
+		f(&timings)
+	}
 	compose := writeTestCompose(t)
 	dir := t.TempDir()
 	cloud := &faultCloud{}
