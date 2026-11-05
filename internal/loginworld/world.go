@@ -163,9 +163,12 @@ func New(t testing.TB, v Variant) *World {
 	w := &World{t: t, v: v, key: rsaKey, codes: map[string]authz{},
 		accounts: map[string]*Account{}, perms: map[string]*Permission{},
 		keys: map[string]*Key{}, saTokens: map[string]string{}}
-	w.srv = httptest.NewServer(http.HandlerFunc(w.serve))
-	t.Cleanup(w.srv.Close)
-	w.URL, w.Issuer = w.srv.URL, w.srv.URL+IssuerPath
+	// Everything the handler reads is written before the server starts:
+	// its requests may come from another process (the probe script), whose
+	// order the race detector does not see.
+	w.srv = httptest.NewUnstartedServer(http.HandlerFunc(w.serve))
+	w.URL = "http://" + w.srv.Listener.Addr().String()
+	w.Issuer = w.URL + IssuerPath
 	n := 0
 	if v.AccountLimit {
 		n = 10
@@ -187,6 +190,8 @@ func New(t testing.TB, v Variant) *World {
 			w.seedPermission(a.ID, time.Now().Add(365*24*time.Hour))
 		}
 	}
+	w.srv.Start()
+	t.Cleanup(w.srv.Close)
 	return w
 }
 
