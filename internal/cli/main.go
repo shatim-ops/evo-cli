@@ -297,6 +297,7 @@ func newRootCmd() *cobra.Command {
 			"Управление ресурсами Cloud.ru Evolution: ВМ, сети, диски, Kubernetes, базы данных,\n"+
 				"Object Storage, секреты; развёртывание compose-проектов.\n\n"+
 				"Сообщения по-английски: EVO_LANG=en.") +
+			"\n\n" + i18n.Tf("The sign-in pages of evo login are named %s: it is evo.", "Страницы входа evo login называются %s — это evo.", product.PageName) +
 			"\n\n" + i18n.T("Welcome to Cloud.ru", "Добро пожаловать в Cloud.ru"),
 		// evo --version prints what 'evo version' prints (benchmark: every
 		// CLI there has the flag).

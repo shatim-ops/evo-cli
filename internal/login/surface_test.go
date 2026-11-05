@@ -18,16 +18,36 @@ import (
 
 // loopbackRoutes are the routes of the loopback of evo login, closed: a
 // route added to loopback.go fails TestLoopback_ClosedSurface until it is
-// named here (B-6).
+// named here (B-6). fontRoute is the one route of static files: a face
+// embedded in the binary, GET alone, cached (fontCache), never a page.
 var loopbackRoutes = map[string]bool{
 	"GET /callback": true,
 	"POST /grant":   true,
 	"POST /cancel":  true,
+	fontRoute:       true,
 }
 
-// loopbackCSP is the policy of every page: nothing loads, no script, the
-// form goes to the loopback alone, no frame.
-const loopbackCSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"
+const fontRoute = "GET /fonts/<face>.woff2"
+
+// route is the route of a probe: a real embedded face is fontRoute.
+func route(probe string) string {
+	method, path, _ := strings.Cut(probe, " ")
+	if face, ok := strings.CutPrefix(path, "/fonts/"); ok && method == http.MethodGet {
+		if _, err := fontFiles.ReadFile("fonts/" + face); err == nil {
+			return fontRoute
+		}
+	}
+	return probe
+}
+
+// loopbackCSP is the policy of every page: nothing loads but the fonts of
+// the loopback itself (SB Sans, embedded: TestFonts_ServedByTheLoopback),
+// no script, the form goes to the loopback alone, no frame.
+const loopbackCSP = "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; form-action 'self'; frame-ancestors 'none'"
+
+// ownFont is the one url() a page may carry: a face the loopback serves
+// from the binary (fontRoute); any other /fonts/ path is 404 like the rest.
+var ownFont = regexp.MustCompile(`url\(/fonts/[A-Za-z]+\.woff2\)`)
 
 // offSite finds in a page what loads or links another origin: a script, a
 // stylesheet or image, url() and @import of CSS, and an address of a link,
@@ -44,7 +64,7 @@ var surfaceProbes = func() []string {
 	var out []string
 	for _, m := range []string{"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"} {
 		for _, p := range []string{"/", "/callback", "/grant", "/cancel", "/callback/", "/grant/x", "/favicon.ico",
-			"/fonts/x.woff2", "/static/x.css", "/debug/pprof/", "/%2e%2e/etc/passwd", "/CALLBACK"} {
+			"/fonts/x.woff2", "/fonts/SBSansText.woff2", "/fonts/../fonts.go", "/static/x.css", "/debug/pprof/", "/%2e%2e/etc/passwd", "/CALLBACK"} {
 			out = append(out, m+" "+p)
 		}
 	}
@@ -103,6 +123,15 @@ func TestLoopback_ClosedSurface(t *testing.T) {
 					}
 					continue
 				}
+				// A face: the one answer that is cached, binary, not a page.
+				if strings.HasPrefix(r.what, "probe ") && route(strings.TrimPrefix(r.what, "probe ")) == fontRoute {
+					probes++
+					if h := r.header; r.status != http.StatusOK || h.Get("Content-Type") != "font/woff2" || h.Get("X-Content-Type-Options") != "nosniff" ||
+						h.Get("Cache-Control") != fontCache || h.Get("Referrer-Policy") != "no-referrer" {
+						t.Errorf("%s: %d %v — a face of the binary, cached, nosniff", r.what, r.status, h)
+					}
+					continue
+				}
 				if r.header.Get("Referrer-Policy") != "no-referrer" || r.header.Get("Cache-Control") != "no-store" {
 					t.Errorf("%s: Referrer-Policy %q, Cache-Control %q", r.what, r.header.Get("Referrer-Policy"), r.header.Get("Cache-Control"))
 				}
@@ -114,8 +143,9 @@ func TestLoopback_ClosedSurface(t *testing.T) {
 					if r.header.Get("X-Frame-Options") != "DENY" {
 						t.Errorf("%s: X-Frame-Options %q", r.what, r.header.Get("X-Frame-Options"))
 					}
+					body := ownFont.ReplaceAllString(r.body, "")
 					for _, re := range offSite {
-						if m := re.FindString(r.body); m != "" {
+						if m := re.FindString(body); m != "" {
 							t.Errorf("%s: the page loads or links another origin: %q", r.what, m)
 						}
 					}
@@ -128,7 +158,7 @@ func TestLoopback_ClosedSurface(t *testing.T) {
 					continue
 				}
 				probes++
-				route := strings.TrimPrefix(r.what, "probe ")
+				route := route(strings.TrimPrefix(r.what, "probe "))
 				switch {
 				case loopbackRoutes[route] && r.status != http.StatusForbidden:
 					t.Errorf("%s: %d — a route without the state is 403", r.what, r.status)

@@ -15,6 +15,11 @@ import "sync/atomic"
 // stands without "evo" (TestNoBareCMCP).
 const Name = "evo CMCP"
 
+// PageName is the name the sign-in pages of evo login carry (D34, the
+// owner's amendment 05.11, variant A): the CLI, MCP, README, User-Agent
+// and evo version keep Name; a line of evo --help and of README ties them.
+const PageName = "Evolution CMCP"
+
 // TitleEN and TitleRU name it with what it is: the first line of evo
 // --help, in the CLI's language (i18n.T(TitleEN, TitleRU)). MCP sends
 // English only (D6), so it gets Name.

@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -109,6 +110,19 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 	if len(w.Accounts()) != 1 || len(w.Permissions()) != 1 {
 		t.Errorf("logout touched the account or its role: %+v %+v", w.Accounts(), w.Permissions())
 	}
+	// The text result after a login that found the account: the role's
+	// term, the account reused, the check; no previous key — logout
+	// deleted it.
+	code, stdout, stderr = runCLI(t, "", "login", "--for", "agent", "--key-ttl", "7d")
+	if code != 0 {
+		t.Fatalf("login again: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	role := login.TResultRole(time.Now()) // the date is the world's: the line without it
+	for _, want := range []string{role[:len(role)-len("02.01.2006")], login.TResultReused("evo-agent", ""), login.TResultCheck("agent")} {
+		if !strings.Contains(stdout+stderr, want) {
+			t.Errorf("no %q in the result:\n%s\n%s", want, stdout, stderr)
+		}
+	}
 }
 
 // evo login takes no --yes: access is the page's «Grant access» alone
@@ -177,17 +191,17 @@ func TestAgentSetup_WarnsOfTheLoginKey(t *testing.T) {
 func TestLogin_PreselectSource(t *testing.T) {
 	setupCLI(t)
 	t.Setenv("CLOUDRU_PROJECT_ID", "")
-	if id, from := loginPreselect(""); id != "" || from != "" {
+	if id, from, _ := loginPreselect(""); id != "" || from != "" {
 		t.Errorf("no profile, no variable: %q %q", id, from)
 	}
 	if err := config.SaveProfile("default", config.Profile{ProjectID: "p-prof"}, config.Credentials{}); err != nil {
 		t.Fatal(err)
 	}
-	if id, from := loginPreselect(""); id != "p-prof" || from != login.TFromProfile("default") {
+	if id, from, env := loginPreselect(""); id != "p-prof" || from != login.TFromProfile("default") || env {
 		t.Errorf("profile: %q %q", id, from)
 	}
 	t.Setenv("CLOUDRU_PROJECT_ID", "p-env")
-	if id, from := loginPreselect(""); id != "p-env" || from != login.TFromEnv() {
+	if id, from, env := loginPreselect(""); id != "p-env" || from != login.TFromEnv() || !env {
 		t.Errorf("variable: %q %q", id, from)
 	}
 }

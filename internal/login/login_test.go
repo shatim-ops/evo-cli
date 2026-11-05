@@ -596,11 +596,11 @@ func TestLogin_UnknownActionIsNoRefusal(t *testing.T) {
 // source, and the page offers it checked.
 func TestLogin_PreselectNamedInTheTerminal(t *testing.T) {
 	w := newWorld(t, loginworld.Variant{})
-	r := login(t, w, &browser{}, Choice{Preselect: loginworld.Project, PreselectFrom: "из CLOUDRU_PROJECT_ID"}, nil, nil)
+	r := login(t, w, &browser{}, Choice{Preselect: loginworld.Project, PreselectFrom: "из CLOUDRU_PROJECT_ID", PreselectEnv: true}, nil, nil)
 	if r.err != nil {
 		t.Fatal(r.err)
 	}
-	if !strings.Contains(r.out, "из CLOUDRU_PROJECT_ID") || !strings.Contains(r.b.consent, tPreselectedFrom("из CLOUDRU_PROJECT_ID")) {
+	if !strings.Contains(r.out, "из CLOUDRU_PROJECT_ID") || !strings.Contains(r.b.consent, tEnvProjectPicked()) {
 		t.Errorf("terminal:\n%s", r.out)
 	}
 }
@@ -640,5 +640,15 @@ func TestLogin_FalseReadsTheCatalog(t *testing.T) {
 	var ce *clierrors.CLIError
 	if !errors.As(r.err, &ce) || ce.Code != clierrors.CodeAuthFailed || ce.Details["step"] != stepAccount || len(w.Accounts()) != 0 {
 		t.Errorf("a 403 at the first write: %v %v; accounts %d", r.err, detailsOf(ce), len(w.Accounts()))
+	}
+}
+
+// D34, variant A: before the browser the terminal says once that the
+// Evolution CMCP page opens.
+func TestLogin_SaysThePageName(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil || strings.Count(r.out, tOpenPage()) != 1 || strings.Index(r.out, tOpenPage()) > strings.Index(r.out, tOpen()) {
+		t.Errorf("err %v:\n%s", r.err, r.out)
 	}
 }

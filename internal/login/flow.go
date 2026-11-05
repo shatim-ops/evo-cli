@@ -59,6 +59,10 @@ type Choice struct {
 	// that source on the page and in the terminal. --project filters the
 	// list instead and wins.
 	Preselect, PreselectFrom string
+	// PreselectEnv: the preselected project is CLOUDRU_PROJECT_ID; only
+	// then the page names the source (R-48, conclusion 27); the terminal
+	// names it always.
+	PreselectEnv bool
 }
 
 // Store is where the key goes: the profile of an audience, the key it holds
@@ -88,7 +92,12 @@ type Saved struct {
 // caller.
 type Result struct {
 	Profile, ProjectID, ProjectName, Account, Role, KeyID string
-	AccountReused                                         bool
+	// CustomerName is the organization of the project, for the page.
+	CustomerName string
+	// RoleExpiresAt is the role's actual term: a longer one the account
+	// held is kept («Риск», conclusion 26).
+	RoleExpiresAt time.Time
+	AccountReused bool
 	// RevokedKeyID is the key ID of the previous key, revoked; PreviousNote
 	// says why it is left, when it is.
 	RevokedKeyID, PreviousNote string
@@ -188,7 +197,8 @@ type session struct {
 
 	made []undo // what this login created, oldest first
 
-	tellMu sync.Mutex
+	tellMu      sync.Mutex
+	agentWarned bool // the warning of a key for an agent is said once
 }
 
 // undo deletes one thing this login made.
@@ -384,8 +394,17 @@ func (s *session) tellPreselect() {
 	if i := s.preselected(); i >= 0 {
 		s.tell(tPreselectTerminal(s.projects[i].Name, s.choice.PreselectFrom))
 	} else if s.preselectDenied() {
-		s.tell(tPreselectNoRight(s.choice.PreselectFrom))
+		s.tell(projectNoRight(s.choice.PreselectEnv))
 	}
+}
+
+// projectNoRight says why the preselected project is not checked, by
+// where it came from.
+func projectNoRight(env bool) string {
+	if env {
+		return tEnvProjectNoRight()
+	}
+	return tProfileProjectNoRight()
 }
 
 // forbidden is a 403 of the platform at a write as what it is, «no right
@@ -546,8 +565,12 @@ func (s *session) grant(ctx context.Context, pl plan, say func(string)) (Result,
 }
 
 func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, error) {
+	if pl.aud == ForAgent {
+		s.warnAgent(pl.term)
+	}
 	aud, p := pl.aud, pl.p
-	res := Result{Profile: pl.profile, ProjectID: p.ID, ProjectName: p.Name, Account: aud.account(), Role: auth.LoginRoleName}
+	res := Result{Profile: pl.profile, ProjectID: p.ID, ProjectName: p.Name, CustomerName: p.CustomerName,
+		Account: aud.account(), Role: auth.LoginRoleName}
 	now := s.cfg.Now()
 	desc := fmt.Sprintf("evo login, %s, %s", s.who.Login, now.UTC().Format("2006-01-02"))
 
@@ -576,9 +599,11 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 
 	// 15. The role until the key's term: a shorter one is moved forward,
 	// a longer one kept, none created.
-	if err := s.role(ctx, p, sa, pl.term); err != nil {
+	roleTerm, err := s.role(ctx, p, sa, pl.term)
+	if err != nil {
 		return res, at(stepPermission, forbidden(err, p.Name))
 	}
+	res.RoleExpiresAt = roleTerm
 	say(tStepRole())
 
 	// 16. The key, last.
@@ -620,17 +645,21 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 
 // role grants the account the login role until term: a permission of a
 // shorter term is moved forward, a longer one kept.
-func (s *session) role(ctx context.Context, p project, sa string, term time.Time) error {
+// It returns the role's actual term: a longer one kept is not shortened.
+func (s *session) role(ctx context.Context, p project, sa string, term time.Time) (time.Time, error) {
 	perms, err := s.admin.RolePermissions(ctx, p.ID, sa, auth.LoginRoleName)
 	if err != nil {
-		return err
+		return term, err
 	}
 	if len(perms) > 0 {
 		have, perr := time.Parse(time.RFC3339, perms[0].ExpiresAt)
 		if perms[0].ExpiresAt != "" && (perr != nil || have.Before(term)) {
-			return s.admin.ExtendPermission(ctx, perms[0].ID, term)
+			return term, s.admin.ExtendPermission(ctx, perms[0].ID, term)
 		}
-		return nil
+		if perms[0].ExpiresAt == "" {
+			return term, nil
+		}
+		return have, nil
 	}
 	g := iamadmin.Grant{SubjectID: sa, ResourceID: p.ID, RoleName: auth.LoginRoleName, ExpiresAt: term}
 	perm, err := s.admin.CreatePermission(ctx, g)
@@ -638,17 +667,17 @@ func (s *session) role(ctx context.Context, p project, sa string, term time.Time
 		// A custom role of the same name: the product role by its id.
 		id, rerr := s.admin.RoleID(ctx, p.Customer, auth.LoginRoleName)
 		if rerr != nil {
-			return err
+			return term, err
 		}
 		g.RoleName, g.RoleID = "", id
 		perm, err = s.admin.CreatePermission(ctx, g)
 	}
 	if err != nil {
-		return err
+		return term, err
 	}
 	s.made = append(s.made, undo{tUndoRole(),
 		func(ctx context.Context) error { return s.admin.DeletePermission(ctx, perm.ID) }})
-	return nil
+	return term, nil
 }
 
 // checkKey exchanges the new key for a token as every later command will.
