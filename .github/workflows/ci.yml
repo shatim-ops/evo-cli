@@ -178,7 +178,7 @@ jobs:
       - name: goreleaser check
         if: runner.os == 'Linux'
         env:
-          # Та же версия, что в release.yml; поднимать в обоих, с sha256
+          # Та же версия, что в release.yml и dev-build; поднимать везде, с sha256
           # архива goreleaser_Linux_x86_64.tar.gz из checksums.txt релиза:
           # https://github.com/goreleaser/goreleaser/releases/download/v2.18.3/checksums.txt
           GORELEASER_VERSION: v2.18.3
@@ -418,6 +418,54 @@ jobs:
           fake="^($(jq -r 'del(._comment) | keys | map(. + "/") | join("|")' scripts/fake-servers.json))"
           dead="$("$(go env GOPATH)/bin/deadcode" ./... | grep -Ev "$fake" || true)"
           if [ -n "$dead" ]; then echo "недостижимый код:"; echo "$dead"; exit 1; fi
+
+  # Сборка из main для живых прогонов (строка плана B-5, #1000): goreleaser
+  # snapshot после зелёных тестов, архивы шести платформ и checksums.txt —
+  # артефактом на 7 дней, в имени -dev и короткий sha. Ночью и вручную на
+  # main, не на каждый push: сборка — 87 МБ, слияний в main — до ~100 в
+  # день (#1005, вариант А). Не выпуск: ни тега, ни релиза, ни подписи;
+  # секретов нет, токен — только чтение (TestWorkflows_DevBuildIsNoRelease).
+  dev-build:
+    needs: test
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Версию snapshot goreleaser берёт от последнего тега.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: go.sum
+      - name: goreleaser snapshot
+        id: build
+        env:
+          # Те же версия и sha256, что у goreleaser check (job test).
+          GORELEASER_VERSION: v2.18.3
+          GORELEASER_SHA256: b8dee4728bca1aba0d71a832a17cd0a3799f75372878e7ffa36aef2343bce0bc
+        run: |
+          dir="$RUNNER_TEMP/goreleaser"
+          mkdir -p "$dir"
+          curl -fsSL --retry 8 --retry-all-errors --retry-delay 15 --retry-max-time 300 -o "$dir/goreleaser.tar.gz" \
+            "https://github.com/goreleaser/goreleaser/releases/download/$GORELEASER_VERSION/goreleaser_Linux_x86_64.tar.gz"
+          echo "$GORELEASER_SHA256  $dir/goreleaser.tar.gz" | sha256sum -c -
+          tar -xzf "$dir/goreleaser.tar.gz" -C "$dir" goreleaser
+          "$dir/goreleaser" release --snapshot --clean --skip=sign,sbom
+          echo "short=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evo-dev-${{ steps.build.outputs.short }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          retention-days: 7
+          if-no-files-found: error
 
   # Проба ubuntu-latest (с 24.10.2026 — ubuntu-26.04, другие coreutils):
   # обёртка evo, Ctrl-C через timeout -s INT. Прогон не роняет и не красит:

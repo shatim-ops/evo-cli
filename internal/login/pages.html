@@ -59,7 +59,7 @@ input[type=radio] { position: absolute; width: 1px; height: 1px; margin: -1px; o
 .seg label { text-align: center; padding: 8px 12px; border-radius: 10px; cursor: pointer; font-weight: 600; }
 .seg label .d { display: block; font-weight: 400; color: var(--support); font-size: 12px; line-height: 16px; }
 .summary { padding: 16px 24px; border-radius: 16px; background: var(--surface2); border: 1px solid var(--decor); display: flex; flex-direction: column; gap: 8px; }
-.summary .x { display: none; }
+.summary .x, .actions .x { display: none; }
 .summary .sel { display: inline; }
 .actions { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
 button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-radius: 14px; border: 2px solid transparent; cursor: pointer; }
@@ -107,7 +107,8 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
     <fieldset>
       <legend>{{.ProjectLegend}}</legend>
 {{range .Projects}}{{if .OrgHeading}}<div class="org">{{.OrgHeading}}</div>
-{{end}}<label class="opt" for="{{.HTMLID}}"{{if not .Allowed}} aria-disabled="true"{{end}}><span class="t"><span class="mono">{{.Name}}</span>{{if not .Allowed}}<span class="small">{{$.NeedAdmin}}</span>{{end}}</span></label>
+{{end}}<label class="opt" for="{{.HTMLID}}"{{if not .Allowed}} aria-disabled="true"{{end}}><span class="t"><span class="mono">{{.Name}}</span>{{if .Source}}<span class="support small">{{.Source}}</span>{{end}}{{if not .Allowed}}<span class="small">{{$.NeedAdmin}}</span>{{end}}</span></label>
+{{end}}{{if .PreselectNote}}      <p class="support small">{{.PreselectNote}}</p>
 {{end}}      <p class="support small">{{.NoRightNote}}</p>
     </fieldset>
     <fieldset>
@@ -130,7 +131,7 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
     </div>
     <div class="actions">
       <button type="submit" class="outline" formaction="/cancel" formnovalidate>{{.Cancel}}</button>
-      <button type="submit" class="primary">{{.Grant}}</button>
+      <button type="submit" class="primary">{{.GrantIn}} <span class="mono">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span></button>
     </div>
     <p class="support small">{{.SecretNote}}</p>
   </form>
