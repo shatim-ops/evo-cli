@@ -31,6 +31,7 @@ export BEFORE=$dir/before.json
 OPENED=0 run
 want "deploy не открыл правило — код 1" "$rc" 1
 want "deploy не открыл правило — сказано" "$(grep -c 'сценарий правила не проверил' "$dir/out")" 1
+want "id группы маскируется" "$(grep -c '^::add-mask::sg-1$' "$dir/out")" 1
 
 printf '%s\n' "$mine" > "$dir/before.json"
 OPENED=1 run

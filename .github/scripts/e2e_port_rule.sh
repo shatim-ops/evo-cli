@@ -11,6 +11,9 @@
 # (число правил deploy в state до destroy), BEFORE (группы до deploy).
 set -euo pipefail
 : "${SG_ID:?}" "${PORT:?}" "${OPENED:?}" "${BEFORE:?}"
+# The id is masked by the step that reads it from state; masked here too,
+# as e2e_rules_sweep.sh does, so a reuse of the script keeps it out of the log.
+echo "::add-mask::$SG_ID"
 # $sg and $pr are jq's variables, not the shell's.
 # shellcheck disable=SC2016
 rule='[.security_groups[] | select(.id==$sg) | .rules[]? | select(.direction=="ingress" and (.port_range|tostring)==$pr and ((.description // "") | startswith("evo:") or startswith("cloudru-vm:")))] | length'
