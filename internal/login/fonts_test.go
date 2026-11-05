@@ -31,13 +31,14 @@ func TestFonts_ServedByTheLoopback(t *testing.T) {
 	}
 	for _, u := range urls {
 		w := get(l.host, u[1])
-		if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "font/woff2" || !bytes.HasPrefix(w.Body.Bytes(), []byte("wOF2")) {
-			t.Errorf("%s: %d %q", u[1], w.Code, w.Header().Get("Content-Type"))
+		if h := w.Header(); w.Code != http.StatusOK || h.Get("Content-Type") != "font/woff2" || h.Get("X-Content-Type-Options") != "nosniff" ||
+			h.Get("Cache-Control") != fontCache || h.Get("Referrer-Policy") != "no-referrer" || !bytes.HasPrefix(w.Body.Bytes(), []byte("wOF2")) {
+			t.Errorf("%s: %d %q %q %q", u[1], w.Code, h.Get("Content-Type"), h.Get("X-Content-Type-Options"), h.Get("Cache-Control"))
 		}
 	}
 	for _, p := range []string{"/fonts/missing.woff2", "/fonts/../fonts.go", "/fonts/NOTICE.md"} {
-		if w := get(l.host, p); w.Code != http.StatusNotFound {
-			t.Errorf("%s: %d", p, w.Code)
+		if w := get(l.host, p); w.Code != http.StatusNotFound || w.Header().Get("Cache-Control") != "no-store" {
+			t.Errorf("%s: %d %q", p, w.Code, w.Header().Get("Cache-Control"))
 		}
 	}
 	if w := get("evil.example:1", urls[0][1]); w.Code != http.StatusForbidden {
