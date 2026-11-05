@@ -57,11 +57,16 @@ func errNoBootImage() error {
 			"Задайте image (имя из 'evo image list') или image_id в .evo.yaml ('evo init' выберет образ сам) или передайте image в вызове."))}
 }
 
-func errNoZone() error {
-	return &MissingSettingError{Arg: "region", ce: clerrors.New(clerrors.CodeConfigInvalid,
-		i18n.T("no availability zone is set (region)", "не задана зона доступности (region)"),
-		i18n.T("Set region in .evo.yaml or the profile ('evo configure'), or pass region in the call: a zone name such as ru.AZ-2 or its UUID (evo vm zones).",
-			"Задайте region в .evo.yaml или в профиле ('evo configure') или передайте region в вызове — имя зоны (например, ru.AZ-2) или её UUID (evo vm zones)."))}
+func errNoZone() error { return NoZoneError("region") }
+
+// NoZoneError is the refusal of a call that needs an availability zone and
+// has none — not arg of the call, not region of .evo.yaml or the profile:
+// CONFIG_INVALID with missing [arg] (D15; disk_create's zone, D86).
+func NoZoneError(arg string) error {
+	return &MissingSettingError{Arg: arg, ce: clerrors.New(clerrors.CodeConfigInvalid,
+		i18n.Tf("no availability zone is set (%s)", "не задана зона доступности (%s)", arg),
+		i18n.Tf("Set region in .evo.yaml or the profile ('evo configure'), or pass %s in the call: a zone name such as ru.AZ-2 or its UUID (evo vm zones).",
+			"Задайте region в .evo.yaml или в профиле ('evo configure') или передайте %s в вызове — имя зоны (например, ru.AZ-2) или её UUID (evo vm zones).", arg))}
 }
 
 // MissingSettingError is a setting a new VM of deploy cannot do without,
