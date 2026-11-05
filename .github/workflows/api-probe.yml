@@ -154,6 +154,15 @@ jobs:
           probe disks_by_attachment   "$C/disks?$P&limit=100" '[.[] | arrays | .[] | {evo: ((.name // "") | startswith("evo-")), boot_name: ((.name // "") | endswith("-boot")), bootable: .bootable, attached: (((.vms // .attachments // []) | length) > 0), state}] | group_by(.) | map(.[0] + {n: length})'
           probe disks_evo_detached    "$C/disks?$P&limit=100" '{total: (.total // null), evo_detached: ([.[] | arrays | .[] | select(((.name // "") | startswith("evo-")) and (((.vms // .attachments // []) | length) == 0))] | length)}'
 
+          # D81 (повторный disk_attach; другая ВМ → USAGE): подключает ли
+          # платформа один диск к нескольким ВМ. Спецификация compute
+          # публикует shared у создания и у DiskResource и disk_mounts
+          # массивом; документация Evolution — «одновременно только к одному
+          # ресурсу». Только признаки и счётчики; имена типов дисков публичны.
+          echo "== D81: общий диск — shared, число точек монтирования, поля типов дисков"
+          probe disks_shared_mounts   "$C/disks?$P&limit=100" '[.[] | arrays | .[] | {has_shared: has("shared"), shared: .shared, has_mounts: has("disk_mounts"), mounts: ((.disk_mounts // .vms // []) | length)}] | group_by(.) | map(.[0] + {n: length})'
+          probe disk_types_shared     "$C/disk-types?$P" '[(.items? // .)[]? | {name, fields: (keys | map(select(test("shar|multi|attach"; "i"))))}]'
+
           # Выбор подсети evo (default → routed_network) и предупреждение о
           # подсети без DNS (реестр NET-5, OPS-3; P-D4). Имена зон публичны.
           echo "== подсети: признаки default, routed_network, dns_servers по зонам"

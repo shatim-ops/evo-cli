@@ -65,10 +65,11 @@ func (e *Engine) bounded(ctx context.Context) (context.Context, context.CancelFu
 // bound had come is the step cut by its deadline, and the same deploy again
 // goes on from there. A cancel of ctx — Ctrl-C, the MCP client — stays an
 // error, and so does a refusal another call repeats: a refused key, a
-// changed host key.
+// changed host key. An error deploy already decided here, and wrote its
+// record by, stays as it was decided (e.decided).
 func (e *Engine) atBound(ctx context.Context, err error) error {
 	var going *InProgress
-	if err == nil || stderrors.As(err, &going) || isFatalSSHError(err) || ctx.Err() != nil || e.phase == "" || !e.past() {
+	if err == nil || e.decided || stderrors.As(err, &going) || isFatalSSHError(err) || ctx.Err() != nil || e.phase == "" || !e.past() {
 		return err
 	}
 	return &InProgress{Phase: e.phase, Detail: errLine(err)}
@@ -76,7 +77,11 @@ func (e *Engine) atBound(ctx context.Context, err error) error {
 
 // past reports whether the bound of the deploy has come.
 func (e *Engine) past() bool {
-	return !e.until.IsZero() && !time.Now().Before(e.until)
+	now := time.Now
+	if e.now != nil {
+		now = e.now
+	}
+	return !e.until.IsZero() && !now().Before(e.until)
 }
 
 // stageInput is the input of a stage: its script and what it reads, so a

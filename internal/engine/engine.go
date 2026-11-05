@@ -62,6 +62,14 @@ type Engine struct {
 	// phase is the step of the deploy that runs, as InProgress names it:
 	// a step cut by the bound is going on from there (atBound).
 	phase string
+	// now is the clock of the bound (past); nil: time.Now. A test brings
+	// the bound at a point of the deploy with it, not by the wall clock.
+	now func() time.Time
+	// decided: the error deploy returns was decided by atBound, and the
+	// record was written by that decision; the deferred atBound keeps it
+	// (FB171-4: two readings of the clock gave the record one answer and
+	// the caller another).
+	decided bool
 }
 
 // DeployOptions holds parameters for the deploy command.

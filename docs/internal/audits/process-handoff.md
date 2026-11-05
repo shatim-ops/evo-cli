@@ -406,6 +406,24 @@ CI `main` за 1.4.0 (27.10, `ci` на push): красный один раз —
 массив. Урок для бэклога: причина в перечне пропусков — это
 утверждение, и тест его проверяет.
 
+## Цепочка поставки 1.7.2 (05.11, «Процесс · 1.8»)
+
+Выпуск `v1.7.2` (тег на `9e442da`): immutable, не pre-release, 20 файлов. Проверка — та же, что у 1.7.1:
+- `sha256sum -c checksums.txt` — 12 из 12 OK;
+- SBOM — 6 из 6, SPDX-2.3: 51 пакет у Linux и macOS, 55 у Windows;
+- sigstore-бандлы — 7 из 7: дайджест SHA2-256 равен sha256 файла; identity — `release.yml@refs/tags/v1.7.2`, issuer — `https://token.actions.githubusercontent.com`; одна запись прозрачности у каждого.
+
+Не проверено здесь: `cosign verify-blob` и `gh attestation verify` — шаг владельца.
+
+## Цепочка поставки 1.7.1 (05.11, «Процесс · 1.8»)
+
+Выпуск `v1.7.1`: immutable, не pre-release, 20 файлов. Проверено из контейнера сессии:
+- `sha256sum -c checksums.txt` — 12 из 12 OK (6 архивов и 6 SBOM);
+- SBOM — 6 из 6, SPDX-2.3: 51 пакет у Linux и macOS, 55 у Windows;
+- sigstore-бандлы — 7 из 7 (`checksums.txt` и 6 архивов): дайджест SHA2-256 в бандле равен sha256 файла; identity сертификата — `https://github.com/shatim-ops/evo-cli/.github/workflows/release.yml@refs/tags/v1.7.1`, issuer — `https://token.actions.githubusercontent.com`; одна запись прозрачности у каждого.
+
+Не проверено здесь: криптографическая проверка подписи (`cosign verify-blob`) и `gh attestation verify` — в контейнере нет `cosign` и токена `gh`; это шаг владельца, как на 1.6.0.
+
 ## Итог «Процесс · 1.7» (05.11, передача «Процессу · 1.8»)
 
 Сессия закрывается с версией 1.7.0. Срез на 1.8 — `state/process.md`.
