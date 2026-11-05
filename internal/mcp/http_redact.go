@@ -18,6 +18,10 @@ import (
 // a --read-only server has its own (readOnlyWording).
 const redacted = "[redacted over HTTP: start the server with --allow-secret-export]"
 
+// redactedNoteField is the field a masked result gets beside redactedField:
+// what the mask means and how to get the values (redactedNote).
+const redactedNoteField = "redacted_note"
+
 // redactedField is the field a masked result gets: the paths of the masked
 // fields (names, never values), so the agent knows it does not see all.
 const redactedField = "redacted"
@@ -300,6 +304,7 @@ func redactSecrets(tool, text string, w wording) string {
 	v = m.echoes(v, "")
 	if obj, ok := v.(map[string]any); ok {
 		obj[redactedField] = m.list()
+		obj[redactedNoteField] = w.redactedNote()
 	}
 	out, err := json.MarshalIndent(v, "", "  ") // as the tools write results
 	if err != nil {
