@@ -313,10 +313,10 @@ SSH и пишет `ssh_wait.limit == sshMaxRetries` — на `40fa798` он па
 
 **Что ещё смотрел.**
 - `existing.Status`, а не `rec.Status`: `existing` — запись на входе в
-  `Deploy` (`:77`), `rec` после `awaitCreated` может стать `provisioned`;
+  `Deploy` (`:78`), `rec` после `awaitCreated` может стать `provisioned`;
   оба статуса в `unfinishedStatuses`, разницы нет.
 - Запись `deploying` без отпечатка невозможна: отпечаток пишется до
-  `deploying` (`:343–346`). Запись `provisioned` без `ssh_wait` — только
+  `deploying` (`:347–349`). Запись `provisioned` без `ssh_wait` — только
   из state 1.7.0 или после FB171-2 (там статус `ssh_timeout`, ветка не
   срабатывает): такая ВМ получает 60 — её тоже создал этот `deploy`.
 - ВМ `vm create` (`SourceProvision`) `ActiveComposeDeployment` не
