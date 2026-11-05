@@ -16,6 +16,8 @@ type localCommand struct {
 // fails on a command that is neither, and on an entry that is no command.
 var localCommands = []localCommand{
 	{"evo configure", "пишет ключ доступа в профиль на диске той машины, где стоит evo; MCP-клиент ключей не передаёт по контракту (docs/mcp.md)"},
+	{"evo login", "вход человека в браузере и страница согласия на loopback-порту его машины; ключ записывается в профиль на диске; у MCP-сервера инструмента нет — браузер и порт на машине человека"},
+	{"evo logout", "удаляет ключ, созданный evo login, его же токеном, и профиль на диске той машины, где стоит evo"},
 	{"evo configure list", "читает профили с диска"},
 	{"evo configure delete", "удаляет профиль с диска"},
 	{"evo configure s3", "пишет ключи S3 в профиль на диске той машины, где стоит evo, из его ключа доступа; MCP-клиент ключей не передаёт по контракту (docs/mcp.md)"},

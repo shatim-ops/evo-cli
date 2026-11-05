@@ -53,7 +53,7 @@ var commandGroups = []struct {
 	{"scenarios", "Scenarios: a compose project, a stack:", "Сценарии: compose-проект, стек:",
 		[]string{"init", "deploy", "status", "logs", "verify", "destroy", "stack"}},
 	{"setup", "Setup:", "Настройка:",
-		[]string{"configure", "project", "whoami", "doctor", "diag", "version", "completion", "help"}},
+		[]string{"login", "logout", "configure", "project", "whoami", "doctor", "diag", "version", "completion", "help"}},
 	{"agents", "For AI agents:", "Для ИИ-агентов:",
 		[]string{"mcp", "tools", "agent"}},
 }

@@ -126,6 +126,8 @@
     - [evo lb get](#evo-lb-get)
     - [evo lb list](#evo-lb-list)
     - [evo lb operation](#evo-lb-operation)
+  - [evo login](#evo-login)
+  - [evo logout](#evo-logout)
   - [evo logs](#evo-logs)
   - [evo marketplace](#evo-marketplace)
     - [evo marketplace list](#evo-marketplace-list)
@@ -280,6 +282,8 @@ Object Storage, секреты; развёртывание compose-проект�
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 * [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
 * [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
+* [evo login](#evo-login)	 - Войти в Cloud.ru через браузер и записать ключ доступа в профиль
+* [evo logout](#evo-logout)	 - Отозвать ключ, созданный evo login, и удалить профиль
 * [evo logs](#evo-logs)	 - Журналы контейнеров на развёрнутой ВМ
 * [evo marketplace](#evo-marketplace)	 - Витрина: образы ВМ и плагины Kubernetes с командой развёртывания каждого
 * [evo mcp](#evo-mcp)	 - MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)
@@ -5611,6 +5615,97 @@ evo lb operation <operation-id> [flags]
 ### SEE ALSO
 
 * [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
+
+## evo login
+
+> Локальная команда: вход человека в браузере и страница согласия на loopback-порту его машины; ключ записывается в профиль на диске; у MCP-сервера инструмента нет — браузер и порт на машине человека.
+
+Войти в Cloud.ru через браузер и записать ключ доступа в профиль
+
+### Synopsis
+
+```text
+Войти в Cloud.ru через браузер; на странице, которую evo открывает на этой
+машине, выбрать проект, для кого ключ (вы — аккаунт evo, агент — аккаунт
+evo-agent) и его срок (7, 30 или 90 дней). Вашими правами evo создаёт или
+переиспользует сервисный аккаунт, выдаёт ему роль «Администратор проекта»
+до срока ключа, создаёт ключ и записывает его в профиль. Роль включает
+удаление ресурсов. Прежний ключ evo login этого профиля отзывается. Ваши
+токены остаются в памяти; секрет ключа нигде не показывается. Отменить —
+evo logout.
+```
+
+```
+evo login [flags]
+```
+
+### Options
+
+```
+      --for string       Для кого ключ: me (аккаунт evo) или agent (аккаунт evo-agent); по умолчанию выбирается на странице
+  -h, --help             Справка по login
+      --key-ttl string   Срок ключа: 7d, 30d или 90d (по умолчанию 30d)
+      --project string   id или имя проекта — на странице будет только он
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+
+## evo logout
+
+> Локальная команда: удаляет ключ, созданный evo login, его же токеном, и профиль на диске той машины, где стоит evo.
+
+Отозвать ключ, созданный evo login, и удалить профиль
+
+### Synopsis
+
+```text
+Удалить ключ доступа, созданный evo login для профиля, — по его id, его же
+токеном, — затем профиль и его токен в кэше. Сервисный аккаунт и роль
+остаются. Профиль с ключом из evo configure или консоли удаляется один:
+этот ключ остаётся в облаке.
+```
+
+```
+evo logout [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по logout
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
 
 ## evo logs
 
