@@ -434,7 +434,7 @@ finish() {
 trap finish EXIT
 
 # probe_on СЛОВО — платная проба включена входом probes (план cloud-e2e
-# rc.1 1.6): p36, p41, p44.
+# rc.1 1.6): p36, p41, p44; shared (D81, 05.11).
 probe_on() { case " ${PROBES:-} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 # api МЕТОД URL [ТЕЛО] — прямой запрос к API с токеном IAM ($TOKEN, под
 # маской): ответ в $tmp/api.json, код HTTP в $code; тело — через stdin, не
@@ -540,6 +540,70 @@ probe_p41() {
 	else ok "P41: tg_create с целью direct_ip" "операция с ошибкой: $why"; fi
 }
 
+# Проба SHARED (D81, CMP-27; «да» владельца 05.11 на платную пробу с
+# записью): подключает ли платформа один диск к двум ВМ. Документация
+# Evolution: «одновременно только к одному ресурсу»; спецификация compute:
+# shared у создания диска и vms массивом. Диски — прямым POST /disks
+# (shared у evo disk_create нет): общий (shared: true) и обычный, оба 10 ГБ
+# SSD в зоне области. Каждый подключается evo disk_attach к ВМ1, затем к ВМ2
+# (вторая ВМ прогона без публичного адреса); итог — что ответил evo на
+# второе подключение и сколько ВМ у диска по GET /disks/{id}. Строки
+# «SHARED: …» — ответ платформы, не провал. Уборка — отключение от обеих ВМ
+# и удаление дисков здесь же; остаток убирает sweep области по префиксу.
+probe_shared() {
+	local vm1=$1 zid=$2 vm2="$prefix-vm2" kind id body n second att2
+	iam_token || { gap SHARED "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap SHARED "нет PROJECT"; return 0; }
+	tc provision --arg name="$vm2" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true
+	[ "$rc" = 0 ] || { gap SHARED "вторая ВМ не создана: код $rc, $reason"; return 0; }
+	for kind in shared plain; do
+		body=$(jq -nc --arg p "$PROJECT" --arg n "$prefix-$kind" --arg z "$ZONE" --argjson s "$([ "$kind" = shared ] && echo true || echo false)" \
+			'{project_id: $p, name: $n, size: 10, availability_zone_name: $z, disk_type_name: "SSD", shared: $s}')
+		api POST https://compute.api.cloud.ru/api/v1/disks "$body"
+		case "$code" in 2??) ;; *)
+			ok "SHARED: создание диска $kind" "отказ HTTP $code: $(api_why)"
+			continue
+			;;
+		esac
+		id=$(jq -r '.id // empty' "$tmp/api.json" 2>/dev/null) || id=
+		[ -n "$id" ] || id=$(lst disk "$prefix-$kind" | cut -f1 | head -1) || id=
+		mask "$id"
+		[ -n "$id" ] || { gap "SHARED: диск $kind" "нет id после создания; остаток — до уборки области (sweep)"; continue; }
+		ready() { evo tools call disk_list --json | jq -e --arg id "$id" '.disks[] | select(.id == $id) | .state == "available"' >/dev/null; }
+		poll 300 10 ready || { gap "SHARED: диск $kind" "не available за 5 мин; остаток — до уборки области (sweep)"; continue; }
+		tc disk_attach --arg disk_id="$id" --arg vm="$vm1"
+		[ "$rc" = 0 ] || { gap "SHARED: диск $kind к ВМ1" "код $rc, $reason; остаток — до уборки области (sweep)"; continue; }
+		one() { evo tools call disk_list --json | jq -e --arg id "$id" '.disks[] | select(.id == $id) | ((.attached_to // []) | length) >= 1 and .state == "in_use"' >/dev/null; }
+		if poll 300 10 one; then
+			tc disk_attach --arg disk_id="$id" --arg vm="$vm2"
+			second="код $rc, $reason: $(printf '%s' "$why" | cut -c1-160)"
+			att2=$rc
+		else
+			# Второе подключение к диску, который не стал in_use, мерило бы
+			# не то: его нет, строка отчёта говорит почему.
+			second="не проверялось: диск не in_use за 5 мин после подключения к ВМ1"
+			att2=skip
+		fi
+		# Число ВМ — по GET /disks/{id}; принятое подключение ко второй ВМ
+		# ждём до 3 мин (поле vms обновляется асинхронно), отказ — одно чтение.
+		vms_n() {
+			api GET "https://compute.api.cloud.ru/api/v1/disks/$id"
+			n=$(jq -r '(.vms // []) | length' "$tmp/api.json" 2>/dev/null) || n=
+			[ "${n:-0}" -ge 2 ]
+		}
+		if [ "$att2" = 0 ]; then poll 180 10 vms_n || true; else vms_n || true; fi
+		ok "SHARED: диск $kind (shared $(jq -r '.shared' "$tmp/api.json" 2>/dev/null)) ко второй ВМ" "evo: $second; ВМ у диска по GET: ${n:-?}"
+		[ "$att2" != 0 ] || tc disk_detach --arg disk_id="$id" --arg vm="$vm2"
+		tc disk_detach --arg disk_id="$id" --arg vm="$vm1"
+		free() { evo tools call disk_list --json | jq -e --arg id "$id" '.disks[] | select(.id == $id) | ((.attached_to // []) | length) == 0 and .state == "available"' >/dev/null; }
+		poll 300 10 free || true
+		tc disk_delete --arg disk_id="$id"
+		[ "$rc" = 0 ] || row "SHARED: удаление диска $kind" "остаток" "код $rc, $reason — до уборки области (sweep)"
+	done
+	tc destroy --arg name="$vm2"
+	[ "$rc" = 0 ] || row "SHARED: удаление ВМ2" "остаток" "код $rc, $reason — до уборки области (sweep)"
+}
+
 # --- Области ----------------------------------------------------------------
 
 # ВМ, диски, образ из загрузочного диска.
@@ -558,6 +622,8 @@ area_disk() {
 	[ -n "$vm_ip" ] || { bad provision "нет vm_ip: $(j -r .status)"; return 1; }
 	ok provision "$(j -r .status), диск $(j -r .disk_gb) ГБ"
 	cov provision
+	# Вторая ВМ и диски пробы — с префиксом области: sweep их уберёт.
+	! probe_on shared || probe_shared "$vm" "$zid"
 	warn=$(j -c '.warning // .warnings // empty' | redact | cut -c1-300)
 	row "provision: предупреждение" "$([ -n "$warn" ] && echo есть || echo нет)" "$warn"
 
