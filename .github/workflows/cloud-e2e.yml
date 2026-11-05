@@ -1,7 +1,7 @@
 name: cloud-e2e
 
 # Сквозная проверка на настоящем Cloud.ru: init → deploy → verify → logs -f →
-# destroy → правило порта 80 удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
+# destroy → правило порта приложения удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
 # вручную — Actions → cloud-e2e → Run workflow, ветка на выбор — и всегда
 # удаляет за собой ресурсы. Из main его раз в неделю запускает
 # cloud-e2e-weekly.yml: понедельник — e2e, dns, s3, secrets; суббота —
@@ -137,7 +137,7 @@ on:
         type: boolean
         default: false
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; Kubernetes, PostgreSQL, Kafka and Redis clusters evo-e2e-*; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 whose security group has no network interface left) and print project quotas"
+        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; Kubernetes, PostgreSQL, Kafka and Redis clusters evo-e2e-*; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 and the deploy app port 20000-29999 whose security group has no network interface left or whose VM is gone) and print project quotas"
         type: boolean
         default: false
 
@@ -351,10 +351,16 @@ jobs:
           printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
           evo whoami | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
 
+      # Порт приложения — свой у прогона (20000–29999): на 80 в общих группах
+      # зон есть чужое правило, и deploy своё не открывал — проверка правила
+      # с 04.11 зеленела вхолостую (разбор run 174, release-plan 1.8).
       - name: Тестовый проект
         run: |
+          port=$((20000 + GITHUB_RUN_NUMBER % 1000 * 10 + GITHUB_RUN_ATTEMPT % 10))
+          echo "PORT=$port" >> "$GITHUB_ENV"
           mkdir -p e2e-app
-          printf 'services:\n  web:\n    image: nginx:alpine\n    ports:\n      - "80:80"\n' > e2e-app/docker-compose.yml
+          printf 'services:\n  web:\n    image: nginx:alpine\n    ports:\n      - "%s:80"\n' "$port" > e2e-app/docker-compose.yml
+          echo "порт приложения: $port"
 
       - name: init, затем зона/образ/flavor из входов
         working-directory: e2e-app
@@ -375,8 +381,8 @@ jobs:
           evo deploy --dry-run 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
           [ ! -s .evo/state.json ] || ! jq -e '.deployments | length > 0' .evo/state.json
 
-      # Группа безопасности зоны общая: правило для порта 80 могло быть в
-      # ней и до deploy (его destroy не трогает). Запоминаем, что было.
+      # Группа безопасности зоны общая: правило для порта приложения могло
+      # быть в ней и до deploy (его destroy не трогает). Запоминаем, что было.
       - name: Правила групп безопасности до deploy
         working-directory: e2e-app
         run: evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-before.json"
@@ -415,6 +421,7 @@ jobs:
           ip=$(jq -r '.deployments[0].vm_ip // empty' .evo/state.json)
           [ -z "$ip" ] || echo "::add-mask::$ip"
           echo "SG_ID=$sg" >> "$GITHUB_ENV"
+          echo "OPENED=$(jq '.deployments[0].opened_rules // [] | length' .evo/state.json)" >> "$GITHUB_ENV"
           jq '.deployments[0] | {security_group_ports, opened_rules: (.opened_rules | length)}' .evo/state.json
 
       - name: verify и HTTP снаружи
@@ -422,7 +429,7 @@ jobs:
         run: |
           evo verify 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
           ip=$(jq -r '.deployments[0].vm_ip' .evo/state.json)
-          curl -fsS --max-time 15 "http://$ip/" | grep -qi nginx
+          curl -fsS --max-time 15 "http://$ip:$PORT/" | grep -qi nginx
 
       - name: logs -f дольше 120 с, Ctrl-C → 130
         working-directory: e2e-app
@@ -496,27 +503,16 @@ jobs:
           echo "::error::после destroy остался диск evo-e2e-app-$RUN без ВМ — он оплачивается (CMP-11); удалите его в консоли Cloud.ru или 'evo disk delete'"
           exit 1
 
-      # Если правила «evo:» для 80 в группе до deploy не было, его создал
-      # deploy, и после destroy его быть не должно. Удаление может идти
-      # асинхронно (state=deleting) — несколько попыток. Правило со старым
-      # префиксом «cloudru-vm:» (его ставили версии до переименования) тоже
-      # считается своим: такое в группе до deploy — проверка пропускается.
-      - name: Правило порта 80 удалено после destroy
+      # deploy открыл правило «evo:» для порта приложения — после destroy его
+      # быть не должно; не открыл или оно было до deploy — провал «сценарий
+      # правила не проверил» (e2e_port_rule.sh, проверка — job ci).
+      - name: Правило порта приложения удалено после destroy
         if: always() && env.SG_ID != ''
         working-directory: e2e-app
+        env:
+          BEFORE: ${{ runner.temp }}/sg-before.json
         run: |
-          # $sg is jq's variable (--arg sg), not the shell's.
-          # shellcheck disable=SC2016
-          rule80='[.security_groups[] | select(.id==$sg) | .rules[]? | select(.direction=="ingress" and .port_range=="80:80" and ((.description // "") | startswith("evo:") or startswith("cloudru-vm:")))] | length'
-          had=$(jq --arg sg "$SG_ID" "$rule80" "$RUNNER_TEMP/sg-before.json")
-          if [ "$had" != 0 ]; then echo "правило для 80 было в группе до deploy — destroy его не удаляет, проверка пропущена"; exit 0; fi
-          for _ in 1 2 3 4 5 6; do
-            left=$(evo tools call list_security_groups --arg rules=true --json | jq --arg sg "$SG_ID" "$rule80")
-            [ "$left" = 0 ] && { echo "правило для 80 удалено"; exit 0; }
-            sleep 10
-          done
-          echo "::error::после destroy в группе deploy осталось правило «evo:» для порта 80"
-          exit 1
+          "$GITHUB_WORKSPACE/.github/scripts/e2e_port_rule.sh"
 
   # Области live, выбранные входами, — матрица job live. Не выбрана ни одна —
   # дешёвые области, которые трогает ветка (diff с main, classify.sh; решение
