@@ -10,7 +10,6 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
-	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
 )
 
@@ -33,7 +32,6 @@ func Logout(ctx context.Context, adminBase string, key auth.TokenProvider, servi
 		return KeyAlreadyDeleted, nil
 	}
 	return "", clierrors.Wrap(clierrors.CodeAPIError,
-		i18n.Tf("the access key %s was not deleted: %v; the profile is kept", "ключ доступа %s не удалён: %v; профиль оставлен", accessKeyID, err),
-		i18n.T("Delete the key in the console (Users → Service accounts → the account → Access keys), then 'evo configure delete <profile>'.",
-			"Удалите ключ в консоли («Пользователи» → «Сервисные аккаунты» → аккаунт → «Ключи доступа»), затем 'evo configure delete <профиль>'."), err)
+		eKeyNotDeleted(accessKeyID, err),
+		eKeyNotDeletedHint(), err)
 }
