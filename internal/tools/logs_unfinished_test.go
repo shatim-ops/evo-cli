@@ -19,7 +19,9 @@ import (
 func TestLogs_AnUnfinishedDeployAnswersInProgress(t *testing.T) {
 	dir := t.TempDir()
 	writeRecords(t, dir, state.DeploymentRecord{ID: "0000a1a1-0000-4000-8000-0000000000c1", VMID: "0000a1a1-0000-4000-8000-0000000000c1",
-		VMIP: "203.0.113.9", SSHUser: "user1", Status: "creating"})
+		VMIP: "203.0.113.9", SSHUser: "user1", Status: "creating",
+		// A record deploy began (D82: its way on is deploy).
+		ComposePath: "/srv/app/docker-compose.yml"})
 	r := qaBRegistry(t, nil, dir)
 	text, isErr := r.handlers["logs"](context.Background(), map[string]any{})
 	var m map[string]any

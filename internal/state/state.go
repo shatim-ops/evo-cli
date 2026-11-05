@@ -221,6 +221,10 @@ func (f *File) ActiveDeployment() *DeploymentRecord {
 // SourceProvision is DeploymentRecord.Source of a VM of provision.
 const SourceProvision = "provision"
 
+// SourceDeployApply is DeploymentRecord.Source of a VM of deploy_apply
+// (D82).
+const SourceDeployApply = "deploy_apply"
+
 // ActiveComposeDeployment returns the first deployment not destroyed that
 // deploy works on — not the VM of provision (Source), which runs no
 // compose file (D62) — or nil.
