@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/bootstrap"
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -50,7 +51,7 @@ func TestWaitForSSH_DiagnosisByLastError(t *testing.T) {
 			dep.connectErr = tc.err
 			eng, _ := newTestEngine(t, &mockCloudAPI{}, dep)
 
-			err := eng.waitForSSH(context.Background(), "192.0.2.10", "user1", "", 3)
+			err := eng.waitForSSH(context.Background(), "192.0.2.10", "user1", "", &state.SSHWait{Since: clock.Now(), Limit: 3})
 			var ce *clerrors.CLIError
 			if !stderrors.As(err, &ce) || ce.Code != clerrors.CodeSSHTimeout || !strings.Contains(ce.Message, "after 3 attempts") {
 				t.Fatalf("err = %v, want SSH_TIMEOUT after 3 attempts", err)
@@ -65,9 +66,22 @@ func TestWaitForSSH_DiagnosisByLastError(t *testing.T) {
 			} else if !strings.HasPrefix(ce.Hint, "Diagnosis:") || !strings.Contains(ce.Hint, tc.want) {
 				t.Errorf("hint lacks %q:\n%s", tc.want, ce.Hint)
 			}
-			for _, want := range []string{"run 'evo deploy' again", "reboot the VM in the Cloud.ru console", "evo has no reboot command", "serial console", "'evo destroy'"} {
+			// What next is the person's (D80, «Риск · 1.8», R-1, R-23): the
+			// hint asks an agent to ask them, names the closed outbound 22
+			// of the agent itself and how to check it, and neither advises
+			// deleting the VM nor repeating deploy on one's own — the VM may
+			// be fine, and a repeat waits anew.
+			// The person decides knowing the VM is billed (R-23, «Риск» on #898).
+			for _, want := range []string{"the person decides", "ask them", "nc -vz 192.0.2.10 22", "outbound port 22",
+				"The VM stays running and is billed until the person deletes it",
+				"reboot the VM in the Cloud.ru console", "evo has no reboot command", "serial console"} {
 				if !strings.Contains(ce.Hint, want) {
 					t.Errorf("hint lacks %q:\n%s", want, ce.Hint)
+				}
+			}
+			for _, not := range []string{"destroy", "run 'evo deploy' again in a few minutes"} {
+				if strings.Contains(ce.Hint, not) {
+					t.Errorf("hint has %q (R-1: what next is the person's):\n%s", not, ce.Hint)
 				}
 			}
 		})
@@ -83,7 +97,7 @@ func TestWaitForSSH_SlowNoteOnce(t *testing.T) {
 	eng.Printer = output.NewWithWriter(&out, output.ModePlain, false)
 	eng.Timings.SSHSlowNote = time.Nanosecond
 
-	_ = eng.waitForSSH(context.Background(), "192.0.2.10", "user1", "", 5)
+	_ = eng.waitForSSH(context.Background(), "192.0.2.10", "user1", "", &state.SSHWait{Since: clock.Now(), Limit: 5})
 	if n := strings.Count(out.String(), "SSH on 192.0.2.10 does not answer yet"); n != 1 {
 		t.Errorf("slow note printed %d times, want once:\n%s", n, out.String())
 	}

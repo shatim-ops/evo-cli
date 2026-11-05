@@ -294,21 +294,47 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		return err
 	}
 
-	if err := e.waitForSSH(ctx, rec.VMIP, sshUserForConnect, rec.SSHHostKeyFingerprint, maxRetries); err != nil {
-		// The status says which: a refused key or a changed host key is
-		// not a timeout, and a re-run will not fix it (QA r4 Q7).
-		rec.Status = "ssh_timeout"
-		switch clerrors.Reason(err) {
-		case clerrors.CodeSSHAuthFailed:
-			rec.Status = "ssh_auth_failed"
-		case clerrors.CodeSSHHostKeyChanged:
-			rec.Status = "ssh_host_key_changed"
+	// A wait for SSH a bound ended goes on (D80): its attempts and its
+	// start are the record's, not the call's, so the wait of deploy over
+	// MCP ends and says why as one call of the CLI does.
+	if rec.SSHWait == nil {
+		rec.SSHWait = &state.SSHWait{Since: clock.Now(), Limit: maxRetries}
+	}
+	if err := e.waitForSSH(ctx, rec.VMIP, sshUserForConnect, rec.SSHHostKeyFingerprint, rec.SSHWait); err != nil {
+		// An error at the bound — a connect cut by its deadline too — is
+		// the deploy in progress, as its answer says (atBound).
+		err = e.atBound(caller, err)
+		var going *InProgress
+		if stderrors.As(err, &going) {
+			// Not a timeout: deploy goes on, and its record says so, as
+			// the answer does — logs and verify answer DEPLOY_IN_PROGRESS
+			// (D76). A running deployment stays running. Past the first
+			// minutes of the wait the answer says why SSH may never answer,
+			// as the CLI does (D80).
+			if !unfinishedStatuses[rec.Status] && rec.Status != "running" {
+				rec.Status = "provisioned"
+			}
+			if clock.Since(rec.SSHWait.Since) >= e.timings().SSHSlowNote {
+				going.Note = sshSlowText(rec.VMIP, rec.SSHWait.Limit)
+			}
+		} else {
+			// The status says which: a refused key or a changed host key
+			// is not a timeout, and a re-run will not fix it (QA r4 Q7).
+			rec.SSHWait = nil
+			rec.Status = "ssh_timeout"
+			switch clerrors.Reason(err) {
+			case clerrors.CodeSSHAuthFailed:
+				rec.Status = "ssh_auth_failed"
+			case clerrors.CodeSSHHostKeyChanged:
+				rec.Status = "ssh_host_key_changed"
+			}
 		}
 		rec.UpdatedAt = time.Now()
 		stateFile.UpsertDeployment(rec)
 		_ = state.Write(statePath, stateFile)
 		return err
 	}
+	rec.SSHWait = nil
 	defer e.Deployer.Close()
 
 	// Store host key fingerprint on first connect, and save it now: a
@@ -1538,39 +1564,34 @@ func needsFloatingIP(rec *state.DeploymentRecord) bool {
 	return rec.VMIP == "" && rec.FloatingIPID == "" && rec.VMID != ""
 }
 
-// waitForSSH retries SSH connection until the VM is reachable.
-func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, maxRetries int) error {
+// waitForSSH retries SSH connection until the VM is reachable, for the
+// attempts of w left; w counts them (D80).
+func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, w *state.SSHWait) error {
 	e.phase = "ssh"
 	var lastErr error
 	t := e.timings()
-	// start times the waits; shown, the duration the reports print.
-	start, lastReport, shown := time.Now(), time.Now(), clock.Now()
+	// lastReport times the reports; the duration they print and the note
+	// are of the whole wait, from w.Since: a wait a bound ended goes on.
+	lastReport := time.Now()
 	noted := false
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for w.Attempts < w.Limit {
 		err := e.Deployer.Connect(ctx, ip, 22, user, e.SSHKeyPEM, knownHostKey)
 		if err == nil {
 			return nil
 		}
 		lastErr = err
+		w.Attempts++
 		// A fresh VM's sshd can take minutes: say so once a minute, as the
 		// wait for an active VM does, so it does not look hung (QA r4 Q13).
 		if time.Since(lastReport) >= time.Minute {
 			e.Printer.StepDone(i18n.Tf("waiting for SSH on %s (%s elapsed: %s)", "ожидание SSH на %s (прошло %s: %s)",
-				ip, clock.Since(shown).Round(time.Second), errLine(err)))
+				ip, clock.Since(w.Since).Round(time.Second), errLine(err)))
 			lastReport = time.Now()
 		}
 		// Past the usual few minutes, say once why deploy still waits and
 		// what that may mean (cloud-e2e 16-18.10.2026, register OPS-1).
-		if !noted && time.Since(start) >= t.SSHSlowNote {
-			// Two ends: the VM's first boot, and the network evo runs in —
-			// outbound port 22 closed there looks the same (agent run C2,
-			// Ц-8: the agent's sandbox let no SSH out).
-			e.Printer.Warning(i18n.Tf("SSH on %s does not answer yet. A new VM usually answers within 2-5 minutes; on Cloud.ru its first boot "+
-				"sometimes does not bring the network up, and then SSH never answers. The network evo runs in may also let no SSH out "+
-				"(outbound port 22 closed by a corporate firewall, a VPN or an agent's sandbox): check with nc -vz %s 22. evo keeps trying (%d attempts in all).",
-				"SSH на %s пока не отвечает. Новая ВМ обычно отвечает за 2–5 минут; на Cloud.ru первая загрузка иногда "+
-					"не поднимает сеть, и тогда SSH не ответит вовсе. Не выпускать SSH может и сеть, где запущен evo "+
-					"(исходящий порт 22 закрыт корпоративным межсетевым экраном, VPN или песочницей агента): проверка — nc -vz %s 22. evo продолжает попытки (всего %d).", ip, ip, maxRetries))
+		if !noted && clock.Since(w.Since) >= t.SSHSlowNote {
+			e.Printer.Warning(sshSlowText(ip, w.Limit))
 			noted = true
 		}
 
@@ -1595,25 +1616,41 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 		case <-time.After(wait):
 		}
 	}
-	// evo does not reboot or recreate the VM by itself: both are the
-	// user's call (a reboot interrupts whatever the VM is doing, a new VM
-	// is billed). The hint says how.
-	hint := i18n.T("What to do: run 'evo deploy' again in a few minutes (it reuses this VM). If SSH still does not answer, "+
-		"reboot the VM in the Cloud.ru console (Virtual machines, the VM's menu, Reboot; evo has no reboot command) and run 'evo deploy' again, "+
-		"or look at its boot log in the serial console. Otherwise run 'evo destroy' and deploy again, in another zone if it repeats: "+
-		"on Cloud.ru a VM sometimes boots without network (no DNS inside the VM, the image's apt mirror unreachable) while the next one is fine. "+
+	// evo does not reboot or recreate the VM by itself, and what next is
+	// the person's (D80; «Риск · 1.8», R-1, R-23): the VM may be fine and
+	// the network evo runs in let no SSH out, and a repeat of deploy waits
+	// anew. The hint says so and how to tell the two apart.
+	hint := i18n.Tf("What next — the person decides: an agent should ask them and not repeat deploy on its own. "+
+		"The VM stays running and is billed until the person deletes it. "+
+		"First check that SSH gets out of the network evo runs in: nc -vz %s 22 (outbound port 22 is often closed by a corporate firewall, a VPN or an agent's sandbox; then the VM is fine). "+
+		"If it does, the VM may have booted without network (on Cloud.ru this happens: no DNS inside the VM, the image's apt mirror unreachable): "+
+		"reboot the VM in the Cloud.ru console (Virtual machines, the VM's menu, Reboot; evo has no reboot command) or look at its boot log in the serial console, then run 'evo deploy' again — it reuses this VM and waits anew. "+
 		"If it repeats in one zone, check the subnet's DNS in the Cloud.ru console.",
-		"Что делать: через несколько минут повторите 'evo deploy' (он возьмёт эту же ВМ). Если SSH так и не ответит, "+
-			"перезагрузите ВМ в консоли Cloud.ru (Виртуальные машины, меню ВМ, «Перезагрузить»; своей команды перезагрузки в evo нет) "+
-			"и снова выполните 'evo deploy' или посмотрите журнал загрузки в серийной консоли. Иначе — 'evo destroy' и deploy заново, "+
-			"при повторе в другой зоне: на Cloud.ru ВМ иногда загружается без сети (нет DNS внутри ВМ, недоступно apt-зеркало образа), "+
-			"а следующая — нормально. Если повторяется в одной зоне, проверьте DNS подсети в консоли Cloud.ru.")
+		"Что дальше — решает человек: агенту — спросить его и не повторять deploy самому. "+
+			"ВМ остаётся запущенной и оплачивается, пока её не удалит человек. "+
+			"Сначала проверьте, что SSH выходит из сети, где запущен evo: nc -vz %s 22 (исходящий порт 22 часто закрыт корпоративным межсетевым экраном, VPN или песочницей агента; тогда ВМ исправна). "+
+			"Если выходит, ВМ могла загрузиться без сети (на Cloud.ru так бывает: нет DNS внутри ВМ, недоступно apt-зеркало образа): "+
+			"перезагрузите ВМ в консоли Cloud.ru (Виртуальные машины, меню ВМ, «Перезагрузить»; своей команды перезагрузки в evo нет) или посмотрите журнал загрузки в серийной консоли, затем снова выполните 'evo deploy' — он возьмёт эту же ВМ и будет ждать заново. "+
+			"Если повторяется в одной зоне, проверьте DNS подсети в консоли Cloud.ru.", ip, ip)
 	if d := sshDiagnosis(lastErr, ip); d != "" {
 		hint = d + "\n" + hint
 	}
 	return clerrors.Wrap(clerrors.CodeSSHTimeout,
-		i18n.Tf("SSH connection failed after %d attempts", "не удалось подключиться по SSH за %d попыток", maxRetries),
+		i18n.Tf("SSH connection failed after %d attempts", "не удалось подключиться по SSH за %d попыток", w.Limit),
 		hint, lastErr)
+}
+
+// sshSlowText is why deploy still waits for SSH on ip past the usual few
+// minutes, and what that may mean. Two ends: the VM's first boot, and the
+// network evo runs in — outbound port 22 closed there looks the same
+// (agent run C2, Ц-8: the agent's sandbox let no SSH out).
+func sshSlowText(ip string, attempts int) string {
+	return i18n.Tf("SSH on %s does not answer yet. A new VM usually answers within 2-5 minutes; on Cloud.ru its first boot "+
+		"sometimes does not bring the network up, and then SSH never answers. The network evo runs in may also let no SSH out "+
+		"(outbound port 22 closed by a corporate firewall, a VPN or an agent's sandbox): check with nc -vz %s 22. evo keeps trying (%d attempts in all).",
+		"SSH на %s пока не отвечает. Новая ВМ обычно отвечает за 2–5 минут; на Cloud.ru первая загрузка иногда "+
+			"не поднимает сеть, и тогда SSH не ответит вовсе. Не выпускать SSH может и сеть, где запущен evo "+
+			"(исходящий порт 22 закрыт корпоративным межсетевым экраном, VPN или песочницей агента): проверка — nc -vz %s 22. evo продолжает попытки (всего %d).", ip, ip, attempts)
 }
 
 // sshDiagnosis names what the last failed connection says about port 22

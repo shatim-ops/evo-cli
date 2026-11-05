@@ -29,11 +29,7 @@ var unfinishedRecord = map[string]bool{"creating": true, "provisioned": true, "d
 // status logs and verify read as finished, with the work item that fixes
 // it. A line the walk no longer finds fails: the list only shrinks.
 // Closes by 1.8.
-var inProgressLeavesFinished = map[string]string{
-	// deploy.go writes ssh_timeout on any error of waitForSSH, the
-	// InProgress of the budget too; logs then answers SSH_TIMEOUT.
-	"ssh": "release-plan, backlog 1.7.1 «Находки агентного прогона 1.7.0», (1)",
-}
+var inProgressLeavesFinished = map[string]string{}
 
 // inProgressPhasesElsewhere are the phases of deploy the walk of this test
 // does not reach: the test that holds the same for them, or why none does
@@ -200,7 +196,7 @@ func enginePhases(t *testing.T) []string {
 // MCP when SSH never answers; "" once it is done. While it is open the
 // test reports what it finds and passes; once the chain ends and says why,
 // a line still here fails.
-const sshNeverAnswersOpen = "release-plan, backlog 1.7.1 «Находки агентного прогона 1.7.0», (2)"
+const sshNeverAnswersOpen = ""
 
 // k2Attempt is how long a connect to the silent VM takes to fail.
 // wall-clock: a share of progressBudget, so that a call makes a score of

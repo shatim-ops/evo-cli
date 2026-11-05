@@ -30,6 +30,8 @@ type InProgress struct {
 	Phase  string
 	Detail string
 	Output string
+	// Note is why the phase may never end, when deploy knows one (D80).
+	Note string
 }
 
 func (p *InProgress) Error() string {

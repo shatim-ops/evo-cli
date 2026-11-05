@@ -203,8 +203,9 @@ func (v *stageVM) ExecStream(ctx context.Context, cmd string, stdout, _ io.Write
 // stageRegistry is the compute fault world with the stage VM, budget as
 // the D69 budget of an MCP call, and the world's short intervals: progressBudget
 // for a test that reads how far a call got, worldBudget for one that reads
-// only that it answered in time (#793).
-func stageRegistry(t *testing.T, vm *stageVM, budget time.Duration) *Registry {
+// only that it answered in time (#793). tune changes the engine of a call
+// (another Deployer, other timings).
+func stageRegistry(t *testing.T, vm *stageVM, budget time.Duration, tune ...func(*engine.Engine)) *Registry {
 	t.Helper()
 	faultToolsIsolate(t)
 	cloud := &faultCloud{}
@@ -212,7 +213,7 @@ func stageRegistry(t *testing.T, vm *stageVM, budget time.Duration) *Registry {
 	compose := writeTestCompose(t)
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
-		return &engine.Engine{
+		eng := &engine.Engine{
 			Config: config.Config{ProjectID: faultProject, Region: faultZone, ImageID: faultImage,
 				Flavor: "low-1-1", DiskSize: 10, KeyID: "k", Secret: "s", ComposeFile: compose},
 			Auth:      staticToken{},
@@ -226,7 +227,11 @@ func stageRegistry(t *testing.T, vm *stageVM, budget time.Duration) *Registry {
 			Probe: func(context.Context, string, []int, time.Duration) []verify.ProbeResult {
 				return []verify.ProbeResult{{Port: 80, StatusCode: 200, Healthy: true}}
 			},
-		}, nil
+		}
+		for _, f := range tune {
+			f(eng)
+		}
+		return eng, nil
 	})
 	r.SetCallBudget(budget)
 	return r

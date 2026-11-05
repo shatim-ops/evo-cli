@@ -41,7 +41,7 @@ var wallClockReads = map[string]struct {
 }{
 	// The interval between reports and the slow-SSH note are waits; the
 	// report itself prints its duration through internal/clock.
-	"internal/engine/deploy.go\tEngine.waitForSSH":              {3, wallWait}, // and D69: the bound of the deploy
+	"internal/engine/deploy.go\tEngine.waitForSSH":              {2, wallWait}, // and D69: the bound of the deploy
 	"internal/engine/deploy.go\tEngine.provisionVM":             {1, wallWait}, // D69: the bound of the deploy
 	"internal/engine/stage.go\tEngine.runStage":                 {2, wallWait}, // D69: the bound of the deploy, the stage's limit, the margin of a start
 	"internal/engine/destroy.go\tEngine.waitAndDeleteVM":        {1, wallWait}, // interval between reports
