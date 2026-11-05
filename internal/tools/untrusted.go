@@ -51,6 +51,10 @@ var untrustedFields = map[string]untrustedAnswer{
 	// of disk_delete (D59) names them for the way out. Names, not the
 	// output of a workload: no note.
 	"disk_delete": {fields: []string{"attached_vms"}},
+	// The disk and the VM the preview of disk_attach and disk_detach names,
+	// as the cloud names them.
+	"disk_attach": {fields: []string{"will_attach"}},
+	"disk_detach": {fields: []string{"will_detach"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of

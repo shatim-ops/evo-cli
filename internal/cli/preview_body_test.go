@@ -51,10 +51,8 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"deploy_apply interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
 	"deploy_apply name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
 
-	"disk_attach vm_id":                {unnamedNoise, "id ВМ, которую превью называет по имени"},
 	"disk_create availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
 	"disk_create size":                 {unnamedNoise, "size_gb в форме API"},
-	"disk_detach vm_id":                {unnamedNoise, "id ВМ, которую превью называет по имени"},
 	"disk_resize size":                 {unnamedNoise, "size_gb в форме API"},
 
 	"dns_record_create public_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},

@@ -56,11 +56,11 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 	// Accept either a UUID or a human name.
 	vmID := ref
 	if !looksUUID(ref) {
-		id, _, e := s.resolveVM(ctx, ref, eng.Config.ProjectID)
+		vm, e := s.resolveVM(ctx, ref, eng.Config.ProjectID)
 		if e != nil {
 			return errResult(e), true
 		}
-		vmID = id
+		vmID = vm.ID
 	}
 
 	det, err := eng.Cloud.GetVMDetail(ctx, vmID)
