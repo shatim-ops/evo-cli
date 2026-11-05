@@ -1565,3 +1565,48 @@ func TestWorkflows_EvoErrorIsReadFromStderr(t *testing.T) {
 		t.Fatal("no call of evo with --json and 2>/dev/null found: the pattern moved, update the test")
 	}
 }
+
+// The scenarios of cloud-e2e after 1.7.0 (plan 1.8, owner decision 04.11,
+// runs 166 and 167): os-smoke keeps the stderr of ssh and runs ssh_diag.sh
+// when SSH does not come up; an image the project lacks is a skip named in
+// the summary, not a green smoke; ssh_diag.sh runs on a working SSH too,
+// for comparison, and names the state of the floating IP; readonly's
+// delete of what is not there is FAIL only for a defect of evo
+// (delete_absent_verdict.sh, tested on samples).
+func TestWorkflows_CloudE2EScenariosSayWhy(t *testing.T) {
+	read := func(p string) string {
+		b, err := os.ReadFile(filepath.Join("..", "..", filepath.FromSlash(p)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	e2e := readWorkflows(t)["cloud-e2e.yml"]
+	for name, j := range e2e.Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run, "cat /etc/os-release") {
+				if strings.Contains(s.Run, "2>/dev/null") || !strings.Contains(s.Run, "ssh_diag.sh") {
+					t.Errorf("cloud-e2e %s: the SSH of os-smoke drops its stderr or runs no ssh_diag.sh", name)
+				}
+			}
+			if strings.Contains(s.Run, "available_in_project") && !strings.Contains(s.Run, "**пропуск**") {
+				t.Errorf("cloud-e2e %s: an image the project lacks is not named a skip in the summary", name)
+			}
+		}
+	}
+	diagOnSuccess := false
+	for _, j := range e2e.Jobs {
+		for _, s := range j.Steps {
+			diagOnSuccess = diagOnSuccess || strings.HasPrefix(s.If, "success()") && strings.Contains(s.Run, "ssh_diag.sh")
+		}
+	}
+	if !diagOnSuccess {
+		t.Error("cloud-e2e: no step runs ssh_diag.sh on a working SSH, for comparison")
+	}
+	if !strings.Contains(read(".github/scripts/ssh_diag.sh"), "list_floating_ips") {
+		t.Error("ssh_diag.sh does not read the state of the floating IP")
+	}
+	if !strings.Contains(read(".github/scripts/cloud-readonly.sh"), "delete_absent_verdict.sh") {
+		t.Error("cloud-readonly.sh judges the delete of what is not there without delete_absent_verdict.sh")
+	}
+}

@@ -13,10 +13,12 @@
 #   ВМ — state из vm_get;
 #   адрес — совпадает ли public_ip vm_get с адресом, к которому шёл SSH, и
 #     есть ли floating IP на интерфейсе (тип интерфейса);
+#   floating IP — его состояние из list_floating_ips по адресу SSH (у ВМ с
+#     рабочим SSH тоже: сравнение, план 1.8, строка сценариев cloud-e2e);
 #   группа — правило ingress на TCP/22 и откуда («любого адреса» — 0.0.0.0/0;
 #     узкий префикс redact.sed маскирует): в группе SG_ID (deploy
-#     пишет её в state), иначе в группах SSH-access_* (provision без своей
-#     группы ставит ВМ туда);
+#     пишет её в state), иначе в группах SSH-access_* по имени — с пометкой:
+#     групп интерфейса ВМ vm_get не отдаёт (строка плана «разработке»);
 #   порт — TCP/22 с раннера: открыт, отказ с причиной (Connection refused,
 #     No route to host…) или нет ответа.
 # Вывод — через redact.sed (ID и адреса маскируются), код выхода — 0:
@@ -30,7 +32,7 @@ TCP_WAIT=${TCP_WAIT:-5}
 # Порт — 22; другой только у проверки скрипта (ssh_diag_test.sh).
 SSH_PORT=${SSH_PORT:-22}
 
-state='?' addr='?' iface='?' rule='?' port='?'
+state='?' addr='?' iface='?' fip='?' rule='?' port='?'
 if v=$(evo tools call vm_get --arg vm_id="$vm" --json 2>/dev/null); then
 	state=$(jq -r '.state // "?"' <<<"$v")
 	pub=$(jq -r '.public_ip // empty' <<<"$v")
@@ -40,6 +42,14 @@ if v=$(evo tools call vm_get --arg vm_id="$vm" --json 2>/dev/null); then
 	iface=$(jq -r '[.interfaces[]? | "\(.type // "?")\(if .floating_ip then "+fip" else "" end)\(if .state then "(\(.state))" else "" end)"] | join(",") | if . == "" then "нет" else . end' <<<"$v")
 else
 	state="vm_get не прочитан"
+fi
+
+# Состояние floating IP с адресом SSH: ВМ running с FIP не в active —
+# другой класс, чем закрытый порт.
+if f=$(evo tools call list_floating_ips --json 2>/dev/null); then
+	fip=$(jq -r --arg ip "$ip" '[.floating_ips[]? | select(.ip_address == $ip) | .state // "?"] | if length == 0 then "с этим адресом не найден" else "в " + join(",") end' <<<"$f" 2>/dev/null) || fip="не разобран"
+else
+	fip="list_floating_ips не прочитан"
 fi
 
 # Правило TCP/22 ingress: port_range «22:22», диапазон с 22 или любой порт.
@@ -52,6 +62,7 @@ if g=$(evo tools call list_security_groups --arg rules=true --json 2>/dev/null);
 		      | (.remote_ip_prefix // "") | if . == "" or . == "0.0.0.0/0" or . == "::/0" then "любого адреса" else . end] | unique
 		      | "\($g.name // "?"): \(if length == 0 then "правила на 22 нет" else "22 из " + join(" ") end)"] | join("; ")
 		  end' <<<"$g" 2>/dev/null) || rule="правила не разобраны"
+	[ -n "$sg" ] || rule="по имени SSH-access_*, не группы ВМ — $rule"
 else
 	rule="list_security_groups не прочитан"
 fi
@@ -65,6 +76,6 @@ case $? in
 *) port="отказ: $(printf '%s' "$err" | grep -oE '[A-Z][a-z]+( [a-z]+)*$' | tail -1)" ;;
 esac
 
-printf 'SSH-диагностика: ВМ %s; адрес %s; интерфейсы %s; группа — %s; TCP/22 с раннера — %s\n' \
-	"$state" "$addr" "$iface" "$rule" "$port" | redact
+printf 'SSH-диагностика: ВМ %s; адрес %s; интерфейсы %s; floating IP %s; группа — %s; TCP/22 с раннера — %s\n' \
+	"$state" "$addr" "$iface" "$fip" "$rule" "$port" | redact
 exit 0

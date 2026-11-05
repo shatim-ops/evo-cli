@@ -22,6 +22,8 @@ python3 -c 'import socket,sys,time; s=socket.socket(); s.setsockopt(socket.SOL_S
 listener=$!
 sleep 0.5
 
+fips='{"floating_ips":[{"id":"f1","ip_address":"127.0.0.1","state":"active"}]}'
+
 # run ИМЯ VM_GET_JSON [SG_ID] — вывод в $work/ИМЯ.out
 run() {
 	local d="$work/$1"
@@ -29,6 +31,7 @@ run() {
 	export FAKE_DIR="$d"
 	if [ -n "$2" ]; then fake_evo_answer vm_get 0 0 "$2"; else fake_evo_answer vm_get 0 1 '{"error":{"code":4,"reason":"NOT_FOUND","message":"no"}}'; fi
 	fake_evo_answer list_security_groups 0 0 "$groups"
+	fake_evo_answer list_floating_ips 0 0 "${FIPS:-$fips}"
 	PATH="$work/bin:$PATH" SSH_PORT="${PORT:-$port}" TCP_WAIT=2 "$here/ssh_diag.sh" "$vm" 127.0.0.1 ${3:+"$3"} >"$d/out" 2>&1 || { echo "FAIL $1: код не 0"; fail=1; }
 }
 want() { # ИМЯ ПОДСТРОКА
@@ -40,14 +43,19 @@ want same "адрес тот же"
 want same "regular+fip(active)"
 want same "evo-app-sg: 22 из любого адреса"
 want same "TCP/22 с раннера — открыт"
+want same "floating IP в active"
 run nosg '{"id":"'$vm'","state":"running","public_ip":"","interfaces":[{"type":"regular"}]}'
 want nosg "публичного адреса нет"
-want nosg "SSH-access_ru.AZ-9: правила на 22 нет"
+want nosg "по имени SSH-access_*, не группы ВМ — SSH-access_ru.AZ-9: правила на 22 нет"
 kill "$listener" 2>/dev/null; wait "$listener" 2>/dev/null || true
 listener=
 run closed '{"id":"'$vm'","state":"running","public_ip":"127.0.0.2","interfaces":[]}' "$sg"
 want closed "адрес другой"
 want closed "TCP/22 с раннера — отказ: Connection refused"
+FIPS='{"floating_ips":[{"id":"f1","ip_address":"127.0.0.1","state":"down"}]}' run fipdown '{"id":"'$vm'","state":"running","public_ip":"127.0.0.1","interfaces":[]}' "$sg"
+want fipdown "floating IP в down"
+FIPS='{"floating_ips":[]}' run nofip '{"id":"'$vm'","state":"running","public_ip":"127.0.0.1","interfaces":[]}' "$sg"
+want nofip "floating IP с этим адресом не найден"
 run novm "" "$sg"
 want novm "ВМ vm_get не прочитан"
 ! grep -q '0000-4000' "$work"/*/out || { echo "FAIL: id в выводе"; fail=1; }

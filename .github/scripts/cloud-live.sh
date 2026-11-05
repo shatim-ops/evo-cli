@@ -643,6 +643,8 @@ area_disk() {
 	if poll 600 15 ssh_vm true; then
 		early="отвечал через $((SECONDS - t0)) с"
 		row "SSH сразу после provision" ok "$early"
+		# Факты сети и у ВМ с рабочим SSH — для сравнения с провалом.
+		[ -z "$vid" ] || "$here/ssh_diag.sh" "$vid" "$vm_ip"
 	else
 		early="не отвечал 10 мин"
 		row "SSH сразу после provision" "нет" "ssh — $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200); ВМ $(vm_state)"
