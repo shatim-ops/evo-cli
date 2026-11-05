@@ -247,7 +247,8 @@ func TestLogin_Variants(t *testing.T) {
 		{"role shorter: PUT", loginworld.Variant{Perm: loginworld.PermShorter}, "", 1, 1, []string{"PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
 		{"broken at the key after a PUT: the term stays", loginworld.Variant{Perm: loginworld.PermShorter, FailAt: loginworld.StepKey}, clierrors.CodeAPIError, 1, 0, []string{"!DELETE /api/v3/permissions/", "!DELETE /api/v2/serviceAccounts/"}},
 		{"role longer: no write", loginworld.Variant{Perm: loginworld.PermLonger}, "", 1, 1, []string{"!PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
-		{"403 on permissions", loginworld.Variant{PermForbidden: true}, clierrors.CodeAPIError, 0, 0, nil},
+		{"403 on permissions", loginworld.Variant{PermForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
+		{"403 on the account", loginworld.Variant{AccountForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"role name collision", loginworld.Variant{RoleCollision: true}, "", 1, 1, []string{"GET /api/v1/roles"}},
 		{"account limit", loginworld.Variant{AccountLimit: true}, clierrors.CodeUsage, 0, 0, []string{"!POST /api/v2/serviceAccounts"}},
 		{"key limit", loginworld.Variant{KeyLimit: true}, clierrors.CodeUsage, 1, 0, []string{"!POST /api/v2/serviceAccounts/", "!POST /api/v3/permissions"}},
@@ -601,5 +602,43 @@ func TestLogin_PreselectNamedInTheTerminal(t *testing.T) {
 	}
 	if !strings.Contains(r.out, "из CLOUDRU_PROJECT_ID") || !strings.Contains(r.b.consent, tPreselectedFrom("из CLOUDRU_PROJECT_ID")) {
 		t.Errorf("terminal:\n%s", r.out)
+	}
+}
+
+// R-49: the catalog of actions is read only after a false of evaluate; a
+// false on an action the catalog names is «no right» before any write; a
+// catalog evo cannot read makes the false «not confirmed»; a 403 at the
+// first write is AUTH_FAILED with its step, nothing left.
+func TestLogin_FalseReadsTheCatalog(t *testing.T) {
+	readsCatalog := func(calls []string) bool { return slices.Contains(calls, "GET /api/v1/actions") }
+
+	w := newWorld(t, loginworld.Variant{})
+	if r := login(t, w, &browser{}, Choice{}, nil, nil); r.err != nil || readsCatalog(w.Calls()) {
+		t.Errorf("an allowed login: err %v; the catalog read %v", r.err, readsCatalog(w.Calls()))
+	}
+
+	w = newWorld(t, loginworld.Variant{Denied: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if reasonOf(r.err) != clierrors.CodeAuthFailed || !readsCatalog(w.Calls()) || len(w.Accounts()) != 0 {
+		t.Errorf("a false on a known action: %v; catalog %v; accounts %d", r.err, readsCatalog(w.Calls()), len(w.Accounts()))
+	}
+
+	w = newWorld(t, loginworld.Variant{UnknownActionFalse: true})
+	r = login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil || !strings.Contains(r.out, tActionUnknown(auth.LoginActionCreateAccount)) {
+		t.Errorf("a false on an unknown action: %v\n%s", r.err, r.out)
+	}
+
+	w = newWorld(t, loginworld.Variant{UnknownActionFalse: true, CatalogFails: true})
+	r = login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil || !strings.Contains(r.out, "каталог действий IAM не прочитан") && !strings.Contains(r.out, "catalog of actions was not read") {
+		t.Errorf("a catalog not read: %v\n%s", r.err, r.out)
+	}
+
+	w = newWorld(t, loginworld.Variant{UnknownActionFalse: true, AccountForbidden: true})
+	r = login(t, w, &browser{}, Choice{}, nil, nil)
+	var ce *clierrors.CLIError
+	if !errors.As(r.err, &ce) || ce.Code != clierrors.CodeAuthFailed || ce.Details["step"] != stepAccount || len(w.Accounts()) != 0 {
+		t.Errorf("a 403 at the first write: %v %v; accounts %d", r.err, detailsOf(ce), len(w.Accounts()))
 	}
 }

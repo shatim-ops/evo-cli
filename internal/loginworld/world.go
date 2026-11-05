@@ -119,6 +119,12 @@ type Variant struct {
 	// lacks, as an IAM may for a name it does not know («Риск», R-49).
 	// The person may do everything the catalogue names.
 	UnknownActionFalse bool
+	// CatalogFails: the catalog of actions answers 500 («Риск», R-49: a
+	// catalog evo could not read is no refusal).
+	CatalogFails bool
+	// AccountForbidden: POST serviceAccounts answers 403 («Риск», R-49: a
+	// refusal of the platform at the first write is AUTH_FAILED).
+	AccountForbidden bool
 }
 
 // probeActions are the actions of IAM about accounts, keys and permissions
@@ -567,6 +573,8 @@ func (w *World) administration(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case p == "/api/v1/actions" && w.v.CatalogFails:
+		fail(rw, 500, "internal")
 	case p == "/api/v1/actions":
 		list := []map[string]string{}
 		for _, a := range w.catalogue() {
@@ -640,6 +648,8 @@ func (w *World) createAccount(rw http.ResponseWriter, r *http.Request) {
 	switch {
 	case w.v.FailAt == StepAccount:
 		fail(rw, 500, "internal")
+	case w.v.AccountForbidden:
+		fail(rw, 403, "forbidden")
 	case w.v.AccountLimit:
 		fail(rw, 400, "service account limit reached")
 	case body.Target.ProjectID != Project:
