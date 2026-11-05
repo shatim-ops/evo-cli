@@ -125,3 +125,42 @@ func TestStackPlan_EveryStepHasAKind(t *testing.T) {
 		}
 	}
 }
+
+// Agent run of 1.7.0 (m2, c0, w): stack_plan priced PostgreSQL without its
+// storage — 1676.55 against 1799.45 ₽/month in pg_create's preview of the
+// same cluster. D75: the price of PostgreSQL is pg_create's preview's; the
+// line of the cluster in stack_plan is that preview's total, nodes and
+// storage.
+func TestStackPlan_PGLineEqualsPgCreatePreviewTotal(t *testing.T) {
+	stackHome(t)
+	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
+	var mf map[string]any
+	_ = json.Unmarshal([]byte(`{"name":"s","postgres":{"name":"p","cpu":2,"ram":8,"storage_gb":50}}`), &mf)
+	m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": mf})
+	if isErr {
+		t.Fatalf("stack_plan: %s", text)
+	}
+	pg := pgCreatePreview(config.Config{}, map[string]any{"name": "p", "cpu": float64(2), "memory_gb": float64(8), "storage_gb": 50})
+	pg.Price()
+	if pg.Cost == nil || pg.Cost.DiskMonthlyRub <= 0 {
+		t.Fatalf("pg_create's preview of 2 vCPU, 8 GB, 50 GB: cost %+v, want a price with its storage", pg.Cost)
+	}
+	cost, _ := m["cost"].(map[string]any)
+	lines, _ := cost["by_component"].([]any)
+	var sum float64
+	for _, l := range lines {
+		o := l.(map[string]any)
+		if o["component"] != "postgres" {
+			continue
+		}
+		rub, _ := o["monthly_rub"].(float64)
+		sum += rub
+	}
+	if math.Abs(sum-pg.Cost.TotalMonthlyRub) > 0.02 {
+		t.Errorf("stack_plan prices the cluster at %.2f ₽/month, pg_create's preview at %.2f (nodes %.2f + storage %.2f): %s",
+			sum, pg.Cost.TotalMonthlyRub, pg.Cost.ComputeMonthlyRub, pg.Cost.DiskMonthlyRub, text)
+	}
+	if total, _ := cost["total_monthly_rub"].(float64); math.Abs(total-pg.Cost.TotalMonthlyRub) > 0.02 {
+		t.Errorf("stack_plan's total %.2f, pg_create's preview %.2f", total, pg.Cost.TotalMonthlyRub)
+	}
+}
