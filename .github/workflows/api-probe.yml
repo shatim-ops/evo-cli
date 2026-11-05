@@ -274,7 +274,7 @@ jobs:
             [ -n "$page" ] || { complete=true; break; }
             [ "$pages" -lt 30 ] || break
           done
-          jq -c --argjson p "$pages" --argjson done "$complete" '{complete: $done, pages: $p, n: length, unique: (map(.name) | unique | length),
+          jq -c --argjson p "$pages" --argjson fin "$complete" '{complete: $fin, pages: $p, n: length, unique: (map(.name) | unique | length),
             products: (map(.product_code // .productCode) | unique | length), iam: (map(select((.name // "") | startswith("iam."))) | length),
             login_create_account: any(.[]; .name == "iam.serviceAccounts.create"),
             login_grant_role: any(.[]; .name == "iam.permissions.create")}' "$all" | sed 's/^/iam_actions_all            /'
