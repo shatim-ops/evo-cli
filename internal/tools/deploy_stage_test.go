@@ -238,14 +238,19 @@ func stageRegistry(t *testing.T, vm *stageVM, budget time.Duration, tune ...func
 }
 
 // deployCall is one call of deploy over MCP, bounded by progressWatch: its
-// answer, or "" when it did not answer in time.
-func deployCall(t *testing.T, r *Registry) string {
+// answer, or "" when it did not answer in time. args are the call's;
+// none — confirmed=true.
+func deployCall(t *testing.T, r *Registry, args ...map[string]any) string {
 	t.Helper()
 	got := make(chan string, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		text, _ := r.handlers["deploy"](ctx, map[string]any{"confirmed": true})
+		a := map[string]any{"confirmed": true}
+		if len(args) > 0 {
+			a = args[0]
+		}
+		text, _ := r.handlers["deploy"](ctx, a)
 		got <- text
 	}()
 	select {
