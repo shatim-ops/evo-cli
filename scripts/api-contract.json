@@ -4,6 +4,24 @@
     "s3_bucket_create": "Object Storage — S3 API (minio), его спецификации нет среди скачиваемых cloudru-specs.py",
     "s3_put": "Object Storage — S3 API (minio), его спецификации нет среди скачиваемых cloudru-specs.py"
   },
+  "writes_without_creates": {
+    "_comment": "Записи (POST, PUT, PATCH) описи без creates: «не создаёт: …» — запись, которой нечего объявлять; «создаёт: …» — пробел объявления с работой бэклога. Новая запись без creates и без строки здесь роняет TestWorkflows_WritesDeclareCreates (internal/workflows); локальная команда объявляет созданное в creates своим путём, «evo login» (TestLocalCommands_CreatesAreCommands, internal/cli).",
+    "compute POST /api/v1/floating-ips": "создаёт: floating IP (deploy, provision, выделение адреса) — цена; creates/impact не объявлены — бэклог процесса, 1.9",
+    "compute PUT /api/v1/floating-ips/{floating_ip_id}": "не создаёт: меняет имя и привязку существующего floating IP",
+    "compute POST /api/v1/security-groups/{security_group_id}/rules": "создаёт: правило группы безопасности (open_ports, deploy) — безопасность; creates/impact не объявлены — бэклог процесса, 1.9",
+    "compute POST /api/v1/disks/{disk_id}/attach": "не создаёт: подключает существующий диск к ВМ",
+    "compute POST /api/v1/disks/{disk_id}/detach": "не создаёт: отключает существующий диск от ВМ",
+    "compute PUT /api/v1/disks/{disk_id}": "не создаёт: меняет размер существующего диска (цену называет превью disk_resize)",
+    "compute POST /api/v1/projects/{project_id}/price-calculation": "не создаёт: расчёт цены — чтение по смыслу, метод POST",
+    "mk8s POST /v3/clusters/{clusterId}:getKubeConfig": "не создаёт: выдаёт kubeconfig существующего кластера — чтение по смыслу, метод POST",
+    "mk8s POST /v3/clusterAddons": "создаёт: плагин кластера (установка плагина) — работа; creates/impact не объявлены — бэклог процесса, 1.9",
+    "containers POST /v2/containers/{name}:start": "не создаёт: запускает существующий контейнер",
+    "containers POST /v2/containers/{name}:stop": "не создаёт: останавливает существующий контейнер",
+    "secretmanager POST /v2/version": "создаёт: новую версию существующего секрета (добавление версии) — безопасность; creates/impact не объявлены — бэклог процесса, 1.9",
+    "certificatemanager POST /v1/certificate/{certificateId}:renew": "не создаёт: продлевает существующий сертификат",
+    "iam POST /api/v1/auth/token": "не создаёт: обмен ключа доступа на токен IAM",
+    "oidc POST /auth/system/openid/token": "не создаёт: обмен ключа сервисного аккаунта на JWT для kube-apiserver (и кода входа на токены человека — evo login)"
+  },
   "services": [
     {
       "name": "compute",
