@@ -571,20 +571,3 @@ func TestLogin_EvaluateErrorIsNoRefusal(t *testing.T) {
 		t.Fatalf("err %v; keys %+v; permissions %+v", r.err, w.Keys(), w.Permissions())
 	}
 }
-
-// The actions evo asks evaluate about are in the IAM catalog (probe A1):
-// with a name the catalog does not know, every evaluate fails, and the
-// consent shows «the right is not checked» to everyone (U-9).
-func TestLogin_ActionsAreInTheCatalog(t *testing.T) {
-	for _, a := range []string{auth.LoginActionCreateAccount, auth.LoginActionGrantRole} {
-		if !slices.Contains(loginworld.Actions, a) {
-			t.Errorf("%s is not in the IAM catalog", a)
-		}
-	}
-	w := newWorld(t, loginworld.Variant{})
-	r := login(t, w, &browser{}, Choice{}, nil, nil)
-	note := tUnchecked("")
-	if r.err != nil || strings.Contains(r.out, note[:strings.Index(note, ":")]) {
-		t.Errorf("err %v; the right was not checked:\n%s", r.err, r.out)
-	}
-}

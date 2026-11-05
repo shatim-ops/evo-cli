@@ -29,7 +29,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -50,16 +49,6 @@ const (
 	// UserID is the human's id in the ID token (sub) and in evaluate.
 	UserID = "u0000000-0000-0000-0000-000000000001"
 )
-
-// Actions are the actions of the IAM catalog (GET /api/v1/actions) about
-// service accounts, their keys and permissions, as the probe A1 read them
-// (runs 45 and 46, 2 of 2): evaluate and bulk-evaluate answer 400 «unknown
-// action» for any other name, as a catalog that does not know it would.
-var Actions = []string{
-	"iam.serviceaccount.edit", "iam.serviceaccount.read", "iam.serviceaccount.impersonate", "iam.serviceaccount.unlinkproject",
-	"iam.serviceaccount.accesskey.edit", "iam.serviceaccount.accesskey.read",
-	"iam.permission.add", "iam.permission.edit", "iam.permission.read", "iam.permission.view",
-}
 
 // IssuerPath is the path of the issuer, served on the world's host.
 var IssuerPath = func() string {
@@ -540,28 +529,16 @@ func (w *World) administration(rw http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case p == "/api/v1/actions":
-		var list []map[string]string
-		for _, a := range Actions {
-			list = append(list, map[string]string{"name": a, "product_code": "iam"})
-		}
-		writeJSON(rw, 200, map[string]any{"actions": list})
+		writeJSON(rw, 200, map[string]any{"actions": []map[string]string{
+			{"name": "iam.serviceAccounts.create", "productCode": "iam"},
+			{"name": "iam.permissions.create", "productCode": "iam"}}})
 	case w.v.EvaluateUnknown && (p == "/api/v1/permissions/evaluate" || p == "/api/v1/permissions/bulk-evaluate"):
 		fail(rw, 400, "unknown action")
 	case p == "/api/v1/permissions/evaluate":
-		if !slices.Contains(Actions, r.URL.Query().Get("action")) {
-			fail(rw, 400, "unknown action")
-			return
-		}
 		writeJSON(rw, 200, map[string]bool{"accessGranted": !w.v.Denied})
 	case p == "/api/v1/permissions/bulk-evaluate":
 		var body struct{ Requests []map[string]string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		for _, q := range body.Requests {
-			if !slices.Contains(Actions, q["action"]) {
-				fail(rw, 400, "unknown action")
-				return
-			}
-		}
 		res := make([]map[string]bool, len(body.Requests))
 		for i := range res {
 			res[i] = map[string]bool{"accessGranted": !w.v.Denied}

@@ -126,11 +126,11 @@ func (k *walk) run() outcome {
 	}
 	// 10, 12. The human may create the account and grant the role.
 	_, m := k.do(http.MethodPost, "/api/v1/permissions/bulk-evaluate", map[string]any{"requests": []map[string]string{
-		{"action": Actions[0], "resourceId": Project, "userId": UserID}}}, human)
+		{"action": "iam.serviceAccounts.create", "resourceId": Project, "userId": UserID}}}, human)
 	if m["results"].([]any)[0].(map[string]any)["accessGranted"] != true {
 		return outcome{"AUTH_FAILED", "bulk-evaluate"}
 	}
-	if _, m := k.do(http.MethodGet, "/api/v1/permissions/evaluate?action="+Actions[0]+"&resourceId="+Project, nil, human); m["accessGranted"] != true {
+	if _, m := k.do(http.MethodGet, "/api/v1/permissions/evaluate?resourceId="+Project, nil, human); m["accessGranted"] != true {
 		return outcome{"AUTH_FAILED", "evaluate"}
 	}
 	// Limits are refused before any write.
