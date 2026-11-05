@@ -154,6 +154,13 @@ func firstWords(cmd string) string {
 // changes the timings of the world (a test that reads a note of a wait).
 func progressBudgetRegistry(t *testing.T, vm *slowSSHVM, tune ...func(*engine.Timings)) *Registry {
 	t.Helper()
+	return progressBudgetRegistryIn(t, vm, &faultCloud{}, tune...)
+}
+
+// progressBudgetRegistryIn is progressBudgetRegistry over the cloud the
+// test holds (a VM kept creating, then up: FB171-3).
+func progressBudgetRegistryIn(t *testing.T, vm *slowSSHVM, cloud *faultCloud, tune ...func(*engine.Timings)) *Registry {
+	t.Helper()
 	faultToolsIsolate(t)
 	timings := faultToolsTimings()
 	timings.VMPollTimeout, timings.FIPSettleTimeout, timings.DockerWaitTimeout = 0, 0, 0
@@ -165,7 +172,6 @@ func progressBudgetRegistry(t *testing.T, vm *slowSSHVM, tune ...func(*engine.Ti
 	}
 	compose := writeTestCompose(t)
 	dir := t.TempDir()
-	cloud := &faultCloud{}
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
