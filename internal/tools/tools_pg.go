@@ -639,7 +639,7 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 // the 400 of Managed PostgreSQL to pg_user_create, «validate password: at
 // least one special character from !$%&()*+-,./:;<>=?@[\]^_{|}# is
 // required», agent run of 1.7.0, 2 of 2 (04–05.11.2026); the rule is in no
-// specification. Only what was observed — no length, no other rule
+// specification — discrepancy DB-9 of the registry. Only what was observed — no length, no other rule
 // («Риск», R-9); the backslash of «[\]» counts too, so evo refuses no
 // password the platform takes. A rule evo does not check stays the
 // platform's 400, API_ERROR, as before.
