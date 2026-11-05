@@ -1634,6 +1634,9 @@ func deployInProgress(result map[string]any, going *engine.InProgress, args map[
 	if going.Output != "" {
 		result["output"] = going.Output
 	}
+	if going.Note != "" {
+		result["warning"] = going.Note
+	}
 	repeat := maps.Clone(args)
 	repeat["confirmed"] = true
 	if going.Phase == "compose-up" || going.Phase == "verify" {
@@ -1642,6 +1645,11 @@ func deployInProgress(result map[string]any, going *engine.InProgress, args map[
 		delete(repeat, "force")
 	}
 	result["next"] = fmt.Sprintf("Deploy is still in progress (%s). Call deploy again with the same arguments: it takes the VM in the state and goes on from there; a stage on the VM goes on without the call and is not run twice.", going.Phase)
+	if going.Note != "" {
+		// Why the phase may never end comes first: the person may have to
+		// act — open outbound 22, reboot the VM (D80).
+		result["next"] = "Read warning first: it says why the phase may never end. " + result["next"].(string)
+	}
 	nextStep(result, "deploy", repeat)
 	return result
 }
