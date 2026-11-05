@@ -101,8 +101,10 @@ signs:
     args: ["sign-blob", "--bundle=${signature}", "${artifact}", "--yes"]
 
 # Сборка из main (ci.yml, dev-build) — не выпуск: в версии -dev и sha.
+# main собирает следующую minor (1.7.x → 1.8.0-dev-<sha>), а не patch
+# последнего тега.
 snapshot:
-  version_template: "{{ incpatch .Version }}-dev-{{ .ShortCommit }}"
+  version_template: "{{ incminor .Version }}-dev-{{ .ShortCommit }}"
 
 changelog:
   use: git
