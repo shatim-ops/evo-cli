@@ -55,7 +55,6 @@ func tWhatWillBeDone() string {
 func tWhatWillBeMade() string {
 	return i18n.T("What will be created", "Что будет создано")
 }
-func tGrant() string  { return i18n.T("Grant access", "Выдать доступ") }
 func tCancel() string { return i18n.T("Cancel", "Отмена") }
 
 func tNoRightNote() string {
@@ -418,3 +417,23 @@ func TAgentKeyWarning(profile string) string {
 		"ключ профиля %q создан evo login с ролью «%s»: агенту с ним разрешено удаление ресурсов; агенту без присмотра нужен ключ с ролью без права удаления",
 		profile, auth.LoginRoleDisplayName)
 }
+
+// The preselected project of the consent page (R-48).
+func tGrantIn() string {
+	return i18n.T("Grant access in the project", "Выдать доступ в проекте")
+}
+func tPreselectedFrom(source string) string {
+	return i18n.Tf("preselected %s — another can be chosen", "подставлен %s — можно выбрать другой", source)
+}
+func tPreselectNoRight(source string) string {
+	return i18n.Tf("the project %s is not checked: no right in it", "проект %s не отмечен: в нём нет права", source)
+}
+func tPreselectTerminal(project, source string) string {
+	return i18n.Tf("The page offers the project %s, %s.", "На странице отмечен проект %s, %s.", project, source)
+}
+
+// TFromProfile and TFromEnv name where a preselected project came from.
+func TFromProfile(profile string) string {
+	return i18n.Tf("from the evo profile «%s»", "из профиля evo «%s»", profile)
+}
+func TFromEnv() string { return i18n.T("from CLOUDRU_PROJECT_ID", "из CLOUDRU_PROJECT_ID") }

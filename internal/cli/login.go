@@ -76,6 +76,7 @@ func newLoginCmd() *cobra.Command {
 				}
 				store.name = name
 			}
+			choice.Preselect, choice.PreselectFrom = loginPreselect(flagProfile)
 			cfg := loginConfig(loginSay(cmd), openBrowser)
 			if noBrowser {
 				cfg.Open = nil
@@ -117,6 +118,21 @@ func newLoginCmd() *cobra.Command {
 	cmd.Flags().StringVar(&ttl, "key-ttl", "", login.TFlagTTL())
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, login.TFlagNoBrowser())
 	return cmd
+}
+
+// loginPreselect is the project the consent page offers checked (R-48):
+// CLOUDRU_PROJECT_ID, as for every command, else the project of the
+// profile of now; with where it came from. --project filters the list and
+// wins over both.
+func loginPreselect(profileFlag string) (id, from string) {
+	if env := strings.TrimSpace(os.Getenv("CLOUDRU_PROJECT_ID")); env != "" {
+		return env, login.TFromEnv()
+	}
+	name, _ := config.ProfileName(profileFlag)
+	if prof, _, found, err := config.LoadProfile(name); err == nil && found && prof.ProjectID != "" {
+		return prof.ProjectID, login.TFromProfile(name)
+	}
+	return "", ""
 }
 
 // agentProfile is the profile of a key for an agent, unless --profile or

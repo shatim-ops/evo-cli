@@ -54,6 +54,11 @@ type Choice struct {
 	Project string
 	For     Audience
 	Days    int
+	// Preselect is the project the page offers checked, by id: the one of
+	// the profile or of CLOUDRU_PROJECT_ID (R-48); PreselectFrom names
+	// that source on the page and in the terminal. --project filters the
+	// list instead and wins.
+	Preselect, PreselectFrom string
 }
 
 // Store is where the key goes: the profile of an audience, the key it holds
@@ -305,6 +310,41 @@ func (s *session) uncheck(err error) error {
 		s.tell(tUnchecked(s.unchecked))
 	}
 	return nil
+}
+
+// preselected is the index of the project to offer checked: the
+// preselected one, when it is listed and allowed; -1 otherwise.
+func (s *session) preselected() int {
+	for i, p := range s.projects {
+		if s.choice.Preselect != "" && p.ID == s.choice.Preselect && p.Allowed {
+			return i
+		}
+	}
+	return -1
+}
+
+// preselectDenied reports whether the preselected project is listed but
+// may not be chosen: the page says why it is not checked.
+func (s *session) preselectDenied() bool {
+	for _, p := range s.projects {
+		if p.ID == s.choice.Preselect && !p.Allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// tellPreselect names in the terminal the project the page offers checked
+// and where it came from, or why it is not checked (R-48).
+func (s *session) tellPreselect() {
+	if s.choice.Preselect == "" {
+		return
+	}
+	if i := s.preselected(); i >= 0 {
+		s.tell(tPreselectTerminal(s.projects[i].Name, s.choice.PreselectFrom))
+	} else if s.preselectDenied() {
+		s.tell(tPreselectNoRight(s.choice.PreselectFrom))
+	}
 }
 
 // noRightIn is the refusal of a person with the right in none of their
