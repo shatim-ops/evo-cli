@@ -76,7 +76,7 @@ func newLoginCmd() *cobra.Command {
 				}
 				store.name = name
 			}
-			choice.Preselect, choice.PreselectFrom = loginPreselect(flagProfile)
+			choice.Preselect, choice.PreselectFrom, choice.PreselectEnv = loginPreselect(flagProfile)
 			cfg := loginConfig(loginSay(cmd), openBrowser)
 			if noBrowser {
 				cfg.Open = nil
@@ -98,7 +98,8 @@ func newLoginCmd() *cobra.Command {
 				"profile": res.Profile, "key_id": config.MaskKeyID(res.KeyID), "project_id": res.ProjectID,
 				"project_name": res.ProjectName, "service_account": res.Account, "role": res.Role,
 				"key_expires_at": res.KeyExpiresAt.UTC().Format(time.RFC3339), "reused_account": res.AccountReused,
-				"revoked_key_id": revoked,
+				"role_expires_at": res.RoleExpiresAt.UTC().Format(time.RFC3339),
+				"revoked_key_id":  revoked,
 			}
 			if res.PreviousNote != "" {
 				out["warning"] = res.PreviousNote
@@ -124,15 +125,15 @@ func newLoginCmd() *cobra.Command {
 // CLOUDRU_PROJECT_ID, as for every command, else the project of the
 // profile of now; with where it came from. --project filters the list and
 // wins over both.
-func loginPreselect(profileFlag string) (id, from string) {
+func loginPreselect(profileFlag string) (id, from string, env bool) {
 	if env := strings.TrimSpace(os.Getenv("CLOUDRU_PROJECT_ID")); env != "" {
-		return env, login.TFromEnv()
+		return env, login.TFromEnv(), true
 	}
 	name, _ := config.ProfileName(profileFlag)
 	if prof, _, found, err := config.LoadProfile(name); err == nil && found && prof.ProjectID != "" {
-		return prof.ProjectID, login.TFromProfile(name)
+		return prof.ProjectID, login.TFromProfile(name), false
 	}
-	return "", ""
+	return "", "", false
 }
 
 // agentProfile is the profile of a key for an agent, unless --profile or

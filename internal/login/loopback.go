@@ -59,6 +59,10 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		_ = srv.Shutdown(sctx)
 	}()
 
+	if s.choice.For == ForAgent {
+		s.warnAgent()
+	}
+	s.tell(tOpenPage())
 	cfg.Say(tOpen(), authURL)
 	if cfg.Open != nil {
 		_ = cfg.Open(authURL) // the address is printed: a browser that did not open is no failure
@@ -78,6 +82,14 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 	case <-ctx.Done():
 		lb.close()
 		return Result{}, ctx.Err()
+	}
+}
+
+// warnAgent says in the terminal, once, what a key for an agent can do.
+func (s *session) warnAgent() {
+	if !s.agentWarned {
+		s.agentWarned = true
+		s.tell(tAgentTerm())
 	}
 }
 

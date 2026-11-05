@@ -10,6 +10,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
 // Every text of evo login and logout is here, from the second edition of
@@ -22,12 +23,18 @@ import (
 func day(t time.Time) string { return t.Local().Format("02.01.2006") }
 
 func tHeading() string {
-	return i18n.T("evo access to a project", "Доступ evo к проекту")
+	return i18n.Tf("%s requests access to a project", "%s запрашивает доступ к проекту", product.PageName)
+}
+
+// tOpenPage is said once before the browser: the page names itself
+// Evolution CMCP, the terminal says evo (D34, variant A).
+func tOpenPage() string {
+	return i18n.Tf("The %s page opens.", "Откроется страница %s.", product.PageName)
 }
 
 func tSignedIn(login string) string {
-	return i18n.Tf("You signed in as %s. evo will create a service account and a key with which it manages the cloud in the project you choose.",
-		"Вы вошли как %s. evo создаст сервисный аккаунт и ключ, которыми будет управлять облаком в выбранном проекте.", login)
+	return i18n.Tf("You signed in as %s. %s will create a service account and an access key to manage the cloud in the project you choose.",
+		"Вы вошли как %s. %s создаст сервисный аккаунт и ключ доступа, чтобы управлять облаком в выбранном проекте.", login, product.PageName)
 }
 
 func tOpen() string {
@@ -89,16 +96,24 @@ func tSumRole(until string) string {
 	return i18n.Tf("Role «%s» until %s.", "Роль «%s» до %s.", auth.LoginRoleDisplayName, until)
 }
 func tSumKey(until string) string { return i18n.Tf("Key until %s.", "Ключ до %s.", until) }
-func tSumStays() string {
-	return i18n.T("The account stays after logout; the role expires with the key.", "Аккаунт остается после выхода, роль истекает вместе с ключом.")
+
+// The account and the role after the exit: the page by action, the
+// terminal by its command («Риск», conclusion 26; separate strings).
+func tSumStaysPage() string {
+	return i18n.T("The account stays after the exit; the role is granted with the key's term.",
+		"Аккаунт остается и после выхода; роль выдается со сроком ключа.")
+}
+func tSumStaysTerm() string {
+	return i18n.T("The account stays after evo logout; the role is granted with the key's term.",
+		"Аккаунт остается и после evo logout; роль выдается со сроком ключа.")
 }
 func tSumReuseNote() string {
 	return i18n.T("If the project has this account already, no new one is created: the role is extended to the key's term, and the previous key of this profile is revoked.",
 		"Если такой аккаунт в проекте уже есть, новый не создается: роль продлевается до срока ключа, прежний ключ этого профиля отзывается.")
 }
 func tSecretNote() string {
-	return i18n.T("The key's secret is not shown: evo on this computer creates the account and the key with your rights and keeps the key in the profile.",
-		"Секрет ключа не показывается: evo на этом компьютере создает аккаунт и ключ вашими правами и записывает ключ в профиль.")
+	return i18n.Tf("The key's secret is not shown: %s on this computer creates the account and the key with your rights and keeps the key in the profile.",
+		"Секрет ключа не показывается: %s на этом компьютере создает аккаунт и ключ вашими правами и записывает ключ в профиль.", product.PageName)
 }
 
 // The terminal's summary rows.
@@ -120,7 +135,9 @@ func tStepAccount(account string, reused bool) string {
 	}
 	return i18n.Tf("account %s… created", "аккаунт %s… создан", account)
 }
-func tStepRole() string     { return i18n.T("role… granted", "роль… выдана") }
+func tStepRole(until time.Time) string {
+	return i18n.Tf("role… granted until %s", "роль… выдана до %s", day(until))
+}
 func tStepKey() string      { return i18n.T("key… issued", "ключ… выпущен") }
 func tStepKeyCheck() string { return i18n.T("key check… ok", "проверка ключа… ок") }
 
@@ -137,7 +154,7 @@ func tDoneText(keyID, profile string, term time.Time, forAgent bool) string {
 	return i18n.Tf("Key %s is kept on this machine, profile «%s». Valid until %s. Go back to the terminal.",
 		"Ключ %s сохранен на этом компьютере, профиль «%s». Действует до %s. Вернитесь в терминал.", keyID, profile, day(term))
 }
-func tReusedNote(account string, term time.Time) string {
+func tReusedNote(account string, term time.Time) string { // term: the role's actual term
 	return i18n.Tf("the existing service account %s is used: the role «%s» is extended to %s", "использован существующий сервисный аккаунт %s: роль «%s» продлена до %s",
 		account, auth.LoginRoleDisplayName, day(term))
 }
@@ -145,8 +162,8 @@ func tRevokedPrevious(keyID string) string {
 	return i18n.Tf("the previous key %s on this computer is deleted", "прежний ключ %s на этом компьютере удален", keyID)
 }
 func tRevokeHow() string {
-	return i18n.T("To revoke: evo logout or the console → Service accounts. This window can be closed.",
-		"Отзыв: evo logout или личный кабинет Cloud.ru → «Сервисные аккаунты». Это окно можно закрыть.")
+	return i18n.T("To close the access earlier: delete the key on this computer (sign out of Evolution CMCP) and remove the role in the Cloud.ru personal account → «Service accounts». This window can be closed.",
+		"Чтобы закрыть доступ раньше, удалите ключ на этом компьютере (выйдите из Evolution CMCP) и снимите роль в личном кабинете Cloud.ru → «Сервисные аккаунты». Это окно можно закрыть.")
 }
 func tCancelledTitle() string { return i18n.T("Cancelled", "Отменено") }
 func tCancelled() string {
@@ -459,7 +476,23 @@ func tAgentWarnTitle() string {
 	return i18n.T("The agent gets the rights of a project administrator", "Агент получит права администратора проекта")
 }
 func tAgentWarn(until string) string {
-	return i18n.Tf("The role «%s» lets the agent create, change and delete any resource of the project and manage service accounts and keys. The access holds until %s, then the role is removed by itself; to revoke earlier — evo logout or the console.",
-		"Роль «%s» дает агенту право создавать, изменять и удалять любые ресурсы проекта и управлять сервисными аккаунтами и ключами. Доступ действует до %s, затем роль снимается сама; отозвать раньше — evo logout или личный кабинет Cloud.ru.",
-		auth.LoginRoleDisplayName, until)
+	return i18n.Tf("The role «%s» lets the agent create, change and delete any resources of the project, those made not through %s too, and manage service accounts and keys. The role is granted with a term until %s. To close the access earlier, delete the key on this computer and remove the role in the Cloud.ru personal account.",
+		"Роль «%s» дает агенту право создавать, изменять и удалять любые ресурсы проекта, в том числе созданные не через %s, и управлять сервисными аккаунтами и ключами. Роль выдается со сроком до %s. Чтобы закрыть доступ раньше, удалите ключ на этом компьютере и снимите роль в личном кабинете Cloud.ru.",
+		auth.LoginRoleDisplayName, product.PageName, until)
+}
+
+// tAgentTerm is the same warning in the terminal, once a login, when the
+// key is for an agent: the exit is the command there.
+func tAgentTerm() string {
+	return i18n.Tf("A key for an agent: the role «%s» gives the right to any resources of the project, those made not through evo too. To close the access earlier: evo logout deletes the key, the role is removed in the Cloud.ru personal account.",
+		"Ключ для агента: роль «%s» дает право на любые ресурсы проекта, в том числе созданные не через evo. Закрыть доступ раньше: evo logout удалит ключ, роль снимается в личном кабинете Cloud.ru.",
+		auth.LoginRoleDisplayName)
+}
+
+// tActionsUnconfirmed stands by the list of projects until the names of
+// the actions evaluate asks about are accepted live («Риск», conclusion
+// 26; probe 6a).
+func tActionsUnconfirmed() string {
+	return i18n.T("The right in each project is not confirmed by the platform yet: if it is not there, Cloud.ru refuses at the first write and nothing is created.",
+		"Право в каждом проекте пока не подтверждено платформой: если права нет, Cloud.ru откажет на первой записи, и ничего не будет создано.")
 }

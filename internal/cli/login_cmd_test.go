@@ -177,17 +177,17 @@ func TestAgentSetup_WarnsOfTheLoginKey(t *testing.T) {
 func TestLogin_PreselectSource(t *testing.T) {
 	setupCLI(t)
 	t.Setenv("CLOUDRU_PROJECT_ID", "")
-	if id, from := loginPreselect(""); id != "" || from != "" {
+	if id, from, _ := loginPreselect(""); id != "" || from != "" {
 		t.Errorf("no profile, no variable: %q %q", id, from)
 	}
 	if err := config.SaveProfile("default", config.Profile{ProjectID: "p-prof"}, config.Credentials{}); err != nil {
 		t.Fatal(err)
 	}
-	if id, from := loginPreselect(""); id != "p-prof" || from != login.TFromProfile("default") {
+	if id, from, env := loginPreselect(""); id != "p-prof" || from != login.TFromProfile("default") || env {
 		t.Errorf("profile: %q %q", id, from)
 	}
 	t.Setenv("CLOUDRU_PROJECT_ID", "p-env")
-	if id, from := loginPreselect(""); id != "p-env" || from != login.TFromEnv() {
+	if id, from, env := loginPreselect(""); id != "p-env" || from != login.TFromEnv() || !env {
 		t.Errorf("variable: %q %q", id, from)
 	}
 }

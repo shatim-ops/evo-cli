@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
 // The pages of the loopback (the design of 05.11, «Дизайн — окно создания
@@ -36,12 +37,12 @@ type page struct {
 
 // head is what every page has.
 type head struct {
-	Lang, Title, Heading string
-	Rules                template.CSS
+	Lang, Title, Heading, Product string
+	Rules                         template.CSS
 }
 
 func newHead(title string) head {
-	return head{Lang: i18n.Lang(), Title: title, Heading: tHeading()}
+	return head{Lang: i18n.Lang(), Title: title, Heading: tHeading(), Product: product.PageName}
 }
 
 func writePage(w http.ResponseWriter, code int, p page) {
@@ -78,7 +79,7 @@ type consentData struct {
 	SummaryStays, ReuseNote, Cancel   string
 	SecretNote, State, Consent, For   string
 	Unchecked, PreselectNote, GrantIn string
-	AgentWarnTitle                    string
+	AgentWarnTitle, Unconfirmed       string
 	AgentWarn                         [2]string
 	Projects                          []consentProject
 	Terms                             []consentTerm
@@ -109,7 +110,7 @@ func consentPage(s *session) page {
 		Intro: s.introLine(), ProjectLegend: tProject(), NeedAdmin: tNoRightMark(), NoRightNote: tNoRightNote(),
 		ForLegend: tForWhom(), ForMe: tForMe(), ForMeNote: tForMeNote(), ForAgent: tForAgent(), ForAgentNote: tForAgentNote(),
 		RoleNote: tRoleNote(), TermLegend: tTerm(), TermNote: tForeverInConsole(), SummaryHeading: tWhatWillBeMade(),
-		SummaryStays: tSumStays(), ReuseNote: tSumReuseNote(), Cancel: tCancel(), SecretNote: tSecretNote(),
+		SummaryStays: tSumStaysPage(), ReuseNote: tSumReuseNote(), Cancel: tCancel(), SecretNote: tSecretNote(),
 		State: s.state, Consent: s.consent, For: string(ForAgent),
 	}
 	copy(d.Account[:], cut(tSumAccountNew("\x00a", "\x00p"), "\x00a", "\x00p"))
@@ -122,6 +123,7 @@ func consentPage(s *session) page {
 		d.Unchecked = tUnchecked(s.unchecked)
 	}
 	d.GrantIn = tGrantIn()
+	d.Unconfirmed = tActionsUnconfirmed()
 	d.AgentWarnTitle = tAgentWarnTitle()
 	copy(d.AgentWarn[:], cut(tAgentWarn("\x00d"), "\x00d"))
 	var rules strings.Builder
@@ -139,7 +141,9 @@ func consentPage(s *session) page {
 		switch {
 		case i == pre:
 			cp.Checked, checked = true, true
-			cp.Source = tPreselectedFrom(s.choice.PreselectFrom)
+			if s.choice.PreselectEnv {
+				cp.Source = tPreselectedFrom(s.choice.PreselectFrom)
+			}
 		case pre < 0 && p.Allowed && !checked:
 			cp.Checked, checked = true, true
 		}
@@ -191,7 +195,7 @@ func donePage(r Result) page {
 	// not a remark in the rows.
 	var note []string
 	if r.AccountReused {
-		note = append(note, tReusedNote(r.Account, r.KeyExpiresAt))
+		note = append(note, tReusedNote(r.Account, roleTerm(r)))
 	}
 	if r.RevokedKeyID != "" {
 		note = append(note, tRevokedPrevious(config.MaskKeyID(r.RevokedKeyID)))
@@ -202,12 +206,20 @@ func donePage(r Result) page {
 		Rows: []row{
 			{tProject(), projectIn(r.ProjectName, r.CustomerName)},
 			{upperFirst(tRowAccount()), r.Account},
-			{upperFirst(tRowRole()), tRoleUntil(r.KeyExpiresAt)},
+			{upperFirst(tRowRole()), tRoleUntil(roleTerm(r))},
 			{upperFirst(tRowKey()), config.MaskKeyID(r.KeyID)},
 			{upperFirst(tRowProfile()), r.Profile},
 		},
 		Footer: tRevokeHow(),
 	}}
+}
+
+// roleTerm is the role's actual term, the key's when unknown.
+func roleTerm(r Result) time.Time {
+	if r.RoleExpiresAt.IsZero() {
+		return r.KeyExpiresAt
+	}
+	return r.RoleExpiresAt
 }
 
 // upperFirst is a row name of the terminal as the page heads it.

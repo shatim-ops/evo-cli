@@ -242,6 +242,8 @@ Object Storage, секреты; развёртывание compose-проект�
 
 Сообщения по-английски: EVO_LANG=en.
 
+Страницы входа evo login называются Evolution CMCP — это evo.
+
 Добро пожаловать в Cloud.ru
 ```
 

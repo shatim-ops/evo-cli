@@ -38,7 +38,7 @@ func TestNoRightIn(t *testing.T) {
 // not checked, and the page says why; the button names the project.
 func TestConsentPage_Preselect(t *testing.T) {
 	render := func(pre string) string {
-		s := &session{cfg: Config{Now: time.Now}, choice: Choice{Preselect: pre, PreselectFrom: "из профиля evo «dev»"},
+		s := &session{cfg: Config{Now: time.Now}, choice: Choice{Preselect: pre, PreselectFrom: "из профиля evo «dev»", PreselectEnv: true},
 			projects: []project{{ID: "a", Name: "alpha", Allowed: true}, {ID: "b", Name: "beta", Allowed: true}, {ID: "c", Name: "gamma"}}}
 		var b strings.Builder
 		p := consentPage(s)
@@ -110,5 +110,37 @@ func TestPages_MacketV15(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), `<svg class="logo"`) || strings.Contains(b.String(), "<img") || strings.Contains(b.String(), "http://") && !strings.Contains(b.String(), "xmlns=\"http://www.w3.org/2000/svg\"") {
 		t.Errorf("the logo is not inline")
+	}
+}
+
+// Conclusion 27: the page names the source of a preselected project only
+// for CLOUDRU_PROJECT_ID; the project of the profile is checked silently.
+func TestConsentPage_PreselectSourceOnlyForTheVariable(t *testing.T) {
+	s := &session{cfg: Config{Now: time.Now}, choice: Choice{Preselect: "a", PreselectFrom: "из профиля evo «dev»"},
+		projects: []project{{ID: "a", Name: "alpha", Allowed: true}}}
+	var b strings.Builder
+	p := consentPage(s)
+	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "из профиля evo") || !strings.Contains(b.String(), `value="a" required checked`) {
+		t.Errorf("the project of the profile: checked silently")
+	}
+	if !strings.Contains(b.String(), tActionsUnconfirmed()) {
+		t.Errorf("no note that the right is not confirmed by the platform")
+	}
+}
+
+// Conclusion 26: the role's actual term — a longer one the account held is
+// kept and named on the result.
+func TestDonePage_RoleTerm(t *testing.T) {
+	key, role := time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC), time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+	var b strings.Builder
+	p := donePage(Result{Account: "evo", KeyID: "k", KeyExpiresAt: key, RoleExpiresAt: role})
+	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), tRoleUntil(role)) {
+		t.Errorf("the role's term is not the actual one")
 	}
 }
