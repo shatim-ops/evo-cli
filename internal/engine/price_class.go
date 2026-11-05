@@ -172,8 +172,10 @@ func share(r string, p CreatePreview) float64 {
 		}
 		return 0
 	}
+	// A PostgreSQL cluster's storage is part of the cluster, not a disk of
+	// its own: its share is the whole price, nodes and storage.
 	switch r {
-	case ResourceVM, ResourcePGCluster:
+	case ResourceVM:
 		return c.ComputeMonthlyRub
 	case ResourceDisk:
 		return c.DiskMonthlyRub
