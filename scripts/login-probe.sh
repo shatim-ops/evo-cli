@@ -27,6 +27,8 @@ auth=$(jq -r .authorization_endpoint "$work/d.json")
 token=$(jq -r .token_endpoint "$work/d.json")
 
 echo "== 2. Вход в браузере"
+python3 -c "import socket; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('127.0.0.1', $PORT)); s.close()" 2>/dev/null ||
+	{ echo "порт $PORT на 127.0.0.1 занят другой программой — закройте её и запустите снова"; exit 1; }
 python3 - "$work/cb.json" "$PORT" <<'PY' &
 import http.server, json, sys, urllib.parse as u
 class H(http.server.BaseHTTPRequestHandler):

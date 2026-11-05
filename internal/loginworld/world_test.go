@@ -384,6 +384,12 @@ func TestLoginWorld_ProviderRefuses(t *testing.T) {
 	if got := exchange(cb.Get("code"), RedirectURIs[1], verifier); got != 200 {
 		t.Errorf("exchange: %d, want 200", got)
 	}
+	// The person's access token and ID token are among Secrets: a channel
+	// walk that checks Secrets catches either (A0-5).
+	secrets := strings.Join(w.Secrets(), "\n")
+	if w.human == "" || !strings.Contains(secrets, w.human) || strings.Count(secrets, ".") < 2 {
+		t.Error("the access token or the ID token of the exchange is not among Secrets")
+	}
 	if got := exchange(cb.Get("code"), RedirectURIs[1], verifier); got != 400 {
 		t.Errorf("second exchange of a code: %d, want 400", got)
 	}
