@@ -2,7 +2,8 @@
 # Проверка e2e_rules_sweep.sh (job ci) на фейках evo и curl: правило «evo:»
 # порта e2e снимается, только если группа отвечает has_interfaces: false;
 # true, ответ не 200, поля нет или оно не boolean — правило остаётся
-# (отказ в безопасную сторону); идущий прогон e2e — ничего.
+# (отказ в безопасную сторону); идущий прогон e2e — ничего; правило с
+# меткой evo снимается, только если ВМ метки нет в проекте.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 dir=$(mktemp -d)
@@ -59,6 +60,23 @@ set +e
 set -e
 want "идущий прогон e2e — код 1" "$rc" 1
 want "идущий прогон e2e — ни одного запроса" "$(cat "$dir/calls")" ""
+
+# Правило-сирота (решение владельца 05.11, вариант А): метка evo с id ВМ
+# («evo: port N (vm <id>)»), а такой ВМ в проекте нет, — снимается и в
+# группе с интерфейсами (sg-used), строкой «снято правило-сирота порта N».
+# ВМ метки есть — правило остаётся, даже в группе без интерфейсов: его
+# закроет удаление той ВМ (P6). Правило без метки — прежнее правило.
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[
+ {"id":"sg-used","rules":[{"id":"r-orphan","direction":"ingress","port_range":"80:80","description":"evo: port 80 (vm vm-gone)"},
+                          {"id":"r-live","direction":"ingress","port_range":"8080:8080","description":"evo: port 8080 (vm vm-here)"},
+                          {"id":"r-old","direction":"ingress","port_range":"8081:8081","description":"evo: deploy"}]},
+ {"id":"sg-free","rules":[{"id":"r-live2","direction":"ingress","port_range":"8082:8082","description":"evo: port 8082 (vm vm-here)"}]}]}'
+fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm-here","name":"my-app"}]}'
+: > "$dir/calls"
+"$here/e2e_rules_sweep.sh" > "$dir/out"
+want "снята только сирота" "$(grep '^DELETE' "$dir/calls" | sed 's|.*/security-groups/||')" "sg-used/rules/r-orphan"
+want "строка о сироте" "$(grep -c 'снято правило-сирота порта 80' "$dir/out")" 1
+want "правила ВМ, которая есть, и без метки — оставлены" "$(grep -c 'оставлено' "$dir/out")" 3
 
 [ "$fail" = 0 ] && echo "e2e_rules_sweep: ok"
 exit "$fail"
