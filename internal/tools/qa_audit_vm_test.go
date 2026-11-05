@@ -420,7 +420,7 @@ func (*diskCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, er
 	return []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "web", Region: "z"}}, nil
 }
 func (*diskCloud) CreateDisk(context.Context, provision.CreateDiskReq) (map[string]any, error) {
-	return map[string]any{"id": "d-1", "name": "data", "state": "creating"}, nil
+	return map[string]any{"id": "00000000-0000-4000-8000-0000000000d1", "name": "data", "state": "creating"}, nil
 }
 func (c *diskCloud) state() string {
 	if c.stuck != "" {
@@ -433,7 +433,7 @@ func (c *diskCloud) state() string {
 }
 func (c *diskCloud) ListDisks(context.Context, string) ([]map[string]any, error) {
 	c.lists++
-	return []map[string]any{{"id": "d-0", "state": "available"}, {"id": "d-1", "state": c.state()}}, nil
+	return []map[string]any{{"id": "00000000-0000-4000-8000-0000000000d0", "state": "available"}, {"id": "00000000-0000-4000-8000-0000000000d1", "state": c.state()}}, nil
 }
 func (c *diskCloud) AttachDisk(context.Context, string, string, string) (map[string]any, error) {
 	if c.attachErr != nil {
@@ -465,14 +465,14 @@ func TestAudit_DiskCreateAttachWaitsForAvailable(t *testing.T) {
 func TestDiskAttach_WaitsForNewDisk(t *testing.T) {
 	cloud := &diskCloud{readyAt: 3}
 	r, _ := fastRegistry(t, cloud, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
-	m, text, isErr := callNamed(t, r, "disk_attach", map[string]any{"disk_id": "d-1", "vm": "web", "confirmed": true})
+	m, text, isErr := callNamed(t, r, "disk_attach", map[string]any{"disk_id": "00000000-0000-4000-8000-0000000000d1", "vm": "web", "confirmed": true})
 	if isErr || m["status"] != "attached" || !cloud.attached {
 		t.Fatalf("attached=%v after %d polls: %s", cloud.attached, cloud.lists, text)
 	}
 
 	stuck := &diskCloud{stuck: "creating"}
 	r, _ = fastRegistry(t, stuck, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
-	m, text, isErr = callNamed(t, r, "disk_attach", map[string]any{"disk_id": "d-1", "vm": "web", "confirmed": true})
+	m, text, isErr = callNamed(t, r, "disk_attach", map[string]any{"disk_id": "00000000-0000-4000-8000-0000000000d1", "vm": "web", "confirmed": true})
 	// A disk that stays creating is refused before the question with its
 	// state (D53), not after consent.
 	if !isErr || stuck.attached || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, "creating") {
@@ -482,7 +482,7 @@ func TestDiskAttach_WaitsForNewDisk(t *testing.T) {
 	// Другая ошибка привязки — без ожидания: список дисков не читается.
 	busy := &diskCloud{stuck: "available", attachErr: clerrors.New(clerrors.CodeAPIError, "API returned status 422: busy", "")}
 	r, _ = fastRegistry(t, busy, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
-	if _, text, isErr := callNamed(t, r, "disk_attach", map[string]any{"disk_id": "d-1", "vm": "web", "confirmed": true}); !isErr || busy.lists != 0 {
+	if _, text, isErr := callNamed(t, r, "disk_attach", map[string]any{"disk_id": "00000000-0000-4000-8000-0000000000d1", "vm": "web", "confirmed": true}); !isErr || busy.lists != 0 {
 		t.Fatalf("other attach error waited (%d polls): %s", busy.lists, text)
 	}
 }
@@ -497,10 +497,10 @@ func TestAudit_DiskCreateAttachFailsIsPartial(t *testing.T) {
 	} {
 		r, _ := fastRegistry(t, cloud, config.Config{ProjectID: "p", Region: "z", KeyID: "k", Secret: "s"})
 		m, text, isErr := callNamed(t, r, "disk_create", map[string]any{"name": "data", "size_gb": 10, "disk_type": "SSD", "attach_to": "web", "confirmed": true})
-		if !isErr || m["status"] != "partial" || m["disk_id"] != "d-1" || m["reason"] != "API_ERROR" {
+		if !isErr || m["status"] != "partial" || m["disk_id"] != "00000000-0000-4000-8000-0000000000d1" || m["reason"] != "API_ERROR" {
 			t.Errorf("%s: %s", name, text)
 		}
-		if h, _ := m["hint"].(string); !strings.Contains(h, "disk_attach disk_id=d-1") {
+		if h, _ := m["hint"].(string); !strings.Contains(h, "disk_attach disk_id=00000000-0000-4000-8000-0000000000d1") {
 			t.Errorf("%s: hint = %q", name, h)
 		}
 	}

@@ -487,7 +487,7 @@ func (s *Registry) registerTools() {
 			Name:        "disk_attach",
 			Description: "Attach an existing disk to a VM (POST /disks/{id}/attach). Disk and VM must be in the same zone. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
-				"disk_id":   strProp("Disk UUID (from disk_list)."),
+				"disk_id":   uuidProp("Disk UUID (from disk_list)."),
 				"vm":        strProp("VM name or UUID."),
 				"confirmed": confirmedProp(),
 			}, "disk_id", "vm"),
@@ -496,7 +496,7 @@ func (s *Registry) registerTools() {
 			Name:        "disk_detach",
 			Description: "Detach a disk from a VM (POST /disks/{id}/detach). Do NOT detach a bootable/in-use disk carelessly. Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
-				"disk_id":   strProp("Disk UUID (from disk_list)."),
+				"disk_id":   uuidProp("Disk UUID (from disk_list)."),
 				"vm":        strProp("VM name or UUID the disk is attached to."),
 				"confirmed": confirmedProp(),
 			}, "disk_id", "vm"),
@@ -505,7 +505,7 @@ func (s *Registry) registerTools() {
 			Name:        "disk_resize",
 			Description: "Grow a disk in place via PUT /disks/{id} (up to 16384 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead). Mutation: requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
-				"disk_id":   strProp("Disk UUID (from disk_list)."),
+				"disk_id":   uuidProp("Disk UUID (from disk_list)."),
 				"size_gb":   intProp("New size in GB (must be larger than current; max 16384)."),
 				"confirmed": confirmedProp(),
 			}, "disk_id", "size_gb"),
