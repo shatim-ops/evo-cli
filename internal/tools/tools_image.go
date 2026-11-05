@@ -228,10 +228,11 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 	fipID, fipName := fip.ID, fip.Name
 
 	// Find the VM's primary interface — that is what the address binds to.
-	vmID, _, err := s.resolveVM(ctx, vmRef, pid)
+	vm, err := s.resolveVM(ctx, vmRef, pid)
 	if err != nil {
 		return nil, err
 	}
+	vmID := vm.ID
 	detail, err := eng.Cloud.GetVMDetail(ctx, vmID)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("get vm detail: %w", "данные ВМ: %w"), err)

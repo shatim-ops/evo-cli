@@ -25,22 +25,22 @@ func looksUUID(s string) bool {
 	return len(s) == 36 && strings.Count(s, "-") == 4
 }
 
-// resolveVM finds a VM by id or name, returning (id, zoneID).
-func (s *Registry) resolveVM(ctx context.Context, ref, projectID string) (string, string, error) {
+// resolveVM finds a VM by id or name.
+func (s *Registry) resolveVM(ctx context.Context, ref, projectID string) (*provision.VM, error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	vms, err := eng.Cloud.ListVMsInProject(ctx, projectID)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	for _, v := range vms {
 		if v.ID == ref || v.Name == ref {
-			return v.ID, v.ZoneID(), nil
+			return v, nil
 		}
 	}
-	return "", "", fmt.Errorf(i18n.T("VM %q not found", "ВМ %q не найдена"), ref)
+	return nil, fmt.Errorf(i18n.T("VM %q not found", "ВМ %q не найдена"), ref)
 }
 
 // handleDiskList lists disks (block storage) with a compact projection.
@@ -114,10 +114,11 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	attachTo := stringArg(args, "attach_to")
 	var zoneID, vmID string
 	if attachTo != "" {
-		vmID, zoneID, err = s.resolveVM(ctx, attachTo, pid)
+		vm, err := s.resolveVM(ctx, attachTo, pid)
 		if err != nil {
 			return errResult(err), true
 		}
+		vmID, zoneID = vm.ID, vm.ZoneID()
 	} else if z := stringArg(args, "zone"); z != "" {
 		if looksUUID(z) {
 			zoneID = z
@@ -407,14 +408,19 @@ func (s *Registry) planDiskAttach(ctx context.Context, args map[string]any) (*Pl
 	if err != nil {
 		return nil, err
 	}
-	vmID, _, err := s.resolveVM(ctx, vmRef, eng.Config.ProjectID)
+	vm, err := s.resolveVM(ctx, vmRef, eng.Config.ProjectID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := settledDisk(ctx, eng, diskID); err != nil {
+	vmID := vm.ID
+	disk, err := settledDisk(ctx, eng, diskID)
+	if err != nil {
 		return settlingPlan(err, diskID, "disk_attach", args)
 	}
-	return &Plan{Preview: map[string]any{"message": i18n.T("disk_attach changes a VM.", "disk_attach меняет ВМ.")},
+	return &Plan{Preview: map[string]any{
+		"message":     i18n.T("disk_attach attaches the disk to the VM.", "disk_attach подключает диск к ВМ."),
+		"will_attach": diskChangeTarget(diskID, disk, vm),
+	},
 		Execute: func(ctx context.Context) (string, bool) {
 			r, err := eng.Cloud.AttachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
 			if err != nil && diskNotReady(err) {
@@ -438,6 +444,21 @@ func (s *Registry) planDiskAttach(ctx context.Context, args map[string]any) (*Pl
 		}}, nil
 }
 
+// diskChangeTarget is what disk_attach and disk_detach change, as the plan
+// read it before the question (axis 4; agent run of 1.7.0: the preview
+// named neither the disk nor the VM): the disk — its id, name and size —
+// and the VM — its id and name. The names are the cloud's (untrustedFields).
+func diskChangeTarget(diskID string, disk map[string]any, vm *provision.VM) map[string]any {
+	out := map[string]any{"disk_id": diskID, "vm_id": vm.ID, "vm_name": vm.Name}
+	if name, _ := disk["name"].(string); name != "" {
+		out["disk_name"] = name
+	}
+	if size, ok := numberValue(disk["size"]); ok {
+		out["size_gb"] = size
+	}
+	return out
+}
+
 // diskNotReady: the attach was refused because the disk is not ready yet
 // (422 "Disk has no openstack_id", CMP-15).
 func diskNotReady(err error) bool {
@@ -457,14 +478,19 @@ func (s *Registry) planDiskDetach(ctx context.Context, args map[string]any) (*Pl
 	if err != nil {
 		return nil, err
 	}
-	vmID, _, err := s.resolveVM(ctx, vmRef, eng.Config.ProjectID)
+	vm, err := s.resolveVM(ctx, vmRef, eng.Config.ProjectID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := settledDisk(ctx, eng, diskID); err != nil {
+	vmID := vm.ID
+	disk, err := settledDisk(ctx, eng, diskID)
+	if err != nil {
 		return settlingPlan(err, diskID, "disk_detach", args)
 	}
-	return &Plan{Preview: map[string]any{"message": i18n.T("disk_detach changes a VM.", "disk_detach меняет ВМ.")},
+	return &Plan{Preview: map[string]any{
+		"message":     i18n.T("disk_detach detaches the disk from the VM.", "disk_detach отключает диск от ВМ."),
+		"will_detach": diskChangeTarget(diskID, disk, vm),
+	},
 		Execute: func(ctx context.Context) (string, bool) {
 			r, err := eng.Cloud.DetachDisk(ctx, diskID, vmID, eng.Config.ProjectID)
 			if err != nil {
@@ -515,6 +541,7 @@ func (s *Registry) planDiskResize(ctx context.Context, args map[string]any) (*Pl
 				i18n.T("Pass a size larger than the current one.", "Укажите размер больше текущего."))
 		}
 	}
+	note := resizedNote(d)
 	preview, err := s.completePreview(ctx, nil, engine.CreatePreview{Resource: engine.ResourceDiskResize, Name: diskID,
 		Disk: &deployplan.DiskSpec{SizeGB: sizeGB}})
 	if err != nil {
@@ -529,11 +556,19 @@ func (s *Registry) planDiskResize(ctx context.Context, args map[string]any) (*Pl
 		if err != nil {
 			return errResult(fmt.Errorf(i18n.T("resize disk: %w", "изменение размера диска: %w"), err)), true
 		}
-		return toJSON(map[string]any{
-			"status": "resized", "disk": d,
-			"note": "Disk grown. On the VM grow the partition + filesystem to use it: e.g. `growpart /dev/vda 2 && resize2fs /dev/vda2`.",
-		}), false
+		return toJSON(map[string]any{"status": "resized", "disk": d, "note": note}), false
 	}}, nil
+}
+
+// resizedNote is the next step after disk_resize of disk (as the plan read
+// it): the boot disk's device and partition are the image's; a data disk
+// is another device, often with no partition (agent run of 1.7.0, c0, m1:
+// the note named /dev/vda for a data disk).
+func resizedNote(disk map[string]any) string {
+	if boot, _ := disk["bootable"].(bool); boot {
+		return "Disk grown. On the VM grow the partition + filesystem to use it: e.g. `growpart /dev/vda 2 && resize2fs /dev/vda2`."
+	}
+	return "Disk grown. On the VM find its device with `lsblk`, grow its partition if it has one (`growpart <device> <n>`), then its filesystem (`resize2fs` for ext4, `xfs_growfs` for XFS)."
 }
 
 // planDiskDelete plans the delete of a disk by id (gate.go).
