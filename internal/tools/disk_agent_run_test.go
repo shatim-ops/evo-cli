@@ -135,21 +135,34 @@ func TestDiskDetachPreview_NamesTheVMsTheDiskIsAttachedTo(t *testing.T) {
 
 // Agent run of 1.7.0 (5 of 9): disk_attach of a disk already attached to
 // the same VM asked, and after yes Cloud.ru answered 422 «Disk can not be
-// attached from current state». The disk's VMs are in the GetDisk answer
-// the plan reads before the question (axis 1): the call answers before
-// it, naming the VM, and nothing is written. Whether that answer is a
-// refusal or already_attached (D26, as fip_attach) is the owner's call:
-// either changes the outcome of the call (docs/RELEASING.md).
-func TestDiskAttach_AlreadyAttachedToThisVMAnswersBeforeTheQuestion(t *testing.T) {
+// attached from current state». D81 (#897, variant A): the disk's VMs are
+// in the GetDisk answer the plan reads before the question — the same VM
+// is a repeat (D26, as fip_attach): already_attached, no question, no
+// call. A disk of another VM is left to the platform until the probe of
+// shared disks (release plan, D81).
+func TestDiskAttach_AlreadyAttachedToThisVMIsARepeat(t *testing.T) {
 	for _, confirmed := range []bool{false, true} {
 		r, c := agentDiskWorld(t, map[string]any{"id": faultDisk, "name": "data", "size": float64(20), "state": "in_use",
 			"vms": []any{map[string]any{"id": agentDiskVM, "name": "web", "primary": false}}})
-		m, text, _ := callNamed(t, r, "disk_attach", map[string]any{"disk_id": faultDisk, "vm": "web", "confirmed": confirmed})
-		if m["status"] == "confirmation_required" {
-			t.Errorf("confirmed=%v: the disk VM web already has is put to a question: %s", confirmed, text)
+		m, text, isErr := callNamed(t, r, "disk_attach", map[string]any{"disk_id": faultDisk, "vm": "web", "confirmed": confirmed})
+		if isErr || m["status"] != "already_attached" || m["disk_id"] != faultDisk || m["vm_id"] != agentDiskVM {
+			t.Errorf("confirmed=%v: want already_attached of the disk to VM %s, no question: %s", confirmed, agentDiskVM, text)
 		}
-		if !strings.Contains(text, "web") {
-			t.Errorf("confirmed=%v: the answer does not name the VM: %s", confirmed, text)
+		if len(c.writes) != 0 {
+			t.Errorf("confirmed=%v: written %v", confirmed, c.writes)
+		}
+	}
+}
+
+// D81, the condition of «Риск · 1.8» (conclusion 9): one rule for attach
+// and detach — disk_detach of a disk no VM has (available) is a repeat:
+// already_detached, no question, no call.
+func TestDiskDetach_ADiskNoVMHasIsARepeat(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		r, c := agentDiskWorld(t, map[string]any{"id": faultDisk, "name": "data", "size": float64(20), "state": "available"})
+		m, text, isErr := callNamed(t, r, "disk_detach", map[string]any{"disk_id": faultDisk, "vm": "web", "confirmed": confirmed})
+		if isErr || m["status"] != "already_detached" || m["disk_id"] != faultDisk || m["vm_id"] != agentDiskVM {
+			t.Errorf("confirmed=%v: want already_detached, no question: %s", confirmed, text)
 		}
 		if len(c.writes) != 0 {
 			t.Errorf("confirmed=%v: written %v", confirmed, c.writes)

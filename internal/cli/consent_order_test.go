@@ -116,12 +116,14 @@ var consentWorlds = map[string]consentWorld{
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" {
 			return nil
 		}
-		disk := `{"id":"` + parityVM + `","name":"data","size":20,"state":"extending"}`
+		// Both disks of the parity world (disk_detach takes the attached
+		// one, parityAttachedDisk) are changing.
+		disk := func(id string) string { return `{"id":"` + id + `","name":"data","size":20,"state":"extending"}` }
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/api/v1/disks/"):
-			return consentJSON(http.StatusOK, disk)
+			return consentJSON(http.StatusOK, disk(strings.TrimPrefix(r.URL.Path, "/api/v1/disks/")))
 		case r.URL.Path == "/api/v1/disks":
-			return consentJSON(http.StatusOK, `{"items":[`+disk+`],"total":1}`)
+			return consentJSON(http.StatusOK, `{"items":[`+disk(parityVM)+`,`+disk(parityAttachedDisk)+`],"total":2}`)
 		}
 		return nil
 	}, refusedBy: []string{"disk_attach", "disk_detach", "disk_resize"}, names: "extending"},
