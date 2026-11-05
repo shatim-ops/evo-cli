@@ -536,6 +536,17 @@ def path_key(p):
     return p.replace(HOLE, "{}")
 
 
+# Packages that serve the API instead of calling it: fake servers of the
+# test worlds, imported only by tests. Their path literals are routes, not
+# requests of evo. One list with the deadcode step of ci.yml:
+# scripts/fake-servers.json (TestFakeServers_OnlyTestsImport).
+FAKE_SERVERS = {
+    k: v
+    for k, v in json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake-servers.json"), encoding="utf-8")).items()
+    if not k.startswith("_")
+}
+
+
 def code_sites(root):
     """Every API path literal of the Go code: file, line, path, host and the
     method when it is cheap to tell — http.MethodX in the statement, a GET
@@ -549,6 +560,8 @@ def code_sites(root):
                 continue
             full = os.path.join(dirpath, fn)
             rel = os.path.relpath(full, root).replace(os.sep, "/")
+            if rel.rsplit("/", 1)[0] in FAKE_SERVERS:
+                continue
             src = open(full, encoding="utf-8").read()
             lines = src.split("\n")
             toks = list(go_tokens(src))
