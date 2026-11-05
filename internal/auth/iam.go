@@ -182,6 +182,14 @@ func (p *IAMProvider) Exchanges() int {
 	return p.exchanges
 }
 
+// NoKeyHint is the one hint of «no key» (the texts brief, item 7): the
+// error of a command without a key, doctor's check of the key and the
+// generic hint of a refused key of a tool.
+func NoKeyHint() string {
+	return i18n.T("Run evo login or evo configure, or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.",
+		"Выполните evo login или evo configure либо задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET.")
+}
+
 // ErrNoCredentials is the error of a command that needs the Cloud.ru key
 // and finds none: no profile from 'evo configure' and nothing in the
 // environment (exit code 2).
@@ -189,8 +197,7 @@ func ErrNoCredentials() error {
 	return clerrors.New(
 		clerrors.CodeAuthRequired,
 		i18n.T("Cloud.ru credentials not set", "не задан ключ доступа Cloud.ru"),
-		i18n.T("Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET (create an access key for a service account at https://console.cloud.ru)",
-			"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET (ключ доступа сервисного аккаунта создаётся в https://console.cloud.ru)"),
+		NoKeyHint(),
 	)
 }
 
