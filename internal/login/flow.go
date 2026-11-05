@@ -183,7 +183,8 @@ type session struct {
 	human                                     string // the person's access token, in memory only
 	who                                       person
 	projects                                  []project
-	unchecked                                 string // why evaluate gave no answer (U-9)
+	unchecked                                 string          // why the right is not confirmed (U-9, R-49)
+	catalog                                   map[string]bool // the IAM catalog of actions, read after a false
 	admin                                     *iamadmin.Client
 
 	made []undo // what this login created, oldest first
@@ -288,6 +289,11 @@ func (s *session) prepare(ctx context.Context) error {
 			got[i] = true
 		}
 	}
+	for i, ok := range got {
+		if !ok && !s.deniedForReal(ctx, checks[i].Action) {
+			got[i] = true
+		}
+	}
 	anyAllowed := false
 	for i := range s.projects {
 		s.projects[i].Allowed = got[2*i] && got[2*i+1]
@@ -307,11 +313,41 @@ func (s *session) uncheck(err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
+	s.uncheckFor(tEvaluateFailed(oneLine(err.Error())))
+	return nil
+}
+
+// uncheckFor marks the right not confirmed by the platform, once, with
+// what evaluate answered: the terminal and the page say it.
+func (s *session) uncheckFor(reason string) {
 	if s.unchecked == "" {
-		s.unchecked = oneLine(err.Error())
+		s.unchecked = reason
 		s.tell(tUnchecked(s.unchecked))
 	}
-	return nil
+}
+
+// deniedForReal reports whether evaluate's false for action is a «no
+// right» («Риск», R-49): only when the IAM catalog names the action. An
+// action the catalog lacks, or a catalog evo could not read, makes the
+// false «not confirmed» (U-9): the first write answers. The catalog is
+// read only after a false, once a login.
+func (s *session) deniedForReal(ctx context.Context, action string) bool {
+	if s.catalog == nil {
+		names, err := s.admin.Actions(ctx)
+		if err != nil {
+			s.uncheckFor(tCatalogUnread(action, oneLine(err.Error())))
+			return false
+		}
+		s.catalog = map[string]bool{}
+		for _, n := range names {
+			s.catalog[n] = true
+		}
+	}
+	if !s.catalog[action] {
+		s.uncheckFor(tActionUnknown(action))
+		return false
+	}
+	return true
 }
 
 // preselected is the index of the project to offer checked: the
@@ -347,6 +383,16 @@ func (s *session) tellPreselect() {
 	} else if s.preselectDenied() {
 		s.tell(tPreselectNoRight(s.choice.PreselectFrom))
 	}
+}
+
+// forbidden is a 403 of the platform at a write as what it is, «no right
+// in the project» (AUTH_FAILED, «Риск», R-49): the right evaluate did not
+// confirm is refused here. Any other error stays as it is.
+func forbidden(err error, project string) error {
+	if iamadmin.StatusOf(err) != http.StatusForbidden {
+		return err
+	}
+	return clierrors.Wrap(clierrors.CodeAuthFailed, eForbidden(project), eNoRightHint(), err)
 }
 
 // noRightIn is the refusal of a person with the right in none of their
@@ -445,7 +491,7 @@ func (s *session) planFor(ctx context.Context, p project, aud Audience, days int
 			}
 			break
 		}
-		if !ok {
+		if !ok && s.deniedForReal(ctx, a) {
 			return pl, at(stepEvaluate, noRight(p.Name))
 		}
 	}
@@ -521,7 +567,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 			}
 			sa, res.AccountReused = again[0].ID, true
 		default:
-			return res, at(stepAccount, err)
+			return res, at(stepAccount, forbidden(err, p.Name))
 		}
 	}
 	say(tStepAccount(aud.account(), res.AccountReused))
@@ -529,7 +575,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	// 15. The role until the key's term: a shorter one is moved forward,
 	// a longer one kept, none created.
 	if err := s.role(ctx, p, sa, pl.term); err != nil {
-		return res, at(stepPermission, err)
+		return res, at(stepPermission, forbidden(err, p.Name))
 	}
 	say(tStepRole())
 

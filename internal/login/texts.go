@@ -273,8 +273,23 @@ func eNoYesHint() string {
 func RefuseYes() error { return clierrors.New(clierrors.CodeUsage, eNoYes(), eNoYesHint()) }
 
 func tUnchecked(reason string) string {
-	return i18n.Tf("the right is not checked: %s; the platform answers the first write (a refusal there creates nothing)",
-		"право не проверено: %s; ответит первая запись платформы (ее отказ ничего не создает)", reason)
+	return i18n.Tf("the right is not confirmed by the platform: %s; the first write answers (a refusal there creates nothing)",
+		"право не подтверждено платформой: %s; ответит первая запись платформы (ее отказ ничего не создает)", reason)
+}
+
+// The reasons of tUnchecked: what evaluate answered («Риск», R-49).
+func tEvaluateFailed(err string) string {
+	return i18n.Tf("evaluate answered %s", "evaluate ответил %s", err)
+}
+func tActionUnknown(action string) string {
+	return i18n.Tf("evaluate answered false on %s; the action is not in the IAM catalog", "evaluate ответил false на %s; действия нет в каталоге IAM", action)
+}
+func tCatalogUnread(action, err string) string {
+	return i18n.Tf("evaluate answered false on %s; the IAM catalog of actions was not read: %s",
+		"evaluate ответил false на %s; каталог действий IAM не прочитан: %s", action, err)
+}
+func eForbidden(project string) string {
+	return i18n.Tf("no right to create access in the project %s: the platform refused", "нет права создать доступ в проекте %s: платформа отказала", project)
 }
 
 // The errors and notes of the flow, the discovery and the logout.
