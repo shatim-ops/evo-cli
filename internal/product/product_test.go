@@ -73,7 +73,9 @@ func TestUserAgent(t *testing.T) {
 func TestNoBareCMCP(t *testing.T) {
 	root := filepath.Join("..", "..")
 	bare := regexp.MustCompile(`(?i)(^|[^A-Za-z0-9_-])cmcp\b`)
-	whole := regexp.MustCompile(`evo CMCP`)
+	// Exactly two whole forms (D34 and its amendment 05.11): «evo CMCP»,
+	// and «Evolution CMCP» of the sign-in pages.
+	whole := regexp.MustCompile(`evo CMCP|Evolution CMCP`)
 	var bad []string
 	check := func(path string) {
 		b, err := os.ReadFile(path)

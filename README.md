@@ -5,7 +5,8 @@
 виртуальные машины, диски, сети и балансировщики, DNS, Managed Kubernetes,
 PostgreSQL, Kafka, Redis, Object Storage, секреты и сертификаты, Artifact
 Registry и Container Apps — и развёртывает `docker-compose`-проект на ВМ одной
-командой. Команда — `evo`.
+командой. Команда — `evo`. Страницы входа `evo login` в браузере называются
+**Evolution CMCP** — это тот же evo.
 
 - **CLI для человека и скриптов**: `evo vm list`, `evo deploy`,
   `evo k8s kubeconfig …`; у каждой команды есть `--json` и

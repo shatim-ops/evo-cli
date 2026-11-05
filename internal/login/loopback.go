@@ -59,6 +59,14 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		_ = srv.Shutdown(sctx)
 	}()
 
+	if s.choice.For == ForAgent {
+		var term time.Time
+		if s.choice.Days > 0 {
+			term = s.cfg.Now().Add(time.Duration(s.choice.Days) * 24 * time.Hour)
+		}
+		s.warnAgent(term)
+	}
+	s.tell(tOpenPage())
 	cfg.Say(tOpen(), authURL)
 	if cfg.Open != nil {
 		_ = cfg.Open(authURL) // the address is printed: a browser that did not open is no failure
@@ -78,6 +86,20 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 	case <-ctx.Done():
 		lb.close()
 		return Result{}, ctx.Err()
+	}
+}
+
+// warnAgent says in the terminal, once, what a key for an agent can do
+// and the role's term, when it is known (zero: not chosen yet).
+func (s *session) warnAgent(term time.Time) {
+	if !s.agentWarned {
+		s.agentWarned = true
+		until := ""
+		if !term.IsZero() {
+			until = day(term)
+		}
+		s.tell(tAgentWarnLine(until))
+		s.tell(tAgentRevokeLine())
 	}
 }
 
@@ -153,6 +175,10 @@ func (l *loopback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Cache-Control", "no-store")
+	// The fonts of the pages: static, without the lock a grant may hold.
+	if serveFont(w, r) {
+		return
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	switch {
