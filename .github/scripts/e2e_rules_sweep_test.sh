@@ -77,6 +77,21 @@ fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm-here","name":"my-app"}]}'
 want "снята только сирота" "$(grep '^DELETE' "$dir/calls" | sed 's|.*/security-groups/||')" "sg-used/rules/r-orphan"
 want "строка о сироте" "$(grep -c 'снято правило-сирота порта 80' "$dir/out")" 1
 want "правила ВМ, которая есть, и без метки — оставлены" "$(grep -c 'оставлено' "$dir/out")" 3
+want "правило ВМ, которая есть, в группе без интерфейсов — оставлено" "$(grep -c '^правило 8082:8082: ВМ метки есть — оставлено' "$dir/out")" 1
+
+# Список ВМ не прочитан или без поля vms — ни одно правило не снимается:
+# ВМ метки могла быть в непрочитанной части (решение владельца — снимать
+# сироту, только когда список ВМ прочитан).
+for bad in 'vm_list 1 {"error":{"reason":"API_ERROR","message":"boom"}}' 'vm_list 0 {"items":[]}'; do
+	read -r tool code body <<<"$bad"
+	fake_evo_answer "$tool" 0 "$code" "$body"
+	: > "$dir/calls"
+	set +e
+	"$here/e2e_rules_sweep.sh" > "$dir/out" 2>&1; rc=$?
+	set -e
+	want "список ВМ не прочитан ($code) — код не 0" "$([ "$rc" != 0 ] && echo yes)" yes
+	want "список ВМ не прочитан ($code) — ни одного DELETE" "$(grep -c '^DELETE' "$dir/calls")" 0
+done
 
 [ "$fail" = 0 ] && echo "e2e_rules_sweep: ok"
 exit "$fail"

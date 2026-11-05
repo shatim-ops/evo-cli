@@ -23,7 +23,13 @@ set -euo pipefail
 : "${KEY_ID:?}" "${SECRET:?}" "${PROJECT:?}" "${RUNNER_TEMP:?}"
 compute=https://compute.api.cloud.ru/api/v1
 
-evo tools call vm_list --json > "$RUNNER_TEMP/vms.json"
+# Список ВМ решает, что правило — сирота: только прочитанный целиком.
+# evo отвечает ошибкой на неполный список (все страницы или ошибка), а
+# ответ без массива vms — не «ВМ нет»: в обоих случаях ничего не снимаем.
+evo tools call vm_list --json > "$RUNNER_TEMP/vms.json" ||
+	{ echo "::error::vm_list не прочитан — правила «evo:» не трогаю"; exit 1; }
+jq -e '.vms | type == "array"' "$RUNNER_TEMP/vms.json" >/dev/null ||
+	{ echo "::error::в ответе vm_list нет массива vms — правила «evo:» не трогаю"; exit 1; }
 n=$(jq '[.vms[]? | select((.name // "") | startswith("evo-e2e-"))] | length' "$RUNNER_TEMP/vms.json")
 [ "$n" = 0 ] || { echo "::error::в проекте есть ВМ evo-e2e-* ($n) — идёт прогон e2e, правила «evo:» не трогаю"; exit 1; }
 evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg.json"
@@ -40,8 +46,8 @@ while read -r g r port vm; do
 	echo "::add-mask::$r"
 	# Метка evo называет ВМ (решение владельца 05.11, вариант А): ВМ нет в
 	# проекте — правило-сирота, снимается и в группе с интерфейсами; ВМ есть —
-	# правило остаётся, его закроет удаление той ВМ. vm_list полон или
-	# скрипт упал выше (evo отвечает ошибкой на неполный список).
+	# правило остаётся, его закроет удаление той ВМ. vm_list прочитан
+	# целиком — проверено выше.
 	if [ "$vm" != - ]; then
 		echo "::add-mask::$vm"
 		if jq -e --arg id "$vm" 'any(.vms[]?; .id == $id)' "$RUNNER_TEMP/vms.json" >/dev/null; then
