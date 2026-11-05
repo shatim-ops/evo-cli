@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -41,7 +40,7 @@ type head struct {
 }
 
 func newHead(title string) head {
-	return head{Lang: i18n.Lang(), Title: title, Heading: i18n.T("evo access to a project", "Доступ evo к проекту")}
+	return head{Lang: i18n.Lang(), Title: title, Heading: tHeading()}
 }
 
 func writePage(w http.ResponseWriter, code int, p page) {
@@ -66,57 +65,43 @@ type consentTerm struct {
 
 type consentData struct {
 	head
-	Intro, ProjectLegend, NeedAdmin, NoRightNote                   string
-	ForLegend, ForMe, ForMeNote, ForAgent, ForAgentNote, RoleNote  string
-	TermLegend, TermNote                                           string
-	SummaryHeading, SummaryAccount, SummaryInProject, SummaryRole  string
-	SummaryKey, SummaryStays, ReuseNote, Cancel, Grant, SecretNote string
-	State, For                                                     string
-	Projects                                                       []consentProject
-	Terms                                                          []consentTerm
+	Intro, ProjectLegend, NeedAdmin, NoRightNote                  string
+	ForLegend, ForMe, ForMeNote, ForAgent, ForAgentNote, RoleNote string
+	TermLegend, TermNote, SummaryHeading                          string
+	// Account and Role are the summary's lines, cut where the chosen
+	// account, project and day go in.
+	Account                                [3]string
+	Role, Key                              [2]string
+	SummaryStays, ReuseNote, Cancel, Grant string
+	SecretNote, State, For                 string
+	Projects                               []consentProject
+	Terms                                  []consentTerm
 }
 
-// date is a day as the page names it.
-func date(t time.Time) string { return t.Format("2006-01-02") }
+// cut is a text with marks, cut at them: the page puts its choices there.
+func cut(text string, marks ...string) []string {
+	var out []string
+	for _, m := range marks {
+		before, after, _ := strings.Cut(text, m)
+		out = append(out, before)
+		text = after
+	}
+	return append(out, text)
+}
 
 func consentPage(s *session) page {
-	d := consentData{head: newHead(i18n.T("evo access to a project", "Доступ evo к проекту")),
-		Intro: i18n.Tf("You signed in as %s. evo will create a service account and an access key with which the CLI and an agent manage the cloud in the project you choose.",
-			"Вы вошли как %s. evo создаст сервисный аккаунт и ключ доступа, которыми CLI и агент будут управлять облаком в выбранном проекте.", s.who.Login),
-		ProjectLegend: i18n.T("Project", "Проект"),
-		NeedAdmin:     i18n.T("takes the project administrator", "нужен администратор проекта"),
-		NoRightNote: i18n.T("A project where you may not create a service account cannot be chosen: its administrator can grant the access — ask them to run evo login, or to create a key in the console and pass it to you.",
-			"Проект, где у вас нет права создать сервисный аккаунт, выбрать нельзя: его может выдать администратор проекта — попросите его выполнить evo login или создать ключ в консоли и передать вам."),
-		ForLegend: i18n.T("For whom", "Для кого"),
-		ForMe:     i18n.T("For me", "Для меня"),
-		ForMeNote: i18n.T("Service account evo: evo commands in the terminal on your behalf.",
-			"Сервисный аккаунт evo: команды evo в терминале от вашего имени."),
-		ForAgent: i18n.T("For an agent", "Для агента"),
-		ForAgentNote: i18n.T("Service account evo-agent: the key of an MCP server and an agent. A person deletes resources with their own key.",
-			"Сервисный аккаунт evo-agent: ключ для MCP-сервера и агента. Ресурсы удаляет человек своим ключом."),
-		RoleNote: i18n.Tf("Both accounts get the role «%s»: it includes deleting resources and managing service accounts and keys. A role without deletion for an agent comes when IAM gives one.",
-			"Оба аккаунта получают роль «%s»: она включает удаление ресурсов и управление сервисными аккаунтами и ключами. Роль без права удаления для агента появится, когда её даст IAM.",
-			auth.LoginRoleDisplayName),
-		TermLegend: i18n.T("Term of the key", "Срок ключа"),
-		TermNote: i18n.T("A key without a term is created in the console only. To extend, run evo login again.",
-			"Бессрочный ключ можно создать только в консоли. Продление — повторный evo login."),
-		SummaryHeading:   i18n.T("What will be created", "Что будет создано"),
-		SummaryAccount:   i18n.T("The service account", "Будет создан сервисный аккаунт"),
-		SummaryInProject: i18n.T("in the project", "в проекте"),
-		SummaryRole:      i18n.Tf("It gets the role «%s» until", "Он получит роль «%s» до", auth.LoginRoleDisplayName),
-		SummaryKey:       i18n.T("The key is valid until", "Ключ действует до"),
-		SummaryStays: i18n.T("The account stays after logout; the role expires with the key.",
-			"Аккаунт остаётся после выхода; роль истекает вместе с ключом."),
-		ReuseNote: i18n.T("If the project has an account of that name, no new one is created: a new key is issued, the role extended, and the previous evo key of this machine revoked.",
-			"Если аккаунт с таким именем уже есть в проекте, новый не создаётся: будет выпущен новый ключ, роль продлена, прежний ключ evo на этой машине отозван."),
-		Cancel: i18n.T("Cancel", "Отмена"),
-		Grant:  i18n.T("Grant access", "Выдать доступ"),
-		SecretNote: i18n.T("The key's secret is not shown: evo on this computer creates the account and the key with your rights and keeps the key in the profile.",
-			"Секрет ключа не показывается: evo на этом компьютере создаёт аккаунт и ключ вашими правами и записывает ключ в профиль."),
-		State: s.state, For: string(ForMe),
+	d := consentData{head: newHead(tHeading()),
+		Intro: tSignedIn(s.who.Login), ProjectLegend: tProject(), NeedAdmin: tNoRightMark(), NoRightNote: tNoRightNote(),
+		ForLegend: tForWhom(), ForMe: tForMe(), ForMeNote: tForMeNote(), ForAgent: tForAgent(), ForAgentNote: tForAgentNote(),
+		RoleNote: tRoleNote(), TermLegend: tTerm(), TermNote: tForeverInConsole(), SummaryHeading: tWhatWillBeMade(),
+		SummaryStays: tSumStays(), ReuseNote: tSumReuseNote(), Cancel: tCancel(), Grant: tGrant(), SecretNote: tSecretNote(),
+		State: s.state, For: string(ForAgent),
 	}
-	if s.choice.For == ForAgent {
-		d.For = string(ForAgent)
+	copy(d.Account[:], cut(tSumAccountNew("\x00a", "\x00p"), "\x00a", "\x00p"))
+	copy(d.Role[:], cut(tSumRole("\x00d"), "\x00d"))
+	copy(d.Key[:], cut(tSumKey("\x00d"), "\x00d"))
+	if s.choice.For == ForMe {
+		d.For = string(ForMe)
 	}
 	var rules strings.Builder
 	checked := false
@@ -138,8 +123,8 @@ func consentPage(s *session) page {
 	}
 	now := s.cfg.Now()
 	for _, n := range Terms {
-		d.Terms = append(d.Terms, consentTerm{Days: n, Label: i18n.Tf("%d days", "%d дней", n),
-			Until: date(now.Add(time.Duration(n) * 24 * time.Hour)), Checked: n == days})
+		d.Terms = append(d.Terms, consentTerm{Days: n, Label: tDays(n),
+			Until: day(now.Add(time.Duration(n) * 24 * time.Hour)), Checked: n == days})
 		id := fmt.Sprintf("t-%d", n)
 		rules.WriteString("#" + id + ":checked ~ fieldset .seg label[for=" + id + "] { background: var(--surface2); box-shadow: 0 0 4px rgba(0,0,0,.04), 0 2px 4px rgba(0,0,0,.04); } #" +
 			id + ":checked ~ .summary .s-" + id + " { display: inline; }\n")
@@ -171,32 +156,32 @@ type resultData struct {
 func donePage(r Result) page {
 	acc := r.Account
 	if r.AccountReused {
-		acc += i18n.T(" · was there, used again", " · уже был, использован повторно")
+		acc += " · " + tReused()
 	}
-	key := i18n.Tf("Key ID %s, valid until %s", "Key ID %s, действует до %s", config.MaskKeyID(r.KeyID), date(r.KeyExpiresAt))
-	if r.PreviousRevoked {
-		key += i18n.T("; the previous evo key of this machine is revoked", "; прежний ключ evo на этой машине отозван")
+	key := config.MaskKeyID(r.KeyID)
+	if r.RevokedKeyID != "" {
+		key += "; " + tRevokedPrevious(config.MaskKeyID(r.RevokedKeyID))
 	}
-	return page{"done", resultData{head: newHead(i18n.T("Done — evo access", "Готово — доступ evo")),
-		Status: i18n.T("Done", "Готово"),
-		Text: i18n.Tf("The key of the service account %s is kept on this machine. Go back to the terminal.",
-			"Ключ сервисного аккаунта %s сохранён на этой машине. Вернитесь в терминал.", r.Account),
+	return page{"done", resultData{head: newHead(tDone() + " — evo"), Status: tDone(),
+		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt),
 		Rows: []row{
-			{i18n.T("Project", "Проект"), r.ProjectName},
-			{i18n.T("Account", "Аккаунт"), acc},
-			{i18n.T("Role and term", "Роль и срок"), auth.LoginRoleDisplayName + i18n.Tf(", until %s", ", до %s", date(r.KeyExpiresAt))},
-			{i18n.T("Key", "Ключ"), key},
+			{tProject(), r.ProjectName},
+			{tRowAccount(), acc},
+			{tRowRole(), tRoleUntil(r.KeyExpiresAt)},
+			{tRowKey(), key},
+			{tRowProfile(), r.Profile},
 		},
-		Footer: i18n.T("To revoke: evo logout or the console → Service accounts. This window can be closed.",
-			"Отозвать: evo logout или консоль → Сервисные аккаунты. Это окно можно закрыть."),
+		Footer: tRevokeHow(),
 	}}
 }
 
+// signedInPage is the page of the terminal: the choice is made there.
+func signedInPage() page {
+	return page{"signedin", resultData{head: newHead(tSignedInTitle() + " — evo"), Status: tSignedInTitle(), Text: tBackToTerminal()}}
+}
+
 func cancelledPage() page {
-	return page{"cancelled", resultData{head: newHead(i18n.T("Sign-in cancelled — evo", "Вход отменён — evo")),
-		Status: i18n.T("Sign-in cancelled", "Вход отменён"),
-		Text: i18n.T("Nothing was created. Run evo login again when ready. This window can be closed.",
-			"Ничего не создано. Повторите evo login, когда будете готовы. Это окно можно закрыть.")}}
+	return page{"cancelled", resultData{head: newHead(tCancelledTitle() + " — evo"), Status: tCancelledTitle(), Text: tCancelled()}}
 }
 
 // errorPage names the error as the terminal does, with its code; never a
@@ -207,10 +192,6 @@ func errorPage(err error) page {
 	if errors.As(err, &ce) && ce.Hint != "" {
 		text += ". " + ce.Hint
 	}
-	return page{"error", resultData{head: newHead(i18n.T("Access not complete — evo", "Доступ не завершён — evo")),
-		Status: i18n.T("Access not complete", "Доступ не завершён"),
-		Text:   text,
-		Footer: i18n.Tf("Details and the exit code are in the terminal (%s, %d). This window can be closed.",
-			"Подробности и код выхода — в терминале (%s, %d). Это окно можно закрыть.", clierrors.Reason(err), clierrors.ExitCode(err)),
-	}}
+	return page{"error", resultData{head: newHead(tNotComplete() + " — evo"), Status: tNotComplete(), Text: text,
+		Footer: tDetails(clierrors.Reason(err), clierrors.ExitCode(err))}}
 }

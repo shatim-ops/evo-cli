@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -106,22 +107,66 @@ type run struct {
 	res   Result
 	err   error
 	saved []Saved
+	auds  []Audience
 	out   string
 	b     *browser
 }
 
+// memStore is a profile in memory: «default» for the person, «agent» for an
+// agent, as the CLI names them.
+type memStore struct {
+	prev    *Previous
+	saveErr error
+	saved   []Saved
+	auds    []Audience
+}
+
+func (m *memStore) Profile(a Audience) string {
+	if a == ForAgent {
+		return "agent"
+	}
+	return "default"
+}
+
+func (m *memStore) Previous(Audience) *Previous { return m.prev }
+
+func (m *memStore) Save(a Audience, s Saved) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	m.saved, m.auds = append(m.saved, s), append(m.auds, a)
+	return nil
+}
+
 func login(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previous, saveErr error) run {
+	t.Helper()
+	return loginWith(t, w, b, ch, prev, saveErr, nil)
+}
+
+// loginWith is login with the terminal's answers: nil is no terminal.
+func loginWith(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previous, saveErr error, answers []string) run {
 	t.Helper()
 	b.t, b.w, b.ended = t, w, make(chan struct{})
 	var out bytes.Buffer
 	r := run{b: b}
-	res, err := Login(context.Background(), worldConfig(w, &out, b.open), ch, prev, func(s Saved) error {
-		if saveErr != nil {
-			return saveErr
+	st := &memStore{prev: prev, saveErr: saveErr}
+	cfg := worldConfig(w, &out, b.open)
+	cfg.Tell = func(line string) { fmt.Fprintln(&out, line) }
+	if answers != nil {
+		cfg.Ask = func(_ context.Context, prompt string) (string, error) {
+			fmt.Fprint(&out, prompt)
+			if len(answers) == 0 {
+				t.Errorf("an unexpected question: %q", prompt)
+				return "", io.EOF
+			}
+			a := answers[0]
+			answers = answers[1:]
+			fmt.Fprintln(&out, a)
+			return a, nil
 		}
-		r.saved = append(r.saved, s)
-		return nil
-	})
+	}
+	res, err := Login(context.Background(), cfg, ch, st)
+	r.saved, r.auds = st.saved, st.auds
 	r.res, r.err, r.out = res, err, out.String()
 	<-b.ended
 	// Nothing of the person's or the key's secrets in the answer, the
@@ -244,7 +289,7 @@ func TestLogin_ProfileFailsKeyGoes(t *testing.T) {
 func TestLogin_CancelOnThePage(t *testing.T) {
 	w := loginworld.New(t, loginworld.Variant{})
 	r := login(t, w, &browser{cancel: true}, Choice{}, nil, nil)
-	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || !strings.Contains(r.b.page, "cancelled") && !strings.Contains(r.b.page, "отменён") {
+	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || !strings.Contains(r.b.page, tCancelled()) {
 		t.Fatalf("err %v; accounts %d; page %q", r.err, len(w.Accounts()), r.b.page)
 	}
 }
@@ -289,9 +334,9 @@ func TestLogin_PreviousKeyRevokedByID(t *testing.T) {
 	if first.err != nil {
 		t.Fatal(first.err)
 	}
-	prev := &Previous{ServiceAccountID: first.saved[0].ServiceAccountID, AccessKeyID: first.saved[0].AccessKeyID}
+	prev := &Previous{ServiceAccountID: first.saved[0].ServiceAccountID, AccessKeyID: first.saved[0].AccessKeyID, KeyID: first.saved[0].KeyID}
 	second := login(t, w, &browser{}, Choice{}, prev, nil)
-	if second.err != nil || !second.res.PreviousRevoked {
+	if second.err != nil || second.res.RevokedKeyID != prev.KeyID {
 		t.Fatalf("err %v; result %+v", second.err, second.res)
 	}
 	keys := w.Keys()
@@ -351,7 +396,7 @@ func TestLogin_ForeignStateAndSecondCallback(t *testing.T) {
 			}()
 			return nil
 		})
-		_, err := Login(ctx, cfg, Choice{}, nil, func(Saved) error { return nil })
+		_, err := Login(ctx, cfg, Choice{}, &memStore{})
 		s := <-statuses
 		switch {
 		case v.ForeignState && (len(s) != 2 || s[0] != http.StatusForbidden || s[1] != http.StatusOK):
@@ -363,5 +408,102 @@ func TestLogin_ForeignStateAndSecondCallback(t *testing.T) {
 		if clierrors.ExitCode(err) != clierrors.ExitInterrupted || len(w.Accounts()) != 0 {
 			t.Errorf("err %v (exit %d); accounts %d", err, clierrors.ExitCode(err), len(w.Accounts()))
 		}
+	}
+}
+
+// Every refusal names its step, and the HTTP status of the answer that made
+// it (#981); a rollback names what it made, undid and left.
+func TestLogin_RefusalNamesStepAndStatus(t *testing.T) {
+	cases := []struct {
+		v      loginworld.Variant
+		step   string
+		status int
+	}{
+		{loginworld.Variant{ExpiredCode: true}, stepToken, http.StatusBadRequest},
+		{loginworld.Variant{BadIDToken: "nonce"}, stepIDToken, 0},
+		{loginworld.Variant{Denied: true}, stepBulk, 0},
+		{loginworld.Variant{AccountLimit: true}, stepAccount, 0},
+		{loginworld.Variant{FailAt: loginworld.StepPermission}, stepPermission, http.StatusInternalServerError},
+		{loginworld.Variant{FailAt: loginworld.StepKey}, stepKey, http.StatusInternalServerError},
+	}
+	for _, c := range cases {
+		w := loginworld.New(t, c.v)
+		r := login(t, w, &browser{}, Choice{}, nil, nil)
+		var ce *clierrors.CLIError
+		if !errors.As(r.err, &ce) || ce.Details["step"] != c.step {
+			t.Errorf("%+v: %v, details %v; want the step %q", c.v, r.err, detailsOf(ce), c.step)
+			continue
+		}
+		if got, _ := ce.Details["http_status"].(int); got != c.status {
+			t.Errorf("%+v: http_status %v, want %d", c.v, ce.Details["http_status"], c.status)
+		}
+		if !strings.Contains(r.err.Error(), c.step) {
+			t.Errorf("%+v: the text does not name the step: %v", c.v, r.err)
+		}
+		if c.v.FailAt != "" {
+			if _, ok := ce.Details["undone"]; !ok {
+				t.Errorf("%+v: no rollback in the details %v", c.v, ce.Details)
+			}
+		}
+	}
+}
+
+func detailsOf(ce *clierrors.CLIError) map[string]any {
+	if ce == nil {
+		return nil
+	}
+	return ce.Details
+}
+
+// With a terminal the choice is the terminal's: the page only says «signed
+// in»; the defaults are the project allowed, the agent and 30 days; the
+// summary comes before the question, the steps after.
+func TestLogin_TerminalWizard(t *testing.T) {
+	w := loginworld.New(t, loginworld.Variant{})
+	r := loginWith(t, w, &browser{}, Choice{}, nil, nil, []string{"", "", "", "y"})
+	if r.err != nil || len(r.saved) != 1 || r.auds[0] != ForAgent || r.res.Profile != "agent" || r.res.Account != "evo-agent" {
+		t.Fatalf("err %v; saved %d for %v; result %+v\n%s", r.err, len(r.saved), r.auds, r.res, r.out)
+	}
+	if !strings.Contains(r.b.page, tBackToTerminal()) || strings.Contains(r.b.page, `name="state"`) {
+		t.Errorf("the page of the terminal mode: %q", r.b.page)
+	}
+	sum, ask, step := strings.Index(r.out, tWhatWillBeDone()), strings.Index(r.out, tContinue()), strings.Index(r.out, tStepKeyCheck())
+	if sum < 0 || ask < sum || step < ask {
+		t.Errorf("summary %d, question %d, steps %d:\n%s", sum, ask, step, r.out)
+	}
+}
+
+// «No» to the question: USAGE, nothing created.
+func TestLogin_TerminalNo(t *testing.T) {
+	w := loginworld.New(t, loginworld.Variant{})
+	r := loginWith(t, w, &browser{}, Choice{For: ForMe, Days: 7}, nil, nil, []string{"", "n"})
+	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
+		t.Fatalf("err %v; accounts %+v; keys %+v", r.err, w.Accounts(), w.Keys())
+	}
+}
+
+// Every flag and --yes: no question and no consent page; the summary still
+// goes to the terminal.
+func TestLogin_FlagsAndYes(t *testing.T) {
+	w := loginworld.New(t, loginworld.Variant{})
+	r := loginWith(t, w, &browser{}, Choice{Project: loginworld.Project, For: ForMe, Days: 7, Yes: true}, nil, nil, []string{})
+	if r.err != nil || len(r.saved) != 1 || r.auds[0] != ForMe || r.res.Profile != "default" {
+		t.Fatalf("err %v; saved %d; result %+v\n%s", r.err, len(r.saved), r.res, r.out)
+	}
+	if strings.Contains(r.b.page, `name="state"`) || !strings.Contains(r.out, tWhatWillBeDone()) {
+		t.Errorf("page %q\nterminal %s", r.b.page, r.out)
+	}
+	if got := r.saved[0].KeyExpiresAt.Sub(r.saved[0].LoginAt); got < 6*24*time.Hour || got > 8*24*time.Hour {
+		t.Errorf("the key's term %s, want 7 days", got)
+	}
+}
+
+// Without a terminal and without every flag the choice is the page's, even
+// with --yes.
+func TestLogin_NoTerminalIsThePage(t *testing.T) {
+	w := loginworld.New(t, loginworld.Variant{})
+	r := login(t, w, &browser{}, Choice{For: ForMe, Yes: true}, nil, nil)
+	if r.err != nil || !strings.Contains(r.b.page, tDone()) {
+		t.Fatalf("err %v; page %q", r.err, r.b.page)
 	}
 }

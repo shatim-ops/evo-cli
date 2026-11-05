@@ -122,7 +122,7 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
     </fieldset>
     <div class="summary" aria-live="polite">
       <h2>{{.SummaryHeading}}</h2>
-      <p>{{.SummaryAccount}} <span class="mono"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span> {{.SummaryInProject}} «<span class="mono">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>». {{.SummaryRole}} {{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}. {{.SummaryKey}} {{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}. {{.SummaryStays}}</p>
+      <p>{{index .Account 0}}<span class="mono"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span>{{index .Account 1}}<span class="mono">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .Account 2}} {{index .Role 0}}{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}{{index .Role 1}} {{index .Key 0}}{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}{{index .Key 1}} {{.SummaryStays}}</p>
       <p class="support small">{{.ReuseNote}}</p>
     </div>
     <div class="actions">
@@ -139,6 +139,10 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
 {{range .Rows}}    <dt>{{.Term}}</dt><dd>{{.Value}}</dd>
 {{end}}  </dl>
   <p class="support small">{{.Footer}}</p>
+{{template "tail" .}}{{end}}
+
+{{define "signedin"}}{{template "head" .}}  <div class="result"><span class="ic ok" aria-hidden="true">✓</span><h2 style="font-size:16px;line-height:24px">{{.Status}}</h2></div>
+  <p>{{.Text}}</p>
 {{template "tail" .}}{{end}}
 
 {{define "cancelled"}}{{template "head" .}}  <div class="result"><span class="ic no" aria-hidden="true">×</span><h2 style="font-size:16px;line-height:24px">{{.Status}}</h2></div>

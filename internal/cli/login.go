@@ -7,6 +7,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -55,23 +56,28 @@ var openBrowser = func(u string) error {
 
 func newLoginCmd() *cobra.Command {
 	var project, forWhom, ttl string
+	var noBrowser bool
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: i18n.T("Sign in to Cloud.ru in a browser and keep an access key in the profile", "Войти в Cloud.ru через браузер и записать ключ доступа в профиль"),
-		Long: i18n.T(`Sign in to Cloud.ru in a browser; on the page evo serves on this machine,
-choose the project, whom the key is for (you: account evo; an agent:
-account evo-agent) and its term (7, 30 or 90 days). With your rights evo
-makes or reuses the service account, grants it the role «project
-administrator» until the key's term, creates the key and keeps it in the
-profile. The role includes deleting resources. A previous key evo login
-made for this profile is revoked. Your tokens stay in memory; the key's
-secret is shown nowhere. Undo: evo logout.`, `Войти в Cloud.ru через браузер; на странице, которую evo открывает на этой
-машине, выбрать проект, для кого ключ (вы — аккаунт evo, агент — аккаунт
-evo-agent) и его срок (7, 30 или 90 дней). Вашими правами evo создаёт или
-переиспользует сервисный аккаунт, выдаёт ему роль «Администратор проекта»
-до срока ключа, создаёт ключ и записывает его в профиль. Роль включает
-удаление ресурсов. Прежний ключ evo login этого профиля отзывается. Ваши
-токены остаются в памяти; секрет ключа нигде не показывается. Отменить —
+		Long: i18n.T(`Sign in to Cloud.ru in a browser, then choose the project, whom the key
+is for (you: account evo, profile of now; an agent: account evo-agent,
+profile «agent») and its term (7, 30 or 90 days): in the terminal when
+there is one, on the page evo serves on this machine when there is not;
+every flag with --yes asks nothing. With your rights evo makes or reuses
+the service account, grants it the role «project administrator» until the
+key's term, creates the key and keeps it in the profile. The role
+includes deleting resources. A previous key evo login made for that
+profile is revoked. Your tokens stay in memory; the key's secret is shown
+nowhere. A refusal names its step and HTTP status. Undo: evo logout.`, `Войти в Cloud.ru через браузер и выбрать проект, для кого ключ (вам —
+аккаунт evo, текущий профиль; агенту — аккаунт evo-agent, профиль
+«agent») и его срок (7, 30 или 90 дней): в терминале, если он есть, иначе
+на странице, которую evo открывает на этой машине; все флаги с --yes — без
+вопросов. Вашими правами evo создаёт или переиспользует сервисный аккаунт,
+выдаёт ему роль «Администратор проекта» до срока ключа, создаёт ключ и
+записывает его в профиль. Роль включает удаление ресурсов. Прежний ключ
+evo login этого профиля отзывается. Ваши токены остаются в памяти; секрет
+ключа нигде не показывается. Отказ называет шаг и HTTP-статус. Отменить —
 evo logout.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -79,34 +85,36 @@ evo logout.`),
 			if err != nil {
 				return err
 			}
-			name, _ := config.ProfileName(flagProfile)
-			if err := config.ValidateProfileName(name); err != nil {
-				return err
+			choice.Yes = flagYes
+			store := loginStore{}
+			if name, explicit := config.ProfileName(flagProfile); explicit {
+				if err := config.ValidateProfileName(name); err != nil {
+					return err
+				}
+				store.name = name
 			}
-			prof, creds, _, err := config.LoadProfile(name)
+			cfg := loginConfig(loginSay(cmd), openBrowser)
+			if noBrowser {
+				cfg.Open = nil
+			}
+			cfg.Tell = loginTell(cmd)
+			if !flagJSON && stdinIsTerminal() {
+				cfg.Ask = newConsole(os.Stdin, cmd.ErrOrStderr(), true).ask
+			}
+			res, err := login.Login(cmd.Context(), cfg, choice, store)
 			if err != nil {
 				return err
-			}
-			var prev *login.Previous
-			if creds.Login != nil {
-				prev = &login.Previous{ServiceAccountID: creds.Login.ServiceAccountID, AccessKeyID: creds.Login.AccessKeyID}
 			}
 			printer := output.New(flagJSON, flagNoColor)
-			res, err := login.Login(cmd.Context(), loginConfig(loginSay(cmd), openBrowser), choice, prev, func(s login.Saved) error {
-				prof.ProjectID = s.ProjectID
-				creds.KeyID, creds.Secret = s.KeyID, s.Secret
-				creds.Login = &config.LoginKey{ServiceAccountID: s.ServiceAccountID, AccessKeyID: s.AccessKeyID,
-					KeyExpiresAt: s.KeyExpiresAt.UTC().Format(time.RFC3339), CustomerID: s.CustomerID, Role: s.Role,
-					LoggedInAs: s.Login, LoginAt: s.LoginAt.UTC().Format(time.RFC3339)}
-				return config.SaveProfile(name, prof, creds)
-			})
-			if err != nil {
-				return err
+			var revoked any
+			if res.RevokedKeyID != "" {
+				revoked = config.MaskKeyID(res.RevokedKeyID)
 			}
 			out := map[string]any{
-				"profile": name, "key_id": config.MaskKeyID(res.KeyID), "project_id": res.ProjectID,
-				"service_account": res.Account, "account_reused": res.AccountReused, "role": res.Role,
-				"key_expires_at": res.KeyExpiresAt.UTC().Format(time.RFC3339), "previous_key_revoked": res.PreviousRevoked,
+				"profile": res.Profile, "key_id": config.MaskKeyID(res.KeyID), "project_id": res.ProjectID,
+				"project_name": res.ProjectName, "service_account": res.Account, "role": res.Role,
+				"key_expires_at": res.KeyExpiresAt.UTC().Format(time.RFC3339), "reused_account": res.AccountReused,
+				"revoked_key_id": revoked,
 			}
 			if res.PreviousNote != "" {
 				out["warning"] = res.PreviousNote
@@ -114,20 +122,73 @@ evo logout.`),
 			if printer.IsJSON() {
 				return printer.JSON(out)
 			}
-			printer.Success(i18n.Tf("Signed in: the key of %s for the project %s is kept in the profile %q until %s",
-				"Вход выполнен: ключ %s для проекта %s записан в профиль %q до %s",
-				res.Account, res.ProjectName, name, res.KeyExpiresAt.Local().Format("2006-01-02")))
+			printer.Success(i18n.Tf("Signed in: the key %s of %s for the project %s is kept in the profile %q until %s",
+				"Вход выполнен: ключ %s аккаунта %s для проекта %s записан в профиль %q до %s",
+				config.MaskKeyID(res.KeyID), res.Account, res.ProjectName, res.Profile, res.KeyExpiresAt.Local().Format("02.01.2006")))
 			if res.PreviousNote != "" {
 				printer.Warning(res.PreviousNote)
 			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", i18n.T("Project id or name to offer alone on the page", "id или имя проекта — на странице будет только он"))
-	cmd.Flags().StringVar(&forWhom, "for", "", i18n.T("Whom the key is for: me (account evo) or agent (account evo-agent); chosen on the page by default",
-		"Для кого ключ: me (аккаунт evo) или agent (аккаунт evo-agent); по умолчанию выбирается на странице"))
+	cmd.Flags().StringVar(&project, "project", "", i18n.T("Project id or name to offer alone", "id или имя проекта — будет предложен только он"))
+	cmd.Flags().StringVar(&forWhom, "for", "", i18n.T("Whom the key is for: me (account evo, profile of now) or agent (account evo-agent, profile «agent»)",
+		"Для кого ключ: me (аккаунт evo, текущий профиль) или agent (аккаунт evo-agent, профиль «agent»)"))
 	cmd.Flags().StringVar(&ttl, "key-ttl", "", i18n.T("Term of the key: 7d, 30d or 90d (30d by default)", "Срок ключа: 7d, 30d или 90d (по умолчанию 30d)"))
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, i18n.T("Do not open a browser: only print the address", "Не открывать браузер: только напечатать адрес"))
 	return cmd
+}
+
+// agentProfile is the profile of a key for an agent, unless --profile or
+// CLOUDRU_PROFILE names one.
+const agentProfile = "agent"
+
+// loginStore keeps the key of evo login in a profile: the one named, or
+// the one of the audience.
+type loginStore struct{ name string }
+
+func (s loginStore) Profile(a login.Audience) string {
+	switch {
+	case s.name != "":
+		return s.name
+	case a == login.ForAgent:
+		return agentProfile
+	}
+	return config.DefaultProfile
+}
+
+func (s loginStore) Previous(a login.Audience) *login.Previous {
+	_, creds, _, err := config.LoadProfile(s.Profile(a))
+	if err != nil || creds.Login == nil {
+		return nil
+	}
+	return &login.Previous{ServiceAccountID: creds.Login.ServiceAccountID, AccessKeyID: creds.Login.AccessKeyID, KeyID: creds.KeyID}
+}
+
+func (s loginStore) Save(a login.Audience, k login.Saved) error {
+	name := s.Profile(a)
+	prof, creds, _, err := config.LoadProfile(name)
+	if err != nil {
+		return err
+	}
+	prof.ProjectID = k.ProjectID
+	creds.KeyID, creds.Secret = k.KeyID, k.Secret
+	creds.Login = &config.LoginKey{ServiceAccountID: k.ServiceAccountID, AccessKeyID: k.AccessKeyID,
+		KeyExpiresAt: k.KeyExpiresAt.UTC().Format(time.RFC3339), CustomerID: k.CustomerID, Role: k.Role,
+		LoggedInAs: k.Login, LoginAt: k.LoginAt.UTC().Format(time.RFC3339)}
+	return config.SaveProfile(name, prof, creds)
+}
+
+// loginTell writes a line of the login on stderr: text, or one JSON line
+// with --json.
+func loginTell(cmd *cobra.Command) func(string) {
+	return func(line string) {
+		if flagJSON {
+			_ = json.NewEncoder(cmd.ErrOrStderr()).Encode(map[string]string{"message": line})
+			return
+		}
+		fmt.Fprintln(cmd.ErrOrStderr(), line)
+	}
 }
 
 // loginChoice is the choice of the flags; a bad one is USAGE before any

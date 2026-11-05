@@ -78,24 +78,29 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 		}
 	}
 	var got map[string]any
-	if err := json.Unmarshal([]byte(stdout), &got); err != nil || got["service_account"] != "evo-agent" || got["project_id"] != loginworld.Project {
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || got["service_account"] != "evo-agent" || got["project_id"] != loginworld.Project ||
+		got["profile"] != "agent" || got["reused_account"] != false || got["revoked_key_id"] != nil || got["project_name"] == "" {
 		t.Fatalf("answer %q: %v", stdout, err)
 	}
-	_, creds, _, err := config.LoadProfile("default")
+	// A key for an agent goes to the profile «agent», not the person's.
+	if _, _, found, _ := config.LoadProfile("default"); found {
+		t.Errorf("the key for an agent went to the profile default")
+	}
+	_, creds, _, err := config.LoadProfile("agent")
 	keys := w.Keys()
 	if err != nil || creds.Login == nil || len(keys) != 1 || creds.Login.AccessKeyID != keys[0].ID || creds.KeyID != keys[0].KeyID ||
 		creds.Secret != keys[0].Secret || creds.Login.KeyExpiresAt == "" {
 		t.Fatalf("profile %+v (%v); keys %+v", creds.Login, err, keys)
 	}
 
-	code, stdout, stderr = runCLI(t, "", "--json", "--yes", "logout")
+	code, stdout, stderr = runCLI(t, "", "--json", "--yes", "--profile", "agent", "logout")
 	if code != 0 || !strings.Contains(stdout, `"key": "deleted"`) {
 		t.Fatalf("logout: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	if len(w.Keys()) != 0 {
 		t.Errorf("logout left keys %+v", w.Keys())
 	}
-	if _, _, found, _ := config.LoadProfile("default"); found {
+	if _, _, found, _ := config.LoadProfile("agent"); found {
 		t.Errorf("logout kept the profile")
 	}
 	// The account and its role stay (contract B-1, section 3).
@@ -113,6 +118,20 @@ func TestLogin_FlagsRefusedBeforeAnyRequest(t *testing.T) {
 	}
 	if c, err := loginChoice("p", "agent", "90d"); err != nil || c.Days != 90 || c.For != login.ForAgent || c.Project != "p" {
 		t.Errorf("%+v %v", c, err)
+	}
+}
+
+// The profile of the key: the one --profile or CLOUDRU_PROFILE names, else
+// «agent» for an agent and the default one for the person.
+func TestLogin_ProfileOfTheAudience(t *testing.T) {
+	if got := (loginStore{}).Profile(login.ForAgent); got != "agent" {
+		t.Errorf("agent: %q", got)
+	}
+	if got := (loginStore{}).Profile(login.ForMe); got != config.DefaultProfile {
+		t.Errorf("me: %q", got)
+	}
+	if got := (loginStore{name: "work"}).Profile(login.ForAgent); got != "work" {
+		t.Errorf("named: %q", got)
 	}
 }
 

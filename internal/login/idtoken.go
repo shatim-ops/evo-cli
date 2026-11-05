@@ -20,7 +20,6 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
-	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // person is what the ID token says of the human who signed in.
@@ -35,10 +34,7 @@ type person struct {
 // and nothing is created (contract B-1, step 7).
 func (c *Config) verifyIDToken(ctx context.Context, jwks, raw, issuer, nonce string, now time.Time) (person, error) {
 	fail := func(what string) (person, error) {
-		return person{}, clierrors.New(clierrors.CodeAuthFailed,
-			i18n.Tf("the sign-in could not be verified (ID token: %s); nothing was created",
-				"не удалось проверить вход (ID token: %s); ничего не создано", what),
-			i18n.T("Run 'evo login' again; if it repeats, report it.", "Повторите 'evo login'; если повторится — сообщите об этом."))
+		return person{}, clierrors.New(clierrors.CodeAuthFailed, eIDToken(what), eIDTokenHint())
 	}
 	parts := strings.Split(raw, ".")
 	if len(parts) != 3 {
