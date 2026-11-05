@@ -42,11 +42,14 @@ const (
 
 	// LoginActionCreateAccount and LoginActionGrantRole are the actions
 	// of IAM evaluate asks about before any write: creating a service
-	// account and granting a role in the project. Their names are a
-	// hypothesis until the probe of B-5 (contract B-1: «уточняются первой
-	// пробой»).
-	LoginActionCreateAccount = "iam.serviceAccounts.create"
-	LoginActionGrantRole     = "iam.permissions.create"
+	// account and granting a role in the project. Both names are in the
+	// IAM action catalog (probe A1, runs 45 and 46, 2 of 2; the catalog
+	// has no «create» of a service account, «edit» is the nearest). That
+	// they are the actions IAM checks for these writes is a hypothesis
+	// until IAM answers or the live sign-in of B-5 (an error of evaluate
+	// is no refusal, «Риск» U-9).
+	LoginActionCreateAccount = "iam.serviceaccount.edit"
+	LoginActionGrantRole     = "iam.permission.add"
 )
 
 // LoginRedirectPorts are the loopback ports of evo_cmcp's three registered
