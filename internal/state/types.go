@@ -54,9 +54,24 @@ type DeploymentRecord struct {
 	// PortsAlreadyOpen are ports ("80/tcp") a rule this deployment did not
 	// create already opened when deploy came to them: deploy created and
 	// recorded none, and destroy says it leaves them.
-	PortsAlreadyOpen []string  `json:"ports_already_open,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	PortsAlreadyOpen []string `json:"ports_already_open,omitempty"`
+	// SSHWait is the wait for SSH a bound of deploy ended (D80): the next
+	// deploy goes on with it, so the wait ends after its limit of attempts
+	// and says why past its first minutes, as one call of the CLI does.
+	// Nil once SSH answered or the wait ended.
+	SSHWait   *SSHWait  `json:"ssh_wait,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SSHWait is a wait of deploy for SSH on the VM of a record.
+type SSHWait struct {
+	// Since is when the wait began.
+	Since time.Time `json:"since"`
+	// Attempts are the connects that failed so far; Limit, how many the
+	// wait makes in all.
+	Attempts int `json:"attempts"`
+	Limit    int `json:"limit"`
 }
 
 // SGRule is a security-group rule created by a deployment.
