@@ -100,8 +100,9 @@ signs:
     signature: "${artifact}.sigstore.json"
     args: ["sign-blob", "--bundle=${signature}", "${artifact}", "--yes"]
 
+# Сборка из main (ci.yml, dev-build) — не выпуск: в версии -dev и sha.
 snapshot:
-  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+  version_template: "{{ incpatch .Version }}-dev-{{ .ShortCommit }}"
 
 changelog:
   use: git
