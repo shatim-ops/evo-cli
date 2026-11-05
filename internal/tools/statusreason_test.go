@@ -29,6 +29,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/dbaas"
 	"github.com/shatim-ops/evo-cli/internal/dns"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/iamadmin"
 	"github.com/shatim-ops/evo-cli/internal/mk8s"
 	"github.com/shatim-ops/evo-cli/internal/monitoring"
 	"github.com/shatim-ops/evo-cli/internal/nlb"
@@ -86,6 +87,10 @@ var statusClients = map[string]func(ctx context.Context, base string) error{
 	},
 	"dns": func(ctx context.Context, base string) error {
 		_, err := dns.New("tok", "proj", base).ListZones(ctx, "public")
+		return err
+	},
+	"iamadmin": func(ctx context.Context, base string) error {
+		_, err := iamadmin.New(staticToken{}, base).Roles(ctx, iamadmin.RoleFilter{Type: "ROLE_TYPE_PRODUCT"})
 		return err
 	},
 	"mk8s": func(ctx context.Context, base string) error {
