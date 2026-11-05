@@ -20,7 +20,6 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
-	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
 )
 
@@ -55,6 +54,11 @@ type Choice struct {
 	Project string
 	For     Audience
 	Days    int
+	// Preselect is the project the page offers checked, by id: the one of
+	// the profile or of CLOUDRU_PROJECT_ID (R-48); PreselectFrom names
+	// that source on the page and in the terminal. --project filters the
+	// list instead and wins.
+	Preselect, PreselectFrom string
 }
 
 // Store is where the key goes: the profile of an audience, the key it holds
@@ -212,7 +216,7 @@ func (s *session) exchange(ctx context.Context, code string) error {
 	resp, err := s.cfg.HTTP.Do(req)
 	if err != nil {
 		return at(stepToken, clierrors.Wrap(clierrors.CodeAPIUnreachable,
-			i18n.T("the OpenID Connect provider of Cloud.ru is unreachable", "провайдер OpenID Connect Cloud.ru недоступен"),
+			eOIDCUnreachable(),
 			clierrors.NetworkHint(err, eRetry()), err))
 	}
 	defer resp.Body.Close()
@@ -259,10 +263,9 @@ func (s *session) prepare(ctx context.Context) error {
 		})
 	}
 	if len(s.projects) == 0 {
-		hint := i18n.T("A project is created in the console; or sign in as a member of one.", "Проект создаётся в консоли; или войдите участником проекта.")
+		hint := eNoProjectHint()
 		if s.choice.Project != "" {
-			hint = i18n.T("Pass a project's id or name the person sees in the console, or no --project to choose.",
-				"Передайте id или имя проекта, который человек видит в консоли, или не передавайте --project и выберите.")
+			hint = eNoProjectHintFlag()
 		}
 		return at(stepProjects, clierrors.New(clierrors.CodeUsage, eNoProject(s.choice.Project, s.who.Login), hint))
 	}
@@ -289,7 +292,7 @@ func (s *session) prepare(ctx context.Context) error {
 		anyAllowed = anyAllowed || s.projects[i].Allowed
 	}
 	if !anyAllowed {
-		return at(stepBulk, noRight(s.projects[0].Name))
+		return at(stepBulk, noRightIn(s.projects))
 	}
 	return nil
 }
@@ -307,6 +310,50 @@ func (s *session) uncheck(err error) error {
 		s.tell(tUnchecked(s.unchecked))
 	}
 	return nil
+}
+
+// preselected is the index of the project to offer checked: the
+// preselected one, when it is listed and allowed; -1 otherwise.
+func (s *session) preselected() int {
+	for i, p := range s.projects {
+		if s.choice.Preselect != "" && p.ID == s.choice.Preselect && p.Allowed {
+			return i
+		}
+	}
+	return -1
+}
+
+// preselectDenied reports whether the preselected project is listed but
+// may not be chosen: the page says why it is not checked.
+func (s *session) preselectDenied() bool {
+	for _, p := range s.projects {
+		if p.ID == s.choice.Preselect && !p.Allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// tellPreselect names in the terminal the project the page offers checked
+// and where it came from, or why it is not checked (R-48).
+func (s *session) tellPreselect() {
+	if s.choice.Preselect == "" {
+		return
+	}
+	if i := s.preselected(); i >= 0 {
+		s.tell(tPreselectTerminal(s.projects[i].Name, s.choice.PreselectFrom))
+	} else if s.preselectDenied() {
+		s.tell(tPreselectNoRight(s.choice.PreselectFrom))
+	}
+}
+
+// noRightIn is the refusal of a person with the right in none of their
+// projects: the one project by its name, or how many there are.
+func noRightIn(ps []project) error {
+	if len(ps) == 1 {
+		return noRight(ps[0].Name)
+	}
+	return clierrors.New(clierrors.CodeAuthFailed, eNoRightAny(len(ps)), eNoRightHint())
 }
 
 // noRight is the refusal of a person who may not make the access: AUTH_FAILED
@@ -340,7 +387,7 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 		resp, err := s.cfg.HTTP.Do(req)
 		if err != nil {
 			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable,
-				i18n.T("the Organization API of Cloud.ru is unreachable", "Organization API Cloud.ru недоступен"),
+				eOrgUnreachable(),
 				clierrors.NetworkHint(err, eRetry()), err)
 		}
 		var m map[string]any
@@ -348,7 +395,7 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &m) != nil {
 			return nil, withStatus(clierrors.New(clierrors.CodeAPIError,
-				i18n.Tf("Organization API %d at %s", "Organization API %d на %s", resp.StatusCode, path), eRetry()), resp.StatusCode)
+				eOrgStatus(resp.StatusCode, path), eRetry()), resp.StatusCode)
 		}
 		xs, _ := m[key].([]any)
 		for _, x := range xs {
@@ -360,7 +407,7 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 			return out, nil
 		}
 	}
-	return nil, clierrors.New(clierrors.CodeAPIError, i18n.Tf("Organization API: %s has too many pages", "Organization API: у %s слишком много страниц", path), "")
+	return nil, clierrors.New(clierrors.CodeAPIError, eOrgPages(path), "")
 }
 
 func str(m map[string]any, k string) string {
@@ -383,7 +430,7 @@ type plan struct {
 
 // planFor checks the chosen access before the question (axis 1 of the
 // contract): the right asked again for this project, the limits of IAM by
-// the lists (#563; to be confirmed by IAM).
+// the lists (#563; confirmed by IAM).
 func (s *session) planFor(ctx context.Context, p project, aud Audience, days int) (plan, error) {
 	pl := plan{p: p, aud: aud, days: days, profile: s.store.Profile(aud), previous: s.store.Previous(aud),
 		term: s.cfg.Now().Add(time.Duration(days) * 24 * time.Hour).UTC().Truncate(time.Second)}
@@ -426,8 +473,8 @@ func (s *session) planFor(ctx context.Context, p project, aud Audience, days int
 	return pl, nil
 }
 
-// The limits of IAM, refused before any write (#563; to be confirmed by
-// IAM): service accounts of a project, access keys of an account.
+// The limits of IAM, refused before any write (#563; confirmed by IAM):
+// service accounts of a project, access keys of an account.
 const (
 	maxAccounts = 10
 	maxKeys     = 50
@@ -462,7 +509,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 		switch {
 		case err == nil:
 			sa = a.ID
-			s.made = append(s.made, undo{i18n.Tf("service account %s", "сервисный аккаунт %s", aud.account()),
+			s.made = append(s.made, undo{tUndoAccount(aud.account()),
 				func(ctx context.Context) error { return s.admin.DeleteServiceAccount(ctx, a.ID) }})
 		case iamadmin.StatusOf(err) == http.StatusConflict:
 			again, lerr := s.admin.ServiceAccounts(ctx, p.ID, aud.account())
@@ -488,7 +535,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	if err != nil {
 		return res, at(stepKey, err)
 	}
-	s.made = append(s.made, undo{i18n.T("the access key", "ключ доступа"),
+	s.made = append(s.made, undo{tUndoKey(),
 		func(ctx context.Context) error { return s.admin.DeleteAccessKey(ctx, sa, key.ID) }})
 	res.KeyID = key.KeyID
 	res.KeyExpiresAt = pl.term
@@ -548,7 +595,7 @@ func (s *session) role(ctx context.Context, p project, sa string, term time.Time
 	if err != nil {
 		return err
 	}
-	s.made = append(s.made, undo{i18n.T("the role of the account", "роль аккаунта"),
+	s.made = append(s.made, undo{tUndoRole(),
 		func(ctx context.Context) error { return s.admin.DeletePermission(ctx, perm.ID) }})
 	return nil
 }

@@ -209,6 +209,7 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 	// R-47: the consent is this page's own token, apart from the state the
 	// terminal shows; it is in this answer only, which is served once.
 	l.s.consent = random(16)
+	l.s.tellPreselect()
 	l.phase = phaseConsent
 	writePage(w, http.StatusOK, consentPage(l.s))
 }

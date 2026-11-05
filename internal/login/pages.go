@@ -53,8 +53,9 @@ func writePage(w http.ResponseWriter, code int, p page) {
 }
 
 type consentProject struct {
-	HTMLID, ID, Name, OrgHeading string
-	Allowed, Checked             bool
+	// Source says where a preselected project came from (R-48).
+	HTMLID, ID, Name, OrgHeading, Source string
+	Allowed, Checked                     bool
 }
 
 type consentTerm struct {
@@ -70,13 +71,13 @@ type consentData struct {
 	TermLegend, TermNote, SummaryHeading                          string
 	// Account and Role are the summary's lines, cut where the chosen
 	// account, project and day go in.
-	Account                                [3]string
-	Role, Key                              [2]string
-	SummaryStays, ReuseNote, Cancel, Grant string
-	SecretNote, State, Consent, For        string
-	Unchecked                              string
-	Projects                               []consentProject
-	Terms                                  []consentTerm
+	Account                           [3]string
+	Role, Key                         [2]string
+	SummaryStays, ReuseNote, Cancel   string
+	SecretNote, State, Consent, For   string
+	Unchecked, PreselectNote, GrantIn string
+	Projects                          []consentProject
+	Terms                             []consentTerm
 }
 
 // cut is a text with marks, cut at them: the page puts its choices there.
@@ -95,7 +96,7 @@ func consentPage(s *session) page {
 		Intro: tSignedIn(s.who.Login), ProjectLegend: tProject(), NeedAdmin: tNoRightMark(), NoRightNote: tNoRightNote(),
 		ForLegend: tForWhom(), ForMe: tForMe(), ForMeNote: tForMeNote(), ForAgent: tForAgent(), ForAgentNote: tForAgentNote(),
 		RoleNote: tRoleNote(), TermLegend: tTerm(), TermNote: tForeverInConsole(), SummaryHeading: tWhatWillBeMade(),
-		SummaryStays: tSumStays(), ReuseNote: tSumReuseNote(), Cancel: tCancel(), Grant: tGrant(), SecretNote: tSecretNote(),
+		SummaryStays: tSumStays(), ReuseNote: tSumReuseNote(), Cancel: tCancel(), SecretNote: tSecretNote(),
 		State: s.state, Consent: s.consent, For: string(ForAgent),
 	}
 	copy(d.Account[:], cut(tSumAccountNew("\x00a", "\x00p"), "\x00a", "\x00p"))
@@ -107,7 +108,12 @@ func consentPage(s *session) page {
 	if s.unchecked != "" {
 		d.Unchecked = tUnchecked(s.unchecked)
 	}
+	d.GrantIn = tGrantIn()
 	var rules strings.Builder
+	pre := s.preselected()
+	if pre < 0 && s.choice.Preselect != "" && s.preselectDenied() {
+		d.PreselectNote = tPreselectNoRight(s.choice.PreselectFrom)
+	}
 	checked := false
 	lastOrg := ""
 	for i, p := range s.projects {
@@ -115,11 +121,17 @@ func consentPage(s *session) page {
 		if p.Customer != lastOrg {
 			cp.OrgHeading, lastOrg = p.CustomerName, p.Customer
 		}
-		if p.Allowed && !checked {
+		switch {
+		case i == pre:
+			cp.Checked, checked = true, true
+			cp.Source = tPreselectedFrom(s.choice.PreselectFrom)
+		case pre < 0 && p.Allowed && !checked:
 			cp.Checked, checked = true, true
 		}
 		d.Projects = append(d.Projects, cp)
 		rules.WriteString(choiceRule(cp.HTMLID, "fieldset label[for="+cp.HTMLID+"]"))
+		// R-48: the button names the chosen project.
+		rules.WriteString("#" + cp.HTMLID + ":checked ~ .actions .s-" + cp.HTMLID + " { display: inline; }\n")
 	}
 	days := s.choice.Days
 	if !containsInt(Terms, days) {
@@ -167,7 +179,7 @@ func donePage(r Result) page {
 		key += "; " + tRevokedPrevious(config.MaskKeyID(r.RevokedKeyID))
 	}
 	return page{"done", resultData{head: newHead(tDone() + " — evo"), Status: tDone(),
-		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt),
+		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt, r.Account == ForAgent.account()),
 		Rows: []row{
 			{tProject(), r.ProjectName},
 			{tRowAccount(), acc},

@@ -571,3 +571,16 @@ func TestLogin_EvaluateErrorIsNoRefusal(t *testing.T) {
 		t.Fatalf("err %v; keys %+v; permissions %+v", r.err, w.Keys(), w.Permissions())
 	}
 }
+
+// R-48 on the world: the terminal names the preselected project and its
+// source, and the page offers it checked.
+func TestLogin_PreselectNamedInTheTerminal(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	r := login(t, w, &browser{}, Choice{Preselect: loginworld.Project, PreselectFrom: "из CLOUDRU_PROJECT_ID"}, nil, nil)
+	if r.err != nil {
+		t.Fatal(r.err)
+	}
+	if !strings.Contains(r.out, "из CLOUDRU_PROJECT_ID") || !strings.Contains(r.b.consent, tPreselectedFrom("из CLOUDRU_PROJECT_ID")) {
+		t.Errorf("terminal:\n%s", r.out)
+	}
+}
