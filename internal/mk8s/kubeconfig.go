@@ -17,13 +17,15 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // DefaultOIDCTokenURL is the Cloud.ru IAM OIDC token endpoint the mk8s
-// `cloudlogin` exec-plugin uses (client-credentials grant).
-const DefaultOIDCTokenURL = "https://id.cloud.ru/auth/system/openid/token"
+// `cloudlogin` exec-plugin uses (client-credentials grant): the login
+// table's (internal/auth).
+const DefaultOIDCTokenURL = auth.OIDCTokenURL
 
 // oidcClient sends the token request; tests replace its transport. No
 // redirects: on 307/308 the client would POST the same body, with
@@ -40,7 +42,7 @@ func FetchOIDCToken(ctx context.Context, tokenURL, keyID, secret string) (string
 	// The URL comes from the cluster's kubeconfig, i.e. from an API
 	// response, and the request carries the service account's secret: send
 	// it only to Cloud.ru IAM over https.
-	if !trustedOIDCURL(tokenURL) {
+	if !auth.TrustedOIDCURL(tokenURL) {
 		tokenURL = DefaultOIDCTokenURL
 	}
 	// The exchange is idempotent: a transport error or a 5xx (the IAM
@@ -106,17 +108,6 @@ func fetchOIDCTokenOnce(ctx context.Context, tokenURL, keyID, secret string) (to
 		return r.AccessToken, false, nil
 	}
 	return "", false, errors.New(i18n.T("OIDC response had no id_token/access_token", "в ответе OIDC нет id_token или access_token"))
-}
-
-// trustedOIDCHosts are the IAM hosts the access key may be sent to (both
-// answer the client-credentials grant, checked 2026-10-14).
-var trustedOIDCHosts = map[string]bool{"id.cloud.ru": true, "auth.iam.cloud.ru": true}
-
-// trustedOIDCURL reports whether u is https on a Cloud.ru IAM host.
-func trustedOIDCURL(u string) bool {
-	p, err := url.Parse(u)
-	return err == nil && p.Scheme == "https" && p.User == nil && p.Port() == "" &&
-		trustedOIDCHosts[strings.ToLower(p.Hostname())]
 }
 
 // OIDCURLFromKubeconfig pulls the --iam-url from the kubeconfig's exec-auth

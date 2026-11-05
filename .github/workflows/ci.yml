@@ -407,12 +407,16 @@ jobs:
 
       # Функции, недостижимые из main: deadcode печатает их и выходит с 0,
       # поэтому провал — непустой вывод. Сейчас таких нет (§2 CLAUDE.md:
-      # без мёртвого кода).
+      # без мёртвого кода). Пакеты-серверы тестовых миров (их импортируют
+      # только тесты) — из scripts/fake-servers.json, того же перечня, что
+      # у api-contract-check.py; -test не берём: он скрыл бы продуктовый
+      # код, который вызывают только тесты.
       - name: deadcode
         if: runner.os == 'Linux'
         run: |
           go install golang.org/x/tools/cmd/deadcode@v0.38.0
-          dead="$("$(go env GOPATH)/bin/deadcode" ./...)"
+          fake="^($(jq -r 'del(._comment) | keys | map(. + "/") | join("|")' scripts/fake-servers.json))"
+          dead="$("$(go env GOPATH)/bin/deadcode" ./... | grep -Ev "$fake" || true)"
           if [ -n "$dead" ]; then echo "недостижимый код:"; echo "$dead"; exit 1; fi
 
   # Проба ubuntu-latest (с 24.10.2026 — ubuntu-26.04, другие coreutils):
