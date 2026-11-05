@@ -90,7 +90,7 @@ var statusClients = map[string]func(ctx context.Context, base string) error{
 		return err
 	},
 	"iamadmin": func(ctx context.Context, base string) error {
-		_, err := iamadmin.New(staticToken{}, base).Roles(ctx, iamadmin.RoleFilter{Type: "ROLE_TYPE_PRODUCT"})
+		_, err := iamadmin.New(staticToken{}, base).Permissions(ctx, "proj", "")
 		return err
 	},
 	"mk8s": func(ctx context.Context, base string) error {

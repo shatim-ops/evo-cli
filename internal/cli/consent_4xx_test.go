@@ -85,7 +85,6 @@ var writeRules = map[string]struct{ world, why, item string }{
 	"DELETE /api/v1/nat-gateways/{nat_gateway_id} 404": {why: ruleAbsentID},
 
 	"POST /api/v1/projects/{project_id}/price-calculation 422": {why: ruleRead},
-	"POST /api/v1/permissions/bulk-evaluate 403":               {why: ruleRead},
 	"POST /api/v1/auth/token 401":                              {why: ruleOfKey},
 	"POST /api/v1/auth/token 403":                              {why: ruleOfKey},
 }
