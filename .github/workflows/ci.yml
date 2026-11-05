@@ -421,12 +421,13 @@ jobs:
 
   # Сборка из main для живых прогонов (строка плана B-5, #1000): goreleaser
   # snapshot после зелёных тестов, архивы шести платформ и checksums.txt —
-  # артефактом на 7 дней, в имени -dev и короткий sha. Не выпуск: ни тега,
-  # ни релиза, ни подписи; секретов нет, токен — только чтение
-  # (TestWorkflows_DevBuildIsNoRelease).
+  # артефактом на 7 дней, в имени -dev и короткий sha. Ночью и вручную на
+  # main, не на каждый push: сборка — 87 МБ, слияний в main — до ~100 в
+  # день (#1005, вариант А). Не выпуск: ни тега, ни релиза, ни подписи;
+  # секретов нет, токен — только чтение (TestWorkflows_DevBuildIsNoRelease).
   dev-build:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

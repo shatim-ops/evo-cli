@@ -72,7 +72,8 @@ func TestWorkflows_GoreleaserCheckSurvivesReleasesOutage(t *testing.T) {
 }
 
 // The dev build of main (release-plan B-5, #1000) is a build, not a
-// release: it runs on a push to main after the tests, with a read-only
+// release: it runs nightly or by hand on main after the tests (not on each
+// push: 87 MB a build, up to ~100 merges a day, #1005), with a read-only
 // token and no secret, publishes nothing (a snapshot, no tag, no release,
 // no signature) and keeps its archives as an artifact for 7 days, named
 // -dev with the commit.
@@ -82,8 +83,8 @@ func TestWorkflows_DevBuildIsNoRelease(t *testing.T) {
 	if !ok {
 		t.Fatal("ci.yml: no job dev-build — the check sees nothing, update it")
 	}
-	if j.If != "github.event_name == 'push' && github.ref == 'refs/heads/main'" {
-		t.Errorf("dev-build: if %q — only a push to main", j.If)
+	if j.If != "(github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'" {
+		t.Errorf("dev-build: if %q — nightly or by hand, on main alone", j.If)
 	}
 	if fmt.Sprint(j.Needs) != "test" {
 		t.Errorf("dev-build: needs %v — after the tests", j.Needs)
