@@ -236,5 +236,16 @@ func TestWorkflows_WritesDeclareCreates(t *testing.T) {
 	if writes < 20 {
 		t.Fatalf("%d writes in the inventory: the check sees nothing", writes)
 	}
-	t.Logf("writes that create a resource and do not declare it yet («создаёт…» in writes_without_creates): %d", gaps)
+	switch {
+	case gaps > createsUndeclared:
+		t.Errorf("%d writes create a resource and do not declare it («создаёт…» in writes_without_creates), %d allowed: declare creates and impact instead of a new line", gaps, createsUndeclared)
+	case gaps < createsUndeclared:
+		t.Errorf("%d writes create a resource undeclared, createsUndeclared says %d: lower it", gaps, createsUndeclared)
+	}
 }
+
+// createsUndeclared is the number of writes of the inventory that create
+// a resource of a tool without declaring it (floating IP, a rule of a
+// security group, a cluster addon, a secret version): it only shrinks.
+// Closes by 1.9 (process backlog, #990).
+const createsUndeclared = 4
