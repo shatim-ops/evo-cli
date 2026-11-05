@@ -394,8 +394,17 @@ func (s *session) tellPreselect() {
 	if i := s.preselected(); i >= 0 {
 		s.tell(tPreselectTerminal(s.projects[i].Name, s.choice.PreselectFrom))
 	} else if s.preselectDenied() {
-		s.tell(tPreselectNoRight(s.choice.PreselectFrom))
+		s.tell(projectNoRight(s.choice.PreselectEnv))
 	}
+}
+
+// projectNoRight says why the preselected project is not checked, by
+// where it came from.
+func projectNoRight(env bool) string {
+	if env {
+		return tEnvProjectNoRight()
+	}
+	return tProfileProjectNoRight()
 }
 
 // forbidden is a 403 of the platform at a write as what it is, «no right
@@ -557,7 +566,7 @@ func (s *session) grant(ctx context.Context, pl plan, say func(string)) (Result,
 
 func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, error) {
 	if pl.aud == ForAgent {
-		s.warnAgent()
+		s.warnAgent(pl.term)
 	}
 	aud, p := pl.aud, pl.p
 	res := Result{Profile: pl.profile, ProjectID: p.ID, ProjectName: p.Name, CustomerName: p.CustomerName,
@@ -595,7 +604,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 		return res, at(stepPermission, forbidden(err, p.Name))
 	}
 	res.RoleExpiresAt = roleTerm
-	say(tStepRole(roleTerm))
+	say(tStepRole())
 
 	// 16. The key, last.
 	key, err := s.admin.CreateAccessKey(ctx, sa, desc, time.Duration(pl.days)*24*time.Hour)

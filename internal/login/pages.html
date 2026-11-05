@@ -105,8 +105,6 @@ a { color: var(--green-deep); }
 
 {{define "consent"}}{{template "head" .}}{{if .Intro}}  <p class="support">{{.Intro}}</p>
 {{end}}
-{{if .Unchecked}}  <div class="alert warning"><div>{{.Unchecked}}</div></div>
-{{end}}
   <form method="post" action="/grant">
 {{range .Projects}}<input type="radio" name="project" id="{{.HTMLID}}" value="{{.ID}}" required{{if .Checked}} checked{{end}}{{if not .Allowed}} disabled{{end}}>
 {{end}}<input type="radio" name="audience" id="a-me" value="me"{{if eq .For "me"}} checked{{end}}>
@@ -118,8 +116,8 @@ a { color: var(--green-deep); }
       <legend>{{.ProjectLegend}}</legend>
 {{range .Projects}}{{if .OrgHeading}}<div class="org">{{.OrgHeading}}</div>
 {{end}}<label class="opt" for="{{.HTMLID}}"{{if not .Allowed}} aria-disabled="true"{{end}}><span class="t"><span class="mono">{{.Name}}</span>{{if .Source}}<span class="support small">{{.Source}}</span>{{end}}{{if not .Allowed}}<span class="small">{{$.NeedAdmin}}</span>{{end}}</span></label>
-{{end}}      <p class="support small">{{.Unconfirmed}}</p>
-{{if .PreselectNote}}      <p class="support small">{{.PreselectNote}}</p>
+{{end}}{{if .Unchecked}}      <div class="alert warning"><div>{{.Unchecked}}</div></div>
+{{end}}{{if .PreselectNote}}      <p class="support small">{{.PreselectNote}}</p>
 {{end}}      <p class="support small">{{.NoRightNote}}</p>
     </fieldset>
     <fieldset>
@@ -139,10 +137,9 @@ a { color: var(--green-deep); }
     <div class="summary" aria-live="polite">
       <h3>{{.SummaryHeading}}</h3>
       <p>{{index .Account 0}}<span class="mono v"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span>{{index .Account 1}}<span class="mono v">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .Account 2}} {{index .Role 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Role 1}} {{index .Key 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Key 1}} {{.SummaryStays}}</p>
-      <p class="support small">{{.ReuseNote}}</p>
     </div>
     <div class="actions">
-      <button type="submit" class="primary">{{.GrantIn}} <span class="pn">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span></button>
+      <button type="submit" class="primary">{{index .GrantIn 0}}<span class="pn">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .GrantIn 1}}</button>
       <button type="submit" class="outline" formaction="/cancel" formnovalidate>{{.Cancel}}</button>
     </div>
     <p class="support small">{{.SecretNote}}</p>

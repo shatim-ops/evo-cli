@@ -600,7 +600,7 @@ func TestLogin_PreselectNamedInTheTerminal(t *testing.T) {
 	if r.err != nil {
 		t.Fatal(r.err)
 	}
-	if !strings.Contains(r.out, "из CLOUDRU_PROJECT_ID") || !strings.Contains(r.b.consent, tPreselectedFrom("из CLOUDRU_PROJECT_ID")) {
+	if !strings.Contains(r.out, "из CLOUDRU_PROJECT_ID") || !strings.Contains(r.b.consent, tEnvProjectPicked()) {
 		t.Errorf("terminal:\n%s", r.out)
 	}
 }

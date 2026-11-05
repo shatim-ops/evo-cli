@@ -310,10 +310,10 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 		// refused key.
 		if exp := p.creds.ExpiresAt; !exp.IsZero() && !clock.Now().Before(exp) {
 			ce := clerrors.New(clerrors.CodeAuthFailed,
-				i18n.Tf("the access key expired %s (IAM status %d)", "ключ доступа истёк %s (статус IAM %d)",
+				i18n.Tf("the term of the access key expired %s (IAM status %d)", "срок ключа доступа истек %s (статус IAM %d)",
 					exp.UTC().Format(time.RFC3339), resp.StatusCode),
-				i18n.T("A person is needed: 'evo login' issues a new key, or create one in the console and run 'evo configure'. Retrying will not help.",
-					"Нужен человек: 'evo login' выпустит новый ключ, или создайте его в консоли и выполните 'evo configure'. Повтор не поможет."))
+				i18n.T("Retrying will not help: a person is needed. Run evo login to issue a new key, or create a key in the Cloud.ru personal account and run evo configure.",
+					"Повтор не поможет: нужен человек. Выполните evo login, чтобы выпустить новый ключ, или создайте ключ в личном кабинете Cloud.ru и выполните evo configure."))
 			ce.Details = map[string]any{"key_expired": true}
 			return Token{}, false, ce
 		}

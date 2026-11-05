@@ -57,7 +57,7 @@ func TestConsent_Meanings(t *testing.T) {
 		{"no command in the warning (conclusion 26.2)", warn, !strings.Contains(warn, "evo logout")},
 		{"revoking: the key on this computer (conclusion 26.2)", warn, strings.Contains(warn, "ключ") && strings.Contains(warn, "этом компьютере")},
 		{"revoking: the role in the personal account (conclusion 26.2)", warn, strings.Contains(warn, "личном кабинете")},
-		{"the secret is not shown (R-47)", page, strings.Contains(page, "Секрет ключа не показывается")},
+		{"the secret is not shown (R-47)", page, strings.Contains(page, "Секрет ключа") && strings.Contains(page, "не показывается")},
 		{"the grant is the page's form with its token (R-47)", r.b.consent, consentField.MatchString(r.b.consent) &&
 			regexp.MustCompile(`(?s)<form[^>]*method="post"[^>]*action="/grant"|<form[^>]*action="/grant"[^>]*method="post"`).MatchString(r.b.consent)},
 	} {

@@ -6,13 +6,11 @@ package login
 
 import (
 	_ "embed"
-	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -74,15 +72,15 @@ type consentData struct {
 	TermLegend, TermNote, SummaryHeading                          string
 	// Account and Role are the summary's lines, cut where the chosen
 	// account, project and day go in.
-	Account                           [3]string
-	Role, Key                         [2]string
-	SummaryStays, ReuseNote, Cancel   string
-	SecretNote, State, Consent, For   string
-	Unchecked, PreselectNote, GrantIn string
-	AgentWarnTitle, Unconfirmed       string
-	AgentWarn                         [2]string
-	Projects                          []consentProject
-	Terms                             []consentTerm
+	Account                         [3]string
+	Role, Key                       [2]string
+	SummaryStays, Cancel            string
+	SecretNote, State, Consent, For string
+	Unchecked, PreselectNote        string
+	AgentWarnTitle                  string
+	AgentWarn, GrantIn              [2]string
+	Projects                        []consentProject
+	Terms                           []consentTerm
 }
 
 // introLine is «You signed in as …» with the e-mail or the user name of
@@ -110,7 +108,7 @@ func consentPage(s *session) page {
 		Intro: s.introLine(), ProjectLegend: tProject(), NeedAdmin: tNoRightMark(), NoRightNote: tNoRightNote(),
 		ForLegend: tForWhom(), ForMe: tForMe(), ForMeNote: tForMeNote(), ForAgent: tForAgent(), ForAgentNote: tForAgentNote(),
 		RoleNote: tRoleNote(), TermLegend: tTerm(), TermNote: tForeverInConsole(), SummaryHeading: tWhatWillBeMade(),
-		SummaryStays: tSumStaysPage(), ReuseNote: tSumReuseNote(), Cancel: tCancel(), SecretNote: tSecretNote(),
+		SummaryStays: tSumStaysPage(), Cancel: tCancel(), SecretNote: tSecretNote(),
 		State: s.state, Consent: s.consent, For: string(ForAgent),
 	}
 	copy(d.Account[:], cut(tSumAccountNew("\x00a", "\x00p"), "\x00a", "\x00p"))
@@ -122,14 +120,13 @@ func consentPage(s *session) page {
 	if s.unchecked != "" {
 		d.Unchecked = tUnchecked(s.unchecked)
 	}
-	d.GrantIn = tGrantIn()
-	d.Unconfirmed = tActionsUnconfirmed()
+	copy(d.GrantIn[:], cut(tGrantInProject("\x00p"), "\x00p"))
 	d.AgentWarnTitle = tAgentWarnTitle()
 	copy(d.AgentWarn[:], cut(tAgentWarn("\x00d"), "\x00d"))
 	var rules strings.Builder
 	pre := s.preselected()
 	if pre < 0 && s.choice.Preselect != "" && s.preselectDenied() {
-		d.PreselectNote = tPreselectNoRight(s.choice.PreselectFrom)
+		d.PreselectNote = projectNoRight(s.choice.PreselectEnv)
 	}
 	checked := false
 	lastOrg := ""
@@ -142,7 +139,7 @@ func consentPage(s *session) page {
 		case i == pre:
 			cp.Checked, checked = true, true
 			if s.choice.PreselectEnv {
-				cp.Source = tPreselectedFrom(s.choice.PreselectFrom)
+				cp.Source = tEnvProjectPicked()
 			}
 		case pre < 0 && p.Allowed && !checked:
 			cp.Checked, checked = true, true
@@ -192,23 +189,25 @@ type resultData struct {
 
 func donePage(r Result) page {
 	// Macket v15: what the login reused or revoked is a line of its own,
-	// not a remark in the rows.
-	var note []string
+	// not a remark in the rows; a new account has none.
+	note := ""
 	if r.AccountReused {
-		note = append(note, tReusedNote(r.Account, roleTerm(r)))
+		prev := ""
+		if r.RevokedKeyID != "" {
+			prev = config.MaskKeyID(r.RevokedKeyID)
+		}
+		note = tDoneReused(r.Account, roleTerm(r), prev)
 	}
-	if r.RevokedKeyID != "" {
-		note = append(note, tRevokedPrevious(config.MaskKeyID(r.RevokedKeyID)))
-	}
+	rows := tRowsPage()
 	return page{"done", resultData{head: newHead(tDone() + " — evo"), Status: tDone(),
 		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt, r.Account == ForAgent.account()),
-		Note: upperFirst(strings.Join(note, ", ")),
+		Note: note,
 		Rows: []row{
-			{tProject(), projectIn(r.ProjectName, r.CustomerName)},
-			{upperFirst(tRowAccount()), r.Account},
-			{upperFirst(tRowRole()), tRoleUntil(roleTerm(r))},
-			{upperFirst(tRowKey()), config.MaskKeyID(r.KeyID)},
-			{upperFirst(tRowProfile()), r.Profile},
+			{rows[0], projectIn(r.ProjectName, r.CustomerName)},
+			{rows[1], r.Account},
+			{rows[2], tRoleUntil(roleTerm(r))},
+			{rows[3], config.MaskKeyID(r.KeyID)},
+			{rows[4], r.Profile},
 		},
 		Footer: tRevokeHow(),
 	}}
@@ -220,15 +219,6 @@ func roleTerm(r Result) time.Time {
 		return r.KeyExpiresAt
 	}
 	return r.RoleExpiresAt
-}
-
-// upperFirst is a row name of the terminal as the page heads it.
-func upperFirst(s string) string {
-	r := []rune(s)
-	if len(r) > 0 {
-		r[0] = unicode.ToUpper(r[0])
-	}
-	return string(r)
 }
 
 // projectIn is a project with its organization, when it is known.
@@ -243,14 +233,10 @@ func cancelledPage() page {
 	return page{"cancelled", resultData{head: newHead(tCancelledTitle() + " — evo"), Status: tCancelledTitle(), Text: tCancelled()}}
 }
 
-// errorPage names the error as the terminal does, with its code; never a
-// secret: the errors of the login carry none.
+// errorPage names the error as the terminal does, with its code; the hint
+// with its command stays the terminal's and JSON's. Never a secret: the
+// errors of the login carry none.
 func errorPage(err error) page {
-	var ce *clierrors.CLIError
-	text := err.Error()
-	if errors.As(err, &ce) && ce.Hint != "" {
-		text += ". " + ce.Hint
-	}
-	return page{"error", resultData{head: newHead(tNotComplete() + " — evo"), Status: tNotComplete(), Text: text,
+	return page{"error", resultData{head: newHead(tNotComplete() + " — evo"), Status: tNotComplete(), Text: err.Error(),
 		Footer: tDetails(clierrors.Reason(err), clierrors.ExitCode(err))}}
 }

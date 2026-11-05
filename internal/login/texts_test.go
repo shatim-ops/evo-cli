@@ -37,8 +37,8 @@ func TestNoRightIn(t *testing.T) {
 // CLOUDRU_PROJECT_ID and says where it came from; one without the right is
 // not checked, and the page says why; the button names the project.
 func TestConsentPage_Preselect(t *testing.T) {
-	render := func(pre string) string {
-		s := &session{cfg: Config{Now: time.Now}, choice: Choice{Preselect: pre, PreselectFrom: "из профиля evo «dev»", PreselectEnv: true},
+	render := func(pre string, env bool) string {
+		s := &session{cfg: Config{Now: time.Now}, choice: Choice{Preselect: pre, PreselectFrom: "из CLOUDRU_PROJECT_ID", PreselectEnv: env},
 			projects: []project{{ID: "a", Name: "alpha", Allowed: true}, {ID: "b", Name: "beta", Allowed: true}, {ID: "c", Name: "gamma"}}}
 		var b strings.Builder
 		p := consentPage(s)
@@ -48,18 +48,22 @@ func TestConsentPage_Preselect(t *testing.T) {
 		return b.String()
 	}
 	checked := regexp.MustCompile(`name="project" id="p\d+" value="([^"]+)" required checked`)
-	page := render("b")
-	if m := checked.FindStringSubmatch(page); m == nil || m[1] != "b" || !strings.Contains(page, tPreselectedFrom("из профиля evo «dev»")) {
-		t.Errorf("the profile's project is not checked with its source: %v", m)
+	page := render("b", true)
+	if m := checked.FindStringSubmatch(page); m == nil || m[1] != "b" || !strings.Contains(page, tEnvProjectPicked()) {
+		t.Errorf("the variable's project is not checked with its source: %v", m)
 	}
-	if !strings.Contains(page, tGrantIn()) || !strings.Contains(page, `.actions .s-p1`) {
+	grant := cut(tGrantInProject("\x00p"), "\x00p")
+	if !strings.Contains(page, grant[0]+`<span class="pn">`) || !strings.Contains(page, `</span>`+grant[1]+`</button>`) ||
+		!strings.Contains(page, `.actions .s-p1`) {
 		t.Errorf("the button does not name the project")
 	}
-	page = render("c")
-	if m := checked.FindStringSubmatch(page); m == nil || m[1] != "a" || !strings.Contains(page, tPreselectNoRight("из профиля evo «dev»")) {
-		t.Errorf("a project without the right: checked %v, or no note", m)
+	for env, note := range map[bool]string{true: tEnvProjectNoRight(), false: tProfileProjectNoRight()} {
+		page = render("c", env)
+		if m := checked.FindStringSubmatch(page); m == nil || m[1] != "a" || !strings.Contains(page, note) {
+			t.Errorf("a project without the right (env %v): checked %v, or no note %q", env, m, note)
+		}
 	}
-	if page = render(""); strings.Contains(page, tPreselectedFrom("из профиля evo «dev»")) {
+	if page = render("", true); strings.Contains(page, tEnvProjectPicked()) {
 		t.Errorf("a source without a preselection")
 	}
 }
@@ -104,9 +108,16 @@ func TestPages_MacketV15(t *testing.T) {
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	note := upperFirst(tReusedNote("evo-agent", term))
-	if !strings.Contains(b.String(), note) || !strings.Contains(b.String(), tRevokedPrevious(config.MaskKeyID("zzzzc019"))) {
-		t.Errorf("no line of the reused account and the deleted key")
+	if note := tDoneReused("evo-agent", term, config.MaskKeyID("zzzzc019")); !strings.Contains(b.String(), note) {
+		t.Errorf("no line of the reused account and the deleted key: %q", note)
+	}
+	b.Reset()
+	p = donePage(Result{Account: "evo-agent", KeyID: "k", KeyExpiresAt: term})
+	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), tDoneReused("evo-agent", term, "")) {
+		t.Errorf("a new account is told as reused")
 	}
 	if !strings.Contains(b.String(), `<svg class="logo"`) || strings.Contains(b.String(), "<img") || strings.Contains(b.String(), "http://") && !strings.Contains(b.String(), "xmlns=\"http://www.w3.org/2000/svg\"") {
 		t.Errorf("the logo is not inline")
@@ -126,8 +137,32 @@ func TestConsentPage_PreselectSourceOnlyForTheVariable(t *testing.T) {
 	if strings.Contains(b.String(), "из профиля evo") || !strings.Contains(b.String(), `value="a" required checked`) {
 		t.Errorf("the project of the profile: checked silently")
 	}
-	if !strings.Contains(b.String(), tActionsUnconfirmed()) {
-		t.Errorf("no note that the right is not confirmed by the platform")
+}
+
+// «Риск» on f8b43c29: one mark of the rights on the page — tUnchecked, by
+// the list of projects, and only when the platform did not confirm the right.
+func TestConsentPage_OneRightsMark(t *testing.T) {
+	render := func(unchecked string) string {
+		s := &session{cfg: Config{Now: time.Now}, unchecked: unchecked,
+			projects: []project{{ID: "a", Name: "alpha", Allowed: true}}}
+		var b strings.Builder
+		p := consentPage(s)
+		if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	mark := "не подтверждено платформой"
+	if page := render(""); strings.Contains(page, mark) {
+		t.Errorf("a confirmed right is marked")
+	}
+	page := render("evaluate: 500")
+	if strings.Count(page, mark) != 1 {
+		t.Errorf("%d marks of the rights, want 1", strings.Count(page, mark))
+	}
+	projects, _, _ := strings.Cut(page, tForWhom())
+	if !strings.Contains(projects, tUnchecked("evaluate: 500")) || !strings.Contains(projects, `<legend>`+tProject()) {
+		t.Errorf("the mark is not by the list of projects")
 	}
 }
 

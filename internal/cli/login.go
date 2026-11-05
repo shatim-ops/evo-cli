@@ -108,6 +108,14 @@ func newLoginCmd() *cobra.Command {
 				return printer.JSON(out)
 			}
 			printer.Success(login.TSignedInCLI(config.MaskKeyID(res.KeyID), res.Account, res.ProjectName, res.Profile, res.KeyExpiresAt))
+			if !res.RoleExpiresAt.IsZero() {
+				printer.Hint(login.TResultRole(res.RoleExpiresAt))
+			}
+			if res.AccountReused {
+				prev, _ := revoked.(string)
+				printer.Hint(login.TResultReused(res.Account, prev))
+			}
+			printer.Hint(login.TResultCheck(res.Profile))
 			if res.PreviousNote != "" {
 				printer.Warning(res.PreviousNote)
 			}
