@@ -3111,6 +3111,16 @@
    "nextHop.virtualMachine.virtualMachine.id",
    "projectId",
    "subnet"
+  ],
+  "iam GET /api/v1/actions": [
+   "actions[]",
+   "actions[].createdAt",
+   "actions[].description",
+   "actions[].groups[]",
+   "actions[].name",
+   "actions[].productCode",
+   "actions[].updatedAt",
+   "nextPageToken"
   ]
  }
 }

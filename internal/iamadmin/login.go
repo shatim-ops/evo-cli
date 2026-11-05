@@ -56,6 +56,19 @@ func (c *Client) BulkEvaluate(ctx context.Context, checks []Check) ([]bool, erro
 	return out, nil
 }
 
+// Actions lists the names of the IAM catalog of actions. evo login reads
+// it only when evaluate answers false, to tell «no right» from «no such
+// action» («Риск», R-49).
+func (c *Client) Actions(ctx context.Context) ([]string, error) {
+	var out []string
+	err := c.list(ctx, "actions", "/api/v1/actions", url.Values{}, "actions", func(m map[string]any) {
+		if n := str(m, "name"); n != "" {
+			out = append(out, n)
+		}
+	})
+	return out, err
+}
+
 // Evaluate answers one check.
 func (c *Client) Evaluate(ctx context.Context, ch Check) (bool, error) {
 	var m map[string]any
