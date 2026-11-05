@@ -48,7 +48,7 @@ const (
 
 // Deploy orchestrates the full deploy lifecycle.
 func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) {
-	e.until, e.boundFrom, e.phase = opts.Until, time.Now(), ""
+	e.until, e.boundFrom, e.phase, e.decided = opts.Until, time.Now(), "", false
 	caller := ctx
 	defer func() { retErr = e.atBound(caller, retErr) }()
 	// Stage 1: Parse compose file.
@@ -337,6 +337,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		rec.UpdatedAt = time.Now()
 		stateFile.UpsertDeployment(rec)
 		_ = state.Write(statePath, stateFile)
+		e.decided = true
 		return err
 	}
 	rec.SSHWait = nil
@@ -356,12 +357,18 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 
 	// Install Docker if the image has none (Ubuntu/Debian chosen by init).
 	if err := e.prepareDocker(ctx, rec.VMIP, sshUserForConnect, rec.SSHHostKeyFingerprint); err != nil {
-		if ctx.Err() == nil {
+		// One decision for the record and the answer, as for SSH: at the
+		// bound the record stays deploying (unfinished, D76) and the answer
+		// says so; a failure before it is docker_failed both ways (FB171-4).
+		err = e.atBound(caller, err)
+		var going *InProgress
+		if !stderrors.As(err, &going) && ctx.Err() == nil {
 			rec.Status = "docker_failed"
 			rec.UpdatedAt = time.Now()
 			stateFile.UpsertDeployment(rec)
 			_ = state.Write(statePath, stateFile)
 		}
+		e.decided = true
 		return err
 	}
 	e.Printer.StepDone(i18n.T("SSH connected, docker compose ready", "SSH подключён, docker compose готов"))
@@ -993,6 +1000,9 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				rec.UpdatedAt = time.Now()
 				stateFile.UpsertDeployment(rec)
 				_ = state.Write(statePath, stateFile)
+				// The record says the VM failed: so does the answer, whenever
+				// the bound comes (FB171-4).
+				e.decided = true
 				return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
 					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", vm.ID, updated.Status),
 					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru."))
@@ -1555,6 +1565,7 @@ func (e *Engine) awaitCreated(ctx context.Context, rec *state.DeploymentRecord, 
 				rec.UpdatedAt = time.Now()
 				stateFile.UpsertDeployment(*rec)
 				_ = state.Write(statePath, stateFile)
+				e.decided = true // as in provisionVM (FB171-4)
 				return clerrors.New(clerrors.CodeVMProvisionFailed,
 					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", rec.VMID, vm.Status),
 					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru."))
