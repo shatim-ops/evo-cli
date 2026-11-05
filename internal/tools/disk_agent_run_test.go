@@ -113,3 +113,27 @@ func TestDiskResize_NoteDoesNotNameTheBootDeviceForADataDisk(t *testing.T) {
 		t.Errorf("the note of a data disk names the boot device: %q", note)
 	}
 }
+// Agent run of 1.7.0 (5 of 9): disk_attach of a disk already attached to
+// the same VM asked, and after yes Cloud.ru answered 422 «Disk can not be
+// attached from current state». The disk's VMs are in the GetDisk answer
+// the plan reads before the question (axis 1): the call answers before
+// it, naming the VM, and nothing is written. Whether that answer is a
+// refusal or already_attached (D26, as fip_attach) is the owner's call:
+// either changes the outcome of the call (docs/RELEASING.md).
+func TestDiskAttach_AlreadyAttachedToThisVMAnswersBeforeTheQuestion(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		r, c := agentDiskWorld(t, map[string]any{"id": faultDisk, "name": "data", "size": float64(20), "state": "in_use",
+			"vms": []any{map[string]any{"id": agentDiskVM, "name": "web", "primary": false}}})
+		m, text, _ := callNamed(t, r, "disk_attach", map[string]any{"disk_id": faultDisk, "vm": "web", "confirmed": confirmed})
+		if m["status"] == "confirmation_required" {
+			t.Errorf("confirmed=%v: the disk VM web already has is put to a question: %s", confirmed, text)
+		}
+		if !strings.Contains(text, "web") {
+			t.Errorf("confirmed=%v: the answer does not name the VM: %s", confirmed, text)
+		}
+		if len(c.writes) != 0 {
+			t.Errorf("confirmed=%v: written %v", confirmed, c.writes)
+		}
+	}
+}
+
