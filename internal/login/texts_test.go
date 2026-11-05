@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // The result says where to go back by whom the key is for: an agent goes
@@ -30,6 +31,25 @@ func TestNoRightIn(t *testing.T) {
 	many := noRightIn([]project{{Name: "dev"}, {Name: "prod"}, {Name: "test"}}).Error()
 	if !strings.Contains(one, "dev") || strings.Contains(many, "dev") || !strings.Contains(many, "3") {
 		t.Errorf("one %q; many %q", one, many)
+	}
+}
+
+// «Риск», conclusion 28.2 on efae8e7a: a person without the right is not
+// told to have the administrator run evo login — the login keeps the key
+// on the computer where it runs, so on this one it is the administrator's
+// key handed over. The hint names the way of the page's note.
+func TestNoRightHint_NoLoginOfTheAdministrator(t *testing.T) {
+	for lang, way := range map[string]string{
+		i18n.EN: "create for you a service account with the role needed and a key in the Cloud.ru personal account",
+		i18n.RU: "создать для вас сервисный аккаунт с нужной ролью и ключ в личном кабинете Cloud.ru",
+	} {
+		prev := i18n.Lang()
+		i18n.SetLang(lang)
+		hint, note := eNoRightHint(), tNoRightNote()
+		i18n.SetLang(prev)
+		if strings.Contains(hint, "evo login") || !strings.Contains(hint, way) || !strings.Contains(note, way) {
+			t.Errorf("%s: hint %q, note %q: want the way %q and no evo login", lang, hint, note, way)
+		}
 	}
 }
 

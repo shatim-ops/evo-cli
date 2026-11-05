@@ -93,8 +93,8 @@ func tForeverInConsole() string {
 // tUnchecked is the one mark of the right on the page and in the terminal
 // (conclusions 26.5 and 28.1): what evaluate answered, by the list.
 func tUnchecked(reason string) string {
-	return i18n.Tf("The right is not confirmed by the platform: %s. If there is no right, Cloud.ru refuses when it creates the account, and nothing is created",
-		"Право не подтверждено платформой: %s. Если права нет, Cloud.ru откажет при создании аккаунта, и ничего не будет создано", reason)
+	return i18n.Tf("The right is not confirmed by the platform: %s. If there is no right, Cloud.ru refuses when it creates the account, and nothing will be left",
+		"Право не подтверждено платформой: %s. Если права нет, Cloud.ru откажет при создании аккаунта, и ничего не останется", reason)
 }
 
 // The reasons of tUnchecked: what evaluate answered («Риск», R-49).
@@ -342,8 +342,8 @@ func eNoRightAny(n int) string {
 	return i18n.Tf("not enough rights to grant access in any of your %d projects", "недостаточно прав для выдачи доступа ни в одном из %d проектов", n)
 }
 func eNoRightHint() string {
-	return i18n.T("Ask the project administrator to run evo login, or to create for you a service account with the role needed and a key in the Cloud.ru personal account. A retry will not help.",
-		"Попросите администратора проекта выполнить evo login или создать для вас сервисный аккаунт с нужной ролью и ключ в личном кабинете Cloud.ru. Повтор не поможет.")
+	return i18n.T("Ask the project administrator to create for you a service account with the role needed and a key in the Cloud.ru personal account. A retry will not help.",
+		"Попросите администратора проекта создать для вас сервисный аккаунт с нужной ролью и ключ в личном кабинете Cloud.ru. Повтор не поможет.")
 }
 
 // eForbidden: the platform's 403 at the first write («Риск», R-49).
