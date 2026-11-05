@@ -231,6 +231,31 @@ jobs:
           fi
           unset first tok id1 id2
 
+          # A1 (release-plan 1.8, «да» владельца 05.11): каталог ролей и
+          # действий IAM — есть ли соответствие «инструмент → действие» для
+          # doctor и agent setup, и верны ли имена действий входа (evo login
+          # спрашивает evaluate о них до записи; в коде — гипотеза из мира
+          # B-2). Только чтение ключом наблюдателя; в лог — коды, счётчики и
+          # да/нет, без имён действий и ролей сверх двух проверяемых и роли
+          # входа (они в публичном коде evo), без ID организации.
+          echo "== A1: роли и действия IAM"
+          cust=$(curl -sS -H "Authorization: Bearer $TOKEN" "https://organization.api.cloud.ru/v3/projects" |
+            jq -r '[(.projects // [])[] | (.customer_id // .customerId // empty)] | first // empty' 2>/dev/null || true)
+          [ -z "$cust" ] || echo "::add-mask::$cust"
+          echo "iam_customer_known         $([ -n "$cust" ] && echo yes || echo no)"
+          roles='{http_ok: true, n: ((.roles // []) | length), fields: ((.roles // [])[0] // {} | keys),
+            types: ([(.roles // [])[] | .type] | unique), login_role: any((.roles // [])[]; .name == "platform.project.admin"),
+            next: (has("nextPageToken") or has("next_page_token"))}'
+          probe iam_roles_product     "https://iam.api.cloud.ru/api/v1/roles?customerId=$cust&filter=type%3DROLE_TYPE_PRODUCT&pageSize=1000" "$roles"
+          probe iam_roles_any         "https://iam.api.cloud.ru/api/v1/roles?customerId=$cust&pageSize=1000" "$roles"
+          probe iam_actions           "https://iam.api.cloud.ru/api/v1/actions?pageSize=1000" '{n: ((.actions // []) | length),
+            fields: ((.actions // [])[0] // {} | keys), products: ([(.actions // [])[] | (.productCode // .product_code)] | unique | length),
+            has_groups: any((.actions // [])[]; has("groups")), next: (has("nextPageToken") or has("next_page_token")),
+            login_create_account: any((.actions // [])[]; .name == "iam.serviceAccounts.create"),
+            login_grant_role: any((.actions // [])[]; .name == "iam.permissions.create"),
+            iam_actions: ([(.actions // [])[] | select((.name // "") | startswith("iam."))] | length)}'
+          unset cust
+
           # Каталог образов (docs/internal/design-images.md §7): типы, отечественные
           # ОС, поиск по name/display_name, поля продуктов, расчёт цены. Имена
           # образов общего каталога (без project_id) публичны — их печатаем;
