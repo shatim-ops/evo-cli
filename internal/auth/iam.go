@@ -190,6 +190,14 @@ func NoKeyHint() string {
 		"Выполните evo login или evo configure либо задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET.")
 }
 
+// RefusedKeyHint is the hint of a key that is set but refused or expired
+// (AUTH_FAILED, AUTH_EXPIRED) when the refusal brings none of its own: the
+// same key will not do, unlike NoKeyHint's «no key» («Риск», #1029).
+func RefusedKeyHint() string {
+	return i18n.T("Retrying with the same key will not help. For a new key: evo login or evo configure.",
+		"Повтор тем же ключом не поможет. Новый ключ — evo login или evo configure.")
+}
+
 // ErrNoCredentials is the error of a command that needs the Cloud.ru key
 // and finds none: no profile from 'evo configure' and nothing in the
 // environment (exit code 2).
@@ -319,7 +327,7 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 			ce := clerrors.New(clerrors.CodeAuthFailed,
 				i18n.Tf("the term of the access key expired %s (IAM status %d)", "срок ключа доступа истек %s (статус IAM %d)",
 					exp.UTC().Format(time.RFC3339), resp.StatusCode),
-				i18n.T("Retrying will not help: a person is needed. Run evo login to issue a new key, or create a key in the Cloud.ru personal account and run evo configure.",
+				i18n.T("Retrying will not help: a person is needed. Run evo login to issue a new key, or create a key in the Cloud.ru console and run evo configure.",
 					"Повтор не поможет: нужен человек. Выполните evo login, чтобы выпустить новый ключ, или создайте ключ в личном кабинете Cloud.ru и выполните evo configure."))
 			ce.Details = map[string]any{"key_expired": true}
 			return Token{}, false, ce

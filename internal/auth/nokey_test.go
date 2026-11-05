@@ -34,6 +34,15 @@ func TestNoKeyHint_OnePoint(t *testing.T) {
 			t.Errorf("%s: ErrNoCredentials %+v, want the hint %q", lang, ce, hint)
 		}
 	}
+	// A refused key is not «no key»: the hint says the same key will not do
+	// and does not send to the variables as if none were set («Риск», #1029).
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		refused := RefusedKeyHint()
+		if refused == NoKeyHint() || strings.Contains(refused, "CLOUDRU_KEY_ID") || !strings.Contains(refused, "evo login") {
+			t.Errorf("%s: the hint of a refused key %q", lang, refused)
+		}
+	}
 	// No other copy of the hint in the code: the sites call NoKeyHint.
 	i18n.SetLang(i18n.RU)
 	ru := NoKeyHint()

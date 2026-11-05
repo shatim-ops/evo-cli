@@ -992,8 +992,10 @@ func toolError(text string, h toolHints) error {
 		case code == clerrors.CodeUsage: // the tool refused its arguments; nothing reached the cloud
 			hint = h.usage
 		case code == clerrors.CodeConfigInvalid: // the message names what to set
-		case clerrors.ExitCode(clerrors.New(code, "", "")) == clerrors.ExitAuth:
+		case code == clerrors.CodeAuthRequired: // no key at all
 			hint = auth.NoKeyHint()
+		case clerrors.ExitCode(clerrors.New(code, "", "")) == clerrors.ExitAuth: // a key set but refused or expired
+			hint = auth.RefusedKeyHint()
 		}
 	}
 	if h.prefix != "" {
