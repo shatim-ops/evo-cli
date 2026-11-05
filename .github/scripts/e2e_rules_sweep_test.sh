@@ -70,11 +70,16 @@ fake_evo_answer list_security_groups 0 0 '{"security_groups":[
  {"id":"sg-used","rules":[{"id":"r-orphan","direction":"ingress","port_range":"80:80","description":"evo: port 80 (vm vm-gone)"},
                           {"id":"r-live","direction":"ingress","port_range":"8080:8080","description":"evo: port 8080 (vm vm-here)"},
                           {"id":"r-old","direction":"ingress","port_range":"8081:8081","description":"evo: deploy"}]},
- {"id":"sg-free","rules":[{"id":"r-live2","direction":"ingress","port_range":"8082:8082","description":"evo: port 8082 (vm vm-here)"}]}]}'
+ {"id":"sg-free","rules":[{"id":"r-live2","direction":"ingress","port_range":"8082:8082","description":"evo: port 8082 (vm vm-here)"}]},
+ {"id":"sg-err","rules":[{"id":"r-app","direction":"ingress","port_range":"21741:21741","description":"evo: port 21741 (vm vm-gone)"},
+                         {"id":"r-wide","direction":"ingress","port_range":"21741:21749","description":"evo: port 21741 (vm vm-gone)"},
+                         {"id":"r-high","direction":"ingress","port_range":"31741:31741","description":"evo: port 31741 (vm vm-gone)"}]}]}'
 fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm-here","name":"my-app"}]}'
 : > "$dir/calls"
 "$here/e2e_rules_sweep.sh" > "$dir/out"
-want "снята только сирота" "$(grep '^DELETE' "$dir/calls" | sed 's|.*/security-groups/||')" "sg-used/rules/r-orphan"
+# Порт приложения deploy e2e (20000–29999) — тоже порт e2e: его сирота
+# снимается; диапазон и порт вне 20000–29999 — не порты e2e, не трогаются.
+want "снята только сирота" "$(grep '^DELETE' "$dir/calls" | sed 's|.*/security-groups/||')" "$(printf 'sg-used/rules/r-orphan\nsg-err/rules/r-app')"
 want "строка о сироте" "$(grep -c 'снято правило-сирота порта 80' "$dir/out")" 1
 want "правила ВМ, которая есть, и без метки — оставлены" "$(grep -c 'оставлено' "$dir/out")" 3
 want "правило ВМ, которая есть, в группе без интерфейсов — оставлено" "$(grep -c '^правило 8082:8082: ВМ метки есть — оставлено' "$dir/out")" 1
