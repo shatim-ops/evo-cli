@@ -59,7 +59,7 @@ func tCancel() string { return i18n.T("Cancel", "Отмена") }
 
 func tNoRightNote() string {
 	return i18n.T("Access in a project without the right can be created by its administrator: ask them to run evo login, or to create a key in the console and pass it to you.",
-		"Доступ в проекте без права может создать его администратор: попросите его выполнить evo login или создать ключ в консоли и передать вам.")
+		"Доступ в проекте без права может создать его администратор: попросите его выполнить evo login или создать ключ в личном кабинете Cloud.ru и передать вам.")
 }
 
 func tForMe() string    { return i18n.T("Me", "Мне") }
@@ -78,7 +78,7 @@ func tRoleNote() string {
 
 func tDays(n int) string { return i18n.Tf("%d days", "%d дней", n) }
 func tForeverInConsole() string {
-	return i18n.T("A key without a term: in the console only.", "Бессрочный ключ: только в консоли.")
+	return i18n.T("A key without a term: in the console only.", "Бессрочный ключ: только в личном кабинете Cloud.ru.")
 }
 
 // Summary lines of the terminal and the page: the same words.
@@ -132,20 +132,21 @@ func tDone() string { return i18n.T("Done", "Готово") }
 func tDoneText(keyID, profile string, term time.Time, forAgent bool) string {
 	if forAgent {
 		return i18n.Tf("Key %s is kept on this machine, profile «%s». Valid until %s. Go back to the agent: it goes on by itself.",
-			"Ключ %s сохранен на этой машине, профиль «%s». Действует до %s. Вернитесь к агенту: он продолжит сам.", keyID, profile, day(term))
+			"Ключ %s сохранен на этом компьютере, профиль «%s». Действует до %s. Вернитесь к агенту: он продолжит сам.", keyID, profile, day(term))
 	}
 	return i18n.Tf("Key %s is kept on this machine, profile «%s». Valid until %s. Go back to the terminal.",
-		"Ключ %s сохранен на этой машине, профиль «%s». Действует до %s. Вернитесь в терминал.", keyID, profile, day(term))
+		"Ключ %s сохранен на этом компьютере, профиль «%s». Действует до %s. Вернитесь в терминал.", keyID, profile, day(term))
 }
-func tReused() string {
-	return i18n.T("there, used again", "есть, использован повторно")
+func tReusedNote(account string, term time.Time) string {
+	return i18n.Tf("the existing service account %s is used: the role «%s» is extended to %s", "использован существующий сервисный аккаунт %s: роль «%s» продлена до %s",
+		account, auth.LoginRoleDisplayName, day(term))
 }
 func tRevokedPrevious(keyID string) string {
-	return i18n.Tf("the previous key %s of this machine is revoked", "прежний ключ %s на этой машине отозван", keyID)
+	return i18n.Tf("the previous key %s on this computer is deleted", "прежний ключ %s на этом компьютере удален", keyID)
 }
 func tRevokeHow() string {
 	return i18n.T("To revoke: evo logout or the console → Service accounts. This window can be closed.",
-		"Отзыв: evo logout или консоль → Сервисные аккаунты. Это окно можно закрыть.")
+		"Отзыв: evo logout или личный кабинет Cloud.ru → «Сервисные аккаунты». Это окно можно закрыть.")
 }
 func tCancelledTitle() string { return i18n.T("Cancelled", "Отменено") }
 func tCancelled() string {
@@ -183,19 +184,19 @@ func eNoRightAny(n int) string {
 }
 func eNoRightHint() string {
 	return i18n.T("Ask them to run evo login, or to create a key in the console and pass it to you.",
-		"Попросите его выполнить evo login или создать ключ в консоли и передать вам.")
+		"Попросите его выполнить evo login или создать ключ в личном кабинете Cloud.ru и передать вам.")
 }
 func eAccountLimit(project string, n int) string {
 	return i18n.Tf("the project %s has %d service accounts already, no new one can be created", "в проекте %s уже %d сервисных аккаунтов, новый создать нельзя", project, n)
 }
 func eAccountLimitHint() string {
-	return i18n.T("Delete one no one uses in the console.", "Удалите ненужный в консоли.")
+	return i18n.T("Delete one no one uses in the console.", "Удалите ненужный в личном кабинете Cloud.ru.")
 }
 func eKeyLimit(account string, n int) string {
 	return i18n.Tf("the account %s has %d keys already", "у аккаунта %s уже %d ключей", account, n)
 }
 func eKeyLimitHint(account string) string {
-	return i18n.Tf("Revoke the ones no one uses: the console → Service accounts → %s.", "Отзовите ненужные: консоль → Сервисные аккаунты → %s.", account)
+	return i18n.Tf("Revoke the ones no one uses: the console → Service accounts → %s.", "Отзовите ненужные: личный кабинет Cloud.ru → «Сервисные аккаунты» → %s.", account)
 }
 func eNotComplete(cause string, made, undone, left []string) string {
 	return i18n.Tf("access is not complete: %s; created: %v; undone: %v; left: %v", "доступ не завершен: %s; создано: %v; отменено: %v; осталось: %v",
@@ -204,7 +205,7 @@ func eNotComplete(cause string, made, undone, left []string) string {
 func eNotCompleteHint(left bool) string {
 	if left {
 		return i18n.T("Delete what is left in the console → Service accounts, then run evo login again.",
-			"Удалите оставшееся в консоли → Сервисные аккаунты и повторите evo login.")
+			"Удалите оставшееся в личном кабинете Cloud.ru → «Сервисные аккаунты» и повторите evo login.")
 	}
 	return i18n.T("Nothing of this login is left. Run evo login again.", "От этого входа ничего не осталось. Повторите evo login.")
 }
@@ -234,7 +235,7 @@ func eNoProject(project, login string) string {
 }
 func eRetry() string { return i18n.T("Run evo login again.", "Повторите evo login.") }
 func eKeyLeft(keyID string, err error) string {
-	return i18n.Tf("the previous key %s is left: %v — revoke it in the console", "прежний ключ %s остался: %v — отзовите его в консоли", keyID, err)
+	return i18n.Tf("the previous key %s is left: %v — revoke it in the console", "прежний ключ %s остался: %v — отзовите его в личном кабинете Cloud.ru", keyID, err)
 }
 
 // tAt names the step of a refusal and the HTTP status of the answer that
@@ -279,7 +280,7 @@ func tUnchecked(reason string) string {
 // The errors and notes of the flow, the discovery and the logout.
 func eKeyNotDeletedHint() string {
 	return i18n.T("Delete the key in the console (Users → Service accounts → the account → Access keys), then 'evo configure delete <profile>'.",
-		"Удалите ключ в консоли («Пользователи» → «Сервисные аккаунты» → аккаунт → «Ключи доступа»), затем 'evo configure delete <профиль>'.")
+		"Удалите ключ в личном кабинете Cloud.ru («Пользователи» → «Сервисные аккаунты» → аккаунт → «Ключи доступа»), затем 'evo configure delete <профиль>'.")
 }
 func eKeyNotDeleted(accessKeyID string, err error) string {
 	return i18n.Tf("the access key %s was not deleted: %v; the profile is kept", "ключ доступа %s не удален: %v; профиль оставлен", accessKeyID, err)
@@ -304,10 +305,10 @@ func eOrgUnreachable() string {
 }
 func eNoProjectHintFlag() string {
 	return i18n.T("Pass a project's id or name the person sees in the console, or no --project to choose.",
-		"Передайте id или имя проекта, который человек видит в консоли, или не передавайте --project и выберите.")
+		"Передайте id или имя проекта, который человек видит в личном кабинете Cloud.ru, или не передавайте --project и выберите.")
 }
 func eNoProjectHint() string {
-	return i18n.T("A project is created in the console; or sign in as a member of one.", "Проект создается в консоли; или войдите участником проекта.")
+	return i18n.T("A project is created in the console; or sign in as a member of one.", "Проект создается в личном кабинете Cloud.ru; или войдите участником проекта.")
 }
 func eDiscoveryHint() string {
 	return i18n.T("This is not a problem of your account: the answer of IAM is not the one evo expects. Try again later; if it repeats, report it.",
@@ -331,7 +332,7 @@ func TLogoutDone(profile string, key any) string {
 }
 func TLogoutKept() string {
 	return i18n.T("the key of this profile did not come from evo login: it stays in the cloud — delete it in the console",
-		"ключ этого профиля создан не evo login: он остается в облаке — удалите его в консоли")
+		"ключ этого профиля создан не evo login: он остается в облаке — удалите его в личном кабинете Cloud.ru")
 }
 func TLogoutRevoke(keyID, profile string) string {
 	return i18n.Tf("revoke the access key %s and delete the profile %q", "отозвать ключ доступа %s и удалить профиль %q",
@@ -352,14 +353,14 @@ its own token — then the profile and its cached token. The service
 account and its role stay. A profile whose key came from evo configure or
 the console is deleted alone: that key stays in the cloud.`, `Удалить ключ доступа, созданный evo login для профиля, — по его id, его же
 токеном, — затем профиль и его токен в кэше. Сервисный аккаунт и роль
-остаются. Профиль с ключом из evo configure или консоли удаляется один:
+остаются. Профиль с ключом из evo configure или личного кабинета Cloud.ru удаляется один:
 этот ключ остается в облаке.`)
 }
 func TLogoutShort() string {
 	return i18n.T("Revoke the access key evo login made and delete the profile", "Отозвать ключ, созданный evo login, и удалить профиль")
 }
 func ETTLHint() string {
-	return i18n.T("A key without a term is created in the console only.", "Бессрочный ключ создается только в консоли.")
+	return i18n.T("A key without a term is created in the console only.", "Бессрочный ключ создается только в личном кабинете Cloud.ru.")
 }
 func ETTL(ttl string) string {
 	return i18n.Tf("--key-ttl %q: 7d, 30d or 90d", "--key-ttl %q: 7d, 30d или 90d", ttl)
@@ -444,6 +445,6 @@ func tAgentWarnTitle() string {
 }
 func tAgentWarn(until string) string {
 	return i18n.Tf("The role «%s» lets the agent create, change and delete any resource of the project and manage service accounts and keys. The access holds until %s, then the role is removed by itself; to revoke earlier — evo logout or the console.",
-		"Роль «%s» дает агенту право создавать, изменять и удалять любые ресурсы проекта и управлять сервисными аккаунтами и ключами. Доступ действует до %s, затем роль снимается сама; отозвать раньше — evo logout или консоль.",
+		"Роль «%s» дает агенту право создавать, изменять и удалять любые ресурсы проекта и управлять сервисными аккаунтами и ключами. Доступ действует до %s, затем роль снимается сама; отозвать раньше — evo logout или личный кабинет Cloud.ru.",
 		auth.LoginRoleDisplayName, until)
 }

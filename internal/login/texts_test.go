@@ -93,3 +93,22 @@ func TestPages_MacketV13(t *testing.T) {
 		t.Errorf("the result does not name the organization")
 	}
 }
+
+// Macket v15: the result tells in a line of its own that the account was
+// there and the previous key is deleted; the pages carry the logo of
+// Cloud.ru inline, nothing loaded.
+func TestPages_MacketV15(t *testing.T) {
+	var b strings.Builder
+	term := time.Now()
+	p := donePage(Result{Account: "evo-agent", AccountReused: true, RevokedKeyID: "zzzzc019", KeyID: "k", KeyExpiresAt: term})
+	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+		t.Fatal(err)
+	}
+	note := upperFirst(tReusedNote("evo-agent", term))
+	if !strings.Contains(b.String(), note) || !strings.Contains(b.String(), tRevokedPrevious(config.MaskKeyID("zzzzc019"))) {
+		t.Errorf("no line of the reused account and the deleted key")
+	}
+	if !strings.Contains(b.String(), `<svg class="logo"`) || strings.Contains(b.String(), "<img") || strings.Contains(b.String(), "http://") && !strings.Contains(b.String(), "xmlns=\"http://www.w3.org/2000/svg\"") {
+		t.Errorf("the logo is not inline")
+	}
+}

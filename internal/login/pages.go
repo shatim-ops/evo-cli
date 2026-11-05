@@ -181,26 +181,28 @@ type row struct{ Term, Value string }
 
 type resultData struct {
 	head
-	Status, Text, Footer string
-	Rows                 []row
+	Status, Text, Note, Footer string
+	Rows                       []row
 }
 
 func donePage(r Result) page {
-	acc := r.Account
+	// Macket v15: what the login reused or revoked is a line of its own,
+	// not a remark in the rows.
+	var note []string
 	if r.AccountReused {
-		acc += " · " + tReused()
+		note = append(note, tReusedNote(r.Account, r.KeyExpiresAt))
 	}
-	key := config.MaskKeyID(r.KeyID)
 	if r.RevokedKeyID != "" {
-		key += "; " + tRevokedPrevious(config.MaskKeyID(r.RevokedKeyID))
+		note = append(note, tRevokedPrevious(config.MaskKeyID(r.RevokedKeyID)))
 	}
 	return page{"done", resultData{head: newHead(tDone() + " — evo"), Status: tDone(),
 		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt, r.Account == ForAgent.account()),
+		Note: upperFirst(strings.Join(note, ", ")),
 		Rows: []row{
 			{tProject(), projectIn(r.ProjectName, r.CustomerName)},
-			{upperFirst(tRowAccount()), acc},
+			{upperFirst(tRowAccount()), r.Account},
 			{upperFirst(tRowRole()), tRoleUntil(r.KeyExpiresAt)},
-			{upperFirst(tRowKey()), key},
+			{upperFirst(tRowKey()), config.MaskKeyID(r.KeyID)},
 			{upperFirst(tRowProfile()), r.Profile},
 		},
 		Footer: tRevokeHow(),
