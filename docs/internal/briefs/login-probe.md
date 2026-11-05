@@ -95,6 +95,28 @@ state=$(openssl rand -hex 16); nonce=$(openssl rand -hex 16)
    done
    ```
    Записать: коды HTTP и число элементов.
+6а. **Evaluate тем же access token (R-45, R-49).** Только чтение. Проба A1
+   (05.11, 2 из 2) не нашла в каталоге IAM имён, по которым evo спрашивает
+   evaluate, и нашла кандидатов. Проект — тот, где вы администратор (id не
+   записывать):
+   ```bash
+   pid='<id проекта из консоли>'
+   for a in iam.serviceAccounts.create iam.permissions.create \
+            iam.serviceaccount.edit iam.permission.add iam.serviceaccount.accesskey.edit; do
+     curl -sS -G -o "$work/ev.json" -w "$a %{http_code} " -H "Authorization: Bearer $tok" \
+       "https://iam.api.cloud.ru/api/v1/permissions/evaluate" \
+       --data-urlencode "action=$a" --data-urlencode "resourceId=$pid"
+     jq -c '{granted: (.accessGranted // .access_granted), keys: keys}' "$work/ev.json" 2>/dev/null || echo 'не JSON'
+   done
+   ```
+   Записать для каждого имени код HTTP и `granted`. Первые два — имена
+   evo до #1010; по A1 их нет в каталоге: код или `false`. `false` у
+   администратора — подтверждение R-49: evo до #1010 отказал бы всем
+   («предсказано реестром: R-49»). Три следующих — кандидаты из каталога (с #1010 первые
+   два из них — `auth.LoginAction*`). Приёмка: `true` токеном
+   администратора проекта и `false` токеном человека без этой роли
+   (наблюдатель), 2 из 2 на имя — два прогона, у двух людей или на двух
+   машинах.
 7. **Уборка.** `rm -rf "$work"`; `unset tok code verifier`. В облаке проба
    ничего не создала.
 
@@ -108,7 +130,7 @@ state=$(openssl rand -hex 16); nonce=$(openssl rand -hex 16)
 | шаги 3–4 не прошли (`error`, нет перехода на loopback) | клиент или `redirect_uri` не те, что в контракте | вопрос владельцу: регистрация `evo_cmcp` |
 
 Отчёт: `evo-internal/runs/login-probe-<дата>.md` — ОС и браузер, ответы
-шагов 1–6 по списку «записать», без значений из раздела «Что нельзя
+шагов 1–6а по списку «записать», без значений из раздела «Что нельзя
 записывать». В план — одна строка итога «N из 2» под B-5.
 
 **Сколько прогонов скрипта.** Два, на разных ОС и разных машинах (вывод о
