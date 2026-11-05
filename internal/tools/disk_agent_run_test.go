@@ -113,6 +113,7 @@ func TestDiskResize_NoteDoesNotNameTheBootDeviceForADataDisk(t *testing.T) {
 		t.Errorf("the note of a data disk names the boot device: %q", note)
 	}
 }
+
 // Agent run of 1.7.0 (5 of 9): disk_attach of a disk already attached to
 // the same VM asked, and after yes Cloud.ru answered 422 «Disk can not be
 // attached from current state». The disk's VMs are in the GetDisk answer
@@ -136,4 +137,3 @@ func TestDiskAttach_AlreadyAttachedToThisVMAnswersBeforeTheQuestion(t *testing.T
 		}
 	}
 }
-
