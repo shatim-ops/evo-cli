@@ -239,22 +239,53 @@ jobs:
           # да/нет, без имён действий и ролей сверх двух проверяемых и роли
           # входа (они в публичном коде evo), без ID организации.
           echo "== A1: роли и действия IAM"
-          cust=$(curl -sS -H "Authorization: Bearer $TOKEN" "https://organization.api.cloud.ru/v3/projects" |
-            jq -r '[(.projects // [])[] | (.customer_id // .customerId // empty)] | first // empty' 2>/dev/null || true)
+          # id организации: из /v3/customers, иначе из проекта; в лог —
+          # только имена полей (run 44: в проекте не нашлось customer_id).
+          custs=$(curl -sS -H "Authorization: Bearer $TOKEN" "https://organization.api.cloud.ru/v3/customers" || true)
+          projs=$(curl -sS -H "Authorization: Bearer $TOKEN" "https://organization.api.cloud.ru/v3/projects" || true)
+          cust=$(printf '%s' "$custs" | jq -r '(.customers // [])[0].id // empty' 2>/dev/null || true)
+          [ -n "$cust" ] || cust=$(printf '%s' "$projs" | jq -r '[(.projects // [])[] | (.customer_id // .customerId // .organization_id // .organizationId // empty)] | first // empty' 2>/dev/null || true)
           [ -z "$cust" ] || echo "::add-mask::$cust"
+          echo "org_customers_fields       $(printf '%s' "$custs" | jq -c '{top: (if type == "object" then keys else type end), item: (((.customers // [])[0] // {}) | keys)}' 2>/dev/null || echo 'не JSON')"
+          echo "org_project_fields         $(printf '%s' "$projs" | jq -c '((.projects // [])[0] // {}) | keys' 2>/dev/null || echo 'не JSON')"
           echo "iam_customer_known         $([ -n "$cust" ] && echo yes || echo no)"
-          roles='{http_ok: true, n: ((.roles // []) | length), fields: ((.roles // [])[0] // {} | keys),
+          unset custs projs
+          # shellcheck disable=SC2016 # $n — переменная jq
+          roles='{n: ((.roles // []) | length), fields: ((.roles // [])[0] // {} | keys),
             types: ([(.roles // [])[] | .type] | unique), login_role: any((.roles // [])[]; .name == "platform.project.admin"),
             next: (has("nextPageToken") or has("next_page_token"))}'
           probe iam_roles_product     "https://iam.api.cloud.ru/api/v1/roles?customerId=$cust&filter=type%3DROLE_TYPE_PRODUCT&pageSize=1000" "$roles"
           probe iam_roles_any         "https://iam.api.cloud.ru/api/v1/roles?customerId=$cust&pageSize=1000" "$roles"
-          probe iam_actions           "https://iam.api.cloud.ru/api/v1/actions?pageSize=1000" '{n: ((.actions // []) | length),
-            fields: ((.actions // [])[0] // {} | keys), products: ([(.actions // [])[] | (.productCode // .product_code)] | unique | length),
-            has_groups: any((.actions // [])[]; has("groups")), next: (has("nextPageToken") or has("next_page_token")),
-            login_create_account: any((.actions // [])[]; .name == "iam.serviceAccounts.create"),
-            login_grant_role: any((.actions // [])[]; .name == "iam.permissions.create"),
-            iam_actions: ([(.actions // [])[] | select((.name // "") | startswith("iam."))] | length)}'
-          unset cust
+          # Каталог действий целиком (run 44: 1000 на странице и есть
+          # следующая). Имена действий IAM про сервисные аккаунты и
+          # разрешения печатаются: они попадут в публичный код evo (evaluate
+          # входа); остальные — только счётчики.
+          # complete — каталог дочитан до страницы без следующей; ошибка
+          # страницы или предел 30 страниц — complete=false (прогон 44:
+          # вывод по неполному каталогу не делается).
+          all="$RUNNER_TEMP/actions.json"; echo '[]' > "$all"; page=""; pages=0; complete=false
+          while :; do
+            r=$(curl -sS -G -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "https://iam.api.cloud.ru/api/v1/actions" \
+              --data-urlencode "pageSize=1000" ${page:+--data-urlencode "pageToken=$page"} || true)
+            c=${r##*$'\n'}; b=${r%$'\n'*}; pages=$((pages + 1))
+            [ "$c" = 200 ] || { echo "iam_actions_page_$pages      http=$c"; break; }
+            # Страница не JSON (или без массива actions) — чтение неполное:
+            # пустой токен после упавшего jq не значит «последняя страница».
+            if ! { printf '%s' "$b" | jq -e '.actions | arrays' > "$all.p" 2>/dev/null &&
+              jq -s 'add' "$all.p" "$all" > "$all.n" && mv "$all.n" "$all"; }; then
+              echo "iam_actions_page_$pages      not_json"; break
+            fi
+            page=$(printf '%s' "$b" | jq -r '.next_page_token // .nextPageToken // empty')
+            [ -n "$page" ] || { complete=true; break; }
+            [ "$pages" -lt 30 ] || break
+          done
+          jq -c --argjson p "$pages" --argjson fin "$complete" '{complete: $fin, pages: $p, n: length, unique: (map(.name) | unique | length),
+            products: (map(.product_code // .productCode) | unique | length), iam: (map(select((.name // "") | startswith("iam."))) | length),
+            login_create_account: any(.[]; .name == "iam.serviceAccounts.create"),
+            login_grant_role: any(.[]; .name == "iam.permissions.create")}' "$all" | sed 's/^/iam_actions_all            /'
+          echo "iam_actions_accounts_perms $(jq -c '[.[] | .name // "" | select(test("^iam\\..*(service|account|permission|role|binding)"; "i"))] | unique' "$all")"
+          rm -f "$all" "$all.p" "$all.n"
+          unset cust page pages complete
 
           # Каталог образов (docs/internal/design-images.md §7): типы, отечественные
           # ОС, поиск по name/display_name, поля продуктов, расчёт цены. Имена
