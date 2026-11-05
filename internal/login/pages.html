@@ -6,82 +6,81 @@
 <meta name="referrer" content="no-referrer">
 <title>{{.Title}}</title>
 <style>
-/* Страница согласия evo на loopback (1.8, контракт B-1). Без JS и внешних ресурсов.
-   Цвета — токены дизайн-системы Cloud.ru (Snack UI Kit 6.0.6, тема Cloud.ru), значения вписаны.
-   Шрифт — системный: SB Sans Interface лицензионный и в бинарник evo не входит. */
+/* Страницы входа evo на loopback (1.8, контракт B-1): макет «Дизайна» v13 в
+   стилистике cloud.ru. Без JS и внешних ресурсов; шрифт — системный. */
 :root {
-  --bg: #eeeff3; --surface: #fdfdfd; --surface2: #ffffff;
+  --bg: #eeeff3; --surface: #fdfdfd; --surface2: #ffffff; --ink: #222222; --text: #41424e; --support: #656774; --light: #8b8e9b; --disabled: #aaaebd;
   --decor: #dde0ea; --decor-hover: #cfd2dc; --decor-disabled: #e6e8ef;
-  --text: #41424e; --support: #6d707f; --light: #8b8e9b; --disabled: #aaaebd;
-  --primary: #794ed3; --primary-hover: #6851a6; --on-primary: #fdfbff; --primary-bg: #f6effe; --primary-decor: #c5b2f1;
-  --red-bg: #fdf1ef; --red-decor: #fdd6cd; --red-text: #7a2d2d; --red: #cb3f3e;
-  --yellow-bg: #fef7e1; --yellow-text: #815f19; --yellow: #e2b134;
-  --green-bg: #f1fbee; --green-text: #3d6035; --green: #57b762;
-  --shadow: 0 0 4px rgba(0,0,0,.04), 0 16px 32px rgba(0,0,0,.08);
+  --green: #26d07c; --green-hover: #1fbf70; --green-deep: #0ea55b; --on-green: #042f1f; --green-bg: #e6f7ef; --green-decor: #bfebd5;
+  --dark: #222222; --dark-text: #ffffff; --dark-support: #a8abb8; --dark-decor: #3a3a3a;
+  --red-bg: #fdf1ef; --red-text: #7a2d2d; --red: #cb3f3e; --yellow-bg: #fef7e1; --yellow-text: #815f19;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1c1c24; --surface: #242430; --surface2: #2a2a36;
-    --decor: #393a46; --decor-hover: #41424e; --decor-disabled: #30303c;
-    --text: #e6e8ef; --support: #aaaebd; --light: #787b8a; --disabled: #575966;
-    --primary: #997adc; --primary-hover: #794ed3; --on-primary: #18132e; --primary-bg: #130f25; --primary-decor: #473778;
-    --red-bg: #292020; --red-decor: #6a2729; --red-text: #fee8e3; --red: #e7756a;
-    --yellow-bg: #29221c; --yellow-text: #fcf0cc; --yellow: #d3a736;
-    --green-bg: #1e211e; --green-text: #e3f6e1; --green: #69b56f;
-    --shadow: 0 0 2px rgba(255,255,255,.24);
+    --bg: #171717; --surface: #222222; --surface2: #2c2c2c; --ink: #f2f2f2; --text: #f2f2f2; --support: #a8abb8; --light: #787b8a; --disabled: #5a5a5a;
+    --decor: #3a3a3a; --decor-hover: #4a4a4a; --decor-disabled: #2c2c2c;
+    --green-bg: #12241b; --green-decor: #1f5a3a;
+    --dark: #0f0f0f; --dark-decor: #2c2c2c;
+    --red-bg: #292020; --red-text: #fee8e3; --red: #e7756a; --yellow-bg: #29221c; --yellow-text: #fcf0cc;
     color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--text); font: 400 14px/20px system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 400 16px/24px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
 body { padding: 32px max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left)); }
-.sheet { max-width: 640px; margin: 0 auto; background: var(--surface); border-radius: 24px; box-shadow: var(--shadow); padding: 32px; display: flex; flex-direction: column; gap: 24px; }
-h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.5px; }
-h2 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: .15px; }
+.sheet { max-width: 680px; margin: 0 auto; background: var(--surface); border-radius: 4px; padding: 32px; display: flex; flex-direction: column; gap: 28px; }
+h1 { margin: 0; font: 600 32px/40px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: var(--ink); letter-spacing: -.2px; }
+h2 { margin: 0; font: 600 22px/28px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: var(--ink); }
+h3 { margin: 0; font: 600 16px/24px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
 p { margin: 0; }
 .support { color: var(--support); }
-.small { font-size: 12px; line-height: 16px; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.small { font-size: 14px; line-height: 20px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .95em; }
 form { display: contents; }
 fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-legend { padding: 0; margin-bottom: 8px; font-weight: 600; font-size: 14px; line-height: 20px; }
-.org { color: var(--support); font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .1px; margin-top: 4px; }
-/* Радиокнопки спрятаны визуально, но остаются в фокусе и в клавиатуре; состояние рисуют подписи. */
+legend { padding: 0; margin-bottom: 8px; font: 600 16px/24px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: var(--ink); }
+.org { color: var(--support); font: 600 12px/16px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; letter-spacing: .4px; text-transform: uppercase; margin-top: 8px; }
 input[type=radio] { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.opt { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid var(--decor); border-radius: 16px; background: var(--surface); cursor: pointer; }
-.opt::before { content: ""; flex: none; width: 20px; height: 20px; margin-top: 0; border-radius: 50%; border: 2px solid var(--decor-hover); background: var(--surface2); }
-.opt:hover { border-color: var(--decor-hover); }
+.opt { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px 12px 13px; border: 1px solid var(--decor); border-left: 4px solid transparent; border-radius: 4px; background: var(--surface2); cursor: pointer; }
+.opt::before { content: ""; flex: none; width: 20px; height: 20px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--decor-hover); background: var(--surface2); }
+.opt:hover { border-color: var(--decor-hover); border-left-color: transparent; }
 .opt .t { display: flex; flex-direction: column; gap: 2px; }
+.opt b { font: 600 16px/24px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: var(--ink); }
 .opt[aria-disabled=true] { color: var(--disabled); cursor: not-allowed; background: var(--decor-disabled); border-color: var(--decor-disabled); }
 .opt[aria-disabled=true]::before { border-color: var(--disabled); background: transparent; }
-.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--decor); border-radius: 12px; padding: 2px; background: var(--bg); }
-.seg label { text-align: center; padding: 8px 12px; border-radius: 10px; cursor: pointer; font-weight: 600; }
-.seg label .d { display: block; font-weight: 400; color: var(--support); font-size: 12px; line-height: 16px; }
-.summary { padding: 16px 24px; border-radius: 16px; background: var(--surface2); border: 1px solid var(--decor); display: flex; flex-direction: column; gap: 8px; }
-.summary .x, .actions .x { display: none; }
-.summary .sel { display: inline; }
-.actions { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
-button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-radius: 14px; border: 2px solid transparent; cursor: pointer; }
-.primary { background: var(--primary); color: var(--on-primary); }
-.primary:hover { background: var(--primary-hover); }
-.outline { background: transparent; color: var(--text); border-color: var(--decor); }
-.outline:hover { border-color: var(--decor-hover); }
-:focus-visible, input[type=radio]:focus-visible + label, input[type=radio]:focus-visible ~ fieldset label[for] { outline: 2px solid var(--primary); outline-offset: 2px; }
-.alert { display: flex; gap: 12px; padding: 12px 16px; border-radius: 8px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--decor); }
+.seg label { text-align: center; padding: 10px 12px 12px; margin-bottom: -1px; border-bottom: 2px solid transparent; cursor: pointer; font: 600 16px/24px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: var(--support); }
+.seg label .d { display: block; font-weight: 400; font-size: 14px; line-height: 20px; color: var(--support); }
+.seg label:hover { color: var(--ink); }
+.summary { padding: 24px; border-radius: 4px; background: var(--dark); color: var(--dark-text); display: flex; flex-direction: column; gap: 12px; }
+.summary h3 { color: var(--dark-text); }
+.summary .v { color: var(--green); font-weight: 600; }
+.summary .support { color: var(--dark-support); }
+.summary .x, .actions .x, .warn .x { display: none; }
+.warn { display: none; }
+.actions .pn { display: inline-block; max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.actions { display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; }
+button { font: 600 14px/20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; height: 48px; padding: 0 32px; border-radius: 2px; border: 1px solid transparent; cursor: pointer; }
+.primary { background: var(--green); color: var(--on-green); }
+.primary:hover { background: var(--green-hover); }
+.outline { background: transparent; color: var(--ink); border-color: var(--ink); }
+.outline:hover { background: var(--decor-disabled); }
+:focus-visible, input[type=radio]:focus-visible ~ fieldset label[for] { outline: 2px solid var(--green-deep); outline-offset: 2px; }
+.alert { display: flex; gap: 12px; padding: 16px; border-radius: 4px; }
 .alert.error { background: var(--red-bg); color: var(--red-text); }
 .alert.warning { background: var(--yellow-bg); color: var(--yellow-text); }
-.alert.success { background: var(--green-bg); color: var(--green-text); }
-.alert b { display: block; }
-.rows { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr; gap: 8px 16px; margin: 0; }
+.alert b { display: block; font-weight: 600; }
+.rows { display: grid; grid-template-columns: minmax(140px, 1fr) 2fr; gap: 8px 16px; margin: 0; }
 .rows dt { color: var(--support); margin: 0; }
 .rows dd { margin: 0; overflow-wrap: anywhere; }
 .result { display: flex; gap: 12px; align-items: center; }
-.result .ic { width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; flex: none; }
-.result .ic.ok { background: var(--green-bg); color: var(--green); }
+.result .ic { width: 40px; height: 40px; border-radius: 2px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; flex: none; }
+.result .ic.ok { background: var(--green); color: var(--on-green); }
 .result .ic.no { background: var(--decor-disabled); color: var(--support); }
 .result .ic.err { background: var(--red-bg); color: var(--red); }
-@media (max-width: 520px) { .sheet { padding: 24px 16px; border-radius: 20px; } .seg { grid-template-columns: 1fr; } .rows { grid-template-columns: 1fr; gap: 2px 0; } .rows dd { margin-bottom: 8px; } .actions button { flex: 1 1 auto; } }
+a { color: var(--green-deep); }
+@media (max-width: 520px) { .sheet { padding: 24px 16px; } h1 { font-size: 26px; line-height: 32px; } .seg { grid-template-columns: 1fr; } .seg label { text-align: left; } .rows { grid-template-columns: 1fr; gap: 2px 0; } .rows dd { margin-bottom: 8px; } .actions button { flex: 1 1 auto; } }
 {{.Rules}}</style>
 </head>
 <body>
@@ -94,7 +93,8 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
 </html>
 {{end}}
 
-{{define "consent"}}{{template "head" .}}  <p class="support">{{.Intro}}</p>
+{{define "consent"}}{{template "head" .}}{{if .Intro}}  <p class="support">{{.Intro}}</p>
+{{end}}
 {{if .Unchecked}}  <div class="alert warning"><div>{{.Unchecked}}</div></div>
 {{end}}
   <form method="post" action="/grant">
@@ -117,6 +117,7 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
       <label class="opt" for="a-agent"><span class="t"><b>{{.ForAgent}}</b><span class="support small">{{.ForAgentNote}}</span></span></label>
       <p class="support small">{{.RoleNote}}</p>
     </fieldset>
+    <div class="alert warning warn" role="status"><div><b>{{.AgentWarnTitle}}</b>{{index .AgentWarn 0}}{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}{{index .AgentWarn 1}}</div></div>
     <fieldset>
       <legend>{{.TermLegend}}</legend>
       <div class="seg">
@@ -125,19 +126,19 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
       <p class="support small">{{.TermNote}}</p>
     </fieldset>
     <div class="summary" aria-live="polite">
-      <h2>{{.SummaryHeading}}</h2>
-      <p>{{index .Account 0}}<span class="mono"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span>{{index .Account 1}}<span class="mono">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .Account 2}} {{index .Role 0}}{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}{{index .Role 1}} {{index .Key 0}}{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}{{index .Key 1}} {{.SummaryStays}}</p>
+      <h3>{{.SummaryHeading}}</h3>
+      <p>{{index .Account 0}}<span class="mono v"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span>{{index .Account 1}}<span class="mono v">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .Account 2}} {{index .Role 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Role 1}} {{index .Key 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Key 1}} {{.SummaryStays}}</p>
       <p class="support small">{{.ReuseNote}}</p>
     </div>
     <div class="actions">
+      <button type="submit" class="primary">{{.GrantIn}} <span class="pn">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span></button>
       <button type="submit" class="outline" formaction="/cancel" formnovalidate>{{.Cancel}}</button>
-      <button type="submit" class="primary">{{.GrantIn}} <span class="mono">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span></button>
     </div>
     <p class="support small">{{.SecretNote}}</p>
   </form>
 {{template "tail" .}}{{end}}
 
-{{define "done"}}{{template "head" .}}  <div class="result"><span class="ic ok" aria-hidden="true">✓</span><h2 style="font-size:16px;line-height:24px">{{.Status}}</h2></div>
+{{define "done"}}{{template "head" .}}  <div class="result"><span class="ic ok" aria-hidden="true">✓</span><h2>{{.Status}}</h2></div>
   <p>{{.Text}}</p>
   <dl class="rows">
 {{range .Rows}}    <dt>{{.Term}}</dt><dd>{{.Value}}</dd>
@@ -145,11 +146,11 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
   <p class="support small">{{.Footer}}</p>
 {{template "tail" .}}{{end}}
 
-{{define "cancelled"}}{{template "head" .}}  <div class="result"><span class="ic no" aria-hidden="true">×</span><h2 style="font-size:16px;line-height:24px">{{.Status}}</h2></div>
+{{define "cancelled"}}{{template "head" .}}  <div class="result"><span class="ic no" aria-hidden="true">×</span><h2>{{.Status}}</h2></div>
   <p>{{.Text}}</p>
 {{template "tail" .}}{{end}}
 
-{{define "error"}}{{template "head" .}}  <div class="result"><span class="ic err" aria-hidden="true">!</span><h2 style="font-size:16px;line-height:24px">{{.Status}}</h2></div>
+{{define "error"}}{{template "head" .}}  <div class="result"><span class="ic err" aria-hidden="true">!</span><h2>{{.Status}}</h2></div>
   <div class="alert error"><div>{{.Text}}</div></div>
   <p class="support small">{{.Footer}}</p>
 {{template "tail" .}}{{end}}

@@ -88,7 +88,9 @@ type Saved struct {
 // caller.
 type Result struct {
 	Profile, ProjectID, ProjectName, Account, Role, KeyID string
-	AccountReused                                         bool
+	// CustomerName is the organization of the project, for the page.
+	CustomerName  string
+	AccountReused bool
 	// RevokedKeyID is the key ID of the previous key, revoked; PreviousNote
 	// says why it is left, when it is.
 	RevokedKeyID, PreviousNote string
@@ -496,7 +498,8 @@ func (s *session) grant(ctx context.Context, pl plan, say func(string)) (Result,
 
 func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, error) {
 	aud, p := pl.aud, pl.p
-	res := Result{Profile: pl.profile, ProjectID: p.ID, ProjectName: p.Name, Account: aud.account(), Role: auth.LoginRoleName}
+	res := Result{Profile: pl.profile, ProjectID: p.ID, ProjectName: p.Name, CustomerName: p.CustomerName,
+		Account: aud.account(), Role: auth.LoginRoleName}
 	now := s.cfg.Now()
 	desc := fmt.Sprintf("evo login, %s, %s", s.who.Login, now.UTC().Format("2006-01-02"))
 

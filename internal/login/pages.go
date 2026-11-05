@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -76,8 +77,19 @@ type consentData struct {
 	SummaryStays, ReuseNote, Cancel   string
 	SecretNote, State, Consent, For   string
 	Unchecked, PreselectNote, GrantIn string
+	AgentWarnTitle                    string
+	AgentWarn                         [2]string
 	Projects                          []consentProject
 	Terms                             []consentTerm
+}
+
+// introLine is «You signed in as …» with the e-mail or the user name of
+// the ID token; with neither, no line: sub is not shown (plan 1.8, B-3).
+func (s *session) introLine() string {
+	if s.who.Login == "" || s.who.Login == s.who.Sub {
+		return ""
+	}
+	return tSignedIn(s.who.Login)
 }
 
 // cut is a text with marks, cut at them: the page puts its choices there.
@@ -93,7 +105,7 @@ func cut(text string, marks ...string) []string {
 
 func consentPage(s *session) page {
 	d := consentData{head: newHead(tHeading()),
-		Intro: tSignedIn(s.who.Login), ProjectLegend: tProject(), NeedAdmin: tNoRightMark(), NoRightNote: tNoRightNote(),
+		Intro: s.introLine(), ProjectLegend: tProject(), NeedAdmin: tNoRightMark(), NoRightNote: tNoRightNote(),
 		ForLegend: tForWhom(), ForMe: tForMe(), ForMeNote: tForMeNote(), ForAgent: tForAgent(), ForAgentNote: tForAgentNote(),
 		RoleNote: tRoleNote(), TermLegend: tTerm(), TermNote: tForeverInConsole(), SummaryHeading: tWhatWillBeMade(),
 		SummaryStays: tSumStays(), ReuseNote: tSumReuseNote(), Cancel: tCancel(), SecretNote: tSecretNote(),
@@ -109,6 +121,8 @@ func consentPage(s *session) page {
 		d.Unchecked = tUnchecked(s.unchecked)
 	}
 	d.GrantIn = tGrantIn()
+	d.AgentWarnTitle = tAgentWarnTitle()
+	copy(d.AgentWarn[:], cut(tAgentWarn("\x00d"), "\x00d"))
 	var rules strings.Builder
 	pre := s.preselected()
 	if pre < 0 && s.choice.Preselect != "" && s.preselectDenied() {
@@ -142,12 +156,14 @@ func consentPage(s *session) page {
 		d.Terms = append(d.Terms, consentTerm{Days: n, Label: tDays(n),
 			Until: day(now.Add(time.Duration(n) * 24 * time.Hour)), Checked: n == days})
 		id := fmt.Sprintf("t-%d", n)
-		rules.WriteString("#" + id + ":checked ~ fieldset .seg label[for=" + id + "] { background: var(--surface2); box-shadow: 0 0 4px rgba(0,0,0,.04), 0 2px 4px rgba(0,0,0,.04); } #" +
-			id + ":checked ~ .summary .s-" + id + " { display: inline; }\n")
+		rules.WriteString("#" + id + ":checked ~ fieldset .seg label[for=" + id + "] { color: var(--ink); border-bottom-color: var(--green); } #" +
+			id + ":checked ~ .summary .s-" + id + ", #" + id + ":checked ~ .warn .s-" + id + " { display: inline; }\n")
 	}
 	for _, id := range []string{"a-me", "a-agent"} {
 		rules.WriteString(choiceRule(id, "fieldset label[for="+id+"]"))
 	}
+	// The warning of a key for an agent shows when the agent is chosen.
+	rules.WriteString("#a-agent:checked ~ .warn { display: flex; }\n")
 	// Ids are evo's own (p0…, t-7…, a-me): no text of the cloud in the CSS.
 	d.Rules = template.CSS(rules.String())
 	return page{"consent", d}
@@ -156,8 +172,8 @@ func consentPage(s *session) page {
 // choiceRule is the CSS of a chosen radio: its label marked, its part of
 // the summary shown.
 func choiceRule(id, label string) string {
-	return "#" + id + ":checked ~ " + label + " { border-color: var(--primary-decor); background: var(--primary-bg); } #" +
-		id + ":checked ~ " + label + "::before { border-color: var(--primary); background: radial-gradient(circle, var(--primary) 45%, var(--surface2) 50%); } #" +
+	return "#" + id + ":checked ~ " + label + " { border-left-color: var(--green); background: var(--green-bg); } #" +
+		id + ":checked ~ " + label + "::before { border-color: var(--green); background: radial-gradient(circle, var(--green) 45%, var(--surface2) 50%); } #" +
 		id + ":checked ~ .summary .s-" + id + " { display: inline; }\n"
 }
 
@@ -181,14 +197,31 @@ func donePage(r Result) page {
 	return page{"done", resultData{head: newHead(tDone() + " — evo"), Status: tDone(),
 		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt, r.Account == ForAgent.account()),
 		Rows: []row{
-			{tProject(), r.ProjectName},
-			{tRowAccount(), acc},
-			{tRowRole(), tRoleUntil(r.KeyExpiresAt)},
-			{tRowKey(), key},
-			{tRowProfile(), r.Profile},
+			{tProject(), projectIn(r.ProjectName, r.CustomerName)},
+			{upperFirst(tRowAccount()), acc},
+			{upperFirst(tRowRole()), tRoleUntil(r.KeyExpiresAt)},
+			{upperFirst(tRowKey()), key},
+			{upperFirst(tRowProfile()), r.Profile},
 		},
 		Footer: tRevokeHow(),
 	}}
+}
+
+// upperFirst is a row name of the terminal as the page heads it.
+func upperFirst(s string) string {
+	r := []rune(s)
+	if len(r) > 0 {
+		r[0] = unicode.ToUpper(r[0])
+	}
+	return string(r)
+}
+
+// projectIn is a project with its organization, when it is known.
+func projectIn(project, org string) string {
+	if org == "" {
+		return project
+	}
+	return project + " · " + org
 }
 
 func cancelledPage() page {

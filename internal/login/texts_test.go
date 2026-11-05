@@ -63,3 +63,33 @@ func TestConsentPage_Preselect(t *testing.T) {
 		t.Errorf("a source without a preselection")
 	}
 }
+
+// Macket v13: «You signed in as» names the e-mail or the user name, never
+// sub (plan 1.8, B-3); a key for an agent shows the warning of its rights
+// by CSS; the result names the organization of the project.
+func TestPages_MacketV13(t *testing.T) {
+	render := func(p page) string {
+		var b strings.Builder
+		if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	s := &session{cfg: Config{Now: time.Now}, who: person{Sub: "u-1", Login: "u-1"},
+		projects: []project{{ID: "a", Name: "alpha", Allowed: true}}}
+	if page := render(consentPage(s)); strings.Contains(page, "u-1") || strings.Contains(page, tSignedIn("u-1")) {
+		t.Errorf("sub shown on the page")
+	}
+	s.who.Login = "ivan@example.com"
+	page := render(consentPage(s))
+	if !strings.Contains(page, tSignedIn("ivan@example.com")) {
+		t.Errorf("no e-mail")
+	}
+	if !strings.Contains(page, tAgentWarnTitle()) || !strings.Contains(page, "#a-agent:checked ~ .warn { display: flex; }") {
+		t.Errorf("no warning for an agent")
+	}
+	done := render(donePage(Result{Account: "evo", ProjectName: "alpha", CustomerName: "Radar", KeyID: "k", KeyExpiresAt: time.Now()}))
+	if !strings.Contains(done, "alpha · Radar") {
+		t.Errorf("the result does not name the organization")
+	}
+}
