@@ -49,15 +49,18 @@ type DeploymentStatus struct {
 	state.DeploymentRecord
 	CloudCheck
 	// The VMs of the other active records of the directory, when there are
-	// several (provision next to a deploy): status shows the first.
+	// several (provision next to a deploy): status shows deploy's
+	// (PrimaryDeployment).
 	OtherActiveVMs []string `json:"other_active_vm_ids,omitempty"`
 }
 
-// OtherActiveVMs is the VM IDs of the active records after the first.
+// OtherActiveVMs is the VM IDs of the active records but the one status
+// shows (PrimaryDeployment).
 func OtherActiveVMs(sf *state.File) []string {
+	shown := sf.PrimaryDeployment()
 	var ids []string
-	for i, rec := range sf.ActiveDeployments() {
-		if i > 0 {
+	for _, rec := range sf.ActiveDeployments() {
+		if rec.ID != shown.ID {
 			ids = append(ids, rec.VMID)
 		}
 	}
@@ -141,7 +144,7 @@ func (e *Engine) Status(ctx context.Context, opts StatusOptions) error {
 		return err
 	}
 
-	active := stateFile.ActiveDeployment()
+	active := stateFile.PrimaryDeployment()
 	if active == nil {
 		if e.Printer.IsJSON() {
 			// The answer of the MCP status tool, which prints it: --json

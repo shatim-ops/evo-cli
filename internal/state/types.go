@@ -28,9 +28,19 @@ type DeploymentRecord struct {
 	Status      string `json:"status"` // creating, provisioned, deploying, running, error, ssh_timeout, ssh_auth_failed, ssh_host_key_changed, docker_failed, destroying, destroyed
 	ComposeHash string `json:"compose_hash"`
 	// Source is what made the record: "provision" for a VM of evo vm
-	// create, which deploy does not update (D62); empty for deploy and
-	// deploy_apply, and in records from before 1.6.
+	// create, which deploy does not update (D62); "deploy_apply" for a VM
+	// of a deploy plan (D82, from 1.8); empty for deploy, and for
+	// deploy_apply before 1.8 and every record before 1.6.
 	Source string `json:"source,omitempty"`
+	// PlanID is the deploy plan a deploy_apply record was made by: the way
+	// on of an unfinished one is deploy_apply with it (D82). Empty in
+	// records of other sources and from before 1.8.
+	PlanID string `json:"plan_id,omitempty"`
+	// Cidr is the source deploy opened the record's ports from
+	// (sgrules.Source): the repeat of an unfinished deploy opens the
+	// missing ones from it, not wider (D82). Empty in records from before
+	// 1.8.
+	Cidr string `json:"cidr,omitempty"`
 	// ComposePath is the absolute path of the compose file the deployment
 	// runs: deploy of another one refuses to send it to this VM (D62).
 	// Empty in records from before 1.6.

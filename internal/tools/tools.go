@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
@@ -44,7 +45,7 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local compose project to a VM evo-<project_name> (.evo.yaml or the directory), billable when it creates one, with a public floating IP: uploads the compose files over SSH, runs them; its ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: the server's), refuses another deployment's compose file. Updates take confirmed=true too (preview: compose_changed).",
+			Description: "Deploy the local compose project to a VM evo-<project_name>, billable when it creates one, with a public floating IP: uploads the compose files over SSH, runs them; ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: the server's). Updates need confirmed=true (preview: compose_changed).",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Compose file (default docker-compose.yml)."),
 				"flavor":       strProp("VM flavor or 'auto' (default)."),
@@ -55,6 +56,7 @@ func (s *Registry) registerTools() {
 				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10, or min_disk).")),
 				"force":        boolProp("Redeploy unchanged compose."),
 				"cidr":         cidrProp(portsCidrDesc),
+				"compose_hash": strProp("next_args: consented compose hash"),
 				"confirmed":    confirmedProp(),
 			}),
 		},
@@ -1582,6 +1584,12 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			if err != nil {
 				return errResult(err), true
 			}
+			// The consent of the step that goes on with a deploy (D82) was
+			// for the compose file of its hash: another file — a port
+			// added since — is asked again, not deployed («Риск», R-38).
+			if answer, changed := s.composeChangedSinceConsent(ctx, args, eng); changed {
+				return answer, true
+			}
 			var buf bytes.Buffer
 			eng.Printer = logAndProgress(ctx, &buf)
 
@@ -1621,6 +1629,53 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 		})
 }
 
+// composeChanged reports whether the compose_hash of a deploy call — the
+// file its consent was for (D82) — is not the hash of the compose file
+// now: the one decision of R-38 for both surfaces. A file that cannot be
+// read is the deploy's to refuse, as before.
+func composeChanged(args map[string]any, eng *engine.Engine) bool {
+	want := stringArg(args, "compose_hash")
+	if want == "" {
+		return false
+	}
+	project, err := compose.Parse(eng.Config.ComposeFile)
+	return err == nil && project.Hash != want
+}
+
+// errComposeChangedSinceConsent is the CLI's answer of composeChanged: the
+// consent given in advance (--yes) was for another file — CONFIRMATION_REQUIRED,
+// code 3, before anything is written.
+func errComposeChangedSinceConsent() error {
+	return clierrors.New(clierrors.CodeConfirmationRequired,
+		i18n.T("the compose file changed since the consent this call carries (compose_hash): its services or ports may differ; nothing was deployed",
+			"compose-файл изменился после согласия, с которым пришёл этот вызов (compose_hash): сервисы или порты могут отличаться; ничего не развёрнуто"),
+		i18n.T("Run deploy without --compose-hash: it shows the preview of this file and asks.",
+			"Запустите deploy без --compose-hash: он покажет превью этого файла и спросит."))
+}
+
+// composeChangedSinceConsent is the answer of a confirmed deploy whose
+// compose_hash — the file the consent was for, from the step that goes on
+// with a deploy (D69, D76, D82) — is not the hash of the compose file now:
+// the preview again, which says so, and changed true. A file that cannot
+// be read is the deploy's to refuse, as before.
+func (s *Registry) composeChangedSinceConsent(ctx context.Context, args map[string]any, eng *engine.Engine) (string, bool) {
+	if !composeChanged(args, eng) {
+		return "", false
+	}
+	answer, err := s.deployAnswer(ctx, args, eng)
+	if err != nil {
+		return errAnswer(err, deployFields(err, nil)), true
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(answer), &m) != nil {
+		return answer, true
+	}
+	m["compose_changed_since_consent"] = true
+	m["warning"] = i18n.T("The compose file changed since the consent this call carries (compose_hash): its services or ports may differ. Show the person this preview and ask again; on yes, call deploy with confirmed=true and without compose_hash.",
+		"Compose-файл изменился после согласия, с которым пришёл этот вызов (compose_hash): сервисы или порты могут отличаться. Покажите человеку это превью и спросите снова; при «да» вызовите deploy с confirmed=true без compose_hash.")
+	return toJSON(m), true
+}
+
 // deployInProgress is the answer of deploy whose budget of an MCP call
 // ended while the cloud or the VM still worked (D69, variant C): not an
 // error — status deploying, the phase (the VM being created, SSH not up
@@ -1639,6 +1694,11 @@ func deployInProgress(result map[string]any, going *engine.InProgress, args map[
 	}
 	repeat := maps.Clone(args)
 	repeat["confirmed"] = true
+	// The consent goes on for the compose file this call deployed: another
+	// file at the repeat is asked again («Риск», R-38).
+	if rec, ok := result["deployment"].(*state.DeploymentRecord); ok && rec.ComposeHash != "" {
+		repeat["compose_hash"] = rec.ComposeHash
+	}
 	if going.Phase == "compose-up" || going.Phase == "verify" {
 		// The forced compose up has started (or is over): the repeat
 		// takes it, and with force it would start another (#769).
@@ -1754,6 +1814,11 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 		return failed(ctx, err, nil), true
 	}
 	eng.Printer = c.Printer
+	// --yes was given for the file of compose_hash (R-38): another file
+	// is not deployed under it.
+	if c.Yes && composeChanged(args, eng) {
+		return failed(ctx, errComposeChangedSinceConsent(), nil), true
+	}
 	force, _ := args["force"].(bool)
 	err = eng.Deploy(ctx, engine.DeployOptions{
 		ComposeFile:    eng.Config.ComposeFile,
