@@ -53,8 +53,8 @@ var untrustedFields = map[string]untrustedAnswer{
 	"disk_delete": {fields: []string{"attached_vms"}},
 	// The disk and the VM the preview of disk_attach and disk_detach names,
 	// as the cloud names them.
-	"disk_attach": {fields: []string{"will_attach"}},
-	"disk_detach": {fields: []string{"will_detach"}},
+	"disk_attach": {fields: []string{"will_attach", "attached_vms"}},
+	"disk_detach": {fields: []string{"will_detach", "attached_vms"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of

@@ -423,6 +423,9 @@ func (s *Registry) planDiskAttach(ctx context.Context, args map[string]any) (*Pl
 			return answered(toJSON(map[string]any{"status": "already_attached", "disk_id": diskID, "vm_id": vmID}), false), nil
 		}
 	}
+	if ans, refused := anotherVMsDisk("disk_attach", diskID, vmID, disk); refused {
+		return answered(ans, true), nil
+	}
 	return &Plan{Preview: map[string]any{
 		"message":     i18n.T("disk_attach attaches the disk to the VM.", "disk_attach подключает диск к ВМ."),
 		"will_attach": diskChangeTarget(diskID, disk, vm),
@@ -468,6 +471,41 @@ func diskChangeTarget(diskID string, disk map[string]any, vm *provision.VM) map[
 		out["attached_vms"] = vms
 	}
 	return out
+}
+
+// anotherVMsDisk refuses, before the question, disk_attach or disk_detach
+// of a disk that VMs other than vmID have (D81, the second half): Cloud.ru
+// attaches a disk to one VM at a time — the attach to a second VM, a
+// shared disk too, answered 422 after consent (the probe of shared disks,
+// 2 of 2, CMP-27) — and a detach from a VM the disk is not on fails too.
+// One decision for both («Риск», conclusion 9): USAGE with the VMs' ids
+// (attached_vms, the cloud's names marked untrusted) and the way: the VM
+// the disk is on. The answer and true when refused.
+func anotherVMsDisk(tool, diskID, vmID string, disk map[string]any) (string, bool) {
+	vms := diskVMs(disk)
+	if len(vms) == 0 {
+		return "", false
+	}
+	var ids []string
+	for _, v := range vms {
+		if v["id"] == vmID {
+			return "", false
+		}
+		ids = append(ids, v["id"].(string))
+	}
+	on := strings.Join(ids, ", ")
+	var err error
+	if tool == "disk_attach" {
+		err = clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("disk %s is attached to VM %s: Cloud.ru attaches a disk to one VM at a time; nothing was attached", "диск %s подключён к ВМ %s: Cloud.ru подключает диск только к одной ВМ; ничего не подключено", diskID, on),
+			i18n.Tf("To move it, detach it from that VM first (disk_detach disk_id=%s vm=%s) — whether that VM can lose it, ask the person.",
+				"Чтобы перенести диск, сначала отключите его от той ВМ (disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, ids[0]))
+	} else {
+		err = clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("disk %s is attached to VM %s, not to %s; nothing was detached", "диск %s подключён к ВМ %s, а не к %s; ничего не отключено", diskID, on, vmID),
+			i18n.Tf("Name the VM the disk is on: disk_detach disk_id=%s vm=%s.", "Назовите ВМ, к которой подключён диск: disk_detach disk_id=%s vm=%s.", diskID, ids[0]))
+	}
+	return errAnswer(err, map[string]any{"attached_vms": vms}), true
 }
 
 // diskVMs are the VMs disk is attached to, as its GetDisk answer names
@@ -519,6 +557,9 @@ func (s *Registry) planDiskDetach(ctx context.Context, args map[string]any) (*Pl
 	// A repeat (D81, D26): no VM has the disk.
 	if st, _ := disk["state"].(string); st == "available" && len(diskVMs(disk)) == 0 {
 		return answered(toJSON(map[string]any{"status": "already_detached", "disk_id": diskID, "vm_id": vmID}), false), nil
+	}
+	if ans, refused := anotherVMsDisk("disk_detach", diskID, vmID, disk); refused {
+		return answered(ans, true), nil
 	}
 	return &Plan{Preview: map[string]any{
 		"message":     i18n.T("disk_detach detaches the disk from the VM.", "disk_detach отключает диск от ВМ."),
