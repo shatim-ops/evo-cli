@@ -62,9 +62,7 @@ var sideRecordArgs = map[string][]map[string]any{
 // "tool<TAB>what" → why. It only shrinks. Closes by 1.7 (release plan 1.7,
 // P5: the previews of provision, deploy_plan and deploy name the group,
 // whether it is the zone's shared one and the source — one helper).
-var sideRecordMisses = map[string]string{
-	"provision\ta rule of security group": "the preview names the ports, not the group the rule goes to",
-}
+var sideRecordMisses = map[string]string{}
 
 // P5 (agent runs of Grok on 1.6.0, G2-2; release plan 1.7): every record a
 // confirmed call writes besides its resource — a rule of a security group
