@@ -1621,11 +1621,13 @@ func (e *Engine) waitForSSH(ctx context.Context, ip, user, knownHostKey string, 
 	// the network evo runs in let no SSH out, and a repeat of deploy waits
 	// anew. The hint says so and how to tell the two apart.
 	hint := i18n.Tf("What next — the person decides: an agent should ask them and not repeat deploy on its own. "+
+		"The VM stays running and is billed until the person deletes it. "+
 		"First check that SSH gets out of the network evo runs in: nc -vz %s 22 (outbound port 22 is often closed by a corporate firewall, a VPN or an agent's sandbox; then the VM is fine). "+
 		"If it does, the VM may have booted without network (on Cloud.ru this happens: no DNS inside the VM, the image's apt mirror unreachable): "+
 		"reboot the VM in the Cloud.ru console (Virtual machines, the VM's menu, Reboot; evo has no reboot command) or look at its boot log in the serial console, then run 'evo deploy' again — it reuses this VM and waits anew. "+
 		"If it repeats in one zone, check the subnet's DNS in the Cloud.ru console.",
 		"Что дальше — решает человек: агенту — спросить его и не повторять deploy самому. "+
+			"ВМ остаётся запущенной и оплачивается, пока её не удалит человек. "+
 			"Сначала проверьте, что SSH выходит из сети, где запущен evo: nc -vz %s 22 (исходящий порт 22 часто закрыт корпоративным межсетевым экраном, VPN или песочницей агента; тогда ВМ исправна). "+
 			"Если выходит, ВМ могла загрузиться без сети (на Cloud.ru так бывает: нет DNS внутри ВМ, недоступно apt-зеркало образа): "+
 			"перезагрузите ВМ в консоли Cloud.ru (Виртуальные машины, меню ВМ, «Перезагрузить»; своей команды перезагрузки в evo нет) или посмотрите журнал загрузки в серийной консоли, затем снова выполните 'evo deploy' — он возьмёт эту же ВМ и будет ждать заново. "+

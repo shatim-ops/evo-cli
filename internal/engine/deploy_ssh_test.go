@@ -71,7 +71,9 @@ func TestWaitForSSH_DiagnosisByLastError(t *testing.T) {
 			// of the agent itself and how to check it, and neither advises
 			// deleting the VM nor repeating deploy on one's own — the VM may
 			// be fine, and a repeat waits anew.
+			// The person decides knowing the VM is billed (R-23, «Риск» on #898).
 			for _, want := range []string{"the person decides", "ask them", "nc -vz 192.0.2.10 22", "outbound port 22",
+				"The VM stays running and is billed until the person deletes it",
 				"reboot the VM in the Cloud.ru console", "evo has no reboot command", "serial console"} {
 				if !strings.Contains(ce.Hint, want) {
 					t.Errorf("hint lacks %q:\n%s", want, ce.Hint)
