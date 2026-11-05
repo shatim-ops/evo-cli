@@ -27,8 +27,8 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 	oldCfg, oldOpen, oldIAM := loginConfig, openBrowser, auth.IAMEndpoint
 	t.Cleanup(func() { loginConfig, openBrowser, auth.IAMEndpoint = oldCfg, oldOpen, oldIAM })
 	auth.IAMEndpoint = w.URL + "/api/v1/auth/token"
-	loginConfig = func(out io.Writer, open func(string) error) login.Config {
-		c := login.Default(out, open)
+	loginConfig = func(say func(string, string), open func(string) error) login.Config {
+		c := login.Default(say, open)
 		c.Issuer, c.OrgBase, c.AdminBase, c.KeyToken = w.Issuer, w.URL, w.URL, w.URL+"/api/v1/auth/token"
 		c.Trusted = func(u string) bool { return strings.HasPrefix(u, w.URL+"/") }
 		c.HTTP = w.Client()
@@ -123,4 +123,16 @@ func argOf(args []string, flag string) string {
 		}
 	}
 	return ""
+}
+
+// evo agent setup warns when the profile's key was made by evo login: its
+// role may delete (release plan 1.8, B-3); no word for any other key.
+func TestAgentSetup_WarnsOfTheLoginKey(t *testing.T) {
+	if w := loginKeyWarning("default", config.Credentials{KeyID: "k"}); w != "" {
+		t.Errorf("a key of evo configure warned: %q", w)
+	}
+	w := loginKeyWarning("default", config.Credentials{KeyID: "k", Login: &config.LoginKey{AccessKeyID: "ak"}})
+	if !strings.Contains(w, "evo login") || !strings.Contains(w, auth.LoginRoleDisplayName) {
+		t.Errorf("warning %q", w)
+	}
 }

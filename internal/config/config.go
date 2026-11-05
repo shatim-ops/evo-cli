@@ -38,6 +38,9 @@ type Config struct {
 	// KeyEnv in parentheses when it is set, OriginDefault without a key
 	// (whoami and doctor name it).
 	KeyOrigin string `yaml:"-" json:"-"`
+	// KeyExpiresAt is the term (RFC 3339) of a key evo login made, from the
+	// profile; "" for any other key (R-26).
+	KeyExpiresAt string `yaml:"-" json:"-"`
 
 	// Deploy
 	ProjectID string `yaml:"project_id" json:"project_id"` // required UUID
@@ -321,7 +324,7 @@ func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 		cfg.KeyEnv = "CLOUDRU_KEY_ID, CLOUDRU_KEY_SECRET"
 	}
 	if keyID != "" || secret != "" {
-		cfg.KeyID, cfg.Secret = keyID, secret
+		cfg.KeyID, cfg.Secret, cfg.KeyExpiresAt = keyID, secret, ""
 		origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
 		return nil
 	}
@@ -336,7 +339,7 @@ func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 			i18n.T("Set CLOUDRU_KEY_ID and CLOUDRU_SECRET instead, or run 'evo configure'",
 				"Вместо неё задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET или выполните 'evo configure'"))
 	}
-	cfg.KeyID, cfg.Secret = id, sec
+	cfg.KeyID, cfg.Secret, cfg.KeyExpiresAt = id, sec, ""
 	origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
 	cfg.Warnings = append(cfg.Warnings,
 		i18n.T("CLOUDRU_API_KEY=keyId:secret is deprecated: set CLOUDRU_KEY_ID and CLOUDRU_SECRET, or run 'evo configure'",
@@ -435,6 +438,10 @@ func applyProfile(cfg *Config, name string, explicit bool, origins map[string]st
 	if c.KeyID != "" || c.Secret != "" {
 		cfg.KeyID, cfg.Secret = c.KeyID, c.Secret
 		origins["KeyID"], origins["Secret"] = OriginProfile, OriginProfile
+		cfg.KeyExpiresAt = ""
+		if c.Login != nil {
+			cfg.KeyExpiresAt = c.Login.KeyExpiresAt
+		}
 	}
 	if c.S3 != nil {
 		mergeS3(&cfg.S3, *c.S3, origins, OriginProfile)

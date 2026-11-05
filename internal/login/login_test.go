@@ -91,7 +91,7 @@ func (b *browser) open(authURL string) error {
 }
 
 func worldConfig(w *loginworld.World, out io.Writer, open func(string) error) Config {
-	c := Default(out, open)
+	c := Default(func(m, u string) { fmt.Fprintln(out, m); fmt.Fprintln(out, u) }, open)
 	c.Issuer, c.OrgBase, c.AdminBase, c.KeyToken = w.Issuer, w.URL, w.URL, w.URL+"/api/v1/auth/token"
 	// The world is plain http on 127.0.0.1: its own address is the one
 	// trusted; anything else is not (CheckDiscovery is held to the

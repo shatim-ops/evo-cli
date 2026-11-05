@@ -5,6 +5,8 @@
 package cli
 
 import (
+	"encoding/json"
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -25,6 +27,19 @@ import (
 // loginConfig is the login's Config; the tests point it at the world of
 // B-2 (internal/loginworld).
 var loginConfig = login.Default
+
+// loginSay tells the address to open on stderr: two lines of text, or one
+// JSON line with --json (stdout keeps the one answer).
+func loginSay(cmd *cobra.Command) func(message, url string) {
+	return func(message, u string) {
+		if flagJSON {
+			_ = json.NewEncoder(cmd.ErrOrStderr()).Encode(map[string]string{"message": message, "url": u})
+			return
+		}
+		fmt.Fprintln(cmd.ErrOrStderr(), message)
+		fmt.Fprintln(cmd.ErrOrStderr(), u)
+	}
+}
 
 // openBrowser opens a URL in the person's browser; the tests replace it.
 var openBrowser = func(u string) error {
@@ -77,7 +92,7 @@ evo logout.`),
 				prev = &login.Previous{ServiceAccountID: creds.Login.ServiceAccountID, AccessKeyID: creds.Login.AccessKeyID}
 			}
 			printer := output.New(flagJSON, flagNoColor)
-			res, err := login.Login(cmd.Context(), loginConfig(cmd.ErrOrStderr(), openBrowser), choice, prev, func(s login.Saved) error {
+			res, err := login.Login(cmd.Context(), loginConfig(loginSay(cmd), openBrowser), choice, prev, func(s login.Saved) error {
 				prof.ProjectID = s.ProjectID
 				creds.KeyID, creds.Secret = s.KeyID, s.Secret
 				creds.Login = &config.LoginKey{ServiceAccountID: s.ServiceAccountID, AccessKeyID: s.AccessKeyID,
@@ -177,7 +192,7 @@ the console is deleted alone: that key stays in the cloud.`, `Удалить к�
 			out := map[string]any{"profile": name}
 			if creds.Login != nil {
 				provider := auth.NewIAMProvider(auth.Credentials{KeyID: creds.KeyID, Secret: creds.Secret}, httpClient, nil)
-				status, err := login.Logout(cmd.Context(), loginConfig(cmd.ErrOrStderr(), openBrowser).AdminBase, provider,
+				status, err := login.Logout(cmd.Context(), loginConfig(loginSay(cmd), openBrowser).AdminBase, provider,
 					creds.Login.ServiceAccountID, creds.Login.AccessKeyID)
 				if err != nil {
 					return err

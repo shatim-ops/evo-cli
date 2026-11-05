@@ -13,7 +13,6 @@
 package login
 
 import (
-	"io"
 	"net/http"
 	"time"
 
@@ -38,8 +37,8 @@ type Config struct {
 	// Open opens the URL in the person's browser; an error is no failure
 	// of the login: the URL is printed too.
 	Open func(url string) error
-	// Out gets what the person reads in the terminal: the URL to open.
-	Out io.Writer
+	// Say tells the person, in the terminal, the address to open.
+	Say func(message, url string)
 	// Wait bounds the time from the start to the person's choice.
 	Wait time.Duration
 	// Now is the clock of the answer's values (key's term, login date).
@@ -47,12 +46,12 @@ type Config struct {
 }
 
 // Default is the production Config.
-func Default(out io.Writer, open func(string) error) Config {
+func Default(say func(message, url string), open func(string) error) Config {
 	return Config{
 		Issuer: auth.OIDCIssuer, Trusted: auth.TrustedOIDCURL,
 		OrgBase: "https://organization.api.cloud.ru", AdminBase: "", KeyToken: auth.IAMEndpoint,
 		HTTP:  &http.Client{Timeout: 30 * time.Second, Transport: httpretry.UserAgent(nil), CheckRedirect: noRedirects},
-		Ports: auth.LoginRedirectPorts[:], Open: open, Out: out,
+		Ports: auth.LoginRedirectPorts[:], Open: open, Say: say,
 		// wall-clock: the person has five minutes to sign in and choose
 		// (contract B-1, section 1).
 		Wait: 5 * time.Minute,

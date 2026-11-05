@@ -51,8 +51,7 @@ func Login(ctx context.Context, cfg Config, choice Choice, previous *Previous, s
 		_ = srv.Shutdown(sctx)
 	}()
 
-	fmt.Fprintln(cfg.Out, i18n.T("Open this address in a browser to sign in to Cloud.ru:", "Откройте этот адрес в браузере и войдите в Cloud.ru:"))
-	fmt.Fprintln(cfg.Out, authURL)
+	cfg.Say(i18n.T("Open this address in a browser to sign in to Cloud.ru:", "Откройте этот адрес в браузере и войдите в Cloud.ru:"), authURL)
 	if cfg.Open != nil {
 		_ = cfg.Open(authURL) // the address is printed: a browser that did not open is no failure
 	}
