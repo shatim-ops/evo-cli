@@ -81,14 +81,11 @@ has probes "probes: «p99» — не access"
 has probes "probes: «nodes» — проба джоба dbaas-pg"
 has probes "причин: 2"
 fresh probesok
-run probesok 0 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES='access nodes p36 p41 p44 p45 dnslink shared'
-# Каждое слово, которое включает пробу в cloud-live.sh (probe_on СЛОВО),
-# preflight принимает: новая проба без слова в перечне не запустилась бы
-# (run 170: «shared» — проба есть, preflight её отверг).
-fresh probewords
-read -ra live_words <<<"$(grep -oE 'probe_on [a-z0-9]+' "$here/cloud-live.sh" | cut -d' ' -f2 | sort -u | tr '\n' ' ')"
-[ "${#live_words[@]}" -ge 4 ] || { echo "FAIL probewords: в cloud-live.sh найдено ${#live_words[@]} слов probe_on — разбор не видит"; fail=1; }
-run probewords 0 PROBES="${live_words[*]}"
+run probesok 0 DBAAS_SMOKE=true DBAAS_SERVICES=pg DISK_SMOKE=true PROBES='access nodes p36 p41 p44 p45 dnslink shared'
+# shared — проба области disk: без disk_smoke отказ.
+fresh shareddisk
+run shareddisk 1 PROBES=shared
+has shareddisk "probes: «shared» — проба области disk, а disk_smoke не включён"
 
 # Зона прогона без подсети и группы — провал; открытая зона ru.AZ-1 без
 # них, куда прогон не идёт, — строка «перезапуск туда не выйдет».

@@ -81,7 +81,10 @@ fi
 read -ra probe_words <<<"${PROBES:-}"
 for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	case "$w" in
-	p36 | p41 | p44 | dnslink | shared) ;;
+	p36 | p41 | p44 | dnslink) ;;
+	shared)
+		[ "${DISK_SMOKE:-}" = true ] || fail "probes: «shared» — проба области disk, а disk_smoke не включён"
+		;;
 	access | nodes | p45)
 		[ -n "${cluster_kinds[pg]:-}" ] || fail "probes: «$w» — проба джоба dbaas-pg, а он не идёт (dbaas_smoke и pg в dbaas_services)"
 		;;
