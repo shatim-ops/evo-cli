@@ -113,6 +113,51 @@ type Variant struct {
 	// action» (the names of the actions are a hypothesis until the probe;
 	// «Риск», U-9).
 	EvaluateUnknown bool
+	// UnknownActionFalse: the catalogue of actions is the one the probe A1
+	// read (05.11, 2 of 2), and evaluate and bulk-evaluate answer
+	// accessGranted false — not an error — for an action the catalogue
+	// lacks, as an IAM may for a name it does not know («Риск», R-49).
+	// The person may do everything the catalogue names.
+	UnknownActionFalse bool
+	// CatalogFails: the catalog of actions answers 500 («Риск», R-49: a
+	// catalog evo could not read is no refusal).
+	CatalogFails bool
+	// AccountForbidden: POST serviceAccounts answers 403 («Риск», R-49: a
+	// refusal of the platform at the first write is AUTH_FAILED).
+	AccountForbidden bool
+}
+
+// probeActions are the actions of IAM about accounts, keys and permissions
+// in the catalogue the probe A1 read on 05.11 (2 of 2): the names are
+// lower case and singular, and there is no create of an account.
+var probeActions = []string{
+	"iam.permission.add", "iam.permission.edit", "iam.permission.read",
+	"iam.serviceaccount.accesskey.edit", "iam.serviceaccount.accesskey.read",
+	"iam.serviceaccount.edit", "iam.serviceaccount.read",
+}
+
+// catalogue is the catalogue of actions the world serves.
+func (w *World) catalogue() []string {
+	if w.v.UnknownActionFalse {
+		return probeActions
+	}
+	return []string{auth.LoginActionCreateAccount, auth.LoginActionGrantRole}
+}
+
+// granted answers evaluate for one action.
+func (w *World) granted(action string) bool {
+	if w.v.Denied {
+		return false
+	}
+	if !w.v.UnknownActionFalse {
+		return true
+	}
+	for _, a := range w.catalogue() {
+		if a == action {
+			return true
+		}
+	}
+	return false
 }
 
 // Account, Permission and Key are the objects of the project.
@@ -528,20 +573,24 @@ func (w *World) administration(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case p == "/api/v1/actions" && w.v.CatalogFails:
+		fail(rw, 500, "internal")
 	case p == "/api/v1/actions":
-		writeJSON(rw, 200, map[string]any{"actions": []map[string]string{
-			{"name": "iam.serviceAccounts.create", "productCode": "iam"},
-			{"name": "iam.permissions.create", "productCode": "iam"}}})
+		list := []map[string]string{}
+		for _, a := range w.catalogue() {
+			list = append(list, map[string]string{"name": a, "product_code": "iam"})
+		}
+		writeJSON(rw, 200, map[string]any{"actions": list})
 	case w.v.EvaluateUnknown && (p == "/api/v1/permissions/evaluate" || p == "/api/v1/permissions/bulk-evaluate"):
 		fail(rw, 400, "unknown action")
 	case p == "/api/v1/permissions/evaluate":
-		writeJSON(rw, 200, map[string]bool{"accessGranted": !w.v.Denied})
+		writeJSON(rw, 200, map[string]bool{"accessGranted": w.granted(r.URL.Query().Get("action"))})
 	case p == "/api/v1/permissions/bulk-evaluate":
 		var body struct{ Requests []map[string]string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		res := make([]map[string]bool, len(body.Requests))
 		for i := range res {
-			res[i] = map[string]bool{"accessGranted": !w.v.Denied}
+			res[i] = map[string]bool{"accessGranted": w.granted(body.Requests[i]["action"])}
 		}
 		writeJSON(rw, 200, map[string]any{"results": res})
 	case p == "/api/v2/serviceAccounts" && m == http.MethodGet:
@@ -599,6 +648,8 @@ func (w *World) createAccount(rw http.ResponseWriter, r *http.Request) {
 	switch {
 	case w.v.FailAt == StepAccount:
 		fail(rw, 500, "internal")
+	case w.v.AccountForbidden:
+		fail(rw, 403, "forbidden")
 	case w.v.AccountLimit:
 		fail(rw, 400, "service account limit reached")
 	case body.Target.ProjectID != Project:
