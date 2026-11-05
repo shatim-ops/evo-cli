@@ -207,6 +207,7 @@ jobs:
           DBAAS_SMOKE: ${{ inputs.dbaas_smoke }}
           DBAAS_SERVICES: ${{ inputs.dbaas_services }}
           REDIS_SA: ${{ inputs.redis_standalone_probe }}
+          DISK_SMOKE: ${{ inputs.disk_smoke }}
           PROBES: ${{ inputs.probes }}
         run: .github/scripts/e2e-preflight.sh
 
@@ -1459,7 +1460,7 @@ jobs:
           read -ra words <<<"${PROBES:-}"
           for w in ${words[@]+"${words[@]}"}; do
             case "$w" in
-              access | p36 | p41 | p44 | p45 | dnslink) ;;
+              access | p36 | p41 | p44 | p45 | dnslink | shared) ;;
               nodes) extra=(--arg instances=2 --arg storage_gb="$(jq -r '[(.min_storage_gb // 0), 100] | max' <<<"$spec")") ;;
               *) echo "::error::probes: «$w» — неизвестное слово (preflight их проверяет)"; exit 1 ;;
             esac
