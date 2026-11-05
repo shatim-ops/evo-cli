@@ -192,6 +192,7 @@ type session struct {
 	projects                                  []project
 	unchecked                                 string          // why the right is not confirmed (U-9, R-49)
 	catalog                                   map[string]bool // the IAM catalog of actions, read after a false
+	catalogUnread                             string          // why the catalog could not be read, once
 	admin                                     *iamadmin.Client
 
 	made []undo // what this login created, oldest first
@@ -341,15 +342,19 @@ func (s *session) uncheckFor(reason string) {
 // read only after a false, once a login.
 func (s *session) deniedForReal(ctx context.Context, action string) bool {
 	if s.catalog == nil {
+		// Read once a login, a failure too: an empty catalog marked unread.
+		s.catalog = map[string]bool{}
 		names, err := s.admin.Actions(ctx)
 		if err != nil {
-			s.uncheckFor(tCatalogUnread(action, oneLine(err.Error())))
-			return false
+			s.catalogUnread = oneLine(err.Error())
 		}
-		s.catalog = map[string]bool{}
 		for _, n := range names {
 			s.catalog[n] = true
 		}
+	}
+	if s.catalogUnread != "" {
+		s.uncheckFor(tCatalogUnread(action, s.catalogUnread))
+		return false
 	}
 	if !s.catalog[action] {
 		s.uncheckFor(tActionUnknown(action))
