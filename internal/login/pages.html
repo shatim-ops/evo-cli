@@ -95,12 +95,15 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
 {{end}}
 
 {{define "consent"}}{{template "head" .}}  <p class="support">{{.Intro}}</p>
+{{if .Unchecked}}  <div class="alert warning"><div>{{.Unchecked}}</div></div>
+{{end}}
   <form method="post" action="/grant">
 {{range .Projects}}<input type="radio" name="project" id="{{.HTMLID}}" value="{{.ID}}" required{{if .Checked}} checked{{end}}{{if not .Allowed}} disabled{{end}}>
 {{end}}<input type="radio" name="audience" id="a-me" value="me"{{if eq .For "me"}} checked{{end}}>
 <input type="radio" name="audience" id="a-agent" value="agent"{{if eq .For "agent"}} checked{{end}}>
 {{range .Terms}}<input type="radio" name="ttl" id="t-{{.Days}}" value="{{.Days}}"{{if .Checked}} checked{{end}}>
 {{end}}<input type="hidden" name="state" value="{{.State}}">
+<input type="hidden" name="consent" value="{{.Consent}}">
     <fieldset>
       <legend>{{.ProjectLegend}}</legend>
 {{range .Projects}}{{if .OrgHeading}}<div class="org">{{.OrgHeading}}</div>
@@ -139,10 +142,6 @@ button { font: inherit; font-weight: 600; height: 40px; padding: 0 20px; border-
 {{range .Rows}}    <dt>{{.Term}}</dt><dd>{{.Value}}</dd>
 {{end}}  </dl>
   <p class="support small">{{.Footer}}</p>
-{{template "tail" .}}{{end}}
-
-{{define "signedin"}}{{template "head" .}}  <div class="result"><span class="ic ok" aria-hidden="true">✓</span><h2 style="font-size:16px;line-height:24px">{{.Status}}</h2></div>
-  <p>{{.Text}}</p>
 {{template "tail" .}}{{end}}
 
 {{define "cancelled"}}{{template "head" .}}  <div class="result"><span class="ic no" aria-hidden="true">×</span><h2 style="font-size:16px;line-height:24px">{{.Status}}</h2></div>

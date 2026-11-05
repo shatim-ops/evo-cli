@@ -19,28 +19,20 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
-// mode is how the person chooses: on the page (no terminal), in the
-// terminal (a wizard), or by the flags alone (every one and --yes).
-type mode int
-
-const (
-	modePage mode = iota
-	modeTerminal
-	modeFlags
-)
-
-// Login signs the person in and makes the access they choose (contract
+// Login signs the person in and makes the access they grant (contract
 // B-1, steps 1–19). store names the profile of the chosen audience, holds
-// its key now and keeps the new one.
+// its key now and keeps the new one. Access is granted only by «Grant
+// access» on the consent page («Риск», conclusion 24): a terminal, when
+// there is one, only gathers the choice before the browser.
 func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result, error) {
 	s := &session{cfg: cfg, choice: choice, store: store,
 		state: random(16), nonce: random(16), verifier: random(32)}
-	m := modePage
-	switch {
-	case choice.Yes && choice.full():
-		m = modeFlags
-	case cfg.Ask != nil:
-		m = modeTerminal
+	if cfg.Ask != nil {
+		c, err := s.wizard(ctx)
+		if err != nil {
+			return Result{}, err
+		}
+		s.choice = c
 	}
 	d, err := cfg.discover(ctx)
 	if err != nil {
@@ -58,7 +50,7 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		"code_challenge": {challenge(s.verifier)}, "code_challenge_method": {"S256"},
 	}.Encode()
 
-	lb := &loopback{s: s, mode: m, host: "127.0.0.1:" + strconv.Itoa(port), done: make(chan outcome, 1)}
+	lb := &loopback{s: s, host: "127.0.0.1:" + strconv.Itoa(port), done: make(chan outcome, 1)}
 	srv := &http.Server{Handler: lb, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	defer func() {
@@ -70,14 +62,16 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 	cfg.Say(tOpen(), authURL)
 	if cfg.Open != nil {
 		_ = cfg.Open(authURL) // the address is printed: a browser that did not open is no failure
+	} else {
+		s.tell(tNoBrowser())
 	}
 	s.tell(tWaiting(cfg.Wait))
 
 	timer := time.NewTimer(cfg.Wait)
 	defer timer.Stop()
-	var o outcome
 	select {
-	case o = <-lb.done:
+	case o := <-lb.done:
+		return o.res, o.err
 	case <-timer.C:
 		lb.close()
 		return Result{}, fmt.Errorf("%s%s: %w", eTimeout(cfg.Wait), tAt(stepWait, 0), context.Canceled)
@@ -85,26 +79,15 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		lb.close()
 		return Result{}, ctx.Err()
 	}
-	if o.err != nil || m == modePage {
-		return o.res, o.err
-	}
-	// Signed in; the choice is the terminal's or the flags'.
-	s.tell(tLoggedIn(s.who.Login))
-	var pl plan
-	if m == modeFlags {
-		pl, err = s.byFlags(ctx)
-	} else {
-		pl, err = s.wizard(ctx)
-	}
-	if err != nil {
-		return Result{}, err
-	}
-	return s.grant(ctx, pl, s.tell)
 }
 
 // tell writes a line in the terminal, when there is one to write to.
+// The steps of the grant come from the loopback's goroutine while Login
+// may still be writing: one line at a time.
 func (s *session) tell(line string) {
 	if s.cfg.Tell != nil {
+		s.tellMu.Lock()
+		defer s.tellMu.Unlock()
 		s.cfg.Tell(line)
 	}
 }
@@ -113,7 +96,8 @@ func (s *session) tell(line string) {
 func listen(ports []int) (net.Listener, int, error) {
 	for _, p := range ports {
 		if ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p))); err == nil {
-			return ln, p, nil
+			// Port 0 (the tests) is the one the system chose.
+			return ln, ln.Addr().(*net.TCPAddr).Port, nil
 		}
 	}
 	return nil, 0, clierrors.New(clierrors.CodeConfigInvalid, ePorts(ports), ePortsHint())
@@ -129,7 +113,6 @@ type outcome struct {
 // choice, of this login's state only (contract B-1, invariant 3).
 type loopback struct {
 	s    *session
-	mode mode
 	host string
 	done chan outcome
 
@@ -186,6 +169,12 @@ func (l *loopback) ownState(got string) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(l.s.state)) == 1
 }
 
+// ownConsent is the token of the consent page; there is none before the
+// page is served.
+func (l *loopback) ownConsent(got string) bool {
+	return l.s.consent != "" && subtle.ConstantTimeCompare([]byte(got), []byte(l.s.consent)) == 1
+}
+
 // callback takes the provider's redirect once, with this login's state
 // (steps 5–11).
 func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
@@ -217,19 +206,17 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 		l.end(outcome{err: err})
 		return
 	}
-	if l.mode != modePage {
-		// The terminal goes on: the page only says so.
-		writePage(w, http.StatusOK, signedInPage())
-		l.end(outcome{})
-		return
-	}
+	// R-47: the consent is this page's own token, apart from the state the
+	// terminal shows; it is in this answer only, which is served once.
+	l.s.consent = random(16)
 	l.phase = phaseConsent
 	writePage(w, http.StatusOK, consentPage(l.s))
 }
 
 // consent takes the person's choice once: the grant or the cancel.
 func (l *loopback) consent(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil || l.phase != phaseConsent || !l.ownState(r.PostForm.Get("state")) {
+	if err := r.ParseForm(); err != nil || l.phase != phaseConsent || !l.ownState(r.PostForm.Get("state")) ||
+		!l.ownConsent(r.PostForm.Get("consent")) {
 		refuse(w, http.StatusForbidden)
 		return
 	}
@@ -251,7 +238,7 @@ func (l *loopback) consent(w http.ResponseWriter, r *http.Request) {
 		l.end(outcome{err: err})
 		return
 	}
-	res, err := l.s.grant(r.Context(), pl, nil)
+	res, err := l.s.grant(r.Context(), pl, l.s.tell)
 	if err != nil {
 		writePage(w, http.StatusOK, errorPage(err))
 		l.end(outcome{res: res, err: err})

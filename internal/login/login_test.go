@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -37,12 +38,17 @@ type browser struct {
 	w      *loginworld.World
 	cancel bool             // press «Cancel» on the consent page
 	form   func(url.Values) // change the form before it is sent
-	page   string           // the last page evo served
-	status []int
-	ended  chan struct{} // closed when the browser is done
+	// noToken first sends «Grant access» without the consent token, then
+	// cancels; again asks for the page a second time.
+	noToken, again bool
+	consent        string // the consent page
+	page           string // the last page evo served
+	status         []int
+	ended          chan struct{} // closed when the browser is done
 }
 
 var stateField = regexp.MustCompile(`name="state" value="([^"]+)"`)
+var consentField = regexp.MustCompile(`name="consent" value="([^"]+)"`)
 var checkedProject = regexp.MustCompile(`name="project" id="p\d+" value="([^"]+)" required checked`)
 
 func (b *browser) open(authURL string) error {
@@ -63,18 +69,35 @@ func (b *browser) open(authURL string) error {
 		resp.Body.Close()
 		b.page = string(body)
 		b.status = append(b.status, resp.StatusCode)
+		b.consent = b.page
 		m := stateField.FindStringSubmatch(b.page)
 		if m == nil {
 			return // no consent: the login ended at the callback
 		}
+		if b.again {
+			if r, err := c.Get(cb); err == nil {
+				r.Body.Close()
+				b.status = append(b.status, r.StatusCode)
+			}
+		}
 		f := url.Values{"state": {m[1]}, "audience": {"me"}, "ttl": {"30"}}
+		u, _ := url.Parse(cb)
+		if b.noToken {
+			if r, err := c.PostForm("http://"+u.Host+"/grant", f); err == nil {
+				r.Body.Close()
+				b.status = append(b.status, r.StatusCode)
+			}
+			b.cancel = true
+		}
+		if t := consentField.FindStringSubmatch(b.page); t != nil {
+			f.Set("consent", t[1])
+		}
 		if p := checkedProject.FindStringSubmatch(b.page); p != nil {
 			f.Set("project", p[1])
 		}
 		if b.form != nil {
 			b.form(f)
 		}
-		u, _ := url.Parse(cb)
 		action := "/grant"
 		if b.cancel {
 			action = "/cancel"
@@ -100,7 +123,16 @@ func worldConfig(w *loginworld.World, out io.Writer, open func(string) error) Co
 	c.Trusted = func(u string) bool { return strings.HasPrefix(u, w.URL+"/") }
 	c.HTTP = w.Client()
 	c.Wait = 20 * time.Second
+	// Port 0: the tests share no fixed port (the world takes any loopback
+	// port); the registered ones are held by TestLogin_RegisteredPorts.
+	c.Ports = []int{0}
 	return c
+}
+
+// newWorld is the world of B-2 that takes the loopback at any port.
+func newWorld(t *testing.T, v loginworld.Variant) *loginworld.World {
+	v.AnyLoopbackPort = true
+	return loginworld.New(t, v)
 }
 
 type run struct {
@@ -226,7 +258,7 @@ func TestLogin_Variants(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			w := loginworld.New(t, c.v)
+			w := newWorld(t, c.v)
 			r := login(t, w, &browser{}, Choice{}, nil, nil)
 			if got := reasonOf(r.err); got != c.reason {
 				t.Fatalf("ended %q (%v), want %q", got, r.err, c.reason)
@@ -275,7 +307,7 @@ func TestLogin_Variants(t *testing.T) {
 // The profile is written at once after the key; when it cannot be, the key
 // goes too (R-44): no key without a profile.
 func TestLogin_ProfileFailsKeyGoes(t *testing.T) {
-	w := loginworld.New(t, loginworld.Variant{})
+	w := newWorld(t, loginworld.Variant{})
 	r := login(t, w, &browser{}, Choice{}, nil, fmt.Errorf("disk full"))
 	if r.err == nil || len(w.Keys()) != 0 || len(w.Permissions()) != 0 {
 		t.Fatalf("err %v; left keys %d, permissions %d", r.err, len(w.Keys()), len(w.Permissions()))
@@ -287,7 +319,7 @@ func TestLogin_ProfileFailsKeyGoes(t *testing.T) {
 
 // Cancel on the consent page: USAGE, nothing made; the page says so.
 func TestLogin_CancelOnThePage(t *testing.T) {
-	w := loginworld.New(t, loginworld.Variant{})
+	w := newWorld(t, loginworld.Variant{})
 	r := login(t, w, &browser{cancel: true}, Choice{}, nil, nil)
 	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || !strings.Contains(r.b.page, tCancelled()) {
 		t.Fatalf("err %v; accounts %d; page %q", r.err, len(w.Accounts()), r.b.page)
@@ -302,7 +334,7 @@ func TestLogin_ChoiceHeldToThePage(t *testing.T) {
 		"term":     func(f url.Values) { f.Set("ttl", "365") },
 		"audience": func(f url.Values) { f.Set("audience", "root") },
 	} {
-		w := loginworld.New(t, loginworld.Variant{})
+		w := newWorld(t, loginworld.Variant{})
 		r := login(t, w, &browser{form: f}, Choice{}, nil, nil)
 		if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 {
 			t.Errorf("%s: err %v; accounts %d", name, r.err, len(w.Accounts()))
@@ -312,7 +344,7 @@ func TestLogin_ChoiceHeldToThePage(t *testing.T) {
 
 // For an agent: the account evo-agent.
 func TestLogin_ForAnAgent(t *testing.T) {
-	w := loginworld.New(t, loginworld.Variant{})
+	w := newWorld(t, loginworld.Variant{})
 	r := login(t, w, &browser{form: func(f url.Values) { f.Set("audience", "agent") }}, Choice{}, nil, nil)
 	if r.err != nil || r.res.Account != "evo-agent" {
 		t.Fatalf("err %v; result %+v", r.err, r.res)
@@ -329,7 +361,7 @@ func TestLogin_ForAnAgent(t *testing.T) {
 // A second login replaces the key of the profile and deletes the previous
 // one by its id (R-25).
 func TestLogin_PreviousKeyRevokedByID(t *testing.T) {
-	w := loginworld.New(t, loginworld.Variant{})
+	w := newWorld(t, loginworld.Variant{})
 	first := login(t, w, &browser{}, Choice{}, nil, nil)
 	if first.err != nil {
 		t.Fatal(first.err)
@@ -348,7 +380,7 @@ func TestLogin_PreviousKeyRevokedByID(t *testing.T) {
 // The terminal gets the address to open; a browser that does not open is
 // no failure.
 func TestLogin_AddressPrinted(t *testing.T) {
-	w := loginworld.New(t, loginworld.Variant{})
+	w := newWorld(t, loginworld.Variant{})
 	r := login(t, w, &browser{}, Choice{}, nil, nil)
 	if r.err != nil || !strings.Contains(r.out, w.Issuer+"/openid/auth?") || !strings.Contains(r.out, "code_challenge_method=S256") {
 		t.Fatalf("err %v; out %q", r.err, r.out)
@@ -384,7 +416,7 @@ func TestCheckDiscovery(t *testing.T) {
 // second callback are 403 with no page (contract, invariant 3).
 func TestLogin_ForeignStateAndSecondCallback(t *testing.T) {
 	for _, v := range []loginworld.Variant{{ForeignState: true}, {TwiceCallback: true}} {
-		w := loginworld.New(t, v)
+		w := newWorld(t, v)
 		statuses := make(chan []int, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		var out bytes.Buffer
@@ -427,7 +459,7 @@ func TestLogin_RefusalNamesStepAndStatus(t *testing.T) {
 		{loginworld.Variant{FailAt: loginworld.StepKey}, stepKey, http.StatusInternalServerError},
 	}
 	for _, c := range cases {
-		w := loginworld.New(t, c.v)
+		w := newWorld(t, c.v)
 		r := login(t, w, &browser{}, Choice{}, nil, nil)
 		var ce *clierrors.CLIError
 		if !errors.As(r.err, &ce) || ce.Details["step"] != c.step {
@@ -455,55 +487,87 @@ func detailsOf(ce *clierrors.CLIError) map[string]any {
 	return ce.Details
 }
 
-// With a terminal the choice is the terminal's: the page only says «signed
-// in»; the defaults are the project allowed, the agent and 30 days; the
-// summary comes before the question, the steps after.
-func TestLogin_TerminalWizard(t *testing.T) {
-	w := loginworld.New(t, loginworld.Variant{})
-	r := loginWith(t, w, &browser{}, Choice{}, nil, nil, []string{"", "", "", "y"})
-	if r.err != nil || len(r.saved) != 1 || r.auds[0] != ForAgent || r.res.Profile != "agent" || r.res.Account != "evo-agent" {
-		t.Fatalf("err %v; saved %d for %v; result %+v\n%s", r.err, len(r.saved), r.auds, r.res, r.out)
+// A terminal only gathers the choice before the browser: the summary
+// first, then the address; the page offers the choice and grants.
+func TestLogin_TerminalGathersThePageGrants(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	b := &browser{form: func(f url.Values) { f.Set("audience", "agent"); f.Set("ttl", "90") }}
+	r := loginWith(t, w, b, Choice{}, nil, nil, []string{"", "90"})
+	if r.err != nil || len(r.saved) != 1 || r.res.Profile != "agent" {
+		t.Fatalf("err %v; saved %d; result %+v\n%s", r.err, len(r.saved), r.res, r.out)
 	}
-	if !strings.Contains(r.b.page, tBackToTerminal()) || strings.Contains(r.b.page, `name="state"`) {
-		t.Errorf("the page of the terminal mode: %q", r.b.page)
+	if sum, open := strings.Index(r.out, tWhatWillBeDone()), strings.Index(r.out, tOpen()); sum < 0 || open < sum {
+		t.Errorf("the summary is not before the address:\n%s", r.out)
 	}
-	sum, ask, step := strings.Index(r.out, tWhatWillBeDone()), strings.Index(r.out, tContinue()), strings.Index(r.out, tStepKeyCheck())
-	if sum < 0 || ask < sum || step < ask {
-		t.Errorf("summary %d, question %d, steps %d:\n%s", sum, ask, step, r.out)
+	if strings.Contains(r.out, "[y/N]") {
+		t.Errorf("the terminal asks for the consent:\n%s", r.out)
 	}
 }
 
-// «No» to the question: USAGE, nothing created.
-func TestLogin_TerminalNo(t *testing.T) {
-	w := loginworld.New(t, loginworld.Variant{})
-	r := loginWith(t, w, &browser{}, Choice{For: ForMe, Days: 7}, nil, nil, []string{"", "n"})
+// The page offers the terminal's choice checked.
+func TestLogin_PageOffersTheTerminalChoice(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	b := &browser{cancel: true}
+	r := loginWith(t, w, b, Choice{}, nil, nil, []string{"2", "90"})
+	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 {
+		t.Fatalf("err %v; accounts %+v", r.err, w.Accounts())
+	}
+	if !strings.Contains(b.consent, `value="agent" checked`) || !strings.Contains(b.consent, `value="90" checked`) {
+		t.Errorf("the page does not offer the terminal's choice")
+	}
+}
+
+// R-47: «Grant access» takes the page's consent token, not the state the
+// terminal shows; the page is served once.
+func TestLogin_GrantTakesTheConsentToken(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	r := login(t, w, &browser{noToken: true, again: true}, Choice{}, nil, nil)
 	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
 		t.Fatalf("err %v; accounts %+v; keys %+v", r.err, w.Accounts(), w.Keys())
 	}
-}
-
-// Every flag and --yes: no question and no consent page; the summary still
-// goes to the terminal.
-func TestLogin_FlagsAndYes(t *testing.T) {
-	w := loginworld.New(t, loginworld.Variant{})
-	r := loginWith(t, w, &browser{}, Choice{Project: loginworld.Project, For: ForMe, Days: 7, Yes: true}, nil, nil, []string{})
-	if r.err != nil || len(r.saved) != 1 || r.auds[0] != ForMe || r.res.Profile != "default" {
-		t.Fatalf("err %v; saved %d; result %+v\n%s", r.err, len(r.saved), r.res, r.out)
+	// The page, the second GET, the grant without the token, the cancel.
+	if len(r.b.status) != 4 || r.b.status[1] != http.StatusForbidden || r.b.status[2] != http.StatusForbidden || r.b.status[3] != http.StatusOK {
+		t.Errorf("statuses %v, want [200 403 403 200]", r.b.status)
 	}
-	if strings.Contains(r.b.page, `name="state"`) || !strings.Contains(r.out, tWhatWillBeDone()) {
-		t.Errorf("page %q\nterminal %s", r.b.page, r.out)
-	}
-	if got := r.saved[0].KeyExpiresAt.Sub(r.saved[0].LoginAt); got < 6*24*time.Hour || got > 8*24*time.Hour {
-		t.Errorf("the key's term %s, want 7 days", got)
+	if tok := consentField.FindStringSubmatch(r.b.consent); tok == nil || strings.Contains(r.out, tok[1]) {
+		t.Errorf("the consent token is missing from the page or printed: %v", tok)
 	}
 }
 
-// Without a terminal and without every flag the choice is the page's, even
-// with --yes.
+// Production listens on the registered ports only.
+func TestLogin_RegisteredPorts(t *testing.T) {
+	if got := Default(nil, nil).Ports; !slices.Equal(got, auth.LoginRedirectPorts[:]) {
+		t.Errorf("ports %v, want %v", got, auth.LoginRedirectPorts)
+	}
+}
+
+// Without a terminal the choice is the page's.
 func TestLogin_NoTerminalIsThePage(t *testing.T) {
-	w := loginworld.New(t, loginworld.Variant{})
-	r := login(t, w, &browser{}, Choice{For: ForMe, Yes: true}, nil, nil)
+	w := newWorld(t, loginworld.Variant{})
+	r := login(t, w, &browser{}, Choice{For: ForMe}, nil, nil)
 	if r.err != nil || !strings.Contains(r.b.page, tDone()) {
 		t.Fatalf("err %v; page %q", r.err, r.b.page)
+	}
+}
+
+// U-9: an error of evaluate is no refusal: the login goes on, the terminal
+// and the page say the right is not checked, and the platform's answer to
+// the first write decides.
+func TestLogin_EvaluateErrorIsNoRefusal(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{EvaluateUnknown: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil || len(r.saved) != 1 {
+		t.Fatalf("err %v; saved %d", r.err, len(r.saved))
+	}
+	note := tUnchecked("")
+	note = note[:strings.Index(note, ":")]
+	if !strings.Contains(r.out, note) || !strings.Contains(r.b.consent, note) {
+		t.Errorf("the note %q is not in the terminal or on the page:\n%s", note, r.out)
+	}
+	// A refusal of the platform at the first write creates nothing.
+	w = newWorld(t, loginworld.Variant{EvaluateUnknown: true, PermForbidden: true})
+	r = login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err == nil || len(w.Keys()) != 0 || len(w.Permissions()) != 0 {
+		t.Fatalf("err %v; keys %+v; permissions %+v", r.err, w.Keys(), w.Permissions())
 	}
 }

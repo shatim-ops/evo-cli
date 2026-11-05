@@ -73,7 +73,8 @@ type consentData struct {
 	Account                                [3]string
 	Role, Key                              [2]string
 	SummaryStays, ReuseNote, Cancel, Grant string
-	SecretNote, State, For                 string
+	SecretNote, State, Consent, For        string
+	Unchecked                              string
 	Projects                               []consentProject
 	Terms                                  []consentTerm
 }
@@ -95,13 +96,16 @@ func consentPage(s *session) page {
 		ForLegend: tForWhom(), ForMe: tForMe(), ForMeNote: tForMeNote(), ForAgent: tForAgent(), ForAgentNote: tForAgentNote(),
 		RoleNote: tRoleNote(), TermLegend: tTerm(), TermNote: tForeverInConsole(), SummaryHeading: tWhatWillBeMade(),
 		SummaryStays: tSumStays(), ReuseNote: tSumReuseNote(), Cancel: tCancel(), Grant: tGrant(), SecretNote: tSecretNote(),
-		State: s.state, For: string(ForAgent),
+		State: s.state, Consent: s.consent, For: string(ForAgent),
 	}
 	copy(d.Account[:], cut(tSumAccountNew("\x00a", "\x00p"), "\x00a", "\x00p"))
 	copy(d.Role[:], cut(tSumRole("\x00d"), "\x00d"))
 	copy(d.Key[:], cut(tSumKey("\x00d"), "\x00d"))
 	if s.choice.For == ForMe {
 		d.For = string(ForMe)
+	}
+	if s.unchecked != "" {
+		d.Unchecked = tUnchecked(s.unchecked)
 	}
 	var rules strings.Builder
 	checked := false
@@ -173,11 +177,6 @@ func donePage(r Result) page {
 		},
 		Footer: tRevokeHow(),
 	}}
-}
-
-// signedInPage is the page of the terminal: the choice is made there.
-func signedInPage() page {
-	return page{"signedin", resultData{head: newHead(tSignedInTitle() + " — evo"), Status: tSignedInTitle(), Text: tBackToTerminal()}}
 }
 
 func cancelledPage() page {

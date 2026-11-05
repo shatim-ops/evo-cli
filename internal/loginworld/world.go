@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -104,6 +105,14 @@ type Variant struct {
 	AccountLimit  bool   // the project has 10 service accounts
 	KeyLimit      bool   // the account has 50 keys
 	FailAt        Step   // the write of this step answers 500
+	// AnyLoopbackPort takes a redirect_uri at any port of 127.0.0.1, not
+	// only the registered ones: the tests of evo listen on port 0, so that
+	// they share no fixed port with each other or the probe script.
+	AnyLoopbackPort bool
+	// EvaluateUnknown: evaluate and bulk-evaluate answer 400 «unknown
+	// action» (the names of the actions are a hypothesis until the probe;
+	// «Риск», U-9).
+	EvaluateUnknown bool
 }
 
 // Account, Permission and Key are the objects of the project.
@@ -359,6 +368,9 @@ func (w *World) serve(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// loopbackCallback is a redirect_uri on 127.0.0.1 at any port.
+var loopbackCallback = regexp.MustCompile(`^http://127\.0\.0\.1:[0-9]{1,5}/callback$`)
+
 // authorize checks the request of step 4 and redirects with a code (302).
 func (w *World) authorize(rw http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -366,6 +378,9 @@ func (w *World) authorize(rw http.ResponseWriter, r *http.Request) {
 	known := false
 	for _, u := range RedirectURIs {
 		known = known || u == redirect
+	}
+	if w.v.AnyLoopbackPort {
+		known = known || loopbackCallback.MatchString(redirect)
 	}
 	switch {
 	case !known:
@@ -517,6 +532,8 @@ func (w *World) administration(rw http.ResponseWriter, r *http.Request) {
 		writeJSON(rw, 200, map[string]any{"actions": []map[string]string{
 			{"name": "iam.serviceAccounts.create", "productCode": "iam"},
 			{"name": "iam.permissions.create", "productCode": "iam"}}})
+	case w.v.EvaluateUnknown && (p == "/api/v1/permissions/evaluate" || p == "/api/v1/permissions/bulk-evaluate"):
+		fail(rw, 400, "unknown action")
 	case p == "/api/v1/permissions/evaluate":
 		writeJSON(rw, 200, map[string]bool{"accessGranted": !w.v.Denied})
 	case p == "/api/v1/permissions/bulk-evaluate":

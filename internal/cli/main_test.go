@@ -38,6 +38,7 @@ func TestMain(m *testing.M) {
 		c := login.Default(say, open)
 		c.Issuer = "http://127.0.0.1:1/auth/system"
 		c.Trusted = func(string) bool { return false }
+		c.Ports = []int{0} // no test takes a registered port
 		return c
 	}
 	code := m.Run()

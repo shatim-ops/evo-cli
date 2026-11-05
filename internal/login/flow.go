@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
@@ -48,18 +49,13 @@ var Terms = []int{7, 30, 90}
 // DefaultTerm is the term chosen by default.
 const DefaultTerm = 30
 
-// Choice is what the flags of evo login choose: an empty field leaves it
-// to the person. Yes with every field chosen asks nothing (no wizard, no
-// page); Yes alone skips the wizard's last question.
+// Choice is what the flags of evo login, or the terminal, choose before the
+// page: the page offers it chosen; an empty field leaves it to the page.
 type Choice struct {
 	Project string
 	For     Audience
 	Days    int
-	Yes     bool
 }
-
-// full reports whether the flags chose everything.
-func (c Choice) full() bool { return c.Project != "" && c.For != "" && c.Days != 0 }
 
 // Store is where the key goes: the profile of an audience, the key it holds
 // now and the keeping of the new one. The audience is known only after the
@@ -174,14 +170,19 @@ type session struct {
 	choice Choice
 	store  Store
 
-	state, nonce, verifier, redirect string
-	disc                             Discovery
-	human                            string // the person's access token, in memory only
-	who                              person
-	projects                         []project
-	admin                            *iamadmin.Client
+	// consent is the token of the consent page (R-47): made with the page,
+	// never printed; /grant and /cancel take it with the state.
+	state, nonce, verifier, redirect, consent string
+	disc                                      Discovery
+	human                                     string // the person's access token, in memory only
+	who                                       person
+	projects                                  []project
+	unchecked                                 string // why evaluate gave no answer (U-9)
+	admin                                     *iamadmin.Client
 
 	made []undo // what this login created, oldest first
+
+	tellMu sync.Mutex
 }
 
 // undo deletes one thing this login made.
@@ -272,7 +273,15 @@ func (s *session) prepare(ctx context.Context) error {
 	}
 	got, err := s.admin.BulkEvaluate(ctx, checks)
 	if err != nil {
-		return at(stepBulk, err)
+		// U-9: only an explicit «denied» refuses before a write; the
+		// first write gives the platform's answer otherwise.
+		if err := s.uncheck(err); err != nil {
+			return at(stepBulk, err)
+		}
+		got = make([]bool, len(checks))
+		for i := range got {
+			got[i] = true
+		}
 	}
 	anyAllowed := false
 	for i := range s.projects {
@@ -281,6 +290,21 @@ func (s *session) prepare(ctx context.Context) error {
 	}
 	if !anyAllowed {
 		return at(stepBulk, noRight(s.projects[0].Name))
+	}
+	return nil
+}
+
+// uncheck takes an error of evaluate as no answer, not a refusal («Риск»,
+// U-9): the names of the actions are a hypothesis until the probe, and a
+// wrong one must not refuse everyone. The terminal and the page say the
+// right is not checked. An interruption stays one.
+func (s *session) uncheck(err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if s.unchecked == "" {
+		s.unchecked = oneLine(err.Error())
+		s.tell(tUnchecked(s.unchecked))
 	}
 	return nil
 }
@@ -367,7 +391,10 @@ func (s *session) planFor(ctx context.Context, p project, aud Audience, days int
 	for _, a := range []string{auth.LoginActionCreateAccount, auth.LoginActionGrantRole} {
 		ok, err := s.admin.Evaluate(ctx, iamadmin.Check{Action: a, ResourceID: p.ID})
 		if err != nil {
-			return pl, at(stepEvaluate, err)
+			if err := s.uncheck(err); err != nil {
+				return pl, at(stepEvaluate, err)
+			}
+			break
 		}
 		if !ok {
 			return pl, at(stepEvaluate, noRight(p.Name))

@@ -60,32 +60,37 @@ func newLoginCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: i18n.T("Sign in to Cloud.ru in a browser and keep an access key in the profile", "Войти в Cloud.ru через браузер и записать ключ доступа в профиль"),
-		Long: i18n.T(`Sign in to Cloud.ru in a browser, then choose the project, whom the key
-is for (you: account evo, profile of now; an agent: account evo-agent,
-profile «agent») and its term (7, 30 or 90 days): in the terminal when
-there is one, on the page evo serves on this machine when there is not;
-every flag with --yes asks nothing. With your rights evo makes or reuses
-the service account, grants it the role «project administrator» until the
-key's term, creates the key and keeps it in the profile. The role
-includes deleting resources. A previous key evo login made for that
-profile is revoked. Your tokens stay in memory; the key's secret is shown
-nowhere. A refusal names its step and HTTP status. Undo: evo logout.`, `Войти в Cloud.ru через браузер и выбрать проект, для кого ключ (вам —
-аккаунт evo, текущий профиль; агенту — аккаунт evo-agent, профиль
-«agent») и его срок (7, 30 или 90 дней): в терминале, если он есть, иначе
-на странице, которую evo открывает на этой машине; все флаги с --yes — без
-вопросов. Вашими правами evo создаёт или переиспользует сервисный аккаунт,
+		Long: i18n.T(`Sign in to Cloud.ru in a browser and grant access on the page evo serves
+on this machine: the project, whom the key is for (you: account evo,
+profile of now; an agent: account evo-agent, profile «agent») and its
+term (7, 30 or 90 days). A terminal, when there is one, asks whom and the
+term before the browser; access is granted only by «Grant access» on the
+page (no --yes). With your rights evo makes or reuses the service
+account, grants it the role «project administrator» until the key's term,
+creates the key and keeps it in the profile. The role includes deleting
+resources. A previous key evo login made for that profile is revoked.
+Your tokens stay in memory; the key's secret is shown nowhere. A refusal
+names its step and HTTP status. Over SSH or in a container the sign-in
+does not complete. Undo: evo logout.`, `Войти в Cloud.ru через браузер и выдать доступ на странице, которую evo
+открывает на этой машине: проект, для кого ключ (вам — аккаунт evo,
+текущий профиль; агенту — аккаунт evo-agent, профиль «agent») и его срок
+(7, 30 или 90 дней). Терминал, если он есть, спрашивает «кому» и срок до
+браузера; доступ выдаёт только кнопка «Выдать доступ» на странице (--yes
+нет). Вашими правами evo создаёт или переиспользует сервисный аккаунт,
 выдаёт ему роль «Администратор проекта» до срока ключа, создаёт ключ и
 записывает его в профиль. Роль включает удаление ресурсов. Прежний ключ
 evo login этого профиля отзывается. Ваши токены остаются в памяти; секрет
-ключа нигде не показывается. Отказ называет шаг и HTTP-статус. Отменить —
-evo logout.`),
+ключа нигде не показывается. Отказ называет шаг и HTTP-статус. По SSH и в
+контейнере вход не пройдёт. Отменить — evo logout.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if flagYes {
+				return login.RefuseYes()
+			}
 			choice, err := loginChoice(project, forWhom, ttl)
 			if err != nil {
 				return err
 			}
-			choice.Yes = flagYes
 			store := loginStore{}
 			if name, explicit := config.ProfileName(flagProfile); explicit {
 				if err := config.ValidateProfileName(name); err != nil {
@@ -135,7 +140,7 @@ evo logout.`),
 	cmd.Flags().StringVar(&forWhom, "for", "", i18n.T("Whom the key is for: me (account evo, profile of now) or agent (account evo-agent, profile «agent»)",
 		"Для кого ключ: me (аккаунт evo, текущий профиль) или agent (аккаунт evo-agent, профиль «agent»)"))
 	cmd.Flags().StringVar(&ttl, "key-ttl", "", i18n.T("Term of the key: 7d, 30d or 90d (30d by default)", "Срок ключа: 7d, 30d или 90d (по умолчанию 30d)"))
-	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, i18n.T("Do not open a browser: only print the address", "Не открывать браузер: только напечатать адрес"))
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, i18n.T("Do not open a browser: only print the address (to open on this same machine)", "Не открывать браузер: только напечатать адрес (открыть на этой же машине)"))
 	return cmd
 }
 

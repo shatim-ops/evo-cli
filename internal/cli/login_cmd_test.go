@@ -23,7 +23,7 @@ import (
 // the output, and logout deletes that key by its id with its own token.
 func TestLoginLogout_OnTheWorld(t *testing.T) {
 	setupCLI(t)
-	w := loginworld.New(t, loginworld.Variant{})
+	w := loginworld.New(t, loginworld.Variant{AnyLoopbackPort: true})
 	oldCfg, oldOpen, oldIAM := loginConfig, openBrowser, auth.IAMEndpoint
 	t.Cleanup(func() { loginConfig, openBrowser, auth.IAMEndpoint = oldCfg, oldOpen, oldIAM })
 	auth.IAMEndpoint = w.URL + "/api/v1/auth/token"
@@ -32,9 +32,11 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 		c.Issuer, c.OrgBase, c.AdminBase, c.KeyToken = w.Issuer, w.URL, w.URL, w.URL+"/api/v1/auth/token"
 		c.Trusted = func(u string) bool { return strings.HasPrefix(u, w.URL+"/") }
 		c.HTTP = w.Client()
+		c.Ports = []int{0} // no test takes a registered port
 		return c
 	}
 	state := regexp.MustCompile(`name="state" value="([^"]+)"`)
+	consent := regexp.MustCompile(`name="consent" value="([^"]+)"`)
 	openBrowser = func(authURL string) error {
 		go func() {
 			c := w.Client()
@@ -50,8 +52,8 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 			}
 			page, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			m := state.FindSubmatch(page)
-			if m == nil {
+			m, tok := state.FindSubmatch(page), consent.FindSubmatch(page)
+			if m == nil || tok == nil {
 				return
 			}
 			// The flags chose the agent and 7 days: the page offers them
@@ -59,7 +61,7 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 			if !strings.Contains(string(page), `value="agent" checked`) || !strings.Contains(string(page), `value="7" checked`) {
 				t.Errorf("the page does not carry the choice of the flags")
 			}
-			r, err := c.PostForm("http://"+cb.Host+"/grant", url.Values{"state": {string(m[1])},
+			r, err := c.PostForm("http://"+cb.Host+"/grant", url.Values{"state": {string(m[1])}, "consent": {string(tok[1])},
 				"project": {loginworld.Project}, "audience": {"agent"}, "ttl": {"7"}})
 			if err == nil {
 				r.Body.Close()
@@ -106,6 +108,20 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 	// The account and its role stay (contract B-1, section 3).
 	if len(w.Accounts()) != 1 || len(w.Permissions()) != 1 {
 		t.Errorf("logout touched the account or its role: %+v %+v", w.Accounts(), w.Permissions())
+	}
+}
+
+// evo login takes no --yes: access is the page's «Grant access» alone
+// («Риск», conclusion 24); refused before any request.
+func TestLogin_RefusesYes(t *testing.T) {
+	setupCLI(t)
+	called := false
+	oldOpen := openBrowser
+	t.Cleanup(func() { openBrowser = oldOpen })
+	openBrowser = func(string) error { called = true; return nil }
+	code, stdout, stderr := runCLI(t, "", "--json", "--yes", "login", "--project", "p", "--for", "agent", "--key-ttl", "7d")
+	if code != 1 || !strings.Contains(stderr+stdout, `"reason":"USAGE"`) || called {
+		t.Fatalf("exit %d, browser %v\n%s\n%s", code, called, stdout, stderr)
 	}
 }
 

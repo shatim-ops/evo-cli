@@ -5,6 +5,7 @@
 package login
 
 import (
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
@@ -38,19 +39,7 @@ func tWaiting(wait time.Duration) string {
 	return i18n.Tf("Waiting for the sign-in (up to %d min, Ctrl-C to cancel)…", "Жду вход (до %d мин, Ctrl-C — отмена)…", int(wait.Minutes()))
 }
 
-func tLoggedIn(login string) string { return i18n.Tf("Signed in: %s", "Вошли: %s", login) }
-
-func tProject() string       { return i18n.T("Project", "Проект") }
-func tOrganizations() string { return i18n.T("Organizations:", "Организации:") }
-func tChooseOrg() string {
-	return i18n.T("Choose an organization (number or ID)", "Выберите организацию (номер или ID)")
-}
-func tProjectsAdmin() string {
-	return i18n.T("Projects where you are an administrator:", "Проекты, где вы администратор:")
-}
-func tChooseProject() string {
-	return i18n.T("Choose a project (number or ID)", "Выберите проект (номер или ID)")
-}
+func tProject() string { return i18n.T("Project", "Проект") }
 func tNoRightMark() string {
 	return i18n.T("no right: takes the project administrator", "нет права: нужен администратор проекта")
 }
@@ -66,9 +55,8 @@ func tWhatWillBeDone() string {
 func tWhatWillBeMade() string {
 	return i18n.T("What will be created", "Что будет создано")
 }
-func tContinue() string { return i18n.T("Continue?", "Продолжить?") }
-func tGrant() string    { return i18n.T("Grant access", "Выдать доступ") }
-func tCancel() string   { return i18n.T("Cancel", "Отмена") }
+func tGrant() string  { return i18n.T("Grant access", "Выдать доступ") }
+func tCancel() string { return i18n.T("Cancel", "Отмена") }
 
 func tNoRightNote() string {
 	return i18n.T("Access in a project without the right can be created by its administrator: ask them to run evo login, or to create a key in the console and pass it to you.",
@@ -119,22 +107,6 @@ func tRowAccount() string { return i18n.T("account", "аккаунт") }
 func tRowRole() string    { return i18n.T("role", "роль") }
 func tRowKey() string     { return i18n.T("key", "ключ") }
 func tRowProfile() string { return i18n.T("profile", "профиль") }
-func tAccountIn(account, project string) string {
-	return i18n.Tf("%s in the project %s (create)", "%s в проекте %s (создать)", account, project)
-}
-func tAccountThere(account, project string, keys, limit int) string {
-	return i18n.Tf("%s in the project %s (there, keys %d of %d)", "%s в проекте %s (есть, ключей %d из %d)", account, project, keys, limit)
-}
-func tRevokeRow() string { return i18n.T("previous key", "прежний ключ") }
-func tRevokeValue(keyID string) string {
-	return i18n.Tf("%s: revoke after the new one is kept", "%s: отозвать после записи нового", keyID)
-}
-func eAmbiguous(project string, n int) string {
-	return i18n.Tf("the name %q is of %d projects, nothing was created", "имя %q у %d проектов, ничего не создано", project, n)
-}
-func eAmbiguousHint() string {
-	return i18n.T("Pass the project's id in --project.", "Передайте в --project id проекта.")
-}
 func tRoleUntil(term time.Time) string {
 	return i18n.Tf("%s, until %s", "%s, до %s", auth.LoginRoleDisplayName, day(term))
 }
@@ -152,13 +124,6 @@ func tStepAccount(account string, reused bool) string {
 func tStepRole() string     { return i18n.T("role… granted", "роль… выдана") }
 func tStepKey() string      { return i18n.T("key… issued", "ключ… выпущен") }
 func tStepKeyCheck() string { return i18n.T("key check… ok", "проверка ключа… ок") }
-
-// The page of the terminal mode.
-func tSignedInTitle() string { return i18n.T("Signed in", "Вошли") }
-func tBackToTerminal() string {
-	return i18n.T("Go back to the terminal to choose the project. This window can be closed.",
-		"Вернитесь в терминал, чтобы выбрать проект. Это окно можно закрыть.")
-}
 
 // The result.
 func tDone() string { return i18n.T("Done", "Готово") }
@@ -277,4 +242,27 @@ func eProviderHint() string {
 }
 func eCancelledHint() string {
 	return i18n.T("Run evo login when ready.", "Повторите evo login, когда будете готовы.")
+}
+func tGrantOnPage() string {
+	return i18n.T("The project is chosen on the page that opens after the sign-in; access is granted only by «Grant access» there.",
+		"Проект выбирается на странице, которая откроется после входа; доступ выдаёт только кнопка «Выдать доступ» на ней.")
+}
+func tNoBrowser() string {
+	return i18n.T("The browser is not opened: open the link on this same machine. Over SSH or in a container the sign-in does not complete: the provider returns to 127.0.0.1 of the machine with the browser.",
+		"Браузер не открывается: откройте ссылку на этой же машине. По SSH и в контейнере вход не пройдёт: провайдер возвращает на 127.0.0.1 машины с браузером.")
+}
+func eNoYes() string {
+	return i18n.T("evo login takes no --yes: access is granted only by «Grant access» on the page", "у evo login нет --yes: доступ выдаёт только кнопка «Выдать доступ» на странице")
+}
+func eNoYesHint() string {
+	return i18n.T("Run evo login without --yes; the person grants on the page.", "Запустите evo login без --yes; доступ выдаёт человек на странице.")
+}
+
+// RefuseYes is the refusal of evo login --yes, before any request: the
+// consent is the page's («Риск», conclusion 24).
+func RefuseYes() error { return clierrors.New(clierrors.CodeUsage, eNoYes(), eNoYesHint()) }
+
+func tUnchecked(reason string) string {
+	return i18n.Tf("the right is not checked: %s; the platform answers the first write (a refusal there creates nothing)",
+		"право не проверено: %s; ответит первая запись платформы (её отказ ничего не создаёт)", reason)
 }

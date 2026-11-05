@@ -126,6 +126,7 @@ func setupCLI(t *testing.T) *fakeCloud {
 		c.Issuer, c.OrgBase, c.AdminBase, c.KeyToken = srv.URL+"/auth/system", srv.URL, srv.URL, srv.URL+"/iam/token"
 		c.Trusted = func(u string) bool { return strings.HasPrefix(u, srv.URL+"/") }
 		c.HTTP = srv.Client()
+		c.Ports = []int{0} // no test takes a registered port
 		return c
 	}
 	openBrowser = func(string) error { return nil }
