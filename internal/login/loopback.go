@@ -152,6 +152,10 @@ func (l *loopback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	// The fonts of the pages: static, without the lock a grant may hold.
+	if serveFont(w, r) {
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	l.mu.Lock()
 	defer l.mu.Unlock()

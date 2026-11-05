@@ -46,8 +46,9 @@ func newHead(title string) head {
 
 func writePage(w http.ResponseWriter, code int, p page) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// The pages load nothing: no script, no style or image of another origin.
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+	// The pages load nothing of another origin: no script; the fonts are the
+	// loopback's own (/fonts/, embedded).
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; form-action 'self'; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.WriteHeader(code)
 	_ = pages.ExecuteTemplate(w, p.name, p.data)
