@@ -46,6 +46,7 @@ const optionalSubnet = "00000000-0000-0000-0000-0000000000d1"
 // image_id) goes here, the other one is set.
 var optionalLeftOut = map[string]string{
 	"deploy image":                              "an alternative of image_id",
+	"deploy compose_hash":                       "a check of the consent (R-38), not a value the write takes: another hash answers the preview",
 	"provision image":                           "an alternative of image_id",
 	"destroy name":                              "an alternative of vm_id",
 	"k8s_add_nodepool flavor":                   "an alternative of cpu and ram_gb",

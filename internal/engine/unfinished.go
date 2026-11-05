@@ -64,6 +64,11 @@ func wayOn(rec *state.DeploymentRecord) (string, map[string]any, string) {
 				"Вызовите deploy_apply ещё раз с plan_id %s: он возьмёт ВМ плана и продолжит. status покажет, докуда дошло.", rec.PlanID)
 	case rec.Source == "" && rec.ComposePath != "":
 		args := map[string]any{"compose_file": rec.ComposePath}
+		// The consent goes on for the file it was given for: another file
+		// now is asked again («Риск», R-38).
+		if rec.ComposeHash != "" {
+			args["compose_hash"] = rec.ComposeHash
+		}
 		hint := i18n.T("Call deploy again with this compose file: it takes the VM in the state and goes on from where it stopped. status shows how far it got.",
 			"Вызовите deploy ещё раз с этим compose-файлом: он возьмёт ВМ из state и продолжит с того места, где остановился. status покажет, докуда дошло.")
 		if rec.Cidr != "" {

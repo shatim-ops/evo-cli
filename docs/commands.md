@@ -2452,6 +2452,7 @@ evo deploy [flags]
 ```
       --cidr string           CIDR источника правил портов (по умолчанию 0.0.0.0/0 — откуда угодно)
   -f, --compose-file string   Путь к compose-файлу (по умолчанию docker-compose.yml)
+      --compose-hash string   Хеш compose-файла, для которого дано --yes (next_args незаконченного deploy); другой файл — не развёртывать, спросить снова
       --disk-size int         Размер загрузочного диска, ГБ (по умолчанию 10)
       --flavor string         Flavor ВМ (по умолчанию auto — подбор по сервисам)
       --force                 Развернуть заново, даже если compose-файл не изменился
