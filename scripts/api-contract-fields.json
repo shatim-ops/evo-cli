@@ -1872,6 +1872,26 @@
    "records[].wildcard",
    "tags[]"
   ],
+  "iam DELETE /api/v2/serviceAccounts/{serviceAccountId}": [],
+  "iam DELETE /api/v2/serviceAccounts/{serviceAccountId}/accessKeys/{accessKeyId}": [],
+  "iam DELETE /api/v3/permissions/{permissionId}": [],
+  "iam GET /api/v1/permissions/evaluate": [
+   "accessGranted"
+  ],
+  "iam GET /api/v1/roles": [
+   "nextPageToken",
+   "roles[]",
+   "roles[].actions[]",
+   "roles[].createdAt",
+   "roles[].customerId",
+   "roles[].description",
+   "roles[].displayName",
+   "roles[].enabled",
+   "roles[].id",
+   "roles[].name",
+   "roles[].type",
+   "roles[].updatedAt"
+  ],
   "iam GET /api/v2/serviceAccounts": [
    "nextPageToken",
    "serviceAccounts[]",
@@ -1917,6 +1937,37 @@
   "iam POST /api/v1/auth/token": [
    "keyId",
    "secret"
+  ],
+  "iam POST /api/v1/permissions/bulk-evaluate": [
+   "requests[]",
+   "requests[].action",
+   "requests[].customerId",
+   "requests[].resourceId",
+   "requests[].serviceAccountId",
+   "requests[].userId"
+  ],
+  "iam POST /api/v2/serviceAccounts": [
+   "description",
+   "name",
+   "target",
+   "target.customerId",
+   "target.projectId"
+  ],
+  "iam POST /api/v2/serviceAccounts/{serviceAccountId}/accessKeys": [
+   "description",
+   "ttl"
+  ],
+  "iam POST /api/v3/permissions": [
+   "expiresAt",
+   "resourceId",
+   "role",
+   "roleIdentifier",
+   "roleIdentifier.roleId",
+   "roleIdentifier.roleName",
+   "subjectId"
+  ],
+  "iam PUT /api/v3/permissions/{permissionId}": [
+   "expiresAt"
   ],
   "kafka DELETE /v1/clusters/{cluster_id}": [],
   "kafka GET /v1/clusters": [
@@ -2555,6 +2606,15 @@
    "target_vm_specs[].interface_id"
   ],
   "oidc POST /auth/system/openid/token": [],
+  "organization GET /v3/customers": [
+   "customers[]",
+   "customers[].full_name",
+   "customers[].id",
+   "customers[].name",
+   "customers[].owner_id",
+   "customers[].type",
+   "next_page_token"
+  ],
   "organization GET /v3/projects": [
    "next_page_token",
    "projects[]",

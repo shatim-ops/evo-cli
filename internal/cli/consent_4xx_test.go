@@ -29,6 +29,10 @@ const (
 	// A rule a read could tell before the question that the world does not
 	// model yet: an axis 1 gap, with its work item.
 	ruleGap = "gap"
+	// evo login and logout: no tool and no gate of the registry; the
+	// person's consent is the page of the loopback, and the world of B-2
+	// (internal/loginworld) holds every answer of these calls (B-3).
+	ruleLogin = "evo login: the page of the loopback, the world of B-2"
 )
 
 // writeRules are the 4xx answers to a write that evo handles
@@ -84,9 +88,14 @@ var writeRules = map[string]struct{ world, why, item string }{
 	"POST /api/v1/nat-gateways 422":                    {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"DELETE /api/v1/nat-gateways/{nat_gateway_id} 404": {why: ruleAbsentID},
 
-	"POST /api/v1/projects/{project_id}/price-calculation 422": {why: ruleRead},
-	"POST /api/v1/auth/token 401":                              {why: ruleOfKey},
-	"POST /api/v1/auth/token 403":                              {why: ruleOfKey},
+	"POST /api/v1/projects/{project_id}/price-calculation 422":                       {why: ruleRead},
+	"POST /api/v1/auth/token 401":                                                    {why: ruleOfKey},
+	"POST /api/v2/serviceAccounts 409":                                               {why: ruleLogin},
+	"POST /api/v3/permissions 400":                                                   {why: ruleLogin},
+	"DELETE /api/v2/serviceAccounts/{serviceAccountId} 404":                          {why: ruleLogin},
+	"DELETE /api/v3/permissions/{permissionId} 404":                                  {why: ruleLogin},
+	"DELETE /api/v2/serviceAccounts/{serviceAccountId}/accessKeys/{accessKeyId} 404": {why: ruleLogin},
+	"POST /api/v1/auth/token 403":                                                    {why: ruleOfKey},
 }
 
 // Each 4xx a write of evo handles is a rule of the consent world
