@@ -56,7 +56,7 @@ func tNoRightMark() string {
 // tNoRightNote and eNoRightHint name the way of a person without the right
 // («Риск», conclusion 28.2): the administrator makes the account and key.
 func tNoRightNote() string {
-	return i18n.T("If you are not a project administrator, ask the project administrator to create a service account with the required role and a key for you in the Cloud.ru personal account",
+	return i18n.T("If you are not a project administrator, ask the project administrator to create a service account with the required role and a key for you in the Cloud.ru console",
 		"Если прав администратора в проекте нет, попросите администратора проекта создать для вас сервисный аккаунт с нужной ролью и ключ в личном кабинете Cloud.ru")
 }
 func tForWhom() string { return i18n.T("Who the key is for", "Кому ключ") }
@@ -80,14 +80,14 @@ func tAgentWarnTitle() string {
 	return i18n.T("The agent will get project administrator rights", "Агент получит права администратора проекта")
 }
 func tAgentWarn(until string) string {
-	return i18n.Tf("The role “%s” gives the agent full access to the project: it can create, modify and delete any resources of the project, including those not created through %s, and manage service accounts and keys. The role is granted until %s. To revoke access earlier, sign out of %s on this computer — the key will be deleted. The role is removed in the Cloud.ru personal account",
+	return i18n.Tf("The role “%s” gives the agent full access to the project: it can create, modify and delete any resources of the project, including those not created through %s, and manage service accounts and keys. The role is granted until %s. To revoke access earlier, sign out of %s on this computer — the key will be deleted. The role is removed in the Cloud.ru console",
 		"Роль «%s» дает агенту полный доступ к ресурсам проекта: он может создавать, изменять и удалять любые ресурсы проекта, в том числе созданные не через %s, а также управлять сервисными аккаунтами и ключами. Роль выдается со сроком до %s. Чтобы отозвать доступ раньше, выйдите из %s на этом компьютере — ключ будет удален. Роль снимается в личном кабинете Cloud.ru",
 		auth.LoginRoleDisplayName, product.PageName, until, product.PageName)
 }
 func tTerm() string      { return i18n.T("Key validity", "Срок ключа") }
 func tDays(n int) string { return i18n.Tf("%d days", "%d дней", n) }
 func tForeverInConsole() string {
-	return i18n.T("Keys that never expire can be created only in the Cloud.ru personal account", "Бессрочные ключи создаются только в личном кабинете Cloud.ru")
+	return i18n.T("Keys that never expire can be created only in the Cloud.ru console", "Бессрочные ключи создаются только в личном кабинете Cloud.ru")
 }
 
 // tUnchecked is the one mark of the right on the page and in the terminal
@@ -179,7 +179,7 @@ func tRoleUntil(term time.Time) string {
 	return i18n.Tf("%s, until %s", "%s, до %s", auth.LoginRoleDisplayName, day(term))
 }
 func tRevokeHow() string {
-	return i18n.Tf("To revoke access, sign out of %s or delete the key in the Cloud.ru personal account under “Service accounts”. You can close this window",
+	return i18n.Tf("To revoke access, sign out of %s or delete the key in the Cloud.ru console under “Service accounts”. You can close this window",
 		"Чтобы закрыть доступ, выйдите из %s или удалите ключ в личном кабинете Cloud.ru в разделе «Сервисные аккаунты». Это окно можно закрыть",
 		product.PageName)
 }
@@ -221,7 +221,7 @@ func tAgentWarnLine(until string) string {
 		"Агент получит права администратора проекта: любые ресурсы проекта, в том числе созданные не через evo CMCP, он может удалять, а также выпускать новые ключи. Роль выдается со сроком до %s", until)
 }
 func tAgentRevokeLine() string {
-	return i18n.T("To revoke earlier: evo logout deletes the key; the role is removed in the Cloud.ru personal account",
+	return i18n.T("To revoke earlier: evo logout deletes the key; the role is removed in the Cloud.ru console",
 		"Отозвать раньше: evo logout удалит ключ, роль снимается в личном кабинете Cloud.ru")
 }
 func tTermQuestion() string {
@@ -342,7 +342,7 @@ func eNoRightAny(n int) string {
 	return i18n.Tf("not enough rights to grant access in any of your %d projects", "недостаточно прав для выдачи доступа ни в одном из %d проектов", n)
 }
 func eNoRightHint() string {
-	return i18n.T("Ask the project administrator to create a service account with the required role and a key for you in the Cloud.ru personal account. Retrying will not help.",
+	return i18n.T("Ask the project administrator to create a service account with the required role and a key for you in the Cloud.ru console. Retrying will not help.",
 		"Попросите администратора проекта создать для вас сервисный аккаунт с нужной ролью и ключ в личном кабинете Cloud.ru. Повтор не поможет.")
 }
 
@@ -355,7 +355,7 @@ func eAccountLimit(project string, n int) string {
 		"в проекте «%s» достигнут лимит сервисных аккаунтов (%d), новый не создан", project, n)
 }
 func eAccountLimitHint() string {
-	return i18n.T("Delete an unused service account in the Cloud.ru personal account, or choose another project.",
+	return i18n.T("Delete an unused service account in the Cloud.ru console, or choose another project.",
 		"Удалите неиспользуемый сервисный аккаунт в личном кабинете Cloud.ru или выберите другой проект.")
 }
 func eKeyLimit(account string, n int) string {
@@ -363,7 +363,7 @@ func eKeyLimit(account string, n int) string {
 		"у сервисного аккаунта %s достигнут лимит ключей (%d), новый не создан", account, n)
 }
 func eKeyLimitHint(account string) string {
-	return i18n.Tf("Delete unused keys in the Cloud.ru personal account: “Service accounts” → %s.",
+	return i18n.Tf("Delete unused keys in the Cloud.ru console: “Service accounts” → %s.",
 		"Удалите неиспользуемые ключи в личном кабинете Cloud.ru: «Сервисные аккаунты» → %s.", account)
 }
 func eNotComplete(cause string, made, undone, left []string) string {
@@ -372,7 +372,7 @@ func eNotComplete(cause string, made, undone, left []string) string {
 }
 func eNotCompleteHint(left bool) string {
 	if left {
-		return i18n.T("Delete what was left behind in the Cloud.ru personal account under “Service accounts” and run evo login again.",
+		return i18n.T("Delete what was left behind in the Cloud.ru console under “Service accounts” and run evo login again.",
 			"Удалите оставшееся в личном кабинете Cloud.ru в разделе «Сервисные аккаунты» и повторите evo login.")
 	}
 	return i18n.T("Nothing was left behind. Run evo login again.", "Ничего не осталось. Повторите evo login.")
@@ -406,15 +406,15 @@ func eNoProject(project, login string) string {
 	return i18n.Tf("the project “%s” was not found among the projects of %s; nothing was created", "проект «%s» не найден среди проектов %s, ничего не создано", project, login)
 }
 func eNoProjectHint() string {
-	return i18n.T("Create a project in the Cloud.ru personal account, or sign in as a project member.",
+	return i18n.T("Create a project in the Cloud.ru console, or sign in as a project member.",
 		"Создайте проект в личном кабинете Cloud.ru или войдите как участник проекта.")
 }
 func eNoProjectHintFlag() string {
-	return i18n.T("Pass in --project the ID or name of a project from the Cloud.ru personal account, or run evo login without --project to choose the project on the page.",
+	return i18n.T("Pass in --project the ID or name of a project from the Cloud.ru console, or run evo login without --project to choose the project on the page.",
 		"Укажите в --project ID или имя проекта из личного кабинета Cloud.ru или запустите evo login без --project, чтобы выбрать проект на странице.")
 }
 func eKeyLeft(keyID string, err error) string {
-	return i18n.Tf("the previous key %s was not deleted: %v. Delete it in the Cloud.ru personal account", "прежний ключ %s не удален: %v. Удалите его в личном кабинете Cloud.ru", keyID, err)
+	return i18n.Tf("the previous key %s was not deleted: %v. Delete it in the Cloud.ru console", "прежний ключ %s не удален: %v. Удалите его в личном кабинете Cloud.ru", keyID, err)
 }
 
 // tAt names the step of a refusal and the HTTP status of the answer that
@@ -489,7 +489,7 @@ func ENoProfileHint() string {
 	return i18n.T("To list profiles: evo configure list.", "Список профилей — evo configure list.")
 }
 func TLogoutKept() string {
-	return i18n.T("the key of this profile was not created by evo login and remains in the cloud. If you do not need it, delete it in the Cloud.ru personal account",
+	return i18n.T("the key of this profile was not created by evo login and remains in the cloud. If you do not need it, delete it in the Cloud.ru console",
 		"ключ этого профиля создан не через evo login и остается в облаке. Если он не нужен, удалите его в личном кабинете Cloud.ru")
 }
 func TLogoutDone(profile string, key any) string {
@@ -500,7 +500,7 @@ func eKeyNotDeleted(accessKeyID string, err error) string {
 	return i18n.Tf("the access key %s was not deleted: %v; the profile was kept", "ключ доступа %s не удален: %v; профиль сохранен", accessKeyID, err)
 }
 func eKeyNotDeletedHint() string {
-	return i18n.T("Run evo logout again. If the error persists, delete the key in the Cloud.ru personal account (“Service accounts” → the account → “Access keys”) and run evo configure delete <profile>.",
+	return i18n.T("Run evo logout again. If the error persists, delete the key in the Cloud.ru console (“Service accounts” → the account → “Access keys”) and run evo configure delete <profile>.",
 		"Повторите evo logout. Если ошибка повторится, удалите ключ в личном кабинете Cloud.ru («Сервисные аккаунты» → аккаунт → «Ключи доступа») и выполните evo configure delete <профиль>.")
 }
 
