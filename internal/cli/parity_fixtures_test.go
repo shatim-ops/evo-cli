@@ -63,7 +63,7 @@ var parityArgs = map[string]map[string]any{
 	// disk
 	"disk_create":     {"name": "data", "size_gb": float64(20)},
 	"disk_attach":     {"disk_id": parityVM, "vm": "web"},
-	"disk_detach":     {"disk_id": parityVM, "vm": "web"},
+	"disk_detach":     {"disk_id": parityAttachedDisk, "vm": "web"},
 	"disk_resize":     {"disk_id": parityVM, "size_gb": float64(50)},
 	"disk_delete":     {"disk_id": parityVM},
 	"disk_list":       {},
@@ -580,8 +580,13 @@ var parityEmptyLists = map[string]string{
 // parityNIC is the network interface of the VM parityVM.
 const parityNIC = "00000000-0000-4000-8000-0000000000f1"
 
+// parityAttachedDisk is a data disk the VM parityVM has: disk_detach
+// detaches it. The project's other disk (parityVM) no VM has — for it
+// disk_detach is a repeat, already_detached (D81).
+const parityAttachedDisk = "00000000-0000-4000-8000-0000000000f2"
+
 // computeParity: the compute API beyond previewCloud — the VM with its
-// interface (tg_create picks it), the project's disk and SNAT gateway
+// interface (tg_create picks it), the project's disks and SNAT gateway
 // (disk_delete and snat_delete look them up; image_create takes the zone
 // of the disk, which the API always names); nil for the rest.
 func computeParity(r *http.Request) *httptest.ResponseRecorder {
@@ -589,6 +594,11 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 	switch r.URL.Path {
 	case "/api/v1/vms/" + parityVM:
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","state":"running","interfaces":[{"id":"`+parityNIC+`","name":"eth0","type":"regular","ip_address":"192.0.2.5"}]}`)
+	case "/api/v1/disks/" + parityAttachedDisk:
+		if r.Method != http.MethodGet {
+			return nil
+		}
+		_, _ = io.WriteString(w, `{"id":"`+parityAttachedDisk+`","name":"data","size":20,"state":"in_use","vms":[{"id":"`+parityVM+`","name":"web","primary":false}]}`)
 	case "/api/v1/disks":
 		if r.Method != http.MethodPost {
 			_, _ = io.WriteString(w, `{"items":[{"id":"`+parityVM+`","name":"old","size":20,"availability_zone":{"id":"`+pvZone+`"}}],"total":1}`)

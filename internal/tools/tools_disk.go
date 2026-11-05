@@ -417,6 +417,12 @@ func (s *Registry) planDiskAttach(ctx context.Context, args map[string]any) (*Pl
 	if err != nil {
 		return settlingPlan(err, diskID, "disk_attach", args)
 	}
+	// A repeat (D81, D26): the disk is attached to this VM already.
+	for _, v := range diskVMs(disk) {
+		if v["id"] == vmID {
+			return answered(toJSON(map[string]any{"status": "already_attached", "disk_id": diskID, "vm_id": vmID}), false), nil
+		}
+	}
 	return &Plan{Preview: map[string]any{
 		"message":     i18n.T("disk_attach attaches the disk to the VM.", "disk_attach подключает диск к ВМ."),
 		"will_attach": diskChangeTarget(diskID, disk, vm),
@@ -509,6 +515,10 @@ func (s *Registry) planDiskDetach(ctx context.Context, args map[string]any) (*Pl
 	disk, err := settledDisk(ctx, eng, diskID)
 	if err != nil {
 		return settlingPlan(err, diskID, "disk_detach", args)
+	}
+	// A repeat (D81, D26): no VM has the disk.
+	if st, _ := disk["state"].(string); st == "available" && len(diskVMs(disk)) == 0 {
+		return answered(toJSON(map[string]any{"status": "already_detached", "disk_id": diskID, "vm_id": vmID}), false), nil
 	}
 	return &Plan{Preview: map[string]any{
 		"message":     i18n.T("disk_detach detaches the disk from the VM.", "disk_detach отключает диск от ВМ."),
