@@ -247,3 +247,58 @@ func TestDeploy_ChainEndsWhenSSHNeverAnswers(t *testing.T) {
 		t.Errorf("the chain ends with SSH_TIMEOUT and says why: set sshNeverAnswersOpen to \"\" (%s)", sshNeverAnswersOpen)
 	}
 }
+
+// sshMaxAttempts is the attempts of the wait for SSH of a new VM, the CLI's
+// in one call (engine.sshMaxRetries, D80): the limit a chain of deploy over
+// MCP keeps whichever call created the VM.
+const sshMaxAttempts = 60
+
+// FB171-3 (process plan 1.8, from 1.7.1): K2 over a VM the creation outlived.
+// The first call of the chain ends while the VM is being created (its
+// record creating, no SSH yet); the VM comes up and SSH never answers. The
+// chain ends with SSH_TIMEOUT after the attempts of a new VM, as the CLI
+// gives it in one call — not the half the wait of a VM never reached gets
+// (FB171-1: the limit was picked anew in the call that met SSH first).
+func TestDeploy_ChainKeepsTheNewVMLimitPastItsCreation(t *testing.T) {
+	const chain = 10
+	vm := &slowSSHVM{stageVM: newStageVM(), silent: true, connectWait: k2Attempt}
+	cloud := &faultCloud{slow: true}
+	r := progressBudgetRegistryIn(t, vm, cloud, func(tm *engine.Timings) {
+		tm.SSHRetryInterval = time.Millisecond
+		tm.SSHSlowNote = progressBudget * 3 / 2
+	})
+	first := deployChain(t, r, vm.stageVM, map[string]any{"confirmed": true}, 1)
+	var m map[string]any
+	if len(first) != 1 || json.Unmarshal([]byte(first[0]), &m) != nil || m["status"] != "deploying" || m["phase"] != "vm" {
+		t.Fatalf("the first call does not end while the VM is created: %s", clipText(strings.Join(first, " ")))
+	}
+	next, _ := m["next_args"].(map[string]any)
+	if next == nil {
+		t.Fatalf("the first call names no next step: %s", clipText(first[0]))
+	}
+	// The VM is up now; SSH never answers.
+	cloud.mu.Lock()
+	cloud.slow = false
+	for i := range cloud.vms {
+		cloud.vms[i].Status = "active"
+	}
+	cloud.mu.Unlock()
+	answers := deployChain(t, r, vm.stageVM, next, chain)
+	last := answers[len(answers)-1]
+	m = nil
+	_ = json.Unmarshal([]byte(last), &m)
+	if last == "" || m["reason"] != "SSH_TIMEOUT" {
+		t.Fatalf("%d calls after the creation do not end with SSH_TIMEOUT: %s", len(answers), strings.Join(chainStatuses(answers), " "))
+	}
+	vm.mu.Lock()
+	connects := 0
+	for _, op := range vm.ops {
+		if op == "connect" {
+			connects++
+		}
+	}
+	vm.mu.Unlock()
+	if connects < sshMaxAttempts || connects > sshMaxAttempts+1 {
+		t.Errorf("%d SSH attempts before SSH_TIMEOUT over a VM the first call left creating, want %d as the CLI gives a new VM", connects, sshMaxAttempts)
+	}
+}
