@@ -167,7 +167,7 @@ func donePage(r Result) page {
 		key += "; " + tRevokedPrevious(config.MaskKeyID(r.RevokedKeyID))
 	}
 	return page{"done", resultData{head: newHead(tDone() + " — evo"), Status: tDone(),
-		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt),
+		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt, r.Account == ForAgent.account()),
 		Rows: []row{
 			{tProject(), r.ProjectName},
 			{tRowAccount(), acc},

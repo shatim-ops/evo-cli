@@ -25,6 +25,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -775,7 +776,5 @@ func loginKeyWarning(profile string, creds config.Credentials) string {
 	if creds.Login == nil {
 		return ""
 	}
-	return i18n.Tf("the key of the profile %q was made by evo login with the role «%s»: the agent may delete resources with it; an agent nobody watches needs a key whose role cannot delete",
-		"ключ профиля %q создан evo login с ролью «%s»: агенту с ним разрешено удаление ресурсов; агенту без присмотра нужен ключ с ролью без права удаления",
-		profile, auth.LoginRoleDisplayName)
+	return login.TAgentKeyWarning(profile)
 }
