@@ -114,6 +114,25 @@ func TestDiskResize_NoteDoesNotNameTheBootDeviceForADataDisk(t *testing.T) {
 	}
 }
 
+// «Риск · 1.8», R-34 (#896): the VM of disk_detach's preview is the
+// argument, not a fact — the disk may be attached to another VM, and the
+// plan has read its VMs. The preview names the VMs the disk is attached
+// to as the cloud says, so the person sees a mismatch before yes.
+func TestDiskDetachPreview_NamesTheVMsTheDiskIsAttachedTo(t *testing.T) {
+	other := faultID(0x52)
+	r, _ := agentDiskWorld(t, map[string]any{"id": faultDisk, "name": "data", "size": float64(20), "state": "in_use",
+		"vms": []any{map[string]any{"id": other, "name": "db", "primary": false}}})
+	m, text, _ := callNamed(t, r, "disk_detach", map[string]any{"disk_id": faultDisk, "vm": "web"})
+	target, _ := m["will_detach"].(map[string]any)
+	vms, _ := target["attached_vms"].([]any)
+	if len(vms) != 1 {
+		t.Fatalf("will_detach does not name the VMs the disk is attached to: %s", text)
+	}
+	if vm, _ := vms[0].(map[string]any); vm["id"] != other || vm["name"] != "db" {
+		t.Errorf("attached_vms %v, want VM db (%s)", vms, other)
+	}
+}
+
 // Agent run of 1.7.0 (5 of 9): disk_attach of a disk already attached to
 // the same VM asked, and after yes Cloud.ru answered 422 «Disk can not be
 // attached from current state». The disk's VMs are in the GetDisk answer

@@ -456,7 +456,30 @@ func diskChangeTarget(diskID string, disk map[string]any, vm *provision.VM) map[
 	if size, ok := numberValue(disk["size"]); ok {
 		out["size_gb"] = size
 	}
+	// The VM above is the argument; the VMs the disk is attached to are
+	// the cloud's answer, which may name another («Риск · 1.8», R-34).
+	if vms := diskVMs(disk); len(vms) > 0 {
+		out["attached_vms"] = vms
+	}
 	return out
+}
+
+// diskVMs are the VMs disk is attached to, as its GetDisk answer names
+// them: id, name and whether it is the VM's boot disk.
+func diskVMs(disk map[string]any) []map[string]any {
+	list, _ := disk["vms"].([]any)
+	var vms []map[string]any
+	for _, v := range list {
+		vm, _ := v.(map[string]any)
+		if vm == nil {
+			continue
+		}
+		id, _ := vm["id"].(string)
+		name, _ := vm["name"].(string)
+		primary, _ := vm["primary"].(bool)
+		vms = append(vms, map[string]any{"id": id, "name": name, "primary": primary})
+	}
+	return vms
 }
 
 // diskNotReady: the attach was refused because the disk is not ready yet
@@ -608,18 +631,10 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 // are the VMs, for the answer's attached_vms (untrustedFields). nil for a
 // disk no VM has.
 func diskAttachedError(diskID string, disk map[string]any) ([]map[string]any, error) {
-	list, _ := disk["vms"].([]any)
+	vms := diskVMs(disk)
 	var names, ways []string
-	var vms []map[string]any
-	for _, v := range list {
-		vm, _ := v.(map[string]any)
-		if vm == nil {
-			continue
-		}
-		id, _ := vm["id"].(string)
-		name, _ := vm["name"].(string)
-		primary, _ := vm["primary"].(bool)
-		vms = append(vms, map[string]any{"id": id, "name": name, "primary": primary})
+	for _, vm := range vms {
+		id, name, primary := vm["id"].(string), vm["name"].(string), vm["primary"].(bool)
 		label := quoteCloud(firstNonEmptyStr(name, id))
 		names = append(names, label)
 		if primary {
