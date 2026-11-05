@@ -23,7 +23,6 @@ var stateRoles = []string{"release", "development", "process", "product", "risk"
 // PR that writes it. The list only shrinks: a line whose file is there
 // fails the test. Closes by 1.8.
 var stateMissing = map[string]string{
-	"risk": "#892 writes it, and removes this line",
 }
 
 // stateSections are the headings of a state file, in this order, after the
