@@ -5,13 +5,8 @@
 package auth
 
 import (
-	"fmt"
 	"net/url"
-	"slices"
 	"strings"
-
-	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
-	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // The login table: every address and constant of Cloud.ru IAM's OpenID
@@ -35,16 +30,21 @@ const (
 	LoginClientID = "evo_cmcp"
 	// LoginScope is the one scope the login asks for.
 	LoginScope = "openid"
+
+	// LoginRoleName is the product role the login grants the service
+	// account on the project (roleIdentifier.roleName; the spec names it
+	// in its filters). Live acceptance as roleName is a hypothesis until
+	// the probe of B-5.
+	LoginRoleName = "platform.project.admin"
+	// LoginRoleDisplayName is how the console names LoginRoleName: the
+	// consent says it to the person, no request needed.
+	LoginRoleDisplayName = "Администратор проекта"
 )
 
 // LoginRedirectPorts are the loopback ports of evo_cmcp's three registered
-// redirect URIs, in the order the login tries them.
+// redirect URIs (http://127.0.0.1:<port>/callback), in the order the login
+// tries them.
 var LoginRedirectPorts = [...]int{18386, 23386, 28386}
-
-// LoginRedirectURI is the registered redirect URI on port.
-func LoginRedirectURI(port int) string {
-	return fmt.Sprintf("http://127.0.0.1:%d/callback", port)
-}
 
 // trustedOIDCHosts are the IAM hosts a secret may be sent to (both answer
 // the client-credentials grant, checked 2026-10-14).
@@ -58,43 +58,4 @@ func TrustedOIDCURL(u string) bool {
 	p, err := url.Parse(u)
 	return err == nil && p.Scheme == "https" && p.User == nil && p.Port() == "" &&
 		trustedOIDCHosts[strings.ToLower(p.Hostname())]
-}
-
-// Discovery is what the login reads of the issuer's discovery document.
-type Discovery struct {
-	Issuer                string   `json:"issuer"`
-	AuthorizationEndpoint string   `json:"authorization_endpoint"`
-	TokenEndpoint         string   `json:"token_endpoint"`
-	JWKSURI               string   `json:"jwks_uri"`
-	CodeChallengeMethods  []string `json:"code_challenge_methods_supported"`
-}
-
-// CheckDiscovery takes a discovery document only when its issuer is
-// OIDCIssuer byte for byte (RFC 8414 §3.3, OpenID Connect Discovery §4.3),
-// each endpoint the login uses is a TrustedOIDCURL and S256 is offered:
-// otherwise AUTH_FAILED, and nothing is sent.
-func CheckDiscovery(d Discovery) error {
-	refuse := func(what string) error {
-		return clerrors.New(clerrors.CodeAuthFailed,
-			i18n.Tf("the OpenID Connect discovery of %s is not trusted: %s; nothing was sent",
-				"discovery OpenID Connect %s не принят: %s; ничего не отправлено", OIDCIssuer, what),
-			i18n.T("This is not a problem of your account: the IAM answer is not the one evo expects. Try again later; if it repeats, report it.",
-				"Это не проблема вашей учётной записи: ответ IAM не тот, что ожидает evo. Повторите позже; если повторится — сообщите об этом."))
-	}
-	if d.Issuer != OIDCIssuer {
-		return refuse(i18n.Tf("issuer %q", "issuer %q", d.Issuer))
-	}
-	for name, u := range map[string]string{
-		"authorization_endpoint": d.AuthorizationEndpoint,
-		"token_endpoint":         d.TokenEndpoint,
-		"jwks_uri":               d.JWKSURI,
-	} {
-		if !TrustedOIDCURL(u) {
-			return refuse(fmt.Sprintf("%s %q", name, u))
-		}
-	}
-	if !slices.Contains(d.CodeChallengeMethods, "S256") {
-		return refuse("code_challenge_methods_supported: no S256")
-	}
-	return nil
 }

@@ -5,10 +5,7 @@
 package auth
 
 import (
-	"strings"
 	"testing"
-
-	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // The access key, and later the person's code and tokens, go only to
@@ -21,6 +18,8 @@ func TestTrustedOIDCURL(t *testing.T) {
 		"https://ID.Cloud.RU/auth/system/openid/token":       true,
 		"http://id.cloud.ru/auth/system/openid/token":        false,
 		"https://id.cloud.ru:8443/auth/system/openid/token":  false,
+		"https://id.cloud.ru:443/auth/system/openid/token":   false,
+		"https:///auth/system/openid/token":                  false,
 		"https://user:pw@id.cloud.ru/auth/system":            false,
 		"https://id.cloud.ru.example.com/token":              false,
 		"https://example.com/id.cloud.ru":                    false,
@@ -43,56 +42,10 @@ func TestLoginTable(t *testing.T) {
 	if OIDCDiscoveryURL != OIDCIssuer+"/.well-known/openid-configuration" || OIDCTokenURL != OIDCIssuer+"/openid/token" {
 		t.Errorf("discovery %s and token %s must derive from the issuer %s", OIDCDiscoveryURL, OIDCTokenURL, OIDCIssuer)
 	}
-	if LoginClientID != "evo_cmcp" || LoginScope != "openid" {
-		t.Errorf("client %q, scope %q", LoginClientID, LoginScope)
+	if LoginClientID != "evo_cmcp" || LoginScope != "openid" || LoginRoleName != "platform.project.admin" {
+		t.Errorf("client %q, scope %q, role %q", LoginClientID, LoginScope, LoginRoleName)
 	}
 	if len(LoginRedirectPorts) != 3 || LoginRedirectPorts[0] != 18386 || LoginRedirectPorts[1] != 23386 || LoginRedirectPorts[2] != 28386 {
 		t.Errorf("redirect ports %v, want the three registered for evo_cmcp in order", LoginRedirectPorts)
-	}
-	if LoginRedirectURI(23386) != "http://127.0.0.1:23386/callback" {
-		t.Errorf("redirect URI %q", LoginRedirectURI(23386))
-	}
-}
-
-// The discovery document is taken only when its issuer is the expected
-// one, byte for byte (RFC 8414 §3.3, OpenID Connect Discovery §4.3), and
-// every endpoint the login uses is on a trusted host: a tampered or
-// misrouted document sends neither the code nor the verifier anywhere.
-func TestCheckDiscovery(t *testing.T) {
-	good := Discovery{
-		Issuer:                OIDCIssuer,
-		AuthorizationEndpoint: OIDCIssuer + "/openid/auth",
-		TokenEndpoint:         OIDCTokenURL,
-		JWKSURI:               OIDCIssuer + "/openid/certs",
-		CodeChallengeMethods:  []string{"plain", "S256"},
-	}
-	if err := CheckDiscovery(good); err != nil {
-		t.Fatalf("a good document refused: %v", err)
-	}
-	bad := map[string]func(d *Discovery){
-		"issuer with a trailing slash": func(d *Discovery) { d.Issuer = OIDCIssuer + "/" },
-		"another issuer":               func(d *Discovery) { d.Issuer = "https://auth.iam.cloud.ru/auth/system" },
-		"empty issuer":                 func(d *Discovery) { d.Issuer = "" },
-		"authorize elsewhere":          func(d *Discovery) { d.AuthorizationEndpoint = "https://example.com/auth" },
-		"token over http":              func(d *Discovery) { d.TokenEndpoint = "http://id.cloud.ru/auth/system/openid/token" },
-		"jwks elsewhere":               func(d *Discovery) { d.JWKSURI = "https://example.com/certs" },
-		"no endpoint":                  func(d *Discovery) { d.TokenEndpoint = "" },
-		"no S256":                      func(d *Discovery) { d.CodeChallengeMethods = []string{"plain"} },
-	}
-	for name, spoil := range bad {
-		d := good
-		d.CodeChallengeMethods = append([]string(nil), good.CodeChallengeMethods...)
-		spoil(&d)
-		err := CheckDiscovery(d)
-		if err == nil {
-			t.Errorf("%s: accepted", name)
-			continue
-		}
-		if ce, ok := err.(*clerrors.CLIError); !ok || ce.Code != clerrors.CodeAuthFailed {
-			t.Errorf("%s: %v, want AUTH_FAILED", name, err)
-		}
-		if !strings.Contains(err.Error(), "discovery") {
-			t.Errorf("%s: the error does not say what was refused: %v", name, err)
-		}
 	}
 }
