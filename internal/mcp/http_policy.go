@@ -107,14 +107,31 @@ type wording struct {
 	where   string // where the call is refused
 	restart string // what lifts the restriction, a clause in lower case
 	mask    string // what replaces a credential in a result (H7)
+	// elsewhere is where else the person gets a masked value, a clause
+	// after restart; empty when nowhere — a --read-only server's limit is
+	// its operator's, not one to step around.
+	elsewhere string
 }
 
 var (
 	httpWording = wording{where: "over HTTP", restart: "start the server with --allow-secret-export",
-		mask: redacted}
+		mask: redacted, elsewhere: "or the person runs the same call with the evo CLI on the server's machine"}
 	readOnlyWording = wording{where: "on this --read-only server", restart: "ask the server's operator to restart it without --read-only",
 		mask: "[redacted on this --read-only server]"}
 )
+
+// redactedNote says what the mask of H7 means in a result: the values the
+// field redacted lists are not in this answer, whatever the rest of it
+// says — a tool does not know its transport, and «the VM password is in
+// this answer only» was false over HTTP (agent run of 1.7.0, №16) — and
+// how to get them. One point: H7 masks, so H7 says it, for every secret.
+func (w wording) redactedNote() string {
+	how := w.restart
+	if w.elsewhere != "" {
+		how += ", " + w.elsewhere
+	}
+	return "The values of the fields listed in redacted are hidden " + w.where + " and are not in this answer, whatever the rest of it says. To get them, " + how + "."
+}
 
 // restartSentence is restart as a sentence of its own.
 func (w wording) restartSentence() string {
