@@ -480,7 +480,8 @@ func diskChangeTarget(diskID string, disk map[string]any, vm *provision.VM) map[
 // 2 of 2, CMP-27) — and a detach from a VM the disk is not on fails too.
 // One decision for both («Риск», conclusion 9): USAGE with the VMs' ids
 // (attached_vms, the cloud's names marked untrusted) and the way: the VM
-// the disk is on. The answer and true when refused.
+// the disk is on, which the person chooses to take it from («Риск», R-41).
+// The answer and true when refused.
 func anotherVMsDisk(tool, diskID, vmID string, disk map[string]any) (string, bool) {
 	vms := diskVMs(disk)
 	if len(vms) == 0 {
@@ -503,7 +504,8 @@ func anotherVMsDisk(tool, diskID, vmID string, disk map[string]any) (string, boo
 	} else {
 		err = clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("disk %s is attached to VM %s, not to %s; nothing was detached", "диск %s подключён к ВМ %s, а не к %s; ничего не отключено", diskID, on, vmID),
-			i18n.Tf("Name the VM the disk is on: disk_detach disk_id=%s vm=%s.", "Назовите ВМ, к которой подключён диск: disk_detach disk_id=%s vm=%s.", diskID, ids[0]))
+			i18n.Tf("The disk is on another VM (disk_detach disk_id=%s vm=%s detaches it there) — whether that VM can lose it, ask the person.",
+				"Диск стоит на другой ВМ (отключить его там — disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, ids[0]))
 	}
 	return errAnswer(err, map[string]any{"attached_vms": vms}), true
 }

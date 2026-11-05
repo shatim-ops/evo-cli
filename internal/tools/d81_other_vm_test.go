@@ -34,6 +34,12 @@ func TestDiskAttachDetach_AnotherVMsDiskRefusedBeforeTheQuestion(t *testing.T) {
 			if !strings.Contains(text, other) {
 				t.Errorf("%s confirmed=%v: the refusal does not name the other VM's id: %s", tool, confirmed, text)
 			}
+			// R-41: the way to the VM the disk is on is the person's to
+			// choose — the hint does not lead the agent to take the disk
+			// from a VM the person did not name.
+			if hint, _ := m["hint"].(string); !strings.Contains(hint, "ask the person") {
+				t.Errorf("%s confirmed=%v: the hint does not send the agent to the person: %q", tool, confirmed, hint)
+			}
 			if len(c.writes) != 0 {
 				t.Errorf("%s confirmed=%v: written %v", tool, confirmed, c.writes)
 			}
