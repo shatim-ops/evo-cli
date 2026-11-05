@@ -574,10 +574,16 @@ probe_shared() {
 		tc disk_attach --arg disk_id="$id" --arg vm="$vm1"
 		[ "$rc" = 0 ] || { gap "SHARED: диск $kind к ВМ1" "код $rc, $reason; остаток — до уборки области (sweep)"; continue; }
 		one() { evo tools call disk_list --json | jq -e --arg id "$id" '.disks[] | select(.id == $id) | ((.attached_to // []) | length) >= 1 and .state == "in_use"' >/dev/null; }
-		poll 300 10 one || true
-		tc disk_attach --arg disk_id="$id" --arg vm="$vm2"
-		second="код $rc, $reason: $(printf '%s' "$why" | cut -c1-160)"
-		att2=$rc
+		if poll 300 10 one; then
+			tc disk_attach --arg disk_id="$id" --arg vm="$vm2"
+			second="код $rc, $reason: $(printf '%s' "$why" | cut -c1-160)"
+			att2=$rc
+		else
+			# Второе подключение к диску, который не стал in_use, мерило бы
+			# не то: его нет, строка отчёта говорит почему.
+			second="не проверялось: диск не in_use за 5 мин после подключения к ВМ1"
+			att2=skip
+		fi
 		# Число ВМ — по GET /disks/{id}; принятое подключение ко второй ВМ
 		# ждём до 3 мин (поле vms обновляется асинхронно), отказ — одно чтение.
 		vms_n() {
