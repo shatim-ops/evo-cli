@@ -26,8 +26,10 @@ const (
 	// Discovery 1.0): the login takes its endpoints only from it.
 	OIDCDiscoveryURL = OIDCIssuer + "/.well-known/openid-configuration"
 	// OIDCTokenURL is the issuer's token endpoint, the one the mk8s
-	// cloudlogin exec-plugin exchanges the access key at.
-	OIDCTokenURL = OIDCIssuer + "/openid/token"
+	// cloudlogin exec-plugin exchanges the access key at: written out, so
+	// the contract check (scripts/api-contract-check.py) sees the request;
+	// TestLoginTable holds it to the issuer.
+	OIDCTokenURL = "https://id.cloud.ru/auth/system/openid/token"
 
 	// LoginClientID is evo's public client of the login (no secret; PKCE).
 	LoginClientID = "evo_cmcp"
