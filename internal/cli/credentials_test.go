@@ -22,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -117,10 +118,23 @@ func setupCLI(t *testing.T) *fakeCloud {
 	tools.OrgProjectsURL = orgProjectsURL
 	oldTTY, oldPass := stdinIsTerminal, readPassword
 	stdinIsTerminal = func() bool { return false }
+	// evo login goes to this world too, and opens no browser: the
+	// discovery the world does not serve ends it before any wait.
+	oldLogin, oldOpen := loginConfig, openBrowser
+	loginConfig = func(say func(string, string), open func(string) error) login.Config {
+		c := login.Default(say, open)
+		c.Issuer, c.OrgBase, c.AdminBase, c.KeyToken = srv.URL+"/auth/system", srv.URL, srv.URL, srv.URL+"/iam/token"
+		c.Trusted = func(u string) bool { return strings.HasPrefix(u, srv.URL+"/") }
+		c.HTTP = srv.Client()
+		c.Ports = []int{0} // no test takes a registered port
+		return c
+	}
+	openBrowser = func(string) error { return nil }
 	t.Cleanup(func() {
 		auth.IAMEndpoint, orgProjectsURL, tools.ComputeBaseURL = oldIAM, oldOrg, oldCompute
 		tools.OrgProjectsURL = oldToolOrg
 		stdinIsTerminal, readPassword = oldTTY, oldPass
+		loginConfig, openBrowser = oldLogin, oldOpen
 	})
 	newProcess()
 	return fc

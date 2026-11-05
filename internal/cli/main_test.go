@@ -19,6 +19,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/spf13/pflag"
@@ -29,6 +30,17 @@ import (
 // language themselves.
 func TestMain(m *testing.M) {
 	i18n.SetLang("en")
+	// No test opens a browser or signs in to Cloud.ru: evo login of a test
+	// that sets no world (setupCLI, the world of B-2) ends at a discovery
+	// nothing serves.
+	openBrowser = func(string) error { return nil }
+	loginConfig = func(say func(string, string), open func(string) error) login.Config {
+		c := login.Default(say, open)
+		c.Issuer = "http://127.0.0.1:1/auth/system"
+		c.Trusted = func(string) bool { return false }
+		c.Ports = []int{0} // no test takes a registered port
+		return c
+	}
 	code := m.Run()
 	removeFakeEvos()
 	os.Exit(code)

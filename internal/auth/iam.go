@@ -15,6 +15,7 @@ import (
 	"time"
 	"weak"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -37,6 +38,9 @@ const minAcceptableTTL = 10 * time.Minute
 type Credentials struct {
 	KeyID  string
 	Secret string
+	// ExpiresAt is the key's term when evo login made it (the profile);
+	// zero when unknown. Only the text of a refusal reads it (R-26).
+	ExpiresAt time.Time
 }
 
 // IAMProvider exchanges an access key for IAM tokens. The credentials come
@@ -301,6 +305,18 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		// A key past its term: a person issues the next one, and a retry
+		// would only refuse again (R-26). The reason stays that of any
+		// refused key.
+		if exp := p.creds.ExpiresAt; !exp.IsZero() && !clock.Now().Before(exp) {
+			ce := clerrors.New(clerrors.CodeAuthFailed,
+				i18n.Tf("the access key expired %s (IAM status %d)", "ключ доступа истёк %s (статус IAM %d)",
+					exp.UTC().Format(time.RFC3339), resp.StatusCode),
+				i18n.T("A person is needed: 'evo login' issues a new key, or create one in the console and run 'evo configure'. Retrying will not help.",
+					"Нужен человек: 'evo login' выпустит новый ключ, или создайте его в консоли и выполните 'evo configure'. Повтор не поможет."))
+			ce.Details = map[string]any{"key_expired": true}
+			return Token{}, false, ce
+		}
 		return Token{}, false, clerrors.New(
 			clerrors.CodeAuthFailed,
 			i18n.Tf("IAM rejected the credentials (status %d)", "IAM отклонил ключ доступа (статус %d)", resp.StatusCode),

@@ -39,6 +39,14 @@ const (
 	// LoginRoleDisplayName is how the console names LoginRoleName: the
 	// consent says it to the person, no request needed.
 	LoginRoleDisplayName = "Администратор проекта"
+
+	// LoginActionCreateAccount and LoginActionGrantRole are the actions
+	// of IAM evaluate asks about before any write: creating a service
+	// account and granting a role in the project. Their names are a
+	// hypothesis until the probe of B-5 (contract B-1: «уточняются первой
+	// пробой»).
+	LoginActionCreateAccount = "iam.serviceAccounts.create"
+	LoginActionGrantRole     = "iam.permissions.create"
 )
 
 // LoginRedirectPorts are the loopback ports of evo_cmcp's three registered

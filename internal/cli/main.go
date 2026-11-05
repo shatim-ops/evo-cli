@@ -347,6 +347,8 @@ func newRootCmd() *cobra.Command {
 		newListImagesCmd(),
 		newMCPCmd(),
 		newConfigureCmd(),
+		newLoginCmd(),
+		newLogoutCmd(),
 		newProjectCmd(),
 		newWhoamiCmd(),
 		newDoctorCmd(),
