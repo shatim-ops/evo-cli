@@ -104,3 +104,13 @@ func TestDeploy_RecordKeepsItsCidr(t *testing.T) {
 		}
 	}
 }
+
+// R-38: the step of a record deploy began carries the hash of the compose
+// file its consent was for, so the repeat with another file asks again.
+func TestDeployUnfinished_StepCarriesTheConsentedComposeHash(t *testing.T) {
+	rec := verifyRecord
+	rec.Source, rec.ComposePath, rec.Cidr, rec.ComposeHash = "", "/srv/app/docker-compose.yml", "0.0.0.0/0", "abc123"
+	if _, args := nextOf(t, rec); args["compose_hash"] != "abc123" {
+		t.Errorf("next_args %v: want compose_hash abc123", args)
+	}
+}
