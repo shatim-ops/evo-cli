@@ -24,8 +24,8 @@ import (
 
 // secretIntake are the commands that take an evo key secret, with the
 // test that walks every channel for it. A command with a flag that reads a
-// secret fails TestSecretChannels_EveryIntakeWalked until it is named here;
-// evo login (release-plan 1.8, A0-5) joins with its own walk.
+// secret fails TestSecretChannels_EveryIntakeWalked until it is named here.
+// evo login takes no secret by a flag: its walk is TestSecretChannels_Login.
 var secretIntake = map[string]string{
 	"configure": "TestSecretChannels_Configure",
 	// The password of a PostgreSQL user: stdout, stderr, the preview and

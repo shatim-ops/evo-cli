@@ -60,6 +60,27 @@ func loginCreates(t *testing.T) []*regexp.Regexp {
 	return out
 }
 
+// loginOnWorld points evo login at the world of B-2: its issuer, APIs and
+// key exchange, any loopback port; wait, when set, bounds the person's
+// choice. The browser stays the test's own (openBrowser).
+func loginOnWorld(t *testing.T, w *loginworld.World, wait time.Duration) {
+	t.Helper()
+	oldCfg, oldOpen, oldIAM := loginConfig, openBrowser, auth.IAMEndpoint
+	t.Cleanup(func() { loginConfig, openBrowser, auth.IAMEndpoint = oldCfg, oldOpen, oldIAM })
+	auth.IAMEndpoint = w.URL + "/api/v1/auth/token"
+	loginConfig = func(say func(string, string), open func(string) error) login.Config {
+		cfg := login.Default(say, open)
+		cfg.Issuer, cfg.OrgBase, cfg.AdminBase, cfg.KeyToken = w.Issuer, w.URL, w.URL, w.URL+"/api/v1/auth/token"
+		cfg.Trusted = func(u string) bool { return strings.HasPrefix(u, w.URL+"/") }
+		cfg.HTTP = w.Client()
+		cfg.Ports = []int{0} // no test takes a registered port
+		if wait > 0 {
+			cfg.Wait = wait
+		}
+		return cfg
+	}
+}
+
 func createsIn(calls []string, creates []*regexp.Regexp) []string {
 	var hit []string
 	for _, c := range calls {
@@ -118,23 +139,16 @@ func TestLogin_NoCreateBeforeTheGrant(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			setupCLI(t)
 			w := loginworld.New(t, loginworld.Variant{AnyLoopbackPort: true})
-			oldCfg, oldOpen, oldIAM, oldTTY := loginConfig, openBrowser, auth.IAMEndpoint, stdinIsTerminal
-			t.Cleanup(func() { loginConfig, openBrowser, auth.IAMEndpoint, stdinIsTerminal = oldCfg, oldOpen, oldIAM, oldTTY })
-			auth.IAMEndpoint = w.URL + "/api/v1/auth/token"
+			oldTTY := stdinIsTerminal
+			t.Cleanup(func() { stdinIsTerminal = oldTTY })
 			stdinIsTerminal = func() bool { return c.tty }
-			loginConfig = func(say func(string, string), open func(string) error) login.Config {
-				cfg := login.Default(say, open)
-				cfg.Issuer, cfg.OrgBase, cfg.AdminBase, cfg.KeyToken = w.Issuer, w.URL, w.URL, w.URL+"/api/v1/auth/token"
-				cfg.Trusted = func(u string) bool { return strings.HasPrefix(u, w.URL+"/") }
-				cfg.HTTP = w.Client()
-				cfg.Ports = []int{0} // no test takes a registered port
-				if !c.grant {
-					// A test bound on the person's choice, not a wall-clock
-					// read: the page is never granted here.
-					cfg.Wait = 2 * time.Second
-				}
-				return cfg
+			var wait time.Duration
+			if !c.grant {
+				// A test bound on the person's choice, not a wall-clock
+				// read: the page is never granted here.
+				wait = 2 * time.Second
 			}
+			loginOnWorld(t, w, wait)
 			done := make(chan struct{})
 			openBrowser = func(authURL string) error {
 				go func() {
