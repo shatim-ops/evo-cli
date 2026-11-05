@@ -123,6 +123,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/e2e_rules_sweep_test.sh
 
+      # Правило порта приложения в cloud-e2e e2e: провал, если deploy его не
+      # открыл или оно было до deploy (e2e_port_rule.sh), на фейке evo.
+      - name: правило порта deploy в cloud-e2e
+        if: runner.os == 'Linux'
+        run: .github/scripts/e2e_port_rule_test.sh
+
       # Форматирование от ОС не зависит — проверяем один раз. gofmt молча
       # ничего не возвращает, поэтому непустой вывод и есть провал.
       - name: gofmt
