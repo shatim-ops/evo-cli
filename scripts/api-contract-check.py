@@ -536,6 +536,15 @@ def path_key(p):
     return p.replace(HOLE, "{}")
 
 
+# Packages that serve the API instead of calling it: fake servers of the
+# test worlds, imported only by tests. Their path literals are routes, not
+# requests of evo. Directory → why; a closed list.
+FAKE_SERVERS = {
+    "internal/loginworld": "the world of evo login (B-2): fakes of IAM OIDC, Organization and "
+    "Administration API; only tests import it (TestLoginWorld_OnlyTestsImport)",
+}
+
+
 def code_sites(root):
     """Every API path literal of the Go code: file, line, path, host and the
     method when it is cheap to tell — http.MethodX in the statement, a GET
@@ -549,6 +558,8 @@ def code_sites(root):
                 continue
             full = os.path.join(dirpath, fn)
             rel = os.path.relpath(full, root).replace(os.sep, "/")
+            if rel.rsplit("/", 1)[0] in FAKE_SERVERS:
+                continue
             src = open(full, encoding="utf-8").read()
             lines = src.split("\n")
             toks = list(go_tokens(src))
