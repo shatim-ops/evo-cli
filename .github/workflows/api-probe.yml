@@ -269,7 +269,12 @@ jobs:
               --data-urlencode "pageSize=1000" ${page:+--data-urlencode "pageToken=$page"} || true)
             c=${r##*$'\n'}; b=${r%$'\n'*}; pages=$((pages + 1))
             [ "$c" = 200 ] || { echo "iam_actions_page_$pages      http=$c"; break; }
-            printf '%s' "$b" | jq '.actions // []' | jq -s 'add' - "$all" > "$all.n" && mv "$all.n" "$all"
+            # Страница не JSON (или без массива actions) — чтение неполное:
+            # пустой токен после упавшего jq не значит «последняя страница».
+            if ! { printf '%s' "$b" | jq -e '.actions | arrays' > "$all.p" 2>/dev/null &&
+              jq -s 'add' "$all.p" "$all" > "$all.n" && mv "$all.n" "$all"; }; then
+              echo "iam_actions_page_$pages      not_json"; break
+            fi
             page=$(printf '%s' "$b" | jq -r '.next_page_token // .nextPageToken // empty')
             [ -n "$page" ] || { complete=true; break; }
             [ "$pages" -lt 30 ] || break
@@ -279,7 +284,7 @@ jobs:
             login_create_account: any(.[]; .name == "iam.serviceAccounts.create"),
             login_grant_role: any(.[]; .name == "iam.permissions.create")}' "$all" | sed 's/^/iam_actions_all            /'
           echo "iam_actions_accounts_perms $(jq -c '[.[] | .name // "" | select(test("^iam\\..*(service|account|permission|role|binding)"; "i"))] | unique' "$all")"
-          rm -f "$all"
+          rm -f "$all" "$all.p" "$all.n"
           unset cust page pages complete
 
           # Каталог образов (docs/internal/design-images.md §7): типы, отечественные
