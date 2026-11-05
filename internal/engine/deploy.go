@@ -281,6 +281,11 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	maxRetries := sshMaxRetries
 	switch {
 	case isNewDeploy:
+	case rec.SSHHostKeyFingerprint == "" && unfinishedStatuses[existing.Status]:
+		// The VM this deploy created, which no run has reached over SSH
+		// yet: a bound of an MCP call ended the earlier run while it was
+		// created. It is a new VM, with the limit the CLI gives it in one
+		// call (FB171-1, D80).
 	case rec.SSHHostKeyFingerprint == "":
 		// Never reached over SSH (an earlier run timed out, or a VM made by
 		// vm create): it may be booting again after a reboot from the console.
