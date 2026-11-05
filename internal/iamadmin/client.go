@@ -6,8 +6,8 @@
 // https://iam.api.cloud.ru, iam-gw-public.yaml): the permissions of a
 // subject on a resource — the roles of the key that whoami and doctor name
 // (A0-1, A0-2, release plan 1.8) — and the access keys of a service
-// account, for the key's term (A0-3). evo login (B-3) adds its reads here,
-// each with the call that uses it.
+// account, for the key's term (A0-3) — and the requests of evo login (B-3):
+// evaluate, the service account, its role and its key (login.go).
 //
 // What it returns is a whitelist: each type names the fields evo uses, and
 // nothing else of an answer goes on («Риск», R-43). Answers are read
@@ -17,8 +17,10 @@
 package iamadmin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -75,9 +77,7 @@ func (c *Client) Permissions(ctx context.Context, resourceID, subjectID string) 
 	}
 	var out []Permission
 	err := c.list(ctx, "permissions", "/api/v3/permissions", q, "permissions", func(m map[string]any) {
-		out = append(out, Permission{ID: str(m, "id"), RoleName: str(m, "roleName"), RoleID: str(m, "primaryRoleId"),
-			ResourceID: str(m, "resourceId"), SubjectID: str(m, "subjectId"), SubjectType: str(m, "subjectType"),
-			ExpiresAt: str(m, "expiresAt"), Enabled: flag(m, "enabled")})
+		out = append(out, permissionOf(m))
 	})
 	return out, err
 }
@@ -171,9 +171,16 @@ func (c *Client) list(ctx context.Context, what, path string, q url.Values, key 
 	return nil
 }
 
-// do sends one GET with the token and decodes a 2xx answer into out; any
-// other status is an error of the API that never carries the token.
+// do sends one GET with the token and decodes a 2xx answer into out.
 func (c *Client) do(ctx context.Context, path string, q url.Values, out any) error {
+	return c.send(ctx, http.MethodGet, path, q, nil, out)
+}
+
+// send sends one request with the token — body as JSON when it is not nil
+// — and decodes a 2xx answer into out when it is not nil; any other status
+// is an error of the API (StatusOf names its status) that never carries the
+// token.
+func (c *Client) send(ctx context.Context, method, path string, q url.Values, body, out any) error {
 	tok, err := c.token.Token(ctx)
 	if err != nil {
 		return err
@@ -182,12 +189,23 @@ func (c *Client) do(ctx context.Context, path string, q url.Values, out any) err
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	var rd io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		rd = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, rd)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok.Value)
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf(i18n.T("iam request failed: %w", "запрос к iam не удался: %w"), err)
@@ -197,11 +215,32 @@ func (c *Client) do(ctx context.Context, path string, q url.Values, out any) err
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return apiError(resp.StatusCode, data)
 	}
+	if out == nil || len(bytes.TrimSpace(data)) == 0 {
+		return nil
+	}
 	if err := json.Unmarshal(data, out); err != nil {
 		return clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("iam: the answer to GET %s is not JSON", "iam: ответ на GET %s — не JSON", path), "")
+			i18n.Tf("iam: the answer to %s %s is not JSON", "iam: ответ на %s %s — не JSON", method, path), "")
 	}
 	return nil
+}
+
+// StatusError is a non-2xx answer of the API: its status and message. A
+// 403 or 429 comes wrapped in their CLIError (errors.As finds it).
+type StatusError struct {
+	Status int
+	Msg    string
+}
+
+func (e *StatusError) Error() string { return fmt.Sprintf("iam API %d: %s", e.Status, e.Msg) }
+
+// StatusOf is the status of err's answer, 0 when err is no answer of the API.
+func StatusOf(err error) int {
+	var se *StatusError
+	if errors.As(err, &se) {
+		return se.Status
+	}
+	return 0
 }
 
 func apiError(status int, body []byte) error {
@@ -213,18 +252,19 @@ func apiError(status int, body []byte) error {
 	if msg == "" {
 		msg = http.StatusText(status)
 	}
+	se := &StatusError{Status: status, Msg: msg}
 	if status == http.StatusTooManyRequests {
-		return clierrors.New(clierrors.CodeAPIRateLimited,
-			i18n.Tf("iam API %d: %s", "iam API %d: %s", status, msg), i18n.T("Retry in a minute.", "Повторите через минуту."))
+		return clierrors.Wrap(clierrors.CodeAPIRateLimited,
+			i18n.Tf("iam API %d: %s", "iam API %d: %s", status, msg), i18n.T("Retry in a minute.", "Повторите через минуту."), se)
 	}
 	if status == http.StatusForbidden {
-		return clierrors.New(clierrors.CodeAPIError, i18n.Tf("iam API %d: %s", "iam API %d: %s", status, msg),
-			i18n.T("The key's role does not let it read this in IAM.", "Роль ключа не даёт читать это в IAM."))
+		return clierrors.Wrap(clierrors.CodeAPIError, i18n.Tf("iam API %d: %s", "iam API %d: %s", status, msg),
+			i18n.T("The role does not let it do this in IAM.", "Роль не даёт сделать это в IAM."), se)
 	}
 	// Any other status: «iam API <status>: …», whose reason the status, or
 	// a «not found» of a 400, 422 or 499, decides where every service
 	// client's does (TestStatusBeforeText_*).
-	return fmt.Errorf("iam API %d: %s", status, msg)
+	return se
 }
 
 // field is m's value under key in the spec's camelCase or, failing that,
