@@ -73,6 +73,7 @@ fake_evo_answer list_security_groups 0 0 '{"security_groups":[
  {"id":"sg-free","rules":[{"id":"r-live2","direction":"ingress","port_range":"8082:8082","description":"evo: port 8082 (vm vm-here)"}]},
  {"id":"sg-err","rules":[{"id":"r-app","direction":"ingress","port_range":"21741:21741","description":"evo: port 21741 (vm vm-gone)"},
                          {"id":"r-wide","direction":"ingress","port_range":"21741:21749","description":"evo: port 21741 (vm vm-gone)"},
+                         {"id":"r-span","direction":"ingress","port_range":"20000:29999","description":"evo: port 20000 (vm vm-gone)"},
                          {"id":"r-high","direction":"ingress","port_range":"31741:31741","description":"evo: port 31741 (vm vm-gone)"}]}]}'
 fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm-here","name":"my-app"}]}'
 : > "$dir/calls"

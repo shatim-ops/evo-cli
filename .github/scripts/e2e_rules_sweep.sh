@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Уборка правил «evo:» для портов e2e (80/8080/8081/8082/8086 и порт
-# приложения deploy 20000–29999) в job cleanup
+# приложения deploy 20000–29999, только одиночный N:N) в job cleanup
 # cloud-e2e. Описание «evo: …» ставит любой evo deploy и vm create, поэтому
 # правило снимается, только если в его группе безопасности нет ни одного
 # сетевого интерфейса — ни ВМ, ни отвязанного порта:
@@ -35,7 +35,7 @@ n=$(jq '[.vms[]? | select((.name // "") | startswith("evo-e2e-"))] | length' "$R
 [ "$n" = 0 ] || { echo "::error::в проекте есть ВМ evo-e2e-* ($n) — идёт прогон e2e, правила «evo:» не трогаю"; exit 1; }
 evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg.json"
 # Четвёртое поле — id ВМ из метки evo «evo: port N (vm <id>)» (P6) или «-».
-rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080" or .port_range == "8081:8081" or .port_range == "8082:8082" or .port_range == "8086:8086" or ((.port_range | tostring) as $r | ($r | test("^2[0-9]{4}:2[0-9]{4}$")) and ($r | split(":") | .[0] == .[1]))) and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range) \((.description | capture("^evo: port [^ ]+ \\(vm (?<vm>[^ )]+)\\)$") | .vm) // "-")"' "$RUNNER_TEMP/sg.json")
+rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080" or .port_range == "8081:8081" or .port_range == "8082:8082" or .port_range == "8086:8086" or (.port_range | tostring | test("^(2[0-9]{4}):\\1$"))) and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range) \((.description | capture("^evo: port [^ ]+ \\(vm (?<vm>[^ )]+)\\)$") | .vm) // "-")"' "$RUNNER_TEMP/sg.json")
 [ -n "$rules" ] || { echo "правил «evo:» для 80/8080/8081/8082/8086 и 20000–29999 нет"; exit 0; }
 TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
 	curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
