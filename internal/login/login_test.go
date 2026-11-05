@@ -572,6 +572,25 @@ func TestLogin_EvaluateErrorIsNoRefusal(t *testing.T) {
 	}
 }
 
+// R-49 («Риск», A1 05.11: the actions evo asks evaluate about are not in
+// IAM's catalogue, 2 of 2): when evaluate answers false — not an error —
+// for an action the catalogue lacks, «false» means «no such action», not
+// «no right». The administrator of the project is not refused: the login
+// goes on as unchecked (U-9), as on an error of evaluate. A person without
+// the right is still refused (Variant Denied, «no right»).
+func TestLogin_UnknownActionIsNoRefusal(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{UnknownActionFalse: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil || len(r.saved) != 1 {
+		t.Fatalf("the administrator was refused for an action IAM does not know: err %v; saved %d\n%s", r.err, len(r.saved), r.out)
+	}
+	note := tUnchecked("")
+	note = note[:strings.Index(note, ":")]
+	if !strings.Contains(r.out, note) || !strings.Contains(r.b.consent, note) {
+		t.Errorf("the note %q is not in the terminal or on the page:\n%s", note, r.out)
+	}
+}
+
 // R-48 on the world: the terminal names the preselected project and its
 // source, and the page offers it checked.
 func TestLogin_PreselectNamedInTheTerminal(t *testing.T) {
