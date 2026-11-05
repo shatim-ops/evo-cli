@@ -171,13 +171,25 @@ jobs:
           RETRY: ${{ steps.gotest.outputs.retry }}
 
       # Конфиг релиза проверяется на каждом PR, а не впервые на теге.
+      # Бинарь — curl с повторами до 5 мин, а не goreleaser-action: её три
+      # попытки скачать с GitHub releases кончались 504 и роняли job при
+      # зелёных тестах (#952, #964, 05.11). Архив сверяется с sha256 из
+      # checksums.txt релиза (TestWorkflows_GoreleaserCheckSurvivesReleasesOutage).
       - name: goreleaser check
         if: runner.os == 'Linux'
-        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
-        with:
-          # Та же версия, что в release.yml; поднимать вручную в обоих.
-          version: v2.18.3
-          args: check
+        env:
+          # Та же версия, что в release.yml; поднимать в обоих, с sha256
+          # архива goreleaser_Linux_x86_64.tar.gz.
+          GORELEASER_VERSION: v2.18.3
+          GORELEASER_SHA256: b8dee4728bca1aba0d71a832a17cd0a3799f75372878e7ffa36aef2343bce0bc
+        run: |
+          dir="$RUNNER_TEMP/goreleaser"
+          mkdir -p "$dir"
+          curl -fsSL --retry 8 --retry-all-errors --retry-delay 15 --retry-max-time 300 -o "$dir/goreleaser.tar.gz" \
+            "https://github.com/goreleaser/goreleaser/releases/download/$GORELEASER_VERSION/goreleaser_Linux_x86_64.tar.gz"
+          echo "$GORELEASER_SHA256  $dir/goreleaser.tar.gz" | sha256sum -c -
+          tar -xzf "$dir/goreleaser.tar.gz" -C "$dir" goreleaser
+          "$dir/goreleaser" check
 
       # Квота организации на образы в cloud-e2e disk (CMP-16): какой отказ
       # image_create — пропуск шага, а какой — FAIL (e2e_quota.sh).
