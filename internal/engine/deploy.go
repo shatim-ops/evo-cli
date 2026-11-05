@@ -310,19 +310,23 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		// the deploy in progress, as its answer says (atBound).
 		err = e.atBound(caller, err)
 		var going *InProgress
-		if stderrors.As(err, &going) {
+		switch {
+		case stderrors.As(err, &going):
 			// Not a timeout: deploy goes on, and its record says so, as
 			// the answer does — logs and verify answer DEPLOY_IN_PROGRESS
 			// (D76). A running deployment stays running. Past the first
 			// minutes of the wait the answer says why SSH may never answer,
 			// as the CLI does (D80).
-			if !unfinishedStatuses[rec.Status] && rec.Status != "running" {
-				rec.Status = "provisioned"
-			}
+			keepUnfinished(&rec)
 			if clock.Since(rec.SSHWait.Since) >= e.timings().SSHSlowNote {
 				going.Note = sshSlowText(rec.VMIP, rec.SSHWait.Limit)
 			}
-		} else {
+		case caller.Err() != nil:
+			// Cancelled (the MCP client, Ctrl-C): not the end of the wait
+			// either. The record stays unfinished with its wait, and the
+			// next deploy goes on counting (FB171-2).
+			keepUnfinished(&rec)
+		default:
 			// The status says which: a refused key or a changed host key
 			// is not a timeout, and a re-run will not fix it (QA r4 Q7).
 			rec.SSHWait = nil
@@ -336,9 +340,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		}
 		rec.UpdatedAt = time.Now()
 		stateFile.UpsertDeployment(rec)
-		_ = state.Write(statePath, stateFile)
-		e.decided = true
-		return err
+		return e.writeDecided(statePath, stateFile, err)
 	}
 	rec.SSHWait = nil
 	defer e.Deployer.Close()
@@ -366,7 +368,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			rec.Status = "docker_failed"
 			rec.UpdatedAt = time.Now()
 			stateFile.UpsertDeployment(rec)
-			_ = state.Write(statePath, stateFile)
+			return e.writeDecided(statePath, stateFile, err)
 		}
 		e.decided = true
 		return err
@@ -999,13 +1001,11 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				rec.Status = "error"
 				rec.UpdatedAt = time.Now()
 				stateFile.UpsertDeployment(rec)
-				_ = state.Write(statePath, stateFile)
 				// The record says the VM failed: so does the answer, whenever
 				// the bound comes (FB171-4).
-				e.decided = true
-				return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
+				return rec, e.writeDecided(statePath, stateFile, clerrors.New(clerrors.CodeVMProvisionFailed,
 					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", vm.ID, updated.Status),
-					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru."))
+					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru.")))
 			}
 		case <-ctx.Done():
 			// The CLI cancels ctx on the same SIGINT/SIGTERM that sigCh
@@ -1564,11 +1564,10 @@ func (e *Engine) awaitCreated(ctx context.Context, rec *state.DeploymentRecord, 
 				rec.Status = "error"
 				rec.UpdatedAt = time.Now()
 				stateFile.UpsertDeployment(*rec)
-				_ = state.Write(statePath, stateFile)
-				e.decided = true // as in provisionVM (FB171-4)
-				return clerrors.New(clerrors.CodeVMProvisionFailed,
+				// As in provisionVM (FB171-4).
+				return e.writeDecided(statePath, stateFile, clerrors.New(clerrors.CodeVMProvisionFailed,
 					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", rec.VMID, vm.Status),
-					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru."))
+					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru.")))
 			}
 		}
 	}
@@ -1578,6 +1577,41 @@ func (e *Engine) awaitCreated(ctx context.Context, rec *state.DeploymentRecord, 
 // IP, so a re-run creates one (recoverFloatingIP).
 func needsFloatingIP(rec *state.DeploymentRecord) bool {
 	return rec.VMIP == "" && rec.FloatingIPID == "" && rec.VMID != ""
+}
+
+// writeDecided writes sf, whose record a decision of deploy changed, and
+// returns err, the answer of that decision (FB171-4: the deferred atBound
+// keeps it). A write that failed is said in the answer (FB172-6): the
+// state still says the step before, and status and the next deploy go by
+// it — as deploy_apply says «the local state was not updated».
+func (e *Engine) writeDecided(statePath string, sf *state.File, err error) error {
+	e.decided = true
+	werr := state.Write(statePath, sf)
+	if werr == nil {
+		return err
+	}
+	note := i18n.Tf("The local state was not updated (%s): status and the next deploy still go by the step before this one.",
+		"Локальный state не обновлён (%s): status и следующий deploy пока исходят из прежнего шага.", errLine(werr))
+	var going *InProgress
+	if stderrors.As(err, &going) {
+		going.Note = strings.TrimSpace(going.Note + " " + note)
+		return err
+	}
+	if ce, ok := err.(*clerrors.CLIError); ok {
+		c := *ce
+		c.Hint = strings.TrimSpace(c.Hint + " " + note)
+		return &c
+	}
+	return fmt.Errorf("%w. %s", err, note)
+}
+
+// keepUnfinished leaves rec, whose wait for SSH has not ended, among the
+// unfinished deployments (D76): provisioned, unless it is unfinished
+// already or running — a running deployment stays running.
+func keepUnfinished(rec *state.DeploymentRecord) {
+	if !unfinishedStatuses[rec.Status] && rec.Status != "running" {
+		rec.Status = "provisioned"
+	}
 }
 
 // waitForSSH retries SSH connection until the VM is reachable, for the
