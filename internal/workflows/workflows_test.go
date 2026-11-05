@@ -1565,3 +1565,41 @@ func TestWorkflows_EvoErrorIsReadFromStderr(t *testing.T) {
 		t.Fatal("no call of evo with --json and 2>/dev/null found: the pattern moved, update the test")
 	}
 }
+
+// The title of a pull request is in Russian (owner's decision 05.11,
+// #1015): pr-title.yml checks it on opening, on each push and on each edit
+// of the title, by a script tested in ci.yml; the title reaches the script
+// through env alone, and the job reads no secret.
+func TestWorkflows_PRTitleInRussian(t *testing.T) {
+	w, ok := readWorkflows(t)["pr-title.yml"]
+	if !ok {
+		t.Fatal("no pr-title.yml — the check sees nothing, update it")
+	}
+	pr, _ := w.On["pull_request"].(map[string]any)
+	types := fmt.Sprint(pr["types"])
+	for _, ty := range []string{"opened", "edited", "synchronize", "reopened"} {
+		if !strings.Contains(types, ty) {
+			t.Errorf("pr-title: pull_request types %s lack %s", types, ty)
+		}
+	}
+	if fmt.Sprint(w.Permissions) != "map[contents:read]" {
+		t.Errorf("pr-title: permissions %v — contents: read alone", w.Permissions)
+	}
+	runs := false
+	for name, j := range w.Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run+fmt.Sprint(s.With)+fmt.Sprint(s.Env), "secrets.") {
+				t.Errorf("pr-title %s: a step reads a secret", name)
+			}
+			if strings.Contains(s.Run, ".github/scripts/pr_title.sh") {
+				runs = true
+				if !strings.Contains(s.Env["TITLE"], "github.event.pull_request.title") {
+					t.Errorf("pr-title %s: TITLE %q — the title through env", name, s.Env["TITLE"])
+				}
+			}
+		}
+	}
+	if !runs {
+		t.Error("pr-title: no step runs .github/scripts/pr_title.sh")
+	}
+}
