@@ -436,7 +436,13 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 				if img.Type != "" {
 					marketplace = img.Type == provision.ImageTypeMarketplace
 				}
-				vm.Disk.SizeGB, _ = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
+				// Raised to the image's minimum: said before the question,
+				// as the create says it (agent run of 1.7.0, №15).
+				var raised string
+				vm.Disk.SizeGB, raised = provision.BootDiskGB(vm.Disk.SizeGB, img.MinDisk)
+				if raised != "" {
+					p.Warnings = append(p.Warnings, raised)
+				}
 				image = img
 			}
 		}
@@ -449,14 +455,33 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 	if network {
 		nctx, ncancel := context.WithTimeout(parent, networkCheckTimeout)
 		defer ncancel()
-		var group string
-		p.NetworkCheck, group, networkErr = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
-		p.PortsGroup(group)
+		var subnet *provision.Subnet
+		var group *provision.SecurityGroup
+		p.NetworkCheck, subnet, group, networkErr = e.checkNetwork(nctx, p.ProjectID, vm.Zone.ID, vm.Zone.Name, p.SubnetID)
+		p.pickedNetwork(subnet, group)
 	}
 	qctx, qcancel := context.WithTimeout(parent, PreviewLookupTimeout)
 	defer qcancel()
 	p.Quota = e.quotaCheck(qctx, p.ProjectID)
 	return clerrors.Join(flavorErr, imageErr, networkErr)
+}
+
+// pickedNetwork names in p the subnet and the security group the VM gets,
+// as provision picks them (checkNetwork): what evo picks itself, the
+// preview names before the question (axis 4; agent run of 1.7.0, №8) —
+// deploy's preview named both, provision's neither. The group is also
+// where the ports open (PortsGroup).
+func (p *CreatePreview) pickedNetwork(subnet *provision.Subnet, group *provision.SecurityGroup) {
+	if subnet != nil && (p.SubnetID == "" || p.SubnetID == subnet.ID) {
+		p.SubnetID, p.SubnetName = subnet.ID, subnet.Name
+	}
+	if group == nil {
+		return
+	}
+	p.PortsGroup(group.Name)
+	if p.SecurityGroup == nil {
+		p.SecurityGroup = &NetworkRef{ID: group.ID, Name: group.Name}
+	}
 }
 
 // FlavorOutOfZone is provision.FlavorOutOfZone for the zone of a preview
