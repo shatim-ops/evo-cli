@@ -237,6 +237,18 @@ func (f *File) ActiveComposeDeployment() *DeploymentRecord {
 	return nil
 }
 
+// PrimaryDeployment is the deployment logs, verify and status work on
+// without a target: deploy's (ActiveComposeDeployment) — provision's VM
+// next to it runs no compose file (D62; agent run of 1.7.0, №3) — else the
+// first not destroyed, provision's VM of a folder that has nothing else;
+// nil when there is none.
+func (f *File) PrimaryDeployment() *DeploymentRecord {
+	if d := f.ActiveComposeDeployment(); d != nil {
+		return d
+	}
+	return f.ActiveDeployment()
+}
+
 // ActiveDeployments returns every deployment not destroyed, in file order.
 // A directory normally holds one; provision (evo vm create) adds a record of
 // its own VM next to a deploy's.
