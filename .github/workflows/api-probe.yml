@@ -260,7 +260,10 @@ jobs:
           # следующая). Имена действий IAM про сервисные аккаунты и
           # разрешения печатаются: они попадут в публичный код evo (evaluate
           # входа); остальные — только счётчики.
-          all="$RUNNER_TEMP/actions.json"; echo '[]' > "$all"; page=""; pages=0
+          # complete — каталог дочитан до страницы без следующей; ошибка
+          # страницы или предел 30 страниц — complete=false (прогон 44:
+          # вывод по неполному каталогу не делается).
+          all="$RUNNER_TEMP/actions.json"; echo '[]' > "$all"; page=""; pages=0; complete=false
           while :; do
             r=$(curl -sS -G -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "https://iam.api.cloud.ru/api/v1/actions" \
               --data-urlencode "pageSize=1000" ${page:+--data-urlencode "pageToken=$page"} || true)
@@ -268,15 +271,16 @@ jobs:
             [ "$c" = 200 ] || { echo "iam_actions_page_$pages      http=$c"; break; }
             printf '%s' "$b" | jq '.actions // []' | jq -s 'add' - "$all" > "$all.n" && mv "$all.n" "$all"
             page=$(printf '%s' "$b" | jq -r '.next_page_token // .nextPageToken // empty')
-            [ -n "$page" ] && [ "$pages" -lt 30 ] || break
+            [ -n "$page" ] || { complete=true; break; }
+            [ "$pages" -lt 30 ] || break
           done
-          jq -c --argjson p "$pages" '{pages: $p, n: length, unique: (map(.name) | unique | length),
+          jq -c --argjson p "$pages" --argjson done "$complete" '{complete: $done, pages: $p, n: length, unique: (map(.name) | unique | length),
             products: (map(.product_code // .productCode) | unique | length), iam: (map(select((.name // "") | startswith("iam."))) | length),
             login_create_account: any(.[]; .name == "iam.serviceAccounts.create"),
             login_grant_role: any(.[]; .name == "iam.permissions.create")}' "$all" | sed 's/^/iam_actions_all            /'
           echo "iam_actions_accounts_perms $(jq -c '[.[] | .name // "" | select(test("^iam\\..*(service|account|permission|role|binding)"; "i"))] | unique' "$all")"
           rm -f "$all"
-          unset cust page pages
+          unset cust page pages complete
 
           # Каталог образов (docs/internal/design-images.md §7): типы, отечественные
           # ОС, поиск по name/display_name, поля продуктов, расчёт цены. Имена
