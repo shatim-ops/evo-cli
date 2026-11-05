@@ -7,3 +7,16 @@ Author: Timur Shakirbekov, Cloud.ru
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
 This product includes software developed by third parties; see go.mod.
+
+The Cloud.ru logo on the sign-in pages of evo login (internal/login/pages.html)
+is a trademark of Cloud.ru and is not licensed under the Apache License 2.0.
+Логотип Cloud.ru на страницах входа evo login (internal/login/pages.html) —
+товарный знак Cloud.ru; он не распространяется под Apache License 2.0.
+
+The SB Sans Display and SB Sans Text font files (internal/login/fonts/) are a
+typeface of the Sber ecosystem, used in evo by permission of Cloud.ru (the
+project owner's decision of 05.11.2026), and are not licensed under the Apache
+License 2.0. See internal/login/fonts/NOTICE.md.
+Шрифты SB Sans Display и SB Sans Text (internal/login/fonts/) — гарнитура
+экосистемы Сбера; используются в evo с разрешения Cloud.ru (решение владельца
+проекта 05.11.2026) и не распространяются под Apache License 2.0.

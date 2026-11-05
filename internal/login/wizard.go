@@ -53,7 +53,7 @@ func (s *session) wizard(ctx context.Context) (Choice, error) {
 		{tRowKey(), tKeyDays(c.Days, term)}, {tRowProfile(), s.store.Profile(c.For)}} {
 		s.tell(fmt.Sprintf("  %-14s %s", r[0], r[1]))
 	}
-	s.tell(tSumStays())
+	s.tell(tSumStaysTerm())
 	s.tell(tGrantOnPage())
 	return c, nil
 }

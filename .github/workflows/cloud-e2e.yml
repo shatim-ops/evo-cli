@@ -409,6 +409,20 @@ jobs:
           echo "::add-mask::$ip"
           "$GITHUB_WORKSPACE/.github/scripts/ssh_diag.sh" "$vid" "$ip" "$sg"
 
+      # Те же факты у ВМ с рабочим SSH — для сравнения с провалом (строка
+      # плана 1.8 «сценарии cloud-e2e», п. 1).
+      - name: SSH-диагностика при удачном deploy (сравнение)
+        if: success() && hashFiles('e2e-app/.evo/state.json') != ''
+        working-directory: e2e-app
+        run: |
+          vid=$(jq -r '.deployments[0].vm_id // empty' .evo/state.json)
+          ip=$(jq -r '.deployments[0].vm_ip // empty' .evo/state.json)
+          sg=$(jq -r '.deployments[0].security_group_id // empty' .evo/state.json)
+          [ -n "$vid" ] && [ -n "$ip" ] || exit 0
+          echo "::add-mask::$vid"
+          echo "::add-mask::$ip"
+          "$GITHUB_WORKSPACE/.github/scripts/ssh_diag.sh" "$vid" "$ip" "$sg"
+
       - name: Группа и правила deploy в state
         # и после упавшего deploy: ВМ и правила могли создаться, проверка
         # их удаления ниже опирается на SG_ID
@@ -737,7 +751,12 @@ jobs:
           jq '{name: .image.name, ready, available_in_project, fields_required, filled: [.fields[] | {name, filled_by}]}' "$RUNNER_TEMP/card.json"
           avail=$(jq -r 'if .available_in_project == false then "false" else "true" end' "$RUNNER_TEMP/card.json")
           echo "AVAILABLE=$avail" >> "$GITHUB_ENV"
-          [ "$avail" = true ] || echo "::warning::образ $IMAGE недоступен проекту — проверяется отказ evo, ВМ не создаётся"
+          if [ "$avail" != true ]; then
+            # Явный пропуск, а не зелёный смоук ОС (строка плана 1.8
+            # «сценарии cloud-e2e», п. 3): в сводке — «пропуск» с причиной.
+            echo "::warning title=os-smoke пропущен::образ $IMAGE недоступен проекту — ОС не проверена, проверяется только отказ evo до создания"
+            echo "| os-smoke $IMAGE | **пропуск** | образ недоступен проекту: ВМ не создаётся, проверен только отказ evo (код 4) |" >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ "$avail" = true ] && [ "$NO_DOCKER" != true ]; then exit 0; fi
           mkdir -p os-app
           printf 'services:\n  web:\n    image: nginx:alpine\n' > os-app/docker-compose.yml
@@ -818,7 +837,7 @@ jobs:
           for _ in $(seq 1 40); do
             if ssh -i .evo/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
                 -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 \
-                "$SSH_USER@$VM_IP" 'cat /etc/os-release' > "$RUNNER_TEMP/os-release" 2>/dev/null; then
+                "$SSH_USER@$VM_IP" 'cat /etc/os-release' > "$RUNNER_TEMP/os-release" 2> "$RUNNER_TEMP/ssh.err"; then
               grep -E '^(ID|VERSION_ID|PRETTY_NAME)=' "$RUNNER_TEMP/os-release"
               grep -Eiq "^ID=\"?$OS_ID" "$RUNNER_TEMP/os-release" ||
                 { echo "::error::в os-release не $OS_ID"; exit 1; }
@@ -826,6 +845,10 @@ jobs:
             fi
             sleep 15
           done
+          # Причина последней попытки и факты сети (п. 2): stderr ssh не
+          # глушится, адреса и id — через redact.sed.
+          echo "ssh: $(tail -1 "$RUNNER_TEMP/ssh.err" | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | cut -c1-200)"
+          "$GITHUB_WORKSPACE/.github/scripts/ssh_diag.sh" "$VM_ID" "$VM_IP"
           echo "::error::SSH к ВМ не поднялся за 40 попыток (10–17 мин: пауза 15 с и до 10 с на соединение)"
           exit 1
 

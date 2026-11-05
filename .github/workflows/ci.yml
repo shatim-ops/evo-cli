@@ -331,6 +331,11 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/pr_title_test.sh
 
+      # Итог readonly «удаление несуществующего»: FAIL — только дефект evo.
+      - name: delete_absent_verdict.sh на образцах ответов
+        if: runner.os == 'Linux'
+        run: .github/scripts/delete_absent_verdict_test.sh
+
       # Класс PR по путям и чек-лист: таблицы скрипта на образцах путей.
       - name: classify.sh на образцах путей
         if: runner.os == 'Linux'

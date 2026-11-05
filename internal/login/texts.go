@@ -5,275 +5,96 @@
 package login
 
 import (
-	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
-// Every text of evo login and logout is here, from the second edition of
-// «Fable — авторизация» (05.11): the terminal and the page say the same
-// summary, errors and result (contract B-1, invariant 11), and a new
-// edition is a change of these strings, not of the code (the owner's
-// decision 05.11, #986).
+// Every text of evo login and logout is here. The Russian texts are the
+// final set of «Тексты входа — редактура» (docs/internal/briefs/
+// login-texts.md, #1022), with the conditions of «Риск», conclusion 28; a
+// new edition is a change of these strings, not of the code (#986). The
+// page names the actions and «Evolution CMCP», the terminal the commands
+// and evo (D34, variant A). No «ё» (the owner's decision 05.11).
 
 // day is a date as the texts write it: 05.12.2026.
 func day(t time.Time) string { return t.Local().Format("02.01.2006") }
 
+// 1. The consent page.
+
 func tHeading() string {
-	return i18n.T("evo access to a project", "Доступ evo к проекту")
+	return i18n.Tf("%s requests access to a project", "%s запрашивает доступ к проекту", product.PageName)
 }
-
 func tSignedIn(login string) string {
-	return i18n.Tf("You signed in as %s. evo will create a service account and a key with which it manages the cloud in the project you choose.",
-		"Вы вошли как %s. evo создаст сервисный аккаунт и ключ, которыми будет управлять облаком в выбранном проекте.", login)
+	return i18n.Tf("You signed in as %s. %s will create a service account (or use the one already made) and an access key to manage the cloud in the project you choose",
+		"Вы вошли как %s. %s создаст сервисный аккаунт (или использует уже созданный) и ключ доступа, чтобы управлять облаком в выбранном проекте",
+		login, product.PageName)
 }
-
-func tOpen() string {
-	return i18n.T("Sign in to Cloud.ru in the browser. The link, if the browser did not open:",
-		"Вход в Cloud.ru через браузер. Ссылка, если браузер не открылся:")
-}
-
-func tWaiting(wait time.Duration) string {
-	return i18n.Tf("Waiting for the sign-in (up to %d min, Ctrl-C to cancel)…", "Жду вход (до %d мин, Ctrl-C — отмена)…", int(wait.Minutes()))
-}
-
 func tProject() string { return i18n.T("Project", "Проект") }
+func tEnvProjectPicked() string {
+	return i18n.T("The project of CLOUDRU_PROJECT_ID is chosen", "Выбран проект из CLOUDRU_PROJECT_ID")
+}
+func tEnvProjectNoRight() string {
+	return i18n.T("The project of CLOUDRU_PROJECT_ID is not chosen: it takes the rights of a project administrator",
+		"Проект из CLOUDRU_PROJECT_ID не выбран: нужны права администратора проекта")
+}
+
+// tProfileProjectNoRight: the same for the project of the profile, which
+// the page checks without a caption (conclusion 27) but explains when it
+// cannot (the owner's decision, #1000).
+func tProfileProjectNoRight() string {
+	return i18n.T("The project of the evo profile is not chosen: it takes the rights of a project administrator",
+		"Проект текущего профиля evo не выбран: нужны права администратора проекта")
+}
 func tNoRightMark() string {
-	return i18n.T("no right: takes the project administrator", "нет права: нужен администратор проекта")
+	return i18n.T("takes the rights of a project administrator", "нужны права администратора проекта")
+}
+
+// tNoRightNote and eNoRightHint name the way of a person without the right
+// («Риск», conclusion 28.2): the administrator makes the account and key.
+func tNoRightNote() string {
+	return i18n.T("If you have no administrator rights in the project, ask the project administrator to create for you a service account with the role needed and a key in the Cloud.ru personal account",
+		"Если прав администратора в проекте нет, попросите администратора проекта создать для вас сервисный аккаунт с нужной ролью и ключ в личном кабинете Cloud.ru")
 }
 func tForWhom() string { return i18n.T("Whom the key is for", "Кому ключ") }
-func tChoose() string  { return i18n.T("Choose (number)", "Выберите (номер)") }
-func tTermQuestion() string {
-	return i18n.T("Term of the key, days (7, 30, 90)", "Срок ключа, дней (7, 30, 90)")
-}
-func tTerm() string { return i18n.T("Term of the key", "Срок ключа") }
-func tWhatWillBeDone() string {
-	return i18n.T("What will be done:", "Что будет сделано:")
-}
-func tWhatWillBeMade() string {
-	return i18n.T("What will be created", "Что будет создано")
-}
-func tCancel() string { return i18n.T("Cancel", "Отмена") }
-
-func tNoRightNote() string {
-	return i18n.T("Access in a project without the right can be created by its administrator: ask them to run evo login, or to create a key in the console and pass it to you.",
-		"Доступ в проекте без права может создать его администратор: попросите его выполнить evo login или создать ключ в консоли и передать вам.")
-}
-
-func tForMe() string    { return i18n.T("Me", "Мне") }
-func tForAgent() string { return i18n.T("An agent", "Агенту") }
+func tForMe() string   { return i18n.T("Me", "Мне") }
 func tForMeNote() string {
-	return i18n.T("Account evo, commands in the terminal.", "Аккаунт evo, команды в терминале.")
+	return i18n.T("Account evo: you run the commands", "Аккаунт evo: команды запускаете вы")
 }
+func tForAgent() string { return i18n.T("An agent", "Агенту") }
 func tForAgentNote() string {
-	return i18n.T("Account evo-agent, the key of an MCP server.", "Аккаунт evo-agent, ключ для MCP-сервера.")
+	return i18n.T("Account evo-agent: the agent works by itself through the MCP server", "Аккаунт evo-agent: агент работает сам через MCP-сервер")
 }
 
+// tRoleNote says what the role allows; «any resources of the project»
+// stays the agent's warning, once on the page (conclusion 26.3).
 func tRoleNote() string {
-	return i18n.Tf("Both accounts get the role «%s», including deleting resources and managing keys.",
-		"Оба аккаунта получают роль «%s», включая удаление ресурсов и управление ключами.", auth.LoginRoleDisplayName)
+	return i18n.Tf("Both accounts get the role «%s». It gives the right to delete the resources of the project and to manage service accounts and access keys",
+		"Оба аккаунта получают роль «%s». Она дает право удалять ресурсы проекта и управлять сервисными аккаунтами и ключами доступа",
+		auth.LoginRoleDisplayName)
 }
-
+func tAgentWarnTitle() string {
+	return i18n.T("The agent gets the rights of a project administrator", "Агент получит права администратора проекта")
+}
+func tAgentWarn(until string) string {
+	return i18n.Tf("The role «%s» gives the agent full access to the resources of the project: it can create, change and delete any resources of the project, those made not through %s too, and manage service accounts and keys. The role is granted with a term until %s. To revoke the access earlier, sign out of %s on this computer — the key will be deleted. The role is removed in the Cloud.ru personal account",
+		"Роль «%s» дает агенту полный доступ к ресурсам проекта: он может создавать, изменять и удалять любые ресурсы проекта, в том числе созданные не через %s, а также управлять сервисными аккаунтами и ключами. Роль выдается со сроком до %s. Чтобы отозвать доступ раньше, выйдите из %s на этом компьютере — ключ будет удален. Роль снимается в личном кабинете Cloud.ru",
+		auth.LoginRoleDisplayName, product.PageName, until, product.PageName)
+}
+func tTerm() string      { return i18n.T("Term of the key", "Срок ключа") }
 func tDays(n int) string { return i18n.Tf("%d days", "%d дней", n) }
 func tForeverInConsole() string {
-	return i18n.T("A key without a term: in the console only.", "Бессрочный ключ: только в консоли.")
+	return i18n.T("Keys without a term are created only in the Cloud.ru personal account", "Бессрочные ключи создаются только в личном кабинете Cloud.ru")
 }
 
-// Summary lines of the terminal and the page: the same words.
-func tSumAccountNew(account, project string) string {
-	return i18n.Tf("Account %s in the project %s: create.", "Аккаунт %s в проекте %s: создать.", account, project)
-}
-func tSumRole(until string) string {
-	return i18n.Tf("Role «%s» until %s.", "Роль «%s» до %s.", auth.LoginRoleDisplayName, until)
-}
-func tSumKey(until string) string { return i18n.Tf("Key until %s.", "Ключ до %s.", until) }
-func tSumStays() string {
-	return i18n.T("The account stays after logout; the role expires with the key.", "Аккаунт остаётся после выхода, роль истекает вместе с ключом.")
-}
-func tSumReuseNote() string {
-	return i18n.T("If the project has this account already, no new one is created: the role is extended to the key's term, and the previous key of this profile is revoked.",
-		"Если такой аккаунт в проекте уже есть, новый не создаётся: роль продлевается до срока ключа, прежний ключ этого профиля отзывается.")
-}
-func tSecretNote() string {
-	return i18n.T("The key's secret is not shown: evo on this computer creates the account and the key with your rights and keeps the key in the profile.",
-		"Секрет ключа не показывается: evo на этом компьютере создаёт аккаунт и ключ вашими правами и записывает ключ в профиль.")
-}
-
-// The terminal's summary rows.
-func tRowAccount() string { return i18n.T("account", "аккаунт") }
-func tRowRole() string    { return i18n.T("role", "роль") }
-func tRowKey() string     { return i18n.T("key", "ключ") }
-func tRowProfile() string { return i18n.T("profile", "профиль") }
-func tRoleUntil(term time.Time) string {
-	return i18n.Tf("%s, until %s", "%s, до %s", auth.LoginRoleDisplayName, day(term))
-}
-func tKeyDays(days int, term time.Time) string {
-	return i18n.Tf("%d days, until %s", "%d дней, до %s", days, day(term))
-}
-
-// Steps of the terminal.
-func tStepAccount(account string, reused bool) string {
-	if reused {
-		return i18n.Tf("account %s… there", "аккаунт %s… есть", account)
-	}
-	return i18n.Tf("account %s… created", "аккаунт %s… создан", account)
-}
-func tStepRole() string     { return i18n.T("role… granted", "роль… выдана") }
-func tStepKey() string      { return i18n.T("key… issued", "ключ… выпущен") }
-func tStepKeyCheck() string { return i18n.T("key check… ok", "проверка ключа… ок") }
-
-// The result.
-func tDone() string { return i18n.T("Done", "Готово") }
-
-// tDoneText is the result by whom the key is for: an agent goes on by
-// itself, a person goes back to the terminal.
-func tDoneText(keyID, profile string, term time.Time, forAgent bool) string {
-	if forAgent {
-		return i18n.Tf("Key %s is kept on this machine, profile «%s». Valid until %s. Go back to the agent: it goes on by itself.",
-			"Ключ %s сохранён на этой машине, профиль «%s». Действует до %s. Вернитесь к агенту: он продолжит сам.", keyID, profile, day(term))
-	}
-	return i18n.Tf("Key %s is kept on this machine, profile «%s». Valid until %s. Go back to the terminal.",
-		"Ключ %s сохранён на этой машине, профиль «%s». Действует до %s. Вернитесь в терминал.", keyID, profile, day(term))
-}
-func tReused() string {
-	return i18n.T("there, used again", "есть, использован повторно")
-}
-func tRevokedPrevious(keyID string) string {
-	return i18n.Tf("the previous key %s of this machine is revoked", "прежний ключ %s на этой машине отозван", keyID)
-}
-func tRevokeHow() string {
-	return i18n.T("To revoke: evo logout or the console → Service accounts. This window can be closed.",
-		"Отзыв: evo logout или консоль → Сервисные аккаунты. Это окно можно закрыть.")
-}
-func tCancelledTitle() string { return i18n.T("Cancelled", "Отменено") }
-func tCancelled() string {
-	return i18n.T("Cancelled, nothing was created. Run evo login again when ready.", "Отменено, ничего не создано. Повторите evo login, когда будете готовы.")
-}
-func tNotComplete() string {
-	return i18n.T("Access not complete", "Доступ не завершён")
-}
-func tDetails(reason string, code int) string {
-	return i18n.Tf("Details and the exit code are in the terminal (%s, %d). Run evo login again. This window can be closed.",
-		"Подробности и код выхода — в терминале (%s, %d). Повторить — evo login. Это окно можно закрыть.", reason, code)
-}
-func tForeign() string {
-	return i18n.T("This request is not of this sign-in. Run evo login again.", "Запрос не от этого входа. Повторите evo login.")
-}
-
-// The errors (one text in the terminal and on the page).
-func eCancelled() string {
-	return i18n.T("the sign-in was cancelled, nothing was created", "вход отменён, ничего не создано")
-}
-func eSession(status int) string {
-	return i18n.Tf("the sign-in is not complete: the session expired (HTTP %d)", "вход не завершён: сессия истекла (HTTP %d)", status)
-}
-func eIDToken(what string) string {
-	return i18n.Tf("IAM did not confirm the sign-in (ID token: %s), nothing was created", "вход не подтверждён IAM (ID token: %s), ничего не создано", what)
-}
-func eIDTokenHint() string {
-	return i18n.T("Run evo login again; if it repeats, write to support.", "Повторите evo login; если повторяется, напишите в поддержку.")
-}
-func eNoRight(project string) string {
-	return i18n.Tf("creating access takes the administrator of the project %s", "создать доступ может администратор проекта %s", project)
-}
-func eNoRightAny(n int) string {
-	return i18n.Tf("creating access takes a project administrator: you have the right in none of your %d projects", "создать доступ может администратор проекта: у вас нет права ни в одном из %d проектов", n)
-}
-func eNoRightHint() string {
-	return i18n.T("Ask them to run evo login, or to create a key in the console and pass it to you.",
-		"Попросите его выполнить evo login или создать ключ в консоли и передать вам.")
-}
-func eAccountLimit(project string, n int) string {
-	return i18n.Tf("the project %s has %d service accounts already, no new one can be created", "в проекте %s уже %d сервисных аккаунтов, новый создать нельзя", project, n)
-}
-func eAccountLimitHint() string {
-	return i18n.T("Delete one no one uses in the console.", "Удалите ненужный в консоли.")
-}
-func eKeyLimit(account string, n int) string {
-	return i18n.Tf("the account %s has %d keys already", "у аккаунта %s уже %d ключей", account, n)
-}
-func eKeyLimitHint(account string) string {
-	return i18n.Tf("Revoke the ones no one uses: the console → Service accounts → %s.", "Отзовите ненужные: консоль → Сервисные аккаунты → %s.", account)
-}
-func eNotComplete(cause string, made, undone, left []string) string {
-	return i18n.Tf("access is not complete: %s; created: %v; undone: %v; left: %v", "доступ не завершён: %s; создано: %v; отменено: %v; осталось: %v",
-		cause, made, undone, left)
-}
-func eNotCompleteHint(left bool) string {
-	if left {
-		return i18n.T("Delete what is left in the console → Service accounts, then run evo login again.",
-			"Удалите оставшееся в консоли → Сервисные аккаунты и повторите evo login.")
-	}
-	return i18n.T("Nothing of this login is left. Run evo login again.", "От этого входа ничего не осталось. Повторите evo login.")
-}
-func ePorts(ports []int) string {
-	return i18n.Tf("ports %v are taken", "порты %v заняты", ports)
-}
-func ePortsHint() string {
-	return i18n.T("Free one of them and run evo login again.", "Освободите один и повторите evo login.")
-}
-func eTimeout(wait time.Duration) string {
-	return i18n.Tf("the sign-in was not done in %d minutes, nothing was created", "вход не выполнен за %d минут, ничего не создано", int(wait.Minutes()))
-}
-func eProvider(what string) string {
-	return i18n.Tf("the provider of Cloud.ru refused the sign-in: %s; nothing was created", "провайдер входа Cloud.ru отказал: %s; ничего не создано", what)
-}
-func eKeyCheck(status int) string {
-	return i18n.Tf("the new key did not get an IAM token (HTTP %d)", "новый ключ не получил токен IAM (HTTP %d)", status)
-}
-func eChoice(what string) string {
-	return i18n.Tf("the choice is not one offered (%s), nothing was created", "выбор не из предложенных (%s), ничего не создано", what)
-}
-func eNoProject(project, login string) string {
-	if project == "" {
-		return i18n.Tf("%s sees no project, nothing was created", "%s не видит ни одного проекта, ничего не создано", login)
-	}
-	return i18n.Tf("no project %q among the projects of %s, nothing was created", "проекта %q нет среди проектов %s, ничего не создано", project, login)
-}
-func eRetry() string { return i18n.T("Run evo login again.", "Повторите evo login.") }
-func eKeyLeft(keyID string, err error) string {
-	return i18n.Tf("the previous key %s is left: %v — revoke it in the console", "прежний ключ %s остался: %v — отзовите его в консоли", keyID, err)
-}
-
-// tAt names the step of a refusal and the HTTP status of the answer that
-// made it, when one did (#981).
-func tAt(step string, status int) string {
-	if status != 0 {
-		return i18n.Tf(" (step %s, HTTP %d)", " (шаг %s, HTTP %d)", step, status)
-	}
-	return i18n.Tf(" (step %s)", " (шаг %s)", step)
-}
-func eProviderHint() string {
-	return i18n.T("Run evo login again; if it repeats, the account may not sign in here — ask the organization administrator.",
-		"Повторите evo login; если повторится — входу этой учётной записи что-то мешает, спросите администратора организации.")
-}
-func eCancelledHint() string {
-	return i18n.T("Run evo login when ready.", "Повторите evo login, когда будете готовы.")
-}
-func tGrantOnPage() string {
-	return i18n.T("The project is chosen on the page that opens after the sign-in; access is granted only by «Grant access» there.",
-		"Проект выбирается на странице, которая откроется после входа; доступ выдаёт только кнопка «Выдать доступ» на ней.")
-}
-func tNoBrowser() string {
-	return i18n.T("The browser is not opened: open the link on this same machine. Over SSH or in a container the sign-in does not complete: the provider returns to 127.0.0.1 of the machine with the browser.",
-		"Браузер не открывается: откройте ссылку на этой же машине. По SSH и в контейнере вход не пройдёт: провайдер возвращает на 127.0.0.1 машины с браузером.")
-}
-func eNoYes() string {
-	return i18n.T("evo login takes no --yes: access is granted only by «Grant access» on the page", "у evo login нет --yes: доступ выдаёт только кнопка «Выдать доступ» на странице")
-}
-func eNoYesHint() string {
-	return i18n.T("Run evo login without --yes; the person grants on the page.", "Запустите evo login без --yes; доступ выдаёт человек на странице.")
-}
-
-// RefuseYes is the refusal of evo login --yes, before any request: the
-// consent is the page's («Риск», conclusion 24).
-func RefuseYes() error { return clierrors.New(clierrors.CodeUsage, eNoYes(), eNoYesHint()) }
-
+// tUnchecked is the one mark of the right on the page and in the terminal
+// (conclusions 26.5 and 28.1): what evaluate answered, by the list.
 func tUnchecked(reason string) string {
-	return i18n.Tf("the right is not confirmed by the platform: %s; the first write answers (a refusal there creates nothing)",
-		"право не подтверждено платформой: %s; ответит первая запись платформы (её отказ ничего не создаёт)", reason)
+	return i18n.Tf("The right is not confirmed by the platform: %s. If there is no right, Cloud.ru refuses when it creates the account, and nothing will be left",
+		"Право не подтверждено платформой: %s. Если права нет, Cloud.ru откажет при создании аккаунта, и ничего не останется", reason)
 }
 
 // The reasons of tUnchecked: what evaluate answered («Риск», R-49).
@@ -287,164 +108,172 @@ func tCatalogUnread(action, err string) string {
 	return i18n.Tf("evaluate answered false on %s; the IAM catalog of actions was not read: %s",
 		"evaluate ответил false на %s; каталог действий IAM не прочитан: %s", action, err)
 }
-func eForbidden(project string) string {
-	return i18n.Tf("no right to create access in the project %s: the platform refused", "нет права создать доступ в проекте %s: платформа отказала", project)
+func tWhatWillBeMade() string { return i18n.T("What will be done", "Что будет сделано") }
+func tSumAccountNew(account, project string) string {
+	return i18n.Tf("The service account %s in the project %s will be created (or the one already made used).",
+		"Сервисный аккаунт %s в проекте %s будет создан (или использован уже созданный).", account, project)
+}
+func tSumRole(until string) string {
+	return i18n.Tf("The role «%s» will be granted until %s.", "Роль «%s» будет выдана до %s.", auth.LoginRoleDisplayName, until)
+}
+func tSumKey(until string) string {
+	return i18n.Tf("The access key will be valid until %s.", "Ключ доступа будет действовать до %s.", until)
 }
 
-// The errors and notes of the flow, the discovery and the logout.
-func eKeyNotDeletedHint() string {
-	return i18n.T("Delete the key in the console (Users → Service accounts → the account → Access keys), then 'evo configure delete <profile>'.",
-		"Удалите ключ в консоли («Пользователи» → «Сервисные аккаунты» → аккаунт → «Ключи доступа»), затем 'evo configure delete <профиль>'.")
+// tSumStaysPage and tSumStaysTerm: whether the account is new is known
+// only after the page (step 12), so the role «expires in its term», not
+// «with the key» («Риск», conclusion 28.3).
+func tSumStaysPage() string {
+	return i18n.Tf("After you sign out of %s the account stays, and the role expires in its term",
+		"После выхода из %s аккаунт останется, а роль истечет в свой срок", product.PageName)
 }
-func eKeyNotDeleted(accessKeyID string, err error) string {
-	return i18n.Tf("the access key %s was not deleted: %v; the profile is kept", "ключ доступа %s не удалён: %v; профиль оставлен", accessKeyID, err)
-}
-func tUndoRole() string {
-	return i18n.T("the role of the account", "роль аккаунта")
-}
-func tUndoKey() string {
-	return i18n.T("the access key", "ключ доступа")
-}
-func tUndoAccount(account string) string {
-	return i18n.Tf("service account %s", "сервисный аккаунт %s", account)
-}
-func eOrgPages(path string) string {
-	return i18n.Tf("Organization API: %s has too many pages", "Organization API: у %s слишком много страниц", path)
-}
-func eOrgStatus(status int, path string) string {
-	return i18n.Tf("Organization API %d at %s", "Organization API %d на %s", status, path)
-}
-func eOrgUnreachable() string {
-	return i18n.T("the Organization API of Cloud.ru is unreachable", "Organization API Cloud.ru недоступен")
-}
-func eNoProjectHintFlag() string {
-	return i18n.T("Pass a project's id or name the person sees in the console, or no --project to choose.",
-		"Передайте id или имя проекта, который человек видит в консоли, или не передавайте --project и выберите.")
-}
-func eNoProjectHint() string {
-	return i18n.T("A project is created in the console; or sign in as a member of one.", "Проект создаётся в консоли; или войдите участником проекта.")
-}
-func eDiscoveryHint() string {
-	return i18n.T("This is not a problem of your account: the answer of IAM is not the one evo expects. Try again later; if it repeats, report it.",
-		"Это не проблема вашей учётной записи: ответ IAM не тот, что ожидает evo. Повторите позже; если повторится — сообщите об этом.")
-}
-func eDiscovery(issuer, what string) string {
-	return i18n.Tf("the OpenID Connect discovery of %s is not trusted: %s; nothing was sent",
-		"discovery OpenID Connect %s не принят: %s; ничего не отправлено", issuer, what)
-}
-func eNetworkRetry() string {
-	return i18n.T("Check the network and try again.", "Проверьте сеть и повторите.")
-}
-func eOIDCUnreachable() string {
-	return i18n.T("the OpenID Connect provider of Cloud.ru is unreachable", "провайдер OpenID Connect Cloud.ru недоступен")
+func tSumStaysTerm() string {
+	return i18n.T("After the exit (evo logout) the account stays, and the role expires in its term",
+		"После выхода (evo logout) аккаунт останется, а роль истечет в свой срок")
 }
 
-// The texts of the commands evo login and evo logout (internal/cli) and
-// of evo agent setup about a key of evo login.
-func TLogoutDone(profile string, key any) string {
-	return i18n.Tf("Profile %q deleted; its key: %s", "Профиль %q удалён; его ключ: %s", profile, key)
+// tGrantInProject is the main button; the page puts the chosen project's
+// name where %s is, by CSS.
+func tGrantInProject(project string) string {
+	return i18n.Tf("Grant access to the project «%s»", "Выдать доступ к проекту «%s»", project)
 }
-func TLogoutKept() string {
-	return i18n.T("the key of this profile did not come from evo login: it stays in the cloud — delete it in the console",
-		"ключ этого профиля создан не evo login: он остаётся в облаке — удалите его в консоли")
-}
-func TLogoutRevoke(keyID, profile string) string {
-	return i18n.Tf("revoke the access key %s and delete the profile %q", "отозвать ключ доступа %s и удалить профиль %q",
-		keyID, profile)
-}
-func TLogoutDelete(profile string) string {
-	return i18n.Tf("delete the profile %q", "удалить профиль %q", profile)
-}
-func ENoProfileHint() string {
-	return i18n.T("The profiles: 'evo configure list'.", "Профили: 'evo configure list'.")
-}
-func ENoProfile(profile string) string {
-	return i18n.Tf("no profile %q", "профиля %q нет", profile)
-}
-func TLogoutLong() string {
-	return i18n.T(`Delete the access key evo login made for the profile — by its id, with
-its own token — then the profile and its cached token. The service
-account and its role stay. A profile whose key came from evo configure or
-the console is deleted alone: that key stays in the cloud.`, `Удалить ключ доступа, созданный evo login для профиля, — по его id, его же
-токеном, — затем профиль и его токен в кэше. Сервисный аккаунт и роль
-остаются. Профиль с ключом из evo configure или консоли удаляется один:
-этот ключ остаётся в облаке.`)
-}
-func TLogoutShort() string {
-	return i18n.T("Revoke the access key evo login made and delete the profile", "Отозвать ключ, созданный evo login, и удалить профиль")
-}
-func ETTLHint() string {
-	return i18n.T("A key without a term is created in the console only.", "Бессрочный ключ создаётся только в консоли.")
-}
-func ETTL(ttl string) string {
-	return i18n.Tf("--key-ttl %q: 7d, 30d or 90d", "--key-ttl %q: 7d, 30d или 90d", ttl)
-}
-func EFor(forWhom string) string {
-	return i18n.Tf("--for %q: me or agent", "--for %q: me или agent", forWhom)
-}
-func TFlagNoBrowser() string {
-	return i18n.T("Do not open a browser: only print the address (to open on this same machine)", "Не открывать браузер: только напечатать адрес (открыть на этой же машине)")
-}
-func TFlagTTL() string {
-	return i18n.T("Term of the key: 7d, 30d or 90d (30d by default)", "Срок ключа: 7d, 30d или 90d (по умолчанию 30d)")
-}
-func TFlagFor() string {
-	return i18n.T("Whom the key is for: me (account evo, profile of now) or agent (account evo-agent, profile «agent»)",
-		"Для кого ключ: me (аккаунт evo, текущий профиль) или agent (аккаунт evo-agent, профиль «agent»)")
-}
-func TFlagProject() string {
-	return i18n.T("Project id or name to offer alone", "id или имя проекта — будет предложен только он")
-}
-func TSignedInCLI(keyID, account, project, profile string, until time.Time) string {
-	return i18n.Tf("Signed in: the key %s of %s for the project %s is kept in the profile %q until %s",
-		"Вход выполнен: ключ %s аккаунта %s для проекта %s записан в профиль %q до %s",
-		keyID, account, project, profile, day(until))
-}
-func TLoginLong() string {
-	return i18n.T(`Sign in to Cloud.ru in a browser and grant access on the page evo serves
-on this machine: the project, whom the key is for (you: account evo,
-profile of now; an agent: account evo-agent, profile «agent») and its
-term (7, 30 or 90 days). A terminal, when there is one, asks whom and the
-term before the browser; access is granted only by «Grant access» on the
-page (no --yes). With your rights evo makes or reuses the service
-account, grants it the role «project administrator» until the key's term,
-creates the key and keeps it in the profile. The role includes deleting
-resources. A previous key evo login made for that profile is revoked.
-Your tokens stay in memory; the key's secret is shown nowhere. A refusal
-names its step and HTTP status. Over SSH or in a container the sign-in
-does not complete. Undo: evo logout.`, `Войти в Cloud.ru через браузер и выдать доступ на странице, которую evo
-открывает на этой машине: проект, для кого ключ (вам — аккаунт evo,
-текущий профиль; агенту — аккаунт evo-agent, профиль «agent») и его срок
-(7, 30 или 90 дней). Терминал, если он есть, спрашивает «кому» и срок до
-браузера; доступ выдаёт только кнопка «Выдать доступ» на странице (--yes
-нет). Вашими правами evo создаёт или переиспользует сервисный аккаунт,
-выдаёт ему роль «Администратор проекта» до срока ключа, создаёт ключ и
-записывает его в профиль. Роль включает удаление ресурсов. Прежний ключ
-evo login этого профиля отзывается. Ваши токены остаются в памяти; секрет
-ключа нигде не показывается. Отказ называет шаг и HTTP-статус. По SSH и в
-контейнере вход не пройдёт. Отменить — evo logout.`)
-}
-func TLoginShort() string {
-	return i18n.T("Sign in to Cloud.ru in a browser and keep an access key in the profile", "Войти в Cloud.ru через браузер и записать ключ доступа в профиль")
-}
-func TAgentKeyWarning(profile string) string {
-	return i18n.Tf("the key of the profile %q was made by evo login with the role «%s»: the agent may delete resources with it; an agent nobody watches needs a key whose role cannot delete",
-		"ключ профиля %q создан evo login с ролью «%s»: агенту с ним разрешено удаление ресурсов; агенту без присмотра нужен ключ с ролью без права удаления",
-		profile, auth.LoginRoleDisplayName)
+func tCancel() string { return i18n.T("Cancel", "Отмена") }
+func tSecretNote() string {
+	return i18n.Tf("The key's secret does not pass through the browser and is shown nowhere: %s on this computer creates the account and the key with your rights and keeps the key in the profile",
+		"Секрет ключа не проходит через браузер и нигде не показывается: аккаунт и ключ создает %s на этом компьютере с вашими правами и записывает ключ в профиль",
+		product.PageName)
 }
 
-// The preselected project of the consent page (R-48).
-func tGrantIn() string {
-	return i18n.T("Grant access in the project", "Выдать доступ в проекте")
+// 2. «Done»: the dates are the role's actual term (conclusion 26.2).
+
+func tDone() string { return i18n.T("Access granted", "Доступ выдан") }
+
+// tDoneText is the result by whom the key is for.
+func tDoneText(keyID, profile string, term time.Time, forAgent bool) string {
+	if forAgent {
+		return i18n.Tf("The key %s is kept on this computer in the profile «%s» and is valid until %s. The agent goes on by itself — go back to it",
+			"Ключ %s сохранен на этом компьютере в профиле «%s» и действует до %s. Агент продолжит работу сам — вернитесь к нему", keyID, profile, day(term))
+	}
+	return i18n.Tf("The key %s is kept on this computer in the profile «%s» and is valid until %s. You can go back to work — this window can be closed",
+		"Ключ %s сохранен на этом компьютере в профиле «%s» и действует до %s. Можно вернуться к работе — это окно можно закрыть", keyID, profile, day(term))
 }
-func tPreselectedFrom(source string) string {
-	return i18n.Tf("preselected %s — another can be chosen", "подставлен %s — можно выбрать другой", source)
+
+// tDoneReused: only when the account was there; without the last part
+// when there was no previous key.
+func tDoneReused(account string, role time.Time, previousKey string) string {
+	if previousKey == "" {
+		return i18n.Tf("The existing service account %s is used: the role «%s» is valid until %s",
+			"Использован существующий сервисный аккаунт %s: роль «%s» действует до %s", account, auth.LoginRoleDisplayName, day(role))
+	}
+	return i18n.Tf("The existing service account %s is used: the role «%s» is valid until %s, the previous key %s on this computer is deleted",
+		"Использован существующий сервисный аккаунт %s: роль «%s» действует до %s, прежний ключ %s на этом компьютере удален",
+		account, auth.LoginRoleDisplayName, day(role), previousKey)
 }
-func tPreselectNoRight(source string) string {
-	return i18n.Tf("the project %s is not checked: no right in it", "проект %s не отмечен: в нём нет права", source)
+
+// The row names of the result page; the terminal's rows are tRow*.
+func tRowsPage() [5]string {
+	return [5]string{i18n.T("Project", "Проект"), i18n.T("Account", "Аккаунт"), i18n.T("Role", "Роль"),
+		i18n.T("Key", "Ключ"), i18n.T("Profile", "Профиль")}
 }
+func tRoleUntil(term time.Time) string {
+	return i18n.Tf("%s, until %s", "%s, до %s", auth.LoginRoleDisplayName, day(term))
+}
+func tRevokeHow() string {
+	return i18n.Tf("To close the access, sign out of %s or delete the key in the Cloud.ru personal account in «Service accounts». This window can be closed",
+		"Чтобы закрыть доступ, выйдите из %s или удалите ключ в личном кабинете Cloud.ru в разделе «Сервисные аккаунты». Это окно можно закрыть",
+		product.PageName)
+}
+
+// 3. «Cancelled» and the error page: the page shows the message, the hint
+// with its command stays the terminal's and JSON's.
+
+func tCancelledTitle() string { return i18n.T("Cancelled", "Отменено") }
+func tCancelled() string {
+	return i18n.T("Nothing was created. To start over, run the sign-in again. This window can be closed",
+		"Ничего не создано. Чтобы начать заново, запустите вход еще раз. Это окно можно закрыть")
+}
+func tNotComplete() string {
+	return i18n.T("Access could not be granted", "Не удалось выдать доступ")
+}
+func tDetails(reason string, code int) string {
+	return i18n.Tf("Details (%s, code %d) are where the sign-in was run. To retry, run the sign-in again. This window can be closed",
+		"Подробности (%s, код %d) — там, где запускали вход. Чтобы повторить, запустите вход еще раз. Это окно можно закрыть", reason, code)
+}
+func tForeign() string {
+	return i18n.T("The request is not of the current sign-in. Run the sign-in again", "Запрос не относится к текущему входу. Запустите вход еще раз")
+}
+
+// 4. The terminal.
+
+func tChoose() string {
+	return i18n.T("Choose an option (number)", "Выберите вариант (номер)")
+}
+
+// tAgentWarnLine and tAgentRevokeLine: the warning of a key for an agent in
+// the terminal, once a login; the exit is the command there (conclusion
+// 27). «Any resources of the project» once (conclusion 26.3).
+func tAgentWarnLine(until string) string {
+	if until == "" {
+		return i18n.T("The agent gets the rights of a project administrator: any resources of the project, those made not through evo CMCP too, it can delete, and it can issue new keys",
+			"Агент получит права администратора проекта: любые ресурсы проекта, в том числе созданные не через evo CMCP, он может удалять, а также выпускать новые ключи")
+	}
+	return i18n.Tf("The agent gets the rights of a project administrator: any resources of the project, those made not through evo CMCP too, it can delete, and it can issue new keys. The role is granted with a term until %s",
+		"Агент получит права администратора проекта: любые ресурсы проекта, в том числе созданные не через evo CMCP, он может удалять, а также выпускать новые ключи. Роль выдается со сроком до %s", until)
+}
+func tAgentRevokeLine() string {
+	return i18n.T("To revoke earlier: evo logout deletes the key, the role is removed in the Cloud.ru personal account",
+		"Отозвать раньше: evo logout удалит ключ, роль снимается в личном кабинете Cloud.ru")
+}
+func tTermQuestion() string {
+	return i18n.T("Term of the key, days (7, 30, 90)", "Срок ключа, дней (7, 30, 90)")
+}
+func tWhatWillBeDone() string {
+	return i18n.T("What will be done:", "Что будет сделано:")
+}
+func tRowAccount() string { return i18n.T("account", "аккаунт") }
+func tRowRole() string    { return i18n.T("role", "роль") }
+func tRowKey() string     { return i18n.T("key", "ключ") }
+func tRowProfile() string { return i18n.T("profile", "профиль") }
+func tKeyDays(days int, term time.Time) string {
+	return i18n.Tf("%d days, until %s", "%d дней, до %s", days, day(term))
+}
+func tGrantOnPage() string {
+	return i18n.T("The project is chosen on the page that opens after the sign-in. Access is granted only by the button «Grant access» on that page.",
+		"Проект выбирается на странице, которая откроется после входа. Доступ выдается только кнопкой «Выдать доступ» на этой странице.")
+}
+
+// tOpenPage is said once before the browser (D34, variant A).
+func tOpenPage() string {
+	return i18n.Tf("The %s page opens", "Откроется страница %s", product.PageName)
+}
+func tOpen() string {
+	return i18n.T("Sign-in to Cloud.ru in the browser. If the browser did not open, follow the link:",
+		"Вход в Cloud.ru через браузер. Если браузер не открылся, перейдите по ссылке:")
+}
+func tWaiting(wait time.Duration) string {
+	return i18n.Tf("Complete the sign-in in the browser. Waiting — up to %d min, cancel — Ctrl-C",
+		"Завершите вход в браузере. Ожидание — до %d мин, отмена — Ctrl-C", int(wait.Minutes()))
+}
+func tNoBrowser() string {
+	return i18n.T("The browser is not opened: open the link on this same computer. Over SSH or in a container the sign-in does not complete: after the sign-in the browser goes back to 127.0.0.1 of its own computer, not of the one evo runs on",
+		"Браузер не открыт: откройте ссылку на этом же компьютере. По SSH и в контейнере вход не пройдет: после входа браузер возвращается на 127.0.0.1 своего компьютера, а не того, где запущен evo")
+}
+func tStepAccount(account string, reused bool) string {
+	if reused {
+		return i18n.Tf("account %s… already there", "аккаунт %s… уже есть", account)
+	}
+	return i18n.Tf("account %s… created", "аккаунт %s… создан", account)
+}
+func tStepRole() string { return i18n.T("role… granted", "роль… выдана") }
+func tStepKey() string  { return i18n.T("key… issued", "ключ… выпущен") }
+func tStepKeyCheck() string {
+	return i18n.T("key check… passed", "проверка ключа… пройдена")
+}
+
+// tPreselectTerminal names the preselected project and its source in the
+// terminal, always (conclusion 27).
 func tPreselectTerminal(project, source string) string {
-	return i18n.Tf("The page offers the project %s, %s.", "На странице отмечен проект %s, %s.", project, source)
+	return i18n.Tf("The page offers the project «%s», %s", "На странице отмечен проект «%s», %s", project, source)
 }
 
 // TFromProfile and TFromEnv name where a preselected project came from.
@@ -452,3 +281,279 @@ func TFromProfile(profile string) string {
 	return i18n.Tf("from the evo profile «%s»", "из профиля evo «%s»", profile)
 }
 func TFromEnv() string { return i18n.T("from CLOUDRU_PROJECT_ID", "из CLOUDRU_PROJECT_ID") }
+
+// The result in the terminal (internal/cli): the dates are the role's
+// actual term (conclusion 26.2).
+func TSignedInCLI(keyID, account, project, profile string, until time.Time) string {
+	return i18n.Tf("Access granted: the key %s of %s in the project %s is kept in the profile «%s», valid until %s",
+		"Доступ выдан: ключ %s аккаунта %s в проекте %s записан в профиль «%s», действует до %s",
+		keyID, account, project, profile, day(until))
+}
+func TResultRole(until time.Time) string {
+	return i18n.Tf("The role «%s» is valid until %s", "Роль «%s» действует до %s", auth.LoginRoleDisplayName, day(until))
+}
+func TResultReused(account, previousKey string) string {
+	if previousKey == "" {
+		return i18n.Tf("The existing service account %s is used", "Использован существующий сервисный аккаунт %s", account)
+	}
+	return i18n.Tf("The existing service account %s is used, the previous key %s is deleted",
+		"Использован существующий сервисный аккаунт %s, прежний ключ %s удален", account, previousKey)
+}
+func TResultCheck(profile string) string {
+	return i18n.Tf("Check: evo whoami --profile %s", "Проверка: evo whoami --profile %s", profile)
+}
+
+// 5. The errors: the message and the hint of the terminal and JSON.
+
+func eNoYes() string {
+	return i18n.T("evo login has no --yes flag: access is granted only by the button «Grant access» on the page",
+		"у evo login нет флага --yes: доступ выдается только кнопкой «Выдать доступ» на странице")
+}
+func eNoYesHint() string {
+	return i18n.T("Run evo login without --yes. A person grants the access by the button on the page. A retry with --yes will not help.",
+		"Запустите evo login без --yes. Доступ выдает человек кнопкой на странице. Повтор с --yes не поможет.")
+}
+
+// RefuseYes is the refusal of evo login --yes, before any request: the
+// consent is the page's («Риск», conclusion 24).
+func RefuseYes() error { return clierrors.New(clierrors.CodeUsage, eNoYes(), eNoYesHint()) }
+
+func eCancelled() string {
+	return i18n.T("the sign-in was cancelled, nothing was created", "вход отменен, ничего не создано")
+}
+func eCancelledHint() string {
+	return i18n.T("To start over, run evo login.", "Чтобы начать заново, выполните evo login.")
+}
+func eSession(status int) string {
+	return i18n.Tf("the sign-in was not done: the sign-in session expired (HTTP %d)", "вход не выполнен: сессия входа истекла (HTTP %d)", status)
+}
+func eRetry() string { return i18n.T("Run evo login again.", "Повторите evo login.") }
+func eIDToken(what string) string {
+	return i18n.Tf("IAM did not confirm the sign-in (ID token: %s), nothing was created", "IAM не подтвердил вход (ID token: %s), ничего не создано", what)
+}
+func eIDTokenHint() string {
+	return i18n.T("Run evo login again. If the error repeats, contact Cloud.ru support.",
+		"Повторите evo login. Если ошибка повторится, обратитесь в поддержку Cloud.ru.")
+}
+func eNoRight(project string) string {
+	return i18n.Tf("not enough rights to grant access in the project «%s»", "недостаточно прав для выдачи доступа в проекте «%s»", project)
+}
+func eNoRightAny(n int) string {
+	return i18n.Tf("not enough rights to grant access in any of your %d projects", "недостаточно прав для выдачи доступа ни в одном из %d проектов", n)
+}
+func eNoRightHint() string {
+	return i18n.T("Ask the project administrator to create for you a service account with the role needed and a key in the Cloud.ru personal account. A retry will not help.",
+		"Попросите администратора проекта создать для вас сервисный аккаунт с нужной ролью и ключ в личном кабинете Cloud.ru. Повтор не поможет.")
+}
+
+// eForbidden: the platform's 403 at the first write («Риск», R-49).
+func eForbidden(project string) string {
+	return i18n.Tf("not enough rights to grant access in the project «%s»: Cloud.ru refused", "недостаточно прав для выдачи доступа в проекте «%s»: Cloud.ru отказал", project)
+}
+func eAccountLimit(project string, n int) string {
+	return i18n.Tf("the project «%s» reached the limit of service accounts (%d), no new one was created",
+		"в проекте «%s» достигнут лимит сервисных аккаунтов (%d), новый не создан", project, n)
+}
+func eAccountLimitHint() string {
+	return i18n.T("Delete a service account no one uses in the Cloud.ru personal account, or choose another project.",
+		"Удалите неиспользуемый сервисный аккаунт в личном кабинете Cloud.ru или выберите другой проект.")
+}
+func eKeyLimit(account string, n int) string {
+	return i18n.Tf("the service account %s reached the limit of keys (%d), no new one was created",
+		"у сервисного аккаунта %s достигнут лимит ключей (%d), новый не создан", account, n)
+}
+func eKeyLimitHint(account string) string {
+	return i18n.Tf("Delete the keys no one uses in the Cloud.ru personal account: «Service accounts» → %s.",
+		"Удалите неиспользуемые ключи в личном кабинете Cloud.ru: «Сервисные аккаунты» → %s.", account)
+}
+func eNotComplete(cause string, made, undone, left []string) string {
+	return i18n.Tf("access was not granted: %s; created: %v; undone: %v; left: %v", "доступ не выдан: %s; создано: %v; отменено: %v; осталось: %v",
+		cause, made, undone, left)
+}
+func eNotCompleteHint(left bool) string {
+	if left {
+		return i18n.T("Delete what is left in the Cloud.ru personal account in «Service accounts» and run evo login again.",
+			"Удалите оставшееся в личном кабинете Cloud.ru в разделе «Сервисные аккаунты» и повторите evo login.")
+	}
+	return i18n.T("Nothing is left. Run evo login again.", "Ничего не осталось. Повторите evo login.")
+}
+func ePorts(ports []int) string {
+	return i18n.Tf("ports %v are taken, nothing was created", "порты %v заняты, ничего не создано", ports)
+}
+func ePortsHint() string {
+	return i18n.T("Free one of the ports and run evo login again.", "Освободите один из портов и повторите evo login.")
+}
+func eTimeout(wait time.Duration) string {
+	return i18n.Tf("the sign-in was not done in %d min, nothing was created", "вход не выполнен за %d мин, ничего не создано", int(wait.Minutes()))
+}
+func eProvider(what string) string {
+	return i18n.Tf("Cloud.ru refused the sign-in: %s; nothing was created", "Cloud.ru отклонил вход: %s; ничего не создано", what)
+}
+func eProviderHint() string {
+	return i18n.T("Run evo login again. If the error repeats, contact the organization administrator: they check the sign-in settings of your account.",
+		"Повторите evo login. Если ошибка повторится, обратитесь к администратору организации: он проверит настройки входа вашей учетной записи.")
+}
+func eKeyCheck(status int) string {
+	return i18n.Tf("IAM gave no token for the new key (HTTP %d)", "IAM не выдал токен по новому ключу (HTTP %d)", status)
+}
+func eChoice(what string) string {
+	return i18n.Tf("a value not allowed (%s), nothing was created", "недопустимое значение (%s), ничего не создано", what)
+}
+func eNoProject(project, login string) string {
+	if project == "" {
+		return i18n.Tf("%s has no project available, nothing was created", "у %s нет доступных проектов, ничего не создано", login)
+	}
+	return i18n.Tf("the project «%s» is not among the projects of %s, nothing was created", "проект «%s» не найден среди проектов %s, ничего не создано", project, login)
+}
+func eNoProjectHint() string {
+	return i18n.T("Create a project in the Cloud.ru personal account, or sign in as a member of a project.",
+		"Создайте проект в личном кабинете Cloud.ru или войдите как участник проекта.")
+}
+func eNoProjectHintFlag() string {
+	return i18n.T("Give in --project the ID or name of a project of the Cloud.ru personal account, or run evo login without --project to choose the project on the page.",
+		"Укажите в --project ID или имя проекта из личного кабинета Cloud.ru или запустите evo login без --project, чтобы выбрать проект на странице.")
+}
+func eKeyLeft(keyID string, err error) string {
+	return i18n.Tf("the previous key %s was not deleted: %v. Delete it in the Cloud.ru personal account", "прежний ключ %s не удален: %v. Удалите его в личном кабинете Cloud.ru", keyID, err)
+}
+
+// tAt names the step of a refusal and the HTTP status of the answer that
+// made it, when one did (#981).
+func tAt(step string, status int) string {
+	if status != 0 {
+		return i18n.Tf(" (step %s, HTTP %d)", " (шаг %s, HTTP %d)", step, status)
+	}
+	return i18n.Tf(" (step %s)", " (шаг %s)", step)
+}
+func eOIDCUnreachable() string {
+	return i18n.T("the sign-in server of Cloud.ru (OpenID Connect) is unreachable", "сервер входа Cloud.ru (OpenID Connect) недоступен")
+}
+func eNetworkRetry() string {
+	return i18n.T("Check the network connection and run evo login again.", "Проверьте подключение к сети и повторите evo login.")
+}
+func eDiscovery(issuer, what string) string {
+	return i18n.Tf("evo did not accept the OpenID Connect sign-in settings of %s: %s; nothing was sent",
+		"evo не принял настройки входа OpenID Connect от %s: %s; ничего не отправлено", issuer, what)
+}
+func eDiscoveryHint() string {
+	return i18n.T("Your account is fine: the answer of IAM is not the one expected. Try again later. If the error repeats, report it to Cloud.ru support.",
+		"С учетной записью все в порядке: ответ IAM не совпал с ожидаемым. Повторите позже. Если ошибка повторится, сообщите о ней в поддержку Cloud.ru.")
+}
+func eOrgUnreachable() string {
+	return i18n.T("the Organization API of Cloud.ru is unreachable", "Organization API Cloud.ru недоступен")
+}
+func eOrgStatus(status int, path string) string {
+	return i18n.Tf("the Organization API returned %d (%s)", "Organization API вернул %d (%s)", status, path)
+}
+func eOrgPages(path string) string {
+	return i18n.Tf("Organization API: %s has too many pages", "Organization API: у %s слишком много страниц", path)
+}
+
+// The items of «created / undone / left».
+func tUndoAccount(account string) string {
+	return i18n.Tf("service account %s", "сервисный аккаунт %s", account)
+}
+func tUndoKey() string  { return i18n.T("access key", "ключ доступа") }
+func tUndoRole() string { return i18n.T("the role of the account", "роль аккаунта") }
+
+// 6. evo agent setup about a key of evo login.
+func TAgentKeyWarning(profile string) string {
+	return i18n.Tf("the key of the profile «%s» was made by evo login with the role «%s»: with it the agent can delete any resources of the project. An agent working unwatched needs a key whose role cannot delete",
+		"ключ профиля «%s» создан через evo login с ролью «%s»: с ним агент может удалять любые ресурсы проекта. Для работы агента без присмотра нужен ключ с ролью без права удаления",
+		profile, auth.LoginRoleDisplayName)
+}
+
+// 7. evo logout.
+func TLogoutShort() string {
+	return i18n.T("Delete the access key made by evo login, and the profile", "Удалить ключ доступа, созданный evo login, и профиль")
+}
+func TLogoutLong() string {
+	return i18n.T(`Delete the access key evo login made for the profile, then the profile itself
+and its saved token. The service account and its role stay. If the key of
+the profile was made by evo configure or in the Cloud.ru personal account,
+only the profile is deleted, and the key stays in the cloud.`, `Удалить ключ доступа, который evo login создал для профиля, затем сам
+профиль и сохраненный токен. Сервисный аккаунт и его роль остаются. Если
+ключ профиля создан через evo configure или в личном кабинете Cloud.ru,
+удаляется только профиль, а ключ остается в облаке.`)
+}
+func TLogoutRevoke(keyID, profile string) string {
+	return i18n.Tf("delete the access key %s and the profile «%s»", "удалить ключ доступа %s и профиль «%s»", keyID, profile)
+}
+func TLogoutDelete(profile string) string {
+	return i18n.Tf("delete the profile «%s»", "удалить профиль «%s»", profile)
+}
+func ENoProfile(profile string) string {
+	return i18n.Tf("the profile «%s» is not found", "профиль «%s» не найден", profile)
+}
+func ENoProfileHint() string {
+	return i18n.T("The list of profiles — evo configure list.", "Список профилей — evo configure list.")
+}
+func TLogoutKept() string {
+	return i18n.T("the key of this profile was not made by evo login and stays in the cloud. If it is not needed, delete it in the Cloud.ru personal account",
+		"ключ этого профиля создан не через evo login и остается в облаке. Если он не нужен, удалите его в личном кабинете Cloud.ru")
+}
+func TLogoutDone(profile string, key any) string {
+	return i18n.Tf("The profile «%s» is deleted, key: %s. The service account stays in the project",
+		"Профиль «%s» удален, ключ: %s. Сервисный аккаунт остался в проекте", profile, key)
+}
+func eKeyNotDeleted(accessKeyID string, err error) string {
+	return i18n.Tf("the access key %s was not deleted: %v; the profile is kept", "ключ доступа %s не удален: %v; профиль сохранен", accessKeyID, err)
+}
+func eKeyNotDeletedHint() string {
+	return i18n.T("Run evo logout again. If the error repeats, delete the key in the Cloud.ru personal account («Service accounts» → the account → «Access keys») and run evo configure delete <profile>.",
+		"Повторите evo logout. Если ошибка повторится, удалите ключ в личном кабинете Cloud.ru («Сервисные аккаунты» → аккаунт → «Ключи доступа») и выполните evo configure delete <профиль>.")
+}
+
+// 8. The help of evo login.
+func TLoginShort() string {
+	return i18n.T("Sign in to Cloud.ru in a browser and keep an access key in the profile", "Войти в Cloud.ru через браузер и записать ключ доступа в профиль")
+}
+func TLoginLong() string {
+	return i18n.T(`Sign in to Cloud.ru in a browser and grant access on the Evolution CMCP page
+evo opens on this computer: the project, whom the key is for (you: account
+evo, the profile of now; an agent: account evo-agent, profile «agent») and
+the term (7, 30 or 90 days). If there is a terminal, it asks before the
+browser whom the key is for and its term. Access is granted only by the
+button «Grant access» on the page; there is no --yes flag. With your rights
+evo creates a service account or uses the one already made, grants it the
+role «project administrator» until the end of the key's term, creates the
+key and keeps it in the profile. The role gives the right to delete any
+resources of the project and to manage service accounts and keys. The
+previous key evo login made for this profile is deleted. Your tokens stay
+in memory only; the key's secret is shown nowhere. A refusal names its step
+and HTTP status. Over SSH or in a container the sign-in does not complete.
+Undo: evo logout.`, `Войти в Cloud.ru через браузер и выдать доступ на странице Evolution CMCP,
+которую evo открывает на этом компьютере: проект, для кого ключ (вам —
+аккаунт evo, текущий профиль; агенту — аккаунт evo-agent, профиль «agent»)
+и срок (7, 30 или 90 дней). Если есть терминал, он до браузера спрашивает,
+кому ключ и на какой срок. Доступ выдается только кнопкой «Выдать доступ»
+на странице, флага --yes нет. С вашими правами evo создает сервисный
+аккаунт или использует уже созданный, выдает ему роль «Администратор
+проекта» до конца срока ключа, создает ключ и записывает его в профиль.
+Роль дает право удалять любые ресурсы проекта и управлять сервисными
+аккаунтами и ключами. Прежний ключ evo login для этого профиля удаляется.
+Ваши токены хранятся только в памяти, секрет ключа нигде не показывается.
+Отказ называет шаг и HTTP-статус. По SSH и в контейнере вход не пройдет.
+Отменить — evo logout.`)
+}
+func TFlagNoBrowser() string {
+	return i18n.T("Do not open a browser, only show the link. Open it on this same computer",
+		"Не открывать браузер, только показать ссылку. Открыть ее нужно на этом же компьютере")
+}
+func TFlagProject() string {
+	return i18n.T("ID or name of the project: the page offers it alone, checked", "ID или имя проекта: на странице будет только он, отмеченный")
+}
+func TFlagFor() string {
+	return i18n.T("Whom the key is for: me (account evo, the profile of now) or agent (account evo-agent, profile «agent»)",
+		"Для кого ключ: me (аккаунт evo, текущий профиль) или agent (аккаунт evo-agent, профиль «agent»)")
+}
+func TFlagTTL() string {
+	return i18n.T("Term of the key: 7d, 30d or 90d (30d by default)", "Срок ключа: 7d, 30d или 90d (по умолчанию 30d)")
+}
+func EFor(forWhom string) string {
+	return i18n.Tf("--for %q: me or agent allowed", "--for %q: допустимо me или agent", forWhom)
+}
+func ETTL(ttl string) string {
+	return i18n.Tf("--key-ttl %q: 7d, 30d or 90d allowed", "--key-ttl %q: допустимо 7d, 30d или 90d", ttl)
+}
+func ETTLHint() string { return tForeverInConsole() + "." }

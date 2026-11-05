@@ -29,6 +29,7 @@ fi
 case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*) jq() { command jq -b "$@"; } ;;
 esac
+here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
 trap 'kill $(jobs -p) 2>/dev/null || true; rm -rf "$tmp"' EXIT
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
@@ -199,19 +200,15 @@ nf="${h:0:8}-${h:8:4}-4${h:13:3}-8${h:17:3}-${h:20:12}"
 for t in lb_delete tg_delete vpc_delete snat_delete; do
 	run "$t" timeout 120 evo tools call "$t" --arg id="$nf" --json
 	gone=$(j -r 'select(.status == "already_deleted" and .existed == false) | .status' "$tmp/out")
-	case "$rc:${reason%%,*}" in
-	0:-) if [ "$gone" = already_deleted ]; then
-		ok "$t <нет такого> → already_deleted" "код 0, existed false"
-	else
-		bad "$t <нет такого> → already_deleted" "код 0 без already_deleted и existed false: что-то «удалилось»?"
-	fi ;;
-	3:*) bad "$t <нет такого> → already_deleted" "код 3: гейт спросил согласие на удаление того, чего нет" ;;
-	*:API_ERROR) if [[ $reason == *"HTTP 403"* ]]; then
-		warn "$t <нет такого> → already_deleted" "код $rc, reason $reason"
-	else
-		bad "$t <нет такого> → already_deleted" "код $rc, reason $reason"
-	fi ;;
-	*) bad "$t <нет такого> → already_deleted" "код $rc, reason $reason" ;;
+	# Итог — delete_absent_verdict.sh (проверен на образцах): FAIL — только
+	# дефект evo; отказ платформы — warn «не покрыто», 5xx — и ::warning.
+	v=$("$here/delete_absent_verdict.sh" "$rc" "$reason" "$gone")
+	case $v in
+	ok\ *) ok "$t <нет такого> → already_deleted" "${v#ok }" ;;
+	warn\ *)
+		warn "$t <нет такого> → already_deleted" "${v#warn }"
+		echo "::warning title=readonly: не покрыто::$t <нет такого>: ${v#warn }" ;;
+	*) bad "$t <нет такого> → already_deleted" "${v#FAIL }" ;;
 	esac
 done
 
