@@ -2285,16 +2285,22 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	// The budget of an MCP call, or wait=false (D69): the VM is answered
 	// as it is then, and the repeat of the call finishes it.
 	var budget <-chan time.Time
-	// fipCtx is ctx ended by the budget too: the wait for the floating IP
-	// after the VM is active is part of the call.
-	fipCtx := ctx
+	// readCtx is ctx ended by the budget too, which leaves the call time
+	// to answer (callBound): the reads of the VM and the wait for its
+	// floating IP are part of the call (agent run of 1.7.0: a read past
+	// the budget had no bound). endCtx ends with the budget itself: the
+	// last read of the VM, in that time to answer.
+	readCtx, endCtx := ctx, ctx
 	if left, capped := s.waitLeft(ctx, args); capped {
+		left, _ = callBound(ctx, left)
 		cut := time.NewTimer(left)
 		defer cut.Stop()
 		budget = cut.C
-		var cancel context.CancelFunc
-		fipCtx, cancel = context.WithTimeout(ctx, left)
+		var cancel, endCancel context.CancelFunc
+		readCtx, cancel = context.WithTimeout(ctx, left)
 		defer cancel()
+		endCtx, endCancel = callEndCtx(ctx)
+		defer endCancel()
 	}
 	vmStatus := "creating"
 	// cutShort is the answer of a call the budget ended: the VM as it is.
@@ -2307,7 +2313,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		select {
 		case <-budget:
 			// The state now, not the one of the last tick (axis 2).
-			if updated, err := eng.Cloud.GetVM(ctx, vm.ID); err == nil && updated.Status != "" {
+			if updated, err := eng.Cloud.GetVM(endCtx, vm.ID); err == nil && updated.Status != "" {
 				vmStatus = updated.Status
 			}
 			return cutShort()
@@ -2320,7 +2326,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		case <-wait.C():
 			wait.Show()
 		case <-ticker.C:
-			updated, err := eng.Cloud.GetVM(ctx, vm.ID)
+			updated, err := eng.Cloud.GetVM(readCtx, vm.ID)
 			if err != nil {
 				continue
 			}
@@ -2335,18 +2341,18 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				var fipErr error
 				switch {
 				case bootFIP != nil:
-					ip, id, err := eng.WaitBootFIP(fipCtx, bootFIP, vm.ID, projectID)
+					ip, id, err := eng.WaitBootFIP(readCtx, bootFIP, vm.ID, projectID)
 					publicIP, fipID, fipErr = ip, firstNonEmptyStr(id, fipID), err
 				case !noPublicIP:
 					// The FIP made after boot is recorded too, so destroy
 					// releases it even when attaching it failed.
-					ip, id, err := eng.AssignFloatingIP(fipCtx, vm.ID, projectID, region)
+					ip, id, err := eng.AssignFloatingIP(readCtx, vm.ID, projectID, region)
 					publicIP, fipID, fipErr = ip, id, err
 				}
 				if ctx.Err() != nil {
 					return interrupted(publicIP)
 				}
-				if fipCtx.Err() != nil {
+				if readCtx.Err() != nil {
 					// The budget ended the wait for the address: the
 					// repeat adopts the VM and waits for it again (its
 					// floating IP is recorded, fipID).
