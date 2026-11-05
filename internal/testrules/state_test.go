@@ -22,8 +22,7 @@ var stateRoles = []string{"release", "development", "process", "product", "risk"
 // stateMissing are the roles whose file is not written yet, each with the
 // PR that writes it. The list only shrinks: a line whose file is there
 // fails the test. Closes by 1.8.
-var stateMissing = map[string]string{
-}
+var stateMissing = map[string]string{}
 
 // stateSections are the headings of a state file, in this order, after the
 // first line "Версия: X.Y.Z".
