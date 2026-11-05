@@ -2605,6 +2605,9 @@
    "target_vm_specs[].id",
    "target_vm_specs[].interface_id"
   ],
+  "oidc GET /auth/system/.well-known/openid-configuration": [],
+  "oidc GET /auth/system/openid/auth": [],
+  "oidc GET /auth/system/openid/certs": [],
   "oidc POST /auth/system/openid/token": [],
   "organization GET /v3/customers": [
    "customers[]",
