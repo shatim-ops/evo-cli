@@ -32,14 +32,16 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/auth"
 )
 
-// Constants of the contract B-1, section 1, as the world checks them.
+// Constants of the contract B-1, section 1, from the login table of evo
+// (internal/auth, A0-4): the world checks evo against the same values.
 const (
-	ClientID   = "evo_cmcp"
-	Scope      = "openid"
-	RoleName   = "platform.project.admin"
-	IssuerPath = "/auth/system"
+	ClientID = auth.LoginClientID
+	Scope    = auth.LoginScope
+	RoleName = auth.LoginRoleName
 	// Customer and Project are the organization and project the human sees.
 	Customer = "c0000000-0000-0000-0000-000000000001"
 	Project  = "p0000000-0000-0000-0000-000000000001"
@@ -47,12 +49,23 @@ const (
 	UserID = "u0000000-0000-0000-0000-000000000001"
 )
 
+// IssuerPath is the path of the issuer, served on the world's host.
+var IssuerPath = func() string {
+	u, err := url.Parse(auth.OIDCIssuer)
+	if err != nil {
+		panic(err)
+	}
+	return u.Path
+}()
+
 // RedirectURIs are the three registered redirect_uri of evo_cmcp.
-var RedirectURIs = []string{
-	"http://127.0.0.1:18386/callback",
-	"http://127.0.0.1:23386/callback",
-	"http://127.0.0.1:28386/callback",
-}
+var RedirectURIs = func() []string {
+	var out []string
+	for _, p := range auth.LoginRedirectPorts {
+		out = append(out, fmt.Sprintf("http://127.0.0.1:%d/callback", p))
+	}
+	return out
+}()
 
 // Step names a write of the flow a Variant can break (contract, steps 14–18).
 type Step string
