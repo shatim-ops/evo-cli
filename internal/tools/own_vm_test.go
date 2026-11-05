@@ -138,3 +138,28 @@ func TestDestroyTargeted_ARecordOfAnAdoptedVMIsNotDeleted(t *testing.T) {
 		t.Errorf("the record is not kept: %+v", sf)
 	}
 }
+
+// Agent run of 1.7.0 (m0, F15; findings 2.1, №10): provision with the name
+// of a VM this folder's state records, and not creating, is refused (D73),
+// but the refusal said «this folder's evo did not create it (its state does
+// not record it)» — false: the state records it. The refusal says the VM
+// is this folder's and names it, with USAGE and existing_id as before.
+func TestProvision_RecordedOwnVMRefusalDoesNotSayUnrecorded(t *testing.T) {
+	faultToolsIsolate(t)
+	cloud := &faultCloud{}
+	vm, err := cloud.CreateVM(context.Background(), provision.CreateVMRequest{Name: "web", ProjectID: faultProject})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeRecords(t, dir, state.DeploymentRecord{ID: vm.ID, VMID: vm.ID, VMName: "web", Status: "running", Source: "provision", CreatedAt: time.Now()})
+	r := budgetComputeRegistry(t, cloud, dir, faultToolsTimings())
+	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web"})
+	ownRefusal(t, "provision", text, isErr, vm.ID)
+	if strings.Contains(text, "did not create it") || strings.Contains(text, "does not record it") {
+		t.Errorf("the refusal says the folder's state does not record a VM it records: %s", text)
+	}
+	if !strings.Contains(text, "this folder") {
+		t.Errorf("the refusal does not say the VM is this folder's: %s", text)
+	}
+}
