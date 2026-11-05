@@ -171,3 +171,23 @@ func TestAgentSetup_WarnsOfTheLoginKey(t *testing.T) {
 		t.Errorf("warning %q", w)
 	}
 }
+
+// R-48: the preselected project is CLOUDRU_PROJECT_ID, else the project of
+// the profile of now, each with its source.
+func TestLogin_PreselectSource(t *testing.T) {
+	setupCLI(t)
+	t.Setenv("CLOUDRU_PROJECT_ID", "")
+	if id, from := loginPreselect(""); id != "" || from != "" {
+		t.Errorf("no profile, no variable: %q %q", id, from)
+	}
+	if err := config.SaveProfile("default", config.Profile{ProjectID: "p-prof"}, config.Credentials{}); err != nil {
+		t.Fatal(err)
+	}
+	if id, from := loginPreselect(""); id != "p-prof" || from != login.TFromProfile("default") {
+		t.Errorf("profile: %q %q", id, from)
+	}
+	t.Setenv("CLOUDRU_PROJECT_ID", "p-env")
+	if id, from := loginPreselect(""); id != "p-env" || from != login.TFromEnv() {
+		t.Errorf("variable: %q %q", id, from)
+	}
+}

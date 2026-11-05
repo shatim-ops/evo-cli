@@ -13,7 +13,6 @@ import (
 	"slices"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
-	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Discovery is what the login reads of the issuer's discovery document
@@ -37,8 +36,8 @@ func (c *Config) discover(ctx context.Context) (Discovery, error) {
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return d, clierrors.Wrap(clierrors.CodeAPIUnreachable,
-			i18n.T("the OpenID Connect provider of Cloud.ru is unreachable", "провайдер OpenID Connect Cloud.ru недоступен"),
-			clierrors.NetworkHint(err, i18n.T("Check the network and try again.", "Проверьте сеть и повторите.")), err)
+			eOIDCUnreachable(),
+			clierrors.NetworkHint(err, eNetworkRetry()), err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -73,8 +72,6 @@ func CheckDiscovery(d Discovery, issuer string, trusted func(string) bool) error
 
 func refuseDiscovery(issuer, what string) error {
 	return clierrors.New(clierrors.CodeAuthFailed,
-		i18n.Tf("the OpenID Connect discovery of %s is not trusted: %s; nothing was sent",
-			"discovery OpenID Connect %s не принят: %s; ничего не отправлено", issuer, what),
-		i18n.T("This is not a problem of your account: the answer of IAM is not the one evo expects. Try again later; if it repeats, report it.",
-			"Это не проблема вашей учётной записи: ответ IAM не тот, что ожидает evo. Повторите позже; если повторится — сообщите об этом."))
+		eDiscovery(issuer, what),
+		eDiscoveryHint())
 }
