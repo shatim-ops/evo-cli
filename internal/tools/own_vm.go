@@ -56,8 +56,8 @@ func foreignVMResult(name, id, status string) (string, bool) {
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("a VM named %q already exists (id %s, status %s), and this folder's evo did not create it (its state does not record it); nothing was created",
 			"ВМ с именем %q уже есть (id %s, статус %s), и её создал не evo этой папки (в её state её нет); ничего не создано", name, id, status),
-		i18n.T("Pick another name (name). If the VM is yours and you no longer need it, delete it yourself.",
-			"Выберите другое имя (name) или удалите её сами, если она ваша.")),
+		i18n.T("Pick another name (name). Whether to delete that VM, ask the person: it may be someone else's.",
+			"Выберите другое имя (name). Удалять ли ту ВМ, спросите человека: она может быть чужой.")),
 		map[string]any{"existing_id": id}), true
 }
 
