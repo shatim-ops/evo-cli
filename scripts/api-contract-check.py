@@ -538,10 +538,12 @@ def path_key(p):
 
 # Packages that serve the API instead of calling it: fake servers of the
 # test worlds, imported only by tests. Their path literals are routes, not
-# requests of evo. Directory → why; a closed list.
+# requests of evo. One list with the deadcode step of ci.yml:
+# scripts/fake-servers.json (TestFakeServers_OnlyTestsImport).
 FAKE_SERVERS = {
-    "internal/loginworld": "the world of evo login (B-2): fakes of IAM OIDC, Organization and "
-    "Administration API; only tests import it (TestLoginWorld_OnlyTestsImport)",
+    k: v
+    for k, v in json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake-servers.json"), encoding="utf-8")).items()
+    if not k.startswith("_")
 }
 
 

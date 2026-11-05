@@ -6,7 +6,7 @@
 // B-2): fakes of the Cloud.ru OIDC provider, Organization API and
 // Administration API on one httptest server, with no network, after the
 // contract B-1 («Fable — авторизация», 05.11, section 6). Only tests import
-// it (TestLoginWorld_OnlyTestsImport).
+// it (scripts/fake-servers.json, TestFakeServers_OnlyTestsImport).
 //
 // A test points evo's discovery at Issuer and its Organization and
 // Administration bases at URL, drives the browser with Browser, and reads

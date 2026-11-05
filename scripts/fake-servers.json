@@ -1,0 +1,4 @@
+{
+  "_comment": "Пакеты-серверы тестовых миров: они обслуживают API Cloud.ru, а не вызывают его, и импортируются только тестами. Один перечень на две проверки: api-contract-check.py не считает их литералы запросами evo, шаг deadcode (ci.yml) не считает их функции мёртвым продуктовым кодом. Держит TestFakeServers_OnlyTestsImport (internal/testrules): каталог есть, импортируют его только _test.go, обе проверки читают этот файл. Ключ — каталог пакета, значение — зачем он.",
+  "internal/loginworld": "мир evo login (B-2): поддельные IAM OIDC, Organization и Administration API по контракту B-1"
+}

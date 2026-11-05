@@ -13,14 +13,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go/parser"
-	"go/token"
 	"math/big"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -448,35 +444,4 @@ func listen(t *testing.T) (net.Listener, int) {
 	}
 	t.Skip("all three registered ports are busy on this machine")
 	return nil, 0
-}
-
-// Only tests import loginworld: a fake IAM in the binary would be a
-// provider that accepts any login.
-func TestLoginWorld_OnlyTestsImport(t *testing.T) {
-	root := filepath.Join("..", "..")
-	fset := token.NewFileSet()
-	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() && (d.Name() == ".git" || d.Name() == "vendor") {
-			return filepath.SkipDir
-		}
-		if d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
-			return nil
-		}
-		f, err := parser.ParseFile(fset, p, nil, parser.ImportsOnly)
-		if err != nil {
-			return err
-		}
-		for _, im := range f.Imports {
-			if strings.HasSuffix(strings.Trim(im.Path.Value, `"`), "/internal/loginworld") {
-				t.Errorf("%s imports loginworld outside a test", p)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 }
