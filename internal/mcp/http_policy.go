@@ -115,7 +115,7 @@ type wording struct {
 
 var (
 	httpWording = wording{where: "over HTTP", restart: "start the server with --allow-secret-export",
-		mask: redacted, elsewhere: "or the person runs the same call with the evo CLI on the server's machine"}
+		mask: redacted, elsewhere: "or the person reads them with the evo CLI on the server's machine"}
 	readOnlyWording = wording{where: "on this --read-only server", restart: "ask the server's operator to restart it without --read-only",
 		mask: "[redacted on this --read-only server]"}
 )
@@ -130,7 +130,11 @@ func (w wording) redactedNote() string {
 	if w.elsewhere != "" {
 		how += ", " + w.elsewhere
 	}
-	return "The values of the fields listed in redacted are hidden " + w.where + " and are not in this answer, whatever the rest of it says. To get them, " + how + "."
+	// A value shown once (a new VM's password) no call shows again — the
+	// repeat of provision is refused by the name (D73): the note promises
+	// no repeat, and names the way («Риск», R-39).
+	return "The values of the fields listed in redacted are hidden " + w.where + " and are not in this answer, whatever the rest of it says. To get them, " + how + ". " +
+		"A value shown only once, such as the password of a new VM, no call shows again: do not repeat the call for it, reset it in the Cloud.ru console."
 }
 
 // restartSentence is restart as a sentence of its own.

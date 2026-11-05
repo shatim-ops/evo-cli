@@ -32,6 +32,13 @@ func TestRedact_EveryMaskedFieldIsSaid(t *testing.T) {
 			if !strings.Contains(note, "redacted") || !strings.Contains(note, w.restart) {
 				t.Errorf("%s (%s): the masked answer does not say its values are hidden and how to get them: note %q", f.Name, w.where, note)
 			}
+			// «Риск», R-39: a value shown once — a new VM's password — no
+			// call shows again (provision's repeat is refused by name,
+			// D73): the note does not promise a repeat gets it, and names
+			// the way — a reset in the console.
+			if strings.Contains(note, "same call") || !strings.Contains(note, "shown only once") || !strings.Contains(note, "console") {
+				t.Errorf("%s (%s): the note promises a repeat, or does not say a value shown once is not shown again: %q", f.Name, w.where, note)
+			}
 		}
 	}
 	// An answer with nothing masked has no note.
