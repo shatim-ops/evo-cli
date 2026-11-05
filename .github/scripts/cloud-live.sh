@@ -568,11 +568,11 @@ probe_shared() {
 		id=$(jq -r '.id // empty' "$tmp/api.json" 2>/dev/null) || id=
 		[ -n "$id" ] || id=$(lst disk "$prefix-$kind" | cut -f1 | head -1) || id=
 		mask "$id"
-		[ -n "$id" ] || { gap "SHARED: диск $kind" "нет id после создания"; continue; }
+		[ -n "$id" ] || { gap "SHARED: диск $kind" "нет id после создания; остаток — до уборки области (sweep)"; continue; }
 		ready() { evo tools call disk_list --json | jq -e --arg id "$id" '.disks[] | select(.id == $id) | .state == "available"' >/dev/null; }
-		poll 300 10 ready || { gap "SHARED: диск $kind" "не available за 5 мин"; continue; }
+		poll 300 10 ready || { gap "SHARED: диск $kind" "не available за 5 мин; остаток — до уборки области (sweep)"; continue; }
 		tc disk_attach --arg disk_id="$id" --arg vm="$vm1"
-		[ "$rc" = 0 ] || { gap "SHARED: диск $kind к ВМ1" "код $rc, $reason"; continue; }
+		[ "$rc" = 0 ] || { gap "SHARED: диск $kind к ВМ1" "код $rc, $reason; остаток — до уборки области (sweep)"; continue; }
 		one() { evo tools call disk_list --json | jq -e --arg id "$id" '.disks[] | select(.id == $id) | ((.attached_to // []) | length) >= 1 and .state == "in_use"' >/dev/null; }
 		poll 300 10 one || true
 		tc disk_attach --arg disk_id="$id" --arg vm="$vm2"
@@ -585,8 +585,10 @@ probe_shared() {
 		free() { evo tools call disk_list --json | jq -e --arg id "$id" '.disks[] | select(.id == $id) | ((.attached_to // []) | length) == 0 and .state == "available"' >/dev/null; }
 		poll 300 10 free || true
 		tc disk_delete --arg disk_id="$id"
+		[ "$rc" = 0 ] || row "SHARED: удаление диска $kind" "остаток" "код $rc, $reason — до уборки области (sweep)"
 	done
 	tc destroy --arg name="$vm2"
+	[ "$rc" = 0 ] || row "SHARED: удаление ВМ2" "остаток" "код $rc, $reason — до уборки области (sweep)"
 }
 
 # --- Области ----------------------------------------------------------------
