@@ -18,6 +18,7 @@ import (
 // 05.11). A version raised in one workflow and not the other fails here.
 func TestWorkflows_GoreleaserCheckSurvivesReleasesOutage(t *testing.T) {
 	ws := readWorkflows(t)
+	// Every goreleaser step of release.yml runs one version: the one ci.yml checks with.
 	release := map[string]bool{}
 	for _, j := range ws["release.yml"].Jobs {
 		for _, s := range j.Steps {
@@ -30,6 +31,8 @@ func TestWorkflows_GoreleaserCheckSurvivesReleasesOutage(t *testing.T) {
 		t.Fatalf("release.yml: goreleaser versions %v, want one", release)
 	}
 	sha := regexp.MustCompile(`^[0-9a-f]{64}$`)
+	// The binary run with check, its path quoted or not.
+	runsCheck := regexp.MustCompile(`goreleaser["']?\s+check\b`)
 	found := false
 	for name, j := range ws["ci.yml"].Jobs {
 		for _, s := range j.Steps {
@@ -47,10 +50,13 @@ func TestWorkflows_GoreleaserCheckSurvivesReleasesOutage(t *testing.T) {
 			if !sha.MatchString(s.Env["GORELEASER_SHA256"]) {
 				t.Errorf("%s: GORELEASER_SHA256 %q is not a sha256 — pin the archive's from checksums.txt of the release", where, s.Env["GORELEASER_SHA256"])
 			}
-			for _, w := range []string{"--retry-all-errors", "sha256sum -c", "goreleaser\" check"} {
+			for _, w := range []string{"--retry-all-errors", "sha256sum -c"} {
 				if !strings.Contains(s.Run, w) {
 					t.Errorf("%s: run lacks %q", where, w)
 				}
+			}
+			if !runsCheck.MatchString(s.Run) {
+				t.Errorf("%s: run does not run goreleaser check", where)
 			}
 		}
 	}
