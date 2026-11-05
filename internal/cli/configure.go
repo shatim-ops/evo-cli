@@ -305,7 +305,7 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 	if prof.Region, err = configureRegion(ctx, opts.region, prof.Region, zoneEngine(provider, projectID, printer), con); err != nil {
 		return err
 	}
-	creds.KeyID, creds.Secret = keyID, secret
+	creds.ForKey(keyID, secret)
 	if err := config.SaveProfile(name, prof, creds); err != nil {
 		return err
 	}

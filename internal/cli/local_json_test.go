@@ -56,6 +56,12 @@ var localJSONCases = map[string]localJSONCase{
 	// The journal of the test's calls is empty: the error is the form.
 	"evo diag export": {ok: false},
 	"evo crew":        {ok: true},
+	// A term evo login does not offer is refused before any request; the
+	// flow itself runs on the world of B-2 (login_cmd_test.go).
+	"evo login": {args: []string{"--key-ttl", "365d"}, ok: false},
+	// A profile that is not there: the error is the form, and the
+	// profile of the other cases stays.
+	"evo logout": {args: []string{"--profile", "nosuch", "--yes"}, ok: false},
 }
 
 // localJSONExempt are the commands whose --json output is not an answer,

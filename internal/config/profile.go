@@ -53,6 +53,32 @@ type Credentials struct {
 	KeyID  string    `yaml:"key_id,omitempty"`
 	Secret string    `yaml:"secret,omitempty"`
 	S3     *S3Config `yaml:"s3,omitempty"`
+	// Login is what evo login knows of the key it made; none for a key
+	// from evo configure or the console.
+	Login *LoginKey `yaml:"login,omitempty"`
+}
+
+// LoginKey is the access key evo login made (release plan 1.8, B-3): logout
+// deletes it by AccessKeyID (R-25), the next login replaces it, and its
+// term names an expired key on a 401 (R-26). It belongs to KeyID: a key
+// set any other way drops it (ForKey).
+type LoginKey struct {
+	ServiceAccountID string `yaml:"service_account_id"`
+	AccessKeyID      string `yaml:"access_key_id"`
+	KeyExpiresAt     string `yaml:"key_expires_at,omitempty"`
+	CustomerID       string `yaml:"customer_id,omitempty"`
+	Role             string `yaml:"role,omitempty"`
+	LoggedInAs       string `yaml:"logged_in_as,omitempty"`
+	LoginAt          string `yaml:"login_at,omitempty"`
+}
+
+// ForKey sets the key of c; a key other than the one evo login made drops
+// what the login knew of it.
+func (c *Credentials) ForKey(keyID, secret string) {
+	if keyID != c.KeyID {
+		c.Login = nil
+	}
+	c.KeyID, c.Secret = keyID, secret
 }
 
 type settingsFile struct {

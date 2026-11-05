@@ -702,6 +702,12 @@ func pathEvoWarning() string {
 // HTTP entry and its token, the groups the agent sees, the boundary of a
 // read-only server, the client's note.
 func agentHints(p *output.Printer, c agentClient, s agentServer, placeholder bool) {
+	name, _ := config.ProfileName(flagProfile)
+	if _, creds, _, err := config.LoadProfile(name); err == nil {
+		if w := loginKeyWarning(name, creds); w != "" {
+			p.Warning(w)
+		}
+	}
 	if s.readOnly {
 		p.Warning(i18n.T("--read-only bounds only the MCP server: an agent with a terminal can change the cloud with the evo CLI and the same key; for an agent nobody watches, give its profile a key whose service account has only a viewer role",
 			"--read-only ограничивает только сервер MCP: агент с терминалом может изменить облако через evo CLI с тем же ключом; агенту без присмотра дайте профиль с ключом сервисного аккаунта, у которого только роль наблюдателя"))
@@ -760,4 +766,16 @@ func listenAddress(endpoint string) string {
 		return u.Host
 	}
 	return "<host:port>"
+}
+
+// loginKeyWarning warns that the key evo login made for the profile may
+// delete: its role is the project administrator (release plan 1.8, B-3);
+// "" for any other key.
+func loginKeyWarning(profile string, creds config.Credentials) string {
+	if creds.Login == nil {
+		return ""
+	}
+	return i18n.Tf("the key of the profile %q was made by evo login with the role «%s»: the agent may delete resources with it; an agent nobody watches needs a key whose role cannot delete",
+		"ключ профиля %q создан evo login с ролью «%s»: агенту с ним разрешено удаление ресурсов; агенту без присмотра нужен ключ с ролью без права удаления",
+		profile, auth.LoginRoleDisplayName)
 }

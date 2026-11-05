@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -85,10 +86,16 @@ func tokenProvider(cfg config.Config) *auth.IAMProvider {
 		cache = auth.FileCache{Path: cachePath}
 	}
 	p := auth.NewIAMProvider(
-		auth.Credentials{KeyID: cfg.KeyID, Secret: cfg.Secret},
+		auth.Credentials{KeyID: cfg.KeyID, Secret: cfg.Secret, ExpiresAt: keyTerm(cfg)},
 		httpClient,
 		cache,
 	)
 	providers[key] = p
 	return p
+}
+
+// keyTerm is the term of a key evo login made, zero for any other key.
+func keyTerm(cfg config.Config) time.Time {
+	t, _ := time.Parse(time.RFC3339, cfg.KeyExpiresAt)
+	return t
 }
