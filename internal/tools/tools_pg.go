@@ -614,6 +614,9 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 	if cid == "" || name == "" || password == "" {
 		return nil, usageErr("'cluster_id', 'name' and 'password' are required", "нужны 'cluster_id', 'name' и 'password'")
 	}
+	if err := pgPasswordRule(password); err != nil {
+		return nil, err
+	}
 	preview := map[string]any{"message": i18n.Tf("pg_user_create creates user %q in cluster %s.",
 		"pg_user_create создаёт пользователя %q в кластере %s.", name, cid)}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
@@ -629,6 +632,31 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 		// Never echo the password back.
 		return toJSON(map[string]any{"status": "created", "user": u}), false
 	}}, nil
+}
+
+// pgPasswordSpecials is the one rule of the password of a PostgreSQL user
+// evo checks (D84): at least one special character of this set. Source:
+// the 400 of Managed PostgreSQL to pg_user_create, «validate password: at
+// least one special character from !$%&()*+-,./:;<>=?@[\]^_{|}# is
+// required», agent run of 1.7.0, 2 of 2 (04–05.11.2026); the rule is in no
+// specification. Only what was observed — no length, no other rule
+// («Риск», R-9); the backslash of «[\]» counts too, so evo refuses no
+// password the platform takes. A rule evo does not check stays the
+// platform's 400, API_ERROR, as before.
+const pgPasswordSpecials = `!$%&()*+-,./:;<>=?@[\]^_{|}#`
+
+// pgPasswordRule refuses, before the preview and the question, a password
+// without a character of pgPasswordSpecials: USAGE with the rule and its
+// source, never the password itself (У-4).
+func pgPasswordRule(password string) error {
+	if strings.ContainsAny(password, pgPasswordSpecials) {
+		return nil
+	}
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("password has no special character: Managed PostgreSQL requires at least one of %s; nothing was sent",
+			"в password нет спецсимвола: Managed PostgreSQL требует хотя бы один из %s; ничего не отправлено", pgPasswordSpecials),
+		i18n.T("Add one of these characters to password. The rule is the platform's answer to pg_user_create (400), which evo checks before the question; other rules of the platform it does not know.",
+			"Добавьте в password один из этих символов. Правило — ответ платформы на pg_user_create (400), его evo проверяет до вопроса; других правил платформы evo не знает."))
 }
 
 func (s *Registry) planPgUserDelete(ctx context.Context, args map[string]any) (*Plan, error) {
