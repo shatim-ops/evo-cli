@@ -27,7 +27,7 @@ func (e *Engine) Verify(ctx context.Context) error {
 	// Nothing deployed is not "healthy": verify, like logs, inspects a
 	// running deployment and exits 4 without one (DECISIONS D11), so a
 	// script's "deploy && verify" cannot pass on an empty directory.
-	active := stateFile.ActiveDeployment()
+	active := stateFile.PrimaryDeployment()
 	if active == nil {
 		return clerrors.New(clerrors.CodeVMNotFound,
 			i18n.T("no active deployment to verify", "активного развёртывания нет, проверять нечего"),

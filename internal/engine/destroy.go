@@ -42,8 +42,10 @@ func (e *Engine) destroyGate(ctx context.Context, opts DestroyOptions, p confirm
 // DestroyPreview is the preview destroy asks consent to, in the directory
 // as it is: the VM of the deployment (named after the cloud's lists), its
 // floating IP and port rules, or the port rules an earlier destroy left.
-// False when destroy would ask nothing: no deployment, or several (it
-// refuses then); an error when it refuses before the question (D73).
+// False when destroy would ask nothing: no deployment; an error when it
+// refuses before the question — several deployments (as Destroy does,
+// with the same answer: a call bound to fail asks nothing, agent run of
+// 1.7.0, №3), a VM evo did not make (D73).
 // Reads only; the destroy tool answers it without confirmed=true.
 func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, error) {
 	sf, err := state.Read(state.DefaultPath(e.StateDir))
@@ -55,8 +57,10 @@ func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, err
 	switch {
 	case active == nil && len(pending) > 0:
 		return pendingRulesPreview(sf, pending), true, nil
-	case active == nil || len(sf.ActiveDeployments()) > 1:
+	case active == nil:
 		return confirm.Preview{}, false, nil
+	case len(sf.ActiveDeployments()) > 1:
+		return confirm.Preview{}, false, severalDeployments(sf.ActiveDeployments())
 	}
 	// A VM evo did not make is refused before the question (D73).
 	vm, passed, err := e.checkedRecord(ctx, *active)
