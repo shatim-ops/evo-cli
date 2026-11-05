@@ -551,7 +551,7 @@ probe_p41() {
 # «SHARED: …» — ответ платформы, не провал. Уборка — отключение от обеих ВМ
 # и удаление дисков здесь же; остаток убирает sweep области по префиксу.
 probe_shared() {
-	local vm1=$1 zid=$2 vm2="$prefix-vm2" kind id body n second
+	local vm1=$1 zid=$2 vm2="$prefix-vm2" kind id body n second att2
 	iam_token || { gap SHARED "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap SHARED "нет PROJECT"; return 0; }
 	tc provision --arg name="$vm2" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true
@@ -577,11 +577,18 @@ probe_shared() {
 		poll 300 10 one || true
 		tc disk_attach --arg disk_id="$id" --arg vm="$vm2"
 		second="код $rc, $reason: $(printf '%s' "$why" | cut -c1-160)"
-		sleep 30
-		api GET "https://compute.api.cloud.ru/api/v1/disks/$id"
-		n=$(jq -r '(.vms // []) | length' "$tmp/api.json" 2>/dev/null) || n=
+		att2=$rc
+		# Число ВМ — по GET /disks/{id}; принятое подключение ко второй ВМ
+		# ждём до 3 мин (поле vms обновляется асинхронно), отказ — одно чтение.
+		vms_n() {
+			api GET "https://compute.api.cloud.ru/api/v1/disks/$id"
+			n=$(jq -r '(.vms // []) | length' "$tmp/api.json" 2>/dev/null) || n=
+			[ "${n:-0}" -ge 2 ]
+		}
+		if [ "$att2" = 0 ]; then poll 180 10 vms_n || true; else vms_n || true; fi
 		ok "SHARED: диск $kind (shared $(jq -r '.shared' "$tmp/api.json" 2>/dev/null)) ко второй ВМ" "evo: $second; ВМ у диска по GET: ${n:-?}"
-		for v in "$vm2" "$vm1"; do tc disk_detach --arg disk_id="$id" --arg vm="$v"; done
+		[ "$att2" != 0 ] || tc disk_detach --arg disk_id="$id" --arg vm="$vm2"
+		tc disk_detach --arg disk_id="$id" --arg vm="$vm1"
 		free() { evo tools call disk_list --json | jq -e --arg id "$id" '.disks[] | select(.id == $id) | ((.attached_to // []) | length) == 0 and .state == "available"' >/dev/null; }
 		poll 300 10 free || true
 		tc disk_delete --arg disk_id="$id"
