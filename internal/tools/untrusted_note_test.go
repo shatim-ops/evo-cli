@@ -30,6 +30,7 @@ var untrustedMarkerOnly = map[string]string{
 	"disk_delete": "attached_vms: the names of VMs in a refusal (D59), not the output of a workload",
 	"disk_attach": "will_attach: the names of the disk and the VM in the preview, not the output of a workload",
 	"disk_detach": "will_detach: the names of the disk and the VM in the preview, not the output of a workload",
+	"whoami":      "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
 }
 
 // Release plan 1.7, «Недоверенный вывод без маркера» (the analysis of

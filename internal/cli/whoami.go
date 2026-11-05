@@ -7,6 +7,8 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,12 +24,14 @@ func newWhoamiCmd() *cobra.Command {
 		Use:   "whoami",
 		Short: i18n.T("Show the active profile and check its credentials", "Активный профиль и проверка его ключа"),
 		Long: i18n.T(`Exchange the access key of the active profile for an IAM token and show
-the profile, the key ID (masked), the project and the token expiry.
+the profile, the key ID (masked), the project, the token expiry and the
+key's roles on the project (or why they are unknown).
 
 A valid token cached by an earlier command is reused; IAM is not contacted
 again until it is about to expire. Exits with 2 when the credentials are
 missing or rejected.`, `Обменять ключ доступа активного профиля на токен IAM и показать профиль,
-Key ID (маскированный), проект и срок действия токена.
+Key ID (маскированный), проект, срок действия токена и роли ключа на проекте
+(или почему они неизвестны).
 
 Действующий токен, сохранённый предыдущей командой, используется повторно:
 к IAM команда обращается, только когда срок токена подходит к концу. Код
@@ -61,6 +65,11 @@ func showWhoami(p *output.Printer, text string) error {
 		TokenTTLSeconds int       `json:"token_ttl_seconds"`
 		TokenSource     string    `json:"token_source"`
 		VisibleProjects *int      `json:"visible_projects"`
+		Roles           *[]struct {
+			Name      string `json:"name"`
+			ExpiresAt string `json:"expires_at"`
+		} `json:"roles"`
+		RolesNote string `json:"roles_note"`
 	}
 	if err := json.Unmarshal([]byte(text), &a); err != nil {
 		return err
@@ -83,6 +92,25 @@ func showWhoami(p *output.Printer, text string) error {
 	fmt.Fprintf(w, i18n.T("Token:       valid until %s (%s left, %s)\n", "Токен:       действует до %s (осталось %s, %s)\n"),
 		a.TokenExpiresAt.Local().Format("2006-01-02 15:04:05 MST"),
 		(time.Duration(a.TokenTTLSeconds) * time.Second).Truncate(time.Minute), tokenSourceText(a.TokenSource))
+	// The roles as IAM names them: the cloud's names, quoted (A0-2).
+	roles := a.RolesNote
+	if a.Roles != nil {
+		var names []string
+		for _, r := range *a.Roles {
+			n := strconv.Quote(r.Name)
+			if r.ExpiresAt != "" {
+				n += i18n.Tf(" until %s", " до %s", r.ExpiresAt)
+			}
+			names = append(names, n)
+		}
+		roles = strings.Join(names, ", ")
+		if len(names) == 0 {
+			roles = i18n.T("none", "нет") + " — " + a.RolesNote
+		}
+	}
+	if roles != "" {
+		fmt.Fprintf(w, i18n.T("Roles:       %s\n", "Роли:        %s\n"), roles)
+	}
 	if a.ProjectID == "" {
 		// The hint of the commands that refuse without a project.
 		p.Hint(clerrors.ProjectRequired().Hint)

@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -849,4 +851,31 @@ func TestTokenProvider_LivesForTheProcess(t *testing.T) {
 		t.Error("the next engine gets another provider")
 	}
 	_ = eng
+}
+
+// A0-2: 'evo whoami' names each field of the tool's answer — the key's
+// roles, or why they are unknown. The world's token is no JWT: the token
+// names no service account, IAM is not asked.
+func TestWhoami_RolesLine(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "p-1")
+	code, stdout, stderr := runCLI(t, "", "whoami")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "Roles:       unknown: the IAM token names no service account") {
+		t.Errorf("no roles line:\n%s", stdout)
+	}
+	for in, want := range map[string]string{
+		`{"profile":"d","roles":[{"name":"platform.project.admin","expires_at":"2026-12-05T00:00:00Z"},{"name":"x\ny"}],"_untrusted":["roles"]}`: `Roles:       "platform.project.admin" until 2026-12-05T00:00:00Z, "x\ny"`,
+		`{"profile":"d","roles":[],"roles_note":"no role of the key on the project"}`:                                                            "Roles:       none — no role of the key on the project",
+	} {
+		var buf bytes.Buffer
+		if err := showWhoami(output.NewWithWriter(&buf, output.ModePlain, false), in); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("%s:\n%s\nwant %q", in, buf.String(), want)
+		}
+	}
 }

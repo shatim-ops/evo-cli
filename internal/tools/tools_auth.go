@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
@@ -16,6 +17,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/iamadmin"
 )
 
 // whoami and doctor say who the tools work as and whether the setup works
@@ -87,7 +89,79 @@ func (s *Registry) handleWhoami(ctx context.Context, _ map[string]any) (string, 
 	if n, err := visibleProjects(ctx, eng.Auth); err == nil {
 		out["visible_projects"] = n
 	}
+	// The roles of the key are a field more: when IAM does not tell them,
+	// the answer is the one of before and roles_note says why («Риск»,
+	// conclusion 22, У-6).
+	roles, note := keyRoles(ctx, eng.Auth, tok, cfg.ProjectID)
+	if roles != nil {
+		out["roles"] = roles
+	}
+	if note != "" {
+		out["roles_note"] = note
+	}
 	return toJSON(out), false
+}
+
+// keyRole is a role of the key on the project as whoami names it.
+type keyRole struct {
+	Name      string `json:"name"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+}
+
+// keyRoles are the roles the key's service account — the token's sub —
+// has on the project, by name: its enabled permissions there (A0-2, no
+// map of tools to actions). roles is nil when they are unknown, and note
+// then says why; an empty list has a note too: a role on the organization
+// is a permission of another resource, not read here.
+func keyRoles(ctx context.Context, tp auth.TokenProvider, tok auth.Token, projectID string) (roles []keyRole, note string) {
+	if projectID == "" {
+		return nil, i18n.T("unknown: no project is set, and roles are given per project",
+			"неизвестны: проект не задан, а роли выдаются на проект")
+	}
+	sub := jwtSub(tok.Value)
+	if sub == "" {
+		return nil, i18n.T("unknown: the IAM token names no service account", "неизвестны: токен IAM не называет сервисный аккаунт")
+	}
+	ctx, cancel := context.WithTimeout(ctx, doctorProbeTimeout)
+	defer cancel()
+	perms, err := iamadmin.New(tp, "").Permissions(ctx, projectID, sub)
+	if err != nil {
+		return nil, i18n.Tf("unknown: IAM did not tell them (%s)", "неизвестны: IAM их не сообщил (%s)", CheckDetail(err))
+	}
+	roles = []keyRole{}
+	for _, p := range perms {
+		if p.Enabled && p.RoleName != "" {
+			roles = append(roles, keyRole{Name: p.RoleName, ExpiresAt: p.ExpiresAt})
+		}
+	}
+	if len(roles) == 0 {
+		note = i18n.T("no role of the key on the project; a role on the organization is not seen here",
+			"у ключа нет ролей на проекте; роль на организацию здесь не видна")
+	}
+	return roles, note
+}
+
+// keyRolesCheck is doctor's check of the key's roles on the project: a
+// warning without one, «unknown» (skip) when IAM does not tell — never a
+// failure: the key may work all the same («Риск», conclusion 22, У-7).
+func keyRolesCheck(ctx context.Context, tp auth.TokenProvider, tok auth.Token, projectID string) DoctorCheck {
+	roles, note := keyRoles(ctx, tp, tok, projectID)
+	switch {
+	case roles == nil:
+		return DoctorCheck{Name: "key roles", Status: CheckSkip, Detail: note}
+	case len(roles) == 0:
+		return DoctorCheck{Name: "key roles", Status: CheckWarn, Detail: note}
+	}
+	names := make([]string, len(roles))
+	for i, r := range roles {
+		// The cloud's name, quoted on one line in evo's own text.
+		names[i] = quoteCloud(r.Name)
+		if r.ExpiresAt != "" {
+			names[i] += i18n.Tf(" until %s", " до %s", r.ExpiresAt)
+		}
+	}
+	return DoctorCheck{Name: "key roles", Status: CheckOK,
+		Detail: i18n.Tf("on project %s: %s", "на проекте %s: %s", projectID, strings.Join(names, ", "))}
 }
 
 func (s *Registry) handleDoctor(ctx context.Context, _ map[string]any) (string, bool) {
@@ -144,7 +218,7 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		checks = append(checks, DoctorCheck{Name: "credentials", Status: CheckOK,
 			Detail: i18n.Tf("key %s: %s, valid for %s", "ключ %s: %s, действует ещё %s",
 				config.MaskKeyID(eng.Config.KeyID), src, tok.TTL().Truncate(time.Minute))})
-		checks = append(checks, keyScopeCheck(ctx, eng.Auth))
+		checks = append(checks, keyScopeCheck(ctx, eng.Auth), keyRolesCheck(ctx, eng.Auth, tok, eng.Config.ProjectID))
 	}
 	return checks
 }
