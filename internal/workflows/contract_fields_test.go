@@ -109,6 +109,9 @@ func TestWorkflows_CreatesDeclareImpact(t *testing.T) {
 			}
 			for _, c := range r.Creates {
 				covered[c] = true
+				if strings.HasPrefix(c, "evo ") {
+					continue // a local command: TestLocalCommands_CreatesAreCommands (internal/cli)
+				}
 				if e, ok := cmap[c]; !ok || e.Creates == nil {
 					t.Errorf("%s: creates names %s, which the contract map has no create of", where, c)
 				}
@@ -171,4 +174,67 @@ func TestWorkflows_ContractChecksTheTariff(t *testing.T) {
 		return
 	}
 	t.Error("api-contract: no step checks the tariff of PostgreSQL (TestLive_TariffPageMatchesSnapshot)")
+}
+
+// Release plan 1.8 (B-1, #980): a command outside the registry that
+// writes to the cloud declares what it creates and its impact as a tool
+// does — evo login creates a service account, a role until a date and a
+// key. Every POST, PUT and PATCH of the inventory declares creates (a tool
+// of the contract map, or a local command by its path, «evo login») with
+// impact, or is a write that creates nothing evo has to declare, named in
+// writes_without_creates with why. A new write without either fails: the
+// gate and the impact check see only the registry.
+func TestWorkflows_WritesDeclareCreates(t *testing.T) {
+	var contract struct {
+		Without  map[string]string `json:"writes_without_creates"`
+		Services []struct {
+			Name     string `json:"name"`
+			Requests []struct {
+				Method  string   `json:"method"`
+				Path    string   `json:"path"`
+				Code    string   `json:"code"`
+				Creates []string `json:"creates"`
+			} `json:"requests"`
+		} `json:"services"`
+	}
+	b, err := os.ReadFile(filepath.FromSlash("../../scripts/api-contract.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &contract); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	writes, gaps := 0, 0
+	for _, svc := range contract.Services {
+		for _, r := range svc.Requests {
+			if r.Method != "POST" && r.Method != "PUT" && r.Method != "PATCH" {
+				continue
+			}
+			writes++
+			key := svc.Name + " " + r.Method + " " + r.Path
+			why, listed := contract.Without[key]
+			seen[key] = true
+			switch {
+			case len(r.Creates) > 0 && listed:
+				t.Errorf("%s declares creates and is in writes_without_creates: remove the line", key)
+			case len(r.Creates) == 0 && !listed:
+				t.Errorf("%s (%s) writes and declares no creates: declare what it creates and its impact (a tool, or the local command by its path, «evo login»), or say in writes_without_creates why it creates nothing", key, r.Code)
+			case listed && len(why) < 15:
+				t.Errorf("writes_without_creates %s: a reason, not %q", key, why)
+			}
+			if listed && strings.HasPrefix(why, "создаёт") {
+				gaps++
+			}
+		}
+	}
+	for key := range contract.Without {
+		if !strings.HasPrefix(key, "_") && !seen[key] {
+			t.Errorf("writes_without_creates names %s, which is no write of the inventory: remove the line", key)
+		}
+	}
+	if writes < 20 {
+		t.Fatalf("%d writes in the inventory: the check sees nothing", writes)
+	}
+	t.Logf("writes that create a resource and do not declare it yet («создаёт…» in writes_without_creates): %d", gaps)
 }
