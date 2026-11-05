@@ -21,6 +21,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -183,6 +184,28 @@ func callBound(ctx context.Context, own time.Duration) (time.Duration, bool) {
 		return own, false
 	}
 	return t, true
+}
+
+// callCtx is ctx ended where callBound ends this call's steps: the reads
+// of the cloud a call makes while it waits end with the call, leaving it
+// time to answer, not past it (D69, H14; agent run of 1.7.0: a read after
+// the budget had no bound, and a call took 56 s and more). Without a
+// budget it is ctx.
+func callCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	if t, capped := callBound(ctx, time.Duration(math.MaxInt64)); capped {
+		return context.WithTimeout(ctx, t)
+	}
+	return ctx, func() {}
+}
+
+// callEndCtx is ctx ended with the budget of the call itself, without the
+// time to answer callCtx leaves: a last read in that time. Without a
+// budget it is ctx.
+func callEndCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	if left, capped := budgetLeft(ctx); capped {
+		return context.WithTimeout(ctx, left)
+	}
+	return ctx, func() {}
 }
 
 // budgeted stamps a call with its start (withCallStart).

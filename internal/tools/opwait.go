@@ -96,12 +96,15 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 	}
 	deadline := time.Now().Add(time.Duration(waitSeconds) * time.Second)
 	// Within the budget of the call (D69): an MCP call answers with the
-	// operation's state so far, and the agent asks again.
-	if left, capped := budgetLeft(ctx); capped {
-		if until := time.Now().Add(left); until.Before(deadline) {
-			deadline = until
-		}
+	// operation's state so far, and the agent asks again. Its reads end
+	// with the call too (callCtx): the last one had no bound.
+	callCtx, cancel := callCtx(ctx)
+	defer cancel()
+	if until, bounded := callCtx.Deadline(); bounded && until.Before(deadline) {
+		deadline = until
 	}
+	// cut: the budget, not the caller, ended a read or the sleep.
+	cut := func() bool { return ctx.Err() == nil && callCtx.Err() != nil }
 	delay := opWaitFirstDelay
 	pp, _ := progressOf(ctx)
 	wait := engine.NewWaitLine(pp, 0, func(elapsed, state string) string {
@@ -110,8 +113,11 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 	defer wait.Done()
 	var last map[string]any
 	for {
-		m, err := fetch(ctx)
+		m, err := fetch(callCtx)
 		if err != nil {
+			if cut() && last != nil {
+				return stillRunning(last, waitSeconds), nil
+			}
 			return last, err
 		}
 		last = m
@@ -128,7 +134,10 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 		if delay <= 0 {
 			return stillRunning(m, waitSeconds), nil
 		}
-		if err := sleepShowing(ctx, delay, wait); err != nil {
+		if err := sleepShowing(callCtx, delay, wait); err != nil {
+			if cut() {
+				return stillRunning(last, waitSeconds), nil
+			}
 			return last, err
 		}
 		if delay < 15*time.Second {
