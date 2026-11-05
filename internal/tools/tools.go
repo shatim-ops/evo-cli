@@ -587,7 +587,8 @@ func (s *Registry) registerTools() {
 				"(profile, env, project file, flag), the project, when the IAM token expires and whether it was cached or issued now, " +
 				"and how many projects the key sees (no visible_projects when the Organization API lists none for the key: not an error), " +
 				"and roles: the key's roles on the project by name, with the term of each that has one; roles_note says why they are " +
-				"unknown (IAM did not tell, no project) or that a role on the organization is not seen here. " +
+				"unknown (IAM did not tell, no project) or that a role on the organization is not seen here; key_expires_at: when the " +
+				"access key expires (key_expires_soon within 5 days: a person issues the next key; key_term_note when unknown). " +
 				"Read-only; IAM is asked for a token only when no valid cached token exists. Fails with AUTH_REQUIRED or AUTH_FAILED (no key, " +
 				"key rejected) and CONFIG_INVALID (broken configuration). Call it first when calls fail with an authentication error " +
 				"or land in an unexpected project.",
@@ -597,7 +598,8 @@ func (s *Registry) registerTools() {
 			Name: "doctor",
 			Description: "Check the setup the tools use: the configuration (profile, where the key and the project come from, " +
 				"its warnings), whether the IAM and Compute APIs are reachable, the access key (an IAM token), how many projects " +
-				"it sees and its roles on the project (key roles: skip when IAM does not tell, warn with none). Read-only. Answers checks ({name, status: ok, warn, fail or skip, detail, http_status}) and ok. A failed " +
+				"it sees, its roles on the project (key roles: skip when IAM does not tell, warn with none) and its term (key term: " +
+				"warn within 5 days). Read-only. Answers checks ({name, status: ok, warn, fail or skip, detail, http_status}) and ok. A failed " +
 				"check fails the call, with the checks in the error answer: CONFIG_INVALID when the configuration or the key is " +
 				"broken (no project included), API_UNREACHABLE when only connectivity failed. The CLI's 'evo doctor' also checks " +
 				"the config files of its machine and kubectl/helm in PATH.",

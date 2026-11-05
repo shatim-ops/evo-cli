@@ -879,3 +879,23 @@ func TestWhoami_RolesLine(t *testing.T) {
 		}
 	}
 }
+
+// A0-3: 'evo whoami' names the key's term, and warns when it is within 5
+// days: a person issues the next key.
+func TestWhoami_KeyTermLine(t *testing.T) {
+	for in, want := range map[string][]string{
+		`{"profile":"d","key_expires_at":"2026-12-05T00:00:00Z"}`:                         {"Key term:    valid until 2026-12-05T00:00:00Z"},
+		`{"profile":"d","key_expires_at":"2026-11-09T00:00:00Z","key_expires_soon":true}`: {"Key term:    valid until 2026-11-09T00:00:00Z", "Warning: the access key expires 2026-11-09T00:00:00Z", "evo login"},
+		`{"profile":"d","key_term_note":"unknown: IAM did not tell it (403)"}`:            {"Key term:    unknown: IAM did not tell it (403)"},
+	} {
+		var out, errOut bytes.Buffer
+		if err := showWhoami(output.NewWithWriters(&out, &errOut, output.ModePlain, false), in); err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range want {
+			if !strings.Contains(out.String()+errOut.String(), w) {
+				t.Errorf("%s:\n%s%s\nwant %q", in, out.String(), errOut.String(), w)
+			}
+		}
+	}
+}

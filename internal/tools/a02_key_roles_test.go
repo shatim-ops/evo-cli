@@ -36,10 +36,12 @@ const rolesProject = "00000000-0000-4000-8000-0000000000a1"
 // rolesWorld answers the Administration API's permissions and nothing
 // else of the cloud.
 type rolesWorld struct {
-	status int    // answer to the permissions instead of the list
-	perms  string // the permissions answered (JSON array)
-	mu     sync.Mutex
-	asked  []string // filters of the permissions requests
+	status  int    // answer to the permissions instead of the list
+	perms   string // the permissions answered (JSON array)
+	keys    string // the access keys of sa-1 answered (JSON array; "" — 403)
+	mu      sync.Mutex
+	asked   []string // filters of the permissions requests
+	keyAsks int      // requests of the access keys
 }
 
 func (w *rolesWorld) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -55,6 +57,15 @@ func (w *rolesWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 			return answer(w.status, `{"message":"refused by the world"}`)
 		}
 		return answer(200, `{"permissions":`+w.perms+`}`)
+	}
+	if r.URL.Host == "iam.api.cloud.ru" && r.URL.Path == "/api/v2/serviceAccounts/sa-1/accessKeys" {
+		w.mu.Lock()
+		w.keyAsks++
+		w.mu.Unlock()
+		if w.keys == "" {
+			return answer(403, `{"message":"no right to read the keys"}`)
+		}
+		return answer(200, `{"accessKeys":`+w.keys+`}`)
 	}
 	return answer(404, `{"message":"not in this world"}`)
 }
@@ -78,7 +89,7 @@ func rolesRegistry(t *testing.T, w *rolesWorld, project string, tp auth.TokenPro
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
-			Config:  config.Config{ProjectID: project, KeyID: "k", Secret: "s", Profile: "default"},
+			Config:  config.Config{ProjectID: project, KeyID: "KEYID1", Secret: "s", Profile: "default"},
 			Auth:    tp,
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil

@@ -1887,6 +1887,17 @@
    "serviceAccounts[].type",
    "serviceAccounts[].updatedAt"
   ],
+  "iam GET /api/v2/serviceAccounts/{serviceAccountId}/accessKeys": [
+   "accessKeys[]",
+   "accessKeys[].createdAt",
+   "accessKeys[].description",
+   "accessKeys[].expiredAt",
+   "accessKeys[].id",
+   "accessKeys[].keyId",
+   "accessKeys[].secret",
+   "accessKeys[].serviceAccountId",
+   "accessKeys[].updatedAt"
+  ],
   "iam GET /api/v3/permissions": [
    "nextPageToken",
    "permissions[]",

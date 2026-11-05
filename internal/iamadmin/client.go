@@ -5,8 +5,9 @@
 // Package iamadmin reads the Cloud.ru Administration API (IAM,
 // https://iam.api.cloud.ru, iam-gw-public.yaml): the permissions of a
 // subject on a resource — the roles of the key that whoami and doctor name
-// (A0-1, A0-2, release plan 1.8). The key's term (A0-3) and evo login (B-3)
-// add their reads here, each with the call that uses it.
+// (A0-1, A0-2, release plan 1.8) — and the access keys of a service
+// account, for the key's term (A0-3). evo login (B-3) adds its reads here,
+// each with the call that uses it.
 //
 // What it returns is a whitelist: each type names the fields evo uses, and
 // nothing else of an answer goes on («Риск», R-43). Answers are read
@@ -81,11 +82,38 @@ func (c *Client) Permissions(ctx context.Context, resourceID, subjectID string) 
 	return out, err
 }
 
+// AccessKey is an access key of a service account, without its secret:
+// the answer of the list carries the secret, AccessKey has no field for it
+// («Риск», R-43).
+type AccessKey struct {
+	ID, KeyID, ExpiredAt string
+}
+
+// AccessKeys lists the access keys of a service account.
+func (c *Client) AccessKeys(ctx context.Context, serviceAccountID string) ([]AccessKey, error) {
+	if !pathID.MatchString(serviceAccountID) {
+		return nil, badValue("serviceAccountId", serviceAccountID)
+	}
+	var m map[string]any
+	if err := c.do(ctx, "/api/v2/serviceAccounts/"+serviceAccountID+"/accessKeys", nil, &m); err != nil {
+		return nil, err
+	}
+	var out []AccessKey
+	for _, x := range items(m, "accessKeys") {
+		out = append(out, AccessKey{ID: str(x, "id"), KeyID: str(x, "keyId"), ExpiredAt: str(x, "expiredAt")})
+	}
+	return out, nil
+}
+
 // filterValue is what a value of a filter may be: an id, a name, a
 // product code. A space, a quote or a line break would let the value
 // widen the expression (the filter is AND of key=value), so it is refused
 // before the request.
 var filterValue = regexp.MustCompile(`^[A-Za-z0-9._*:-]+$`)
+
+// pathID is what an id in a path may be: a UUID's letters, digits and
+// dashes, never «.» or «/», which would lead the request elsewhere.
+var pathID = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
 // setFilter sets q's filter to the AND of the key=value pairs of kv whose
 // value is not "".
