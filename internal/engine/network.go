@@ -278,17 +278,19 @@ type NetworkCheck struct {
 
 // checkNetwork resolves the subnet and the group as provision does (the
 // zone's main subnet or subnet_id; the zone's default group) and checks
-// them; nil when nothing is wrong or nothing could be read. The name is
-// the group's, "" when it could not be read: the preview names it where
-// the ports open (P5). A zone the
+// them; nil when nothing is wrong or nothing could be read. The subnet
+// and the group are the ones provision takes, nil when they could not be
+// read: the preview names them before the question (axis 4; agent run of
+// 1.7.0, №8), the group also where the ports open (P5). A zone the
 // lists show without a subnet or a group is the error provision refuses
 // with (NoSubnetError, NoSecurityGroupError): the preview refuses it before
 // the question, as an image the project cannot use (D35, G13-3).
-func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, subnetID string) (*NetworkCheck, string, error) {
+func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, subnetID string) (*NetworkCheck, *provision.Subnet, *provision.SecurityGroup, error) {
 	if projectID == "" || zoneID == "" {
-		return nil, "", nil
+		return nil, nil, nil, nil
 	}
 	var c NetworkCheck
+	var picked *provision.Subnet
 	gateway := ""
 	if subnets, err := e.Cloud.ListSubnets(ctx, projectID); err == nil {
 		// The zone list is for the name rule of a subnet without its zone;
@@ -299,12 +301,13 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 		}
 		sn, err := SubnetForVM(subnets, zones, zoneID, zoneName, subnetID)
 		if err != nil {
-			return nil, "", err
+			return nil, nil, nil, err
 		}
 		if sn == nil && subnetID == "" {
-			return nil, "", NoSubnetError(zoneName, zoneID)
+			return nil, nil, nil, NoSubnetError(zoneName, zoneID)
 		}
 		if sn != nil {
+			picked = sn
 			gateway = sn.DefaultGateway
 			if sn.NoDNS() {
 				c.Subnet, c.SubnetNoDNS = sn.Name, true
@@ -313,11 +316,10 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 	}
 	sgs, err := e.Cloud.ListSecurityGroups(ctx, projectID)
 	if err == nil && provision.PickSecurityGroup(sgs, zoneID, zoneName) < 0 {
-		return nil, "", NoSecurityGroupError(zoneName, zoneID)
+		return nil, nil, nil, NoSecurityGroupError(zoneName, zoneID)
 	}
-	group := ""
-	if g := pickGroup(ctx, e, projectID, zoneID, zoneName); g != nil {
-		group = g.Name
+	g := pickGroup(ctx, e, projectID, zoneID, zoneName)
+	if g != nil {
 		if rules, err := provision.GroupRules(ctx, e.Cloud, g); err == nil {
 			gaps := provision.CheckVMGroupRules(rules, gateway)
 			if gaps.NoSSH || gaps.NoSystemEgress {
@@ -326,9 +328,9 @@ func (e *Engine) checkNetwork(ctx context.Context, projectID, zoneID, zoneName, 
 		}
 	}
 	if c == (NetworkCheck{}) {
-		return nil, group, nil
+		return nil, picked, g, nil
 	}
-	return &c, group, nil
+	return &c, picked, g, nil
 }
 
 // pickGroup is the zone's group provision takes; nil when the list
