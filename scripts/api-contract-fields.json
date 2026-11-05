@@ -1887,6 +1887,22 @@
    "serviceAccounts[].type",
    "serviceAccounts[].updatedAt"
   ],
+  "iam GET /api/v3/permissions": [
+   "nextPageToken",
+   "permissions[]",
+   "permissions[].createdAt",
+   "permissions[].enabled",
+   "permissions[].expiresAt",
+   "permissions[].id",
+   "permissions[].primaryRoleId",
+   "permissions[].resourceId",
+   "permissions[].roleId",
+   "permissions[].roleName",
+   "permissions[].roleType",
+   "permissions[].subjectId",
+   "permissions[].subjectType",
+   "permissions[].updatedAt"
+  ],
   "iam POST /api/v1/auth/token": [
    "keyId",
    "secret"
