@@ -278,6 +278,7 @@ func TestLoginWorld_ReferenceWalk(t *testing.T) {
 		{"account exists", Variant{AccountExists: true}, outcome{}, 1, 1, []string{"!POST /api/v2/serviceAccounts"}},
 		{"409 on the account", Variant{Conflict409: true}, outcome{}, 1, 1, []string{"POST /api/v2/serviceAccounts"}},
 		{"role shorter: PUT", Variant{Perm: PermShorter}, outcome{}, 1, 1, []string{"PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
+		{"broken at the key after a PUT: the term stays", Variant{Perm: PermShorter, FailAt: StepKey}, outcome{"API_ERROR", "key"}, 1, 0, []string{"!DELETE /api/v3/permissions/", "!DELETE /api/v2/serviceAccounts/"}},
 		{"role longer: no write", Variant{Perm: PermLonger}, outcome{}, 1, 1, []string{"!PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
 		{"403 on permissions", Variant{PermForbidden: true}, outcome{"API_ERROR", "permission"}, 0, 0, nil},
 		{"role name collision", Variant{RoleCollision: true}, outcome{}, 1, 1, []string{"GET /api/v1/roles"}},

@@ -523,8 +523,8 @@ func (w *World) administration(rw http.ResponseWriter, r *http.Request) {
 	case p == "/api/v3/permissions" && m == http.MethodGet:
 		w.listPermissions(rw, r)
 	case strings.HasPrefix(p, "/api/v3/permissions/") && m == http.MethodDelete:
-		// Rollback of step 15 (contract, «Откат при обрыве»); not in the
-		// request list of B-1 yet.
+		// Rollback of step 15: only a permission this login made by POST
+		// (one extended by PUT keeps its term).
 		id := strings.TrimPrefix(p, "/api/v3/permissions/")
 		if w.perms[id] == nil {
 			fail(rw, 404, "permission not found")
@@ -533,7 +533,8 @@ func (w *World) administration(rw http.ResponseWriter, r *http.Request) {
 		delete(w.perms, id)
 		rw.WriteHeader(http.StatusNoContent)
 	case strings.HasPrefix(p, "/api/v2/serviceAccounts/") && !strings.Contains(p, "/accessKeys") && m == http.MethodDelete:
-		// Rollback of step 14; not in the request list of B-1 yet.
+		// Rollback of step 14: only an account this login made (one found by
+		// its name stays).
 		id := strings.TrimPrefix(p, "/api/v2/serviceAccounts/")
 		if w.accounts[id] == nil {
 			fail(rw, 404, "service account not found")
