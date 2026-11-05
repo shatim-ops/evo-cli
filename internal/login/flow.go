@@ -275,8 +275,16 @@ func str(m map[string]any, k string) string {
 // failure after a write undoes what this login made, newest first (R-44).
 func (s *session) grant(ctx context.Context, p project, aud Audience, days int) (Result, error) {
 	res, err := s.make(ctx, p, aud, days)
-	if err != nil && len(s.made) > 0 {
+	switch {
+	case err == nil:
+		return res, nil
+	case len(s.made) > 0:
 		return res, s.rollback(ctx, err)
+	case !clierrors.IsCode(clierrors.Reason(err)):
+		// An answer of the API before any write of this login.
+		return res, clierrors.Wrap(clierrors.CodeAPIError,
+			i18n.Tf("access is not complete: %v; nothing of this login is left", "доступ не завершён: %v; от этого входа ничего не осталось", err),
+			i18n.T("Run 'evo login' again.", "Повторите 'evo login'."), err)
 	}
 	return res, err
 }
