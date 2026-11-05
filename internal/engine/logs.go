@@ -36,7 +36,7 @@ func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
 		return err
 	}
 
-	active := stateFile.ActiveDeployment()
+	active := stateFile.PrimaryDeployment()
 	if active == nil {
 		return clerrors.New(clerrors.CodeVMNotFound,
 			i18n.T("no active deployment", "активного развёртывания нет"),
