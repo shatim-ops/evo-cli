@@ -40,7 +40,7 @@ func TestNoRightIn(t *testing.T) {
 // key handed over. The hint names the way of the page's note.
 func TestNoRightHint_NoLoginOfTheAdministrator(t *testing.T) {
 	for lang, way := range map[string]string{
-		i18n.EN: "create for you a service account with the role needed and a key in the Cloud.ru personal account",
+		i18n.EN: "create a service account with the required role and a key for you in the Cloud.ru personal account",
 		i18n.RU: "создать для вас сервисный аккаунт с нужной ролью и ключ в личном кабинете Cloud.ru",
 	} {
 		prev := i18n.Lang()
