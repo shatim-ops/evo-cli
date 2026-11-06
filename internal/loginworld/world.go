@@ -129,6 +129,11 @@ type Variant struct {
 	// items with a page token, then empty pages, each with a new token —
 	// the list never says it ended (acceptance B-5, 06.11; IAM-10).
 	EmptyPagesWithToken bool
+	// NoCustomersWithToken: the person belongs to no organization, and
+	// /v3/customers still answers its empty first page with a token, as
+	// past its last item («Риск» to IAM-10: the empty first page ends the
+	// list too — no organizations, not a wait for more pages).
+	NoCustomersWithToken bool
 }
 
 // probeActions are the actions of IAM about accounts, keys and permissions
@@ -569,6 +574,10 @@ func (w *World) organization(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := map[string]any{key: items}
+	if w.v.NoCustomersWithToken && key == "customers" {
+		page[key] = []any{}
+		page["next_page_token"] = r.URL.Query().Get("page_token") + "p"
+	}
 	if w.v.EmptyPagesWithToken {
 		// The items with a token, then empty pages, each with a new one.
 		tok := r.URL.Query().Get("page_token")

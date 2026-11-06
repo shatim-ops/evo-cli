@@ -163,3 +163,27 @@ func TestAllUntilEmpty_AnEmptyPageEndsTheList(t *testing.T) {
 		t.Errorf("All: %d requests, err %v — an empty page is not the end for every list", calls, err)
 	}
 }
+
+// IAM-10, «Риск» to the blocker of B-5 (axis 3): «an empty page ends the
+// list» is the Organization API's alone (AllUntilEmpty). Every other list
+// read by All goes on past an empty page that names a next token: its rest
+// is read, not cut with exit 0.
+func TestAll_EmptyPageMidListIsNotTheEnd(t *testing.T) {
+	var got []string
+	pages := map[string]struct {
+		items []string
+		next  string
+	}{
+		"":   {[]string{"a"}, "t1"},
+		"t1": {nil, "t2"}, // empty, the list goes on
+		"t2": {[]string{"b"}, ""},
+	}
+	err := All("things", func(token string) (string, error) {
+		p := pages[token]
+		got = append(got, p.items...)
+		return p.next, nil
+	})
+	if err != nil || strings.Join(got, ",") != "a,b" {
+		t.Fatalf("got %q, err %v; want a,b — All stopped at the empty page and cut the list", got, err)
+	}
+}
