@@ -652,3 +652,35 @@ func TestLogin_SaysThePageName(t *testing.T) {
 		t.Errorf("err %v:\n%s", r.err, r.out)
 	}
 }
+
+// B-5 on the production (06.11, «Процесс · 1.8 · приёмка B-5», one run):
+// /v3/customers answers its items on the first page and then empty pages,
+// each with a new non-empty next_page_token — the list never ends with an
+// empty token. evo login read 20 such pages and refused with «too many
+// pages» (API_ERROR, exit 5) after the person signed in. The end of such a
+// list is its empty page: the login goes on to the profile, and reads one
+// empty page of each list at most, not the bound.
+//
+// Escaped: the live run B-5; the world had no next_page_token at all
+// (internal/loginworld, organization), so the paging of login was never
+// met.
+func TestLogin_OrgListEndsAtAnEmptyPage(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{OrgEmptyTail: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil || len(r.saved) != 1 {
+		t.Fatalf("login over the lists of the production: %v (%s); saved %d\n%s", r.err, reasonOf(r.err), len(r.saved), r.out)
+	}
+	pages := map[string]int{}
+	for _, c := range w.Calls() {
+		for _, p := range []string{"GET /v3/customers", "GET /v3/projects"} {
+			if strings.HasPrefix(c, p) {
+				pages[p]++
+			}
+		}
+	}
+	for p, n := range pages {
+		if n > 2*len(pages) {
+			t.Errorf("%s: %d pages read; the list ended at its first empty page", p, n)
+		}
+	}
+}

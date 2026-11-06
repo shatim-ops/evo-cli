@@ -125,6 +125,13 @@ type Variant struct {
 	// AccountForbidden: POST serviceAccounts answers 403 («Риск», R-49: a
 	// refusal of the platform at the first write is AUTH_FAILED).
 	AccountForbidden bool
+	// OrgEmptyTail: the lists of the Organization API answer as on the
+	// production (B-5, 06.11, one run, «Процесс · 1.8 · приёмка B-5»): the
+	// first page has the items and a next_page_token; every later page —
+	// asked for by page_token or pageToken — is empty and carries a new,
+	// non-empty token. The list never ends with an empty token: its end is
+	// the empty page.
+	OrgEmptyTail bool
 }
 
 // probeActions are the actions of IAM about accounts, keys and permissions
@@ -547,18 +554,37 @@ func (w *World) bearerHuman(rw http.ResponseWriter, r *http.Request) bool {
 }
 
 func (w *World) organization(rw http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case "/v3/customers":
-		writeJSON(rw, 200, map[string]any{"customers": []map[string]string{{"id": Customer, "name": "org", "full_name": "Org"}}})
-	case "/v3/projects":
-		if r.URL.Query().Get("customer_ids") != Customer {
-			writeJSON(rw, 200, map[string]any{"projects": []any{}})
+	q := r.URL.Query()
+	token := q.Get("page_token")
+	if token == "" {
+		token = q.Get("pageToken")
+	}
+	// page answers one page of the list key: its items on the first page;
+	// with OrgEmptyTail, an empty page with a new token after it.
+	page := func(key string, items any) {
+		if !w.v.OrgEmptyTail {
+			writeJSON(rw, 200, map[string]any{key: items})
 			return
 		}
-		writeJSON(rw, 200, map[string]any{"projects": []map[string]string{
+		w.seq++ // under w.mu: serve holds it
+		next := fmt.Sprintf("%s-page-%d", key, w.seq)
+		if token != "" {
+			items = []any{}
+		}
+		writeJSON(rw, 200, map[string]any{key: items, "next_page_token": next})
+	}
+	switch r.URL.Path {
+	case "/v3/customers":
+		page("customers", []map[string]string{{"id": Customer, "name": "org", "full_name": "Org"}})
+	case "/v3/projects":
+		if q.Get("customer_ids") != Customer {
+			page("projects", []any{})
+			return
+		}
+		page("projects", []map[string]string{
 			{"id": Project, "name": "proj", "status": "active", "customer_id": Customer},
 			{"id": "p-deleted", "name": "old", "status": "deleted", "customer_id": Customer},
-		}})
+		})
 	default:
 		fail(rw, 404, "no route")
 	}
