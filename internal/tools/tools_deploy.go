@@ -706,10 +706,19 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 			alreadyOpen = append(alreadyOpen, strconv.Itoa(p))
 		}
 	}
+	message := i18n.Tf("open_ports would open %s/%s from %s on security group %q (shared per zone — affects every VM in it).",
+		"open_ports откроет %s/%s из %s в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней).",
+		strings.Join(willOpen, ","), proto, cidr, target.Name)
+	if len(willOpen) == 0 {
+		// Nothing to open: the question stays until major (owner's decision
+		// 06.11, variant Г; a repeat without it is the class of D81), and
+		// the preview says the consent changes nothing.
+		message = i18n.Tf("Every port asked for is already open on security group %q (%s/%s from %s): the consent changes nothing, no rule is added.",
+			"Все запрошенные порты уже открыты в группе безопасности %q (%s/%s из %s): подтверждение ничего не изменит, правила не добавятся.",
+			target.Name, strings.Join(alreadyOpen, ","), proto, cidr)
+	}
 	preview := map[string]any{
-		"message": i18n.Tf("open_ports would open %s/%s from %s on security group %q (shared per zone — affects every VM in it).",
-			"open_ports откроет %s/%s из %s в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней).",
-			strings.Join(willOpen, ","), proto, cidr, target.Name),
+		"message":        message,
 		"security_group": target.Name,
 		"protocol":       proto,
 		"cidr":           cidr,

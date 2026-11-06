@@ -132,3 +132,30 @@ func TestOpenPorts_AlreadyOpenCountsTheSource(t *testing.T) {
 		t.Errorf("already_open %v, want [80] from the same source", m["already_open"])
 	}
 }
+
+// Every port open already (#1043, the world «ports open already»): the
+// preview asked for consent to open nothing — «would open /tcp». Owner's
+// decision 06.11 (variant Г, not breaking): the question and its exit code
+// stay until major, and the preview says outright that every port is open
+// and the consent changes nothing; will_open stays an empty list.
+func TestOpenPorts_EveryPortOpenThePreviewSaysConsentChangesNothing(t *testing.T) {
+	cloud := &faultCloud{rules: []provision.SGRule{
+		{ID: faultID(0x74), Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0"},
+		{ID: faultID(0x75), Direction: "ingress", IPProtocol: "tcp", PortRange: "443:443", RemoteIPPrefix: "0.0.0.0/0"},
+	}}
+	r, _ := faultToolsRegistry(t, cloud)
+	m, _, isErr := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(443)}})
+	if !isErr || m["status"] != "confirmation_required" {
+		t.Fatalf("open_ports with every port open: %v — the question stays until major (variant Г)", m)
+	}
+	msg, _ := m["message"].(string)
+	if strings.Contains(msg, "would open") || !strings.Contains(msg, "already open") || !strings.Contains(msg, "changes nothing") {
+		t.Errorf("the preview of nothing to open: %q — say every port is open already and the consent changes nothing", msg)
+	}
+	if open, ok := m["will_open"].([]any); !ok || len(open) != 0 {
+		t.Errorf("will_open %v, want an empty list as before", m["will_open"])
+	}
+	if already, _ := m["already_open"].([]any); len(already) != 2 {
+		t.Errorf("already_open %v, want [80 443]", m["already_open"])
+	}
+}
