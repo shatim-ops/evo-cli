@@ -201,6 +201,11 @@ evo destroy
 
 ## Подключить к AI-агенту
 
+Быстрее всего — одной вставкой: скажите агенту «Настрой evo по
+https://github.com/shatim-ops/evo-cli/blob/main/docs/agent-setup.md». Он
+проверит evo, запустит `evo login` и подключит evo к себе; доступ в
+браузере выдаёте вы ([docs/agent-setup.md](docs/agent-setup.md)).
+
 После `evo configure` агент получает те же возможности через MCP. Проще всего —
 одной командой: она дополняет файл настроек клиента (другие серверы остаются),
 перед записью показывает diff и спрашивает согласие:
@@ -277,6 +282,7 @@ MCP-сервер (`evo mcp`) всегда отвечает по-английск
 | [docs/install.md](docs/install.md) | установка на Linux, macOS, Windows; проверка подписи; kubectl/helm |
 | [docs/auth.md](docs/auth.md) | сервисный аккаунт и ключ, роли, профили, все переменные окружения, что хранится на диске, ротация ключа |
 | [docs/mcp.md](docs/mcp.md) | MCP по stdio и HTTP, конфиги Claude Code и Cursor, Docker-образ |
+| [docs/agent-setup.md](docs/agent-setup.md) | подключить evo к агенту одной вставкой: промпт для агента |
 | [docs/commands.md](docs/commands.md) | справка по всем командам; у команд без инструмента MCP — пометка «Локальная команда» с причиной |
 | [docs/tools.md](docs/tools.md) | каталог всех инструментов MCP и `evo tools`: группа, команда CLI, меняет ли, обязательные аргументы, описание по-английски и по-русски |
 | [docs/exit-codes.md](docs/exit-codes.md) | коды выхода и формат ошибок `--json` |
