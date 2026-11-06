@@ -37,6 +37,8 @@ type page struct {
 type head struct {
 	Lang, Title, Heading, Product string
 	Rules                         template.CSS
+	// Wide: the consent's two columns, one screen of a laptop (B-5).
+	Wide bool
 }
 
 func newHead(title string) head {
@@ -55,8 +57,17 @@ func writePage(w http.ResponseWriter, code int, p page) {
 
 type consentProject struct {
 	// Source says where a preselected project came from (R-48).
-	HTMLID, ID, Name, OrgHeading, Source string
-	Allowed, Checked                     bool
+	HTMLID, ID, Name, OrgName, Source string
+	Allowed, Checked                  bool
+}
+
+// consentOrg is a group of the list of projects: one list, grouped by the
+// organization, so the organization shown is always the chosen project's
+// (B-5, the owner's decision of 06.11: two lists without a script could
+// show one organization and grant a project of another, R-47).
+type consentOrg struct {
+	Name     string
+	Projects []consentProject
 }
 
 type consentTerm struct {
@@ -80,6 +91,7 @@ type consentData struct {
 	AgentWarnTitle                  string
 	AgentWarn, GrantIn              [2]string
 	Projects                        []consentProject
+	Orgs                            []consentOrg
 	Terms                           []consentTerm
 }
 
@@ -104,7 +116,9 @@ func cut(text string, marks ...string) []string {
 }
 
 func consentPage(s *session) page {
-	d := consentData{head: newHead(tHeading()),
+	h := newHead(tHeading())
+	h.Wide = true
+	d := consentData{head: h,
 		Intro: s.introLine(), ProjectLegend: tProject(), NeedAdmin: tNoRightMark(), NoRightNote: tNoRightNote(),
 		ForLegend: tForWhom(), ForMe: tForMe(), ForMeNote: tForMeNote(), ForAgent: tForAgent(), ForAgentNote: tForAgentNote(),
 		RoleNote: tRoleNote(), TermLegend: tTerm(), TermNote: tForeverInConsole(), SummaryHeading: tWhatWillBeMade(),
@@ -129,11 +143,10 @@ func consentPage(s *session) page {
 		d.PreselectNote = projectNoRight(s.choice.PreselectEnv)
 	}
 	checked := false
-	lastOrg := ""
 	for i, p := range s.projects {
-		cp := consentProject{HTMLID: fmt.Sprintf("p%d", i), ID: p.ID, Name: p.Name, Allowed: p.Allowed}
-		if p.Customer != lastOrg {
-			cp.OrgHeading, lastOrg = p.CustomerName, p.Customer
+		cp := consentProject{HTMLID: fmt.Sprintf("p%d", i), ID: p.ID, Name: p.Name, OrgName: p.CustomerName, Allowed: p.Allowed}
+		if i == 0 || p.Customer != s.projects[i-1].Customer {
+			d.Orgs = append(d.Orgs, consentOrg{Name: p.CustomerName})
 		}
 		switch {
 		case i == pre:
@@ -145,9 +158,11 @@ func consentPage(s *session) page {
 			cp.Checked, checked = true, true
 		}
 		d.Projects = append(d.Projects, cp)
-		rules.WriteString(choiceRule(cp.HTMLID, "fieldset label[for="+cp.HTMLID+"]"))
-		// R-48: the button names the chosen project.
-		rules.WriteString("#" + cp.HTMLID + ":checked ~ .actions .s-" + cp.HTMLID + " { display: inline; }\n")
+		o := &d.Orgs[len(d.Orgs)-1]
+		o.Projects = append(o.Projects, cp)
+		// The chosen option of the list shows in the summary, on the button
+		// (R-48) and under the list, by :has.
+		rules.WriteString(".sheet:has(#" + cp.HTMLID + ":checked) .s-" + cp.HTMLID + " { display: inline; }\n")
 	}
 	days := s.choice.Days
 	if !containsInt(Terms, days) {
@@ -158,14 +173,14 @@ func consentPage(s *session) page {
 		d.Terms = append(d.Terms, consentTerm{Days: n, Label: tDays(n),
 			Until: day(now.Add(time.Duration(n) * 24 * time.Hour)), Checked: n == days})
 		id := fmt.Sprintf("t-%d", n)
-		rules.WriteString("#" + id + ":checked ~ fieldset .seg label[for=" + id + "] { color: var(--ink); border-bottom-color: var(--green); } #" +
-			id + ":checked ~ .summary .s-" + id + ", #" + id + ":checked ~ .warn .s-" + id + " { display: inline; }\n")
+		rules.WriteString("#" + id + ":checked ~ .cols .seg label[for=" + id + "] { color: var(--ink); border-bottom-color: var(--green); } #" +
+			id + ":checked ~ .cols .summary .s-" + id + ", #" + id + ":checked ~ .cols .warn .s-" + id + " { display: inline; }\n")
 	}
 	for _, id := range []string{"a-me", "a-agent"} {
-		rules.WriteString(choiceRule(id, "fieldset label[for="+id+"]"))
+		rules.WriteString(choiceRule(id, ".cols label[for="+id+"]"))
 	}
 	// The warning of a key for an agent shows when the agent is chosen.
-	rules.WriteString("#a-agent:checked ~ .warn { display: flex; }\n")
+	rules.WriteString("#a-agent:checked ~ .cols .warn { display: flex; }\n")
 	// Ids are evo's own (p0…, t-7…, a-me): no text of the cloud in the CSS.
 	d.Rules = template.CSS(rules.String())
 	return page{"consent", d}
@@ -176,7 +191,7 @@ func consentPage(s *session) page {
 func choiceRule(id, label string) string {
 	return "#" + id + ":checked ~ " + label + " { border-left-color: var(--green); background: var(--green-bg); } #" +
 		id + ":checked ~ " + label + "::before { border-color: var(--green); background: radial-gradient(circle, var(--green) 45%, var(--surface2) 50%); } #" +
-		id + ":checked ~ .summary .s-" + id + " { display: inline; }\n"
+		id + ":checked ~ .cols .summary .s-" + id + " { display: inline; }\n"
 }
 
 type row struct{ Term, Value string }

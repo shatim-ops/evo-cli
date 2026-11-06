@@ -49,7 +49,7 @@ type browser struct {
 
 var stateField = regexp.MustCompile(`name="state" value="([^"]+)"`)
 var consentField = regexp.MustCompile(`name="consent" value="([^"]+)"`)
-var checkedProject = regexp.MustCompile(`name="project" id="p\d+" value="([^"]+)" required checked`)
+var checkedProject = regexp.MustCompile(`<option id="p\d+" value="([^"]+)" selected>`)
 
 func (b *browser) open(authURL string) error {
 	go func() {

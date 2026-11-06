@@ -68,14 +68,14 @@ func TestConsentPage_Preselect(t *testing.T) {
 		}
 		return b.String()
 	}
-	checked := regexp.MustCompile(`name="project" id="p\d+" value="([^"]+)" required checked`)
+	checked := regexp.MustCompile(`<option id="p\d+" value="([^"]+)" selected>`)
 	page := render("b", true)
 	if m := checked.FindStringSubmatch(page); m == nil || m[1] != "b" || !strings.Contains(page, tEnvProjectPicked()) {
 		t.Errorf("the variable's project is not checked with its source: %v", m)
 	}
 	grant := cut(tGrantInProject("\x00p"), "\x00p")
 	if !strings.Contains(page, grant[0]+`<span class="pn">`) || !strings.Contains(page, `</span>`+grant[1]+`</button>`) ||
-		!strings.Contains(page, `.actions .s-p1`) {
+		!strings.Contains(page, `.sheet:has(#p1:checked) .s-p1`) {
 		t.Errorf("the button does not name the project")
 	}
 	for env, note := range map[bool]string{true: tEnvProjectNoRight(), false: tProfileProjectNoRight()} {
@@ -110,7 +110,7 @@ func TestPages_MacketV13(t *testing.T) {
 	if !strings.Contains(page, tSignedIn("ivan@example.com")) {
 		t.Errorf("no e-mail")
 	}
-	if !strings.Contains(page, tAgentWarnTitle()) || !strings.Contains(page, "#a-agent:checked ~ .warn { display: flex; }") {
+	if !strings.Contains(page, tAgentWarnTitle()) || !strings.Contains(page, "#a-agent:checked ~ .cols .warn { display: flex; }") {
 		t.Errorf("no warning for an agent")
 	}
 	done := render(donePage(Result{Account: "evo", ProjectName: "alpha", CustomerName: "Radar", KeyID: "k", KeyExpiresAt: time.Now()}))
@@ -155,7 +155,7 @@ func TestConsentPage_PreselectSourceOnlyForTheVariable(t *testing.T) {
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(b.String(), "из профиля evo") || !strings.Contains(b.String(), `value="a" required checked`) {
+	if strings.Contains(b.String(), "из профиля evo") || !strings.Contains(b.String(), `value="a" selected>`) {
 		t.Errorf("the project of the profile: checked silently")
 	}
 }
@@ -182,7 +182,7 @@ func TestConsentPage_OneRightsMark(t *testing.T) {
 		t.Errorf("%d marks of the rights, want 1", strings.Count(page, mark))
 	}
 	projects, _, _ := strings.Cut(page, tForWhom())
-	if !strings.Contains(projects, tUnchecked("evaluate: 500")) || !strings.Contains(projects, `<legend>`+tProject()) {
+	if !strings.Contains(projects, tUnchecked("evaluate: 500")) || !strings.Contains(projects, `>`+tProject()+`</legend>`) {
 		t.Errorf("the mark is not by the list of projects")
 	}
 }
@@ -217,5 +217,37 @@ func TestEnglishTexts_CloudRuConsole(t *testing.T) {
 	defer i18n.SetLang(prev)
 	if long := strings.Join(strings.Fields(TLogoutLong()), " "); !strings.Contains(long, "Cloud.ru console") {
 		t.Errorf("evo logout --help: %q", long)
+	}
+}
+
+// Plan 1.8, «B-5, дефект CJM страницы согласия» (the owner, 06.11): the
+// projects are one list grouped by the organization — two lists without a
+// script could show one organization and grant a project of another
+// (R-47); the hidden radios are fixed, so a click on a label at the bottom
+// of the form does not scroll the page to them at its top.
+func TestConsentPage_OneListByOrganization(t *testing.T) {
+	s := &session{cfg: Config{Now: time.Now}, projects: []project{
+		{ID: "a", Name: "alpha", Customer: "c1", CustomerName: "Org One", Allowed: true},
+		{ID: "b", Name: "beta", Customer: "c1", CustomerName: "Org One"},
+		{ID: "c", Name: "gamma", Customer: "c2", CustomerName: "Org Two", Allowed: true}}}
+	var b strings.Builder
+	p := consentPage(s)
+	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+		t.Fatal(err)
+	}
+	page := b.String()
+	if n := strings.Count(page, `<select name="project"`); n != 1 || strings.Contains(page, `type="radio" name="project"`) {
+		t.Errorf("%d lists of projects, or a radio of a project", n)
+	}
+	for _, org := range []string{`<optgroup label="Org One">`, `<optgroup label="Org Two">`} {
+		if strings.Count(page, org) != 1 {
+			t.Errorf("no group %s", org)
+		}
+	}
+	if !strings.Contains(page, `<option id="p1" value="b" disabled>beta — `+tNoRightMark()) {
+		t.Errorf("a project without the right is not disabled with its mark")
+	}
+	if !regexp.MustCompile(`input\[type=radio\] \{ position: fixed;`).MatchString(page) {
+		t.Errorf("the hidden radios are not fixed: a label's focus scrolls the page to them")
 	}
 }
