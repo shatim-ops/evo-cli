@@ -47,6 +47,23 @@ func TestDeleteWaitFalse_TreeEqualsToolsCall(t *testing.T) {
 			if obj := parseObject(treeOut); obj["status"] != "deleting" || obj["operation_id"] == nil {
 				t.Errorf("evo %s: want deleting with operation_id at once, got %s", strings.Join(pc.tree, " "), clipLine(treeOut))
 			}
+			// FB170-4: --wait=false of evo tools call is the tool's wait, as
+			// --wait=false of the tree, not a flag the call drops.
+			var flag []string
+			for i := 0; i < len(pc.call); i++ {
+				if pc.call[i] == "--arg" && pc.call[i+1] == "wait=false" {
+					i++
+					continue
+				}
+				flag = append(flag, pc.call[i])
+			}
+			newProcess()
+			flagCode, flagOut, flagErr := runCLI(t, "", append(append(flag, "--wait=false"), extra...)...)
+			w.rt.newCall()
+			if flagCode != treeCode || sameVolatile(flagOut) != sameVolatile(treeOut) {
+				t.Errorf("evo tools call %s --wait=false ≠ evo %s: exit %d/%d\n  call: %s %s",
+					c.Tool, strings.Join(pc.tree, " "), flagCode, treeCode, clipLine(flagOut), clipLine(flagErr))
+			}
 		}
 	}
 	if seen != len(deletes) {
