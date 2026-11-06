@@ -125,6 +125,10 @@ type Variant struct {
 	// AccountForbidden: POST serviceAccounts answers 403 («Риск», R-49: a
 	// refusal of the platform at the first write is AUTH_FAILED).
 	AccountForbidden bool
+	// EmptyPagesWithToken: the lists of the Organization API answer their
+	// items with a page token, then empty pages, each with a new token —
+	// the list never says it ended (acceptance B-5, 06.11; IAM-10).
+	EmptyPagesWithToken bool
 }
 
 // probeActions are the actions of IAM about accounts, keys and permissions
@@ -547,21 +551,33 @@ func (w *World) bearerHuman(rw http.ResponseWriter, r *http.Request) bool {
 }
 
 func (w *World) organization(rw http.ResponseWriter, r *http.Request) {
+	var key string
+	var items any
 	switch r.URL.Path {
 	case "/v3/customers":
-		writeJSON(rw, 200, map[string]any{"customers": []map[string]string{{"id": Customer, "name": "org", "full_name": "Org"}}})
+		key, items = "customers", []map[string]string{{"id": Customer, "name": "org", "full_name": "Org"}}
 	case "/v3/projects":
-		if r.URL.Query().Get("customer_ids") != Customer {
-			writeJSON(rw, 200, map[string]any{"projects": []any{}})
-			return
+		key, items = "projects", []any{}
+		if r.URL.Query().Get("customer_ids") == Customer {
+			items = []map[string]string{
+				{"id": Project, "name": "proj", "status": "active", "customer_id": Customer},
+				{"id": "p-deleted", "name": "old", "status": "deleted", "customer_id": Customer},
+			}
 		}
-		writeJSON(rw, 200, map[string]any{"projects": []map[string]string{
-			{"id": Project, "name": "proj", "status": "active", "customer_id": Customer},
-			{"id": "p-deleted", "name": "old", "status": "deleted", "customer_id": Customer},
-		}})
 	default:
 		fail(rw, 404, "no route")
+		return
 	}
+	page := map[string]any{key: items}
+	if w.v.EmptyPagesWithToken {
+		// The items with a token, then empty pages, each with a new one.
+		tok := r.URL.Query().Get("page_token")
+		if tok != "" {
+			page[key] = []any{}
+		}
+		page["next_page_token"] = tok + "p"
+	}
+	writeJSON(rw, 200, page)
 }
 
 // administration serves IAM: evaluate, service accounts, permissions,

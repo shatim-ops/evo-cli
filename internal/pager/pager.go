@@ -50,6 +50,22 @@ func All(what string, fetch func(token string) (next string, err error)) error {
 	return nil
 }
 
+// AllUntilEmpty reads as All does, and a page without items ends the list
+// whatever token it names. Only for the Organization API (/v3/customers,
+// /v3/projects): past its last item it answers empty pages, each with a new
+// token (acceptance B-5, 06.11; IAM-10). Another API's empty page may stand
+// before the rest of its list, and ending there would cut it with exit 0,
+// so All does not stop at one. fetch returns the number of items too.
+func AllUntilEmpty(what string, fetch func(token string) (next string, items int, err error)) error {
+	return All(what, func(token string) (string, error) {
+		next, items, err := fetch(token)
+		if err != nil || items == 0 {
+			return "", err
+		}
+		return next, nil
+	})
+}
+
 // Upto reads pages as All does, but at most max of them. more reports that
 // max pages were read and the last one still named a new token: the caller
 // decides whether a cut list is an error. A token already followed is

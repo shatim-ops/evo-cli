@@ -652,3 +652,15 @@ func TestLogin_SaysThePageName(t *testing.T) {
 		t.Errorf("err %v:\n%s", r.err, r.out)
 	}
 }
+
+// IAM-10 (acceptance B-5, 06.11, a blocker of 1.8): past its items the
+// Organization API answers empty pages, each with a new token. orgList read
+// them to the limit of pages and refused every person with «too many
+// pages»; an empty page is the end of the list.
+func TestLogin_EmptyPagesWithATokenEndTheList(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{EmptyPagesWithToken: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil || len(r.saved) != 1 {
+		t.Fatalf("login with empty pages after the items: err %v; saved %d\n%s", r.err, len(r.saved), r.out)
+	}
+}

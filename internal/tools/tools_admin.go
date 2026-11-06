@@ -193,7 +193,8 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 // and takes page_token. laterPage: err is the failure of a page after the
 // first.
 func orgProjectPages(ctx context.Context, tp auth.TokenProvider) (raw []any, laterPage bool, err error) {
-	err = pager.All("organization: projects", func(token string) (string, error) {
+	// An empty page ends the list of the Organization API (IAM-10).
+	err = pager.AllUntilEmpty("organization: projects", func(token string) (string, int, error) {
 		u := OrgProjectsURL
 		if token != "" {
 			u += "?page_token=" + neturl.QueryEscape(token)
@@ -201,12 +202,12 @@ func orgProjectPages(ctx context.Context, tp auth.TokenProvider) (raw []any, lat
 		m, err := tokenGET(ctx, tp, u)
 		if err != nil {
 			laterPage = token != ""
-			return "", err
+			return "", 0, err
 		}
 		page, _ := m["projects"].([]any)
 		raw = append(raw, page...)
 		next, _ := m["next_page_token"].(string)
-		return next, nil
+		return next, len(page), nil
 	})
 	return raw, laterPage, err
 }

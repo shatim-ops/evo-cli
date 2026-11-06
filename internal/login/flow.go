@@ -21,6 +21,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // Audience is whom the key is for: the person (account evo) or an agent
@@ -433,11 +434,11 @@ func noRight(projectName string) error {
 }
 
 // orgList reads every page of a list of the Organization API with the
-// person's token.
+// person's token, through pager like every list of evo: an empty page is
+// the end of it (pager.AllUntilEmpty, IAM-10).
 func (s *session) orgList(ctx context.Context, path string, q url.Values, key string) ([]map[string]any, error) {
 	var out []map[string]any
-	token := ""
-	for page := 0; page < iamadmin.MaxPages; page++ {
+	err := pager.AllUntilEmpty("organization: "+strings.TrimPrefix(path, "/v3/"), func(token string) (string, int, error) {
 		pq := url.Values{}
 		for k, v := range q {
 			pq[k] = v
@@ -451,12 +452,12 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {
-			return nil, err
+			return "", 0, err
 		}
 		req.Header.Set("Authorization", "Bearer "+s.human)
 		resp, err := s.cfg.HTTP.Do(req)
 		if err != nil {
-			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable,
+			return "", 0, clierrors.Wrap(clierrors.CodeAPIUnreachable,
 				eOrgUnreachable(),
 				clierrors.NetworkHint(err, eRetry()), err)
 		}
@@ -464,7 +465,7 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &m) != nil {
-			return nil, withStatus(clierrors.New(clierrors.CodeAPIError,
+			return "", 0, withStatus(clierrors.New(clierrors.CodeAPIError,
 				eOrgStatus(resp.StatusCode, path), eRetry()), resp.StatusCode)
 		}
 		xs, _ := m[key].([]any)
@@ -473,11 +474,13 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 				out = append(out, o)
 			}
 		}
-		if token, _ = m["next_page_token"].(string); token == "" {
-			return out, nil
-		}
+		next, _ := m["next_page_token"].(string)
+		return next, len(xs), nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil, clierrors.New(clierrors.CodeAPIError, eOrgPages(path), "")
+	return out, nil
 }
 
 func str(m map[string]any, k string) string {

@@ -129,3 +129,37 @@ func TestUpto_ReportsMore(t *testing.T) {
 		t.Fatalf("complete list: more = %v, err = %v", more, err)
 	}
 }
+
+// IAM-10 (acceptance B-5, 06.11): past its last item the Organization API
+// answers empty pages, each with a new non-empty token, and a reader of
+// All stopped only at MaxPages — evo login answered «too many pages» to
+// every person. AllUntilEmpty ends the list at a page without items; All,
+// the reader of every other list, still follows the token.
+func TestAllUntilEmpty_AnEmptyPageEndsTheList(t *testing.T) {
+	calls := 0
+	var got []string
+	err := AllUntilEmpty("organization: customers", func(token string) (string, int, error) {
+		calls++
+		switch token {
+		case "":
+			got = append(got, "a")
+			return "t1", 1, nil
+		case "t1":
+			got = append(got, "b")
+			return "t2", 1, nil
+		}
+		return "t" + strconv.Itoa(calls+1), 0, nil // empty, a new token each time
+	})
+	if err != nil || strings.Join(got, ",") != "a,b" || calls != 3 {
+		t.Fatalf("got %q after %d requests, err %v; want a,b after 3", got, calls, err)
+	}
+
+	calls = 0
+	err = All("things", func(token string) (string, error) {
+		calls++
+		return "t" + strconv.Itoa(calls), nil
+	})
+	if err == nil || calls != MaxPages {
+		t.Errorf("All: %d requests, err %v — an empty page is not the end for every list", calls, err)
+	}
+}
