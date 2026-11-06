@@ -67,7 +67,6 @@ input[type=radio] { position: absolute; width: 1px; height: 1px; margin: -1px; o
 .summary .v { color: var(--green); font-weight: 600; }
 .summary .support { color: var(--dark-support); }
 .summary .x, .actions .x, .warn .x { display: none; }
-.warn { display: none; }
 .actions .pn { display: inline-block; max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .actions { display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; }
 button { font: 600 14px/20px 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; height: 48px; padding: 0 32px; border-radius: 2px; border: 1px solid transparent; cursor: pointer; }
@@ -79,6 +78,7 @@ button { font: 600 14px/20px 'SB Sans Text', -apple-system, BlinkMacSystemFont, 
 .alert { display: flex; gap: 12px; padding: 16px; border-radius: 4px; }
 .alert.error { background: var(--red-bg); color: var(--red-text); }
 .alert.warning { background: var(--yellow-bg); color: var(--yellow-text); }
+.warn { display: none; }
 .alert b { display: block; font-weight: 600; }
 .rows { display: grid; grid-template-columns: minmax(140px, 1fr) 2fr; gap: 8px 16px; margin: 0; }
 .rows dt { color: var(--support); margin: 0; }
