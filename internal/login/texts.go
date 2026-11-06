@@ -354,12 +354,16 @@ func eNotComplete(cause string, made, undone, left []string) string {
 	return i18n.Tf("access was not granted: %s; created: %v; rolled back: %v; left behind: %v", "доступ не выдан: %s; создано: %v; отменено: %v; осталось: %v",
 		cause, made, undone, left)
 }
-func eNotCompleteHint(left bool) string {
+func eNotCompleteHint(left bool, next string) string {
 	if left {
 		return i18n.T("Delete what was left behind in the Cloud.ru console under “Service accounts” and run evo login again.",
 			"Удалите оставшееся в личном кабинете Cloud.ru в разделе «Сервисные аккаунты» и повторите evo login.")
 	}
-	return i18n.T("Nothing was left behind. Run evo login again.", "Ничего не осталось. Повторите evo login.")
+	return i18n.T("Nothing was left behind. ", "Ничего не осталось. ") + next
+}
+func eRefusedHint() string {
+	return i18n.T("Cloud.ru refused for the reason above; a retry alone meets the same refusal. Remove the cause in the Cloud.ru console (for example, unused service accounts or keys) and run evo login again.",
+		"Cloud.ru отказал по причине выше; простой повтор получит тот же отказ. Устраните причину в личном кабинете Cloud.ru (например, удалите лишние сервисные аккаунты или ключи) и повторите evo login.")
 }
 func ePorts(ports []int) string {
 	return i18n.Tf("ports %v are in use; nothing was created", "порты %v заняты, ничего не создано", ports)
@@ -436,6 +440,9 @@ func tUndoAccount(account string) string {
 }
 func tUndoKey() string  { return i18n.T("access key", "ключ доступа") }
 func tUndoRole() string { return i18n.T("the account's role", "роль аккаунта") }
+func tUndoRoleTerm() string {
+	return i18n.T("the term of the account's role", "срок роли аккаунта")
+}
 
 // 6. evo agent setup about a key of evo login.
 func TAgentKeyWarning(profile string) string {

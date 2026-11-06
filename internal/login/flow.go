@@ -418,6 +418,19 @@ func forbidden(err error, project string) error {
 	return clierrors.Wrap(clierrors.CodeAuthFailed, eForbidden(project), eNoRightHint(), err)
 }
 
+// refused keeps a refusal of the platform other than 403, 409 and 429 in
+// the platform's own words, with a hint that a retry alone meets it again
+// (R-55: evo holds no limits of its own, IAM names them).
+func refused(err error) error {
+	st := iamadmin.StatusOf(err)
+	var ce *clierrors.CLIError
+	if st < 400 || st >= 500 || st == http.StatusForbidden || st == http.StatusConflict ||
+		st == http.StatusTooManyRequests || errors.As(err, &ce) {
+		return err
+	}
+	return clierrors.Wrap(clierrors.CodeAPIError, err.Error(), eRefusedHint(), err)
+}
+
 // noRightIn is the refusal of a person with the right in none of their
 // projects: the one project by its name, or how many there are.
 func noRightIn(ps []project) error {
@@ -576,7 +589,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 			}
 			sa, res.AccountReused = again[0].ID, true
 		default:
-			return res, at(stepAccount, forbidden(err, p.Name))
+			return res, at(stepAccount, refused(forbidden(err, p.Name)))
 		}
 	}
 	say(tStepAccount(aud.account(), res.AccountReused))
@@ -593,7 +606,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	// 16. The key, last.
 	key, err := s.admin.CreateAccessKey(ctx, sa, desc, time.Duration(pl.days)*24*time.Hour)
 	if err != nil {
-		return res, at(stepKey, err)
+		return res, at(stepKey, refused(forbidden(err, p.Name)))
 	}
 	s.made = append(s.made, undo{tUndoKey(),
 		func(ctx context.Context) error { return s.admin.DeleteAccessKey(ctx, sa, key.ID) }})
@@ -638,7 +651,16 @@ func (s *session) role(ctx context.Context, p project, sa string, term time.Time
 	if len(perms) > 0 {
 		have, perr := time.Parse(time.RFC3339, perms[0].ExpiresAt)
 		if perms[0].ExpiresAt != "" && (perr != nil || have.Before(term)) {
-			return term, s.admin.ExtendPermission(ctx, perms[0].ID, term)
+			if err := s.admin.ExtendPermission(ctx, perms[0].ID, term); err != nil {
+				return term, err
+			}
+			// A later refusal moves the term back (R-55); an unreadable
+			// one has nothing to go back to.
+			if perr == nil {
+				s.made = append(s.made, undo{tUndoRoleTerm(),
+					func(ctx context.Context) error { return s.admin.ExtendPermission(ctx, perms[0].ID, have) }})
+			}
+			return term, nil
 		}
 		if perms[0].ExpiresAt == "" {
 			return term, nil
@@ -709,17 +731,21 @@ func (s *session) rollback(ctx context.Context, cause error) error {
 		code = clierrors.CodeAPIError
 	}
 	var why string
+	next := eRetry()
 	details := map[string]any{"created": made, "undone": undone, "left": left}
 	var ce *clierrors.CLIError
 	if errors.As(cause, &ce) {
 		why = ce.Message
+		if ce.Hint != "" {
+			next = ce.Hint
+		}
 		for k, v := range ce.Details {
 			details[k] = v
 		}
 	} else {
 		why = cause.Error()
 	}
-	out := clierrors.Wrap(code, eNotComplete(why, made, undone, left), eNotCompleteHint(len(left) > 0), cause)
+	out := clierrors.Wrap(code, eNotComplete(why, made, undone, left), eNotCompleteHint(len(left) > 0, next), cause)
 	out.Details = details
 	return out
 }

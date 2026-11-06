@@ -133,6 +133,9 @@ type Variant struct {
 	// AccountForbidden: POST serviceAccounts answers 403 («Риск», R-49: a
 	// refusal of the platform at the first write is AUTH_FAILED).
 	AccountForbidden bool
+	// KeyForbidden: POST accessKeys answers 403 («Риск», R-55: a refusal
+	// of the platform at the key is AUTH_FAILED, as at the account).
+	KeyForbidden bool
 	// EmptyPagesWithToken: the lists of the Organization API answer their
 	// items with a page token, then empty pages, each with a new token —
 	// the list never says it ended (acceptance B-5, 06.11; IAM-10).
@@ -810,6 +813,9 @@ func (w *World) accessKeys(rw http.ResponseWriter, r *http.Request) {
 		switch {
 		case w.v.FailAt == StepKey:
 			fail(rw, 500, "internal")
+			return
+		case w.v.KeyForbidden:
+			fail(rw, 403, "forbidden")
 			return
 		case w.v.KeyLimit:
 			fail(rw, 400, "access key limit reached")

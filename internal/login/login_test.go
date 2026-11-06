@@ -245,7 +245,9 @@ func TestLogin_Variants(t *testing.T) {
 		{"account exists", loginworld.Variant{AccountExists: true}, "", 1, 1, []string{"!POST /api/v2/serviceAccounts"}},
 		{"409 on the account", loginworld.Variant{Conflict409: true}, "", 1, 1, []string{"POST /api/v2/serviceAccounts"}},
 		{"role shorter: PUT", loginworld.Variant{Perm: loginworld.PermShorter}, "", 1, 1, []string{"PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
-		{"broken at the key after a PUT: the term stays", loginworld.Variant{Perm: loginworld.PermShorter, FailAt: loginworld.StepKey}, clierrors.CodeAPIError, 1, 0, []string{"!DELETE /api/v3/permissions/", "!DELETE /api/v2/serviceAccounts/"}},
+		// R-55 («Риск», conclusion 33): the term moved forward for this key
+		// is moved back when the key is not made — not deleted, it was there.
+		{"broken at the key after a PUT: the term goes back", loginworld.Variant{Perm: loginworld.PermShorter, FailAt: loginworld.StepKey}, clierrors.CodeAPIError, 1, 0, []string{"!DELETE /api/v3/permissions/", "!DELETE /api/v2/serviceAccounts/"}},
 		{"role longer: no write", loginworld.Variant{Perm: loginworld.PermLonger}, "", 1, 1, []string{"!PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
 		{"403 on permissions", loginworld.Variant{PermForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"403 on the account", loginworld.Variant{AccountForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
@@ -692,5 +694,61 @@ func TestLogin_NoCustomersFirstPageWithToken(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("/v3/customers read %d times; its empty first page ends the list", n)
+	}
+}
+
+// R-55 («Риск», conclusion 33): a login that moved the role's term forward
+// and was refused the key — a limit of the platform or any other refusal —
+// moves the term back: the account is left with the role it had, not with
+// a longer one and no key.
+func TestLogin_KeyRefusedAfterThePUTMovesTheTermBack(t *testing.T) {
+	for name, v := range map[string]loginworld.Variant{
+		"key broken":  {Perm: loginworld.PermShorter, FailAt: loginworld.StepKey},
+		"key refused": {Perm: loginworld.PermShorter, KeyLimit: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t, v)
+			before := w.Permissions()
+			r := login(t, w, &browser{}, Choice{}, nil, nil)
+			if r.err == nil {
+				t.Fatal("the login went through")
+			}
+			after := w.Permissions()
+			// The term travels as RFC 3339: seconds are what comes back.
+			if len(before) != 1 || len(after) != 1 || !after[0].ExpiresAt.Equal(before[0].ExpiresAt.Truncate(time.Second)) {
+				t.Errorf("the role's term: before %v, after %v — want it moved back", before, after)
+			}
+		})
+	}
+}
+
+// A refusal of the platform at a write (R-55): 403 is AUTH_FAILED at the
+// key as at the account; another 4xx keeps the platform's own words and
+// does not ask to retry what will be refused again.
+func TestLogin_RefusalAtTheWriteSaysWhatToDo(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		v    loginworld.Variant
+		code string
+		says string
+	}{
+		{"account 403", loginworld.Variant{AccountForbidden: true}, clierrors.CodeAuthFailed, ""},
+		{"key 403", loginworld.Variant{KeyForbidden: true}, clierrors.CodeAuthFailed, ""},
+		{"account 400", loginworld.Variant{AccountLimit: true}, clierrors.CodeAPIError, "service account limit reached"},
+		{"key 400", loginworld.Variant{KeyLimit: true}, clierrors.CodeAPIError, "access key limit reached"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := login(t, newWorld(t, c.v), &browser{}, Choice{}, nil, nil)
+			var ce *clierrors.CLIError
+			if !errors.As(r.err, &ce) || ce.Code != c.code {
+				t.Fatalf("got %v, want %s", r.err, c.code)
+			}
+			if !strings.Contains(ce.Message, c.says) {
+				t.Errorf("message %q lost the platform's words %q", ce.Message, c.says)
+			}
+			if ce.Hint == eRetry() {
+				t.Errorf("hint %q asks to retry a refusal", ce.Hint)
+			}
+		})
 	}
 }
