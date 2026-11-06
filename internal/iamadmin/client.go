@@ -187,7 +187,10 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 	}
 	u := c.base + path
 	if len(q) > 0 {
-		u += "?" + q.Encode()
+		// A space goes as %20, not «+»: IAM reads «+» in the query as
+		// itself, and a filter of two parts «a=1 AND b=2» was refused
+		// (audit of 06.11, B-5, 2 of 2). A «+» of a value is %2B already.
+		u += "?" + strings.ReplaceAll(q.Encode(), "+", "%20")
 	}
 	var rd io.Reader
 	if body != nil {

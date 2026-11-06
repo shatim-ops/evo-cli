@@ -640,7 +640,12 @@ func (w *World) administration(rw http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(rw, 200, map[string]any{"results": res})
 	case p == "/api/v2/serviceAccounts" && m == http.MethodGet:
-		name := strings.TrimPrefix(r.URL.Query().Get("filter"), "name=")
+		f, ok := filterOf(r)
+		if !ok {
+			failFilter(rw, r)
+			return
+		}
+		name := f["name"]
 		list := []map[string]any{}
 		for _, a := range w.accounts {
 			if a.Name != "" && (name == "" || a.Name == name) {
@@ -728,15 +733,61 @@ func (w *World) listPermissions(rw http.ResponseWriter, r *http.Request) {
 		fail(rw, 403, "forbidden")
 		return
 	}
-	f := r.URL.Query().Get("filter")
+	f, ok := filterOf(r)
+	if !ok {
+		failFilter(rw, r)
+		return
+	}
 	list := []map[string]any{}
 	for _, p := range w.perms {
-		if strings.Contains(f, "subject_id="+p.Subject) && strings.Contains(f, "resource_id="+Project) {
+		if f["subject_id"] == p.Subject && f["resource_id"] == Project && (f["role_name"] == "" || f["role_name"] == p.RoleName) {
 			list = append(list, map[string]any{"id": p.ID, "roleName": p.RoleName, "subjectId": p.Subject,
 				"resourceId": Project, "expiresAt": p.ExpiresAt.UTC().Format(time.RFC3339), "enabled": true})
 		}
 	}
 	writeJSON(rw, 200, map[string]any{"permissions": list})
+}
+
+// filterPart is one part of a filter of IAM: key=value, the value an id or
+// a name.
+var filterPart = regexp.MustCompile(`^([a-z_]+)=([A-Za-z0-9._*:-]+)$`)
+
+// filterOf reads the filter of a request as IAM does (audit Grok 06.11,
+// build 908046f1, 2 of 2: «iam API 400: invalid filter format:"+subject_id=…+"»):
+// from the raw query, percent-decoded only — a «+» is no space there
+// (RFC 3986; only HTML forms read it so) — and as key=value parts joined
+// by « AND ». No filter is an empty one; anything else is not a filter.
+func filterOf(r *http.Request) (map[string]string, bool) {
+	out := map[string]string{}
+	for _, kv := range strings.Split(r.URL.RawQuery, "&") {
+		raw, ok := strings.CutPrefix(kv, "filter=")
+		if !ok {
+			continue
+		}
+		v, err := url.PathUnescape(raw)
+		if err != nil {
+			return nil, false
+		}
+		for _, part := range strings.Split(v, " AND ") {
+			m := filterPart.FindStringSubmatch(part)
+			if m == nil {
+				return nil, false
+			}
+			out[m[1]] = m[2]
+		}
+	}
+	return out, true
+}
+
+// failFilter answers a filter IAM would not read, with its text.
+func failFilter(rw http.ResponseWriter, r *http.Request) {
+	raw := ""
+	for _, kv := range strings.Split(r.URL.RawQuery, "&") {
+		if v, ok := strings.CutPrefix(kv, "filter="); ok {
+			raw, _ = url.PathUnescape(v)
+		}
+	}
+	fail(rw, http.StatusBadRequest, fmt.Sprintf("invalid filter format:%q", raw))
 }
 
 func (w *World) createPermission(rw http.ResponseWriter, r *http.Request) {
