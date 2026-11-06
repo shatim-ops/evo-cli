@@ -307,13 +307,49 @@ func TestApplyWait(t *testing.T) {
 	reg := tools.New(nil)
 	op, _ := reg.Lookup("pg_operation")
 	args := map[string]any{}
-	if err := applyWait(op, args); err != nil || args["wait_seconds"] != float64(tools.OpWaitMaxSeconds) {
+	if err := applyWait(op, true, args); err != nil || args["wait_seconds"] != float64(tools.OpWaitMaxSeconds) {
 		t.Errorf("pg_operation: %v %v", err, args)
 	}
 	args = map[string]any{"wait_seconds": float64(10)}
-	_ = applyWait(op, args)
+	_ = applyWait(op, true, args)
 	if args["wait_seconds"] != float64(10) {
 		t.Errorf("explicit wait_seconds overridden: %v", args)
+	}
+}
+
+// FB170-4: --wait of evo tools call is the tool's own wait argument when the
+// schema declares one (provision, deploy_apply, the deletes of D74), both
+// ways, as --wait of the command trees; an explicit --arg wait wins.
+// --wait=false on a tool that takes neither stays as it was: nothing.
+func TestApplyWait_TheToolsOwnWait(t *testing.T) {
+	reg := tools.New(nil)
+	n := 0
+	for _, tl := range reg.Tools() {
+		props, _ := tl.InputSchema["properties"].(map[string]any)
+		if p, ok := props["wait"].(map[string]any); !ok || p["type"] != "boolean" {
+			continue
+		}
+		n++
+		for _, want := range []bool{true, false} {
+			args := map[string]any{}
+			if err := applyWait(tl, want, args); err != nil || args["wait"] != want {
+				t.Errorf("%s --wait=%v: %v %v", tl.Name, want, err, args)
+			}
+		}
+		args := map[string]any{"wait": true}
+		if _ = applyWait(tl, false, args); args["wait"] != true {
+			t.Errorf("%s: --arg wait=true overridden by --wait=false", tl.Name)
+		}
+	}
+	if n < 3 {
+		t.Fatalf("%d tools with wait in the schema: provision, deploy_apply and the deletes", n)
+	}
+	vm, _ := reg.Lookup("vm_get")
+	if err := applyWait(vm, false, map[string]any{}); err != nil {
+		t.Errorf("vm_get --wait=false: %v", err)
+	}
+	if err := applyWait(vm, true, map[string]any{}); err == nil {
+		t.Errorf("vm_get --wait: want USAGE")
 	}
 }
 

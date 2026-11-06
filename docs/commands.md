@@ -8905,7 +8905,7 @@ evo tools call <name> [flags]
       --args-file string   Прочитать аргументы инструмента из файла JSON
       --args-json string   Аргументы инструмента объектом JSON
   -h, --help               Справка по call
-      --wait               Для инструментов с wait_seconds (*_operation, stack_status): ждать конечного состояния, опрашивая с нарастающей паузой до предела инструмента
+      --wait               Для инструментов с wait (provision, deploy_apply, удаления) — их аргумент wait, --wait=false отвечает сразу. Для инструментов с wait_seconds (*_operation, stack_status) — ждать конечного состояния, опрашивая с нарастающей паузой до предела инструмента
 ```
 
 ### Options inherited from parent commands
