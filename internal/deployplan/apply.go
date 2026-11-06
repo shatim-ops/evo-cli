@@ -149,7 +149,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			FloatingIPID: fipID,
 			SSH:          sshString(plan.SSH.Login, ip),
 			ElapsedSec:   int(clock.Since(start).Seconds()),
-			Note:         "VM already existed — adopted (idempotent), nothing recreated; it is " + existing.Status + ": start it in the Cloud.ru console, then call deploy_apply again (or delete it with destroy)",
+			Note:         "VM already existed — adopted (idempotent), nothing recreated; it is " + existing.Status + ": start it in the Cloud.ru console, then call deploy_apply again; whether to delete it instead (destroy) — ask the person",
 		}, nil
 	}
 
@@ -231,7 +231,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 					ElapsedSec: int(clock.Since(start).Seconds()),
 				}, fmt.Errorf("VM %s was created, but the create call failed; it is billed — "+
 					"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
-					"or delete it with destroy: %w", found.ID, err)
+					"whether to delete it instead (destroy) — ask the person: %w", found.ID, err)
 		}
 		return nil, fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err)
 	}
@@ -257,7 +257,7 @@ func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *
 				ElapsedSec: int(clock.Since(start).Seconds()),
 			}, fmt.Errorf("VM %s was created, but deploy_apply was interrupted; it is still running — "+
 				"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
-				"check it with vm_get, or delete it with destroy: %w", vm.ID, ctx.Err())
+				"check it with vm_get; whether to delete it instead (destroy) — ask the person: %w", vm.ID, ctx.Err())
 	}
 
 	// --- Poll until running ---
@@ -318,7 +318,7 @@ poll:
 				return &ApplyResult{
 					VMID: vm.ID, Status: "error", Password: password,
 					ElapsedSec: int(clock.Since(start).Seconds()),
-					Note:       "VM entered state " + cur.Status + "; destroy it and retry",
+					Note:       "VM entered state " + cur.Status + "; whether to delete it (destroy) and retry — ask the person",
 				}, nil
 			}
 		}

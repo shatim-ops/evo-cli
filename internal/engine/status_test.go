@@ -79,7 +79,7 @@ func TestStatus_NotFoundInCloud(t *testing.T) {
 	if err := eng.Status(context.Background(), StatusOptions{}); err != nil {
 		t.Fatalf("status must not fail on 404: %v", err)
 	}
-	if !strings.Contains(out.String(), "not found (deleted outside evo) → evo destroy") {
+	if !strings.Contains(out.String(), "not found (deleted outside evo) → evo destroy — ask the person") {
 		t.Errorf("no 'not found' in the table:\n%s", out)
 	}
 	if !strings.Contains(out.String(), "running") {
