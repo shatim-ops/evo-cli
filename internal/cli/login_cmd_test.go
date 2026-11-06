@@ -15,6 +15,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/loginworld"
 )
@@ -203,5 +204,27 @@ func TestLogin_PreselectSource(t *testing.T) {
 	t.Setenv("CLOUDRU_PROJECT_ID", "p-env")
 	if id, from, env := loginPreselect(""); id != "p-env" || from != login.TFromEnv() || !env {
 		t.Errorf("variable: %q %q", id, from)
+	}
+}
+
+// Release plan 1.8, «B-5, дефекты флагов и параллельного входа» (а) (Grok
+// audit 06.11, #1087): --key-ttl 7 without «d» was taken and opened the
+// browser; the term is days with «d» (7d, 30d, 90d), and a bare number is
+// USAGE before any request, as 0d and abc are.
+func TestLogin_KeyTTLWithoutUnitRefused(t *testing.T) {
+	for _, ttl := range []string{"7", "30", "90", "0d", "abc"} {
+		_, err := loginChoice("", "", ttl)
+		if err == nil {
+			t.Errorf("--key-ttl %s accepted: the term is days with «d»", ttl)
+			continue
+		}
+		if r := clerrors.Reason(err); r != clerrors.CodeUsage {
+			t.Errorf("--key-ttl %s: %s, want USAGE", ttl, r)
+		}
+	}
+	for _, ttl := range []string{"7d", "30d", "90d"} {
+		if _, err := loginChoice("", "", ttl); err != nil {
+			t.Errorf("--key-ttl %s refused: %v", ttl, err)
+		}
 	}
 }
