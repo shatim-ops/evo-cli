@@ -42,10 +42,8 @@ func tPageUntil(t time.Time) string {
 		"Страница действует до %s. Позже вернитесь в терминал и запустите evo login снова", clock)
 }
 
-// tChooseProject is the empty first option of the list of projects;
-// tFromList names the project where the browser cannot name the chosen one.
+// tChooseProject is the empty first option of the list of projects.
 func tChooseProject() string { return i18n.T("Choose a project", "Выберите проект") }
-func tFromList() string      { return i18n.T("from the list", "из списка") }
 func tEnvProjectPicked() string {
 	return i18n.T("Selected: the project from CLOUDRU_PROJECT_ID", "Выбран проект из CLOUDRU_PROJECT_ID")
 }
@@ -125,6 +123,13 @@ func tSumAccountNew(account, project string) string {
 	return i18n.Tf("The service account %s will be created in the project %s (or the existing one reused).",
 		"Сервисный аккаунт %s в проекте %s будет создан (или использован уже созданный).", account, project)
 }
+
+// tSumAccountToChoose and tGrant: the summary and the button before a
+// project is chosen, or where the browser cannot name the chosen one.
+func tSumAccountToChoose(account string) string {
+	return i18n.Tf("The service account %s will be created in the project you choose (or the existing one reused).",
+		"Сервисный аккаунт %s в проекте, который вы выберете, будет создан (или использован уже созданный).", account)
+}
 func tSumRole(until string) string {
 	return i18n.Tf("The role “%s” will be granted until %s.", "Роль «%s» будет выдана до %s.", auth.LoginRoleDisplayName, until)
 }
@@ -142,6 +147,7 @@ func tSumStaysPage() string {
 
 // tGrantInProject is the main button; the page puts the chosen project's
 // name where %s is, by CSS.
+func tGrant() string { return i18n.T("Grant access", "Выдать доступ") }
 func tGrantInProject(project string) string {
 	return i18n.Tf("Grant access to the project “%s”", "Выдать доступ к проекту «%s»", project)
 }

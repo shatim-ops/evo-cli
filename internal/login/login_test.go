@@ -749,3 +749,14 @@ func TestLogin_RefusalAtTheWriteSaysWhatToDo(t *testing.T) {
 		})
 	}
 }
+
+// A grant without a project — what required keeps the browser from
+// sending — is refused by evo before any write (plan 1.8, #1084).
+func TestLogin_GrantWithoutAProjectIsRefused(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	b := &browser{form: func(f url.Values) { f.Set("project", "") }}
+	r := login(t, w, b, Choice{}, nil, nil)
+	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
+		t.Fatalf("err %v; accounts %+v; keys %+v", r.err, w.Accounts(), w.Keys())
+	}
+}

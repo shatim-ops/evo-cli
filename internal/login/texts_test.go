@@ -75,7 +75,7 @@ func TestConsentPage_Preselect(t *testing.T) {
 		t.Errorf("the variable's project is not checked with its source: %v", m)
 	}
 	grant := cut(tGrantInProject("\x00p"), "\x00p")
-	if !strings.Contains(page, grant[0]+`<span class="pn">`) || !strings.Contains(page, `</span>`+grant[1]+`</button>`) ||
+	if !strings.Contains(page, `<span class="x s-chosen">`+grant[0]+`<span class="pn">`) || !strings.Contains(page, `</span>`+grant[1]+`</span>`) ||
 		!strings.Contains(page, `.sheet:has(#p1:checked) .s-p1`) {
 		t.Errorf("the button does not name the project")
 	}
@@ -287,5 +287,30 @@ func TestPages_EndHeadingIsTheStatus(t *testing.T) {
 		if strings.Contains(b.String(), tHeading()) || strings.Count(b.String(), "<h1") != 1 {
 			t.Errorf("%s: the heading is not the page's status", p.name)
 		}
+	}
+}
+
+// Plan 1.8, #1084 («релиз», 06.11): before a project is chosen the
+// button is «Grant access» with no project, and the summary says «in the
+// project you choose»; the list is required.
+func TestConsentPage_BeforeTheChoice(t *testing.T) {
+	prev := i18n.Lang()
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	var b strings.Builder
+	p := consentPage(&session{cfg: Config{Now: time.Now}, projects: []project{
+		{ID: "a", Name: "alpha", Allowed: true}, {ID: "b", Name: "beta", Allowed: true}}})
+	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+		t.Fatal(err)
+	}
+	page := b.String()
+	for _, want := range []string{`<span class="x s-any">Выдать доступ</span>`, `в проекте, который вы выберете, будет создан`,
+		`<select name="project" id="project" required`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("no %q on the page before the choice", want)
+		}
+	}
+	if strings.Contains(page, "из списка") {
+		t.Errorf("«из списка» stands for a project")
 	}
 }

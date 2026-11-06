@@ -171,10 +171,10 @@ a { color: var(--green-deep); }
     <div class="alert warning warn" role="status"><div><b>{{.AgentWarnTitle}}</b>{{index .AgentWarn 0}}{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}{{index .AgentWarn 1}}</div></div>
     <div class="summary" aria-live="polite">
       <h3>{{.SummaryHeading}}</h3>
-      <p>{{index .Account 0}}<span class="mono v"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span>{{index .Account 1}}<span class="mono v"><span class="x s-any">{{.FromList}}</span>{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .Account 2}} {{index .Role 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Role 1}} {{index .Key 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Key 1}} {{.SummaryStays}}</p>
+      <p><span class="x s-chosen">{{index .Account 0}}<span class="mono v"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span>{{index .Account 1}}<span class="mono v">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .Account 2}}</span><span class="x s-any">{{index .AccountToChoose 0}}<span class="mono v"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span>{{index .AccountToChoose 1}}</span> {{index .Role 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Role 1}} {{index .Key 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Key 1}} {{.SummaryStays}}</p>
     </div>
     <div class="actions">
-      <button type="submit" class="primary">{{index .GrantIn 0}}<span class="pn"><span class="x s-any">{{.FromList}}</span>{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .GrantIn 1}}</button>
+      <button type="submit" class="primary"><span class="x s-chosen">{{index .GrantIn 0}}<span class="pn">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .GrantIn 1}}</span><span class="x s-any">{{.Grant}}</span></button>
       <button type="submit" class="outline" formaction="/cancel" formnovalidate>{{.Cancel}}</button>
     </div>
     <p class="support small">{{.SecretNote}}</p>

@@ -90,6 +90,7 @@ type consentData struct {
 	// Account and Role are the summary's lines, cut where the chosen
 	// account, project and day go in.
 	Account                         [3]string
+	AccountToChoose                 [2]string
 	Role, Key                       [2]string
 	SummaryStays, Cancel            string
 	SecretNote, State, Consent, For string
@@ -97,13 +98,13 @@ type consentData struct {
 	// ChooseProject is the empty first option when no project is picked
 	// beforehand; FromList names the project where :has() is not there to
 	// name the chosen one («Риск», conclusion 34).
-	ChooseProject, FromList string
-	Picked                  bool
-	AgentWarnTitle          string
-	AgentWarn, GrantIn      [2]string
-	Projects                []consentProject
-	Orgs                    []consentOrg
-	Terms                   []consentTerm
+	ChooseProject, Grant string
+	Picked               bool
+	AgentWarnTitle       string
+	AgentWarn, GrantIn   [2]string
+	Projects             []consentProject
+	Orgs                 []consentOrg
+	Terms                []consentTerm
 }
 
 // introLine is «You signed in as …» with the e-mail or the user name of
@@ -185,7 +186,8 @@ func consentPage(s *session) page {
 		rules.WriteString(shown(cp.HTMLID))
 	}
 	d.Picked = checked
-	d.ChooseProject, d.FromList = tChooseProject(), tFromList()
+	d.ChooseProject, d.Grant = tChooseProject(), tGrant()
+	copy(d.AccountToChoose[:], cut(tSumAccountToChoose("\x00a"), "\x00a"))
 	if !s.until.IsZero() {
 		d.Note = tPageUntil(s.until)
 	}
@@ -204,9 +206,12 @@ func consentPage(s *session) page {
 		rules.WriteString(choiceRule(id, ".pair label[for="+id+"]") + shown(id))
 	}
 	// The warning of a key for an agent shows when the agent is chosen.
-	// Without :has() it shows always, and the project is named «from the
-	// list»: more said, never less (R-47).
+	// The summary and the button name the project once one is chosen;
+	// before, and without :has(), they say «the project you choose» and
+	// «Grant access». Without :has() the warning shows always: more said,
+	// never less (R-47).
 	rules.WriteString(".sheet:has(#a-agent:checked) .warn { display: flex; }\n" +
+		".sheet:has(#project option:checked:not(#p-none)) .s-chosen { display: inline; }\n" +
 		".sheet:has(#p-none:checked) .s-any { display: inline; }\n" +
 		"@supports not selector(:has(*)) { .warn { display: flex; } .x.s-any { display: inline; } }\n")
 	// Ids are evo's own (p0…, t-7…, a-me): no text of the cloud in the CSS.
