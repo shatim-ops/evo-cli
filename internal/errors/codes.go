@@ -19,10 +19,14 @@ const (
 	CodeSSHHostKeyChanged = "SSH_HOST_KEY_CHANGED"
 	CodeComposeInvalid    = "COMPOSE_INVALID"
 	CodeComposeNotFound   = "COMPOSE_NOT_FOUND"
-	CodeConfigInvalid     = "CONFIG_INVALID"
-	CodeStateCorrupted    = "STATE_CORRUPTED"
-	CodeStateLocked       = "STATE_LOCKED" // another deploy/destroy holds the state lock; exit 1
-	CodeUnhealthy         = "UNHEALTHY"    // verify: a service did not answer; exit 1
+	// CodeUploadFailed, CodeComposeFailed: deploy ended at the upload of
+	// the compose file or at docker compose up on the VM (D87); exit 1.
+	CodeUploadFailed   = "UPLOAD_FAILED"
+	CodeComposeFailed  = "COMPOSE_FAILED"
+	CodeConfigInvalid  = "CONFIG_INVALID"
+	CodeStateCorrupted = "STATE_CORRUPTED"
+	CodeStateLocked    = "STATE_LOCKED" // another deploy/destroy holds the state lock; exit 1
+	CodeUnhealthy      = "UNHEALTHY"    // verify: a service did not answer; exit 1
 	// CodeDeployInProgress: logs or verify of a deployment deploy has not
 	// finished (D76); exit 1.
 	CodeDeployInProgress = "DEPLOY_IN_PROGRESS"
@@ -47,7 +51,7 @@ var knownCodes = map[string]bool{
 	CodeAPIUnreachable: true, CodeAPIRateLimited: true, CodeAPIError: true,
 	CodeVMNotFound: true, CodeVMProvisionFailed: true,
 	CodeSSHTimeout: true, CodeSSHAuthFailed: true, CodeSSHHostKeyChanged: true,
-	CodeComposeInvalid: true, CodeComposeNotFound: true,
+	CodeComposeInvalid: true, CodeComposeNotFound: true, CodeUploadFailed: true, CodeComposeFailed: true,
 	CodeConfigInvalid: true, CodeStateCorrupted: true, CodeStateLocked: true,
 	CodeUnhealthy: true, CodeDeployInProgress: true, CodeConfirmationRequired: true, CodeUsage: true,
 	CodeNotFound: true, CodeServerBusy: true,

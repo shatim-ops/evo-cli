@@ -18,8 +18,9 @@ import (
 
 // FB171-4: the record and the answer of deploy at the bound of an MCP call
 // come from one decision. A step that failed before the bound writes its
-// record as failed (ssh_timeout, docker_failed); if the bound comes while
-// that record is written — a slow disk, Windows of release.yml run
+// record as failed (ssh_timeout, docker_failed, upload_failed,
+// compose_failed); if the bound comes while that record is written — a
+// slow disk, Windows of release.yml run
 // 41983811886 — the answer still says the step failed. It said deploying
 // with next_tool deploy, and the record said the deploy was over.
 //
@@ -49,6 +50,18 @@ func TestDeploy_RecordAndAnswerAtTheBoundAreOneDecision(t *testing.T) {
 				}
 				return nil
 			}
+			return dep
+		}, nil},
+		// D87 (R-51): a failed upload and a failed compose up are a status
+		// of their own, written with the answer, as docker_failed.
+		{"upload", "upload_failed", clerrors.CodeUploadFailed, func() *mockDeployer {
+			dep := newMockDeployer()
+			dep.uploadErr = stderrors.New("scp: write failed")
+			return dep
+		}, nil},
+		{"compose", "compose_failed", clerrors.CodeComposeFailed, func() *mockDeployer {
+			dep := newMockDeployer()
+			dep.streamErrs = map[string][]error{"cd /opt/app && docker compose -f docker-compose.yml up -d": {stderrors.New("pull access denied")}}
 			return dep
 		}, nil},
 	} {

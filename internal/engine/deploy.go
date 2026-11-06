@@ -389,7 +389,22 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 	e.phase = "upload"
 	if err := e.Deployer.Upload(ctx, files); err != nil {
-		return err
+		// One decision for the record and the answer, as for Docker: at the
+		// bound or cancelled the record stays deploying (D76); a failure
+		// before it is upload_failed both ways (D87, R-51).
+		err = e.atBound(caller, err)
+		var going *InProgress
+		if stderrors.As(err, &going) || ctx.Err() != nil {
+			e.decided = true
+			return err
+		}
+		rec.Status = "upload_failed"
+		rec.UpdatedAt = time.Now()
+		stateFile.UpsertDeployment(rec)
+		return e.writeDecided(statePath, stateFile, clerrors.Wrap(clerrors.CodeUploadFailed,
+			i18n.T("uploading the compose file to the VM failed", "не удалось загрузить compose-файл на ВМ"),
+			i18n.T("Run 'evo deploy' again: it uploads the file again.", "Повторите 'evo deploy': он загрузит файл заново."),
+			err))
 	}
 
 	// Run docker compose up: a stage on the VM, apart from this session
@@ -415,15 +430,22 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		if stderrors.As(err, &going) || ctx.Err() != nil {
 			return err
 		}
-		ce := clerrors.Wrap(clerrors.CodeSSHTimeout,
+		// Over, not in progress: compose_failed with its own reason, one
+		// decision for the record and the answer (D87, R-51). logs reads
+		// the services then; a re-run runs compose up again.
+		ce := clerrors.Wrap(clerrors.CodeComposeFailed,
 			i18n.T("docker compose up failed", "docker compose up завершился ошибкой"),
-			i18n.T("Check your compose file and service logs on the VM.", "Проверьте compose-файл и журналы сервисов на ВМ."),
+			i18n.T("Check your compose file; logs shows the services' logs (none if compose up started no container).",
+				"Проверьте compose-файл; logs покажет журналы сервисов (их нет, если compose up не запустил ни одного контейнера)."),
 			err)
 		if out := lastLines(st.LogTail, composeTailLines); out != "" {
 			ce.Details = map[string]any{"output": out}
 			ce.Hint += i18n.T(" The last lines of docker compose up are in output.", " Последние строки docker compose up — в output.")
 		}
-		return ce
+		rec.Status = "compose_failed"
+		rec.UpdatedAt = time.Now()
+		stateFile.UpsertDeployment(rec)
+		return e.writeDecided(statePath, stateFile, ce)
 	}
 	e.Printer.StepDone(i18n.T("Application deployed", "Приложение развёрнуто"))
 

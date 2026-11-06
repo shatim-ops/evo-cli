@@ -25,7 +25,7 @@ type DeploymentRecord struct {
 	VMName      string `json:"vm_name,omitempty"`
 	ZoneName    string `json:"zone_name,omitempty"`
 	FlavorName  string `json:"flavor_name,omitempty"`
-	Status      string `json:"status"` // creating, provisioned, deploying, running, error, ssh_timeout, ssh_auth_failed, ssh_host_key_changed, docker_failed, destroying, destroyed
+	Status      string `json:"status"` // creating, provisioned, deploying, running, error, ssh_timeout, ssh_auth_failed, ssh_host_key_changed, docker_failed, upload_failed, compose_failed, destroying, destroyed
 	ComposeHash string `json:"compose_hash"`
 	// Source is what made the record: "provision" for a VM of evo vm
 	// create, which deploy does not update (D62); "deploy_apply" for a VM
