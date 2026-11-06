@@ -420,15 +420,16 @@ func forbidden(err error, project string) error {
 
 // refused keeps a refusal of the platform other than 403, 409 and 429 in
 // the platform's own words, with a hint that a retry alone meets it again
-// (R-55: evo holds no limits of its own, IAM names them).
-func refused(err error) error {
+// (R-55: evo holds no limits of its own, IAM names them). The hint advises
+// no delete: what evo did not make may be a cluster's (R-56).
+func refused(err error, hint string) error {
 	st := iamadmin.StatusOf(err)
 	var ce *clierrors.CLIError
 	if st < 400 || st >= 500 || st == http.StatusForbidden || st == http.StatusConflict ||
 		st == http.StatusTooManyRequests || errors.As(err, &ce) {
 		return err
 	}
-	return clierrors.Wrap(clierrors.CodeAPIError, err.Error(), eRefusedHint(), err)
+	return clierrors.Wrap(clierrors.CodeAPIError, err.Error(), hint, err)
 }
 
 // noRightIn is the refusal of a person with the right in none of their
@@ -589,7 +590,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 			}
 			sa, res.AccountReused = again[0].ID, true
 		default:
-			return res, at(stepAccount, refused(forbidden(err, p.Name)))
+			return res, at(stepAccount, refused(forbidden(err, p.Name), eAccountRefusedHint()))
 		}
 	}
 	say(tStepAccount(aud.account(), res.AccountReused))
@@ -606,7 +607,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	// 16. The key, last.
 	key, err := s.admin.CreateAccessKey(ctx, sa, desc, time.Duration(pl.days)*24*time.Hour)
 	if err != nil {
-		return res, at(stepKey, refused(forbidden(err, p.Name)))
+		return res, at(stepKey, refused(forbidden(err, p.Name), eKeyRefusedHint(aud.account())))
 	}
 	s.made = append(s.made, undo{tUndoKey(),
 		func(ctx context.Context) error { return s.admin.DeleteAccessKey(ctx, sa, key.ID) }})

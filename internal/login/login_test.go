@@ -749,6 +749,11 @@ func TestLogin_RefusalAtTheWriteSaysWhatToDo(t *testing.T) {
 			if ce.Hint == eRetry() {
 				t.Errorf("hint %q asks to retry a refusal", ce.Hint)
 			}
+			// R-56: the owner, told to delete an unused account, nearly
+			// deleted the service accounts of Kubernetes clusters.
+			if regexp.MustCompile(`(?i)delet|remov|удал`).MatchString(ce.Hint) {
+				t.Errorf("hint %q advises a delete of what evo did not make", ce.Hint)
+			}
 		})
 	}
 }

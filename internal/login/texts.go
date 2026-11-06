@@ -361,9 +361,13 @@ func eNotCompleteHint(left bool, next string) string {
 	}
 	return i18n.T("Nothing was left behind. ", "Ничего не осталось. ") + next
 }
-func eRefusedHint() string {
-	return i18n.T("Cloud.ru refused for the reason above; a retry alone meets the same refusal. Remove the cause in the Cloud.ru console (for example, unused service accounts or keys) and run evo login again.",
-		"Cloud.ru отказал по причине выше; простой повтор получит тот же отказ. Устраните причину в личном кабинете Cloud.ru (например, удалите лишние сервисные аккаунты или ключи) и повторите evo login.")
+func eAccountRefusedHint() string {
+	return i18n.T("Cloud.ru refused to create the service account for the reason above; a retry alone meets the same refusal. Choose another project or contact the administrator of the organization.",
+		"Cloud.ru отказал создать сервисный аккаунт по причине выше; простой повтор получит тот же отказ. Выберите другой проект или обратитесь к администратору организации.")
+}
+func eKeyRefusedHint(account string) string {
+	return i18n.Tf("Cloud.ru refused to issue the key for the reason above; a retry alone meets the same refusal. The keys of the account %s may serve other machines: contact the administrator of the organization.",
+		"Cloud.ru отказал выдать ключ по причине выше; простой повтор получит тот же отказ. Ключи аккаунта %s могут работать на других машинах — обратитесь к администратору организации.", account)
 }
 func ePorts(ports []int) string {
 	return i18n.Tf("ports %v are in use; nothing was created", "порты %v заняты, ничего не создано", ports)
@@ -477,8 +481,8 @@ func ENoProfileHint() string {
 	return i18n.T("To list profiles: evo configure list.", "Список профилей — evo configure list.")
 }
 func TLogoutKept() string {
-	return i18n.T("the key of this profile was not created by evo login and remains in the cloud. If you do not need it, delete it in the Cloud.ru console",
-		"ключ этого профиля создан не через evo login и остается в облаке. Если он не нужен, удалите его в личном кабинете Cloud.ru")
+	return i18n.T("the key of this profile was not created by evo login and remains in the cloud: evo leaves it as it is",
+		"ключ этого профиля создан не через evo login и остается в облаке: evo его не трогает")
 }
 func TLogoutDone(profile string, key any) string {
 	return i18n.Tf("The profile “%s” was deleted, key: %s. The service account remains in the project",
