@@ -49,12 +49,16 @@ var deleteFlows = map[string][]string{
 // or does not do, not to offer it: "file<TAB>function<TAB>tool" → what they
 // say.
 var deleteHintDescribes = map[string]string{
-	"internal/engine/network.go\tShowOpenedPorts\tdestroy":            "destroy will not close ports opened without a rule id",
-	"internal/engine/network.go\talreadyOpenText\tdestroy":            "destroy will not touch a rule evo did not create",
-	"internal/engine/preview.go\tpendingRulesPreview\tdestroy":        "the rules an earlier destroy left (the preview of the call that removes them)",
-	"internal/engine/preview.go\tredeployPreview\tdestroy":            "what an earlier destroy left",
-	"internal/engine/preview.go\trulePreview\tdestroy":                "destroy releases the floating IP the deploy creates",
-	"internal/tools/tools_stack.go\tnormalizeManifest\tstack_destroy": "a taken s3 key: the stack would overwrite the object and stack_destroy would delete it",
+	"internal/engine/network.go\tShowOpenedPorts\tdestroy":              "destroy will not close ports opened without a rule id",
+	"internal/engine/network.go\talreadyOpenText\tdestroy":              "destroy will not touch a rule evo did not create",
+	"internal/engine/preview.go\tpendingRulesPreview\tdestroy":          "the rules an earlier destroy left (the preview of the call that removes them)",
+	"internal/engine/preview.go\tredeployPreview\tdestroy":              "what an earlier destroy left",
+	"internal/engine/preview.go\trulePreview\tdestroy":                  "destroy releases the floating IP the deploy creates",
+	"internal/tools/tools_stack.go\tnormalizeManifest\tstack_destroy":   "a taken s3 key: the stack would overwrite the object and stack_destroy would delete it",
+	"internal/engine/ports_preview.go\tportsLine\tdestroy":              "destroy closes only the rules it creates",
+	"internal/tools/tools_k8s_addons.go\thandleK8sAddAddon\tk8s_delete": "an addon goes with its cluster",
+	"internal/tools/tools_stack.go\tadoptVM\tstack_destroy":             "the VM is kept for stack_destroy",
+	"internal/tools/tools_stack.go\tadvance\tstack_destroy":             "the resource is kept for stack_destroy",
 }
 
 // humanDecision are the words by which a text that names a delete leaves
@@ -68,9 +72,21 @@ var deleteHintScope = []string{"internal/tools", "internal/engine", "internal/de
 
 // deleteHintMisses are the texts of deleteHintScope that offer a delete as
 // the next step and do not leave it to the person: "file<TAB>function<TAB>
-// tool" → why it is a miss. It only shrinks. Closes by 1.7 (release plan
-// 1.7, block D; owner's decision 03.11, #732).
-var deleteHintMisses = map[string]string{}
+// tool" → why it is a miss. It only shrinks. Closes by 1.8 (release plan
+// 1.7, block D; owner's decision 03.11, #732; the lines below came with
+// FB170-3, Fable audit 1.7, when the scan read the bodies of cases and the
+// concatenations — the texts are the development's, owner's decision
+// 05.11, #889: «все 8 — в 1.8»).
+var deleteHintMisses = map[string]string{
+	"internal/deployplan/apply.go\tApplyWithTimeout\tdestroy":           "a stopped VM adopted, a create call failed: «delete it with destroy» as the next step",
+	"internal/deployplan/apply.go\tfinishApply\tdestroy":                "deploy_apply interrupted, a VM in error: «delete it with destroy», «destroy it and retry»",
+	"internal/engine/deploy.go\tinstallDiagnosis\tdestroy":              "Docker cannot be installed: «Delete the VM ('evo destroy')», «destroy and deploy in another zone»",
+	"internal/engine/deploy.go\tprepareDocker\tdestroy":                 "no DNS inside the VM: «if it repeats, destroy and deploy in another zone»",
+	"internal/engine/status.go\tcloudCell\tdestroy":                     "a stale record: «→ evo destroy», where the note next to it asks the person",
+	"internal/tools/tools.go\tplanDestroyTargeted\trelease_floating_ip": "a floating IP destroy kept or failed to release: «release it with release_floating_ip»",
+	"internal/tools/tools.go\tprovisionVM\tdestroy":                     "provision failed or interrupted after the create: «check it with vm_get, delete it with destroy»",
+	"internal/tools/tools_deploy.go\thandleDeployApply\tdestroy":        "state not saved, a VM in error, timeout, a stopped VM: «delete it with destroy» as the next step",
+}
 
 // Release plan 1.7, block D (owner's decision 03.11, #732: «убери за собой»
 // is not in the core; the agent creates, the person decides what to
@@ -113,32 +129,23 @@ func TestHints_DeleteIsThePersonsDecision(t *testing.T) {
 					continue
 				}
 				own := strings.ToLower(strings.ReplaceAll(fd.Name.Name, "_", ""))
-				ast.Inspect(fd.Body, func(n ast.Node) bool {
-					switch x := n.(type) {
-					case *ast.CaseClause, *ast.BinaryExpr, *ast.IndexExpr:
-						return false
-					case *ast.BasicLit:
-						if x.Kind != token.STRING {
-							return true
-						}
-						s, err := strconv.Unquote(x.Value)
-						if err != nil || !strings.Contains(s, " ") || leavesItToThePerson(s) {
-							return true
-						}
-						for _, m := range deleteTool.FindAllString(s, -1) {
-							if !dels[m] || strings.Contains(own, strings.ReplaceAll(m, "_", "")) || slices.Contains(deleteFlows[rel], m) {
-								continue // not a tool, or the tool's own preview or answer
-							}
-							k := rel + "\t" + fd.Name.Name + "\t" + m
-							if _, ok := deleteHintDescribes[k]; ok {
-								described[k] = true
-								continue
-							}
-							found[k] = append(found[k], fset.Position(x.Pos()).String()+": "+s)
-						}
+				text := func(pos token.Pos, s string) {
+					if !strings.Contains(s, " ") || leavesItToThePerson(s) {
+						return
 					}
-					return true
-				})
+					for _, m := range deleteTool.FindAllString(s, -1) {
+						if !dels[m] || strings.Contains(own, strings.ReplaceAll(m, "_", "")) || slices.Contains(deleteFlows[rel], m) {
+							continue // not a tool, or the tool's own preview or answer
+						}
+						k := rel + "\t" + fd.Name.Name + "\t" + m
+						if _, ok := deleteHintDescribes[k]; ok {
+							described[k] = true
+							continue
+						}
+						found[k] = append(found[k], fset.Position(pos).String()+": "+s)
+					}
+				}
+				ast.Inspect(fd.Body, inspectNode(text))
 			}
 			return nil
 		})
@@ -166,7 +173,75 @@ func TestHints_DeleteIsThePersonsDecision(t *testing.T) {
 	for _, b := range bad {
 		t.Error(b)
 	}
-	t.Logf("deleteHintMisses: %d lines (Closes by 1.7)", len(deleteHintMisses))
+	t.Logf("deleteHintMisses: %d lines (Closes by 1.8)", len(deleteHintMisses))
+}
+
+// inspectNode reads the texts under a node for text: a literal, or a
+// concatenation of literals as the one text it makes ("…, " + "delete it
+// with destroy" is a sentence whose parts alone may not carry "ask the
+// person"). It does not read the operands of a comparison (x == "destroy")
+// or an index (m["destroy"]), or the values of a case (case "destroy":):
+// they name tools, not texts; the body of a case is code like any other.
+// Before FB170-3
+// (Fable audit 1.7) the scan left every BinaryExpr and CaseClause unread,
+// and seven texts of provision and deploy_apply went past it.
+func inspectNode(text func(token.Pos, string)) func(ast.Node) bool {
+	var visit func(ast.Node) bool
+	visit = func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.CaseClause:
+			for _, st := range x.Body {
+				ast.Inspect(st, visit)
+			}
+			return false
+		case *ast.IndexExpr:
+			ast.Inspect(x.X, visit)
+			return false
+		case *ast.BinaryExpr:
+			if x.Op != token.ADD {
+				return false
+			}
+			if s, ok := concat(x); ok {
+				text(x.Pos(), s)
+				return false
+			}
+			return true
+		case *ast.BasicLit:
+			if x.Kind == token.STRING {
+				if s, err := strconv.Unquote(x.Value); err == nil {
+					text(x.Pos(), s)
+				}
+			}
+		}
+		return true
+	}
+	return visit
+}
+
+// concat is the text of a concatenation whose parts are all string
+// literals; ok is false when one is not (a variable, a call).
+func concat(e ast.Expr) (string, bool) {
+	switch x := e.(type) {
+	case *ast.BasicLit:
+		if x.Kind != token.STRING {
+			return "", false
+		}
+		s, err := strconv.Unquote(x.Value)
+		return s, err == nil
+	case *ast.ParenExpr:
+		return concat(x.X)
+	case *ast.BinaryExpr:
+		if x.Op != token.ADD {
+			return "", false
+		}
+		l, ok := concat(x.X)
+		if !ok {
+			return "", false
+		}
+		r, ok := concat(x.Y)
+		return l + r, ok
+	}
+	return "", false
 }
 
 func leavesItToThePerson(s string) bool {
@@ -177,4 +252,32 @@ func leavesItToThePerson(s string) bool {
 		}
 	}
 	return false
+}
+
+// FB170-3 (Fable audit 1.7): the scan of TestHints_DeleteIsThePersonsDecision
+// reads the body of a case and a concatenation as one text, and leaves the
+// values of a case, the operands of a comparison and an index unread.
+func TestHints_ScanReadsCasesAndConcatenations(t *testing.T) {
+	src := `package p
+func f(m map[string]int, x, y string) string {
+	if x == "call destroy now" { return "" }
+	_ = m["call destroy now"]
+	switch x {
+	case "call destroy now":
+	default:
+		return "in a case: " + "delete it with destroy"
+	}
+	return "a variable: " + y + " delete it with destroy"
+}`
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	ast.Inspect(f, inspectNode(func(_ token.Pos, s string) { got = append(got, s) }))
+	want := []string{"", "in a case: delete it with destroy", "a variable: ", " delete it with destroy"}
+	if !slices.Equal(got, want) {
+		t.Errorf("texts read: %q, want %q", got, want)
+	}
 }
