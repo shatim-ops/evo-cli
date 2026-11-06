@@ -22,18 +22,11 @@ import (
 // Login signs the person in and makes the access they grant (contract
 // B-1, steps 1–19). store names the profile of the chosen audience, holds
 // its key now and keeps the new one. Access is granted only by «Grant
-// access» on the consent page («Риск», conclusion 24): a terminal, when
-// there is one, only gathers the choice before the browser.
+// access» on the consent page («Риск», conclusion 24); the terminal asks
+// nothing, the choice is the page's (the owner's decision of 06.11, #1084).
 func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result, error) {
 	s := &session{cfg: cfg, choice: choice, store: store,
 		state: random(16), nonce: random(16), verifier: random(32)}
-	if cfg.Ask != nil {
-		c, err := s.wizard(ctx)
-		if err != nil {
-			return Result{}, err
-		}
-		s.choice = c
-	}
 	d, err := cfg.discover(ctx)
 	if err != nil {
 		return Result{}, at(stepDiscovery, err)
@@ -50,6 +43,10 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		"code_challenge": {challenge(s.verifier)}, "code_challenge_method": {"S256"},
 	}.Encode()
 
+	// The page says until when it works: after the wait the loopback is
+	// closed, and its button meets nothing (B-5). Set before the server
+	// starts, a little before the timer: the page never promises more.
+	s.until = s.cfg.Now().Add(cfg.Wait)
 	lb := &loopback{s: s, host: "127.0.0.1:" + strconv.Itoa(port), done: make(chan outcome, 1)}
 	srv := &http.Server{Handler: lb, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()

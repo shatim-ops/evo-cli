@@ -93,6 +93,8 @@ type Saved struct {
 // caller.
 type Result struct {
 	Profile, ProjectID, ProjectName, Account, Role, KeyID string
+	// For is whom the key is for.
+	For Audience
 	// CustomerName is the organization of the project, for the page.
 	CustomerName string
 	// RoleExpiresAt is the role's actual term: a longer one the account
@@ -183,6 +185,8 @@ type session struct {
 	cfg    Config
 	choice Choice
 	store  Store
+	// until is the end of the wait, which the consent page names.
+	until time.Time
 
 	// consent is the token of the consent page (R-47): made with the page,
 	// never printed; /grant and /cancel take it with the state.
@@ -568,7 +572,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	}
 	aud, p := pl.aud, pl.p
 	res := Result{Profile: pl.profile, ProjectID: p.ID, ProjectName: p.Name, CustomerName: p.CustomerName,
-		Account: aud.account(), Role: auth.LoginRoleName}
+		Account: aud.account(), For: aud, Role: auth.LoginRoleName}
 	now := s.cfg.Now()
 	desc := fmt.Sprintf("evo login, %s, %s", s.who.Login, now.UTC().Format("2006-01-02"))
 

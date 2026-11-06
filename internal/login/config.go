@@ -13,7 +13,6 @@
 package login
 
 import (
-	"context"
 	"net/http"
 	"time"
 
@@ -43,9 +42,6 @@ type Config struct {
 	// Tell writes a line for the person in the terminal (stderr): the
 	// wizard, the summary and the steps.
 	Tell func(line string)
-	// Ask reads the person's answer in the terminal; nil when there is no
-	// terminal: the choice is then made on the page.
-	Ask func(ctx context.Context, prompt string) (string, error)
 	// Wait bounds the time from the start to the person's choice.
 	Wait time.Duration
 	// Now is the clock of the answer's values (key's term, login date).
