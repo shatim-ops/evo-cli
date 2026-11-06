@@ -8,14 +8,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
@@ -193,10 +197,64 @@ var stackJobID = regexp.MustCompile(`stk-[0-9a-f]{10}`)
 // sameJobID reads every stack job id as one.
 func sameJobID(s string) string { return stackJobID.ReplaceAllString(s, "stk-<id>") }
 
+// emptyCloud is the world of withEmptyCloud: every API answers 200 with an
+// empty list and a done operation, and what a run deletes is gone — a GET of
+// a path the run sent DELETE to is 404. Without that the world contradicts
+// itself: the delete of ca_delete is done, yet the app it reads until gone
+// is still there, and the delete waits out its 45 s twice per run (#1033).
+type emptyCloud struct {
+	mu      sync.Mutex
+	deleted map[string]bool // paths sent DELETE in this run
+}
+
+func (c *emptyCloud) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.mu.Lock()
+	switch r.Method {
+	case http.MethodDelete:
+		c.deleted[r.URL.Path] = true
+	case http.MethodGet:
+		if c.deleted[r.URL.Path] {
+			c.mu.Unlock()
+			return contractRT{status: 404, body: `{"code":"NOT_FOUND","message":"not found"}`}.RoundTrip(r)
+		}
+	}
+	c.mu.Unlock()
+	return contractRT{status: 200, body: emptyCloudBody}.RoundTrip(r)
+}
+
+// emptyCloudBody is every answer of the empty cloud: no items, done.
+const emptyCloudBody = `{"items":[],"total":0,"done":true}`
+
+// emptyCloudWait bounds one run in the empty cloud. Every list there is
+// empty and every operation done, so no command has anything to wait for;
+// one that waits anyway waits out a production interval — up to the budget
+// of a call (tools.MCPCallBudget, 45 s) — and under -race the package nears
+// go test's timeout on every PR (#1033).
+const emptyCloudWait = tools.MCPCallBudget / 4
+
+// run runs the CLI as a new process in the cloud; a run that waits out a
+// production interval is added to bad with its command line.
+func (c *emptyCloud) run(t *testing.T, bad *[]string, args ...string) (int, string, string) {
+	t.Helper()
+	// Each run is a new cloud: the two sides of a pair see the same one.
+	c.mu.Lock()
+	c.deleted = map[string]bool{}
+	c.mu.Unlock()
+	newProcess()
+	start := time.Now()
+	code, out, errOut := runCLI(t, "", args...)
+	// wall-clock: guards the production wait of an operation or a delete (tools.MCPCallBudget, 45 s): a quarter of it.
+	if d := time.Since(start); d > emptyCloudWait {
+		*bad = append(*bad, fmt.Sprintf("evo %s: waits %s in the empty cloud, where nothing is under way — a production interval (the world contradicts itself, or the command waits for nothing)",
+			strings.Join(args, " "), d.Round(time.Second)))
+	}
+	return code, out, errOut
+}
+
 // withEmptyCloud: a key and a project, a token without IAM, and every API
 // answering 200 with an empty list, on the stopped clock of the parity
 // worlds (stoppedClock).
-func withEmptyCloud(t *testing.T) {
+func withEmptyCloud(t *testing.T) *emptyCloud {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -209,11 +267,15 @@ func withEmptyCloud(t *testing.T) {
 	t.Chdir(home)
 	// Every list is empty and every operation is done: a delete reads its
 	// operation (D74), and one never done would wait as in production.
-	installContractTransport(t, 200, `{"items":[],"total":0,"done":true}`)
+	cloud := &emptyCloud{deleted: map[string]bool{}}
+	base := httpretry.DefaultBase
+	httpretry.DefaultBase = cloud
+	t.Cleanup(func() { httpretry.DefaultBase = base })
 	old := toolEngine
 	toolEngine = emptyCloudEngine
 	t.Cleanup(func() { toolEngine = old })
 	stoppedClock(t)
+	return cloud
 }
 
 func emptyCloudEngine(o map[string]any) (*engine.Engine, error) {
@@ -229,7 +291,7 @@ func emptyCloudEngine(o map[string]any) (*engine.Engine, error) {
 }
 
 func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
-	withEmptyCloud(t)
+	cloud := withEmptyCloud(t)
 	var bad []string
 	ok := 0
 	for _, pc := range newParityCommands(t) {
@@ -237,10 +299,8 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 		if pc.tool.Mutating || tools.IsSensitive(pc.tool) {
 			extra = append(extra, "--yes")
 		}
-		newProcess()
-		treeCode, treeOut, treeErr := runCLI(t, "", append(append([]string{}, pc.tree...), extra...)...)
-		newProcess()
-		callCode, callOut, callErr := runCLI(t, "", append(append([]string{}, pc.call...), extra...)...)
+		treeCode, treeOut, treeErr := cloud.run(t, &bad, append(append([]string{}, pc.tree...), extra...)...)
+		callCode, callOut, callErr := cloud.run(t, &bad, append(append([]string{}, pc.call...), extra...)...)
 		treeOut, callOut = sameVolatile(treeOut), sameVolatile(callOut)
 		if treeCode != callCode || treeOut != callOut || !sameRefusal(pc.tool.Name, treeErr, callErr) {
 			bad = append(bad, fmt.Sprintf("evo %s ≠ evo tools call %s:\n  tree: exit %d out=%s err=%s\n  call: exit %d out=%s err=%s",
@@ -261,10 +321,8 @@ func TestParity_NewCommandsJSONEqualsToolsCall(t *testing.T) {
 			extra = append(extra, "--yes")
 		}
 		line := append(append([]string{}, c.line...), extra...)
-		newProcess()
-		cmdCode, cmdOut, cmdErr := runCLI(t, "", line...)
-		newProcess()
-		callCode, callOut, callErr := runCLI(t, "", append([]string{"tools", "call", c.tool}, extra...)...)
+		cmdCode, cmdOut, cmdErr := cloud.run(t, &bad, line...)
+		callCode, callOut, callErr := cloud.run(t, &bad, append([]string{"tools", "call", c.tool}, extra...)...)
 		// Two processes a second apart: token expiry, plan ids and times
 		// differ (whoami on a slow Windows runner, CI on #161).
 		cmdOut, callOut = sameVolatile(cmdOut), sameVolatile(callOut)
