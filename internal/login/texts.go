@@ -102,9 +102,11 @@ func tForeverInConsole() string {
 
 // tUnchecked is the one mark of the right on the page and in the terminal
 // (conclusions 26.5 and 28.1): what evaluate answered, by the list.
-func tUnchecked(reason string) string {
-	return i18n.Tf("The platform has not confirmed the right: %s. If the right is missing, Cloud.ru will refuse to create the account, and nothing will be left behind",
-		"Право не подтверждено платформой: %s. Если права нет, Cloud.ru откажет при создании аккаунта, и ничего не останется", reason)
+// tUnchecked: the platform did not confirm the right beforehand; its
+// reason is in the details, not here («Риск», conclusion 35.4).
+func tUnchecked() string {
+	return i18n.T("The right could not be checked beforehand. If there is no access, Cloud.ru will refuse to create the account, and nothing will be left behind",
+		"Заранее проверить право не удалось. Если доступа нет, Cloud.ru откажет при создании аккаунта, и ничего не останется")
 }
 
 // The reasons of tUnchecked: what evaluate answered («Риск», R-49).
@@ -359,6 +361,22 @@ func eNotCompleteHint(left bool, next string) string {
 			"Удалите оставшееся в личном кабинете Cloud.ru в разделе «Сервисные аккаунты» и повторите evo login.")
 	}
 	return i18n.T("Nothing was left behind. ", "Ничего не осталось. ") + next
+}
+
+// What Cloud.ru did not do at a write: the first words of its refusal,
+// the platform's own follow («Риск», conclusion 35.3).
+func eNotCreatedAccount() string {
+	return i18n.T("Cloud.ru did not create the service account", "Cloud.ru не создал сервисный аккаунт")
+}
+func eNotGrantedRole() string {
+	return i18n.Tf("Cloud.ru did not grant the role “%s”", "Cloud.ru не выдал роль «%s»", auth.LoginRoleDisplayName)
+}
+func eNotIssuedKey() string {
+	return i18n.T("Cloud.ru did not issue the access key", "Cloud.ru не выдал ключ доступа")
+}
+func eRoleRefusedHint() string {
+	return i18n.T("Cloud.ru refused for the reason above; a retry alone meets the same refusal. Choose another project or contact the administrator of the organization.",
+		"Cloud.ru отказал по причине выше; простой повтор получит тот же отказ. Выберите другой проект или обратитесь к администратору организации.")
 }
 func eAccountRefusedHint() string {
 	return i18n.T("Cloud.ru refused to create the service account for the reason above; a retry alone meets the same refusal. Choose another project or contact the administrator of the organization.",

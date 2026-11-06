@@ -166,7 +166,7 @@ func TestRussian_WhoamiAndHint(t *testing.T) {
 
 	// Нет ключа: сообщение и подсказка по-русски, код 2.
 	code, _, stderr := runCLI(t, "", "whoami")
-	want := "Ошибка: не задан ключ доступа Cloud.ru\nВыполните evo login или evo configure либо задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET."
+	want := "Ошибка: не задан ключ доступа Cloud.ru\nВыполните evo login (вход через браузер, нужен человек) или evo configure либо задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET: переменные важнее профиля."
 	if code != clerrors.ExitAuth || !strings.HasPrefix(stderr, want) {
 		t.Errorf("exit %d, stderr:\n%s", code, stderr)
 	}

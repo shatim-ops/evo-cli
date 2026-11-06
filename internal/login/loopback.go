@@ -7,6 +7,7 @@ package login
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -76,7 +77,10 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 	defer timer.Stop()
 	select {
 	case o := <-lb.done:
-		return o.res, o.err
+		if o.err == nil {
+			o.res.Unchecked = s.unchecked
+		}
+		return o.res, s.withUnchecked(o.err)
 	case <-timer.C:
 		lb.close()
 		return Result{}, fmt.Errorf("%s%s: %w", eTimeout(cfg.Wait), tAt(stepWait, 0), context.Canceled)
@@ -322,4 +326,19 @@ func oneLine(s string) string {
 		s = s[:200]
 	}
 	return strconv.Quote(s)
+}
+
+// withUnchecked names in the details of a refusal why the right was not
+// confirmed beforehand, which the terminal and the page leave out
+// («Риск», conclusion 35.4).
+func (s *session) withUnchecked(err error) error {
+	var ce *clierrors.CLIError
+	if s.unchecked == "" || !errors.As(err, &ce) {
+		return err
+	}
+	if ce.Details == nil {
+		ce.Details = map[string]any{}
+	}
+	ce.Details["unchecked"] = s.unchecked
+	return err
 }

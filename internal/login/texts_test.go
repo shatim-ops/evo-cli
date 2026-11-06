@@ -175,7 +175,7 @@ func TestConsentPage_OneRightsMark(t *testing.T) {
 		}
 		return b.String()
 	}
-	mark := "не подтверждено платформой"
+	mark := "Заранее проверить право не удалось"
 	if page := render(""); strings.Contains(page, mark) {
 		t.Errorf("a confirmed right is marked")
 	}
@@ -184,7 +184,7 @@ func TestConsentPage_OneRightsMark(t *testing.T) {
 		t.Errorf("%d marks of the rights, want 1", strings.Count(page, mark))
 	}
 	projects, _, _ := strings.Cut(page, tForWhom())
-	if !strings.Contains(projects, tUnchecked("evaluate: 500")) || !strings.Contains(projects, `>`+tProject()+`</legend>`) {
+	if !strings.Contains(projects, tUnchecked()) || !strings.Contains(projects, `>`+tProject()+`</legend>`) {
 		t.Errorf("the mark is not by the list of projects")
 	}
 }
