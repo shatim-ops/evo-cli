@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
@@ -53,10 +54,12 @@ func TestToolError_HintOfTheTool(t *testing.T) {
 	for _, tt := range []struct{ text, code, hint string }{
 		{`{"error":"CONFIG_INVALID: bad yaml","hint":"Fix the YAML syntax"}`, clerrors.CodeConfigInvalid, "Fix the YAML syntax"},
 		{`{"error":"AUTH_FAILED: IAM rejected the credentials (status 401)","hint":"Verify the key ID and secret"}`, clerrors.CodeAuthFailed, "Verify the key ID and secret"},
-		{`{"error":"AUTH_FAILED: bad key"}`, clerrors.CodeAuthFailed, "Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET."},
+		// «Риск», #1029: no key and a refused key are two hints.
+		{`{"error":"AUTH_REQUIRED: no access key"}`, clerrors.CodeAuthRequired, auth.NoKeyHint()},
+		{`{"error":"AUTH_FAILED: bad key"}`, clerrors.CodeAuthFailed, auth.RefusedKeyHint()},
 		{`{"error":"USAGE: 'disk_id' is required"}`, clerrors.CodeUsage, "Check the arguments: 'evo tools describe x'."},
 		// A code deeper in the message: reason carries it.
-		{`{"error":"release floating IP: AUTH_EXPIRED: token rejected","reason":"AUTH_EXPIRED"}`, clerrors.CodeAuthExpired, "Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET."},
+		{`{"error":"release floating IP: AUTH_EXPIRED: token rejected","reason":"AUTH_EXPIRED"}`, clerrors.CodeAuthExpired, auth.RefusedKeyHint()},
 		{`{"error":"SSH_TIMEOUT: no answer"}`, clerrors.CodeSSHTimeout, ""},
 		// Not a code: an upper-case word only.
 		{`{"error":"HTTP: 500"}`, clerrors.CodeAPIError, ""},
