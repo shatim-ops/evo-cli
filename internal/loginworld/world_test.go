@@ -159,7 +159,7 @@ func (k *walk) run() outcome {
 	}
 	// 15. The role until the key's expiry: PUT a shorter one, keep a longer one.
 	exp := time.Now().Add(k.ttl).UTC().Truncate(time.Second)
-	code, m := k.do(http.MethodGet, "/api/v3/permissions?filter="+url.QueryEscape("resource_id="+Project+" AND subject_id="+sa+" AND role_name="+RoleName), nil, human)
+	code, m := k.do(http.MethodGet, "/api/v3/permissions?filter="+url.PathEscape("resource_id="+Project+" AND subject_id="+sa+" AND role_name="+RoleName), nil, human)
 	if code != 200 {
 		k.rollback(human)
 		return outcome{"API_ERROR", "permission"}
