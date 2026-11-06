@@ -31,7 +31,9 @@ you do at each step, in their language.
   person presses «Выдать доступ» on the Evolution CMCP page in their
   browser. Never open, fetch or submit that page or any `127.0.0.1` address
   yourself (no browser tool, no curl, no HTTP request). `evo login` has no
-  flag that grants access; do not look for one.
+  flag that grants access; do not look for one. Do not paste the link
+  `evo login` prints into the chat, and do not ask the person to send it to
+  you.
 - **Never handle the secret.** Do not ask the person for a key or secret in
   the chat, do not print or read evo's configuration or credentials files,
   do not pass a secret on a command line.
@@ -112,5 +114,7 @@ the restart, check that the `evo` tools are there; `evo doctor --profile
 agent` checks the key and the connection to Cloud.ru from the terminal.
 
 The key has the role «Администратор проекта» on the chosen project for the
-term the person chose. Every change in the cloud still goes through evo's
-preview and consent. To close access early: `evo logout --profile agent`.
+term the person chose. A change in the cloud comes with evo's preview, and
+the approval of the tool call in the client is the person's guard — not
+yours to give on their behalf. To close access early:
+`evo logout --profile agent`.
