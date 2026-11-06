@@ -103,13 +103,12 @@ type Variant struct {
 	PermForbidden bool   // permissions: 403
 	RoleCollision bool   // POST permissions by roleName: 400, by roleId: created
 	AccountLimit  bool   // the project has 10 service accounts, and IAM refuses one more
-	// OtherAccounts: the project already has this many service accounts of
-	// other people, and IAM still creates one more (acceptance B-5, 06.11:
-	// a project of 20 accounts on the platform; the limit of 10 is no part
-	// of the specification, #563).
+	// OtherAccounts: the project has this many accounts of others, and IAM
+	// still creates one more (acceptance C2.1, 06.11: 20, then 18 — no
+	// limit of 10 on the platform).
 	OtherAccounts int
 	// OrgAccounts: this many accounts of the organization, which the list
-	// of the project's accounts shows too (see Account.Org).
+	// of the project's accounts shows too (Account.Org).
 	OrgAccounts int
 	KeyLimit    bool // the account has 50 keys
 	FailAt      Step // the write of this step answers 500
@@ -184,9 +183,10 @@ func (w *World) granted(action string) bool {
 type Account struct {
 	ID, Name, Description string
 	// Org: the account belongs to the organization, not to the project,
-	// and the list of the project shows it all the same (acceptance B-5,
-	// 06.11: 8 accounts in the project, evo counted 16; a hypothesis of one
-	// run — the console filters by «Тип аккаунта»).
+	// and the list of the project's accounts shows it all the same
+	// (acceptance B-5, 06.11: 8 accounts in the project, evo counted 16,
+	// and 29 in another project; a hypothesis of those runs — the console
+	// filters them by «Тип аккаунта»).
 	Org bool
 }
 
