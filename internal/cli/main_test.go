@@ -18,6 +18,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -41,8 +42,19 @@ func TestMain(m *testing.M) {
 		c.Ports = []int{0} // no test takes a registered port
 		return c
 	}
+	// No test goes to the network (noNetwork): a request off this
+	// machine is refused, and the run fails naming it.
+	guard := &noNetwork{base: httpretry.DefaultBase, seen: map[string]bool{}}
+	httpretry.DefaultBase = guard
 	code := m.Run()
 	removeFakeEvos()
+	if leaks := guard.leaks(); len(leaks) > 0 {
+		fmt.Fprintf(os.Stderr, "FAIL: %d request(s) of the tests went off this machine; give the world its answer (CLAUDE.md §5):\n  %s\n",
+			len(leaks), strings.Join(leaks, "\n  "))
+		if code == 0 {
+			code = 1
+		}
+	}
 	os.Exit(code)
 }
 

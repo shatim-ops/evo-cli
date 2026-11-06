@@ -19,74 +19,74 @@ Gemini CLI, Codex) одну строку:
 
 ---
 
-## Instructions for the agent
+## Инструкция для агента
 
-You are setting up evo, the CLI and MCP server for Cloud.ru Evolution, for
-the person you work with. Follow the steps in order. Tell the person what
-you do at each step, in their language.
+Ты подключаешь evo — CLI и MCP-сервер для Cloud.ru Evolution — для человека,
+с которым работаешь. Выполняй шаги по порядку. На каждом шаге говори
+человеку, что делаешь, на его языке.
 
-### Rules
+### Правила
 
-- **Only the person grants access.** The access key is issued when the
-  person presses «Выдать доступ» on the Evolution CMCP page in their
-  browser. Never open, fetch or submit that page or any `127.0.0.1` address
-  yourself (no browser tool, no curl, no HTTP request). `evo login` has no
-  flag that grants access; do not look for one. Do not paste the link
-  `evo login` prints into the chat, and do not ask the person to send it to
-  you.
-- **Never handle the secret.** Do not ask the person for a key or secret in
-  the chat, do not print or read evo's configuration or credentials files,
-  do not pass a secret on a command line.
-- **Ask before you install or write.** Show the command or the diff, and run
-  it after the person agrees.
-- **Stop when a step fails** and tell the person the error as evo printed
-  it; do not work around it.
+- **Доступ выдаёт только человек.** Ключ доступа появляется, когда человек
+  нажимает «Выдать доступ» на странице Evolution CMCP в своём браузере. Сам
+  никогда не открывай, не запрашивай и не отправляй эту страницу и любой
+  адрес `127.0.0.1` — ни браузерным инструментом, ни curl, ни другим
+  HTTP-запросом. У `evo login` нет флага, который выдаёт доступ, — не ищи
+  его. Не вставляй в чат ссылку, которую печатает `evo login`, и не проси
+  человека прислать её тебе.
+- **Не касайся секрета.** Не проси у человека ключ или секрет в чате, не
+  печатай и не читай файлы настроек и ключей evo, не передавай секрет в
+  командной строке.
+- **Спрашивай перед установкой и записью.** Покажи команду или diff и
+  выполняй после согласия человека.
+- **На ошибке остановись** и покажи человеку ошибку так, как её напечатал
+  evo; не обходи её.
 
-### 1. Check evo
+### 1. Проверь evo
 
-Run `evo version`.
+Выполни `evo version`.
 
-- It prints a version: go to step 2.
-- `evo` is not found: ask the person to install it. On Linux and macOS the
-  command is
+- Печатает версию — переходи к шагу 2.
+- `evo` не найден — попроси человека его установить. На Linux и macOS
+  команда такая:
   `curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | sh`
-  (run it only after they agree). On Windows there is no installer: send
-  them to
+  (запускай только после его согласия). Для Windows установщика нет —
+  дай человеку ссылку
   https://github.com/shatim-ops/evo-cli/blob/main/docs/install.md#windows.
-  Then run `evo version` again.
+  Затем снова выполни `evo version`.
 
-### 2. Sign in: the person grants access
+### 2. Вход: доступ выдаёт человек
 
-Check where you run. If you run over SSH, in a container or on another
-machine than the person's browser, the browser sign-in cannot work: tell the
-person to create an access key in the Cloud.ru console and run
-`evo configure --profile agent` themselves
-(https://github.com/shatim-ops/evo-cli/blob/main/docs/auth.md), wait until
-they say it is done, and go to step 3.
+Проверь, где ты работаешь. Если ты работаешь по SSH, в контейнере или на
+другой машине, чем браузер человека, вход через браузер не сработает: попроси
+человека создать ключ доступа в личном кабинете Cloud.ru и самому выполнить
+`evo configure --profile agent`
+(https://github.com/shatim-ops/evo-cli/blob/main/docs/auth.md), дождись, когда
+он скажет, что готово, и переходи к шагу 3.
 
-Otherwise run, in the person's terminal on this machine:
+Иначе выполни в терминале человека на этой машине:
 
 ```sh
 evo login --for agent
 ```
 
-Tell the person before it starts: «Откроется страница Evolution CMCP. Выберите
-проект и нажмите «Выдать доступ» — это делаете только вы». evo opens the
-browser and waits up to 5 minutes. If the browser does not open, the person
-opens the link evo printed, on this same machine. Wait for the command to
-end; do not answer its questions for the person — if it asks in the
-terminal, relay the question.
+До запуска скажи человеку: «Откроется страница Evolution CMCP. Выберите
+проект и нажмите «Выдать доступ» — это делаете только вы». evo откроет
+браузер и будет ждать до 5 минут. Если браузер не открылся, человек
+открывает ссылку, которую напечатал evo, на этой же машине. Дождись конца
+команды; не отвечай на её вопросы за человека — если она спрашивает в
+терминале, передай вопрос человеку.
 
-- Exit code 0: the key is in the profile `agent`. Go to step 3.
-- Any other code: stop and show the person what evo printed. The page
-  closed without «Выдать доступ» means the person did not grant access;
-  ask whether to try again.
+- Код выхода 0: ключ записан в профиль `agent`. Переходи к шагу 3.
+- Любой другой код: остановись и покажи человеку, что напечатал evo. Если
+  страницу закрыли без «Выдать доступ», человек доступ не выдал — спроси,
+  попробовать ли ещё раз.
 
-### 3. Connect evo to yourself
+### 3. Подключи evo к себе
 
-Pick your client:
+Выбери свой клиент:
 
-| You are | `--client` |
+| Ты работаешь в | `--client` |
 |---|---|
 | Claude Code | `claude-code` |
 | Claude Desktop | `claude-desktop` |
@@ -95,26 +95,25 @@ Pick your client:
 | Gemini CLI | `gemini` |
 | Codex | `codex` |
 
-Show the change first:
+Сначала покажи изменение:
 
 ```sh
-evo agent setup --client <client> --profile agent --dry-run
+evo agent setup --client <клиент> --profile agent --dry-run
 ```
 
-Show the person the diff, and after they agree run the same command with
-`--yes` instead of `--dry-run`. If your client is not in the table, run
-`evo agent setup --client cursor --profile agent --print json` and tell the
-person where their client keeps its MCP servers.
+Покажи человеку diff и после его согласия выполни ту же команду с `--yes`
+вместо `--dry-run`. Если твоего клиента нет в таблице, выполни
+`evo agent setup --client cursor --profile agent --print json` и скажи
+человеку, куда его клиент записывает MCP-серверы.
 
-### 4. Hand over
+### 4. Передай работу
 
-Tell the person to restart the client (Claude Desktop: quit it fully and
-start it again) or reload its MCP servers, then come back and work. After
-the restart, check that the `evo` tools are there; `evo doctor --profile
-agent` checks the key and the connection to Cloud.ru from the terminal.
+Попроси человека перезапустить клиент (Claude Desktop — закрыть полностью и
+открыть снова) или перечитать его MCP-серверы, потом вернуться и работать.
+После перезапуска проверь, что инструменты `evo` на месте;
+`evo doctor --profile agent` проверяет ключ и связь с Cloud.ru из терминала.
 
-The key has the role «Администратор проекта» on the chosen project for the
-term the person chose. A change in the cloud comes with evo's preview, and
-the approval of the tool call in the client is the person's guard — not
-yours to give on their behalf. To close access early:
-`evo logout --profile agent`.
+У ключа — роль «Администратор проекта» на выбранном проекте на срок, который
+выбрал человек. Изменение в облаке приходит с превью evo, а одобрение вызова
+инструмента в клиенте — защита человека: давать его за человека не тебе.
+Закрыть доступ раньше срока: `evo logout --profile agent`.
