@@ -657,10 +657,20 @@ func TestLogin_SaysThePageName(t *testing.T) {
 // Organization API answers empty pages, each with a new token. orgList read
 // them to the limit of pages and refused every person with «too many
 // pages»; an empty page is the end of the list.
+// An empty first page with a token is not the end: the items may follow
+// it, and a list cut there would hide the person's projects («Риск»,
+// условие 4).
 func TestLogin_EmptyPagesWithATokenEndTheList(t *testing.T) {
-	w := newWorld(t, loginworld.Variant{EmptyPagesWithToken: true})
-	r := login(t, w, &browser{}, Choice{}, nil, nil)
-	if r.err != nil || len(r.saved) != 1 {
-		t.Fatalf("login with empty pages after the items: err %v; saved %d\n%s", r.err, len(r.saved), r.out)
+	for name, v := range map[string]loginworld.Variant{
+		"empty pages after the items": {EmptyPagesWithToken: true},
+		"an empty first page":         {EmptyPagesWithToken: true, EmptyFirstPage: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t, v)
+			r := login(t, w, &browser{}, Choice{}, nil, nil)
+			if r.err != nil || len(r.saved) != 1 {
+				t.Fatalf("%s: err %v; saved %d\n%s", name, r.err, len(r.saved), r.out)
+			}
+		})
 	}
 }

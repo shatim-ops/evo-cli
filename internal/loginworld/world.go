@@ -129,6 +129,9 @@ type Variant struct {
 	// items with a page token, then empty pages, each with a new token —
 	// the list never says it ended (acceptance B-5, 06.11; IAM-10).
 	EmptyPagesWithToken bool
+	// EmptyFirstPage: with EmptyPagesWithToken, the first page of a list
+	// is empty with a token, and the items come on the second.
+	EmptyFirstPage bool
 }
 
 // probeActions are the actions of IAM about accounts, keys and permissions
@@ -570,9 +573,14 @@ func (w *World) organization(rw http.ResponseWriter, r *http.Request) {
 	}
 	page := map[string]any{key: items}
 	if w.v.EmptyPagesWithToken {
-		// The items with a token, then empty pages, each with a new one.
+		// The items with a token, then empty pages, each with a new one;
+		// with EmptyFirstPage an empty page with a token comes first.
 		tok := r.URL.Query().Get("page_token")
-		if tok != "" {
+		itemsAt := ""
+		if w.v.EmptyFirstPage {
+			itemsAt = "p"
+		}
+		if tok != itemsAt {
 			page[key] = []any{}
 		}
 		page["next_page_token"] = tok + "p"

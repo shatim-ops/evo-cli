@@ -344,11 +344,11 @@ type orgProject struct {
 func listProjects(ctx context.Context, token string) ([]orgProject, error) {
 	var all []orgProject
 	// An empty page ends the list of the Organization API (IAM-10).
-	err := pager.AllUntilEmpty("organization: projects", func(pageToken string) (string, int, error) {
+	err := pager.AllCounted("organization: projects", func(pageToken string) (string, int, error) {
 		page, next, err := listProjectsPage(ctx, token, pageToken)
 		all = append(all, page...)
 		return next, len(page), err
-	})
+	}, pager.EndOnEmptyPage)
 	if err != nil {
 		return nil, err
 	}

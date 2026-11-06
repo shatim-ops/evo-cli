@@ -133,33 +133,34 @@ func TestUpto_ReportsMore(t *testing.T) {
 // IAM-10 (acceptance B-5, 06.11): past its last item the Organization API
 // answers empty pages, each with a new non-empty token, and a reader of
 // All stopped only at MaxPages — evo login answered «too many pages» to
-// every person. AllUntilEmpty ends the list at a page without items; All,
-// the reader of every other list, still follows the token.
-func TestAllUntilEmpty_AnEmptyPageEndsTheList(t *testing.T) {
-	calls := 0
-	var got []string
-	err := AllUntilEmpty("organization: customers", func(token string) (string, int, error) {
-		calls++
-		switch token {
-		case "":
-			got = append(got, "a")
-			return "t1", 1, nil
-		case "t1":
-			got = append(got, "b")
-			return "t2", 1, nil
-		}
-		return "t" + strconv.Itoa(calls+1), 0, nil // empty, a new token each time
-	})
-	if err != nil || strings.Join(got, ",") != "a,b" || calls != 3 {
-		t.Fatalf("got %q after %d requests, err %v; want a,b after 3", got, calls, err)
+// every person. With EndOnEmptyPage an empty page after items ends the
+// list; an empty first page does not; without the option an empty page
+// is never the end.
+func TestUptoCounted_EndOnEmptyPage(t *testing.T) {
+	// pages: the items of each page in turn; past them, empty pages with
+	// a new token each.
+	read := func(pages []int, opts ...Option) (items, calls int, more bool, err error) {
+		more, err = UptoCounted(10, func(token string) (string, int, error) {
+			n := 0
+			if calls < len(pages) {
+				n = pages[calls]
+			}
+			calls++
+			items += n
+			return "t" + strconv.Itoa(calls), n, nil
+		}, opts...)
+		return
 	}
-
-	calls = 0
-	err = All("things", func(token string) (string, error) {
-		calls++
-		return "t" + strconv.Itoa(calls), nil
-	})
-	if err == nil || calls != MaxPages {
-		t.Errorf("All: %d requests, err %v — an empty page is not the end for every list", calls, err)
+	if items, calls, more, err := read([]int{1, 1}, EndOnEmptyPage); err != nil || more || items != 2 || calls != 3 {
+		t.Errorf("items then empty pages: %d items, %d requests, more %v, err %v; want 2 after 3", items, calls, more, err)
+	}
+	if items, calls, _, err := read([]int{0, 2}, EndOnEmptyPage); err != nil || items != 2 || calls != 3 {
+		t.Errorf("an empty first page: %d items after %d requests, err %v; want the read to go on to the items", items, calls, err)
+	}
+	if _, calls, more, _ := read(nil, EndOnEmptyPage); !more || calls != 10 {
+		t.Errorf("only empty pages: %d requests, more %v; want the bound, not an empty list", calls, more)
+	}
+	if _, calls, more, _ := read([]int{1, 1}); !more || calls != 10 {
+		t.Errorf("without EndOnEmptyPage: %d requests, more %v — an empty page is not the end for every list", calls, more)
 	}
 }

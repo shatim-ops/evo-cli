@@ -434,11 +434,12 @@ func noRight(projectName string) error {
 }
 
 // orgList reads every page of a list of the Organization API with the
-// person's token, through pager like every list of evo: an empty page is
-// the end of it (pager.AllUntilEmpty, IAM-10).
+// person's token, through pager like every list of evo, at most
+// iamadmin.MaxPages: an empty page after the items is the end of it
+// (pager.EndOnEmptyPage, IAM-10).
 func (s *session) orgList(ctx context.Context, path string, q url.Values, key string) ([]map[string]any, error) {
 	var out []map[string]any
-	err := pager.AllUntilEmpty("organization: "+strings.TrimPrefix(path, "/v3/"), func(token string) (string, int, error) {
+	more, err := pager.UptoCounted(iamadmin.MaxPages, func(token string) (string, int, error) {
 		pq := url.Values{}
 		for k, v := range q {
 			pq[k] = v
@@ -476,9 +477,12 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 		}
 		next, _ := m["next_page_token"].(string)
 		return next, len(xs), nil
-	})
+	}, pager.EndOnEmptyPage)
+	if err == nil && more {
+		err = pager.TooManyPages(iamadmin.MaxPages)
+	}
 	if err != nil {
-		return nil, err
+		return nil, pager.Named("organization: "+key, err)
 	}
 	return out, nil
 }

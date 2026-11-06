@@ -17,6 +17,7 @@ package pager
 
 import (
 	stderrors "errors"
+	"slices"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -50,20 +51,44 @@ func All(what string, fetch func(token string) (next string, err error)) error {
 	return nil
 }
 
-// AllUntilEmpty reads as All does, and a page without items ends the list
-// whatever token it names. Only for the Organization API (/v3/customers,
-// /v3/projects): past its last item it answers empty pages, each with a new
-// token (acceptance B-5, 06.11; IAM-10). Another API's empty page may stand
-// before the rest of its list, and ending there would cut it with exit 0,
-// so All does not stop at one. fetch returns the number of items too.
-func AllUntilEmpty(what string, fetch func(token string) (next string, items int, err error)) error {
-	return All(what, func(token string) (string, error) {
+// EndOnEmptyPage makes a page without items, after a page with some, the
+// end of the read whatever token it names. Only for the Organization API
+// (/v3/customers, /v3/projects): past its last item it answers empty
+// pages, each with a new token (acceptance B-5, 06.11; IAM-10). Another
+// API's empty page may stand before the rest of its list, and ending there
+// would cut it with exit 0, so no other list takes it. An empty first page
+// is not the end: the read goes on, and a list of empty pages only is an
+// error at the bound, not an empty list.
+const EndOnEmptyPage Option = 2
+
+// UptoCounted reads as Upto does; fetch also returns the number of items
+// of its page, which EndOnEmptyPage reads. The other options go to Upto.
+func UptoCounted(max int, fetch func(token string) (next string, items int, err error), opts ...Option) (more bool, err error) {
+	endOnEmpty := slices.Contains(opts, EndOnEmptyPage)
+	read := 0
+	return Upto(max, func(token string) (string, error) {
 		next, items, err := fetch(token)
-		if err != nil || items == 0 {
+		if err != nil {
 			return "", err
 		}
+		if endOnEmpty && items == 0 && read > 0 {
+			return "", nil
+		}
+		read += items
 		return next, nil
-	})
+	}, opts...)
+}
+
+// AllCounted is All over UptoCounted: every page, at most MaxPages.
+func AllCounted(what string, fetch func(token string) (next string, items int, err error), opts ...Option) error {
+	more, err := UptoCounted(MaxPages, fetch, opts...)
+	if err != nil {
+		return Named(what, err)
+	}
+	if more {
+		return Named(what, TooManyPages(MaxPages))
+	}
+	return nil
 }
 
 // Upto reads pages as All does, but at most max of them. more reports that
