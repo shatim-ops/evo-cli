@@ -192,3 +192,28 @@ func TestLists_FollowNextPage(t *testing.T) {
 		}
 	}
 }
+
+// IAM-10 (acceptance B-5, 06.11): past its items the Organization API
+// answers empty pages, each with a new token. org_projects read them to
+// the limit of pages and failed; an empty page is the end of its list.
+func TestOrgProjects_EmptyPagesWithATokenEndTheList(t *testing.T) {
+	calls := 0
+	f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Host+r.URL.Path != "organization.api.cloud.ru/v3/projects" {
+			return false
+		}
+		calls++
+		tok := r.URL.Query().Get("page_token")
+		if tok == "" {
+			_, _ = io.WriteString(w, `{"projects":[{"id":"`+pagesID1+`","name":"one","status":"active"}],"next_page_token":"p"}`)
+			return true
+		}
+		_, _ = io.WriteString(w, `{"projects":[],"next_page_token":"`+tok+`p"}`)
+		return true
+	}}
+	r := apiFakeRegistry(t, f)
+	_, text, isErr := callNamed(t, r, "org_projects", nil)
+	if isErr || !strings.Contains(text, pagesID1) || calls != 2 {
+		t.Fatalf("org_projects with empty pages after the items: %d requests, %s", calls, text)
+	}
+}

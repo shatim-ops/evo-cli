@@ -129,3 +129,63 @@ func TestUpto_ReportsMore(t *testing.T) {
 		t.Fatalf("complete list: more = %v, err = %v", more, err)
 	}
 }
+
+// IAM-10 (acceptance B-5, 06.11): past its last item the Organization API
+// answers empty pages, each with a new non-empty token, and a reader of
+// All stopped only at the bound — evo login answered «too many pages» to
+// every person. AllUntilEmpty ends the list at a page without items, the
+// first one too (an empty list); All, the reader of every other list,
+// still follows the token.
+func TestAllUntilEmpty_AnEmptyPageEndsTheList(t *testing.T) {
+	read := func(pages []int) (items, calls int, err error) {
+		err = AllUntilEmpty("organization: customers", 10, func(token string) (string, int, error) {
+			n := 0
+			if calls < len(pages) {
+				n = pages[calls]
+			}
+			calls++
+			items += n
+			return "t" + strconv.Itoa(calls), n, nil
+		})
+		return
+	}
+	if items, calls, err := read([]int{1, 1}); err != nil || items != 2 || calls != 3 {
+		t.Errorf("items then empty pages: %d items after %d requests, err %v; want 2 after 3", items, calls, err)
+	}
+	if items, calls, err := read(nil); err != nil || items != 0 || calls != 1 {
+		t.Errorf("an empty first page: %d items after %d requests, err %v; want an empty list after 1", items, calls, err)
+	}
+
+	calls := 0
+	err := All("things", func(token string) (string, error) {
+		calls++
+		return "t" + strconv.Itoa(calls), nil
+	})
+	if err == nil || calls != MaxPages {
+		t.Errorf("All: %d requests, err %v — an empty page is not the end for every list", calls, err)
+	}
+}
+
+// IAM-10, «Риск» to the blocker of B-5 (axis 3): «an empty page ends the
+// list» is the Organization API's alone (AllUntilEmpty). Every other list
+// read by All goes on past an empty page that names a next token: its rest
+// is read, not cut with exit 0.
+func TestAll_EmptyPageMidListIsNotTheEnd(t *testing.T) {
+	var got []string
+	pages := map[string]struct {
+		items []string
+		next  string
+	}{
+		"":   {[]string{"a"}, "t1"},
+		"t1": {nil, "t2"}, // empty, the list goes on
+		"t2": {[]string{"b"}, ""},
+	}
+	err := All("things", func(token string) (string, error) {
+		p := pages[token]
+		got = append(got, p.items...)
+		return p.next, nil
+	})
+	if err != nil || strings.Join(got, ",") != "a,b" {
+		t.Fatalf("got %q, err %v; want a,b — All stopped at the empty page and cut the list", got, err)
+	}
+}
