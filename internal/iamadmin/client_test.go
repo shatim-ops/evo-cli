@@ -242,3 +242,21 @@ func TestAccessKeys_NoSecret(t *testing.T) {
 		t.Errorf("%d requests for refused ids", len(w.asked))
 	}
 }
+
+// Audit of 06.11 (B-5, 2 of 2): IAM read «resource_id=P+AND+subject_id=S»
+// with «+» as itself, not a space, and refused it — «invalid filter
+// format: "+subject_id=…+"». The spaces of a filter of two or more parts
+// go as %20, which every server reads as a space; the raw query is what
+// is checked, not its decoding by Go.
+func TestPermissions_FilterSpacesAreNotPlus(t *testing.T) {
+	w := &world{pages: 1}
+	if _, err := w.client(t).Permissions(context.Background(), project, saID); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range w.asked {
+		raw := r.URL.RawQuery
+		if strings.Contains(raw, "+") || !strings.Contains(raw, "filter=resource_id%3D"+project+"%20AND%20subject_id%3D"+saID) {
+			t.Errorf("raw query %q: the spaces of the filter are not %%20", raw)
+		}
+	}
+}
