@@ -155,10 +155,16 @@ func consentPage(s *session) page {
 	if pre < 0 && s.choice.Preselect != "" && s.preselectDenied() {
 		d.PreselectNote = projectNoRight(s.choice.PreselectEnv)
 	}
-	// Picked beforehand: the project of the profile or the variable, or
-	// the one --project leaves; otherwise none — the person picks it
-	// («Риск», conclusion 34.3: no first project by default).
-	checked := false
+	// Picked beforehand: the project of the profile or the variable, the
+	// one --project leaves, or the only one to choose; otherwise none — the
+	// person picks it («Риск», conclusion 34.3: no first project by
+	// default when the folded list hides the others).
+	checked, allowed := false, 0
+	for _, p := range s.projects {
+		if p.Allowed {
+			allowed++
+		}
+	}
 	for i, p := range s.projects {
 		cp := consentProject{HTMLID: fmt.Sprintf("p%d", i), ID: p.ID, Name: p.Name, OrgName: p.CustomerName, Allowed: p.Allowed}
 		if i == 0 || p.Customer != s.projects[i-1].Customer {
@@ -170,7 +176,7 @@ func consentPage(s *session) page {
 			if s.choice.PreselectEnv {
 				cp.Source = tEnvProjectPicked()
 			}
-		case pre < 0 && s.choice.Project != "" && p.Allowed && !checked:
+		case pre < 0 && (s.choice.Project != "" || allowed == 1) && p.Allowed && !checked:
 			cp.Checked, checked = true, true
 		}
 		d.Projects = append(d.Projects, cp)

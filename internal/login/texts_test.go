@@ -5,6 +5,7 @@
 package login
 
 import (
+	"errors"
 	"os"
 	"regexp"
 	"strings"
@@ -251,5 +252,40 @@ func TestConsentPage_OneListByOrganization(t *testing.T) {
 	// option, and the list is required.
 	if !strings.Contains(page, `<option id="p-none" value="" selected>`+tChooseProject()) || strings.Contains(page, `" selected>alpha`) {
 		t.Errorf("a project is picked by default")
+	}
+}
+
+// «Риск», conclusion 34.3 (06.11): with one project to choose, it is
+// chosen; with two or more and nothing picked beforehand, none is.
+func TestConsentPage_OneAllowedProjectIsChosen(t *testing.T) {
+	render := func(ps []project) string {
+		var b strings.Builder
+		p := consentPage(&session{cfg: Config{Now: time.Now}, projects: ps})
+		if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	one := render([]project{{ID: "a", Name: "alpha", Allowed: true}, {ID: "b", Name: "beta"}})
+	if !strings.Contains(one, `<option id="p0" value="a" selected>`) || strings.Contains(one, `id="p-none"`) {
+		t.Errorf("the one project to choose is not chosen")
+	}
+	two := render([]project{{ID: "a", Name: "alpha", Allowed: true}, {ID: "b", Name: "beta", Allowed: true}})
+	if strings.Contains(two, `" selected>alpha`) || !strings.Contains(two, `id="p-none"`) {
+		t.Errorf("of two projects, one is chosen by default")
+	}
+}
+
+// The pages of the end have their status as the heading, not the
+// consent's «… requests access» (plan 1.8, #1084).
+func TestPages_EndHeadingIsTheStatus(t *testing.T) {
+	for _, p := range []page{cancelledPage(), errorPage(errors.New("x")), donePage(Result{Account: "evo", KeyID: "k"})} {
+		var b strings.Builder
+		if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(b.String(), tHeading()) || strings.Count(b.String(), "<h1") != 1 {
+			t.Errorf("%s: the heading is not the page's status", p.name)
+		}
 	}
 }
