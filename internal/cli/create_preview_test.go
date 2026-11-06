@@ -7,6 +7,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -218,6 +219,10 @@ func TestVMCreatePreview_English(t *testing.T) {
 // TestVMCreate_NoZoneRefusedBeforeConsent.)
 func TestVMCreatePreview_NoCloudOmitsUnknown(t *testing.T) {
 	russian(t)
+	// The cloud refuses a call without a key (401), as Cloud.ru does: the
+	// test passed only while the real compute.api.cloud.ru answered so
+	// (noNetwork).
+	installContractTransport(t, http.StatusUnauthorized, `{"code":"UNAUTHENTICATED","message":"no credentials"}`)
 	t.Setenv("CLOUDRU_PROJECT_ID", pvProject)
 	t.Setenv("CLOUDRU_REGION", pvZone)
 	t.Setenv("CLOUDRU_IMAGE_ID", pvImage)
