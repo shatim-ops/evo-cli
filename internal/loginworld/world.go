@@ -103,9 +103,10 @@ type Variant struct {
 	PermForbidden bool   // permissions: 403
 	RoleCollision bool   // POST permissions by roleName: 400, by roleId: created
 	AccountLimit  bool   // the project has 10 service accounts, and IAM refuses one more
-	// OtherAccounts: the project has this many accounts of others, and IAM
-	// still creates one more (acceptance C2.1, 06.11: 20, then 18 — no
-	// limit of 10 on the platform).
+	// OtherAccounts: the project already has this many service accounts of
+	// other people, and IAM still creates one more (acceptance B-5, 06.11:
+	// a project of 20 accounts on the platform; the limit of 10 is no part
+	// of the specification, #563).
 	OtherAccounts int
 	KeyLimit      bool // the account has 50 keys
 	FailAt        Step // the write of this step answers 500

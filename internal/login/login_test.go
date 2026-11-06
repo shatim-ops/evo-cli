@@ -250,8 +250,11 @@ func TestLogin_Variants(t *testing.T) {
 		{"403 on permissions", loginworld.Variant{PermForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"403 on the account", loginworld.Variant{AccountForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"role name collision", loginworld.Variant{RoleCollision: true}, "", 1, 1, []string{"GET /api/v1/roles"}},
-		// No limit of IAM is known (acceptance C2.1): IAM's refusal at the
-		// write is the answer, and what this login made is undone (R-44).
+		// Acceptance B-5, 06.11: a project of 20 accounts, where IAM creates
+		// one more; evo refused before any write by a limit of its own.
+		{"many accounts, IAM creates one more", loginworld.Variant{OtherAccounts: 20}, "", 1, 1, []string{"POST /api/v2/serviceAccounts", "POST /api/v3/permissions"}},
+		// No limit of IAM is known: IAM's refusal at the write is the
+		// answer, and what this login made is undone (R-44, R-55).
 		{"account limit", loginworld.Variant{AccountLimit: true}, clierrors.CodeAPIError, 0, 0, []string{"POST /api/v2/serviceAccounts"}},
 		{"key limit", loginworld.Variant{KeyLimit: true}, clierrors.CodeAPIError, 1, 0, []string{"POST /api/v3/permissions", "DELETE /api/v3/permissions/"}},
 		{"broken at the account", loginworld.Variant{FailAt: loginworld.StepAccount}, clierrors.CodeAPIError, 0, 0, nil},
@@ -686,18 +689,5 @@ func TestLogin_NoCustomersFirstPageWithToken(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("/v3/customers read %d times; its empty first page ends the list", n)
-	}
-}
-
-// Acceptance C2.1 (06.11, a defect of 1.8): evo login refused a project of
-// ten or more service accounts — «the limit of service accounts (20)» —
-// before any write, while IAM created the account there (20, then 18
-// accounts live). No limit of IAM is known: the login asks IAM, and its
-// refusal is the answer.
-func TestLogin_ManyAccountsInTheProjectIsNoLimit(t *testing.T) {
-	w := newWorld(t, loginworld.Variant{OtherAccounts: 20})
-	r := login(t, w, &browser{}, Choice{}, nil, nil)
-	if r.err != nil || len(r.saved) != 1 {
-		t.Fatalf("a project of 20 accounts: err %v; saved %d\n%s", r.err, len(r.saved), r.out)
 	}
 }
