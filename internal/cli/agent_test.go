@@ -7,6 +7,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"io/fs"
 	"os"
@@ -883,8 +884,8 @@ func TestAgentSkill_NarrowsBigAnswers(t *testing.T) {
 // Claude Desktop (release plan 1.8, «Подключение агента одной вставкой»):
 // the desktop app does not read the shell's PATH, so the entry names evo by
 // its full path, and the file is the user's on macOS and Windows; on Linux,
-// where there is no build, the entry is printed and nothing is written. A
-// repeat writes nothing new.
+// where there is no build, setup is refused before any write (--print still
+// prints). A repeat writes nothing new.
 func TestAgentSetup_ClaudeDesktop(t *testing.T) {
 	c := mustClient(t, "claude-desktop")
 	setupAgent(t)
@@ -915,9 +916,12 @@ func TestAgentSetup_ClaudeDesktop(t *testing.T) {
 
 	home := setupAgent(t)
 	hostOS = "linux"
-	code, stdout, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-desktop", "--yes")
-	if code != 0 || !strings.Contains(stdout, `"mcpServers"`) {
-		t.Fatalf("linux: exit %d, want the entry printed: %s %s", code, stdout, stderr)
+	code, _, stderr = runCLI(t, "", "agent", "setup", "--client", "claude-desktop", "--yes")
+	if code != 1 || !strings.Contains(stderr, "--print json") {
+		t.Errorf("linux: exit %d, want USAGE before any write, naming --print json: %s", code, stderr)
+	}
+	if code, stdout, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-desktop", "--print", "json"); code != 0 || !strings.Contains(stdout, `"mcpServers"`) {
+		t.Errorf("linux --print json: exit %d: %s %s", code, stdout, stderr)
 	}
 	_ = filepath.WalkDir(home, func(p string, d fs.DirEntry, err error) error {
 		if err == nil && d.Name() == "claude_desktop_config.json" {
@@ -925,4 +929,39 @@ func TestAgentSetup_ClaudeDesktop(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// R-53 («Риск», conclusion 31): the entry names evo by the path it was
+// started by, a link unresolved — Homebrew keeps /opt/homebrew/bin/evo and
+// replaces the Cellar directory it points to on an update. A path that
+// cannot be known refuses before anything is written.
+func TestAgentSetup_FullPathKeepsTheLink(t *testing.T) {
+	setupAgent(t)
+	dir := t.TempDir()
+	target := filepath.Join(dir, "Cellar", "evo", "1.8.0", "bin", "evo")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	putFile(t, target, []byte("evo"), 0o755)
+	link := filepath.Join(dir, "bin", "evo")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	executable = func() (string, error) { return link, nil }
+	c := mustClient(t, "claude-desktop")
+	if got := c.command(); got != link {
+		t.Errorf("command %q, want the link %q: the resolved path dies on an update", got, link)
+	}
+
+	executable = func() (string, error) { return "", errors.New("no /proc") }
+	path := clientPath(t, c, scopeUser)
+	if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-desktop", "--yes"); code != 1 || !strings.Contains(stderr, "--print json") {
+		t.Errorf("unknown path: exit %d, want USAGE: %s", code, stderr)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Errorf("unknown path: %s written with a bare evo", path)
+	}
 }

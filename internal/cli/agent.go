@@ -266,6 +266,16 @@ func (o agentSetupOptions) server(c agentClient) (agentServer, error) {
 		return agentServer{}, clerrors.Wrap(clerrors.CodeUsage, i18n.Tf("--toolsets: %v", "--toolsets: %v", err),
 			i18n.T("Groups are listed by 'evo tools list'.", "Группы — в выводе 'evo tools list'."), err)
 	}
+	if c.fullPath {
+		// The entry names this evo by its path: without it there is
+		// nothing true to write.
+		if _, err := executable(); err != nil {
+			return agentServer{}, clerrors.Wrap(clerrors.CodeUsage,
+				i18n.Tf("the path of this evo is unknown (%v); %s needs it", "путь к этому evo неизвестен (%v); он нужен %s", err, c.title),
+				i18n.T("Print the entry with --print json and put the full path of evo in \"command\".",
+					"Напечатайте запись (--print json) и укажите полный путь к evo в \"command\"."), err)
+		}
+	}
 	s := agentServer{toolsets: groups, readOnly: c.readOnly}
 	if o.readOnlySet {
 		s.readOnly = o.readOnly
@@ -385,6 +395,13 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 	}
 	printer := cmdPrinter(cmd)
 	format := o.print
+	if format == "" && len(c.config) > 0 && len(c.files()) == 0 {
+		// A client with a file, but no build for this system: no file
+		// to write and no client to read the entry.
+		return clerrors.New(clerrors.CodeUsage,
+			i18n.Tf("%s has no build for %s", "у %s нет сборки для %s", c.title, hostOS),
+			i18n.Tf("%s runs on %s. To see the entry anyway: --print json.", "%s работает на %s. Посмотреть запись всё равно: --print json.", c.title, c.systemNames()))
+	}
 	if format == "" && len(c.files()) == 0 {
 		format = string(c.format) // the client's file is not on this machine
 	}

@@ -127,9 +127,9 @@ type agentClient struct {
 	// a remote server is connected in the client's settings (--http is
 	// refused before anything is written).
 	stdioOnly bool
-	// systems are the operating systems (GOOS) the client's file is on;
-	// none: every one. Elsewhere the entry is printed, as for a client
-	// without a file.
+	// systems are the operating systems (GOOS) the client has a build
+	// for; none: every one. Elsewhere setup is refused before anything is
+	// written, and --print still prints the entry.
 	systems []string
 
 	// readOnly: --read-only by default (В-4) — the client is an agent
@@ -200,8 +200,8 @@ var agentClients = []agentClient{
 		fullPath:  true,
 		stdioOnly: true,
 		systems:   []string{"darwin", "windows"},
-		noteEN:    "Claude Desktop starts evo by the full path written here: after moving or reinstalling evo, run this again. Quit Claude Desktop fully and start it again to load the change.",
-		noteRU:    "Claude Desktop запускает evo по записанному здесь полному пути: после переноса или переустановки evo выполните команду снова. Полностью закройте Claude Desktop и откройте снова, чтобы он прочитал изменение.",
+		noteEN:    "Claude Desktop starts evo by the full path written here: after moving evo elsewhere, run this again. Quit Claude Desktop fully and start it again to load the change.",
+		noteRU:    "Claude Desktop запускает evo по записанному здесь полному пути: после переноса evo в другое место выполните команду снова. Полностью закройте Claude Desktop и откройте снова, чтобы он прочитал изменение.",
 	},
 	{
 		// The path of the agent's mcp.json depends on where it runs (a VM,
@@ -292,20 +292,19 @@ const evoCommand = "evo"
 // executable is the path of this evo (a variable: the tests set it).
 var executable = os.Executable
 
-// command is what the client starts: this evo by its full path (fullPath,
-// its links resolved), else evo from the client's PATH.
+// command is what the client starts: this evo by the path it was started
+// by (fullPath), else evo from the client's PATH. A link is not resolved:
+// a package manager keeps the link and replaces what it points to on an
+// update (Homebrew: /opt/homebrew/bin/evo → Cellar/evo/<version>; «Риск»,
+// R-53). server refuses a client of fullPath when the path is unknown.
 func (c agentClient) command() string {
 	if !c.fullPath {
 		return evoCommand
 	}
-	p, err := executable()
-	if err != nil {
-		return evoCommand
+	if p, err := executable(); err == nil {
+		return p
 	}
-	if r, err := filepath.EvalSymlinks(p); err == nil {
-		p = r
-	}
-	return p
+	return evoCommand
 }
 
 // entry is the client's entry of the server. It holds no secret: the
