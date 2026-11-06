@@ -470,8 +470,8 @@ func TLogoutShort() string {
 func TLogoutLong() string {
 	return i18n.T(`Delete the access key evo login created for the profile, then the profile
 itself and its saved token. The service account and its role remain. If the
-profile's key was created by evo configure or in the Cloud.ru personal
-account, only the profile is deleted and the key remains in the cloud.`, `Удалить ключ доступа, который evo login создал для профиля, затем сам
+profile's key was created by evo configure or in the Cloud.ru console, only
+the profile is deleted and the key remains in the cloud.`, `Удалить ключ доступа, который evo login создал для профиля, затем сам
 профиль и сохраненный токен. Сервисный аккаунт и его роль остаются. Если
 ключ профиля создан через evo configure или в личном кабинете Cloud.ru,
 удаляется только профиль, а ключ остается в облаке.`)
