@@ -102,9 +102,16 @@ type Variant struct {
 	Perm          Perm   // the account evo exists and holds the role (step 15)
 	PermForbidden bool   // permissions: 403
 	RoleCollision bool   // POST permissions by roleName: 400, by roleId: created
-	AccountLimit  bool   // the project has 10 service accounts
-	KeyLimit      bool   // the account has 50 keys
-	FailAt        Step   // the write of this step answers 500
+	AccountLimit  bool   // the project has 10 service accounts, and IAM refuses one more
+	// OtherAccounts: the project has this many accounts of others, and IAM
+	// still creates one more (acceptance C2.1, 06.11: 20, then 18 — no
+	// limit of 10 on the platform).
+	OtherAccounts int
+	// OrgAccounts: this many accounts of the organization, which the list
+	// of the project's accounts shows too (Account.Org).
+	OrgAccounts int
+	KeyLimit    bool // the account has 50 keys
+	FailAt      Step // the write of this step answers 500
 	// AnyLoopbackPort takes a redirect_uri at any port of 127.0.0.1, not
 	// only the registered ones: the tests of evo listen on port 0, so that
 	// they share no fixed port with each other or the probe script.
@@ -125,6 +132,9 @@ type Variant struct {
 	// AccountForbidden: POST serviceAccounts answers 403 («Риск», R-49: a
 	// refusal of the platform at the first write is AUTH_FAILED).
 	AccountForbidden bool
+	// KeyForbidden: POST accessKeys answers 403 («Риск», R-55: a refusal
+	// of the platform at the key is AUTH_FAILED, as at the account).
+	KeyForbidden bool
 	// EmptyPagesWithToken: the lists of the Organization API answer their
 	// items with a page token, then empty pages, each with a new token —
 	// the list never says it ended (acceptance B-5, 06.11; IAM-10).
@@ -170,7 +180,15 @@ func (w *World) granted(action string) bool {
 }
 
 // Account, Permission and Key are the objects of the project.
-type Account struct{ ID, Name, Description string }
+type Account struct {
+	ID, Name, Description string
+	// Org: the account belongs to the organization, not to the project,
+	// and the list of the project's accounts shows it all the same
+	// (acceptance B-5, 06.11: 8 accounts in the project, evo counted 16,
+	// and 29 in another project; a hypothesis of those runs — the console
+	// filters them by «Тип аккаунта»).
+	Org bool
+}
 
 // Permission is a role binding of an account in the project.
 type Permission struct {
@@ -232,12 +250,15 @@ func New(t testing.TB, v Variant) *World {
 	w.srv = httptest.NewUnstartedServer(http.HandlerFunc(w.serve))
 	w.URL = "http://" + w.srv.Listener.Addr().String()
 	w.Issuer = w.URL + IssuerPath
-	n := 0
+	n := v.OtherAccounts
 	if v.AccountLimit {
 		n = 10
 	}
 	for i := 0; i < n; i++ {
 		w.addAccount(fmt.Sprintf("other-%d", i), "")
+	}
+	for i := 0; i < v.OrgAccounts; i++ {
+		w.addAccount(fmt.Sprintf("org-%d", i), "").Org = true
 	}
 	if v.AccountExists || v.Conflict409 || v.KeyLimit || v.Perm != PermNone {
 		a := w.addAccount("evo", "evo login, earlier")
@@ -623,7 +644,11 @@ func (w *World) administration(rw http.ResponseWriter, r *http.Request) {
 		list := []map[string]any{}
 		for _, a := range w.accounts {
 			if a.Name != "" && (name == "" || a.Name == name) {
-				list = append(list, map[string]any{"id": a.ID, "name": a.Name, "enabled": true})
+				target := map[string]string{"customerId": Customer, "projectId": Project}
+				if a.Org {
+					target["projectId"] = ""
+				}
+				list = append(list, map[string]any{"id": a.ID, "name": a.Name, "enabled": true, "target": target})
 			}
 		}
 		writeJSON(rw, 200, map[string]any{"serviceAccounts": list})
@@ -788,6 +813,9 @@ func (w *World) accessKeys(rw http.ResponseWriter, r *http.Request) {
 		switch {
 		case w.v.FailAt == StepKey:
 			fail(rw, 500, "internal")
+			return
+		case w.v.KeyForbidden:
+			fail(rw, 403, "forbidden")
 			return
 		case w.v.KeyLimit:
 			fail(rw, 400, "access key limit reached")
