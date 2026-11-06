@@ -34,6 +34,18 @@ func tSignedIn(login string) string {
 		login, product.PageName)
 }
 func tProject() string { return i18n.T("Project", "Проект") }
+
+// tPageUntil: after the wait the page's button meets a closed loopback.
+func tPageUntil(t time.Time) string {
+	clock := t.Local().Format("15:04")
+	return i18n.Tf("This page works until %s. Later, go back to the terminal and run evo login again",
+		"Страница действует до %s. Позже вернитесь в терминал и запустите evo login снова", clock)
+}
+
+// tChooseProject is the empty first option of the list of projects;
+// tFromList names the project where the browser cannot name the chosen one.
+func tChooseProject() string { return i18n.T("Choose a project", "Выберите проект") }
+func tFromList() string      { return i18n.T("from the list", "из списка") }
 func tEnvProjectPicked() string {
 	return i18n.T("Selected: the project from CLOUDRU_PROJECT_ID", "Выбран проект из CLOUDRU_PROJECT_ID")
 }
@@ -120,16 +132,12 @@ func tSumKey(until string) string {
 	return i18n.Tf("The access key will be valid until %s.", "Ключ доступа будет действовать до %s.", until)
 }
 
-// tSumStaysPage and tSumStaysTerm: whether the account is new is known
+// tSumStaysPage: whether the account is new is known
 // only after the page (step 12), so the role «expires in its term», not
 // «with the key» («Риск», conclusion 28.3).
 func tSumStaysPage() string {
 	return i18n.Tf("After you sign out of %s, the account remains and the role expires at the end of its term",
 		"После выхода из %s аккаунт останется, а роль истечет в свой срок", product.PageName)
-}
-func tSumStaysTerm() string {
-	return i18n.T("After you sign out (evo logout), the account remains and the role expires at the end of its term",
-		"После выхода (evo logout) аккаунт останется, а роль истечет в свой срок")
 }
 
 // tGrantInProject is the main button; the page puts the chosen project's
@@ -189,25 +197,21 @@ func tRevokeHow() string {
 
 func tCancelledTitle() string { return i18n.T("Cancelled", "Отменено") }
 func tCancelled() string {
-	return i18n.T("Nothing was created. To start over, sign in again. You can close this window",
-		"Ничего не создано. Чтобы начать заново, запустите вход еще раз. Это окно можно закрыть")
+	return i18n.T("Nothing was created. To start over, go back to the terminal and run evo login again. You can close this window",
+		"Ничего не создано. Чтобы начать заново, вернитесь в терминал и запустите evo login снова. Это окно можно закрыть")
 }
 func tNotComplete() string {
 	return i18n.T("Access could not be granted", "Не удалось выдать доступ")
 }
 func tDetails(reason string, code int) string {
-	return i18n.Tf("See the details (%s, code %d) where you started the sign-in. To try again, sign in again. You can close this window",
-		"Подробности (%s, код %d) — там, где запускали вход. Чтобы повторить, запустите вход еще раз. Это окно можно закрыть", reason, code)
+	return i18n.Tf("See the details (%s, code %d) in the terminal where you started the sign-in. To try again, go back to the terminal and run evo login again. You can close this window",
+		"Подробности (%s, код %d) — в терминале, где запускали вход. Чтобы повторить, вернитесь в терминал и запустите evo login снова. Это окно можно закрыть", reason, code)
 }
 func tForeign() string {
 	return i18n.T("This request does not belong to the current sign-in. Sign in again", "Запрос не относится к текущему входу. Запустите вход еще раз")
 }
 
 // 4. The terminal.
-
-func tChoose() string {
-	return i18n.T("Choose an option (number)", "Выберите вариант (номер)")
-}
 
 // tAgentWarnLine and tAgentRevokeLine: the warning of a key for an agent in
 // the terminal, once a login; the exit is the command there (conclusion
@@ -223,23 +227,6 @@ func tAgentWarnLine(until string) string {
 func tAgentRevokeLine() string {
 	return i18n.T("To revoke earlier: evo logout deletes the key; the role is removed in the Cloud.ru console",
 		"Отозвать раньше: evo logout удалит ключ, роль снимается в личном кабинете Cloud.ru")
-}
-func tTermQuestion() string {
-	return i18n.T("Key validity, days (7, 30, 90)", "Срок ключа, дней (7, 30, 90)")
-}
-func tWhatWillBeDone() string {
-	return i18n.T("What will be done:", "Что будет сделано:")
-}
-func tRowAccount() string { return i18n.T("account", "аккаунт") }
-func tRowRole() string    { return i18n.T("role", "роль") }
-func tRowKey() string     { return i18n.T("key", "ключ") }
-func tRowProfile() string { return i18n.T("profile", "профиль") }
-func tKeyDays(days int, term time.Time) string {
-	return i18n.Tf("%d days, until %s", "%d дней, до %s", days, day(term))
-}
-func tGrantOnPage() string {
-	return i18n.T("You choose the project on the page that opens after sign-in. Access is granted only by the “Grant access” button on that page.",
-		"Проект выбирается на странице, которая откроется после входа. Доступ выдается только кнопкой «Выдать доступ» на этой странице.")
 }
 
 // tOpenPage is said once before the browser (D34, variant A).
@@ -301,6 +288,12 @@ func TResultReused(account, previousKey string) string {
 }
 func TResultCheck(profile string) string {
 	return i18n.Tf("Check: evo whoami --profile %s", "Проверка: evo whoami --profile %s", profile)
+}
+
+// TResultForAgent: after a key for «Мне», the way to a key for an agent
+// («Риск», addition to conclusion 34).
+func TResultForAgent() string {
+	return i18n.T("A key for an agent: evo login --for agent", "Ключ агенту: evo login --for agent")
 }
 
 // 5. The errors: the message and the hint of the terminal and JSON.
@@ -504,8 +497,8 @@ func TLoginLong() string {
 	return i18n.T(`Sign in to Cloud.ru in a browser and grant access on the Evolution CMCP page
 that evo opens on this computer: the project, who the key is for (you:
 account evo, the current profile; an agent: account evo-agent, profile
-“agent”) and its validity (7, 30 or 90 days). In a terminal, evo asks who
-the key is for and its validity before opening the browser. Access is
+“agent”) and its validity (7, 30 or 90 days); by default, you and 30 days. The
+terminal asks nothing: the choice is made on the page. Access is
 granted only by the “Grant access” button on the page; there is no --yes
 flag. With your rights, evo creates a service account or reuses the
 existing one, grants it the role “Project administrator” until the key
@@ -517,8 +510,8 @@ names its step and HTTP status. Sign-in does not work over SSH or in a
 container. To undo: evo logout.`, `Войти в Cloud.ru через браузер и выдать доступ на странице Evolution CMCP,
 которую evo открывает на этом компьютере: проект, для кого ключ (вам —
 аккаунт evo, текущий профиль; агенту — аккаунт evo-agent, профиль «agent»)
-и срок (7, 30 или 90 дней). Если есть терминал, он до браузера спрашивает,
-кому ключ и на какой срок. Доступ выдается только кнопкой «Выдать доступ»
+и срок (7, 30 или 90 дней); по умолчанию — вам и 30 дней. В терминале evo
+ничего не спрашивает: выбор делается на странице. Доступ выдается только кнопкой «Выдать доступ»
 на странице, флага --yes нет. С вашими правами evo создает сервисный
 аккаунт или использует уже созданный, выдает ему роль «Администратор
 проекта» до конца срока ключа, создает ключ и записывает его в профиль.

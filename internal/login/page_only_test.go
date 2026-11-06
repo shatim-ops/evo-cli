@@ -32,35 +32,30 @@ func checkedRadio(page, id string) bool {
 // page's, where «Мне» and 30 days are the default, and a key for an agent
 // is only an explicit choice (R-47, R-54). The flags stay.
 func TestLogin_TerminalAsksNothingThePageChooses(t *testing.T) {
-	for _, c := range []struct {
-		name    string
-		answers []string // nil: no terminal; else the answers a terminal has, if asked
-	}{
-		{"a terminal", []string{"1", "30"}},
-		{"no terminal", nil},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			w := newWorld(t, loginworld.Variant{})
-			r := loginWith(t, w, &browser{}, Choice{}, nil, nil, c.answers)
-			if r.err != nil {
-				t.Fatalf("login: %v\n%s", r.err, r.out)
-			}
-			for _, q := range []string{tForWhom(), tTermQuestion()} {
-				if strings.Contains(r.out, q) {
-					t.Errorf("the terminal asks %q: the choice is the page's alone", q)
-				}
-			}
-			if !checkedRadio(r.b.consent, "a-me") || checkedRadio(r.b.consent, "a-agent") {
-				t.Errorf("the page does not offer «Мне» chosen: a key for an agent is only an explicit choice (R-47)")
-			}
-			if !checkedRadio(r.b.consent, "t-30") {
-				t.Errorf("the page does not offer 30 days chosen")
-			}
-		})
+	prev := i18n.Lang()
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	w := newWorld(t, loginworld.Variant{})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil {
+		t.Fatalf("login: %v\n%s", r.err, r.out)
+	}
+	// evo login has no way to ask in the terminal any more (Config.Ask is
+	// gone): the questions of the former wizard are not in its output.
+	for _, q := range []string{"Кому ключ", "Срок ключа, дней"} {
+		if strings.Contains(r.out, q) {
+			t.Errorf("the terminal asks %q: the choice is the page's alone", q)
+		}
+	}
+	if !checkedRadio(r.b.consent, "a-me") || checkedRadio(r.b.consent, "a-agent") {
+		t.Errorf("the page does not offer «Мне» chosen: a key for an agent is only an explicit choice (R-47)")
+	}
+	if !checkedRadio(r.b.consent, "t-30") {
+		t.Errorf("the page does not offer 30 days chosen")
 	}
 	// The flags stay: --for agent --ttl 7d choose on the page as before.
-	w := newWorld(t, loginworld.Variant{})
-	r := loginWith(t, w, &browser{}, Choice{For: ForAgent, Days: 7}, nil, nil, nil)
+	w = newWorld(t, loginworld.Variant{})
+	r = login(t, w, &browser{}, Choice{For: ForAgent, Days: 7}, nil, nil)
 	if r.err != nil {
 		t.Fatalf("login with the flags: %v\n%s", r.err, r.out)
 	}

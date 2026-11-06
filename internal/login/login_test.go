@@ -50,6 +50,18 @@ type browser struct {
 var stateField = regexp.MustCompile(`name="state" value="([^"]+)"`)
 var consentField = regexp.MustCompile(`name="consent" value="([^"]+)"`)
 var checkedProject = regexp.MustCompile(`<option id="p\d+" value="([^"]+)" selected>`)
+var firstProject = regexp.MustCompile(`<option id="p\d+" value="([^"]+)">`)
+
+// pickProject is the project a person sends from the consent page: the one
+// picked beforehand, or the first the list lets choose.
+func pickProject(page string) string {
+	for _, re := range []*regexp.Regexp{checkedProject, firstProject} {
+		if p := re.FindStringSubmatch(page); p != nil {
+			return p[1]
+		}
+	}
+	return ""
+}
 
 func (b *browser) open(authURL string) error {
 	go func() {
@@ -92,8 +104,8 @@ func (b *browser) open(authURL string) error {
 		if t := consentField.FindStringSubmatch(b.page); t != nil {
 			f.Set("consent", t[1])
 		}
-		if p := checkedProject.FindStringSubmatch(b.page); p != nil {
-			f.Set("project", p[1])
+		if p := pickProject(b.page); p != "" {
+			f.Set("project", p)
 		}
 		if b.form != nil {
 			b.form(f)
@@ -170,13 +182,8 @@ func (m *memStore) Save(a Audience, s Saved) error {
 	return nil
 }
 
+// login runs evo login on the world with the browser b.
 func login(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previous, saveErr error) run {
-	t.Helper()
-	return loginWith(t, w, b, ch, prev, saveErr, nil)
-}
-
-// loginWith is login with the terminal's answers: nil is no terminal.
-func loginWith(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previous, saveErr error, answers []string) run {
 	t.Helper()
 	b.t, b.w, b.ended = t, w, make(chan struct{})
 	var out bytes.Buffer
@@ -184,19 +191,6 @@ func loginWith(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *P
 	st := &memStore{prev: prev, saveErr: saveErr}
 	cfg := worldConfig(w, &out, b.open)
 	cfg.Tell = func(line string) { fmt.Fprintln(&out, line) }
-	if answers != nil {
-		cfg.Ask = func(_ context.Context, prompt string) (string, error) {
-			fmt.Fprint(&out, prompt)
-			if len(answers) == 0 {
-				t.Errorf("an unexpected question: %q", prompt)
-				return "", io.EOF
-			}
-			a := answers[0]
-			answers = answers[1:]
-			fmt.Fprintln(&out, a)
-			return a, nil
-		}
-	}
 	res, err := Login(context.Background(), cfg, ch, st)
 	r.saved, r.auds = st.saved, st.auds
 	r.res, r.err, r.out = res, err, out.String()
@@ -498,33 +492,31 @@ func detailsOf(ce *clierrors.CLIError) map[string]any {
 	return ce.Details
 }
 
-// A terminal only gathers the choice before the browser: the summary
-// first, then the address; the page offers the choice and grants.
-func TestLogin_TerminalGathersThePageGrants(t *testing.T) {
+// The page grants what it chooses: the terminal asks nothing, and the
+// consent is the page's button, not a [y/N] (the owner's decision of 06.11).
+func TestLogin_PageGrantsWhatItChooses(t *testing.T) {
 	w := newWorld(t, loginworld.Variant{})
 	b := &browser{form: func(f url.Values) { f.Set("audience", "agent"); f.Set("ttl", "90") }}
-	r := loginWith(t, w, b, Choice{}, nil, nil, []string{"", "90"})
+	r := login(t, w, b, Choice{}, nil, nil)
 	if r.err != nil || len(r.saved) != 1 || r.res.Profile != "agent" {
 		t.Fatalf("err %v; saved %d; result %+v\n%s", r.err, len(r.saved), r.res, r.out)
-	}
-	if sum, open := strings.Index(r.out, tWhatWillBeDone()), strings.Index(r.out, tOpen()); sum < 0 || open < sum {
-		t.Errorf("the summary is not before the address:\n%s", r.out)
 	}
 	if strings.Contains(r.out, "[y/N]") {
 		t.Errorf("the terminal asks for the consent:\n%s", r.out)
 	}
 }
 
-// The page offers the terminal's choice checked.
-func TestLogin_PageOffersTheTerminalChoice(t *testing.T) {
+// The page offers the flags' choice checked («Риск», addition to
+// conclusion 34: the default «Мне» does not override --for).
+func TestLogin_PageOffersTheFlagsChoice(t *testing.T) {
 	w := newWorld(t, loginworld.Variant{})
 	b := &browser{cancel: true}
-	r := loginWith(t, w, b, Choice{}, nil, nil, []string{"2", "90"})
+	r := login(t, w, b, Choice{For: ForAgent, Days: 90}, nil, nil)
 	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 {
 		t.Fatalf("err %v; accounts %+v", r.err, w.Accounts())
 	}
 	if !strings.Contains(b.consent, `value="agent" checked`) || !strings.Contains(b.consent, `value="90" checked`) {
-		t.Errorf("the page does not offer the terminal's choice")
+		t.Errorf("the page does not offer the flags' choice")
 	}
 }
 

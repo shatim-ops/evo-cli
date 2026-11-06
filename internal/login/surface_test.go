@@ -224,8 +224,8 @@ func surfaceBrowse(t *testing.T, c *http.Client, authURL, action string, probe b
 	if tok := consentField.FindStringSubmatch(page); tok != nil {
 		f.Set("consent", tok[1])
 	}
-	if p := checkedProject.FindStringSubmatch(page); p != nil {
-		f.Set("project", p[1])
+	if p := pickProject(page); p != "" {
+		f.Set("project", p)
 	}
 	resp, err = c.PostForm(base+action, f)
 	keep("the "+action+" page", resp, err)

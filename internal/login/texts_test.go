@@ -80,8 +80,9 @@ func TestConsentPage_Preselect(t *testing.T) {
 	}
 	for env, note := range map[bool]string{true: tEnvProjectNoRight(), false: tProfileProjectNoRight()} {
 		page = render("c", env)
-		if m := checked.FindStringSubmatch(page); m == nil || m[1] != "a" || !strings.Contains(page, note) {
-			t.Errorf("a project without the right (env %v): checked %v, or no note %q", env, m, note)
+		// «Риск», conclusion 34.3: no other project picked in its place.
+		if m := checked.FindStringSubmatch(page); m != nil || !strings.Contains(page, `<option id="p-none" value="" selected>`+tChooseProject()) || !strings.Contains(page, note) {
+			t.Errorf("a project without the right (env %v): checked %v instead of none, or no note %q", env, m, note)
 		}
 	}
 	if page = render("", true); strings.Contains(page, tEnvProjectPicked()) {
@@ -110,7 +111,7 @@ func TestPages_MacketV13(t *testing.T) {
 	if !strings.Contains(page, tSignedIn("ivan@example.com")) {
 		t.Errorf("no e-mail")
 	}
-	if !strings.Contains(page, tAgentWarnTitle()) || !strings.Contains(page, "#a-agent:checked ~ .cols .warn { display: flex; }") {
+	if !strings.Contains(page, tAgentWarnTitle()) || !strings.Contains(page, ".sheet:has(#a-agent:checked) .warn { display: flex; }") {
 		t.Errorf("no warning for an agent")
 	}
 	done := render(donePage(Result{Account: "evo", ProjectName: "alpha", CustomerName: "Radar", KeyID: "k", KeyExpiresAt: time.Now()}))
@@ -223,8 +224,7 @@ func TestEnglishTexts_CloudRuConsole(t *testing.T) {
 // Plan 1.8, «B-5, дефект CJM страницы согласия» (the owner, 06.11): the
 // projects are one list grouped by the organization — two lists without a
 // script could show one organization and grant a project of another
-// (R-47); the hidden radios are fixed, so a click on a label at the bottom
-// of the form does not scroll the page to them at its top.
+// (R-47); with nothing picked beforehand, none is.
 func TestConsentPage_OneListByOrganization(t *testing.T) {
 	s := &session{cfg: Config{Now: time.Now}, projects: []project{
 		{ID: "a", Name: "alpha", Customer: "c1", CustomerName: "Org One", Allowed: true},
@@ -247,7 +247,9 @@ func TestConsentPage_OneListByOrganization(t *testing.T) {
 	if !strings.Contains(page, `<option id="p1" value="b" disabled>beta — `+tNoRightMark()) {
 		t.Errorf("a project without the right is not disabled with its mark")
 	}
-	if !regexp.MustCompile(`input\[type=radio\] \{ position: fixed;`).MatchString(page) {
-		t.Errorf("the hidden radios are not fixed: a label's focus scrolls the page to them")
+	// «Риск», conclusion 34.3: nothing picked beforehand — an empty first
+	// option, and the list is required.
+	if !strings.Contains(page, `<option id="p-none" value="" selected>`+tChooseProject()) || strings.Contains(page, `" selected>alpha`) {
+		t.Errorf("a project is picked by default")
 	}
 }

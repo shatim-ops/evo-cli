@@ -82,9 +82,6 @@ func newLoginCmd() *cobra.Command {
 				cfg.Open = nil
 			}
 			cfg.Tell = loginTell(cmd)
-			if !flagJSON && stdinIsTerminal() {
-				cfg.Ask = newConsole(os.Stdin, cmd.ErrOrStderr(), true).ask
-			}
 			res, err := login.Login(cmd.Context(), cfg, choice, store)
 			if err != nil {
 				return err
@@ -116,6 +113,9 @@ func newLoginCmd() *cobra.Command {
 				printer.Hint(login.TResultReused(res.Account, prev))
 			}
 			printer.Hint(login.TResultCheck(res.Profile))
+			if res.For == login.ForMe {
+				printer.Hint(login.TResultForAgent())
+			}
 			if res.PreviousNote != "" {
 				printer.Warning(res.PreviousNote)
 			}
