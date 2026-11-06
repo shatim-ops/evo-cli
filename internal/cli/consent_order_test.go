@@ -34,11 +34,11 @@ var lateRefusals = map[string]string{}
 
 // alreadyAsks are the repeats of a change the world has (consentWorld.
 // alreadyFor) known to ask for consent or to write: "tool: world: <name>"
-// → the line of the release plan that fixes it. It only shrinks. Closes by
-// 1.8 (release plan 1.8, «повтор изменения, которое уже есть, — не
-// вопрос»).
+// → why, and what closes it. It only shrinks. Closes by 2.0 (owner's
+// decision 06.11, variant Г: not asking is a breaking change — exit 3 → 0
+// — and waits for the major; release plan 1.8).
 var alreadyAsks = map[string]string{
-	"open_ports: world: ports open already": "every port open already: the preview says already_open and asks for consent to nothing — development, release plan 1.8",
+	"open_ports: world: ports open already": "every port open already: asks for consent to nothing (exit 3); in 1.8 its preview says so (variant Г), the answer without the question is breaking — 2.0",
 }
 
 // jobStarts answer a refused write as a success by design: the call starts
