@@ -72,21 +72,12 @@ var deleteHintScope = []string{"internal/tools", "internal/engine", "internal/de
 
 // deleteHintMisses are the texts of deleteHintScope that offer a delete as
 // the next step and do not leave it to the person: "file<TAB>function<TAB>
-// tool" → why it is a miss. It only shrinks. Closes by 1.8 (release plan
-// 1.7, block D; owner's decision 03.11, #732; the lines below came with
-// FB170-3, Fable audit 1.7, when the scan read the bodies of cases and the
-// concatenations — the texts are the development's, owner's decision
-// 05.11, #889: «все 8 — в 1.8»).
-var deleteHintMisses = map[string]string{
-	"internal/deployplan/apply.go\tApplyWithTimeout\tdestroy":           "a stopped VM adopted, a create call failed: «delete it with destroy» as the next step",
-	"internal/deployplan/apply.go\tfinishApply\tdestroy":                "deploy_apply interrupted, a VM in error: «delete it with destroy», «destroy it and retry»",
-	"internal/engine/deploy.go\tinstallDiagnosis\tdestroy":              "Docker cannot be installed: «Delete the VM ('evo destroy')», «destroy and deploy in another zone»",
-	"internal/engine/deploy.go\tprepareDocker\tdestroy":                 "no DNS inside the VM: «if it repeats, destroy and deploy in another zone»",
-	"internal/engine/status.go\tcloudCell\tdestroy":                     "a stale record: «→ evo destroy», where the note next to it asks the person",
-	"internal/tools/tools.go\tplanDestroyTargeted\trelease_floating_ip": "a floating IP destroy kept or failed to release: «release it with release_floating_ip»",
-	"internal/tools/tools.go\tprovisionVM\tdestroy":                     "provision failed or interrupted after the create: «check it with vm_get, delete it with destroy»",
-	"internal/tools/tools_deploy.go\thandleDeployApply\tdestroy":        "state not saved, a VM in error, timeout, a stopped VM: «delete it with destroy» as the next step",
-}
+// tool" → why it is a miss. It only shrinks, and it is empty since 1.8
+// (release plan 1.7, block D; owner's decision 03.11, #732): the eight
+// lines FB170-3 (Fable audit 1.7) brought when the scan read the bodies
+// of cases and the concatenations were closed by their texts (owner's
+// decision 05.11, #889: «все 8 — в 1.8»).
+var deleteHintMisses = map[string]string{}
 
 // Release plan 1.7, block D (owner's decision 03.11, #732: «убери за собой»
 // is not in the core; the agent creates, the person decides what to

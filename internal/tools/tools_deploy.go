@@ -386,7 +386,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		if err := recordDeployment(eng.StateDir, plan, res, res.Status); err != nil {
 			return errResult(fmt.Errorf("VM %s was created, but the state file could not be saved (%w); "+
 				"it is running and billed — call deploy_apply again with the same plan_id once the state is writable, "+
-				"or delete the VM with destroy (vm_id %s) or in the Cloud.ru console", res.VMID, err, res.VMID)), true
+				"whether to delete it instead (destroy vm_id %s, or the Cloud.ru console) — ask the person", res.VMID, err, res.VMID)), true
 		}
 	}
 	// The plan stays until the VM runs: a timeout or a VM still creating
@@ -413,13 +413,13 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		deployplan.Delete(eng.StateDir, planID)
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
 			i18n.Tf("VM %s is in an error state: %s", "ВМ %s в состоянии ошибки: %s", res.VMID, res.Note),
-			i18n.Tf("Delete it with destroy (vm_id %s), then run deploy_plan again (in another zone if it repeats).", "Удалите её через destroy (vm_id %s) и снова выполните deploy_plan (при повторе — в другой зоне).", res.VMID)),
+			i18n.Tf("Whether to delete it (destroy vm_id %s) — ask the person; then run deploy_plan again (in another zone if it repeats).", "Удалять ли её (destroy vm_id %s) — спросите человека; затем снова выполните deploy_plan (при повторе — в другой зоне).", res.VMID)),
 			map[string]any{"vm_id": res.VMID}), true
 	case "timeout":
 		// The password is made for this create and kept nowhere: the retry
 		// adopts the VM without it, so it goes out now (Grok, PR #87).
 		fields := map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}
-		hint := fmt.Sprintf("Call deploy_apply again with the same plan_id %s in a few minutes: it adopts the VM and finishes it (IP, SSH, ports); it is billed meanwhile, destroy (vm_id %s) deletes it.", planID, res.VMID)
+		hint := fmt.Sprintf("Call deploy_apply again with the same plan_id %s in a few minutes: it adopts the VM and finishes it (IP, SSH, ports); it is billed meanwhile; whether to delete it instead (destroy vm_id %s) — ask the person.", planID, res.VMID)
 		if res.Password != "" {
 			fields["password"] = res.Password
 			hint += passwordOnce
@@ -431,7 +431,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		// start by itself: retrying the plan would answer the same.
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
 			fmt.Sprintf("VM %s is %s: %s", res.VMID, res.Status, res.Note),
-			fmt.Sprintf("Ask the user to start it in the Cloud.ru console, then call deploy_apply again with the same plan_id %s; or delete it with destroy (vm_id %s). Retrying before it runs answers the same.", planID, res.VMID)),
+			fmt.Sprintf("Ask the user to start it in the Cloud.ru console, then call deploy_apply again with the same plan_id %s; whether to delete it instead (destroy vm_id %s) — ask the person. Retrying before it runs answers the same.", planID, res.VMID)),
 			map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}), true
 	}
 

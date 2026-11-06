@@ -1862,10 +1862,10 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 	}
 
 	hint := i18n.T("Check that the VM resolves names (the subnet's DNS) and reaches its apt mirror (or the official mirror of the distribution) and download.docker.com, "+
-		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" in the install output means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project; if it repeats, destroy and deploy in another zone.",
+		"then re-run 'evo deploy'. \"Temporary failure in name resolution\" in the install output means no DNS inside the VM: a network problem of the zone or subnet, not of the compose project; if it repeats, deploy in another zone — whether to delete this VM first (evo destroy), ask the person.",
 		"Проверьте, что ВМ разрешает имена (DNS подсети) и достаёт до своего apt-зеркала (или официального зеркала дистрибутива) и download.docker.com, "+
 			"затем повторите 'evo deploy'. \"Temporary failure in name resolution\" в выводе установки означает, что внутри ВМ нет DNS: "+
-			"это проблема сети зоны или подсети, а не compose-проекта; если повторится, удалите ВМ (destroy) и разверните в другой зоне.")
+			"это проблема сети зоны или подсети, а не compose-проекта; если повторится, разверните в другой зоне — удалять ли сначала эту ВМ (evo destroy), спросите человека.")
 	// What the output says outright comes first: an apt mirror that does
 	// not answer is the cloud's, not the project's (cloud-e2e 16.10.2026:
 	// "W: Failed to fetch https://repo.mng.sbercloud…" in ru.AZ-2).
@@ -1904,14 +1904,14 @@ func installDiagnosis(out string) string {
 	switch {
 	case strings.Contains(out, bootstrap.UnsupportedOSLine):
 		return i18n.T("Diagnosis: the VM's OS is neither Ubuntu nor Debian nor an RPM-based distribution (CentOS, RHEL, Fedora, Rocky Linux, AlmaLinux): "+
-			"evo installs Docker only there, and another attempt would not help. Delete the VM ('evo destroy') and deploy from an Ubuntu or Debian image (--image).",
+			"evo installs Docker only there, and another attempt would not help. Deploy from an Ubuntu or Debian image (--image); whether to delete this VM (evo destroy), ask the person.",
 			"Диагноз: на ВМ не Ubuntu, не Debian и не RPM-дистрибутив (CentOS, RHEL, Fedora, Rocky Linux, AlmaLinux): "+
-				"evo ставит Docker только на них, и повтор не поможет. Удалите ВМ ('evo destroy') и разверните из образа Ubuntu или Debian (--image).")
+				"evo ставит Docker только на них, и повтор не поможет. Разверните из образа Ubuntu или Debian (--image); удалять ли эту ВМ (evo destroy), спросите человека.")
 	case strings.Contains(out, bootstrap.NoCodenameLine):
 		return i18n.T("Diagnosis: /etc/os-release of the image names no release (VERSION_CODENAME), so evo cannot pick Docker's repository for it, "+
-			"and another attempt would not help. Delete the VM ('evo destroy') and deploy from a standard Ubuntu or Debian image (--image).",
+			"and another attempt would not help. Deploy from a standard Ubuntu or Debian image (--image); whether to delete this VM (evo destroy), ask the person.",
 			"Диагноз: в /etc/os-release образа не указан выпуск (VERSION_CODENAME), и evo не может выбрать для него репозиторий Docker; "+
-				"повтор не поможет. Удалите ВМ ('evo destroy') и разверните из стандартного образа Ubuntu или Debian (--image).")
+				"повтор не поможет. Разверните из стандартного образа Ubuntu или Debian (--image); удалять ли эту ВМ (evo destroy), спросите человека.")
 	case strings.Contains(out, bootstrap.CurlMissingLine):
 		return i18n.T("Diagnosis: the image has no curl, and evo installs Docker on RPM-based distributions with get.docker.com; another attempt would not help. "+
 			"Deploy from an image with curl, or from Ubuntu or Debian (--image).",
@@ -1919,9 +1919,9 @@ func installDiagnosis(out string) string {
 				"Разверните из образа с curl или из Ubuntu либо Debian (--image).")
 	case strings.Contains(out, bootstrap.DockerNoReleaseLine):
 		return i18n.T("Diagnosis: Docker publishes no packages for this release of the distribution (download.docker.com has no Release file for its codename), "+
-			"and another attempt would not help. Delete the VM ('evo destroy') and deploy from a release Docker supports, such as a current Ubuntu LTS or Debian stable (--image).",
+			"and another attempt would not help. Deploy from a release Docker supports, such as a current Ubuntu LTS or Debian stable (--image); whether to delete this VM (evo destroy), ask the person.",
 			"Диагноз: Docker не выпускает пакетов для этого выпуска дистрибутива (у download.docker.com нет файла Release для его кодового имени), "+
-				"и повтор не поможет. Удалите ВМ ('evo destroy') и разверните из выпуска, который Docker поддерживает, например текущей Ubuntu LTS или Debian stable (--image).")
+				"и повтор не поможет. Разверните из выпуска, который Docker поддерживает, например текущей Ubuntu LTS или Debian stable (--image); удалять ли эту ВМ (evo destroy), спросите человека.")
 	case strings.Contains(out, "Temporary failure in name resolution") || strings.Contains(out, "Could not resolve"):
 		return i18n.T("Diagnosis: the VM does not resolve names (no DNS inside the VM) — a network problem of the zone or subnet.",
 			"Диагноз: ВМ не разрешает имена (внутри ВМ нет DNS) — проблема сети зоны или подсети.")
@@ -1937,10 +1937,10 @@ func installDiagnosis(out string) string {
 	case strings.Contains(out, bootstrap.FallbackFailedLine):
 		return i18n.T("Diagnosis: apt failed both with the image's mirror and with the official mirror of the distribution (archive.ubuntu.com, deb.debian.org) — "+
 			"most likely the VM does not reach the internet: check the outbound rules of its security group and the subnet in the Cloud.ru console, "+
-			"or destroy and deploy in another zone. Not a problem of the compose project.",
+			"or deploy in another zone — whether to delete this VM first (evo destroy), ask the person. Not a problem of the compose project.",
 			"Диагноз: apt не справился ни с зеркалом образа, ни с официальным зеркалом дистрибутива (archive.ubuntu.com, deb.debian.org) — "+
 				"скорее всего, у ВМ нет выхода в интернет: проверьте исходящие правила её группы безопасности и подсеть в консоли Cloud.ru "+
-				"или удалите ВМ и разверните в другой зоне. Дело не в compose-проекте.")
+				"или разверните в другой зоне — удалять ли сначала эту ВМ (evo destroy), спросите человека. Дело не в compose-проекте.")
 	case strings.Contains(out, bootstrap.DockerRepoFailedLine):
 		return i18n.T("Diagnosis: apt failed on Docker's repository download.docker.com while the distribution's packages download: "+
 			"it does not answer from the VM, or its signature does not verify (apt's lines above say which) — re-run 'evo deploy' later. Not a problem of the compose project.",

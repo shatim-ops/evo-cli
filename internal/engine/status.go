@@ -235,7 +235,7 @@ func ShowStatus(p *output.Printer, st DeploymentStatus, refreshed bool) {
 func cloudCell(c CloudCheck) string {
 	switch {
 	case c.NotFound:
-		return i18n.T("not found (deleted outside evo) → evo destroy", "не найдена (удалена вне evo) → evo destroy")
+		return i18n.T("not found (deleted outside evo) → evo destroy — ask the person", "не найдена (удалена вне evo) → evo destroy — спросите человека")
 	case c.Checked && c.State == "":
 		return i18n.T("found, state unknown", "есть, состояние неизвестно")
 	case c.Checked:

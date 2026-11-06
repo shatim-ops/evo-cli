@@ -2303,7 +2303,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				serr := saveState(found.ID, "creating", "")
 				pp.Hint(vmLeftNote(found.ID, ""))
 				return errAnswer(fmt.Errorf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
-					"check it with vm_get, delete it with destroy (vm_id %s).%s", found.ID, err, found.ID, notInState(found.ID, serr)),
+					"check it with vm_get; whether to delete it (destroy vm_id %s), ask the person.%s", found.ID, err, found.ID, notInState(found.ID, serr)),
 					map[string]any{"vm_id": found.ID}), true
 			}
 			return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, eng.ReleaseBootFIP(bootFIP, projectID)), true
@@ -2335,7 +2335,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		serr := saveState(vm.ID, "creating", publicIP)
 		pp.Hint(vmLeftNote(vm.ID, ""))
 		return errAnswer(fmt.Errorf("VM %s was created, but provision was interrupted (%w); it is still running and recorded in the state — "+
-			"check it with vm_get, delete it with destroy (vm_id %s).%s", vm.ID, context.Canceled, vm.ID, notInState(vm.ID, serr)),
+			"check it with vm_get; whether to delete it (destroy vm_id %s), ask the person.%s", vm.ID, context.Canceled, vm.ID, notInState(vm.ID, serr)),
 			leftFields(map[string]any{})), true
 	}
 
@@ -3055,14 +3055,14 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			msg = "VM already deleted (not found in the cloud); its local record is cleaned up"
 		}
 		if keptFIP != "" {
-			msg += "; floating IP " + keptFIP + " kept: " + keptWhy + " (release it with release_floating_ip, or call destroy with release_ip=true)"
+			msg += "; floating IP " + keptFIP + " kept: " + keptWhy + " — whether to release it (release_floating_ip, or destroy with release_ip=true), ask the person"
 		}
 		fipLeft := false
 		if releaseIP && hasFIP {
 			if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
 				fipLeft = true
 				msg += fmt.Sprintf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
-					"call destroy with vm_id %s again, or release it with release_floating_ip", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
+					"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
 			} else {
 				msg += "; released floating IP " + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 			}
