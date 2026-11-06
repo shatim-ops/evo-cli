@@ -253,6 +253,9 @@ func TestLogin_Variants(t *testing.T) {
 		// Acceptance B-5, 06.11: a project of 20 accounts, where IAM creates
 		// one more; evo refused before any write by a limit of its own.
 		{"many accounts, IAM creates one more", loginworld.Variant{OtherAccounts: 20}, "", 1, 1, []string{"POST /api/v2/serviceAccounts", "POST /api/v3/permissions"}},
+		// Acceptance B-5, 06.11: 8 accounts in the project, evo counted 16 —
+		// the list of the project shows the organization's accounts too.
+		{"accounts of the organization are not the project's", loginworld.Variant{OtherAccounts: 8, OrgAccounts: 8}, "", 1, 1, []string{"POST /api/v2/serviceAccounts", "POST /api/v3/permissions"}},
 		// No limit of IAM is known: IAM's refusal at the write is the
 		// answer, and what this login made is undone (R-44, R-55).
 		{"account limit", loginworld.Variant{AccountLimit: true}, clierrors.CodeAPIError, 0, 0, []string{"POST /api/v2/serviceAccounts"}},
