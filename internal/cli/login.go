@@ -6,9 +6,11 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -22,6 +24,7 @@ import (
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // loginConfig is the login's Config; the tests point it at the world of
@@ -82,6 +85,17 @@ func newLoginCmd() *cobra.Command {
 				cfg.Open = nil
 			}
 			cfg.Tell = loginTell(cmd)
+			// One login at a time on this computer: two waiting on two
+			// ports, the person could finish the wrong one (R-47; plan
+			// 1.8, #1087). The OS lock goes away with the process.
+			unlock, err := state.FileLock(filepath.Join(config.Dir(), "login.lock"), 0)
+			if errors.Is(err, state.ErrFileLocked) {
+				return clerrors.New(clerrors.CodeUsage, login.ELoginRunning(), login.ELoginRunningHint())
+			}
+			if err != nil {
+				return err
+			}
+			defer unlock()
 			res, err := login.Login(cmd.Context(), cfg, choice, store)
 			if err != nil {
 				return err
@@ -204,8 +218,11 @@ func loginChoice(project, forWhom, ttl string) (login.Choice, error) {
 		return c, clerrors.New(clerrors.CodeUsage, login.EFor(forWhom), "")
 	}
 	if ttl != "" {
-		n, err := strconv.Atoi(strings.TrimSuffix(ttl, "d"))
-		ok := err == nil
+		// The term is «7d», «30d» or «90d»: «7» alone is refused, as the
+		// help names the values with «d» (plan 1.8, #1087).
+		days, hasD := strings.CutSuffix(ttl, "d")
+		n, err := strconv.Atoi(days)
+		ok := err == nil && hasD
 		if ok {
 			ok = false
 			for _, d := range login.Terms {

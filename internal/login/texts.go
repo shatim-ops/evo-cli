@@ -377,6 +377,10 @@ func ePortsHint() string {
 func eTimeout(wait time.Duration) string {
 	return i18n.Tf("sign-in was not completed within %d min; nothing was created", "вход не выполнен за %d мин, ничего не создано", int(wait.Minutes()))
 }
+func eTimeoutHint(wait time.Duration) string {
+	return i18n.Tf("Run evo login again and finish it in the browser within %d min; the page of this sign-in no longer works.",
+		"Запустите evo login снова и завершите вход в браузере за %d мин; страница этого входа больше не работает.", int(wait.Minutes()))
+}
 func eProvider(what string) string {
 	return i18n.Tf("Cloud.ru rejected the sign-in: %s; nothing was created", "Cloud.ru отклонил вход: %s; ничего не создано", what)
 }
@@ -532,7 +536,8 @@ func TFlagNoBrowser() string {
 		"Не открывать браузер, только показать ссылку. Открыть ее нужно на этом же компьютере")
 }
 func TFlagProject() string {
-	return i18n.T("Project ID or name: the page shows only this project, selected", "ID или имя проекта: на странице будет только он, отмеченный")
+	return i18n.T("Project ID or name: the page shows only this project, selected; the project is checked after you sign in in the browser",
+		"ID или имя проекта: на странице будет только он, отмеченный; проект проверяется после входа в браузере")
 }
 func TFlagFor() string {
 	return i18n.T("Who the key is for: me (account evo, the current profile) or agent (account evo-agent, profile “agent”)",
@@ -548,3 +553,13 @@ func ETTL(ttl string) string {
 	return i18n.Tf("--key-ttl %q: allowed values are 7d, 30d and 90d", "--key-ttl %q: допустимо 7d, 30d или 90d", ttl)
 }
 func ETTLHint() string { return tForeverInConsole() + "." }
+
+// ELoginRunning: another evo login waits for the browser on this computer.
+func ELoginRunning() string {
+	return i18n.T("another evo login is waiting for the browser on this computer; nothing was started",
+		"на этом компьютере уже идет другой evo login и ждет браузер, новый вход не начат")
+}
+func ELoginRunningHint() string {
+	return i18n.T("Finish or cancel that sign-in (Ctrl-C in its terminal), then run evo login again.",
+		"Завершите или отмените тот вход (Ctrl-C в его терминале) и запустите evo login снова.")
+}

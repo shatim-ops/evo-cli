@@ -79,7 +79,9 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		return o.res, o.err
 	case <-timer.C:
 		lb.close()
-		return Result{}, fmt.Errorf("%s%s: %w", eTimeout(cfg.Wait), tAt(stepWait, 0), context.Canceled)
+		// The end of the wait is not a Ctrl-C: its own code (plan 1.8,
+		// #1087, audit of 06.11).
+		return Result{}, at(stepWait, clierrors.New(clierrors.CodeTimeout, eTimeout(cfg.Wait), eTimeoutHint(cfg.Wait)))
 	case <-ctx.Done():
 		lb.close()
 		return Result{}, ctx.Err()

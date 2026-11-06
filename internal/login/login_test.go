@@ -760,3 +760,50 @@ func TestLogin_GrantWithoutAProjectIsRefused(t *testing.T) {
 		t.Fatalf("err %v; accounts %+v; keys %+v", r.err, w.Accounts(), w.Keys())
 	}
 }
+
+// Plan 1.8, #1087 (audit of 06.11): the end of the wait is not a Ctrl-C —
+// its own code TIMEOUT, exit 1, «not completed within N min», nothing
+// made; a Ctrl-C stays INTERRUPTED, 130.
+func TestLogin_TimeoutIsNotAnInterrupt(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	var out bytes.Buffer
+	cfg := worldConfig(w, &out, func(string) error { return nil }) // the person never comes
+	cfg.Wait = 50 * time.Millisecond                               // wall-clock: a share of the production wait, to end the test
+	_, err := Login(context.Background(), cfg, Choice{}, &memStore{})
+	if clierrors.Reason(err) != clierrors.CodeTimeout || clierrors.ExitCode(err) != clierrors.ExitGeneral || len(w.Accounts()) != 0 {
+		t.Fatalf("err %v (reason %s, exit %d); accounts %d", err, clierrors.Reason(err), clierrors.ExitCode(err), len(w.Accounts()))
+	}
+	var ce *clierrors.CLIError
+	if !errors.As(err, &ce) || ce.Hint == "" || !strings.Contains(ce.Hint, "evo login") {
+		t.Errorf("no hint to run evo login again: %v", err)
+	}
+}
+
+// After the wait the loopback is gone — a reload of the page meets no
+// server — and no page of evo was kept by the browser: every answer is
+// no-store (plan 1.8, #1087: after F5 the tab showed the form again).
+func TestLogin_AfterTheWaitThePageIsGone(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	var out bytes.Buffer
+	pageURL := make(chan string, 1)
+	cfg := worldConfig(w, &out, func(u string) error {
+		resp, err := http.Get(u) // the person signs in and sees the consent page
+		if err == nil {
+			if cc := resp.Header.Get("Cache-Control"); cc != "no-store" {
+				t.Errorf("the consent page is %q, want no-store", cc)
+			}
+			pageURL <- resp.Request.URL.String()
+			resp.Body.Close()
+		}
+		return nil
+	})
+	cfg.Wait = 200 * time.Millisecond // wall-clock: a share of the production wait, to end the test
+	if _, err := Login(context.Background(), cfg, Choice{}, &memStore{}); clierrors.Reason(err) != clierrors.CodeTimeout {
+		t.Fatalf("err %v, want TIMEOUT", err)
+	}
+	u := <-pageURL
+	if resp, err := http.Get(u); err == nil {
+		resp.Body.Close()
+		t.Errorf("after the wait %s still answers %d", u, resp.StatusCode)
+	}
+}
