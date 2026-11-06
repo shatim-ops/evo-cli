@@ -1,0 +1,35 @@
+name: pr-title
+
+# Заголовок PR — на русском (решение владельца 05.11, #1015): он же тема
+# коммита в main. Отдельный workflow, а не шаг ci: правка заголовка
+# (edited) должна перепроверять его без нового прогона тестов. Заголовок —
+# текст события: только через env, скрипт его лишь сравнивает
+# (.github/scripts/pr_title.sh). Код PR выполняется без секретов.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    # Dependabot пишет заголовки сам, по-английски; ветку Dependabot
+    # обновляет хозяин зависимости, заголовок не по правилу — не его дефект.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: заголовок на русском
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: .github/scripts/pr_title.sh

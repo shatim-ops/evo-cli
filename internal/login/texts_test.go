@@ -5,6 +5,7 @@
 package login
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -40,7 +41,7 @@ func TestNoRightIn(t *testing.T) {
 // key handed over. The hint names the way of the page's note.
 func TestNoRightHint_NoLoginOfTheAdministrator(t *testing.T) {
 	for lang, way := range map[string]string{
-		i18n.EN: "create for you a service account with the role needed and a key in the Cloud.ru personal account",
+		i18n.EN: "create a service account with the required role and a key for you in the Cloud.ru console",
 		i18n.RU: "создать для вас сервисный аккаунт с нужной ролью и ключ в личном кабинете Cloud.ru",
 	} {
 		prev := i18n.Lang()
@@ -197,5 +198,24 @@ func TestDonePage_RoleTerm(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), tRoleUntil(role)) {
 		t.Errorf("the role's term is not the actual one")
+	}
+}
+
+// «Риск» and «релиз», #1029: the English texts call the Cloud.ru interface
+// «Cloud.ru console», never «personal account» — also across a line break
+// of a long text.
+func TestEnglishTexts_CloudRuConsole(t *testing.T) {
+	src, err := os.ReadFile("texts.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flat := strings.Join(strings.Fields(string(src)), " "); strings.Contains(flat, "personal account") {
+		t.Errorf("texts.go says «personal account» in English")
+	}
+	prev := i18n.Lang()
+	i18n.SetLang(i18n.EN)
+	defer i18n.SetLang(prev)
+	if long := strings.Join(strings.Fields(TLogoutLong()), " "); !strings.Contains(long, "Cloud.ru console") {
+		t.Errorf("evo logout --help: %q", long)
 	}
 }

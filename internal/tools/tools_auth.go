@@ -266,8 +266,7 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 			Detail: i18n.T("configuration is broken", "настройки сломаны")})
 	case eng.Config.KeyID == "" || eng.Config.Secret == "":
 		checks = append(checks, DoctorCheck{Name: "credentials", Status: CheckFail, Auth: true,
-			Detail: i18n.T("no access key: run 'evo configure' or set CLOUDRU_KEY_ID and CLOUDRU_SECRET",
-				"нет ключа доступа: выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET")})
+			Detail: i18n.T("no access key. ", "нет ключа доступа. ") + auth.NoKeyHint()})
 	default:
 		before := exchanges(eng.Auth)
 		tok, terr := eng.Auth.Token(ctx)

@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -991,9 +992,10 @@ func toolError(text string, h toolHints) error {
 		case code == clerrors.CodeUsage: // the tool refused its arguments; nothing reached the cloud
 			hint = h.usage
 		case code == clerrors.CodeConfigInvalid: // the message names what to set
-		case clerrors.ExitCode(clerrors.New(code, "", "")) == clerrors.ExitAuth:
-			hint = i18n.T("Run 'evo configure', or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.",
-				"Выполните 'evo configure' или задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET.")
+		case code == clerrors.CodeAuthRequired: // no key at all
+			hint = auth.NoKeyHint()
+		case clerrors.ExitCode(clerrors.New(code, "", "")) == clerrors.ExitAuth: // a key set but refused or expired
+			hint = auth.RefusedKeyHint()
 		}
 	}
 	if h.prefix != "" {
