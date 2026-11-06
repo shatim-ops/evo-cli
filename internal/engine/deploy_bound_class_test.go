@@ -47,6 +47,11 @@ var boundWorlds = []boundWorld{
 		}
 		return dep
 	}},
+	{name: "compose up fails", dep: func() *mockDeployer {
+		dep := newMockDeployer()
+		dep.streamErrs = map[string][]error{"cd /opt/app && docker compose -f docker-compose.yml up -d": {stderrors.New("pull access denied")}}
+		return dep
+	}},
 	{name: "upload fails", dep: func() *mockDeployer {
 		dep := newMockDeployer()
 		dep.uploadErr = stderrors.New("sftp: connection lost")
