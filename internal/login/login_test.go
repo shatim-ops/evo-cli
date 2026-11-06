@@ -250,6 +250,9 @@ func TestLogin_Variants(t *testing.T) {
 		{"403 on permissions", loginworld.Variant{PermForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"403 on the account", loginworld.Variant{AccountForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"role name collision", loginworld.Variant{RoleCollision: true}, "", 1, 1, []string{"GET /api/v1/roles"}},
+		// Acceptance B-5, 06.11: a project of 20 accounts, where IAM creates
+		// one more; evo refused before any write by a limit of its own.
+		{"many accounts, IAM creates one more", loginworld.Variant{OtherAccounts: 20}, "", 1, 1, []string{"POST /api/v2/serviceAccounts", "POST /api/v3/permissions"}},
 		{"account limit", loginworld.Variant{AccountLimit: true}, clierrors.CodeUsage, 0, 0, []string{"!POST /api/v2/serviceAccounts"}},
 		{"key limit", loginworld.Variant{KeyLimit: true}, clierrors.CodeUsage, 1, 0, []string{"!POST /api/v2/serviceAccounts/", "!POST /api/v3/permissions"}},
 		{"broken at the account", loginworld.Variant{FailAt: loginworld.StepAccount}, clierrors.CodeAPIError, 0, 0, nil},
