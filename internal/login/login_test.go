@@ -21,6 +21,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/loginworld"
 )
 
@@ -562,8 +563,7 @@ func TestLogin_EvaluateErrorIsNoRefusal(t *testing.T) {
 	if r.err != nil || len(r.saved) != 1 {
 		t.Fatalf("err %v; saved %d", r.err, len(r.saved))
 	}
-	note := tUnchecked("")
-	note = note[:strings.Index(note, ":")]
+	note := tUnchecked()
 	if !strings.Contains(r.out, note) || !strings.Contains(r.b.consent, note) {
 		t.Errorf("the note %q is not in the terminal or on the page:\n%s", note, r.out)
 	}
@@ -587,8 +587,7 @@ func TestLogin_UnknownActionIsNoRefusal(t *testing.T) {
 	if r.err != nil || len(r.saved) != 1 {
 		t.Fatalf("the administrator was refused for an action IAM does not know: err %v; saved %d\n%s", r.err, len(r.saved), r.out)
 	}
-	note := tUnchecked("")
-	note = note[:strings.Index(note, ":")]
+	note := tUnchecked()
 	if !strings.Contains(r.out, note) || !strings.Contains(r.b.consent, note) {
 		t.Errorf("the note %q is not in the terminal or on the page:\n%s", note, r.out)
 	}
@@ -627,13 +626,14 @@ func TestLogin_FalseReadsTheCatalog(t *testing.T) {
 
 	w = newWorld(t, loginworld.Variant{UnknownActionFalse: true})
 	r = login(t, w, &browser{}, Choice{}, nil, nil)
-	if r.err != nil || !strings.Contains(r.out, tActionUnknown(auth.LoginActionCreateAccount)) {
+	// The reason is the answer's, not the terminal's (conclusion 35.4).
+	if r.err != nil || !strings.Contains(r.res.Unchecked, tActionUnknown(auth.LoginActionCreateAccount)) || strings.Contains(r.out, tActionUnknown(auth.LoginActionCreateAccount)) {
 		t.Errorf("a false on an unknown action: %v\n%s", r.err, r.out)
 	}
 
 	w = newWorld(t, loginworld.Variant{UnknownActionFalse: true, CatalogFails: true})
 	r = login(t, w, &browser{}, Choice{}, nil, nil)
-	if r.err != nil || !strings.Contains(r.out, "каталог действий IAM не прочитан") && !strings.Contains(r.out, "catalog of actions was not read") {
+	if r.err != nil || !strings.Contains(r.res.Unchecked, "каталог действий IAM не прочитан") && !strings.Contains(r.res.Unchecked, "catalog of actions was not read") {
 		t.Errorf("a catalog not read: %v\n%s", r.err, r.out)
 	}
 
@@ -758,5 +758,67 @@ func TestLogin_GrantWithoutAProjectIsRefused(t *testing.T) {
 	r := login(t, w, b, Choice{}, nil, nil)
 	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
 		t.Fatalf("err %v; accounts %+v; keys %+v", r.err, w.Accounts(), w.Keys())
+	}
+}
+
+// Plan 1.8, #1087, texts (audit of 06.11; «Риск», conclusion 35.3): a
+// refusal at a write says first, in plain words, what Cloud.ru did not do,
+// and the platform's words follow in the same line; «a retry alone meets
+// the same refusal» is said only of a 4xx.
+func TestLogin_RefusalSaysWhatWasNotDoneFirst(t *testing.T) {
+	prev := i18n.Lang()
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	for _, c := range []struct {
+		name, first, says string
+		v                 loginworld.Variant
+		retry             bool
+	}{
+		{"account 400", "Cloud.ru не создал сервисный аккаунт", "service account limit reached", loginworld.Variant{AccountLimit: true}, false},
+		{"account 500", "Cloud.ru не создал сервисный аккаунт", "internal", loginworld.Variant{FailAt: loginworld.StepAccount}, true},
+		{"role 500", "Cloud.ru не выдал роль «Администратор проекта»", "internal", loginworld.Variant{FailAt: loginworld.StepPermission}, true},
+		{"key 400", "Cloud.ru не выдал ключ доступа", "access key limit reached", loginworld.Variant{KeyLimit: true}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := login(t, newWorld(t, c.v), &browser{}, Choice{}, nil, nil)
+			var ce *clierrors.CLIError
+			if !errors.As(r.err, &ce) {
+				t.Fatalf("got %v", r.err)
+			}
+			why := ce.Message
+			if i := strings.Index(why, ": "); strings.HasPrefix(why, "доступ не выдан") && i > 0 {
+				why = why[i+2:]
+			}
+			if !strings.HasPrefix(why, c.first+": ") || !strings.Contains(why, c.says) {
+				t.Errorf("message %q: want %q first, the platform's %q after", ce.Message, c.first, c.says)
+			}
+			if got := strings.Contains(ce.Hint, "повтор получит тот же отказ"); got == c.retry {
+				t.Errorf("hint %q: «the same refusal» said of a %s", ce.Hint, c.name)
+			}
+		})
+	}
+}
+
+// «Риск», conclusion 35.4: the note of a right evaluate did not confirm
+// carries no code of the platform; its reason is in the details.
+func TestLogin_UncheckedNoteHasNoPlatformCode(t *testing.T) {
+	prev := i18n.Lang()
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	w := newWorld(t, loginworld.Variant{EvaluateUnknown: true, PermForbidden: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	want := "Заранее проверить право не удалось. Если доступа нет, Cloud.ru откажет при создании аккаунта, и ничего не останется"
+	if !strings.Contains(r.out, want) || !strings.Contains(r.b.consent, want) {
+		t.Errorf("no plain note in the terminal or on the page:\n%s", r.out)
+	}
+	for _, code := range []string{"iam API", "evaluate"} {
+		if strings.Contains(r.out, code) || strings.Contains(tag.ReplaceAllString(r.b.consent, " "), code) {
+			t.Errorf("the note shows %q", code)
+		}
+	}
+	var ce *clierrors.CLIError
+	errors.As(r.err, &ce)
+	if d := detailsOf(ce); d == nil || d["unchecked"] == nil {
+		t.Errorf("the reason is not in the details: %v", d)
 	}
 }

@@ -101,6 +101,9 @@ func newLoginCmd() *cobra.Command {
 			if res.PreviousNote != "" {
 				out["warning"] = res.PreviousNote
 			}
+			if res.Unchecked != "" {
+				out["unchecked"] = res.Unchecked
+			}
 			if printer.IsJSON() {
 				return printer.JSON(out)
 			}
