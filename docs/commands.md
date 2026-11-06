@@ -368,6 +368,7 @@ evo agent [flags]
   vscode       .vscode/mcp.json       <каталог настроек>/Code/User/mcp.json
   gemini       .gemini/settings.json  ~/.gemini/settings.json
   codex        .codex/config.toml     ~/.codex/config.toml
+  claude-desktop                        <каталог настроек>/Claude/claude_desktop_config.json (macOS, Windows)
   gigaagent    печатается: mcp.json агента — на его машине
 Другой клиент: --print json или --print toml печатает запись и ничего не пишет.
 
@@ -405,7 +406,7 @@ evo agent setup --client <client> [flags]
 ### Options
 
 ```
-      --client string      MCP-клиент: claude-code, codex, cursor, gemini, gigaagent, vscode
+      --client string      MCP-клиент: claude-code, claude-desktop, codex, cursor, gemini, gigaagent, vscode
       --force              Заменить запись evo, которая отличается от этой
   -h, --help               Справка по setup
       --http string        Подключаться к запущенному серверу 'evo mcp --http' по этому адресу, а не запускать evo (например, http://127.0.0.1:8080/mcp)

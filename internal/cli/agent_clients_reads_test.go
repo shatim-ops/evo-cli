@@ -43,6 +43,12 @@ var clientReads = map[string]map[agentScope]func(home, work, userConfig string) 
 		scopeProject: func(_, w, _ string) string { return filepath.Join(w, ".gemini", "settings.json") },
 		scopeUser:    func(h, _, _ string) string { return filepath.Join(h, ".gemini", "settings.json") },
 	},
+	// Claude Desktop (macOS, Windows): the user's configuration directory,
+	// ~/Library/Application Support/Claude/ and %APPDATA%\Claude\
+	// (https://modelcontextprotocol.io/docs/develop/connect-local-servers).
+	"claude-desktop": {
+		scopeUser: func(_, _, u string) string { return filepath.Join(u, "Claude", "claude_desktop_config.json") },
+	},
 	"codex": {
 		scopeProject: func(_, w, _ string) string { return filepath.Join(w, ".codex", "config.toml") },
 		scopeUser:    func(h, _, _ string) string { return filepath.Join(h, ".codex", "config.toml") },
@@ -67,6 +73,12 @@ func userConfigDir(home string) string {
 // reads it; a repeat changes nothing (no second entry); --dry-run writes
 // nothing. A client that only prints has no file to write.
 func TestAgentClients_WriteWhereTheClientReads(t *testing.T) {
+	// The scopes of a client of some systems (claude-desktop) are read on
+	// a system it has a build for, as setupAgent sets it for the writes;
+	// the refusal elsewhere is TestAgentSetup_ClaudeDesktop's.
+	oldOS := hostOS
+	hostOS = "darwin"
+	t.Cleanup(func() { hostOS = oldOS })
 	var names []string
 	for _, c := range agentClients {
 		names = append(names, c.name)
