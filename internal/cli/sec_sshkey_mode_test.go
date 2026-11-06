@@ -11,6 +11,7 @@ import (
 	stderrors "errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
@@ -53,7 +54,7 @@ func wantConfigInvalid(t *testing.T, err error) {
 		t.Fatalf("ждали CONFIG_INVALID, получили %v", err)
 	}
 	if ce.Hint == "" {
-		t.Error("нет подсказки (удалить .evo/ или chmod 600)")
+		t.Error("нет подсказки (удалить пару ключей или chmod 600)")
 	}
 }
 
@@ -102,5 +103,29 @@ func TestSSHKey_MCPEngineRefusesLooseKey(t *testing.T) {
 	wantConfigInvalid(t, eng.EnsureSSHKey())
 	if len(eng.SSHKeyPEM) != 0 || eng.SSHPubKey != "" {
 		t.Fatal("ключ из репозитория попал в движок")
+	}
+}
+
+// Release plan 1.8, «ложный лимит» (R-56): the hint named the directory
+// .evo/ to remove — with state.json and the plans of the project — while
+// only the key pair is at fault. It names the two key files, not the
+// directory.
+func TestSSHKey_LooseKeyHintNamesTheKeyFilesNotTheDirectory(t *testing.T) {
+	dir := t.TempDir()
+	plantKey(t, dir, 0o644)
+	_, _, err := loadOrGenerateSSHKey(dir)
+	var ce *clerrors.CLIError
+	if !stderrors.As(err, &ce) {
+		t.Fatalf("want a CLIError, got %v", err)
+	}
+	keyDir := filepath.Join(dir, ".evo")
+	priv := filepath.Join(keyDir, "id_ed25519")
+	for _, f := range []string{priv, priv + ".pub"} {
+		if !strings.Contains(ce.Hint, f) {
+			t.Errorf("hint %q does not name %s", ce.Hint, f)
+		}
+	}
+	if strings.Contains(ce.Hint, keyDir+" ") || strings.HasSuffix(ce.Hint, keyDir) {
+		t.Errorf("hint %q names the directory %s: it holds state.json and plans", ce.Hint, keyDir)
 	}
 }

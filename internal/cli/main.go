@@ -615,9 +615,9 @@ func checkPrivateKeyMode(path string, mode os.FileMode) error {
 		i18n.Tf("UNPROTECTED PRIVATE KEY FILE: %s has permissions %04o and is accessible by group or others; refusing to use it",
 			"НЕЗАЩИЩЁННЫЙ ЗАКРЫТЫЙ КЛЮЧ: у %s права %04o, он доступен группе или другим пользователям; использовать его нельзя",
 			path, mode.Perm()),
-		i18n.Tf("evo creates the key with mode 0600, so this one may have come with the repository: remove %s and run the command again (a new key is created). If the key is your own, run: chmod 600 %s",
-			"evo создаёт ключ с правами 0600, поэтому этот мог прийти вместе с репозиторием: удалите %s и повторите команду (будет создан новый ключ). Если ключ ваш, выполните: chmod 600 %s",
-			filepath.Dir(path), path))
+		i18n.Tf("evo creates the key with mode 0600, so this one may have come with the repository: remove the key pair %s and %s.pub and run the command again (a new pair is created). If the key is your own, run: chmod 600 %s",
+			"evo создаёт ключ с правами 0600, поэтому этот мог прийти вместе с репозиторием: удалите пару ключей %s и %s.pub и повторите команду (будет создана новая пара). Если ключ ваш, выполните: chmod 600 %s",
+			path, path, path))
 }
 
 // projectConfigPath is the project file with per-project overrides. User
