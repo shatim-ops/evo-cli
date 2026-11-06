@@ -125,9 +125,14 @@ func checkOneScreenStructure(t testing.TB, page string, projects []project) {
 	}
 
 	// 2. Nothing throws the screen up: no link to «#», and an input a label
-	// points to stands in that label or in its fieldset — a radio at the
-	// top of the form gets the focus of a click below and scrolls to it.
-	type place struct{ fieldset, label int }
+	// points to stands in that label or in its fieldset, or is fixed in
+	// the viewport — a radio at the top of the form gets the focus of a
+	// click below and scrolls to it.
+	type place struct {
+		fieldset, label int
+		fixed           bool
+	}
+	fixed := fixedInputTypes(page)
 	inputs, labels := map[string]place{}, map[string]int{}
 	var fieldsets, labelStack []int
 	n := 0
@@ -153,7 +158,7 @@ func checkOneScreenStructure(t testing.TB, page string, projects []project) {
 		case tg.name == "label" && tg.close && len(labelStack) > 0:
 			labelStack = labelStack[:len(labelStack)-1]
 		case (tg.name == "input" || tg.name == "select") && tg.attr["id"] != "":
-			p := place{fieldset: fs, label: -1}
+			p := place{fieldset: fs, label: -1, fixed: fixed[tg.attr["type"]]}
 			if len(labelStack) > 0 {
 				p.label = labelStack[len(labelStack)-1]
 			}
@@ -165,10 +170,31 @@ func checkOneScreenStructure(t testing.TB, page string, projects []project) {
 		if !ok {
 			continue
 		}
-		if in.label < 0 && (in.fieldset < 0 || in.fieldset != fs) {
-			t.Errorf("label for=%q stands in a fieldset, and its input outside it: a click on the label scrolls to the input", id)
+		if in.label < 0 && (in.fieldset < 0 || in.fieldset != fs) && !in.fixed {
+			t.Errorf("label for=%q stands in a fieldset, and its input outside it, not position: fixed: a click on the label scrolls to the input", id)
 		}
 	}
+}
+
+// fixedInputTypes are the types of input the style of the page fixes in
+// the viewport (input[type=radio] { position: fixed }): a focused input
+// that is always in view scrolls nothing (#1085 keeps the radios at the
+// top of the form so).
+func fixedInputTypes(page string) map[string]bool {
+	out := map[string]bool{}
+	sel := regexp.MustCompile(`input\[type=([a-z]+)\]$`)
+	pos := regexp.MustCompile(`(?:^|;)\s*position\s*:\s*fixed`)
+	for _, m := range cssBlock.FindAllStringSubmatch(page, -1) {
+		if !pos.MatchString(m[2]) {
+			continue
+		}
+		for _, s := range strings.Split(m[1], ",") {
+			if t := sel.FindStringSubmatch(strings.TrimSpace(s)); t != nil {
+				out[t[1]] = true
+			}
+		}
+	}
+	return out
 }
 
 // selectTexts is the text of the drop-down lists of a page.
