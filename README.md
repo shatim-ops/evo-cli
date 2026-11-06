@@ -206,7 +206,7 @@ evo destroy
 перед записью показывает diff и спрашивает согласие:
 
 ```sh
-evo agent setup --client claude-code          # cursor, vscode, gemini, codex; gigaagent — печать
+evo agent setup --client claude-code          # claude-desktop, cursor, vscode, gemini, codex; gigaagent — печать
 evo agent setup --client claude-code --skill  # и правила для агента (docs/agent-skill.md)
 ```
 

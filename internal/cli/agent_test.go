@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -69,9 +70,17 @@ func setupAgent(t *testing.T) string {
 	oldTTY := confirm.StdinIsTTY
 	confirm.StdinIsTTY = func() bool { return false }
 	t.Cleanup(func() { confirm.StdinIsTTY = oldTTY })
+	// One system and one evo for the golden files on every runner: a
+	// client of some systems writes its file, and a full path is this one.
+	oldOS, oldExe := hostOS, executable
+	hostOS, executable = "darwin", func() (string, error) { return fakeEvoPath, nil }
+	t.Cleanup(func() { hostOS, executable = oldOS, oldExe })
 	newProcess()
 	return home
 }
+
+// fakeEvoPath is the full path of evo a client of fullPath gets in tests.
+const fakeEvoPath = "/opt/evo/bin/evo"
 
 // clientPath is the client's file of the scope, after setupAgent.
 func clientPath(t *testing.T, c agentClient, s agentScope) string {
@@ -212,6 +221,17 @@ func TestAgentSetup_Golden(t *testing.T) {
 			})
 			t.Run("http", func(t *testing.T) {
 				path := setup(t, nil)
+				if c.stdioOnly {
+					// The file holds no remote server: refused, nothing written.
+					code, _, stderr := run(t, "--yes", "--http", "http://127.0.0.1:8080/mcp")
+					if code != 1 || !strings.Contains(stderr, "--http") {
+						t.Errorf("--http for %s: exit %d, want 1 (USAGE) naming --http: %s", c.name, code, stderr)
+					}
+					if _, err := os.Stat(path); err == nil {
+						t.Errorf("--http for %s wrote %s", c.name, path)
+					}
+					return
+				}
 				if code, _, stderr := run(t, "--yes", "--http", "http://127.0.0.1:8080/mcp"); code != 0 {
 					t.Fatalf("exit %d: %s", code, stderr)
 				}
@@ -229,6 +249,9 @@ func TestAgentSetup_GoldenParse(t *testing.T) {
 			continue
 		}
 		for _, name := range []string{"empty", "foreign", "other", "http"} {
+			if name == "http" && c.stdioOnly {
+				continue
+			}
 			data := readFixture(t, c.name+"/"+name+".want")
 			if c.comments {
 				// JSONC: what the file has beside the entry is checked by
@@ -257,6 +280,9 @@ func TestAgentSetup_GoldenParse(t *testing.T) {
 func TestAgentSetup_NoSecretInTheFile(t *testing.T) {
 	for _, c := range agentClients {
 		for _, http := range []bool{false, true} {
+			if http && c.stdioOnly {
+				continue // --http is refused before anything (TestAgentSetup_Golden)
+			}
 			setupAgent(t)
 			args := []string{"agent", "setup", "--client", c.name, "--yes"}
 			if http {
@@ -852,4 +878,51 @@ func TestAgentSkill_NarrowsBigAnswers(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Claude Desktop (release plan 1.8, «Подключение агента одной вставкой»):
+// the desktop app does not read the shell's PATH, so the entry names evo by
+// its full path, and the file is the user's on macOS and Windows; on Linux,
+// where there is no build, the entry is printed and nothing is written. A
+// repeat writes nothing new.
+func TestAgentSetup_ClaudeDesktop(t *testing.T) {
+	c := mustClient(t, "claude-desktop")
+	setupAgent(t)
+	path := clientPath(t, c, scopeUser)
+	if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-desktop", "--yes"); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	var doc struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(fileBytes(t, path), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if got := doc.MCPServers[mcpServerName].Command; got != fakeEvoPath {
+		t.Errorf("command %q, want the full path %q: the app does not read the shell's PATH", got, fakeEvoPath)
+	}
+	before := fileBytes(t, path)
+	code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-desktop", "--yes")
+	if code != 0 || !bytes.Equal(before, fileBytes(t, path)) {
+		t.Errorf("repeat: exit %d, the file changed: %s", code, stderr)
+	}
+	if strings.Contains(stderr, "PATH") {
+		t.Errorf("a warning about PATH for a client that starts evo by its full path: %s", stderr)
+	}
+
+	home := setupAgent(t)
+	hostOS = "linux"
+	code, stdout, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-desktop", "--yes")
+	if code != 0 || !strings.Contains(stdout, `"mcpServers"`) {
+		t.Fatalf("linux: exit %d, want the entry printed: %s %s", code, stdout, stderr)
+	}
+	_ = filepath.WalkDir(home, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.Name() == "claude_desktop_config.json" {
+			t.Errorf("linux: %s written; Claude Desktop has no Linux build", p)
+		}
+		return nil
+	})
 }

@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/agentconf"
 )
@@ -118,6 +120,18 @@ type agentClient struct {
 	// this key instead of a header (Codex: bearer_token_env_var).
 	tokenEnvKey string
 
+	// fullPath: the client starts evo by the full path of this evo, not
+	// from a PATH — a desktop app does not read the shell's PATH.
+	fullPath bool
+	// stdioOnly: the file holds only servers the client starts itself;
+	// a remote server is connected in the client's settings (--http is
+	// refused before anything is written).
+	stdioOnly bool
+	// systems are the operating systems (GOOS) the client's file is on;
+	// none: every one. Elsewhere the entry is printed, as for a client
+	// without a file.
+	systems []string
+
 	// readOnly: --read-only by default (В-4) — the client is an agent
 	// nobody watches, which sets confirmed=true itself.
 	readOnly bool
@@ -176,6 +190,20 @@ var agentClients = []agentClient{
 		noteRU: "Codex читает .codex/config.toml проекта, только если проект доверенный; --scope project пишет этот файл.",
 	},
 	{
+		// A desktop app: it reads only the file of the user, and starts evo
+		// without the shell's PATH. No build for Linux.
+		name: "claude-desktop", title: "Claude Desktop", docs: "https://modelcontextprotocol.io/docs/develop/connect-local-servers",
+		format: formatJSON, servers: "mcpServers",
+		config:    map[agentScope]clientFile{scopeUser: {inUserConfig, "Claude/claude_desktop_config.json"}},
+		scope:     scopeUser,
+		urlKey:    "url",
+		fullPath:  true,
+		stdioOnly: true,
+		systems:   []string{"darwin", "windows"},
+		noteEN:    "Claude Desktop starts evo by the full path written here: after moving or reinstalling evo, run this again. Quit Claude Desktop fully and start it again to load the change.",
+		noteRU:    "Claude Desktop запускает evo по записанному здесь полному пути: после переноса или переустановки evo выполните команду снова. Полностью закройте Claude Desktop и откройте снова, чтобы он прочитал изменение.",
+	},
+	{
 		// The path of the agent's mcp.json depends on where it runs (a VM,
 		// Container Apps, AI Agents) and is not confirmed by public
 		// documentation (В-3): the entry is printed.
@@ -216,11 +244,35 @@ func (c agentClient) defaultScope() agentScope {
 	return defaultScope
 }
 
+// hostOS is the operating system the files are looked for on (a variable:
+// the tests set it).
+var hostOS = runtime.GOOS
+
+// files are the client's files on this operating system: none where the
+// client has no build (systems).
+func (c agentClient) files() map[agentScope]clientFile {
+	if len(c.systems) > 0 && !slices.Contains(c.systems, hostOS) {
+		return nil
+	}
+	return c.config
+}
+
+// systemNames name the client's operating systems for the help.
+func (c agentClient) systemNames() string {
+	names := map[string]string{"darwin": "macOS", "windows": "Windows", "linux": "Linux"}
+	out := make([]string, len(c.systems))
+	for i, s := range c.systems {
+		out[i] = names[s]
+	}
+	return strings.Join(out, ", ")
+}
+
 // scopes are the scopes the client has files of, project first.
 func (c agentClient) scopes() []agentScope {
 	var out []agentScope
+	files := c.files()
 	for _, s := range []agentScope{scopeProject, scopeUser} {
-		if _, ok := c.config[s]; ok {
+		if _, ok := files[s]; ok {
 			out = append(out, s)
 		}
 	}
@@ -237,6 +289,25 @@ type serverSpec struct {
 // recipes of docs/mcp.md.
 const evoCommand = "evo"
 
+// executable is the path of this evo (a variable: the tests set it).
+var executable = os.Executable
+
+// command is what the client starts: this evo by its full path (fullPath,
+// its links resolved), else evo from the client's PATH.
+func (c agentClient) command() string {
+	if !c.fullPath {
+		return evoCommand
+	}
+	p, err := executable()
+	if err != nil {
+		return evoCommand
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		p = r
+	}
+	return p
+}
+
 // entry is the client's entry of the server. It holds no secret: the
 // Cloud.ru key stays in the profile of 'evo configure', and the bearer
 // token of HTTP is named, never written (placeholder reports whether the
@@ -246,7 +317,7 @@ func (c agentClient) entry(s serverSpec) (e agentconf.Entry, placeholder bool) {
 		if c.stdioType != "" {
 			e = append(e, agentconf.Field{Key: "type", Value: c.stdioType})
 		}
-		return append(e, agentconf.Field{Key: "command", Value: evoCommand}, agentconf.Field{Key: "args", Value: s.args}), false
+		return append(e, agentconf.Field{Key: "command", Value: c.command()}, agentconf.Field{Key: "args", Value: s.args}), false
 	}
 	if c.httpType != "" {
 		e = append(e, agentconf.Field{Key: "type", Value: c.httpType})
