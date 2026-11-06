@@ -240,6 +240,34 @@ func stageRegistry(t *testing.T, vm *stageVM, budget time.Duration, tune ...func
 // deployCall is one call of deploy over MCP, bounded by progressWatch: its
 // answer, or "" when it did not answer in time. args are the call's;
 // none — confirmed=true.
+// deployStageCalls is how many calls deploy may take to reach its stage
+// on the VM: each one answers within the budget and goes on where the last
+// one ended (D69).
+const deployStageCalls = 10
+
+// deployUntilStageStarts calls deploy until its stage starts on vm — the
+// first call on a fast runner, a later one on a slow one, where the steps
+// before the stage (the VM, SSH, Docker) take the first call's budget
+// (FB171-4: the first call of release.yml on Windows did not start the
+// stage within progressBudget) — and answers the last call ("" when one
+// did not answer within the budget).
+func deployUntilStageStarts(t *testing.T, r *Registry, vm *stageVM) string {
+	t.Helper()
+	text := ""
+	for range deployStageCalls {
+		if text = deployCall(t, r); text == "" {
+			return ""
+		}
+		vm.mu.Lock()
+		started := vm.starts > 0
+		vm.mu.Unlock()
+		if started {
+			return text
+		}
+	}
+	return text
+}
+
 func deployCall(t *testing.T, r *Registry, args ...map[string]any) string {
 	t.Helper()
 	got := make(chan string, 1)
@@ -294,7 +322,7 @@ func TestDeployStage_OnceAndNotCutShort(t *testing.T) {
 	{
 		vm := newStageVM()
 		r := stageRegistry(t, vm, progressBudget)
-		first := deployCall(t, r)
+		first := deployUntilStageStarts(t, r, vm)
 		vm.mu.Lock()
 		died, starts := vm.diedWithCall, vm.starts
 		vm.mu.Unlock()
@@ -329,7 +357,7 @@ func TestDeployStage_OnceAndNotCutShort(t *testing.T) {
 	{
 		vm := newStageVM()
 		r := stageRegistry(t, vm, progressBudget)
-		if first := deployCall(t, r); first == "" {
+		if first := deployUntilStageStarts(t, r, vm); first == "" {
 			broken = append(broken, "(4) deploy did not answer within the budget of the call")
 		} else {
 			vm.lose()
