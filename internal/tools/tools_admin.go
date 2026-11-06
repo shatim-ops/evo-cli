@@ -194,7 +194,7 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 // first.
 func orgProjectPages(ctx context.Context, tp auth.TokenProvider) (raw []any, laterPage bool, err error) {
 	// An empty page ends the list of the Organization API (IAM-10).
-	err = pager.AllCounted("organization: projects", func(token string) (string, int, error) {
+	err = pager.AllUntilEmpty("organization: projects", pager.MaxPages, func(token string) (string, int, error) {
 		u := OrgProjectsURL
 		if token != "" {
 			u += "?page_token=" + neturl.QueryEscape(token)
@@ -208,7 +208,7 @@ func orgProjectPages(ctx context.Context, tp auth.TokenProvider) (raw []any, lat
 		raw = append(raw, page...)
 		next, _ := m["next_page_token"].(string)
 		return next, len(page), nil
-	}, pager.EndOnEmptyPage)
+	})
 	return raw, laterPage, err
 }
 
