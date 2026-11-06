@@ -350,22 +350,6 @@ func eNoRightHint() string {
 func eForbidden(project string) string {
 	return i18n.Tf("not enough rights to grant access in the project “%s”: Cloud.ru refused", "недостаточно прав для выдачи доступа в проекте «%s»: Cloud.ru отказал", project)
 }
-func eAccountLimit(project string, n int) string {
-	return i18n.Tf("the project “%s” has reached its limit of service accounts (%d); no new account was created",
-		"в проекте «%s» достигнут лимит сервисных аккаунтов (%d), новый не создан", project, n)
-}
-func eAccountLimitHint() string {
-	return i18n.T("Delete an unused service account in the Cloud.ru console, or choose another project.",
-		"Удалите неиспользуемый сервисный аккаунт в личном кабинете Cloud.ru или выберите другой проект.")
-}
-func eKeyLimit(account string, n int) string {
-	return i18n.Tf("the service account %s has reached its limit of keys (%d); no new key was created",
-		"у сервисного аккаунта %s достигнут лимит ключей (%d), новый не создан", account, n)
-}
-func eKeyLimitHint(account string) string {
-	return i18n.Tf("Delete unused keys in the Cloud.ru console: “Service accounts” → %s.",
-		"Удалите неиспользуемые ключи в личном кабинете Cloud.ru: «Сервисные аккаунты» → %s.", account)
-}
 func eNotComplete(cause string, made, undone, left []string) string {
 	return i18n.Tf("access was not granted: %s; created: %v; rolled back: %v; left behind: %v", "доступ не выдан: %s; создано: %v; отменено: %v; осталось: %v",
 		cause, made, undone, left)

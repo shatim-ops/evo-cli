@@ -497,14 +497,16 @@ type plan struct {
 	days     int
 	term     time.Time
 	saID     string // the account of that name, when there is one
-	keys     int    // its keys
 	profile  string
 	previous *Previous
 }
 
 // planFor checks the chosen access before the question (axis 1 of the
-// contract): the right asked again for this project, the limits of IAM by
-// the lists (#563; confirmed by IAM).
+// contract): the right asked again for this project, and the account by its
+// name. No limit of accounts or keys is checked here: none is known — «10
+// accounts» (#563) was refuted live (acceptance C2.1, 06.11: 20 and 18) —
+// and IAM's refusal at the write is the answer, with what this login made
+// undone (R-44).
 func (s *session) planFor(ctx context.Context, p project, aud Audience, days int) (plan, error) {
 	pl := plan{p: p, aud: aud, days: days, profile: s.store.Profile(aud), previous: s.store.Previous(aud),
 		term: s.cfg.Now().Add(time.Duration(days) * 24 * time.Hour).UTC().Truncate(time.Second)}
@@ -521,38 +523,16 @@ func (s *session) planFor(ctx context.Context, p project, aud Audience, days int
 			return pl, at(stepEvaluate, noRight(p.Name))
 		}
 	}
-	// 13. The account by its name: reused, its keys within the limit.
+	// 13. The account by its name: reused when there.
 	sas, err := s.admin.ServiceAccounts(ctx, p.ID, aud.account())
 	if err != nil {
 		return pl, at(stepAccount, err)
 	}
 	if len(sas) > 0 {
 		pl.saID = sas[0].ID
-		keys, err := s.admin.AccessKeys(ctx, pl.saID)
-		if err != nil {
-			return pl, at(stepAccount, err)
-		}
-		if pl.keys = len(keys); pl.keys >= maxKeys {
-			return pl, at(stepAccount, clierrors.New(clierrors.CodeUsage, eKeyLimit(aud.account(), pl.keys), eKeyLimitHint(aud.account())))
-		}
-		return pl, nil
-	}
-	all, err := s.admin.ServiceAccounts(ctx, p.ID, "")
-	if err != nil {
-		return pl, at(stepAccount, err)
-	}
-	if len(all) >= maxAccounts {
-		return pl, at(stepAccount, clierrors.New(clierrors.CodeUsage, eAccountLimit(p.Name, len(all)), eAccountLimitHint()))
 	}
 	return pl, nil
 }
-
-// The limits of IAM, refused before any write (#563; confirmed by IAM):
-// service accounts of a project, access keys of an account.
-const (
-	maxAccounts = 10
-	maxKeys     = 50
-)
 
 // grant makes the planned access (steps 14–19), the key last; a failure
 // after a write undoes what this login made, newest first (R-44). say tells

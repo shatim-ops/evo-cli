@@ -102,9 +102,13 @@ type Variant struct {
 	Perm          Perm   // the account evo exists and holds the role (step 15)
 	PermForbidden bool   // permissions: 403
 	RoleCollision bool   // POST permissions by roleName: 400, by roleId: created
-	AccountLimit  bool   // the project has 10 service accounts
-	KeyLimit      bool   // the account has 50 keys
-	FailAt        Step   // the write of this step answers 500
+	AccountLimit  bool   // the project has 10 service accounts, and IAM refuses one more
+	// OtherAccounts: the project has this many accounts of others, and IAM
+	// still creates one more (acceptance C2.1, 06.11: 20, then 18 — no
+	// limit of 10 on the platform).
+	OtherAccounts int
+	KeyLimit      bool // the account has 50 keys
+	FailAt        Step // the write of this step answers 500
 	// AnyLoopbackPort takes a redirect_uri at any port of 127.0.0.1, not
 	// only the registered ones: the tests of evo listen on port 0, so that
 	// they share no fixed port with each other or the probe script.
@@ -232,7 +236,7 @@ func New(t testing.TB, v Variant) *World {
 	w.srv = httptest.NewUnstartedServer(http.HandlerFunc(w.serve))
 	w.URL = "http://" + w.srv.Listener.Addr().String()
 	w.Issuer = w.URL + IssuerPath
-	n := 0
+	n := v.OtherAccounts
 	if v.AccountLimit {
 		n = 10
 	}
