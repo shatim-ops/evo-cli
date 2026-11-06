@@ -73,9 +73,9 @@ func (c *boundClock) now() time.Time {
 }
 
 // runAtBound runs the deploy of w with the bound coming at the at-th
-// reading of its clock; it returns the answer, the record's status and how
-// many times the clock was read.
-func runAtBound(t *testing.T, w boundWorld, at int) (error, string, int) {
+// reading of its clock; it returns the record's status, how many times the
+// clock was read and the answer.
+func runAtBound(t *testing.T, w boundWorld, at int) (string, int, error) {
 	t.Helper()
 	cloud := &mockCloudAPI{}
 	if w.cloud != nil {
@@ -98,7 +98,7 @@ func runAtBound(t *testing.T, w boundWorld, at int) (error, string, int) {
 	}
 	clk.mu.Lock()
 	defer clk.mu.Unlock()
-	return err, status, clk.reads
+	return status, clk.reads, err
 }
 
 // FB171-4, the class (release plan 1.8, Process; owner's decision 05.11,
@@ -123,13 +123,13 @@ func TestDeploy_AtAnyBoundRecordAndAnswerAgree(t *testing.T) {
 	decided := 0
 	for _, w := range boundWorlds {
 		t.Run(w.name, func(t *testing.T) {
-			baseErr, baseStatus, reads := runAtBound(t, w, 0)
+			baseStatus, reads, baseErr := runAtBound(t, w, 0)
 			if baseErr == nil && baseStatus != "running" {
 				t.Errorf("no bound: no error, the record says %q", baseStatus)
 			}
 			decided += reads
 			for at := 1; at <= reads; at++ {
-				err, status, _ := runAtBound(t, w, at)
+				status, _, err := runAtBound(t, w, at)
 				var going *InProgress
 				switch {
 				case stderrors.As(err, &going):
