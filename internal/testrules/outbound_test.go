@@ -20,14 +20,15 @@ import (
 // linkOnly are the addresses outside Cloud.ru that production code names,
 // each one evo prints and never requests: "file: host" → why.
 var linkOnly = map[string]string{
-	"internal/cli/agent_clients.go: code.claude.com":       "the docs of an MCP client, printed by evo agent setup",
-	"internal/cli/agent_clients.go: cursor.com":            "the docs of an MCP client, printed by evo agent setup",
-	"internal/cli/agent_clients.go: code.visualstudio.com": "the docs of an MCP client, printed by evo agent setup",
-	"internal/cli/agent_clients.go: geminicli.com":         "the docs of an MCP client, printed by evo agent setup",
-	"internal/cli/agent_clients.go: developers.openai.com": "the docs of an MCP client, printed by evo agent setup",
-	"internal/cli/agent_clients.go: evo":                   "a placeholder entry whose keys evo owns in a client's config, never a request",
-	"internal/product/product.go: t.me":                    "the feedback links of evo --help and README",
-	"internal/product/product.go: github.com":              "the repository, in evo version and NOTICE",
+	"internal/cli/agent_clients.go: code.claude.com":         "the docs of an MCP client, printed by evo agent setup",
+	"internal/cli/agent_clients.go: cursor.com":              "the docs of an MCP client, printed by evo agent setup",
+	"internal/cli/agent_clients.go: code.visualstudio.com":   "the docs of an MCP client, printed by evo agent setup",
+	"internal/cli/agent_clients.go: geminicli.com":           "the docs of an MCP client, printed by evo agent setup",
+	"internal/cli/agent_clients.go: developers.openai.com":   "the docs of an MCP client, printed by evo agent setup",
+	"internal/cli/agent_clients.go: modelcontextprotocol.io": "the docs of an MCP client (Claude Desktop), printed by evo agent setup",
+	"internal/cli/agent_clients.go: evo":                     "a placeholder entry whose keys evo owns in a client's config, never a request",
+	"internal/product/product.go: t.me":                      "the feedback links of evo --help and README",
+	"internal/product/product.go: github.com":                "the repository, in evo version and NOTICE",
 }
 
 // outboundHost is the host of an address literal ("" when s is none):
