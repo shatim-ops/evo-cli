@@ -99,3 +99,29 @@ func TestLogin_SecondLoginRefusedWhileOneWaits(t *testing.T) {
 		t.Errorf("the second login ended by its wait or an interrupt, not by a refusal: %v", err)
 	}
 }
+
+// Release plan 1.8, «B-5, дефекты флагов и параллельного входа» (б) (Grok
+// audit 06.11, #1087): --project with a project that does not exist opens
+// the browser — evo cannot know the projects before the sign-in. So: after
+// the sign-in, a refusal with plain words before the consent page (no
+// form is offered), and the help of --project says the project is checked
+// after the sign-in.
+func TestLogin_UnknownProjectRefusedBeforeTheConsent(t *testing.T) {
+	prev := i18n.Lang()
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	w := newWorld(t, loginworld.Variant{})
+	r := login(t, w, &browser{}, Choice{Project: "no-such-project"}, nil, nil)
+	if clierrors.Reason(r.err) != clierrors.CodeUsage || !strings.Contains(r.err.Error(), "no-such-project") {
+		t.Errorf("an unknown --project: %v; want USAGE naming the project", r.err)
+	}
+	if strings.Contains(r.b.consent, "<form") {
+		t.Errorf("an unknown --project got the consent form")
+	}
+	if len(w.Accounts()) != 0 {
+		t.Errorf("an unknown --project made an account")
+	}
+	if !strings.Contains(TFlagProject(), "после входа") {
+		t.Errorf("the help of --project does not say the project is checked after the sign-in: %q", TFlagProject())
+	}
+}
