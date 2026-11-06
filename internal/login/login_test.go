@@ -252,6 +252,9 @@ func TestLogin_Variants(t *testing.T) {
 		{"role name collision", loginworld.Variant{RoleCollision: true}, "", 1, 1, []string{"GET /api/v1/roles"}},
 		// No limit of IAM is known (acceptance C2.1): IAM's refusal at the
 		// write is the answer, and what this login made is undone (R-44).
+		// Acceptance B-5, 06.11: 8 accounts in the project, evo counted 16 —
+		// the list of the project shows the organization's accounts too.
+		{"accounts of the organization in the list", loginworld.Variant{OtherAccounts: 8, OrgAccounts: 8}, "", 1, 1, []string{"POST /api/v2/serviceAccounts", "POST /api/v3/permissions"}},
 		{"account limit", loginworld.Variant{AccountLimit: true}, clierrors.CodeAPIError, 0, 0, []string{"POST /api/v2/serviceAccounts"}},
 		{"key limit", loginworld.Variant{KeyLimit: true}, clierrors.CodeAPIError, 1, 0, []string{"POST /api/v3/permissions", "DELETE /api/v3/permissions/"}},
 		{"broken at the account", loginworld.Variant{FailAt: loginworld.StepAccount}, clierrors.CodeAPIError, 0, 0, nil},
