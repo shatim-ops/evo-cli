@@ -101,11 +101,10 @@ var deleteAdviceOwn = map[string]string{
 }
 
 // deleteAdviceMisses are the texts that advise deleting what evo did not
-// make; they go before rc.1 (release plan 1.8, «ложный лимит», R-56). The
-// list only shrinks. Closes by 1.8.
-var deleteAdviceMisses = map[string]string{
-	"internal/login/texts.go\tTLogoutKept": "a key not made by evo login: «if you do not need it, delete it» — evo did not make it",
-}
+// make; they go before rc.1 (release plan 1.8, «ложный лимит», R-56); the
+// last, TLogoutKept of evo logout, went in #1078. The list only shrinks.
+// Closes by 1.8.
+var deleteAdviceMisses = map[string]string{}
 
 // Release plan 1.8, «ложный лимит» (acceptance B-5, 06.11; «Риск», R-56,
 // conclusion 33): the hint «delete an unused service account» of evo login
