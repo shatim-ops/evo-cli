@@ -32,6 +32,15 @@ import (
 // whose call no longer fails that way.
 var lateRefusals = map[string]string{}
 
+// alreadyAsks are the repeats of a change the world has (consentWorld.
+// alreadyFor) known to ask for consent or to write: "tool: world: <name>"
+// → the line of the release plan that fixes it. It only shrinks. Closes by
+// 1.8 (release plan 1.8, «повтор изменения, которое уже есть, — не
+// вопрос»).
+var alreadyAsks = map[string]string{
+	"open_ports: world: ports open already": "every port open already: the preview says already_open and asks for consent to nothing — development, release plan 1.8",
+}
+
 // jobStarts answer a refused write as a success by design: the call starts
 // a job, and the step's refusal is the job's state, not the call's answer.
 var jobStarts = map[string]string{
@@ -60,6 +69,11 @@ type consentWorld struct {
 	// names is what the refusal of refusedBy says (the state of the
 	// resource), so that the agent knows to wait, not to fix an argument.
 	names string
+	// alreadyFor names the tools whose change the world already has (the
+	// disk attached to this VM, the address on it): a repeat answers with
+	// that, without the question and without a write (D26, D81; agent run
+	// of 1.7.0, № 6: a repeated disk_attach asked, then failed with 422).
+	alreadyFor []string
 }
 
 var consentWorlds = map[string]consentWorld{
@@ -159,6 +173,22 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return nil
 	}, refusedBy: []string{"disk_delete"}, names: "web-in-use"},
+	// The change is there already (release plan 1.8, «повтор изменения,
+	// которое уже есть, — не вопрос»; #902): the disk is attached to the
+	// VM of disk_attach; no VM has the disk of disk_detach; the address of
+	// fip_attach is on its VM.
+	"disk attached to this VM": {answer: consentDiskAnswer(`"state":"in_use","vms":[{"id":"` + parityVM + `","name":"web"}]`),
+		alreadyFor: []string{"disk_attach"}},
+	"disk attached to no VM": {answer: consentDiskAnswer(`"state":"available","vms":[]`),
+		alreadyFor: []string{"disk_detach"}},
+	"floating IP on this VM": {cloud: func(c provision.CloudAPI) provision.CloudAPI { return ownFIPCloud{c} },
+		alreadyFor: []string{"fip_attach"}},
+	// The group of open_ports allows its ports already; the group of
+	// close_ports has no rule of its port.
+	"ports open already": {answer: consentRulesAnswer(`{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp","port_range":"80:80","remote_ip_prefix":"0.0.0.0/0"},` +
+		`{"id":"` + consentOtherID + `","direction":"ingress","ip_protocol":"tcp","port_range":"443:443","remote_ip_prefix":"0.0.0.0/0"}`),
+		alreadyFor: []string{"open_ports"}},
+	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports"}},
 	"disk larger than requested": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 			return nil
@@ -221,6 +251,43 @@ func (otherZoneFlavorCloud) ListFlavors(context.Context) ([]*provision.Flavor, e
 
 // consentOtherID is a resource of the world the call did not make.
 const consentOtherID = "00000000-0000-4000-8000-0000000000b8"
+
+// consentDiskAnswer answers every disk of the compute API with the fields
+// of the variant: a read of one, and the list.
+func consentDiskAnswer(fields string) func(r *http.Request) *http.Response {
+	return func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" {
+			return nil
+		}
+		disk := func(id string) string { return `{"id":"` + id + `","name":"data","size":20,` + fields + `}` }
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/api/v1/disks/"):
+			return consentJSON(http.StatusOK, disk(strings.TrimPrefix(r.URL.Path, "/api/v1/disks/")))
+		case r.URL.Path == "/api/v1/disks":
+			return consentJSON(http.StatusOK, `{"items":[`+disk(parityVM)+`,`+disk(parityAttachedDisk)+`],"total":2}`)
+		}
+		return nil
+	}
+}
+
+// consentRulesAnswer answers the rules of every security group with items.
+func consentRulesAnswer(items string) func(r *http.Request) *http.Response {
+	return func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" ||
+			!strings.HasPrefix(r.URL.Path, "/api/v1/security-groups/") || !strings.Contains(r.URL.Path, "/rules") {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"items":[`+items+`]}`)
+	}
+}
+
+// ownFIPCloud has the address of fip_attach on the VM of the call.
+type ownFIPCloud struct{ provision.CloudAPI }
+
+func (ownFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return []*provision.FloatingIP{{ID: parityVM, IPAddress: "203.0.113.10", State: "in_use",
+		VM: []byte(`{"id":"` + parityVM + `","name":"web"}`)}}, nil
+}
 
 // busyFIPCloud has the address of fip_attach in use by another VM.
 type busyFIPCloud struct{ provision.CloudAPI }
@@ -447,6 +514,8 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 	}
 
 	found := map[string]string{}
+	// already: the repeats of a change the world has that ask or write.
+	already := map[string]string{}
 	// A refusal names what is missing, not an empty value in its place.
 	emptyIn := func(key string, ans map[string]any) {
 		for _, f := range []string{"error", "hint"} {
@@ -462,6 +531,23 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		}
 		for _, c := range consentCases(tl, base) {
 			key := tl.Name + ": " + c.name
+			if slices.Contains(c.world.alreadyFor, tl.Name) {
+				// A repeat of a change the world has: the answer of the
+				// repeat, the same with confirmed, and no write either way.
+				before, beforeErr, _ := call(tl, c, false)
+				after, afterErr, writes := call(tl, c, true)
+				switch {
+				case before["status"] == "confirmation_required":
+					already[key] = "asks for consent to a change the world already has: " + clipLine(fmt.Sprint(before))
+				case beforeErr || afterErr:
+					already[key] = fmt.Sprintf("refuses a change the world already has: %s / %s", clipLine(fmt.Sprint(before)), clipLine(fmt.Sprint(after)))
+				case writes > 0:
+					already[key] = fmt.Sprintf("writes %d time(s) for a change the world already has", writes)
+				case before["status"] != after["status"]:
+					already[key] = fmt.Sprintf("answers %v without confirmed, %v with it", before["status"], after["status"])
+				}
+				continue
+			}
 			if slices.Contains(c.world.refusedBy, tl.Name) {
 				before, _, _ := call(tl, c, false)
 				msg := fmt.Sprint(before["error"], " ", before["hint"])
@@ -512,6 +598,16 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 	for _, k := range keys {
 		if lateRefusals[k] == "" {
 			t.Errorf("%s: %s — check it before the question, or, while the plan moves it, add it to lateRefusals with the work item", k, found[k])
+		}
+	}
+	for k, why := range already {
+		if alreadyAsks[k] == "" {
+			t.Errorf("%s: %s — a repeat of a change that is there answers it, without the question and without a write (D26, D81)", k, why)
+		}
+	}
+	for k := range alreadyAsks {
+		if already[k] == "" {
+			t.Errorf("alreadyAsks names %s, which no longer asks or writes: remove the line (the list only shrinks)", k)
 		}
 	}
 	for k := range lateRefusals {
