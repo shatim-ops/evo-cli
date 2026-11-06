@@ -346,8 +346,8 @@ func newToolsCallCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, i18n.T("Tool argument as name=value (repeatable)", "Аргумент инструмента: имя=значение (флаг повторяется)"))
 	cmd.Flags().StringVar(&argsJSON, "args-json", "", i18n.T("Tool arguments as a JSON object", "Аргументы инструмента объектом JSON"))
 	cmd.Flags().StringVar(&argsFile, "args-file", "", i18n.T("Read tool arguments from a JSON file", "Прочитать аргументы инструмента из файла JSON"))
-	cmd.Flags().BoolVar(&wait, "wait", false, i18n.T("For tools that take wait_seconds (*_operation, stack_status): wait for the final state, polling with backoff up to the tool's limit",
-		"Для инструментов с wait_seconds (*_operation, stack_status): ждать конечного состояния, опрашивая с нарастающей паузой до предела инструмента"))
+	cmd.Flags().BoolVar(&wait, "wait", false, i18n.T("For tools that take wait (provision, deploy_apply, the deletes): their wait argument, --wait=false answers at once. For tools that take wait_seconds (*_operation, stack_status): wait for the final state, polling with backoff up to the tool's limit",
+		"Для инструментов с wait (provision, deploy_apply, удаления) — их аргумент wait, --wait=false отвечает сразу. Для инструментов с wait_seconds (*_operation, stack_status) — ждать конечного состояния, опрашивая с нарастающей паузой до предела инструмента"))
 	return cmd
 }
 
@@ -398,8 +398,8 @@ func runToolsCall(cmd *cobra.Command, name, argsFile, argsJSON string, argPairs 
 	if err != nil {
 		return err
 	}
-	if wait {
-		if err := applyWait(t, callArgs); err != nil {
+	if cmd.Flags().Changed("wait") {
+		if err := applyWait(t, wait, callArgs); err != nil {
 			return err
 		}
 	}
@@ -630,14 +630,27 @@ func checkItems(p param, items []any) error {
 	return nil
 }
 
-// applyWait sets wait_seconds to the longest wait the tool allows, unless
-// the caller gave one. The tool polls with capped backoff itself.
-func applyWait(t tools.Tool, args map[string]any) error {
+// applyWait is --wait of evo tools call, given explicitly. A tool with its
+// own wait argument (provision, deploy_apply, the deletes of D74) gets it,
+// both ways, as --wait of the command trees (FB170-4). A tool that takes
+// wait_seconds gets the longest wait it allows with --wait; it polls with
+// capped backoff itself. The caller's own --arg wins in both. --wait=false
+// on a tool that takes neither changes nothing, as before.
+func applyWait(t tools.Tool, wait bool, args map[string]any) error {
 	props, _ := t.InputSchema["properties"].(map[string]any)
+	if p, ok := props["wait"].(map[string]any); ok && p["type"] == "boolean" {
+		if _, given := args["wait"]; !given {
+			args["wait"] = wait
+		}
+		return nil
+	}
+	if !wait {
+		return nil
+	}
 	if _, ok := props["wait_seconds"]; !ok {
 		return clerrors.New(clerrors.CodeUsage, i18n.Tf("%s does not support --wait", "%s не поддерживает --wait", t.Name),
-			i18n.T("--wait works with tools that take wait_seconds: the *_operation tools and stack_status.",
-				"--wait работает с инструментами, у которых есть wait_seconds: *_operation и stack_status."))
+			i18n.T("--wait works with tools that take wait (provision, deploy_apply, the deletes) or wait_seconds (the *_operation tools, stack_status).",
+				"--wait работает с инструментами, у которых есть wait (provision, deploy_apply, удаления) или wait_seconds (*_operation, stack_status)."))
 	}
 	if _, ok := args["wait_seconds"]; !ok {
 		args["wait_seconds"] = float64(tools.OpWaitMaxSeconds)
