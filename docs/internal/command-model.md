@@ -77,7 +77,8 @@ Cloud.ru при подготовке не было: где поведение о
 ### 1.2. Статусы записи и переходы
 
 Список в комментарии (`state/types.go:21`): `creating, provisioned, deploying,
-running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пишутся ещё
+running, ssh_timeout, docker_failed, upload_failed, compose_failed, destroying,
+destroyed` (последние два — с 1.8, D87). В коде пишутся ещё
 `error`, `timeout` и любой статус ВМ из облака (усыновление в `deploy_apply`).
 
 | из | чем | в | где |
@@ -91,7 +92,9 @@ running, ssh_timeout, docker_failed, destroying, destroyed`. В коде пиш�
 | любой активный, кроме `destroying` | `deploy`: SSH не поднялся | `ssh_timeout` | `engine/deploy.go:207-212` |
 | то же | `deploy`: SSH подключён | `deploying` | `engine/deploy.go:223-226` |
 | `deploying` | `deploy`: Docker не готов (не отмена) | `docker_failed` | `engine/deploy.go:229-235` |
-| `deploying` | `deploy`: ошибка загрузки файла или `compose up` | `deploying` (не меняется) | `engine/deploy.go:252-267` |
+| `deploying` | `deploy`: ошибка загрузки файла (не граница вызова и не отмена) | `upload_failed`, ответ `UPLOAD_FAILED` (D87) | `engine/deploy.go`, ветка `Upload` |
+| `deploying` | `deploy`: ошибка `compose up` (не граница вызова и не отмена) | `compose_failed`, ответ `COMPOSE_FAILED` (D87) | `engine/deploy.go`, ветка `compose-up` |
+| `deploying` | `deploy`: граница вызова или отмена при загрузке и `compose up` | `deploying` (не меняется, D76; R-51) | `engine/deploy.go`, `atBound` |
 | `deploying` | `deploy`: `compose up` прошёл | `running` | `engine/deploy.go:271-276` |
 | `running` с тем же хешем | `deploy` без `--force` | без изменений | `engine/deploy.go:95-100` |
 | `destroying` | `deploy` | отказ | `engine/deploy.go:78-82` |

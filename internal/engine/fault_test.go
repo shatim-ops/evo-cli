@@ -500,9 +500,10 @@ func TestFault_Deploy_ComposeFailKeepsVM(t *testing.T) {
 	dep.failAt("compose", faultTransport)
 	eng, _, dir := faultEngine(t, cloud, dep)
 	err := faultDeploy(t, eng, dir)
-	faultWantExit(t, err, clerrors.ExitGeneral, clerrors.CodeSSHTimeout)
+	// D87: its own reason and status, not SSH_TIMEOUT and deploying.
+	faultWantExit(t, err, clerrors.ExitGeneral, clerrors.CodeComposeFailed)
 	active := faultState(t, dir).ActiveDeployment()
-	if active == nil || active.VMID == "" || active.FloatingIPID == "" || active.Status == "running" {
+	if active == nil || active.VMID == "" || active.FloatingIPID == "" || active.Status != "compose_failed" {
 		t.Fatalf("state %+v err=%v", active, err)
 	}
 	if len(cloud.liveVMs()) != 1 || len(cloud.liveFIPs()) != 1 {
