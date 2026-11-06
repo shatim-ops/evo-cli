@@ -426,8 +426,12 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		err = fmt.Errorf("exit status %d", st.Exit)
 	}
 	if err != nil {
+		// At the bound or cancelled the record stays deploying (D76), as
+		// for the upload and Docker: the next deploy takes the stage on.
+		err = e.atBound(caller, err)
 		var going *InProgress
 		if stderrors.As(err, &going) || ctx.Err() != nil {
+			e.decided = true
 			return err
 		}
 		// Over, not in progress: compose_failed with its own reason, one

@@ -45,12 +45,12 @@ func TestDeploy_RecordAndAnswerAtTheBoundAreOneDecision(t *testing.T) {
 		// D87, R-51 (Risk, conclusion 30): a failed upload and a failed
 		// docker compose up end the deploy with a status of their own,
 		// written by the same decision as the answer (writeDecided).
-		{"upload", "upload_failed", "UPLOAD_FAILED", func() *mockDeployer {
+		{"upload", "upload_failed", clerrors.CodeUploadFailed, func() *mockDeployer {
 			dep := newMockDeployer()
 			dep.uploadErr = stderrors.New("sftp: connection lost")
 			return dep
 		}, nil},
-		{"compose", "compose_failed", "COMPOSE_FAILED", func() *mockDeployer {
+		{"compose", "compose_failed", clerrors.CodeComposeFailed, func() *mockDeployer {
 			dep := newMockDeployer()
 			dep.streamErrs = map[string][]error{"cd /opt/app && docker compose -f docker-compose.yml up -d": {stderrors.New("pull access denied")}}
 			return dep
@@ -63,18 +63,6 @@ func TestDeploy_RecordAndAnswerAtTheBoundAreOneDecision(t *testing.T) {
 				}
 				return nil
 			}
-			return dep
-		}, nil},
-		// D87 (R-51): a failed upload and a failed compose up are a status
-		// of their own, written with the answer, as docker_failed.
-		{"upload", "upload_failed", clerrors.CodeUploadFailed, func() *mockDeployer {
-			dep := newMockDeployer()
-			dep.uploadErr = stderrors.New("scp: write failed")
-			return dep
-		}, nil},
-		{"compose", "compose_failed", clerrors.CodeComposeFailed, func() *mockDeployer {
-			dep := newMockDeployer()
-			dep.streamErrs = map[string][]error{"cd /opt/app && docker compose -f docker-compose.yml up -d": {stderrors.New("pull access denied")}}
 			return dep
 		}, nil},
 	} {
@@ -186,7 +174,7 @@ func TestDeploy_UploadAndComposeAtTheBoundOrCancelStayDeploying(t *testing.T) {
 				t.Errorf("%s: no error", tc.name)
 			case !tc.cancel && !stderrors.As(err, &going):
 				t.Errorf("%s: answer %v (%s), want deploy in progress (phase %s)", tc.name, err, clerrors.Reason(err), tc.phase)
-			case clerrors.Reason(err) == "UPLOAD_FAILED" || clerrors.Reason(err) == "COMPOSE_FAILED":
+			case clerrors.Reason(err) == clerrors.CodeUploadFailed || clerrors.Reason(err) == clerrors.CodeComposeFailed:
 				t.Errorf("%s: answer %s — a failure, where the record says the deploy goes on", tc.name, clerrors.Reason(err))
 			}
 		})
