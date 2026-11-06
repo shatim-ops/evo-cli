@@ -13,6 +13,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -135,6 +137,9 @@ func worldConfig(w *loginworld.World, out io.Writer, open func(string) error) Co
 	c.Trusted = func(u string) bool { return strings.HasPrefix(u, w.URL+"/") }
 	c.HTTP = w.Client()
 	c.Wait = 20 * time.Second
+	// The lock of the one login: the world's own, shared by the logins of
+	// one world (TestLogin_SecondLoginRefusedWhileOneWaits).
+	c.LockPath = filepath.Join(os.TempDir(), fmt.Sprintf("evo-login-%p.lock", w))
 	// Port 0: the tests share no fixed port (the world takes any loopback
 	// port); the registered ones are held by TestLogin_RegisteredPorts.
 	c.Ports = []int{0}
@@ -762,7 +767,7 @@ func TestLogin_GrantWithoutAProjectIsRefused(t *testing.T) {
 }
 
 // Plan 1.8, #1087 (audit of 06.11): the end of the wait is not a Ctrl-C —
-// its own code TIMEOUT, exit 1, «not completed within N min», nothing
+// its own code LOGIN_TIMEOUT, exit 1, «not completed within N min», nothing
 // made; a Ctrl-C stays INTERRUPTED, 130.
 func TestLogin_TimeoutIsNotAnInterrupt(t *testing.T) {
 	w := newWorld(t, loginworld.Variant{})
@@ -770,7 +775,7 @@ func TestLogin_TimeoutIsNotAnInterrupt(t *testing.T) {
 	cfg := worldConfig(w, &out, func(string) error { return nil }) // the person never comes
 	cfg.Wait = 50 * time.Millisecond                               // wall-clock: a share of the production wait, to end the test
 	_, err := Login(context.Background(), cfg, Choice{}, &memStore{})
-	if clierrors.Reason(err) != clierrors.CodeTimeout || clierrors.ExitCode(err) != clierrors.ExitGeneral || len(w.Accounts()) != 0 {
+	if clierrors.Reason(err) != clierrors.CodeLoginTimeout || clierrors.ExitCode(err) != clierrors.ExitGeneral || len(w.Accounts()) != 0 {
 		t.Fatalf("err %v (reason %s, exit %d); accounts %d", err, clierrors.Reason(err), clierrors.ExitCode(err), len(w.Accounts()))
 	}
 	var ce *clierrors.CLIError
@@ -798,12 +803,21 @@ func TestLogin_AfterTheWaitThePageIsGone(t *testing.T) {
 		return nil
 	})
 	cfg.Wait = 200 * time.Millisecond // wall-clock: a share of the production wait, to end the test
-	if _, err := Login(context.Background(), cfg, Choice{}, &memStore{}); clierrors.Reason(err) != clierrors.CodeTimeout {
-		t.Fatalf("err %v, want TIMEOUT", err)
+	if _, err := Login(context.Background(), cfg, Choice{}, &memStore{}); clierrors.Reason(err) != clierrors.CodeLoginTimeout {
+		t.Fatalf("err %v, want LOGIN_TIMEOUT", err)
 	}
 	u := <-pageURL
 	if resp, err := http.Get(u); err == nil {
 		resp.Body.Close()
 		t.Errorf("after the wait %s still answers %d", u, resp.StatusCode)
+	}
+	// «Риск», conclusion 35.2: a grant after the wait writes nothing.
+	pu, _ := url.Parse(u)
+	if resp, err := http.PostForm(pu.Scheme+"://"+pu.Host+"/grant", url.Values{"project": {"p"}}); err == nil {
+		resp.Body.Close()
+		t.Errorf("after the wait /grant answers %d", resp.StatusCode)
+	}
+	if len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
+		t.Errorf("after the wait something was made")
 	}
 }

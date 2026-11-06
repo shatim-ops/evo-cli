@@ -16,6 +16,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/loginworld"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -224,7 +225,29 @@ func TestLogin_OneAtATime(t *testing.T) {
 	t.Cleanup(func() { openBrowser = oldOpen })
 	openBrowser = func(string) error { called = true; return nil }
 	code, stdout, stderr := runCLI(t, "", "--json", "login")
-	if code != 1 || !strings.Contains(stderr+stdout, `"reason":"USAGE"`) || !strings.Contains(stderr+stdout, "evo login") || called {
+	if code != 1 || !strings.Contains(stderr+stdout, `"reason":"STATE_LOCKED"`) || !strings.Contains(stderr+stdout, "evo login") || called {
 		t.Fatalf("exit %d, browser %v\n%s\n%s", code, called, stdout, stderr)
+	}
+}
+
+// Release plan 1.8, «B-5, дефекты флагов и параллельного входа» (а) (Grok
+// audit 06.11, #1087): --key-ttl 7 without «d» was taken and opened the
+// browser; the term is days with «d» (7d, 30d, 90d), and a bare number is
+// USAGE before any request, as 0d and abc are.
+func TestLogin_KeyTTLWithoutUnitRefused(t *testing.T) {
+	for _, ttl := range []string{"7", "30", "90", "0d", "abc"} {
+		_, err := loginChoice("", "", ttl)
+		if err == nil {
+			t.Errorf("--key-ttl %s accepted: the term is days with «d»", ttl)
+			continue
+		}
+		if r := clerrors.Reason(err); r != clerrors.CodeUsage {
+			t.Errorf("--key-ttl %s: %s, want USAGE", ttl, r)
+		}
+	}
+	for _, ttl := range []string{"7d", "30d", "90d"} {
+		if _, err := loginChoice("", "", ttl); err != nil {
+			t.Errorf("--key-ttl %s refused: %v", ttl, err)
+		}
 	}
 }

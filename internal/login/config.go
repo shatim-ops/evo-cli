@@ -14,10 +14,12 @@ package login
 
 import (
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
@@ -44,6 +46,9 @@ type Config struct {
 	Tell func(line string)
 	// Wait bounds the time from the start to the person's choice.
 	Wait time.Duration
+	// LockPath is the lock of the one evo login of this computer; "" takes
+	// none.
+	LockPath string
 	// Now is the clock of the answer's values (key's term, login date).
 	Now func() time.Time
 }
@@ -57,8 +62,9 @@ func Default(say func(message, url string), open func(string) error) Config {
 		Ports: auth.LoginRedirectPorts[:], Open: open, Say: say,
 		// wall-clock: the person has five minutes to sign in and choose
 		// (contract B-1, section 1).
-		Wait: 5 * time.Minute,
-		Now:  clock.Now,
+		Wait:     5 * time.Minute,
+		Now:      clock.Now,
+		LockPath: filepath.Join(config.Dir(), "login.lock"),
 	}
 }
 
