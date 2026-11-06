@@ -211,7 +211,7 @@ https://github.com/shatim-ops/evo-cli/blob/main/docs/agent-setup.md». Он
 перед записью показывает diff и спрашивает согласие:
 
 ```sh
-evo agent setup --client claude-code          # cursor, vscode, gemini, codex; gigaagent — печать
+evo agent setup --client claude-code          # claude-desktop, cursor, vscode, gemini, codex; gigaagent — печать
 evo agent setup --client claude-code --skill  # и правила для агента (docs/agent-skill.md)
 ```
 

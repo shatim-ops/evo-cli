@@ -652,3 +652,37 @@ func TestLogin_SaysThePageName(t *testing.T) {
 		t.Errorf("err %v:\n%s", r.err, r.out)
 	}
 }
+
+// IAM-10 (acceptance B-5, 06.11, a blocker of 1.8): past its items the
+// Organization API answers empty pages, each with a new token. orgList read
+// them to the limit of pages and refused every person with «too many
+// pages»; an empty page is the end of the list.
+func TestLogin_EmptyPagesWithATokenEndTheList(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{EmptyPagesWithToken: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil || len(r.saved) != 1 {
+		t.Fatalf("login with empty pages after the items: err %v; saved %d\n%s", r.err, len(r.saved), r.out)
+	}
+}
+
+// «Риск» to IAM-10 (the blocker of B-5): a person of no organization gets
+// the empty first page of /v3/customers with a token, as past the last
+// item. Its first empty page ends the list: login reads it once and
+// refuses as for no project — USAGE, before any write — not «too many
+// pages» and not a wait for more pages.
+func TestLogin_NoCustomersFirstPageWithToken(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{NoCustomersWithToken: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if reasonOf(r.err) != clierrors.CodeUsage || len(r.saved) != 0 || len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
+		t.Fatalf("ended %v (%s); saved %d, accounts %d, keys %d — want USAGE before any write", r.err, reasonOf(r.err), len(r.saved), len(w.Accounts()), len(w.Keys()))
+	}
+	n := 0
+	for _, c := range w.Calls() {
+		if strings.HasPrefix(c, "GET /v3/customers") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("/v3/customers read %d times; its empty first page ends the list", n)
+	}
+}

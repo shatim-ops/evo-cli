@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "evo": {
+      "command": "/opt/evo/bin/evo",
+      "args": [
+        "mcp",
+        "--toolsets",
+        "deploy,vm,vpc,disk,image"
+      ]
+    }
+  }
+}

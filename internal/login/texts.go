@@ -445,9 +445,6 @@ func eOrgUnreachable() string {
 func eOrgStatus(status int, path string) string {
 	return i18n.Tf("the Organization API returned %d (%s)", "Organization API вернул %d (%s)", status, path)
 }
-func eOrgPages(path string) string {
-	return i18n.Tf("Organization API: %s returns too many pages", "Organization API: у %s слишком много страниц", path)
-}
 
 // The items of «created / undone / left».
 func tUndoAccount(account string) string {
