@@ -965,3 +965,21 @@ func TestAgentSetup_FullPathKeepsTheLink(t *testing.T) {
 		t.Errorf("unknown path: %s written with a bare evo", path)
 	}
 }
+
+// D88 (№ 87; «Риск», conclusion 37): a file of the client evo cannot read
+// or write — here its directory is a regular file — is CONFIG_INVALID
+// (exit 2) naming the file, not a raw «lstat …: not a directory» (ERROR).
+func TestAgentSetup_UnwritableFileIsConfigInvalid(t *testing.T) {
+	setupCLI(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("CLOUDRU_KEY_ID", "k")
+	t.Setenv("CLOUDRU_SECRET", "s")
+	if err := os.WriteFile(filepath.Join(dir, ".cursor"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runCLI(t, "", "--json", "agent", "setup", "--client", "cursor", "--yes")
+	if code != 2 || !strings.Contains(stderr+stdout, `"reason":"CONFIG_INVALID"`) || !strings.Contains(stderr+stdout, ".cursor") {
+		t.Errorf("exit %d\n%s%s", code, stdout, stderr)
+	}
+}

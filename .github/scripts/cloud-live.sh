@@ -439,13 +439,28 @@ probe_on() { case " ${PROBES:-} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; 
 # api МЕТОД URL [ТЕЛО] — прямой запрос к API с токеном IAM ($TOKEN, под
 # маской): ответ в $tmp/api.json, код HTTP в $code; тело — через stdin, не
 # в argv. Ни ответ, ни тело в лог не идут.
+# Заголовки ответа — в $tmp/api.h (api_rid). API_RID, если задан, уходит
+# заголовком X-Request-Id: по нему команда платформы находит запрос в своих
+# журналах (CMP-7, вопрос Compute 10.11).
 api() {
+	local rid=()
+	[ -z "${API_RID:-}" ] || rid=(-H "X-Request-Id: $API_RID")
+	rm -f "$tmp/api.h" # заголовки прошлого ответа — не этого запроса
 	if [ -n "${3:-}" ]; then
-		code=$(printf '%s' "$3" | curl -sS -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
-			-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || code=000
+		code=$(printf '%s' "$3" | curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
+			-H "Authorization: Bearer $TOKEN" "${rid[@]}" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || code=000
 	else
-		code=$(curl -sS -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" 2>/dev/null) || code=000
+		code=$(curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || code=000
 	fi
+}
+# api_rid — заголовки id запроса последнего ответа api (request, trace,
+# correlation id; только они — не токены и не куки), «имя=значение» через
+# пробел. Дефисы значения — точками: иначе redact.sed примет UUID за id
+# ресурса и замаскирует то, что нужно команде платформы.
+api_rid() {
+	[ -f "$tmp/api.h" ] || return 0
+	tr -d '\r' <"$tmp/api.h" |
+		awk -F': *' 'tolower($1) ~ /^(x-)?(request|trace|correlation)-?id$|^traceparent$|^x-amzn-request-?id$/ && $2 ~ /^[A-Za-z0-9._:-]+$/ { gsub(/-/, ".", $2); printf "%s%s=%s", sep, tolower($1), $2; sep=" " }'
 }
 # api_why — текст ошибки ответа api, через redact.sed и обрезанный.
 # Ответ без этих полей (не JSON, пустой) — его начало или «тело пустое»:
@@ -573,9 +588,13 @@ probe_cmp7() {
 	mask "$vid"
 	api GET "https://compute.api.cloud.ru/api/v1/vms/$vid"
 	st=$(jq -r '.state // .status // empty' "$tmp/api.json" 2>/dev/null) || st=
-	t=$(date -u +%H:%M:%S)
+	t=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+	# Свой id запроса (без дефисов — его не тронет redact) и id из ответа:
+	# по ним Compute находит DELETE в своих журналах (вопрос 10.11).
+	API_RID="evo-cmp7-${RUN:-local}-$(openssl rand -hex 8)"
 	api DELETE "https://compute.api.cloud.ru/api/v1/vms/$vid"
-	ok "CMP7: DELETE ВМ в состоянии ${st:-не прочитано} ($t UTC)" "HTTP $code: $(api_why)"
+	ok "CMP7: DELETE ВМ в состоянии ${st:-не прочитано} ($t)" "HTTP $code: $(api_why); X-Request-Id отправлен: $API_RID; из ответа: $(api_rid || true)"
+	API_RID=
 }
 
 # Проба R3F1 (R-59, раунд 3 Grok F1; «да» владельца 10.11): SIGKILL процесса

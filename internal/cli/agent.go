@@ -547,7 +547,7 @@ func applyAgentChanges(cmd *cobra.Command, printer *output.Printer, c agentClien
 	}
 	for _, ch := range pending {
 		if err := ch.write(); err != nil {
-			return true, err
+			return true, agentFileError(ch.path, err)
 		}
 	}
 	return true, nil
@@ -609,7 +609,7 @@ func (c agentClient) targets(scope agentScope, e agentconf.Entry, rules *cobra.C
 func readChange(t agentTarget) (agentChange, error) {
 	old, perm, exists, err := readUserFile(t.path)
 	if err != nil {
-		return agentChange{}, err
+		return agentChange{}, agentFileError(t.path, err)
 	}
 	if !exists {
 		perm = t.mode
@@ -802,4 +802,22 @@ func loginKeyWarning(profile string, creds config.Credentials) string {
 		return ""
 	}
 	return login.TAgentKeyWarning(profile)
+}
+
+// agentFileError is a file of the client the system did not let evo read
+// or write: CONFIG_INVALID naming the file, not a raw error with exit 1
+// (D88, № 87; «Риск», conclusion 37). Any other error — one with a code of
+// its own, the file the client rewrote while the person read the diff —
+// keeps what it is.
+func agentFileError(path string, err error) error {
+	var pe *fs.PathError
+	var le *os.LinkError
+	var se *os.SyscallError
+	if !stderrors.As(err, &pe) && !stderrors.As(err, &le) && !stderrors.As(err, &se) {
+		return err
+	}
+	return clerrors.Wrap(clerrors.CodeConfigInvalid,
+		i18n.Tf("%s: evo could not read or write it (%v)", "%s: evo не смог прочитать или записать файл (%v)", path, err),
+		i18n.T("Nothing was written to it. Check the path and its directory, or print the entry with --print and add it by hand.",
+			"В файл ничего не записано. Проверьте путь и его каталог или напечатайте запись с --print и добавьте вручную."), err)
 }

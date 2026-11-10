@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -218,16 +219,18 @@ type World struct {
 	srv *httptest.Server
 	key *rsa.PrivateKey
 
-	mu       sync.Mutex
-	calls    []string
-	secrets  []string
-	codes    map[string]authz // code → its authorization request
-	human    string           // the human's access token
-	accounts map[string]*Account
-	perms    map[string]*Permission
-	keys     map[string]*Key
-	saTokens map[string]string // token → account id
-	seq      int
+	mu sync.Mutex
+	// callbackBodies are the loopback's answers to Browser's callbacks.
+	callbackBodies []string
+	calls          []string
+	secrets        []string
+	codes          map[string]authz // code → its authorization request
+	human          string           // the human's access token
+	accounts       map[string]*Account
+	perms          map[string]*Permission
+	keys           map[string]*Key
+	saTokens       map[string]string // token → account id
+	seq            int
 }
 
 // authz is what an authorization request bound to its code.
@@ -386,10 +389,22 @@ func (w *World) Browser(authURL string) ([]int, error) {
 		if err != nil {
 			return codes, err
 		}
+		body, _ := io.ReadAll(r.Body)
 		r.Body.Close()
 		codes = append(codes, r.StatusCode)
+		w.mu.Lock()
+		w.callbackBodies = append(w.callbackBodies, string(body))
+		w.mu.Unlock()
 	}
 	return codes, nil
+}
+
+// CallbackBodies are the answers of evo's loopback to the callbacks
+// Browser made, in order.
+func (w *World) CallbackBodies() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]string(nil), w.callbackBodies...)
 }
 
 func (w *World) next(kind string) string {
