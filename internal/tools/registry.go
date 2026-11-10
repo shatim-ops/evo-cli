@@ -218,11 +218,7 @@ func (r *Registry) budgeted(next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		text, isErr := next(r.withCallStart(ctx), args)
 		if callerOf(ctx) == nil {
-			r.pendingMu.Lock()
-			if !r.pendingNoted {
-				text, r.pendingNoted = r.withPending(text)
-			}
-			r.pendingMu.Unlock()
+			text = r.notePending(text)
 		}
 		return text, isErr
 	}

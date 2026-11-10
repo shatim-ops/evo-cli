@@ -198,3 +198,14 @@ func (r *Registry) withPending(answer string) (string, bool) {
 	m["pending_operations"] = notes
 	return toJSON(m), true
 }
+
+// notePending is answer with the intents of earlier runs, on the first JSON
+// answer of the process; the lock is released however withPending ends.
+func (r *Registry) notePending(answer string) string {
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+	if !r.pendingNoted {
+		answer, r.pendingNoted = r.withPending(answer)
+	}
+	return answer
+}
