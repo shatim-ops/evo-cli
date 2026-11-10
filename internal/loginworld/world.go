@@ -132,6 +132,9 @@ type Variant struct {
 	// AccountForbidden: POST serviceAccounts answers 403 («Риск», R-49: a
 	// refusal of the platform at the first write is AUTH_FAILED).
 	AccountForbidden bool
+	// BeforeKey, when set, runs as POST accessKeys begins: a test acts
+	// while the grant is under way (a Ctrl-C, a second «Grant access»).
+	BeforeKey func()
 	// KeyForbidden: POST accessKeys answers 403 («Риск», R-55: a refusal
 	// of the platform at the key is AUTH_FAILED, as at the account).
 	KeyForbidden bool
@@ -858,6 +861,9 @@ func (w *World) accessKeys(rw http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(rw, 200, map[string]any{"accessKeys": list})
 	case http.MethodPost:
+		if w.v.BeforeKey != nil {
+			w.v.BeforeKey()
+		}
 		var body struct{ Description, TTL string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		ttl, err := time.ParseDuration(body.TTL)

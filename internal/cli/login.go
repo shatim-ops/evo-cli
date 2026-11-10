@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -65,6 +67,13 @@ func newLoginCmd() *cobra.Command {
 			if flagYes {
 				return login.RefuseYes()
 			}
+			if flagDryRun {
+				return login.RefuseDryRun()
+			}
+			// --for '' is no audience: not the default one (#1095).
+			if cmd.Flags().Changed("for") && forWhom == "" {
+				return clerrors.New(clerrors.CodeUsage, login.EFor(forWhom), "")
+			}
 			choice, err := loginChoice(project, forWhom, ttl)
 			if err != nil {
 				return err
@@ -76,12 +85,25 @@ func newLoginCmd() *cobra.Command {
 				}
 				store.name = name
 			}
+			// The agent's profile takes no key for the person (C24): refused
+			// here for --for me; the page offers the agent, and the choice of
+			// «Мне» there is refused before any write (loginStore.Refuses).
+			if store.name == agentProfile {
+				if choice.For == login.ForMe {
+					return clerrors.New(clerrors.CodeUsage, login.EAgentProfileForMe(store.name), login.EAgentProfileForMeHint())
+				}
+				choice.For = login.ForAgent
+			}
+			if err := writableConfigDir(); err != nil {
+				return err
+			}
 			choice.Preselect, choice.PreselectFrom, choice.PreselectEnv = loginPreselect(flagProfile)
 			cfg := loginConfig(loginSay(cmd), openBrowser)
 			if noBrowser {
 				cfg.Open = nil
 			}
 			cfg.Tell = loginTell(cmd)
+			warnBeforeLogin(cfg.Tell, store, choice.For)
 			res, err := login.Login(cmd.Context(), cfg, choice, store)
 			if err != nil {
 				return err
@@ -125,6 +147,15 @@ func newLoginCmd() *cobra.Command {
 			return nil
 		},
 	}
+	// evo login takes no --yes (R-47): its help does not offer the global
+	// one (#1095 (о)); the flag is shown again for the other commands.
+	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
+		if f := c.InheritedFlags().Lookup("yes"); f != nil {
+			f.Hidden = true
+			defer func() { f.Hidden = false }()
+		}
+		c.Parent().HelpFunc()(c, args)
+	})
 	cmd.Flags().StringVar(&project, "project", "", login.TFlagProject())
 	cmd.Flags().StringVar(&forWhom, "for", "", login.TFlagFor())
 	cmd.Flags().StringVar(&ttl, "key-ttl", "", login.TFlagTTL())
@@ -165,6 +196,48 @@ func (s loginStore) Profile(a login.Audience) string {
 	return config.DefaultProfile
 }
 
+// Refuses the person's key for the agent's profile (C24).
+func (s loginStore) Refuses(a login.Audience) error {
+	if s.name == agentProfile && a == login.ForMe {
+		return clerrors.New(clerrors.CodeUsage, login.EAgentProfileForMe(s.name), login.EAgentProfileForMeHint())
+	}
+	return nil
+}
+
+// writableConfigDir checks, before the browser, that the key can be saved:
+// the directory of the profiles is made and written to (#1095 (б)).
+func writableConfigDir() error {
+	dir := config.Dir()
+	err := config.MkdirPrivate(dir)
+	if err == nil {
+		var f *os.File
+		if f, err = os.CreateTemp(dir, ".evo-login-*"); err == nil {
+			name := f.Name()
+			_ = f.Close()
+			_ = os.Remove(name)
+		}
+	}
+	if err != nil {
+		return clerrors.Wrap(clerrors.CodeConfigInvalid, login.EConfigDir(dir, err), login.EConfigDirHint(), err)
+	}
+	return nil
+}
+
+// warnBeforeLogin names, before the browser, a key the profile already has
+// and keys in the environment, which come before the profile (#1095 (и)).
+func warnBeforeLogin(tell func(string), s loginStore, a login.Audience) {
+	if a == "" {
+		a = login.ForMe
+	}
+	name := s.Profile(a)
+	if _, creds, _, err := config.LoadProfile(name); err == nil && creds.KeyID != "" {
+		tell(login.TProfileHasKey(name))
+	}
+	if os.Getenv("CLOUDRU_KEY_ID") != "" {
+		tell(login.TEnvKeyWins())
+	}
+}
+
 func (s loginStore) Previous(a login.Audience) *login.Previous {
 	_, creds, _, err := config.LoadProfile(s.Profile(a))
 	if err != nil || creds.Login == nil {
@@ -203,6 +276,12 @@ func loginTell(cmd *cobra.Command) func(string) {
 // request.
 func loginChoice(project, forWhom, ttl string) (login.Choice, error) {
 	c := login.Choice{Project: strings.TrimSpace(project), For: login.Audience(forWhom)}
+	// A project is an ID or a name: not blank, no control character, not
+	// longer than 128 characters — refused before the browser (#1095).
+	if project != "" && (c.Project == "" || utf8.RuneCountInString(c.Project) > 128 ||
+		strings.IndexFunc(c.Project, unicode.IsControl) >= 0) {
+		return c, clerrors.New(clerrors.CodeUsage, login.EProject(), "")
+	}
 	if forWhom != "" && c.For != login.ForMe && c.For != login.ForAgent {
 		return c, clerrors.New(clerrors.CodeUsage, login.EFor(forWhom), "")
 	}

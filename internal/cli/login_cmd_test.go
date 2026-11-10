@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -249,5 +250,105 @@ func TestLogin_KeyTTLWithoutUnitRefused(t *testing.T) {
 		if _, err := loginChoice("", "", ttl); err != nil {
 			t.Errorf("--key-ttl %s refused: %v", ttl, err)
 		}
+	}
+}
+
+// worldNoPerson points evo login at the world of B-2 with a browser that
+// only records it was opened; nobody comes, the wait is short.
+func worldNoPerson(t *testing.T) *bool {
+	t.Helper()
+	w := loginworld.New(t, loginworld.Variant{AnyLoopbackPort: true})
+	oldCfg, oldOpen := loginConfig, openBrowser
+	t.Cleanup(func() { loginConfig, openBrowser = oldCfg, oldOpen })
+	loginConfig = func(say func(string, string), open func(string) error) login.Config {
+		c := login.Default(say, open)
+		c.Issuer, c.OrgBase, c.AdminBase, c.KeyToken = w.Issuer, w.URL, w.URL, w.URL+"/api/v1/auth/token"
+		c.Trusted = func(u string) bool { return strings.HasPrefix(u, w.URL+"/") }
+		c.HTTP = w.Client()
+		c.Ports = []int{0}
+		c.Wait = 200 * time.Millisecond // wall-clock: a share of the production wait, to end the test
+		return c
+	}
+	called := new(bool)
+	openBrowser = func(string) error { *called = true; return nil }
+	return called
+}
+
+// Plan 1.8, #1095, rounds 1–2 of the audit (Grok): what evo login can tell
+// before the browser it tells — and opens no browser.
+func TestLogin_RefusedBeforeTheBrowser(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		env    map[string]string
+		args   []string
+		reason string
+	}{
+		{"--dry-run: no preview of a consent", nil, []string{"--dry-run", "login"}, clerrors.CodeUsage},
+		{"--for ''", nil, []string{"login", "--for", ""}, clerrors.CodeUsage},
+		{"--project of spaces", nil, []string{"login", "--project", "   "}, clerrors.CodeUsage},
+		{"--project with a line break", nil, []string{"login", "--project", "a\nb"}, clerrors.CodeUsage},
+		{"--project too long", nil, []string{"login", "--project", strings.Repeat("p", 300)}, clerrors.CodeUsage},
+		{"the key «for me» into the profile agent (C24)", map[string]string{"CLOUDRU_PROFILE": "agent"}, []string{"login", "--for", "me"}, clerrors.CodeUsage},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			setupCLI(t)
+			for k, v := range c.env {
+				t.Setenv(k, v)
+			}
+			called := worldNoPerson(t)
+			code, stdout, stderr := runCLI(t, "", append([]string{"--json"}, c.args...)...)
+			if code == 0 || !strings.Contains(stderr+stdout, `"reason":"`+c.reason+`"`) || *called {
+				t.Fatalf("exit %d, browser %v\n%s\n%s", code, *called, stdout, stderr)
+			}
+		})
+	}
+}
+
+// Plan 1.8, #1095 (б): a configuration directory evo cannot write to is
+// found before the browser, not after the key is made.
+func TestLogin_UnwritableConfigDirBeforeTheBrowser(t *testing.T) {
+	setupCLI(t)
+	file := filepath.Join(t.TempDir(), "a-file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.EnvConfigDir, filepath.Join(file, "evo"))
+	called := worldNoPerson(t)
+	code, stdout, stderr := runCLI(t, "", "--json", "login")
+	if code != clerrors.ExitAuth || !strings.Contains(stderr+stdout, `"reason":"CONFIG_INVALID"`) || *called {
+		t.Fatalf("exit %d, browser %v\n%s\n%s", code, *called, stdout, stderr)
+	}
+}
+
+// Plan 1.8, #1095 (и): a key already in the profile, or keys in the
+// environment, are named before the browser.
+func TestLogin_WarnsOfAKeyInTheProfileAndTheEnvironment(t *testing.T) {
+	ru(t)
+	setupCLI(t)
+	saveProfile(t, "default", "p-1")
+	t.Setenv("CLOUDRU_KEY_ID", "k")
+	t.Setenv("CLOUDRU_SECRET", "s")
+	worldNoPerson(t)
+	_, stdout, stderr := runCLI(t, "", "login", "--for", "me")
+	out := stdout + stderr
+	for _, want := range []string{"уже есть ключ доступа", "важнее профиля"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %q before the browser:\n%s", want, out)
+		}
+	}
+}
+
+// Plan 1.8, #1095 (о): evo login takes no --yes, and its help does not
+// offer one.
+func TestLogin_HelpOffersNoYes(t *testing.T) {
+	setupCLI(t)
+	_, stdout, _ := runCLI(t, "", "login", "--help")
+	// The text says «there is no --yes»: the flag's own line is what must go.
+	if strings.Contains(stdout, "-y, --yes") {
+		t.Errorf("the help of evo login offers --yes:\n%s", stdout)
+	}
+	_, stdout, _ = runCLI(t, "", "vm", "list", "--help")
+	if !strings.Contains(stdout, "-y, --yes") {
+		t.Errorf("--yes is gone from the help of the other commands too")
 	}
 }

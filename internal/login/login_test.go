@@ -883,3 +883,91 @@ func TestLogin_AfterTheWaitThePageIsGone(t *testing.T) {
 		t.Errorf("after the wait something was made")
 	}
 }
+
+// Plan 1.8, #1095, rounds 1–2 (D3): a Ctrl-C while the grant is under way
+// does not end the login as «interrupted» while the key goes on being made
+// and saved: the login waits for the grant and answers its result.
+func TestLogin_InterruptDuringTheGrantAnswersItsResult(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	w := newWorld(t, loginworld.Variant{BeforeKey: cancel})
+	b := &browser{}
+	b.t, b.w, b.ended = t, w, make(chan struct{})
+	var out bytes.Buffer
+	st := &memStore{}
+	res, err := Login(ctx, worldConfig(w, &out, b.open), Choice{}, st)
+	<-b.ended
+	if err != nil || len(st.saved) != 1 || res.KeyID == "" {
+		t.Fatalf("a Ctrl-C in the grant: err %v; saved %d; key %q", err, len(st.saved), res.KeyID)
+	}
+}
+
+// Plan 1.8, #1095, round 4 (б): a second «Grant access» while the first
+// is under way (a double click) makes nothing twice and does not break the
+// login: it shows the same result.
+func TestLogin_SecondGrantShowsTheSameResult(t *testing.T) {
+	var form url.Values
+	var host string
+	second := make(chan string, 1)
+	v := loginworld.Variant{}
+	v.BeforeKey = func() {
+		go func() {
+			resp, err := http.PostForm("http://"+host+"/grant", form)
+			if err != nil {
+				second <- "error: " + err.Error()
+				return
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			second <- fmt.Sprintf("%d %s", resp.StatusCode, body)
+		}()
+		time.Sleep(50 * time.Millisecond) // wall-clock: lets the second POST reach evo while the first grants
+	}
+	w := newWorld(t, v)
+	b := &browser{form: func(f url.Values) { form = f }}
+	b.t, b.w, b.ended = t, w, make(chan struct{})
+	var out bytes.Buffer
+	st := &memStore{}
+	cfg := worldConfig(w, &out, func(u string) error {
+		if p, err := url.Parse(u); err == nil {
+			if cb, err := url.Parse(p.Query().Get("redirect_uri")); err == nil {
+				host = cb.Host
+			}
+		}
+		return b.open(u)
+	})
+	_, err := Login(context.Background(), cfg, Choice{}, st)
+	<-b.ended
+	got := <-second
+	if err != nil || len(st.saved) != 1 || len(w.Keys()) != 1 {
+		t.Fatalf("err %v; saved %d; keys %d", err, len(st.saved), len(w.Keys()))
+	}
+	if !strings.HasPrefix(got, "200 ") || !strings.Contains(got, tDone()) {
+		t.Errorf("the second «Grant access» shows %.200q, want the same result", got)
+	}
+}
+
+// refusingStore refuses the person's key, as the agent's profile does (C24).
+type refusingStore struct{ memStore }
+
+func (refusingStore) Refuses(a Audience) error {
+	if a == ForMe {
+		return clierrors.New(clierrors.CodeUsage, "the agent's profile", "")
+	}
+	return nil
+}
+
+// Plan 1.8, #1095 (C24): «Мне» chosen on the page for the agent's profile
+// is refused before any write.
+func TestLogin_StoreRefusesTheAudienceBeforeAnyWrite(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	b := &browser{}
+	b.t, b.w, b.ended = t, w, make(chan struct{})
+	var out bytes.Buffer
+	st := &refusingStore{}
+	_, err := Login(context.Background(), worldConfig(w, &out, b.open), Choice{}, st)
+	<-b.ended
+	if reasonOf(err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || len(st.saved) != 0 {
+		t.Fatalf("err %v; accounts %d; saved %d", err, len(w.Accounts()), len(st.saved))
+	}
+}
