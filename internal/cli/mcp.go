@@ -70,6 +70,7 @@ func newMCPCmd() *cobra.Command {
 		"Не выполнять вызовы, которым нужно согласие человека (изменения в облаке, секреты), и не отдавать секреты — в любом транспорте: граница прав для агента без присмотра"))
 	cmd.Flags().StringSliceVar(&toolsets, "toolsets", nil, i18n.T("Advertise only these tool groups (comma-separated, e.g. deploy,vm,vpc; see 'evo tools list'). Default: all. Saves the agent's context; not a permission boundary",
 		"Показывать агенту только эти группы инструментов (через запятую, например deploy,vm,vpc; группы — в 'evo tools list'). По умолчанию все. Экономит контекст агента; это не ограничение прав"))
+	noEmptyValue(cmd.Flags(), "allow-project", "toolsets")
 	cmd.AddCommand(newMCPHealthcheckCmd())
 	return cmd
 }

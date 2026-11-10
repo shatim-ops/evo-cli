@@ -61,12 +61,14 @@ func errNoZone() error { return NoZoneError("region") }
 
 // NoZoneError is the refusal of a call that needs an availability zone and
 // has none — not arg of the call, not region of .evo.yaml or the profile:
-// CONFIG_INVALID with missing [arg] (D15; disk_create's zone, D86).
+// CONFIG_INVALID with missing [arg] (D15; disk_create's zone, D86). The
+// hint names no evo configure: a profile of evo login has no zone, and
+// configure would ask for its key again (B-5 (г), #1142).
 func NoZoneError(arg string) error {
 	return &MissingSettingError{Arg: arg, ce: clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("no availability zone is set (%s)", "не задана зона доступности (%s)", arg),
-		i18n.Tf("Set region in .evo.yaml or the profile ('evo configure'), or pass %s in the call: a zone name such as ru.AZ-2 or its UUID (evo vm zones).",
-			"Задайте region в .evo.yaml или в профиле ('evo configure') или передайте %s в вызове — имя зоны (например, ru.AZ-2) или её UUID (evo vm zones).", arg))}
+		i18n.Tf("Pass %s in the call — a zone name such as ru.AZ-2 (the list: evo vm zones) — or set region in .evo.yaml.",
+			"Передайте %s в вызове — имя зоны, например ru.AZ-2 (список — evo vm zones), — или задайте region в .evo.yaml.", arg))}
 }
 
 // MissingSettingError is a setting a new VM of deploy cannot do without,

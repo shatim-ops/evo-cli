@@ -26,6 +26,20 @@ import (
 // response lines.
 func runLines(t *testing.T, s *Server, lines ...string) []any {
 	t.Helper()
+	got := rawLines(t, s, append([]string{initLine}, lines...)...)
+	if len(got) == 0 || got[0].(map[string]any)["id"] != "init" {
+		t.Fatalf("initialize: %v", got)
+	}
+	return got[1:]
+}
+
+// initLine opens a stdio session, as a client does (D89): the helpers send
+// it first and drop its answer.
+const initLine = `{"jsonrpc":"2.0","id":"init","method":"initialize","params":{}}`
+
+// rawLines is runLines without the initialize.
+func rawLines(t *testing.T, s *Server, lines ...string) []any {
+	t.Helper()
 	out := &bytes.Buffer{}
 	if err := s.Run(strings.NewReader(strings.Join(lines, "\n")+"\n"), out); err != nil {
 		t.Fatalf("Run: %v", err)

@@ -31,9 +31,11 @@ func newTestServer() *Server {
 func roundTrip(t *testing.T, s *Server, req string) map[string]any {
 	t.Helper()
 	out := &bytes.Buffer{}
-	if err := s.Run(strings.NewReader(req+"\n"), out); err != nil {
+	if err := s.Run(strings.NewReader(initLine+"\n"+req+"\n"), out); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+	_, rest, _ := bytes.Cut(out.Bytes(), []byte("\n"))
+	out = bytes.NewBuffer(rest)
 	if out.Len() == 0 {
 		return nil // notification: no response
 	}

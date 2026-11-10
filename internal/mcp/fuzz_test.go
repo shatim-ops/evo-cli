@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -56,7 +57,8 @@ func FuzzStdioMessages(f *testing.F) {
 	srv := fuzzServer()
 	f.Fuzz(func(t *testing.T, data []byte) {
 		out := &bytes.Buffer{}
-		if err := srv.Run(bytes.NewReader(data), out); err != nil {
+		// A session begins with initialize (D89): the fuzz reaches the tools.
+		if err := srv.Run(io.MultiReader(strings.NewReader(initLine+"\n"), bytes.NewReader(data)), out); err != nil {
 			t.Fatalf("Run: %v", err)
 		}
 		sc := bufio.NewScanner(out)

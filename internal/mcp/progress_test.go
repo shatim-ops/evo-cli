@@ -79,6 +79,9 @@ func decodeLines(t *testing.T, out string) []rpcMessage {
 		if err := json.Unmarshal([]byte(line), &m); err != nil {
 			t.Fatalf("line %q: %v", line, err)
 		}
+		if string(m.ID) == `"init"` {
+			continue // the answer of the session's initialize
+		}
 		msgs = append(msgs, m)
 	}
 	return msgs
@@ -88,14 +91,14 @@ func TestProgress_Stdio(t *testing.T) {
 	for _, token := range []string{`"p-1"`, `7`} {
 		cloud := &provisionCloud{}
 		var out bytes.Buffer
-		if err := provisionServer(t, cloud).Run(strings.NewReader(progressCall(token)+"\n"), &out); err != nil {
+		if err := provisionServer(t, cloud).Run(strings.NewReader(initLine+"\n"+progressCall(token)+"\n"), &out); err != nil {
 			t.Fatal(err)
 		}
 		checkProgress(t, decodeLines(t, out.String()), token, cloud.password())
 	}
 
 	var out bytes.Buffer
-	if err := provisionServer(t, &provisionCloud{}).Run(strings.NewReader(progressCall("")+"\n"), &out); err != nil {
+	if err := provisionServer(t, &provisionCloud{}).Run(strings.NewReader(initLine+"\n"+progressCall("")+"\n"), &out); err != nil {
 		t.Fatal(err)
 	}
 	if msgs := decodeLines(t, out.String()); len(msgs) != 1 || string(msgs[0].ID) != "1" {

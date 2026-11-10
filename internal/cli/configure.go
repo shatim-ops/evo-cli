@@ -126,6 +126,7 @@ func newConfigureCmd() *cobra.Command {
 		"UUID проекта Cloud.ru (без выбора из списка)"))
 	cmd.Flags().StringVar(&opts.region, "region", "", i18n.T("Default availability zone for the profile: a name (ru.AZ-2) or a UUID; the UUID is stored",
 		"Зона доступности по умолчанию для профиля: имя (ru.AZ-2) или UUID; сохраняется UUID"))
+	noEmptyScope(cmd.Flags())
 
 	cmd.AddCommand(newConfigureListCmd(), newConfigureDeleteCmd(), newConfigureS3Cmd())
 	return cmd
