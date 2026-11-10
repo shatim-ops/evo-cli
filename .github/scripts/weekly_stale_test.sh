@@ -28,5 +28,12 @@ echo '{"workflow_runs":[]}' >"$RUNS"
 out=$("$here/weekly_stale.sh" o/r)
 [ ! -s "$LOG" ] || { echo "FAIL: пустой список, а отмена была"; fail=1; }
 case "$out" in *"нет"*) ;; *) echo "FAIL: вывод на пустом «$out»"; fail=1 ;; esac
+# Сбой чтения списка (rate limit, 5xx): предупреждение, код 0 — недельный
+# запуск идёт дальше; отмены нет.
+: >"$LOG"
+echo 'не JSON' >"$RUNS"
+out=$("$here/weekly_stale.sh" o/r) || { echo "FAIL: сбой списка роняет недельный запуск"; fail=1; }
+[ ! -s "$LOG" ] || { echo "FAIL: сбой списка, а отмена была"; fail=1; }
+case "$out" in *"не прочитан"*) ;; *) echo "FAIL: вывод на сбое «$out»"; fail=1 ;; esac
 [ "$fail" = 0 ] && echo "weekly_stale: ok"
 exit "$fail"

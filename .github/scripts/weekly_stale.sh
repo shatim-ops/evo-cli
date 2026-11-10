@@ -10,11 +10,19 @@
 #   weekly_stale.sh REPO  — отменить; печатает «отменён <id> (<дата>)».
 set -euo pipefail
 repo=${1:?репозиторий}
+# Сбой чтения или отмены не срывает недельный запуск: новый прогон встанет
+# в очередь concurrency, как и без этого шага (ревью Qwen #1111).
 ids=$(gh api "repos/$repo/actions/workflows/cloud-e2e.yml/runs?status=waiting&per_page=100" \
-	--jq '.workflow_runs[] | select(.triggering_actor.login == "github-actions[bot]") | "\(.id) \(.created_at)"')
+	--jq '.workflow_runs[] | select(.triggering_actor.login == "github-actions[bot]") | "\(.id) \(.created_at)"') || {
+	echo "::warning::список ждущих прогонов cloud-e2e не прочитан — отмена пропущена"
+	exit 0
+}
 [ -n "$ids" ] || { echo "ждущих прогонов cloud-e2e от github-actions[bot] нет"; exit 0; }
 while read -r id at; do
 	[ -n "$id" ] || continue
-	gh api -X POST "repos/$repo/actions/runs/$id/cancel" >/dev/null
-	echo "отменён $id ($at): ждал одобрения окружения с прошлого недельного запуска"
+	if gh api -X POST "repos/$repo/actions/runs/$id/cancel" >/dev/null; then
+		echo "отменён $id ($at): ждал одобрения окружения с прошлого недельного запуска"
+	else
+		echo "::warning::прогон $id ($at) не отменён — он держит группу cloud-e2e, отмените вручную"
+	fi
 done <<<"$ids"
