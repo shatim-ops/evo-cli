@@ -131,6 +131,7 @@ func (e *Engine) deployPreview(ctx context.Context, req provision.CreateVMReques
 		previewLabel("upload", "загрузка") + SSHUpload(""),
 	}
 	var exposed CreatePreview
+	exposed.SetMarketplace(img != nil && img.Type == provision.ImageTypeMarketplace)
 	exposed.AddPorts(ports, udpPorts, cidr)
 	exposed.PortsGroup(network.SecurityGroup)
 	if len(exposed.Params) > 0 {

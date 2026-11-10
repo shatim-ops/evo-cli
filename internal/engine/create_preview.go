@@ -83,6 +83,10 @@ type CreatePreview struct {
 	Disk          *deployplan.DiskSpec `json:"disk,omitempty"` // of disk and disk_resize
 	// Params are the other key parameters, in the order they are shown.
 	Params []PreviewParam `json:"params,omitempty"`
+	// webAnywhere and marketplace: 80 or 443 open to anyone (AddPorts)
+	// and a Marketplace image (SetMarketplace) — together, its
+	// installation wizard is open (warnWizard).
+	webAnywhere, marketplace, wizardSaid bool
 	// Missing names the required values that are not set (project_id,
 	// image_id, region): the call will fail without them.
 	Missing []string          `json:"missing,omitempty"`
@@ -449,6 +453,7 @@ func (e *Engine) completePreview(ctx context.Context, p *CreatePreview, pick fun
 		return nil
 	}()
 	p.addCatalogueLines(picked, image)
+	p.SetMarketplace(marketplace)
 	p.priceFromAPI(ctx, e.Cloud, marketplace)
 	priced = true
 	var networkErr error
