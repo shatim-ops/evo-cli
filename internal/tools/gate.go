@@ -76,11 +76,56 @@ func (r *Registry) gated(name string, plan Planner) Handler {
 func (r *Registry) engineGated(ctx context.Context, name string, args map[string]any,
 	live func(*Caller) (string, bool), preview, execute func() (string, bool)) (string, bool) {
 	if c := liveCaller(ctx); c != nil {
-		return live(c)
+		// The engine asks at its own gate: the intent is written on the
+		// yes, before the engine writes anything (Caller.ask); a call with
+		// confirmed has it from intended already.
+		var end func(string)
+		prev := c.consent
+		c.consent = func() error {
+			if confirmed, _ := args["confirmed"].(bool); end != nil || confirmed {
+				return nil
+			}
+			e, err := r.beginIntent(ctx, name, args)
+			end = e
+			return err
+		}
+		defer func() { c.consent = prev }()
+		text, isErr := live(c)
+		if end != nil {
+			end(text)
+		}
+		return text, isErr
 	}
 	t, _ := r.Lookup(name)
 	if confirmed, _ := args["confirmed"].(bool); !confirmed && NeedsConsent(t, args) {
 		return preview()
 	}
 	return execute()
+}
+
+// intended is the handler of a tool that takes consent, under its intent:
+// a call with confirmed=true that needs consent writes it before the
+// handler runs — whether the handler gates on a planner (gated) or reads
+// confirmed itself — so no consented call reaches the cloud unrecorded.
+// One layer for every such tool, set in New (release plan 1.8, (и)).
+func (r *Registry) intended(t Tool, next Handler) Handler {
+	if !takesConsent(t) {
+		return next
+	}
+	return func(ctx context.Context, args map[string]any) (string, bool) {
+		// A step of a stack is a call one level deeper (journaled): the
+		// intent of the call the person consented to covers it, and the
+		// job of the stack records its steps.
+		depth, _ := ctx.Value(journalDepthKey{}).(int)
+		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) || depth > 1 {
+			return next(ctx, args)
+		}
+		end, err := r.beginIntent(ctx, t.Name, args)
+		if err != nil {
+			return errResult(err), true
+		}
+		text, isErr := next(ctx, args)
+		end(text)
+		return text, isErr
+	}
 }

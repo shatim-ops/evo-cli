@@ -81,6 +81,10 @@ type Caller struct {
 
 	// answeredYes is set when Gate answered yes (ask).
 	answeredYes bool
+	// consent runs on a yes, before the engine writes anything: the gate
+	// writes the intent of the call there (engineGated). Its error refuses
+	// the call.
+	consent func() error
 }
 
 // ask is Gate, noting a yes: the tools call it, never Gate itself, so the
@@ -89,6 +93,11 @@ func (c *Caller) ask(ctx context.Context, answer string, human *confirm.Preview)
 	ok, err := c.Gate(ctx, answer, human)
 	if ok && err == nil {
 		c.answeredYes = true
+		if c.consent != nil && !c.DryRun {
+			if err := c.consent(); err != nil {
+				return false, err
+			}
+		}
 	}
 	return ok, err
 }

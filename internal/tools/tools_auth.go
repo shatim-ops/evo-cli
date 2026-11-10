@@ -254,6 +254,11 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		checks = append(checks, DoctorCheck{Name: "config", Status: CheckFail, Detail: CheckDetail(err), Auth: true})
 	} else {
 		checks = append(checks, configChecks(eng.Config)...)
+		// What a cut call may have left in the cloud (release plan 1.8,
+		// (и)): a warning, not a failure — the setup works.
+		for _, n := range s.PendingNotes(eng.StateDir) {
+			checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckWarn, Detail: n})
+		}
 	}
 	checks = append(checks,
 		probe(ctx, "IAM API", auth.IAMEndpoint, verbose),

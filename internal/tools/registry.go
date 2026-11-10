@@ -107,6 +107,11 @@ type Registry struct {
 	// callBudget: SetCallBudget; 0 — a call waits as long as its work
 	// takes (the CLI).
 	callBudget time.Duration
+	// pendingNoted: an answer of this process over MCP carried the intents
+	// earlier runs left (withPending) — the first JSON object; the CLI says
+	// them on stderr.
+	pendingMu    sync.Mutex
+	pendingNoted bool
 }
 
 // MCPCallBudget is how long a call of evo mcp may wait for the cloud before
@@ -211,7 +216,11 @@ func callEndCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 // budgeted stamps a call with its start (withCallStart).
 func (r *Registry) budgeted(next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
-		return next(r.withCallStart(ctx), args)
+		text, isErr := next(r.withCallStart(ctx), args)
+		if callerOf(ctx) == nil {
+			text = r.notePending(text)
+		}
+		return text, isErr
 	}
 }
 
@@ -255,7 +264,7 @@ func New(factory EngineFactory) *Registry {
 			if r.unchecked == nil {
 				r.unchecked = map[string]Handler{}
 			}
-			r.unchecked[t.Name] = checkedCreateName(t.Name, h)
+			r.unchecked[t.Name] = checkedCreateName(t.Name, r.intended(*t, h))
 			r.handlers[t.Name] = r.budgeted(outer(t.Name, t.InputSchema, r.unchecked[t.Name]))
 		}
 		t.Handler = r.handlers[t.Name]
