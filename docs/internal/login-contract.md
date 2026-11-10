@@ -48,7 +48,7 @@
     - На странице: проект (без права — неактивен), для кого, срок, сводка; выбор флагов и терминала отмечен.
     - `POST /grant` и `POST /cancel` принимаются только с `state` и токеном (сравнение constant-time); без токена или с чужим — 403, ничего не создано.
     - Выбор, которого страница не предлагала, — `USAGE`.
-    - Страница — без JS и внешних ресурсов; CSP `default-src 'none'`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
+    - Страница — без JS и внешних ресурсов; CSP `default-src 'none'`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin` (не `no-referrer`: при нём своя форма шлёт `Origin: null`, L23); `/grant` и `/cancel` принимают только POST своей страницы — `Origin`, если есть, ровно `http://127.0.0.1:<порт>`, `Sec-Fetch-Site`, если есть, `same-origin`, иначе 403.
 12. **До первой записи** (ось 1):
     - `GET /api/v1/permissions/evaluate` выбранного проекта по двум действиям: `false` — `AUTH_FAILED`, ошибка — «право не проверено» (У-9);
     - аккаунт по имени (`GET /api/v2/serviceAccounts?filter=name=…`): найден — его ключи и лимит 50; не найден — все аккаунты и лимит 10. Лимит — `USAGE`.

@@ -32,7 +32,7 @@ func TestFonts_ServedByTheLoopback(t *testing.T) {
 	for _, u := range urls {
 		w := get(l.host, u[1])
 		if h := w.Header(); w.Code != http.StatusOK || h.Get("Content-Type") != "font/woff2" || h.Get("X-Content-Type-Options") != "nosniff" ||
-			h.Get("Cache-Control") != fontCache || h.Get("Referrer-Policy") != "no-referrer" || !bytes.HasPrefix(w.Body.Bytes(), []byte("wOF2")) {
+			h.Get("Cache-Control") != fontCache || h.Get("Referrer-Policy") != "same-origin" || !bytes.HasPrefix(w.Body.Bytes(), []byte("wOF2")) {
 			t.Errorf("%s: %d %q %q %q", u[1], w.Code, h.Get("Content-Type"), h.Get("X-Content-Type-Options"), h.Get("Cache-Control"))
 		}
 	}

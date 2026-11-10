@@ -209,7 +209,12 @@ func (l *loopback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		refuse(w, http.StatusForbidden)
 		return
 	}
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	// same-origin, not no-referrer: under no-referrer a browser sends
+	// «Origin: null» with the page's own form (Fetch), and fromPage could
+	// not tell it from a forged one (release audit 1.8, L23). The pages load
+	// nothing of another origin, so the code and state of the address still
+	// go nowhere else (N19).
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Cache-Control", "no-store")
 	// The fonts of the pages: static, without the lock a grant may hold.
 	if serveFont(w, r) {
@@ -277,7 +282,27 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 }
 
 // consent takes the person's choice once: the grant or the cancel.
+// fromPage tells a POST of the consent page itself: Origin, when the
+// browser sends it, is the loopback's exactly — another port of 127.0.0.1
+// is another origin, «null» is no origin — and Sec-Fetch-Site, when sent,
+// is same-origin. A request with neither is no browser's: a local process
+// that has the page's tokens anyway (the class of N37). «Риск», conclusion
+// 36, 1(а); Grok R2 E3: a key granted by a forged POST.
+func (l *loopback) fromPage(r *http.Request) bool {
+	if o := r.Header.Values("Origin"); len(o) > 0 && (len(o) != 1 || o[0] != "http://"+l.host) {
+		return false
+	}
+	if s := r.Header.Get("Sec-Fetch-Site"); s != "" && s != "same-origin" {
+		return false
+	}
+	return true
+}
+
 func (l *loopback) consent(w http.ResponseWriter, r *http.Request) {
+	if !l.fromPage(r) {
+		refuse(w, http.StatusForbidden)
+		return
+	}
 	if err := r.ParseForm(); err != nil || !l.ownState(r.PostForm.Get("state")) || !l.ownConsent(r.PostForm.Get("consent")) {
 		refuse(w, http.StatusForbidden)
 		return

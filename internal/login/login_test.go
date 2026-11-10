@@ -44,6 +44,12 @@ type browser struct {
 	// noToken first sends «Grant access» without the consent token, then
 	// cancels; again asks for the page a second time.
 	noToken, again bool
+	// forged are the headers of POSTs sent first, each with the page's
+	// tokens, as another site or a local page would (E3).
+	forged []map[string]string
+	// browserHeaders: the real POST carries Origin and Sec-Fetch-Site as
+	// a browser does for its own form.
+	browserHeaders bool
 	consent        string // the consent page
 	page           string // the last page evo served
 	status         []int
@@ -117,7 +123,25 @@ func (b *browser) open(authURL string) error {
 		if b.cancel {
 			action = "/cancel"
 		}
-		resp, err = c.PostForm("http://"+u.Host+action, f)
+		post := func(h map[string]string) (*http.Response, error) {
+			req, _ := http.NewRequest(http.MethodPost, "http://"+u.Host+action, strings.NewReader(f.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			for k, v := range h {
+				req.Header.Set(k, v)
+			}
+			return c.Do(req)
+		}
+		for _, h := range b.forged {
+			if r, err := post(h); err == nil {
+				r.Body.Close()
+				b.status = append(b.status, r.StatusCode)
+			}
+		}
+		var own map[string]string
+		if b.browserHeaders {
+			own = map[string]string{"Origin": "http://" + u.Host, "Sec-Fetch-Site": "same-origin"}
+		}
+		resp, err = post(own)
 		if err != nil {
 			return
 		}
@@ -1056,5 +1080,28 @@ func TestLogout_NotDeletedNamesBothIDs(t *testing.T) {
 		if w := keyWords(k); strings.Contains(w, k) {
 			t.Errorf("the status %q goes to a person as it is: %s", k, w)
 		}
+	}
+}
+
+// «Риск», conclusion 36, 1(а) (Grok R2 E3: a key granted by a forged POST
+// with the page's tokens): /grant and /cancel take a POST of the page's
+// own origin — Origin, when sent, is the loopback's exactly (another port
+// of 127.0.0.1 is another origin), Sec-Fetch-Site, when sent, same-origin.
+// A forged one is 403 and starts nothing; the page's own form grants.
+func TestLogin_GrantOnlyFromThePageOrigin(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	b := &browser{browserHeaders: true, forged: []map[string]string{
+		{"Origin": "http://127.0.0.1:1"},
+		{"Origin": "null"},
+		{"Sec-Fetch-Site": "cross-site"},
+	}}
+	r := login(t, w, b, Choice{}, nil, nil)
+	if r.err != nil || len(w.Keys()) != 1 {
+		t.Fatalf("the page's own grant: %v, keys %d", r.err, len(w.Keys()))
+	}
+	// status: callback, the three forged POSTs, the grant.
+	if len(b.status) != 5 || b.status[1] != http.StatusForbidden || b.status[2] != http.StatusForbidden ||
+		b.status[3] != http.StatusForbidden || b.status[4] != http.StatusOK {
+		t.Errorf("statuses %v, want 200, 403 ×3, 200", b.status)
 	}
 }
