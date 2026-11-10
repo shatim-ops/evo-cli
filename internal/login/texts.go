@@ -535,49 +535,67 @@ func eLoginRunningHint() string {
 // escapes it.
 func eProvider(code, description string) string {
 	what := oneLine(code + ": " + description)
-	if words, ok := oauthErrors[code]; ok {
+	if known, ok := oauthErrors[code]; ok {
 		raw := code
 		if description != "" {
 			raw += ": " + oneLine(description)
 		}
-		what = words() + " (" + raw + ")"
+		what = known.words() + " (" + raw + ")"
 	}
 	return i18n.Tf("Cloud.ru rejected the sign-in: %s; nothing was created", "Cloud.ru отклонил вход: %s; ничего не создано", what)
 }
 
+// oauthError is a code of an error of the authorization request in words,
+// and its hint when it is not the general one: unauthorized_client and
+// invalid_scope are of the client evo in Cloud.ru, not of the person's
+// account («Риск», conclusion 63).
+type oauthError struct{ words, hint func() string }
+
 // oauthErrors are the codes of an error of the authorization request
-// (RFC 6749, 4.1.2.1; OpenID Connect Core, 3.1.2.6) in words;
-// access_denied is the cancel, not an error.
-var oauthErrors = map[string]func() string{
-	"invalid_request": func() string {
+// (RFC 6749, 4.1.2.1; OpenID Connect Core, 3.1.2.6); access_denied is the
+// cancel, not an error.
+var oauthErrors = map[string]oauthError{
+	"invalid_request": {words: func() string {
 		return i18n.T("the sign-in request was not accepted", "запрос на вход не принят")
-	},
-	"unauthorized_client": func() string {
+	}},
+	"unauthorized_client": {words: func() string {
 		return i18n.T("evo may not sign in this way", "evo не разрешено входить этим способом")
-	},
-	"invalid_scope": func() string {
+	}, hint: eClientHint},
+	"invalid_scope": {words: func() string {
 		return i18n.T("the access evo asks for is not allowed", "доступ, который запрашивает evo, не разрешен")
-	},
-	"server_error": func() string {
+	}, hint: eClientHint},
+	"server_error": {words: func() string {
 		return i18n.T("an error on the side of Cloud.ru", "ошибка на стороне Cloud.ru")
-	},
-	"temporarily_unavailable": func() string {
+	}},
+	"temporarily_unavailable": {words: func() string {
 		return i18n.T("the sign-in is unavailable for now", "вход временно недоступен")
-	},
-	"login_required": func() string {
+	}},
+	"login_required": {words: func() string {
 		return i18n.T("you need to sign in to Cloud.ru again", "нужно заново войти в Cloud.ru")
-	},
-	"interaction_required": func() string {
+	}},
+	"interaction_required": {words: func() string {
 		return i18n.T("Cloud.ru needs you to confirm the sign-in in the browser", "Cloud.ru просит подтвердить вход в браузере")
-	},
-	"consent_required": func() string {
+	}},
+	"consent_required": {words: func() string {
 		return i18n.T("Cloud.ru needs your consent to the sign-in", "Cloud.ru просит вашего согласия на вход")
-	},
+	}},
 }
 
-func eProviderHint() string {
+// eProviderHint is the hint of the provider's error: its code's own, or
+// the general one.
+func eProviderHint(code string) string {
+	if known, ok := oauthErrors[code]; ok && known.hint != nil {
+		return known.hint()
+	}
 	return i18n.T("Run evo login again. If the error persists, ask your organization administrator to check the sign-in settings of your account.",
 		"Повторите evo login. Если ошибка повторится, обратитесь к администратору организации: он проверит настройки входа вашей учетной записи.")
+}
+
+// eClientHint: the client evo is not accepted as it signs in — not the
+// account; an evo of a later version may be, else the support.
+func eClientHint() string {
+	return i18n.T("This code points to the setup of evo in Cloud.ru, not to your account. Update evo to the latest version; if the error persists, report it to Cloud.ru support with the code in brackets.",
+		"Этот код указывает на настройку evo в Cloud.ru, а не на вашу учетную запись. Обновите evo до последней версии; если ошибка повторится, сообщите о ней в поддержку Cloud.ru с кодом из скобок.")
 }
 func eKeyCheck(status int) string {
 	return i18n.Tf("IAM issued no token for the new key (HTTP %d)", "IAM не выдал токен по новому ключу (HTTP %d)", status)
