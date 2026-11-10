@@ -95,6 +95,9 @@ type Variant struct {
 	ForeignState  bool   // the browser first calls back with another state
 	TwiceCallback bool   // the browser calls back twice with the code
 	ExpiredCode   bool   // token: 400 invalid_grant
+	// TokenDrop: the exchange of the code is cut — the connection closes
+	// after the code is used, with no answer (a network break, R3-09).
+	TokenDrop bool
 	BadIDToken    string // "iss", "aud", "nonce", "sig", "exp": the ID token fails that check
 	Denied        bool   // evaluate and bulk-evaluate: accessGranted false
 	AccountExists bool   // the project already has the account evo (step 13)
@@ -328,6 +331,14 @@ func (w *World) Permissions() []Permission {
 }
 
 // Keys of every account.
+// Heal ends the failure the variant set: the next write of that step
+// succeeds, as a platform that came back.
+func (w *World) Heal() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.v.FailAt, w.v.TokenDrop = "", false
+}
+
 func (w *World) Keys() []Key {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -499,6 +510,15 @@ func (w *World) token(rw http.ResponseWriter, r *http.Request) {
 	f := r.PostForm
 	a, ok := w.codes[f.Get("code")]
 	delete(w.codes, f.Get("code")) // a code is used once
+	if w.v.TokenDrop {
+		if hj, ok := rw.(http.Hijacker); ok {
+			if c, _, err := hj.Hijack(); err == nil {
+				_ = c.Close()
+				return
+			}
+		}
+		panic(http.ErrAbortHandler)
+	}
 	sum := sha256.Sum256([]byte(f.Get("code_verifier")))
 	switch {
 	case w.v.ExpiredCode || !ok:
