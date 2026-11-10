@@ -68,7 +68,7 @@ func (s *Registry) handleWhoami(ctx context.Context, _ map[string]any) (string, 
 	}
 	cfg := eng.Config
 	before := exchanges(eng.Auth)
-	tok, err := eng.Auth.Token(ctx)
+	tok, err := keyToken(ctx, eng.Auth)
 	if err != nil {
 		return failed(ctx, err, nil), true
 	}
@@ -171,6 +171,21 @@ func keyNotListed() string {
 
 // tokenForgetter is a provider that can drop a cached token (IAMProvider).
 type tokenForgetter interface{ Forget(value string) }
+
+// keyToken is the token whoami and doctor read the key by. A cached token
+// that names no service account (no sub: a file edited by hand, another
+// tool's token) is not the key's: it is dropped and the key exchanged
+// again, as for a revoked key (findings ledger 1.8, № 98). A token IAM has
+// just issued is kept as it is: the notes say what it lacks.
+func keyToken(ctx context.Context, tp auth.TokenProvider) (auth.Token, error) {
+	before := exchanges(tp)
+	tok, err := tp.Token(ctx)
+	if f, ok := tp.(tokenForgetter); ok && err == nil && exchanges(tp) == before && jwtSub(tok.Value) == "" {
+		f.Forget(tok.Value)
+		return tp.Token(ctx)
+	}
+	return tok, err
+}
 
 // revokedKey tells a key revoked in the console from a list that lags: the
 // cached token tok would work to its deadline while the key is gone (G10,
@@ -341,7 +356,7 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 			Detail: i18n.T("no access key. ", "нет ключа доступа. ") + auth.NoKeyHint()})
 	default:
 		before := exchanges(eng.Auth)
-		tok, terr := eng.Auth.Token(ctx)
+		tok, terr := keyToken(ctx, eng.Auth)
 		if terr != nil {
 			checks = append(checks, DoctorCheck{Name: "credentials", Status: CheckFail, Detail: CheckDetail(terr),
 				Auth: clierrors.ExitCode(terr) == clierrors.ExitAuth})
