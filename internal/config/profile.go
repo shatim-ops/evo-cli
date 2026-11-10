@@ -401,7 +401,7 @@ func lockProfiles() (unlock func(), err error) {
 	// over a lock by its age gave it away from a live holder stopped for
 	// longer (R2-4).
 	path := filepath.Join(dir, lockName)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := OpenNoFollow(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("lock %s: %w", "блокировка %s: %w"), path, err)
 	}

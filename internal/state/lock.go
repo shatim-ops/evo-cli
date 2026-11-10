@@ -38,7 +38,7 @@ func Lock(path string) (unlock func(), err error) {
 		return nil, clierr.Wrap(clierr.CodeStateCorrupted, stateDirFailed(), checkWritable(dir), err)
 	}
 	lockPath := filepath.Join(dir, "state.lock")
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := config.OpenNoFollow(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, clierr.Wrap(clierr.CodeStateCorrupted,
 			i18n.T("failed to open the state lock", "не удалось открыть блокировку состояния"), checkWritable(dir), err)
@@ -117,7 +117,7 @@ func FileLock(lockPath string, maxWait time.Duration) (unlock func(), err error)
 	if err := config.MkdirPrivate(filepath.Dir(lockPath)); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := config.OpenNoFollow(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
