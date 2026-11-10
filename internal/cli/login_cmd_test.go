@@ -26,9 +26,12 @@ import (
 // evo login and evo logout on the world of B-2: the key the person grants
 // is kept in the profile with what logout needs (R-25), no secret reaches
 // the output, and logout deletes that key by its id with its own token.
-func TestLoginLogout_OnTheWorld(t *testing.T) {
-	setupCLI(t)
-	w := loginworld.New(t, loginworld.Variant{AnyLoopbackPort: true})
+// grantingWorld points evo login at the world of B-2 in variant v with a
+// person who grants the choice of the flags --for <aud> --key-ttl 7d.
+func grantingWorld(t *testing.T, v loginworld.Variant, aud login.Audience) *loginworld.World {
+	t.Helper()
+	v.AnyLoopbackPort = true
+	w := loginworld.New(t, v)
 	oldCfg, oldOpen, oldIAM := loginConfig, openBrowser, auth.IAMEndpoint
 	t.Cleanup(func() { loginConfig, openBrowser, auth.IAMEndpoint = oldCfg, oldOpen, oldIAM })
 	auth.IAMEndpoint = w.URL + "/api/v1/auth/token"
@@ -61,19 +64,25 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 			if m == nil || tok == nil {
 				return
 			}
-			// The flags chose the agent and 7 days: the page offers them
+			// The flags chose whom and 7 days: the page offers them
 			// checked, and the person grants.
-			if !strings.Contains(string(page), `value="agent" checked`) || !strings.Contains(string(page), `value="7" checked`) {
+			if !strings.Contains(string(page), `value="`+string(aud)+`" checked`) || !strings.Contains(string(page), `value="7" checked`) {
 				t.Errorf("the page does not carry the choice of the flags")
 			}
 			r, err := c.PostForm("http://"+cb.Host+"/grant", url.Values{"state": {string(m[1])}, "consent": {string(tok[1])},
-				"project": {loginworld.Project}, "audience": {"agent"}, "ttl": {"7"}})
+				"project": {loginworld.Project}, "audience": {string(aud)}, "ttl": {"7"}})
 			if err == nil {
 				r.Body.Close()
 			}
 		}()
 		return nil
 	}
+	return w
+}
+
+func TestLoginLogout_OnTheWorld(t *testing.T) {
+	setupCLI(t)
+	w := grantingWorld(t, loginworld.Variant{}, login.ForAgent)
 
 	code, stdout, stderr := runCLI(t, "", "--json", "login", "--for", "agent", "--key-ttl", "7d")
 	if code != 0 {
@@ -416,5 +425,28 @@ func TestLogout_KeyIAMRejectsDeletesTheProfile(t *testing.T) {
 	}
 	if strings.Contains(stdout+stderr, "secret-0001") {
 		t.Errorf("the secret reached the output")
+	}
+}
+
+// A18-26, «Риск», conclusion 59: an unbounded role the account evo held is
+// named so on the CLI — role_unbounded in --json without role_expires_at,
+// «with no end date» in the terminal, not the key's term.
+func TestLogin_UnboundedRole(t *testing.T) {
+	setupCLI(t)
+	grantingWorld(t, loginworld.Variant{Perm: loginworld.PermForever}, login.ForMe)
+	code, stdout, stderr := runCLI(t, "", "--json", "login", "--for", "me", "--key-ttl", "7d")
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil {
+		t.Fatalf("login: exit %d (%v)\n%s\n%s", code, err, stdout, stderr)
+	}
+	if _, has := got["role_expires_at"]; has || got["role_unbounded"] != true || got["reused_account"] != true {
+		t.Errorf("an unbounded role in --json: %s", stdout)
+	}
+
+	setupCLI(t)
+	grantingWorld(t, loginworld.Variant{Perm: loginworld.PermForever}, login.ForMe)
+	code, stdout, stderr = runCLI(t, "", "login", "--for", "me", "--key-ttl", "7d")
+	if code != 0 || !strings.Contains(stdout+stderr, login.TResultRole(time.Time{}, true)) {
+		t.Errorf("an unbounded role in the terminal: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 }
