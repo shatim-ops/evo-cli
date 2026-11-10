@@ -29,16 +29,8 @@ type directWrite struct {
 }
 
 var directWrites = map[string]directWrite{
-	"internal/journal/journal.go\topenNoFollow":          {1, "the helper itself: O_NOFOLLOW and a regular file only (ledger 1.8, № 29)"},
-	"internal/cli/main.go\tignoreInGit":                  {1, "O_CREATE|O_EXCL: an existing file or symlink fails the open, nothing is written through it"},
-	"internal/engine/init.go\tEngine.Init":               {1, "R-67 (а): evo init writes .evo.yaml at the path the person gives; the check of an existing one is os.Stat, which follows a link — a dangling one passes and is written through"},
-	"internal/config/profile.go\tlockProfiles":           {1, "R-67 (а): the lock of the profiles in the config directory — to the helper"},
-	"internal/login/lock.go\tlockLogin":                  {1, "R-67 (а): login.lock in the config directory — to the helper"},
-	"internal/state/lock.go\tLock":                       {1, "R-67 (а): state.lock in DataDir — to the helper"},
-	"internal/state/lock.go\tFileLock":                   {1, "R-67 (а): the file locks of DataDir (known_hosts, plans) — to the helper"},
-	"internal/tools/userkeys.go\tpinHostKey":             {1, "R-67 (а): known_hosts in DataDir — to the helper or WriteFileAtomic"},
-	"internal/tools/completion.go\twriteCompletionCache": {1, "R-67 (а): the cache of completion — to the helper or WriteFileAtomic"},
-	"internal/deployplan/store.go\tSave":                 {1, "R-67 (а): the plan of deploy in DataDir — to the helper or WriteFileAtomic"},
+	"internal/config/nofollow.go\tOpenNoFollow": {1, "the helper itself: O_NOFOLLOW and a regular file only (ledger 1.8, № 29)"},
+	"internal/cli/main.go\tignoreInGit":         {1, "O_CREATE|O_EXCL: an existing file or symlink fails the open, nothing is written through it"},
 }
 
 // writeFlags are the flags of os.OpenFile that make it a write.
