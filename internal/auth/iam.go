@@ -203,6 +203,14 @@ func RefusedKeyHint() string {
 		"Повтор тем же ключом не поможет. Новый ключ — evo login (вход через браузер, нужен человек) или evo configure.")
 }
 
+// forbiddenKeyHint is added to the hint of a key IAM answered 403: it
+// knows the key and does not let it in — the service account may be
+// disabled, which a new key does not change.
+func forbiddenKeyHint() string {
+	return i18n.T("IAM knows this key but does not let it in (403): if it should work, ask the administrator of the project whether its service account is disabled (Service accounts in the Cloud.ru console).",
+		"IAM знает этот ключ, но не пускает его (403): если он должен работать, попросите администратора проекта проверить, не выключен ли его сервисный аккаунт («Сервисные аккаунты» в личном кабинете Cloud.ru).")
+}
+
 // rejectedKeyHint is the hint of a key IAM rejected: a new key first, then
 // where the key came from — the variables when set, else the profile.
 func rejectedKeyHint() string {
@@ -353,14 +361,24 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 					exp.UTC().Format(time.RFC3339), resp.StatusCode),
 				i18n.T("Retrying will not help: a person is needed. Run evo login (a sign-in in the browser) to issue a new key, or create a key in the Cloud.ru console and run evo configure.",
 					"Повтор не поможет: нужен человек. Выполните evo login (вход через браузер), чтобы выпустить новый ключ, или создайте ключ в личном кабинете Cloud.ru и выполните evo configure."))
-			ce.Details = map[string]any{"key_expired": true}
+			ce.Details = map[string]any{"key_expired": true, "http_status": resp.StatusCode}
 			return Token{}, false, ce
 		}
-		return Token{}, false, clerrors.New(
+		// 401 and 403 are one reason — a person is needed either way — and
+		// http_status with the hint tell the agent which way: the key itself,
+		// or the key IAM knows but does not let in («Риск», conclusion 36
+		// п. 3).
+		hint := rejectedKeyHint()
+		if resp.StatusCode == http.StatusForbidden {
+			hint += " " + forbiddenKeyHint()
+		}
+		ce := clerrors.New(
 			clerrors.CodeAuthFailed,
 			i18n.Tf("IAM rejected the credentials (status %d)", "IAM отклонил ключ доступа (статус %d)", resp.StatusCode),
-			rejectedKeyHint(),
+			hint,
 		)
+		ce.Details = map[string]any{"http_status": resp.StatusCode}
+		return Token{}, false, ce
 	}
 	if resp.StatusCode != http.StatusOK {
 		return Token{}, resp.StatusCode >= 500, clerrors.New(
