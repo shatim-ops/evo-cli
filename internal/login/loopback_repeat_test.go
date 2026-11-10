@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/loginworld"
 )
@@ -204,5 +205,33 @@ func TestLoopback_RepeatedRequestKeepsTheEnd(t *testing.T) {
 				t.Errorf("%s answered first, and the end is %v", c.first, map[bool]string{true: "done", false: "not done"}[done])
 			}
 		})
+	}
+}
+
+// Release audit 1.8 (A18-13): the wait of the login ends while «Grant
+// access» is being written. The grant holds the loopback; the end of the
+// wait must answer what the grant made, not «nothing was created» beside a
+// key in the cloud — as a Ctrl-C does (#1100, D3).
+func TestLogin_WaitEndsDuringTheGrantAnswersItsResult(t *testing.T) {
+	var cfgWait time.Duration = 300 * time.Millisecond // wall-clock: a share of the production wait, to end the test
+	w := newWorld(t, loginworld.Variant{BeforeKey: func() {
+		time.Sleep(2 * cfgWait) // wall-clock: the wait ends while the key is being made
+	}})
+	b := &browser{}
+	b.t, b.w, b.ended = t, w, make(chan struct{})
+	var out bytes.Buffer
+	st := &memStore{}
+	cfg := worldConfig(w, &out, b.open)
+	cfg.Wait = cfgWait
+	res, err := Login(context.Background(), cfg, Choice{}, st)
+	<-b.ended
+	keys := len(w.Keys())
+	switch {
+	case keys == 1 && (err != nil || len(st.saved) != 1 || res.KeyID == ""):
+		t.Fatalf("the wait ended in the grant: a key is in the cloud, and the login answers err %v; saved %d; key %q", err, len(st.saved), res.KeyID)
+	case keys == 0 && err == nil:
+		t.Fatalf("no key in the cloud, and the login succeeded")
+	case keys > 1:
+		t.Fatalf("%d keys", keys)
 	}
 }
