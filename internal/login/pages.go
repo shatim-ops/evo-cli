@@ -39,9 +39,10 @@ type head struct {
 	Rules                         template.CSS
 	// Wide: the consent's two columns, one screen of a laptop (B-5).
 	Wide bool
-	// Note is a line by the heading: on the consent, until when the page
-	// works (after the wait the loopback is closed, B-5).
-	Note string
+	// Until is a line by the heading: on the consent, until when the page
+	// works (after the wait the loopback is closed, B-5). Not Note: a page
+	// with a Note of its own would show it here too (G12, round 3 of Grok).
+	Until string
 }
 
 // newHead is the head of a page; only the consent has the heading «… requests
@@ -189,7 +190,7 @@ func consentPage(s *session) page {
 	d.ChooseProject, d.Grant = tChooseProject(), tGrant()
 	copy(d.AccountToChoose[:], cut(tSumAccountToChoose("\x00a"), "\x00a"))
 	if !s.until.IsZero() {
-		d.Note = tPageUntil(s.until)
+		d.Until = tPageUntil(s.until)
 	}
 	days := s.choice.Days
 	if !containsInt(Terms, days) {

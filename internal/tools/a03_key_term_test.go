@@ -5,11 +5,14 @@
 package tools
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // A0-3 (release plan 1.8, R-26): whoami and doctor name the term of the
@@ -109,5 +112,54 @@ func TestDoctor_KeyTerm(t *testing.T) {
 	}
 	if c, ok := check(""); c.Status != CheckSkip || !ok || !strings.Contains(c.Detail, "unknown") {
 		t.Errorf("unknown: %+v", c)
+	}
+}
+
+// forgetToken is subToken with a cache: Forget drops the token, and the
+// next Token exchanges the key again — refused when the key is revoked.
+type forgetToken struct {
+	subToken
+	revoked   bool
+	forgotten []string
+}
+
+func (t *forgetToken) Token(ctx context.Context) (auth.Token, error) {
+	if len(t.forgotten) > 0 && t.revoked {
+		return auth.Token{}, clierrors.New(clierrors.CodeAuthFailed, "IAM: invalid key", "")
+	}
+	return t.subToken.Token(ctx)
+}
+func (t *forgetToken) Forget(value string) { t.forgotten = append(t.forgotten, value) }
+
+// G10, F2 (round 3 of Grok, R3-F5): the key revoked in the console, the
+// cached token still worked to its deadline; whoami answered success with
+// only key_term_note «not in the list». The key not in its account's list
+// makes whoami drop the cached token and exchange the key again: IAM
+// refuses a revoked key — AUTH_FAILED, the key named revoked, the way out;
+// a key IAM still takes (the list lags) — the answer as before.
+func TestWhoami_RevokedKeyFailsAndDropsTheCache(t *testing.T) {
+	at(t, "2026-11-05T12:00:00Z")
+	notListed := `[{"id":"ak-0","keyId":"OTHER","expiredAt":"2026-12-01T00:00:00Z"}]`
+
+	tp := &forgetToken{subToken: subToken{"sa-1"}, revoked: true}
+	text, isErr := rolesRegistry(t, &rolesWorld{perms: `[]`, keys: notListed}, rolesProject, tp).handlers["whoami"](context.Background(), map[string]any{})
+	if !isErr || !strings.Contains(text, clierrors.CodeAuthFailed) || !strings.Contains(text, "revoked") || !strings.Contains(text, "evo login") {
+		t.Errorf("a revoked key: isErr=%v, want AUTH_FAILED naming it revoked and evo login: %s", isErr, text)
+	}
+	if len(tp.forgotten) != 1 {
+		t.Errorf("the cached token was forgotten %d times, want once", len(tp.forgotten))
+	}
+
+	tp = &forgetToken{subToken: subToken{"sa-1"}}
+	m := whoami(t, rolesRegistry(t, &rolesWorld{perms: `[]`, keys: notListed}, rolesProject, tp))
+	if note, _ := m["key_term_note"].(string); !strings.Contains(note, "not in the list") {
+		t.Errorf("a key IAM still takes: key_term_note %q", note)
+	}
+
+	// The term known: nothing is forgotten.
+	tp = &forgetToken{subToken: subToken{"sa-1"}, revoked: true}
+	whoami(t, rolesRegistry(t, &rolesWorld{perms: `[]`, keys: keysOf("2026-12-05T00:00:00Z")}, rolesProject, tp))
+	if len(tp.forgotten) != 0 {
+		t.Errorf("a listed key: the token was forgotten")
 	}
 }

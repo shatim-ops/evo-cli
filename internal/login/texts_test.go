@@ -6,6 +6,7 @@ package login
 
 import (
 	"errors"
+	"html"
 	"os"
 	"regexp"
 	"strings"
@@ -312,5 +313,25 @@ func TestConsentPage_BeforeTheChoice(t *testing.T) {
 	}
 	if strings.Contains(page, "из списка") {
 		t.Errorf("«из списка» stands for a project")
+	}
+}
+
+// G12 (round 3 of Grok, R3-F5): the line «the existing service account was
+// reused» stood twice on the result page — by the heading and under the
+// text: the header of every page took the page's Note as its own line
+// «until when the page works». It stands once; the consent keeps its line
+// by the heading.
+func TestDonePage_ReusedLineOnce(t *testing.T) {
+	r := Result{Account: ForAgent.account(), AccountReused: true, RevokedKeyID: "f67f00000000000000000000000000007839",
+		Profile: "agent", KeyID: "k", KeyExpiresAt: time.Now()}
+	var b strings.Builder
+	p := donePage(r)
+	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+		t.Fatal(err)
+	}
+	page := b.String()
+	line := tDoneReused(r.Account, roleTerm(r), config.MaskKeyID(r.RevokedKeyID))
+	if n := strings.Count(page, html.EscapeString(line)); n != 1 {
+		t.Errorf("the reused line is %d times on the result page, want once", n)
 	}
 }
