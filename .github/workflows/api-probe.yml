@@ -448,6 +448,26 @@ jobs:
           done
           probeh kafka_list_noproduct         "https://kafka.api.cloud.ru/v1/clusters?$P&page_size=100" "$dlist"
 
+          # Спецификация paas-kafka 10.11 (job contract): в теле POST
+          # /v1/clusters появились subnet_ids[] и controller_spec, subnet_id
+          # пропал. Есть ли они в ответах чтения — список и кластер по id
+          # («да» владельца 10.11, только чтение). В лог — только есть ли поле
+          # и сколько кластеров его несут; значения и id — нет.
+          echo "== Kafka 10.11: subnet_ids и controller_spec в ответах чтения"
+          # shellcheck disable=SC2016 # $c, $k — переменные jq
+          kfields='def has3($k): {subnet_ids: ($k | has("subnet_ids")), controller_spec: ($k | has("controller_spec")), subnet_id: ($k | has("subnet_id"))};'
+          probeh kafka_1011_list "https://kafka.api.cloud.ru/v1/clusters?product_type=kafka&$P&page_size=100" \
+            'if type == "object" then (.clusters // []) as $c | {n: ($c | length), with_subnet_ids: ([$c[] | select(has("subnet_ids"))] | length), with_controller_spec: ([$c[] | select(has("controller_spec"))] | length), with_subnet_id: ([$c[] | select(has("subnet_id"))] | length)} else {type: type} end'
+          kid=$(curl -sS -H "Authorization: Bearer $TOKEN" "https://kafka.api.cloud.ru/v1/clusters?product_type=kafka&$P&page_size=100" | jq -r '(.clusters // [])[0].id // empty' 2>/dev/null || true)
+          if [ -z "$kid" ]; then
+            echo "kafka_1011_get: кластеров нет — пропуск"
+          else
+            echo "::add-mask::$kid"
+            probeh kafka_1011_get "https://kafka.api.cloud.ru/v1/clusters/$kid" \
+              "$kfields"' if type == "object" then (.cluster // .) as $k | {top: keys} + has3($k) else {type: type} end'
+          fi
+          unset kfields kid
+
           # k8s_nodepools без cluster_id звал GET /v3/nodePools без параметров
           # (API_ERROR в readonly #23); в спецификации clusterId — required.
           echo "== mk8s: группы узлов без кластера и с кластером"
