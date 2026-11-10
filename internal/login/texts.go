@@ -5,6 +5,7 @@
 package login
 
 import (
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
@@ -420,15 +421,27 @@ func eForbidden(project string) string {
 	return i18n.Tf("not enough rights to grant access in the project “%s”: Cloud.ru refused", "недостаточно прав для выдачи доступа в проекте «%s»: Cloud.ru отказал", project)
 }
 func eNotComplete(cause string, made, undone, left []string) string {
-	return i18n.Tf("access was not granted: %s; created: %v; rolled back: %v; left behind: %v", "доступ не выдан: %s; создано: %v; отменено: %v; осталось: %v",
-		cause, made, undone, left)
+	return i18n.Tf("access was not granted: %s; created: %s; rolled back: %s; left behind: %s", "доступ не выдан: %s; создано: %s; отменено: %s; осталось: %s",
+		cause, listed(made), listed(undone), listed(left))
+}
+
+// listed is a list of what a rollback met, by commas; an empty one is
+// «nothing», not «[]» (finding 24 of 1.8, «Риск», conclusion 58).
+func listed(what []string) string {
+	if len(what) == 0 {
+		return i18n.T("nothing", "ничего")
+	}
+	return strings.Join(what, ", ")
 }
 func eNotCompleteHint(left bool, next string) string {
 	if left {
 		return i18n.T("Delete what was left behind in the Cloud.ru console under “Service accounts” and run evo login again.",
 			"Удалите оставшееся в личном кабинете Cloud.ru в разделе «Сервисные аккаунты» и повторите evo login.")
 	}
-	return i18n.T("Nothing was left behind. ", "Ничего не осталось. ") + next
+	return tNothingLeft() + " " + next
+}
+func tNothingLeft() string {
+	return i18n.T("Nothing was left behind.", "Ничего не осталось.")
 }
 
 // What Cloud.ru did not do at a write: the first words of its refusal,

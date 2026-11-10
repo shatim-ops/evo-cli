@@ -6,6 +6,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
@@ -48,6 +50,10 @@ type fakeCloud struct {
 	zoneCalls atomic.Int32
 	// subnets is the JSON array of the project's subnets; "" answers 404.
 	subnets string
+	// sub, when set, makes the IAM token a JWT naming this service account,
+	// as IAM issues it; "" issues a token that is no JWT (IAM is not asked
+	// for the key's roles and term).
+	sub string
 }
 
 // setupCLI isolates a CLI run: temp config dir, cwd and HOME, no CLOUDRU_*
@@ -80,7 +86,11 @@ func setupCLI(t *testing.T) *fakeCloud {
 				http.Error(w, "denied", fc.iamStatus)
 				return
 			}
-			fmt.Fprintf(w, `{"access_token":"tok-%s","expires_in":3600}`, body.KeyID)
+			tok := "tok-" + body.KeyID
+			if fc.sub != "" {
+				tok = "h." + base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"sub":%q}`, fc.sub))) + ".s"
+			}
+			fmt.Fprintf(w, `{"access_token":%q,"expires_in":3600}`, tok)
 		case "/org/v3/projects":
 			fc.orgCalls.Add(1)
 			if r.Header.Get("Authorization") == "" {
@@ -405,6 +415,13 @@ func TestConfigure_ListAndDelete(t *testing.T) {
 func TestWhoami_ProfileWithoutEnvAndCachedToken(t *testing.T) {
 	fc := setupCLI(t)
 	saveProfile(t, "default", "p-1")
+	// The token names its service account, as IAM's does: a cached token
+	// without sub is dropped (findings ledger 1.8, № 98). IAM does not
+	// tell the key's roles and term to this world: 403.
+	fc.sub = "sa-1"
+	base := httpretry.DefaultBase
+	t.Cleanup(func() { httpretry.DefaultBase = base })
+	httpretry.DefaultBase = iamAdminDenied{base}
 
 	code, stdout, stderr := runCLI(t, "", "whoami")
 	if code != 0 {
@@ -969,4 +986,17 @@ func TestWhoami_HalfAnEnvKeyAndAMissingProfileSayWhy(t *testing.T) {
 	if code == 0 || !strings.Contains(stdout+stderr, "evo login --profile nope") {
 		t.Errorf("a missing profile: exit %d\n%s%s", code, stdout, stderr)
 	}
+}
+
+// iamAdminDenied answers 403 to the IAM API of service accounts and
+// permissions; the rest goes to the transport installed before.
+type iamAdminDenied struct{ base http.RoundTripper }
+
+func (d iamAdminDenied) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Hostname() != "iam.api.cloud.ru" {
+		return d.base.RoundTrip(r)
+	}
+	rec := httptest.NewRecorder()
+	http.Error(rec, `{"message":"forbidden"}`, http.StatusForbidden)
+	return rec.Result(), nil
 }
