@@ -45,8 +45,9 @@ func (p *CreatePreview) SetMarketplace(marketplace bool) {
 	p.warnWizard()
 }
 
-// warnWizard: a Marketplace image serves its installation wizard on 80/443
-// until the setup is finished; open to anyone, whoever comes first finishes
+// warnWizard: a Marketplace image may serve an installation wizard on
+// 80/443 until the setup is finished (one image seen so, «Риск»,
+// conclusion 73); open to anyone, whoever comes first finishes
 // it (plan 1.8, the owner's decisions of 10.11 on «Риск», conclusion 36
 // п. 7). Said once, whichever of AddPorts and SetMarketplace comes last.
 func (p *CreatePreview) warnWizard() {
@@ -58,8 +59,8 @@ func (p *CreatePreview) warnWizard() {
 
 // WizardOpen is the warning of warnWizard.
 func WizardOpen() string {
-	return i18n.Tf("the Marketplace image serves its installation wizard on ports 80/443 to anyone on the internet (%s) until the setup is finished: whoever opens it first can finish it; give the person's own address in cidr (for example 203.0.113.7/32)",
-		"образ Marketplace открывает мастер установки на портах 80/443 всему интернету (%s), пока установка не завершена: завершить ее может любой, кто откроет его первым; задайте в cidr адрес человека (например, 203.0.113.7/32)",
+	return i18n.Tf("a Marketplace image may serve an installation wizard on ports 80/443, here open to anyone on the internet (%s), until the setup is finished: then whoever opens it first can finish it; give the person's own address in cidr (for example 203.0.113.7/32)",
+		"образ Marketplace может открывать мастер установки на портах 80/443, здесь открытых всему интернету (%s), пока установка не завершена: тогда завершить ее может любой, кто откроет его первым; задайте в cidr адрес человека (например, 203.0.113.7/32)",
 		sgrules.Anywhere)
 }
 
