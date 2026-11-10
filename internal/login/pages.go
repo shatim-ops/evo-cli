@@ -290,7 +290,8 @@ func cancelledPage() page {
 }
 
 // errorPage names the error as the terminal does, with its code; the hint
-// with its command stays the terminal's and JSON's. Never a secret: the
+// with its command stays the terminal's and JSON's, but for the way to
+// delete what a rollback left. Never a secret: the
 // errors of the login carry none. The heading follows the step (№ 182,
 // «Риск», conclusion 57): before any write the sign-in or the choice
 // failed and nothing was made; a write step, or none named, keeps «could
@@ -304,6 +305,16 @@ func errorPage(err error) page {
 			status, note = tSignInFailed(), tNothingMade()
 		case stepChoice, stepEvaluate:
 			status, note = tNotGranted(), tNothingMade()
+		default:
+			// After a rollback: what is left and where to delete it, or
+			// that nothing is (№ 24, «Риск», conclusion 58); without one,
+			// nothing is said — it is not known.
+			if left, ok := ce.Details["left"].([]string); ok {
+				note = tNothingLeft()
+				if len(left) > 0 {
+					note = eNotCompleteHint(true, "")
+				}
+			}
 		}
 	}
 	return page{"error", resultData{head: newHead(pageTitle(status)), Status: status, Note: note, Text: err.Error(),
