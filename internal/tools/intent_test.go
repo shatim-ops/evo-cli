@@ -35,14 +35,14 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 	tool, _ := r.Lookup("disk_create")
 	h := r.intended(tool, func(context.Context, map[string]any) (string, bool) {
 		sent = true
-		if got := intent.Pending(dir); len(got) != 1 {
+		if got := intent.Pending(intent.Dir(dir)); len(got) != 1 {
 			t.Errorf("the call went out with %d intents written", len(got))
 		}
 		cancel()
 		return `{"reason":"INTERRUPTED"}`, true
 	})
 	h(ctx, args)
-	got := intent.Pending(dir)
+	got := intent.Pending(intent.Dir(dir))
 	if !sent || len(got) != 1 || got[0].Tool != "disk_create" || got[0].Name != "disk-1" || got[0].ProjectID != "p" ||
 		strings.Join(got[0].Args, ",") != "name,secret_hint,size" {
 		t.Fatalf("a cut call: %+v", got)
@@ -56,7 +56,7 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 	// the answered call leaves none.
 	h = r.intended(tool, func(context.Context, map[string]any) (string, bool) { return `{"id":"d-1","existing_id":"d-1"}`, false })
 	h(context.Background(), args)
-	if got := intent.Pending(dir); len(got) != 0 {
+	if got := intent.Pending(intent.Dir(dir)); len(got) != 0 {
 		t.Errorf("after an answer: %+v", got)
 	}
 
@@ -86,7 +86,7 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 func TestPending_ReadOnBothSurfaces(t *testing.T) {
 	r, dir := targetRegistry(t, &disksCloud{})
 	t.Chdir(dir)
-	if _, err := intent.Begin(dir, intent.Intent{Tool: "disk_create", Name: "disk-1", ProjectID: "p", Surface: "cli", PID: 42}); err != nil {
+	if _, err := intent.Begin(intent.Dir(dir), intent.Intent{Tool: "disk_create", Name: "disk-1", ProjectID: "p", Surface: "cli", PID: 42}); err != nil {
 		t.Fatal(err)
 	}
 	notes := r.PendingNotes(dir)
@@ -132,7 +132,7 @@ func TestIntent_OutcomeAndTarget(t *testing.T) {
 	} {
 		answer := c.answer
 		r.intended(tool, func(context.Context, map[string]any) (string, bool) { return answer, true })(context.Background(), args)
-		got := intent.Pending(dir)
+		got := intent.Pending(intent.Dir(dir))
 		if (len(got) > 0) != c.keeps {
 			t.Errorf("%s: kept %d, want kept %v", c.answer, len(got), c.keeps)
 		}
@@ -142,7 +142,7 @@ func TestIntent_OutcomeAndTarget(t *testing.T) {
 		if c.keeps {
 			// The same call on the same VM answered «already deleted»: settled.
 			r.intended(tool, func(context.Context, map[string]any) (string, bool) { return `{"status":"already_deleted"}`, false })(context.Background(), args)
-			if got := intent.Pending(dir); len(got) != 0 {
+			if got := intent.Pending(intent.Dir(dir)); len(got) != 0 {
 				t.Errorf("%s: the same call did not settle it: %+v", c.answer, got)
 			}
 		}
@@ -183,7 +183,7 @@ func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
 	begin := func(in intent.Intent) {
 		t.Helper()
-		if _, err := intent.Begin(dir, in); err != nil {
+		if _, err := intent.Begin(intent.Dir(dir), in); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -195,7 +195,7 @@ func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 
 	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
 	left := map[string]bool{}
-	for _, in := range intent.Pending(dir) {
+	for _, in := range intent.Pending(intent.Dir(dir)) {
 		left[in.Name+in.Target] = true
 	}
 	if left["made"] || left["disk_id=d-gone"] || !left["not-yet"] || !left["disk_id=d-still"] {
@@ -221,14 +221,14 @@ func TestDoctor_IntentOfAnotherProjectStays(t *testing.T) {
 	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
 	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
 	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
-	if _, err := intent.Begin(dir, intent.Intent{Tool: "disk_delete", Target: "disk_id=d-other", ProjectID: "p-other"}); err != nil {
+	if _, err := intent.Begin(intent.Dir(dir), intent.Intent{Tool: "disk_delete", Target: "disk_id=d-other", ProjectID: "p-other"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := intent.Begin(dir, intent.Intent{Tool: "disk_delete", Target: "disk_id=d-here", ProjectID: "p"}); err != nil {
+	if _, err := intent.Begin(intent.Dir(dir), intent.Intent{Tool: "disk_delete", Target: "disk_id=d-here", ProjectID: "p"}); err != nil {
 		t.Fatal(err)
 	}
 	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
-	left := intent.Pending(dir)
+	left := intent.Pending(intent.Dir(dir))
 	if len(left) != 1 || left[0].ProjectID != "p-other" || !strings.Contains(text, "p-other") {
 		t.Errorf("left %+v\n%s", left, text)
 	}

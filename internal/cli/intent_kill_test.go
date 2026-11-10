@@ -97,7 +97,7 @@ func TestIntent_KilledAfterConsentIsNamed(t *testing.T) {
 	_ = cmd.Wait()
 	t.Cleanup(func() { _ = os.RemoveAll(dir) }) // the child's cleanup did not run
 
-	left := intent.Pending(dir)
+	left := intent.Pending(intent.Dir(dir))
 	if len(left) != 1 || left[0].Tool != "disk_create" || left[0].Name != intentKillName || left[0].Surface != "cli" {
 		t.Fatalf("killed after the consent, the child left %+v — want one intent of disk_create %s, surface cli", left, intentKillName)
 	}
@@ -140,7 +140,7 @@ func TestIntent_KilledAfterConsentIsNamed(t *testing.T) {
 	if code, out, errOut := runCLI(t, "", "--json", "--yes", "disk", "create", intentKillName, "--size-gb", "20"); code != 0 {
 		t.Fatalf("the create again: exit %d\n%s%s", code, out, errOut)
 	}
-	if p := intent.Pending(w.dir); len(p) != 0 {
+	if p := intent.Pending(intent.Dir(w.dir)); len(p) != 0 {
 		t.Errorf("the create of %s answered, and the intents stay: %+v", intentKillName, p)
 	}
 }

@@ -606,6 +606,19 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	now := s.cfg.Now()
 	desc := fmt.Sprintf("evo login, %s, %s", s.who.Login, now.UTC().Format("2006-01-02"))
 
+	// The intent, before the first write: a login killed after its key and
+	// before the profile leaves a key no profile holds, and the next run
+	// names it, as a cut paid create (R-59; findings ledger 1.8, № 37). Not
+	// written, it is a local error, nothing sent (intent.Begin).
+	if dir := s.cfg.IntentDir; dir != "" {
+		done, err := intent.Begin(dir, intent.Intent{Tool: "login", Name: aud.account(), ProjectID: p.ID,
+			Surface: "cli", PID: os.Getpid(), StartedAt: now, Note: tKilledLogin(aud.account(), p.Name, now)})
+		if err != nil {
+			return res, at(stepAccount, err)
+		}
+		s.intentDone = done
+	}
+
 	// 14. The account: the planned one, or created; a 409 is another
 	// login's: list again and reuse.
 	sa := pl.saID
@@ -638,17 +651,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	res.RoleExpiresAt, res.RoleUnbounded = roleTerm, roleTerm.IsZero()
 	say(tStepRole())
 
-	// 16. The key, last. Before it, the intent: a login killed between
-	// the key and the profile leaves a key no profile holds, and the next
-	// run names it, as a cut paid create (R-59; findings ledger 1.8, № 37).
-	if root := s.cfg.IntentRoot; root != "" {
-		done, err := intent.Begin(root, intent.Intent{Tool: "login", Name: aud.account(), ProjectID: p.ID,
-			Surface: "cli", PID: os.Getpid(), StartedAt: now, Note: tKilledLogin(aud.account(), p.Name)})
-		if err != nil {
-			return res, at(stepKey, err)
-		}
-		s.intentDone = done
-	}
+	// 16. The key, last.
 	key, err := s.admin.CreateAccessKey(ctx, sa, desc, time.Duration(pl.days)*24*time.Hour)
 	if err != nil {
 		return res, at(stepKey, refused(forbidden(err, p.Name), eNotIssuedKey(), eKeyRefusedHint(aud.account())))

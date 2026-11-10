@@ -112,16 +112,20 @@ func TestLogin_KilledAfterTheKeyIsNamed(t *testing.T) {
 	cfgDir, wd, _ := strings.Cut(told, "\t")
 	t.Cleanup(func() { _ = os.RemoveAll(cfgDir); _ = os.RemoveAll(wd) }) // the child's cleanup did not run
 
-	// The next run, where the child ran.
+	// The next run, in another folder than the child's: the key belongs to
+	// the profiles, and doctor names it from any folder («Риск»,
+	// conclusion 75, condition 1).
 	setupCLI(t)
 	t.Setenv(config.EnvConfigDir, cfgDir)
-	t.Chdir(wd)
+	t.Chdir(t.TempDir())
 	if _, _, found, _ := config.LoadProfile("agent"); found {
 		t.Fatal("the profile agent was written: the kill came after the save, not between the key and the profile")
 	}
 	newProcess()
 	_, out, errOut := runCLI(t, "", "--json", "doctor")
-	if !strings.Contains(out+errOut, "pending operation") || !strings.Contains(out+errOut, "login") {
+	// Named by its time, so that no working key of an agent is deleted
+	// for it (condition 2).
+	if !strings.Contains(out+errOut, "pending operation") || !strings.Contains(out+errOut, "login") || !strings.Contains(out+errOut, "created at about") {
 		t.Errorf("killed after the key and before the profile, evo login left a key in the cloud, and evo doctor does not name it:\n%.600s%.300s", out, errOut)
 	}
 }

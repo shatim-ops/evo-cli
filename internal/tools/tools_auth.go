@@ -328,10 +328,10 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		// (и)): a warning, not a failure — the setup works.
 		// The list of what each names closes the ones whose outcome it
 		// shows (PR-2).
-		for _, in := range intent.Pending(eng.StateDir) {
+		for _, in := range pendingIntents(eng.StateDir) {
 			found, settled := s.checkByList(ctx, in, eng.Config.ProjectID)
 			if settled {
-				intent.Close(eng.StateDir, in.ID)
+				intent.Close(in)
 				checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckOK, Detail: found})
 				continue
 			}

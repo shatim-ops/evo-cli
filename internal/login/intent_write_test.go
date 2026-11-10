@@ -37,7 +37,7 @@ func TestLogin_IntentNotWrittenIsALocalError(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".evo"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg.IntentRoot = root
+	cfg.IntentDir = filepath.Join(root, ".evo", "intents")
 	st := &memStore{}
 	_, err := Login(context.Background(), cfg, Choice{}, st)
 	<-b.ended
