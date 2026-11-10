@@ -123,7 +123,7 @@ func TestIntent_KilledAfterConsentIsNamed(t *testing.T) {
 		t.Errorf("evo doctor does not name the cut disk_create %s:\n%s%s", intentKillName, out, errOut)
 	}
 	newProcess()
-	_, out, errOut = runCLI(t, "", "disk", "list")
+	_, _, errOut = runCLI(t, "", "disk", "list")
 	if !names(errOut) {
 		t.Errorf("the next command does not name the cut disk_create %s on stderr:\n%s", intentKillName, errOut)
 	}
