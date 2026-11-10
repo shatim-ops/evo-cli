@@ -45,7 +45,7 @@ func TestQAB_RecordDeployment_KeepsFloatingIPOfOldRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := &deployplan.ApplyResult{VMID: "0000a1a1-0000-4000-8000-000000000001", Status: "creating"}
-	if err := recordDeployment(dir, &deployplan.Plan{ProjectID: "p", VM: deployplan.VMSpec{Name: "x"}}, res, res.Status); err != nil {
+	if err := recordDeployment(dir, nil, &deployplan.Plan{ProjectID: "p", VM: deployplan.VMSpec{Name: "x"}}, res, res.Status); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := state.Read(state.DefaultPath(dir))

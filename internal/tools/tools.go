@@ -2250,6 +2250,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				VMID:               vmID,
 				VMIP:               publicIP,
 				VMName:             vmName,
+				CreatedBy:          eng.Maker(),
 				Source:             state.SourceProvision,
 				ProjectID:          projectID,
 				VMFlavor:           flavorID,
@@ -2808,6 +2809,16 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		return nil, err
 	}
 	eng.Cloud.SetToken(tok.Value)
+	// A VM another key recorded: its 404 is no proof it is gone, and the
+	// refusal comes before the question (L3, «Риск» 43). A record of
+	// another project is the project rule's below: it names the project.
+	if vmID != "" {
+		if recorded, rec := recordedVM(state.DefaultPath(eng.StateDir), vmID); recorded && (rec.ProjectID == "" || rec.ProjectID == projectID) {
+			if err := eng.VisibleToThisKey(ctx, rec); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	vms, err := eng.Cloud.ListVMsInProject(ctx, projectID)
 	if err != nil {
@@ -2848,10 +2859,11 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	// a delete; "no VM matching" left the record for status to show forever.
 	alreadyGone := false
 	if target == nil {
-		recorded, recProject := false, ""
+		recorded, rec := false, state.DeploymentRecord{}
 		if vmID != "" {
-			recorded, recProject = recordedVM(statePath, vmID)
+			recorded, rec = recordedVM(statePath, vmID)
 		}
+		recProject := rec.ProjectID
 		// A record of another project: GET /vms/{id} carries no project, so
 		// its 404 does not prove the VM is gone (ревью Fable на #81).
 		if recorded && recProject != "" && recProject != projectID {
@@ -3363,17 +3375,17 @@ func provisionNoPublicIP(res map[string]any, vmID, fipID string, fipErr error) s
 // recordedVM reports whether the local state has a deployment of vmID.
 // recordedVM reports whether the state records the VM, and the project of
 // its record ("" when the record has none).
-func recordedVM(statePath, vmID string) (bool, string) {
+func recordedVM(statePath, vmID string) (bool, state.DeploymentRecord) {
 	sf, err := state.Read(statePath)
 	if err != nil {
-		return false, ""
+		return false, state.DeploymentRecord{}
 	}
 	for _, d := range sf.Deployments {
 		if d.VMID == vmID {
-			return true, d.ProjectID
+			return true, d
 		}
 	}
-	return false, ""
+	return false, state.DeploymentRecord{}
 }
 
 func (s *Registry) handleListZones(ctx context.Context, args map[string]any) (string, bool) {

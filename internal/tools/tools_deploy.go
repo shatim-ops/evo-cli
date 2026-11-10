@@ -243,7 +243,7 @@ func overlayInt(args map[string]any, key string, dst *int) {
 // recordDeployment records the VM of a deploy_apply in the local state, so
 // status, list and destroy work on it. Best effort, as before: the answer
 // names the VM either way.
-func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.ApplyResult, status string) error {
+func recordDeployment(stateDir string, maker *state.Maker, plan *deployplan.Plan, res *deployplan.ApplyResult, status string) error {
 	return state.Update(state.DefaultPath(stateDir), stateLockWait, func(sf *state.File) error {
 		now := time.Now()
 		rec := state.DeploymentRecord{
@@ -251,6 +251,7 @@ func recordDeployment(stateDir string, plan *deployplan.Plan, res *deployplan.Ap
 			VMID:         res.VMID,
 			VMIP:         res.PublicIP,
 			FloatingIPID: res.FloatingIPID,
+			CreatedBy:    maker,
 			ProjectID:    plan.ProjectID,
 			VMFlavor:     plan.VM.Flavor.Name,
 			Region:       plan.VM.Zone.ID,
@@ -365,7 +366,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		// destroy see it; the plan stays for a retry, which adopts the VM.
 		var fields map[string]any
 		if res != nil && res.VMID != "" {
-			if rerr := recordDeployment(eng.StateDir, plan, res, "creating"); rerr != nil {
+			if rerr := recordDeployment(eng.StateDir, eng.Maker(), plan, res, "creating"); rerr != nil {
 				err = fmt.Errorf(i18n.T("%w (VM %s is not in the state either: %v)", "%w (ВМ %s тоже нет в state: %v)"), err, res.VMID, rerr)
 			}
 			// The VM, the plan that finishes it and its password, which
@@ -383,7 +384,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	// plan goes only after that: if the state cannot be written, a retry
 	// of the same plan adopts the VM instead of losing it.
 	if res.VMID != "" {
-		if err := recordDeployment(eng.StateDir, plan, res, res.Status); err != nil {
+		if err := recordDeployment(eng.StateDir, eng.Maker(), plan, res, res.Status); err != nil {
 			return errResult(fmt.Errorf("VM %s was created, but the state file could not be saved (%w); "+
 				"it is running and billed — call deploy_apply again with the same plan_id once the state is writable, "+
 				"whether to delete it instead (destroy vm_id %s, or the Cloud.ru console) — ask the person", res.VMID, err, res.VMID)), true
