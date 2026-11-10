@@ -34,6 +34,34 @@ func (p *CreatePreview) AddPorts(tcp, udp []int, cidr string) {
 	if w := sgrules.WideOpen(tcp, udp, cidr); w != "" {
 		p.Warnings = append(p.Warnings, w)
 	}
+	p.webAnywhere = sgrules.Source(cidr) == sgrules.Anywhere &&
+		slices.ContainsFunc(tcp, func(port int) bool { return port == 80 || port == 443 })
+	p.warnWizard()
+}
+
+// SetMarketplace marks the preview's image as a Marketplace one.
+func (p *CreatePreview) SetMarketplace(marketplace bool) {
+	p.marketplace = marketplace
+	p.warnWizard()
+}
+
+// warnWizard: a Marketplace image may serve an installation wizard on
+// 80/443 until the setup is finished (one image seen so, «Риск»,
+// conclusion 73); open to anyone, whoever comes first finishes
+// it (plan 1.8, the owner's decisions of 10.11 on «Риск», conclusion 36
+// п. 7). Said once, whichever of AddPorts and SetMarketplace comes last.
+func (p *CreatePreview) warnWizard() {
+	if p.marketplace && p.webAnywhere && !p.wizardSaid {
+		p.wizardSaid = true
+		p.Warnings = append(p.Warnings, WizardOpen())
+	}
+}
+
+// WizardOpen is the warning of warnWizard.
+func WizardOpen() string {
+	return i18n.Tf("a Marketplace image may serve an installation wizard on ports 80/443, here open to anyone on the internet (%s), until the setup is finished: then whoever opens it first can finish it; give the person's own address in cidr (for example 203.0.113.7/32)",
+		"образ Marketplace может открывать мастер установки на портах 80/443, здесь открытых всему интернету (%s), пока установка не завершена: тогда завершить ее может любой, кто откроет его первым; задайте в cidr адрес человека (например, 203.0.113.7/32)",
+		sgrules.Anywhere)
 }
 
 // PortsGroup names the security group the ports of AddPorts open in: the
