@@ -8,7 +8,7 @@
 #
 # Причины провала:
 #   - вход неверен: зона не имя, слово dbaas_services не pg, kafka, redis;
-#     слово probes не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7; access, nodes или
+#     слово probes не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1; access, nodes или
 #     p45 без dbaas_smoke и pg (проба DBaaS не пойдёт);
 #   - зона джоба не найдена или закрыта (enabled=false);
 #   - в зоне джоба у проекта нет подсети или группы безопасности;
@@ -82,13 +82,13 @@ read -ra probe_words <<<"${PROBES:-}"
 for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	case "$w" in
 	p36 | p41 | p44 | dnslink) ;;
-	shared | cmp7)
+	shared | cmp7 | r3f1)
 		[ "${DISK_SMOKE:-}" = true ] || fail "probes: «$w» — проба области disk, а disk_smoke не включён"
 		;;
 	access | nodes | p45)
 		[ -n "${cluster_kinds[pg]:-}" ] || fail "probes: «$w» — проба джоба dbaas-pg, а он не идёт (dbaas_smoke и pg в dbaas_services)"
 		;;
-	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7" ;;
+	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1" ;;
 	esac
 done
 
