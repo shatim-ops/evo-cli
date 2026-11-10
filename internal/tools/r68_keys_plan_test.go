@@ -73,7 +73,9 @@ func TestDeployApply_UserKeysChangedSinceThePlan(t *testing.T) {
 				}
 			}()
 			text, _ := r.handlers["deploy_apply"](context.Background(), map[string]any{"plan_id": plan.PlanID, "confirmed": true})
-			return answerReason(text) == clierrors.CodeConfirmationRequired && strings.Contains(text, "user_ssh_keys")
+			var a struct{ Reason string }
+			_ = json.Unmarshal([]byte(text), &a)
+			return a.Reason == clierrors.CodeConfirmationRequired && strings.Contains(text, "user_ssh_keys")
 		}()
 		if refused != changed {
 			t.Errorf("keys changed %v: refused before any write %v", changed, refused)

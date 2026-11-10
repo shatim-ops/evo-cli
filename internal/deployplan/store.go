@@ -119,11 +119,15 @@ type Plan struct {
 	Owned []string `json:"-"`
 
 	// Internal fields needed by Apply (persisted, no secrets).
-	ComposeFile  string            `json:"compose_file,omitempty"`
-	MetaFields   []string          `json:"meta_fields,omitempty"`   // image_metadata password fields generated at apply (older plans: also name/hostname/public_key)
-	MetaStatic   map[string]string `json:"meta_static,omitempty"`   // image_metadata fields sent verbatim (no generated password; the caller's image_metadata values as given)
-	PublicKey    string            `json:"public_key,omitempty"`    // user public key (safe to persist)
-	SourceParams Params            `json:"source_params,omitempty"` // the request that produced this plan (for patch/re-plan)
+	ComposeFile string            `json:"compose_file,omitempty"`
+	MetaFields  []string          `json:"meta_fields,omitempty"` // image_metadata password fields generated at apply (older plans: also name/hostname/public_key)
+	MetaStatic  map[string]string `json:"meta_static,omitempty"` // image_metadata fields sent verbatim (no generated password; the caller's image_metadata values as given)
+	PublicKey   string            `json:"public_key,omitempty"`  // user public key (safe to persist)
+	// UserKeysHash is the hash of the keys of .evo/user_authorized_keys the
+	// plan showed (user_ssh_keys): deploy_apply appends the keys it reads
+	// then only when they are these (R-68, as compose_hash for deploy).
+	UserKeysHash string `json:"user_keys_hash,omitempty"`
+	SourceParams Params `json:"source_params,omitempty"` // the request that produced this plan (for patch/re-plan)
 }
 
 // newPlanID returns a short random plan identifier.

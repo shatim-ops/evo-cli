@@ -6,9 +6,12 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +19,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -117,6 +121,29 @@ func knownKeyType(word string) bool {
 		}
 	}
 	return false
+}
+
+// userKeysHash is the hash of the keys deploy_apply appends, "" for none:
+// the plan keeps it (R-68).
+func userKeysHash(keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	sorted := slices.Clone(keys)
+	slices.Sort(sorted)
+	sum := sha256.Sum256([]byte(strings.Join(sorted, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+// errUserKeysChangedSincePlan: the keys of .evo/user_authorized_keys are
+// not the ones the plan showed — CONFIRMATION_REQUIRED, code 3, before
+// anything is written; a new plan shows them.
+func errUserKeysChangedSincePlan(planID string) error {
+	return clierrors.New(clierrors.CodeConfirmationRequired,
+		i18n.Tf("the keys of .evo/%s changed since plan %s showed them (user_ssh_keys): a key nobody approved would get an SSH login on the VM; nothing was created",
+			"ключи .evo/%s изменились после того, как план %s их показал (user_ssh_keys): SSH на ВМ получил бы ключ, которого никто не одобрял; ничего не создано", userKeysFile, planID),
+		i18n.T("Run deploy_plan again: it shows the keys of the file now; ask the person, then deploy_apply the new plan.",
+			"Снова выполните deploy_plan: он покажет ключи файла сейчас; спросите человека и выполните deploy_apply нового плана."))
 }
 
 // describeUserKeys is what deploy_plan shows of the keys deploy_apply will
