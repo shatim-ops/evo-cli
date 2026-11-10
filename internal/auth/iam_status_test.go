@@ -28,8 +28,19 @@ func TestIAMProvider_RejectedCredentialsAreAuthError(t *testing.T) {
 		_, err := NewIAMProvider(Credentials{KeyID: "k", Secret: "s"}, srv.Client(), nil).Token(context.Background())
 		IAMEndpoint = oldEndpoint
 		srv.Close()
-		if got := clerrors.ExitCode(err); got != clerrors.ExitAuth {
+		if got := clerrors.ExitCode(err); got != clerrors.ExitAuth || clerrors.Reason(err) != clerrors.CodeAuthFailed {
 			t.Errorf("status %d: exit code = %d (err %v), want %d", status, got, err, clerrors.ExitAuth)
+		}
+		// «Риск», conclusion 36 п. 3 (findings ledger 1.8, № 54 and № 68):
+		// the agent tells «fix the key» from «ask for it to be let in» by
+		// details.http_status and the hint; the reason and the code stay.
+		var ce *clerrors.CLIError
+		if !errors.As(err, &ce) || ce.Details["http_status"] != status {
+			t.Errorf("status %d: details %v, want http_status", status, ce)
+			continue
+		}
+		if forbidden := strings.Contains(ce.Hint, forbiddenKeyHint()); forbidden != (status == http.StatusForbidden) {
+			t.Errorf("status %d: hint %q", status, ce.Hint)
 		}
 	}
 }
