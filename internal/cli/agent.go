@@ -394,6 +394,13 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 		return err
 	}
 	printer := cmdPrinter(cmd)
+	if !o.skillOnly {
+		// Before the diff and its question: the person sees which key the
+		// agent gets while it can still be changed (R-72).
+		if w := agentProfileWarning(); w != "" {
+			printer.Warning(w)
+		}
+	}
 	format := o.print
 	if format == "" && len(c.config) > 0 && len(c.files()) == 0 {
 		// A client with a file, but no build for this system: no file
@@ -802,6 +809,22 @@ func loginKeyWarning(profile string, creds config.Credentials) string {
 		return ""
 	}
 	return login.TAgentKeyWarning(profile)
+}
+
+// agentProfileWarning says which profile a setup without --profile (and
+// without CLOUDRU_PROFILE) connects, when the profile agent holds a key
+// evo login made for an agent; "" otherwise. The default stays the
+// default profile (R-72, «Риск», conclusion 79: a hidden choice of the
+// profile was refused).
+func agentProfileWarning() string {
+	name, explicit := config.ProfileName(flagProfile)
+	if explicit || name == agentProfile {
+		return ""
+	}
+	if _, creds, found, err := config.LoadProfile(agentProfile); err != nil || !found || creds.Login == nil {
+		return ""
+	}
+	return login.TAgentProfileNotChosen(name, agentProfile)
 }
 
 // agentFileError is a file of the client the system did not let evo read

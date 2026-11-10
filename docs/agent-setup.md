@@ -106,6 +106,11 @@ evo agent setup --client <клиент> --profile agent --dry-run
 `evo agent setup --client cursor --profile agent --print json` и скажи
 человеку, куда его клиент записывает MCP-серверы.
 
+Без `--profile` клиент подключается к профилю по умолчанию, то есть к ключу
+человека. Если в профиле `agent` есть ключ из `evo login --for agent`,
+`evo agent setup` без `--profile` предупреждает об этом до diff и называет
+команду с `--profile agent`.
+
 ### 4. Передай работу
 
 Попроси человека перезапустить клиент (Claude Desktop — закрыть полностью и
