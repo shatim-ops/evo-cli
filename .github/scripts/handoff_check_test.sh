@@ -49,6 +49,10 @@ printf '# 1.8\n\n## Фаза 0\n\nсм. briefs/phase-0.md\n\n## Следующа
 check "1.8: фаза 0 не в разделе «Следующая версия»" 1
 printf '# 1.8\n\n## Следующая версия\n\n- Фаза 0 — до работы над 1.9.\n' >docs/internal/handoff/1.8.md
 check "1.8: фаза 0 без ссылки на бриф" 1
+printf '# 1.8\n\n## Следующая версия\n\n- Фаза 0 — до работы над 1.9.\n- Бриф: briefs/phase-0.md\n' >docs/internal/handoff/1.8.md
+check "1.8: ссылка на бриф не в строке фазы 0" 1
+printf '# 1.8\n\n## Риски\n\nФаза 0: briefs/phase-0.md\n' >docs/internal/handoff/1.8.md
+check "1.8: раздела «Следующая версия» нет" 1
 printf '# 1.8\n\n## Следующая версия\n\n- Фаза 0 — до работы над 1.9: `docs/internal/briefs/phase-0.md`.\n\n## Риски\n' >docs/internal/handoff/1.8.md
 check "1.8: фаза 0 со ссылкой на бриф" 0
 printf '# 1.5\n\n## Следующая версия\n\n1.6.\n' >docs/internal/handoff/1.5.md
