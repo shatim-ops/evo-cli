@@ -627,11 +627,7 @@ func stdioRaw(t *testing.T, s *mcp.Server, name string, args map[string]any) []b
 		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
 		"params": map[string]any{"name": name, "arguments": args},
 	})
-	out := &bytes.Buffer{}
-	if err := s.Run(bytes.NewReader(append(body, '\n')), out); err != nil {
-		t.Fatalf("%s stdio: %v", name, err)
-	}
-	return out.Bytes()
+	return runStdio(t, s, body)
 }
 
 func httpDetails(t *testing.T, ts *httptest.Server, name string, args map[string]any) map[string]any {

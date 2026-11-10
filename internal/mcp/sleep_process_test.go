@@ -212,7 +212,7 @@ func TestStdio_CallSurvivesTheProcessStopped(t *testing.T) {
 				_ = cmd.Wait()
 			}()
 
-			call := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"pg_operation","arguments":{"operation_id":"op-1","wait_seconds":45}}}` + "\n"
+			call := initLine + "\n" + `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"pg_operation","arguments":{"operation_id":"op-1","wait_seconds":45}}}` + "\n"
 			if _, err := io.WriteString(stdin, call); err != nil {
 				t.Fatal(err)
 			}

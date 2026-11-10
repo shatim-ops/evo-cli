@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -306,8 +307,11 @@ func newRootCmd() *cobra.Command {
 		// {"error": {...}} on stderr.
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			commandStarted = true
+			if err := emptyFlagGiven(cmd); err != nil {
+				return err
+			}
 			// Warnings about legacy paths (.cloudru-vm/, .cloudru-vm.yaml)
 			// follow --json and --no-color from here on.
 			config.SetWarnFunc(func(msg string) {
@@ -323,6 +327,7 @@ func newRootCmd() *cobra.Command {
 			if cwd, err := os.Getwd(); err == nil {
 				printWarnings(output.New(flagJSON, flagNoColor), newRegistry().PendingNotes(cwd))
 			}
+			return nil
 		},
 	}
 
@@ -335,6 +340,7 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, i18n.T("Disable colored output", "Без цвета"))
 	cmd.PersistentFlags().StringVar(&flagProfile, "profile", "", i18n.T("Credentials profile (default: $CLOUDRU_PROFILE or \"default\")",
 		"Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или \"default\")"))
+	noEmptyValue(cmd.PersistentFlags(), "profile")
 	cmd.PersistentFlags().BoolVarP(&flagYes, "yes", "y", false, i18n.T("The person's consent, given in advance, to operations that create paid resources or delete data: no prompt. An agent does not add it on its own",
 		"Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит"))
 	cmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, i18n.T("Show what would be created or deleted (with a cost estimate) and exit",
@@ -802,4 +808,44 @@ func newVersionCmd() *cobra.Command {
 			return printVersion(cmd.OutOrStdout(), flagJSON, currentVersion())
 		},
 	}
+}
+
+// noEmptyValueAnnotation marks a flag whose empty value would be read as
+// «no flag»: another profile, no limit of projects, every group (D89;
+// «Риск», conclusion 38). Given empty — --flag= or a template's empty
+// variable — it is USAGE before the command starts.
+const noEmptyValueAnnotation = "evo_no_empty_value"
+
+// noEmptyValue marks the flags of fs named.
+func noEmptyValue(fs *pflag.FlagSet, names ...string) {
+	for _, n := range names {
+		if err := fs.SetAnnotation(n, noEmptyValueAnnotation, []string{"true"}); err != nil {
+			panic(err) // a flag not declared: a mistake of the code
+		}
+	}
+}
+
+// emptyFlagGiven is USAGE for a marked flag given with an empty value: a
+// string of spaces, or a list with no item but spaces.
+func emptyFlagGiven(cmd *cobra.Command) error {
+	var err error
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		if err != nil || f.Annotations[noEmptyValueAnnotation] == nil {
+			return
+		}
+		values := []string{f.Value.String()}
+		if sv, ok := f.Value.(pflag.SliceValue); ok {
+			values = sv.GetSlice()
+		}
+		for _, v := range values {
+			if strings.TrimSpace(v) != "" {
+				return
+			}
+		}
+		err = clerrors.New(clerrors.CodeUsage,
+			i18n.Tf("--%s is given with an empty value", "--%s задан с пустым значением", f.Name),
+			i18n.Tf("Give a value or drop the flag: an empty --%s is not read as no flag (a template may have put an empty variable there).",
+				"Задайте значение или уберите флаг: пустой --%s не читается как его отсутствие (шаблон мог подставить пустую переменную).", f.Name))
+	})
+	return err
 }

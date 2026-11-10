@@ -292,7 +292,7 @@ func TestRussian_UsageErrors(t *testing.T) {
 func TestMCP_ForcesEnglish(t *testing.T) {
 	russian(t)
 	setupCLI(t)
-	call := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_zones"}}` + "\n"
+	call := stdioInit + `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_zones"}}` + "\n"
 	code, stdout, _ := runCLI(t, call, "mcp")
 	if code != 0 {
 		t.Fatalf("exit %d", code)
