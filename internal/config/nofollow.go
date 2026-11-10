@@ -6,6 +6,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -31,13 +32,32 @@ func OpenNoFollow(path string, flag int, perm os.FileMode) (*os.File, error) {
 		}
 		return nil, err
 	}
-	if lerr == nil {
-		if got, err := f.Stat(); err != nil || !os.SameFile(before, got) {
-			f.Close()
-			return nil, notRegular(path)
-		}
+	// The file opened is the one at path now, as itself: the one Lstat saw,
+	// or — created by this open — no link put in place between the two
+	// (where O_NOFOLLOW is no flag).
+	got, err := f.Stat()
+	if err == nil && lerr != nil {
+		before, lerr = os.Lstat(path)
+	}
+	if err != nil || lerr != nil || !before.Mode().IsRegular() || !os.SameFile(before, got) {
+		f.Close()
+		return nil, notRegular(path)
 	}
 	return f, nil
+}
+
+// ReadFileNoFollow is os.ReadFile through OpenNoFollow: a file of evo that
+// is read and rewritten, or whose lines leave the computer, is read only as
+// itself — a link's target, a private key say, is never its content
+// («Риск», conclusion 66). A missing file is os.ErrNotExist, as with
+// os.ReadFile.
+func ReadFileNoFollow(path string) ([]byte, error) {
+	f, err := OpenNoFollow(path, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
 }
 
 func notRegular(path string) error {

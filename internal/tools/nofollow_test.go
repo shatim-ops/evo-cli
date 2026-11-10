@@ -60,7 +60,9 @@ func TestReads_SymlinkTargetDoesNotLeak(t *testing.T) {
 	if err := pinHostKey(path, "203.0.113.5", "ssh-ed25519 AAAAnew"); err == nil {
 		t.Error("known_hosts: a link was read as the file")
 	}
-	if b, err := os.ReadFile(path); err == nil && strings.Contains(string(b), marker) {
+	if fi, err := os.Lstat(path); err != nil {
+		t.Fatal(err)
+	} else if b, _ := os.ReadFile(path); fi.Mode().IsRegular() && strings.Contains(string(b), marker) {
 		t.Errorf("known_hosts: the target's content is in the project: %q", b)
 	}
 

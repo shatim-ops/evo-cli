@@ -59,10 +59,11 @@ type rejectedKeyLine struct {
 func loadUserKeyLines(stateDir string) (keys []string, rejected []rejectedKeyLine, name string) {
 	dir := config.DataDir(stateDir)
 	name = userKeysFile
-	raw, err := os.ReadFile(filepath.Join(dir, name))
+	// Its lines go to a VM: read as itself, never a link's target (R-67).
+	raw, err := config.ReadFileNoFollow(filepath.Join(dir, name))
 	if os.IsNotExist(err) {
 		name = legacyUserKeysFile
-		raw, err = os.ReadFile(filepath.Join(dir, name))
+		raw, err = config.ReadFileNoFollow(filepath.Join(dir, name))
 	}
 	if err != nil {
 		return nil, nil, userKeysFile
@@ -238,8 +239,11 @@ func pinHostKey(path, host, key string) error {
 		return err
 	}
 	defer unlock()
+	// Read as itself: what is read is written back as a file of the
+	// project, so a link's target — a private key — must never be it
+	// («Риск», conclusion 66).
 	var keep []string
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := config.ReadFileNoFollow(path); err == nil {
 		for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
 			if line == "" || knownHostsLineFor(line, host) {
 				continue
