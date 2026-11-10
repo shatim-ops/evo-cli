@@ -287,6 +287,22 @@ jobs:
           rm -f "$all" "$all.p" "$all.n"
           unset cust page pages complete
 
+          # Проба 6а наблюдателем (план 1.8, B-5; «да» владельца 06.11 и
+          # 10.11, #1067): evaluate ключом наблюдателя по проекту ключа — на
+          # имена действий кандидатов и на два имени, о которых спрашивает
+          # evo login. Ждём false у кандидатов (у наблюдателя нет права
+          # менять аккаунты, разрешения и ключи); 500 или 403 — ответ
+          # платформы (IAM-9), не провал. Имена действий — в публичном коде
+          # evo; в лог — имя, код HTTP и accessGranted, без ID.
+          echo "== 6а: evaluate ключом наблюдателя"
+          for a in iam.serviceaccount.edit iam.permission.add iam.serviceaccount.accesskey.edit iam.serviceAccounts.create iam.permissions.create; do
+            r=$(curl -sS -G -H "Authorization: Bearer $TOKEN" -w '\n%{http_code}' "https://iam.api.cloud.ru/api/v1/permissions/evaluate" \
+              --data-urlencode "action=$a" --data-urlencode "resourceId=$PROJECT" || true)
+            c=${r##*$'\n'}; b=${r%$'\n'*}
+            printf 'evaluate_%-36s http=%s %s\n' "$a" "$c" "$(printf '%s' "$b" | jq -c '{granted: (.accessGranted // .access_granted // null)}' 2>/dev/null || echo 'не JSON')" | redact
+          done
+          unset a r c b
+
           # Каталог образов (docs/internal/design-images.md §7): типы, отечественные
           # ОС, поиск по name/display_name, поля продуктов, расчёт цены. Имена
           # образов общего каталога (без project_id) публичны — их печатаем;
