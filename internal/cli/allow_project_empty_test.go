@@ -40,6 +40,14 @@ func TestEmptyExplicitFlagIsUsage(t *testing.T) {
 		{"--json", "--profile=", "whoami"},
 		{"--json", "whoami", "--profile", ""},
 		{"--json", "--profile=", "mcp"},
+		// The owner's decision 10.11 (conclusion 53): the scope flags too —
+		// an empty one moved the write to the project or zone of the profile.
+		{"--json", "--project-id=", "vm", "list"},
+		{"--json", "vm", "list", "--region", ""},
+		{"--json", "disk", "create", "d1", "--size-gb", "10", "--zone="},
+		{"--json", "disk", "create", "d1", "--size-gb", "10", "--project-id="},
+		{"--json", "deploy", "--region="},
+		{"--json", "configure", "--region="},
 	} {
 		code, stdout, stderr := runCLI(t, "", args...)
 		flag := ""

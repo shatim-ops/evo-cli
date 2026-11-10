@@ -825,6 +825,21 @@ func noEmptyValue(fs *pflag.FlagSet, names ...string) {
 	}
 }
 
+// scopeFlags name where a write goes: an empty one moved it to the
+// project or the zone of the profile (D89, the owner's decision 10.11 on
+// conclusion 53 of «Риск»). Wherever they are declared — the global
+// scope, a command's own, a tool's argument — they are marked.
+var scopeFlags = []string{"project-id", "region", "zone"}
+
+// noEmptyScope marks the scope flags fs declares.
+func noEmptyScope(fs *pflag.FlagSet) {
+	for _, n := range scopeFlags {
+		if fs.Lookup(n) != nil {
+			noEmptyValue(fs, n)
+		}
+	}
+}
+
 // emptyFlagGiven is USAGE for a marked flag given with an empty value: a
 // string of spaces, or a list with no item but spaces.
 func emptyFlagGiven(cmd *cobra.Command) error {

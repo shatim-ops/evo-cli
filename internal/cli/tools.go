@@ -1055,6 +1055,7 @@ func addScopeFlags(root *cobra.Command) {
 		"UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)"))
 	root.PersistentFlags().StringVar(&flagRegion, "region", "", i18n.T("Availability zone UUID (default: from the profile or $CLOUDRU_REGION)",
 		"UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)"))
+	noEmptyScope(root.PersistentFlags())
 }
 
 // applyScopeFlags adds --project-id and --region to the engine overrides
