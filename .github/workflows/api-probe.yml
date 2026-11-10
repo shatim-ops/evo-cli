@@ -483,15 +483,21 @@ jobs:
           echo "== 1.9: поля сверх evo — карточка ВМ, подсети, публичные IP, метки, консоль"
           # shellcheck disable=SC2016 # $f — переменная jq
           filled='def filled(f): [.[] | arrays | .[] | f | select(. != null and . != "" and . != [])] | length;'
-          VM19=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/vms?$P&limit=1" | jq -r '[.[] | arrays | .[0].id // empty] | first // empty' 2>/dev/null || true)
-          if [ -n "$VM19" ]; then
-            echo "::add-mask::$VM19"
-            # C1, C3: диски, группы безопасности интерфейсов, образ, проект в карточке.
-            probe vm19_card_keys        "$C/vms/$VM19" 'keys'
-            probe vm19_card_filled      "$C/vms/$VM19" '{disks: (.disks // [] | length), disk_keys: ((.disks // [])[0] // {} | keys), sg_per_iface: [.interfaces[]? | (.security_groups // []) | length], image: (.image != null), project: (.project != null), placement_group: (.placement_group != null), metadata_fields: (.metadata_fields // [] | length), tags: (.tags // [] | length)}'
+          # До 5 ВМ: у одной могут не быть заполнены диски, группы или метки.
+          VMS19=$(curl -sS -H "Authorization: Bearer $TOKEN" "$C/vms?$P&limit=5" | jq -r '[.[] | arrays | .[].id // empty] | .[]' 2>/dev/null || true)
+          if [ -n "$VMS19" ]; then
+            n19=0
+            for VM19 in $VMS19; do
+              n19=$((n19 + 1))
+              echo "::add-mask::$VM19"
+              # C1, C3: диски, группы безопасности интерфейсов, образ, проект в карточке.
+              [ "$n19" -gt 1 ] || probe vm19_card_keys "$C/vms/$VM19" 'keys'
+              probe "vm19_card_filled_$n19" "$C/vms/$VM19" '{disks: (.disks // [] | length), disk_keys: ((.disks // [])[0] // {} | keys), sg_per_iface: [.interfaces[]? | (.security_groups // []) | length], image: (.image != null), project: (.project != null), placement_group: (.placement_group != null), metadata_fields: (.metadata_fields // [] | length), tags: (.tags // [] | length)}'
+            done
             # K4: консоль — поля карточки (без значений: ссылка — доступ к консоли).
             probe vm19_console_fields   "$C/vms/$VM19" '{remote_console_url: (.remote_console_url != null and .remote_console_url != ""), remote_console_ws: (.remote_console_ws != null), vnc_url: (.vnc_url != null), is_serial_ready: .is_serial_ready, protocol: (.remote_console_protocol | type)}'
-            # K4: журнал консоли — в описи API нет; две вероятные ручки, только код ответа.
+            # K4: журнал консоли — в описи API нет; две вероятные ручки: код
+            # ответа (http=) различает «нет ручки» (404) и «нет права» (403).
             probe vm19_console_log      "$C/vms/$VM19/console-log" 'type'
             probe vm19_console_output   "$C/vms/$VM19/console/output" 'type'
           else
