@@ -27,6 +27,14 @@ import (
 func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result, error) {
 	s := &session{cfg: cfg, choice: choice, store: store,
 		state: random(16), nonce: random(16), verifier: random(32)}
+	if cfg.LockPath != "" {
+		lk, err := lockLogin(cfg.LockPath)
+		if err != nil {
+			return Result{}, err
+		}
+		defer lk.release()
+		s.lock = lk
+	}
 	d, err := cfg.discover(ctx)
 	if err != nil {
 		return Result{}, at(stepDiscovery, err)
@@ -37,6 +45,9 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		return Result{}, at(stepListen, err)
 	}
 	s.redirect = fmt.Sprintf("http://127.0.0.1:%d/callback", port)
+	if s.lock != nil {
+		s.lock.note(port)
+	}
 	authURL := d.AuthorizationEndpoint + "?" + url.Values{
 		"response_type": {"code"}, "client_id": {auth.LoginClientID}, "redirect_uri": {s.redirect},
 		"scope": {auth.LoginScope}, "state": {s.state}, "nonce": {s.nonce},
@@ -79,7 +90,9 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		return o.res, o.err
 	case <-timer.C:
 		lb.close()
-		return Result{}, fmt.Errorf("%s%s: %w", eTimeout(cfg.Wait), tAt(stepWait, 0), context.Canceled)
+		// The end of the wait is not a Ctrl-C: its own code (plan 1.8,
+		// #1087, audit of 06.11).
+		return Result{}, at(stepWait, clierrors.New(clierrors.CodeLoginTimeout, eTimeout(cfg.Wait), eTimeoutHint(cfg.Wait)))
 	case <-ctx.Done():
 		lb.close()
 		return Result{}, ctx.Err()

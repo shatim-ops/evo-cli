@@ -112,6 +112,7 @@ type Result struct {
 // B-5 are read by them). Never a token or a code.
 const (
 	stepDiscovery  = "discovery"
+	stepLock       = "lock"
 	stepListen     = "listen"
 	stepWait       = "wait"
 	stepCallback   = "callback"
@@ -187,6 +188,8 @@ type session struct {
 	store  Store
 	// until is the end of the wait, which the consent page names.
 	until time.Time
+	// lock is the one login of this computer, while this one runs.
+	lock *loginLock
 
 	// consent is the token of the consent page (R-47): made with the page,
 	// never printed; /grant and /cancel take it with the state.

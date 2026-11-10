@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -15,8 +16,10 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/loginworld"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // evo login and evo logout on the world of B-2: the key the person grants
@@ -141,7 +144,8 @@ func TestLogin_RefusesYes(t *testing.T) {
 
 // A flag the login does not offer is USAGE before any request.
 func TestLogin_FlagsRefusedBeforeAnyRequest(t *testing.T) {
-	for _, args := range [][]string{{"--key-ttl", "365d"}, {"--key-ttl", "0"}, {"--for", "root"}} {
+	// «7» without «d» too (plan 1.8, #1087, audit of 06.11): the flag is 7d.
+	for _, args := range [][]string{{"--key-ttl", "365d"}, {"--key-ttl", "0"}, {"--key-ttl", "7"}, {"--key-ttl", "30"}, {"--for", "root"}} {
 		if _, err := loginChoice("", argOf(args, "--for"), argOf(args, "--key-ttl")); err == nil {
 			t.Errorf("%v accepted", args)
 		}
@@ -203,5 +207,47 @@ func TestLogin_PreselectSource(t *testing.T) {
 	t.Setenv("CLOUDRU_PROJECT_ID", "p-env")
 	if id, from, env := loginPreselect(""); id != "p-env" || from != login.TFromEnv() || !env {
 		t.Errorf("variable: %q %q", id, from)
+	}
+}
+
+// Plan 1.8, #1087 (audit of 06.11): two evo login at once lived on two
+// ports, and the person could finish the wrong one (R-47). While one waits
+// the other refuses before the browser.
+func TestLogin_OneAtATime(t *testing.T) {
+	setupCLI(t)
+	unlock, err := state.FileLock(filepath.Join(config.Dir(), "login.lock"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	called := false
+	oldOpen := openBrowser
+	t.Cleanup(func() { openBrowser = oldOpen })
+	openBrowser = func(string) error { called = true; return nil }
+	code, stdout, stderr := runCLI(t, "", "--json", "login")
+	if code != 1 || !strings.Contains(stderr+stdout, `"reason":"STATE_LOCKED"`) || !strings.Contains(stderr+stdout, "evo login") || called {
+		t.Fatalf("exit %d, browser %v\n%s\n%s", code, called, stdout, stderr)
+	}
+}
+
+// Release plan 1.8, «B-5, дефекты флагов и параллельного входа» (а) (Grok
+// audit 06.11, #1087): --key-ttl 7 without «d» was taken and opened the
+// browser; the term is days with «d» (7d, 30d, 90d), and a bare number is
+// USAGE before any request, as 0d and abc are.
+func TestLogin_KeyTTLWithoutUnitRefused(t *testing.T) {
+	for _, ttl := range []string{"7", "30", "90", "0d", "abc"} {
+		_, err := loginChoice("", "", ttl)
+		if err == nil {
+			t.Errorf("--key-ttl %s accepted: the term is days with «d»", ttl)
+			continue
+		}
+		if r := clerrors.Reason(err); r != clerrors.CodeUsage {
+			t.Errorf("--key-ttl %s: %s, want USAGE", ttl, r)
+		}
+	}
+	for _, ttl := range []string{"7d", "30d", "90d"} {
+		if _, err := loginChoice("", "", ttl); err != nil {
+			t.Errorf("--key-ttl %s refused: %v", ttl, err)
+		}
 	}
 }
