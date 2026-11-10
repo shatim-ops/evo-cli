@@ -228,3 +228,29 @@ func TestStatus_RecordOfAnotherProject(t *testing.T) {
 		t.Errorf("check: %+v (%s)", c, out)
 	}
 }
+
+// Release plan 1.8, L3 («Риск», conclusion 43): a 404 for a record another
+// key made is «not checked», not «deleted outside evo» with an advice to
+// destroy; the same key's 404 is still «not found».
+func TestStatus_RecordOfAnotherKey(t *testing.T) {
+	cloud := &mockCloudAPI{getVMFn: func(context.Context, string) (*provision.VM, error) {
+		return nil, clerrors.New(clerrors.CodeVMNotFound, "resource not found", "")
+	}}
+	eng, _, _, _ := statusEngine(t, cloud, output.ModePlain)
+	eng.Config.KeyID, eng.Config.ServiceAccountID = "key-new-0001", "sa-new"
+	rec := &state.DeploymentRecord{VMID: "vm-1", CreatedBy: &state.Maker{ServiceAccountID: "sa-old", KeyID: "key-****0001"}}
+	c := eng.CheckCloud(context.Background(), rec)
+	if c.Checked || c.NotFound || c.Reason != clerrors.CodeConfigInvalid || !strings.Contains(c.Error, "another key") {
+		t.Errorf("another key: %+v", c)
+	}
+	// A new key of the same account (evo login replaces it) sees the same.
+	rec.CreatedBy.ServiceAccountID = "sa-new"
+	if c := eng.CheckCloud(context.Background(), rec); !c.Checked || !c.NotFound {
+		t.Errorf("the same account: %+v", c)
+	}
+	// A record from before 1.8: as before.
+	rec.CreatedBy = nil
+	if c := eng.CheckCloud(context.Background(), rec); !c.Checked || !c.NotFound {
+		t.Errorf("no maker: %+v", c)
+	}
+}

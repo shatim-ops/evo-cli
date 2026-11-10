@@ -351,12 +351,20 @@ func newLogoutCmd() *cobra.Command {
 			out := map[string]any{"profile": name}
 			if creds.Login != nil {
 				provider := auth.NewIAMProvider(auth.Credentials{KeyID: creds.KeyID, Secret: creds.Secret}, httpClient, nil)
-				status, err := login.Logout(cmd.Context(), loginConfig(loginSay(cmd), openBrowser).AdminBase, provider,
-					creds.Login.ServiceAccountID, creds.Login.AccessKeyID)
+				res, err := login.Logout(cmd.Context(), loginConfig(loginSay(cmd), openBrowser).AdminBase, provider,
+					config.MaskKeyID(creds.KeyID), creds.Login.ServiceAccountID, creds.Login.AccessKeyID)
 				if err != nil {
 					return err
 				}
-				out["key"] = status
+				out["key"] = res.Key
+				switch {
+				case res.Key == login.KeyRejected:
+					out["key_id"], out["access_key_id"] = config.MaskKeyID(creds.KeyID), creds.Login.AccessKeyID
+					out["note"] = login.TLogoutRejected(config.MaskKeyID(creds.KeyID), creds.Login.AccessKeyID)
+				case !res.TokensUntil.IsZero():
+					out["tokens_valid_until"] = res.TokensUntil.UTC().Format(time.RFC3339)
+					out["note"] = login.TLogoutTokensUntil(res.TokensUntil)
+				}
 			} else {
 				out["key"] = "kept"
 				out["note"] = login.TLogoutKept()

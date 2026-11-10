@@ -225,6 +225,9 @@ func TestDestroyTargeted_RecordOfAnotherProject(t *testing.T) {
 	}
 	for i := range sf.Deployments {
 		sf.Deployments[i].ProjectID = "p-other"
+		// And another key (L3): the project rule speaks first, it names
+		// the project, and no GET goes out (Qwen on #1124).
+		sf.Deployments[i].CreatedBy = &state.Maker{KeyID: "othe****0001"}
 	}
 	if err := state.Write(path, sf); err != nil {
 		t.Fatal(err)

@@ -848,6 +848,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		VMID:         vm.ID,
 		VMIP:         vm.PublicIP,
 		ProjectID:    projectID,
+		CreatedBy:    e.Maker(),
 		VMFlavor:     flavorName,
 		Region:       region,
 		VMName:       vmName,
