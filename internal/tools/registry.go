@@ -262,7 +262,7 @@ func New(factory EngineFactory) *Registry {
 			if r.unchecked == nil {
 				r.unchecked = map[string]Handler{}
 			}
-			r.unchecked[t.Name] = checkedCreateName(t.Name, h)
+			r.unchecked[t.Name] = checkedCreateName(t.Name, r.intended(*t, h))
 			r.handlers[t.Name] = r.budgeted(outer(t.Name, t.InputSchema, r.unchecked[t.Name]))
 		}
 		t.Handler = r.handlers[t.Name]

@@ -31,15 +31,14 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 	// Cut between the consent and the answer: the intent stays.
 	ctx, cancel := context.WithCancel(context.Background())
 	sent := false
-	h := r.gated("disk_create", func(context.Context, map[string]any) (*Plan, error) {
-		return &Plan{Preview: map[string]any{}, Execute: func(context.Context) (string, bool) {
-			sent = true
-			if got := intent.Pending(dir); len(got) != 1 {
-				t.Errorf("the call went out with %d intents written", len(got))
-			}
-			cancel()
-			return `{"reason":"INTERRUPTED"}`, true
-		}}, nil
+	tool, _ := r.Lookup("disk_create")
+	h := r.intended(tool, func(context.Context, map[string]any) (string, bool) {
+		sent = true
+		if got := intent.Pending(dir); len(got) != 1 {
+			t.Errorf("the call went out with %d intents written", len(got))
+		}
+		cancel()
+		return `{"reason":"INTERRUPTED"}`, true
 	})
 	h(ctx, args)
 	got := intent.Pending(dir)
@@ -54,9 +53,7 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 
 	// The same tool and name answered later: the cut one is settled, and
 	// the answered call leaves none.
-	h = r.gated("disk_create", func(context.Context, map[string]any) (*Plan, error) {
-		return &Plan{Preview: map[string]any{}, Execute: func(context.Context) (string, bool) { return `{"id":"d-1","existing_id":"d-1"}`, false }}, nil
-	})
+	h = r.intended(tool, func(context.Context, map[string]any) (string, bool) { return `{"id":"d-1","existing_id":"d-1"}`, false })
 	h(context.Background(), args)
 	if got := intent.Pending(dir); len(got) != 0 {
 		t.Errorf("after an answer: %+v", got)
@@ -70,9 +67,7 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	sent = false
-	h = r.gated("disk_create", func(context.Context, map[string]any) (*Plan, error) {
-		return &Plan{Preview: map[string]any{}, Execute: func(context.Context) (string, bool) { sent = true; return "{}", false }}, nil
-	})
+	h = r.intended(tool, func(context.Context, map[string]any) (string, bool) { sent = true; return "{}", false })
 	text, isErr := h(context.Background(), args)
 	if sent || !isErr || !strings.Contains(text, config.DataDir(dir)) || !strings.Contains(text, `"reason": "CONFIG_INVALID"`) {
 		t.Errorf("an intent that cannot be written: sent %v\n%s", sent, text)

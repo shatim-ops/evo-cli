@@ -29,11 +29,9 @@ import (
 func (r *Registry) beginIntent(ctx context.Context, name string, args map[string]any) (end func(answer string), err error) {
 	root, project, zone := "", "", ""
 	if r.newEngine != nil {
-		eng, err := r.newEngine(nil)
-		if err != nil {
-			return nil, err
-		}
-		if eng != nil {
+		// No engine: the call cannot reach the cloud, its handler answers
+		// that itself.
+		if eng, err := r.newEngine(nil); err == nil && eng != nil {
 			root, project, zone = eng.StateDir, eng.Config.ProjectID, eng.Config.Region
 		}
 	}

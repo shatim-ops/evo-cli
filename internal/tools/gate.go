@@ -64,13 +64,7 @@ func (r *Registry) gated(name string, plan Planner) Handler {
 			}
 			return toJSON(out), true
 		}
-		end, err := r.beginIntent(ctx, name, args)
-		if err != nil {
-			return errResult(err), true
-		}
-		text, isErr := p.Execute(ctx)
-		end(text)
-		return text, isErr
+		return p.Execute(ctx)
 	}
 }
 
@@ -81,22 +75,14 @@ func (r *Registry) gated(name string, plan Planner) Handler {
 // without it, preview answers; with it, execute runs.
 func (r *Registry) engineGated(ctx context.Context, name string, args map[string]any,
 	live func(*Caller) (string, bool), preview, execute func() (string, bool)) (string, bool) {
-	run := func(f func() (string, bool)) (string, bool) {
-		end, err := r.beginIntent(ctx, name, args)
-		if err != nil {
-			return errResult(err), true
-		}
-		text, isErr := f()
-		end(text)
-		return text, isErr
-	}
 	if c := liveCaller(ctx); c != nil {
 		// The engine asks at its own gate: the intent is written on the
-		// yes, before the engine writes anything (Caller.ask).
+		// yes, before the engine writes anything (Caller.ask); a call with
+		// confirmed has it from intended already.
 		var end func(string)
 		prev := c.consent
 		c.consent = func() error {
-			if end != nil {
+			if confirmed, _ := args["confirmed"].(bool); end != nil || confirmed {
 				return nil
 			}
 			e, err := r.beginIntent(ctx, name, args)
@@ -114,5 +100,32 @@ func (r *Registry) engineGated(ctx context.Context, name string, args map[string
 	if confirmed, _ := args["confirmed"].(bool); !confirmed && NeedsConsent(t, args) {
 		return preview()
 	}
-	return run(execute)
+	return execute()
+}
+
+// intended is the handler of a tool that takes consent, under its intent:
+// a call with confirmed=true that needs consent writes it before the
+// handler runs — whether the handler gates on a planner (gated) or reads
+// confirmed itself — so no consented call reaches the cloud unrecorded.
+// One layer for every such tool, set in New (release plan 1.8, (и)).
+func (r *Registry) intended(t Tool, next Handler) Handler {
+	if !takesConsent(t) {
+		return next
+	}
+	return func(ctx context.Context, args map[string]any) (string, bool) {
+		// A step of a stack is a call one level deeper (journaled): the
+		// intent of the call the person consented to covers it, and the
+		// job of the stack records its steps.
+		depth, _ := ctx.Value(journalDepthKey{}).(int)
+		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) || depth > 1 {
+			return next(ctx, args)
+		}
+		end, err := r.beginIntent(ctx, t.Name, args)
+		if err != nil {
+			return errResult(err), true
+		}
+		text, isErr := next(ctx, args)
+		end(text)
+		return text, isErr
+	}
 }

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -24,7 +25,7 @@ import (
 // root: what a consented call that the process did not finish leaves.
 // The name is the one of the gate D35 (plan 1.8, B-5).
 func intentFiles(root string) []string {
-	m, _ := filepath.Glob(filepath.Join(filepath.Dir(state.DefaultPath(root)), "pending*.json"))
+	m, _ := filepath.Glob(filepath.Join(intent.Dir(root), "*.json"))
 	sort.Strings(m)
 	return m
 }
@@ -49,6 +50,11 @@ func (a *atFirstWrite) reset() {
 func argValues(args map[string]any) []string {
 	var out []string
 	for k, v := range args {
+		// The name of the resource, its project and zone are what the
+		// intent is for: where to look («Риск», conclusion 46).
+		if k == "name" || k == "project_id" || k == "zone" || k == "availability_zone_id" {
+			continue
+		}
 		if s, ok := v.(string); ok && len(s) >= 4 && k != "confirmed" {
 			out = append(out, s)
 		}
