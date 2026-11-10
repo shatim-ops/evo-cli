@@ -52,6 +52,11 @@ type Config struct {
 	LockPath string
 	// Now is the clock of the answer's values (key's term, login date).
 	Now func() time.Time
+	// IntentDir is the directory of intents that keeps the login's intent
+	// from its first write to the answer (findings ledger 1.8, № 37): the
+	// configuration directory's, which doctor reads from any folder
+	// («Риск», conclusion 75); "" keeps none.
+	IntentDir string
 	// Remote: the terminal is over SSH, so the person's browser is likely
 	// on another computer and cannot reach this one's 127.0.0.1 (P1).
 	Remote bool

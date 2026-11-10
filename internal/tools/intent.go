@@ -8,10 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
-	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
@@ -61,21 +61,18 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if root == "" {
 		return func(string) {}, nil
 	}
-	done, err := intent.Begin(root, in)
-	if err == nil {
-		return func(answer string) {
-			if ctx.Err() != nil || outcomeUnknown(answer) {
-				return
-			}
-			done()
-			intent.Settle(root, in)
-		}, nil
+	dir := intent.Dir(root)
+	done, err := intent.Begin(dir, in)
+	if err != nil {
+		return nil, err
 	}
-	return nil, clierrors.Wrap(clierrors.CodeConfigInvalid,
-		i18n.Tf("could not write what evo is about to do to %s (%v); nothing was sent to the cloud",
-			"не удалось записать, что evo собирается сделать, в %s (%v); в облако ничего не отправлено", intent.Dir(root), err),
-		i18n.Tf("Make %s writable (evo keeps there what a cut call may have left in the cloud), then repeat the call.",
-			"Сделайте каталог %s доступным для записи (evo хранит там, что мог оставить в облаке прерванный вызов) и повторите вызов.", config.DataDir(root)), err)
+	return func(answer string) {
+		if ctx.Err() != nil || outcomeUnknown(answer) {
+			return
+		}
+		done()
+		intent.Settle(dir, in)
+	}, nil
 }
 
 // intentResource is what a call names its resource by: the argument the create
@@ -137,14 +134,31 @@ func answerReason(answer string) string {
 // doctor, in the first answer of a tool and in the CLI's stderr.
 func (r *Registry) PendingNotes(root string) []string {
 	var out []string
-	for _, in := range intent.Pending(root) {
+	for _, in := range pendingIntents(root) {
 		out = append(out, r.pendingNote(in))
+	}
+	return out
+}
+
+// pendingIntents are the intents a run in root reads: the folder's and the
+// configuration directory's (evo login's key, № 37), oldest first in each.
+func pendingIntents(root string) []intent.Intent {
+	var out []intent.Intent
+	for _, dir := range intent.Dirs(root) {
+		out = append(out, intent.Pending(dir)...)
 	}
 	return out
 }
 
 // pendingNote is one intent in words.
 func (r *Registry) pendingNote(in intent.Intent) string {
+	if in.Note != "" {
+		// Its own words; the record stays until the person removes it:
+		// no list of a tool tells its outcome.
+		return i18n.Tf("%s, started %s (%s, pid %d); once checked, delete the record %s",
+			"%s, начат %s (%s, pid %d); после проверки удалите запись %s",
+			in.Note, in.StartedAt.Local().Format("02.01.2006 15:04"), in.Surface, in.PID, filepath.Join(in.Dir, in.ID+".json"))
+	}
 	where := ""
 	if in.ProjectID != "" {
 		where = i18n.Tf(" in project %s", " в проекте %s", in.ProjectID)

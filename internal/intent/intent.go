@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Intent is one call that went to the cloud and has not answered yet.
@@ -36,23 +38,58 @@ type Intent struct {
 	Name string   `json:"name,omitempty"`
 	// Target is the resource a call on an existing one names, as
 	// «argument=id» (vm_id=…): a delete, a resize. Not a secret.
-	Target    string    `json:"target,omitempty"`
-	ProjectID string    `json:"project_id,omitempty"`
-	Zone      string    `json:"zone,omitempty"`
+	Target    string `json:"target,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Zone      string `json:"zone,omitempty"`
+	// Note is what the next run says of the intent when the words of a
+	// call that the cloud did not answer do not fit it (evo login killed
+	// after its key: findings ledger 1.8, № 37); "" for a tool's call.
+	Note      string    `json:"note,omitempty"`
 	Surface   string    `json:"surface"`
 	PID       int       `json:"pid"`
 	StartedAt time.Time `json:"started_at"`
+	// Dir is the directory the intent was read from (Pending); not saved.
+	Dir string `json:"-"`
 }
 
-// Dir is the directory of the intents of root's data directory.
+// Dir is the directory of the intents of root's data directory: the calls
+// of the tools, which the folder's state follows.
 func Dir(root string) string { return filepath.Join(config.DataDir(root), "intents") }
+
+// ConfigDir is the directory of the intents of the configuration directory:
+// what belongs to the profiles, not to a folder — evo login's key (№ 37,
+// «Риск», conclusion 75: a login in one folder, doctor in another). ""
+// when there is no configuration directory.
+func ConfigDir() string {
+	if d := config.Dir(); d != "" {
+		return filepath.Join(d, "intents")
+	}
+	return ""
+}
+
+// Dirs are the directories of intents a run in root reads: the folder's
+// and the configuration's.
+func Dirs(root string) []string {
+	out := []string{Dir(root)}
+	if c := ConfigDir(); c != "" && c != out[0] {
+		out = append(out, c)
+	}
+	return out
+}
 
 // Begin writes in before the call goes out and returns the end of it: done
 // removes the file; the caller does not call it when the outcome is not
 // known (the call was cut). An error means nothing was written: the
 // caller refuses the call before it goes out.
-func Begin(root string, in Intent) (done func(), err error) {
-	dir := Dir(root)
+func Begin(dir string, in Intent) (done func(), err error) {
+	done, err = begin(dir, in)
+	if err != nil {
+		return nil, notWritten(dir, err)
+	}
+	return done, nil
+}
+
+func begin(dir string, in Intent) (done func(), err error) {
 	if err := config.MkdirPrivate(dir); err != nil {
 		return nil, err
 	}
@@ -73,10 +110,21 @@ func Begin(root string, in Intent) (done func(), err error) {
 	return func() { _ = os.Remove(path) }, nil
 }
 
+// notWritten is the refusal of a call whose intent could not be written:
+// a local error, the call not sent (CONFIG_INVALID, code 2) — the same
+// for a tool's call and for evo login («Риск», conclusion 75).
+func notWritten(dir string, err error) error {
+	return clierrors.Wrap(clierrors.CodeConfigInvalid,
+		i18n.Tf("could not write what evo is about to do to %s (%v); nothing was sent to the cloud",
+			"не удалось записать, что evo собирается сделать, в %s (%v); в облако ничего не отправлено", dir, err),
+		i18n.Tf("Make %s writable (evo keeps there what a cut call may have left in the cloud), then repeat the call.",
+			"Сделайте каталог %s доступным для записи (evo хранит там, что мог оставить в облаке прерванный вызов) и повторите вызов.", filepath.Dir(dir)), err)
+}
+
 // Pending are the intents of root, oldest first; a file that does not read
 // is skipped.
-func Pending(root string) []Intent {
-	entries, err := os.ReadDir(Dir(root))
+func Pending(dir string) []Intent {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
@@ -85,12 +133,13 @@ func Pending(root string) []Intent {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(Dir(root), e.Name()))
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
 			continue
 		}
 		var in Intent
 		if json.Unmarshal(data, &in) == nil && in.ID != "" {
+			in.Dir = dir
 			out = append(out, in)
 		}
 	}
@@ -103,16 +152,16 @@ func Pending(root string) []Intent {
 // answered, so what the cut one did is now known to that call — an
 // existing resource by the name (D49), a new one, or «already deleted»
 // (D26). Another project's record of the same name is not this one.
-func Settle(root string, done Intent) {
+func Settle(dir string, done Intent) {
 	if done.Name == "" && done.Target == "" {
 		return
 	}
-	for _, in := range Pending(root) {
+	for _, in := range Pending(dir) {
 		if in.Tool == done.Tool && in.Name == done.Name && in.Target == done.Target && in.ProjectID == done.ProjectID {
-			_ = os.Remove(filepath.Join(Dir(root), in.ID+".json"))
+			_ = os.Remove(filepath.Join(dir, in.ID+".json"))
 		}
 	}
 }
 
-// Close removes the intent id: what the call did is now known.
-func Close(root, id string) { _ = os.Remove(filepath.Join(Dir(root), id+".json")) }
+// Close removes the intent in: what the call did is now known.
+func Close(in Intent) { _ = os.Remove(filepath.Join(in.Dir, in.ID+".json")) }

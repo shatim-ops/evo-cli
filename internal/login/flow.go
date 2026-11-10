@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -189,9 +191,11 @@ type project struct {
 // session is one evo login: its secrets, what the person chose and what it
 // made, for the rollback.
 type session struct {
-	cfg    Config
-	choice Choice
-	store  Store
+	// intentDone removes the intent of the key (№ 37); nil without one.
+	intentDone func()
+	cfg        Config
+	choice     Choice
+	store      Store
 	// until is the end of the wait, which the consent page names.
 	until time.Time
 	// lock is the one login of this computer, while this one runs.
@@ -581,7 +585,13 @@ func (s *session) grant(ctx context.Context, pl plan, say func(string)) (Result,
 	}
 	res, err := s.make(ctx, pl, say)
 	if err != nil && len(s.made) > 0 {
-		return res, s.rollback(ctx, err)
+		err = s.rollback(ctx, err)
+	}
+	// Alive to here, the login knows what it left and says it: the
+	// intent goes. Killed between the key and here, it stays (№ 37).
+	if s.intentDone != nil {
+		s.intentDone()
+		s.intentDone = nil
 	}
 	return res, err
 }
@@ -595,6 +605,19 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 		Account: aud.account(), For: aud, Role: auth.LoginRoleName}
 	now := s.cfg.Now()
 	desc := fmt.Sprintf("evo login, %s, %s", s.who.Login, now.UTC().Format("2006-01-02"))
+
+	// The intent, before the first write: a login killed after its key and
+	// before the profile leaves a key no profile holds, and the next run
+	// names it, as a cut paid create (R-59; findings ledger 1.8, № 37). Not
+	// written, it is a local error, nothing sent (intent.Begin).
+	if dir := s.cfg.IntentDir; dir != "" {
+		done, err := intent.Begin(dir, intent.Intent{Tool: "login", Name: aud.account(), ProjectID: p.ID,
+			Surface: "cli", PID: os.Getpid(), StartedAt: now, Note: tKilledLogin(aud.account(), p.Name, now)})
+		if err != nil {
+			return res, at(stepAccount, err)
+		}
+		s.intentDone = done
+	}
 
 	// 14. The account: the planned one, or created; a 409 is another
 	// login's: list again and reuse.

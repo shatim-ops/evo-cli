@@ -22,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/login"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
@@ -108,6 +109,10 @@ func newLoginCmd() *cobra.Command {
 				cfg.Open = nil
 			}
 			cfg.Tell = loginTell(cmd)
+			// The intent of the key belongs to the profiles, not to a
+			// folder: doctor names it from any folder (№ 37; «Риск»,
+			// conclusion 75).
+			cfg.IntentDir = intent.ConfigDir()
 			warnBeforeLogin(cfg.Tell, store, choice.For)
 			res, err := login.Login(cmd.Context(), cfg, choice, store)
 			if err != nil {

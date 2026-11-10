@@ -292,6 +292,15 @@ func tWaiting(wait time.Duration) string {
 		"Завершите вход в браузере. Ожидание — до %d мин, отмена — Ctrl-C", int(wait.Minutes()))
 }
 
+// tKilledLogin is the record of a login killed between the key and the
+// profile, in the words of the next run (doctor, stderr; № 37).
+func tKilledLogin(account, project string, at time.Time) string {
+	when := at.Local().Format("02.01.2006 15:04")
+	return i18n.Tf("evo login for the account %s in the project %s stopped before its answer: a key of the account created at about %s may be in the cloud that no profile holds — it works and evo logout does not delete it; check the keys of %s in the Cloud.ru console (Service accounts) and delete the one created at about %s, not another: the others may be the keys of working agents",
+		"evo login для аккаунта %s в проекте %s прерван до ответа: в облаке может остаться ключ аккаунта, созданный около %s, которого нет ни в одном профиле, — он работает, а evo logout его не удалит; проверьте ключи %s в личном кабинете Cloud.ru («Сервисные аккаунты») и удалите созданный около %s, а не другой: другие могут быть ключами работающих агентов",
+		account, project, when, account, when)
+}
+
 // tCannotReach and tOverSSH: a browser that cannot reach 127.0.0.1 of
 // this computer ends at «cannot connect» after sign-in (P1).
 func tCannotReach() string {
