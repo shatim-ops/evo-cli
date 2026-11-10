@@ -45,7 +45,7 @@ func (a *atFirstWrite) reset() {
 
 // intentKeeps are the arguments whose value an intent holds by design:
 // the resource, the project and the zone it names (package intent).
-var intentKeeps = map[string]bool{"name": true, "project_id": true, "zone": true}
+var intentKeeps = map[string]bool{"name": true, "project_id": true, "zone": true, "availability_zone_id": true}
 
 // argValues are the values of the arguments a file of intent must not
 // hold: the strings of four and more characters (a short one — "1",
@@ -163,11 +163,10 @@ func TestGate_IntentBeforeTheCloudGoneAfter(t *testing.T) {
 				if rec.Surface != surface {
 					note(key, "%s: the intent names the surface %q", surface, rec.Surface)
 				}
-				// What the intent names its resource by — the declared name
-				// argument, the declared id of a call on an existing resource
-				// («Риск», conclusion 46, condition 2: an id is no secret) —
-				// is where to look; any other value must not be there.
-				named := map[string]bool{rec.Name: true, rec.ProjectID: true, rec.Zone: true}
+				// The id of the resource a call on an existing one names
+				// (Target, «Риск», conclusion 46, condition 2: no secret) and
+				// the declared name argument are where to look.
+				named := map[string]bool{rec.Name: true}
 				if _, id, ok := strings.Cut(rec.Target, "="); ok {
 					named[id] = true
 				}
