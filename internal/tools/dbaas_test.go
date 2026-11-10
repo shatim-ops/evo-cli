@@ -248,4 +248,14 @@ func TestKafka_SubnetsAndControllers(t *testing.T) {
 	if wc["controllers"] != "combined" || !strings.Contains(text, "controllers") {
 		t.Errorf("the preview does not name the mode of the controllers: %s", text)
 	}
+	// Dedicated controllers are a parameter evo leaves alone: declared, with
+	// where to get them (axis 4).
+	if l := engine.ParamLabel("controllers"); !strings.Contains(l, "console") {
+		t.Errorf("the label of the controllers does not say where dedicated ones are: %s", l)
+	}
+	for _, d := range r.Tools() {
+		if d.Name == "kafka_create" && !strings.Contains(d.Description, "controller_spec") {
+			t.Errorf("kafka_create does not declare controller_spec: %s", d.Description)
+		}
+	}
 }

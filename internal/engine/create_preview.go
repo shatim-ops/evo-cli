@@ -993,8 +993,8 @@ var paramLabels = map[string]struct {
 	"cruise_control_rebalance_auto_enabled": {"auto-rebalance", "авторебаланс", false},
 	// Kafka (spec of 10.11): «combined» — every host is a broker and a
 	// controller; the mode cannot be changed after the creation.
-	"controllers": {"controllers (combined: on the brokers; the mode is fixed at creation)",
-		"контроллеры (combined — на брокерах; режим не меняется после создания)", false},
+	"controllers": {"controllers (combined: on the brokers; the mode is fixed at creation; dedicated controllers only in the Cloud.ru console)",
+		"контроллеры (combined — на брокерах; режим не меняется после создания; выделенные — только в консоли Cloud.ru)", false},
 	"backup_schedule":          {"backup schedule (cron)", "расписание бэкапов (cron)", false},
 	"backup_retention_days":    {"backups kept, days", "бэкапы хранятся, дней", false},
 	"health_check":             {"health check", "проверка здоровья", false},
