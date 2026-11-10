@@ -96,7 +96,7 @@ func TestSSHKey_MCPEngineRefusesLooseKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	plantKey(t, cwd, 0o644)
-	eng, err := mcpEngineFactory(nil)(nil)
+	eng, err := mcpEngineFactory(nil, nil)(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
