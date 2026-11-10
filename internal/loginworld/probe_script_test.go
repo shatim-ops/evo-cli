@@ -58,7 +58,9 @@ func TestLoginWorld_ProbeScript(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", probeScript)
-	cmd.Env = append(os.Environ(), "ISSUER="+w.Issuer, "ORG="+w.URL)
+	// EXTRA: the parameters of the probe of a fresh sign-in (prompt=login,
+	// max_age; owner's decision 10.11) go into the address of the login.
+	cmd.Env = append(os.Environ(), "ISSUER="+w.Issuer, "ORG="+w.URL, "EXTRA=prompt=login&max_age=0")
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +92,8 @@ func TestLoginWorld_ProbeScript(t *testing.T) {
 	}
 	text := strings.Join(lines, "\n")
 	for _, want := range []string{`"issuer_ok":true`, `"state_ok":true`, `"expires_in":3600`,
-		`"repeat_same_code_http":400`, `"iss_ok":true`, `"nonce_ok":true`, `{"customers":200`, `{"projects":200`} {
+		`"repeat_same_code_http":400`, `"iss_ok":true`, `"nonce_ok":true`, `{"customers":200`, `{"projects":200`,
+		"&prompt=login&max_age=0", `"auth_age_s":`, `"prompt_values":`, `"auth_time_claim":`} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the probe's output lacks %s:\n%s", want, text)
 		}
@@ -98,6 +101,29 @@ func TestLoginWorld_ProbeScript(t *testing.T) {
 	for _, s := range w.Secrets() {
 		if strings.Contains(text, s) {
 			t.Errorf("the probe printed a secret of kind %s", strings.SplitN(s, "-", 2)[0])
+		}
+	}
+}
+
+// EXTRA takes only prompt=login and max_age=N: anything else is refused
+// before any request — the address of the login carries no parameter the
+// probe does not mean.
+func TestLoginWorld_ProbeScriptExtraRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the probe is a bash script for macOS and Linux")
+	}
+	for _, tool := range []string{"bash", "curl", "jq", "openssl", "python3"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s is not installed", tool)
+		}
+	}
+	for _, extra := range []string{"prompt=none", "max_age=1&redirect_uri=http://evil", "scope=openid offline_access", "max_age=-1"} {
+		cmd := exec.Command("bash", probeScript)
+		// An issuer nothing answers at: a request would fail differently.
+		cmd.Env = append(os.Environ(), "ISSUER=http://127.0.0.1:1/auth/system", "EXTRA="+extra)
+		out, err := cmd.CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "EXTRA: только") || strings.Contains(string(out), "== 1.") {
+			t.Errorf("EXTRA=%q: %v\n%s", extra, err, out)
 		}
 	}
 }

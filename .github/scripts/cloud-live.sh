@@ -434,7 +434,7 @@ finish() {
 trap finish EXIT
 
 # probe_on СЛОВО — платная проба включена входом probes (план cloud-e2e
-# rc.1 1.6): p36, p41, p44; shared (D81, 05.11).
+# rc.1 1.6): p36, p41, p44; shared (D81, 05.11); cmp7 (CMP-7, 10.11); r3f1 (R-59, 10.11).
 probe_on() { case " ${PROBES:-} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 # api МЕТОД URL [ТЕЛО] — прямой запрос к API с токеном IAM ($TOKEN, под
 # маской): ответ в $tmp/api.json, код HTTP в $code; тело — через stdin, не
@@ -504,6 +504,93 @@ probe_p36() {
 		;;
 	*) ok "P36: flavor $fl ($vcpus vCPU) ниже min_cpu образа $img" "отказ HTTP $code: $(api_why)" ;;
 	esac
+}
+
+# Проба CMP-7 (реестр CMP-7; «да» владельца 10.11, план 1.8 #1095): что
+# отвечает платформа на DELETE ВМ в creating — 409 или 422 (код HTTP и code
+# ответа). ВМ — прямым POST /api/v1.1/vms ($FLAVOR, $IMAGE, подсеть зоны
+# области); её состояние читается прямо перед DELETE, и DELETE идёт сразу,
+# пока ВМ создаётся. Итог — строка «CMP7: …» (ответ платформы, не провал);
+# ВМ, которую DELETE не удалил, убирает уборка области по префиксу. Счёт
+# «N из M» — по прогонам (≥2), а не по пробам одного прогона.
+probe_cmp7() {
+	local zid=$1 sn body vid='' st t
+	iam_token || { gap CMP7 "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap CMP7 "нет PROJECT"; return 0; }
+	sn=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | select(.availability_zone_id == $z) | .name // "" | select(. != "")][0] // empty')
+	[ -n "$sn" ] || { gap CMP7 "нет подсети в $ZONE"; return 0; }
+	body=$(jq -nc --arg p "$PROJECT" --arg n "$prefix-cmp7" --arg z "$ZONE" --arg f "$FLAVOR" --arg i "$IMAGE" --arg s "$sn" \
+		'[{project_id: $p, name: $n, availability_zone_name: $z, flavor_name: $f, image_name: $i,
+		   disks: [{name: ($n + "-boot"), size: 20, disk_type_name: "SSD"}],
+		   interfaces: [{type: "regular", subnet_name: $s, interface_security_enabled: false}]}]')
+	api POST https://compute.api.cloud.ru/api/v1.1/vms "$body"
+	case "$code" in 2??) ;; *)
+		gap "CMP7: ВМ для пробы" "не создана, HTTP $code: $(api_why)"
+		return 0
+		;;
+	esac
+	vid=$(jq -r '(if type == "array" then .[0] else (.vms[0]? // .) end) | .id? // empty' "$tmp/api.json" 2>/dev/null) || vid=
+	vm_id() { vid=$(evo tools call vm_get --arg name="$prefix-cmp7" --json 2>/dev/null | jq -r '.id // empty'); [ -n "$vid" ]; }
+	[ -n "$vid" ] || poll 60 3 vm_id || true
+	[ -n "$vid" ] || { gap "CMP7: ВМ для пробы" "id не прочитан за 60 с"; return 0; }
+	mask "$vid"
+	api GET "https://compute.api.cloud.ru/api/v1/vms/$vid"
+	st=$(jq -r '.state // .status // empty' "$tmp/api.json" 2>/dev/null) || st=
+	t=$(date -u +%H:%M:%S)
+	api DELETE "https://compute.api.cloud.ru/api/v1/vms/$vid"
+	ok "CMP7: DELETE ВМ в состоянии ${st:-не прочитано} ($t UTC)" "HTTP $code: $(api_why)"
+}
+
+# Проба R3F1 (R-59, раунд 3 Grok F1; «да» владельца 10.11): SIGKILL процесса
+# evo через 3 с после «Подтверждено» в disk_create (HDD, 1 ГБ). Записывается,
+# есть ли след: записи disk_create в журнале evo (журнал включается на время
+# пробы) и диск в облаке (и его состояние). Это ответ evo и платформы, а не
+# провал; диск удаляется здесь же, остаток — уборкой области по префиксу.
+probe_r3f1() {
+	local name="$prefix-r3f1" pid killed=no jpath jn0 jn1 jlast disk='' i
+	evo diag on >/dev/null 2>&1 || { gap R3F1 "evo diag on не сработал"; return 0; }
+	jpath=$(evo diag status --json 2>/dev/null | jq -r '.path // empty')
+	jcount() { if [ -n "$jpath" ] && [ -f "$jpath" ]; then grep -c '"tool":"disk_create"' "$jpath" || true; else echo 0; fi; }
+	jn0=$(jcount)
+	: >"$tmp/r3f1.err"
+	evo --yes tools call disk_create --arg name="$name" --arg size_gb=1 --arg disk_type=HDD --arg zone="$ZONE" --json \
+		>"$tmp/r3f1.out" 2>"$tmp/r3f1.err" &
+	pid=$!
+	# Опрос stderr до 30 с с шагом 20 мс: согласие — конверт --json
+	# {"status":"confirmed"} или строка «Подтверждено:» / «Confirmed:».
+	# kill — через R3F1_DELAY (3 с) после согласия, не сразу: раунд 6 Grok
+	# (реестр находок № 70) убивал через 1 мс — POST ещё не ушёл, исход
+	# INCONCLUSIVE. За 2–4 с POST /disks отправлен, а evo ещё ждёт диск.
+	for i in $(seq 1 1500); do
+		grep -qE '"status":"confirmed"|^(Подтверждено|Confirmed): ' "$tmp/r3f1.err" && {
+			sleep "${R3F1_DELAY:-3}"
+			kill -9 "$pid" 2>/dev/null && killed=yes
+			break
+		}
+		kill -0 "$pid" 2>/dev/null || break
+		sleep 0.02
+	done
+	wait "$pid" 2>/dev/null || true
+	if [ "$killed" != yes ]; then
+		gap "R3F1: kill после «Подтверждено»" "evo завершился сам (шаг $i): $(head -c 300 "$tmp/r3f1.err" | tr '\n' ' ' | redact)"
+	fi
+	jn1=$(jcount)
+	jlast=$(if [ "$jn1" != 0 ]; then grep '"tool":"disk_create"' "$jpath" | tail -1 | jq -c '{confirmed, preview, error, reason}' 2>/dev/null || true; fi)
+	evo diag off >/dev/null 2>&1 || true
+	# Диск в облаке: до 60 с — POST мог уйти перед kill и дойти позже.
+	r3f1_disk() { disk=$(evo tools call disk_list --json 2>/dev/null | jq -c --arg n "$name" '[.disks[]? | select(.name == $n) | {id, state: (.state // .status // null)}][0] // empty'); [ -n "$disk" ]; }
+	poll 60 5 r3f1_disk || true
+	mask "$(printf '%s' "$disk" | jq -r '.id // empty' 2>/dev/null)"
+	row "R3F1: след в журнале evo" "$([ "${jn1:-0}" -gt "${jn0:-0}" ] && echo есть || echo нет)" \
+		"записей disk_create: было ${jn0:-0}, стало ${jn1:-0}${jlast:+; последняя $jlast}; kill: $killed"
+	row "R3F1: диск в облаке" "$([ -n "$disk" ] && echo есть || echo нет)" \
+		"$([ -n "$disk" ] && printf 'состояние %s' "$(printf '%s' "$disk" | jq -r '.state // "не прочитано"')" || echo 'за 60 с не появился')"
+	[ -n "$disk" ] || return 0
+	r3f1_ready() { r3f1_disk && ! printf '%s' "$disk" | jq -e '.state | tostring | test("creat")' >/dev/null; }
+	poll 300 10 r3f1_ready || true
+	tc disk_delete --arg disk_id="$(printf '%s' "$disk" | jq -r .id)"
+	if [ "$rc" = 0 ]; then ok "R3F1: диск пробы удалён" "disk_delete: $reason"
+	else gap "R3F1: диск пробы удалён" "код $rc, $reason: $why — уборка области по префиксу"; fi
 }
 
 # Проба P41 (пункт Е; FB15-21): что отвечает платформа на группу целей с
@@ -613,6 +700,8 @@ area_disk() {
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/disk" && cd "$tmp/disk"
 	! probe_on p36 || probe_p36 "$zid"
+	! probe_on cmp7 || probe_cmp7 "$zid"
+	! probe_on r3f1 || probe_r3f1
 	vm="$prefix-vm"
 	must provision provision --arg name="$vm" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" || return 1
 	vm_ip=$(j -r '.vm_ip // empty')

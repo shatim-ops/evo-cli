@@ -10,6 +10,14 @@ ORG="${ORG:-https://organization.api.cloud.ru}"
 PORT=18386
 REDIRECT="http://127.0.0.1:$PORT/callback"
 for c in curl jq openssl python3; do command -v "$c" >/dev/null || { echo "нет $c"; exit 1; }; done
+# EXTRA — параметры повторного входа к запросу авторизации, для пробы
+# prompt=login и max_age (решение владельца 10.11, план 1.8): только
+# «prompt=login», «max_age=N» или оба через «&»; иначе отказ до запросов.
+EXTRA="${EXTRA:-}"
+if [ -n "$EXTRA" ] && ! printf '%s' "$EXTRA" | grep -Eqx '(prompt=login|max_age=[0-9]{1,6})(&(prompt=login|max_age=[0-9]{1,6}))?'; then
+	echo "EXTRA: только prompt=login, max_age=N или оба через &"
+	exit 1
+fi
 umask 077
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -22,7 +30,8 @@ echo "== 1. Настройки провайдера (discovery)"
 http=$(curl -sS -o "$work/d.json" -w '%{http_code}' "$ISSUER/.well-known/openid-configuration")
 jq -c --arg i "$ISSUER" --argjson h "$http" '{http: $h, issuer_ok: (.issuer == $i),
   s256: ((.code_challenge_methods_supported // []) | index("S256") != null),
-  has_endpoints: ([.authorization_endpoint, .token_endpoint, .jwks_uri] | all(. != null))}' "$work/d.json"
+  has_endpoints: ([.authorization_endpoint, .token_endpoint, .jwks_uri] | all(. != null)),
+  prompt_values: (.prompt_values_supported // null), auth_time_claim: ((.claims_supported // []) | index("auth_time") != null)}' "$work/d.json"
 auth=$(jq -r .authorization_endpoint "$work/d.json")
 token=$(jq -r .token_endpoint "$work/d.json")
 
@@ -45,7 +54,7 @@ PY
 listener=$!
 enc=$(jq -rn --arg r "$REDIRECT" '$r|@uri')
 echo "Откройте эту ссылку в браузере на этой же машине и войдите (5 минут):"
-echo "$auth?response_type=code&client_id=evo_cmcp&scope=openid&redirect_uri=$enc&state=$state&nonce=$nonce&code_challenge=$challenge&code_challenge_method=S256"
+echo "$auth?response_type=code&client_id=evo_cmcp&scope=openid&redirect_uri=$enc&state=$state&nonce=$nonce&code_challenge=$challenge&code_challenge_method=S256${EXTRA:+&$EXTRA}"
 wait "$listener" || true
 [ -s "$work/cb.json" ] || { echo "браузер не вернулся на 127.0.0.1:$PORT за 5 минут"; exit 1; }
 jq -c --arg s "$state" '{params: keys, state_ok: (.state[0] == $s), error: (.error[0] // null)}' "$work/cb.json"
@@ -65,7 +74,8 @@ jq -c --argjson h "$http" '{repeat_same_code_http: $h, error}' "$work/t2.json" 2
 echo "== 4. ID token (только проверки, без значений)"
 jq -r '.id_token // empty' "$work/t.json" | cut -d. -f2 |
 	python3 -c 'import sys,base64; p=sys.stdin.read().strip(); sys.stdout.buffer.write(base64.urlsafe_b64decode(p+"="*(-len(p)%4)))' |
-	jq -c --arg n "$nonce" --arg i "$ISSUER" '{iss_ok: (.iss == $i), aud, nonce_ok: (.nonce == $n), lifetime_s: (.exp - .iat), claims: keys}' ||
+	jq -c --arg n "$nonce" --arg i "$ISSUER" --argjson now "$(date +%s)" '{iss_ok: (.iss == $i), aud, nonce_ok: (.nonce == $n), lifetime_s: (.exp - .iat),
+		auth_age_s: (if .auth_time then $now - .auth_time else null end), claims: keys}' ||
 	echo "ID token не разобран"
 
 echo "== 5. Организации и проекты тем же токеном"
