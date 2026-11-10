@@ -28,7 +28,7 @@ func TestDeployApply_RecordIsNotYoungerThanItsVM(t *testing.T) {
 	// The apply answers 10+ minutes after the POST: a slow VM.
 	res := &deployplan.ApplyResult{VMID: vmID, Status: "running"}
 	plan := &deployplan.Plan{ProjectID: "p", CreatedAt: planned, VM: deployplan.VMSpec{Name: "slow"}}
-	if err := recordDeployment(dir, plan, res, res.Status); err != nil {
+	if err := recordDeployment(dir, nil, plan, res, res.Status); err != nil {
 		t.Fatal(err)
 	}
 	sf, err := state.Read(state.DefaultPath(dir))
@@ -46,7 +46,7 @@ func TestDeployApply_RecordIsNotYoungerThanItsVM(t *testing.T) {
 		t.Errorf("provenance of the apply's own VM: %+v, want yes", p)
 	}
 	// A record of an earlier apply keeps its date (the repeat adopts the VM).
-	if err := recordDeployment(dir, &deployplan.Plan{ProjectID: "p", CreatedAt: time.Now()}, res, res.Status); err != nil {
+	if err := recordDeployment(dir, nil, &deployplan.Plan{ProjectID: "p", CreatedAt: time.Now()}, res, res.Status); err != nil {
 		t.Fatal(err)
 	}
 	sf, _ = state.Read(state.DefaultPath(dir))

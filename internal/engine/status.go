@@ -125,6 +125,11 @@ func (e *Engine) checkCloud(ctx context.Context, rec *state.DeploymentRecord) (C
 	if err != nil {
 		var ce *clerrors.CLIError
 		if stderrors.As(err, &ce) && ce.Code == clerrors.CodeVMNotFound {
+			// Under another key than the record's a 404 is «not checked»,
+			// not «deleted outside evo» (L3, «Риск» 43).
+			if nv := e.NotVisibleToThisKey(*rec); nv != nil {
+				return notChecked(nv)
+			}
 			return CloudCheck{Checked: true, NotFound: true}, nil
 		}
 		return notChecked(timedOut(err))
