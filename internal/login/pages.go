@@ -6,6 +6,7 @@ package login
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -287,10 +288,36 @@ func cancelledPage() page {
 	return page{"cancelled", resultData{head: newHead(tCancelledTitle() + " — evo"), Status: tCancelledTitle(), Text: tCancelled()}}
 }
 
-// errorPage names the error as the terminal does, with its code; the hint
-// with its command stays the terminal's and JSON's. Never a secret: the
-// errors of the login carry none.
+// beforeWrite are the steps of the sign-in and of the choice: an error
+// there comes before any write to the cloud or the disk (planFor: «before
+// any write»; TestErrorPage_NothingMadeMeansNoWrite holds it).
+var beforeWrite = map[string]func() string{
+	stepCallback: tSignInFailed, stepToken: tSignInFailed, stepIDToken: tSignInFailed,
+	stepCustomers: tSignInFailed, stepProjects: tSignInFailed, stepBulk: tSignInFailed,
+	stepChoice: tNotGranted, stepEvaluate: tNotGranted,
+}
+
+// errorPage names the error as the terminal does, with its code. Its
+// heading is by the step (finding 182 of 1.8, «Риск», conclusion 57): the
+// sign-in or the choice failed and nothing was made, or the grant failed —
+// then, after a rollback, the line says what is left and where to delete
+// it (finding 24, conclusion 58); a step not named is the grant's: the
+// unknown is not shown as safe. Never a secret: the errors of the login
+// carry none.
 func errorPage(err error) page {
-	return page{"error", resultData{head: newHead(tNotComplete() + " — evo"), Status: tNotComplete(), Text: err.Error(),
+	status, note := tNotComplete(), ""
+	var ce *clierrors.CLIError
+	if errors.As(err, &ce) {
+		step, _ := ce.Details["step"].(string)
+		if heading, ok := beforeWrite[step]; ok {
+			status, note = heading(), tNothingMade()
+		} else if left, ok := ce.Details["left"].([]string); ok {
+			note = tNothingLeft()
+			if len(left) > 0 {
+				note = eNotCompleteHint(true, "")
+			}
+		}
+	}
+	return page{"error", resultData{head: newHead(status + " — evo"), Status: status, Note: note, Text: err.Error(),
 		Footer: tDetails(clierrors.Reason(err), clierrors.ExitCode(err))}}
 }

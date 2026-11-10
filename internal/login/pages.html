@@ -198,6 +198,7 @@ a { color: var(--green-deep); }
 {{template "tail" .}}{{end}}
 
 {{define "error"}}{{template "head" .}}  <div class="result"><span class="ic err" aria-hidden="true">!</span><h1>{{.Status}}</h1></div>
-  <div class="alert error"><div>{{.Text}}</div></div>
+{{if .Note}}  <p>{{.Note}}</p>
+{{end}}  <div class="alert error"><div>{{.Text}}</div></div>
   <p class="support small">{{.Footer}}</p>
 {{template "tail" .}}{{end}}
