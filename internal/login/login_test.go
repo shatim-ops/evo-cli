@@ -25,6 +25,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/loginworld"
+	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
 // The flow of evo login on the world of B-2 (internal/loginworld): every
@@ -486,11 +487,14 @@ func TestLogin_ForeignStateAndSecondCallback(t *testing.T) {
 		// not «sign in again», which would burn it (release audit 1.8, L5).
 		// No «it would end it»: a second evo login refuses STATE_LOCKED
 		// («Риск», conclusion 48).
+		// Both are a person's tab: a page with the product's name, not a
+		// bare address (№ 26).
+		title := "<title>" + product.PageName + "</title>"
 		if b := w.CallbackBodies(); v.TwiceCallback && (len(b) != 2 || !strings.Contains(b[1], tAlreadyOpen()) || strings.Contains(b[1], tForeign()) ||
-			!strings.Contains(b[1], "STATE_LOCKED")) {
+			!strings.Contains(b[1], "STATE_LOCKED") || !strings.Contains(b[1], title)) {
 			t.Errorf("twice: the second answer %q", b)
 		}
-		if b := w.CallbackBodies(); v.ForeignState && (len(b) != 2 || !strings.Contains(b[0], tForeign())) {
+		if b := w.CallbackBodies(); v.ForeignState && (len(b) != 2 || !strings.Contains(b[0], tForeign()) || !strings.Contains(b[0], title)) {
 			t.Errorf("foreign state: the answer %q", b)
 		}
 		// No grant follows: the login ends interrupted, nothing made.
