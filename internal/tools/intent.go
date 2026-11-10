@@ -145,6 +145,13 @@ func (r *Registry) PendingNotes(root string) []string {
 
 // pendingNote is one intent in words.
 func (r *Registry) pendingNote(in intent.Intent) string {
+	if in.Note != "" {
+		// Its own words; the record stays until the person removes it:
+		// no list of a tool tells its outcome.
+		return i18n.Tf("%s, started %s (%s, pid %d); once checked, delete the record %s",
+			"%s, начат %s (%s, pid %d); после проверки удалите запись %s",
+			in.Note, in.StartedAt.Local().Format("02.01.2006 15:04"), in.Surface, in.PID, in.ID+".json")
+	}
 	where := ""
 	if in.ProjectID != "" {
 		where = i18n.Tf(" in project %s", " в проекте %s", in.ProjectID)

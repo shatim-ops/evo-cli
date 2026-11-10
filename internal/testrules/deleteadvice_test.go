@@ -82,6 +82,7 @@ var deleteAdviceOwn = map[string]string{
 	"internal/login/texts.go\ttAgentRevokeLine":   "evo logout deletes the key of evo login",
 	"internal/login/texts.go\teKeyLeft":           "the previous key of the profile, made by evo login (Previous needs creds.Login)",
 	"internal/login/texts.go\teNotCompleteHint":   "what this broken login made and could not undo",
+	"internal/login/texts.go\ttKilledLogin":       "the key a killed evo login asked for, which no profile holds (№ 37)",
 	"internal/login/texts.go\tTLogoutShort":       "the key evo login made, and the profile",
 	"internal/login/texts.go\tTLogoutLong":        "the key evo login made, and the profile",
 	"internal/login/texts.go\tTLogoutRevoke":      "the key evo login made, and the profile",

@@ -36,9 +36,13 @@ type Intent struct {
 	Name string   `json:"name,omitempty"`
 	// Target is the resource a call on an existing one names, as
 	// «argument=id» (vm_id=…): a delete, a resize. Not a secret.
-	Target    string    `json:"target,omitempty"`
-	ProjectID string    `json:"project_id,omitempty"`
-	Zone      string    `json:"zone,omitempty"`
+	Target    string `json:"target,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Zone      string `json:"zone,omitempty"`
+	// Note is what the next run says of the intent when the words of a
+	// call that the cloud did not answer do not fit it (evo login killed
+	// after its key: findings ledger 1.8, № 37); "" for a tool's call.
+	Note      string    `json:"note,omitempty"`
 	Surface   string    `json:"surface"`
 	PID       int       `json:"pid"`
 	StartedAt time.Time `json:"started_at"`

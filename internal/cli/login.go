@@ -108,6 +108,11 @@ func newLoginCmd() *cobra.Command {
 				cfg.Open = nil
 			}
 			cfg.Tell = loginTell(cmd)
+			// The intent of the key lives where evo doctor and the next
+			// run read the intents: the working directory (№ 37, R-59).
+			if wd, err := os.Getwd(); err == nil {
+				cfg.IntentRoot = wd
+			}
 			warnBeforeLogin(cfg.Tell, store, choice.For)
 			res, err := login.Login(cmd.Context(), cfg, choice, store)
 			if err != nil {

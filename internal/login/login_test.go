@@ -24,6 +24,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/loginworld"
 	"github.com/shatim-ops/evo-cli/internal/product"
 )
@@ -222,10 +223,17 @@ func login(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previ
 	st := &memStore{prev: prev, saveErr: saveErr}
 	cfg := worldConfig(w, &out, b.open)
 	cfg.Tell = func(line string) { fmt.Fprintln(&out, line) }
+	cfg.IntentRoot = t.TempDir()
 	res, err := Login(context.Background(), cfg, ch, st)
 	r.saved, r.auds = st.saved, st.auds
 	r.res, r.err, r.out = res, err, out.String()
 	<-b.ended
+	// A login alive to its answer leaves no intent of its key, whatever
+	// the answer: saved, refused or undone (findings ledger 1.8, № 37;
+	// the killed one: TestLogin_KilledAfterTheKeyIsNamed).
+	if left := intent.Pending(cfg.IntentRoot); len(left) != 0 {
+		t.Errorf("the login answered and left an intent: %+v", left)
+	}
 	// Nothing of the person's or the key's secrets in the answer, the
 	// terminal or the pages (contract, invariant 4); the secret of the new
 	// key only in what is saved.
