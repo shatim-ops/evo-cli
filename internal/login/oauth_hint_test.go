@@ -18,7 +18,7 @@ import (
 // «Риск», conclusion 63: unauthorized_client and invalid_scope are of the
 // client evo in Cloud.ru, not of the person's account — «ask your
 // organization administrator» does not help there; the hint says the
-// account is fine and names the support. The other codes keep theirs.
+// code points to the setup of evo in Cloud.ru, not the account, and names the support. The other codes keep theirs.
 func TestProviderHint_ClientCodesNotTheAdministrator(t *testing.T) {
 	prev := i18n.Lang()
 	defer i18n.SetLang(prev)

@@ -586,8 +586,8 @@ func eProviderHint(code string) string {
 // eClientHint: the client evo is not accepted as it signs in — not the
 // account; an evo of a later version may be, else the support.
 func eClientHint() string {
-	return i18n.T("Your account is fine: Cloud.ru does not accept the sign-in of evo as it is. Update evo to the latest version; if the error persists, report it to Cloud.ru support with the code in brackets.",
-		"С учетной записью все в порядке: Cloud.ru не принимает вход evo в таком виде. Обновите evo до последней версии; если ошибка повторится, сообщите о ней в поддержку Cloud.ru с кодом из скобок.")
+	return i18n.T("This code points to the setup of evo in Cloud.ru, not to your account. Update evo to the latest version; if the error persists, report it to Cloud.ru support with the code in brackets.",
+		"Этот код указывает на настройку evo в Cloud.ru, а не на вашу учетную запись. Обновите evo до последней версии; если ошибка повторится, сообщите о ней в поддержку Cloud.ru с кодом из скобок.")
 }
 func eKeyCheck(status int) string {
 	return i18n.Tf("IAM issued no token for the new key (HTTP %d)", "IAM не выдал токен по новому ключу (HTTP %d)", status)
