@@ -112,3 +112,6 @@ func Settle(root, tool, name, target string) {
 		}
 	}
 }
+
+// Close removes the intent id: what the call did is now known.
+func Close(root, id string) { _ = os.Remove(filepath.Join(Dir(root), id+".json")) }

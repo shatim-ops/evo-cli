@@ -138,22 +138,81 @@ func answerReason(answer string) string {
 func (r *Registry) PendingNotes(root string) []string {
 	var out []string
 	for _, in := range intent.Pending(root) {
-		where := ""
-		if in.ProjectID != "" {
-			where = i18n.Tf(" in project %s", " в проекте %s", in.ProjectID)
-		}
-		if in.Zone != "" {
-			where += i18n.Tf(", zone %s", ", зона %s", in.Zone)
-		}
-		name := in.Name
-		if name == "" {
-			name = i18n.T("(no name)", "(без имени)")
-		}
-		out = append(out, i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown — check %s for the name %s; the same %s with this name settles it",
-			"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен — проверьте %s по имени %s; тот же %s с этим именем закроет запись",
-			in.Tool, name, where, in.StartedAt.Local().Format("02.01.2006 15:04"), in.Surface, in.PID, r.listToolOf(in.Tool), name, in.Tool))
+		out = append(out, r.pendingNote(in))
 	}
 	return out
+}
+
+// pendingNote is one intent in words.
+func (r *Registry) pendingNote(in intent.Intent) string {
+	where := ""
+	if in.ProjectID != "" {
+		where = i18n.Tf(" in project %s", " в проекте %s", in.ProjectID)
+	}
+	if in.Zone != "" {
+		where += i18n.Tf(", zone %s", ", зона %s", in.Zone)
+	}
+	// A call on an existing resource is named by its id (Target).
+	name := in.Name
+	if name == "" {
+		name = in.Target
+	}
+	if name == "" {
+		name = i18n.T("(no name)", "(без имени)")
+	}
+	return i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown — check %s for %s; the same %s on it settles it",
+		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен — проверьте %s по %s; тот же %s на нём закроет запись",
+		in.Tool, name, where, in.StartedAt.Local().Format("02.01.2006 15:04"), in.Surface, in.PID, r.listToolOf(in.Tool), name, in.Tool)
+}
+
+// checkByList reads the list of what in names (createdIDs: list, field),
+// as doctor does for each intent (release plan 1.8, (и), PR-2; «Риск»,
+// conclusion 46): a create whose resource is listed by its name took
+// effect; a delete whose target is not listed took effect — the outcome is
+// known, and the record closes. Anything else — not listed (yet), still
+// listed, a list that needs another argument or did not answer — keeps
+// the record; found tells what the list said, "" when it was not read.
+func (r *Registry) checkByList(ctx context.Context, in intent.Intent) (found string, settled bool) {
+	c, isCreate := createdIDs[in.Tool]
+	_, targetID, isDelete := strings.Cut(in.Target, "=")
+	if !isCreate {
+		for _, cc := range createdIDs {
+			if cc.delete == in.Tool && cc.list != "" {
+				c = cc
+				break
+			}
+		}
+	}
+	t, ok := r.Lookup(c.list)
+	h := t.Handler
+	if c.list == "" || c.field == "" || len(c.listArgs) > 0 || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
+		return "", false
+	}
+	text, isErr := h(ctx, map[string]any{})
+	var m map[string]any
+	if isErr || json.Unmarshal([]byte(text), &m) != nil {
+		return "", false
+	}
+	items, _ := m[c.field].([]any)
+	listed := ""
+	for _, it := range items {
+		o, _ := it.(map[string]any)
+		id, _ := o["id"].(string)
+		name, _ := o["name"].(string)
+		if (isCreate && name == in.Name) || (!isCreate && id == targetID) {
+			listed = id
+			break
+		}
+	}
+	switch {
+	case isCreate && listed != "":
+		return i18n.Tf("%s lists %s (id %s): the create took effect; the record is closed", "%s показывает %s (id %s): создание прошло; запись закрыта", c.list, in.Name, listed), true
+	case isCreate:
+		return i18n.Tf("%s has no %s yet: the cloud did not make it, or still makes it — run doctor again, or the same %s", "в %s пока нет %s: облако его не создало или ещё создаёт — повторите doctor или тот же %s", c.list, in.Name, in.Tool), false
+	case listed == "":
+		return i18n.Tf("%s no longer lists %s: the delete took effect; the record is closed", "%s больше не показывает %s: удаление прошло; запись закрыта", c.list, targetID), true
+	}
+	return i18n.Tf("%s still lists %s: the delete did not take effect (yet) — run doctor again, or the same %s", "%s ещё показывает %s: удаление не прошло (или идёт) — повторите doctor или тот же %s", c.list, targetID, in.Tool), false
 }
 
 // listToolOf is the read that names what tool may have made: <service>_list
