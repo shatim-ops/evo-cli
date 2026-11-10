@@ -260,7 +260,7 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		// The list of what each names closes the ones whose outcome it
 		// shows (PR-2).
 		for _, in := range intent.Pending(eng.StateDir) {
-			found, settled := s.checkByList(ctx, in)
+			found, settled := s.checkByList(ctx, in, eng.Config.ProjectID)
 			if settled {
 				intent.Close(eng.StateDir, in.ID)
 				checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckOK, Detail: found})

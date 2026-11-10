@@ -201,3 +201,29 @@ func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 		}
 	}
 }
+
+// «Риск», conclusion 47: the list is the active project's, and an intent
+// of another project cannot be read in it — the target of a delete there is
+// «not listed» here whatever happened to it. Such an intent stays, with
+// both projects named; one of the active project or of none closes as
+// before.
+func TestDoctor_IntentOfAnotherProjectStays(t *testing.T) {
+	cloud := &disksCloud{}
+	r, dir := targetRegistry(t, cloud)
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
+	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
+	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
+	if _, err := intent.Begin(dir, intent.Intent{Tool: "disk_delete", Target: "disk_id=d-other", ProjectID: "p-other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := intent.Begin(dir, intent.Intent{Tool: "disk_delete", Target: "disk_id=d-here", ProjectID: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
+	left := intent.Pending(dir)
+	if len(left) != 1 || left[0].ProjectID != "p-other" || !strings.Contains(text, "p-other") {
+		t.Errorf("left %+v\n%s", left, text)
+	}
+}

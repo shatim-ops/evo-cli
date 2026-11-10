@@ -99,15 +99,16 @@ func Pending(root string) []Intent {
 }
 
 // Settle removes the earlier intents of the same tool on the same resource
-// (its name or its target): a later call of it answered, so what the cut
-// one did is now known to that call — an existing resource by the name
-// (D49), a new one, or «already deleted» (D26).
-func Settle(root, tool, name, target string) {
-	if name == "" && target == "" {
+// in the same project as done (its name or its target): a later call of it
+// answered, so what the cut one did is now known to that call — an
+// existing resource by the name (D49), a new one, or «already deleted»
+// (D26). Another project's record of the same name is not this one.
+func Settle(root string, done Intent) {
+	if done.Name == "" && done.Target == "" {
 		return
 	}
 	for _, in := range Pending(root) {
-		if in.Tool == tool && in.Name == name && in.Target == target {
+		if in.Tool == done.Tool && in.Name == done.Name && in.Target == done.Target && in.ProjectID == done.ProjectID {
 			_ = os.Remove(filepath.Join(Dir(root), in.ID+".json"))
 		}
 	}

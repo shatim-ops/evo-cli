@@ -68,7 +68,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 				return
 			}
 			done()
-			intent.Settle(root, name, in.Name, in.Target)
+			intent.Settle(root, in)
 		}, nil
 	}
 	return nil, clierrors.Wrap(clierrors.CodeConfigInvalid,
@@ -172,7 +172,13 @@ func (r *Registry) pendingNote(in intent.Intent) string {
 // known, and the record closes. Anything else — not listed (yet), still
 // listed, a list that needs another argument or did not answer — keeps
 // the record; found tells what the list said, "" when it was not read.
-func (r *Registry) checkByList(ctx context.Context, in intent.Intent) (found string, settled bool) {
+func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active string) (found string, settled bool) {
+	// The list is the active project's: an intent of another one is not
+	// read in it — a target of a delete there is «not listed» here
+	// whatever happened to it («Риск», conclusion 47; the lesson of L3).
+	if in.ProjectID != "" && active != "" && in.ProjectID != active {
+		return i18n.Tf("the record is of project %s, the active one is %s: check it there", "запись из проекта %s, активный — %s: проверьте в нём", in.ProjectID, active), false
+	}
 	c, isCreate := createdIDs[in.Tool]
 	_, targetID, isDelete := strings.Cut(in.Target, "=")
 	if !isCreate {
@@ -188,7 +194,11 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent) (found str
 	if c.list == "" || c.field == "" || len(c.listArgs) > 0 || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
 		return "", false
 	}
-	text, isErr := h(ctx, map[string]any{})
+	listArgs := map[string]any{}
+	if props, _ := t.InputSchema["properties"].(map[string]any); props["project_id"] != nil && in.ProjectID != "" {
+		listArgs["project_id"] = in.ProjectID
+	}
+	text, isErr := h(ctx, listArgs)
 	var m map[string]any
 	if isErr || json.Unmarshal([]byte(text), &m) != nil {
 		return "", false
