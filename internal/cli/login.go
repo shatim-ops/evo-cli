@@ -151,6 +151,8 @@ func newLoginCmd() *cobra.Command {
 			printer.Hint(login.TResultCheck(res.Profile))
 			if res.For == login.ForMe {
 				printer.Hint(login.TResultForAgent())
+			} else {
+				printer.Hint(login.TResultSetupAgent(res.Profile))
 			}
 			if res.PreviousNote != "" {
 				printer.Warning(res.PreviousNote)
