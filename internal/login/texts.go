@@ -330,6 +330,14 @@ func TFromProfile(profile string) string {
 }
 func TFromEnv() string { return i18n.T("from CLOUDRU_PROJECT_ID", "из CLOUDRU_PROJECT_ID") }
 
+// tPreselectOtherProfile: the project was picked beforehand by the profile
+// of one audience, and the other one, chosen on the page, keeps its key in
+// another profile (the rest of finding 90 of 1.8).
+func tPreselectOtherProfile(from, to string) string {
+	return i18n.Tf("The project is checked by the evo profile “%s”, and the key will be saved to the profile “%s”: check that it is the right project",
+		"Проект отмечен по профилю evo «%s», а ключ сохранится в профиль «%s»: проверьте, тот ли проект выбран", from, to)
+}
+
 // The result in the terminal (internal/cli): the dates are the role's
 // actual term (conclusion 26.2).
 func TSignedInCLI(keyID, account, project, profile string, until time.Time) string {
