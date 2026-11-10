@@ -5,11 +5,13 @@
 package cli
 
 import (
+	"context"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -74,6 +76,11 @@ func runConfigureS3(tenant string, printer *output.Printer) error {
 	}
 	s3.AccessKey, s3.SecretKey = tenant+":"+creds.KeyID, creds.Secret
 	creds.S3 = &s3
+	if dryRunWrite(context.Background(), confirm.Preview{Action: "configure s3",
+		Summary: i18n.Tf("save the S3 keys of the tenant %s to the profile %q", "сохранить ключи S3 тенанта %s в профиль %q", tenant, name),
+		Details: map[string]any{"profile": name, "s3_access_key": tenant + ":" + config.MaskKeyID(creds.KeyID)}}) {
+		return nil
+	}
 	if err := config.SaveProfile(name, prof, creds); err != nil {
 		return err
 	}
