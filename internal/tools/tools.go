@@ -725,7 +725,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster, billable. Refuses a name an existing cluster has. Default subnet: the main subnet of the configured zone, else of the first zone with one (ru.AZ-2 first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication.",
+			Description: "Create a Managed Kafka cluster, billable. Refuses a name an existing cluster has. Default subnet: the main subnet of the configured zone, else of the first zone with one (ru.AZ-2 first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication. Controllers: combined; dedicated (controller_spec): Cloud.ru console only.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name, 2-63 characters."),
 				"version_id":       strProp("Kafka version UUID. Default: latest."),
