@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -87,13 +88,20 @@ func (s *Registry) handleWhoami(ctx context.Context, _ map[string]any) (string, 
 	}
 	// The number is unknown when the Organization API does not list
 	// projects for the key: then there is no field (ScopeText).
-	if n, err := visibleProjects(ctx, eng.Auth); err == nil {
+	n, err := visibleProjects(ctx, eng.Auth)
+	if refused := tokenRefusedBy(err); refused != nil {
+		return failed(ctx, refused, nil), true
+	}
+	if err == nil {
 		out["visible_projects"] = n
 	}
 	// The roles of the key are a field more: when IAM does not tell them,
 	// the answer is the one of before and roles_note says why («Риск»,
 	// conclusion 22, У-6).
-	roles, note := keyRoles(ctx, eng.Auth, tok, cfg.ProjectID)
+	roles, note, refused := keyRolesOf(ctx, eng.Auth, tok, cfg.ProjectID)
+	if refused != nil {
+		return failed(ctx, refused, nil), true
+	}
 	if roles != nil {
 		out["roles"] = roles
 	}
@@ -180,19 +188,30 @@ type keyRole struct {
 // then says why; an empty list has a note too: a role on the organization
 // is a permission of another resource, not read here.
 func keyRoles(ctx context.Context, tp auth.TokenProvider, tok auth.Token, projectID string) (roles []keyRole, note string) {
+	roles, note, _ = keyRolesOf(ctx, tp, tok, projectID)
+	return roles, note
+}
+
+// keyRolesOf is keyRoles and the refusal of the token itself: IAM answered
+// 401 — the token (or its key) is refused, which is no «roles unknown»
+// (D88; «Риск», conclusion 37).
+func keyRolesOf(ctx context.Context, tp auth.TokenProvider, tok auth.Token, projectID string) (roles []keyRole, note string, refused error) {
 	if projectID == "" {
 		return nil, i18n.T("unknown: no project is set, and roles are given per project",
-			"неизвестны: проект не задан, а роли выдаются на проект")
+			"неизвестны: проект не задан, а роли выдаются на проект"), nil
 	}
 	sub := jwtSub(tok.Value)
 	if sub == "" {
-		return nil, i18n.T("unknown: the IAM token names no service account", "неизвестны: токен IAM не называет сервисный аккаунт")
+		return nil, i18n.T("unknown: the IAM token names no service account", "неизвестны: токен IAM не называет сервисный аккаунт"), nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, doctorProbeTimeout)
 	defer cancel()
 	perms, err := iamadmin.New(tp, "").Permissions(ctx, projectID, sub)
+	if iamadmin.StatusOf(err) == http.StatusUnauthorized {
+		return nil, "", tokenRefused(err)
+	}
 	if err != nil {
-		return nil, i18n.Tf("unknown: IAM did not tell them (%s)", "неизвестны: IAM их не сообщил (%s)", CheckDetail(err))
+		return nil, i18n.Tf("unknown: IAM did not tell them (%s)", "неизвестны: IAM их не сообщил (%s)", CheckDetail(err)), nil
 	}
 	roles = []keyRole{}
 	for _, p := range perms {
@@ -204,7 +223,7 @@ func keyRoles(ctx context.Context, tp auth.TokenProvider, tok auth.Token, projec
 		note = i18n.T("no role of the key on the project; a role on the organization is not seen here",
 			"у ключа нет ролей на проекте; роль на организацию здесь не видна")
 	}
-	return roles, note
+	return roles, note, nil
 }
 
 // keyRolesCheck is doctor's check of the key's roles on the project: a
@@ -486,4 +505,23 @@ func ManyProjectsWarning(n int) string {
 		"unless --project-id says otherwise; limit a shared 'evo mcp --http' server with --allow-project",
 		"ключ видит %d "+i18n.Plural(n, "проект", "проекта", "проектов")+" (доступ уровня организации): команды работают "+
 			"в проекте выше, если --project-id не задаёт другой; общий сервер 'evo mcp --http' ограничьте флагом --allow-project", n)
+}
+
+// tokenRefused is AUTH_FAILED for a token the cloud answered 401 to: the
+// token, or the key it came of, is refused — whoami does not answer «roles
+// unknown» with exit 0 (D88; «Риск», conclusion 37).
+func tokenRefused(err error) error {
+	return clierrors.Wrap(clierrors.CodeAuthFailed,
+		i18n.T("the cloud refused the token of the key (401)", "облако отвергло токен ключа (401)"),
+		auth.RefusedKeyHint(), err)
+}
+
+// tokenRefusedBy is tokenRefused when err is a 401 of the Organization API,
+// nil for any other error or none.
+func tokenRefusedBy(err error) error {
+	var he *adminHTTPError
+	if errors.As(err, &he) && he.Status == http.StatusUnauthorized {
+		return tokenRefused(err)
+	}
+	return nil
 }
