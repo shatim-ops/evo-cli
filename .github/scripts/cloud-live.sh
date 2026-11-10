@@ -542,7 +542,7 @@ probe_cmp7() {
 }
 
 # Проба R3F1 (R-59, раунд 3 Grok F1; «да» владельца 10.11): SIGKILL процесса
-# evo сразу после «Подтверждено» в disk_create (HDD, 1 ГБ). Записывается,
+# evo через 3 с после «Подтверждено» в disk_create (HDD, 1 ГБ). Записывается,
 # есть ли след: записи disk_create в журнале evo (журнал включается на время
 # пробы) и диск в облаке (и его состояние). Это ответ evo и платформы, а не
 # провал; диск удаляется здесь же, остаток — уборкой области по префиксу.
@@ -558,8 +558,15 @@ probe_r3f1() {
 	pid=$!
 	# Опрос stderr до 30 с с шагом 20 мс: согласие — конверт --json
 	# {"status":"confirmed"} или строка «Подтверждено:» / «Confirmed:».
+	# kill — через R3F1_DELAY (3 с) после согласия, не сразу: раунд 6 Grok
+	# (реестр находок № 70) убивал через 1 мс — POST ещё не ушёл, исход
+	# INCONCLUSIVE. За 2–4 с POST /disks отправлен, а evo ещё ждёт диск.
 	for i in $(seq 1 1500); do
-		grep -qE '"status":"confirmed"|^(Подтверждено|Confirmed): ' "$tmp/r3f1.err" && { kill -9 "$pid" 2>/dev/null && killed=yes; break; }
+		grep -qE '"status":"confirmed"|^(Подтверждено|Confirmed): ' "$tmp/r3f1.err" && {
+			sleep "${R3F1_DELAY:-3}"
+			kill -9 "$pid" 2>/dev/null && killed=yes
+			break
+		}
 		kill -0 "$pid" 2>/dev/null || break
 		sleep 0.02
 	done
