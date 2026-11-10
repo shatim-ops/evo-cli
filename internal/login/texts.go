@@ -439,13 +439,16 @@ func waitText(wait time.Duration) string {
 
 // eLoginRunning: another evo login waits for the browser on this computer
 // («Риск», conclusion 35.1: no advice to kill it).
-func eLoginRunning(port int) string {
+// eLoginRunning names the configuration directory the lock is on: one
+// login per directory, not per computer — another CLOUDRU_CONFIG_DIR has
+// its own (D55; findings ledger 1.8, № 131).
+func eLoginRunning(dir string, port int) string {
 	if port == 0 {
-		return i18n.T("another evo login is waiting in the browser on this computer; nothing was started",
-			"на этом компьютере другой evo login ждет в браузере, новый вход не начат")
+		return i18n.Tf("another evo login with the configuration directory %s is waiting in the browser; nothing was started",
+			"другой evo login с каталогом настроек %s ждет в браузере, новый вход не начат", dir)
 	}
-	return i18n.Tf("another evo login is waiting in the browser on this computer (port %d); nothing was started",
-		"на этом компьютере другой evo login ждет в браузере (порт %d), новый вход не начат", port)
+	return i18n.Tf("another evo login with the configuration directory %s is waiting in the browser (port %d); nothing was started",
+		"другой evo login с каталогом настроек %s ждет в браузере (порт %d), новый вход не начат", dir, port)
 }
 func eLoginRunningHint() string {
 	return i18n.T("Finish or cancel that sign-in, then run evo login again.",

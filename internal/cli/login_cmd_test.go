@@ -229,6 +229,12 @@ func TestLogin_OneAtATime(t *testing.T) {
 	if code != 1 || !strings.Contains(stderr+stdout, `"reason":"STATE_LOCKED"`) || !strings.Contains(stderr+stdout, "evo login") || called {
 		t.Fatalf("exit %d, browser %v\n%s\n%s", code, called, stdout, stderr)
 	}
+	// The lock is the configuration directory's, not the computer's: the
+	// refusal names the directory (findings ledger 1.8, № 131).
+	dir, _ := json.Marshal(config.Dir())
+	if strings.Contains(stderr+stdout, "this computer") || !strings.Contains(stderr+stdout, strings.Trim(string(dir), `"`)) {
+		t.Errorf("the refusal does not name the configuration directory:\n%s\n%s", stdout, stderr)
+	}
 }
 
 // Release plan 1.8, «B-5, дефекты флагов и параллельного входа» (а) (Grok
