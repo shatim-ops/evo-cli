@@ -913,3 +913,46 @@ func TestWhoami_KeyTermLine(t *testing.T) {
 		}
 	}
 }
+
+// No key at all: the project is set by evo login together with the key, so
+// doctor does not fail project_id on its own, and both the check and the
+// verdict name evo login (findings ledger 1.8, № 86).
+func TestDoctor_NoKeyNamesEvoLogin(t *testing.T) {
+	setupCLI(t)
+	code, stdout, stderr := runCLI(t, "", "--json", "doctor")
+	if code != clerrors.ExitAuth {
+		t.Errorf("no key: exit %d, want %d", code, clerrors.ExitAuth)
+	}
+	var got struct {
+		Checks []tools.DoctorCheck `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("not JSON: %q", stdout)
+	}
+	for _, c := range got.Checks {
+		if c.Name == "project_id" && (c.Status == tools.CheckFail || !strings.Contains(c.Detail, "evo login")) {
+			t.Errorf("without a key the project check: %+v", c)
+		}
+	}
+	if !strings.Contains(stderr, "evo login") {
+		t.Errorf("the verdict does not name evo login: %s", stderr)
+	}
+}
+
+// A half of the key pair in the environment: the key comes from the
+// environment only as a pair, else from the profile — the error says so,
+// not «no key»; a missing profile names evo login (№ 130).
+func TestWhoami_HalfAnEnvKeyAndAMissingProfileSayWhy(t *testing.T) {
+	setupCLI(t)
+	t.Setenv("CLOUDRU_KEY_ID", "kid-only")
+	code, stdout, stderr := runCLI(t, "", "--json", "whoami")
+	if code == 0 || !strings.Contains(stdout+stderr, "CLOUDRU_KEY_ID is set without CLOUDRU_SECRET") {
+		t.Errorf("CLOUDRU_KEY_ID alone: exit %d\n%s%s", code, stdout, stderr)
+	}
+	newProcess()
+	t.Setenv("CLOUDRU_KEY_ID", "")
+	code, stdout, stderr = runCLI(t, "", "--json", "--profile", "nope", "whoami")
+	if code == 0 || !strings.Contains(stdout+stderr, "evo login --profile nope") {
+		t.Errorf("a missing profile: exit %d\n%s%s", code, stdout, stderr)
+	}
+}

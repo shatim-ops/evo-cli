@@ -399,8 +399,8 @@ func applyProfile(cfg *Config, name string, explicit bool, origins map[string]st
 			}
 			return clerrors.New(clerrors.CodeConfigInvalid,
 				i18n.Tf("profile %q not found in %s", "профиль %q не найден в %s", name, Dir()),
-				i18n.Tf("Run 'evo configure --profile %s' to create it, or 'evo configure list' to see existing profiles",
-					"Создайте его: 'evo configure --profile %s'; список профилей — 'evo configure list'", name))
+				i18n.Tf("Create it: evo login --profile %s (a key through the browser) or evo configure --profile %s; existing profiles: evo configure list",
+					"Создайте его: evo login --profile %s (ключ через браузер) или evo configure --profile %s; список профилей — evo configure list", name, name))
 		}
 		return nil
 	}

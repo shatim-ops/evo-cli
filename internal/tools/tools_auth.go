@@ -311,7 +311,14 @@ func configChecks(cfg config.Config) []DoctorCheck {
 	// Without a project every project command (vm list, vpc subnets, …)
 	// fails with CONFIG_INVALID, exit 2: doctor fails the same way, not
 	// "ok" with exit 0 (release audit, R-06).
-	if cfg.ProjectID == "" {
+	switch {
+	case cfg.ProjectID == "" && (cfg.KeyID == "" || cfg.Secret == ""):
+		// No key either: evo login sets both, and the credentials check
+		// fails already — one fix, not two failures (findings ledger 1.8,
+		// № 86).
+		checks = append(checks, DoctorCheck{Name: "project_id", Status: CheckWarn,
+			Detail: i18n.T("not set: evo login sets it together with the key", "не задан: evo login задаст его вместе с ключом")})
+	case cfg.ProjectID == "":
 		ce := clierrors.ProjectRequired()
 		checks = append(checks, DoctorCheck{Name: "project_id", Status: CheckFail, Auth: true,
 			Detail: i18n.T("not set: ", "не задан: ") + ce.Hint})
@@ -403,8 +410,8 @@ func doctorVerdict(checks []DoctorCheck) error {
 		return nil
 	case authFailed:
 		return clierrors.New(clierrors.CodeConfigInvalid, msg,
-			i18n.T("Fix the configuration or credentials above, e.g. with 'evo configure'",
-				"Исправьте настройки или ключ (см. выше), например через 'evo configure'"))
+			i18n.T("Fix the configuration or credentials above: evo login (through the browser) or evo configure",
+				"Исправьте настройки или ключ (см. выше): evo login (через браузер) или evo configure"))
 	default:
 		return clierrors.New(clierrors.CodeAPIUnreachable, msg, "")
 	}

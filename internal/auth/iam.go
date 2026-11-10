@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -186,6 +187,10 @@ func (p *IAMProvider) Exchanges() int {
 // error of a command without a key, doctor's check of the key and the
 // generic hint of a refused key of a tool.
 func NoKeyHint() string {
+	if halfEnvKey() != "" {
+		return i18n.T("Set both variables, or unset the one to use the profile; no profile with a key — evo login.",
+			"Задайте обе переменные или уберите заданную, чтобы читался профиль; профиля с ключом нет — evo login.")
+	}
 	return i18n.T("Run evo login or evo configure, or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.",
 		"Выполните evo login или evo configure либо задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET.")
 }
@@ -202,11 +207,28 @@ func RefusedKeyHint() string {
 // and finds none: no profile from 'evo configure' and nothing in the
 // environment (exit code 2).
 func ErrNoCredentials() error {
-	return clerrors.New(
-		clerrors.CodeAuthRequired,
-		i18n.T("Cloud.ru credentials not set", "не задан ключ доступа Cloud.ru"),
-		NoKeyHint(),
-	)
+	msg := i18n.T("Cloud.ru credentials not set", "не задан ключ доступа Cloud.ru")
+	if half := halfEnvKey(); half != "" {
+		msg = half
+	}
+	return clerrors.New(clerrors.CodeAuthRequired, msg, NoKeyHint())
+}
+
+// halfEnvKey names a half of the key pair in the environment: the key is
+// taken from the environment only as a pair, else from the profile, and
+// one variable alone read as «no key» (findings ledger 1.8, № 130).
+func halfEnvKey() string {
+	id := strings.TrimSpace(os.Getenv("CLOUDRU_KEY_ID")) != ""
+	secret := strings.TrimSpace(os.Getenv("CLOUDRU_SECRET")) != "" || strings.TrimSpace(os.Getenv("CLOUDRU_KEY_SECRET")) != ""
+	switch {
+	case id && !secret:
+		return i18n.T("CLOUDRU_KEY_ID is set without CLOUDRU_SECRET: the environment gives the key only as a pair, and then the profile is not read",
+			"CLOUDRU_KEY_ID задан без CLOUDRU_SECRET: окружение дает ключ только парой, и тогда профиль не читается")
+	case secret && !id:
+		return i18n.T("CLOUDRU_SECRET is set without CLOUDRU_KEY_ID: the environment gives the key only as a pair, and then the profile is not read",
+			"CLOUDRU_SECRET задан без CLOUDRU_KEY_ID: окружение дает ключ только парой, и тогда профиль не читается")
+	}
+	return ""
 }
 
 // Token returns a valid IAM token. Refreshes if cached token has < 5min TTL.
