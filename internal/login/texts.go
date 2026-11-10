@@ -211,6 +211,14 @@ func tCancelled() string {
 func tNotComplete() string {
 	return i18n.T("Access could not be granted", "Не удалось выдать доступ")
 }
+
+// tSignInFailed, tNotGranted and tNothingMade: the error page of a step
+// before any write («Риск», conclusion 57).
+func tSignInFailed() string { return i18n.T("Sign-in failed", "Вход не выполнен") }
+func tNotGranted() string   { return i18n.T("Access not granted", "Доступ не выдан") }
+func tNothingMade() string {
+	return i18n.T("No access was granted: evo created nothing", "Доступ не выдавался: evo ничего не создал")
+}
 func tDetails(reason string, code int) string {
 	return i18n.Tf("See the details (%s, code %d) in the terminal where you started the sign-in. To try again, go back to the terminal and run evo login again. You can close this window",
 		"Подробности (%s, код %d) — в терминале, где запускали вход. Чтобы повторить, вернитесь в терминал и запустите evo login снова. Это окно можно закрыть", reason, code)

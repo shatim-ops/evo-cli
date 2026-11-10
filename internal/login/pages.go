@@ -6,6 +6,7 @@ package login
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -253,7 +254,7 @@ func donePage(r Result) page {
 		note = tDoneReused(r.Account, roleTerm(r), prev)
 	}
 	rows := tRowsPage()
-	return page{"done", resultData{head: newHead(tDone() + " — evo"), Status: tDone(),
+	return page{"done", resultData{head: newHead(pageTitle(tDone())), Status: tDone(),
 		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt, r.Account == ForAgent.account()),
 		Note: note,
 		Rows: []row{
@@ -284,13 +285,36 @@ func projectIn(project, org string) string {
 }
 
 func cancelledPage() page {
-	return page{"cancelled", resultData{head: newHead(tCancelledTitle() + " — evo"), Status: tCancelledTitle(), Text: tCancelled()}}
+	return page{"cancelled", resultData{head: newHead(pageTitle(tCancelledTitle())), Status: tCancelledTitle(), Text: tCancelled()}}
 }
 
 // errorPage names the error as the terminal does, with its code; the hint
 // with its command stays the terminal's and JSON's. Never a secret: the
-// errors of the login carry none.
+// errors of the login carry none. The heading follows the step (№ 182,
+// «Риск», conclusion 57): before any write the sign-in or the choice
+// failed and nothing was made; a write step, or none named, keeps «could
+// not grant» — the unknown is not told as safe.
 func errorPage(err error) page {
-	return page{"error", resultData{head: newHead(tNotComplete() + " — evo"), Status: tNotComplete(), Text: err.Error(),
+	status, note := tNotComplete(), ""
+	var ce *clierrors.CLIError
+	if errors.As(err, &ce) {
+		switch step, _ := ce.Details["step"].(string); step {
+		case stepCallback, stepToken, stepIDToken, stepCustomers, stepProjects, stepBulk:
+			status, note = tSignInFailed(), tNothingMade()
+		case stepChoice, stepEvaluate:
+			status, note = tNotGranted(), tNothingMade()
+		}
+	}
+	return page{"error", resultData{head: newHead(pageTitle(status)), Status: status, Note: note, Text: err.Error(),
 		Footer: tDetails(clierrors.Reason(err), clierrors.ExitCode(err))}}
 }
+
+// refusedPage is a refusal of the loopback: its text under the product's
+// name, so that the tab is not a bare address (№ 26).
+func refusedPage(text string) page {
+	return page{"refused", resultData{head: newHead(product.PageName), Text: text}}
+}
+
+// pageTitle is the tab of a page of the end: its status and the product,
+// named as on the consent (№ 183).
+func pageTitle(status string) string { return status + " — " + product.PageName }
