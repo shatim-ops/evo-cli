@@ -498,7 +498,13 @@ dns_unlink() {
 # image_metadata_fields_missing (CMP7 прогон 183).
 vm_post() {
 	local meta
-	meta=$(vm_meta "$3" "$1") || meta='{}'
+	# Без полей образа тело не собрать (прогон 184: пустые метаданные дали
+	# пустое тело и 422 «Field required: body») — отказ пробы, не запрос.
+	if ! meta=$(vm_meta "$3" "$1") || ! printf '%s' "$meta" | jq -e 'type == "object"' >/dev/null 2>&1; then
+		code=000
+		jq -nc --arg i "$3" '{message: ("image_metadata не собраны: image_get " + $i + " не отдал fields")}' >"$tmp/api.json"
+		return 0
+	fi
 	api POST https://compute.api.cloud.ru/api/v1.1/vms "$(jq -nc --arg p "$PROJECT" --arg n "$1" --arg f "$2" --arg i "$3" \
 		--arg z "$4" --argjson sz "$5" --arg d "$6" --argjson ifs "$7" --argjson m "$meta" \
 		'[{project_id: $p, name: $n, availability_zone_id: $z, flavor_name: $f, image_name: $i, image_metadata: $m,
@@ -519,7 +525,7 @@ vm_meta() {
 	evo tools call image_get --arg image="$1" --json 2>/dev/null | jq -c --arg k "$k" --arg h "$2" --arg pw "$pw" '
 		[.fields[]? | select(.filled_by == "evo" or .filled_by == "default")
 		 | {key: .name, value: (if .role == "ssh_key" then $k elif .role == "vm_name" then $h
-			elif .role == "login" then "user1" elif .role == "password" then $pw else (.default // "") end)}
+			elif .role == "login" then "user1" elif .role == "password" then $pw else (.default_value // "") end)}
 		 | select(.value != "")] | from_entries'
 }
 # zone_subnet ZID — id первой подсети зоны (для interfaces[].subnet_id).
@@ -602,14 +608,15 @@ probe_cmp7() {
 # есть ли след: записи disk_create в журнале evo (журнал включается на время
 # пробы) и диск в облаке (и его состояние). Это ответ evo и платформы, а не
 # провал; диск удаляется здесь же, остаток — уборкой области по префиксу.
-# Задержка kill — несколько попыток (R3F1_DELAYS, по умолчанию 0,5; 1,5 и
-# 3 с), у каждой свой диск: одна задержка то не успевает отправить POST
-# (раунд 6, 1 мс), то опаздывает — evo уже ответил сам (прогон 183, 3 с).
+# Задержка kill — несколько попыток (R3F1_DELAYS, по умолчанию 2; 2,4 и
+# 2,8 с), у каждой свой диск: одна задержка то не успевает отправить POST
+# (раунд 6, 1 мс; прогон 184, 0,5 и 1,5 с — диска нет), то опаздывает —
+# evo уже ответил сам (прогоны 183 и 184, 3 с).
 # Строка «kill: yes» и «диск в облаке: есть» — наблюдение; остальные
 # попытки — контрольная группа.
 probe_r3f1() {
 	local d n=0
-	for d in ${R3F1_DELAYS:-0.5 1.5 3}; do
+	for d in ${R3F1_DELAYS:-2 2.4 2.8}; do
 		n=$((n + 1))
 		r3f1_once "$d" "$n"
 	done

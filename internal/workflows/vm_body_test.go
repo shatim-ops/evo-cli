@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -104,5 +105,38 @@ func TestScripts_DirectVMBodyIsEvos(t *testing.T) {
 		if !allowed[k[1]] {
 			t.Errorf("cloud-live.sh sends %q in the body of a VM: not a field evo sends (provision.CreateVMRequest)", k[1])
 		}
+	}
+}
+
+// vmMetaField is a field of an image_get field that vm_meta reads: .name,
+// .role, .default_value.
+var vmMetaField = regexp.MustCompile(`\.(name|role|filled_by|default[a-z_]*)\b`)
+
+// Run 184 (10.11): vm_meta read .default, which image_get does not answer
+// (images.FieldInfo has default_value), so a field the image fills by its
+// default went out empty. Every field of a field of image_get that vm_meta
+// reads is a JSON field of images.FieldInfo.
+func TestScripts_VMMetaReadsImageGetFields(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "cloud-live.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	i := strings.Index(s, "\nvm_meta() {")
+	if i < 0 {
+		t.Fatal("cloud-live.sh: no vm_meta")
+	}
+	body := s[i:]
+	body = body[:strings.Index(body, "\n}\n")]
+	tags, _ := jsonTags(images.FieldInfo{})
+	seen := 0
+	for _, m := range vmMetaField.FindAllStringSubmatch(body, -1) {
+		seen++
+		if !tags[m[1]] {
+			t.Errorf("vm_meta reads .%s of a field of image_get: not a field of images.FieldInfo", m[1])
+		}
+	}
+	if seen < 3 {
+		t.Fatalf("%d fields of image_get read in vm_meta: the scan sees nothing", seen)
 	}
 }
