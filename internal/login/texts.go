@@ -215,6 +215,16 @@ func tDetails(reason string, code int) string {
 	return i18n.Tf("See the details (%s, code %d) in the terminal where you started the sign-in. To try again, go back to the terminal and run evo login again. You can close this window",
 		"Подробности (%s, код %d) — в терминале, где запускали вход. Чтобы повторить, вернитесь в терминал и запустите evo login снова. Это окно можно закрыть", reason, code)
 }
+
+// tAlreadyOpen is the answer to a second callback of this login: the link
+// opened again (or reloaded) after the first one took the code. The page
+// of the first one works — «sign in again» burned it (release audit 1.8,
+// L5, Grok R1b №7).
+func tAlreadyOpen() string {
+	return i18n.T("This sign-in is already under way: go back to the page of evo opened first in this browser (or to the terminal). Do not run evo login again — that would end it",
+		"Этот вход уже идет: вернитесь к странице evo, открытой первой в этом браузере (или в терминал). Не запускайте evo login заново — это прервет его")
+}
+
 func tForeign() string {
 	return i18n.T("This request does not belong to the current sign-in. Sign in again", "Запрос не относится к текущему входу. Запустите вход еще раз")
 }

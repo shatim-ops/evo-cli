@@ -196,10 +196,13 @@ func (l *loopback) end(o outcome) {
 }
 
 // refuse answers a request that is not of this login: no page, no secret.
-func refuse(w http.ResponseWriter, code int) {
+func refuse(w http.ResponseWriter, code int) { refuseWith(w, code, tForeign()) }
+
+// refuseWith is a refusal with no page: its text, as plain text.
+func refuseWith(w http.ResponseWriter, code int, text string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(code)
-	fmt.Fprintln(w, tForeign())
+	fmt.Fprintln(w, text)
 }
 
 func (l *loopback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -241,7 +244,15 @@ func (l *loopback) ownConsent(got string) bool {
 // (steps 5–11).
 func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if l.phase != phaseCode || !l.ownState(q.Get("state")) {
+	own := l.ownState(q.Get("state"))
+	if l.phase != phaseCode || !own {
+		// This login's own state once more (the link opened again, a
+		// browser that reloads it): the same 403, and the way back to the
+		// page that works, not «sign in again» (release audit 1.8, L5).
+		if own {
+			refuseWith(w, http.StatusForbidden, tAlreadyOpen())
+			return
+		}
 		refuse(w, http.StatusForbidden)
 		return
 	}
