@@ -18,9 +18,7 @@ import (
 // a line the journals no longer give fails the test.
 // Closes by 1.9: the owner writes the rule into the rules or the retro
 // drops the outcome.
-var retroRuleKnown = map[string]string{
-	"1.5 «релиз»: Споткнулись: #587 слит после PR версии по устаревшему": "the rule is GitHub's protection of main (the owner, 29.10), a setting, not text of CLAUDE.md or RELEASING.md; to the owner: write it in RELEASING.md or drop the outcome",
-}
+var retroRuleKnown = map[string]string{}
 
 var (
 	// retroRuleRef names the rules themselves: the file, a section (§N)
