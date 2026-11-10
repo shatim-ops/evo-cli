@@ -2809,9 +2809,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	}
 	eng.Cloud.SetToken(tok.Value)
 	// A VM another key recorded: its 404 is no proof it is gone, and the
-	// refusal comes before the question (L3, «Риск» 43).
+	// refusal comes before the question (L3, «Риск» 43). A record of
+	// another project is the project rule's below: it names the project.
 	if vmID != "" {
-		if recorded, rec := recordedVM(state.DefaultPath(eng.StateDir), vmID); recorded {
+		if recorded, rec := recordedVM(state.DefaultPath(eng.StateDir), vmID); recorded && (rec.ProjectID == "" || rec.ProjectID == projectID) {
 			if err := eng.VisibleToThisKey(ctx, rec); err != nil {
 				return nil, err
 			}

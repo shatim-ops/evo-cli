@@ -20,6 +20,7 @@ func TestMaker_Other(t *testing.T) {
 		{"the same account, a new key", &Maker{ServiceAccountID: "sa", KeyID: "a"}, &Maker{ServiceAccountID: "sa", KeyID: "b"}, false},
 		{"another account", &Maker{ServiceAccountID: "sa1", KeyID: "a"}, &Maker{ServiceAccountID: "sa2", KeyID: "a"}, true},
 		{"no account, the same key", &Maker{KeyID: "a"}, &Maker{ServiceAccountID: "sa", KeyID: "a"}, false},
+		{"the record knows the account, the key does not: by the Key ID", &Maker{ServiceAccountID: "sa", KeyID: "a"}, &Maker{KeyID: "b"}, true},
 		{"no account, another key", &Maker{KeyID: "a"}, &Maker{KeyID: "b"}, true},
 		{"nothing known", &Maker{}, &Maker{KeyID: "b"}, false},
 	} {
