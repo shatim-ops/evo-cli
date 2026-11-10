@@ -399,6 +399,7 @@ func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 			cmd.Flags().String(name, "", desc)
 		}
 	}
+	noEmptyScope(cmd.Flags())
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		callArgs, err := treeArgs(cmd, c, t, pos, flagArgs, args)

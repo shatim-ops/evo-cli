@@ -96,11 +96,7 @@ func mcpTransports(t *testing.T, allowProjects []string) map[string]toolCall {
 	})
 	return map[string]toolCall{
 		"stdio": func(name string, args map[string]any) roAnswer {
-			out := &bytes.Buffer{}
-			if err := stdio.Run(bytes.NewReader(append(roRequest("tools/call", params(name, args)), '\n')), out); err != nil {
-				t.Fatalf("stdio %s: %v", name, err)
-			}
-			a, _ := roDecode(t, out.Bytes())
+			a, _ := roDecode(t, runStdio(t, stdio, roRequest("tools/call", params(name, args))))
 			return a
 		},
 		"http": func(name string, args map[string]any) roAnswer {

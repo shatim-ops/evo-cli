@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -137,6 +138,11 @@ type Server struct {
 	// stays the outermost layer (wrapHandler).
 	readOnly bool
 	gated    map[string]*tools.Handler
+
+	// initialized: the stdio client of this run has sent initialize (D89). Over HTTP
+	// a session id exists only after initialize; a client without one is
+	// served statelessly, by design.
+	initialized atomic.Bool
 
 	// httpApplied records the restrictions of HTTPRestrictions applied to
 	// the handlers (over HTTP and by --read-only), as "ID tool" (restrict),
@@ -259,6 +265,8 @@ const (
 	codeMethodNotFound = -32601
 	codeInvalidParams  = -32602
 	codeInternalError  = -32603
+	// codeNotInitialized is MCP's answer to a request before initialize.
+	codeNotInitialized = -32002
 )
 
 // maxMessageSize bounds one message: a stdio line or an HTTP body.
@@ -308,6 +316,8 @@ type stdioCall struct {
 func (s *Server) RunContext(ctx context.Context, in io.Reader, out io.Writer) error {
 	serve, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
+	// One stdio session per run: it begins with the client's initialize.
+	s.initialized.Store(false)
 	lines := make(chan stdioLine, stdioQueue)
 	go s.readStdio(serve, stop, in, lines)
 
@@ -433,6 +443,15 @@ func (s *Server) answerLine(serve context.Context, ln stdioLine, notify func(any
 		case m.answer != nil:
 			out = append(out, m.answer)
 		case m.req != nil:
+			if refused := s.beforeInitialize(m.req); refused != nil {
+				if !m.req.isNotification() {
+					out = append(out, refused)
+				}
+				if c, ok := ln.calls[m.req]; ok {
+					c.done()
+				}
+				continue
+			}
 			ctx := serve
 			c, registered := ln.calls[m.req]
 			if registered {
@@ -531,6 +550,22 @@ func decodeMessage(raw json.RawMessage) incoming {
 		return incoming{answer: errorResponse(id, codeInvalidReq, "invalid request: method is required")}
 	}
 	return incoming{req: &req}
+}
+
+// beforeInitialize refuses, over stdio, a request before the client's
+// initialize: -32002 «server not initialized» (MCP, lifecycle). Without
+// it the agent works without the instructions of initialize — read-only,
+// consent, the profile (D89; «Риск», conclusion 38). ping and the
+// notifications pass; consent does not depend on it (D35).
+func (s *Server) beforeInitialize(req *rpcRequest) *rpcResponse {
+	switch {
+	case req.Method == "initialize":
+		s.initialized.Store(true)
+		return nil
+	case s.initialized.Load(), req.Method == "ping", req.Method == "initialized", strings.HasPrefix(req.Method, "notifications/"):
+		return nil
+	}
+	return errorResponse(req.ID, codeNotInitialized, "server not initialized: send initialize first")
 }
 
 // isNotification reports whether the request lacks an id (JSON-RPC notification,
