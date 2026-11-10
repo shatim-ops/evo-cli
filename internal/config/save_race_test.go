@@ -22,30 +22,26 @@ func TestSaveProfile_RaceLosesNoProfile(t *testing.T) {
 	t.Setenv(EnvConfigDir, filepath.Join(t.TempDir(), "evo"))
 
 	// Control: read-modify-write without the lock; both read before either
-	// writes.
-	var read, wrote sync.WaitGroup
-	read.Add(2)
-	wrote.Add(2)
-	for _, name := range []string{"c1", "c2"} {
-		go func() {
-			defer wrote.Done()
-			s, err := readSettingsFile()
-			read.Done()
-			read.Wait()
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			if s.Profiles == nil {
-				s.Profiles = map[string]Profile{}
-			}
-			s.Profiles[name] = Profile{Region: name}
-			if err := writeYAML(SettingsPath(), s); err != nil {
-				t.Error(err)
-			}
-		}()
+	// writes. The writes go one after the other: two renames onto the same
+	// file at once fail on Windows (Access is denied, CI #1099), and the lost
+	// update needs only the reads to come first.
+	s1, err1 := readSettingsFile()
+	s2, err2 := readSettingsFile()
+	if err1 != nil || err2 != nil {
+		t.Fatal(err1, err2)
 	}
-	wrote.Wait()
+	for _, w := range []struct {
+		s    settingsFile
+		name string
+	}{{s1, "c1"}, {s2, "c2"}} {
+		if w.s.Profiles == nil {
+			w.s.Profiles = map[string]Profile{}
+		}
+		w.s.Profiles[w.name] = Profile{Region: w.name}
+		if err := writeYAML(SettingsPath(), w.s); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if s, err := readSettingsFile(); err != nil || len(s.Profiles) != 1 {
 		t.Fatalf("control: a write without the lock lost nothing (%d profiles, %v): the count below would not see a loss", len(s.Profiles), err)
 	}
