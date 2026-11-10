@@ -971,3 +971,73 @@ func TestLogin_StoreRefusesTheAudienceBeforeAnyWrite(t *testing.T) {
 		t.Fatalf("err %v; accounts %d; saved %d", err, len(w.Accounts()), len(st.saved))
 	}
 }
+
+// «Риск», conclusion 39 (plan 1.8, #1095, round 4): the browser drops the
+// connection of the first «Grant access» (a double click, F5) while the
+// grant is under way. The grant goes on to its end — one key, nothing
+// left — and the second «Grant access» shows its result.
+func TestLogin_DroppedFirstGrantStillEnds(t *testing.T) {
+	var form url.Values
+	var host string
+	dropFirst := make(chan struct{})
+	second := make(chan string, 1)
+	v := loginworld.Variant{}
+	v.BeforeKey = func() {
+		close(dropFirst) // the browser drops the first POST
+		time.Sleep(50 * time.Millisecond) // wall-clock: lets the server see the dropped connection before the key
+		go func() {
+			resp, err := http.PostForm("http://"+host+"/grant", form)
+			if err != nil {
+				second <- "error: " + err.Error()
+				return
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			second <- fmt.Sprintf("%d %s", resp.StatusCode, body)
+		}()
+	}
+	w := newWorld(t, v)
+	var out bytes.Buffer
+	st := &memStore{}
+	ended := make(chan struct{})
+	cfg := worldConfig(w, &out, func(authURL string) error {
+		p, _ := url.Parse(authURL)
+		cb, _ := url.Parse(p.Query().Get("redirect_uri"))
+		host = cb.Host
+		go func() {
+			defer close(ended)
+			c := w.Client()
+			resp, err := c.Get(authURL)
+			if err != nil {
+				return
+			}
+			resp.Body.Close()
+			resp, err = c.Get(resp.Header.Get("Location"))
+			if err != nil {
+				return
+			}
+			page, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			form = url.Values{"state": {stateField.FindStringSubmatch(string(page))[1]},
+				"consent": {consentField.FindStringSubmatch(string(page))[1]},
+				"project": {pickProject(string(page))}, "audience": {"me"}, "ttl": {"30"}}
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() { <-dropFirst; cancel() }()
+			req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/grant", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			if r, err := http.DefaultClient.Do(req); err == nil {
+				r.Body.Close()
+			}
+		}()
+		return nil
+	})
+	_, err := Login(context.Background(), cfg, Choice{}, st)
+	<-ended
+	got := <-second
+	if err != nil || len(st.saved) != 1 || len(w.Keys()) != 1 {
+		t.Fatalf("the first POST dropped: err %v; saved %d; keys %d", err, len(st.saved), len(w.Keys()))
+	}
+	if !strings.HasPrefix(got, "200 ") || !strings.Contains(got, tDone()) {
+		t.Errorf("the second «Grant access» shows %.200q, want the result", got)
+	}
+}

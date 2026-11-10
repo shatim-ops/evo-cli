@@ -288,6 +288,11 @@ func (l *loopback) consent(w http.ResponseWriter, r *http.Request) {
 		l.end(outcome{err: cancelled()})
 		return
 	}
+	// The grant does not end with the connection of the request: a browser
+	// drops it on a double click or F5, and a grant cut there rolls back —
+	// or leaves a key it asked for and never heard of («Риск», conclusion
+	// 39; plan 1.8, #1095, round 4). Its own requests carry their timeouts.
+	ctx := context.WithoutCancel(r.Context())
 	p, aud, days, err := l.s.chosen(r.PostForm)
 	if err != nil {
 		err = at(stepChoice, err)
@@ -295,13 +300,13 @@ func (l *loopback) consent(w http.ResponseWriter, r *http.Request) {
 		l.end(outcome{err: err})
 		return
 	}
-	pl, err := l.s.planFor(r.Context(), p, aud, days)
+	pl, err := l.s.planFor(ctx, p, aud, days)
 	if err != nil {
 		l.show(w, errorPage(err))
 		l.end(outcome{err: err})
 		return
 	}
-	res, err := l.s.grant(r.Context(), pl, l.s.tell)
+	res, err := l.s.grant(ctx, pl, l.s.tell)
 	if err != nil {
 		l.show(w, errorPage(err))
 		l.end(outcome{res: res, err: err})
