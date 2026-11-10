@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -29,8 +30,29 @@ func TestScripts_APIRidNamesOnlyRequestIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := filepath.Join("..", "..")
-	script := `source <(sed -n '/^api_rid()/,/^}/p' .github/scripts/cloud-live.sh) && api_rid | sed -E -f .github/scripts/redact.sed`
-	cmd := exec.Command("bash", "-c", script)
+	src, err := os.ReadFile(filepath.Join(root, ".github", "scripts", "cloud-live.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The function alone, in a file: bash 3.2 of macOS does not source a
+	// process substitution.
+	fn := string(src)
+	i := strings.Index(fn, "\napi_rid() {")
+	if i < 0 {
+		t.Fatal("cloud-live.sh: no api_rid")
+	}
+	fn = fn[i+1:]
+	fn = fn[:strings.Index(fn, "\n}\n")+3]
+	lib := filepath.Join(tmp, "api_rid.sh")
+	if err := os.WriteFile(lib, []byte(fn), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := `. "$1" && api_rid`
+	// redact.sed is GNU sed (\b): the runners of cloud-e2e are Linux.
+	if runtime.GOOS == "linux" {
+		script += ` | sed -E -f .github/scripts/redact.sed`
+	}
+	cmd := exec.Command("bash", "-c", script, "bash", lib)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "tmp="+tmp)
 	out, err := cmd.CombinedOutput()

@@ -445,6 +445,7 @@ probe_on() { case " ${PROBES:-} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; 
 api() {
 	local rid=()
 	[ -z "${API_RID:-}" ] || rid=(-H "X-Request-Id: $API_RID")
+	rm -f "$tmp/api.h" # заголовки прошлого ответа — не этого запроса
 	if [ -n "${3:-}" ]; then
 		code=$(printf '%s' "$3" | curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
 			-H "Authorization: Bearer $TOKEN" "${rid[@]}" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || code=000
@@ -457,8 +458,9 @@ api() {
 # пробел. Дефисы значения — точками: иначе redact.sed примет UUID за id
 # ресурса и замаскирует то, что нужно команде платформы.
 api_rid() {
-	tr -d '\r' <"$tmp/api.h" 2>/dev/null |
-		awk -F': *' 'tolower($1) ~ /^(x-)?(request|trace|correlation)-?id$|^traceparent$|^x-amzn-requestid$/ && $2 ~ /^[A-Za-z0-9._:-]+$/ { gsub(/-/, ".", $2); printf "%s%s=%s", sep, tolower($1), $2; sep=" " }'
+	[ -f "$tmp/api.h" ] || return 0
+	tr -d '\r' <"$tmp/api.h" |
+		awk -F': *' 'tolower($1) ~ /^(x-)?(request|trace|correlation)-?id$|^traceparent$|^x-amzn-request-?id$/ && $2 ~ /^[A-Za-z0-9._:-]+$/ { gsub(/-/, ".", $2); printf "%s%s=%s", sep, tolower($1), $2; sep=" " }'
 }
 # api_why — текст ошибки ответа api, через redact.sed и обрезанный.
 # Ответ без этих полей (не JSON, пустой) — его начало или «тело пустое»:
