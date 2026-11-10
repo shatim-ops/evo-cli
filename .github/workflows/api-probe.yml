@@ -685,6 +685,48 @@ jobs:
             echo "evo не собран — P23 пропущена"
           fi
 
+          # Проба CMP-7 в cloud-e2e (прогоны 184 и 185, 10.11): image_get по
+          # имени образа упал, причина не попала в лог (решение владельца
+          # 10.11 — узнать здесь, только чтение). Образ — как у cloud-e2e
+          # (ubuntu-22.04, имя общего каталога — публично). Строки: image_get
+          # по имени — код выхода, reason, message (до 160 символов); сколько
+          # образов с этим именем в image_list каждого типа; image_get по id
+          # первого из них — различает «имя не разрешается» и «образ не
+          # читается». id — под маской.
+          echo "== CMP-7: image_get ubuntu-22.04 — причина отказа"
+          if command -v evo >/dev/null; then
+            ee=$(mktemp)
+            img=ubuntu-22.04
+            ig() {
+              local name=$1 out rc res
+              shift
+              out=$(evo tools call image_get "$@" --json 2>"$ee") && rc=0 || rc=$?
+              res=$(printf '%s' "$out" | jq -c '{fields: ((.fields // null) | if . == null then null else length end), ready: (.ready // null)}' 2>/dev/null | head -1 || true)
+              [ -n "$res" ] || res=$(jq -cR 'fromjson? | select(.error) | .error | {code, reason, message: ((.message // "") | tostring | .[0:160])}' "$ee" 2>/dev/null | head -1 || true)
+              [ -n "$res" ] || res="не JSON, stderr: $(head -c 160 "$ee" | tr '\n' ' ')"
+              printf 'cmp7_%-24s exit=%s %s\n' "$name" "$rc" "$res" | redact
+            }
+            ig image_get_by_name --arg "image=$img"
+            first=
+            for t in public marketplace; do
+              ids=$(evo tools call image_list --arg "type=$t" --json 2>/dev/null |
+                jq -r --arg n "$img" '[.images[]? | select(.name == $n) | .id // empty] | .[]' 2>/dev/null || true)
+              n=$(printf '%s' "$ids" | grep -c . || true)
+              printf 'cmp7_image_list_%-14s с именем %s: %s\n' "$t" "$img" "$n"
+              [ -n "$first" ] || first=$(printf '%s\n' "$ids" | head -1)
+            done
+            if [ -n "$first" ]; then
+              echo "::add-mask::$first"
+              ig image_get_by_id --arg "image_id=$first"
+            else
+              echo "cmp7_image_get_by_id           образа с этим именем в image_list нет — по id не проверено"
+            fi
+            rm -f "$ee"
+            unset ee img first ids n
+          else
+            echo "evo не собран — проба CMP-7 пропущена"
+          fi
+
           # CRT-1: инструкция «Просмотреть версии» — «…/versions?page.limit=10»,
           # «page.limit — … Максимальное значение — 1000, по умолчанию — 100»;
           # спецификация ccm.swagger.yaml — pageSize/pageToken, необязательные.

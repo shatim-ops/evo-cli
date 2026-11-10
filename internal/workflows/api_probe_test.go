@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 var (
@@ -65,5 +67,59 @@ func TestWorkflows_APIProbeChangesNothing(t *testing.T) {
 	}
 	if gones == 0 {
 		t.Error("api-probe: no gone call — the 404 of the products (D63) left the workflow, update the test")
+	}
+}
+
+var (
+	probeEvoCall = regexp.MustCompile(`\bevo\s+(?:--\S+\s+)*tools\s+call\s+("?\$?[A-Za-z_]+"?)(?:\s|$)`)
+	probeForList = regexp.MustCompile(`^\s*for\s+([a-z_]+)\s+in\s+([a-z_ ]+);`)
+)
+
+// api-probe runs evo itself too (P23; the cause of the refusal of
+// image_get in the probe CMP-7, 10.11): on the observer's key, with no
+// approval, a call of evo changes nothing — each tool it calls is one of
+// reading (not Mutating in the registry), named or listed in the for loop
+// it runs in, and no call carries --yes.
+func TestWorkflows_APIProbeEvoCallsOnlyRead(t *testing.T) {
+	j, ok := readWorkflows(t)["api-probe.yml"].Jobs["probe"]
+	if !ok {
+		t.Fatal("api-probe: no job probe")
+	}
+	reg := tools.New(nil)
+	calls := 0
+	for _, s := range j.Steps {
+		loops := map[string][]string{}
+		for _, l := range strings.Split(s.Run, "\n") {
+			if m := probeForList.FindStringSubmatch(l); m != nil {
+				loops[m[1]] = strings.Fields(m[2])
+			}
+			m := probeEvoCall.FindStringSubmatch(l)
+			if m == nil {
+				continue
+			}
+			if strings.Contains(l, "--yes") || strings.Contains(l, " -y ") {
+				t.Errorf("api-probe, %s: evo with --yes: %s", s.Name, strings.TrimSpace(l))
+			}
+			name := strings.Trim(m[1], `"`)
+			names := []string{name}
+			if v, isVar := strings.CutPrefix(name, "$"); isVar {
+				if names = loops[v]; names == nil {
+					t.Errorf("api-probe, %s: evo tools call of $%s, which no for loop of the step lists: %s", s.Name, v, strings.TrimSpace(l))
+				}
+			}
+			for _, n := range names {
+				calls++
+				tool, ok := reg.Lookup(n)
+				switch {
+				case !ok:
+					t.Errorf("api-probe, %s: evo tools call %s — no such tool", s.Name, n)
+				case tool.Mutating:
+					t.Errorf("api-probe, %s: evo tools call %s — a tool that changes the cloud", s.Name, n)
+				}
+			}
+		}
+	}
+	if calls == 0 {
+		t.Error("api-probe: no evo tools call — P23 left the workflow, update the test")
 	}
 }
