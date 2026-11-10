@@ -7,6 +7,7 @@ package login
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -30,12 +31,12 @@ func lockLogin(path string) (*loginLock, error) {
 	if err := config.MkdirPrivate(filepath.Dir(path)); err != nil {
 		return nil, at(stepLock, err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := config.OpenNoFollow(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, at(stepLock, err)
 	}
 	if err := config.LockFile(f); err != nil {
-		held, _ := os.ReadFile(path)
+		held, _ := io.ReadAll(io.NewSectionReader(f, 0, 64))
 		_ = f.Close()
 		if errors.Is(err, config.ErrLocked) {
 			return nil, at(stepLock, clierrors.New(clierrors.CodeStateLocked, eLoginRunning(filepath.Dir(path), portOf(string(held))), eLoginRunningHint()))

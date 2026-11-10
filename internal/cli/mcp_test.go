@@ -174,7 +174,9 @@ func TestBearerTokenWarning(t *testing.T) {
 		if (w != "") != c.warn {
 			t.Errorf("len %d: warning %q, want warn=%v", len(c.token), w, c.warn)
 		}
-		if c.warn && (!strings.Contains(w, "32") || !strings.Contains(w, "MCP_BEARER_TOKEN")) {
+		// Findings ledger 1.8, № 41: the warning names the risk, not only
+		// the length.
+		if c.warn && (!strings.Contains(w, "32") || !strings.Contains(w, "MCP_BEARER_TOKEN") || !strings.Contains(w, "guess")) {
 			t.Errorf("len %d: %q", len(c.token), w)
 		}
 	}

@@ -4,8 +4,8 @@
 
 //go:build !unix
 
-package journal
+package config
 
-// oNoFollow: there is no such flag here; openNoFollow checks the file it
+// oNoFollow: there is no such flag here; OpenNoFollow checks the file it
 // opened against Lstat of the path instead.
 const oNoFollow = 0

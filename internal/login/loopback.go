@@ -279,12 +279,20 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err := at(stepCallback, clierrors.New(clierrors.CodeAuthFailed, eProvider(e, q.Get("error_description")),
-			eProviderHint()))
+			eProviderHint(e)))
 		writePage(w, http.StatusOK, errorPage(err))
 		l.end(outcome{err: err})
 		return
 	}
-	if err := l.s.exchange(ctx, q.Get("code")); err != nil {
+	// This login's state with neither a code nor an error is no answer of
+	// the provider (a reload cut short, a probe that read the state): it
+	// is refused, and the login waits on for the redirect (№ 10, R3-F5).
+	code := q.Get("code")
+	if code == "" {
+		refuse(w, http.StatusForbidden)
+		return
+	}
+	if err := l.s.exchange(ctx, code); err != nil {
 		writePage(w, http.StatusOK, errorPage(err))
 		l.end(outcome{err: err})
 		return
