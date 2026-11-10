@@ -87,6 +87,8 @@ var deleteAdviceOwn = map[string]string{
 	"internal/login/texts.go\tTLogoutRevoke":      "the key evo login made, and the profile",
 	"internal/login/texts.go\tTLogoutDelete":      "the profile on disk",
 	"internal/login/texts.go\tTLogoutDone":        "the profile on disk",
+	"internal/login/texts.go\tkeyWords":           "the key evo login made",
+	"internal/login/texts.go\tTLogoutRejected":    "the key evo login made, which IAM no longer accepts",
 	"internal/login/texts.go\teKeyNotDeleted":     "the key evo login made",
 	"internal/login/texts.go\teKeyNotDeletedHint": "the key evo login made, which evo logout could not delete",
 	"internal/login/texts.go\tTLoginLong":         "evo logout deletes the key of evo login",

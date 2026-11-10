@@ -100,7 +100,8 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 	}
 
 	code, stdout, stderr = runCLI(t, "", "--json", "--yes", "--profile", "agent", "logout")
-	if code != 0 || !strings.Contains(stdout, `"key": "deleted"`) {
+	// The tokens the key was exchanged for live on: logout says until when.
+	if code != 0 || !strings.Contains(stdout, `"key": "deleted"`) || !strings.Contains(stdout, `"tokens_valid_until"`) {
 		t.Fatalf("logout: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	if len(w.Keys()) != 0 {
@@ -249,5 +250,38 @@ func TestLogin_KeyTTLWithoutUnitRefused(t *testing.T) {
 		if _, err := loginChoice("", "", ttl); err != nil {
 			t.Errorf("--key-ttl %s refused: %v", ttl, err)
 		}
+	}
+}
+
+// A key the console revoked: IAM no longer exchanges it, so nothing can be
+// revoked with it, and the profile with a dead key helps nobody. logout
+// deletes the profile and says what it could not check, not an error with
+// the profile kept (plan 1.8, B-5 round 3 (в); audit #1104).
+func TestLogout_KeyIAMRejectsDeletesTheProfile(t *testing.T) {
+	setupCLI(t)
+	w := loginworld.New(t, loginworld.Variant{AnyLoopbackPort: true})
+	oldCfg, oldIAM := loginConfig, auth.IAMEndpoint
+	t.Cleanup(func() { loginConfig, auth.IAMEndpoint = oldCfg, oldIAM })
+	auth.IAMEndpoint = w.URL + "/api/v1/auth/token"
+	loginConfig = func(say func(string, string), open func(string) error) login.Config {
+		c := login.Default(say, open)
+		c.AdminBase = w.URL
+		return c
+	}
+	creds := config.Credentials{}
+	creds.ForKey("revoked-key-0001", "secret-0001")
+	creds.Login = &config.LoginKey{ServiceAccountID: "sa-1", AccessKeyID: "ak-1"}
+	if err := config.SaveProfile("default", config.Profile{ProjectID: loginworld.Project}, creds); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runCLI(t, "", "--json", "--yes", "logout")
+	if code != 0 || !strings.Contains(stdout, `"key": "rejected"`) || !strings.Contains(stdout, `"note"`) {
+		t.Fatalf("logout of a revoked key: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	if _, _, found, _ := config.LoadProfile("default"); found {
+		t.Errorf("logout kept the profile of a key IAM rejects")
+	}
+	if strings.Contains(stdout+stderr, "secret-0001") {
+		t.Errorf("the secret reached the output")
 	}
 }
