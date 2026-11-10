@@ -317,15 +317,16 @@ func configChecks(cfg config.Config) []DoctorCheck {
 	// fails with CONFIG_INVALID, exit 2: doctor fails the same way, not
 	// "ok" with exit 0 (release audit, R-06).
 	// Without a key the key is the first thing to fix: the project is a
-	// warning then (plan 1.8, #1087, audit of 06.11).
+	// warning then, and evo login sets both (plan 1.8, #1087, audit of
+	// 06.11; findings ledger 1.8, № 86).
 	if cfg.ProjectID == "" {
 		ce := clierrors.ProjectRequired()
-		st := CheckFail
+		st, hint := CheckFail, ce.Hint
 		if cfg.KeyID == "" || cfg.Secret == "" {
-			st = CheckWarn
+			st, hint = CheckWarn, i18n.T("evo login sets it together with the key", "evo login задаст его вместе с ключом")
 		}
 		checks = append(checks, DoctorCheck{Name: "project_id", Status: st, Auth: true,
-			Detail: i18n.T("not set: ", "не задан: ") + ce.Hint})
+			Detail: i18n.T("not set: ", "не задан: ") + hint})
 	}
 	for _, w := range cfg.Warnings {
 		checks = append(checks, DoctorCheck{Name: "config", Status: CheckWarn, Detail: w})
@@ -414,8 +415,8 @@ func doctorVerdict(checks []DoctorCheck) error {
 		return nil
 	case authFailed:
 		return clierrors.New(clierrors.CodeConfigInvalid, msg,
-			i18n.T("Fix the configuration or credentials above, e.g. with 'evo configure'",
-				"Исправьте настройки или ключ (см. выше), например через 'evo configure'"))
+			i18n.T("Fix the configuration or credentials above: evo login (through the browser) or evo configure",
+				"Исправьте настройки или ключ (см. выше): evo login (через браузер) или evo configure"))
 	default:
 		return clierrors.New(clierrors.CodeAPIUnreachable, msg, "")
 	}

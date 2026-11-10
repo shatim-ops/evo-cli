@@ -65,6 +65,10 @@ jobs:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          # Проба L3: ВМ и проект, где у ключа наблюдателя роли нет (задаёт
+          # владелец в окружении cloud-readonly; нет секретов — пропуск).
+          FOREIGN_VM: ${{ secrets.CLOUDRU_FOREIGN_VM_ID }}
+          FOREIGN_PROJECT: ${{ secrets.CLOUDRU_FOREIGN_PROJECT_ID }}
         run: |
           set -euo pipefail
           [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] ||
@@ -469,6 +473,25 @@ jobs:
               "$kfields"' if type == "object" then (.cluster // .) as $k | {top: keys} + has3($k) else {type: type} end'
           fi
           unset kfields kid
+
+          # Проба L3 (план 1.8; заключение 43 «Риска», R-65; «да» владельца —
+          # до запуска): что отвечает Compute ключу без роли на живую ВМ
+          # чужого проекта — 403 или 404, — и чем это отличается от ВМ, которой
+          # нет. Если 404 и там и там, evo по ответу не отличит «ВМ удалена» от
+          # «ключ её не видит» (L3). Только GET; в лог — код HTTP, поле code и
+          # имена полей, id — замаскированы.
+          echo "== L3: ВМ чужого проекта — 403 или 404"
+          if [ -z "${FOREIGN_VM:-}" ] || [ -z "${FOREIGN_PROJECT:-}" ]; then
+            echo "l3: нет секретов CLOUDRU_FOREIGN_VM_ID и CLOUDRU_FOREIGN_PROJECT_ID — пропуск"
+          else
+            echo "::add-mask::$FOREIGN_VM"
+            echo "::add-mask::$FOREIGN_PROJECT"
+            l3='{code: (if type == "object" then (.code // .error_code // null) else null end), keys: (if type == "object" then keys else type end)}'
+            probe l3_vm_foreign          "https://compute.api.cloud.ru/api/v1/vms/$FOREIGN_VM" "$l3"
+            probe l3_vm_absent           "https://compute.api.cloud.ru/api/v1/vms/00000000-0000-4000-8000-000000000000" "$l3"
+            probe l3_vms_foreign_project "https://compute.api.cloud.ru/api/v1/vms?project_id=$FOREIGN_PROJECT&limit=1" "$l3"
+            probe l3_vms_own_project     "https://compute.api.cloud.ru/api/v1/vms?project_id=$PROJECT&limit=1" "$l3"
+          fi
 
           # k8s_nodepools без cluster_id звал GET /v3/nodePools без параметров
           # (API_ERROR в readonly #23); в спецификации clusterId — required.
