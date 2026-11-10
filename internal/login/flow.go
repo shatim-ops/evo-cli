@@ -21,6 +21,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // Audience is whom the key is for: the person (account evo) or an agent
@@ -92,6 +93,8 @@ type Saved struct {
 // caller.
 type Result struct {
 	Profile, ProjectID, ProjectName, Account, Role, KeyID string
+	// For is whom the key is for.
+	For Audience
 	// CustomerName is the organization of the project, for the page.
 	CustomerName string
 	// RoleExpiresAt is the role's actual term: a longer one the account
@@ -109,6 +112,7 @@ type Result struct {
 // B-5 are read by them). Never a token or a code.
 const (
 	stepDiscovery  = "discovery"
+	stepLock       = "lock"
 	stepListen     = "listen"
 	stepWait       = "wait"
 	stepCallback   = "callback"
@@ -182,6 +186,10 @@ type session struct {
 	cfg    Config
 	choice Choice
 	store  Store
+	// until is the end of the wait, which the consent page names.
+	until time.Time
+	// lock is the one login of this computer, while this one runs.
+	lock *loginLock
 
 	// consent is the token of the consent page (R-47): made with the page,
 	// never printed; /grant and /cancel take it with the state.
@@ -417,6 +425,20 @@ func forbidden(err error, project string) error {
 	return clierrors.Wrap(clierrors.CodeAuthFailed, eForbidden(project), eNoRightHint(), err)
 }
 
+// refused keeps a refusal of the platform other than 403, 409 and 429 in
+// the platform's own words, with a hint that a retry alone meets it again
+// (R-55: evo holds no limits of its own, IAM names them). The hint advises
+// no delete: what evo did not make may be a cluster's (R-56).
+func refused(err error, hint string) error {
+	st := iamadmin.StatusOf(err)
+	var ce *clierrors.CLIError
+	if st < 400 || st >= 500 || st == http.StatusForbidden || st == http.StatusConflict ||
+		st == http.StatusTooManyRequests || errors.As(err, &ce) {
+		return err
+	}
+	return clierrors.Wrap(clierrors.CodeAPIError, err.Error(), hint, err)
+}
+
 // noRightIn is the refusal of a person with the right in none of their
 // projects: the one project by its name, or how many there are.
 func noRightIn(ps []project) error {
@@ -433,11 +455,12 @@ func noRight(projectName string) error {
 }
 
 // orgList reads every page of a list of the Organization API with the
-// person's token.
+// person's token, through pager like every list of evo, at most
+// iamadmin.MaxPages pages: an empty page is the end of it
+// (pager.AllUntilEmpty, IAM-10).
 func (s *session) orgList(ctx context.Context, path string, q url.Values, key string) ([]map[string]any, error) {
 	var out []map[string]any
-	token := ""
-	for page := 0; page < iamadmin.MaxPages; page++ {
+	err := pager.AllUntilEmpty("organization: "+key, iamadmin.MaxPages, func(token string) (string, int, error) {
 		pq := url.Values{}
 		for k, v := range q {
 			pq[k] = v
@@ -451,12 +474,12 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {
-			return nil, err
+			return "", 0, err
 		}
 		req.Header.Set("Authorization", "Bearer "+s.human)
 		resp, err := s.cfg.HTTP.Do(req)
 		if err != nil {
-			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable,
+			return "", 0, clierrors.Wrap(clierrors.CodeAPIUnreachable,
 				eOrgUnreachable(),
 				clierrors.NetworkHint(err, eRetry()), err)
 		}
@@ -464,7 +487,7 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &m) != nil {
-			return nil, withStatus(clierrors.New(clierrors.CodeAPIError,
+			return "", 0, withStatus(clierrors.New(clierrors.CodeAPIError,
 				eOrgStatus(resp.StatusCode, path), eRetry()), resp.StatusCode)
 		}
 		xs, _ := m[key].([]any)
@@ -473,11 +496,13 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 				out = append(out, o)
 			}
 		}
-		if token, _ = m["next_page_token"].(string); token == "" {
-			return out, nil
-		}
+		next, _ := m["next_page_token"].(string)
+		return next, len(xs), nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil, clierrors.New(clierrors.CodeAPIError, eOrgPages(path), "")
+	return out, nil
 }
 
 func str(m map[string]any, k string) string {
@@ -493,14 +518,16 @@ type plan struct {
 	days     int
 	term     time.Time
 	saID     string // the account of that name, when there is one
-	keys     int    // its keys
 	profile  string
 	previous *Previous
 }
 
 // planFor checks the chosen access before the question (axis 1 of the
-// contract): the right asked again for this project, the limits of IAM by
-// the lists (#563; confirmed by IAM).
+// contract): the right asked again for this project, and the account by its
+// name. No limit of accounts or keys is checked here: none is known — «10
+// accounts» (#563) was refuted live (acceptance C2.1, 06.11: 20 and 18) —
+// and IAM's refusal at the write is the answer, with what this login made
+// undone (R-44).
 func (s *session) planFor(ctx context.Context, p project, aud Audience, days int) (plan, error) {
 	pl := plan{p: p, aud: aud, days: days, profile: s.store.Profile(aud), previous: s.store.Previous(aud),
 		term: s.cfg.Now().Add(time.Duration(days) * 24 * time.Hour).UTC().Truncate(time.Second)}
@@ -517,38 +544,16 @@ func (s *session) planFor(ctx context.Context, p project, aud Audience, days int
 			return pl, at(stepEvaluate, noRight(p.Name))
 		}
 	}
-	// 13. The account by its name: reused, its keys within the limit.
+	// 13. The account by its name: reused when there.
 	sas, err := s.admin.ServiceAccounts(ctx, p.ID, aud.account())
 	if err != nil {
 		return pl, at(stepAccount, err)
 	}
 	if len(sas) > 0 {
 		pl.saID = sas[0].ID
-		keys, err := s.admin.AccessKeys(ctx, pl.saID)
-		if err != nil {
-			return pl, at(stepAccount, err)
-		}
-		if pl.keys = len(keys); pl.keys >= maxKeys {
-			return pl, at(stepAccount, clierrors.New(clierrors.CodeUsage, eKeyLimit(aud.account(), pl.keys), eKeyLimitHint(aud.account())))
-		}
-		return pl, nil
-	}
-	all, err := s.admin.ServiceAccounts(ctx, p.ID, "")
-	if err != nil {
-		return pl, at(stepAccount, err)
-	}
-	if len(all) >= maxAccounts {
-		return pl, at(stepAccount, clierrors.New(clierrors.CodeUsage, eAccountLimit(p.Name, len(all)), eAccountLimitHint()))
 	}
 	return pl, nil
 }
-
-// The limits of IAM, refused before any write (#563; confirmed by IAM):
-// service accounts of a project, access keys of an account.
-const (
-	maxAccounts = 10
-	maxKeys     = 50
-)
 
 // grant makes the planned access (steps 14–19), the key last; a failure
 // after a write undoes what this login made, newest first (R-44). say tells
@@ -570,7 +575,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	}
 	aud, p := pl.aud, pl.p
 	res := Result{Profile: pl.profile, ProjectID: p.ID, ProjectName: p.Name, CustomerName: p.CustomerName,
-		Account: aud.account(), Role: auth.LoginRoleName}
+		Account: aud.account(), For: aud, Role: auth.LoginRoleName}
 	now := s.cfg.Now()
 	desc := fmt.Sprintf("evo login, %s, %s", s.who.Login, now.UTC().Format("2006-01-02"))
 
@@ -592,7 +597,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 			}
 			sa, res.AccountReused = again[0].ID, true
 		default:
-			return res, at(stepAccount, forbidden(err, p.Name))
+			return res, at(stepAccount, refused(forbidden(err, p.Name), eAccountRefusedHint()))
 		}
 	}
 	say(tStepAccount(aud.account(), res.AccountReused))
@@ -609,7 +614,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	// 16. The key, last.
 	key, err := s.admin.CreateAccessKey(ctx, sa, desc, time.Duration(pl.days)*24*time.Hour)
 	if err != nil {
-		return res, at(stepKey, err)
+		return res, at(stepKey, refused(forbidden(err, p.Name), eKeyRefusedHint(aud.account())))
 	}
 	s.made = append(s.made, undo{tUndoKey(),
 		func(ctx context.Context) error { return s.admin.DeleteAccessKey(ctx, sa, key.ID) }})
@@ -654,7 +659,16 @@ func (s *session) role(ctx context.Context, p project, sa string, term time.Time
 	if len(perms) > 0 {
 		have, perr := time.Parse(time.RFC3339, perms[0].ExpiresAt)
 		if perms[0].ExpiresAt != "" && (perr != nil || have.Before(term)) {
-			return term, s.admin.ExtendPermission(ctx, perms[0].ID, term)
+			if err := s.admin.ExtendPermission(ctx, perms[0].ID, term); err != nil {
+				return term, err
+			}
+			// A later refusal moves the term back (R-55); an unreadable
+			// one has nothing to go back to.
+			if perr == nil {
+				s.made = append(s.made, undo{tUndoRoleTerm(),
+					func(ctx context.Context) error { return s.admin.ExtendPermission(ctx, perms[0].ID, have) }})
+			}
+			return term, nil
 		}
 		if perms[0].ExpiresAt == "" {
 			return term, nil
@@ -725,17 +739,21 @@ func (s *session) rollback(ctx context.Context, cause error) error {
 		code = clierrors.CodeAPIError
 	}
 	var why string
+	next := eRetry()
 	details := map[string]any{"created": made, "undone": undone, "left": left}
 	var ce *clierrors.CLIError
 	if errors.As(cause, &ce) {
 		why = ce.Message
+		if ce.Hint != "" {
+			next = ce.Hint
+		}
 		for k, v := range ce.Details {
 			details[k] = v
 		}
 	} else {
 		why = cause.Error()
 	}
-	out := clierrors.Wrap(code, eNotComplete(why, made, undone, left), eNotCompleteHint(len(left) > 0), cause)
+	out := clierrors.Wrap(code, eNotComplete(why, made, undone, left), eNotCompleteHint(len(left) > 0, next), cause)
 	out.Details = details
 	return out
 }

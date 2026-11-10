@@ -13,6 +13,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -49,7 +51,19 @@ type browser struct {
 
 var stateField = regexp.MustCompile(`name="state" value="([^"]+)"`)
 var consentField = regexp.MustCompile(`name="consent" value="([^"]+)"`)
-var checkedProject = regexp.MustCompile(`name="project" id="p\d+" value="([^"]+)" required checked`)
+var checkedProject = regexp.MustCompile(`<option id="p\d+" value="([^"]+)" selected>`)
+var firstProject = regexp.MustCompile(`<option id="p\d+" value="([^"]+)">`)
+
+// pickProject is the project a person sends from the consent page: the one
+// picked beforehand, or the first the list lets choose.
+func pickProject(page string) string {
+	for _, re := range []*regexp.Regexp{checkedProject, firstProject} {
+		if p := re.FindStringSubmatch(page); p != nil {
+			return p[1]
+		}
+	}
+	return ""
+}
 
 func (b *browser) open(authURL string) error {
 	go func() {
@@ -92,8 +106,8 @@ func (b *browser) open(authURL string) error {
 		if t := consentField.FindStringSubmatch(b.page); t != nil {
 			f.Set("consent", t[1])
 		}
-		if p := checkedProject.FindStringSubmatch(b.page); p != nil {
-			f.Set("project", p[1])
+		if p := pickProject(b.page); p != "" {
+			f.Set("project", p)
 		}
 		if b.form != nil {
 			b.form(f)
@@ -123,6 +137,9 @@ func worldConfig(w *loginworld.World, out io.Writer, open func(string) error) Co
 	c.Trusted = func(u string) bool { return strings.HasPrefix(u, w.URL+"/") }
 	c.HTTP = w.Client()
 	c.Wait = 20 * time.Second
+	// The lock of the one login: the world's own, shared by the logins of
+	// one world (TestLogin_SecondLoginRefusedWhileOneWaits).
+	c.LockPath = filepath.Join(os.TempDir(), fmt.Sprintf("evo-login-%p.lock", w))
 	// Port 0: the tests share no fixed port (the world takes any loopback
 	// port); the registered ones are held by TestLogin_RegisteredPorts.
 	c.Ports = []int{0}
@@ -170,13 +187,8 @@ func (m *memStore) Save(a Audience, s Saved) error {
 	return nil
 }
 
+// login runs evo login on the world with the browser b.
 func login(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previous, saveErr error) run {
-	t.Helper()
-	return loginWith(t, w, b, ch, prev, saveErr, nil)
-}
-
-// loginWith is login with the terminal's answers: nil is no terminal.
-func loginWith(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previous, saveErr error, answers []string) run {
 	t.Helper()
 	b.t, b.w, b.ended = t, w, make(chan struct{})
 	var out bytes.Buffer
@@ -184,19 +196,6 @@ func loginWith(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *P
 	st := &memStore{prev: prev, saveErr: saveErr}
 	cfg := worldConfig(w, &out, b.open)
 	cfg.Tell = func(line string) { fmt.Fprintln(&out, line) }
-	if answers != nil {
-		cfg.Ask = func(_ context.Context, prompt string) (string, error) {
-			fmt.Fprint(&out, prompt)
-			if len(answers) == 0 {
-				t.Errorf("an unexpected question: %q", prompt)
-				return "", io.EOF
-			}
-			a := answers[0]
-			answers = answers[1:]
-			fmt.Fprintln(&out, a)
-			return a, nil
-		}
-	}
 	res, err := Login(context.Background(), cfg, ch, st)
 	r.saved, r.auds = st.saved, st.auds
 	r.res, r.err, r.out = res, err, out.String()
@@ -245,13 +244,23 @@ func TestLogin_Variants(t *testing.T) {
 		{"account exists", loginworld.Variant{AccountExists: true}, "", 1, 1, []string{"!POST /api/v2/serviceAccounts"}},
 		{"409 on the account", loginworld.Variant{Conflict409: true}, "", 1, 1, []string{"POST /api/v2/serviceAccounts"}},
 		{"role shorter: PUT", loginworld.Variant{Perm: loginworld.PermShorter}, "", 1, 1, []string{"PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
-		{"broken at the key after a PUT: the term stays", loginworld.Variant{Perm: loginworld.PermShorter, FailAt: loginworld.StepKey}, clierrors.CodeAPIError, 1, 0, []string{"!DELETE /api/v3/permissions/", "!DELETE /api/v2/serviceAccounts/"}},
+		// R-55 («Риск», conclusion 33): the term moved forward for this key
+		// is moved back when the key is not made — not deleted, it was there.
+		{"broken at the key after a PUT: the term goes back", loginworld.Variant{Perm: loginworld.PermShorter, FailAt: loginworld.StepKey}, clierrors.CodeAPIError, 1, 0, []string{"!DELETE /api/v3/permissions/", "!DELETE /api/v2/serviceAccounts/"}},
 		{"role longer: no write", loginworld.Variant{Perm: loginworld.PermLonger}, "", 1, 1, []string{"!PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
 		{"403 on permissions", loginworld.Variant{PermForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"403 on the account", loginworld.Variant{AccountForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"role name collision", loginworld.Variant{RoleCollision: true}, "", 1, 1, []string{"GET /api/v1/roles"}},
-		{"account limit", loginworld.Variant{AccountLimit: true}, clierrors.CodeUsage, 0, 0, []string{"!POST /api/v2/serviceAccounts"}},
-		{"key limit", loginworld.Variant{KeyLimit: true}, clierrors.CodeUsage, 1, 0, []string{"!POST /api/v2/serviceAccounts/", "!POST /api/v3/permissions"}},
+		// Acceptance B-5, 06.11: a project of 20 accounts, where IAM creates
+		// one more; evo refused before any write by a limit of its own.
+		{"many accounts, IAM creates one more", loginworld.Variant{OtherAccounts: 20}, "", 1, 1, []string{"POST /api/v2/serviceAccounts", "POST /api/v3/permissions"}},
+		// Acceptance B-5, 06.11: 8 accounts in the project, evo counted 16 —
+		// the list of the project shows the organization's accounts too.
+		{"accounts of the organization are not the project's", loginworld.Variant{OtherAccounts: 8, OrgAccounts: 8}, "", 1, 1, []string{"POST /api/v2/serviceAccounts", "POST /api/v3/permissions"}},
+		// No limit of IAM is known: IAM's refusal at the write is the
+		// answer, and what this login made is undone (R-44, R-55).
+		{"account limit", loginworld.Variant{AccountLimit: true}, clierrors.CodeAPIError, 0, 0, []string{"POST /api/v2/serviceAccounts"}},
+		{"key limit", loginworld.Variant{KeyLimit: true}, clierrors.CodeAPIError, 1, 0, []string{"POST /api/v3/permissions", "DELETE /api/v3/permissions/"}},
 		{"broken at the account", loginworld.Variant{FailAt: loginworld.StepAccount}, clierrors.CodeAPIError, 0, 0, nil},
 		{"broken at the permission", loginworld.Variant{FailAt: loginworld.StepPermission}, clierrors.CodeAPIError, 0, 0, nil},
 		{"broken at the key", loginworld.Variant{FailAt: loginworld.StepKey}, clierrors.CodeAPIError, 0, 0, nil},
@@ -455,7 +464,7 @@ func TestLogin_RefusalNamesStepAndStatus(t *testing.T) {
 		{loginworld.Variant{ExpiredCode: true}, stepToken, http.StatusBadRequest},
 		{loginworld.Variant{BadIDToken: "nonce"}, stepIDToken, 0},
 		{loginworld.Variant{Denied: true}, stepBulk, 0},
-		{loginworld.Variant{AccountLimit: true}, stepAccount, 0},
+		{loginworld.Variant{AccountLimit: true}, stepAccount, http.StatusBadRequest},
 		{loginworld.Variant{FailAt: loginworld.StepPermission}, stepPermission, http.StatusInternalServerError},
 		{loginworld.Variant{FailAt: loginworld.StepKey}, stepKey, http.StatusInternalServerError},
 	}
@@ -488,33 +497,31 @@ func detailsOf(ce *clierrors.CLIError) map[string]any {
 	return ce.Details
 }
 
-// A terminal only gathers the choice before the browser: the summary
-// first, then the address; the page offers the choice and grants.
-func TestLogin_TerminalGathersThePageGrants(t *testing.T) {
+// The page grants what it chooses: the terminal asks nothing, and the
+// consent is the page's button, not a [y/N] (the owner's decision of 06.11).
+func TestLogin_PageGrantsWhatItChooses(t *testing.T) {
 	w := newWorld(t, loginworld.Variant{})
 	b := &browser{form: func(f url.Values) { f.Set("audience", "agent"); f.Set("ttl", "90") }}
-	r := loginWith(t, w, b, Choice{}, nil, nil, []string{"", "90"})
+	r := login(t, w, b, Choice{}, nil, nil)
 	if r.err != nil || len(r.saved) != 1 || r.res.Profile != "agent" {
 		t.Fatalf("err %v; saved %d; result %+v\n%s", r.err, len(r.saved), r.res, r.out)
-	}
-	if sum, open := strings.Index(r.out, tWhatWillBeDone()), strings.Index(r.out, tOpen()); sum < 0 || open < sum {
-		t.Errorf("the summary is not before the address:\n%s", r.out)
 	}
 	if strings.Contains(r.out, "[y/N]") {
 		t.Errorf("the terminal asks for the consent:\n%s", r.out)
 	}
 }
 
-// The page offers the terminal's choice checked.
-func TestLogin_PageOffersTheTerminalChoice(t *testing.T) {
+// The page offers the flags' choice checked («Риск», addition to
+// conclusion 34: the default «Мне» does not override --for).
+func TestLogin_PageOffersTheFlagsChoice(t *testing.T) {
 	w := newWorld(t, loginworld.Variant{})
 	b := &browser{cancel: true}
-	r := loginWith(t, w, b, Choice{}, nil, nil, []string{"2", "90"})
+	r := login(t, w, b, Choice{For: ForAgent, Days: 90}, nil, nil)
 	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 {
 		t.Fatalf("err %v; accounts %+v", r.err, w.Accounts())
 	}
 	if !strings.Contains(b.consent, `value="agent" checked`) || !strings.Contains(b.consent, `value="90" checked`) {
-		t.Errorf("the page does not offer the terminal's choice")
+		t.Errorf("the page does not offer the flags' choice")
 	}
 }
 
@@ -650,5 +657,167 @@ func TestLogin_SaysThePageName(t *testing.T) {
 	r := login(t, w, &browser{}, Choice{}, nil, nil)
 	if r.err != nil || strings.Count(r.out, tOpenPage()) != 1 || strings.Index(r.out, tOpenPage()) > strings.Index(r.out, tOpen()) {
 		t.Errorf("err %v:\n%s", r.err, r.out)
+	}
+}
+
+// IAM-10 (acceptance B-5, 06.11, a blocker of 1.8): past its items the
+// Organization API answers empty pages, each with a new token. orgList read
+// them to the limit of pages and refused every person with «too many
+// pages»; an empty page is the end of the list.
+func TestLogin_EmptyPagesWithATokenEndTheList(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{EmptyPagesWithToken: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if r.err != nil || len(r.saved) != 1 {
+		t.Fatalf("login with empty pages after the items: err %v; saved %d\n%s", r.err, len(r.saved), r.out)
+	}
+}
+
+// «Риск» to IAM-10 (the blocker of B-5): a person of no organization gets
+// the empty first page of /v3/customers with a token, as past the last
+// item. Its first empty page ends the list: login reads it once and
+// refuses as for no project — USAGE, before any write — not «too many
+// pages» and not a wait for more pages.
+func TestLogin_NoCustomersFirstPageWithToken(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{NoCustomersWithToken: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	if reasonOf(r.err) != clierrors.CodeUsage || len(r.saved) != 0 || len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
+		t.Fatalf("ended %v (%s); saved %d, accounts %d, keys %d — want USAGE before any write", r.err, reasonOf(r.err), len(r.saved), len(w.Accounts()), len(w.Keys()))
+	}
+	n := 0
+	for _, c := range w.Calls() {
+		if strings.HasPrefix(c, "GET /v3/customers") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("/v3/customers read %d times; its empty first page ends the list", n)
+	}
+}
+
+// R-55 («Риск», conclusion 33): a login that moved the role's term forward
+// and was refused the key — a limit of the platform or any other refusal —
+// moves the term back: the account is left with the role it had, not with
+// a longer one and no key.
+func TestLogin_KeyRefusedAfterThePUTMovesTheTermBack(t *testing.T) {
+	for name, v := range map[string]loginworld.Variant{
+		"key broken":  {Perm: loginworld.PermShorter, FailAt: loginworld.StepKey},
+		"key refused": {Perm: loginworld.PermShorter, KeyLimit: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t, v)
+			before := w.Permissions()
+			r := login(t, w, &browser{}, Choice{}, nil, nil)
+			if r.err == nil {
+				t.Fatal("the login went through")
+			}
+			after := w.Permissions()
+			// The term travels as RFC 3339: seconds are what comes back.
+			if len(before) != 1 || len(after) != 1 || !after[0].ExpiresAt.Equal(before[0].ExpiresAt.Truncate(time.Second)) {
+				t.Errorf("the role's term: before %v, after %v — want it moved back", before, after)
+			}
+		})
+	}
+}
+
+// A refusal of the platform at a write (R-55): 403 is AUTH_FAILED at the
+// key as at the account; another 4xx keeps the platform's own words and
+// does not ask to retry what will be refused again.
+func TestLogin_RefusalAtTheWriteSaysWhatToDo(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		v    loginworld.Variant
+		code string
+		says string
+	}{
+		{"account 403", loginworld.Variant{AccountForbidden: true}, clierrors.CodeAuthFailed, ""},
+		{"key 403", loginworld.Variant{KeyForbidden: true}, clierrors.CodeAuthFailed, ""},
+		{"account 400", loginworld.Variant{AccountLimit: true}, clierrors.CodeAPIError, "service account limit reached"},
+		{"key 400", loginworld.Variant{KeyLimit: true}, clierrors.CodeAPIError, "access key limit reached"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := login(t, newWorld(t, c.v), &browser{}, Choice{}, nil, nil)
+			var ce *clierrors.CLIError
+			if !errors.As(r.err, &ce) || ce.Code != c.code {
+				t.Fatalf("got %v, want %s", r.err, c.code)
+			}
+			if !strings.Contains(ce.Message, c.says) {
+				t.Errorf("message %q lost the platform's words %q", ce.Message, c.says)
+			}
+			if ce.Hint == eRetry() {
+				t.Errorf("hint %q asks to retry a refusal", ce.Hint)
+			}
+			// R-56: the owner, told to delete an unused account, nearly
+			// deleted the service accounts of Kubernetes clusters.
+			if regexp.MustCompile(`(?i)delet|remov|удал`).MatchString(ce.Hint) {
+				t.Errorf("hint %q advises a delete of what evo did not make", ce.Hint)
+			}
+		})
+	}
+}
+
+// A grant without a project — what required keeps the browser from
+// sending — is refused by evo before any write (plan 1.8, #1084).
+func TestLogin_GrantWithoutAProjectIsRefused(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	b := &browser{form: func(f url.Values) { f.Set("project", "") }}
+	r := login(t, w, b, Choice{}, nil, nil)
+	if reasonOf(r.err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
+		t.Fatalf("err %v; accounts %+v; keys %+v", r.err, w.Accounts(), w.Keys())
+	}
+}
+
+// Plan 1.8, #1087 (audit of 06.11): the end of the wait is not a Ctrl-C —
+// its own code LOGIN_TIMEOUT, exit 1, «not completed within N min», nothing
+// made; a Ctrl-C stays INTERRUPTED, 130.
+func TestLogin_TimeoutIsNotAnInterrupt(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	var out bytes.Buffer
+	cfg := worldConfig(w, &out, func(string) error { return nil }) // the person never comes
+	cfg.Wait = 50 * time.Millisecond                               // wall-clock: a share of the production wait, to end the test
+	_, err := Login(context.Background(), cfg, Choice{}, &memStore{})
+	if clierrors.Reason(err) != clierrors.CodeLoginTimeout || clierrors.ExitCode(err) != clierrors.ExitGeneral || len(w.Accounts()) != 0 {
+		t.Fatalf("err %v (reason %s, exit %d); accounts %d", err, clierrors.Reason(err), clierrors.ExitCode(err), len(w.Accounts()))
+	}
+	var ce *clierrors.CLIError
+	if !errors.As(err, &ce) || ce.Hint == "" || !strings.Contains(ce.Hint, "evo login") {
+		t.Errorf("no hint to run evo login again: %v", err)
+	}
+}
+
+// After the wait the loopback is gone — a reload of the page meets no
+// server — and no page of evo was kept by the browser: every answer is
+// no-store (plan 1.8, #1087: after F5 the tab showed the form again).
+func TestLogin_AfterTheWaitThePageIsGone(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	var out bytes.Buffer
+	pageURL := make(chan string, 1)
+	cfg := worldConfig(w, &out, func(u string) error {
+		resp, err := http.Get(u) // the person signs in and sees the consent page
+		if err == nil {
+			if cc := resp.Header.Get("Cache-Control"); cc != "no-store" {
+				t.Errorf("the consent page is %q, want no-store", cc)
+			}
+			pageURL <- resp.Request.URL.String()
+			resp.Body.Close()
+		}
+		return nil
+	})
+	cfg.Wait = 200 * time.Millisecond // wall-clock: a share of the production wait, to end the test
+	if _, err := Login(context.Background(), cfg, Choice{}, &memStore{}); clierrors.Reason(err) != clierrors.CodeLoginTimeout {
+		t.Fatalf("err %v, want LOGIN_TIMEOUT", err)
+	}
+	u := <-pageURL
+	if resp, err := http.Get(u); err == nil {
+		resp.Body.Close()
+		t.Errorf("after the wait %s still answers %d", u, resp.StatusCode)
+	}
+	// «Риск», conclusion 35.2: a grant after the wait writes nothing.
+	pu, _ := url.Parse(u)
+	if resp, err := http.PostForm(pu.Scheme+"://"+pu.Host+"/grant", url.Values{"project": {"p"}}); err == nil {
+		resp.Body.Close()
+		t.Errorf("after the wait /grant answers %d", resp.StatusCode)
+	}
+	if len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
+		t.Errorf("after the wait something was made")
 	}
 }

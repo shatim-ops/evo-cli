@@ -133,22 +133,13 @@ func (k *walk) run() outcome {
 	if _, m := k.do(http.MethodGet, "/api/v1/permissions/evaluate?resourceId="+Project, nil, human); m["accessGranted"] != true {
 		return outcome{"AUTH_FAILED", "evaluate"}
 	}
-	// Limits are refused before any write.
-	_, all := k.do(http.MethodGet, "/api/v2/serviceAccounts?target.projectId="+Project, nil, human)
-	accounts, _ := all["serviceAccounts"].([]any)
-	// 13. The account by name.
+	// 13. The account by name. No limit of accounts or keys is checked
+	// before the write: none is known (acceptance C2.1, 06.11) — IAM's
+	// refusal at the write is the answer, with what the walk made undone.
 	_, m = k.do(http.MethodGet, "/api/v2/serviceAccounts?target.projectId="+Project+"&filter=name=evo", nil, human)
 	sa := ""
 	if l, _ := m["serviceAccounts"].([]any); len(l) == 1 {
 		sa = l[0].(map[string]any)["id"].(string)
-	}
-	if sa == "" && len(accounts) >= 10 {
-		return outcome{"USAGE", "account limit"}
-	}
-	if sa != "" { // its keys: the limit before any write
-		if _, m := k.do(http.MethodGet, "/api/v2/serviceAccounts/"+sa+"/accessKeys", nil, human); len(m["accessKeys"].([]any)) >= 50 {
-			return outcome{"USAGE", "key limit"}
-		}
 	}
 	// 14. Create it; 409 — list again and reuse.
 	if sa == "" {
@@ -168,7 +159,7 @@ func (k *walk) run() outcome {
 	}
 	// 15. The role until the key's expiry: PUT a shorter one, keep a longer one.
 	exp := time.Now().Add(k.ttl).UTC().Truncate(time.Second)
-	code, m := k.do(http.MethodGet, "/api/v3/permissions?filter="+url.QueryEscape("resource_id="+Project+" AND subject_id="+sa+" AND role_name="+RoleName), nil, human)
+	code, m := k.do(http.MethodGet, "/api/v3/permissions?filter="+url.PathEscape("resource_id="+Project+" AND subject_id="+sa+" AND role_name="+RoleName), nil, human)
 	if code != 200 {
 		k.rollback(human)
 		return outcome{"API_ERROR", "permission"}
@@ -278,8 +269,10 @@ func TestLoginWorld_ReferenceWalk(t *testing.T) {
 		{"role longer: no write", Variant{Perm: PermLonger}, outcome{}, 1, 1, []string{"!PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
 		{"403 on permissions", Variant{PermForbidden: true}, outcome{"API_ERROR", "permission"}, 0, 0, nil},
 		{"role name collision", Variant{RoleCollision: true}, outcome{}, 1, 1, []string{"GET /api/v1/roles"}},
-		{"account limit", Variant{AccountLimit: true}, outcome{"USAGE", "account limit"}, 0, 0, []string{"!POST /api/v2/serviceAccounts"}},
-		{"key limit", Variant{KeyLimit: true}, outcome{"USAGE", "key limit"}, 1, 0, []string{"!POST /api/v2/serviceAccounts/", "!POST /api/v3/permissions"}},
+		{"account limit", Variant{AccountLimit: true}, outcome{"API_ERROR", "account"}, 0, 0, []string{"POST /api/v2/serviceAccounts"}},
+		{"key limit", Variant{KeyLimit: true}, outcome{"API_ERROR", "key"}, 1, 0, []string{"POST /api/v3/permissions", "DELETE /api/v3/permissions/"}},
+		{"many accounts: IAM creates one more", Variant{OtherAccounts: 20}, outcome{}, 1, 1, []string{"POST /api/v2/serviceAccounts"}},
+		{"accounts of the organization in the list", Variant{OtherAccounts: 8, OrgAccounts: 8}, outcome{}, 1, 1, []string{"POST /api/v2/serviceAccounts"}},
 		{"broken at the account", Variant{FailAt: StepAccount}, outcome{"API_ERROR", "account"}, 0, 0, nil},
 		{"broken at the permission", Variant{FailAt: StepPermission}, outcome{"API_ERROR", "permission"}, 0, 0, nil},
 		{"broken at the key", Variant{FailAt: StepKey}, outcome{"API_ERROR", "key"}, 0, 0, nil},

@@ -1,0 +1,1 @@
+{"mcpServers":{"evo":{"command":"/usr/local/bin/evo","args":["mcp","--toolsets","vm"]}}}

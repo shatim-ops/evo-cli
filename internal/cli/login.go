@@ -82,9 +82,6 @@ func newLoginCmd() *cobra.Command {
 				cfg.Open = nil
 			}
 			cfg.Tell = loginTell(cmd)
-			if !flagJSON && stdinIsTerminal() {
-				cfg.Ask = newConsole(os.Stdin, cmd.ErrOrStderr(), true).ask
-			}
 			res, err := login.Login(cmd.Context(), cfg, choice, store)
 			if err != nil {
 				return err
@@ -116,6 +113,9 @@ func newLoginCmd() *cobra.Command {
 				printer.Hint(login.TResultReused(res.Account, prev))
 			}
 			printer.Hint(login.TResultCheck(res.Profile))
+			if res.For == login.ForMe {
+				printer.Hint(login.TResultForAgent())
+			}
 			if res.PreviousNote != "" {
 				printer.Warning(res.PreviousNote)
 			}
@@ -204,8 +204,11 @@ func loginChoice(project, forWhom, ttl string) (login.Choice, error) {
 		return c, clerrors.New(clerrors.CodeUsage, login.EFor(forWhom), "")
 	}
 	if ttl != "" {
-		n, err := strconv.Atoi(strings.TrimSuffix(ttl, "d"))
-		ok := err == nil
+		// The term is «7d», «30d» or «90d»: «7» alone is refused, as the
+		// help names the values with «d» (plan 1.8, #1087).
+		days, hasD := strings.CutSuffix(ttl, "d")
+		n, err := strconv.Atoi(days)
+		ok := err == nil && hasD
 		if ok {
 			ok = false
 			for _, d := range login.Terms {

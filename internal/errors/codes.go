@@ -35,8 +35,9 @@ const (
 	CodeServerBusy = "SERVER_BUSY" // exit 1
 
 	CodeConfirmationRequired = "CONFIRMATION_REQUIRED"
-	CodeUsage                = "USAGE"     // unknown command or flag, bad arguments
-	CodeNotFound             = "NOT_FOUND" // any object other than a VM; exit 4
+	CodeUsage                = "USAGE"         // unknown command or flag, bad arguments
+	CodeNotFound             = "NOT_FOUND"     // any object other than a VM; exit 4
+	CodeLoginTimeout         = "LOGIN_TIMEOUT" // evo login: the person did not finish in the wait; exit 1
 )
 
 // Reasons of JSON errors that carry no CLIError (see Reason).
@@ -54,7 +55,7 @@ var knownCodes = map[string]bool{
 	CodeComposeInvalid: true, CodeComposeNotFound: true, CodeUploadFailed: true, CodeComposeFailed: true,
 	CodeConfigInvalid: true, CodeStateCorrupted: true, CodeStateLocked: true,
 	CodeUnhealthy: true, CodeDeployInProgress: true, CodeConfirmationRequired: true, CodeUsage: true,
-	CodeNotFound: true, CodeServerBusy: true,
+	CodeNotFound: true, CodeServerBusy: true, CodeLoginTimeout: true,
 }
 
 // IsCode reports whether s is one of the codes above ("API_UNREACHABLE").
