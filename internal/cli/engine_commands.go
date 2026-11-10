@@ -259,6 +259,7 @@ compose file changed (with --force, even if it did not).`, `Развернуть
 	cmd.Flags().StringVar(&flavor, "flavor", "", i18n.T("VM flavor (default: auto)", "Flavor ВМ (по умолчанию auto — подбор по сервисам)"))
 	cmd.Flags().StringVar(&region, "region", "", i18n.T("Availability zone: a name such as ru.AZ-2 or its UUID (evo vm zones)", "Зона доступности: имя (например, ru.AZ-2) или UUID (evo vm zones)"))
 	cmd.Flags().StringVar(&projectID, "project-id", "", i18n.T("Cloud.ru project UUID", "UUID проекта Cloud.ru"))
+	noEmptyScope(cmd.Flags())
 	cmd.Flags().StringVar(&imageID, "image-id", "", i18n.T("Boot image UUID", "UUID загрузочного образа"))
 	cmd.Flags().StringVar(&image, "image", "", i18n.T("Boot image: a name from 'evo image list' or a UUID (Ubuntu or Debian)",
 		"Загрузочный образ: имя из 'evo image list' или UUID (Ubuntu или Debian)"))

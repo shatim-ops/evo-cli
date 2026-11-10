@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -44,25 +45,81 @@ func TestContract_ProtocolVersionFallsBack(t *testing.T) {
 	}
 }
 
-// docs/mcp.md does not require initialize before tools/call, and does not
-// forbid a second initialize. Both are accepted.
-func TestContract_InitializeIsOptional(t *testing.T) {
+// D89 («Риск», conclusion 38): over stdio a request before initialize is
+// refused with -32002 «server not initialized» (MCP, lifecycle) — the
+// agent would work without the instructions of initialize; ping and the
+// notifications pass. A second initialize is accepted, and the next run
+// is a session of its own.
+func TestContract_InitializeRequiredOnStdio(t *testing.T) {
 	s := newTestServer()
-	got := runLines(t, s,
+	got := rawLines(t, s,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status","arguments":{}}}`,
-		`{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
-		`{"jsonrpc":"2.0","id":3,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":3,"method":"ping"}`,
+		`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}`,
+		`{"jsonrpc":"2.0","id":6,"method":"tools/list"}`,
 	)
-	if len(got) != 3 {
-		t.Fatalf("got %d responses", len(got))
+	if len(got) != 6 {
+		t.Fatalf("got %d responses: %v", len(got), got)
 	}
-	if rpcCode(got[0]) != 0 && got[0].(map[string]any)["result"] == nil {
-		t.Fatalf("tools/call before initialize: %v", got[0])
+	for i := 0; i < 2; i++ {
+		if rpcCode(got[i]) != codeNotInitialized {
+			t.Errorf("request %d before initialize: %v, want %d", i+1, got[i], codeNotInitialized)
+		}
 	}
-	a, _ := got[1].(map[string]any)["result"].(map[string]any)
-	b, _ := got[2].(map[string]any)["result"].(map[string]any)
+	if got[2].(map[string]any)["result"] == nil {
+		t.Errorf("ping before initialize: %v", got[2])
+	}
+	a, _ := got[3].(map[string]any)["result"].(map[string]any)
+	b, _ := got[4].(map[string]any)["result"].(map[string]any)
 	if a["protocolVersion"] != "2025-06-18" || b["protocolVersion"] != "2025-03-26" {
 		t.Fatalf("second initialize: %v %v", a, b)
+	}
+	if res, _ := got[5].(map[string]any)["result"].(map[string]any); res["tools"] == nil {
+		t.Errorf("tools/list after initialize: %v", got[5])
+	}
+	// The next run is a new session: initialize again.
+	if again := rawLines(t, s, `{"jsonrpc":"2.0","id":7,"method":"tools/list"}`); len(again) != 1 || rpcCode(again[0]) != codeNotInitialized {
+		t.Errorf("a new run without initialize: %v", again)
+	}
+}
+
+// Over HTTP a session id is issued only by initialize: a call with an id
+// the server did not issue is 404, so a session with an id has always
+// initialized; a client without an id is served statelessly, by design
+// (D89; «Риск», conclusion 38).
+func TestContract_HTTPSessionIDOnlyAfterInitialize(t *testing.T) {
+	h := NewHTTPHandler(newTestServer(), HTTPOptions{BearerToken: "t"})
+	t.Cleanup(h.Close)
+	post := func(sid, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Accept", "application/json, text/event-stream")
+		r.Header.Set("Authorization", "Bearer t")
+		if sid != "" {
+			r.Header.Set("Mcp-Session-Id", sid)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	call := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+	if w := post("0123456789abcdef0123456789abcdef", call); w.Code != http.StatusNotFound {
+		t.Errorf("a session id the server did not issue: %d %s", w.Code, w.Body)
+	}
+	w := post("", call)
+	if w.Code != http.StatusOK || w.Header().Get("Mcp-Session-Id") != "" {
+		t.Errorf("without a session id (stateless): %d, id %q", w.Code, w.Header().Get("Mcp-Session-Id"))
+	}
+	w = post("", `{"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}`)
+	sid := w.Header().Get("Mcp-Session-Id")
+	if sid == "" {
+		t.Fatalf("initialize issued no session id: %d %s", w.Code, w.Body)
+	}
+	if w := post(sid, call); w.Code != http.StatusOK {
+		t.Errorf("the issued session: %d %s", w.Code, w.Body)
 	}
 }
 
@@ -172,7 +229,7 @@ func TestContract_StdinCloseDoesNotCancel(t *testing.T) {
 	out := &bytes.Buffer{}
 	done := make(chan error, 1)
 	go func() { done <- s.Run(pr, out) }()
-	if _, err := io.WriteString(pw, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status","arguments":{}}}`+"\n"); err != nil {
+	if _, err := io.WriteString(pw, initLine+"\n"+`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status","arguments":{}}}`+"\n"); err != nil {
 		t.Fatal(err)
 	}
 	if err := pw.Close(); err != nil {

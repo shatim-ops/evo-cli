@@ -88,6 +88,11 @@ func runStdio(t *testing.T, ctx context.Context, s *Server) (*io.PipeWriter, cha
 		close(lines)
 	}()
 	t.Cleanup(func() { inW.Close() })
+	// A session begins with initialize (D89); its answer is not the test's.
+	write(t, inW, `{"jsonrpc":"2.0","id":"init","method":"initialize","params":{}}`+"\n")
+	if l := nextLine(t, lines); !strings.Contains(l, `"id":"init"`) {
+		t.Fatalf("initialize: %s", l)
+	}
 	return inW, lines, done
 }
 

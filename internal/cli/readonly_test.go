@@ -100,11 +100,7 @@ func newROServers(t *testing.T) roServers {
 func (r roServers) stdio(t *testing.T, s *mcp.Server, method string, params any) (roAnswer, []string) {
 	t.Helper()
 	flagJSON, flagDryRun, flagYes = false, false, false
-	out := &bytes.Buffer{}
-	if err := s.Run(bytes.NewReader(append(roRequest(method, params), '\n')), out); err != nil {
-		t.Fatalf("stdio %s: %v", method, err)
-	}
-	return roDecode(t, out.Bytes())
+	return roDecode(t, runStdio(t, s, roRequest(method, params)))
 }
 
 func (r roServers) http(t *testing.T, method string, params any) (roAnswer, []string) {
@@ -438,4 +434,20 @@ func roCase(t *testing.T, srv roServers, w parityWorld, tl tools.Tool, args map[
 		}
 	}
 	return bad
+}
+
+// stdioInit is the initialize a client sends first on stdio (D89): the
+// worlds put it before their call and drop its answer.
+const stdioInit = `{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"protocolVersion":"2025-06-18"}}` + "\n"
+
+// runStdio runs one stdio session of s — initialize, then body — and is
+// the answers after initialize's.
+func runStdio(t *testing.T, s *mcp.Server, body []byte) []byte {
+	t.Helper()
+	out := &bytes.Buffer{}
+	if err := s.Run(io.MultiReader(strings.NewReader(stdioInit), bytes.NewReader(append(body, '\n'))), out); err != nil {
+		t.Fatalf("stdio: %v", err)
+	}
+	_, rest, _ := bytes.Cut(out.Bytes(), []byte("\n"))
+	return rest
 }
