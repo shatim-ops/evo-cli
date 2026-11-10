@@ -7,6 +7,7 @@ package provision
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,7 +46,23 @@ func listProjectScoped[T any](a *CloudRuAdapter, ctx context.Context, path, proj
 	if projectID == "" {
 		return nil, clierrors.ProjectRequired()
 	}
-	return listAll[T](a, ctx, path, url.Values{"project_id": {projectID}}, true)
+	items, err := listAll[T](a, ctx, path, url.Values{"project_id": {projectID}}, true)
+	return items, projectNotVisible(err, projectID)
+}
+
+// projectNotVisible is a 404 on a list of a project: Cloud.ru answers so
+// for a project the key does not see, and «resource not found: GET
+// /api/v1/vms» read as if the VMs were gone. The refusal names the
+// project; its code stays (release plan 1.8, L3; «Риск», conclusion 43, (3)).
+func projectNotVisible(err error, projectID string) error {
+	var ce *clierrors.CLIError
+	if !errors.As(err, &ce) || (ce.Code != clierrors.CodeVMNotFound && ce.Code != clierrors.CodeNotFound) {
+		return err
+	}
+	return clierrors.Wrap(ce.Code,
+		i18n.Tf("project %s is not visible to this key: Cloud.ru answered 404 to its list (%s)", "проект %s не виден этому ключу: Cloud.ru ответил 404 на его список (%s)", projectID, ce.Message),
+		i18n.T("Check the project and the key: evo whoami names the key, evo project list the projects it sees.",
+			"Проверьте проект и ключ: evo whoami называет ключ, evo project list — видимые ему проекты."), err)
 }
 
 // listAll walks a compute list by offset with limit=100 until total
