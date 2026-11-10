@@ -122,7 +122,7 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("login again: exit %d\n%s\n%s", code, stdout, stderr)
 	}
-	role := login.TResultRole(time.Now()) // the date is the world's: the line without it
+	role := login.TResultRole(time.Now(), false) // the date is the world's: the line without it
 	for _, want := range []string{role[:len(role)-len("02.01.2006")], login.TResultReused("evo-agent", ""), login.TResultCheck("agent")} {
 		if !strings.Contains(stdout+stderr, want) {
 			t.Errorf("no %q in the result:\n%s\n%s", want, stdout, stderr)

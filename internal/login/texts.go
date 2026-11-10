@@ -133,7 +133,8 @@ func tSumAccountToChoose(account string) string {
 		"Сервисный аккаунт %s в проекте, который вы выберете, будет создан (или использован уже созданный).", account)
 }
 func tSumRole(until string) string {
-	return i18n.Tf("The role “%s” will be granted until %s.", "Роль «%s» будет выдана до %s.", auth.LoginRoleDisplayName, until)
+	return i18n.Tf("The role “%s” will be granted until %s. If the account already holds it for longer or with no end date, it stays so; the result will name its term.",
+		"Роль «%s» будет выдана до %s. Если у аккаунта она уже выдана на дольше или бессрочно, она останется такой — срок назовет итог.", auth.LoginRoleDisplayName, until)
 }
 func tSumKey(until string) string {
 	return i18n.Tf("The access key will be valid until %s.", "Ключ доступа будет действовать до %s.", until)
@@ -175,15 +176,15 @@ func tDoneText(keyID, profile string, term time.Time, forAgent bool) string {
 }
 
 // tDoneReused: only when the account was there; without the last part
-// when there was no previous key.
-func tDoneReused(account string, role time.Time, previousKey string) string {
+// when there was no previous key. role is tRoleTerm.
+func tDoneReused(account, role, previousKey string) string {
 	if previousKey == "" {
-		return i18n.Tf("The existing service account %s was reused: the role “%s” is valid until %s",
-			"Использован существующий сервисный аккаунт %s: роль «%s» действует до %s", account, auth.LoginRoleDisplayName, day(role))
+		return i18n.Tf("The existing service account %s was reused: the role “%s” is valid %s",
+			"Использован существующий сервисный аккаунт %s: роль «%s» действует %s", account, auth.LoginRoleDisplayName, role)
 	}
-	return i18n.Tf("The existing service account %s was reused: the role “%s” is valid until %s; the previous key %s on this computer was deleted",
-		"Использован существующий сервисный аккаунт %s: роль «%s» действует до %s, прежний ключ %s на этом компьютере удален",
-		account, auth.LoginRoleDisplayName, day(role), previousKey)
+	return i18n.Tf("The existing service account %s was reused: the role “%s” is valid %s; the previous key %s on this computer was deleted",
+		"Использован существующий сервисный аккаунт %s: роль «%s» действует %s, прежний ключ %s на этом компьютере удален",
+		account, auth.LoginRoleDisplayName, role, previousKey)
 }
 
 // The row names of the result page; the terminal's rows are tRow*.
@@ -191,8 +192,17 @@ func tRowsPage() [5]string {
 	return [5]string{i18n.T("Project", "Проект"), i18n.T("Account", "Аккаунт"), i18n.T("Role", "Роль"),
 		i18n.T("Key", "Ключ"), i18n.T("Profile", "Профиль")}
 }
-func tRoleUntil(term time.Time) string {
-	return i18n.Tf("%s, until %s", "%s, до %s", auth.LoginRoleDisplayName, day(term))
+func tRoleUntil(role string) string {
+	return i18n.Tf("%s, %s", "%s, %s", auth.LoginRoleDisplayName, role)
+}
+
+// tRoleTerm is the role's actual term: a date, or none — an unbounded role
+// the account held stays so (A18-26).
+func tRoleTerm(until time.Time, unbounded bool) string {
+	if unbounded {
+		return i18n.T("with no end date", "бессрочно")
+	}
+	return i18n.Tf("until %s", "до %s", day(until))
 }
 func tRevokeHow() string {
 	return i18n.Tf("To revoke access, sign out of %s or delete the key in the Cloud.ru console under “Service accounts”. You can close this window",
@@ -294,8 +304,8 @@ func TSignedInCLI(keyID, account, project, profile string, until time.Time) stri
 		"Доступ выдан: ключ %s аккаунта %s в проекте %s записан в профиль «%s», действует до %s",
 		keyID, account, project, profile, day(until))
 }
-func TResultRole(until time.Time) string {
-	return i18n.Tf("The role “%s” is valid until %s", "Роль «%s» действует до %s", auth.LoginRoleDisplayName, day(until))
+func TResultRole(until time.Time, unbounded bool) string {
+	return i18n.Tf("The role “%s” is valid %s", "Роль «%s» действует %s", auth.LoginRoleDisplayName, tRoleTerm(until, unbounded))
 }
 func TResultReused(account, previousKey string) string {
 	if previousKey == "" {
@@ -630,7 +640,8 @@ terminal asks nothing: the choice is made on the page. Access is
 granted only by the “Grant access” button on the page; there is no --yes
 flag. With your rights, evo creates a service account or reuses the
 existing one, grants it the role “Project administrator” until the key
-expires, creates the key and saves it to the profile. The role allows
+expires (a longer or unbounded role the account holds stays so, and the
+result names its term), creates the key and saves it to the profile. The role allows
 deleting any resources of the project and managing service accounts and
 keys. The previous key evo login created for this profile is deleted. Your
 tokens stay in memory only; the key's secret is never shown. A refusal
@@ -642,7 +653,9 @@ container. To undo: evo logout.`, `Войти в Cloud.ru через брауз�
 ничего не спрашивает: выбор делается на странице. Доступ выдается только кнопкой «Выдать доступ»
 на странице, флага --yes нет. С вашими правами evo создает сервисный
 аккаунт или использует уже созданный, выдает ему роль «Администратор
-проекта» до конца срока ключа, создает ключ и записывает его в профиль.
+проекта» до конца срока ключа (если у аккаунта роль уже на дольше или
+бессрочно, она остается такой, срок называет итог), создает ключ и
+записывает его в профиль.
 Роль дает право удалять любые ресурсы проекта и управлять сервисными
 аккаунтами и ключами. Прежний ключ evo login для этого профиля удаляется.
 Ваши токены хранятся только в памяти, секрет ключа нигде не показывается.

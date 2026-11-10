@@ -102,8 +102,10 @@ type Result struct {
 	// CustomerName is the organization of the project, for the page.
 	CustomerName string
 	// RoleExpiresAt is the role's actual term: a longer one the account
-	// held is kept («Риск», conclusion 26).
+	// held is kept («Риск», conclusion 26); zero when RoleUnbounded — the
+	// account held the role without a term, and it stays so (A18-26).
 	RoleExpiresAt time.Time
+	RoleUnbounded bool
 	AccountReused bool
 	// RevokedKeyID is the key ID of the previous key, revoked; PreviousNote
 	// says why it is left, when it is.
@@ -623,7 +625,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	if err != nil {
 		return res, at(stepPermission, refused(forbidden(err, p.Name), eNotGrantedRole(), eRoleRefusedHint()))
 	}
-	res.RoleExpiresAt = roleTerm
+	res.RoleExpiresAt, res.RoleUnbounded = roleTerm, roleTerm.IsZero()
 	say(tStepRole())
 
 	// 16. The key, last.
@@ -665,7 +667,8 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 
 // role grants the account the login role until term: a permission of a
 // shorter term is moved forward, a longer one kept.
-// It returns the role's actual term: a longer one kept is not shortened.
+// It returns the role's actual term: a longer one kept is not shortened;
+// zero for an unbounded one.
 func (s *session) role(ctx context.Context, p project, sa string, term time.Time) (time.Time, error) {
 	perms, err := s.admin.RolePermissions(ctx, p.ID, sa, auth.LoginRoleName)
 	if err != nil {
@@ -686,7 +689,8 @@ func (s *session) role(ctx context.Context, p project, sa string, term time.Time
 			return term, nil
 		}
 		if perms[0].ExpiresAt == "" {
-			return term, nil
+			// Unbounded: kept, and named so, not by the key's term (A18-26).
+			return time.Time{}, nil
 		}
 		return have, nil
 	}

@@ -131,7 +131,7 @@ func TestPages_MacketV15(t *testing.T) {
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	if note := tDoneReused("evo-agent", term, config.MaskKeyID("zzzzc019")); !strings.Contains(b.String(), note) {
+	if note := tDoneReused("evo-agent", tRoleTerm(term, false), config.MaskKeyID("zzzzc019")); !strings.Contains(b.String(), note) {
 		t.Errorf("no line of the reused account and the deleted key: %q", note)
 	}
 	b.Reset()
@@ -139,7 +139,7 @@ func TestPages_MacketV15(t *testing.T) {
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(b.String(), tDoneReused("evo-agent", term, "")) {
+	if strings.Contains(b.String(), tDoneReused("evo-agent", tRoleTerm(term, false), "")) {
 		t.Errorf("a new account is told as reused")
 	}
 	if !strings.Contains(b.String(), `<svg class="logo"`) || strings.Contains(b.String(), "<img") || strings.Contains(b.String(), "http://") && !strings.Contains(b.String(), "xmlns=\"http://www.w3.org/2000/svg\"") {
@@ -198,8 +198,19 @@ func TestDonePage_RoleTerm(t *testing.T) {
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(b.String(), tRoleUntil(role)) {
+	if !strings.Contains(b.String(), tRoleUntil(tRoleTerm(role, false))) {
 		t.Errorf("the role's term is not the actual one")
+	}
+	// A18-26: an unbounded role is named so, not by the key's term.
+	b.Reset()
+	p = donePage(Result{Account: "evo", KeyID: "k", KeyExpiresAt: key, RoleUnbounded: true, AccountReused: true})
+	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
+		t.Fatal(err)
+	}
+	unbounded := tRoleTerm(time.Time{}, true)
+	if !strings.Contains(b.String(), tRoleUntil(unbounded)) || !strings.Contains(b.String(), tDoneReused("evo", unbounded, "")) ||
+		strings.Contains(b.String(), tRoleUntil(tRoleTerm(key, false))) {
+		t.Errorf("an unbounded role is not named so:\n%s", b.String())
 	}
 }
 

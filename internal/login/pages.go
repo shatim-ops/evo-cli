@@ -249,7 +249,7 @@ func donePage(r Result) page {
 		if r.RevokedKeyID != "" {
 			prev = config.MaskKeyID(r.RevokedKeyID)
 		}
-		note = tDoneReused(r.Account, roleTerm(r), prev)
+		note = tDoneReused(r.Account, tRoleTerm(roleTerm(r), r.RoleUnbounded), prev)
 	}
 	rows := tRowsPage()
 	return page{"done", resultData{head: newHead(tDone() + " — evo"), Status: tDone(),
@@ -258,7 +258,7 @@ func donePage(r Result) page {
 		Rows: []row{
 			{rows[0], projectIn(r.ProjectName, r.CustomerName)},
 			{rows[1], r.Account},
-			{rows[2], tRoleUntil(roleTerm(r))},
+			{rows[2], tRoleUntil(tRoleTerm(roleTerm(r), r.RoleUnbounded))},
 			{rows[3], config.MaskKeyID(r.KeyID)},
 			{rows[4], r.Profile},
 		},
@@ -266,9 +266,10 @@ func donePage(r Result) page {
 	}}
 }
 
-// roleTerm is the role's actual term, the key's when unknown.
+// roleTerm is the role's actual term, the key's when unknown; zero when
+// unbounded.
 func roleTerm(r Result) time.Time {
-	if r.RoleExpiresAt.IsZero() {
+	if r.RoleExpiresAt.IsZero() && !r.RoleUnbounded {
 		return r.KeyExpiresAt
 	}
 	return r.RoleExpiresAt
