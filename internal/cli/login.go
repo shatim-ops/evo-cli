@@ -344,7 +344,7 @@ func newLogoutCmd() *cobra.Command {
 			}
 			ok, err := confirm.Ask(cmd.Context(), confirm.Preview{Action: "logout", Summary: summary,
 				Details: map[string]any{"profile": name, "key_id": config.MaskKeyID(creds.KeyID)}},
-				confirm.Options{Yes: flagYes, JSON: flagJSON, Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr()})
+				confirm.Options{Yes: flagYes, DryRun: flagDryRun, JSON: flagJSON, Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr()})
 			if !ok {
 				return err
 			}
