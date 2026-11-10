@@ -291,6 +291,17 @@ func tWaiting(wait time.Duration) string {
 	return i18n.Tf("Finish signing in in the browser. Waiting up to %d min; press Ctrl-C to cancel",
 		"Завершите вход в браузере. Ожидание — до %d мин, отмена — Ctrl-C", int(wait.Minutes()))
 }
+
+// tCannotReach and tOverSSH: a browser that cannot reach 127.0.0.1 of
+// this computer ends at «cannot connect» after sign-in (P1).
+func tCannotReach() string {
+	return i18n.T("If after sign-in the browser cannot open 127.0.0.1, it is not on this computer or runs in a sandbox: sign in where evo and the browser are on one computer",
+		"Если после входа браузер не может открыть 127.0.0.1, он не на этом компьютере или работает в песочнице: выполните вход там, где evo и браузер на одном компьютере")
+}
+func tOverSSH(port int) string {
+	return i18n.Tf("This terminal is over SSH: a browser on your computer cannot return to 127.0.0.1 of this one. Sign in on your computer, or forward the port first: ssh -L %d:127.0.0.1:%d <this host>",
+		"Терминал открыт по SSH: браузер вашего компьютера не вернется на 127.0.0.1 этого. Выполните вход на своем компьютере или сначала пробросьте порт: ssh -L %d:127.0.0.1:%d <этот хост>", port, port)
+}
 func tNoBrowser() string {
 	return i18n.T("The browser was not opened: open the link on this same computer. Sign-in does not work over SSH or in a container: after sign-in, the browser returns to 127.0.0.1 on its own computer, not on the one evo runs on",
 		"Браузер не открыт: откройте ссылку на этом же компьютере. По SSH и в контейнере вход не пройдет: после входа браузер возвращается на 127.0.0.1 своего компьютера, а не того, где запущен evo")

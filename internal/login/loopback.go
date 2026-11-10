@@ -75,6 +75,9 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		}
 		s.warnAgent(term)
 	}
+	if cfg.Remote {
+		s.tell(tOverSSH(port))
+	}
 	s.tell(tOpenPage())
 	cfg.Say(tOpen(), authURL)
 	if cfg.Open != nil {
@@ -83,6 +86,7 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		s.tell(tNoBrowser())
 	}
 	s.tell(tWaiting(cfg.Wait))
+	s.tell(tCannotReach())
 
 	timer := time.NewTimer(cfg.Wait)
 	defer timer.Stop()
