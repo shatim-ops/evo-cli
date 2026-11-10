@@ -261,7 +261,7 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 		case own:
 			writePage(w, http.StatusForbidden, refusedPage(tAlreadyOpen()))
 		case q.Get("state") != "":
-			writePage(w, http.StatusForbidden, refusedPage(tForeign()))
+			writePage(w, http.StatusForbidden, refusedPage(tForeignLink()))
 		default:
 			refuse(w, http.StatusForbidden)
 		}
@@ -274,7 +274,7 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 			l.end(outcome{err: cancelled()})
 			return
 		}
-		err := at(stepCallback, clierrors.New(clierrors.CodeAuthFailed, eProvider(oneLine(e+": "+q.Get("error_description"))),
+		err := at(stepCallback, clierrors.New(clierrors.CodeAuthFailed, eProvider(e, q.Get("error_description")),
 			eProviderHint()))
 		writePage(w, http.StatusOK, errorPage(err))
 		l.end(outcome{err: err})

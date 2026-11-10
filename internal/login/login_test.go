@@ -494,7 +494,7 @@ func TestLogin_ForeignStateAndSecondCallback(t *testing.T) {
 			!strings.Contains(b[1], "STATE_LOCKED") || !strings.Contains(b[1], title)) {
 			t.Errorf("twice: the second answer %q", b)
 		}
-		if b := w.CallbackBodies(); v.ForeignState && (len(b) != 2 || !strings.Contains(b[0], tForeign()) || !strings.Contains(b[0], title)) {
+		if b := w.CallbackBodies(); v.ForeignState && (len(b) != 2 || !strings.Contains(b[0], tForeignLink()) || !strings.Contains(b[0], title)) {
 			t.Errorf("foreign state: the answer %q", b)
 		}
 		// No grant follows: the login ends interrupted, nothing made.
