@@ -450,7 +450,10 @@ func TestLogin_ForeignStateAndSecondCallback(t *testing.T) {
 		// The second callback of this login (the link opened again, a
 		// browser that reloads it) points back to the page that works,
 		// not «sign in again», which would burn it (release audit 1.8, L5).
-		if b := w.CallbackBodies(); v.TwiceCallback && (len(b) != 2 || !strings.Contains(b[1], tAlreadyOpen()) || strings.Contains(b[1], tForeign())) {
+		// No «it would end it»: a second evo login refuses STATE_LOCKED
+		// («Риск», conclusion 48).
+		if b := w.CallbackBodies(); v.TwiceCallback && (len(b) != 2 || !strings.Contains(b[1], tAlreadyOpen()) || strings.Contains(b[1], tForeign()) ||
+			!strings.Contains(b[1], "STATE_LOCKED")) {
 			t.Errorf("twice: the second answer %q", b)
 		}
 		if b := w.CallbackBodies(); v.ForeignState && (len(b) != 2 || !strings.Contains(b[0], tForeign())) {

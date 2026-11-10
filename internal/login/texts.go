@@ -221,8 +221,8 @@ func tDetails(reason string, code int) string {
 // of the first one works — «sign in again» burned it (release audit 1.8,
 // L5, Grok R1b №7).
 func tAlreadyOpen() string {
-	return i18n.T("This sign-in is already under way: go back to the page of evo opened first in this browser (or to the terminal). Do not run evo login again — that would end it",
-		"Этот вход уже идет: вернитесь к странице evo, открытой первой в этом браузере (или в терминал). Не запускайте evo login заново — это прервет его")
+	return i18n.T("This sign-in is already under way: go back to the page of evo opened first in this browser (or to the terminal). A second evo login does not start while this one waits (STATE_LOCKED); to start over, finish or cancel this one in the terminal",
+		"Этот вход уже идет: вернитесь к странице evo, открытой первой в этом браузере (или в терминал). Второй evo login не начнется, пока идет этот (STATE_LOCKED); чтобы начать заново — завершите или отмените этот в терминале")
 }
 
 func tForeign() string {
