@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -147,8 +148,9 @@ func hasWriteFlag(e ast.Expr) bool {
 
 // readsBeforeWrite are the functions of production code that read a file
 // by its path — os.ReadFile, os.Open, os.OpenFile without a flag of writing
-// — where a file is written after: in the function itself, or in a function
-// of its package that calls it and writes. "file<TAB>function" (the one
+// — in a package where a function that leads to it also leads to a write
+// (calls within the package, at any depth: SaveProfile reads through
+// readSettingsFile and readYAML, then writes). "file<TAB>function" (the one
 // that reads) → how many such reads and why they may. A read by path
 // follows a symlink, so what is written back as evo's own file may be the
 // target's content — a private key behind .evo/known_hosts (#1179). Such a
@@ -158,6 +160,11 @@ func hasWriteFlag(e ast.Expr) bool {
 var readsBeforeWrite = map[string]directWrite{
 	"internal/auth/cache.go\tFileCache.Load":            {1, "the token cache: parsed as JSON with this key's key_id, else a miss; what Store writes is a new token, not what was read"},
 	"internal/cli/agent.go\treadUserFile":               {1, "a client's file in the home directory: Lstat refuses a symlink and a non-regular file before the read"},
+	"internal/cli/tools.go\tbuildToolArgs":              {1, "--args-file the person names: input, parsed as JSON arguments, not a file of evo written back"},
+	"internal/cli/trees.go\treadArgFile":                {1, "a file argument the person names: input of the command, not a file of evo written back"},
+	"internal/cli/trees.go\tsecretRef.readRaw":          {1, "a secret file the person names (--password-file and the like): input, not a file of evo written back"},
+	"internal/config/profile.go\treadYAML":              {1, "settings and credentials in the configuration directory of the home, not of a project: parsed into the profile structure, a target that is not one is an error"},
+	"internal/state/state.go\tRead":                     {1, "checkPlace refuses a symlink and a non-regular file by Lstat before the read; parsed as JSON of the state, else STATE_CORRUPTED"},
 	"internal/cli/main.go\treadKeyFile":                 {1, "the SSH key: Lstat «a regular file», then os.SameFile of the file opened — OpenNoFollow's check, with the error of the key"},
 	"internal/config/profile.go\tMigrateLegacyDir":      {1, "the legacy directory in the home directory: Lstat refuses a non-regular file; copied to another file of the new directory"},
 	"internal/tools/completion.go\treadCompletionCache": {1, "parsed as JSON of the cache, else a miss; what writeCompletionCache writes is new items from the platform, not what was read"},
@@ -177,11 +184,11 @@ type fileOp struct {
 // plan 1.8, «R-67, чтение по ссылке»): pinHostKey read .evo/known_hosts with
 // os.ReadFile and wrote it back with WriteFileAtomic — a symlink to a
 // private key committed to a repository made the key a file of the
-// project. A read by path in a function that writes, or that a writing
-// function of its package calls (one level: readUserFile and
-// agentChange.write), goes through the helper or is declared with its
-// reason; a new one fails the build, and so does a line whose place is
-// gone. A read and a write in different packages are not seen.
+// project. A read by path that a function of its package reaches together
+// with a write (readUserFile and agentChange.write; readYAML and
+// SaveProfile) goes through the helper or is declared with its reason; a
+// new one fails the build, and so does a line whose place is gone. A read
+// and a write in different packages are not seen.
 func TestWrites_NoReadThroughALinkBeforeAWrite(t *testing.T) {
 	root := filepath.Join("..", "..")
 	// package directory → function name → what it does
@@ -261,36 +268,46 @@ func TestWrites_NoReadThroughALinkBeforeAWrite(t *testing.T) {
 			}
 			return []string{c}
 		}
-		// A function writes when it writes itself or calls one of its
-		// package that does (the write of agentChange.write is
-		// WriteFileAtomic; of pinHostKey too).
-		writes := func(op *fileOp) bool {
-			if op.write {
-				return true
-			}
-			for _, c := range op.calls {
-				for _, k := range resolve(c) {
-					if o := fns[k]; o != nil && o.write {
-						return true
+		// reach is every function of the package a function calls, at any
+		// depth, itself included: SaveProfile reads settings through
+		// readSettingsFile and readYAML.
+		reach := func(name string) []string {
+			seen := map[string]bool{name: true}
+			out, todo := []string{name}, []string{name}
+			for len(todo) > 0 {
+				op := fns[todo[0]]
+				todo = todo[1:]
+				if op == nil {
+					continue
+				}
+				for _, c := range op.calls {
+					for _, k := range resolve(c) {
+						if !seen[k] {
+							seen[k] = true
+							out = append(out, k)
+							todo = append(todo, k)
+						}
 					}
 				}
 			}
-			return false
+			return out
 		}
 		for name, op := range fns {
-			if !writes(op) {
+			if !op.write {
 				continue
 			}
 			writers++
-			mark := func(n string, o *fileOp) {
-				if o != nil && len(o.reads) > 0 {
-					found[o.file+"\t"+n] = o.reads
+			// The function that writes, and every one that leads to it in
+			// its package, is a place where a read is followed by a write.
+			for caller := range fns {
+				r := reach(caller)
+				if !slices.Contains(r, name) {
+					continue
 				}
-			}
-			mark(name, op)
-			for _, c := range op.calls {
-				for _, k := range resolve(c) {
-					mark(k, fns[k])
+				for _, k := range r {
+					if o := fns[k]; o != nil && len(o.reads) > 0 {
+						found[o.file+"\t"+k] = o.reads
+					}
 				}
 			}
 		}
