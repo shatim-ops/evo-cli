@@ -454,8 +454,9 @@ jobs:
           # («да» владельца 10.11, только чтение). В лог — только есть ли поле
           # и сколько кластеров его несут; значения и id — нет.
           echo "== Kafka 10.11: subnet_ids и controller_spec в ответах чтения"
-          # shellcheck disable=SC2016 # $c, $k — переменные jq
+          # shellcheck disable=SC2016 # $k — переменная jq
           kfields='def has3($k): {subnet_ids: ($k | has("subnet_ids")), controller_spec: ($k | has("controller_spec")), subnet_id: ($k | has("subnet_id"))};'
+          # shellcheck disable=SC2016 # $c — переменная jq
           probeh kafka_1011_list "https://kafka.api.cloud.ru/v1/clusters?product_type=kafka&$P&page_size=100" \
             'if type == "object" then (.clusters // []) as $c | {n: ($c | length), with_subnet_ids: ([$c[] | select(has("subnet_ids"))] | length), with_controller_spec: ([$c[] | select(has("controller_spec"))] | length), with_subnet_id: ([$c[] | select(has("subnet_id"))] | length)} else {type: type} end'
           kid=$(curl -sS -H "Authorization: Bearer $TOKEN" "https://kafka.api.cloud.ru/v1/clusters?product_type=kafka&$P&page_size=100" | jq -r '(.clusters // [])[0].id // empty' 2>/dev/null || true)
@@ -463,6 +464,7 @@ jobs:
             echo "kafka_1011_get: кластеров нет — пропуск"
           else
             echo "::add-mask::$kid"
+            # shellcheck disable=SC2016 # $k — переменная jq
             probeh kafka_1011_get "https://kafka.api.cloud.ru/v1/clusters/$kid" \
               "$kfields"' if type == "object" then (.cluster // .) as $k | {top: keys} + has3($k) else {type: type} end'
           fi
