@@ -80,7 +80,7 @@ type loopbackResponse struct {
 
 // B-6, the loopback of evo login as a surface: the routes are a closed
 // list and any other method or path is 404; a foreign Host is 403; every
-// answer to the loopback's own Host is no-referrer and no-store; every page carries exactly loopbackCSP and DENY; no page loads
+// answer to the loopback's own Host is same-origin (L23: no-referrer makes the own form's Origin «null») and no-store; every page carries exactly loopbackCSP and DENY; no page loads
 // or links another origin. Walked on the consent, the result, the cancel
 // and the error of a refused login, with the probes sent while the consent
 // waits — they do not end the login.
@@ -127,12 +127,12 @@ func TestLoopback_ClosedSurface(t *testing.T) {
 				if strings.HasPrefix(r.what, "probe ") && route(strings.TrimPrefix(r.what, "probe ")) == fontRoute {
 					probes++
 					if h := r.header; r.status != http.StatusOK || h.Get("Content-Type") != "font/woff2" || h.Get("X-Content-Type-Options") != "nosniff" ||
-						h.Get("Cache-Control") != fontCache || h.Get("Referrer-Policy") != "no-referrer" {
+						h.Get("Cache-Control") != fontCache || h.Get("Referrer-Policy") != "same-origin" {
 						t.Errorf("%s: %d %v — a face of the binary, cached, nosniff", r.what, r.status, h)
 					}
 					continue
 				}
-				if r.header.Get("Referrer-Policy") != "no-referrer" || r.header.Get("Cache-Control") != "no-store" {
+				if r.header.Get("Referrer-Policy") != "same-origin" || r.header.Get("Cache-Control") != "no-store" {
 					t.Errorf("%s: Referrer-Policy %q, Cache-Control %q", r.what, r.header.Get("Referrer-Policy"), r.header.Get("Cache-Control"))
 				}
 				if strings.HasPrefix(r.header.Get("Content-Type"), "text/html") {
