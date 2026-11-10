@@ -157,7 +157,8 @@ func (k *walk) run() outcome {
 			return outcome{"API_ERROR", "account"}
 		}
 	}
-	// 15. The role until the key's expiry: PUT a shorter one, keep a longer one.
+	// 15. The role until the key's expiry: PUT a shorter one, keep a longer
+	// or an unbounded one.
 	exp := time.Now().Add(k.ttl).UTC().Truncate(time.Second)
 	code, m := k.do(http.MethodGet, "/api/v3/permissions?filter="+url.PathEscape("resource_id="+Project+" AND subject_id="+sa+" AND role_name="+RoleName), nil, human)
 	if code != 200 {
@@ -166,8 +167,9 @@ func (k *walk) run() outcome {
 	}
 	if l, _ := m["permissions"].([]any); len(l) == 1 {
 		p := l[0].(map[string]any)
-		have, _ := time.Parse(time.RFC3339, p["expiresAt"].(string))
-		if have.Before(exp) {
+		until, _ := p["expiresAt"].(string)
+		have, _ := time.Parse(time.RFC3339, until)
+		if until != "" && have.Before(exp) {
 			if code, _ := k.do(http.MethodPut, "/api/v3/permissions/"+p["id"].(string), map[string]any{"expiresAt": exp}, human); code != 200 {
 				k.rollback(human)
 				return outcome{"API_ERROR", "permission"}
@@ -267,6 +269,7 @@ func TestLoginWorld_ReferenceWalk(t *testing.T) {
 		{"role shorter: PUT", Variant{Perm: PermShorter}, outcome{}, 1, 1, []string{"PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
 		{"broken at the key after a PUT: the term stays", Variant{Perm: PermShorter, FailAt: StepKey}, outcome{"API_ERROR", "key"}, 1, 0, []string{"!DELETE /api/v3/permissions/", "!DELETE /api/v2/serviceAccounts/"}},
 		{"role longer: no write", Variant{Perm: PermLonger}, outcome{}, 1, 1, []string{"!PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
+		{"role unbounded: no write", Variant{Perm: PermForever}, outcome{}, 1, 1, []string{"!PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
 		{"403 on permissions", Variant{PermForbidden: true}, outcome{"API_ERROR", "permission"}, 0, 0, nil},
 		{"role name collision", Variant{RoleCollision: true}, outcome{}, 1, 1, []string{"GET /api/v1/roles"}},
 		{"account limit", Variant{AccountLimit: true}, outcome{"API_ERROR", "account"}, 0, 0, []string{"POST /api/v2/serviceAccounts"}},
@@ -297,8 +300,11 @@ func TestLoginWorld_ReferenceWalk(t *testing.T) {
 			if c.keys == 1 {
 				p := w.Permissions()
 				want := time.Now().Add(ttl)
-				if c.v.Perm == PermLonger {
+				switch c.v.Perm {
+				case PermLonger:
 					want = time.Now().Add(365 * 24 * time.Hour)
+				case PermForever:
+					want = time.Time{}
 				}
 				if len(p) != 1 || p[0].ExpiresAt.Sub(want).Abs() > time.Minute {
 					t.Errorf("permissions %+v, want one until %s", p, want)

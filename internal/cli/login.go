@@ -122,8 +122,11 @@ func newLoginCmd() *cobra.Command {
 				"profile": res.Profile, "key_id": config.MaskKeyID(res.KeyID), "project_id": res.ProjectID,
 				"project_name": res.ProjectName, "service_account": res.Account, "role": res.Role,
 				"key_expires_at": res.KeyExpiresAt.UTC().Format(time.RFC3339), "reused_account": res.AccountReused,
-				"role_expires_at": res.RoleExpiresAt.UTC().Format(time.RFC3339),
-				"revoked_key_id":  revoked,
+				"revoked_key_id": revoked, "role_unbounded": res.RoleUnbounded,
+			}
+			// An unbounded role has no term to name (A18-26).
+			if !res.RoleUnbounded {
+				out["role_expires_at"] = res.RoleExpiresAt.UTC().Format(time.RFC3339)
 			}
 			if res.PreviousNote != "" {
 				out["warning"] = res.PreviousNote
@@ -135,9 +138,7 @@ func newLoginCmd() *cobra.Command {
 				return printer.JSON(out)
 			}
 			printer.Success(login.TSignedInCLI(config.MaskKeyID(res.KeyID), res.Account, res.ProjectName, res.Profile, res.KeyExpiresAt))
-			if !res.RoleExpiresAt.IsZero() {
-				printer.Hint(login.TResultRole(res.RoleExpiresAt))
-			}
+			printer.Hint(login.TResultRole(res.RoleExpiresAt, res.RoleUnbounded))
 			if res.AccountReused {
 				prev, _ := revoked.(string)
 				printer.Hint(login.TResultReused(res.Account, prev))

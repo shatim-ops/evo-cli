@@ -83,11 +83,12 @@ const (
 // Perm is what the project holds for the service account before the flow.
 type Perm int
 
-// The three cases of step 15.
+// The cases of step 15.
 const (
 	PermNone    Perm = iota // no permission: POST
 	PermShorter             // expires before the new key: PUT
 	PermLonger              // expires after the new key: no write
+	PermForever             // no expiresAt: no write, the role stays unbounded
 )
 
 // Variant is a world of the contract, section 6.
@@ -281,6 +282,8 @@ func New(t testing.TB, v Variant) *World {
 			w.seedPermission(a.ID, time.Now().Add(24*time.Hour))
 		case PermLonger:
 			w.seedPermission(a.ID, time.Now().Add(365*24*time.Hour))
+		case PermForever:
+			w.seedPermission(a.ID, time.Time{})
 		}
 	}
 	w.srv.Start()
@@ -779,8 +782,13 @@ func (w *World) listPermissions(rw http.ResponseWriter, r *http.Request) {
 	list := []map[string]any{}
 	for _, p := range w.perms {
 		if f["subject_id"] == p.Subject && f["resource_id"] == Project && (f["role_name"] == "" || f["role_name"] == p.RoleName) {
-			list = append(list, map[string]any{"id": p.ID, "roleName": p.RoleName, "subjectId": p.Subject,
-				"resourceId": Project, "expiresAt": p.ExpiresAt.UTC().Format(time.RFC3339), "enabled": true})
+			item := map[string]any{"id": p.ID, "roleName": p.RoleName, "subjectId": p.Subject,
+				"resourceId": Project, "enabled": true}
+			// An unbounded role has no expiresAt.
+			if !p.ExpiresAt.IsZero() {
+				item["expiresAt"] = p.ExpiresAt.UTC().Format(time.RFC3339)
+			}
+			list = append(list, item)
 		}
 	}
 	writeJSON(rw, 200, map[string]any{"permissions": list})

@@ -273,6 +273,8 @@ func TestLogin_Variants(t *testing.T) {
 		// is moved back when the key is not made — not deleted, it was there.
 		{"broken at the key after a PUT: the term goes back", loginworld.Variant{Perm: loginworld.PermShorter, FailAt: loginworld.StepKey}, clierrors.CodeAPIError, 1, 0, []string{"!DELETE /api/v3/permissions/", "!DELETE /api/v2/serviceAccounts/"}},
 		{"role longer: no write", loginworld.Variant{Perm: loginworld.PermLonger}, "", 1, 1, []string{"!PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
+		// A18-26: an unbounded role stays so and is not named by the key's term.
+		{"role unbounded: no write", loginworld.Variant{Perm: loginworld.PermForever}, "", 1, 1, []string{"!PUT /api/v3/permissions/", "!POST /api/v3/permissions"}},
 		{"403 on permissions", loginworld.Variant{PermForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"403 on the account", loginworld.Variant{AccountForbidden: true}, clierrors.CodeAuthFailed, 0, 0, nil},
 		{"role name collision", loginworld.Variant{RoleCollision: true}, "", 1, 1, []string{"GET /api/v1/roles"}},
@@ -314,11 +316,19 @@ func TestLogin_Variants(t *testing.T) {
 				}
 				p := w.Permissions()
 				want := time.Now().Add(30 * 24 * time.Hour)
-				if c.v.Perm == loginworld.PermLonger {
+				switch c.v.Perm {
+				case loginworld.PermLonger:
 					want = time.Now().Add(365 * 24 * time.Hour)
+				case loginworld.PermForever:
+					want = time.Time{}
 				}
 				if len(p) != 1 || p[0].ExpiresAt.Sub(want).Abs() > time.Minute {
 					t.Errorf("permissions %+v, want one until %s", p, want)
+				}
+				// The result names the role's actual term: none when unbounded.
+				if unbounded := c.v.Perm == loginworld.PermForever; r.res.RoleUnbounded != unbounded ||
+					r.res.RoleExpiresAt.IsZero() != unbounded || (!unbounded && r.res.RoleExpiresAt.Sub(want).Abs() > time.Minute) {
+					t.Errorf("result: role until %s, unbounded %v; want %s", r.res.RoleExpiresAt, r.res.RoleUnbounded, want)
 				}
 			} else if len(r.saved) != 0 {
 				t.Errorf("a failed login saved %+v", r.saved)
