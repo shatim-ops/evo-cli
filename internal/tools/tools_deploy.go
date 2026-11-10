@@ -341,8 +341,14 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	if err := eng.EnsureSSHKey(); err != nil {
 		return errResult(err), true
 	}
+	// The keys read here are the ones appended after the create: the file
+	// is not read again, so a key written while the VM is made gets no
+	// login either («Риск», conclusion 76).
+	var approvedKeys []string
+	approvedFile := ""
 	if plan.PublicKey == eng.SSHPubKey {
-		if keys, _ := loadUserKeys(eng.StateDir); userKeysHash(keys) != plan.UserKeysHash {
+		approvedKeys, approvedFile = loadUserKeys(eng.StateDir)
+		if userKeysHash(approvedKeys) != plan.UserKeysHash {
 			return errResult(errUserKeysChangedSincePlan(plan.PlanID)), true
 		}
 	}
@@ -459,8 +465,8 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		dataDir := config.DataDir(eng.StateDir)
 		note := "Connect with the ssh command above (agent deploy key)."
 		hostKey := ""
-		if keys, keysFile := loadUserKeys(eng.StateDir); len(keys) > 0 {
-			hk, kErr := appendUserKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys)
+		if keys, keysFile := approvedKeys, approvedFile; len(keys) > 0 {
+			hk, kErr := appendKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys)
 			if kErr != nil {
 				note += fmt.Sprintf(" WARNING: user key auto-append failed (%v) — append the public key to ~/.ssh/authorized_keys on the VM manually.", kErr)
 			} else {

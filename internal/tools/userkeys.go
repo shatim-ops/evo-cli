@@ -178,6 +178,10 @@ func describeUserKeys(keys []string, rejected []rejectedKeyLine) []map[string]an
 	return out
 }
 
+// appendKeys is appendUserKeys; a test sees the keys deploy_apply appends
+// without an SSH server.
+var appendKeys = appendUserKeys
+
 // appendUserKeys SSHes into the freshly created VM with the agent's deploy
 // key and appends each user key to authorized_keys (idempotent). The VM's
 // sshd may lag VM-active by a few seconds, so connection is retried briefly.

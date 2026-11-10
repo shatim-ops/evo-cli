@@ -13,10 +13,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
@@ -79,6 +81,57 @@ func TestDeployApply_UserKeysChangedSinceThePlan(t *testing.T) {
 		}()
 		if refused != changed {
 			t.Errorf("keys changed %v: refused before any write %v", changed, refused)
+		}
+	}
+}
+
+// The keys checked against the plan are the keys appended: a key written to
+// .evo/user_authorized_keys while the VM is made — after the check, before
+// the append — gets no login («Риск», conclusion 76). The world pauses the
+// create and the test adds a key in that window.
+func TestDeployApply_AppendsTheKeysTheCheckPassed(t *testing.T) {
+	prevWait := deployplan.SSHPortWait
+	deployplan.SSHPortWait = time.Millisecond
+	prevAppend := appendKeys
+	var appended []string
+	appendKeys = func(_ context.Context, _, _ string, _ []byte, keys []string) (string, error) {
+		appended = append(appended, keys...)
+		return "", nil
+	}
+	t.Cleanup(func() { deployplan.SSHPortWait, appendKeys = prevWait, prevAppend })
+
+	cloud := &faultCloud{}
+	r, dir := faultToolsRegistry(t, cloud)
+	file := filepath.Join(config.DataDir(dir), userKeysFile)
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	seen, unseen := newAuthorizedKey(t, "seen@example.test"), newAuthorizedKey(t, "unseen@example.test")
+	if err := os.WriteFile(file, []byte(seen+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	keys, _ := loadUserKeys(dir)
+	plan := faultPlan()
+	plan.PublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest test@test"
+	plan.UserKeysHash = userKeysHash(keys)
+	if err := deployplan.Save(dir, plan); err != nil {
+		t.Fatal(err)
+	}
+
+	note, release := cloud.pauseOnce("CreateVM")
+	go func() {
+		<-note
+		_ = os.WriteFile(file, []byte(seen+"\n"+unseen+"\n"), 0o600)
+		release()
+	}()
+	text, _ := r.handlers["deploy_apply"](context.Background(), map[string]any{"plan_id": plan.PlanID, "confirmed": true})
+	release()
+	if len(appended) == 0 {
+		t.Fatalf("no keys appended: %s", text)
+	}
+	for _, k := range appended {
+		if strings.Contains(k, "unseen@example.test") {
+			t.Errorf("a key written after the check was appended: %v", appended)
 		}
 	}
 }
