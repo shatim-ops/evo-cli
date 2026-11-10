@@ -186,16 +186,23 @@ func (p *IAMProvider) Exchanges() int {
 // error of a command without a key, doctor's check of the key and the
 // generic hint of a refused key of a tool.
 func NoKeyHint() string {
-	return i18n.T("Run evo login or evo configure, or set CLOUDRU_KEY_ID and CLOUDRU_SECRET.",
-		"Выполните evo login или evo configure либо задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET.")
+	return i18n.T("Run evo login (a sign-in in the browser, a person is needed) or evo configure, or set CLOUDRU_KEY_ID and CLOUDRU_SECRET: the variables come before the profile.",
+		"Выполните evo login (вход через браузер, нужен человек) или evo configure либо задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET: переменные важнее профиля.")
 }
 
 // RefusedKeyHint is the hint of a key that is set but refused or expired
 // (AUTH_FAILED, AUTH_EXPIRED) when the refusal brings none of its own: the
 // same key will not do, unlike NoKeyHint's «no key» («Риск», #1029).
 func RefusedKeyHint() string {
-	return i18n.T("Retrying with the same key will not help. For a new key: evo login or evo configure.",
-		"Повтор тем же ключом не поможет. Новый ключ — evo login или evo configure.")
+	return i18n.T("Retrying with the same key will not help. For a new key: evo login (a sign-in in the browser, a person is needed) or evo configure.",
+		"Повтор тем же ключом не поможет. Новый ключ — evo login (вход через браузер, нужен человек) или evo configure.")
+}
+
+// rejectedKeyHint is the hint of a key IAM rejected: a new key first, then
+// where the key came from — the variables when set, else the profile.
+func rejectedKeyHint() string {
+	return i18n.T("Retrying with the same key will not help. For a new key: evo login (a sign-in in the browser, a person is needed) or evo configure. The key comes from CLOUDRU_KEY_ID / CLOUDRU_SECRET when they are set, else from the profile: if it should work, check the key ID and secret there — the key may have been deleted or expired, or the service account disabled.",
+		"Повтор тем же ключом не поможет. Новый ключ — evo login (вход через браузер, нужен человек) или evo configure. Ключ берётся из CLOUDRU_KEY_ID / CLOUDRU_SECRET, если они заданы, иначе из профиля: если он должен работать, проверьте там Key ID и секрет — ключ мог быть удалён или истечь, а сервисный аккаунт выключен.")
 }
 
 // ErrNoCredentials is the error of a command that needs the Cloud.ru key
@@ -327,16 +334,15 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 			ce := clerrors.New(clerrors.CodeAuthFailed,
 				i18n.Tf("the term of the access key expired %s (IAM status %d)", "срок ключа доступа истек %s (статус IAM %d)",
 					exp.UTC().Format(time.RFC3339), resp.StatusCode),
-				i18n.T("Retrying will not help: a person is needed. Run evo login to issue a new key, or create a key in the Cloud.ru console and run evo configure.",
-					"Повтор не поможет: нужен человек. Выполните evo login, чтобы выпустить новый ключ, или создайте ключ в личном кабинете Cloud.ru и выполните evo configure."))
+				i18n.T("Retrying will not help: a person is needed. Run evo login (a sign-in in the browser) to issue a new key, or create a key in the Cloud.ru console and run evo configure.",
+					"Повтор не поможет: нужен человек. Выполните evo login (вход через браузер), чтобы выпустить новый ключ, или создайте ключ в личном кабинете Cloud.ru и выполните evo configure."))
 			ce.Details = map[string]any{"key_expired": true}
 			return Token{}, false, ce
 		}
 		return Token{}, false, clerrors.New(
 			clerrors.CodeAuthFailed,
 			i18n.Tf("IAM rejected the credentials (status %d)", "IAM отклонил ключ доступа (статус %d)", resp.StatusCode),
-			i18n.T("Verify the key ID and secret: 'evo configure', or CLOUDRU_KEY_ID / CLOUDRU_SECRET. If they are right, the key may have been deleted or expired, or the service account disabled: create a new key in the console (Users → Service accounts).",
-				"Проверьте Key ID и секрет: 'evo configure' или CLOUDRU_KEY_ID / CLOUDRU_SECRET. Если они верны, ключ мог быть удалён или истечь, а сервисный аккаунт — выключен: создайте новый ключ в консоли («Пользователи» → «Сервисные аккаунты»)."),
+			rejectedKeyHint(),
 		)
 	}
 	if resp.StatusCode != http.StatusOK {
