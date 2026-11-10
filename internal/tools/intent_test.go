@@ -78,7 +78,7 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 // MCP carries it once, doctor names it, and the note says where to look,
 // not what to delete (release plan 1.8, (и); «Риск», conclusion 46).
 func TestPending_ReadOnBothSurfaces(t *testing.T) {
-	r, dir := targetRegistry(t, &goneCloud{})
+	r, dir := targetRegistry(t, &disksCloud{})
 	t.Chdir(dir)
 	if _, err := intent.Begin(dir, intent.Intent{Tool: "disk_create", Name: "disk-1", ProjectID: "p", Surface: "cli", PID: 42}); err != nil {
 		t.Fatal(err)
@@ -149,5 +149,81 @@ func TestIntent_OutcomeAndTarget(t *testing.T) {
 	}
 	if l := r.listToolOf("pg_create"); l != "pg_list" {
 		t.Errorf("the read of pg_create: %q", l)
+	}
+}
+
+// disksCloud lists the disks of the test: doctor reads disk_list for an
+// intent of disk_create (PR-2).
+type disksCloud struct {
+	goneCloud
+	disks []map[string]any
+}
+
+func (c *disksCloud) ListDisks(context.Context, string) ([]map[string]any, error) {
+	return c.disks, nil
+}
+
+// Release plan 1.8, (и), PR-2 («Риск», conclusion 46): doctor reads the
+// list of what each intent names and closes the one whose outcome it shows
+// — a create whose resource is listed by its name, a delete whose target is
+// gone; any other stays, with what the list said.
+func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
+	cloud := &disksCloud{}
+	r, dir := targetRegistry(t, cloud)
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
+	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
+	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
+	begin := func(in intent.Intent) {
+		t.Helper()
+		if _, err := intent.Begin(dir, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	begin(intent.Intent{Tool: "disk_create", Name: "made"})
+	begin(intent.Intent{Tool: "disk_create", Name: "not-yet"})
+	begin(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-gone"})
+	begin(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-still"})
+	cloud.disks = []map[string]any{{"id": "d-made", "name": "made"}, {"id": "d-still", "name": "still"}}
+
+	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
+	left := map[string]bool{}
+	for _, in := range intent.Pending(dir) {
+		left[in.Name+in.Target] = true
+	}
+	if left["made"] || left["disk_id=d-gone"] || !left["not-yet"] || !left["disk_id=d-still"] {
+		t.Errorf("left after doctor: %v\n%s", left, text)
+	}
+	for _, want := range []string{"the create took effect", "has no not-yet yet", "the delete took effect", "still lists d-still"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("doctor does not say %q:\n%s", want, text)
+		}
+	}
+}
+
+// «Риск», conclusion 47: the list is the active project's, and an intent
+// of another project cannot be read in it — the target of a delete there is
+// «not listed» here whatever happened to it. Such an intent stays, with
+// both projects named; one of the active project or of none closes as
+// before.
+func TestDoctor_IntentOfAnotherProjectStays(t *testing.T) {
+	cloud := &disksCloud{}
+	r, dir := targetRegistry(t, cloud)
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
+	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
+	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
+	if _, err := intent.Begin(dir, intent.Intent{Tool: "disk_delete", Target: "disk_id=d-other", ProjectID: "p-other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := intent.Begin(dir, intent.Intent{Tool: "disk_delete", Target: "disk_id=d-here", ProjectID: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
+	left := intent.Pending(dir)
+	if len(left) != 1 || left[0].ProjectID != "p-other" || !strings.Contains(text, "p-other") {
+		t.Errorf("left %+v\n%s", left, text)
 	}
 }

@@ -1879,8 +1879,10 @@ func deployFields(err error, fields map[string]any) map[string]any {
 // image, the subnet and the group of the zone) refuse it before the
 // question, with confirmed or without.
 func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Plan, error) {
-	if name := stringArg(args, "name"); name != "" {
-		if err := provision.ValidName(i18n.T("VM", "ВМ"), name); err != nil {
+	// A name given — empty too — is checked; no name keeps the default
+	// (N16, D88: "" showed the preview with the price).
+	if _, given := args["name"]; given {
+		if err := provision.ValidName(i18n.T("VM", "ВМ"), stringArg(args, "name")); err != nil {
 			return nil, err
 		}
 	}

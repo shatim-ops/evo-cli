@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -45,5 +46,31 @@ func TestProjectScopedListsNeedAProject(t *testing.T) {
 	_, _ = a.ListDiskTypes(ctx, "")
 	if calls.Load() != 1 {
 		t.Errorf("disk types without a project: %d requests", calls.Load())
+	}
+}
+
+// Release plan 1.8, L3 («Риск», conclusion 43, (3)): a list of a project
+// the key does not see answers 404 — the refusal names that, not «resource
+// not found: GET /api/v1/vms», and keeps its code (VM_NOT_FOUND for VMs,
+// NOT_FOUND else).
+func TestProjectScopedLists404NamesTheProject(t *testing.T) {
+	srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"code":"not_found"}`, http.StatusNotFound)
+	})
+	defer srv.Close()
+	ctx := context.Background()
+	for name, c := range map[string]struct {
+		call func() error
+		code string
+	}{
+		"vms":     {func() error { _, err := a.ListVMsInProject(ctx, "p-1"); return err }, clierrors.CodeVMNotFound},
+		"subnets": {func() error { _, err := a.ListSubnets(ctx, "p-1"); return err }, clierrors.CodeNotFound},
+		"disks":   {func() error { _, err := a.ListDisks(ctx, "p-1"); return err }, clierrors.CodeNotFound},
+	} {
+		var ce *clierrors.CLIError
+		if err := c.call(); !errors.As(err, &ce) || ce.Code != c.code || !strings.Contains(ce.Message, "p-1") ||
+			!strings.Contains(ce.Message, "not visible to this key") || !strings.Contains(ce.Hint, "evo whoami") {
+			t.Errorf("%s of a project the key does not see: %v", name, err)
+		}
 	}
 }
