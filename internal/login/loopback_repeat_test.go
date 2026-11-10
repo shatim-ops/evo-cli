@@ -22,8 +22,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/loginworld"
 )
 
-// closedConn is the error of a request to a loopback evo has closed.
-var closedConn = regexp.MustCompile(`connection refused|connection reset|EOF`)
+// closedConn is the error of a request to a loopback evo has closed, in
+// the words of Linux and macOS and of Windows (WSAECONNREFUSED «actively
+// refused», WSAECONNRESET «forcibly closed»: main, windows-latest, 10.11).
+var closedConn = regexp.MustCompile(`connection refused|connection reset|EOF|actively refused|forcibly closed`)
 
 // replay is one request a browser sends to the loopback again.
 type replay struct {

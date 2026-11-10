@@ -19,6 +19,12 @@ import (
 // header — with the dashes as dots, so that redact.sed, which masks UUIDs
 // as ids of resources, leaves them to be read.
 func TestScripts_APIRidNamesOnlyRequestIDs(t *testing.T) {
+	// cloud-live.sh runs on the Linux runners of cloud-e2e only; on Windows
+	// the variable tmp the function reads meets TMP of the system, whose
+	// name the environment does not tell apart (main, windows-latest, 10.11).
+	if runtime.GOOS == "windows" {
+		t.Skip("bash script: CI runs it on Linux")
+	}
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("no bash")
 	}

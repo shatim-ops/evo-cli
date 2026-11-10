@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -69,7 +70,12 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 	sent = false
 	h = r.intended(tool, func(context.Context, map[string]any) (string, bool) { sent = true; return "{}", false })
 	text, isErr := h(context.Background(), args)
-	if sent || !isErr || !strings.Contains(text, config.DataDir(dir)) || !strings.Contains(text, `"reason": "CONFIG_INVALID"`) {
+	// The answer is JSON: the path is read from it, not looked for in its
+	// text, where a backslash of a Windows path is escaped (main,
+	// windows-latest, 10.11).
+	var ans struct{ Hint, Reason string }
+	_ = json.Unmarshal([]byte(text), &ans)
+	if sent || !isErr || !strings.Contains(ans.Hint, config.DataDir(dir)) || ans.Reason != "CONFIG_INVALID" {
 		t.Errorf("an intent that cannot be written: sent %v\n%s", sent, text)
 	}
 }
