@@ -269,5 +269,5 @@ func writeCompletionCache(path string, items []map[string]string) {
 	if err != nil || os.MkdirAll(filepath.Dir(path), 0o700) != nil {
 		return
 	}
-	_ = os.WriteFile(path, data, 0o600)
+	_ = config.WriteFileAtomic(path, data, 0o600) // a link at path is replaced, not written through (R-67)
 }

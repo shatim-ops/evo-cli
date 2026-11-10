@@ -59,13 +59,19 @@ type rejectedKeyLine struct {
 func loadUserKeyLines(stateDir string) (keys []string, rejected []rejectedKeyLine, name string) {
 	dir := config.DataDir(stateDir)
 	name = userKeysFile
-	raw, err := os.ReadFile(filepath.Join(dir, name))
+	// Its lines go to a VM: read as itself, never a link's target (R-67).
+	raw, err := config.ReadFileNoFollow(filepath.Join(dir, name))
 	if os.IsNotExist(err) {
 		name = legacyUserKeysFile
-		raw, err = os.ReadFile(filepath.Join(dir, name))
+		raw, err = config.ReadFileNoFollow(filepath.Join(dir, name))
+	}
+	if os.IsNotExist(err) {
+		return nil, nil, userKeysFile
 	}
 	if err != nil {
-		return nil, nil, userKeysFile
+		// A link or another non-regular file is not read, and said: the
+		// person sees why no key of the file goes to the VM (Qwen on #1179).
+		return nil, []rejectedKeyLine{{why: "the file is not a regular file (a symlink?): no key of it is read; delete it and put the keys in a file of its own"}}, name
 	}
 	lines := strings.Split(string(raw), "\n")
 	for i := 0; i < len(lines); i++ {
@@ -135,7 +141,9 @@ func describeUserKeys(keys []string, rejected []rejectedKeyLine) []map[string]an
 	}
 	for _, r := range rejected {
 		where := fmt.Sprintf("line %d", r.first)
-		if r.last > r.first {
+		if r.first == 0 {
+			where = "the file"
+		} else if r.last > r.first {
 			where = fmt.Sprintf("lines %d-%d", r.first, r.last)
 		}
 		out = append(out, map[string]any{"error": where + ": " + r.why + "; not sent to the VM"})
@@ -238,8 +246,11 @@ func pinHostKey(path, host, key string) error {
 		return err
 	}
 	defer unlock()
+	// Read as itself: what is read is written back as a file of the
+	// project, so a link's target — a private key — must never be it
+	// («Риск», conclusion 66).
 	var keep []string
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := config.ReadFileNoFollow(path); err == nil {
 		for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
 			if line == "" || knownHostsLineFor(line, host) {
 				continue
@@ -256,7 +267,9 @@ func pinHostKey(path, host, key string) error {
 	if len(keep) > 0 {
 		out = strings.Join(keep, "\n") + "\n"
 	}
-	return os.WriteFile(path, []byte(out), 0o600)
+	// Rewritten whole: the rename replaces a link committed in a cloned
+	// .evo/ instead of writing its target (R-67).
+	return config.WriteFileAtomic(path, []byte(out), 0o600)
 }
 
 // knownHostsLineFor reports whether a known_hosts line names host (plain or

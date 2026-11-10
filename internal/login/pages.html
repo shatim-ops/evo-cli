@@ -146,6 +146,7 @@ a { color: var(--green-deep); }
       <p class="support small pick">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.OrgName}}{{if and .OrgName .Source}} · {{end}}{{.Source}}</span>{{end}}</p>
 {{if .Unchecked}}      <div class="alert warning"><div>{{.Unchecked}}</div></div>
 {{end}}{{if .PreselectNote}}      <p class="support small">{{.PreselectNote}}</p>
+{{end}}{{if .OtherProfile}}      <p class="support small"><span class="x other s-{{.OtherAudience}}">{{.OtherProfile}}</span></p>
 {{end}}      <p class="support small">{{.NoRightNote}}</p>
     </fieldset>
     <fieldset>
