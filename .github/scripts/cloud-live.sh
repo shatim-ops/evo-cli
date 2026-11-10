@@ -477,13 +477,35 @@ dns_unlink() {
 # vm_post NAME FLAVOR IMAGE ZID SIZE DISK_TYPE INTERFACES — прямой POST
 # /api/v1.1/vms телом, как его шлёт evo (provision.CreateVMRequest): зона и
 # подсеть — по id (availability_zone_id, subnet_id), flavor, образ и тип
-# диска — по имени. Поля availability_zone_name и subnet_name API ВМ не
-# принимает: 422 без текста (P41 rc 1.6, CMP7 прогон 181).
+# диска — по имени, image_metadata — по полям образа (vm_meta). Поля
+# availability_zone_name и subnet_name API ВМ не принимает: 422 без текста
+# (P41 rc 1.6, CMP7 прогон 181); без image_metadata — 422
+# image_metadata_fields_missing (CMP7 прогон 183).
 vm_post() {
+	local meta
+	meta=$(vm_meta "$3" "$1") || meta='{}'
 	api POST https://compute.api.cloud.ru/api/v1.1/vms "$(jq -nc --arg p "$PROJECT" --arg n "$1" --arg f "$2" --arg i "$3" \
-		--arg z "$4" --argjson sz "$5" --arg d "$6" --argjson ifs "$7" \
-		'[{project_id: $p, name: $n, availability_zone_id: $z, flavor_name: $f, image_name: $i,
+		--arg z "$4" --argjson sz "$5" --arg d "$6" --argjson ifs "$7" --argjson m "$meta" \
+		'[{project_id: $p, name: $n, availability_zone_id: $z, flavor_name: $f, image_name: $i, image_metadata: $m,
 		   disks: [{name: ($n + "-boot"), size: $sz, disk_type_name: $d}], interfaces: $ifs}]')"
+}
+# vm_meta IMAGE HOSTNAME — image_metadata для прямого POST ВМ по полям
+# образа из image_get (images.Fields — то же правило, что у provision):
+# поля, которые заполняет evo, — одноразовым ключом пробы, именем ВМ,
+# пользователем user1 и случайным паролем (маскируется); поля со значением
+# по умолчанию — им. Поле, которое должен задать человек, — пусто: API
+# ответит отказом, и строка пробы его назовёт.
+vm_meta() {
+	local k pw
+	[ -f "$tmp/vmprobe_key.pub" ] || ssh-keygen -q -t ed25519 -N '' -C evo-probe -f "$tmp/vmprobe_key" >/dev/null 2>&1 || return 1
+	k=$(cat "$tmp/vmprobe_key.pub")
+	pw=$(openssl rand -hex 16)
+	mask "$pw"
+	evo tools call image_get --arg image="$1" --json 2>/dev/null | jq -c --arg k "$k" --arg h "$2" --arg pw "$pw" '
+		[.fields[]? | select(.filled_by == "evo" or .filled_by == "default")
+		 | {key: .name, value: (if .role == "ssh_key" then $k elif .role == "vm_name" then $h
+			elif .role == "login" then "user1" elif .role == "password" then $pw else (.default // "") end)}
+		 | select(.value != "")] | from_entries'
 }
 # zone_subnet ZID — id первой подсети зоны (для interfaces[].subnet_id).
 zone_subnet() { evo tools call list_subnets --json | jq -r --arg z "$1" '[.subnets[]? | select(.availability_zone_id == $z) | .id // "" | select(. != "")][0] // empty'; }
@@ -561,9 +583,22 @@ probe_cmp7() {
 # есть ли след: записи disk_create в журнале evo (журнал включается на время
 # пробы) и диск в облаке (и его состояние). Это ответ evo и платформы, а не
 # провал; диск удаляется здесь же, остаток — уборкой области по префиксу.
+# Задержка kill — несколько попыток (R3F1_DELAYS, по умолчанию 0,5; 1,5 и
+# 3 с), у каждой свой диск: одна задержка то не успевает отправить POST
+# (раунд 6, 1 мс), то опаздывает — evo уже ответил сам (прогон 183, 3 с).
+# Строка «kill: yes» и «диск в облаке: есть» — наблюдение; остальные
+# попытки — контрольная группа.
 probe_r3f1() {
-	local name="$prefix-r3f1" pid killed=no jpath jn0 jn1 jlast disk='' i
-	evo diag on >/dev/null 2>&1 || { gap R3F1 "evo diag on не сработал"; return 0; }
+	local d n=0
+	for d in ${R3F1_DELAYS:-0.5 1.5 3}; do
+		n=$((n + 1))
+		r3f1_once "$d" "$n"
+	done
+}
+
+r3f1_once() {
+	local delay=$1 name="$prefix-r3f1-$2" tag="R3F1 ($1 с)" pid killed=no jpath jn0 jn1 jlast pend disk='' i
+	evo diag on >/dev/null 2>&1 || { gap "$tag" "evo diag on не сработал"; return 0; }
 	jpath=$(evo diag status --json 2>/dev/null | jq -r '.path // empty')
 	# Считаются подтверждённые вызовы: --yes пишет и запись превью
 	# (confirmation_required), а она не след создания (прогон 181: одна
@@ -576,12 +611,11 @@ probe_r3f1() {
 	pid=$!
 	# Опрос stderr до 30 с с шагом 20 мс: согласие — конверт --json
 	# {"status":"confirmed"} или строка «Подтверждено:» / «Confirmed:».
-	# kill — через R3F1_DELAY (3 с) после согласия, не сразу: раунд 6 Grok
-	# (реестр находок № 70) убивал через 1 мс — POST ещё не ушёл, исход
-	# INCONCLUSIVE. За 2–4 с POST /disks отправлен, а evo ещё ждёт диск.
+	# kill — через $delay после согласия, не сразу: раунд 6 Grok (реестр
+	# находок № 70) убивал через 1 мс — POST ещё не ушёл, исход INCONCLUSIVE.
 	for i in $(seq 1 1500); do
 		grep -qE '"status":"confirmed"|^(Подтверждено|Confirmed): ' "$tmp/r3f1.err" && {
-			sleep "${R3F1_DELAY:-3}"
+			sleep "$delay"
 			kill -9 "$pid" 2>/dev/null && killed=yes
 			break
 		}
@@ -590,25 +624,33 @@ probe_r3f1() {
 	done
 	wait "$pid" 2>/dev/null || true
 	if [ "$killed" != yes ]; then
-		gap "R3F1: kill после «Подтверждено»" "evo завершился сам (шаг $i): $(head -c 300 "$tmp/r3f1.err" | tr '\n' ' ' | redact)"
+		gap "$tag: kill после «Подтверждено»" "evo завершился сам (шаг $i): $(head -c 300 "$tmp/r3f1.err" | tr '\n' ' ' | redact)"
 	fi
 	jn1=$(jcount)
+	# Намерение (R-59, #1127): evo doctor после kill называет незавершённый
+	# вызов — проверка «pending operation»; до #1127 строк нет.
+	pend=$(evo doctor --json 2>/dev/null | jq -r --arg n "$name" '[.checks[]? | select(.name == "pending operation" and (.detail | contains($n)))] | length' 2>/dev/null) || pend=
 	jlast=$(if [ -n "$jpath" ] && [ -f "$jpath" ]; then grep '"tool":"disk_create"' "$jpath" | tail -1 | jq -c '{confirmed, preview, error, reason}' 2>/dev/null || true; fi)
 	evo diag off >/dev/null 2>&1 || true
 	# Диск в облаке: до 60 с — POST мог уйти перед kill и дойти позже.
 	r3f1_disk() { disk=$(evo tools call disk_list --json 2>/dev/null | jq -c --arg n "$name" '[.disks[]? | select(.name == $n) | {id, state: (.state // .status // null)}][0] // empty'); [ -n "$disk" ]; }
 	poll 60 5 r3f1_disk || true
 	mask "$(printf '%s' "$disk" | jq -r '.id // empty' 2>/dev/null)"
-	row "R3F1: след в журнале evo" "$([ "${jn1:-0}" -gt "${jn0:-0}" ] && echo есть || echo нет)" \
+	row "$tag: след в журнале evo" "$([ "${jn1:-0}" -gt "${jn0:-0}" ] && echo есть || echo нет)" \
 		"подтверждённых записей disk_create: было ${jn0:-0}, стало ${jn1:-0}${jlast:+; последняя запись disk_create $jlast}; kill: $killed"
-	row "R3F1: диск в облаке" "$([ -n "$disk" ] && echo есть || echo нет)" \
+	row "$tag: незавершённый вызов в evo doctor" "$([ "${pend:-0}" -gt 0 ] && echo есть || echo нет)" \
+		"проверок «pending operation» с именем диска: ${pend:-не прочитано}; kill: $killed"
+	row "$tag: диск в облаке" "$([ -n "$disk" ] && echo есть || echo нет)" \
 		"$([ -n "$disk" ] && printf 'состояние %s' "$(printf '%s' "$disk" | jq -r '.state // "не прочитано"')" || echo 'за 60 с не появился')"
+	# Намерение пробы снимается здесь: диск пробы удаляется ниже (или его
+	# нет), а следующие команды области иначе писали бы о нём в stderr.
+	grep -l -- "$name" .evo/intents/*.json 2>/dev/null | xargs -r rm -f
 	[ -n "$disk" ] || return 0
 	r3f1_ready() { r3f1_disk && ! printf '%s' "$disk" | jq -e '.state | tostring | test("creat")' >/dev/null; }
 	poll 300 10 r3f1_ready || true
 	tc disk_delete --arg disk_id="$(printf '%s' "$disk" | jq -r .id)"
-	if [ "$rc" = 0 ]; then ok "R3F1: диск пробы удалён" "disk_delete: $reason"
-	else gap "R3F1: диск пробы удалён" "код $rc, $reason: $why — уборка области по префиксу"; fi
+	if [ "$rc" = 0 ]; then ok "$tag: диск пробы удалён" "disk_delete: $reason"
+	else gap "$tag: диск пробы удалён" "код $rc, $reason: $why — уборка области по префиксу"; fi
 }
 
 # Проба P41 (пункт Е; FB15-21): что отвечает платформа на группу целей с
