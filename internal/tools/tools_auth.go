@@ -111,6 +111,11 @@ func (s *Registry) handleWhoami(ctx context.Context, _ map[string]any) (string, 
 	// The term of the key, read here and in doctor only (R-26): a person
 	// issues the next key, and the agent learns when it has to ask one.
 	term, termNote := keyTerm(ctx, eng.Auth, tok, cfg.KeyID)
+	if termNote == keyNotListed() {
+		if err := revokedKey(ctx, eng.Auth, tok, cfg.KeyID); err != nil {
+			return failed(ctx, err, nil), true
+		}
+	}
 	if !term.IsZero() {
 		out["key_expires_at"] = term.UTC().Format(time.RFC3339)
 		if keyExpiresSoon(term) {
@@ -154,8 +159,38 @@ func keyTerm(ctx context.Context, tp auth.TokenProvider, tok auth.Token, keyID s
 		}
 		return t, ""
 	}
-	return time.Time{}, i18n.T("unknown: the key is not in the list of its service account's keys (not in the list)",
+	return time.Time{}, keyNotListed()
+}
+
+// keyNotListed is the note of a key its service account's list does not
+// have: deleted in the console, or the list lags.
+func keyNotListed() string {
+	return i18n.T("unknown: the key is not in the list of its service account's keys (not in the list)",
 		"неизвестен: ключа нет в списке ключей его сервисного аккаунта (not in the list)")
+}
+
+// tokenForgetter is a provider that can drop a cached token (IAMProvider).
+type tokenForgetter interface{ Forget(value string) }
+
+// revokedKey tells a key revoked in the console from a list that lags: the
+// cached token tok would work to its deadline while the key is gone (G10,
+// F2 of round 3 of Grok). It drops tok and exchanges the key again: IAM
+// refuses a revoked key — AUTH_FAILED naming it; a key IAM takes — nil.
+func revokedKey(ctx context.Context, tp auth.TokenProvider, tok auth.Token, keyID string) error {
+	f, ok := tp.(tokenForgetter)
+	if !ok {
+		return nil
+	}
+	f.Forget(tok.Value)
+	_, err := tp.Token(ctx)
+	var ce *clierrors.CLIError
+	if err == nil || !errors.As(err, &ce) || (ce.Code != clierrors.CodeAuthFailed && ce.Code != clierrors.CodeAuthExpired) {
+		return err
+	}
+	return clierrors.Wrap(clierrors.CodeAuthFailed,
+		i18n.Tf("the key %s is revoked: it is not among its service account's keys, and IAM no longer takes it",
+			"ключ %s отозван: его нет среди ключей сервисного аккаунта, и IAM его больше не принимает", config.MaskKeyID(keyID)),
+		auth.RefusedKeyHint(), err)
 }
 
 // keyTermCheck is doctor's check of the key's term: a warning within

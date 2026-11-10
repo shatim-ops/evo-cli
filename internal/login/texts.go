@@ -182,8 +182,8 @@ func tDoneReused(account, role, previousKey string) string {
 		return i18n.Tf("The existing service account %s was reused: the role “%s” is valid %s",
 			"Использован существующий сервисный аккаунт %s: роль «%s» действует %s", account, auth.LoginRoleDisplayName, role)
 	}
-	return i18n.Tf("The existing service account %s was reused: the role “%s” is valid %s; the previous key %s on this computer was deleted",
-		"Использован существующий сервисный аккаунт %s: роль «%s» действует %s, прежний ключ %s на этом компьютере удален",
+	return i18n.Tf("The existing service account %s was reused: the role “%s” is valid %s; the previous key %s was deleted in Cloud.ru",
+		"Использован существующий сервисный аккаунт %s: роль «%s» действует %s, прежний ключ %s удален в Cloud.ru",
 		account, auth.LoginRoleDisplayName, role, previousKey)
 }
 
@@ -311,8 +311,8 @@ func TResultReused(account, previousKey string) string {
 	if previousKey == "" {
 		return i18n.Tf("The existing service account %s was reused", "Использован существующий сервисный аккаунт %s", account)
 	}
-	return i18n.Tf("The existing service account %s was reused; the previous key %s was deleted",
-		"Использован существующий сервисный аккаунт %s, прежний ключ %s удален", account, previousKey)
+	return i18n.Tf("The existing service account %s was reused; the previous key %s was deleted in Cloud.ru",
+		"Использован существующий сервисный аккаунт %s, прежний ключ %s удален в Cloud.ru", account, previousKey)
 }
 func TResultCheck(profile string) string {
 	return i18n.Tf("Check: evo whoami --profile %s", "Проверка: evo whoami --profile %s", profile)
