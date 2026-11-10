@@ -352,3 +352,22 @@ func TestLogin_HelpOffersNoYes(t *testing.T) {
 		t.Errorf("--yes is gone from the help of the other commands too")
 	}
 }
+
+// Plan 1.8, #1095 (п), round 2: with --for agent the page offered the
+// project of the profile default, while the key goes to the profile agent
+// with another project. The project picked beforehand is the one of the
+// profile the key goes to.
+func TestLogin_PreselectFromTheProfileOfTheKey(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "p-default")
+	saveProfile(t, agentProfile, "p-agent")
+	if id, _, _ := loginPreselectFor(loginStore{}, login.ForAgent); id != "p-agent" {
+		t.Errorf("--for agent: preselected %q, want the project of the profile agent", id)
+	}
+	if id, _, _ := loginPreselectFor(loginStore{}, login.ForMe); id != "p-default" {
+		t.Errorf("--for me: preselected %q, want the project of the profile default", id)
+	}
+	if id, _, _ := loginPreselectFor(loginStore{}, ""); id != "p-default" {
+		t.Errorf("no --for: preselected %q, want the project of «Мне», the default of the page", id)
+	}
+}

@@ -97,7 +97,7 @@ func newLoginCmd() *cobra.Command {
 			if err := writableConfigDir(); err != nil {
 				return err
 			}
-			choice.Preselect, choice.PreselectFrom, choice.PreselectEnv = loginPreselect(flagProfile)
+			choice.Preselect, choice.PreselectFrom, choice.PreselectEnv = loginPreselectFor(store, choice.For)
 			cfg := loginConfig(loginSay(cmd), openBrowser)
 			if noBrowser {
 				cfg.Open = nil
@@ -167,6 +167,16 @@ func newLoginCmd() *cobra.Command {
 // CLOUDRU_PROJECT_ID, as for every command, else the project of the
 // profile of now; with where it came from. --project filters the list and
 // wins over both.
+// loginPreselectFor is the project picked beforehand from the profile the
+// key goes to: --for agent reads the profile agent, not default (#1095
+// (п)); with no --for, the page's default «Мне».
+func loginPreselectFor(s loginStore, a login.Audience) (id, from string, env bool) {
+	if a == "" {
+		a = login.ForMe
+	}
+	return loginPreselect(s.Profile(a))
+}
+
 func loginPreselect(profileFlag string) (id, from string, env bool) {
 	if env := strings.TrimSpace(os.Getenv("CLOUDRU_PROJECT_ID")); env != "" {
 		return env, login.TFromEnv(), true
