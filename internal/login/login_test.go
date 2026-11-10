@@ -983,7 +983,7 @@ func TestLogin_DroppedFirstGrantStillEnds(t *testing.T) {
 	second := make(chan string, 1)
 	v := loginworld.Variant{}
 	v.BeforeKey = func() {
-		close(dropFirst) // the browser drops the first POST
+		close(dropFirst)                  // the browser drops the first POST
 		time.Sleep(50 * time.Millisecond) // wall-clock: lets the server see the dropped connection before the key
 		go func() {
 			resp, err := http.PostForm("http://"+host+"/grant", form)
