@@ -52,6 +52,13 @@ func newHead(title string) head {
 	return head{Lang: i18n.Lang(), Title: title, Product: product.PageName}
 }
 
+// endHead is the head of a page of the end: the tab names its status and
+// the product as the consent's does (D34; findings 26 and 183 of 1.8: not
+// «evo» here and «Evolution CMCP» there).
+func endHead(status string) head {
+	return newHead(status + " — " + product.PageName)
+}
+
 func writePage(w http.ResponseWriter, code int, p page) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// The pages load nothing of another origin: no script; the fonts are the
@@ -253,7 +260,7 @@ func donePage(r Result) page {
 		note = tDoneReused(r.Account, roleTerm(r), prev)
 	}
 	rows := tRowsPage()
-	return page{"done", resultData{head: newHead(tDone() + " — evo"), Status: tDone(),
+	return page{"done", resultData{head: endHead(tDone()), Status: tDone(),
 		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt, r.Account == ForAgent.account()),
 		Note: note,
 		Rows: []row{
@@ -284,13 +291,13 @@ func projectIn(project, org string) string {
 }
 
 func cancelledPage() page {
-	return page{"cancelled", resultData{head: newHead(tCancelledTitle() + " — evo"), Status: tCancelledTitle(), Text: tCancelled()}}
+	return page{"cancelled", resultData{head: endHead(tCancelledTitle()), Status: tCancelledTitle(), Text: tCancelled()}}
 }
 
 // errorPage names the error as the terminal does, with its code; the hint
 // with its command stays the terminal's and JSON's. Never a secret: the
 // errors of the login carry none.
 func errorPage(err error) page {
-	return page{"error", resultData{head: newHead(tNotComplete() + " — evo"), Status: tNotComplete(), Text: err.Error(),
+	return page{"error", resultData{head: endHead(tNotComplete()), Status: tNotComplete(), Text: err.Error(),
 		Footer: tDetails(clierrors.Reason(err), clierrors.ExitCode(err))}}
 }
