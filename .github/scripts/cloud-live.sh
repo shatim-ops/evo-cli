@@ -502,7 +502,7 @@ vm_post() {
 	# пустое тело и 422 «Field required: body») — отказ пробы, не запрос.
 	if ! meta=$(vm_meta "$3" "$1") || ! printf '%s' "$meta" | jq -e 'type == "object"' >/dev/null 2>&1; then
 		code=000
-		jq -nc --arg i "$3" '{message: ("image_metadata не собраны: image_get " + $i + " не отдал fields")}' >"$tmp/api.json"
+		jq -nc --arg w "$(cat "$tmp/vm_meta.why" 2>/dev/null || true)" '{message: ("image_metadata не собраны: " + $w)}' >"$tmp/api.json"
 		return 0
 	fi
 	api POST https://compute.api.cloud.ru/api/v1.1/vms "$(jq -nc --arg p "$PROJECT" --arg n "$1" --arg f "$2" --arg i "$3" \
@@ -515,14 +515,25 @@ vm_post() {
 # поля, которые заполняет evo, — одноразовым ключом пробы, именем ВМ,
 # пользователем user1 и случайным паролем (маскируется); поля со значением
 # по умолчанию — им. Поле, которое должен задать человек, — пусто: API
-# ответит отказом, и строка пробы его назовёт.
+# ответит отказом, и строка пробы его назовёт. Отказ — с причиной в
+# $tmp/vm_meta.why: ошибка image_get (reason и message evo) — прогоны 184 и
+# 185 ушли на строку «не отдал fields» без причины (stderr — в /dev/null).
 vm_meta() {
-	local k pw
-	[ -f "$tmp/vmprobe_key.pub" ] || ssh-keygen -q -t ed25519 -N '' -C evo-probe -f "$tmp/vmprobe_key" >/dev/null 2>&1 || return 1
+	local k pw out rc=0
+	echo "image_get $1 не отдал fields" >"$tmp/vm_meta.why"
+	[ -f "$tmp/vmprobe_key.pub" ] || ssh-keygen -q -t ed25519 -N '' -C evo-probe -f "$tmp/vmprobe_key" >/dev/null 2>&1 ||
+		{ echo "ssh-keygen не создал ключ пробы" >"$tmp/vm_meta.why"; return 1; }
 	k=$(cat "$tmp/vmprobe_key.pub")
 	pw=$(openssl rand -hex 16)
 	mask "$pw"
-	evo tools call image_get --arg image="$1" --json 2>/dev/null | jq -c --arg k "$k" --arg h "$2" --arg pw "$pw" '
+	out=$(evo tools call image_get --arg image="$1" --json 2>"$tmp/vm_meta.err") || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		printf 'image_get %s: код %s: %s\n' "$1" "$rc" "$(jq -r '.error | "\(.reason // "") \(.message // "")"' "$tmp/vm_meta.err" 2>/dev/null ||
+			tail -1 "$tmp/vm_meta.err" | cut -c1-200)" >"$tmp/vm_meta.why"
+		return 1
+	fi
+	printf '%s' "$out" | jq -e '.fields | type == "array"' >/dev/null 2>&1 || return 1
+	printf '%s' "$out" | jq -c --arg k "$k" --arg h "$2" --arg pw "$pw" '
 		[.fields[]? | select(.filled_by == "evo" or .filled_by == "default")
 		 | {key: .name, value: (if .role == "ssh_key" then $k elif .role == "vm_name" then $h
 			elif .role == "login" then "user1" elif .role == "password" then $pw else (.default_value // "") end)}
@@ -944,10 +955,14 @@ area_disk() {
 		bad "SSH к ВМ" "не поднялся за 10 мин ($([ "${early%% *}" = отвечал ] && echo "а: после операций с диском" || echo "б: не отвечал и сразу после provision"); сразу — $early): ssh — $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200); ключ .evo/id_ed25519 $key; пользователь $user; ВМ $(vm_state)"
 		return 1
 	fi
-	ssh_vm 'sudo shutdown -h +0' >/dev/null || true
+	# Код ssh — в строку провала (прогон 185: running через 5 мин, а дошла
+	# ли команда, не видно). 255 с «closed by remote host» — ВМ уже гасла.
+	local sd_rc=0 sd_err
+	ssh_vm 'sudo shutdown -h +0' >/dev/null || sd_rc=$?
+	sd_err=$(tail -1 "$tmp/ssh.err" 2>/dev/null | redact | cut -c1-200)
 	stopped() { st=$(vm_state); case "$st" in stopped | shutoff | SHUTOFF | STOPPED) return 0 ;; *) return 1 ;; esac; }
 	if poll 300 10 stopped; then ok "ВМ выключена изнутри" "state $st"; else
-		bad "ВМ выключена изнутри" "state $(vm_state) через 5 мин"
+		bad "ВМ выключена изнутри" "state $(vm_state) через 5 мин; ssh shutdown: код $sd_rc${sd_err:+, $sd_err}"
 		return 1
 	fi
 	boot=$(evo tools call disk_list --json | jq -r --arg vm "$vm" '[.disks[] | select(.bootable == true and ((.attached_to // []) | index($vm)))][0].id // empty')
