@@ -468,8 +468,10 @@ func visibleProjects(ctx context.Context, tp auth.TokenProvider) (int, error) {
 func ScopeText(n int, known bool) string {
 	switch {
 	case !known:
-		return i18n.T("unknown (the Organization API does not list projects for this key)",
-			"неизвестно (Organization API не отдаёт список проектов для этого ключа)")
+		// No name of an API: «the Organization API does not list» read as
+		// a failure (release audit 1.8, L7).
+		return i18n.T("unknown: Cloud.ru does not give a service account key the list of projects — not an error, the key works in its project",
+			"неизвестно: ключу сервисного аккаунта Cloud.ru не отдаёт список проектов — это не ошибка, ключ работает в своём проекте")
 	case n == 1:
 		return i18n.T("1 visible to the key", "ключ видит 1 проект")
 	}

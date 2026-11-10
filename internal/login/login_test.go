@@ -471,6 +471,18 @@ func TestLogin_ForeignStateAndSecondCallback(t *testing.T) {
 		case v.TwiceCallback && (len(s) != 2 || s[0] != http.StatusOK || s[1] != http.StatusForbidden):
 			t.Errorf("twice: callbacks %v, want 200 then 403", s)
 		}
+		// The second callback of this login (the link opened again, a
+		// browser that reloads it) points back to the page that works,
+		// not «sign in again», which would burn it (release audit 1.8, L5).
+		// No «it would end it»: a second evo login refuses STATE_LOCKED
+		// («Риск», conclusion 48).
+		if b := w.CallbackBodies(); v.TwiceCallback && (len(b) != 2 || !strings.Contains(b[1], tAlreadyOpen()) || strings.Contains(b[1], tForeign()) ||
+			!strings.Contains(b[1], "STATE_LOCKED")) {
+			t.Errorf("twice: the second answer %q", b)
+		}
+		if b := w.CallbackBodies(); v.ForeignState && (len(b) != 2 || !strings.Contains(b[0], tForeign())) {
+			t.Errorf("foreign state: the answer %q", b)
+		}
 		// No grant follows: the login ends interrupted, nothing made.
 		if clierrors.ExitCode(err) != clierrors.ExitInterrupted || len(w.Accounts()) != 0 {
 			t.Errorf("err %v (exit %d); accounts %d", err, clierrors.ExitCode(err), len(w.Accounts()))
