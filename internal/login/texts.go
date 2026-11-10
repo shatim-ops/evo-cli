@@ -375,7 +375,36 @@ func ePortsHint() string {
 	return i18n.T("Free one of the ports and run evo login again.", "Освободите один из портов и повторите evo login.")
 }
 func eTimeout(wait time.Duration) string {
-	return i18n.Tf("sign-in was not completed within %d min; nothing was created", "вход не выполнен за %d мин, ничего не создано", int(wait.Minutes()))
+	return i18n.Tf("the wait is over: sign-in was not completed within %s; nothing was created",
+		"время ожидания истекло: вход не выполнен за %s, ничего не создано", waitText(wait))
+}
+func eTimeoutHint(wait time.Duration) string {
+	return i18n.Tf("Run evo login again and finish it in the browser within %s; the page of this sign-in no longer works.",
+		"Запустите evo login снова и завершите вход в браузере за %s; страница этого входа больше не работает.", waitText(wait))
+}
+
+// waitText is the wait in minutes, in seconds when shorter than one: never
+// «0 min».
+func waitText(wait time.Duration) string {
+	if wait < time.Minute {
+		return i18n.Tf("%d s", "%d с", int(wait.Seconds()))
+	}
+	return i18n.Tf("%d min", "%d мин", int(wait.Minutes()))
+}
+
+// eLoginRunning: another evo login waits for the browser on this computer
+// («Риск», conclusion 35.1: no advice to kill it).
+func eLoginRunning(port int) string {
+	if port == 0 {
+		return i18n.T("another evo login is waiting in the browser on this computer; nothing was started",
+			"на этом компьютере другой evo login ждет в браузере, новый вход не начат")
+	}
+	return i18n.Tf("another evo login is waiting in the browser on this computer (port %d); nothing was started",
+		"на этом компьютере другой evo login ждет в браузере (порт %d), новый вход не начат", port)
+}
+func eLoginRunningHint() string {
+	return i18n.T("Finish or cancel that sign-in, then run evo login again.",
+		"Завершите или отмените тот вход, затем запустите evo login снова.")
 }
 func eProvider(what string) string {
 	return i18n.Tf("Cloud.ru rejected the sign-in: %s; nothing was created", "Cloud.ru отклонил вход: %s; ничего не создано", what)
@@ -532,7 +561,8 @@ func TFlagNoBrowser() string {
 		"Не открывать браузер, только показать ссылку. Открыть ее нужно на этом же компьютере")
 }
 func TFlagProject() string {
-	return i18n.T("Project ID or name: the page shows only this project, selected", "ID или имя проекта: на странице будет только он, отмеченный")
+	return i18n.T("Project ID or name: the page shows only this project, selected; the project is checked after you sign in in the browser",
+		"ID или имя проекта: на странице будет только он, отмеченный; проект проверяется после входа в браузере")
 }
 func TFlagFor() string {
 	return i18n.T("Who the key is for: me (account evo, the current profile) or agent (account evo-agent, profile “agent”)",
