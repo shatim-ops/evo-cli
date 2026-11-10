@@ -154,7 +154,9 @@ func ResolveWithSources(opts Options) (Config, []Source, error) {
 	// Set empty, the variable reads as unset: the default directory, with
 	// the person's profiles, is used — said, with its path (findings
 	// ledger 1.8, № 44). A refusal is 1.9, with a decision.
-	if d, set := os.LookupEnv(EnvConfigDir); set && d == "" {
+	// With no default directory either (no HOME) there is no path to name:
+	// what needs one refuses with NoConfigDir.
+	if d, set := os.LookupEnv(EnvConfigDir); set && d == "" && Dir() != "" {
 		cfg.Warnings = append(cfg.Warnings, i18n.Tf("%s is set empty: the default configuration directory %s is used",
 			"%s задан пустым: используется каталог настроек по умолчанию %s", EnvConfigDir, Dir()))
 	}
