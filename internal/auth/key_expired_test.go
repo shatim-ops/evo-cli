@@ -49,5 +49,10 @@ func TestIAMProvider_ExpiredKeySaysSo(t *testing.T) {
 		if said != c.expired || (ce.Details["key_expired"] == true) != c.expired {
 			t.Errorf("%s: message %q, hint %q, details %v", name, ce.Message, ce.Hint, ce.Details)
 		}
+		// The status IAM answered is there either way (findings ledger 1.8,
+		// № 55; Qwen on #1184).
+		if ce.Details["http_status"] != http.StatusUnauthorized {
+			t.Errorf("%s: details %v, want http_status 401", name, ce.Details)
+		}
 	}
 }
