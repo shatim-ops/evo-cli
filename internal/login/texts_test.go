@@ -257,7 +257,7 @@ func TestConsentPage_OneListByOrganization(t *testing.T) {
 			t.Errorf("no group %s", org)
 		}
 	}
-	if !strings.Contains(page, `<option id="p1" value="b" disabled>beta — `+tNoRightMark()) {
+	if !strings.Contains(page, `<option id="p1" value="b" disabled>beta · Org One — `+tNoRightMark()) {
 		t.Errorf("a project without the right is not disabled with its mark")
 	}
 	// «Риск», conclusion 34.3: nothing picked beforehand — an empty first

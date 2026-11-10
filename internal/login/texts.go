@@ -156,6 +156,13 @@ func tGrantInProject(project string) string {
 	return i18n.Tf("Grant access to the project “%s”", "Выдать доступ к проекту «%s»", project)
 }
 func tCancel() string { return i18n.T("Cancel", "Отмена") }
+
+// tChosenIn is the line at the button: the page puts «project ·
+// organization» of the choice where %s is, by CSS — projects of one name
+// live in several organizations (R-71).
+func tChosenIn(project string) string {
+	return i18n.Tf("Access is granted in: %s (project · organization)", "Доступ выдается в: %s (проект · организация)", project)
+}
 func tSecretNote() string {
 	return i18n.Tf("The key's secret never passes through the browser and is never shown: %s on this computer creates the account and the key with your rights and saves the key to the profile",
 		"Секрет ключа не проходит через браузер и нигде не показывается: аккаунт и ключ создает %s на этом компьютере с вашими правами и записывает ключ в профиль",
@@ -252,6 +259,14 @@ func tAlreadyOpen() string {
 func tForeign() string {
 	return i18n.T("This request does not belong to the current sign-in of evo. Go back to the page the sign-in opened, or to the terminal",
 		"Запрос не относится к текущему входу evo. Вернитесь к странице, которую открыл вход, или в терминал")
+}
+
+// tNoProviderAnswer answers a callback with this login's own state but
+// neither a code nor an error: no answer of the provider (a reload cut
+// short), and the login waits on (№ 10; #1173, R-71).
+func tNoProviderAnswer() string {
+	return i18n.T("This address of the sign-in has no answer of Cloud.ru: neither a code nor an error. The sign-in still waits: go back to the tab of the Cloud.ru sign-in and finish it, or cancel it in the terminal",
+		"В этом адресе входа нет ответа Cloud.ru — ни кода, ни ошибки. Вход еще ждет: вернитесь на вкладку входа в Cloud.ru и завершите его или отмените вход в терминале")
 }
 
 // tForeignLink answers the provider's redirect with another login's

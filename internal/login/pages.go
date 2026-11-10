@@ -107,9 +107,12 @@ type consentData struct {
 	Picked               bool
 	AgentWarnTitle       string
 	AgentWarn, GrantIn   [2]string
-	Projects             []consentProject
-	Orgs                 []consentOrg
-	Terms                []consentTerm
+	// ChosenIn is the line at the button: the chosen project and its
+	// organization (R-71), shown by the :has of the choice.
+	ChosenIn [2]string
+	Projects []consentProject
+	Orgs     []consentOrg
+	Terms    []consentTerm
 }
 
 // introLine is «You signed in as …» with the e-mail or the user name of
@@ -154,6 +157,7 @@ func consentPage(s *session) page {
 		d.Unchecked = tUnchecked()
 	}
 	copy(d.GrantIn[:], cut(tGrantInProject("\x00p"), "\x00p"))
+	copy(d.ChosenIn[:], cut(tChosenIn("\x00p"), "\x00p"))
 	d.AgentWarnTitle = tAgentWarnTitle()
 	copy(d.AgentWarn[:], cut(tAgentWarn("\x00d"), "\x00d"))
 	var rules strings.Builder
