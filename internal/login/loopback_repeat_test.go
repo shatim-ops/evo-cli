@@ -235,3 +235,34 @@ func TestLogin_WaitEndsDuringTheGrantAnswersItsResult(t *testing.T) {
 		t.Fatalf("%d keys", keys)
 	}
 }
+
+// Release audit 1.8, findings 14 and 34 (R3-09; R4-1/2, AUTH-51): the
+// exchange of the code cut by the network ends the login with nothing made
+// and an answer that is not a success; a login broken at any write and
+// rolled back leaves the project so that the next login succeeds and holds
+// exactly one account, one key and one role of evo.
+func TestLogin_BrokenLoginLeavesARepeatableProject(t *testing.T) {
+	t.Run("the exchange of the code cut", func(t *testing.T) {
+		w := newWorld(t, loginworld.Variant{TokenDrop: true})
+		r := login(t, w, &browser{}, Choice{}, nil, nil)
+		if r.err == nil || len(w.Accounts()) != 0 || len(w.Keys()) != 0 || len(r.saved) != 0 {
+			t.Fatalf("err %v; accounts %d, keys %d, saved %d", r.err, len(w.Accounts()), len(w.Keys()), len(r.saved))
+		}
+	})
+	for _, step := range []loginworld.Step{loginworld.StepAccount, loginworld.StepPermission, loginworld.StepKey, loginworld.StepKeyCheck} {
+		t.Run("broken at "+string(step)+", then again", func(t *testing.T) {
+			w := newWorld(t, loginworld.Variant{FailAt: step})
+			if r := login(t, w, &browser{}, Choice{}, nil, nil); r.err == nil {
+				t.Fatalf("the login broken at %s succeeded", step)
+			}
+			w.Heal()
+			r := login(t, w, &browser{}, Choice{}, nil, nil)
+			if r.err != nil {
+				t.Fatalf("the login after the broken one: %v", r.err)
+			}
+			if a, k, p := len(w.Accounts()), len(w.Keys()), len(w.Permissions()); a != 1 || k != 1 || p != 1 {
+				t.Errorf("after a broken login and a good one: accounts %d, keys %d, roles %d — want 1, 1, 1", a, k, p)
+			}
+		})
+	}
+}
