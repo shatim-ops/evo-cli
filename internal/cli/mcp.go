@@ -13,10 +13,12 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -270,23 +272,120 @@ func toolsetsWarning(listed []mcp.Tool) string {
 // newMCPServer is the server of evo mcp on the projects of --allow-project
 // (none: any project the key sees). With the flag the tools are bound to
 // the server's project (H9): a read that names no project reads that
-// project, not the whole billing agreement or organization.
+// project, not the whole billing agreement or organization. The project
+// and the zone are the server's from its start (sessionTargets).
 func newMCPServer(allowProjects []string) *mcp.Server {
-	srv := mcp.New(mcpEngineFactory(allowProjects), version)
+	targets := startTargets()
+	srv := mcp.New(mcpEngineFactory(allowProjects, targets), version)
+	srv.SetConfigNote(targets.note)
 	if len(allowProjects) > 0 {
 		srv.SetProjectBound()
 	}
 	return srv
 }
 
+// sessionTargets are the project and the zone of an evo mcp session
+// (findings ledger 1.8, № 3 and № 66; «Риск», conclusions 36 п. 4(а) and
+// 62): the configuration is read on every call — a rotated key needs no
+// restart — but a person editing the profile for their own CLI work does
+// not move a live agent session to another project or zone. They are
+// taken at the start, or at the first call that resolves the
+// configuration when there was none yet (a client started after evo agent
+// setup, before evo login). A call that names its own project_id or zone
+// keeps it.
+type sessionTargets struct {
+	mu              sync.Mutex
+	set             bool
+	project, region string
+}
+
+func startTargets() *sessionTargets {
+	t := &sessionTargets{}
+	t.targets()
+	return t
+}
+
+// targets are the session's project and zone; ok is false while the
+// configuration has not resolved once with a key, and for no targets (nil).
+func (t *sessionTargets) targets() (project, region string, ok bool) {
+	if t == nil {
+		return "", "", false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.set {
+		// No key yet is no configuration of a session: nothing is taken.
+		cfg, err := configOf(scopeOverrides())
+		if err != nil || cfg.KeyID == "" {
+			return "", "", false
+		}
+		t.project, t.region, t.set = cfg.ProjectID, cfg.Region, true
+	}
+	return t.project, t.region, true
+}
+
+// keep sets on cfg the targets of the session the call does not name itself.
+func (t *sessionTargets) keep(cfg *config.Config, overrides map[string]any) {
+	project, region, ok := t.targets()
+	if !ok {
+		return
+	}
+	if _, named := overrides["ProjectID"]; !named {
+		cfg.ProjectID = project
+	}
+	if _, named := overrides["Region"]; !named {
+		cfg.Region = region
+	}
+}
+
+// note names what the configuration changed since the start, "" when
+// nothing did; every answer of the server carries it (mcp.SetConfigNote).
+func (t *sessionTargets) note() string {
+	project, region, ok := t.targets()
+	if !ok {
+		return ""
+	}
+	cfg, err := configOf(scopeOverrides())
+	if err != nil {
+		return ""
+	}
+	var changed []string
+	if cfg.ProjectID != project {
+		changed = append(changed, fmt.Sprintf("project_id %s -> %s", orUnset(project), orUnset(cfg.ProjectID)))
+	}
+	if cfg.Region != region {
+		changed = append(changed, fmt.Sprintf("zone %s -> %s", orUnset(region), orUnset(cfg.Region)))
+	}
+	if len(changed) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("The configuration changed after this server started (%s). The server keeps working with the values it started with "+
+		"(project_id %s, zone %s); a call that passes project_id or zone itself uses that. Restart evo mcp to take the new values.",
+		strings.Join(changed, ", "), orUnset(project), orUnset(region))
+}
+
+func orUnset(v string) string {
+	if v == "" {
+		return "(not set)"
+	}
+	return v
+}
+
 // mcpEngineFactory builds the engine of every tool call. Tools that take a
 // project_id argument (deploy, provision) pass it as the ProjectID override,
 // so the check sees the project the call resolves to, not only the
-// server's own.
-func mcpEngineFactory(allowProjects []string) func(map[string]any) (*engine.Engine, error) {
+// server's own. The key is read anew on each call; the project and the
+// zone are the server's from its start (sessionTargets).
+func mcpEngineFactory(allowProjects []string, targets *sessionTargets) func(map[string]any) (*engine.Engine, error) {
 	return func(overrides map[string]any) (*engine.Engine, error) {
 		if overrides == nil {
 			overrides = map[string]any{}
+		}
+		named := map[string]any{}
+		for _, k := range []string{"ProjectID", "Region"} {
+			if v, ok := overrides[k]; ok {
+				named[k] = v
+			}
 		}
 		// The SSH key stays lazy here too: only the tools that
 		// reach a VM call EnsureSSHKey.
@@ -294,6 +393,7 @@ func mcpEngineFactory(allowProjects []string) func(map[string]any) (*engine.Engi
 		if err != nil {
 			return nil, err
 		}
+		targets.keep(&eng.Config, named)
 		// stdout is the JSON-RPC channel in stdio mode: the engine's
 		// progress lines (a released floating IP, a FIP attached after
 		// boot) go to stderr, the server log, unless a tool captures them
