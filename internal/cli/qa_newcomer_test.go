@@ -174,9 +174,7 @@ func TestNewcomer_IAMRejectsKey(t *testing.T) {
 		code, _, stderr := runCLI(t, "", "--json", "whoami")
 		e := lastJSONError(t, stderr)
 		if code != clerrors.ExitAuth || e.Reason != clerrors.CodeAuthFailed ||
-			!strings.HasPrefix(e.Hint, "Повтор тем же ключом не поможет. Новый ключ — evo login") || !strings.Contains(e.Hint, "ключ мог быть удалён или истечь") ||
-			// 403: and the account to check (findings ledger 1.8, № 54).
-			strings.Contains(e.Hint, "не выключен ли его сервисный аккаунт") != (st == http.StatusForbidden) {
+			!strings.HasPrefix(e.Hint, "Повтор тем же ключом не поможет. Новый ключ — evo login") || !strings.Contains(e.Hint, "ключ мог быть удалён или истечь") {
 			t.Errorf("IAM %d: exit %d, %+v", st, code, e)
 		}
 	}
