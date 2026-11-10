@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -283,40 +284,65 @@ func newMCPServer(allowProjects []string) *mcp.Server {
 	return srv
 }
 
-// sessionTargets are the project and the zone evo mcp started with
-// (findings ledger 1.8, № 3 and № 66; «Риск», conclusion 36 п. 4(а)): the
-// configuration is read on every call — a rotated key needs no restart —
-// but a person editing the profile for their own CLI work does not move a
-// live agent session to another project or zone. A call that names its own
-// project_id or zone keeps it. nil when the configuration did not resolve
-// at the start: there is nothing to keep.
-type sessionTargets struct{ project, region string }
-
-func startTargets() *sessionTargets {
-	cfg, err := configOf(scopeOverrides())
-	if err != nil {
-		return nil
-	}
-	return &sessionTargets{project: cfg.ProjectID, region: cfg.Region}
+// sessionTargets are the project and the zone of an evo mcp session
+// (findings ledger 1.8, № 3 and № 66; «Риск», conclusions 36 п. 4(а) and
+// 62): the configuration is read on every call — a rotated key needs no
+// restart — but a person editing the profile for their own CLI work does
+// not move a live agent session to another project or zone. They are
+// taken at the start, or at the first call that resolves the
+// configuration when there was none yet (a client started after evo agent
+// setup, before evo login). A call that names its own project_id or zone
+// keeps it.
+type sessionTargets struct {
+	mu              sync.Mutex
+	set             bool
+	project, region string
 }
 
-// keep sets on cfg the targets of the start the call does not name itself.
-func (t *sessionTargets) keep(cfg *config.Config, overrides map[string]any) {
+func startTargets() *sessionTargets {
+	t := &sessionTargets{}
+	t.targets()
+	return t
+}
+
+// targets are the session's project and zone; ok is false while the
+// configuration has not resolved once with a key, and for no targets (nil).
+func (t *sessionTargets) targets() (project, region string, ok bool) {
 	if t == nil {
+		return "", "", false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.set {
+		// No key yet is no configuration of a session: nothing is taken.
+		cfg, err := configOf(scopeOverrides())
+		if err != nil || cfg.KeyID == "" {
+			return "", "", false
+		}
+		t.project, t.region, t.set = cfg.ProjectID, cfg.Region, true
+	}
+	return t.project, t.region, true
+}
+
+// keep sets on cfg the targets of the session the call does not name itself.
+func (t *sessionTargets) keep(cfg *config.Config, overrides map[string]any) {
+	project, region, ok := t.targets()
+	if !ok {
 		return
 	}
 	if _, named := overrides["ProjectID"]; !named {
-		cfg.ProjectID = t.project
+		cfg.ProjectID = project
 	}
 	if _, named := overrides["Region"]; !named {
-		cfg.Region = t.region
+		cfg.Region = region
 	}
 }
 
 // note names what the configuration changed since the start, "" when
 // nothing did; every answer of the server carries it (mcp.SetConfigNote).
 func (t *sessionTargets) note() string {
-	if t == nil {
+	project, region, ok := t.targets()
+	if !ok {
 		return ""
 	}
 	cfg, err := configOf(scopeOverrides())
@@ -324,18 +350,18 @@ func (t *sessionTargets) note() string {
 		return ""
 	}
 	var changed []string
-	if cfg.ProjectID != t.project {
-		changed = append(changed, fmt.Sprintf("project_id %s -> %s", orUnset(t.project), orUnset(cfg.ProjectID)))
+	if cfg.ProjectID != project {
+		changed = append(changed, fmt.Sprintf("project_id %s -> %s", orUnset(project), orUnset(cfg.ProjectID)))
 	}
-	if cfg.Region != t.region {
-		changed = append(changed, fmt.Sprintf("zone %s -> %s", orUnset(t.region), orUnset(cfg.Region)))
+	if cfg.Region != region {
+		changed = append(changed, fmt.Sprintf("zone %s -> %s", orUnset(region), orUnset(cfg.Region)))
 	}
 	if len(changed) == 0 {
 		return ""
 	}
 	return fmt.Sprintf("The configuration changed after this server started (%s). The server keeps working with the values it started with "+
 		"(project_id %s, zone %s); a call that passes project_id or zone itself uses that. Restart evo mcp to take the new values.",
-		strings.Join(changed, ", "), orUnset(t.project), orUnset(t.region))
+		strings.Join(changed, ", "), orUnset(project), orUnset(region))
 }
 
 func orUnset(v string) string {

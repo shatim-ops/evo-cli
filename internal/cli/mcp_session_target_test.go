@@ -55,3 +55,35 @@ func TestMCP_SessionKeepsItsProjectWhenConfigChanges(t *testing.T) {
 		}
 	}
 }
+
+// «Риск», conclusion 62: a refusal after the change carries config_changed
+// too (evo login to the same profile for another project: the key of B in
+// the project of A is a 403, and the agent reads why in the refusal); a
+// server started before any configuration takes its targets at the first
+// call that resolves one (recommendation (а)).
+func TestMCP_SessionTargetsAtFirstResolveAndInARefusal(t *testing.T) {
+	fc := setupCLI(t)
+	calls := mcpTransports(t, nil) // no profile yet
+	saveProfile(t, "default", "p-first")
+	for tr, call := range calls {
+		if a := call("whoami", map[string]any{}); a.isErr || !strings.Contains(a.text, "p-first") || strings.Contains(a.text, "config_changed") {
+			t.Fatalf("%s: the first resolve %+v", tr, a)
+		}
+	}
+	// evo login to the same profile for another project: a new key, which
+	// IAM refuses in this world.
+	if err := config.SaveProfile("default", config.Profile{ProjectID: "p-later"},
+		config.Credentials{KeyID: "fake0000-key-id-0000-000000000003", Secret: fakeSecret}); err != nil {
+		t.Fatal(err)
+	}
+	fc.iamStatus = 403
+	for tr, call := range calls {
+		a := call("whoami", map[string]any{})
+		var m map[string]any
+		_ = json.Unmarshal([]byte(a.text), &m)
+		note, _ := m["config_changed"].(string)
+		if !a.isErr || !strings.Contains(note, "p-first") || !strings.Contains(note, "p-later") {
+			t.Errorf("%s: a refusal after the change: %+v", tr, a)
+		}
+	}
+}
