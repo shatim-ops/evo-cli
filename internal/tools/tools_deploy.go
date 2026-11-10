@@ -183,6 +183,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	// approves them with the plan.
 	if deployKey || params.SSHKey == eng.SSHPubKey {
 		if keys, rejected, keysFile := loadUserKeyLines(eng.StateDir); len(keys)+len(rejected) > 0 {
+			plan.UserKeysHash = userKeysHash(keys)
 			view["user_ssh_keys"] = describeUserKeys(keys, rejected)
 			view["user_ssh_keys_file"] = filepath.Join(filepath.Base(config.DataDir(eng.StateDir)), keysFile)
 			view["next"] = "Show this plan, its monthly cost and the user_ssh_keys to the user: those keys get an SSH login on the VM, and the file may have come with a repository someone else wrote. " + apply
@@ -333,6 +334,24 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		}), true
 	}
 
+	// The keys deploy_apply appends are the ones the plan showed (R-68):
+	// a key added since gets no SSH login nobody saw — refused before
+	// anything is written, as deploy refuses a compose file changed since
+	// its consent.
+	if err := eng.EnsureSSHKey(); err != nil {
+		return errResult(err), true
+	}
+	// The keys read here are the ones appended after the create: the file
+	// is not read again, so a key written while the VM is made gets no
+	// login either («Риск», conclusion 76).
+	var approvedKeys []string
+	approvedFile := ""
+	if plan.PublicKey == eng.SSHPubKey {
+		approvedKeys, approvedFile = loadUserKeys(eng.StateDir)
+		if userKeysHash(approvedKeys) != plan.UserKeysHash {
+			return errResult(errUserKeysChangedSincePlan(plan.PlanID)), true
+		}
+	}
 	if err := authorize(ctx, eng); err != nil {
 		return errResult(err), true
 	}
@@ -436,10 +455,7 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 			map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}), true
 	}
 
-	if err := eng.EnsureSSHKey(); err != nil {
-		return errResult(err), true
-	}
-	// If we injected the agent's own deploy key, hand back an ssh command that
+	// If we injected the agent's own deploy key (EnsureSSHKey above), hand back an ssh command that
 	// uses it (deployKeySSH, as provision does). The host key is checked
 	// against the project's known_hosts:
 	// pinned from the first connection when we make one (user keys), else
@@ -449,8 +465,8 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		dataDir := config.DataDir(eng.StateDir)
 		note := "Connect with the ssh command above (agent deploy key)."
 		hostKey := ""
-		if keys, keysFile := loadUserKeys(eng.StateDir); len(keys) > 0 {
-			hk, kErr := appendUserKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys)
+		if keys, keysFile := approvedKeys, approvedFile; len(keys) > 0 {
+			hk, kErr := appendKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys)
 			if kErr != nil {
 				note += fmt.Sprintf(" WARNING: user key auto-append failed (%v) — append the public key to ~/.ssh/authorized_keys on the VM manually.", kErr)
 			} else {
