@@ -203,3 +203,20 @@ func TestDoctor_KeyRoles(t *testing.T) {
 		t.Errorf("no role: %+v, want a warning, the verdict not failed", c)
 	}
 }
+
+// D88 («Риск», conclusion 37): whoami answers AUTH_FAILED (exit 2) only
+// when the cloud refuses the token itself — a 401; any other «unknown»
+// (no project, no sub, 403, 5xx) is the answer of before, exit 0.
+func TestWhoami_RejectedTokenFails(t *testing.T) {
+	w := &rolesWorld{status: http.StatusUnauthorized}
+	_, text, isErr := callNamed(t, rolesRegistry(t, w, rolesProject, subToken{"sa-1"}), "whoami", map[string]any{})
+	if !isErr || !strings.Contains(text, `"reason": "AUTH_FAILED"`) {
+		t.Errorf("a token IAM refuses: isErr %v\n%s", isErr, text)
+	}
+	for _, st := range []int{http.StatusForbidden, http.StatusInternalServerError} {
+		w := &rolesWorld{status: st}
+		if _, text, isErr := callNamed(t, rolesRegistry(t, w, rolesProject, subToken{"sa-1"}), "whoami", map[string]any{}); isErr {
+			t.Errorf("%d: whoami failed, want roles_note and exit 0\n%s", st, text)
+		}
+	}
+}

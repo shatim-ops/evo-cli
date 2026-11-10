@@ -313,3 +313,35 @@ func TestDeploy_UnknownFlavorRefusedBeforePreview(t *testing.T) {
 		})
 	}
 }
+
+// N16 (Grok round 2 on 7a07ddca, contract of the agent, axis 1):
+// provision with name "" showed the preview with the price and asked for
+// consent (exit 3), as if no name was given. A name given empty is the
+// call's own mistake: USAGE before the question, with confirmed or without
+// (D88). No name at all keeps the default.
+func TestProvision_EmptyNameRefusedBeforePreview(t *testing.T) {
+	images := []*provision.Image{{ID: catalogUbuntu24, Name: "Ubuntu-24.04", DisplayName: "Ubuntu 24.04", Status: "active"}}
+	for _, name := range []string{"", " "} {
+		for _, confirmed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%q/confirmed=%s", name, boolText(confirmed)), func(t *testing.T) {
+				cloud := &imageShelfCloud{cancelCloud: cancelCloud{cancel: func() {}}, images: images}
+				r, _ := cancelRegistry(t, cloud)
+				text, isErr := r.handlers["provision"](context.Background(),
+					map[string]any{"name": name, "image": "Ubuntu-24.04", "confirmed": confirmed})
+				var m map[string]any
+				if err := json.Unmarshal([]byte(text), &m); err != nil {
+					t.Fatalf("answer is not JSON: %v: %s", err, text)
+				}
+				if !isErr || m["reason"] != clierrors.CodeUsage {
+					t.Errorf("isErr=%v reason=%v, want USAGE before the question: %s", isErr, m["reason"], text)
+				}
+				if strings.Contains(text, "confirmation_required") {
+					t.Errorf("a preview for a VM with an empty name: %s", text)
+				}
+				if len(cloud.mutations) > 0 || cloud.creates > 0 {
+					t.Errorf("the cloud was changed before the refusal: %v", cloud.mutations)
+				}
+			})
+		}
+	}
+}
