@@ -949,6 +949,20 @@ func TestWhoami_HalfAnEnvKeyAndAMissingProfileSayWhy(t *testing.T) {
 	if code == 0 || !strings.Contains(stdout+stderr, "CLOUDRU_KEY_ID is set without CLOUDRU_SECRET") {
 		t.Errorf("CLOUDRU_KEY_ID alone: exit %d\n%s%s", code, stdout, stderr)
 	}
+	// The other half, and the pair of AI Agents (Qwen on #1116).
+	for _, c := range []struct{ set, want string }{
+		{"CLOUDRU_SECRET", "CLOUDRU_SECRET is set without CLOUDRU_KEY_ID"},
+		{"EVOLUTION_SERVICE_ACCOUNT_KEY_ID", "EVOLUTION_SERVICE_ACCOUNT_KEY_ID is set without EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET"},
+	} {
+		newProcess()
+		t.Setenv("CLOUDRU_KEY_ID", "")
+		t.Setenv(c.set, "half-only")
+		code, stdout, stderr = runCLI(t, "", "--json", "whoami")
+		if code == 0 || !strings.Contains(stdout+stderr, c.want) || strings.Contains(stdout+stderr, "half-only") {
+			t.Errorf("%s alone: exit %d\n%s%s", c.set, code, stdout, stderr)
+		}
+		t.Setenv(c.set, "")
+	}
 	newProcess()
 	t.Setenv("CLOUDRU_KEY_ID", "")
 	code, stdout, stderr = runCLI(t, "", "--json", "--profile", "nope", "whoami")

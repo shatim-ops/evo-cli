@@ -10,13 +10,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
 	"weak"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -225,17 +225,12 @@ func ErrNoCredentials() error {
 // taken from the environment only as a pair, else from the profile, and
 // one variable alone read as «no key» (findings ledger 1.8, № 130).
 func halfEnvKey() string {
-	id := strings.TrimSpace(os.Getenv("CLOUDRU_KEY_ID")) != ""
-	secret := strings.TrimSpace(os.Getenv("CLOUDRU_SECRET")) != "" || strings.TrimSpace(os.Getenv("CLOUDRU_KEY_SECRET")) != ""
-	switch {
-	case id && !secret:
-		return i18n.T("CLOUDRU_KEY_ID is set without CLOUDRU_SECRET: the environment gives the key only as a pair, and then the profile is not read",
-			"CLOUDRU_KEY_ID задан без CLOUDRU_SECRET: окружение дает ключ только парой, и тогда профиль не читается")
-	case secret && !id:
-		return i18n.T("CLOUDRU_SECRET is set without CLOUDRU_KEY_ID: the environment gives the key only as a pair, and then the profile is not read",
-			"CLOUDRU_SECRET задан без CLOUDRU_KEY_ID: окружение дает ключ только парой, и тогда профиль не читается")
+	set, missing := config.HalfEnvKey()
+	if set == "" {
+		return ""
 	}
-	return ""
+	return i18n.Tf("%s is set without %s: the environment gives the key only as a pair, and then the profile is not read",
+		"%s задан без %s: окружение дает ключ только парой, и тогда профиль не читается", set, missing)
 }
 
 // Token returns a valid IAM token. Refreshes if cached token has < 5min TTL.
