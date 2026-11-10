@@ -78,6 +78,10 @@ on:
       timeout:
         description: "Seconds deploy waits for the VM to become active (CLOUDRU_TIMEOUT; ru.AZ-1 took over 10 min on 15.10.2026)"
         default: "1200"
+      e2e_core:
+        description: "The main e2e job: a billable deploy VM (lowcost10-2-4 with a public IP, ~2–5 RUB, destroyed at the end). Off — only the areas and probes chosen below run (owner decision 10.11, run 181)"
+        type: boolean
+        default: true
       os_smoke:
         description: "Also create VMs from domestic OS images by name (Astra Linux, RED OS): vm create --image → SSH → os-release → delete"
         type: boolean
@@ -288,7 +292,9 @@ jobs:
   e2e:
     needs: preflight
     environment: cloud-e2e
-    if: ${{ github.event_name != 'schedule' && !inputs.cleanup_only }}
+    # e2e_core: false — only the areas and probes (run 181, 10.11: the
+    # owner's «yes» to the probes reached the billable deploy VM too).
+    if: ${{ github.event_name != 'schedule' && !inputs.cleanup_only && inputs.e2e_core }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
