@@ -14,6 +14,7 @@ package login
 
 import (
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -51,6 +52,9 @@ type Config struct {
 	LockPath string
 	// Now is the clock of the answer's values (key's term, login date).
 	Now func() time.Time
+	// Remote: the terminal is over SSH, so the person's browser is likely
+	// on another computer and cannot reach this one's 127.0.0.1 (P1).
+	Remote bool
 }
 
 // Default is the production Config.
@@ -65,6 +69,7 @@ func Default(say func(message, url string), open func(string) error) Config {
 		Wait:     5 * time.Minute,
 		Now:      clock.Now,
 		LockPath: filepath.Join(config.Dir(), "login.lock"),
+		Remote:   os.Getenv("SSH_CONNECTION") != "" || os.Getenv("SSH_TTY") != "",
 	}
 }
 
