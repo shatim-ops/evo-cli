@@ -38,6 +38,27 @@ log $'## [1.5.0] — 2026-11-01\n\n## [1.4.1] — 2026-10-28\n'
 git add -A && git commit -qm 1.5.0 && base=$(git rev-parse HEAD)
 touch docs/internal/handoff/1.5.md
 check "X.Y.0 — передача X.Y.md" 0
+# От 1.8 передача называет фазу 0 следующей версии: раздел «Следующая
+# версия», строка «Фаза 0» и ссылка на бриф briefs/phase-0.md (строка плана
+# 1.8 «Страховка фазы 0»). Передачи до 1.8 — как были.
+log $'## [1.8.0] — 2026-11-12\n\n## [1.5.0] — 2026-11-01\n'
+git add -A && git commit -qm 1.8.0 && base=$(git rev-parse HEAD)
+printf '# 1.8\n\n## Следующая версия\n\n1.9 — сравнение с CLI.\n' >docs/internal/handoff/1.8.md
+check "1.8: передача без фазы 0" 1
+printf '# 1.8\n\n## Фаза 0\n\nсм. briefs/phase-0.md\n\n## Следующая версия\n\n1.9.\n' >docs/internal/handoff/1.8.md
+check "1.8: фаза 0 не в разделе «Следующая версия»" 1
+printf '# 1.8\n\n## Следующая версия\n\n- Фаза 0 — до работы над 1.9.\n' >docs/internal/handoff/1.8.md
+check "1.8: фаза 0 без ссылки на бриф" 1
+printf '# 1.8\n\n## Следующая версия\n\n- Фаза 0 — до работы над 1.9.\n- Бриф: briefs/phase-0.md\n' >docs/internal/handoff/1.8.md
+check "1.8: ссылка на бриф не в строке фазы 0" 1
+printf '# 1.8\n\n## Риски\n\nФаза 0: briefs/phase-0.md\n' >docs/internal/handoff/1.8.md
+check "1.8: раздела «Следующая версия» нет" 1
+printf '# 1.8\n\n## Следующая версия\n\n- Фаза 0 — до работы над 1.9: docs/internal/briefs/phase-0.md.\n\n## Риски\n' >docs/internal/handoff/1.8.md
+check "1.8: фаза 0 со ссылкой на бриф" 0
+printf '# 1.5\n\n## Следующая версия\n\n1.6.\n' >docs/internal/handoff/1.5.md
+log $'## [1.5.0] — 2026-11-01\n'
+git add -A && git commit -qm back-1.5 && base=$(git rev-parse HEAD)
+check "1.5: передача до 1.8 без фазы 0" 0
 log ''
 check "раздела выпуска нет" 0
 exit "$fail"
