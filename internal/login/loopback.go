@@ -75,6 +75,9 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		}
 		s.warnAgent(term)
 	}
+	if cfg.Remote {
+		s.tell(tOverSSH(port))
+	}
 	s.tell(tOpenPage())
 	cfg.Say(tOpen(), authURL)
 	if cfg.Open != nil {
@@ -83,6 +86,7 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 		s.tell(tNoBrowser())
 	}
 	s.tell(tWaiting(cfg.Wait))
+	s.tell(tCannotReach())
 
 	timer := time.NewTimer(cfg.Wait)
 	defer timer.Stop()
@@ -261,7 +265,7 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 		case own:
 			writePage(w, http.StatusForbidden, refusedPage(tAlreadyOpen()))
 		case q.Get("state") != "":
-			writePage(w, http.StatusForbidden, refusedPage(tForeign()))
+			writePage(w, http.StatusForbidden, refusedPage(tForeignLink()))
 		default:
 			refuse(w, http.StatusForbidden)
 		}
@@ -274,7 +278,7 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 			l.end(outcome{err: cancelled()})
 			return
 		}
-		err := at(stepCallback, clierrors.New(clierrors.CodeAuthFailed, eProvider(oneLine(e+": "+q.Get("error_description"))),
+		err := at(stepCallback, clierrors.New(clierrors.CodeAuthFailed, eProvider(e, q.Get("error_description")),
 			eProviderHint()))
 		writePage(w, http.StatusOK, errorPage(err))
 		l.end(outcome{err: err})

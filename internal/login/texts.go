@@ -244,8 +244,21 @@ func tAlreadyOpen() string {
 		"Этот вход уже идет: вернитесь к странице evo, открытой первой в этом браузере (или в терминал). Второй evo login не начнется, пока идет этот (STATE_LOCKED); чтобы начать заново — завершите или отмените этот в терминале")
 }
 
+// tForeign answers a request that is not of this login. It sends back to
+// the login that waits, not to a second one: that does not start while
+// this one waits (STATE_LOCKED; «Риск», conclusion 58, № 22). The Host,
+// the Origin and the token of the consent share it: a forgery learns
+// nothing of which check failed (R-47).
 func tForeign() string {
-	return i18n.T("This request does not belong to the current sign-in. Sign in again", "Запрос не относится к текущему входу. Запустите вход еще раз")
+	return i18n.T("This request does not belong to the current sign-in of evo. Go back to the page the sign-in opened, or to the terminal",
+		"Запрос не относится к текущему входу evo. Вернитесь к странице, которую открыл вход, или в терминал")
+}
+
+// tForeignLink answers the provider's redirect with another login's
+// state: a link of another or an earlier sign-in (№ 22).
+func tForeignLink() string {
+	return i18n.T("This link is from another or an earlier sign-in of evo. The current sign-in waits in the terminal: go back to the page it opened, or cancel it in the terminal and run evo login again",
+		"Эта ссылка — от другого или более раннего входа evo. Текущий вход ждет в терминале: вернитесь к странице, которую он открыл, или отмените его в терминале и запустите evo login снова")
 }
 
 // 4. The terminal.
@@ -277,6 +290,17 @@ func tOpen() string {
 func tWaiting(wait time.Duration) string {
 	return i18n.Tf("Finish signing in in the browser. Waiting up to %d min; press Ctrl-C to cancel",
 		"Завершите вход в браузере. Ожидание — до %d мин, отмена — Ctrl-C", int(wait.Minutes()))
+}
+
+// tCannotReach and tOverSSH: a browser that cannot reach 127.0.0.1 of
+// this computer ends at «cannot connect» after sign-in (P1).
+func tCannotReach() string {
+	return i18n.T("If after sign-in the browser cannot open 127.0.0.1, it is not on this computer or runs in a sandbox: sign in where evo and the browser are on one computer",
+		"Если после входа браузер не может открыть 127.0.0.1, он не на этом компьютере или работает в песочнице: выполните вход там, где evo и браузер на одном компьютере")
+}
+func tOverSSH(port int) string {
+	return i18n.Tf("This terminal is over SSH: a browser on your computer cannot return to 127.0.0.1 of this one. Sign in on your computer, or forward the port first: ssh -L %d:127.0.0.1:%d <this host>",
+		"Терминал открыт по SSH: браузер вашего компьютера не вернется на 127.0.0.1 этого. Выполните вход на своем компьютере или сначала пробросьте порт: ssh -L %d:127.0.0.1:%d <этот хост>", port, port)
 }
 func tNoBrowser() string {
 	return i18n.T("The browser was not opened: open the link on this same computer. Sign-in does not work over SSH or in a container: after sign-in, the browser returns to 127.0.0.1 on its own computer, not on the one evo runs on",
@@ -495,9 +519,54 @@ func eLoginRunningHint() string {
 	return i18n.T("Finish or cancel that sign-in, then run evo login again.",
 		"Завершите или отмените тот вход, затем запустите evo login снова.")
 }
-func eProvider(what string) string {
+
+// eProvider is the provider's error at the callback. A known code of OAuth
+// reads as words, the code and the provider's description in brackets for
+// the support; an unknown one as the provider sent it (№ 23, «Риск»,
+// conclusion 58). The description is cut and quoted (oneLine), the page
+// escapes it.
+func eProvider(code, description string) string {
+	what := oneLine(code + ": " + description)
+	if words, ok := oauthErrors[code]; ok {
+		raw := code
+		if description != "" {
+			raw += ": " + oneLine(description)
+		}
+		what = words() + " (" + raw + ")"
+	}
 	return i18n.Tf("Cloud.ru rejected the sign-in: %s; nothing was created", "Cloud.ru отклонил вход: %s; ничего не создано", what)
 }
+
+// oauthErrors are the codes of an error of the authorization request
+// (RFC 6749, 4.1.2.1; OpenID Connect Core, 3.1.2.6) in words;
+// access_denied is the cancel, not an error.
+var oauthErrors = map[string]func() string{
+	"invalid_request": func() string {
+		return i18n.T("the sign-in request was not accepted", "запрос на вход не принят")
+	},
+	"unauthorized_client": func() string {
+		return i18n.T("evo may not sign in this way", "evo не разрешено входить этим способом")
+	},
+	"invalid_scope": func() string {
+		return i18n.T("the access evo asks for is not allowed", "доступ, который запрашивает evo, не разрешен")
+	},
+	"server_error": func() string {
+		return i18n.T("an error on the side of Cloud.ru", "ошибка на стороне Cloud.ru")
+	},
+	"temporarily_unavailable": func() string {
+		return i18n.T("the sign-in is unavailable for now", "вход временно недоступен")
+	},
+	"login_required": func() string {
+		return i18n.T("you need to sign in to Cloud.ru again", "нужно заново войти в Cloud.ru")
+	},
+	"interaction_required": func() string {
+		return i18n.T("Cloud.ru needs you to confirm the sign-in in the browser", "Cloud.ru просит подтвердить вход в браузере")
+	},
+	"consent_required": func() string {
+		return i18n.T("Cloud.ru needs your consent to the sign-in", "Cloud.ru просит вашего согласия на вход")
+	},
+}
+
 func eProviderHint() string {
 	return i18n.T("Run evo login again. If the error persists, ask your organization administrator to check the sign-in settings of your account.",
 		"Повторите evo login. Если ошибка повторится, обратитесь к администратору организации: он проверит настройки входа вашей учетной записи.")
