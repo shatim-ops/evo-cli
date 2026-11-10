@@ -59,6 +59,9 @@ func TestScripts_DirectVMBodyIsEvos(t *testing.T) {
 	}
 	body := s[start:]
 	body = body[:strings.Index(body, "\n}\n")]
+	if !strings.Contains(body, "POST https://compute.api.cloud.ru/api/v1.1/vms") {
+		t.Error("cloud-live.sh: the direct POST of a VM is not in vm_post")
+	}
 	// The fields are those of the jq filter, not the URL before it.
 	if i := strings.Index(body, "'[{"); i >= 0 {
 		body = body[i:]
