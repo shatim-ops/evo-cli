@@ -107,6 +107,9 @@ type Registry struct {
 	// callBudget: SetCallBudget; 0 — a call waits as long as its work
 	// takes (the CLI).
 	callBudget time.Duration
+	// pendingNoted: the first answer of this process over MCP carried the
+	// intents earlier runs left (withPending); the CLI says them on stderr.
+	pendingNoted sync.Once
 }
 
 // MCPCallBudget is how long a call of evo mcp may wait for the cloud before
@@ -211,7 +214,11 @@ func callEndCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 // budgeted stamps a call with its start (withCallStart).
 func (r *Registry) budgeted(next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
-		return next(r.withCallStart(ctx), args)
+		text, isErr := next(r.withCallStart(ctx), args)
+		if callerOf(ctx) == nil {
+			r.pendingNoted.Do(func() { text = r.withPending(text) })
+		}
+		return text, isErr
 	}
 }
 

@@ -64,7 +64,13 @@ func (r *Registry) gated(name string, plan Planner) Handler {
 			}
 			return toJSON(out), true
 		}
-		return p.Execute(ctx)
+		end, err := r.beginIntent(ctx, name, args)
+		if err != nil {
+			return errResult(err), true
+		}
+		text, isErr := p.Execute(ctx)
+		end(text)
+		return text, isErr
 	}
 }
 
@@ -75,12 +81,38 @@ func (r *Registry) gated(name string, plan Planner) Handler {
 // without it, preview answers; with it, execute runs.
 func (r *Registry) engineGated(ctx context.Context, name string, args map[string]any,
 	live func(*Caller) (string, bool), preview, execute func() (string, bool)) (string, bool) {
+	run := func(f func() (string, bool)) (string, bool) {
+		end, err := r.beginIntent(ctx, name, args)
+		if err != nil {
+			return errResult(err), true
+		}
+		text, isErr := f()
+		end(text)
+		return text, isErr
+	}
 	if c := liveCaller(ctx); c != nil {
-		return live(c)
+		// The engine asks at its own gate: the intent is written on the
+		// yes, before the engine writes anything (Caller.ask).
+		var end func(string)
+		prev := c.consent
+		c.consent = func() error {
+			if end != nil {
+				return nil
+			}
+			e, err := r.beginIntent(ctx, name, args)
+			end = e
+			return err
+		}
+		defer func() { c.consent = prev }()
+		text, isErr := live(c)
+		if end != nil {
+			end(text)
+		}
+		return text, isErr
 	}
 	t, _ := r.Lookup(name)
 	if confirmed, _ := args["confirmed"].(bool); !confirmed && NeedsConsent(t, args) {
 		return preview()
 	}
-	return execute()
+	return run(execute)
 }

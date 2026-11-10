@@ -535,6 +535,10 @@ evo mcp --http 127.0.0.1:8080 --auth bearer --read-only --toolsets vm,vpc,disk,i
   если Organization API не отдаёт ключу список — это не ошибка). Нет ключа или
   IAM его отклонил — ошибка `AUTH_REQUIRED` / `AUTH_FAILED`, сломаны
   настройки — `CONFIG_INVALID`.
+- Первый ответ сервера несёт `pending_operations`, если в каталоге остались
+  записи прерванных вызовов (между согласием и ответом облака): что, где и
+  когда отправлено и какой список проверить по имени
+  ([troubleshooting](troubleshooting.md#прерванные-операции)).
 - `doctor` — `checks` (`name`, `status`: `ok`, `warn`, `fail`, `skip`,
   `detail`, `http_status` у проверок связи) и `ok`: настройки (профиль,
   откуда ключ и проект, их предупреждения), проект, доступность IAM и Compute
