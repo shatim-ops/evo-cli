@@ -378,8 +378,8 @@ func TResultForAgent() string {
 // agent to it — evo agent setup connects the default profile unless told
 // (R-72, «Риск», conclusion 79).
 func TResultSetupAgent(profile string) string {
-	return i18n.Tf("Connect the agent to this key: evo agent setup --client <client> --profile %s",
-		"Подключите агента к этому ключу: evo agent setup --client <клиент> --profile %s", profile)
+	return i18n.Tf("Connect the agent to this key: evo agent setup --client <client> --profile %s (the clients: evo agent setup --help)",
+		"Подключите агента к этому ключу: evo agent setup --client <клиент> --profile %s (клиенты: evo agent setup --help)", profile)
 }
 
 // 5. The errors: the message and the hint of the terminal and JSON.
@@ -688,8 +688,8 @@ func TAgentKeyWarning(profile string) string {
 // profile while agentProfile holds the key evo login made for an agent:
 // the agent would work with the person's key (R-72, «Риск», conclusion 79).
 func TAgentProfileNotChosen(profile, agentProfile string) string {
-	return i18n.Tf("the client is connected to the profile “%s”: the agent will work with its key. The key evo login made for an agent is in the profile “%s” — to connect the agent to it, run the same command with --profile %s",
-		"клиент подключается к профилю «%s»: агент будет работать его ключом. Ключ, выданный агенту через evo login, — в профиле «%s»; чтобы подключить агента к нему, повторите команду с --profile %s",
+	return i18n.Tf("the client is connected to the profile “%s”: the agent will work with the key of this profile. The key evo login made for an agent is in the profile “%s” — to connect the agent to it, run the same command with --profile %s",
+		"клиент подключается к профилю «%s»: агент будет работать ключом этого профиля. Ключ, выданный агенту через evo login, — в профиле «%s»; чтобы подключить агента к нему, повторите команду с --profile %s",
 		profile, agentProfile, agentProfile)
 }
 
