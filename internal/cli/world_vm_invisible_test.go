@@ -26,7 +26,7 @@ func recordByAnotherKey(t *testing.T, w parityWorld) {
 	if err != nil || len(f.Deployments) == 0 {
 		t.Fatalf("no deployment record to mark: %v", err)
 	}
-	// TODO(L3, разработка): f.Deployments[0].<who made it> = <another key>.
+	f.Deployments[0].CreatedBy = &state.Maker{KeyID: "othe****0001"}
 	if err := state.Write(path, f); err != nil {
 		t.Fatal(err)
 	}

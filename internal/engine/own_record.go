@@ -34,7 +34,10 @@ func (e *Engine) AdoptedRecord(ctx context.Context, rec state.DeploymentRecord) 
 // read none, and the error of a read it let pass (a key the cloud refuses;
 // a VM the cloud no longer has is no error: the record still names it).
 func (e *Engine) checkedRecord(ctx context.Context, rec state.DeploymentRecord) (vm *provision.VM, passed, err error) {
-	if rec.VMID == "" || rec.CreatedAt.IsZero() || e.Auth == nil || e.Cloud == nil {
+	// A record another key made is read whatever its age: its 404 is no
+	// proof the VM is gone (L3, «Риск» 43).
+	other := rec.CreatedBy.Other(e.Maker())
+	if rec.VMID == "" || (rec.CreatedAt.IsZero() && !other) || e.Auth == nil || e.Cloud == nil {
 		return nil, nil, nil
 	}
 	cctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
@@ -46,7 +49,13 @@ func (e *Engine) checkedRecord(ctx context.Context, rec state.DeploymentRecord) 
 	e.Cloud.SetToken(tok.Value)
 	vm, err = e.Cloud.GetVM(cctx, rec.VMID)
 	if err != nil {
+		if r := clerrors.Reason(err); other && (r == clerrors.CodeVMNotFound || r == clerrors.CodeNotFound) {
+			return nil, nil, e.NotVisibleToThisKey(rec)
+		}
 		return nil, passedRead(err), uncheckedRecord(rec, err)
+	}
+	if rec.CreatedAt.IsZero() {
+		return vm, nil, nil
 	}
 	return vm, nil, AdoptedVM(rec, vm)
 }

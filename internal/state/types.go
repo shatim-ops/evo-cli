@@ -16,6 +16,12 @@ type DeploymentRecord struct {
 	// a re-run of deploy work there, whatever project the config now names.
 	// Empty in records from before this field existed.
 	ProjectID string `json:"project_id,omitempty"`
+	// CreatedBy is the key that made the record. Cloud.ru answers 404 for
+	// a VM a key does not see, as for one that is gone: under another key a
+	// 404 proves nothing, and destroy keeps the record and the floating IP
+	// (release plan 1.8, L3; «Риск», conclusion 43). Nil in records from
+	// before 1.8.
+	CreatedBy *Maker `json:"created_by,omitempty"`
 	VMFlavor  string `json:"vm_flavor"`
 	Region    string `json:"region"`
 	// VMName, ZoneName and FlavorName are what people know the VM, its
@@ -99,4 +105,27 @@ type File struct {
 	Version     int                `json:"version"`
 	Project     string             `json:"project,omitempty"`
 	Deployments []DeploymentRecord `json:"deployments"`
+}
+
+// Maker is the key that made a deployment record: the service account of
+// a key evo login made, and the Key ID, masked.
+type Maker struct {
+	ServiceAccountID string `json:"service_account_id,omitempty"`
+	KeyID            string `json:"key_id,omitempty"`
+}
+
+// Other tells that cur is surely not the key that made the record: by the
+// account when both know it — a new key of the same account (evo login
+// replaces it) sees the same — else by the Key ID. Unknown on either side
+// is not «other»: the record is read as before 1.8.
+func (m *Maker) Other(cur *Maker) bool {
+	switch {
+	case m == nil || cur == nil:
+		return false
+	case m.ServiceAccountID != "" && cur.ServiceAccountID != "":
+		return m.ServiceAccountID != cur.ServiceAccountID
+	case m.KeyID != "" && cur.KeyID != "":
+		return m.KeyID != cur.KeyID
+	}
+	return false
 }

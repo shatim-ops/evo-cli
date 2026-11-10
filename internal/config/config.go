@@ -41,6 +41,10 @@ type Config struct {
 	// KeyExpiresAt is the term (RFC 3339) of a key evo login made, from the
 	// profile; "" for any other key (R-26).
 	KeyExpiresAt string `yaml:"-" json:"-"`
+	// ServiceAccountID is the account of a key evo login made, from the
+	// profile; "" for any other key. A deployment record keeps it: a key
+	// of the same account sees what the record names (L3, «Риск» 43).
+	ServiceAccountID string `yaml:"-" json:"-"`
 
 	// Deploy
 	ProjectID string `yaml:"project_id" json:"project_id"` // required UUID
@@ -324,7 +328,7 @@ func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 		cfg.KeyEnv = "CLOUDRU_KEY_ID, CLOUDRU_KEY_SECRET"
 	}
 	if keyID != "" || secret != "" {
-		cfg.KeyID, cfg.Secret, cfg.KeyExpiresAt = keyID, secret, ""
+		cfg.KeyID, cfg.Secret, cfg.KeyExpiresAt, cfg.ServiceAccountID = keyID, secret, "", ""
 		origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
 		return nil
 	}
@@ -339,7 +343,7 @@ func applyEnvCredentials(cfg *Config, origins map[string]string) error {
 			i18n.T("Set CLOUDRU_KEY_ID and CLOUDRU_SECRET instead, or run 'evo configure'",
 				"Вместо неё задайте CLOUDRU_KEY_ID и CLOUDRU_SECRET или выполните 'evo configure'"))
 	}
-	cfg.KeyID, cfg.Secret, cfg.KeyExpiresAt = id, sec, ""
+	cfg.KeyID, cfg.Secret, cfg.KeyExpiresAt, cfg.ServiceAccountID = id, sec, "", ""
 	origins["KeyID"], origins["Secret"] = OriginEnv, OriginEnv
 	cfg.Warnings = append(cfg.Warnings,
 		i18n.T("CLOUDRU_API_KEY=keyId:secret is deprecated: set CLOUDRU_KEY_ID and CLOUDRU_SECRET, or run 'evo configure'",
@@ -438,9 +442,9 @@ func applyProfile(cfg *Config, name string, explicit bool, origins map[string]st
 	if c.KeyID != "" || c.Secret != "" {
 		cfg.KeyID, cfg.Secret = c.KeyID, c.Secret
 		origins["KeyID"], origins["Secret"] = OriginProfile, OriginProfile
-		cfg.KeyExpiresAt = ""
+		cfg.KeyExpiresAt, cfg.ServiceAccountID = "", ""
 		if c.Login != nil {
-			cfg.KeyExpiresAt = c.Login.KeyExpiresAt
+			cfg.KeyExpiresAt, cfg.ServiceAccountID = c.Login.KeyExpiresAt, c.Login.ServiceAccountID
 		}
 	}
 	if c.S3 != nil {
