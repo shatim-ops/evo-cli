@@ -276,6 +276,9 @@ func (s *Registry) handleKafkaList(ctx context.Context, args map[string]any) (st
 		out = append(out, map[string]any{
 			"id": m["id"], "name": m["name"], "status": m["status"],
 			"version": m["version_id"], "brokers": m["brokers"], "health": m["health"],
+			// The spec of 10.11: the subnets (1, or 3 for several zones) and
+			// the dedicated controllers, when the cluster has them.
+			"subnet_ids": m["subnet_ids"], "controller_spec": m["controller_spec"],
 		})
 	}
 	return toJSON(map[string]any{"clusters": out}), false
@@ -410,7 +413,11 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 	willCreate := map[string]any{"name": name, "version_id": versionID, "specification_id": specID,
 		"cpu": spec["cpu"], "memory_gb": spec["memory"], "storage_gib": storage, "brokers": brokers, "subnet_id": subnetID,
 		"availability_zone": zone, "ui_enabled": boolArg(args, "ui_enabled", false),
-		"cruise_control_enabled": false, "cruise_control_rebalance_auto_enabled": false}
+		"cruise_control_enabled": false, "cruise_control_rebalance_auto_enabled": false,
+		// evo sends no controller_spec: by the spec of 10.11 every host is
+		// then a broker and a controller, and the mode cannot be changed
+		// after the creation — the preview names it (axis 4).
+		"controllers": "combined"}
 	if subnetName != "" {
 		willCreate["subnet_name"] = subnetName
 	}
@@ -419,7 +426,7 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 		"will_create": willCreate,
 		"preview": willPreview(engine.ResourceKafka, name, zone, willCreate,
 			[]string{"version_id", "cpu", "memory_gb", "storage_gib", "brokers", "subnet_id", "subnet_name", "ui_enabled",
-				"cruise_control_enabled", "cruise_control_rebalance_auto_enabled"}, brokersNote)}
+				"cruise_control_enabled", "cruise_control_rebalance_auto_enabled", "controllers"}, brokersNote)}
 	if brokersNote != "" {
 		out["warning"] = brokersNote
 	}
