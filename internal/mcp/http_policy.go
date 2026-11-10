@@ -99,7 +99,7 @@ var HTTPRestrictions = []Restriction{
 		Summary: "destroy confirmed without vm_id or name, with a deployment recorded in the server's folder, deletes nothing: USAGE with the recorded vm_id; the preview names the target as before; evo destroy in a terminal is as before"},
 	{ID: "H16", StdioToo: true,
 		Where: "internal/cli/mcp.go", Symbol: "targets.keep(&eng.Config, named)",
-		Summary: "the project and the zone are the server's from its start: a config edited later does not move the session (a call's own project_id or zone does), every answer then carries config_changed, and the key is read anew on each call; a CLI call reads the config it runs with"},
+		Summary: "the project and the zone are the server's from its start (or from the first call with a key, when it started without one): a config edited later does not move the session (a call's own project_id or zone does), every answer then carries config_changed, and the key is read anew on each call; a CLI call reads the config it runs with"},
 }
 
 // wording words the refusals (and the mask of H7) of a restriction a
