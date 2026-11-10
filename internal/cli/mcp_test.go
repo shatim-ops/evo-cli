@@ -104,7 +104,7 @@ func TestCheckAllowedProject(t *testing.T) {
 func TestMCPFactory_AllowProjectCoversToolArguments(t *testing.T) {
 	setupCLI(t)
 	saveProfile(t, "default", "p-a")
-	reg := tools.New(mcpEngineFactory([]string{"p-a"}))
+	reg := tools.New(mcpEngineFactory([]string{"p-a"}, nil))
 	for _, name := range []string{"provision", "deploy", "billing_consumption", "billing_finops"} {
 		tl, ok := reg.Lookup(name)
 		if !ok {
@@ -139,7 +139,7 @@ func TestMCPFactory_EngineDoesNotPrintToStdout(t *testing.T) {
 	}
 	old := os.Stdout
 	os.Stdout = w // before the engine: a printer keeps the stdout it was made with
-	eng, err := mcpEngineFactory(nil)(nil)
+	eng, err := mcpEngineFactory(nil, nil)(nil)
 	if err != nil {
 		os.Stdout = old
 		t.Fatal(err)

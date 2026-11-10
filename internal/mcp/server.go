@@ -124,7 +124,9 @@ type Server struct {
 	tools    []Tool
 	handlers map[string]toolHandler
 	reg      *tools.Registry
-	inflight inflight // running tool calls, for cancellation
+	// configNote: see SetConfigNote.
+	configNote func() string
+	inflight   inflight // running tool calls, for cancellation
 
 	// enabled is the --toolsets view: tools/call accepts only these tools;
 	// nil means every tool (the default). listed is what tools/list
@@ -171,6 +173,12 @@ func New(factory EngineFactory, version string) *Server {
 	}
 	return s
 }
+
+// SetConfigNote sets what every tools/call answer carries as
+// config_changed when it is not "": the configuration changed after the
+// server started, and the server keeps its start values (evo mcp, R-60).
+// Call it before the server serves.
+func (s *Server) SetConfigNote(note func() string) { s.configNote = note }
 
 // SetProjectBound binds the tools to the project of the server's
 // configuration (evo mcp --allow-project, H9; tools.Registry.SetProjectBound),
@@ -724,7 +732,13 @@ func (s *Server) handleToolCall(ctx context.Context, req *rpcRequest) *rpcRespon
 	}
 
 	text, isErr := callHandler(withProgress(ctx, p.Meta.ProgressToken), handler, p.Name, p.Arguments)
-	return s.toolResult(req, withApprovalNote(text), isErr)
+	text = withApprovalNote(text)
+	if s.configNote != nil {
+		if note := s.configNote(); note != "" {
+			text = withField(text, "config_changed", note)
+		}
+	}
+	return s.toolResult(req, text, isErr)
 }
 
 // approvalNote goes into every confirmation_required answer. The gate stops
@@ -752,6 +766,27 @@ func withApprovalNote(text string) string {
 		return text
 	}
 	obj["approval"] = approvalNote
+	b, err := json.MarshalIndent(obj, "", "  ")
+	if err != nil {
+		return text
+	}
+	return string(b)
+}
+
+// withField adds key to an answer that is a JSON object and leaves any
+// other answer, or one that has key already, as it is (re-encoded as
+// withApprovalNote does).
+func withField(text, key, value string) string {
+	dec := json.NewDecoder(bytes.NewReader([]byte(text)))
+	dec.UseNumber()
+	var obj map[string]any
+	if dec.Decode(&obj) != nil {
+		return text
+	}
+	if _, ok := obj[key]; ok {
+		return text
+	}
+	obj[key] = value
 	b, err := json.MarshalIndent(obj, "", "  ")
 	if err != nil {
 		return text
