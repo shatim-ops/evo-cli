@@ -18,6 +18,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
 // whoami and doctor say who the tools work as and whether the setup works
@@ -256,8 +257,20 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		checks = append(checks, configChecks(eng.Config)...)
 		// What a cut call may have left in the cloud (release plan 1.8,
 		// (и)): a warning, not a failure — the setup works.
-		for _, n := range s.PendingNotes(eng.StateDir) {
-			checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckWarn, Detail: n})
+		// The list of what each names closes the ones whose outcome it
+		// shows (PR-2).
+		for _, in := range intent.Pending(eng.StateDir) {
+			found, settled := s.checkByList(ctx, in, eng.Config.ProjectID)
+			if settled {
+				intent.Close(eng.StateDir, in.ID)
+				checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckOK, Detail: found})
+				continue
+			}
+			detail := s.pendingNote(in)
+			if found != "" {
+				detail += "; " + found
+			}
+			checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckWarn, Detail: detail})
 		}
 	}
 	checks = append(checks,
