@@ -317,6 +317,12 @@ func newRootCmd() *cobra.Command {
 				printWarnings(output.New(flagJSON, flagNoColor), []string{
 					fmt.Sprintf("EVO_LANG=%q не поддерживается (en или ru): вывод на русском", v)})
 			}
+			// What a cut call of an earlier run may have left in the cloud
+			// (release plan 1.8, (и)): every command of this directory says
+			// it until it is settled; over MCP the first answer carries it.
+			if cwd, err := os.Getwd(); err == nil {
+				printWarnings(output.New(flagJSON, flagNoColor), newRegistry().PendingNotes(cwd))
+			}
 		},
 	}
 
