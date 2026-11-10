@@ -4,7 +4,7 @@
 
 //go:build unix
 
-package journal
+package config
 
 import "syscall"
 

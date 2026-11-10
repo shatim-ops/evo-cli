@@ -279,7 +279,7 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err := at(stepCallback, clierrors.New(clierrors.CodeAuthFailed, eProvider(e, q.Get("error_description")),
-			eProviderHint()))
+			eProviderHint(e)))
 		writePage(w, http.StatusOK, errorPage(err))
 		l.end(outcome{err: err})
 		return

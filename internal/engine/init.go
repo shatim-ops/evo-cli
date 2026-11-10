@@ -16,6 +16,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -39,7 +40,9 @@ type InitOptions struct {
 // (one with a subnet of the project, ru.AZ-2 first) and the newest plain
 // Ubuntu (else Debian) image and prints what it chose.
 func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
-	if _, err := os.Stat(opts.Path); err == nil {
+	// Lstat: a link in place of the file — dangling too — is a file that
+	// is there, not a way to write its target (R-67).
+	if _, err := os.Lstat(opts.Path); err == nil {
 		if e.Printer.IsJSON() {
 			return e.Printer.JSON(map[string]any{"status": "exists", "path": opts.Path})
 		}
@@ -132,7 +135,7 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	content := fmt.Sprintf(i18n.T(initTemplateEN, initTemplateRU), yamlScalar(initProjectName(opts.Path)),
 		yamlComment(zone.ID), yamlComment(zone.Name), imageLine, projectLine)
 
-	if err := os.WriteFile(opts.Path, []byte(content), 0o644); err != nil {
+	if err := config.WriteFileAtomic(opts.Path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf(i18n.T("failed to create config: %w", "не удалось создать файл настроек: %w"), err)
 	}
 
