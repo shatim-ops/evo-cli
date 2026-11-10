@@ -256,7 +256,9 @@ func pinHostKey(path, host, key string) error {
 	if len(keep) > 0 {
 		out = strings.Join(keep, "\n") + "\n"
 	}
-	return os.WriteFile(path, []byte(out), 0o600)
+	// Rewritten whole: the rename replaces a link committed in a cloned
+	// .evo/ instead of writing its target (R-67).
+	return config.WriteFileAtomic(path, []byte(out), 0o600)
 }
 
 // knownHostsLineFor reports whether a known_hosts line names host (plain or

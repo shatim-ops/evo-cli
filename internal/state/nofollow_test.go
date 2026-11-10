@@ -16,7 +16,9 @@ import (
 func TestLocks_SymlinkIsNotFollowed(t *testing.T) {
 	for name, take := range map[string]func(dir string) (func(), error){
 		"state.Lock": func(dir string) (func(), error) { return Lock(filepath.Join(dir, "state.json")) },
-		"FileLock":   func(dir string) (func(), error) { return FileLock(filepath.Join(dir, "state.lock"), 50*time.Millisecond) },
+		"FileLock": func(dir string) (func(), error) {
+			return FileLock(filepath.Join(dir, "state.lock"), 50*time.Millisecond)
+		},
 	} {
 		dir := filepath.Join(t.TempDir(), ".evo")
 		if err := os.MkdirAll(dir, 0o700); err != nil {

@@ -20,7 +20,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,7 +28,6 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
-	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Limit is the most the journal file holds over the whole dogfood. A record
@@ -160,7 +158,7 @@ func appendRecord(r Record) error {
 			return err
 		}
 	}
-	f, err := openNoFollow(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := config.OpenNoFollow(path, os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -185,7 +183,7 @@ func appendRecord(r Record) error {
 
 // endsFull reports whether the journal's last record is EventFull.
 func endsFull(path string, size int64) (bool, error) {
-	f, err := openNoFollow(path, os.O_RDONLY, 0)
+	f, err := config.OpenNoFollow(path, os.O_RDONLY, 0)
 	if err != nil {
 		return false, err
 	}
@@ -204,7 +202,7 @@ func lock(dir string, wait time.Duration) (unlock func(), err error) {
 	if err := config.MkdirPrivate(dir); err != nil {
 		return nil, err
 	}
-	f, err := openNoFollow(filepath.Join(dir, lockName), os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := config.OpenNoFollow(filepath.Join(dir, lockName), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +251,7 @@ func Describe() (Summary, error) {
 // describe is Describe under the lock the caller holds.
 func describe() (Summary, error) {
 	s := Summary{Enabled: config.JournalEnabled(), Path: Path(), Limit: Limit}
-	f, err := openNoFollow(s.Path, os.O_RDONLY, 0)
+	f, err := config.OpenNoFollow(s.Path, os.O_RDONLY, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
 	}
@@ -302,7 +300,7 @@ func Export(dst string) (Summary, error) {
 	if err != nil {
 		return s, err
 	}
-	f, err := openNoFollow(s.Path, os.O_RDONLY, 0)
+	f, err := config.OpenNoFollow(s.Path, os.O_RDONLY, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, ErrEmpty
 	}
@@ -318,34 +316,6 @@ func Export(dst string) (Summary, error) {
 		return s, err
 	}
 	return s, nil
-}
-
-// openNoFollow opens a file of the journal (the journal, its lock) only
-// as itself: a symlink or another non-regular file put in its place is an
-// error, not a way to write, create or read the file it points to (findings
-// ledger 1.8, № 29). O_NOFOLLOW refuses a link at the open where there is
-// one; the file opened is then checked to be the one Lstat saw.
-func openNoFollow(path string, flag int, perm os.FileMode) (*os.File, error) {
-	before, lerr := os.Lstat(path)
-	if lerr == nil && !before.Mode().IsRegular() {
-		return nil, notRegular(path)
-	}
-	f, err := os.OpenFile(path, flag|oNoFollow, perm)
-	if err != nil {
-		return nil, err
-	}
-	if lerr == nil {
-		if got, err := f.Stat(); err != nil || !os.SameFile(before, got) {
-			f.Close()
-			return nil, notRegular(path)
-		}
-	}
-	return f, nil
-}
-
-func notRegular(path string) error {
-	return fmt.Errorf(i18n.T("%s is not a regular file (a symlink?): evo does not write or read through it; delete it",
-		"%s — не обычный файл (символьная ссылка?): evo не пишет и не читает через него; удалите его"), path)
 }
 
 // ErrEmpty: there is no journal to export yet.

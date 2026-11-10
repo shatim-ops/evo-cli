@@ -175,7 +175,8 @@ func Save(stateDir string, p *Plan) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, p.PlanID+".json"), data, 0o600)
+	// The rename replaces a link in a cloned .evo/, not its target (R-67).
+	return config.WriteFileAtomic(filepath.Join(dir, p.PlanID+".json"), data, 0o600)
 }
 
 // validPlanID reports whether id is what newPlanID makes. The id comes from
