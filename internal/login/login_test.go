@@ -1044,3 +1044,17 @@ func TestLogin_DroppedFirstGrantStillEnds(t *testing.T) {
 		t.Errorf("the second «Grant access» shows %.200q, want the result", got)
 	}
 }
+
+// The two ids of a key that was not deleted carry their labels: the Key ID
+// of the preview and the id the console shows (plan 1.8, B-5 round 3 (в)).
+func TestLogout_NotDeletedNamesBothIDs(t *testing.T) {
+	msg := eKeyNotDeleted("kid1****5678", "ak-1", errors.New("boom"))
+	if !strings.Contains(msg, "kid1****5678") || !strings.Contains(msg, "IAM ak-1") {
+		t.Errorf("the ids go without labels: %s", msg)
+	}
+	for _, k := range []string{KeyDeleted, KeyAlreadyDeleted, KeyRejected} {
+		if w := keyWords(k); strings.Contains(w, k) {
+			t.Errorf("the status %q goes to a person as it is: %s", k, w)
+		}
+	}
+}

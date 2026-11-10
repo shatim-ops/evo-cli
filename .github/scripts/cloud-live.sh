@@ -448,7 +448,14 @@ api() {
 	fi
 }
 # api_why — текст ошибки ответа api, через redact.sed и обрезанный.
-api_why() { jq -r '[.code?, .message?, .detail?, .error?] | map(select(. != null) | tostring) | join(": ")' "$tmp/api.json" 2>/dev/null | redact | cut -c1-200; }
+# Ответ без этих полей (не JSON, пустой) — его начало или «тело пустое»:
+# «HTTP 422: » без текста не отличает отказ платформы от ошибки пробы.
+api_why() {
+	local w
+	w=$(jq -r '[.code?, .message?, .detail?, .error?] | map(select(. != null) | tostring) | join(": ")' "$tmp/api.json" 2>/dev/null) || w=
+	[ -n "$w" ] || w=$(head -c 200 "$tmp/api.json" 2>/dev/null | tr '\n' ' ')
+	printf '%s\n' "${w:-тело пустое}" | redact | cut -c1-200
+}
 
 # dns_linked — последний ответ tc — отказ D66 «зона связана с VPC»: USAGE
 # до вопроса, а не сбой (зона без vpc_id связана с VPC по умолчанию, D65).
@@ -467,15 +474,29 @@ dns_unlink() {
 	[ -z "$op" ] || { mask "$op"; opwait dns "$op" 300; }
 }
 
+# vm_post NAME FLAVOR IMAGE ZID SIZE DISK_TYPE INTERFACES — прямой POST
+# /api/v1.1/vms телом, как его шлёт evo (provision.CreateVMRequest): зона и
+# подсеть — по id (availability_zone_id, subnet_id), flavor, образ и тип
+# диска — по имени. Поля availability_zone_name и subnet_name API ВМ не
+# принимает: 422 без текста (P41 rc 1.6, CMP7 прогон 181).
+vm_post() {
+	api POST https://compute.api.cloud.ru/api/v1.1/vms "$(jq -nc --arg p "$PROJECT" --arg n "$1" --arg f "$2" --arg i "$3" \
+		--arg z "$4" --argjson sz "$5" --arg d "$6" --argjson ifs "$7" \
+		'[{project_id: $p, name: $n, availability_zone_id: $z, flavor_name: $f, image_name: $i,
+		   disks: [{name: ($n + "-boot"), size: $sz, disk_type_name: $d}], interfaces: $ifs}]')"
+}
+# zone_subnet ZID — id первой подсети зоны (для interfaces[].subnet_id).
+zone_subnet() { evo tools call list_subnets --json | jq -r --arg z "$1" '[.subnets[]? | select(.availability_zone_id == $z) | .id // "" | select(. != "")][0] // empty'; }
+# regular_if SUBNET_ID — interfaces с одним regular-интерфейсом в подсети.
+regular_if() { jq -nc --arg s "$1" '[{type: "regular", subnet_id: $s, interface_security_enabled: false}]'; }
+
 # Проба P36 (пункт Д; FB15-5): что отвечает платформа на создание ВМ с
 # flavor меньше min_cpu образа — 4xx до создания или ВМ в
 # error_creating/running. evo такой вызов отвергает до вопроса (D54), поэтому
-# — прямой POST /api/v1.1/vms, поля по имени (flavor_name, image_name,
-# subnet_name, availability_zone_name, disk_type_name): ID в теле только
-# проекта. Итог — строка «P36: …» (ответ платформы, не провал); созданную ВМ
-# убирает уборка области по префиксу.
+# — прямой POST /api/v1.1/vms (vm_post). Итог — строка «P36: …» (ответ
+# платформы, не провал); созданную ВМ убирает уборка области по префиксу.
 probe_p36() {
-	local zid=$1 fl vcpus img sn dt body vst=
+	local zid=$1 fl vcpus img sn dt vst=
 	iam_token || { gap P36 "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap P36 "нет PROJECT"; return 0; }
 	read -r fl vcpus < <(evo tools call list_flavors --arg zone="$ZONE" --arg gpu=false --arg spot=false --json 2>/dev/null |
@@ -488,14 +509,11 @@ probe_p36() {
 		[ -z "$img" ] || break
 	done
 	[ -n "$img" ] || { gap P36 "в image_list нет образа с min_cpu больше $vcpus у $fl"; return 0; }
-	sn=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | select(.availability_zone_id == $z) | .name // "" | select(. != "")][0] // empty')
+	sn=$(zone_subnet "$zid")
 	dt=$(evo tools call list_disk_types --json 2>/dev/null | jq -r '[.disk_types[]? | .name // "" | select(ascii_downcase == "ssd")][0] // "SSD"') || dt=SSD
 	[ -n "$sn" ] || { gap P36 "нет подсети в $ZONE"; return 0; }
-	body=$(jq -nc --arg p "$PROJECT" --arg n "$prefix-p36" --arg z "$ZONE" --arg f "$fl" --arg i "$img" --arg s "$sn" --arg d "$dt" \
-		'[{project_id: $p, name: $n, availability_zone_name: $z, flavor_name: $f, image_name: $i,
-		   disks: [{name: ($n + "-boot"), size: 50, disk_type_name: $d}],
-		   interfaces: [{type: "regular", subnet_name: $s, interface_security_enabled: false}]}]')
-	api POST https://compute.api.cloud.ru/api/v1.1/vms "$body"
+	mask "$sn"
+	vm_post "$prefix-p36" "$fl" "$img" "$zid" 50 "$dt" "$(regular_if "$sn")"
 	case "$code" in
 	2??)
 		vm_st() { vst=$(evo tools call vm_get --arg name="$prefix-p36" --json 2>/dev/null | jq -r '.state // empty'); case "$vst" in "" | creating | *pending*) return 1 ;; esac; }
@@ -514,16 +532,13 @@ probe_p36() {
 # ВМ, которую DELETE не удалил, убирает уборка области по префиксу. Счёт
 # «N из M» — по прогонам (≥2), а не по пробам одного прогона.
 probe_cmp7() {
-	local zid=$1 sn body vid='' st t
+	local zid=$1 sn vid='' st t
 	iam_token || { gap CMP7 "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap CMP7 "нет PROJECT"; return 0; }
-	sn=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | select(.availability_zone_id == $z) | .name // "" | select(. != "")][0] // empty')
+	sn=$(zone_subnet "$zid")
 	[ -n "$sn" ] || { gap CMP7 "нет подсети в $ZONE"; return 0; }
-	body=$(jq -nc --arg p "$PROJECT" --arg n "$prefix-cmp7" --arg z "$ZONE" --arg f "$FLAVOR" --arg i "$IMAGE" --arg s "$sn" \
-		'[{project_id: $p, name: $n, availability_zone_name: $z, flavor_name: $f, image_name: $i,
-		   disks: [{name: ($n + "-boot"), size: 20, disk_type_name: "SSD"}],
-		   interfaces: [{type: "regular", subnet_name: $s, interface_security_enabled: false}]}]')
-	api POST https://compute.api.cloud.ru/api/v1.1/vms "$body"
+	mask "$sn"
+	vm_post "$prefix-cmp7" "$FLAVOR" "$IMAGE" "$zid" 20 SSD "$(regular_if "$sn")"
 	case "$code" in 2??) ;; *)
 		gap "CMP7: ВМ для пробы" "не создана, HTTP $code: $(api_why)"
 		return 0
@@ -550,7 +565,10 @@ probe_r3f1() {
 	local name="$prefix-r3f1" pid killed=no jpath jn0 jn1 jlast disk='' i
 	evo diag on >/dev/null 2>&1 || { gap R3F1 "evo diag on не сработал"; return 0; }
 	jpath=$(evo diag status --json 2>/dev/null | jq -r '.path // empty')
-	jcount() { if [ -n "$jpath" ] && [ -f "$jpath" ]; then grep -c '"tool":"disk_create"' "$jpath" || true; else echo 0; fi; }
+	# Считаются подтверждённые вызовы: --yes пишет и запись превью
+	# (confirmation_required), а она не след создания (прогон 181: одна
+	# запись превью, диск в облаке есть).
+	jcount() { if [ -n "$jpath" ] && [ -f "$jpath" ]; then grep '"tool":"disk_create"' "$jpath" | grep -c '"confirmed":true' || true; else echo 0; fi; }
 	jn0=$(jcount)
 	: >"$tmp/r3f1.err"
 	evo --yes tools call disk_create --arg name="$name" --arg size_gb=1 --arg disk_type=HDD --arg zone="$ZONE" --json \
@@ -575,14 +593,14 @@ probe_r3f1() {
 		gap "R3F1: kill после «Подтверждено»" "evo завершился сам (шаг $i): $(head -c 300 "$tmp/r3f1.err" | tr '\n' ' ' | redact)"
 	fi
 	jn1=$(jcount)
-	jlast=$(if [ "$jn1" != 0 ]; then grep '"tool":"disk_create"' "$jpath" | tail -1 | jq -c '{confirmed, preview, error, reason}' 2>/dev/null || true; fi)
+	jlast=$(if [ -n "$jpath" ] && [ -f "$jpath" ]; then grep '"tool":"disk_create"' "$jpath" | tail -1 | jq -c '{confirmed, preview, error, reason}' 2>/dev/null || true; fi)
 	evo diag off >/dev/null 2>&1 || true
 	# Диск в облаке: до 60 с — POST мог уйти перед kill и дойти позже.
 	r3f1_disk() { disk=$(evo tools call disk_list --json 2>/dev/null | jq -c --arg n "$name" '[.disks[]? | select(.name == $n) | {id, state: (.state // .status // null)}][0] // empty'); [ -n "$disk" ]; }
 	poll 60 5 r3f1_disk || true
 	mask "$(printf '%s' "$disk" | jq -r '.id // empty' 2>/dev/null)"
 	row "R3F1: след в журнале evo" "$([ "${jn1:-0}" -gt "${jn0:-0}" ] && echo есть || echo нет)" \
-		"записей disk_create: было ${jn0:-0}, стало ${jn1:-0}${jlast:+; последняя $jlast}; kill: $killed"
+		"подтверждённых записей disk_create: было ${jn0:-0}, стало ${jn1:-0}${jlast:+; последняя запись disk_create $jlast}; kill: $killed"
 	row "R3F1: диск в облаке" "$([ -n "$disk" ] && echo есть || echo нет)" \
 		"$([ -n "$disk" ] && printf 'состояние %s' "$(printf '%s' "$disk" | jq -r '.state // "не прочитано"')" || echo 'за 60 с не появился')"
 	[ -n "$disk" ] || return 0
@@ -599,14 +617,10 @@ probe_r3f1() {
 # с direct_ip evo не создаёт — прямой POST /api/v1.1/vms. Итог — строка
 # «P41: …» (ответ платформы, не провал); группу и ВМ убирает уборка.
 probe_p41() {
-	local body vid vst=
+	local zid=$1 vid vst=
 	iam_token || { gap P41 "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap P41 "нет PROJECT"; return 0; }
-	body=$(jq -nc --arg p "$PROJECT" --arg n "$prefix-p41" --arg z "$ZONE" --arg f "$FLAVOR" --arg i "$IMAGE" \
-		'[{project_id: $p, name: $n, availability_zone_name: $z, flavor_name: $f, image_name: $i,
-		   disks: [{name: ($n + "-boot"), size: 20, disk_type_name: "SSD"}],
-		   interfaces: [{type: "direct_ip", interface_security_enabled: false}]}]')
-	api POST https://compute.api.cloud.ru/api/v1.1/vms "$body"
+	vm_post "$prefix-p41" "$FLAVOR" "$IMAGE" "$zid" 20 SSD '[{"type":"direct_ip","interface_security_enabled":false}]'
 	case "$code" in 2??) ;; *)
 		gap "P41: ВМ с direct_ip" "не создана, HTTP $code: $(api_why)"
 		return 0
@@ -935,7 +949,7 @@ area_net() {
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/net" && cd "$tmp/net"
-	! probe_on p41 || probe_p41
+	! probe_on p41 || probe_p41 "$zid"
 
 	must vpc_create vpc_create --arg name="$prefix-vpc" --arg description="evo e2e live run" || return 1
 	op=$(j -r .operation_id)

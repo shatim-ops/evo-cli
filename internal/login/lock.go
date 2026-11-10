@@ -16,7 +16,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
-// loginLock is the one evo login of this computer: while one waits for the
+// loginLock is the one evo login of a configuration directory: while one waits for the
 // person, another would open a second page on another port, and the person
 // could finish the one they did not mean (R-47; plan 1.8, #1087). It is an
 // OS lock of the file: it goes away with the process, however it ends, so
@@ -38,7 +38,7 @@ func lockLogin(path string) (*loginLock, error) {
 		held, _ := os.ReadFile(path)
 		_ = f.Close()
 		if errors.Is(err, config.ErrLocked) {
-			return nil, at(stepLock, clierrors.New(clierrors.CodeStateLocked, eLoginRunning(portOf(string(held))), eLoginRunningHint()))
+			return nil, at(stepLock, clierrors.New(clierrors.CodeStateLocked, eLoginRunning(filepath.Dir(path), portOf(string(held))), eLoginRunningHint()))
 		}
 		return nil, at(stepLock, err)
 	}
@@ -51,6 +51,9 @@ func (l *loginLock) note(port int) {
 	_, _ = l.f.WriteAt([]byte(fmt.Sprintf("%d %d\n", os.Getpid(), port)), 0)
 }
 
+// release empties the file and keeps it: deleting a file locked by the OS
+// races — a process waiting on the unlinked file and the next one creating
+// a new file would both hold «the» lock (findings ledger 1.8, № 138).
 func (l *loginLock) release() {
 	_ = l.f.Truncate(0)
 	_ = config.UnlockFile(l.f)

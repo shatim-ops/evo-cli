@@ -439,13 +439,16 @@ func waitText(wait time.Duration) string {
 
 // eLoginRunning: another evo login waits for the browser on this computer
 // («Риск», conclusion 35.1: no advice to kill it).
-func eLoginRunning(port int) string {
+// eLoginRunning names the configuration directory the lock is on: one
+// login per directory, not per computer — another CLOUDRU_CONFIG_DIR has
+// its own (D55; findings ledger 1.8, № 131).
+func eLoginRunning(dir string, port int) string {
 	if port == 0 {
-		return i18n.T("another evo login is waiting in the browser on this computer; nothing was started",
-			"на этом компьютере другой evo login ждет в браузере, новый вход не начат")
+		return i18n.Tf("another evo login with the configuration directory %s is waiting in the browser; nothing was started",
+			"другой evo login с каталогом настроек %s ждет в браузере, новый вход не начат", dir)
 	}
-	return i18n.Tf("another evo login is waiting in the browser on this computer (port %d); nothing was started",
-		"на этом компьютере другой evo login ждет в браузере (порт %d), новый вход не начат", port)
+	return i18n.Tf("another evo login with the configuration directory %s is waiting in the browser (port %d); nothing was started",
+		"другой evo login с каталогом настроек %s ждет в браузере (порт %d), новый вход не начат", dir, port)
 }
 func eLoginRunningHint() string {
 	return i18n.T("Finish or cancel that sign-in, then run evo login again.",
@@ -558,11 +561,46 @@ func TLogoutKept() string {
 		"ключ этого профиля создан не через evo login и остается в облаке: evo его не трогает")
 }
 func TLogoutDone(profile string, key any) string {
-	return i18n.Tf("The profile “%s” was deleted, key: %s. The service account remains in the project",
-		"Профиль «%s» удален, ключ: %s. Сервисный аккаунт остался в проекте", profile, key)
+	return i18n.Tf("The profile “%s” was deleted, %s. The service account remains in the project",
+		"Профиль «%s» удален, %s. Сервисный аккаунт остался в проекте", profile, keyWords(key))
 }
-func eKeyNotDeleted(accessKeyID string, err error) string {
-	return i18n.Tf("the access key %s was not deleted: %v; the profile was kept", "ключ доступа %s не удален: %v; профиль сохранен", accessKeyID, err)
+
+// keyWords is the status of the key in logout's answer, in words: the
+// line said «key: deleted» in English (plan 1.8, B-5 round 3 (в)).
+func keyWords(key any) string {
+	switch key {
+	case KeyDeleted:
+		return i18n.T("the key was deleted", "ключ удален")
+	case KeyAlreadyDeleted:
+		return i18n.T("the key was deleted already", "ключа уже не было")
+	case KeyRejected:
+		return i18n.T("the key was not deleted: IAM does not accept it", "ключ не удален: IAM его не принимает")
+	}
+	return i18n.T("the key was kept", "ключ остался")
+}
+
+// TLogoutTokensUntil: deleting a key does not revoke the tokens it was
+// exchanged for — a running evo mcp keeps working until then.
+func TLogoutTokensUntil(t time.Time) string {
+	return i18n.Tf("tokens this key was exchanged for earlier (a running evo mcp, say) work until %s at the latest",
+		"токены, выданные по этому ключу раньше (например, запущенному evo mcp), действуют не дольше чем до %s", t.Local().Format("15:04"))
+}
+
+// TLogoutRejected: IAM refused the key, so evo could neither check nor
+// delete it; the profile was deleted all the same.
+// It names both ids, as eKeyNotDeleted does: the console lists the key by
+// its id in IAM («Риск», conclusion 42).
+func TLogoutRejected(keyID, accessKeyID string) string {
+	return i18n.Tf("IAM does not accept the key %s (id in IAM %s): it was revoked, expired or its secret is wrong, so evo cannot delete it. If the key is still listed in the Cloud.ru console (“Service accounts” → the account → “Access keys”), delete it there",
+		"IAM не принимает ключ %s (id в IAM %s): он отозван, истек или секрет неверен, поэтому evo не может его удалить. Если ключ еще виден в личном кабинете Cloud.ru («Сервисные аккаунты» → аккаунт → «Ключи доступа»), удалите его там", keyID, accessKeyID)
+}
+
+// eKeyNotDeleted names the key by its Key ID, as the preview did, and by
+// its id in IAM, as the console does: the two ids went without labels
+// (plan 1.8, B-5 round 3 (в)).
+func eKeyNotDeleted(keyID, accessKeyID string, err error) string {
+	return i18n.Tf("the access key %s (id in IAM %s) was not deleted: %v; the profile was kept",
+		"ключ доступа %s (id в IAM %s) не удален: %v; профиль сохранен", keyID, accessKeyID, err)
 }
 func eKeyNotDeletedHint() string {
 	return i18n.T("Run evo logout again. If the error persists, delete the key in the Cloud.ru console (“Service accounts” → the account → “Access keys”) and run evo configure delete <profile>.",

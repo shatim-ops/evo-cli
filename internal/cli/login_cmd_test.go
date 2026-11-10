@@ -101,7 +101,8 @@ func TestLoginLogout_OnTheWorld(t *testing.T) {
 	}
 
 	code, stdout, stderr = runCLI(t, "", "--json", "--yes", "--profile", "agent", "logout")
-	if code != 0 || !strings.Contains(stdout, `"key": "deleted"`) {
+	// The tokens the key was exchanged for live on: logout says until when.
+	if code != 0 || !strings.Contains(stdout, `"key": "deleted"`) || !strings.Contains(stdout, `"tokens_valid_until"`) {
 		t.Fatalf("logout: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	if len(w.Keys()) != 0 {
@@ -228,6 +229,12 @@ func TestLogin_OneAtATime(t *testing.T) {
 	code, stdout, stderr := runCLI(t, "", "--json", "login")
 	if code != 1 || !strings.Contains(stderr+stdout, `"reason":"STATE_LOCKED"`) || !strings.Contains(stderr+stdout, "evo login") || called {
 		t.Fatalf("exit %d, browser %v\n%s\n%s", code, called, stdout, stderr)
+	}
+	// The lock is the configuration directory's, not the computer's: the
+	// refusal names the directory (findings ledger 1.8, № 131).
+	dir, _ := json.Marshal(config.Dir())
+	if strings.Contains(stderr+stdout, "this computer") || !strings.Contains(stderr+stdout, strings.Trim(string(dir), `"`)) {
+		t.Errorf("the refusal does not name the configuration directory:\n%s\n%s", stdout, stderr)
 	}
 }
 
@@ -372,5 +379,42 @@ func TestLogin_PreselectFromTheProfileOfTheKey(t *testing.T) {
 	}
 	if id, _, _ := loginPreselectFor(loginStore{}, ""); id != "p-default" {
 		t.Errorf("no --for: preselected %q, want the project of «Мне», the default of the page", id)
+	}
+}
+
+// A key the console revoked: IAM no longer exchanges it, so nothing can be
+// revoked with it, and the profile with a dead key helps nobody. logout
+// deletes the profile and says what it could not check, not an error with
+// the profile kept (plan 1.8, B-5 round 3 (в); audit #1104).
+func TestLogout_KeyIAMRejectsDeletesTheProfile(t *testing.T) {
+	setupCLI(t)
+	w := loginworld.New(t, loginworld.Variant{AnyLoopbackPort: true})
+	oldCfg, oldIAM := loginConfig, auth.IAMEndpoint
+	t.Cleanup(func() { loginConfig, auth.IAMEndpoint = oldCfg, oldIAM })
+	auth.IAMEndpoint = w.URL + "/api/v1/auth/token"
+	loginConfig = func(say func(string, string), open func(string) error) login.Config {
+		c := login.Default(say, open)
+		c.AdminBase = w.URL
+		return c
+	}
+	creds := config.Credentials{}
+	creds.ForKey("revoked-key-0001", "secret-0001")
+	creds.Login = &config.LoginKey{ServiceAccountID: "sa-1", AccessKeyID: "ak-1"}
+	if err := config.SaveProfile("default", config.Profile{ProjectID: loginworld.Project}, creds); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runCLI(t, "", "--json", "--yes", "logout")
+	// Both ids, as when a key was not deleted: the console lists the key
+	// by its id in IAM, the preview named its Key ID («Риск», conclusion 42).
+	if code != 0 || !strings.Contains(stdout, `"key": "rejected"`) || !strings.Contains(stdout, `"note"`) ||
+		!strings.Contains(stdout, `"access_key_id": "ak-1"`) || !strings.Contains(stdout, `"key_id": "revo****0001"`) ||
+		!strings.Contains(stdout, "ak-1)") {
+		t.Fatalf("logout of a revoked key: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	if _, _, found, _ := config.LoadProfile("default"); found {
+		t.Errorf("logout kept the profile of a key IAM rejects")
+	}
+	if strings.Contains(stdout+stderr, "secret-0001") {
+		t.Errorf("the secret reached the output")
 	}
 }

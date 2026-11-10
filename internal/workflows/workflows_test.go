@@ -1653,3 +1653,26 @@ func TestWorkflows_CloudE2EScenariosSayWhy(t *testing.T) {
 		t.Error("cloud-readonly.sh judges the delete of what is not there without delete_absent_verdict.sh")
 	}
 }
+
+// Run 181 (10.11): the owner's «yes» to the probes cmp7 and r3f1 reached the
+// billable deploy VM of the job e2e too, which ran on every manual
+// cloud-e2e. The input e2e_core switches it off; on by default, as before.
+func TestWorkflows_CloudE2ECoreCanBeOff(t *testing.T) {
+	w := readWorkflows(t)["cloud-e2e.yml"]
+	j, ok := w.Jobs["e2e"]
+	if !ok {
+		t.Fatal("cloud-e2e: no job e2e")
+	}
+	if !strings.Contains(j.If, "inputs.e2e_core") {
+		t.Errorf("cloud-e2e: job e2e runs whatever e2e_core says (if: %q)", j.If)
+	}
+	d, _ := w.On["workflow_dispatch"].(map[string]any)
+	in, _ := d["inputs"].(map[string]any)
+	c, _ := in["e2e_core"].(map[string]any)
+	if c == nil || c["type"] != "boolean" || c["default"] != true {
+		t.Errorf("cloud-e2e: input e2e_core %v, want a boolean, true by default", c)
+	}
+	if len(in) > 25 {
+		t.Errorf("cloud-e2e: %d inputs of workflow_dispatch, GitHub takes 25", len(in))
+	}
+}
