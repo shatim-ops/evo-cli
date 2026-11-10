@@ -23,6 +23,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -306,6 +307,11 @@ func runConfigure(ctx context.Context, opts configureOptions, con *console, prin
 		return err
 	}
 	creds.ForKey(keyID, secret)
+	if dryRunWrite(ctx, confirm.Preview{Action: "configure",
+		Summary: i18n.Tf("save the key %s to the profile %q", "сохранить ключ %s в профиль %q", config.MaskKeyID(keyID), name),
+		Details: map[string]any{"profile": name, "key_id": config.MaskKeyID(keyID), "project_id": prof.ProjectID, "region": prof.Region}}) {
+		return nil
+	}
 	if err := config.SaveProfile(name, prof, creds); err != nil {
 		return err
 	}
@@ -705,6 +711,11 @@ func newConfigureDeleteCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
+			if dryRunWrite(cmd.Context(), confirm.Preview{Action: "configure delete",
+				Summary: i18n.Tf("delete the profile %q and its cached token", "удалить профиль %q и его токен из кэша", args[0]),
+				Details: map[string]any{"profile": args[0]}}) {
+				return nil
+			}
 			if err := config.DeleteProfile(args[0]); err != nil {
 				return err
 			}

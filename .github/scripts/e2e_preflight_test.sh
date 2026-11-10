@@ -81,11 +81,19 @@ has probes "probes: «p99» — не access"
 has probes "probes: «nodes» — проба джоба dbaas-pg"
 has probes "причин: 2"
 fresh probesok
-run probesok 0 DBAAS_SMOKE=true DBAAS_SERVICES=pg DISK_SMOKE=true PROBES='access nodes p36 p41 p44 p45 dnslink shared'
+run probesok 0 DBAAS_SMOKE=true DBAAS_SERVICES=pg DISK_SMOKE=true PROBES='access nodes p36 p41 p44 p45 dnslink shared cmp7 r3f1'
 # shared — проба области disk: без disk_smoke отказ.
 fresh shareddisk
 run shareddisk 1 PROBES=shared
 has shareddisk "probes: «shared» — проба области disk, а disk_smoke не включён"
+# cmp7 — тоже проба области disk (CMP-7, 10.11).
+fresh cmp7disk
+run cmp7disk 1 PROBES=cmp7
+has cmp7disk "probes: «cmp7» — проба области disk, а disk_smoke не включён"
+# r3f1 — тоже проба области disk (R-59, 10.11).
+fresh r3f1disk
+run r3f1disk 1 PROBES=r3f1
+has r3f1disk "probes: «r3f1» — проба области disk, а disk_smoke не включён"
 
 # Зона прогона без подсети и группы — провал; открытая зона ru.AZ-1 без
 # них, куда прогон не идёт, — строка «перезапуск туда не выйдет».
