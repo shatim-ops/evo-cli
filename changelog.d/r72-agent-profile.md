@@ -5,7 +5,8 @@
   подключает клиента к профилю по умолчанию, то есть агент работал ключом
   человека, и `evo logout --profile agent` его не останавливал. Теперь итог
   входа «Агенту» называет команду
-  `evo agent setup --client <клиент> --profile agent`. `evo agent setup` без
+  `evo agent setup --client <клиент> --profile agent` и где список клиентов
+  (`evo agent setup --help`). `evo agent setup` без
   `--profile`, когда в профиле `agent` есть ключ из `evo login`, до diff
   предупреждает, к какому профилю подключается клиент, и называет
   `--profile agent`. Умолчание не меняется.
