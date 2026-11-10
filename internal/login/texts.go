@@ -102,9 +102,11 @@ func tForeverInConsole() string {
 
 // tUnchecked is the one mark of the right on the page and in the terminal
 // (conclusions 26.5 and 28.1): what evaluate answered, by the list.
-func tUnchecked(reason string) string {
-	return i18n.Tf("The platform has not confirmed the right: %s. If the right is missing, Cloud.ru will refuse to create the account, and nothing will be left behind",
-		"Право не подтверждено платформой: %s. Если права нет, Cloud.ru откажет при создании аккаунта, и ничего не останется", reason)
+// tUnchecked: the platform did not confirm the right beforehand; its
+// reason is in the details, not here («Риск», conclusion 35.4).
+func tUnchecked() string {
+	return i18n.T("The right could not be checked beforehand. If there is no access, Cloud.ru will refuse to create the account, and nothing will be left behind",
+		"Заранее проверить право не удалось. Если доступа нет, Cloud.ru откажет при создании аккаунта, и ничего не останется")
 }
 
 // The reasons of tUnchecked: what evaluate answered («Риск», R-49).
@@ -317,6 +319,33 @@ func eNoYesHint() string {
 // consent is the page's («Риск», conclusion 24).
 func RefuseYes() error { return clierrors.New(clierrors.CodeUsage, eNoYes(), eNoYesHint()) }
 
+// RefuseDryRun: evo login has no preview — what it would do is the page's
+// to show and the person's to grant (plan 1.8, #1095, rounds 1–2).
+func RefuseDryRun() error {
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.T("evo login has no --dry-run: what is granted is shown and chosen on the consent page, nothing is made before the button",
+			"у evo login нет --dry-run: что будет выдано, показывает и выбирает страница согласия, до кнопки ничего не создается"),
+		i18n.T("Run evo login without --dry-run; to leave without granting, press “Cancel” on the page.",
+			"Запустите evo login без --dry-run; чтобы уйти, ничего не выдав, нажмите «Отмена» на странице."))
+}
+
+// RefuseScopeFlag: evo login takes no --project-id or --region of the
+// other commands; it skipped them silently, and evo login --project-id
+// looked like a choice of the project (plan 1.8, #1095, round 4).
+func RefuseScopeFlag(flag string) error {
+	if flag == "project-id" {
+		return clierrors.New(clierrors.CodeUsage,
+			i18n.T("evo login has no --project-id: the project is chosen on the consent page",
+				"у evo login нет --project-id: проект выбирается на странице согласия"),
+			i18n.T("To show only one project on the page, selected: evo login --project <ID or name>.",
+				"Чтобы на странице был только нужный проект, отмеченный: evo login --project <ID или имя>."))
+	}
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("evo login has no --%s: it grants access to a project, not to a zone", "у evo login нет --%s: вход выдаёт доступ к проекту, а не к зоне", flag),
+		i18n.T("Run evo login without it; the zone is given to the commands that create resources (--zone or --region).",
+			"Запустите evo login без него; зону задают командам, которые создают ресурсы (--zone или --region)."))
+}
+
 func eCancelled() string {
 	return i18n.T("the sign-in was cancelled, nothing was created", "вход отменен, ничего не создано")
 }
@@ -359,6 +388,22 @@ func eNotCompleteHint(left bool, next string) string {
 			"Удалите оставшееся в личном кабинете Cloud.ru в разделе «Сервисные аккаунты» и повторите evo login.")
 	}
 	return i18n.T("Nothing was left behind. ", "Ничего не осталось. ") + next
+}
+
+// What Cloud.ru did not do at a write: the first words of its refusal,
+// the platform's own follow («Риск», conclusion 35.3).
+func eNotCreatedAccount() string {
+	return i18n.T("Cloud.ru did not create the service account", "Cloud.ru не создал сервисный аккаунт")
+}
+func eNotGrantedRole() string {
+	return i18n.Tf("Cloud.ru did not grant the role “%s”", "Cloud.ru не выдал роль «%s»", auth.LoginRoleDisplayName)
+}
+func eNotIssuedKey() string {
+	return i18n.T("Cloud.ru did not issue the access key", "Cloud.ru не выдал ключ доступа")
+}
+func eRoleRefusedHint() string {
+	return i18n.T("Cloud.ru refused for the reason above; a retry alone meets the same refusal. Choose another project or contact the administrator of the organization.",
+		"Cloud.ru отказал по причине выше; простой повтор получит тот же отказ. Выберите другой проект или обратитесь к администратору организации.")
 }
 func eAccountRefusedHint() string {
 	return i18n.T("Cloud.ru refused to create the service account for the reason above; a retry alone meets the same refusal. Choose another project or contact the administrator of the organization.",
@@ -526,7 +571,7 @@ func keyWords(key any) string {
 	case KeyAlreadyDeleted:
 		return i18n.T("the key was deleted already", "ключа уже не было")
 	case KeyRejected:
-		return i18n.T("the key was not checked", "ключ не проверен")
+		return i18n.T("the key was not deleted: IAM does not accept it", "ключ не удален: IAM его не принимает")
 	}
 	return i18n.T("the key was kept", "ключ остался")
 }
@@ -540,9 +585,11 @@ func TLogoutTokensUntil(t time.Time) string {
 
 // TLogoutRejected: IAM refused the key, so evo could neither check nor
 // delete it; the profile was deleted all the same.
-func TLogoutRejected(keyID string) string {
-	return i18n.Tf("IAM does not accept the key %s: it was revoked, expired or its secret is wrong, so evo cannot delete it. If the key is still listed in the Cloud.ru console (“Service accounts” → the account → “Access keys”), delete it there",
-		"IAM не принимает ключ %s: он отозван, истек или секрет неверен, поэтому evo не может его удалить. Если ключ еще виден в личном кабинете Cloud.ru («Сервисные аккаунты» → аккаунт → «Ключи доступа»), удалите его там", keyID)
+// It names both ids, as eKeyNotDeleted does: the console lists the key by
+// its id in IAM («Риск», conclusion 42).
+func TLogoutRejected(keyID, accessKeyID string) string {
+	return i18n.Tf("IAM does not accept the key %s (id in IAM %s): it was revoked, expired or its secret is wrong, so evo cannot delete it. If the key is still listed in the Cloud.ru console (“Service accounts” → the account → “Access keys”), delete it there",
+		"IAM не принимает ключ %s (id в IAM %s): он отозван, истек или секрет неверен, поэтому evo не может его удалить. Если ключ еще виден в личном кабинете Cloud.ru («Сервисные аккаунты» → аккаунт → «Ключи доступа»), удалите его там", keyID, accessKeyID)
 }
 
 // eKeyNotDeleted names the key by its Key ID, as the preview did, and by
@@ -607,6 +654,45 @@ func TFlagTTL() string {
 func EFor(forWhom string) string {
 	return i18n.Tf("--for %q: allowed values are me and agent", "--for %q: допустимо me или agent", forWhom)
 }
+
+// EProject: --project is no ID and no name of a project.
+func EProject() string {
+	return i18n.T("--project: not an ID or a name of a project (empty, a control character, or longer than 128 characters)",
+		"--project: не ID и не имя проекта (пусто, управляющий символ или длиннее 128 символов)")
+}
+
+// EAgentProfileForMe: the profile of the agent's key would get the
+// person's (C24).
+func EAgentProfileForMe(profile string) string {
+	return i18n.Tf("the profile “%s” is the profile of the agent's key; the key for you is not written there",
+		"профиль «%s» — профиль ключа агента; ключ для вас туда не записывается", profile)
+}
+func EAgentProfileForMeHint() string {
+	return i18n.T("For your key, pass --profile with another profile or unset CLOUDRU_PROFILE; for the agent's key, run evo login --for agent.",
+		"Для своего ключа задайте --profile с другим профилем или уберите CLOUDRU_PROFILE; для ключа агента запустите evo login --for agent.")
+}
+
+// EConfigDir: the directory of the profiles is not writable; found before
+// the browser, not after the key is made.
+func EConfigDir(dir string, err error) string {
+	return i18n.Tf("evo cannot write to the configuration directory %s (%v): the key would have nowhere to go; nothing was started",
+		"evo не может писать в каталог настроек %s (%v): ключ после входа некуда записать, вход не начат", dir, err)
+}
+func EConfigDirHint() string {
+	return i18n.T("Make the directory writable, or point CLOUDRU_CONFIG_DIR at one that is, then run evo login again.",
+		"Откройте каталог на запись или укажите в CLOUDRU_CONFIG_DIR другой, затем запустите evo login снова.")
+}
+
+// TProfileHasKey and TEnvKeyWins: said before the browser (#1095 (и)).
+func TProfileHasKey(profile string) string {
+	return i18n.Tf("The profile “%s” already has an access key: after the sign-in the new key replaces it.",
+		"В профиле «%s» уже есть ключ доступа: после входа его заменит новый.", profile)
+}
+func TEnvKeyWins() string {
+	return i18n.T("CLOUDRU_KEY_ID and CLOUDRU_SECRET are set: they come before the profile, so after the sign-in commands go on using the key of the variables, not the new one.",
+		"Заданы CLOUDRU_KEY_ID и CLOUDRU_SECRET: они важнее профиля, и после входа команды продолжат работать с ключом из переменных, а не с новым.")
+}
+
 func ETTL(ttl string) string {
 	return i18n.Tf("--key-ttl %q: allowed values are 7d, 30d and 90d", "--key-ttl %q: допустимо 7d, 30d или 90d", ttl)
 }

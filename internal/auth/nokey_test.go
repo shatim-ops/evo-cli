@@ -65,3 +65,22 @@ func TestNoKeyHint_OnePoint(t *testing.T) {
 		return nil
 	})
 }
+
+// Plan 1.8, #1087, texts (audit of 06.11; «Риск», conclusion 35.5): with no
+// key or a refused one, the first advice is evo login, marked as a sign-in
+// in the browser that needs a person — the agent reads it too; with no key
+// the hint says the variables come before the profile.
+func TestKeyHints_LoginFirstAPersonNeeded(t *testing.T) {
+	prev := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	i18n.SetLang(i18n.RU)
+	for name, hint := range map[string]string{"no key": NoKeyHint(), "refused": RefusedKeyHint(), "401": rejectedKeyHint()} {
+		if !strings.HasPrefix(strings.TrimPrefix(hint, "Повтор тем же ключом не поможет. Новый ключ — "), "Выполните evo login (вход через браузер, нужен человек)") &&
+			!strings.Contains(hint, "Новый ключ — evo login (вход через браузер, нужен человек)") {
+			t.Errorf("%s: %q does not lead with evo login and a person needed", name, hint)
+		}
+	}
+	if !strings.Contains(NoKeyHint(), "важнее профиля") || !strings.Contains(rejectedKeyHint(), "иначе из профиля") {
+		t.Errorf("the hints do not say which comes first, the variables or the profile")
+	}
+}

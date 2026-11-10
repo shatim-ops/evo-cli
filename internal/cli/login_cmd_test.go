@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -253,6 +254,128 @@ func TestLogin_KeyTTLWithoutUnitRefused(t *testing.T) {
 	}
 }
 
+// worldNoPerson points evo login at the world of B-2 with a browser that
+// only records it was opened; nobody comes, the wait is short.
+func worldNoPerson(t *testing.T) *bool {
+	t.Helper()
+	w := loginworld.New(t, loginworld.Variant{AnyLoopbackPort: true})
+	oldCfg, oldOpen := loginConfig, openBrowser
+	t.Cleanup(func() { loginConfig, openBrowser = oldCfg, oldOpen })
+	loginConfig = func(say func(string, string), open func(string) error) login.Config {
+		c := login.Default(say, open)
+		c.Issuer, c.OrgBase, c.AdminBase, c.KeyToken = w.Issuer, w.URL, w.URL, w.URL+"/api/v1/auth/token"
+		c.Trusted = func(u string) bool { return strings.HasPrefix(u, w.URL+"/") }
+		c.HTTP = w.Client()
+		c.Ports = []int{0}
+		c.Wait = 200 * time.Millisecond // wall-clock: a share of the production wait, to end the test
+		return c
+	}
+	called := new(bool)
+	openBrowser = func(string) error { *called = true; return nil }
+	return called
+}
+
+// Plan 1.8, #1095, rounds 1–2 of the audit (Grok): what evo login can tell
+// before the browser it tells — and opens no browser.
+func TestLogin_RefusedBeforeTheBrowser(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		env    map[string]string
+		args   []string
+		reason string
+	}{
+		{"--dry-run: no preview of a consent", nil, []string{"--dry-run", "login"}, clerrors.CodeUsage},
+		{"--for ''", nil, []string{"login", "--for", ""}, clerrors.CodeUsage},
+		{"--project of spaces", nil, []string{"login", "--project", "   "}, clerrors.CodeUsage},
+		{"--project with a line break", nil, []string{"login", "--project", "a\nb"}, clerrors.CodeUsage},
+		{"--project too long", nil, []string{"login", "--project", strings.Repeat("p", 300)}, clerrors.CodeUsage},
+		{"--project-id, even a UUID: the project is --project", nil, []string{"login", "--project-id", "00000000-0000-4000-8000-000000000001"}, clerrors.CodeUsage},
+		{"--region: login grants no zone", nil, []string{"--region", "ru.AZ-2", "login"}, clerrors.CodeUsage},
+		{"--project-id '': named, so not skipped", nil, []string{"login", "--project-id", ""}, clerrors.CodeUsage},
+		{"the key «for me» into the profile agent (C24)", map[string]string{"CLOUDRU_PROFILE": "agent"}, []string{"login", "--for", "me"}, clerrors.CodeUsage},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			setupCLI(t)
+			for k, v := range c.env {
+				t.Setenv(k, v)
+			}
+			called := worldNoPerson(t)
+			code, stdout, stderr := runCLI(t, "", append([]string{"--json"}, c.args...)...)
+			if code == 0 || !strings.Contains(stderr+stdout, `"reason":"`+c.reason+`"`) || *called {
+				t.Fatalf("exit %d, browser %v\n%s\n%s", code, *called, stdout, stderr)
+			}
+		})
+	}
+}
+
+// Plan 1.8, #1095 (б): a configuration directory evo cannot write to is
+// found before the browser, not after the key is made.
+func TestLogin_UnwritableConfigDirBeforeTheBrowser(t *testing.T) {
+	setupCLI(t)
+	file := filepath.Join(t.TempDir(), "a-file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.EnvConfigDir, filepath.Join(file, "evo"))
+	called := worldNoPerson(t)
+	code, stdout, stderr := runCLI(t, "", "--json", "login")
+	if code != clerrors.ExitAuth || !strings.Contains(stderr+stdout, `"reason":"CONFIG_INVALID"`) || *called {
+		t.Fatalf("exit %d, browser %v\n%s\n%s", code, *called, stdout, stderr)
+	}
+}
+
+// Plan 1.8, #1095 (и): a key already in the profile, or keys in the
+// environment, are named before the browser.
+func TestLogin_WarnsOfAKeyInTheProfileAndTheEnvironment(t *testing.T) {
+	ru(t)
+	setupCLI(t)
+	saveProfile(t, "default", "p-1")
+	t.Setenv("CLOUDRU_KEY_ID", "k")
+	t.Setenv("CLOUDRU_SECRET", "s")
+	worldNoPerson(t)
+	_, stdout, stderr := runCLI(t, "", "login", "--for", "me")
+	out := stdout + stderr
+	for _, want := range []string{"уже есть ключ доступа", "важнее профиля"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %q before the browser:\n%s", want, out)
+		}
+	}
+}
+
+// Plan 1.8, #1095 (о): evo login takes no --yes, and its help does not
+// offer one.
+func TestLogin_HelpOffersNoYes(t *testing.T) {
+	setupCLI(t)
+	_, stdout, _ := runCLI(t, "", "login", "--help")
+	// The text says «there is no --yes»: the flag's own line is what must go.
+	if strings.Contains(stdout, "-y, --yes") {
+		t.Errorf("the help of evo login offers --yes:\n%s", stdout)
+	}
+	_, stdout, _ = runCLI(t, "", "vm", "list", "--help")
+	if !strings.Contains(stdout, "-y, --yes") {
+		t.Errorf("--yes is gone from the help of the other commands too")
+	}
+}
+
+// Plan 1.8, #1095 (п), round 2: with --for agent the page offered the
+// project of the profile default, while the key goes to the profile agent
+// with another project. The project picked beforehand is the one of the
+// profile the key goes to.
+func TestLogin_PreselectFromTheProfileOfTheKey(t *testing.T) {
+	setupCLI(t)
+	saveProfile(t, "default", "p-default")
+	saveProfile(t, agentProfile, "p-agent")
+	if id, _, _ := loginPreselectFor(loginStore{}, login.ForAgent); id != "p-agent" {
+		t.Errorf("--for agent: preselected %q, want the project of the profile agent", id)
+	}
+	if id, _, _ := loginPreselectFor(loginStore{}, login.ForMe); id != "p-default" {
+		t.Errorf("--for me: preselected %q, want the project of the profile default", id)
+	}
+	if id, _, _ := loginPreselectFor(loginStore{}, ""); id != "p-default" {
+		t.Errorf("no --for: preselected %q, want the project of «Мне», the default of the page", id)
+	}
+}
+
 // A key the console revoked: IAM no longer exchanges it, so nothing can be
 // revoked with it, and the profile with a dead key helps nobody. logout
 // deletes the profile and says what it could not check, not an error with
@@ -275,7 +398,11 @@ func TestLogout_KeyIAMRejectsDeletesTheProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, stdout, stderr := runCLI(t, "", "--json", "--yes", "logout")
-	if code != 0 || !strings.Contains(stdout, `"key": "rejected"`) || !strings.Contains(stdout, `"note"`) {
+	// Both ids, as when a key was not deleted: the console lists the key
+	// by its id in IAM, the preview named its Key ID («Риск», conclusion 42).
+	if code != 0 || !strings.Contains(stdout, `"key": "rejected"`) || !strings.Contains(stdout, `"note"`) ||
+		!strings.Contains(stdout, `"access_key_id": "ak-1"`) || !strings.Contains(stdout, `"key_id": "revo****0001"`) ||
+		!strings.Contains(stdout, "ak-1)") {
 		t.Fatalf("logout of a revoked key: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	if _, _, found, _ := config.LoadProfile("default"); found {
