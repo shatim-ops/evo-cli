@@ -91,13 +91,13 @@ const (
 
 // Variant is a world of the contract, section 6.
 type Variant struct {
-	Cancel        bool   // the human cancels: callback with error=access_denied
-	ForeignState  bool   // the browser first calls back with another state
-	TwiceCallback bool   // the browser calls back twice with the code
-	ExpiredCode   bool   // token: 400 invalid_grant
+	Cancel        bool // the human cancels: callback with error=access_denied
+	ForeignState  bool // the browser first calls back with another state
+	TwiceCallback bool // the browser calls back twice with the code
+	ExpiredCode   bool // token: 400 invalid_grant
 	// TokenDrop: the exchange of the code is cut — the connection closes
 	// after the code is used, with no answer (a network break, R3-09).
-	TokenDrop bool
+	TokenDrop     bool
 	BadIDToken    string // "iss", "aud", "nonce", "sig", "exp": the ID token fails that check
 	Denied        bool   // evaluate and bulk-evaluate: accessGranted false
 	AccountExists bool   // the project already has the account evo (step 13)
