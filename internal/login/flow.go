@@ -95,6 +95,10 @@ type Result struct {
 	Profile, ProjectID, ProjectName, Account, Role, KeyID string
 	// For is whom the key is for.
 	For Audience
+	// Unchecked is why the platform did not confirm the right beforehand,
+	// "" when it did; the terminal and the page leave it out (conclusion
+	// 35.4), the JSON answer has it.
+	Unchecked string
 	// CustomerName is the organization of the project, for the page.
 	CustomerName string
 	// RoleExpiresAt is the role's actual term: a longer one the account
@@ -339,7 +343,7 @@ func (s *session) uncheck(err error) error {
 func (s *session) uncheckFor(reason string) {
 	if s.unchecked == "" {
 		s.unchecked = reason
-		s.tell(tUnchecked(s.unchecked))
+		s.tell(tUnchecked())
 	}
 }
 
@@ -429,14 +433,25 @@ func forbidden(err error, project string) error {
 // the platform's own words, with a hint that a retry alone meets it again
 // (R-55: evo holds no limits of its own, IAM names them). The hint advises
 // no delete: what evo did not make may be a cluster's (R-56).
-func refused(err error, hint string) error {
-	st := iamadmin.StatusOf(err)
+//
+// Every refusal of the platform at a write says first what Cloud.ru did not
+// do, its own words follow in the same line («Риск», conclusion 35.3);
+// «the same refusal» is said of a 4xx only, anything else may pass.
+func refused(err error, what, hint string) error {
 	var ce *clierrors.CLIError
-	if st < 400 || st >= 500 || st == http.StatusForbidden || st == http.StatusConflict ||
-		st == http.StatusTooManyRequests || errors.As(err, &ce) {
+	if err == nil || errors.As(err, &ce) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
-	return clierrors.Wrap(clierrors.CodeAPIError, err.Error(), hint, err)
+	msg := what + ": " + err.Error()
+	st := iamadmin.StatusOf(err)
+	if st >= 400 && st < 500 && st != http.StatusForbidden && st != http.StatusConflict && st != http.StatusTooManyRequests {
+		return clierrors.Wrap(clierrors.CodeAPIError, msg, hint, err)
+	}
+	code := clierrors.Reason(err)
+	if !clierrors.IsCode(code) {
+		code = clierrors.CodeAPIError
+	}
+	return clierrors.Wrap(code, msg, eRetry(), err)
 }
 
 // noRightIn is the refusal of a person with the right in none of their
@@ -597,7 +612,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 			}
 			sa, res.AccountReused = again[0].ID, true
 		default:
-			return res, at(stepAccount, refused(forbidden(err, p.Name), eAccountRefusedHint()))
+			return res, at(stepAccount, refused(forbidden(err, p.Name), eNotCreatedAccount(), eAccountRefusedHint()))
 		}
 	}
 	say(tStepAccount(aud.account(), res.AccountReused))
@@ -606,7 +621,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	// a longer one kept, none created.
 	roleTerm, err := s.role(ctx, p, sa, pl.term)
 	if err != nil {
-		return res, at(stepPermission, forbidden(err, p.Name))
+		return res, at(stepPermission, refused(forbidden(err, p.Name), eNotGrantedRole(), eRoleRefusedHint()))
 	}
 	res.RoleExpiresAt = roleTerm
 	say(tStepRole())
@@ -614,7 +629,7 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	// 16. The key, last.
 	key, err := s.admin.CreateAccessKey(ctx, sa, desc, time.Duration(pl.days)*24*time.Hour)
 	if err != nil {
-		return res, at(stepKey, refused(forbidden(err, p.Name), eKeyRefusedHint(aud.account())))
+		return res, at(stepKey, refused(forbidden(err, p.Name), eNotIssuedKey(), eKeyRefusedHint(aud.account())))
 	}
 	s.made = append(s.made, undo{tUndoKey(),
 		func(ctx context.Context) error { return s.admin.DeleteAccessKey(ctx, sa, key.ID) }})

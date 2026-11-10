@@ -311,9 +311,15 @@ func configChecks(cfg config.Config) []DoctorCheck {
 	// Without a project every project command (vm list, vpc subnets, …)
 	// fails with CONFIG_INVALID, exit 2: doctor fails the same way, not
 	// "ok" with exit 0 (release audit, R-06).
+	// Without a key the key is the first thing to fix: the project is a
+	// warning then (plan 1.8, #1087, audit of 06.11).
 	if cfg.ProjectID == "" {
 		ce := clierrors.ProjectRequired()
-		checks = append(checks, DoctorCheck{Name: "project_id", Status: CheckFail, Auth: true,
+		st := CheckFail
+		if cfg.KeyID == "" || cfg.Secret == "" {
+			st = CheckWarn
+		}
+		checks = append(checks, DoctorCheck{Name: "project_id", Status: st, Auth: true,
 			Detail: i18n.T("not set: ", "не задан: ") + ce.Hint})
 	}
 	for _, w := range cfg.Warnings {

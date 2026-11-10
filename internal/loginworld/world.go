@@ -91,10 +91,13 @@ const (
 
 // Variant is a world of the contract, section 6.
 type Variant struct {
-	Cancel        bool   // the human cancels: callback with error=access_denied
-	ForeignState  bool   // the browser first calls back with another state
-	TwiceCallback bool   // the browser calls back twice with the code
-	ExpiredCode   bool   // token: 400 invalid_grant
+	Cancel        bool // the human cancels: callback with error=access_denied
+	ForeignState  bool // the browser first calls back with another state
+	TwiceCallback bool // the browser calls back twice with the code
+	ExpiredCode   bool // token: 400 invalid_grant
+	// TokenDrop: the exchange of the code is cut — the connection closes
+	// after the code is used, with no answer (a network break, R3-09).
+	TokenDrop     bool
 	BadIDToken    string // "iss", "aud", "nonce", "sig", "exp": the ID token fails that check
 	Denied        bool   // evaluate and bulk-evaluate: accessGranted false
 	AccountExists bool   // the project already has the account evo (step 13)
@@ -132,6 +135,9 @@ type Variant struct {
 	// AccountForbidden: POST serviceAccounts answers 403 («Риск», R-49: a
 	// refusal of the platform at the first write is AUTH_FAILED).
 	AccountForbidden bool
+	// BeforeKey, when set, runs as POST accessKeys begins: a test acts
+	// while the grant is under way (a Ctrl-C, a second «Grant access»).
+	BeforeKey func()
 	// KeyForbidden: POST accessKeys answers 403 («Риск», R-55: a refusal
 	// of the platform at the key is AUTH_FAILED, as at the account).
 	KeyForbidden bool
@@ -325,6 +331,14 @@ func (w *World) Permissions() []Permission {
 }
 
 // Keys of every account.
+// Heal ends the failure the variant set: the next write of that step
+// succeeds, as a platform that came back.
+func (w *World) Heal() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.v.FailAt, w.v.TokenDrop = "", false
+}
+
 func (w *World) Keys() []Key {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -496,6 +510,15 @@ func (w *World) token(rw http.ResponseWriter, r *http.Request) {
 	f := r.PostForm
 	a, ok := w.codes[f.Get("code")]
 	delete(w.codes, f.Get("code")) // a code is used once
+	if w.v.TokenDrop {
+		if hj, ok := rw.(http.Hijacker); ok {
+			if c, _, err := hj.Hijack(); err == nil {
+				_ = c.Close()
+				return
+			}
+		}
+		panic(http.ErrAbortHandler)
+	}
 	sum := sha256.Sum256([]byte(f.Get("code_verifier")))
 	switch {
 	case w.v.ExpiredCode || !ok:
@@ -858,6 +881,9 @@ func (w *World) accessKeys(rw http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(rw, 200, map[string]any{"accessKeys": list})
 	case http.MethodPost:
+		if w.v.BeforeKey != nil {
+			w.v.BeforeKey()
+		}
 		var body struct{ Description, TTL string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		ttl, err := time.ParseDuration(body.TTL)

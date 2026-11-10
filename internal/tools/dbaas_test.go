@@ -70,7 +70,7 @@ func (f *fakeDbaas) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		switch q.Get("page_token") {
 		case "":
-			_, _ = io.WriteString(w, `{"clusters":[{"id":"c1","name":"one","status":"RUNNING"}],"next_page_token":"p2"}`)
+			_, _ = io.WriteString(w, `{"clusters":[{"id":"c1","name":"one","status":"RUNNING","subnet_ids":["sn-1"],"controller_spec":{"specification_id":"s1","storage_gib":10}}],"next_page_token":"p2"}`)
 		case "p2":
 			_, _ = io.WriteString(w, `{"clusters":[{"id":"c2","name":"two","status":"RUNNING"}],"next_page_token":""}`)
 		default:
@@ -221,6 +221,41 @@ func TestDbaasCreate_ZoneFromSubnet(t *testing.T) {
 		m, text, isErr := callNamed(t, r, tool, map[string]any{"name": "c1", "cpu": 2, "ram": 4})
 		if !isErr || m["reason"] != "USAGE" || !strings.Contains(text, "zone ru.AZ-2") || strings.Contains(text, zoneAZ2) {
 			t.Errorf("%s in a zone without a subnet (the zone by name, not UUID): %s", tool, text)
+		}
+	}
+}
+
+// Cloud.ru, the spec of Managed Kafka of 10.11: the subnets of a cluster
+// (subnet_ids, 1 or 3) and its dedicated controllers (controller_spec)
+// are answered by the API; the list shows them, and the preview of
+// kafka_create names the mode evo leaves to the platform — without
+// controller_spec the brokers are the controllers, and the mode cannot be
+// changed after the creation (CLAUDE.md §6, axis 4).
+func TestKafka_SubnetsAndControllers(t *testing.T) {
+	f := &fakeDbaas{}
+	r := dbaasRegistry(t, f, "")
+	m, text, isErr := callNamed(t, r, "kafka_list", nil)
+	if isErr {
+		t.Fatal(text)
+	}
+	cl, _ := m["clusters"].([]any)
+	first, _ := cl[0].(map[string]any)
+	if first["subnet_ids"] == nil || first["controller_spec"] == nil {
+		t.Errorf("kafka_list hides the subnets or the controllers: %s", text)
+	}
+	m, text, _ = callNamed(t, r, "kafka_create", map[string]any{"name": "c1", "cpu": 2, "ram": 4})
+	wc, _ := m["will_create"].(map[string]any)
+	if wc["controllers"] != "combined" || !strings.Contains(text, "controllers") {
+		t.Errorf("the preview does not name the mode of the controllers: %s", text)
+	}
+	// Dedicated controllers are a parameter evo leaves alone: declared, with
+	// where to get them (axis 4).
+	if l := engine.ParamLabel("controllers"); !strings.Contains(l, "console") {
+		t.Errorf("the label of the controllers does not say where dedicated ones are: %s", l)
+	}
+	for _, d := range r.Tools() {
+		if d.Name == "kafka_create" && !strings.Contains(d.Description, "controller_spec") {
+			t.Errorf("kafka_create does not declare controller_spec: %s", d.Description)
 		}
 	}
 }

@@ -349,8 +349,10 @@ func TestWorkflows_CloudE2EWeekly(t *testing.T) {
 		if !strings.Contains(j.If, "refs/heads/main") {
 			t.Errorf("cloud-e2e-weekly: job %s runs off main (if: %q)", name, j.If)
 		}
-		if p, _ := j.Permissions.(map[string]any); len(p) != 1 || p["actions"] != "write" {
-			t.Errorf("cloud-e2e-weekly: job %s permissions %v, want actions: write only", name, j.Permissions)
+		// actions: write — dispatch and cancel; contents: read — the checkout
+		// of weekly_stale.sh, nothing more.
+		if p, _ := j.Permissions.(map[string]any); p["actions"] != "write" || len(p) > 2 || (len(p) == 2 && p["contents"] != "read") {
+			t.Errorf("cloud-e2e-weekly: job %s permissions %v, want actions: write (and contents: read) only", name, j.Permissions)
 		}
 		for _, s := range j.Steps {
 			runs += s.Run + "\n"
@@ -360,6 +362,9 @@ func TestWorkflows_CloudE2EWeekly(t *testing.T) {
 		"gh workflow run cloud-e2e.yml --repo \"$GITHUB_REPOSITORY\" --ref main",
 		"-f cleanup_only=true",
 		"-f dns_smoke=true -f s3_smoke=true -f secrets_smoke=true",
+		// Runs 177 and 180 (07–10.11): an unapproved weekly run held the
+		// concurrency group of cloud-e2e and blocked the live runs.
+		".github/scripts/weekly_stale.sh \"$GITHUB_REPOSITORY\"",
 	} {
 		if !strings.Contains(runs, want) {
 			t.Errorf("cloud-e2e-weekly: no %q", want)
@@ -1646,5 +1651,28 @@ func TestWorkflows_CloudE2EScenariosSayWhy(t *testing.T) {
 	}
 	if !strings.Contains(read(".github/scripts/cloud-readonly.sh"), "delete_absent_verdict.sh") {
 		t.Error("cloud-readonly.sh judges the delete of what is not there without delete_absent_verdict.sh")
+	}
+}
+
+// Run 181 (10.11): the owner's «yes» to the probes cmp7 and r3f1 reached the
+// billable deploy VM of the job e2e too, which ran on every manual
+// cloud-e2e. The input e2e_core switches it off; on by default, as before.
+func TestWorkflows_CloudE2ECoreCanBeOff(t *testing.T) {
+	w := readWorkflows(t)["cloud-e2e.yml"]
+	j, ok := w.Jobs["e2e"]
+	if !ok {
+		t.Fatal("cloud-e2e: no job e2e")
+	}
+	if !strings.Contains(j.If, "inputs.e2e_core") {
+		t.Errorf("cloud-e2e: job e2e runs whatever e2e_core says (if: %q)", j.If)
+	}
+	d, _ := w.On["workflow_dispatch"].(map[string]any)
+	in, _ := d["inputs"].(map[string]any)
+	c, _ := in["e2e_core"].(map[string]any)
+	if c == nil || c["type"] != "boolean" || c["default"] != true {
+		t.Errorf("cloud-e2e: input e2e_core %v, want a boolean, true by default", c)
+	}
+	if len(in) > 25 {
+		t.Errorf("cloud-e2e: %d inputs of workflow_dispatch, GitHub takes 25", len(in))
 	}
 }

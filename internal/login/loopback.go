@@ -7,6 +7,7 @@ package login
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -87,14 +88,29 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 	defer timer.Stop()
 	select {
 	case o := <-lb.done:
-		return o.res, o.err
+		return s.answer(o)
 	case <-timer.C:
+		// As for Ctrl-C below: a grant under way ends, and its result is
+		// the answer, not «nothing was made» (audit of 1.8, A18-13).
 		lb.close()
+		select {
+		case o := <-lb.done:
+			return s.answer(o)
+		default:
+		}
 		// The end of the wait is not a Ctrl-C: its own code (plan 1.8,
 		// #1087, audit of 06.11).
 		return Result{}, at(stepWait, clierrors.New(clierrors.CodeLoginTimeout, eTimeout(cfg.Wait), eTimeoutHint(cfg.Wait)))
 	case <-ctx.Done():
+		// close waits for a request under way: a grant that began goes on
+		// to its end, and its result is the answer, not «interrupted»
+		// (plan 1.8, #1095, D3: the key was saved, evo said «interrupted»).
 		lb.close()
+		select {
+		case o := <-lb.done:
+			return s.answer(o)
+		default:
+		}
 		return Result{}, ctx.Err()
 	}
 }
@@ -150,6 +166,10 @@ type loopback struct {
 
 	mu    sync.Mutex
 	phase int // 0: waiting for the code; 1: the consent; 2: ended
+	// last is the page that ended the consent: a second «Grant access» of
+	// this login (a double click) is shown it again, not a refusal
+	// (plan 1.8, #1095, round 4).
+	last *page
 }
 
 const (
@@ -162,6 +182,12 @@ func (l *loopback) close() {
 	l.mu.Lock()
 	l.phase = phaseEnded
 	l.mu.Unlock()
+}
+
+// show writes the page that ends the consent and keeps it for a repeat.
+func (l *loopback) show(w http.ResponseWriter, p page) {
+	l.last = &p
+	writePage(w, http.StatusOK, p)
 }
 
 func (l *loopback) end(o outcome) {
@@ -252,36 +278,48 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 
 // consent takes the person's choice once: the grant or the cancel.
 func (l *loopback) consent(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil || l.phase != phaseConsent || !l.ownState(r.PostForm.Get("state")) ||
-		!l.ownConsent(r.PostForm.Get("consent")) {
+	if err := r.ParseForm(); err != nil || !l.ownState(r.PostForm.Get("state")) || !l.ownConsent(r.PostForm.Get("consent")) {
+		refuse(w, http.StatusForbidden)
+		return
+	}
+	if l.phase == phaseEnded && l.last != nil {
+		writePage(w, http.StatusOK, *l.last)
+		return
+	}
+	if l.phase != phaseConsent {
 		refuse(w, http.StatusForbidden)
 		return
 	}
 	if r.URL.Path == "/cancel" {
-		writePage(w, http.StatusOK, cancelledPage())
+		l.show(w, cancelledPage())
 		l.end(outcome{err: cancelled()})
 		return
 	}
+	// The grant does not end with the connection of the request: a browser
+	// drops it on a double click or F5, and a grant cut there rolls back —
+	// or leaves a key it asked for and never heard of («Риск», conclusion
+	// 39; plan 1.8, #1095, round 4). Its own requests carry their timeouts.
+	ctx := context.WithoutCancel(r.Context())
 	p, aud, days, err := l.s.chosen(r.PostForm)
 	if err != nil {
 		err = at(stepChoice, err)
-		writePage(w, http.StatusOK, errorPage(err))
+		l.show(w, errorPage(err))
 		l.end(outcome{err: err})
 		return
 	}
-	pl, err := l.s.planFor(r.Context(), p, aud, days)
+	pl, err := l.s.planFor(ctx, p, aud, days)
 	if err != nil {
-		writePage(w, http.StatusOK, errorPage(err))
+		l.show(w, errorPage(err))
 		l.end(outcome{err: err})
 		return
 	}
-	res, err := l.s.grant(r.Context(), pl, l.s.tell)
+	res, err := l.s.grant(ctx, pl, l.s.tell)
 	if err != nil {
-		writePage(w, http.StatusOK, errorPage(err))
+		l.show(w, errorPage(err))
 		l.end(outcome{res: res, err: err})
 		return
 	}
-	writePage(w, http.StatusOK, donePage(res))
+	l.show(w, donePage(res))
 	l.end(outcome{res: res})
 }
 
@@ -305,6 +343,13 @@ func (s *session) chosen(f url.Values) (project, Audience, int, error) {
 	aud := Audience(f.Get("audience"))
 	if aud != ForMe && aud != ForAgent {
 		return bad("audience")
+	}
+	// A store may refuse an audience its profile does not take (C24): before
+	// any write.
+	if r, ok := s.store.(interface{ Refuses(Audience) error }); ok {
+		if err := r.Refuses(aud); err != nil {
+			return project{}, "", 0, err
+		}
 	}
 	days, err := strconv.Atoi(f.Get("ttl"))
 	if err != nil || !containsInt(Terms, days) {
@@ -335,4 +380,27 @@ func oneLine(s string) string {
 		s = s[:200]
 	}
 	return strconv.Quote(s)
+}
+
+// answer is the login's answer of an outcome of the loopback.
+func (s *session) answer(o outcome) (Result, error) {
+	if o.err == nil {
+		o.res.Unchecked = s.unchecked
+	}
+	return o.res, s.withUnchecked(o.err)
+}
+
+// withUnchecked names in the details of a refusal why the right was not
+// confirmed beforehand, which the terminal and the page leave out
+// («Риск», conclusion 35.4).
+func (s *session) withUnchecked(err error) error {
+	var ce *clierrors.CLIError
+	if s.unchecked == "" || !errors.As(err, &ce) {
+		return err
+	}
+	if ce.Details == nil {
+		ce.Details = map[string]any{}
+	}
+	ce.Details["unchecked"] = s.unchecked
+	return err
 }
