@@ -30,9 +30,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      # Запустить cloud-e2e.yml.
+      # Запустить cloud-e2e.yml и отменить свои неодобренные прогоны.
       actions: write
+      contents: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Прошлый недельный набор или уборка, так и не одобренные, держат
+      # группу concurrency «cloud-e2e» и блокируют живые прогоны (177 и 180,
+      # 07–10.11): отменить их до нового запуска. Прогоны человека остаются.
+      - name: Отмена неодобренных прошлых прогонов
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/weekly_stale.sh "$GITHUB_REPOSITORY"
       - name: Запуск cloud-e2e
         env:
           GH_TOKEN: ${{ github.token }}

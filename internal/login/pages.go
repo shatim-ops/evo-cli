@@ -146,7 +146,7 @@ func consentPage(s *session) page {
 		d.For = string(ForAgent)
 	}
 	if s.unchecked != "" {
-		d.Unchecked = tUnchecked(s.unchecked)
+		d.Unchecked = tUnchecked()
 	}
 	copy(d.GrantIn[:], cut(tGrantInProject("\x00p"), "\x00p"))
 	d.AgentWarnTitle = tAgentWarnTitle()

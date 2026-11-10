@@ -94,7 +94,7 @@ func TestVMList_RejectedKey_Russian(t *testing.T) {
 	}
 	if got.Error.Reason != clerrors.CodeAuthFailed ||
 		!strings.Contains(got.Error.Message, "IAM отклонил ключ доступа (статус 401)") ||
-		!strings.HasPrefix(got.Error.Hint, "Проверьте Key ID и секрет") {
+		!strings.Contains(got.Error.Hint, "проверьте там Key ID и секрет") {
 		t.Errorf("error %+v", got.Error)
 	}
 }
