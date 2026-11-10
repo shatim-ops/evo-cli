@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/journal"
@@ -55,6 +56,9 @@ func newDiagSwitchCmd(on bool) *cobra.Command {
 		Short: short,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if dryRunWrite(cmd.Context(), confirm.Preview{Action: "diag " + use, Summary: short}) {
+				return nil
+			}
 			if err := config.SetJournal(on); err != nil {
 				return err
 			}
