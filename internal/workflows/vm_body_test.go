@@ -15,17 +15,21 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
-// jsonTags are the names of the JSON fields of a struct.
-func jsonTags(v any) map[string]bool {
-	out := map[string]bool{}
+// jsonTags are the names of the JSON fields of a struct; required are
+// those evo always sends (no omitempty).
+func jsonTags(v any) (all, required map[string]bool) {
+	all, required = map[string]bool{}, map[string]bool{}
 	t := reflect.TypeOf(v)
 	for i := 0; i < t.NumField(); i++ {
-		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		name, opts, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
 		if name != "" && name != "-" {
-			out[name] = true
+			all[name] = true
+			if !strings.Contains(opts, "omitempty") {
+				required[name] = true
+			}
 		}
 	}
-	return out
+	return all, required
 }
 
 // vmBodyKey is a key of a jq or JSON object: `key:` or `"key":`.
@@ -43,12 +47,18 @@ func TestScripts_DirectVMBodyIsEvos(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	allowed := jsonTags(provision.CreateVMRequest{})
-	for k := range jsonTags(provision.DiskReq{}) {
-		allowed[k] = true
+	// The fields of the VM and of its disk: the interfaces are the
+	// probe's (regular_if, P41's direct_ip).
+	allowed, required := jsonTags(provision.CreateVMRequest{})
+	disk, diskReq := jsonTags(provision.DiskReq{})
+	iface, _ := jsonTags(provision.InterfaceReq{})
+	for _, m := range []map[string]bool{disk, iface} {
+		for k := range m {
+			allowed[k] = true
+		}
 	}
-	for k := range jsonTags(provision.InterfaceReq{}) {
-		allowed[k] = true
+	for k := range diskReq {
+		required[k] = true
 	}
 	if n := strings.Count(s, "POST https://compute.api.cloud.ru/api/v1.1/vms"); n != 1 {
 		t.Errorf("cloud-live.sh: %d direct POSTs of a VM, want one, in vm_post", n)
@@ -76,6 +86,15 @@ func TestScripts_DirectVMBodyIsEvos(t *testing.T) {
 	keys := vmBodyKey.FindAllStringSubmatch(body+"\n"+strings.Join(lits, "\n"), -1)
 	if len(keys) < 8 {
 		t.Fatalf("%d fields of the VM body read: the scan sees nothing", len(keys))
+	}
+	sent := map[string]bool{}
+	for _, k := range vmBodyKey.FindAllStringSubmatch(body, -1) {
+		sent[k[1]] = true
+	}
+	for k := range required {
+		if !sent[k] {
+			t.Errorf("vm_post does not send %q, which evo always sends (provision.CreateVMRequest)", k)
+		}
 	}
 	for _, k := range keys {
 		if !allowed[k[1]] {
