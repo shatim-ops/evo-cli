@@ -23,6 +23,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/loginworld"
 )
 
@@ -567,8 +568,7 @@ func TestLogin_EvaluateErrorIsNoRefusal(t *testing.T) {
 	if r.err != nil || len(r.saved) != 1 {
 		t.Fatalf("err %v; saved %d", r.err, len(r.saved))
 	}
-	note := tUnchecked("")
-	note = note[:strings.Index(note, ":")]
+	note := tUnchecked()
 	if !strings.Contains(r.out, note) || !strings.Contains(r.b.consent, note) {
 		t.Errorf("the note %q is not in the terminal or on the page:\n%s", note, r.out)
 	}
@@ -592,8 +592,7 @@ func TestLogin_UnknownActionIsNoRefusal(t *testing.T) {
 	if r.err != nil || len(r.saved) != 1 {
 		t.Fatalf("the administrator was refused for an action IAM does not know: err %v; saved %d\n%s", r.err, len(r.saved), r.out)
 	}
-	note := tUnchecked("")
-	note = note[:strings.Index(note, ":")]
+	note := tUnchecked()
 	if !strings.Contains(r.out, note) || !strings.Contains(r.b.consent, note) {
 		t.Errorf("the note %q is not in the terminal or on the page:\n%s", note, r.out)
 	}
@@ -632,13 +631,14 @@ func TestLogin_FalseReadsTheCatalog(t *testing.T) {
 
 	w = newWorld(t, loginworld.Variant{UnknownActionFalse: true})
 	r = login(t, w, &browser{}, Choice{}, nil, nil)
-	if r.err != nil || !strings.Contains(r.out, tActionUnknown(auth.LoginActionCreateAccount)) {
+	// The reason is the answer's, not the terminal's (conclusion 35.4).
+	if r.err != nil || !strings.Contains(r.res.Unchecked, tActionUnknown(auth.LoginActionCreateAccount)) || strings.Contains(r.out, tActionUnknown(auth.LoginActionCreateAccount)) {
 		t.Errorf("a false on an unknown action: %v\n%s", r.err, r.out)
 	}
 
 	w = newWorld(t, loginworld.Variant{UnknownActionFalse: true, CatalogFails: true})
 	r = login(t, w, &browser{}, Choice{}, nil, nil)
-	if r.err != nil || !strings.Contains(r.out, "каталог действий IAM не прочитан") && !strings.Contains(r.out, "catalog of actions was not read") {
+	if r.err != nil || !strings.Contains(r.res.Unchecked, "каталог действий IAM не прочитан") && !strings.Contains(r.res.Unchecked, "catalog of actions was not read") {
 		t.Errorf("a catalog not read: %v\n%s", r.err, r.out)
 	}
 
@@ -766,6 +766,68 @@ func TestLogin_GrantWithoutAProjectIsRefused(t *testing.T) {
 	}
 }
 
+// Plan 1.8, #1087, texts (audit of 06.11; «Риск», conclusion 35.3): a
+// refusal at a write says first, in plain words, what Cloud.ru did not do,
+// and the platform's words follow in the same line; «a retry alone meets
+// the same refusal» is said only of a 4xx.
+func TestLogin_RefusalSaysWhatWasNotDoneFirst(t *testing.T) {
+	prev := i18n.Lang()
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	for _, c := range []struct {
+		name, first, says string
+		v                 loginworld.Variant
+		retry             bool
+	}{
+		{"account 400", "Cloud.ru не создал сервисный аккаунт", "service account limit reached", loginworld.Variant{AccountLimit: true}, false},
+		{"account 500", "Cloud.ru не создал сервисный аккаунт", "internal", loginworld.Variant{FailAt: loginworld.StepAccount}, true},
+		{"role 500", "Cloud.ru не выдал роль «Администратор проекта»", "internal", loginworld.Variant{FailAt: loginworld.StepPermission}, true},
+		{"key 400", "Cloud.ru не выдал ключ доступа", "access key limit reached", loginworld.Variant{KeyLimit: true}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := login(t, newWorld(t, c.v), &browser{}, Choice{}, nil, nil)
+			var ce *clierrors.CLIError
+			if !errors.As(r.err, &ce) {
+				t.Fatalf("got %v", r.err)
+			}
+			why := ce.Message
+			if i := strings.Index(why, ": "); strings.HasPrefix(why, "доступ не выдан") && i > 0 {
+				why = why[i+2:]
+			}
+			if !strings.HasPrefix(why, c.first+": ") || !strings.Contains(why, c.says) {
+				t.Errorf("message %q: want %q first, the platform's %q after", ce.Message, c.first, c.says)
+			}
+			if got := strings.Contains(ce.Hint, "повтор получит тот же отказ"); got == c.retry {
+				t.Errorf("hint %q: «the same refusal» said of a %s", ce.Hint, c.name)
+			}
+		})
+	}
+}
+
+// «Риск», conclusion 35.4: the note of a right evaluate did not confirm
+// carries no code of the platform; its reason is in the details.
+func TestLogin_UncheckedNoteHasNoPlatformCode(t *testing.T) {
+	prev := i18n.Lang()
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	w := newWorld(t, loginworld.Variant{EvaluateUnknown: true, PermForbidden: true})
+	r := login(t, w, &browser{}, Choice{}, nil, nil)
+	want := "Заранее проверить право не удалось. Если доступа нет, Cloud.ru откажет при создании аккаунта, и ничего не останется"
+	if !strings.Contains(r.out, want) || !strings.Contains(r.b.consent, want) {
+		t.Errorf("no plain note in the terminal or on the page:\n%s", r.out)
+	}
+	for _, code := range []string{"iam API", "evaluate"} {
+		if strings.Contains(r.out, code) || strings.Contains(tag.ReplaceAllString(r.b.consent, " "), code) {
+			t.Errorf("the note shows %q", code)
+		}
+	}
+	var ce *clierrors.CLIError
+	errors.As(r.err, &ce)
+	if d := detailsOf(ce); d == nil || d["unchecked"] == nil {
+		t.Errorf("the reason is not in the details: %v", d)
+	}
+}
+
 // Plan 1.8, #1087 (audit of 06.11): the end of the wait is not a Ctrl-C —
 // its own code LOGIN_TIMEOUT, exit 1, «not completed within N min», nothing
 // made; a Ctrl-C stays INTERRUPTED, 130.
@@ -819,5 +881,166 @@ func TestLogin_AfterTheWaitThePageIsGone(t *testing.T) {
 	}
 	if len(w.Accounts()) != 0 || len(w.Keys()) != 0 {
 		t.Errorf("after the wait something was made")
+	}
+}
+
+// Plan 1.8, #1095, rounds 1–2 (D3): a Ctrl-C while the grant is under way
+// does not end the login as «interrupted» while the key goes on being made
+// and saved: the login waits for the grant and answers its result.
+func TestLogin_InterruptDuringTheGrantAnswersItsResult(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	w := newWorld(t, loginworld.Variant{BeforeKey: cancel})
+	b := &browser{}
+	b.t, b.w, b.ended = t, w, make(chan struct{})
+	var out bytes.Buffer
+	st := &memStore{}
+	res, err := Login(ctx, worldConfig(w, &out, b.open), Choice{}, st)
+	<-b.ended
+	if err != nil || len(st.saved) != 1 || res.KeyID == "" {
+		t.Fatalf("a Ctrl-C in the grant: err %v; saved %d; key %q", err, len(st.saved), res.KeyID)
+	}
+}
+
+// Plan 1.8, #1095, round 4 (б): a second «Grant access» while the first
+// is under way (a double click) makes nothing twice and does not break the
+// login: it shows the same result.
+func TestLogin_SecondGrantShowsTheSameResult(t *testing.T) {
+	var form url.Values
+	var host string
+	second := make(chan string, 1)
+	v := loginworld.Variant{}
+	v.BeforeKey = func() {
+		go func() {
+			resp, err := http.PostForm("http://"+host+"/grant", form)
+			if err != nil {
+				second <- "error: " + err.Error()
+				return
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			second <- fmt.Sprintf("%d %s", resp.StatusCode, body)
+		}()
+		time.Sleep(50 * time.Millisecond) // wall-clock: lets the second POST reach evo while the first grants
+	}
+	w := newWorld(t, v)
+	b := &browser{form: func(f url.Values) { form = f }}
+	b.t, b.w, b.ended = t, w, make(chan struct{})
+	var out bytes.Buffer
+	st := &memStore{}
+	cfg := worldConfig(w, &out, func(u string) error {
+		if p, err := url.Parse(u); err == nil {
+			if cb, err := url.Parse(p.Query().Get("redirect_uri")); err == nil {
+				host = cb.Host
+			}
+		}
+		return b.open(u)
+	})
+	_, err := Login(context.Background(), cfg, Choice{}, st)
+	<-b.ended
+	got := <-second
+	if err != nil || len(st.saved) != 1 || len(w.Keys()) != 1 {
+		t.Fatalf("err %v; saved %d; keys %d", err, len(st.saved), len(w.Keys()))
+	}
+	if !strings.HasPrefix(got, "200 ") || !strings.Contains(got, tDone()) {
+		t.Errorf("the second «Grant access» shows %.200q, want the same result", got)
+	}
+}
+
+// refusingStore refuses the person's key, as the agent's profile does (C24).
+type refusingStore struct{ memStore }
+
+func (refusingStore) Refuses(a Audience) error {
+	if a == ForMe {
+		return clierrors.New(clierrors.CodeUsage, "the agent's profile", "")
+	}
+	return nil
+}
+
+// Plan 1.8, #1095 (C24): «Мне» chosen on the page for the agent's profile
+// is refused before any write.
+func TestLogin_StoreRefusesTheAudienceBeforeAnyWrite(t *testing.T) {
+	w := newWorld(t, loginworld.Variant{})
+	b := &browser{}
+	b.t, b.w, b.ended = t, w, make(chan struct{})
+	var out bytes.Buffer
+	st := &refusingStore{}
+	_, err := Login(context.Background(), worldConfig(w, &out, b.open), Choice{}, st)
+	<-b.ended
+	if reasonOf(err) != clierrors.CodeUsage || len(w.Accounts()) != 0 || len(st.saved) != 0 {
+		t.Fatalf("err %v; accounts %d; saved %d", err, len(w.Accounts()), len(st.saved))
+	}
+}
+
+// «Риск», conclusion 39 (plan 1.8, #1095, round 4): the browser drops the
+// connection of the first «Grant access» (a double click, F5) while the
+// grant is under way. The grant goes on to its end — one key, nothing
+// left — and the second «Grant access» shows its result.
+func TestLogin_DroppedFirstGrantStillEnds(t *testing.T) {
+	var form url.Values
+	var host string
+	dropFirst := make(chan struct{})
+	second := make(chan string, 1)
+	v := loginworld.Variant{}
+	v.BeforeKey = func() {
+		close(dropFirst) // the browser drops the first POST
+		// The second POST goes out now, while the key is not made yet: it
+		// waits for the grant under way and must see its result. Started
+		// after the sleep, under load it came after the loopback closed.
+		defer time.Sleep(200 * time.Millisecond) // wall-clock: the dropped connection and the second POST reach the server before the key
+		go func() {
+			resp, err := http.PostForm("http://"+host+"/grant", form)
+			if err != nil {
+				second <- "error: " + err.Error()
+				return
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			second <- fmt.Sprintf("%d %s", resp.StatusCode, body)
+		}()
+	}
+	w := newWorld(t, v)
+	var out bytes.Buffer
+	st := &memStore{}
+	ended := make(chan struct{})
+	cfg := worldConfig(w, &out, func(authURL string) error {
+		p, _ := url.Parse(authURL)
+		cb, _ := url.Parse(p.Query().Get("redirect_uri"))
+		host = cb.Host
+		go func() {
+			defer close(ended)
+			c := w.Client()
+			resp, err := c.Get(authURL)
+			if err != nil {
+				return
+			}
+			resp.Body.Close()
+			resp, err = c.Get(resp.Header.Get("Location"))
+			if err != nil {
+				return
+			}
+			page, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			form = url.Values{"state": {stateField.FindStringSubmatch(string(page))[1]},
+				"consent": {consentField.FindStringSubmatch(string(page))[1]},
+				"project": {pickProject(string(page))}, "audience": {"me"}, "ttl": {"30"}}
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() { <-dropFirst; cancel() }()
+			req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/grant", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			if r, err := http.DefaultClient.Do(req); err == nil {
+				r.Body.Close()
+			}
+		}()
+		return nil
+	})
+	_, err := Login(context.Background(), cfg, Choice{}, st)
+	<-ended
+	got := <-second
+	if err != nil || len(st.saved) != 1 || len(w.Keys()) != 1 {
+		t.Fatalf("the first POST dropped: err %v; saved %d; keys %d", err, len(st.saved), len(w.Keys()))
+	}
+	if !strings.HasPrefix(got, "200 ") || !strings.Contains(got, tDone()) {
+		t.Errorf("the second «Grant access» shows %.200q, want the result", got)
 	}
 }

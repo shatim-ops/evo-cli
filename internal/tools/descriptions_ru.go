@@ -1487,7 +1487,8 @@ var toolsRU = map[string]toolRU{
 			"Compute API, ключ доступа (токен IAM), сколько проектов он видит, его роли на проекте (key roles: skip, если IAM " +
 			"их не сообщил, warn — если ролей нет) и срок (key term: warn за 5 дней); команда 'evo doctor' проверяет ещё файлы " +
 			"настроек этой машины и их права и kubectl/helm в PATH. Только чтение. В ответе — checks (name, status: ok, " +
-			"warn, fail или skip, detail, http_status) и ok. Код выхода 2 — сломаны настройки или ключ (в том числе не " +
+			"warn, fail или skip, detail, http_status) и ok; http_status у IAM API и Compute API — ответ корня API: любой ответ, в том " +
+			"числе 404, значит «доступен». Код выхода 2 — сломаны настройки или ключ (в том числе не " +
 			"задан проект), 1 — не прошли только проверки связи.",
 	},
 	"iam_service_accounts": {

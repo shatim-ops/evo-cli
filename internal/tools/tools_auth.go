@@ -311,17 +311,17 @@ func configChecks(cfg config.Config) []DoctorCheck {
 	// Without a project every project command (vm list, vpc subnets, …)
 	// fails with CONFIG_INVALID, exit 2: doctor fails the same way, not
 	// "ok" with exit 0 (release audit, R-06).
-	switch {
-	case cfg.ProjectID == "" && (cfg.KeyID == "" || cfg.Secret == ""):
-		// No key either: evo login sets both, and the credentials check
-		// fails already — one fix, not two failures (findings ledger 1.8,
-		// № 86).
-		checks = append(checks, DoctorCheck{Name: "project_id", Status: CheckWarn,
-			Detail: i18n.T("not set: evo login sets it together with the key", "не задан: evo login задаст его вместе с ключом")})
-	case cfg.ProjectID == "":
+	// Without a key the key is the first thing to fix: the project is a
+	// warning then, and evo login sets both (plan 1.8, #1087, audit of
+	// 06.11; findings ledger 1.8, № 86).
+	if cfg.ProjectID == "" {
 		ce := clierrors.ProjectRequired()
-		checks = append(checks, DoctorCheck{Name: "project_id", Status: CheckFail, Auth: true,
-			Detail: i18n.T("not set: ", "не задан: ") + ce.Hint})
+		st, hint := CheckFail, ce.Hint
+		if cfg.KeyID == "" || cfg.Secret == "" {
+			st, hint = CheckWarn, i18n.T("evo login sets it together with the key", "evo login задаст его вместе с ключом")
+		}
+		checks = append(checks, DoctorCheck{Name: "project_id", Status: st, Auth: true,
+			Detail: i18n.T("not set: ", "не задан: ") + hint})
 	}
 	for _, w := range cfg.Warnings {
 		checks = append(checks, DoctorCheck{Name: "config", Status: CheckWarn, Detail: w})
