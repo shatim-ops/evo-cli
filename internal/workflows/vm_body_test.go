@@ -60,6 +60,10 @@ func TestScripts_DirectVMBodyIsEvos(t *testing.T) {
 	for k := range diskReq {
 		required[k] = true
 	}
+	// omitempty in evo's body, but the images of the probes declare
+	// mandatory fields: without it the API answers 422
+	// image_metadata_fields_missing (run 183, cmp7).
+	required["image_metadata"] = true
 	if n := strings.Count(s, "POST https://compute.api.cloud.ru/api/v1.1/vms"); n != 1 {
 		t.Errorf("cloud-live.sh: %d direct POSTs of a VM, want one, in vm_post", n)
 	}
