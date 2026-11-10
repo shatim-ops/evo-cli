@@ -43,7 +43,9 @@ func TestResolve_EmptyConfigDirIsNamed(t *testing.T) {
 	t.Setenv("APPDATA", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv(EnvConfigDir, "")
-	if cfg, _, err := ResolveWithSources(Options{}); err == nil {
+	// Windows finds a default directory without them (os.UserHomeDir):
+	// then the warning names it, which is right.
+	if cfg, _, err := ResolveWithSources(Options{}); err == nil && Dir() == "" {
 		for _, w := range cfg.Warnings {
 			if strings.Contains(w, EnvConfigDir) {
 				t.Errorf("a warning with no path: %q", w)
