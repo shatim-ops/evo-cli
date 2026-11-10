@@ -97,6 +97,9 @@ type consentData struct {
 	SummaryStays, Cancel            string
 	SecretNote, State, Consent, For string
 	Unchecked, PreselectNote        string
+	// OtherProfile is the line of a project picked by the profile of one
+	// audience, shown when the other is chosen (OtherAudience, its id).
+	OtherProfile, OtherAudience string
 	// ChooseProject is the empty first option when no project is picked
 	// beforehand; FromList names the project where :has() is not there to
 	// name the chosen one («Риск», conclusion 34).
@@ -188,6 +191,7 @@ func consentPage(s *session) page {
 		rules.WriteString(shown(cp.HTMLID))
 	}
 	d.Picked = checked
+	d.OtherProfile, d.OtherAudience = s.otherProfile(pre)
 	d.ChooseProject, d.Grant = tChooseProject(), tGrant()
 	copy(d.AccountToChoose[:], cut(tSumAccountToChoose("\x00a"), "\x00a"))
 	if !s.until.IsZero() {
@@ -215,10 +219,29 @@ func consentPage(s *session) page {
 	rules.WriteString(".sheet:has(#a-agent:checked) .warn { display: flex; }\n" +
 		".sheet:has(#project option:checked:not(#p-none)) .s-chosen { display: inline; }\n" +
 		".sheet:has(#p-none:checked) .s-any { display: inline; }\n" +
-		"@supports not selector(:has(*)) { .warn { display: flex; } .x.s-any { display: inline; } }\n")
+		"@supports not selector(:has(*)) { .warn { display: flex; } .x.s-any, .x.other { display: inline; } }\n")
 	// Ids are evo's own (p0…, t-7…, a-me): no text of the cloud in the CSS.
 	d.Rules = template.CSS(rules.String())
 	return page{"consent", d}
+}
+
+// otherProfile is the line of a project picked beforehand by the profile
+// of the audience the login started with, and the id of the other
+// audience, under which it shows: chosen on the page, that one keeps its
+// key in another profile (the rest of finding 90 of 1.8). None when the
+// project is CLOUDRU_PROJECT_ID's, for both, or one profile keeps both.
+func (s *session) otherProfile(pre int) (line, id string) {
+	if pre < 0 || s.choice.PreselectEnv || s.store == nil {
+		return "", ""
+	}
+	from, other := ForMe, ForAgent
+	if s.choice.For == ForAgent {
+		from, other = ForAgent, ForMe
+	}
+	if a, b := s.store.Profile(from), s.store.Profile(other); a != b {
+		return tPreselectOtherProfile(a, b), "a-" + string(other)
+	}
+	return "", ""
 }
 
 // choiceRule is the CSS of a chosen radio: its label marked.
