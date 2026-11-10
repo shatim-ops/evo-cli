@@ -298,6 +298,43 @@ func pickImage(cfg *Config, origins map[string]string) error {
 	return nil
 }
 
+// envKey is the key pair the environment gives, with the names of its two
+// variables: one point that reads them, for the configuration and for the
+// error that names a half of the pair (findings ledger 1.8, № 130).
+type envKey struct{ keyID, secret, idVar, secretVar string }
+
+func envPair() envKey {
+	// Values pasted from a .env file often carry "\r" or spaces; IAM would
+	// reject the key with no hint why.
+	p := envKey{keyID: strings.TrimSpace(os.Getenv("CLOUDRU_KEY_ID")), idVar: "CLOUDRU_KEY_ID", secretVar: "CLOUDRU_SECRET"}
+	p.secret = strings.TrimSpace(os.Getenv("CLOUDRU_SECRET"))
+	if p.secret == "" {
+		if p.secret = strings.TrimSpace(os.Getenv("CLOUDRU_KEY_SECRET")); p.secret != "" {
+			p.secretVar = "CLOUDRU_KEY_SECRET"
+		}
+	}
+	if p.keyID == "" && p.secret == "" {
+		if id, sec := strings.TrimSpace(os.Getenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID")), strings.TrimSpace(os.Getenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET")); id != "" || sec != "" {
+			p = envKey{keyID: id, secret: sec, idVar: "EVOLUTION_SERVICE_ACCOUNT_KEY_ID", secretVar: "EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET"}
+		}
+	}
+	return p
+}
+
+// HalfEnvKey names a half of the key pair in the environment: the
+// variable that is set and the one that is missing; "" when the
+// environment gives the whole pair or nothing.
+func HalfEnvKey() (set, missing string) {
+	p := envPair()
+	switch {
+	case p.keyID != "" && p.secret == "":
+		return p.idVar, p.secretVar
+	case p.secret != "" && p.keyID == "":
+		return p.secretVar, p.idVar
+	}
+	return "", ""
+}
+
 // applyEnvCredentials takes the key pair from the environment. The pair is
 // taken as a whole: mixing an env key ID with a profile secret would only
 // produce a confusing IAM rejection. The secret is CLOUDRU_SECRET, else
@@ -306,22 +343,10 @@ func pickImage(cfg *Config, origins map[string]string) error {
 // CLOUDRU_ variable the pair AI Agents passes to an MCP server is taken:
 // EVOLUTION_SERVICE_ACCOUNT_KEY_ID and _SECRET.
 func applyEnvCredentials(cfg *Config, origins map[string]string) error {
-	// Values pasted from a .env file often carry "\r" or spaces; IAM would
-	// reject the key with no hint why.
-	keyID := strings.TrimSpace(os.Getenv("CLOUDRU_KEY_ID"))
-	secret := strings.TrimSpace(os.Getenv("CLOUDRU_SECRET"))
-	if secret == "" {
-		secret = strings.TrimSpace(os.Getenv("CLOUDRU_KEY_SECRET"))
-	}
-	switch {
-	case keyID == "" && secret == "":
-		keyID = strings.TrimSpace(os.Getenv("EVOLUTION_SERVICE_ACCOUNT_KEY_ID"))
-		secret = strings.TrimSpace(os.Getenv("EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET"))
-		if keyID != "" || secret != "" {
-			cfg.KeyEnv = "EVOLUTION_SERVICE_ACCOUNT_KEY_ID, EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET"
-		}
-	case secret != "" && strings.TrimSpace(os.Getenv("CLOUDRU_SECRET")) == "":
-		cfg.KeyEnv = "CLOUDRU_KEY_ID, CLOUDRU_KEY_SECRET"
+	p := envPair()
+	keyID, secret := p.keyID, p.secret
+	if p.idVar != "CLOUDRU_KEY_ID" || p.secretVar != "CLOUDRU_SECRET" {
+		cfg.KeyEnv = p.idVar + ", " + p.secretVar
 	}
 	if keyID != "" || secret != "" {
 		cfg.KeyID, cfg.Secret, cfg.KeyExpiresAt = keyID, secret, ""
@@ -399,8 +424,8 @@ func applyProfile(cfg *Config, name string, explicit bool, origins map[string]st
 			}
 			return clerrors.New(clerrors.CodeConfigInvalid,
 				i18n.Tf("profile %q not found in %s", "профиль %q не найден в %s", name, Dir()),
-				i18n.Tf("Run 'evo configure --profile %s' to create it, or 'evo configure list' to see existing profiles",
-					"Создайте его: 'evo configure --profile %s'; список профилей — 'evo configure list'", name))
+				i18n.Tf("Create it: evo login --profile %s (a key through the browser) or evo configure --profile %s; existing profiles: evo configure list",
+					"Создайте его: evo login --profile %s (ключ через браузер) или evo configure --profile %s; список профилей — evo configure list", name, name))
 		}
 		return nil
 	}

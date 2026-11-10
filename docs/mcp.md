@@ -536,7 +536,8 @@ evo mcp --http 127.0.0.1:8080 --auth bearer --read-only --toolsets vm,vpc,disk,i
   IAM его отклонил — ошибка `AUTH_REQUIRED` / `AUTH_FAILED`, сломаны
   настройки — `CONFIG_INVALID`.
 - `doctor` — `checks` (`name`, `status`: `ok`, `warn`, `fail`, `skip`,
-  `detail`, `http_status` у проверок связи) и `ok`: настройки (профиль,
+  `detail`, `http_status` у проверок связи — ответ корня API: любой ответ,
+  в том числе 404, значит «доступен») и `ok`: настройки (профиль,
   откуда ключ и проект, их предупреждения), проект, доступность IAM и Compute
   API, ключ (токен IAM) и сколько проектов он видит. Если проверка не прошла,
   ответ — ошибка с теми же `checks`: `CONFIG_INVALID`, если сломаны настройки
