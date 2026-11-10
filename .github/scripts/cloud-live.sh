@@ -434,7 +434,7 @@ finish() {
 trap finish EXIT
 
 # probe_on СЛОВО — платная проба включена входом probes (план cloud-e2e
-# rc.1 1.6): p36, p41, p44; shared (D81, 05.11).
+# rc.1 1.6): p36, p41, p44; shared (D81, 05.11); cmp7 (CMP-7, 10.11).
 probe_on() { case " ${PROBES:-} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 # api МЕТОД URL [ТЕЛО] — прямой запрос к API с токеном IAM ($TOKEN, под
 # маской): ответ в $tmp/api.json, код HTTP в $code; тело — через stdin, не
@@ -504,6 +504,41 @@ probe_p36() {
 		;;
 	*) ok "P36: flavor $fl ($vcpus vCPU) ниже min_cpu образа $img" "отказ HTTP $code: $(api_why)" ;;
 	esac
+}
+
+# Проба CMP-7 (реестр CMP-7; «да» владельца 10.11, план 1.8 #1095): что
+# отвечает платформа на DELETE ВМ в creating — 409 или 422 (код HTTP и code
+# ответа). ВМ — прямым POST /api/v1.1/vms ($FLAVOR, $IMAGE, подсеть зоны
+# области); её состояние читается прямо перед DELETE, и DELETE идёт сразу,
+# пока ВМ создаётся. Итог — строка «CMP7: …» (ответ платформы, не провал);
+# ВМ, которую DELETE не удалил, убирает уборка области по префиксу. Счёт
+# «N из M» — по прогонам (≥2), а не по пробам одного прогона.
+probe_cmp7() {
+	local zid=$1 sn body vid='' st t
+	iam_token || { gap CMP7 "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap CMP7 "нет PROJECT"; return 0; }
+	sn=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | select(.availability_zone_id == $z) | .name // "" | select(. != "")][0] // empty')
+	[ -n "$sn" ] || { gap CMP7 "нет подсети в $ZONE"; return 0; }
+	body=$(jq -nc --arg p "$PROJECT" --arg n "$prefix-cmp7" --arg z "$ZONE" --arg f "$FLAVOR" --arg i "$IMAGE" --arg s "$sn" \
+		'[{project_id: $p, name: $n, availability_zone_name: $z, flavor_name: $f, image_name: $i,
+		   disks: [{name: ($n + "-boot"), size: 20, disk_type_name: "SSD"}],
+		   interfaces: [{type: "regular", subnet_name: $s, interface_security_enabled: false}]}]')
+	api POST https://compute.api.cloud.ru/api/v1.1/vms "$body"
+	case "$code" in 2??) ;; *)
+		gap "CMP7: ВМ для пробы" "не создана, HTTP $code: $(api_why)"
+		return 0
+		;;
+	esac
+	vid=$(jq -r '(if type == "array" then .[0] else (.vms[0]? // .) end) | .id? // empty' "$tmp/api.json" 2>/dev/null) || vid=
+	vm_id() { vid=$(evo tools call vm_get --arg name="$prefix-cmp7" --json 2>/dev/null | jq -r '.id // empty'); [ -n "$vid" ]; }
+	[ -n "$vid" ] || poll 60 3 vm_id || true
+	[ -n "$vid" ] || { gap "CMP7: ВМ для пробы" "id не прочитан за 60 с"; return 0; }
+	mask "$vid"
+	api GET "https://compute.api.cloud.ru/api/v1/vms/$vid"
+	st=$(jq -r '.state // .status // empty' "$tmp/api.json" 2>/dev/null) || st=
+	t=$(date -u +%H:%M:%S)
+	api DELETE "https://compute.api.cloud.ru/api/v1/vms/$vid"
+	ok "CMP7: DELETE ВМ в состоянии ${st:-не прочитано} ($t UTC)" "HTTP $code: $(api_why)"
 }
 
 # Проба P41 (пункт Е; FB15-21): что отвечает платформа на группу целей с
@@ -613,6 +648,7 @@ area_disk() {
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/disk" && cd "$tmp/disk"
 	! probe_on p36 || probe_p36 "$zid"
+	! probe_on cmp7 || probe_cmp7 "$zid"
 	vm="$prefix-vm"
 	must provision provision --arg name="$vm" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" || return 1
 	vm_ip=$(j -r '.vm_ip // empty')
