@@ -289,7 +289,7 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 	// is refused, and the login waits on for the redirect (№ 10, R3-F5).
 	code := q.Get("code")
 	if code == "" {
-		refuse(w, http.StatusForbidden)
+		writePage(w, http.StatusForbidden, refusedPage(tNoProviderAnswer()))
 		return
 	}
 	if err := l.s.exchange(ctx, code); err != nil {

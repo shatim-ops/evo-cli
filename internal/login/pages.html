@@ -84,7 +84,7 @@ input[type=radio] { position: absolute; width: 1px; height: 1px; margin: -1px; o
 .summary h3 { color: var(--dark-text); }
 .summary .v { color: var(--green); font-weight: 600; }
 .summary .support { color: var(--dark-support); }
-.summary .x, .actions .x, .warn .x, .pick .x { display: none; }
+.summary .x, .actions .x, .warn .x, .pick .x, .chosen .x { display: none; }
 .actions .pn { display: inline-block; max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .actions { display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; }
 button { font: 600 14px/20px 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; height: 44px; padding: 0 32px; border-radius: 2px; border: 1px solid transparent; cursor: pointer; }
@@ -140,7 +140,7 @@ a { color: var(--green-deep); }
       <select name="project" id="project" required aria-labelledby="project-l">
 {{if not .Picked}}        <option id="p-none" value="" selected>{{.ChooseProject}}</option>
 {{end}}{{range .Orgs}}{{if .Name}}        <optgroup label="{{.Name}}">
-{{end}}{{range .Projects}}        <option id="{{.HTMLID}}" value="{{.ID}}"{{if .Checked}} selected{{end}}{{if not .Allowed}} disabled{{end}}>{{.Name}}{{if not .Allowed}} — {{$.NeedAdmin}}{{end}}</option>
+{{end}}{{range .Projects}}        <option id="{{.HTMLID}}" value="{{.ID}}"{{if .Checked}} selected{{end}}{{if not .Allowed}} disabled{{end}}>{{.Name}}{{if .OrgName}} · {{.OrgName}}{{end}}{{if not .Allowed}} — {{$.NeedAdmin}}{{end}}</option>
 {{end}}{{if .Name}}        </optgroup>
 {{end}}{{end}}      </select>
       <p class="support small pick">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.OrgName}}{{if and .OrgName .Source}} · {{end}}{{.Source}}</span>{{end}}</p>
@@ -178,6 +178,7 @@ a { color: var(--green-deep); }
       <button type="submit" class="primary"><span class="x s-chosen">{{index .GrantIn 0}}<span class="pn">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .GrantIn 1}}</span><span class="x s-any">{{.Grant}}</span></button>
       <button type="submit" class="outline" formaction="/cancel" formnovalidate>{{.Cancel}}</button>
     </div>
+    <p class="support small chosen"><span class="x s-chosen">{{index .ChosenIn 0}}<span class="mono">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}{{if .OrgName}} · {{.OrgName}}{{end}}</span>{{end}}</span>{{index .ChosenIn 1}}</span></p>
     <p class="support small">{{.SecretNote}}</p>
     </div>
     </div>
