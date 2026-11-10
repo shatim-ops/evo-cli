@@ -329,6 +329,23 @@ func RefuseDryRun() error {
 			"Запустите evo login без --dry-run; чтобы уйти, ничего не выдав, нажмите «Отмена» на странице."))
 }
 
+// RefuseScopeFlag: evo login takes no --project-id or --region of the
+// other commands; it skipped them silently, and evo login --project-id
+// looked like a choice of the project (plan 1.8, #1095, round 4).
+func RefuseScopeFlag(flag string) error {
+	if flag == "project-id" {
+		return clierrors.New(clierrors.CodeUsage,
+			i18n.T("evo login has no --project-id: the project is chosen on the consent page",
+				"у evo login нет --project-id: проект выбирается на странице согласия"),
+			i18n.T("To show only one project on the page, selected: evo login --project <ID or name>.",
+				"Чтобы на странице был только нужный проект, отмеченный: evo login --project <ID или имя>."))
+	}
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("evo login has no --%s: it grants access to a project, not to a zone", "у evo login нет --%s: вход выдаёт доступ к проекту, а не к зоне", flag),
+		i18n.T("Run evo login without it; the zone is given to the commands that create resources (--zone or --region).",
+			"Запустите evo login без него; зону задают командам, которые создают ресурсы (--zone или --region)."))
+}
+
 func eCancelled() string {
 	return i18n.T("the sign-in was cancelled, nothing was created", "вход отменен, ничего не создано")
 }

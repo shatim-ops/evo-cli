@@ -288,6 +288,9 @@ func TestLogin_RefusedBeforeTheBrowser(t *testing.T) {
 		{"--project of spaces", nil, []string{"login", "--project", "   "}, clerrors.CodeUsage},
 		{"--project with a line break", nil, []string{"login", "--project", "a\nb"}, clerrors.CodeUsage},
 		{"--project too long", nil, []string{"login", "--project", strings.Repeat("p", 300)}, clerrors.CodeUsage},
+		{"--project-id, even a UUID: the project is --project", nil, []string{"login", "--project-id", "00000000-0000-4000-8000-000000000001"}, clerrors.CodeUsage},
+		{"--region: login grants no zone", nil, []string{"--region", "ru.AZ-2", "login"}, clerrors.CodeUsage},
+		{"--project-id '': named, so not skipped", nil, []string{"login", "--project-id", ""}, clerrors.CodeUsage},
 		{"the key «for me» into the profile agent (C24)", map[string]string{"CLOUDRU_PROFILE": "agent"}, []string{"login", "--for", "me"}, clerrors.CodeUsage},
 	} {
 		t.Run(c.name, func(t *testing.T) {

@@ -70,6 +70,11 @@ func newLoginCmd() *cobra.Command {
 			if flagDryRun {
 				return login.RefuseDryRun()
 			}
+			for _, n := range []string{"project-id", "region"} {
+				if f := cmd.Flag(n); f != nil && f.Changed {
+					return login.RefuseScopeFlag(n)
+				}
+			}
 			// --for '' is no audience: not the default one (#1095).
 			if cmd.Flags().Changed("for") && forWhom == "" {
 				return clerrors.New(clerrors.CodeUsage, login.EFor(forWhom), "")
