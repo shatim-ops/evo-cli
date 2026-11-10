@@ -104,3 +104,50 @@ func TestPending_ReadOnBothSurfaces(t *testing.T) {
 		t.Errorf("doctor does not name the intent:\n%s", text)
 	}
 }
+
+// «Риск», conclusion 46, conditions 1 and 2: an answer that does not say
+// what the cloud did keeps the intent — a transport break, an API error (a
+// 5xx may follow a done write), no code; a refusal with a code and a
+// success remove it. A call on an existing resource is named by its id
+// argument, so the same call on it settles the cut one.
+func TestIntent_OutcomeAndTarget(t *testing.T) {
+	r, dir := targetRegistry(t, &goneCloud{})
+	tool, _ := r.Lookup("destroy")
+	args := map[string]any{"vm_id": "vm-123", "confirmed": true}
+	for _, c := range []struct {
+		answer string
+		keeps  bool
+	}{
+		{`{"status":"error","reason":"API_UNREACHABLE"}`, true},
+		{`{"status":"error","reason":"API_ERROR"}`, true},
+		{`{"status":"error","reason":"ERROR"}`, true},
+		{`{"status":"error","reason":"USAGE"}`, false},
+		{`{"status":"error","reason":"API_RATE_LIMITED"}`, false},
+	} {
+		answer := c.answer
+		r.intended(tool, func(context.Context, map[string]any) (string, bool) { return answer, true })(context.Background(), args)
+		got := intent.Pending(dir)
+		if (len(got) > 0) != c.keeps {
+			t.Errorf("%s: kept %d, want kept %v", c.answer, len(got), c.keeps)
+		}
+		if len(got) > 0 && got[0].Target != "vm_id=vm-123" {
+			t.Errorf("the target: %+v", got[0])
+		}
+		if c.keeps {
+			// The same call on the same VM answered «already deleted»: settled.
+			r.intended(tool, func(context.Context, map[string]any) (string, bool) { return `{"status":"already_deleted"}`, false })(context.Background(), args)
+			if got := intent.Pending(dir); len(got) != 0 {
+				t.Errorf("%s: the same call did not settle it: %+v", c.answer, got)
+			}
+		}
+	}
+	if n, _ := intentResource("s3_bucket_create", map[string]any{"bucket": "b-1"}); n != "b-1" {
+		t.Errorf("the name of a bucket: %q", n)
+	}
+	if l := r.listToolOf("stack_apply"); l != "stack_status" {
+		t.Errorf("the read of a stack: %q", l)
+	}
+	if l := r.listToolOf("pg_create"); l != "pg_list" {
+		t.Errorf("the read of pg_create: %q", l)
+	}
+}

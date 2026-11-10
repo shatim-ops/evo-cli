@@ -30,10 +30,13 @@ import (
 
 // Intent is one call that went to the cloud and has not answered yet.
 type Intent struct {
-	ID        string    `json:"id"`
-	Tool      string    `json:"tool"`
-	Args      []string  `json:"args,omitempty"`
-	Name      string    `json:"name,omitempty"`
+	ID   string   `json:"id"`
+	Tool string   `json:"tool"`
+	Args []string `json:"args,omitempty"`
+	Name string   `json:"name,omitempty"`
+	// Target is the resource a call on an existing one names, as
+	// «argument=id» (vm_id=…): a delete, a resize. Not a secret.
+	Target    string    `json:"target,omitempty"`
 	ProjectID string    `json:"project_id,omitempty"`
 	Zone      string    `json:"zone,omitempty"`
 	Surface   string    `json:"surface"`
@@ -95,15 +98,16 @@ func Pending(root string) []Intent {
 	return out
 }
 
-// Settle removes the earlier intents of the same tool and resource name:
-// a later call of it answered, so what the cut one did is now known to
-// that call (an existing resource by the name — D49 — or a new one).
-func Settle(root, tool, name string) {
-	if name == "" {
+// Settle removes the earlier intents of the same tool on the same resource
+// (its name or its target): a later call of it answered, so what the cut
+// one did is now known to that call — an existing resource by the name
+// (D49), a new one, or «already deleted» (D26).
+func Settle(root, tool, name, target string) {
+	if name == "" && target == "" {
 		return
 	}
 	for _, in := range Pending(root) {
-		if in.Tool == tool && in.Name == name {
+		if in.Tool == tool && in.Name == name && in.Target == target {
 			_ = os.Remove(filepath.Join(Dir(root), in.ID+".json"))
 		}
 	}

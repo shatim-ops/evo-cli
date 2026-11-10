@@ -21,9 +21,8 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
-// intentFiles are the files of intent in the directory of the state of
-// root: what a consented call that the process did not finish leaves.
-// The name is the one of the gate D35 (plan 1.8, B-5).
+// intentFiles are the files of intent of root (intent.Dir): what a
+// consented call that the process did not finish leaves.
 func intentFiles(root string) []string {
 	m, _ := filepath.Glob(filepath.Join(intent.Dir(root), "*.json"))
 	sort.Strings(m)
@@ -44,18 +43,17 @@ func (a *atFirstWrite) reset() {
 	a.mu.Unlock()
 }
 
+// intentKeeps are the arguments whose value an intent holds by design:
+// the resource, the project and the zone it names (package intent).
+var intentKeeps = map[string]bool{"name": true, "project_id": true, "zone": true}
+
 // argValues are the values of the arguments a file of intent must not
 // hold: the strings of four and more characters (a short one — "1",
-// "HDD" — is also the text of a field).
+// "HDD" — is also the text of a field) but those of intentKeeps.
 func argValues(args map[string]any) []string {
 	var out []string
 	for k, v := range args {
-		// The name of the resource, its project and zone are what the
-		// intent is for: where to look («Риск», conclusion 46).
-		if k == "name" || k == "project_id" || k == "zone" || k == "availability_zone_id" {
-			continue
-		}
-		if s, ok := v.(string); ok && len(s) >= 4 && k != "confirmed" {
+		if s, ok := v.(string); ok && len(s) >= 4 && !intentKeeps[k] {
 			out = append(out, s)
 		}
 	}
@@ -69,9 +67,9 @@ func argValues(args map[string]any) []string {
 // Decision of the owner 10.11 (plan 1.8, B-5): the gate D35 writes the
 // intent before it executes and removes it on the answer. Every consented
 // call of the JSON world, on both surfaces: when the cloud gets the call's
-// first write, a file of intent is in the directory of the state, names
-// the tool, the surface and the process and holds no value of an
-// argument; when the call has answered, it is gone. A call refused before
+// first write, a file of intent is in intent.Dir, names the tool, the
+// surface and the process and holds no value of an argument but the
+// resource, the project and the zone; when the call has answered, it is gone. A call refused before
 // consent leaves none.
 func TestGate_IntentBeforeTheCloudGoneAfter(t *testing.T) {
 	w, fake := withJSONWorld(t)
@@ -151,19 +149,30 @@ func TestGate_IntentBeforeTheCloudGoneAfter(t *testing.T) {
 				continue
 			}
 			for p, body := range files {
-				var rec map[string]any
+				var rec intent.Intent
 				if err := json.Unmarshal([]byte(body), &rec); err != nil {
-					note(key, "%s: %s is not JSON: %v", surface, filepath.Base(p), err)
+					note(key, "%s: %s is not an intent: %v", surface, filepath.Base(p), err)
 					continue
 				}
-				if !strings.Contains(body, `"`+c.tool.Name+`"`) {
-					note(key, "%s: the intent does not name the tool %s", surface, c.tool.Name)
+				if rec.Tool != c.tool.Name {
+					note(key, "%s: the intent names the tool %q", surface, rec.Tool)
 				}
-				if !strings.Contains(body, fmt.Sprint(os.Getpid())) {
-					note(key, "%s: the intent does not name the process", surface)
+				if rec.PID != os.Getpid() {
+					note(key, "%s: the intent names the process %d, not this one", surface, rec.PID)
+				}
+				if rec.Surface != surface {
+					note(key, "%s: the intent names the surface %q", surface, rec.Surface)
+				}
+				// What the intent names its resource by — the declared name
+				// argument, the declared id of a call on an existing resource
+				// («Риск», conclusion 46, condition 2: an id is no secret) —
+				// is where to look; any other value must not be there.
+				named := map[string]bool{rec.Name: true, rec.ProjectID: true, rec.Zone: true}
+				if _, id, ok := strings.Cut(rec.Target, "="); ok {
+					named[id] = true
 				}
 				for _, v := range argValues(args) {
-					if strings.Contains(body, v) {
+					if strings.Contains(body, v) && !named[v] {
 						note(key, "%s: the intent holds the value of an argument (%d characters)", surface, len(v))
 					}
 				}
