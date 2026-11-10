@@ -13,7 +13,8 @@
 # аннотированного — тегера, у лёгкого — коммита); тега нет — окно не
 # началось. HANDOFF_NOW (секунды Unix) подменяет «сейчас» в проверке скрипта.
 #
-# Код выхода: 0 — можно сливать; 1 — нет передачи; 2 — неверный вызов.
+# Код выхода: 0 — можно сливать; 1 — нет передачи (или у версии от 1.8 в
+# ней нет фазы 0); 2 — неверный вызов.
 set -euo pipefail
 base=${1:?нужна база PR}
 dir=${2:-.}
@@ -31,10 +32,25 @@ if [ "$head_v" != "$base_v" ]; then
 fi
 f="docs/internal/handoff/$head_v.md"
 short="docs/internal/handoff/${head_v%.0}.md"
-if [ -f "$f" ] || { [ "${head_v%.0}" != "$head_v" ] && [ -f "$short" ]; }; then
+# phase0 ФАЙЛ — передача версии от 1.8 называет фазу 0 следующей версии: в
+# разделе «## Следующая версия» строка с «Фаза 0» и ссылкой на бриф
+# briefs/phase-0.md (строка плана 1.8 «Страховка фазы 0», поручение релиза
+# 10.11 по вопросу владельца). Передачи до 1.8 — как были.
+phase0() {
+	awk '/^## /{in_next = ($0 ~ /^## Следующая версия[[:space:]]*$/)} in_next && /Фаза 0/ && /briefs\/phase-0\.md/{found=1} END{exit !found}' "$1"
+}
+from18() { [ "$(printf '%s\n1.8.0\n' "$1" | sort -V | head -n1)" = 1.8.0 ]; }
+cands=("$f")
+[ "${head_v%.0}" = "$head_v" ] || cands+=("$short")
+for h in "${cands[@]}"; do
+	[ -f "$h" ] || continue
+	if from18 "$head_v" && ! phase0 "$h"; then
+		echo "::error::в $h нет фазы 0: раздел «## Следующая версия» должен содержать строку «Фаза 0» со ссылкой на docs/internal/briefs/phase-0.md (строка плана 1.8 «Страховка фазы 0»)"
+		exit 1
+	fi
 	echo "передача $head_v есть"
 	exit 0
-fi
+done
 tagged=$(git for-each-ref --format='%(creatordate:unix)' "refs/tags/v$head_v")
 now=${HANDOFF_NOW:-$(date +%s)}
 if [ -n "$tagged" ] && [ $((now - tagged)) -gt 86400 ]; then
