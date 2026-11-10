@@ -90,7 +90,14 @@ func Login(ctx context.Context, cfg Config, choice Choice, store Store) (Result,
 	case o := <-lb.done:
 		return s.answer(o)
 	case <-timer.C:
+		// As for Ctrl-C below: a grant under way ends, and its result is
+		// the answer, not «nothing was made» (audit of 1.8, A18-13).
 		lb.close()
+		select {
+		case o := <-lb.done:
+			return s.answer(o)
+		default:
+		}
 		// The end of the wait is not a Ctrl-C: its own code (plan 1.8,
 		// #1087, audit of 06.11).
 		return Result{}, at(stepWait, clierrors.New(clierrors.CodeLoginTimeout, eTimeout(cfg.Wait), eTimeoutHint(cfg.Wait)))
