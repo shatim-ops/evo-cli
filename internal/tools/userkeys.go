@@ -65,8 +65,13 @@ func loadUserKeyLines(stateDir string) (keys []string, rejected []rejectedKeyLin
 		name = legacyUserKeysFile
 		raw, err = config.ReadFileNoFollow(filepath.Join(dir, name))
 	}
-	if err != nil {
+	if os.IsNotExist(err) {
 		return nil, nil, userKeysFile
+	}
+	if err != nil {
+		// A link or another non-regular file is not read, and said: the
+		// person sees why no key of the file goes to the VM (Qwen on #1179).
+		return nil, []rejectedKeyLine{{why: "the file is not a regular file (a symlink?): no key of it is read; delete it and put the keys in a file of its own"}}, name
 	}
 	lines := strings.Split(string(raw), "\n")
 	for i := 0; i < len(lines); i++ {
@@ -136,7 +141,9 @@ func describeUserKeys(keys []string, rejected []rejectedKeyLine) []map[string]an
 	}
 	for _, r := range rejected {
 		where := fmt.Sprintf("line %d", r.first)
-		if r.last > r.first {
+		if r.first == 0 {
+			where = "the file"
+		} else if r.last > r.first {
 			where = fmt.Sprintf("lines %d-%d", r.first, r.last)
 		}
 		out = append(out, map[string]any{"error": where + ": " + r.why + "; not sent to the VM"})

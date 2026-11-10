@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,7 +76,12 @@ func TestReads_SymlinkTargetDoesNotLeak(t *testing.T) {
 	if err := os.Symlink(target, filepath.Join(evo, userKeysFile)); err != nil {
 		t.Fatal(err)
 	}
-	if keys, _, _ := loadUserKeyLines(stateDir); len(keys) != 0 {
+	keys, rejected, _ := loadUserKeyLines(stateDir)
+	if len(keys) != 0 {
 		t.Errorf("user keys: read through a link: %q", keys)
+	}
+	// Not in silence: the person sees why no key goes to the VM.
+	if d := describeUserKeys(keys, rejected); len(d) != 1 || !strings.Contains(fmt.Sprint(d[0]["error"]), "not a regular file") {
+		t.Errorf("user keys: a link is skipped in silence: %v", d)
 	}
 }
