@@ -254,11 +254,17 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 		// This login's own state once more (the link opened again, a
 		// browser that reloads it): the same 403, and the way back to the
 		// page that works, not «sign in again» (release audit 1.8, L5).
-		if own {
-			refuseWith(w, http.StatusForbidden, tAlreadyOpen())
-			return
+		// A redirect of the provider with a state is a person's tab: a
+		// page with the product's name, not a bare address (№ 26); the
+		// rest of the surface stays plain text.
+		switch {
+		case own:
+			writePage(w, http.StatusForbidden, refusedPage(tAlreadyOpen()))
+		case q.Get("state") != "":
+			writePage(w, http.StatusForbidden, refusedPage(tForeign()))
+		default:
+			refuse(w, http.StatusForbidden)
 		}
-		refuse(w, http.StatusForbidden)
 		return
 	}
 	ctx := r.Context()
