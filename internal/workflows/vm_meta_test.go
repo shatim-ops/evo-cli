@@ -130,7 +130,7 @@ func TestScripts_SSHExitCodeIsKept(t *testing.T) {
 	if err != nil || len(files) == 0 {
 		t.Fatal("no scripts in .github/scripts")
 	}
-	swallowed := regexp.MustCompile(`\bssh(_vm)?\b[^\n#]*\|\|\s*true\b`)
+	swallowed := regexp.MustCompile(`\bssh(_vm)?\b[^\n#]*\|\|\s*(true\b|:)`)
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
