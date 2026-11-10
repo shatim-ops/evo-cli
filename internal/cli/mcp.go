@@ -450,7 +450,8 @@ func bearerTokenWarning(token string) string {
 	if token == "" || len(token) >= minBearerTokenLen {
 		return ""
 	}
-	return fmt.Sprintf("%s is shorter than %d characters; use a long random token, e.g. openssl rand -hex 32", envBearerToken, minBearerTokenLen)
+	return fmt.Sprintf("%s is shorter than %d characters: a process or a page that reaches this port can guess it and call the tools with the server's key; use a long random token, e.g. openssl rand -hex 32",
+		envBearerToken, minBearerTokenLen)
 }
 
 // httpAuthToken validates the --http/--auth combination and returns the
