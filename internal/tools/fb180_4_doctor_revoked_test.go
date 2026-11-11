@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
@@ -56,5 +57,33 @@ func TestDoctor_RevokedKeyFailsAsWhoami(t *testing.T) {
 	tp := &forgetToken{subToken: subToken{"sa-1"}}
 	if checks := rolesRegistry(t, &rolesWorld{perms: `[]`, keys: notListed}, rolesProject, tp).doctorChecks(context.Background(), false); failedAuth(checks, "") {
 		t.Errorf("a key IAM takes failed doctor: %+v", checks)
+	}
+}
+
+// refusingToken is a key IAM refuses at the exchange: no token cached.
+type refusingToken struct{}
+
+func (refusingToken) Token(context.Context) (auth.Token, error) {
+	return auth.Token{}, clierrors.New(clierrors.CodeAuthFailed, "IAM: the access key is refused", "Issue a new key: evo login")
+}
+
+// The other path of D94 (Grok on candidate 37a86598, К2, 2 of 2): no token
+// in the cache, the key revoked — the exchange itself is refused. whoami
+// answered AUTH_FAILED, doctor «credentials: fail» but CONFIG_INVALID. The
+// refusal is one point in both paths: doctor answers the reason and the
+// hint whoami gives.
+func TestDoctor_KeyRefusedAtTheExchangeAnswersAsWhoami(t *testing.T) {
+	at(t, "2026-11-05T12:00:00Z")
+	r := rolesRegistry(t, &rolesWorld{perms: `[]`}, rolesProject, refusingToken{})
+	text, isErr := r.handlers["whoami"](context.Background(), map[string]any{})
+	var ce *clierrors.CLIError
+	verdict := doctorVerdict(r.doctorChecks(context.Background(), false))
+	if !isErr || !errors.As(verdict, &ce) || ce.Code != clierrors.CodeAuthFailed || !strings.Contains(text, ce.Hint) {
+		t.Errorf("doctor %v (hint %q), whoami %s — want AUTH_FAILED with whoami's hint", verdict, func() string {
+			if ce != nil {
+				return ce.Hint
+			}
+			return ""
+		}(), text)
 	}
 }
