@@ -395,7 +395,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					if id != "" {
 						if st.Tool == "provision" && state != "" {
 							s.adoptVM(ctx, job, st, id, state)
-							if job.Status == "error" {
+							if job.Failed() {
 								return
 							}
 						} else {
@@ -490,7 +490,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					if id, state := s.findStepResource(ctx, st); id != "" {
 						if st.Tool == "provision" {
 							s.adoptVM(ctx, job, st, id, state)
-							if job.Status == "error" {
+							if job.Failed() {
 								return
 							}
 						} else {
@@ -552,7 +552,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 	}
 
 	// terminal check
-	if job.Status == "error" {
+	if job.Failed() {
 		return
 	}
 	allDone := true
@@ -1044,7 +1044,7 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	}
 	out := job.Compact()
 	out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
-	return toJSON(out), job.Status == "error"
+	return toJSON(out), job.Failed()
 }
 
 // appliableJob is the job stack_apply may advance: there, of this server's
@@ -1132,7 +1132,7 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 	if err != nil {
 		return nil, err
 	}
-	if job.Status == "running" && !s.readOnly {
+	if job.Running() && !s.readOnly {
 		if err := s.checkJobProject(job); err != nil {
 			return nil, err
 		}
@@ -1200,12 +1200,12 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 			return errResult(err), true
 		}
 		maps.Copy(shown, job.Passwords())
-		if job.Status == "planned" {
+		if job.Planned() {
 			out := compact(job)
 			out["note"] = "Not started: call stack_apply with this job_id and confirmed=true after the user approved the plan. stack_status only reports progress."
 			return toJSON(out), false
 		}
-		if job.Status != "running" {
+		if !job.Running() {
 			return toJSON(compact(job)), false // terminal (done/error)
 		}
 		if s.readOnly {

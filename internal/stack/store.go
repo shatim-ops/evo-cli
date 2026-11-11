@@ -252,6 +252,22 @@ func (j *Job) Destroyed() bool {
 	return j.Status == StatusDestroyed && len(j.Deleting) == 0
 }
 
+// Planned reports a job stack_plan made and stack_apply has not started.
+func (j *Job) Planned() bool { return j.Status == "planned" }
+
+// Running reports a job stack_apply started whose steps are not all done.
+func (j *Job) Running() bool { return j.Status == "running" }
+
+// Failed reports a job a step ended in error.
+func (j *Job) Failed() bool { return j.Status == "error" }
+
+// SecretsDeleted reports a teardown that deleted the job's secrets: they
+// are deleted at once, so a job being deleted holds them no more; a failed
+// deletion (destroy_failed) may still hold them.
+func (j *Job) SecretsDeleted() bool {
+	return j.Status == StatusDestroyed || j.Status == StatusDeleting
+}
+
 // TornDown reports a job stack_destroy has run on, finished or not.
 func (j *Job) TornDown() bool {
 	return j.Status == StatusDestroyed || j.Status == StatusDeleting || j.Status == "destroy_failed"
@@ -361,9 +377,7 @@ func SecretHolders(path, excludeID string) []string {
 			continue
 		}
 		j, err := LoadJob(id)
-		// A secret is deleted at once: a job being torn down holds it no
-		// more (its deletion failed: destroy_failed).
-		if err != nil || j.Status == StatusDestroyed || j.Status == StatusDeleting {
+		if err != nil || j.SecretsDeleted() {
 			continue
 		}
 		for i, sc := range j.Manifest.Secrets {
