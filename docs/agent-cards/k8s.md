@@ -22,6 +22,8 @@
 | `k8s_apply` | `evo k8s apply` | changes | `cluster_id` ← `k8s_list` |
 | `k8s_helm` | `evo k8s helm` | changes | `cluster_id` ← `k8s_list` |
 
+Filters of the lists (the rule of the `evo` skill): `k8s_list` — status, name; `k8s_nodepools` — status, name, cluster_id.
+
 ## Notes
 
 - A cluster reaches the internet only through a public SNAT gateway in the nodes' zone (`snat_create`): without one images and charts are not pulled, pods stay in ImagePullBackOff.

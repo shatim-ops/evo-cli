@@ -9,3 +9,5 @@
 | `snat_list` | `evo snat list` | reads |  |
 | `snat_create` | `evo snat create` | creates: id in `nat_gateway.id`; found with `snat_list`; deleted with `snat_delete` |  |
 | `snat_delete` | `evo snat delete` | deletes; a repeat answers `already_deleted` | `id` ← `snat_list` |
+
+Filters of the lists (the rule of the `evo` skill): `snat_list` — zone, status, name.

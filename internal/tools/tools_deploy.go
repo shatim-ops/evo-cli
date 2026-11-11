@@ -706,6 +706,13 @@ func (s *Registry) handleListSubnets(ctx context.Context, args map[string]any) (
 		if s.AvailabilityZoneName != "" {
 			item["availability_zone_name"] = s.AvailabilityZoneName
 		}
+		// Only what the list sent: no field, no key.
+		if s.State != "" {
+			item["state"] = s.State
+		}
+		if s.VPCID != "" {
+			item["vpc_id"] = s.VPCID
+		}
 		out = append(out, item)
 	}
 	return toJSON(map[string]any{"subnets": out}), false

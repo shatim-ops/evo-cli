@@ -4,7 +4,11 @@
 
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"strings"
+
+	"github.com/spf13/cobra"
+)
 
 // commandExamples are the --help examples of the commands the colleague
 // guide (docs/guide.md) uses, and of every command the CLI ↔ MCP parity
@@ -265,6 +269,10 @@ func applyExamples(root *cobra.Command) {
 	walk = func(c *cobra.Command) {
 		if ex, ok := commandExamples[c.CommandPath()]; ok && c.Example == "" {
 			c.Example = ex
+		}
+		// A list's example with its filters (trees.go), after its own.
+		if args := c.Annotations[filterExampleAnnotation]; args != "" {
+			c.Example = strings.TrimLeft(c.Example+"\n  "+c.CommandPath()+" "+args, "\n")
 		}
 		for _, sub := range c.Commands() {
 			walk(sub)

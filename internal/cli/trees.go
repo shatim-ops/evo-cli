@@ -161,6 +161,10 @@ func treeGroupsOf(reg *tools.Registry) []treeGroup {
 // tool's name (TestParity_CommandsAndTools reads it).
 const toolAnnotation = "evo.tool"
 
+// filterExampleAnnotation holds the arguments of a list command's example
+// with its filters; applyExamples puts it under the command's examples.
+const filterExampleAnnotation = "evo.filter-example"
+
 // rootArgs are tool arguments served by root flags (--project-id,
 // --region) through the engine configuration, and confirmed, which is
 // given with --yes or at the prompt.
@@ -400,6 +404,28 @@ func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 		}
 	}
 	noEmptyScope(cmd.Flags())
+	if filters := tools.ListFilters(t); filters != nil {
+		// The filters of a list, as one group, and an example with them
+		// (release plan 1.8.2).
+		names := make([]string, len(filters))
+		for i, a := range filters {
+			names[i] = "--" + c.flagName(a)
+		}
+		cmd.Long += "\n\n" + i18n.Tf("Filters: %s. Several are «and»; an empty selection is not «none in the project».",
+			"Отбор: %s. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».", strings.Join(names, ", "))
+		if samples := tools.ListFilterSamples(t); len(samples) > 0 {
+			var ex []string
+			for _, u := range use[1:] {
+				if strings.HasPrefix(u, "<") {
+					ex = append(ex, u)
+				}
+			}
+			for _, sm := range samples {
+				ex = append(ex, "--"+c.flagName(sm.Arg), sm.Value)
+			}
+			cmd.Annotations[filterExampleAnnotation] = strings.Join(ex, " ")
+		}
+	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		callArgs, err := treeArgs(cmd, c, t, pos, flagArgs, args)
@@ -463,12 +489,18 @@ var defaultTrueRE = regexp.MustCompile(` ?\(default:? true\)`)
 // of the argument when the CLI speaks Russian and there is one (ru is then
 // true), the schema's English description otherwise.
 func flagDesc(t tools.Tool, p param) (desc string, ru bool) {
+	desc = p.Description
 	if i18n.Lang() == i18n.RU {
 		if s := t.ArgDescriptionsRU[p.Name]; s != "" {
-			return s, true
+			desc, ru = s, true
 		}
 	}
-	return p.Description, false
+	// A filter by a closed list names its values: the schema has them as
+	// an enum, the help has no schema.
+	if values := tools.ListFilterValues(t, p.Name); len(values) > 0 {
+		desc = strings.TrimSuffix(desc, ".") + ": " + strings.Join(values, ", ")
+	}
+	return desc, ru
 }
 
 // printRaw prints the "output" of a kubectl, apply or helm answer as the
@@ -847,8 +879,14 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 		fmt.Fprintln(w, text)
 		return nil
 	}
+	selection, empty := selectionLine(v)
+	if selection != "" {
+		fmt.Fprintln(w, selection)
+	}
 	if rows, notes, ok := findList(v); ok {
-		renderList(p, w, rows, view)
+		if !empty {
+			renderList(p, w, rows, view)
+		}
 		for _, k := range sortedKeys(notes) {
 			fmt.Fprintln(w, view.note(k, notes[k]))
 		}
@@ -896,6 +934,42 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 		}
 	}
 	return nil
+}
+
+// filterLabelRU names a filter for a person; a filter not here goes by
+// its argument.
+var filterLabelRU = map[string]string{"zone": "зона", "state": "состояние", "status": "состояние", "name": "имя", "type": "тип", "domain": "домен"}
+
+// selectionLine is the line over a list answered under filters (the
+// answer's filters, count and total — tools.filtered): «Selection: zone
+// ru.AZ-2 (id), state running — 3 of 12», and whether nothing passed; ""
+// for an answer without filters. It takes the fields of the selection out
+// of v: the rest is the list as it is shown without filters.
+func selectionLine(v any) (line string, empty bool) {
+	m, _ := v.(map[string]any)
+	filters, ok := m["filters"].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	parts := make([]string, 0, len(filters))
+	for _, k := range sortedKeys(filters) {
+		label := k
+		if ru, ok := filterLabelRU[k]; ok && i18n.Lang() == i18n.RU {
+			label = ru
+		}
+		parts = append(parts, label+" "+cell(filters[k], 0))
+	}
+	count, _ := m["count"].(float64)
+	of := ""
+	if total, ok := m["total"].(float64); ok {
+		of = i18n.Tf(" of %d", " из %d", int(total))
+	}
+	delete(m, "filters")
+	delete(m, "filtered_by")
+	if count == 0 {
+		return i18n.Tf("Nothing passed the filters: %s — 0%s.", "Под отбор ничего не подошло: %s — 0%s.", strings.Join(parts, ", "), of), true
+	}
+	return i18n.Tf("Selection: %s — %d%s", "Отбор: %s — %d%s", strings.Join(parts, ", "), int(count), of), false
 }
 
 // refValue is the value of key k of m for a person: a reference "<x>_id"

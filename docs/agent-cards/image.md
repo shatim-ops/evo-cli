@@ -13,6 +13,8 @@
 | `image_get` | `evo image get` | reads | `image` ← `image_list`, `image_id` ← `image_list` |
 | `image_delete` | `evo image delete` | deletes; a repeat answers `already_deleted` | `image_id` ← `image_list` |
 
+Filters of the lists (the rule of the `evo` skill): `image_list` — query, type, zone.
+
 ## Notes
 
 - `image_create` takes a detached disk: one still attached to a stopped VM answers `invalid_disk_state_to_create_image`.

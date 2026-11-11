@@ -151,6 +151,11 @@ a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+
    image by name (`+"`--image Ubuntu-24.04`"+`) with no catalogue at all. Call
    `+"`metrics_scrape`"+` only with `+"`match`"+` (a metric name): without it the answer
    is the whole snapshot, megabytes.
+11. Narrow a list with its filters instead of reading the whole project: they
+   are named as the fields of the items (`+"`zone`"+`, `+"`state`"+` or `+"`status`"+`, `+"`name`"+`;
+   the tool's schema lists them), several are «and». `+"`\"count\": 0`"+` under a
+   filter is not «none in the project»: before you create or delete on it,
+   list without the filter.
 
 ## Exit codes
 

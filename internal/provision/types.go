@@ -15,10 +15,13 @@ import (
 
 // VM represents a Cloud.ru virtual machine.
 type VM struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Status     string    `json:"state"` // running, stopped, error, creating
-	FlavorID   string    `json:"flavor_id"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Status   string `json:"state"` // running, stopped, error, creating
+	FlavorID string `json:"flavor_id"`
+	// FlavorName is the name of the flavor the list gives with its id
+	// (flavor{id,name}).
+	FlavorName string    `json:"-"`
 	ImageID    string    `json:"image_id"`
 	Region     string    `json:"availability_zone_id"`
 	PublicIP   string    `json:"public_ip,omitempty"`
@@ -52,6 +55,9 @@ func (v *VM) UnmarshalJSON(b []byte) error {
 	v.CreatedAt = parseAPITime(r.CreatedTime)
 	if v.FlavorID == "" && r.Flavor != nil {
 		v.FlavorID = r.Flavor.ID
+	}
+	if r.Flavor != nil && r.Flavor.ID == v.FlavorID {
+		v.FlavorName = r.Flavor.Name
 	}
 	if v.ImageID == "" && r.Image != nil {
 		v.ImageID = r.Image.ID

@@ -168,6 +168,7 @@ const (
 	// still got a raw 422 on a UUID that is not version 4 (live run 27.10);
 	// which version a service takes is for the api-probe of 1.4.
 	idUndeclared = "description says UUID, schema does not"
+	idFilter     = "a filter of a list (listSpecs): a UUID or a name, resolved through the project's list before the read"
 	// evo's own id, not the cloud's: plan-<hex> (deployplan), stk-<hex>
 	// (stack, checked by its store).
 	idOfEvo = "evo's own id, not a UUID"
@@ -248,6 +249,9 @@ var idWithoutFormat = map[string]string{
 	"provision.image_id":                        idUndeclared,
 	"provision.project_id":                      idUndeclared,
 	"provision.subnet_id":                       idUndeclared,
+	"list_subnets.vpc_id":                       idFilter,
+	"lb_list.vpc_id":                            idFilter,
+	"tg_list.vpc_id":                            idFilter,
 	"redis_create.specification_id":             idUndeclared,
 	"redis_create.subnet_id":                    idUndeclared,
 	"redis_create.version_id":                   idUndeclared,

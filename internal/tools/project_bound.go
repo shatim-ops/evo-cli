@@ -69,6 +69,8 @@ const (
 	whyLocal     = "a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)"
 	whyListed    = "the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, " +
 		"list_subnets) and refuses one that is not there"
+	whyFilter = "a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with " +
+		"the items that list read; it reaches no API as an id"
 	whyInProject      = "the request carries the project (projectId in the query), and the API looks the resource up in that project"
 	whyInParent       = "a part of the resource the call's other id argument names (checked): the API addresses it inside that resource"
 	whyContainerImage = "a container image reference (registry/name:tag) the app pulls, not a Cloud.ru resource id"
@@ -104,6 +106,9 @@ var idArgs = map[string][]idArg{
 	"snat_delete":         {{name: "id", kind: kindNAT}},
 	"subnet_create":       {{name: "vpc_id", kind: kindVPC}, {name: "availability_zone_id", why: whyCatalogue}},
 	"subnet_delete":       {{name: "subnet_id", kind: kindSubnet}},
+	"list_subnets":        {{name: "vpc_id", why: whyFilter}},
+	"lb_list":             {{name: "vpc_id", why: whyFilter}},
+	"tg_list":             {{name: "vpc_id", why: whyFilter}},
 
 	// Managed Kubernetes.
 	"k8s_get":          {{name: "cluster_id", kind: kindK8s}},
