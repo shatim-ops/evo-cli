@@ -143,6 +143,10 @@ type Variant struct {
 	// KeyForbidden: POST accessKeys answers 403 («Риск», R-55: a refusal
 	// of the platform at the key is AUTH_FAILED, as at the account).
 	KeyForbidden bool
+	// KeyAnswerLost: POST accessKeys makes the key, and the connection
+	// closes before the answer — a network break, a timeout of a proxy
+	// (full audit 1.8, FB180-3): the key is in the cloud, evo has no id.
+	KeyAnswerLost bool
 	// EmptyPagesWithToken: the lists of the Organization API answer their
 	// items with a page token, then empty pages, each with a new token —
 	// the list never says it ended (acceptance B-5, 06.11; IAM-10).
@@ -927,6 +931,15 @@ func (w *World) accessKeys(rw http.ResponseWriter, r *http.Request) {
 		k := &Key{ID: w.next("key"), KeyID: w.next("keyid"), Secret: w.secret("keysecret"), Account: account,
 			Description: body.Description, ExpiredAt: time.Now().Add(ttl)}
 		w.keys[k.ID] = k
+		if w.v.KeyAnswerLost {
+			if hj, ok := rw.(http.Hijacker); ok {
+				if c, _, err := hj.Hijack(); err == nil {
+					_ = c.Close()
+					return
+				}
+			}
+			panic(http.ErrAbortHandler)
+		}
 		writeJSON(rw, 200, map[string]any{"id": k.ID, "keyId": k.KeyID, "secret": k.Secret, "expiredAt": k.ExpiredAt, "serviceAccountId": account})
 	case http.MethodDelete:
 		tok := w.bearer(r)
