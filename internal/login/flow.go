@@ -193,6 +193,10 @@ type project struct {
 type session struct {
 	// intentDone removes the intent of the key (№ 37); nil without one.
 	intentDone func()
+	// keyUnknown: the issue of the key failed with an outcome the cloud
+	// did not say (intent.OutcomeUnknown) — the key may be in the cloud
+	// with no id evo knows, so its intent stays (FB180-3).
+	keyUnknown bool
 	cfg        Config
 	choice     Choice
 	store      Store
@@ -588,8 +592,10 @@ func (s *session) grant(ctx context.Context, pl plan, say func(string)) (Result,
 		err = s.rollback(ctx, err)
 	}
 	// Alive to here, the login knows what it left and says it: the
-	// intent goes. Killed between the key and here, it stays (№ 37).
-	if s.intentDone != nil {
+	// intent goes. Killed between the key and here, it stays (№ 37); so it
+	// does when the answer to the key was lost (FB180-3): the key may be
+	// there, and evo doctor and the next run name it.
+	if s.intentDone != nil && !s.keyUnknown {
 		s.intentDone()
 		s.intentDone = nil
 	}
@@ -654,7 +660,12 @@ func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, 
 	// 16. The key, last.
 	key, err := s.admin.CreateAccessKey(ctx, sa, desc, time.Duration(pl.days)*24*time.Hour)
 	if err != nil {
-		return res, at(stepKey, refused(forbidden(err, p.Name), eNotIssuedKey(), eKeyRefusedHint(aud.account())))
+		refusal := refused(forbidden(err, p.Name), eNotIssuedKey(), eKeyRefusedHint(aud.account()))
+		if intent.OutcomeUnknown(clierrors.Reason(refusal), iamadmin.StatusOf(err)) {
+			s.keyUnknown = true
+			return res, at(stepKey, keyOutcomeUnknown(refusal, err, aud.account(), now))
+		}
+		return res, at(stepKey, refusal)
 	}
 	s.made = append(s.made, undo{tUndoKey(),
 		func(ctx context.Context) error { return s.admin.DeleteAccessKey(ctx, sa, key.ID) }})
@@ -761,6 +772,17 @@ func (s *session) checkKey(ctx context.Context, key iamadmin.NewKey) error {
 // rollback deletes what this login made, newest first, with the person's
 // token. What it could not delete is named, with the way: the console. The
 // cause's step and status stay in the details.
+// keyOutcomeUnknown is the error of a key whose issue has no known
+// outcome: its reason stays the one of refusal, its words say the key may
+// be in the cloud, not that none was issued, and where to look (FB180-3).
+func keyOutcomeUnknown(refusal, err error, account string, at time.Time) error {
+	code := clierrors.Reason(refusal)
+	if !clierrors.IsCode(code) {
+		code = clierrors.CodeAPIError
+	}
+	return clierrors.Wrap(code, eKeyOutcomeUnknown(err.Error()), eKeyOutcomeUnknownHint(account, at), refusal)
+}
+
 func (s *session) rollback(ctx context.Context, cause error) error {
 	// The rollback runs even when the login's context is done.
 	ctx = context.WithoutCancel(ctx)
@@ -776,6 +798,9 @@ func (s *session) rollback(ctx context.Context, cause error) error {
 	}
 	s.made = nil
 	slices.Reverse(made)
+	if s.keyUnknown {
+		left = append(left, tKeyMaybeLeft())
+	}
 	code := clierrors.Reason(cause)
 	if len(left) > 0 || !clierrors.IsCode(code) {
 		code = clierrors.CodeAPIError
@@ -795,7 +820,13 @@ func (s *session) rollback(ctx context.Context, cause error) error {
 	} else {
 		why = cause.Error()
 	}
-	out := clierrors.Wrap(code, eNotComplete(why, made, undone, left), eNotCompleteHint(len(left) > 0, next), cause)
+	hint := eNotCompleteHint(len(left) > 0, next)
+	if s.keyUnknown {
+		// The key is no record of this rollback: which one to check, and
+		// not another, is the cause's hint (R-56, FB180-3).
+		hint = next
+	}
+	out := clierrors.Wrap(code, eNotComplete(why, made, undone, left), hint, cause)
 	out.Details = details
 	return out
 }

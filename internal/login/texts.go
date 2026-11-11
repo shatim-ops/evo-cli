@@ -311,8 +311,8 @@ func tWaiting(wait time.Duration) string {
 // profile, in the words of the next run (doctor, stderr; № 37).
 func tKilledLogin(account, project string, at time.Time) string {
 	when := at.Local().Format("02.01.2006 15:04")
-	return i18n.Tf("evo login for the account %s in the project %s stopped before its answer: a key of the account created at about %s may be in the cloud that no profile holds — it works and evo logout does not delete it; check the keys of %s in the Cloud.ru console (Service accounts) and delete the one created at about %s, not another: the others may be the keys of working agents",
-		"evo login для аккаунта %s в проекте %s прерван до ответа: в облаке может остаться ключ аккаунта, созданный около %s, которого нет ни в одном профиле, — он работает, а evo logout его не удалит; проверьте ключи %s в личном кабинете Cloud.ru («Сервисные аккаунты») и удалите созданный около %s, а не другой: другие могут быть ключами работающих агентов",
+	return i18n.Tf("evo login for the account %s in the project %s did not learn whether its key was issued (it stopped, or the answer to the key was lost): a key of the account created at about %s may be in the cloud that no profile holds — it works and evo logout does not delete it; check the keys of %s in the Cloud.ru console (Service accounts) and delete the one created at about %s, not another: the others may be the keys of working agents",
+		"evo login для аккаунта %s в проекте %s не узнал, выдан ли ключ (прерван или ответ на выпуск ключа потерян): в облаке может остаться ключ аккаунта, созданный около %s, которого нет ни в одном профиле, — он работает, а evo logout его не удалит; проверьте ключи %s в личном кабинете Cloud.ru («Сервисные аккаунты») и удалите созданный около %s, а не другой: другие могут быть ключами работающих агентов",
 		account, project, when, account, when)
 }
 
@@ -686,7 +686,23 @@ func eOrgStatus(status int, path string) string {
 func tUndoAccount(account string) string {
 	return i18n.Tf("service account %s", "сервисный аккаунт %s", account)
 }
-func tUndoKey() string  { return i18n.T("access key", "ключ доступа") }
+func tUndoKey() string { return i18n.T("access key", "ключ доступа") }
+
+// tKeyMaybeLeft, eKeyOutcomeUnknown, eKeyOutcomeUnknownHint: the answer to
+// the issue of the key was lost — the key may be in the cloud (FB180-3).
+func tKeyMaybeLeft() string {
+	return i18n.T("the access key, if Cloud.ru issued it (the answer was lost)", "ключ доступа, если Cloud.ru его выдал (ответ потерян)")
+}
+func eKeyOutcomeUnknown(cause string) string {
+	return i18n.Tf("whether Cloud.ru issued the access key is unknown: the answer was lost (%s)",
+		"неизвестно, выдал ли Cloud.ru ключ доступа: ответ потерян (%s)", cause)
+}
+func eKeyOutcomeUnknownHint(account string, at time.Time) string {
+	when := at.Local().Format("02.01.2006 15:04")
+	return i18n.Tf("The key may be in the cloud, and no profile holds it: evo doctor names it. Before evo login again, check the keys of %s in the Cloud.ru console (Service accounts) and delete the one created at about %s, not another: the others may be the keys of working agents; then delete the record evo doctor names.",
+		"Ключ может быть в облаке, и его нет ни в одном профиле: evo doctor его назовёт. Перед повтором evo login проверьте ключи %s в личном кабинете Cloud.ru («Сервисные аккаунты») и удалите созданный около %s, а не другой: другие могут быть ключами работающих агентов; затем удалите запись, которую назовёт evo doctor.",
+		account, when)
+}
 func tUndoRole() string { return i18n.T("the account's role", "роль аккаунта") }
 func tUndoRoleTerm() string {
 	return i18n.T("the term of the account's role", "срок роли аккаунта")

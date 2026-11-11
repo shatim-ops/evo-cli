@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
-	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
@@ -67,7 +66,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		return nil, err
 	}
 	return func(answer string) {
-		if ctx.Err() != nil || outcomeUnknown(answer) {
+		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), 0) {
 			return
 		}
 		done()
@@ -94,21 +93,6 @@ func intentResource(tool string, args map[string]any) (name, target string) {
 		}
 	}
 	return name, ""
-}
-
-// outcomeUnknown tells an answer that does not say what the cloud did: the
-// call was cut (INTERRUPTED), did not reach the cloud's answer
-// (API_UNREACHABLE: a transport break after the request may have gone),
-// failed in the API (API_ERROR: 5xx and 4xx do not part in the answer, and a
-// 5xx may follow a done write) or without a code. A success and a
-// refusal with a code (USAGE, NOT_FOUND, AUTH_*, API_RATE_LIMITED…) say it
-// («Риск», conclusion 46, condition 1).
-func outcomeUnknown(answer string) bool {
-	switch answerReason(answer) {
-	case clierrors.ReasonInterrupted, clierrors.CodeAPIUnreachable, clierrors.CodeAPIError, clierrors.ReasonGeneral:
-		return true
-	}
-	return false
 }
 
 // answerReason is the reason of a tool's answer, "" when it has none.
