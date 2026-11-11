@@ -18,7 +18,7 @@ import (
 // the Dockerfile name the same version.
 func TestWorkflows_OneGoVersion(t *testing.T) {
 	root := filepath.Join("..", "..")
-	lit := regexp.MustCompile(`(?m)^\s*go-version:\s*"([^"$]+)"\s*$`)
+	lit := regexp.MustCompile(`(?m)^\s*go-version:\s*(?:"([^"$]+)"|([^"\s$#]+))\s*(?:#.*)?$`)
 	seen := map[string][]string{}
 	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil || len(files) == 0 {
@@ -30,7 +30,8 @@ func TestWorkflows_OneGoVersion(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, m := range lit.FindAllStringSubmatch(string(b), -1) {
-			seen[m[1]] = append(seen[m[1]], filepath.Base(f))
+			v := m[1] + m[2] // quoted or plain YAML
+			seen[v] = append(seen[v], filepath.Base(f))
 		}
 	}
 	b, err := os.ReadFile(filepath.Join(root, "Dockerfile"))
@@ -42,6 +43,11 @@ func TestWorkflows_OneGoVersion(t *testing.T) {
 		t.Fatal("Dockerfile: no ARG GO_VERSION")
 	}
 	seen[m[1]] = append(seen[m[1]], "Dockerfile")
+	// The image of the build is the one of GO_VERSION, pinned by digest: a
+	// tag alone can be rewritten in the registry.
+	if !regexp.MustCompile(`(?m)^FROM golang:\$\{GO_VERSION\}@sha256:[0-9a-f]{64} `).Match(b) {
+		t.Error("Dockerfile: the build image is not golang:${GO_VERSION}@sha256:<digest>")
+	}
 	if len(seen) != 1 {
 		t.Errorf("Go versions differ across CI, the release and the image (bump them together): %v", seen)
 	}
