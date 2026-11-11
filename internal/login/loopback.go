@@ -220,7 +220,8 @@ func (l *loopback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// «Origin: null» with the page's own form (Fetch), and fromPage could
 	// not tell it from a forged one (release audit 1.8, L23). The pages load
 	// nothing of another origin, so the code and state of the address still
-	// go nowhere else (N19).
+	// go nowhere else (N19). The header is the one policy: a <meta
+	// name="referrer"> of a page overrides it (Grok F1).
 	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Cache-Control", "no-store")
 	// The fonts of the pages: static, without the lock a grant may hold.
