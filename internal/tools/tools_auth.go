@@ -389,8 +389,14 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		before := exchanges(eng.Auth)
 		tok, terr := keyToken(ctx, eng.Auth)
 		if terr != nil {
-			checks = append(checks, DoctorCheck{Name: "credentials", Status: CheckFail, Detail: CheckDetail(terr),
-				Auth: clierrors.ExitCode(terr) == clierrors.ExitAuth})
+			// The exchange refused — a revoked key with no token cached:
+			// the refusal whoami answers, one point with readKey's (D94).
+			c := DoctorCheck{Name: "credentials", Status: CheckFail, Detail: CheckDetail(terr),
+				Auth: clierrors.ExitCode(terr) == clierrors.ExitAuth}
+			if c.Auth {
+				c.refused = terr
+			}
+			checks = append(checks, c)
 			break
 		}
 		src := i18n.T("cached token", "токен из кэша")
@@ -538,12 +544,17 @@ func doctorVerdict(checks []DoctorCheck) error {
 		return nil
 	case refused != nil:
 		// The key IAM refuses: the reason whoami gives (D94).
-		code := clierrors.CodeAuthFailed
+		code, hint := clierrors.CodeAuthFailed, auth.RefusedKeyHint()
 		var ce *clierrors.CLIError
-		if errors.As(refused, &ce) && ce.Code != "" {
-			code = ce.Code
+		if errors.As(refused, &ce) {
+			if ce.Code != "" {
+				code = ce.Code
+			}
+			if ce.Hint != "" {
+				hint = ce.Hint
+			}
 		}
-		return clierrors.Wrap(code, msg, auth.RefusedKeyHint(), refused)
+		return clierrors.Wrap(code, msg, hint, refused)
 	case authFailed:
 		return clierrors.New(clierrors.CodeConfigInvalid, msg,
 			i18n.T("Fix the configuration or credentials above: evo login (through the browser) or evo configure",
