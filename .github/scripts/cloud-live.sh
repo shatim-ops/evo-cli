@@ -1798,7 +1798,9 @@ area_mcp() {
 		if poll 300 10 sh -c "curl -fsS --max-time 10 'http://$ip:$MCP_PORT/' | grep -qi nginx"; then ok "stdio deploy" "HTTP $MCP_PORT: nginx"; else
 			local probe
 			probe=$(j -r '.log // ""' | { grep -E ':[0-9]+ -> ' || true; } | redact | tr '\n' ' ' | cut -c1-200)
-			bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин; проба evo в ответе deploy: ${probe:-строк пробы нет}"
+			local tail
+			tail=$(j -r '.log // ""' | grep -v '^[[:space:]]*$' | tail -n 4 | redact | tr '\n' '|' | cut -c1-300)
+			bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин; проба evo в ответе deploy: ${probe:-строк пробы нет}; конец log deploy: ${tail:-пусто}"
 		fi
 		[ "$(lst vm "$vm" | wc -l)" = 1 ] && ok "deploy после deploy_apply" "та же ВМ, второй нет" || bad "deploy после deploy_apply" "ВМ с именем $vm: $(lst vm "$vm" | wc -l); всего ВМ $prefix*: $(lst vm "$prefix" | wc -l)"
 	else bad "stdio deploy" "status $(j -r '.status // "-"'), $(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"; fi
