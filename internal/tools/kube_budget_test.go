@@ -69,7 +69,10 @@ var helmInstall = map[string]any{"cluster_id": faultCluster, "action": "install"
 // helm's own --timeout ends before the call's budget, so helm ends a hook
 // that hangs itself instead of being killed mid-operation.
 func TestHelm_InstallOverMCPDoesNotWaitAndSaysDeploying(t *testing.T) {
-	r := budgeted(kubeWorld(t, `echo "STATUS: deployed"`))
+	// helm has to finish here: progressBudget, not worldBudget (#793) —
+	// 250 ms did not hold for the fork of the world's helm on a slow macOS
+	// runner (#1246), and the answer was stopped_at_limit.
+	r := progressed(kubeWorld(t, `echo "STATUS: deployed"`))
 	text, isErr := r.handlers["k8s_helm"](context.Background(), helmInstall)
 	var m map[string]any
 	if err := json.Unmarshal([]byte(text), &m); err != nil || isErr {
@@ -90,7 +93,7 @@ func TestHelm_InstallOverMCPDoesNotWaitAndSaysDeploying(t *testing.T) {
 // helm that fails by itself (a chart that does not render, a conflict) is
 // an error, not deploying («1.7 — релиз»).
 func TestHelm_AFailingInstallOverMCPIsAnError(t *testing.T) {
-	r := budgeted(kubeWorld(t, `echo "Error: UPGRADE FAILED: rendered manifests contain a resource that already exists"; exit 1`))
+	r := progressed(kubeWorld(t, `echo "Error: UPGRADE FAILED: rendered manifests contain a resource that already exists"; exit 1`))
 	text, isErr := r.handlers["k8s_helm"](context.Background(), helmInstall)
 	if !isErr || strings.Contains(text, "deploying") {
 		t.Errorf("a failing helm reads (isError=%v): %s", isErr, text)
