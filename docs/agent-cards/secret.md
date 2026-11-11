@@ -12,3 +12,5 @@
 | `secret_create` | `evo secret create` | creates: known by its `path`; found with `secret_list`; deleted with `secret_delete` |  |
 | `secret_add_version` | `evo secret add-version` | changes |  |
 | `secret_delete` | `evo secret delete` | deletes; a repeat answers `already_deleted` |  |
+
+Filters of the lists (the rule of the `evo` skill): `secret_list` — name.

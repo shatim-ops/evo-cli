@@ -13,3 +13,5 @@
 | `ar_operation` | `evo ar operation` | reads |  |
 
 A change of this group that answers an `operation_id` runs on: wait for it with `ar_operation` and its `wait_seconds`, not by polling a list.
+
+Filters of the lists (the rule of the `evo` skill): `ar_list` — status, name, type.

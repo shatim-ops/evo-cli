@@ -11,3 +11,5 @@
 | `vm_list` | `evo vm list` | reads |  |
 | `list_zones` | `evo vm zones` | reads |  |
 | `list_flavors` | `evo vm flavors` | reads |  |
+
+Filters of the lists (the rule of the `evo` skill): `vm_list` — zone, state, name, flavor, public_ip; `list_flavors` — name, cpu, ram, share, zone, gpu, spot.

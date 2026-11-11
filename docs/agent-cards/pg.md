@@ -24,6 +24,8 @@
 
 A change of this group that answers an `operation_id` runs on: wait for it with `pg_operation` and its `wait_seconds`, not by polling a list.
 
+Filters of the lists (the rule of the `evo` skill): `pg_list` — status, name.
+
 ## Notes
 
 - A cluster made with `no_backup` refuses `pg_backup_create` and `pg_backups` with 'backup disabled'.
