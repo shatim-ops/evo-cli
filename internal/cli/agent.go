@@ -300,6 +300,22 @@ func (o agentSetupOptions) server(c agentClient) (agentServer, error) {
 	return s, nil
 }
 
+// releasedEntry tells the client's file whose evo entry is the one the
+// released evo wrote with the same options and its default groups; nil
+// when the entry does not name the groups (--http).
+func (c agentClient) releasedEntry(s agentServer) func(old []byte) bool {
+	if s.spec.url != "" || !slices.Equal(s.toolsets, defaultToolsets) {
+		return nil
+	}
+	s.toolsets = releasedDefaultToolsets
+	s.spec.args = s.mcpArgs()
+	prev, _ := c.entry(s.spec)
+	return func(old []byte) bool {
+		r, err := c.merge(old, prev)
+		return err == nil && r.State == agentconf.Same
+	}
+}
+
 // mcpArgs are the arguments the client starts evo with: the profile,
 // 'mcp' and the server's flags.
 func (s agentServer) mcpArgs() []string {
@@ -362,6 +378,9 @@ type agentTarget struct {
 	// one replaces it without --force, after the diff and consent; an evo
 	// entry of a client's file may be the user's choice.
 	generated bool
+	// released tells an entry a released evo wrote with its own defaults:
+	// it is evo's, as generated is; nil for a target with none.
+	released func(old []byte) bool
 }
 
 // agentChange is a target as read, with evo's part put in.
@@ -444,6 +463,7 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 	if err != nil {
 		return err
 	}
+	targets[0].released = c.releasedEntry(srv)
 	changes := make([]agentChange, 0, len(targets))
 	for _, t := range targets {
 		if o.skillOnly && !t.generated {
@@ -622,6 +642,9 @@ func readChange(t agentTarget) (agentChange, error) {
 		perm = t.mode
 	}
 	body, bom := bytes.CutPrefix(old, []byte(utf8BOM))
+	if t.released != nil && t.released(body) {
+		t.generated = true
+	}
 	r, err := t.merge(body)
 	if err != nil {
 		var fe *agentconf.FileError

@@ -488,7 +488,7 @@ func TestAgentSetup_Options(t *testing.T) {
 		{args: []string{"--client", "cursor", "--print", "json"}, want: `"args": [
         "mcp",
         "--toolsets",
-        "deploy,vm,vpc,disk,image"
+        "deploy,vm,vpc,disk,image,auth"
       ]`},
 		{args: []string{"--client", "cursor", "--print", "toml", "--toolsets", "all"}, want: `args = ["mcp"]`},
 		{args: []string{"--client", "cursor", "--print", "toml", "--read-only", "--toolsets", "VM,k8s,vm"}, want: `args = ["mcp", "--read-only", "--toolsets", "vm,k8s"]`},
@@ -677,8 +677,8 @@ func TestAgentSetup_DefaultScope(t *testing.T) {
 // next run finds evo unchanged, and --force replaces evo's keys only.
 func TestAgentSetup_KeepsUsersKeys(t *testing.T) {
 	for client, users := range map[string][2]string{
-		"claude-code": {`{"mcpServers": {"evo": {"command": "evo", "args": ["mcp", "--toolsets", "deploy,vm,vpc,disk,image"], "env": {"CLOUDRU_PROFILE": "x"}, "timeout": 60000}}}`, `"timeout":60000`},
-		"codex":       {"[mcp_servers.evo]\ncommand = \"evo\"\nargs = [\"mcp\", \"--toolsets\", \"deploy,vm,vpc,disk,image\"]\ntool_timeout_sec = 600\n\n[mcp_servers.evo.env]\nCLOUDRU_PROFILE = \"x\"\n", "tool_timeout_sec = 600"},
+		"claude-code": {`{"mcpServers": {"evo": {"command": "evo", "args": ["mcp", "--toolsets", "deploy,vm,vpc,disk,image,auth"], "env": {"CLOUDRU_PROFILE": "x"}, "timeout": 60000}}}`, `"timeout":60000`},
+		"codex":       {"[mcp_servers.evo]\ncommand = \"evo\"\nargs = [\"mcp\", \"--toolsets\", \"deploy,vm,vpc,disk,image,auth\"]\ntool_timeout_sec = 600\n\n[mcp_servers.evo.env]\nCLOUDRU_PROFILE = \"x\"\n", "tool_timeout_sec = 600"},
 	} {
 		setupAgent(t)
 		c := mustClient(t, client)

@@ -38,8 +38,16 @@ const (
 const defaultScope = scopeProject
 
 // defaultToolsets are the groups the agent sees without --toolsets (В-2):
-// deploy and the VM with its network, disks and images, not all ~150 tools.
-var defaultToolsets = []string{"deploy", "vm", "vpc", "disk", "image"}
+// deploy and the VM with its network, disks and images, not all ~150 tools;
+// and auth (whoami, doctor): the tools an agent is told to call first when
+// a call fails on the key or lands in an unexpected project (D2-W).
+var defaultToolsets = []string{"deploy", "vm", "vpc", "disk", "image", "auth"}
+
+// releasedDefaultToolsets is the default of the released evo (1.7.2), before
+// auth joined it: an entry evo wrote with it is evo's own, and a setup
+// without --toolsets replaces it after the diff and the consent, without
+// --force («Риск», conclusion 87).
+var releasedDefaultToolsets = []string{"deploy", "vm", "vpc", "disk", "image"}
 
 // configFormat is the language of a client's configuration file.
 type configFormat string
