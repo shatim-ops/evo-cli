@@ -599,9 +599,8 @@ func (s *Registry) registerTools() {
 			Description: "Check the setup the tools use: the configuration (profile, where the key and the project come from, " +
 				"its warnings), whether the IAM and Compute APIs are reachable, the access key (an IAM token), how many projects " +
 				"it sees, its roles on the project (key roles: skip when IAM does not tell, warn with none) and its term (key term: " +
-				"warn within 5 days), what cut calls left (pending operation: a record of .evo/intents whose outcome the resource list " +
-				"shows is closed, its file removed — also on a --read-only server; the rest stay, warn) and files there evo did not " +
-				"write (foreign intent record, warn: neither read nor removed). Read-only for the cloud. Answers checks ({name, status: ok, warn, fail or skip, detail, http_status}) and ok; " +
+				"warn within 5 days), what cut calls left (pending operation, warn; one its list settles: .evo/intents file removed, " +
+				"even with --read-only) and foreign intent record (not evo's, kept). Read-only for the cloud. Answers checks ({name, status: ok, warn, fail or skip, detail, http_status}) and ok; " +
 				"http_status of IAM API and Compute API is what the API root answered: any answer, 404 included, means reachable. A failed " +
 				"check fails the call, with the checks in the error answer: CONFIG_INVALID when the configuration or the key is " +
 				"broken (no project included), API_UNREACHABLE when only connectivity failed. The CLI's 'evo doctor' also checks " +
