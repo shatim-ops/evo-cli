@@ -6,11 +6,13 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
@@ -56,5 +58,33 @@ func TestDoctor_RevokedKeyFailsAsWhoami(t *testing.T) {
 	tp := &forgetToken{subToken: subToken{"sa-1"}}
 	if checks := rolesRegistry(t, &rolesWorld{perms: `[]`, keys: notListed}, rolesProject, tp).doctorChecks(context.Background(), false); failedAuth(checks, "") {
 		t.Errorf("a key IAM takes failed doctor: %+v", checks)
+	}
+}
+
+// exchangeRefused is a key with no cached token that IAM refuses at the
+// exchange: every Token is AUTH_FAILED, as IAM's 401 on a deleted key.
+type exchangeRefused struct{ subToken }
+
+func (exchangeRefused) Token(context.Context) (auth.Token, error) {
+	return auth.Token{}, clierrors.New(clierrors.CodeAuthFailed, "IAM: invalid key", "")
+}
+
+// Gate rc.1 of 1.8, step 6 (Grok on 37a86598, 2 of 2): the revoked key
+// without a cached token — doctor answered CONFIG_INVALID, whoami
+// AUTH_FAILED. The refusal came at the exchange, before readKey, and the
+// verdict read it as a broken configuration. One refusal of IAM, one
+// reason on both (D88, D94): with a cached token and without.
+func TestDoctor_RefusedExchangeHasWhoamisReason(t *testing.T) {
+	at(t, "2026-11-05T12:00:00Z")
+	world := &rolesWorld{perms: `[]`, keys: keysOf("2026-12-05T00:00:00Z")}
+	checks := rolesRegistry(t, world, rolesProject, exchangeRefused{subToken{"sa-1"}}).doctorChecks(context.Background(), false)
+	var dce *clierrors.CLIError
+	if !errors.As(doctorVerdict(checks), &dce) {
+		t.Fatalf("doctor passed a key IAM refuses: %+v", checks)
+	}
+	text, isErr := rolesRegistry(t, world, rolesProject, exchangeRefused{subToken{"sa-1"}}).handlers["whoami"](context.Background(), map[string]any{})
+	var w struct{ Reason string }
+	if err := json.Unmarshal([]byte(text), &w); err != nil || !isErr || w.Reason != dce.Code || dce.Code != clierrors.CodeAuthFailed {
+		t.Errorf("doctor's reason %s, whoami: %s — want one reason, AUTH_FAILED", dce.Code, text)
 	}
 }
