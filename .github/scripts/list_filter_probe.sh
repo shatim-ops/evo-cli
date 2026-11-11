@@ -15,7 +15,9 @@
 # расхождений evo-internal); ignored — облако вернуло весь список (параметр
 # не работает); error — запрос с параметром не прошёл.
 #
-# Нужны KEY_ID, SECRET, PROJECT. Выход 0 всегда: проба печатает, не валит.
+# Нужны KEY_ID, SECRET, PROJECT. Выход 1 — только без секретов или без
+# токена (как у шага «Проверки» api-probe); любая проверка, упавшая в облаке,
+# печатает строку и выход не меняет.
 set -euo pipefail
 if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ] || [ -z "${PROJECT:-}" ]; then
 	echo "::error::нет KEY_ID / SECRET / PROJECT"
@@ -55,6 +57,9 @@ check() {
 	items "$tmp/all" >"$tmp/all.items"
 	local total
 	total=$(jq length "$tmp/all.items")
+	# Не больше 4 значений на параметр: зон 2–3, состояний 2–4 — все; у
+	# flavor, cpu и ram — первые 4: семантика параметра одна на все значения,
+	# а каждая проверка — запрос к API.
 	mapfile -t vals < <(jq -r "$values | .[]? | tostring" "$tmp/all.items" | head -n 4)
 	if [ "${#vals[@]}" = 0 ]; then
 		printf '%-34s всего=%s, значений нет — не проверено\n' "$name" "$total"
@@ -62,13 +67,14 @@ check() {
 	fi
 	for v in "${vals[@]}"; do
 		i=$((i + 1))
-		jq -r --arg v "$v" "[.[] | $rule | .id] | sort | .[]" "$tmp/all.items" >"$tmp/evo"
+		jq -r --arg v "$v" "[.[] | $rule | .id] | unique | .[]" "$tmp/all.items" >"$tmp/evo"
 		code=$(get "$base&$param=$(jq -rn --arg v "$v" '$v | @uri')" "$tmp/cloud")
 		if [ "$code" != 200 ]; then
 			printf '%-34s значение #%d: http=%s — error\n' "$name" "$i" "$code" | redact
 			continue
 		fi
-		items "$tmp/cloud" | jq -r '[.[] | .id] | sort | .[]' >"$tmp/cloudids"
+		# unique: повтор id в ответе облака — не повод для diff.
+		items "$tmp/cloud" | jq -r '[.[] | .id] | unique | .[]' >"$tmp/cloudids"
 		local nc ne verdict
 		nc=$(wc -l <"$tmp/cloudids"); ne=$(wc -l <"$tmp/evo")
 		if cmp -s "$tmp/cloudids" "$tmp/evo"; then verdict=same
