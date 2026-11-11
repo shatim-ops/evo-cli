@@ -6,9 +6,13 @@ package workflows
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // The goreleaser check and the dev build of ci.yml run the version
@@ -127,5 +131,51 @@ func TestWorkflows_DevBuildIsNoRelease(t *testing.T) {
 	}
 	if uploads != 1 {
 		t.Errorf("dev-build: %d uploads of an artifact, want 1", uploads)
+	}
+}
+
+// releaseNoteName is the file of a release's announcement: the tag and .md.
+var releaseNoteName = regexp.MustCompile(`^v\d+\.\d+\.\d+(-rc\.\d+)?\.md$`)
+
+// Owner's decision of 11.11 (the plan of 1.8, «Анонс выпуска из файла»): the
+// description of a GitHub release starts with docs/release-notes/<tag>.md,
+// which the release session writes before the tag — the known limits of a
+// version are not written by hand on GitHub after it. The header reads the
+// file with readFile, which gives "" for a missing file (checked on
+// goreleaser v2.18.3: --snapshot with and without the file), so a tag
+// without an announcement releases as before. A file there is named by a
+// tag and is not empty: a misnamed one would never be read.
+func TestRelease_HeaderFromFile(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".goreleaser.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Release struct {
+			Header any `yaml:"header"`
+		} `yaml:"release"`
+	}
+	if err := yaml.Unmarshal(b, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	want := `{{ readFile (printf "docs/release-notes/%s.md" .Tag) }}`
+	if got, _ := cfg.Release.Header.(string); got != want {
+		t.Errorf(".goreleaser.yaml release.header = %v, want %q: the announcement from the file, nothing when there is none (readFile, not from_file, which fails on a missing file)", cfg.Release.Header, want)
+	}
+	entries, err := os.ReadDir(filepath.Join("..", "..", "docs", "release-notes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() == "README.md" {
+			continue
+		}
+		if !releaseNoteName.MatchString(e.Name()) {
+			t.Errorf("docs/release-notes/%s: not <tag>.md (v1.8.0.md, v1.8.0-rc.1.md) — goreleaser would never read it", e.Name())
+			continue
+		}
+		if b, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-notes", e.Name())); err != nil || strings.TrimSpace(string(b)) == "" {
+			t.Errorf("docs/release-notes/%s is empty: the release would get no announcement", e.Name())
+		}
 	}
 }
