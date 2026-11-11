@@ -31,6 +31,9 @@ sg=${3:-}
 TCP_WAIT=${TCP_WAIT:-5}
 # Порт — 22; другой только у проверки скрипта (ssh_diag_test.sh).
 SSH_PORT=${SSH_PORT:-22}
+# Порт правила в группе и метки строки: 22, или порт приложения (область mcp
+# cloud-live.sh, тот же разбор для 8086).
+RULE_PORT=${RULE_PORT:-22}
 
 state='?' addr='?' iface='?' fip='?' rule='?' port='?'
 if v=$(evo tools call vm_get --arg vm_id="$vm" --json 2>/dev/null); then
@@ -52,15 +55,15 @@ else
 	fip="list_floating_ips не прочитан"
 fi
 
-# Правило TCP/22 ingress: port_range «22:22», диапазон с 22 или любой порт.
+# Правило ingress на RULE_PORT: port_range «N:N», диапазон с N или любой порт.
 if g=$(evo tools call list_security_groups --arg rules=true --json 2>/dev/null); then
-	rule=$(jq -r --arg sg "$sg" '
+	rule=$(jq -r --arg sg "$sg" --argjson rp "$RULE_PORT" '
 		[.security_groups[]? | select(if $sg != "" then .id == $sg else ((.name // "") | startswith("SSH-access_")) end)] as $gs
 		| if ($gs | length) == 0 then "группа не найдена"
 		  else [$gs[] | . as $g | [.rules[]? | select(.direction == "ingress" and ((.protocol // "tcp") | ascii_downcase | test("tcp|any|all|^$")))
-		      | select((.port_range // "") as $p | $p == "" or $p == "any" or ($p | split(":") | map(tonumber? // 0) | (.[0] <= 22 and (.[1] // .[0]) >= 22)))
+		      | select((.port_range // "") as $p | $p == "" or $p == "any" or ($p | split(":") | map(tonumber? // 0) | (.[0] <= $rp and (.[1] // .[0]) >= $rp)))
 		      | (.remote_ip_prefix // "") | if . == "" or . == "0.0.0.0/0" or . == "::/0" then "любого адреса" else . end] | unique
-		      | "\($g.name // "?"): \(if length == 0 then "правила на 22 нет" else "22 из " + join(" ") end)"] | join("; ")
+		      | "\($g.name // "?"): \(if length == 0 then "правила на \($rp) нет" else "\($rp) из " + join(" ") end)"] | join("; ")
 		  end' <<<"$g" 2>/dev/null) || rule="правила не разобраны"
 	[ -n "$sg" ] || rule="по имени SSH-access_*, не группы ВМ — $rule"
 else
@@ -76,6 +79,6 @@ case $? in
 *) port="отказ: $(printf '%s' "$err" | grep -oE '[A-Z][a-z]+( [a-z]+)*$' | tail -1)" ;;
 esac
 
-printf 'SSH-диагностика: ВМ %s; адрес %s; интерфейсы %s; floating IP %s; группа — %s; TCP/22 с раннера — %s\n' \
-	"$state" "$addr" "$iface" "$fip" "$rule" "$port" | redact
+printf 'SSH-диагностика: ВМ %s; адрес %s; интерфейсы %s; floating IP %s; группа — %s; TCP/%s с раннера — %s\n' \
+	"$state" "$addr" "$iface" "$fip" "$rule" "$RULE_PORT" "$port" | redact
 exit 0

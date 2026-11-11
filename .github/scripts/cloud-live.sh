@@ -1795,12 +1795,25 @@ area_mcp() {
 		cov deploy
 		ip=${ip:-$(evo tools call vm_get --arg vm_id="$vid" --json | jq -r '.public_ip // empty')}
 		mask "$ip"
+		# Сеть ВМ сразу после deploy и при отказе HTTP (mcp 186–192: HTTP нет,
+		# logs — SSH_TIMEOUT, класс не установлен): ВМ, адрес, правила группы
+		# из state на 22 и на порт приложения, ответ портов с раннера.
+		local sg
+		sg=$(jq -r '.deployments[0].security_group_id // empty' .evo/state.json 2>/dev/null)
+		mask "$sg"
+		net_diag() {
+			echo "$1:"
+			"$here/ssh_diag.sh" "$vid" "$ip" "$sg"
+			SSH_PORT=$MCP_PORT RULE_PORT=$MCP_PORT "$here/ssh_diag.sh" "$vid" "$ip" "$sg"
+		}
+		net_diag "сеть ВМ сразу после deploy"
 		if poll 300 10 sh -c "curl -fsS --max-time 10 'http://$ip:$MCP_PORT/' | grep -qi nginx"; then ok "stdio deploy" "HTTP $MCP_PORT: nginx"; else
 			local probe
 			probe=$(j -r '.log // ""' | { grep -E ':[0-9]+ -> ' || true; } | redact | tr '\n' ' ' | cut -c1-200)
 			local tail
 			tail=$(j -r '.log // ""' | grep -v '^[[:space:]]*$' | tail -n 4 | redact | tr '\n' '|' | cut -c1-300)
 			bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин; проба evo в ответе deploy: ${probe:-строк пробы нет}; конец log deploy: ${tail:-пусто}"
+			net_diag "сеть ВМ после 5 мин без HTTP"
 		fi
 		[ "$(lst vm "$vm" | wc -l)" = 1 ] && ok "deploy после deploy_apply" "та же ВМ, второй нет" || bad "deploy после deploy_apply" "ВМ с именем $vm: $(lst vm "$vm" | wc -l); всего ВМ $prefix*: $(lst vm "$prefix" | wc -l)"
 	else bad "stdio deploy" "status $(j -r '.status // "-"'), $(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"; fi

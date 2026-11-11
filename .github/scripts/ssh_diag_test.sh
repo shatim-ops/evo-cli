@@ -56,6 +56,12 @@ FIPS='{"floating_ips":[{"id":"f1","ip_address":"127.0.0.1","state":"down"}]}' ru
 want fipdown "floating IP в down"
 FIPS='{"floating_ips":[]}' run nofip '{"id":"'$vm'","state":"running","public_ip":"127.0.0.1","interfaces":[]}' "$sg"
 want nofip "floating IP с этим адресом не найден"
+# Порт приложения (область mcp): правило и метка — по RULE_PORT.
+RULE_PORT=80 run app '{"id":"'$vm'","state":"running","public_ip":"127.0.0.1","interfaces":[{"type":"regular","floating_ip":"127.0.0.1","state":"active"}]}' "$sg"
+want app "evo-app-sg: 80 из любого адреса"
+want app "TCP/80 с раннера — "
+RULE_PORT=8086 run noapp '{"id":"'$vm'","state":"running","public_ip":"127.0.0.1","interfaces":[]}' "$sg"
+want noapp "evo-app-sg: правила на 8086 нет"
 run novm "" "$sg"
 want novm "ВМ vm_get не прочитан"
 ! grep -q '0000-4000' "$work"/*/out || { echo "FAIL: id в выводе"; fail=1; }
