@@ -31,6 +31,9 @@ type InitOptions struct {
 	// Image is the boot image the person named (a name, a display name or
 	// a UUID); "" — chosen from the Ubuntu and Debian images.
 	Image string
+	// DryRun: show the file with the zone and the image chosen, and stop
+	// before the write (audit Fable 1.8, FB180-6).
+	DryRun bool
 }
 
 // Init writes a project config with an availability zone and a boot image
@@ -135,6 +138,20 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	content := fmt.Sprintf(i18n.T(initTemplateEN, initTemplateRU), yamlScalar(initProjectName(opts.Path)),
 		yamlComment(zone.ID), yamlComment(zone.Name), imageLine, projectLine)
 
+	if opts.DryRun {
+		project := i18n.T("not set", "не задан")
+		if e.Config.ProjectID != "" {
+			project = e.Config.ProjectID
+		}
+		_, err := confirm.Ask(ctx, confirm.Preview{Action: "init",
+			Summary: i18n.Tf("create %s", "создать %s", opts.Path),
+			Lines: []string{
+				i18n.Tf("zone: %s (%s)", "зона: %s (%s)", zone.Name, zone.ID),
+				i18n.Tf("image: %s (%s)", "образ: %s (%s)", image.Name, image.ID),
+				i18n.Tf("project: %s", "проект: %s", project),
+			}}, e.confirmOptions(false, true, true))
+		return err
+	}
 	if err := config.WriteFileAtomic(opts.Path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf(i18n.T("failed to create config: %w", "не удалось создать файл настроек: %w"), err)
 	}

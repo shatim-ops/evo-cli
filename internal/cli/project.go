@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -73,16 +74,20 @@ list projects for the key, the UUID is saved as given.`,
 			if err != nil {
 				return err
 			}
+			shown := id
+			if label != "" {
+				shown += " (" + label + ")"
+			}
+			if dryRunWrite(cmd.Context(), confirm.Preview{Action: "project use",
+				Summary: i18n.Tf("set the project of profile %s: %s", "задать проект профиля %s: %s", name, shown)}) {
+				return nil
+			}
 			p.ProjectID = id
 			if err := config.SaveProfile(name, p, c); err != nil {
 				return err
 			}
 			if printer.IsJSON() {
 				return printer.JSON(map[string]any{"profile": name, "project_id": id, "name": label})
-			}
-			shown := id
-			if label != "" {
-				shown += " (" + label + ")"
 			}
 			printer.Success(i18n.Tf("Project of profile %s: %s", "Проект профиля %s: %s", name, shown))
 			if env := os.Getenv("CLOUDRU_PROJECT_ID"); env != "" && env != id {

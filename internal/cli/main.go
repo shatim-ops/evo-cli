@@ -784,6 +784,7 @@ deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и Р
 				Path:           ".evo.yaml",
 				NonInteractive: nonInteractive,
 				Image:          image,
+				DryRun:         flagDryRun,
 			})
 		},
 	}
