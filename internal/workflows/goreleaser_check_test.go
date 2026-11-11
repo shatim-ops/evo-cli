@@ -174,7 +174,7 @@ func TestRelease_HeaderFromFile(t *testing.T) {
 			t.Errorf("docs/release-notes/%s: not <tag>.md (v1.8.0.md, v1.8.0-rc.1.md) — goreleaser would never read it", e.Name())
 			continue
 		}
-		if fi, err := e.Info(); err != nil || fi.Size() == 0 {
+		if b, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-notes", e.Name())); err != nil || strings.TrimSpace(string(b)) == "" {
 			t.Errorf("docs/release-notes/%s is empty: the release would get no announcement", e.Name())
 		}
 	}
