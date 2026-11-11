@@ -1189,8 +1189,7 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 		// A job the cloud is still deleting moves only by stack_destroy:
 		// polling stack_status would never see done or error (FB180-15).
 		if job.DeletionsPending() {
-			out["next"] = fmt.Sprintf("The cloud is still deleting the resources in 'deleting'. Call stack_destroy with job_id %s and confirmed=true again until it answers destroyed.", job.ID)
-			nextStep(out, "stack_destroy", map[string]any{"job_id": job.ID, "confirmed": true})
+			deletingNext(out, job.ID)
 		}
 		return out
 	}
@@ -1240,6 +1239,15 @@ var stackTeardown = []string{
 // such a step is looked up by name at destroy: a step that never ran owns
 // nothing, and a resource with its name belongs to someone else — deleting
 // it destroyed a foreign cluster (QA r3 R3).
+// deletingNext is the next step of a job the cloud is still deleting, the
+// same in the answers of stack_destroy and stack_status: the same call
+// re-checks them and finishes what waits for them — a VM's floating IP and
+// record (D69); stack_status does not move it (D96, FB180-15).
+func deletingNext(out map[string]any, id string) {
+	out["next"] = fmt.Sprintf("Call stack_destroy with job_id %s and confirmed=true again until 'deleting' is empty.", id)
+	nextStep(out, "stack_destroy", map[string]any{"job_id": id, "confirmed": true})
+}
+
 // alreadyDestroyed is the answer of stack_destroy for a job Destroyed.
 func alreadyDestroyed(id string) string {
 	return toJSON(map[string]any{"status": "already_destroyed", "job_id": id,
@@ -1430,8 +1438,7 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		out["note"] = "Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names."
 		// The same call checks them again and finishes what waits for
 		// them — a VM's floating IP and record (D69).
-		out["next"] = fmt.Sprintf("Call stack_destroy with job_id %s and confirmed=true again until 'deleting' is empty.", id)
-		nextStep(out, "stack_destroy", map[string]any{"job_id": id, "confirmed": true})
+		deletingNext(out, id)
 	}
 	if len(failed) > 0 {
 		// Every error answer has a reason (docs/mcp.md «Ошибки»). This one

@@ -140,6 +140,17 @@ func TestStackStatus_DeletingNamesTheNextStep(t *testing.T) {
 			}
 		})
 	}
+	// Destroyed, nothing left: no next step.
+	stackHome(t)
+	r := newTestServer()
+	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
+	j.Steps[0].Status, j.Status = "done", "destroyed"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if got := callTool(t, r.handleStackStatus, map[string]any{"job_id": j.ID, "wait_seconds": float64(1)}); got["status"] != "destroyed" || got["next_tool"] != nil || got["deleting"] != nil {
+		t.Errorf("stack_status of a destroyed job: want destroyed without a next step, got %v", got)
+	}
 	tl, _ := newTestServer().Lookup("stack_status")
 	if !strings.Contains(tl.Description, "status=deleting") {
 		t.Errorf("the stack_status description does not name the deleting outcome: %s", tl.Description)
