@@ -66,7 +66,7 @@ var skillKnowledge = map[string]skillPlace{
 	"evo-postgres§Use this skill when§The person wants a Managed PostgreSQL cluster, a user or a d":                               {tool: "pg_create", phrase: "Create a Managed PostgreSQL cluster"},
 	"evo-postgres§Use this skill when§Not for PostgreSQL inside a VM or a compose project: use `ev":                               {why: whyRouting},
 	"evo-postgres§Prerequisites§`evo doctor --json` (tool `doctor`, group `auth`) passes.":                                        {tool: "doctor", phrase: "Check the setup the tools use"},
-	"evo-postgres§Prerequisites§Tool groups `pg,vpc,auth`. The default of `evo agent setup` ":                                     {builtin: true, phrase: "groups `deploy,vm,vpc,disk,image` by default"},
+	"evo-postgres§Prerequisites§Tool groups `pg,vpc,auth`. The default of `evo agent setup` ":                                     {builtin: true, phrase: "groups `deploy,vm,vpc,disk,image,auth` by default"},
 	"evo-postgres§Prerequisites§The subnet: by default the main subnet of the profile's zone":                                     {tool: "pg_create", phrase: "the main subnet of the profile's zone"},
 	"evo-postgres§Procedure§Versions: `evo pg versions --json` / `pg_versions`. Specific":                                         {builtin: true, phrase: "A size is the person's decision"},
 	"evo-postgres§Procedure§Preview: `evo pg create <name> --specification-id <id> --dry":                                         {card: "pg", phrase: "an estimate by the tariff of its date"},

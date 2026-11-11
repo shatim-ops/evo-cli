@@ -1,6 +1,6 @@
 [mcp_servers.evo]
 command = "evo"
-args = ["mcp", "--toolsets", "deploy,vm,vpc,disk,image"]
+args = ["mcp", "--toolsets", "deploy,vm,vpc,disk,image,auth"]
 
 [mcp_servers.evo.env]
 CLOUDRU_PROFILE = "staging"

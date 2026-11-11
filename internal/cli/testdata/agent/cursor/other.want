@@ -1,1 +1,1 @@
-{"mcpServers":{"evo":{"command":"evo","args":["mcp","--toolsets","deploy,vm,vpc,disk,image"]}}}
+{"mcpServers":{"evo":{"command":"evo","args":["mcp","--toolsets","deploy,vm,vpc,disk,image,auth"]}}}
