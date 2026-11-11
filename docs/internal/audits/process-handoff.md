@@ -481,6 +481,17 @@ CI `main` за 1.4.0 (27.10, `ci` на push): красный один раз —
 массив. Урок для бэклога: причина в перечне пропусков — это
 утверждение, и тест его проверяет.
 
+## Цепочка поставки 1.8.0 (11.11, «Процесс · 1.8 (3)»)
+
+Выпуск `v1.8.0` (тег на `de17906a`, release run 43084710988): immutable, не pre-release, 20 файлов. Проверка — та же, что у 1.7.x:
+- `sha256sum -c checksums.txt` — 12 из 12 OK;
+- SBOM — 6 из 6, SPDX-2.3: 51 пакет у Linux и macOS, 55 у Windows;
+- sigstore-бандлы — 7 из 7: дайджест SHA2-256 равен sha256 файла; identity — `release.yml@refs/tags/v1.8.0`, issuer — `https://token.actions.githubusercontent.com`; одна запись прозрачности у каждого; GitHub attestations — есть (checksums 1, архив linux_amd64 2);
+- бинарь linux_amd64: `evo version` — 1.8.0, коммит `de17906a` = тег;
+- тело релиза начинается с `docs/release-notes/v1.8.0.md` на теге — 51 строка дословно (#1285).
+
+Не проверено здесь: `cosign verify-blob` и `gh attestation verify` (cosign в среде нет) — identity и tlog сверены вручную; шаг владельца.
+
 ## Цепочка поставки 1.7.2 (05.11, «Процесс · 1.8»)
 
 Выпуск `v1.7.2` (тег на `9e442da`): immutable, не pre-release, 20 файлов. Проверка — та же, что у 1.7.1:
@@ -653,6 +664,7 @@ job, трещотка) или строка бэклога с версией; у�
 | 2 (1.9) | Удаление отвечает `deleted`, только когда ресурса нет: для каждого `*_delete` с литералом `deleted` (disk, image, snat, subnet, cert, s3, secret, pg database/user) — мир, где облако приняло удаление, но ресурс ещё в списке; ответ — незавершённый статус с шагом проверки, а не `deleted` (класс п. 1 внешнего отзыва 11.11) | внешний отзыв 11.11, п. 1; разбор выше |
 | 2 (1.9) | Класс «удалено» — на любой список остатка, а не только `deleting`: ответ со статусом `destroyed`/`deleted` и непустым `failed`, `deleting` или `*_rules.failed` — красный; первый случай — `destroy` при неудалённых правилах группы безопасности (`destroyed` + `security_group_rules.failed`, повтор — `rules_pending`), FB180-17. Правка продукта — «разработке» (ломающее, номер D) | дельта-аудит Fable 1.8.0 (#1288), FB180-17; строка плана 1.9 |
 | 2 (1.9) | Снять исключение `!tools.IsSensitive` в `TestToolLabels_ReadOnlyWhereTheRegistryIsARead` (`internal/cli/read_label_test.go`): инструмент, который раскрывает секрет и спрашивает согласие (`cert_private_key`, `secret_value`), в каталоге `tools list/describe --json` называется полем из `sensitiveTools`; снимать после поля «разработки», FB180-18 | дельта-аудит Fable 1.8.0 (#1288), FB180-18; строка плана 1.9 |
+| 2 (1.9) | Красные `ci` на `main` не от diff, 10–11.11 — 9 прогонов, 4 класса: (а) граница D69 на медленном раннере — `TestDeployStage_OnceAndNotCutShort` ×2, `TestMCP_NoCallOutlivesTheBudget` ×1, `TestDeploy_InProgressLeavesTheRecordUnfinished` ×2 (Windows) — строка плана FB171-4, запас мира; (б) `TestCreate_OneRefusedTokenMakesOneResource` ×2 (Windows); (в) `TestTokenRefusedAsExpired_NextCallExchangesAnew` ×2 (macOS); (г) `TestConsent_InABrowserTheFormIsAccepted` ×1 (Ubuntu). У каждого класса — диагноз и правка мира или запаса; «перезапуск помог» — не диагноз | передача «релиза (4)» 11.11; runs 4434, 4411, 4390, 4354, 4334, 4321, 4203, 4167, 4157 |
 | 2 (1.8) | Мир «в каталоге запись `provision` и запись `deploy`»: `logs`, `verify`, `status`, `destroy` без цели берут запись своего вида; `destroy` при двух записях — отказ до вопроса (`refusedBy`) | агентный прогон 1.7.0, № 3; общий state маскировал № 1 |
 | 2 (1.8) | Вариант `consentWorlds` «уже в целевом состоянии»: диск подключён к этой ВМ (`disk_attach`), не подключён (`disk_detach`); вместе со строкой «у ВМ уже есть FIP» | агентный прогон 1.7.0, № 6 |
 | 2 (1.8) | Причина в перечне пропусков проверяется: «называет по имени» (`bodyUnnamed`), `idUndeclared` (`idWithoutFormat`) — у строки срок или строка плана; без них красный | агентный прогон 1.7.0, № 7, 13, 14 |
