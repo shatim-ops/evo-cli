@@ -62,7 +62,7 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
 - A task that only reads (costs, inventory, logs) needs no change: ask the
   person to run the server with `--read-only` for it.
 - `evo agent setup --client <client>` connects evo to an MCP client, with the
-  groups `deploy,vm,vpc,disk,image` by default.
+  groups `deploy,vm,vpc,disk,image,auth` by default.
 
 ## Waiting
 

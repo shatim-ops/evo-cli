@@ -372,7 +372,7 @@ evo agent [flags]
   gigaagent    печатается: mcp.json агента — на его машине
 Другой клиент: --print json или --print toml печатает запись и ничего не пишет.
 
-Агент видит группы deploy,vm,vpc,disk,image,
+Агент видит группы deploy,vm,vpc,disk,image,auth,
 если --toolsets не задаёт другие (all — все группы).
 --read-only (у gigaagent — по умолчанию): сервер отклоняет любые изменения и
 секреты, а правила --skill запрещают изменения и через CLI; ограничивает он
@@ -415,7 +415,7 @@ evo agent setup --client <client> [flags]
       --scope string       Чьи настройки: project (текущий каталог; по умолчанию) или user (домашний каталог; по умолчанию у codex)
       --skill              Записать и правила работы с evo для агента (SKILL.md или раздел AGENTS.md)
       --skill-only         Записать только правила работы с evo для агента; запись evo в настройках клиента не трогать
-      --toolsets strings   Группы инструментов, которые видит агент (через запятую; all — все; группы — в 'evo tools list') (по умолчанию [deploy,vm,vpc,disk,image])
+      --toolsets strings   Группы инструментов, которые видит агент (через запятую; all — все; группы — в 'evo tools list') (по умолчанию [deploy,vm,vpc,disk,image,auth])
 ```
 
 ### Options inherited from parent commands

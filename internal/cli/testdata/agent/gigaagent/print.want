@@ -6,7 +6,7 @@
         "mcp",
         "--read-only",
         "--toolsets",
-        "deploy,vm,vpc,disk,image"
+        "deploy,vm,vpc,disk,image,auth"
       ]
     }
   }

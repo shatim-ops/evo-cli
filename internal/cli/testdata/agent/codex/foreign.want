@@ -10,7 +10,7 @@ LOG_LEVEL = "info"
 
 [mcp_servers.evo]
 command = "evo"
-args = ["mcp", "--toolsets", "deploy,vm,vpc,disk,image"]
+args = ["mcp", "--toolsets", "deploy,vm,vpc,disk,image,auth"]
 
 # Profiles.
 [profiles.fast]
