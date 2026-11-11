@@ -48,6 +48,12 @@ func TestWorkflows_OneGoVersion(t *testing.T) {
 	if !regexp.MustCompile(`(?m)^FROM golang:\$\{GO_VERSION\}@sha256:[0-9a-f]{64} `).Match(b) {
 		t.Error("Dockerfile: the build image is not golang:${GO_VERSION}@sha256:<digest>")
 	}
+	// With a tag and a digest Docker takes the digest and never checks the
+	// tag: the build stage asserts the Go of the image is GO_VERSION, so a
+	// digest left behind fails the build instead of using the old library.
+	if !regexp.MustCompile(`(?m)^RUN test "\$\(go env GOVERSION\)" = "go\$\{GO_VERSION\}"`).Match(b) {
+		t.Error("Dockerfile: the build stage does not check that the image's Go is GO_VERSION")
+	}
 	if len(seen) != 1 {
 		t.Errorf("Go versions differ across CI, the release and the image (bump them together): %v", seen)
 	}

@@ -15,6 +15,10 @@ ARG GO_VERSION=1.26.11
 # (это делает Dependabot):
 #   docker buildx imagetools inspect golang:<версия> --format '{{.Manifest.Digest}}'
 FROM golang:${GO_VERSION}@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e AS build
+# При теге и digest Docker берёт образ по digest, тег не сверяет: забытый
+# digest дал бы сборку на прежнем Go с уже закрытой уязвимостью (#1228).
+ARG GO_VERSION
+RUN test "$(go env GOVERSION)" = "go${GO_VERSION}" || { echo "образ: $(go env GOVERSION), а GO_VERSION=${GO_VERSION} — обновите digest"; exit 1; }
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
