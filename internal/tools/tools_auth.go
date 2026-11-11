@@ -229,10 +229,16 @@ func revokedKey(ctx context.Context, tp auth.TokenProvider, tok auth.Token, keyI
 	if err == nil || !errors.As(err, &ce) || (ce.Code != clierrors.CodeAuthFailed && ce.Code != clierrors.CodeAuthExpired) {
 		return err
 	}
+	// The hint of IAM's refusal — the one whoami's own refusal gives — and
+	// RefusedKeyHint only when the refusal brings none (D94).
+	hint := ce.Hint
+	if hint == "" {
+		hint = auth.RefusedKeyHint()
+	}
 	return clierrors.Wrap(clierrors.CodeAuthFailed,
 		i18n.Tf("the key %s is revoked: it is not among its service account's keys, and IAM no longer takes it",
 			"ключ %s отозван: его нет среди ключей сервисного аккаунта, и IAM его больше не принимает", config.MaskKeyID(keyID)),
-		auth.RefusedKeyHint(), err)
+		hint, err)
 }
 
 // keyTermCheck is doctor's check of the key's term: a warning within
