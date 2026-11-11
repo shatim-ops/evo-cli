@@ -109,3 +109,28 @@ func TestDoctor_RefusedExchangeHasWhoamisReason(t *testing.T) {
 		t.Errorf("doctor's reason %s, whoami: %s — want one reason, AUTH_FAILED", dce.Code, text)
 	}
 }
+
+// hintedRevoked is forgetToken whose exchange after Forget is refused with
+// IAM's own hint, as auth.IAMProvider refuses a rejected key.
+type hintedRevoked struct{ forgetToken }
+
+func (t *hintedRevoked) Token(ctx context.Context) (auth.Token, error) {
+	if len(t.forgotten) > 0 {
+		return auth.Token{}, clierrors.New(clierrors.CodeAuthFailed, "IAM: invalid key", "the hint of IAM's refusal")
+	}
+	return t.subToken.Token(ctx)
+}
+func (t *hintedRevoked) Forget(v string) { t.forgotten = append(t.forgotten, v) }
+
+// D94, addition 2 (Grok K2 on c1748626, 2 of 2): with the token cached and
+// the key revoked, doctor's hint was RefusedKeyHint alone, whoami's the
+// full hint of IAM's refusal. revokedKey keeps the refusal's own hint.
+func TestDoctor_RevokedWithCacheKeepsTheRefusalsHint(t *testing.T) {
+	at(t, "2026-11-05T12:00:00Z")
+	notListed := `[{"id":"ak-0","keyId":"OTHER","expiredAt":"2026-12-01T00:00:00Z"}]`
+	r := rolesRegistry(t, &rolesWorld{perms: `[]`, keys: notListed}, rolesProject, &hintedRevoked{forgetToken{subToken: subToken{"sa-1"}}})
+	var ce *clierrors.CLIError
+	if !errors.As(doctorVerdict(r.doctorChecks(context.Background(), false)), &ce) || ce.Hint != "the hint of IAM's refusal" {
+		t.Errorf("doctor's hint %v — want the refusal's own", ce)
+	}
+}
