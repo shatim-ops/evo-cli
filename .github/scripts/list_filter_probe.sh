@@ -17,8 +17,10 @@
 #
 # Нужны KEY_ID, SECRET, PROJECT. Выход 0 всегда: проба печатает, не валит.
 set -euo pipefail
-[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] && [ -n "${PROJECT:-}" ] ||
-	{ echo "::error::нет KEY_ID / SECRET / PROJECT"; exit 1; }
+if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ] || [ -z "${PROJECT:-}" ]; then
+	echo "::error::нет KEY_ID / SECRET / PROJECT"
+	exit 1
+fi
 echo "::add-mask::$PROJECT"
 redact() { sed -E -f "${GITHUB_WORKSPACE:-.}/.github/scripts/redact.sed"; }
 
