@@ -46,6 +46,14 @@ var listFilters = map[string][]string{
 	"s3_buckets":           {"name"},
 }
 
+// ownStateValues are the state or status filters a list had before 1.8.2
+// whose value goes to the API as is: an enum would turn the API's answer to
+// a wrong value into USAGE, exit 1 — a breaking change the brief keeps out
+// ("у cert_list прежнее остаётся"). Only shrinks.
+var ownStateValues = map[string]string{
+	"cert_list": "state: the API constants CERTIFICATE_STATE_*, passed as is since 1.6; an enum is a breaking change",
+}
+
 // Every list of the brief takes its filters as arguments of its schema,
 // and a state or status filter declares the values evo knows (enum): an
 // unknown value is USAGE before the request, the same on both surfaces,
@@ -69,7 +77,7 @@ func TestListFilters_EveryListTakesItsFilters(t *testing.T) {
 				bad = append(bad, name+": no filter "+f)
 				continue
 			}
-			if f == "state" || f == "status" {
+			if (f == "state" || f == "status") && ownStateValues[name] == "" {
 				if vals, _ := p["enum"].([]any); len(vals) == 0 {
 					bad = append(bad, name+": filter "+f+" declares no values (enum): an unknown value would be an empty list, not USAGE")
 				}
