@@ -143,28 +143,44 @@ func recordPath(dir, id string) string {
 // the same id; anything else is skipped, not read — a link, another name,
 // another id (FB180-1).
 func Pending(dir string) []Intent {
+	out, _ := scan(dir)
+	return out
+}
+
+// Foreign are the files of dir that look like records (*.json) but are
+// not of evo's form: evo neither reads nor removes them, and doctor names
+// them («Риск», conclusion 88: a record skipped silently hides a planted
+// one). The names are the directory's, not evo's.
+func Foreign(dir string) []string {
+	_, foreign := scan(dir)
+	return foreign
+}
+
+// scan reads dir once: the records of evo's form, and the paths of the
+// other *.json files.
+func scan(dir string) (out []Intent, foreign []string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	var out []Intent
 	for _, e := range entries {
 		id, ok := strings.CutSuffix(e.Name(), ".json")
-		if !ok || !e.Type().IsRegular() || !validID(id) {
-			continue
-		}
-		data, err := config.ReadFileNoFollow(recordPath(dir, id))
-		if err != nil {
+		if !ok {
 			continue
 		}
 		var in Intent
-		if json.Unmarshal(data, &in) == nil && in.ID == id {
-			in.Dir = dir
-			out = append(out, in)
+		if e.Type().IsRegular() && validID(id) {
+			if data, err := config.ReadFileNoFollow(recordPath(dir, id)); err == nil &&
+				json.Unmarshal(data, &in) == nil && in.ID == id {
+				in.Dir = dir
+				out = append(out, in)
+				continue
+			}
 		}
+		foreign = append(foreign, filepath.Join(dir, e.Name()))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.Before(out[j].StartedAt) })
-	return out
+	return out, foreign
 }
 
 // Settle removes the earlier intents of the same tool on the same resource

@@ -341,6 +341,16 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 			}
 			checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckWarn, Detail: detail})
 		}
+		// A file there that is not evo's record is neither read nor
+		// removed, and named: a planted one is seen («Риск», conclusion
+		// 88). Its name is the directory's, quoted.
+		for _, dir := range intent.Dirs(eng.StateDir) {
+			for _, path := range intent.Foreign(dir) {
+				checks = append(checks, DoctorCheck{Name: "foreign intent record", Status: CheckWarn,
+					Detail: i18n.Tf("%s is not a record evo wrote: evo neither reads nor removes it — check where it came from (a cloned repository may bring it) and delete it yourself",
+						"%s — не запись evo: evo её не читает и не удаляет — проверьте, откуда она (её мог принести клонированный репозиторий), и удалите сами", quoteCloud(path))})
+			}
+		}
 	}
 	checks = append(checks,
 		probe(ctx, "IAM API", auth.IAMEndpoint, verbose),

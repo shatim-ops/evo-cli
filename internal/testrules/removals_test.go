@@ -31,6 +31,7 @@ var removals = map[string]directWrite{
 	"internal/config/profile.go\tWriteFileAtomic":          {1, "the temporary file os.CreateTemp made in this call"},
 	"internal/deployplan/store.go\tDelete":                 {1, "the plan id is checked by validPlanID (the form newPlanID makes) before the join"},
 	"internal/intent/intent.go\tbegin":                     {1, "the id is the random hex begin made, not one read back"},
+	"internal/intent/intent.go\tremove":                    {1, "Close and Settle: the id is a record file's name, checked against begin's form (recordPath); never the content's"},
 	"internal/kubetools/kubetools.go\trun":                 {1, "the temporary file os.CreateTemp made in this call"},
 	"internal/state/state.go\tWrite":                       {2, "the temporary file os.CreateTemp made in this call"},
 	"internal/tools/tools_kube.go\tRegistry.handleK8sHelm": {1, "the temporary values file os.CreateTemp made in this call"},

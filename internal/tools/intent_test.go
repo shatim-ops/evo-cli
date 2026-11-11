@@ -273,3 +273,39 @@ func TestPending_RecordTextIsUntrusted(t *testing.T) {
 		t.Errorf("pending_operations is not marked untrusted:\n%s", first)
 	}
 }
+
+// «Риск», conclusion 88 (FB180-1, a): a file of .evo/intents that is not a
+// record of evo's form is neither read nor removed — and not hidden either:
+// doctor names it, a warning, so a planted one is seen.
+func TestDoctor_NamesAForeignRecord(t *testing.T) {
+	r, dir := targetRegistry(t, &disksCloud{})
+	if err := os.MkdirAll(intent.Dir(dir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	planted := filepath.Join(intent.Dir(dir), "0123456789abcdef.json")
+	if err := os.WriteFile(planted, []byte(`{"id":"../state","tool":"vm_create"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
+	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
+	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
+	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
+	var ans struct {
+		Checks []DoctorCheck `json:"checks"`
+	}
+	_ = json.Unmarshal([]byte(text), &ans)
+	found := false
+	for _, c := range ans.Checks {
+		if c.Name == "foreign intent record" && c.Status == CheckWarn && strings.Contains(c.Detail, strconv.Quote(planted)) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("doctor does not name the foreign record:\n%s", text)
+	}
+	if _, err := os.Stat(planted); err != nil {
+		t.Errorf("doctor removed the foreign record: %v", err)
+	}
+}
