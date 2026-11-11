@@ -16,7 +16,8 @@ import (
 
 // listFilters are the filters every list takes (brief list-filters.md,
 // release plan 1.8.2): one vocabulary on both surfaces, named as the field
-// of the item in the answer. A list here takes each of them as an argument
+// of the item in the answer — state or status, as the item carries it
+// (checked against the handlers on main, 11.11). A list here takes each of them as an argument
 // of its schema; a list not here declares its filters or why it has none
 // (the class invariant, once the registry declares them).
 var listFilters = map[string][]string{
@@ -25,24 +26,32 @@ var listFilters = map[string][]string{
 	"list_floating_ips":    {"zone", "state", "name", "free"},
 	"list_subnets":         {"zone", "state", "name", "vpc_id"},
 	"list_security_groups": {"zone", "name"},
-	"snat_list":            {"zone", "state", "name"},
+	"snat_list":            {"zone", "status", "name"},
 	"list_flavors":         {"zone", "name", "cpu", "ram", "gpu", "spot"},
 	"image_list":           {"query", "type", "zone", "all"},
 	"vpc_list":             {"name"},
 	"dns_zones":            {"name", "domain"},
 	"dns_records":          {"zone_id", "type", "name"},
-	"k8s_list":             {"state", "name"},
-	"k8s_nodepools":        {"cluster_id", "state", "name"},
-	"pg_list":              {"state", "name"},
-	"kafka_list":           {"state", "name"},
-	"redis_list":           {"state", "name"},
+	"k8s_list":             {"status", "name"},
+	"k8s_nodepools":        {"cluster_id", "status", "name"},
+	"pg_list":              {"status", "name"},
+	"kafka_list":           {"status", "name"},
+	"redis_list":           {"status", "name"},
 	"lb_list":              {"status", "name", "vpc_id"},
 	"tg_list":              {"status", "name", "vpc_id"},
-	"ar_list":              {"state", "name", "type"},
-	"ca_list":              {"state", "name"},
+	"ar_list":              {"status", "name", "type"},
+	"ca_list":              {"name"}, // status: no enum in the spec — the reason is in the registry's declaration
 	"secret_list":          {"name"},
 	"cert_list":            {"name", "type", "dns_name", "common_name", "state"},
 	"s3_buckets":           {"name"},
+}
+
+// ownStateValues are the state or status filters a list had before 1.8.2
+// whose value goes to the API as is: an enum would turn the API's answer to
+// a wrong value into USAGE, exit 1 — a breaking change the brief keeps out
+// ("у cert_list прежнее остаётся"). Only shrinks.
+var ownStateValues = map[string]string{
+	"cert_list": "state: the API constants CERTIFICATE_STATE_*, passed as is since 1.6; an enum is a breaking change",
 }
 
 // Every list of the brief takes its filters as arguments of its schema,
@@ -68,7 +77,7 @@ func TestListFilters_EveryListTakesItsFilters(t *testing.T) {
 				bad = append(bad, name+": no filter "+f)
 				continue
 			}
-			if f == "state" || f == "status" {
+			if (f == "state" || f == "status") && ownStateValues[name] == "" {
 				if vals, _ := p["enum"].([]any); len(vals) == 0 {
 					bad = append(bad, name+": filter "+f+" declares no values (enum): an unknown value would be an empty list, not USAGE")
 				}
