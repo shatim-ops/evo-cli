@@ -22,7 +22,8 @@ import (
 // name any file: an intent with id "../state" removed .evo/state.json
 // (full audit 1.8, FB180-1). The path of each removal is evo's own (made
 // here, a random name, a temporary file) or checked against the form evo
-// makes before it is joined; the list only shrinks.
+// makes before it is joined. Not a list of misses: each line is a removal
+// whose path is evo's own, declared with why; a new one is a new line.
 var removals = map[string]directWrite{
 	"internal/auth/cache.go\tFileCache.Delete":             {1, "the token cache's own path, set by evo from the configuration directory"},
 	"internal/cli/login.go\twritableConfigDir":             {1, "the probe file os.CreateTemp made in this call"},
