@@ -5,8 +5,10 @@
 package cli
 
 import (
+	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/tools"
@@ -39,5 +41,38 @@ func TestDefaultToolsets_HoldTheToolsToCallFirst(t *testing.T) {
 		if want[tl.Name] && !slices.Contains(defaultToolsets, tl.Group) {
 			t.Errorf("%s (group %s) is to be called first, but evo agent setup does not give its group by default (%v)", tl.Name, tl.Group, defaultToolsets)
 		}
+	}
+}
+
+// «Риск», conclusion 87 to D2-W, way (б): the entry a released evo wrote
+// with its default groups is evo's own, as the rules are (generated): a
+// repeated evo agent setup without --toolsets replaces it after the diff and
+// the consent, with exit 0, as before the default changed. An entry a
+// person edited is still theirs (a conflict without --force), and the old
+// groups asked for by name are kept («nothing changed»).
+func TestAgentSetup_ReleasedDefaultEntryIsEvos(t *testing.T) {
+	released := `{"mcpServers": {"evo": {"command": "evo", "args": ["mcp", "--toolsets", "deploy,vm,vpc,disk,image"]}}}`
+	for _, c := range []struct {
+		name, file string
+		args       []string
+		code       int
+		want       string // in the file after the call, or in the output
+	}{
+		{"the entry of 1.7.2: replaced", released, nil, 0, "deploy,vm,vpc,disk,image,auth"},
+		{"the entry of 1.7.2 a person edited: a conflict",
+			`{"mcpServers": {"evo": {"command": "evo", "args": ["mcp", "--toolsets", "deploy,vm"]}}}`, nil, 1, `"deploy,vm"`},
+		{"the old groups by name: nothing changed", released, []string{"--toolsets", "deploy,vm,vpc,disk,image"}, 0, "nothing changed"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			setupAgent(t)
+			cl := mustClient(t, "claude-code")
+			path := clientPath(t, cl, cl.defaultScope())
+			putFile(t, path, []byte(c.file), 0o600)
+			code, stdout, stderr := runCLI(t, "", append([]string{"agent", "setup", "--client", "claude-code", "--yes"}, c.args...)...)
+			data, _ := os.ReadFile(path)
+			if code != c.code || !strings.Contains(string(data)+stdout+stderr, c.want) {
+				t.Errorf("exit %d (want %d), no %q:\n%s\n%s%s", code, c.code, c.want, data, stdout, stderr)
+			}
+		})
 	}
 }
