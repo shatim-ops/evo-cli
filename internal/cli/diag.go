@@ -67,6 +67,22 @@ func newDiagSwitchCmd(on bool) *cobra.Command {
 	}
 }
 
+// exportError is the error of an export of journal s: an empty journal
+// says how to fill it — on right after 'evo diag on' it has nothing yet
+// (F23, agent runs of Grok on 1.6.0).
+func exportError(s journal.Summary, err error) error {
+	if !errors.Is(err, journal.ErrEmpty) {
+		return err
+	}
+	hint := i18n.T("Turn it on with 'evo diag on' and work as usual.", "Включите его: 'evo diag on', и работайте как обычно.")
+	if s.Enabled {
+		hint = i18n.T("The journal is on and records the calls from now on: work as usual, then export.",
+			"Журнал включён и записывает вызовы с этого момента: работайте как обычно, затем выгрузите.")
+	}
+	return clerrors.New(clerrors.CodeNotFound,
+		i18n.Tf("the session journal is empty (%s)", "журнал сессии пуст (%s)", s.Path), hint)
+}
+
 func newDiagStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
@@ -129,20 +145,24 @@ and sizes, no values.`,
 					i18n.Tf("%s already exists", "%s уже существует", out),
 					i18n.T("Pick another --out.", "Укажите другой --out."))
 			}
-			s, err := journal.Export(out)
-			if errors.Is(err, journal.ErrEmpty) {
-				// The hint follows the journal's state: on right after 'evo
-				// diag on' it has nothing yet (F23, agent runs of Grok on 1.6.0).
-				hint := i18n.T("Turn it on with 'evo diag on' and work as usual.", "Включите его: 'evo diag on', и работайте как обычно.")
-				if s.Enabled {
-					hint = i18n.T("The journal is on and records the calls from now on: work as usual, then export.",
-						"Журнал включён и записывает вызовы с этого момента: работайте как обычно, затем выгрузите.")
+			if flagDryRun {
+				// What the export would copy, read only (FB180-6): no
+				// journal is refused as the export refuses it.
+				s, err := journal.Describe()
+				if _, serr := os.Lstat(s.Path); err == nil && errors.Is(serr, os.ErrNotExist) {
+					err = journal.ErrEmpty
 				}
-				return clerrors.New(clerrors.CodeNotFound,
-					i18n.Tf("the session journal is empty (%s)", "журнал сессии пуст (%s)", s.Path), hint)
+				if err != nil {
+					return exportError(s, err)
+				}
+				abs, _ := filepath.Abs(out)
+				dryRunWrite(cmd.Context(), confirm.Preview{Action: "diag export",
+					Summary: i18n.Tf("copy the session journal to %s: %d records, %d sessions", "скопировать журнал сессии в %s: %d записей, %d сессий", abs, s.Records, s.Sessions)})
+				return nil
 			}
+			s, err := journal.Export(out)
 			if err != nil {
-				return err
+				return exportError(s, err)
 			}
 			printer := output.New(flagJSON, flagNoColor)
 			abs, _ := filepath.Abs(out)
