@@ -34,6 +34,10 @@ SSH_PORT=${SSH_PORT:-22}
 # Порт правила в группе и метки строки: 22, или порт приложения (область mcp
 # cloud-live.sh, тот же разбор для 8086).
 RULE_PORT=${RULE_PORT:-22}
+# Порты — только числа: другое значение — 22, а не ошибка jq или чужой
+# путь в /dev/tcp (Qwen на #1270).
+[[ $SSH_PORT =~ ^[0-9]{1,5}$ ]] || SSH_PORT=22
+[[ $RULE_PORT =~ ^[0-9]{1,5}$ ]] || RULE_PORT=22
 
 state='?' addr='?' iface='?' fip='?' rule='?' port='?'
 if v=$(evo tools call vm_get --arg vm_id="$vm" --json 2>/dev/null); then
