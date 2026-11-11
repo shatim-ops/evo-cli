@@ -31,6 +31,28 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
+// OutcomeUnknown tells a failed write whose outcome the cloud did not
+// say, so its intent stays: the call was cut (INTERRUPTED), did not reach
+// the cloud's answer (API_UNREACHABLE: a transport break after the request
+// may have gone), failed in the API (API_ERROR: a 5xx may follow a done
+// write) or without a code. A refusal with a code (USAGE, NOT_FOUND,
+// AUTH_*, API_RATE_LIMITED…) says it, and so does an answer with a 4xx
+// status, when the caller knows it: the API refused the request. status is
+// the HTTP status of the answer, 0 when unknown — a tool's answer gives its
+// reason only, and 4xx and 5xx do not part in it. One rule for the tools
+// and for evo login («Риск», conclusion 46, condition 1; audit Fable 1.8,
+// FB180-3).
+func OutcomeUnknown(reason string, status int) bool {
+	if status >= 400 && status < 500 {
+		return false
+	}
+	switch reason {
+	case clierrors.ReasonInterrupted, clierrors.CodeAPIUnreachable, clierrors.CodeAPIError, clierrors.ReasonGeneral:
+		return true
+	}
+	return false
+}
+
 // Intent is one call that went to the cloud and has not answered yet.
 type Intent struct {
 	ID   string   `json:"id"`

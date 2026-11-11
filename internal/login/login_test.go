@@ -228,11 +228,17 @@ func login(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previ
 	r.saved, r.auds = st.saved, st.auds
 	r.res, r.err, r.out = res, err, out.String()
 	<-b.ended
-	// A login alive to its answer leaves no intent of its key, whatever
-	// the answer: saved, refused or undone (findings ledger 1.8, № 37;
-	// the killed one: TestLogin_KilledAfterTheKeyIsNamed).
-	if left := intent.Pending(cfg.IntentDir); len(left) != 0 {
+	// A login alive to its answer leaves no intent of its key when it
+	// knows the outcome: saved, refused or undone (findings ledger 1.8,
+	// № 37; the killed one: TestLogin_KilledAfterTheKeyIsNamed). One whose
+	// issue of the key failed with no known outcome (a 5xx, a lost answer)
+	// says so and leaves exactly that intent (FB180-3).
+	left := intent.Pending(cfg.IntentDir)
+	switch unknown := keyOutcomeUnknownSaid(err); {
+	case !unknown && len(left) != 0:
 		t.Errorf("the login answered and left an intent: %+v", left)
+	case unknown && len(left) != 1:
+		t.Errorf("the login says the key may be in the cloud, and left %d intents, want 1: %+v", len(left), left)
 	}
 	// Nothing of the person's or the key's secrets in the answer, the
 	// terminal or the pages (contract, invariant 4); the secret of the new
@@ -1138,4 +1144,10 @@ func TestLogin_GrantOnlyFromThePageOrigin(t *testing.T) {
 		b.status[3] != http.StatusForbidden || b.status[4] != http.StatusOK {
 		t.Errorf("statuses %v, want 200, 403 ×3, 200", b.status)
 	}
+}
+
+// keyOutcomeUnknownSaid: err says the issue of the key has no known
+// outcome (eKeyOutcomeUnknown), not that Cloud.ru issued none.
+func keyOutcomeUnknownSaid(err error) bool {
+	return err != nil && strings.Contains(err.Error(), strings.TrimSuffix(eKeyOutcomeUnknown(""), " ()"))
 }
