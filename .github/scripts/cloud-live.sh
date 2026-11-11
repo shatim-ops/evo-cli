@@ -1795,7 +1795,7 @@ area_mcp() {
 		cov deploy
 		ip=${ip:-$(evo tools call vm_get --arg vm_id="$vid" --json | jq -r '.public_ip // empty')}
 		mask "$ip"
-		if poll 300 10 sh -c "curl -fsS --max-time 10 'http://$ip:$MCP_PORT/' | grep -qi nginx"; then ok "stdio deploy" "HTTP $MCP_PORT: nginx"; else bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин"; fi
+		if poll 300 10 sh -c "curl -fsS --max-time 10 'http://$ip:$MCP_PORT/' | grep -qi nginx"; then ok "stdio deploy" "HTTP $MCP_PORT: nginx"; else bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин; проба evo в ответе deploy: $(j -r '.log // ""' | grep -E ':[0-9]+ -> ' | redact | tr '\n' ' ' | cut -c1-200)"; fi
 		[ "$(lst vm "$vm" | wc -l)" = 1 ] && ok "deploy после deploy_apply" "та же ВМ, второй нет" || bad "deploy после deploy_apply" "ВМ с именем $vm: $(lst vm "$vm" | wc -l); всего ВМ $prefix*: $(lst vm "$prefix" | wc -l)"
 	else bad "stdio deploy" "status $(j -r '.status // "-"'), $(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"; fi
 	bound_check vm_get "$(jq -cn --arg v "$vid" '{vm_id: $v}')" "allow-project: vm_get" own
