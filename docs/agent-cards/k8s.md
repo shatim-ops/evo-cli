@@ -11,7 +11,7 @@
 | `k8s_options` | `evo k8s options` | reads |  |
 | `k8s_plan` | `evo k8s plan` | reads |  |
 | `k8s_create` | `evo k8s create` | creates: id in `cluster_id`; found with `k8s_list`; deleted with `k8s_delete` |  |
-| `k8s_kubeconfig` | `evo k8s kubeconfig` | reads | `cluster_id` ← `k8s_list` |
+| `k8s_kubeconfig` | `evo k8s kubeconfig` | returns a kubeconfig; mints a token of the cluster | `cluster_id` ← `k8s_list` |
 | `k8s_delete` | `evo k8s delete` | deletes; a repeat answers `already_deleted` | `cluster_id` ← `k8s_list` |
 | `k8s_nodepools` | `evo k8s nodepools` | reads | `cluster_id` ← `k8s_list` |
 | `k8s_add_nodepool` | `evo k8s add-nodepool` | creates: id in `nodepool_id`; found with `k8s_nodepools` | `cluster_id` ← `k8s_list`, `security_group_id` ← `list_security_groups` |

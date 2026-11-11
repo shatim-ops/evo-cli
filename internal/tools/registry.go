@@ -585,14 +585,17 @@ func IsSensitive(t Tool) bool { return sensitiveTools[t.Name] }
 // create resources — and k8s_kubeconfig mints a token of the cluster. They
 // are not marked readOnlyHint: a client that approves reads by itself
 // would run them unseen.
-var sideEffectTools = map[string]bool{
-	"k8s_kubeconfig": true,
-	"stack_status":   true,
+// The value is what the effect is: the group card says it (cardDoes), and
+// 'tools list/describe' mark the tool side_effects — one decision point for
+// MCP, the card and the catalog (external review 11.11).
+var sideEffectTools = map[string]string{
+	"k8s_kubeconfig": "returns a kubeconfig; mints a token of the cluster",
+	"stack_status":   "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it",
 }
 
 // HasSideEffects reports whether a tool that takes no consent is not a
 // read (sideEffectTools).
-func HasSideEffects(t Tool) bool { return sideEffectTools[t.Name] }
+func HasSideEffects(t Tool) bool { return sideEffectTools[t.Name] != "" }
 
 // destructiveTools are the mutating tools, besides *_delete, that may delete
 // or overwrite data: they get destructiveHint in MCP, so a client asks the

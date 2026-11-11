@@ -8,5 +8,5 @@
 |---|---|---|---|
 | `stack_plan` | `evo stack plan` | reads |  |
 | `stack_apply` | `evo stack apply` | changes |  |
-| `stack_status` | `evo stack status` | reads |  |
+| `stack_status` | `evo stack status` | advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it |  |
 | `stack_destroy` | `evo stack destroy` | changes |  |

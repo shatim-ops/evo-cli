@@ -89,9 +89,12 @@ advance, --dry-run to see the preview only; without a terminal and without
 
 // toolInfo is the JSON form of a tool in 'tools list' and 'tools describe'.
 type toolInfo struct {
-	Name        string         `json:"name"`
-	Group       string         `json:"group"`
-	Mutating    bool           `json:"mutating"`
+	Name     string `json:"name"`
+	Group    string `json:"group"`
+	Mutating bool   `json:"mutating"`
+	// SideEffects: not a read although it takes no consent
+	// (tools.HasSideEffects: stack_status advances the stack).
+	SideEffects bool           `json:"side_effects,omitempty"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema,omitempty"`
 	// line is the 'tools list' table's description (toolSummary); not
@@ -117,8 +120,8 @@ func newToolsListCmd() *cobra.Command {
 				if group != "" && t.Group != group {
 					continue
 				}
-				list = append(list, toolInfo{Name: t.Name, Group: t.Group, Mutating: t.Mutating, Description: t.Description,
-					line: toolSummary(t)})
+				list = append(list, toolInfo{Name: t.Name, Group: t.Group, Mutating: t.Mutating, SideEffects: tools.HasSideEffects(t),
+					Description: t.Description, line: toolSummary(t)})
 			}
 			// Registration order scatters a group over the list; by group,
 			// then by name, a group reads as one block.
@@ -133,7 +136,11 @@ func newToolsListCmd() *cobra.Command {
 			}
 			rows := make([][]string, len(list))
 			for i, t := range list {
-				rows[i] = []string{t.Name, t.Group, yesNo(t.Mutating), t.line}
+				mut := yesNo(t.Mutating)
+				if t.SideEffects {
+					mut = i18n.T("side effects", "побочно")
+				}
+				rows[i] = []string{t.Name, t.Group, mut, t.line}
 			}
 			p.Table([]string{i18n.T("NAME", "ИМЯ"), i18n.T("GROUP", "ГРУППА"), i18n.T("MUTATING", "МЕНЯЕТ"),
 				i18n.T("DESCRIPTION", "ОПИСАНИЕ")}, rows)
@@ -220,7 +227,7 @@ func newToolsDescribeCmd() *cobra.Command {
 			}
 			p := cmdPrinter(cmd)
 			if p.IsJSON() {
-				return p.JSON(toolInfo{Name: t.Name, Group: t.Group, Mutating: t.Mutating,
+				return p.JSON(toolInfo{Name: t.Name, Group: t.Group, Mutating: t.Mutating, SideEffects: tools.HasSideEffects(t),
 					Description: t.Description, InputSchema: t.InputSchema})
 			}
 			w := cmd.OutOrStdout()
@@ -229,6 +236,8 @@ func newToolsDescribeCmd() *cobra.Command {
 				fmt.Fprint(w, i18n.T(", mutating: asks for confirmation", ", меняет ресурсы: спрашивает подтверждение"))
 			} else if tools.IsSensitive(t) {
 				fmt.Fprint(w, i18n.T(", reveals a secret: asks for confirmation", ", показывает секрет: спрашивает подтверждение"))
+			} else if tools.HasSideEffects(t) {
+				fmt.Fprint(w, i18n.T(", side effects without confirmation", ", побочные эффекты без подтверждения"))
 			}
 			fmt.Fprintf(w, ")\n\n%s\n\n", toolDescription(t))
 			params := schemaParams(t)
