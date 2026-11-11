@@ -110,27 +110,47 @@ func TestDoctor_RefusedExchangeHasWhoamisReason(t *testing.T) {
 	}
 }
 
-// hintedRevoked is forgetToken whose exchange after Forget is refused with
-// IAM's own hint, as auth.IAMProvider refuses a rejected key.
-type hintedRevoked struct{ forgetToken }
+// refusalHint is the hint IAM's refusal of the key carries at the exchange
+// (auth: the way to a new key and where the key came from).
+const refusalHint = "Issue a new key: evo login. The key comes from CLOUDRU_KEY_ID / CLOUDRU_SECRET or the profile."
 
-func (t *hintedRevoked) Token(ctx context.Context) (auth.Token, error) {
-	if len(t.forgotten) > 0 {
-		return auth.Token{}, clierrors.New(clierrors.CodeAuthFailed, "IAM: invalid key", "the hint of IAM's refusal")
+// revokedWithHint is a cached token whose key IAM refuses once the cache
+// is dropped (revokedKey): the exchange's refusal with refusalHint.
+type revokedWithHint struct {
+	subToken
+	forgot bool
+}
+
+func (t *revokedWithHint) Token(ctx context.Context) (auth.Token, error) {
+	if t.forgot {
+		return auth.Token{}, clierrors.New(clierrors.CodeAuthFailed, "IAM: invalid key", refusalHint)
 	}
 	return t.subToken.Token(ctx)
 }
-func (t *hintedRevoked) Forget(v string) { t.forgotten = append(t.forgotten, v) }
+func (t *revokedWithHint) Forget(string) { t.forgot = true }
 
-// D94, addition 2 (Grok K2 on c1748626, 2 of 2): with the token cached and
-// the key revoked, doctor's hint was RefusedKeyHint alone, whoami's the
-// full hint of IAM's refusal. revokedKey keeps the refusal's own hint.
-func TestDoctor_RevokedWithCacheKeepsTheRefusalsHint(t *testing.T) {
+// FB180-4, addition 2 (Grok, К2 on c1748626, 2 of 2): the key revoked, its
+// token cached — doctor and whoami gave AUTH_FAILED, but the hint was
+// revokedKey's short one, while the same key with no cache got the
+// refusal's whole hint (the way to a new key and where the key came from).
+// Grok saw it as doctor against whoami: doctor ran first and dropped the
+// cache. One state of the key, one hint: with the cache or without, on
+// doctor and on whoami — the refusal's own.
+func TestDoctor_CachedRevokedKeyHasTheRefusalsHint(t *testing.T) {
 	at(t, "2026-11-05T12:00:00Z")
-	notListed := `[{"id":"ak-0","keyId":"OTHER","expiredAt":"2026-12-01T00:00:00Z"}]`
-	r := rolesRegistry(t, &rolesWorld{perms: `[]`, keys: notListed}, rolesProject, &hintedRevoked{forgetToken{subToken: subToken{"sa-1"}}})
+	world := &rolesWorld{perms: `[]`, keys: `[{"id":"ak-0","keyId":"OTHER","expiredAt":"2026-12-01T00:00:00Z"}]`}
+	text, isErr := rolesRegistry(t, world, rolesProject, &revokedWithHint{subToken: subToken{"sa-1"}}).handlers["whoami"](context.Background(), map[string]any{})
+	var w struct{ Reason, Hint string }
+	if err := json.Unmarshal([]byte(text), &w); err != nil || !isErr || w.Reason != clierrors.CodeAuthFailed || !strings.Contains(w.Hint, refusalHint) {
+		t.Errorf("whoami on a revoked key with its token cached: reason %s, hint %q — want AUTH_FAILED with the refusal's hint %q", w.Reason, w.Hint, refusalHint)
+	}
 	var ce *clierrors.CLIError
-	if !errors.As(doctorVerdict(r.doctorChecks(context.Background(), false)), &ce) || ce.Hint != "the hint of IAM's refusal" {
-		t.Errorf("doctor's hint %v — want the refusal's own", ce)
+	verdict := doctorVerdict(rolesRegistry(t, world, rolesProject, &revokedWithHint{subToken: subToken{"sa-1"}}).doctorChecks(context.Background(), false))
+	if !errors.As(verdict, &ce) || ce.Code != clierrors.CodeAuthFailed || ce.Hint != w.Hint {
+		var hint string
+		if ce != nil {
+			hint = ce.Hint
+		}
+		t.Errorf("doctor %v, hint %q; whoami hint %q — want one hint", verdict, hint, w.Hint)
 	}
 }
