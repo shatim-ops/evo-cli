@@ -625,7 +625,7 @@ func TestWorkflows_WindowsGCProbe(t *testing.T) {
 		t.Errorf("weekly-race: gc-probe permissions %v, want contents: read only", j.Permissions)
 	}
 	axes := map[string][]string{
-		"go": {"1.26.10", "1.27.x", "tip"},
+		"go": {"1.26.11", "1.27.x", "tip"},
 		"gc": {"greenteagc", "nogreenteagc"},
 	}
 	for axis, want := range axes {
