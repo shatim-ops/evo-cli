@@ -33,6 +33,11 @@ type DeploymentRecord struct {
 	FlavorName  string `json:"flavor_name,omitempty"`
 	Status      string `json:"status"` // creating, provisioned, deploying, running, error, ssh_timeout, ssh_auth_failed, ssh_host_key_changed, docker_failed, upload_failed, compose_failed, destroying, destroyed
 	ComposeHash string `json:"compose_hash"`
+	// DeployedHash is the hash of the compose file whose 'docker compose
+	// up' finished on the VM, written with "running" after it. ComposeHash
+	// is written before SSH, so a deploy cut on the way leaves it ahead of
+	// the VM (cloud-e2e 194, 1.8.1). Empty in records from before 1.8.1.
+	DeployedHash string `json:"deployed_hash,omitempty"`
 	// Source is what made the record: "provision" for a VM of evo vm
 	// create, which deploy does not update (D62); "deploy_apply" for a VM
 	// of a deploy plan (D82, from 1.8); empty for deploy, and for

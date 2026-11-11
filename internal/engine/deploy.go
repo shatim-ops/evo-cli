@@ -112,9 +112,10 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 				"Обновите его с --project-id %s; чтобы развернуть в новом проекте, спросите человека, удалить ли его сначала ('evo destroy').", existing.ProjectID))
 	}
 
-	// Skip only a deployment that finished: after an SSH or Docker failure the
-	// hash is already recorded, and a plain re-run must retry.
-	if !isNewDeploy && existing.ComposeHash == project.Hash && existing.Status == "running" && !opts.Force {
+	// Skip only a deployment that finished with this file (UpToDate): after
+	// an SSH or Docker failure, or a deploy cut before compose up, the hash
+	// is already recorded, and a plain re-run must retry.
+	if !isNewDeploy && existing.UpToDate(project.Hash) && !opts.Force {
 		if e.Printer.IsJSON() {
 			return e.Printer.JSON(map[string]any{"status": "unchanged", "vm_id": existing.VMID, "vm_ip": existing.VMIP})
 		}
@@ -453,8 +454,8 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 	e.Printer.StepDone(i18n.T("Application deployed", "Приложение развёрнуто"))
 
-	// Update state to running.
-	rec.Status = "running"
+	// Update state to running: compose up finished with this file.
+	rec.Status, rec.DeployedHash = "running", project.Hash
 	rec.UpdatedAt = time.Now()
 	stateFile.UpsertDeployment(rec)
 	if err := state.Write(statePath, stateFile); err != nil {
@@ -548,7 +549,7 @@ func (e *Engine) DeployUpdateOf(force bool) *DeployUpdate {
 		// As Deploy skips it: a record of another project is refused
 		// before, so it is not "unchanged".
 		otherProject := existing.ProjectID != "" && e.Config.ProjectID != "" && existing.ProjectID != e.Config.ProjectID
-		u.Unchanged = !changed && existing.Status == "running" && !force && !otherProject
+		u.Unchanged = existing.UpToDate(project.Hash) && !force && !otherProject
 	}
 	return u
 }
