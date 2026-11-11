@@ -121,3 +121,9 @@ release:
   name_template: "evo CMCP {{ .Tag }}"
   # v1.0.0-rc.1 и подобные помечаются как pre-release.
   prerelease: auto
+  # Анонс выпуска — над списком коммитов, из файла в репозитории
+  # docs/release-notes/<тег>.md (решение владельца 11.11): известные
+  # ограничения и миграцию пишет релиз до тега, а не руками на GitHub.
+  # readFile отдаёт пустую строку, если файла нет: выпуск без анонса идёт,
+  # как раньше, и --snapshot без файла не падает (TestRelease_HeaderFromFile).
+  header: '{{ readFile (printf "docs/release-notes/%s.md" .Tag) }}'
