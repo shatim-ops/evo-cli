@@ -24,7 +24,7 @@ Registry и Container Apps — и развёртывает `docker-compose`-пр
 [Issues](https://github.com/shatim-ops/evo-cli/issues/new/choose); уязвимость —
 не в Issues, а приватным отчётом: [SECURITY.md](SECURITY.md).
 
-## Что сейчас можно (v1.8.0, 11.11.2026)
+## Что сейчас можно (v1.8.1, 11.11.2026)
 
 **Ресурсы облака.** ВМ, диски, образы и маркетплейс; VPC, подсети, группы
 безопасности и порты, floating IP, балансировщики и группы целей, SNAT-шлюзы,
