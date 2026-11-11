@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
@@ -529,31 +528,23 @@ func userKeyNames(keys []string) []any {
 	return out
 }
 
-// printable drops the control characters of a text the keys file gave: it
-// may have come with a repository someone else wrote, and goes to the
-// person's terminal.
-func printable(s string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, s)
-}
-
 // keyName is an authorized_keys entry in words: type, SHA256 fingerprint,
-// comment and options (command="…" runs instead of the login shell).
+// comment and options (command="…" runs instead of the login shell). The
+// comment and the options are text of .evo/user_authorized_keys, which may
+// have come with a repository someone else wrote: quoted as data, as text
+// from the cloud is (quoteCloud; «Риск», conclusion 92). An entry that does
+// not parse is quoted whole.
 func keyName(entry string) string {
 	pub, comment, options, _, err := ssh.ParseAuthorizedKey([]byte(entry))
 	if err != nil {
-		return printable(entry)
+		return quoteCloud(entry)
 	}
 	parts := []string{pub.Type(), ssh.FingerprintSHA256(pub)}
 	if comment != "" {
-		parts = append(parts, printable(comment))
+		parts = append(parts, quoteCloud(comment))
 	}
 	if len(options) > 0 {
-		parts = append(parts, "["+printable(strings.Join(options, ","))+"]")
+		parts = append(parts, "options "+quoteCloud(strings.Join(options, ",")))
 	}
 	return strings.Join(parts, " ")
 }

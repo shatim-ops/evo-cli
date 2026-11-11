@@ -339,8 +339,9 @@ var (
 	fipName  = regexp.MustCompile(`fip-[0-9a-z.-]+`)
 	planName = regexp.MustCompile(`-\d{8}-\d{4}\b`)
 	latency  = regexp.MustCompile(`reachable \(\d+(\.\d)?m?s\)`)
-	// deployKey: the preview of deploy_apply (FB180-7).
-	deployKey = regexp.MustCompile(`SHA256:[A-Za-z0-9+/]+( \((the agent's deploy key of evo|ключ развёртывания evo для агента)\))`)
+	// deployKey: the preview of deploy_apply (FB180-7); its comment is
+	// quoted, and the quotes escaped once more inside a JSON string.
+	deployKey = regexp.MustCompile(`SHA256:[A-Za-z0-9+/]+(( \\?"[^"\\]*\\?")? \((the agent's deploy key of evo|ключ развёртывания evo для агента)\))`)
 )
 
 // sameVolatile reads the ids and the times each call makes anew as one.
