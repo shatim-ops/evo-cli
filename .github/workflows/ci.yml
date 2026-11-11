@@ -137,6 +137,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/e2e_port_rule_test.sh
 
+      # Проба фильтров списков 1.8.2 в api-probe (list_filter_probe.sh):
+      # вердикты same / ignored / diff и ни одного id в выводе, на заглушке curl.
+      - name: проба фильтров списков в api-probe
+        if: runner.os == 'Linux'
+        run: .github/scripts/list_filter_probe_test.sh
+
       # Форматирование от ОС не зависит — проверяем один раз. gofmt молча
       # ничего не возвращает, поэтому непустой вывод и есть провал.
       - name: gofmt
