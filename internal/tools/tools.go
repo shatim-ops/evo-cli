@@ -1404,7 +1404,7 @@ func (s *Registry) registerTools() {
 		"fip_attach":           s.gated("fip_attach", s.planFipAttach),
 		"image_delete":         s.gated("image_delete", s.planImageDelete),
 		"deploy_plan":          s.handleDeployPlan,
-		"deploy_apply":         s.handleDeployApply,
+		"deploy_apply":         s.gated("deploy_apply", s.planDeployApply),
 		"list_flavors":         s.handleListFlavors,
 		"list_disk_types":      s.handleListDiskTypes,
 		"list_subnets":         s.handleListSubnets,

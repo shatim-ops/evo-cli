@@ -194,7 +194,8 @@ func validPlanID(id string) bool {
 	return err == nil
 }
 
-// Load reads a plan by id, enforcing the TTL. It only reads: deploy_apply
+// Load reads a plan by id, enforcing the TTL; a plan without one is
+// expired. It only reads: deploy_apply
 // loads the plan for its preview before consent (B12-8), and a read-only
 // server reads a base_plan_id, so no directory is made here.
 func Load(stateDir, planID string) (*Plan, error) {
@@ -209,7 +210,14 @@ func Load(stateDir, planID string) (*Plan, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return nil, fmt.Errorf(i18n.T("plan %q is corrupt: %w", "план %q повреждён: %w"), planID, err)
 	}
-	if !p.ExpiresAt.IsZero() && time.Now().After(p.ExpiresAt) {
+	// deploy_plan sets expires_at on every plan it saves: a plan without it
+	// came from elsewhere (a repository with .evo/ in it) and is refused as
+	// expired (audit Fable 1.8, FB180-7).
+	if p.ExpiresAt.IsZero() {
+		return nil, fmt.Errorf(i18n.T("plan %q has no expires_at: deploy_plan did not make it; run deploy_plan again",
+			"у плана %q нет expires_at: его составил не deploy_plan; снова выполните deploy_plan"), planID)
+	}
+	if time.Now().After(p.ExpiresAt) {
 		return nil, fmt.Errorf("plan %q expired at %s; run deploy_plan again", planID, p.ExpiresAt.Format(time.RFC3339))
 	}
 	return &p, nil
