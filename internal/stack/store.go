@@ -223,6 +223,40 @@ type Job struct {
 	Deleting []string `json:"deleting,omitempty"`
 }
 
+// Teardown states of a job. StatusDeleting: a stack_destroy deleted what
+// it could and the cloud is still deleting the steps in Deleting; the job
+// holds resources until a destroy finds them gone. StatusDestroyed: all of
+// them are gone. Jobs saved by 1.8.0-rc.1 and earlier say destroyed with
+// Deleting not empty: that is StatusDeleting (D96).
+const (
+	StatusDeleting  = "deleting"
+	StatusDestroyed = "destroyed"
+)
+
+// TeardownStatus is the status a stack_destroy leaves: destroyed only when
+// nothing is still being deleted (axis 3 of CLAUDE.md §6).
+func TeardownStatus(deleting []string) string {
+	if len(deleting) > 0 {
+		return StatusDeleting
+	}
+	return StatusDestroyed
+}
+
+// DeletionsPending reports a teardown the cloud has not finished.
+func (j *Job) DeletionsPending() bool {
+	return j.Status == StatusDeleting || (j.Status == StatusDestroyed && len(j.Deleting) > 0)
+}
+
+// Destroyed reports a teardown that is finished: nothing of the job is left.
+func (j *Job) Destroyed() bool {
+	return j.Status == StatusDestroyed && len(j.Deleting) == 0
+}
+
+// TornDown reports a job stack_destroy has run on, finished or not.
+func (j *Job) TornDown() bool {
+	return j.Status == StatusDestroyed || j.Status == StatusDeleting || j.Status == "destroy_failed"
+}
+
 // --- Persistence ---
 
 // jobsDir is ~/.evo/stack-jobs. Without a home directory it is an error, not
@@ -275,7 +309,7 @@ func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 			continue
 		}
 		j, err := LoadJob(id)
-		if err != nil || j.Manifest.Name != name || j.Status == "destroyed" {
+		if err != nil || j.Manifest.Name != name || j.Destroyed() {
 			continue
 		}
 		var res []string
@@ -327,7 +361,9 @@ func SecretHolders(path, excludeID string) []string {
 			continue
 		}
 		j, err := LoadJob(id)
-		if err != nil || j.Status == "destroyed" {
+		// A secret is deleted at once: a job being torn down holds it no
+		// more (its deletion failed: destroy_failed).
+		if err != nil || j.Status == StatusDestroyed || j.Status == StatusDeleting {
 			continue
 		}
 		for i, sc := range j.Manifest.Secrets {
@@ -377,7 +413,7 @@ const redactedValue = "<redacted: not kept on disk after the step>"
 // and keys stay: stack_destroy deletes by them. Values of steps still to run
 // are kept, stack_apply needs them.
 func (j *Job) redactSpent() {
-	gone := j.Status == "destroyed" || j.Status == "destroy_failed"
+	gone := j.TornDown()
 	spent := func(key string) bool {
 		if gone {
 			return true

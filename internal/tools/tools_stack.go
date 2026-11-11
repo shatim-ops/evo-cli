@@ -1059,7 +1059,7 @@ func (s *Registry) appliableJob(id string) (*stack.Job, error) {
 	if err := s.checkJobProject(job); err != nil {
 		return nil, err
 	}
-	if job.Status == "destroyed" || job.Status == "destroy_failed" {
+	if job.TornDown() {
 		return nil, fmt.Errorf(i18n.T("job %s is %s: its resources were torn down; run stack_plan again for a new deploy", "задание %s в состоянии %s: его ресурсы удалены; для нового развёртывания снова выполните stack_plan"), id, job.Status)
 	}
 	return job, nil
@@ -1233,13 +1233,7 @@ var stackTeardown = []string{
 // such a step is looked up by name at destroy: a step that never ran owns
 // nothing, and a resource with its name belongs to someone else — deleting
 // it destroyed a foreign cluster (QA r3 R3).
-// finishedDestroy: an earlier stack_destroy deleted the job's resources and
-// left none of them still being deleted.
-func finishedDestroy(job *stack.Job) bool {
-	return job.Status == "destroyed" && len(job.Deleting) == 0
-}
-
-// alreadyDestroyed is the answer of stack_destroy for finishedDestroy.
+// alreadyDestroyed is the answer of stack_destroy for a job Destroyed.
 func alreadyDestroyed(id string) string {
 	return toJSON(map[string]any{"status": "already_destroyed", "job_id": id,
 		"note": i18n.T("The stack was destroyed earlier; its deletions were all finished.",
@@ -1265,13 +1259,13 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		}
 		// Its resources were deleted by an earlier stack_destroy and none
 		// was still being deleted: nothing to ask about (D26, G130-31; D41).
-		if finishedDestroy(job) {
+		if job.Destroyed() {
 			return alreadyDestroyed(id), false
 		}
 		// Deletions the cloud was still finishing: the question again, so
 		// that the CLI's --yes, which calls this preview first, gets to the
 		// confirmed call that re-checks them, as MCP does (cloud-e2e 1.3.1).
-		if job.Status == "destroyed" {
+		if job.DeletionsPending() {
 			res := make([]map[string]any, 0, len(job.Deleting))
 			for _, st := range job.Steps {
 				if slices.Contains(job.Deleting, st.Key) {
@@ -1323,7 +1317,7 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 	}
 	// confirmed=true answers as the preview: the CLI's --yes stops at the
 	// preview's already_destroyed, MCP gets here (TestParity_YesEqualsConfirmed).
-	if finishedDestroy(job) {
+	if job.Destroyed() {
 		return alreadyDestroyed(id), false
 	}
 	// Reconcile ids from the STEPS before teardown: a resource created but not yet
@@ -1376,7 +1370,7 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 			case "already_deleted":
 				deleted = append(deleted, label+" (already gone)")
 			case "deleting":
-				deleted = append(deleted, label)
+				// Not deleted yet: in deleting only (D96).
 				deleting = append(deleting, label)
 			default:
 				deleted = append(deleted, label)
@@ -1411,10 +1405,12 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 			del(st.Key, c.delete, dargs)
 		}
 	}
-	// A job with a failed deletion still holds resources: "destroyed" would
-	// hide it from the duplicate warning of stack_plan. Calling stack_destroy
-	// again retries; what is gone already counts as deleted.
-	job.Status, job.Deleting = "destroyed", deleting
+	// A job with a failed deletion, or one the cloud is still deleting,
+	// still holds resources: "destroyed" would hide it from the duplicate
+	// warning of stack_plan and read as gone (axis 3 of CLAUDE.md §6, D96).
+	// Calling stack_destroy again retries; what is gone already counts as
+	// deleted.
+	job.Status, job.Deleting = stack.TeardownStatus(deleting), deleting
 	if len(failed) > 0 {
 		job.Status = "destroy_failed"
 	}

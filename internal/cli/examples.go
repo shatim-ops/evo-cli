@@ -109,7 +109,7 @@ var commandExamples = map[string]string{
 	"evo dns record-delete": `  evo dns record-delete <record-id> --dry-run
   evo dns record-delete <record-id> --yes`,
 	"evo dns operation": `  evo dns operation <operation-id>
-  evo dns operation <operation-id> --wait-seconds 120`,
+  evo dns operation <operation-id> --wait-seconds 45`,
 
 	// cert
 	"evo cert list": `  evo cert list
@@ -130,7 +130,7 @@ var commandExamples = map[string]string{
 	"evo cert private-key": `  evo cert private-key <certificate-id>
   evo cert private-key <certificate-id> --version-id 2 --yes --json > key.json`,
 	"evo cert operation": `  evo cert operation <operation-id>
-  evo cert operation <operation-id> --wait-seconds 300`,
+  evo cert operation <operation-id> --wait-seconds 45`,
 
 	// lb, tg
 	"evo lb list": `  evo lb list
@@ -143,7 +143,7 @@ var commandExamples = map[string]string{
 	"evo lb delete": `  evo lb delete <lb-id> --dry-run
   evo lb delete <lb-id> --yes`,
 	"evo lb operation": `  evo lb operation <operation-id>
-  evo lb operation <operation-id> --wait-seconds 300`,
+  evo lb operation <operation-id> --wait-seconds 45`,
 	"evo tg list": `  evo tg list
   evo tg list --json | jq -r '.target_groups[] | "\(.id)\t\(.name)"'`,
 	"evo tg get": `  evo tg get <tg-id>`,
@@ -173,7 +173,7 @@ var commandExamples = map[string]string{
 	"evo kafka delete": `  evo kafka delete <cluster-id> --dry-run
   evo kafka delete <cluster-id> --yes`,
 	"evo kafka operation": `  evo kafka operation <operation-id>
-  evo kafka operation <operation-id> --wait-seconds 300`,
+  evo kafka operation <operation-id> --wait-seconds 45`,
 
 	// redis
 	"evo redis list": `  evo redis list
@@ -188,7 +188,7 @@ var commandExamples = map[string]string{
 	"evo redis delete": `  evo redis delete <cluster-id> --dry-run
   evo redis delete <cluster-id> --yes`,
 	"evo redis operation": `  evo redis operation <operation-id>
-  evo redis operation <operation-id> --wait-seconds 300`,
+  evo redis operation <operation-id> --wait-seconds 45`,
 
 	// ar
 	"evo ar list": `  evo ar list
@@ -199,7 +199,7 @@ var commandExamples = map[string]string{
 	"evo ar delete": `  evo ar delete <registry-id> --dry-run
   evo ar delete <registry-id> --yes`,
 	"evo ar operation": `  evo ar operation <operation-id>
-  evo ar operation <operation-id> --wait-seconds 120`,
+  evo ar operation <operation-id> --wait-seconds 45`,
 
 	// ca
 	"evo ca list": `  evo ca list
@@ -244,7 +244,7 @@ var commandExamples = map[string]string{
 	"evo stack apply": `  evo stack apply <job-id> --dry-run
   evo stack apply <job-id> --yes`,
 	"evo stack status": `  evo stack status <job-id>
-  evo stack status <job-id> --wait-seconds 240 --json`,
+  evo stack status <job-id> --wait-seconds 20 --json`,
 	"evo stack destroy": `  evo stack destroy <job-id> --dry-run
   evo stack destroy <job-id> --yes`,
 

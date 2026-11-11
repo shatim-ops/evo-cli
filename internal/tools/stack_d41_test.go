@@ -229,7 +229,7 @@ func TestStackDestroy_PendingDeletionsAreRechecked(t *testing.T) {
 		}
 		return m
 	}
-	if m := destroy(true); m["status"] != "destroyed" || fmt.Sprint(m["deleting"]) != "["+key+"]" {
+	if m := destroy(true); m["status"] != "deleting" || fmt.Sprint(m["deleting"]) != "["+key+"]" {
 		t.Fatalf("first destroy: %v", m)
 	}
 	m := destroy(false)

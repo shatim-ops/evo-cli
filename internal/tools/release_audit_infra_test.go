@@ -578,6 +578,7 @@ func TestStackPlan_VMImageAndZone(t *testing.T) {
 }
 
 // L-37: stack_destroy отвечал destroyed, пока Postgres ещё удалялся
+// (с D96 — status: deleting, внешний отзыв 11.11)
 // (~4,5 мин); описание stack_apply обещало мгновенный ответ, а шаг ВМ
 // блокирует ~3 мин.
 func TestStackDestroy_ReportsAsyncDeletions(t *testing.T) {
@@ -597,7 +598,7 @@ func TestStackDestroy_ReportsAsyncDeletions(t *testing.T) {
 	r.handlers["secret_delete"] = fakeOK(map[string]any{"status": "deleted"})
 	got := callTool(t, r.handleStackDestroy, map[string]any{"job_id": j.ID, "confirmed": true})
 	deleting, _ := got["deleting"].([]any)
-	if got["status"] != "destroyed" || len(deleting) != 1 || deleting[0] != "postgres" || stringArg(got, "note") == "" {
+	if got["status"] != "deleting" || len(deleting) != 1 || deleting[0] != "postgres" || stringArg(got, "note") == "" {
 		t.Errorf("destroy answer: %v", got)
 	}
 

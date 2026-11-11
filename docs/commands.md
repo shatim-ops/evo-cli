@@ -749,7 +749,7 @@ evo ar operation <operation-id> [flags]
 
 ```
   evo ar operation <operation-id>
-  evo ar operation <operation-id> --wait-seconds 120
+  evo ar operation <operation-id> --wait-seconds 45
 ```
 
 ### Options
@@ -1761,7 +1761,7 @@ evo cert operation <operation-id> [flags]
 
 ```
   evo cert operation <operation-id>
-  evo cert operation <operation-id> --wait-seconds 300
+  evo cert operation <operation-id> --wait-seconds 45
 ```
 
 ### Options
@@ -3306,7 +3306,7 @@ evo dns operation <operation-id> [flags]
 
 ```
   evo dns operation <operation-id>
-  evo dns operation <operation-id> --wait-seconds 120
+  evo dns operation <operation-id> --wait-seconds 45
 ```
 
 ### Options
@@ -5204,7 +5204,7 @@ evo kafka operation <operation-id> [flags]
 
 ```
   evo kafka operation <operation-id>
-  evo kafka operation <operation-id> --wait-seconds 300
+  evo kafka operation <operation-id> --wait-seconds 45
 ```
 
 ### Options
@@ -5592,7 +5592,7 @@ evo lb operation <operation-id> [flags]
 
 ```
   evo lb operation <operation-id>
-  evo lb operation <operation-id> --wait-seconds 300
+  evo lb operation <operation-id> --wait-seconds 45
 ```
 
 ### Options
@@ -7315,7 +7315,7 @@ evo redis operation <operation-id> [flags]
 
 ```
   evo redis operation <operation-id>
-  evo redis operation <operation-id> --wait-seconds 300
+  evo redis operation <operation-id> --wait-seconds 45
 ```
 
 ### Options
@@ -8377,7 +8377,7 @@ evo stack apply <job-id> [flags]
 ```text
 Удалить все ресурсы стека (безвозвратно).
 
-Удалить все ресурсы стека — в обратном порядке, идемпотентно. status=destroyed значит, что каждое удаление принято: ВМ, секреты и объекты S3 удалены, а асинхронные ресурсы из списка deleting (PostgreSQL, Kafka, Redis, Kubernetes, балансировщик и другие) облако удаляет ещё несколько минут (PostgreSQL вживую — около 5 минут); проверьте их через 'evo pg list', 'evo k8s list' и подобные команды. Повторный вызов для удалённого стека: пока удаления из deleting не завершены — снова превью, и подтверждённый вызов их перепроверяет; когда завершены — already_destroyed без вопроса.
+Удалить все ресурсы стека — в обратном порядке, идемпотентно. status=destroyed значит, что удалено всё. status=deleting (код 0) значит, что ВМ, секреты и объекты S3 удалены, а асинхронные ресурсы из списка deleting (PostgreSQL, Kafka, Redis, Kubernetes, балансировщик и другие) облако удаляет ещё несколько минут (PostgreSQL вживую — около 5 минут): повторяйте 'evo stack destroy --yes', пока ответ не станет destroyed. Удалённый стек отвечает already_destroyed без вопроса; стек в deleting — снова превью, и подтверждённый вызов перепроверяет удаления.
 
 Вызывает инструмент stack_destroy (подробнее: 'evo tools describe stack_destroy').
 
@@ -8493,7 +8493,7 @@ evo stack status <job-id> [flags]
 
 ```
   evo stack status <job-id>
-  evo stack status <job-id> --wait-seconds 240 --json
+  evo stack status <job-id> --wait-seconds 20 --json
 ```
 
 ### Options

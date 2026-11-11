@@ -117,6 +117,8 @@ func cardDoes(t Tool) string {
 	switch {
 	case sensitiveTools[t.Name]:
 		return "reveals a secret"
+	case HasSideEffects(t):
+		return sideEffectTools[t.Name]
 	case t.Mutating:
 		return "changes"
 	}
