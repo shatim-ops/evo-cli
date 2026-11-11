@@ -1185,7 +1185,14 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 		for step, pw := range shown {
 			job.ShowPassword(step, pw)
 		}
-		return job.Compact()
+		out := job.Compact()
+		// A job the cloud is still deleting moves only by stack_destroy:
+		// polling stack_status would never see done or error (FB180-15).
+		if job.DeletionsPending() {
+			out["next"] = fmt.Sprintf("The cloud is still deleting the resources in 'deleting'. Call stack_destroy with job_id %s and confirmed=true again until it answers destroyed.", job.ID)
+			nextStep(out, "stack_destroy", map[string]any{"job_id": job.ID, "confirmed": true})
+		}
+		return out
 	}
 	for {
 		// Reloaded on every crank: another call may have advanced it.
@@ -1273,8 +1280,8 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 				}
 			}
 			return toJSON(map[string]any{"status": "confirmation_required", "resources": res,
-				"message": i18n.Tf("stack %s was destroyed, but the cloud was still deleting %d resource(s) listed in resources; stack_destroy checks them again and deletes what is left.",
-					"стек %s удалён, но облако ещё удаляло ресурсы (%d), перечисленные в resources; stack_destroy проверит их снова и удалит, что осталось.", id, len(res))}), true
+				"message": i18n.Tf("stack %s is being deleted: the cloud is still deleting %d resource(s) listed in resources; stack_destroy checks them again and deletes what is left.",
+					"стек %s удаляется: облако ещё удаляет ресурсы (%d), перечисленные в resources; stack_destroy проверит их снова и удалит, что осталось.", id, len(res))}), true
 		}
 		var res []map[string]any
 		for _, st := range job.Steps {

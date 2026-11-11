@@ -858,9 +858,16 @@ func (j *Job) Compact() map[string]any {
 			pending = append(pending, s.Key)
 		}
 	}
+	// The status through the teardown state, as stack_destroy reads it: a
+	// job saved by rc.1 as destroyed with deletions in progress is deleting
+	// (D96; delta audit Fable 1.8.0, FB180-15).
+	status := j.Status
+	if j.DeletionsPending() {
+		status = StatusDeleting
+	}
 	out := map[string]any{
 		"job_id":  j.ID,
-		"status":  j.Status,
+		"status":  status,
 		"done":    done,
 		"running": running,
 		"pending": pending,
@@ -875,6 +882,9 @@ func (j *Job) Compact() map[string]any {
 	}
 	if j.Error != "" {
 		out["error"] = j.Error
+	}
+	if j.DeletionsPending() {
+		out["deleting"] = j.Deleting
 	}
 	// What a step met and how many creates it used: a step that stays
 	// pending or ends in error says why (G130-04, D41) in details, as text;
