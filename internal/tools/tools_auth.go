@@ -59,6 +59,9 @@ type DoctorCheck struct {
 	// Auth marks a failure of the configuration or the credentials:
 	// doctor then fails with CONFIG_INVALID (exit code 2).
 	Auth bool `json:"-"`
+	// refused is the key or token IAM refused (D88): doctor then fails
+	// with its code, AUTH_FAILED, as whoami does (D94).
+	refused error
 }
 
 func (s *Registry) handleWhoami(ctx context.Context, _ map[string]any) (string, bool) {
@@ -86,36 +89,25 @@ func (s *Registry) handleWhoami(ctx context.Context, _ map[string]any) (string, 
 		"token_ttl_seconds": int(tok.TTL().Seconds()),
 		"token_source":      source,
 	}
+	k := readKey(ctx, eng.Auth, tok, cfg)
+	if k.refused != nil {
+		return failed(ctx, k.refused, nil), true
+	}
 	// The number is unknown when the Organization API does not list
 	// projects for the key: then there is no field (ScopeText).
-	n, err := visibleProjects(ctx, eng.Auth)
-	if refused := tokenRefusedBy(err); refused != nil {
-		return failed(ctx, refused, nil), true
-	}
-	if err == nil {
-		out["visible_projects"] = n
+	if k.projectsErr == nil {
+		out["visible_projects"] = k.projects
 	}
 	// The roles of the key are a field more: when IAM does not tell them,
 	// the answer is the one of before and roles_note says why («Риск»,
 	// conclusion 22, У-6).
-	roles, note, refused := keyRolesOf(ctx, eng.Auth, tok, cfg.ProjectID)
-	if refused != nil {
-		return failed(ctx, refused, nil), true
+	if k.roles != nil {
+		out["roles"] = k.roles
 	}
-	if roles != nil {
-		out["roles"] = roles
+	if k.rolesNote != "" {
+		out["roles_note"] = k.rolesNote
 	}
-	if note != "" {
-		out["roles_note"] = note
-	}
-	// The term of the key, read here and in doctor only (R-26): a person
-	// issues the next key, and the agent learns when it has to ask one.
-	term, termNote := keyTerm(ctx, eng.Auth, tok, cfg.KeyID)
-	if termNote == keyNotListed() {
-		if err := revokedKey(ctx, eng.Auth, tok, cfg.KeyID); err != nil {
-			return failed(ctx, err, nil), true
-		}
-	}
+	term, termNote := k.term, k.termNote
 	if !term.IsZero() {
 		out["key_expires_at"] = term.UTC().Format(time.RFC3339)
 		if keyExpiresSoon(term) {
@@ -187,6 +179,41 @@ func keyToken(ctx context.Context, tp auth.TokenProvider) (auth.Token, error) {
 	return tok, err
 }
 
+// keyFacts is what whoami and doctor read of the key, in one place: the
+// projects it sees, its roles on the project, its term — and refused, the
+// token or the key IAM refuses (D88), which is no «unknown» in either
+// (FB180-4, D94: doctor answered «ok» where whoami failed).
+type keyFacts struct {
+	projects    int
+	projectsErr error
+	roles       []keyRole
+	rolesNote   string
+	term        time.Time
+	termNote    string
+	refused     error
+}
+
+// readKey reads the facts of the key of tok; on refused the rest is not
+// read.
+func readKey(ctx context.Context, tp auth.TokenProvider, tok auth.Token, cfg config.Config) keyFacts {
+	var k keyFacts
+	k.projects, k.projectsErr = visibleProjects(ctx, tp)
+	if k.refused = tokenRefusedBy(k.projectsErr); k.refused != nil {
+		return k
+	}
+	if k.roles, k.rolesNote, k.refused = keyRolesOf(ctx, tp, tok, cfg.ProjectID); k.refused != nil {
+		return k
+	}
+	// The term of the key, read here only (R-26): a person issues the
+	// next key, and the agent learns when it has to ask one. A key not in
+	// its account's list is exchanged again: IAM refuses a revoked one.
+	k.term, k.termNote = keyTerm(ctx, tp, tok, cfg.KeyID)
+	if k.termNote == keyNotListed() {
+		k.refused = revokedKey(ctx, tp, tok, cfg.KeyID)
+	}
+	return k
+}
+
 // revokedKey tells a key revoked in the console from a list that lags: the
 // cached token tok would work to its deadline while the key is gone (G10,
 // F2 of round 3 of Grok). It drops tok and exchanges the key again: IAM
@@ -211,8 +238,8 @@ func revokedKey(ctx context.Context, tp auth.TokenProvider, tok auth.Token, keyI
 // keyTermCheck is doctor's check of the key's term: a warning within
 // keyTermWarning, with the way — a person issues a new key — and
 // «unknown» (skip) when IAM does not tell it; never a failure.
-func keyTermCheck(ctx context.Context, tp auth.TokenProvider, tok auth.Token, keyID string) DoctorCheck {
-	term, note := keyTerm(ctx, tp, tok, keyID)
+func keyTermCheck(k keyFacts) DoctorCheck {
+	term, note := k.term, k.termNote
 	switch {
 	case term.IsZero():
 		return DoctorCheck{Name: "key term", Status: CheckSkip, Detail: note}
@@ -232,19 +259,13 @@ type keyRole struct {
 	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
-// keyRoles are the roles the key's service account — the token's sub —
+// keyRolesOf are the roles the key's service account — the token's sub —
 // has on the project, by name: its enabled permissions there (A0-2, no
 // map of tools to actions). roles is nil when they are unknown, and note
 // then says why; an empty list has a note too: a role on the organization
-// is a permission of another resource, not read here.
-func keyRoles(ctx context.Context, tp auth.TokenProvider, tok auth.Token, projectID string) (roles []keyRole, note string) {
-	roles, note, _ = keyRolesOf(ctx, tp, tok, projectID)
-	return roles, note
-}
-
-// keyRolesOf is keyRoles and the refusal of the token itself: IAM answered
-// 401 — the token (or its key) is refused, which is no «roles unknown»
-// (D88; «Риск», conclusion 37).
+// is a permission of another resource, not read here. refused is the
+// refusal of the token itself: IAM answered 401 — the token (or its key)
+// is refused, which is no «roles unknown» (D88; «Риск», conclusion 37).
 func keyRolesOf(ctx context.Context, tp auth.TokenProvider, tok auth.Token, projectID string) (roles []keyRole, note string, refused error) {
 	if projectID == "" {
 		return nil, i18n.T("unknown: no project is set, and roles are given per project",
@@ -279,8 +300,8 @@ func keyRolesOf(ctx context.Context, tp auth.TokenProvider, tok auth.Token, proj
 // keyRolesCheck is doctor's check of the key's roles on the project: a
 // warning without one, «unknown» (skip) when IAM does not tell — never a
 // failure: the key may work all the same («Риск», conclusion 22, У-7).
-func keyRolesCheck(ctx context.Context, tp auth.TokenProvider, tok auth.Token, projectID string) DoctorCheck {
-	roles, note := keyRoles(ctx, tp, tok, projectID)
+func keyRolesCheck(k keyFacts, projectID string) DoctorCheck {
+	roles, note := k.roles, k.rolesNote
 	switch {
 	case roles == nil:
 		return DoctorCheck{Name: "key roles", Status: CheckSkip, Detail: note}
@@ -341,6 +362,16 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 			}
 			checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckWarn, Detail: detail})
 		}
+		// A file there that is not evo's record is neither read nor
+		// removed, and named: a planted one is seen («Риск», conclusion
+		// 88). Its name is the directory's, quoted.
+		for _, dir := range intent.Dirs(eng.StateDir) {
+			for _, path := range intent.Foreign(dir) {
+				checks = append(checks, DoctorCheck{Name: "foreign intent record", Status: CheckWarn,
+					Detail: i18n.Tf("%s is not a record evo wrote: evo neither reads nor removes it — check where it came from (a cloned repository may bring it) and delete it yourself",
+						"%s — не запись evo: evo её не читает и не удаляет — проверьте, откуда она (её мог принести клонированный репозиторий), и удалите сами", quoteCloud(path))})
+			}
+		}
 	}
 	checks = append(checks,
 		probe(ctx, "IAM API", auth.IAMEndpoint, verbose),
@@ -366,11 +397,17 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		if exchanges(eng.Auth) != before {
 			src = i18n.T("token issued", "токен выдан")
 		}
+		// The key as whoami reads it: a key IAM refuses fails here too
+		// (D88, D94), not «ok» with a cached token.
+		k := readKey(ctx, eng.Auth, tok, eng.Config)
+		if k.refused != nil {
+			checks = append(checks, DoctorCheck{Name: "credentials", Status: CheckFail, Detail: CheckDetail(k.refused), Auth: true, refused: k.refused})
+			break
+		}
 		checks = append(checks, DoctorCheck{Name: "credentials", Status: CheckOK,
 			Detail: i18n.Tf("key %s: %s, valid for %s", "ключ %s: %s, действует ещё %s",
 				config.MaskKeyID(eng.Config.KeyID), src, tok.TTL().Truncate(time.Minute))})
-		checks = append(checks, keyScopeCheck(ctx, eng.Auth), keyRolesCheck(ctx, eng.Auth, tok, eng.Config.ProjectID),
-			keyTermCheck(ctx, eng.Auth, tok, eng.Config.KeyID))
+		checks = append(checks, keyScopeCheck(k), keyRolesCheck(k, eng.Config.ProjectID), keyTermCheck(k))
 	}
 	return checks
 }
@@ -468,8 +505,8 @@ func latencyText(d time.Duration) string {
 
 // keyScopeCheck warns about a key that sees several projects: the project
 // a call works in is then a setting, not a limit of the key.
-func keyScopeCheck(ctx context.Context, tp auth.TokenProvider) DoctorCheck {
-	n, err := visibleProjects(ctx, tp)
+func keyScopeCheck(k keyFacts) DoctorCheck {
+	n, err := k.projects, k.projectsErr
 	switch {
 	case err != nil:
 		return DoctorCheck{Name: "key scope", Status: CheckSkip, Detail: ScopeText(0, false)}
@@ -485,16 +522,28 @@ func keyScopeCheck(ctx context.Context, tp auth.TokenProvider) DoctorCheck {
 // API_UNREACHABLE (exit code 1): only connectivity failed.
 func doctorVerdict(checks []DoctorCheck) error {
 	failedN, authFailed := 0, false
+	var refused error
 	for _, c := range checks {
 		if c.Status == CheckFail {
 			failedN++
 			authFailed = authFailed || c.Auth
+			if refused == nil {
+				refused = c.refused
+			}
 		}
 	}
 	msg := i18n.Tf("doctor: %d check(s) failed", "doctor: не прошли проверки: %d", failedN)
 	switch {
 	case failedN == 0:
 		return nil
+	case refused != nil:
+		// The key IAM refuses: the reason whoami gives (D94).
+		code := clierrors.CodeAuthFailed
+		var ce *clierrors.CLIError
+		if errors.As(refused, &ce) && ce.Code != "" {
+			code = ce.Code
+		}
+		return clierrors.Wrap(code, msg, auth.RefusedKeyHint(), refused)
 	case authFailed:
 		return clierrors.New(clierrors.CodeConfigInvalid, msg,
 			i18n.T("Fix the configuration or credentials above: evo login (through the browser) or evo configure",

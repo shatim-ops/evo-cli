@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -121,30 +122,65 @@ func notWritten(dir string, err error) error {
 			"Сделайте каталог %s доступным для записи (evo хранит там, что мог оставить в облаке прерванный вызов) и повторите вызов.", filepath.Dir(dir)), err)
 }
 
-// Pending are the intents of root, oldest first; a file that does not read
-// is skipped.
+// idForm is the form of the id begin gives a record: its file's name.
+var idForm = regexp.MustCompile(`^[0-9a-f]{16}$`)
+
+// validID tells an id of evo's own form.
+func validID(id string) bool { return idForm.MatchString(id) }
+
+// recordPath is the file of the record id in dir; "" for an id not of
+// evo's form — the path of a removal is never built from what a file says
+// (FB180-1, R-67: the project directory comes with git clone).
+func recordPath(dir, id string) string {
+	if !validID(id) {
+		return ""
+	}
+	return filepath.Join(dir, id+".json")
+}
+
+// Pending are the intents of root, oldest first. A record is read only in
+// evo's form: a regular file named by an id of evo's, whose content names
+// the same id; anything else is skipped, not read — a link, another name,
+// another id (FB180-1).
 func Pending(dir string) []Intent {
+	out, _ := scan(dir)
+	return out
+}
+
+// Foreign are the files of dir that look like records (*.json) but are
+// not of evo's form: evo neither reads nor removes them, and doctor names
+// them («Риск», conclusion 88: a record skipped silently hides a planted
+// one). The names are the directory's, not evo's.
+func Foreign(dir string) []string {
+	_, foreign := scan(dir)
+	return foreign
+}
+
+// scan reads dir once: the records of evo's form, and the paths of the
+// other *.json files.
+func scan(dir string) (out []Intent, foreign []string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	var out []Intent
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
+		id, ok := strings.CutSuffix(e.Name(), ".json")
+		if !ok {
 			continue
 		}
 		var in Intent
-		if json.Unmarshal(data, &in) == nil && in.ID != "" {
-			in.Dir = dir
-			out = append(out, in)
+		if e.Type().IsRegular() && validID(id) {
+			if data, err := config.ReadFileNoFollow(recordPath(dir, id)); err == nil &&
+				json.Unmarshal(data, &in) == nil && in.ID == id {
+				in.Dir = dir
+				out = append(out, in)
+				continue
+			}
 		}
+		foreign = append(foreign, filepath.Join(dir, e.Name()))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.Before(out[j].StartedAt) })
-	return out
+	return out, foreign
 }
 
 // Settle removes the earlier intents of the same tool on the same resource
@@ -158,10 +194,18 @@ func Settle(dir string, done Intent) {
 	}
 	for _, in := range Pending(dir) {
 		if in.Tool == done.Tool && in.Name == done.Name && in.Target == done.Target && in.ProjectID == done.ProjectID {
-			_ = os.Remove(filepath.Join(dir, in.ID+".json"))
+			remove(dir, in.ID)
 		}
 	}
 }
 
 // Close removes the intent in: what the call did is now known.
-func Close(in Intent) { _ = os.Remove(filepath.Join(in.Dir, in.ID+".json")) }
+func Close(in Intent) { remove(in.Dir, in.ID) }
+
+// remove removes the record id of dir; an id not of evo's form removes
+// nothing.
+func remove(dir, id string) {
+	if path := recordPath(dir, id); path != "" {
+		_ = os.Remove(path)
+	}
+}
