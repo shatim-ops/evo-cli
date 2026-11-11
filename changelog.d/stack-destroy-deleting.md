@@ -10,4 +10,6 @@
   скрипт, который считал `destroyed` концом удаления, повторяет
   `evo stack destroy <job-id> --yes`, пока `status` — `deleting`. Задание,
   сохранённое 1.8.0-rc.1 и раньше со `destroyed` и непустым `deleting`,
-  читается как `deleting`.
+  читается как `deleting`. `evo stack status` и MCP `stack_status` такого
+  стека отвечают так же: `status: deleting`, список `deleting` и следующий
+  шаг `stack_destroy` (было: без списка и шага, запись rc.1 — `destroyed`).

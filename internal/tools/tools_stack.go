@@ -395,7 +395,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					if id != "" {
 						if st.Tool == "provision" && state != "" {
 							s.adoptVM(ctx, job, st, id, state)
-							if job.Status == "error" {
+							if job.Failed() {
 								return
 							}
 						} else {
@@ -490,7 +490,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					if id, state := s.findStepResource(ctx, st); id != "" {
 						if st.Tool == "provision" {
 							s.adoptVM(ctx, job, st, id, state)
-							if job.Status == "error" {
+							if job.Failed() {
 								return
 							}
 						} else {
@@ -552,7 +552,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 	}
 
 	// terminal check
-	if job.Status == "error" {
+	if job.Failed() {
 		return
 	}
 	allDone := true
@@ -1044,7 +1044,7 @@ func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (s
 	}
 	out := job.Compact()
 	out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
-	return toJSON(out), job.Status == "error"
+	return toJSON(out), job.Failed()
 }
 
 // appliableJob is the job stack_apply may advance: there, of this server's
@@ -1132,7 +1132,7 @@ func (s *Registry) crankJob(ctx context.Context, id string) (*stack.Job, error) 
 	if err != nil {
 		return nil, err
 	}
-	if job.Status == "running" && !s.readOnly {
+	if job.Running() && !s.readOnly {
 		if err := s.checkJobProject(job); err != nil {
 			return nil, err
 		}
@@ -1185,7 +1185,13 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 		for step, pw := range shown {
 			job.ShowPassword(step, pw)
 		}
-		return job.Compact()
+		out := job.Compact()
+		// A job the cloud is still deleting moves only by stack_destroy:
+		// polling stack_status would never see done or error (FB180-15).
+		if job.DeletionsPending() {
+			stackDestroyNext(out, job.ID)
+		}
+		return out
 	}
 	for {
 		// Reloaded on every crank: another call may have advanced it.
@@ -1194,12 +1200,12 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 			return errResult(err), true
 		}
 		maps.Copy(shown, job.Passwords())
-		if job.Status == "planned" {
+		if job.Planned() {
 			out := compact(job)
 			out["note"] = "Not started: call stack_apply with this job_id and confirmed=true after the user approved the plan. stack_status only reports progress."
 			return toJSON(out), false
 		}
-		if job.Status != "running" {
+		if !job.Running() {
 			return toJSON(compact(job)), false // terminal (done/error)
 		}
 		if s.readOnly {
@@ -1233,6 +1239,15 @@ var stackTeardown = []string{
 // such a step is looked up by name at destroy: a step that never ran owns
 // nothing, and a resource with its name belongs to someone else — deleting
 // it destroyed a foreign cluster (QA r3 R3).
+// stackDestroyNext is the next step of a job the cloud is still deleting, the
+// same in the answers of stack_destroy and stack_status: the same call
+// re-checks them and finishes what waits for them — a VM's floating IP and
+// record (D69); stack_status does not move it (D96, FB180-15).
+func stackDestroyNext(out map[string]any, id string) {
+	out["next"] = fmt.Sprintf("Call stack_destroy with job_id %s and confirmed=true again until 'deleting' is empty.", id)
+	nextStep(out, "stack_destroy", map[string]any{"job_id": id, "confirmed": true})
+}
+
 // alreadyDestroyed is the answer of stack_destroy for a job Destroyed.
 func alreadyDestroyed(id string) string {
 	return toJSON(map[string]any{"status": "already_destroyed", "job_id": id,
@@ -1273,8 +1288,8 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 				}
 			}
 			return toJSON(map[string]any{"status": "confirmation_required", "resources": res,
-				"message": i18n.Tf("stack %s was destroyed, but the cloud was still deleting %d resource(s) listed in resources; stack_destroy checks them again and deletes what is left.",
-					"стек %s удалён, но облако ещё удаляло ресурсы (%d), перечисленные в resources; stack_destroy проверит их снова и удалит, что осталось.", id, len(res))}), true
+				"message": i18n.Tf("stack %s is being deleted: the cloud is still deleting %d resource(s) listed in resources; stack_destroy checks them again and deletes what is left.",
+					"стек %s удаляется: облако ещё удаляет ресурсы (%d), перечисленные в resources; stack_destroy проверит их снова и удалит, что осталось.", id, len(res))}), true
 		}
 		var res []map[string]any
 		for _, st := range job.Steps {
@@ -1423,8 +1438,7 @@ func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) 
 		out["note"] = "Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names."
 		// The same call checks them again and finishes what waits for
 		// them — a VM's floating IP and record (D69).
-		out["next"] = fmt.Sprintf("Call stack_destroy with job_id %s and confirmed=true again until 'deleting' is empty.", id)
-		nextStep(out, "stack_destroy", map[string]any{"job_id": id, "confirmed": true})
+		stackDestroyNext(out, id)
 	}
 	if len(failed) > 0 {
 		// Every error answer has a reason (docs/mcp.md «Ошибки»). This one
