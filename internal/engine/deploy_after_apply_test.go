@@ -56,6 +56,9 @@ func TestDeploy_AfterApplyCutInSSHIsNotUnchanged(t *testing.T) {
 	if !stderrors.As(err, &going) {
 		t.Fatalf("first call: err = %v, want InProgress", err)
 	}
+	if previewUnchanged(t, eng, newDeployOpts(t, dir).ComposeFile) {
+		t.Error("the preview says unchanged (confirmed=true changes nothing) of a deployment compose up never ran on")
+	}
 	dep.hold = nil
 	opts := newDeployOpts(t, dir)
 	opts.Until = time.Now().Add(30 * time.Second)
@@ -103,6 +106,9 @@ func TestDeploy_ChangedComposeCutInSSHIsNotUnchanged(t *testing.T) {
 	if !stderrors.As(err, &going) {
 		t.Fatalf("changed compose, cut in SSH: err = %v, want InProgress", err)
 	}
+	if previewUnchanged(t, eng, path) {
+		t.Error("the preview says unchanged of a changed compose file the VM never got")
+	}
 	dep.hold = nil
 	opts := DeployOptions{ComposeFile: path, Flavor: "small", NonInteractive: true, Yes: true}
 	opts.Until = time.Now().Add(30 * time.Second)
@@ -133,6 +139,9 @@ func TestDeploy_RunningRecordOfADeployStaysUnchanged(t *testing.T) {
 	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
 		t.Fatal(err)
 	}
+	if !previewUnchanged(t, eng, opts.ComposeFile) {
+		t.Error("the preview of a finished deploy with the same hash must say unchanged, as deploy does")
+	}
 	if err := eng.Deploy(context.Background(), opts); err != nil {
 		t.Fatalf("deploy: %v", err)
 	}
@@ -142,4 +151,15 @@ func TestDeploy_RunningRecordOfADeployStaysUnchanged(t *testing.T) {
 	if uploads != 0 {
 		t.Errorf("a running record of a finished deploy with the same hash: %d files uploaded, want 0 (unchanged)", uploads)
 	}
+}
+
+// previewUnchanged is what the preview of deploy (DeployUpdateOf, the
+// answer without confirmed=true) says of the state now: one decision with
+// the skip of Deploy — the preview never promises "nothing to do" where
+// deploy would do something, nor the other way round.
+func previewUnchanged(t *testing.T, eng *Engine, compose string) bool {
+	t.Helper()
+	eng.Config.ComposeFile = compose
+	u := eng.DeployUpdateOf(false)
+	return u != nil && u.Unchanged
 }
