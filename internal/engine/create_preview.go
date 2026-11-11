@@ -1008,6 +1008,8 @@ var paramLabels = map[string]struct {
 	"cluster_sa_id":            {"account", "аккаунт", false},
 	"cluster_id":               {"cluster", "кластер", false},
 	"product":                  {"product", "продукт", false},
+	"ssh_public_key":           {"SSH key", "ключ SSH", false},
+	"user_ssh_public_keys":     {"user SSH keys", "ключи SSH пользователя", false},
 	"region":                   {"region", "регион", false},
 	"attach_to":                {"attach to", "к ВМ", false},
 	"disk_id":                  {"disk", "диск", false},

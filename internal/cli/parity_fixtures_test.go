@@ -18,11 +18,16 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
+
+// parityUserKey is the key of .evo/user_authorized_keys in the world of
+// deploy_apply: a public key made for the test, of no one.
+const parityUserKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAqpH6CquGwydHHTrIDK/mcZXCUnNqEnugLa3ugpoznp parity@example.test"
 
 // The fake world of the parity tests (TestContract_PreviewParity,
 // TestParity_JSONEqualsTool, TestParity_NewCommandsJSONEqualsToolsCall):
@@ -242,14 +247,24 @@ var paritySetup = map[string]func(t *testing.T, w parityWorld) (map[string]any, 
 	"logs":   recordDeployment,
 	// A plan of deploy_plan (no compose file: a bare VM), which apply
 	// executes; a plan the fake cannot make leaves the id of parityArgs.
-	"deploy_apply": func(t *testing.T, _ parityWorld) (map[string]any, func()) {
+	// deploy_apply: a plan with a key of the user's, so the preview names
+	// the keys that get a login on the VM (FB180-7) on every surface.
+	"deploy_apply": func(t *testing.T, w parityWorld) (map[string]any, func()) {
+		keys := filepath.Join(config.DataDir(w.dir), "user_authorized_keys")
+		if err := os.MkdirAll(filepath.Dir(keys), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(keys, []byte(parityUserKey+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		done := func() { _ = os.Remove(keys) }
 		plan, _ := newRegistry().Lookup("deploy_plan")
 		text, isErr := plan.Handler(context.Background(), map[string]any{})
 		id, _ := parseObject(text)["plan_id"].(string)
 		if isErr || id == "" {
-			return nil, func() {}
+			return nil, done
 		}
-		return map[string]any{"plan_id": id}, func() {}
+		return map[string]any{"plan_id": id}, done
 	},
 	// fip_attach: a free floating IP (the preview world has none, so that
 	// destroy bills none); it looks the address up before the question

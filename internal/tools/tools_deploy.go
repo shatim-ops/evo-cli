@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
@@ -24,6 +25,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
+	"golang.org/x/crypto/ssh"
 )
 
 // authedEngine builds an engine and sets a fresh bearer token on its cloud
@@ -304,42 +306,32 @@ func recordDeployment(stateDir string, maker *state.Maker, plan *deployplan.Plan
 // the same directory to release the state before recording a VM it created.
 const stateLockWait = 2 * time.Minute
 
-// handleDeployApply executes a previously-resolved plan, gated on confirmation.
-func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (string, bool) {
+// planDeployApply plans the execution of a previously-resolved plan: the
+// plan from the local file only (no token, no request), the keys checked
+// against it, the preview the user approves — the VM, the project, the SSH
+// keys and the price deploy_plan quoted — not a pointer to an earlier
+// answer (break 1.2, B12-8). A plan_id that is malformed, unknown or
+// expired, and keys changed since the plan, are refused here, before the
+// question: there is nothing to approve (D35; audit Fable 1.8, FB180-7).
+func (s *Registry) planDeployApply(ctx context.Context, args map[string]any) (*Plan, error) {
 	planID := stringArg(args, "plan_id")
 	if planID == "" {
-		return usageT("plan_id is required", "нужен plan_id"), true
+		return nil, usageErr("plan_id is required", "нужен plan_id")
 	}
-	// The plan before the gate, from the local file only (no token, no
-	// request): the preview is what the user approves — the VM, the project
-	// and the price deploy_plan quoted — not a pointer to an earlier answer
-	// (break 1.2, B12-8). A plan_id that is malformed, unknown or expired is
-	// refused here, confirmed or not: there is nothing to approve.
 	eng, err := s.localEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	plan, err := deployplan.Load(eng.StateDir, planID)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("deploy_apply executes plan %s: it creates VM %s (billable). preview has the VM and the monthly cost deploy_plan quoted for it.",
-				"deploy_apply выполнит план %s: создаст ВМ %s (платно). В preview — ВМ и цена в месяц, которую назвал deploy_plan.", plan.PlanID, plan.VM.Name),
-			"plan_id":    plan.PlanID,
-			"expires_at": plan.ExpiresAt,
-			"preview":    engine.PlanPreview(plan),
-		}), true
-	}
-
 	// The keys deploy_apply appends are the ones the plan showed (R-68):
 	// a key added since gets no SSH login nobody saw — refused before
 	// anything is written, as deploy refuses a compose file changed since
 	// its consent.
 	if err := eng.EnsureSSHKey(); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// The keys read here are the ones appended after the create: the file
 	// is not read again, so a key written while the VM is made gets no
@@ -349,9 +341,33 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 	if plan.PublicKey == eng.SSHPubKey {
 		approvedKeys, approvedFile = loadUserKeys(eng.StateDir)
 		if userKeysHash(approvedKeys) != plan.UserKeysHash {
-			return errResult(errUserKeysChangedSincePlan(plan.PlanID)), true
+			return nil, errUserKeysChangedSincePlan(plan.PlanID)
 		}
 	}
+	preview := engine.PlanPreview(plan)
+	preview.Add("ssh_public_key", describeVMKey(plan.PublicKey, plan.PublicKey == eng.SSHPubKey))
+	if len(approvedKeys) > 0 {
+		preview.Add("user_ssh_public_keys", userKeyNames(approvedKeys))
+	}
+	return &Plan{
+		Preview: map[string]any{
+			"message": i18n.Tf("deploy_apply executes plan %s: it creates VM %s (billable). preview has the VM, its SSH keys and the monthly cost deploy_plan quoted for it.",
+				"deploy_apply выполнит план %s: создаст ВМ %s (платно). В preview — ВМ, её ключи SSH и цена в месяц, которую назвал deploy_plan.", plan.PlanID, plan.VM.Name),
+			"plan_id":    plan.PlanID,
+			"expires_at": plan.ExpiresAt,
+			"preview":    preview,
+		},
+		Execute: func(ctx context.Context) (string, bool) {
+			return s.applyDeployPlan(ctx, args, eng, plan, approvedKeys, approvedFile)
+		},
+	}, nil
+}
+
+// applyDeployPlan creates the VM of plan, with consent; approvedKeys are
+// the user's keys the plan showed and planDeployApply checked.
+func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng *engine.Engine, plan *deployplan.Plan,
+	approvedKeys []string, approvedFile string) (string, bool) {
+	planID := plan.PlanID
 	if err := authorize(ctx, eng); err != nil {
 		return errResult(err), true
 	}
@@ -486,6 +502,60 @@ func (s *Registry) handleDeployApply(ctx context.Context, args map[string]any) (
 		}
 	}
 	return toJSON(res), false
+}
+
+// describeVMKey names the key a VM of deploy_apply is created with: its
+// type, SHA256 fingerprint and comment, and whose it is — the agent's
+// deploy key of the folder or the ssh_key of the plan. A text that is no
+// authorized_keys entry is named as it is: it is a public key, or nothing.
+func describeVMKey(pub string, deployKey bool) string {
+	if pub == "" {
+		return ""
+	}
+	name := keyName(pub)
+	if deployKey {
+		return name + i18n.T(" (the agent's deploy key of evo)", " (ключ развёртывания evo для агента)")
+	}
+	return name + i18n.T(" (ssh_key of the plan)", " (ssh_key плана)")
+}
+
+// userKeyNames names the keys deploy_apply appends to authorized_keys of
+// the VM, as describeUserKeys does for deploy_plan, one string each.
+func userKeyNames(keys []string) []any {
+	out := make([]any, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, keyName(k))
+	}
+	return out
+}
+
+// printable drops the control characters of a text the keys file gave: it
+// may have come with a repository someone else wrote, and goes to the
+// person's terminal.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// keyName is an authorized_keys entry in words: type, SHA256 fingerprint,
+// comment and options (command="…" runs instead of the login shell).
+func keyName(entry string) string {
+	pub, comment, options, _, err := ssh.ParseAuthorizedKey([]byte(entry))
+	if err != nil {
+		return printable(entry)
+	}
+	parts := []string{pub.Type(), ssh.FingerprintSHA256(pub)}
+	if comment != "" {
+		parts = append(parts, printable(comment))
+	}
+	if len(options) > 0 {
+		parts = append(parts, "["+printable(strings.Join(options, ","))+"]")
+	}
+	return strings.Join(parts, " ")
 }
 
 func mergeStrings(a, b []string) []string {
