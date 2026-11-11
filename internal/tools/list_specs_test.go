@@ -312,4 +312,12 @@ func TestListFilters_WithTheHandlersOwn(t *testing.T) {
 	if m["count"] != float64(len(rows)) {
 		t.Errorf("count %v for %d flavors (%v)", m["count"], len(rows), names)
 	}
+
+	// Nothing passed: no total either, and the hint says what evo cannot
+	// know — resources outside the selection may exist.
+	m, text, isErr = callList(t, r, "list_flavors", map[string]any{"cpu": 2, "name": "no-such"})
+	hint, _ := m["hint"].(string)
+	if _, has := m["total"]; isErr || has || m["count"] != float64(0) || !strings.Contains(hint, "outside the selection may exist") {
+		t.Errorf("an empty selection the handler narrowed too: want count 0, no total and the hint of it, got %s", text)
+	}
 }
