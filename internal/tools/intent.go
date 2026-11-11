@@ -150,21 +150,25 @@ func pendingIntents(root string) []intent.Intent {
 	return out
 }
 
-// pendingNote is one intent in words.
+// pendingNote is one intent in words. A record is a file of the project
+// directory, which comes with git clone as well as evo wrote it: each of
+// its strings goes into evo's sentence on one line and in quotes, as a
+// name from the cloud does (quoteCloud; FB180-2, R-67).
 func (r *Registry) pendingNote(in intent.Intent) string {
+	started := in.StartedAt.Local().Format("02.01.2006 15:04")
 	if in.Note != "" {
 		// Its own words; the record stays until the person removes it:
 		// no list of a tool tells its outcome.
 		return i18n.Tf("%s, started %s (%s, pid %d); once checked, delete the record %s",
 			"%s, начат %s (%s, pid %d); после проверки удалите запись %s",
-			in.Note, in.StartedAt.Local().Format("02.01.2006 15:04"), in.Surface, in.PID, filepath.Join(in.Dir, in.ID+".json"))
+			quoteCloud(in.Note), started, quoteCloud(in.Surface), in.PID, filepath.Join(in.Dir, in.ID+".json"))
 	}
 	where := ""
 	if in.ProjectID != "" {
-		where = i18n.Tf(" in project %s", " в проекте %s", in.ProjectID)
+		where = i18n.Tf(" in project %s", " в проекте %s", quoteCloud(in.ProjectID))
 	}
 	if in.Zone != "" {
-		where += i18n.Tf(", zone %s", ", зона %s", in.Zone)
+		where += i18n.Tf(", zone %s", ", зона %s", quoteCloud(in.Zone))
 	}
 	// A call on an existing resource is named by its id (Target).
 	name := in.Name
@@ -173,10 +177,13 @@ func (r *Registry) pendingNote(in intent.Intent) string {
 	}
 	if name == "" {
 		name = i18n.T("(no name)", "(без имени)")
+	} else {
+		name = quoteCloud(name)
 	}
+	tool := quoteCloud(in.Tool)
 	return i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown — check %s for %s; the same %s on it settles it",
 		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен — проверьте %s по %s; тот же %s на нём закроет запись",
-		in.Tool, name, where, in.StartedAt.Local().Format("02.01.2006 15:04"), in.Surface, in.PID, r.listToolOf(in.Tool), name, in.Tool)
+		tool, name, where, started, quoteCloud(in.Surface), in.PID, quoteCloud(r.listToolOf(in.Tool)), name, tool)
 }
 
 // checkByList reads the list of what in names (createdIDs: list, field),
@@ -191,7 +198,7 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	// read in it — a target of a delete there is «not listed» here
 	// whatever happened to it («Риск», conclusion 47; the lesson of L3).
 	if in.ProjectID != "" && active != "" && in.ProjectID != active {
-		return i18n.Tf("the record is of project %s, the active one is %s: check it there", "запись из проекта %s, активный — %s: проверьте в нём", in.ProjectID, active), false
+		return i18n.Tf("the record is of project %s, the active one is %s: check it there", "запись из проекта %s, активный — %s: проверьте в нём", quoteCloud(in.ProjectID), active), false
 	}
 	c, isCreate := createdIDs[in.Tool]
 	_, targetID, isDelete := strings.Cut(in.Target, "=")
@@ -230,13 +237,13 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	}
 	switch {
 	case isCreate && listed != "":
-		return i18n.Tf("%s lists %s (id %s): the create took effect; the record is closed", "%s показывает %s (id %s): создание прошло; запись закрыта", c.list, in.Name, listed), true
+		return i18n.Tf("%s lists %s (id %s): the create took effect; the record is closed", "%s показывает %s (id %s): создание прошло; запись закрыта", c.list, quoteCloud(in.Name), listed), true
 	case isCreate:
-		return i18n.Tf("%s has no %s yet: the cloud did not make it, or still makes it — run doctor again, or the same %s", "в %s пока нет %s: облако его не создало или ещё создаёт — повторите doctor или тот же %s", c.list, in.Name, in.Tool), false
+		return i18n.Tf("%s has no %s yet: the cloud did not make it, or still makes it — run doctor again, or the same %s", "в %s пока нет %s: облако его не создало или ещё создаёт — повторите doctor или тот же %s", c.list, quoteCloud(in.Name), quoteCloud(in.Tool)), false
 	case listed == "":
-		return i18n.Tf("%s no longer lists %s: the delete took effect; the record is closed", "%s больше не показывает %s: удаление прошло; запись закрыта", c.list, targetID), true
+		return i18n.Tf("%s no longer lists %s: the delete took effect; the record is closed", "%s больше не показывает %s: удаление прошло; запись закрыта", c.list, quoteCloud(targetID)), true
 	}
-	return i18n.Tf("%s still lists %s: the delete did not take effect (yet) — run doctor again, or the same %s", "%s ещё показывает %s: удаление не прошло (или идёт) — повторите doctor или тот же %s", c.list, targetID, in.Tool), false
+	return i18n.Tf("%s still lists %s: the delete did not take effect (yet) — run doctor again, or the same %s", "%s ещё показывает %s: удаление не прошло (или идёт) — повторите doctor или тот же %s", c.list, quoteCloud(targetID), quoteCloud(in.Tool)), false
 }
 
 // listToolOf is the read that names what tool may have made: <service>_list
@@ -279,6 +286,12 @@ func (r *Registry) withPending(answer string) (string, bool) {
 		return answer, false // not an object: the next answer carries them
 	}
 	m["pending_operations"] = notes
+	// The records' text is the project directory's, not evo's (FB180-2).
+	if u, _ := m["_untrusted"].([]any); u != nil {
+		m["_untrusted"] = append(u, "pending_operations")
+	} else {
+		m["_untrusted"] = []string{"pending_operations"}
+	}
 	return toJSON(m), true
 }
 
