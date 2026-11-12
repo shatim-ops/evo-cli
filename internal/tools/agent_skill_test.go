@@ -1,0 +1,127 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/engine"
+)
+
+// Release plan 1.9, «Карточки групп — и по MCP» («Риск», conclusion 160):
+// agent_skill answers the card of a tool group to a client that has no
+// terminal. It builds no engine and asks the cloud nothing; every group of
+// the registry has a card; the card it answers over MCP is the registry's,
+// as the command's is, less what is of a terminal — the column of the
+// commands and the pointers to `evo …` — so that the answer of a server
+// does not hand the model the way around that server's limits.
+func TestAgentSkill_CardOfEveryGroupWithNoTerminalInIt(t *testing.T) {
+	engines := 0
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		engines++
+		return nil, errors.New("no engine: agent_skill reads the registry")
+	})
+	tl, ok := r.Lookup("agent_skill")
+	if !ok {
+		t.Fatal("no tool agent_skill")
+	}
+	if tl.Mutating || HasSideEffects(tl) || IsDestructive(tl) || takesConsent(tl) || tl.Group != "auth" {
+		t.Errorf("agent_skill is a read of the group auth with no consent: group %q", tl.Group)
+	}
+	call := func(ctx context.Context, args map[string]any) (map[string]any, bool, string) {
+		t.Helper()
+		text, isErr := tl.Handler(ctx, args)
+		var m map[string]any
+		_ = json.Unmarshal([]byte(text), &m)
+		return m, isErr, text
+	}
+	terminal := regexp.MustCompile("`evo [a-z]|evo tools describe|evo agent skill|\\| Command \\|")
+	known := map[string]bool{}
+	for _, x := range r.Tools() {
+		known[x.Name] = true
+	}
+	named := regexp.MustCompile("(?m)^\\| `([a-z0-9_]+)`")
+	for _, g := range Groups() {
+		m, isErr, text := call(context.Background(), map[string]any{"group": g})
+		card, _ := m["skill"].(string)
+		if isErr || m["group"] != g || card == "" {
+			t.Errorf("%s: no card: %s", g, text)
+			continue
+		}
+		if loc := terminal.FindString(card); loc != "" {
+			t.Errorf("%s: the card answered over MCP names the terminal (%q): the answer of a server is not the way around it", g, loc)
+		}
+		rows := named.FindAllStringSubmatch(card, -1)
+		if len(rows) == 0 {
+			t.Errorf("%s: the card names no tool", g)
+		}
+		for _, row := range rows {
+			if !known[row[1]] {
+				t.Errorf("%s: the card names %s, which is no tool", g, row[1])
+			}
+		}
+		if len(card) > cardLimit {
+			t.Errorf("%s: a card of %d bytes, over the limit of %d: the notes are a line each, not a manual", g, len(card), cardLimit)
+		}
+		if !strings.Contains(card, "not a preview") {
+			t.Errorf("%s: the card does not say it is no preview and no ground for confirmed=true", g)
+		}
+		// The command's card is the one of docs/agent-cards, with the
+		// commands: the same rows, another surface.
+		cli, _, _ := call(WithCaller(context.Background(), &Caller{}), map[string]any{"group": g})
+		if want, _ := GroupCard(g); cli["skill"] != want {
+			t.Errorf("%s: the card of the command is not GroupCard", g)
+		}
+	}
+	// No group: the groups, each with how many tools it has.
+	m, isErr, text := call(context.Background(), map[string]any{})
+	groups, _ := m["groups"].([]any)
+	if isErr || len(groups) != len(Groups()) {
+		t.Fatalf("no group: want the %d groups: %s", len(Groups()), text)
+	}
+	// A group that is not: USAGE naming the groups.
+	if m, isErr, text := call(context.Background(), map[string]any{"group": "nope"}); !isErr || m["reason"] != "USAGE" || !strings.Contains(text, "vm") {
+		t.Errorf("an unknown group: want USAGE naming the groups: %s", text)
+	}
+	if engines != 0 {
+		t.Errorf("agent_skill built an engine %d times: it reads the registry only", engines)
+	}
+}
+
+// A tool the server does not serve (--toolsets, --read-only) is marked by
+// its name in the card, not by one line for the group: a model that reads
+// a tool in a card and does not find it in tools/list looks for another
+// way («Риск», conclusion 160, У2).
+func TestAgentSkill_MarksEveryToolTheServerDoesNotServe(t *testing.T) {
+	r := New(nil)
+	r.SetServed(func(name string) bool { return name == "vm_list" || name == "agent_skill" })
+	tl, _ := r.Lookup("agent_skill")
+	text, _ := tl.Handler(context.Background(), map[string]any{"group": "vm"})
+	var m map[string]any
+	_ = json.Unmarshal([]byte(text), &m)
+	card, _ := m["skill"].(string)
+	for _, line := range strings.Split(card, "\n") {
+		if !strings.HasPrefix(line, "| `") {
+			continue
+		}
+		served := strings.HasPrefix(line, "| `vm_list`")
+		if marked := strings.Contains(line, "not on this server"); marked == served {
+			t.Errorf("served=%v marked=%v: %s", served, marked, line)
+		}
+	}
+	if !strings.Contains(card, "the person's choice") {
+		t.Errorf("the card does not say whose choice the limits of the server are: %s", card)
+	}
+	// The groups say how many of their tools the server serves.
+	text, _ = tl.Handler(context.Background(), map[string]any{})
+	if !strings.Contains(text, `"on_server"`) {
+		t.Errorf("the groups do not say how many tools the server serves: %s", text)
+	}
+}

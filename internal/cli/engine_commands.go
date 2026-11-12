@@ -71,6 +71,9 @@ var engineCommands = []engineCommand{
 		Flags: map[string]string{"name": "name", "ids": "ids"},
 		Alias: "алиас evo org projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка, как с v1.0"},
 	{Path: "evo whoami", Tool: "whoami"},
+	{Path: "evo agent skill", Tool: "agent_skill",
+		Flags:   map[string]string{"group": "group"},
+		CLIOnly: map[string]string{"read-only": "правила скилла для сервера --read-only: текст без --group — правила для агента с терминалом, у инструмента его нет (заключение «Риска» 160)"}},
 	{Path: "evo doctor", Tool: "doctor"},
 }
 

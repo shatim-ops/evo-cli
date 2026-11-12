@@ -5,9 +5,13 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
+
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // GroupCard is the card of a tool group for an agent (#515, option A,
@@ -19,11 +23,26 @@ import (
 // of the evo skill it goes with; the form of consent is said there, once.
 // false for a group that is not.
 func GroupCard(group string) (string, bool) {
+	return groupCard(group, true, nil)
+}
+
+// cardLimit is the bytes a card may take: it is read into the context of
+// an agent, and the notes of a group are a line each, not a manual.
+const cardLimit = 6000
+
+// groupCard is the card of group for a terminal (the command, docs) or for
+// a client of the MCP server, which has none: the same rows of the
+// registry, without the commands and the pointers to `evo …` — the answer
+// of a server does not name the way around that server's limits («Риск»,
+// conclusion 160). served, when the server serves a part of the tools
+// (--toolsets, --read-only), marks each tool it does not serve.
+func groupCard(group string, terminal bool, served func(string) bool) (string, bool) {
 	if !slices.Contains(Groups(), group) {
 		return "", false
 	}
 	r := New(nil)
 	var rows, filters []string
+	missing := false
 	for _, t := range r.Tools() {
 		if t.Group != group {
 			continue
@@ -32,17 +51,35 @@ func GroupCard(group string) (string, bool) {
 		if t.CLI.Group != "" {
 			command = "`evo " + t.CLI.Group + " " + t.CLI.Verb + "`"
 		}
-		rows = append(rows, fmt.Sprintf("| `%s` | %s | %s | %s |", t.Name, command, cardDoes(t), cardIDs(t.Name)))
+		if terminal {
+			rows = append(rows, fmt.Sprintf("| `%s` | %s | %s | %s |", t.Name, command, cardDoes(t), cardIDs(t.Name)))
+		} else {
+			name := "`" + t.Name + "`"
+			if served != nil && !served(t.Name) {
+				name += " (not on this server)"
+				missing = true
+			}
+			rows = append(rows, fmt.Sprintf("| %s | %s | %s |", name, cardDoes(t), cardIDs(t.Name)))
+		}
 		if f := ListFilters(t); f != nil {
 			filters = append(filters, "`"+t.Name+"` — "+strings.Join(f, ", "))
 		}
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# evo: the `%s` group\n\n", group)
-	fmt.Fprintf(&b, "<!-- Generated from the tool registry of evo: 'evo agent skill --group %s' prints it. -->\n\n", group)
-	fmt.Fprintf(&b, "%d tools. Consent, exit codes and untrusted answers: the rules of the `evo` skill. "+
-		"The arguments of a tool: `evo tools describe <tool> --json`.\n\n", len(rows))
-	b.WriteString("| Tool | Command | Does | Ids from |\n|---|---|---|---|\n")
+	if terminal {
+		fmt.Fprintf(&b, "<!-- Generated from the tool registry of evo: 'evo agent skill --group %s' prints it. -->\n\n", group)
+		fmt.Fprintf(&b, "%d tools. Consent, exit codes and untrusted answers: the rules of the `evo` skill. "+
+			"The arguments of a tool: `evo tools describe <tool> --json`.\n\n", len(rows))
+		b.WriteString("| Tool | Command | Does | Ids from |\n|---|---|---|---|\n")
+	} else {
+		fmt.Fprintf(&b, "%d tools. Consent and untrusted answers: the description of each tool; its arguments: tools/list. "+
+			"A card is not a preview and no ground for confirmed=true.\n\n", len(rows))
+		if missing {
+			b.WriteString("What this server serves is the person's choice: a tool that is not on this server is not to be reached another way.\n\n")
+		}
+		b.WriteString("| Tool | Does | Ids from |\n|---|---|---|\n")
+	}
 	b.WriteString(strings.Join(rows, "\n") + "\n")
 	if _, ok := r.Lookup(group + "_operation"); ok {
 		fmt.Fprintf(&b, "\nA change of this group that answers an `operation_id` runs on: wait for it with `%s_operation` "+
@@ -50,7 +87,11 @@ func GroupCard(group string) (string, bool) {
 	}
 	if len(filters) > 0 {
 		// One line: the vocabulary is the skill's (listSpecs).
-		fmt.Fprintf(&b, "\nFilters of the lists (the rule of the `evo` skill): %s.\n", strings.Join(filters, "; "))
+		rule := " (the rule of the `evo` skill)"
+		if !terminal {
+			rule = ""
+		}
+		fmt.Fprintf(&b, "\nFilters of the lists%s: %s.\n", rule, strings.Join(filters, "; "))
 	}
 	if notes := cardNotes[group]; len(notes) > 0 {
 		b.WriteString("\n## Notes\n\n- " + strings.Join(notes, "\n- ") + "\n")
@@ -141,4 +182,45 @@ func cardIDs(tool string) string {
 		}
 	}
 	return strings.Join(out, ", ")
+}
+
+// handleAgentSkill answers the card of a tool group, or the groups: the
+// registry's own declarations, read with no engine and no request.
+func (r *Registry) handleAgentSkill(ctx context.Context, args map[string]any) (string, bool) {
+	group := strings.TrimSpace(stringArg(args, "group"))
+	if group == "" {
+		type row struct {
+			Name     string `json:"name"`
+			Tools    int    `json:"tools"`
+			OnServer *int   `json:"on_server,omitempty"`
+		}
+		rows := make([]row, 0, len(Groups()))
+		for _, g := range Groups() {
+			x := row{Name: g}
+			on := 0
+			for _, t := range r.tools {
+				if t.Group != g {
+					continue
+				}
+				x.Tools++
+				if r.served == nil || r.served(t.Name) {
+					on++
+				}
+			}
+			if r.served != nil {
+				x.OnServer = &on
+			}
+			rows = append(rows, x)
+		}
+		return toJSON(map[string]any{"groups": rows}), false
+	}
+	// The command prints the card of a terminal; the server answers the
+	// one without it.
+	card, ok := groupCard(group, callerOf(ctx) != nil, r.served)
+	if !ok {
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("unknown group %q", "неизвестная группа %q", group),
+			i18n.Tf("Groups: %s.", "Группы: %s.", strings.Join(Groups(), ", ")))), true
+	}
+	return toJSON(map[string]any{"group": group, "skill": card}), false
 }

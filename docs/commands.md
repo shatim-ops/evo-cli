@@ -317,8 +317,6 @@ Object Storage, секреты; развёртывание compose-проект�
 
 ## evo agent
 
-> Локальная команда: группа: agent setup и agent skill — локальные.
-
 Подключить evo к ИИ-агенту: MCP-клиент и правила для агента
 
 ```
@@ -444,8 +442,6 @@ evo agent setup --client <client> [flags]
 * [evo agent](#evo-agent)	 - Подключить evo к ИИ-агенту: MCP-клиент и правила для агента
 
 ## evo agent skill
-
-> Локальная команда: печатает правила работы с evo для агента (docs/agent-skill.md), собранные из реестра; к облаку не обращается.
 
 Правила работы с evo для ИИ-агента (SKILL.md)
 
