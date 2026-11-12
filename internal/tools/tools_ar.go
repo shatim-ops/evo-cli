@@ -62,10 +62,10 @@ func (s *Registry) handleArGet(ctx context.Context, args map[string]any) (string
 	return toJSON(m), false
 }
 
-func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planArCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageT("'name' is required", "нужен 'name'"), true
+		return answered(usageT("'name' is required", "нужен 'name'"), true), nil
 	}
 	regType := strings.ToUpper(stringArg(args, "registry_type"))
 	if regType == "" {
@@ -74,55 +74,54 @@ func (s *Registry) handleArCreate(ctx context.Context, args map[string]any) (str
 	public, _ := args["public"].(bool)
 	cli, err := s.arClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// A taken name made a second registry, rc 0 (release audit, L-18); it
 	// is refused before the consent, as every other create (D29, FB123-4).
 	existing, err := cli.ListRegistries(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list registries: %w", "проверка, что имя свободно: список реестров: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list registries: %w", "проверка, что имя свободно: список реестров: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult(i18n.T("registry", "реестр"), name, id, st, "ar_list")
+		return answered(nameTakenResult(i18n.T("registry", "реестр"), name, id, st, "ar_list")), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("ar_create makes a BILLABLE %s registry %q (public=%v).",
-				"ar_create создаёт ПЛАТНЫЙ реестр %s %q (public=%v).", regType, name, public),
-			"preview": willPreview(engine.ResourceARRegistry, name, "",
-				map[string]any{"registry_type": regType, "public": public, "tariff": strings.ToUpper(stringArg(args, "tariff"))},
-				[]string{"registry_type", "public", "tariff"}),
-		}), true
+	preview := map[string]any{
+		"message": i18n.Tf("ar_create makes a BILLABLE %s registry %q (public=%v).",
+			"ar_create создаёт ПЛАТНЫЙ реестр %s %q (public=%v).", regType, name, public),
+		"preview": willPreview(engine.ResourceARRegistry, name, "",
+			map[string]any{"registry_type": regType, "public": public, "tariff": strings.ToUpper(stringArg(args, "tariff"))},
+			[]string{"registry_type", "public", "tariff"}),
 	}
-	body := map[string]any{
-		"projectId":    cli.ProjectID(),
-		"name":         name,
-		"registryType": regType,
-		"isPublic":     public,
-	}
-	if t := strings.ToUpper(stringArg(args, "tariff")); t != "" {
-		body["tariff"] = t
-	}
-	op, err := cli.CreateRegistry(ctx, body)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		body := map[string]any{
+			"projectId":    cli.ProjectID(),
+			"name":         name,
+			"registryType": regType,
+			"isPublic":     public,
 		}
-		return lostCreate(ctx, "ar_create", cli.ListRegistries, i18n.T("registry", "реестр"), name, nil, "ar_get id", fmt.Errorf(i18n.T("create registry: %w", "создание реестра: %w"), err))
-	}
-	out := map[string]any{
-		"status": "creating", "operation_id": op.ID,
-		"note": "Async — poll ar_operation(operation_id) until done=true; then ar_get for the status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key).",
-	}
-	// The registry's id is in the create's answer: named at once, not left
-	// to ar_list (fault matrix, process audit 1.2.1; as pg_create, N-07).
-	if op.ResourceID != "" {
-		out["registry_id"] = op.ResourceID
-	} else {
-		out["note"] = "Async — poll ar_operation(operation_id) until done=true; then ar_list for the id/status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key)."
-	}
-	return toJSON(out), false
+		if t := strings.ToUpper(stringArg(args, "tariff")); t != "" {
+			body["tariff"] = t
+		}
+		op, err := cli.CreateRegistry(ctx, body)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "ar_create", cli.ListRegistries, i18n.T("registry", "реестр"), name, nil, "ar_get id", fmt.Errorf(i18n.T("create registry: %w", "создание реестра: %w"), err))
+		}
+		out := map[string]any{
+			"status": "creating", "operation_id": op.ID,
+			"note": "Async — poll ar_operation(operation_id) until done=true; then ar_get for the status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key).",
+		}
+		// The registry's id is in the create's answer: named at once, not left
+		// to ar_list (fault matrix, process audit 1.2.1; as pg_create, N-07).
+		if op.ResourceID != "" {
+			out["registry_id"] = op.ResourceID
+		} else {
+			out["note"] = "Async — poll ar_operation(operation_id) until done=true; then ar_list for the id/status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key)."
+		}
+		return toJSON(out), false
+	}}, nil
 }
 
 func (s *Registry) planArDelete(ctx context.Context, args map[string]any) (*Plan, error) {
