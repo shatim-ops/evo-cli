@@ -5,11 +5,19 @@
 package tools
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // vm_reboot is a line of the table of power actions whose from and to are
@@ -227,5 +235,105 @@ func TestVMReboot_FailuresAreNotAReboot(t *testing.T) {
 	details, _ := m["details"].(map[string]any)
 	if !isErr || m["reason"] != clerrors.CodeAPIError || details["cause"] != "refused" || m["next_tool"] != nil {
 		t.Errorf("a 422 for a running VM: %s", text)
+	}
+}
+
+// rebootWorldInADir is vmStartWorld in a directory of evo: the calls write
+// their intents there, as a run of evo does.
+func rebootWorldInADir(t *testing.T) (*Registry, *powerWorld, string) {
+	t.Helper()
+	c := &faultCloud{}
+	vm, err := c.CreateVM(context.Background(), provision.CreateVMRequest{Name: "web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.setVMState(vm.ID, "running")
+	w := &powerWorld{faultCloud: c, id: vm.ID}
+	dir := t.TempDir()
+	t.Chdir(dir) // evo runs in the directory of its state
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		var buf bytes.Buffer
+		return &engine.Engine{
+			Config:   config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
+			Auth:     staticToken{},
+			Cloud:    w,
+			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
+			StateDir: dir,
+			Timings:  engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 50 * time.Millisecond},
+		}, nil
+	})
+	return r, w, intent.Dir(dir)
+}
+
+// The blind repeat («Риск», conclusion 138, У1): the client cuts the call
+// after the command went out — its time limit, a Ctrl-C — and sends the
+// same call again with the same consent. The VM runs again by then, and
+// the call would reboot it a second time on a consent given once. The
+// record of the cut call makes the repeat ask instead: one command, and
+// the next consented call is a reboot of its own.
+func TestVMReboot_RepeatAfterACutCallAsksAndSendsNothing(t *testing.T) {
+	r, w, dir := rebootWorldInADir(t)
+	tl, _ := r.Lookup("vm_reboot")
+	args := func() map[string]any { return map[string]any{"name": "web", "confirmed": true} }
+
+	// The first call: the platform takes the command, the client is gone
+	// before the answer.
+	ctx, cancel := context.WithCancel(context.Background())
+	w.onPower = func() error {
+		err := w.faultCloud.SetVMPower(context.Background(), w.id, "reboot")
+		cancel()
+		if err != nil {
+			return err
+		}
+		return ctx.Err()
+	}
+	tl.Handler(ctx, args())
+	w.onPower = nil
+	if n := w.powerCalls(); n != 1 {
+		t.Fatalf("power calls after the cut call = %d, want 1", n)
+	}
+	if left := intent.Pending(dir); len(left) != 1 || left[0].Tool != "vm_reboot" || left[0].Held {
+		t.Fatalf("the record of the cut call: %+v, want one, not held", left)
+	}
+	// The reboot ends; the VM runs as it did before the call.
+	w.stepVMPower(w.id)
+
+	// The repeat with the consent of the first call: a question, nothing
+	// sent, the record closed.
+	text, isErr := tl.Handler(context.Background(), args())
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil {
+		t.Fatalf("not JSON: %s", text)
+	}
+	if !isErr || m["status"] != "confirmation_required" || m["interrupted"] == nil {
+		t.Fatalf("the repeat after a cut call: %s, want the question again with what was cut", text)
+	}
+	if msg, _ := m["message"].(string); !strings.Contains(msg, "outcome is unknown") || !strings.Contains(msg, "vm_get") {
+		t.Errorf("the question does not say that the outcome is unknown and where to look: %q", msg)
+	}
+	if n := w.powerCalls(); n != 1 {
+		t.Fatalf("power calls after the repeat = %d, want 1: the repeat rebooted the VM again", n)
+	}
+	if left := intent.Pending(dir); len(left) != 0 {
+		t.Errorf("the record after the question: %+v, want none", left)
+	}
+
+	// The person was asked: the next consented call is a reboot of its own.
+	w.stepAfter = w.reads + 6
+	text, isErr = tl.Handler(context.Background(), args())
+	_ = json.Unmarshal([]byte(text), &m)
+	if isErr || m["status"] != "rebooted" || w.powerCalls() != 2 {
+		t.Errorf("the consented call after the question: %s (power calls %d, want 2)", text, w.powerCalls())
+	}
+}
+
+// The declaration of the layer and the table of power actions say one
+// thing: an action whose start and target are one state is a tool every
+// send of which is a change, and no other power tool is.
+func TestVMPower_EverySendIsAChangeIsDeclaredToTheIntentLayer(t *testing.T) {
+	for tool, act := range vmPowerActions {
+		if _, declared := everySendIsAChange[tool]; declared != act.everySendIsAChange() {
+			t.Errorf("%s: from %s, to %s, declared to the intent layer as «every send is a change»: %v", tool, act.from, act.to, declared)
+		}
 	}
 }
