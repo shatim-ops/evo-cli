@@ -36,7 +36,7 @@ func TestImageCreateRequiresArgs(t *testing.T) {
 		{"name": "img"},    // без диска
 		{"disk_id": "d-1"}, // без имени
 	} {
-		got := callTool(t, s.handleImageCreate, args)
+		got := callTool(t, s.gated("image_create", s.planImageCreate), args)
 		if !strings.Contains(got["error"].(string), "required") {
 			t.Fatalf("на %v ждали отказ по обязательным полям, получили %v", args, got)
 		}
@@ -49,7 +49,7 @@ func TestImageCreateRequiresArgs(t *testing.T) {
 func TestImageCreateAsksConfirmationBeforeCloud(t *testing.T) {
 	cloud := &cancelCloud{cancel: func() {}}
 	s, _ := cancelRegistry(t, cloud)
-	got := callTool(t, s.handleImageCreate, map[string]any{
+	got := callTool(t, s.gated("image_create", s.planImageCreate), map[string]any{
 		"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000",
 	})
 	if got["status"] != "confirmation_required" {
@@ -72,7 +72,7 @@ func TestImageCreatePreviewDoesNotPromiseConfiguredRegion(t *testing.T) {
 			Cloud: diskZoneCloud{&cancelCloud{cancel: func() {}}}}, nil
 	})
 
-	got := callTool(t, s.handleImageCreate, map[string]any{
+	got := callTool(t, s.gated("image_create", s.planImageCreate), map[string]any{
 		"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000",
 	})
 	will, _ := got["will_create"].(map[string]any)
@@ -86,7 +86,7 @@ func TestImageCreatePreviewDoesNotPromiseConfiguredRegion(t *testing.T) {
 	}
 
 	// Явно заданная зона должна возвращаться как есть.
-	got = callTool(t, s.handleImageCreate, map[string]any{
+	got = callTool(t, s.gated("image_create", s.planImageCreate), map[string]any{
 		"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000",
 		"zone": "ru.AZ-2",
 	})
@@ -214,12 +214,12 @@ func TestImageCreate_NameTakenByOwnImageOnly(t *testing.T) {
 		return &engine.Engine{Config: config.Config{ProjectID: "p", KeyID: "k", Secret: "s"}, Auth: staticToken{}, Cloud: cloud}, nil
 	})
 	args := map[string]any{"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000"}
-	if got := callTool(t, s.handleImageCreate, args); got["status"] != "confirmation_required" {
+	if got := callTool(t, s.gated("image_create", s.planImageCreate), args); got["status"] != "confirmation_required" {
 		t.Fatalf("a catalogue image of the name refused the create: %v", got)
 	}
 
 	cloud.images = append(cloud.images, &provision.Image{ID: "00000000-0000-4000-8000-0000000000c2", Name: "img", Type: "Private", Status: "active"})
-	text, isErr := s.handleImageCreate(context.Background(), args)
+	text, isErr := s.gated("image_create", s.planImageCreate)(context.Background(), args)
 	var got map[string]any
 	_ = json.Unmarshal([]byte(text), &got)
 	if !isErr || got["reason"] != clierrors.CodeUsage || got["existing_id"] != "00000000-0000-4000-8000-0000000000c2" {

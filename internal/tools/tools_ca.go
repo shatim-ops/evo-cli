@@ -287,36 +287,31 @@ func caLogsOutput(res *containerapp.LogsResult, system bool) map[string]any {
 	return out
 }
 
-func (s *Registry) handleCaStartStop(ctx context.Context, args map[string]any, action string) (string, bool) {
-	name := stringArg(args, "name")
-	if name == "" {
-		return usageT("name is required", "нужен name"), true
-	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+// planCaStartStop plans ca_start or ca_stop (action). The client is built
+// in the execution, as it was after the question: a call without a key
+// still asks first (moving that refusal before the question is a breaking
+// change, the owner's to decide).
+func (s *Registry) planCaStartStop(action string) Planner {
+	return func(_ context.Context, args map[string]any) (*Plan, error) {
+		name := stringArg(args, "name")
+		if name == "" {
+			return answered(usageT("name is required", "нужен name"), true), nil
+		}
 		msg := i18n.Tf("ca_start will start container app %q (it is billed while running).",
 			"ca_start запустит приложение %q (пока оно работает, оно оплачивается).", name)
 		if action == "stop" {
 			msg = i18n.Tf("ca_stop will stop container app %q (it stops serving requests).",
 				"ca_stop остановит приложение %q (оно перестанет обслуживать запросы).", name)
 		}
-		return toJSON(map[string]any{
-			"status":  "confirmation_required",
-			"message": msg,
-		}), true
+		return &Plan{Preview: map[string]any{"message": msg}, Execute: func(ctx context.Context) (string, bool) {
+			cli, err := s.caClient(ctx)
+			if err != nil {
+				return errResult(err), true
+			}
+			if err := cli.StartStop(ctx, name, action); err != nil {
+				return errResult(err), true
+			}
+			return toJSON(map[string]any{"status": "ok", "name": name, "action": action}), false
+		}}, nil
 	}
-	cli, err := s.caClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	if err := cli.StartStop(ctx, name, action); err != nil {
-		return errResult(err), true
-	}
-	return toJSON(map[string]any{"status": "ok", "name": name, "action": action}), false
-}
-
-func (s *Registry) handleCaStart(ctx context.Context, args map[string]any) (string, bool) {
-	return s.handleCaStartStop(ctx, args, "start")
-}
-func (s *Registry) handleCaStop(ctx context.Context, args map[string]any) (string, bool) {
-	return s.handleCaStartStop(ctx, args, "stop")
 }
