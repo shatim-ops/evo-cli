@@ -555,7 +555,9 @@ func (s *Registry) planPgDbCreate(_ context.Context, args map[string]any) (*Plan
 		}
 		db, err := cli.CreateDatabase(ctx, cid, body)
 		if err != nil {
-			return errResult(fmt.Errorf(i18n.T("create database: %w", "создание базы: %w"), err)), true
+			err = fmt.Errorf(i18n.T("create database: %w", "создание базы: %w"), err)
+			databases := func(ctx context.Context) ([]map[string]any, error) { return cli.ListDatabases(ctx, cid) }
+			return errResult(pgCreateOfExisting(ctx, pgDatabase, name, databases, err)), true
 		}
 		return toJSON(map[string]any{"status": "created", "database": db}), false
 	}}, nil
@@ -660,6 +662,15 @@ var pgUser = pgNamed{
 	what: "User", whatRU: "Пользователь", itRU: "его",
 	keep:   "Do not delete it and create it again: that changes its password, and the applications that use it stop connecting",
 	keepRU: "Не удаляйте его и не создавайте заново: это сменит пароль, и приложения, которые им пользуются, перестанут подключаться",
+}
+
+// pgDatabase: a database deleted and created anew is an empty one — the
+// way on an agent finds by itself after «already exists» destroys the
+// data (release plan 1.9, «Повтор у выпущенных инструментов»).
+var pgDatabase = pgNamed{
+	what: "Database", whatRU: "База данных", itRU: "её",
+	keep:   "Do not delete it and create it again: a delete destroys its data",
+	keepRU: "Не удаляйте её и не создавайте заново: удаление уничтожит её данные",
 }
 
 // pgCreateOfExisting is the failure err of a create of the thing named
