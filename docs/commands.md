@@ -10050,7 +10050,7 @@ evo vpc close-ports <security-group> [flags]
 ```text
 Создать VPC (асинхронно).
 
-Создать VPC (виртуальное частное облако) — только VPC: подсеть создаётся отдельно (в консоли; создания подсетей в evo пока нет), а evo lb create для VPC без подсети отказывает. Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
+Создать VPC (виртуальное частное облако) — только VPC: подсеть создаётся отдельно ('evo vpc subnet-create'), а evo lb create для VPC без подсети отказывает. Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
 Вызывает инструмент vpc_create (подробнее: 'evo tools describe vpc_create').
 

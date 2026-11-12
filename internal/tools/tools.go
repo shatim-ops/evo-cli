@@ -957,7 +957,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "lb_list",
-			Description: "List Evolution Load Balancers (L4/network) in the project (id, name, status, vpc, external_ip). Read-only. nlb.api.cloud.ru.",
+			Description: "List L4 load balancers in the project (id, name, status, vpc, external_ip). Read-only.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
@@ -1019,7 +1019,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_list",
-			Description: "List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). Read-only. vpc.api.cloud.ru.",
+			Description: "List VPCs in the project (id, name, default, type). Read-only.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
@@ -1029,7 +1029,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_create",
-			Description: "Create a new VPC (virtual private cloud) (async). It creates the VPC only: a subnet is created separately (in the console; evo has no subnet create yet), and lb_create refuses a VPC without one.",
+			Description: "Create a VPC (async). The VPC only: add a subnet with subnet_create — lb_create refuses a VPC without one.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("VPC name. Required."),
 				"description": strProp("Optional description."),
@@ -1038,7 +1038,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_delete",
-			Description: "Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first.",
+			Description: "Delete a VPC by id (from vpc_list) (async). Remove its subnets and resources first.",
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("VPC UUID (from vpc_list). Required."),
 				"confirmed": confirmedProp(),
@@ -1057,7 +1057,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_route_create",
-			Description: "Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az).",
+			Description: "Add a static route to a VPC (async). Destination is a CIDR; the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az).",
 			InputSchema: objSchema(map[string]any{
 				"vpc_id":                   strProp("VPC UUID. Required."),
 				"subnet":                   cidrProp("Destination CIDR, e.g. '192.168.0.0/24'. Required."),
@@ -1081,7 +1081,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zones",
-			Description: "List Evolution DNS zones in the project (both public and private), with id, name, domain, visibility, state (and confirm_state of a public zone), valid, delegated. Read-only. dns.api.cloud.ru.",
+			Description: "List DNS zones in the project, public and private (id, name, domain, visibility, state, confirm_state of a public zone, valid, delegated). Read-only.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
@@ -1089,27 +1089,27 @@ func (s *Registry) registerTools() {
 			Description: "Get full details of one DNS zone by id (from dns_zones). Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"id":   strProp("Zone UUID (from dns_zones). Required."),
-				"type": enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
+				"type": enumProp("Zone visibility. Optional: evo finds it by the id.", "public", "private"),
 			}, "id"),
 		},
 		{
 			Name:        "dns_zone_create",
-			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone resolves only in the VPC it is linked to: vpc_id, else the project's default VPC (named in the preview).",
+			Description: "Create a DNS zone, public or private. A public zone serves traffic only once the domain is delegated (the answer holds the validation record); a private zone resolves only in the VPC it is linked to: vpc_id, else the project's default VPC (named in the preview).",
 			InputSchema: objSchema(map[string]any{
 				"domain":      strProp("Zone FQDN, e.g. 'example.com.' (required)."),
 				"name":        strProp("Zone display name. Optional; default = domain."),
-				"type":        enumProp("Zone visibility: 'public' (default) or 'private'.", "public", "private"),
+				"type":        enumProp("Zone visibility (default public).", "public", "private"),
 				"description": strProp("Optional zone description."),
-				"vpc_id":      uuidProp("Private zone: the VPC it is linked to (resolves in). Optional; default = the project's default VPC."),
+				"vpc_id":      uuidProp("Private zone: the VPC it resolves in. Default: the project's default VPC."),
 				"confirmed":   confirmedProp(),
 			}, "domain"),
 		},
 		{
 			Name:        "dns_zone_delete",
-			Description: "Delete a DNS zone by id (from dns_zones) AND its records. type (public|private) is optional: evo finds it by the zone id. A private zone linked to VPCs is refused: Cloud.ru deletes it only once its links are removed in the console. Waits up to 45 s: deleted, or deleting with operation_id (dns_operation).",
+			Description: "Delete a DNS zone by id (from dns_zones) AND its records. A private zone linked to VPCs is refused: Cloud.ru deletes it only once its links are removed in the console. Waits up to 45 s: deleted, or deleting with operation_id (dns_operation).",
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("Zone UUID (from dns_zones). Required."),
-				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
+				"type":      enumProp("Zone visibility. Optional: evo finds it by the id.", "public", "private"),
 				"confirmed": confirmedProp(),
 				"wait":      boolProp(deleteWaitDesc),
 			}, "id"),
@@ -1121,18 +1121,18 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_records",
-			Description: "List resource records of a DNS zone (id, name, type, values, ttl). Read-only. type (public|private) is optional: evo finds it by id.",
+			Description: "List resource records of a DNS zone (id, name, type, values, ttl). Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"zone_id": strProp("Zone UUID (from dns_zones). Required."),
-				"type":    enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
+				"type":    enumProp("Zone visibility. Optional: evo finds it by the id.", "public", "private"),
 			}, "zone_id"),
 		},
 		{
 			Name:        "dns_record_get",
-			Description: "Get one DNS record by id (from dns_records). Read-only. type (public|private) is optional: evo finds it by id.",
+			Description: "Get one DNS record by id (from dns_records). Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"record_id": strProp("Record UUID (from dns_records). Required."),
-				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
+				"type":      enumProp("Zone visibility. Optional: evo finds it by the id.", "public", "private"),
 			}, "record_id"),
 		},
 		{
@@ -1141,11 +1141,11 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"zone_id":     strProp("Zone UUID (from dns_zones). Required."),
 				"name":        strProp("Record name/host (e.g. 'www' or '@'). Required."),
-				"record_type": enumProp("Record type: a, aaaa, cname, mx, ns, spf, txt, caa, srv (any case; sent lower-case, as the API takes it). Required.", dnsRecordTypes...),
+				"record_type": enumProp("a, aaaa, cname, mx, ns, spf, txt, caa, srv (any case). Required.", dnsRecordTypes...),
 				"value":       strProp("Single record value (e.g. an IP for A). Use this or 'values', not both."),
 				"values":      map[string]any{"type": "array", "description": "Multiple record values.", "items": map[string]any{"type": "string"}},
 				"ttl":         atLeast(0, intProp("TTL seconds (default 300).")),
-				"type":        enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
+				"type":        enumProp("Zone visibility. Optional: evo finds it by the id.", "public", "private"),
 				"confirmed":   confirmedProp(),
 			}, "zone_id", "name", "record_type"),
 		},
@@ -1154,7 +1154,7 @@ func (s *Registry) registerTools() {
 			Description: "Delete a DNS record by id (from dns_records) (async).",
 			InputSchema: objSchema(map[string]any{
 				"record_id": uuidProp("Record UUID (from dns_records). Required."),
-				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
+				"type":      enumProp("Zone visibility. Optional: evo finds it by the id.", "public", "private"),
 				"confirmed": confirmedProp(),
 				"wait":      boolProp(deleteWaitDesc),
 			}, "record_id"),
@@ -1293,7 +1293,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_list",
-			Description: "Certificate Manager — list TLS certificates in the project (read-only). Filter by name/dns_name/common_name/type/state. Use to find a cert for a site; TLS ends on the VM or app that serves it — the load balancer is L4 TCP without TLS.",
+			Description: "List TLS certificates in the project; filter by name, dns_name, common_name, type, state. TLS ends on the VM or app that serves the site — the load balancer is L4 TCP without TLS. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Name or part of the certificate name (optional)."),
 				"dns_name":    strProp("One of the certificate's DNS names, e.g. shkrbkv.ru (optional)."),
@@ -1304,12 +1304,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_get",
-			Description: "Certificate Manager — get one certificate by id (metadata, primary version, expiry, status). Read-only.",
+			Description: "Get one certificate by id (metadata, primary version, expiry, status). Read-only.",
 			InputSchema: objSchema(map[string]any{"id": strProp("Certificate id. Required.")}, "id"),
 		},
 		{
 			Name:        "cert_issue_le",
-			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). The certificate goes to the application: the load balancer (lb_create) is L4 TCP and terminates no TLS, so HTTPS ends on the VM (a web server such as Caddy or nginx holds the certificate, or issues its own). ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true.",
+			Description: "Issue a FREE Let's Encrypt TLS certificate for one or more domains (async). The certificate goes to the application: lb_create is L4 TCP and terminates no TLS, so HTTPS ends on the VM (its web server holds the certificate, or issues its own). The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Display name for the certificate. Required."),
 				"dns_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"]. Required."},
@@ -1319,7 +1319,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_import",
-			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are PEM, as it is or Base64-encoded.",
+			Description: "Import your own certificate. server_certificate and private_key are PEM, as it is or Base64-encoded.",
 			InputSchema: objSchema(map[string]any{
 				"name":                     strProp("Display name. Required."),
 				"server_certificate":       strProp("Public cert: PEM, as it is or Base64-encoded. Required."),
@@ -1331,12 +1331,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_renew",
-			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Every call sends a renewal request: a repeat sends another.",
+			Description: "Ask Let's Encrypt to renew a certificate (async). Returns an operation id. Every call sends a renewal request: a repeat sends another.",
 			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
 		},
 		{
 			Name:        "cert_delete",
-			Description: "Certificate Manager — permanently delete a certificate. If bound to a load balancer, deletion can break HTTPS (use force=true to delete anyway).",
+			Description: "Permanently delete a certificate. If it is bound to a load balancer, deleting it can break HTTPS (force=true deletes it anyway).",
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("Certificate id. Required."),
 				"confirmed": confirmedProp(),
@@ -1345,17 +1345,17 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_usage",
-			Description: "Certificate Manager — list resources (load balancers/listeners) that USE a certificate. Check this before deleting. Read-only.",
+			Description: "List the resources that USE a certificate. Check before deleting it. Read-only.",
 			InputSchema: objSchema(map[string]any{"id": strProp("Certificate id. Required.")}, "id"),
 		},
 		{
 			Name:        "cert_versions",
-			Description: "Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry), all pages. Read-only.",
+			Description: "List a certificate's versions (id, CN, DNS names, status, expiry), all pages. Read-only.",
 			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required.")}, "certificate_id"),
 		},
 		{
 			Name:        "cert_private_key",
-			Description: "Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's Base64 (key_format: pem; base64 if the API's value is not a Base64 PEM). cert_import takes the key Base64-encoded.",
+			Description: "Return the SECRET private key of a certificate version: privateKey is PEM text, decoded from the API's Base64 (key_format: pem; base64 if the API's value is not a Base64 PEM). cert_import takes the key Base64-encoded.",
 			InputSchema: objSchema(map[string]any{
 				"certificate_id": strProp("Certificate id. Required."),
 				"version_id":     intProp("Version number; 0 or omitted = latest version."),
@@ -1364,7 +1364,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_operation",
-			Description: "Certificate Manager — poll an async operation (issue/renew) by id until done=true. Returns {done, error, elapsed_sec, resource_status}. Read-only.",
+			Description: "Poll a certificate operation (issue/renew) by id until done=true. Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation id from cert_issue_le/cert_renew. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
