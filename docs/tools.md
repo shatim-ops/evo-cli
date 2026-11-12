@@ -30,7 +30,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `audit_events` | `evo audit events` | нет | — | Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource … | Журнал аудита проекта: кто, что и когда сделал |
+| `audit_events` | `evo audit events` | нет | — | Who did what in the project: control-plane events (create, delete, modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time — for 'who deleted … | Журнал аудита проекта: кто, что и когда сделал |
 
 ## auth
 
@@ -179,7 +179,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `metrics_history` | `evo metrics history` | нет | `match` | Service Monitoring — read a metric's history over a recent window (read-only). | История метрики за недавний период (Service Monitoring) |
+| `metrics_history` | `evo metrics history` | нет | `match` | Read a metric's history over a recent window: time series {metric labels, values, timestamps}. | История метрики за недавний период (Service Monitoring) |
 | `metrics_scrape` | `evo metrics scrape` | нет | — | Service Monitoring — current metric values in Prometheus text exposition (read-only snapshot of all/matched metrics right now). | Текущие значения метрик в текстовом формате Prometheus |
 
 ## nlb

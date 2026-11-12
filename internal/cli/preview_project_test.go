@@ -12,8 +12,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // previewNoProject are the creates whose preview does not name the project
@@ -74,7 +72,7 @@ func TestPreview_CreateNamesTheProject(t *testing.T) {
 		preview, _ := tl.Handler(context.Background(), args)
 		fake.takeWrites()
 		done()
-		_ = os.Remove(state.DefaultPath(w.dir))
+		forgetRun(w)
 		if !namedValues(preview, nil)["projectid"][pvProject] && !namedValues(preview, nil)["project"][pvProject] {
 			missing[c.tool.Name] = true
 		}
