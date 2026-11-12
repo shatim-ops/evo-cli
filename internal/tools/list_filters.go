@@ -46,6 +46,9 @@ const (
 	filterRef
 	// filterBool: the field is set (true, not empty, above zero), or not.
 	filterBool
+	// filterExact: the field is the value, in any case, and the values are
+	// no closed list: an id.
+	filterExact
 )
 
 // listFilter is one filter of a list.
@@ -58,6 +61,10 @@ type listFilter struct {
 	fields []string
 	// values are the values of a filterEnum.
 	values []string
+	// many: the value is a list, and an item passes when its field is one
+	// of the values (ids, states). An empty list and an empty value in it
+	// are USAGE by the schema (prop), as an empty string of a filter is.
+	many bool
 	// ref is the read tool that lists what a filterRef names.
 	ref string
 	// en and ru describe the argument, in one line: the schema and the
@@ -89,6 +96,9 @@ type listSpec struct {
 	// resource a list is read in (the cluster of k8s_nodepools, the zone
 	// of dns_records, FB182-1): it does not narrow the list it names.
 	own []string
+	// noIDs is why a list with filters takes no «ids»: its item carries
+	// no id (withSets).
+	noIDs string
 	// none is why a list takes no filter.
 	none string
 }
@@ -119,6 +129,47 @@ func vpcFilter() listFilter {
 		en: "Only in this VPC: UUID or name.", ru: "Только в этой VPC: UUID или имя"}
 }
 
+// idsFilter selects by several ids: the pack of ids another API gave.
+func idsFilter() listFilter {
+	return listFilter{arg: "ids", kind: filterExact, many: true, fields: []string{"id"},
+		en: "Only these ids.", ru: "Только с одним из этих id"}
+}
+
+// anyOf is the filter by several values of the closed list of f, named as
+// f in the plural: «state» stays as it is released, «states» takes a list.
+func (f listFilter) anyOf() listFilter {
+	arg := f.arg + "s"
+	if f.arg == "status" {
+		arg = "statuses"
+	}
+	return listFilter{arg: arg, kind: filterEnum, many: true, fields: []string{f.arg}, values: f.values,
+		en: "Only these states: values of " + f.arg + ".", ru: "Только в одном из этих состояний: значения — как у " + f.arg}
+}
+
+// withSets gives every list that has filters its filters by several
+// values (release plan 1.9, Вп-10), in one place: «ids» where the item
+// carries an id (noIDs says why not), and the plural of each filter by
+// the state. A new list gets them by being declared.
+func withSets(specs map[string]listSpec) map[string]listSpec {
+	for name, s := range specs {
+		if len(s.filters) == 0 {
+			continue
+		}
+		filters := append([]listFilter(nil), s.filters...)
+		if s.noIDs == "" {
+			filters = append(filters, idsFilter())
+		}
+		for _, f := range s.filters {
+			if f.kind == filterEnum && (f.arg == "state" || f.arg == "status") {
+				filters = append(filters, f.anyOf())
+			}
+		}
+		s.filters = filters
+		specs[name] = s
+	}
+	return specs
+}
+
 func boolFilter(arg, en, ru string, fields ...string) listFilter {
 	return listFilter{arg: arg, kind: filterBool, fields: fields, en: en, ru: ru}
 }
@@ -143,7 +194,7 @@ var (
 
 // listSpecs are the lists and their filters, by tool. A list tool is here
 // with its filters or with why it has none (TestListSpecs_*).
-var listSpecs = map[string]listSpec{
+var listSpecs = withSets(map[string]listSpec{
 	// Compute
 	"vm_list": {rows: "vms", filters: []listFilter{
 		zoneFilter().inCloud("/api/v1/vms", "availability_zone_ids"),
@@ -171,8 +222,9 @@ var listSpecs = map[string]listSpec{
 	"snat_list": {rows: "nat_gateways", filters: []listFilter{
 		zoneFilter("availability_zone_id", "availability_zone"), enumFilter("status", networkStates...), nameFilter(),
 	}},
-	"list_flavors": {rows: "flavors", own: []string{"cpu", "ram", "share", "zone", "gpu", "spot"}, filters: []listFilter{nameFilter()}},
-	"image_list":   {rows: "images", own: []string{"query", "type", "zone"}},
+	"list_flavors": {rows: "flavors", own: []string{"cpu", "ram", "share", "zone", "gpu", "spot"}, filters: []listFilter{nameFilter()},
+		noIDs: "a flavor is named, in the answer and in every argument that takes one"},
+	"image_list": {rows: "images", own: []string{"query", "type", "zone"}},
 
 	// VPC, DNS
 	"vpc_list": {rows: "vpcs", filters: []listFilter{nameFilter()}},
@@ -203,7 +255,7 @@ var listSpecs = map[string]listSpec{
 		textFilter("name", "Only with this in the name or the path, any case.", "Только с этой частью имени или пути, регистр не важен", "name", "path"),
 	}},
 	"cert_list":  {rows: "certificates", own: []string{"name", "type", "dns_name", "common_name", "state"}},
-	"s3_buckets": {rows: "buckets", filters: []listFilter{nameFilter()}},
+	"s3_buckets": {rows: "buckets", filters: []listFilter{nameFilter()}, noIDs: "a bucket has a name and no id"},
 
 	// The catalogues the filters themselves resolve by, and the short
 	// lists: no filter, with why.
@@ -215,8 +267,8 @@ var listSpecs = map[string]listSpec{
 
 	// The lists inside one resource and of the organization: by the name
 	// and, where the specification closes the list of them, the status.
-	"pg_databases":         {rows: "databases", filters: []listFilter{nameFilter()}},
-	"pg_users":             {rows: "users", filters: []listFilter{nameFilter()}},
+	"pg_databases":         {rows: "databases", filters: []listFilter{nameFilter()}, noIDs: "the published specification gives a database a name and no id"},
+	"pg_users":             {rows: "users", filters: []listFilter{nameFilter()}, noIDs: "the published specification gives a user a name and no id"},
 	"pg_backups":           {rows: "backups", filters: []listFilter{enumFilter("status", pgBackupStatuses...), nameFilter()}},
 	"vpc_routes":           {rows: "routes", filters: []listFilter{enumFilter("status", routeStatuses...)}},
 	"org_projects":         {rows: "projects", filters: []listFilter{nameFilter()}},
@@ -240,7 +292,7 @@ var listSpecs = map[string]listSpec{
 	"ca_logs":            {none: "the lines of a log, read by its own arguments, not a list of resources"},
 	"k8s_options":        {none: "a composite catalogue (versions, flavors, zones) read whole to plan a cluster"},
 	"doctor":             {none: "the checks of this machine and this key, each of which the person reads"},
-}
+})
 
 // filterHintRows is how many items a list answers without a filter before
 // it says, in one line, which filters narrow it: one number for every
@@ -262,6 +314,14 @@ func (f listFilter) itemFields() []string {
 // and the whole list (FB182-3).
 func (f listFilter) prop() map[string]any {
 	var p map[string]any
+	if f.many {
+		// The closed list of a filter by several states is not written
+		// out again: the schema has it at the filter by one (the budget
+		// of tools/list), the description names that argument, and evo
+		// checks each value by it before the list is read (condition).
+		return map[string]any{"type": "array", "description": f.en, "minItems": 1,
+			"items": map[string]any{"type": "string", "minLength": 1}}
+	}
 	switch f.kind {
 	case filterEnum:
 		p = enumProp(f.en, f.values...)
@@ -300,7 +360,9 @@ func ListFilters(t Tool) []string {
 // are a closed list.
 func ListFilterValues(t Tool, arg string) []string {
 	for _, f := range listSpecs[t.Name].filters {
-		if f.arg == arg {
+		// A filter by several values names the argument that lists
+		// them (anyOf): they are written out once.
+		if f.arg == arg && !f.many {
 			return f.values
 		}
 	}
@@ -324,6 +386,8 @@ func ListFilterSamples(t Tool) []FilterSample {
 		switch {
 		case f.arg == "zone":
 			v = "ru.AZ-2"
+		case f.many:
+			// An example shows the filter of one value.
 		case f.kind == filterEnum && f.arg != "type":
 			for _, st := range sampleStates {
 				for _, known := range f.values {
@@ -440,26 +504,40 @@ func isSet(v any) bool {
 // handler does, with one line of a hint when the list is long.
 func (r *Registry) filtered(s listSpec, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
-		var conds []condition
-		for _, f := range s.filters {
-			if !given(args, f.arg) {
-				continue
-			}
-			if f.kind == filterRef && len(conds) == 0 {
-				// The refusals of the handler's engine come first, with
-				// no request: no key, no project (engineFor).
-				if _, err := r.engineFor(ctx, nil); err != nil {
+		// The filters that read nothing are checked first: a value they
+		// refuse is USAGE before any request, the list of a reference
+		// included. The conditions stay in the order of the declaration.
+		byFilter := make([]*condition, len(s.filters))
+		engineChecked := false
+		for _, reads := range []bool{false, true} {
+			for i, f := range s.filters {
+				if !given(args, f.arg) || (f.kind == filterRef) != reads {
+					continue
+				}
+				if reads && !engineChecked {
+					// The refusals of the handler's engine come before
+					// the request of a reference: no key, no project
+					// (engineFor).
+					if _, err := r.engineFor(ctx, nil); err != nil {
+						return errResult(err), true
+					}
+					engineChecked = true
+				}
+				c, refusal, err := r.condition(ctx, f, args[f.arg])
+				if err != nil {
 					return errResult(err), true
 				}
+				if refusal != "" {
+					return refusal, true
+				}
+				byFilter[i] = &c
 			}
-			c, refusal, err := r.condition(ctx, f, args[f.arg])
-			if err != nil {
-				return errResult(err), true
+		}
+		var conds []condition
+		for _, c := range byFilter {
+			if c != nil {
+				conds = append(conds, *c)
 			}
-			if refusal != "" {
-				return refusal, true
-			}
-			conds = append(conds, c)
 		}
 		// narrowed: something besides evo selected — the handler by its
 		// own filters, or the cloud by a parameter.
@@ -609,6 +687,24 @@ func noList(text, key string) bool {
 // and refusal is the error answer of that list when it could not be read.
 func (r *Registry) condition(ctx context.Context, f listFilter, v any) (_ condition, refusal string, _ error) {
 	c := condition{f: f, shown: v}
+	if f.many {
+		// The list is checked by the schema already (checkArgs): not
+		// empty, of strings that are not empty. A closed list is checked
+		// here, by the rule and in the words of an enum of the schema.
+		c.want = stringList(v)
+		if f.kind == filterEnum {
+			closed := enumProp("", f.values...)
+			for i, s := range c.want {
+				canon, err := enumValue(fmt.Sprintf("%s[%d]", f.arg, i), closed, s)
+				if err != nil {
+					return c, "", err
+				}
+				c.want[i] = canon
+			}
+		}
+		c.shown = c.want
+		return c, "", nil
+	}
 	switch f.kind {
 	case filterBool:
 		c.on, _ = v.(bool)
@@ -628,6 +724,18 @@ func (r *Registry) condition(ctx context.Context, f listFilter, v any) (_ condit
 		c.shown = addrLabel(name, id)
 	}
 	return c, "", nil
+}
+
+// stringList are the strings of a list argument.
+func stringList(v any) []string {
+	items, _ := v.([]any)
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		if s, ok := it.(string); ok {
+			out = append(out, strings.TrimSpace(s))
+		}
+	}
+	return out
 }
 
 func stringOf(v any) string {

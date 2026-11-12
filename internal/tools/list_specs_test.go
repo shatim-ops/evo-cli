@@ -131,7 +131,9 @@ func TestListSpecs_StatesAreTheSpecifications(t *testing.T) {
 			if f.kind != filterEnum {
 				continue
 			}
-			key := name + "." + f.arg
+			// The filter by several values is the closed list of the
+			// field it reads (states of state): one source.
+			key := name + "." + f.itemFields()[0]
 			seen[key] = true
 			src, ok := enumSource[key]
 			if !ok {

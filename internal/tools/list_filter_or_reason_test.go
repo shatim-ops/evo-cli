@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -38,7 +39,11 @@ var everyItem = map[string]any{
 // everyArrayAPI answers every request with every top-level array of the
 // GET answers of the published specifications (scripts/api-contract-fields.json),
 // each with everyItem.
-type everyArrayAPI struct{ body []byte }
+type everyArrayAPI struct {
+	body []byte
+	// requests counts the requests the API was sent.
+	requests atomic.Int64
+}
 
 func newEveryArrayAPI(t *testing.T) *everyArrayAPI {
 	t.Helper()
@@ -72,6 +77,7 @@ func newEveryArrayAPI(t *testing.T) *everyArrayAPI {
 }
 
 func (a *everyArrayAPI) RoundTrip(*http.Request) (*http.Response, error) {
+	a.requests.Add(1)
 	rec := httptest.NewRecorder()
 	rec.Header().Set("Content-Type", "application/json")
 	rec.WriteHeader(http.StatusOK)

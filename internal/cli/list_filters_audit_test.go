@@ -179,3 +179,47 @@ func reasonOf(s string) string {
 	}
 	return ""
 }
+
+// Release plan 1.9, Вп-10: a filter by several values (--ids, --states)
+// refuses an empty value as MCP does — `--ids a,,b` and `--ids ""` are
+// USAGE naming the empty value, not the list of «a, b» and not the whole list —
+// and takes its values repeated or between commas, as one list.
+func TestListFilters_ListFlagsRefuseAnEmptyValue(t *testing.T) {
+	reg := newRegistry()
+	seen := 0
+	for _, fc := range filterCommands(t) {
+		props, _ := fc.tool.InputSchema["properties"].(map[string]any)
+		tl, _ := reg.Lookup(fc.tool.Name)
+		for _, a := range tools.ListFilters(fc.tool) {
+			p, _ := props[a].(map[string]any)
+			if p["type"] != "array" {
+				continue
+			}
+			fl := fc.cmd.Flags().Lookup(strings.ReplaceAll(a, "_", "-"))
+			if fl == nil {
+				t.Errorf("%s: filter %s is no flag of the command", fc.tool.Name, a)
+				continue
+			}
+			seen++
+			for _, v := range []string{"", "x,,y", " , "} {
+				args := append(append([]string{}, fc.path...), "--"+fl.Name, v)
+				_, stderr, _ := execCLI(t, args...)
+				if reasonOf(stderr) != "USAGE" || !strings.Contains(stderr, a+"[") {
+					t.Errorf("%s --%s %q: want USAGE naming the empty value, got %.300s", fc.tool.Name, fl.Name, v, stderr)
+				}
+			}
+			mcpArgs := map[string]any{a: []any{"x", ""}}
+			for i, pos := range fc.tool.CLI.Args {
+				if !strings.HasSuffix(pos, "?") && !strings.HasSuffix(pos, "...") {
+					mcpArgs[strings.SplitN(pos, "|", 2)[0]] = fc.path[len(fc.path)-len(fc.tool.CLI.Args)+i]
+				}
+			}
+			if text, _ := tl.Handler(context.Background(), mcpArgs); reasonOf(text) != "USAGE" {
+				t.Errorf("%s with %s [x, \"\"] over MCP: want USAGE, got %.200s", fc.tool.Name, a, text)
+			}
+		}
+	}
+	if seen < 30 {
+		t.Fatalf("%d list flags of the filters: the rule reads few", seen)
+	}
+}
