@@ -77,7 +77,7 @@ func TestIntent_RefusalOfThePlatformClosesTheRecord(t *testing.T) {
 	t.Chdir(eng.StateDir)
 	dir := intent.Dir(eng.StateDir)
 	seen := 0
-	for _, kind := range []string{"400", "403", "409", "422"} {
+	for _, kind := range []string{"400", "403", "409", "422", "500"} {
 		for _, tl := range reg.Tools() {
 			if !tl.Mutating || contractHTTPSkip[tl.Name] {
 				continue
@@ -86,7 +86,15 @@ func TestIntent_RefusalOfThePlatformClosesTheRecord(t *testing.T) {
 			args["confirmed"] = true
 			rt.kind = kind
 			rt.take()
-			_, _, _ = contractCall(tl, args, contractCallLimit)
+			text, _, _ := contractCall(tl, args, contractCallLimit)
+			// The status is the record's: no answer carries it (CMP-7).
+			if strings.Contains(text, apiStatusField) {
+				t.Errorf("%s, the cloud answers %s: the answer carries %s: %.300s", tl.Name, kind, apiStatusField, text)
+			}
+			if kind == "500" {
+				_ = os.RemoveAll(dir)
+				continue
+			}
 			if left := intent.Pending(dir); len(left) != 0 {
 				t.Errorf("%s, the cloud refuses with %s: the record of the call is kept as if its outcome were unknown: %+v", tl.Name, kind, left[0])
 				_ = os.RemoveAll(dir)

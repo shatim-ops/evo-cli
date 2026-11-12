@@ -4066,13 +4066,15 @@ func errAnswer(err error, fields map[string]any) string {
 	st := apiStatus(err)
 	if st == 403 {
 		res["access_denied"] = true
-	}
-	// The status of the API's answer, when an API answered: a refusal of
-	// the platform (4xx) is an outcome known, an error of the server (5xx)
-	// is not — the record of the call (D92) parts them by it
-	// (intent.OutcomeUnknown; «Риск», conclusion 170, У1).
-	if st >= 400 && st < 600 {
 		res["http_status"] = st
+	}
+	// The status of the API's answer, when an API answered, for the record
+	// of the call (D92) only: a refusal of the platform (4xx) is an outcome
+	// known, an error of the server (5xx) is not (intent.OutcomeUnknown;
+	// «Риск», conclusion 170, У1). The answer does not carry it: outer
+	// takes it out, so 409 and 422 answer alike (CMP-7).
+	if st >= 400 && st < 600 {
+		res[apiStatusField] = st
 	}
 	if _, ok := res["hint"]; !ok {
 		if h := uncodedHint(err, reason); h != "" {

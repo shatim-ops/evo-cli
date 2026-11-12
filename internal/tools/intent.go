@@ -399,13 +399,17 @@ func intentTarget(in intent.Intent) (a idArg, id string, ok bool) {
 	return idArg{}, "", false
 }
 
-// answerReason is the reason of a tool's answer, "" when it has none.
+// apiStatusField carries the status of the API's answer from errAnswer to
+// the record of the call, inside the handler; outer takes it out of the
+// answer (withoutAPIStatus).
+const apiStatusField = "_api_status"
+
 // answerHTTPStatus is the status of the API's answer a tool's error answer
-// carries (http_status, errAnswer), 0 when none: a refusal of the platform
-// (4xx) is an outcome known, though its reason is API_ERROR as a 5xx's is.
+// carries (apiStatusField), 0 when none: a refusal of the platform (4xx)
+// is an outcome known, though its reason is API_ERROR as a 5xx's is.
 func answerHTTPStatus(answer string) int {
 	var a struct {
-		Status float64 `json:"http_status"`
+		Status float64 `json:"_api_status"`
 	}
 	if json.Unmarshal([]byte(answer), &a) != nil {
 		return 0
@@ -413,6 +417,22 @@ func answerHTTPStatus(answer string) int {
 	return int(a.Status)
 }
 
+// withoutAPIStatus is answer without apiStatusField: the status is the
+// record's, not the caller's — the answer stays the same whichever 4xx
+// the platform gave (CMP-7).
+func withoutAPIStatus(answer string) string {
+	if !strings.Contains(answer, `"`+apiStatusField+`"`) {
+		return answer
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(answer), &m) != nil {
+		return answer
+	}
+	delete(m, apiStatusField)
+	return toJSON(m)
+}
+
+// answerReason is the reason of a tool's answer, "" when it has none.
 func answerReason(answer string) string {
 	// "error" is a string in a tool's answer and an object in the CLI's
 	// --json one: one struct of both failed to decode a tool's error, and
