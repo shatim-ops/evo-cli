@@ -2031,6 +2031,25 @@ probe_g11() {
 		egress tcp 18090:18090 198.18.255.1/32
 		ingress tcp 18091:18091 0.0.0.0/0
 	RULES
+	# Правило с группой-источником (сама группа пробы): в какой форме
+	# чтение отдаёт источник — объектом remote_security_group или плоским
+	# полем — и что при этом стоит в remote_ip_prefix (данные «разработки A»
+	# к sg_rule_delete: от формы зависит, назовёт ли evo источник группой).
+	api POST "$C1/security-groups/$sg/rules" "$(jq -nc --arg g "$sg" \
+		'{direction: "ingress", ether_type: "IPv4", ip_protocol: "tcp", port_range: "18092:18092", remote_security_group_id: $g, description: "evo e2e probe"}')"
+	rule=$(jq -r '(if type == "array" then .[0] else . end) | .id? // empty' "$tmp/api.json" 2>/dev/null) || rule=
+	mask "$rule"
+	case "$code" in
+	2??)
+		r="HTTP $code"
+		if [ -n "$rule" ]; then
+			api GET "$C1/security-groups/$sg/rules/$rule"
+			r="$r; источник в ответе чтения по id: $(jq -r 'if (.remote_security_group? | type) == "object" then "объект remote_security_group с полями \(.remote_security_group | keys | tojson)" elif has("remote_security_group_id") then "плоское поле remote_security_group_id" else "группы в ответе нет, поля: \(keys | tojson)" end' "$tmp/api.json" 2>/dev/null || echo "не прочитан (HTTP $code)"); remote_ip_prefix: $(jq -r '.remote_ip_prefix | if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "0.0.0.0/0" else "CIDR" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+		fi
+		ok "Г-11: правило с группой-источником" "$r"
+		;;
+	*) ok "Г-11: правило с группой-источником" "$(brief)" ;;
+	esac
 	count_rules() { jq -r '[(.rules // .security_group_rules // [])[]?] | length' "$tmp/api.json" 2>/dev/null || echo "?"; }
 	api GET "$C1/security-groups/$sg"
 	n0=$(count_rules)
@@ -2521,7 +2540,7 @@ probe_g10() {
 # ВМ — основной интерфейс не трогается) и повтор удаления; пересоздание из
 # другого образа того же семейства, которому хватает flavor ВМ: сначала на
 # запущенной, при отказе не по квоте — на остановленной; после него —
-# образ, остался ли публичный адрес и тот же ли загрузочный диск. Вход по
+# образ (шлётся по id), остался ли публичный адрес и тот же ли загрузочный диск. Вход по
 # SSH после пересоздания проба не проверяет (ключ в метаданных — разовый
 # ключ пробы). ВМ и подсеть убирает уборка области.
 probe_g18() {
@@ -2541,6 +2560,26 @@ probe_g18() {
 		mask "$sn"
 	fi
 	[ -n "$sn" ] || gap "Г-18: подсеть" "subnet_create: код $rc, $reason: $why — второй интерфейс не создаю"
+	if [ -n "$sn" ]; then
+		# Интерфейс — только в готовой подсети: запрос сразу после
+		# subnet_create получает «состояние подсети не даёт создать
+		# интерфейс» (прогон 201).
+		local sst='' schain=''
+		sn_ready() {
+			local s
+			s=$(evo tools call list_subnets --json 2>/dev/null | jq -r --arg id "$sn" '[.subnets[]? | select(.id == $id) | .state // "без state"][0] // "нет в списке"' 2>/dev/null) || s="список не прочитан"
+			[ "$s" = "$sst" ] || schain="${schain:+$schain → }$s"
+			sst=$s
+			case "$s" in created | active | available) return 0 ;; *) return 1 ;; esac
+		}
+		t0=$SECONDS
+		if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" sn_ready; then
+			ok "Г-18: подсеть" "состояния: $schain, $((SECONDS - t0)) с"
+		else
+			gap "Г-18: подсеть" "не готова за 5 мин (состояния: $schain) — второй интерфейс не создаю"
+			sn=
+		fi
+	fi
 	if [ -n "$sn" ]; then
 		if_body() { jq -nc --arg p "$PROJECT" --arg n "$n-if" --arg v "$vm" --arg s "$sn" '{project_id: $p, name: $n, vm_id: $v, subnet_id: $s, description: "evo e2e probe"}'; }
 		api POST "$C1/interfaces" "$(if_body)"
@@ -2578,9 +2617,13 @@ probe_g18() {
 	[ "$QUOTA_HIT" = 0 ] || return 0
 	# Другой образ: того же семейства (имя до первого дефиса), не тот же, и
 	# не требует больше vCPU, чем самый малый flavor прогона.
-	img=$(evo tools call image_list --arg type=public --json 2>/dev/null |
-		jq -r --arg cur "$IMAGE" '[.images[]? | select((.name // "") != $cur and ((.name // "") | split("-")[0]) == ($cur | split("-")[0]) and (.min_cpu // 0) <= 2) | .name] | sort | last // empty' 2>/dev/null) || img=
-	[ -n "$img" ] || { gap "Г-18: пересоздание" "в image_list нет другого образа семейства $IMAGE"; return 0; }
+	# Образ шлётся по id: по имени (image_name), как допускает опубликованная
+	# спецификация, платформа ответила «не UUID» (прогон 201).
+	local img_id
+	read -r img img_id < <(evo tools call image_list --arg type=public --json 2>/dev/null |
+		jq -r --arg cur "$IMAGE" '[.images[]? | select((.name // "") != $cur and ((.name // "") | split("-")[0]) == ($cur | split("-")[0]) and (.min_cpu // 0) <= 2 and (.id // "") != "")] | sort_by(.name) | last // {} | "\(.name // "") \(.id // "")"' 2>/dev/null) || true
+	[ -n "${img:-}" ] && [ -n "${img_id:-}" ] || { gap "Г-18: пересоздание" "в image_list нет другого образа семейства $IMAGE с id"; return 0; }
+	mask "$img_id"
 	local meta
 	vm_pw
 	if ! meta=$(vm_meta "$img" "$n") || ! printf '%s' "$meta" | jq -e 'type == "object"' >/dev/null 2>&1; then
@@ -2590,7 +2633,7 @@ probe_g18() {
 	boot_of() { evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n" '[.disks[]? | select(.bootable == true and ((.attached_to // []) | index($vm)))][0].id // empty' 2>/dev/null || true; }
 	boot0=$(boot_of)
 	mask "$boot0"
-	rebuild() { api POST "$url/rebuild" "$(jq -nc --arg i "$img" --argjson m "$meta" '{image_name: $i, image_metadata: $m}')"; }
+	rebuild() { api POST "$url/rebuild" "$(jq -nc --arg i "$img_id" --argjson m "$meta" '{image_id: $i, image_metadata: $m}')"; }
 	api GET "$url"
 	rebuild
 	case "$code" in
@@ -2598,6 +2641,9 @@ probe_g18() {
 	*)
 		refusal "Г-18: пересоздание на запущенной ВМ" синхронно
 		[ "$QUOTA_HIT" = 0 ] || return 0
+		# Остановка и вторая попытка — только если отказ про состояние ВМ
+		# (машинный код), а не про тело запроса.
+		case "$(mcode)" in *state* | *vm_can_not_be_changed*) ;; *) return 0 ;; esac
 		power power_off
 		case "$code" in 2??) ;; *) refusal "Г-18: остановка перед пересозданием" синхронно; return 0 ;; esac
 		ops_reach "$url" 600 stopped || true

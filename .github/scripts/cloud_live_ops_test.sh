@@ -32,6 +32,7 @@ done
 p=${url#https://compute.api.cloud.ru/api/v1/}
 [ ! -s "$FAKE_DIR/body" ] || cp "$FAKE_DIR/body" "$FAKE_DIR/body.$method.$(printf '%s' "${p%%\?*}" | tr / .)"
 [ ! -s "$FAKE_DIR/body" ] || { cat "$FAKE_DIR/body"; echo; } >>"$FAKE_DIR/bodies"
+! grep -q remote_security_group_id "$FAKE_DIR/body" 2>/dev/null || cp "$FAKE_DIR/body" "$FAKE_DIR/body.$method.$(printf '%s' "${p%%\?*}" | tr / .).group"
 : >"$FAKE_DIR/body"
 case "$url" in */auth/token) printf '{"access_token":"tok"}'; exit 0 ;; esac
 echo "$method ${url#https://compute.api.cloud.ru/api/v1}" >>"$FAKE_DIR/calls"
@@ -88,6 +89,7 @@ world
 cat >"$FAKE_DIR/http" <<'H'
 POST /security-groups 201 {"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}
 POST /security-groups/sg1/rules 201 {"id":"rule1"}
+GET /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
 GET /security-groups/sg1 200 {"id":"sg1","rules":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0"}]}
 DELETE /security-groups/sg1/rules/rule1 204
 DELETE /security-groups/sg1 204
@@ -96,8 +98,13 @@ fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11: код" "$rc" 0
-want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;GET /security-groups/sg1;POST /security-groups/sg1/rules;GET /security-groups/sg1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;GET /security-groups/sg1/rules/rule1;GET /security-groups/sg1;POST /security-groups/sg1/rules;GET /security-groups/sg1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;$SW"
 grep -q 'Г-11: повтор создания того же правила' "$tmp/out" || { echo "FAIL: нет строки о повторе правила"; fail=1; }
+# Правило с группой-источником: в теле — remote_security_group_id самой
+# группы, без remote_ip_prefix; в строке — форма источника в ответе чтения.
+jq -e '.remote_security_group_id == "sg1" and (has("remote_ip_prefix") | not)' "$FAKE_DIR/body.POST.security-groups.sg1.rules.group" >/dev/null ||
+	{ echo "FAIL: Г-11: тело правила с группой-источником не то: $(cat "$FAKE_DIR/body.POST.security-groups.sg1.rules.group" 2>/dev/null)"; fail=1; }
+grep -q 'Г-11: правило с группой-источником.*HTTP 201.*источник в ответе чтения по id: объект remote_security_group с полями \["id","name"\].*remote_ip_prefix: null' "$tmp/out" || { echo "FAIL: Г-11: форма группы-источника не записана"; grep 'группой-источником' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'sg1\|rule1'; then echo "FAIL: id в строке лога"; fail=1; fi
 
 # Группа не создана (отказ платформы): дальше проба не идёт, код 0 — это
@@ -317,9 +324,12 @@ g18_world() {
 	world
 	fake_evo_answer provision 0 0 '{"vm_id":"vm1","vm_ip":"203.0.113.7","status":"ok"}'
 	fake_evo_answer subnet_create 0 0 '{"subnet_id":"sn1","status":"ok"}'
-	fake_evo_answer list_subnets 0 0 '{"subnets":[]}'
+	# Подсеть сначала создаётся, затем готова; дальше списки — для уборки.
+	fake_evo_answer list_subnets 0 0 '{"subnets":[{"id":"sn1","name":"evo-e2e-ops-r7a1-g18-sn","state":"creating"}]}'
+	fake_evo_answer list_subnets 1 0 '{"subnets":[{"id":"sn1","name":"evo-e2e-ops-r7a1-g18-sn","state":"created"}]}'
+	fake_evo_answer list_subnets 2 0 '{"subnets":[]}'
 	fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
-	fake_evo_answer image_list 0 0 '{"images":[{"name":"debian-12","min_cpu":1},{"name":"ubuntu-22.04","min_cpu":1},{"name":"ubuntu-24.04","min_cpu":1},{"name":"ubuntu-gpu","min_cpu":8}]}'
+	fake_evo_answer image_list 0 0 '{"images":[{"id":"img-d","name":"debian-12","min_cpu":1},{"id":"img-22","name":"ubuntu-22.04","min_cpu":1},{"id":"img-24","name":"ubuntu-24.04","min_cpu":1},{"id":"img-g","name":"ubuntu-gpu","min_cpu":8}]}'
 	fake_evo_answer image_get 0 0 '{"fields":[{"name":"hostname","filled_by":"evo","role":"vm_name"},{"name":"password","filled_by":"evo","role":"password"}]}'
 	fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g18-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g18"]}]}'
 }
@@ -332,7 +342,7 @@ GET /interfaces?project_id=p&vm_id=vm1&limit=100 200 {"items":[{"id":"if0","name
 DELETE! /interfaces/if1 204
 DELETE /interfaces/if1 404 {"code":"interface_not_found"}
 GET! /vms/vm1 200 {$V,"state":"running"}
-POST! /vms/vm1/rebuild 422 {"code":"vm_must_be_stopped","message":"stop it"}
+POST! /vms/vm1/rebuild 422 [{"code":"vm_can_not_be_changed","message":"Vm can not be changed from current state"}]
 POST /vms/vm1/set-power 204
 GET! /vms/vm1 200 {$V,"state":"stopped"}
 POST! /vms/vm1/rebuild 200 {"id":"vm1","state":"rebuilding"}
@@ -346,9 +356,9 @@ want "Г-18: запросы по порядку" "$(calls)" "POST /interfaces;GE
 jq -e --arg p p '.vm_id == "vm1" and .subnet_id == "sn1" and .name == "evo-e2e-ops-r7a1-g18-if" and .project_id == $p' "$FAKE_DIR/body.POST.interfaces" >/dev/null ||
 	{ echo "FAIL: Г-18: тело создания интерфейса не то: $(cat "$FAKE_DIR/body.POST.interfaces" 2>/dev/null)"; fail=1; }
 # Другой образ — того же семейства, что образ ВМ, и не требует больше её flavor.
-jq -e '.image_name == "ubuntu-24.04" and .image_metadata.hostname == "evo-e2e-ops-r7a1-g18" and (.image_metadata.password | test("^[0-9a-f]{32}$"))' "$FAKE_DIR/body.POST.vms.vm1.rebuild" >/dev/null ||
+jq -e '.image_id == "img-24" and (has("image_name") | not) and .image_metadata.hostname == "evo-e2e-ops-r7a1-g18" and (.image_metadata.password | test("^[0-9a-f]{32}$"))' "$FAKE_DIR/body.POST.vms.vm1.rebuild" >/dev/null ||
 	{ echo "FAIL: Г-18: тело пересоздания не то: $(cat "$FAKE_DIR/body.POST.vms.vm1.rebuild" 2>/dev/null)"; fail=1; }
-for s in 'Г-18: второй интерфейс.*HTTP 201' 'повтор создания с тем же именем.*HTTP 422, машинный код interface_name_exists' 'удаление интерфейса.*HTTP 204, повтор — HTTP 404' 'пересоздание на запущенной ВМ.*машинный код: vm_must_be_stopped' 'Г-18: пересоздание из ubuntu-24.04.*на остановленной.*rebuilding → stopped.*образ тот, что просили.*публичный адрес тот же: да.*загрузочный диск тот же: да'; do
+for s in 'Г-18: второй интерфейс.*HTTP 201' 'повтор создания с тем же именем.*HTTP 422, машинный код interface_name_exists' 'удаление интерфейса.*HTTP 204, повтор — HTTP 404' 'пересоздание на запущенной ВМ.*машинный код: vm_can_not_be_changed' 'Г-18: пересоздание из ubuntu-24.04.*на остановленной.*rebuilding → stopped.*образ тот, что просили.*публичный адрес тот же: да.*загрузочный диск тот же: да'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-18: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
 if grep -v '::add-mask::' "$tmp/out" | grep -qw 'vm1\|if1\|sn1\|boot1\|203\.0\.113\.7'; then echo "FAIL: Г-18: id или адрес в строке лога"; fail=1; fi
@@ -356,6 +366,22 @@ if grep -v '::add-mask::' "$tmp/out" | grep -qw 'vm1\|if1\|sn1\|boot1\|203\.0\.1
 if grep -q 'DELETE /interfaces/if0' "$FAKE_DIR/calls"; then echo "FAIL: Г-18: удалён основной интерфейс ВМ"; fail=1; fi
 
 if grep -q '^disk_delete' "$FAKE_DIR/evo-calls"; then echo "FAIL: Г-18: загрузочный диск тот же, а диск удалён"; fail=1; fi
+# Интерфейс создаётся только в готовой подсети (прогон 201: запрос сразу
+# после subnet_create получил «состояние подсети не даёт создать интерфейс»).
+want "Г-18: подсеть читалась до готовности" "$(grep -c '^list_subnets' "$FAKE_DIR/evo-calls")" 4
+grep -q 'Г-18: подсеть.*creating → created' "$tmp/out" || { echo "FAIL: Г-18: готовность подсети не записана"; fail=1; }
+
+# Отказ пересоздания не про состояние ВМ (проверка тела): остановки и второй
+# попытки нет — прогон 201 останавливал ВМ зря.
+g18_world
+fake_evo_answer subnet_create 0 1 '{"error":{"reason":"USAGE","message":"cidr занят"}}'
+cat >"$FAKE_DIR/http" <<H
+GET /vms/vm1 200 {$V,"state":"running"}
+POST /vms/vm1/rebuild 422 [{"message":"Input should be a valid UUID","code":"uuid_parsing"}]
+H
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-18, отказ не про состояние: одна попытка, без остановки" "$(grep -c 'rebuild' "$FAKE_DIR/calls") $(grep -c 'set-power' "$FAKE_DIR/calls" || true)" "1 0"
 
 # Пересоздание выдало ВМ новый загрузочный диск, а старый оставило без ВМ:
 # под именем пробы уборка его может не найти — проба удаляет его по id
