@@ -86,21 +86,21 @@ func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (str
 
 // handleSnatCreate creates a SNAT gateway so a private subnet's nodes can reach
 // the internet (pull public images, apt, outbound calls). Gated on confirmed.
-func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageT("'name' is required", "нужен 'name'"), true
+		return answered(usageT("'name' is required", "нужен 'name'"), true), nil
 	}
 	if err := provision.ValidName(i18n.T("SNAT gateway", "SNAT-шлюза"), name); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	zoneID, zoneName, err := s.resolveZone(ctx, args)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// A second gateway of the same name is a second bill: refused before
 	// the consent, as every other create (fault matrix, process audit
@@ -110,50 +110,49 @@ func (s *Registry) handleSnatCreate(ctx context.Context, args map[string]any) (s
 	}
 	existing, err := list(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list SNAT gateways: %w", "проверка, что имя свободно: список шлюзов SNAT: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list SNAT gateways: %w", "проверка, что имя свободно: список шлюзов SNAT: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult(i18n.T("SNAT gateway", "шлюз SNAT"), name, id, st, "snat_list")
+		return answered(nameTakenResult(i18n.T("SNAT gateway", "шлюз SNAT"), name, id, st, "snat_list")), nil
 	}
 	if id, ok := gatewayInZone(existing, zoneID); ok {
-		return errAnswer(clierrors.New(clierrors.CodeUsage,
+		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("zone %s already has SNAT gateway %s: the zone's router takes one, and Cloud.ru refuses a second", "в зоне %s уже есть шлюз SNAT %s: у маршрутизатора зоны он один, второй Cloud.ru не создаст", firstNonEmptyStr(zoneName, zoneID), id),
 			i18n.Tf("Use it (snat_get id=%s) — VMs of the zone go out through it — or delete it first.", "Используйте его (snat_get id=%s) — ВМ зоны выходят через него, — или сначала удалите.", id)),
-			map[string]any{"existing_id": id}), true
+			map[string]any{"existing_id": id}), true), nil
 	}
 
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		will := map[string]any{
-			"name":                 name,
-			"nat_type":             provision.NATTypePublicSNAT,
-			"availability_zone_id": zoneID,
+	will := map[string]any{
+		"name":                 name,
+		"nat_type":             provision.NATTypePublicSNAT,
+		"availability_zone_id": zoneID,
+	}
+	preview := map[string]any{
+		"message": i18n.T("snat_create makes a billable SNAT gateway.",
+			"snat_create создаёт платный шлюз SNAT."),
+		"will_create": will,
+		"preview":     willPreview(engine.ResourceSNAT, name, zoneName, will, []string{"nat_type", "availability_zone_id"}),
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+
+		gw, err := eng.Cloud.CreateNATGateway(ctx, provision.CreateNATGatewayRequest{
+			Name:               name,
+			NATType:            provision.NATTypePublicSNAT,
+			ProjectID:          eng.Config.ProjectID,
+			AvailabilityZoneID: zoneID,
+		})
+		if id, _ := gw["id"].(string); err != nil || id == "" {
+			if err == nil {
+				err = noID("gateway")
+			}
+			return lostCreate(ctx, "snat_create", list, i18n.T("SNAT gateway", "шлюз SNAT"), name, nil, "snat_list", fmt.Errorf(i18n.T("create SNAT gateway: %w", "создание шлюза SNAT: %w"), err))
 		}
 		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("snat_create makes a billable SNAT gateway.",
-				"snat_create создаёт платный шлюз SNAT."),
-			"will_create": will,
-			"preview":     willPreview(engine.ResourceSNAT, name, zoneName, will, []string{"nat_type", "availability_zone_id"}),
-		}), true
-	}
-
-	gw, err := eng.Cloud.CreateNATGateway(ctx, provision.CreateNATGatewayRequest{
-		Name:               name,
-		NATType:            provision.NATTypePublicSNAT,
-		ProjectID:          eng.Config.ProjectID,
-		AvailabilityZoneID: zoneID,
-	})
-	if id, _ := gw["id"].(string); err != nil || id == "" {
-		if err == nil {
-			err = noID("gateway")
-		}
-		return lostCreate(ctx, "snat_create", list, i18n.T("SNAT gateway", "шлюз SNAT"), name, nil, "snat_list", fmt.Errorf(i18n.T("create SNAT gateway: %w", "создание шлюза SNAT: %w"), err))
-	}
-	return toJSON(map[string]any{
-		"status":      "created",
-		"nat_gateway": gw,
-		"note":        "SNAT gateway created — private-subnet nodes in this zone now have outbound internet. It is billable; whether and when to delete it (snat_delete) — ask the person.",
-	}), false
+			"status":      "created",
+			"nat_gateway": gw,
+			"note":        "SNAT gateway created — private-subnet nodes in this zone now have outbound internet. It is billable; whether and when to delete it (snat_delete) — ask the person.",
+		}), false
+	}}, nil
 }
 
 // planSnatDelete plans the delete of a SNAT gateway by id (gate.go).
