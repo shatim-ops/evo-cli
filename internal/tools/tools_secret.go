@@ -60,7 +60,7 @@ func (s *Registry) handleSecretGet(ctx context.Context, args map[string]any) (st
 	return toJSON(m), false
 }
 
-// handleSecretValue returns the DECRYPTED secret value. Sensitive: the value is
+// planSecretValue plans the read of the DECRYPTED secret value. Sensitive: the value is
 // returned to the caller but must never be logged.
 func (s *Registry) planSecretValue(ctx context.Context, args map[string]any) (*Plan, error) {
 	path := stringArg(args, "path")

@@ -49,16 +49,16 @@ var deleteFlows = map[string][]string{
 // or does not do, not to offer it: "file<TAB>function<TAB>tool" → what they
 // say.
 var deleteHintDescribes = map[string]string{
-	"internal/engine/network.go\tShowOpenedPorts\tdestroy":              "destroy will not close ports opened without a rule id",
-	"internal/engine/network.go\talreadyOpenText\tdestroy":              "destroy will not touch a rule evo did not create",
-	"internal/engine/preview.go\tpendingRulesPreview\tdestroy":          "the rules an earlier destroy left (the preview of the call that removes them)",
-	"internal/engine/preview.go\tredeployPreview\tdestroy":              "what an earlier destroy left",
-	"internal/engine/preview.go\trulePreview\tdestroy":                  "destroy releases the floating IP the deploy creates",
-	"internal/tools/tools_stack.go\tnormalizeManifest\tstack_destroy":   "a taken s3 key: the stack would overwrite the object and stack_destroy would delete it",
-	"internal/engine/ports_preview.go\tportsLine\tdestroy":              "destroy closes only the rules it creates",
+	"internal/engine/network.go\tShowOpenedPorts\tdestroy":            "destroy will not close ports opened without a rule id",
+	"internal/engine/network.go\talreadyOpenText\tdestroy":            "destroy will not touch a rule evo did not create",
+	"internal/engine/preview.go\tpendingRulesPreview\tdestroy":        "the rules an earlier destroy left (the preview of the call that removes them)",
+	"internal/engine/preview.go\tredeployPreview\tdestroy":            "what an earlier destroy left",
+	"internal/engine/preview.go\trulePreview\tdestroy":                "destroy releases the floating IP the deploy creates",
+	"internal/tools/tools_stack.go\tnormalizeManifest\tstack_destroy": "a taken s3 key: the stack would overwrite the object and stack_destroy would delete it",
+	"internal/engine/ports_preview.go\tportsLine\tdestroy":            "destroy closes only the rules it creates",
 	"internal/tools/tools_k8s_addons.go\tplanK8sAddAddon\tk8s_delete": "an addon goes with its cluster",
-	"internal/tools/tools_stack.go\tadoptVM\tstack_destroy":             "the VM is kept for stack_destroy",
-	"internal/tools/tools_stack.go\tadvance\tstack_destroy":             "the resource is kept for stack_destroy",
+	"internal/tools/tools_stack.go\tadoptVM\tstack_destroy":           "the VM is kept for stack_destroy",
+	"internal/tools/tools_stack.go\tadvance\tstack_destroy":           "the resource is kept for stack_destroy",
 }
 
 // humanDecision are the words by which a text that names a delete leaves

@@ -480,7 +480,7 @@ func (p *addonPlan) preview(clusterID, resolveMode string, configKeys []string) 
 	return cp
 }
 
-// handleK8sAddAddon installs an addon release into a cluster (gated).
+// planK8sAddAddon plans the install of an addon release into a cluster (gated).
 // Without confirmed it only reads: the catalogue, the cluster, its node
 // pools and addons, to show the version it picked and the requirements.
 func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*Plan, error) {
