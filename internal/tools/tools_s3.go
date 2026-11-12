@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -190,6 +191,18 @@ func (s *Registry) planS3BucketCreate(ctx context.Context, args map[string]any) 
 	if err != nil {
 		return nil, err
 	}
+	// A bucket the profile has already: nothing to create and nothing to
+	// ask (D101). A bucket of another tenant is not in this list: S3
+	// refuses its create.
+	// A key that may not list the buckets goes on as before D101: the
+	// question, then the create, where S3 itself says whose the name is.
+	own, err := cli.ListBuckets(ctx)
+	if err != nil && !s3.AccessDenied(err) {
+		return nil, err
+	}
+	if slices.ContainsFunc(own, func(b s3.Bucket) bool { return b.Name == bucket }) {
+		return answered(s3BucketExists(bucket), false), nil
+	}
 	region := stringArg(args, "region")
 	preview, err := s.completePreview(ctx, nil, s3BucketPreview(bucket, region))
 	if err != nil {
@@ -202,12 +215,26 @@ func (s *Registry) planS3BucketCreate(ctx context.Context, args map[string]any) 
 			"preview": preview,
 		},
 		Execute: func(ctx context.Context) (string, bool) {
-			if err := cli.MakeBucket(ctx, bucket, region); err != nil {
+			existed, err := cli.MakeBucket(ctx, bucket, region)
+			if err != nil {
 				return errResult(err), true
+			}
+			// Made by another call since the plan.
+			if existed {
+				return s3BucketExists(bucket), false
 			}
 			return toJSON(map[string]any{"status": "created", "bucket": bucket}), false
 		},
 	}, nil
+}
+
+// s3BucketExists is the answer of s3_bucket_create for a bucket the
+// profile has already (D101): not created by this call, so a cleanup of
+// «what I created» must not delete it.
+func s3BucketExists(bucket string) string {
+	return toJSON(map[string]any{"status": "already_exists", "bucket": bucket,
+		"message": i18n.Tf("bucket %q exists already and is yours; this call created nothing — do not count it as created by this call.",
+			"бакет %q уже существует и принадлежит вам; этот вызов ничего не создал — не считайте бакет созданным этим вызовом.", bucket)})
 }
 
 // planS3BucketDelete plans s3_bucket_delete (D35): a bucket that is not

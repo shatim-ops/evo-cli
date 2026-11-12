@@ -132,8 +132,12 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		// intent of the call the person consented to covers it, and the
 		// job of the stack records its steps.
 		depth, _ := ctx.Value(journalDepthKey{}).(int)
-		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) || depth > 1 {
+		if depth > 1 {
 			return next(ctx, args)
+		}
+		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) {
+			text, isErr := next(ctx, args)
+			return r.namedKept(t.Name, args, text), isErr
 		}
 		end, err := r.beginIntent(ctx, t.Name, args)
 		if err != nil {
@@ -141,7 +145,7 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		}
 		text, isErr := next(ctx, args)
 		end(text)
-		return text, isErr
+		return r.namedKept(t.Name, args, text), isErr
 	}
 }
 

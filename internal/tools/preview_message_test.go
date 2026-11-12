@@ -68,6 +68,12 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	"vpc_route_delete": func(t *testing.T) string {
 		return liveDelete(t, "vpc_route_delete", map[string]any{"vpc_id": liveID, "route_id": liveID})
 	},
+	// s3_bucket_create reads the profile's buckets before its question
+	// (D101): Object Storage of the fake, with no bucket of this name.
+	"s3_bucket_create": func(t *testing.T) string {
+		_, text, _ := callNamed(t, apiFakeS3Registry(t, &apiFake{own: liveWorld}), "s3_bucket_create", map[string]any{"bucket": "new-bucket"})
+		return text
+	},
 	"s3_rm": func(t *testing.T) string {
 		return liveDelete(t, "s3_rm", map[string]any{"bucket": liveName, "key": liveName})
 	},

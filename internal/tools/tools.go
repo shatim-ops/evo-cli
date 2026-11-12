@@ -1378,7 +1378,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_bucket_create",
-			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the user approves.",
+			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). A bucket you already own answers already_exists with no question: this call did not create it. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("New bucket name: 3-63 lowercase letters, digits, dots and hyphens, unique within the tenant. Required."),
 				"region":    strProp("Region: only ru-central-1 is accepted (the API answers 'unexpected region' otherwise). Optional; default: the configured S3 region."),
