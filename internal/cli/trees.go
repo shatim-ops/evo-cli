@@ -476,6 +476,13 @@ func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 // names, or the generic table.
 func (c treeCmd) show(p *output.Printer, w io.Writer, text string) error {
 	if c.render != nil {
+		// A view of its own names the selection as the table does.
+		var v any
+		if json.Unmarshal([]byte(text), &v) == nil {
+			if line, _ := selectionLine(v); line != "" {
+				fmt.Fprintln(w, line)
+			}
+		}
 		return c.render(p, w, text)
 	}
 	return renderAnswer(p, w, text, tableView{Columns: c.Columns, Headers: c.headers})

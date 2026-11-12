@@ -3865,6 +3865,8 @@ evo iam [flags]
 Сервисные аккаунты IAM проекта: id, имя, email, тип, включён ли. Только чтение. Так находят UUID сервисного аккаунта кластера (--cluster-sa-id команды 'evo k8s create') или проверяют сервисные аккаунты.
 
 Вызывает инструмент iam_service_accounts (подробнее: 'evo tools describe iam_service_accounts').
+
+Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -3876,12 +3878,14 @@ evo iam service-accounts [flags]
 ```
   evo iam service-accounts
   evo iam service-accounts --json | jq -r '.service_accounts[] | "\(.id)\t\(.name)"'
+  evo iam service-accounts --name web
 ```
 
 ### Options
 
 ```
   -h, --help                Справка по service-accounts
+      --name string         Только с этой частью имени, регистр не важен
       --project-id string   UUID проекта (по умолчанию — текущий проект)
 ```
 
@@ -4422,6 +4426,8 @@ evo k8s addon-versions <name> [flags]
 Поиск по каталогу плагинов Managed Kubernetes — плагинов, собранных Cloud.ru: ingress, cert-manager, мониторинг, драйверы CSI и другие. В строке — имя, отображаемое имя, категории, платность и команда установки; категории — слова консоли (например, «Сети», «Безопасность», «Мониторинг»), в ответе перечислены все. Только чтение. Версии и требования плагина — 'evo k8s addon-versions <плагин>', установка — 'evo k8s add-addon'.
 
 Вызывает инструмент k8s_addons (подробнее: 'evo tools describe k8s_addons').
+
+Отбор: --query, --category, --billable. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -5295,6 +5301,8 @@ evo kafka operation <operation-id> [flags]
 Конфигурации кластера Managed Kafka для версии: id, CPU, память (ГБ), минимальный объём хранилища, наименьшее и наибольшее число брокеров. Только чтение. id конфигурации выбирают для создания кластера ('evo kafka create').
 
 Вызывает инструмент kafka_specs (подробнее: 'evo tools describe kafka_specs').
+
+Отбор: --version-id, --zone. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -6183,6 +6191,8 @@ evo org [flags]
 Проекты Cloud.ru, которые видит ключ доступа: id, имя, состояние, подразделение организации, — и активный проект (active). Только чтение. Если Organization API не показывает ключу ни одного проекта (сервисный аккаунт уровня проекта), это не ошибка: в ответе projects: null, активный проект и примечание.
 
 Вызывает инструмент org_projects (подробнее: 'evo tools describe org_projects').
+
+Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -6194,12 +6204,14 @@ evo org projects [flags]
 ```
   evo org projects
   evo org projects --json | jq -r '.projects[].id'
+  evo org projects --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по projects
+  -h, --help          Справка по projects
+      --name string   Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -6368,16 +6380,26 @@ evo pg backup-create <cluster-id> <name> [flags]
 Резервные копии кластера PostgreSQL: имя, состояние, размер, время создания. Только чтение.
 
 Вызывает инструмент pg_backups (подробнее: 'evo tools describe pg_backups').
+
+Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo pg backups <cluster-id> [flags]
 ```
 
+### Examples
+
+```
+  evo pg backups <cluster-id> --name web
+```
+
 ### Options
 
 ```
-  -h, --help   Справка по backups
+  -h, --help            Справка по backups
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: BACKUP_STATUS_UNSPECIFIED, BACKUP_STATUS_PENDING, BACKUP_STATUS_STARTED, BACKUP_STATUS_COMPLETED, BACKUP_STATUS_FAILED
 ```
 
 ### Options inherited from parent commands
@@ -6471,16 +6493,25 @@ evo pg create <name> [flags]
 Базы данных кластера PostgreSQL: имя, владелец, размер. Только чтение.
 
 Вызывает инструмент pg_databases (подробнее: 'evo tools describe pg_databases').
+
+Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo pg databases <cluster-id> [flags]
 ```
 
+### Examples
+
+```
+  evo pg databases <cluster-id> --name web
+```
+
 ### Options
 
 ```
-  -h, --help   Справка по databases
+  -h, --help          Справка по databases
+      --name string   Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -6780,6 +6811,8 @@ evo pg operation <operation-id> [flags]
 Конфигурации кластера Managed PostgreSQL для версии: id, CPU, память (ГБ), режим развёртывания (standard или business), минимальный объём хранилища. id конфигурации передаётся в --specification-id команды 'evo pg create'. Только чтение.
 
 Вызывает инструмент pg_specs (подробнее: 'evo tools describe pg_specs').
+
+Отбор: --version. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -6916,16 +6949,25 @@ evo pg user-delete <cluster-id> <name> [flags]
 Пользователи кластера PostgreSQL и выданные им роли. Только чтение.
 
 Вызывает инструмент pg_users (подробнее: 'evo tools describe pg_users').
+
+Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo pg users <cluster-id> [flags]
 ```
 
+### Examples
+
+```
+  evo pg users <cluster-id> --name web
+```
+
 ### Options
 
 ```
-  -h, --help   Справка по users
+  -h, --help          Справка по users
+      --name string   Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -7039,7 +7081,8 @@ evo project list [flags]
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help          Справка по list
+      --name string   Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -7422,6 +7465,8 @@ evo redis operation <operation-id> [flags]
 Конфигурации кластера Managed Redis для версии: id, CPU, память (ГБ), режим развёртывания, минимальный объём хранилища. Только чтение. id конфигурации выбирают для создания кластера ('evo redis create').
 
 Вызывает инструмент redis_specs (подробнее: 'evo tools describe redis_specs').
+
+Отбор: --version-id, --zone. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -7736,6 +7781,8 @@ evo s3 get <bucket> <key> [flags]
 Объекты бакета: ключ, размер, время изменения. Только чтение.
 
 Вызывает инструмент s3_ls (подробнее: 'evo tools describe s3_ls').
+
+Отбор: --prefix. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -10166,6 +10213,8 @@ evo vpc route-delete <vpc-id> <route-id> [flags]
 Статические маршруты VPC: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. Только чтение.
 
 Вызывает инструмент vpc_routes (подробнее: 'evo tools describe vpc_routes').
+
+Отбор: --status. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -10175,7 +10224,8 @@ evo vpc routes <vpc-id> [flags]
 ### Options
 
 ```
-  -h, --help   Справка по routes
+  -h, --help            Справка по routes
+      --status string   Только в этом состоянии: ROUTE_STATUS_UNSPECIFIED, ROUTE_STATUS_NEW, ROUTE_STATUS_CREATING, ROUTE_STATUS_CREATED, ROUTE_STATUS_FAILED_CREATE, ROUTE_STATUS_DELETING, ROUTE_STATUS_DELETED, ROUTE_STATUS_FAILED_DELETE
 ```
 
 ### Options inherited from parent commands

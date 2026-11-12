@@ -119,7 +119,7 @@
         {"method": "POST", "path": "/v1/vpcs", "code": "internal/vpc/client.go:198", "creates": ["vpc_create"], "impact": {}, "body": ["projectId", "name", "description"], "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
         {"method": "DELETE", "path": "/v1/vpcs/{vpcId}", "code": "internal/vpc/client.go:203", "reads": ["id", "done"]},
         {"method": "GET", "path": "/v1/vpcs/operations/{operationId}", "code": "internal/vpc/client.go:208", "reads": ["id", "resourceId", "done", "error.code", "error.message"]},
-        {"method": "GET", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:226", "query": ["pageToken"], "paginates": true, "reads": ["routes[].id", "routes[].subnet", "routes[].status", "nextPageToken"]},
+        {"method": "GET", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:226", "query": ["pageToken"], "paginates": true, "reads": ["routes[].id", "routes[].subnet", "routes[].status", "nextPageToken"], "enums": {"routes[].status": ["ROUTE_STATUS_UNSPECIFIED", "ROUTE_STATUS_NEW", "ROUTE_STATUS_CREATING", "ROUTE_STATUS_CREATED", "ROUTE_STATUS_FAILED_CREATE", "ROUTE_STATUS_DELETING", "ROUTE_STATUS_DELETED", "ROUTE_STATUS_FAILED_DELETE"]}},
         {"method": "POST", "path": "/v1/vpcs/{vpcId}/routes/static", "code": "internal/vpc/client.go:231", "creates": ["vpc_route_create"], "impact": {"subnet": "работа", "nextHop": "работа"},
          "body": ["vpcId", "projectId", "subnet", "nextHop.virtualMachine.virtualMachine.id", "nextHop.virtualMachine.interface.id", "nextHop.vip.vips[].id", "nextHop.magicRouter.magicRouter.id", "nextHop.magicRouter.azName"], "reads": ["id", "done"]},
         {"method": "DELETE", "path": "/v1/vpcs/{vpcId}/routes/static/{staticRouteId}", "code": "internal/vpc/client.go:236", "reads": ["id", "done"]}
@@ -239,7 +239,7 @@
         {"method": "GET", "path": "/v1/clusters/{cluster_id}/users", "code": "internal/postgresql/client.go:279", "reads": ["users[].name"]},
         {"method": "POST", "path": "/v1/clusters/{cluster_id}/users", "code": "internal/postgresql/client.go:283", "creates": ["pg_user_create"], "impact": {"password": "безопасность"}, "body": ["cluster_id", "name", "password"], "reads": ["name"]},
         {"method": "DELETE", "path": "/v1/clusters/{cluster_id}/users/{name}", "code": "internal/postgresql/client.go:296"},
-        {"method": "GET", "path": "/v1/clusters/{cluster_id}/backups", "code": "internal/postgresql/client.go:309", "reads": ["backups[].id", "backups[].name", "backups[].status"]},
+        {"method": "GET", "path": "/v1/clusters/{cluster_id}/backups", "code": "internal/postgresql/client.go:309", "reads": ["backups[].id", "backups[].name", "backups[].status"], "enums": {"backups[].status": ["BACKUP_STATUS_UNSPECIFIED", "BACKUP_STATUS_PENDING", "BACKUP_STATUS_STARTED", "BACKUP_STATUS_COMPLETED", "BACKUP_STATUS_FAILED"]}},
         {"method": "POST", "path": "/v1/clusters/{cluster_id}/backups", "code": "internal/postgresql/client.go:314", "creates": ["pg_backup_create"], "impact": {}, "body": ["cluster_id", "name"], "reads": ["id", "done"]}
       ]
     },

@@ -67,6 +67,7 @@ var engineCommands = []engineCommand{
 		Alias: "скрытый устаревший алиас evo vm zones: его --json — массив зон, а не ответ инструмента; удаляется в v2.0"},
 	{Path: "evo list-images", Tool: "list_images"},
 	{Path: "evo project list", Tool: "org_projects",
+		Flags: map[string]string{"name": "name"},
 		Alias: "алиас evo org projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка, как с v1.0"},
 	{Path: "evo whoami", Tool: "whoami"},
 	{Path: "evo doctor", Tool: "doctor"},
@@ -568,7 +569,11 @@ func newProjectListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
 			c := &tools.Caller{}
-			text, err := callEngineTool(cmd, "org_projects", map[string]any{}, c)
+			callArgs := map[string]any{}
+			if name, _ := cmd.Flags().GetString("name"); name != "" {
+				callArgs["name"] = name
+			}
+			text, err := callEngineTool(cmd, "org_projects", callArgs, c)
 			switch {
 			case err == nil:
 			case tools.OrganizationAnswered(c.Err):
@@ -592,9 +597,16 @@ func newProjectListCmd() *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), text)
 				return nil
 			}
+			var v any
+			if json.Unmarshal([]byte(text), &v) == nil {
+				if line, _ := selectionLine(v); line != "" {
+					fmt.Fprintln(cmd.OutOrStdout(), line)
+				}
+			}
 			return renderProjectList(printer, cmd.OutOrStdout(), text)
 		},
 	}
+	cmd.Flags().String("name", "", i18n.T("Only with this in the name, any case.", "Только с этой частью имени, регистр не важен"))
 	return engineCmd(cmd, "org_projects")
 }
 
