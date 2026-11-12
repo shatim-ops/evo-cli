@@ -19,6 +19,24 @@ import (
 type BackupAPI interface {
 	ListBackups(ctx context.Context, projectID string) ([]map[string]any, error)
 	GetBackup(ctx context.Context, backupID string) (map[string]any, error)
+	CreateBackup(ctx context.Context, req CreateBackupReq) (map[string]any, error)
+}
+
+// CreateBackupReq is the body of POST /api/v1/backups: what evo sends, and
+// nothing more (CreateBackupRequestSchema: name, project_id and resource
+// are required). Tags (wave В6) and a protection plan (a brief of its own)
+// are not sent: docs/internal/briefs/backups.md.
+type CreateBackupReq struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	ProjectID   string         `json:"project_id"`
+	Resource    BackupResource `json:"resource"`
+}
+
+// BackupResource is the source of a backup: a disk or a virtual_machine.
+type BackupResource struct {
+	ResourceID   string `json:"resource_id"`
+	ResourceType string `json:"resource_type"`
 }
 
 var _ BackupAPI = (*CloudRuAdapter)(nil)
@@ -33,6 +51,25 @@ func (a *CloudRuAdapter) ListBackups(ctx context.Context, projectID string) ([]m
 // error (NOT_FOUND).
 func (a *CloudRuAdapter) GetBackup(ctx context.Context, backupID string) (map[string]any, error) {
 	resp, err := a.doWithRetry(ctx, http.MethodGet, fmt.Sprintf("/api/v1/backups/%s", seg(backupID)), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var m map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// CreateBackup asks for a backup of a VM or a disk; the answer is the backup,
+// with its id and its state (creating).
+func (a *CloudRuAdapter) CreateBackup(ctx context.Context, req CreateBackupReq) (map[string]any, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := a.doWithRetry(ctx, http.MethodPost, "/api/v1/backups", body)
 	if err != nil {
 		return nil, err
 	}

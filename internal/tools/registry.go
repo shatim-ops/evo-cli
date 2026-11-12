@@ -377,6 +377,7 @@ func BoolArg(args map[string]any, key string, def bool) bool { return boolArg(ar
 // The property descriptions say it instead; Tool.RequiredOneOf carries
 // it to docs/tools.md and the empty-arguments test.
 var requiredOneOf = map[string][][]string{
+	"backup_create":       {{"vm_id", "disk_id"}},
 	"pg_get":              {{"id", "cluster_id"}},
 	"pg_delete":           {{"id", "cluster_id"}},
 	"vm_get":              {{"vm_id", "name"}},

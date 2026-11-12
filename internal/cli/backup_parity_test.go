@@ -30,3 +30,9 @@ func parityBackup() map[string]any {
 		"resource": map[string]any{"resource_id": parityVM, "resource_type": "virtual_machine", "resource_exists": true,
 			"resource_state": map[string]any{"name": "web", "flavor": map[string]any{"name": "gen-2-4"}}}}
 }
+
+func (parityCloud) CreateBackup(_ context.Context, req provision.CreateBackupReq) (map[string]any, error) {
+	b := parityBackup()
+	b["name"], b["state"] = req.Name, "created"
+	return b, nil
+}

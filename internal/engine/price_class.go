@@ -114,6 +114,8 @@ var priceClasses = map[string]priceDecl{
 		whyRU: "в тарифах строки для него нет"},
 	ResourceVPCRoute: {why: "no line of the tariffs names it",
 		whyRU: "в тарифах строки для него нет"},
+	ResourceBackup: {why: "no line of the tariffs names it",
+		whyRU: "в тарифах строки для него нет"},
 	ResourcePGBackup: {why: "no line of the tariffs names it",
 		whyRU: "в тарифах строки для него нет"},
 	ResourceTargetGroup: {why: "no line of the tariffs names it",

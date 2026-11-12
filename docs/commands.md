@@ -28,6 +28,7 @@
   - [evo audit](#evo-audit)
     - [evo audit events](#evo-audit-events)
   - [evo backup](#evo-backup)
+    - [evo backup create](#evo-backup-create)
     - [evo backup get](#evo-backup-get)
     - [evo backup list](#evo-backup-list)
   - [evo billing](#evo-billing)
@@ -907,8 +908,56 @@ evo backup [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo backup create](#evo-backup-create)	 - Резервная копия ВМ или диска (платно)
 * [evo backup get](#evo-backup-get)	 - Резервная копия по id: исходный ресурс, существует ли он, план копирования
 * [evo backup list](#evo-backup-list)	 - Резервные копии ВМ и дисков: id, имя, состояние, тип, размер, исходный ресурс
+
+## evo backup create
+
+Резервная копия ВМ или диска (платно)
+
+### Synopsis
+
+```text
+Резервная копия ВМ или диска (платно).
+
+Резервная копия ВМ или диска (--vm-id или --disk-id). Копия хранится и тарифицируется, пока её не удалят, в том числе после удаления исходного ресурса; превью называет, сколько копий этого ресурса уже хранится. Копия с тем же именем у того же ресурса — ответ already_exists с её возрастом: новая не делается. Копия диска делается около минуты, ВМ — около десяти.
+
+Вызывает инструмент backup_create (подробнее: 'evo tools describe backup_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo backup create <name> [flags]
+```
+
+### Options
+
+```
+      --description string   Описание
+      --disk-id string       Диск, копию которого сделать (из evo disk list); --vm-id или --disk-id
+  -h, --help                 Справка по create
+      --vm-id string         ВМ, копию которой сделать (из evo vm list); --vm-id или --disk-id
+      --wait                 false — ответить, как только облако приняло запрос. По умолчанию — ждать (MCP — до ~45 с)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo backup](#evo-backup)	 - Резервные копии ВМ и дисков
 
 ## evo backup get
 
