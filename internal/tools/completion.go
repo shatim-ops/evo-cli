@@ -73,6 +73,7 @@ var toolRefs = map[string]map[string]completion{
 	"k8s_add_nodepool": {"nodes_subnet_id": {list: "list_subnets", field: "id"}},
 	"k8s_create":       {"cluster_sa_id": {list: "iam_service_accounts", field: "id"}},
 	"k8s_plan":         {"cluster_sa_id": {list: "iam_service_accounts", field: "id"}},
+	"disk_list":        {"type": {list: "list_disk_types", field: "name"}},
 }
 
 // noCompletion are the arguments named as in valueRefs that name

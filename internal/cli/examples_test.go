@@ -22,10 +22,11 @@ func TestCommandExamples_AreValid(t *testing.T) {
 			t.Errorf("example for unknown command %q", path)
 			continue
 		}
-		if cmd.Example != ex {
+		// A list has one more line: its example with filters.
+		if !strings.HasPrefix(cmd.Example, ex) {
 			t.Errorf("%s: example not applied", path)
 		}
-		for _, line := range strings.Split(ex, "\n") {
+		for _, line := range strings.Split(cmd.Example, "\n") {
 			checkExampleLine(t, root, line)
 		}
 	}

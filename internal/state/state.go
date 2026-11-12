@@ -284,3 +284,22 @@ func (f *File) RemoveDeployment(id string) {
 	}
 	f.Deployments = f.Deployments[:n]
 }
+
+// UpToDate reports whether the deployment of rec finished with the compose
+// file of hash: a repeat of deploy then has nothing to do (unchanged). A
+// deploy cut before 'docker compose up' — at the wait for SSH, by the
+// bound of the call (D69) — leaves the record running with the new
+// ComposeHash and the old DeployedHash: not up to date, the repeat goes on.
+// A record from before 1.8.1 has no DeployedHash: one of deploy keeps the
+// old rule (its ComposeHash); one of deploy_apply, whose record is running
+// before anything ran on the VM, is never up to date.
+func (r *DeploymentRecord) UpToDate(hash string) bool {
+	if r.Status != "running" {
+		return false
+	}
+	done := r.DeployedHash
+	if done == "" && r.Source != SourceDeployApply {
+		done = r.ComposeHash
+	}
+	return done != "" && done == hash
+}

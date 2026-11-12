@@ -691,6 +691,8 @@ evo ar get <id> [flags]
 Реестры Artifact Registry проекта: id, имя, тип, состояние, публичный ли, тариф. Только чтение. Реестр хранит образы Docker и чарты Helm — источник образов для Container Apps и Managed Kubernetes там, где docker.io не подходит.
 
 Вызывает инструмент ar_list (подробнее: 'evo tools describe ar_list').
+
+Отбор: --status, --name, --type. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -702,12 +704,16 @@ evo ar list [flags]
 ```
   evo ar list
   evo ar list --json | jq -r '.registries[] | "\(.id)\t\(.name)"'
+  evo ar list --status ACTIVE --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help            Справка по list
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: CREATING, ACTIVE, ERROR
+      --type string     Только этого типа: DOCKER, DEBIAN, RPM, GENERIC, PYPI, NPM
 ```
 
 ### Options inherited from parent commands
@@ -1255,6 +1261,8 @@ evo ca get <name> [flags]
 Приложения Container Apps (бессерверные контейнеры) проекта: имя, состояние. Только чтение.
 
 Вызывает инструмент ca_list (подробнее: 'evo tools describe ca_list').
+
+Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -1266,12 +1274,14 @@ evo ca list [flags]
 ```
   evo ca list
   evo ca list --json
+  evo ca list --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help          Справка по list
+      --name string   Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -1697,6 +1707,8 @@ TLS-сертификаты проекта в Certificate Manager.
 TLS-сертификаты проекта в Certificate Manager; отбор — по имени, DNS-имени, common name, типу и состоянию. Только чтение. Так находят сертификат для сайта; TLS завершает ВМ или приложение, которое его обслуживает, — балансировщик L4 TCP работает без TLS.
 
 Вызывает инструмент cert_list (подробнее: 'evo tools describe cert_list').
+
+Отбор: --name, --type, --dns-name, --common-name, --state. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -3123,6 +3135,8 @@ evo disk detach <disk-id> [flags]
 Диски проекта: id, имя, размер (ГБ), состояние, тип, зона и ВМ, к которым диск подключён. Только чтение.
 
 Вызывает инструмент disk_list (подробнее: 'evo tools describe disk_list').
+
+Отбор: --zone, --state, --name, --attached, --type, --bootable. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -3134,12 +3148,19 @@ evo disk list [flags]
 ```
   evo disk list
   evo disk list --json
+  evo disk list --zone ru.AZ-2 --state available
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+      --attached       true — только подключённые к ВМ, false — только свободные
+      --bootable       true — только загрузочные, false — только остальные
+  -h, --help           Справка по list
+      --name string    Только с этой частью имени, регистр не важен
+      --state string   Только в этом состоянии: available, in_use, reserved, error, error_creating, error_deleting, creating, updating, deleting, attaching, detaching
+      --type string    Только этого типа диска: имя
+      --zone string    Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -3501,6 +3522,8 @@ evo dns record-get <record-id> [flags]
 Ресурсные записи зоны DNS: id, имя, тип, значения, ttl. Только чтение. Видимость зоны (--type public или private) указывать не обязательно: evo определяет её по id.
 
 Вызывает инструмент dns_records (подробнее: 'evo tools describe dns_records').
+
+Отбор: --name, --zone-id, --type. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -3512,12 +3535,14 @@ evo dns records <zone-id> [flags]
 ```
   evo dns records <zone-id>
   evo dns records <zone-id> --json | jq -r '.records[] | "\(.name)\t\(.type)"'
+  evo dns records <zone-id> --name web
 ```
 
 ### Options
 
 ```
   -h, --help          Справка по records
+      --name string   Только с этой частью имени, регистр не важен
       --type string   Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
 ```
 
@@ -3706,6 +3731,8 @@ evo dns zone-get <id> [flags]
 Зоны Evolution DNS проекта, публичные и приватные: id, имя, домен, видимость, состояние (у публичной зоны — и confirm_state), valid, delegated. Только чтение.
 
 Вызывает инструмент dns_zones (подробнее: 'evo tools describe dns_zones').
+
+Отбор: --name, --domain. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -3717,12 +3744,15 @@ evo dns zones [flags]
 ```
   evo dns zones
   evo dns zones --json | jq -r '.zones[] | "\(.id)\t\(.domain)"'
+  evo dns zones --name web --domain web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по zones
+      --domain string   Только с этой частью домена, регистр не важен
+  -h, --help            Справка по zones
+      --name string     Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -4076,6 +4106,8 @@ evo image get <image-id|image> [flags]
 Поиск по каталогу образов ВМ: образы ОС (тип public), продукты Маркетплейса (marketplace) и собственные образы проекта (private). Образы, не готовые ни в одной зоне или недоступные проекту, скрыты; --all показывает и их (недоступные — с пометкой). В строке — id, имя, отображаемое имя, тип, зоны, где образ готов, и минимальный размер диска. Только чтение. Какие поля нужны ВМ из образа — 'evo image get <образ>'.
 
 Вызывает инструмент image_list (подробнее: 'evo tools describe image_list').
+
+Отбор: --query, --type, --zone. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -4769,6 +4801,8 @@ evo k8s kubectl <cluster-id> <args>... [flags]
 Кластеры Managed Kubernetes проекта: id, имя, состояние. Только чтение.
 
 Вызывает инструмент k8s_list (подробнее: 'evo tools describe k8s_list').
+
+Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -4779,12 +4813,15 @@ evo k8s list [flags]
 
 ```
   evo k8s list
+  evo k8s list --status OBJECT_STATUS_RUNNING --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help            Справка по list
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: OBJECT_STATUS_PENDING, OBJECT_STATUS_PROVISIONING, OBJECT_STATUS_RUNNING, OBJECT_STATUS_RESUMING, OBJECT_STATUS_DELETING, OBJECT_STATUS_ERROR, OBJECT_STATUS_SCALING_UP, OBJECT_STATUS_SCALING_DOWN, OBJECT_STATUS_STOPPING, OBJECT_STATUS_STOPPED, OBJECT_STATUS_SUSPENDING, OBJECT_STATUS_SUSPENDED, OBJECT_STATUS_UPGRADING, OBJECT_STATUS_EDITING, OBJECT_STATUS_ADDING, OBJECT_STATUS_DELETED
 ```
 
 ### Options inherited from parent commands
@@ -4816,16 +4853,26 @@ evo k8s list [flags]
 Группы узлов кластера Managed Kubernetes: имя, состояние, сколько узлов задано и сколько готово. Только чтение. Списка по всем кластерам в API нет: id кластера — в 'evo k8s list'.
 
 Вызывает инструмент k8s_nodepools (подробнее: 'evo tools describe k8s_nodepools').
+
+Отбор: --status, --name, --cluster-id. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo k8s nodepools <cluster-id> [flags]
 ```
 
+### Examples
+
+```
+  evo k8s nodepools <cluster-id> --status OBJECT_STATUS_RUNNING --name web
+```
+
 ### Options
 
 ```
-  -h, --help   Справка по nodepools
+  -h, --help            Справка по nodepools
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: OBJECT_STATUS_PENDING, OBJECT_STATUS_PROVISIONING, OBJECT_STATUS_RUNNING, OBJECT_STATUS_RESUMING, OBJECT_STATUS_DELETING, OBJECT_STATUS_ERROR, OBJECT_STATUS_SCALING_UP, OBJECT_STATUS_SCALING_DOWN, OBJECT_STATUS_STOPPING, OBJECT_STATUS_STOPPED, OBJECT_STATUS_SUSPENDING, OBJECT_STATUS_SUSPENDED, OBJECT_STATUS_UPGRADING, OBJECT_STATUS_EDITING, OBJECT_STATUS_ADDING, OBJECT_STATUS_DELETED
 ```
 
 ### Options inherited from parent commands
@@ -5146,6 +5193,8 @@ evo kafka get <cluster-id> [flags]
 Кластеры Managed Kafka: id, имя, состояние, брокеры, версия. Только чтение.
 
 Вызывает инструмент kafka_list (подробнее: 'evo tools describe kafka_list').
+
+Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -5157,12 +5206,15 @@ evo kafka list [flags]
 ```
   evo kafka list
   evo kafka list --json | jq -r '.clusters[] | "\(.id)\t\(.name)\t\(.status)"'
+  evo kafka list --status READY --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help            Справка по list
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: STATUS_UNSPECIFIED, PENDING, DEPLOYING, FAILED, UPDATING, READY, SUSPENDED, SUSPENDING, ERASED, ERASING, ROLLING_BACK
 ```
 
 ### Options inherited from parent commands
@@ -5534,6 +5586,8 @@ evo lb get <id> [flags]
 Балансировщики нагрузки Evolution (L4, сетевые) проекта: id, имя, состояние, VPC, внешний IP. Только чтение.
 
 Вызывает инструмент lb_list (подробнее: 'evo tools describe lb_list').
+
+Отбор: --status, --name, --vpc-id. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -5545,12 +5599,16 @@ evo lb list [flags]
 ```
   evo lb list
   evo lb list --json | jq -r '.load_balancers[] | "\(.id)\t\(.name)"'
+  evo lb list --status NLB_STATUS_RUNNING --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help            Справка по list
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: NLB_STATUS_UNSPECIFIED, NLB_STATUS_CREATING, NLB_STATUS_ERROR_CREATING, NLB_STATUS_RUNNING, NLB_STATUS_UPDATING, NLB_STATUS_ERROR_UPDATING, NLB_STATUS_DELETING, NLB_STATUS_ERROR_DELETING, NLB_STATUS_DELETED, NLB_STATUS_SUSPENDING, NLB_STATUS_SUSPENDED, NLB_STATUS_ERROR_SUSPENDING, NLB_STATUS_RESUMING, NLB_STATUS_ERROR_RESUMING
+      --vpc-id string   Только в этой VPC: UUID или имя
 ```
 
 ### Options inherited from parent commands
@@ -6628,6 +6686,8 @@ evo pg get <cluster-id> [flags]
 Кластеры Managed PostgreSQL проекта: id, имя, состояние, версия, работоспособность. Только чтение.
 
 Вызывает инструмент pg_list (подробнее: 'evo tools describe pg_list').
+
+Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -6638,12 +6698,15 @@ evo pg list [flags]
 
 ```
   evo pg list
+  evo pg list --status READY --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help            Справка по list
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: STATUS_UNSPECIFIED, PENDING, DEPLOYING, FAILED, UPDATING, READY, SUSPENDED, SUSPENDING, ERASED, ERASING, ROLLING_BACK
 ```
 
 ### Options inherited from parent commands
@@ -7257,6 +7320,8 @@ evo redis get <cluster-id> [flags]
 Кластеры Managed Redis: id, имя, состояние, тип, шарды, реплики. Только чтение.
 
 Вызывает инструмент redis_list (подробнее: 'evo tools describe redis_list').
+
+Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -7268,12 +7333,15 @@ evo redis list [flags]
 ```
   evo redis list
   evo redis list --json | jq -r '.clusters[] | "\(.id)\t\(.name)\t\(.status)"'
+  evo redis list --status READY --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help            Справка по list
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: STATUS_UNSPECIFIED, PENDING, DEPLOYING, FAILED, UPDATING, READY, SUSPENDED, SUSPENDING, ERASED, ERASING, ROLLING_BACK
 ```
 
 ### Options inherited from parent commands
@@ -7576,6 +7644,8 @@ evo s3 bucket-delete <bucket> [flags]
 Бакеты Object Storage (S3-совместимое хранилище s3.cloud.ru). Только чтение.
 
 Вызывает инструмент s3_buckets (подробнее: 'evo tools describe s3_buckets').
+
+Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -7586,12 +7656,14 @@ evo s3 buckets [flags]
 
 ```
   evo s3 buckets
+  evo s3 buckets --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по buckets
+  -h, --help          Справка по buckets
+      --name string   Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -8024,16 +8096,25 @@ evo secret get <path> [flags]
 Секреты проекта в Secret Manager Cloud.ru: id, имя, путь, описание. Только чтение; значения не выводятся — значение секрета показывает 'evo secret value <путь>'.
 
 Вызывает инструмент secret_list (подробнее: 'evo tools describe secret_list').
+
+Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo secret list [flags]
 ```
 
+### Examples
+
+```
+  evo secret list --name web
+```
+
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help          Справка по list
+      --name string   Только с этой частью имени или пути, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -8247,6 +8328,8 @@ SNAT-шлюзы проекта.
 SNAT-шлюзы проекта. SNAT-шлюз даёт узлам в приватных подсетях (например, рабочим узлам Managed Kubernetes) ИСХОДЯЩИЙ доступ в интернет: он нужен, чтобы скачивать публичные образы контейнеров (docker.io и другие) и пакеты apt или обращаться к внешним API. Это не то же, что --kube-api-internet кластера: тот открывает входящий доступ к API-серверу. Только чтение.
 
 Вызывает инструмент snat_list (подробнее: 'evo tools describe snat_list').
+
+Отбор: --zone, --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -8258,12 +8341,16 @@ evo snat list [flags]
 ```
   evo snat list
   evo snat list --json
+  evo snat list --zone ru.AZ-2 --status created
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help            Справка по list
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: created, error, error_creating, error_deleting, creating, deleting, updating
+      --zone string     Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -8480,7 +8567,7 @@ evo stack plan [flags]
 ```text
 Ход развёртывания стека.
 
-Ход развёртывания стека, кратко: status, done[], running[], pending[], outputs{postgres, vm, tg, lb, …; lb_external_ip — когда у балансировщика появился публичный адрес}, passwords{шаг} — пароль ВМ, который evo сгенерировал, только в этом ответе. Для задания, запущенного 'evo stack apply <job-id>', каждый вызов продвигает развёртывание И ждёт внутри (до --wait-seconds), так что на долгое развёртывание хватает нескольких вызовов. Спланированное, но не запущенное задание только показывается и никогда не запускается. Повторяйте, пока status не станет done (тогда читайте outputs; lb_external_ip есть только у балансировщика с публичным адресом) или error. Задание хранится на диске: состояние можно запросить снова по job_id в любой момент.
+Ход развёртывания стека, кратко: status, done[], running[], pending[], outputs{postgres, vm, tg, lb, …; lb_external_ip — когда у балансировщика появился публичный адрес}, passwords{шаг} — пароль ВМ, который evo сгенерировал, только в этом ответе. Для задания, запущенного 'evo stack apply <job-id>', каждый вызов продвигает развёртывание И ждёт внутри (до --wait-seconds), так что на долгое развёртывание хватает нескольких вызовов. Спланированное, но не запущенное задание только показывается и никогда не запускается. Развёртывание опрашивайте, пока status не станет done (тогда читайте outputs; lb_external_ip есть только у балансировщика с публичным адресом) или error. status=deleting (со списком deleting) — удаление не завершено, и stack status его не доводит: повторяйте 'evo stack destroy <job-id> --yes', пока ответ не станет destroyed. Задание хранится на диске: состояние можно запросить снова по job_id в любой момент.
 
 Вызывает инструмент stack_status (подробнее: 'evo tools describe stack_status').
 ```
@@ -8772,6 +8859,8 @@ evo tg get <id> [flags]
 Группы целей балансировщиков нагрузки проекта: id, имя, состояние, VPC. Только чтение.
 
 Вызывает инструмент tg_list (подробнее: 'evo tools describe tg_list').
+
+Отбор: --status, --name, --vpc-id. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -8783,12 +8872,16 @@ evo tg list [flags]
 ```
   evo tg list
   evo tg list --json | jq -r '.target_groups[] | "\(.id)\t\(.name)"'
+  evo tg list --status TARGET_GROUP_STATUS_CREATED --name web
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help            Справка по list
+      --name string     Только с этой частью имени, регистр не важен
+      --status string   Только в этом состоянии: TARGET_GROUP_STATUS_UNSPECIFIED, TARGET_GROUP_STATUS_CREATING, TARGET_GROUP_STATUS_ERROR_CREATING, TARGET_GROUP_STATUS_CREATED, TARGET_GROUP_STATUS_UPDATING, TARGET_GROUP_STATUS_ERROR_UPDATING, TARGET_GROUP_STATUS_DELETING, TARGET_GROUP_STATUS_ERROR_DELETING, TARGET_GROUP_STATUS_DELETED
+      --vpc-id string   Только в этой VPC: UUID или имя
 ```
 
 ### Options inherited from parent commands
@@ -9268,10 +9361,18 @@ Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цен�
 Flavor ВМ: имя, vCPU, RAM, признак бесплатного уровня и оценка цены за месяц, а также то, что каталог говорит сверх размера: cpu_share — гарантированная доля vCPU, как её пишет каталог (1:1 — 100 %, 1:3 — 30 %, 1:10 — 10 %, спецификация Cloud.ru), gpu, spot (прерываемая ВМ), zones — зоны, где ВМ можно создать (пустой список — каталог называет зоны, но ни одна не открыта). Поля, которых каталог не прислал, не выводятся. Фильтры оставляют только flavor, о которых каталог говорит это. Имя flavor передаётся в --flavor команд 'evo vm create' и 'evo deploy'. Только чтение.
 
 Вызывает инструмент list_flavors (подробнее: 'evo tools describe list_flavors').
+
+Отбор: --name, --cpu, --ram, --share, --zone, --gpu, --spot. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo vm flavors [flags]
+```
+
+### Examples
+
+```
+  evo vm flavors --name web
 ```
 
 ### Options
@@ -9280,6 +9381,7 @@ evo vm flavors [flags]
       --cpu int        Только flavor с таким числом vCPU
       --gpu            true — только flavor с GPU, false — только без GPU
   -h, --help           Справка по flavors
+      --name string    Только с этой частью имени, регистр не важен
       --ram int        Только flavor с таким объёмом RAM, ГБ
       --share string   Только flavor с такой гарантированной долей vCPU, как её пишет каталог: 1:1, 1:3, 1:10
       --spot           true — только прерываемые (spot) flavor, false — только остальные
@@ -9363,6 +9465,8 @@ evo vm get <vm-id|name> [flags]
 Все ВМ проекта по данным облака, а не по локальным записям развёртываний: id, имя, состояние, зона доступности и время создания. Только чтение. IP-адреса и интерфейсы одной ВМ — 'evo vm get <ВМ>'.
 
 Вызывает инструмент vm_list (подробнее: 'evo tools describe vm_list').
+
+Отбор: --zone, --state, --name, --flavor, --public-ip. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -9375,12 +9479,18 @@ evo vm list [flags]
   evo vm list
   evo vm list --json | jq -r '.vms[] | "\(.name)\t\(.state)"'
   evo --project-id <UUID> vm list
+  evo vm list --zone ru.AZ-2 --state running
 ```
 
 ### Options
 
 ```
-  -h, --help   Справка по list
+      --flavor string   Только с этим flavor: имя
+  -h, --help            Справка по list
+      --name string     Только с этой частью имени, регистр не важен
+      --public-ip       true — только с публичным IP, false — только без него
+      --state string    Только в этом состоянии: running, stopped, error, error_creating, error_deleting, creating, starting, stopping, rebooting, deleting, updating
+      --zone string     Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -9723,16 +9833,28 @@ Floating IP: адрес, состояние, свободен ли.
 Публичные IP-адреса (floating IP) проекта: адрес, состояние, свободен ли адрес для привязки, а если API её называет — зона адреса: адрес привязывается к ВМ своей зоны. Только чтение.
 
 Вызывает инструмент list_floating_ips (подробнее: 'evo tools describe list_floating_ips').
+
+Отбор: --zone, --state, --name, --free. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo vpc fips [flags]
 ```
 
+### Examples
+
+```
+  evo vpc fips --zone ru.AZ-2 --state available
+```
+
 ### Options
 
 ```
-  -h, --help   Справка по fips
+      --free           true — только свободные для привязки, false — только занятые
+  -h, --help           Справка по fips
+      --name string    Только с этой частью имени, регистр не важен
+      --state string   Только в этом состоянии: available, in_use, error, error_creating, error_deleting, creating, deleting, updating, attaching, detaching
+      --zone string    Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -9805,16 +9927,25 @@ evo vpc get <id> [flags]
 VPC (виртуальные частные облака) проекта: id, имя, признак VPC по умолчанию, тип. Только чтение.
 
 Вызывает инструмент vpc_list (подробнее: 'evo tools describe vpc_list').
+
+Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo vpc list [flags]
 ```
 
+### Examples
+
+```
+  evo vpc list --name web
+```
+
 ### Options
 
 ```
-  -h, --help   Справка по list
+  -h, --help          Справка по list
+      --name string   Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -10076,17 +10207,27 @@ evo vpc routes <vpc-id> [flags]
 Группы безопасности проекта: UUID, имя, зона доступности. С --rules — вместе с правилами каждой группы: id, направление, протокол, диапазон портов, источник, описание, состояние. Только чтение.
 
 Вызывает инструмент list_security_groups (подробнее: 'evo tools describe list_security_groups').
+
+Отбор: --zone, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo vpc security-groups [flags]
 ```
 
+### Examples
+
+```
+  evo vpc security-groups --zone ru.AZ-2 --name web
+```
+
 ### Options
 
 ```
-  -h, --help    Справка по security-groups
-      --rules   Вывести и правила каждой группы (по одному запросу к API на группу)
+  -h, --help          Справка по security-groups
+      --name string   Только с этой частью имени, регистр не важен
+      --rules         Вывести и правила каждой группы (по одному запросу к API на группу)
+      --zone string   Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -10211,16 +10352,28 @@ evo vpc subnet-delete <subnet-id> [flags]
 Подсети проекта: UUID, имя, зона доступности. UUID или имя подсети передаётся в --subnet-id, например 'evo vm create --subnet-id <UUID или имя>'. Только чтение.
 
 Вызывает инструмент list_subnets (подробнее: 'evo tools describe list_subnets').
+
+Отбор: --zone, --state, --name, --vpc-id. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
 evo vpc subnets [flags]
 ```
 
+### Examples
+
+```
+  evo vpc subnets --zone ru.AZ-2 --state created
+```
+
 ### Options
 
 ```
-  -h, --help   Справка по subnets
+  -h, --help            Справка по subnets
+      --name string     Только с этой частью имени, регистр не важен
+      --state string    Только в этом состоянии: created, error, error_creating, error_deleting, creating, deleting, updating
+      --vpc-id string   Только в этой VPC: UUID или имя
+      --zone string     Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands

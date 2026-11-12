@@ -252,6 +252,22 @@ func (j *Job) Destroyed() bool {
 	return j.Status == StatusDestroyed && len(j.Deleting) == 0
 }
 
+// Planned reports a job stack_plan made and stack_apply has not started.
+func (j *Job) Planned() bool { return j.Status == "planned" }
+
+// Running reports a job stack_apply started whose steps are not all done.
+func (j *Job) Running() bool { return j.Status == "running" }
+
+// Failed reports a job a step ended in error.
+func (j *Job) Failed() bool { return j.Status == "error" }
+
+// SecretsDeleted reports a teardown that deleted the job's secrets: they
+// are deleted at once, so a job being deleted holds them no more; a failed
+// deletion (destroy_failed) may still hold them.
+func (j *Job) SecretsDeleted() bool {
+	return j.Status == StatusDestroyed || j.Status == StatusDeleting
+}
+
 // TornDown reports a job stack_destroy has run on, finished or not.
 func (j *Job) TornDown() bool {
 	return j.Status == StatusDestroyed || j.Status == StatusDeleting || j.Status == "destroy_failed"
@@ -361,9 +377,7 @@ func SecretHolders(path, excludeID string) []string {
 			continue
 		}
 		j, err := LoadJob(id)
-		// A secret is deleted at once: a job being torn down holds it no
-		// more (its deletion failed: destroy_failed).
-		if err != nil || j.Status == StatusDestroyed || j.Status == StatusDeleting {
+		if err != nil || j.SecretsDeleted() {
 			continue
 		}
 		for i, sc := range j.Manifest.Secrets {
@@ -858,9 +872,16 @@ func (j *Job) Compact() map[string]any {
 			pending = append(pending, s.Key)
 		}
 	}
+	// The status through the teardown state, as stack_destroy reads it: a
+	// job saved by rc.1 as destroyed with deletions in progress is deleting
+	// (D96; delta audit Fable 1.8.0, FB180-15).
+	status := j.Status
+	if j.DeletionsPending() {
+		status = StatusDeleting
+	}
 	out := map[string]any{
 		"job_id":  j.ID,
-		"status":  j.Status,
+		"status":  status,
 		"done":    done,
 		"running": running,
 		"pending": pending,
@@ -875,6 +896,9 @@ func (j *Job) Compact() map[string]any {
 	}
 	if j.Error != "" {
 		out["error"] = j.Error
+	}
+	if j.DeletionsPending() {
+		out["deleting"] = j.Deleting
 	}
 	// What a step met and how many creates it used: a step that stays
 	// pending or ends in error says why (G130-04, D41) in details, as text;

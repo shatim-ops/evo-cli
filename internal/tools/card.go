@@ -23,7 +23,7 @@ func GroupCard(group string) (string, bool) {
 		return "", false
 	}
 	r := New(nil)
-	var rows []string
+	var rows, filters []string
 	for _, t := range r.Tools() {
 		if t.Group != group {
 			continue
@@ -33,6 +33,9 @@ func GroupCard(group string) (string, bool) {
 			command = "`evo " + t.CLI.Group + " " + t.CLI.Verb + "`"
 		}
 		rows = append(rows, fmt.Sprintf("| `%s` | %s | %s | %s |", t.Name, command, cardDoes(t), cardIDs(t.Name)))
+		if f := ListFilters(t); f != nil {
+			filters = append(filters, "`"+t.Name+"` — "+strings.Join(f, ", "))
+		}
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# evo: the `%s` group\n\n", group)
@@ -44,6 +47,10 @@ func GroupCard(group string) (string, bool) {
 	if _, ok := r.Lookup(group + "_operation"); ok {
 		fmt.Fprintf(&b, "\nA change of this group that answers an `operation_id` runs on: wait for it with `%s_operation` "+
 			"and its `wait_seconds`, not by polling a list.\n", group)
+	}
+	if len(filters) > 0 {
+		// One line: the vocabulary is the skill's (listSpecs).
+		fmt.Fprintf(&b, "\nFilters of the lists (the rule of the `evo` skill): %s.\n", strings.Join(filters, "; "))
 	}
 	if notes := cardNotes[group]; len(notes) > 0 {
 		b.WriteString("\n## Notes\n\n- " + strings.Join(notes, "\n- ") + "\n")

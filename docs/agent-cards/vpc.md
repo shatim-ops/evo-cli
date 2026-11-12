@@ -23,3 +23,5 @@
 | `vpc_route_delete` | `evo vpc route-delete` | deletes; a repeat answers `already_deleted` | `vpc_id` ← `vpc_list` |
 
 A change of this group that answers an `operation_id` runs on: wait for it with `vpc_operation` and its `wait_seconds`, not by polling a list.
+
+Filters of the lists (the rule of the `evo` skill): `list_subnets` — zone, state, name, vpc_id; `list_security_groups` — zone, name; `list_floating_ips` — zone, state, name, free; `vpc_list` — name.

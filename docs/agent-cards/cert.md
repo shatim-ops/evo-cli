@@ -18,3 +18,5 @@
 | `cert_operation` | `evo cert operation` | reads |  |
 
 A change of this group that answers an `operation_id` runs on: wait for it with `cert_operation` and its `wait_seconds`, not by polling a list.
+
+Filters of the lists (the rule of the `evo` skill): `cert_list` — name, type, dns_name, common_name, state.

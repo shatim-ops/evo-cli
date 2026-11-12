@@ -241,7 +241,14 @@ func New(factory EngineFactory) *Registry {
 		ru := toolsRU[t.Name]
 		t.ShortRU, t.DescriptionRU = ru.Short, ru.Long
 		t.ArgDescriptionsRU = argDescriptionsRU(*t, ru.Args)
+		spec, isList := listSpecs[t.Name]
+		spec.declare(t)
 		if h := r.handlers[t.Name]; h != nil {
+			// Innermost: every policy of the call stands over the list
+			// the selection is made from.
+			if isList && spec.args() != nil {
+				h = r.filtered(spec, h)
+			}
 			// Inside requireProject: the check's engine sees its mark.
 			h = r.boundToProjects(*t, h)
 			// Inside requireProject too: the list of a name is the call's

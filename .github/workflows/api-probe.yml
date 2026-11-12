@@ -550,6 +550,18 @@ jobs:
           fi
           probeh nodepools_unknown_cluster    "$M/v3/nodePools?clusterId=00000000-0000-4000-8000-000000000000" "$nlist"
 
+      # Фильтры списков 1.8.2 (ТЗ docs/internal/briefs/list-filters.md; «да»
+      # владельца 11.11 на два прогона — строка плана 1.8.2 «Фильтры списков»):
+      # для каждого параметра отбора Compute — выборка облака против правила
+      # evo. Только GET; id в лог не попадают. Упавшая проверка печатает
+      # строку и не валит шаг.
+      - name: Фильтры списков 1.8.2 — отбор в облаке против evo
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: .github/scripts/list_filter_probe.sh
+
       # Открытые вопросы реестра (evo-internal: discrepancies/cloudru-discrepancies.md,
       # «Что проверить пробой»): P13, P15, P20, P23–P28. Только чтение, кроме
       # расчёта цены и обмена ключа на токен. В лог — коды HTTP, имена полей,

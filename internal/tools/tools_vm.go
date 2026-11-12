@@ -128,6 +128,9 @@ func (s *Registry) handleVMList(ctx context.Context, args map[string]any) (strin
 		if v.AvailabilityZone != nil && v.AvailabilityZone.Name != "" {
 			row["zone"] = v.AvailabilityZone.Name
 		}
+		if v.FlavorName != "" {
+			row["flavor"] = v.FlavorName
+		}
 		if ip := v.PublicIP; ip != "" {
 			row["public_ip"] = ip
 		} else if v.FloatingIP != "" {
