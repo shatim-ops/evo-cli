@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/netip"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -136,7 +137,9 @@ func ruleArg(k string, p map[string]any, v any) error {
 		return nil
 	}
 	if min, ok := p["minLength"].(int); ok && len(strings.TrimSpace(s)) < min {
-		return ruleErr(k, p, i18n.Tf("%s is empty", "%s пустой", k))
+		return ruleErr(k, p, i18n.Tf("%s is empty", "%s пустой", k),
+			i18n.Tf("Give %s a value or drop the argument: an empty value is not read as «not set».",
+				"Задайте %s значение или уберите аргумент: пустое значение не читается как «не задано».", k))
 	}
 	if strings.TrimSpace(s) == "" {
 		return nil
@@ -165,10 +168,16 @@ type ruleError struct {
 func (e *ruleError) Error() string { return e.ce.Error() }
 func (e *ruleError) Unwrap() error { return e.ce }
 
-func ruleErr(k string, p map[string]any, msg string) error {
+// ruleErr is the refusal of argument k by a rule of its schema p; hint,
+// when given, replaces the one that points at the argument's description.
+func ruleErr(k string, p map[string]any, msg string, hint ...string) error {
+	h := ruleHint(k)
+	if len(hint) > 0 {
+		h = hint[0]
+	}
 	re := &ruleError{
 		Arg: k,
-		ce:  clierrors.New(clierrors.CodeUsage, msg, ruleHint(k, p)),
+		ce:  clierrors.New(clierrors.CodeUsage, msg, h),
 	}
 	if f, ok := p["format"].(string); ok && f != "" {
 		re.Format = f
@@ -185,13 +194,56 @@ func (r *Registry) argRefused(tool, arg string, v any) bool {
 	return ruleArg(arg, p, v) != nil
 }
 
+// scopeArgs name where a call works: the project, the region, the zone.
+// An empty one moved the call to the project or the zone of the profile;
+// it is USAGE by the schema of every tool that takes one (D100), as the
+// flags of the CLI are since D89 (cli.scopeFlags).
+var scopeArgs = []string{"project_id", "region", "zone", "availability_zone_id"}
+
+// noEmptyValue declares that the string arguments of t named take no empty
+// value (minLength, D36): the one place a scope argument and a handler's
+// own filter get the rule a filter of the registry has (listFilter.prop).
+func noEmptyValue(t *Tool, names ...string) {
+	props, _ := t.InputSchema["properties"].(map[string]any)
+	for _, n := range names {
+		if p, ok := props[n].(map[string]any); ok && p["type"] == "string" {
+			p["minLength"] = 1
+		}
+	}
+}
+
+// emptyScopeField is the path of the first scope field (scopeArgs) with an
+// empty string value in the object v, a manifest of steps: "" when there
+// is none. path names v itself.
+func emptyScopeField(v any, path string) string {
+	switch x := v.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
+			if s, ok := x[k].(string); ok && strings.TrimSpace(s) == "" && slices.Contains(scopeArgs, k) {
+				return path + "." + k
+			}
+			if p := emptyScopeField(x[k], path+"."+k); p != "" {
+				return p
+			}
+		}
+	case []any:
+		for i, e := range x {
+			if p := emptyScopeField(e, path+"["+strconv.Itoa(i)+"]"); p != "" {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
 // ruleHint points at the argument's description, which says where the
 // value comes from.
-func ruleHint(k string, p map[string]any) string {
-	if _, ok := p["minLength"]; ok {
-		return i18n.Tf("Give %s a value or drop it: an empty value is not read as no filter.",
-			"Задайте %s значение или уберите его: пустое значение не читается как отсутствие фильтра.", k)
-	}
+func ruleHint(k string) string {
 	return i18n.Tf("See %s in the tool's inputSchema.", "См. %s в inputSchema инструмента.", k)
 }
 

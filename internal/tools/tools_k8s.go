@@ -320,17 +320,17 @@ func (s *Registry) handleK8sPlan(ctx context.Context, args map[string]any) (stri
 	}), false
 }
 
-// handleK8sCreate creates a cluster (gated on confirmation). Async.
-func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (string, bool) {
+// planK8sCreate plans the create of a cluster (gated). Async.
+func (s *Registry) planK8sCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	if err := k8sArgsError(args); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// A second cluster of the same name is a second bill: refused before
 	// the consent, as every other create (DECISIONS D21).
 	name := k8sClusterNameArg(args)
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	list := func(ctx context.Context) ([]map[string]any, error) {
 		clusters, err := cli.ListClusters(ctx)
@@ -342,10 +342,10 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 	}
 	listed, err := list(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)
 	}
 	if id, st, ok := takenName(listed, name); ok {
-		return nameTakenResult(i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, id, st, "k8s_get cluster_id="+id)
+		return answered(nameTakenResult(i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, id, st, "k8s_get cluster_id="+id)), nil
 	}
 	// The plan before the consent: the preview names the cluster that is
 	// made — the masters' flavor, version, zone, VIP subnet — and a plan
@@ -353,36 +353,39 @@ func (s *Registry) handleK8sCreate(ctx context.Context, args map[string]any) (st
 	// FB123-5).
 	plan, err := s.resolveK8sPlan(ctx, args)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+	// The preview is built for the question only: its price is a request
+	// a consented call does not make.
+	preview := func(ctx context.Context) (map[string]any, error) {
 		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sCluster, name, args, plan.resolved()))
 		if err != nil {
-			return errResult(err), true
+			return nil, err
 		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
+		return map[string]any{
 			"message": i18n.T("k8s_create builds a real (billable) Kubernetes cluster.",
 				"k8s_create создаёт настоящий (платный) кластер Kubernetes."),
 			"preview": preview,
-		}), true
+		}, nil
 	}
-	req := plan.req
-	op, err := cli.CreateCluster(ctx, req)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+	return &Plan{PreviewOf: preview, Execute: func(ctx context.Context) (string, bool) {
+		req := plan.req
+		op, err := cli.CreateCluster(ctx, req)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "k8s_create", list, i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, nil, "k8s_get cluster_id", err)
 		}
-		return lostCreate(ctx, "k8s_create", list, i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, nil, "k8s_get cluster_id", err)
-	}
-	return toJSON(map[string]any{
-		"status":       "creating",
-		"cluster_id":   op.ResourceID,
-		"operation_id": op.ID,
-		"name":         req.Name,
-		"note": i18n.T("Cluster is provisioning (async, about 10 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
-			fmt.Sprintf("Кластер создаётся (асинхронно, около 10 мин). Проверяйте evo k8s get %[1]s, пока статус не станет running, затем — evo k8s kubeconfig %[1]s.", op.ResourceID)),
-	}), false
+		return toJSON(map[string]any{
+			"status":       "creating",
+			"cluster_id":   op.ResourceID,
+			"operation_id": op.ID,
+			"name":         req.Name,
+			"note": i18n.T("Cluster is provisioning (async, about 10 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
+				fmt.Sprintf("Кластер создаётся (асинхронно, около 10 мин). Проверяйте evo k8s get %[1]s, пока статус не станет running, затем — evo k8s kubeconfig %[1]s.", op.ResourceID)),
+		}), false
+	}}, nil
 }
 
 // handleK8sKubeconfig returns the kubeconfig for a cluster.
@@ -603,15 +606,15 @@ func nodePoolCard(np map[string]any) map[string]any {
 	return out
 }
 
-// handleK8sAddNodePool adds a worker node pool to a cluster (gated). Async.
-func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any) (string, bool) {
+// planK8sAddNodePool plans a worker node pool of a cluster (gated). Async.
+func (s *Registry) planK8sAddNodePool(ctx context.Context, args map[string]any) (*Plan, error) {
 	clusterID := stringArg(args, "cluster_id")
 	if clusterID == "" {
-		return usageT("cluster_id is required", "нужен cluster_id"), true
+		return answered(usageT("cluster_id is required", "нужен cluster_id"), true), nil
 	}
 	cli, pid, _, err := s.k8sClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// A pool of the name in the cluster: a repeat after a lost answer made
 	// a second billable pool (fault matrix, process audit 1.2.1).
@@ -621,21 +624,21 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	}
 	listed, err := list(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list node pools: %w", "проверка, что имя свободно: список групп узлов: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list node pools: %w", "проверка, что имя свободно: список групп узлов: %w"), err)
 	}
 	if id, st, ok := takenName(listed, name); ok {
-		return nameTakenResult(i18n.T("node pool", "группа узлов"), name, id, st, "k8s_nodepools cluster_id="+clusterID)
+		return answered(nameTakenResult(i18n.T("node pool", "группа узлов"), name, id, st, "k8s_nodepools cluster_id="+clusterID)), nil
 	}
 	// The nodes' flavor before the consent, as the masters' (D29): an
 	// explicit one with a GPU or not in the catalogue is refused before
 	// the question, and the preview names the one chosen.
 	pc, err := cli.ProductConfiguration(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	flavor, err := pickK8sFlavor(pc.Flavors, stringArg(args, "flavor"), intArg(args, "cpu", 2), intArg(args, "ram_gb", 4))
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// Nodes subnet + security group: explicit, else from the cluster's zone,
 	// before the consent as the flavor (A12, D29): the preview names them,
@@ -649,28 +652,28 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		// that is how the pool would land away from the control plane.
 		zid, zerr := clusterZoneID(ctx, cli, clusterID)
 		if zerr != nil {
-			return errResult(fmt.Errorf(i18n.T("read the zone of cluster %s: %w (or pass zone)", "чтение зоны кластера %s: %w (или передайте zone)"), clusterID, zerr)), true
+			return nil, fmt.Errorf(i18n.T("read the zone of cluster %s: %w (or pass zone)", "чтение зоны кластера %s: %w (или передайте zone)"), clusterID, zerr)
 		}
 		if zid == "" {
-			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+			return nil, clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("cluster %s does not report its zone (controlPlane.zones is empty)", "кластер %s не сообщает свою зону (controlPlane.zones пуст)", clusterID),
-				i18n.T("Pass zone: the availability zone of the cluster's control plane (k8s_get).", "Передайте --zone — зону доступности мастер-узлов кластера (evo k8s get <ID кластера>)."))), true
+				i18n.T("Pass zone: the availability zone of the cluster's control plane (k8s_get).", "Передайте --zone — зону доступности мастер-узлов кластера (evo k8s get <ID кластера>)."))
 		}
 		zoneRef = zid
 	}
 	zone, err := s.k8sZone(ctx, pc, zoneRef)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	nodesSubnetID, nodesSubnetName, err := s.k8sNodesSubnet(ctx, pid, stringArg(args, "nodes_subnet_id"), zone)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	sgID, sgName := stringArg(args, "security_group_id"), ""
 	if sgID == "" {
 		eng, e := s.authedEngine(ctx, nil)
 		if e != nil {
-			return errResult(e), true
+			return nil, e
 		}
 		// No group found (or the list failed) sent the pool without
 		// securityGroupId — the spec takes that — while the description
@@ -678,13 +681,13 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 		// same case (final audit, stage 2).
 		sgs, se := eng.Cloud.ListSecurityGroups(ctx, pid)
 		if se != nil {
-			return errResult(fmt.Errorf(i18n.T("list security groups: %w (or pass security_group_id)", "список групп безопасности: %w (или передайте security_group_id)"), se)), true
+			return nil, fmt.Errorf(i18n.T("list security groups: %w (or pass security_group_id)", "список групп безопасности: %w (или передайте security_group_id)"), se)
 		}
 		i := provision.PickSecurityGroup(sgs, zone.computeID, zone.name)
 		if i < 0 {
-			return errResult(clierrors.New(clierrors.CodeConfigInvalid,
+			return nil, clierrors.New(clierrors.CodeConfigInvalid,
 				i18n.Tf("no security group of the project in zone %s for the node pool; nothing was created", "в зоне %s нет группы безопасности проекта для группы узлов; ничего не создано", zone.name),
-				i18n.T("Pass security_group_id (list_security_groups), or create a group in this zone in the Cloud.ru console.", "Передайте security_group_id (list_security_groups) или создайте группу в этой зоне в консоли Cloud.ru."))), true
+				i18n.T("Pass security_group_id (list_security_groups), or create a group in this zone in the Cloud.ru console.", "Передайте security_group_id (list_security_groups) или создайте группу в этой зоне в консоли Cloud.ru."))
 		}
 		sgID, sgName = sgs[i].ID, sgs[i].Name
 	}
@@ -693,43 +696,45 @@ func (s *Registry) handleK8sAddNodePool(ctx context.Context, args map[string]any
 	// preview names them, defaults included (FB15-41).
 	count := intArg(args, "count", 2)
 	diskSize := intArg(args, "disk_gb", 20)
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+	// The preview is built for the question only: its price is a request
+	// a consented call does not make.
+	preview := func(ctx context.Context) (map[string]any, error) {
 		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sNodePool, name, args,
 			map[string]any{"flavor": flavor.Name, "cpu": flavor.CPU, "ram_gb": flavor.RAM, "count": count, "disk_gb": diskSize,
 				"zone": zone.name, "nodes_subnet_id": nodesSubnetID, "nodes_subnet_name": nodesSubnetName,
 				"security_group_id": sgID, "security_group_name": sgName}))
 		if err != nil {
-			return errResult(err), true
+			return nil, err
 		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
+		return map[string]any{
 			"message": i18n.T("k8s_add_nodepool creates billable worker nodes.",
 				"k8s_add_nodepool создаёт платные рабочие узлы."),
 			"preview": preview,
-		}), true
+		}, nil
 	}
-
-	req := mk8s.CreateNodePoolReq{
-		ClusterID:            clusterID,
-		Name:                 name,
-		ScalePolicy:          mk8s.ScalePolicy{FixedScale: &mk8s.FixedScale{Count: count}},
-		MachineConfiguration: mk8s.MachineConfigurationRequest{FlavorID: flavor.FlavorID, Disk: &mk8s.DiskRequest{Size: diskSize}},
-		NetworkConfiguration: mk8s.NodePoolNetworkConfigurationRequest{NodesSubnetID: nodesSubnetID, SecurityGroupID: sgID},
-		UpdateConfiguration:  mk8s.NodePoolUpdateConfiguration{Strategy: "NODE_POOL_UPDATE_STRATEGY_ROLLING_UPDATE"},
-	}
-	op, err := cli.CreateNodePool(ctx, req)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+	return &Plan{PreviewOf: preview, Execute: func(ctx context.Context) (string, bool) {
+		req := mk8s.CreateNodePoolReq{
+			ClusterID:            clusterID,
+			Name:                 name,
+			ScalePolicy:          mk8s.ScalePolicy{FixedScale: &mk8s.FixedScale{Count: count}},
+			MachineConfiguration: mk8s.MachineConfigurationRequest{FlavorID: flavor.FlavorID, Disk: &mk8s.DiskRequest{Size: diskSize}},
+			NetworkConfiguration: mk8s.NodePoolNetworkConfigurationRequest{NodesSubnetID: nodesSubnetID, SecurityGroupID: sgID},
+			UpdateConfiguration:  mk8s.NodePoolUpdateConfiguration{Strategy: "NODE_POOL_UPDATE_STRATEGY_ROLLING_UPDATE"},
 		}
-		return lostCreate(ctx, "k8s_add_nodepool", list, i18n.T("node pool", "группа узлов"), name, nil, "k8s_nodepools cluster_id="+clusterID, fmt.Errorf(i18n.T("create node pool: %w", "создание группы узлов: %w"), err))
-	}
-	return toJSON(map[string]any{
-		"status": "creating", "node_pool": name, "nodepool_id": op.ResourceID, "cluster_id": clusterID,
-		"operation_id": op.ID, "count": count, "flavor_id": flavor.FlavorID, "flavor": flavor.Name,
-		"note": i18n.T("Node pool is provisioning (async). Poll k8s_nodepools. NB: if Cloud.ru returns 503 'no healthy upstream' it's a transient backend outage — retry.",
-			fmt.Sprintf("Группа узлов создаётся (асинхронно). Проверяйте evo k8s nodepools %s. Если Cloud.ru отвечает 503 «no healthy upstream», это временный сбой сервиса — повторите.", clusterID)),
-	}), false
+		op, err := cli.CreateNodePool(ctx, req)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "k8s_add_nodepool", list, i18n.T("node pool", "группа узлов"), name, nil, "k8s_nodepools cluster_id="+clusterID, fmt.Errorf(i18n.T("create node pool: %w", "создание группы узлов: %w"), err))
+		}
+		return toJSON(map[string]any{
+			"status": "creating", "node_pool": name, "nodepool_id": op.ResourceID, "cluster_id": clusterID,
+			"operation_id": op.ID, "count": count, "flavor_id": flavor.FlavorID, "flavor": flavor.Name,
+			"note": i18n.T("Node pool is provisioning (async). Poll k8s_nodepools. NB: if Cloud.ru returns 503 'no healthy upstream' it's a transient backend outage — retry.",
+				fmt.Sprintf("Группа узлов создаётся (асинхронно). Проверяйте evo k8s nodepools %s. Если Cloud.ru отвечает 503 «no healthy upstream», это временный сбой сервиса — повторите.", clusterID)),
+		}), false
+	}}, nil
 }
 
 // nodePoolName is the node pool's name: the argument, else nodepool-1.
