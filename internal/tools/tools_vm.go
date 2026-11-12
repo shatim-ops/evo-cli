@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"time"
 
@@ -176,6 +175,10 @@ type vmPowerAction struct {
 	already, done          string
 	// message is the preview's line, {en, ru}.
 	message [2]string
+	// verb and noun are the action in the words of a person, {en, ru}:
+	// «to start», «the start». The texts of a refusal are made of them,
+	// not of the platform's command.
+	verb, noun [2]string
 	// billed is what the change starts to bill, {en, ru}; empty when it
 	// starts no billing.
 	billed [2]string
@@ -187,6 +190,7 @@ var vmPowerActions = map[string]vmPowerAction{
 	"vm_start": {command: provision.PowerOn, from: "stopped", via: "starting", to: "running",
 		already: "already_running", done: "started",
 		message: [2]string{"vm_start starts the stopped VM (power_on).", "vm_start запускает остановленную ВМ (power_on)."},
+		verb:    [2]string{"start", "запускать"}, noun: [2]string{"the start", "запуск"},
 		billed: [2]string{"price unknown, the resource is billable: a running VM is billed for its flavor by the rates at tariff_url",
 			"цена неизвестна, ресурс платный: запущенная ВМ тарифицируется по своей конфигурации, тарифы — по tariff_url"}},
 }
@@ -258,7 +262,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 				// No question yet: the state, and the same call again.
 				ans := vmAnswer(vm, "waiting", last)
 				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; it cannot be changed until its state settles. Call %s to go on.", vm.ID, last, tool)
-				nextStep(ans, tool, maps.Clone(args))
+				nextSameCall(ans, tool, args)
 				return answered(toJSON(ans), false), nil
 			case timedOut > 0:
 				return nil, clierrors.New(clierrors.CodeUsage,
@@ -277,7 +281,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			return answered(text, isErr), nil
 		case vmNothingToChange[state]:
 			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, state, act.command),
+				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, state, i18n.T(act.verb[0], act.verb[1])),
 				i18n.T("vm_get shows the VM; what to do with it is the person's decision.", "ВМ показывает vm_get; что с ней делать — решает человек."))
 		}
 		// What the write sends and what it changes: the command, and the
@@ -299,7 +303,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			// Not refused: whether the platform takes the command in this
 			// state is not known (conclusion 111, the question of error).
 			preview["warning"] = i18n.Tf("the VM is in state %s, not %s: whether the platform accepts %s is unknown",
-				"ВМ в состоянии %s, а не %s: примет ли платформа %s — неизвестно", state, act.from, act.command)
+				"ВМ в состоянии %s, а не %s: примет ли платформа %s — неизвестно", state, act.from, i18n.T(act.noun[0], act.noun[1]))
 		}
 		return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 			if err := eng.Cloud.SetVMPower(ctx, vm.ID, act.command); err != nil {
@@ -358,7 +362,7 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 		details["platform_code"] = code
 	}
 	return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-		i18n.Tf("the platform refused %s of VM %s in state %s", "платформа отказала в %s для ВМ %s в состоянии %s", act.command, vm.ID, now.State), hint, cause),
+		i18n.Tf("the platform refused %s of VM %s in state %s", "платформа отказала: %s ВМ %s в состоянии %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, now.State), hint, cause),
 		map[string]any{"vm_id": vm.ID, "state": now.State, "details": details}), true
 }
 
@@ -411,11 +415,11 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 			// would send the command again on the consent already given
 			// («Риск», conclusion 123, К2).
 			return true, clierrors.New(clierrors.CodeAPIError,
-				i18n.Tf("%s of VM %s did not take place: the VM was %s and is %s again", "%s для ВМ %s не состоялся: ВМ была в %s и снова в %s", act.command, vm.ID, act.via, st),
+				i18n.Tf("%s of VM %s did not take place: the VM was %s and is %s again", "%s ВМ %s не состоялся: ВМ была в %s и снова в %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, act.via, st),
 				i18n.T("What to do with the VM is the person's decision; vm_get shows it.", "Что делать с ВМ — решает человек; её показывает vm_get."))
 		}
 		return true, clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("VM %s is in state %s after %s, not %s", "ВМ %s после %s в состоянии %s, а не %s", vm.ID, st, act.command, act.to),
+			i18n.Tf("VM %s is in state %s after %s, not %s", "ВМ %s: состояние %s после команды «%s», а не %s", vm.ID, st, i18n.T(act.noun[0], act.noun[1]), act.to),
 			i18n.T("vm_get shows the VM.", "ВМ показывает vm_get."))
 	})
 	elapsed := int(clock.Since(started).Seconds())
@@ -426,7 +430,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		// The platform took the command and the VM never left its state:
 		// not a change going on, and not one a repeat goes on with (К2).
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("the platform accepted %s of VM %s, and its state has not changed in %d s: still %s", "платформа приняла %s для ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", act.command, vm.ID, elapsed, last),
+			i18n.Tf("the platform accepted %s of VM %s, and its state has not changed in %d s: still %s", "платформа приняла команду «%s» для ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, elapsed, last),
 			i18n.T("vm_get shows the VM; whether to send the command again is the person's decision.", "ВМ показывает vm_get; слать ли команду снова — решает человек.")),
 			map[string]any{"vm_id": vm.ID, "state": last, "elapsed_sec": elapsed}), true
 	case atLimit || timedOut > 0:
@@ -436,7 +440,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		ans["elapsed_sec"] = elapsed
 		if atLimit && sent {
 			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second command.", vm.ID, last, tool)
-			nextStep(ans, tool, maps.Clone(args))
+			nextSameCall(ans, tool, args)
 		} else {
 			// Not this call's to go on with: the next step is the read.
 			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state.", vm.ID, last)

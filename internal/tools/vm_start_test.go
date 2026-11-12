@@ -305,6 +305,9 @@ func TestVMStart_AtTheLimitOfAnMCPCallAnswersStartingAndTheNextStepDoesNotWrite(
 	if next["name"] != "web" {
 		t.Fatalf("next_args do not name the VM: %s", text)
 	}
+	if _, has := next["confirmed"]; has {
+		t.Fatalf("next_args carry the consent of the call into a step that only waits (R-85): %s", text)
+	}
 	m, text, isErr = callNamed(t, r, "vm_start", next)
 	if isErr || m["status"] != "starting" || m["next_tool"] != "vm_get" {
 		t.Fatalf("the next step on a VM still starting: %s", text)
@@ -647,5 +650,31 @@ func TestVMStart_ForbiddenAndRateLimitedAreTheErrors(t *testing.T) {
 		if d, _ := m["details"].(map[string]any); d["cause"] == "state" {
 			t.Errorf("%s: the cause of the refusal is not the state of the VM: %s", name, text)
 		}
+	}
+}
+
+// The start falls back between two calls (R-85; «Риск», conclusion 123,
+// К1; the audit of the reference): the first call ends at the limit of an
+// MCP call with the VM starting and names the same call as the next step;
+// the VM goes back to stopped; an agent that follows next_args to the
+// letter, again and again, sends no second command — the step carries no
+// consent, so the call that finds the VM stopped asks.
+func TestVMStart_FallBackBetweenCallsAsksAgainAndSendsOneCommand(t *testing.T) {
+	r, w := vmStartWorldWaiting(t, "stopped", 0)
+	budgeted(r)
+	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if isErr || m["status"] != "starting" || m["next_tool"] != "vm_start" {
+		t.Fatalf("the first call: %s", text)
+	}
+	next, _ := m["next_args"].(map[string]any)
+	for i := 2; i <= 4; i++ {
+		w.stepVMPower(w.id, "stopped")
+		m, text, _ = callNamed(t, r, "vm_start", next)
+		if m["status"] != "confirmation_required" {
+			t.Fatalf("call %d by next_args on a VM that fell back to stopped does not ask: %s", i, text)
+		}
+	}
+	if n := w.powerCalls(); n != 1 {
+		t.Errorf("power calls = %d after three calls by next_args, want the 1 the person consented to", n)
 	}
 }
