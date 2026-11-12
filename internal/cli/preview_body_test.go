@@ -9,12 +9,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // The class of a value evo sends that its preview does not name (release
@@ -172,7 +169,7 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 			text, _ := tl.Handler(context.Background(), args)
 			writes := fake.takeWrites()
 			done()
-			_ = os.Remove(state.DefaultPath(w.dir))
+			forgetRun(w)
 			return text, writes
 		}
 		preview, _ := call(false)
