@@ -2358,9 +2358,11 @@ probe_g16() {
 	# время записывается; затем повтор сразу, ожидание исчезновения и
 	# повтор после него. Итог — в $r.
 	g16_delete() {
-		local tries=1 held=$SECONDS until=$(($(date +%s) + ${PROBE_WAIT:-$3}))
+		local tries=1 held=$SECONDS until
 		api DELETE "$C1/backups/$2"
 		r="HTTP $code$(why_tail)"
+		# Предел — от первого отказа: время самого запроса в него не входит.
+		until=$(($(date +%s) + ${PROBE_WAIT:-$3}))
 		while [ "$code" = 422 ] && [[ ",$(mcode)," == *,backup_restore_in_progress,* ]] && [ "$(date +%s)" -lt "$until" ]; do
 			sleep "$PROBE_PAUSE"
 			iam_fresh || true
