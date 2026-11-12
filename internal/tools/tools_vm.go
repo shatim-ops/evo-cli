@@ -262,7 +262,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 				// No question yet: the state, and the same call again.
 				ans := vmAnswer(vm, "waiting", last)
 				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; it cannot be changed until its state settles. Call %s to go on.", vm.ID, last, tool)
-				nextSameCall(ans, tool, args)
+				nextSameCall(ans, tool, vmRef(args, vm))
 				return answered(toJSON(ans), false), nil
 			case timedOut > 0:
 				return nil, clierrors.New(clierrors.CodeUsage,
@@ -353,10 +353,13 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 	details := map[string]any{"cause": "state"}
 	hint := noRepeat
 	switch {
+	case now.State != planned:
+		// The state moved between the plan and the command — first of
+		// all: the refusal was of the state the VM was in then, and a
+		// repeat plans anew from the state it is in now.
+		hint = i18n.T("The state of the VM changed while the call was made; repeat the call: it reads the VM again.", "Состояние ВМ изменилось, пока шёл вызов; повторите вызов: он прочитает ВМ заново.")
 	case now.State == act.from:
 		details["cause"] = "refused"
-	case now.State != planned:
-		hint = i18n.T("vm_get shows the state of the VM; repeat the call when it is "+act.from+".", "Состояние ВМ показывает vm_get; повторите вызов, когда оно станет "+act.from+".")
 	}
 	if code := platformCode(cause); code != "" {
 		details["platform_code"] = code
@@ -440,7 +443,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		ans["elapsed_sec"] = elapsed
 		if atLimit && sent {
 			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second command.", vm.ID, last, tool)
-			nextSameCall(ans, tool, args)
+			nextSameCall(ans, tool, vmRef(args, vm))
 		} else {
 			// Not this call's to go on with: the next step is the read.
 			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state.", vm.ID, last)
@@ -488,4 +491,18 @@ func vmAnswer(vm *provision.VMDetail, status, state string) map[string]any {
 		ans["public_ip"] = public
 	}
 	return ans
+}
+
+// vmRef are the arguments of the call with the VM named by its id: the
+// next step of a call that named the VM by name waits for the VM the call
+// read, not for whichever VM has the name by then.
+func vmRef(args map[string]any, vm *provision.VMDetail) map[string]any {
+	out := make(map[string]any, len(args))
+	for k, v := range args {
+		if k != "name" {
+			out[k] = v
+		}
+	}
+	out["vm_id"] = vm.ID
+	return out
 }

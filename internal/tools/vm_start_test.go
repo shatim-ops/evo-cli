@@ -302,8 +302,8 @@ func TestVMStart_AtTheLimitOfAnMCPCallAnswersStartingAndTheNextStepDoesNotWrite(
 		t.Errorf("the answer at the limit has no elapsed_sec: %s", text)
 	}
 	next, _ := m["next_args"].(map[string]any)
-	if next["name"] != "web" {
-		t.Fatalf("next_args do not name the VM: %s", text)
+	if next["vm_id"] != w.id || next["name"] != nil {
+		t.Fatalf("next_args do not name the VM the call read by its id: %s", text)
 	}
 	if _, has := next["confirmed"]; has {
 		t.Fatalf("next_args carry the consent of the call into a step that only waits (R-85): %s", text)
@@ -676,5 +676,28 @@ func TestVMStart_FallBackBetweenCallsAsksAgainAndSendsOneCommand(t *testing.T) {
 	}
 	if n := w.powerCalls(); n != 1 {
 		t.Errorf("power calls = %d after three calls by next_args, want the 1 the person consented to", n)
+	}
+}
+
+// The state moved between the plan and the command: planned from error
+// (asked about with the warning), the VM is stopped by the time the
+// platform refuses. That is not «a repeat will not help» — a repeat reads
+// the VM again and finds it stopped (the audit of the reference).
+func TestVMStart_RefusalAfterTheStateMovedSaysToRepeat(t *testing.T) {
+	r, w := vmStartWorld(t, "error")
+	w.onPower = func() error {
+		w.setVMState(w.id, "stopped")
+		return faultPowerRefused("wrong_vm_state")
+	}
+	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if !isErr || m["reason"] != clerrors.CodeAPIError || m["state"] != "stopped" {
+		t.Fatalf("vm_start refused after the VM moved from error to stopped: %s", text)
+	}
+	if d, _ := m["details"].(map[string]any); d["cause"] != "state" {
+		t.Errorf("details = %v: the refusal was of the state the VM was in", d)
+	}
+	hint, _ := m["hint"].(string)
+	if !strings.Contains(hint, "repeat the call") && !strings.Contains(hint, "повторите вызов") {
+		t.Errorf("the hint does not say to repeat, though the state moved: %s", text)
 	}
 }
