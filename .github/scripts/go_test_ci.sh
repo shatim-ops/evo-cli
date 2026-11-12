@@ -79,13 +79,20 @@ for a in "$@"; do
 	[ "$prev" != -timeout ] || limit=$a
 	prev=$a
 done
+flag=$limit
 case "$limit" in
+*[!0-9]*[hms] | [hms]) limit="" ;;
 *h) limit=$((${limit%h} * 3600)) ;;
 *m) limit=$((${limit%m} * 60)) ;;
 *s) limit=${limit%s} ;;
 *) limit="" ;;
 esac
-case "$limit" in *[!0-9]* | 0) limit="" ;; esac
+[ "$limit" != 0 ] || limit=""
+# Предел есть, но не число с h, m или s (составной «1h30m», «0»): сигнал
+# не должен пропасть молча.
+if [ -n "$flag" ] && [ -z "$limit" ]; then
+	echo "::warning::go test: предел -timeout «$flag» не разобран — сигнала о времени пакетов не будет (go_test_ci.sh понимает число с h, m или s)"
+fi
 module=${tools%/internal/tools}
 cat "$logs"/*.log 2>/dev/null | awk -F'\t' -v os="${RUNNER_OS:-local}" -v limit="$limit" -v module="$module" \
 	-v summary="${GITHUB_STEP_SUMMARY:-/dev/null}" '

@@ -166,6 +166,15 @@ has times-no-limit summary 'Время пакетов go test — Linux'
 hasnt times-no-limit summary 'сигнал'
 hasnt times-no-limit out '::warning::go test'
 
+# Предел задан, но в форме, которую скрипт не разбирает (составной):
+# сигнал не пропадает молча — warning называет флаг, таблица без порога.
+fresh times-odd-limit
+answer 1 0 <<<"$slow"
+times_ times-odd-limit Linux 0 -race -timeout 1h30m
+has times-odd-limit out '^::warning::go test: предел -timeout «1h30m» не разобран'
+has times-odd-limit summary 'Время пакетов go test — Linux'
+hasnt times-odd-limit summary 'сигнал от'
+
 # Упавший пакет тоже в таблице (FAIL с временем); код красный, как был.
 fresh times-fail
 answer 1 1 <<<"$(printf -- '--- FAIL: TestX (0.01s)\nFAIL\nFAIL\t%s/internal/cli\t700.0s\n' "$m")"
