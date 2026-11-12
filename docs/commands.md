@@ -939,7 +939,7 @@ evo backup create <name> [flags]
       --disk-id string       Диск, копию которого сделать (из evo disk list); --vm-id или --disk-id
   -h, --help                 Справка по create
       --vm-id string         ВМ, копию которой сделать (из evo vm list); --vm-id или --disk-id
-      --wait                 false — ответить, как только облако приняло запрос. По умолчанию — ждать (MCP — до ~45 с)
+      --wait                 false — ответить, как только облако приняло запрос. По умолчанию — ждать (MCP — до ~45 с) Выключить: --wait=false (по умолчанию true)
 ```
 
 ### Options inherited from parent commands

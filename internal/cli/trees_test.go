@@ -427,6 +427,7 @@ func TestTrees_BoolDefaultTrue(t *testing.T) {
 		"k8s create --kube-api-internet":     true,
 		"k8s kubeconfig --embed-token":       true,
 		"secret delete --force":              true,
+		"backup create --wait":               true,
 		"lb create --external":               true,
 		"ca deploy --public":                 true,
 		"vpc subnet-create --routed-network": true,

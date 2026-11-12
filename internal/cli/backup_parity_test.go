@@ -31,8 +31,42 @@ func parityBackup() map[string]any {
 			"resource_state": map[string]any{"name": "web", "flavor": map[string]any{"name": "gen-2-4"}}}}
 }
 
-func (parityCloud) CreateBackup(_ context.Context, req provision.CreateBackupReq) (map[string]any, error) {
+// CreateBackup goes to the HTTP world when the parity cloud is the real
+// adapter over it (withJSONWorld): the write is recorded there, as every
+// other tool's.
+func (p parityCloud) CreateBackup(ctx context.Context, req provision.CreateBackupReq) (map[string]any, error) {
+	if b, ok := p.CloudAPI.(provision.BackupAPI); ok {
+		return b.CreateBackup(ctx, req)
+	}
 	b := parityBackup()
 	b["name"], b["state"] = req.Name, "created"
 	return b, nil
+}
+
+// backupKeptCloud has the backup parityArgs asks for already: the repeat of
+// backup_create answers already_exists, with no question and no write.
+type backupKeptCloud struct{ provision.CloudAPI }
+
+func (c backupKeptCloud) ListBackups(context.Context, string) ([]map[string]any, error) {
+	b := parityBackup()
+	b["name"] = "web-backup"
+	return []map[string]any{b}, nil
+}
+
+func (c backupKeptCloud) GetBackup(ctx context.Context, id string) (map[string]any, error) {
+	return parityCloud{}.GetBackup(ctx, id)
+}
+
+func (c backupKeptCloud) CreateBackup(ctx context.Context, req provision.CreateBackupReq) (map[string]any, error) {
+	if b, ok := c.CloudAPI.(provision.BackupAPI); ok {
+		return b.CreateBackup(ctx, req)
+	}
+	return parityCloud{}.CreateBackup(ctx, req)
+}
+
+func init() {
+	consentWorlds["backup of that name kept"] = consentWorld{
+		cloud:      func(c provision.CloudAPI) provision.CloudAPI { return backupKeptCloud{c} },
+		alreadyFor: []string{"backup_create"},
+	}
 }

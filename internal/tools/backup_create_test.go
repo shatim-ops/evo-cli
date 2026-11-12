@@ -5,6 +5,8 @@
 package tools
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -15,6 +17,10 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -93,11 +99,25 @@ func keptBackup(id, name, createdAt string) string {
 
 func jsonInt(n int) string { b, _ := json.Marshal(n); return string(b) }
 
+// createRegistry is raRegistry over the world, with a poll interval of a
+// millisecond: the world does not wait the production interval (CLAUDE.md §5).
 func createRegistry(t *testing.T, w *createWorld) *Registry {
 	t.Helper()
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: w}, "")
 	cloud.SetToken("t")
-	return raRegistry(t, w, cloud, nil)
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = w
+	t.Cleanup(func() { httpretry.DefaultBase = old })
+	return New(func(map[string]any) (*engine.Engine, error) {
+		var buf bytes.Buffer
+		return &engine.Engine{
+			Config:  config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"},
+			Auth:    staticToken{},
+			Cloud:   cloud,
+			Printer: output.NewWithWriter(&buf, output.ModeText, false),
+			Timings: engine.Timings{VMPollInterval: time.Millisecond},
+		}, nil
+	})
 }
 
 // The preview names the source, what is kept already and what the backup
@@ -111,8 +131,8 @@ func TestBackupCreate_Preview(t *testing.T) {
 		t.Fatalf("want the question: %s", text)
 	}
 	will, _ := m["will_create"].(map[string]any)
-	for k, want := range map[string]any{"source_type": "disk", "source_id": bcDisk, "source_name": "data", "source_size_gb": float64(10),
-		"backups_of_source": float64(2), "backups_of_source_size_mb": float64(4096)} {
+	for k, want := range map[string]any{"resource_type": "disk", "resource_id": bcDisk, "resource_name": "data", "resource_size_gb": float64(10),
+		"backups_of_resource": float64(2), "backups_of_resource_size_mb": float64(4096)} {
 		if will[k] != want {
 			t.Errorf("will_create.%s is %v, want %v: %s", k, will[k], want, text)
 		}
@@ -127,7 +147,7 @@ func TestBackupCreate_Preview(t *testing.T) {
 	// A VM: its size is the sum of its disks.
 	m, text, _ = callNamed(t, createRegistry(t, &createWorld{}), "backup_create", map[string]any{"vm_id": bcVM, "name": "vm-copy"})
 	will, _ = m["will_create"].(map[string]any)
-	if will["source_type"] != "virtual_machine" || will["source_size_gb"] != float64(50) || will["source_disks"] != float64(2) {
+	if will["resource_type"] != "virtual_machine" || will["resource_size_gb"] != float64(50) || will["resource_disks"] != float64(2) {
 		t.Errorf("a VM: want its two disks and 50 GB: %s", text)
 	}
 }
@@ -210,5 +230,22 @@ func TestBackupCreate_NoSource(t *testing.T) {
 	m, text, isErr := callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"disk_id": "00000000-0000-4000-8000-0000000000ff", "name": "x"})
 	if !isErr || m["reason"] != "NOT_FOUND" || len(w.posts) != 0 {
 		t.Errorf("want NOT_FOUND and nothing sent: %s", text)
+	}
+}
+
+// The id of the backup is in a line of progress before the wait: Ctrl-C in
+// the tenth minute leaves no billed backup without its id on the screen
+// («Риск», 164, У6).
+func TestBackupCreate_IDBeforeTheWait(t *testing.T) {
+	w := &createWorld{readyAfter: 3}
+	tl, _ := createRegistry(t, w).Lookup("backup_create")
+	var lines []string
+	var mu sync.Mutex
+	ctx := context.WithValue(context.Background(), progressKey{}, func(s string) { mu.Lock(); lines = append(lines, s); mu.Unlock() })
+	text, _ := tl.Handler(ctx, map[string]any{"disk_id": bcDisk, "name": "before-change", "confirmed": true})
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) == 0 || !strings.Contains(lines[0], bcNew) || !strings.Contains(lines[0], "is being made") {
+		t.Errorf("want the id in the first line of progress, before the wait: %q (%s)", lines, text)
 	}
 }

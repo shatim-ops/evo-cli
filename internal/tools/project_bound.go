@@ -104,7 +104,7 @@ var idArgs = map[string][]idArg{
 	"vm_reboot":     {{name: "vm_id", kind: kindVM, target: true}},
 	"destroy":       {{name: "vm_id", why: whyListed}},
 	"backup_get":    {{name: "backup_id", kind: kindBackup}},
-	"backup_create": {{name: "vm_id", kind: kindVM, target: true}, {name: "disk_id", kind: kindDisk, target: true}},
+	"backup_create": {{name: "vm_id", kind: kindVM}, {name: "disk_id", kind: kindDisk}},
 	"image_get":     {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}},
 	"image_delete":  {{name: "image_id", kind: kindImage, target: true}},
 	"image_create":  {{name: "disk_id", kind: kindDisk}},

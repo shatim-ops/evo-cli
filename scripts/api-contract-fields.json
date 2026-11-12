@@ -1420,6 +1420,17 @@
    "tag_ids[]",
    "tag_names[]"
   ],
+  "compute POST /api/v1/backups": [
+   "description",
+   "name",
+   "project_id",
+   "protection_plan_id",
+   "resource",
+   "resource.resource_id",
+   "resource.resource_type",
+   "tag_ids[]",
+   "tag_names[]"
+  ],
   "compute POST /api/v1/disks": [
    "availability_zone_id",
    "availability_zone_name",

@@ -567,7 +567,7 @@ func (s *Registry) registerTools() {
 				"disk_id":     uuidProp("Disk to back up (from disk_list). vm_id or disk_id."),
 				"name":        strProp("Backup name."),
 				"description": strProp("Description."),
-				"wait":        boolProp("false: answer once the cloud took the request. Default: wait (MCP: up to ~45 s)."),
+				"wait":        boolPropTrue("false: answer once the cloud took the request. Default: wait (MCP: up to ~45 s)."),
 				"confirmed":   confirmedProp(),
 			}, "name"),
 		},

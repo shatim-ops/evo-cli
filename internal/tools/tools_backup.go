@@ -285,9 +285,9 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 	req := provision.CreateBackupReq{Name: name, Description: stringArg(args, "description"), ProjectID: eng.Config.ProjectID,
 		Resource: provision.BackupResource{ResourceID: src.id, ResourceType: src.kind}}
 	will := map[string]any{
-		"name": name, "source_type": src.kind, "source_id": src.id, "source_name": src.name,
-		"source_size_gb": src.sizeGB, "source_disks": src.disks,
-		"backups_of_source": len(kept), "backups_of_source_size_mb": sizeMB,
+		"name": name, "resource_type": src.kind, "resource_id": src.id, "resource_name": src.name,
+		"resource_size_gb": src.sizeGB, "resource_disks": src.disks,
+		"backups_of_resource": len(kept), "backups_of_resource_size_mb": sizeMB,
 		"kept":     i18n.T("until it is deleted: the platform keeps backups with no term", "пока её не удалят: платформа хранит копии бессрочно"),
 		"outlives": i18n.T("the source: a backup stays, and is billed, after its source is deleted", "исходный ресурс: копия остаётся и тарифицируется после его удаления"),
 	}
@@ -298,7 +298,7 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 	preview := map[string]any{
 		"message": i18n.Tf("backup_create makes a billable backup of %s %s (%s).", "backup_create делает платную резервную копию %s %s (%s).",
 			backupKindWord(src.kind), quoteCloud(src.name), src.id),
-		"preview":     willPreview(engine.ResourceBackup, name, src.zone, will, []string{"source_type", "source_id", "source_name", "source_size_gb", "source_disks", "backups_of_source", "backups_of_source_size_mb", "kept", "outlives", "description", "wait"}),
+		"preview":     willPreview(engine.ResourceBackup, name, src.zone, will, []string{"resource_type", "resource_id", "resource_name", "resource_size_gb", "resource_disks", "backups_of_resource", "backups_of_resource_size_mb", "kept", "outlives", "description", "wait"}),
 		"will_create": will,
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {

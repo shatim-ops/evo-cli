@@ -296,6 +296,7 @@ func namedBy(text string, names []string) bool {
 const (
 	faultOutRemoves = "removes or stops what exists: no new object to name; a repeat is the delete's own idempotency"
 	faultOutChanges = "changes an object that exists (attach, resize, start, renew, rules): no new object to name"
+	faultOutBackup  = "a backup of a VM or a disk: faultCloud carries no BackupAPI; its faults are the HTTP worlds of backup_create_test.go"
 	faultOutCluster = "acts inside a Kubernetes cluster through kubectl or helm, not through the cloud's API"
 	faultOutEngine  = "the engine's own fault tests (internal/engine fault_test.go, TestFault_Deploy_*, TestFault_Destroy_*)"
 	faultOutStack   = "runs the create tools of its steps, each in the matrix; its own fault tests (TestFault_Stack_*)"
@@ -323,6 +324,12 @@ var faultMatrixOut = map[string]string{
 	// operation — are the worlds of k8s_nodepool_scale_test.go.
 	"k8s_nodepool_scale": faultOutChanges,
 	"disk_resize":        faultOutChanges, "fip_attach": faultOutChanges, "open_ports": faultOutChanges,
+
+	// faultCloud carries no provision.BackupAPI: the world of a backup —
+	// a lost answer, a repeat, a refusal — is backup_create_test.go's, and
+	// the matrix's own world is «Процесс · 1.9 (инварианты)»'s (release
+	// plan 1.9, wave В5).
+	"backup_create": faultOutBackup,
 
 	"k8s_apply": faultOutCluster, "k8s_helm": faultOutCluster, "k8s_kubectl": faultOutCluster,
 
