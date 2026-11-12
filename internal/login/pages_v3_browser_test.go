@@ -43,9 +43,9 @@ const wrappedButtons = `[...document.querySelectorAll('button')].filter(b=>{` +
 // tallestConsent is the consent with the most at once (state 08 of the
 // designers' package): the agent chosen, a previous key replaced in both
 // profiles, the project picked beforehand by the profile of the other
-// audience (finding 90), two organizations, long names. State 09 (plus
-// «the right is not confirmed») is out until the owner decides it (it is
-// 41 px over at 1280×720, «разработка (4)», 12.11).
+// audience (finding 90), two organizations, long names. State 09 is the
+// same with «the right is not confirmed» (unchecked); it fits since
+// 672ea7a of #1341 («релиз (4)», 12.11; #1343 closed).
 func tallestConsent() *session {
 	return &session{cfg: Config{Now: time.Now}, who: person{Sub: "u-1", Login: "ivan.ivanov@example.com"},
 		store:  &twoProfiles{},
@@ -83,8 +83,11 @@ func TestPages_FitTheScreenAndButtonsStayOnOneLine(t *testing.T) {
 	br := startChrome(t, chrome)
 	for _, lang := range []string{i18n.RU, i18n.EN} {
 		i18n.SetLang(lang)
+		unchecked := tallestConsent()
+		unchecked.unchecked = "the right of the project was not read"
 		pages := map[string]page{
 			"consent":   consentPage(s),
+			"consent09": consentPage(unchecked),
 			"done":      donePage(done).signed(s.user()),
 			"cancelled": cancelledPage().signed(s.user()),
 			"error":     errorPage(errors.New("the cloud did not answer")).signed(s.user()),
