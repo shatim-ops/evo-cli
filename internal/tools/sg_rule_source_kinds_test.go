@@ -73,6 +73,10 @@ const (
 
 // sgSourceRows is the table «kind of source → answer». A closed list by
 // the kinds of the specification: a kind with no row fails the test.
+// The rows of sgSourceNone are no decision: the three tools read such a
+// rule three ways, and each way rests on what the platform answers for a
+// rule «from anywhere» — not verified live. They wait for the runs of Г-11
+// (release plan 1.9), and change with the one reading of a rule's source.
 var sgSourceRows = map[string]map[string]sgSourceRow{
 	"open_ports": {
 		"remote_ip_prefix":      srcOpen,
