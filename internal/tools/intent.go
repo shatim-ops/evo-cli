@@ -14,6 +14,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -143,7 +144,8 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 			held = append(held, in)
 		}
 	}
-	if len(held) == 0 || intent.OutcomeUnknown(answerReason(answer), 0) || answerStatus(answer) == "confirmation_required" {
+	if len(held) == 0 || intent.OutcomeUnknown(answerReason(answer), 0) || answerStatus(answer) == "confirmation_required" ||
+		refusedTheCall[answerReason(answer)] {
 		return
 	}
 	if _, goesOn := sameToolNext(name, answer); goesOn {
@@ -155,6 +157,16 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 			intent.Close(in)
 		}
 	}
+}
+
+// refusedTheCall are the reasons of a refusal that speaks of the call, not
+// of the operation it asked about: the request was throttled, or the key
+// or the setup did not let it through. The operation may go on all the
+// same, so a held record stays. (For the call that sends the write they
+// are an outcome — nothing was sent: intent.OutcomeUnknown.)
+var refusedTheCall = map[string]bool{
+	clierrors.CodeAPIRateLimited: true, clierrors.CodeAuthRequired: true, clierrors.CodeAuthExpired: true,
+	clierrors.CodeAuthFailed: true, clierrors.CodeConfigInvalid: true,
 }
 
 // answerNames tells an answer that names the resource of target

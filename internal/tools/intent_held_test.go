@@ -54,6 +54,8 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 		{"the step asks", `{"status":"confirmation_required"}`, false},
 		{"the step was cut", `{"status":"error","reason":"INTERRUPTED"}`, false},
 		{"the step did not reach the cloud", `{"status":"error","reason":"API_UNREACHABLE"}`, false},
+		{"the step was throttled", `{"status":"error","reason":"API_RATE_LIMITED"}`, false},
+		{"the step was not let through", `{"status":"error","reason":"AUTH_EXPIRED"}`, false},
 		{"the operation ended", `{"status":"started"}`, true},
 		{"the operation was refused with a code", `{"status":"error","reason":"USAGE"}`, true},
 		// evo goes on with it no more: the wait is handed to a read.
