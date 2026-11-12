@@ -29,16 +29,13 @@ const gateFile = "internal/tools/gate.go"
 // owner's decision 06.11: the handlers go onto the gate with the K1 line
 // of development, a candidate of 1.9.
 var inlineGates = map[string]string{
-	"internal/tools/tools_kube.go: handleK8sApply":      "1.9",
-	"internal/tools/tools_kube.go: handleK8sHelm":       "1.9",
-	"internal/tools/tools_kube.go: handleK8sKubectl":    "1.9",
 	"internal/tools/tools_stack.go: handleStackApply":   "1.9",
 	"internal/tools/tools_stack.go: handleStackDestroy": "1.9",
 }
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 5
+const inlineGatesLeft = 2
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{

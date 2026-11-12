@@ -52,16 +52,14 @@ var argsCopies = map[string]string{
 	"internal/tools/provision_adopt.go: provisionCreating": "the step of provision, which writes confirmed itself (consentWriters)",
 	"internal/tools/tools.go: deployInProgress":            "the step of deploy, which writes confirmed itself (consentWriters)",
 	"internal/tools/tools_disk.go: settlingPlan":           "the step of disk_detach and disk_resize while the disk settles: a declared continuation, bound to disk_id",
+	"internal/tools/tools_kube.go: helmAtLimit":            "the step of k8s_helm install or upgrade stopped at repo add or repo update, before the release was touched: a declared continuation (owner's decision 12.11)",
 }
 
 // argsCopiesToStrip are the copies that go into a step as they are, with
 // the consent of the call, where no decision keeps it: a read that was cut
 // and k8s_helm stopped before it touched the release. They become
 // nextSameCall. Only shrinks. Closes by 1.9.
-var argsCopiesToStrip = map[string]string{
-	"internal/tools/tools_kube.go: kubectlAtLimit": "k8s_kubectl: a read cut at the limit repeats with confirmed",
-	"internal/tools/tools_kube.go: helmAtLimit":    "k8s_helm: stopped at repo add, and list or status, repeat with confirmed",
-}
+var argsCopiesToStrip = map[string]string{}
 
 // consentWritesAndCopies are, per function of a file, the writes of
 // "confirmed" into a map — a key of a literal, or the left side of an
