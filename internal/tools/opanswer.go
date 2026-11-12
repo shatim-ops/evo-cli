@@ -94,7 +94,7 @@ func quotaFailure(tool string, m map[string]any) {
 		details["platform_code"] = c
 	}
 	m["details"] = details
-	hint := quotaHint()
+	hint := quotaHint(true)
 	if m["resource_status"] == "FAILED" {
 		// What to do with it is the person's (conclusion 161, У3).
 		if del := failedDeletes[tool]; del != "" {
@@ -111,9 +111,10 @@ func quotaFailure(tool string, m map[string]any) {
 // quotaForm are the forms of a refusal for a quota in the text of an
 // operation's error, each a token of its own, not a part of a name
 // (quota-db): acquire_quota (Managed PostgreSQL, cloud-e2e 203 and 208)
-// and the forms of the codes of the specifications. A form not here is not
-// told apart until a run shows it.
-var quotaForm = regexp.MustCompile(`(?i)(^|[^a-z0-9_-])(acquire_quota|quota_exceeded|quota exceeded|quotaexceeded)([^a-z0-9_-]|$)`)
+// and the forms of the codes of the specifications — a code that ends in
+// quota_exceeded, as quotaCode reads one of a call (organization_quota_exceeded,
+// «Риск», #1522, Р1). A form not here is not told apart until a run shows it.
+var quotaForm = regexp.MustCompile(`(?i)(^|[^a-z0-9_-])(acquire_quota|[a-z0-9_]{0,50}quota_exceeded|quota exceeded|quotaexceeded)([^a-z0-9_-]|$)`)
 
 // failedDeletes are the deletes of the resource of an operation that is
 // left FAILED, named in the hint: the database clusters, whose create a
