@@ -98,6 +98,7 @@ module=${tools%/internal/tools}
 # разбирает escape-последовательности, и путь Windows (D:\a\_temp\…)
 # становился другим файлом.
 cat "$logs"/*.log 2>/dev/null | SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}" awk -F'\t' -v os="${RUNNER_OS:-local}" -v limit="$limit" -v module="$module" '
+	{ sub(/\r$/, "") } # строка на Windows может кончаться CR
 	($1 ~ /^(ok|FAIL)[ ]*$/) && $3 ~ /^[0-9.]+s$/ {
 		p = $2
 		if (module != "" && index(p, module "/") == 1) p = substr(p, length(module) + 2)
@@ -108,7 +109,11 @@ cat "$logs"/*.log 2>/dev/null | SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}" awk 
 		summary = ENVIRON["SUMMARY"]
 		n = 0
 		for (p in sec) n++
-		if (n == 0) exit
+		if (n == 0) {
+			# Ничего не разобрано — это не «всё быстро»: сказать прямо.
+			print "::warning::go test, " os ": время пакетов не разобрано — в выводе нет строк «ok/FAIL пакет время»"
+			exit
+		}
 		head = "### Время пакетов go test — " os
 		if (limit != "") head = head " (предел пакета " limit " с, сигнал от " int(limit / 2) " с)"
 		print head "\n\n| Пакет | Секунд |\n|---|---|" >>summary

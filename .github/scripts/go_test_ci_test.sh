@@ -185,6 +185,26 @@ PATH="$work/bin:$PATH" RUNNER_OS=Windows GITHUB_EVENT_NAME=pull_request GITHUB_O
 [ -s "$FAKE_DIR/a\\tmp\\nstep" ] || { echo "FAIL times-backslash: сводка не в файле с обратными слэшами в имени"; ls "$FAKE_DIR"; fail=1; }
 hasnt times-backslash out 'escape sequence'
 
+# Строки go test с CR в конце (Windows) разбираются так же.
+fresh times-cr
+answer 1 0 <<<"$(printf 'ok  \t%s/internal/cli\t640.2s\r\nok  \t%s/cmd/evo\t3.1s\r\n' "$m" "$m")"
+times_ times-cr Windows 0 -race -timeout 20m
+has times-cr summary '^| internal/cli | 640 |'
+has times-cr out '^::warning::go test, Windows: internal/cli — 640 с'
+
+# Ни одной строки времени не разобрано: не тишина, а warning — пустая
+# сводка не должна читаться как «всё быстро».
+fresh times-none
+answer 1 0 <<<"PASS"
+times_ times-none Linux 0 -race -timeout 20m
+has times-none out '^::warning::go test, Linux: время пакетов не разобрано'
+
+# Ровно половина предела — ещё не сигнал.
+fresh times-edge
+answer 1 0 <<<"$(printf 'ok  \t%s/internal/cli\t600.0s\n' "$m")"
+times_ times-edge Linux 0 -race -timeout 20m
+hasnt times-edge out '::warning::go test'
+
 # Упавший пакет тоже в таблице (FAIL с временем); код красный, как был.
 fresh times-fail
 answer 1 1 <<<"$(printf -- '--- FAIL: TestX (0.01s)\nFAIL\nFAIL\t%s/internal/cli\t700.0s\n' "$m")"
