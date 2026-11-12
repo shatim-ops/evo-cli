@@ -501,7 +501,7 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 	// call cut short, not for its repeat.
 	for name := range consented {
 		if nextStepKeepsConsent[name] == "" && nextStepConsentUnbound[name] == "" {
-			bad = append(bad, name+": its answer cut by the budget names a next step with confirmed in next_args — a next step is a read, or the same call without confirmed; the repeat reads the state and does not write (D99, П3). A continuation that keeps the consent is a decision: bound to the id of what was approved, and declared in nextStepKeepsConsent")
+			bad = append(bad, name+": its answer cut by the budget names a next step with confirmed in next_args — a next step is a read, or the same call without confirmed (nextSameCall, gate.go); the repeat reads the state and does not write (D99, П3). A continuation that keeps the consent is a decision: bound to the id of what was approved, and declared in nextStepKeepsConsent")
 		}
 	}
 	for _, list := range []map[string]string{nextStepKeepsConsent, nextStepConsentUnbound} {
