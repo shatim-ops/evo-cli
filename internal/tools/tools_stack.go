@@ -598,6 +598,16 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	if !ok {
 		return usageT("'manifest' is required (object describing the stack)", "нужен 'manifest' — объект с описанием стека"), true
 	}
+	// A scope field of the manifest given empty is refused here, at the
+	// plan: decoded, it reads as «not set» and the step would work in the
+	// zone or the project of the profile (D100) — or stop a stack half
+	// made.
+	if path := emptyScopeField(raw, "manifest"); path != "" {
+		return errResult(clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("%s is empty; nothing was planned", "%s пустой; план не создан", path),
+			i18n.Tf("Give %s a value or drop the field: an empty value is not read as «not set».",
+				"Задайте %s значение или уберите поле: пустое значение не читается как «не задано».", path))), true
+	}
 	b, _ := json.Marshal(raw)
 	var m stack.Manifest
 	if err := json.Unmarshal(b, &m); err != nil {
