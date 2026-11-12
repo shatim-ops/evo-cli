@@ -33,6 +33,10 @@ func TestWorkflows_CleanupTouchesOnlyFinishedRuns(t *testing.T) {
 	if !strings.Contains(strings.ReplaceAll(w.Concurrency.Group, " ", ""), "inputs.cleanup_only&&'cloud-e2e-cleanup'") {
 		t.Errorf("cloud-e2e: concurrency group %q — cleanup_only has no group of its own", w.Concurrency.Group)
 	}
+	// A new run does not cancel a cleanup in the middle of its deletes.
+	if w.Concurrency.CancelInProgress != "false" {
+		t.Errorf("cloud-e2e: cancel-in-progress %q — a cleanup cut in the middle leaves the resources", w.Concurrency.CancelInProgress)
+	}
 	j, ok := w.Jobs["cleanup"]
 	if !ok {
 		t.Fatal("cloud-e2e: no job cleanup — the job moved, update the test")

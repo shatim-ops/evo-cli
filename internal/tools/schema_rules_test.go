@@ -188,6 +188,7 @@ const (
 var idWithoutFormat = map[string]string{
 	"cert_get.id":                               idUnknown,
 	"cert_operation.operation_id":               idUnknown,
+	"k8s_operation.operation_id":                idUnknown,
 	"cert_private_key.certificate_id":           idUnknown,
 	"cert_renew.certificate_id":                 idUnknown,
 	"cert_usage.id":                             idUnknown,

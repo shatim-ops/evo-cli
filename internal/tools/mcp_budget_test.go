@@ -299,7 +299,7 @@ var mcpWaits = map[string]budgetWait{
 		}),
 
 	"ar_operation": opBudget("ar_operation"), "cert_operation": opBudget("cert_operation"),
-	"dns_operation": opBudget("dns_operation"), "kafka_operation": opBudget("kafka_operation"),
+	"dns_operation": opBudget("dns_operation"), "k8s_operation": opBudget("k8s_operation"), "kafka_operation": opBudget("kafka_operation"),
 	"lb_operation": opBudget("lb_operation"), "pg_operation": opBudget("pg_operation"),
 	"redis_operation": opBudget("redis_operation"), "vpc_operation": opBudget("vpc_operation"),
 
