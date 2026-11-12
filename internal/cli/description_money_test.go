@@ -24,19 +24,9 @@ var (
 // descMoneyMisses are the tools whose description in tools/list does not
 // say yet what their preview says (TestDescription_SaysWhatThePreviewBills):
 // the list only shrinks, each line with what the description lacks.
-// Closes by 1.8.
-var descMoneyMisses = map[string]string{
-	"ca_deploy":        "billable",
-	"dns_zone_create":  "billable",
-	"k8s_add_addon":    "billable",
-	"pg_backup_create": "billable",
-	"s3_put":           "billable",
-	"secret_create":    "billable",
-	"subnet_create":    "billable",
-	"tg_create":        "billable",
-	"vpc_create":       "billable",
-	"vpc_route_create": "billable",
-}
+// Empty since 1.9: the word of the class comes from the registry
+// (tools.consentWords; «Риск», conclusion 156).
+var descMoneyMisses = map[string]string{}
 
 // A model reads tools/list before any preview: a create that spends money
 // or gives the VM a public address says so in its description, or the
