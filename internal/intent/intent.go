@@ -12,7 +12,8 @@
 // <data dir>/intents/<id>.json, 0600, written whole (temp file and
 // rename). It holds no secret and no value of an argument but the name of
 // the resource, the project and the zone: the names of the arguments, the
-// tool, the surface and the pid.
+// tool, the surface, the pid and the key the call was sent with (its
+// account and its masked Key ID, as a deployment record keeps them).
 package intent
 
 import (
@@ -29,6 +30,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // OutcomeUnknown tells a failed write whose outcome the cloud did not
@@ -61,9 +63,16 @@ type Intent struct {
 	Name string   `json:"name,omitempty"`
 	// Target is the resource a call on an existing one names, as
 	// «argument=id» (vm_id=…): a delete, a resize. Not a secret.
-	Target    string `json:"target,omitempty"`
+	Target string `json:"target,omitempty"`
+	// ProjectID is the project the request names. A call that addresses
+	// its resource by id and sends no project has none: the write lands
+	// where the resource is, which the call's project does not tell (R-82).
 	ProjectID string `json:"project_id,omitempty"`
 	Zone      string `json:"zone,omitempty"`
+	// Key is the key the call was sent with: a read by id answers for the
+	// resource only with the key that saw it (state.Maker.Other). Nil in a
+	// record of evo before 1.9.
+	Key *state.Maker `json:"key,omitempty"`
 	// Note is what the next run says of the intent when the words of a
 	// call that the cloud did not answer do not fit it (evo login killed
 	// after its key: findings ledger 1.8, № 37); "" for a tool's call.
@@ -209,16 +218,25 @@ func scan(dir string) (out []Intent, foreign []string) {
 // in the same project as done (its name or its target): a later call of it
 // answered, so what the cut one did is now known to that call — an
 // existing resource by the name (D49), a new one, or «already deleted»
-// (D26). Another project's record of the same name is not this one.
-func Settle(dir string, done Intent) {
+// (D26). Another project's record of the same name is not this one. A
+// record another key left is kept and returned: the key of done may not
+// see what that key changed — its «already deleted» is a 404 of its own
+// view, not the outcome of the cut call (R-82, «Риск», conclusion 128). A
+// record that names no key (evo before 1.9) closes as it did.
+func Settle(dir string, done Intent) (kept []Intent) {
 	if done.Name == "" && done.Target == "" {
-		return
+		return nil
 	}
 	for _, in := range Pending(dir) {
 		if in.Tool == done.Tool && in.Name == done.Name && in.Target == done.Target && in.ProjectID == done.ProjectID {
+			if in.Key.Other(done.Key) {
+				kept = append(kept, in)
+				continue
+			}
 			remove(dir, in.ID)
 		}
 	}
+	return kept
 }
 
 // Close removes the intent in: what the call did is now known.
