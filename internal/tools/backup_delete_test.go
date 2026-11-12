@@ -305,3 +305,28 @@ func TestBackupDelete_StatesWithNoRuleYet(t *testing.T) {
 		}
 	}
 }
+
+// backupDeleteStateRows is what backup_delete answers without the consent
+// for a backup in each state of the specification (compute:BackupState):
+// a delete under way is deleting, with no question (D61); in any other
+// state the question, naming the state — no run has shown the platform's
+// answer to a delete of a backup being made or in error (creatingUnseen,
+// failedUnseen). The world of the states (release plan 1.9).
+var backupDeleteStateRows = map[string]string{
+	"creating": "confirmation_required", "created": "confirmation_required", "error_creating": "confirmation_required",
+	"updating": "confirmation_required", "error": "confirmation_required", "deleting": "deleting",
+	"error_deleting": "confirmation_required",
+}
+
+func TestBackupDelete_EveryStateOfTheSpec(t *testing.T) {
+	for st, want := range backupDeleteStateRows {
+		w := &deleteWorld{state: st, exists: true}
+		m, text, _ := backupDelete(t, w, false)
+		if m["status"] != want || w.deletes != 0 {
+			t.Errorf("%s: want %s and no DELETE (sent %d): %s", st, want, w.deletes, text)
+		}
+		if target, _ := m["target"].(map[string]any); want == "confirmation_required" && target["status"] != st {
+			t.Errorf("%s: the question does not name the state: %s", st, text)
+		}
+	}
+}
