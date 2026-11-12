@@ -514,12 +514,16 @@ probe_on() { case " ${PROBES:-} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; 
 api() {
 	local rid=()
 	[ -z "${API_RID:-}" ] || rid=(-H "X-Request-Id: $API_RID")
-	rm -f "$tmp/api.h" # заголовки прошлого ответа — не этого запроса
+	# Заголовки и тело прошлого ответа — не этого запроса: без ответа
+	# (обрыв, код 000) прошлое тело читалось как ответ (прогон 204).
+	rm -f "$tmp/api.h"
+	: >"$tmp/api.json" # пустой, а не удалённый: jq читает его без ошибки
+	API_RC=0
 	if [ -n "${3:-}" ]; then
 		code=$(printf '%s' "$3" | curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
-			-H "Authorization: Bearer $TOKEN" "${rid[@]}" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || code=000
+			-H "Authorization: Bearer $TOKEN" "${rid[@]}" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || { API_RC=$? code=000; }
 	else
-		code=$(curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || code=000
+		code=$(curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || { API_RC=$? code=000; }
 	fi
 }
 # api_rid — заголовки id запроса последнего ответа api (request, trace,
@@ -593,7 +597,10 @@ vm_post() {
 # ломала разбор — проба писала «image_get не отдал fields» и не слала запрос.
 vm_pw() {
 	[ -z "${VM_PW:-}" ] || return 0
-	VM_PW=$(openssl rand -hex 16)
+	# Правила пароля ВМ по спецификации Compute (VmSetPasswordRequest):
+	# заглавная и строчная буква, цифра, спецсимвол. Пароль из одних
+	# hex-цифр платформа отвергла (прогон 204, vm_metadata_validation).
+	VM_PW=Ev1-$(openssl rand -hex 16)
 	mask "$VM_PW"
 }
 vm_meta() {
@@ -1997,7 +2004,7 @@ keys_of() { jq -c 'if type == "object" then keys else type end' "$tmp/api.json" 
 # ICMP идёт с пустым port_range: поле обязательно, формат для ICMP
 # спецификация не называет — отказ и его текст и есть ответ.
 probe_g11() {
-	local zid=$1 sg rule first='' n0 n1 r dir proto ports cidr
+	local zid=$1 sg rule first='' n0 n1 r t0 dir proto ports cidr
 	iam_token || { gap "Г-11" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap "Г-11" "нет PROJECT"; return 0; }
 	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
@@ -2017,17 +2024,16 @@ probe_g11() {
 			'{direction: $d, ether_type: "IPv4", ip_protocol: $pr, port_range: $ports, remote_ip_prefix: $c, description: "evo e2e probe"}'
 	}
 	while read -r dir proto ports cidr; do
-		[ "$ports" != - ] || ports=
 		api POST "$C1/security-groups/$sg/rules" "$(rule_body "$dir" "$proto" "$ports" "$cidr")"
 		rule=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || rule=
 		mask "$rule"
 		[ -n "$first" ] || first=$rule
-		ok "Г-11: правило $dir $proto ${ports:-без портов} $([ "$cidr" = 0.0.0.0/0 ] && echo "весь интернет" || echo CIDR)" \
+		ok "Г-11: правило $dir $proto $ports $([ "$cidr" = 0.0.0.0/0 ] && echo "весь интернет" || echo CIDR)" \
 			"HTTP $code$(case "$code" in 2??) echo ", поля ответа: $(keys_of)" ;; *) echo ": $(api_why)" ;; esac)"
 	done <<-RULES
 		ingress tcp 18090:18090 198.18.255.1/32
 		ingress udp 18090:18090 198.18.255.1/32
-		ingress icmp - 198.18.255.1/32
+		ingress icmp any 198.18.255.1/32
 		egress tcp 18090:18090 198.18.255.1/32
 		ingress tcp 18091:18091 0.0.0.0/0
 	RULES
@@ -2050,30 +2056,44 @@ probe_g11() {
 		;;
 	*) ok "Г-11: правило с группой-источником" "$(brief)" ;;
 	esac
-	count_rules() { jq -r '[(.rules // .security_group_rules // [])[]?] | length' "$tmp/api.json" 2>/dev/null || echo "?"; }
-	api GET "$C1/security-groups/$sg"
+	# Правила — отдельным списком группы: в карточке группы их нет, только
+	# счётчики (прогон 205 читал карточку и видел «правил: 0»).
+	rules_get() { api GET "$C1/security-groups/$sg/rules?limit=100"; }
+	count_rules() { jq -r '.items? | length' "$tmp/api.json" 2>/dev/null || echo "?"; }
+	rules_get
 	n0=$(count_rules)
-	ok "Г-11: чтение группы" "HTTP $code, правил: $n0, поля правила: $(jq -c '[(.rules // .security_group_rules // [])[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[(.rules // .security_group_rules // [])[]? | .remote_ip_prefix] | map(if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "0.0.0.0/0" else "CIDR" end) | unique | join(", ")' "$tmp/api.json" 2>/dev/null || echo '?')"
+	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?')"
 	# Повтор того же правила: 2xx и новое правило, 2xx без нового или отказ.
 	api POST "$C1/security-groups/$sg/rules" "$(rule_body ingress tcp 18090:18090 198.18.255.1/32)"
-	r=$code
 	mask "$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)"
-	why=$(api_why)
-	api GET "$C1/security-groups/$sg"
+	r=$(brief)
+	rules_get
 	n1=$(count_rules)
-	ok "Г-11: повтор создания того же правила" "HTTP $r$(case "$r" in 2??) ;; *) echo ": $why" ;; esac); правил было $n0, стало $n1"
+	ok "Г-11: повтор создания того же правила" "$r; правил было $n0, стало $n1"
+	# g11_delete ЧТО URL — удаление, повтор сразу, ожидание исчезновения и
+	# повтор после него (D26: что отвечает удаление уже удалённого; повтор
+	# сразу в прогоне 205 получил отказ по состоянию, а не «нет такого»).
+	g11_delete() {
+		api DELETE "$2"
+		r="HTTP $code$(why_tail)"
+		api DELETE "$2"
+		r="$r, повтор сразу — $(brief)"
+		t0=$SECONDS
+		if ops_settle "$2" 120 gone; then
+			r="$r; состояния: $chain, $((SECONDS - t0)) с"
+			api DELETE "$2"
+			r="$r; повтор после исчезновения — $(brief)"
+		else
+			r="$r; не исчезло за 2 мин (состояния: $chain) — повтор после исчезновения не шлю"
+		fi
+		ok "Г-11: удаление $1" "$r"
+	}
 	if [ -n "$first" ]; then
-		api DELETE "$C1/security-groups/$sg/rules/$first"
-		r=$code
-		api DELETE "$C1/security-groups/$sg/rules/$first"
-		ok "Г-11: удаление правила и его повтор" "HTTP $r, повтор — HTTP $code$(case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac)"
+		g11_delete правила "$C1/security-groups/$sg/rules/$first"
 	else
 		gap "Г-11: удаление правила" "ни одно правило не создано"
 	fi
-	api DELETE "$C1/security-groups/$sg"
-	r=$code
-	api DELETE "$C1/security-groups/$sg"
-	ok "Г-11: удаление группы и его повтор" "HTTP $r, повтор — HTTP $code$(case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac)"
+	g11_delete группы "$C1/security-groups/$sg"
 }
 
 # ops_settle URL СЕКУНД [gone] — читать карточку ресурса, пока её state
@@ -2143,6 +2163,12 @@ mcode() { jq -r '[(if type == "array" then .[] else . end) | objects | (.code?, 
 QUOTA_HIT=0
 refusal() {
 	local mc d kind left=''
+	# No answer at all is not a refusal of the platform: the outcome of the
+	# request is unknown (run 204 printed it as «отказ HTTP 000»).
+	if [ "$code" = 000 ]; then
+		gap "$1" "ответа нет (curl: код ${API_RC:-?}) — исход запроса неизвестен; evo сегодня: ${EVO_NOW:-операции в evo нет}"
+		return 0
+	fi
 	mc=$(mcode)
 	d="отказ HTTP $code ($2); поля тела: $(keys_of); машинный код: ${mc:-нет}; текст: $(api_why | cut -c1-160); evo сегодня: ${EVO_NOW:-операции в evo нет}"
 	case "$mc" in *[Qq][Uu][Oo][Tt][Aa]*)
@@ -2625,8 +2651,18 @@ probe_g18() {
 			ok "Г-18: повтор создания с тем же именем" "$(brief)"
 			# Свои интерфейсы — по имени пробы из списка интерфейсов этой ВМ.
 			api GET "$C1/interfaces?project_id=$PROJECT&vm_id=$vm&limit=100"
-			jq -r --arg n "$n-if" '.items[]? | select((.name // "") == $n) | .id' "$tmp/api.json" >"$tmp/g18.if" 2>/dev/null || : >"$tmp/g18.if"
-			r="список: HTTP $code, своих интерфейсов: $(grep -c . "$tmp/g18.if" || true)"
+			case "$code" in
+			2??)
+				jq -r --arg n "$n-if" '.items[]? | select((.name // "") == $n) | .id' "$tmp/api.json" >"$tmp/g18.if" 2>/dev/null || : >"$tmp/g18.if"
+				r="список: HTTP $code, своих интерфейсов: $(grep -c . "$tmp/g18.if" || true)"
+				;;
+			*)
+				# Список отказал (прогон 204: 422 на запрос по спецификации):
+				# интерфейс удаляется по id из ответа создания.
+				r="список: $(brief) — $([ -n "$ifc" ] && echo "удаляю по id из ответа создания" || echo "id в ответе создания нет: интерфейс уберёт уборка области вместе с ВМ")"
+				printf '%s\n' "$ifc" >"$tmp/g18.if"
+				;;
+			esac
 			while read -r id; do
 				[ -n "$id" ] || continue
 				mask "$id"

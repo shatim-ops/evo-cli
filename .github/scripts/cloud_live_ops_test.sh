@@ -16,7 +16,7 @@ fake_evo_install "$tmp/bin"
 # $FAKE_DIR/http, чей образец (МЕТОД и окончание пути, glob) подходит:
 # «МЕТОД ОБРАЗЕЦ КОД [ТЕЛО]»; «МЕТОД!» — строка на один запрос (следующий
 # такой же запрос получит следующую подходящую строку: состояния по
-# очереди). Нет подходящей — так же по $FAKE_DIR/http.default (пустые
+# очереди; код 000 — обрыв без ответа). Нет подходящей — так же по $FAKE_DIR/http.default (пустые
 # списки копий и планов для уборки области); нет и там — 404 с телом {}.
 cat >"$tmp/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
@@ -52,6 +52,8 @@ while read -r m pat c b; do
 		;;
 	esac
 done < <(cat "$FAKE_DIR/http" "$FAKE_DIR/http.default" 2>/dev/null)
+# Код 000 — curl не получил ответа: тела нет, код выхода 56 (обрыв).
+[ "$code" != 000 ] || { printf '000'; exit 56; }
 printf '%s' "$body" >"$out"
 printf '%s' "$code"
 FAKE
@@ -83,22 +85,36 @@ SW="$SW1$SW1"
 want() { if [ "$2" != "$3" ]; then printf 'FAIL %s\n  got:  %s\n  want: %s\n' "$1" "$2" "$3"; fail=1; fi; }
 calls() { tr '\n' ';' <"$FAKE_DIR/calls"; }
 
-# Г-11: группа → пять правил → чтение → повтор правила → удаление правила
-# и его повтор → удаление группы и его повтор. Группы после пробы нет.
+# Г-11: группа → пять правил и правило с группой-источником → чтение правил
+# списком группы (в карточке группы правил нет — только счётчики, прогон
+# 205) → повтор правила → удаление правила: повтор сразу, ожидание
+# исчезновения, повтор после → то же для группы. Группы после пробы нет.
 world
 cat >"$FAKE_DIR/http" <<'H'
 POST /security-groups 201 {"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}
 POST /security-groups/sg1/rules 201 {"id":"rule1"}
-GET /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
-GET /security-groups/sg1 200 {"id":"sg1","rules":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0"}]}
-DELETE /security-groups/sg1/rules/rule1 204
-DELETE /security-groups/sg1 204
+GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
+GET /security-groups/sg1/rules/rule1 404
+GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0","state":"created"}],"total":1}
+DELETE! /security-groups/sg1/rules/rule1 204
+DELETE! /security-groups/sg1/rules/rule1 422 [{"code":"security_group_rule_can_not_be_deleted_from_current_state","message":"no"}]
+DELETE /security-groups/sg1/rules/rule1 404 [{"code":"security_group_rule_not_found","message":"no"}]
+DELETE! /security-groups/sg1 204
+DELETE! /security-groups/sg1 422 [{"code":"security_group_can_not_be_deleted_from_current_state","message":"no"}]
+DELETE /security-groups/sg1 404 [{"code":"security_group_not_found","message":"no"}]
+GET /security-groups/sg1 404
 H
 fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11: код" "$rc" 0
-want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;GET /security-groups/sg1/rules/rule1;GET /security-groups/sg1;POST /security-groups/sg1/rules;GET /security-groups/sg1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+R=/security-groups/sg1/rules
+want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+grep -q 'Г-11: чтение правил.*HTTP 200, правил: 1, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-11: удаление правила.*HTTP 204, повтор сразу — HTTP 422, машинный код security_group_rule_can_not_be_deleted_from_current_state.*состояния: нет (404).*повтор после исчезновения — HTTP 404, машинный код security_group_rule_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления правила после исчезновения не записан"; grep 'удаление правила' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-11: удаление группы.*повтор после исчезновения — HTTP 404, машинный код security_group_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления группы после исчезновения не записан"; grep 'удаление группы' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+# ICMP — с port_range any: без диапазона платформа отвечает 422 (прогон 205).
+grep -q '"ip_protocol":"icmp","port_range":"any"' "$FAKE_DIR/bodies" || { echo "FAIL: Г-11: правило icmp без port_range any"; fail=1; }
 grep -q 'Г-11: повтор создания того же правила' "$tmp/out" || { echo "FAIL: нет строки о повторе правила"; fail=1; }
 # Правило с группой-источником: в теле — remote_security_group_id самой
 # группы, без remote_ip_prefix; в строке — форма источника в ответе чтения.
@@ -373,7 +389,7 @@ want "Г-18: запросы по порядку" "$(calls)" "POST /interfaces;GE
 jq -e --arg p p '.vm_id == "vm1" and .subnet_id == "sn1" and .name == "evo-e2e-ops-r7a1-g18-if" and .project_id == $p' "$FAKE_DIR/body.POST.interfaces" >/dev/null ||
 	{ echo "FAIL: Г-18: тело создания интерфейса не то: $(cat "$FAKE_DIR/body.POST.interfaces" 2>/dev/null)"; fail=1; }
 # Другой образ — того же семейства, что образ ВМ, и не требует больше её flavor.
-jq -e '.image_id == "img-24" and (has("image_name") | not) and .image_metadata.hostname == "evo-e2e-ops-r7a1-g18" and (.image_metadata.password | test("^[0-9a-f]{32}$"))' "$FAKE_DIR/body.POST.vms.vm1.rebuild" >/dev/null ||
+jq -e '.image_id == "img-24" and (has("image_name") | not) and .image_metadata.hostname == "evo-e2e-ops-r7a1-g18" and (.image_metadata.password | test("^Ev1-[0-9a-f]{32}$"))' "$FAKE_DIR/body.POST.vms.vm1.rebuild" >/dev/null ||
 	{ echo "FAIL: Г-18: тело пересоздания не то: $(cat "$FAKE_DIR/body.POST.vms.vm1.rebuild" 2>/dev/null)"; fail=1; }
 for s in 'Г-18: второй интерфейс.*HTTP 201' 'повтор создания с тем же именем.*HTTP 422, машинный код interface_name_exists' 'удаление интерфейса.*HTTP 204, повтор — HTTP 404' 'пересоздание на запущенной ВМ.*машинный код: vm_can_not_be_changed' 'Г-18: пересоздание из ubuntu-24.04.*на остановленной.*rebuilding → stopped.*образ тот, что просили.*публичный адрес тот же: да.*загрузочный диск тот же: да'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-18: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
@@ -399,6 +415,29 @@ H
 rc=0
 PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-18, отказ не про состояние: одна попытка, без остановки" "$(grep -c 'rebuild' "$FAKE_DIR/calls") $(grep -c 'set-power' "$FAKE_DIR/calls" || true)" "1 0"
+
+# Прогон 204. Список интерфейсов ВМ отвечает отказом: интерфейс удаляется по
+# id из ответа создания, а отказ списка записан с машинным кодом. Запрос без
+# ответа (обрыв, код 000) — не «отказ платформы»: строка «не покрыто», исход
+# неизвестен; тело прошлого ответа за ответ не выдаётся.
+g18_world
+cat >"$FAKE_DIR/http" <<H
+POST! /interfaces 201 {"id":"if1","state":"creating"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /interfaces 422 [{"code":"only_one_interface","message":"dup"}]
+GET /interfaces?* 422 [{"code":"list_refused","message":"no"}]
+DELETE! /interfaces/if1 204
+DELETE /interfaces/if1 404 [{"code":"interface_not_found"}]
+GET /vms/vm1 200 {$V,"state":"running"}
+POST /vms/vm1/rebuild 000
+H
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-18, список отказал: интерфейс удалён по id создания" "$(grep -c '^DELETE /interfaces/if1$' "$FAKE_DIR/calls")" 2
+grep -q 'Г-18: удаление интерфейса.*список: HTTP 422, машинный код list_refused.*удаление интерфейса: HTTP 204' "$tmp/out" || { echo "FAIL: Г-18: отказ списка интерфейсов не записан или интерфейс не удалён"; grep 'Г-18' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-18: пересоздание на запущенной ВМ.*не покрыто.*ответа нет (curl: код 56)' "$tmp/out" || { echo "FAIL: Г-18: обрыв без ответа записан не как «не покрыто»"; grep 'пересоздание' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+if grep -q 'отказ HTTP 000\|"state":"running"' "$tmp/out"; then echo "FAIL: Г-18: обрыв выдан за отказ или напечатано тело прошлого ответа"; fail=1; fi
+want "Г-18, обрыв: второй попытки и остановки нет" "$(grep -c 'rebuild' "$FAKE_DIR/calls") $(grep -c 'set-power' "$FAKE_DIR/calls" || true)" "1 0"
 
 # Пересоздание выдало ВМ новый загрузочный диск, а старый оставило без ВМ:
 # под именем пробы уборка его может не найти — проба удаляет его по id

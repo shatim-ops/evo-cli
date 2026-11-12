@@ -1628,19 +1628,7 @@ jobs:
 
       - name: Кластер READY (до 60 мин)
         run: |
-          start=$(date +%s)
-          while :; do
-            st=$(evo tools call "${KIND}_get" --arg cluster_id="$CLUSTER_ID" --json 2>/dev/null |
-              jq -r '(.status // .state // "?") | tostring | ascii_upcase') || st="?"
-            echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
-            # Точные статусы: подстрока *READY* совпала бы и с NOT_READY.
-            case "$st" in
-              READY|RUNNING) break ;;
-              *FAIL*|*ERROR*|*DELET*) echo "::error::кластер $CLUSTER: $st"; exit 1 ;;
-            esac
-            [ $(( $(date +%s) - start )) -lt 3600 ] || { echo "::error::кластер $CLUSTER не готов за 60 мин (реестр DB-20)"; exit 1; }
-            sleep 60
-          done
+          .github/scripts/dbaas-ready.sh "$KIND" 3600
 
       # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
       # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
@@ -1947,18 +1935,7 @@ jobs:
 
       - name: Кластер READY (до 75 мин)
         run: |
-          start=$(date +%s)
-          while :; do
-            st=$(evo tools call "${KIND}_get" --arg cluster_id="$CLUSTER_ID" --json 2>/dev/null |
-              jq -r '(.status // .state // "?") | tostring | ascii_upcase') || st="?"
-            echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
-            case "$st" in
-              READY|RUNNING) break ;;
-              *FAIL*|*ERROR*|*DELET*) echo "::error::кластер $CLUSTER: $st"; exit 1 ;;
-            esac
-            [ $(( $(date +%s) - start )) -lt 4500 ] || { echo "::error::кластер $CLUSTER не готов за 75 мин"; exit 1; }
-            sleep 60
-          done
+          .github/scripts/dbaas-ready.sh "$KIND" 4500
 
       # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
       # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
@@ -2125,18 +2102,7 @@ jobs:
 
       - name: Кластер READY (до 50 мин)
         run: |
-          start=$(date +%s)
-          while :; do
-            st=$(evo tools call "${KIND}_get" --arg cluster_id="$CLUSTER_ID" --json 2>/dev/null |
-              jq -r '(.status // .state // "?") | tostring | ascii_upcase') || st="?"
-            echo "$(( ($(date +%s) - start) / 60 )) мин: $st"
-            case "$st" in
-              READY|RUNNING) break ;;
-              *FAIL*|*ERROR*|*DELET*) echo "::error::кластер $CLUSTER: $st"; exit 1 ;;
-            esac
-            [ $(( $(date +%s) - start )) -lt 3000 ] || { echo "::error::кластер $CLUSTER не готов за 50 мин"; exit 1; }
-            sleep 60
-          done
+          .github/scripts/dbaas-ready.sh "$KIND" 3000
 
       # Проект кластера на серверах evo mcp --allow-project (REL12-3), пока
       # кластер есть: свой проект — ответ, чужой — NOT_FOUND без проекта.
