@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -58,7 +59,7 @@ func (r *Registry) namedProject(t Tool, next Handler) Handler {
 			delete(at, "project_id")
 			delete(at, "project_from")
 			if project != "" {
-				at["project_id"] = project
+				at["project_id"], at["project_from"] = project, engine.OriginResource
 			}
 			if note != "" {
 				at["project_note"] = note
@@ -98,14 +99,14 @@ func (r *Registry) targetProject(ctx context.Context, t Tool, a idArg, id string
 	project, err := a.kind.project(ctx, &ownerCall{r: r, args: args, group: t.Group}, id)
 	switch {
 	case err != nil:
-		return "", i18n.Tf("the project is not determined: reading the project of %s %s failed; the change goes to the project of that resource",
-			"проект не определён: прочитать проект ресурса «%s» %s не удалось; запись уйдёт в проект этого ресурса", a.kind.what, id)
+		return "", i18n.Tf("not determined: reading the project of %s %s failed; the change goes to the project of that resource. Confirm only if you know whose resource it is",
+			"не определён: прочитать проект ресурса «%s» %s не удалось; изменение уйдёт в проект этого ресурса. Подтверждайте, только если знаете, чей это ресурс", a.kind.what, id)
 	case project == "":
-		return "", i18n.Tf("the project is not determined: the call's project does not hold %s %s, and its API names no project; the change goes to the project of that resource",
-			"проект не определён: ресурса «%s» %s нет в проекте вызова, а его API проект не называет; запись уйдёт в проект этого ресурса", a.kind.what, id)
+		return "", i18n.Tf("not determined: the call's project does not hold %s %s, and its API names no project; the change goes to the project of that resource. Confirm only if you know whose resource it is",
+			"не определён: ресурса «%s» %s нет в проекте вызова, а его API проект не называет; изменение уйдёт в проект этого ресурса. Подтверждайте, только если знаете, чей это ресурс", a.kind.what, id)
 	case project != r.callProject(args):
-		return project, i18n.Tf("%s %s is in another project, not the call's; the change goes to the project of the resource",
-			"ресурс «%s» %s — в другом проекте, не в проекте вызова; запись уйдёт в проект ресурса", a.kind.what, id)
+		return project, i18n.Tf("%s %s is in another project, not the call's; the change goes there. Confirm only if that is the project you mean",
+			"ресурс «%s» %s — в другом проекте, не в проекте вызова; изменение уйдёт туда. Подтверждайте, только если это нужный проект", a.kind.what, id)
 	}
 	return project, ""
 }

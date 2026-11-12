@@ -51,8 +51,22 @@ func TestKubectlReadOnly_HostFlags(t *testing.T) {
 	}
 }
 
+// onlyClusterCard: до согласия в облако уходит только чтение карточки
+// кластера — превью называет по ней проект записи (namedProject).
+// kubeconfig не запрашивается, kubectl не запускается, записи нет.
+func onlyClusterCard(t *testing.T, f *apiFake) {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range f.calls {
+		if c != "GET mk8s.api.cloud.ru/v3/clusters/00000000-0000-0000-0000-000000000001" {
+			t.Errorf("before consent: %s", c)
+		}
+	}
+}
+
 // Через инструмент: без confirmed — confirmation_required, кластер не
-// трогается (в облако не ходим).
+// трогается: до согласия — только чтение его карточки в Cloud.ru.
 func TestK8sKubectl_HostFlagNeedsConfirmed(t *testing.T) {
 	f := &apiFake{}
 	r := apiFakeRegistry(t, f)
@@ -62,9 +76,7 @@ func TestK8sKubectl_HostFlagNeedsConfirmed(t *testing.T) {
 			t.Errorf("%q: %s", args, text)
 		}
 	}
-	if n := f.count(); n != 0 {
-		t.Errorf("%d requests before consent", n)
-	}
+	onlyClusterCard(t, f)
 }
 
 // REL-4: формат вывода из файла хоста (-o go-template-file=…,
@@ -110,7 +122,5 @@ func TestK8sKubectl_OutputFileNeedsConfirmed(t *testing.T) {
 			t.Errorf("%q: %s", args, text)
 		}
 	}
-	if n := f.count(); n != 0 {
-		t.Errorf("%d requests before consent", n)
-	}
+	onlyClusterCard(t, f)
 }

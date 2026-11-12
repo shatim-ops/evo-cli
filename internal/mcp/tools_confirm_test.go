@@ -36,14 +36,16 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		// (D15, D48; TestNewGates_DeployWithoutEngineRefuses below). A
 		// create builds one more for the project its preview names
 		// (namedProject): the configuration only, no request — and with no
-		// engine the preview goes as it is.
+		// engine the preview goes as it is. A change addressed by id
+		// (cert_renew) builds one to read the project of its resource; with
+		// no engine its preview says the project is not determined.
 		engines int
 	}{
 		{"ca_start", map[string]any{"name": "app-1"}, "app-1", 0},
 		{"ca_stop", map[string]any{"name": "app-1"}, "app-1", 0},
 		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", 1},
 		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo", 1},
-		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1", 0},
+		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1", 1},
 	}
 	for _, c := range cases {
 		t.Run(c.tool, func(t *testing.T) {
