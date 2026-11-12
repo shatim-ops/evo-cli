@@ -235,6 +235,9 @@ var listSpecs = map[string]listSpec{
 	"cert_versions":      {none: "the versions of one certificate: a few"},
 	"org_quotas":         {none: "a table of quotas read whole: a row is a quota, not a resource"},
 	"audit_events":       {none: "a log read by time and by page (since, page_token), not a list of resources"},
+	"ca_logs":            {none: "the lines of a log, read by its own arguments, not a list of resources"},
+	"k8s_options":        {none: "a composite catalogue (versions, flavors, zones) read whole to plan a cluster"},
+	"doctor":             {none: "the checks of this machine and this key, each of which the person reads"},
 }
 
 // filterHintRows is how many items a list answers without a filter before
