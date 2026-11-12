@@ -77,6 +77,9 @@ func fullArgs(tl Tool) map[string]any {
 			args[k] = true
 		case "array":
 			args[k] = []any{"80"}
+			if pm["minItems"] != nil {
+				args[k] = sampleList(tl, k, id)
+			}
 		case "object":
 			args[k] = map[string]any{"name": "x"}
 		}

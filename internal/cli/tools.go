@@ -264,12 +264,16 @@ func newToolsDescribeCmd() *cobra.Command {
 
 // param is one argument of a tool, from its JSON schema.
 type param struct {
-	Name        string
-	Type        string // string, integer, number, boolean, array, object
-	ItemType    string // for arrays
-	Required    bool
-	Description string
-	Default     any // the schema's "default", when it declares one
+	Name     string
+	Type     string // string, integer, number, boolean, array, object
+	ItemType string // for arrays
+	// ItemsNotEmpty: the schema refuses an empty item (minLength of the
+	// items), so an empty value between commas goes to the tool's check
+	// and is USAGE there, as over MCP — it is not dropped.
+	ItemsNotEmpty bool
+	Required      bool
+	Description   string
+	Default       any // the schema's "default", when it declares one
 }
 
 // schemaParams lists the tool's arguments, required first, then by name.
@@ -301,6 +305,8 @@ func schemaParams(t tools.Tool) []param {
 		a.Default = m["default"]
 		if items, ok := m["items"].(map[string]any); ok {
 			a.ItemType, _ = items["type"].(string)
+			min, _ := items["minLength"].(int)
+			a.ItemsNotEmpty = min > 0
 		}
 		out = append(out, a)
 	}
@@ -582,7 +588,7 @@ func coerceArg(p param, value string) (any, error) {
 		out := []any{}
 		for _, part := range strings.Split(value, ",") {
 			part = strings.TrimSpace(part)
-			if part == "" {
+			if part == "" && !p.ItemsNotEmpty {
 				continue
 			}
 			v, err := coerceArg(param{Type: p.ItemType}, part)

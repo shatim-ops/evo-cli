@@ -16,4 +16,4 @@
 | `lb_create` | `evo lb create` | creates: id in `lb_id`; found with `lb_list`; deleted with `lb_delete` | `target_group_id` ← `tg_list`, `vpc_id` ← `vpc_list` |
 | `lb_delete` | `evo lb delete` | deletes; a repeat answers `already_deleted` | `id` ← `lb_list` |
 
-Filters of the lists (the rule of the `evo` skill): `lb_list` — status, name, vpc_id; `tg_list` — status, name, vpc_id.
+Filters of the lists (the rule of the `evo` skill): `lb_list` — status, name, vpc_id, ids, statuses; `tg_list` — status, name, vpc_id, ids, statuses.
