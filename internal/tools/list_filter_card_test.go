@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -24,8 +25,9 @@ type imageCloud struct {
 	// many more VMs of the list, all running in ru.AZ-1.
 	many int
 	// noImage is the VM whose card names no image; failing is the VM
-	// whose card cannot be read.
+	// whose card cannot be read, with failure (none: HTTP 502).
 	noImage, failing string
+	failure          error
 	cards            []string
 }
 
@@ -46,6 +48,9 @@ func (c *imageCloud) ListVMsInProject(ctx context.Context, p string) ([]*provisi
 func (c *imageCloud) GetVMDetail(_ context.Context, id string) (*provision.VMDetail, error) {
 	c.cards = append(c.cards, id)
 	if id == c.failing {
+		if c.failure != nil {
+			return nil, c.failure
+		}
 		return nil, errors.New("HTTP 502")
 	}
 	det := &provision.VMDetail{ID: id, Name: "vm", State: "running"}
@@ -133,6 +138,33 @@ func TestVMList_SelectsByImages(t *testing.T) {
 		m, isErr, text := run(c, map[string]any{"images": []any{"ubuntu-22.04"}})
 		if !isErr || m["vms"] != nil {
 			t.Errorf("failing=%q noImage=%q: want an error and no part of the selection, got %s", c.failing, c.noImage, text)
+		}
+	}
+
+	// The failure names what the bare error of the read does not («Риск»,
+	// conclusion 149): the filter, the VM, how many cards were read of how
+	// many, that nothing was selected — and a hint by the cause: a VM gone
+	// since the list is «send again», a call out of its time is «narrow»,
+	// not «retry later»; the reason stays the read's (429 is 429).
+	for _, c := range []struct {
+		failure      error
+		reason, hint string
+	}{
+		{clierrors.New(clierrors.CodeVMNotFound, "vm not found", ""), "VM_NOT_FOUND", "Send the same call again"},
+		{context.DeadlineExceeded, "", "narrow the list with: zone"},
+		{&provision.StatusError{Status: 429, Body: "{}"}, "API_RATE_LIMITED", ""},
+	} {
+		m, isErr, text := run(&imageCloud{failing: web2, failure: c.failure}, map[string]any{"images": []any{"ubuntu-22.04"}})
+		msg := stringArg(m, "error")
+		if !isErr || m["vms"] != nil || !strings.Contains(msg, "filter images") || !strings.Contains(msg, web2) ||
+			!strings.Contains(msg, "(1 of 3 read)") || !strings.Contains(msg, "nothing was selected") {
+			t.Errorf("%v: the failure does not name the filter, the VM, the count and that nothing was selected: %s", c.failure, text)
+		}
+		if c.reason != "" && stringArg(m, "reason") != c.reason {
+			t.Errorf("%v: reason %v, want %s: %s", c.failure, m["reason"], c.reason, text)
+		}
+		if hint := stringArg(m, "hint"); !strings.Contains(hint, c.hint) || (c.failure == context.DeadlineExceeded && strings.Contains(strings.ToLower(hint), "later")) {
+			t.Errorf("%v: hint %q, want %q", c.failure, hint, c.hint)
 		}
 	}
 

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -675,13 +676,13 @@ func (r *Registry) readCards(ctx context.Context, s listSpec, rows []any, conds 
 	if len(rows) == 0 {
 		return nil
 	}
-	if len(rows) > cardReads {
-		var narrow []string
-		for _, f := range s.filters {
-			if f.card == nil {
-				narrow = append(narrow, f.arg)
-			}
+	var narrow []string
+	for _, f := range s.filters {
+		if f.card == nil {
+			narrow = append(narrow, f.arg)
 		}
+	}
+	if len(rows) > cardReads {
 		return clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("filter %s reads the card of each item, and %d are left to read: %d at most in one call; nothing was selected",
 				"фильтр %s читает карточку каждого элемента, а читать осталось %d: за вызов — не больше %d; отбор не выполнен", conds[0].f.arg, len(rows), cardReads),
@@ -691,13 +692,13 @@ func (r *Registry) readCards(ctx context.Context, s listSpec, rows []any, conds 
 	if err != nil {
 		return err
 	}
-	for _, row := range rows {
+	for read, row := range rows {
 		item, _ := row.(map[string]any)
 		for _, c := range conds {
 			field, id := c.f.itemFields()[0], stringOf(item["id"])
 			v, err := c.f.card(ctx, eng, id)
 			if err != nil {
-				return err
+				return cardError(ctx, c.f.arg, id, read, len(rows), narrow, err)
 			}
 			if v == nil {
 				return fmt.Errorf(i18n.T("filter %s: the card of %s names no %s, so the selection cannot be answered", "фильтр %s: карточка %s не называет %s — отбор выполнить нельзя"),
@@ -707,6 +708,31 @@ func (r *Registry) readCards(ctx context.Context, s listSpec, rows []any, conds 
 		}
 	}
 	return nil
+}
+
+// cardError is the failure to read a card under a filter, with what the
+// bare error of the read does not say («Риск», conclusion 149): which
+// filter read it, of which item, how many cards were read of how many, and
+// that nothing was selected. The reason stays the read's. The hint is the
+// read's too, but for two failures whose cause is the selection itself: an
+// item gone between the list and its card — the same call again reads the
+// list anew; and a call out of its time — the same call runs out the same
+// way, so the hint says to narrow, not to retry later.
+func cardError(ctx context.Context, filter, id string, read, of int, narrow []string, err error) error {
+	reason, msg, hint := errReason(err, nil)
+	switch {
+	case stderrors.Is(err, context.DeadlineExceeded) || stderrors.Is(ctx.Err(), context.DeadlineExceeded):
+		msg = i18n.T("the call ran out of its time", "вызову не хватило времени")
+		hint = i18n.Tf("The same call again will run out the same way: narrow the list with: %s.",
+			"Тот же вызов ещё раз закончится так же: сузьте список: %s.", strings.Join(narrow, ", "))
+	case notThere(err):
+		msg = i18n.T("it is gone from the list since evo read it", "его уже нет в списке, который прочитал evo")
+		hint = i18n.T("Send the same call again: it reads the list anew.", "Повторите тот же вызов: он прочитает список заново.")
+	}
+	return clierrors.Wrap(reason,
+		i18n.Tf("filter %s: the card of %s was not read (%d of %d read): %s; nothing was selected",
+			"фильтр %s: карточка %s не прочитана (прочитано %d из %d): %s; отбор не выполнен", filter, id, read, of, msg),
+		hint, err)
 }
 
 // addHint puts hint into the answer, after the hint the list gave itself.
