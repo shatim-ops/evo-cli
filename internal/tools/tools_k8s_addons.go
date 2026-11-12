@@ -480,37 +480,37 @@ func (p *addonPlan) preview(clusterID, resolveMode string, configKeys []string) 
 	return cp
 }
 
-// handleK8sAddAddon installs an addon release into a cluster (gated).
+// planK8sAddAddon plans the install of an addon release into a cluster (gated).
 // Without confirmed it only reads: the catalogue, the cluster, its node
 // pools and addons, to show the version it picked and the requirements.
-func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*Plan, error) {
 	clusterID := strings.TrimSpace(stringArg(args, "cluster_id"))
 	name := strings.TrimSpace(stringArg(args, "name"))
 	if clusterID == "" || name == "" {
-		return usageT("cluster_id and name are required", "нужны cluster_id и name"), true
+		return answered(usageT("cluster_id and name are required", "нужны cluster_id и name"), true), nil
 	}
 	config, configKeys, err := addonConfig(args["config"])
 	if err != nil {
-		return usageResult(err), true
+		return answered(usageResult(err), true), nil
 	}
 	// Always sent: the API requires it (default NONE).
 	resolveMode, err := mk8s.ResolveModeValue(stringArg(args, "resolve_mode"))
 	if err != nil {
-		return usageResult(err), true
+		return answered(usageResult(err), true), nil
 	}
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	plan, err := planAddon(ctx, cli, clusterID, name, strings.TrimSpace(stringArg(args, "version")))
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	r := plan.release
 	if len(plan.blockers) > 0 {
-		return errResult(clierrors.New(clierrors.CodeUsage, strings.Join(plan.blockers, "; "),
+		return nil, clierrors.New(clierrors.CodeUsage, strings.Join(plan.blockers, "; "),
 			i18n.Tf("Versions and their requirements: evo k8s addon-versions %s; worker nodes: evo k8s add-nodepool.",
-				"Версии и их требования: evo k8s addon-versions %s; рабочие узлы: evo k8s add-nodepool.", plan.addon.Name))), true
+				"Версии и их требования: evo k8s addon-versions %s; рабочие узлы: evo k8s add-nodepool.", plan.addon.Name))
 	}
 	requirements := map[string]any{"kube_versions": r.Requirements.KubeVersions, "ready_workers": int(r.Requirements.ReadyWorkers)}
 	versionFrom := "latest"
@@ -518,13 +518,13 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 		versionFrom = "requested"
 	}
 
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+	// The preview is built for the question only (Plan.PreviewOf).
+	preview := func(ctx context.Context) (map[string]any, error) {
 		preview, err := s.completePreview(ctx, nil, plan.preview(clusterID, resolveMode, configKeys))
 		if err != nil {
-			return errResult(err), true
+			return nil, err
 		}
 		out := map[string]any{
-			"status": "confirmation_required",
 			"message": i18n.Tf("k8s_add_addon installs %s %s into cluster %s (%s).",
 				"k8s_add_addon устанавливает %s %s в кластер %s (%s).",
 				plan.addon.Name, r.AppVersion, clusterID, addonNamespaceText(r.AddonNamespace)),
@@ -538,48 +538,49 @@ func (s *Registry) handleK8sAddAddon(ctx context.Context, args map[string]any) (
 		if len(plan.warnings) > 0 {
 			out["warnings"] = plan.warnings
 		}
-		return toJSON(out), true
+		return out, nil
 	}
-
-	res, err := cli.CreateClusterAddon(ctx, mk8s.CreateClusterAddonReq{
-		ClusterID: clusterID, Name: plan.addon.Name, AppVersion: r.AppVersion,
-		AddonConfiguration: config, ResolveMode: resolveMode,
-	})
-	if err != nil {
-		// A failed operation still names itself: the agent can look it up.
-		if res != nil && res.OperationID != "" {
-			return errAnswer(err, map[string]any{"operation_id": res.OperationID}), true
+	return &Plan{PreviewOf: preview, Execute: func(ctx context.Context) (string, bool) {
+		res, err := cli.CreateClusterAddon(ctx, mk8s.CreateClusterAddonReq{
+			ClusterID: clusterID, Name: plan.addon.Name, AppVersion: r.AppVersion,
+			AddonConfiguration: config, ResolveMode: resolveMode,
+		})
+		if err != nil {
+			// A failed operation still names itself: the agent can look it up.
+			if res != nil && res.OperationID != "" {
+				return errAnswer(err, map[string]any{"operation_id": res.OperationID}), true
+			}
+			return errResult(err), true
 		}
-		return errResult(err), true
-	}
-	check := "get pods -A"
-	if r.AddonNamespace != "" {
-		check = "get pods -n " + r.AddonNamespace
-	}
-	out := map[string]any{
-		"status": "installing", "cluster_id": clusterID, "addon": plan.addon.Name,
-		"version": r.AppVersion, "requirements": requirements,
-		"note": "Installation is async. Next: check the addon's pods with k8s_kubectl args=\"" + check + "\" (CLI: evo k8s kubectl " + clusterID + " " + check + ") " +
-			"until they are Running and Ready=True; pods of a Job (e.g. cert-manager-startupapicheck) end Completed. " +
-			"Pods stuck in ImagePullBackOff may mean the cluster has no internet egress: Cloud.ru needs a public SNAT gateway in the nodes' zone (" + snatDocURL + "). " +
-			"evo has no command to remove an addon: remove it in the Cloud.ru console; it also goes with the cluster (k8s_delete).",
-	}
-	if r.AddonNamespace != "" {
-		out["namespace"] = r.AddonNamespace
-	}
-	if res.OperationID != "" {
-		out["operation_id"] = res.OperationID
-	}
-	if res.ID != "" {
-		out["cluster_addon_id"] = res.ID
-	}
-	if res.Status != "" {
-		out["addon_status"] = res.Status
-	}
-	if len(plan.warnings) > 0 {
-		out["warnings"] = plan.warnings
-	}
-	return toJSON(out), false
+		check := "get pods -A"
+		if r.AddonNamespace != "" {
+			check = "get pods -n " + r.AddonNamespace
+		}
+		out := map[string]any{
+			"status": "installing", "cluster_id": clusterID, "addon": plan.addon.Name,
+			"version": r.AppVersion, "requirements": requirements,
+			"note": "Installation is async. Next: check the addon's pods with k8s_kubectl args=\"" + check + "\" (CLI: evo k8s kubectl " + clusterID + " " + check + ") " +
+				"until they are Running and Ready=True; pods of a Job (e.g. cert-manager-startupapicheck) end Completed. " +
+				"Pods stuck in ImagePullBackOff may mean the cluster has no internet egress: Cloud.ru needs a public SNAT gateway in the nodes' zone (" + snatDocURL + "). " +
+				"evo has no command to remove an addon: remove it in the Cloud.ru console; it also goes with the cluster (k8s_delete).",
+		}
+		if r.AddonNamespace != "" {
+			out["namespace"] = r.AddonNamespace
+		}
+		if res.OperationID != "" {
+			out["operation_id"] = res.OperationID
+		}
+		if res.ID != "" {
+			out["cluster_addon_id"] = res.ID
+		}
+		if res.Status != "" {
+			out["addon_status"] = res.Status
+		}
+		if len(plan.warnings) > 0 {
+			out["warnings"] = plan.warnings
+		}
+		return toJSON(out), false
+	}}, nil
 }
 
 // snatDocURL is the Cloud.ru page on Managed Kubernetes limitations: a
