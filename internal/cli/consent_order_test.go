@@ -69,22 +69,32 @@ var repeatRefused = map[string]string{
 // Closes by 1.9: each line is a world or a declaration of «разработка»
 // (release plan 1.9, «Инварианты до новых изменяющих операций», Н1).
 var repeatUndeclared = map[string]string{
-	"ca_start":           "a start of a running container app: no world",
-	"ca_stop":            "a stop of a stopped container app: no world",
 	"cert_renew":         "a renewal of a certificate being renewed: no world; or every send is a renewal",
-	"deploy":             "a deploy over its own record: no world of consent has it",
 	"deploy_apply":       "an apply of a plan applied: no world",
-	"k8s_add_addon":      "an addon the cluster has: no world",
 	"k8s_apply":          "the repeat is the cluster's (kubectl apply): not declared",
 	"k8s_helm":           "the repeat is the cluster's (helm): not declared",
 	"k8s_kubectl":        "the repeat is the cluster's (kubectl): not declared",
-	"pg_db_create":       "a database the cluster has: no world, and no check of the name taken",
-	"pg_user_create":     "a user the cluster has: no world, and no check of the name taken",
 	"s3_bucket_create":   "a bucket the profile has: no world, and no check of the name taken",
 	"s3_put":             "an object the bucket has: the repeat overwrites — not declared",
 	"secret_add_version": "every send is a new version: not declared",
-	"stack_apply":        "an apply of a stack applied: the repeat is the job's (stack_status), no world",
 	"stack_destroy":      "a destroy of a stack destroyed answers already_destroyed: no world",
+}
+
+// repeatAsksUntilTheMajor are the changes shipped before the invariant
+// whose repeat asks for consent to nothing, or is refused by the platform
+// after the question: answering it without the question changes an exit
+// code (3 → 0, 5 → 0), which is breaking and waits for the major (owner's
+// decision 12.11, release plan 1.9, «Повтор у выпущенных инструментов»,
+// п. 4; «Риск», заключение 120). "tool" → what a repeat does, and what 1.9
+// makes honest without changing the code. It only shrinks. Closes by 2.0.
+var repeatAsksUntilTheMajor = map[string]string{
+	"ca_start":       "a start of a running container app asks for consent; in 1.9 the state is read and named in the preview",
+	"ca_stop":        "a stop of a stopped container app asks for consent; in 1.9 the state is read and named in the preview",
+	"deploy":         "over MCP an unchanged compose file answers confirmation_required with unchanged: true and then changes nothing; the CLI asks nothing",
+	"k8s_add_addon":  "an addon the cluster has is asked about and sent; in 1.9 the preview says what OVERWRITE does to the installed one",
+	"pg_db_create":   "a database the cluster has: the platform refuses after the question; in 1.9 the refusal says it exists",
+	"pg_user_create": "a user the cluster has: the platform refuses after the question, and the refusal says it exists (internal/tools/pg_user_create_exists_test.go)",
+	"stack_apply":    "an apply of a job done asks for consent and creates nothing; in 1.9 the question says so and carries unchanged: true",
 }
 
 // TestConsent_EveryChangeDeclaresItsRepeat keeps the repeat of every
@@ -157,7 +167,7 @@ func TestConsent_EveryChangeDeclaresItsRepeat(t *testing.T) {
 				t.Errorf("%s: repeatRefused names the world %q, which is not a world of consentWorlds that the tool refuses in (refusedBy) with the state named (names)", tl.Name, world)
 			}
 		}
-		pending := repeatUndeclared[tl.Name] != ""
+		pending := repeatUndeclared[tl.Name] != "" || repeatAsksUntilTheMajor[tl.Name] != ""
 		switch {
 		case len(classes) == 0 && !pending:
 			t.Errorf("%s changes the cloud and does not declare its repeat: add a world of consentWorlds that has the change already (alreadyFor) — the repeat answers already_<outcome> without the question and without a write — or, if every send is a change of its own, a line of repeatIsANewChange with the words of the description that say so (D99, П3)", tl.Name)
@@ -167,13 +177,15 @@ func TestConsent_EveryChangeDeclaresItsRepeat(t *testing.T) {
 			// repeat that is a success, so no other class.
 			t.Errorf("%s declares that every send is a new change, and a repeat that is not one (%s)", tl.Name, strings.Join(classes, "; "))
 		case len(classes) > 0 && pending:
-			t.Errorf("repeatUndeclared names %s, which now is %s: remove the line (the list only shrinks)", tl.Name, classes[0])
+			t.Errorf("repeatUndeclared or repeatAsksUntilTheMajor names %s, which now is %s: remove the line (the lists only shrink)", tl.Name, classes[0])
+		case repeatUndeclared[tl.Name] != "" && repeatAsksUntilTheMajor[tl.Name] != "":
+			t.Errorf("%s is in repeatUndeclared and in repeatAsksUntilTheMajor: one list a tool", tl.Name)
 		}
 	}
 	for _, table := range []struct {
 		name  string
 		tools map[string]string
-	}{{"repeatIsANewChange", repeatIsANewChange}, {"repeatRefused", repeatRefused}, {"repeatUndeclared", repeatUndeclared}} {
+	}{{"repeatIsANewChange", repeatIsANewChange}, {"repeatRefused", repeatRefused}, {"repeatUndeclared", repeatUndeclared}, {"repeatAsksUntilTheMajor", repeatAsksUntilTheMajor}} {
 		for name := range table.tools {
 			if tl, ok := byName[name]; !ok || !tl.Mutating {
 				t.Errorf("%s names %s, which is not a tool that changes the cloud: remove the line", table.name, name)
