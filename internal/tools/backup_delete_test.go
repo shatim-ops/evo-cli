@@ -127,7 +127,7 @@ func deleteRegistry(t *testing.T, w *deleteWorld) *Registry {
 	wait := deleteOutcomeWait
 	deleteOutcomeWait = 1
 	t.Cleanup(func() { deleteOutcomeWait = wait })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"},
@@ -137,6 +137,8 @@ func deleteRegistry(t *testing.T, w *deleteWorld) *Registry {
 			Timings: engine.Timings{VMPollInterval: time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 func backupDelete(t *testing.T, w *deleteWorld, confirmed bool) (map[string]any, string, bool) {
