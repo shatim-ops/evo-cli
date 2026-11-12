@@ -24,7 +24,9 @@ import (
 
 // completeValues is the completion of the argument arg of tool; tool ""
 // completes by the argument's name alone (the root's --region,
-// --project-id).
+// --project-id). The registry is the run's, read when the completion runs:
+// cobra keeps the functions of flags in a table of the process, and one
+// that held a registry would keep it for good.
 func completeValues(tool, arg string) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		ctx := cmd.Context()
@@ -32,7 +34,7 @@ func completeValues(tool, arg string) cobra.CompletionFunc {
 			ctx = context.Background()
 		}
 		var out []cobra.Completion
-		for _, c := range newRegistry().Complete(ctx, tool, arg, toComplete) {
+		for _, c := range registryOf(cmd).Complete(ctx, tool, arg, toComplete) {
 			if c.Note == "" {
 				out = append(out, c.Value)
 				continue
@@ -227,8 +229,7 @@ func tabNoFiles(c *cobra.Command) {
 
 // registerEngineCompletions completes the flags of the engine commands
 // (evo deploy) and the root's scope flags.
-func registerEngineCompletions(root *cobra.Command) {
-	reg := newRegistry()
+func registerEngineCompletions(root *cobra.Command, reg *tools.Registry) {
 	for _, c := range engineCommands {
 		if c.Alias != "" {
 			continue
