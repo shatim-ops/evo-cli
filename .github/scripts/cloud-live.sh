@@ -2247,11 +2247,14 @@ probe_g16() {
 		fi
 	fi
 	if [ "$bv_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
-		boot=$(evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n" '[.disks[]? | select(.bootable == true and ((.attached_to // []) | index($vm)))][0].id // empty') || boot=
+		# The platform refuses a restore whose disk has no type (run 202:
+		# 422 value_error), so the type of the source boot disk is sent.
+		local boot_type=''
+		IFS=$'\t' read -r boot boot_type < <(evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n" '[.disks[]? | select(.bootable == true and ((.attached_to // []) | index($vm)))][0] | [.id // "", .disk_type // ""] | @tsv') || true
 		mask "$boot"
-		if [ -z "$boot" ]; then
-			gap "Г-16: восстановление ВМ" "загрузочный диск ВМ не найден в disk_list — без имени диска восстановление не шлю"
-		elif g16_restore ВМ "$bv" "$(jq -nc --arg n "$n-rv" --arg b "$boot" '{name: $n, description: "evo e2e probe", disks: [{name: ($n + "-boot"), related_disk_id: $b}]}')"; then
+		if [ -z "$boot" ] || [ -z "$boot_type" ]; then
+			gap "Г-16: восстановление ВМ" "загрузочный диск ВМ или его тип не найден в disk_list — без них восстановление не шлю"
+		elif g16_restore ВМ "$bv" "$(jq -nc --arg n "$n-rv" --arg b "$boot" --arg t "$boot_type" '{name: $n, description: "evo e2e probe", disks: [{name: ($n + "-boot"), related_disk_id: $b, disk_type_name: $t}]}')"; then
 			local vst=''
 			rv_up() { vst=$(evo tools call vm_get --arg name="$n-rv" --json 2>/dev/null | jq -r '.state // empty') || vst=; case "$vst" in "" | creating | *pending*) return 1 ;; esac; }
 			poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rv_up || true
@@ -2299,6 +2302,23 @@ probe_g16() {
 	if [ -n "$bd" ]; then
 		api DELETE "$C1/backups/$bd"
 		r="HTTP $code$(why_tail)"
+		# After a restore the platform keeps refusing the delete for a
+		# while (run 202: 422 backup_restore_in_progress with the backup
+		# in created): repeat until the refusal is lifted and record how
+		# long it held.
+		local tries=1 held=$SECONDS until=$(($(date +%s) + ${PROBE_WAIT:-600}))
+		while [ "$code" = 422 ] && [[ ",$(mcode)," == *,backup_restore_in_progress,* ]] && [ "$(date +%s)" -lt "$until" ]; do
+			sleep "$PROBE_PAUSE"
+			iam_fresh || true
+			api DELETE "$C1/backups/$bd"
+			tries=$((tries + 1))
+		done
+		if [ "$tries" -gt 1 ]; then
+			case "$code" in
+			2??) r="$r; запрет «идёт восстановление» снят через $((SECONDS - held)) с (попыток: $tries) — HTTP $code" ;;
+			*) r="$r; запрет «идёт восстановление» не снят за $((SECONDS - held)) с (попыток: $tries) — HTTP $code$(why_tail)" ;;
+			esac
+		fi
 		api DELETE "$C1/backups/$bd"
 		r="$r, повтор сразу — HTTP $code$(why_tail)"
 		t0=$SECONDS
@@ -2579,7 +2599,7 @@ probe_g18() {
 			s=$(evo tools call list_subnets --json 2>/dev/null | jq -r --arg id "$sn" '[.subnets[]? | select(.id == $id) | .state // "без state"][0] // "нет в списке"' 2>/dev/null) || s="список не прочитан"
 			[ "$s" = "$sst" ] || schain="${schain:+$schain → }$s"
 			sst=$s
-			case "$s" in created | active | available) return 0 ;; *) return 1 ;; esac
+			case "${s,,}" in created | active | available) return 0 ;; *) return 1 ;; esac
 		}
 		t0=$SECONDS
 		if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" sn_ready; then
