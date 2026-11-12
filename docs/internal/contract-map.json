@@ -211,6 +211,9 @@
   "k8s_kubectl": {
     "destructive": true
   },
+  "k8s_nodepool_scale": {
+    "destructive": true
+  },
   "kafka_create": {
     "destructive": false,
     "taken": "checked",

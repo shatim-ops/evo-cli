@@ -364,6 +364,22 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, stoppedVMJSON("running"))
 	}, alreadyFor: []string{"vm_start"}},
+	// The pool of k8s_nodepool_scale has the count asked for (parityArgs:
+	// three nodes) and runs (D99, П3).
+	"node pool of the count asked": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "mk8s.api.cloud.ru" || r.URL.Path != "/v3/nodePools/"+parityVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","clusterId":"`+addonClusterID+`","name":"pool-1","status":"OBJECT_STATUS_RUNNING","scalePolicy":{"fixedScale":{"count":3}}}`)
+	}, alreadyFor: []string{"k8s_nodepool_scale"}},
+	// The pool of k8s_nodepool_scale is being deleted: there is nothing
+	// to scale, and a read tells it before the question.
+	"node pool being deleted": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "mk8s.api.cloud.ru" || r.URL.Path != "/v3/nodePools/"+parityVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","clusterId":"`+addonClusterID+`","name":"pool-1","status":"OBJECT_STATUS_DELETING","scalePolicy":{"fixedScale":{"count":2}}}`)
+	}, refusedBy: []string{"k8s_nodepool_scale"}, names: "DELETING"},
 	// The VM of vm_start is being deleted: the platform refuses a power
 	// command in this state (422), and a read tells it before the question.
 	"vm being deleted": {answer: func(r *http.Request) *http.Response {

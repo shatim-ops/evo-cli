@@ -11,7 +11,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -558,6 +561,325 @@ func (s *Registry) handleK8sNodePoolGet(ctx context.Context, args map[string]any
 	card["note"] = i18n.T("nodes_subnet_id and security_group_id are ids; list_subnets and list_security_groups name them.",
 		"nodes_subnet_id и security_group_id — id; имена — в выводе evo vpc subnets и evo vpc security-groups.")
 	return toJSON(card), false
+}
+
+// Statuses of a node pool, as the mk8s API names them (NodePool.status).
+const (
+	poolRunning     = "OBJECT_STATUS_RUNNING"
+	poolScalingUp   = "OBJECT_STATUS_SCALING_UP"
+	poolScalingDown = "OBJECT_STATUS_SCALING_DOWN"
+	poolError       = "OBJECT_STATUS_ERROR"
+)
+
+// poolSettling are the statuses another change put a pool in and the
+// platform takes it out of on its own: a scale waits for them to settle
+// before it decides (D99, П4), as a power tool does for a VM.
+var poolSettling = map[string]bool{
+	"OBJECT_STATUS_PENDING": true, "OBJECT_STATUS_PROVISIONING": true, "OBJECT_STATUS_RESUMING": true,
+	poolScalingUp: true, poolScalingDown: true, "OBJECT_STATUS_STOPPING": true, "OBJECT_STATUS_SUSPENDING": true,
+	"OBJECT_STATUS_UPGRADING": true, "OBJECT_STATUS_EDITING": true, "OBJECT_STATUS_ADDING": true,
+}
+
+// poolGoing are the statuses of a pool there is nothing to scale in: it is
+// being deleted, or is deleted.
+var poolGoing = map[string]bool{"OBJECT_STATUS_DELETING": true, "OBJECT_STATUS_DELETED": true}
+
+// maxPoolCount is the largest count a request of mk8s carries: the
+// specification declares FixedScale.count an int32. A bound of the
+// request, not of what the platform accepts; the schema of the tool
+// refuses a count beyond it before the planner (D36) — over MCP a JSON
+// number of any size arrives, and int(float64) of it is another number.
+const maxPoolCount = math.MaxInt32
+
+// poolSettleTimeout bounds the wait before the question for a pool in a
+// transient status of another change, as a VM's (D53: 30 s).
+const poolSettleTimeout = 30 * time.Second
+
+// scaleWait is how long, in seconds, a scale waits for its operation, as a
+// delete does (D74). A variable only so that tests can shorten it.
+var scaleWait = opWaitMaxSeconds
+
+// poolScale is the scale of a pool as its card reads: the count of a fixed
+// policy, or that the platform scales the pool itself.
+func poolScale(card map[string]any) (desired int, fixed bool) {
+	if card["scale"] != "fixed" {
+		return 0, false
+	}
+	n, _ := card["desired"].(float64)
+	return int(n), true
+}
+
+// planK8sNodePoolScale is the planner of k8s_nodepool_scale (gate.go; D99,
+// П1–П6; docs/internal/briefs/k8s-nodepools.md): it reads the pool before
+// the question and answers by what it reads — the pool has the count (a
+// repeat: success with no question and no write), is on its way to it
+// (waited for with no second request), cannot be scaled (refused before
+// the question), or the preview of the request.
+func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any) (*Plan, error) {
+	id := stringArg(args, "nodepool_id")
+	if id == "" {
+		return nil, usageErr("nodepool_id is required", "нужен nodepool_id")
+	}
+	if _, ok := args["count"]; !ok {
+		return nil, usageErr("count is required", "нужен count")
+	}
+	// The bounds of count are the schema's (D36): 0 to maxPoolCount.
+	count := intArg(args, "count", 0)
+	cli, _, _, err := s.k8sClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// The engine only for the timings of the waits: the pool is read and
+	// changed by the mk8s client.
+	eng, err := s.localEngine(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	np, err := cli.GetNodePool(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	card := nodePoolCard(np)
+	name, _ := card["name"].(string)
+	// The pool by its name in the preview only; a refusal names it by the
+	// id the caller gave, so no text of the cloud is in evo's own words.
+	label := fmt.Sprintf("%s (%s)", quoteCloud(name), id)
+	status, _ := card["status"].(string)
+	desired, fixed := poolScale(card)
+	if card["scale"] == nil {
+		// Neither policy in the answer: evo does not guess the count the
+		// pool has.
+		return nil, clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("node pool %s: the answer of the platform names no scale policy, so evo cannot tell the number of nodes it has; nothing was sent", "группа узлов %s: в ответе платформы нет политики масштаба — сколько в группе узлов, evo сказать не может; ничего не отправлено", id),
+			i18n.T("k8s_nodepool_get shows the pool as the platform gives it.", "Группу, как её отдаёт платформа, показывает evo k8s nodepool-get."))
+	}
+	if _, isNumber := card["desired"].(float64); fixed && !isNumber {
+		// Not read as zero: the preview would count nodes from a number
+		// the pool does not have.
+		return nil, clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("node pool %s: the count in the answer of the platform is not a number, so evo cannot tell the number of nodes it has; nothing was sent", "группа узлов %s: число узлов в ответе платформы — не число; сколько в группе узлов, evo сказать не может; ничего не отправлено", id),
+			i18n.T("k8s_nodepool_get shows the pool as the platform gives it.", "Группу, как её отдаёт платформа, показывает evo k8s nodepool-get."))
+	}
+	if !fixed {
+		// The platform chooses the count of an autoscaled pool; evo does
+		// not change the policy of a pool.
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("node pool %s is autoscaled (min %v, max %v): the platform chooses its number of nodes; nothing was sent", "группа узлов %s с автомасштабом (от %v до %v узлов): число узлов выбирает платформа; ничего не отправлено", id, card["min_count"], card["max_count"]),
+			i18n.T("evo scales a pool with a fixed count and does not change the scale policy of a pool. k8s_nodepool_get shows the pool.", "evo меняет число узлов только у группы с фиксированным масштабом и политику масштаба не меняет. Группу показывает evo k8s nodepool-get."))
+	}
+	// On its way to this very count: this call's own request, cut before
+	// its end, or another caller's. Nothing is sent, so no question.
+	onItsWay := func(st string, want int) bool {
+		return (st == poolScalingUp || st == poolScalingDown) && want == count
+	}
+	if poolSettling[status] && !onItsWay(status, desired) {
+		last, timedOut, atLimit, werr := waitState(ctx, eng, poolSettleTimeout,
+			func(ctx context.Context) (string, bool, error) {
+				now, err := cli.GetNodePool(ctx, id)
+				switch {
+				case err != nil && apiStatus(err) == http.StatusNotFound:
+					return "", false, err
+				case err != nil:
+					return "", false, nil
+				}
+				np = now
+				st, _ := now["status"].(string)
+				return st, true, nil
+			},
+			func(st string) string {
+				return fmt.Sprintf(i18n.T("node pool %s: %s, waiting…", "группа узлов %s: %s, жду…"), id, quoteCloud(st))
+			},
+			func(st string) (bool, error) { return !poolSettling[st], nil })
+		switch {
+		case werr != nil:
+			return nil, werr
+		case atLimit:
+			ans := map[string]any{"status": "waiting", "nodepool_id": id, "name": name, "state": last}
+			ans["next"] = fmt.Sprintf("Node pool %s is %s at the time limit of an MCP call; it cannot be scaled until its status settles. Call k8s_nodepool_scale again when it settles: it shows the preview and asks before it sends the request.", id, quoteCloud(last))
+			nextSameCall(ans, "k8s_nodepool_scale", args)
+			return answered(toJSON(ans), false), nil
+		case timedOut > 0:
+			return nil, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("node pool %s is in status %s: it cannot be scaled until the status settles", "группа узлов %s в состоянии %s: менять число узлов можно, когда состояние устоится", id, quoteCloud(last)),
+				i18n.T("Repeat the call when k8s_nodepool_get shows the pool running.", "Повторите вызов, когда evo k8s nodepool-get покажет группу в OBJECT_STATUS_RUNNING."))
+		}
+		card = nodePoolCard(np)
+		status = last
+		desired, fixed = poolScale(card)
+		if !fixed {
+			return nil, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("node pool %s is autoscaled now: the platform chooses its number of nodes; nothing was sent", "группа узлов %s теперь с автомасштабом: число узлов выбирает платформа; ничего не отправлено", id),
+				i18n.T("k8s_nodepool_get shows the pool.", "Группу показывает evo k8s nodepool-get."))
+		}
+	}
+	switch {
+	case status == poolRunning && desired == count:
+		return answered(toJSON(poolAnswer(card, "already_scaled", count)), false), nil
+	case onItsWay(status, desired):
+		ans := poolAnswer(card, "scaling", count)
+		ans["next"] = fmt.Sprintf("Node pool %s is on its way to %d nodes (%s). k8s_nodepool_get shows its status.", id, count, quoteCloud(status))
+		nextStep(ans, "k8s_nodepool_get", map[string]any{"nodepool_id": id})
+		return answered(toJSON(ans), false), nil
+	case poolGoing[status]:
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("node pool %s is in status %s: there is nothing to scale", "группа узлов %s в состоянии %s: менять число узлов не у чего", id, quoteCloud(status)),
+			i18n.T("k8s_nodepool_get shows the pool; what to do with it is the person's decision.", "Группу показывает evo k8s nodepool-get; что с ней делать — решает человек."))
+	case desired == count:
+		// The count is the pool's already and the pool is not running:
+		// there is no change to ask for, and a request of none is not sent.
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("node pool %s has %d node(s) already and is in status %s, not running: there is no change of the count to make; nothing was sent", "в группе узлов %[1]s уже %[2]d узл., и она в состоянии %[3]s, а не работает: менять число узлов не на что; ничего не отправлено", id, count, quoteCloud(status)),
+			i18n.T("k8s_nodepool_get shows the pool; what to do with it is the person's decision.", "Группу показывает evo k8s nodepool-get; что с ней делать — решает человек."))
+	case status != poolRunning && count > desired:
+		// A departure from П4: more nodes are billable nodes added to a
+		// pool that is not working. Fewer nodes go on to the preview — it
+		// is the way to stop paying for such a pool.
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("node pool %s is in status %s, not running: evo does not add billable nodes to it; nothing was sent", "группа узлов %s в состоянии %s, а не работает: evo не добавляет в неё платные узлы; ничего не отправлено", id, quoteCloud(status)),
+			i18n.T("k8s_nodepool_get shows the pool; what to do with it is the person's decision.", "Группу показывает evo k8s nodepool-get; что с ней делать — решает человек."))
+	}
+
+	// What the request sends and what it changes: the count, and the pool
+	// as it was read before the question.
+	will := map[string]any{"nodepool_id": id, "name": name, "pool_status": status, "count": count, "count_now": desired}
+	for _, k := range []string{"cluster_id", "zone", "flavor", "cpu", "ram_gb", "disk_gb"} {
+		if v, ok := card[k]; ok {
+			will[k] = v
+		}
+	}
+	// The cluster by its name next to its id, as in the card of the pool:
+	// a cluster that is not read leaves the id.
+	if cid, _ := card["cluster_id"].(string); cid != "" {
+		if c, err := cli.GetCluster(ctx, cid); err == nil {
+			if cname, _ := c["name"].(string); cname != "" {
+				will["cluster_name"] = cname
+			}
+		}
+	}
+	preview := map[string]any{"preview": will}
+	switch {
+	case count > desired:
+		add := count - desired
+		will["nodes_added"] = add
+		if cpu, ok := card["cpu"].(float64); ok {
+			will["cpu_added"] = add * int(cpu)
+		}
+		if ram, ok := card["ram_gb"].(float64); ok {
+			will["ram_gb_added"] = add * int(ram)
+		}
+		preview["message"] = i18n.Tf("k8s_nodepool_scale adds %d billable node(s) to node pool %s: %d → %d.",
+			"k8s_nodepool_scale добавляет платные узлы в группу %[2]s: %[1]d шт., было %[3]d, станет %[4]d.", add, label, desired, count)
+		// No price without a probe of the price: the class and where the
+		// rates are (CLAUDE.md §6, axis 4).
+		will["price_classes"] = []engine.ResourcePrice{{Resource: engine.ResourceK8sNodePool, Class: engine.PricePaidUnpriced,
+			Note: i18n.T("price unknown, the resource is billable: the nodes of a pool are billed for their flavor and disk by the rates at tariff_url",
+				"цена неизвестна, ресурс платный: узлы группы тарифицируются по своей конфигурации и диску, тарифы — по tariff_url")}}
+		will["tariff_url"] = engine.TariffURL(engine.ResourceK8sNodePool)
+	default:
+		will["nodes_removed"] = desired - count
+		preview["message"] = i18n.Tf("k8s_nodepool_scale deletes %d node(s) of node pool %s: %d → %d. The nodes are deleted with the data on their disks, and their pods are evicted; which nodes go, the platform chooses.",
+			"k8s_nodepool_scale удаляет узлы группы %[2]s: %[1]d шт., было %[3]d, станет %[4]d. Узлы удаляются вместе с данными на их дисках, поды на них вытесняются; какие узлы уйдут, выбирает платформа.", desired-count, label, desired, count)
+		if count == 0 {
+			preview["warning"] = i18n.T("the pool is left with no nodes: its pods have nowhere to run; the pool itself stays",
+				"в группе не останется узлов: её подам негде работать; сама группа остаётся")
+		}
+	}
+	if status != poolRunning {
+		// Not refused: whether the platform takes the request in this
+		// status is not known (П4).
+		preview["warning"] = i18n.Tf("the pool is in status %s, not running: whether the platform accepts the scale is unknown",
+			"группа в состоянии %s, а не работает: примет ли платформа изменение — неизвестно", quoteCloud(status))
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		op, err := cli.ScaleNodePool(ctx, id, count)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return s.poolScaleFailed(ctx, cli, id, count, fmt.Errorf(i18n.T("scale node pool: %w", "изменение числа узлов группы: %w"), err))
+		}
+		ans := poolAnswer(card, "scaling", count)
+		ans["operation_id"] = op.ID
+		m, werr := waitForOpJSON(ctx, scaleWait, func(ctx context.Context) (map[string]any, error) {
+			o, err := cli.GetOperation(ctx, op.ID)
+			if err != nil {
+				return nil, err
+			}
+			return opToMap(o), nil
+		})
+		if errors.Is(werr, context.Canceled) {
+			// The scale is started: the answer names it.
+			return errAnswer(werr, ans), true
+		}
+		if werr == nil && m != nil {
+			if msg, code, failed := opFailure(m["error"]); failed {
+				// The words of the platform are data: quoted on one line in
+				// the error, and as they are in details, marked untrusted.
+				details := map[string]any{"cause": "operation", "platform_message": msg}
+				if code != nil {
+					details["platform_code"] = code
+				}
+				return errAnswer(clierrors.New(clierrors.CodeAPIError,
+					i18n.Tf("the scale of node pool %s failed: its operation %s ended with the error %s", "изменение числа узлов группы %s не удалось: операция %s завершилась ошибкой %s", id, op.ID, quoteCloud(fmt.Sprint(msg))),
+					i18n.T("k8s_nodepool_get shows the pool as it is now.", "Группу, как она есть сейчас, показывает evo k8s nodepool-get.")),
+					map[string]any{"nodepool_id": id, "operation_id": op.ID, "details": details}), true
+			}
+			if done, _ := m["done"].(bool); done {
+				ans["status"] = "scaled"
+				return toJSON(ans), false
+			}
+		}
+		ans["next"] = fmt.Sprintf("k8s_operation operation_id=%s shows when the scale ends", op.ID)
+		nextStep(ans, "k8s_operation", map[string]any{"operation_id": op.ID, "wait_seconds": opWaitMaxSeconds})
+		return toJSON(ans), false
+	}}, nil
+}
+
+// poolScaleFailed answers a scale whose request failed (П6). A lost
+// answer may be a request taken: the pool is read again — it has the
+// count or is on its way to it, and the call answers as if the request
+// were taken; it is gone, not found; else the error with the status the
+// pool is in.
+func (s *Registry) poolScaleFailed(ctx context.Context, cli *mk8s.Client, id string, count int, cause error) (string, bool) {
+	if ctx.Err() != nil {
+		return errResult(cause), true
+	}
+	now, err := cli.GetNodePool(ctx, id)
+	if err != nil {
+		if apiStatus(err) == http.StatusNotFound {
+			return errResult(err), true
+		}
+		return errResult(cause), true
+	}
+	card := nodePoolCard(now)
+	status, _ := card["status"].(string)
+	desired, fixed := poolScale(card)
+	// Only a request that may have been taken — an answer lost, a failure
+	// of the server — is told by the count the pool has now: a refusal is
+	// a refusal, whoever set that count.
+	if fixed && desired == count && !definiteRefusal(cause) {
+		if status == poolRunning {
+			return toJSON(poolAnswer(card, "scaled", count)), false
+		}
+		ans := poolAnswer(card, "scaling", count)
+		ans["next"] = fmt.Sprintf("Node pool %s is on its way to %d nodes (%s). k8s_nodepool_get shows its status.", id, count, quoteCloud(status))
+		nextStep(ans, "k8s_nodepool_get", map[string]any{"nodepool_id": id})
+		return toJSON(ans), false
+	}
+	return errAnswer(cause, map[string]any{"nodepool_id": id, "state": status}), true
+}
+
+// poolAnswer is the answer of a scale: its status and the pool — id, name,
+// the count asked for and the status the pool was read in. The cluster of
+// the pool is the preview's to name.
+func poolAnswer(card map[string]any, status string, count int) map[string]any {
+	ans := map[string]any{"status": status, "nodepool_id": card["id"], "count": count}
+	for from, to := range map[string]string{"name": "name", "status": "state"} {
+		if v, ok := card[from]; ok {
+			ans[to] = v
+		}
+	}
+	return ans
 }
 
 // nodePoolCard is a node pool of the mk8s API (NodePool, v3) as

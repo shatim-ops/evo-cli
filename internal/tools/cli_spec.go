@@ -129,6 +129,7 @@ var cliSpecs = map[string]CLISpec{
 	"k8s_kubeconfig":     {Group: "k8s", Verb: "kubeconfig", Args: []string{"cluster_id"}},
 	"k8s_nodepools":      {Group: "k8s", Verb: "nodepools", Args: []string{"cluster_id"}},
 	"k8s_nodepool_get":   {Group: "k8s", Verb: "nodepool-get", Args: []string{"nodepool_id"}},
+	"k8s_nodepool_scale": {Group: "k8s", Verb: "nodepool-scale", Args: []string{"nodepool_id"}},
 	"k8s_add_nodepool":   {Group: "k8s", Verb: "add-nodepool", Args: []string{"cluster_id"}},
 	"k8s_addons":         {Group: "k8s", Verb: "addons", Args: []string{"query?"}, Render: "addon-list"},
 	"k8s_addon_versions": {Group: "k8s", Verb: "addon-versions", Args: []string{"name"}, Render: "addon-versions"},
