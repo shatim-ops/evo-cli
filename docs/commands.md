@@ -697,7 +697,7 @@ evo ar get <id> [flags]
 
 Вызывает инструмент ar_list (подробнее: 'evo tools describe ar_list').
 
-Отбор: --status, --name, --type. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name, --type, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -715,10 +715,12 @@ evo ar list [flags]
 ### Options
 
 ```
-  -h, --help            Справка по list
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: CREATING, ACTIVE, ERROR
-      --type string     Только этого типа: DOCKER, DEBIAN, RPM, GENERIC, PYPI, NPM
+  -h, --help                   Справка по list
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: CREATING, ACTIVE, ERROR
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
+      --type string            Только этого типа: DOCKER, DEBIAN, RPM, GENERIC, PYPI, NPM
 ```
 
 ### Options inherited from parent commands
@@ -1267,7 +1269,7 @@ evo ca get <name> [flags]
 
 Вызывает инструмент ca_list (подробнее: 'evo tools describe ca_list').
 
-Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --name, --ids. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -1285,8 +1287,9 @@ evo ca list [flags]
 ### Options
 
 ```
-  -h, --help          Справка по list
-      --name string   Только с этой частью имени, регистр не важен
+  -h, --help              Справка по list
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -3142,7 +3145,7 @@ evo disk detach <disk-id> [flags]
 
 Вызывает инструмент disk_list (подробнее: 'evo tools describe disk_list').
 
-Отбор: --zone, --state, --name, --attached, --type, --bootable. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --zone, --state, --name, --attached, --type, --bootable, --ids, --states. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -3160,13 +3163,15 @@ evo disk list [flags]
 ### Options
 
 ```
-      --attached       true — только подключённые к ВМ, false — только свободные (false задаётся так: --attached=false)
-      --bootable       true — только загрузочные, false — только остальные (false задаётся так: --bootable=false)
-  -h, --help           Справка по list
-      --name string    Только с этой частью имени, регистр не важен
-      --state string   Только в этом состоянии: available, in_use, reserved, error, error_creating, error_deleting, creating, updating, deleting, attaching, detaching
-      --type string    Только этого типа диска: имя
-      --zone string    Только в этой зоне: имя или UUID
+      --attached             true — только подключённые к ВМ, false — только свободные (false задаётся так: --attached=false)
+      --bootable             true — только загрузочные, false — только остальные (false задаётся так: --bootable=false)
+  -h, --help                 Справка по list
+      --ids stringArray      Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string          Только с этой частью имени, регистр не важен
+      --state string         Только в этом состоянии: available, in_use, reserved, error, error_creating, error_deleting, creating, updating, deleting, attaching, detaching
+      --states stringArray   Только в одном из этих состояний: значения — как у state (флаг повторяется или значения через запятую)
+      --type string          Только этого типа диска: имя
+      --zone string          Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -3529,7 +3534,7 @@ evo dns record-get <record-id> [flags]
 
 Вызывает инструмент dns_records (подробнее: 'evo tools describe dns_records').
 
-Отбор: --name, --type. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --name, --ids, --type. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -3547,9 +3552,10 @@ evo dns records <zone-id> [flags]
 ### Options
 
 ```
-  -h, --help          Справка по records
-      --name string   Только с этой частью имени, регистр не важен
-      --type string   Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
+  -h, --help              Справка по records
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени, регистр не важен
+      --type string       Видимость зоны: public или private. Необязательно: без неё evo определяет видимость по id
 ```
 
 ### Options inherited from parent commands
@@ -3738,7 +3744,7 @@ evo dns zone-get <id> [flags]
 
 Вызывает инструмент dns_zones (подробнее: 'evo tools describe dns_zones').
 
-Отбор: --name, --domain. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --name, --domain, --ids. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -3756,9 +3762,10 @@ evo dns zones [flags]
 ### Options
 
 ```
-      --domain string   Только с этой частью домена, регистр не важен
-  -h, --help            Справка по zones
-      --name string     Только с этой частью имени, регистр не важен
+      --domain string     Только с этой частью домена, регистр не важен
+  -h, --help              Справка по zones
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -3872,7 +3879,7 @@ evo iam [flags]
 
 Вызывает инструмент iam_service_accounts (подробнее: 'evo tools describe iam_service_accounts').
 
-Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --name, --ids. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -3891,6 +3898,7 @@ evo iam service-accounts [flags]
 
 ```
   -h, --help                Справка по service-accounts
+      --ids stringArray     Только с одним из этих id (флаг повторяется или значения через запятую)
       --name string         Только с этой частью имени, регистр не важен
       --project-id string   UUID проекта (по умолчанию — текущий проект)
 ```
@@ -4818,7 +4826,7 @@ evo k8s kubectl <cluster-id> <args>... [flags]
 
 Вызывает инструмент k8s_list (подробнее: 'evo tools describe k8s_list').
 
-Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -4835,9 +4843,11 @@ evo k8s list [flags]
 ### Options
 
 ```
-  -h, --help            Справка по list
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: OBJECT_STATUS_PENDING, OBJECT_STATUS_PROVISIONING, OBJECT_STATUS_RUNNING, OBJECT_STATUS_RESUMING, OBJECT_STATUS_DELETING, OBJECT_STATUS_ERROR, OBJECT_STATUS_SCALING_UP, OBJECT_STATUS_SCALING_DOWN, OBJECT_STATUS_STOPPING, OBJECT_STATUS_STOPPED, OBJECT_STATUS_SUSPENDING, OBJECT_STATUS_SUSPENDED, OBJECT_STATUS_UPGRADING, OBJECT_STATUS_EDITING, OBJECT_STATUS_ADDING, OBJECT_STATUS_DELETED
+  -h, --help                   Справка по list
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: OBJECT_STATUS_PENDING, OBJECT_STATUS_PROVISIONING, OBJECT_STATUS_RUNNING, OBJECT_STATUS_RESUMING, OBJECT_STATUS_DELETING, OBJECT_STATUS_ERROR, OBJECT_STATUS_SCALING_UP, OBJECT_STATUS_SCALING_DOWN, OBJECT_STATUS_STOPPING, OBJECT_STATUS_STOPPED, OBJECT_STATUS_SUSPENDING, OBJECT_STATUS_SUSPENDED, OBJECT_STATUS_UPGRADING, OBJECT_STATUS_EDITING, OBJECT_STATUS_ADDING, OBJECT_STATUS_DELETED
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
 ```
 
 ### Options inherited from parent commands
@@ -4999,7 +5009,7 @@ evo k8s nodepool-scale <nodepool-id> [flags]
 
 Вызывает инструмент k8s_nodepools (подробнее: 'evo tools describe k8s_nodepools').
 
-Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -5015,9 +5025,11 @@ evo k8s nodepools <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help            Справка по nodepools
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: OBJECT_STATUS_PENDING, OBJECT_STATUS_PROVISIONING, OBJECT_STATUS_RUNNING, OBJECT_STATUS_RESUMING, OBJECT_STATUS_DELETING, OBJECT_STATUS_ERROR, OBJECT_STATUS_SCALING_UP, OBJECT_STATUS_SCALING_DOWN, OBJECT_STATUS_STOPPING, OBJECT_STATUS_STOPPED, OBJECT_STATUS_SUSPENDING, OBJECT_STATUS_SUSPENDED, OBJECT_STATUS_UPGRADING, OBJECT_STATUS_EDITING, OBJECT_STATUS_ADDING, OBJECT_STATUS_DELETED
+  -h, --help                   Справка по nodepools
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: OBJECT_STATUS_PENDING, OBJECT_STATUS_PROVISIONING, OBJECT_STATUS_RUNNING, OBJECT_STATUS_RESUMING, OBJECT_STATUS_DELETING, OBJECT_STATUS_ERROR, OBJECT_STATUS_SCALING_UP, OBJECT_STATUS_SCALING_DOWN, OBJECT_STATUS_STOPPING, OBJECT_STATUS_STOPPED, OBJECT_STATUS_SUSPENDING, OBJECT_STATUS_SUSPENDED, OBJECT_STATUS_UPGRADING, OBJECT_STATUS_EDITING, OBJECT_STATUS_ADDING, OBJECT_STATUS_DELETED
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
 ```
 
 ### Options inherited from parent commands
@@ -5381,7 +5393,7 @@ evo kafka get <cluster-id> [flags]
 
 Вызывает инструмент kafka_list (подробнее: 'evo tools describe kafka_list').
 
-Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -5399,9 +5411,11 @@ evo kafka list [flags]
 ### Options
 
 ```
-  -h, --help            Справка по list
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: STATUS_UNSPECIFIED, PENDING, DEPLOYING, FAILED, UPDATING, READY, SUSPENDED, SUSPENDING, ERASED, ERASING, ROLLING_BACK
+  -h, --help                   Справка по list
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: STATUS_UNSPECIFIED, PENDING, DEPLOYING, FAILED, UPDATING, READY, SUSPENDED, SUSPENDING, ERASED, ERASING, ROLLING_BACK
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
 ```
 
 ### Options inherited from parent commands
@@ -5776,7 +5790,7 @@ evo lb get <id> [flags]
 
 Вызывает инструмент lb_list (подробнее: 'evo tools describe lb_list').
 
-Отбор: --status, --name, --vpc-id. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name, --vpc-id, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -5794,10 +5808,12 @@ evo lb list [flags]
 ### Options
 
 ```
-  -h, --help            Справка по list
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: NLB_STATUS_UNSPECIFIED, NLB_STATUS_CREATING, NLB_STATUS_ERROR_CREATING, NLB_STATUS_RUNNING, NLB_STATUS_UPDATING, NLB_STATUS_ERROR_UPDATING, NLB_STATUS_DELETING, NLB_STATUS_ERROR_DELETING, NLB_STATUS_DELETED, NLB_STATUS_SUSPENDING, NLB_STATUS_SUSPENDED, NLB_STATUS_ERROR_SUSPENDING, NLB_STATUS_RESUMING, NLB_STATUS_ERROR_RESUMING
-      --vpc-id string   Только в этой VPC: UUID или имя
+  -h, --help                   Справка по list
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: NLB_STATUS_UNSPECIFIED, NLB_STATUS_CREATING, NLB_STATUS_ERROR_CREATING, NLB_STATUS_RUNNING, NLB_STATUS_UPDATING, NLB_STATUS_ERROR_UPDATING, NLB_STATUS_DELETING, NLB_STATUS_ERROR_DELETING, NLB_STATUS_DELETED, NLB_STATUS_SUSPENDING, NLB_STATUS_SUSPENDED, NLB_STATUS_ERROR_SUSPENDING, NLB_STATUS_RESUMING, NLB_STATUS_ERROR_RESUMING
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
+      --vpc-id string          Только в этой VPC: UUID или имя
 ```
 
 ### Options inherited from parent commands
@@ -6373,7 +6389,7 @@ evo org [flags]
 
 Вызывает инструмент org_projects (подробнее: 'evo tools describe org_projects').
 
-Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --name, --ids. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -6391,8 +6407,9 @@ evo org projects [flags]
 ### Options
 
 ```
-  -h, --help          Справка по projects
-      --name string   Только с этой частью имени, регистр не важен
+  -h, --help              Справка по projects
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -6562,7 +6579,7 @@ evo pg backup-create <cluster-id> <name> [flags]
 
 Вызывает инструмент pg_backups (подробнее: 'evo tools describe pg_backups').
 
-Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -6578,9 +6595,11 @@ evo pg backups <cluster-id> [flags]
 ### Options
 
 ```
-  -h, --help            Справка по backups
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: BACKUP_STATUS_UNSPECIFIED, BACKUP_STATUS_PENDING, BACKUP_STATUS_STARTED, BACKUP_STATUS_COMPLETED, BACKUP_STATUS_FAILED
+  -h, --help                   Справка по backups
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: BACKUP_STATUS_UNSPECIFIED, BACKUP_STATUS_PENDING, BACKUP_STATUS_STARTED, BACKUP_STATUS_COMPLETED, BACKUP_STATUS_FAILED
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
 ```
 
 ### Options inherited from parent commands
@@ -6899,7 +6918,7 @@ evo pg get <cluster-id> [flags]
 
 Вызывает инструмент pg_list (подробнее: 'evo tools describe pg_list').
 
-Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -6916,9 +6935,11 @@ evo pg list [flags]
 ### Options
 
 ```
-  -h, --help            Справка по list
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: STATUS_UNSPECIFIED, PENDING, DEPLOYING, FAILED, UPDATING, READY, SUSPENDED, SUSPENDING, ERASED, ERASING, ROLLING_BACK
+  -h, --help                   Справка по list
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: STATUS_UNSPECIFIED, PENDING, DEPLOYING, FAILED, UPDATING, READY, SUSPENDED, SUSPENDING, ERASED, ERASING, ROLLING_BACK
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
 ```
 
 ### Options inherited from parent commands
@@ -7262,8 +7283,9 @@ evo project list [flags]
 ### Options
 
 ```
-  -h, --help          Справка по list
-      --name string   Только с этой частью имени, регистр не важен
+  -h, --help              Справка по list
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -7545,7 +7567,7 @@ evo redis get <cluster-id> [flags]
 
 Вызывает инструмент redis_list (подробнее: 'evo tools describe redis_list').
 
-Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -7563,9 +7585,11 @@ evo redis list [flags]
 ### Options
 
 ```
-  -h, --help            Справка по list
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: STATUS_UNSPECIFIED, PENDING, DEPLOYING, FAILED, UPDATING, READY, SUSPENDED, SUSPENDING, ERASED, ERASING, ROLLING_BACK
+  -h, --help                   Справка по list
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: STATUS_UNSPECIFIED, PENDING, DEPLOYING, FAILED, UPDATING, READY, SUSPENDED, SUSPENDING, ERASED, ERASING, ROLLING_BACK
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
 ```
 
 ### Options inherited from parent commands
@@ -8325,7 +8349,7 @@ evo secret get <path> [flags]
 
 Вызывает инструмент secret_list (подробнее: 'evo tools describe secret_list').
 
-Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --name, --ids. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -8341,8 +8365,9 @@ evo secret list [flags]
 ### Options
 
 ```
-  -h, --help          Справка по list
-      --name string   Только с этой частью имени или пути, регистр не важен
+  -h, --help              Справка по list
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени или пути, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -8557,7 +8582,7 @@ SNAT-шлюзы проекта. SNAT-шлюз даёт узлам в прива�
 
 Вызывает инструмент snat_list (подробнее: 'evo tools describe snat_list').
 
-Отбор: --zone, --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --zone, --status, --name, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -8575,10 +8600,12 @@ evo snat list [flags]
 ### Options
 
 ```
-  -h, --help            Справка по list
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: created, error, error_creating, error_deleting, creating, deleting, updating
-      --zone string     Только в этой зоне: имя или UUID
+  -h, --help                   Справка по list
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: created, error, error_creating, error_deleting, creating, deleting, updating
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
+      --zone string            Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -9088,7 +9115,7 @@ evo tg get <id> [flags]
 
 Вызывает инструмент tg_list (подробнее: 'evo tools describe tg_list').
 
-Отбор: --status, --name, --vpc-id. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name, --vpc-id, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -9106,10 +9133,12 @@ evo tg list [flags]
 ### Options
 
 ```
-  -h, --help            Справка по list
-      --name string     Только с этой частью имени, регистр не важен
-      --status string   Только в этом состоянии: TARGET_GROUP_STATUS_UNSPECIFIED, TARGET_GROUP_STATUS_CREATING, TARGET_GROUP_STATUS_ERROR_CREATING, TARGET_GROUP_STATUS_CREATED, TARGET_GROUP_STATUS_UPDATING, TARGET_GROUP_STATUS_ERROR_UPDATING, TARGET_GROUP_STATUS_DELETING, TARGET_GROUP_STATUS_ERROR_DELETING, TARGET_GROUP_STATUS_DELETED
-      --vpc-id string   Только в этой VPC: UUID или имя
+  -h, --help                   Справка по list
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --status string          Только в этом состоянии: TARGET_GROUP_STATUS_UNSPECIFIED, TARGET_GROUP_STATUS_CREATING, TARGET_GROUP_STATUS_ERROR_CREATING, TARGET_GROUP_STATUS_CREATED, TARGET_GROUP_STATUS_UPDATING, TARGET_GROUP_STATUS_ERROR_UPDATING, TARGET_GROUP_STATUS_DELETING, TARGET_GROUP_STATUS_ERROR_DELETING, TARGET_GROUP_STATUS_DELETED
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
+      --vpc-id string          Только в этой VPC: UUID или имя
 ```
 
 ### Options inherited from parent commands
@@ -9696,7 +9725,7 @@ evo vm get <vm-id|name> [flags]
 
 Вызывает инструмент vm_list (подробнее: 'evo tools describe vm_list').
 
-Отбор: --zone, --state, --name, --flavor, --public-ip. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --zone, --state, --name, --flavor, --public-ip, --ids, --states. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -9715,12 +9744,14 @@ evo vm list [flags]
 ### Options
 
 ```
-      --flavor string   Только с этим flavor: имя
-  -h, --help            Справка по list
-      --name string     Только с этой частью имени, регистр не важен
-      --public-ip       true — только с публичным IP, false — только без него (false задаётся так: --public-ip=false)
-      --state string    Только в этом состоянии: running, stopped, error, error_creating, error_deleting, creating, starting, stopping, rebooting, deleting, updating
-      --zone string     Только в этой зоне: имя или UUID
+      --flavor string        Только с этим flavor: имя
+  -h, --help                 Справка по list
+      --ids stringArray      Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string          Только с этой частью имени, регистр не важен
+      --public-ip            true — только с публичным IP, false — только без него (false задаётся так: --public-ip=false)
+      --state string         Только в этом состоянии: running, stopped, error, error_creating, error_deleting, creating, starting, stopping, rebooting, deleting, updating
+      --states stringArray   Только в одном из этих состояний: значения — как у state (флаг повторяется или значения через запятую)
+      --zone string          Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -10107,7 +10138,7 @@ Floating IP: адрес, состояние, свободен ли.
 
 Вызывает инструмент list_floating_ips (подробнее: 'evo tools describe list_floating_ips').
 
-Отбор: --zone, --state, --name, --free. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --zone, --state, --name, --free, --ids, --states. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -10123,11 +10154,13 @@ evo vpc fips [flags]
 ### Options
 
 ```
-      --free           true — только свободные для привязки, false — только занятые (false задаётся так: --free=false)
-  -h, --help           Справка по fips
-      --name string    Только с этой частью имени, регистр не важен
-      --state string   Только в этом состоянии: available, in_use, error, error_creating, error_deleting, creating, deleting, updating, attaching, detaching
-      --zone string    Только в этой зоне: имя или UUID
+      --free                 true — только свободные для привязки, false — только занятые (false задаётся так: --free=false)
+  -h, --help                 Справка по fips
+      --ids stringArray      Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string          Только с этой частью имени, регистр не важен
+      --state string         Только в этом состоянии: available, in_use, error, error_creating, error_deleting, creating, deleting, updating, attaching, detaching
+      --states stringArray   Только в одном из этих состояний: значения — как у state (флаг повторяется или значения через запятую)
+      --zone string          Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -10201,7 +10234,7 @@ VPC (виртуальные частные облака) проекта: id, и�
 
 Вызывает инструмент vpc_list (подробнее: 'evo tools describe vpc_list').
 
-Отбор: --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --name, --ids. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -10217,8 +10250,9 @@ evo vpc list [flags]
 ### Options
 
 ```
-  -h, --help          Справка по list
-      --name string   Только с этой частью имени, регистр не важен
+  -h, --help              Справка по list
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands
@@ -10440,7 +10474,7 @@ evo vpc route-delete <vpc-id> <route-id> [flags]
 
 Вызывает инструмент vpc_routes (подробнее: 'evo tools describe vpc_routes').
 
-Отбор: --status. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --ids, --statuses. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -10450,8 +10484,10 @@ evo vpc routes <vpc-id> [flags]
 ### Options
 
 ```
-  -h, --help            Справка по routes
-      --status string   Только в этом состоянии: ROUTE_STATUS_UNSPECIFIED, ROUTE_STATUS_NEW, ROUTE_STATUS_CREATING, ROUTE_STATUS_CREATED, ROUTE_STATUS_FAILED_CREATE, ROUTE_STATUS_DELETING, ROUTE_STATUS_DELETED, ROUTE_STATUS_FAILED_DELETE
+  -h, --help                   Справка по routes
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --status string          Только в этом состоянии: ROUTE_STATUS_UNSPECIFIED, ROUTE_STATUS_NEW, ROUTE_STATUS_CREATING, ROUTE_STATUS_CREATED, ROUTE_STATUS_FAILED_CREATE, ROUTE_STATUS_DELETING, ROUTE_STATUS_DELETED, ROUTE_STATUS_FAILED_DELETE
+      --statuses stringArray   Только в одном из этих состояний: значения — как у status (флаг повторяется или значения через запятую)
 ```
 
 ### Options inherited from parent commands
@@ -10484,7 +10520,7 @@ evo vpc routes <vpc-id> [flags]
 
 Вызывает инструмент list_security_groups (подробнее: 'evo tools describe list_security_groups').
 
-Отбор: --zone, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --zone, --name, --ids. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -10500,10 +10536,11 @@ evo vpc security-groups [flags]
 ### Options
 
 ```
-  -h, --help          Справка по security-groups
-      --name string   Только с этой частью имени, регистр не важен
-      --rules         Вывести и правила каждой группы (по одному запросу к API на группу)
-      --zone string   Только в этой зоне: имя или UUID
+  -h, --help              Справка по security-groups
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени, регистр не важен
+      --rules             Вывести и правила каждой группы (по одному запросу к API на группу)
+      --zone string       Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands
@@ -10629,7 +10666,7 @@ evo vpc subnet-delete <subnet-id> [flags]
 
 Вызывает инструмент list_subnets (подробнее: 'evo tools describe list_subnets').
 
-Отбор: --zone, --state, --name, --vpc-id. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --zone, --state, --name, --vpc-id, --ids, --states. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -10645,11 +10682,13 @@ evo vpc subnets [flags]
 ### Options
 
 ```
-  -h, --help            Справка по subnets
-      --name string     Только с этой частью имени, регистр не важен
-      --state string    Только в этом состоянии: created, error, error_creating, error_deleting, creating, deleting, updating
-      --vpc-id string   Только в этой VPC: UUID или имя
-      --zone string     Только в этой зоне: имя или UUID
+  -h, --help                 Справка по subnets
+      --ids stringArray      Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string          Только с этой частью имени, регистр не важен
+      --state string         Только в этом состоянии: created, error, error_creating, error_deleting, creating, deleting, updating
+      --states stringArray   Только в одном из этих состояний: значения — как у state (флаг повторяется или значения через запятую)
+      --vpc-id string        Только в этой VPC: UUID или имя
+      --zone string          Только в этой зоне: имя или UUID
 ```
 
 ### Options inherited from parent commands

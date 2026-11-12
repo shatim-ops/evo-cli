@@ -24,4 +24,4 @@
 
 A change of this group that answers an `operation_id` runs on: wait for it with `vpc_operation` and its `wait_seconds`, not by polling a list.
 
-Filters of the lists (the rule of the `evo` skill): `list_subnets` — zone, state, name, vpc_id; `list_security_groups` — zone, name; `list_floating_ips` — zone, state, name, free; `vpc_list` — name; `vpc_routes` — status.
+Filters of the lists (the rule of the `evo` skill): `list_subnets` — zone, state, name, vpc_id, ids, states; `list_security_groups` — zone, name, ids; `list_floating_ips` — zone, state, name, free, ids, states; `vpc_list` — name, ids; `vpc_routes` — status, ids, statuses.

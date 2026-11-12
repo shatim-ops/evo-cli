@@ -957,7 +957,8 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 
 // filterLabelRU names a filter for a person; a filter not here goes by
 // its argument.
-var filterLabelRU = map[string]string{"zone": "зона", "state": "состояние", "status": "состояние", "name": "имя", "type": "тип", "domain": "домен"}
+var filterLabelRU = map[string]string{"zone": "зона", "state": "состояние", "status": "состояние", "name": "имя", "type": "тип", "domain": "домен",
+	"states": "состояния", "statuses": "состояния"}
 
 // selectionLine is the line over a list answered under filters (the
 // answer's filters, count and total — tools.filtered): «Selection: zone

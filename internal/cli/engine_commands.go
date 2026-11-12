@@ -10,6 +10,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -67,7 +68,7 @@ var engineCommands = []engineCommand{
 		Alias: "скрытый устаревший алиас evo vm zones: его --json — массив зон, а не ответ инструмента; удаляется в v2.0"},
 	{Path: "evo list-images", Tool: "list_images"},
 	{Path: "evo project list", Tool: "org_projects",
-		Flags: map[string]string{"name": "name"},
+		Flags: map[string]string{"name": "name", "ids": "ids"},
 		Alias: "алиас evo org projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка, как с v1.0"},
 	{Path: "evo whoami", Tool: "whoami"},
 	{Path: "evo doctor", Tool: "doctor"},
@@ -573,6 +574,21 @@ func newProjectListCmd() *cobra.Command {
 			if name, _ := cmd.Flags().GetString("name"); name != "" {
 				callArgs["name"] = name
 			}
+			if cmd.Flags().Changed("ids") {
+				// One list of the values, repeated or between commas, by
+				// the rule of the flags of the generated commands.
+				ids, _ := cmd.Flags().GetStringArray("ids")
+				t, _ := newRegistry().Lookup("org_projects")
+				for _, p := range schemaParams(t) {
+					if p.Name == "ids" {
+						v, err := coerceArg(p, strings.Join(ids, ","))
+						if err != nil {
+							return clerrors.New(clerrors.CodeUsage, "--ids: "+err.Error(), "")
+						}
+						callArgs["ids"] = v
+					}
+				}
+			}
 			text, err := callEngineTool(cmd, "org_projects", callArgs, c)
 			switch {
 			case err == nil:
@@ -607,6 +623,7 @@ func newProjectListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("name", "", i18n.T("Only with this in the name, any case.", "Только с этой частью имени, регистр не важен"))
+	cmd.Flags().StringArray("ids", nil, i18n.T("Only these ids (repeatable, or comma-separated)", "Только с одним из этих id (флаг повторяется или значения через запятую)"))
 	return engineCmd(cmd, "org_projects")
 }
 
