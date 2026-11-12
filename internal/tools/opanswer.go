@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"time"
 
@@ -63,8 +64,60 @@ func (s *Registry) operation(ctx context.Context, tool string, args map[string]a
 	}
 	addElapsed(m)
 	s.addResourceStatus(ctx, tool, m)
+	quotaFailure(m)
 	return toJSON(m), false
 }
+
+// quotaFailure names the cause of an operation that ended in an error for
+// a quota, the way an answer of a refusal for a quota does (errAnswer,
+// quotaRefusal): details.cause "quota", the platform's code and the way on.
+// The operation of a database create is taken, and seconds later ends with
+// «acquire_quota failed» and the cluster FAILED, which the API does not
+// delete (cloud-e2e 203 and 208; DB-21): an agent that read only done and
+// error repeated the create, and left one more cluster it cannot delete.
+// The answer stays the success it was (release plan 1.9, variant A). The
+// sign is the word in the service's text: the form of the refusal of other
+// services is not known before a run shows it. The text itself is not
+// copied anywhere: it stays in error, the service's words (R-83).
+func quotaFailure(m map[string]any) {
+	if done, _ := m["done"].(bool); !done {
+		return
+	}
+	msg, code, failed := opFailure(m["error"])
+	text, _ := msg.(string)
+	if !failed || !strings.Contains(strings.ToLower(text), "quota") {
+		return
+	}
+	details := map[string]any{"cause": "quota"}
+	if c := operationCode(code); c != nil {
+		details["platform_code"] = c
+	}
+	m["details"] = details
+	hint := i18n.T("Cloud.ru ended the operation for a quota of the project: a repeat meets the same quota. org_quotas shows the quotas; free or raise the one it needs first.",
+		"Cloud.ru завершил операцию из-за квоты проекта: повтор упрётся в ту же квоту. Квоты показывает org_quotas; сначала освободите или увеличьте нужную.")
+	if m["resource_status"] == "FAILED" {
+		hint += " " + i18n.T("The resource is left FAILED: delete it with the service's delete, and if Cloud.ru refuses (a database cluster in FAILED, DB-21) — in the Cloud.ru console or through support.",
+			"Ресурс остался в FAILED: удалите его удалением сервиса, а если Cloud.ru откажет (кластер базы в FAILED, DB-21) — в консоли Cloud.ru или через поддержку.")
+	}
+	m["hint"] = hint
+}
+
+// operationCode is the code of a failed operation as a machine field: a
+// number, or a token (letters, digits, underscores, 64 at most); a code
+// that is a sentence, or long, is not copied («Риск», conclusion 147).
+func operationCode(code any) any {
+	switch c := code.(type) {
+	case float64:
+		return c
+	case string:
+		if operationToken.MatchString(c) {
+			return c
+		}
+	}
+	return nil
+}
+
+var operationToken = regexp.MustCompile(`^[A-Za-z0-9_]{1,64}$`)
 
 // addElapsed puts into the answer m of an operation how long it has run,
 // in whole seconds (elapsed_sec): from its creation to its last update once
