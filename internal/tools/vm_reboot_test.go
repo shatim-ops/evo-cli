@@ -179,6 +179,11 @@ func TestVMReboot_AcceptedAndNotSeenIsSaidAsSuch(t *testing.T) {
 		if warning, _ := m["warning"].(string); !strings.Contains(warning, "did not see") {
 			t.Errorf("%s: the answer does not say the change of state was not seen: %s", name, text)
 		}
+		// Nowhere in the answer is «accepted» said as «rebooted» («Риск»,
+		// conclusion 138, В1).
+		if strings.Contains(text, "rebooted") {
+			t.Errorf("%s: the answer of a reboot not seen says «rebooted»: %s", name, text)
+		}
 		if next, _ := m["next_args"].(map[string]any); m["next_tool"] != "vm_get" || next["vm_id"] != w.id {
 			t.Errorf("%s: the next step is %v, want vm_get: %s", name, m["next_tool"], text)
 		}
