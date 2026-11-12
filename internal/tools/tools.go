@@ -403,7 +403,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_kubeconfig",
-			Description: "Get the kubeconfig of a Managed Kubernetes cluster. By default it embeds a static bearer token (TTL ~1h), so kubectl and helm work as is: the raw Cloud.ru kubeconfig needs the 'cloudlogin' exec plugin. embed_token=false gives the raw one.",
+			Description: "Get the kubeconfig of a Managed Kubernetes cluster. By default it embeds a static bearer token (TTL ~1h): the raw Cloud.ru kubeconfig needs the 'cloudlogin' exec plugin. The answer holds that token: a secret — do not print it or pass it on. embed_token=false gives the raw one.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":  strProp("Cluster UUID."),
 				"network":     enumProp("NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default).", "NETWORK_TYPE_PUBLIC", "NETWORK_TYPE_PRIVATE"),
