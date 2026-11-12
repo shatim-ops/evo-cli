@@ -1,0 +1,447 @@
+# Опись запросов живых проб 1.9 (Г-04)
+
+Генерируется: `python3 scripts/probe-requests.py > docs/internal/probes/requests-1.9.md` из опубликованных спецификаций Cloud.ru (`scripts/cloudru-specs.py`) и списка `scripts/probe-requests.json`. Руками не правится.
+
+Запросы, которые шлют пробы графика `docs/internal/phase-0/1.9.md` (раздел 1): кода операций в evo ещё нет, поэтому в `scripts/api-contract.json` их нет. Здесь — что о каждом запросе говорит спецификация: параметры query, поля тела (`*` — обязательное, `[]` — массив, значения enum) и объявленные коды ответа. Проба пишется по этой описи; расхождение живого ответа с ней — находка для реестра расхождений после двух прогонов, а не ошибка пробы. Сведения о живом поведении платформы сюда не пишутся — они в закрытом репозитории.
+
+## Пробы
+
+### Г-10. ВМ: stop, start, reboot, смена flavor
+
+- `POST /api/v1/vms/{vm_id}/set-power` (compute/openapi-v3.yaml) — Управление питанием виртуальной машины
+  - `state`* — string: `power_on`, `power_off`, `reboot`
+  - ответы: 204, 401, 403, 422, 500
+- `PUT /api/v1/vms/{vm_id}` (compute/openapi-v3.yaml) — Обновление виртуальной машины — смена flavor — `flavor_name` или `flavor_id`
+  - `name` — string | integer
+  - `flavor_id` — string | integer
+  - `flavor_name` — string | integer
+  - `description` — string | integer
+  - `tag_ids` — array | integer
+  - `tag_names` — array | integer
+  - ответы: 200, 401, 403, 422, 500
+- `GET /api/v1/vms/{vm_id}` (compute/openapi-v3.yaml) — Получение информации о виртуальной машине — ход действия читается состоянием ВМ: `set-power` отвечает 204 без id операции
+  - ответы: 200, 401, 403, 404, 422, 500
+- `GET /api/v1/params/flavor` (compute/openapi-v3.yaml) — Получение параметров флейвора — допустимые flavor для смены
+  - query: `project_id`, `availability_zone_id`, `param_type`
+  - ответы: 200, 401, 403, 404, 422, 500
+
+### Г-11. Группа безопасности: правила
+
+- `POST /api/v1/security-groups` (compute/openapi-v3.yaml) — Создание группы безопасности
+  - `project_id`* — string
+  - `name`* — string
+  - `availability_zone_id` — string
+  - `availability_zone_name` — string
+  - `description` — string
+  - `security_group_rules` — array
+  - `security_group_rules[].direction`* — string: `ingress`, `egress`
+  - `security_group_rules[].ether_type`* — string: `IPv4`, `IPv6`
+  - `security_group_rules[].ip_protocol`* — string: `tcp`, `udp`, `icmp`, `any`
+  - `security_group_rules[].port_range`* — string
+  - `security_group_rules[].remote_ip_prefix` — string
+  - `security_group_rules[].remote_security_group_id` — string
+  - `security_group_rules[].remote_security_group_name` — string
+  - `security_group_rules[].description` — string
+  - `tag_ids` — array
+  - `tag_names` — array
+  - ответы: 201, 401, 403, 422, 500
+- `POST /api/v1/security-groups/{security_group_id}/rules` (compute/openapi-v3.yaml) — Создание правила группы безопасности
+  - `direction`* — string: `ingress`, `egress`
+  - `ether_type`* — string: `IPv4`, `IPv6`
+  - `ip_protocol`* — string: `tcp`, `udp`, `icmp`, `any`
+  - `port_range`* — string
+  - `remote_ip_prefix` — string
+  - `remote_security_group_id` — string
+  - `remote_security_group_name` — string
+  - `description` — string
+  - ответы: 201, 401, 403, 422, 500
+- `GET /api/v1/security-groups/{security_group_id}` (compute/openapi-v3.yaml) — Получение информации о группе безопасности
+  - ответы: 200, 401, 403, 404, 422, 500
+- `DELETE /api/v1/security-groups/{security_group_id}/rules/{security_group_rule_id}` (compute/openapi-v3.yaml) — Удаление правила группы безопасности
+  - ответы: 204, 401, 403, 404, 422, 500
+- `DELETE /api/v1/security-groups/{security_group_id}` (compute/openapi-v3.yaml) — Удаление группы безопасности
+  - ответы: 204, 401, 403, 404, 405, 422, 500
+
+### Г-12. Managed Kubernetes: масштаб и удаление группы узлов, обновление версии
+
+- `PATCH /v2/node-pools/{nodePoolId}` (mk8s/openapi.yaml) — Редактирование группы узлов — масштаб группы узлов; evo ходит в v3 (`internal/mk8s`) — запросы v3 ниже
+  - `nodePoolId`* — string
+  - `data`* — object
+  - `data.displayName` — string
+  - `data.scalePolicy` — object
+  - `data.scalePolicy.fixedScale` — object
+  - `data.scalePolicy.fixedScale.count`* — integer
+  - `data.scalePolicy.autoScale` — object
+  - `data.scalePolicy.autoScale.minCount`* — integer
+  - `data.scalePolicy.autoScale.maxCount`* — integer
+  - `data.scalePolicy.autoScale.initialCount` — integer
+  - `data.updateConfiguration` — object
+  - `data.updateConfiguration.strategy`* — string
+  - `data.updateConfiguration.rollingUpdatePolicy` — object
+  - `data.updateConfiguration.rollingUpdatePolicy.maxSurge` — integer
+  - `data.updateConfiguration.rollingUpdatePolicy.maxUnavailable` — integer
+  - `data.machineConfiguration` — object
+  - `data.machineConfiguration.flavorId`* — string
+  - `data.machineConfiguration.diskSize` — integer
+  - `data.machineConfiguration.diskType` — string
+  - `data.machineConfiguration.diskSpec` — object
+  - `data.machineConfiguration.diskSpec.typeName` — string
+  - `data.machineConfiguration.diskSpec.size` — integer
+  - `data.taints` — object
+  - `data.taints.taints`* — array
+  - `data.taints.taints[].key`* — string
+  - `data.taints.taints[].value`* — string
+  - `data.taints.taints[].effect` — string: `EFFECT_NO_SCHEDULE`, `EFFECT_PREFER_NO_SCHEDULE`, `EFFECT_NO_EXECUTE`
+  - `data.labels` — object
+  - `data.labels.labels`* — object
+  - ответы: 200
+- `DELETE /v2/node-pools/{nodePoolId}` (mk8s/openapi.yaml) — Удаление группы узлов
+  - ответы: 200
+- `POST /v2/clusters/{clusterId}/upgrade` (mk8s/openapi.yaml) — Обновление плоскости управления кластера
+  - query: `version`
+  - ответы: 200
+- `POST /v2/node-pools/{nodePoolId}/upgrade` (mk8s/openapi.yaml) — Обновление группы узлов кластера
+  - query: `version`
+  - ответы: 200
+- `GET /v2/k8sversions` (mk8s/openapi.yaml) — Получение списка доступных для установки версии Kubernetes
+Используйте /v2/product-configuration. — версии, доступные для обновления (Г-05)
+  - query: `limit`, `offset`, `sort`, `filters`
+  - ответы: 200
+- `PATCH /v3/nodePools/{nodePoolId}` (mk8s/openapi-v3.yaml) — Редактирование группы узлов — тот же запрос в v3
+  - `nodePoolId`* — string
+  - `name` — string
+  - `scalePolicy` — object
+  - `scalePolicy.fixedScale` — object
+  - `scalePolicy.fixedScale.count`* — integer
+  - `scalePolicy.autoScale` — object
+  - `scalePolicy.autoScale.minCount`* — integer
+  - `scalePolicy.autoScale.maxCount`* — integer
+  - `scalePolicy.autoScale.initialCount` — integer
+  - `updateConfiguration` — object
+  - `updateConfiguration.strategy`* — string
+  - `updateConfiguration.rollingUpdatePolicy` — object
+  - `updateConfiguration.rollingUpdatePolicy.maxSurge` — integer
+  - `updateConfiguration.rollingUpdatePolicy.maxUnavailable` — integer
+  - `machineConfiguration` — object
+  - `machineConfiguration.flavorId`* — string
+  - `machineConfiguration.disk` — object
+  - `machineConfiguration.disk.typeName` — string
+  - `machineConfiguration.disk.size` — integer
+  - `taints` — object
+  - `taints.taints`* — array
+  - `taints.taints[].key`* — string
+  - `taints.taints[].value`* — string
+  - `taints.taints[].effect` — string: `EFFECT_NO_SCHEDULE`, `EFFECT_PREFER_NO_SCHEDULE`, `EFFECT_NO_EXECUTE`
+  - `labels` — object
+  - `labels.labels`* — object
+  - `autoRepair` — object
+  - `autoRepair.enabled` — boolean
+  - ответы: 200
+- `POST /v3/clusters/{clusterId}:upgrade` (mk8s/openapi-v3.yaml) — Обновление плоскости управления кластера — тот же запрос в v3
+  - `clusterId`* — string
+  - `version` — string
+  - ответы: 200
+- `POST /v3/nodePools/{nodePoolId}:upgrade` (mk8s/openapi-v3.yaml) — Обновление группы узлов кластера — тот же запрос в v3
+  - `nodePoolId`* — string
+  - `version` — string
+  - ответы: 200
+
+### Г-13. PostgreSQL: класс узла, диск, число узлов
+
+- `PATCH /v1/clusters/{cluster_id}` (postgresql/openapi-postgresql.yaml)
+  - `cluster_id`* — string
+  - `instances` — integer
+  - `subnet_ids` — object
+  - `subnet_ids.value` — array
+  - `specification_id` — string
+  - `storage` — object
+  - `storage.pg_data_gb`* — integer
+  - `storage.pg_wal_gb` — integer
+  - `pooler_config` — object
+  - `pooler_config.enabled` — boolean
+  - `pooler_config.pool_mode` — string: `POOL_MODE_UNSPECIFIED`, `SESSION`, `TRANSACTION`
+  - `pooler_config.parameters` — object
+  - `backup` — object
+  - `backup.schedule` — string
+  - `backup.retention_policy_days` — integer
+  - `maintenance_window` — object
+  - `maintenance_window.anytime` — object
+  - `maintenance_window.weekly_maintenance_window` — object
+  - `maintenance_window.weekly_maintenance_window.day`* — string: `WEEK_DAY_UNSPECIFIED`, `WEEK_DAY_MON`, `WEEK_DAY_TUE`, `WEEK_DAY_WED`, `WEEK_DAY_THU`, `WEEK_DAY_FRI`, `WEEK_DAY_SAT`, `WEEK_DAY_SUN`
+  - `maintenance_window.weekly_maintenance_window.hour`* — integer
+  - ответы: 200, default
+- `GET /v1/clusters/{cluster_id}` (postgresql/openapi-postgresql.yaml)
+  - ответы: 200, default
+
+### Г-14. Kafka: число брокеров, диск, класс
+
+- `PATCH /v1/clusters/{cluster_id}` (kafka/openapi-kafka.yaml)
+  - `cluster_id`* — string
+  - `storage_gib` — integer
+  - `specification_id` — string
+  - `parameters` — object
+  - `controller_spec` — object
+  - `controller_spec.specification_id`* — string
+  - `controller_spec.storage_gib`* — integer
+  - ответы: 200, default
+- `GET /v1/clusters/{cluster_id}` (kafka/openapi-kafka.yaml)
+  - ответы: 200, default
+
+### Г-15. Redis: класс, число шардов или реплик
+
+- `PATCH /v1/clusters/{cluster_id}` (redis/openapi-redis.yaml)
+  - `cluster_id`* — string
+  - `storage_gb` — integer
+  - `storage_gib` — integer
+  - `specification_id` — string
+  - `parameters` — object
+  - ответы: 200, default
+- `GET /v1/clusters/{cluster_id}` (redis/openapi-redis.yaml)
+  - ответы: 200, default
+
+### Г-16. Резервные копии и планы защиты
+
+- `POST /api/v1/backups` (compute/openapi-v3.yaml) — Создание резервной копии
+  - `name`* — string
+  - `description` — string | null
+  - `project_id`* — string
+  - `tag_ids` — array
+  - `tag_names` — array
+  - `resource`* — object
+  - `resource.resource_id`* — string
+  - `resource.resource_type`* — string: `disk`, `virtual_machine`
+  - `protection_plan_id` — string | null
+  - ответы: 201, 401, 403, 422, 500
+- `GET /api/v1/backups` (compute/openapi-v3.yaml) — Получение списка резервных копий
+  - query: `offset`, `limit`, `order_by`, `order_desc`, `name`, `state`, `tag_ids`, `resource_ids`, `resource_types`, `project_id*`, `protection_plan_id`, `type`
+  - ответы: 200, 401, 403, 422, 500
+- `GET /api/v1/backups/{backup_id}` (compute/openapi-v3.yaml) — Получение информации о резервной копии
+  - ответы: 200, 401, 403, 422, 500
+- `POST /api/v1/backups/{backup_id}/action` (compute/openapi-v3.yaml) — Восстановление ресурса из резервной копии — восстановление
+  - `action` — string
+  - `resource`* — object
+  - `resource.target_config`* — object
+  - `resource.target_config.name`* — string
+  - `resource.target_config.description` — string | null
+  - `resource.target_config.flavor_id` — string | null
+  - `resource.target_config.flavor_name` — string | null
+  - `resource.target_config.interfaces` — array
+  - `resource.target_config.interfaces[].name`* — string
+  - `resource.target_config.interfaces[].type`* — string: `regular`, `system`, `service`, `gateway`, `technical`, `magic_technical`, `fip`, `direct_ip`
+  - `resource.target_config.interfaces[].new_floating_ip`* — boolean
+  - `resource.target_config.interfaces[].subnet` — object | null
+  - `resource.target_config.interfaces[].subnet.id` — string | null
+  - `resource.target_config.interfaces[].subnet.name` — string | null
+  - `resource.target_config.interfaces[].ip_address` — string | null
+  - `resource.target_config.interfaces[].security_group_ids` — array
+  - `resource.target_config.interfaces[].security_group_names` — array
+  - `resource.target_config.interfaces[].attach_floating_ip_id` — string | null
+  - `resource.target_config.interfaces[].attach_floating_ip_name` — string | null
+  - `resource.target_config.disks` — array
+  - `resource.target_config.disks[].name`* — string
+  - `resource.target_config.disks[].related_disk_id` — string | null
+  - `resource.target_config.disks[].disk_type_id` — string | null
+  - `resource.target_config.disks[].disk_type_name` — string | null
+  - `resource.target_config.disks[].description` — string | null
+  - `resource.target_config.disk_type_id` — string | null
+  - `resource.target_config.disk_type_name` — string | null
+  - ответы: 201, 401, 403, 422, 500
+- `DELETE /api/v1/backups/{backup_id}` (compute/openapi-v3.yaml) — Удаление резервной копии
+  - ответы: 204, 401, 403, 422, 500
+- `POST /api/v1/protection-plans` (compute/openapi-v3.yaml) — Создание плана резервного копирования
+  - `name`* — string
+  - `description` — string | null
+  - `project_id`* — string
+  - `resources`* — array
+  - `resources[].resource_id`* — string
+  - `resources[].resource_type`* — string: `disk`, `virtual_machine`
+  - `schedules` — array
+  - `schedules[].start_time`* — string
+  - `schedules[].end_time` — string | null
+  - `schedules[].days_of_week` — array
+  - `schedules[].days_of_month` — array
+  - `schedules[].months` — array
+  - `schedules[].enabled`* — boolean
+  - `retention_policy` — null
+  - `execute_immediately`* — boolean
+  - `type` — string: `full`, `incremental`
+  - ответы: 201, 422
+- `GET /api/v1/protection-plans` (compute/openapi-v3.yaml) — Получение списка планов резервного копирования
+  - query: `offset`, `limit`, `order_by`, `order_desc`, `project_id*`, `backup_id`, `name`, `state`, `resource_ids`, `resource_types`, `type`
+  - ответы: 200, 422
+- `DELETE /api/v1/protection-plans/{protection_plan_id}` (compute/openapi-v3.yaml) — Удаление плана резервного копирования
+  - ответы: 204, 422
+
+### Г-17. Теги
+
+- `POST /api/v1.1/vms` (compute/openapi-v3.yaml) — Создание виртуальной машины V1.1 — тег в запросе создания ВМ — `tag_names`, `tag_ids`
+  - `[].project_id`* — string
+  - `[].availability_zone_id` — string
+  - `[].availability_zone_name` — string
+  - `[].name`* — string
+  - `[].description` — string
+  - `[].flavor_id` — string
+  - `[].flavor_name` — string
+  - `[].image_id` — string
+  - `[].image_name` — string
+  - `[].placement_group_id` — string
+  - `[].placement_group_name` — string
+  - `[].interfaces` — array
+  - `[].interfaces[].type`* — string: `regular`, `direct_ip`
+  - `[].interfaces[].subnet_id` — string
+  - `[].interfaces[].subnet_name` — string
+  - `[].interfaces[].security_groups` — array
+  - `[].interfaces[].security_group_names` — array
+  - `[].interfaces[].new_external_ip` — boolean
+  - `[].interfaces[].attach_external_ip_id` — string
+  - `[].interfaces[].attach_external_ip_name` — string
+  - `[].interfaces[].ip_address` — string
+  - `[].disks`* — array
+  - `[].disks[].disk_id` — string
+  - `[].disks[].disk_name` — string
+  - `[].disks[].disk_type_id` — string
+  - `[].disks[].disk_type_name` — string
+  - `[].disks[].name`* — string
+  - `[].disks[].size`* — integer
+  - `[].image_metadata` — object
+  - `[].tag_ids` — array
+  - `[].tag_names` — array
+  - `[].cloud_init` — string
+  - ответы: 201, 401, 403, 404, 422, 500
+- `POST /api/v1/disks` (compute/openapi-v3.yaml) — Создание диска — тег в запросе создания диска
+  - `project_id`* — string
+  - `availability_zone_id` — string
+  - `availability_zone_name` — string
+  - `disk_type_id` — string
+  - `disk_type_name` — string
+  - `name`* — string
+  - `description` — string
+  - `size`* — integer
+  - `readonly` — boolean
+  - `shared` — boolean
+  - `encrypted` — boolean
+  - `tag_ids` — array
+  - `tag_names` — array
+  - ответы: 201, 401, 403, 409, 422, 500
+- `PUT /api/v1/vms/{vm_id}` (compute/openapi-v3.yaml) — Обновление виртуальной машины — назначение и снятие тега у ВМ
+  - `name` — string | integer
+  - `flavor_id` — string | integer
+  - `flavor_name` — string | integer
+  - `description` — string | integer
+  - `tag_ids` — array | integer
+  - `tag_names` — array | integer
+  - ответы: 200, 401, 403, 422, 500
+- `GET /api/v1/vms` (compute/openapi-v3.yaml) — Получение списка виртуальных машин — отбор по тегу
+  - query: `project_id*`, `vm_ids`, `tag_ids`, `availability_zone_ids`, `image_ids`, `flavor_ids`, `placement_group_ids`, `statuses`, `name`, `empty_fip`, `free_tier`, `support_gpu`, `offset`, `limit`, `order_by`, `order_desc`
+  - ответы: 200, 401, 403, 404, 422, 500
+- `GET /api/tags/v1/tags` (compute/openapi-v3.yaml) — **нет в спецификации** — сервис тегов: создание и удаление самого тега. Путь назван аудитом `audits/ops-gap-1.4.md` (G10), страницы API сервиса тегов в реестре API Cloud.ru нет (12.11)
+
+### Г-18. ВМ: интерфейс и пересоздание
+
+- `POST /api/v1/interfaces` (compute/openapi-v3.yaml) — Создание сетевого интерфейса
+  - `project_id` — string
+  - `availability_zone_id` — string
+  - `availability_zone_name` — string
+  - `vm_id` — string
+  - `vm_name` — string
+  - `subnet_id` — string
+  - `subnet_name` — string
+  - `name`* — string
+  - `description` — string
+  - `ip_address` — string
+  - `security_groups` — array
+  - `security_group_names` — array
+  - `allowed_address_pairs` — array
+  - `allowed_address_pairs[].ip_address`* — string
+  - `allowed_address_pairs[].mac_address` — string
+  - `new_floating_ip` — boolean
+  - `attach_floating_ip_id` — string
+  - `attach_floating_ip_name` — string
+  - `type` — string: `regular`, `system`, `service`, `gateway`, `technical`, `magic_technical`, `fip`, `direct_ip`
+  - ответы: 201, 401, 403, 422, 500
+- `DELETE /api/v1/interfaces/{interface_id}` (compute/openapi-v3.yaml) — Удаление сетевого интерфейса
+  - ответы: 204, 401, 403, 404, 422, 500
+- `POST /api/v1/vms/{vm_id}/rebuild` (compute/openapi-v3.yaml) — Смена образа виртуальной машины
+  - `image_id` — string | null
+  - `image_name` — string | null
+  - `image_metadata` — object | null
+  - ответы: 200, 422
+
+### Г-22. Цена «до и после» расчётом
+
+- `POST /api/v1/projects/{project_id}/price-calculation` (compute/openapi-v3.yaml) — Расчет стоимости ресурсов
+  - `total_count`* — integer
+  - `flavor_id` — string
+  - `image_id` — string
+  - `floating_ips` — array
+  - `floating_ips[].floating_ip_action`* — string: `attach`, `detach`, `new`
+  - `floating_ips[].count`* — integer
+  - `disks` — array
+  - `disks[].disk_type_id`* — string
+  - `disks[].size`* — integer
+  - `nat_gateways` — array
+  - `nat_gateways[].nat_gateway_type`* — string
+  - `nat_gateways[].count`* — integer
+  - ответы: 200, 401, 403, 404, 422, 500
+- `POST /v2/billing/calculate-price` (mk8s/openapi.yaml) — Получение расчета по предоставленным ресурсам
+  - `projectId`* — string
+  - `master` — object
+  - `master.count` — integer
+  - `master.type` — string: `MASTER_TYPE_SMALL`, `MASTER_TYPE_MEDIUM`, `MASTER_TYPE_LARGE`, `MASTER_TYPE_EXTRALARGE`
+  - `master.flavorId` — string
+  - `nodePools` — array
+  - `nodePools[].count`* — integer
+  - `nodePools[].cpu` — integer
+  - `nodePools[].ram` — integer
+  - `nodePools[].disk`* — object
+  - `nodePools[].disk.size` — string
+  - `nodePools[].disk.type` — string
+  - `nodePools[].disk.typeId` — string
+  - `nodePools[].oversubscription` — string: `OVERSUBSCRIPTION_3`, `OVERSUBSCRIPTION_10`
+  - `nodePools[].gpu` — integer
+  - `nodePools[].type` — string: `FLAVOR_TYPE_GENERAL`, `FLAVOR_TYPE_MEMORY_OPTIMIZED`, `FLAVOR_TYPE_GPU_V100`, `FLAVOR_TYPE_GPU_H100`, `FLAVOR_TYPE_GPU_A100`, `FLAVOR_TYPE_GPU_H100_HGX`
+  - `nodePools[].flavorId` — string
+  - `disks` — array
+  - `disks[].size` — string
+  - `disks[].type` — string
+  - `disks[].typeId` — string
+  - `rentPublicIpCount` — integer
+  - `addon` — object
+  - `addon.addonName` — string
+  - `clusterAttributes` — array
+  - `clusterAttributes[].name` — string
+  - `clusterAttributes[].count` — integer
+  - ответы: 200
+- `POST /v2/billing/calculate-price-ext` (mk8s/openapi.yaml) — Получение детального расчета по предоставленным ресурсам
+  - `projectId`* — string
+  - `master` — object
+  - `master.count` — integer
+  - `master.type` — string: `MASTER_TYPE_SMALL`, `MASTER_TYPE_MEDIUM`, `MASTER_TYPE_LARGE`, `MASTER_TYPE_EXTRALARGE`
+  - `master.flavorId` — string
+  - `nodePools` — array
+  - `nodePools[].count`* — integer
+  - `nodePools[].cpu` — integer
+  - `nodePools[].ram` — integer
+  - `nodePools[].disk`* — object
+  - `nodePools[].disk.size` — string
+  - `nodePools[].disk.type` — string
+  - `nodePools[].disk.typeId` — string
+  - `nodePools[].oversubscription` — string: `OVERSUBSCRIPTION_3`, `OVERSUBSCRIPTION_10`
+  - `nodePools[].gpu` — integer
+  - `nodePools[].type` — string: `FLAVOR_TYPE_GENERAL`, `FLAVOR_TYPE_MEMORY_OPTIMIZED`, `FLAVOR_TYPE_GPU_V100`, `FLAVOR_TYPE_GPU_H100`, `FLAVOR_TYPE_GPU_A100`, `FLAVOR_TYPE_GPU_H100_HGX`
+  - `nodePools[].flavorId` — string
+  - `disks` — array
+  - `disks[].size` — string
+  - `disks[].type` — string
+  - `disks[].typeId` — string
+  - `rentPublicIpCount` — integer
+  - `addon` — object
+  - `addon.addonName` — string
+  - `clusterAttributes` — array
+  - `clusterAttributes[].name` — string
+  - `clusterAttributes[].count` — integer
+  - ответы: 200
+
+## Запросы, которых нет в спецификациях
+
+- Г-17: GET /api/tags/v1/tags (compute/openapi-v3.yaml)

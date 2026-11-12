@@ -256,6 +256,12 @@ jobs:
         if: runner.os == 'Linux'
         run: python3 scripts/diag-check-test.py
 
+      # Опись запросов живых проб (probe-requests.py) на спецификации из
+      # теста: поля тела, enum, запрос, которого в спецификации нет.
+      - name: probe-requests.py на образце спецификации
+        if: runner.os == 'Linux'
+        run: python3 scripts/probe-requests-test.py
+
       # Маска публичных логов cloud-e2e: имена групп и подсетей тестового проекта.
       - name: redact.sed на образцах вывода evo
         if: runner.os == 'Linux'
