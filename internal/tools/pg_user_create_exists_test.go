@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,9 @@ type pgUsersWorld struct {
 	body      string
 	users     string
 	listFails bool
-	posts     int
+	// drop: the create is sent and its answer is lost.
+	drop  bool
+	posts int
 }
 
 func (w *pgUsersWorld) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -37,6 +40,9 @@ func (w *pgUsersWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch {
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/users"):
 		w.posts++
+		if w.drop {
+			return nil, errors.New("read tcp: connection reset by peer")
+		}
 		http.Error(rec, w.body, w.status)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/users") && w.listFails:
 		http.Error(rec, `{"message":"internal"}`, 500)
@@ -74,7 +80,7 @@ func TestPgUserCreate_RefusedForAUserThatExistsSaysSo(t *testing.T) {
 		if strings.Contains(text, password) {
 			t.Errorf("the answer holds the password: %s", text)
 		}
-		if w.posts != 1 {
+		if w.posts != 1 && !w.drop && w.status < 500 {
 			t.Errorf("sent %d creates, want 1", w.posts)
 		}
 		return m, text
@@ -112,6 +118,33 @@ func TestPgUserCreate_RefusedForAUserThatExistsSaysSo(t *testing.T) {
 		unread, unreadText := call(&pgUsersWorld{status: refusal.status, body: refusal.body, listFails: true})
 		if unread["hint"] != plain["hint"] || unread["reason"] != plain["reason"] || unread["error"] != plain["error"] {
 			t.Errorf("%d: users not read: the answer differs from the refusal alone:\n%s\n%s", refusal.status, unreadText, plainText)
+		}
+	}
+	// An outcome evo does not know — the answer to the create is lost, or
+	// the service failed: the create may have reached the cluster, and the
+	// user in the list may be this call's own. The answer does not say
+	// «nothing was created» (conclusion 121 of «Риск»): an agent that
+	// repeats after a lost answer would take its own password for another's.
+	for name, w := range map[string]func() *pgUsersWorld{
+		"lost answer": func() *pgUsersWorld { return &pgUsersWorld{drop: true} },
+		"500":         func() *pgUsersWorld { return &pgUsersWorld{status: 500, body: `{"message":"internal"}`} },
+	} {
+		there := w()
+		there.users = `{"name":"app"}`
+		m, text := call(there)
+		hint, _ := m["hint"].(string)
+		if !strings.Contains(hint, "may have created it") || !strings.Contains(hint, "ask the person") || !strings.Contains(hint, "password") {
+			t.Errorf("%s, the user is in the cluster: the hint does not say this call may have created it: %s", name, text)
+		}
+		if strings.Contains(hint, "nothing was created") {
+			t.Errorf("%s: the hint says nothing was created of an outcome evo does not know: %s", name, text)
+		}
+		plain, plainText := call(w())
+		if h, _ := plain["hint"].(string); strings.Contains(h, "is in the cluster") || strings.Contains(h, "already exists") {
+			t.Errorf("%s, no such user: the answer says the user is there: %s", name, plainText)
+		}
+		if m["reason"] != plain["reason"] || m["status"] != plain["status"] {
+			t.Errorf("%s: reason %v, status %v — changed from the failure alone (%v, %v)", name, m["reason"], m["status"], plain["reason"], plain["status"])
 		}
 	}
 }

@@ -635,16 +635,24 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 	}}, nil
 }
 
-// pgUserExists is the refusal err of a create of user name, said in full
+// pgUserExists is the failure err of a create of user name, said in full
 // when the cluster has the user: the platform's text alone leaves an agent
 // to find the way on by itself, and the one it finds — delete the user and
 // create it anew — changes the password under the applications that use
-// it (release plan 1.9, «Повтор у выпущенных инструментов»; conclusion 120
-// of «Риск»). The reason and the exit code are those of err. A cluster
-// whose users are not read, or that has no such user, leaves err as it
-// is: evo says «exists» only of what it read. How the platform refuses a
-// taken name is in no specification, so the rule reads the users, not the
-// refusal.
+// it (release plan 1.9, «Повтор у выпущенных инструментов»; conclusions
+// 120 and 121 of «Риск»). The reason and the exit code are those of err.
+//
+// What the answer says of this call depends on what err is. A refusal of
+// the platform (4xx) made nothing: the user was there before. A lost
+// answer, a timeout or a 5xx is an outcome evo does not know — the create
+// may have reached the cluster, and the user in the list may be this
+// call's own: the answer says so and claims nothing was created of
+// neither.
+//
+// A cluster whose users are not read, or that has no such user, leaves
+// err as it is: evo says «exists» only of what it read. How the platform
+// refuses a taken name is in no specification, so the rule reads the
+// users, not the refusal.
 func pgUserExists(ctx context.Context, cli *postgresql.Client, clusterID, name string, err error) error {
 	users, lerr := cli.ListUsers(ctx, clusterID)
 	if lerr != nil {
@@ -655,10 +663,13 @@ func pgUserExists(ctx context.Context, cli *postgresql.Client, clusterID, name s
 			continue
 		}
 		reason, msg, _ := errReason(err, nil)
-		return clierrors.Wrap(reason, msg,
-			i18n.Tf("User %s already exists in the cluster; nothing was created or changed. Do not delete it and create it again: that changes its password, and the applications that use it stop connecting — ask the person what to do.",
-				"Пользователь %s уже существует в кластере; ничего не создано и не изменено. Не удаляйте его и не создавайте заново: это сменит пароль, и приложения, которые им пользуются, перестанут подключаться, — спросите человека, что делать.", quoteCloud(name)),
-			err)
+		hint := i18n.Tf("User %s is in the cluster, and this call may have created it: evo got no answer to the create. Do not delete it and create it again: that changes its password, and the applications that use it stop connecting — ask the person what to do.",
+			"Пользователь %s есть в кластере, и его мог создать этот вызов: ответа на создание evo не получил. Не удаляйте его и не создавайте заново: это сменит пароль, и приложения, которые им пользуются, перестанут подключаться, — спросите человека, что делать.", quoteCloud(name))
+		if st := apiStatus(err); st >= 400 && st < 500 {
+			hint = i18n.Tf("User %s already exists in the cluster; nothing was created or changed. Do not delete it and create it again: that changes its password, and the applications that use it stop connecting — ask the person what to do.",
+				"Пользователь %s уже существует в кластере; ничего не создано и не изменено. Не удаляйте его и не создавайте заново: это сменит пароль, и приложения, которые им пользуются, перестанут подключаться, — спросите человека, что делать.", quoteCloud(name))
+		}
+		return clierrors.Wrap(reason, msg, hint, err)
 	}
 	return err
 }
