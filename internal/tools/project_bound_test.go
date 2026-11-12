@@ -146,6 +146,9 @@ func ownerObject(id string) map[string]any {
 		"id": id, "name": "res-" + id[len(id)-2:], "status": "READY", "state": "available",
 		"project_id": p, "projectId": p, "type": provision.ImageTypePrivate,
 		"publicZoneId": zoneOf[id], "privateZoneId": zoneOf[id],
+		// A node pool names its cluster: the cluster of the same id, of
+		// the same project.
+		"clusterId": id,
 	}
 }
 

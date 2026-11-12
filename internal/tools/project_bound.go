@@ -116,6 +116,7 @@ var idArgs = map[string][]idArg{
 	"k8s_delete":       {{name: "cluster_id", kind: kindK8s}},
 	"k8s_operation":    {{name: "operation_id", kind: kindOperation}},
 	"k8s_nodepools":    {{name: "cluster_id", kind: kindK8s}},
+	"k8s_nodepool_get": {{name: "nodepool_id", kind: kindK8sNodePool}},
 	"k8s_add_nodepool": {{name: "cluster_id", kind: kindK8s}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}},
 	"k8s_add_addon":    {{name: "cluster_id", kind: kindK8s}},
 	"k8s_kubectl":      {{name: "cluster_id", kind: kindK8s}},
@@ -570,6 +571,28 @@ var (
 		}
 		return cli.GetCluster(ctx, id)
 	})
+	// A node pool names its cluster, not a project: it is of the project
+	// of the cluster. A pool that names no cluster, or whose cluster is
+	// not read, is refused — never passed unchecked.
+	kindK8sNodePool = &ownerKind{what: "node pool", listTool: "k8s_nodepools", check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
+		cli, _, _, err := c.r.k8sClient(ctx)
+		if err != nil {
+			return err
+		}
+		np, err := cli.GetNodePool(ctx, id)
+		if err != nil {
+			return gone(k, id, err)
+		}
+		cluster, _ := np["clusterId"].(string)
+		if cluster == "" {
+			return c.admit(k, id, "")
+		}
+		m, err := cli.GetCluster(ctx, cluster)
+		if err != nil {
+			return gone(k, id, err)
+		}
+		return c.admit(k, id, projectField(m))
+	}}
 	kindCert = byProjectField("certificate", "cert_list", func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
 		cli, err := c.r.certClient(ctx)
 		if err != nil {
