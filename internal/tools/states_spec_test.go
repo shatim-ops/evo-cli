@@ -96,26 +96,21 @@ var noSpecStates = map[string]string{
 // tables the worlds run by. A tool joins it with its table.
 var stateRowsOf = func() map[string]map[string]bool {
 	out := map[string]map[string]bool{}
-	for tool, rows := range vmPowerStateRows {
-		out[tool] = map[string]bool{}
-		for state := range rows {
-			out[tool][state] = true
-		}
-	}
-	for tool, rows := range sgRuleStateRows {
-		out[tool] = map[string]bool{}
-		for state := range rows {
-			out[tool][state] = true
-		}
-	}
+	addStateRows(out, vmPowerStateRows)
+	addStateRows(out, sgRuleStateRows)
+	addStateRows(out, deleteSpecStateRows)
+	addStateRows(out, poolStateRows)
 	return out
 }()
 
-// stateWorldsPendingNew are the tools new in 1.9 with no row for every
-// state of the specification yet. Only shrinks. Closes by 1.9.
-var stateWorldsPendingNew = map[string]string{
-	"k8s_nodepool_delete": "worlds: the group ready, the last group, deleting (D61); not the 16 states of NodePool.status",
-	"k8s_nodepool_scale":  "worlds: the group ready and at the size; not the 16 states",
+// addStateRows names in out the states each tool of table has a row for.
+func addStateRows[R ~string](out map[string]map[string]bool, table map[string]map[string]R) {
+	for tool, rows := range table {
+		out[tool] = map[string]bool{}
+		for state := range rows {
+			out[tool][state] = true
+		}
+	}
 }
 
 // stateWorldsPendingShipped are the tools shipped before the invariant
@@ -130,11 +125,11 @@ var stateWorldsPendingShipped = map[string]bool{
 	"fip_attach": true, "release_floating_ip": true,
 	"snat_create": true, "snat_delete": true, "subnet_create": true, "subnet_delete": true,
 	"vpc_route_create": true, "vpc_route_delete": true,
-	"k8s_create": true, "k8s_delete": true, "k8s_add_nodepool": true, "k8s_add_addon": true,
+	"k8s_create": true, "k8s_add_nodepool": true, "k8s_add_addon": true,
 	"kafka_create": true, "kafka_delete": true, "redis_create": true, "redis_delete": true,
 	"pg_create": true, "pg_delete": true, "pg_db_create": true, "pg_db_delete": true,
 	"pg_user_create": true, "pg_user_delete": true, "pg_backup_create": true,
-	"lb_create": true, "lb_delete": true, "tg_create": true, "tg_delete": true,
+	"lb_create": true, "tg_create": true,
 	"secret_create": true, "secret_delete": true, "secret_add_version": true,
 }
 
@@ -180,8 +175,7 @@ func TestStates_EveryChangeHasAWorldForEveryStateOfTheSpec(t *testing.T) {
 		}
 		used[enum] = true
 		rows := stateRowsOf[name]
-		_, isNew := stateWorldsPendingNew[name]
-		isPending := isNew || stateWorldsPendingShipped[name]
+		isPending := stateWorldsPendingShipped[name]
 		if rows == nil {
 			if !isPending {
 				t.Errorf("%s: no table «state → answer» (stateRowsOf) for the %d states of %s — a world for each: what the tool answers for a resource that is being made, in error, being deleted", name, len(states), enum)
@@ -199,7 +193,7 @@ func TestStates_EveryChangeHasAWorldForEveryStateOfTheSpec(t *testing.T) {
 		}
 		covered++
 	}
-	for _, list := range []map[string]bool{nameSetOf(specStatesOf), nameSetOf(noSpecStates), nameSetOf(stateWorldsPendingNew), stateWorldsPendingShipped} {
+	for _, list := range []map[string]bool{nameSetOf(specStatesOf), nameSetOf(noSpecStates), stateWorldsPendingShipped} {
 		for name := range list {
 			if !mutating[name] {
 				t.Errorf("the lists of the test name %s, which is no tool that changes the cloud: remove the line", name)
