@@ -14,10 +14,10 @@
 | Способ | Инструменты |
 |---|---|
 | дерево | все, кроме названных ниже |
-| движок | `deploy`, `doctor`, `list_images`, `logs`, `status`, `whoami` |
+| движок | `agent_skill`, `deploy`, `doctor`, `list_images`, `logs`, `status`, `whoami` |
 | tools call | — |
 
-«дерево» — своя команда, построенная из `CLISpec` инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `evo status`, `evo logs`, `evo list-images`, `evo whoami`, `evo doctor`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`. Таких нет: временный список «без команды» из PR 1 опустошён (PR 3), у каждого инструмента — своя команда, и TestParity_CommandsAndTools не даёт добавить инструмент без неё. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в `engineCommands`.
+«дерево» — своя команда, построенная из `CLISpec` инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `evo status`, `evo logs`, `evo list-images`, `evo whoami`, `evo agent skill`, `evo doctor`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`. Таких нет: временный список «без команды» из PR 1 опустошён (PR 3), у каждого инструмента — своя команда, и TestParity_CommandsAndTools не даёт добавить инструмент без неё. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в `engineCommands`.
 
 ### Русская справка инструментов
 
@@ -33,6 +33,7 @@
 | ar | `ar_list` | нет | дерево | `evo ar list` | да/да |
 | ar | `ar_operation` | нет | дерево | `evo ar operation` | да/да |
 | audit | `audit_events` | нет | дерево | `evo audit events` | да/да |
+| auth | `agent_skill` | нет | движок | `evo agent skill` | да/да |
 | auth | `doctor` | нет | движок | `evo doctor` | да/да |
 | auth | `whoami` | нет | движок | `evo whoami` | да/да |
 | billing | `billing_balance` | нет | дерево | `evo billing balance` | да/да |
@@ -206,6 +207,7 @@
 | `evo logs` | `logs` | — | — | — | — | — |
 | `evo status` | `status` | — | — | — | — | — |
 | `evo whoami` | `whoami` | — | — | — | — | — |
+| `evo agent skill` | `agent_skill` | — | — | — | — | — |
 | `evo ar create` | `ar_create` | name | — | — | confirmed | — |
 | `evo ar delete` | `ar_delete` | id | — | — | confirmed | — |
 | `evo ar get` | `ar_get` | id | — | — | — | — |
@@ -371,9 +373,7 @@
 
 | Команда | Вид | Инструмент | В docs/commands.md | Почему |
 |---|---|---|---|---|
-| `evo agent` | локальная | — | да | группа: agent setup и agent skill — локальные |
 | `evo agent setup` | локальная | — | да | пишет настройки MCP-клиента (и правила для агента) в файлы на машине пользователя: у сервера MCP такого действия по природе нет |
-| `evo agent skill` | локальная | — | да | печатает правила работы с evo для агента (docs/agent-skill.md), собранные из реестра; к облаку не обращается |
 | `evo completion` | локальная | — | да | скрипты автодополнения оболочки; к облаку не обращается |
 | `evo completion bash` | локальная | — | да | скрипт автодополнения bash |
 | `evo completion fish` | локальная | — | да | скрипт автодополнения fish |
@@ -440,6 +440,7 @@
 
 | Команда | Почему |
 |---|---|
+| `evo agent skill` | карточка группы: команда печатает её для терминала (колонка Command, отсылки к evo …), инструмент по MCP — без них: ответ сервера не называет путь в обход его ограничений (заключение «Риска» 160); строки инструментов те же |
 | `evo deploy` | итог движка, как с v1.0: status deployed/unchanged, vm_id, vm_ip, vm_name, zone_name, flavor, ports, verify…; инструмент — status ok, deployment (запись state) и log. Ключ status есть у обоих с разными значениями — свести без потери нельзя (в 1.2 ломается только Q1): вопрос владельцу |
 | `evo destroy` | итог движка, как с v1.0: status destroyed с vm_id, vm_ip, vm_name; инструмент без терминала называет цель (P2) — ответ удаления по vm_id: status ok и deleted_vm. Ключ status есть у обоих с разными значениями — свести без потери нельзя: вопрос владельцу. Без развёртывания ответы одни (status none, W5) |
 | `evo doctor` | проверки машины, где запущена команда, — версия evo, файлы настроек и их права, kubectl и helm в PATH — часть ответа только в CLI (tools.Caller.Doctor): по MCP это были бы пути и программы сервера (REQ-11). Не прошли только проверки связи — код 1 и reason ERROR, как с v1.0, у инструмента API_UNREACHABLE (тот же код 1): вопрос владельцу |

@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"time"
 
@@ -63,8 +64,83 @@ func (s *Registry) operation(ctx context.Context, tool string, args map[string]a
 	}
 	addElapsed(m)
 	s.addResourceStatus(ctx, tool, m)
+	quotaFailure(tool, m)
 	return toJSON(m), false
 }
+
+// quotaFailure names the cause of an operation that ended in an error for
+// a quota, the way an answer of a refusal for a quota does (errAnswer,
+// quotaRefusal): details.cause "quota", the platform's code and the same
+// hint. The operation of a database create is taken, and seconds later
+// ends with «acquire_quota failed» and the cluster FAILED, which the API
+// does not delete (cloud-e2e 203 and 208): an agent that read only done and
+// error repeated the create, and left one more cluster it cannot delete.
+// The answer stays the success it was (release plan 1.9, variant A). The
+// sign is a form of the closed list (quotaForm), not the word anywhere:
+// the text carries names anyone with access to the project gives («Риск»,
+// conclusion 161, У1). The text itself is not copied: it stays in error,
+// the service's words (R-83).
+func quotaFailure(tool string, m map[string]any) {
+	if done, _ := m["done"].(bool); !done {
+		return
+	}
+	msg, code, failed := opFailure(m["error"])
+	text, _ := msg.(string)
+	if !failed || !quotaForm.MatchString(text) {
+		return
+	}
+	details := map[string]any{"cause": "quota"}
+	if c := operationCode(code); c != nil {
+		details["platform_code"] = c
+	}
+	m["details"] = details
+	hint := quotaHint(true)
+	if m["resource_status"] == "FAILED" {
+		// What to do with it is the person's (conclusion 161, У3).
+		if del := failedDeletes[tool]; del != "" {
+			hint += " " + i18n.Tf("The resource is left FAILED. What to do with it is the person's decision: %s removes it after their approval; a database cluster in FAILED may not be deletable through the API — then the Cloud.ru console or support.",
+				"Ресурс остался в FAILED. Что с ним делать — решает человек: %s удаляет его после его согласия; кластер базы в FAILED через API может не удалиться — тогда консоль Cloud.ru или поддержка.", del)
+		} else {
+			hint += " " + i18n.T("The resource is left FAILED. What to do with it is the person's decision.",
+				"Ресурс остался в FAILED. Что с ним делать — решает человек.")
+		}
+	}
+	m["hint"] = hint
+}
+
+// quotaForm are the forms of a refusal for a quota in the text of an
+// operation's error, each a token of its own, not a part of a name
+// (quota-db): acquire_quota (Managed PostgreSQL, cloud-e2e 203 and 208)
+// and the forms of the codes of the specifications — a code that ends in
+// quota_exceeded, as quotaCode reads one of a call (organization_quota_exceeded,
+// «Риск», #1522, Р1). A form not here is not told apart until a run shows it.
+var quotaForm = regexp.MustCompile(`(?i)(^|[^a-z0-9_-])(acquire_quota|[a-z0-9_]{0,50}quota_exceeded|quota exceeded|quotaexceeded)([^a-z0-9_-]|$)`)
+
+// failedDeletes are the deletes of the resource of an operation that is
+// left FAILED, named in the hint: the database clusters, whose create a
+// quota fails.
+var failedDeletes = map[string]string{
+	"pg_operation":    "pg_delete",
+	"kafka_operation": "kafka_delete",
+	"redis_operation": "redis_delete",
+}
+
+// operationCode is the code of a failed operation as a machine field: a
+// number, or a token (letters, digits, underscores, 64 at most); a code
+// that is a sentence, or long, is not copied («Риск», conclusion 147).
+func operationCode(code any) any {
+	switch c := code.(type) {
+	case float64:
+		return c
+	case string:
+		if operationToken.MatchString(c) {
+			return c
+		}
+	}
+	return nil
+}
+
+var operationToken = regexp.MustCompile(`^[A-Za-z0-9_]{1,64}$`)
 
 // addElapsed puts into the answer m of an operation how long it has run,
 // in whole seconds (elapsed_sec): from its creation to its last update once

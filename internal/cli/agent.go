@@ -76,14 +76,18 @@ CLI: их пишет 'evo agent setup --read-only --skill'.
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			text := agentSkill(cmd.Root(), readOnly)
 			if cmd.Flags().Changed("group") {
-				card, ok := tools.GroupCard(group)
-				if !ok {
-					return clerrors.New(clerrors.CodeUsage, i18n.Tf("unknown group %q", "неизвестная группа %q", group),
-						i18n.Tf("Groups: %s.", "Группы: %s.", strings.Join(tools.Groups(), ", ")))
+				// The card is the answer of the tool agent_skill, as the
+				// MCP server gives it — with the commands, for a terminal.
+				answer, err := callEngineTool(cmd, "agent_skill", map[string]any{"group": group}, &tools.Caller{})
+				if err != nil {
+					return err
 				}
-				text = card
-			}
-			if p := cmdPrinter(cmd); p.IsJSON() {
+				if cmdPrinter(cmd).IsJSON() {
+					_, err := fmt.Fprintln(cmd.OutOrStdout(), answer)
+					return err
+				}
+				text, _ = parseObject(answer)["skill"].(string)
+			} else if p := cmdPrinter(cmd); p.IsJSON() {
 				return p.JSON(map[string]string{"skill": text})
 			}
 			_, err := io.WriteString(cmd.OutOrStdout(), text)
@@ -94,7 +98,8 @@ CLI: их пишет 'evo agent setup --read-only --skill'.
 		"Напечатать карточку группы инструментов: инструменты, команды, откуда id, чем удаляется созданное"))
 	cmd.Flags().BoolVar(&readOnly, "read-only", false, i18n.T("The rules of an agent that changes nothing in the cloud, through the CLI too",
 		"Правила агента, который ничего не меняет в облаке, в том числе через CLI"))
-	return cmd
+	_ = cmd.RegisterFlagCompletionFunc("group", cobra.FixedCompletions(tools.Groups(), cobra.ShellCompDirectiveNoFileComp))
+	return engineCmd(cmd, "agent_skill")
 }
 
 type agentSetupOptions struct {

@@ -387,6 +387,7 @@ var engineParity = []struct {
 	{line: []string{"project", "list"}, tool: "org_projects"},
 	{line: []string{"list-images"}, tool: "list_images"},
 	{line: []string{"whoami"}, tool: "whoami"},
+	{line: []string{"agent", "skill"}, tool: "agent_skill"},
 	{line: []string{"doctor"}, tool: "doctor"},
 }
 

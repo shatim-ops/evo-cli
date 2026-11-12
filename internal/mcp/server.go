@@ -198,16 +198,21 @@ func (s *Server) ListTools() []Tool {
 // listed is every tool.
 func (s *Server) relist() {
 	s.listed = nil
+	s.reg.SetServed(nil)
 	if s.enabled == nil && !s.readOnly {
 		return
 	}
 	s.listed = []Tool{}
+	served := map[string]bool{}
 	for i, t := range s.reg.Tools() {
 		if (s.enabled != nil && !s.enabled[t.Name]) || (s.readOnly && tools.AlwaysNeedsConsent(t)) {
 			continue
 		}
 		s.listed = append(s.listed, s.tools[i])
+		served[t.Name] = true
 	}
+	// The cards of agent_skill mark the tools this server does not serve.
+	s.reg.SetServed(func(name string) bool { return served[name] })
 }
 
 // SetToolsets limits tools/list and tools/call to the tools of the named
@@ -230,7 +235,7 @@ func (s *Server) SetToolsets(groups []string) error {
 		}
 		s.enabled = map[string]bool{}
 		for _, t := range s.reg.Tools() {
-			if in[t.Group] {
+			if in[t.Group] || tools.AlwaysListed(t) {
 				s.enabled[t.Name] = true
 			}
 		}

@@ -27,7 +27,8 @@ func TestSetToolsets(t *testing.T) {
 	listed := map[string]bool{}
 	for _, tool := range got {
 		listed[tool.Name] = true
-		if g := s.groupOf(tool.Name); g != "deploy" && g != "vm" && g != "vpc" {
+		// agent_skill is served under any --toolsets (tools.AlwaysListed).
+		if g := s.groupOf(tool.Name); g != "deploy" && g != "vm" && g != "vpc" && tool.Name != "agent_skill" {
 			t.Errorf("%s (group %s) is listed", tool.Name, g)
 		}
 	}

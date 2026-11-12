@@ -55,7 +55,7 @@ func TestReadOnly_ToolsList(t *testing.T) {
 		got := map[string]bool{}
 		for _, tl := range s.ListTools() {
 			got[tl.Name] = true
-			if g := s.groupOf(tl.Name); g != "k8s" {
+			if g := s.groupOf(tl.Name); g != "k8s" && tl.Name != "agent_skill" {
 				t.Errorf("read-only first %v: %s (group %s) is listed", readOnlyFirst, tl.Name, g)
 			}
 		}

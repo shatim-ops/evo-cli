@@ -62,6 +62,12 @@ type foreignVMCloud struct {
 	released string
 }
 
+// ListInterfaces: the VMs of this world have no interface listed, so the
+// preview of a delete knows no group of theirs (engine.OpenLeft).
+func (*foreignVMCloud) ListInterfaces(context.Context, string) ([]*provision.Interface, error) {
+	return nil, nil
+}
+
 func (*foreignVMCloud) SetToken(string) {}
 
 // ListSecurityGroups: no rules labelled for the VM (P6).
