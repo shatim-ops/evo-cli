@@ -84,6 +84,7 @@ var treeGroupShort = map[string]string{
 	"image":       "VM images: operating systems and Marketplace products",
 	"marketplace": "Showcase: VM images and Kubernetes addons, with the command that deploys each",
 	"disk":        "Disks",
+	"backup":      "Backups of VMs and disks",
 	"vpc":         "Networks: VPCs, routes, subnets, security groups, floating IPs",
 	"k8s":         "Managed Kubernetes clusters",
 	"pg":          "Managed PostgreSQL clusters, databases, users, backups",

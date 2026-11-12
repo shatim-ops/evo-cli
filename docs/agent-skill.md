@@ -116,6 +116,7 @@ of a group before its first change.
 | `ar` | `evo ar …` | 5 | 2 |
 | `audit` | `evo audit …` | 1 | 0 |
 | `auth` | `evo agent skill`, `evo doctor`, `evo whoami` | 3 | 0 |
+| `backup` | `evo backup …` | 2 | 0 |
 | `billing` | `evo billing …` | 3 | 0 |
 | `ca` | `evo ca …` | 7 | 4 |
 | `cert` | `evo cert …` | 10 | 4 |

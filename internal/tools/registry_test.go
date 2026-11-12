@@ -49,8 +49,8 @@ func TestRegistry_EveryToolHasAKnownGroup(t *testing.T) {
 	for _, g := range Groups() {
 		known[g] = true
 	}
-	if len(known) != 24 {
-		t.Errorf("%d groups, want 24: %v", len(known), Groups())
+	if len(known) != 25 {
+		t.Errorf("%d groups, want 25: %v", len(known), Groups())
 	}
 	used := map[string]bool{}
 	for _, tl := range newTestServer().Tools() {

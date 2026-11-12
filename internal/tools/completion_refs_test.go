@@ -27,6 +27,8 @@ const (
 	refParent = "its list needs another argument of the call"
 	// No tool lists it.
 	refNoList = "no tool lists it"
+	// A VM or a disk: two lists, and Tab has no kind to read one of them by.
+	refTwoKinds = "a VM or a disk, which no one list holds"
 	// A list without a required argument has it, and nothing declares it:
 	// the work item names who declares it.
 	refGap = "listed, not declared"
@@ -66,6 +68,7 @@ var refUncompleted = map[string]struct{ why, item string }{
 	"s3_put key":                                {why: refParent},
 	"s3_rm key":                                 {why: refParent},
 	"secret_create kms_key_id":                  {why: refNoList},
+	"backup_list resource_id":                   {why: refTwoKinds},
 	"tg_create interface_id":                    {why: refNoList},
 	"vpc_route_create next_hop_interface_id":    {why: refNoList},
 	"vpc_route_create next_hop_magic_router_id": {why: refNoList},
@@ -113,7 +116,7 @@ func TestCompletion_EveryReferenceIsCompletedOrSaysWhy(t *testing.T) {
 			t.Errorf("refUncompleted names %q, which is no reference of a tool: remove the line", k)
 		}
 		switch line.why {
-		case refReturned, refParent, refNoList, refGap:
+		case refReturned, refParent, refNoList, refTwoKinds, refGap:
 		default:
 			t.Errorf("refUncompleted[%q]: unknown reason %q", k, line.why)
 		}
