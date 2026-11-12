@@ -46,8 +46,9 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	// word in the answer's fields.
 	decl := deleteTargets[tool]
 	state := strings.TrimPrefix(status, decl.statePrefix)
-	if decl.creatingUnseen != "" && engine.PassingDeleteState(state) {
-		// No rule of this service for a resource being created.
+	if decl.creatingUnseen != "" && engine.PassingDeleteState(state) ||
+		decl.failedUnseen != "" && engine.FinalDeleteState(state) {
+		// No rule of this service for the state: the preview of any other.
 		state = ""
 	}
 	if statusGone(state) {

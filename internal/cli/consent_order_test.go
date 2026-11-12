@@ -54,6 +54,7 @@ var repeatIsANewChange = map[string]string{
 	"k8s_kubectl":        "Every call runs the command again: a repeated mutating verb is a new change.",
 	"s3_put":             "Every call writes the object again.",
 	"secret_add_version": "Every call adds a version: a repeat adds one more.",
+	"vm_reboot":          "every call is a new reboot: a repeat reboots the VM again",
 }
 
 // repeatRefused are the changes shipped before the invariant whose repeat
@@ -380,6 +381,13 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, stoppedVMJSON("running"))
 	}, alreadyFor: []string{"vm_start"}},
+	// The VM of vm_stop is stopped already (D99, П3).
+	"vm stopped already": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityRunningVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, runningVMJSON("stopped"))
+	}, alreadyFor: []string{"vm_stop"}},
 	// The pool of k8s_nodepool_scale has the count asked for (parityArgs:
 	// three nodes) and runs (D99, П3).
 	"node pool of the count asked": {answer: func(r *http.Request) *http.Response {

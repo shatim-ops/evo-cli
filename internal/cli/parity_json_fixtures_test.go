@@ -47,13 +47,19 @@ type jsonFake struct {
 	vmGone bool
 	// vmStarted: the stopped VM (parityStoppedVM) took a power_on.
 	vmStarted bool
-	fipBound  bool     // the floating IP was attached to the VM
-	writes    []string // every request that is not a read, with its body
+	// vmStopped: the running VM (parityRunningVM) took a power_off.
+	vmStopped bool
+	// vmRebooting: the reads of parityRunningVM that still show the reboot
+	// it took.
+	vmRebooting int
+	fipBound    bool     // the floating IP was attached to the VM
+	writes      []string // every request that is not a read, with its body
 }
 
 func (f *jsonFake) reset() {
 	f.mu.Lock()
-	f.vmGone, f.vmStarted, f.fipBound, f.writes = false, false, false, nil
+	f.vmGone, f.vmStarted, f.vmStopped, f.fipBound, f.writes = false, false, false, false, nil
+	f.vmRebooting = 0
 	f.mu.Unlock()
 }
 
@@ -123,6 +129,33 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 		case p == "/api/v1/vms/"+parityStoppedVM+"/set-power" && r.Method == http.MethodPost:
 			f.mu.Lock()
 			f.vmStarted = true
+			f.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return w.Result()
+		case p == "/api/v1/vms/"+parityRunningVM && get:
+			// Running until a power command stops it; the world ends the
+			// transition at once.
+			f.mu.Lock()
+			state := "running"
+			switch {
+			case f.vmStopped:
+				state = "stopped"
+			case f.vmRebooting > 0:
+				// A reboot is seen for two reads, then over: the call
+				// sees the transition (vm_reboot answers rebooted).
+				f.vmRebooting--
+				state = "rebooting"
+			}
+			f.mu.Unlock()
+			return write(runningVMJSON(state))
+		case p == "/api/v1/vms/"+parityRunningVM+"/set-power" && r.Method == http.MethodPost:
+			body, _ := io.ReadAll(r.Body)
+			f.mu.Lock()
+			if strings.Contains(string(body), `"reboot"`) {
+				f.vmRebooting = 2
+			} else {
+				f.vmStopped = true
+			}
 			f.mu.Unlock()
 			w.WriteHeader(http.StatusNoContent)
 			return w.Result()
