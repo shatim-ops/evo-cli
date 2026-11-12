@@ -96,32 +96,21 @@ var noSpecStates = map[string]string{
 // tables the worlds run by. A tool joins it with its table.
 var stateRowsOf = func() map[string]map[string]bool {
 	out := map[string]map[string]bool{}
-	for tool, rows := range vmPowerStateRows {
-		out[tool] = map[string]bool{}
-		for state := range rows {
-			out[tool][state] = true
-		}
-	}
-	for tool, rows := range deleteSpecStateRows {
-		out[tool] = map[string]bool{}
-		for state := range rows {
-			out[tool][state] = true
-		}
-	}
-	for tool, rows := range poolStateRows {
-		out[tool] = map[string]bool{}
-		for state := range rows {
-			out[tool][state] = true
-		}
-	}
+	addStateRows(out, vmPowerStateRows)
+	addStateRows(out, sgRuleStateRows)
+	addStateRows(out, deleteSpecStateRows)
+	addStateRows(out, poolStateRows)
 	return out
 }()
 
-// stateWorldsPendingNew are the tools new in 1.9 with no row for every
-// state of the specification yet. Only shrinks. Closes by 1.9.
-var stateWorldsPendingNew = map[string]string{
-	"sg_rule_create": "worlds: the rule there and not; not the 7 states of a rule (the window of deletion: cloud-e2e 205–209)",
-	"sg_rule_delete": "worlds: the rule there, gone, being deleted; not the 7 states",
+// addStateRows names in out the states each tool of table has a row for.
+func addStateRows[R ~string](out map[string]map[string]bool, table map[string]map[string]R) {
+	for tool, rows := range table {
+		out[tool] = map[string]bool{}
+		for state := range rows {
+			out[tool][state] = true
+		}
+	}
 }
 
 // stateWorldsPendingShipped are the tools shipped before the invariant
@@ -186,8 +175,7 @@ func TestStates_EveryChangeHasAWorldForEveryStateOfTheSpec(t *testing.T) {
 		}
 		used[enum] = true
 		rows := stateRowsOf[name]
-		_, isNew := stateWorldsPendingNew[name]
-		isPending := isNew || stateWorldsPendingShipped[name]
+		isPending := stateWorldsPendingShipped[name]
 		if rows == nil {
 			if !isPending {
 				t.Errorf("%s: no table «state → answer» (stateRowsOf) for the %d states of %s — a world for each: what the tool answers for a resource that is being made, in error, being deleted", name, len(states), enum)
@@ -205,7 +193,7 @@ func TestStates_EveryChangeHasAWorldForEveryStateOfTheSpec(t *testing.T) {
 		}
 		covered++
 	}
-	for _, list := range []map[string]bool{nameSetOf(specStatesOf), nameSetOf(noSpecStates), nameSetOf(stateWorldsPendingNew), stateWorldsPendingShipped} {
+	for _, list := range []map[string]bool{nameSetOf(specStatesOf), nameSetOf(noSpecStates), stateWorldsPendingShipped} {
 		for name := range list {
 			if !mutating[name] {
 				t.Errorf("the lists of the test name %s, which is no tool that changes the cloud: remove the line", name)
