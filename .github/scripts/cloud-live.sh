@@ -2256,6 +2256,8 @@ probe_g16() {
 			fi
 		fi
 	fi
+	# Ожидания восстановления (poll) токен не обновляют — до удалений.
+	iam_fresh || true
 	if [ -n "$bd" ]; then
 		api DELETE "$C1/backups/$bd"
 		r="HTTP $code$(why_tail)"
@@ -2303,6 +2305,7 @@ probe_g16() {
 		esac
 	fi
 	# Копии, в которых назван диск или ВМ пробы, но имя не пробы.
+	iam_fresh || true
 	api GET "$C1/backups?project_id=$PROJECT&limit=1000"
 	case "$code" in 2??) ;; *)
 		gap "Г-16: копии ресурсов пробы под чужим именем" "список не прочитан: HTTP $code: $(api_why)"
