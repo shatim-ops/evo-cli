@@ -25,6 +25,8 @@ var statusGoingOn = map[string]bool{
 	// vm_start (D99): the VM is on its way; and the state of another
 	// change has not settled by the limit of the call.
 	"starting": true, "waiting": true,
+	// vm_stop (D99, §4).
+	"stopping": true,
 	// k8s_nodepool_scale (D99): the pool is on its way to the count.
 	"scaling": true,
 }
@@ -37,6 +39,7 @@ var statusOver = map[string]bool{
 	"none": true, "ok": true, "resized": true, "running": true,
 	"version_added": true,
 	"started":       true,
+	"stopped":       true,
 	"scaled":        true,
 }
 

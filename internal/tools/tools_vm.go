@@ -17,6 +17,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // handleVMGet returns LIVE details for a single VM (by vm_id or name): its
@@ -179,9 +180,15 @@ type vmPowerAction struct {
 	// «to start», «the start». The texts of a refusal are made of them,
 	// not of the platform's command.
 	verb, noun [2]string
-	// billed is what the change starts to bill, {en, ru}; empty when it
-	// starts no billing.
+	// billed is the note of the price class of the VM after the change,
+	// {en, ru}: what the change starts to bill, or that evo does not know
+	// what the state it leaves the VM in is billed for. No number without
+	// a probe of the price (CLAUDE.md §6, axis 4).
 	billed [2]string
+	// interrupts is what stops working while the change is in effect,
+	// {en, ru}; empty for a change that interrupts nothing. The preview
+	// names it (D99, §4.2: the downtime is said before the question).
+	interrupts [2]string
 }
 
 // vmPowerActions is the one table of the power tools: a tool is a line of
@@ -193,6 +200,17 @@ var vmPowerActions = map[string]vmPowerAction{
 		verb:    [2]string{"start", "запускать"}, noun: [2]string{"the start", "запуск"},
 		billed: [2]string{"price unknown, the resource is billable: a running VM is billed for its flavor by the rates at tariff_url",
 			"цена неизвестна, ресурс платный: запущенная ВМ тарифицируется по своей конфигурации, тарифы — по tariff_url"}},
+	"vm_stop": {command: provision.PowerOff, from: "running", via: "stopping", to: "stopped",
+		already: "already_stopped", done: "stopped",
+		message: [2]string{"vm_stop stops the running VM (power_off). Whether the platform starts it again later (vm_start) is not checked in advance.",
+			"vm_stop останавливает работающую ВМ (power_off). Примет ли платформа запуск обратно (vm_start), заранее не проверяется."},
+		verb: [2]string{"stop", "останавливать"}, noun: [2]string{"the stop", "остановку"},
+		// Saving is why a VM is stopped; the preview must not let it be
+		// counted on («Риск», conclusion 132, У1).
+		billed: [2]string{"price unknown: stopping may not stop the charges for the VM, its disk and its public IP — do not count on a saving without the tariff at tariff_url",
+			"цена неизвестна: остановка может не прекратить списания за ВМ, диск и публичный IP — на экономию без тарифа по tariff_url не рассчитывайте"},
+		interrupts: [2]string{"the VM and everything that runs on it stop answering until vm_start; unsaved data in the VM's memory may be lost",
+			"ВМ и всё, что на ней работает, перестаёт отвечать до vm_start; несохранённые данные в памяти ВМ могут быть потеряны"}},
 }
 
 // vmSettling are the states of a VM another change put it in and the
@@ -277,7 +295,8 @@ func (s *Registry) planVMPower(tool string) Planner {
 		case state == act.via:
 			// A start in flight: this call's own, cut before its end, or
 			// another caller's. No command is sent, so no question.
-			text, isErr := s.finishVMPower(ctx, eng, tool, act, vm, args, false)
+			since, _ := s.heldSince(eng, tool, "vm_id="+vm.ID)
+			text, isErr := s.finishVMPower(ctx, eng, tool, act, vm, args, false, since)
 			return answered(text, isErr), nil
 		case vmNothingToChange[state]:
 			return nil, clierrors.New(clierrors.CodeUsage,
@@ -298,6 +317,16 @@ func (s *Registry) planVMPower(tool string) Planner {
 				Note: i18n.T(act.billed[0], act.billed[1])}}
 			will["tariff_url"] = engine.TariffURL(engine.ResourceVM)
 		}
+		if act.interrupts != [2]string{} {
+			will["interrupts"] = i18n.T(act.interrupts[0], act.interrupts[1])
+			// The deployment of this folder on the VM goes down with it:
+			// the record is not changed, and the commands over it say so
+			// only by failing.
+			if folderDeploymentOn(eng.StateDir, vm.ID) {
+				will["folder_deployment"] = i18n.T("this folder's deployment is on this VM: status will show it stopped; verify, logs and deploy will not get through until vm_start",
+					"на этой ВМ — развёртывание этой папки: status покажет её остановленной; verify, logs и deploy не пройдут до vm_start")
+			}
+		}
 		preview := map[string]any{"message": i18n.T(act.message[0], act.message[1]), "preview": will}
 		if state != act.from {
 			// Not refused: whether the platform takes the command in this
@@ -309,7 +338,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			if err := eng.Cloud.SetVMPower(ctx, vm.ID, act.command); err != nil {
 				return s.vmPowerRefused(ctx, eng, tool, act, vm, args, state, err)
 			}
-			return s.finishVMPower(ctx, eng, tool, act, vm, args, true)
+			return s.finishVMPower(ctx, eng, tool, act, vm, args, true, time.Time{})
 		}}, nil
 	}
 }
@@ -335,7 +364,7 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 		return errResult(cause), true
 	}
 	if now.State == act.to || now.State == act.via {
-		return s.finishVMPower(ctx, eng, tool, act, now, args, true)
+		return s.finishVMPower(ctx, eng, tool, act, now, args, true, time.Time{})
 	}
 	if provision.HTTPStatus(cause) != http.StatusUnprocessableEntity {
 		return errAnswer(cause, map[string]any{"vm_id": vm.ID, "state": now.State}), true
@@ -395,14 +424,33 @@ func platformCode(err error) string {
 // (vm_get) as the next step — a status that says the change is going on
 // always names one (Н3). A VM that left the transition for another state
 // is an error with that state.
+//
+// since, when not zero, is the start of this very operation by an earlier
+// call of this key (heldSince): the call is a step of evo's own change and
+// goes on with it as the call that sent the command does — but only until
+// the limit of the operation, counted from its start and not from each
+// repeat; past it evo waits no more, and the next step is the read.
 func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool string, act vmPowerAction,
-	vm *provision.VMDetail, args map[string]any, sent bool) (string, bool) {
+	vm *provision.VMDetail, args map[string]any, sent bool, since time.Time) (string, bool) {
 	started := clock.Now()
+	limit, own := vmPowerTimeout, sent
+	if !since.IsZero() {
+		// wall-clock: the age of the operation decides whether evo goes on
+		// with it; the value is also said in the answer (since_start_sec).
+		if limit = vmPowerTimeout - clock.Since(since); limit <= 0 {
+			ans := vmAnswer(vm, act.via, vm.State)
+			ans["since_start_sec"] = int(clock.Since(since).Seconds())
+			ans["next"] = fmt.Sprintf("VM %s is still %s %d s after %s began it; evo waits for it no more. vm_get shows its state.", vm.ID, vm.State, int(clock.Since(since).Seconds()), tool)
+			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
+			return toJSON(ans), false
+		}
+		own = true
+	}
 	// moved: the VM was seen on its way. A call that sent no command found
 	// it there. Where the target is the state the VM was taken from, the
 	// target reads as reached only after the transition was seen.
 	moved := !sent
-	last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, vmPowerTimeout, func(st string) (bool, error) {
+	last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, limit, func(st string) (bool, error) {
 		switch {
 		case st == act.to && (moved || act.to != act.from):
 			return true, nil
@@ -441,7 +489,10 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		// state: the statuses of a tool are a closed list.
 		ans := vmAnswer(vm, act.via, last)
 		ans["elapsed_sec"] = elapsed
-		if atLimit && sent {
+		if !since.IsZero() {
+			ans["since_start_sec"] = int(clock.Since(since).Seconds())
+		}
+		if atLimit && own {
 			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second command.", vm.ID, last, tool)
 			nextSameCall(ans, tool, vmRef(args, vm))
 		} else {
@@ -505,4 +556,20 @@ func vmRef(args map[string]any, vm *provision.VMDetail) map[string]any {
 	}
 	out["vm_id"] = vm.ID
 	return out
+}
+
+// folderDeploymentOn reports whether an active record of the folder's
+// state is of the VM id: the deployment a change of the VM's power takes
+// down or brings back.
+func folderDeploymentOn(stateDir, id string) bool {
+	sf, err := state.Read(state.DefaultPath(stateDir))
+	if err != nil {
+		return false
+	}
+	for _, d := range sf.ActiveDeployments() {
+		if d.VMID == id {
+			return true
+		}
+	}
+	return false
 }

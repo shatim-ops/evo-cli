@@ -333,6 +333,7 @@ var mcpWaits = map[string]budgetWait{
 	"disk_detach":  apiBudget("disk_detach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
 	"disk_resize":  apiBudget("disk_resize", map[string]any{"disk_id": faultDisk, "size_gb": 20, "confirmed": true}, slowDisk),
 	"vm_start":     vmPowerBudget("vm_start", "stopped"),
+	"vm_stop":      vmPowerBudget("vm_stop", "running"),
 	// k8s_nodepool_scale waits for its operation: one that never ends.
 	"k8s_nodepool_scale": {run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
 		w := &poolWorld{status: poolRunning, after: poolScalingUp, opRuns: true}
