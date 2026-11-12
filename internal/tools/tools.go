@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -3112,6 +3113,28 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
+	// What this delete leaves open to the internet in the VM's groups
+	// (engine.OpenLeft): the groups its records here name, else those of
+	// its interfaces.
+	var groupIDs []string
+	if readErr == nil {
+		for _, d := range sf.Deployments {
+			if d.VMID == target.ID && d.SecurityGroupID != "" && !slices.Contains(groupIDs, d.SecurityGroupID) {
+				groupIDs = append(groupIDs, d.SecurityGroupID)
+			}
+		}
+	}
+	if left := eng.OpenLeft(ctx, projectID, target.ID, groupIDs, engine.ClosingRules(rulesPlanned)); left != nil {
+		preview["open_to_internet_left"] = left
+		// Before the call for approval: a part of what is approved.
+		fact := upperFirst(strings.Join(left.Lines(), "; ")) + ". "
+		msg, ask := fmt.Sprint(preview["message"]), i18n.T("Get the user's approval", "Получите согласие")
+		if at := strings.Index(msg, ask); at >= 0 {
+			preview["message"] = msg[:at] + fact + msg[at:]
+		} else {
+			preview["message"] = fact + msg
+		}
+	}
 	preview["provenance"] = engine.ProvenanceOf(engine.ProvenanceVM, target.ID, target.CreatedAt, nil, sf, readErr)
 	if uncheckedErr != nil {
 		preview["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)

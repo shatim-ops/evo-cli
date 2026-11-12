@@ -389,7 +389,7 @@ func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 }
 
 // destroyPreview lists what destroy deletes and what it leaves behind.
-func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, labeled []sgrules.Planned, unchecked error, project, from string, made time.Time, madeErr error) confirm.Preview {
+func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []string, labeled []sgrules.Planned, unchecked error, left *OpenLeft, project, from string, made time.Time, madeErr error) confirm.Preview {
 	res := []destroyResource{
 		{Type: "vm", ID: rec.VMID, Name: rec.VMName, Address: rec.VMIP, Action: "delete",
 			Note: i18n.T("all data on its disks is lost", "все данные на её дисках будут потеряны")},
@@ -421,6 +421,9 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		lines = append(lines, i18n.Tf("keep port %s open in security group %s (%s)", "оставить порт %s открытым в группе безопасности %s (%s)",
 			sgrules.Label(key), groupText(rec), note))
 	}
+	// What this destroy does not delete and stays open to the internet in
+	// the VM's group (OpenLeft): a fact, not an advice.
+	lines = append(lines, left.Lines()...)
 	res = append(res, destroyResource{Type: "state_record", ID: rec.ID, Action: "remove"})
 	lines = append(lines, i18n.T("remove the deployment from local state", "удалить запись о развёртывании из локального state"))
 
@@ -432,8 +435,18 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		Action:  "destroy",
 		Summary: summary,
 		Lines:   lines,
-		Details: map[string]any{"project_id": project, "project_from": from, "resources": res, "provenance": prov},
+		Details: destroyDetails(project, from, res, prov, left),
 	}
+}
+
+// destroyDetails are the details of destroy's preview; what stays open to
+// the internet is there only when something does, or was not read.
+func destroyDetails(project, from string, res []destroyResource, prov Provenance, left *OpenLeft) map[string]any {
+	d := map[string]any{"project_id": project, "project_from": from, "resources": res, "provenance": prov}
+	if left != nil {
+		d["open_to_internet_left"] = left
+	}
+	return d
 }
 
 // madeAt is the time the cloud made vm; zero when it was not read.
