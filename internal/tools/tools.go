@@ -3920,6 +3920,13 @@ func quotaRefusal(err error) string {
 	return ""
 }
 
+// quotaHint is the hint of a refusal for a quota, of a call (errAnswer) and
+// of an operation that ended in it (quotaFailure): one text.
+func quotaHint() string {
+	return i18n.T("The quota is used up, so the same call again will fail the same way. org_quotas shows the limits and the use, with a key that may read them; the quota is raised through Cloud.ru support; what to free instead is the person's decision — ask them.",
+		"Квота исчерпана, поэтому тот же вызов ещё раз откажет так же. Лимиты и использование показывает org_quotas — ключом, которому их можно читать; квоту увеличивает поддержка Cloud.ru; что освободить вместо этого — решает человек, спросите его.")
+}
+
 // quotaCode is the form of a code of the platform that goes into the
 // answer as a machine field: a token — lowercase letters, digits and
 // underscores, 64 at most — that ends in quota_exceeded. A body whose
@@ -4000,8 +4007,7 @@ func errAnswer(err error, fields map[string]any) string {
 		// what changes the answer («Риск», conclusion 147, Р1). What to
 		// free is the person's to decide: the hint does not tell the
 		// model to choose what is «not needed» and delete it.
-		hint = i18n.T("The quota is used up, so the same call again will fail the same way. org_quotas shows the limits and the use, with a key that may read them; the quota is raised through Cloud.ru support; what to free instead is the person's decision — ask them.",
-			"Квота исчерпана, поэтому тот же вызов ещё раз откажет так же. Лимиты и использование показывает org_quotas — ключом, которому их можно читать; квоту увеличивает поддержка Cloud.ru; что освободить вместо этого — решает человек, спросите его.")
+		hint = quotaHint()
 	}
 	if hint != "" {
 		res["hint"] = hint
