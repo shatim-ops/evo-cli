@@ -25,9 +25,22 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
-// TestDocsExamples_Counts pins the numbers the user docs state: 157 tools,
-// 24 --toolsets groups, 89 tools left under --read-only, 29 tools in
-// deploy,vm,vpc, and 17 read-only tools in vm,vpc,disk,image.
+// toolCountClaim finds a tool count stated in prose: a number in front of
+// the word "инструмент", with the word that marks it as a round figure.
+var toolCountClaim = regexp.MustCompile(`(более чем |более |около )?(\d+) инструмент`)
+
+// modelToolLimit is the one exact figure about tools the hand-written docs
+// may state: it is a limit of model APIs, not a count of the registry.
+const modelToolLimit = 128
+
+// TestDocsExamples_Counts keeps the tool counts of the hand-written docs
+// true without pinning them to the registry size. The exact count lives in
+// the generated docs (docs/tools.md, the parity inventory); README,
+// docs/mcp.md and the dogfood protocol state round figures only — "более N"
+// for the whole registry (N is the count rounded down to 50) and "около N"
+// for a slice (rounded to the nearest 10) — so that a pull request which
+// adds a tool edits none of their lines. An exact count in these files
+// fails: it is the line every such pull request would have to touch.
 func TestDocsExamples_Counts(t *testing.T) {
 	list := newRegistry().Tools()
 	groups := map[string]int{}
@@ -45,35 +58,58 @@ func TestDocsExamples_Counts(t *testing.T) {
 		}
 	}
 	subset := groups["deploy"] + groups["vm"] + groups["vpc"]
-	if len(list) != 157 || len(groups) != 24 || readOnly != 89 || subset != 29 || readOnlySlice != 17 {
-		names := make([]string, 0, len(groups))
-		for g, n := range groups {
-			names = append(names, fmt.Sprintf("%s=%d", g, n))
-		}
-		t.Fatalf("binary: tools %d, groups %d (%s), read-only %d, deploy+vm+vpc %d, read-only vm+vpc+disk+image %d",
-			len(list), len(groups), strings.Join(names, " "), readOnly, subset, readOnlySlice)
-	}
 	if got := len(tools.Groups()); got != len(groups) {
 		t.Errorf("tools.Groups() lists %d names, the registry uses %d", got, len(groups))
+	}
+
+	nearest10 := func(n int) int { return (n + 5) / 10 * 10 }
+	more := fmt.Sprintf("более %d инструмент", len(list)/50*50)
+	moreOf := fmt.Sprintf("более чем %d инструмент", len(list)/50*50)
+	about := map[string]bool{}
+	for _, n := range []int{readOnly, subset, readOnlySlice} {
+		about[fmt.Sprintf("около %d инструмент", nearest10(n))] = true
 	}
 
 	flat := func(rel string) string {
 		return strings.Join(strings.Fields(string(mustReadRepo(t, rel))), " ")
 	}
-	mcp := flat("docs/mcp.md")
-	readme := flat("README.md")
-	dog := flat("docs/internal/dogfood-protocol.md")
-	for _, text := range []string{mcp, readme, dog} {
-		if !strings.Contains(text, "157") {
-			t.Errorf("a user doc dropped the tool count 157")
-			break
+	docs := map[string]string{}
+	for _, rel := range []string{"README.md", "docs/mcp.md", "docs/internal/dogfood-protocol.md"} {
+		text := flat(rel)
+		docs[rel] = text
+		total := false
+		for _, m := range toolCountClaim.FindAllStringSubmatch(text, -1) {
+			claim, round, n := m[0], m[1], m[2]
+			switch {
+			case round == "":
+				if n != strconv.Itoa(modelToolLimit) {
+					t.Errorf("%s states an exact tool count (%q): say «более N» or «около N», the exact count is in docs/tools.md", rel, claim)
+				}
+			case claim == more || claim == moreOf:
+				total = true
+			case !about[claim]:
+				t.Errorf("%s says %q; the binary has %d tools, %d without consent, %d in deploy,vm,vpc, %d read-only in vm,vpc,disk,image",
+					rel, claim, len(list), readOnly, subset, readOnlySlice)
+			}
+		}
+		if !total {
+			t.Errorf("%s no longer states the size of the registry (%q…)", rel, more)
 		}
 	}
-	if !strings.Contains(mcp, "остаются 89") || !strings.Contains(mcp, "29 инструментов") || !strings.Contains(mcp, "17 инструментов") {
-		t.Errorf("docs/mcp.md no longer states 89 read-only, 29 in deploy,vm,vpc, or 17 in vm,vpc,disk,image")
+
+	// The sentences that explain --read-only and --toolsets keep their figure.
+	mcp, dog := docs["docs/mcp.md"], docs["docs/internal/dogfood-protocol.md"]
+	for _, want := range []string{
+		fmt.Sprintf("остаётся около %d инструмент", nearest10(readOnly)),
+		fmt.Sprintf("# около %d инструмент", nearest10(subset)),
+		fmt.Sprintf("около %d инструментов на чтение", nearest10(readOnlySlice)),
+	} {
+		if !strings.Contains(mcp, want) {
+			t.Errorf("docs/mcp.md no longer says %q", want)
+		}
 	}
-	if !strings.Contains(dog, "29 инструментов") || !strings.Contains(dog, "157 инструментов") {
-		t.Errorf("docs/internal/dogfood-protocol.md no longer states 157 tools or 29 in deploy,vm,vpc")
+	if want := fmt.Sprintf("агент видит около %d инструмент", nearest10(subset)); !strings.Contains(dog, want) {
+		t.Errorf("docs/internal/dogfood-protocol.md no longer says %q", want)
 	}
 }
 
