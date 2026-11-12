@@ -7,6 +7,8 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -140,8 +142,8 @@ func TestTrees_ConfirmationAndUsage(t *testing.T) {
 		t.Errorf("missing flag not named: %s", errOut)
 	}
 	// With S3 keys the call can run: the question, and the dry run's
-	// preview (no request: the preview reads nothing of S3).
-	withS3Keys(t)
+	// preview, after the read of the profile's buckets (D101).
+	withS3World(t)
 	for _, c := range []struct {
 		args []string
 		want int
@@ -161,6 +163,26 @@ func withS3Keys(t *testing.T) {
 	t.Helper()
 	t.Setenv("CLOUDRU_S3_ACCESS_KEY", "test-access")
 	t.Setenv("CLOUDRU_S3_SECRET_KEY", "test-secret")
+}
+
+// withS3World is withS3Keys with Object Storage of the parity world
+// (s3Parity: the buckets bucket-web and bucket-empty): s3_bucket_create
+// reads the profile's buckets before its question (D101).
+func withS3World(t *testing.T) {
+	t.Helper()
+	withS3Keys(t)
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = s3WorldRT{old}
+	t.Cleanup(func() { httpretry.DefaultBase = old })
+}
+
+type s3WorldRT struct{ next http.RoundTripper }
+
+func (w s3WorldRT) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Host == "s3.cloud.ru" {
+		return s3Parity(r), nil
+	}
+	return w.next.RoundTrip(r)
 }
 
 // findLeaf returns the built command for "group verb".
@@ -364,7 +386,7 @@ func TestRenderAnswer_NotesAndSections(t *testing.T) {
 // Превью подтверждения и --dry-run по-прежнему идут в stdout.
 func TestTrees_JSONToolErrorNotOnStdout(t *testing.T) {
 	setupCLI(t)
-	withS3Keys(t)
+	withS3World(t)
 	cases := []struct {
 		args   []string
 		code   int
