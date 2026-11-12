@@ -140,6 +140,9 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 			r.settleHeld(t.Name, args, text)
 			return r.namedKept(t.Name, args, text), isErr
 		}
+		if text, asked := r.askAgainAfterACut(t.Name, args); asked {
+			return text, true
+		}
 		end, err := r.beginIntent(ctx, t.Name, args)
 		if err != nil {
 			return errResult(err), true
