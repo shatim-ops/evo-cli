@@ -94,7 +94,7 @@ func (r *Registry) engineGated(ctx context.Context, name string, args map[string
 		// The engine asks at its own gate: the intent is written on the
 		// yes, before the engine writes anything (Caller.ask); a call with
 		// confirmed has it from intended already.
-		var end func(string)
+		var end func(string) string
 		prev := c.consent
 		c.consent = func() error {
 			if confirmed, _ := args["confirmed"].(bool); end != nil || confirmed {
@@ -107,7 +107,7 @@ func (r *Registry) engineGated(ctx context.Context, name string, args map[string
 		defer func() { c.consent = prev }()
 		text, isErr := live(c)
 		if end != nil {
-			end(text)
+			text = end(text)
 		}
 		return text, isErr
 	}
@@ -140,8 +140,7 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 			return errResult(err), true
 		}
 		text, isErr := next(ctx, args)
-		end(text)
-		return text, isErr
+		return end(text), isErr
 	}
 }
 

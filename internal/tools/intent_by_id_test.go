@@ -53,7 +53,7 @@ func TestDoctor_CutDeleteByIDIsCheckedByID(t *testing.T) {
 		{name: "the read is throttled", tool: "vpc_delete", arg: "id", id: resGone, status: http.StatusTooManyRequests, says: "could not read"},
 		{name: "the API fails", tool: "k8s_delete", arg: "cluster_id", id: resGone, status: http.StatusBadGateway, says: "could not read"},
 		{name: "not there, another key", tool: "cert_delete", arg: "id", id: resGone,
-			key: &state.Maker{ServiceAccountID: "sa-other", KeyID: "ot…er"}, says: "not checked with this key"},
+			key: &state.Maker{ServiceAccountID: "sa-other", KeyID: "ot…er"}, says: "sent with another key"},
 		{name: "a kind with no read by id", tool: "disk_delete", arg: "disk_id", id: resGone, says: "no read by id"},
 		{name: "a kind with no read by id, of another project", tool: "kafka_delete", arg: "cluster_id", id: resForeign, says: "no read by id"},
 	} {
@@ -152,5 +152,51 @@ func TestIntent_ProjectOfTheRequestStays(t *testing.T) {
 	}
 	if n := len(intent.Pending(dir)); n != 3 {
 		t.Errorf("%d records left, want 3\n%s", n, text)
+	}
+}
+
+// The rest of R-82 («Риск», conclusion 128): a record another key left is
+// not closed by the same delete with this key — which may not see the
+// resource, and whose already_deleted is a 404 of its own view. The record
+// stays and the answer names it; a record of this key, or one that names
+// no key (evo before 1.9), closes as before.
+func TestIntent_RepeatDoesNotCloseARecordOfAnotherKey(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		key    *state.Maker
+		closed bool
+	}{
+		{"another key", &state.Maker{ServiceAccountID: "sa-other", KeyID: "ot…er"}, false},
+		{"this key", &state.Maker{KeyID: config.MaskKeyID("k")}, true},
+		{"no key in the record", nil, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := &ownerFake{}
+			r := ownerRegistry(t, f, false, ownProject)
+			eng, _ := r.newEngine(nil)
+			dir := intent.Dir(eng.StateDir)
+			if _, err := intent.Begin(dir, intent.Intent{Tool: "pg_delete", Target: "id=" + resGone, Key: c.key}); err != nil {
+				t.Fatal(err)
+			}
+			m, text, isErr := callOwned(t, r, "pg_delete", map[string]any{"id": resGone}, true)
+			if isErr || m["status"] != "already_deleted" {
+				t.Fatalf("the repeat: %s", text)
+			}
+			left := intent.Pending(dir)
+			if got := len(left) == 0; got != c.closed {
+				t.Errorf("closed %v, want %v: %+v", got, c.closed, left)
+			}
+			named := strings.Contains(text, "pending_operations") && strings.Contains(text, "sent with another key")
+			if named == c.closed {
+				t.Errorf("the answer names a kept record: %v, want %v\n%s", named, !c.closed, text)
+			}
+			if !c.closed {
+				// Its words send to doctor with that key, not to the same call.
+				note := r.PendingNotes(eng.StateDir)
+				if len(note) != 1 || strings.Contains(note[0], "the same") || !strings.Contains(note[0], "ot…er") {
+					t.Errorf("the note of the kept record: %v", note)
+				}
+			}
+		})
 	}
 }
