@@ -230,20 +230,21 @@ func (c *Client) RemoveObject(ctx context.Context, bucket, key string) error {
 	return nil
 }
 
-// MakeBucket creates a bucket. region defaults to the client's configured region.
-func (c *Client) MakeBucket(ctx context.Context, bucket, region string) error {
+// MakeBucket creates a bucket. region defaults to the client's configured
+// region. existed tells a bucket S3 refused to create because the caller
+// has it already: not an error, and not a bucket this call made.
+func (c *Client) MakeBucket(ctx context.Context, bucket, region string) (existed bool, err error) {
 	if region == "" {
 		region = c.region
 	}
 	if err := c.mc.MakeBucket(ctx, bucket, minio.MakeBucketOptions{Region: region}); err != nil {
-		// idempotent: a bucket that already belongs to us is not an error
 		exists, errEx := c.mc.BucketExists(ctx, bucket)
 		if errEx == nil && exists {
-			return nil
+			return true, nil
 		}
-		return fmt.Errorf(i18n.T("create bucket: %w", "создание бакета: %w"), err)
+		return false, fmt.Errorf(i18n.T("create bucket: %w", "создание бакета: %w"), err)
 	}
-	return nil
+	return false, nil
 }
 
 // RemoveBucket deletes an EMPTY bucket.

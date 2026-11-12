@@ -201,7 +201,7 @@ func TestToolsCall_Confirmation(t *testing.T) {
 // s3_bucket_create asks for confirmation (its own gate since the MCP QA)
 // when it can run: with S3 keys (release plan 1.7, F5a).
 func TestToolsCall_MutatingWithoutGateAsks(t *testing.T) {
-	withS3Keys(t)
+	withS3World(t)
 	_, errOut, code := execCLI(t, "tools", "call", "s3_bucket_create", "--arg", "bucket=bk1")
 	if code != clerrors.ExitConfirmationRequired || !strings.Contains(errOut, `bucket "bk1"`) {
 		t.Errorf("exit %d, err %q", code, errOut)
