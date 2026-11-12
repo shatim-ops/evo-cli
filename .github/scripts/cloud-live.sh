@@ -2051,6 +2051,8 @@ probe_g11() {
 # последнее состояние («нет (404)» — карточки нет), $chain — состояния по
 # порядку. Код 1 — не дождались. Пауза между чтениями — PROBE_PAUSE.
 PROBE_PAUSE=${PROBE_PAUSE:-20}
+# PROBE_WAIT — предел ожиданий через poll (появление восстановленного
+# ресурса, исчезновение ВМ), секунд; проверка на заглушках ставит 1.
 ops_settle() {
 	local url=$1 until=$(($(date +%s) + $2)) s
 	st='' chain=''
@@ -2207,7 +2209,7 @@ probe_g16() {
 	if [ "$bd_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
 		if g16_restore диска "$bd" "$(jq -nc --arg n "$n-rd" '{name: $n, description: "evo e2e probe"}')"; then
 			rd_there() { [ -n "$(lst disk "$n-rd")" ]; }
-			if poll 300 "$PROBE_PAUSE" rd_there; then r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
+			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
 			ok "Г-16: восстановление диска" "$r"
 		fi
 	fi
@@ -2219,7 +2221,10 @@ probe_g16() {
 		elif g16_restore ВМ "$bv" "$(jq -nc --arg n "$n-rv" --arg b "$boot" '{name: $n, description: "evo e2e probe", disks: [{name: ($n + "-boot"), related_disk_id: $b}]}')"; then
 			local vst=''
 			rv_up() { vst=$(evo tools call vm_get --arg name="$n-rv" --json 2>/dev/null | jq -r '.state // empty') || vst=; case "$vst" in "" | creating | *pending*) return 1 ;; esac; }
-			poll 300 "$PROBE_PAUSE" rv_up || true
+			poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rv_up || true
+			# Восстановление принято, а ВМ не видна: её диски, если платформа
+			# назвала их по-своему, не найдёт ни проба, ни уборка по имени.
+			[ -n "$vst" ] || echo "::warning::Г-16: восстановление ВМ принято, но ВМ не появилась — после прогона проверьте в консоли Cloud.ru диски без ВМ, созданные в это время"
 			# Диски восстановленной ВМ: с именем пробы их найдёт уборка
 			# области; с другим — проба удаляет сама, после ВМ.
 			evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n-rv" --arg p "$prefix" \
@@ -2239,7 +2244,7 @@ probe_g16() {
 			ok "Г-16: восстановление ВМ" "$r; ВМ: ${vst:-не появилась за 5 мин после копии}, $((SECONDS - t0)) с; дисков у неё: $(wc -l <"$tmp/g16.rv" | tr -d ' '), из них не под именем пробы: $(grep -c 'чужой$' "$tmp/g16.rv" || true); публичных адресов у неё: $(wc -l <"$tmp/g16.fip" | tr -d ' '), из них не под именем пробы: $(grep -c 'чужой$' "$tmp/g16.fip" || true)"
 			if grep -q 'чужой$' "$tmp/g16.rv" "$tmp/g16.fip"; then
 				[ -z "$rvid" ] || del vm "$rvid"
-				poll 300 "$PROBE_PAUSE" gone vm "$n-rv" || true
+				poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" gone vm "$n-rv" || true
 				left=0
 				while IFS=$'\t' read -r id _; do
 					mask "$id"

@@ -417,6 +417,24 @@ grep -q 'публичных адресов у неё: 1, из них не под
 want "Г-16, адрес восстановленной ВМ: ВМ удалена, адрес освобождён" "$(grep -c '^destroy yes=1' "$FAKE_DIR/evo-calls") $(grep -c '^release_floating_ip yes=1' "$FAKE_DIR/evo-calls")" "1 1"
 if grep -v '::add-mask::' "$tmp/out" | grep -qw 'fipx\|rvid'; then echo "FAIL: Г-16: id адреса или ВМ в строке лога"; fail=1; fi
 
+# Восстановление ВМ принято, а ВМ не появилась: предупреждение о дисках,
+# которые уборка по имени не найдёт.
+g16_world
+fake_evo_answer disk_create 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
+fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16"]}]}'
+fake_evo_answer vm_get 0 1 '{"error":{"reason":"NOT_FOUND","message":"нет"}}'
+cat >"$FAKE_DIR/http" <<'H'
+POST /backups 201 {"id":"bv","state":"created"}
+GET! /backups/bv 200 {"id":"bv","state":"created"}
+GET! /backups/bv 200 {"id":"bv","state":"created"}
+GET /backups/bv 404
+POST /backups/bv/action 201 {"id":"bv"}
+DELETE /backups/bv 204
+H
+rc=0
+PROBE_WAIT=1 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+grep -q '::warning::Г-16: восстановление ВМ принято, но ВМ не появилась' "$tmp/out" || { echo "FAIL: Г-16: нет предупреждения о ВМ, которая не появилась"; fail=1; }
+
 # Список копий не полон (total больше, чем отдано) или не прочитан: вид не
 # считается чистым — уборка области падает, а не говорит «остатков нет».
 world
