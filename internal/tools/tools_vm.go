@@ -205,8 +205,10 @@ var vmPowerActions = map[string]vmPowerAction{
 		message: [2]string{"vm_stop stops the running VM (power_off). Whether the platform starts it again later (vm_start) is not checked in advance.",
 			"vm_stop останавливает работающую ВМ (power_off). Примет ли платформа запуск обратно (vm_start), заранее не проверяется."},
 		verb: [2]string{"stop", "останавливать"}, noun: [2]string{"the stop", "остановку"},
-		billed: [2]string{"price unknown: what a stopped VM is billed for (the VM, its disk, its public IP) evo does not know; the rates are at tariff_url",
-			"цена неизвестна: что тарифицируется у остановленной ВМ (сама ВМ, диск, публичный IP), evo не знает; тарифы — по tariff_url"},
+		// Saving is why a VM is stopped; the preview must not let it be
+		// counted on («Риск», conclusion 132, У1).
+		billed: [2]string{"price unknown: stopping may not stop the charges for the VM, its disk and its public IP — do not count on a saving without the tariff at tariff_url",
+			"цена неизвестна: остановка может не прекратить списания за ВМ, диск и публичный IP — на экономию без тарифа по tariff_url не рассчитывайте"},
 		interrupts: [2]string{"the VM and everything that runs on it stop answering until vm_start; unsaved data in the VM's memory may be lost",
 			"ВМ и всё, что на ней работает, перестаёт отвечать до vm_start; несохранённые данные в памяти ВМ могут быть потеряны"}},
 }

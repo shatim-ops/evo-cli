@@ -42,7 +42,19 @@ func TestVMStop_RunningAsksWithAPreviewThatNamesTheDowntime(t *testing.T) {
 	}
 	classes, _ := p["price_classes"].([]any)
 	if len(classes) != 1 || p["tariff_url"] == "" || p["cost"] != nil {
-		t.Errorf("the preview prices a stopped VM, or names no tariff: %s", text)
+		t.Fatalf("the preview prices a stopped VM, or names no tariff: %s", text)
+	}
+	// Saving is why a VM is stopped: the preview does not promise one
+	// («Риск», conclusion 132, У1) — no «free», and a plain word that the
+	// charges may go on.
+	note, _ := classes[0].(map[string]any)["note"].(string)
+	if !strings.Contains(note, "may not stop the charges") || !strings.Contains(note, "do not count on a saving") {
+		t.Errorf("the price note does not say that stopping may not save: %q", note)
+	}
+	for _, promise := range []string{"free", "no charge", "not billed", "бесплатн"} {
+		if strings.Contains(strings.ToLower(text), promise) {
+			t.Errorf("the preview promises a saving (%q): %s", promise, text)
+		}
 	}
 	if n := w.powerCalls(); n != 0 {
 		t.Errorf("written before consent: %d power calls", n)
