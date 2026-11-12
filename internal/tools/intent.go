@@ -79,6 +79,9 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if err != nil {
 		return nil, err
 	}
+	if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
+		own.ids = append(own.ids, rec.ID)
+	}
 	return func(answer string) {
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			return
@@ -458,11 +461,21 @@ func answerReason(answer string) string {
 // resource may be the person's now (R-56). The lines are the same in
 // doctor, in the first answer of a tool and in the CLI's stderr.
 func (r *Registry) PendingNotes(root string) []string {
-	var out []string
+	notes, _ := r.pendingNotes(root, nil)
+	return notes
+}
+
+// pendingNotes are PendingNotes without the records of the ids own, and
+// whether any was left out.
+func (r *Registry) pendingNotes(root string, own []string) (notes []string, leftOut bool) {
 	for _, in := range pendingIntents(root) {
-		out = append(out, r.pendingNote(in, r.maker()))
+		if slices.Contains(own, in.ID) {
+			leftOut = true
+			continue
+		}
+		notes = append(notes, r.pendingNote(in, r.maker()))
 	}
-	return out
+	return notes, leftOut
 }
 
 // pendingIntents are the intents a run in root reads: the folder's and the
@@ -703,12 +716,18 @@ func (r *Registry) listToolOf(tool string) string {
 // withPending adds pending_operations — the intents earlier runs in this
 // directory left — to the first answer over MCP: the agent reads them
 // before it creates the same thing again (release plan 1.8, (и)).
-func (r *Registry) withPending(answer string) (string, bool) {
+// The records of own — those the call of this answer opened — are not
+// named in it: the answer itself says how the call ended. They are not
+// noted yet either (false), so the next answer names them; every other
+// reader of the records sees them as before.
+func (r *Registry) withPending(answer string, own []string) (string, bool) {
 	root, err := os.Getwd()
 	if err != nil {
 		return answer, true
 	}
-	return withNotes(answer, r.PendingNotes(root))
+	notes, leftOut := r.pendingNotes(root, own)
+	answer, noted := withNotes(answer, notes)
+	return answer, noted && !leftOut
 }
 
 // withNotes is answer with notes in pending_operations; false when the
@@ -735,11 +754,11 @@ func withNotes(answer string, notes []string) (string, bool) {
 
 // notePending is answer with the intents of earlier runs, on the first JSON
 // answer of the process; the lock is released however withPending ends.
-func (r *Registry) notePending(answer string) string {
+func (r *Registry) notePending(answer string, own []string) string {
 	r.pendingMu.Lock()
 	defer r.pendingMu.Unlock()
 	if !r.pendingNoted {
-		answer, r.pendingNoted = r.withPending(answer)
+		answer, r.pendingNoted = r.withPending(answer, own)
 	}
 	return answer
 }
