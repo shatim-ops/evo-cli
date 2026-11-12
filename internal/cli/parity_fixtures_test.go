@@ -50,6 +50,7 @@ var parityArgs = map[string]map[string]any{
 	"list":         {},
 	"logs":         {"tail": float64(100)},
 	"vm_get":       {"vm_id": parityVM},
+	"vm_start":     {"vm_id": parityStoppedVM},
 	"vm_list":      {},
 	"list_zones":   {},
 	"list_flavors": {},
@@ -590,6 +591,17 @@ const parityNIC = "00000000-0000-4000-8000-0000000000f1"
 // disk_detach is a repeat, already_detached (D81).
 const parityAttachedDisk = "00000000-0000-4000-8000-0000000000f2"
 
+// parityStoppedVM is a second VM of the project, stopped: vm_start starts
+// it (the VM parityVM runs — for it vm_start is a repeat).
+const parityStoppedVM = "00000000-0000-4000-8000-0000000000f3"
+
+// stoppedVMJSON is the VM parityStoppedVM as the compute API reads it, in
+// state.
+func stoppedVMJSON(state string) string {
+	return `{"id":"` + parityStoppedVM + `","name":"batch","state":"` + state + `","interfaces":[{"id":"` + parityNIC +
+		`","name":"eth0","type":"regular","ip_address":"192.0.2.6","primary":true,"state":"created"}]}`
+}
+
 // computeParity: the compute API beyond previewCloud — the VM with its
 // interface (tg_create picks it), the project's disks and SNAT gateway
 // (disk_delete and snat_delete look them up; image_create takes the zone
@@ -599,6 +611,11 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 	switch r.URL.Path {
 	case "/api/v1/vms/" + parityVM:
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","state":"running","interfaces":[{"id":"`+parityNIC+`","name":"eth0","type":"regular","ip_address":"192.0.2.5"}]}`)
+	case "/api/v1/vms/" + parityStoppedVM:
+		if r.Method != http.MethodGet {
+			return nil
+		}
+		_, _ = io.WriteString(w, stoppedVMJSON("stopped"))
 	case "/api/v1/disks/" + parityAttachedDisk:
 		if r.Method != http.MethodGet {
 			return nil

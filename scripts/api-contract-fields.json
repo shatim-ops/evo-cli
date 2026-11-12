@@ -1108,6 +1108,9 @@
    "tag_names[]",
    "vpc_id"
   ],
+  "compute POST /api/v1/vms/{vm_id}/set-power": [
+   "state"
+  ],
   "compute PUT /api/v1/disks/{disk_id}": [
    "description",
    "encrypted",

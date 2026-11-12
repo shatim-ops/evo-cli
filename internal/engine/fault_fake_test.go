@@ -465,7 +465,8 @@ var faultPower = map[string]struct{ from, via, to string }{
 // the code of a wrong state is not published — wrong_vm_state is the
 // fake's own name, and no production code may match it.
 func faultPowerRefused(code string) error {
-	return clerrors.Wrap(clerrors.CodeAPIError, "power refused", "", &provision.StatusError{Status: 422, Body: code})
+	// The body is the specification's: a list of {code, message}.
+	return clerrors.Wrap(clerrors.CodeAPIError, "power refused", "", &provision.StatusError{Status: 422, Body: `[{"code":"` + code + `","message":"refused"}]`})
 }
 
 // SetVMPower takes a power command for a VM. The VM enters the transient
