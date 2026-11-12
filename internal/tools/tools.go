@@ -88,7 +88,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "status",
-			Description: "Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports, from the local state. " +
+			Description: "Current deployment from the local state: VM id, public IP, flavor, region, health, ports. Read-only. Also asks the cloud for the VM's live state (one GET, at most 8 s): cloud_checked, cloud_state, not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record), or cloud_error with cloud_reason (why the cloud was not checked; the local state is still returned). vm_name, zone_name and flavor_name come from the cloud's answer." +
 				"Read-only. By default it also asks the cloud for the VM's live state (one GET, at most 8 s) and adds cloud_checked, cloud_state, " +
 				"not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record) and cloud_error with cloud_reason (why the cloud was not checked, as a phrase and an error code; the local state is still returned). When the cloud answered, vm_name, zone_name and flavor_name name the VM, its zone and its flavor.",
 			InputSchema: objSchema(map[string]any{
@@ -259,7 +259,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_apply",
-			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. It creates the VM without the application: a compose project goes through deploy. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
+			Description: "STEP 2 of the deploy wizard: executes a plan from deploy_plan. Creates the VM without the application: a compose project goes through deploy. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args: repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
 				"plan_id":      strProp("The plan_id returned by deploy_plan."),
 				"confirmed":    confirmedProp(),
@@ -642,29 +642,13 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{"project_id": strProp("Project UUID to scope quotas to (optional).")}),
 		},
 		{
-			Name: "whoami",
-			Description: "Show whom the tools work as: the profile, the access key ID (masked), where the key and the project come from " +
-				"(profile, env, project file, flag), the project, when the IAM token expires and whether it was cached or issued now, " +
-				"and how many projects the key sees (no visible_projects when the Organization API lists none for the key: not an error), " +
-				"and roles: the key's roles on the project by name, with the term of each that has one; roles_note says why they are " +
-				"unknown (IAM did not tell, no project) or that a role on the organization is not seen here; key_expires_at: when the " +
-				"access key expires (key_expires_soon within 5 days: a person issues the next key; key_term_note when unknown). " +
-				"Read-only; IAM is asked for a token only when no valid cached token exists. Fails with AUTH_REQUIRED or AUTH_FAILED (no key, " +
-				"key rejected) and CONFIG_INVALID (broken configuration). Call it first when calls fail with an authentication error " +
-				"or land in an unexpected project.",
+			Name:        "whoami",
+			Description: "Whom the tools work as: profile, masked access key ID, where the key and the project come from (profile, env, project file, flag), the project, the IAM token's expiry and whether it was cached or issued now, visible_projects (absent when the Organization API lists none for the key: not an error), roles on the project with the term of each (roles_note: why they are unknown, or that a role on the organization is not seen here), key_expires_at (key_expires_soon within 5 days: a person issues the next key; key_term_note when unknown). Read-only; IAM is asked for a token only without a valid cached one. Fails with AUTH_REQUIRED, AUTH_FAILED or CONFIG_INVALID. Call it first when calls fail with an authentication error or land in an unexpected project.",
 			InputSchema: objSchema(nil),
 		},
 		{
-			Name: "doctor",
-			Description: "Check the setup the tools use: the configuration (profile, where the key and the project come from, " +
-				"its warnings), whether the IAM and Compute APIs are reachable, the access key (an IAM token), how many projects " +
-				"it sees, its roles on the project (key roles: skip when IAM does not tell, warn with none) and its term (key term: " +
-				"warn within 5 days), what cut calls left (pending operation, warn; one its list settles: .evo/intents file removed, " +
-				"even with --read-only) and foreign intent record (not evo's, kept). Read-only for the cloud. Answers checks ({name, status: ok, warn, fail or skip, detail, http_status}) and ok; " +
-				"http_status of IAM API and Compute API is what the API root answered: any answer, 404 included, means reachable. A failed " +
-				"check fails the call, with the checks in the error answer: CONFIG_INVALID when the configuration or the key is " +
-				"broken (no project included), API_UNREACHABLE when only connectivity failed. The CLI's 'evo doctor' also checks " +
-				"the config files of its machine and kubectl/helm in PATH.",
+			Name:        "doctor",
+			Description: "Check the setup the tools use: the configuration (profile, key and project sources, warnings), whether IAM and Compute APIs are reachable (http_status is what the API root answered: any answer, 404 included, means reachable), the access key (an IAM token), how many projects it sees, its roles (key roles: skip when IAM does not tell, warn with none) and term (key term: warn within 5 days), and what cut calls left: pending operation (warn; one its list settles: .evo/intents file removed, even with --read-only) and foreign intent record (not evo's, kept). Read-only for the cloud. Answers ok and checks ({name, status: ok, warn, fail or skip, detail, http_status}). A failed check fails the call, with the checks in the error: CONFIG_INVALID (configuration or key broken, no project included), API_UNREACHABLE (only connectivity). The CLI's 'evo doctor' also checks its machine's config files and kubectl/helm in PATH.",
 			InputSchema: objSchema(nil),
 		},
 		{
@@ -1230,12 +1214,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_balance",
-			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway. " + readOnlyTaskNote,
+			Description: "Balance of the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: no API gives the balance by project, and only organization and cost administrators see the agreement id. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. The endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. For a task that only reads, the person can run the server with evo mcp --read-only: it makes no change in the cloud." + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
 			Name:        "billing_consumption",
-			Description: "Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. Aggregated by service: total (excluding VAT, sum of amount), total_with_nds (including VAT, sum of amount_nds), records, by_service sorted by cost (excluding VAT) with cost_with_nds (including VAT). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). Use for FinOps/cost analysis. " + readOnlyTaskNote,
+			Description: "Consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. By service: total and by_service (sorted by cost) exclude VAT, total_with_nds and cost_with_nds include it; records. Read-only. Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). For a task that only reads, the person can run the server with evo mcp --read-only: it makes no change in the cloud." + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Required."),
 				"end":        strProp("End date YYYY-MM-DD (default = start)."),
@@ -1244,7 +1228,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_finops",
-			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Costs exclude VAT (amount); total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it (amount_nds); runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks. " + readOnlyTaskNote,
+			Description: "FinOps report (read-only): cost by service, anomalies vs the previous same-length period, daily burn-rate, balance runway in days, projected zero date, optional budget check. Costs exclude VAT; total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it; runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. For a task that only reads, the person can run the server with evo mcp --read-only: it makes no change in the cloud." + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
 				"end":        strProp("End date YYYY-MM-DD. Optional; default = today."),
@@ -1415,14 +1399,14 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_plan",
-			Description: "Plan a multi-resource STACK from ONE declarative manifest. Read-only (creates nothing): returns a job_id and a rate-card cost estimate — show it to the user, get explicit approval, THEN stack_apply. Use it for ANY multi-service deploy instead of calling pg_create, provision, … yourself: the engine runs the chain server-side. manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]} (a taken path or key is refused). vm.image and vm.zone (name or UUID) default to the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION; a VM stack is refused when either is missing or unknown.",
+			Description: "Plan a multi-resource stack from one declarative manifest. Read-only: returns a job_id and a rate-card cost estimate — show it to the user, get explicit approval, then stack_apply. Use it for any multi-service deploy instead of calling pg_create, provision, … yourself: the engine runs the chain. manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]} (a taken path or key is refused). vm.image and vm.zone (name or UUID) default to the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION; a VM stack is refused when either is missing or unknown.",
 			InputSchema: objSchema(map[string]any{
 				"manifest": map[string]any{"type": "object", "description": "Declarative stack spec (see description)."},
 			}, "manifest"),
 		},
 		{
 			Name:        "stack_apply",
-			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the user approved the cost. The call starts the steps that are ready and returns a compact status: over MCP within ~45 s — a VM step whose VM is still coming up stays pending (details: creating) and stack_status finishes it; the CLI waits for the VM (~3 min seen live). The async resources (Postgres, Kafka, Redis, k8s, NLB) only start. passwords{step} is the password evo generated for a step's VM, in that answer only. Then poll stack_status(job_id) until status=done. You do NOT orchestrate the resources yourself.",
+			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the user approved the cost. Starts the steps that are ready and returns a compact status: over MCP within ~45 s — a VM still coming up stays pending (details: creating) and stack_status finishes it; the CLI waits for the VM. Postgres, Kafka, Redis, k8s and NLB only start. passwords{step} is the password evo generated for a step's VM, in that answer only. Then poll stack_status(job_id) until status=done; do not orchestrate the resources yourself.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id from stack_plan. Required."),
 				"confirmed": confirmedProp(),
@@ -1430,7 +1414,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_status",
-			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], details{step: reason} of a step that is not done, error_reasons{step: reason code of what ended it, e.g. USAGE, NOT_FOUND, API_ERROR} of a step in error, attempts{step: n}, outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}, passwords{step} of a VM evo generated, in that answer only}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. For a deploy, keep polling until status=done (then read outputs; lb_external_ip is there only for a balancer with a public address) or status=error. status=deleting (with deleting[]): a teardown not finished, which stack_status does not move — call stack_destroy again (next_tool) until destroyed. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
+			Description: "Poll a stack: compact progress {status, done[], running[], pending[], details{step: reason} of a step not done, error_reasons{step: reason code, e.g. USAGE, NOT_FOUND, API_ERROR} of a step in error, attempts{step: n}, outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}, passwords{step} of a VM evo generated, in that answer only}. For a job started by stack_apply each call advances the deploy and waits (up to wait_seconds): a few calls cover a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs) or status=error. status=deleting (with deleting[]): a teardown not finished, which stack_status does not move — call stack_destroy again (next_tool) until destroyed. The job lives on disk: after a lost context poll the job_id again.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":       strProp("Job id. Required."),
 				"wait_seconds": inRange(1, stackStatusMaxWait, intProp("How long this call may block while advancing, in seconds (default and at most 20). Fewer calls for a long deploy.")),
@@ -1438,7 +1422,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_destroy",
-			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved. status=destroyed means everything is gone. status=deleting (exit 0) means the VM, secrets and S3 objects are gone, while the async resources listed in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes (Postgres ~5 min seen live): call stack_destroy with confirmed=true again (next_tool) until it answers destroyed. A destroyed job answers already_destroyed without the question; a deleting one is asked about again and re-checked.",
+			Description: "Tear down every resource of a stack, in reverse order. Destructive mutation: requires confirmed=true after the user approved. status=destroyed: everything is gone. status=deleting (exit 0): the VM, secrets and S3 objects are gone, the resources in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes — call stack_destroy with confirmed=true again (next_tool) until it answers destroyed. A destroyed job answers already_destroyed without the question; a deleting one is asked about again and re-checked.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id. Required."),
 				"confirmed": confirmedProp(),

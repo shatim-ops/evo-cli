@@ -36,16 +36,16 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `whoami` | `evo whoami` | нет | — | Show whom the tools work as: the profile, the access key ID (masked), where the key and the project come from (profile, env, project file, flag), the project … | Активный профиль и проверка его ключа |
-| `doctor` | `evo doctor` | нет | — | Check the setup the tools use: the configuration (profile, where the key and the project come from, its warnings), whether the IAM and Compute APIs are … | Проверить настройки, ключ доступа и связь с API |
+| `whoami` | `evo whoami` | нет | — | Whom the tools work as: profile, masked access key ID, where the key and the project come from (profile, env, project file, flag), the project, the IAM token's … | Активный профиль и проверка его ключа |
+| `doctor` | `evo doctor` | нет | — | Check the setup the tools use: the configuration (profile, key and project sources, warnings), whether IAM and Compute APIs are reachable (http_status is what … | Проверить настройки, ключ доступа и связь с API |
 
 ## billing
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `billing_balance` | `evo billing balance` | нет | — | Account balance for the billing agreement (RUB, active flag, raw agreement object). | Баланс по договору: сумма в рублях, признак активности |
-| `billing_consumption` | `evo billing consumption` | нет | `start` | Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. | Стоимость потребления за период по сервисам: по договору или по проекту |
-| `billing_finops` | `evo billing finops` | нет | — | FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in … | Отчёт FinOps: распределение затрат, аномалии, темп расходов, запас баланса |
+| `billing_balance` | `evo billing balance` | нет | — | Balance of the billing agreement (RUB, active flag, raw agreement object). | Баланс по договору: сумма в рублях, признак активности |
+| `billing_consumption` | `evo billing consumption` | нет | `start` | Consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. | Стоимость потребления за период по сервисам: по договору или по проекту |
+| `billing_finops` | `evo billing finops` | нет | — | FinOps report (read-only): cost by service, anomalies vs the previous same-length period, daily burn-rate, balance runway in days, projected zero date … | Отчёт FinOps: распределение затрат, аномалии, темп расходов, запас баланса |
 
 ## ca
 
@@ -79,12 +79,12 @@
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
 | `deploy` | `evo deploy` | да | — | Deploy the local compose project to a VM evo-<project_name>, billable when it creates one, with a public floating IP: uploads the compose files over SSH, runs … | Развернуть локальный проект docker-compose на ВМ Cloud.ru |
-| `status` | `evo status` | нет | — | Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports, from the local state. | Состояние текущего развёртывания |
+| `status` | `evo status` | нет | — | Current deployment from the local state: VM id, public IP, flavor, region, health, ports. | Состояние текущего развёртывания |
 | `list` | `evo deploy list` | нет | — | List all recorded deployments for this project (VM IP, status, flavor, creation time). | Локальные записи развёртываний этого проекта |
 | `logs` | `evo logs` | нет | — | Retrieve container logs from the deployed VM via 'docker compose logs' over SSH. | Журналы контейнеров развёрнутой ВМ |
 | `destroy` | `evo vm delete` | удаляет | — | Permanently delete a VM and all data on it. | Удалить ВМ и все данные на ней (безвозвратно) |
 | `deploy_plan` | `evo deploy plan` | нет | — | Step 1 of the deploy wizard, read-only: resolves a VM configuration (flavor, image, zone, disk, network, SSH) with its monthly cost and a plan_id (cost.source … | Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая |
-| `deploy_apply` | `evo deploy apply` | да | `plan_id` | STEP 2 of the deploy wizard. | Шаг 2 мастера развёртывания: выполнить рассчитанный план |
+| `deploy_apply` | `evo deploy apply` | да | `plan_id` | STEP 2 of the deploy wizard: executes a plan from deploy_plan. | Шаг 2 мастера развёртывания: выполнить рассчитанный план |
 | `open_ports` | `evo vpc open-ports` | да | `security_group`, `ports` | Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). | Открыть входящие порты в группе безопасности |
 | `close_ports` | `evo vpc close-ports` | да | `security_group`, `ports` | Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. | Закрыть входящие порты в группе безопасности |
 
@@ -262,10 +262,10 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `stack_plan` | `evo stack plan` | нет | `manifest` | Plan a multi-resource STACK from ONE declarative manifest. | Спланировать стек ресурсов по одному манифесту (ничего не создаёт) |
+| `stack_plan` | `evo stack plan` | нет | `manifest` | Plan a multi-resource stack from one declarative manifest. | Спланировать стек ресурсов по одному манифесту (ничего не создаёт) |
 | `stack_apply` | `evo stack apply` | да | `job_id` | Apply a planned stack (from stack_plan). | Создать ресурсы спланированного стека (платно) |
-| `stack_status` | `evo stack status` | нет | `job_id` | Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], details{step: reason} of a step that is not done, error_reasons{step … | Ход развёртывания стека |
-| `stack_destroy` | `evo stack destroy` | удаляет | `job_id` | Tear down every resource in a stack (reverse order, idempotent). | Удалить все ресурсы стека (безвозвратно) |
+| `stack_status` | `evo stack status` | нет | `job_id` | Poll a stack: compact progress {status, done[], running[], pending[], details{step: reason} of a step not done, error_reasons{step: reason code, e.g. | Ход развёртывания стека |
+| `stack_destroy` | `evo stack destroy` | удаляет | `job_id` | Tear down every resource of a stack, in reverse order. | Удалить все ресурсы стека (безвозвратно) |
 
 ## vm
 
