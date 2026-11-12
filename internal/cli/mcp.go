@@ -277,6 +277,7 @@ func toolsetsWarning(listed []mcp.Tool) string {
 func newMCPServer(allowProjects []string) *mcp.Server {
 	targets := startTargets()
 	srv := mcp.New(mcpEngineFactory(allowProjects, targets), version)
+	declareStateDir(srv)
 	srv.SetConfigNote(targets.note)
 	if len(allowProjects) > 0 {
 		srv.SetProjectBound()

@@ -29,6 +29,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // EngineFactory builds an *engine.Engine from a set of config overrides.
@@ -115,6 +116,9 @@ type Registry struct {
 	// pendingNoted: an answer of this process over MCP carried the intents
 	// earlier runs left (withPending) — the first JSON object; the CLI says
 	// them on stderr.
+	// stateDirOf: SetStateDir.
+	stateDirOf string
+
 	pendingMu    sync.Mutex
 	pendingNoted bool
 }
@@ -634,6 +638,31 @@ func AlwaysListed(t Tool) bool { return alwaysListed[t.Name] != "" }
 // SetServed tells the registry which tools the server serves (nil: all):
 // the cards of agent_skill mark the rest.
 func (r *Registry) SetServed(served func(name string) bool) { r.served = served }
+
+// SetStateDir declares the directory this registry works in: the one its
+// engines are built with (engine.StateDir). Every registry built with an
+// engine factory declares it — the records of the calls (intent) are
+// written and read there and nowhere else, whatever directory the process
+// stands in and whether an engine can be built. dir comes from the build
+// of evo, never from an argument of a tool.
+func (r *Registry) SetStateDir(dir string) { r.stateDirOf = dir }
+
+// stateDir is the directory declared by SetStateDir; false when none is.
+func (r *Registry) stateDir() (string, bool) { return r.stateDirOf, r.stateDirOf != "" }
+
+// stateDirUndeclared reports the defect of a build: a registry that can
+// reach the cloud and was told no directory for the records of its calls.
+func (r *Registry) stateDirUndeclared() bool { return r.newEngine != nil && r.stateDirOf == "" }
+
+// errNoStateDir refuses a call of a registry of stateDirUndeclared. It is
+// not the person's configuration: nothing they set repairs it.
+func errNoStateDir() error {
+	return clierrors.New(clierrors.ReasonGeneral,
+		i18n.T("evo was built without the directory of its call records: this is a defect of evo, not of your configuration",
+			"evo собран без каталога записей вызовов: это дефект evo, а не вашей конфигурации"),
+		i18n.T("Nothing was sent to the cloud. Report it: github.com/shatim-ops/evo-cli/issues.",
+			"В облако ничего не отправлено. Сообщите об этом: github.com/shatim-ops/evo-cli/issues."))
+}
 
 // HasSideEffects reports whether a tool that takes no consent is not a
 // read (sideEffectTools).

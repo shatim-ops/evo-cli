@@ -42,7 +42,12 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if err != nil || eng == nil {
 		return func(string) {}, nil
 	}
-	root := eng.StateDir
+	// The directory is the registry's, declared at its build: a record
+	// that cannot be placed refuses the call before it goes out.
+	root, ok := r.stateDir()
+	if !ok {
+		return nil, errNoStateDir()
+	}
 	in := intent.Intent{Tool: name, Surface: "mcp", PID: os.Getpid(), StartedAt: clock.Now(),
 		ProjectID: eng.Config.ProjectID, Zone: eng.Config.Region}
 	// The surface as the journal (D46) has it: a call of the CLI carries
@@ -68,11 +73,6 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	}
 	if z, _ := args["zone"].(string); z != "" {
 		in.Zone = z
-	}
-	// The engine of evo always has its directory (buildEngine fails
-	// without the working directory); one without is a test's fake.
-	if root == "" {
-		return func(string) {}, nil
 	}
 	dir := intent.Dir(root)
 	rec, err := intent.Open(dir, in)
@@ -132,8 +132,8 @@ func (r *Registry) cutCalls(name string, args map[string]any) []intent.Intent {
 		return nil
 	}
 	resource, target := intentResource(name, args)
-	root, err := os.Getwd()
-	if err != nil || (resource == "" && target == "") {
+	root, ok := r.stateDir()
+	if !ok || (resource == "" && target == "") {
 		return nil
 	}
 	var cut []intent.Intent
@@ -245,8 +245,8 @@ func sameToolNext(tool, answer string) (args map[string]any, ok bool) {
 // answers with that id («Риск», conclusion 137, У1).
 func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 	resource, target := intentResource(name, args)
-	root, err := os.Getwd()
-	if err != nil {
+	root, ok := r.stateDir()
+	if !ok {
 		return
 	}
 	var held []intent.Intent
@@ -279,11 +279,12 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 // another key's, or evo stopped waiting for it. The limit of the repeats
 // of the operation counts from there, not from each repeat.
 func (r *Registry) heldSince(eng *engine.Engine, tool, target string) (since time.Time, ok bool) {
-	if eng == nil || eng.StateDir == "" {
+	root, ok := r.stateDir()
+	if eng == nil || !ok {
 		return time.Time{}, false
 	}
 	cur := eng.Maker()
-	for _, in := range intent.Pending(intent.Dir(eng.StateDir)) {
+	for _, in := range intent.Pending(intent.Dir(root)) {
 		if in.Held && in.Tool == tool && in.Target == target && !in.Key.Other(cur) {
 			return in.StartedAt, true
 		}
@@ -333,8 +334,8 @@ func answerStatus(answer string) string {
 // («Риск», conclusions 128 and 135).
 func (r *Registry) namedKept(name string, args map[string]any, answer string) string {
 	resource, target := intentResource(name, args)
-	root, err := os.Getwd()
-	if err != nil || (resource == "" && target == "") {
+	root, ok := r.stateDir()
+	if !ok || (resource == "" && target == "") {
 		return answer
 	}
 	// The records of this directory, as withPending reads them; the key
@@ -704,8 +705,14 @@ func (r *Registry) listToolOf(tool string) string {
 // directory left — to the first answer over MCP: the agent reads them
 // before it creates the same thing again (release plan 1.8, (и)).
 func (r *Registry) withPending(answer string) (string, bool) {
-	root, err := os.Getwd()
-	if err != nil {
+	root, ok := r.stateDir()
+	if !ok {
+		if r.stateDirUndeclared() {
+			// Not «nothing was left»: the records were not read.
+			return withNotes(answer, []string{i18n.T(
+				"the records of earlier calls were not read: evo was built without their directory (a defect of evo; report it)",
+				"записи прежних вызовов не прочитаны: evo собран без их каталога (дефект evo; сообщите о нём)")})
+		}
 		return answer, true
 	}
 	return withNotes(answer, r.PendingNotes(root))

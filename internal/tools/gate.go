@@ -135,6 +135,11 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if depth > 1 {
 			return next(ctx, args)
 		}
+		// No directory for the record of the call: no question is asked
+		// about a call that would be refused, and none is sent.
+		if r.stateDirUndeclared() {
+			return errResult(errNoStateDir()), true
+		}
 		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) {
 			text, isErr := next(ctx, args)
 			r.settleHeld(t.Name, args, text)

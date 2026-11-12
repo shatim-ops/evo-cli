@@ -550,7 +550,9 @@ func zoneEngine(provider auth.TokenProvider, projectID string, printer *output.P
 func configureZones(ctx context.Context, eng *engine.Engine) ([]*provision.AvailabilityZone, error) {
 	ctx, cancel := context.WithTimeout(ctx, zoneLookupTimeout)
 	defer cancel()
-	t, ok := tools.New(func(map[string]any) (*engine.Engine, error) { return eng, nil }).Lookup("list_zones")
+	reg := tools.New(func(map[string]any) (*engine.Engine, error) { return eng, nil })
+	reg.SetStateDir(eng.StateDir)
+	t, ok := reg.Lookup("list_zones")
 	if !ok {
 		return nil, stderrors.New("no tool list_zones")
 	}

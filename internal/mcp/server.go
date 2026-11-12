@@ -152,6 +152,10 @@ type Server struct {
 	httpApplied []string
 }
 
+// SetStateDir declares the directory of the server's registry
+// (tools.Registry.SetStateDir): the one its engine factory builds with.
+func (s *Server) SetStateDir(dir string) { s.reg.SetStateDir(dir) }
+
 // New creates an MCP server. factory builds engines per tool call (so each call
 // reflects the current working directory, config, and SSH keys); version is the
 // CLI version reported during initialize.
