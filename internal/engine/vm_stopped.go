@@ -17,7 +17,7 @@ import (
 var vmStoppedStates = map[string]bool{"stopped": true, "stopping": true}
 
 // VMStoppedError is the answer of logs, verify and deploy for a deployment
-// whose VM is stopped or stopping («Риск», conclusion 132, У2): SSH and
+// whose VM is stopped or stopping (D104; «Риск», conclusion 132, У2): SSH and
 // the probe would only time out on it, and a failure with no cause reads
 // as a broken deployment — to be deleted and made again, with the data of
 // the VM. The way on is vm_start, never a delete.
@@ -54,8 +54,8 @@ func (e *Engine) vmStopped(ctx context.Context, rec *state.DeploymentRecord, cod
 		Code: code,
 		Message: i18n.Tf("VM %s of this deployment is %s: its SSH and its service do not answer until it is started",
 			"ВМ %s этого развёртывания в состоянии %s: её SSH и сервис не отвечают, пока она не запущена", rec.VMID, vm.Status),
-		Hint: i18n.Tf("Start it: 'evo vm start %s' (MCP: vm_start with vm_id), then repeat. The VM, its disks and this record are intact: nothing here needs a delete.",
-			"Запустите её: 'evo vm start %s' (MCP: vm_start с vm_id) и повторите. ВМ, её диски и эта запись целы: удалять здесь нечего.", rec.VMID),
+		Hint: i18n.Tf("Start it: 'evo vm start %s' (MCP: vm_start with vm_id; a VM that is stopping is waited for first), then repeat. The VM, its disks and this record are intact: nothing here needs a delete.",
+			"Запустите её: 'evo vm start %s' (MCP: vm_start с vm_id; ВМ, которая останавливается, он сначала дождётся) и повторите. ВМ, её диски и эта запись целы: удалять здесь нечего.", rec.VMID),
 		Details: map[string]any{
 			"cause": "vm_stopped", "vm_id": rec.VMID, "vm_state": vm.Status,
 			"next_tool": "vm_start", "next_args": map[string]any{"vm_id": rec.VMID},

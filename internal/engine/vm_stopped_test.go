@@ -122,7 +122,13 @@ func TestLogsVerify_ARunningVMOrAFailedReadIsAsBefore(t *testing.T) {
 	unread := &mockCloudAPI{getVMFn: func(context.Context, string) (*provision.VM, error) {
 		return nil, clerrors.New(clerrors.CodeAPIUnreachable, "cannot reach Cloud.ru API", "")
 	}}
-	for name, cloud := range map[string]*mockCloudAPI{"running": vmIn("running"), "error": vmIn("error"), "unread": unread} {
+	gone := &mockCloudAPI{getVMFn: func(_ context.Context, id string) (*provision.VM, error) {
+		return nil, clerrors.New(clerrors.CodeVMNotFound, "VM "+id+" not found", "")
+	}}
+	// starting: the VM is on its way up — the command's own wait for SSH
+	// is the way, as it was.
+	for name, cloud := range map[string]*mockCloudAPI{"running": vmIn("running"), "starting": vmIn("starting"),
+		"error": vmIn("error"), "unread": unread, "gone": gone} {
 		eng, dep, _ := stoppedEngine(t, cloud)
 		err := eng.Logs(context.Background(), LogsOptions{Tail: 10})
 		var se *VMStoppedError
