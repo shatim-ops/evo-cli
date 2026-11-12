@@ -20,8 +20,9 @@ var (
 
 // api-probe runs without the owner's approval on the observer's key: it
 // changes nothing by what it sends, not only by the key's rights. No PUT or
-// PATCH; a POST is the exchange of the key for a token or the price
-// calculation; a DELETE (404 of the products, D63, and the rights of the
+// PATCH; a POST is the exchange of the key for a token or a price
+// calculation (Compute price-calculation, Managed Kubernetes
+// calculate-price: both only count); a DELETE (404 of the products, D63, and the rights of the
 // key) goes to an id that does not exist ($NOID) or a path that does not
 // exist (evo-probe-…), and a write the key's rights must refuse is only in
 // try of the rights step.
@@ -49,7 +50,7 @@ func TestWorkflows_APIProbeChangesNothing(t *testing.T) {
 			switch m[1] {
 			case "GET":
 			case "POST":
-				if !strings.Contains(l, "auth/token") && !strings.Contains(l, "price-calculation") && !strings.Contains(l, "x-www-form-urlencoded") {
+				if !strings.Contains(l, "auth/token") && !strings.Contains(l, "price-calculation") && !strings.Contains(l, "/billing/calculate-price") && !strings.Contains(l, "x-www-form-urlencoded") {
 					t.Errorf("api-probe, %s: a POST that is not the token or the price: %s", s.Name, strings.TrimSpace(l))
 				}
 			case "DELETE":
@@ -121,5 +122,33 @@ func TestWorkflows_APIProbeEvoCallsOnlyRead(t *testing.T) {
 	}
 	if calls == 0 {
 		t.Error("api-probe: no evo tools call — P23 left the workflow, update the test")
+	}
+}
+
+// The reads of the schedule of live probes 1.9 (docs/internal/phase-0/1.9.md,
+// Г-05, Г-06, Г-22) are in api-probe: the operations of the second day are
+// written from what the platform answers to a read — backups and protection
+// plans, the tag service, the Kubernetes versions to upgrade to, the flavors
+// to resize to, the project in the cards, the request id in the answers,
+// TLS by host, the price before and after. A read dropped from the workflow
+// leaves its operation's preview a guess; the second reading on 21.11
+// compares with the first by these names.
+func TestWorkflows_APIProbeReadsTheSecondDay(t *testing.T) {
+	j, ok := readWorkflows(t)["api-probe.yml"].Jobs["probe"]
+	if !ok {
+		t.Fatal("api-probe: no job probe")
+	}
+	var run strings.Builder
+	for _, s := range j.Steps {
+		run.WriteString(s.Run)
+	}
+	for _, name := range []string{
+		"bk19_list", "bk19_card_keys", "pp19_list", "tags19_service", "k8s19_product_config",
+		"k8s19_versions_v2", "flavor19_params", "proj19_", "rid19", "tls19", "price19_flavor_next",
+		"price19_k8s",
+	} {
+		if !strings.Contains(run.String(), name) {
+			t.Errorf("api-probe: no read %s of the schedule of probes 1.9 (Г-05, Г-06, Г-22)", name)
+		}
 	}
 }
