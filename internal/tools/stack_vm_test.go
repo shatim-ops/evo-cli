@@ -60,7 +60,7 @@ func TestStackVMStep_FailedProvisionIsNotRepeated(t *testing.T) {
 				return toJSON(tc.answer), true
 			}
 			r.handlers["vm_list"] = fakeOK(map[string]any{"vms": tc.listed})
-			r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+			r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 			for range 4 {
 				r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
 			}
@@ -98,7 +98,7 @@ func TestStackVMStep_ForeignVMWithSameNameIsNotAdopted(t *testing.T) {
 		destroyed = append(destroyed, id)
 		return toJSON(map[string]any{"status": "deleted"}), false
 	}
-	r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	for range 4 {
 		r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
 	}
@@ -109,7 +109,7 @@ func TestStackVMStep_ForeignVMWithSameNameIsNotAdopted(t *testing.T) {
 	if got := loaded.Steps[0].ResourceID; got == "users-vm" {
 		t.Fatal("стек усыновил чужую ВМ с тем же именем")
 	}
-	r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	for _, id := range destroyed {
 		if id == "users-vm" {
 			t.Fatal("stack_destroy удалил чужую ВМ с тем же именем")

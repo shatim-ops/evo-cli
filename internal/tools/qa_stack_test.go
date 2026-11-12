@@ -98,7 +98,7 @@ func TestQA_StackGatedStepsAreConfirmed(t *testing.T) {
 		gotS3 = a
 		return toJSON(map[string]any{"status": "ok"}), false
 	}
-	text, isErr := r.handleStackApply(context.Background(), map[string]any{"job_id": old.ID, "confirmed": true})
+	text, isErr := r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": old.ID, "confirmed": true})
 	if isErr || gotVM["confirmed"] != true || gotS3["confirmed"] != true {
 		t.Fatalf("apply: %s; provision args %v, s3_put args %v", text, gotVM, gotS3)
 	}
@@ -156,7 +156,7 @@ func TestQA_StackConcurrentCranksCreateOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+			r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 		}()
 	}
 	wg.Wait()
@@ -173,13 +173,13 @@ func TestQA_StackApplyRefusesDestroyedJob(t *testing.T) {
 	j := planJob(t, `{"name":"d","secrets":[{"path":"a","value":"b"}]}`)
 	r.handlers["secret_create"] = fakeOK(map[string]any{"status": "created", "id": "sec-1"})
 	r.handlers["secret_delete"] = fakeOK(map[string]any{"status": "deleted"})
-	if text, isErr := r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
+	if text, isErr := r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
 		t.Fatal(text)
 	}
-	if text, isErr := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
+	if text, isErr := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
 		t.Fatal(text)
 	}
-	got := callTool(t, r.handleStackApply, map[string]any{"job_id": j.ID, "confirmed": true})
+	got := callTool(t, r.gated("stack_apply", r.planStackApply), map[string]any{"job_id": j.ID, "confirmed": true})
 	if got["status"] == "done" || got["error"] == nil {
 		t.Fatalf("apply after destroy: %v", got)
 	}
@@ -200,7 +200,7 @@ func TestQA_StackDestroyFailureKeepsJobVisible(t *testing.T) {
 	r.handlers["vpc_delete"] = func(context.Context, map[string]any) (string, bool) {
 		return errResult(errors.New("500 internal error")), true
 	}
-	text, isErr := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	text, isErr := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	if !isErr {
 		t.Errorf("a failed teardown is not an error: %s", text)
 	}
@@ -232,7 +232,7 @@ func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 		return errResult(clerrors.New(clerrors.CodeVMNotFound,
 			"no VM vm-1 in project p; nothing was deleted", "List the project's VMs with vm_list (evo vm list).")), true
 	}
-	text, isErr := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	text, isErr := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	if isErr || !strings.Contains(text, `"destroyed"`) || !strings.Contains(text, "vm (already gone)") {
 		t.Fatalf("a VM that is already gone failed the teardown: %s", text)
 	}
@@ -245,7 +245,7 @@ func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 	if err := j.Save(); err != nil { // the deletion in progress again
 		t.Fatal(err)
 	}
-	text, isErr = r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	text, isErr = r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	if !isErr || !strings.Contains(text, `"destroy_failed"`) {
 		t.Fatalf("a failed VM deletion was taken for a deleted VM: %s", text)
 	}
@@ -259,7 +259,7 @@ func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 	if err := j.Save(); err != nil {
 		t.Fatal(err)
 	}
-	text, isErr = r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	text, isErr = r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	if !isErr || !strings.Contains(text, `"destroy_failed"`) {
 		t.Fatalf("a 404 of the route was taken for a deleted VM: %s", text)
 	}
@@ -280,7 +280,7 @@ func TestQA_StackJobIDCannotLeaveJobsDir(t *testing.T) {
 		called = true
 		return toJSON(map[string]any{"status": "created"}), false
 	}
-	for _, h := range []Handler{r.handleStackApply, r.handleStackStatus, r.handleStackDestroy} {
+	for _, h := range []Handler{r.gated("stack_apply", r.planStackApply), r.handleStackStatus, r.gated("stack_destroy", r.planStackDestroy)} {
 		got := callTool(t, h, map[string]any{"job_id": "../../evil", "confirmed": true, "wait_seconds": float64(1)})
 		if got["status"] != "error" || !strings.Contains(got["error"].(string), "invalid job_id") {
 			t.Errorf("traversal job_id accepted: %v", got)

@@ -29,7 +29,7 @@ func TestNextStep_StackDestroyStepSendsNothingButTheApprovedDelete(t *testing.T)
 	dir := t.TempDir()
 	j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
 	setup := budgetComputeRegistry(t, cloud, dir, faultToolsTimings())
-	if text, isErr := setup.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
+	if text, isErr := setup.gated("stack_apply", setup.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
 		t.Fatalf("stack_apply before stack_destroy: %s", text)
 	}
 	cloud.mu.Lock()
