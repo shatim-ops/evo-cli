@@ -16,4 +16,4 @@
 
 A change of this group that answers an `operation_id` runs on: wait for it with `redis_operation` and its `wait_seconds`, not by polling a list.
 
-Filters of the lists (the rule of the `evo` skill): `redis_list` — status, name; `redis_specs` — version_id, zone.
+Filters of the lists (the rule of the `evo` skill): `redis_list` — status, name, ids, statuses; `redis_specs` — version_id, zone.

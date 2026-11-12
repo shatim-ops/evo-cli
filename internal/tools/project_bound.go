@@ -115,6 +115,7 @@ var idArgs = map[string][]idArg{
 	"release_floating_ip": {{name: "id", kind: kindFIP, target: true}},
 	"open_ports":          {{name: "security_group", why: whyListed}},
 	"close_ports":         {{name: "security_group", why: whyListed}},
+	"sg_rule_delete":      {{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}},
 	"disk_create":         {{name: "attach_to", why: whyListed}},
 	"disk_attach":         {{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}},
 	"disk_detach":         {{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}},

@@ -256,6 +256,10 @@ func contractArgs(tl Tool) map[string]any {
 			}
 		case "array":
 			args[k] = []any{float64(80)}
+			// A list of strings by the schema (minItems, ruledList).
+			if p["minItems"] != nil {
+				args[k] = sampleList(tl, k, contractID)
+			}
 		case "object":
 			args[k] = map[string]any{"name": "web"}
 		default:
@@ -597,4 +601,15 @@ func contractReasonOK(kind string, reqs []string, text, reason string) bool {
 		return reason == clerrors.CodeAPIUnreachable
 	}
 	return false
+}
+
+// sampleList is a value of list argument k of tl that its rules take: a
+// value of the closed list of a filter by several states, else id.
+func sampleList(tl Tool, k, id string) []any {
+	for _, f := range listSpecs[tl.Name].filters {
+		if f.arg == k && len(f.values) > 0 {
+			return []any{f.values[0]}
+		}
+	}
+	return []any{id}
 }

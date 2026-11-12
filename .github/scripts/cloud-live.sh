@@ -33,7 +33,7 @@
 # shellcheck disable=SC2015,SC2016,SC2329
 set -euo pipefail
 
-area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet, ops или sweep ПРЕФИКС}
+area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet, ops, dbchange или sweep ПРЕФИКС}
 here=$(cd "$(dirname "$0")" && pwd)
 ZONE=${ZONE:-ru.AZ-2}
 IMAGE=${IMAGE:-ubuntu-22.04}
@@ -317,6 +317,7 @@ area_kinds() {
 	mcp) echo "vm fip" ;;
 	pgnet) echo "vm fip subnet" ;;
 	ops) echo "pplan backup vm fip disk subnet sg" ;;
+	dbchange) echo "" ;; # ресурсов не создаёт: кластер — у job
 	*) echo "${KINDS/route /}" ;;
 	esac
 }
@@ -487,7 +488,8 @@ finish() {
 	if [ "$area" != sweep ]; then
 		echo "== уборка $prefix*"
 		[ "$area" != net ] || delete_test_rules
-		sweep "$prefix" "$(area_kinds "$area")" || failed=1
+		# Область без своих видов ресурсов (dbchange) убирать нечего.
+		[ -z "$(area_kinds "$area")" ] || sweep "$prefix" "$(area_kinds "$area")" || failed=1
 		if [ "$area" = net ]; then
 			if poll 120 10 no_rules; then ok "правило $RULE_PORT удалено"; else bad "правило $RULE_PORT удалено" "осталось после уборки"; fi
 		fi
@@ -534,7 +536,7 @@ api_rid() {
 # «HTTP 422: » без текста не отличает отказ платформы от ошибки пробы.
 api_why() {
 	local w
-	w=$(jq -r '[.code?, .message?, .detail?, .error?] | map(select(. != null) | tostring) | join(": ")' "$tmp/api.json" 2>/dev/null) || w=
+	w=$(jq -r '[(if type == "array" then .[] else . end) | objects | [.code?, .message?, .detail?, .error?] | map(select(. != null) | tostring) | join(": ")] | join("; ")' "$tmp/api.json" 2>/dev/null) || w=
 	[ -n "$w" ] || w=$(head -c 200 "$tmp/api.json" 2>/dev/null | tr '\n' ' ')
 	printf '%s\n' "${w:-тело пустое}" | redact | cut -c1-200
 }
@@ -2029,6 +2031,25 @@ probe_g11() {
 		egress tcp 18090:18090 198.18.255.1/32
 		ingress tcp 18091:18091 0.0.0.0/0
 	RULES
+	# Правило с группой-источником (сама группа пробы): в какой форме
+	# чтение отдаёт источник — объектом remote_security_group или плоским
+	# полем — и что при этом стоит в remote_ip_prefix (данные «разработки A»
+	# к sg_rule_delete: от формы зависит, назовёт ли evo источник группой).
+	api POST "$C1/security-groups/$sg/rules" "$(jq -nc --arg g "$sg" \
+		'{direction: "ingress", ether_type: "IPv4", ip_protocol: "tcp", port_range: "18092:18092", remote_security_group_id: $g, description: "evo e2e probe"}')"
+	rule=$(jq -r '(if type == "array" then .[0] else . end) | .id? // empty' "$tmp/api.json" 2>/dev/null) || rule=
+	mask "$rule"
+	case "$code" in
+	2??)
+		r="HTTP $code"
+		if [ -n "$rule" ]; then
+			api GET "$C1/security-groups/$sg/rules/$rule"
+			r="$r; источник в ответе чтения по id: $(jq -r 'if (.remote_security_group? | type) == "object" then "объект remote_security_group с полями \(.remote_security_group | keys | tojson)" elif has("remote_security_group_id") then "плоское поле remote_security_group_id" else "группы в ответе нет, поля: \(keys | tojson)" end' "$tmp/api.json" 2>/dev/null || echo "не прочитан (HTTP $code)"); remote_ip_prefix: $(jq -r '.remote_ip_prefix | if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "0.0.0.0/0" else "CIDR" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+		fi
+		ok "Г-11: правило с группой-источником" "$r"
+		;;
+	*) ok "Г-11: правило с группой-источником" "$(brief)" ;;
+	esac
 	count_rules() { jq -r '[(.rules // .security_group_rules // [])[]?] | length' "$tmp/api.json" 2>/dev/null || echo "?"; }
 	api GET "$C1/security-groups/$sg"
 	n0=$(count_rules)
@@ -2106,8 +2127,10 @@ ops_reach() {
 	done
 }
 # mcode — машинный код причины последнего ответа api (поля code,
-# error_code, type), без разбора текста.
-mcode() { jq -r '[.code?, .error_code?, .type?] | map(select(type == "string")) | join(",")' "$tmp/api.json" 2>/dev/null || true; }
+# error_code, type и reason в details — так отвечают API DBaaS; тело —
+# объект или массив объектов, как у Compute, прогон 201), без разбора
+# текста.
+mcode() { jq -r '[(if type == "array" then .[] else . end) | objects | (.code?, .error_code?, .type?, (.details? | if type == "array" then .[] else . end | objects | .reason?))] | map(select(type == "string")) | unique | join(",")' "$tmp/api.json" 2>/dev/null || true; }
 # refusal ПРОВЕРКА ШАГ — отказ платформы на создающий или меняющий запрос
 # (последний ответ api) одной строкой, поля по условиям «Риска» (R-77):
 # код HTTP и шаг (синхронно или в операции); имена полей тела и машинный
@@ -2391,7 +2414,7 @@ probe_g10() {
 		case "$code" in 2??) ;; *) refusal "$1" синхронно; return 1 ;; esac
 		r="HTTP $code"
 		t0=$SECONDS
-		ops_reach "$url" 600 stopped || true
+		ops_reach "$url" "${PROBE_WAIT:-600}" stopped || true
 		ok "$1" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес в карточке остановленной: $(has_ip)"
 	}
 	if g10_stop "Г-10: остановка"; then
@@ -2437,46 +2460,55 @@ probe_g10() {
 	else
 		resize() { api PUT "$url" "$(jq -nc --arg f "$1" '{flavor_name: $f}')"; }
 		flavor_now() { api GET "$url"; jq -r '.flavor.name? // "?"' "$tmp/api.json" 2>/dev/null || echo '?'; }
-		# resized ПРОВЕРКА — после принятой смены: состояния и flavor.
+		# resized ПРОВЕРКА ЦЕЛЕВОЙ ПРЕЖНИЙ — после принятой смены: какой flavor
+		# показывает карточка, пока ВМ в updating (целевой или прежний — по
+		# этому шаг evo узнаёт свою операцию), состояния по порядку, в каком
+		# состоянии питания ВМ вышла и какой flavor в итоге.
 		resized() {
+			local mid f
 			t0=$SECONDS
+			api GET "$url"
+			f=$(jq -r '.flavor.name? // "?"' "$tmp/api.json" 2>/dev/null) || f='?'
+			mid="в первом чтении после запроса: state $(jq -r '.state? // "?"' "$tmp/api.json" 2>/dev/null || echo '?'), flavor $(if [ "$f" = "$2" ]; then echo целевой; elif [ "$f" = "$3" ]; then echo прежний; else echo "другой или не назван"; fi)"
 			ops_settle "$url" 600 || true
-			r="$r; состояния: $chain, $((SECONDS - t0)) с"
+			r="$r; $mid; состояния: $chain, $((SECONDS - t0)) с; вышла в $st"
 			ok "$1" "$r; flavor стал $([ "$(flavor_now)" = "$2" ] && echo "тем, что просили" || echo "другим")"
 		}
-		local changed=0
-		resize "$up"
-		case "$code" in
-		2??)
-			r="HTTP $code на запущенной"
-			resized "Г-10: смена flavor на шаг вверх" "$up"
-			changed=1
-			;;
-		*)
-			refusal "Г-10: смена flavor на запущенной ВМ" синхронно
-			if [ "$QUOTA_HIT" = 0 ] && g10_stop "Г-10: остановка перед сменой flavor"; then
-				resize "$up"
-				case "$code" in
-				2??)
-					r="HTTP $code на остановленной"
-					resized "Г-10: смена flavor на шаг вверх" "$up"
-					changed=1
-					;;
-				*) refusal "Г-10: смена flavor на остановленной ВМ" синхронно ;;
-				esac
-			fi
-			;;
-		esac
-		# Возврат исходного flavor — в любом случае, если он сменился.
-		if [ "$changed" = 1 ]; then
+		# g10_round ГДЕ — шаг вверх и возврат исходного flavor на ВМ в её
+		# нынешнем состоянии питания. Возврат — в любом случае, если flavor
+		# сменился. Код 1 — отказ шага вверх (записан).
+		g10_round() {
+			resize "$up"
+			case "$code" in 2??) ;; *) refusal "Г-10: смена flavor на $1 ВМ" синхронно; return 1 ;; esac
+			r="HTTP $code на $1"
+			resized "Г-10: смена flavor на шаг вверх, ВМ $1" "$up" "${f0:-$FLAVOR}"
 			resize "${f0:-$FLAVOR}"
 			case "$code" in
 			2??)
-				r="HTTP $code"
-				resized "Г-10: возврат исходного flavor" "${f0:-$FLAVOR}"
+				r="HTTP $code на $1"
+				resized "Г-10: возврат исходного flavor, ВМ $1" "${f0:-$FLAVOR}" "$up"
 				;;
-			*) bad "Г-10: возврат исходного flavor" "HTTP $code: $(api_why) — ВМ осталась с flavor на шаг выше; её удалит уборка$([ "$keep" = 1 ] && echo " со словом g20 — запустите её, не дожидаясь суток")" ;;
+			*) bad "Г-10: возврат исходного flavor, ВМ $1" "HTTP $code: $(api_why) — ВМ осталась с flavor на шаг выше; её удалит уборка$([ "$keep" = 1 ] && echo " со словом g20 — запустите её, не дожидаясь суток")" ;;
 			esac
+		}
+		# На запущенной ВМ, затем на остановленной (нужна ли остановка; в
+		# каком состоянии ВМ выходит из updating). Квота — конец пробы.
+		g10_round запущенной || true
+		# Второй круг — только в ВМ, которая вернулась в исходное: flavor по
+		# карточке исходный, состояние устоявшееся. Иначе изменение ушло бы
+		# в ВМ с неизвестным исходом (заключение «Риска» 151).
+		if [ "$QUOTA_HIT" = 0 ]; then
+			local f1 s1
+			api GET "$url"
+			f1=$(jq -r '.flavor.name? // empty' "$tmp/api.json" 2>/dev/null) || f1=
+			s1=$(jq -r '.state? // empty' "$tmp/api.json" 2>/dev/null) || s1=
+			if [ -z "$f0" ] || [ "$f1" != "$f0" ]; then
+				gap "Г-10: смена flavor на остановленной ВМ" "flavor ВМ не подтверждён исходным после первого круга — второй круг не шлю"
+			elif [ "$s1" != running ] && [ "$s1" != stopped ]; then
+				gap "Г-10: смена flavor на остановленной ВМ" "ВМ в состоянии ${s1:-не прочитано} — второй круг не шлю"
+			elif g10_stop "Г-10: остановка перед сменой flavor на остановленной ВМ"; then
+				g10_round остановленной || true
+			fi
 		fi
 	fi
 	[ "$keep" = 1 ] || return 0
@@ -2517,7 +2549,7 @@ probe_g10() {
 # ВМ — основной интерфейс не трогается) и повтор удаления; пересоздание из
 # другого образа того же семейства, которому хватает flavor ВМ: сначала на
 # запущенной, при отказе не по квоте — на остановленной; после него —
-# образ, остался ли публичный адрес и тот же ли загрузочный диск. Вход по
+# образ (шлётся по id), остался ли публичный адрес и тот же ли загрузочный диск. Вход по
 # SSH после пересоздания проба не проверяет (ключ в метаданных — разовый
 # ключ пробы). ВМ и подсеть убирает уборка области.
 probe_g18() {
@@ -2537,6 +2569,26 @@ probe_g18() {
 		mask "$sn"
 	fi
 	[ -n "$sn" ] || gap "Г-18: подсеть" "subnet_create: код $rc, $reason: $why — второй интерфейс не создаю"
+	if [ -n "$sn" ]; then
+		# Интерфейс — только в готовой подсети: запрос сразу после
+		# subnet_create получает «состояние подсети не даёт создать
+		# интерфейс» (прогон 201).
+		local sst='' schain=''
+		sn_ready() {
+			local s
+			s=$(evo tools call list_subnets --json 2>/dev/null | jq -r --arg id "$sn" '[.subnets[]? | select(.id == $id) | .state // "без state"][0] // "нет в списке"' 2>/dev/null) || s="список не прочитан"
+			[ "$s" = "$sst" ] || schain="${schain:+$schain → }$s"
+			sst=$s
+			case "$s" in created | active | available) return 0 ;; *) return 1 ;; esac
+		}
+		t0=$SECONDS
+		if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" sn_ready; then
+			ok "Г-18: подсеть" "состояния: $schain, $((SECONDS - t0)) с"
+		else
+			gap "Г-18: подсеть" "не готова за 5 мин (состояния: $schain) — второй интерфейс не создаю"
+			sn=
+		fi
+	fi
 	if [ -n "$sn" ]; then
 		if_body() { jq -nc --arg p "$PROJECT" --arg n "$n-if" --arg v "$vm" --arg s "$sn" '{project_id: $p, name: $n, vm_id: $v, subnet_id: $s, description: "evo e2e probe"}'; }
 		api POST "$C1/interfaces" "$(if_body)"
@@ -2574,9 +2626,13 @@ probe_g18() {
 	[ "$QUOTA_HIT" = 0 ] || return 0
 	# Другой образ: того же семейства (имя до первого дефиса), не тот же, и
 	# не требует больше vCPU, чем самый малый flavor прогона.
-	img=$(evo tools call image_list --arg type=public --json 2>/dev/null |
-		jq -r --arg cur "$IMAGE" '[.images[]? | select((.name // "") != $cur and ((.name // "") | split("-")[0]) == ($cur | split("-")[0]) and (.min_cpu // 0) <= 2) | .name] | sort | last // empty' 2>/dev/null) || img=
-	[ -n "$img" ] || { gap "Г-18: пересоздание" "в image_list нет другого образа семейства $IMAGE"; return 0; }
+	# Образ шлётся по id: по имени (image_name), как допускает опубликованная
+	# спецификация, платформа ответила «не UUID» (прогон 201).
+	local img_id
+	read -r img img_id < <(evo tools call image_list --arg type=public --json 2>/dev/null |
+		jq -r --arg cur "$IMAGE" '[.images[]? | select((.name // "") != $cur and ((.name // "") | split("-")[0]) == ($cur | split("-")[0]) and (.min_cpu // 0) <= 2 and (.id // "") != "")] | sort_by(.name) | last // {} | "\(.name // "") \(.id // "")"' 2>/dev/null) || true
+	[ -n "${img:-}" ] && [ -n "${img_id:-}" ] || { gap "Г-18: пересоздание" "в image_list нет другого образа семейства $IMAGE с id"; return 0; }
+	mask "$img_id"
 	local meta
 	vm_pw
 	if ! meta=$(vm_meta "$img" "$n") || ! printf '%s' "$meta" | jq -e 'type == "object"' >/dev/null 2>&1; then
@@ -2586,7 +2642,7 @@ probe_g18() {
 	boot_of() { evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n" '[.disks[]? | select(.bootable == true and ((.attached_to // []) | index($vm)))][0].id // empty' 2>/dev/null || true; }
 	boot0=$(boot_of)
 	mask "$boot0"
-	rebuild() { api POST "$url/rebuild" "$(jq -nc --arg i "$img" --argjson m "$meta" '{image_name: $i, image_metadata: $m}')"; }
+	rebuild() { api POST "$url/rebuild" "$(jq -nc --arg i "$img_id" --argjson m "$meta" '{image_id: $i, image_metadata: $m}')"; }
 	api GET "$url"
 	rebuild
 	case "$code" in
@@ -2594,6 +2650,9 @@ probe_g18() {
 	*)
 		refusal "Г-18: пересоздание на запущенной ВМ" синхронно
 		[ "$QUOTA_HIT" = 0 ] || return 0
+		# Остановка и вторая попытка — только если отказ про состояние ВМ
+		# (машинный код), а не про тело запроса.
+		case "$(mcode)" in *state* | *vm_can_not_be_changed*) ;; *) return 0 ;; esac
 		power power_off
 		case "$code" in 2??) ;; *) refusal "Г-18: остановка перед пересозданием" синхронно; return 0 ;; esac
 		ops_reach "$url" 600 stopped || true
@@ -2645,8 +2704,143 @@ area_ops() {
 	! probe_on g18 || probe_g18 "$zid"
 }
 
+# --- Область dbchange: изменение готового кластера DBaaS (Г-13…Г-15) ---------
+# Идёт в job своего сервиса (dbaas-pg, dbaas-kafka, dbaas-redis) после
+# «Кластер READY», по слову входа probes; кластер создаёт и удаляет job.
+# DB_KIND — pg, kafka или redis, DB_CLUSTER_ID — id кластера. Запросы —
+# прямой PATCH /v1/clusters/{id} по описи, только поля из спецификации.
+# Шаги: PostgreSQL — класс на шаг вверх, возврат класса, диск больше, число
+# узлов +1; Kafka — диск больше, класс вверх, возврат; Redis — класс вверх,
+# возврат, диск больше, одна попытка диска меньше (ожидаемый отказ). Класс
+# — следующий по CPU и памяти в том же режиме развёртывания (<вид>_specs).
+# После принятого шага — ожидание исходного состояния кластера (до
+# DB_WAIT секунд); состояния по порядку и время — в строке. Доступность
+# кластера во время шага проба не меряет — только состояние. Отказ —
+# refusal (R-77); квота по машинному коду — конец пробы, без возврата и
+# следующих шагов. Ресурсов область не создаёт.
+DB_WAIT=${DB_WAIT:-2400}
+# DB_SETTLE — сколько секунд неизменного состояния после принятого шага
+# значат «шаг прошёл без смены состояния».
+DB_SETTLE=${DB_SETTLE:-120}
+# DB_BUDGET — срок всей пробы от её начала, секунд: после него новый шаг не
+# шлётся и ожидания кончаются; возврат класса шлётся и после срока и ждёт
+# не дольше DB_RETURN_WAIT. Худший ход пробы — DB_BUDGET + DB_RETURN_WAIT:
+# у job должно остаться время на удаление кластера (заключение «Риска» 144).
+DB_BUDGET=${DB_BUDGET:-3000}
+DB_RETURN_WAIT=${DB_RETURN_WAIT:-600}
+area_dbchange() {
+	local kind=${DB_KIND:-} id=${DB_CLUSTER_ID:-} g host url s0 up spec0 disk0 inst0 field step
+	local stuck=0 deadline=$(($(date +%s) + DB_BUDGET))
+	case "$kind" in
+	pg) g=Г-13 host=postgresql ;;
+	kafka) g=Г-14 host=kafka ;;
+	redis) g=Г-15 host=redis ;;
+	*) bad dbchange "DB_KIND «$kind» — не pg, kafka, redis"; return 1 ;;
+	esac
+	[ -n "$id" ] || { bad dbchange "нет DB_CLUSTER_ID"; return 1; }
+	mask "$id"
+	iam_fresh || { gap "$g" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	url="https://$host.api.cloud.ru/v1/clusters/$id"
+	# card ВЫРАЖЕНИЕ — поле карточки кластера (ответ бывает обёрнут в cluster).
+	card() { jq -r "(.cluster? // .) | $1" "$tmp/api.json" 2>/dev/null || true; }
+	api GET "$url"
+	case "$code" in 2??) ;; *) gap "$g" "карточка кластера не прочитана: HTTP $code: $(api_why)"; return 0 ;; esac
+	s0=$(card '.status // .state // empty')
+	spec0=$(card '.specification_id // .specification.id // empty')
+	inst0=$(card '.instances // empty')
+	case "$kind" in
+	pg) field=pg_data_gb disk0=$(card '.storage.pg_data_gb // empty') ;;
+	kafka) field=storage_gib disk0=$(card '.storage_gib // empty') ;;
+	redis) field=$(card 'if has("storage_gb") then "storage_gb" else "storage_gib" end') disk0=$(card '.storage_gb // .storage_gib // empty') ;;
+	esac
+	mask "$spec0"
+	[ -n "$s0" ] || { gap "$g" "в карточке кластера нет состояния: поля $(keys_of)"; return 0; }
+	up=$(evo tools call "${kind}_specs" --json 2>/dev/null | jq -r --arg cur "$spec0" '(.specifications // []) as $all | ($all[] | select(.id == $cur)) as $c
+		| [$all[] | select((.deployment_mode // "") == ($c.deployment_mode // "") and ([.cpu, .memory_gb] > [$c.cpu, $c.memory_gb]))] | sort_by(.cpu, .memory_gb) | .[0].id // empty' 2>/dev/null) || up=
+	mask "$up"
+	# db_step ПРОВЕРКА ТЕЛО [return] — PATCH и ожидание исходного состояния;
+	# код 1 — шаг не послан, отказ (уже записан) или кластер не вернулся в
+	# исходное состояние (stuck=1). В кластер, который не вернулся, и после
+	# срока пробы уходит только возврат класса (return): он уменьшает цену;
+	# любой другой PATCH поверх незавершённого повышает шанс кластера,
+	# который API не удаляет.
+	db_step() {
+		local t0=$SECONDS until s chain='' st='' n=0 since now
+		now=$(date +%s)
+		if [ "${3:-}" = return ]; then
+			until=$((now + DB_RETURN_WAIT))
+		else
+			[ "$stuck" = 0 ] || { gap "$1" "кластер не вернулся в $s0, дальше не меняю"; return 1; }
+			[ "$now" -lt "$deadline" ] || { gap "$1" "срок пробы ($((DB_BUDGET / 60)) мин) вышел — шаг не шлю"; return 1; }
+			until=$((now + DB_WAIT))
+			[ "$until" -le "$deadline" ] || until=$deadline
+		fi
+		iam_fresh || true
+		step=''
+		api PATCH "$url" "$(jq -c --arg id "$id" '{cluster_id: $id} + .' <<<"$2")"
+		case "$code" in 2??) ;; *) refusal "$1" синхронно; return 1 ;; esac
+		step="HTTP $code, поля ответа: $(keys_of)"
+		mask "$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)"
+		since=$(date +%s)
+		while :; do
+			iam_fresh || true
+			api GET "$url"
+			case "$code" in 2??) s=$(card '.status // .state // "без состояния"') ;; *) s="HTTP $code" ;; esac
+			[ "$s" = "$st" ] || { chain="${chain:+$chain → }$s"; n=$((n + 1)); since=$(date +%s); }
+			st=$s
+			# Исходное состояние после смены — шаг завершён; исходное без
+			# смены DB_SETTLE секунд — состояние не менялось.
+			if [ "$s" = "$s0" ] && { [ "$n" -gt 1 ] || [ $(($(date +%s) - since)) -ge "$DB_SETTLE" ]; }; then break; fi
+			[ "$(date +%s)" -lt "$until" ] || { chain="$chain (исходного состояния не дождались)"; break; }
+			sleep "$PROBE_PAUSE"
+		done
+		ok "$1" "$step; состояния: $chain, $((SECONDS - t0)) с"
+		[ "$st" = "$s0" ] || { stuck=1; return 1; }
+	}
+	class_steps() {
+		[ -n "$up" ] || { gap "$g: класс на шаг вверх" "в ${kind}_specs нет класса выше текущего в его режиме"; return 0; }
+		local sent=0 step=""
+		db_step "$g: класс на шаг вверх" "$(jq -nc --arg s "$up" '{specification_id: $s}')" || true
+		# Шаг принят (и тогда, когда исходного состояния не дождались) —
+		# возврат класса в любом случае.
+		case "$step" in HTTP\ 2*) sent=1 ;; esac
+		[ "$sent" = 0 ] || db_step "$g: возврат класса" "$(jq -nc --arg s "$spec0" '{specification_id: $s}')" return || true
+	}
+	disk_body() {
+		case "$kind" in
+		pg) jq -nc --argjson v "$1" '{storage: {pg_data_gb: $v}}' ;;
+		*) jq -nc --arg f "$field" --argjson v "$1" '{($f): $v}' ;;
+		esac
+	}
+	disk_up() {
+		case "$disk0" in '' | *[!0-9]*) gap "$g: диск больше" "размер диска в карточке не прочитан"; return 0 ;; esac
+		db_step "$g: диск больше" "$(disk_body $((disk0 + $1)))" || true
+	}
+	case "$kind" in
+	pg)
+		class_steps
+		[ "$QUOTA_HIT" = 0 ] || return 0
+		disk_up 10
+		[ "$QUOTA_HIT" = 0 ] || return 0
+		case "$inst0" in '' | *[!0-9]*) gap "$g: число узлов" "число узлов в карточке не прочитано" ;; *) db_step "$g: число узлов" "$(jq -nc --argjson v $((inst0 + 1)) '{instances: $v}')" || true ;; esac
+		;;
+	kafka)
+		disk_up 10
+		[ "$QUOTA_HIT" = 0 ] || return 0
+		class_steps
+		;;
+	redis)
+		class_steps
+		[ "$QUOTA_HIT" = 0 ] || return 0
+		disk_up 1
+		[ "$QUOTA_HIT" = 0 ] || return 0
+		case "$disk0" in '' | *[!0-9]*) ;; *) db_step "$g: диск меньше (ожидаемый отказ)" "$(disk_body "$disk0")" || true ;; esac
+		;;
+	esac
+}
+
 case "$area" in
-disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops)
+disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops | dbchange)
 	echo "== $area: префикс $prefix"
 	{
 		echo

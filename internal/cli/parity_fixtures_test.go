@@ -78,6 +78,7 @@ var parityArgs = map[string]map[string]any{
 	// person's word for it (D105).
 	"open_ports":           {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(443)}, "allow_internet_on_shared_group": true},
 	"close_ports":          {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80)}},
+	"sg_rule_delete":       {"security_group": "SSH-access_ru.AZ-1", "rule_id": parityNIC},
 	"vpc_list":             {},
 	"vpc_get":              {"id": parityVM},
 	"vpc_operation":        {"operation_id": parityVM},
@@ -296,6 +297,36 @@ var paritySetup = map[string]func(t *testing.T, w parityWorld) (map[string]any, 
 			}
 			return contractRT{status: 200, body: `{"items":[{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp",` +
 				`"port_range":"80:80","remote_ip_prefix":"0.0.0.0/0"}],"total":1}`}.RoundTrip(r)
+		}
+		return nil, func() { w.rt.extra = world }
+	},
+	// sg_rule_delete: the zone's group holds the rule of the call until
+	// its DELETE; after it the group lists the rule no more — the call
+	// sees it gone.
+	"sg_rule_delete": func(t *testing.T, w parityWorld) (map[string]any, func()) {
+		world := w.rt.extra
+		var mu sync.Mutex
+		deleted := false
+		w.rt.extra = func(r *http.Request) (*http.Response, error) {
+			if world != nil {
+				if resp, err := world(r); resp != nil || err != nil {
+					return resp, err
+				}
+			}
+			if r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/security-groups/") || !strings.Contains(r.URL.Path, "/rules") {
+				return nil, nil
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if r.Method == http.MethodDelete {
+				deleted = true
+				return contractRT{status: http.StatusNoContent}.RoundTrip(r)
+			}
+			if deleted {
+				return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(r)
+			}
+			return contractRT{status: 200, body: `{"items":[{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp",` +
+				`"port_range":"8080:8080","remote_ip_prefix":"0.0.0.0/0","state":"created"}],"total":1}`}.RoundTrip(r)
 		}
 		return nil, func() { w.rt.extra = world }
 	},

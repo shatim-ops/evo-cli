@@ -427,15 +427,16 @@ func ParseToolsets(groups []string) ([]string, error) {
 
 // groupByName assigns tools whose name does not start with their group.
 var groupByName = map[string]string{
-	"deploy":       "deploy",
-	"deploy_plan":  "deploy",
-	"deploy_apply": "deploy",
-	"status":       "deploy",
-	"list":         "deploy",
-	"logs":         "deploy",
-	"destroy":      "deploy",
-	"open_ports":   "deploy",
-	"close_ports":  "deploy",
+	"deploy":         "deploy",
+	"deploy_plan":    "deploy",
+	"deploy_apply":   "deploy",
+	"status":         "deploy",
+	"list":           "deploy",
+	"logs":           "deploy",
+	"destroy":        "deploy",
+	"open_ports":     "deploy",
+	"close_ports":    "deploy",
+	"sg_rule_delete": "vpc",
 
 	"provision":    "vm",
 	"vm_get":       "vm",

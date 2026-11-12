@@ -40,7 +40,10 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
    is the whole snapshot, megabytes.
 11. Narrow a list with its filters instead of reading the whole project: they
    are named as the fields of the items (`zone`, `state` or `status`, `name`;
-   the tool's schema lists them), several are «and». `"count": 0` under a
+   the tool's schema lists them), several are «and»; a filter in the plural
+   (`ids`, `states`, `statuses`) takes a list and keeps the items of any of
+   its values; an id missing from the selection is no proof the resource is
+   gone (another project, another filter) — its get tool tells. `"count": 0` under a
    filter is not «none in the project»: before you create or delete on it,
    list without the filter.
 
@@ -133,7 +136,7 @@ of a group before its first change.
 | `snat` | `evo snat …` | 3 | 2 |
 | `stack` | `evo stack …` | 4 | 2 |
 | `vm` | `evo vm …` | 8 | 4 |
-| `vpc` | `evo vpc …` | 15 | 8 |
+| `vpc` | `evo vpc …` | 16 | 9 |
 
 ## Examples
 

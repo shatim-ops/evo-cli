@@ -31,6 +31,8 @@ done
 # Тело запроса — ещё и в body.<МЕТОД>.<путь через точки> (последнее).
 p=${url#https://compute.api.cloud.ru/api/v1/}
 [ ! -s "$FAKE_DIR/body" ] || cp "$FAKE_DIR/body" "$FAKE_DIR/body.$method.$(printf '%s' "${p%%\?*}" | tr / .)"
+[ ! -s "$FAKE_DIR/body" ] || { cat "$FAKE_DIR/body"; echo; } >>"$FAKE_DIR/bodies"
+! grep -q remote_security_group_id "$FAKE_DIR/body" 2>/dev/null || cp "$FAKE_DIR/body" "$FAKE_DIR/body.$method.$(printf '%s' "${p%%\?*}" | tr / .).group"
 : >"$FAKE_DIR/body"
 case "$url" in */auth/token) printf '{"access_token":"tok"}'; exit 0 ;; esac
 echo "$method ${url#https://compute.api.cloud.ru/api/v1}" >>"$FAKE_DIR/calls"
@@ -87,6 +89,7 @@ world
 cat >"$FAKE_DIR/http" <<'H'
 POST /security-groups 201 {"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}
 POST /security-groups/sg1/rules 201 {"id":"rule1"}
+GET /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
 GET /security-groups/sg1 200 {"id":"sg1","rules":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0"}]}
 DELETE /security-groups/sg1/rules/rule1 204
 DELETE /security-groups/sg1 204
@@ -95,8 +98,13 @@ fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11: код" "$rc" 0
-want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;GET /security-groups/sg1;POST /security-groups/sg1/rules;GET /security-groups/sg1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;GET /security-groups/sg1/rules/rule1;GET /security-groups/sg1;POST /security-groups/sg1/rules;GET /security-groups/sg1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;$SW"
 grep -q 'Г-11: повтор создания того же правила' "$tmp/out" || { echo "FAIL: нет строки о повторе правила"; fail=1; }
+# Правило с группой-источником: в теле — remote_security_group_id самой
+# группы, без remote_ip_prefix; в строке — форма источника в ответе чтения.
+jq -e '.remote_security_group_id == "sg1" and (has("remote_ip_prefix") | not)' "$FAKE_DIR/body.POST.security-groups.sg1.rules.group" >/dev/null ||
+	{ echo "FAIL: Г-11: тело правила с группой-источником не то: $(cat "$FAKE_DIR/body.POST.security-groups.sg1.rules.group" 2>/dev/null)"; fail=1; }
+grep -q 'Г-11: правило с группой-источником.*HTTP 201.*источник в ответе чтения по id: объект remote_security_group с полями \["id","name"\].*remote_ip_prefix: null' "$tmp/out" || { echo "FAIL: Г-11: форма группы-источника не записана"; grep 'группой-источником' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'sg1\|rule1'; then echo "FAIL: id в строке лога"; fail=1; fi
 
 # Группа не создана (отказ платформы): дальше проба не идёт, код 0 — это
@@ -178,9 +186,11 @@ H
 g10_world
 cat >>"$FAKE_DIR/http" <<H
 PUT! /vms/vm1 422 {"code":"vm_must_be_stopped","message":"stop it"}
+GET! /vms/vm1 200 {$V,"state":"running"}
 POST! /vms/vm1/set-power 204
 GET! /vms/vm1 200 {$V,"state":"stopped"}
 PUT! /vms/vm1 200 {"state":"updating"}
+GET! /vms/vm1 200 {"id":"vm1","state":"updating","flavor":{"name":"lowcost10-4-8"}}
 GET! /vms/vm1 200 {"id":"vm1","state":"updating"}
 GET! /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
 GET! /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
@@ -191,9 +201,9 @@ rc=0
 PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-10: код" "$rc" 0
 P='POST /vms/vm1/set-power;' G='GET /vms/vm1;'
-want "Г-10: запросы по порядку" "$(calls)" "$G$P$G$G$P$P$G$G$P$G$P$P$G$G$G""POST /vms/00000000-0000-4000-8000-000000000000/set-power;PUT /vms/vm1;$P$G""PUT /vms/vm1;$G$G$G""PUT /vms/vm1;$G$G$SW"
+want "Г-10: запросы по порядку" "$(calls)" "$G$P$G$G$P$P$G$G$P$G$P$P$G$G$G""POST /vms/00000000-0000-4000-8000-000000000000/set-power;PUT /vms/vm1;$G$P$G""PUT /vms/vm1;$G$G$G$G""PUT /vms/vm1;$G$G$G$SW"
 want "Г-10: шаг вверх — соседний flavor семейства, возврат — исходный" "$(jq -r .flavor_name "$FAKE_DIR/body.PUT.vms.vm1")" lowcost10-2-4
-for s in 'Г-10: остановка.*stopping → stopped' 'повтор остановки остановленной.*HTTP 422, машинный код vm_wrong_state' 'Г-10: запуск.*публичный адрес тот же: да' 'Г-10: перезагрузка.*running → rebooting → running' 'id, которого нет.*HTTP 404, машинный код vm_not_found' 'смена flavor на запущенной ВМ.*машинный код: vm_must_be_stopped' 'смена flavor на шаг вверх.*на остановленной.*тем, что просили' 'возврат исходного flavor.*тем, что просили'; do
+for s in 'Г-10: остановка.*stopping → stopped' 'повтор остановки остановленной.*HTTP 422, машинный код vm_wrong_state' 'Г-10: запуск.*публичный адрес тот же: да' 'Г-10: перезагрузка.*running → rebooting → running' 'id, которого нет.*HTTP 404, машинный код vm_not_found' 'смена flavor на запущенной ВМ.*машинный код: vm_must_be_stopped' 'смена flavor на шаг вверх, ВМ остановленной.*в первом чтении после запроса: state updating, flavor целевой.*вышла в stopped.*тем, что просили' 'возврат исходного flavor, ВМ остановленной.*тем, что просили'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-10: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'vm1\|203\.0\.113\.7'; then echo "FAIL: Г-10: id или адрес в строке лога"; fail=1; fi
@@ -209,7 +219,22 @@ H
 rc=0
 PROBES=g10 timeout 30 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-10, смена на запущенной: не ждёт предела, код" "$rc" 0
-grep -q 'смена flavor на шаг вверх.*на запущенной; состояния: running,' "$tmp/out" || { echo "FAIL: Г-10: running не принят как конечное состояние"; fail=1; }
+grep -q 'смена flavor на шаг вверх, ВМ запущенной.*состояния: running,.*вышла в running' "$tmp/out" || { echo "FAIL: Г-10: running не принят как конечное состояние"; fail=1; }
+
+# Возврат исходного flavor после первого круга не удался: второй круг (на
+# остановленной) не шлётся — изменение не уходит в ВМ, которая не
+# вернулась в исходное (заключение «Риска» 151).
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT! /vms/vm1 200 {"state":"updating"}
+PUT /vms/vm1 500 {"message":"boom"}
+GET /vms/vm1 200 {"id":"vm1","state":"running","flavor":{"name":"lowcost10-4-8"}}
+POST /vms/vm1/set-power 204
+H
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10, возврат не удался: второго круга нет" "$(grep -c '^PUT' "$FAKE_DIR/calls") $(sed -n '/^PUT/,$p' "$FAKE_DIR/calls" | grep -c 'set-power' || true)" "2 0"
+grep -q 'смена flavor на остановленной ВМ.*не покрыто.*второй круг не шлю' "$tmp/out" || { echo "FAIL: Г-10: пропуск второго круга не назван"; grep 'Г-10' "$tmp/out" | tail -4 | sed 's/^/  | /'; fail=1; }
 
 # Отказ по квоте на смене flavor (машинный код, не текст): шесть полей
 # одной строкой, остановки и второй попытки смены нет, возврата нет.
@@ -223,6 +248,16 @@ for s in 'отказ HTTP 422 (синхронно)' 'машинный код: or
 	grep -qF "$s" "$tmp/out" || { echo "FAIL: Г-10, квота: нет поля «$s»"; grep 'смена flavor' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 done
 if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: Г-10, квота: id из текста отказа в логе"; fail=1; fi
+# Compute отвечает на отказ телом-массивом [{"message":…,"code":…}]
+# (прогон 201): машинный код читается и из него — иначе квота не
+# распознаётся, и проба идёт дальше.
+g10_world
+echo 'PUT /vms/vm1 422 [{"message":"Quota exceeded","code":"project_quota_exceeded"}]' >>"$FAKE_DIR/http"
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10, квота в теле-массиве: одна попытка смены" "$(sed -n '/^PUT/,$p' "$FAKE_DIR/calls" | grep -c '^PUT\|set-power')" 1
+grep -qF 'машинный код: project_quota_exceeded' "$tmp/out" || { echo "FAIL: Г-10: машинный код из тела-массива не прочитан"; grep 'смена flavor' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+
 # Слово «quota» только в тексте, машинного кода нет — квотой не называется
 # (разбор текста запрещён), проба идёт дальше: остановка и вторая попытка.
 g10_world
@@ -306,9 +341,12 @@ g18_world() {
 	world
 	fake_evo_answer provision 0 0 '{"vm_id":"vm1","vm_ip":"203.0.113.7","status":"ok"}'
 	fake_evo_answer subnet_create 0 0 '{"subnet_id":"sn1","status":"ok"}'
-	fake_evo_answer list_subnets 0 0 '{"subnets":[]}'
+	# Подсеть сначала создаётся, затем готова; дальше списки — для уборки.
+	fake_evo_answer list_subnets 0 0 '{"subnets":[{"id":"sn1","name":"evo-e2e-ops-r7a1-g18-sn","state":"creating"}]}'
+	fake_evo_answer list_subnets 1 0 '{"subnets":[{"id":"sn1","name":"evo-e2e-ops-r7a1-g18-sn","state":"created"}]}'
+	fake_evo_answer list_subnets 2 0 '{"subnets":[]}'
 	fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
-	fake_evo_answer image_list 0 0 '{"images":[{"name":"debian-12","min_cpu":1},{"name":"ubuntu-22.04","min_cpu":1},{"name":"ubuntu-24.04","min_cpu":1},{"name":"ubuntu-gpu","min_cpu":8}]}'
+	fake_evo_answer image_list 0 0 '{"images":[{"id":"img-d","name":"debian-12","min_cpu":1},{"id":"img-22","name":"ubuntu-22.04","min_cpu":1},{"id":"img-24","name":"ubuntu-24.04","min_cpu":1},{"id":"img-g","name":"ubuntu-gpu","min_cpu":8}]}'
 	fake_evo_answer image_get 0 0 '{"fields":[{"name":"hostname","filled_by":"evo","role":"vm_name"},{"name":"password","filled_by":"evo","role":"password"}]}'
 	fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g18-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g18"]}]}'
 }
@@ -321,7 +359,7 @@ GET /interfaces?project_id=p&vm_id=vm1&limit=100 200 {"items":[{"id":"if0","name
 DELETE! /interfaces/if1 204
 DELETE /interfaces/if1 404 {"code":"interface_not_found"}
 GET! /vms/vm1 200 {$V,"state":"running"}
-POST! /vms/vm1/rebuild 422 {"code":"vm_must_be_stopped","message":"stop it"}
+POST! /vms/vm1/rebuild 422 [{"code":"vm_can_not_be_changed","message":"Vm can not be changed from current state"}]
 POST /vms/vm1/set-power 204
 GET! /vms/vm1 200 {$V,"state":"stopped"}
 POST! /vms/vm1/rebuild 200 {"id":"vm1","state":"rebuilding"}
@@ -335,9 +373,9 @@ want "Г-18: запросы по порядку" "$(calls)" "POST /interfaces;GE
 jq -e --arg p p '.vm_id == "vm1" and .subnet_id == "sn1" and .name == "evo-e2e-ops-r7a1-g18-if" and .project_id == $p' "$FAKE_DIR/body.POST.interfaces" >/dev/null ||
 	{ echo "FAIL: Г-18: тело создания интерфейса не то: $(cat "$FAKE_DIR/body.POST.interfaces" 2>/dev/null)"; fail=1; }
 # Другой образ — того же семейства, что образ ВМ, и не требует больше её flavor.
-jq -e '.image_name == "ubuntu-24.04" and .image_metadata.hostname == "evo-e2e-ops-r7a1-g18" and (.image_metadata.password | test("^[0-9a-f]{32}$"))' "$FAKE_DIR/body.POST.vms.vm1.rebuild" >/dev/null ||
+jq -e '.image_id == "img-24" and (has("image_name") | not) and .image_metadata.hostname == "evo-e2e-ops-r7a1-g18" and (.image_metadata.password | test("^[0-9a-f]{32}$"))' "$FAKE_DIR/body.POST.vms.vm1.rebuild" >/dev/null ||
 	{ echo "FAIL: Г-18: тело пересоздания не то: $(cat "$FAKE_DIR/body.POST.vms.vm1.rebuild" 2>/dev/null)"; fail=1; }
-for s in 'Г-18: второй интерфейс.*HTTP 201' 'повтор создания с тем же именем.*HTTP 422, машинный код interface_name_exists' 'удаление интерфейса.*HTTP 204, повтор — HTTP 404' 'пересоздание на запущенной ВМ.*машинный код: vm_must_be_stopped' 'Г-18: пересоздание из ubuntu-24.04.*на остановленной.*rebuilding → stopped.*образ тот, что просили.*публичный адрес тот же: да.*загрузочный диск тот же: да'; do
+for s in 'Г-18: второй интерфейс.*HTTP 201' 'повтор создания с тем же именем.*HTTP 422, машинный код interface_name_exists' 'удаление интерфейса.*HTTP 204, повтор — HTTP 404' 'пересоздание на запущенной ВМ.*машинный код: vm_can_not_be_changed' 'Г-18: пересоздание из ubuntu-24.04.*на остановленной.*rebuilding → stopped.*образ тот, что просили.*публичный адрес тот же: да.*загрузочный диск тот же: да'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-18: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
 if grep -v '::add-mask::' "$tmp/out" | grep -qw 'vm1\|if1\|sn1\|boot1\|203\.0\.113\.7'; then echo "FAIL: Г-18: id или адрес в строке лога"; fail=1; fi
@@ -345,6 +383,22 @@ if grep -v '::add-mask::' "$tmp/out" | grep -qw 'vm1\|if1\|sn1\|boot1\|203\.0\.1
 if grep -q 'DELETE /interfaces/if0' "$FAKE_DIR/calls"; then echo "FAIL: Г-18: удалён основной интерфейс ВМ"; fail=1; fi
 
 if grep -q '^disk_delete' "$FAKE_DIR/evo-calls"; then echo "FAIL: Г-18: загрузочный диск тот же, а диск удалён"; fail=1; fi
+# Интерфейс создаётся только в готовой подсети (прогон 201: запрос сразу
+# после subnet_create получил «состояние подсети не даёт создать интерфейс»).
+want "Г-18: подсеть читалась до готовности" "$(grep -c '^list_subnets' "$FAKE_DIR/evo-calls")" 4
+grep -q 'Г-18: подсеть.*creating → created' "$tmp/out" || { echo "FAIL: Г-18: готовность подсети не записана"; fail=1; }
+
+# Отказ пересоздания не про состояние ВМ (проверка тела): остановки и второй
+# попытки нет — прогон 201 останавливал ВМ зря.
+g18_world
+fake_evo_answer subnet_create 0 1 '{"error":{"reason":"USAGE","message":"cidr занят"}}'
+cat >"$FAKE_DIR/http" <<H
+GET /vms/vm1 200 {$V,"state":"running"}
+POST /vms/vm1/rebuild 422 [{"message":"Input should be a valid UUID","code":"uuid_parsing"}]
+H
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-18, отказ не про состояние: одна попытка, без остановки" "$(grep -c 'rebuild' "$FAKE_DIR/calls") $(grep -c 'set-power' "$FAKE_DIR/calls" || true)" "1 0"
 
 # Пересоздание выдало ВМ новый загрузочный диск, а старый оставило без ВМ:
 # под именем пробы уборка его может не найти — проба удаляет его по id
@@ -603,6 +657,132 @@ H
 rc=0
 PROBES="g11 g16" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "квота в Г-11 не выключает Г-16: копия ВМ запрошена" "$(grep -c '^POST /backups$' "$FAKE_DIR/calls")" 1
+
+# Область dbchange (пробы Г-13…Г-15): изменение готового кластера DBaaS
+# прямым PATCH. PostgreSQL: класс на шаг вверх → возврат класса → диск
+# больше → число узлов; после каждого принятого шага — ожидание исходного
+# состояния кластера. Ресурсов область не создаёт.
+S='https://postgresql.api.cloud.ru/v1/clusters/c1'
+db_world() {
+	world
+	fake_evo_answer pg_specs 0 0 '{"specifications":[{"id":"s1","cpu":2,"memory_gb":4,"deployment_mode":"standard","max_hosts":3},{"id":"s3","cpu":8,"memory_gb":16,"deployment_mode":"standard"},{"id":"s2","cpu":4,"memory_gb":8,"deployment_mode":"standard"},{"id":"h2","cpu":4,"memory_gb":4,"deployment_mode":"ha"}]}'
+	fake_evo_answer redis_specs 0 0 '{"specifications":[{"id":"s1","cpu":2,"memory_gb":4,"deployment_mode":"standard"},{"id":"s2","cpu":4,"memory_gb":8,"deployment_mode":"standard"}]}'
+}
+C='"id":"c1","specification_id":"s1","instances":1,"storage":{"pg_data_gb":20}'
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET! $S 200 {$C,"status":"RUNNING"}
+PATCH! $S 200 {"id":"op1"}
+GET! $S 200 {$C,"status":"UPDATING"}
+GET! $S 200 {$C,"status":"RUNNING"}
+PATCH! $S 200 {"id":"op2"}
+GET! $S 200 {$C,"status":"UPDATING"}
+GET! $S 200 {$C,"status":"RUNNING"}
+PATCH! $S 400 {"code":"INVALID_ARGUMENT","message":"storage step is 50"}
+PATCH! $S 200 {"id":"op4"}
+GET! $S 200 {$C,"status":"UPDATING"}
+GET $S 200 {$C,"status":"RUNNING"}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13: код" "$rc" 0
+want "Г-13: запросы по порядку" "$(sed "s#$S#C#" "$FAKE_DIR/calls" | tr '\n' ';')" "GET C;PATCH C;GET C;GET C;PATCH C;GET C;GET C;PATCH C;PATCH C;GET C;GET C;"
+want "Г-13: тела PATCH — класс вверх, возврат, диск, узлы" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"specification_id":"s2"};{"specification_id":"s1"};{"storage":{"pg_data_gb":30}};{"instances":2};'
+for s in 'Г-13: класс на шаг вверх.*HTTP 200.*UPDATING → RUNNING' 'Г-13: возврат класса.*HTTP 200' 'Г-13: диск больше.*отказ HTTP 400.*машинный код: INVALID_ARGUMENT' 'Г-13: число узлов.*HTTP 200'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-13: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
+if grep -v '::add-mask::' "$tmp/out" | grep -qw 'c1\|op1'; then echo "FAIL: Г-13: id в строке лога"; fail=1; fi
+if grep -q '^DELETE\|yes=1' "$FAKE_DIR/calls" "$FAKE_DIR/evo-calls"; then echo "FAIL: dbchange что-то удаляла или создавала через evo"; fail=1; fi
+
+# Отказ по квоте на классе вверх (машинный код): возврата и следующих шагов нет.
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 429 {"code":"RESOURCE_EXHAUSTED","message":"quota of 3f2b8c1e-1111-4222-8333-444455556666","details":[{"reason":"QUOTA_EXCEEDED"}]}
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, квота: код" "$rc" 0
+want "Г-13, квота: один PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 1
+grep -q 'квота по машинному коду: да' "$tmp/out" || { echo "FAIL: Г-13: квота не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+# То же, когда details — объект, а не массив объектов.
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 429 {"code":"RESOURCE_EXHAUSTED","details":{"reason":"QUOTA_EXCEEDED"}}
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, квота, details — объект: один PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 1
+
+# Кластер не вернулся в исходное состояние после смены класса: в него
+# уходит только возврат класса; PATCH диска и узлов не шлётся — каждый
+# PATCH поверх незавершённого повышает шанс кластера, который API не
+# удаляет (заключение «Риска» 144, К1).
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET! $S 200 {$C,"status":"RUNNING"}
+PATCH $S 200 {"id":"op"}
+GET $S 200 {$C,"status":"UPDATING"}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_WAIT=1 DB_RETURN_WAIT=1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, кластер не вернулся: код" "$rc" 0
+want "Г-13, кластер не вернулся: только класс и его возврат" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"specification_id":"s2"};{"specification_id":"s1"};'
+grep -q 'кластер не вернулся в RUNNING, дальше не меняю' "$tmp/out" || { echo "FAIL: Г-13: остановка пробы не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+# Срок всей пробы вышел: новый шаг не шлётся (К2).
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 200 {"id":"op"}
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_BUDGET=0 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, срок пробы вышел: ни одного PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls" || true)" 0
+grep -q 'срок пробы' "$tmp/out" || { echo "FAIL: Г-13: истёкший срок не назван"; fail=1; }
+
+# Redis: класс вверх и возврат, диск больше, затем одна попытка уменьшить
+# диск — ожидаемый отказ записан, кластер не тронут дальше.
+R='https://redis.api.cloud.ru/v1/clusters/c1'
+db_world
+cat >"$FAKE_DIR/http" <<H
+PATCH! $R 200 {"id":"op"}
+PATCH! $R 200 {"id":"op"}
+PATCH! $R 200 {"id":"op"}
+PATCH! $R 400 {"code":"FAILED_PRECONDITION","message":"cannot shrink"}
+GET $R 200 {"id":"c1","specification_id":"s1","storage_gib":8,"status":"RUNNING"}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=redis DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-15: код" "$rc" 0
+want "Г-15: тела PATCH" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"specification_id":"s2"};{"specification_id":"s1"};{"storage_gib":9};{"storage_gib":8};'
+grep -q 'Г-15: диск меньше (ожидаемый отказ).*отказ HTTP 400' "$tmp/out" || { echo "FAIL: Г-15: отказ уменьшения диска не записан"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
+# Kafka: диск больше, класс вверх, возврат — поле диска storage_gib.
+K='https://kafka.api.cloud.ru/v1/clusters/c1'
+db_world
+fake_evo_answer kafka_specs 0 0 '{"specifications":[{"id":"k1","cpu":2,"memory_gb":4,"deployment_mode":"standard"},{"id":"k2","cpu":4,"memory_gb":8,"deployment_mode":"standard"}]}'
+cat >"$FAKE_DIR/http" <<H
+PATCH $K 200 {"id":"op"}
+GET $K 200 {"cluster":{"id":"c1","specification_id":"k1","storage_gib":100,"status":"RUNNING"}}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=kafka DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-14: код" "$rc" 0
+want "Г-14: тела PATCH" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"storage_gib":110};{"specification_id":"k2"};{"specification_id":"k1"};'
+grep -q 'Г-14: возврат класса.*HTTP 200' "$tmp/out" || { echo "FAIL: Г-14: возврат класса не записан"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
+# Нет кластера или вида — область отказывает, запросов нет.
+db_world
+: >"$FAKE_DIR/http"
+rc=0
+DB_KIND=mysql DB_CLUSTER_ID=c1 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "dbchange, чужой вид: код" "$rc" 1
+[ ! -s "$FAKE_DIR/calls" ] || { echo "FAIL: dbchange с чужим видом слала запросы"; fail=1; }
 
 # Слова проб нет — область ничего не шлёт.
 world

@@ -293,8 +293,9 @@ var cliSpecs = map[string]CLISpec{
 	"org_projects": {Group: "org", Verb: "projects", Render: "project-list"},
 
 	// image, vpc: commands added to the trees of v1.1.
-	"image_create": {Group: "image", Verb: "create", Args: []string{"name"}},
-	"image_delete": {Group: "image", Verb: "delete", Args: []string{"image_id"}},
-	"open_ports":   {Group: "vpc", Verb: "open-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
-	"close_ports":  {Group: "vpc", Verb: "close-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
+	"image_create":   {Group: "image", Verb: "create", Args: []string{"name"}},
+	"image_delete":   {Group: "image", Verb: "delete", Args: []string{"image_id"}},
+	"open_ports":     {Group: "vpc", Verb: "open-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
+	"close_ports":    {Group: "vpc", Verb: "close-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
+	"sg_rule_delete": {Group: "vpc", Verb: "sg-rule-delete", Args: []string{"security_group"}},
 }

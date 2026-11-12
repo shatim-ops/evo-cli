@@ -272,6 +272,17 @@ type SGRule struct {
 	RemoteIPPrefix string `json:"remote_ip_prefix,omitempty"`
 	Description    string `json:"description,omitempty"`
 	State          string `json:"state,omitempty"` // read only: created, creating, deleting, error…
+	// RemoteSecurityGroup is the group the rule lets in, when its source
+	// is a group and not a prefix (read only: the answer's
+	// remote_security_group; a request names the group by another field).
+	// Such a rule lets in the interfaces of that group, not any address.
+	RemoteSecurityGroup *SGRuleGroup `json:"remote_security_group,omitempty"`
+}
+
+// SGRuleGroup is the source group of a rule, as the API names it.
+type SGRuleGroup struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
 }
 
 // DiskType represents a Cloud.ru disk type (GET /api/v1/disk-types).
@@ -659,6 +670,9 @@ type VMDetail struct {
 	Name       string        `json:"name"`
 	State      string        `json:"state"`
 	Interfaces []VMInterface `json:"interfaces"`
+	// Image is the image the VM was made of (image{id,name} of the card;
+	// the item of the list of VMs carries none).
+	Image *ZoneRef `json:"image,omitempty"`
 }
 
 // AttachedFloatingIP is the address and ID of the first floating IP bound to

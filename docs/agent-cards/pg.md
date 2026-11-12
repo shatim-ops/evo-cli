@@ -24,7 +24,7 @@
 
 A change of this group that answers an `operation_id` runs on: wait for it with `pg_operation` and its `wait_seconds`, not by polling a list.
 
-Filters of the lists (the rule of the `evo` skill): `pg_list` — status, name; `pg_specs` — version; `pg_databases` — name; `pg_users` — name; `pg_backups` — status, name.
+Filters of the lists (the rule of the `evo` skill): `pg_list` — status, name, ids, statuses; `pg_specs` — version; `pg_databases` — name; `pg_users` — name; `pg_backups` — status, name, ids, statuses.
 
 ## Notes
 
