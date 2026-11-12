@@ -269,6 +269,8 @@
 - `GET /api/v1/protection-plans` (compute/openapi-v3.yaml) — Получение списка планов резервного копирования
   - query: `offset`, `limit`, `order_by`, `order_desc`, `project_id*`, `backup_id`, `name`, `state`, `resource_ids`, `resource_types`, `type`
   - ответы: 200, 422
+- `GET /api/v1/protection-plans/{protection_plan_id}` (compute/openapi-v3.yaml) — Получение информации о плане резервного копирования — состояние плана после создания и удаления
+  - ответы: 200, 422
 - `DELETE /api/v1/protection-plans/{protection_plan_id}` (compute/openapi-v3.yaml) — Удаление плана резервного копирования
   - ответы: 204, 422
 
