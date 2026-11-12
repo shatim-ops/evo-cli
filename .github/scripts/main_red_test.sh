@@ -54,6 +54,7 @@ run() { # ИМЯ исход открытое ждём… (WORKFLOW — ci, ес�
       calls:*) grep -q -- "${want#calls:}" "$work/calls" || ok=0 ;;
       nocalls:*) ! grep -q -- "${want#nocalls:}" "$work/calls" || ok=0 ;;
       body:*) grep -qF -- "${want#body:}" "$work/body" || ok=0 ;;
+      nobody:*) ! grep -qF -- "${want#nobody:}" "$work/body" || ok=0 ;;
       stderr:*) grep -qF -- "${want#stderr:}" "$work/stderr" || ok=0 ;;
     esac
   done
@@ -99,13 +100,17 @@ FAKE_JOBS='104\treadonly\n' FAKE_LOG='FAIL\n' WORKFLOW=cloud-e2e \
 FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21 22" \
   run "красный, issue нет — строка в каждый открытый PR" failure "" \
   "calls:issue create" "calls:pr list --state open --base main" "calls:pr comment 21" "calls:pr comment 22" \
-  "body:main красный" "body:https://example.invalid/o/r/issues/55" "body:автослияние"
+  "body:main красный" "body:https://example.invalid/o/r/issues/55" "body:автослияние" \
+  "body:Эта строка — уведомление workflow main-red" "body:состояние main — issue «main красный: ci»" \
+  "calls:isDraft"
 FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21 22" \
   run "красный, issue открыто — в PR второй раз не пишет" failure 7 \
   "calls:issue comment 7" "nocalls:pr comment"
 FAKE_PRS="21 22" \
   run "зелёный закрыл issue — строка в каждый открытый PR" success 7 \
-  "calls:issue close 7" "calls:pr comment 21" "calls:pr comment 22" "body:main снова зелёный"
+  "calls:issue close 7" "calls:pr comment 21" "calls:pr comment 22" \
+  "body:https://github.com/o/r/issues/7 закрыт зелёным прогоном https://example.invalid/run/41" \
+  "body:Эта строка — уведомление workflow main-red" "nobody:запрет" "nobody:Запрет" "nobody:снят"
 FAKE_PRS="21 22" \
   run "зелёный, issue не было — в PR тишина" success "" \
   "nocalls:pr comment" "nocalls:pr list"
