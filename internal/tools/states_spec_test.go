@@ -102,6 +102,12 @@ var stateRowsOf = func() map[string]map[string]bool {
 			out[tool][state] = true
 		}
 	}
+	for tool, rows := range deleteSpecStateRows {
+		out[tool] = map[string]bool{}
+		for state := range rows {
+			out[tool][state] = true
+		}
+	}
 	return out
 }()
 
@@ -126,11 +132,11 @@ var stateWorldsPendingShipped = map[string]bool{
 	"fip_attach": true, "release_floating_ip": true,
 	"snat_create": true, "snat_delete": true, "subnet_create": true, "subnet_delete": true,
 	"vpc_route_create": true, "vpc_route_delete": true,
-	"k8s_create": true, "k8s_delete": true, "k8s_add_nodepool": true, "k8s_add_addon": true,
+	"k8s_create": true, "k8s_add_nodepool": true, "k8s_add_addon": true,
 	"kafka_create": true, "kafka_delete": true, "redis_create": true, "redis_delete": true,
 	"pg_create": true, "pg_delete": true, "pg_db_create": true, "pg_db_delete": true,
 	"pg_user_create": true, "pg_user_delete": true, "pg_backup_create": true,
-	"lb_create": true, "lb_delete": true, "tg_create": true, "tg_delete": true,
+	"lb_create": true, "tg_create": true,
 	"secret_create": true, "secret_delete": true, "secret_add_version": true,
 }
 
