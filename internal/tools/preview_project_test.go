@@ -35,7 +35,19 @@ func TestPreviewProject_TargetDeclared(t *testing.T) {
 	r := New(nil)
 	for _, tl := range r.Tools() {
 		targets := targetArgs(tl.Name)
+		// namedProject names the project of one resource: the first target
+		// the call gives. Several targets of one kind are spellings of one
+		// argument (pg_delete: id, cluster_id); targets of different kinds,
+		// or a target that takes a list of ids, would leave a resource
+		// whose project the preview does not name — refused here until
+		// the code reads them all (conclusion 114 of «Риск», У3).
 		for _, a := range targets {
+			if a.kind != targets[0].kind {
+				t.Errorf("%s: targets %s and %s are of different kinds: the preview names the project of one resource", tl.Name, targets[0].name, a.name)
+			}
+			if a.ids != nil {
+				t.Errorf("%s.%s: a target that takes several ids: the preview names the project of one resource", tl.Name, a.name)
+			}
 			if a.kind == nil || a.kind == kindOperation {
 				t.Errorf("%s.%s: a target needs a kind that tells the project of the resource", tl.Name, a.name)
 			} else if a.kind.project == nil {
