@@ -125,16 +125,18 @@ func boolFilter(arg, en, ru string, fields ...string) listFilter {
 // item of each list; scripts/api-contract.json names them at the request,
 // and job contract compares them with the specification).
 var (
-	vmStates      = []string{"running", "stopped", "error", "error_creating", "error_deleting", "creating", "starting", "stopping", "rebooting", "deleting", "updating"}
-	diskStates    = []string{"available", "in_use", "reserved", "error", "error_creating", "error_deleting", "creating", "updating", "deleting", "attaching", "detaching"}
-	fipStates     = []string{"available", "in_use", "error", "error_creating", "error_deleting", "creating", "deleting", "updating", "attaching", "detaching"}
-	networkStates = []string{"created", "error", "error_creating", "error_deleting", "creating", "deleting", "updating"}
-	k8sStatuses   = []string{"OBJECT_STATUS_PENDING", "OBJECT_STATUS_PROVISIONING", "OBJECT_STATUS_RUNNING", "OBJECT_STATUS_RESUMING", "OBJECT_STATUS_DELETING", "OBJECT_STATUS_ERROR", "OBJECT_STATUS_SCALING_UP", "OBJECT_STATUS_SCALING_DOWN", "OBJECT_STATUS_STOPPING", "OBJECT_STATUS_STOPPED", "OBJECT_STATUS_SUSPENDING", "OBJECT_STATUS_SUSPENDED", "OBJECT_STATUS_UPGRADING", "OBJECT_STATUS_EDITING", "OBJECT_STATUS_ADDING", "OBJECT_STATUS_DELETED"}
-	dbaasStatuses = []string{"STATUS_UNSPECIFIED", "PENDING", "DEPLOYING", "FAILED", "UPDATING", "READY", "SUSPENDED", "SUSPENDING", "ERASED", "ERASING", "ROLLING_BACK"}
-	lbStatuses    = []string{"NLB_STATUS_UNSPECIFIED", "NLB_STATUS_CREATING", "NLB_STATUS_ERROR_CREATING", "NLB_STATUS_RUNNING", "NLB_STATUS_UPDATING", "NLB_STATUS_ERROR_UPDATING", "NLB_STATUS_DELETING", "NLB_STATUS_ERROR_DELETING", "NLB_STATUS_DELETED", "NLB_STATUS_SUSPENDING", "NLB_STATUS_SUSPENDED", "NLB_STATUS_ERROR_SUSPENDING", "NLB_STATUS_RESUMING", "NLB_STATUS_ERROR_RESUMING"}
-	tgStatuses    = []string{"TARGET_GROUP_STATUS_UNSPECIFIED", "TARGET_GROUP_STATUS_CREATING", "TARGET_GROUP_STATUS_ERROR_CREATING", "TARGET_GROUP_STATUS_CREATED", "TARGET_GROUP_STATUS_UPDATING", "TARGET_GROUP_STATUS_ERROR_UPDATING", "TARGET_GROUP_STATUS_DELETING", "TARGET_GROUP_STATUS_ERROR_DELETING", "TARGET_GROUP_STATUS_DELETED"}
-	arStatuses    = []string{"CREATING", "ACTIVE", "ERROR"}
-	arTypes       = []string{"DOCKER", "DEBIAN", "RPM", "GENERIC", "PYPI", "NPM"}
+	vmStates         = []string{"running", "stopped", "error", "error_creating", "error_deleting", "creating", "starting", "stopping", "rebooting", "deleting", "updating"}
+	diskStates       = []string{"available", "in_use", "reserved", "error", "error_creating", "error_deleting", "creating", "updating", "deleting", "attaching", "detaching"}
+	fipStates        = []string{"available", "in_use", "error", "error_creating", "error_deleting", "creating", "deleting", "updating", "attaching", "detaching"}
+	networkStates    = []string{"created", "error", "error_creating", "error_deleting", "creating", "deleting", "updating"}
+	k8sStatuses      = []string{"OBJECT_STATUS_PENDING", "OBJECT_STATUS_PROVISIONING", "OBJECT_STATUS_RUNNING", "OBJECT_STATUS_RESUMING", "OBJECT_STATUS_DELETING", "OBJECT_STATUS_ERROR", "OBJECT_STATUS_SCALING_UP", "OBJECT_STATUS_SCALING_DOWN", "OBJECT_STATUS_STOPPING", "OBJECT_STATUS_STOPPED", "OBJECT_STATUS_SUSPENDING", "OBJECT_STATUS_SUSPENDED", "OBJECT_STATUS_UPGRADING", "OBJECT_STATUS_EDITING", "OBJECT_STATUS_ADDING", "OBJECT_STATUS_DELETED"}
+	dbaasStatuses    = []string{"STATUS_UNSPECIFIED", "PENDING", "DEPLOYING", "FAILED", "UPDATING", "READY", "SUSPENDED", "SUSPENDING", "ERASED", "ERASING", "ROLLING_BACK"}
+	lbStatuses       = []string{"NLB_STATUS_UNSPECIFIED", "NLB_STATUS_CREATING", "NLB_STATUS_ERROR_CREATING", "NLB_STATUS_RUNNING", "NLB_STATUS_UPDATING", "NLB_STATUS_ERROR_UPDATING", "NLB_STATUS_DELETING", "NLB_STATUS_ERROR_DELETING", "NLB_STATUS_DELETED", "NLB_STATUS_SUSPENDING", "NLB_STATUS_SUSPENDED", "NLB_STATUS_ERROR_SUSPENDING", "NLB_STATUS_RESUMING", "NLB_STATUS_ERROR_RESUMING"}
+	tgStatuses       = []string{"TARGET_GROUP_STATUS_UNSPECIFIED", "TARGET_GROUP_STATUS_CREATING", "TARGET_GROUP_STATUS_ERROR_CREATING", "TARGET_GROUP_STATUS_CREATED", "TARGET_GROUP_STATUS_UPDATING", "TARGET_GROUP_STATUS_ERROR_UPDATING", "TARGET_GROUP_STATUS_DELETING", "TARGET_GROUP_STATUS_ERROR_DELETING", "TARGET_GROUP_STATUS_DELETED"}
+	arStatuses       = []string{"CREATING", "ACTIVE", "ERROR"}
+	routeStatuses    = []string{"ROUTE_STATUS_UNSPECIFIED", "ROUTE_STATUS_NEW", "ROUTE_STATUS_CREATING", "ROUTE_STATUS_CREATED", "ROUTE_STATUS_FAILED_CREATE", "ROUTE_STATUS_DELETING", "ROUTE_STATUS_DELETED", "ROUTE_STATUS_FAILED_DELETE"}
+	pgBackupStatuses = []string{"BACKUP_STATUS_UNSPECIFIED", "BACKUP_STATUS_PENDING", "BACKUP_STATUS_STARTED", "BACKUP_STATUS_COMPLETED", "BACKUP_STATUS_FAILED"}
+	arTypes          = []string{"DOCKER", "DEBIAN", "RPM", "GENERIC", "PYPI", "NPM"}
 )
 
 // listSpecs are the lists and their filters, by tool. A list tool is here
@@ -208,6 +210,34 @@ var listSpecs = map[string]listSpec{
 	"list":             {none: "the records of this directory, read from the local state: a few"},
 	"list_images":      {none: "deprecated (v2.0): image_list searches the catalogue"},
 	"marketplace_list": {none: "a search of the catalogue by its own query and kind, not a list of the project"},
+
+	// The lists inside one resource and of the organization: by the name
+	// and, where the specification closes the list of them, the status.
+	"pg_databases":         {rows: "databases", filters: []listFilter{nameFilter()}},
+	"pg_users":             {rows: "users", filters: []listFilter{nameFilter()}},
+	"pg_backups":           {rows: "backups", filters: []listFilter{enumFilter("status", pgBackupStatuses...), nameFilter()}},
+	"vpc_routes":           {rows: "routes", filters: []listFilter{enumFilter("status", routeStatuses...)}},
+	"org_projects":         {rows: "projects", filters: []listFilter{nameFilter()}},
+	"iam_service_accounts": {rows: "service_accounts", filters: []listFilter{nameFilter()}},
+
+	// The catalogues with a search of their own.
+	"k8s_addons":  {rows: "addons", own: []string{"query", "category", "billable"}},
+	"s3_ls":       {rows: "objects", own: []string{"prefix"}},
+	"pg_specs":    {rows: "specifications", own: []string{"version"}},
+	"kafka_specs": {rows: "specifications", own: []string{"version_id", "zone"}},
+	"redis_specs": {rows: "specifications", own: []string{"version_id", "zone"}},
+
+	// Short lists and what is no list of resources: no filter, with why.
+	"pg_versions":        {none: "a catalogue of a few versions"},
+	"kafka_versions":     {none: "a catalogue of a few versions"},
+	"redis_versions":     {none: "a catalogue of a few versions"},
+	"k8s_addon_versions": {none: "the versions of one addon: a few"},
+	"cert_versions":      {none: "the versions of one certificate: a few"},
+	"org_quotas":         {none: "a table of quotas read whole: a row is a quota, not a resource"},
+	"audit_events":       {none: "a log read by time and by page (since, page_token), not a list of resources"},
+	"ca_logs":            {none: "the lines of a log, read by its own arguments, not a list of resources"},
+	"k8s_options":        {none: "a composite catalogue (versions, flavors, zones) read whole to plan a cluster"},
+	"doctor":             {none: "the checks of this machine and this key, each of which the person reads"},
 }
 
 // filterHintRows is how many items a list answers without a filter before
@@ -453,7 +483,10 @@ func (r *Registry) filtered(s listSpec, next Handler) Handler {
 		}
 		m, rows, err := listRows(text, s.rows)
 		if err != nil {
-			if len(conds) == 0 {
+			// No list at all (null: the handler says why in its answer —
+			// a key that cannot list) is the handler's answer, not an
+			// empty selection.
+			if len(conds) == 0 || noList(text, s.rows) {
 				return text, false
 			}
 			// A part of a list is never answered as the selection.
@@ -550,6 +583,16 @@ func listRows(text, key string) (map[string]any, []any, error) {
 		return nil, nil, fmt.Errorf(i18n.T("the list to select from has no %q", "в списке для отбора нет %q"), key)
 	}
 	return m, rows, nil
+}
+
+// noList reports an answer whose items are null: the list was not read.
+func noList(text, key string) bool {
+	var m map[string]any
+	if json.Unmarshal([]byte(text), &m) != nil {
+		return false
+	}
+	v, has := m[key]
+	return has && v == nil
 }
 
 // condition is filter f with value v, checked: an enum is in the spelling
