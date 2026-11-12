@@ -61,20 +61,20 @@ func (s *Registry) zoneOfDisk(ctx context.Context, eng *engine.Engine, diskID st
 	return "", fmt.Errorf(i18n.T("disk %s not found in project %s", "диск %s не найден в проекте %s"), diskID, eng.Config.ProjectID)
 }
 
-// handleImageCreate builds a VM image from a bootable disk — the last step of
+// planImageCreate plans a VM image built from a bootable disk — the last step of
 // producing a distributable image (e.g. a Marketplace product). The source disk
 // must be bootable AND detached: power the VM off, disk_detach, wait for state
 // "available". A stopped-but-attached disk is refused with
 // invalid_disk_state_to_create_image.
 // Mutation + storage cost: requires confirmed=true.
-func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planImageCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	diskID := stringArg(args, "disk_id")
 	if name == "" || diskID == "" {
-		return usageT("'name' and 'disk_id' are required", "нужны 'name' и 'disk_id'"), true
+		return answered(usageT("'name' and 'disk_id' are required", "нужны 'name' и 'disk_id'"), true), nil
 	}
 	if err := provision.ValidName(i18n.T("image", "образа"), name); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	req := provision.CreateImageReq{
 		Name:             name,
@@ -94,10 +94,10 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 		// (release audit, A-003).
 		blob, err := json.Marshal(raw)
 		if err != nil {
-			return usageResult(fmt.Errorf("image_metadata: %w", err)), true
+			return answered(usageResult(fmt.Errorf("image_metadata: %w", err)), true), nil
 		}
 		if err := json.Unmarshal(blob, &req.ImageMetadata); err != nil {
-			return usageResult(fmt.Errorf(i18n.T("image_metadata must be an array of field objects: %w", "image_metadata должен быть массивом объектов полей: %w"), err)), true
+			return answered(usageResult(fmt.Errorf(i18n.T("image_metadata must be an array of field objects: %w", "image_metadata должен быть массивом объектов полей: %w"), err)), true), nil
 		}
 	}
 
@@ -109,7 +109,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	zoneRef := stringArg(args, "zone")
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	req.ProjectID = eng.Config.ProjectID
 	// The project's own images (private): a name taken before the call is
@@ -127,7 +127,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 		return listed, err
 	}
 	if ans, refused := nameFree(ctx, list, i18n.T("image", "образ"), name, "image_list type=private"); refused {
-		return ans, true
+		return answered(ans, true), nil
 	}
 	// The zone, resolved before the question so that a zone that is not
 	// there is refused before it (class D15, P-Z1): the one asked for, else
@@ -139,7 +139,7 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	if zoneRef == "" {
 		zone, _, err := resolveVMZone(ctx, eng)
 		if err != nil {
-			return errResult(err), true
+			return nil, err
 		}
 		if zone != nil {
 			zoneName = zone.Name
@@ -149,43 +149,42 @@ func (s *Registry) handleImageCreate(ctx context.Context, args map[string]any) (
 	if zoneRef == "" && fallback == "" {
 		fallback, err = s.zoneOfDisk(ctx, eng, diskID)
 		if err != nil {
-			return errResult(err), true
+			return nil, err
 		}
 	}
 	zoneID, err := s.resolveZoneID(ctx, zoneRef, fallback)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	req.AvailZones = []provision.ImageAZTarget{{AvailabilityZoneID: zoneID}}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("image_create makes a billable image from a disk.",
-				"image_create создаёт платный образ из диска."),
-			"preview": willPreview(engine.ResourceImage, name, firstNonEmptyStr(zoneName, zoneID), args, []string{"disk_id", "min_cpu", "min_ram", "min_disk"}),
-			"will_create": map[string]any{
-				"name": name, "from_disk": diskID,
-				"zone":    firstNonEmptyStr(zoneRef, zoneName, zoneID),
-				"min_cpu": req.MinCPU, "min_ram": req.MinRAM, "min_disk": req.MinDisk,
-				"has_user_data_template": req.UserDataTemplate != "",
-				"metadata_fields":        len(req.ImageMetadata),
-			},
-		}), true
+	preview := map[string]any{
+		"message": i18n.T("image_create makes a billable image from a disk.",
+			"image_create создаёт платный образ из диска."),
+		"preview": willPreview(engine.ResourceImage, name, firstNonEmptyStr(zoneName, zoneID), args, []string{"disk_id", "min_cpu", "min_ram", "min_disk"}),
+		"will_create": map[string]any{
+			"name": name, "from_disk": diskID,
+			"zone":    firstNonEmptyStr(zoneRef, zoneName, zoneID),
+			"min_cpu": req.MinCPU, "min_ram": req.MinRAM, "min_disk": req.MinDisk,
+			"has_user_data_template": req.UserDataTemplate != "",
+			"metadata_fields":        len(req.ImageMetadata),
+		},
 	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 
-	img, err := eng.Cloud.CreateImage(ctx, req)
-	if id, _ := img["id"].(string); err != nil || id == "" {
-		if err == nil {
-			err = noID("image")
+		img, err := eng.Cloud.CreateImage(ctx, req)
+		if id, _ := img["id"].(string); err != nil || id == "" {
+			if err == nil {
+				err = noID("image")
+			}
+			return lostCreate(ctx, "image_create", list, i18n.T("image", "образ"), name, nil, "image_get id", fmt.Errorf(i18n.T("create image: %w", "создание образа: %w"), err))
 		}
-		return lostCreate(ctx, "image_create", list, i18n.T("image", "образ"), name, nil, "image_get id", fmt.Errorf(i18n.T("create image: %w", "создание образа: %w"), err))
-	}
-	return toJSON(map[string]any{
-		"status": "building",
-		"image":  img,
-		"note": "Image build is queued, not finished: it runs at roughly 0.7 GB per minute. " +
-			"Poll image_get until it reports ready=true before booting from it.",
-	}), false
+		return toJSON(map[string]any{
+			"status": "building",
+			"image":  img,
+			"note": "Image build is queued, not finished: it runs at roughly 0.7 GB per minute. " +
+				"Poll image_get until it reports ready=true before booting from it.",
+		}), false
+	}}, nil
 }
 
 // planFipAttach plans fip_attach, which binds an existing free floating IP

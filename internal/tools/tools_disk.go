@@ -80,32 +80,32 @@ func (s *Registry) handleDiskList(ctx context.Context, args map[string]any) (str
 	return toJSON(map[string]any{"disks": out}), false
 }
 
-// handleDiskCreate creates a disk. If attach_to (a VM) is given, the disk is
+// planDiskCreate plans the create of a disk. If attach_to (a VM) is given, the disk is
 // created in that VM's zone and (with confirmed) attached to it — the ergonomic
 // "add a disk to my VM" path. Mutation: requires confirmed=true.
-func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	sizeGB := intArg(args, "size_gb", 0)
 	// One message per argument: "'name' and 'size_gb' (>0) are required"
 	// named the name that was given (QA 20.10, QA-13).
 	if name == "" {
-		return usageT("'name' is required", "нужен 'name'"), true
+		return answered(usageT("'name' is required", "нужен 'name'"), true), nil
 	}
 	if _, ok := args["size_gb"]; !ok {
-		return usageT("'size_gb' is required", "нужен 'size_gb'"), true
+		return answered(usageT("'size_gb' is required", "нужен 'size_gb'"), true), nil
 	}
 	if sizeGB <= 0 {
-		return usageT("size_gb must be greater than 0, got %d", "size_gb должен быть больше 0, передано %d", sizeGB), true
+		return answered(usageT("size_gb must be greater than 0, got %d", "size_gb должен быть больше 0, передано %d", sizeGB), true), nil
 	}
 	if err := provision.ValidName(i18n.T("disk", "диска"), name); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	if sizeGB > provision.MaxDiskGB {
-		return usageT("size_gb %d is over the disk maximum of %d GB", "size_gb %d больше предельного размера диска %d ГБ", sizeGB, provision.MaxDiskGB), true
+		return answered(usageT("size_gb %d is over the disk maximum of %d GB", "size_gb %d больше предельного размера диска %d ГБ", sizeGB, provision.MaxDiskGB), true), nil
 	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	pid := eng.Config.ProjectID
 
@@ -116,7 +116,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	if attachTo != "" {
 		vm, err := s.resolveVM(ctx, attachTo, pid)
 		if err != nil {
-			return errResult(err), true
+			return nil, err
 		}
 		vmID, zoneID = vm.ID, vm.ZoneID()
 	} else if z := stringArg(args, "zone"); z != "" {
@@ -131,7 +131,7 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 			}
 		}
 		if zoneID == "" {
-			return errResult(fmt.Errorf(i18n.T("zone %q not found", "зона %q не найдена"), z)), true
+			return nil, fmt.Errorf(i18n.T("zone %q not found", "зона %q не найдена"), z)
 		}
 	} else {
 		// No zone anywhere is refused before the preview, as provision's
@@ -139,12 +139,12 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 		// out without one.
 		if eng.Config.Region == "" {
 			err := engine.NoZoneError("zone")
-			return errAnswer(err, deployFields(err, nil)), true
+			return answered(errAnswer(err, deployFields(err, nil)), true), nil
 		}
 		// The configured zone, by its UUID or its name (resolveVMZone, as
 		// a VM's): its name went out as availability_zone_id (P-Z1).
 		if _, _, err := resolveVMZone(ctx, eng); err != nil {
-			return errResult(err), true
+			return nil, err
 		}
 		zoneID = eng.Config.Region
 	}
@@ -167,15 +167,16 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 	// answer's disk found by the name is the call's own (D49).
 	list := func(ctx context.Context) ([]map[string]any, error) { return eng.Cloud.ListDisks(ctx, pid) }
 	if ans, refused := nameFree(ctx, list, i18n.T("disk", "диск"), name, "disk_list"); refused {
-		return ans, true
+		return answered(ans, true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
+	// The preview is built for the question only: its price is a request
+	// a consented call does not make.
+	preview := func(ctx context.Context) (map[string]any, error) {
 		preview, err := s.completePreview(ctx, eng, diskCreatePreview(eng, req, attachTo, stringArg(args, "zone")))
 		if err != nil {
-			return errResult(err), true
+			return nil, err
 		}
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
+		return map[string]any{
 			"message": i18n.T("disk_create makes a billable disk.",
 				"disk_create создаёт платный диск."),
 			"will_create": map[string]any{
@@ -183,64 +184,65 @@ func (s *Registry) handleDiskCreate(ctx context.Context, args map[string]any) (s
 				"zone_id": zoneID, "attach_to": attachTo,
 			},
 			"preview": preview,
-		}), true
+		}, nil
 	}
-
-	disk, err := eng.Cloud.CreateDisk(ctx, req)
-	if id, _ := disk["id"].(string); err != nil || id == "" {
-		if err == nil {
-			err = noID("disk")
+	return &Plan{PreviewOf: preview, Execute: func(ctx context.Context) (string, bool) {
+		disk, err := eng.Cloud.CreateDisk(ctx, req)
+		if id, _ := disk["id"].(string); err != nil || id == "" {
+			if err == nil {
+				err = noID("disk")
+			}
+			return lostCreate(ctx, "disk_create", list, i18n.T("disk", "диск"), name, nil, "disk_list", fmt.Errorf(i18n.T("create disk: %w", "создание диска: %w"), err))
 		}
-		return lostCreate(ctx, "disk_create", list, i18n.T("disk", "диск"), name, nil, "disk_list", fmt.Errorf(i18n.T("create disk: %w", "создание диска: %w"), err))
-	}
-	res := map[string]any{"status": "created", "disk": disk}
-	if attachTo == "" || vmID == "" {
+		res := map[string]any{"status": "created", "disk": disk}
+		if attachTo == "" || vmID == "" {
+			return toJSON(res), false
+		}
+
+		// Auto-attach. A disk just created is "creating": attached at once,
+		// Cloud.ru answered 422 "Disk has no openstack_id" and the answer still
+		// said created (release audit, L-24). It is attached once available; a
+		// disk that does not get there or an attach that fails is a partial
+		// answer with the disk's ID, an error, and disk_attach to finish.
+		diskID, _ := disk["id"].(string)
+		res["disk_id"] = diskID
+		partial := func(err error) (string, bool) {
+			res["status"] = "partial"
+			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
+				fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, diskID, attachTo, err),
+				fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.", diskID, attachTo), err), res), true
+		}
+		if diskID == "" {
+			return partial(fmt.Errorf("the create response has no disk id"))
+		}
+		if err := waitDiskAvailable(ctx, eng, diskID, pid); err != nil {
+			var lim *diskAtLimit
+			if errors.As(err, &lim) {
+				// The disk is the call's (D49): disk_attach finishes it, with
+				// the consent this call was given.
+				answer := diskAtLimitAnswer(lim, diskID, "it is attached once available.", "disk_attach", diskAttachArgs(diskID, attachTo))
+				answer["disk"] = disk
+				return toJSON(answer), false
+			}
+			return partial(err)
+		}
+		at, err := eng.Cloud.AttachDisk(ctx, diskID, vmID, pid)
+		if err != nil {
+			return partial(fmt.Errorf(i18n.T("attach: %w", "привязка: %w"), err))
+		}
+		res["attach"] = at
+		// The disk as it is after the attach, not as the create answered it
+		// (creating; C2, Ц-14).
+		if d, err := eng.Cloud.GetDisk(ctx, diskID); err == nil {
+			res["disk"] = d
+		} else {
+			// Not the create's "creating" without a word (axis 2).
+			delete(res, "disk")
+			res["disk_note"] = fmt.Sprintf("The disk is attached; its state after the attach was not read (%v): disk_list shows it.", err)
+		}
+		res["note"] = "Disk created and attached. On the VM: partition/format the new device (e.g. mkfs.ext4 /dev/vdX) and mount it — attaching does NOT grow the existing filesystem."
 		return toJSON(res), false
-	}
-
-	// Auto-attach. A disk just created is "creating": attached at once,
-	// Cloud.ru answered 422 "Disk has no openstack_id" and the answer still
-	// said created (release audit, L-24). It is attached once available; a
-	// disk that does not get there or an attach that fails is a partial
-	// answer with the disk's ID, an error, and disk_attach to finish.
-	diskID, _ := disk["id"].(string)
-	res["disk_id"] = diskID
-	partial := func(err error) (string, bool) {
-		res["status"] = "partial"
-		return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-			fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, diskID, attachTo, err),
-			fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.", diskID, attachTo), err), res), true
-	}
-	if diskID == "" {
-		return partial(fmt.Errorf("the create response has no disk id"))
-	}
-	if err := waitDiskAvailable(ctx, eng, diskID, pid); err != nil {
-		var lim *diskAtLimit
-		if errors.As(err, &lim) {
-			// The disk is the call's (D49): disk_attach finishes it, with
-			// the consent this call was given.
-			answer := diskAtLimitAnswer(lim, diskID, "it is attached once available.", "disk_attach", diskAttachArgs(diskID, attachTo))
-			answer["disk"] = disk
-			return toJSON(answer), false
-		}
-		return partial(err)
-	}
-	at, err := eng.Cloud.AttachDisk(ctx, diskID, vmID, pid)
-	if err != nil {
-		return partial(fmt.Errorf(i18n.T("attach: %w", "привязка: %w"), err))
-	}
-	res["attach"] = at
-	// The disk as it is after the attach, not as the create answered it
-	// (creating; C2, Ц-14).
-	if d, err := eng.Cloud.GetDisk(ctx, diskID); err == nil {
-		res["disk"] = d
-	} else {
-		// Not the create's "creating" without a word (axis 2).
-		delete(res, "disk")
-		res["disk_note"] = fmt.Sprintf("The disk is attached; its state after the attach was not read (%v): disk_list shows it.", err)
-	}
-	res["note"] = "Disk created and attached. On the VM: partition/format the new device (e.g. mkfs.ext4 /dev/vdX) and mount it — attaching does NOT grow the existing filesystem."
-	return toJSON(res), false
+	}}, nil
 }
 
 // diskReadyTimeout bounds the wait for a new disk to become available
