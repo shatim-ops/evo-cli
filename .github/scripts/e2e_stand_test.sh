@@ -160,6 +160,35 @@ want "unread: код" "$rc" 1
 has unread 'k8s: список не прочитан'
 hasnt unread 'стенда нет'
 
+# list ключом чтения (ежедневный job): вид, названный в STAND_FORBIDDEN_OK,
+# на 403 — предупреждение «не проверен», а не красный job; на любой другой
+# отказ и для любого другого вида — по-прежнему «не прочитан», код 1.
+full forbidden
+sed -i 's|^GET /protection-plans.*|GET /protection-plans[?]* 403 {"code":"forbidden"}|' "$FAKE_DIR/http"
+STAND_FORBIDDEN_OK=pplan run_ list
+want "forbidden: код" "$rc" 0
+has forbidden '::warning::pplan: HTTP 403 этому ключу — вид не проверен'
+run_ list
+want "forbidden без разрешения: код" "$rc" 1
+full forbidden-500
+sed -i 's|^GET /protection-plans.*|GET /protection-plans[?]* 500 {}|' "$FAKE_DIR/http"
+STAND_FORBIDDEN_OK=pplan run_ list
+want "forbidden, отказ не 403: код" "$rc" 1
+full forbidden-other
+sed -i 's|^GET /backups.*|GET /backups[?]* 403 {}|' "$FAKE_DIR/http"
+STAND_FORBIDDEN_OK=pplan run_ list
+want "forbidden, другой вид: код" "$rc" 1
+
+# list: тег версии выпущен (STAND_TAG_OUT=1), а стенд не пуст — код 1: срок
+# стенда — тег или дата, что раньше. Пустой проект после тега — не ошибка.
+full tagged
+STAND_TAG_OUT=1 run_ list
+want "tagged: код" "$rc" 1
+has tagged "::error::тег $STAND_TAG выпущен, а стенд не убран"
+world tagged-empty
+STAND_TAG_OUT=1 run_ list
+want "tagged-empty: код" "$rc" 0
+
 # sweep: без точного подтверждения — отказ до чтения облака.
 for confirm in "" "evo-stand" "${S}x" "evo-e2e-"; do
 	full "refuse-$confirm"
@@ -167,6 +196,15 @@ for confirm in "" "evo-stand" "${S}x" "evo-e2e-"; do
 	want "sweep с подтверждением «$confirm»: код" "$rc" 2
 	if [ -s "$FAKE_DIR/evo-calls" ] || [ -s "$FAKE_DIR/calls" ]; then echo "FAIL sweep «$confirm»: облако читалось до отказа"; fail=1; fi
 done
+
+# sweep послабления для ключа чтения не знает: вид на 403 — снимок не
+# полон, удалений нет.
+full sweep-forbidden
+sed -i 's|^GET /protection-plans.*|GET /protection-plans[?]* 403 {}|' "$FAKE_DIR/http"
+STAND_FORBIDDEN_OK=pplan STAND_SWEEP=$S run_ sweep
+want "sweep-forbidden: код" "$rc" 1
+has sweep-forbidden 'прочитано не целиком — не удаляю'
+if grep -q 'yes=1' "$FAKE_DIR/evo-calls" || grep -q '^DELETE' "$FAKE_DIR/calls"; then echo "FAIL sweep-forbidden: удаление при неполном снимке"; fail=1; fi
 
 # sweep: перечень до первого удаления; порядок — планы и копии, кластеры,
 # ВМ, адреса, диски, сеть; чужое не тронуто; в конце стенда нет — код 0.
