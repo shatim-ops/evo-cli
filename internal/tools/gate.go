@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"maps"
 )
 
 // The gate of consent is one function of the registry (owner's decision
@@ -142,4 +143,19 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		end(text)
 		return text, isErr
 	}
+}
+
+// nextSameCall puts into answer the same call as its next step (nextStep)
+// — without the consent this call was given. The step is a wait: it reads
+// the resource and sends nothing, so it needs no consent; and consent
+// carried into next_args would let an agent that follows them send the
+// change again with no question, once the resource is back where the
+// change started (a start that fell back between two calls: R-85; «Риск»,
+// conclusion 123, К1; the audit of the reference vm_start). The one place
+// a next step is made of the arguments of the call: a new operation names
+// its next step through it, not through a copy of args.
+func nextSameCall(answer map[string]any, tool string, args map[string]any) {
+	next := maps.Clone(args)
+	delete(next, "confirmed")
+	nextStep(answer, tool, next)
 }

@@ -49,7 +49,7 @@ var wallClockReads = map[string]struct {
 	"internal/deployplan/apply.go\twaitForSSHPort":              {2, wallWait},
 	"internal/deployplan/apply.go\tfinishApply":                 {2, wallWait}, // D69: the end of the call's budget
 	"internal/tools/opwait.go\twaitForOpJSON":                   {1, wallWait},
-	"internal/tools/tools_disk.go\twaitDisk":                    {1, wallWait}, // D69: the last sleep ends at the bound
+	"internal/tools/opwait.go\twaitState":                       {1, wallWait}, // D69: the last sleep ends at the bound
 	"internal/tools/registry.go\tbudgetLeft":                    {1, wallWait}, // D69: what is left of the call budget
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {1, wallWait}, // the budget of one poll
 	"internal/mcp/http.go\tHTTPHandler.dispatch":                {1, wallLog},  // duration_ms of the log

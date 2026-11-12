@@ -43,15 +43,17 @@ const jsonOp = `{"id":"` + parityVM + `","resource_id":"` + parityVM + `","resou
 // jsonFake is the state the answers change: a VM deleted is gone after, a
 // floating IP attached is in use.
 type jsonFake struct {
-	mu       sync.Mutex
-	vmGone   bool
-	fipBound bool     // the floating IP was attached to the VM
-	writes   []string // every request that is not a read, with its body
+	mu     sync.Mutex
+	vmGone bool
+	// vmStarted: the stopped VM (parityStoppedVM) took a power_on.
+	vmStarted bool
+	fipBound  bool     // the floating IP was attached to the VM
+	writes    []string // every request that is not a read, with its body
 }
 
 func (f *jsonFake) reset() {
 	f.mu.Lock()
-	f.vmGone, f.fipBound, f.writes = false, false, nil
+	f.vmGone, f.vmStarted, f.fipBound, f.writes = false, false, false, nil
 	f.mu.Unlock()
 }
 
@@ -108,6 +110,22 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			// floating IP of provision and deploy goes there.
 			return write(`{"id":"` + parityVM + `","name":"web","state":"running","interfaces":[{"id":"` + parityNIC +
 				`","name":"eth0","type":"regular","ip_address":"192.0.2.5","primary":true,"state":"created"}]}`)
+		case p == "/api/v1/vms/"+parityStoppedVM && get:
+			// Stopped until a power command starts it; the world ends the
+			// transition at once.
+			f.mu.Lock()
+			state := "stopped"
+			if f.vmStarted {
+				state = "running"
+			}
+			f.mu.Unlock()
+			return write(stoppedVMJSON(state))
+		case p == "/api/v1/vms/"+parityStoppedVM+"/set-power" && r.Method == http.MethodPost:
+			f.mu.Lock()
+			f.vmStarted = true
+			f.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return w.Result()
 		case p == "/api/v1/vms/"+parityVM && r.Method == http.MethodDelete:
 			f.mu.Lock()
 			f.vmGone = true

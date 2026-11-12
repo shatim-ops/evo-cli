@@ -195,6 +195,24 @@ func apiBudget(tool string, args map[string]any, made ...faultResource) budgetWa
 	}}
 }
 
+// vmPowerBudget is a call of a power tool on a VM in state whose
+// transition the cloud never ends (the fake's VM stays in the transient
+// state: no test steps it): the call can end only by its budget.
+func vmPowerBudget(tool, state string) budgetWait {
+	return budgetWait{run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
+		faultToolsIsolate(t)
+		cloud := &faultCloud{}
+		vm, err := cloud.CreateVM(context.Background(), provision.CreateVMRequest{Name: "web"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cloud.setVMState(vm.ID, state)
+		r := budgeted(budgetComputeRegistry(t, cloud, t.TempDir(), engine.Timings{}))
+		args := map[string]any{"name": "web", "confirmed": true}
+		return func(ctx context.Context) (string, bool) { return r.handlers[tool](ctx, args) }, nil
+	}}
+}
+
 // opBudget is a *_operation call that asks to wait longer than the budget
 // for an operation that never ends.
 func opBudget(tool string) budgetWait {
@@ -314,6 +332,7 @@ var mcpWaits = map[string]budgetWait{
 	"disk_attach":  apiBudget("disk_attach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
 	"disk_detach":  apiBudget("disk_detach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
 	"disk_resize":  apiBudget("disk_resize", map[string]any{"disk_id": faultDisk, "size_gb": 20, "confirmed": true}, slowDisk),
+	"vm_start":     vmPowerBudget("vm_start", "stopped"),
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,
@@ -398,6 +417,9 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 	t.Cleanup(func() { deployplan.SSHPortWait = prev })
 	over := map[string]string{}
 	ran := map[string]bool{} // the cases -run left in
+	// consented: the tools whose answer names a next step that carries
+	// confirmed (consentInNextStep).
+	consented := map[string]bool{}
 	tools := map[string]Tool{}
 	for _, tl := range New(nil).Tools() {
 		tools[tl.Name] = tl
@@ -438,6 +460,9 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 			select {
 			case a := <-got:
 				checkNoTerminalCodes(t, name, a.text)
+				if consentInNextStep(a.text) {
+					consented[name] = true
+				}
 				if _, listed := mcpOverBudget[name]; listed {
 					return // a line the call no longer needs: the check below
 				}
@@ -470,11 +495,75 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 			bad = append(bad, name+": in mcpOverBudget, but answers within the budget; take the line out (the list only shrinks)")
 		}
 	}
+	// The consent does not move into the next step (R-85; «Риск · 1.9»,
+	// conclusion 123): an agent that calls the step the answer names sends
+	// the call with the consent in it — the person was asked once, for the
+	// call cut short, not for its repeat.
+	for name := range consented {
+		if nextStepKeepsConsent[name] == "" && nextStepConsentUnbound[name] == "" {
+			bad = append(bad, name+": its answer cut by the budget names a next step with confirmed in next_args — a next step is a read, or the same call without confirmed; the repeat reads the state and does not write (D99, П3). A continuation that keeps the consent is a decision: bound to the id of what was approved, and declared in nextStepKeepsConsent")
+		}
+	}
+	for _, list := range []map[string]string{nextStepKeepsConsent, nextStepConsentUnbound} {
+		for name := range list {
+			if ran[name] && !consented[name] && !consentShownElsewhere(name) {
+				bad = append(bad, name+": listed as a tool whose next step carries confirmed, and it does not: take the line out")
+			}
+			if _, ok := mcpWaits[name]; !ok {
+				bad = append(bad, name+": listed as a tool whose next step carries confirmed, not in mcpWaits")
+			}
+		}
+	}
 	sort.Strings(bad)
 	if len(bad) > 0 {
 		t.Error(strings.Join(bad, "\n"))
 	}
 	t.Logf("mcpOverBudget: %d lines (Closes by 1.7)", len(mcpOverBudget))
+}
+
+// nextStepKeepsConsent are the declared continuations: a next step that
+// carries confirmed and is bound to what the person consented to, so that
+// the repeat cannot be of anything else (owner's decision 12.11 on R-85;
+// «Риск», conclusion 125, with a probe on the worlds: destroy sends no
+// second delete, the write of disk_detach and disk_resize is the one
+// approved). "tool" → the binding. A closed list: a new tool does not
+// join it without a decision.
+var nextStepKeepsConsent = map[string]string{
+	"deploy":        "compose_hash in next_args: the repeat is of the compose file the person approved, another one asks again (D82)",
+	"destroy":       "vm_id in next_args: the delete of the VM the person approved, by its id",
+	"stack_destroy": "job_id in next_args: the destroy of the job the person approved, by its id",
+	"disk_attach":   "disk_id and vm in next_args: the attach the person approved; a disk of another VM is refused with the consent too (D81)",
+	"disk_create":   "disk_id and vm in next_args: the attach of attach_to the person approved",
+	"disk_detach":   "disk_id and vm in next_args: the detach the person approved",
+	"disk_resize":   "disk_id and size_gb in next_args: the size the person approved",
+	// Stopped while it adds the chart's repository, before the release is
+	// touched, helm names the same call (nextStepOtherWorlds; owner's
+	// decision 12.11, «Риск», conclusion 126).
+	"k8s_helm": "cluster_id and release in next_args: the install or upgrade of the release the person approved, stopped before the release was touched",
+}
+
+// nextStepConsentUnbound are the tools shipped before the invariant whose
+// next step carries confirmed and is bound to nothing: the step names the
+// VM by its name or by the plan, and a VM gone between the two calls is
+// made a second time («Риск», conclusion 125: CreateVM 1 → 2). The step
+// gets bound to the id of the VM (D102, «разработка A»); then the line
+// moves to nextStepKeepsConsent. "tool" → what the next step is. It only
+// shrinks, and a new tool does not join it. Closes by 1.9.
+var nextStepConsentUnbound = map[string]string{
+	"deploy_apply": "deploy_apply plan_id, confirmed: no id of the VM in the step",
+	"provision":    "provision name, confirmed: the VM by its name, not its id",
+}
+
+// consentInNextStep reports whether the answer names a next step whose
+// arguments carry confirmed.
+func consentInNextStep(text string) bool {
+	var m map[string]any
+	if json.Unmarshal([]byte(text), &m) != nil {
+		return false
+	}
+	args, _ := m["next_args"].(map[string]any)
+	_, has := args["confirmed"]
+	return has
 }
 
 // finalStatus are the states of a call that is over: an answer cut by the

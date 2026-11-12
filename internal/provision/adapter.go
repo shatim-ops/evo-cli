@@ -499,3 +499,29 @@ func notFoundCode(path string) string {
 	}
 	return clierrors.CodeNotFound
 }
+
+// The power commands of POST /api/v1/vms/{id}/set-power (VmPowerEnum of
+// the Compute specification).
+const (
+	PowerOn     = "power_on"
+	PowerOff    = "power_off"
+	PowerReboot = "reboot"
+)
+
+// SetVMPower sends a power command to a VM via POST
+// /api/v1/vms/{id}/set-power {state}. The answer is 204 with no body: the
+// platform gives no operation to follow, the state of the VM is the only
+// progress. A VM it does not find and a state the command is not accepted
+// in are both 422 (the specification declares no 404 here).
+func (a *CloudRuAdapter) SetVMPower(ctx context.Context, id, command string) error {
+	body, err := json.Marshal(map[string]string{"state": command})
+	if err != nil {
+		return err
+	}
+	resp, err := a.doWithRetry(ctx, http.MethodPost, fmt.Sprintf("/api/v1/vms/%s/set-power", seg(id)), body)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
