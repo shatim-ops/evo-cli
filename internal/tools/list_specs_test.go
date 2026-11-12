@@ -154,6 +154,8 @@ type manyCloud struct {
 	filterCloud
 	n        int
 	zonesErr error
+	// asked are the parameters each read of the VMs was narrowed by.
+	asked []map[string]string
 }
 
 func (c *manyCloud) ListAvailabilityZones(ctx context.Context) ([]*provision.AvailabilityZone, error) {
@@ -163,7 +165,8 @@ func (c *manyCloud) ListAvailabilityZones(ctx context.Context) ([]*provision.Ava
 	return c.filterCloud.ListAvailabilityZones(ctx)
 }
 
-func (c *manyCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
+func (c *manyCloud) ListVMsInProject(ctx context.Context, _ string) ([]*provision.VM, error) {
+	c.asked = append(c.asked, provision.NarrowOf(ctx, "/api/v1/vms"))
 	out := make([]*provision.VM, 0, c.n)
 	for i := 0; i < c.n; i++ {
 		zone, state := "1", "running"
@@ -205,12 +208,12 @@ func callList(t *testing.T, r *Registry, tool string, args map[string]any) (map[
 // hint that this is not «none in the project».
 func TestListFilters_EmptySelectionNamesFiltersAndTotal(t *testing.T) {
 	r, _ := targetRegistry(t, &filterCloud{})
-	m, text, isErr := callList(t, r, "vm_list", map[string]any{"zone": "ru.az-2", "state": "stopped"})
+	m, text, isErr := callList(t, r, "vm_list", map[string]any{"name": " DB ", "public_ip": true})
 	if isErr {
 		t.Fatalf("an empty selection is a success: %s", text)
 	}
 	filters, _ := m["filters"].(map[string]any)
-	if filters["zone"] != "ru.AZ-2 (00000000-0000-4000-8000-0000000000a2)" || filters["state"] != "stopped" {
+	if filters["name"] != "DB" || filters["public_ip"] != true {
 		t.Errorf("filters as applied: %v", m["filters"])
 	}
 	if m["count"] != float64(0) || m["total"] != float64(3) || m["filtered_by"] != "evo" {
@@ -220,8 +223,21 @@ func TestListFilters_EmptySelectionNamesFiltersAndTotal(t *testing.T) {
 		t.Errorf("vms: %v, want an empty list", m["vms"])
 	}
 	hint, _ := m["hint"].(string)
-	if !strings.Contains(hint, "zone, state") || !strings.Contains(hint, "3") {
+	if !strings.Contains(hint, "name, public_ip") || !strings.Contains(hint, "3") {
 		t.Errorf("the hint names the filters to drop and the total: %q", hint)
+	}
+
+	// A filter the cloud narrows by as well: the zone is named «name
+	// (id)», and there is no total — evo did not see the whole list
+	// (the risk conclusion 104, condition 2: never total = count).
+	m, text, isErr = callList(t, r, "vm_list", map[string]any{"zone": "ru.az-2", "state": "stopped"})
+	filters, _ = m["filters"].(map[string]any)
+	if isErr || filters["zone"] != "ru.AZ-2 (00000000-0000-4000-8000-0000000000a2)" || filters["state"] != "stopped" {
+		t.Errorf("filters as applied: %s", text)
+	}
+	hint, _ = m["hint"].(string)
+	if _, has := m["total"]; has || m["count"] != float64(0) || m["filtered_by"] != "cloud, evo" || !strings.Contains(hint, "outside the selection may exist") {
+		t.Errorf("a selection the cloud narrowed: want count 0, no total, filtered_by «cloud, evo» and the hint of it, got %s", text)
 	}
 }
 
@@ -253,8 +269,12 @@ func TestListFilters_NoFilterIsTheWholeList(t *testing.T) {
 		}
 	}
 	sel, part, isErr := callList(t, big, "vm_list", map[string]any{"zone": "ru.AZ-1", "state": "running"})
-	if isErr || sel["count"] != float64(10) || sel["total"] != float64(filterHintRows+5) {
-		t.Fatalf("selection: count %v of %v: %s", sel["count"], sel["total"], part)
+	if _, has := sel["total"]; isErr || sel["count"] != float64(10) || has {
+		t.Fatalf("selection: count %v, total %v (the cloud narrowed: none): %s", sel["count"], sel["total"], part)
+	}
+	byName, text, _ := callList(t, big, "vm_list", map[string]any{"name": "vm-1"})
+	if byName["count"] != float64(10) || byName["total"] != float64(filterHintRows+5) {
+		t.Fatalf("selection by evo alone: count %v of %v: %s", byName["count"], byName["total"], text)
 	}
 	if _, has := sel["hint"]; has {
 		t.Errorf("a selection that is not empty needs no hint: %v", sel["hint"])
@@ -319,5 +339,63 @@ func TestListFilters_WithTheHandlersOwn(t *testing.T) {
 	hint, _ := m["hint"].(string)
 	if _, has := m["total"]; isErr || has || m["count"] != float64(0) || !strings.Contains(hint, "outside the selection may exist") {
 		t.Errorf("an empty selection the handler narrowed too: want count 0, no total and the hint of it, got %s", text)
+	}
+}
+
+// cloudProbed are the parameters of the Compute lists the probe confirmed
+// to answer what evo's rule answers, in two runs of two (api-probe; release
+// plan 1.8.2): the only ones a filter may hand to the cloud (condition 3
+// of the risk conclusion 104). A parameter the probe did not confirm stays
+// evo's; the results are in the closed repository.
+var cloudProbed = map[string]bool{
+	"/api/v1/vms availability_zone_ids":            true,
+	"/api/v1/vms statuses":                         true,
+	"/api/v1/disks availability_zone_id":           true,
+	"/api/v1/floating-ips availability_zone_id":    true,
+	"/api/v1/subnets availability_zone_ids":        true,
+	"/api/v1/security-groups availability_zone_id": true,
+}
+
+func TestListSpecs_CloudParametersAreProbed(t *testing.T) {
+	seen := map[string]bool{}
+	for name, s := range listSpecs {
+		for _, f := range s.filters {
+			if (f.cloudPath == "") != (f.cloudParam == "") {
+				t.Errorf("%s.%s: a cloud parameter wants its path and its name", name, f.arg)
+			}
+			if f.cloudParam == "" {
+				continue
+			}
+			key := f.cloudPath + " " + f.cloudParam
+			seen[key] = true
+			if !cloudProbed[key] {
+				t.Errorf("%s.%s: %s goes to the cloud unprobed — two runs of the probe first", name, f.arg, key)
+			}
+			if f.kind != filterRef && f.kind != filterEnum {
+				t.Errorf("%s.%s: only an exact value (a reference, a closed list) goes to the cloud", name, f.arg)
+			}
+		}
+	}
+	for key := range cloudProbed {
+		if !seen[key] {
+			t.Errorf("cloudProbed names %s, which no filter hands to the cloud", key)
+		}
+	}
+}
+
+// The list a selection reads is narrowed by the cloud with the probed
+// parameters — the id of the zone, the state — and never by a filter the
+// cloud does not take; a list read without filters is asked whole.
+func TestListFilters_NarrowsTheCloudRead(t *testing.T) {
+	cloud := &manyCloud{n: 4}
+	r, _ := targetRegistry(t, cloud)
+	callList(t, r, "vm_list", map[string]any{"zone": "ru.AZ-2", "state": "RUNNING", "name": "vm"})
+	callList(t, r, "vm_list", map[string]any{"name": "vm"})
+	callList(t, r, "vm_list", map[string]any{})
+	want := []map[string]string{
+		{"availability_zone_ids": "00000000-0000-4000-8000-0000000000a2", "statuses": "running"}, nil, nil,
+	}
+	if !reflect.DeepEqual(cloud.asked, want) {
+		t.Errorf("the reads of the VMs were narrowed by %v, want %v", cloud.asked, want)
 	}
 }
