@@ -30,6 +30,12 @@ type targetCloud struct {
 	releasedFIP string
 }
 
+// ListInterfaces: the VMs of this world have no interface listed, so the
+// preview of a delete knows no group of theirs (engine.OpenLeft).
+func (*targetCloud) ListInterfaces(context.Context, string) ([]*provision.Interface, error) {
+	return nil, nil
+}
+
 func (*targetCloud) SetToken(string) {}
 func (*targetCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
 	return []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "web"}}, nil

@@ -69,7 +69,7 @@ func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, err
 	}
 	shown := e.withNames(ctx, *active, nil, true)
 	labeled, uncheckedErr := e.labeledRules(ctx, sf, active)
-	return destroyPreview(&shown, sf, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active), madeAt(vm), passed), true, nil
+	return destroyPreview(&shown, sf, pending, labeled, uncheckedErr, e.openLeftOf(ctx, sf, active, pending, labeled), e.projectOf(active), e.projectFrom(active), madeAt(vm), passed), true, nil
 }
 
 // Destroy tears down the active deployment.
@@ -124,7 +124,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
 	labeled, uncheckedErr := e.labeledRules(ctx, stateFile, active)
-	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, labeled, uncheckedErr, e.projectOf(active), e.projectFrom(active), madeAt(vm), passed))
+	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, labeled, uncheckedErr, e.openLeftOf(ctx, stateFile, active, pending, labeled), e.projectOf(active), e.projectFrom(active), madeAt(vm), passed))
 	if err != nil {
 		return err
 	}
@@ -389,6 +389,20 @@ func (e *Engine) LabeledRules(ctx context.Context, sf *state.File, projectID, vm
 func UncheckedRules(err error) string {
 	return i18n.Tf("the security group rules labelled for the VM were not all checked (%s); to close them, repeat the same call with the VM's id",
 		"правила группы безопасности с меткой ВМ проверены не все (%s); чтобы закрыть их, повторите тот же вызов с id ВМ", clerrors.Reason(err))
+}
+
+// openLeftOf is OpenLeft for the VM of rec: its group, less the rules this
+// destroy deletes (those of rec and of pending, and the labelled ones).
+func (e *Engine) openLeftOf(ctx context.Context, sf *state.File, rec *state.DeploymentRecord, pending []string, labeled []sgrules.Planned) *OpenLeft {
+	if rec == nil {
+		return nil
+	}
+	var groups []string
+	if rec.SecurityGroupID != "" {
+		groups = []string{rec.SecurityGroupID}
+	}
+	closing := ClosingRules(append(sgrules.Plan(sf, append([]string{rec.ID}, pending...)...), labeled...))
+	return e.OpenLeft(ctx, e.projectOf(rec), rec.VMID, groups, closing)
 }
 
 // labeledRules is LabeledRules for the VM of rec, in its zone.
