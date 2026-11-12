@@ -218,16 +218,25 @@ func scan(dir string) (out []Intent, foreign []string) {
 // in the same project as done (its name or its target): a later call of it
 // answered, so what the cut one did is now known to that call — an
 // existing resource by the name (D49), a new one, or «already deleted»
-// (D26). Another project's record of the same name is not this one.
-func Settle(dir string, done Intent) {
+// (D26). Another project's record of the same name is not this one. A
+// record another key left is kept and returned: the key of done may not
+// see what that key changed — its «already deleted» is a 404 of its own
+// view, not the outcome of the cut call (R-82, «Риск», conclusion 128). A
+// record that names no key (evo before 1.9) closes as it did.
+func Settle(dir string, done Intent) (kept []Intent) {
 	if done.Name == "" && done.Target == "" {
-		return
+		return nil
 	}
 	for _, in := range Pending(dir) {
 		if in.Tool == done.Tool && in.Name == done.Name && in.Target == done.Target && in.ProjectID == done.ProjectID {
+			if in.Key.Other(done.Key) {
+				kept = append(kept, in)
+				continue
+			}
 			remove(dir, in.ID)
 		}
 	}
+	return kept
 }
 
 // Close removes the intent in: what the call did is now known.
