@@ -182,6 +182,7 @@ func TestListFilters_EveryListHasFiltersOrAReason(t *testing.T) {
 // listSpecs holds them by name (TestListSpecs_Declared).
 var unreached = map[string]string{
 	"s3_buckets": "S3 answers XML with its own keys, not the JSON of the specifications",
+	"s3_ls":      "S3 answers XML with its own keys, not the JSON of the specifications",
 }
 
 // sampleArg is a value of a required argument the schema takes: a UUID for
