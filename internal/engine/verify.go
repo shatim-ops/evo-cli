@@ -38,6 +38,10 @@ func (e *Engine) Verify(ctx context.Context) error {
 	if err := deployUnfinished(active); err != nil {
 		return err
 	}
+	// A stopped VM answers no probe: the cause, not «unhealthy».
+	if err := e.vmStopped(ctx, active, clerrors.CodeUnhealthy); err != nil {
+		return err
+	}
 	if len(active.ExposedPorts) == 0 {
 		if e.Printer.IsJSON() {
 			return e.Printer.JSON([]verify.ProbeResult{})

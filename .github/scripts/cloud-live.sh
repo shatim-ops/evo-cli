@@ -316,7 +316,7 @@ area_kinds() {
 	stack) echo "lb tg vm fip secret" ;;
 	mcp) echo "vm fip" ;;
 	pgnet) echo "vm fip subnet" ;;
-	ops) echo "pplan backup vm fip disk sg" ;;
+	ops) echo "pplan backup vm fip disk subnet sg" ;;
 	*) echo "${KINDS/route /}" ;;
 	esac
 }
@@ -567,6 +567,7 @@ vm_post() {
 	local meta
 	# Без полей образа тело не собрать (прогон 184: пустые метаданные дали
 	# пустое тело и 422 «Field required: body») — отказ пробы, не запрос.
+	vm_pw
 	if ! meta=$(vm_meta "$3" "$1") || ! printf '%s' "$meta" | jq -e 'type == "object"' >/dev/null 2>&1; then
 		code=000
 		jq -nc --arg w "$(cat "$tmp/vm_meta.why" 2>/dev/null || true)" '{message: ("image_metadata не собраны: " + $w)}' >"$tmp/api.json"
@@ -585,14 +586,22 @@ vm_post() {
 # ответит отказом, и строка пробы его назовёт. Отказ — с причиной в
 # $tmp/vm_meta.why: ошибка image_get (reason и message evo) — прогоны 184 и
 # 185 ушли на строку «не отдал fields» без причины (stderr — в /dev/null).
+# vm_pw — случайный пароль ВМ проб в $VM_PW, под маской. Отдельно от
+# vm_meta и не через $(…): её вывод — JSON метаданных, и команда маски в нём
+# ломала разбор — проба писала «image_get не отдал fields» и не слала запрос.
+vm_pw() {
+	[ -z "${VM_PW:-}" ] || return 0
+	VM_PW=$(openssl rand -hex 16)
+	mask "$VM_PW"
+}
 vm_meta() {
 	local k pw out rc=0
 	echo "image_get $1 не отдал fields" >"$tmp/vm_meta.why"
 	[ -f "$tmp/vmprobe_key.pub" ] || ssh-keygen -q -t ed25519 -N '' -C evo-probe -f "$tmp/vmprobe_key" >/dev/null 2>&1 ||
 		{ echo "ssh-keygen не создал ключ пробы" >"$tmp/vm_meta.why"; return 1; }
 	k=$(cat "$tmp/vmprobe_key.pub")
-	pw=$(openssl rand -hex 16)
-	mask "$pw"
+	pw=${VM_PW:-}
+	[ -n "$pw" ] || { echo "пароль пробы не задан: vm_pw до vm_meta" >"$tmp/vm_meta.why"; return 1; }
 	out=$(evo tools call image_get --arg image="$1" --json 2>"$tmp/vm_meta.err") || rc=$?
 	if [ "$rc" -ne 0 ]; then
 		printf 'image_get %s: код %s: %s\n' "$1" "$rc" "$(jq -r '.error | "\(.reason // "") \(.message // "")"' "$tmp/vm_meta.err" 2>/dev/null ||
@@ -2066,7 +2075,8 @@ ops_settle() {
 		esac
 		[ "$s" = "$st" ] || chain="${chain:+$chain → }$s"
 		st=$s
-		case "${3:-}:$code:$s" in gone:2??:* | *:2??:*ing) ;; *) return 0 ;; esac
+		# running оканчивается на «ing», но это конечное состояние ВМ.
+		case "${3:-}:$code:$s" in gone:2??:*) ;; *:running) return 0 ;; *:2??:*ing) ;; *) return 0 ;; esac
 		[ "$(date +%s)" -lt "$until" ] || return 1
 		sleep "$PROBE_PAUSE"
 	done
@@ -2341,6 +2351,12 @@ probe_g16() {
 	else bad "Г-16: копии ресурсов пробы под чужим именем" "найдено $r, не удалено $left — удалите в консоли Cloud.ru копии диска и ВМ этого прогона"; fi
 }
 
+# power СЛОВО — set-power ВМ пробы (её адрес — в $url вызывающей пробы);
+# код — в $code.
+power() { api POST "$url/set-power" "$(jq -nc --arg s "$1" '{state: $s}')"; }
+# brief — последний ответ api коротко: код, а у отказа — машинный код и текст.
+brief() { echo "HTTP $code$(case "$code" in 2??) ;; *) echo ", машинный код $(mcode): $(api_why | cut -c1-160)" ;; esac)"; }
+
 # Проба Г-10 (и Г-20): действия над ВМ. ВМ с диском и публичным адресом
 # создаёт evo; дальше — прямые запросы set-power и PUT (ответ 204 без id
 # операции — ход читается состоянием ВМ). Что записывается: остановка —
@@ -2366,9 +2382,6 @@ probe_g10() {
 	[ -n "$vm" ] || { gap "Г-10: ВМ" "provision не отдал vm_id"; return 0; }
 	local url="$C1/vms/$vm"
 	has_ip() { if [ -n "$ip0" ] && grep -qF "$ip0" "$tmp/api.json" 2>/dev/null; then echo да; else echo нет; fi; }
-	# power СЛОВО — set-power; код — в $code.
-	power() { api POST "$url/set-power" "$(jq -nc --arg s "$1" '{state: $s}')"; }
-	brief() { echo "HTTP $code$(case "$code" in 2??) ;; *) echo ", машинный код $(mcode): $(api_why | cut -c1-160)" ;; esac)"; }
 	api GET "$url"
 	f0=$(jq -r '.flavor.name? // empty' "$tmp/api.json" 2>/dev/null) || f0=
 	ok "Г-10: карточка ВМ" "HTTP $code, state $(jq -r '.state? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), публичный адрес в карточке: $(has_ip), поля: $(keys_of)"
@@ -2496,6 +2509,126 @@ probe_g10() {
 	else bad "Г-20: проба цены не состоялась" "flavor ВМ не подтверждён исходным, а удаление не прошло — ВМ, адрес или диск остались: запустите cleanup_only со словом g20 во входе probes"; fi
 }
 
+# Проба Г-18: второй интерфейс и пересоздание ВМ. ВМ с публичным адресом и
+# подсеть 10.255.252.0/24 в VPC по умолчанию создаёт evo; дальше — прямые
+# запросы. Что записывается: создание интерфейса ВМ в новой подсети (код,
+# поля, состояние ВМ после — перезапускается ли она), повтор с тем же
+# именем, удаление своих интерфейсов (по имени пробы из списка интерфейсов
+# ВМ — основной интерфейс не трогается) и повтор удаления; пересоздание из
+# другого образа того же семейства, которому хватает flavor ВМ: сначала на
+# запущенной, при отказе не по квоте — на остановленной; после него —
+# образ, остался ли публичный адрес и тот же ли загрузочный диск. Вход по
+# SSH после пересоздания проба не проверяет (ключ в метаданных — разовый
+# ключ пробы). ВМ и подсеть убирает уборка области.
+probe_g18() {
+	local zid=$1 n=$prefix-g18 vm ip0 sn='' ifc r t0 id first=1 img boot0 boot1 done_on=''
+	iam_fresh || { gap "Г-18" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap "Г-18" "нет PROJECT"; return 0; }
+	tc provision --arg name="$n" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR"
+	[ "$rc" = 0 ] || { gap "Г-18: ВМ" "provision: код $rc, $reason: $why"; return 0; }
+	vm=$(j -r '.vm_id // empty')
+	ip0=$(j -r '.vm_ip // empty')
+	mask "$vm" "$ip0"
+	[ -n "$vm" ] || { gap "Г-18: ВМ" "provision не отдал vm_id"; return 0; }
+	local url="$C1/vms/$vm"
+	tc subnet_create --arg name="$n-sn" --arg cidr=10.255.252.0/24 --arg zone="$ZONE"
+	if [ "$rc" = 0 ]; then
+		sn=$(j -r '.subnet_id // .subnet.id // empty')
+		mask "$sn"
+	fi
+	[ -n "$sn" ] || gap "Г-18: подсеть" "subnet_create: код $rc, $reason: $why — второй интерфейс не создаю"
+	if [ -n "$sn" ]; then
+		if_body() { jq -nc --arg p "$PROJECT" --arg n "$n-if" --arg v "$vm" --arg s "$sn" '{project_id: $p, name: $n, vm_id: $v, subnet_id: $s, description: "evo e2e probe"}'; }
+		api POST "$C1/interfaces" "$(if_body)"
+		case "$code" in
+		2??)
+			ifc=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || ifc=
+			mask "$ifc"
+			r="HTTP $code, поля ответа: $(keys_of)"
+			t0=$SECONDS
+			ops_settle "$url" 300 || true
+			ok "Г-18: второй интерфейс" "$r; состояния ВМ после: $chain, $((SECONDS - t0)) с; интерфейсов в карточке ВМ: $(jq -r '.interfaces? | length' "$tmp/api.json" 2>/dev/null || echo '?')"
+			api POST "$C1/interfaces" "$(if_body)"
+			mask "$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)"
+			ok "Г-18: повтор создания с тем же именем" "$(brief)"
+			# Свои интерфейсы — по имени пробы из списка интерфейсов этой ВМ.
+			api GET "$C1/interfaces?project_id=$PROJECT&vm_id=$vm&limit=100"
+			jq -r --arg n "$n-if" '.items[]? | select((.name // "") == $n) | .id' "$tmp/api.json" >"$tmp/g18.if" 2>/dev/null || : >"$tmp/g18.if"
+			r="список: HTTP $code, своих интерфейсов: $(grep -c . "$tmp/g18.if" || true)"
+			while read -r id; do
+				[ -n "$id" ] || continue
+				mask "$id"
+				api DELETE "$C1/interfaces/$id"
+				r="$r; удаление интерфейса: HTTP $code$(why_tail)"
+				if [ "$first" = 1 ]; then
+					first=0
+					api DELETE "$C1/interfaces/$id"
+					r="$r, повтор — $(brief)"
+				fi
+			done <"$tmp/g18.if"
+			ok "Г-18: удаление интерфейса" "$r"
+			;;
+		*) refusal "Г-18: второй интерфейс" синхронно ;;
+		esac
+	fi
+	[ "$QUOTA_HIT" = 0 ] || return 0
+	# Другой образ: того же семейства (имя до первого дефиса), не тот же, и
+	# не требует больше vCPU, чем самый малый flavor прогона.
+	img=$(evo tools call image_list --arg type=public --json 2>/dev/null |
+		jq -r --arg cur "$IMAGE" '[.images[]? | select((.name // "") != $cur and ((.name // "") | split("-")[0]) == ($cur | split("-")[0]) and (.min_cpu // 0) <= 2) | .name] | sort | last // empty' 2>/dev/null) || img=
+	[ -n "$img" ] || { gap "Г-18: пересоздание" "в image_list нет другого образа семейства $IMAGE"; return 0; }
+	local meta
+	vm_pw
+	if ! meta=$(vm_meta "$img" "$n") || ! printf '%s' "$meta" | jq -e 'type == "object"' >/dev/null 2>&1; then
+		gap "Г-18: пересоздание" "image_metadata образа $img не собраны: $(cat "$tmp/vm_meta.why" 2>/dev/null || true)"
+		return 0
+	fi
+	boot_of() { evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n" '[.disks[]? | select(.bootable == true and ((.attached_to // []) | index($vm)))][0].id // empty' 2>/dev/null || true; }
+	boot0=$(boot_of)
+	mask "$boot0"
+	rebuild() { api POST "$url/rebuild" "$(jq -nc --arg i "$img" --argjson m "$meta" '{image_name: $i, image_metadata: $m}')"; }
+	api GET "$url"
+	rebuild
+	case "$code" in
+	2??) done_on="на запущенной" ;;
+	*)
+		refusal "Г-18: пересоздание на запущенной ВМ" синхронно
+		[ "$QUOTA_HIT" = 0 ] || return 0
+		power power_off
+		case "$code" in 2??) ;; *) refusal "Г-18: остановка перед пересозданием" синхронно; return 0 ;; esac
+		ops_reach "$url" 600 stopped || true
+		rebuild
+		case "$code" in
+		2??) done_on="на остановленной" ;;
+		*) refusal "Г-18: пересоздание на остановленной ВМ" синхронно; return 0 ;;
+		esac
+		;;
+	esac
+	r="HTTP $code $done_on, поля ответа: $(keys_of)"
+	t0=$SECONDS
+	ops_settle "$url" 900 || true
+	r="$r; состояния: $chain, $((SECONDS - t0)) с; образ $([ "$(jq -r '.image.name? // empty' "$tmp/api.json" 2>/dev/null)" = "$img" ] && echo "тот, что просили" || echo "другой или не назван"); публичный адрес тот же: $(if [ -n "$ip0" ] && grep -qF "$ip0" "$tmp/api.json" 2>/dev/null; then echo да; else echo нет; fi)"
+	boot1=$(boot_of)
+	mask "$boot1"
+	if [ -z "$boot0" ] || [ "$boot0" = "$boot1" ]; then
+		ok "Г-18: пересоздание из $img" "$r; загрузочный диск тот же: $([ -n "$boot0" ] && echo да || echo "не прочитан"); вход по SSH не проверялся"
+		return 0
+	fi
+	# Диск сменился: старый, если он остался без ВМ, платный и может быть
+	# не под именем пробы — уборка по префиксу его не найдёт. Удаляется по
+	# id, только когда он есть и ни к чему не привязан.
+	local old
+	old=$(evo tools call disk_list --json 2>/dev/null | jq -r --arg id "$boot0" '.disks[]? | select(.id == $id) | if ((.attached_to // []) | length) == 0 then "свободен" else "привязан" end' 2>/dev/null) || old=
+	case "$old" in
+	свободен)
+		tc disk_delete --arg disk_id="$boot0"
+		if [ "$rc" = 0 ]; then ok "Г-18: пересоздание из $img" "$r; загрузочный диск тот же: нет — старый диск без ВМ удалён по id; вход по SSH не проверялся"
+		else bad "Г-18: пересоздание из $img" "$r; загрузочный диск сменился, старый остался без ВМ и не удалился (код $rc, $reason) — удалите в консоли Cloud.ru диск без ВМ этого прогона"; fi
+		;;
+	*) ok "Г-18: пересоздание из $img" "$r; загрузочный диск тот же: нет — старого диска $([ -n "$old" ] && echo "не отвязало (привязан)" || echo "в списке дисков нет"); вход по SSH не проверялся" ;;
+	esac
+}
+
 area_ops() {
 	local zid
 	zid=$(zone_id)
@@ -2508,6 +2641,8 @@ area_ops() {
 	! probe_on g11 || probe_g11 "$zid"
 	QUOTA_HIT=0
 	! probe_on g16 || probe_g16 "$zid"
+	QUOTA_HIT=0
+	! probe_on g18 || probe_g18 "$zid"
 }
 
 case "$area" in

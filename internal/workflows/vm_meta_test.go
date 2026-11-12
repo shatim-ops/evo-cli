@@ -79,8 +79,12 @@ func TestScripts_VMMetaNamesTheErrorOfImageGet(t *testing.T) {
 			tmp := t.TempDir()
 			lib := filepath.Join(tmp, "lib.sh")
 			// api stands in for the request: it keeps the body it was given.
-			src := scriptFuncs(t, "vm_post", "vm_meta") +
-				"mask() { :; }\napi() { printf '%s' \"$3\" >\"$tmp/body.json\"; code=201; echo '{}' >\"$tmp/api.json\"; }\n"
+			// mask prints its command, as in cloud-live.sh: with a no-op
+			// here the test did not see that vm_meta, read through $(…),
+			// put «::add-mask::…» before its JSON — vm_post then took the
+			// metadata for missing and sent nothing (probes p36, cmp7).
+			src := scriptFuncs(t, "vm_post", "vm_pw", "vm_meta") +
+				"mask() { echo \"::add-mask::$1\"; }\napi() { printf '%s' \"$3\" >\"$tmp/body.json\"; code=201; echo '{}' >\"$tmp/api.json\"; }\n"
 			if err := os.WriteFile(lib, []byte(src), 0o600); err != nil {
 				t.Fatal(err)
 			}

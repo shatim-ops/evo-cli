@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -83,5 +84,47 @@ func TestGateStack_AnswerBeforeTheQuestionIsTheAnswerWithConsent(t *testing.T) {
 		if err != nil || got.Status != want.Status {
 			t.Errorf("job %s after the calls: %+v %v, want status %s", want.ID, got, err, want.Status)
 		}
+	}
+}
+
+// A repeat of stack_apply on a job that is done asks as it did — its exit
+// code does not change before the major — and the question says that the
+// consent creates nothing (unchanged: true, as deploy's of an unchanged
+// compose file); with consent no step tool is called and the job stays
+// done (release plan 1.9, «Повтор у выпущенных инструментов», п. 4).
+func TestStackApply_JobDoneAsksAndSaysItCreatesNothing(t *testing.T) {
+	stackHome(t)
+	r := newTestServer()
+	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
+	j.Steps[0].Status, j.Status = "done", "done"
+	j.Outputs[j.Steps[0].Key] = "ok"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	r.handlers["secret_create"] = func(context.Context, map[string]any) (string, bool) {
+		calls.Add(1)
+		return toJSON(map[string]any{"status": "ok"}), false
+	}
+	text, isErr := r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID})
+	var m map[string]any
+	_ = json.Unmarshal([]byte(text), &m)
+	msg, _ := m["message"].(string)
+	if !isErr || m["status"] != "confirmation_required" || m["unchanged"] != true || !strings.Contains(msg, "creates nothing") || strings.Contains(msg, "BILLABLE") {
+		t.Errorf("the question of a job done: %s", text)
+	}
+	text, isErr = r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	_ = json.Unmarshal([]byte(text), &m)
+	if m["unchanged"] != true {
+		t.Errorf("the answer with consent does not say the call created nothing: %s", text)
+	}
+	if after, err := stack.LoadJob(j.ID); isErr || err != nil || !after.Done() || calls.Load() != 0 {
+		t.Errorf("with consent: %s; job %+v, %d step call(s)", text, after, calls.Load())
+	}
+	// A job not done is asked about as before.
+	fresh := planJob(t, `{"name":"h","secrets":[{"path":"c","value":"d"}]}`)
+	text, _ = r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": fresh.ID})
+	if strings.Contains(text, "unchanged") || !strings.Contains(text, "BILLABLE") {
+		t.Errorf("the question of a job planned: %s", text)
 	}
 }
