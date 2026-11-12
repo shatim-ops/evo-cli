@@ -213,8 +213,7 @@ var rootArgs = map[string]bool{"project_id": true, "region": true, "confirmed": 
 // group that is an engine command of root (evo deploy) gets the commands
 // of its tools as subcommands, beside its own action (spec.md R7): no
 // second root command of that name.
-func newTreeCmds(root *cobra.Command) []*cobra.Command {
-	reg := newRegistry()
+func newTreeCmds(root *cobra.Command, reg *tools.Registry) []*cobra.Command {
 	var out []*cobra.Command
 	for _, g := range treeGroupsOf(reg) {
 		var parent *cobra.Command
