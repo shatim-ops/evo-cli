@@ -106,3 +106,19 @@ func (c *Client) ListNodePools(ctx context.Context, clusterID string) ([]map[str
 	}
 	return out, nil
 }
+
+// GetNodePool reads a node pool by its id (NodePoolService_Get).
+func (c *Client) GetNodePool(ctx context.Context, id string) (map[string]any, error) {
+	data, st, err := c.do(ctx, http.MethodGet, "/v3/nodePools/"+seg(id), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if st != 200 {
+		return nil, apiError(st, data)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf(i18n.T("parse node pool: %w", "разбор группы узлов: %w"), err)
+	}
+	return m, nil
+}

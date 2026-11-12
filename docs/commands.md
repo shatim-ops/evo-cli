@@ -109,6 +109,7 @@
     - [evo k8s kubeconfig](#evo-k8s-kubeconfig)
     - [evo k8s kubectl](#evo-k8s-kubectl)
     - [evo k8s list](#evo-k8s-list)
+    - [evo k8s nodepool-get](#evo-k8s-nodepool-get)
     - [evo k8s nodepools](#evo-k8s-nodepools)
     - [evo k8s operation](#evo-k8s-operation)
     - [evo k8s options](#evo-k8s-options)
@@ -4255,6 +4256,7 @@ evo k8s [flags]
 * [evo k8s kubeconfig](#evo-k8s-kubeconfig)	 - kubeconfig кластера (по умолчанию со встроенным токеном примерно на час)
 * [evo k8s kubectl](#evo-k8s-kubectl)	 - Команда kubectl в кластере (изменяющие — с подтверждением)
 * [evo k8s list](#evo-k8s-list)	 - Кластеры Managed Kubernetes проекта
+* [evo k8s nodepool-get](#evo-k8s-nodepool-get)	 - Группа узлов кластера Managed Kubernetes по id
 * [evo k8s nodepools](#evo-k8s-nodepools)	 - Группы узлов кластера
 * [evo k8s operation](#evo-k8s-operation)	 - Состояние асинхронной операции Managed Kubernetes
 * [evo k8s options](#evo-k8s-options)	 - Версии Kubernetes, flavor узлов и зоны для кластеров
@@ -4830,6 +4832,47 @@ evo k8s list [flags]
   -h, --help            Справка по list
       --name string     Только с этой частью имени, регистр не важен
       --status string   Только в этом состоянии: OBJECT_STATUS_PENDING, OBJECT_STATUS_PROVISIONING, OBJECT_STATUS_RUNNING, OBJECT_STATUS_RESUMING, OBJECT_STATUS_DELETING, OBJECT_STATUS_ERROR, OBJECT_STATUS_SCALING_UP, OBJECT_STATUS_SCALING_DOWN, OBJECT_STATUS_STOPPING, OBJECT_STATUS_STOPPED, OBJECT_STATUS_SUSPENDING, OBJECT_STATUS_SUSPENDED, OBJECT_STATUS_UPGRADING, OBJECT_STATUS_EDITING, OBJECT_STATUS_ADDING, OBJECT_STATUS_DELETED
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
+## evo k8s nodepool-get
+
+Группа узлов кластера Managed Kubernetes по id
+
+### Synopsis
+
+```text
+Группа узлов кластера Managed Kubernetes по id.
+
+Группа узлов Managed Kubernetes по id: кластер, состояние, версия, зона, масштаб (фиксированный — desired, автомасштаб — min_count и max_count), flavor, диск, подсеть и группа безопасности узлов, метки и ограничения (taints), версии, до которых группу можно обновить. Только чтение. id группы — в выводе evo k8s nodepools <ID кластера>.
+
+Вызывает инструмент k8s_nodepool_get (подробнее: 'evo tools describe k8s_nodepool_get').
+```
+
+```
+evo k8s nodepool-get <nodepool-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по nodepool-get
 ```
 
 ### Options inherited from parent commands
