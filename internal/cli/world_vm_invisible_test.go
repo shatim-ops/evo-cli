@@ -7,7 +7,6 @@ package cli
 import (
 	"context"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 
@@ -77,7 +76,7 @@ func TestParityWorld_VMInvisibleToAnotherKeyKeepsTheRecord(t *testing.T) {
 				newProcess()
 				_, so, se := runCLI(t, "", "--json", "status")
 				done()
-				_ = os.Remove(state.DefaultPath(w.dir))
+				forgetRun(w)
 				if strings.Contains(so+se, "destroy") {
 					t.Errorf("evo status: a VM another key cannot see — the answer names destroy:\n%s", clipLine(so+se))
 				}
@@ -103,7 +102,7 @@ func TestParityWorld_VMInvisibleToAnotherKeyKeepsTheRecord(t *testing.T) {
 				f, _ := state.Read(state.DefaultPath(w.dir))
 				kept := f != nil && len(f.Deployments) == 1
 				done()
-				_ = os.Remove(state.DefaultPath(w.dir))
+				forgetRun(w)
 				what := clipLine(out)
 				if c.another {
 					if !kept || len(writes) > 0 || !failed {

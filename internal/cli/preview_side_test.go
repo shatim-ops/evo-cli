@@ -7,13 +7,10 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // sideRecord is a record a call writes besides the resource it makes: a
@@ -115,7 +112,7 @@ func TestPreview_NamesEverySideRecord(t *testing.T) {
 			text, _ := tl.Handler(context.Background(), args)
 			writes := fake.takeWrites()
 			done()
-			_ = os.Remove(state.DefaultPath(w.dir))
+			forgetRun(w)
 			return text, writes
 		}
 		previewText, _ := call(false)
