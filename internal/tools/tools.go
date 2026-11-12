@@ -74,15 +74,16 @@ func (s *Registry) registerTools() {
 				"image":      strProp("Boot image name or UUID, e.g. 'Ubuntu-24.04'. Not with image_id."),
 				"image_id":   strProp("Image UUID."),
 				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
-					"description": "Image metadata fields by name, e.g. {\"admin_password\": \"...\"}; they override evo's. An undeclared field is refused."},
+					"description": "Image metadata fields by name; they override evo's. An undeclared field is refused."},
 				"ports": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
 					"description": "Inbound ports to open from cidr, e.g. [\"80\", \"53/udp\"] (tcp by default), in the zone's shared security group; destroy deletes the rules evo created."},
 				"cidr":         cidrProp(portsCidrDesc),
 				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10 or the image's min_disk).")),
-				"subnet_id":    strProp("Subnet UUID or name (default: one in the zone)."),
-				"no_public_ip": boolProp("Private VM, no floating IP: a balancer target or an internal node."),
+				"subnet_id":    strProp("Subnet UUID or name (default: the zone's)."),
+				"no_public_ip": boolProp("Private VM, no floating IP."),
 				"confirmed":    confirmedProp(),
 				"wait":         boolProp(waitDesc),
+				continuedVMArg: uuidProp(continuedVMDesc),
 			}),
 		},
 		{
@@ -242,9 +243,10 @@ func (s *Registry) registerTools() {
 			Name:        "deploy_apply",
 			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. It creates the VM without the application: a compose project goes through deploy. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
-				"plan_id":   strProp("The plan_id returned by deploy_plan."),
-				"confirmed": confirmedProp(),
-				"wait":      boolProp(waitDesc),
+				"plan_id":      strProp("The plan_id returned by deploy_plan."),
+				"confirmed":    confirmedProp(),
+				"wait":         boolProp(waitDesc),
+				continuedVMArg: uuidProp(continuedVMDesc),
 			}, "plan_id"),
 		},
 		{
@@ -1929,6 +1931,10 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	// included: image and image_id, or one of only spaces (break r4,
 	// R4-11).
 	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
+		return nil, err
+	}
+	// A step that goes on with a VM that is gone makes no new one (D102).
+	if err := s.continuedVM(ctx, args); err != nil {
 		return nil, err
 	}
 	metaValues, err := metadataArg(args, "image_metadata")

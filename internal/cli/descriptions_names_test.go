@@ -19,7 +19,6 @@ import (
 // platform's own words, which evo passes on as they are.
 var descriptionWords = map[string]string{
 	"access_ru":                           "part of a group name, SSH-access_ru.AZ-2",
-	"admin_password":                      "a field of an image's metadata, filled by --meta",
 	"connection_string":                   "a field of the PostgreSQL API answer, passed on as is",
 	"cpu_usage":                           "a metric of Cloud.ru Monitoring",
 	"finops_report":                       "the script billing_finops ports",
