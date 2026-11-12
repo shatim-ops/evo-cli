@@ -27,7 +27,7 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
-case "$url" in */auth/token) cat >/dev/null; printf '{"access_token":"tok"}'; exit 0 ;; esac
+case "$url" in */auth/token) cat >/dev/null; echo 1 >>"$FAKE_DIR/auth"; printf '{"access_token":"tok"}'; exit 0 ;; esac
 path=${url#https://compute.api.cloud.ru/api/v1}
 echo "$method $path" >>"$FAKE_DIR/calls"
 code=404 body='{}' i=0
@@ -181,6 +181,18 @@ want "sweep: удаления API" "$(grep '^DELETE' "$FAKE_DIR/calls" | tr '\n'
 first_del=$(grep -n 'удаление ' "$FAKE_DIR/out" | head -1 | cut -d: -f1)
 last_listed=$(grep -n "^sg	$S-sg" "$FAKE_DIR/out" | head -1 | cut -d: -f1)
 [ -n "$first_del" ] && [ -n "$last_listed" ] && [ "$last_listed" -lt "$first_del" ] || { echo "FAIL sweep: перечень не напечатан до первого удаления"; fail=1; }
+
+# sweep идёт до получаса, дольше жизни одного токена IAM: токен старше
+# STAND_TOKEN_TTL берётся заново (здесь — на каждом чтении), а ход ожидания
+# виден в логе.
+full token
+gone
+fake_evo_answer vm_list 1 0 '{"vms":[{"id":"svm","name":"'"$S"'-vm","state":"deleting"}]}'
+fake_evo_answer vm_list 2 0 '{"vms":[]}'
+STAND_TOKEN_TTL=0 STAND_WAIT=30 STAND_SWEEP=$S run_ sweep
+want "token: код" "$rc" 0
+[ "$(wc -l <"$FAKE_DIR/auth")" -ge 3 ] || { echo "FAIL token: токен IAM не обновлялся ($(wc -l <"$FAKE_DIR/auth") запросов)"; fail=1; }
+has token 'жду удаления: осталось 1'
 
 # sweep: кластер PostgreSQL в FAILED платформа не удаляет — код 1 и путь, а
 # не «пусто»; остальное удалено.

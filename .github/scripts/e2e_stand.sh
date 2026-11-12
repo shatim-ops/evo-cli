@@ -46,13 +46,17 @@ stand_api() {
 	: >"$stand_tmp/api.json"
 	code=$(curl -sS -o "$stand_tmp/api.json" -w '%{http_code}' -X "$1" "https://compute.api.cloud.ru/api/v1$2" -H "Authorization: Bearer $STAND_TOKEN" 2>/dev/null) || code=000
 }
+# Токен старше STAND_TOKEN_TTL (10 мин) берётся заново: sweep ждёт удалений
+# до получаса — дольше жизни одного токена.
 stand_token() {
-	[ -z "${STAND_TOKEN:-}" ] || return 0
+	[ -z "${STAND_TOKEN:-}" ] || [ $((SECONDS - ${STAND_TOKEN_AT:-0})) -ge "${STAND_TOKEN_TTL:-600}" ] || return 0
+	STAND_TOKEN=
 	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] && [ -n "${PROJECT:-}" ] || return 1
 	STAND_TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
 		curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
 		jq -r '.access_token // .accessToken // empty') || STAND_TOKEN=
 	[ -n "$STAND_TOKEN" ] || return 1
+	STAND_TOKEN_AT=$SECONDS
 	echo "::add-mask::$STAND_TOKEN"
 }
 
@@ -211,6 +215,7 @@ stand_sweep() {
 			fi
 		done <"$now"
 		[ "$left" != 0 ] && [ "$rc" = 0 ] && [ "$(date +%s)" -lt "$until" ] || break
+		echo "жду удаления: осталось $left, до предела $((until - $(date +%s))) с"
 		sleep "${STAND_PAUSE:-30}"
 	done
 	[ "$rc" = 0 ] || { echo "::error::содержимое стенда после удалений прочитано не целиком"; return 1; }
