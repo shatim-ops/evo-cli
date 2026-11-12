@@ -511,7 +511,7 @@ probe_on() { case " ${PROBES:-} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; 
 # Заголовки ответа — в $tmp/api.h (api_rid). API_RID, если задан, уходит
 # заголовком X-Request-Id: по нему команда платформы находит запрос в своих
 # журналах (CMP-7, вопрос Compute 10.11).
-api() {
+api_once() {
 	local rid=()
 	[ -z "${API_RID:-}" ] || rid=(-H "X-Request-Id: $API_RID")
 	# Заголовки и тело прошлого ответа — не этого запроса: без ответа
@@ -525,6 +525,18 @@ api() {
 	else
 		code=$(curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || { API_RC=$? code=000; }
 	fi
+}
+# api — запрос к API; чтение (GET) без ответа (код 000) повторяется до двух
+# раз: в прогоне 207 одно чтение карточки ВМ осталось без ответа, и проба
+# потеряла исходный flavor. Запись не повторяется — её исход неизвестен.
+api() {
+	local again=0
+	api_once "$@"
+	while [ "$code" = 000 ] && [ "$1" = GET ] && [ "$again" -lt 2 ]; do
+		again=$((again + 1))
+		sleep "${API_RETRY_PAUSE:-5}"
+		api_once "$@"
+	done
 }
 # api_rid — заголовки id запроса последнего ответа api (request, trace,
 # correlation id; только они — не токены и не куки), «имя=значение» через
@@ -2004,7 +2016,7 @@ keys_of() { jq -c 'if type == "object" then keys else type end' "$tmp/api.json" 
 # ICMP идёт с пустым port_range: поле обязательно, формат для ICMP
 # спецификация не называет — отказ и его текст и есть ответ.
 probe_g11() {
-	local zid=$1 sg rule first='' n0 n1 r t0 dir proto ports cidr
+	local zid=$1 sg rule first='' made='' n0 n1 r t0 dir proto ports cidr
 	iam_token || { gap "Г-11" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap "Г-11" "нет PROJECT"; return 0; }
 	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
@@ -2019,6 +2031,11 @@ probe_g11() {
 	[ -n "$sg" ] || sg=$(lst sg "$prefix-sg" | cut -f1 | head -1) || sg=
 	[ -n "$sg" ] || { gap "Г-11: группа" "id не прочитан — остаток уберёт уборка области"; return 0; }
 	mask "$sg"
+	# Группа принимает правила не сразу: первое правило сразу после её
+	# создания получило отказ по состоянию группы (прогон 207).
+	t0=$SECONDS
+	ops_settle "$C1/security-groups/$sg" 120 || true
+	ok "Г-11: готовность группы" "состояния: $chain, $((SECONDS - t0)) с"
 	rule_body() {
 		jq -nc --arg d "$1" --arg pr "$2" --arg ports "$3" --arg c "$4" \
 			'{direction: $d, ether_type: "IPv4", ip_protocol: $pr, port_range: $ports, remote_ip_prefix: $c, description: "evo e2e probe"}'
@@ -2027,7 +2044,8 @@ probe_g11() {
 		api POST "$C1/security-groups/$sg/rules" "$(rule_body "$dir" "$proto" "$ports" "$cidr")"
 		rule=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || rule=
 		mask "$rule"
-		[ -n "$first" ] || first=$rule
+		# Первое созданное правило: его удаляет проба и его же повторяет.
+		[ -n "$first" ] || [ -z "$rule" ] || { first=$rule made="$dir $proto $ports $cidr"; }
 		ok "Г-11: правило $dir $proto $ports $([ "$cidr" = 0.0.0.0/0 ] && echo "весь интернет" || echo CIDR)" \
 			"HTTP $code$(case "$code" in 2??) echo ", поля ответа: $(keys_of)" ;; *) echo ": $(api_why)" ;; esac)"
 	done <<-RULES
@@ -2063,13 +2081,20 @@ probe_g11() {
 	rules_get
 	n0=$(count_rules)
 	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?')"
-	# Повтор того же правила: 2xx и новое правило, 2xx без нового или отказ.
-	api POST "$C1/security-groups/$sg/rules" "$(rule_body ingress tcp 18090:18090 198.18.255.1/32)"
-	mask "$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)"
-	r=$(brief)
-	rules_get
-	n1=$(count_rules)
-	ok "Г-11: повтор создания того же правила" "$r; правил было $n0, стало $n1"
+	# Повтор правила, которое создано (не первого в списке: в прогоне 207
+	# оно не создалось, и «повтор» создал его впервые): 2xx и новое
+	# правило, 2xx без нового или отказ.
+	if [ -n "$made" ]; then
+		# shellcheck disable=SC2086 # четыре слова правила — четыре аргумента
+		api POST "$C1/security-groups/$sg/rules" "$(rule_body $made)"
+		mask "$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)"
+		r=$(brief)
+		rules_get
+		n1=$(count_rules)
+		ok "Г-11: повтор создания того же правила" "$r; правил было $n0, стало $n1"
+	else
+		gap "Г-11: повтор создания того же правила" "ни одно правило с адресом не создано — повторять нечего"
+	fi
 	# g11_delete ЧТО URL — удаление, повтор сразу, ожидание исчезновения и
 	# повтор после него (D26: что отвечает удаление уже удалённого; повтор
 	# сразу в прогоне 205 получил отказ по состоянию, а не «нет такого»).
@@ -2283,7 +2308,8 @@ probe_g16() {
 		elif g16_restore ВМ "$bv" "$(jq -nc --arg n "$n-rv" --arg b "$boot" --arg t "$boot_type" '{name: $n, description: "evo e2e probe", disks: [{name: ($n + "-boot"), related_disk_id: $b, disk_type_name: $t}]}')"; then
 			local vst=''
 			rv_up() { vst=$(evo tools call vm_get --arg name="$n-rv" --json 2>/dev/null | jq -r '.state // empty') || vst=; case "$vst" in "" | creating | *pending*) return 1 ;; esac; }
-			poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rv_up || true
+			# ВМ из копии создаётся дольше 5 минут (прогон 206: 312 с в creating).
+			poll "${PROBE_WAIT:-900}" "$PROBE_PAUSE" rv_up || true
 			# Восстановление принято, а ВМ не видна: её диски, если платформа
 			# назвала их по-своему, не найдёт ни проба, ни уборка по имени.
 			[ -n "$vst" ] || echo "::warning::Г-16: восстановление ВМ принято, но ВМ не появилась — после прогона проверьте в консоли Cloud.ru диски без ВМ, созданные в это время"
@@ -2325,18 +2351,19 @@ probe_g16() {
 	fi
 	# Ожидания восстановления (poll) токен не обновляют — до удалений.
 	iam_fresh || true
-	if [ -n "$bd" ]; then
-		api DELETE "$C1/backups/$bd"
+	# g16_delete ЧЕГО ID — удаление копии: пока идёт восстановление из неё,
+	# платформа отказывает (422 backup_restore_in_progress при состоянии
+	# created; прогоны 202 и 206) — запрос повторяется до снятия запрета,
+	# время записывается; затем повтор сразу, ожидание исчезновения и
+	# повтор после него. Итог — в $r.
+	g16_delete() {
+		local tries=1 held=$SECONDS until=$(($(date +%s) + ${PROBE_WAIT:-900}))
+		api DELETE "$C1/backups/$2"
 		r="HTTP $code$(why_tail)"
-		# After a restore the platform keeps refusing the delete for a
-		# while (run 202: 422 backup_restore_in_progress with the backup
-		# in created): repeat until the refusal is lifted and record how
-		# long it held.
-		local tries=1 held=$SECONDS until=$(($(date +%s) + ${PROBE_WAIT:-600}))
 		while [ "$code" = 422 ] && [[ ",$(mcode)," == *,backup_restore_in_progress,* ]] && [ "$(date +%s)" -lt "$until" ]; do
 			sleep "$PROBE_PAUSE"
 			iam_fresh || true
-			api DELETE "$C1/backups/$bd"
+			api DELETE "$C1/backups/$2"
 			tries=$((tries + 1))
 		done
 		if [ "$tries" -gt 1 ]; then
@@ -2345,22 +2372,22 @@ probe_g16() {
 			*) r="$r; запрет «идёт восстановление» не снят за $((SECONDS - held)) с (попыток: $tries) — HTTP $code$(why_tail)" ;;
 			esac
 		fi
-		api DELETE "$C1/backups/$bd"
+		api DELETE "$C1/backups/$2"
 		r="$r, повтор сразу — HTTP $code$(why_tail)"
 		t0=$SECONDS
-		ops_settle "$C1/backups/$bd" 300 gone || true
+		ops_settle "$C1/backups/$2" 300 gone || true
 		r="$r; состояния: $chain, $((SECONDS - t0)) с"
-		api DELETE "$C1/backups/$bd"
+		api DELETE "$C1/backups/$2"
 		r="$r; повтор после исчезновения — HTTP $code$(why_tail)"
+	}
+	if [ -n "$bd" ]; then
+		g16_delete диска "$bd"
 		[ "$bd_ok" = 0 ] || r="$r; восстановленный диск без копии: $(if o=$(lst disk "$n-rd"); then [ -n "$o" ] && echo есть || echo нет; else echo "список не прочитан"; fi)"
 		ok "Г-16: удаление копии диска" "$r"
 	fi
 	if [ -n "$bv" ]; then
-		api DELETE "$C1/backups/$bv"
-		r="HTTP $code$(why_tail)"
-		t0=$SECONDS
-		ops_settle "$C1/backups/$bv" 300 gone || true
-		ok "Г-16: удаление копии ВМ" "$r; состояния: $chain, $((SECONDS - t0)) с"
+		g16_delete ВМ "$bv"
+		ok "Г-16: удаление копии ВМ" "$r"
 	fi
 	if [ -n "$disk" ] && [ "$QUOTA_HIT" = 0 ]; then
 		api POST "$C1/protection-plans" "$(jq -nc --arg p "$PROJECT" --arg n "$n-pp" --arg id "$disk" --arg t "$(date -u -d '+30 days' +%Y-%m-%dT03:00:00Z)" \
@@ -2453,7 +2480,10 @@ probe_g10() {
 	has_ip() { if [ -n "$ip0" ] && grep -qF "$ip0" "$tmp/api.json" 2>/dev/null; then echo да; else echo нет; fi; }
 	api GET "$url"
 	f0=$(jq -r '.flavor.name? // empty' "$tmp/api.json" 2>/dev/null) || f0=
-	ok "Г-10: карточка ВМ" "HTTP $code, state $(jq -r '.state? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), публичный адрес в карточке: $(has_ip), поля: $(keys_of)"
+	case "$code" in
+	2??) ok "Г-10: карточка ВМ" "HTTP $code, state $(jq -r '.state? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), публичный адрес в карточке: $(has_ip), поля: $(keys_of)" ;;
+	*) gap "Г-10: карточка ВМ" "не прочитана: HTTP $code$(why_tail) — исходный flavor неизвестен, смена flavor не пойдёт" ;;
+	esac
 	# g10_stop ПРОВЕРКА — остановка и ожидание stopped; код 1 — отказ.
 	g10_stop() {
 		power power_off
@@ -2657,15 +2687,24 @@ probe_g18() {
 				r="список: HTTP $code, своих интерфейсов: $(grep -c . "$tmp/g18.if" || true)"
 				;;
 			*)
-				# Список отказал (прогон 204: 422 на запрос по спецификации):
-				# интерфейс удаляется по id из ответа создания.
-				r="список: $(brief) — $([ -n "$ifc" ] && echo "удаляю по id из ответа создания" || echo "id в ответе создания нет: интерфейс уберёт уборка области вместе с ВМ")"
+				# Список отказал (прогоны 204 и 207: 422 extra_forbidden на
+				# запрос по спецификации): какой параметр лишний, покажет тот
+				# же запрос без limit; интерфейс удаляется по id из ответа
+				# создания.
+				r="список: $(brief)"
+				api GET "$C1/interfaces?project_id=$PROJECT&vm_id=$vm"
+				r="$r; без limit: $(brief) — $([ -n "$ifc" ] && echo "удаляю по id из ответа создания" || echo "id в ответе создания нет: интерфейс уберёт уборка области вместе с ВМ")"
 				printf '%s\n' "$ifc" >"$tmp/g18.if"
 				;;
 			esac
 			while read -r id; do
 				[ -n "$id" ] || continue
 				mask "$id"
+				# Сразу после создания интерфейс удалить нельзя (прогон 207:
+				# 422 по состоянию): сначала — его устоявшееся состояние.
+				t0=$SECONDS
+				ops_settle "$C1/interfaces/$id" 120 || true
+				r="$r; состояния интерфейса: $chain, $((SECONDS - t0)) с"
 				api DELETE "$C1/interfaces/$id"
 				r="$r; удаление интерфейса: HTTP $code$(why_tail)"
 				if [ "$first" = 1 ]; then
@@ -2684,10 +2723,14 @@ probe_g18() {
 	# не требует больше vCPU, чем самый малый flavor прогона.
 	# Образ шлётся по id: по имени (image_name), как допускает опубликованная
 	# спецификация, платформа ответила «не UUID» (прогон 201).
-	local img_id
+	# Образ должен помещаться на загрузочный диск ВМ: пересоздание диск не
+	# растит (прогон 207: 422 disk_too_small).
+	local img_id boot_gb
+	boot_gb=$(evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n" '[.disks[]? | select(.bootable == true and ((.attached_to // []) | index($vm)))][0].size_gb // empty' 2>/dev/null) || boot_gb=
+	case "$boot_gb" in '' | *[!0-9]*) gap "Г-18: пересоздание" "размер загрузочного диска ВМ не прочитан в disk_list — образ не выбрать"; return 0 ;; esac
 	read -r img img_id < <(evo tools call image_list --arg type=public --json 2>/dev/null |
-		jq -r --arg cur "$IMAGE" '[.images[]? | select((.name // "") != $cur and ((.name // "") | split("-")[0]) == ($cur | split("-")[0]) and (.min_cpu // 0) <= 2 and (.id // "") != "")] | sort_by(.name) | last // {} | "\(.name // "") \(.id // "")"' 2>/dev/null) || true
-	[ -n "${img:-}" ] && [ -n "${img_id:-}" ] || { gap "Г-18: пересоздание" "в image_list нет другого образа семейства $IMAGE с id"; return 0; }
+		jq -r --arg cur "$IMAGE" --argjson gb "$boot_gb" '[.images[]? | select((.name // "") != $cur and ((.name // "") | split("-")[0]) == ($cur | split("-")[0]) and (.min_disk_gb // 0) <= $gb and (.id // "") != "")] | sort_by(.name) | last // {} | "\(.name // "") \(.id // "")"' 2>/dev/null) || true
+	[ -n "${img:-}" ] && [ -n "${img_id:-}" ] || { gap "Г-18: пересоздание" "в image_list нет другого образа семейства $IMAGE, который помещается на диск ВМ ($boot_gb ГБ)"; return 0; }
 	mask "$img_id"
 	local meta
 	vm_pw

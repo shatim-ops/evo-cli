@@ -64,7 +64,7 @@ cat >"$tmp/bin/ssh-keygen" <<'FAKE'
 while [ $# -gt 0 ]; do case $1 in -f) : >"$2"; echo "ssh-ed25519 AAAA evo-probe" >"$2.pub"; shift ;; esac; shift; done
 FAKE
 chmod +x "$tmp/bin/ssh-keygen"
-export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0 SWEEP_PAUSE=1
+export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0 SWEEP_PAUSE=1 API_RETRY_PAUSE=0
 fail=0
 n=0
 world() {
@@ -92,6 +92,7 @@ calls() { tr '\n' ';' <"$FAKE_DIR/calls"; }
 world
 cat >"$FAKE_DIR/http" <<'H'
 POST /security-groups 201 {"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}
+GET! /security-groups/sg1 200 {"id":"sg1","state":"created"}
 POST /security-groups/sg1/rules 201 {"id":"rule1"}
 GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
 GET /security-groups/sg1/rules/rule1 404
@@ -109,7 +110,8 @@ rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11: код" "$rc" 0
 R=/security-groups/sg1/rules
-want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;GET /security-groups/sg1;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+grep -q 'Г-11: готовность группы.*состояния: created' "$tmp/out" || { echo "FAIL: Г-11: готовность группы до правил не записана"; fail=1; }
 grep -q 'Г-11: чтение правил.*HTTP 200, правил: 1, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление правила.*HTTP 204, повтор сразу — HTTP 422, машинный код security_group_rule_can_not_be_deleted_from_current_state.*состояния: нет (404).*повтор после исчезновения — HTTP 404, машинный код security_group_rule_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления правила после исчезновения не записан"; grep 'удаление правила' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление группы.*повтор после исчезновения — HTTP 404, машинный код security_group_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления группы после исчезновения не записан"; grep 'удаление группы' "$tmp/out" | sed 's/^/  | /'; fail=1; }
@@ -362,9 +364,9 @@ g18_world() {
 	fake_evo_answer list_subnets 1 0 '{"subnets":[{"id":"sn1","name":"evo-e2e-ops-r7a1-g18-sn","state":"CREATED"}]}'
 	fake_evo_answer list_subnets 2 0 '{"subnets":[]}'
 	fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
-	fake_evo_answer image_list 0 0 '{"images":[{"id":"img-d","name":"debian-12","min_cpu":1},{"id":"img-22","name":"ubuntu-22.04","min_cpu":1},{"id":"img-24","name":"ubuntu-24.04","min_cpu":1},{"id":"img-g","name":"ubuntu-gpu","min_cpu":8}]}'
+	fake_evo_answer image_list 0 0 '{"images":[{"id":"img-d","name":"debian-12","min_cpu":1},{"id":"img-22","name":"ubuntu-22.04","min_cpu":1},{"id":"img-24","name":"ubuntu-24.04","min_disk_gb":10},{"id":"img-g","name":"ubuntu-gpu","min_disk_gb":100}]}'
 	fake_evo_answer image_get 0 0 '{"fields":[{"name":"hostname","filled_by":"evo","role":"vm_name"},{"name":"password","filled_by":"evo","role":"password"}]}'
-	fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g18-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g18"]}]}'
+	fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g18-boot","bootable":true,"size_gb":10,"attached_to":["evo-e2e-ops-r7a1-g18"]}]}'
 }
 g18_world
 cat >"$FAKE_DIR/http" <<H
@@ -385,7 +387,7 @@ H
 rc=0
 PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-18: код" "$rc" 0
-want "Г-18: запросы по порядку" "$(calls)" "POST /interfaces;GET /vms/vm1;POST /interfaces;GET /interfaces?project_id=p&vm_id=vm1&limit=100;DELETE /interfaces/if1;DELETE /interfaces/if1;GET /vms/vm1;POST /vms/vm1/rebuild;POST /vms/vm1/set-power;GET /vms/vm1;POST /vms/vm1/rebuild;GET /vms/vm1;GET /vms/vm1;$SW"
+want "Г-18: запросы по порядку" "$(calls)" "POST /interfaces;GET /vms/vm1;POST /interfaces;GET /interfaces?project_id=p&vm_id=vm1&limit=100;GET /interfaces/if1;DELETE /interfaces/if1;DELETE /interfaces/if1;GET /vms/vm1;POST /vms/vm1/rebuild;POST /vms/vm1/set-power;GET /vms/vm1;POST /vms/vm1/rebuild;GET /vms/vm1;GET /vms/vm1;$SW"
 jq -e --arg p p '.vm_id == "vm1" and .subnet_id == "sn1" and .name == "evo-e2e-ops-r7a1-g18-if" and .project_id == $p' "$FAKE_DIR/body.POST.interfaces" >/dev/null ||
 	{ echo "FAIL: Г-18: тело создания интерфейса не то: $(cat "$FAKE_DIR/body.POST.interfaces" 2>/dev/null)"; fail=1; }
 # Другой образ — того же семейства, что образ ВМ, и не требует больше её flavor.
@@ -439,12 +441,52 @@ grep -q 'Г-18: пересоздание на запущенной ВМ.*не п
 if grep -q 'отказ HTTP 000\|"state":"running"' "$tmp/out"; then echo "FAIL: Г-18: обрыв выдан за отказ или напечатано тело прошлого ответа"; fail=1; fi
 want "Г-18, обрыв: второй попытки и остановки нет" "$(grep -c 'rebuild' "$FAKE_DIR/calls") $(grep -c 'set-power' "$FAKE_DIR/calls" || true)" "1 0"
 
+# Прогон 207. Чтение без ответа повторяется: карточка ВМ прочитана со
+# второго раза, исходный flavor известен. Первое правило группы отказано по
+# состоянию — «повтор» повторяет правило, которое создано, а не первое в
+# списке. Образ больше загрузочного диска ВМ для пересоздания не берётся.
+world
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+cat >"$FAKE_DIR/http" <<'H'
+POST /security-groups 201 {"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}
+GET! /security-groups/sg1 000
+GET! /security-groups/sg1 200 {"id":"sg1","state":"created"}
+POST! /security-groups/sg1/rules 422 [{"code":"security_group_state_blocks_security_group_rule_creation","message":"no"}]
+POST /security-groups/sg1/rules 201 {"id":"rule2"}
+GET! /security-groups/sg1/rules/rule2 200 {"id":"rule2"}
+GET /security-groups/sg1/rules/rule2 404
+GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule2"}],"total":1}
+DELETE /security-groups/sg1/rules/rule2 204
+DELETE /security-groups/sg1 204
+GET /security-groups/sg1 404
+H
+rc=0
+PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-11, группа не сразу готова: чтение без ответа повторено" "$(grep -c '^GET /security-groups/sg1$' "$FAKE_DIR/calls")" 3
+grep -q 'Г-11: готовность группы.*состояния: created' "$tmp/out" || { echo "FAIL: Г-11: чтение группы после обрыва не повторено"; grep 'готовность' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+# Тела по порядку: группа, пять правил, правило с группой-источником,
+# повтор. Повтор — восьмое: второе правило (udp), а не первое (tcp),
+# которое не создалось.
+[ "$(sed -n 8p "$FAKE_DIR/bodies" | jq -r .ip_protocol)" = udp ] || { echo "FAIL: Г-11: повторено не то правило, что создано: $(sed -n 8p "$FAKE_DIR/bodies")"; fail=1; }
+grep -q '^DELETE /security-groups/sg1/rules/rule2$' "$FAKE_DIR/calls" || { echo "FAIL: Г-11: удаляется не созданное правило"; fail=1; }
+
+g18_world
+fake_evo_answer subnet_create 0 1 '{"error":{"reason":"USAGE","message":"cidr занят"}}'
+fake_evo_answer image_list 0 0 '{"images":[{"id":"img-22","name":"ubuntu-22.04","min_disk_gb":10},{"id":"img-24","name":"ubuntu-24.04","min_disk_gb":20}]}'
+: >"$FAKE_DIR/http"
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+grep -q 'Г-18: пересоздание.*не покрыто.*помещается на диск ВМ (10 ГБ)' "$tmp/out" || { echo "FAIL: Г-18: образ больше диска не отсеян"; grep 'пересоздание' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+if grep -q 'rebuild' "$FAKE_DIR/calls" 2>/dev/null; then echo "FAIL: Г-18: пересоздание ушло с образом больше диска"; fail=1; fi
+
 # Пересоздание выдало ВМ новый загрузочный диск, а старый оставило без ВМ:
 # под именем пробы уборка его может не найти — проба удаляет его по id
 # (заключение «Риска» 140, К1).
 g18_world
 fake_evo_answer subnet_create 0 1 '{"error":{"reason":"USAGE","message":"cidr занят"}}'
-fake_evo_answer disk_list 1 0 '{"disks":[{"id":"boot2","name":"auto","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g18"]},{"id":"boot1","name":"old-boot","bootable":true,"attached_to":[]}]}'
+# disk_list до пересоздания читают дважды: размер диска и id.
+cp "$FAKE_DIR/disk_list.0.json" "$FAKE_DIR/disk_list.1.json"
+fake_evo_answer disk_list 2 0 '{"disks":[{"id":"boot2","name":"auto","bootable":true,"size_gb":10,"attached_to":["evo-e2e-ops-r7a1-g18"]},{"id":"boot1","name":"old-boot","bootable":true,"attached_to":[]}]}'
 fake_evo_answer disk_delete 0 0 '{"status":"deleted"}'
 cat >"$FAKE_DIR/http" <<H
 POST /vms/vm1/rebuild 200 {"id":"vm1"}
@@ -532,7 +574,7 @@ rc=0
 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-16: код" "$rc" 0
 L='?project_id=p&limit=1000'
-want "Г-16: запросы по порядку" "$(calls)" "POST /backups;GET /backups/bd;GET /backups/bd;POST /backups;GET /backups/bv;GET /backups$L;GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd;POST /backups/bd/action;GET /backups/bd;POST /backups/bv/action;GET /backups/bv;DELETE /backups/bd;DELETE /backups/bd;GET /backups/bd;GET /backups/bd;DELETE /backups/bd;DELETE /backups/bv;GET /backups/bv;POST /protection-plans;GET /protection-plans/pp;GET /protection-plans$L;DELETE /protection-plans/pp;DELETE /protection-plans/pp;GET /protection-plans/pp;GET /backups$L;$SW"
+want "Г-16: запросы по порядку" "$(calls)" "POST /backups;GET /backups/bd;GET /backups/bd;POST /backups;GET /backups/bv;GET /backups$L;GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd;POST /backups/bd/action;GET /backups/bd;POST /backups/bv/action;GET /backups/bv;DELETE /backups/bd;DELETE /backups/bd;GET /backups/bd;GET /backups/bd;DELETE /backups/bd;DELETE /backups/bv;DELETE /backups/bv;GET /backups/bv;DELETE /backups/bv;POST /protection-plans;GET /protection-plans/pp;GET /protection-plans$L;DELETE /protection-plans/pp;DELETE /protection-plans/pp;GET /protection-plans/pp;GET /backups$L;$SW"
 for s in 'Г-16: копия диска, ожидание готовности' 'creating → created' 'Г-16: восстановление диска' 'Г-16: восстановление ВМ' 'повтор сразу — HTTP 409' 'после исчезновения — HTTP 404' 'Г-16: план защиты' 'Г-16: копии ресурсов пробы под чужим именем'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-16: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
