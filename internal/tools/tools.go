@@ -3805,6 +3805,21 @@ func usageErr(en, ru string, args ...any) error {
 // errResult formats an error as a JSON tool result (see errAnswer).
 func errResult(err error) string { return errAnswer(err, nil) }
 
+// quotaRefusal is the platform's code of a refusal for a quota, "" for
+// any other error: the compute API answers 422 with a code that ends in
+// quota_exceeded (organization_quota_exceeded: the register of
+// discrepancies, the runs of 29.10). The answer of a tool then names the
+// cause in one field, details.cause "quota", beside the reason it has —
+// API_ERROR today; the reason of its own is one decision for every tool,
+// later (release plan 1.9, Вп-8). A service whose refusal for a quota has
+// another form is not told apart here until a run shows the form.
+func quotaRefusal(err error) string {
+	if code := platformCode(err); strings.HasSuffix(code, "quota_exceeded") {
+		return code
+	}
+	return ""
+}
+
 // errAnswer is the error answer of a tool: fields (vm_id, output, …) plus
 // "status": "error" (unless fields set another status), "reason", "error"
 // and, when one is known, "hint". Every error answer has a reason, a code
@@ -3839,6 +3854,16 @@ func errAnswer(err error, fields map[string]any) string {
 				res["format"] = re.Format
 			}
 		}
+	}
+	// A refusal of the platform for a quota carries one machine field for
+	// it, whatever the tool and with the reason it had (quotaRefusal).
+	if code := quotaRefusal(err); code != "" {
+		details := map[string]any{}
+		if was, _ := res["details"].(map[string]any); was != nil {
+			details = maps.Clone(was)
+		}
+		details["cause"], details["platform_code"] = "quota", code
+		res["details"] = details
 	}
 	if _, ok := res["status"]; !ok {
 		res["status"] = "error"

@@ -109,6 +109,9 @@ type ownerFake struct {
 	diskOn string
 	// goneStatus is the status of a read of resGone by id; 0 — 404.
 	goneStatus int
+	// refuseWrites answers every write with this body and 422; "" — the
+	// write is taken.
+	refuseWrites string
 }
 
 // ownerChild is the name of the database and of the user every cluster of
@@ -172,6 +175,10 @@ func ownerObject(id string) map[string]any {
 
 func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		if f.refuseWrites != "" {
+			http.Error(w, f.refuseWrites, http.StatusUnprocessableEntity)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "op-new", "done": false, "resource_id": resMine})
 		return
 	}
