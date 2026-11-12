@@ -2224,10 +2224,21 @@ probe_g16() {
 			# области; с другим — проба удаляет сама, после ВМ.
 			evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n-rv" --arg p "$prefix" \
 				'.disks[]? | select((.attached_to // []) | index($vm)) | "\(.id)\t\(if (.name // "") | startswith($p) then "свой" else "чужой" end)"' >"$tmp/g16.rv" || : >"$tmp/g16.rv"
-			ok "Г-16: восстановление ВМ" "$r; ВМ: ${vst:-не появилась за 5 мин после копии}, $((SECONDS - t0)) с; дисков у неё: $(wc -l <"$tmp/g16.rv" | tr -d ' '), из них не под именем пробы: $(grep -c 'чужой$' "$tmp/g16.rv" || true)"
-			if grep -q 'чужой$' "$tmp/g16.rv"; then
-				id=$(lst vm "$n-rv" | cut -f1 | head -1) || id=
-				[ -z "$id" ] || del vm "$id"
+			# Публичные адреса восстановленной ВМ (у исходной их нет; что
+			# восстановление делает с сетью, спецификация не говорит): из её
+			# карточки. Уборка находит адрес только по имени fip-<префикс>.
+			: >"$tmp/g16.fip"
+			local rvid
+			rvid=$(lst vm "$n-rv" | cut -f1 | head -1) || rvid=
+			mask "$rvid"
+			if [ -n "$rvid" ]; then
+				api GET "$C1/vms/$rvid"
+				jq -r --arg p "fip-$prefix" '.interfaces[]?.floating_ip? | select(type == "object" and (.id // "") != "") | "\(.id)\t\(if (.name // "") | startswith($p) then "свой" else "чужой" end)"' \
+					"$tmp/api.json" >"$tmp/g16.fip" 2>/dev/null || : >"$tmp/g16.fip"
+			fi
+			ok "Г-16: восстановление ВМ" "$r; ВМ: ${vst:-не появилась за 5 мин после копии}, $((SECONDS - t0)) с; дисков у неё: $(wc -l <"$tmp/g16.rv" | tr -d ' '), из них не под именем пробы: $(grep -c 'чужой$' "$tmp/g16.rv" || true); публичных адресов у неё: $(wc -l <"$tmp/g16.fip" | tr -d ' '), из них не под именем пробы: $(grep -c 'чужой$' "$tmp/g16.fip" || true)"
+			if grep -q 'чужой$' "$tmp/g16.rv" "$tmp/g16.fip"; then
+				[ -z "$rvid" ] || del vm "$rvid"
 				poll 300 "$PROBE_PAUSE" gone vm "$n-rv" || true
 				left=0
 				while IFS=$'\t' read -r id _; do
@@ -2235,8 +2246,13 @@ probe_g16() {
 					tc disk_delete --arg disk_id="$id"
 					[ "$rc" = 0 ] || left=$((left + 1))
 				done < <(grep 'чужой$' "$tmp/g16.rv")
-				if [ "$left" = 0 ]; then ok "Г-16: диски восстановленной ВМ не под именем пробы" "удалены по id"
-				else bad "Г-16: диски восстановленной ВМ не под именем пробы" "не удалено: $left — удалите в консоли Cloud.ru диски без ВМ, созданные этим прогоном"; fi
+				while IFS=$'\t' read -r id _; do
+					mask "$id"
+					tc release_floating_ip --arg id="$id"
+					[ "$rc" = 0 ] || left=$((left + 1))
+				done < <(grep 'чужой$' "$tmp/g16.fip")
+				if [ "$left" = 0 ]; then ok "Г-16: диски и адреса восстановленной ВМ не под именем пробы" "удалены по id"
+				else bad "Г-16: диски и адреса восстановленной ВМ не под именем пробы" "не удалено: $left — удалите в консоли Cloud.ru диски без ВМ и публичные адреса, созданные этим прогоном"; fi
 			fi
 		fi
 	fi
@@ -2293,8 +2309,18 @@ probe_g16() {
 		return 0
 		;;
 	esac
-	jq -r --arg p "$prefix" --arg d "$disk" --arg v "$vm" \
-		'.items[]? | select(((.name // "") | startswith($p) | not) and (tostring | (($d != "" and contains($d)) or ($v != "" and contains($v))))) | .id' "$tmp/api.json" >"$tmp/g16.stray" 2>/dev/null || : >"$tmp/g16.stray"
+	# Отбор — по полю resource.resource_id копии (спецификация), равному id
+	# диска или ВМ пробы, и только если этот id — UUID: id другого вида
+	# (пустой, обрезанный) отбор выключает — чужую копию проба не удаляет.
+	local uuid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' d='' v=''
+	if [[ $disk =~ $uuid ]]; then d=$disk; fi
+	if [[ $vm =~ $uuid ]]; then v=$vm; fi
+	if [ -z "$d$v" ]; then
+		gap "Г-16: копии ресурсов пробы под чужим именем" "id диска и ВМ пробы — не UUID: отбор по ним выключен"
+		return 0
+	fi
+	jq -r --arg p "$prefix" --arg d "$d" --arg v "$v" \
+		'.items[]? | select(((.name // "") | startswith($p) | not) and ((.resource.resource_id? // "") as $r | $r != "" and ($r == $d or $r == $v))) | .id' "$tmp/api.json" >"$tmp/g16.stray" 2>/dev/null || : >"$tmp/g16.stray"
 	left=0 r=0
 	while read -r id; do
 		[ -n "$id" ] || continue
