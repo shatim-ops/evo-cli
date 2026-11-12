@@ -29,6 +29,7 @@ var noOperationOutcome = map[string]string{
 // D74 so, refused for want of clusterId in the body of the world, #1465).
 var unreachedDeletes = map[string]string{
 	"close_ports":         "compute: the rule is deleted by its own request, no operation; the world has no security group of the id",
+	"sg_rule_delete":      "compute: the rule is deleted by its own request, no operation; the world has no security group of the id",
 	"destroy":             "compute: the VM is read until it is gone; the arguments of the world name it twice (vm_id and name)",
 	"release_floating_ip": "compute: no operation; the arguments of the world name it twice (id and ip_address)",
 	"s3_bucket_delete":    "S3: no operation; the world of the contract does not speak S3",

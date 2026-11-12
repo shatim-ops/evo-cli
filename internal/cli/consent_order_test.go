@@ -352,7 +352,7 @@ var consentWorlds = map[string]consentWorld{
 	"ports open already": {answer: consentRulesAnswer(`{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp","port_range":"80:80","remote_ip_prefix":"0.0.0.0/0"},` +
 		`{"id":"` + consentOtherID + `","direction":"ingress","ip_protocol":"tcp","port_range":"443:443","remote_ip_prefix":"0.0.0.0/0"}`),
 		alreadyFor: []string{"open_ports"}},
-	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports"}},
+	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports", "sg_rule_delete"}},
 	// The stack of stack_destroy was destroyed by an earlier call, and no
 	// deletion of it is still going (D26, D41).
 	"stack destroyed already": {job: func(t *testing.T) *stack.Job {
