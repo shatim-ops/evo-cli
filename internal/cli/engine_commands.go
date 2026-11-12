@@ -112,7 +112,7 @@ func engineCmd(cmd *cobra.Command, tool string) *cobra.Command {
 // error is the engine's own (Caller.Err) when the tool reports one, else
 // the tool's error answer as every command shows it (toolError).
 func callEngineTool(cmd *cobra.Command, tool string, args map[string]any, c *tools.Caller) (string, error) {
-	t, ok := newRegistry().Lookup(tool)
+	t, ok := registryOf(cmd).Lookup(tool)
 	if !ok {
 		return "", fmt.Errorf("no tool %s", tool)
 	}
@@ -581,7 +581,7 @@ func newProjectListCmd() *cobra.Command {
 				// One list of the values, repeated or between commas, by
 				// the rule of the flags of the generated commands.
 				ids, _ := cmd.Flags().GetStringArray("ids")
-				t, _ := newRegistry().Lookup("org_projects")
+				t, _ := registryOf(cmd).Lookup("org_projects")
 				for _, p := range schemaParams(t) {
 					if p.Name == "ids" {
 						v, err := coerceArg(p, strings.Join(ids, ","))
