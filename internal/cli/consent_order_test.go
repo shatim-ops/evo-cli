@@ -47,7 +47,15 @@ var alreadyAsks = map[string]string{
 // every send is a change of its own (a reboot, a new version), so there is
 // no "already" to answer (D99, П3). The value is the words of the tool's
 // description that say so: the agent learns it there, before the call.
-var repeatIsANewChange = map[string]string{}
+var repeatIsANewChange = map[string]string{
+	"cert_renew":         "Every call sends a renewal request: a repeat sends another.",
+	"k8s_apply":          "Every call applies the manifest again",
+	"k8s_helm":           "Every call runs helm again: a repeated install/upgrade upgrades the same release",
+	"k8s_kubectl":        "Every call runs the command again: a repeated mutating verb is a new change.",
+	"s3_put":             "Every call writes the object again.",
+	"secret_add_version": "Every call adds a version: a repeat adds one more.",
+	"vm_reboot":          "every call is a new reboot: a repeat reboots the VM again",
+}
 
 // repeatRefused are the changes shipped before the invariant whose repeat
 // is refused before the question, with the state named, and not answered
@@ -70,13 +78,7 @@ var repeatRefused = map[string]string{
 // Closes by 1.9: each line is a world or a declaration of «разработка»
 // (release plan 1.9, «Инварианты до новых изменяющих операций», Н1).
 var repeatUndeclared = map[string]string{
-	"cert_renew":         "a renewal of a certificate being renewed: no world; or every send is a renewal",
-	"deploy_apply":       "an apply of a plan applied: no world",
-	"k8s_apply":          "the repeat is the cluster's (kubectl apply): not declared",
-	"k8s_helm":           "the repeat is the cluster's (helm): not declared",
-	"k8s_kubectl":        "the repeat is the cluster's (kubectl): not declared",
-	"s3_put":             "an object the bucket has: the repeat overwrites — not declared",
-	"secret_add_version": "every send is a new version: not declared",
+	"deploy_apply": "an apply of a plan applied: no world",
 }
 
 // repeatAsksUntilTheMajor are the changes shipped before the invariant
@@ -379,6 +381,13 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, stoppedVMJSON("running"))
 	}, alreadyFor: []string{"vm_start"}},
+	// The VM of vm_stop is stopped already (D99, П3).
+	"vm stopped already": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityRunningVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, runningVMJSON("stopped"))
+	}, alreadyFor: []string{"vm_stop"}},
 	// The pool of k8s_nodepool_scale has the count asked for (parityArgs:
 	// three nodes) and runs (D99, П3).
 	"node pool of the count asked": {answer: func(r *http.Request) *http.Response {

@@ -74,15 +74,16 @@ func (s *Registry) registerTools() {
 				"image":      strProp("Boot image name or UUID, e.g. 'Ubuntu-24.04'. Not with image_id."),
 				"image_id":   strProp("Image UUID."),
 				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
-					"description": "Image metadata fields by name, e.g. {\"admin_password\": \"...\"}; they override evo's. An undeclared field is refused."},
+					"description": "Image metadata fields by name; they override evo's. An undeclared field is refused."},
 				"ports": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
 					"description": "Inbound ports to open from cidr, e.g. [\"80\", \"53/udp\"] (tcp by default), in the zone's shared security group; destroy deletes the rules evo created."},
 				"cidr":         cidrProp(portsCidrDesc),
 				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10 or the image's min_disk).")),
-				"subnet_id":    strProp("Subnet UUID or name (default: one in the zone)."),
-				"no_public_ip": boolProp("Private VM, no floating IP: a balancer target or an internal node."),
+				"subnet_id":    strProp("Subnet UUID or name (default: the zone's)."),
+				"no_public_ip": boolProp("Private VM, no floating IP."),
 				"confirmed":    confirmedProp(),
 				"wait":         boolProp(waitDesc),
+				continuedVMArg: uuidProp(continuedVMDesc),
 			}),
 		},
 		{
@@ -110,6 +111,24 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "vm_start",
 			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. A VM that runs already answers already_running with no question; one that is starting is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. Mutation (billable: a running VM is charged for its flavor): requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
+				"name":      strProp("VM name (alternative to vm_id)."),
+				"confirmed": confirmedProp(),
+			}),
+		},
+		{
+			Name:        "vm_stop",
+			Description: "Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. A VM that is stopped already answers already_stopped with no question; one that is stopping is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status stopping with next_tool. Do not stop the VM this server runs on. Mutation (interrupts the service; a stopped VM may stay billable: tariff_url): requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
+				"name":      strProp("VM name (alternative to vm_id)."),
+				"confirmed": confirmedProp(),
+			}),
+		},
+		{
+			Name:        "vm_reboot",
+			Description: "Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. There is no «already»: every call is a new reboot: a repeat reboots the VM again, so each one asks. A VM that is rebooting is waited for and no command is sent; a stopped one is refused with vm_start as the step. At the time limit of an MCP call the answer is status rebooting with next_tool vm_get; reboot_accepted means the platform took the command and evo did not see the state change. Do not reboot the VM this server runs on. Mutation (interrupts the service): requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
 				"name":      strProp("VM name (alternative to vm_id)."),
@@ -242,9 +261,10 @@ func (s *Registry) registerTools() {
 			Name:        "deploy_apply",
 			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. It creates the VM without the application: a compose project goes through deploy. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
-				"plan_id":   strProp("The plan_id returned by deploy_plan."),
-				"confirmed": confirmedProp(),
-				"wait":      boolProp(waitDesc),
+				"plan_id":      strProp("The plan_id returned by deploy_plan."),
+				"confirmed":    confirmedProp(),
+				"wait":         boolProp(waitDesc),
+				continuedVMArg: uuidProp(continuedVMDesc),
 			}, "plan_id"),
 		},
 		{
@@ -473,7 +493,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_kubectl",
-			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
+			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. Every call runs the command again: a repeated mutating verb is a new change. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"args":       strProp("kubectl arguments as a single string, e.g. \"get pods -A -o wide\"."),
@@ -482,7 +502,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_apply",
-			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
+			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Every call applies the manifest again; what changes is the cluster's to decide. Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"manifest":   strProp("The manifest YAML/JSON to apply (multi-doc allowed)."),
@@ -492,7 +512,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_helm",
-			Description: "Run Helm on a cluster. install/upgrade are idempotent (helm upgrade --install); over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
+			Description: "Run Helm on a cluster. Every call runs helm again: a repeated install/upgrade upgrades the same release (helm upgrade --install), not a second one; over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),
@@ -1157,7 +1177,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_add_version",
-			Description: "Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the user approves.",
+			Description: "Add a new value version to an existing secret (rotation). Every call adds a version: a repeat adds one more. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
 				"value":     strProp("New secret value (plaintext). Required."),
@@ -1297,7 +1317,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_renew",
-			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Mutation: requires confirmed=true after the user approves.",
+			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Every call sends a renewal request: a repeat sends another. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
 		},
 		{
@@ -1357,7 +1377,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_put",
-			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves.",
+			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves. Every call writes the object again.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":         strProp("Bucket name. Required."),
 				"key":            strProp("Object key. Required."),
@@ -1433,6 +1453,8 @@ func (s *Registry) registerTools() {
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
 		"vm_start":             s.gated("vm_start", s.planVMPower("vm_start")),
+		"vm_stop":              s.gated("vm_stop", s.planVMPower("vm_stop")),
+		"vm_reboot":            s.gated("vm_reboot", s.planVMPower("vm_reboot")),
 		"vm_list":              s.handleVMList,
 		"logs":                 s.handleLogs,
 		"destroy":              s.handleDestroy,
@@ -1817,6 +1839,11 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		// not a refusal: the VM may be booting, the person decides.
 		answer["upload"] = engine.SSHUpload(rec.VMIP)
 		if !u.Unchanged {
+			// A stopped VM takes no upload: refused before the question,
+			// as Deploy refuses it.
+			if err := eng.DeployVMStopped(ctx, &rec); err != nil {
+				return "", err
+			}
 			if probed, reach := eng.ReachSSH(ctx, rec.VMIP); probed {
 				answer["ssh_reachable"] = reach == nil
 				if reach != nil {
@@ -1898,6 +1925,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 // names it (D15, D48), so the CLI words the hint with its flag; and the
 // last lines of a failed docker compose up (output, #558).
 func deployFields(err error, fields map[string]any) map[string]any {
+	fields = engineStep(err, fields)
 	add := func(k string, v any) {
 		if fields == nil {
 			fields = map[string]any{}
@@ -1949,6 +1977,10 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	// included: image and image_id, or one of only spaces (break r4,
 	// R4-11).
 	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
+		return nil, err
+	}
+	// A step that goes on with a VM that is gone makes no new one (D102).
+	if err := s.continuedVM(ctx, "provision", args, stringArg(args, "name")); err != nil {
 		return nil, err
 	}
 	metaValues, err := metadataArg(args, "image_metadata")
@@ -2617,6 +2649,26 @@ func vmReadyText(name, zone, ip, ssh string, took time.Duration) string {
 		name, zone, ip, engine.ElapsedText(took), ssh)
 }
 
+// engineStep adds to fields the way on that an engine's refusal names in
+// its details, in the answer as in the CLI's: deploy for a deployment that
+// deploy has not finished (D76), vm_start for one whose VM is stopped
+// («Риск», conclusion 132, У2). Other errors keep their details to the CLI.
+func engineStep(err error, fields map[string]any) map[string]any {
+	var unfinished *engine.DeployUnfinishedError
+	var stopped *engine.VMStoppedError
+	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) {
+		return fields
+	}
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		if fields == nil {
+			fields = map[string]any{}
+		}
+		maps.Copy(fields, ce.Details)
+	}
+	return fields
+}
+
 // passwordOnce is the sentence of a provision answer that carries the
 // password evo generated for the image: no copy of it is kept.
 const passwordOnce = " The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
@@ -2671,16 +2723,7 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 	}
 	if err := eng.Logs(ctx, opts); err != nil {
 		fields := logField(buf.String())
-		// A deployment deploy has not finished: its status and deploy as
-		// the next step, in the answer as in the CLI's (D76).
-		var ue *engine.DeployUnfinishedError
-		if stderrors.As(err, &ue) {
-			var ce *clierrors.CLIError
-			if stderrors.As(err, &ce) {
-				maps.Copy(fields, ce.Details)
-			}
-		}
-		return failed(ctx, err, fields), true
+		return failed(ctx, err, engineStep(err, fields)), true
 	}
 	return buf.String(), false
 }
@@ -3782,6 +3825,28 @@ func usageErr(en, ru string, args ...any) error {
 // errResult formats an error as a JSON tool result (see errAnswer).
 func errResult(err error) string { return errAnswer(err, nil) }
 
+// quotaRefusal is the platform's code of a refusal for a quota, "" for
+// any other error: the compute API answers 422 with a code that ends in
+// quota_exceeded (organization_quota_exceeded: the register of
+// discrepancies, the runs of 29.10). The answer of a tool then names the
+// cause in one field, details.cause "quota", beside the reason it has —
+// API_ERROR today; the reason of its own is one decision for every tool,
+// later (release plan 1.9, Вп-8). A service whose refusal for a quota has
+// another form is not told apart here until a run shows the form.
+func quotaRefusal(err error) string {
+	if code := platformCode(err); quotaCode.MatchString(code) {
+		return code
+	}
+	return ""
+}
+
+// quotaCode is the form of a code of the platform that goes into the
+// answer as a machine field: a token — lowercase letters, digits and
+// underscores, 64 at most — that ends in quota_exceeded. A body whose
+// «code» is a sentence, or is long, is not told apart as a quota refusal:
+// the field would carry whatever the body says («Риск», conclusion 147).
+var quotaCode = regexp.MustCompile(`^[a-z0-9_]{0,50}quota_exceeded$`)
+
 // errAnswer is the error answer of a tool: fields (vm_id, output, …) plus
 // "status": "error" (unless fields set another status), "reason", "error"
 // and, when one is known, "hint". Every error answer has a reason, a code
@@ -3817,6 +3882,16 @@ func errAnswer(err error, fields map[string]any) string {
 			}
 		}
 	}
+	// A refusal of the platform for a quota carries one machine field for
+	// it, whatever the tool and with the reason it had (quotaRefusal).
+	if code := quotaRefusal(err); code != "" {
+		details := map[string]any{}
+		if was, _ := res["details"].(map[string]any); was != nil {
+			details = maps.Clone(was)
+		}
+		details["cause"], details["platform_code"] = "quota", code
+		res["details"] = details
+	}
 	if _, ok := res["status"]; !ok {
 		res["status"] = "error"
 	}
@@ -3839,6 +3914,14 @@ func errAnswer(err error, fields map[string]any) string {
 		// Whatever the client says of a 5xx: the address, not the
 		// service's state (D63).
 		hint = clierrors.RouteNotFoundHint()
+	}
+	if quotaRefusal(err) != "" {
+		// The same call again fails the same way: say what to read, and
+		// what changes the answer («Риск», conclusion 147, Р1). What to
+		// free is the person's to decide: the hint does not tell the
+		// model to choose what is «not needed» and delete it.
+		hint = i18n.T("The quota is used up, so the same call again will fail the same way. org_quotas shows the limits and the use, with a key that may read them; the quota is raised through Cloud.ru support; what to free instead is the person's decision — ask them.",
+			"Квота исчерпана, поэтому тот же вызов ещё раз откажет так же. Лимиты и использование показывает org_quotas — ключом, которому их можно читать; квоту увеличивает поддержка Cloud.ru; что освободить вместо этого — решает человек, спросите его.")
 	}
 	if hint != "" {
 		res["hint"] = hint

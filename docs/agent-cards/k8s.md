@@ -28,7 +28,7 @@
 
 A change of this group that answers an `operation_id` runs on: wait for it with `k8s_operation` and its `wait_seconds`, not by polling a list.
 
-Filters of the lists (the rule of the `evo` skill): `k8s_list` — status, name; `k8s_nodepools` — status, name; `k8s_addons` — query, category, billable.
+Filters of the lists (the rule of the `evo` skill): `k8s_list` — status, name, ids, statuses; `k8s_nodepools` — status, name, ids, statuses; `k8s_addons` — query, category, billable.
 
 ## Notes
 

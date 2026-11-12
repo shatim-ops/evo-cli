@@ -47,6 +47,10 @@ var untrustedFields = map[string]untrustedAnswer{
 	// deploy: the output of docker compose up — its log over MCP, the last
 	// lines of a failure (#558).
 	"deploy": {fields: []string{"log", "output"}, workload: true},
+	// The status of the app the question of ca_start and ca_stop names, as
+	// the API gives it («Риск», conclusion 142).
+	"ca_start": {fields: []string{"app_status"}},
+	"ca_stop":  {fields: []string{"app_status"}},
 	// The VMs a disk is attached to, as the cloud names them: the refusal
 	// of disk_delete (D59) names them for the way out. Names, not the
 	// output of a workload: no note.
@@ -57,7 +61,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	"disk_detach": {fields: []string{"will_detach", "attached_vms"}},
 	// The VM a power tool names in its preview and its answer, as the
 	// cloud names it.
-	"vm_start": {fields: []string{"preview", "name", "details"}},
+	"vm_start":  {fields: []string{"preview", "name", "details"}},
+	"vm_stop":   {fields: []string{"preview", "name", "details"}},
+	"vm_reboot": {fields: []string{"preview", "name", "details"}},
 	// The roles of the key, as IAM names them: anyone who may create a
 	// custom role in the organization names it (A0-2).
 	"whoami": {fields: []string{"roles"}},

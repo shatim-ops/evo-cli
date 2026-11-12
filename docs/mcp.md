@@ -396,7 +396,7 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 работа с ВМ и сетью, оставьте эти группы:
 
 ```sh
-evo mcp --toolsets deploy,vm,vpc     # около 30 инструментов, ~27 КБ
+evo mcp --toolsets deploy,vm,vpc     # около 30 инструментов, ~30 КБ
 ```
 
 Группы перечислены в столбце ГРУППА вывода `evo tools list`: deploy, vm,
@@ -426,7 +426,7 @@ evo mcp --http 127.0.0.1:8080 --read-only    # HTTP
 
 - Инструменты, которым согласие нужно при каждом вызове, — все изменяющие,
   `secret_value` и `cert_private_key` — в `tools/list` не попадают:
-  остаётся около 90 инструментов (~60 КБ). Вызов такого инструмента по имени —
+  остаётся около 90 инструментов (~65 КБ). Вызов такого инструмента по имени —
   ошибка `USAGE` до превью и до облака: `deploy is refused:
   this server runs with --read-only, and the call needs the user's consent
   (confirmed=true), as it changes the cloud or reveals a secret; a read-only
@@ -536,11 +536,11 @@ evo mcp --http 127.0.0.1:8080 --auth bearer --read-only --toolsets vm,vpc,disk,i
 ([Streamable HTTP](#streamable-http)).
 
 **`--toolsets` обязателен.** Без него агент получает все инструменты (с
-`--read-only` — около 90, ~60 КБ схем; без него — более 150, ~120 КБ) в каждой
+`--read-only` — около 90, ~65 КБ схем; без него — более 150, ~120 КБ) в каждой
 сессии. У клиентов есть и предел числа: VS Code с GitHub Copilot принимает не
 больше 128 инструментов в одном запросе чата и сверх этого отвечает ошибкой
 ([документация VS Code](https://code.visualstudio.com/docs/copilot/agents/agent-tools)).
-Оставьте группы задачи: `vm,vpc,disk,image` — 17 инструментов на чтение, ~12 КБ.
+Оставьте группы задачи: `vm,vpc,disk,image` — 17 инструментов на чтение, ~13 КБ.
 
 **Тайм-аут вызова.** Часть инструментов ждёт внутри вызова: `*_operation` с
 `wait_seconds` (до 45 с), `stack_status` (до 20 с за вызов), `k8s_kubectl`

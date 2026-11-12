@@ -138,6 +138,11 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 				e.Printer.Warning(w)
 			}
 		}
+		// A stopped VM takes no upload: refused with the cause before the
+		// question (axis 1), not asked and then timed out on SSH.
+		if err := e.DeployVMStopped(ctx, existing); err != nil {
+			return err
+		}
 		// Port 22 from here, before the question (M2): the update uploads
 		// over SSH and would wait for it after consent.
 		probed, reach := e.ReachSSH(ctx, existing.VMIP)

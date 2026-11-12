@@ -169,6 +169,18 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "vm_start", map[string]any{"name": "web"})
 		return text
 	},
+	// vm_stop reads the VM before the question (D99): a running VM.
+	"vm_stop": func(t *testing.T) string {
+		r, _ := vmStartWorld(t, "running")
+		_, text, _ := callNamed(t, r, "vm_stop", map[string]any{"name": "web"})
+		return text
+	},
+	// vm_reboot reads the VM before the question (D99): a running VM.
+	"vm_reboot": func(t *testing.T) string {
+		r, _ := vmStartWorld(t, "running")
+		_, text, _ := callNamed(t, r, "vm_reboot", map[string]any{"name": "web"})
+		return text
+	},
 	// destroy with no deployment answers status none with no question, as
 	// the CLI (W5): its preview needs a deployment in the state.
 	"destroy": func(t *testing.T) string {

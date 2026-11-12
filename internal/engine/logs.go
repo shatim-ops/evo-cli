@@ -57,6 +57,11 @@ func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
 		ts.SetToken(tok.Value)
 	}
 
+	// A stopped VM takes no SSH: the cause, not a timeout of it.
+	if err := e.vmStopped(ctx, active, clerrors.CodeSSHTimeout); err != nil {
+		return err
+	}
+
 	if err := e.EnsureSSHKey(); err != nil {
 		return err
 	}

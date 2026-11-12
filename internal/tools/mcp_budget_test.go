@@ -333,6 +333,7 @@ var mcpWaits = map[string]budgetWait{
 	"disk_detach":  apiBudget("disk_detach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
 	"disk_resize":  apiBudget("disk_resize", map[string]any{"disk_id": faultDisk, "size_gb": 20, "confirmed": true}, slowDisk),
 	"vm_start":     vmPowerBudget("vm_start", "stopped"),
+	"vm_stop":      vmPowerBudget("vm_stop", "running"),
 	// k8s_nodepool_scale waits for its operation: one that never ends.
 	"k8s_nodepool_scale": {run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
 		w := &poolWorld{status: poolRunning, after: poolScalingUp, opRuns: true}
@@ -346,6 +347,7 @@ var mcpWaits = map[string]budgetWait{
 		}
 		return ""
 	}},
+	"vm_reboot": vmPowerBudget("vm_reboot", "running"),
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,
@@ -549,6 +551,8 @@ var nextStepKeepsConsent = map[string]string{
 	"disk_create":   "disk_id and vm in next_args: the attach of attach_to the person approved",
 	"disk_detach":   "disk_id and vm in next_args: the detach the person approved",
 	"disk_resize":   "disk_id and size_gb in next_args: the size the person approved",
+	"deploy_apply":  "vm_id in next_args: the VM the call made; a step whose VM is gone refuses and creates nothing (D102, continuedVM)",
+	"provision":     "vm_id in next_args: the VM the call made; a step whose VM is gone refuses and creates nothing (D102, continuedVM)",
 	// Stopped while it adds the chart's repository, before the release is
 	// touched, helm names the same call (nextStepOtherWorlds; owner's
 	// decision 12.11, «Риск», conclusion 126).
@@ -562,10 +566,7 @@ var nextStepKeepsConsent = map[string]string{
 // gets bound to the id of the VM (D102, «разработка A»); then the line
 // moves to nextStepKeepsConsent. "tool" → what the next step is. It only
 // shrinks, and a new tool does not join it. Closes by 1.9.
-var nextStepConsentUnbound = map[string]string{
-	"deploy_apply": "deploy_apply plan_id, confirmed: no id of the VM in the step",
-	"provision":    "provision name, confirmed: the VM by its name, not its id",
-}
+var nextStepConsentUnbound = map[string]string{}
 
 // consentInNextStep reports whether the answer names a next step whose
 // arguments carry confirmed.

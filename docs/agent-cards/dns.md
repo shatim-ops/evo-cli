@@ -18,4 +18,4 @@
 
 A change of this group that answers an `operation_id` runs on: wait for it with `dns_operation` and its `wait_seconds`, not by polling a list.
 
-Filters of the lists (the rule of the `evo` skill): `dns_zones` — name, domain; `dns_records` — name, type.
+Filters of the lists (the rule of the `evo` skill): `dns_zones` — name, domain, ids; `dns_records` — name, ids, type.
