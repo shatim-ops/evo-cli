@@ -237,7 +237,7 @@ func stackDestroyBudget() budgetWait {
 		dir := t.TempDir()
 		j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
 		setup := budgetComputeRegistry(t, cloud, dir, faultToolsTimings())
-		if text, isErr := setup.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
+		if text, isErr := setup.gated("stack_apply", setup.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
 			t.Fatalf("stack_apply before stack_destroy: %s", text)
 		}
 		cloud.mu.Lock()
@@ -501,7 +501,7 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 	// call cut short, not for its repeat.
 	for name := range consented {
 		if nextStepKeepsConsent[name] == "" && nextStepConsentUnbound[name] == "" {
-			bad = append(bad, name+": its answer cut by the budget names a next step with confirmed in next_args — a next step is a read, or the same call without confirmed; the repeat reads the state and does not write (D99, П3). A continuation that keeps the consent is a decision: bound to the id of what was approved, and declared in nextStepKeepsConsent")
+			bad = append(bad, name+": its answer cut by the budget names a next step with confirmed in next_args — a next step is a read, or the same call without confirmed (nextSameCall, gate.go); the repeat reads the state and does not write (D99, П3). A continuation that keeps the consent is a decision: bound to the id of what was approved, and declared in nextStepKeepsConsent")
 		}
 	}
 	for _, list := range []map[string]string{nextStepKeepsConsent, nextStepConsentUnbound} {

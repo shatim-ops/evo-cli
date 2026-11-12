@@ -224,7 +224,7 @@ func TestCancel_StackStepInterruptedAdoptsOnNextCrank(t *testing.T) {
 		cancel()
 		return toJSON(map[string]any{"status": "error", "vm_id": "vm-9", "error": "interrupted"}), true
 	}
-	r.handleStackApply(ctx, map[string]any{"job_id": j.ID, "confirmed": true})
+	r.gated("stack_apply", r.planStackApply)(ctx, map[string]any{"job_id": j.ID, "confirmed": true})
 	job, err := stack.LoadJob(j.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +233,7 @@ func TestCancel_StackStepInterruptedAdoptsOnNextCrank(t *testing.T) {
 	if !st.Interrupted || st.ResourceID != "vm-9" || st.Attempts != 0 || st.Status != "pending" {
 		t.Fatalf("после отмены: %+v", st)
 	}
-	r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	job, _ = stack.LoadJob(j.ID)
 	if calls != 1 || job.Outputs["vm"] != "vm-9" || job.Steps[0].Status != "done" {
 		t.Fatalf("provision вызван %d раз, outputs %v, шаг %+v", calls, job.Outputs, job.Steps[0])
@@ -262,8 +262,8 @@ func TestCancel_StackStepInterruptedReconcilesByName(t *testing.T) {
 		return toJSON(map[string]any{"clusters": []any{map[string]any{"name": "p", "id": "pg-1"}}}), false
 	}
 	r.handlers["pg_get"] = fakeOK(map[string]any{"status": "CREATING"})
-	r.handleStackApply(ctx, map[string]any{"job_id": j.ID, "confirmed": true})
-	r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	r.gated("stack_apply", r.planStackApply)(ctx, map[string]any{"job_id": j.ID, "confirmed": true})
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	job, _ := stack.LoadJob(j.ID)
 	if creates != 1 || job.Steps[0].ResourceID != "pg-1" || job.Steps[0].Status != "waiting" {
 		t.Fatalf("pg_create вызван %d раз, шаг %+v", creates, job.Steps[0])

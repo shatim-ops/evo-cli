@@ -596,7 +596,7 @@ func TestStackDestroy_ReportsAsyncDeletions(t *testing.T) {
 	}
 	r.handlers["pg_delete"] = fakeOK(map[string]any{"status": "deleting", "id": "pg-1", "operation_id": "op"})
 	r.handlers["secret_delete"] = fakeOK(map[string]any{"status": "deleted"})
-	got := callTool(t, r.handleStackDestroy, map[string]any{"job_id": j.ID, "confirmed": true})
+	got := callTool(t, r.gated("stack_destroy", r.planStackDestroy), map[string]any{"job_id": j.ID, "confirmed": true})
 	deleting, _ := got["deleting"].([]any)
 	if got["status"] != "deleting" || len(deleting) != 1 || deleting[0] != "postgres" || stringArg(got, "note") == "" {
 		t.Errorf("destroy answer: %v", got)
@@ -630,7 +630,7 @@ func TestDeletePreviews_NameTheResource(t *testing.T) {
 	if err := j.Save(); err != nil {
 		t.Fatal(err)
 	}
-	got := callTool(t, r.handleStackDestroy, map[string]any{"job_id": j.ID})
+	got := callTool(t, r.gated("stack_destroy", r.planStackDestroy), map[string]any{"job_id": j.ID})
 	res, _ := got["resources"].([]any)
 	if got["status"] != "confirmation_required" || len(res) != 1 || !strings.Contains(fmt.Sprint(res[0]), "pg-1") {
 		t.Errorf("stack_destroy preview: %v", got)
