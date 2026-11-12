@@ -116,10 +116,22 @@ repeat_deleted() {
 }
 
 # [{id, status}] кластеров с этим именем; код не 0 — список не прочитан.
+# По префиксу (уборка cleanup_only идёт рядом с живыми запусками) — без
+# кластеров незавершённых запусков cloud-e2e: e2e_live_runs.sh; какие
+# запуски живы, неизвестно — список считается непрочитанным, удалений нет.
 clusters() {
+	local live='^$'
+	if [ -n "$prefix" ]; then live=$("$(dirname "$0")/e2e_live_runs.sh") || return 1; fi
 	evo tools call "${kind}_list" --json 2>/dev/null |
-		jq -ce --arg n "$name" --arg p "$prefix" 'if (.clusters | type) == "array" then [.clusters[] | select(if $p == "" then .name == $n else ((.name // "") | startswith($p)) end) | {id, status: ((.status // "?") | tostring | ascii_upcase)}] else error("нет clusters") end' 2>/dev/null
+		jq -ce --arg n "$name" --arg p "$prefix" --arg live "$live" 'if (.clusters | type) == "array" then [.clusters[] | select(if $p == "" then .name == $n else ((.name // "") | (startswith($p) and (test($live) | not))) end) | {id, status: ((.status // "?") | tostring | ascii_upcase)}] else error("нет clusters") end' 2>/dev/null
 }
+
+# Уборка по префиксу без списка живых запусков не начинается: код 1 сразу, а
+# не 10 мин «список не прочитан» (сбой посреди уборки — как непрочитанный
+# список: повтор).
+if [ -n "$prefix" ]; then
+	"$(dirname "$0")/e2e_live_runs.sh" >/dev/null || exit 1
+fi
 
 start=$(date +%s)
 retry_until=$((start + 7200)) # отказы «ещё создаётся» — до 120 мин

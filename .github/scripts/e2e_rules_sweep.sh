@@ -6,8 +6,8 @@
 # сетевого интерфейса — ни ВМ, ни отвязанного порта:
 # раньше снимались все, когда в проекте нет ВМ evo-*, и evo deploy под
 # другим именем в том же проекте терял бы своё правило (release-plan 1.3,
-# задача процесса). Идёт прогон e2e (есть ВМ evo-e2e-*) — ничего не трогает,
-# код 1. Признак — has_interfaces группы (Compute GET
+# задача процесса). Есть ВМ evo-e2e-* — ничего не трогает: ВМ завершённого
+# запуска — код 1, ВМ только живых запусков (e2e_live_runs.sh) — код 0. Признак — has_interfaces группы (Compute GET
 # /api/v1/security-groups/{id}, PublicSecurityGroupResponse: обязательное
 # boolean «наличие сетевых интерфейсов, которые добавлены в группу»).
 # Снимается только при has_interfaces строго false: ответ не 200, поля нет
@@ -31,8 +31,15 @@ evo tools call vm_list --json > "$RUNNER_TEMP/vms.json" ||
 	{ echo "::error::vm_list не прочитан — правила «evo:» не трогаю"; exit 1; }
 jq -e '.vms | type == "array"' "$RUNNER_TEMP/vms.json" >/dev/null ||
 	{ echo "::error::в ответе vm_list нет массива vms — правила «evo:» не трогаю"; exit 1; }
+# Уборка идёт рядом с живыми запусками (e2e_live_runs.sh): ВМ завершённого
+# запуска — остаток, который шаг ВМ не убрал, код 1; ВМ только живых
+# запусков — правила не трогаю, код 0 (их снимет следующая уборка).
+live=$("$(dirname "$0")/e2e_live_runs.sh") ||
+	{ echo "::error::живые запуски cloud-e2e неизвестны — правила «evo:» не трогаю"; exit 1; }
+n=$(jq --arg live "$live" '[.vms[]? | select((.name // "") | (startswith("evo-e2e-") and (test($live) | not)))] | length' "$RUNNER_TEMP/vms.json")
+[ "$n" = 0 ] || { echo "::error::в проекте есть ВМ evo-e2e-* завершённых запусков ($n) — правила «evo:» не трогаю"; exit 1; }
 n=$(jq '[.vms[]? | select((.name // "") | startswith("evo-e2e-"))] | length' "$RUNNER_TEMP/vms.json")
-[ "$n" = 0 ] || { echo "::error::в проекте есть ВМ evo-e2e-* ($n) — идёт прогон e2e, правила «evo:» не трогаю"; exit 1; }
+[ "$n" = 0 ] || { echo "::notice::идёт запуск cloud-e2e (ВМ evo-e2e-*: $n) — правила «evo:» не трогаю"; exit 0; }
 evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg.json"
 # Четвёртое поле — id ВМ из метки evo «evo: port N (vm <id>)» (P6) или «-».
 rules=$(jq -r '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and (.port_range == "80:80" or .port_range == "8080:8080" or .port_range == "8081:8081" or .port_range == "8082:8082" or .port_range == "8086:8086" or (.port_range | tostring | test("^(2[0-9]{4}):\\1$"))) and ((.description // "") | startswith("evo:"))) | "\($g) \(.id) \(.port_range) \((.description | capture("^evo: port [^ ]+ \\(vm (?<vm>[^ )]+)\\)$") | .vm) // "-")"' "$RUNNER_TEMP/sg.json")

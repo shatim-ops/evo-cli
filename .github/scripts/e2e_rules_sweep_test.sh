@@ -12,6 +12,11 @@ mkdir "$dir/bin"
 # shellcheck source-path=SCRIPTDIR source=fake_evo.sh
 . "$here/fake_evo.sh"
 fake_evo_install "$dir/bin"
+# Уборка по префиксу спрашивает живые запуски cloud-e2e (e2e_live_runs.sh):
+# заглушка gh — их нет; своя проверка — e2e_live_runs_test.sh.
+printf '#!/bin/sh\n' >"$dir/bin/gh"
+chmod +x "$dir/bin/gh"
+export GITHUB_REPOSITORY=o/r E2E_LIVE_TTL=0
 cat > "$dir/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
 # The https:// argument is the URL; -o FILE takes the body, -w the code.

@@ -141,12 +141,17 @@ on:
         type: boolean
         default: false
       cleanup_only:
-        description: "Create nothing: delete leftovers of earlier runs (VMs evo-e2e-*, their floating IPs; Kubernetes, PostgreSQL, Kafka and Redis clusters evo-e2e-*; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 and the deploy app port 20000-29999 whose security group has no network interface left or whose VM is gone) and print project quotas"
+        description: "Create nothing, in a queue of its own next to live runs: delete leftovers of finished runs (VMs evo-e2e-*, their floating IPs; Kubernetes, PostgreSQL, Kafka and Redis clusters evo-e2e-*; every evo-e2e-* resource of the live jobs; evo: rules for e2e ports 80/8080/8081/8082/8086 and the deploy app port 20000-29999 whose security group has no network interface left or whose VM is gone) and print project quotas"
         type: boolean
         default: false
 
+# Уборка cleanup_only — в своей очереди (решение владельца 12.11, план 1.9,
+# Вп-14): она не ждёт живой запуск и не держит его. Рядом с живыми
+# запусками она удаляет ресурсы только завершённых: номер запуска — в имени
+# ресурса, его состояние — e2e_live_runs.sh
+# (TestWorkflows_CleanupTouchesOnlyFinishedRuns).
 concurrency:
-  group: ${{ github.event_name == 'schedule' && 'cloud-readonly-nightly' || 'cloud-e2e' }}
+  group: ${{ github.event_name == 'schedule' && 'cloud-readonly-nightly' || inputs.cleanup_only && 'cloud-e2e-cleanup' || 'cloud-e2e' }}
   cancel-in-progress: false
 
 permissions:
@@ -938,8 +943,13 @@ jobs:
     # Кластер DBaaS, который ещё создаётся, Cloud.ru удалять отказывается:
     # повтор до 120 мин и ожидание до 30 (dbaas-delete.sh) поверх ВМ и mk8s.
     timeout-minutes: 240
+    # actions: read — список запусков cloud-e2e для e2e_live_runs.sh.
+    permissions:
+      contents: read
+      actions: read
     env:
       CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+      GH_TOKEN: ${{ github.token }}
     defaults:
       run:
         shell: bash -eo pipefail {0}
@@ -990,8 +1000,11 @@ jobs:
       - name: ВМ evo-e2e-*
         run: |
           redact() { sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; }
-          vms() { evo tools call vm_list --json | jq -c '[.vms[]? | select((.name // "") | startswith("evo-e2e-")) | {id, name, state: (.state // .status)}]'; }
+          # Только ВМ завершённых запусков (e2e_live_runs.sh): список живых
+          # читается перед каждым списком ВМ; не прочитан — шаг падает.
+          vms() { evo tools call vm_list --json | jq -c --arg live "$live" '[.vms[]? | select((.name // "") | (startswith("evo-e2e-") and (test($live) | not))) | {id, name, state: (.state // .status)}]'; }
           for i in $(seq 1 15); do
+            live=$(.github/scripts/e2e_live_runs.sh)
             list=$(vms)
             for id in $(jq -r '.[].id' <<<"$list"); do echo "::add-mask::$id"; done
             jq -c '[.[] | {name, state}]' <<<"$list"
@@ -1009,15 +1022,19 @@ jobs:
       - name: Кластеры Kubernetes evo-e2e-*
         if: always()
         run: |
-          ids=$(evo tools call k8s_list --json | jq -r '.clusters[]? | select((.name // "") | startswith("evo-e2e-")) | .id')
-          [ -n "$ids" ] || { echo "кластеров evo-e2e-* нет"; exit 0; }
+          # Только кластеры завершённых запусков (e2e_live_runs.sh).
+          done_ids() { jq -r --arg live "$live" '.clusters[]? | select((.name // "") | (startswith("evo-e2e-") and (test($live) | not))) | .id'; }
+          live=$(.github/scripts/e2e_live_runs.sh)
+          ids=$(evo tools call k8s_list --json | done_ids)
+          [ -n "$ids" ] || { echo "кластеров evo-e2e-* завершённых запусков нет"; exit 0; }
           for id in $ids; do
             echo "::add-mask::$id"
             evo --json --yes k8s delete "$id" | jq -c '{status}' || true
           done
           for _ in $(seq 1 30); do
-            left=$(evo tools call k8s_list --json | jq '[.clusters[]? | select((.name // "") | startswith("evo-e2e-"))] | length')
-            [ "$left" = 0 ] && { echo "кластеры удалены"; exit 0; }
+            live=$(.github/scripts/e2e_live_runs.sh)
+            left=$(evo tools call k8s_list --json | done_ids)
+            [ -z "$left" ] && { echo "кластеры удалены"; exit 0; }
             sleep 60
           done
           echo "::error::кластеры Kubernetes evo-e2e-* не удалились за 30 минут"
@@ -1041,15 +1058,18 @@ jobs:
       - name: Floating IP fip-evo-e2e-*
         if: always()
         run: |
+          # Только адреса завершённых запусков (e2e_live_runs.sh).
+          live=$(.github/scripts/e2e_live_runs.sh)
           for id in $(evo tools call list_floating_ips --json |
-            jq -r '.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-")) and .available) | .id'); do
+            jq -r --arg live "$live" '.floating_ips[]? | select(((.name // "") | (startswith("fip-evo-e2e-") and (test($live) | not))) and .available) | .id'); do
             echo "::add-mask::$id"
             echo "освобождаю floating IP"
             evo --yes tools call release_floating_ip --arg id="$id" --json | jq -c '{status}' || true
           done
-          fips=$(evo tools call list_floating_ips --json)
-          left=$(jq '[.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-")) and .state != "error_deleting")] | length' <<<"$fips")
-          stuck=$(jq '[.floating_ips[]? | select(((.name // "") | startswith("fip-evo-e2e-")) and .state == "error_deleting")] | length' <<<"$fips")
+          live=$(.github/scripts/e2e_live_runs.sh)
+          fips=$(evo tools call list_floating_ips --json | jq -c --arg live "$live" '[.floating_ips[]? | select((.name // "") | (startswith("fip-evo-e2e-") and (test($live) | not)))]')
+          left=$(jq '[.[] | select(.state != "error_deleting")] | length' <<<"$fips")
+          stuck=$(jq '[.[] | select(.state == "error_deleting")] | length' <<<"$fips")
           echo "FIP fip-evo-e2e-* осталось: $left, в error_deleting: $stuck"
           # error_deleting через API не снять: повторное удаление — 422 (реестр NET-7).
           [ "$stuck" = 0 ] || echo "::warning::FIP fip-evo-e2e-* в error_deleting ($stuck): через API не удаляется — уберите в консоли Cloud.ru или через поддержку"

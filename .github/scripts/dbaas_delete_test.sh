@@ -16,6 +16,11 @@ trap 'rm -rf "$work"' EXIT
 # shellcheck source-path=SCRIPTDIR source=fake_evo.sh
 . "$here/fake_evo.sh"
 fake_evo_install "$work/bin"
+# Уборка по префиксу спрашивает живые запуски cloud-e2e (e2e_live_runs.sh):
+# заглушка gh — их нет; своя проверка — e2e_live_runs_test.sh.
+printf '#!/bin/sh\n' >"$work/bin/gh"
+chmod +x "$work/bin/gh"
+export GITHUB_REPOSITORY=o/r E2E_LIVE_TTL=0
 
 # run ИМЯ КОД_ВЫХОДА ЧИСЛО_ВЫЗОВОВ_С_YES СПИСОК.0 [СПИСОК.1 …] — ответы
 # kafka_delete уже положены в $FAKE_DIR (fresh). CLUSTER — второй аргумент
