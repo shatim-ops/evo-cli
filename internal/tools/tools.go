@@ -126,6 +126,15 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_reboot",
+			Description: "Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. There is no «already»: every call is a new reboot: a repeat reboots the VM again, so each one asks. A VM that is rebooting is waited for and no command is sent; a stopped one is refused with vm_start as the step. At the time limit of an MCP call the answer is status rebooting with next_tool vm_get; reboot_accepted means the platform took the command and evo did not see the state change. Do not reboot the VM this server runs on. Mutation (interrupts the service): requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
+				"name":      strProp("VM name (alternative to vm_id)."),
+				"confirmed": confirmedProp(),
+			}),
+		},
+		{
 			Name:        "vm_list",
 			Description: "List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. Read-only. For IPs and interfaces of one VM use vm_get. Unlike 'list' (local deployment records of this directory), this shows every VM in the project.",
 			InputSchema: objSchema(nil),
@@ -1425,6 +1434,7 @@ func (s *Registry) registerTools() {
 		"vm_get":               s.handleVMGet,
 		"vm_start":             s.gated("vm_start", s.planVMPower("vm_start")),
 		"vm_stop":              s.gated("vm_stop", s.planVMPower("vm_stop")),
+		"vm_reboot":            s.gated("vm_reboot", s.planVMPower("vm_reboot")),
 		"vm_list":              s.handleVMList,
 		"logs":                 s.handleLogs,
 		"destroy":              s.handleDestroy,

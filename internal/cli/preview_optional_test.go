@@ -51,6 +51,7 @@ var optionalLeftOut = map[string]string{
 	"destroy name":                              "an alternative of vm_id",
 	"vm_start name":                             "an alternative of vm_id",
 	"vm_stop name":                              "an alternative of vm_id",
+	"vm_reboot name":                            "an alternative of vm_id",
 	"k8s_add_nodepool flavor":                   "an alternative of cpu and ram_gb",
 	"k8s_create flavor":                         "an alternative of cpu and ram_gb",
 	"release_floating_ip ip_address":            "an alternative of id",

@@ -46,7 +46,9 @@ var alreadyAsks = map[string]string{
 // every send is a change of its own (a reboot, a new version), so there is
 // no "already" to answer (D99, П3). The value is the words of the tool's
 // description that say so: the agent learns it there, before the call.
-var repeatIsANewChange = map[string]string{}
+var repeatIsANewChange = map[string]string{
+	"vm_reboot": "every call is a new reboot: a repeat reboots the VM again",
+}
 
 // repeatRefused are the changes shipped before the invariant whose repeat
 // is refused before the question, with the state named, and not answered

@@ -445,6 +445,9 @@
       "no_refusal": "no refusal seen live (register, 28.10)"
     }
   },
+  "vm_reboot": {
+    "destructive": true
+  },
   "vm_start": {
     "destructive": false
   },
