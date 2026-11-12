@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -165,6 +166,42 @@ const toolAnnotation = "evo.tool"
 // filterExampleAnnotation holds the arguments of a list command's example
 // with its filters; applyExamples puts it under the command's examples.
 const filterExampleAnnotation = "evo.filter-example"
+
+// filterFlagAnnotation marks a flag that is a filter of a list: the help
+// shows such flags as a block of their own (flagUsages).
+const filterFlagAnnotation = "evo.filter"
+
+// flagUsages are the usages of the local flags of c that are filters of a
+// list, or of the ones that are not: the two blocks of the help.
+func flagUsages(c *cobra.Command, filters bool) string {
+	fs := pflag.NewFlagSet(c.Name(), pflag.ContinueOnError)
+	c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+		if _, is := f.Annotations[filterFlagAnnotation]; is == filters {
+			fs.AddFlag(f)
+		}
+	})
+	return fs.FlagUsages()
+}
+
+func filterFlagUsages(c *cobra.Command) string { return flagUsages(c, true) }
+func otherFlagUsages(c *cobra.Command) string  { return flagUsages(c, false) }
+
+// flagsBlockEN is the block of local flags in cobra's usage template, and
+// flagBlocksEN the two blocks evo shows instead: the filters of a list,
+// then the rest.
+const (
+	flagsBlockEN = `{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}`
+	flagBlocksEN = `{{if filterFlags .}}
+
+Filters:
+{{filterFlags . | trimTrailingWhitespaces}}{{end}}{{if otherFlags .}}
+
+Flags:
+{{otherFlags . | trimTrailingWhitespaces}}{{end}}`
+)
 
 // rootArgs are tool arguments served by root flags (--project-id,
 // --region) through the engine configuration, and confirmed, which is
@@ -411,19 +448,21 @@ func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 	}
 	noEmptyScope(cmd.Flags())
 	if filters := tools.ListFilters(t); filters != nil {
-		// The filters of a list, as one group, and an example with them
-		// (release plan 1.8.2). The line names flags only: a filter the
-		// command takes as a positional (the query of image list) is in
-		// its usage, not here (FB182-1).
-		names := make([]string, 0, len(filters))
+		// The filters of a list, as one group of flags in the help (their
+		// own block, flagUsages), and an example with them (release plan
+		// 1.8.2; the block: release plan 1.9). The group holds flags only:
+		// a filter the command takes as a positional (the query of image
+		// list) is in its usage, not here (FB182-1).
+		grouped := false
 		for _, a := range filters {
 			if cmd.Flags().Lookup(c.flagName(a)) != nil {
-				names = append(names, "--"+c.flagName(a))
+				_ = cmd.Flags().SetAnnotation(c.flagName(a), filterFlagAnnotation, []string{"true"})
+				grouped = true
 			}
 		}
-		if len(names) > 0 {
-			cmd.Long += "\n\n" + i18n.Tf("Filters: %s. Several are «and»; an empty selection is not «none in the project».",
-				"Отбор: %s. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».", strings.Join(names, ", "))
+		if grouped {
+			cmd.Long += "\n\n" + i18n.T("The filters are a block of flags below. Several are «and»; an empty selection is not «none in the project».",
+				"Фильтры — отдельным блоком флагов ниже. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».")
 		}
 		if samples := tools.ListFilterSamples(t); len(samples) > 0 {
 			var ex []string
