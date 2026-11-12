@@ -175,6 +175,8 @@ func TestIntent_RepeatDoesNotCloseARecordOfAnotherKey(t *testing.T) {
 			r := ownerRegistry(t, f, false, ownProject)
 			eng, _ := r.newEngine(nil)
 			dir := intent.Dir(eng.StateDir)
+			// evo runs in the directory of its state.
+			t.Chdir(eng.StateDir)
 			if _, err := intent.Begin(dir, intent.Intent{Tool: "pg_delete", Target: "id=" + resGone, Key: c.key}); err != nil {
 				t.Fatal(err)
 			}
@@ -189,6 +191,19 @@ func TestIntent_RepeatDoesNotCloseARecordOfAnotherKey(t *testing.T) {
 			named := strings.Contains(text, "pending_operations") && strings.Contains(text, "sent with another key")
 			if named == c.closed {
 				t.Errorf("the answer names a kept record: %v, want %v\n%s", named, !c.closed, text)
+			}
+			// Every answer of the call names the kept record, not only the
+			// first of the process, and with or without consent («Риск»,
+			// conclusion 135): a call without consent is answered
+			// already_deleted with no question, and settles nothing.
+			for _, confirmed := range []bool{true, false} {
+				_, again, _ := callOwned(t, r, "pg_delete", map[string]any{"id": resGone}, confirmed)
+				if got := strings.Contains(again, "sent with another key"); got == c.closed {
+					t.Errorf("a later answer (confirmed %v) names a kept record: %v, want %v\n%s", confirmed, got, !c.closed, again)
+				}
+			}
+			if !c.closed && len(intent.Pending(dir)) != 1 {
+				t.Errorf("the later calls closed the record: %+v", intent.Pending(dir))
 			}
 			if !c.closed {
 				// Its words send to doctor with that key, not to the same call.

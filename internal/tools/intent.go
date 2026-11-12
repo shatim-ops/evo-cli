@@ -27,18 +27,18 @@ import (
 // state no record names. end takes the answer: an answer with an outcome
 // removes the intent and settles the earlier ones of the same tool and
 // name; a cut call (its context done, INTERRUPTED) keeps it. A record of
-// the same call another key left is not settled by this one: end returns
-// the answer with it named (pending_operations), else as it was. An intent
-// that cannot be written refuses the call before it goes out.
-func (r *Registry) beginIntent(ctx context.Context, name string, args map[string]any) (end func(answer string) string, err error) {
+// the same call another key left is not settled by this one
+// (intent.Settle), and the answer names it (namedKept). An intent that
+// cannot be written refuses the call before it goes out.
+func (r *Registry) beginIntent(ctx context.Context, name string, args map[string]any) (end func(answer string), err error) {
 	if r.newEngine == nil {
-		return func(answer string) string { return answer }, nil
+		return func(string) {}, nil
 	}
 	// No engine: the call cannot reach the cloud, its handler answers that
 	// itself.
 	eng, err := r.newEngine(nil)
 	if err != nil || eng == nil {
-		return func(answer string) string { return answer }, nil
+		return func(string) {}, nil
 	}
 	root := eng.StateDir
 	in := intent.Intent{Tool: name, Surface: "mcp", PID: os.Getpid(), StartedAt: clock.Now(),
@@ -70,28 +70,57 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	// The engine of evo always has its directory (buildEngine fails
 	// without the working directory); one without is a test's fake.
 	if root == "" {
-		return func(answer string) string { return answer }, nil
+		return func(string) {}, nil
 	}
 	dir := intent.Dir(root)
 	done, err := intent.Begin(dir, in)
 	if err != nil {
 		return nil, err
 	}
-	return func(answer string) string {
+	return func(answer string) {
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), 0) {
-			return answer
+			return
 		}
 		done()
-		var notes []string
-		for _, left := range intent.Settle(dir, in) {
-			left.Dir = dir
-			notes = append(notes, r.pendingNote(left, in.Key))
-		}
-		if named, ok := withNotes(answer, notes); ok {
-			return named
-		}
-		return answer
+		intent.Settle(dir, in)
 	}, nil
+}
+
+// namedKept is the answer of a call of tool name with the records of the
+// same call on the same resource that another key left
+// (pending_operations): this call does not settle them, with consent or
+// without — an already_deleted of this key says what this key sees — so
+// every answer of it names them, not only the first answer of the process
+// («Риск», conclusions 128 and 135).
+func (r *Registry) namedKept(name string, args map[string]any, answer string) string {
+	resource, target := intentResource(name, args)
+	root, err := os.Getwd()
+	if err != nil || (resource == "" && target == "") {
+		return answer
+	}
+	// The records of this directory, as withPending reads them; the key
+	// of the call is asked for only when one of them is of this call — a
+	// call with nothing left builds no engine.
+	var same []intent.Intent
+	for _, in := range intent.Pending(intent.Dir(root)) {
+		if in.Tool == name && in.Name == resource && in.Target == target && in.Key != nil {
+			same = append(same, in)
+		}
+	}
+	if len(same) == 0 {
+		return answer
+	}
+	cur := r.maker()
+	var notes []string
+	for _, in := range same {
+		if in.Key.Other(cur) {
+			notes = append(notes, r.pendingNote(in, cur))
+		}
+	}
+	if named, ok := withNotes(answer, notes); ok {
+		return named
+	}
+	return answer
 }
 
 // intentResource is what a call names its resource by: the argument the create

@@ -94,7 +94,7 @@ func (r *Registry) engineGated(ctx context.Context, name string, args map[string
 		// The engine asks at its own gate: the intent is written on the
 		// yes, before the engine writes anything (Caller.ask); a call with
 		// confirmed has it from intended already.
-		var end func(string) string
+		var end func(string)
 		prev := c.consent
 		c.consent = func() error {
 			if confirmed, _ := args["confirmed"].(bool); end != nil || confirmed {
@@ -107,7 +107,7 @@ func (r *Registry) engineGated(ctx context.Context, name string, args map[string
 		defer func() { c.consent = prev }()
 		text, isErr := live(c)
 		if end != nil {
-			text = end(text)
+			end(text)
 		}
 		return text, isErr
 	}
@@ -132,15 +132,20 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		// intent of the call the person consented to covers it, and the
 		// job of the stack records its steps.
 		depth, _ := ctx.Value(journalDepthKey{}).(int)
-		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) || depth > 1 {
+		if depth > 1 {
 			return next(ctx, args)
+		}
+		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) {
+			text, isErr := next(ctx, args)
+			return r.namedKept(t.Name, args, text), isErr
 		}
 		end, err := r.beginIntent(ctx, t.Name, args)
 		if err != nil {
 			return errResult(err), true
 		}
 		text, isErr := next(ctx, args)
-		return end(text), isErr
+		end(text)
+		return r.namedKept(t.Name, args, text), isErr
 	}
 }
 
