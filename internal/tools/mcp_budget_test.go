@@ -484,7 +484,8 @@ var finalStatus = map[string]bool{"active": true, "running": true, "ready": true
 
 // budgetAnswerProblem reads the answer of a call the slow world cut short
 // (D69 §2; CLAUDE.md §6, axis 2): not an error; a state that is not final;
-// what to call next — a tool of the registry, not a command of the CLI.
+// what to call next — a tool of the registry, not a command of the CLI —
+// in words (next) and for the machine (next_tool, next_args).
 func budgetAnswerProblem(w budgetWait, text string, isErr bool) string {
 	if isErr {
 		return "it is an error (a call cut by the budget is the state so far, isError=false)"
@@ -507,12 +508,26 @@ func budgetAnswerProblem(w budgetWait, text string, isErr bool) string {
 	if strings.Contains(next, "evo ") {
 		return "its next step is a command of the CLI, not a tool (D6)"
 	}
+	named := false
 	for _, tl := range New(nil).Tools() {
 		if strings.Contains(next, tl.Name) {
-			return ""
+			named = true
+			break
 		}
 	}
-	return "its next step names no tool of the registry"
+	if !named {
+		return "its next step names no tool of the registry"
+	}
+	// The step for the machine, beside the text for the person (nextStep;
+	// owner's decision 11.11, Н3): the agent calls it without parsing next.
+	nextTool, _ := m["next_tool"].(string)
+	if _, ok := New(nil).Lookup(nextTool); !ok {
+		return "its next_tool " + `"` + nextTool + `"` + " is not a tool of the registry"
+	}
+	if args, _ := m["next_args"].(map[string]any); len(args) == 0 {
+		return "it names next_tool " + nextTool + " without next_args"
+	}
+	return ""
 }
 
 // terminalCode is what only a terminal reads: a carriage return that
