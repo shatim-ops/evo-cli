@@ -525,6 +525,87 @@ func (s *Registry) handleK8sNodePools(ctx context.Context, args map[string]any) 
 	return toJSON(map[string]any{"node_pools": out}), false
 }
 
+// handleK8sNodePoolGet reads a node pool by its id: what the list of its
+// cluster does not say — the cluster, the zone, the disk, the network, the
+// labels and taints of its nodes — and the status an operation of the pool
+// is read with (operationReads).
+func (s *Registry) handleK8sNodePoolGet(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "nodepool_id")
+	if id == "" {
+		return usageT("nodepool_id is required", "нужен nodepool_id"), true
+	}
+	cli, _, _, err := s.k8sClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	np, err := cli.GetNodePool(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	card := nodePoolCard(np)
+	// The cluster by its name next to its id, as a person knows it. A
+	// cluster that is not read leaves the card as it is: the id is there.
+	if cid, _ := card["cluster_id"].(string); cid != "" {
+		if c, err := cli.GetCluster(ctx, cid); err == nil {
+			if name, _ := c["name"].(string); name != "" {
+				card["cluster_name"] = name
+			}
+		}
+	}
+	// The subnet and the security group of the nodes stay ids: their names
+	// are two more reads, of two other services, at every call — and an
+	// operation of a pool reads this card at every poll (operationReads).
+	card["note"] = i18n.T("nodes_subnet_id and security_group_id are ids; list_subnets and list_security_groups name them.",
+		"nodes_subnet_id и security_group_id — id; имена — в выводе evo vpc subnets и evo vpc security-groups.")
+	return toJSON(card), false
+}
+
+// nodePoolCard is a node pool of the mk8s API (NodePool, v3) as
+// k8s_nodepool_get answers it. Fields the API did not give are left out.
+func nodePoolCard(np map[string]any) map[string]any {
+	sub := func(m map[string]any, keys ...string) map[string]any {
+		for _, k := range keys {
+			m, _ = m[k].(map[string]any)
+		}
+		return m
+	}
+	out := map[string]any{}
+	put := func(key string, v any) {
+		if v != nil {
+			out[key] = v
+		}
+	}
+	put("id", np["id"])
+	put("cluster_id", np["clusterId"])
+	put("name", np["name"])
+	put("zone", np["zone"])
+	put("version", np["version"])
+	put("status", np["status"])
+	if fs := sub(np, "scalePolicy", "fixedScale"); fs != nil {
+		out["scale"] = "fixed"
+		put("desired", fs["count"])
+	} else if as := sub(np, "scalePolicy", "autoScale"); as != nil {
+		out["scale"] = "auto"
+		put("min_count", as["minCount"])
+		put("max_count", as["maxCount"])
+	}
+	fl := sub(np, "machineConfiguration", "flavor")
+	put("flavor", fl["name"])
+	put("cpu", fl["cpu"])
+	put("ram_gb", fl["ram"])
+	disk := sub(np, "machineConfiguration", "disk")
+	put("disk_gb", disk["size"])
+	put("disk_type", disk["typeName"])
+	nc := sub(np, "networkConfiguration")
+	put("nodes_subnet_id", nc["nodesSubnetId"])
+	put("security_group_id", nc["securityGroupId"])
+	put("auto_repair", sub(np, "autoRepair")["enabled"])
+	put("labels", sub(np, "labels")["labels"])
+	put("taints", sub(np, "taints")["taints"])
+	put("upgrade_versions", sub(np, "versionUpgrade")["availableVersions"])
+	return out
+}
+
 // planK8sAddNodePool plans a worker node pool of a cluster (gated). Async.
 func (s *Registry) planK8sAddNodePool(ctx context.Context, args map[string]any) (*Plan, error) {
 	clusterID := stringArg(args, "cluster_id")
